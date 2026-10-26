@@ -86,6 +86,19 @@ export interface IOrderChangeService {
    */
   claimApplied(id: string): Promise<boolean>;
 
+  /** Every open proposal against one order (#3540). */
+  findOpenByOrder(internalOrderId: string): Promise<OrderChange[]>;
+
+  /**
+   * Which of these orders hold an open proposal that AMENDS THE ORDER ITSELF
+   * (an `order.*` kind, never a `return.*` one) — the `hasOpenAmendment` input of
+   * the derived lifecycle phase (#3540). One query for a whole page.
+   */
+  findOrderIdsWithOpenAmendment(internalOrderIds: readonly string[]): Promise<Set<string>>;
+
+  /** One proposal by id, any status (#3540). */
+  findById(id: string): Promise<OrderChange | null>;
+
   /** The most recent proposal of one kind against one target, open or terminal. */
   findLatestByTarget(
     internalOrderId: string,

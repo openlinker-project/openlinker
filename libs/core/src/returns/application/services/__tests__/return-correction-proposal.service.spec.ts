@@ -149,6 +149,9 @@ describe('ReturnCorrectionProposalService', () => {
       abandon: jest.fn().mockResolvedValue(true),
       claimApplied: jest.fn(),
       findLatestByTarget: jest.fn().mockResolvedValue(null),
+      findOpenByOrder: jest.fn().mockResolvedValue([]),
+      findOrderIdsWithOpenAmendment: jest.fn().mockResolvedValue(new Set<string>()),
+      findById: jest.fn().mockResolvedValue(null),
     };
 
     // The REAL guard, not a stub — an orphan must be refused through the one seam.

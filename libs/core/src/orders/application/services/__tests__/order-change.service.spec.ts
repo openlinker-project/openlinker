@@ -55,6 +55,9 @@ describe('OrderChangeService', () => {
     repository = {
       findOpenByTarget: jest.fn(),
       findLatestByTarget: jest.fn(),
+      findOpenByOrder: jest.fn(),
+      findOrderIdsWithOpenChanges: jest.fn(),
+      findById: jest.fn(),
       insertRequested: jest.fn(),
       confirm: jest.fn(),
       decline: jest.fn(),
@@ -192,5 +195,30 @@ describe('OrderChangeService', () => {
 
     expect(repository.expire).toHaveBeenCalledWith('change-1', expect.any(Date));
     expect(repository.decline).not.toHaveBeenCalled();
+  });
+
+  describe('findOrderIdsWithOpenAmendment (#3540)', () => {
+    it('should ask the repository for the order-mutating kinds only, never return.* kinds', async () => {
+      repository.findOrderIdsWithOpenChanges.mockResolvedValue(new Set(['order-a']));
+
+      const result = await service.findOrderIdsWithOpenAmendment(['order-a', 'order-b']);
+
+      expect(result).toEqual(new Set(['order-a']));
+      expect(repository.findOrderIdsWithOpenChanges).toHaveBeenCalledWith(
+        ['order-a', 'order-b'],
+        ['order.cancel_request', 'order.cancel_correction']
+      );
+    });
+  });
+
+  describe('findOpenByOrder (#3540)', () => {
+    it('should pass through to the repository', async () => {
+      repository.findOpenByOrder.mockResolvedValue([buildChange({})]);
+
+      const result = await service.findOpenByOrder(ORDER_ID);
+
+      expect(result).toHaveLength(1);
+      expect(repository.findOpenByOrder).toHaveBeenCalledWith(ORDER_ID);
+    });
   });
 });

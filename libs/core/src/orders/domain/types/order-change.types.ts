@@ -65,9 +65,52 @@ export const OrderChangeKindValues = [
   'return.decline',
   'return.authorize',
   'return.invoice_correction',
+  'order.cancel_request',
+  'order.cancel_correction',
 ] as const;
 
 export type OrderChangeKind = (typeof OrderChangeKindValues)[number];
+
+/**
+ * The kinds that are an operator MUTATING THE ORDER ITSELF (#3540), as opposed to
+ * a `return.*` proposal about a return.
+ *
+ * `order.cancel_request` (targetRef `cancel:{internalOrderId}`) is the operator's
+ * request that the SOURCE cancel the order; `order.cancel_correction` (targetRef
+ * `correction:cancel:{internalOrderId}:{invoiceRecordId}`) is the credit-note
+ * proposal a cancelled, invoiced order leaves behind. Both namespaces are disjoint
+ * from every `return.*` targetRef, which is what the shared unique index needs
+ * (it carries no `kind`).
+ *
+ * Only these count as an open AMENDMENT for the derived `amending` lifecycle
+ * phase (named "mutation" here because `OrderAmendmentChangeKind` already means the
+ * ingestion line-diff observation, see the file header): an open `return.decline` is about a return, not about the order, and
+ * must not make the order read `amending`.
+ */
+export const OrderMutationChangeKindValues = [
+  'order.cancel_request',
+  'order.cancel_correction',
+] as const satisfies readonly OrderChangeKind[];
+
+export type OrderMutationChangeKind = (typeof OrderMutationChangeKindValues)[number];
+
+/** Pure coercion. Edit in the same commit as {@link OrderMutationChangeKindValues}. */
+export function isOrderMutationChangeKind(value: unknown): value is OrderMutationChangeKind {
+  return (
+    typeof value === 'string' &&
+    (OrderMutationChangeKindValues as readonly string[]).includes(value)
+  );
+}
+
+/** `targetRef` of the cancel request: one open cancel per order. */
+export function cancelRequestTargetRef(internalOrderId: string): string {
+  return `cancel:${internalOrderId}`;
+}
+
+/** `targetRef` of the credit proposal a cancel leaves against one issued invoice. */
+export function cancelCorrectionTargetRef(internalOrderId: string, invoiceRecordId: string): string {
+  return `correction:cancel:${internalOrderId}:${invoiceRecordId}`;
+}
 
 /**
  * Where the proposal got to.

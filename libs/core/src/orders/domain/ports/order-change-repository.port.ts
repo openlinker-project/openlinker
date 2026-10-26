@@ -82,6 +82,29 @@ export interface OrderChangeRepositoryPort {
   ): Promise<OrderChange | null>;
 
   /**
+   * Every OPEN proposal against one order, whatever its target (#3540).
+   *
+   * Answers "is anything in flight on this order?" — which `findOpenByTarget`
+   * cannot, since it needs the target already in hand.
+   */
+  findOpenByOrder(internalOrderId: string): Promise<OrderChange[]>;
+
+  /**
+   * The subset of `internalOrderIds` holding at least one OPEN proposal of one of
+   * `kinds` (#3540). One query for a whole list page, never a per-row read; feeds
+   * the derived `amending` lifecycle phase.
+   */
+  findOrderIdsWithOpenChanges(
+    internalOrderIds: readonly string[],
+    kinds: readonly OrderChangeKind[]
+  ): Promise<Set<string>>;
+
+  /**
+   * One proposal by id, any status; `null` when absent (#3540).
+   */
+  findById(id: string): Promise<OrderChange | null>;
+
+  /**
    * The most recent proposal of one kind against one target, open or terminal.
    *
    * Used to answer "what happened last time?" for an already-applied change,
