@@ -1655,7 +1655,10 @@ export class OrderIngestionService implements IOrderIngestionService {
     // order, so without this the advisory hold stays `held` for good and every
     // later publish keeps subtracting a unit nobody bought. Same job and dedupe
     // key as the resync path, so whichever path sees the cancel first wins and
-    // the other is a no-op.
+    // the other is a no-op. The key has no TTL and no cancellation episode in
+    // it, so it also suppresses a SECOND cancellation of the same order (after
+    // an un-cancel at the source): that restore is a silent no-op, and the
+    // offer is corrected only by the next ordinary propagation.
     try {
       await this.jobQueue.enqueue({
         type: 'marketplace.offer.stockRestore',
