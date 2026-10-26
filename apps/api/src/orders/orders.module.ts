@@ -14,6 +14,7 @@ import { FulfillmentModule as CoreFulfillmentModule } from '@openlinker/core/ful
 import { InventoryModule as CoreInventoryModule } from '@openlinker/core/inventory';
 import { ShippingModule as CoreShippingModule } from '@openlinker/core/shipping';
 import { ReturnsModule as CoreReturnsModule } from '@openlinker/core/returns';
+import { FulfillmentModule as CoreFulfillmentModule } from '@openlinker/core/fulfillment';
 import { SyncModule as CoreSyncModule } from '@openlinker/core/sync';
 import { IntegrationsModule as CoreIntegrationsModule } from '@openlinker/core/integrations';
 import { IdentifierMappingModule as CoreIdentifierMappingModule } from '@openlinker/core/identifier-mapping';
@@ -60,6 +61,9 @@ import { SOURCE_FULFILLMENT_STATUS_SERVICE_TOKEN } from './application/interface
     CoreFulfillmentModule,
     CoreShippingModule,
     CoreReturnsModule,
+    // CoreFulfillmentModule (#3538) provides FULFILLMENT_WORK_QUERY_SERVICE_TOKEN -
+    // the order-detail read projects the per-parcel buyer-note acknowledgements.
+    CoreFulfillmentModule,
     // CoreSyncModule (#3534) provides JOB_ENQUEUE_TOKEN — the export
     // controller enqueues its own `orders.export` driver job, the
     // `AnalyticsRemediationController` precedent.

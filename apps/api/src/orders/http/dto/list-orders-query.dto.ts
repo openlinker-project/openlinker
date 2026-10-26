@@ -315,6 +315,19 @@ export class ListOrdersQueryDto extends PaginatedReadQueryDto {
   packed?: boolean;
 
   @ApiPropertyOptional({
+    type: Boolean,
+    description:
+      '"Has a buyer note" filter (#3538): true keeps only orders whose source reported a non-empty buyer note, ' +
+      'false only those without one (including those whose note state is unknown), omitted does not filter. ' +
+      'Maps to the indexed `hasBuyerNote` column, so it needs no snapshot expansion and is written even under ' +
+      '`OL_STORE_PII=false`. ANDed with every other axis.',
+  })
+  @IsOptional()
+  @Transform(({ value }): unknown => (value === 'true' ? true : value === 'false' ? false : value))
+  @IsBoolean()
+  hasBuyerNote?: boolean;
+
+  @ApiPropertyOptional({
     description:
       'Free-text search (#3527/#3528): order number, buyer name, buyer email, any line SKU, ' +
       'or a shipment tracking number. Matched against a denormalized, diacritic-folded ' +
