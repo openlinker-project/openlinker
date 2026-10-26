@@ -138,6 +138,7 @@ export const JOB_TYPE_VALUES = [
   'subiekt.bridge.reachabilitySweep', // Internal job — periodic Subiekt bridge probe (#3358).
   'inventory.saleDecrement', // Internal job — lowers master stock once per routed order line.
   'fulfillment.work.rerouteSweep', // Internal job — re-routes orders held for lack of stock once it arrives.
+  'inventory.saleDecrement.reconcileSweep', // Internal job — enqueues a routed order's lost stock-decrement job.
   'marketplace.offer.pauseStale', // Internal job — not user-triggerable; listed here for status display only.
   'marketplace.offer.pauseStaleSweep',
 ] as const;

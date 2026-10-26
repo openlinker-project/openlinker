@@ -33,10 +33,12 @@ import type {
 import type { IFulfillmentWorkQueryService } from '@openlinker/core/fulfillment';
 import type { IInventoryQueryService, ILocationService } from '@openlinker/core/inventory';
 
+import type { DraftRuleComparison, DraftRuleEvaluator } from './draft-rule-evaluator.capability';
 import { evaluateRouting } from './evaluate-routing';
 import type { RoutingCandidate, RoutingFacts } from './routing-facts.types';
 import { stockKey } from './routing-facts.types';
 import type { RoutingRuleSourcePort } from './routing-rule-source.port';
+import type { RoutingRule } from './routing-rule.types';
 
 const LOCATION_PAGE_SIZE = 200;
 const INVENTORY_PAGE_SIZE = 500;
@@ -58,7 +60,7 @@ export interface OlFulfillmentRouterDeps {
   readonly now?: () => Date;
 }
 
-export class OlFulfillmentRouter implements FulfillmentRouterPort {
+export class OlFulfillmentRouter implements FulfillmentRouterPort, DraftRuleEvaluator {
   constructor(private readonly deps: OlFulfillmentRouterDeps) {}
 
   async evaluate(input: RoutingInput): Promise<RoutingEvaluation> {
@@ -70,6 +72,29 @@ export class OlFulfillmentRouter implements FulfillmentRouterPort {
       unfulfillable: result.unfulfillable,
       explanation: result.explanation,
     };
+  }
+
+  /**
+   * The same order under the saved ruleset and an unsaved one (#2954), over ONE
+   * snapshot of the facts. The one place a rule list other than the saved one can
+   * reach the pipeline - `route()` has no such parameter, so a draft can never
+   * commit anything.
+   */
+  async evaluateAgainstDraft(
+    input: RoutingInput,
+    draftRules: readonly RoutingRule[]
+  ): Promise<DraftRuleComparison> {
+    const { rules, facts } = await this.load(input);
+    const toEvaluation = (ruleset: readonly RoutingRule[]): RoutingEvaluation => {
+      const result = evaluateRouting(input, ruleset, facts);
+      return {
+        candidates: result.assignments,
+        unfulfillable: result.unfulfillable,
+        explanation: result.explanation,
+      };
+    };
+
+    return { saved: toEvaluation(rules), draft: toEvaluation(draftRules) };
   }
 
   async route(input: RoutingInput, options: RouteOptions): Promise<RoutingPlan> {

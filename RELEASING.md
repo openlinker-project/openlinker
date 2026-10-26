@@ -171,6 +171,18 @@ the tag + GitHub Release. You never hand-tag again.
   (`vX.Y.Z-rc.N`) from a commit you've verified and point the demo at it; prod
   stays on the last stable tag.
 - Demo go-live depends on #1124 (read-only redaction) + #1127 (demo-session endpoint).
+- The web image's `VITE_*` values are baked in at **build time** by `cd.yml`,
+  from variables on the GitHub **`demo` environment** (not repo-level). Check
+  these before tagging - an unset one does not fail the build, it silently
+  changes what the demo serves:
+
+  | Variable | Demo value | If unset |
+  |---|---|---|
+  | `VITE_API_BASE_URL` | `https://api.demo.openlinker.io` | the bundle gets an empty API origin and the app fails its startup config check (`env.ts`) |
+  | `VITE_OL_SEO_INDEXABLE` | `true` | the demo is built `noindex` and drops out of search results (#3709) |
+  | `VITE_OG_SITE_URL` | `https://app.demo.openlinker.io` | same as above (indexing needs both), and the share card's `og:image` stays relative |
+
+  Inspect them with `gh variable list --env demo`.
 
 ## HTTP API versioning
 

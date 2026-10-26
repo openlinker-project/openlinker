@@ -305,6 +305,14 @@ export const JobTypeValues = [
   // stock arrives. Global scope under the nil-UUID system connection id, like
   // its timeout- and relay-sweep siblings.
   'fulfillment.work.rerouteSweep',
+  // The lost-enqueue backstop for `inventory.saleDecrement` (#3629, epic #3460).
+  // Both producers swallow an enqueue failure by design (the routing intercept is
+  // fail-open), and the decrement job has no cron, so a lost enqueue leaves the
+  // product master's stock high for ever. This finds routed works with no such job
+  // and enqueues it under the producers' own key. `bulk` lane: cron-paced
+  // reconciliation, not a buyer-facing path - the decrement job itself stays
+  // `realtime`. Global scope under the nil-UUID system connection id.
+  'inventory.saleDecrement.reconcileSweep',
 
   // Data Coverage currency-restatement driver (#2468, epic #2452 Phase 5).
   // Carries the run's scope + cursor in its payload; the connection it is

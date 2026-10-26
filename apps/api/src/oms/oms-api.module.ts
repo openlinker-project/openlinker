@@ -26,18 +26,24 @@
  */
 import { Module } from '@nestjs/common';
 import { InventoryModule as CoreInventoryModule } from '@openlinker/core/inventory';
+import { OrdersModule } from '@openlinker/core/orders';
 
 import { IntegrationsModule } from '../integrations/integrations.module';
 import { SOURCING_RULE_ADMIN_SERVICE_TOKEN } from './application/interfaces/sourcing-rule-admin.service.interface';
+import { ROUTING_DRY_RUN_SERVICE_TOKEN } from './application/interfaces/routing-dry-run.service.interface';
+import { RoutingDryRunService } from './application/services/routing-dry-run.service';
 import { SourcingRuleAdminService } from './application/services/sourcing-rule-admin.service';
+import { OmsRoutingDryRunController } from './http/oms-routing-dry-run.controller';
 import { OmsSourcingRulesController } from './http/oms-sourcing-rules.controller';
 
 @Module({
-  imports: [IntegrationsModule, CoreInventoryModule],
-  controllers: [OmsSourcingRulesController],
+  imports: [IntegrationsModule, CoreInventoryModule, OrdersModule],
+  controllers: [OmsSourcingRulesController, OmsRoutingDryRunController],
   providers: [
     SourcingRuleAdminService,
     { provide: SOURCING_RULE_ADMIN_SERVICE_TOKEN, useExisting: SourcingRuleAdminService },
+    RoutingDryRunService,
+    { provide: ROUTING_DRY_RUN_SERVICE_TOKEN, useExisting: RoutingDryRunService },
   ],
 })
 export class OmsApiModule {}
