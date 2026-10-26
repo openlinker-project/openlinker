@@ -35,6 +35,8 @@ export interface BulkCancelOrderResult {
   code?: string;
   reason?: string;
   correctionProposalChangeId?: string;
+  /** Codes for side effects that did not fully happen (optional until the backend layer is restacked). */
+  warnings?: string[];
 }
 
 export interface BulkCancelOrdersResult {
@@ -84,6 +86,7 @@ export type BulkOrderTagOutcome = (typeof BulkOrderTagOutcomeValues)[number];
 export interface BulkOrderTagRowResult {
   orderId: string;
   outcome: BulkOrderTagOutcome;
+  code?: string;
   reason?: string;
 }
 

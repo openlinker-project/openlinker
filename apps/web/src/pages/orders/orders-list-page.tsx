@@ -394,6 +394,12 @@ export function OrdersListPage(): ReactElement {
     [packersQuery.isSuccess, packersQuery.data]
   );
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  // Hidden ids must not stay selected: bulk actions would act on rows the
+  // operator cannot see (B-26). Any change of page, sort or filter clears it.
+  const selectionScopeKey = JSON.stringify([filters, offset, sort, dir]);
+  useEffect(() => {
+    setSelectedIds((prev) => (prev.size === 0 ? prev : new Set()));
+  }, [selectionScopeKey]);
   const [bulkOpen, setBulkOpen] = useState(false);
   const [bulkCancelOpen, setBulkCancelOpen] = useState(false);
   const [bulkReadOpen, setBulkReadOpen] = useState(false);
@@ -1868,6 +1874,7 @@ export function OrdersListPage(): ReactElement {
         onOpenChange={setBulkCancelOpen}
         orderIds={selectedOrders.map((o) => o.internalOrderId)}
         onComplete={clearSelection}
+        connectionNames={connectionNames}
       />
 
       <BulkBuyerNoteReadDialog

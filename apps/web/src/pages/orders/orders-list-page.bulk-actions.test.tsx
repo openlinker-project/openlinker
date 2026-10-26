@@ -75,6 +75,19 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe('OrdersListPage bulk actions (#3619)', () => {
+  it('should clear the selection when the sort changes so hidden rows are not acted on (B-26)', async () => {
+    const user = userEvent.setup();
+    renderPage([makeOrder('ol_ready')]);
+
+    await user.click(await screen.findByRole('checkbox', { name: 'Select ol_ready' }));
+    expect(screen.getByTestId('orders-bulk-cancel')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Customer, sort' }));
+
+    expect(await screen.findByRole('checkbox', { name: 'Select ol_ready' })).not.toBeChecked();
+    expect(screen.queryByTestId('orders-bulk-cancel')).toBeNull();
+  });
+
   it('should let a dispatched order be selected for cancel while Dispatch excludes it', async () => {
     const user = userEvent.setup();
     renderPage([
