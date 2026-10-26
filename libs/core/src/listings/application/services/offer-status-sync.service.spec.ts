@@ -5,7 +5,8 @@
  * transition detection, no-capability skip, marketplace-not-found handling,
  * offset advancement + wrap-around, transient-error propagation, and
  * `refreshOne`'s basic contract (#1760) plus its commercial-snapshot side
- * effect (#2024). Consolidated from a second, duplicate spec file that had
+ * effect (#2024), and the minimum mapping age a not-found read must clear
+ * before it is recorded as `ended`. Consolidated from a second, duplicate spec file that had
  * grown alongside this one testing the same class (#2032 review, smaller
  * items) - `refreshOne`'s three basic-contract cases below were merged in
  * from there rather than dropped.
@@ -28,11 +29,18 @@ import { OfferNotFoundOnMarketplaceException } from '@openlinker/core/listings';
 
 import { OfferStatusSnapshot } from '../../domain/entities/offer-status-snapshot.entity';
 import type { OfferPublicationStatus } from '../../domain/types/offer-status-read.types';
-import { OfferStatusSyncService } from './offer-status-sync.service';
+import { OFFER_GONE_MIN_MAPPING_AGE_MS, OfferStatusSyncService } from './offer-status-sync.service';
 
 const CONNECTION_ID = 'conn-allegro-1';
 
-function makeMapping(externalOfferId: string, internalVariantId: string): OfferMappingListItem {
+/** Long past `OFFER_GONE_MIN_MAPPING_AGE_MS` relative to any real clock. */
+const OLD_MAPPING_CREATED_AT = new Date('2026-05-01T12:00:00Z');
+
+function makeMapping(
+  externalOfferId: string,
+  internalVariantId: string,
+  createdAt: Date = OLD_MAPPING_CREATED_AT
+): OfferMappingListItem {
   const mapping = new IdentifierMapping(
     `idmap-${externalOfferId}`,
     'Offer',
@@ -41,8 +49,8 @@ function makeMapping(externalOfferId: string, internalVariantId: string): OfferM
     'allegro',
     CONNECTION_ID,
     null,
-    new Date('2026-05-01T12:00:00Z'),
-    new Date('2026-05-01T12:00:00Z')
+    createdAt,
+    createdAt
   );
   return {
     ...mapping,
@@ -259,6 +267,98 @@ describe('OfferStatusSyncService', () => {
     );
   });
 
+  describe('not-found minimum mapping age', () => {
+    const NOW = new Date('2026-10-26T12:00:00Z').getTime();
+
+    beforeEach(() => {
+      jest.spyOn(Date, 'now').mockReturnValue(NOW);
+      integrations.getCapabilityAdapter.mockResolvedValue(
+        statusReader(() => Promise.reject(new OfferNotFoundOnMarketplaceException('222', CONNECTION_ID)))
+      );
+    });
+
+    afterEach(() => {
+      jest.restoreAllMocks();
+    });
+
+    it('should leave the snapshot untouched when the mapping is younger than the minimum age', async () => {
+      // Right after an async 202 create the marketplace may answer 404 for an
+      // offer that is about to exist; recording `ended` would let it be
+      // listed a second time.
+      offerMappings.findMappingPage.mockResolvedValue(
+        page([makeMapping('222', 'ol_variant_b', new Date(NOW - OFFER_GONE_MIN_MAPPING_AGE_MS + 1000))], 1)
+      );
+
+      const result = await service.sync(CONNECTION_ID, { limit: 10 });
+
+      expect(result.notFound).toBe(1);
+      expect(result.updated).toBe(0);
+      expect(snapshots.upsert).not.toHaveBeenCalled();
+    });
+
+    it('should record ended once the mapping has reached the minimum age', async () => {
+      offerMappings.findMappingPage.mockResolvedValue(
+        page([makeMapping('222', 'ol_variant_b', new Date(NOW - OFFER_GONE_MIN_MAPPING_AGE_MS))], 1)
+      );
+
+      const result = await service.sync(CONNECTION_ID, { limit: 10 });
+
+      expect(result.updated).toBe(1);
+      expect(snapshots.upsert).toHaveBeenCalledWith(
+        expect.objectContaining({ externalOfferId: '222', publicationStatus: 'ended' })
+      );
+    });
+
+    it('should return null from refreshOne without writing when the mapping is too young', async () => {
+      offerMappings.findMappingPage.mockResolvedValue(
+        page([makeMapping('222', 'ol_variant_b', new Date(NOW - 60_000))], 1)
+      );
+
+      const result = await service.refreshOne(CONNECTION_ID, {
+        externalOfferId: '222',
+        internalVariantId: 'ol_variant_b',
+      });
+
+      expect(result).toBeNull();
+      expect(snapshots.upsert).not.toHaveBeenCalled();
+    });
+
+    it('should record ended from refreshOne once the mapping has reached the minimum age', async () => {
+      offerMappings.findMappingPage.mockResolvedValue(
+        page([makeMapping('222', 'ol_variant_b', new Date(NOW - OFFER_GONE_MIN_MAPPING_AGE_MS))], 1)
+      );
+
+      const result = await service.refreshOne(CONNECTION_ID, {
+        externalOfferId: '222',
+        internalVariantId: 'ol_variant_b',
+      });
+
+      expect(result).toBe('ended');
+      expect(offerMappings.findMappingPage).toHaveBeenCalledWith(
+        { connectionId: CONNECTION_ID, internalId: 'ol_variant_b', search: '222' },
+        { limit: 100, offset: 0 }
+      );
+      expect(snapshots.upsert).toHaveBeenCalledWith(
+        expect.objectContaining({ externalOfferId: '222', publicationStatus: 'ended' })
+      );
+    });
+
+    it('should not trust a not-found from refreshOne when no exact mapping dates the offer', async () => {
+      // The substring search matched only a different offer id.
+      offerMappings.findMappingPage.mockResolvedValue(
+        page([makeMapping('2220', 'ol_variant_b')], 1)
+      );
+
+      const result = await service.refreshOne(CONNECTION_ID, {
+        externalOfferId: '222',
+        internalVariantId: 'ol_variant_b',
+      });
+
+      expect(result).toBeNull();
+      expect(snapshots.upsert).not.toHaveBeenCalled();
+    });
+  });
+
   it('should advance the offset by the page size when more offers remain', async () => {
     integrations.getCapabilityAdapter.mockResolvedValue(statusReader(() => readResult('active')));
     offerMappings.findMappingPage.mockResolvedValue(page([makeMapping('111', 'ol_variant_a')], 50));
@@ -325,6 +425,9 @@ describe('OfferStatusSyncService', () => {
         statusReader(() =>
           Promise.reject(new OfferNotFoundOnMarketplaceException('7781896308', CONNECTION_ID))
         )
+      );
+      offerMappings.findMappingPage.mockResolvedValue(
+        page([makeMapping('7781896308', 'ol_variant_1')], 1)
       );
 
       const result = await service.refreshOne(CONNECTION_ID, target);
@@ -535,6 +638,7 @@ describe('OfferStatusSyncService', () => {
       integrations.getCapabilityAdapter.mockResolvedValue(
         statusReader(() => Promise.reject(new OfferNotFoundOnMarketplaceException('333', CONNECTION_ID)))
       );
+      offerMappings.findMappingPage.mockResolvedValue(page([makeMapping('333', 'ol_variant_c')], 1));
 
       const result = await service.refreshOne(CONNECTION_ID, {
         externalOfferId: '333',

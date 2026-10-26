@@ -62,6 +62,22 @@ import type { OfferValidationScope } from '../../domain/types/offer-validation-p
  */
 const OFFER_GONE_STATUS: OfferPublicationStatus = 'ended';
 
+/**
+ * How old an offer mapping must be before a not-found read is trusted as the
+ * offer being gone. Allegro accepts a create with a 202 and builds the offer
+ * asynchronously, and right after that it can briefly answer 404 for an offer
+ * that is about to exist. Recording that as `ended` would make the variant
+ * re-listable at once, and the wizard would then allow a duplicate listing of
+ * an offer that goes live minutes later. Thirty minutes is well past the
+ * creation poller's ~9-minute budget, so by then a 404 is the marketplace's
+ * settled answer; a younger not-found leaves the snapshot alone for the next
+ * pass to re-check.
+ */
+export const OFFER_GONE_MIN_MAPPING_AGE_MS = 30 * 60 * 1000;
+
+/** Page size for finding one variant's offer mappings on a connection. */
+const VARIANT_MAPPING_LOOKUP_LIMIT = 100;
+
 @Injectable()
 export class OfferStatusSyncService implements IOfferStatusSyncService {
   private readonly logger = new Logger(OfferStatusSyncService.name);
@@ -134,6 +150,9 @@ export class OfferStatusSyncService implements IOfferStatusSyncService {
           // variant counted as "already listed" by the bulk wizard's duplicate
           // guard for ever, with nothing left on the marketplace to end - the
           // #1934 dead end reached by deletion instead of ending.
+          if (!this.isOldEnoughToConcludeGone(mapping.createdAt, connectionId, externalOfferId)) {
+            continue;
+          }
           if (
             await this.recordObservedStatus(
               connectionId,
@@ -236,7 +255,13 @@ export class OfferStatusSyncService implements IOfferStatusSyncService {
       if (error instanceof OfferNotFoundOnMarketplaceException) {
         // See `sync`: an offer the marketplace no longer has is ended, so the
         // variant can be listed again. No commercial snapshot - there is
-        // nothing on the marketplace to observe a price or stock on.
+        // nothing on the marketplace to observe a price or stock on. A young
+        // mapping's not-found is not trusted yet; `null` is the "not found"
+        // answer the interface documents, and the hourly pass re-checks it.
+        const mappedAt = await this.findMappedAt(connectionId, target);
+        if (!this.isOldEnoughToConcludeGone(mappedAt, connectionId, target.externalOfferId)) {
+          return null;
+        }
         await this.recordObservedStatus(connectionId, target, {
           publicationStatus: OFFER_GONE_STATUS,
           validationMessages: [],
@@ -324,6 +349,41 @@ export class OfferStatusSyncService implements IOfferStatusSyncService {
    * path from ever firing on newly written snapshots, leaving two stories for
    * one state. Omission keeps it one.
    */
+  /**
+   * Whether a not-found read may be recorded as the offer being gone. An
+   * unknown mapping age (no mapping left to date it) is treated as too young:
+   * failing towards "re-check later" can only delay a re-listing, while
+   * failing the other way can allow a duplicate one.
+   */
+  private isOldEnoughToConcludeGone(
+    mappedAt: Date | null,
+    connectionId: string,
+    externalOfferId: string
+  ): boolean {
+    const oldEnough =
+      mappedAt !== null && Date.now() - mappedAt.getTime() >= OFFER_GONE_MIN_MAPPING_AGE_MS;
+    if (!oldEnough) {
+      this.logger.debug(
+        `Offer not found on the marketplace but its mapping is too young to trust that; leaving the snapshot for the next pass (connection=${connectionId}, offerId=${externalOfferId})`
+      );
+    }
+    return oldEnough;
+  }
+
+  /** When OL first mapped this offer, or `null` when no mapping is left. */
+  private async findMappedAt(
+    connectionId: string,
+    target: OfferStatusRefreshTarget
+  ): Promise<Date | null> {
+    const page = await this.offerMappings.findMappingPage(
+      { connectionId, internalId: target.internalVariantId, search: target.externalOfferId },
+      { limit: VARIANT_MAPPING_LOOKUP_LIMIT, offset: 0 }
+    );
+    // `search` is a substring match, so the exact id is picked out here.
+    const mapping = page.items.find((item) => item.externalId === target.externalOfferId);
+    return mapping?.createdAt ?? null;
+  }
+
   private toStatusDetails(
     validationErrors: ReadonlyArray<{
       code?: string;
