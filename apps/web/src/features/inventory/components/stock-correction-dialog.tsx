@@ -115,6 +115,32 @@ function errorCode(error: Error | null): string | null {
   return null;
 }
 
+interface ServerConfirmation {
+  /** The delta the client sent; what the block is matched against. */
+  sentDelta: number;
+  requestedDelta: number;
+  currentQuantity: number | null;
+  absoluteThresholdUnits: number | null;
+  relativeThreshold: number | null;
+}
+
+function numberOrNull(value: unknown): number | null {
+  return typeof value === 'number' && Number.isFinite(value) ? value : null;
+}
+
+/** Reads the 409 body's own figures; the server's thresholds are the authority. */
+function readServerConfirmation(error: unknown, fallbackDelta: number): ServerConfirmation {
+  const details = error instanceof ApiError ? error.details : null;
+  const record = typeof details === 'object' && details !== null ? (details as Record<string, unknown>) : {};
+  return {
+    sentDelta: fallbackDelta,
+    requestedDelta: numberOrNull(record.requestedDelta) ?? fallbackDelta,
+    currentQuantity: numberOrNull(record.currentQuantity),
+    absoluteThresholdUnits: numberOrNull(record.absoluteThresholdUnits),
+    relativeThreshold: numberOrNull(record.relativeThreshold),
+  };
+}
+
 function DialogBody({
   target,
   onClose,
@@ -130,7 +156,7 @@ function DialogBody({
   const targetQuery = useCorrectionTargetQuery(target.variant.id);
   const mutation = useCorrectStockMutation();
   const [ackedDelta, setAckedDelta] = useState<number | null>(null);
-  const [serverConfirmDelta, setServerConfirmDelta] = useState<number | null>(null);
+  const [serverConfirm, setServerConfirm] = useState<ServerConfirmation | null>(null);
 
   const form = useForm<StockCorrectionFormValues>({
     defaultValues: STOCK_CORRECTION_DEFAULT_VALUES,
@@ -148,7 +174,7 @@ function DialogBody({
   const delta = current !== null && entry !== null && entryValid ? correctionDelta(values.mode, entry, current) : null;
   const newQuantity = current !== null && delta !== null ? current + delta : null;
   const needsConfirmation =
-    delta !== null && current !== null && (isLargeChange(delta, current) || serverConfirmDelta === delta);
+    delta !== null && current !== null && (isLargeChange(delta, current) || serverConfirm?.sentDelta === delta);
   const acknowledged = delta !== null && ackedDelta === delta;
 
   const preview = useMemo(
@@ -178,9 +204,9 @@ function DialogBody({
       });
     } catch (error) {
       if (errorCode(error instanceof Error ? error : null) === 'confirmation-required') {
-        // The server's thresholds can differ from ours when the current stock
+        // The server's figures can differ from ours when the current stock
         // moved; same key, the operator just has to tick the box.
-        setServerConfirmDelta(sentDelta);
+        setServerConfirm(readServerConfirmation((error as ApiError), sentDelta));
       }
     }
   });
@@ -283,8 +309,8 @@ function DialogBody({
             value={values.mode}
             onChange={(mode) => form.setValue('mode', mode, { shouldValidate: form.formState.submitCount > 0 })}
             options={[
-              { value: 'set', label: <span data-testid="stock-correction-mode-set">Set new quantity</span> },
-              { value: 'delta', label: <span data-testid="stock-correction-mode-delta">Adjust by amount</span> },
+              { value: 'set', label: 'Set new quantity', 'data-testid': 'stock-correction-mode-set' },
+              { value: 'delta', label: 'Adjust by amount', 'data-testid': 'stock-correction-mode-delta' },
             ]}
           />
         </div>
@@ -315,8 +341,9 @@ function DialogBody({
 
         {needsConfirmation ? (
           <Alert tone="warning" title="This is a large change" data-testid="stock-correction-large-change">
-            It changes stock by more than 50 units or more than half of the current count. Check the number
-            before saving.
+            {serverConfirm !== null && serverConfirm.sentDelta === delta
+              ? serverLargeChangeSentence(serverConfirm)
+              : 'It changes stock by more than 50 units or more than half of the current count. Check the number before saving.'}
             <label className="sc-check">
               <input
                 type="checkbox"
@@ -368,6 +395,16 @@ function DialogBody({
       </form>
     </div>
   );
+}
+
+function serverLargeChangeSentence(confirm: ServerConfirmation): string {
+  const change = `${confirm.requestedDelta > 0 ? '+' : ''}${confirm.requestedDelta} units`;
+  const from = confirm.currentQuantity === null ? '' : ` against a current count of ${confirm.currentQuantity}`;
+  const limits: string[] = [];
+  if (confirm.absoluteThresholdUnits !== null) limits.push(`more than ${confirm.absoluteThresholdUnits} units`);
+  if (confirm.relativeThreshold !== null) limits.push(`more than ${Math.round(confirm.relativeThreshold * 100)}% of the current count`);
+  const rule = limits.length > 0 ? ` Changes of ${limits.join(' or ')} need a second look.` : '';
+  return `This changes stock by ${change}${from}.${rule} Check the number before saving.`;
 }
 
 function heldSentence(target: StockAdjustTarget): string {
