@@ -2,8 +2,9 @@
  * Order Cancellation Effects Service (#3540, B-18)
  *
  * See the interface for why this exists. In short: cancel fulfilment work with
- * `order_cancelled`, release the order's open hold, and for an invoiced order
- * open the credit proposal - once, whichever path observed the cancel first.
+ * `order_cancelled`, release the order's open hold, abandon any open discount
+ * proposal (B-31), and for an invoiced order open the credit proposal - once,
+ * whichever path observed the cancel first.
  *
  * It lives in core because ingestion (core) must run it for an observed
  * confirmation and core may not import `apps/api`.
@@ -23,6 +24,7 @@ import {
   type InvoiceRecord,
 } from '@openlinker/core/invoicing';
 import { Logger } from '@openlinker/shared/logging';
+import type { OrderChange } from '../../domain/entities/order-change.entity';
 import {
   ORDER_CANCELLED_HOLD_RELEASE_NOTE,
   type OrderCancelCorrectionPayload,
@@ -47,6 +49,13 @@ import type {
 import { IOrderHoldService } from '../interfaces/order-hold.service.interface';
 import { IOrderChangeService } from './order-change.service.interface';
 
+/** Proposal kinds a discount opens; the cancel credit supersedes both. */
+const DISCOUNT_PROPOSAL_KINDS: ReadonlySet<string> = new Set([
+  'order.discount_refund',
+  'order.discount_correction',
+]);
+const DISCOUNT_PROPOSAL_ABANDON_REASON = 'order-cancelled';
+
 @Injectable()
 export class OrderCancellationEffectsService implements IOrderCancellationEffectsService {
   private readonly logger = new Logger(OrderCancellationEffectsService.name);
@@ -69,6 +78,7 @@ export class OrderCancellationEffectsService implements IOrderCancellationEffect
     const cancelledWorkIds = await this.cancelWork(input.internalOrderId, input.cancelledAt);
     const releasedHoldIds = await this.releaseHolds(input);
     const labelVoids = input.voidLabels === false ? [] : await this.voidLabels(input);
+    await this.abandonDiscountProposals(input.internalOrderId);
 
     let correctionProposal: OrderCancelCorrectionProposal | null = null;
     let correctionUnavailableReason: OrderCancelCorrectionUnavailableReason | null = null;
@@ -178,6 +188,37 @@ export class OrderCancellationEffectsService implements IOrderCancellationEffect
         error instanceof Error ? error.stack : undefined
       );
       return [];
+    }
+  }
+
+  /**
+   * Abandon the order's open discount proposals (B-31). A cancelled order is
+   * credited in full by the cancel correction, so a pending discount refund or
+   * discount correction left open would ask the operator to refund or correct the
+   * same money a second time. Best-effort per proposal: the order IS cancelled by
+   * now, and a proposal that stays open is visible and can be dismissed by hand.
+   */
+  private async abandonDiscountProposals(internalOrderId: string): Promise<void> {
+    let open: OrderChange[];
+    try {
+      open = await this.changes.findOpenByOrder(internalOrderId);
+    } catch (error) {
+      this.logger.error(
+        `Failed to list open discount proposals for cancelled order ${internalOrderId}`,
+        error instanceof Error ? error.stack : undefined
+      );
+      return;
+    }
+    for (const change of open) {
+      if (!DISCOUNT_PROPOSAL_KINDS.has(change.kind)) continue;
+      try {
+        await this.changes.abandon(change.id, DISCOUNT_PROPOSAL_ABANDON_REASON);
+      } catch (error) {
+        this.logger.error(
+          `Failed to abandon discount proposal ${change.id} on cancelled order ${internalOrderId}`,
+          error instanceof Error ? error.stack : undefined
+        );
+      }
     }
   }
 
