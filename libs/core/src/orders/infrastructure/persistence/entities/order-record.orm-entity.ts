@@ -359,7 +359,7 @@ export class OrderRecordOrmEntity {
   /**
    * Whether a non-empty buyer note was reported (#3538). Indexed for the
    * `?hasBuyerNote=` list filter. NOT PII-gated - it carries no content - so it
-   * is written even when {@link buyerNote} is not stored. Ready-path only.
+   * is written even when {@link buyerNote} is not stored. Ready-path only, so an `awaiting_mapping` order with a note is invisible to `?hasBuyerNote=true` until it becomes ready.
    */
   @Index('IDX_order_records_hasBuyerNote')
   @Column({ type: 'boolean', default: false })

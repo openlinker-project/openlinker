@@ -933,7 +933,7 @@ describe('PrestashopOrderSourceAdapter', () => {
       return list;
     }
 
-    it('should join only buyer-authored messages oldest first', async () => {
+    it('should return only the earliest buyer message, ignoring staff replies and later buyer messages', async () => {
       // order_details, customer_threads, customer_messages
       script([
         [],
@@ -941,13 +941,14 @@ describe('PrestashopOrderSourceAdapter', () => {
         [
           { id: '12', id_customer_thread: '5', id_employee: '0', message: 'Second', date_add: '2024-01-02 09:00:00' },
           { id: '10', id_customer_thread: '5', id_employee: '0', message: 'First', date_add: '2024-01-01 10:00:00' },
+          { id: '9', id_customer_thread: '5', id_employee: '3', message: 'Staff first', date_add: '2024-01-01 09:00:00' },
           { id: '11', id_customer_thread: '5', id_employee: '3', message: 'Staff reply', date_add: '2024-01-01 11:00:00' },
         ],
       ]);
 
       const incoming = await adapter.getOrder({ externalOrderId: '42' });
 
-      expect(incoming.buyerNote).toBe('First\n\nSecond');
+      expect(incoming.buyerNote).toBe('First');
     });
 
     it('should ask the shop for the order thread and only buyer messages', async () => {

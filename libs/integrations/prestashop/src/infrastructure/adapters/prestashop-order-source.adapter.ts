@@ -826,8 +826,8 @@ export class PrestashopOrderSourceAdapter implements OrderSourcePort {
   }
 
   /**
-   * The buyer's checkout message (#3538): the buyer-authored messages of the
-   * order's `customer_threads`, joined oldest first.
+   * The buyer's checkout message (#3538): the first buyer-authored message of the
+   * order's `customer_threads`.
    *
    * PrestaShop stores the checkout message as a `customer_message` on a
    * `customer_thread` pointing at the order, and the same thread also carries
@@ -840,6 +840,11 @@ export class PrestashopOrderSourceAdapter implements OrderSourcePort {
    * a readable resource with no thread or no buyer message is `null`, and
    * otherwise the text. Any other failure (5xx, network) propagates so the
    * order sync retries rather than recording a guess.
+   *
+   * ONLY the earliest buyer-authored message is the checkout note: PrestaShop
+   * stores it as the first customer message of the order's thread, and later
+   * buyer messages ("where is my parcel?") are deliberately ignored - #3538
+   * covers the checkout note, not the order thread.
    *
    * Two requests per order at most: threads by `id_order`, then every message of
    * those threads in one pipe-joined OR read.
@@ -868,16 +873,14 @@ export class PrestashopOrderSourceAdapter implements OrderSourcePort {
       if (!Array.isArray(messages)) {
         return undefined;
       }
-      const buyerMessages = messages
+      const [first] = messages
         .filter((message) => Number(message.id_employee ?? 0) === 0)
         .sort(
           (a, b) =>
             String(a.date_add ?? '').localeCompare(String(b.date_add ?? '')) ||
             Number(a.id) - Number(b.id)
-        )
-        .map((message) => (typeof message.message === 'string' ? message.message.trim() : ''))
-        .filter((text) => text.length > 0);
-      return readSourceBuyerNote(buyerMessages.join('\n\n')) ?? null;
+        );
+      return readSourceBuyerNote(first?.message) ?? null;
     } catch (error) {
       if (isThreadResourceInaccessible(error)) {
         this.logger.warn(
