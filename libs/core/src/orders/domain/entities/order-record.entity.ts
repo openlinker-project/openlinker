@@ -15,6 +15,8 @@ import type { PaymentStatus } from '../types/payment-status.types';
 import type { PaymentMethod } from '../types/payment-method.types';
 import type { CodToCollect } from '../types/cod-to-collect.types';
 import { decodeBuyerTaxIdColumn } from '../types/buyer-tax-id.types';
+import { decodeBuyerNoteColumn } from '../types/buyer-note.types';
+import type { BuyerNote } from '../types/buyer-note.types';
 import type { BuyerTaxId } from '../types/buyer-tax-id.types';
 import type { FulfillmentRollupState } from '../types/order-fulfillment.types';
 import type { OrderDispatchWindow, OrderItem, PriceTaxTreatment } from '../types/order.types';
@@ -462,8 +464,57 @@ export class OrderRecord {
      * PII-free elaboration of the reason above — connection ids and counts only.
      * Moves as one group with `destinationRoutingBlockReason`.
      */
-    public readonly destinationRoutingBlockDetail: string | null = null
+    public readonly destinationRoutingBlockDetail: string | null = null,
+    /**
+     * The buyer's checkout note (#3538), encoded like `buyerTaxId`: `NULL` =
+     * not asserted OR not stored, `''` = the source asserted none, otherwise the
+     * text. Read through {@link buyerNoteState}, never bare.
+     *
+     * PII-gated at persistence: under `OL_STORE_PII=false` the text is not
+     * stored (the column stays `NULL`) while {@link hasBuyerNote} is still
+     * written. Written only on the `'ready'` path. Appended LAST: positional
+     * constructor.
+     */
+    public readonly buyerNote: string | null = null,
+    /**
+     * Whether the source reported a non-empty buyer note, denormalized for the
+     * list filter and badge. NOT PII-gated: it carries no content. `false`
+     * covers both "no note" and "unknown"; {@link buyerNoteState} tells them
+     * apart when the text is stored.
+     */
+    public readonly hasBuyerNote: boolean = false,
+    /**
+     * When an operator first marked the note read (#3538). Sole writer
+     * `markBuyerNoteRead`; never round-tripped through the upsert.
+     */
+    public readonly buyerNoteReadAt: Date | null = null,
+    /** Who marked it read; moves with {@link buyerNoteReadAt} in one statement. */
+    public readonly buyerNoteReadByUserId: string | null = null,
+    /**
+     * ISO-3166 alpha-2 country of the shipping address (#3538, D7), `null` when
+     * the order has no (or an unparsable) shipping address - unknown, never a
+     * default. Country is not PII and survives address redaction.
+     */
+    public readonly shippingCountry: string | null = null,
+    /** Billing-address counterpart of {@link shippingCountry}. */
+    public readonly billingCountry: string | null = null,
+    /**
+     * How many OTHER, earlier orders the same resolved customer identity has in
+     * OpenLinker (#3538, D7). Computed OL-side at ingestion, never read from a
+     * channel; `null` (unknown) when the order has no resolved customer.
+     */
+    public readonly buyerOrderCount: number | null = null
   ) {}
+
+  /**
+   * The buyer note in its three domain states, decoded from the column's
+   * encoding. Pure derivation of an already-loaded field (ADR-011). Under
+   * hash-only mode the text is not stored, so this reads `undefined` even when
+   * {@link hasBuyerNote} is `true`.
+   */
+  get buyerNoteState(): BuyerNote {
+    return decodeBuyerNoteColumn(this.buyerNote);
+  }
 
   /**
    * The payment method with the unreported case folded into `'unknown'`

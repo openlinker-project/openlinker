@@ -109,6 +109,14 @@ export interface IncomingOrder {
    */
   paymentMethod?: PaymentMethod;
   /**
+   * The buyer's checkout message to the seller (#3538). Three states, like
+   * `buyerTaxId` (#2599): a string is the note verbatim, `null` means the
+   * source asserted the buyer left none, absent means the adapter could not
+   * read the field - never "no note". Coerce a raw source value with
+   * `readSourceBuyerNote`. Free text, so it is PII-gated at persistence.
+   */
+  buyerNote?: string | null;
+  /**
    * The source's own payment-method id (#3474), e.g. Allegro `payment.type`.
    * Opaque: the same vocabulary `SourceOptionsReader.listPaymentMethods`
    * returns, used only as the key of an operator-configured payment mapping.
