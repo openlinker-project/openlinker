@@ -623,6 +623,7 @@ describe('BenchParcelService (#2418)', () => {
           // deliberate new disclosure to the packer role; the three
           // acknowledgement fields carry a user id and an instant, no PII.
           'buyerNote',
+          'hasBuyerNote',
           'buyerNoteAcknowledgedAt',
           'buyerNoteAcknowledgedByUserId',
           'otherParcelBuyerNoteAcknowledgements',
@@ -677,6 +678,15 @@ describe('BenchParcelService (#2418)', () => {
       expect(withText.buyerNote).toBe('No receipt in the box');
       expect(assertedNone.buyerNote).toBeNull();
       expect(unknown.buyerNote).toBeNull();
+    });
+
+    it('tells the parcel a note exists even when its text is not stored (B-12)', async () => {
+      const notStored = await harness({ hasBuyerNote: true }).service.getParcel('work-1');
+      const none = await harness({ buyerNoteState: null, hasBuyerNote: false }).service.getParcel('work-1');
+
+      expect(notStored.buyerNote).toBeNull();
+      expect(notStored.hasBuyerNote).toBe(true);
+      expect(none.hasBuyerNote).toBe(false);
     });
 
     it('reports this parcel and its siblings acknowledgements separately (#3538)', async () => {

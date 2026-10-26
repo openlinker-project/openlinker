@@ -51,6 +51,7 @@ export function toParcelResponseDto(view: BenchParcelView): BenchParcelResponseD
       heightMm: line.heightMm,
     })),
     buyerNote: view.buyerNote,
+    hasBuyerNote: view.hasBuyerNote,
     buyerNoteAcknowledgedAt: view.buyerNoteAcknowledgedAt,
     buyerNoteAcknowledgedByUserId: view.buyerNoteAcknowledgedByUserId,
     otherParcelBuyerNoteAcknowledgements: view.otherParcelBuyerNoteAcknowledgements.map((entry) => ({

@@ -840,6 +840,7 @@ export class BenchParcelService implements IBenchParcelService {
       // all read `null` here, because a packer can only act on words.
       buyerNote:
         typeof order?.buyerNoteState === 'string' ? order.buyerNoteState : null,
+      hasBuyerNote: order?.hasBuyerNote === true,
       buyerNoteAcknowledgedAt: ownAcknowledgement?.acknowledgedAt.toISOString() ?? null,
       buyerNoteAcknowledgedByUserId: ownAcknowledgement?.acknowledgedByUserId ?? null,
       otherParcelBuyerNoteAcknowledgements: acknowledgements
