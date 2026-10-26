@@ -1,0 +1,547 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Stock and availability</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="../../../../apps/web/src/index.css">
+<link rel="stylesheet" href="ol-kit.css">
+<script src="ol-kit.js" defer></script>
+<style>
+  /* Page-specific layout only. Everything else is real ol.css. */
+  [data-mk-show][hidden] { display: none !important; }
+
+  .av-summary { display: flex; flex-wrap: wrap; gap: var(--space-5); margin: 0 0 var(--space-4); padding: 0; }
+  .av-summary > div { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+  .av-summary dt { margin: 0; font-size: 0.75rem; color: var(--text-muted); }
+  .av-summary dd { margin: 0; font-size: 1rem; font-variant-numeric: tabular-nums; }
+  .av-summary dd.av-summary__lead { font-size: 1.375rem; font-weight: 600; }
+
+  .av-table td, .av-table th { vertical-align: top; }
+  .av-num { font-weight: 600; font-variant-numeric: tabular-nums; }
+  .av-num--lead { font-size: 1rem; }
+  .av-sub { display: block; font-size: 0.75rem; color: var(--text-muted); margin-top: 2px; }
+  .av-unknown { display: inline-flex; align-items: center; gap: var(--space-1); color: var(--status-warning-fg); font-weight: 600; }
+  .av-dash { color: var(--text-muted); }
+  .av-toggle { display: inline-flex; align-items: center; gap: 4px; padding: 0; border: 0; background: none; color: var(--text-link); font: inherit; font-size: 0.75rem; cursor: pointer; margin-top: 4px; }
+  .av-toggle:focus-visible { outline: none; box-shadow: var(--shadow-focus); border-radius: var(--radius-sm); }
+  .av-toggle__glyph { display: inline-block; transition: transform var(--duration-fast) var(--ease-out); }
+  .av-toggle[aria-expanded="true"] .av-toggle__glyph { transform: rotate(90deg); }
+  @media (prefers-reduced-motion: reduce) { .av-toggle__glyph { transition: none; } }
+  .av-channels { display: flex; flex-direction: column; gap: 2px; font-size: 0.8125rem; }
+  .av-channels span b { font-variant-numeric: tabular-nums; }
+  .av-row--stale td { color: var(--text-muted); }
+  .av-row--stale td:first-child { box-shadow: inset 3px 0 0 var(--status-warning-border); }
+  .av-row--unknown td:nth-child(4) { background: var(--status-warning-soft); }
+  .av-actions { text-align: right; white-space: nowrap; }
+
+  .av-detail-row > td { padding: 0 !important; background: var(--bg-surface); }
+  .av-detail-row .variant-drawer { margin: var(--space-2) var(--space-3) var(--space-4); }
+  .av-formula { margin: 0; font-size: 0.875rem; color: var(--text-secondary); font-variant-numeric: tabular-nums; }
+  .av-formula b { color: var(--text-primary); }
+  .av-formula__op { color: var(--text-muted); padding: 0 4px; }
+  .av-footline { margin: 0; font-size: 0.8125rem; color: var(--text-secondary); }
+  .av-holds { display: flex; flex-wrap: wrap; gap: var(--space-1); }
+  .av-ch-table { width: 100%; border-collapse: collapse; font-size: 0.8125rem; }
+  .av-ch-table th { text-align: left; font-family: var(--font-mono); font-size: 0.625rem; letter-spacing: var(--tracking-caps); text-transform: uppercase; color: var(--text-muted); font-weight: 500; padding: 4px 8px 4px 0; border-bottom: 1px solid var(--border-subtle); }
+  .av-ch-table td { padding: 6px 8px 6px 0; border-bottom: 1px solid var(--border-subtle); vertical-align: top; color: var(--text-secondary); }
+  .av-ch-table td.av-ch-num { text-align: right; font-weight: 600; color: var(--text-primary); font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .av-ch-table th.av-ch-num { text-align: right; }
+  .av-ch-name { display: inline-flex; align-items: center; gap: 6px; color: var(--text-primary); font-weight: 500; }
+  .av-ch-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--text-muted); flex: none; }
+  .av-ch-dot[data-channel="allegro"] { background: var(--channel-allegro); }
+  .av-ch-dot[data-channel="erli"] { background: var(--channel-erli); }
+  .av-ch-scroll { overflow-x: auto; }
+  .av-drawer-links { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+
+  .av-list .products-cell-stack { display: flex; flex-direction: column; gap: 2px; align-items: flex-start; }
+  .av-positions { margin-top: var(--space-2); }
+
+  .av-loading-note { display: flex; align-items: center; gap: var(--space-2); margin: 0 0 var(--space-3); font-size: 0.8125rem; color: var(--text-muted); }
+  .av-skel { display: block; height: 0.75rem; border-radius: var(--radius-sm); }
+
+  .av-panel-foot { display: flex; flex-wrap: wrap; justify-content: space-between; gap: var(--space-2); margin-top: var(--space-3); align-items: center; }
+
+  @media (max-width: 767.98px) {
+    .av-summary { gap: var(--space-3) var(--space-4); }
+    .variant-drawer__meta { grid-template-columns: minmax(0, 1fr); }
+    /* The table scrolls sideways at this width; keep the drawer pinned to the visible part. */
+    .av-detail-row .variant-drawer { position: sticky; left: var(--space-2); box-sizing: border-box; width: calc(100vw - 5rem); max-width: calc(100vw - 5rem); }
+  }
+</style>
+</head>
+<body>
+
+<div data-ol-page data-active="Products" data-crumb-group="Operations" data-crumb="Kubek ceramiczny Nordic 350 ml">
+  <section class="page-section">
+
+    <!-- Header shared by every product-detail state; hidden on the list state. -->
+    <div class="page-header page-header--split" data-mk-show="detail unknown stale multi-location empty loading viewer" hidden>
+      <div class="page-header__content">
+        <a class="back-link" href="#" data-testid="stock-back-to-products"><span class="back-link__glyph" aria-hidden="true">←</span><span class="back-link__label">Products</span></a>
+        <p class="eyebrow">Products</p>
+        <h2 class="page-title" data-mk-show="detail unknown stale multi-location loading viewer" hidden>Kubek ceramiczny Nordic 350 ml</h2>
+        <h2 class="page-title" data-mk-show="empty" hidden>Podstawka korkowa 10 cm</h2>
+        <p class="page-description" data-mk-show="detail unknown stale loading viewer" hidden>SKU KCN-350 · Master: PrestaShop — Ceramika Nowak</p>
+        <p class="page-description" data-mk-show="multi-location" hidden>SKU KCN-350 · Masters: PrestaShop — Ceramika Nowak, WooCommerce — Nowak Outlet</p>
+        <p class="page-description" data-mk-show="empty" hidden>SKU PKK-10 · Master: PrestaShop — Ceramika Nowak</p>
+        <p class="page-description" data-mk-show="viewer" hidden><span class="status-badge status-badge--neutral status-badge--compact"><span class="status-badge__dot" aria-hidden="true"></span>View only</span></p>
+      </div>
+    </div>
+
+    <!-- ============================= DETAIL (default) ============================= -->
+    <section data-mk-state="detail" data-mk-label="Karta produktu: stan i dostępność">
+      <div class="panel" data-testid="stock-panel">
+        <div class="panel__header"><h3>Variants &amp; stock (3)<span class="mk-pin">1</span></h3></div>
+        <dl class="av-summary" data-testid="stock-summary">
+          <div><dt>Available to promise<span class="mk-pin">2</span></dt><dd class="av-summary__lead" data-testid="stock-summary-atp">19</dd></div>
+          <div><dt>Master stock</dt><dd data-testid="stock-summary-master">24</dd></div>
+          <div><dt>Held by OpenLinker<span class="mk-pin">3</span></dt><dd data-testid="stock-summary-held">5</dd></div>
+          <div><dt>Last synced</dt><dd class="mono-text" data-testid="stock-summary-synced">26 Sep, 08:41</dd></div>
+        </dl>
+        <div class="data-table__container">
+          <table class="data-table av-table">
+            <caption class="sr-only">Stock and availability per variant</caption>
+            <thead><tr>
+              <th>Variant</th><th>Master stock</th><th>Held by OpenLinker</th><th>Available to promise</th>
+              <th class="data-table__cell--hide-below-768">Channels<span class="mk-pin">4</span></th><th aria-hidden="true"></th>
+            </tr></thead>
+            <tbody data-av-table="detail"></tbody>
+          </table>
+        </div>
+        <div class="av-panel-foot">
+          <span class="muted-text" style="font-size:.8125rem">Channels get available to promise, minus each channel's own rules.</span>
+          <a href="#" class="button button--ghost button--sm" data-testid="stock-history-link">View stock movements</a>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============================= PRODUCTS LIST ============================= -->
+    <section data-mk-state="list" data-mk-label="Lista produktów: kolumna stanu" hidden>
+      <div class="page-header">
+        <div class="page-header__content">
+          <p class="eyebrow">Operations</p>
+          <h2 class="page-title">Products</h2>
+          <p class="page-description">Catalog cockpit — search, stock health, and per-channel listings coverage.</p>
+        </div>
+      </div>
+      <div class="toolbar"><div class="toolbar__group">
+        <input type="search" class="control" style="flex:1 1 14rem;min-width:0" placeholder="Search name or SKU" aria-label="Search name or SKU" data-testid="stock-list-search" id="stock-list-search">
+        <button type="button" class="chip" data-testid="stock-list-chip-out">Out of stock</button>
+        <button type="button" class="chip" data-testid="stock-list-chip-low">Low stock</button>
+      </div></div>
+      <div class="data-table__container" style="margin-top:var(--space-3)">
+        <table class="data-table av-table av-list" data-testid="stock-list-table">
+          <caption class="sr-only">Products with stock</caption>
+          <thead><tr>
+            <th>Product</th><th>Stock<span class="mk-pin">5</span></th>
+            <th class="data-table__cell--hide-below-768">Where</th><th class="data-table__cell--hide-below-768">Listings</th>
+          </tr></thead>
+          <tbody id="av-list-body"></tbody>
+        </table>
+      </div>
+      <nav aria-label="Pagination" class="pagination"><span class="muted-text">Showing 1–6 of <span class="tabular">6</span></span></nav>
+    </section>
+
+    <!-- ============================= UNKNOWN ============================= -->
+    <section data-mk-state="unknown" data-mk-label="Nieznana dostępność" hidden>
+      <div class="alert alert--warning" role="alert" style="margin-bottom:var(--space-3)" data-testid="stock-unknown-alert">
+        <div class="alert__content">
+          <strong class="alert__title">Available to promise is unknown right now<span class="mk-pin">6</span></strong>
+          <div class="alert__description">OpenLinker couldn't read the units it holds for orders, so it can't say how many it may promise. Channel updates for these variants are on hold instead of being guessed. Master stock below is current.</div>
+        </div>
+        <button type="button" class="button button--secondary button--sm" data-testid="stock-retry">Try again</button>
+      </div>
+      <div class="panel" data-testid="stock-panel">
+        <div class="panel__header"><h3>Variants &amp; stock (3)</h3></div>
+        <dl class="av-summary">
+          <div><dt>Available to promise</dt><dd class="av-summary__lead"><span class="av-unknown">Unknown</span></dd></div>
+          <div><dt>Master stock</dt><dd>24</dd></div>
+          <div><dt>Held by OpenLinker</dt><dd><span class="av-unknown">Couldn't read</span></dd></div>
+          <div><dt>Last synced</dt><dd class="mono-text">26 Sep, 08:41</dd></div>
+        </dl>
+        <div class="data-table__container">
+          <table class="data-table av-table">
+            <caption class="sr-only">Stock per variant, availability unknown</caption>
+            <thead><tr>
+              <th>Variant</th><th>Master stock</th><th>Held by OpenLinker</th><th>Available to promise</th>
+              <th class="data-table__cell--hide-below-768">Channels</th><th aria-hidden="true"></th>
+            </tr></thead>
+            <tbody data-av-table="unknown"></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============================= STALE ============================= -->
+    <section data-mk-state="stale" data-mk-label="Nieaktualna pozycja" hidden>
+      <div class="alert alert--warning" role="status" style="margin-bottom:var(--space-3)" data-testid="stock-stale-alert">
+        <div class="alert__content">
+          <strong class="alert__title">Stock hasn't been refreshed for 7 hours<span class="mk-pin">7</span></strong>
+          <div class="alert__description">The last stock update from PrestaShop — Ceramika Nowak arrived at 01:40. The numbers below may be behind the shop. Czarny is no longer reported by PrestaShop at all.</div>
+        </div>
+        <a href="#" class="button button--secondary button--sm" data-testid="stock-stale-open-connection">Open connection</a>
+      </div>
+      <div class="panel" data-testid="stock-panel">
+        <div class="panel__header"><h3>Variants &amp; stock (3)</h3></div>
+        <dl class="av-summary">
+          <div><dt>Available to promise</dt><dd class="av-summary__lead">19</dd></div>
+          <div><dt>Master stock</dt><dd>24</dd></div>
+          <div><dt>Held by OpenLinker</dt><dd>5</dd></div>
+          <div><dt>Last synced</dt><dd class="mono-text">26 Sep, 01:40 <span class="status-badge status-badge--warning status-badge--compact"><span class="status-badge__dot" aria-hidden="true"></span>7 h ago</span></dd></div>
+        </dl>
+        <div class="data-table__container">
+          <table class="data-table av-table">
+            <caption class="sr-only">Stock per variant with a stale position</caption>
+            <thead><tr>
+              <th>Variant</th><th>Master stock</th><th>Held by OpenLinker</th><th>Available to promise</th>
+              <th class="data-table__cell--hide-below-768">Channels</th><th aria-hidden="true"></th>
+            </tr></thead>
+            <tbody data-av-table="stale"></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============================= MULTI-LOCATION ============================= -->
+    <section data-mk-state="multi-location" data-mk-label="Wiele lokalizacji" hidden>
+      <div class="alert alert--info" role="status" style="margin-bottom:var(--space-3)" data-testid="stock-multi-location-alert">
+        <div class="alert__content">
+          <strong class="alert__title">Biały has stock in 2 places<span class="mk-pin">8</span></strong>
+          <div class="alert__description">Available to promise adds both places together. OpenLinker can't hold units for new orders of this variant until it knows which place ships them, so orders for Biały are not held.</div>
+        </div>
+      </div>
+      <div class="panel" data-testid="stock-panel">
+        <div class="panel__header"><h3>Variants &amp; stock (3)</h3></div>
+        <dl class="av-summary">
+          <div><dt>Available to promise</dt><dd class="av-summary__lead">26</dd></div>
+          <div><dt>Master stock</dt><dd>28</dd></div>
+          <div><dt>Held by OpenLinker</dt><dd>2</dd></div>
+          <div><dt>Locations</dt><dd>2</dd></div>
+        </dl>
+        <div class="data-table__container">
+          <table class="data-table av-table">
+            <caption class="sr-only">Stock per variant across locations</caption>
+            <thead><tr>
+              <th>Variant</th><th>Master stock</th><th>Held by OpenLinker</th><th>Available to promise</th>
+              <th class="data-table__cell--hide-below-768">Channels</th><th aria-hidden="true"></th>
+            </tr></thead>
+            <tbody data-av-table="multi"></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============================= EMPTY ============================= -->
+    <section data-mk-state="empty" data-mk-label="Brak stanu" hidden>
+      <div class="panel" data-testid="stock-panel">
+        <div class="panel__header"><h3>Variants &amp; stock (1)</h3></div>
+        <div class="empty-state" data-testid="stock-empty">
+          <h2>No stock recorded for this product yet</h2>
+          <p>PrestaShop — Ceramika Nowak hasn't reported stock for PKK-10. Until it does, OpenLinker counts this as 0 available and channels show it as sold out.<span class="mk-pin">9</span></p>
+          <div class="toolbar__group" style="justify-content:center">
+            <a href="#" class="button button--secondary" data-testid="stock-empty-open-connection">Check the connection's stock sync</a>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============================= LOADING ============================= -->
+    <section data-mk-state="loading" data-mk-label="Ładowanie dostępności" hidden>
+      <div class="panel" data-testid="stock-panel" aria-busy="true">
+        <div class="panel__header"><h3>Variants &amp; stock (3)</h3></div>
+        <p class="av-loading-note" data-testid="stock-loading"><span class="button__spinner" aria-hidden="true"></span>Working out available to promise for 3 variants…<span class="mk-pin">10</span></p>
+        <div class="data-table__container">
+          <table class="data-table av-table">
+            <caption class="sr-only">Stock per variant, availability loading</caption>
+            <thead><tr>
+              <th>Variant</th><th>Master stock</th><th>Held by OpenLinker</th><th>Available to promise</th>
+              <th class="data-table__cell--hide-below-768">Channels</th><th aria-hidden="true"></th>
+            </tr></thead>
+            <tbody data-av-table="loading"></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============================= VIEWER ============================= -->
+    <section data-mk-state="viewer" data-mk-label="Tylko podgląd" hidden>
+      <div class="alert alert--info" role="status" style="margin-bottom:var(--space-3)" data-testid="stock-viewer-notice">
+        <div class="alert__content">
+          <strong class="alert__title">You have view-only access</strong>
+          <div class="alert__description">You can see stock and where each number comes from. Ask an admin or operator to adjust stock.<span class="mk-pin">11</span></div>
+        </div>
+      </div>
+      <div class="panel" data-testid="stock-panel">
+        <div class="panel__header"><h3>Variants &amp; stock (3)</h3></div>
+        <dl class="av-summary">
+          <div><dt>Available to promise</dt><dd class="av-summary__lead">19</dd></div>
+          <div><dt>Master stock</dt><dd>24</dd></div>
+          <div><dt>Held by OpenLinker</dt><dd>5</dd></div>
+          <div><dt>Last synced</dt><dd class="mono-text">26 Sep, 08:41</dd></div>
+        </dl>
+        <div class="data-table__container">
+          <table class="data-table av-table">
+            <caption class="sr-only">Stock and availability per variant, view only</caption>
+            <thead><tr>
+              <th>Variant</th><th>Master stock</th><th>Held by OpenLinker</th><th>Available to promise</th>
+              <th class="data-table__cell--hide-below-768">Channels</th><th aria-hidden="true"></th>
+            </tr></thead>
+            <tbody data-av-table="viewer"></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+  </section>
+</div>
+
+<aside class="mk-notes" aria-label="Adnotacje">
+  <h3>Adnotacje</h3>
+  <ol>
+    <li><span class="mk-pin">1</span> To ta sama tabela "Variants &amp; stock" co w M6 (<code>product-detail-page.tsx</code>, <code>variant-stock-table.tsx</code>) i te same warianty KCN-350 (18 / 6 / 0). Kolumna "Stock" z M6 rozpada się na trzy: <b>Master stock</b> (<code>availableQuantity</code> mastera), <b>Held by OpenLinker</b> i <b>Available to promise</b>. "Adjust stock" otwiera dialog z M6, "View stock movements" prowadzi do M7. Rozwinięcie "Details" pokazuje skąd liczba pochodzi (connection, lokalizacja, ostatnia synchronizacja) i co opublikuje każdy kanał. Realizuje G08-05; nie ma dedykowanej decyzji D-numer - obowiązuje decyzja epiki G08 "An unknown ATP is never shown as 0" oraz D21 (brakujące makiety) i D3 (ATP zestawu = min z ATP komponentów, więc ATP komponentu musi być tu widoczne).</li>
+    <li><span class="mk-pin">2</span> ATP liczy <code>computeAtp</code> w <code>libs/core/src/inventory/domain/types/availability.types.ts</code>: <code>max(0, Σ available[żywe pozycje, wszystkie lokalizacje i źródła] − Σ olReserved[atpEffect='published'])</code>. Ekran pyta w zakresie <code>global</code> (tak robi <code>inventory-query.service.ts</code>, l.155-159), więc BEZ bufora kanału - bufor i próg zerowania są pokazane osobno per kanał. Luka: opis <code>@ApiOperation</code> w <code>apps/api/src/inventory/http/inventory.controller.ts</code> mówi "net of ... the destination stock safety buffer", a DTO <code>inventory-availability-response.dto.ts</code> mówi "with NO per-destination stock safety buffer" - poprawna jest wersja z DTO, opis kontrolera do poprawy.</li>
+    <li><span class="mk-pin">3</span> "Held by OpenLinker" to NIE jest surowy licznik <code>inventory_items.olReservedQuantity</code>: ten licznik sumuje blokady <code>published</code> i <code>diagnostic</code> (<code>libs/core/src/inventory/infrastructure/persistence/sql/published-reserved-sum.ts</code>, #2628). Pokazujemy liczbę odejmowaną od ATP ("counted"), a blokady <code>diagnostic</code> osobno jako "recorded only" (np. kanał sam wysyła zamówienie). Własne rezerwacje mastera (<code>reservedQuantity</code>, np. 2 dla Białego) są już zdjęte z <code>availableQuantity</code> i nigdy nie są odejmowane - pokazujemy je tylko jako informację. Luka: żaden endpoint nie zwraca <code>olReservedQuantity</code> ani listy blokad per wariant (<code>inventory-item-response.dto.ts</code> ma tylko <code>availableQuantity</code>/<code>reservedQuantity</code>; grep <code>olReservedQuantity</code> w <code>apps/web/src</code> - zero trafień).</li>
+    <li><span class="mk-pin">4</span> Per kanał: "Will publish" = ATP po kontrolkach kanału (bufor <code>stockSafetyBuffer</code> #1844, próg <code>stockZeroThreshold</code> #2610; w core <code>IAvailabilityService.applyPublishControls</code> / <code>getAppliedReserve</code> tylko do wyświetlania). "Channel shows" = ostatnia obserwacja z <code>offer_commercial_snapshots</code> (#2024, pole <code>commercial</code> w <code>offer-mapping-response.dto.ts</code>). Luka: nie ma endpointu HTTP z "Will publish" per connection - <code>getAppliedReserve</code> nie ma wywołań w <code>apps/api</code>, a <code>getPromisableQuantities</code> woła tylko worker (<code>inventory-propagate-to-marketplaces.handler.ts</code>). Na wąskim ekranie kolumna Channels chowa się, dane zostają w "Details".</li>
+    <li><span class="mk-pin">5</span> Lista produktów: kolumna "Stock" pokazuje ATP jako liczbę główną, pod nią "master N · held N". Plakietka In/Low/Out liczona z ATP, nie z <code>totalAvailable</code> (dziś <code>deriveStockStatus(product.totalAvailable)</code> w <code>products-list-page.tsx</code>). Luka: <code>ProductStockAggregate</code> (<code>inventory.types.ts</code>) ma tylko <code>totalAvailable</code>/<code>totalReserved</code>/<code>stockUpdatedAt</code> - brak ATP na poziomie produktu; trzeba dodać agregat albo jedno wsadowe wywołanie <code>GET /inventory/availability</code> na stronę listy (limit 200 wariantów, <code>get-inventory-availability-query.dto.ts</code>).</li>
+    <li><span class="mk-pin">6</span> <code>provenance: 'unknown'</code> zapada dla CAŁEJ partii, gdy odczyt rejestru blokad się nie powiedzie (<code>availability.service.interface.ts</code>); wtedy <code>quantity === null</code> i publikacja do kanałów jest wstrzymywana (#2323, <code>availability_unknown</code>). Ekran nigdy nie pokazuje 0 - pokazuje "Unknown", a kanały "On hold" z ostatnią widzianą wartością kanału. Ten sam stan (bez zera, z "Try again") rysujemy, gdy samo żądanie HTTP się nie powiedzie. Luka krytyczna: <code>GET /inventory/availability</code> w ogóle NIE zwraca <code>provenance</code> - serwis ma je z <code>getPromisableQuantities</code>, ale <code>inventory-query.service.ts</code> mapuje tylko <code>p.quantity</code>, a kontroler dodatkowo gubi <code>stockUpdatedAt</code>. Treść G08-05 ("already returns them") jest więc nieprawdziwa - trzeba poszerzyć DTO o <code>provenance</code>, <code>observedAt</code>, <code>stalenessMs</code>, <code>olHeldNotReflected</code>.</li>
+    <li><span class="mk-pin">7</span> Dwa różne "stale": (a) stara synchronizacja - <code>observedAt</code>/<code>stalenessMs</code> z <code>PromisableQuantity</code>; próg 6 h to propozycja UI, w backendzie nie ma żadnej stałej progu; (b) pozycja <code>isStale</code> - master przestał raportować wariant (#1478/#1599), wiersz jest wykluczony z ATP, a <code>0</code> to znane zero (<code>toPromisableQuantity</code>), oferty są pauzowane (#1689). Luka: <code>InventoryItemResponseDto</code> nie ma <code>isStale</code> ani <code>sourceConnectionId</code>, choć encja <code>inventory-item.entity.ts</code> je ma.</li>
+    <li><span class="mk-pin">8</span> Wiele lokalizacji/źródeł to legalny stan (ADR-058 d2): ATP sumuje wszystkie żywe pozycje. Lokalizacja pochodzi z <code>stockLocationOverride</code> na connection (#3206, <code>stock-location-override.types.ts</code>) - żaden adapter nie raportuje <code>locationId</code> sam. Konsekwencja pokazana w banerze: przy >1 żywej pozycji rezerwacja rzuca <code>AmbiguousReservationPositionError</code> i nic nie jest trzymane (znane ograniczenie #2628, <code>ambiguous-reservation-position.error.ts</code>) - dlatego Biały ma tu 0 held, a zamówienia na niego nie obniżają ATP. Nazwy lokalizacji z <code>use-inventory-locations-query.ts</code> (istnieje).</li>
+    <li><span class="mk-pin">9</span> Wariant bez żadnej pozycji to <code>provenance: 'computed'</code>, <code>quantity: 0</code>, <code>observedAt: null</code> - znane zero, nie "unknown" (docblock <code>toPromisableQuantity</code>). Dlatego pusty stan mówi wprost, że kanały pokażą wyprzedane, zamiast udawać brak wiedzy.</li>
+    <li><span class="mk-pin">10</span> Dwa zapytania: pozycje (<code>GET /inventory</code>, już dziś) i dostępność (<code>GET /inventory/availability</code>) jednym wsadem dla wszystkich wariantów strony przez istniejący <code>useInventoryAvailabilityBatchQuery</code> - nigdy per wiersz. Master stock renderuje się od razu, ATP i blokady mają szkielet.</li>
+    <li><span class="mk-pin">11</span> Odczyty są <code>@AnyRole()</code> (<code>inventory.controller.ts</code>), więc viewer widzi wszystko; "Adjust stock" (zapis z M6) jest wyłączony z podpowiedzią. Słownictwo UI omija słowa zabronione przez <code>scripts/check-ui-vocabulary.mjs</code> ("authority", "holder", "phase"); gałąź <code>provenance: 'authority'</code> jest zadeklarowana, ale nigdy produkowana (Wave 3) - nie rysujemy jej, proponowana etykieta "Reported by your stock system".</li>
+    <li>Niespójność do wyrównania w M6: podgląd kanałów w dialogu korekty liczy bufor od stanu mastera bez blokad OpenLinkera (Szary 9 → Allegro 7). Po G08-05 podgląd powinien liczyć od ATP (tu Szary 6 − 2 held = 4 → Allegro 2, Erli 0).</li>
+    <li>Dane przykładowe (Ceramika Nowak, zamówienia ALG-/ERL-, lokalizacje MAIN/OUTLET) są fikcyjne. "Teraz" w makiecie = 26 Sep 2026, 08:53.</li>
+  </ol>
+</aside>
+
+<script>
+(function () {
+  var CH = {
+    allegro: { name: 'Allegro', acct: 'ceramika_nowak', rule: 'Keeps 2 back (safety buffer)' },
+    erli: { name: 'Erli', acct: 'ceramika_nowak', rule: 'Shows 0 below 5 units' }
+  };
+  var PS = 'PrestaShop — Ceramika Nowak';
+
+  function base() {
+    return [
+      { sku: 'KCN-350-WHT', label: 'Biały', master: 18, masterRes: 2, held: 3, heldOnly: 1,
+        holds: [['ALG-25731', 2], ['ERL-30512', 1]], only: 'ALG-25760 (1) — Allegro ships this order itself',
+        atp: 15, loc: 'MAIN · Magazyn Łódź', locNote: 'set on the connection', synced: '26 Sep, 08:41', ago: '12 min ago',
+        ch: [['allegro', 13, '13', '08:44'], ['erli', 15, '15', '08:44']] },
+      { sku: 'KCN-350-GRY', label: 'Szary', master: 6, masterRes: 0, held: 2, heldOnly: 0,
+        holds: [['ALG-25748', 2]], atp: 4, loc: 'MAIN · Magazyn Łódź', locNote: 'set on the connection', synced: '26 Sep, 08:41', ago: '12 min ago',
+        ch: [['allegro', 2, '2', '08:44'], ['erli', 0, '0', '08:44', 'Hidden: under 5 units']] },
+      { sku: 'KCN-350-BLK', label: 'Czarny', master: 0, masterRes: 0, held: 0, heldOnly: 0, holds: [],
+        atp: 0, loc: 'MAIN · Magazyn Łódź', locNote: 'set on the connection', synced: '26 Sep, 08:41', ago: '12 min ago',
+        ch: [['allegro', 0, '0', '08:44', 'Listing paused'], ['erli', 0, '0', '08:44', 'Listing paused']] }
+    ];
+  }
+
+  var DATA = {
+    detail: { rows: base(), open: 'KCN-350-WHT' },
+    viewer: { rows: base(), open: 'KCN-350-WHT', viewer: true },
+    loading: { rows: base(), loading: true },
+    unknown: { rows: base().map(function (r) { r.unknown = true; return r; }), open: 'KCN-350-WHT' },
+    stale: { rows: base().map(function (r) {
+      r.synced = '26 Sep, 01:40'; r.ago = '7 h ago'; r.oldSync = true;
+      if (r.sku === 'KCN-350-WHT') { r.ch = [['allegro', 13, '13', '01:52'], ['erli', 15, '15', '01:52']]; }
+      if (r.sku === 'KCN-350-GRY') { r.ch = [['allegro', 2, '2', '01:52'], ['erli', 0, '0', '01:52', 'Hidden: under 5 units']]; }
+      if (r.sku === 'KCN-350-BLK') { r.staled = true; r.synced = '24 Sep, 22:10'; r.ago = 'last reported, 2 days ago'; }
+      return r; }), open: 'KCN-350-BLK' },
+    multi: { rows: base().map(function (r) {
+      if (r.sku === 'KCN-350-WHT') {
+        r.master = 22; r.held = 0; r.heldOnly = 0; r.holds = []; r.atp = 22; r.blocked = true;
+        r.positions = [
+          ['MAIN · Magazyn Łódź', PS, 18, 2, '26 Sep, 08:41'],
+          ['OUTLET · Outlet Piotrków', 'WooCommerce — Nowak Outlet', 4, 0, '26 Sep, 08:30']
+        ];
+        r.ch = [['allegro', 20, '13', '08:44', 'Channel still shows the old number — update queued'], ['erli', 22, '15', '08:44', 'Update queued']];
+      }
+      return r; }), open: 'KCN-350-WHT' }
+  };
+
+  function badge(tone, text) {
+    return '<span class="status-badge status-badge--' + tone + ' status-badge--compact"><span class="status-badge__dot" aria-hidden="true"></span>' + text + '</span>';
+  }
+  function stockBadge(n) {
+    if (n <= 0) return badge('error', 'Out of stock');
+    if (n <= 5) return badge('warning', 'Low stock');
+    return badge('success', 'In stock');
+  }
+  function skel(w) { return '<span class="data-table-skeleton__bar av-skel" style="width:' + w + '" aria-hidden="true"></span>'; }
+
+  function heldCell(r) {
+    if (r.loading) return skel('2.5rem');
+    if (r.unknown) return '<span class="av-unknown">Couldn\'t read</span>';
+    if (r.blocked) return '<span class="av-num">0</span><span class="av-sub">Can\'t hold — stock in 2 places</span>';
+    if (r.staled) return '<span class="av-dash">—</span>';
+    var s = '<span class="av-num">' + r.held + '</span>';
+    s += r.held > 0 ? '<span class="av-sub">' + r.holds.length + ' order' + (r.holds.length > 1 ? 's' : '') + '</span>' : '<span class="av-sub">None</span>';
+    if (r.heldOnly) s += '<span class="av-sub">+' + r.heldOnly + ' recorded only</span>';
+    return s;
+  }
+  function atpCell(r) {
+    if (r.loading) return skel('3rem');
+    if (r.unknown) return '<span class="av-unknown" title="OpenLinker doesn\'t know. Not zero.">Unknown</span><span class="av-sub">Not zero — updates on hold</span>';
+    var s = '<span class="av-num av-num--lead">' + r.atp + '</span> ' + stockBadge(r.atp);
+    if (r.staled) s += '<span class="av-sub">Not counted — PrestaShop no longer reports it</span>';
+    else if (r.oldSync) s += '<span class="av-sub">As of ' + r.synced.split(', ')[1] + ' · ' + r.ago + '</span>';
+    return s;
+  }
+  function masterCell(r) {
+    var s = '<span class="av-num">' + r.master + '</span>';
+    if (r.positions) s += '<span class="av-sub">in 2 locations</span>';
+    else if (r.masterRes) s += '<span class="av-sub">after ' + r.masterRes + ' reserved in PrestaShop</span>';
+    if (r.staled) s = '<span class="av-num">0</span>' + badge('warning', 'Stale');
+    return s;
+  }
+  function channelsCell(r) {
+    if (r.loading) return skel('5rem');
+    return '<div class="av-channels">' + r.ch.map(function (c) {
+      var v = r.unknown ? '<span class="av-unknown">On hold</span>' : '<b>' + c[1] + '</b>';
+      return '<span>' + CH[c[0]].name + ' ' + v + '</span>';
+    }).join('') + '</div>';
+  }
+
+  function drawer(r, st) {
+    var id = r.sku;
+    var meta =
+      '<div class="variant-drawer__meta" data-testid="stock-provenance-' + id + '">' +
+      cell('Master connection', r.positions ? '2 connections' : PS) +
+      cell('Location', r.positions ? '2 locations — see below' : r.loc + ' <span class="variant-drawer__meta-muted">(' + r.locNote + ')</span>') +
+      cell('Last synced', '<span class="mono-text">' + r.synced + '</span> <span class="variant-drawer__meta-muted">' + r.ago + '</span>') +
+      cell('How we know', r.unknown ? '<span class="av-unknown">Unknown</span>' : 'Worked out by OpenLinker') +
+      '</div>';
+
+    var formula;
+    if (r.unknown) {
+      formula = '<p class="av-formula"><b>' + r.master + '</b> in master stock <span class="av-formula__op">−</span> units held for orders <span class="av-formula__op">=</span> <span class="av-unknown">unknown</span>. OpenLinker won\'t send a number to channels until it can read its holds again.</p>';
+    } else if (r.staled) {
+      formula = '<p class="av-formula">PrestaShop stopped reporting <b>' + id + '</b> on 24 Sep, 22:10. This position is no longer counted, so available to promise is <b>0</b> and its listings are paused. If the variant was deleted on purpose, nothing else is needed.</p>';
+    } else {
+      formula = '<p class="av-formula"><b>' + r.master + '</b> in master stock <span class="av-formula__op">−</span> <b>' + r.held + '</b> held for orders <span class="av-formula__op">=</span> <b>' + r.atp + '</b> available to promise</p>';
+    }
+
+    var extra = '';
+    if (!r.unknown && !r.staled && r.masterRes) extra += '<p class="av-footline">PrestaShop\'s own ' + r.masterRes + ' reserved are already taken out of ' + r.master + '.</p>';
+    if (!r.unknown && r.holds && r.holds.length) {
+      extra += '<div class="av-holds" data-testid="stock-holds-' + id + '">' + r.holds.map(function (h) {
+        return '<a href="#" class="chip chip--info" data-testid="stock-hold-' + h[0] + '">' + h[0] + ' × ' + h[1] + '</a>';
+      }).join('') + '</div>';
+    }
+    if (!r.unknown && r.only) extra += '<p class="av-footline">Recorded but not counted: ' + r.only + '.</p>';
+
+    var positions = '';
+    if (r.positions) {
+      positions = '<div class="av-ch-scroll av-positions"><table class="av-ch-table" data-testid="stock-positions-' + id + '"><thead><tr><th>Location</th><th>Master connection</th><th class="av-ch-num">Stock</th><th class="av-ch-num">Its own reserved</th><th>Last synced</th></tr></thead><tbody>' +
+        r.positions.map(function (p) {
+          return '<tr><td>' + p[0] + '</td><td>' + p[1] + '</td><td class="av-ch-num">' + p[2] + '</td><td class="av-ch-num">' + p[3] + '</td><td class="mono-text">' + p[4] + '</td></tr>';
+        }).join('') + '</tbody></table></div>';
+    }
+
+    var ch = '<div class="av-ch-scroll"><table class="av-ch-table" data-testid="stock-channels-' + id + '"><thead><tr><th>Channel</th><th>Rule on this connection</th><th class="av-ch-num">Will publish</th><th class="av-ch-num">Channel shows</th></tr></thead><tbody>' +
+      r.ch.map(function (c) {
+        var info = CH[c[0]];
+        var will = r.unknown ? '<span class="av-unknown">On hold</span>' : String(c[1]);
+        var note = c[4] ? '<span class="av-sub">' + c[4] + '</span>' : '';
+        if (r.unknown) note = '<span class="av-sub">Not sent until available to promise is known</span>';
+        return '<tr data-testid="stock-channel-' + id + '-' + c[0] + '"><td><span class="av-ch-name"><span class="av-ch-dot" data-channel="' + c[0] + '"></span>' + info.name + '</span><span class="av-sub">' + info.acct + '</span></td>' +
+          '<td>' + info.rule + note + '</td><td class="av-ch-num">' + will + '</td><td class="av-ch-num">' + c[2] + '<span class="av-sub">seen ' + c[3] + '</span></td></tr>';
+      }).join('') + '</tbody></table></div>';
+
+    var links = '<div class="av-drawer-links"><a href="#" class="variant-drawer__link" data-testid="stock-movements-' + id + '">Stock movements for ' + id + ' <span class="variant-drawer__arrow">→</span></a></div>';
+
+    return '<tr class="av-detail-row" id="av-drawer-' + st + '-' + id + '"' + '><td colspan="6"><div class="variant-drawer" data-testid="stock-drawer-' + id + '">' + meta + formula + extra + positions + ch + links + '</div></td></tr>';
+
+    function cell(label, value) {
+      return '<div class="variant-drawer__meta-cell"><span class="variant-drawer__meta-label">' + label + '</span><span class="variant-drawer__meta-value variant-drawer__meta-value--wrap">' + value + '</span></div>';
+    }
+  }
+
+  function render(st, cfg) {
+    var body = document.querySelector('tbody[data-av-table="' + st + '"]');
+    if (!body) return;
+    body.innerHTML = cfg.rows.map(function (r) {
+      if (cfg.loading) r.loading = true;
+      var id = r.sku;
+      var open = cfg.open === id;
+      var cls = 'data-table__row' + (r.staled ? ' av-row--stale' : '') + (r.unknown ? ' av-row--unknown' : '');
+      var toggle = cfg.loading ? '' :
+        '<br><button type="button" class="av-toggle" aria-expanded="' + open + '" aria-controls="av-drawer-' + st + '-' + id + '" data-testid="stock-variant-toggle-' + id + '"><span class="av-toggle__glyph" aria-hidden="true">▸</span>Details</button>';
+      var adjust = cfg.viewer
+        ? '<button type="button" class="button button--ghost button--sm" disabled title="Only admins and operators can adjust stock." data-testid="stock-adjust-' + id + '">Adjust stock</button>'
+        : '<button type="button" class="button button--ghost button--sm" data-testid="stock-adjust-' + id + '"' + (r.staled ? ' disabled title="PrestaShop no longer reports this variant."' : '') + '>Adjust stock</button>';
+      var tr = '<tr class="' + cls + '" data-testid="stock-variant-row-' + id + '">' +
+        '<td><span class="mono-text">' + id + '</span><br><span class="text-muted">' + r.label + '</span>' + toggle + '</td>' +
+        '<td data-testid="stock-master-' + id + '">' + masterCell(r) + '</td>' +
+        '<td data-testid="stock-held-' + id + '">' + heldCell(r) + '</td>' +
+        '<td data-testid="stock-atp-' + id + '">' + atpCell(r) + '</td>' +
+        '<td class="data-table__cell--hide-below-768">' + channelsCell(r) + '</td>' +
+        '<td class="av-actions">' + adjust + '</td></tr>';
+      var d = cfg.loading ? '' : drawer(r, st);
+      if (d && !open) d = d.replace('<tr class="av-detail-row"', '<tr class="av-detail-row" hidden');
+      return tr + d;
+    }).join('');
+  }
+
+  Object.keys(DATA).forEach(function (k) { render(k, DATA[k]); });
+
+  document.addEventListener('click', function (e) {
+    var t = e.target.closest ? e.target.closest('.av-toggle') : null;
+    if (!t) return;
+    var row = document.getElementById(t.getAttribute('aria-controls'));
+    var open = t.getAttribute('aria-expanded') === 'true';
+    t.setAttribute('aria-expanded', open ? 'false' : 'true');
+    if (row) row.hidden = open;
+  });
+
+  // Products list.
+  var LIST = [
+    { name: 'Kubek ceramiczny Nordic 350 ml', sku: 'KCN-350', vars: 3, atp: 19, master: 24, held: 5, where: 'MAIN', listings: ['Allegro', 'Erli'] },
+    { name: 'Talerz obiadowy Nordic 27 cm', sku: 'TON-27', vars: 2, atp: 40, master: 40, held: 0, where: 'MAIN', listings: ['Allegro', 'Erli'] },
+    { name: 'Dzbanek Nordic 1,2 l', sku: 'DZN-12', vars: 1, atp: 3, master: 5, held: 2, where: 'MAIN', listings: ['Allegro'] },
+    { name: 'Wazon Nordic 20 cm', sku: 'WAN-20', vars: 1, atp: 11, master: 11, held: 0, where: '2 locations', listings: ['Allegro', 'Erli'], multi: true },
+    { name: 'Miska Nordic 15 cm', sku: 'MSN-15', vars: 1, atp: 0, master: 0, held: 0, where: 'MAIN', listings: ['Allegro'], stale: true },
+    { name: 'Podstawka korkowa 10 cm', sku: 'PKK-10', vars: 1, atp: 0, master: 0, held: 0, where: '—', listings: [], none: true }
+  ];
+  var lb = document.getElementById('av-list-body');
+  if (lb) {
+    lb.innerHTML = LIST.map(function (p) {
+      var sub;
+      if (p.stale) sub = '<span class="av-sub">No longer reported by PrestaShop</span>';
+      else if (p.none) sub = '<span class="av-sub">No stock records</span>';
+      else sub = '<span class="av-sub tabular">master ' + p.master + ' · held ' + p.held + '</span>';
+      var status = p.stale ? badge('warning', 'Stale') : stockBadge(p.atp);
+      var listings = p.listings.length
+        ? p.listings.map(function (l) { return '<span class="chip ' + (p.stale ? 'chip--warning' : 'chip--success') + '">' + l + (p.stale ? ' paused' : '') + '</span>'; }).join(' ')
+        : '<span class="text-muted">Not listed</span>';
+      return '<tr class="data-table__row" data-testid="stock-list-row-' + p.sku + '">' +
+        '<td><a href="#" data-testid="stock-list-open-' + p.sku + '">' + p.name + '</a><span class="av-sub mono-text">' + p.sku + ' · ' + p.vars + ' variant' + (p.vars > 1 ? 's' : '') + '</span></td>' +
+        '<td data-testid="stock-list-cell-' + p.sku + '"><span class="products-cell-stack"><span><span class="av-num av-num--lead">' + p.atp + '</span> <span class="text-muted" style="font-size:.75rem">to promise</span></span>' + status + sub + '</span></td>' +
+        '<td class="data-table__cell--hide-below-768">' + (p.multi ? '<span class="chip chip--info">' + p.where + '</span>' : '<span class="mono-text">' + p.where + '</span>') + '</td>' +
+        '<td class="data-table__cell--hide-below-768">' + listings + '</td></tr>';
+    }).join('');
+  }
+
+  // Header visibility per state.
+  function states() { return Array.prototype.slice.call(document.querySelectorAll('[data-mk-state]')); }
+  function sync() {
+    var st = states().filter(function (e) { return !e.hidden; })[0];
+    var name = st ? st.getAttribute('data-mk-state') : 'detail';
+    Array.prototype.forEach.call(document.querySelectorAll('[data-mk-show]'), function (el) {
+      var hide = el.getAttribute('data-mk-show').split(/\s+/).indexOf(name) < 0;
+      if (el.hidden !== hide) el.hidden = hide;
+    });
+    var crumb = document.querySelector('.shell-crumbs__current');
+    if (crumb) crumb.textContent = name === 'list' ? 'Products' : (name === 'empty' ? 'Podstawka korkowa 10 cm' : 'Kubek ceramiczny Nordic 350 ml');
+  }
+  var obs = new MutationObserver(sync);
+  states().forEach(function (s) { obs.observe(s, { attributes: true, attributeFilter: ['hidden'] }); });
+  document.addEventListener('DOMContentLoaded', function () { setTimeout(sync, 0); });
+  sync();
+})();
+</script>
+</body>
+</html>

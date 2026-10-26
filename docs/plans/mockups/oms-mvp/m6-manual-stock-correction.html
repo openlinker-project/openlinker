@@ -1,0 +1,369 @@
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#faf9f5;color:#141413}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<title>Manual stock correction</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="../../../../apps/web/src/index.css">
+<link rel="stylesheet" href="ol-kit.css">
+<script src="ol-kit.js" defer></script>
+<style>
+  /* Page-specific layout only. Everything else is real ol.css. */
+  [data-mk-show][hidden] { display: none !important; }
+  .sc-dialog-scope .dialog__content { top: calc(var(--mk-bar-h, 0px) + (100vh - var(--mk-bar-h, 0px)) / 2); max-height: calc(100vh - var(--mk-bar-h, 0px) - 24px); overflow-y: auto; }
+  .sc-num { text-align: right; white-space: nowrap; }
+  .sc-form { display: grid; gap: var(--space-3); }
+  .sc-mode-group[hidden] { display: none !important; }
+  .sc-diff { font-size: 0.875rem; color: var(--text-secondary); }
+  .sc-diff del { color: var(--text-muted); text-decoration: line-through; text-decoration-color: var(--status-error); }
+  .sc-diff ins { text-decoration: none; font-weight: 600; color: var(--text-primary); }
+  .sc-impact { list-style: none; margin: 0; padding: 0; display: grid; border: 1px solid var(--border-subtle); border-radius: var(--radius-lg); background: var(--bg-surface); }
+  .sc-impact__row { display: grid; grid-template-columns: 10rem minmax(0, 1fr) 4.5rem; gap: var(--space-2) var(--space-4); align-items: start; padding: var(--space-3); border-top: 1px solid var(--border-subtle); font-size: 0.8125rem; }
+  .sc-impact__row:first-child { border-top: 0; }
+  .sc-impact__what { font-weight: 600; color: var(--text-primary); }
+  .sc-impact__how { color: var(--text-secondary); line-height: 1.45; }
+  .sc-impact__qty { text-align: right; font-weight: 600; font-variant-numeric: tabular-nums; }
+  .sc-impact__qty small { display: block; font-weight: 400; color: var(--text-muted); font-size: 0.6875rem; }
+  @media (max-width: 599.98px) {
+    .sc-impact__row { grid-template-columns: minmax(0, 1fr); }
+    .sc-impact__qty { text-align: left; }
+  }
+  .sc-footnote { margin: 0; font-size: 0.75rem; color: var(--text-muted); }
+  .sc-attempt { font-size: 0.8125rem; color: var(--text-secondary); }
+  .sc-row-actions { display: flex; justify-content: flex-end; }
+</style>
+
+<div data-ol-page data-active="Products" data-crumb-group="Operations" data-crumb="Kubek ceramiczny Nordic 350 ml">
+  <section class="page-section">
+    <div class="page-header page-header--split">
+      <div class="page-header__content">
+        <a class="back-link" href="#"><span class="back-link__glyph" aria-hidden="true">←</span><span class="back-link__label">Products</span></a>
+        <p class="eyebrow">Products</p>
+        <h2 class="page-title">Kubek ceramiczny Nordic 350 ml</h2>
+        <p class="page-description">SKU KCN-350 · Master: PrestaShop — Ceramika Nowak
+          <span data-mk-show="no-permission" hidden class="status-badge status-badge--neutral" style="margin-left:var(--space-2)"><span class="status-badge__dot" aria-hidden="true"></span>View only</span>
+        </p>
+      </div>
+    </div>
+
+    <!-- ============================= VARIANTS (default) ============================= -->
+    <div data-mk-state="variants" data-mk-label="Warianty i stan">
+      <div class="panel" data-testid="stock-variants-table">
+        <div class="panel__header"><h3>Variants &amp; stock (3)</h3></div>
+        <div class="data-table__container">
+          <table class="data-table">
+            <thead><tr><th>Variant</th><th>Stock</th><th>Listings</th><th class="data-table__cell--right">Price</th><th aria-hidden="true"></th></tr></thead>
+            <tbody>
+              <tr>
+                <td><span class="mono-text">KCN-350-WHT</span><br><span class="text-muted">Biały</span></td>
+                <td><b>18</b> <span class="text-muted">/ res 2</span> <span class="status-badge status-badge--success status-badge--compact" style="margin-left:var(--space-2)"><span class="status-badge__dot" aria-hidden="true"></span>In stock</span></td>
+                <td><span class="chip chip--success">Allegro</span> <span class="chip chip--success">Erli</span></td>
+                <td class="data-table__cell--right">42,00 PLN</td>
+                <td class="sc-row-actions"><button type="button" class="button button--ghost" data-go="in-doubt" data-testid="stock-adjust-KCN-350-WHT">Adjust stock</button><span class="mk-pin">1</span></td>
+              </tr>
+              <tr>
+                <td><span class="mono-text">KCN-350-GRY</span><br><span class="text-muted">Szary</span></td>
+                <td><b>6</b> <span class="text-muted">/ res 0</span> <span class="status-badge status-badge--warning status-badge--compact" style="margin-left:var(--space-2)"><span class="status-badge__dot" aria-hidden="true"></span>Low stock</span></td>
+                <td><span class="chip chip--success">Allegro</span> <span class="chip chip--success">Erli</span></td>
+                <td class="data-table__cell--right">42,00 PLN</td>
+                <td class="sc-row-actions"><button type="button" class="button button--ghost" data-go="dialog" data-testid="stock-adjust-KCN-350-GRY">Adjust stock</button></td>
+              </tr>
+              <tr>
+                <td><span class="mono-text">KCN-350-BLK</span><br><span class="text-muted">Czarny</span></td>
+                <td><b>0</b> <span class="text-muted">/ res 0</span> <span class="status-badge status-badge--error status-badge--compact" style="margin-left:var(--space-2)"><span class="status-badge__dot" aria-hidden="true"></span>Out of stock</span></td>
+                <td><span class="chip chip--warning">Allegro paused</span> <span class="chip chip--warning">Erli paused</span></td>
+                <td class="data-table__cell--right">42,00 PLN</td>
+                <td class="sc-row-actions"><button type="button" class="button button--ghost" data-go="refused" data-testid="stock-adjust-KCN-350-BLK">Adjust stock</button></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============================= DIALOG (form) ============================= -->
+    <div data-mk-state="dialog" data-mk-label="Korekta: formularz" hidden class="sc-dialog-scope">
+      <div class="dialog__overlay"></div>
+      <div class="dialog__content" role="dialog" aria-modal="true" aria-labelledby="sc-title" style="max-width:34rem" data-testid="stock-correction-dialog">
+        <h3 id="sc-title" class="dialog__title">Adjust stock — Szary <span class="text-muted mono-text" style="font-weight:400">KCN-350-GRY</span></h3>
+        <p class="dialog__description">This writes to PrestaShop, the master connection for this product. Allegro and Erli update on their own once PrestaShop confirms. <span class="mk-pin">2</span></p>
+
+        <div class="sc-form">
+          <div class="form-field">
+            <label class="form-field__label" id="sc-mode-label">How do you want to enter it?</label>
+            <div class="segmented-control" role="radiogroup" aria-labelledby="sc-mode-label">
+              <button type="button" class="segmented-control__option segmented-control__option--active" id="sc-mode-exact" data-testid="stock-correction-mode-set">Set new quantity</button>
+              <button type="button" class="segmented-control__option" id="sc-mode-delta" data-testid="stock-correction-mode-delta">Adjust by amount</button>
+            </div>
+          </div>
+
+          <div class="form-field sc-mode-group" id="sc-group-exact">
+            <label class="form-field__label" for="sc-exact">New quantity</label>
+            <input class="form-field__control" type="number" id="sc-exact" min="0" value="9" data-testid="stock-correction-quantity">
+            <p class="form-field__description">Currently 6 in PrestaShop. OpenLinker holds 2 of them for open orders.</p>
+          </div>
+          <div class="form-field sc-mode-group" id="sc-group-delta" hidden>
+            <label class="form-field__label" for="sc-delta">Change by</label>
+            <input class="form-field__control" type="text" id="sc-delta" value="+3" data-testid="stock-correction-delta">
+            <p class="form-field__description">Use a minus sign to reduce stock, e.g. −2.</p>
+          </div>
+          <p class="sc-diff" data-testid="stock-correction-diff">6 → <span id="sc-diff-out"><ins>9</ins></span></p>
+          <div class="alert alert--warning" role="alert" id="sc-large" data-testid="stock-correction-large-change" hidden>
+            <div class="alert__content">
+              <strong class="alert__title">This is a large change</strong>
+              <div class="alert__description">It changes stock by more than 50 units or more than half of the current count. Check the number before saving.</div>
+              <label style="display:flex;gap:var(--space-2);align-items:center;margin-top:var(--space-2)"><input type="checkbox" id="sc-large-ok" data-testid="stock-correction-large-change-confirm"> I checked this number</label>
+            </div>
+          </div>
+
+          <div class="form-field">
+            <label class="form-field__label" for="sc-reason">Reason</label>
+            <select class="form-field__control" id="sc-reason" data-testid="stock-correction-reason">
+              <option>Count correction (physical stock check)</option>
+              <option selected>Found extra stock</option>
+              <option>Damaged or written off</option>
+              <option value="other">Other</option>
+            </select>
+          </div>
+          <div class="form-field">
+            <label class="form-field__label" for="sc-note">Note <span class="text-muted">(optional, required if "Other")</span></label>
+            <textarea class="form-field__control" id="sc-note" data-testid="stock-correction-note" rows="2" placeholder="For your team — PrestaShop doesn't receive this note."></textarea>
+          </div>
+
+          <dl class="key-value-list">
+            <dt class="key-value-list__label">Writes to</dt><dd class="key-value-list__value" data-testid="stock-correction-target">PrestaShop — Ceramika Nowak <span class="text-muted">(this product's master connection)</span></dd>
+          </dl>
+
+          <p class="dialog-section__head">What channels will publish after this <span class="mk-pin">3</span></p>
+          <ul class="sc-impact" data-testid="stock-correction-preview">
+            <li class="sc-impact__row" data-testid="stock-correction-preview-prestashop"><span class="sc-impact__what">PrestaShop<span class="text-muted" style="display:block;font-weight:400;font-size:0.75rem">Ceramika Nowak (master)</span></span><span class="sc-impact__how">Shows the corrected count directly.</span><span class="sc-impact__qty" id="sc-prev-ps">9</span></li>
+            <li class="sc-impact__row" data-testid="stock-correction-preview-atp"><span class="sc-impact__what">Available to promise<span class="text-muted" style="display:block;font-weight:400;font-size:0.75rem">what channels start from</span></span><span class="sc-impact__how">New count minus the 2 units OpenLinker holds for open orders.</span><span class="sc-impact__qty" id="sc-prev-atp">7</span></li>
+            <li class="sc-impact__row" data-testid="stock-correction-preview-allegro"><span class="sc-impact__what">Allegro<span class="text-muted" style="display:block;font-weight:400;font-size:0.75rem">ceramika_nowak</span></span><span class="sc-impact__how">Publishes available to promise minus a 2-unit safety buffer for this connection. <span class="mk-pin">4</span></span><span class="sc-impact__qty" id="sc-prev-allegro">5</span></li>
+            <li class="sc-impact__row" data-testid="stock-correction-preview-erli"><span class="sc-impact__what">Erli<span class="text-muted" style="display:block;font-weight:400;font-size:0.75rem">ceramika_nowak</span></span><span class="sc-impact__how" id="sc-erli-how">Publishes available to promise as-is, but anything under 5 units is shown as sold out.</span><span class="sc-impact__qty" id="sc-prev-erli">7</span></li>
+          </ul>
+          <p class="sc-footnote">Marketplaces usually catch up within a minute of PrestaShop confirming. <span class="mk-pin">5</span></p>
+        </div>
+
+        <div class="dialog__footer">
+          <button type="button" class="button button--secondary" data-go="variants" data-testid="stock-correction-cancel">Cancel</button>
+          <button type="button" class="button button--primary" data-go="applying" data-testid="stock-correction-submit">Save correction</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============================= APPLYING ============================= -->
+    <div data-mk-state="applying" data-mk-label="Korekta: zapisywanie" hidden class="sc-dialog-scope">
+      <div class="dialog__overlay"></div>
+      <div class="dialog__content" role="dialog" aria-modal="true" aria-labelledby="sca-title" style="max-width:28rem" data-testid="stock-correction-applying">
+        <h3 id="sca-title" class="dialog__title">Adjust stock — Szary</h3>
+        <p class="dialog__description">6 → 9 · Found extra stock</p>
+        <dl class="key-value-list">
+          <dt class="key-value-list__label">Writes to</dt><dd class="key-value-list__value">PrestaShop — Ceramika Nowak</dd>
+        </dl>
+        <div class="dialog__footer">
+          <button type="button" class="button button--secondary" disabled>Cancel</button>
+          <button type="button" class="button button--primary" disabled><span class="button__spinner" aria-hidden="true"></span>Saving to PrestaShop…</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============================= APPLIED ============================= -->
+    <div data-mk-state="applied" data-mk-label="Korekta: zapisano" hidden class="sc-dialog-scope">
+      <div class="dialog__overlay"></div>
+      <div class="dialog__content" role="dialog" aria-modal="true" aria-labelledby="scd-title" style="max-width:28rem" data-testid="stock-correction-applied">
+        <h3 id="scd-title" class="dialog__title">Stock updated <span class="status-badge status-badge--success status-badge--compact" style="margin-left:var(--space-2)" data-testid="stock-correction-confirmed"><span class="status-badge__dot" aria-hidden="true"></span>Confirmed</span></h3>
+        <p class="dialog__description">PrestaShop confirmed the new count for Szary. <span class="mk-pin">6</span></p>
+        <dl class="key-value-list">
+          <dt class="key-value-list__label">Variant</dt><dd class="key-value-list__value mono-text">KCN-350-GRY · Szary</dd>
+          <dt class="key-value-list__label">Quantity</dt><dd class="key-value-list__value">6 → <ins>9</ins></dd>
+          <dt class="key-value-list__label">Reason</dt><dd class="key-value-list__value">Found extra stock</dd>
+          <dt class="key-value-list__label">Master</dt><dd class="key-value-list__value">PrestaShop — Ceramika Nowak</dd>
+          <dt class="key-value-list__label">Channels</dt><dd class="key-value-list__value" data-testid="stock-correction-applied-channels">Allegro will publish 5, Erli will publish 7 — usually within a minute.</dd>
+        </dl>
+        <div class="dialog__footer">
+          <button type="button" class="button button--primary" data-go="variants" data-testid="stock-correction-done">Done</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============================= REFUSED ============================= -->
+    <div data-mk-state="refused" data-mk-label="Korekta: odrzucona" hidden class="sc-dialog-scope">
+      <div class="dialog__overlay"></div>
+      <div class="dialog__content" role="dialog" aria-modal="true" aria-labelledby="scr-title" style="max-width:34rem" data-testid="stock-correction-refused">
+        <h3 id="scr-title" class="dialog__title">Adjust stock — Czarny <span class="text-muted mono-text" style="font-weight:400">KCN-350-BLK</span></h3>
+        <p class="sc-attempt">Attempted: 0 → 4 · Found extra stock <span class="status-badge status-badge--error status-badge--compact" style="margin-left:var(--space-2)">Not applied</span></p>
+        <div class="alert alert--error" role="alert" data-testid="stock-correction-refused-reason">
+          <div class="alert__content">
+            <strong class="alert__title">PrestaShop refused this change</strong>
+            <div class="alert__description">This product uses PrestaShop's Advanced Stock Management, so the shop calculates quantity from warehouse stock — the correction was accepted, then immediately overwritten by the warehouse figure. <span class="mk-pin">7</span></div>
+          </div>
+        </div>
+        <p class="form-field__description" style="margin-top:var(--space-2)">Turn off Advanced Stock Management for this product, or adjust the quantity from PrestaShop's own warehouse stock screen instead.</p>
+        <div class="dialog__footer">
+          <button type="button" class="button button--secondary" data-go="variants" data-testid="stock-correction-close">Close</button>
+          <button type="button" class="button button--primary">Open in PrestaShop</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============================= IN DOUBT ============================= -->
+    <div data-mk-state="in-doubt" data-mk-label="Korekta: brak potwierdzenia" hidden class="sc-dialog-scope">
+      <div class="dialog__overlay"></div>
+      <div class="dialog__content" role="dialog" aria-modal="true" aria-labelledby="sci-title" style="max-width:34rem" data-testid="stock-correction-in-doubt">
+        <h3 id="sci-title" class="dialog__title">Adjust stock — Biały <span class="text-muted mono-text" style="font-weight:400">KCN-350-WHT</span></h3>
+        <p class="sc-attempt">Sent: 18 → 15 · Count correction</p>
+        <div class="alert alert--warning" role="alert">
+          <div class="alert__content">
+            <strong class="alert__title">We couldn't confirm this reached PrestaShop</strong>
+            <div class="alert__description">OpenLinker lost the connection right after sending this correction. It may already be applied. <span class="mk-pin">8</span></div>
+          </div>
+        </div>
+        <p class="form-field__description" style="margin-top:var(--space-2)">Check PrestaShop's own stock number before deciding what to do next. Filling in this form again would start a brand-new correction, which could double the change if the first one did land. <span class="mk-pin">9</span></p>
+        <div class="dialog__footer">
+          <button type="button" class="button button--secondary" data-go="variants" data-testid="stock-correction-close">Close</button>
+          <button type="button" class="button button--primary">Check current stock in PrestaShop</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============================= NO PERMISSION ============================= -->
+    <div data-mk-state="no-permission" data-mk-label="Brak uprawnień" hidden>
+      <div class="alert alert--info" role="alert" style="margin-bottom:var(--space-3)" data-testid="stock-viewer-notice">
+        <div class="alert__content">
+          <strong class="alert__title">You have view-only access</strong>
+          <div class="alert__description">Ask an admin or operator to adjust stock quantities. <span class="mk-pin">10</span></div>
+        </div>
+      </div>
+      <div class="panel">
+        <div class="panel__header"><h3>Variants &amp; stock (3)</h3></div>
+        <div class="data-table__container">
+          <table class="data-table">
+            <thead><tr><th>Variant</th><th>Stock</th><th>Listings</th><th class="data-table__cell--right">Price</th><th aria-hidden="true"></th></tr></thead>
+            <tbody>
+              <tr>
+                <td><span class="mono-text">KCN-350-WHT</span><br><span class="text-muted">Biały</span></td>
+                <td><b>18</b> <span class="text-muted">/ res 2</span></td>
+                <td><span class="chip chip--success">Allegro</span> <span class="chip chip--success">Erli</span></td>
+                <td class="data-table__cell--right">42,00 PLN</td>
+                <td class="sc-row-actions"><button type="button" class="button button--ghost" disabled data-testid="stock-adjust-KCN-350-WHT" title="Only admins and operators can adjust stock.">Adjust stock</button></td>
+              </tr>
+              <tr>
+                <td><span class="mono-text">KCN-350-GRY</span><br><span class="text-muted">Szary</span></td>
+                <td><b>6</b> <span class="text-muted">/ res 0</span></td>
+                <td><span class="chip chip--success">Allegro</span> <span class="chip chip--success">Erli</span></td>
+                <td class="data-table__cell--right">42,00 PLN</td>
+                <td class="sc-row-actions"><button type="button" class="button button--ghost" disabled data-testid="stock-adjust-KCN-350-GRY" title="Only admins and operators can adjust stock.">Adjust stock</button></td>
+              </tr>
+              <tr>
+                <td><span class="mono-text">KCN-350-BLK</span><br><span class="text-muted">Czarny</span></td>
+                <td><b>0</b> <span class="text-muted">/ res 0</span></td>
+                <td><span class="chip chip--warning">Allegro paused</span> <span class="chip chip--warning">Erli paused</span></td>
+                <td class="data-table__cell--right">42,00 PLN</td>
+                <td class="sc-row-actions"><button type="button" class="button button--ghost" disabled data-testid="stock-adjust-KCN-350-BLK" title="Only admins and operators can adjust stock.">Adjust stock</button></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </section>
+</div>
+
+<aside class="mk-notes" aria-label="Adnotacje">
+  <h3>Adnotacje</h3>
+  <ol>
+    <li><span class="mk-pin">1</span> Dziś nie ma tu żadnego przycisku ani endpointu — to całkiem nowy ekran. Backend zna już powód <code>manual_correction</code> w <code>InventoryAdjustment</code> (obok <code>return_restock</code> dla zwrotów), ale nic go jeszcze nie wywołuje z poziomu operatora.</li>
+    <li><span class="mk-pin">2</span> OpenLinker jest tylko lustrem stanu magazynowego — korekta zawsze idzie do <code>InventoryMasterPort.adjustInventory</code> tego połączenia, które jest master dla produktu (tu: PrestaShop). Nigdy nie zapisujemy bezpośrednio do Allegro/Erli.</li>
+    <li>Operator wybiera przyjazny powód (count correction / damaged / found / other), ale do mastera leci tylko zamknięty enum <code>manual_correction</code> — szczegółowy powód i notatka zostają po stronie OpenLinkera (log), bo master i tak by ich nie zrozumiał.</li>
+    <li><span class="mk-pin">4</span> <b>Poprawione wg D26:</b> podgląd startuje od available to promise (nowy stan minus 2 szt. trzymane przez OpenLinker = 7), nie od surowego stanu mastera. Liczby zgadzają się z M25 (Szary: 6 − 2 = 4 dziś). Podgląd "co opublikuje kanał" liczy realny mechanizm: bufor bezpieczeństwa (#1844, <code>stockSafetyBuffer</code>) odejmowany na końcu, oraz próg zerowania (#2610, <code>stockZeroThreshold</code>) — Erli poniżej 5 szt. pokaże 0. Pole liczy się na żywo przy zmianie ilości.</li>
+    <li><span class="mk-pin">5</span> Propagacja do kanałów to osobne zadanie w kolejce (<code>inventory.propagateToMarketplaces</code>), nie część tego zapisu — stąd "zwykle w ciągu minuty", a nie natychmiast.</li>
+    <li><span class="mk-pin">6</span> Adapter PrestaShop honoruje klucz idempotencji, ale zwraca <code>appliedAt: null</code> (zasób PrestaShop nie niesie znacznika czasu) — dlatego ekran potwierdzenia nie pokazuje godziny zatwierdzenia przez mastera, tylko fakt potwierdzenia.</li>
+    <li><span class="mk-pin">7</span> Stan "odrzucona" to prawdziwy, udokumentowany przypadek: <code>depends_on_stock=1</code> (Advanced Stock Management) — zapis jest przyjęty i natychmiast nadpisany przez ASM. Pozostałe udokumentowane odmowy (kilka sklepów bez <code>shopId</code>, brak wiersza <code>stock_availables</code>) nie mają tu osobnego stanu — do dodania.</li>
+    <li><span class="mk-pin">8</span>–<span class="mk-pin">9</span> "In doubt" to stan sieciowy, nie biznesowy: nie wiadomo, czy żądanie doszło. Celowo NIE ma tu przycisku "Spróbuj ponownie" — ponowne wysłanie tego samego formularza minie nowy klucz idempotencji (patrz #2368: klucz jest per-próba, np. <code>return:{returnId}:{lineId}:{seq}</code> dla zwrotów), więc może podwoić korektę. Bezpieczny retry to tylko automatyczny retry backendu z TYM SAMYM kluczem.</li>
+    <li><span class="mk-pin">10</span> Rola z dostępem tylko do odczytu (np. Viewer) nie widzi tu żadnego endpointu zapisu — backend najpewniej ograniczy to do <code>admin</code>/<code>operator</code>, analogicznie do innych zapisów magazynowych w architekturze.</li>
+    <li><b>Rozstrzygnięte (D41, 2026-09-28):</b> przy więcej niż jednym połączeniu InventoryMaster korekta jest odrzucana z nazwanym powodem (jak blokada restocku zwrotu), a zmiana ponad 50 szt. lub 50% stanu wymaga potwierdzenia (blok "This is a large change" w formularzu, widoczny np. dla nowej ilości 10). Pierwotne pytania poniżej.</li>
+    <li><b>Otwarte pytania (historyczne):</b> (a) Dziś nie istnieje żaden kontroler HTTP wywołujący <code>adjustInventory</code> ręcznie — potrzebny nowy endpoint + DTO + rola. (b) Co jeśli produkt ma więcej niż jedno połączenie z <code>InventoryMaster</code> (rywalizujący claim, #1904)? Który z nich jest "the" master do zapisu korekty — czy operator go wybiera, czy system automatycznie? Nieopisane. (c) Czy korekta powinna wymagać potwierdzenia (np. dla dużych zmian ilości) — nie ma dziś takiego progu w backendzie.</li>
+    <li>Dane przykładowe: produkt, warianty, ceny i połączenia (PrestaShop/Allegro/Erli "Ceramika Nowak") są fikcyjne, dobrane dla realizmu polskiego e-commerce.</li>
+  </ol>
+</aside>
+
+<script>
+(function () {
+  function states() { return Array.prototype.slice.call(document.querySelectorAll('[data-mk-state]')); }
+  function sync() {
+    var st = states().filter(function (e) { return !e.hidden; })[0];
+    var name = st ? st.getAttribute('data-mk-state') : 'variants';
+    Array.prototype.forEach.call(document.querySelectorAll('[data-mk-show]'), function (el) {
+      var want = el.getAttribute('data-mk-show').split(/\s+/).indexOf(name) < 0;
+      if (el.hidden !== want) el.hidden = want;
+    });
+  }
+  function go(id) {
+    var btn = document.querySelector('.mk-bar__states button[data-s="' + id + '"]');
+    if (btn) btn.click(); else { states().forEach(function (s) { s.hidden = s.getAttribute('data-mk-state') !== id; }); sync(); }
+    window.scrollTo(0, 0);
+  }
+  var obs = new MutationObserver(sync);
+  states().forEach(function (s) { obs.observe(s, { attributes: true, attributeFilter: ['hidden'] }); });
+
+  document.addEventListener('click', function (e) {
+    var t = e.target.closest ? e.target.closest('[data-go],.mk-bar__states button') : null;
+    if (!t) return;
+    if (t.matches('.mk-bar__states button')) { sync(); return; }
+    if (t.hasAttribute('data-go')) {
+      e.preventDefault();
+      var id = t.getAttribute('data-go');
+      go(id);
+      if (id === 'applying') { setTimeout(function () { go('applied'); }, 1300); }
+    }
+  });
+
+  // Mode toggle (set exact vs. adjust by amount) + live buffer/threshold preview.
+  var exactBtn = document.getElementById('sc-mode-exact'), deltaBtn = document.getElementById('sc-mode-delta');
+  var exactGroup = document.getElementById('sc-group-exact'), deltaGroup = document.getElementById('sc-group-delta');
+  var exactInput = document.getElementById('sc-exact'), deltaInput = document.getElementById('sc-delta');
+  // D26: channels start from available to promise (new count minus OpenLinker holds), not the raw count.
+  var CURRENT = 6, HELD = 2, ALLEGRO_BUFFER = 2, ERLI_THRESHOLD = 5;
+
+  function setMode(mode) {
+    var isExact = mode === 'exact';
+    exactBtn.classList.toggle('segmented-control__option--active', isExact);
+    deltaBtn.classList.toggle('segmented-control__option--active', !isExact);
+    exactGroup.hidden = !isExact;
+    deltaGroup.hidden = isExact;
+    recalc();
+  }
+  if (exactBtn) exactBtn.addEventListener('click', function () { setMode('exact'); });
+  if (deltaBtn) deltaBtn.addEventListener('click', function () { setMode('delta'); });
+
+  function recalc() {
+    if (!exactInput) return;
+    var newQty;
+    if (!exactGroup.hidden) {
+      newQty = Math.max(0, Math.floor(Number(exactInput.value) || 0));
+    } else {
+      var delta = parseInt((deltaInput.value || '0').replace(/[^\-\d]/g, ''), 10) || 0;
+      newQty = Math.max(0, CURRENT + delta);
+    }
+    document.getElementById('sc-diff-out').innerHTML = '<ins>' + newQty + '</ins>';
+    var atp = Math.max(0, newQty - HELD);
+    document.getElementById('sc-prev-ps').textContent = String(newQty);
+    document.getElementById('sc-prev-atp').textContent = String(atp);
+    document.getElementById('sc-prev-allegro').textContent = String(Math.max(0, atp - ALLEGRO_BUFFER));
+    var erliQty = atp < ERLI_THRESHOLD ? 0 : atp;
+    // D41: a change above 50 units or 50% of the current count needs an explicit confirm.
+    var change = Math.abs(newQty - CURRENT);
+    document.getElementById('sc-large').hidden = !(change > 50 || (CURRENT > 0 && change > CURRENT * 0.5));
+    document.getElementById('sc-prev-erli').textContent = String(erliQty);
+    document.getElementById('sc-erli-how').textContent = erliQty === 0
+      ? 'Below the 5-unit threshold, so it publishes as sold out.'
+      : 'Publishes available to promise as-is, but anything under 5 units is shown as sold out.';
+  }
+  if (exactInput) exactInput.addEventListener('input', recalc);
+  if (deltaInput) deltaInput.addEventListener('input', recalc);
+
+  function barHeight() { var bar = document.querySelector('.mk-bar'); document.documentElement.style.setProperty('--mk-bar-h', (bar ? bar.offsetHeight : 0) + 'px'); }
+  window.addEventListener('resize', barHeight);
+  document.addEventListener('DOMContentLoaded', function () { sync(); barHeight(); setTimeout(function () { sync(); barHeight(); }, 0); });
+  sync();
+})();
+</script>
+
+</body></html>
