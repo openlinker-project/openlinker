@@ -221,6 +221,12 @@ export class BenchParcelResponseDto {
   buyerNote!: string | null;
 
   @ApiProperty({
+    description:
+      'Whether the order has a buyer note even when its text is not stored (`OL_STORE_PII=false`). A flag only, no content.',
+  })
+  hasBuyerNote!: boolean;
+
+  @ApiProperty({
     nullable: true,
     description:
       'When THIS parcel\'s buyer note was first acknowledged at the bench, or null. Per parcel; never blocks scanning.',

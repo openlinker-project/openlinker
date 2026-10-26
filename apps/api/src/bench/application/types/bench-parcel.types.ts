@@ -215,6 +215,12 @@ export interface BenchParcelView {
    */
   readonly buyerNote: string | null;
   /**
+   * Whether the order has a buyer note at all, independent of whether its text
+   * is stored (B-12). Not PII: it lets the bench say a note exists when
+   * `OL_STORE_PII=false` leaves `buyerNote` null, and still offer the reading.
+   */
+  readonly hasBuyerNote: boolean;
+  /**
    * When THIS parcel's buyer note was first acknowledged at the bench, or
    * `null` (#3538). Per parcel: a split order's second parcel is acknowledged
    * separately. Never blocks scanning and is not a parcel close (ADR-071).
