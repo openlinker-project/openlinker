@@ -297,6 +297,33 @@ export const benchParcelCopy = {
     keyboardHint: 'Not scanning? Press C to confirm the next open item by hand.',
   },
 
+  /**
+   * The buyer's checkout message (#3539, D12), read only. The packer's sentence,
+   * not the office's: it says what saving does and does not do, because the one
+   * thing a packer must never believe is that this control closes the box.
+   */
+  buyerNote: {
+    title: 'Buyer note',
+    meta: 'The buyer wrote this at checkout.',
+    metaWholeOrder: 'The buyer wrote this at checkout. It is about the whole order.',
+    acknowledge: 'I have read the note',
+    saving: 'Saving...',
+    hint: 'Scanning works either way. This records that you saw it, for this box.',
+    failed: 'That did not save. The note stays open - press it again.',
+    lockedOut: 'This box is assigned to another packer, so your reading was not saved.',
+    readBy: (who: string, time: string): string => `Read by ${who} at ${time}`,
+    you: 'you',
+    someoneElse: 'a colleague',
+    showAll: 'Show the whole note',
+    showLess: 'Show less',
+    /** Another parcel's reading, context only - each box records its own. */
+    otherRead: (who: string, parcel: number, total: number, time: string): string =>
+      `${who} read it on parcel ${String(parcel)} of ${String(total)} at ${time}.`,
+    otherReadYou: 'You',
+    otherReadSomeone: 'Another packer',
+    eachBoxOwn: 'Each box records its own reading.',
+  },
+
   /** Notes flagged "Show to packer" (D12), read only. */
   officeNotes: {
     title: (count: number): string => `Notes from the office (${String(count)})`,

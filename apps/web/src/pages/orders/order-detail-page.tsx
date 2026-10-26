@@ -49,6 +49,8 @@ import {
 import { OrderTagsHeaderRow } from '../../features/orders/components/order-tags-header-row';
 import { useOrderNotesTimelineQuery } from '../../features/orders/hooks/use-order-notes-timeline-query';
 import { mapNoteTimelineToEvents } from '../../features/orders/lib/order-note-timeline-events';
+import { mapBuyerNoteAcknowledgementsToEvents } from '../../features/orders/lib/buyer-note-timeline-events';
+import { OrderBuyerNote } from '../../features/orders/components/order-buyer-note';
 import { resolvePlatformLabel } from '../../features/mappings';
 import { usePlatforms } from '../../shared/plugins';
 import { OrderShipmentPanel } from '../../features/orders/components/order-shipment-panel';
@@ -232,6 +234,11 @@ export function OrderDetailPage(): ReactElement {
     session.user?.id ?? null,
   );
   const noteTimelineEvents = mapNoteTimelineToEvents(noteTimelineQuery.data ?? []);
+  // #3539 - the bench's per-parcel buyer-note acknowledgements, from the order read itself.
+  const buyerNoteTimelineEvents = mapBuyerNoteAcknowledgementsToEvents(
+    order.buyerNoteAcknowledgements,
+    session.user?.id ?? null,
+  );
   const failedDestinations = order.syncStatus.filter((s) => s.status === 'failed');
 
   const connections = connectionsQuery.data ?? [];
@@ -455,6 +462,18 @@ export function OrderDetailPage(): ReactElement {
           presence of an episode is a claim. */}
       <StockAtRiskCallout shortfalls={order.reservationShortfalls} />
 
+      {/* #3539 (mockup M2) - the buyer's own message, in the same full-width slot
+          as the callout above and ABOVE the panels the operator acts in. Not an
+          Alert: it is the buyer's voice. Renders nothing without a note. */}
+      <OrderBuyerNote
+        order={order}
+        channelLabel={
+          sourcePlatformType === null ? null : resolvePlatformLabel(platforms, sourcePlatformType)
+        }
+        channelPlatform={sourcePlatformType}
+        placedAt={snapshot.placedAt ?? null}
+      />
+
       {snapshot.items.length > 0 || snapshot.totals ? (
         <section className="detail-section">
           <h3 className="detail-section__title">Pricing &amp; tax</h3>
@@ -644,7 +663,7 @@ export function OrderDetailPage(): ReactElement {
           packedByUserId={order.packedByUserId}
           salesDocumentBlockedAt={order.salesDocumentBlockedAt}
           salesDocumentBlockReleasedAt={order.salesDocumentBlockReleasedAt}
-          extraEvents={[...returnTimelineEvents, ...noteTimelineEvents]}
+          extraEvents={[...returnTimelineEvents, ...noteTimelineEvents, ...buyerNoteTimelineEvents]}
           holds={order.holdHistory}
           automationRuns={automationRunsQuery.data?.runs ?? []}
         />

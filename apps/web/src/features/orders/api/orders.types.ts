@@ -441,6 +441,13 @@ export interface OrderReservationShortfall {
   openedAt: string;
 }
 
+/** One parcel's bench acknowledgement of the buyer note (#3538). */
+export interface BuyerNoteAcknowledgement {
+  workId: string;
+  acknowledgedAt: string;
+  acknowledgedByUserId: string | null;
+}
+
 export interface OrderRecord {
   internalOrderId: string;
   customerId: string | null;
@@ -595,6 +602,31 @@ export interface OrderRecord {
    * `packedAt`, so it is non-null exactly when `packedAt` is.
    */
   packedByUserId?: string | null;
+  /**
+   * Whether the source reported a non-empty buyer note (#3538/#3539). On the
+   * list AND the detail: a denormalised boolean that carries no text, so the row
+   * can show an indicator and the filter can narrow without the note itself.
+   * `false` covers both "no note" and "unknown". Optional for graceful
+   * degradation on a pre-#3538 payload.
+   */
+  hasBuyerNote?: boolean;
+  /**
+   * The buyer's checkout note, DETAIL READ ONLY, in THREE states that must
+   * never be collapsed: a string is the note verbatim; `null` means the source
+   * asserted the buyer left none; the key ABSENT means unknown (and also "text
+   * not stored" under `OL_STORE_PII=false`, where `hasBuyerNote` is still
+   * true). Read it through `readBuyerNote`, never with a bare truthiness test.
+   */
+  buyerNote?: string | null;
+  /** When an operator first marked the note read (#3538). `null` = unread. Detail only. */
+  buyerNoteReadAt?: string | null;
+  /** OL user id of whoever first marked it read. Moves with `buyerNoteReadAt`. */
+  buyerNoteReadByUserId?: string | null;
+  /**
+   * Per-parcel acknowledgements at the pack bench (#3538, D12), oldest first.
+   * Detail only; an unacknowledged parcel is simply absent.
+   */
+  buyerNoteAcknowledgements?: BuyerNoteAcknowledgement[];
   /**
    * The derived lifecycle phase (#2305/#2309) — "what is this order waiting on".
    * Derived server-side on every read; the FE never re-derives it. A SECOND
@@ -1018,6 +1050,12 @@ export interface OrderFilters {
    * here.
    */
   openReturn?: boolean;
+  /**
+   * "With buyer note" filter (#3539), `?hasBuyerNote=`. Server-side: the API
+   * maps it to the indexed `hasBuyerNote` column, so it narrows the whole
+   * result set and not just the loaded page.
+   */
+  hasBuyerNote?: boolean;
   /** One tag id (#3532, D34), `?tag=`. Mutually exclusive with `untagged`. */
   tag?: string;
   /** "No tags" filter (#3532), `?untagged=`. Mutually exclusive with `tag`. */

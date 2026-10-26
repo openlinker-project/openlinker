@@ -119,6 +119,7 @@ import { BenchActivityPanel } from './bench-activity-panel';
 import { BenchCompletionPanel } from './bench-completion-panel';
 import { BenchCopyButton } from './bench-copy-button';
 import { BenchDocumentsPanel } from './bench-documents';
+import { BenchBuyerNote } from './bench-buyer-note';
 import { BenchOfficeNotes } from './bench-office-notes';
 import { BenchParcelHero } from './bench-parcel-hero';
 import { BenchParcelLineRow } from './bench-parcel-line';
@@ -791,6 +792,11 @@ export function BenchParcelView({
       )}
 
       <BenchOfficeNotes notes={parcel.packerNotes} />
+
+      {/* #3539 (D12, mockup M2) - the buyer's own message, above the hero card.
+          Read only; "I have read the note" records the reading for THIS parcel
+          and never gates a scan or closes the box. */}
+      <BenchBuyerNote parcel={parcel} canAcknowledge={canWrite} />
 
       {/* The mockup's hero card (#3401): the ONE line this box is waiting for
           next, with the visible scan field. Derived, never stored — see

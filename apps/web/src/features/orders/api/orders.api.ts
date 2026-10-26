@@ -68,6 +68,12 @@ export interface OrdersApi {
   /** Clear the packed mark (#2287). Clearing an unpacked order is a no-op 200. */
   unmarkPacked: (internalOrderId: string) => Promise<OrderRecord>;
   /**
+   * Mark the order's buyer note read (#3539). Fill-once and idempotent: a
+   * repeat returns the EXISTING marker, so the first reader is never
+   * overwritten. A display fact - it gates nothing.
+   */
+  markBuyerNoteRead: (internalOrderId: string) => Promise<OrderRecord>;
+  /**
    * Place a hold (#2341). Admin-only server-side; a second hold on an order
    * that already has one answers 409 `ORDER_ALREADY_ON_HOLD`.
    */
@@ -211,6 +217,10 @@ function buildQuery(
   if (filters?.openReturn !== undefined) {
     params.set('openReturn', String(filters.openReturn));
   }
+  // #3539 — boolean, same `!== undefined` guard as its neighbours.
+  if (filters?.hasBuyerNote !== undefined) {
+    params.set('hasBuyerNote', String(filters.hasBuyerNote));
+  }
   // #3532 — `tag` and `untagged` are mutually exclusive by convention.
   if (filters?.tag) params.set('tag', filters.tag);
   if (filters?.untagged !== undefined) {
@@ -284,6 +294,12 @@ export function createOrdersApi(request: ApiRequest, requestBlob: ApiBlobRequest
       return request<OrderRecord>(`/orders/${encodeURIComponent(internalOrderId)}/packed`, {
         method: 'POST',
       });
+    },
+    markBuyerNoteRead(internalOrderId): Promise<OrderRecord> {
+      return request<OrderRecord>(
+        `/orders/${encodeURIComponent(internalOrderId)}/buyer-note/read`,
+        { method: 'POST' },
+      );
     },
     unmarkPacked(internalOrderId): Promise<OrderRecord> {
       return request<OrderRecord>(`/orders/${encodeURIComponent(internalOrderId)}/packed`, {

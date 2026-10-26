@@ -421,6 +421,13 @@ export function OrderListFilterBar({
           filtersApi.toggle('openReturn');
         }}
       />
+      <FilterCheck
+        label={COPY.checkBuyerNote}
+        checked={state.hasBuyerNote}
+        onChange={() => {
+          filtersApi.toggle('hasBuyerNote');
+        }}
+      />
     </FilterChecks>
   );
   const tagRadioName = `${panelId}-tag`;
@@ -796,6 +803,15 @@ export function OrderListFilterBar({
           }}
         >
           {COPY.quickOpenReturn}
+        </Chip>
+        <Chip
+          active={state.hasBuyerNote}
+          data-testid="orders-filter-buyer-note"
+          onClick={() => {
+            filtersApi.toggle('hasBuyerNote');
+          }}
+        >
+          {COPY.quickBuyerNote}
         </Chip>
         <QuickFiltersSeparator />
         <QuickFiltersLabel>{COPY.quickPhase}</QuickFiltersLabel>
