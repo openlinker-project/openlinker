@@ -570,6 +570,18 @@ function BulkEditModalForm({
     () => (row.product?.images ?? []).filter((u): u is string => typeof u === 'string' && u.trim() !== ''),
     [row.product?.images],
   );
+  // The default set the base panel offers. A single-variant product is edited
+  // as one offer, and the backend lists that offer with the variant's default
+  // (its own picture first), so the panel must show the same list - not the
+  // bare product gallery - or the operator sees a different first image than
+  // the one published.
+  const baseDefaultImages = useMemo(
+    () =>
+      !isMultiVariant && row.variants[0]
+        ? defaultImagesForVariant(row.variants[0], masterImages)
+        : masterImages,
+    [isMultiVariant, row.variants, masterImages],
+  );
 
   const [scope, setScope] = useState<string>(
     () => (isMultiVariant && focusVariantId ? focusVariantId : isMultiVariant ? 'base' : 'simple'),
@@ -1229,7 +1241,7 @@ function BulkEditModalForm({
             platformParams={platformParams}
             onPlatformParamsChange={setPlatformParams}
             batchDeliveryPriceList={batchDeliveryPriceList}
-            masterImages={masterImages}
+            masterImages={baseDefaultImages}
             baseImageUrls={baseImageUrls}
             onBaseImageUrlsChange={setBaseImageUrls}
             onZoom={setZoomSrc}

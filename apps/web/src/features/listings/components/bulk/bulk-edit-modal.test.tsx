@@ -1447,6 +1447,40 @@ describe('BulkEditModal', () => {
       return Array.from(variantImageField().querySelectorAll('img')).map((img) => img.getAttribute('src') ?? '');
     }
 
+    it("shows a single-variant product's images in the order its offer is built with", () => {
+      // Product 162: gallery 316 (main), 317; its one variant owns 317, so the
+      // offer is built with [317, 316] and the editor must show that order.
+      const base = makeRow();
+      const variant: ProductVariant = {
+        ...base.variants[0].variant,
+        images: [gfx(317)],
+        defaultImages: [gfx(317), gfx(316)],
+      };
+      const row: BulkWizardRow = {
+        ...base,
+        product: base.product ? { ...base.product, images: [gfx(316), gfx(317)] } : base.product,
+        primaryVariant: variant,
+        variants: [{ ...base.variants[0], variant }],
+      };
+      renderWithProviders(
+        <BulkEditModal
+          open
+          onOpenChange={() => undefined}
+          row={row}
+          connection={connection}
+          canBrowseCategories={true}
+          currency="PLN"
+          defaults={DEFAULTS}
+          onSave={() => undefined}
+        />,
+      );
+
+      const shown = Array.from(document.querySelectorAll('img'))
+        .map((img) => img.getAttribute('src') ?? '')
+        .filter((src) => src.startsWith('https://shop.example/gfx/'));
+      expect(shown).toEqual([gfx(317), gfx(316)]);
+    });
+
     it("shows the variant's own resolved default images and says so", () => {
       renderWithProviders(
         <BulkEditModal
