@@ -47,11 +47,17 @@ import { Logger } from '@openlinker/shared/logging';
 
 import { ShoperNotSupportedException } from '../../../domain/exceptions/shoper-not-supported.exception';
 import type {
+  ShoperCategory,
+  ShoperCategoryTreeNode,
   ShoperProduct,
   ShoperStock,
 } from '../../../domain/types/shoper-api.types';
 import { ShoperCategoryReader } from '../../readers/shoper-category.reader';
-import { joinShoperCategories } from '../../mappers/shoper-category.mapper';
+import {
+  buildShoperCategoryBreadcrumb,
+  joinShoperCategories,
+  shoperCategoryPathIds,
+} from '../../mappers/shoper-category.mapper';
 import { mapShoperTaxRow } from '../../mappers/shoper-tax-rate.mapper';
 import type { ShoperOptionEntry, ShoperOptionTableProvider } from '../../shop-context/shoper-option-table.provider';
 import type { ShoperTaxTableProvider } from '../../shop-context/shoper-tax-table.provider';
@@ -87,6 +93,7 @@ const SHOPER_ID = /^\d+$/;
 export class ShoperProductMasterAdapter implements ProductMasterPort, ProductTaxRateReader {
   private readonly logger = new Logger(ShoperProductMasterAdapter.name);
   private categoryDirectory: Promise<Category[]> | null = null;
+  private categoryTree: Promise<ShoperCategoryTreeNode[]> | null = null;
   private readonly categoryReader: ShoperCategoryReader;
   private readonly productReader: ShoperProductReader;
 
@@ -132,9 +139,19 @@ export class ShoperProductMasterAdapter implements ProductMasterPort, ProductTax
     const data = await this.readProduct(externalId, productId);
     const ctx = await ctxRead;
     const product = mapShoperProduct(data, ctx);
-    const gallery = await this.readGallery(externalId, ctx.host);
-    // An empty or unreadable gallery keeps the main image the product row carries.
-    return { ...product, images: gallery.length > 0 ? gallery : product.images, id: productId };
+    // Independent reads, and neither throws: each logs its own failure and
+    // falls back, so running them together changes no outcome.
+    const [gallery, categoryBreadcrumb] = await Promise.all([
+      this.readGallery(externalId, ctx.host),
+      this.readCategoryBreadcrumb(data, ctx.language),
+    ]);
+    return {
+      ...product,
+      // An empty or unreadable gallery keeps the main image the product row carries.
+      images: gallery.length > 0 ? gallery : product.images,
+      ...(categoryBreadcrumb === null ? {} : { categoryBreadcrumb }),
+      id: productId,
+    };
   }
 
   async getProducts(filters?: ProductFilters): Promise<Product[]> {
@@ -506,6 +523,84 @@ export class ShoperProductMasterAdapter implements ProductMasterPort, ProductTax
       );
       return [];
     }
+  }
+
+  /**
+   * The path of the product's main category (`category_id`, else its first
+   * category), root to leaf, or `null` when it has none or it cannot be read.
+   *
+   * One filtered page of `/categories` per product, for the names of the
+   * path's nodes - not the whole directory, which this per-product read would
+   * otherwise rebuild for every product a sweep syncs. The tree (structure, ids
+   * only) is read once per adapter instance, see `getCategoryTree`. Best-effort
+   * like the gallery: a failure, including a tree Shoper answered unreadably,
+   * is logged and the product syncs without a path.
+   */
+  private async readCategoryBreadcrumb(
+    data: ShoperProduct,
+    language: string,
+  ): Promise<{ id: string; name: string }[] | null> {
+    const main = data.category_id === null || data.category_id === undefined ? '' : String(data.category_id).trim();
+    const leafId =
+      main.length > 0 && main !== '0'
+        ? main
+        : Array.isArray(data.categories) && data.categories.length > 0
+          ? String(data.categories[0])
+          : null;
+    if (leafId === null) {
+      return null;
+    }
+    try {
+      const pathIds = shoperCategoryPathIds(await this.getCategoryTree(), leafId);
+      if (pathIds === null) {
+        this.logger.warn(
+          `Shoper category ${leafId} of product ${data.product_id} is not in the category tree; ` +
+            `syncing without a category path (connection: ${this.connection.id})`,
+        );
+        return null;
+      }
+      const page = await fetchShoperPage<ShoperCategory>(this.client, '/categories', {
+        page: 1,
+        limit: SHOPER_MAX_PAGE_SIZE,
+        query: { filters: JSON.stringify({ category_id: { in: pathIds.map(Number) } }) },
+      });
+      const wanted = new Set(pathIds);
+      const breadcrumb = buildShoperCategoryBreadcrumb(
+        pathIds,
+        page.items.filter((raw) => wanted.has(String(raw.category_id))),
+        language,
+      );
+      if (breadcrumb === null) {
+        this.logger.warn(
+          `Shoper category path of product ${data.product_id} has a node with no name; ` +
+            `syncing without a category path (connection: ${this.connection.id})`,
+        );
+      }
+      return breadcrumb;
+    } catch (error) {
+      this.logger.warn(
+        `Shoper category path of product ${data.product_id} could not be read; syncing without it ` +
+          `(${error instanceof Error ? error.message : String(error)}, connection: ${this.connection.id})`,
+      );
+      return null;
+    }
+  }
+
+  /**
+   * The category tree, read at most ONCE per adapter instance. The batch sweep
+   * (ADR-048) resolves one adapter for a whole page of products, so this turns
+   * one tree read per product into one per page. Memoised as a promise so
+   * concurrent callers share one read, and a failure is dropped so the next
+   * call retries - the same shape as `getCategories`.
+   */
+  private getCategoryTree(): Promise<ShoperCategoryTreeNode[]> {
+    if (this.categoryTree === null) {
+      this.categoryTree = this.categoryReader.readTree().catch((error: unknown) => {
+        this.categoryTree = null;
+        throw error;
+      });
+    }
+    return this.categoryTree;
   }
 
   private fetchAllStocks(externalProductId: string): Promise<ShoperStock[]> {

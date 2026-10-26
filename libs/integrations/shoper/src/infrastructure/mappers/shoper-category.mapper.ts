@@ -153,3 +153,50 @@ export function findShoperCategoryChild(
     .sort((a, b) => Number(a) - Number(b));
   return lowest ?? null;
 }
+
+/**
+ * The ids from the root down to `leafId`, read off the tree, or `null` when the
+ * tree does not place the leaf (its path is unknown, so none is reported).
+ * `flattenShoperCategoryTree` keeps the first position of a node seen twice, so
+ * the walk up cannot loop; the visited set guards a malformed parent chain too.
+ */
+export function shoperCategoryPathIds(
+  tree: readonly ShoperCategoryTreeNode[],
+  leafId: string,
+): string[] | null {
+  const positions = flattenShoperCategoryTree(tree);
+  if (!positions.has(leafId)) {
+    return null;
+  }
+  const path: string[] = [];
+  const visited = new Set<string>();
+  let current: string | undefined = leafId;
+  while (current !== undefined && !visited.has(current)) {
+    visited.add(current);
+    path.unshift(current);
+    current = positions.get(current)?.parentId;
+  }
+  return path;
+}
+
+/**
+ * The named path for `pathIds`, or `null` when any node on it has no name in
+ * any language. All or nothing: a breadcrumb with a missing middle would show
+ * an operator a path the shop does not have.
+ */
+export function buildShoperCategoryBreadcrumb(
+  pathIds: readonly string[],
+  list: readonly ShoperCategory[],
+  language: string,
+): { id: string; name: string }[] | null {
+  const byId = new Map(list.map((raw) => [String(raw.category_id), raw]));
+  const breadcrumb: { id: string; name: string }[] = [];
+  for (const id of pathIds) {
+    const name = pickTranslation(byId.get(id)?.translations, language)?.name?.trim();
+    if (name === undefined || name.length === 0) {
+      return null;
+    }
+    breadcrumb.push({ id, name });
+  }
+  return breadcrumb;
+}
