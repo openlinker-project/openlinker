@@ -9,7 +9,12 @@
  *
  * @module libs/core/src/invoicing/domain/entities
  */
-import type { BuyerAddress, BuyerType, TaxIdentifier } from '../types/invoicing.types';
+import type {
+  BuyerAddress,
+  BuyerType,
+  IssuedSnapshotBuyer,
+  TaxIdentifier,
+} from '../types/invoicing.types';
 
 export class BuyerProfile {
   constructor(
@@ -25,9 +30,39 @@ export class BuyerProfile {
      * pre-existing 4-argument call site keeps compiling unchanged.
      */
     public readonly email: string | null = null,
+    /**
+     * Optional operator-supplied fiscal classification (#1580). Neutral,
+     * country-agnostic flags a provider maps to its regime (a KSeF adapter maps
+     * them to the FA(3) `JST`/`GV` party flags): `isPublicSectorEntity` = the
+     * buyer is a local-government / public-sector unit; `isTaxGroupMember` = the
+     * buyer belongs to a VAT group. Trailing + optional so every existing
+     * 4-arg `new BuyerProfile(...)` call is unaffected; absent ⇒ the provider
+     * emits its "does not apply" default. Core never interprets them (ADR-026).
+     */
+    public readonly isPublicSectorEntity?: boolean,
+    public readonly isTaxGroupMember?: boolean,
   ) {}
 
   /** Pure derivation: a business buyer (B2B). No I/O, no mutation. */
+  /**
+   * Rebuild the buyer an issued document carried, from its jsonb snapshot
+   * (DEF-08). Every field travels: positional construction with four arguments
+   * silently dropped the e-mail and the JST / VAT-group flags, so a correction
+   * of a public-sector buyer's invoice declared it was not one. A pure factory
+   * (ADR-011).
+   */
+  static fromSnapshot(buyer: IssuedSnapshotBuyer): BuyerProfile {
+    return new BuyerProfile(
+      buyer.name,
+      buyer.taxId,
+      buyer.address,
+      buyer.type,
+      buyer.email ?? null,
+      buyer.isPublicSectorEntity,
+      buyer.isTaxGroupMember,
+    );
+  }
+
   get isCompany(): boolean {
     return this.type === 'company';
   }

@@ -143,6 +143,16 @@ export interface Connection {
    * field working without a mass edit.
    */
   defaultRateLimit?: ConnectionRateLimit | null;
+  /**
+   * Config values the adapter declared safe for every role (DEF-02), e.g. the
+   * KSeF environment, readable where `config` is hidden from non-admins.
+   */
+  publicConfig?: Record<string, string | number | boolean>;
+  /**
+   * Advisory notices on a create/update response (#1594, DEF-21), e.g. a
+   * second connection on the same seller tax number sharing a rate limit.
+   */
+  warnings?: string[];
   createdAt: string;
   updatedAt: string;
 }

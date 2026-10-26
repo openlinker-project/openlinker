@@ -27,6 +27,12 @@ import { Logger } from '@openlinker/shared/logging';
 import type { IKsefHttpClient } from '../http/ksef-http-client.interface';
 import type { KsefCertificateUsage, PublicKeyCertificate } from '../http/ksef-crypto.types';
 import { validateMfPublicKeyCertificate } from './mf-public-key-validator';
+import { loadMfTrustAnchors } from './mf-trust-anchors';
+import { NullRevocationChecker } from './mf-certificate-revocation';
+import type {
+  CertificateRevocationChecker,
+  MfCertificateTrustOptions,
+} from './mf-certificate-trust.types';
 import { KsefSessionCryptoException } from '../../domain/exceptions/ksef-session-crypto.exception';
 
 /** Refetch this many ms before a cert's `validTo`, so an in-flight wrap never races expiry. */
@@ -63,6 +69,7 @@ interface CachedCertificate {
 
 export class MfPublicKeyCacheService {
   private readonly logger = new Logger(MfPublicKeyCacheService.name);
+  private readonly revocationChecker: CertificateRevocationChecker = new NullRevocationChecker();
 
   constructor(
     private readonly connectionId: string,
@@ -92,6 +99,15 @@ export class MfPublicKeyCacheService {
     return cert;
   }
 
+  /**
+   * Resolve the chain-of-trust + revocation inputs applied on every validate call.
+   * Trust anchors are loaded (and memoized) from the operator-configured MF root
+   * CA; the revocation checker is the no-network default (documented deferral).
+   */
+  private trustOptions(): MfCertificateTrustOptions {
+    return { trustAnchors: loadMfTrustAnchors(), revocationChecker: this.revocationChecker };
+  }
+
   private cacheKeyFor(usage: KsefCertificateUsage): string {
     return `ksef:mf-public-key:${this.connectionId}:${usage}`;
   }
@@ -118,7 +134,7 @@ export class MfPublicKeyCacheService {
       certificateHash: entry.certificateHash,
     };
     try {
-      validateMfPublicKeyCertificate(cert, usage, now);
+      validateMfPublicKeyCertificate(cert, usage, now, this.trustOptions());
     } catch {
       // A cached-but-now-stale cert (rotated early) → drop and refetch.
       await this.cache.delete(cacheKey);
@@ -173,7 +189,7 @@ export class MfPublicKeyCacheService {
 
     const active = matching.find((cert) => {
       try {
-        validateMfPublicKeyCertificate(cert, usage, now);
+        validateMfPublicKeyCertificate(cert, usage, now, this.trustOptions());
         return true;
       } catch {
         return false;
