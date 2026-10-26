@@ -3,7 +3,7 @@
  *
  * Pins the ADR-050 lane partition (#2278): every `JobTypeValues` member is
  * registered with exactly one lane, the per-lane counts match the ADR's
- * table (19 realtime / 34 bulk / 5 fiscal / 7 fan-out across 65 job types -
+ * table (19 realtime / 35 bulk / 5 fiscal / 7 fan-out across 66 job types -
  * `subiekt.bridge.reachabilitySweep` joined `bulk` with #3358: it re-probes a
  * Subiekt connection's own reachability on a cron, nobody is waiting on any
  * one tick of it, and a late check costs nothing beyond a delayed log line;
@@ -35,7 +35,7 @@
  *
  * @module apps/worker/src/sync/handlers
  */
-/* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-unsafe-call -- test constructs the service with 60 interchangeable dummy handlers */
+/* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-unsafe-call -- test constructs the service with 61 interchangeable dummy handlers */
 import type { SyncJobHandler } from '@openlinker/core/sync';
 import { JobTypeValues, SyncJobLaneValues } from '@openlinker/core/sync';
 import { SyncJobHandlerRegistry } from '../sync-job-handler.registry';
@@ -46,13 +46,13 @@ describe('HandlerRegistrationService (ADR-050 lane partition, #2278)', () => {
 
   beforeEach(() => {
     registry = new SyncJobHandlerRegistry();
-    // The constructor takes the registry followed by 60 handler instances.
+    // The constructor takes the registry followed by 61 handler instances.
     // The dummies are DISTINCT objects so that "these two job types share one
     // handler instance" (#2594) is a real assertion rather than a tautology;
     // the partition under test keys on jobType, so they are otherwise
     // interchangeable.
     const handlers = Array.from(
-      { length: 60 },
+      { length: 61 },
       () => ({ execute: jest.fn() }) as unknown as SyncJobHandler
     );
     const service = new (HandlerRegistrationService as any)(registry, ...handlers);
@@ -151,8 +151,9 @@ describe('HandlerRegistrationService (ADR-050 lane partition, #2278)', () => {
     // `marketplace.sourceFulfillment.statusSync` is the thirty-fourth, laned
     // with its destination-side twin `marketplace.fulfillment.statusSync`: a
     // paced scan over parcels that have already shipped, each candidate a
-    // marketplace readback.
-    expect(registry.getJobTypesByLane('bulk')).toHaveLength(34);
+    // marketplace readback. #3629's inventory sale-decrement reconcile sweep
+    // is the thirty-fifth.
+    expect(registry.getJobTypesByLane('bulk')).toHaveLength(35);
     expect(registry.getJobTypesByLane('fiscal')).toHaveLength(5);
     expect(registry.getJobTypesByLane('fan-out')).toHaveLength(7);
   });
@@ -160,6 +161,14 @@ describe('HandlerRegistrationService (ADR-050 lane partition, #2278)', () => {
   it('should lane the sale decrement realtime (#3453)', () => {
     // Named for the same reason as the routing commit below: until it runs, the
     // product master and every other channel still sell units already sold.
+    expect(registry.getLane('inventory.saleDecrement')).toBe('realtime');
+  });
+
+  it('should lane the sale-decrement reconcile sweep bulk, its subject realtime (#3629)', () => {
+    // Named rather than left to the count: the decrement job is a sale a buyer is
+    // racing, but every candidate of the backstop has by construction gone at
+    // least the grace window without a job, so it must not hold a realtime slot.
+    expect(registry.getLane('inventory.saleDecrement.reconcileSweep')).toBe('bulk');
     expect(registry.getLane('inventory.saleDecrement')).toBe('realtime');
   });
 
