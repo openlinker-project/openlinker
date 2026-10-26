@@ -15,6 +15,7 @@ import type { OrderLineItemRepositoryPort } from '../../../domain/ports/order-li
 import type { OrderSyncStatus } from '../../../domain/entities/order-record.entity';
 import { OrderRecord } from '../../../domain/entities/order-record.entity';
 import type { Order } from '../../../domain/types/order.types';
+import { OrderRecordNotFoundException } from '../../../domain/exceptions/order-record-not-found.exception';
 import type { IncomingOrder } from '../../../domain/types/incoming-order.types';
 import type { IOrderFxStampService } from '../../interfaces/order-fx-stamp.service.interface';
 import type { IReportingCurrencySettingsService } from '@openlinker/core/currency';
@@ -72,6 +73,8 @@ describe('OrderRecordService', () => {
       findCurrencyMismatchOrderRefsAfter: jest.fn(),
       clearFxStampForRestatement: jest.fn(),
       countRemainingCurrencyMismatch: jest.fn(),
+      markBuyerNoteRead: jest.fn(),
+      countEarlierOrdersForCustomer: jest.fn().mockResolvedValue(0),
     } as unknown as jest.Mocked<OrderRecordRepositoryPort>;
 
     // Defaults to `deferred`, which is the outcome that owes NO refresh - so
@@ -589,6 +592,100 @@ describe('OrderRecordService', () => {
       expect(callArg.buyerTaxId).toBeNull();
     });
 
+    it('should encode the three buyer note states and write hasBuyerNote (#3538)', async () => {
+      repository.upsertWithLineItems.mockResolvedValue({} as OrderRecord);
+
+      const withText = { ...createMockOrder(), buyerNote: '  No receipt in the box  ' };
+      await service.persistOrder(withText, 'source-connection-123', 'event-1');
+      const none = { ...createMockOrder(), buyerNote: null };
+      await service.persistOrder(none, 'source-connection-123', 'event-2');
+      const unknown = createMockOrder();
+      await service.persistOrder(unknown, 'source-connection-123', 'event-3');
+
+      const [textRecord, noneRecord, unknownRecord] = repository.upsertWithLineItems.mock.calls.map(
+        ([record]) => record
+      );
+      expect(textRecord.buyerNote).toBe('No receipt in the box');
+      expect(textRecord.hasBuyerNote).toBe(true);
+      expect(noneRecord.buyerNote).toBe('');
+      expect(noneRecord.hasBuyerNote).toBe(false);
+      expect(unknownRecord.buyerNote).toBeNull();
+      expect(unknownRecord.hasBuyerNote).toBe(false);
+      expect(unknownRecord.buyerNoteState).toBeUndefined();
+    });
+
+    it('should never put the buyer note text into the snapshot (#3538)', async () => {
+      repository.upsertWithLineItems.mockResolvedValue({} as OrderRecord);
+
+      await service.persistOrder(
+        { ...createMockOrder(), buyerNote: 'call 123 456 789' },
+        'source-connection-123',
+        'event-1'
+      );
+
+      const [record] = repository.upsertWithLineItems.mock.calls[0];
+      expect(JSON.stringify(record.orderSnapshot)).not.toContain('123 456 789');
+    });
+
+    it('should denormalize the upper-cased shipping and billing country (#3538)', async () => {
+      const order = createMockOrder();
+      order.shippingAddress = { ...order.shippingAddress!, country: ' pl ' };
+      repository.upsertWithLineItems.mockResolvedValue({} as OrderRecord);
+
+      await service.persistOrder(order, 'source-connection-123', 'event-1');
+
+      const [record] = repository.upsertWithLineItems.mock.calls[0];
+      expect(record.shippingCountry).toBe('PL');
+      expect(record.billingCountry).toBe('US');
+    });
+
+    it('should leave a country unknown when its address is absent (#3538)', async () => {
+      const order = createMockOrder();
+      delete order.billingAddress;
+      repository.upsertWithLineItems.mockResolvedValue({} as OrderRecord);
+
+      await service.persistOrder(order, 'source-connection-123', 'event-1');
+
+      const [record] = repository.upsertWithLineItems.mock.calls[0];
+      expect(record.billingCountry).toBeNull();
+    });
+
+    it('should count the earlier orders of the resolved customer (#3538)', async () => {
+      repository.countEarlierOrdersForCustomer.mockResolvedValue(3);
+      repository.upsertWithLineItems.mockResolvedValue({} as OrderRecord);
+
+      await service.persistOrder(createMockOrder(), 'source-connection-123', 'event-1');
+
+      const [record] = repository.upsertWithLineItems.mock.calls[0];
+      expect(record.buyerOrderCount).toBe(3);
+      expect(repository.countEarlierOrdersForCustomer).toHaveBeenCalledWith(
+        'customer-456',
+        'order-123',
+        expect.any(Date)
+      );
+    });
+
+    it('should leave the order count unknown for an order with no customer (#3538)', async () => {
+      const order = { ...createMockOrder(), customerId: undefined };
+      repository.upsertWithLineItems.mockResolvedValue({} as OrderRecord);
+
+      await service.persistOrder(order, 'source-connection-123', 'event-1');
+
+      const [record] = repository.upsertWithLineItems.mock.calls[0];
+      expect(record.buyerOrderCount).toBeNull();
+      expect(repository.countEarlierOrdersForCustomer).not.toHaveBeenCalled();
+    });
+
+    it('should keep the order when the earlier-order count fails (#3538)', async () => {
+      repository.countEarlierOrdersForCustomer.mockRejectedValue(new Error('db down'));
+      repository.upsertWithLineItems.mockResolvedValue({} as OrderRecord);
+
+      await service.persistOrder(createMockOrder(), 'source-connection-123', 'event-1');
+
+      const [record] = repository.upsertWithLineItems.mock.calls[0];
+      expect(record.buyerOrderCount).toBeNull();
+    });
+
     it('should stamp the shipping-address hash from the un-redacted address (#2395)', async () => {
       const order = createMockOrder();
       repository.upsertWithLineItems.mockResolvedValue({} as OrderRecord);
@@ -787,6 +884,21 @@ describe('OrderRecordService', () => {
       const [callArg] = repository.upsertWithLineItems.mock.calls[0];
       expect(callArg.buyerTaxId).toBeNull();
       expect(callArg.orderSnapshot.billingAddress).not.toHaveProperty('taxId');
+    });
+
+    it('should not store the buyer note text but still write hasBuyerNote and the countries (#3538)', async () => {
+      repository.upsertWithLineItems.mockResolvedValue({} as OrderRecord);
+
+      await service.persistOrder(
+        { ...createMockOrder(), buyerNote: 'call me on 123 456 789' },
+        'source-connection-123',
+        'event-456'
+      );
+
+      const [record] = repository.upsertWithLineItems.mock.calls[0];
+      expect(record.buyerNote).toBeNull();
+      expect(record.hasBuyerNote).toBe(true);
+      expect(record.shippingCountry).toBe('US');
     });
 
     it('should still stamp the shipping-address hash when PII storage is disabled (#2395)', async () => {
@@ -2080,6 +2192,36 @@ describe('OrderRecordService', () => {
         pagination
       );
       expect(result).toEqual({ items: [], total: 0 });
+    });
+  });
+
+  describe('markBuyerNoteRead (#3538)', () => {
+    it('should stamp the actor and return the re-read record', async () => {
+      const record = { internalOrderId: 'order-1' } as OrderRecord;
+      repository.markBuyerNoteRead.mockResolvedValue(true);
+      repository.findById.mockResolvedValue(record);
+
+      const result = await service.markBuyerNoteRead('order-1', 'user-1');
+
+      expect(repository.markBuyerNoteRead).toHaveBeenCalledWith('order-1', expect.any(Date), 'user-1');
+      expect(result).toBe(record);
+    });
+
+    it('should be idempotent: a replay returns the existing record without error', async () => {
+      const record = { internalOrderId: 'order-1' } as OrderRecord;
+      repository.markBuyerNoteRead.mockResolvedValue(false);
+      repository.findById.mockResolvedValue(record);
+
+      await expect(service.markBuyerNoteRead('order-1', 'user-2')).resolves.toBe(record);
+    });
+
+    it('should throw when the order does not exist', async () => {
+      repository.markBuyerNoteRead.mockResolvedValue(false);
+      repository.findById.mockResolvedValue(null);
+
+      await expect(service.markBuyerNoteRead('missing', 'user-1')).rejects.toThrow(
+        OrderRecordNotFoundException
+      );
     });
   });
 });

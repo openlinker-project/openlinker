@@ -136,6 +136,7 @@ const NET_EXCLUDED_CANDIDATE_PAGE_SIZE = 500;
 const EMPTY_COLUMN_DEFAULTS: Record<string, (() => unknown) | undefined> = {
   syncStatus: () => [],
   syncAttempts: () => [],
+  hasBuyerNote: () => false,
 };
 
 /**
@@ -507,6 +508,12 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
       // `docs/engineering-standards.md § When A Paginated Total Is Expensive`
       // and needs no second-stage treatment.
       qb.andWhere(filters.packed ? 'rec."packedAt" IS NOT NULL' : 'rec."packedAt" IS NULL');
+    }
+
+    if (filters.hasBuyerNote !== undefined) {
+      // #3538 - denormalized boolean, indexed, so the list total never expands
+      // the snapshot JSONB.
+      qb.andWhere(filters.hasBuyerNote ? 'rec."hasBuyerNote" = true' : 'rec."hasBuyerNote" = false');
     }
 
     if (filters.search !== undefined) {
@@ -2791,6 +2798,42 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
   }
 
   /**
+   * Mark this order's buyer note read (#3538). Fill-once, in the
+   * {@link markPacked} shape: `buyerNoteReadAt: IsNull()` in the WHERE makes the
+   * first mark win and a replay affect zero rows, and both columns move in one
+   * statement so the instant and the actor are never split across two callers.
+   */
+  async markBuyerNoteRead(
+    internalOrderId: string,
+    readAt: Date,
+    readByUserId: string
+  ): Promise<boolean> {
+    const result = await this.repository.update(
+      { internalOrderId, buyerNoteReadAt: IsNull() },
+      { buyerNoteReadAt: readAt, buyerNoteReadByUserId: readByUserId, updatedAt: new Date() }
+    );
+    return (result.affected ?? 0) > 0;
+  }
+
+  /**
+   * Count the OTHER orders a customer placed before `before` (#3538, D7). Feeds
+   * the derived `buyerOrderCount`; excludes the order being ingested so a
+   * re-ingestion yields the same number.
+   */
+  async countEarlierOrdersForCustomer(
+    customerId: string,
+    excludeInternalOrderId: string,
+    before: Date
+  ): Promise<number> {
+    return this.repository
+      .createQueryBuilder('rec')
+      .where('rec.customerId = :customerId', { customerId })
+      .andWhere('rec.internalOrderId != :excludeInternalOrderId', { excludeInternalOrderId })
+      .andWhere('COALESCE(rec."placedAt", rec."createdAt") < :before', { before })
+      .getCount();
+  }
+
+  /**
    * Clear this order's packed fact (#2287). The `Not(IsNull())` guard is the
    * no-op idea `updateSalesDocumentBlock` puts in its WHERE: unmarking an
    * already-unpacked order affects no row, so it neither bumps `updatedAt` nor
@@ -3223,6 +3266,16 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
       // Ready-path only, so an `awaiting_mapping` re-ingestion cannot null a
       // value a previous ready-path write settled.
       add('paymentMethod', entity.paymentMethod ?? null);
+      // #3538, ready-path only for the same reason as `paymentMethod`. The text
+      // is already PII-gated by the caller (null under hash-only mode) while
+      // `hasBuyerNote` is always written. `buyerNoteReadAt` /
+      // `buyerNoteReadByUserId` are deliberately NOT here: sole writer
+      // `markBuyerNoteRead`, so a re-ingestion cannot un-read a note.
+      add('buyerNote', entity.buyerNote ?? null);
+      add('hasBuyerNote', entity.hasBuyerNote ?? false);
+      add('shippingCountry', entity.shippingCountry ?? null);
+      add('billingCountry', entity.billingCountry ?? null);
+      add('buyerOrderCount', entity.buyerOrderCount ?? null);
     }
 
     const sql = `INSERT INTO "order_records" (
@@ -3330,6 +3383,13 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
     // `awaiting_mapping` re-ingestion, which would write `null` over a value a
     // previous ready-path ingestion had settled.
     entity.paymentMethod = orderRecord.paymentMethod;
+    // #3538 - the buyer-note columns and the derived country / order-count
+    // scalars, stamped here and not in the shared `toOrm` for the same reason.
+    entity.buyerNote = orderRecord.buyerNote;
+    entity.hasBuyerNote = orderRecord.hasBuyerNote;
+    entity.shippingCountry = orderRecord.shippingCountry;
+    entity.billingCountry = orderRecord.billingCountry;
+    entity.buyerOrderCount = orderRecord.buyerOrderCount;
     const { sql, params, writeSet } = this.buildFrozenAttributionUpsert(entity, true);
     const savedRecord = await this.dataSource.transaction(async (manager: EntityManager) => {
       // Same statement as `upsert`, one parameter apart (#2282): a full-object
@@ -3558,7 +3618,14 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
       isDestinationRoutingBlockReason(entity.destinationRoutingBlockReason)
         ? entity.destinationRoutingBlockReason
         : null,
-      entity.destinationRoutingBlockDetail ?? null
+      entity.destinationRoutingBlockDetail ?? null,
+      entity.buyerNote ?? null,
+      entity.hasBuyerNote ?? false,
+      entity.buyerNoteReadAt ?? null,
+      entity.buyerNoteReadByUserId ?? null,
+      entity.shippingCountry ?? null,
+      entity.billingCountry ?? null,
+      entity.buyerOrderCount ?? null
     );
   }
 
@@ -3637,6 +3704,11 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
    *   null a peer's reason on every re-poll and leave the order reading `ready`
    *   while a hold is open. **It is excluded from `upsert()`'s raw column tuple
    *   too** - the `toOrm` exclusion alone is only half the job there.
+   * - `buyerNoteReadAt` / `buyerNoteReadByUserId` (#3538) - sole writer
+   *   {@link markBuyerNoteRead} (guarded fill-once). Ingestion carries no read
+   *   knowledge, so round-tripping them would un-read the note on every re-poll.
+   *   The other buyer-note columns (`buyerNote`, `hasBuyerNote`, the two
+   *   countries, `buyerOrderCount`) are ready-path-only like `paymentMethod`.
    * - `lastAmendedAt` / `lastAmendmentChanges` (#2283) - sole writer
    *   {@link recordAmendment}. The sharpest case of the shared reason: the write
    *   is triggered BY an ingestion, from a diff taken against the snapshot this
