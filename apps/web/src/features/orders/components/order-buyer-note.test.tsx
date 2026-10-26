@@ -54,6 +54,33 @@ function renderNote(
   return markBuyerNoteRead;
 }
 
+
+/**
+ * jsdom does no layout, so `scrollHeight` / `clientHeight` are always 0. This
+ * stands in for a browser whose clamp IS cutting the text off: the hook under
+ * test measures, so the measurement is what gets mocked.
+ */
+function mockClampOverflow(testId: string): () => void {
+  const scroll = Object.getOwnPropertyDescriptor(Element.prototype, 'scrollHeight');
+  const client = Object.getOwnPropertyDescriptor(Element.prototype, 'clientHeight');
+  Object.defineProperty(Element.prototype, 'scrollHeight', {
+    configurable: true,
+    get(this: Element) {
+      return this.getAttribute('data-testid') === testId ? 200 : 0;
+    },
+  });
+  Object.defineProperty(Element.prototype, 'clientHeight', {
+    configurable: true,
+    get(this: Element) {
+      return this.getAttribute('data-testid') === testId ? 80 : 0;
+    },
+  });
+  return () => {
+    if (scroll) Object.defineProperty(Element.prototype, 'scrollHeight', scroll);
+    if (client) Object.defineProperty(Element.prototype, 'clientHeight', client);
+  };
+}
+
 afterEach(cleanup);
 
 describe('OrderBuyerNote (#3539)', () => {
@@ -95,26 +122,33 @@ describe('OrderBuyerNote (#3539)', () => {
     expect(screen.queryByTestId('order-buyer-note-text')).not.toBeInTheDocument();
   });
 
-  it('should clamp a long note and reveal the whole of it on request', async () => {
-    renderNote({ hasBuyerNote: true, buyerNote: LONG_NOTE });
-    const user = userEvent.setup();
+  it('should offer the whole note only when the clamp really cuts text off, and reveal it on request', async () => {
+    const restore = mockClampOverflow('order-buyer-note-text');
+    try {
+      renderNote({ hasBuyerNote: true, buyerNote: LONG_NOTE });
+      const user = userEvent.setup();
 
-    const text = screen.getByTestId('order-buyer-note-text');
-    expect(text).toHaveAttribute('data-clamped', 'true');
-    const toggle = screen.getByRole('button', {
-      name: `Show the whole note (${String(LONG_NOTE.length)} characters)`,
-    });
-    await user.click(toggle);
+      const text = screen.getByTestId('order-buyer-note-text');
+      expect(text).toHaveAttribute('data-clamped', 'true');
+      const toggle = await screen.findByRole('button', {
+        name: `Show the whole note (${String(LONG_NOTE.length)} characters)`,
+      });
+      await user.click(toggle);
 
-    expect(text).toHaveAttribute('data-clamped', 'false');
-    await user.click(screen.getByRole('button', { name: 'Show less' }));
-    expect(text).toHaveAttribute('data-clamped', 'true');
+      expect(text).toHaveAttribute('data-clamped', 'false');
+      await user.click(screen.getByRole('button', { name: 'Show less' }));
+      expect(text).toHaveAttribute('data-clamped', 'true');
+    } finally {
+      restore();
+    }
   });
 
-  it('should offer no expand control for a short note', () => {
-    renderNote({ hasBuyerNote: true, buyerNote: NOTE });
+  it('should offer no expand control when the text fits the clamp, however long its source', () => {
+    // No overflow mocked: layout reports nothing hidden.
+    renderNote({ hasBuyerNote: true, buyerNote: LONG_NOTE });
 
     expect(screen.queryByTestId('order-buyer-note-expand')).not.toBeInTheDocument();
+    expect(screen.getByTestId('order-buyer-note-text')).toHaveAttribute('data-clamped', 'false');
   });
 
   it('should show an unread state and call the read marker when an operator marks it read', async () => {

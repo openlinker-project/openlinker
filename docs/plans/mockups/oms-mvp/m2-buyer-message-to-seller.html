@@ -131,37 +131,37 @@
 
     <!-- The note slot: same full-width slot as the stock-at-risk callout. State-specific content below. -->
     <div data-mk-show="detail">
-      <section class="buyer-note" aria-labelledby="bn-detail-title">
+      <section class="buyer-note" aria-labelledby="bn-detail-title" data-testid="order-buyer-note">
         <div class="buyer-note__head">
           <h3 class="buyer-note__title" id="bn-detail-title">
             <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2.5 3h11v7.5h-6.5l-3 2.5v-2.5h-1.5z"/></svg>
             Buyer note <span class="mk-pin">1</span>
           </h3>
           <span class="channel-pill" data-channel="allegro">Allegro</span>
-          <span class="buyer-note__meta">Written by the buyer at checkout · <span class="mono-text tabular">25 Sep 2026, 09:14</span> <span class="mk-pin">2</span></span>
-          <span class="buyer-note__actions"><button type="button" class="button button--ghost button--sm" data-copy>Copy</button></span>
+          <span class="buyer-note__meta" data-testid="order-buyer-note-meta">Written by the buyer at checkout · <span class="mono-text tabular">25 Sep 2026, 09:14</span> <span class="mk-pin">2</span></span>
+          <span class="buyer-note__actions"><button type="button" class="button button--ghost button--sm" data-copy data-testid="order-buyer-note-copy">Copy</button></span>
         </div>
-        <p class="buyer-note__text" lang="pl">Proszę o kubki w kolorze czerwonym, nie niebieskim. To prezent – proszę nie wkładać paragonu ani faktury do paczki.</p>
+        <p class="buyer-note__text" lang="pl" data-testid="order-buyer-note-text">Proszę o kubki w kolorze czerwonym, nie niebieskim. To prezent – proszę nie wkładać paragonu ani faktury do paczki.</p>
         <p class="buyer-note__foot">
           <span class="status-badge status-badge--success status-badge--compact"><span class="status-badge__dot" aria-hidden="true"></span><span>Read at the bench</span></span>
-          <span>Kasia Nowak · <span class="mono-text tabular">25 Sep 2026, 14:31</span> · Parcel 1 of 1</span>
+          <span data-testid="order-buyer-note-bench-state">Kasia Nowak · <span class="mono-text tabular">25 Sep 2026, 14:31</span> · Parcel 1 of 1</span>
           <span class="mk-pin">3</span>
         </p>
       </section>
     </div>
 
     <div data-mk-show="long">
-      <section class="buyer-note" aria-labelledby="bn-long-title">
+      <section class="buyer-note" aria-labelledby="bn-long-title" data-testid="order-buyer-note">
         <div class="buyer-note__head">
           <h3 class="buyer-note__title" id="bn-long-title">
             <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2.5 3h11v7.5h-6.5l-3 2.5v-2.5h-1.5z"/></svg>
             Buyer note
           </h3>
           <span class="channel-pill" data-channel="allegro">Allegro</span>
-          <span class="buyer-note__meta">Written by the buyer at checkout · <span class="mono-text tabular">25 Sep 2026, 09:14</span></span>
-          <span class="buyer-note__actions"><button type="button" class="button button--ghost button--sm" data-copy>Copy</button></span>
+          <span class="buyer-note__meta" data-testid="order-buyer-note-meta">Written by the buyer at checkout · <span class="mono-text tabular">25 Sep 2026, 09:14</span></span>
+          <span class="buyer-note__actions"><button type="button" class="button button--ghost button--sm" data-copy data-testid="order-buyer-note-copy">Copy</button></span>
         </div>
-        <p class="buyer-note__text buyer-note__text--clamped" id="bn-long-text" lang="pl">Dzień dobry, zamawiam ten zestaw jako prezent urodzinowy dla mamy, dlatego mam kilka próśb:
+        <p class="buyer-note__text buyer-note__text--clamped" id="bn-long-text" lang="pl" data-testid="order-buyer-note-text">Dzień dobry, zamawiam ten zestaw jako prezent urodzinowy dla mamy, dlatego mam kilka próśb:
 1) proszę nie wkładać do paczki paragonu ani faktury – fakturę pobiorę sobie z Allegro,
 2) kubki koniecznie w kolorze czerwonym – w opisie oferty było, że można wybrać kolor, a w koszyku nie było takiej opcji,
 3) jeśli czerwonych nie ma, proszę o kontakt, zanim wyślecie Państwo cokolwiek innego,
@@ -169,9 +169,9 @@
 Kurier może też dzwonić: 601 234 567, najlepiej po 16:00.
 Z góry dziękuję i pozdrawiam, Anna</p>
         <p class="buyer-note__foot">
-          <button type="button" class="button button--ghost button--sm" data-expand="bn-long-text" data-more="Show the whole note (563 characters)" data-less="Show less" aria-expanded="false" aria-controls="bn-long-text">Show the whole note (563 characters)</button>
+          <button type="button" class="button button--ghost button--sm" data-expand="bn-long-text" data-testid="order-buyer-note-expand" data-more="Show the whole note (563 characters)" data-less="Show less" aria-expanded="false" aria-controls="bn-long-text">Show the whole note (563 characters)</button>
           <span class="mk-pin">1</span>
-          <span>Not marked as read at the bench yet.</span>
+          <span data-testid="order-buyer-note-bench-state">Not marked as read at the bench yet.</span>
           <span class="mk-pin">2</span>
         </p>
       </section>
@@ -284,7 +284,7 @@ Z góry dziękuję i pozdrawiam, Anna</p>
 
     <div class="ds-row" style="gap:var(--space-2);flex-wrap:wrap;align-items:center;margin-bottom:var(--space-3)">
       <button type="button" class="chip chip--warning" aria-pressed="false">Ship-by ≤ 24h / overdue</button>
-      <button type="button" class="chip" id="chip-note" aria-pressed="false">With buyer note</button>
+      <button type="button" class="chip" id="chip-note" aria-pressed="false" data-testid="orders-filter-buyer-note">With buyer note</button>
       <span class="mk-pin">2</span>
     </div>
 
@@ -304,7 +304,7 @@ Z góry dziękuję i pozdrawiam, Anna</p>
               <td><button type="button" class="data-table__expand-toggle" aria-expanded="false" data-row-toggle="r1"><span class="data-table__expand-icon" aria-hidden="true">▸</span></button></td>
               <td><span class="orders-cell-stack"><span class="order-cell"><span class="product-thumbnail product-thumbnail--sm" aria-hidden="true"><span>K</span></span><span class="order-cell__body"><span class="entity-label"><a class="entity-label__name entity-label__name--link" href="#" title="b7e4c2a0-5f1d-11f1-8c3a-9d2e6b1f4a70">b7e4c2a0…4a70</a><button type="button" class="entity-label__copy">Copy</button></span><span class="orders-items-line"><span class="text-muted orders-cell-sub orders-items-preview">Kubek ceramiczny 350 ml</span><span class="orders-more-count">+1</span></span></span></span></span></td>
               <td><span class="orders-cell-stack"><span>Anna Kowalska</span><span class="text-muted orders-cell-sub">Kraków</span>
-                <span class="buyer-note-hint" title="Proszę o kubki w kolorze czerwonym, nie niebieskim. To prezent – proszę nie wkładać paragonu ani faktury do paczki."><svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2.5 3h11v7.5h-6.5l-3 2.5v-2.5h-1.5z"/></svg><span class="sr-only">Buyer note: </span><span class="buyer-note-hint__text" lang="pl">Proszę o kubki w kolorze czerwonym, nie niebieskim. To prezent…</span></span></span></td>
+                <span class="buyer-note-hint" data-testid="order-buyer-note-hint" title="Proszę o kubki w kolorze czerwonym, nie niebieskim. To prezent – proszę nie wkładać paragonu ani faktury do paczki."><svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2.5 3h11v7.5h-6.5l-3 2.5v-2.5h-1.5z"/></svg><span class="sr-only">Buyer note: </span><span class="buyer-note-hint__text" lang="pl">Proszę o kubki w kolorze czerwonym, nie niebieskim. To prezent…</span></span></span></td>
               <td class="data-table__cell--hide-below-1024"><span class="orders-cell-stack"><span class="channel-pill" data-channel="allegro">Allegro</span><span class="text-muted orders-cell-sub">→ PrestaShop</span></span></td>
               <td><span class="orders-cell-stack"><span class="status-badge status-badge--info status-badge--compact"><span class="status-badge__dot"></span><span>Awaiting dispatch</span></span><span class="status-badge status-badge--neutral status-badge--compact"><span class="status-badge__dot"></span><span>Ready</span></span></span></td>
               <td><span class="orders-cell-stack"><span class="status-badge status-badge--neutral status-badge--compact"><span class="status-badge__dot"></span><span>Not shipped</span></span><span class="orders-shipby-row"><span class="status-badge status-badge--success status-badge--compact"><span class="status-badge__dot"></span><span>On track</span></span><span class="text-muted orders-cell-sub mono tabular">23h left</span></span><span class="text-muted orders-cell-sub orders-carrier">Allegro Paczkomaty InPost</span></span></td>
@@ -316,7 +316,7 @@ Z góry dziękuję i pozdrawiam, Anna</p>
               <td><button type="button" class="data-table__expand-toggle" aria-expanded="false"><span class="data-table__expand-icon" aria-hidden="true">▸</span></button></td>
               <td><span class="orders-cell-stack"><span class="order-cell"><span class="product-thumbnail product-thumbnail--sm" aria-hidden="true"><span>L</span></span><span class="order-cell__body"><span class="entity-label"><a class="entity-label__name entity-label__name--link" href="#">ol_order_1c9e…77</a><button type="button" class="entity-label__copy">Copy</button></span><span class="orders-items-line"><span class="text-muted orders-cell-sub orders-items-preview">Lampka nocna LED, dąb</span></span></span></span></span></td>
               <td><span class="orders-cell-stack"><span>Tomasz Wiśniewski</span><span class="text-muted orders-cell-sub">Poznań</span>
-                <span class="buyer-note-hint" title="Proszę o telefon przed doręczeniem, domofon nie działa."><svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2.5 3h11v7.5h-6.5l-3 2.5v-2.5h-1.5z"/></svg><span class="sr-only">Buyer note: </span><span class="buyer-note-hint__text" lang="pl">Proszę o telefon przed doręczeniem, domofon nie działa.</span></span></span></td>
+                <span class="buyer-note-hint" data-testid="order-buyer-note-hint" title="Proszę o telefon przed doręczeniem, domofon nie działa."><svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2.5 3h11v7.5h-6.5l-3 2.5v-2.5h-1.5z"/></svg><span class="sr-only">Buyer note: </span><span class="buyer-note-hint__text" lang="pl">Proszę o telefon przed doręczeniem, domofon nie działa.</span></span></span></td>
               <td class="data-table__cell--hide-below-1024"><span class="orders-cell-stack"><span class="channel-pill" data-channel="erli">Erli</span><span class="text-muted orders-cell-sub">→ PrestaShop</span></span></td>
               <td><span class="orders-cell-stack"><span class="status-badge status-badge--info status-badge--compact"><span class="status-badge__dot"></span><span>Awaiting dispatch</span></span><span class="status-badge status-badge--neutral status-badge--compact"><span class="status-badge__dot"></span><span>Ready</span></span></span></td>
               <td><span class="orders-cell-stack"><span class="status-badge status-badge--neutral status-badge--compact"><span class="status-badge__dot"></span><span>Not shipped</span></span><span class="orders-shipby-row"><span class="status-badge status-badge--warning status-badge--compact"><span class="status-badge__dot"></span><span>At risk</span></span><span class="text-muted orders-cell-sub mono tabular"><span class="text-muted">est. </span>3h 40m left</span></span><span class="text-muted orders-cell-sub orders-carrier">DPD Kurier</span></span></td>
@@ -339,7 +339,7 @@ Z góry dziękuję i pozdrawiam, Anna</p>
               <td><button type="button" class="data-table__expand-toggle" aria-expanded="true" data-row-toggle="r4"><span class="data-table__expand-icon" aria-hidden="true">▾</span></button></td>
               <td><span class="orders-cell-stack"><span class="order-cell"><span class="product-thumbnail product-thumbnail--sm" aria-hidden="true"><span>Z</span></span><span class="order-cell__body"><span class="entity-label"><a class="entity-label__name entity-label__name--link" href="#" title="5d21f0c4-8a2b-11f1-b6d0-3e7a1c9f2b58">5d21f0c4…2b58</a><button type="button" class="entity-label__copy">Copy</button></span><span class="orders-items-line"><span class="text-muted orders-cell-sub orders-items-preview">Zestaw kubków „Mama”, 4 szt.</span><span class="orders-more-count">+2</span></span></span></span></span></td>
               <td><span class="orders-cell-stack"><span>Joanna Wójcik</span><span class="text-muted orders-cell-sub">Łódź</span>
-                <span class="buyer-note-hint" title="Dzień dobry, zamawiam ten zestaw jako prezent urodzinowy dla mamy…"><svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2.5 3h11v7.5h-6.5l-3 2.5v-2.5h-1.5z"/></svg><span class="sr-only">Buyer note: </span><span class="buyer-note-hint__text" lang="pl">Dzień dobry, zamawiam ten zestaw jako prezent urodzinowy dla mamy…</span></span></span></td>
+                <span class="buyer-note-hint" data-testid="order-buyer-note-hint" title="Dzień dobry, zamawiam ten zestaw jako prezent urodzinowy dla mamy…"><svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2.5 3h11v7.5h-6.5l-3 2.5v-2.5h-1.5z"/></svg><span class="sr-only">Buyer note: </span><span class="buyer-note-hint__text" lang="pl">Dzień dobry, zamawiam ten zestaw jako prezent urodzinowy dla mamy…</span></span></span></td>
               <td class="data-table__cell--hide-below-1024"><span class="orders-cell-stack"><span class="channel-pill" data-channel="allegro">Allegro</span><span class="text-muted orders-cell-sub">→ PrestaShop</span></span></td>
               <td><span class="orders-cell-stack"><span class="status-badge status-badge--info status-badge--compact"><span class="status-badge__dot"></span><span>Awaiting dispatch</span></span><span class="status-badge status-badge--neutral status-badge--compact"><span class="status-badge__dot"></span><span>Ready</span></span></span></td>
               <td><span class="orders-cell-stack"><span class="status-badge status-badge--neutral status-badge--compact"><span class="status-badge__dot"></span><span>Not shipped</span></span><span class="orders-shipby-row"><span class="status-badge status-badge--success status-badge--compact"><span class="status-badge__dot"></span><span>On track</span></span><span class="text-muted orders-cell-sub mono tabular">1d 4h left</span></span><span class="text-muted orders-cell-sub orders-carrier">Allegro Paczkomaty InPost</span></span></td>
@@ -350,7 +350,7 @@ Z góry dziękuję i pozdrawiam, Anna</p>
                 <div class="data-table__detail">
                   <dl class="orders-detail">
                     <div class="orders-detail__links"><a class="orders-ext-link orders-ext-link--internal" href="#">Order details <span aria-hidden="true" class="orders-ext-link__arrow">→</span></a><a class="orders-ext-link" data-channel="allegro" href="#">View on Allegro <span aria-hidden="true" class="orders-ext-link__arrow">↗</span></a></div>
-                    <div class="orders-detail__field orders-detail__field--wide"><dt class="orders-detail__label">Buyer note <span class="mk-pin">3</span></dt><dd class="orders-detail__value"><span class="buyer-note__text" style="font-size:0.8125rem" lang="pl">Dzień dobry, zamawiam ten zestaw jako prezent urodzinowy dla mamy, dlatego mam kilka próśb:
+                    <div class="orders-detail__field orders-detail__field--wide"><dt class="orders-detail__label">Buyer note <span class="mk-pin">3</span></dt><dd class="orders-detail__value" data-testid="order-row-buyer-note"><span class="buyer-note__text" style="font-size:0.8125rem" lang="pl" data-testid="order-row-buyer-note-text">Dzień dobry, zamawiam ten zestaw jako prezent urodzinowy dla mamy, dlatego mam kilka próśb:
 1) proszę nie wkładać do paczki paragonu ani faktury – fakturę pobiorę sobie z Allegro,
 2) kubki koniecznie w kolorze czerwonym – w opisie oferty było, że można wybrać kolor, a w koszyku nie było takiej opcji,
 3) jeśli czerwonych nie ma, proszę o kontakt, zanim wyślecie Państwo cokolwiek innego,
@@ -369,7 +369,7 @@ Z góry dziękuję i pozdrawiam, Anna</span></dd></div>
               <td><button type="button" class="data-table__expand-toggle" aria-expanded="false"><span class="data-table__expand-icon" aria-hidden="true">▸</span></button></td>
               <td><span class="orders-cell-stack"><span class="order-cell"><span class="product-thumbnail product-thumbnail--sm" aria-hidden="true"><span>Ś</span></span><span class="order-cell__body"><span class="entity-label"><a class="entity-label__name entity-label__name--link" href="#">10482</a><button type="button" class="entity-label__copy">Copy</button></span><span class="orders-items-line"><span class="text-muted orders-cell-sub orders-items-preview">Świeca sojowa „Las”, 200 g</span><span class="orders-more-count">+1</span></span></span></span></span></td>
               <td><span class="orders-cell-stack"><span>Magdalena Zielińska</span><span class="text-muted orders-cell-sub">Gdańsk</span>
-                <span class="buyer-note-hint" title="Zapakować na prezent, bez cen w środku."><svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2.5 3h11v7.5h-6.5l-3 2.5v-2.5h-1.5z"/></svg><span class="sr-only">Buyer note: </span><span class="buyer-note-hint__text" lang="pl">Zapakować na prezent, bez cen w środku.</span></span></span></td>
+                <span class="buyer-note-hint" data-testid="order-buyer-note-hint" title="Zapakować na prezent, bez cen w środku."><svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2.5 3h11v7.5h-6.5l-3 2.5v-2.5h-1.5z"/></svg><span class="sr-only">Buyer note: </span><span class="buyer-note-hint__text" lang="pl">Zapakować na prezent, bez cen w środku.</span></span></span></td>
               <td class="data-table__cell--hide-below-1024"><span class="orders-cell-stack"><span class="channel-pill" data-channel="woocommerce">WooCommerce</span></span></td>
               <td><span class="orders-cell-stack"><span class="status-badge status-badge--success status-badge--compact"><span class="status-badge__dot"></span><span>Synced</span></span><span class="status-badge status-badge--neutral status-badge--compact"><span class="status-badge__dot"></span><span>Ready</span></span></span></td>
               <td><span class="orders-cell-stack"><span class="status-badge status-badge--neutral status-badge--compact"><span class="status-badge__dot"></span><span>Not shipped</span></span><span class="text-muted orders-cell-sub orders-carrier">DPD Pickup</span></span></td>
@@ -390,7 +390,7 @@ Z góry dziękuję i pozdrawiam, Anna</span></dd></div>
             <div><dt>Payment</dt><dd><span class="status-badge status-badge--success status-badge--compact"><span class="status-badge__dot"></span><span>Paid</span></span></dd></div>
             <div><dt>Customer</dt><dd>Anna Kowalska</dd></div>
             <div><dt>Packed</dt><dd>—</dd></div>
-            <div class="orders-card-facts__wide"><dt>Buyer note <span class="mk-pin">4</span></dt><dd><span class="buyer-note-clamp-2" lang="pl">Proszę o kubki w kolorze czerwonym, nie niebieskim. To prezent – proszę nie wkładać paragonu ani faktury do paczki.</span></dd></div>
+            <div class="orders-card-facts__wide"><dt>Buyer note <span class="mk-pin">4</span></dt><dd><span class="buyer-note-clamp-2" data-testid="order-buyer-note-hint-card" lang="pl">Proszę o kubki w kolorze czerwonym, nie niebieskim. To prezent – proszę nie wkładać paragonu ani faktury do paczki.</span></dd></div>
             <div class="orders-card-facts__wide"><dt>Shipment</dt><dd><span class="orders-cell-stack"><span class="status-badge status-badge--neutral status-badge--compact"><span class="status-badge__dot"></span><span>Not shipped</span></span><span class="text-muted orders-cell-sub">Allegro Paczkomaty InPost</span></span></dd></div>
           </dl></div></div>
           <button type="button" class="data-table__card-disclosure" aria-expanded="false"><span class="data-table__card-disclosure-chev" aria-hidden="true">›</span>View full details</button>
@@ -413,7 +413,7 @@ Z góry dziękuję i pozdrawiam, Anna</span></dd></div>
             <div><dt>Payment</dt><dd><span class="status-badge status-badge--success status-badge--compact"><span class="status-badge__dot"></span><span>Paid</span></span></dd></div>
             <div><dt>Customer</dt><dd>Joanna Wójcik</dd></div>
             <div><dt>Packed</dt><dd>—</dd></div>
-            <div class="orders-card-facts__wide"><dt>Buyer note</dt><dd><span class="buyer-note-clamp-2" lang="pl">Dzień dobry, zamawiam ten zestaw jako prezent urodzinowy dla mamy, dlatego mam kilka próśb: 1) proszę nie wkładać do paczki paragonu ani faktury…</span></dd></div>
+            <div class="orders-card-facts__wide"><dt>Buyer note</dt><dd><span class="buyer-note-clamp-2" data-testid="order-buyer-note-hint-card" lang="pl">Dzień dobry, zamawiam ten zestaw jako prezent urodzinowy dla mamy, dlatego mam kilka próśb: 1) proszę nie wkładać do paczki paragonu ani faktury…</span></dd></div>
           </dl></div></div>
           <button type="button" class="data-table__card-disclosure" aria-expanded="false"><span class="data-table__card-disclosure-chev" aria-hidden="true">›</span>View full details</button>
         </li>
@@ -471,8 +471,8 @@ Z góry dziękuję i pozdrawiam, Anna</span></dd></div>
                       <span class="bench-work-row__item"><span class="bench-work-row__thumb bench-work-row__thumb--empty" aria-hidden="true">P</span><span class="bench-work-row__item-qty tabular">1 x</span><span class="bench-work-row__item-name">Podkładka korkowa, 4 szt.</span></span>
                     </span></span>
                     <span class="bench-work-row__buyer">Anna Kowalska</span>
-                    <span class="bench-work-row__buyer-note" data-mk-show="bench" lang="pl"><strong>Buyer note:</strong> Proszę o kubki w kolorze czerwonym, nie niebieskim. To prezent – proszę nie wkładać paragonu ani faktury do paczki.</span>
-                    <span class="bench-work-row__buyer-note" data-mk-show="bench-ack"><strong>Buyer note</strong> · read by you</span>
+                    <span class="bench-work-row__buyer-note" data-testid="bench-work-row-buyer-note" data-mk-show="bench" lang="pl"><strong>Buyer note:</strong> Proszę o kubki w kolorze czerwonym, nie niebieskim. To prezent – proszę nie wkładać paragonu ani faktury do paczki.</span>
+                    <span class="bench-work-row__buyer-note" data-testid="bench-work-row-buyer-note" data-mk-show="bench-ack"><strong>Buyer note</strong> · read by you</span>
                     <span class="bench-work-row__meta">Parcel 1 of 1 · 2 items, 3 units to scan · <span class="mono bench-work-row__reference">b7e4c2a0-5f1d-11f1-8c3a-9d2e6b1f4a70</span> · Assigned to you</span>
                   </button>
                   <span class="mk-pin" data-mk-show="bench">1</span><span class="mk-pin" data-mk-show="bench-ack">2</span>
@@ -485,7 +485,7 @@ Z góry dziękuję i pozdrawiam, Anna</span></dd></div>
                       <span class="bench-work-row__item"><span class="bench-work-row__thumb bench-work-row__thumb--empty" aria-hidden="true">D</span><span class="bench-work-row__item-qty tabular">1 x</span><span class="bench-work-row__item-name">Dzbanek ceramiczny 1 l, czerwony</span></span>
                     </span></span>
                     <span class="bench-work-row__buyer">Joanna Wójcik</span>
-                    <span class="bench-work-row__buyer-note" lang="pl"><strong>Buyer note:</strong> Dzień dobry, zamawiam ten zestaw jako prezent urodzinowy dla mamy, dlatego mam kilka próśb…</span>
+                    <span class="bench-work-row__buyer-note" data-testid="bench-work-row-buyer-note" lang="pl"><strong>Buyer note:</strong> Dzień dobry, zamawiam ten zestaw jako prezent urodzinowy dla mamy, dlatego mam kilka próśb…</span>
                     <span class="bench-work-row__meta">Parcel 2 of 2 · 1 item, 1 unit to scan · <span class="mono bench-work-row__reference">5d21f0c4-8a2b-11f1-b6d0-3e7a1c9f2b58</span> · Assigned to you</span>
                   </button>
                   <span class="mk-pin">1</span>
@@ -512,7 +512,7 @@ Z góry dziękuję i pozdrawiam, Anna</span></dd></div>
                       <span class="bench-work-row__item"><span class="bench-work-row__thumb bench-work-row__thumb--empty" aria-hidden="true">L</span><span class="bench-work-row__item-qty tabular">1 x</span><span class="bench-work-row__item-name">Lampka nocna LED, dąb</span></span>
                     </span></span>
                     <span class="bench-work-row__buyer">Tomasz Wiśniewski</span>
-                    <span class="bench-work-row__buyer-note" lang="pl"><strong>Buyer note:</strong> Proszę o telefon przed doręczeniem, domofon nie działa.</span>
+                    <span class="bench-work-row__buyer-note" data-testid="bench-work-row-buyer-note" lang="pl"><strong>Buyer note:</strong> Proszę o telefon przed doręczeniem, domofon nie działa.</span>
                     <span class="bench-work-row__meta">Parcel 1 of 1 · 1 item, 1 unit to scan · <span class="mono bench-work-row__reference">ol_order_1c9e…77</span></span>
                   </button>
                 </li>
@@ -538,28 +538,28 @@ Z góry dziękuję i pozdrawiam, Anna</span></dd></div>
             <p class="bench-parcel__scope">Everything below belongs in this box only. The other boxes of this order are being handled somewhere else.</p>
 
             <!-- UNREAD (bench) -->
-            <section class="bench-buyer-note" id="bench-note-unread" data-mk-show="bench" aria-labelledby="bench-note-title">
+            <section class="bench-buyer-note" id="bench-note-unread" data-mk-show="bench" aria-labelledby="bench-note-title" data-testid="bench-buyer-note">
               <div class="bench-buyer-note__head">
                 <h3 class="bench-parcel__field-label" id="bench-note-title" style="margin:0"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2.5 3h11v7.5h-6.5l-3 2.5v-2.5h-1.5z"/></svg>Buyer note</h3>
                 <span class="bench-buyer-note__meta">The buyer wrote this at checkout on Allegro.</span>
                 <span class="mk-pin">2</span>
               </div>
-              <p class="bench-buyer-note__text" lang="pl">Proszę o kubki w kolorze czerwonym, nie niebieskim. To prezent – proszę nie wkładać paragonu ani faktury do paczki.</p>
+              <p class="bench-buyer-note__text" lang="pl" data-testid="bench-buyer-note-text">Proszę o kubki w kolorze czerwonym, nie niebieskim. To prezent – proszę nie wkładać paragonu ani faktury do paczki.</p>
               <div class="bench-buyer-note__foot">
-                <button type="button" class="button button--secondary" id="bench-ack-btn">I have read the note</button>
+                <button type="button" class="button button--secondary" id="bench-ack-btn" data-testid="bench-buyer-note-acknowledge">I have read the note</button>
                 <span class="bench-buyer-note__hint">Scanning works either way. This records that you saw it, for this box.</span>
                 <span class="mk-pin">3</span>
               </div>
             </section>
             <!-- READ (bench-ack, and after clicking in bench) -->
-            <section class="bench-buyer-note bench-buyer-note--read" id="bench-note-read" data-mk-show="bench-ack" aria-labelledby="bench-note-read-title">
+            <section class="bench-buyer-note bench-buyer-note--read" id="bench-note-read" data-mk-show="bench-ack" aria-labelledby="bench-note-read-title" data-testid="bench-buyer-note">
               <div class="bench-buyer-note__head">
                 <h3 class="bench-parcel__field-label" id="bench-note-read-title" style="margin:0"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2.5 3h11v7.5h-6.5l-3 2.5v-2.5h-1.5z"/></svg>Buyer note</h3>
-                <span class="status-badge status-badge--success status-badge--compact"><span class="status-badge__dot" aria-hidden="true"></span><span>Read by you at 14:31</span></span>
+                <span class="status-badge status-badge--success status-badge--compact" data-testid="bench-buyer-note-read-badge"><span class="status-badge__dot" aria-hidden="true"></span><span>Read by you at 14:31</span></span>
                 <span class="mk-pin">1</span>
               </div>
-              <p class="bench-buyer-note__text bench-buyer-note__text--clamped" id="bench-note-read-text" lang="pl">Proszę o kubki w kolorze czerwonym, nie niebieskim. To prezent – proszę nie wkładać paragonu ani faktury do paczki.</p>
-              <div class="bench-buyer-note__foot"><button type="button" class="button button--ghost" data-expand="bench-note-read-text" data-more="Show the whole note" data-less="Show less" aria-expanded="false" aria-controls="bench-note-read-text">Show the whole note</button></div>
+              <p class="bench-buyer-note__text bench-buyer-note__text--clamped" id="bench-note-read-text" lang="pl" data-testid="bench-buyer-note-text">Proszę o kubki w kolorze czerwonym, nie niebieskim. To prezent – proszę nie wkładać paragonu ani faktury do paczki.</p>
+              <div class="bench-buyer-note__foot"><button type="button" class="button button--ghost" data-expand="bench-note-read-text" data-testid="bench-buyer-note-expand" data-more="Show the whole note" data-less="Show less" aria-expanded="false" aria-controls="bench-note-read-text">Show the whole note</button></div>
             </section>
 
             <section class="bench-hero">
@@ -617,23 +617,23 @@ Z góry dziękuję i pozdrawiam, Anna</span></dd></div>
             </header>
             <p class="bench-parcel__scope">Everything below belongs in this box only. The other boxes of this order are being handled somewhere else.</p>
 
-            <section class="bench-buyer-note" aria-labelledby="bench-note-multi-title">
+            <section class="bench-buyer-note" aria-labelledby="bench-note-multi-title" data-testid="bench-buyer-note">
               <div class="bench-buyer-note__head">
                 <h3 class="bench-parcel__field-label" id="bench-note-multi-title" style="margin:0"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2.5 3h11v7.5h-6.5l-3 2.5v-2.5h-1.5z"/></svg>Buyer note</h3>
                 <span class="bench-buyer-note__meta">The buyer wrote this at checkout on Allegro. It is about the whole order.</span>
                 <span class="mk-pin">2</span>
               </div>
-              <p class="bench-buyer-note__text bench-buyer-note__text--clamped" id="bench-note-multi-text" lang="pl">Dzień dobry, zamawiam ten zestaw jako prezent urodzinowy dla mamy, dlatego mam kilka próśb:
+              <p class="bench-buyer-note__text bench-buyer-note__text--clamped" id="bench-note-multi-text" lang="pl" data-testid="bench-buyer-note-text">Dzień dobry, zamawiam ten zestaw jako prezent urodzinowy dla mamy, dlatego mam kilka próśb:
 1) proszę nie wkładać do paczki paragonu ani faktury – fakturę pobiorę sobie z Allegro,
 2) kubki koniecznie w kolorze czerwonym – w opisie oferty było, że można wybrać kolor, a w koszyku nie było takiej opcji,
 3) jeśli czerwonych nie ma, proszę o kontakt, zanim wyślecie Państwo cokolwiek innego,
 4) paczkomat KRA01M bywa zapchany, więc gdyby nie było miejsca, to proszę o KRA12N.
 Kurier może też dzwonić: 601 234 567, najlepiej po 16:00.
 Z góry dziękuję i pozdrawiam, Anna</p>
-              <p class="bench-buyer-note__others">Kasia Nowak read it on parcel 1 of 2 at 14:31. Each box records its own reading.</p>
+              <p class="bench-buyer-note__others" data-testid="bench-buyer-note-others">Kasia Nowak read it on parcel 1 of 2 at 14:31. Each box records its own reading.</p>
               <div class="bench-buyer-note__foot">
-                <button type="button" class="button button--secondary" data-ack-simple>I have read the note</button>
-                <button type="button" class="button button--ghost" data-expand="bench-note-multi-text" data-more="Show the whole note" data-less="Show less" aria-expanded="false" aria-controls="bench-note-multi-text">Show the whole note</button>
+                <button type="button" class="button button--secondary" data-ack-simple data-testid="bench-buyer-note-acknowledge">I have read the note</button>
+                <button type="button" class="button button--ghost" data-expand="bench-note-multi-text" data-testid="bench-buyer-note-expand" data-more="Show the whole note" data-less="Show less" aria-expanded="false" aria-controls="bench-note-multi-text">Show the whole note</button>
                 <span class="mk-pin">3</span>
               </div>
             </section>

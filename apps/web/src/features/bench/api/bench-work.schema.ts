@@ -60,6 +60,13 @@ export const benchWorkSchema = z.object({
   assignmentState: z.string(),
   claimable: z.boolean(),
   completedAt: nullableString,
+  // #3539. Defaulted: an API that predates the buyer note reads "no note" and
+  // the row still renders.
+  hasBuyerNote: z
+    .boolean()
+    .nullish()
+    .transform((value) => value ?? false),
+  buyerNoteAcknowledgedAt: nullableString,
 });
 
 export const benchRoutingReadinessSchema = z.object({

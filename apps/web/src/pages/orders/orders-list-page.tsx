@@ -719,7 +719,7 @@ export function OrdersListPage(): ReactElement {
           const name = customerName(parsed);
           if (!name) {
             return order.hasBuyerNote === true ? (
-              <OrderBuyerNoteHint hasBuyerNote={order.hasBuyerNote} />
+              <OrderBuyerNoteHint hasBuyerNote={order.hasBuyerNote} preview={order.buyerNotePreview} />
             ) : (
               <span className="text-muted">—</span>
             );
@@ -729,7 +729,7 @@ export function OrdersListPage(): ReactElement {
             <span className="orders-cell-stack">
               <span>{name}</span>
               {city ? <span className="text-muted orders-cell-sub">{city}</span> : null}
-              <OrderBuyerNoteHint hasBuyerNote={order.hasBuyerNote} />
+              <OrderBuyerNoteHint hasBuyerNote={order.hasBuyerNote} preview={order.buyerNotePreview} />
             </span>
           );
         },
@@ -1629,7 +1629,11 @@ export function OrdersListPage(): ReactElement {
                         <div className="orders-card-facts__wide">
                           <dt>Buyer note</dt>
                           <dd>
-                            <OrderBuyerNoteHint hasBuyerNote={order.hasBuyerNote} layout="card" />
+                            <OrderBuyerNoteHint
+                              hasBuyerNote={order.hasBuyerNote}
+                              preview={order.buyerNotePreview}
+                              layout="card"
+                            />
                           </dd>
                         </div>
                       ) : null}

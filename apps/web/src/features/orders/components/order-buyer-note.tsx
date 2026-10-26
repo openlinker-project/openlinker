@@ -21,6 +21,8 @@
  */
 import { useEffect, useRef, useState, type ReactElement } from 'react';
 
+import { useClampOverflow } from '../../../shared/hooks/use-clamp-overflow';
+
 import { useSession } from '../../../shared/auth/use-session';
 import { useWriteAccess } from '../../../shared/auth/use-permission';
 import { Button } from '../../../shared/ui/button';
@@ -31,7 +33,7 @@ import { readBuyerNote } from '../api/buyer-note.schema';
 import type { OrderRecord } from '../api/orders.types';
 import { useMarkBuyerNoteReadMutation } from '../hooks/use-mark-buyer-note-read-mutation';
 import { BUYER_NOTE_COPY as COPY } from '../lib/buyer-note.copy';
-import { describeNoteActor, isLongBuyerNote } from '../lib/buyer-note-presentation';
+import { describeNoteActor } from '../lib/buyer-note-presentation';
 import { copyTextToClipboard } from '../lib/clipboard-write';
 import { BuyerNoteIcon } from './buyer-note-icon';
 
@@ -67,6 +69,11 @@ export function OrderBuyerNote({
   const [expanded, setExpanded] = useState(false);
   const [copied, setCopied] = useState(false);
   const copiedTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const textRef = useRef<HTMLParagraphElement>(null);
+  const noteText = view.kind === 'text' ? view.text : '';
+  // Measured, not estimated: the clamp is by line count, so only the browser
+  // knows whether it cut anything off at this width and font.
+  const overflowing = useClampOverflow(textRef, !expanded, [noteText]);
 
   useEffect(
     () => () => {
@@ -94,8 +101,7 @@ export function OrderBuyerNote({
     );
   }
 
-  const long = isLongBuyerNote(view.text);
-  const clamped = long && !expanded;
+  const clamped = !expanded;
   const unread = view.readAt === null;
   const currentUserId = session.user?.id ?? null;
   const readActor = describeNoteActor(view.readByUserId, currentUserId);
@@ -166,11 +172,12 @@ export function OrderBuyerNote({
       </div>
 
       <p
+        ref={textRef}
         className={`buyer-note__text${clamped ? ' buyer-note__text--clamped' : ''}`}
         lang="und"
         id={`buyer-note-text-${order.internalOrderId}`}
         data-testid="order-buyer-note-text"
-        data-clamped={clamped ? 'true' : 'false'}
+        data-clamped={clamped && overflowing ? 'true' : 'false'}
       >
         {view.text}
       </p>
@@ -182,7 +189,7 @@ export function OrderBuyerNote({
       ) : null}
 
       <p className="buyer-note__foot">
-        {long ? (
+        {overflowing || expanded ? (
           <Button
             tone="ghost"
             className="button--sm"

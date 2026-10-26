@@ -441,6 +441,9 @@ export interface OrderReservationShortfall {
   openedAt: string;
 }
 
+export const BuyerNoteListStateValues = ['present', 'none', 'unknown'] as const;
+export type BuyerNoteListStateValue = (typeof BuyerNoteListStateValues)[number];
+
 /** One parcel's bench acknowledgement of the buyer note (#3538). */
 export interface BuyerNoteAcknowledgement {
   workId: string;
@@ -610,6 +613,18 @@ export interface OrderRecord {
    * degradation on a pre-#3538 payload.
    */
   hasBuyerNote?: boolean;
+  /**
+   * What the LIST can say about the note without reading it (#3538/#3539):
+   * `present`, `none` (the source asserted the buyer left nothing) or
+   * `unknown` (the source could not say - which is also what a note-less row
+   * reads under `OL_STORE_PII=false`). Optional for graceful degradation.
+   */
+  buyerNoteState?: BuyerNoteListStateValue;
+  /**
+   * First non-empty line of the note, at most 120 characters, no ellipsis
+   * added - the browser truncates. `null` when no text is stored.
+   */
+  buyerNotePreview?: string | null;
   /**
    * The buyer's checkout note, DETAIL READ ONLY, in THREE states that must
    * never be collapsed: a string is the note verbatim; `null` means the source

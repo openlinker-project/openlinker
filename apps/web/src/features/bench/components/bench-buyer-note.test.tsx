@@ -74,6 +74,33 @@ function renderNote(
   return { acknowledge, ...utils };
 }
 
+
+/**
+ * jsdom does no layout, so `scrollHeight` / `clientHeight` are always 0. This
+ * stands in for a browser whose clamp IS cutting the text off: the hook under
+ * test measures, so the measurement is what gets mocked.
+ */
+function mockClampOverflow(testId: string): () => void {
+  const scroll = Object.getOwnPropertyDescriptor(Element.prototype, 'scrollHeight');
+  const client = Object.getOwnPropertyDescriptor(Element.prototype, 'clientHeight');
+  Object.defineProperty(Element.prototype, 'scrollHeight', {
+    configurable: true,
+    get(this: Element) {
+      return this.getAttribute('data-testid') === testId ? 200 : 0;
+    },
+  });
+  Object.defineProperty(Element.prototype, 'clientHeight', {
+    configurable: true,
+    get(this: Element) {
+      return this.getAttribute('data-testid') === testId ? 80 : 0;
+    },
+  });
+  return () => {
+    if (scroll) Object.defineProperty(Element.prototype, 'scrollHeight', scroll);
+    if (client) Object.defineProperty(Element.prototype, 'clientHeight', client);
+  };
+}
+
 afterEach(cleanup);
 
 describe('BenchBuyerNote (#3539)', () => {
@@ -174,6 +201,26 @@ describe('BenchBuyerNote (#3539)', () => {
 
     expect(screen.getByTestId('bench-buyer-note-text')).toBeInTheDocument();
     expect(screen.queryByTestId('bench-buyer-note-acknowledge')).not.toBeInTheDocument();
+  });
+
+  it('should offer to show the whole note on an open box only when the clamp cuts text off', async () => {
+    const restore = mockClampOverflow('bench-buyer-note-text');
+    try {
+      renderNote(parcel({ buyerNote: LONG }));
+      const user = userEvent.setup();
+
+      await user.click(await screen.findByTestId('bench-buyer-note-expand'));
+
+      expect(screen.getByRole('button', { name: 'Show less' })).toBeInTheDocument();
+    } finally {
+      restore();
+    }
+  });
+
+  it('should offer no expand control on an open box when everything fits', () => {
+    renderNote(parcel({ buyerNote: LONG }));
+
+    expect(screen.queryByTestId('bench-buyer-note-expand')).not.toBeInTheDocument();
   });
 
   it('should show the note on a split parcel as about the whole order, with the other packer as context only', () => {

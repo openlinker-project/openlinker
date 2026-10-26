@@ -22,9 +22,10 @@
  *
  * @module apps/web/src/features/bench/components
  */
-import { useState, type ReactElement } from 'react';
+import { useRef, useState, type ReactElement } from 'react';
 
 import { useSession } from '../../../shared/auth/use-session';
+import { useClampOverflow } from '../../../shared/hooks/use-clamp-overflow';
 import { Button } from '../../../shared/ui/button';
 import { formatAbsoluteTime } from '../../../shared/format/format-date';
 import { StatusBadge } from '../../../shared/ui/status-badge';
@@ -33,15 +34,6 @@ import { useBenchBuyerNoteAcknowledgeMutation } from '../hooks/use-bench-buyer-n
 import { benchParcelCopy } from '../lib/bench-parcel.copy';
 
 const COPY = benchParcelCopy.buyerNote;
-
-/**
- * Offer the clamp control only for a note that will not fit the clamp: a short
- * note never grows a "Show the whole note" button that does nothing. An
- * estimate rather than a DOM measurement, which would vary by font and width.
- */
-function isLongNote(text: string): boolean {
-  return text.length > 220 || text.split('\n').length > 4;
-}
 
 export interface BenchBuyerNoteProps {
   readonly parcel: BenchParcel;
@@ -71,13 +63,16 @@ export function BenchBuyerNote({ parcel, canAcknowledge }: BenchBuyerNoteProps):
   const { session } = useSession();
   const acknowledge = useBenchBuyerNoteAcknowledgeMutation();
   const [expanded, setExpanded] = useState(false);
+  const textRef = useRef<HTMLParagraphElement>(null);
+  // Measured, never estimated: only the browser knows whether the clamp cut
+  // anything off at this width and font size.
+  const overflowing = useClampOverflow(textRef, !expanded, [parcel.buyerNote]);
 
   if (parcel.buyerNote === null || parcel.buyerNote.trim().length === 0) return null;
 
   const currentUserId = session.user?.id ?? null;
   const read = parcel.buyerNoteAcknowledgedAt !== null;
   const wholeOrder = parcel.parcelTotal > 1;
-  const long = isLongNote(parcel.buyerNote);
   const refusedReason =
     acknowledge.data?.outcome === 'refused' ? (acknowledge.data.reason ?? 'unknown') : null;
   const failed = acknowledge.isError || refusedReason !== null;
@@ -109,6 +104,7 @@ export function BenchBuyerNote({ parcel, canAcknowledge }: BenchBuyerNoteProps):
         <p
           className={`bench-buyer-note__text${expanded ? '' : ' bench-buyer-note__text--clamped'}`}
           id={textId}
+          ref={textRef}
           lang="und"
           data-testid="bench-buyer-note-text"
         >
@@ -151,9 +147,10 @@ export function BenchBuyerNote({ parcel, canAcknowledge }: BenchBuyerNoteProps):
       </div>
       <p
         className={`bench-buyer-note__text${
-          long && !expanded ? ' bench-buyer-note__text--clamped' : ''
+          !expanded ? ' bench-buyer-note__text--clamped' : ''
         }`}
         id={textId}
+        ref={textRef}
         lang="und"
         data-testid="bench-buyer-note-text"
       >
@@ -194,7 +191,7 @@ export function BenchBuyerNote({ parcel, canAcknowledge }: BenchBuyerNoteProps):
             {acknowledge.isPending ? COPY.saving : COPY.acknowledge}
           </Button>
         ) : null}
-        {long ? (
+        {overflowing || expanded ? (
           <Button
             tone="ghost"
             data-testid="bench-buyer-note-expand"

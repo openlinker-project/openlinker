@@ -227,6 +227,13 @@ export function BenchWorkRow({
         ) : null}
       </span>
 
+      {work.hasBuyerNote ? (
+        <span className="bench-work-row__buyer-note" data-testid="bench-work-row-buyer-note">
+          <strong>{benchWorkCopy.row.buyerNote}</strong>
+          {work.buyerNoteAcknowledgedAt === null ? null : <> · {benchWorkCopy.row.buyerNoteRead}</>}
+        </span>
+      ) : null}
+
       {work.state === 'held' ? (
         <span className="bench-work-row__note">{benchWorkCopy.row.heldBody}</span>
       ) : null}
