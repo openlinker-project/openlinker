@@ -96,3 +96,33 @@ export interface ConfirmOrderChangeResult {
   invoiceStatus: string;
   documentNumber: string | null;
 }
+
+export const OrderChangeKindValues = ['order.cancel_request', 'order.cancel_correction'] as const;
+export type OrderChangeKind = (typeof OrderChangeKindValues)[number];
+
+/**
+ * One row of `GET /orders/:internalOrderId/changes` (#3540): what an operator
+ * asked of the order and the credit proposal it left, newest first. This read is
+ * what lets a reloaded page, or a second admin, find a pending cancel and the
+ * correction awaiting confirmation.
+ */
+export interface OrderChangeView {
+  id: string;
+  kind: OrderChangeKind;
+  /** Raw status: pending | requested | confirmed | declined | canceled | expired. */
+  status: string;
+  /** Still open under the lazy-expiry TTL. Read this, not `status`, for "waiting". */
+  open: boolean;
+  requestedAt: string;
+  confirmedAt: string | null;
+  declinedReason: string | null;
+  payload: {
+    cancelRequest: { reason: string; note: string | null } | null;
+    correction: {
+      invoiceRecordId: string;
+      documentNumber: string | null;
+      currency: string;
+      lines: CancelCorrectionProposalLine[];
+    } | null;
+  };
+}

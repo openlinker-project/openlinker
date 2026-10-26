@@ -221,3 +221,32 @@ export const CONFIRM_CORRECTION_ERROR_TITLES: Partial<Record<OrderCancelErrorCod
   CORRECTION_NEEDS_RECONCILIATION: 'The correction needs checking at the provider',
   CORRECTION_FAILED: 'The invoicing provider rejected the correction',
 };
+
+/** The figures a `refund_ceiling_exceeded` 409 carries. */
+export interface RefundCeilingFigures {
+  ceiling: string;
+  alreadyRefunded: string;
+  requested: string;
+  currency: string;
+}
+
+/**
+ * Read the ceiling refusal off a refund error, or null for any other failure.
+ * Keyed on the body's `code` (the backend states it separately from `error`),
+ * never on the message.
+ */
+export function readRefundCeilingFigures(error: unknown): RefundCeilingFigures | null {
+  if (!(error instanceof ApiError)) return null;
+  const details = error.details;
+  if (typeof details !== 'object' || details === null) return null;
+  const body = details as Record<string, unknown>;
+  if (body.code !== 'refund_ceiling_exceeded') return null;
+  const text = (value: unknown): string =>
+    typeof value === 'number' || typeof value === 'string' ? String(value) : '?';
+  return {
+    ceiling: text(body.ceiling),
+    alreadyRefunded: text(body.alreadyRefunded),
+    requested: text(body.requested),
+    currency: typeof body.currency === 'string' ? body.currency : '',
+  };
+}
