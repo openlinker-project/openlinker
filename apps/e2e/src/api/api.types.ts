@@ -380,7 +380,7 @@ export interface IssueInvoiceInput {
   documentType?: string;
   idempotencyKey?: string;
   buyerIsPublicSectorEntity?: boolean;
-  buyerIsVatGroupMember?: boolean;
+  buyerIsTaxGroupMember?: boolean;
   /** Warning codes accepted after a 422 `acknowledgement-required` / 409 `warningCode`. */
   acknowledgeWarnings?: string[];
   /** DEF-20: per-issue fiscal annotations (KSeF Adnotacje). */
@@ -881,7 +881,7 @@ export interface IssueCorrectionBuyerOverrideInput {
   };
   type: 'company' | 'private';
   isPublicSectorEntity?: boolean;
-  isVatGroupMember?: boolean;
+  isTaxGroupMember?: boolean;
 }
 
 /** POST /invoices/:invoiceId/send-email request body (#1353). */

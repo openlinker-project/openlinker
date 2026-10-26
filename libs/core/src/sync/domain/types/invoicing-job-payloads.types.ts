@@ -53,7 +53,7 @@ export interface InvoicingIssueBuyerV1 {
    * the issued document silently loses.
    */
   isPublicSectorEntity?: boolean;
-  isVatGroupMember?: boolean;
+  isTaxGroupMember?: boolean;
 }
 
 /**

@@ -363,7 +363,7 @@ export class InvoicingIssueHandler implements SyncJobHandler {
       payload.buyer.type,
       payload.buyer.email ?? null,
       payload.buyer.isPublicSectorEntity,
-      payload.buyer.isVatGroupMember,
+      payload.buyer.isTaxGroupMember,
     );
 
     const command: IssueInvoiceCommand = {

@@ -113,8 +113,8 @@ export function mapToFa3BuilderInput(
     ...(cmd.buyer.isPublicSectorEntity !== undefined
       ? { buyerIsPublicSectorEntity: cmd.buyer.isPublicSectorEntity }
       : {}),
-    ...(cmd.buyer.isVatGroupMember !== undefined
-      ? { buyerIsVatGroupMember: cmd.buyer.isVatGroupMember }
+    ...(cmd.buyer.isTaxGroupMember !== undefined
+      ? { buyerIsVatGroupMember: cmd.buyer.isTaxGroupMember }
       : {}),
     // Operator-supplied fiscal annotation flags → the FA(3) Adnotacje block
     // (#1580). Forwarded only when set; the builder derives reverse-charge /

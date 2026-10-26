@@ -490,7 +490,7 @@ export class InvoicingController {
         taxRateEra: record.taxRateEra,
         // #1580: operator-supplied buyer classification → provider JST/GV.
         buyerIsPublicSectorEntity: dto.buyerIsPublicSectorEntity,
-        buyerIsVatGroupMember: dto.buyerIsVatGroupMember,
+        buyerIsTaxGroupMember: dto.buyerIsTaxGroupMember,
       });
     } catch (error) {
       throw this.toHttpException(error);
@@ -1021,7 +1021,7 @@ export class InvoicingController {
               // their documents go, so the original's e-mail carries over.
               originalDocument?.buyer.email ?? null,
               dto.buyerOverride.isPublicSectorEntity,
-              dto.buyerOverride.isVatGroupMember,
+              dto.buyerOverride.isTaxGroupMember,
             )
           : undefined,
       });

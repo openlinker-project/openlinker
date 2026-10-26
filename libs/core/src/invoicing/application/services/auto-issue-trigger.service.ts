@@ -1296,8 +1296,8 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
         ...(command.buyer.isPublicSectorEntity !== undefined
           ? { isPublicSectorEntity: command.buyer.isPublicSectorEntity }
           : {}),
-        ...(command.buyer.isVatGroupMember !== undefined
-          ? { isVatGroupMember: command.buyer.isVatGroupMember }
+        ...(command.buyer.isTaxGroupMember !== undefined
+          ? { isTaxGroupMember: command.buyer.isTaxGroupMember }
           : {}),
       },
       sourceConnectionId,

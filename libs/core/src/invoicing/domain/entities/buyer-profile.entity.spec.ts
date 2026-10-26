@@ -54,12 +54,12 @@ describe('BuyerProfile.fromSnapshot (DEF-08)', () => {
       type: 'company',
       email: 'faktury@gmina.example',
       isPublicSectorEntity: true,
-      isVatGroupMember: false,
+      isTaxGroupMember: false,
     });
 
     expect(buyer.email).toBe('faktury@gmina.example');
     expect(buyer.isPublicSectorEntity).toBe(true);
-    expect(buyer.isVatGroupMember).toBe(false);
+    expect(buyer.isTaxGroupMember).toBe(false);
   });
 
   it('should read a snapshot written before e-mail existed as no e-mail', () => {

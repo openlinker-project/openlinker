@@ -136,6 +136,6 @@ function canonicalizeBuyer(buyer: BuyerProfile): string {
     buyer.address.countryIso2,
     buyer.type,
     buyer.isPublicSectorEntity ?? null,
-    buyer.isVatGroupMember ?? null,
+    buyer.isTaxGroupMember ?? null,
   ]);
 }

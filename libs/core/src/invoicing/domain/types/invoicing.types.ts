@@ -524,7 +524,7 @@ export interface IssuedSnapshotBuyer {
   email: string | null;
   /** Operator-supplied fiscal classification as issued (#1580); see {@link BuyerProfile}. */
   isPublicSectorEntity?: boolean;
-  isVatGroupMember?: boolean;
+  isTaxGroupMember?: boolean;
 }
 
 /**

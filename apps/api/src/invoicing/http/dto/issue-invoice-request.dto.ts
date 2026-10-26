@@ -79,7 +79,7 @@ export class IssueInvoiceRequestDto {
   })
   @IsOptional()
   @IsBoolean()
-  buyerIsVatGroupMember?: boolean;
+  buyerIsTaxGroupMember?: boolean;
 
   @ApiPropertyOptional({
     type: InvoiceAnnotationsDto,

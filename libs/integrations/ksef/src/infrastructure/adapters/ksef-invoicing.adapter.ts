@@ -198,7 +198,7 @@ function buyerDataDiffers(before: BuyerProfile, after: BuyerProfile): boolean {
     address(before) !== address(after) ||
     before.type !== after.type ||
     (before.isPublicSectorEntity ?? false) !== (after.isPublicSectorEntity ?? false) ||
-    (before.isVatGroupMember ?? false) !== (after.isVatGroupMember ?? false)
+    (before.isTaxGroupMember ?? false) !== (after.isTaxGroupMember ?? false)
   );
 }
 
@@ -571,7 +571,7 @@ export class KsefInvoicingAdapter
           'MF documentation expects one. Add the unit, or confirm to issue without it.',
       );
     }
-    if (cmd.buyer.isVatGroupMember && !roles.has(KSEF_ROLE_VAT_GROUP_MEMBER)) {
+    if (cmd.buyer.isTaxGroupMember && !roles.has(KSEF_ROLE_VAT_GROUP_MEMBER)) {
       requireAcknowledgement(
         cmd.acknowledgedWarnings,
         KSEF_GV_WITHOUT_MEMBER_WARNING,

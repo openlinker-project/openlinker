@@ -257,7 +257,7 @@ Reference values: valid `1189981779`, `5261040828`, `5252248481`, `1234563218`, 
 | JSTGV-03 | KSeF mapper | #1580 | - | `cmd.buyer.isPublicSectorEntity=false` | Forwarded as false -> 2 | unit | P2 | `fa3-builder-input.mapper.ts:111-116` | 1 (JG-03) | - |
 | JSTGV-04 | core mapper | #1580 | - | `toIssueInvoiceCommand({..., buyerIsPublicSectorEntity:true})` | `BuyerProfile.isPublicSectorEntity === true` | unit | P1 | `order-to-issue-invoice-command.mapper.ts:226-233` | 1 (JG-04) | `order-to-issue-invoice-command.mapper.spec.ts` |
 | JSTGV-05 | API JST | #1580 AC2 | Admin, KSeF connection, issuable order | `POST /invoices {orderId, connectionId, buyerIsPublicSectorEntity:true}` | Issued; source XML `JST=1`, `GV=2` | e2e-API | P1 | `issue-invoice-request.dto.ts:54-70`; `invoicing.controller.ts:462-463` | 1 (JG-05); 2 (JST-01); 3 (ADDR-08) | - |
-| JSTGV-06 | API GV | #1580 AC2 | Same | `buyerIsVatGroupMember:true` | `JST=2`, `GV=1` | e2e-API | P1 | same | 2 (JST-02); 3 (ADDR-09) | - |
+| JSTGV-06 | API GV | #1580 AC2 | Same | `buyerIsTaxGroupMember:true` | `JST=2`, `GV=1` | e2e-API | P1 | same | 2 (JST-02); 3 (ADDR-09) | - |
 | JSTGV-07 | both live | #1580 | KSeF TEST | Both flags true | `JST=1`, `GV=1`, XSD-valid, accepted | e2e-API + manual-KSeF-portal | P1 | same | 2 (JST-03) | - |
 | JSTGV-08 | Podmiot3 | #1580 | KSeF TEST | Submit JST=1 / GV=1 without a `Podmiot3` | Record accept/reject; KSeF semantic validation may require Podmiot3 with the matching role (DEF-30, UNCERTAIN) | manual-KSeF-portal | P1 | `fa3-xml.builder.ts:415-416` | 3 (ADDR-13) | - |
 | JSTGV-09 | DTO type | #1580 | - | `buyerIsPublicSectorEntity:"true"` (string) / `1` | 400 `isBoolean` | unit | P2 | `issue-invoice-request.dto.ts:58-70` | 1 (JG-06); 2 (JST-05); 3 (ADDR-12) | - |
@@ -714,7 +714,7 @@ Matrix rows, not prioritised test cases. "Dead seam" = no producer anywhere in t
 | REACH-01 | Live order-status gate | n/a | n/a | yes (worker `invoicing.issue`) | manual issue, bulk issue, fiscal receipts have no gate | GATE-17, GATE-18 | 2 (§14); 3 (§21) |
 | REACH-02 | Seller NIP checksum | yes (wizard + edit) | yes (config validator) | n/a | - | stored with separators if sent via API (DEF-12) | 2 (§14) |
 | REACH-03 | Buyer NIP checksum | no (FE never sends `buyerTaxId`) | yes (`pl-nip` scheme only, `POST /invoices`, correction override) | no (order-derived NIP never checked) | - | NIP-38 | 1 (REACH-03); 2 (§14) |
-| REACH-04 | JST / GV flags | no | `POST /invoices` (`buyerIsPublicSectorEntity`, `buyerIsVatGroupMember`); correction `buyerOverride.*` | no (auto, bulk, retry never set them) | - | lost on correction (DEF-08) | 1 (REACH-01); 2 (§14); 3 (§21) |
+| REACH-04 | JST / GV flags | no | `POST /invoices` (`buyerIsPublicSectorEntity`, `buyerIsTaxGroupMember`); correction `buyerOverride.*` | no (auto, bulk, retry never set them) | - | lost on correction (DEF-08) | 1 (REACH-01); 2 (§14); 3 (§21) |
 | REACH-05 | Buyer override on correction | no | `POST /invoices/:id/correct` (needs >= 1 line delta) | n/a | pure buyer-only correction | honoured by KSeF only (DEF-09); `Podmiot2K` missing (DEF-23) | 1 (REACH-02); 2 (§14); 3 (§21) |
 | REACH-06 | Adnotacje operator flags (P_16, P_17, P_18A, P_23, PMarzy, `exemptionLegalBasis`) | no | no | no | **yes - dead seam** | ADN-11 | 1 (REACH-04); 2 (§14); 3 (§21) |
 | REACH-07 | Adnotacje line-derived (P_18 `oo`, Zwolnienie `zw`) | indirect (shop product rate) | indirect | yes (ADR-063 rates) | - | P_19C placeholder (DEF-22) | 1 (REACH-06); 2 (§14); 3 (§21) |

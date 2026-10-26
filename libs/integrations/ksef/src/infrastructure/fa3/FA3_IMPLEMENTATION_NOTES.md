@@ -263,7 +263,7 @@ the code it needs. Tracked in #3620.
   operator-configurable mapping UI (codes must be supplied on the command today).
 - ✅ `Podmiot2` `JST` / `GV` flags (DEF-30): both are REQUIRED by the XSD and
   default to `2` ("no"). The neutral `InvoiceParty` now carries optional
-  `isPublicSectorEntity` / `isVatGroupMember`, which set them to `1`. The XSD
+  `isPublicSectorEntity` / `isTaxGroupMember`, which set them to `1`. The XSD
   then expects the matching unit or member as a `Podmiot3` (`Rola` 8 / 10);
   the operator supplies it per invoice through the issue form's KSeF options
   (neutral `additionalParties`). A flag with no matching party is not refused:

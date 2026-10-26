@@ -90,7 +90,7 @@ export interface OrderToIssueInvoiceCommandInput {
    * carries them) ⇒ the provider emits its "does not apply" default.
    */
   buyerIsPublicSectorEntity?: boolean;
-  buyerIsVatGroupMember?: boolean;
+  buyerIsTaxGroupMember?: boolean;
 }
 
 /**
@@ -114,7 +114,7 @@ export function toIssueInvoiceCommand(
     source,
     taxRateEra,
     buyerIsPublicSectorEntity,
-    buyerIsVatGroupMember,
+    buyerIsTaxGroupMember,
   } = input;
 
   // GROSS-only: an `exclusive` (net) order would mislabel net as gross. Fail
@@ -131,7 +131,7 @@ export function toIssueInvoiceCommand(
 
   const buyer = buildBuyerProfile(order, buyerTaxId ?? null, {
     isPublicSectorEntity: buyerIsPublicSectorEntity,
-    isVatGroupMember: buyerIsVatGroupMember,
+    isTaxGroupMember: buyerIsTaxGroupMember,
   });
   const lines = order.items.map((item) => toInvoiceLine(item, order.id));
 
@@ -206,7 +206,7 @@ export function toIssueInvoiceCommand(
 function buildBuyerProfile(
   order: Order,
   buyerTaxId: TaxIdentifier | null,
-  classification: { isPublicSectorEntity?: boolean; isVatGroupMember?: boolean } = {},
+  classification: { isPublicSectorEntity?: boolean; isTaxGroupMember?: boolean } = {},
 ): BuyerProfile {
   const source = order.billingAddress ?? order.shippingAddress;
   if (!source) {
@@ -235,7 +235,7 @@ function buildBuyerProfile(
     type,
     order.customerEmail ?? null,
     classification.isPublicSectorEntity,
-    classification.isVatGroupMember,
+    classification.isTaxGroupMember,
   );
 }
 

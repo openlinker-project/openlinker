@@ -34,13 +34,13 @@ export class BuyerProfile {
      * Optional operator-supplied fiscal classification (#1580). Neutral,
      * country-agnostic flags a provider maps to its regime (a KSeF adapter maps
      * them to the FA(3) `JST`/`GV` party flags): `isPublicSectorEntity` = the
-     * buyer is a local-government / public-sector unit; `isVatGroupMember` = the
+     * buyer is a local-government / public-sector unit; `isTaxGroupMember` = the
      * buyer belongs to a VAT group. Trailing + optional so every existing
      * 4-arg `new BuyerProfile(...)` call is unaffected; absent ⇒ the provider
      * emits its "does not apply" default. Core never interprets them (ADR-026).
      */
     public readonly isPublicSectorEntity?: boolean,
-    public readonly isVatGroupMember?: boolean,
+    public readonly isTaxGroupMember?: boolean,
   ) {}
 
   /** Pure derivation: a business buyer (B2B). No I/O, no mutation. */
@@ -59,7 +59,7 @@ export class BuyerProfile {
       buyer.type,
       buyer.email ?? null,
       buyer.isPublicSectorEntity,
-      buyer.isVatGroupMember,
+      buyer.isTaxGroupMember,
     );
   }
 

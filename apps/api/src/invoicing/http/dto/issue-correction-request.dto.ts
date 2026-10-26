@@ -166,7 +166,7 @@ export class CorrectionBuyerOverrideDto {
   @ApiPropertyOptional({ description: 'Buyer is a VAT-group member (#1580)' })
   @IsOptional()
   @IsBoolean()
-  isVatGroupMember?: boolean;
+  isTaxGroupMember?: boolean;
 }
 
 /** FA(3) `PrzyczynaKorekty` is a `TZnakowy` (1..256 characters). */

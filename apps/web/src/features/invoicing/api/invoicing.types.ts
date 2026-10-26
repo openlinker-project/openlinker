@@ -345,7 +345,7 @@ export interface CorrectionBuyerOverrideInput {
   };
   type: 'company' | 'private';
   isPublicSectorEntity?: boolean;
-  isVatGroupMember?: boolean;
+  isTaxGroupMember?: boolean;
 }
 
 /** `POST /invoices/:invoiceId/correct` request body (#1241, #1582). Mirrors
