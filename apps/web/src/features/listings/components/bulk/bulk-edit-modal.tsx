@@ -102,6 +102,7 @@ import { BulkCategoryChooseModal } from './bulk-category-choose-modal';
 import { ShopCategoryPickerModal } from './shop-category-picker-modal';
 import { ShopAttributePicker } from './shop-attribute-picker';
 import { BulkImageLightbox } from './bulk-image-lightbox';
+import { BulkImageStrip } from './bulk-image-strip';
 import {
   blockerLabel,
   isCategoryBlocker,
@@ -1566,8 +1567,6 @@ function BaseScopeForm({
   onReady,
   onValuesChange,
 }: BaseScopeFormProps): ReactElement {
-  const [addingImage, setAddingImage] = useState(false);
-  const [newImageUrl, setNewImageUrl] = useState('');
   const effectiveImages = baseImageUrls ?? masterImages;
   const imagesOverridden = baseImageUrls !== undefined;
   const schema = useMemo(() => makeBulkEditModalSchema(canBrowseCategories), [canBrowseCategories]);
@@ -1878,71 +1877,12 @@ function BaseScopeForm({
               </button>
             ) : null}
           </label>
-          <div className="bulk-editor__img-strip bulk-editor__img-strip--editable" data-focus-field="images">
-            {effectiveImages.map((url, i) => (
-              <span className="bulk-editor__img-thumb" key={`${url}-${i}`}>
-                <ThumbZoomButton url={url} onZoom={onZoom} />
-                <button
-                  type="button"
-                  className="bulk-editor__img-x"
-                  aria-label="Remove image"
-                  onClick={() => {
-                    const base = baseImageUrls ?? masterImages;
-                    onBaseImageUrlsChange(base.filter((_, idx) => idx !== i));
-                  }}
-                >
-                  ×
-                </button>
-              </span>
-            ))}
-            {!addingImage ? (
-              <button
-                type="button"
-                className="bulk-editor__img-add"
-                aria-label="Add image"
-                onClick={() => setAddingImage(true)}
-              >
-                ＋
-              </button>
-            ) : null}
-          </div>
-          {addingImage ? (
-            <div className="bulk-editor__img-add-row">
-              <Input
-                className="bulk-editor__input"
-                value={newImageUrl}
-                onChange={(e) => setNewImageUrl(e.target.value)}
-                placeholder="https://example.com/image.jpg"
-                aria-label="New image URL"
-              />
-              <Button
-                tone="primary"
-                type="button"
-                className="button--sm"
-                onClick={() => {
-                  const url = newImageUrl.trim();
-                  if (url === '') return;
-                  const base = baseImageUrls ?? masterImages;
-                  onBaseImageUrlsChange([...base, url]);
-                  setNewImageUrl('');
-                  setAddingImage(false);
-                }}
-              >
-                Add
-              </Button>
-              <Button
-                tone="ghost"
-                type="button"
-                className="button--sm"
-                onClick={() => {
-                  setNewImageUrl('');
-                  setAddingImage(false);
-                }}
-              >
-                Cancel
-              </Button>
-            </div>
-          ) : null}
+          <BulkImageStrip
+            images={effectiveImages}
+            onImagesChange={onBaseImageUrlsChange}
+            onZoom={onZoom}
+            focusTarget
+          />
           <div className="hint" style={{ color: 'var(--text-muted)', margin: '5px 0 0' }}>
             {effectiveImages.length === 0 ? 'No images yet - add an image URL to include one. ' : ''}
             {mode === 'simple'
@@ -2217,8 +2157,6 @@ function VariantScopeForm({
 
   const effectiveImages = edit.imageUrls ?? inheritedImages;
   const imagesOverridden = edit.imageUrls !== undefined;
-  const [addingImage, setAddingImage] = useState(false);
-  const [newImageUrl, setNewImageUrl] = useState('');
 
   // Grouping-determining params (Marka/Stan) are locked to base by default; the
   // operator can unlock them per variant behind a warning (a per-variant value
@@ -2866,76 +2804,13 @@ function VariantScopeForm({
             </button>
           ) : null}
         </label>
-        <div className="bulk-editor__img-strip bulk-editor__img-strip--editable" data-focus-field="images">
-          {effectiveImages.map((url, i) => (
-            <span
-              key={`${url}-${i}`}
-              className={['bulk-editor__img-thumb', imagesOverridden ? '' : 'bulk-editor__img-thumb--ghost']
-                .filter(Boolean)
-                .join(' ')}
-            >
-              <ThumbZoomButton url={url} onZoom={onZoom} />
-              <button
-                type="button"
-                className="bulk-editor__img-x"
-                aria-label="Remove image"
-                onClick={() => {
-                  const base = edit.imageUrls ?? inheritedImages;
-                  const next = base.filter((_, idx) => idx !== i);
-                  onPatch({ imageUrls: next });
-                }}
-              >
-                ×
-              </button>
-            </span>
-          ))}
-          {!addingImage ? (
-            <button
-              type="button"
-              className="bulk-editor__img-add"
-              aria-label="Add image"
-              onClick={() => setAddingImage(true)}
-            >
-              ＋
-            </button>
-          ) : null}
-        </div>
-        {addingImage ? (
-          <div className="bulk-editor__img-add-row">
-            <Input
-              className="bulk-editor__input"
-              value={newImageUrl}
-              onChange={(e) => setNewImageUrl(e.target.value)}
-              placeholder="https://example.com/image.jpg"
-              aria-label="New image URL"
-            />
-            <Button
-              tone="primary"
-              type="button"
-              className="button--sm"
-              onClick={() => {
-                const url = newImageUrl.trim();
-                if (url === '') return;
-                onPatch({ imageUrls: [...effectiveImages, url] });
-                setNewImageUrl('');
-                setAddingImage(false);
-              }}
-            >
-              Add
-            </Button>
-            <Button
-              tone="ghost"
-              type="button"
-              className="button--sm"
-              onClick={() => {
-                setNewImageUrl('');
-                setAddingImage(false);
-              }}
-            >
-              Cancel
-            </Button>
-          </div>
-        ) : null}
+        <BulkImageStrip
+          images={effectiveImages}
+          onImagesChange={(next) => onPatch({ imageUrls: next })}
+          onZoom={onZoom}
+          inherited={!imagesOverridden}
+          focusTarget
+        />
         <div className="hint" style={{ color: 'var(--text-muted)', fontSize: 12 }}>
           {imagesOverridden
             ? 'Custom image set for this variant.'
@@ -3067,35 +2942,6 @@ function InheritableTextField({
         }}
       />
     </div>
-  );
-}
-
-/**
- * Zoomable thumbnail trigger (#1741). A `role="button"` span (not a native
- * `<button>`) so it stays clickable even inside the demo read-only `fieldset`
- * disabled cascade - zooming is always allowed; only edit actions are gated.
- * `stopPropagation` keeps the click from toggling the surrounding controls.
- */
-function ThumbZoomButton({ url, onZoom }: { url: string; onZoom: (src: string) => void }): ReactElement {
-  return (
-    <span
-      role="button"
-      tabIndex={0}
-      className="bulk-editor__thumb-btn"
-      aria-label="Zoom image"
-      onClick={(e) => {
-        e.stopPropagation();
-        onZoom(url);
-      }}
-      onKeyDown={(e) => {
-        if (e.key === 'Enter' || e.key === ' ') {
-          e.preventDefault();
-          onZoom(url);
-        }
-      }}
-    >
-      <img src={url} alt="" />
-    </span>
   );
 }
 
@@ -3923,8 +3769,6 @@ function ShopBaseScopeForm({
   simpleIncluded,
   onSimpleIncludedChange,
 }: ShopBaseScopeFormProps): ReactElement {
-  const [addingImage, setAddingImage] = useState(false);
-  const [newImageUrl, setNewImageUrl] = useState('');
   const effectiveImages = baseImageUrls ?? masterImages;
   const imagesOverridden = baseImageUrls !== undefined;
   const classes = ['bulk-editor__form', active ? 'bulk-editor__form--acc-open' : ''].filter(Boolean).join(' ');
@@ -4100,71 +3944,11 @@ function ShopBaseScopeForm({
             </button>
           ) : null}
         </label>
-        <div className="bulk-editor__img-strip bulk-editor__img-strip--editable">
-          {effectiveImages.map((url, i) => (
-            <span className="bulk-editor__img-thumb" key={`${url}-${i}`}>
-              <ThumbZoomButton url={url} onZoom={onZoom} />
-              <button
-                type="button"
-                className="bulk-editor__img-x"
-                aria-label="Remove image"
-                onClick={() => {
-                  const base = baseImageUrls ?? masterImages;
-                  onBaseImageUrlsChange(base.filter((_, idx) => idx !== i));
-                }}
-              >
-                ×
-              </button>
-            </span>
-          ))}
-          {!addingImage ? (
-            <button
-              type="button"
-              className="bulk-editor__img-add"
-              aria-label="Add image"
-              onClick={() => setAddingImage(true)}
-            >
-              ＋
-            </button>
-          ) : null}
-        </div>
-        {addingImage ? (
-          <div className="bulk-editor__img-add-row">
-            <Input
-              className="bulk-editor__input"
-              value={newImageUrl}
-              onChange={(e) => setNewImageUrl(e.target.value)}
-              placeholder="https://example.com/image.jpg"
-              aria-label="New image URL"
-            />
-            <Button
-              tone="primary"
-              type="button"
-              className="button--sm"
-              onClick={() => {
-                const url = newImageUrl.trim();
-                if (url === '') return;
-                const base = baseImageUrls ?? masterImages;
-                onBaseImageUrlsChange([...base, url]);
-                setNewImageUrl('');
-                setAddingImage(false);
-              }}
-            >
-              Add
-            </Button>
-            <Button
-              tone="ghost"
-              type="button"
-              className="button--sm"
-              onClick={() => {
-                setNewImageUrl('');
-                setAddingImage(false);
-              }}
-            >
-              Cancel
-            </Button>
-          </div>
-        ) : null}
+        <BulkImageStrip
+          images={effectiveImages}
+          onImagesChange={onBaseImageUrlsChange}
+          onZoom={onZoom}
+        />
         <div className="hint" style={{ color: 'var(--text-muted)', margin: '5px 0 0' }}>
           {effectiveImages.length === 0 ? 'No images yet - add an image URL to include one. ' : ''}
           Shared image set for every variant. Add or remove to override the master set.

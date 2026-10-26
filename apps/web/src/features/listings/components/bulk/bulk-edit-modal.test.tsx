@@ -1574,6 +1574,231 @@ describe('BulkEditModal', () => {
       expect(perVariant.var_m?.overrides?.imageUrls).toBeUndefined();
       expect(base.overrides?.imageUrls).toBeUndefined();
     });
+
+    function renderVariantEditor(onSave: (...args: unknown[]) => void = () => undefined): void {
+      renderWithProviders(
+        <BulkEditModal
+          open
+          onOpenChange={() => undefined}
+          row={makeImageRow()}
+          connection={connection}
+          canBrowseCategories={true}
+          currency="PLN"
+          defaults={DEFAULTS}
+          focusVariantId="var_s"
+          onSave={onSave}
+        />,
+      );
+    }
+
+    function typeVariantImage(value: string): void {
+      const field = variantImageField();
+      fireEvent.click(within(field).getByRole('button', { name: 'Add image' }));
+      fireEvent.change(within(field).getByRole('textbox', { name: 'New image URL' }), {
+        target: { value },
+      });
+      fireEvent.click(within(field).getByRole('button', { name: 'Add' }));
+    }
+
+    it('should refuse an address that is not a web address and keep the input open', () => {
+      renderVariantEditor();
+
+      typeVariantImage('not a url');
+
+      const field = variantImageField();
+      const input = within(field).getByRole('textbox', { name: 'New image URL' });
+      expect(within(field).getByRole('alert')).toHaveTextContent(
+        'This is not a web address. Enter a full image address starting with https:// or http://',
+      );
+      expect(input).toHaveAttribute('aria-invalid', 'true');
+      expect(input).toHaveValue('not a url');
+      expect(shownImages()).toEqual([gfx(314), gfx(312), gfx(313)]);
+    });
+
+    it('should refuse an image that is already in the variant list', () => {
+      renderVariantEditor();
+
+      typeVariantImage(`  ${gfx(312)}  `);
+
+      expect(within(variantImageField()).getByRole('alert')).toHaveTextContent(
+        'This image is already in the list. Enter a different address.',
+      );
+      expect(shownImages()).toEqual([gfx(314), gfx(312), gfx(313)]);
+    });
+
+    it('should add a valid trimmed address to this variant only and save it', async () => {
+      const onSave = vi.fn();
+      renderVariantEditor(onSave);
+
+      typeVariantImage(`  ${gfx(999)} `);
+
+      expect(within(variantImageField()).queryByRole('alert')).not.toBeInTheDocument();
+      expect(within(variantImageField()).queryByRole('textbox', { name: 'New image URL' })).not.toBeInTheDocument();
+      expect(shownImages()).toEqual([gfx(314), gfx(312), gfx(313), gfx(999)]);
+
+      fireEvent.click(screen.getByRole('button', { name: 'Save all' }));
+      await waitFor(() => { expect(onSave).toHaveBeenCalledTimes(1); });
+      const perVariant = onSave.mock.calls[0][2] as Record<string, { overrides?: { imageUrls?: string[] } }>;
+      expect(perVariant.var_s?.overrides?.imageUrls).toEqual([gfx(314), gfx(312), gfx(313), gfx(999)]);
+    });
+
+    it('should mark a thumbnail that fails to load and still allow saving', async () => {
+      const onSave = vi.fn();
+      renderVariantEditor(onSave);
+
+      const field = variantImageField();
+      const brokenImg = Array.from(field.querySelectorAll('img')).find(
+        (img) => img.getAttribute('src') === gfx(312),
+      );
+      if (!brokenImg) throw new Error('thumbnail not found');
+      fireEvent.error(brokenImg);
+
+      expect(brokenImg.closest('.bulk-editor__img-thumb')).toHaveClass('bulk-editor__img-thumb--broken');
+      expect(within(field).getByText('Not loading')).toBeInTheDocument();
+      expect(
+        within(field).getByText(
+          '1 image could not be loaded. The address may be wrong or may not point to an image. Remove it or use another address.',
+        ),
+      ).toBeInTheDocument();
+
+      fireEvent.click(screen.getByRole('button', { name: 'Save all' }));
+      await waitFor(() => { expect(onSave).toHaveBeenCalledTimes(1); });
+    });
+
+    it('should clear the broken marker once the broken image is removed', () => {
+      renderVariantEditor();
+
+      const field = variantImageField();
+      const thumbs = Array.from(field.querySelectorAll('img'));
+      fireEvent.error(thumbs[1]);
+      expect(within(field).getByText('Not loading')).toBeInTheDocument();
+
+      fireEvent.click(within(field).getAllByRole('button', { name: 'Remove image' })[1]);
+
+      expect(within(variantImageField()).queryByText('Not loading')).not.toBeInTheDocument();
+      expect(within(variantImageField()).queryByText(/could not be loaded/)).not.toBeInTheDocument();
+    });
+  });
+
+  describe('simple offer image address validation', () => {
+    const imageA = 'https://shop.example/gfx/1.jpg';
+
+    function renderSimpleEditor(): void {
+      const row = makeRow();
+      row.product!.images = [imageA];
+      renderWithProviders(
+        <BulkEditModal
+          open
+          onOpenChange={() => undefined}
+          row={row}
+          connection={connection}
+          canBrowseCategories={false}
+          currency="PLN"
+          defaults={DEFAULTS}
+          onSave={() => undefined}
+        />,
+      );
+    }
+
+    function baseImageField(): HTMLElement {
+      const hint = screen.getByText(/Master image set for this offer/);
+      const field = hint.closest('.bulk-editor__field');
+      if (!(field instanceof HTMLElement)) throw new Error('base image field not found');
+      return field;
+    }
+
+    function baseImages(): string[] {
+      return Array.from(baseImageField().querySelectorAll('img')).map((img) => img.getAttribute('src') ?? '');
+    }
+
+    function typeBaseImage(value: string): void {
+      const field = baseImageField();
+      if (within(field).queryByRole('textbox', { name: 'New image URL' }) === null) {
+        fireEvent.click(within(field).getByRole('button', { name: 'Add image' }));
+      }
+      fireEvent.change(within(field).getByRole('textbox', { name: 'New image URL' }), {
+        target: { value },
+      });
+      fireEvent.click(within(field).getByRole('button', { name: 'Add' }));
+    }
+
+    it('should refuse "not a url" and add nothing', () => {
+      renderSimpleEditor();
+
+      typeBaseImage('not a url');
+
+      expect(within(baseImageField()).getByRole('alert')).toHaveTextContent(/This is not a web address/);
+      expect(baseImages()).toEqual([imageA]);
+    });
+
+    it('should refuse a javascript: address', () => {
+      renderSimpleEditor();
+
+      typeBaseImage('javascript:alert(1)');
+
+      expect(within(baseImageField()).getByRole('alert')).toHaveTextContent(/This is not a web address/);
+      expect(baseImages()).toEqual([imageA]);
+    });
+
+    it('should ask for an address when Add is pressed on an empty input', () => {
+      renderSimpleEditor();
+
+      typeBaseImage('   ');
+
+      expect(within(baseImageField()).getByRole('alert')).toHaveTextContent(
+        'Enter an image address, starting with https://.',
+      );
+    });
+
+    it('should clear the error as soon as the address is edited', () => {
+      renderSimpleEditor();
+
+      typeBaseImage('not a url');
+      fireEvent.change(within(baseImageField()).getByRole('textbox', { name: 'New image URL' }), {
+        target: { value: 'https://' },
+      });
+
+      expect(within(baseImageField()).queryByRole('alert')).not.toBeInTheDocument();
+    });
+
+    it('should add a valid address after correcting a refused one', () => {
+      renderSimpleEditor();
+
+      typeBaseImage('not a url');
+      typeBaseImage('https://example.com/file.jpg');
+
+      expect(within(baseImageField()).queryByRole('alert')).not.toBeInTheDocument();
+      expect(baseImages()).toEqual([imageA, 'https://example.com/file.jpg']);
+    });
+
+    it('should refuse a duplicate of an image already in the list', () => {
+      renderSimpleEditor();
+
+      typeBaseImage(imageA);
+
+      expect(within(baseImageField()).getByRole('alert')).toHaveTextContent(
+        'This image is already in the list. Enter a different address.',
+      );
+      expect(baseImages()).toEqual([imageA]);
+    });
+
+    it('should mark a thumbnail that fails to load', () => {
+      renderSimpleEditor();
+      typeBaseImage('https://example.com/file.pdf');
+
+      const pdfImg = Array.from(baseImageField().querySelectorAll('img')).find(
+        (img) => img.getAttribute('src') === 'https://example.com/file.pdf',
+      );
+      if (!pdfImg) throw new Error('thumbnail not found');
+      fireEvent.error(pdfImg);
+
+      expect(pdfImg.closest('.bulk-editor__img-thumb')).toHaveClass('bulk-editor__img-thumb--broken');
+      expect(within(baseImageField()).getByText(/1 image could not be loaded/)).toBeInTheDocument();
+
+      // A later successful load clears it - the failure may have been transient.
+      fireEvent.load(pdfImg);
+      expect(within(baseImageField()).queryByText(/could not be loaded/)).not.toBeInTheDocument();
+    });
   });
 
   describe('per-product pricing/stock policy (#1741)', () => {
