@@ -308,6 +308,8 @@ export function ProductDetailPage(): ReactElement {
               <VariantDetailPanel
                 variant={variants[0]!}
                 stock={stockByVariant.get(variants[0]!.id)}
+                productTaxRate={product.taxRate ?? null}
+                productTaxRateUnknownReason={product.taxRateUnknownReason ?? null}
                 connections={offerCreatorConnections}
                 onListingsCount={handleListingsCount}
               />

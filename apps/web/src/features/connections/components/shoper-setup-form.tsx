@@ -17,7 +17,7 @@
  *
  * @module features/connections/components
  */
-import { useEffect, useState, type ReactElement } from 'react';
+import { useEffect, useState, type FormEvent, type ReactElement } from 'react';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useForm, type Path } from 'react-hook-form';
 import { Link, useNavigate } from 'react-router-dom';
@@ -123,6 +123,18 @@ export function ShoperSetupForm(): ReactElement {
     setStepIndex((i) => Math.max(i - 1, 0));
   }
 
+  // A submit before the last step is Enter in a field, or the click that
+  // advanced to the last step landing on the Create button that replaced Next.
+  // Either way it means "Next", never "Create" (the review step must be seen).
+  function handleFormSubmit(event: FormEvent<HTMLFormElement>): void {
+    if (stepIndex < STEP_LABELS.length - 1) {
+      event.preventDefault();
+      void goNext();
+      return;
+    }
+    void onSubmit(event);
+  }
+
   const onSubmit = form.handleSubmit(async (values) => {
     try {
       const created = await createConnection.mutateAsync(toCreateConnectionInput(values));
@@ -212,7 +224,7 @@ export function ShoperSetupForm(): ReactElement {
         <SetupStepper steps={STEP_LABELS} currentStep={stepIndex} completedSteps={completedSteps} />
       }
     >
-      <form className="wizard-card" onSubmit={(event) => void onSubmit(event)} noValidate>
+      <form className="wizard-card" onSubmit={handleFormSubmit} noValidate>
         <BackLink to="/connections/new" label="Connections" className="wizard-card__back" />
 
         {form.formState.submitCount > 0 && validationMessages.length > 0 ? (
@@ -350,11 +362,11 @@ export function ShoperSetupForm(): ReactElement {
           </div>
           <div className="wizard-actions__group">
             {stepIndex < STEP_LABELS.length - 1 ? (
-              <Button type="button" onClick={() => void goNext()}>
+              <Button key="next" type="button" onClick={() => void goNext()}>
                 Next
               </Button>
             ) : (
-              <Button type="submit" disabled={createConnection.isPending}>
+              <Button key="submit" type="submit" disabled={createConnection.isPending}>
                 {createConnection.isPending ? 'Creating...' : 'Create connection'}
               </Button>
             )}
