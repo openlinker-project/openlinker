@@ -1,4 +1,5 @@
 import type { Connection, IdentifierMappingPort } from '@openlinker/core/identifier-mapping';
+import { Logger } from '@openlinker/shared/logging';
 
 import { ShoperNetworkError } from '../../../../domain/exceptions/shoper-network.error';
 import { ShoperNotMappedException } from '../../../../domain/exceptions/shoper-not-mapped.exception';
@@ -289,6 +290,60 @@ describe('ShoperProductMasterAdapter', () => {
       expect(categoryCall?.[1]).toEqual(
         expect.objectContaining({ filters: '{"category_id":{"in":[2,38]}}' }),
       );
+    });
+
+    it('should read the category tree once for several products on one adapter', async () => {
+      const { adapter, get } = setup();
+      respond(get, {
+        '/products/93': buildProduct({ category_id: '38', categories: [38] }),
+        '/categories-tree': [{ id: 2, children: [{ id: 38, children: [] }] }],
+        '/categories': envelope([
+          { category_id: '2', translations: { pl_PL: { name: 'Dom i kuchnia' } } },
+          { category_id: '38', translations: { pl_PL: { name: 'Ceramika' } } },
+        ]),
+      });
+
+      const first = await adapter.getProduct('ol_product_1');
+      const second = await adapter.getProduct('ol_product_1');
+
+      expect(first.categoryBreadcrumb).toHaveLength(2);
+      expect(second.categoryBreadcrumb).toHaveLength(2);
+      const treeReads = get.mock.calls.filter(([path]) => path === '/categories-tree');
+      expect(treeReads).toHaveLength(1);
+    });
+
+    it('should report an unreadable tree as a failed read, not as a category missing from it', async () => {
+      const warn = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+      const { adapter, get } = setup();
+      const routes: Record<string, unknown> = {
+        '/products/93': buildProduct({ category_id: '38', categories: [38] }),
+        '/categories-tree': { oops: true },
+        '/categories': envelope([
+          { category_id: '2', translations: { pl_PL: { name: 'Dom i kuchnia' } } },
+          { category_id: '38', translations: { pl_PL: { name: 'Ceramika' } } },
+        ]),
+      };
+      respond(get, routes);
+
+      const product = await adapter.getProduct('ol_product_1');
+
+      expect(product).not.toHaveProperty('categoryBreadcrumb');
+      const messages = warn.mock.calls.map(([message]) => String(message));
+      expect(
+        messages.some((m) => m.includes('category path of product 93 could not be read'))
+      ).toBe(true);
+      expect(messages.some((m) => m.includes('is not in the category tree'))).toBe(false);
+      expect(get.mock.calls.some(([path]) => path === '/categories')).toBe(false);
+
+      // The failed read is not kept: the next product reads the tree again.
+      routes['/categories-tree'] = [{ id: 2, children: [{ id: 38, children: [] }] }];
+      const retried = await adapter.getProduct('ol_product_1');
+
+      expect(retried.categoryBreadcrumb).toEqual([
+        { id: '2', name: 'Dom i kuchnia' },
+        { id: '38', name: 'Ceramika' },
+      ]);
+      warn.mockRestore();
     });
 
     it('should still return the product, without a path, when the categories cannot be read', async () => {

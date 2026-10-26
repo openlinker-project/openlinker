@@ -93,6 +93,7 @@ const SHOPER_ID = /^\d+$/;
 export class ShoperProductMasterAdapter implements ProductMasterPort, ProductTaxRateReader {
   private readonly logger = new Logger(ShoperProductMasterAdapter.name);
   private categoryDirectory: Promise<Category[]> | null = null;
+  private categoryTree: Promise<ShoperCategoryTreeNode[]> | null = null;
   private readonly categoryReader: ShoperCategoryReader;
   private readonly productReader: ShoperProductReader;
 
@@ -138,8 +139,12 @@ export class ShoperProductMasterAdapter implements ProductMasterPort, ProductTax
     const data = await this.readProduct(externalId, productId);
     const ctx = await ctxRead;
     const product = mapShoperProduct(data, ctx);
-    const gallery = await this.readGallery(externalId, ctx.host);
-    const categoryBreadcrumb = await this.readCategoryBreadcrumb(data, ctx.language);
+    // Independent reads, and neither throws: each logs its own failure and
+    // falls back, so running them together changes no outcome.
+    const [gallery, categoryBreadcrumb] = await Promise.all([
+      this.readGallery(externalId, ctx.host),
+      this.readCategoryBreadcrumb(data, ctx.language),
+    ]);
     return {
       ...product,
       // An empty or unreadable gallery keeps the main image the product row carries.
@@ -524,11 +529,12 @@ export class ShoperProductMasterAdapter implements ProductMasterPort, ProductTax
    * The path of the product's main category (`category_id`, else its first
    * category), root to leaf, or `null` when it has none or it cannot be read.
    *
-   * Two requests, whatever the size of the shop: the tree (structure, ids only)
-   * and ONE filtered page of `/categories` for the names of the path's nodes -
-   * not the whole directory, which this per-product read would otherwise rebuild
-   * for every product a sweep syncs. Best-effort like the gallery: a failure is
-   * logged and the product syncs without a path.
+   * One filtered page of `/categories` per product, for the names of the
+   * path's nodes - not the whole directory, which this per-product read would
+   * otherwise rebuild for every product a sweep syncs. The tree (structure, ids
+   * only) is read once per adapter instance, see `getCategoryTree`. Best-effort
+   * like the gallery: a failure, including a tree Shoper answered unreadably,
+   * is logged and the product syncs without a path.
    */
   private async readCategoryBreadcrumb(
     data: ShoperProduct,
@@ -545,8 +551,7 @@ export class ShoperProductMasterAdapter implements ProductMasterPort, ProductTax
       return null;
     }
     try {
-      const tree = await this.client.get<ShoperCategoryTreeNode[]>('/categories-tree');
-      const pathIds = Array.isArray(tree.data) ? shoperCategoryPathIds(tree.data, leafId) : null;
+      const pathIds = shoperCategoryPathIds(await this.getCategoryTree(), leafId);
       if (pathIds === null) {
         this.logger.warn(
           `Shoper category ${leafId} of product ${data.product_id} is not in the category tree; ` +
@@ -579,6 +584,23 @@ export class ShoperProductMasterAdapter implements ProductMasterPort, ProductTax
       );
       return null;
     }
+  }
+
+  /**
+   * The category tree, read at most ONCE per adapter instance. The batch sweep
+   * (ADR-048) resolves one adapter for a whole page of products, so this turns
+   * one tree read per product into one per page. Memoised as a promise so
+   * concurrent callers share one read, and a failure is dropped so the next
+   * call retries - the same shape as `getCategories`.
+   */
+  private getCategoryTree(): Promise<ShoperCategoryTreeNode[]> {
+    if (this.categoryTree === null) {
+      this.categoryTree = this.categoryReader.readTree().catch((error: unknown) => {
+        this.categoryTree = null;
+        throw error;
+      });
+    }
+    return this.categoryTree;
   }
 
   private fetchAllStocks(externalProductId: string): Promise<ShoperStock[]> {
