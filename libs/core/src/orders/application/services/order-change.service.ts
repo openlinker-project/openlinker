@@ -120,6 +120,13 @@ export class OrderChangeService implements IOrderChangeService {
     }));
   }
 
+  async findByOrderAndKinds(
+    internalOrderId: string,
+    kinds: readonly OrderChangeKind[]
+  ): Promise<OrderChange[]> {
+    return this.repository.findByOrderAndKinds(internalOrderId, kinds);
+  }
+
   async findById(id: string): Promise<OrderChange | null> {
     return this.repository.findById(id);
   }

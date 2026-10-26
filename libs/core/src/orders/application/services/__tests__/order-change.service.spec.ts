@@ -57,6 +57,7 @@ describe('OrderChangeService', () => {
       findLatestByTarget: jest.fn(),
       findOpenByOrder: jest.fn(),
       findOrderIdsWithOpenChanges: jest.fn(),
+      findByOrderAndKinds: jest.fn(),
       findById: jest.fn(),
       listByOrder: jest.fn(),
       insertRequested: jest.fn(),

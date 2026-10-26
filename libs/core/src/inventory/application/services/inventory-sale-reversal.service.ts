@@ -60,7 +60,10 @@ import {
   type SaleDecrementSettlement,
 } from '../../domain/ports/inventory-sale-decrement-repository.port';
 import type { InventoryOwnerPosition } from '../../domain/types/inventory.types';
-import { buildSaleReversalIdempotencyKey } from '../../domain/types/inventory-sale-decrement.types';
+import {
+  buildEditReversalIdempotencyKey,
+  buildSaleReversalIdempotencyKey,
+} from '../../domain/types/inventory-sale-decrement.types';
 import {
   INVENTORY_REPOSITORY_TOKEN,
   INVENTORY_SALE_DECREMENT_REPOSITORY_TOKEN,
@@ -69,6 +72,8 @@ import {
 import { IInventoryService } from './inventory.service.interface';
 import type {
   IInventorySaleReversalService,
+  ReverseLineQuantityInput,
+  ReverseLineQuantityResult,
   ReverseSaleForOrderResult,
   SaleReversalLineOutcome,
 } from './inventory-sale-reversal.service.interface';
@@ -84,6 +89,14 @@ type AdapterResolution = { readonly adapter: InventoryMasterPort } | { readonly 
  */
 const SALE_DECREMENT_KEY_PREFIX = 'sale:';
 const APPLIED_STATUSES = new Set(['applied', 'deduplicated']);
+
+/**
+ * The prefix of a line-scoped reversal an operator order edit made (#3542). A
+ * third spelling, distinct from `sale:` and `sale-reversal:`, so such a row is
+ * neither mistaken for an original decrement nor collides with a whole-order
+ * reversal's key.
+ */
+const EDIT_REVERSAL_KEY_PREFIX = 'edit:';
 
 @Injectable()
 export class InventorySaleReversalService implements IInventorySaleReversalService {
@@ -113,25 +126,134 @@ export class InventorySaleReversalService implements IInventorySaleReversalServi
       return { lines: [] };
     }
 
+    // #3542: units an order edit already gave back for a (work, line) must not
+    // be given back a second time by the whole-order reversal, which would
+    // otherwise restate the ORIGINAL decrement and over-raise the master.
+    const alreadyGivenBack = this.editReversedUnits(rows);
+
     const productIds = [...new Set(appliedDecrements.map((row) => row.productId))];
     const positions = await this.inventoryRepository.findLiveOwnerPositions(productIds);
     const adapters = new Map<string, Promise<AdapterResolution>>();
 
     const outcomes: SaleReversalLineOutcome[] = [];
     for (const row of appliedDecrements) {
-      outcomes.push(await this.reverseLine(row, positions, adapters));
+      const remaining =
+        row.quantity - (alreadyGivenBack.get(`${row.workId}:${row.orderLineId}`) ?? 0);
+      if (remaining <= 0) continue;
+      outcomes.push(
+        await this.reverseLine(
+          remaining === row.quantity ? row : this.withQuantity(row, remaining),
+          positions,
+          adapters
+        )
+      );
     }
     return { lines: outcomes };
+  }
+
+  async reverseLineQuantity(input: ReverseLineQuantityInput): Promise<ReverseLineQuantityResult> {
+    if (!Number.isInteger(input.units) || input.units <= 0) {
+      throw new RangeError(`units must be a positive integer, got ${String(input.units)}`);
+    }
+    const rows = await this.decrements.findByOrderId(input.internalOrderId);
+    const forLine = rows.filter((row) => row.orderLineId === input.orderLineId);
+
+    // A replay finds its own rows and reports them; it never claims again.
+    const ownKey = buildEditReversalIdempotencyKey(input.changeId, input.orderLineId);
+    const own = forLine.filter(
+      (row) => row.idempotencyKey === ownKey || row.idempotencyKey.startsWith(`${ownKey}:`)
+    );
+    if (own.length > 0) {
+      const settled = own.every((row) => APPLIED_STATUSES.has(row.status));
+      return {
+        status: settled ? 'restored' : 'failed',
+        units: own.reduce((sum, row) => sum + row.quantity, 0),
+        detail: settled ? null : 'a previous attempt did not settle; check the product master',
+      };
+    }
+
+    const decremented = forLine
+      .filter(
+        (row) =>
+          row.idempotencyKey.startsWith(SALE_DECREMENT_KEY_PREFIX) &&
+          row.ownerConnectionId !== null &&
+          APPLIED_STATUSES.has(row.status)
+      )
+      .sort((a, b) => a.workId.localeCompare(b.workId));
+
+    // Never give back more than was taken: what the line's decrements lowered the
+    // master by, less what a whole-order reversal or an earlier edit already
+    // returned. A line never decremented (OMS off, not routed, storefront order,
+    // still in doubt) has nothing to give back.
+    const alreadyReturned = forLine
+      .filter(
+        (row) =>
+          (row.idempotencyKey.startsWith('sale-reversal:') ||
+            row.idempotencyKey.startsWith(EDIT_REVERSAL_KEY_PREFIX)) &&
+          APPLIED_STATUSES.has(row.status)
+      )
+      .reduce((sum, row) => sum + row.quantity, 0);
+    const decrementedTotal = decremented.reduce((sum, row) => sum + row.quantity, 0);
+    let remaining = Math.min(input.units, decrementedTotal - alreadyReturned);
+    if (decremented.length === 0 || remaining <= 0) {
+      return { status: 'not-applicable', units: 0, detail: null };
+    }
+
+    const positions = await this.inventoryRepository.findLiveOwnerPositions([
+      ...new Set(decremented.map((row) => row.productId)),
+    ]);
+    const adapters = new Map<string, Promise<AdapterResolution>>();
+    let restored = 0;
+    let first = true;
+    for (const source of decremented) {
+      if (remaining <= 0) break;
+      const units = Math.min(remaining, source.quantity);
+      const key = first ? ownKey : `${ownKey}:${source.workId}`;
+      first = false;
+      const outcome = await this.reverseLine(this.withQuantity(source, units), positions, adapters, key);
+      if (outcome.status !== 'applied' && outcome.status !== 'deduplicated') {
+        return {
+          status: 'failed',
+          units: restored,
+          detail: outcome.reason ?? 'the product master did not accept the stock change',
+        };
+      }
+      restored += units;
+      remaining -= units;
+    }
+    return { status: 'restored', units: restored, detail: null };
+  }
+
+  /** Units each `(work, line)` has had given back by an edit, from the ledger's own rows. */
+  private editReversedUnits(rows: readonly InventorySaleDecrement[]): Map<string, number> {
+    const out = new Map<string, number>();
+    for (const row of rows) {
+      if (!row.idempotencyKey.startsWith(EDIT_REVERSAL_KEY_PREFIX)) continue;
+      if (!APPLIED_STATUSES.has(row.status)) continue;
+      const key = `${row.workId}:${row.orderLineId}`;
+      out.set(key, (out.get(key) ?? 0) + row.quantity);
+    }
+    return out;
+  }
+
+  private withQuantity(row: InventorySaleDecrement, quantity: number): InventorySaleDecrement {
+    return Object.assign(
+      Object.create(Object.getPrototypeOf(row) as object) as InventorySaleDecrement,
+      row,
+      { quantity }
+    );
   }
 
   private async reverseLine(
     row: InventorySaleDecrement,
     positions: readonly InventoryOwnerPosition[],
-    adapters: Map<string, Promise<AdapterResolution>>
+    adapters: Map<string, Promise<AdapterResolution>>,
+    explicitKey?: string
   ): Promise<SaleReversalLineOutcome> {
     // `appliedDecrements` is filtered to `ownerConnectionId !== null` above.
     const owner = row.ownerConnectionId as string;
-    const idempotencyKey = buildSaleReversalIdempotencyKey(owner, row.workId, row.orderLineId);
+    const idempotencyKey =
+      explicitKey ?? buildSaleReversalIdempotencyKey(owner, row.workId, row.orderLineId);
     const ref = this.lineRef(row, owner, idempotencyKey);
 
     const existing = await this.decrements.findByKey(idempotencyKey);

@@ -308,3 +308,13 @@ export function deriveSaleDecrementAttention(
   }
   return { kind: 'blocked', detail: parts.join('; ') };
 }
+
+/**
+ * Key of a line-scoped reversal an operator order edit makes (#3542):
+ * `edit:{changeId}:{orderLineId}`. Keyed on the ORDER CHANGE, which is the one
+ * stable identity of the act, so a retried edit claims the same row and never
+ * gives stock back twice. A third spelling beside `sale:` / `sale-reversal:`.
+ */
+export function buildEditReversalIdempotencyKey(changeId: string, orderLineId: string): string {
+  return `edit:${changeId}:${orderLineId}`;
+}

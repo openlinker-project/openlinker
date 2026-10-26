@@ -499,4 +499,93 @@ describe('InventorySaleReversalService', () => {
     expect(result.lines[0]).toMatchObject({ status: 'applied' });
     expect(inventoryService.setInventory).not.toHaveBeenCalled();
   });
+
+  describe('reverseLineQuantity (#3542)', () => {
+    it('should give back only the lowered units under edit:{changeId}:{orderLineId}', async () => {
+      seedAppliedDecrement({ quantity: 3 });
+
+      const result = await service.reverseLineQuantity({
+        internalOrderId: 'ol_order_1',
+        orderLineId: 'line-1',
+        units: 2,
+        changeId: 'chg-1',
+      });
+
+      expect(shop().adjustInventory).toHaveBeenCalledWith({
+        productId: 'ol_product_1',
+        variantId: 'ol_variant_1',
+        quantity: 2,
+        reason: 'order_sale_reversal',
+        idempotencyKey: 'edit:chg-1:line-1',
+      });
+      expect(result).toEqual({ status: 'restored', units: 2, detail: null });
+    });
+
+    it('should never give back more than was decremented', async () => {
+      seedAppliedDecrement({ quantity: 1 });
+
+      const result = await service.reverseLineQuantity({
+        internalOrderId: 'ol_order_1',
+        orderLineId: 'line-1',
+        units: 5,
+        changeId: 'chg-1',
+      });
+
+      expect(shop().adjustInventory).toHaveBeenCalledWith(expect.objectContaining({ quantity: 1 }));
+      expect(result.units).toBe(1);
+    });
+
+    it('should be not-applicable when nothing was ever decremented for the line', async () => {
+      const result = await service.reverseLineQuantity({
+        internalOrderId: 'ol_order_1',
+        orderLineId: 'line-1',
+        units: 1,
+        changeId: 'chg-1',
+      });
+
+      expect(integrations.getCapabilityAdapter).not.toHaveBeenCalled();
+      expect(result).toEqual({ status: 'not-applicable', units: 0, detail: null });
+    });
+
+    it('should not touch the master twice when the same edit is retried', async () => {
+      seedAppliedDecrement({ quantity: 3 });
+      const input = { internalOrderId: 'ol_order_1', orderLineId: 'line-1', units: 2, changeId: 'chg-1' };
+
+      await service.reverseLineQuantity(input);
+      const replay = await service.reverseLineQuantity(input);
+
+      expect(shop().adjustInventory).toHaveBeenCalledTimes(1);
+      expect(replay).toEqual({ status: 'restored', units: 2, detail: null });
+    });
+
+    it('should leave a later whole-order cancel to reverse only what the edit did not', async () => {
+      seedAppliedDecrement({ quantity: 3 });
+      await service.reverseLineQuantity({
+        internalOrderId: 'ol_order_1',
+        orderLineId: 'line-1',
+        units: 2,
+        changeId: 'chg-1',
+      });
+
+      await service.reverseForOrder('ol_order_1');
+
+      expect(shop().adjustInventory).toHaveBeenLastCalledWith(
+        expect.objectContaining({ quantity: 1, idempotencyKey: 'sale-reversal:conn-shop:w-1:line-1' })
+      );
+    });
+
+    it('should report failed, not restored, when the master refuses', async () => {
+      seedAppliedDecrement({ quantity: 3 });
+      shop().adjustInventory.mockRejectedValue(new Error('master down'));
+
+      const result = await service.reverseLineQuantity({
+        internalOrderId: 'ol_order_1',
+        orderLineId: 'line-1',
+        units: 1,
+        changeId: 'chg-1',
+      });
+
+      expect(result.status).toBe('failed');
+    });
+  });
 });

@@ -638,4 +638,77 @@ describe('ReservationService', () => {
     });
   });
 
+  describe('narrowForOrder (#3542)', () => {
+    it('should lower a hold to the new quantity, carrying atpEffect and expiry over untouched', async () => {
+      reservations.listHeldByOrderRecordId.mockResolvedValue([
+        reservation({ quantity: 5, atpEffect: 'diagnostic' }),
+      ]);
+
+      const result = await service.narrowForOrder({
+        orderRecordId: ORDER_ID,
+        lines: [{ orderLineId: 'line-1', quantity: 2 }],
+      });
+
+      expect(reservations.claimHeld).toHaveBeenCalledWith([
+        expect.objectContaining({
+          orderLineId: 'line-1',
+          inventoryItemId: 'inv-1',
+          quantity: 2,
+          atpEffect: 'diagnostic',
+          expiresAt: NOW,
+        }),
+      ]);
+      expect(result).toEqual({ narrowed: 1, released: 0, untouched: 0, failed: 0 });
+    });
+
+    it('should release a hold when its line is lowered to zero', async () => {
+      reservations.listHeldByOrderRecordId.mockResolvedValue([reservation({ quantity: 2 })]);
+
+      const result = await service.narrowForOrder({
+        orderRecordId: ORDER_ID,
+        lines: [{ orderLineId: 'line-1', quantity: 0 }],
+      });
+
+      expect(reservations.releaseHeld).toHaveBeenCalledWith(
+        expect.objectContaining({ orderLineId: 'line-1', terminalStatus: 'released' })
+      );
+      expect(result.released).toBe(1);
+    });
+
+    it('should never raise a hold nor create one for a line that has none', async () => {
+      reservations.listHeldByOrderRecordId.mockResolvedValue([reservation({ quantity: 2 })]);
+
+      const result = await service.narrowForOrder({
+        orderRecordId: ORDER_ID,
+        lines: [
+          { orderLineId: 'line-1', quantity: 9 },
+          { orderLineId: 'line-never-held', quantity: 1 },
+        ],
+      });
+
+      expect(reservations.claimHeld).not.toHaveBeenCalled();
+      expect(reservations.releaseHeld).not.toHaveBeenCalled();
+      expect(result).toEqual({ narrowed: 0, released: 0, untouched: 1, failed: 0 });
+    });
+
+    it('should count a row that went terminal in the meantime as untouched, not failed', async () => {
+      reservations.listHeldByOrderRecordId.mockResolvedValue([reservation({ quantity: 2 })]);
+      reservations.releaseHeld.mockRejectedValue(
+        new ReservationNotHeldError(ORDER_ID, 'line-1', 'inv-1')
+      );
+
+      const result = await service.narrowForOrder({
+        orderRecordId: ORDER_ID,
+        lines: [{ orderLineId: 'line-1', quantity: 0 }],
+      });
+
+      expect(result).toEqual({ narrowed: 0, released: 0, untouched: 1, failed: 0 });
+    });
+
+    it('should reject a negative or fractional target', async () => {
+      await expect(
+        service.narrowForOrder({ orderRecordId: ORDER_ID, lines: [{ orderLineId: 'line-1', quantity: -1 }] })
+      ).rejects.toThrow(RangeError);
+    });
+  });
 });
