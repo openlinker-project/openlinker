@@ -68,6 +68,7 @@ export class FakeOperationalSettingsService implements IOperationalSettingsServi
     deletionAuditBudget: defaultNumber('deletionAuditBudget'),
     syncJobRetentionDays: defaultNumber('syncJobRetentionDays'),
     syncJobDeadRetentionDays: defaultNumber('syncJobDeadRetentionDays'),
+    stockStaleSyncThresholdHours: defaultNumber('stockStaleSyncThresholdHours'),
     deletionAuditCadence: {
       value: DELETION_AUDIT_CADENCE_DEFAULT,
       source: 'default',

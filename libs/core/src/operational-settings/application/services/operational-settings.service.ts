@@ -130,6 +130,7 @@ export class OperationalSettingsService implements IOperationalSettingsService {
       deletionAuditBudget: numeric('deletionAuditBudget'),
       syncJobRetentionDays: numeric('syncJobRetentionDays'),
       syncJobDeadRetentionDays: numeric('syncJobDeadRetentionDays'),
+      stockStaleSyncThresholdHours: numeric('stockStaleSyncThresholdHours'),
       deletionAuditCadence: this.resolveCadence(stored?.deletionAuditCadence ?? null),
       // Read-only, and never `source: 'setting'` - there is no column for
       // either. Reported so a consumer computing a full-pass length uses the
@@ -198,6 +199,9 @@ export class OperationalSettingsService implements IOperationalSettingsService {
         }),
         ...(input.syncJobDeadRetentionDays !== undefined && {
           syncJobDeadRetentionDays: input.syncJobDeadRetentionDays,
+        }),
+        ...(input.stockStaleSyncThresholdHours !== undefined && {
+          stockStaleSyncThresholdHours: input.stockStaleSyncThresholdHours,
         }),
         ...(input.deletionAuditCadence !== undefined && {
           deletionAuditCadence: input.deletionAuditCadence,

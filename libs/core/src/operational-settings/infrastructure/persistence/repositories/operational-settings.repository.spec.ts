@@ -26,6 +26,7 @@ describe('OperationalSettingsRepository', () => {
       deletionAuditBudget: null,
       syncJobRetentionDays: null,
       syncJobDeadRetentionDays: null,
+      stockStaleSyncThresholdHours: null,
       deletionAuditCadence: null,
       updatedAt: new Date('2026-08-27T09:00:00Z'),
       updatedBy: 'ada',

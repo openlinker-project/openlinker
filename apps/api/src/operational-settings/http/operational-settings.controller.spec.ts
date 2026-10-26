@@ -40,6 +40,7 @@ const view = (overrides: Partial<OperationalSettingsView> = {}): OperationalSett
   deletionAuditBudget: number(100, 2000, 20_000),
   syncJobRetentionDays: number(30, 365, 365),
   syncJobDeadRetentionDays: number(90, 365, 365),
+  stockStaleSyncThresholdHours: number(6, 48, 168),
   deletionAuditCadence: { value: '0 * * * *', source: 'default', workerMayDiffer: true },
   catalogueSweepCadence: { value: '*/20 * * * *', source: 'default', workerMayDiffer: true },
   inventorySweepCadence: { value: '*/15 * * * *', source: 'default', workerMayDiffer: true },
@@ -194,6 +195,7 @@ describe('OperationalSettingsController', () => {
         deletionAuditBudget: 444,
         syncJobRetentionDays: 555,
         syncJobDeadRetentionDays: 666,
+        stockStaleSyncThresholdHours: 777,
         deletionAuditCadence: '*/7 * * * *',
         acknowledgeAboveRecommended: true,
       };
