@@ -2,11 +2,11 @@
  * Application Controller
  *
  * Root HTTP REST API controller providing basic application endpoints,
- * including health check and welcome message.
+ * including health check, welcome message and robots.txt.
  *
  * @module apps/api/src
  */
-import { Controller, Get, Inject, Req, VERSION_NEUTRAL, Version } from '@nestjs/common';
+import { Controller, Get, Header, Inject, Req, VERSION_NEUTRAL, Version } from '@nestjs/common';
 import { Request } from 'express';
 import { JwtService } from '@nestjs/jwt';
 import { AppService } from './app.service';
@@ -38,6 +38,17 @@ export class AppController {
   @Get()
   getHello(): string {
     return this.appService.getHello();
+  }
+
+  // Nothing on the API origin belongs in a search index (Swagger, webhook
+  // ingress, versioned JSON routes), yet public deployments get crawled and
+  // show up as 404s in Search Console (#3787). Neutral so it lives at the
+  // root `/robots.txt` crawlers look for; text/plain so Nest doesn't JSON it.
+  @Version(VERSION_NEUTRAL)
+  @Get('robots.txt')
+  @Header('Content-Type', 'text/plain; charset=utf-8')
+  getRobotsTxt(): string {
+    return 'User-agent: *\nDisallow: /\n';
   }
 
   @Get('health')

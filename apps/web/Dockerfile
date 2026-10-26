@@ -21,7 +21,7 @@
 #
 # VITE_OL_OMS_ROUTING_UI_ENABLED=true exposes the OMS routing configuration
 # screens (inventory locations, sourcing rules); unset keeps them hidden (#3634).
-FROM node:22.23.1-alpine3.24 AS build
+FROM node:22.23.4-alpine3.24 AS build
 
 # Pinned to match the repo's packageManager field (package.json).
 RUN npm install -g pnpm@10.33.4

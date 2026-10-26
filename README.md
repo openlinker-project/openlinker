@@ -307,7 +307,7 @@ The exact versions the Docker images and Compose files are built/tested against:
 
 | Component | Version |
 |---|---|
-| Node.js | 22 (pinned `node:22.23.1-alpine3.24` in `Dockerfile` / `apps/web/Dockerfile`) |
+| Node.js | 22 (pinned `node:22.23.4-alpine3.24` in `Dockerfile` / `apps/web/Dockerfile`) |
 | pnpm | 10 (pinned `pnpm@10.33.4`, matching `package.json`'s `packageManager` field) |
 | Docker Compose | ≥ 2.24 (required by the demo overlay's `!reset`/`!override` merge keys) |
 | PostgreSQL | 17 (`postgres:17-alpine`) |
