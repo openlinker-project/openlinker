@@ -39,6 +39,8 @@ export const INVENTORY_MOVEMENT_PRUNE_BATCH_SIZE = 1000;
 export const INVENTORY_MOVEMENT_MAX_BATCHES_PER_RUN = 50;
 
 const SWEEP_INTERVAL_MS = 60 * 60 * 1000; // 1 hour
+/** One sweep shortly after boot, so a restart does not leave an hour of lag. */
+const FIRST_SWEEP_DELAY_MS = 60 * 1000;
 const SWEEP_LOCK_TTL_MS = 20 * 60 * 1000; // covers one run, never a leadership term
 export const INVENTORY_MOVEMENT_RETENTION_LOCK_KEY =
   'maintenance:inventory-movement-retention:sweep';
@@ -53,6 +55,7 @@ export interface InventoryMovementRetentionRunResult {
 export class InventoryMovementRetentionService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(InventoryMovementRetentionService.name);
   private sweepInterval: NodeJS.Timeout | null = null;
+  private firstSweepTimeout: NodeJS.Timeout | null = null;
 
   constructor(
     @Inject(INVENTORY_MOVEMENT_SERVICE_TOKEN)
@@ -91,12 +94,23 @@ export class InventoryMovementRetentionService implements OnModuleInit, OnModule
     if (typeof this.sweepInterval.unref === 'function') {
       this.sweepInterval.unref();
     }
+    this.firstSweepTimeout = setTimeout(() => {
+      this.firstSweepTimeout = null;
+      void this.runOnce();
+    }, FIRST_SWEEP_DELAY_MS);
+    if (typeof this.firstSweepTimeout.unref === 'function') {
+      this.firstSweepTimeout.unref();
+    }
     this.logger.log(
       `Started inventory movement retention sweep (checking every ${interval / 1000}s)`
     );
   }
 
   stop(): void {
+    if (this.firstSweepTimeout) {
+      clearTimeout(this.firstSweepTimeout);
+      this.firstSweepTimeout = null;
+    }
     if (this.sweepInterval) {
       clearInterval(this.sweepInterval);
       this.sweepInterval = null;

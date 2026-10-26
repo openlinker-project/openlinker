@@ -134,4 +134,26 @@ describe('InventoryMovementRetentionService', () => {
     expect(syncLock.acquire).not.toHaveBeenCalled();
     disabled.stop();
   });
+
+  it('should run one sweep shortly after start, not only an hour later', async () => {
+    jest.useFakeTimers();
+    const spy = jest.spyOn(service, 'runOnce').mockResolvedValue(null);
+
+    service.start();
+    expect(spy).not.toHaveBeenCalled();
+    await jest.advanceTimersByTimeAsync(61_000);
+
+    expect(spy).toHaveBeenCalledTimes(1);
+  });
+
+  it('should cancel the pending first sweep on stop', async () => {
+    jest.useFakeTimers();
+    const spy = jest.spyOn(service, 'runOnce').mockResolvedValue(null);
+
+    service.start();
+    service.stop();
+    await jest.advanceTimersByTimeAsync(120_000);
+
+    expect(spy).not.toHaveBeenCalled();
+  });
 });
