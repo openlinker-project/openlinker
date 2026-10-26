@@ -33,6 +33,7 @@ import type {
   SyncJobRequest,
 } from '@openlinker/core/sync';
 import { INBOUND_ROUTING_POLICY_TOKEN } from '@openlinker/core/sync';
+import { Logger } from '@openlinker/shared/logging';
 import { InboundWebhookRoutingService } from './inbound-webhook-routing.service';
 import { WebhookRoutingUnavailableException } from '../errors/webhook-routing-unavailable.exception';
 
@@ -316,13 +317,25 @@ describe('InboundWebhookRoutingService', () => {
       expect(routingPolicy.resolve).not.toHaveBeenCalled();
     });
 
-    it('should keep only the first job when two events route to the same job type', async () => {
+    it('should keep only the first job, and warn naming the dropped event, when two events route to the same job type', async () => {
       translator.translate.mockReturnValue([productEvent, { ...productEvent, externalId: '99' }]);
       routingPolicy.resolve.mockImplementation(resolveByDomain());
+      const warnSpy = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
 
       const outcome = await service.resolveEvent(makeEvent());
 
       expect(outcome).toEqual({ kind: 'routed', jobs: [productJob] });
+      // `warn`, not `debug`: a translator doing this is losing an event, and
+      // that must be visible at the default log level.
+      expect(warnSpy).toHaveBeenCalledTimes(1);
+      expect(warnSpy).toHaveBeenCalledWith(
+        expect.stringContaining('translated event #1 (product) dropped')
+      );
+      expect(warnSpy).toHaveBeenCalledWith(
+        expect.stringContaining('already claimed by the product event')
+      );
+      expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('prestashop.webservice.v1'));
+      warnSpy.mockRestore();
     });
   });
 });
