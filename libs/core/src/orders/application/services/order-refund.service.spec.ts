@@ -9,6 +9,8 @@ import {
   ORDER_RECORD_SERVICE_TOKEN,
   ORDER_REFUND_RECORD_REPOSITORY_TOKEN,
 } from '../../orders.tokens';
+import { SYNC_LOCK_TOKEN } from '@openlinker/core/sync';
+import { RefundRecordContendedException } from '../../domain/exceptions/refund-record-contended.exception';
 import { RefundCeilingExceededException } from '../../domain/exceptions/refund-ceiling-exceeded.exception';
 import type { IOrderRecordService } from '../interfaces/order-record.service.interface';
 import { OrderRefundService } from './order-refund.service';
@@ -17,6 +19,7 @@ describe('OrderRefundService', () => {
   let service: OrderRefundService;
   let refundRepository: jest.Mocked<RefundRecordRepositoryPort>;
   let orderRecords: { getOrderRecord: jest.Mock };
+  let lock: { acquire: jest.Mock; release: jest.Mock };
 
   const sampleRefund = new RefundRecord(
     'a1b2c3d4-0000-0000-0000-000000000000',
@@ -38,6 +41,7 @@ describe('OrderRefundService', () => {
       summarizeByOrderIds: jest.fn(),
     };
 
+    lock = { acquire: jest.fn().mockResolvedValue('tok'), release: jest.fn().mockResolvedValue(undefined) };
     orderRecords = { getOrderRecord: jest.fn().mockResolvedValue(null) };
     mockRefundRepository.summarizeByOrderIds.mockResolvedValue(new Map());
 
@@ -48,6 +52,7 @@ describe('OrderRefundService', () => {
           provide: ORDER_REFUND_RECORD_REPOSITORY_TOKEN,
           useValue: mockRefundRepository,
         },
+        { provide: SYNC_LOCK_TOKEN, useValue: lock },
         {
           provide: ORDER_RECORD_SERVICE_TOKEN,
           useValue: orderRecords as unknown as IOrderRecordService,
@@ -135,6 +140,30 @@ describe('OrderRefundService', () => {
       refundRepository.summarizeByOrderIds.mockResolvedValue(
         new Map([['ol_order_abc123', { count: 1, totalAmount: '50.00', currency: 'PLN' }]]),
       );
+    });
+
+    it('should throw RefundRecordContendedException without writing when the order lock is held', async () => {
+      lock.acquire.mockResolvedValue(null);
+
+      await expect(service.recordRefund(input)).rejects.toBeInstanceOf(
+        RefundRecordContendedException,
+      );
+      expect(refundRepository.create).not.toHaveBeenCalled();
+      expect(lock.release).not.toHaveBeenCalled();
+    });
+
+    it('should release the lock after a successful write', async () => {
+      await service.recordRefund({ ...input, amount: '10.00' });
+
+      expect(lock.acquire).toHaveBeenCalledWith('order:refund:ol_order_abc123', expect.any(Number));
+      expect(lock.release).toHaveBeenCalledWith('order:refund:ol_order_abc123', 'tok');
+    });
+
+    it('should release the lock when the ceiling refuses the refund', async () => {
+      await expect(service.recordRefund(input)).rejects.toBeInstanceOf(
+        RefundCeilingExceededException,
+      );
+      expect(lock.release).toHaveBeenCalledWith('order:refund:ol_order_abc123', 'tok');
     });
 
     it('should refuse a second refund that pushes the order past its total', async () => {

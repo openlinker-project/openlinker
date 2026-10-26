@@ -42,6 +42,7 @@ import {
   DuplicateRefundRecordException,
   RefundCeilingExceededException,
   RefundCurrencyMismatchException,
+  RefundRecordContendedException,
   IOrderRefundService,
   IOrderRecordService,
   ORDER_REFUND_SERVICE_TOKEN,
@@ -117,6 +118,14 @@ export class RefundsController {
           alreadyRefunded: error.alreadyRefunded,
           requested: error.requested,
           currency: error.currency,
+        });
+      }
+      if (error instanceof RefundRecordContendedException) {
+        throw new ConflictException({
+          statusCode: HttpStatus.CONFLICT,
+          error: 'Conflict',
+          code: error.code,
+          message: error.message,
         });
       }
       if (error instanceof RefundCurrencyMismatchException) {
