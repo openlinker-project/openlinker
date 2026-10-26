@@ -292,6 +292,25 @@ describe('BulkEditModal', () => {
 
   // Found live (Shoper -> Allegro E2E): with no category the only signal is the
   // chip's warning triangle, so Save all used to do nothing at all on click.
+  it('shows the price a blank Price field lists at, not an example value', () => {
+    renderWithProviders(
+      <BulkEditModal
+        open
+        onOpenChange={() => undefined}
+        row={makeRow()}
+        connection={connection}
+        canBrowseCategories={true}
+        currency="PLN"
+        defaults={DEFAULTS}
+        onSave={() => undefined}
+      />,
+    );
+
+    const price = screen.getByLabelText('Price');
+    expect(price).toHaveAttribute('placeholder', '12.00');
+    expect(screen.getByText('Leave blank to list at 12.00 PLN from the pricing policy.')).toBeInTheDocument();
+  });
+
   it('explains a save blocked by a missing category instead of doing nothing', async () => {
     const onSave = vi.fn();
 

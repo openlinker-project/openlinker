@@ -1246,6 +1246,11 @@ function BulkEditModalForm({
             onBaseImageUrlsChange={setBaseImageUrls}
             onZoom={setZoomSrc}
             pricingPolicy={pricingPolicy}
+            inheritedSimplePrice={resolveBasePrice(
+              { ...baseValues, priceAmount: '' },
+              pricingPolicy,
+              row.variants[0]?.masterPrice ?? row.masterPrice,
+            )}
             onPricingPolicyChange={setPricingPolicy}
             stockPolicy={stockPolicy}
             onStockPolicyChange={setStockPolicy}
@@ -1467,6 +1472,13 @@ interface BaseScopeFormProps {
    * `fieldset[disabled]`, which does not reach a `contenteditable` (#2200).
    */
   readOnly: boolean;
+  /**
+   * The price a simple product's offer gets when the Price field is left
+   * blank (the batch pricing policy over the master price), formatted, or ''
+   * when nothing resolves. Shown in the field so a blank one reads as that
+   * price rather than as an example value.
+   */
+  inheritedSimplePrice: string;
 
   /**
    * The destination's declared description contract (ADR-046). Resolved once by
@@ -1539,6 +1551,7 @@ function BaseScopeForm({
   onBaseImageUrlsChange,
   onZoom,
   pricingPolicy,
+  inheritedSimplePrice,
   onPricingPolicyChange,
   stockPolicy,
   onStockPolicyChange,
@@ -1738,12 +1751,18 @@ function BaseScopeForm({
             <FormField
               name="bulk-edit-price"
               label="Price"
+              description={
+                inheritedSimplePrice !== ''
+                  ? `Leave blank to list at ${inheritedSimplePrice} ${currency} from the pricing policy.`
+                  : 'No master price - enter the price for this offer.'
+              }
               error={form.formState.errors.priceAmount?.message}
             >
               <Input
                 {...form.register('priceAmount')}
                 className="bulk-editor__input"
-                placeholder="79.00"
+                inputMode="decimal"
+                placeholder={inheritedSimplePrice}
                 aria-invalid={Boolean(form.formState.errors.priceAmount)}
               />
             </FormField>
