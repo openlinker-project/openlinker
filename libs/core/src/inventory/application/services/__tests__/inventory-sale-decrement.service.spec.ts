@@ -279,11 +279,14 @@ describe('InventorySaleDecrementService', () => {
     await service.decrementForWork(input());
 
     expect(inventoryService.setInventory).toHaveBeenCalledTimes(1);
-    const [item, sourceConnectionId] = inventoryService.setInventory.mock.calls[0] as [
+    const [item, sourceConnectionId, movement] = inventoryService.setInventory.mock.calls[0] as [
       InventoryItem,
       string,
+      unknown,
     ];
     expect(sourceConnectionId).toBe('conn-shop');
+    // Where OpenLinker itself lowers the master's stock: the `sale` ledger row (#3565).
+    expect(movement).toEqual({ reason: 'sale', sourceKind: 'order', sourceRef: 'ol_order_1' });
     expect(item).toMatchObject({
       id: 'inv-1',
       productId: 'ol_product_1',
@@ -462,7 +465,10 @@ describe('InventorySaleDecrementService', () => {
       expect(shop().listInventory).toHaveBeenCalledWith('ol_product_1');
       expect(inventoryService.setInventory).toHaveBeenCalledWith(
         expect.objectContaining({ availableQuantity: 5 }),
-        'conn-shop'
+        'conn-shop',
+        // The in-doubt re-read records what the master says, not what this
+        // decrement did, so it is NOT attributed to the sale (#3565).
+        undefined
       );
     });
 
@@ -546,7 +552,8 @@ describe('InventorySaleDecrementService', () => {
     expect(result.attention).toEqual({ kind: 'none' });
     expect(inventoryService.setInventory).toHaveBeenCalledWith(
       expect.objectContaining({ availableQuantity: 0 }),
-      'conn-shop'
+      'conn-shop',
+      { reason: 'sale', sourceKind: 'order', sourceRef: 'ol_order_1' }
     );
   });
 

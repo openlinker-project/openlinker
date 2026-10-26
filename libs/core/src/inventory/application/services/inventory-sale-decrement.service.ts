@@ -83,6 +83,7 @@ import {
   type SaleDecrementSettlement,
 } from '../../domain/ports/inventory-sale-decrement-repository.port';
 import type { InventoryOwnerPosition } from '../../domain/types/inventory.types';
+import type { InventoryMovementAttribution } from '../../domain/types/inventory-movement.types';
 import {
   buildSaleDecrementIdempotencyKey,
   buildUnresolvedSaleDecrementKey,
@@ -301,7 +302,13 @@ export class InventorySaleDecrementService implements IInventorySaleDecrementSer
         if (!(await this.consumeHold(input.orderId, line.orderLineId))) {
           holdCloseFailedLineIds.push(line.orderLineId);
         }
-        await this.mirrorResult(resolution.position, owner, settlement.resultingQuantity, line);
+        await this.mirrorResult(
+          resolution.position,
+          owner,
+          settlement.resultingQuantity,
+          line,
+          input.orderId
+        );
       } else if (settlement.status === 'in_doubt') {
         await this.refreshFromMaster(adapter.adapter, resolution.position, owner, line);
       }
@@ -474,7 +481,8 @@ export class InventorySaleDecrementService implements IInventorySaleDecrementSer
     position: InventoryOwnerPosition,
     owner: string,
     resultingQuantity: number | null,
-    line: SaleDecrementLineInput
+    line: SaleDecrementLineInput,
+    orderId: string
   ): Promise<void> {
     if (resultingQuantity === null) {
       this.logger.warn(
@@ -489,7 +497,15 @@ export class InventorySaleDecrementService implements IInventorySaleDecrementSer
     // one stale number. Bounded: #2321 never subtracts `reservedQuantity`
     // from ATP, so the consequence is display-only, unlike `refreshFromMaster`
     // below (used on the `in_doubt` path), which re-reads both from one call.
-    await this.writeMirror(position, owner, resultingQuantity, position.reservedQuantity, line);
+    // The one write where OpenLinker itself lowers the master's stock, so it is
+    // the `sale` ledger row (#3565, G-1). The re-read in `refreshFromMaster`
+    // stays an unattributed `master_sync`: it records what the master says, not
+    // what this decrement did.
+    await this.writeMirror(position, owner, resultingQuantity, position.reservedQuantity, line, {
+      reason: 'sale',
+      sourceKind: 'order',
+      sourceRef: orderId,
+    });
   }
 
   /**
@@ -528,7 +544,8 @@ export class InventorySaleDecrementService implements IInventorySaleDecrementSer
     owner: string,
     availableQuantity: number,
     reservedQuantity: number,
-    line: SaleDecrementLineInput
+    line: SaleDecrementLineInput,
+    movement?: InventoryMovementAttribution
   ): Promise<void> {
     try {
       await this.inventoryService.setInventory(
@@ -543,7 +560,8 @@ export class InventorySaleDecrementService implements IInventorySaleDecrementSer
           false,
           owner
         ),
-        owner
+        owner,
+        movement
       );
     } catch (error) {
       // The master is already lowered; only the mirror and its propagation are
