@@ -372,10 +372,15 @@ export function OrdersListPage(): ReactElement {
   // #3482 - the packer's name under "To pack" / "Packing". The roster is fetched
   // only when a row on this page has an assigned, unpacked work.
   const packersQuery = usePackersQuery({ enabled: needsPackerNames(items) });
+  // `null` until the roster has LOADED: a name-dependent label renders nothing
+  // while it is loading or after it failed, rather than claiming "Assigned" (which
+  // means "this id does not resolve") on the strength of a read that said nothing.
   const packerNameById = useMemo(
     () =>
-      new Map((packersQuery.data?.packers ?? []).map((packer) => [packer.id, packer.username])),
-    [packersQuery.data]
+      packersQuery.isSuccess
+        ? new Map(packersQuery.data.packers.map((packer) => [packer.id, packer.username]))
+        : null,
+    [packersQuery.isSuccess, packersQuery.data]
   );
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkOpen, setBulkOpen] = useState(false);

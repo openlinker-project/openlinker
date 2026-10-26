@@ -131,6 +131,15 @@ describe('derivePackerLabel (#3482)', () => {
     expect(derivePackerLabel(work('to-pack', 'single', 'user-gone'), names)).toBe('Assigned');
   });
 
+  it('should say nothing while the roster is not usable, rather than claim Assigned', () => {
+    // `null` is a roster that is loading, failed or was never fetched.
+    expect(derivePackerLabel(work('to-pack', 'single', 'user-1'), null)).toBeNull();
+    expect(derivePackerLabel(work('packing', 'single', 'user-1'), null)).toBeNull();
+    // Labels that need no roster still render.
+    expect(derivePackerLabel(work('to-pack', 'single', null), null)).toBe('Unassigned');
+    expect(derivePackerLabel(work('to-pack', 'mixed', null), null)).toBe('Several packers');
+  });
+
   it('should say Several packers for a split order with different packers', () => {
     expect(derivePackerLabel(work('to-pack', 'mixed', null), names)).toBe('Several packers');
   });

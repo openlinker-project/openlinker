@@ -21,14 +21,39 @@ import {
   type FulfillmentWork,
   type IFulfillmentWorkQueryService,
 } from '@openlinker/core/fulfillment';
-import { ORDER_RECORD_REPOSITORY_TOKEN } from '@openlinker/core/orders';
-import type { OrderRecordRepositoryPort } from '@openlinker/core/orders';
+import {
+  ORDER_RECORD_REPOSITORY_TOKEN,
+  type OrderHealthSummary,
+  type OrderHealthSummaryFilters,
+  type OrderRecordFilters,
+  type OrderRecordPagination,
+  type PaginatedOrderRecords,
+} from '@openlinker/core/orders';
+import {
+  ORDER_HEALTH_FIXTURES,
+  type OrderHealthFixtureBucket,
+} from '@openlinker/core/orders/testing';
 import { OMS_PLATFORM_TYPE } from '@openlinker/oms';
 
 import { getTestHarness, resetTestHarness, teardownTestHarness } from './setup';
 import type { IntegrationTestHarness } from './setup';
 import { createTestConnection } from './helpers/test-connection.helper';
 import { createTestOrderRecord } from './fixtures/order.fixtures';
+
+/**
+ * The two reads this spec drives, as a LOCAL structural view. The
+ * `*RepositoryPort` type is a deny shape for cross-context imports
+ * (`check-cross-context-imports.mjs`), and an allow-list row would be a standing
+ * licence for the coupling; the token is permitted, so the repository is
+ * resolved by token and typed by what this spec actually calls.
+ */
+interface OrderRecordReadsView {
+  findMany(
+    filters: OrderRecordFilters,
+    pagination: OrderRecordPagination
+  ): Promise<PaginatedOrderRecords>;
+  countByHealth(filters: OrderHealthSummaryFilters): Promise<OrderHealthSummary>;
+}
 
 /** The repository port is off the barrel; see `bench-work.int-spec.ts`. */
 interface WorkFactoryView {
@@ -40,11 +65,11 @@ const PACKER = '44444444-4444-4444-8444-444444444444';
 
 describe('Orders handled in OpenLinker (#3482, integration)', () => {
   let harness: IntegrationTestHarness;
-  let orders: OrderRecordRepositoryPort;
+  let orders: OrderRecordReadsView;
 
   beforeAll(async () => {
     harness = await getTestHarness();
-    orders = harness.getApp().get<OrderRecordRepositoryPort>(ORDER_RECORD_REPOSITORY_TOKEN);
+    orders = harness.getApp().get<OrderRecordReadsView>(ORDER_RECORD_REPOSITORY_TOKEN);
   });
   afterEach(async () => {
     await resetTestHarness();
@@ -111,6 +136,61 @@ describe('Orders handled in OpenLinker (#3482, integration)', () => {
   }
 
   describe('health partition', () => {
+    // The SQL half of the rule the frontend's `deriveOrderHealth` implements too.
+    // Every row of the shared table is seeded and must land in EXACTLY the bucket
+    // it expects - the NULL-`fulfillmentState` row is the one an order sitting on
+    // the bench is, and a bare `IN (...)` once counted it in no bucket at all.
+    it('should place every shared fixture in exactly the bucket it expects, and the buckets sum to the total', async () => {
+      expect(ORDER_HEALTH_FIXTURES.length).toBeGreaterThan(0);
+      const ids = new Map<string, string>();
+      for (const [index, fixture] of ORDER_HEALTH_FIXTURES.entries()) {
+        const id = `ol_order_health_fx_${index}`;
+        ids.set(id, fixture.name);
+        await seedOrder(id, {
+          recordStatus: fixture.recordStatus,
+          fulfillmentState: fixture.fulfillmentState as never,
+          syncStatus: fixture.syncStatuses.map((status, i) => ({
+            destinationConnectionId: `22222222-2222-4222-8222-22222222222${i}`,
+            status,
+          })) as never,
+        });
+        if (fixture.liveWork) await seedWork(id);
+      }
+
+      const buckets: OrderHealthFixtureBucket[] = [
+        'source_deleted',
+        'awaiting_mapping',
+        'needs_attention',
+        'synced',
+        'awaiting_dispatch',
+      ];
+      const seen = new Map<string, OrderHealthFixtureBucket[]>();
+      for (const bucket of buckets) {
+        const page = await orders.findMany({ health: bucket }, { limit: 100, offset: 0 });
+        for (const record of page.items) {
+          seen.set(record.internalOrderId, [...(seen.get(record.internalOrderId) ?? []), bucket]);
+        }
+      }
+
+      for (const [index, fixture] of ORDER_HEALTH_FIXTURES.entries()) {
+        const id = `ol_order_health_fx_${index}`;
+        expect({ fixture: fixture.name, buckets: seen.get(id) ?? [] }).toEqual({
+          fixture: fixture.name,
+          buckets: [fixture.expected],
+        });
+      }
+
+      const summary = await orders.countByHealth({});
+      expect(summary.total).toBe(ORDER_HEALTH_FIXTURES.length);
+      expect(
+        summary.sourceDeleted +
+          summary.awaitingMapping +
+          summary.needsAttention +
+          summary.synced +
+          summary.awaitingDispatch
+      ).toBe(summary.total);
+    });
+
     it('should keep a handled order awaiting dispatch on the bench and count it synced once shipped', async () => {
       await seedOrder('ol_order_on_bench', { fulfillmentState: 'not-shipped' });
       await seedWork('ol_order_on_bench');
@@ -201,7 +281,9 @@ describe('Orders handled in OpenLinker (#3482, integration)', () => {
 
   describe('packing stage from the live work rows', () => {
     function query(): IFulfillmentWorkQueryService {
-      return harness.getApp().get<IFulfillmentWorkQueryService>(FULFILLMENT_WORK_QUERY_SERVICE_TOKEN);
+      return harness
+        .getApp()
+        .get<IFulfillmentWorkQueryService>(FULFILLMENT_WORK_QUERY_SERVICE_TOKEN);
     }
 
     it('should read To pack, Packing after a scan, and Packed once the box is shut', async () => {

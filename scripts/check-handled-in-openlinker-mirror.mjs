@@ -25,6 +25,15 @@
  * `check-destination-routing-reason-mirror.mjs` (with its #3002 comment-order
  * fix); importing would run that guard's `main()` as a side effect.
  *
+ * Pair 3 - HEALTH FIXTURES. `ORDER_HEALTH_FIXTURES` in
+ *   libs/core/src/orders/testing/order-health.fixtures.ts
+ * (the table the SQL integration spec seeds) and the FE mirror table in
+ *   apps/web/src/features/orders/lib/order-health.test.ts
+ * must carry the same rows - same `name`, same `expected` bucket, same order. The
+ * health `synced` rule is written twice (TypeScript and SQL) and a textual guard
+ * cannot prove they agree about meaning; the shared table does, but only while
+ * both copies stay equal, which this check enforces.
+ *
  * Run with `--self-check` to exercise the differ against synthetic inputs.
  */
 
@@ -37,6 +46,8 @@ const repoRoot = join(__dirname, '..');
 
 const FRONTEND_FILE = join('apps', 'web', 'src', 'features', 'orders', 'api', 'orders.types.ts');
 const COPY_FILE = join('apps', 'web', 'src', 'features', 'orders', 'lib', 'handled-in-openlinker.copy.ts');
+const HEALTH_FIXTURES_CORE_FILE = join('libs', 'core', 'src', 'orders', 'testing', 'order-health.fixtures.ts');
+const HEALTH_FIXTURES_FE_FILE = join('apps', 'web', 'src', 'features', 'orders', 'lib', 'order-health.test.ts');
 const DOCS_REF = 'docs/plans/implementation-plan-orders-handled-in-openlinker-2.md';
 
 const PAIRS = [
@@ -236,6 +247,45 @@ export function diffCopyCoverage(reasons, copyKeys) {
   return { ok: issues.length === 0, issues };
 }
 
+/**
+ * The `name -> expected` rows of a fixture table, in order, read from the text
+ * after `startMarker`. Both keys are plain single-quoted strings in either file;
+ * a row carrying a name without an expectation (or the reverse) makes the two
+ * lists differ in length and is reported.
+ */
+export function parseHealthFixtureRows(content, startMarker) {
+  const start = content.indexOf(startMarker);
+  if (start === -1) return null;
+  const body = content.slice(start);
+  const names = [...body.matchAll(/\bname:\s*'([^']+)'/g)].map((m) => m[1]);
+  const expected = [...body.matchAll(/\bexpected:\s*'([^']+)'/g)].map((m) => m[1]);
+  return { names, expected, line: content.slice(0, start).split('\n').length };
+}
+
+/** The two tables must carry the same rows. Order-sensitive. */
+export function diffHealthFixtures(core, fe) {
+  const issues = [];
+  if (core.names.length !== core.expected.length) {
+    issues.push(`core: ${core.names.length} name(s) but ${core.expected.length} expectation(s)`);
+  }
+  if (fe.names.length !== fe.expected.length) {
+    issues.push(`frontend: ${fe.names.length} name(s) but ${fe.expected.length} expectation(s)`);
+  }
+  const rows = (t) => t.names.map((name, i) => `${name} => ${t.expected[i]}`);
+  const coreRows = rows(core);
+  const feRows = rows(fe);
+  for (const row of coreRows) {
+    if (!feRows.includes(row)) issues.push(`'${row}' is in the core table but missing (or different) in the frontend mirror`);
+  }
+  for (const row of feRows) {
+    if (!coreRows.includes(row)) issues.push(`'${row}' is in the frontend mirror but missing (or different) in core`);
+  }
+  if (issues.length === 0 && coreRows.join('\u0000') !== feRows.join('\u0000')) {
+    issues.push('same rows, different ORDER between the core table and the frontend mirror');
+  }
+  return { ok: issues.length === 0, issues };
+}
+
 function selfCheck() {
   const failures = [];
   const expect = (label, actual, wanted) => {
@@ -249,6 +299,14 @@ function selfCheck() {
   expect('full copy coverage is ok', diffCopyCoverage(['a', 'b'], ['a', 'b']).ok, true);
   expect('missing copy entry fails', diffCopyCoverage(['a', 'b'], ['a']).ok, false);
   expect('orphan copy entry fails', diffCopyCoverage(['a'], ['a', 'b']).ok, false);
+  const row = (n, e) => ({ names: n, expected: e });
+  expect('equal fixture tables are ok', diffHealthFixtures(row(['a', 'b'], ['x', 'y']), row(['a', 'b'], ['x', 'y'])).ok, true);
+  expect('a row only in core fails', diffHealthFixtures(row(['a', 'b'], ['x', 'y']), row(['a'], ['x'])).ok, false);
+  expect('a changed expectation fails', diffHealthFixtures(row(['a'], ['x']), row(['a'], ['z'])).ok, false);
+  expect('reordered fixture rows fail', diffHealthFixtures(row(['a', 'b'], ['x', 'y']), row(['b', 'a'], ['y', 'x'])).ok, false);
+  expect('a name without an expectation fails', diffHealthFixtures(row(['a', 'b'], ['x']), row(['a', 'b'], ['x', 'y'])).ok, false);
+  const fx = parseHealthFixtureRows("// head\nexport const T = [\n  { name: 'one', expected: 'x' },\n  { name: 'two',\n expected: 'y' },\n];", 'export const T');
+  expect('fixture parser reads name and expected pairs', `${fx?.names.join(',')}|${fx?.expected.join(',')}`, 'one,two|x,y');
   // Vacuous by design at this layer; `main` refuses an empty parse instead.
   expect('empty vs empty is vacuously ok', diffReasonValues([], []).ok, true);
 
@@ -309,6 +367,30 @@ async function main() {
     if (!copyDrift.ok) drifts.push({ where: `${COPY_FILE}:${copy.line} (${pair.copyDeclaration})`, issues: copyDrift.issues });
   }
 
+  // Pair 3 - the shared health fixtures. An EMPTY parse is fatal for the same
+  // reason as above: two empty tables are equal.
+  const [coreFixturesSrc, feFixturesSrc] = await Promise.all([
+    readFile(join(repoRoot, HEALTH_FIXTURES_CORE_FILE), 'utf8'),
+    readFile(join(repoRoot, HEALTH_FIXTURES_FE_FILE), 'utf8'),
+  ]);
+  const coreFixtures = parseHealthFixtureRows(coreFixturesSrc, 'export const ORDER_HEALTH_FIXTURES');
+  const feFixtures = parseHealthFixtureRows(feFixturesSrc, 'shared health fixtures (#3482)');
+  if (!coreFixtures || coreFixtures.names.length === 0) {
+    fatal.push(`${HEALTH_FIXTURES_CORE_FILE}: could not read any \`ORDER_HEALTH_FIXTURES\` row`);
+  }
+  if (!feFixtures || feFixtures.names.length === 0) {
+    fatal.push(`${HEALTH_FIXTURES_FE_FILE}: could not read any row after the "shared health fixtures (#3482)" marker`);
+  }
+  if (coreFixtures && feFixtures && coreFixtures.names.length > 0 && feFixtures.names.length > 0) {
+    const drift = diffHealthFixtures(coreFixtures, feFixtures);
+    if (!drift.ok) {
+      drifts.push({
+        where: `${HEALTH_FIXTURES_CORE_FILE}:${coreFixtures.line} vs ${HEALTH_FIXTURES_FE_FILE}:${feFixtures.line}`,
+        issues: drift.issues,
+      });
+    }
+  }
+
   if (fatal.length > 0 || drifts.length > 0) {
     console.error('✗ check-handled-in-openlinker-mirror FAILED');
     for (const f of fatal) console.error(`  - ${f}`);
@@ -321,7 +403,7 @@ async function main() {
   }
 
   console.log(
-    `✓ check-handled-in-openlinker-mirror: ${PAIRS.map((p) => p.label).join(' and ')} identical across core and the frontend mirror, each with copy`,
+    `✓ check-handled-in-openlinker-mirror: ${PAIRS.map((p) => p.label).join(' and ')} identical across core and the frontend mirror, each with copy; ${coreFixtures?.names.length ?? 0} health fixture(s) identical in core and the frontend mirror`,
   );
 }
 

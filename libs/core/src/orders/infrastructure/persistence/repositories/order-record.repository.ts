@@ -1659,10 +1659,11 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
   /**
    * `'a', 'b'` for a SQL `IN (...)` over a core value array. The values are
    * compile-time constants (status / reason literals), never user input, so
-   * inlining them keeps the predicates parameter-free (ADR-036).
+   * inlining them keeps the predicates parameter-free (ADR-036). A single quote
+   * is still doubled, so a future value containing one cannot end the literal.
    */
   private static sqlInList(values: readonly string[]): string {
-    return values.map((value) => `'${value}'`).join(', ');
+    return values.map((value) => `'${value.replace(/'/g, "''")}'`).join(', ');
   }
   /**
    * #3482 — the order has a live pack-bench work: OpenLinker handles it itself.
@@ -1688,11 +1689,20 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
    * residual `awaiting_dispatch` for ever, even after delivery; while it is still
    * on the bench it IS awaiting dispatch, so only shipping moves it. The handled
    * condition is required so an order with nothing configured that a marketplace
-   * shipped keeps its old bucket. Twin of the FE `deriveOrderHealth` — change both.
+   * shipped keeps its old bucket. Twin of the FE `deriveOrderHealth` — change both,
+   * and both are pinned to `ORDER_HEALTH_FIXTURES` (`order-health.fixtures.ts`).
+   *
+   * `fulfillmentState` is NULLABLE and stays `NULL` until the first shipment
+   * mutation, which is exactly the state of an order sitting on the bench. Read
+   * bare, `TRUE AND NULL IN (...)` is `NULL`, so the order was neither `synced`
+   * nor (through `NOT (...)`) `awaiting_dispatch` and counted in no bucket at all -
+   * the partition stopped summing to the total. `COALESCE(..., 'not-shipped')` is
+   * the same reading `LIFECYCLE_FULFILLMENT` applies, and is what makes the NULL
+   * case fall into the residual bucket where the FE row already shows it.
    */
   private static readonly IS_SYNCED_HEALTH =
     `(${OrderRecordRepository.HAS_SYNCED} OR (${OrderRecordRepository.IS_HANDLED_IN_OPENLINKER} ` +
-    `AND rec."fulfillmentState" IN ('dispatched', 'delivered')))`;
+    `AND COALESCE(rec."fulfillmentState", 'not-shipped') IN ('dispatched', 'delivered')))`;
   /**
    * #3482 — a live pack-bench work whose box is not shut: To pack or Packing.
    * ADR-036 raw read as above; also depends on `parcelClosedAt`. The statuses are

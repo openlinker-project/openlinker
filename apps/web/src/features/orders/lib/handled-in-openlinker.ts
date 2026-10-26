@@ -81,17 +81,22 @@ export function showsPackingStage(
  * to say: no work, a packed parcel (its tick says when instead), or a response
  * from before the assignment was projected.
  *
- * `nameById` comes from the packers roster; an id it cannot resolve reads
- * "Assigned", never a raw id.
+ * `nameById` is the packers roster, or `null` while that roster is not usable -
+ * still loading, failed, or never fetched. A name-dependent label then renders
+ * NOTHING: "Assigned" is a claim that this id does not resolve, and a roster
+ * that has not answered (or errored) has made no such statement. Only a roster
+ * that LOADED can say an id is unknown, and it reads "Assigned", never a raw id.
+ * "Unassigned" and "Several packers" need no roster and are unaffected.
  */
 export function derivePackerLabel(
   handled: OrderHandledInOpenLinker | undefined,
-  nameById: ReadonlyMap<string, string>
+  nameById: ReadonlyMap<string, string> | null
 ): string | null {
   const view = derivePackingStage(handled);
   if (!view || view.stage === 'packed' || !handled?.assignment) return null;
   if (handled.assignment === 'mixed') return HANDLED_IN_OPENLINKER_COPY.severalPackers;
   if (!handled.assignedToUserId) return HANDLED_IN_OPENLINKER_COPY.unassigned;
+  if (nameById === null) return null;
   return nameById.get(handled.assignedToUserId) ?? HANDLED_IN_OPENLINKER_COPY.assignedUnknown;
 }
 

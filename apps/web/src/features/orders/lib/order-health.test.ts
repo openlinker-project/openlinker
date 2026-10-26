@@ -416,3 +416,146 @@ describe('unrecognised state degradation (#2678)', () => {
     expect(slaBadge('none')).toBeNull();
   });
 });
+
+// The browser half of a rule implemented twice (#3482). This table is the FE
+// MIRROR of `ORDER_HEALTH_FIXTURES` (`@openlinker/core/orders/testing`): the
+// integration spec runs every row through the SQL twin
+// (`OrderRecordRepository.IS_SYNCED_HEALTH`), this runs the same rows through
+// `deriveOrderHealth`. `scripts/check-handled-in-openlinker-mirror.mjs` holds the
+// two tables to the same names and expectations, so a case added on one side only
+// fails the build. `fulfillmentState` ABSENT is the backend's NULL - the state of
+// every order that has not shipped.
+describe('deriveOrderHealth - shared health fixtures (#3482)', () => {
+  interface HealthFixtureRow {
+    name: string;
+    recordStatus: 'ready' | 'awaiting_mapping' | 'source_deleted';
+    syncStatuses: OrderSyncStatus['status'][];
+    fulfillmentState: OrderRecord['fulfillmentState'];
+    liveWork: boolean;
+    expected: ReturnType<typeof deriveOrderHealth>['key'];
+  }
+
+  const FIXTURES: HealthFixtureRow[] = [
+    {
+      name: 'a deleted source order',
+      recordStatus: 'source_deleted',
+      syncStatuses: [],
+      fulfillmentState: undefined,
+      liveWork: false,
+      expected: 'source_deleted',
+    },
+    {
+      name: 'an order waiting for a catalogue mapping',
+      recordStatus: 'awaiting_mapping',
+      syncStatuses: [],
+      fulfillmentState: undefined,
+      liveWork: false,
+      expected: 'awaiting_mapping',
+    },
+    {
+      name: 'a destination failed',
+      recordStatus: 'ready',
+      syncStatuses: ['failed'],
+      fulfillmentState: undefined,
+      liveWork: false,
+      expected: 'needs_attention',
+    },
+    {
+      name: 'a failed destination beside a synced one',
+      recordStatus: 'ready',
+      syncStatuses: ['failed', 'synced'],
+      fulfillmentState: undefined,
+      liveWork: false,
+      expected: 'needs_attention',
+    },
+    {
+      name: 'a destination synced',
+      recordStatus: 'ready',
+      syncStatuses: ['synced'],
+      fulfillmentState: undefined,
+      liveWork: false,
+      expected: 'synced',
+    },
+    {
+      name: 'destinations only pending',
+      recordStatus: 'ready',
+      syncStatuses: ['pending'],
+      fulfillmentState: undefined,
+      liveWork: false,
+      expected: 'awaiting_dispatch',
+    },
+    {
+      name: 'no destination and nothing shipped',
+      recordStatus: 'ready',
+      syncStatuses: [],
+      fulfillmentState: undefined,
+      liveWork: false,
+      expected: 'awaiting_dispatch',
+    },
+    {
+      name: 'on the pack bench with no shipment yet (fulfillmentState NULL)',
+      recordStatus: 'ready',
+      syncStatuses: [],
+      fulfillmentState: undefined,
+      liveWork: true,
+      expected: 'awaiting_dispatch',
+    },
+    {
+      name: 'on the pack bench, shipment state not-shipped',
+      recordStatus: 'ready',
+      syncStatuses: [],
+      fulfillmentState: 'not-shipped',
+      liveWork: true,
+      expected: 'awaiting_dispatch',
+    },
+    {
+      name: 'handled and dispatched',
+      recordStatus: 'ready',
+      syncStatuses: [],
+      fulfillmentState: 'dispatched',
+      liveWork: true,
+      expected: 'synced',
+    },
+    {
+      name: 'handled and delivered',
+      recordStatus: 'ready',
+      syncStatuses: [],
+      fulfillmentState: 'delivered',
+      liveWork: true,
+      expected: 'synced',
+    },
+    {
+      name: 'shipped by a marketplace with no work of ours',
+      recordStatus: 'ready',
+      syncStatuses: [],
+      fulfillmentState: 'delivered',
+      liveWork: false,
+      expected: 'awaiting_dispatch',
+    },
+    {
+      name: 'handled and dispatched, but a destination failed',
+      recordStatus: 'ready',
+      syncStatuses: ['failed'],
+      fulfillmentState: 'dispatched',
+      liveWork: true,
+      expected: 'needs_attention',
+    },
+  ];
+
+  it('should hold at least one fixture, or the loop below asserts nothing', () => {
+    expect(FIXTURES.length).toBeGreaterThan(0);
+  });
+
+  it.each(FIXTURES)('should classify $name as $expected', (fixture) => {
+    const record = order({
+      recordStatus: fixture.recordStatus,
+      fulfillmentState: fixture.fulfillmentState,
+      syncStatus: fixture.syncStatuses.map((status, i) =>
+        syncEntry({ destinationConnectionId: `conn_${i}`, status })
+      ),
+      ...(fixture.liveWork && { handledInOpenLinker: { stage: 'to-pack', workCount: 1 } }),
+    });
+
+    expect(deriveOrderHealth(record).key).toBe(fixture.expected);
+  });
+});
