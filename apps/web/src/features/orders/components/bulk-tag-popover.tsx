@@ -272,7 +272,7 @@ export function BulkTagPopover({
                   orderId: r.orderId,
                   tone: BULK_TAG_ROW[r.outcome].tone,
                   label: BULK_TAG_ROW[r.outcome].label,
-                  detail: r.reason ?? null,
+                  detail: r.code === 'ORDER_NOT_FOUND' ? 'Order not found' : (r.reason ?? null),
                 }))}
               />
               <DialogFooter>

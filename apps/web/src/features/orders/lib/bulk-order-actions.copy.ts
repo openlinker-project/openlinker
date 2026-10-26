@@ -80,6 +80,24 @@ export const BULK_TAG_ROW: Record<BulkOrderTagOutcome, BulkRowView> = {
   failed: { tone: 'error', label: 'Failed' },
 };
 
+/** Plain-language note for one backend warning code on a cancelled row. */
+export function describeCancelWarning(
+  code: string,
+  connectionName: (id: string) => string | undefined,
+): string {
+  if (code.startsWith('stock-restored-only:')) {
+    const name = connectionName(code.slice('stock-restored-only:'.length));
+    return `Stock was restored on ${name ?? 'one channel'} only.`;
+  }
+  if (code.startsWith('correction-unavailable:')) {
+    const reason = code.slice('correction-unavailable:'.length);
+    return `No credit note could be drafted${reason ? ` (${reason})` : ''}.`;
+  }
+  if (code === 'destination-not-notified') return 'A destination shop was not told about the cancellation.';
+  if (code === 'stock-restore-not-queued') return 'Stock restore was not queued.';
+  return code;
+}
+
 export const BULK_ACTIONS_COPY = {
   cancel: {
     trigger: (count: number) => `Cancel ${count}`,
@@ -99,6 +117,10 @@ export const BULK_ACTIONS_COPY = {
     resultTitle: 'Cancellation finished',
     resultSummary: (done: number, total: number) => `${done} of ${total} handled`,
     requestError: 'OpenLinker could not start the cancellation. Nothing was cancelled.',
+    unconfirmedError: 'We could not confirm the result.',
+    unconfirmedBody:
+      'Some orders may have been cancelled - refresh the list to see their state.',
+    pendingCount: (n: number) => `${n} waiting for the channel`,
     correctionLink: 'Review correction',
     openOrder: 'Open order',
   },

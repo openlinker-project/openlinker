@@ -107,7 +107,8 @@ describe('BulkCancelDialog (#3619)', () => {
     expect(results).toHaveTextContent('This order has already shipped. (ORDER_ALREADY_SHIPPED)');
     expect(results).toHaveTextContent('Unexpected error (correlationId: abc).');
     expect(screen.getByTestId('orders-bulk-cancel-correction-link')).toHaveAttribute('href', '/orders/o3');
-    expect(screen.getByTestId('orders-bulk-cancel-summary')).toHaveTextContent('3 of 5 handled');
+    expect(screen.getByTestId('orders-bulk-cancel-summary')).toHaveTextContent('2 of 5 handled');
+    expect(screen.getByTestId('orders-bulk-cancel-summary')).toHaveTextContent('1 waiting for the channel');
   });
 
   it('should show the request failure and no result rows when the whole call fails', async () => {
@@ -119,5 +120,46 @@ describe('BulkCancelDialog (#3619)', () => {
 
     expect(await screen.findByTestId('orders-bulk-cancel-error')).toHaveTextContent('Forbidden');
     expect(screen.queryByTestId('orders-bulk-cancel-results')).toBeNull();
+  });
+
+  it('should say the result is unconfirmed and keep the selection when the request times out (B-25)', async () => {
+    const failing = vi.fn().mockRejectedValue(new ApiError('Gateway Timeout', 504, {}));
+    const { onComplete } = renderDialog(failing);
+    const user = userEvent.setup();
+
+    await user.click(screen.getByTestId('orders-bulk-cancel-submit'));
+
+    const alert = await screen.findByTestId('orders-bulk-cancel-unconfirmed');
+    expect(alert).toHaveTextContent('We could not confirm the result.');
+    expect(alert).toHaveTextContent('Some orders may have been cancelled');
+    expect(screen.queryByTestId('orders-bulk-cancel-error')).toBeNull();
+    expect(onComplete).not.toHaveBeenCalled();
+  });
+
+  it('should render warnings as plain notes on a cancelled row (B-24)', async () => {
+    const withWarnings: BulkCancelOrdersResult = {
+      total: 1,
+      cancelled: 1,
+      pending: 0,
+      correctionProposed: 0,
+      refused: 0,
+      failed: 0,
+      results: [
+        {
+          orderId: 'o1',
+          outcome: 'cancelled',
+          warnings: ['stock-restored-only:c1', 'destination-not-notified', 'correction-unavailable:no-snapshot'],
+        },
+      ],
+    };
+    renderDialog(vi.fn().mockResolvedValue(withWarnings));
+    const user = userEvent.setup();
+
+    await user.click(screen.getByTestId('orders-bulk-cancel-submit'));
+
+    const results = await screen.findByTestId('orders-bulk-cancel-results');
+    expect(results).toHaveTextContent('Stock was restored on one channel only.');
+    expect(results).toHaveTextContent('destination shop was not told');
+    expect(results).toHaveTextContent('No credit note could be drafted (no-snapshot).');
   });
 });

@@ -14,6 +14,9 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { useEffect, useState, type ReactElement } from 'react';
 import { useForm } from 'react-hook-form';
 import { Link } from 'react-router-dom';
+import { useQueryClient } from '@tanstack/react-query';
+import { ApiError } from '../../../shared/api/api-error';
+import { ordersQueryKeys } from '../api/orders.query-keys';
 
 import { Alert } from '../../../shared/ui/alert';
 import { Button } from '../../../shared/ui/button';
@@ -29,7 +32,7 @@ import { Select } from '../../../shared/ui/select';
 import { Textarea } from '../../../shared/ui/textarea';
 import type { BulkCancelOrdersResult } from '../api/order-bulk-actions.types';
 import { useBulkCancelOrdersMutation } from '../hooks/use-bulk-order-actions';
-import { BULK_ACTIONS_COPY, BULK_CANCEL_ROW } from '../lib/bulk-order-actions.copy';
+import { BULK_ACTIONS_COPY, BULK_CANCEL_ROW, describeCancelWarning } from '../lib/bulk-order-actions.copy';
 import {
   ORDER_CANCEL_NOTE_MAX_LENGTH,
   ORDER_CANCEL_REASON_LABELS,
@@ -52,17 +55,36 @@ export interface BulkCancelDialogProps {
   orderIds: readonly string[];
   /** Called once a result is shown, so the page can clear its selection. */
   onComplete?: () => void;
+  /** Connection id to display name, to name the channel in stock warnings. */
+  connectionNames?: ReadonlyMap<string, string>;
 }
 
-export function toCancelRows(result: BulkCancelOrdersResult): BulkResultRow[] {
+/**
+ * Whether a failed request definitely did nothing server-side: a 4xx answer
+ * (validation, permission, conflict) is produced before any order is processed.
+ * Timeouts, network errors and 5xx may have followed partial work.
+ */
+export function isDefiniteNoOp(error: unknown): boolean {
+  return (
+    error instanceof ApiError && error.status >= 400 && error.status < 500 && error.status !== 408
+  );
+}
+
+export function toCancelRows(
+  result: BulkCancelOrdersResult,
+  connectionNames?: ReadonlyMap<string, string>,
+): BulkResultRow[] {
   return result.results.map((row) => {
     const view = BULK_CANCEL_ROW[row.outcome];
     const detail = [row.reason, row.code ? `(${row.code})` : null].filter(Boolean).join(' ') || null;
+    const notes = (row.warnings ?? []).map((w) =>
+      describeCancelWarning(w, (id) => connectionNames?.get(id)),
+    );
     return {
       orderId: row.orderId,
       tone: view.tone,
       label: view.label,
-      detail,
+      detail: [detail, ...notes].filter(Boolean).join(' ') || null,
       extra:
         row.outcome === 'correction-proposed' ? (
           <Link
@@ -82,8 +104,10 @@ export function BulkCancelDialog({
   onOpenChange,
   orderIds,
   onComplete,
+  connectionNames,
 }: BulkCancelDialogProps): ReactElement {
   const mutation = useBulkCancelOrdersMutation();
+  const queryClient = useQueryClient();
   const [result, setResult] = useState<BulkCancelOrdersResult | null>(null);
   const form = useForm<BulkCancelFormValues, undefined, BulkCancelSubmission>({
     defaultValues: DEFAULTS,
@@ -115,22 +139,28 @@ export function BulkCancelDialog({
           setResult(data);
           onComplete?.();
         },
+        onError: (error) => {
+          if (!isDefiniteNoOp(error)) {
+            void queryClient.invalidateQueries({ queryKey: ordersQueryKeys.all });
+          }
+        },
       },
     );
   });
 
   if (result !== null) {
-    const done = result.cancelled + result.pending + result.correctionProposed;
+    const done = result.cancelled + result.correctionProposed;
     return (
       <Dialog open={open} onOpenChange={onOpenChange}>
         <DialogContent className="bulk-dispatch" data-testid="orders-bulk-cancel-dialog">
           <DialogTitle>{COPY.resultTitle}</DialogTitle>
           <DialogDescription data-testid="orders-bulk-cancel-summary">
             <strong>{COPY.resultSummary(done, result.total)}</strong>
+            {result.pending > 0 ? ` · ${COPY.pendingCount(result.pending)}` : ''}
             {result.refused > 0 ? ` · ${result.refused} refused` : ''}
             {result.failed > 0 ? ` · ${result.failed} failed` : ''}
           </DialogDescription>
-          <BulkResultRows rows={toCancelRows(result)} testId="orders-bulk-cancel-results" />
+          <BulkResultRows rows={toCancelRows(result, connectionNames)} testId="orders-bulk-cancel-results" />
           <DialogFooter>
             <Button
               tone="primary"
@@ -153,7 +183,11 @@ export function BulkCancelDialog({
         <DialogTitle>{COPY.title(orderIds.length)}</DialogTitle>
         <DialogDescription>{COPY.description}</DialogDescription>
 
-        {mutation.isError ? (
+        {mutation.isError && !isDefiniteNoOp(mutation.error) ? (
+          <Alert tone="warning" title={COPY.unconfirmedError} data-testid="orders-bulk-cancel-unconfirmed">
+            {COPY.unconfirmedBody}
+          </Alert>
+        ) : mutation.isError ? (
           <Alert tone="error" title={COPY.requestError} data-testid="orders-bulk-cancel-error">
             {readServerReason(mutation.error, COPY.requestError)}
           </Alert>
