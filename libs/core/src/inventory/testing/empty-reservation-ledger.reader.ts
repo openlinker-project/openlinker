@@ -31,7 +31,6 @@ export class EmptyReservationLedgerReader implements ReservationLedgerReaderPort
     return Promise.resolve(new Map<string, number>());
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- the signature is the contract.
   sumReservedByLocation(_input: SumReservedByLocationInput): Promise<readonly LocatedReservedSum[]> {
     return Promise.resolve([]);
   }

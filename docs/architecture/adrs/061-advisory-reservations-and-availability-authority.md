@@ -92,6 +92,20 @@ hold is written before routing runs (#3480) and would otherwise make the last un
 to the very order claiming it. A ledger read that fails fails the routing - it is never read as
 zero.
 
+Two limits are stated rather than hidden. **Each unit is not subtracted exactly once.**
+`InventorySaleDecrementService` consumes the hold before it rewrites the mirror, so between those
+two writes the units are in neither term and a concurrent route can allocate them; and when the
+master reports no resulting quantity the mirror is not lowered until the next stock sync, so the
+router routes on units that no longer exist until then. Consuming first is right for the publish
+path (#3480) and is the unsafe order for this reader; closing it (for example, keeping the hold
+when the master reports no quantity) is not done here. **The subtraction does nothing where it is
+most needed.** A variant resolving to more than one live position raises
+`AmbiguousReservationPositionError` and writes no hold (the #2628 known limitation), and a
+multi-location install is exactly where the router chooses between locations - so on such an
+install nothing is subtracted for that variant. A spec that shows the router steering to the
+location whose stock is not promised exercises the reader with a ledger state the write path
+cannot yet produce for that shape.
+
 ## References
 
 - Related ADRs: [ADR-058](./058-multi-location-positions-reservations-availability-authority.md), [ADR-028](./028-order-cancellation-stock-restore.md), [ADR-052](./052-independently-assignable-fulfillment-authorities.md), [ADR-062](./062-trust-posture-authority-holding-capabilities.md)

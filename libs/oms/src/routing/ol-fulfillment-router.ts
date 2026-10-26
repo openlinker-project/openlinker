@@ -221,7 +221,14 @@ export class OlFulfillmentRouter implements FulfillmentRouterPort {
     // `availableQuantity`. Subtracting the unshipped work line as well would
     // count them twice (a work line outlives its hold until the parcel ships).
     // Until the decrement settles the hold stands in; a `blocked` / `in_doubt`
-    // decrement keeps it. Either way each unit is subtracted exactly once.
+    // decrement keeps it. That is the intent, NOT a guarantee of exactly once:
+    // `InventorySaleDecrementService` consumes the hold BEFORE it rewrites this
+    // mirror, so (1) between those two writes the units are in neither term and a
+    // concurrent route can allocate them, and (2) when the master reports no
+    // resulting quantity the mirror is not lowered until the next stock sync, so
+    // the router routes on units that no longer exist until then. Consuming first
+    // is right for the publish path (#3480) and is the unsafe order for this
+    // reader; the window is recorded in ADR-061 (#3475) rather than closed here.
     //
     // No try/catch: when the ledger cannot be read the router must fail, not
     // route on raw stock - a swallowed read is a zero ledger term, i.e. the

@@ -123,7 +123,7 @@ export class ReservationLedgerReader implements ReservationLedgerReaderPort {
     // position - so the two cannot drift; only the grouping differs. A pooled
     // position (`locationId IS NULL`) is excluded: it names no location, and the
     // router skips such rows on the stock side too.
-    const rows = await this.repository
+    const query = this.repository
       .createQueryBuilder('r')
       .innerJoin(InventoryItemOrmEntity, 'inv', 'inv."id" = r."inventoryItemId"')
       .select('inv."locationId"', 'locationId')
@@ -136,13 +136,14 @@ export class ReservationLedgerReader implements ReservationLedgerReaderPort {
       })
       .andWhere('inv."locationId" IS NOT NULL')
       .andWhere('inv."isStale" = false')
-      .andWhere(
-        input.excludeOrderRecordId === undefined ? '1 = 1' : 'r."orderRecordId" <> :excludedOrder',
-        { excludedOrder: input.excludeOrderRecordId }
-      )
       .groupBy('inv."locationId"')
-      .addGroupBy('inv."productVariantId"')
-      .getRawMany<LocatedReservedSumRow>();
+      .addGroupBy('inv."productVariantId"');
+    if (input.excludeOrderRecordId !== undefined) {
+      query.andWhere('r."orderRecordId" <> :excludedOrder', {
+        excludedOrder: input.excludeOrderRecordId,
+      });
+    }
+    const rows = await query.getRawMany<LocatedReservedSumRow>();
 
     return rows.map((row) => ({
       locationId: row.locationId,
