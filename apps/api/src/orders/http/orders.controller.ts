@@ -1734,6 +1734,7 @@ export class OrdersController {
       sourceEventId: order.sourceEventId,
       orderSnapshot: order.orderSnapshot,
       editedInOpenLinker: order.isEditedInOpenLinker,
+      editsNeedAttention: order.editsNeedAttention,
       syncStatus: order.syncStatus.map((s) => this.toSyncStatusDto(s)),
       syncAttempts: order.syncAttempts.map((a) => this.toSyncAttemptDto(a)),
       recordStatus: order.recordStatus,

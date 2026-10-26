@@ -27,6 +27,7 @@ const result: OrderEditResult = {
     deliveryMethod: null,
     totals: null,
     cod: null,
+    unmatchedLineEdits: [],
     history: [],
   },
   stock: [{ orderLineId: 'l1', stockRestored: 'not-applicable', detail: null }],

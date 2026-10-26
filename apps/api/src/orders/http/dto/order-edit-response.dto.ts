@@ -50,6 +50,12 @@ export class OrderEditedTotalsDto {
   taxRestated!: false;
 }
 
+export class UnmatchedLineEditDto {
+  @ApiProperty() orderLineId!: string;
+  @ApiProperty() editedQuantity!: number;
+  @ApiProperty() editedAt!: string;
+}
+
 export class OrderEditHistoryEntryDto {
   @ApiProperty() changeId!: string;
   @ApiProperty({ enum: ['order.address_change', 'order.line_quantity_change', 'order.delivery_method_change'] })
@@ -71,6 +77,13 @@ export class OrderEditsViewDto {
   @ApiProperty({ nullable: true, type: OrderEditedTotalsDto }) totals!: OrderEditedTotalsDto | null;
   @ApiProperty({ nullable: true, type: Object, description: '`{ channelAmount, amount, currency }`, or null.' })
   cod!: OrderEditsView['cod'];
+  @ApiProperty({
+    type: [UnmatchedLineEditDto],
+    description:
+      'Line edits whose line id the channel no longer reports. Kept, not applied, and not restated ' +
+      'in the totals; the operator re-does them on the current lines.',
+  })
+  unmatchedLineEdits!: readonly UnmatchedLineEditDto[];
   @ApiProperty({ type: [OrderEditHistoryEntryDto] }) history!: readonly OrderEditHistoryEntryDto[];
 }
 

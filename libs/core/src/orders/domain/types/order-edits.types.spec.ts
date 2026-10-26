@@ -7,6 +7,7 @@ import {
   applyOrderEditsToOrder,
   applyOrderEditsToSnapshot,
   describeEditedTotals,
+  findUnmatchedLineEdits,
   readOrderEdits,
   type OrderEdits,
 } from './order-edits.types';
@@ -151,5 +152,51 @@ describe('describeEditedTotals', () => {
       difference: 10,
       taxRestated: false,
     });
+  });
+});
+
+describe('net-priced line without a gross price (B-38)', () => {
+  const wooLike = (): Record<string, unknown> => ({
+    id: 'ol_order_2',
+    items: [{ id: 'l1', productId: 'p1', quantity: 3, price: 10 }],
+    totals: { subtotal: 30, tax: 6.9, shipping: 0, total: 36.9, currency: 'PLN', taxTreatment: 'exclusive', totalTaxTreatment: 'inclusive' },
+  });
+
+  it('should not subtract the NET price from the GROSS total', () => {
+    const merged = applyOrderEditsToSnapshot(wooLike(), {
+      v: 1,
+      rev: 1,
+      lines: { l1: { ...stamp, quantity: 2 } },
+    });
+
+    const totals = merged.totals as { total: number; subtotal: number };
+    expect(totals.total).toBe(36.9);
+    expect(totals.subtotal).toBe(20);
+  });
+});
+
+describe('findUnmatchedLineEdits (line ids change)', () => {
+  it('should report an overlay entry the channel no longer has and keep applying the rest', () => {
+    const edits: OrderEdits = {
+      v: 1,
+      rev: 1,
+      lines: { l1: { ...stamp, quantity: 1 }, renamed: { ...stamp, quantity: 2 } },
+    };
+
+    expect(findUnmatchedLineEdits(channelSnapshot(), edits)).toEqual([
+      { orderLineId: 'renamed', editedQuantity: 2, editedAt: stamp.editedAt },
+    ]);
+    const merged = applyOrderEditsToSnapshot(channelSnapshot(), edits);
+    expect((merged.items as Array<{ id: string; quantity: number }>).find((i) => i.id === 'l1')?.quantity).toBe(1);
+  });
+
+  it('should leave a line the channel added after the edit unedited and report nothing', () => {
+    const snapshot = channelSnapshot();
+    (snapshot.items as unknown[]).push({ id: 'l3', productId: 'p3', quantity: 2, price: 5 });
+    const edits: OrderEdits = { v: 1, rev: 1, lines: { l1: { ...stamp, quantity: 1 } } };
+
+    expect(findUnmatchedLineEdits(snapshot, edits)).toEqual([]);
+    const merged = applyOrderEditsToSnapshot(snapshot, edits);
+    expect((merged.items as Array<{ id: string; quantity: number }>).find((i) => i.id === 'l3')?.quantity).toBe(2);
   });
 });

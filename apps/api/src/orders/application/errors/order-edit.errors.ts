@@ -25,6 +25,7 @@ export const OrderEditRefusalCodeValues = [
   'ADDRESS_EDIT_NEEDS_PII_STORAGE',
   'ORDER_EDIT_CONTENDED',
   'NOTHING_CHANGED',
+  'LINE_PRICE_NOT_RESOLVABLE',
 ] as const;
 export type OrderEditRefusalCode = (typeof OrderEditRefusalCodeValues)[number];
 

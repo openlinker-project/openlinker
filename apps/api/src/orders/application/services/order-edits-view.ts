@@ -12,6 +12,7 @@ import {
   applyOrderEditsToSnapshot,
   describeEditedTotals,
   effectiveLineQuantity,
+  findUnmatchedLineEdits,
   type Address,
   type OrderChange,
   type OrderEdits,
@@ -46,7 +47,12 @@ export function buildOrderEditHistory(
   changes: readonly OrderChange[],
   channelConnectionId: string
 ): OrderEditHistoryEntry[] {
-  return changes.map((change) => ({
+  // B-27: only CONFIRMED edits are history. An edit abandoned before its overlay
+  // write landed (`expired`) never changed the order, and rendering it as
+  // "changed" would tell the operator something false.
+  return changes
+    .filter((change) => change.status === 'confirmed')
+    .map((change) => ({
     changeId: change.id,
     kind: change.kind as OrderOperatorEditKind,
     at: change.requestedAt.toISOString(),
@@ -99,6 +105,7 @@ export function buildOrderEditsView(
             },
             current: { id: edits.deliveryMethod.methodId, name: edits.deliveryMethod.methodName },
           },
+    unmatchedLineEdits: findUnmatchedLineEdits(channelSnapshot, edits),
     totals: describeEditedTotals(channelSnapshot, edits),
     cod:
       channelCod !== null &&
