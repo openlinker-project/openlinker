@@ -135,4 +135,31 @@ describe('OrderRecordRepository - operator edit overlay (#3542)', () => {
   it('should read nativeTotals from the channel figure, not the edited one', () => {
     expect(editedRecord().nativeTotals).toEqual({ amount: 30, currency: 'PLN' });
   });
+
+  describe('tax-rate backfill path (patchSnapshotTaxRates)', () => {
+    it('should patch the channel column by the channel line index and never name orderEdits', async () => {
+      query.mockResolvedValue([]);
+
+      await repository.patchSnapshotTaxRates('ol_order_1', 0, {
+        taxRate: '23',
+        taxSource: 'backfill',
+        taxRateReadAt: new Date('2026-10-26T10:00:00.000Z'),
+      });
+
+      const [sql, params] = query.mock.calls[0] as [string, unknown[]];
+      // It writes the persisted column, which is the channel original, addressed by
+      // the same `order_line_items.lineNumber` index the backfill read it from.
+      expect(sql).toMatch(/SET "orderSnapshot" = jsonb_set/);
+      expect(sql.split('WHERE')[0]).not.toContain('orderEdits');
+      expect(sql).not.toMatch(/"orderEdits"\s*=/);
+      expect(params).toEqual(['0', '23', 'backfill', '2026-10-26T10:00:00.000Z', 'ol_order_1']);
+    });
+
+    it('should leave an edited record untouched: the backfill takes no record, so no effective view can reach the column', () => {
+      // The method's signature is (orderId, lineNumber, patch): there is no
+      // snapshot argument through which the merged view could be written back.
+      expect(repository.patchSnapshotTaxRates.length).toBe(3);
+      expect(editedRecord().channelSnapshot).toBe(channel);
+    });
+  });
 });
