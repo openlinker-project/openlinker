@@ -23,6 +23,7 @@ import { EparagonyConfigException } from '../../../domain/exceptions/eparagony-c
 import { EparagonyNetworkError } from '../../../domain/exceptions/eparagony-network.error';
 import {
   deriveDocumentToken,
+  deriveRequestIdempotencyKey,
   deriveTransactionToken,
 } from '../../../domain/policies/document-token.policy';
 import type { EparagonyDocumentStatusResponse } from '../../../domain/types/eparagony-api.types';
@@ -268,7 +269,7 @@ describe('EparagonyInvoicingAdapter - issueInvoice', () => {
     expect(client.post).not.toHaveBeenCalled();
   });
 
-  it('sends the derived token pair and uses the token as the vendor idempotency key', async () => {
+  it('sends the derived token pair and a request key derived from the token and the body', async () => {
     const client = makeClient([OFFLINE]);
     await makeAdapter(client).issueInvoice(makeCommand());
 
@@ -284,10 +285,67 @@ describe('EparagonyInvoicingAdapter - issueInvoice', () => {
     expect(body.transactionToken).toBe(deriveTransactionToken(CONNECTION_ID, REGISTRATION_KEY));
     expect(body.transactionToken).not.toBe(body.documentToken);
     expect(body.eInvoice.invoiceType).toBe('VAT');
-    // The vendor's header rejects OL's colon-bearing raw key, so the derived
-    // token stands in - which is what makes a transport re-issue safe.
-    expect(options.headers['Idempotency-Key']).toBe(EXPECTED_DOCUMENT_TOKEN);
+    // The vendor's header rejects OL's colon-bearing raw key, so a UUID derived
+    // from the token plus the exact body stands in: a transport re-issue sends
+    // the same body and so replays under the same key.
+    expect(options.headers['Idempotency-Key']).toBe(
+      deriveRequestIdempotencyKey(EXPECTED_DOCUMENT_TOKEN, body),
+    );
+    expect(options.headers['Idempotency-Key']).not.toBe(EXPECTED_DOCUMENT_TOKEN);
+    expect(options.headers['Idempotency-Key']).toMatch(/^[0-9A-Za-z_-]+$/);
     expect(options.idempotent).toBe(true);
+  });
+
+  it('keeps the document token on a retry after a refusal but sends a request the vendor will not treat as a replay', async () => {
+    // The live failure: attempt 1 is refused for a wrong seller tax number, the
+    // operator corrects it and retries under the SAME core key. The token -
+    // one sale, one document - must not move; the request key must, or the
+    // vendor answers 422 "key used with different data" for ever.
+    const refused = makeClient(
+      [OFFLINE],
+      new EparagonyApiError('bad request', 400, {
+        errorCode: 41,
+        message: 'Incorrect merchantTIN',
+      }),
+    );
+    await expect(
+      makeAdapter(refused, makeConfig({ merchantTIN: '5220001694' })).issueInvoice(makeCommand()),
+    ).rejects.toMatchObject({ failureMode: 'rejected' });
+
+    const retried = makeClient([OFFLINE]);
+    const { record } = await makeAdapter(retried, makeConfig({ merchantTIN: '5252556107' })).issueInvoice(
+      makeCommand(),
+    );
+
+    const [, refusedBody, refusedOptions] = refused.post.mock.calls[0] as [
+      string,
+      { documentToken: string },
+      { headers: Record<string, string> },
+    ];
+    const [, retriedBody, retriedOptions] = retried.post.mock.calls[0] as [
+      string,
+      { documentToken: string },
+      { headers: Record<string, string> },
+    ];
+    expect(retriedBody.documentToken).toBe(refusedBody.documentToken);
+    expect(retriedBody.documentToken).toBe(EXPECTED_DOCUMENT_TOKEN);
+    expect(retriedOptions.headers['Idempotency-Key']).not.toBe(
+      refusedOptions.headers['Idempotency-Key'],
+    );
+    expect(record.status).toBe('issued');
+    expect(record.providerInvoiceId).toBe(EXPECTED_DOCUMENT_TOKEN);
+  });
+
+  it('sends the same request key for the same body, so a repeated identical request replays', async () => {
+    const first = makeClient([OFFLINE]);
+    await makeAdapter(first).issueInvoice(makeCommand());
+    const second = makeClient([OFFLINE]);
+    await makeAdapter(second).issueInvoice(makeCommand());
+
+    const key = (client: FakeClient): string =>
+      (client.post.mock.calls[0] as [string, unknown, { headers: Record<string, string> }])[2]
+        .headers['Idempotency-Key'];
+    expect(key(second)).toBe(key(first));
   });
 
   it('derives a per-order key when the command supplies none, so the token is still deterministic', async () => {
@@ -472,6 +530,77 @@ describe('EparagonyInvoicingAdapter - issueInvoice failures', () => {
 
     expect(record.status).toBe('issued');
     expect(client.get).toHaveBeenCalledTimes(1);
+  });
+
+  it('names the refused seller tax number when the vendor answers code 41 "Incorrect merchantTIN"', async () => {
+    const client = makeClient(
+      [OFFLINE],
+      new EparagonyApiError('bad request', 400, {
+        error: 'Bad Request',
+        statusCode: 400,
+        errorCode: 41,
+        message: 'Incorrect merchantTIN',
+      }),
+    );
+    await expect(makeAdapter(client).issueInvoice(makeCommand())).rejects.toMatchObject({
+      failureMode: 'rejected',
+      failureCause: 'connection-setting-rejected',
+      reasonIsOperatorSafe: true,
+      reason:
+        'The seller tax number on this connection is not the one registered with your eparagony account. Correct it in the connection settings, then retry (code 41).',
+    });
+    expect(client.get).not.toHaveBeenCalled();
+  });
+
+  it('resolves a replayed request key to the document the vendor already holds under the token', async () => {
+    // 422 proves an earlier REQUEST under the key, not a document: the token's
+    // status decides. Here a document exists, so it is the answer.
+    const client = makeClient([OFFLINE], new EparagonyApiError('replayed', 422, null));
+    const { record } = await makeAdapter(client).issueInvoice(makeCommand());
+
+    expect(record.status).toBe('issued');
+    expect(record.providerInvoiceId).toBe(EXPECTED_DOCUMENT_TOKEN);
+  });
+
+  it('reports a replayed request key as rejected when the vendor positively holds no document', async () => {
+    // The stuck-record path: the vendor remembers a key it refused. Its own
+    // "unknown document" answer for our token is the positive evidence that
+    // nothing was created, so the sale may be retried.
+    const client = makeClient(
+      [new EparagonyApiError('unknown token', 404, { errorCode: 92 })],
+      new EparagonyApiError('replayed', 422, { errorCode: 3 }),
+    );
+    await expect(makeAdapter(client).issueInvoice(makeCommand())).rejects.toMatchObject({
+      failureMode: 'rejected',
+      reasonIsOperatorSafe: true,
+      reason:
+        'eparagony refused the request as a repeat of an earlier attempt with different data, and holds no document for this sale, so nothing was issued. Retry to send it again (code 3).',
+    });
+    expect(client.get).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps a replayed request key IN DOUBT, declared as an answer rather than a timeout, when the token cannot be read', async () => {
+    const client = makeClient(
+      [new EparagonyNetworkError('status read timed out')],
+      new EparagonyApiError('replayed', 422, null),
+    );
+    await expect(makeAdapter(client).issueInvoice(makeCommand())).rejects.toMatchObject({
+      failureMode: 'in-doubt',
+      failureCause: 'provider-answer-inconclusive',
+      reason:
+        'eparagony refused the request as a repeat of an earlier attempt with different data, and OpenLinker could not check whether it holds a document for this sale.',
+    });
+  });
+
+  it('never reports a replayed request key as rejected on a status read that is refused without a not-found code', async () => {
+    // A 404 with no recognised code is not the vendor saying "no such document".
+    const client = makeClient(
+      [new EparagonyApiError('not found', 404, { errorCode: 7 })],
+      new EparagonyApiError('replayed', 422, null),
+    );
+    await expect(makeAdapter(client).issueInvoice(makeCommand())).rejects.toMatchObject({
+      failureMode: 'in-doubt',
+    });
   });
 
   it('propagates any other create failure untouched, with its own classification', async () => {
@@ -781,8 +910,10 @@ describe('EparagonyInvoicingAdapter - issueCorrection', () => {
     );
     expect(body.eCorrectiveInvoice.invoiceType).toBe('VAT');
     expect(body.eCorrectiveInvoice.correctedMetadata.invoiceNumber).toBe('OL-POC/2026/B2B/1');
-    // The same idempotency header the issue path sends, for the same reason.
-    expect(options.headers['Idempotency-Key']).toBe(EXPECTED_CORRECTION_DOCUMENT_TOKEN);
+    // The same request-key derivation the issue path uses, for the same reason.
+    expect(options.headers['Idempotency-Key']).toBe(
+      deriveRequestIdempotencyKey(EXPECTED_CORRECTION_DOCUMENT_TOKEN, body),
+    );
     expect(options.idempotent).toBe(true);
   });
 
