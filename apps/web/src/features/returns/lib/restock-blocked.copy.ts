@@ -46,9 +46,15 @@
  * `scripts/check-attention-reason-mirror.mjs` MIRROR 6 holds the two
  * byte-identical. **So `RETURN_RESTOCK_BLOCKED_COPY.title` is load-bearing
  * across a feature boundary**: renaming the constant, moving this file, or
- * editing the sentence fails `pnpm check:invariants` naming the pair. Nothing
- * else here is mirrored; a new field is a local concern until some other
- * feature is forced to restate it.
+ * editing the sentence fails `pnpm check:invariants` naming the pair.
+ *
+ * **Amended (#2795): the SPEC half is held too.** `scripts/check-spec-owned-copy.mjs`
+ * compares `badge`, `title`, `attest`, `why` and the explainer `heading` byte for
+ * byte with the emphasised run § 5.4 renders them in, so the spec winning is
+ * enforced rather than asserted. The sentences with placeholders (the body and
+ * remedy fragments) are NOT held: this module splits them, so the spec's sentence
+ * does not exist here as one value. A new field that § 5.4 renders as an emphasised,
+ * placeholder-free string should get a pair in that script's table.
  *
  * @module apps/web/src/features/returns/lib
  */
