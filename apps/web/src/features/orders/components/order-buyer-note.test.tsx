@@ -34,7 +34,11 @@ const VIEWER: SessionUser = {
 
 function renderNote(
   order: Partial<OrderBuyerNoteProps['order']> = {},
-  opts: { user?: SessionUser; markRead?: OrdersApi['markBuyerNoteRead'] } = {},
+  opts: {
+    user?: SessionUser;
+    markRead?: OrdersApi['markBuyerNoteRead'];
+    hasFulfilmentWork?: boolean;
+  } = {},
 ) {
   const markBuyerNoteRead =
     opts.markRead ?? vi.fn<OrdersApi['markBuyerNoteRead']>().mockResolvedValue({} as OrderRecord);
@@ -48,6 +52,7 @@ function renderNote(
       channelLabel="Allegro"
       channelPlatform="allegro"
       placedAt="2026-09-25T09:14:00.000Z"
+      hasFulfilmentWork={opts.hasFulfilmentWork ?? true}
     />,
     { apiClient: api, sessionAdapter: createAuthenticatedSessionAdapter(opts.user) },
   );
@@ -172,7 +177,7 @@ describe('OrderBuyerNote (#3539)', () => {
     });
 
     expect(screen.getByTestId('order-buyer-note')).toHaveAttribute('data-state', 'read');
-    expect(screen.getByTestId('order-buyer-note-read-state')).toHaveTextContent('Read by user_9');
+    expect(screen.getByTestId('order-buyer-note-read-state')).toHaveTextContent('Read by another user');
     expect(screen.queryByRole('button', { name: 'Mark as read' })).not.toBeInTheDocument();
   });
 
@@ -211,6 +216,37 @@ describe('OrderBuyerNote (#3539)', () => {
     });
     expect(screen.getByTestId('order-buyer-note-bench-state')).toHaveTextContent(
       'Read at the bench',
+    );
+  });
+
+  it('should not claim an unread bench when the order has no fulfilment work (B-15)', () => {
+    renderNote(
+      { hasBuyerNote: true, buyerNote: NOTE, buyerNoteAcknowledgements: [] },
+      { hasFulfilmentWork: false },
+    );
+    expect(screen.queryByTestId('order-buyer-note-bench-state')).not.toBeInTheDocument();
+  });
+
+  it('should say bench reads could not be loaded when the acknowledgements are null (B-15)', () => {
+    renderNote({ hasBuyerNote: true, buyerNote: NOTE, buyerNoteAcknowledgements: null });
+    expect(screen.getByTestId('order-buyer-note-bench-state')).toHaveTextContent(
+      'Bench reads could not be loaded.',
+    );
+  });
+
+  it('should select the note and show a Ctrl+C hint when the clipboard is refused (B-13)', async () => {
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: { writeText: vi.fn().mockRejectedValue(new Error('denied')) },
+    });
+    document.execCommand = vi.fn().mockReturnValue(false);
+    renderNote({ hasBuyerNote: true, buyerNote: NOTE });
+    const user = userEvent.setup();
+
+    await user.click(screen.getByTestId('order-buyer-note-copy'));
+
+    expect(await screen.findByTestId('order-buyer-note-copy-failed')).toHaveTextContent(
+      'Ctrl+C',
     );
   });
 });

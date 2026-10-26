@@ -28,7 +28,8 @@ export const buyerNoteFieldsSchema = z.object({
   buyerNote: z.string().nullable().optional(),
   buyerNoteReadAt: z.string().nullable().optional(),
   buyerNoteReadByUserId: z.string().nullable().optional(),
-  buyerNoteAcknowledgements: z.array(acknowledgementSchema).optional(),
+  // `null` = the server could not load them, which is not the same as none.
+  buyerNoteAcknowledgements: z.array(acknowledgementSchema).nullable().optional(),
 });
 
 /** What the detail page can say about the note. */
@@ -39,7 +40,8 @@ export type BuyerNoteView =
       readonly text: string;
       readonly readAt: string | null;
       readonly readByUserId: string | null;
-      readonly acknowledgements: readonly BuyerNoteAcknowledgement[];
+      /** `null` when the bench reads could not be loaded (distinct from `[]`). */
+      readonly acknowledgements: readonly BuyerNoteAcknowledgement[] | null;
     }
   /** A note exists but this deployment does not store its text. */
   | { readonly kind: 'text-not-stored' }
@@ -71,11 +73,14 @@ export function readBuyerNote(order: BuyerNoteSource): BuyerNoteView {
       text,
       readAt: fields.buyerNoteReadAt ?? null,
       readByUserId: fields.buyerNoteReadByUserId ?? null,
-      acknowledgements: (fields.buyerNoteAcknowledgements ?? []).map((entry) => ({
-        workId: entry.workId,
-        acknowledgedAt: entry.acknowledgedAt,
-        acknowledgedByUserId: entry.acknowledgedByUserId ?? null,
-      })),
+      acknowledgements:
+        fields.buyerNoteAcknowledgements === null
+          ? null
+          : (fields.buyerNoteAcknowledgements ?? []).map((entry) => ({
+              workId: entry.workId,
+              acknowledgedAt: entry.acknowledgedAt,
+              acknowledgedByUserId: entry.acknowledgedByUserId ?? null,
+            })),
     };
   }
   if (fields.buyerNote === null) return { kind: 'none' };

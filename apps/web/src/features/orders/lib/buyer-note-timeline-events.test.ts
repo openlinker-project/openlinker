@@ -14,7 +14,7 @@ describe('mapBuyerNoteAcknowledgementsToEvents (#3539)', () => {
     expect(event.title).toBe('Buyer note read at the bench');
     expect(event.timestamp).toBe(ACK.acknowledgedAt);
     expect(event.tone).toBe('success');
-    expect(event.description).toBe('Read by u7.');
+    expect(event.description).toBe('Read by another user.');
   });
 
   it('should say "you" when the signed-in user acknowledged it', () => {
