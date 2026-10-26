@@ -139,7 +139,7 @@ import type {
 } from '../../domain/types/allegro-api.types';
 import { AllegroApiException } from '../../domain/exceptions/allegro-api.exception';
 import { Logger, formatBodyForLog } from '@openlinker/shared/logging';
-import { createHash, randomUUID } from 'crypto';
+import { createHash } from 'crypto';
 import { sanitizeAllegroName } from '../util/sanitize-allegro-name';
 import {
   formatAllegroRate,
@@ -645,6 +645,58 @@ export class AllegroOfferManagerAdapter
   }
 
   /**
+   * Restore an offer's stock after its order was cancelled (#1146 capability).
+   *
+   * Allegro does NOT put the units of a cancelled purchase back into the offer:
+   * the seller panel leaves that to the seller ("przywróć przedmioty do
+   * oferty"). Verified on the sandbox (E2E-24): after a buyer cancelled, the
+   * offer stayed one unit short and no stock event followed. The value is an
+   * absolute set, never a read-and-increment, so a retry cannot count the
+   * units twice.
+   *
+   * Core's own cancellation restore declares participation through this
+   * capability but writes through the ordered quantity seam (#2617), so this
+   * method is the contract for a direct caller. Two rules keep it honest:
+   *
+   * - Every target must carry its `idempotencyKey`. The key becomes the Allegro
+   *   command id, so inventing a random one would make every retry a new
+   *   command and defeat the dedupe; a target without one is refused before
+   *   anything is written.
+   * - One offer's failure does not stop the rest. Every offer is attempted and
+   *   the failures are thrown together at the end, so a retry finds the
+   *   successful ones already set and only the failed ones still owed.
+   */
+  async restoreStockOnCancellation(targets: readonly OfferStockRestoreTarget[]): Promise<void> {
+    const unkeyed = targets.filter((target) => !target.idempotencyKey);
+    if (unkeyed.length > 0) {
+      throw new Error(
+        `idempotencyKey is required for every Allegro stock-restore target; missing for offer(s) ` +
+          `${unkeyed.map((target) => target.externalOfferId).join(', ')} - nothing was written`
+      );
+    }
+
+    const failures: string[] = [];
+    for (const target of targets) {
+      try {
+        await this.updateOfferQuantity({
+          offerId: target.externalOfferId,
+          quantity: target.quantity,
+          idempotencyKey: target.idempotencyKey,
+        });
+      } catch (error) {
+        failures.push(`${target.externalOfferId}: ${(error as Error).message}`);
+      }
+    }
+
+    if (failures.length > 0) {
+      throw new Error(
+        `Allegro stock restore failed for ${failures.length} of ${targets.length} offer(s) ` +
+          `(connection: ${this.connectionId}): ${failures.join('; ')}`
+      );
+    }
+  }
+
+  /**
    * Update marketplace offer quantity.
    *
    * Issues an Allegro offer quantity change command and returns as soon as
@@ -661,27 +713,6 @@ export class AllegroOfferManagerAdapter
    * Uses idempotency key to derive a deterministic commandId for
    * deduplication.
    */
-  /**
-   * Restore an offer's stock after its order was cancelled (#1146 capability).
-   *
-   * Allegro does NOT put the units of a cancelled purchase back into the offer:
-   * the seller panel leaves that to the seller ("przywróć przedmioty do
-   * oferty"). Verified on the sandbox (E2E-24): after a buyer cancelled, the
-   * offer stayed one unit short and no stock event followed. Core computes the
-   * absolute target from master stock minus live holds, and this sets it -
-   * never a read-and-increment, so a retry cannot count the units twice.
-   */
-  async restoreStockOnCancellation(targets: readonly OfferStockRestoreTarget[]): Promise<void> {
-    for (const target of targets) {
-      await this.updateOfferQuantity({
-        offerId: target.externalOfferId,
-        quantity: target.quantity,
-        idempotencyKey:
-          target.idempotencyKey ?? `stock-restore:${target.externalOfferId}:${randomUUID()}`,
-      });
-    }
-  }
-
   async updateOfferQuantity(cmd: UpdateOfferQuantityCommand): Promise<void> {
     if (!cmd.idempotencyKey) {
       throw new Error('idempotencyKey is required for Allegro offer quantity updates');

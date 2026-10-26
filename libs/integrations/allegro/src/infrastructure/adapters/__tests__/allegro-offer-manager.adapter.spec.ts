@@ -255,14 +255,32 @@ describe('AllegroOfferManagerAdapter', () => {
       });
     });
 
-    it('should still write when a target carries no key, under a fresh one', async () => {
+    it('should refuse a target with no key and write nothing, rather than invent one', async () => {
       const spy = jest.spyOn(adapter, 'updateOfferQuantity').mockResolvedValue(undefined);
 
-      await adapter.restoreStockOnCancellation([{ externalOfferId: 'offer-1', quantity: 5 }]);
+      await expect(
+        adapter.restoreStockOnCancellation([
+          { externalOfferId: 'offer-1', quantity: 5, idempotencyKey: 'stock-restore:ol_order_1:offer-1:5:t' },
+          { externalOfferId: 'offer-2', quantity: 5 },
+        ])
+      ).rejects.toThrow(/idempotencyKey is required.*offer-2/);
+      expect(spy).not.toHaveBeenCalled();
+    });
 
-      expect(spy).toHaveBeenCalledWith(
-        expect.objectContaining({ offerId: 'offer-1', quantity: 5, idempotencyKey: expect.stringMatching(/^stock-restore:offer-1:/) })
-      );
+    it('should try every offer past a failure and then throw the failures together', async () => {
+      const spy = jest
+        .spyOn(adapter, 'updateOfferQuantity')
+        .mockRejectedValueOnce(new Error('REJECTED'))
+        .mockResolvedValueOnce(undefined);
+
+      await expect(
+        adapter.restoreStockOnCancellation([
+          { externalOfferId: 'offer-1', quantity: 5, idempotencyKey: 'k1' },
+          { externalOfferId: 'offer-2', quantity: 7, idempotencyKey: 'k2' },
+        ])
+      ).rejects.toThrow(/1 of 2 offer\(s\).*offer-1: REJECTED/);
+      expect(spy).toHaveBeenCalledTimes(2);
+      expect(spy).toHaveBeenLastCalledWith({ offerId: 'offer-2', quantity: 7, idempotencyKey: 'k2' });
     });
   });
 
