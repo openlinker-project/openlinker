@@ -85,6 +85,13 @@ function editedRecord(): OrderRecord {
     undefined,
     undefined,
     undefined,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
     channel,
     edits
   );
