@@ -60,6 +60,7 @@ import {
   type IFulfillmentWorkQueryService,
 } from '@openlinker/core/fulfillment';
 import { ORDER_TAG_SERVICE_TOKEN } from '@openlinker/core/orders';
+import { FULFILLMENT_WORK_QUERY_SERVICE_TOKEN } from '@openlinker/core/fulfillment';
 
 import { SOURCE_FULFILLMENT_STATUS_SERVICE_TOKEN } from '../application/interfaces/source-fulfillment-status.service.interface';
 
@@ -108,7 +109,12 @@ describe('OrdersController', () => {
     return Object.assign(Object.create(OrderRecord.prototype) as OrderRecord, mockOrder, overrides);
   }
 
+  const fulfillmentWorkQuery = {
+    listBuyerNoteAcknowledgements: jest.fn().mockResolvedValue([]),
+  };
+
   beforeEach(async () => {
+    fulfillmentWorkQuery.listBuyerNoteAcknowledgements.mockResolvedValue([]);
     const mockRepository: jest.Mocked<OrderRecordRepositoryPort> = {
       findById: jest.fn(),
       findByIds: jest.fn(),
@@ -141,6 +147,8 @@ describe('OrdersController', () => {
       listDistinctNativeCurrencies: jest.fn(),
       countStampedByReportingCurrency: jest.fn(),
       markPacked: jest.fn(),
+      markBuyerNoteRead: jest.fn(),
+      countEarlierOrdersForCustomer: jest.fn(),
       clearPacked: jest.fn(),
       recordAmendment: jest.fn(),
       getDailyOrderAggregates: jest.fn(),
@@ -162,6 +170,7 @@ describe('OrdersController', () => {
 
     const mockOrderRecordService = {
       markPacked: jest.fn(),
+      markBuyerNoteRead: jest.fn(),
       clearPacked: jest.fn(),
       recordAmendment: jest.fn(),
     } as unknown as jest.Mocked<IOrderRecordService>;
@@ -313,6 +322,10 @@ describe('OrdersController', () => {
             getForOrders: jest.fn().mockResolvedValue(new Map()),
             listForOrder: jest.fn().mockResolvedValue([]),
           },
+        },
+        {
+          provide: FULFILLMENT_WORK_QUERY_SERVICE_TOKEN,
+          useValue: fulfillmentWorkQuery,
         },
       ],
     }).compile();
@@ -1742,6 +1755,109 @@ describe('OrdersController', () => {
       // above is what a bare `IS NOT NULL` on the raw column would
       // misidentify as this one.
       expect(result.buyerTaxId).toBeUndefined();
+    });
+  });
+
+  describe('buyer note on the DTO (#3538)', () => {
+    const actor = { id: 'user-op-001', email: 'op@example.com', role: 'operator' } as unknown as Parameters<
+      typeof controller.markBuyerNoteRead
+    >[1];
+
+    it('keeps the note text off every LIST row but carries the flag and the scalars', async () => {
+      repository.findMany.mockResolvedValue({
+        items: [
+          orderRecordWith({
+            buyerNote: 'No receipt in the box',
+            hasBuyerNote: true,
+            shippingCountry: 'PL',
+            billingCountry: 'DE',
+            buyerOrderCount: 2,
+          }),
+        ],
+        total: 1,
+      });
+
+      const result = await controller.listOrders({ limit: 20, offset: 0 });
+
+      expect(result.items[0]).not.toHaveProperty('buyerNote');
+      expect(result.items[0]).not.toHaveProperty('buyerNoteAcknowledgements');
+      expect(result.items[0]).toMatchObject({
+        hasBuyerNote: true,
+        shippingCountry: 'PL',
+        billingCountry: 'DE',
+        buyerOrderCount: 2,
+      });
+    });
+
+    it('projects the three note states on the detail read', async () => {
+      repository.findById.mockResolvedValue(orderRecordWith({ buyerNote: 'Leave at the door' }));
+      expect((await controller.getOrder('ol_order_001')).buyerNote).toBe('Leave at the door');
+
+      repository.findById.mockResolvedValue(orderRecordWith({ buyerNote: '' }));
+      expect((await controller.getOrder('ol_order_001')).buyerNote).toBeNull();
+
+      repository.findById.mockResolvedValue(orderRecordWith({ buyerNote: null }));
+      expect((await controller.getOrder('ol_order_001')).buyerNote).toBeUndefined();
+    });
+
+    it('projects the read marker and the per-parcel acknowledgements on the detail read', async () => {
+      repository.findById.mockResolvedValue(
+        orderRecordWith({
+          buyerNoteReadAt: new Date('2026-10-01T08:00:00Z'),
+          buyerNoteReadByUserId: 'user-1',
+        })
+      );
+      fulfillmentWorkQuery.listBuyerNoteAcknowledgements.mockResolvedValue([
+        {
+          workId: 'work-1',
+          acknowledgedAt: new Date('2026-10-01T09:00:00Z'),
+          acknowledgedByUserId: 'packer-1',
+        },
+      ]);
+
+      const result = await controller.getOrder('ol_order_001');
+
+      expect(result.buyerNoteReadAt).toBe('2026-10-01T08:00:00.000Z');
+      expect(result.buyerNoteReadByUserId).toBe('user-1');
+      expect(result.buyerNoteAcknowledgements).toEqual([
+        { workId: 'work-1', acknowledgedAt: '2026-10-01T09:00:00.000Z', acknowledgedByUserId: 'packer-1' },
+      ]);
+    });
+
+    it('marks the note read as the acting user and projects the marker', async () => {
+      orderRecordService.markBuyerNoteRead.mockResolvedValue(
+        orderRecordWith({
+          buyerNoteReadAt: new Date('2026-10-01T08:00:00Z'),
+          buyerNoteReadByUserId: 'user-op-001',
+        })
+      );
+
+      const result = await controller.markBuyerNoteRead('ol_order_001', actor);
+
+      expect(orderRecordService.markBuyerNoteRead).toHaveBeenCalledWith('ol_order_001', 'user-op-001');
+      expect(result.buyerNoteReadAt).toBe('2026-10-01T08:00:00.000Z');
+      expect(result.buyerNoteReadByUserId).toBe('user-op-001');
+    });
+
+    it('answers 404 when marking the note of an unknown order', async () => {
+      orderRecordService.markBuyerNoteRead.mockRejectedValue(
+        new OrderRecordNotFoundException('missing')
+      );
+
+      await expect(controller.markBuyerNoteRead('missing', actor)).rejects.toBeInstanceOf(
+        NotFoundException
+      );
+    });
+
+    it('passes ?hasBuyerNote through to the repository filters', async () => {
+      repository.findMany.mockResolvedValue({ items: [], total: 0 });
+
+      await controller.listOrders({ limit: 20, offset: 0, hasBuyerNote: true });
+
+      expect(repository.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ hasBuyerNote: true }),
+        expect.anything()
+      );
     });
   });
 

@@ -56,6 +56,7 @@ describe('RefundsController', () => {
       markItemResolutionFailure: jest.fn(),
       getFailedSyncValueSummary: jest.fn(),
       markPacked: jest.fn(),
+      markBuyerNoteRead: jest.fn(),
       clearPacked: jest.fn(),
       recordAmendment: jest.fn(),
       getSalesAndChannelAnalytics: jest.fn(),

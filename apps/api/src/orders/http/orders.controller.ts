@@ -107,6 +107,10 @@ import {
   INVOICE_SERVICE_TOKEN,
   IInvoiceService,
 } from '@openlinker/core/invoicing';
+import {
+  FULFILLMENT_WORK_QUERY_SERVICE_TOKEN,
+  type IFulfillmentWorkQueryService,
+} from '@openlinker/core/fulfillment';
 import { Logger } from '@openlinker/shared/logging';
 import type { InvoiceRecord } from '@openlinker/core/invoicing';
 import {
@@ -232,6 +236,7 @@ export function toOrderRecordFilters(
     omsAttention: query.attention,
     activeHoldReason: query.hold,
     packed: query.packed,
+    hasBuyerNote: query.hasBuyerNote,
     search: query.search,
     tagId: query.tag,
     untagged: query.untagged,
@@ -384,7 +389,12 @@ export class OrdersController {
     private readonly fulfillmentWork: IFulfillmentWorkQueryService,
     // #3532 — the tag ids rendered as the third line of the identity cell.
     @Inject(ORDER_TAG_SERVICE_TOKEN)
-    private readonly tagService: IOrderTagService
+    private readonly tagService: IOrderTagService,
+    // #3538 - the per-parcel buyer-note acknowledgements the Activity timeline
+    // renders. Composed here, in the interface layer, so `orders` takes no new
+    // edge to `fulfillment` inside core.
+    @Inject(FULFILLMENT_WORK_QUERY_SERVICE_TOKEN)
+    private readonly fulfillmentWorkQuery: IFulfillmentWorkQueryService
   ) {}
 
   @Roles('admin', 'operator', 'viewer')
@@ -701,6 +711,21 @@ export class OrdersController {
     // through `decodeBuyerTaxIdColumn` so this DTO never has to remember that
     // `''` means "asserted none" rather than absence.
     dto.buyerTaxId = order.buyerTaxIdState;
+    // Buyer note (#3538) - DETAIL READ ONLY, for the same data-minimisation
+    // reason as `buyerTaxId` above: free text that may carry a phone number or a
+    // parcel locker, with no list consumer. `undefined` (key absent) = unknown or
+    // not stored; `null` = the source asserted none; a string = the note.
+    // `hasBuyerNote` and the read marker are the only note facts the list needs.
+    dto.buyerNote = order.buyerNoteState;
+    dto.buyerNoteReadAt = order.buyerNoteReadAt ? order.buyerNoteReadAt.toISOString() : null;
+    dto.buyerNoteReadByUserId = order.buyerNoteReadByUserId;
+    dto.buyerNoteAcknowledgements = (
+      await this.fulfillmentWorkQuery.listBuyerNoteAcknowledgements(order.internalOrderId)
+    ).map((ack) => ({
+      workId: ack.workId,
+      acknowledgedAt: ack.acknowledgedAt.toISOString(),
+      acknowledgedByUserId: ack.acknowledgedByUserId,
+    }));
     // Invoice projection (#1224): the FE invoice panel reads a neutral `invoice`
     // sub-tree off the snapshot. The list endpoint now shares the same projection
     // via a batch read (`getLatestInvoicesForOrders`, one query per page — #1713);
@@ -881,6 +906,33 @@ export class OrdersController {
       }
       if (error instanceof MissingSourceExternalIdException) {
         throw new InternalServerErrorException(error.message);
+      }
+      throw error;
+    }
+  }
+
+  @Roles('admin', 'operator')
+  @Post(':internalOrderId/buyer-note/read')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Mark an order’s buyer note read',
+    description:
+      'Records that an operator has read the buyer’s checkout note (#3538): stamps the instant (server-side) and the acting user. ' +
+      'Idempotent and fill-once - a repeat call returns the EXISTING marker rather than re-stamping, so the first reader is never overwritten. ' +
+      'It is a display fact: it gates nothing and does not change the note. This is the order-level marker; the per-parcel acknowledgement at the pack bench is separate.',
+  })
+  @ApiResponse({ status: 200, description: 'Order with the read marker set', type: OrderRecordResponseDto })
+  @ApiResponse({ status: 404, description: 'Order not found' })
+  @ApiResponse({ status: 403, description: 'Insufficient permissions' })
+  async markBuyerNoteRead(
+    @Param('internalOrderId') internalOrderId: string,
+    @CurrentUser() user: AuthenticatedUser
+  ): Promise<OrderRecordResponseDto> {
+    try {
+      return this.toDto(await this.orderRecordService.markBuyerNoteRead(internalOrderId, user.id));
+    } catch (error) {
+      if (error instanceof OrderRecordNotFoundException) {
+        throw new NotFoundException(error.message);
       }
       throw error;
     }
@@ -1353,6 +1405,12 @@ export class OrdersController {
       // reaches the list and the detail response from one place.
       packedAt: order.packedAt ? order.packedAt.toISOString() : null,
       packedByUserId: order.packedByUserId,
+      // Buyer-note list facts (#3538) and the D7 country / repeat-buyer scalars.
+      // The note TEXT is deliberately not here - `getOrder` sets it.
+      hasBuyerNote: order.hasBuyerNote,
+      shippingCountry: order.shippingCountry,
+      billingCountry: order.billingCountry,
+      buyerOrderCount: order.buyerOrderCount,
       // Source-amendment fact (#2283). On the SHARED toDto for the same reason
       // as `packedAt`: one projection reaches both the list and the detail
       // response, so a follow-up list badge needs no second wiring.
