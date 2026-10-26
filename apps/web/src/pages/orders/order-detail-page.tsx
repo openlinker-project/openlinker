@@ -10,7 +10,8 @@
  *
  * @module apps/web/src/pages/orders
  */
-import { useCallback, useEffect, useRef, type ReactElement } from 'react';
+import { useCallback, useEffect, useRef, useState, type ReactElement } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { Link, useLocation, useParams, useSearchParams } from 'react-router-dom';
 import { PageLayout } from '../../shared/ui/page-layout';
 import { Alert } from '../../shared/ui/alert';
@@ -78,8 +79,20 @@ import {
 } from '../../features/returns';
 import {
   OrderFulfillmentTasksPanel,
+  fulfillmentQueryKeys,
   useOrderFulfillmentTasksQuery,
 } from '../../features/fulfillment';
+import { invoicingQueryKeys } from '../../features/invoicing';
+import { shipmentsQueryKeys } from '../../features/shipments';
+import { OrderCancelAction } from '../../features/orders/components/order-cancel-action';
+import { OrderCancelResultNotice } from '../../features/orders/components/order-cancel-result-notice';
+import { buildOrderCancelTimelineEvents } from '../../features/orders/components/order-cancel-timeline-events';
+import type {
+  CancelOrderResult,
+  OrderCancelReason,
+} from '../../features/orders/api/order-cancel.types';
+import { hasAcceptedFulfilmentWork, isOrderCancelTerminal } from '../../features/orders/lib/order-cancel';
+import { formatAmount } from '../../shared/format/format-amount';
 import { useOmsRoutingState } from '../../features/fulfillment-authority';
 import { useSession } from '../../shared/auth/use-session';
 
@@ -126,6 +139,21 @@ export function OrderDetailPage(): ReactElement {
   const automationRunsQuery = useSubjectAutomationRunsQuery('order', internalOrderId);
   const retry = useRetryOrderDestinationMutation();
   const { showToast } = useToast();
+  const queryClient = useQueryClient();
+  // #3541 - the fulfilment tasks decide whether the cancel dialog shows its
+  // pack-bench acknowledgement up front. The same read the tasks panel makes, so
+  // it costs no extra request. A failed read leaves the box to appear after the
+  // server answers `ORDER_WORK_ACCEPTED_NEEDS_ACK` instead. The buyer-note block
+  // (B-15) reads the same query to decide whether the bench line applies.
+  const fulfilmentTasksQuery = useOrderFulfillmentTasksQuery(internalOrderId);
+  // #3541 - the one cancel result this session holds. Tagged with its order so a
+  // navigation to another order never shows it there.
+  const [cancelOutcome, setCancelOutcome] = useState<{
+    internalOrderId: string;
+    result: CancelOrderResult;
+    reason: OrderCancelReason;
+    requestedAt: string;
+  } | null>(null);
   const location = useLocation();
   // Deep-link recovery target from a `/shipments` row's Regenerate/Generate
   // action (#1826): `/orders/:orderId?retryShipmentId={id}&from=shipments` —
@@ -158,8 +186,6 @@ export function OrderDetailPage(): ReactElement {
   // render with it) — the app has no other hash-scroll, and the panels mount
   // asynchronously, so a native browser jump on first paint would miss.
   const hasOrder = query.data !== undefined;
-  // B-15: shares its cache entry with the fulfilment panel below, so this adds no request.
-  const fulfilmentTasksQuery = useOrderFulfillmentTasksQuery(internalOrderId);
   useEffect(() => {
     if (!hasOrder) return;
     const targetId = location.hash.replace(/^#/, '');
@@ -253,6 +279,37 @@ export function OrderDetailPage(): ReactElement {
     order.buyerNoteAcknowledgements,
   );
   const failedDestinations = order.syncStatus.filter((s) => s.status === 'failed');
+
+  // #3541 - cancel action inputs. All derived from data the page already holds.
+  const cancelOutcomeForOrder =
+    cancelOutcome?.internalOrderId === order.internalOrderId ? cancelOutcome : null;
+  const cancelTotalLabel = snapshot.totals
+    ? formatAmount(snapshot.totals.total, snapshot.totals.currency)
+    : null;
+  const cancelUnitCount = snapshot.items.reduce((sum, item) => sum + item.quantity, 0);
+  const cancelSourceConnection = connectionsQuery.data?.find((c) => c.id === order.sourceConnectionId);
+  const cancelSourceName = cancelSourceConnection?.name ?? null;
+  const handleOrderCancelResult = (result: CancelOrderResult, reason: OrderCancelReason): void => {
+    setCancelOutcome({
+      internalOrderId: order.internalOrderId,
+      result,
+      reason,
+      requestedAt: new Date().toISOString(),
+    });
+    // The cancel voids labels, cancels fulfilment work and opens a credit
+    // proposal; those panels read keys outside the orders domain.
+    void queryClient.invalidateQueries({ queryKey: shipmentsQueryKeys.all });
+    void queryClient.invalidateQueries({ queryKey: fulfillmentQueryKeys.all });
+    void queryClient.invalidateQueries({ queryKey: invoicingQueryKeys.all });
+  };
+  const cancelTimelineEvents = cancelOutcomeForOrder
+    ? buildOrderCancelTimelineEvents({
+        result: cancelOutcomeForOrder.result,
+        reason: cancelOutcomeForOrder.reason,
+        requestedAt: cancelOutcomeForOrder.requestedAt,
+        sourceName: cancelSourceName,
+      })
+    : undefined;
 
   const connections = connectionsQuery.data ?? [];
   // The notes section's "Never sent to …" promise names THIS order's channels
@@ -399,6 +456,29 @@ export function OrderDetailPage(): ReactElement {
       }
       eyebrow="Orders"
       title="Order detail"
+      actions={
+        <OrderCancelAction
+          // Remount per order so an open dialog never carries over to a cached next order.
+          key={order.internalOrderId}
+          internalOrderId={order.internalOrderId}
+          orderNumber={snapshot.orderNumber ?? null}
+          sourceName={cancelSourceName}
+          unitCount={cancelUnitCount}
+          totalLabel={cancelTotalLabel}
+          invoiced={snapshot.invoice?.status === 'issued'}
+          acceptedWork={hasAcceptedFulfilmentWork(fulfilmentTasksQuery.data?.works ?? [])}
+          terminal={isOrderCancelTerminal({
+            snapshotStatus: snapshot.status,
+            lifecyclePhase: order.lifecyclePhase,
+            fulfillmentState: order.fulfillmentState,
+          })}
+          amending={order.lifecyclePhase === 'amending'}
+          onResult={handleOrderCancelResult}
+          onGoToShipment={() => {
+            document.getElementById('shipment')?.scrollIntoView({ block: 'start' });
+          }}
+        />
+      }
     >
       <OrderDetailHeader
         order={order}
@@ -418,6 +498,16 @@ export function OrderDetailPage(): ReactElement {
         destinationRoutingBlockReason={order.destinationRoutingBlockReason}
         handledInOpenLinker={order.handledInOpenLinker}
       />
+
+      {cancelOutcomeForOrder ? (
+        <OrderCancelResultNotice
+          key={cancelOutcomeForOrder.result.changeId}
+          result={cancelOutcomeForOrder.result}
+          internalOrderId={order.internalOrderId}
+          sourceName={cancelSourceName}
+          totalLabel={cancelTotalLabel}
+        />
+      ) : null}
 
       {failedDestinations.length > 0 ? (
         <Alert
@@ -680,6 +770,7 @@ export function OrderDetailPage(): ReactElement {
           extraEvents={[...returnTimelineEvents, ...noteTimelineEvents, ...buyerNoteTimelineEvents, ...buyerNoteChangeEvents]}
           holds={order.holdHistory}
           automationRuns={automationRunsQuery.data?.runs ?? []}
+          trailingEvents={cancelTimelineEvents}
         />
       </section>
 
