@@ -18,8 +18,7 @@
 import { cleanup, fireEvent, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createMockApiClient, renderWithProviders, sampleConnection } from '../../../test/test-utils';
-import type { InvoiceRecord } from '../../../features/invoicing';
-import type { RegulatoryStatus } from '../../../features/invoicing';
+import type { InvoiceRecord, RegulatoryStatus } from '../../../features/invoicing';
 import { KsefInvoiceDetailSection } from './ksef-invoice-detail-section';
 
 function makeInvoice(over: Partial<InvoiceRecord> = {}): InvoiceRecord {

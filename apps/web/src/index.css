@@ -18638,7 +18638,9 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
 
 /* KOD I not-cleared placeholder (#3547, M24 `not-cleared`): a dashed frame
  * the size of the QR in the FA(3) preview, beside why the code is not there
- * yet. Dashed so it reads as "not here yet" rather than as a broken image. */
+ * yet. Dashed so it reads as "not here yet" rather than as a broken image.
+ * The frame's 148px matches `<QrCode size={148}>` in ksef-fa3-view.tsx - change
+ * both together. */
 .ksef-verification-pending {
   display: flex;
   flex-wrap: wrap;
@@ -18652,8 +18654,8 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
   flex: 0 0 auto;
   display: grid;
   place-items: center;
-  width: 132px;
-  height: 132px;
+  width: 148px;
+  height: 148px;
   padding: var(--space-2);
   box-sizing: border-box;
   border: 1px dashed var(--border-strong);

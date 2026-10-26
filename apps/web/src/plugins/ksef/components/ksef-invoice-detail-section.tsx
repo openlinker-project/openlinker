@@ -54,7 +54,9 @@ import { useTranslation } from '../../../shared/i18n';
 /**
  * Clearance statuses in which a document is still waiting for its KSeF number,
  * so the KOD I QR cannot exist yet (#3547). `cleared` is listed for safety: no
- * current provider emits it, and it is not the terminal `accepted`.
+ * KSeF path emits it today, and it is not the terminal `accepted`. If a
+ * provider-neutral `cleared` ever starts meaning "has its number", remove it
+ * here, or this section will show the placeholder for a document that has one.
  */
 const AWAITING_KSEF_NUMBER_STATUSES: ReadonlyArray<RegulatoryStatus> = [
   'pending-submission',
@@ -278,9 +280,11 @@ export function KsefInvoiceDetailSection({
 
         {isAwaitingKsefNumber ? (
           // M24 `not-cleared`: a dashed frame where the KOD I QR will be, beside
-          // the reason it is not there yet. The copy states what OpenLinker
-          // actually does: the status is re-checked in the background, and this
-          // page shows the code once that check has seen the number.
+          // the reason it is not there yet. The copy states only what OpenLinker
+          // actually does: a `submitted` status is re-checked in the background
+          // (`regulatory-status-reconcile`, on by default), but the offline-window
+          // resubmit for `pending-submission` is opt-in, so that copy promises no
+          // automatic send.
           <div className="ksef-verification-pending" role="note">
             <div className="ksef-verification-pending__frame">
               {t(
@@ -296,7 +300,7 @@ export function KsefInvoiceDetailSection({
                 {invoice.regulatoryStatus === 'pending-submission'
                   ? t(
                       'invoice.ksef.verificationPendingNotSent',
-                      'This invoice has not reached KSeF yet. OpenLinker sends it again automatically, and the code appears here once KSeF assigns its number.',
+                      'This invoice has not reached KSeF yet. The code appears here once KSeF accepts it and assigns its number.',
                     )
                   : t(
                       'invoice.ksef.verificationPendingHint',
