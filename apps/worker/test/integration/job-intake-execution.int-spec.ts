@@ -16,6 +16,8 @@ import { SyncJobRepositoryPort } from '@openlinker/core/sync';
 import { SyncJobRequest } from '@openlinker/core/sync';
 import { SyncJobOrmEntity } from '@openlinker/core/sync/orm-entities';
 import { randomUUID } from 'crypto';
+import type { RedisClientType } from 'redis';
+import { JOB_INTAKE_REDIS_CLIENT_BLOCKING_TOKEN } from '../../src/sync/sync-worker.tokens';
 
 describe('Job Intake → Execution Integration', () => {
   let harness: WorkerIntegrationTestHarness;
@@ -37,6 +39,40 @@ describe('Job Intake → Execution Integration', () => {
 
   afterAll(async () => {
     await teardownTestHarness();
+  });
+
+  describe('Job intake Redis client', () => {
+    // The intake consumer's XREADGROUP BLOCK used to run on the shared
+    // 'REDIS_CLIENT'. A blocking read holds its connection, so the
+    // cross-process rate limiter queued behind it, timed out and degraded to
+    // per-process limiting in every worker (measured live).
+    it('should give the intake consumer its own connection, not the shared client', () => {
+      const intakeClient = harness.get<RedisClientType>(JOB_INTAKE_REDIS_CLIENT_BLOCKING_TOKEN);
+
+      expect(intakeClient).toBeDefined();
+      expect(intakeClient.isOpen).toBe(true);
+      expect(intakeClient).not.toBe(harness.get<RedisClientType>('REDIS_CLIENT'));
+    });
+
+    it('should keep the shared client responsive while the intake client is blocked on a read', async () => {
+      const intakeClient = harness.get<RedisClientType>(JOB_INTAKE_REDIS_CLIENT_BLOCKING_TOKEN);
+      const sharedClient = harness.get<RedisClientType>('REDIS_CLIENT');
+      const stream = `test.intake-block.${randomUUID()}`;
+      await intakeClient.xGroupCreate(stream, 'g', '$', { MKSTREAM: true });
+
+      const blockedRead = intakeClient.xReadGroup('g', 'c', [{ key: stream, id: '>' }], {
+        BLOCK: 1500,
+      });
+      const startedAt = Date.now();
+      await sharedClient.ping();
+      const sharedLatencyMs = Date.now() - startedAt;
+      await blockedRead;
+      await sharedClient.del(stream);
+
+      // Far below the limiter's 1 s Redis call timeout; behind the blocked
+      // read it would have taken the full 1.5 s.
+      expect(sharedLatencyMs).toBeLessThan(500);
+    });
   });
 
   describe('Job Intake → Persistence', () => {

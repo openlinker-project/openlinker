@@ -23,6 +23,61 @@ When a lesson hardens into a rule, **graduate it** to the canonical doc and leav
 
 ---
 
+## A wait that sits in front of a request must honour that request's own cancellation
+
+**Context**: `HttpTransportFactory` waits for a rate-limit slot before calling `fetch`.
+Plugin HTTP clients (Shoper, Erli, eparagony, ...) arm their request timeout before they call
+the transport.
+
+**Problem**: the wait honoured only the ambient context signal, never `init.signal`. Under eight
+concurrent operator requests on a busy Shoper bucket, the 15 s request timers fired while the
+requests were still queued; each one then claimed a slot anyway and failed at 0 ms on its
+already-aborted signal - 27 such failures, each a wasted slot and an HTTP 500 reading "Shoper
+request timed out after 15000ms" for a request that never left OpenLinker.
+
+**Rule**: any gate a request queues behind (limiter, lock, semaphore) takes the request's own
+signal as well as the context one, releases immediately if the request was cancelled at the
+moment of the grant, and never calls the network on a cancelled request. Surface the outcome
+as "busy, nothing was sent" (503 + `Retry-After`), not as a server error.
+
+**Applies to**: `libs/shared/src/http/http-transport-factory.ts`, any future outbound gate,
+`apps/api/src/common/filters/rate-limit-busy.filter.ts`.
+
+**Source**: Shoper integration live test, 2026-10-26 (ADR-038).
+
+---
+
+## Never issue a blocking Redis command on a client other code shares
+
+**Context**: the cross-process rate limiter (`RedisRateLimiterAdapter`, ADR-038 #2015)
+runs on the global `'REDIS_CLIENT'`. In the worker, `JobIntakeConsumer` ran its
+`XREADGROUP ... BLOCK 5000` loop on that same client.
+
+**Problem**: a blocking command holds its node-redis connection until it returns, and every
+command issued on that client queues behind it. The limiter bounds each Redis call at 1 s, so
+in the worker its calls timed out behind the read and fell back to per-process limiting -
+26 fallbacks and 51 "still degraded" warnings in one 40-minute live run, worker only. The
+"shared per-shop bucket" was silently not shared: api and worker requests to the same shop
+landed 1 ms apart while each process on its own never went below 198 ms (300/min). Nothing
+failed, the warnings looked like a Redis blip, and unit specs mock the client so they could
+not see it. A sibling consumer's comment had even recorded that intake "already blocks" on the
+shared client without anyone treating that as a defect.
+
+**Rule**: a consumer that issues `XREADGROUP BLOCK`, `BLPOP`/`BRPOP` or any other blocking
+command gets its own dedicated client (a token + factory beside the consumer, quit on module
+destroy), and every non-blocking command on that stream may run on it too. Shared clients
+(`'REDIS_CLIENT'`, the limiter, locks, cache) carry non-blocking commands only. When a
+degraded-mode fallback fires in one process but not another, suspect the connection before
+suspecting Redis.
+
+**Applies to**: `apps/worker/src/sync/job-intake.consumer.ts`,
+`apps/worker/src/events/master-deletion-to-job.handler.ts`, any new Redis Streams consumer,
+`libs/shared/src/rate-limit/redis-rate-limiter.adapter.ts`.
+
+**Source**: Shoper integration live test, 2026-10-26 (ADR-038, ADR-049).
+
+---
+
 ## A destination status read-back must check whether OL itself caused the status it reads
 
 **Context**: branch-1 status sync (`FulfillmentStatusSyncService`) projects a destination

@@ -4,8 +4,12 @@
  * @module libs/shared/src/http
  */
 import { HttpTransportFactory } from '../http-transport-factory';
-import { createRateLimiterRegistry, runWithPriority } from '../../rate-limit';
-import type { RateLimiterRegistry } from '../../rate-limit';
+import {
+  createRateLimiterRegistry,
+  RateLimitAbortedError,
+  runWithPriority,
+} from '../../rate-limit';
+import type { RateLimiterPort, RateLimiterRegistry } from '../../rate-limit';
 
 /**
  * Poll until `predicate` holds, so assertions about the limiter synchronise on
@@ -270,6 +274,121 @@ describe('HttpTransportFactory', () => {
     expect(rejected).toBe(true);
     expect(fetchImpl).not.toHaveBeenCalled();
     release();
+  });
+
+  describe("the request's own signal while queued", () => {
+    // A plugin arms its request timeout before calling the transport. On a busy
+    // bucket that timer can fire while the request is still queued; the wait
+    // must end there, never claim the slot, and never call the network.
+    const connection = { id: 'conn-1', config: { rateLimit: { maxConcurrent: 1 } } };
+
+    it('should reject with RateLimitAbortedError and never call fetch when the request is aborted while queued', async () => {
+      const fetchImpl = jest.fn().mockResolvedValue(new Response(null, { status: 200 }));
+      const factory = new HttpTransportFactory({ registry, fetchImpl });
+      const boundFetch = factory.forConnection(connection);
+      const holder = await registry
+        .get('conn-1', { maxConcurrent: 1 })
+        .acquire({ maxConcurrent: 1 }, 'background');
+
+      const controller = new AbortController();
+      const queued = boundFetch('https://example.com', { signal: controller.signal });
+      await waitFor(() => registry.getStatus('conn-1')?.queued === 1);
+      controller.abort();
+
+      await expect(queued).rejects.toBeInstanceOf(RateLimitAbortedError);
+      expect(fetchImpl).not.toHaveBeenCalled();
+      expect(registry.getStatus('conn-1')).toEqual(
+        expect.objectContaining({ inFlight: 1, queued: 0 })
+      );
+
+      holder();
+      expect(registry.getStatus('conn-1')?.inFlight).toBe(0);
+    });
+
+    it('should not claim a slot for a request whose signal is already aborted', async () => {
+      const fetchImpl = jest.fn().mockResolvedValue(new Response(null, { status: 200 }));
+      const factory = new HttpTransportFactory({ registry, fetchImpl });
+      const boundFetch = factory.forConnection(connection);
+      const controller = new AbortController();
+      controller.abort();
+
+      await expect(
+        boundFetch('https://example.com', { signal: controller.signal })
+      ).rejects.toBeInstanceOf(RateLimitAbortedError);
+      expect(fetchImpl).not.toHaveBeenCalled();
+      expect(registry.getStatus('conn-1')?.inFlight ?? 0).toBe(0);
+    });
+
+    it('should release the granted slot without calling fetch when the request aborts as the slot is granted', async () => {
+      const controller = new AbortController();
+      const release = jest.fn();
+      const limiter: RateLimiterPort = {
+        acquire: jest.fn(() => {
+          // The grant and the abort land in the same tick.
+          controller.abort();
+          return Promise.resolve(release);
+        }),
+        noteRetryAfter: jest.fn(),
+        getStatus: jest.fn(),
+      };
+      const stubRegistry: RateLimiterRegistry = {
+        get: () => limiter,
+        getStatus: () => null,
+        evict: jest.fn(),
+        clear: jest.fn(),
+      };
+      const fetchImpl = jest.fn().mockResolvedValue(new Response(null, { status: 200 }));
+      const factory = new HttpTransportFactory({ registry: stubRegistry, fetchImpl });
+
+      await expect(
+        factory.forConnection(connection)('https://example.com', { signal: controller.signal })
+      ).rejects.toBeInstanceOf(RateLimitAbortedError);
+      expect(fetchImpl).not.toHaveBeenCalled();
+      expect(release).toHaveBeenCalledTimes(1);
+    });
+
+    it('should honour both the context signal and the request signal, and detach from both once the wait settles', async () => {
+      const fetchImpl = jest.fn().mockResolvedValue(new Response(null, { status: 200 }));
+      const factory = new HttpTransportFactory({ registry, fetchImpl });
+      const boundFetch = factory.forConnection(connection);
+      const contextController = new AbortController();
+      const requestController = new AbortController();
+      const contextRemove = jest.spyOn(contextController.signal, 'removeEventListener');
+      const requestRemove = jest.spyOn(requestController.signal, 'removeEventListener');
+
+      await runWithPriority({ priority: 'background', signal: contextController.signal }, () =>
+        boundFetch('https://example.com', { signal: requestController.signal })
+      );
+
+      expect(fetchImpl).toHaveBeenCalledWith('https://example.com', {
+        signal: requestController.signal,
+      });
+      // The context signal is typically the runner's, alive for the whole
+      // process; a listener left on it per request would accumulate for ever.
+      expect(contextRemove).toHaveBeenCalledWith('abort', expect.any(Function));
+      expect(requestRemove).toHaveBeenCalledWith('abort', expect.any(Function));
+    });
+
+    it('should still end the wait on the context signal when the request carries its own', async () => {
+      const fetchImpl = jest.fn().mockResolvedValue(new Response(null, { status: 200 }));
+      const factory = new HttpTransportFactory({ registry, fetchImpl });
+      const boundFetch = factory.forConnection(connection);
+      const holder = await registry
+        .get('conn-1', { maxConcurrent: 1 })
+        .acquire({ maxConcurrent: 1 }, 'background');
+      const contextController = new AbortController();
+
+      const queued = runWithPriority(
+        { priority: 'background', signal: contextController.signal },
+        () => boundFetch('https://example.com', { signal: new AbortController().signal })
+      );
+      await waitFor(() => registry.getStatus('conn-1')?.queued === 1);
+      contextController.abort();
+
+      await expect(queued).rejects.toBeInstanceOf(RateLimitAbortedError);
+      expect(fetchImpl).not.toHaveBeenCalled();
+      holder();
+    });
   });
 
   it('evict() drops the cached FetchLike, connection ref, and underlying limiter for a connection', async () => {
