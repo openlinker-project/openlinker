@@ -988,6 +988,15 @@ export interface FulfillmentWorkRepositoryPort {
   markLabelPrinted(workId: string, at: Date): Promise<boolean>;
 
   /**
+   * Record that this parcel's buyer note was acknowledged at the bench (#3538,
+   * D12). Fill-in-when-NULL on `buyerNoteAcknowledgedAt`, with the actor in the
+   * same statement, so the FIRST acknowledgement wins and a replay is a no-op.
+   * `false` means "not applied" (already acknowledged, or no such work), never
+   * an error. Does NOT bump `version`: display-only.
+   */
+  acknowledgeBuyerNote(workId: string, at: Date, byUserId: string): Promise<boolean>;
+
+  /**
    * Declare this parcel finished and off the bench — the explicit
    * completion act the pack-bench completion research found missing.
    * `"completedAt"` and `"completedByUserId"` in ONE guarded UPDATE

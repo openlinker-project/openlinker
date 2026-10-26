@@ -226,6 +226,14 @@ const PACKER_GRANTED_ROUTES: readonly string[] = [
   // scan already enforces; attributed to the verified token's own user, same
   // as verifyUnit.
   'BenchParcelController.completeParcel',
+  // #3538 (D12). Records which packer read the buyer's checkout note for ONE
+  // parcel, and when. Scoped exactly as getParcel scopes it, plus the ADR-074
+  // lock a scan enforces; attributed to the verified token's own user. It
+  // writes two display columns on the work row and gates nothing - scanning
+  // never waits on it and it is not a parcel close (ADR-071). The note TEXT the
+  // packer reads reaches them through `getParcel`'s projection, a deliberate
+  // new disclosure recorded there rather than here.
+  'BenchParcelController.acknowledgeBuyerNote',
   // #3415. The way back from that completion, and the reason it needs one: the
   // only other route back was `reopenParcel` above, which UNPACKS the box, so a
   // packer who tapped the wrong row had to re-scan a parcel that was packed

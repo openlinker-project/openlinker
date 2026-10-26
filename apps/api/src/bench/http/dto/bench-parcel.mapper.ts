@@ -50,6 +50,15 @@ export function toParcelResponseDto(view: BenchParcelView): BenchParcelResponseD
       widthMm: line.widthMm,
       heightMm: line.heightMm,
     })),
+    buyerNote: view.buyerNote,
+    buyerNoteAcknowledgedAt: view.buyerNoteAcknowledgedAt,
+    buyerNoteAcknowledgedByUserId: view.buyerNoteAcknowledgedByUserId,
+    otherParcelBuyerNoteAcknowledgements: view.otherParcelBuyerNoteAcknowledgements.map((entry) => ({
+      workId: entry.workId,
+      parcelIndex: entry.parcelIndex,
+      acknowledgedAt: entry.acknowledgedAt,
+      acknowledgedByUserId: entry.acknowledgedByUserId,
+    })),
     packerNotes: view.packerNotes.map((note) => ({
       id: note.id,
       body: note.body,

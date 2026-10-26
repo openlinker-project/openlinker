@@ -27,6 +27,7 @@ import {
 } from '@openlinker/core/fulfillment';
 
 import {
+  BenchBuyerNoteAcknowledgementRefusalValues,
   BenchClaimRefusalValues,
   BenchCompletionRefusalValues,
   BenchUndoCompletionRefusalValues,
@@ -208,6 +209,59 @@ export class BenchParcelResponseDto {
       'never a tag. An empty array is the ordinary case.',
   })
   packerNotes!: BenchPackerNoteResponseDto[];
+
+  @ApiProperty({
+    nullable: true,
+    type: String,
+    description:
+      "The buyer's checkout note to the seller (#3538, D12), read only - a deliberate disclosure to the " +
+      'packer role. null when there is no text to show: the buyer left none, the source could not say, or ' +
+      'the deployment stores no note text (`OL_STORE_PII=false`). The order\'s note, shown on every parcel of a split order.',
+  })
+  buyerNote!: string | null;
+
+  @ApiProperty({
+    nullable: true,
+    description:
+      'When THIS parcel\'s buyer note was first acknowledged at the bench, or null. Per parcel; never blocks scanning.',
+  })
+  buyerNoteAcknowledgedAt!: string | null;
+
+  @ApiProperty({ nullable: true, description: 'Who acknowledged it - a raw user id, like packedByUserId.' })
+  buyerNoteAcknowledgedByUserId!: string | null;
+
+  @ApiProperty({
+    type: () => [BenchSiblingBuyerNoteAcknowledgementResponseDto],
+    description:
+      "The acknowledgements of the order's OTHER parcels (#3538), for a split order. Only acknowledged siblings appear.",
+  })
+  otherParcelBuyerNoteAcknowledgements!: BenchSiblingBuyerNoteAcknowledgementResponseDto[];
+}
+
+export class BenchSiblingBuyerNoteAcknowledgementResponseDto {
+  @ApiProperty() workId!: string;
+
+  @ApiProperty({ description: '1-based parcel index, the same numbering parcelIndex uses.' })
+  parcelIndex!: number;
+
+  @ApiProperty() acknowledgedAt!: string;
+
+  @ApiProperty({ nullable: true }) acknowledgedByUserId!: string | null;
+}
+
+export class BenchBuyerNoteAcknowledgementResultResponseDto {
+  @ApiProperty({
+    enum: ['acknowledged', 'already-acknowledged', 'refused'],
+    description:
+      'already-acknowledged is an ordinary replay: the first acknowledgement is kept. refused: nothing was recorded.',
+  })
+  outcome!: string;
+
+  @ApiProperty({ nullable: true, enum: BenchBuyerNoteAcknowledgementRefusalValues })
+  reason!: string | null;
+
+  @ApiProperty({ type: BenchParcelResponseDto })
+  parcel!: BenchParcelResponseDto;
 }
 
 export class BenchVerificationResultResponseDto {

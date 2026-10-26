@@ -52,6 +52,8 @@ const buildWork = (overrides: Partial<FulfillmentWork> = {}): FulfillmentWork =>
   packedByService: null,
   invoicePrintedAt: null,
   labelPrintedAt: null,
+  buyerNoteAcknowledgedAt: null,
+  buyerNoteAcknowledgedByUserId: null,
   completedAt: null,
   completedByUserId: null,
   lines: [

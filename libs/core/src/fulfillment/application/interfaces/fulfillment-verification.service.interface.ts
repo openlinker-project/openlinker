@@ -117,6 +117,14 @@ export interface IFulfillmentVerificationService {
   markLabelPrinted(workId: string, at: Date): Promise<boolean>;
 
   /**
+   * Record the first acknowledgement of the buyer note on this parcel (#3538).
+   * A passthrough to the repository's fill-once claim: `false` = already
+   * acknowledged (or unknown work), an ordinary outcome. Never blocks scanning
+   * and is not a parcel close.
+   */
+  acknowledgeBuyerNote(workId: string, at: Date, byUserId: string): Promise<boolean>;
+
+  /**
    * Declare a parcel finished and off the bench (pack-bench completion) — a distinct,
    * explicit completion act from D18's silent auto-close.
    *

@@ -109,6 +109,7 @@ describe('BenchDocumentsController — GET work/:workId/documents/label (#3340)'
       undoLastScan: jest.fn(),
       listActivity: jest.fn(),
       claimParcel: jest.fn(),
+      acknowledgeBuyerNote: jest.fn(),
       completeParcel: jest.fn(),
       undoCompletion: jest.fn(),
     };
@@ -122,6 +123,7 @@ describe('BenchDocumentsController — GET work/:workId/documents/label (#3340)'
       listVerifications: jest.fn(),
       markInvoicePrinted: jest.fn(),
       markLabelPrinted: jest.fn().mockResolvedValue(true),
+      acknowledgeBuyerNote: jest.fn().mockResolvedValue(true),
       complete: jest.fn(),
       undoCompletion: jest.fn(),
     };

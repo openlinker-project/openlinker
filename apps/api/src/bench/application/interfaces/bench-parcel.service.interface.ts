@@ -16,6 +16,7 @@ import type { FulfillmentWorkView } from '@openlinker/core/fulfillment';
 
 import type {
   BenchActivityEntryView,
+  BenchBuyerNoteAcknowledgementResultView,
   BenchClaimResultView,
   BenchCompleteResultView,
   BenchUndoCompletionResultView,
@@ -148,6 +149,20 @@ export interface IBenchParcelService {
    * `verifyUnit` would refuse a scan at this parcel, plus the ADR-074 lock.
    */
   claimParcel(workId: string, viewerId: string): Promise<BenchClaimResultView>;
+
+  /**
+   * Acknowledge this parcel's buyer note (#3538, D12) - who and when, per
+   * parcel. Fill-once and idempotent: the first packer's acknowledgement is
+   * never overwritten. Subject to the ADR-074 lock like every bench write, and
+   * refused `no-buyer-note` when the order has nothing to acknowledge.
+   *
+   * It records a fact and gates nothing: scanning never waits on it, and it is
+   * not a parcel close (ADR-071).
+   */
+  acknowledgeBuyerNote(
+    workId: string,
+    viewerId: string
+  ): Promise<BenchBuyerNoteAcknowledgementResultView>;
 
   /**
    * Declare this parcel finished and off the bench (pack-bench completion) — the ONE
