@@ -64,6 +64,21 @@ export function hasActiveMovementFilters(state: MovementUrlState): boolean {
   );
 }
 
+/**
+ * A `YYYY-MM-DD` filter value is the operator's LOCAL calendar day, so its
+ * boundaries are local midnight and the last local millisecond, converted to
+ * ISO instants. A UTC day would drop 26 Sep 23:30 in Warsaw from "to 26 Sep".
+ */
+export function localDayStartIso(day: string): string {
+  const [y, m, d] = day.split('-').map(Number);
+  return new Date(y, m - 1, d, 0, 0, 0, 0).toISOString();
+}
+
+export function localDayEndIso(day: string): string {
+  const [y, m, d] = day.split('-').map(Number);
+  return new Date(y, m - 1, d, 23, 59, 59, 999).toISOString();
+}
+
 export function toMovementFilters(state: MovementUrlState): InventoryMovementFilters {
   const promisedOnly = state.chip === 'promised' || state.type === 'reservation';
   const reason = state.type !== '' && isReason(state.type) ? state.type : undefined;
@@ -71,8 +86,8 @@ export function toMovementFilters(state: MovementUrlState): InventoryMovementFil
     productVariantId: state.productVariantId || undefined,
     reasons: reason ? [reason] : undefined,
     sourceConnectionId: state.master || undefined,
-    from: state.from ? `${state.from}T00:00:00.000Z` : undefined,
-    to: state.to ? `${state.to}T23:59:59.999Z` : undefined,
+    from: state.from ? localDayStartIso(state.from) : undefined,
+    to: state.to ? localDayEndIso(state.to) : undefined,
     needsAttention: state.chip === 'attention' ? true : undefined,
     kind: promisedOnly ? 'promised' : reason ? 'movements' : 'all',
     search: state.search || undefined,

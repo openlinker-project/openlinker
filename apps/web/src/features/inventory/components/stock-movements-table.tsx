@@ -165,6 +165,10 @@ function SourceCell({ row }: { row: InventoryMovementRow }): ReactElement {
     } else {
       ref = <span className="mono-text">{row.sourceRef}</span>;
     }
+  } else if (row.sourceKind === 'operator' && row.actorUserId !== null) {
+    // Who changed the stock is the point of an audit trail; a deleted account
+    // reads as unknown rather than as nobody.
+    ref = <span data-testid="stock-movement-actor">{row.actorName ?? 'Unknown user'}</span>;
   }
   return (
     <>
@@ -268,6 +272,27 @@ export function StockMovementsTable({
       columns={columns}
       rows={[...rows]}
       rowKey={(row) => `${row.kind}:${row.id}`}
+      cardView={{
+        title: (row) => <TypeCell row={row} />,
+        subtitle: (row) => (
+          <>
+            <TimeDisplay iso={row.occurredAt} />
+            {layout === 'global' && row.sku ? ` · ${row.sku}` : ''}
+          </>
+        ),
+        meta: (row) => <StatusCell row={row} />,
+        summary: (row) => (
+          <>
+            <DeltaCell row={row} /> <BeforeAfterCell row={row} />
+          </>
+        ),
+        detail: (row) => (
+          <>
+            <SourceCell row={row} />
+            <div className="muted-text">{connectionLabel(row.sourceConnectionId, connectionNames)}</div>
+          </>
+        ),
+      }}
       rowClassName={rowClass}
       rowAttributes={(row) => ({
         'data-testid': 'stock-movement-row',

@@ -58,6 +58,7 @@ interface HistoryRawRow {
   sourceRef: string | null;
   operatorReason: string | null;
   note: string | null;
+  actorUserId: string | null;
   refusalReason: string | null;
   refusalDetail: string | null;
   occurredAt: Date;
@@ -298,7 +299,7 @@ export class InventoryMovementRepository implements InventoryMovementRepositoryP
         SELECT 'movement'::text AS "kind", m."id"::text AS "id", m."productId", m."productVariantId",
                pv."sku" AS "sku", p."name" AS "productName", m."locationId", m."sourceConnectionId",
                m."reason", m."status", m."quantityDelta", m."quantityBefore", m."quantityAfter",
-               m."sourceKind", m."sourceRef", m."operatorReason", m."note",
+               m."sourceKind", m."sourceRef", m."operatorReason", m."note", m."actorUserId",
                m."refusalReason", m."refusalDetail", m."occurredAt"
         FROM ${TABLE} m
         LEFT JOIN "product_variants" pv ON pv."id" = m."productVariantId"
@@ -321,7 +322,7 @@ export class InventoryMovementRepository implements InventoryMovementRepositoryP
                NULL::varchar AS "reason", r."status", r."quantity" AS "quantityDelta",
                NULL::integer AS "quantityBefore", NULL::integer AS "quantityAfter",
                'order'::varchar AS "sourceKind", r."orderRecordId" AS "sourceRef",
-               NULL::varchar AS "operatorReason", NULL::text AS "note",
+               NULL::varchar AS "operatorReason", NULL::text AS "note", NULL::text AS "actorUserId",
                NULL::varchar AS "refusalReason", NULL::text AS "refusalDetail",
                COALESCE(r."closedAt", r."createdAt") AS "occurredAt"
         FROM "reservations" r
@@ -359,6 +360,7 @@ export class InventoryMovementRepository implements InventoryMovementRepositoryP
         row.operatorReason
       ),
       note: row.note,
+      actorUserId: row.actorUserId,
       refusalReason: row.refusalReason,
       refusalDetail: row.refusalDetail,
       occurredAt: new Date(row.occurredAt),

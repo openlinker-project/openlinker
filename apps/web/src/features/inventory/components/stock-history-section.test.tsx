@@ -34,4 +34,21 @@ describe('StockHistorySection', () => {
     );
     expect(await screen.findByTestId('stock-history-empty')).toBeInTheDocument();
   });
+
+  it('should show the newest movement time with its status from a dedicated query, even when refused', async () => {
+    const refused = {
+      kind: 'movement', id: 'm1', productId: 'p1', productVariantId: 'v1', sku: 'KUB-BIA', productName: 'Kubek',
+      locationId: null, sourceConnectionId: null, reason: 'return_restock', status: 'refused', quantityDelta: 1,
+      quantityBefore: 5, quantityAfter: null, sourceKind: 'return', sourceRef: 'r1', operatorReason: null, note: null,
+      actorUserId: null, actorName: null, refusalReason: null, refusalDetail: 'no', occurredAt: '2026-09-26T08:41:00.000Z',
+    };
+    const listMovements = vi.fn().mockImplementation((filters: { kind?: string }) =>
+      Promise.resolve({ items: filters.kind === 'movements' ? [refused] : [], limit: 1, offset: 0 }),
+    );
+    const apiClient = createMockApiClient({ inventory: { listMovements } });
+    renderWithProviders(<StockHistorySection productId="p1" variants={variants} />, { apiClient });
+
+    expect(await screen.findByTestId('stock-history-last-change-status')).toHaveTextContent('Refused');
+    expect(listMovements).toHaveBeenCalledWith(expect.objectContaining({ kind: 'movements' }), { limit: 1, offset: 0 });
+  });
 });

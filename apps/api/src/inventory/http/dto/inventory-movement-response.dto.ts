@@ -83,6 +83,17 @@ export class InventoryMovementResponseDto {
   @ApiProperty({ nullable: true, type: String })
   note!: string | null;
 
+  @ApiProperty({ nullable: true, type: String, description: 'The user who made a manual correction' })
+  actorUserId!: string | null;
+
+  @ApiProperty({
+    nullable: true,
+    type: String,
+    description:
+      "The actor's display name (never an email). Null when there is no actor or the user no longer exists.",
+  })
+  actorName!: string | null;
+
   @ApiProperty({ nullable: true, type: String })
   refusalReason!: string | null;
 
@@ -109,7 +120,10 @@ export class PaginatedInventoryMovementsResponseDto {
   offset!: number;
 }
 
-export function toInventoryMovementResponseDto(row: InventoryHistoryRow): InventoryMovementResponseDto {
+export function toInventoryMovementResponseDto(
+  row: InventoryHistoryRow,
+  actorNames: ReadonlyMap<string, string> = new Map()
+): InventoryMovementResponseDto {
   return {
     kind: row.kind,
     id: row.id,
@@ -128,6 +142,8 @@ export function toInventoryMovementResponseDto(row: InventoryHistoryRow): Invent
     sourceRef: row.sourceRef,
     operatorReason: row.operatorReason,
     note: row.note,
+    actorUserId: row.actorUserId,
+    actorName: row.actorUserId === null ? null : (actorNames.get(row.actorUserId) ?? null),
     refusalReason: row.refusalReason,
     refusalDetail: row.refusalDetail,
     occurredAt: row.occurredAt.toISOString(),

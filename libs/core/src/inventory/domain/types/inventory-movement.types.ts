@@ -167,6 +167,8 @@ export interface InventoryHistoryRow {
   readonly sourceRef: string | null;
   readonly operatorReason: InventoryMovementOperatorReason | null;
   readonly note: string | null;
+  /** The user who made a manual correction; `null` for every system-written row and for reservations. */
+  readonly actorUserId: string | null;
   readonly refusalReason: string | null;
   readonly refusalDetail: string | null;
   readonly occurredAt: Date;

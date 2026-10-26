@@ -14,6 +14,10 @@ import {
   type IInventoryMovementService,
   type InventoryMovementFilters,
 } from '@openlinker/core/inventory';
+import {
+  USER_MANAGEMENT_SERVICE_TOKEN,
+  type IUserManagementService,
+} from '../../users/user-management.service.interface';
 import { PaginatedTotalResponseDto } from '../../common/dto/paginated-total-response.dto';
 import { Roles } from '../../auth/decorators/roles.decorator';
 import {
@@ -45,7 +49,9 @@ function toFilters(query: MovementFiltersQueryDto): InventoryMovementFilters {
 export class InventoryMovementsController {
   constructor(
     @Inject(INVENTORY_MOVEMENT_SERVICE_TOKEN)
-    private readonly movements: IInventoryMovementService
+    private readonly movements: IInventoryMovementService,
+    @Inject(USER_MANAGEMENT_SERVICE_TOKEN)
+    private readonly users: IUserManagementService
   ) {}
 
   @Roles('admin', 'operator', 'viewer')
@@ -68,7 +74,11 @@ export class InventoryMovementsController {
     const { withTotal, limit = 20, offset = 0 } = query;
     const filters = toFilters(query);
     const rows = await this.movements.listMovements(filters, { limit, offset });
-    const items = rows.map(toInventoryMovementResponseDto);
+    const actorIds = rows
+      .map((row) => row.actorUserId)
+      .filter((id): id is string => id !== null);
+    const actorNames = actorIds.length > 0 ? await this.users.getDisplayNames(actorIds) : new Map<string, string>();
+    const items = rows.map((row) => toInventoryMovementResponseDto(row, actorNames));
 
     // Two branches so the response object does not CARRY `total` when it was not
     // asked for: an absent total and a genuine zero are different claims.

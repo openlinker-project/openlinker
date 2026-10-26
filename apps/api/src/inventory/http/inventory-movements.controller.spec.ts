@@ -11,6 +11,7 @@ import { plainToInstance } from 'class-transformer';
 import { validate } from 'class-validator';
 import type { IInventoryMovementService, InventoryHistoryRow } from '@openlinker/core/inventory';
 import { InventoryMovementsController } from './inventory-movements.controller';
+import type { IUserManagementService } from '../../users/user-management.service.interface';
 import { ListInventoryMovementsQueryDto } from './dto/list-inventory-movements-query.dto';
 
 const row = (overrides: Partial<InventoryHistoryRow> = {}): InventoryHistoryRow => ({
@@ -31,6 +32,7 @@ const row = (overrides: Partial<InventoryHistoryRow> = {}): InventoryHistoryRow 
   sourceRef: 'ol_order_1',
   operatorReason: null,
   note: null,
+  actorUserId: null,
   refusalReason: null,
   refusalDetail: null,
   occurredAt: new Date('2026-01-01T10:00:00.000Z'),
@@ -42,6 +44,7 @@ const parse = (plain: Record<string, unknown>): ListInventoryMovementsQueryDto =
 
 describe('InventoryMovementsController', () => {
   let service: jest.Mocked<IInventoryMovementService>;
+  let users: jest.Mocked<IUserManagementService>;
   let controller: InventoryMovementsController;
 
   beforeEach(() => {
@@ -50,7 +53,10 @@ describe('InventoryMovementsController', () => {
       countMovements: jest.fn().mockResolvedValue(1),
       pruneOlderThan: jest.fn(),
     } as unknown as jest.Mocked<IInventoryMovementService>;
-    controller = new InventoryMovementsController(service);
+    users = {
+      getDisplayNames: jest.fn().mockResolvedValue(new Map([['u1', 'Anna Wisniewska']])),
+    } as unknown as jest.Mocked<IUserManagementService>;
+    controller = new InventoryMovementsController(service, users);
   });
 
   describe('listMovements', () => {
@@ -64,6 +70,28 @@ describe('InventoryMovementsController', () => {
         occurredAt: '2026-01-01T10:00:00.000Z',
       });
       expect(result).toMatchObject({ total: 1, limit: 20, offset: 0 });
+    });
+
+    it('should resolve actor names in one batched read and never expose an email', async () => {
+      service.listMovements.mockResolvedValue([
+        row({ id: 'a', reason: 'manual_correction', actorUserId: 'u1' }),
+        row({ id: 'b', reason: 'manual_correction', actorUserId: 'u1' }),
+        row({ id: 'c', reason: 'manual_correction', actorUserId: 'gone' }),
+        row({ id: 'd' }),
+      ]);
+
+      const result = await controller.listMovements(parse({}));
+
+      expect(users.getDisplayNames).toHaveBeenCalledTimes(1);
+      expect(users.getDisplayNames).toHaveBeenCalledWith(['u1', 'u1', 'gone']);
+      expect(result.items.map((i) => i.actorName)).toEqual(['Anna Wisniewska', 'Anna Wisniewska', null, null]);
+      expect(JSON.stringify(result)).not.toContain('@');
+    });
+
+    it('should not read users when no row has an actor', async () => {
+      await controller.listMovements(parse({}));
+
+      expect(users.getDisplayNames).not.toHaveBeenCalled();
     });
 
     it('should map query filters, converting dates', async () => {

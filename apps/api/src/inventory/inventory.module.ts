@@ -9,13 +9,14 @@
  */
 import { Module } from '@nestjs/common';
 import { InventoryModule as CoreInventoryModule } from '@openlinker/core/inventory';
+import { UsersApiModule } from '../users/users.module';
 import { InventoryController } from './http/inventory.controller';
 import { InventoryMovementsController } from './http/inventory-movements.controller';
 import { InventoryCorrectionController } from './http/inventory-correction.controller';
 import { InventoryLocationsController } from './http/inventory-locations.controller';
 
 @Module({
-  imports: [CoreInventoryModule],
+  imports: [CoreInventoryModule, UsersApiModule],
   controllers: [
     InventoryController,
     InventoryLocationsController,

@@ -24,6 +24,8 @@ function row(overrides: Partial<InventoryMovementRow> = {}): InventoryMovementRo
     sourceRef: 'ol_order_1',
     operatorReason: null,
     note: null,
+    actorUserId: null,
+    actorName: null,
     refusalReason: null,
     refusalDetail: null,
     occurredAt: '2026-09-26T08:41:00.000Z',
@@ -92,7 +94,7 @@ describe('InventoryMovementsPage', () => {
     await userEvent.selectOptions(screen.getByTestId('stock-movements-filter-type'), 'return_restock');
     await waitFor(() =>
       expect(listMovements).toHaveBeenLastCalledWith(
-        expect.objectContaining({ reasons: ['return_restock'], from: '2026-09-19T00:00:00.000Z' }),
+        expect.objectContaining({ reasons: ['return_restock'], from: new Date(2026, 8, 19, 0, 0, 0, 0).toISOString() }),
         expect.anything(),
       ),
     );

@@ -30,11 +30,23 @@ describe('stock movement URL filters', () => {
       reasons: ['return_restock'],
       kind: 'movements',
       sourceConnectionId: 'c1',
-      from: '2026-09-19T00:00:00.000Z',
-      to: '2026-09-26T23:59:59.999Z',
+      from: new Date(2026, 8, 19, 0, 0, 0, 0).toISOString(),
+      to: new Date(2026, 8, 26, 23, 59, 59, 999).toISOString(),
       productVariantId: 'v1',
     });
     expect(hasActiveMovementFilters(state)).toBe(true);
+  });
+
+  it('should bound the day by the local calendar, so 23:30 local on the To day is included', () => {
+    const filters = toMovementFilters(readMovementUrlState(new URLSearchParams('from=2026-09-26&to=2026-09-26')));
+    const lateEvening = new Date(2026, 8, 26, 23, 30).getTime();
+    const justBefore = new Date(2026, 8, 25, 23, 59, 59, 999).getTime();
+    const nextMorning = new Date(2026, 8, 27, 0, 0, 0, 0).getTime();
+
+    expect(new Date(filters.to as string).getTime()).toBeGreaterThanOrEqual(lateEvening);
+    expect(new Date(filters.to as string).getTime()).toBeLessThan(nextMorning);
+    expect(new Date(filters.from as string).getTime()).toBeGreaterThan(justBefore);
+    expect(new Date(filters.from as string).getTime()).toBeLessThanOrEqual(lateEvening);
   });
 
   it('should treat the reservation type and the promised chip as the promised kind', () => {

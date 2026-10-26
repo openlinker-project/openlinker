@@ -23,6 +23,8 @@ function row(overrides: Partial<InventoryMovementRow> = {}): InventoryMovementRo
     sourceRef: 'ol_order_1',
     operatorReason: null,
     note: null,
+    actorUserId: null,
+    actorName: null,
     refusalReason: null,
     refusalDetail: null,
     occurredAt: '2026-09-26T08:41:00.000Z',
@@ -97,12 +99,18 @@ describe('StockMovementsTable', () => {
 
   it('should show an in-doubt movement with a question mark after', () => {
     renderTable([
-      row({ reason: 'manual_correction', status: 'in_doubt', quantityAfter: null, sourceKind: 'operator', sourceRef: null, operatorReason: 'damaged', note: 'Broken in transit' }),
+      row({ reason: 'manual_correction', status: 'in_doubt', quantityAfter: null, sourceKind: 'operator', sourceRef: null, actorUserId: 'u1', actorName: 'Anna Wisniewska', operatorReason: 'damaged', note: 'Broken in transit' }),
     ]);
     const tr = screen.getByTestId('stock-movement-row');
     expect(tr).toHaveAttribute('data-movement-type', 'manual');
     expect(within(tr).getByTestId('stock-movement-after')).toHaveTextContent('?');
     expect(within(tr).getByText('Damaged - Broken in transit')).toBeInTheDocument();
+    expect(within(tr).getByText('Anna Wisniewska')).toBeInTheDocument();
+  });
+
+  it('should name an operator whose account no longer exists as Unknown user', () => {
+    renderTable([row({ reason: 'manual_correction', sourceKind: 'operator', sourceRef: null, actorUserId: 'gone', actorName: null })]);
+    expect(screen.getByText('Unknown user')).toBeInTheDocument();
   });
 
   it('should drop the SKU column in the variant layout', () => {

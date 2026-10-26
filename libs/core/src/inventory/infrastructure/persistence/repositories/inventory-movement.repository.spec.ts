@@ -116,6 +116,7 @@ describe('InventoryMovementRepository', () => {
           sourceRef: 'ol_order_1',
           operatorReason: null,
           note: null,
+          actorUserId: null,
           refusalReason: null,
           refusalDetail: null,
           occurredAt: '2026-01-01T00:00:00.000Z',

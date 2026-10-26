@@ -7,7 +7,7 @@
  *
  * "Available now" is the sum of the variant's inventory rows; "Promised (held)"
  * is the sum of its held reservations (a promise never lowers the stock). "Last
- * change" is the newest APPLIED movement on the page - never a reservation.
+ * change" is the newest movement (any status, never a reservation) from its own query.
  *
  * @module apps/web/src/features/inventory/components
  */
@@ -20,6 +20,7 @@ import { TimeDisplay } from '../../../shared/ui/time-display';
 import { useInventoryQuery } from '../hooks/use-inventory-query';
 import { useInventoryMovementsQuery } from '../hooks/use-inventory-movements-query';
 import { useConnectionNames } from '../hooks/use-connection-names';
+import { presentMovementStatus } from '../lib/stock-movement-copy';
 import { StockMovementsTable } from './stock-movements-table';
 
 export interface StockHistoryVariant {
@@ -59,6 +60,13 @@ export function StockHistorySection({
     { limit: HISTORY_PAGE_SIZE, offset: 0 },
     { enabled: variantId !== undefined },
   );
+  // Dedicated read, so "Last change" never depends on what the 10-row table
+  // page happens to hold.
+  const latest = useInventoryMovementsQuery(
+    { ...filters, kind: 'movements' },
+    { limit: 1, offset: 0 },
+    { enabled: variantId !== undefined },
+  );
   const promised = useInventoryMovementsQuery(
     { ...filters, kind: 'promised' },
     { limit: PROMISED_SCAN_LIMIT, offset: 0 },
@@ -72,7 +80,7 @@ export function StockHistorySection({
   if (variant === undefined) return null;
 
   const items = rows.data?.items ?? [];
-  const lastApplied = items.find((row) => row.kind === 'movement' && row.status === 'applied');
+  const lastChange = latest.data?.items[0] ?? null;
   const masterId = items.find((row) => row.sourceConnectionId !== null)?.sourceConnectionId ?? null;
   const availableNow = stock.data
     ? stock.data.items.reduce((sum, item) => sum + item.availableQuantity, 0)
@@ -123,7 +131,13 @@ export function StockHistorySection({
         <div>
           <dt>Last change</dt>
           <dd className="mono-text">
-            {lastApplied ? <TimeDisplay iso={lastApplied.occurredAt} /> : '—'}
+            {lastChange ? <TimeDisplay iso={lastChange.occurredAt} /> : '—'}
+            {lastChange && lastChange.status !== 'applied' ? (
+              <span className="muted-text" data-testid="stock-history-last-change-status">
+                {' '}
+                ({presentMovementStatus(lastChange.status).label})
+              </span>
+            ) : null}
           </dd>
         </div>
         <div>

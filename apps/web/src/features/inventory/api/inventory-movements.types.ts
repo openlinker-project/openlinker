@@ -45,6 +45,10 @@ export interface InventoryMovementRow {
   sourceRef: string | null;
   operatorReason: string | null;
   note: string | null;
+  /** The user who made a manual correction. */
+  actorUserId: string | null;
+  /** Display name only (never an email); null when there is no actor or the user is gone. */
+  actorName: string | null;
   refusalReason: string | null;
   refusalDetail: string | null;
   occurredAt: string;
