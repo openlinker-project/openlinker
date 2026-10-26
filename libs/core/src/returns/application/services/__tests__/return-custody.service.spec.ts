@@ -559,6 +559,39 @@ describe('ReturnCustodyService', () => {
         });
       });
 
+      it('should mirror under the sale decrement position lock and release it afterwards', async () => {
+        inventory.resolveStockOwner.mockResolvedValue(ownedByMaster);
+
+        await service.disposeLine(LINE_ID, { quantity: 2, disposition: 'restock' });
+
+        const key = 'sale-decrement:conn-master:ol_product_1:ol_variant_1';
+        expect(lock.acquire).toHaveBeenCalledWith(key, 30_000);
+        expect(lock.release).toHaveBeenCalledWith(key, 'token-1');
+      });
+
+      it('should release the position lock even when the mirror write throws', async () => {
+        inventory.resolveStockOwner.mockResolvedValue(ownedByMaster);
+        inventoryService.setInventory.mockRejectedValueOnce(new Error('db down'));
+
+        await service.disposeLine(LINE_ID, { quantity: 2, disposition: 'restock' });
+
+        expect(lock.release).toHaveBeenCalledWith(
+          'sale-decrement:conn-master:ol_product_1:ol_variant_1',
+          'token-1'
+        );
+      });
+
+      it('should skip the mirror, without failing the restock, when the position lock is contended', async () => {
+        inventory.resolveStockOwner.mockResolvedValue(ownedByMaster);
+        // First acquire is the per-line disposal lock; the second the position lock.
+        lock.acquire.mockResolvedValueOnce('token-1').mockResolvedValueOnce(null);
+
+        const result = await service.disposeLine(LINE_ID, { quantity: 2, disposition: 'restock' });
+
+        expect(inventoryService.setInventory).not.toHaveBeenCalled();
+        expect(result.restockBlocked).toBeNull();
+      });
+
       it('should skip the mirror when the position owner is not the connection written to', async () => {
         inventory.resolveStockOwner.mockResolvedValue({
           ...ownedByMaster,

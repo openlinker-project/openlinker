@@ -52,6 +52,8 @@ import {
   INVENTORY_QUERY_SERVICE_TOKEN,
   INVENTORY_SERVICE_TOKEN,
   InventoryItemEntity,
+  saleDecrementPositionLockKey,
+  SALE_DECREMENT_POSITION_LOCK_TTL_MS,
   type IInventoryQueryService,
   type IInventoryService,
   type InventoryAdjustmentResult,
@@ -799,21 +801,42 @@ export class ReturnCustodyService implements IReturnCustodyService {
         return;
       }
       const { position } = owner;
-      await this.inventoryService.setInventory(
-        new InventoryItemEntity(
-          position.inventoryItemId,
-          position.productId,
-          position.productVariantId,
-          resultingQuantity,
-          position.reservedQuantity,
-          position.locationId,
-          new Date(),
-          false,
-          owner.ownerConnectionId
-        ),
+      // The SAME per-position lock the sale decrement mirrors under, so a
+      // return mirror and a sale mirror on one position cannot land out of
+      // order and leave a stale quantity. Contention skips the mirror - never
+      // waits, never fails the restock; the next master sync records it.
+      const lockKey = saleDecrementPositionLockKey(
         owner.ownerConnectionId,
-        { reason: 'return_restock', sourceKind: 'return', sourceRef: line.returnId }
+        position.productId,
+        position.productVariantId
       );
+      const lockToken = await this.lock.acquire(lockKey, SALE_DECREMENT_POSITION_LOCK_TTL_MS);
+      if (lockToken === null) {
+        this.logger.debug(
+          `Return line ${line.id}: restock applied but the stock position is being written ` +
+            'by another operation; the next stock sync will record it'
+        );
+        return;
+      }
+      try {
+        await this.inventoryService.setInventory(
+          new InventoryItemEntity(
+            position.inventoryItemId,
+            position.productId,
+            position.productVariantId,
+            resultingQuantity,
+            position.reservedQuantity,
+            position.locationId,
+            new Date(),
+            false,
+            owner.ownerConnectionId
+          ),
+          owner.ownerConnectionId,
+          { reason: 'return_restock', sourceKind: 'return', sourceRef: line.returnId }
+        );
+      } finally {
+        await this.lock.release(lockKey, lockToken);
+      }
     } catch (error) {
       this.logger.warn(
         `Return line ${line.id}: restock landed in the product master, but the stock mirror ` +

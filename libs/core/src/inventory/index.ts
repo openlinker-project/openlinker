@@ -210,6 +210,8 @@ export {
   buildSaleReversalIdempotencyKey,
   deriveSaleDecrementAttention,
   resolveSaleDecrementOwner,
+  saleDecrementPositionLockKey,
+  SALE_DECREMENT_POSITION_LOCK_TTL_MS,
 } from './domain/types/inventory-sale-decrement.types';
 export {
   AvailabilityScope,
