@@ -119,3 +119,6 @@ export const ROUTING_DECISION_REAPER_SERVICE_TOKEN = Symbol('IRoutingDecisionRea
 export const FULFILLMENT_ORDER_CANCELLATION_SERVICE_TOKEN = Symbol(
   'IFulfillmentOrderCancellationService'
 );
+
+/** Operator order edit (#3542). `FulfillmentOrderEditService` binds here. */
+export const FULFILLMENT_ORDER_EDIT_SERVICE_TOKEN = Symbol('IFulfillmentOrderEditService');

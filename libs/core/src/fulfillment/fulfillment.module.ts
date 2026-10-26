@@ -47,6 +47,7 @@ import {
   ROUTING_DECISION_REPOSITORY_TOKEN,
   FULFILLMENT_WORK_QUERY_SERVICE_TOKEN,
   FULFILLMENT_ORDER_CANCELLATION_SERVICE_TOKEN,
+  FULFILLMENT_ORDER_EDIT_SERVICE_TOKEN,
   FULFILLMENT_WORKLIST_SERVICE_TOKEN,
   FULFILLMENT_VERIFICATION_SERVICE_TOKEN,
 } from './fulfillment.tokens';
@@ -60,6 +61,7 @@ import { FulfillmentWorkVerificationOrmEntity } from './infrastructure/persisten
 import { RoutingDecisionOrmEntity } from './infrastructure/persistence/entities/routing-decision.orm-entity';
 import { FulfillmentWorkRepository } from './infrastructure/persistence/repositories/fulfillment-work.repository';
 import { FulfillmentOrderCancellationService } from './application/services/fulfillment-order-cancellation.service';
+import { FulfillmentOrderEditService } from './application/services/fulfillment-order-edit.service';
 import { FulfillmentWorkQueryService } from './application/services/fulfillment-work-query.service';
 import { FulfillmentWorklistService } from './application/services/fulfillment-worklist.service';
 import { RoutingDecisionRepository } from './infrastructure/persistence/repositories/routing-decision.repository';
@@ -117,6 +119,11 @@ import { RoutingDecisionRepository } from './infrastructure/persistence/reposito
       provide: FULFILLMENT_ORDER_CANCELLATION_SERVICE_TOKEN,
       useExisting: FulfillmentOrderCancellationService,
     },
+    FulfillmentOrderEditService,
+    {
+      provide: FULFILLMENT_ORDER_EDIT_SERVICE_TOKEN,
+      useExisting: FulfillmentOrderEditService,
+    },
     RoutingCommitService,
     { provide: ROUTING_COMMIT_SERVICE_TOKEN, useExisting: RoutingCommitService },
     RoutingDecisionReaperService,
@@ -150,6 +157,8 @@ import { RoutingDecisionRepository } from './infrastructure/persistence/reposito
     FULFILLMENT_WORK_QUERY_SERVICE_TOKEN,
     // Exported for the operator order cancel (#3540), composed in `apps/api`.
     FULFILLMENT_ORDER_CANCELLATION_SERVICE_TOKEN,
+    // Exported for the operator order edit (#3542), composed in `apps/api`.
+    FULFILLMENT_ORDER_EDIT_SERVICE_TOKEN,
     ROUTING_COMMIT_SERVICE_TOKEN,
     // Exported for the worker's stranded-decision reaper and the read-only
     // routing-decision endpoint (#2731); neither reaches the repository port.
