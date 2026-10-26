@@ -326,6 +326,22 @@ describe('seedRows (#1754 pre-selected variants)', () => {
     expect(rows[0].primaryVariant?.id).toBe('v2');
   });
 
+  it('leaves out a variant deleted at the master', () => {
+    const product = makeProduct('p1', ['base', 'red', 'green']);
+    (product.variants![0] as { isStale: boolean }).isStale = true;
+    const rows = seedRows([product]);
+    expect(rows[0].variants.map((v) => v.variantId)).toEqual(['red', 'green']);
+    expect(rows[0].primaryVariant?.id).toBe('red');
+  });
+
+  it('flags a product whose every variant was deleted at the master', () => {
+    const product = makeProduct('p1', ['only']);
+    (product.variants![0] as { isStale: boolean }).isStale = true;
+    const rows = seedRows([product]);
+    expect(rows[0].variants).toEqual([]);
+    expect(rows[0].blockers).toEqual(['no-variant']);
+  });
+
   it('includes every variant of a whole-product pick even when the set scopes a different product', () => {
     const rows = seedRows(
       [makeProduct('p1', ['v1', 'v2']), makeProduct('p2', ['v3', 'v4'])],

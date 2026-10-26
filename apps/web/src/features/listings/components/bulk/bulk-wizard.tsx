@@ -1169,7 +1169,10 @@ function seedVariantRow(
 }
 
 function seedRow(product: Product, preSelectedVariantIds?: ReadonlySet<string>): BulkWizardRow {
-  const variants = product.variants ?? [];
+  // A variant deleted at the master (#1599 `isStale`) is never listed - the
+  // submit drops it too - so seeding it would count it, block the batch on it
+  // and show it in the editor as a variant the operator cannot list.
+  const variants = (product.variants ?? []).filter((v) => !v.isStale);
   // A product is "variant-scoped" only when the picker checked SOME of its
   // variants (#1754). Whole-product picks (and the /products entry point) leave
   // the set empty for this product, so every variant seeds included.
