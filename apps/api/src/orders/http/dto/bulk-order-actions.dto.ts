@@ -87,6 +87,14 @@ export class BulkCancelOrderResultDto {
 
   @ApiPropertyOptional({ description: 'Pass to POST /orders/:id/changes/:changeId/confirm.' })
   correctionProposalChangeId?: string;
+
+  @ApiPropertyOptional({
+    type: [String],
+    description:
+      'Side effects a plain outcome hides: `stock-restored-only:<connectionId>`, `destination-not-notified`, ' +
+      '`correction-unavailable:<reason>`, `stock-restore-not-queued`. Empty or absent when none.',
+  })
+  warnings?: string[];
 }
 
 export class BulkCancelOrdersResponseDto {

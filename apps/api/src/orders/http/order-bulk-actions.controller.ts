@@ -24,11 +24,11 @@ import {
   type IOrderCancellationService,
 } from '../application/interfaces/order-cancellation.service.interface';
 import {
-  CancelCorrectionFailedError,
   OrderCancellationNoteRequiredError,
   OrderCancellationNotFoundError,
   OrderCancellationRefusedError,
 } from '../application/errors/order-cancellation.errors';
+import type { CancelOrderResult } from '../application/types/order-cancellation.types';
 import { dedupeOrderIds, unexpectedRowFailure } from './bulk-row-result';
 import type {
   BulkBuyerNoteReadResultDto,
@@ -39,6 +39,31 @@ import {
   BulkCancelOrdersResponseDto,
   BulkOrderIdsRequestDto,
 } from './dto/bulk-order-actions.dto';
+
+/**
+ * Machine codes for side effects that a plain `cancelled` outcome would hide.
+ * Defensive about the result shape: the single-order result may carry newer
+ * participant effects (e.g. `unreachable`).
+ */
+function cancelWarnings(result: CancelOrderResult): string[] {
+  const warnings: string[] = [];
+  for (const p of result.participants ?? []) {
+    if (p.effect === 'stock-restored-only') {
+      warnings.push(`stock-restored-only:${p.connectionId}`);
+    }
+  }
+  const destinationNotTold =
+    result.otherParticipantsRelayFailed === true ||
+    (result.participants ?? []).some(
+      (p) => p.role === 'destination' && (p.effect === 'refused' || p.effect === 'unreachable')
+    );
+  if (destinationNotTold) warnings.push('destination-not-notified');
+  if (result.correctionUnavailableReason) {
+    warnings.push(`correction-unavailable:${result.correctionUnavailableReason}`);
+  }
+  if (result.stockRestoreEnqueued === false) warnings.push('stock-restore-not-queued');
+  return warnings;
+}
 
 @ApiBearerAuth()
 @ApiTags('orders')
@@ -62,7 +87,8 @@ export class OrderBulkActionsController {
       'Runs the SAME single-order cancel (`POST /orders/:id/cancel`: its gates, per-order lock and ' +
       'channel proposal) once per order, sequentially, with ONE reason for the batch. Never ' +
       'all-or-nothing: each row reports `cancelled`, `pending`, `correction-proposed`, `refused` ' +
-      '(with the single-order 409 machine `code`) or `failed`. At most 100 order ids.',
+      '(with the single-order 409 machine `code`) or `failed`. Row `warnings` carry machine codes for side effects ' +
+      'a plain `cancelled` hides. `pending` is not handled. At most 100 order ids.',
   })
   @ApiResponse({ status: 200, type: BulkCancelOrdersResponseDto })
   @ApiResponse({ status: 400, description: 'Validation error, or a note is missing for `other`' })
@@ -145,32 +171,25 @@ export class OrderBulkActionsController {
         acknowledgeAcceptedWork: dto.acknowledgeAcceptedWork === true,
         actorUserId,
       });
+      const warnings = cancelWarnings(result);
       if (result.status === 'pending') {
-        return { orderId, outcome: 'pending' };
+        return { orderId, outcome: 'pending', warnings };
       }
       if (result.correctionProposal) {
         return {
           orderId,
           outcome: 'correction-proposed',
           correctionProposalChangeId: result.correctionProposal.changeId,
+          warnings,
         };
       }
-      return { orderId, outcome: 'cancelled' };
+      return { orderId, outcome: 'cancelled', warnings };
     } catch (error) {
       if (error instanceof OrderCancellationRefusedError) {
         return { orderId, outcome: 'refused', code: error.code, reason: error.message };
       }
       if (error instanceof OrderCancellationNotFoundError) {
         return { orderId, outcome: 'failed', code: 'ORDER_NOT_FOUND', reason: 'Order not found.' };
-      }
-      if (error instanceof CancelCorrectionFailedError) {
-        // The provider's own message is not passed on; the code is enough to act on.
-        return {
-          orderId,
-          outcome: 'failed',
-          code: 'CORRECTION_FAILED',
-          reason: 'The credit correction failed; the change stays open.',
-        };
       }
       return {
         orderId,

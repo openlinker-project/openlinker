@@ -63,6 +63,9 @@ export class BulkOrderTagResultDto {
 
   @ApiPropertyOptional({ description: 'PII-free reason, present for `failed`.' })
   reason?: string;
+
+  @ApiPropertyOptional({ description: 'Machine code for `failed`, e.g. ORDER_NOT_FOUND.' })
+  code?: string;
 }
 
 export class BulkRemoveOrderTagResponseDto {
