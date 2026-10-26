@@ -76,7 +76,7 @@ import {
 } from '../../domain/types/allegro-order-fulfillment.types';
 import { AllegroApiException } from '../../domain/exceptions/allegro-api.exception';
 import { AllegroOrderDispatchRejectedException } from '../../domain/exceptions/allegro-order-dispatch-rejected.exception';
-import { deriveAllegroPaymentStatus } from './allegro-payment-status';
+import { deriveAllegroPaymentStatus, isAllegroCheckoutSettled } from './allegro-payment-status';
 import {
   ALLEGRO_CUSTOMER_RETURN_MEDIA_TYPE,
   ALLEGRO_CUSTOMER_RETURN_TERMINAL_STATUSES,
@@ -884,7 +884,7 @@ export class AllegroOrderSourceAdapter
         checkoutForm.status === 'CANCELLED' || checkoutForm.fulfillment?.status === 'CANCELLED';
       const status = isCancelled
         ? 'cancelled'
-        : checkoutForm.payment.finishedAt
+        : isAllegroCheckoutSettled(checkoutForm.payment)
           ? 'processing'
           : 'pending';
       // Allegro's checkout-form carries no order-level created timestamp, so

@@ -12,8 +12,14 @@
  * The discriminator is therefore `payment.type` first:
  *
  * - `type === 'CASH_ON_DELIVERY'` → `cod`   (dispatch permitted, paid on receipt)
- * - else `finishedAt` present       → `paid`  (prepaid; dispatch permitted)
+ * - else a positive `paidAmount`    → `paid`  (prepaid; dispatch permitted)
  * - else                            → `awaiting` (payment not completed; blocked)
+ *
+ * `finishedAt` is NOT proof of payment for a prepaid order either: it marks
+ * the end of a payment ATTEMPT, so a payment the buyer abandoned or the
+ * provider rejected sets it too, with `paidAmount: null` (seen live on the
+ * sandbox, E2E-22). Reading it as paid unlocked dispatch and auto-issued a
+ * fiscal receipt for an order nobody paid for.
  *
  * `refunded` is never derivable from the checkout-form (it carries no refund
  * signal), so it is intentionally not produced here — see the `PaymentStatus`
@@ -30,5 +36,19 @@ export function deriveAllegroPaymentStatus(payment: AllegroCheckoutForm['payment
   if (payment.type === ALLEGRO_COD_PAYMENT_TYPE) {
     return PAYMENT_STATUS.Cod;
   }
-  return payment.finishedAt ? PAYMENT_STATUS.Paid : PAYMENT_STATUS.Awaiting;
+  return hasPositivePaidAmount(payment) ? PAYMENT_STATUS.Paid : PAYMENT_STATUS.Awaiting;
+}
+
+/**
+ * Whether the checkout form has moved past "waiting for the buyer": a COD order
+ * once its form was submitted, a prepaid one once money actually arrived.
+ */
+export function isAllegroCheckoutSettled(payment: AllegroCheckoutForm['payment']): boolean {
+  const status = deriveAllegroPaymentStatus(payment);
+  return status === PAYMENT_STATUS.Paid || (status === PAYMENT_STATUS.Cod && Boolean(payment.finishedAt));
+}
+
+function hasPositivePaidAmount(payment: AllegroCheckoutForm['payment']): boolean {
+  const amount = Number(payment.paidAmount?.amount);
+  return Number.isFinite(amount) && amount > 0;
 }
