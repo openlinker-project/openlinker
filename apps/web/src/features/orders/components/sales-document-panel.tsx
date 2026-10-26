@@ -97,7 +97,8 @@ import {
   useWarningAcknowledgement,
   resolveIssueErrorMessage,
   isMissingNumberingSeriesError,
-  isConnectionSetupIncompleteError,
+  isConnectionSettingError,
+  isConnectionSettingFailureCode,
   deriveInvoiceDisplayStatus,
   canRetryInvoice,
   resolveFailureCopy,
@@ -485,10 +486,10 @@ export function SalesDocumentPanel({ order }: SalesDocumentPanelProps): ReactEle
           // error, so the panel shows what happened in place. Without this
           // the panel kept offering "Issue invoice" until a page reload.
           void invoiceQuery.refetch();
-          if (isConnectionSetupIncompleteError(error)) {
+          if (isConnectionSettingError(error)) {
             // Answered in place, like missing numbering: the refetched record
-            // renders an alert that names the missing setting and links to
-            // the connection. A toast on top would say it twice.
+            // renders an alert that names the setting and links to the
+            // connection. A toast on top would say it twice.
             announce(
               t('invoice.announce.connectionSetupIncomplete', 'The connection is missing a setting.'),
             );
@@ -996,12 +997,12 @@ export function SalesDocumentPanel({ order }: SalesDocumentPanelProps): ReactEle
                   and take the operator to the connection that holds it. The
                   link sits under the text rather than in the Alert's action
                   slot, which squeezes the sentence in a panel this narrow. */}
-              {invoice.failureCode === 'connection-setup-incomplete' ? (
+              {isConnectionSettingFailureCode(invoice.failureCode) ? (
                 <Alert
                   tone="warning"
-                  title={t(
-                    'invoice.setupIncomplete.title',
-                    '{connection} is not set up to issue invoices',
+                  title={(invoice.failureCode === 'connection-setting-rejected'
+                    ? t('invoice.settingRejected.title', '{connection} refused a setting on this connection')
+                    : t('invoice.setupIncomplete.title', '{connection} is not set up to issue invoices')
                   ).replace('{connection}', invoicingConnection?.name ?? t('invoice.setupIncomplete.thisConnection', 'This connection'))}
                   data-testid="invoice-setup-incomplete"
                 >
@@ -1020,6 +1021,16 @@ export function SalesDocumentPanel({ order }: SalesDocumentPanelProps): ReactEle
                   <span className="invoice-panel__inline-alert-bar" />
                   <span>
                     <strong>{resolveFailureCopy(invoice, t)}</strong>
+                    {/* The stored reason is PII-free by construction and, when
+                        the adapter vouched for it, carries the provider's own
+                        code - the one fact that tells an operator WHICH
+                        refusal this was. Same label as the in-doubt notice. */}
+                    {invoice.failureReason ? (
+                      <span className="invoice-panel__inline-alert-detail text-muted" data-testid="invoice-failure-reason">
+                        {' '}
+                        {t('invoice.inDoubt.providerResponse', 'Provider response')}: {invoice.failureReason}
+                      </span>
+                    ) : null}
                   </span>
                 </div>
               )}

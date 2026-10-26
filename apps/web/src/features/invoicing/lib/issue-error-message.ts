@@ -93,6 +93,25 @@ export function readAcknowledgementRequest(error: unknown): AcknowledgementReque
 }
 
 /**
+ * True for either 422 whose fix is on the connection rather than the order:
+ * `connection-setup-incomplete` (nothing was sent) or
+ * `connection-setting-rejected` (the provider refused a connection setting,
+ * e.g. a seller tax number it does not have registered). The panel answers
+ * both in place with an alert linking to the connection's settings.
+ */
+export function isConnectionSettingError(error: unknown): boolean {
+  if (!(error instanceof ApiError) || error.status !== 422) {
+    return false;
+  }
+  const body = error.details as { error?: unknown; failureCode?: unknown } | null;
+  return (
+    body?.error === 'InvoiceIssueRejected' &&
+    (body.failureCode === 'connection-setup-incomplete' ||
+      body.failureCode === 'connection-setting-rejected')
+  );
+}
+
+/**
  * Discriminates the "no numbering series configured" 400 (AC #6). The invoicing
  * controller maps `MissingNumberingSeriesException` to a 400 carrying
  * `{ error: 'MissingNumberingSeriesException' }`, so an issue-without-series

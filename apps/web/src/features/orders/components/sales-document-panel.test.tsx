@@ -493,6 +493,77 @@ describe('SalesDocumentPanel - connection missing a setting (#3772)', () => {
   });
 });
 
+describe('SalesDocumentPanel - provider refused a connection setting', () => {
+  const TIN_REASON =
+    'The seller tax number on this connection is not the one registered with your eparagony account. Correct it in the connection settings, then retry (code 41).';
+  const failedRecord = makeInvoice({
+    status: 'failed',
+    failureMode: 'rejected',
+    failureCode: 'connection-setting-rejected',
+    failureReason: TIN_REASON,
+    providerInvoiceNumber: null,
+  });
+
+  it('names the refused setting and links to the connection, without a toast', async () => {
+    const getForOrder = vi.fn().mockRejectedValueOnce(notFound()).mockResolvedValue(failedRecord);
+    const issue = vi.fn().mockRejectedValue(
+      new ApiError(TIN_REASON, 422, {
+        message: TIN_REASON,
+        error: 'InvoiceIssueRejected',
+        failureCode: 'connection-setting-rejected',
+        failureReason: TIN_REASON,
+      }),
+    );
+    const user = userEvent.setup();
+    renderWithProviders(<SalesDocumentPanel order={order} />, {
+      apiClient: createMockApiClient({
+        connections: { list: vi.fn().mockResolvedValue([invoicingConnection]) },
+        invoicing: { getForOrder, issue },
+      }),
+      ...adminSession,
+    });
+    await user.click(await screen.findByRole('button', { name: /issue invoice/i }));
+
+    const alert = await screen.findByTestId('invoice-setup-incomplete');
+    expect(alert).toHaveTextContent('Subiekt GT refused a setting on this connection');
+    expect(alert).toHaveTextContent(TIN_REASON);
+    expect(screen.getByRole('link', { name: 'Open connection settings' })).toHaveAttribute(
+      'href',
+      `/connections/${INVOICE_CONN_ID}/edit`,
+    );
+    // The provider DID say no, so the headline keeps "Rejected" - and the
+    // setup-only hint claiming nothing was sent must not appear.
+    expect(document.querySelector('.document-headline__word')?.textContent).toContain('Rejected');
+    expect(screen.queryByText(/Nothing was sent to the provider/)).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Retry' })).toBeInTheDocument();
+    expect(document.querySelector('.toast__title')).toBeNull();
+  });
+
+  it('shows the stored provider reason beside the fixed copy of an order-side rejection', async () => {
+    renderWithProviders(<SalesDocumentPanel order={order} />, {
+      apiClient: createMockApiClient({
+        connections: { list: vi.fn().mockResolvedValue([invoicingConnection]) },
+        invoicing: {
+          getForOrder: vi.fn().mockResolvedValue(
+            makeInvoice({
+              status: 'failed',
+              failureMode: 'rejected',
+              failureCode: 'provider-rejected',
+              failureReason: 'The provider rejected the document (code 57).',
+              providerInvoiceNumber: null,
+            }),
+          ),
+        },
+      }),
+      ...adminSession,
+    });
+    expect(await screen.findByTestId('invoice-failure-reason')).toHaveTextContent(
+      'Provider response: The provider rejected the document (code 57).',
+    );
+    expect(screen.queryByTestId('invoice-setup-incomplete')).not.toBeInTheDocument();
+  });
+});
+
 describe('SalesDocumentPanel — resend to KSeF (#2763 review)', () => {
   const rejected = makeInvoice({ regulatoryStatus: 'rejected' });
 

@@ -49,12 +49,9 @@ export function InvoiceUnconfirmedNotice({
   // "Mark resolved" asserts something OpenLinker cannot verify, so a stray
   // click must not be enough: it opens a confirm with focus on "Not yet".
   const [confirmOpen, setConfirmOpen] = useState(false);
-  // Only a timeout can honestly say "did not answer in time".
-  const cause = (
-    failureCode === 'transport-timeout'
-      ? t('invoice.inDoubt.causeTimeout', '{{connection}} did not answer in time.')
-      : t('invoice.inDoubt.causeUnknown', '{{connection}} did not confirm the result.')
-  ).replace('{{connection}}', connectionName);
+  // Only a timeout can honestly say "did not answer in time"; a provider that
+  // answered without settling the question must not be described as silent.
+  const cause = resolveCause(failureCode, t).replace('{{connection}}', connectionName);
 
   return (
     <div className="alert alert--warning invoice-unconfirmed" role="status" data-testid="invoice-unconfirmed">
@@ -140,4 +137,20 @@ export function InvoiceUnconfirmedNotice({
       ) : null}
     </div>
   );
+}
+
+function resolveCause(
+  failureCode: FailureCode | null,
+  t: (key: string, fallback: string) => string,
+): string {
+  if (failureCode === 'transport-timeout') {
+    return t('invoice.inDoubt.causeTimeout', '{{connection}} did not answer in time.');
+  }
+  if (failureCode === 'provider-answer-inconclusive') {
+    return t(
+      'invoice.inDoubt.causeInconclusive',
+      '{{connection}} answered, but not in a way that says whether the invoice was created.',
+    );
+  }
+  return t('invoice.inDoubt.causeUnknown', '{{connection}} did not confirm the result.');
 }
