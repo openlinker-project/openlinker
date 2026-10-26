@@ -74,6 +74,10 @@ export function VariantStockTable(props: VariantStockTableProps): ReactElement {
             variant={variant}
             stock={props.stockByVariant.get(variant.id)}
             currency={props.currency}
+            taxRate={{
+              productTaxRate: props.productTaxRate ?? null,
+              productTaxRateUnknownReason: props.productTaxRateUnknownReason ?? null,
+            }}
             connections={props.connections}
             canCreateOffers={props.canCreateOffers}
             onCreateOffers={props.onCreateOffers}
@@ -308,14 +312,26 @@ function DrawerChannelLink({
 }
 
 /** Attribute chips + variant identity metadata grid, above the listings block. */
+/**
+ * The product-level tax facts a variant inherits. Passed only where the
+ * surrounding view has no "Tax rate" column of its own (the single-variant
+ * panel and the mobile card); the desktop table shows it per row already.
+ */
+interface InheritedTaxRate {
+  productTaxRate: string | null;
+  productTaxRateUnknownReason: TaxRateUnknownReason | null;
+}
+
 function VariantMetaGrid({
   variant,
   available,
   reserved,
+  taxRate,
 }: {
   variant: ProductVariant;
   available: number;
   reserved: number;
+  taxRate?: InheritedTaxRate;
 }): ReactElement {
   const hasAttrs = variantHasAttributes(variant);
   return (
@@ -352,6 +368,16 @@ function VariantMetaGrid({
           <span className="variant-drawer__meta-muted"> / res {reserved}</span>
         </span>
       </div>
+      {taxRate ? (
+        <div className="variant-drawer__meta-cell">
+          <span className="variant-drawer__meta-label">Tax rate</span>
+          <VariantTaxRateCell
+            variant={variant}
+            productTaxRate={taxRate.productTaxRate}
+            productTaxRateUnknownReason={taxRate.productTaxRateUnknownReason}
+          />
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -403,6 +429,7 @@ function VariantDetailBody({
   isLoading,
   isError,
   open,
+  taxRate,
 }: {
   variant: ProductVariant;
   available: number;
@@ -413,6 +440,7 @@ function VariantDetailBody({
   isLoading: boolean;
   isError: boolean;
   open: boolean;
+  taxRate?: InheritedTaxRate;
 }): ReactElement {
   return (
     <>
@@ -424,7 +452,12 @@ function VariantDetailBody({
         </div>
       ) : null}
 
-      <VariantMetaGrid variant={variant} available={available} reserved={reserved} />
+      <VariantMetaGrid
+        variant={variant}
+        available={available}
+        reserved={reserved}
+        taxRate={taxRate}
+      />
 
       <div className="variant-drawer__listings">
         <div className="variant-drawer__label">Listings{total > 0 ? ` (${total})` : ''}</div>
@@ -461,11 +494,15 @@ function VariantDetailBody({
 export function VariantDetailPanel({
   variant,
   stock,
+  productTaxRate,
+  productTaxRateUnknownReason,
   connections,
   onListingsCount,
 }: {
   variant: ProductVariant;
   stock: InventoryItem | undefined;
+  productTaxRate: string | null;
+  productTaxRateUnknownReason?: TaxRateUnknownReason | null;
   connections: readonly Connection[];
   onListingsCount: (variantId: string, count: number) => void;
 }): ReactElement {
@@ -482,6 +519,10 @@ export function VariantDetailPanel({
         isLoading={isLoading}
         isError={isError}
         open
+        taxRate={{
+          productTaxRate,
+          productTaxRateUnknownReason: productTaxRateUnknownReason ?? null,
+        }}
       />
     </div>
   );
@@ -695,6 +736,7 @@ function VariantStockCard({
   variant,
   stock,
   currency,
+  taxRate,
   connections,
   canCreateOffers,
   onCreateOffers,
@@ -703,6 +745,7 @@ function VariantStockCard({
   variant: ProductVariant;
   stock: InventoryItem | undefined;
   currency: string | null;
+  taxRate: InheritedTaxRate;
   connections: readonly Connection[];
   canCreateOffers: boolean;
   onCreateOffers: () => void;
@@ -774,6 +817,7 @@ function VariantStockCard({
               isLoading={isLoading}
               isError={isError}
               open={isOpen}
+              taxRate={taxRate}
             />
           </div>
         </div>

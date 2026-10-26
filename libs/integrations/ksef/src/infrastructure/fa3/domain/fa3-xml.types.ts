@@ -61,6 +61,16 @@ export const FA3_WYBOR_NIE = '2';
 export const FA3_WYBOR_TAK = '1';
 
 /**
+ * Fallback `Zwolnienie/P_19C` free-text legal grounds emitted when an exempt
+ * (`zw`) line forces the exemption annotation on but the operator supplied no
+ * explicit `exemptionLegalBasis` (#1580). `P_19C` ("inna podstawa prawna" — an
+ * open free-text `TZnakowy`) is the catch-all grounds slot; a descriptive
+ * placeholder keeps the yes-branch schema-valid while flagging that the operator
+ * SHOULD refine it with the precise statutory basis (operator UI is a follow-up).
+ */
+export const FA3_DEFAULT_EXEMPTION_BASIS = 'Zwolnienie z podatku VAT';
+
+/**
  * Seller identity + address — injected into the builder by the adapter (resolved
  * from connection config), never discovered inside the pure builder. `nip` is a
  * required system-configuration value (Podmiot1 always carries a seller NIP).
@@ -87,6 +97,21 @@ export interface Fa3Line {
    * connection's `invoiceDefaults.lineUnit` -> absent (element omitted).
    */
   unit?: string;
+  /**
+   * FA(3) `GTU` goods/services marker (`TGTU` enum: `GTU_01`..`GTU_13`, XSD line
+   * ~1997), sits after `P_12`(+variants) and before `Procedura` in the FaWiersz
+   * sequence (#1586). Opaque here - the builder-input mapper forwards the neutral
+   * `InvoiceLine.gtuCode` verbatim; an out-of-enum value is rejected by KSeF at
+   * clearance (the local validator only pins element order). Omitted when absent.
+   */
+  gtuCode?: string;
+  /**
+   * FA(3) `Procedura` transaction-procedure marker (`TOznaczenieProcedury` enum,
+   * XSD line ~3194), sits after `GTU` and before `KursWaluty` in the FaWiersz
+   * sequence (#1586). Opaque - forwarded verbatim from `InvoiceLine.procedureCode`.
+   * Omitted when absent.
+   */
+  procedureCode?: string;
 }
 
 /**
@@ -134,6 +159,21 @@ export interface Fa3CorrectionContext {
   originalKsefNumber: string | null;
   /** Post-correction ("after") line state. */
   correctedLines: Fa3Line[];
+  /**
+   * The buyer as on the corrected original, when the correction changes the
+   * buyer's data (DEF-23). Emitted as `Podmiot2K`, which the XSD requires for
+   * exactly that case.
+   */
+  buyerBeforeCorrection?: {
+    identity: BuyerIdentity;
+    name: string;
+    address: BuyerAddress;
+  };
+  /**
+   * `true` when no line changes (a buyer-only correction, DEF-24): the KOR then
+   * carries no `FaWiersz` rows and zero totals.
+   */
+  buyerOnly?: boolean;
 }
 
 /**
@@ -198,7 +238,9 @@ export const FA3_RACHUNEK_BANKOWY_CHILD_ORDER = [
  * restricted to the elements the builder can emit (#1525 review). Notably `P_6`
  * (the optional sale-date choice) sits between `P_2` and the `P_13_x`/`P_14_x`
  * band aggregates - a position regression fails the local validator instead of
- * KSeF clearance. Same flat first-occurrence caveat as the other order lists:
+ * KSeF clearance. Each foreign-currency PLN-converted VAT element (`P_14_xW`,
+ * art. 106e ust. 11, #1581) sits immediately after its own `P_14_x` inside the
+ * same band sequence. Same flat first-occurrence caveat as the other order lists:
  * none of these names may also occur nested inside another listed element's
  * subtree (true for the builder's output - FaWiersz children are `P_7`/`P_8A`/
  * `P_8B`/`P_9A`/`P_11`/`P_12`, disjoint from this list).
@@ -210,10 +252,13 @@ export const FA3_FA_CHILD_ORDER = [
   'P_6',
   'P_13_1',
   'P_14_1',
+  'P_14_1W',
   'P_13_2',
   'P_14_2',
+  'P_14_2W',
   'P_13_3',
   'P_14_3',
+  'P_14_3W',
   'P_13_6_1',
   'P_13_6_2',
   'P_13_6_3',
@@ -221,12 +266,14 @@ export const FA3_FA_CHILD_ORDER = [
   'P_13_8',
   'P_13_9',
   'P_13_10',
+  'P_13_11',
   'P_15',
   'Adnotacje',
   'RodzajFaktury',
   'PrzyczynaKorekty',
   'TypKorekty',
   'DaneFaKorygowanej',
+  'Podmiot2K',
   'FaWiersz',
   'Platnosc',
 ] as const;
@@ -235,8 +282,11 @@ export const FA3_FA_CHILD_ORDER = [
  * XSD-mandated child order of the `FaWiersz` sequence (FA(3) v1-0E, XSD line
  * ~3080), restricted to the elements the builder can emit (#1525). Notably
  * `P_8A` (unit of measure) comes immediately before `P_8B` (quantity), and
- * `P_9A` (net unit price) immediately after `P_8B`; the `StanPrzed` KOR flag
- * closes the sequence. Absent optional elements are simply skipped.
+ * `P_9A` (net unit price) immediately after `P_8B`; the optional per-line `GTU`
+ * (goods/services marker) and `Procedura` (procedure marker) sit after `P_12`
+ * (#1586), then the per-line foreign-currency rate `KursWaluty`
+ * (art. 106e ust. 11 / dział VI, #1581), and the `StanPrzed`
+ * KOR flag closes the sequence. Absent optional elements are simply skipped.
  */
 export const FA3_FA_WIERSZ_CHILD_ORDER = [
   'NrWierszaFa',
@@ -244,10 +294,30 @@ export const FA3_FA_WIERSZ_CHILD_ORDER = [
   'P_8A',
   'P_8B',
   'P_9A',
+  'P_9B',
   'P_11',
+  'P_11A',
   'P_12',
+  'GTU',
+  'Procedura',
+  'KursWaluty',
   'StanPrzed',
 ] as const;
+
+/**
+ * Resolved foreign-currency exchange rate for the art. 106e ust. 11 PLN/VAT
+ * conversion (#1581). Present on {@link Fa3BuilderInput} ONLY when the invoice
+ * currency is not PLN; the adapter resolves it (NBP table-A average for the last
+ * business day preceding the tax point) and threads it through the mapper. The
+ * builder then emits `KursWaluty` on each `FaWiersz` line and the PLN-converted
+ * VAT amounts `P_14_xW` in the tax-summary band section. `rate` is PLN per 1 unit
+ * of the invoice currency; `rateDate`/`table` are carried for audit only.
+ */
+export interface Fa3ExchangeRate {
+  rate: number;
+  rateDate: string;
+  table: string;
+}
 
 /**
  * Fully-mapped builder input. The adapter produces this from a neutral
@@ -255,11 +325,64 @@ export const FA3_FA_WIERSZ_CHILD_ORDER = [
  * so the pure builder never re-runs country-specific mapping — it only lays out
  * structure and escapes values.
  */
+/** The four `P_PMarzy_*` sub-elements of the margin yes-branch. */
+export type Fa3MarginKind = '2' | '3_1' | '3_2' | '3_3';
+
+/** One `Podmiot3` entry, already mapped. */
+export interface Fa3AdditionalParty {
+  identity: BuyerIdentity;
+  name: string;
+  address?: BuyerAddress;
+  role: string;
+}
+
 export interface Fa3BuilderInput {
   seller: SellerProfile;
   buyer: BuyerIdentity;
   buyerName: string;
   buyerAddress: BuyerAddress;
+  /**
+   * Operator-supplied buyer classification (#1580) mapped to the FA(3)
+   * `JST`/`GV` flags on `Podmiot2`. `buyerIsPublicSectorEntity` → `JST`
+   * (jednostka samorządu terytorialnego / local-government unit),
+   * `buyerIsVatGroupMember` → `GV` (członek grupy VAT / VAT-group member).
+   * Absent ⇒ the flag emits `2` ("does not apply"), the safe default for the
+   * common B2C/B2B case. No order source carries these, so they arrive only via
+   * the operator on a manual issue.
+   */
+  buyerIsPublicSectorEntity?: boolean;
+  buyerIsVatGroupMember?: boolean;
+  /**
+   * Operator-supplied / line-derived fiscal annotation flags → the FA(3)
+   * `Adnotacje` block (#1580, ADR-078). The operator declarations
+   * (`cashAccounting` → `P_16`, `selfBilling` → `P_17`, `splitPayment` →
+   * `P_18A`, `triangulation` → `P_23`, `marginScheme` → the `PMarzy` yes-branch)
+   * arrive from the neutral `IssueInvoiceCommand.annotations`; each absent flag
+   * emits its "does not apply" default (`2`, or the group's negative branch).
+   * Reverse-charge (`P_18`) and exemption (`Zwolnienie`) are NOT flags here —
+   * the builder derives them from the lines' own `p12` codes (`oo` / `zw`), so
+   * the header can never contradict the per-line treatment. `exemptionLegalBasis`
+   * supplies the `P_19C` grounds text for the exemption yes-branch.
+   */
+  cashAccounting?: boolean;
+  selfBilling?: boolean;
+  splitPayment?: boolean;
+  triangulation?: boolean;
+  marginScheme?: boolean;
+  /** `P_PMarzy_*` sub-element for the margin yes-branch (DEF-31); absent = used goods. */
+  marginKind?: Fa3MarginKind;
+  exemptionLegalBasis?: string;
+  /**
+   * Exemption grounds with their kind (DEF-22): `statute` → `P_19A`,
+   * `directive` → `P_19B`, `other` → `P_19C`. Wins over `exemptionLegalBasis`.
+   */
+  exemptionBasis?: { kind: 'statute' | 'directive' | 'other'; text: string };
+  /**
+   * `Podmiot3` parties (DEF-30): a JST subordinate unit (role `8`), a VAT-group
+   * member (role `10`), a payer, and so on. `role` is the FA(3) `TRolaPodmiotu3`
+   * code.
+   */
+  additionalParties?: Fa3AdditionalParty[];
   currency: Fa3KodWaluty;
   /**
    * Invoice issue date (`P_1`), ISO-8601 calendar date `YYYY-MM-DD`. Supplied by
@@ -293,6 +416,13 @@ export interface Fa3BuilderInput {
    * in that case, so existing connections keep byte-identical output.
    */
   payment?: Fa3PaymentInput;
+  /**
+   * Resolved foreign-currency exchange rate (#1581). Present ONLY for a non-PLN
+   * invoice; when set the builder emits `KursWaluty` per line and the
+   * PLN-converted VAT `P_14_xW` band amounts. Absent for PLN invoices, which
+   * keep byte-identical output.
+   */
+  exchangeRate?: Fa3ExchangeRate;
 }
 
 /**

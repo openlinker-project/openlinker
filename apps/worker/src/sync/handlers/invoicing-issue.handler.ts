@@ -7,7 +7,10 @@
  * issuance command into the job payload, so this handler:
  *  1. Casts + DEEP-validates the payload (F5).
  *  2. Reconstructs `new BuyerProfile(...)` from the PLAIN payload buyer (#12).
- *  3. Calls `invoiceService.issueInvoice(command)` with the command idempotency
+ *  3. Re-checks the order's LIVE status via `IOrderRecordService` (#1596) —
+ *     the payload was snapshotted at trigger time and can be stale by the time
+ *     this job runs; a cancelled/refunded order must never clear an invoice.
+ *  4. Calls `invoiceService.issueInvoice(command)` with the command idempotency
  *     key equal to `payload.idempotencyKey` (the SAME string as the job row, F4).
  *
  * PII DISCIPLINE (F-validate-PII / D11): the payload carries real buyer PII.
@@ -60,6 +63,13 @@ import {
 } from '@openlinker/core/invoicing';
 import type { IssueInvoiceCommand } from '@openlinker/core/invoicing';
 import { isTaxRateEra } from '@openlinker/core/sales-documents';
+import { readLiveOrderIssuanceDecision } from './live-order-issuance';
+import {
+  IOrderRecordService,
+  IOrderRefundService,
+  ORDER_RECORD_SERVICE_TOKEN,
+  ORDER_REFUND_SERVICE_TOKEN,
+} from '@openlinker/core/orders';
 import { Logger } from '@openlinker/shared/logging';
 
 type SyncJob = SyncJobEntity;
@@ -79,6 +89,10 @@ export class InvoicingIssueHandler implements SyncJobHandler {
     private readonly invoiceService: IInvoiceService,
     @Inject(POST_SALE_INVENTORY_REFRESH_SERVICE_TOKEN)
     private readonly postSaleInventoryRefresh: IPostSaleInventoryRefreshService,
+    @Inject(ORDER_RECORD_SERVICE_TOKEN)
+    private readonly orderRecords: IOrderRecordService,
+    @Inject(ORDER_REFUND_SERVICE_TOKEN)
+    private readonly orderRefunds: IOrderRefundService,
   ) {}
 
   async execute(job: SyncJob): Promise<SyncJobHandlerResult> {
@@ -94,6 +108,34 @@ export class InvoicingIssueHandler implements SyncJobHandler {
     const command = this.toCommand(payload);
 
     try {
+      // #1596: re-check the order's LIVE status immediately before issuing. This
+      // read sits INSIDE the retryable try so a transient repository failure is
+      // wrapped as a retryable SyncJobExecutionError (fail-closed — never issue
+      // on an unresolved read), consistent with the file's two documented
+      // failure paths rather than propagating raw. Mirrors the #938
+      // shipping-dispatch live re-check (ShipmentDispatchService): an
+      // absent/unknown live status (record null, or an unrecognised status)
+      // falls through to normal issuance — graceful degradation for sources that
+      // don't report status — this gate only BLOCKS on a positively-confirmed
+      // cancelled/refunded status (a terminal business_failure, not a retry).
+      // DEF-26: one gate for every issuing path (`decideLiveOrderIssuance`).
+      // `cancelledAt` (#1984) and the recorded refund amounts decide; a partial
+      // refund is still a sale to document.
+      const decision = await readLiveOrderIssuanceDecision(
+        this.orderRecords,
+        this.orderRefunds,
+        payload.orderId,
+      );
+      if (decision.kind === 'block') {
+        this.logger.warn(
+          `invoicing.issue skipped: ${decision.reason} orderId=${payload.orderId} connectionId=${payload.connectionId}`,
+        );
+        return { outcome: 'business_failure' };
+      }
+      if (decision.kind === 'allow-with-attention') {
+        this.logger.log(`invoicing.issue proceeds with attention: ${decision.attention} orderId=${payload.orderId}`);
+      }
+
       // F4: command idempotencyKey === payload.idempotencyKey === job row key.
       // The service's `issued`-only exactly-once gate makes duplicate events /
       // retries a no-op against the same PROVIDER call. It does NOT make the
@@ -242,6 +284,12 @@ export class InvoicingIssueHandler implements SyncJobHandler {
     if (!isNonEmptyString(p.currency)) return fail('currency');
     // Optional additive field (#1525): validated only when present.
     if (p.saleDate !== undefined && !isNonEmptyString(p.saleDate)) return fail('saleDate');
+    if (
+      p.saleInstant !== undefined &&
+      (!isNonEmptyString(p.saleInstant) || Number.isNaN(Date.parse(p.saleInstant)))
+    ) {
+      return fail('saleInstant');
+    }
     // Optional additive field (#1694): validated only when present.
     if (p.source !== undefined && !isNonEmptyString(p.source)) return fail('source');
 
@@ -314,6 +362,8 @@ export class InvoicingIssueHandler implements SyncJobHandler {
       payload.buyer.address,
       payload.buyer.type,
       payload.buyer.email ?? null,
+      payload.buyer.isPublicSectorEntity,
+      payload.buyer.isTaxGroupMember,
     );
 
     const command: IssueInvoiceCommand = {
@@ -332,6 +382,9 @@ export class InvoicingIssueHandler implements SyncJobHandler {
     // #1525: restore the sale date so the auto-issue path emits it (P_6 on KSeF).
     if (payload.saleDate !== undefined) {
       command.saleDate = payload.saleDate;
+    }
+    if (payload.saleInstant !== undefined) {
+      command.saleInstant = new Date(payload.saleInstant);
     }
     // #1694: thread the order-origin onto the command's `source` numbering axis.
     if (payload.source !== undefined) {

@@ -51,6 +51,7 @@ export * from './domain/entities/invoice-numbering-series.entity';
 export * from './domain/ports/invoicing.port';
 // Re-exports both `DocumentNumberConsumer` and `isDocumentNumberConsumer` (#1575).
 export * from './domain/ports/capabilities/document-number-consumer.capability';
+export * from './domain/ports/capabilities/buyer-identity-corrector.capability';
 // Re-exports both `RegulatoryStatusReader` and `isRegulatoryStatusReader`.
 export * from './domain/ports/capabilities/regulatory-status-reader.capability';
 // Re-exports both `PaymentStatusReader` and `isPaymentStatusReader` (#1354).
