@@ -7,6 +7,8 @@
 import { cleanup, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it } from 'vitest';
 
+import type { FulfillmentBlockReasonValue } from '../api/orders.types';
+
 import { OrderPhaseOrWaitingBadge } from './order-phase-or-waiting-badge';
 
 afterEach(cleanup);
@@ -32,7 +34,10 @@ describe('OrderPhaseOrWaitingBadge', () => {
   it('should fall back to the phase badge for a held reason it does not recognise', () => {
     render(
       <OrderPhaseOrWaitingBadge
-        order={{ fulfillmentBlockReason: 'routing-teleported', lifecyclePhase: 'blocked' }}
+        order={{
+          fulfillmentBlockReason: 'routing-teleported' as FulfillmentBlockReasonValue,
+          lifecyclePhase: 'blocked',
+        }}
       />
     );
     expect(screen.getByText('Blocked')).toBeInTheDocument();

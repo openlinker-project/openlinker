@@ -38,7 +38,9 @@ export const HANDLED_IN_OPENLINKER_COPY = {
 
 /**
  * A held order's reason, as an operator reads it. Keyed by the BACKEND's persisted
- * value; the three #3485 states. The other held states (`routing-in-doubt`,
+ * value (`satisfies` ties the keys to the frontend mirror, and
+ * `check-fulfillment-reason-mirror.mjs` ties that mirror to core); the three
+ * #3485 states. The other held states (`routing-in-doubt`,
  * `routing-contended`, `routing-already-live-elsewhere`) are deliberately absent:
  * they are transient guards, not an order waiting on the operator, so they render
  * no badge rather than a misleading one.

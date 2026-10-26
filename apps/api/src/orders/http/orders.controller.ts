@@ -504,7 +504,7 @@ export class OrdersController {
     // Batch the packing stage for the whole page (#3482) — same shape, same
     // reason: one read across the page's order ids, never a per-row lookup. A
     // FAILED read renders nothing and makes no "not routed" claim.
-    const handledByOrderId = await this.loadHandledInOpenLinkerForPage(
+    const handledByOrderId = await this.loadHandledInOpenLinker(
       items.map((order) => order.internalOrderId)
     );
 
@@ -763,7 +763,7 @@ export class OrdersController {
     }
     // Packing stage (#3482) — the same projection the list carries, one read for
     // this one order, so the row and the detail header cannot disagree.
-    const handled = (await this.loadHandledInOpenLinkerForPage([order.internalOrderId])).get(
+    const handled = (await this.loadHandledInOpenLinker([order.internalOrderId])).get(
       order.internalOrderId
     );
     if (handled) {
@@ -1013,7 +1013,7 @@ export class OrdersController {
     }
   }
 
-  private async loadHandledInOpenLinkerForPage(
+  private async loadHandledInOpenLinker(
     internalOrderIds: string[]
   ): Promise<ReadonlyMap<string, OrderWorkSummary>> {
     if (internalOrderIds.length === 0) {
