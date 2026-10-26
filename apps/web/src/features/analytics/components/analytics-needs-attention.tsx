@@ -26,7 +26,7 @@ import {
   deriveFailedSyncHeadline,
   deriveStockHeadline,
   type AttentionRowCopy,
-} from '../lib/needs-attention-copy.lib';
+} from '../lib/needs-attention.copy';
 
 interface AttentionRow extends AttentionRowCopy {
   key: string;
