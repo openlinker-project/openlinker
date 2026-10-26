@@ -44,6 +44,7 @@
  * @implements {OrderProcessorManagerPort}
  * @implements {OrderStatusWriteback}
  * @implements {FulfillmentStatusReader}
+ * @implements {OrderCreateStockEffect}
  */
 import type { Connection, IdentifierMappingPort } from '@openlinker/core/identifier-mapping';
 import { CORE_ENTITY_TYPE } from '@openlinker/core/identifier-mapping';
@@ -56,6 +57,7 @@ import type {
   MappingOption,
   OrderCreate,
   OrderItem,
+  OrderCreateStockEffect,
   OrderLifecycleEvent,
   OrderProcessorManagerPort,
   OrderRef,
@@ -120,7 +122,12 @@ export const SHOPER_PHONE_PLACEHOLDER_NOTE =
   'Phone number 000000000 is a placeholder: the marketplace did not provide the buyer\'s phone (for example, the order was not paid yet).';
 
 export class ShoperOrderProcessorAdapter
-  implements OrderProcessorManagerPort, DestinationOptionsReader, OrderStatusWriteback, FulfillmentStatusReader
+  implements
+    OrderProcessorManagerPort,
+    DestinationOptionsReader,
+    OrderStatusWriteback,
+    FulfillmentStatusReader,
+    OrderCreateStockEffect
 {
   private readonly logger = new Logger(ShoperOrderProcessorAdapter.name);
   private readonly statusWriter: ShoperOrderStatusWriter;
@@ -150,6 +157,19 @@ export class ShoperOrderProcessorAdapter
     parcelShippingRefusals?: ShoperParcelShippingRefusalProvider,
   ) {
     this.statusWriter = new ShoperOrderStatusWriter(client, connection, reference, parcelShippingRefusals);
+  }
+
+  /**
+   * `OrderCreateStockEffect`: whether the order this adapter just created
+   * lowered the shop's stock. Answered from the shop's own
+   * `shopping_update_stock_on_buy` setting (the same cached context
+   * `warnIfShopKeepsStock` reads), not a platform-wide claim: with it off the
+   * shop kept its stock, so core must keep the order's holds rather than
+   * consume them as already absorbed.
+   */
+  async lowersStockOnOrderCreate(): Promise<boolean> {
+    const context = await this.shopContext.get();
+    return context.decrementsStockOnOrder;
   }
 
   async createOrder(order: OrderCreate): Promise<OrderRef> {

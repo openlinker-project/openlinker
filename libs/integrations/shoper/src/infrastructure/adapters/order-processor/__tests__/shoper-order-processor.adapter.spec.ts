@@ -1,6 +1,7 @@
 import type { Connection, IdentifierMappingPort } from '@openlinker/core/identifier-mapping';
 import type { IMappingConfigService } from '@openlinker/core/mappings';
 import type { Address, OrderCreate } from '@openlinker/core/orders';
+import { isOrderCreateStockEffect, lowersStockOnOrderCreate } from '@openlinker/core/orders';
 
 import { ShoperApiError } from '../../../../domain/exceptions/shoper-api.error';
 import { ShoperDuplicateOrderException } from '../../../../domain/exceptions/shoper-duplicate-order.exception';
@@ -415,6 +416,31 @@ describe('ShoperOrderProcessorAdapter', () => {
       post.mockResolvedValue({ status: 200, data: {} });
 
       await expect(adapter.createOrder(order())).rejects.toBeInstanceOf(ShoperOrderUnbuildableException);
+    });
+  });
+
+  describe('OrderCreateStockEffect', () => {
+    it('should be recognised by the core probe', () => {
+      const { adapter } = setup();
+      expect(isOrderCreateStockEffect(adapter)).toBe(true);
+    });
+
+    it('should report a lowered stock when the shop subtracts stock on purchase', async () => {
+      const { adapter } = setup(undefined, true);
+      await expect(adapter.lowersStockOnOrderCreate()).resolves.toBe(true);
+      await expect(lowersStockOnOrderCreate(adapter)).resolves.toBe(true);
+    });
+
+    it('should report an untouched stock when the shop keeps it on purchase', async () => {
+      // shopping_update_stock_on_buy off: the shop never removed the units, so
+      // core must keep the order's holds.
+      const { adapter } = setup(undefined, false);
+      await expect(lowersStockOnOrderCreate(adapter)).resolves.toBe(false);
+    });
+
+    it('should read as not lowered when the shop settings cannot be read', async () => {
+      const { adapter } = setup(undefined, true, true);
+      await expect(lowersStockOnOrderCreate(adapter)).resolves.toBe(false);
     });
   });
 

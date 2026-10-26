@@ -245,6 +245,12 @@ created: user, variants, taxes, the three required ids, currency and prices are 
 Then `POST /orders` (header) and one `POST /order-products` per line, at the buyer-paid **gross** price (ADR-014;
 a Shoper line `price` is gross). The result is the Shoper-native order id.
 
+The adapter also declares `OrderCreateStockEffect`: `lowersStockOnOrderCreate()` answers from the shop's own
+`shopping_update_stock_on_buy` setting (the cached shop context). Core reads it after the create to decide whether
+the order's advisory holds on this shop's stock can be consumed as already absorbed. With the setting on, the shop
+lowered its stock and the holds are consumed; with it off (the owner keeps stock in an ERP or WMS), the shop's
+stock did not move, so the holds stay until dispatch rather than letting OpenLinker over-promise.
+
 **Header ids** (`shipping_id`, `payment_id`, `status_id`) are ids of rows in the shop's own `/shippings`,
 `/payments`, `/statuses`; Shoper has no catch-all, so OpenLinker never guesses one:
 

@@ -38,6 +38,7 @@ import type {
   OrderSyncResult,
 } from '../interfaces/order-sync.service.interface';
 import type { OrderProcessorManagerPort } from '../../domain/ports/order-processor-manager.port';
+import { lowersStockOnOrderCreate } from '../../domain/ports/capabilities/order-create-stock-effect.capability';
 import type { OrderCreate, OrderRef } from '../../domain/types/order-processor.types';
 import { OrderStatusValues } from '../../domain/types/order.types';
 import { IIntegrationsService } from '@openlinker/core/integrations';
@@ -70,6 +71,12 @@ interface DestinationCreateOutcome {
   readonly orderRef: OrderRef;
   /** `false` when the order already existed there and no create was issued. */
   readonly created: boolean;
+}
+
+/** A successful destination, and whether it declared that the create lowered its stock. */
+interface SettledDestination extends DestinationCreateOutcome {
+  readonly connectionId: string;
+  readonly lowersStock: boolean;
 }
 
 @Injectable()
@@ -323,7 +330,14 @@ export class OrderSyncService implements IOrderSyncService {
     const settled = await Promise.allSettled(
       destinations.map(({ connectionId, adapter }) =>
         this.createOrderIdempotently(adapter, connectionId, order.id, orderCreate).then(
-          ({ orderRef, created }) => ({ connectionId, orderRef, created })
+          async ({ orderRef, created }): Promise<SettledDestination> => ({
+            connectionId,
+            orderRef,
+            created,
+            // Asked after the create so an adapter can answer from the shop's
+            // own setting; never throws, so it cannot fail a create that landed.
+            lowersStock: await lowersStockOnOrderCreate(adapter),
+          })
         )
       )
     );
@@ -425,18 +439,31 @@ export class OrderSyncService implements IOrderSyncService {
    * re-read enqueued right after does it with the master's new number. A
    * skipped create does, since its re-read already ran and its key is spent.
    *
+   * Only a destination that DECLARES the create lowers its stock
+   * (`OrderCreateStockEffect`) is asked. The assumption is per shop, not
+   * global: a shop configured not to subtract stock on purchase never removed
+   * the units, so consuming its holds would over-promise until the next master
+   * sync. An undeclared destination keeps its holds until dispatch.
+   *
    * Best-effort: the destination create is the correctness-critical half and is
    * already done. A failure leaves the hold standing - an under-sell until
    * dispatch, never an oversell - and the next re-ingestion retries it.
    */
   private async consumeHoldsAbsorbedByDestinations(
     order: OrderSyncRequest['order'],
-    settled: ReadonlyArray<PromiseSettledResult<{ connectionId: string } & DestinationCreateOutcome>>
+    settled: ReadonlyArray<PromiseSettledResult<SettledDestination>>
   ): Promise<void> {
     const productIds = order.items.map((item) => item.productId);
     for (const outcome of settled) {
       if (outcome.status !== 'fulfilled') continue;
-      const { connectionId, created } = outcome.value;
+      const { connectionId, created, lowersStock } = outcome.value;
+      if (!lowersStock) {
+        this.logger.debug(
+          `Destination ${connectionId} does not declare that an order create lowers its stock; ` +
+            `order ${order.id} keeps its holds until dispatch`
+        );
+        continue;
+      }
       try {
         await this.masterAbsorbedReservations.consumeAbsorbedHolds({
           orderRecordId: order.id,

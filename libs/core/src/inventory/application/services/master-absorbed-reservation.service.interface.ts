@@ -13,6 +13,14 @@
  * subtract them a second time from what marketplaces are told - until the
  * dispatch consume (#2347), which can be days later.
  *
+ * The premise is per shop, not universal: a shop configured not to subtract
+ * stock on purchase never removed the units. So `OrderSyncService` calls this
+ * only for a destination that DECLARES the create lowered its stock (the
+ * `OrderCreateStockEffect` capability, probed, never assumed); every other
+ * destination keeps its holds until dispatch. Shoper declares it from its own
+ * `shopping_update_stock_on_buy` setting; PrestaShop and WooCommerce do not
+ * declare it yet, so their holds stay until dispatch as before this service.
+ *
  * @module libs/core/src/inventory/application/services
  * @see {@link MasterAbsorbedReservationService} for the implementation
  * @see docs/architecture/adrs/061-advisory-reservations-and-availability-authority.md
@@ -22,8 +30,9 @@
 export interface ConsumeAbsorbedHoldsInput {
   readonly orderRecordId: string;
   /**
-   * The destination connection the order was created at. A hold is consumed
-   * only when its position's `sourceConnectionId` is exactly this id.
+   * The destination connection the order was created at, which has declared
+   * that the create lowered its stock. A hold is consumed only when its
+   * position's `sourceConnectionId` is exactly this id.
    */
   readonly masterConnectionId: string;
   /**

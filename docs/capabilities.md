@@ -141,7 +141,7 @@ read) on its `ProductPublisher` adapter. No shop adapter implements
 `Connection.config.currency` (or an operator-set value) for the price-change
 currency-mismatch guard.
 
-### `OrderProcessorManagerPort` / `OrderSourcePort` (orders) — 5
+### `OrderProcessorManagerPort` / `OrderSourcePort` (orders) — 6
 
 | Sub-capability | What it does | Method(s) | Guard |
 |---|---|---|---|
@@ -150,6 +150,7 @@ currency-mismatch guard.
 | `FulfillmentStatusReader` | Read a destination order's current fulfillment status. | `getFulfillmentStatus` | `isFulfillmentStatusReader` |
 | `DestinationOptionsReader` | List a destination's carriers / order-statuses / payment-methods for mapping. | `listCarriers` · `listOrderStatuses` · `listPaymentMethods` | `isDestinationOptionsReader` |
 | `SourceOptionsReader` | List a source's order-statuses / delivery-methods / payment-methods for mapping. | `listOrderStatuses` · `listDeliveryMethods` · `listPaymentMethods` | `isSourceOptionsReader` |
+| `OrderCreateStockEffect` | Declare that creating an order on this destination lowered the shop's own stock, so core may consume the order's holds on positions that destination masters. Probed after the create; anything but a declared `true` keeps the holds until dispatch. Shoper answers from its `shopping_update_stock_on_buy` setting. | `lowersStockOnOrderCreate` | `isOrderCreateStockEffect` |
 
 The canonical OL-owned order-lifecycle state machine (authoritative
 `updateOrderStatus` / `cancelOrder` / `processReturn` / `getOrders`) is

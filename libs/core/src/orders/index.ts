@@ -23,6 +23,11 @@ export { isSourceOptionsReader } from './domain/ports/capabilities/source-option
 // the source-side dispatch notify folded into OrderStatusWriteback (#1168).
 export type { OrderFulfillmentUpdater } from './domain/ports/capabilities/order-fulfillment-updater.capability';
 export { isOrderFulfillmentUpdater } from './domain/ports/capabilities/order-fulfillment-updater.capability';
+export type { OrderCreateStockEffect } from './domain/ports/capabilities/order-create-stock-effect.capability';
+export {
+  isOrderCreateStockEffect,
+  lowersStockOnOrderCreate,
+} from './domain/ports/capabilities/order-create-stock-effect.capability';
 // Read-back counterpart to OrderFulfillmentUpdater (#834): branch-1
 // shipment-status projection from the OMP's view.
 export type { FulfillmentStatusReader } from './domain/ports/capabilities/fulfillment-status-reader.capability';

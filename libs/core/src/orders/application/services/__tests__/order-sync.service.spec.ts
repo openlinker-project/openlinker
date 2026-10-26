@@ -47,6 +47,13 @@ describe('OrderSyncService', () => {
       createOrder: jest.fn().mockResolvedValue(orderRef),
     }) as unknown as jest.Mocked<OrderProcessorManagerPort>;
 
+  /** A destination declaring that an order create lowers its own stock. */
+  const makeStockLoweringAdapter = (orderRef: OrderRef = { orderId: 'dest_order' }) =>
+    ({
+      createOrder: jest.fn().mockResolvedValue(orderRef),
+      lowersStockOnOrderCreate: () => Promise.resolve(true),
+    }) as unknown as jest.Mocked<OrderProcessorManagerPort>;
+
   const registerDestinations = (
     destinations: Array<{ connectionId: string; adapter: OrderProcessorManagerPort }>
   ): void => {
@@ -1497,7 +1504,7 @@ describe('OrderSyncService', () => {
     // this service owns WHEN to ask, for WHICH connection, and whether that
     // ask republishes.
     it('should ask the destination to consume its holds without republishing when the order was just created', async () => {
-      registerDestinations([{ connectionId: 'dest-a', adapter: makeAdapter() }]);
+      registerDestinations([{ connectionId: 'dest-a', adapter: makeStockLoweringAdapter() }]);
 
       await service.syncOrder({ order: createOrder(), sourceConnectionId: 'source-1' });
 
@@ -1512,7 +1519,7 @@ describe('OrderSyncService', () => {
     });
 
     it('should consume before the post-sale refresh is enqueued', async () => {
-      registerDestinations([{ connectionId: 'dest-a', adapter: makeAdapter() }]);
+      registerDestinations([{ connectionId: 'dest-a', adapter: makeStockLoweringAdapter() }]);
       const calls: string[] = [];
       masterAbsorbedReservations.consumeAbsorbedHolds.mockImplementation(() => {
         calls.push('consume');
@@ -1541,7 +1548,7 @@ describe('OrderSyncService', () => {
     });
 
     it('should republish when the order already existed at the destination', async () => {
-      const adapter = makeAdapter({ orderId: 'should-not-be-used' });
+      const adapter = makeStockLoweringAdapter({ orderId: 'should-not-be-used' });
       registerDestinations([{ connectionId: 'dest-a', adapter }]);
       identifierMapping.getExternalIds.mockResolvedValue([
         {
@@ -1564,7 +1571,7 @@ describe('OrderSyncService', () => {
 
     it('should ask only for destinations whose create succeeded', async () => {
       registerDestinations([
-        { connectionId: 'dest-ok', adapter: makeAdapter() },
+        { connectionId: 'dest-ok', adapter: makeStockLoweringAdapter() },
         {
           connectionId: 'dest-down',
           adapter: {
@@ -1582,7 +1589,7 @@ describe('OrderSyncService', () => {
     });
 
     it('should not fail order sync when consuming the holds throws', async () => {
-      registerDestinations([{ connectionId: 'dest-a', adapter: makeAdapter() }]);
+      registerDestinations([{ connectionId: 'dest-a', adapter: makeStockLoweringAdapter() }]);
       masterAbsorbedReservations.consumeAbsorbedHolds.mockRejectedValue(new Error('db blip'));
 
       const results = await service.syncOrder({
@@ -1594,5 +1601,40 @@ describe('OrderSyncService', () => {
       // The hold stays, but the master still gets re-read.
       expect(postSaleInventoryRefresh.enqueue).toHaveBeenCalled();
     });
+
+    it.each([
+      ['declares nothing', makeAdapter],
+      [
+        'declares it does not lower stock',
+        () =>
+          ({
+            createOrder: jest.fn().mockResolvedValue({ orderId: 'dest_order' }),
+            lowersStockOnOrderCreate: () => Promise.resolve(false),
+          }) as unknown as OrderProcessorManagerPort,
+      ],
+      [
+        'fails to answer',
+        () =>
+          ({
+            createOrder: jest.fn().mockResolvedValue({ orderId: 'dest_order' }),
+            lowersStockOnOrderCreate: () => Promise.reject(new Error('shop settings unreadable')),
+          }) as unknown as OrderProcessorManagerPort,
+      ],
+    ])(
+      'should keep the holds when the destination %s',
+      async (_label: string, build: () => OrderProcessorManagerPort) => {
+        // A shop that did not lower its stock never removed the units, so
+        // consuming its holds would over-promise until the next master sync.
+        registerDestinations([{ connectionId: 'dest-a', adapter: build() }]);
+
+        const results = await service.syncOrder({
+          order: createOrder(),
+          sourceConnectionId: 'source-1',
+        });
+
+        expect(results[0]).toMatchObject({ status: 'success' });
+        expect(masterAbsorbedReservations.consumeAbsorbedHolds).not.toHaveBeenCalled();
+      }
+    );
   });
 });
