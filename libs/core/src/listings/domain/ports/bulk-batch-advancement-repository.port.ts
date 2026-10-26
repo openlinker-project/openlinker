@@ -24,30 +24,15 @@ export interface BulkBatchAdvancementRepositoryPort {
    * race-free semantics at the DB level — no transaction needed.
    *
    * `outcome` is stored on the row so a later reclassification can tell which
-   * counter this advancement incremented.
+   * counter this advancement incremented. The reclassification itself lives on
+   * `BulkListingBatchRepositoryPort.reclassifySucceededChildAsFailed`, because
+   * the flip and the counter move must commit in one transaction.
    */
   markAdvancedIfNotExists(
     bulkBatchId: string,
     offerCreationRecordId: string,
     outcome: BulkChildOutcome
   ): Promise<{ created: boolean }>;
-
-  /**
-   * Move an advancement recorded as `succeeded` to `failed` (E2E-21).
-   *
-   * ONE conditional UPDATE guarded on `outcome = 'succeeded'`, so it is the
-   * at-most-once gate for the counter correction the same way the INSERT is
-   * for the original advancement:
-   *
-   * - `{ reclassified: true }` — this call moved the row. Caller adjusts the
-   *   counters (-1 succeeded / +1 failed).
-   * - `{ reclassified: false }` — no row, a row already `failed`, or a legacy
-   *   row with no recorded outcome. Caller must NOT touch the counters.
-   */
-  reclassifySucceededAsFailed(
-    bulkBatchId: string,
-    offerCreationRecordId: string
-  ): Promise<{ reclassified: boolean }>;
 
   /**
    * Delete the at-most-once advancement row for `(bulkBatchId,

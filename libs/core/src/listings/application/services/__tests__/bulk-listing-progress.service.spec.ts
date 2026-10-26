@@ -46,10 +46,10 @@ describe('BulkListingProgressService', () => {
       updateTotalCount: jest.fn(),
       findByIdempotencyKey: jest.fn(),
       clearIdempotencyKey: jest.fn(),
+      reclassifySucceededChildAsFailed: jest.fn(),
     };
     advancements = {
       markAdvancedIfNotExists: jest.fn(),
-      reclassifySucceededAsFailed: jest.fn(),
       deleteForRecord: jest.fn(),
     };
     service = new BulkListingProgressService(batches, advancements);
@@ -165,9 +165,8 @@ describe('BulkListingProgressService', () => {
     expect(result).toBeNull();
   });
   describe('reclassifyChildAsFailed (E2E-21)', () => {
-    it('should move a succeeded child to failed and re-derive a one-child batch as failed', async () => {
-      advancements.reclassifySucceededAsFailed.mockResolvedValue({ reclassified: true });
-      batches.incrementCounters.mockResolvedValue(
+    it('should move a succeeded child to failed atomically and re-derive a one-child batch as failed', async () => {
+      batches.reclassifySucceededChildAsFailed.mockResolvedValue(
         buildBatch({ totalCount: 1, succeededCount: 0, failedCount: 1 })
       );
       const failedBatch = buildBatch({
@@ -180,19 +179,17 @@ describe('BulkListingProgressService', () => {
 
       const result = await service.reclassifyChildAsFailed(BATCH_ID, RECORD_ID);
 
-      expect(advancements.reclassifySucceededAsFailed).toHaveBeenCalledWith(BATCH_ID, RECORD_ID);
-      expect(batches.incrementCounters).toHaveBeenCalledWith(BATCH_ID, {
-        succeeded: -1,
-        failed: 1,
-      });
+      expect(batches.reclassifySucceededChildAsFailed).toHaveBeenCalledWith(BATCH_ID, RECORD_ID);
+      // The counter move belongs to the same transaction as the gate, so the
+      // service must not issue a second, separately-committed increment.
+      expect(batches.incrementCounters).not.toHaveBeenCalled();
       expect(advancements.markAdvancedIfNotExists).not.toHaveBeenCalled();
       expect(batches.updateStatus).toHaveBeenCalledWith(BATCH_ID, BULK_BATCH_STATUS.Failed);
       expect(result).toEqual(failedBatch);
     });
 
     it('should re-derive a mixed finished batch as partially-failed', async () => {
-      advancements.reclassifySucceededAsFailed.mockResolvedValue({ reclassified: true });
-      batches.incrementCounters.mockResolvedValue(
+      batches.reclassifySucceededChildAsFailed.mockResolvedValue(
         buildBatch({ totalCount: 3, succeededCount: 2, failedCount: 1 })
       );
 
@@ -204,24 +201,19 @@ describe('BulkListingProgressService', () => {
       );
     });
 
-    it('should adjust counters but leave status alone while children are outstanding', async () => {
-      advancements.reclassifySucceededAsFailed.mockResolvedValue({ reclassified: true });
-      batches.incrementCounters.mockResolvedValue(
+    it('should leave status alone while children are outstanding', async () => {
+      batches.reclassifySucceededChildAsFailed.mockResolvedValue(
         buildBatch({ totalCount: 3, succeededCount: 0, failedCount: 1 })
       );
 
       const result = await service.reclassifyChildAsFailed(BATCH_ID, RECORD_ID);
 
-      expect(batches.incrementCounters).toHaveBeenCalledWith(BATCH_ID, {
-        succeeded: -1,
-        failed: 1,
-      });
       expect(batches.updateStatus).not.toHaveBeenCalled();
       expect(result).toBeNull();
     });
 
     it('should adjust nothing when the child is already counted (replayed poll)', async () => {
-      advancements.reclassifySucceededAsFailed.mockResolvedValue({ reclassified: false });
+      batches.reclassifySucceededChildAsFailed.mockResolvedValue(null);
       advancements.markAdvancedIfNotExists.mockResolvedValue({ created: false });
 
       const result = await service.reclassifyChildAsFailed(BATCH_ID, RECORD_ID);
@@ -232,7 +224,7 @@ describe('BulkListingProgressService', () => {
     });
 
     it('should count the child as failed when the poller wins the race against the create handler', async () => {
-      advancements.reclassifySucceededAsFailed.mockResolvedValue({ reclassified: false });
+      batches.reclassifySucceededChildAsFailed.mockResolvedValue(null);
       advancements.markAdvancedIfNotExists.mockResolvedValue({ created: true });
       batches.incrementCounters.mockResolvedValue(
         buildBatch({ totalCount: 3, succeededCount: 0, failedCount: 1 })
@@ -282,18 +274,25 @@ describe('BulkListingProgressService', () => {
           state = buildBatch({ ...state, status });
           return Promise.resolve(state);
         }),
+        // Mirrors the real repository: the guarded flip and the counter move
+        // happen together or not at all.
+        reclassifySucceededChildAsFailed: jest.fn((_b, recordId) => {
+          const row = rows.get(recordId);
+          if (row?.outcome !== 'succeeded') return Promise.resolve(null);
+          row.outcome = 'failed';
+          state = buildBatch({
+            ...state,
+            succeededCount: state.succeededCount - 1,
+            failedCount: state.failedCount + 1,
+          });
+          return Promise.resolve(state);
+        }),
       };
       const statefulAdvancements: BulkBatchAdvancementRepositoryPort = {
         markAdvancedIfNotExists: jest.fn((_b, recordId, outcome) => {
           if (rows.has(recordId)) return Promise.resolve({ created: false });
           rows.set(recordId, { outcome });
           return Promise.resolve({ created: true });
-        }),
-        reclassifySucceededAsFailed: jest.fn((_b, recordId) => {
-          const row = rows.get(recordId);
-          if (row?.outcome !== 'succeeded') return Promise.resolve({ reclassified: false });
-          row.outcome = 'failed';
-          return Promise.resolve({ reclassified: true });
         }),
         deleteForRecord: jest.fn(),
       };

@@ -58,8 +58,9 @@ export interface BulkListingBatchRepositoryPort {
   /**
    * Atomically apply counter deltas via single-column `UPDATE` statements
    * (`UPDATE … SET succeededCount = succeededCount + N WHERE id = $1`).
-   * Each non-zero delta runs as its own statement so concurrent worker
-   * callbacks race-safely.
+   * Every non-zero delta is applied in ONE statement, so a two-column move
+   * is never observable half-applied, and concurrent worker callbacks
+   * race-safely.
    *
    * Deltas are permissive (negative values allowed) so future admin
    * compensation flows can decrement without an extra method. Zero or
@@ -79,6 +80,28 @@ export interface BulkListingBatchRepositoryPort {
     id: string,
     deltas: { succeeded?: number; failed?: number },
   ): Promise<BulkListingBatch>;
+
+  /**
+   * Move a child counted as `succeeded` to `failed` (E2E-21), atomically.
+   *
+   * Flips the child's advancement row from `succeeded` to `failed` and moves
+   * the counters (-1 succeeded / +1 failed) in ONE transaction. The flip is
+   * the at-most-once gate, so a crash between a separately-committed flip
+   * and the counter move would leave the batch one short of its total for
+   * ever, with every replay stopped by the gate.
+   *
+   * - Returns the post-update batch when this call moved the row.
+   * - Returns `null` when nothing matched: no advancement row yet, a row
+   *   already `failed` (a replay), or a legacy row with no recorded outcome.
+   *   The counters are left untouched.
+   *
+   * Throws `BulkListingBatchNotFoundException` if the advancement row moved
+   * but the batch row is missing; the flip is rolled back with it.
+   */
+  reclassifySucceededChildAsFailed(
+    batchId: string,
+    offerCreationRecordId: string,
+  ): Promise<BulkListingBatch | null>;
 
   /**
    * Update batch lifecycle status. Idempotent at the same status value.

@@ -19,14 +19,10 @@ import type { BulkBatchAdvancementOrmEntity } from '../../entities/bulk-batch-ad
  * and a (deliberately always-populated) `identifiers` array — mirroring how
  * TypeORM echoes the input PK regardless of the conflict outcome.
  */
-function makeRepo(
-  rawRows: unknown[],
-  updateAffected = 0
-): {
+function makeRepo(rawRows: unknown[]): {
   repo: BulkBatchAdvancementRepository;
   execute: jest.Mock;
   values: jest.Mock;
-  update: jest.Mock;
 } {
   const execute = jest.fn().mockResolvedValue({
     raw: rawRows,
@@ -43,14 +39,12 @@ function makeRepo(
   const ormRepository = {
     createQueryBuilder: jest.fn().mockReturnValue(builder),
     delete: jest.fn().mockResolvedValue({ affected: 0 }),
-    update: jest.fn().mockResolvedValue({ affected: updateAffected }),
   } as unknown as Repository<BulkBatchAdvancementOrmEntity>;
 
   return {
     repo: new BulkBatchAdvancementRepository(ormRepository),
     execute,
     values,
-    update: ormRepository.update as jest.Mock,
   };
 }
 
@@ -89,34 +83,6 @@ describe('BulkBatchAdvancementRepository', () => {
         bulkBatchId: 'b',
         offerCreationRecordId: 'r',
         outcome: 'failed',
-      });
-    });
-  });
-
-  describe('reclassifySucceededAsFailed (E2E-21)', () => {
-    it('should guard the single update on the row still reading succeeded', async () => {
-      const { repo, update } = makeRepo([], 1);
-
-      await repo.reclassifySucceededAsFailed('b', 'r');
-
-      expect(update).toHaveBeenCalledTimes(1);
-      expect(update).toHaveBeenCalledWith(
-        { bulkBatchId: 'b', offerCreationRecordId: 'r', outcome: 'succeeded' },
-        { outcome: 'failed' }
-      );
-    });
-
-    it('should report reclassified=true when the guarded update moved the row', async () => {
-      const { repo } = makeRepo([], 1);
-      await expect(repo.reclassifySucceededAsFailed('b', 'r')).resolves.toEqual({
-        reclassified: true,
-      });
-    });
-
-    it('should report reclassified=false when nothing matched (replay, missing or legacy row)', async () => {
-      const { repo } = makeRepo([], 0);
-      await expect(repo.reclassifySucceededAsFailed('b', 'r')).resolves.toEqual({
-        reclassified: false,
       });
     });
   });
