@@ -682,7 +682,7 @@ export class OrderCancellationService implements IOrderCancellationService {
         originalProviderInvoiceId: invoice.providerInvoiceId,
         documentType: 'corrected',
         reason: payload.reason,
-        lines: (payload.lines as ReadonlyArray<Record<string, unknown>>).map(spec.toCorrectionLine),
+        lines: (payload.lines as unknown as ReadonlyArray<Record<string, unknown>>).map(spec.toCorrectionLine),
         // Derived from the change id, never wall-clock: a retried confirm re-sends
         // the SAME key, so the provider sees one correction however many clicks.
         idempotencyKey: `${spec.idempotencyPrefix}:${change.id}`,

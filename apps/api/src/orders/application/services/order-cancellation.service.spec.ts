@@ -94,6 +94,7 @@ describe('OrderCancellationService (#3540)', () => {
   let invoices: Mocked<{
     listInvoicesForOrders: unknown;
     getInvoiceById: unknown;
+    getLatestInvoiceForOrder: unknown;
     issueCorrection: unknown;
   }>;
   let fiscal: Mocked<{ getByOrderId: unknown }>;
@@ -143,6 +144,7 @@ describe('OrderCancellationService (#3540)', () => {
     invoices = {
       listInvoicesForOrders: jest.fn().mockResolvedValue([]),
       getInvoiceById: jest.fn(),
+      getLatestInvoiceForOrder: jest.fn().mockResolvedValue(null),
       issueCorrection: jest.fn(),
     };
     fiscal = { getByOrderId: jest.fn().mockResolvedValue([]) };
