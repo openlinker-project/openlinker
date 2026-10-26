@@ -12,3 +12,4 @@ export { InventoryItemOrmEntity } from './infrastructure/persistence/entities/in
 export { InventoryLocationOrmEntity } from './infrastructure/persistence/entities/inventory-location.orm-entity';
 export { ReservationOrmEntity } from './infrastructure/persistence/entities/reservation.orm-entity';
 export { InventorySaleDecrementOrmEntity } from './infrastructure/persistence/entities/inventory-sale-decrement.orm-entity';
+export { InventoryMovementOrmEntity } from './infrastructure/persistence/entities/inventory-movement.orm-entity';
