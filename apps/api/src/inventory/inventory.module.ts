@@ -10,10 +10,11 @@
 import { Module } from '@nestjs/common';
 import { InventoryModule as CoreInventoryModule } from '@openlinker/core/inventory';
 import { InventoryController } from './http/inventory.controller';
+import { InventoryMovementsController } from './http/inventory-movements.controller';
 import { InventoryLocationsController } from './http/inventory-locations.controller';
 
 @Module({
   imports: [CoreInventoryModule],
-  controllers: [InventoryController, InventoryLocationsController],
+  controllers: [InventoryController, InventoryLocationsController, InventoryMovementsController],
 })
 export class InventoryModule {}
