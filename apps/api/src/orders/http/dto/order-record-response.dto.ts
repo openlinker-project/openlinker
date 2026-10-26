@@ -150,6 +150,14 @@ export class OrderRecordResponseDto {
   })
   editedInOpenLinker!: boolean;
 
+  @ApiProperty({
+    description:
+      'True when an operator edit of a line no longer matches any line the channel reports (a ' +
+      're-ingestion renamed or dropped the line id). The edit is kept but not applied; the detail ' +
+      '`edits.unmatchedLineEdits` names it. Cheap, so it is on every list row.',
+  })
+  editsNeedAttention!: boolean;
+
   @ApiPropertyOptional({
     type: OrderEditsViewDto,
     nullable: true,

@@ -12,6 +12,7 @@ import type {
   OrderEditedTotals,
   OrderOperatorEditKind,
   OrderPickupPoint,
+  UnmatchedLineEdit,
 } from '@openlinker/core/orders';
 
 export interface EditOrderBase {
@@ -75,6 +76,7 @@ export interface OrderEditsView {
   } | null;
   readonly totals: OrderEditedTotals | null;
   readonly cod: { readonly channelAmount: string; readonly amount: string | null; readonly currency: string } | null;
+  readonly unmatchedLineEdits: readonly UnmatchedLineEdit[];
   readonly history: readonly OrderEditHistoryEntry[];
 }
 

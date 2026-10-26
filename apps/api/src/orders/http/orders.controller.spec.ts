@@ -2022,16 +2022,36 @@ describe('OrdersController', () => {
       expect(result.items[0]).not.toHaveProperty('edits');
     });
 
+    it('should flag a list row whose line edit no longer matches a channel line (line ids change)', async () => {
+      repository.findMany.mockResolvedValue({
+        items: [
+          orderRecordWith({
+            orderEdits: {
+              v: 1,
+              rev: 1,
+              lines: { 'no-such-line': { changeId: 'c', editedAt: '2026-10-26T10:00:00.000Z', editedBy: null, quantity: 1 } },
+            } as never,
+          }),
+        ],
+        total: 1,
+      });
+
+      const result = await controller.listOrders({ limit: 20, offset: 0 });
+
+      expect(result.items[0].editsNeedAttention).toBe(true);
+    });
+
     it('should report an unedited order as not edited', async () => {
       repository.findMany.mockResolvedValue({ items: [mockOrder], total: 1 });
 
       const result = await controller.listOrders({ limit: 20, offset: 0 });
 
       expect(result.items[0].editedInOpenLinker).toBe(false);
+      expect(result.items[0].editsNeedAttention).toBe(false);
     });
 
     it('should attach the edits view on the detail read only', async () => {
-      const view = { editedAt: '2026-10-26T10:00:00.000Z', lines: [], history: [] };
+      const view = { editedAt: '2026-10-26T10:00:00.000Z', lines: [], unmatchedLineEdits: [], history: [] };
       const editService = (controller as unknown as { orderEdit: { getEditsView: jest.Mock } }).orderEdit;
       editService.getEditsView.mockResolvedValue(view);
       repository.findById.mockResolvedValue(mockOrder);

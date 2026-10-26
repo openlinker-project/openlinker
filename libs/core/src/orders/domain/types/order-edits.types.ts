@@ -39,7 +39,14 @@
  */
 import { minorUnitExponentFor } from '@openlinker/core/sales-documents';
 
-import type { Address, Order, OrderItem, OrderPickupPoint, OrderShipping } from './order.types';
+import type {
+  Address,
+  Order,
+  OrderItem,
+  OrderPickupPoint,
+  OrderShipping,
+  PriceTaxTreatment,
+} from './order.types';
 
 export interface OrderEditStamp {
   readonly changeId: string;
@@ -175,12 +182,90 @@ interface EditableLine {
   readonly unitPriceGross?: number;
 }
 
+/** How the order's own figures express tax, read off `totals`. */
+export interface LineEditTreatments {
+  /** `totals.taxTreatment`: what a line `price` is. Absent means gross. */
+  readonly lines?: PriceTaxTreatment;
+  /** `totals.totalTaxTreatment ?? totals.taxTreatment`: what `total` is. Absent means gross. */
+  readonly total?: PriceTaxTreatment;
+}
+
+/**
+ * The per-unit amount a removed unit takes off `total`, in the basis `total`
+ * is expressed in. `null` when it cannot be known: a net-priced line with no
+ * reported gross unit price, on a gross total. Subtracting the NET price from
+ * a GROSS total would restate the order wrongly (B-38), so the caller refuses
+ * the edit rather than guess, and the pure merge leaves such a line out of the
+ * restated total.
+ */
+export function resolveTotalUnitPrice(
+  item: EditableLine,
+  treatments: LineEditTreatments | undefined
+): number | null {
+  if (treatments?.total === 'exclusive') return item.price;
+  if (typeof item.unitPriceGross === 'number' && Number.isFinite(item.unitPriceGross)) {
+    return item.unitPriceGross;
+  }
+  return treatments?.lines === 'exclusive' ? null : item.price;
+}
+
+/** Read the two treatments off a `totals` record, tolerating anything malformed. */
+export function readLineEditTreatments(totals: unknown): LineEditTreatments {
+  if (!isRecord(totals)) return {};
+  const lines =
+    totals.taxTreatment === 'inclusive' || totals.taxTreatment === 'exclusive'
+      ? totals.taxTreatment
+      : undefined;
+  const totalOnly =
+    totals.totalTaxTreatment === 'inclusive' || totals.totalTaxTreatment === 'exclusive'
+      ? totals.totalTaxTreatment
+      : lines;
+  return {
+    ...(lines !== undefined && { lines }),
+    ...(totalOnly !== undefined && { total: totalOnly }),
+  };
+}
+
+/**
+ * Overlay entries whose line id matches no line of the channel snapshot: the
+ * channel renamed or dropped the line after the edit. They are KEPT (never
+ * silently dropped) and reported, so an operator sees an edit that no longer
+ * applies instead of an order that quietly reverted.
+ */
+export interface UnmatchedLineEdit {
+  readonly orderLineId: string;
+  readonly editedQuantity: number;
+  readonly editedAt: string;
+}
+
+export function findUnmatchedLineEdits(
+  channelSnapshot: Record<string, unknown>,
+  edits: OrderEdits | null
+): UnmatchedLineEdit[] {
+  if (edits?.lines === undefined) return [];
+  const ids = new Set<string>();
+  if (Array.isArray(channelSnapshot.items)) {
+    for (const raw of channelSnapshot.items) {
+      if (isRecord(raw) && typeof raw.id === 'string') ids.add(raw.id);
+    }
+  }
+  return Object.entries(edits.lines)
+    .filter(([lineId]) => !ids.has(lineId))
+    .map(([orderLineId, edit]) => ({
+      orderLineId,
+      editedQuantity: edit.quantity,
+      editedAt: edit.editedAt,
+    }));
+}
+
 export interface LineEditOutcome<T extends EditableLine> {
   readonly items: T[];
   /** Σ removed units × gross unit price (what the buyer no longer owes). */
   readonly totalDelta: number;
   /** Σ removed units × line price (the subtotal's own basis). */
   readonly subtotalDelta: number;
+  /** Lowered lines whose gross price is unknown; they are NOT in `totalDelta`. */
+  readonly unresolvedLineIds: string[];
 }
 
 /**
@@ -194,23 +279,30 @@ export function effectiveLineQuantity(channelQuantity: number, edit: OrderLineEd
 
 export function applyLineEdits<T extends EditableLine>(
   items: readonly T[],
-  lines: Readonly<Record<string, OrderLineEdit>> | undefined
+  lines: Readonly<Record<string, OrderLineEdit>> | undefined,
+  treatments?: LineEditTreatments
 ): LineEditOutcome<T> {
   let totalDelta = 0;
   let subtotalDelta = 0;
+  const unresolvedLineIds: string[] = [];
   const out: T[] = [];
   for (const item of items) {
     const quantity = effectiveLineQuantity(item.quantity, lines?.[item.id]);
     const removed = item.quantity - quantity;
     if (removed > 0) {
-      totalDelta += removed * (item.unitPriceGross ?? item.price);
+      const unit = resolveTotalUnitPrice(item, treatments);
+      if (unit === null) {
+        unresolvedLineIds.push(item.id);
+      } else {
+        totalDelta += removed * unit;
+      }
       subtotalDelta += removed * item.price;
     }
     if (quantity > 0) {
       out.push(quantity === item.quantity ? item : { ...item, quantity });
     }
   }
-  return { items: out, totalDelta, subtotalDelta };
+  return { items: out, totalDelta, subtotalDelta, unresolvedLineIds };
 }
 
 function roundTo(value: number, currency: string): number {
@@ -283,7 +375,11 @@ export function applyOrderEditsToSnapshot(
     }
   }
   if (edits.lines !== undefined && Array.isArray(channelSnapshot.items)) {
-    const outcome = applyLineEdits(readSnapshotItems(channelSnapshot.items), edits.lines);
+    const outcome = applyLineEdits(
+      readSnapshotItems(channelSnapshot.items),
+      edits.lines,
+      readLineEditTreatments(channelSnapshot.totals)
+    );
     merged.items = outcome.items;
     const totals = channelSnapshot.totals;
     if (isRecord(totals) && typeof totals.total === 'number' && typeof totals.subtotal === 'number') {
@@ -329,7 +425,11 @@ export function applyOrderEditsToOrder(order: Order, edits: OrderEdits | null): 
     }
   }
   if (edits.lines !== undefined) {
-    const outcome = applyLineEdits<OrderItem>(order.items, edits.lines);
+    const outcome = applyLineEdits<OrderItem>(
+      order.items,
+      edits.lines,
+      readLineEditTreatments(order.totals)
+    );
     merged.items = outcome.items;
     merged.totals = restateTotals(order.totals, outcome);
     if (order.codToCollect !== undefined) {

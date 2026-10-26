@@ -39,6 +39,12 @@ function record(overrides: Partial<OrderRecord> = {}): OrderRecord {
   return Object.assign(Object.create(OrderRecord.prototype) as OrderRecord, base, overrides);
 }
 
+function recordWithSnapshot(snapshot: Record<string, unknown>, overrides: Partial<OrderRecord> = {}): OrderRecord {
+  const now = new Date();
+  const base = new OrderRecord(ORDER_ID, null, 'src-conn', null, snapshot, [], 'ready', now, now);
+  return Object.assign(Object.create(OrderRecord.prototype) as OrderRecord, base, overrides);
+}
+
 const assessment = (overrides: Partial<OrderWorkEditAssessment> = {}): OrderWorkEditAssessment => ({
   unrouted: true,
   anyParcelClosed: false,
@@ -255,6 +261,16 @@ describe('OrderEditService (#3542)', () => {
       expect(changes.abandon).toHaveBeenCalledWith('chg-1');
       expect(changes.confirm).not.toHaveBeenCalled();
     });
+
+    it('should answer ORDER_NOT_READY, not contention, when a re-ingestion unmapped the order mid-edit (B-39)', async () => {
+      orderRecords.applyOrderEdit.mockResolvedValue(null);
+      orderRecords.getOrderRecord
+        .mockResolvedValueOnce(record())
+        .mockResolvedValue(record({ recordStatus: 'awaiting_mapping' }));
+
+      expect(await refusal(service.editAddress({ ...base, address: newAddress }))).toBe('ORDER_NOT_READY');
+      expect(changes.abandon).toHaveBeenCalledWith('chg-1');
+    });
   });
 
   describe('dry run', () => {
@@ -323,6 +339,70 @@ describe('OrderEditService (#3542)', () => {
     it('should never offer a channel anything: no relay, no cancel, no refund is reachable from here', () => {
       const members = Object.getOwnPropertyNames(OrderEditService.prototype);
       expect(members.filter((name) => /relay|refund|cancelOrder|writeback/i.test(name))).toEqual([]);
+    });
+
+    it('should refuse a quantity edit of a net-priced line with no reported gross price (B-38)', async () => {
+      orderRecords.getOrderRecord.mockResolvedValue(
+        recordWithSnapshot({
+          ...channelSnapshot(),
+          items: [
+            { id: 'l1', productId: 'p1', quantity: 3, price: 10 },
+            { id: 'l2', productId: 'p2', quantity: 1, price: 20 },
+          ],
+          totals: { subtotal: 50, tax: 11.5, shipping: 0, total: 61.5, currency: 'PLN', taxTreatment: 'exclusive', totalTaxTreatment: 'inclusive' },
+        })
+      );
+
+      expect(await refusal(service.editLines(lowerL1))).toBe('LINE_PRICE_NOT_RESOLVABLE');
+      expect(changes.openOrReuse).not.toHaveBeenCalled();
+      expect(orderRecords.applyOrderEdit).not.toHaveBeenCalled();
+    });
+
+    it('should accept a net-priced line when the channel reported its gross price (B-38)', async () => {
+      orderRecords.getOrderRecord.mockResolvedValue(
+        recordWithSnapshot({
+          ...channelSnapshot(),
+          items: [
+            { id: 'l1', productId: 'p1', quantity: 3, price: 10, unitPriceGross: 12.3 },
+            { id: 'l2', productId: 'p2', quantity: 1, price: 20, unitPriceGross: 24.6 },
+          ],
+          totals: { subtotal: 50, tax: 11.5, shipping: 0, total: 61.5, currency: 'PLN', taxTreatment: 'exclusive', totalTaxTreatment: 'inclusive' },
+        })
+      );
+
+      await service.editLines(lowerL1);
+
+      expect(orderRecords.applyOrderEdit).toHaveBeenCalled();
+    });
+
+    it('should finish the follow-ups and confirm when a crash left the overlay written but the change open (B-30)', async () => {
+      const crashed = new OrderChange(
+        'chg-9', ORDER_ID, 'order.line_quantity_change', `edit:lines:${ORDER_ID}`, 'requested',
+        { lines: [{ orderLineId: 'l1', to: 1, removed: 2 }] },
+        'user-1', new Date(), null, null, null, null, new Date(), new Date()
+      );
+      orderRecords.getOrderRecord.mockResolvedValue(
+        record({ orderEdits: { v: 1, rev: 1, lines: { l1: { changeId: 'chg-9', editedAt: new Date().toISOString(), editedBy: null, quantity: 1 } } } })
+      );
+      changes.findByOrderAndKinds.mockResolvedValue([crashed]);
+
+      const result = await service.editLines(lowerL1);
+
+      expect(result.changeId).toBe('chg-9');
+      expect(orderRecords.applyOrderEdit).not.toHaveBeenCalled();
+      expect(changes.openOrReuse).not.toHaveBeenCalled();
+      expect(fulfillment.lowerLineQuantity).toHaveBeenCalledWith(expect.objectContaining({ orderLineId: 'l1', newQuantity: 1 }));
+      expect(reservations.narrowForOrder).toHaveBeenCalled();
+      expect(reversal.reverseLineQuantity).toHaveBeenCalledWith(expect.objectContaining({ changeId: 'chg-9', units: 2 }));
+      expect(changes.confirm).toHaveBeenCalledWith('chg-9', expect.any(String));
+    });
+
+    it('should still answer NOTHING_CHANGED when the quantity is already lowered and no change is open (B-30)', async () => {
+      orderRecords.getOrderRecord.mockResolvedValue(
+        record({ orderEdits: { v: 1, rev: 1, lines: { l1: { changeId: 'chg-9', editedAt: new Date().toISOString(), editedBy: null, quantity: 1 } } } })
+      );
+
+      expect(await refusal(service.editLines(lowerL1))).toBe('NOTHING_CHANGED');
     });
 
     it('should refuse to raise a line', async () => {
@@ -428,7 +508,54 @@ describe('OrderEditService (#3542)', () => {
     });
   });
 
+  describe('delivery method names', () => {
+    it('should save a change of the method name alone (B-34)', async () => {
+      await service.editDeliveryMethod({ ...base, methodId: 'courier', methodName: 'Courier Express', pickupPoint: null });
+
+      expect(changes.openOrReuse).toHaveBeenCalledWith(expect.objectContaining({ kind: 'order.delivery_method_change' }));
+    });
+
+    it('should save a change of the pickup point name alone (B-34)', async () => {
+      orderRecords.getOrderRecord.mockResolvedValue(
+        recordWithSnapshot({ ...channelSnapshot(), pickupPoint: { id: 'LOCKER1', name: 'Old name' } })
+      );
+
+      await service.editDeliveryMethod({
+        ...base,
+        methodId: 'courier',
+        methodName: null,
+        pickupPoint: { id: 'LOCKER1', name: 'New name' },
+      });
+
+      expect(changes.openOrReuse).toHaveBeenCalled();
+    });
+  });
+
   describe('getEditsView', () => {
+    it('should list only confirmed edits in the history (B-27)', async () => {
+      const mk = (id: string, status: 'confirmed' | 'expired'): OrderChange =>
+        new OrderChange(id, ORDER_ID, 'order.address_change', `edit:address:${ORDER_ID}`, status, null, 'user-1', new Date(), null, null, null, null, new Date(), new Date());
+      changes.findByOrderAndKinds.mockResolvedValue([mk('ok', 'confirmed'), mk('abandoned', 'expired')]);
+
+      const view = await service.getEditsView(
+        record({ orderEdits: { v: 1, rev: 1, lines: { l1: { changeId: 'ok', editedAt: new Date().toISOString(), editedBy: null, quantity: 1 } } } })
+      );
+
+      expect(view?.history.map((entry) => entry.changeId)).toEqual(['ok']);
+    });
+
+    it('should report an edit whose line id the channel renamed, without throwing or restating it (line ids change)', async () => {
+      const view = await service.getEditsView(
+        record({ orderEdits: { v: 1, rev: 1, lines: { gone: { changeId: 'c', editedAt: '2026-10-26T10:00:00.000Z', editedBy: null, quantity: 1 } } } })
+      );
+
+      expect(view?.unmatchedLineEdits).toEqual([
+        { orderLineId: 'gone', editedQuantity: 1, editedAt: '2026-10-26T10:00:00.000Z' },
+      ]);
+      expect(view?.lines).toEqual([]);
+      expect(view?.totals?.difference).toBe(0);
+    });
+
     it('should cost no query for an order nobody edited', async () => {
       expect(await service.getEditsView(record())).toBeNull();
       expect(changes.findByOrderAndKinds).not.toHaveBeenCalled();

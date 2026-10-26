@@ -95,6 +95,7 @@ import type {
   AuthorityAttentionProducer,
 } from '@openlinker/core/fulfillment-authority';
 import { getEnvBoolean } from '@openlinker/shared/config';
+import { normaliseCountryColumn } from '../../../domain/types/buyer-note.types';
 import { deriveOrderSearchText, normalizeOrderSearchText } from '../../../domain/order-search-text';
 import {
   applyOrderEditsToSnapshot,
@@ -2935,6 +2936,7 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
                        'lines', COALESCE("orderEdits"->'lines', '{}'::jsonb) || $2::jsonb) END,
            "shippingAddressHash" = COALESCE($3::text, "shippingAddressHash"),
            "searchText" = COALESCE($4::text, "searchText"),
+           "shippingCountry" = CASE WHEN $7::boolean THEN $8::text ELSE "shippingCountry" END,
            "updatedAt" = now()
        WHERE "internalOrderId" = $5
          AND "recordStatus" = 'ready'
@@ -2947,6 +2949,11 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
         searchText,
         input.internalOrderId,
         input.expectedRev,
+        // B-29: the country column is derived from the shipping address like the
+        // hash and the search text, so an address edit restamps it (a null
+        // country is a real answer: the new address names none).
+        input.address !== undefined,
+        input.address === undefined ? null : normaliseCountryColumn(input.address.shipping.country),
       ]
     )) as unknown;
 
@@ -3434,7 +3441,12 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
              AND EXCLUDED."buyerNote" IS DISTINCT FROM "order_records"."buyerNote"
              THEN now() ELSE "order_records"."buyerNoteChangedAt" END`,
       });
-      add('shippingCountry', entity.shippingCountry ?? null);
+      // B-29: derived from the shipping address, so it follows the overlay's
+      // address the same way `shippingAddressHash` does.
+      add('shippingCountry', entity.shippingCountry ?? null, {
+        update: `"shippingCountry" = CASE WHEN "order_records"."orderEdits" ? 'address'
+           THEN "order_records"."shippingCountry" ELSE EXCLUDED."shippingCountry" END`,
+      });
       add('billingCountry', entity.billingCountry ?? null);
       add('buyerOrderCount', entity.buyerOrderCount ?? null);
     }

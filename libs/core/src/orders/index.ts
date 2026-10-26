@@ -559,6 +559,9 @@ export {
   applyOrderEditsToOrder,
   effectiveLineQuantity,
   describeEditedTotals,
+  resolveTotalUnitPrice,
+  readLineEditTreatments,
+  findUnmatchedLineEdits,
 } from './domain/types/order-edits.types';
 export type {
   OrderEdits,
@@ -567,6 +570,8 @@ export type {
   OrderDeliveryMethodEdit,
   OrderEditedTotals,
   ApplyOrderEditInput,
+  LineEditTreatments,
+  UnmatchedLineEdit,
 } from './domain/types/order-edits.types';
 // #3540 — why an operator cancels an order.
 export {

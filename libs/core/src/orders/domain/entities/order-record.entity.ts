@@ -14,7 +14,11 @@ import { PaymentStatusValues } from '../types/payment-status.types';
 import type { PaymentStatus } from '../types/payment-status.types';
 import type { PaymentMethod } from '../types/payment-method.types';
 import type { CodToCollect } from '../types/cod-to-collect.types';
-import type { OrderEdits } from '../types/order-edits.types';
+import {
+  findUnmatchedLineEdits,
+  type OrderEdits,
+  type UnmatchedLineEdit,
+} from '../types/order-edits.types';
 import { decodeBuyerTaxIdColumn } from '../types/buyer-tax-id.types';
 import { decodeBuyerNoteColumn } from '../types/buyer-note.types';
 import type { BuyerNote } from '../types/buyer-note.types';
@@ -550,6 +554,19 @@ export class OrderRecord {
    */
   get channelSnapshot(): Record<string, unknown> {
     return this.channelSnapshotRaw ?? this.orderSnapshot;
+  }
+
+  /**
+   * Line edits whose line id the channel no longer reports (renamed or dropped
+   * by a re-ingestion). Kept in the overlay, never silently dropped.
+   */
+  get unmatchedLineEdits(): UnmatchedLineEdit[] {
+    return findUnmatchedLineEdits(this.channelSnapshot, this.orderEdits);
+  }
+
+  /** An edit that no longer applies and needs the operator's eye (list badge). */
+  get editsNeedAttention(): boolean {
+    return this.unmatchedLineEdits.length > 0;
   }
 
   /** Whether an operator has edited this order in OpenLinker (#3542). */

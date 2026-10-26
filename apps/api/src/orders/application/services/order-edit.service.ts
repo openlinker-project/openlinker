@@ -69,10 +69,13 @@ import {
   deliveryMethodEditTargetRef,
   effectiveLineQuantity,
   lineQuantityEditTargetRef,
+  OPEN_ORDER_CHANGE_STATUSES,
   ORDER_CHANGE_SERVICE_TOKEN,
   ORDER_RECORD_SERVICE_TOKEN,
   OrderAmendmentRequestKindValues,
   OrderOperatorEditKindValues,
+  readLineEditTreatments,
+  resolveTotalUnitPrice,
   type Address,
   type ApplyOrderEditInput,
   type IOrderChangeService,
@@ -138,6 +141,11 @@ interface PreparedEdit {
     readonly newQuantity: number;
     readonly removedUnits: number;
   }>;
+  /**
+   * Crash recovery (B-30): the overlay already holds this edit and its change row
+   * is still open, so only the idempotent follow-ups and the confirm are left.
+   */
+  readonly recoverChangeId?: string;
 }
 
 @Injectable()
@@ -236,6 +244,8 @@ export class OrderEditService implements IOrderEditService {
       }
 
       const channelItems = this.readChannelItems(record);
+      const channelPrices = this.readChannelItemPrices(record);
+      const treatments = readLineEditTreatments(record.channelSnapshot.totals);
       const currentEdits = record.orderEdits;
       const lowered: Array<{ orderLineId: string; newQuantity: number; removedUnits: number }> = [];
       const patchLines: Record<string, { changeId: string; editedAt: string; editedBy: string | null; quantity: number }> = {};
@@ -254,6 +264,15 @@ export class OrderEditService implements IOrderEditService {
           );
         }
         if (line.quantity === effective) continue;
+        // B-38: restating a GROSS total by a NET price would be wrong money, so a
+        // line whose gross unit price cannot be known is refused, never guessed.
+        const priced = channelPrices.get(line.orderLineId);
+        if (priced === undefined || resolveTotalUnitPrice(priced, treatments) === null) {
+          throw new OrderEditRefusedError(
+            'LINE_PRICE_NOT_RESOLVABLE',
+            `Line ${line.orderLineId} is priced without tax and the channel did not report its price with tax, so the new total cannot be worked out. Change the quantity on the sales channel, or cancel and re-enter the order.`
+          );
+        }
         const fulfilled = assessment.fulfilledByLine[line.orderLineId] ?? 0;
         if (line.quantity < fulfilled) {
           throw new OrderEditRefusedError(
@@ -274,6 +293,8 @@ export class OrderEditService implements IOrderEditService {
         };
       }
       if (lowered.length === 0) {
+        const recovery = await this.findInterruptedLineEdit(record, input.lines);
+        if (recovery !== null) return recovery;
         throw new OrderEditRefusedError('NOTHING_CHANGED', 'No quantity is lower than it already is.');
       }
 
@@ -321,7 +342,16 @@ export class OrderEditService implements IOrderEditService {
       const currentId = record.sourceDeliveryMethodId;
       const currentPickup = this.readPickupId(record);
       const nextPickup = input.pickupPoint?.id ?? null;
-      if (currentId === input.methodId && currentPickup === nextPickup) {
+      // A new name alone is a change: the label and the documents print it.
+      const nameChanged = input.methodName !== null && input.methodName !== record.sourceDeliveryMethodName;
+      const pickupNameChanged =
+        input.pickupPoint?.name !== undefined && input.pickupPoint.name !== this.readPickupName(record);
+      if (
+        currentId === input.methodId &&
+        currentPickup === nextPickup &&
+        !nameChanged &&
+        !pickupNameChanged
+      ) {
         throw new OrderEditRefusedError('NOTHING_CHANGED', 'The order already has that delivery method.');
       }
       const now = new Date().toISOString();
@@ -350,6 +380,13 @@ export class OrderEditService implements IOrderEditService {
   async getEditsView(record: OrderRecord): Promise<OrderEditsView | null> {
     const edits = record.orderEdits;
     if (edits === null) return null;
+    const unmatched = record.unmatchedLineEdits;
+    if (unmatched.length > 0) {
+      this.logger.warn(
+        `Order ${record.internalOrderId} carries ${String(unmatched.length)} line edit(s) whose line id the channel no longer reports ` +
+          `(${unmatched.map((entry) => entry.orderLineId).join(', ')}); they are kept but not applied`
+      );
+    }
     const changes = await this.changes.findByOrderAndKinds(
       record.internalOrderId,
       OrderOperatorEditKindValues
@@ -423,6 +460,10 @@ export class OrderEditService implements IOrderEditService {
       };
     }
 
+    if (prepared.recoverChangeId !== undefined) {
+      return this.finishInterruptedEdit(record, prepared, prepared.recoverChangeId, input.actorUserId);
+    }
+
     const { change } = await this.changes.openOrReuse({
       internalOrderId: input.internalOrderId,
       kind: prepared.kind,
@@ -440,6 +481,15 @@ export class OrderEditService implements IOrderEditService {
     });
     if (written === null) {
       await this.changes.abandon(change.id);
+      // B-39: a re-ingestion can flip the order back to `awaiting_mapping` between
+      // the read and the write; that is not "somebody else edited it".
+      const latest = await this.orderRecords.getOrderRecord(input.internalOrderId);
+      if (latest !== null && latest.recordStatus !== 'ready') {
+        throw new OrderEditRefusedError(
+          'ORDER_NOT_READY',
+          'This order was re-imported while you were editing and its products are not matched yet. Fix the product mapping, then edit it again.'
+        );
+      }
       throw new OrderEditRefusedError(
         'ORDER_EDIT_CONTENDED',
         'The order changed while you were editing it. Reload it and try again.'
@@ -467,6 +517,84 @@ export class OrderEditService implements IOrderEditService {
       dryRun: false,
       changeId: change.id,
       view: (await this.getEditsView(written)) as OrderEditsView,
+      stock,
+    };
+  }
+
+  /**
+   * B-30: the process died after the overlay write and before the follow-ups. The
+   * overlay holds the requested quantities and the change row is still open, so a
+   * retry must finish the job instead of answering NOTHING_CHANGED. The change's
+   * own payload says which lines and how many units.
+   */
+  private async findInterruptedLineEdit(
+    record: OrderRecord,
+    requested: ReadonlyArray<{ orderLineId: string; quantity: number }>
+  ): Promise<PreparedEdit | null> {
+    const targetRef = lineQuantityEditTargetRef(record.internalOrderId);
+    const history = await this.changes.findByOrderAndKinds(record.internalOrderId, [
+      'order.line_quantity_change',
+    ]);
+    const open = history
+      .filter((change) => change.targetRef === targetRef && OPEN_ORDER_CHANGE_STATUSES.includes(change.status))
+      .at(-1);
+    if (open === undefined) return null;
+    const payloadLines = open.payload?.lines;
+    if (!Array.isArray(payloadLines)) return null;
+
+    const lowered: Array<{ orderLineId: string; newQuantity: number; removedUnits: number }> = [];
+    for (const raw of payloadLines) {
+      if (typeof raw !== 'object' || raw === null) return null;
+      const entry = raw as Record<string, unknown>;
+      if (
+        typeof entry.orderLineId !== 'string' ||
+        typeof entry.to !== 'number' ||
+        typeof entry.removed !== 'number'
+      ) {
+        return null;
+      }
+      const stamped = record.orderEdits?.lines?.[entry.orderLineId];
+      // The overlay must actually carry THIS change's write, or there is
+      // nothing interrupted to finish.
+      if (stamped === undefined || stamped.changeId !== open.id || stamped.quantity !== entry.to) {
+        return null;
+      }
+      lowered.push({ orderLineId: entry.orderLineId, newQuantity: entry.to, removedUnits: entry.removed });
+    }
+    if (lowered.length === 0) return null;
+    // Only the lines the retry named are in scope for a recovery.
+    const named = new Set(requested.map((line) => line.orderLineId));
+    if (!lowered.some((line) => named.has(line.orderLineId))) return null;
+
+    return {
+      kind: 'order.line_quantity_change',
+      targetRef,
+      payload: open.payload ?? {},
+      patch: {},
+      loweredLines: lowered,
+      recoverChangeId: open.id,
+    };
+  }
+
+  private async finishInterruptedEdit(
+    record: OrderRecord,
+    prepared: PreparedEdit,
+    changeId: string,
+    actorUserId: string | null
+  ): Promise<OrderEditResult> {
+    const stock = await this.followUpLines(record, prepared, changeId);
+    const confirmed = await this.changes.confirm(changeId, `operator:${actorUserId ?? 'system'}`);
+    if (confirmed) {
+      await this.changes.claimApplied(changeId);
+    }
+    this.logger.warn(
+      `Finished an interrupted ${prepared.kind} of order ${record.internalOrderId} (change ${changeId}): ` +
+        `the overlay was already written, the follow-ups and the confirmation were re-run`
+    );
+    return {
+      dryRun: false,
+      changeId,
+      view: (await this.getEditsView(record)) as OrderEditsView,
       stock,
     };
   }
@@ -712,6 +840,34 @@ export class OrderEditService implements IOrderEditService {
     if (typeof value !== 'object' || value === null) return null;
     const id = (value as Record<string, unknown>).id;
     return typeof id === 'string' ? id : null;
+  }
+
+  private readPickupName(record: OrderRecord): string | null {
+    const value = record.orderSnapshot.pickupPoint;
+    if (typeof value !== 'object' || value === null) return null;
+    const name = (value as Record<string, unknown>).name;
+    return typeof name === 'string' ? name : null;
+  }
+
+  /** CHANNEL line prices by id, for the gross-unit-price check (B-38). */
+  private readChannelItemPrices(
+    record: OrderRecord
+  ): Map<string, { id: string; quantity: number; price: number; unitPriceGross?: number }> {
+    const out = new Map<string, { id: string; quantity: number; price: number; unitPriceGross?: number }>();
+    const items = record.channelSnapshot.items;
+    if (!Array.isArray(items)) return out;
+    for (const raw of items) {
+      if (typeof raw !== 'object' || raw === null) continue;
+      const item = raw as Record<string, unknown>;
+      if (typeof item.id !== 'string') continue;
+      out.set(item.id, {
+        id: item.id,
+        quantity: typeof item.quantity === 'number' ? item.quantity : 0,
+        price: typeof item.price === 'number' ? item.price : 0,
+        ...(typeof item.unitPriceGross === 'number' ? { unitPriceGross: item.unitPriceGross } : {}),
+      });
+    }
+    return out;
   }
 
   /** CHANNEL quantities by line id: the overlay is `min(overlay, channel)` over these. */
