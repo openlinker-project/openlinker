@@ -24,3 +24,6 @@ export {
   STOCK_STATUS_LABEL,
   type StockStatus,
 } from './lib/product-stock-status';
+
+// #3567 - a stock correction invalidates the products list and detail caches.
+export { productsQueryKeys } from './api/products.query-keys';

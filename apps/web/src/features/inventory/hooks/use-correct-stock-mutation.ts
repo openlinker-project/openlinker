@@ -10,7 +10,7 @@
  */
 import { useMutation, useQueryClient, type UseMutationResult } from '@tanstack/react-query';
 import { useApiClient } from '../../../app/api/api-client-provider';
-import { productsQueryKeys } from '../../products/api/products.query-keys';
+import { productsQueryKeys } from '../../products';
 import { inventoryQueryKeys } from '../api/inventory.query-keys';
 import type { CorrectStockInput, CorrectStockResult } from '../api/inventory-correction.types';
 

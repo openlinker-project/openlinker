@@ -4,7 +4,7 @@ import type { PropsWithChildren, ReactElement } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 import { ApiClientProvider } from '../../../app/api/api-client-provider';
 import { createMockApiClient } from '../../../test/test-utils';
-import { productsQueryKeys } from '../../products/api/products.query-keys';
+import { productsQueryKeys } from '../../products';
 import { useCorrectStockMutation } from './use-correct-stock-mutation';
 
 describe('useCorrectStockMutation', () => {
