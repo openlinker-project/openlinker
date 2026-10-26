@@ -793,6 +793,27 @@ function BulkEditModalForm({
     const valid = await baseForm.trigger();
     if (!valid) {
       setScope(isMultiVariant ? 'base' : 'simple');
+      // A missing category on a browsable destination has no inline field: it is
+      // marked only by the chip's warning triangle, so without this the click is
+      // a silent no-op - the dead-end #1946 removed for a variant category.
+      // Read the field state directly: `formState.errors` through this ref is
+      // only refreshed on the next render, so right after trigger() it is empty.
+      const categoryMissing = canBrowseCategories && !baseForm.getValues('categoryId');
+      showToast({
+        tone: 'error',
+        title: categoryMissing ? "Can't save yet - choose a category" : "Can't save yet - fix the highlighted fields",
+        description: categoryMissing
+          ? `${platformName} needs a category for every offer. Use "set category" at the top of this panel.`
+          : 'Each field that needs a change shows what to fix below it.',
+      });
+      const target = categoryMissing ? 'category' : baseForm.getFieldState('priceAmount').invalid ? 'price' : null;
+      if (target !== null) {
+        requestAnimationFrame(() => {
+          const anchor = document.querySelector(`[data-focus-field="${target}"]`);
+          anchor?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+          anchor?.querySelector<HTMLElement>('input:not([type="hidden"]), select, textarea, button')?.focus({ preventScroll: true });
+        });
+      }
       return;
     }
 

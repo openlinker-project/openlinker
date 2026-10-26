@@ -290,6 +290,55 @@ describe('BulkEditModal', () => {
     expect(savedVariantParams(onSave, 'var_s').map((p) => p.id)).toEqual(['ean_men']);
   });
 
+  // Found live (Shoper -> Allegro E2E): with no category the only signal is the
+  // chip's warning triangle, so Save all used to do nothing at all on click.
+  it('explains a save blocked by a missing category instead of doing nothing', async () => {
+    const onSave = vi.fn();
+
+    renderWithProviders(
+      <BulkEditModal
+        open
+        onOpenChange={() => undefined}
+        row={makeRow()}
+        connection={connection}
+        canBrowseCategories={true}
+        currency="PLN"
+        defaults={DEFAULTS}
+        onSave={onSave}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Save all' }));
+
+    expect(await screen.findByText("Can't save yet - choose a category")).toBeInTheDocument();
+    expect(onSave).not.toHaveBeenCalled();
+  });
+
+  it('names the highlighted fields when the category is set but another field is invalid', async () => {
+    const onSave = vi.fn();
+    const row = makeRow();
+    row.resolvedCategoryId = '12345';
+
+    renderWithProviders(
+      <BulkEditModal
+        open
+        onOpenChange={() => undefined}
+        row={row}
+        connection={connection}
+        canBrowseCategories={true}
+        currency="PLN"
+        defaults={DEFAULTS}
+        onSave={onSave}
+      />,
+    );
+
+    fireEvent.change(screen.getByLabelText(/^Title/i), { target: { value: '' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save all' }));
+
+    expect(await screen.findByText("Can't save yet - fix the highlighted fields")).toBeInTheDocument();
+    expect(onSave).not.toHaveBeenCalled();
+  });
+
   it('blocks the save while an overridden category schema has not resolved (#1946)', async () => {
     const onSave = vi.fn();
     mockCategoryParameters = [eanSlot('ean_men')];
