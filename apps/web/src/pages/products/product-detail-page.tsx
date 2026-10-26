@@ -18,6 +18,8 @@ import {
   StockCorrectionDialog,
   StockHistorySection,
   StockPanel,
+  summarizeStock,
+  useStockViewQuery,
   type StockAdjustTarget,
 } from '../../features/inventory';
 import { useConnectionsQuery, type Connection } from '../../features/connections';
@@ -31,6 +33,18 @@ import {
   STOCK_STATUS_BADGE_TONE,
   STOCK_STATUS_LABEL,
 } from '../../features/products';
+
+/**
+ * What the product's headline stock figures say. Available to promise when the
+ * stock view can be read (the panel's own number), the master count only for a
+ * session that may not read the view, and never a number when OpenLinker does
+ * not know - "Unknown" is not zero.
+ */
+type HeadlineStock =
+  | { kind: 'loading' }
+  | { kind: 'unknown' }
+  | { kind: 'atp'; quantity: number }
+  | { kind: 'master'; quantity: number };
 
 const VIEW_PARAM = 'view';
 const VIEW_OVERVIEW = 'overview';
@@ -48,6 +62,9 @@ export function ProductDetailPage(): ReactElement {
   const [searchParams, setSearchParams] = useSearchParams();
   const query = useProductQuery(id);
   const inventoryQuery = useInventoryQuery({ productId: id });
+  const canReadStockView = usePermission('inventory:read');
+  // The same query the stock panel runs - one cache entry, one request.
+  const stockViewQuery = useStockViewQuery(id, { enabled: canReadStockView });
 
   const activeView = searchParams.get(VIEW_PARAM) === VIEW_CONTENT ? VIEW_CONTENT : VIEW_OVERVIEW;
   const setActiveView = useCallback(
@@ -130,8 +147,22 @@ export function ProductDetailPage(): ReactElement {
 
   const totalAvailable = inventoryItems.reduce((sum, item) => sum + item.availableQuantity, 0);
   const oversoldCount = inventoryItems.filter((item) => item.availableQuantity < 0).length;
-  const availableTone = deriveAvailableTone(totalAvailable, oversoldCount);
-  const stockStatus = deriveStockStatus(totalAvailable);
+  const stockSummary = stockViewQuery.data ? summarizeStock(stockViewQuery.data.variants) : null;
+  let headline: HeadlineStock;
+  if (!canReadStockView) headline = { kind: 'master', quantity: totalAvailable };
+  else if (stockViewQuery.isPending && !stockViewQuery.isError) headline = { kind: 'loading' };
+  else if (
+    stockSummary !== null &&
+    stockSummary.availableToPromise !== null &&
+    // A variant the view does not name is a variant OpenLinker cannot vouch for.
+    variants.every((variant) => stockViewQuery.data?.variants.some((v) => v.productVariantId === variant.id))
+  ) {
+    headline = { kind: 'atp', quantity: stockSummary.availableToPromise };
+  } else headline = { kind: 'unknown' };
+  const headlineQuantity = headline.kind === 'atp' || headline.kind === 'master' ? headline.quantity : null;
+  const availableTone: KpiCardTone =
+    headlineQuantity === null ? 'neutral' : deriveAvailableTone(headlineQuantity, oversoldCount);
+  const stockStatus = headlineQuantity === null ? null : deriveStockStatus(headlineQuantity);
 
   // Distinct stock locations across the product's inventory rows (fallback 1
   // when the master reports no location). Feeds the Available KPI sub-line.
@@ -153,14 +184,9 @@ export function ProductDetailPage(): ReactElement {
     0,
   );
 
-  const latestStockSync = inventoryItems.reduce<string | null>((latest, item) => {
-    if (!latest || item.updatedAt > latest) return item.updatedAt;
-    return latest;
-  }, null);
-
   return (
     <PageLayout
-      backTo={{ to: '/products', label: 'Products' }}
+      backTo={{ to: '/products', label: 'Products', 'data-testid': 'stock-back-to-products' }}
       eyebrow="Products"
       title={<EntityLabel id={product.id} name={product.name} />}
     >
@@ -175,9 +201,15 @@ export function ProductDetailPage(): ReactElement {
             <ProductGallery images={product.images ?? []} name={product.name} />
             <div className="product-detail-hero__body">
               <div className="product-detail-hero__badges">
-                <StatusBadge compact withDot tone={STOCK_STATUS_BADGE_TONE[stockStatus]}>
-                  {STOCK_STATUS_LABEL[stockStatus]}
-                </StatusBadge>
+                {stockStatus !== null ? (
+                  <StatusBadge compact withDot tone={STOCK_STATUS_BADGE_TONE[stockStatus]}>
+                    {STOCK_STATUS_LABEL[stockStatus]}
+                  </StatusBadge>
+                ) : (
+                  <StatusBadge compact withDot tone="neutral" data-testid="product-stock-badge-unknown">
+                    {headline.kind === 'loading' ? 'Checking stock' : 'Stock unknown'}
+                  </StatusBadge>
+                )}
                 <StatusBadge compact tone="neutral">
                   {variants.length} variant{variants.length === 1 ? '' : 's'}
                 </StatusBadge>
@@ -221,8 +253,18 @@ export function ProductDetailPage(): ReactElement {
               <KpiCard
                 label="Available"
                 tone={availableTone}
-                value={totalAvailable}
-                description={availableDescription}
+                value={headlineQuantity ?? (headline.kind === 'loading' ? '…' : 'Unknown')}
+                description={
+                  headline.kind === 'atp'
+                    ? oversoldCount > 0
+                      ? `available to promise · ${oversoldCount} oversold`
+                      : 'available to promise'
+                    : headline.kind === 'unknown'
+                      ? "couldn't be worked out - not zero"
+                      : headline.kind === 'loading'
+                        ? 'working out available to promise'
+                        : availableDescription
+                }
               />
               <KpiCard label="Variants" value={variants.length} />
               <KpiCard label="Listings" value={totalListings} />
@@ -282,15 +324,9 @@ export function ProductDetailPage(): ReactElement {
             <div className="detail-section__title-row">
               <h3 className="detail-section__title">
                 {isSingleVariant
-                  ? 'Listed on'
+                  ? 'Variants & stock'
                   : `Variants & stock${variants.length > 0 ? ` (${variants.length})` : ''}`}
               </h3>
-              {latestStockSync ? (
-                <span className="sync-freshness">
-                  <span className="sync-freshness__dot" aria-hidden="true"></span>
-                  Stock synced <TimeDisplay iso={latestStockSync} />
-                </span>
-              ) : null}
             </div>
             {inventoryQuery.isLoading ? (
               <LoadingState
@@ -316,6 +352,7 @@ export function ProductDetailPage(): ReactElement {
                   inventoryItems={inventoryItems}
                   canAdjust={canAdjustStock}
                   onAdjust={setAdjustTarget}
+                  masterConnectionId={product.externalIds?.[0]?.connectionId ?? null}
                 />
                 <h4 className="av-subtitle">Listings &amp; prices</h4>
                 {isSingleVariant ? (

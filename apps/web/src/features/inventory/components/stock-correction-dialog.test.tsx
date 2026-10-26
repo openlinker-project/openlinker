@@ -199,6 +199,35 @@ describe('StockCorrectionDialog', () => {
     expect(second.confirmLargeChange).toBe(true);
   });
 
+  it('should show the server figures in the large-change block', async () => {
+    const correctStock = vi.fn().mockRejectedValueOnce(
+      new ApiError('Confirm', 409, {
+        code: 'confirmation-required',
+        requestedDelta: 120,
+        currentQuantity: 300,
+        absoluteThresholdUnits: 50,
+        relativeThreshold: 0.5,
+      }),
+    );
+    renderDialog({ correctStock });
+    await screen.findByTestId('stock-correction-dialog');
+    await userEvent.type(screen.getByTestId('stock-correction-quantity'), '7');
+    await userEvent.click(screen.getByTestId('stock-correction-submit'));
+
+    const block = await screen.findByTestId('stock-correction-large-change');
+    expect(block).toHaveTextContent('+120 units');
+    expect(block).toHaveTextContent('current count of 300');
+    expect(block).toHaveTextContent('more than 50 units');
+    expect(block).toHaveTextContent('50% of the current count');
+  });
+
+  it('should put the mode test ids on the clickable option', async () => {
+    renderDialog({});
+    await screen.findByTestId('stock-correction-dialog');
+    expect(screen.getByTestId('stock-correction-mode-delta')).toHaveAttribute('role', 'radio');
+    expect(screen.getByTestId('stock-correction-mode-set')).toHaveAttribute('role', 'radio');
+  });
+
   it('should show no confirmation time when the master reported none', async () => {
     renderDialog({});
     await screen.findByTestId('stock-correction-dialog');

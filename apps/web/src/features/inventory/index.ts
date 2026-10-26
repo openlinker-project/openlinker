@@ -85,4 +85,4 @@ export { StockPanel, type StockPanelProps, type StockAdjustTarget } from './comp
 // #3567 - the manual stock correction dialog opened from the panel's `onAdjust`.
 export { StockCorrectionDialog } from './components/stock-correction-dialog';
 export { useStockViewQuery } from './hooks/use-stock-view-query';
-export { deriveAtpStatus, type AtpStatus } from './lib/stock-view';
+export { deriveAtpStatus, summarizeStock, type AtpStatus, type StockSummary } from './lib/stock-view';

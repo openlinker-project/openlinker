@@ -43,6 +43,8 @@ export interface InventoryMovementRow {
   quantityAfter: number | null;
   sourceKind: InventoryMovementSourceKind | null;
   sourceRef: string | null;
+  /** Human label for the source: the order number or the return number. Absent on older servers. */
+  sourceLabel?: string | null;
   operatorReason: string | null;
   note: string | null;
   /** The user who made a manual correction. */

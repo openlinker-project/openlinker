@@ -11,8 +11,9 @@
  */
 import { useEffect, useState, type ReactElement } from 'react';
 import { useSearchParams } from 'react-router-dom';
+import { AccessGate } from '../../shared/ui/access-gate';
 import { PageLayout } from '../../shared/ui/page-layout';
-import { ErrorState } from '../../shared/ui/feedback-state';
+import { AccessDeniedState, ErrorState } from '../../shared/ui/feedback-state';
 import { DataTableSkeleton } from '../../shared/ui/data-table-skeleton';
 import { Alert } from '../../shared/ui/alert';
 import { Button } from '../../shared/ui/button';
@@ -34,6 +35,7 @@ import {
 } from '../../features/inventory/lib/stock-movement-copy';
 import {
   hasActiveMovementFilters,
+  hasMovementScope,
   readMovementUrlState,
   toMovementFilters,
   type MovementChip,
@@ -42,7 +44,34 @@ import {
 const PAGE_SIZE = 20;
 const SEARCH_DEBOUNCE_MS = 300;
 
+const PAGE_COPY = {
+  eyebrow: 'Products',
+  title: 'Stock movement history',
+  description:
+    "Every applied, refused, or unconfirmed change to a variant's stock — plus the reservations that only promise it.",
+} as const;
+
 export function InventoryMovementsPage(): ReactElement {
+  // The history read is inventory:read (admin, operator, viewer): a session
+  // without it is told so, instead of meeting a failed request it cannot fix.
+  return (
+    <AccessGate
+      require="inventory:read"
+      fallback={
+        <PageLayout {...PAGE_COPY}>
+          <AccessDeniedState
+            title="Stock history is not available for your role"
+            message="Stock movements are visible to admins, operators and viewers. Ask an administrator if you need them."
+          />
+        </PageLayout>
+      }
+    >
+      <InventoryMovementsContent />
+    </AccessGate>
+  );
+}
+
+function InventoryMovementsContent(): ReactElement {
   const [searchParams, setSearchParams] = useSearchParams();
   const state = readMovementUrlState(searchParams);
   const filters = toMovementFilters(state);
@@ -51,14 +80,17 @@ export function InventoryMovementsPage(): ReactElement {
   const connections = connectionsQuery.data ?? [];
   const connectionNames = new Map(connections.map((c) => [c.id, c.name]));
 
-  const update = (patch: Record<string, string | null>, keepOffset = false): void => {
+  // A chip, type, master or date change is a navigation the operator may want
+  // to undo with Back; only free-text search (one entry per keystroke burst)
+  // replaces the entry.
+  const update = (patch: Record<string, string | null>, keepOffset = false, replace = false): void => {
     const next = new URLSearchParams(searchParams);
     Object.entries(patch).forEach(([key, value]) => {
       if (value === null || value === '') next.delete(key);
       else next.set(key, value);
     });
     if (!keepOffset) next.delete('offset');
-    setSearchParams(next, { replace: true });
+    setSearchParams(next, { replace });
   };
 
   // The search input is local so typing is instant; only the settled value
@@ -66,7 +98,7 @@ export function InventoryMovementsPage(): ReactElement {
   const [searchInput, setSearchInput] = useState(state.search);
   const debouncedSearch = useDebouncedValue(searchInput, SEARCH_DEBOUNCE_MS);
   useEffect(() => {
-    if (debouncedSearch !== state.search) update({ search: debouncedSearch });
+    if (debouncedSearch !== state.search) update({ search: debouncedSearch }, false, true);
   }, [debouncedSearch]);
   useEffect(() => {
     setSearchInput(state.search);
@@ -76,10 +108,15 @@ export function InventoryMovementsPage(): ReactElement {
   const totalStage = useInventoryMovementsCountQuery(filters, query.data);
   const rows = query.data?.items ?? [];
   const active = hasActiveMovementFilters(state);
+  const scoped = hasMovementScope(state);
 
   const clearFilters = (): void => {
     setSearchInput('');
-    setSearchParams(new URLSearchParams(), { replace: true });
+    // Clearing filters keeps the scope the operator arrived with.
+    const next = new URLSearchParams();
+    if (state.productId !== '') next.set('productId', state.productId);
+    if (state.productVariantId !== '') next.set('productVariantId', state.productVariantId);
+    setSearchParams(next);
   };
 
   const selectChip = (chip: MovementChip): void =>
@@ -91,11 +128,7 @@ export function InventoryMovementsPage(): ReactElement {
   const partial = totalStage.total !== null && totalStage.total > rows.length;
 
   return (
-    <PageLayout
-      eyebrow="Products"
-      title="Stock movement history"
-      description="Every applied, refused, or unconfirmed change to a variant's stock — plus the reservations that only promise it."
-    >
+    <PageLayout {...PAGE_COPY}>
       <div className="toolbar stock-movements-toolbar">
         <div className="toolbar__group">
           <Input
@@ -187,10 +220,18 @@ export function InventoryMovementsPage(): ReactElement {
       </div>
 
       {state.productVariantId !== '' ? (
-        <p className="stock-movements-summary-line">
+        <p className="stock-movements-summary-line" data-testid="stock-movements-scope-variant">
           Showing one variant only.{' '}
           <Button tone="ghost" onClick={() => update({ productVariantId: null })}>
             Show all variants
+          </Button>
+        </p>
+      ) : null}
+      {state.productId !== '' ? (
+        <p className="stock-movements-summary-line" data-testid="stock-movements-scope-product">
+          Showing one product only.{' '}
+          <Button tone="ghost" onClick={() => update({ productId: null })}>
+            Show all products
           </Button>
         </p>
       ) : null}
@@ -213,11 +254,19 @@ export function InventoryMovementsPage(): ReactElement {
         />
       ) : rows.length === 0 ? (
         <div className="empty-state" data-testid="stock-movements-empty">
-          <h2>{active ? 'No stock movements match these filters' : 'No stock movements yet'}</h2>
+          <h2>
+            {active
+              ? 'No stock movements match these filters'
+              : scoped
+                ? `No stock movements recorded for this ${state.productVariantId !== '' ? 'variant' : 'product'} yet`
+                : 'No stock movements yet'}
+          </h2>
           <p>
             {active
               ? 'Try widening the date range or clearing a filter.'
-              : 'Movements appear here once stock changes in a master connection or OpenLinker adjusts it.'}
+              : scoped
+                ? 'Movements appear here once its stock changes in a master connection or OpenLinker adjusts it.'
+                : 'Movements appear here once stock changes in a master connection or OpenLinker adjusts it.'}
           </p>
           {active ? (
             <Button tone="secondary" data-testid="stock-movements-clear-filters" onClick={clearFilters}>

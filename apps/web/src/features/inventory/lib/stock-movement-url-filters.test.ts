@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   hasActiveMovementFilters,
+  hasMovementScope,
   readMovementUrlState,
   toMovementFilters,
 } from './stock-movement-url-filters';
@@ -10,6 +11,7 @@ describe('stock movement URL filters', () => {
     const state = readMovementUrlState(new URLSearchParams());
     expect(hasActiveMovementFilters(state)).toBe(false);
     expect(toMovementFilters(state)).toEqual({
+      productId: undefined,
       productVariantId: undefined,
       reasons: undefined,
       sourceConnectionId: undefined,
@@ -35,6 +37,16 @@ describe('stock movement URL filters', () => {
       productVariantId: 'v1',
     });
     expect(hasActiveMovementFilters(state)).toBe(true);
+  });
+
+  it('should read productId as a scope that is not an active filter', () => {
+    const state = readMovementUrlState(new URLSearchParams('productId=p1'));
+    expect(toMovementFilters(state).productId).toBe('p1');
+    expect(hasMovementScope(state)).toBe(true);
+    expect(hasActiveMovementFilters(state)).toBe(false);
+    const variant = readMovementUrlState(new URLSearchParams('productVariantId=v1'));
+    expect(hasMovementScope(variant)).toBe(true);
+    expect(hasActiveMovementFilters(variant)).toBe(false);
   });
 
   it('should bound the day by the local calendar, so 23:30 local on the To day is included', () => {

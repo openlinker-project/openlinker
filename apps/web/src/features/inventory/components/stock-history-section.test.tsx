@@ -1,8 +1,18 @@
 import { cleanup, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { createMockApiClient, renderWithProviders } from '../../../test/test-utils';
+import { createAuthenticatedSessionAdapter, createMockApiClient, renderWithProviders } from '../../../test/test-utils';
+
 import { StockHistorySection } from './stock-history-section';
+
+const SIGNED_IN = createAuthenticatedSessionAdapter();
+const PACKER = createAuthenticatedSessionAdapter({
+  id: 'user_p',
+  username: 'packer',
+  email: 'packer@example.com',
+  role: 'packer',
+  permissions: ['bench:write'],
+});
 
 const variants = [
   { id: 'v1', sku: 'KUB-BIA', attributes: { Kolor: 'biały' } },
@@ -15,7 +25,7 @@ describe('StockHistorySection', () => {
   it('should scope history to the chosen variant and link to the filtered global page', async () => {
     const listMovements = vi.fn().mockResolvedValue({ items: [], limit: 10, offset: 0 });
     const apiClient = createMockApiClient({ inventory: { listMovements } });
-    renderWithProviders(<StockHistorySection productId="p1" productName="Kubek" variants={variants} />, { apiClient });
+    renderWithProviders(<StockHistorySection productId="p1" productName="Kubek" variants={variants} />, { apiClient, sessionAdapter: SIGNED_IN });
 
     await waitFor(() =>
       expect(listMovements).toHaveBeenCalledWith(
@@ -46,9 +56,21 @@ describe('StockHistorySection', () => {
       Promise.resolve({ items: filters.kind === 'movements' ? [refused] : [], limit: 1, offset: 0 }),
     );
     const apiClient = createMockApiClient({ inventory: { listMovements } });
-    renderWithProviders(<StockHistorySection productId="p1" variants={variants} />, { apiClient });
+    renderWithProviders(<StockHistorySection productId="p1" variants={variants} />, { apiClient, sessionAdapter: SIGNED_IN });
 
     expect(await screen.findByTestId('stock-history-last-change-status')).toHaveTextContent('Refused');
     expect(listMovements).toHaveBeenCalledWith(expect.objectContaining({ kind: 'movements' }), { limit: 1, offset: 0 });
+  });
+
+  it('should say the history is not available, and send no read, for a role without inventory:read', async () => {
+    const listMovements = vi.fn();
+    const apiClient = createMockApiClient({ inventory: { listMovements } });
+    renderWithProviders(<StockHistorySection productId="p1" variants={variants} />, {
+      apiClient,
+      sessionAdapter: PACKER,
+    });
+
+    expect(await screen.findByTestId('stock-history-restricted')).toBeInTheDocument();
+    expect(listMovements).not.toHaveBeenCalled();
   });
 });

@@ -19,12 +19,15 @@
  */
 import { Fragment, useState, type ReactElement } from 'react';
 import { Link } from 'react-router-dom';
+import { ApiError } from '../../../shared/api/api-error';
+import { usePermission } from '../../../shared/auth/use-permission';
 import { Alert } from '../../../shared/ui/alert';
 import { Button } from '../../../shared/ui/button';
 import { StatusBadge } from '../../../shared/ui/status-badge';
 import { TimeDisplay } from '../../../shared/ui/time-display';
 import { STOCK_STATUS_BADGE_TONE, STOCK_STATUS_LABEL } from '../../products';
 import type { InventoryItem, StockViewVariant } from '../api/inventory.types';
+import { useConnectionNames } from '../hooks/use-connection-names';
 import { useStockViewQuery } from '../hooks/use-stock-view-query';
 import {
   deriveAtpStatus,
@@ -59,6 +62,11 @@ export interface StockPanelProps {
   /** Session may write stock. When false the button is disabled with a hint. */
   canAdjust: boolean;
   onAdjust?: (target: StockAdjustTarget) => void;
+  /**
+   * The connection that owns this product's stock, for the empty state's next
+   * step. Absent when the product has no source mapping to name.
+   */
+  masterConnectionId?: string | null;
 }
 
 const VIEWER_HINT = 'Only admins and operators can adjust stock.';
@@ -68,7 +76,7 @@ interface Row {
   key: string;
   label: string | null;
   stock: StockViewVariant | null;
-  state: StockRowState | 'loading';
+  state: StockRowState | 'loading' | 'restricted';
   masterAvailable: number;
   masterReserved: number;
 }
@@ -82,6 +90,7 @@ function buildRows(
   inventoryItems: readonly InventoryItem[],
   stockByVariant: Map<string, StockViewVariant> | null,
   pending: boolean,
+  restricted: boolean,
 ): Row[] {
   return variants.map((variant) => {
     const stock = stockByVariant?.get(variant.id) ?? null;
@@ -92,7 +101,8 @@ function buildRows(
       stock?.masterReserved ?? items.reduce((sum, item) => sum + item.reservedQuantity, 0);
     const labelValues = Object.values(variant.attributes ?? {});
     let state: Row['state'];
-    if (pending) state = 'loading';
+    if (restricted) state = 'restricted';
+    else if (pending) state = 'loading';
     else if (!stock || isAtpUnknown(stock)) state = 'unknown';
     else if (isVariantStaled(stock)) state = 'staled';
     else state = 'ok';
@@ -114,16 +124,24 @@ export function StockPanel({
   inventoryItems,
   canAdjust,
   onAdjust,
+  masterConnectionId = null,
 }: StockPanelProps): ReactElement {
-  const query = useStockViewQuery(productId);
+  // Available to promise is an inventory:read figure. A session without it (or
+  // one the server refuses mid-session) sees the master stock the page already
+  // holds and a plain notice - not "unknown, try again", which a retry never fixes.
+  const canReadStockView = usePermission('inventory:read');
+  const query = useStockViewQuery(productId, { enabled: canReadStockView });
+  const connectionNames = useConnectionNames();
   const [open, setOpen] = useState<ReadonlySet<string>>(new Set());
-  const pending = query.isPending && !query.isError;
-  const view = query.data ?? null;
+  const forbidden = query.error instanceof ApiError && query.error.isForbidden();
+  const restricted = !canReadStockView || forbidden;
+  const pending = !restricted && query.isPending && !query.isError;
+  const view = restricted ? null : (query.data ?? null);
   const stockByVariant = view ? new Map(view.variants.map((v) => [v.productVariantId, v])) : null;
-  const rows = buildRows(variants, inventoryItems, stockByVariant, pending);
+  const rows = buildRows(variants, inventoryItems, stockByVariant, pending, restricted);
   // A negative master figure means more was sold than the master holds.
   const oversoldCount = rows.filter((row) => row.masterAvailable < 0).length;
-  const anyUnknown = !pending && rows.some((row) => row.state === 'unknown');
+  const anyUnknown = !pending && !restricted && rows.some((row) => row.state === 'unknown');
   const summary = view ? summarizeStock(view.variants) : null;
   const staleVariants = view ? view.variants.filter((v) => v.isStaleSync) : [];
   const everythingEmpty =
@@ -144,12 +162,24 @@ export function StockPanel({
     return acc;
   }, null);
   const staleConnection = oldestStale?.positions.find((p) => p.sourceConnectionId)?.sourceConnectionId ?? null;
+  const staleConnectionName = staleConnection ? (connectionNames.get(staleConnection) ?? null) : null;
+  const masterName = masterConnectionId ? (connectionNames.get(masterConnectionId) ?? null) : null;
 
   return (
     <div data-testid="stock-panel" aria-busy={pending}>
       {!canAdjust ? (
         <Alert data-testid="stock-viewer-notice" tone="info" title="You have view-only access">
-          You can see stock and where each number comes from. Ask an admin or operator to adjust stock.
+          {VIEWER_HINT} You can see stock and where each number comes from.
+          <span id="stock-viewer-hint" className="sr-only">
+            {VIEWER_HINT}
+          </span>
+        </Alert>
+      ) : null}
+
+      {restricted ? (
+        <Alert data-testid="stock-restricted-notice" tone="info" title="Available to promise isn't shown to your role">
+          Held units, available to promise and channel figures are visible to admins, operators and viewers. The
+          master stock below is current.
         </Alert>
       ) : null}
 
@@ -200,7 +230,8 @@ export function StockPanel({
           {oldestStale.observedAt ? (
             <>
               {' '}
-              The last update arrived <TimeDisplay iso={oldestStale.observedAt} />.
+              The last update{staleConnectionName ? <> from {staleConnectionName}</> : null} arrived{' '}
+              <TimeDisplay iso={oldestStale.observedAt} />.
             </>
           ) : null}{' '}
           The numbers below may be behind the shop.
@@ -225,9 +256,20 @@ export function StockPanel({
         <div className="empty-state" data-testid="stock-empty">
           <h2>No stock recorded for this product yet</h2>
           <p>
-            The master hasn&apos;t reported stock for this product. Until it does, OpenLinker counts it as 0
-            available and channels show it as sold out.
+            {masterName ?? 'The master'} hasn&apos;t reported stock for this product. Until it does, OpenLinker
+            counts it as 0 available and channels show it as sold out.
           </p>
+          {masterConnectionId ? (
+            <div className="toolbar__group" style={{ justifyContent: 'center' }}>
+              <Link
+                className="button button--secondary"
+                to={`/connections/${encodeURIComponent(masterConnectionId)}`}
+                data-testid="stock-empty-open-connection"
+              >
+                Check the connection&apos;s stock sync
+              </Link>
+            </div>
+          ) : null}
         </div>
       ) : (
         <>
@@ -242,7 +284,9 @@ export function StockPanel({
             <div>
               <dt>Available to promise</dt>
               <dd className="av-summary__lead" data-testid="stock-summary-atp">
-                {pending ? (
+                {restricted ? (
+                  <span className="av-dash">—</span>
+                ) : pending ? (
                   <Skeleton width="3rem" />
                 ) : summary && summary.availableToPromise !== null ? (
                   summary.availableToPromise
@@ -268,7 +312,9 @@ export function StockPanel({
             <div>
               <dt>Held by OpenLinker</dt>
               <dd data-testid="stock-summary-held">
-                {pending ? (
+                {restricted ? (
+                  <span className="av-dash">—</span>
+                ) : pending ? (
                   <Skeleton width="2.5rem" />
                 ) : summary && summary.heldCounted !== null ? (
                   summary.heldCounted
@@ -301,7 +347,7 @@ export function StockPanel({
           </dl>
 
           <div className="data-table__container">
-            <table className="data-table av-table">
+            <table className="data-table av-table" data-testid="stock-variants-table">
               <caption className="sr-only">Stock and availability per variant</caption>
               <thead>
                 <tr>
@@ -409,7 +455,7 @@ function VariantRows({
             </>
           ) : null}
         </td>
-        <td data-testid={`stock-master-${key}`}>
+        <td data-label="Master stock" data-testid={`stock-master-${key}`}>
           {staled ? (
             <>
               <span className="av-num">0</span>{' '}
@@ -428,13 +474,13 @@ function VariantRows({
             </>
           )}
         </td>
-        <td data-testid={`stock-held-${key}`}>
+        <td data-label="Held by OpenLinker" data-testid={`stock-held-${key}`}>
           <HeldCell row={row} />
         </td>
-        <td data-testid={`stock-atp-${key}`}>
+        <td data-label="Available to promise" data-testid={`stock-atp-${key}`}>
           <AtpCell row={row} />
         </td>
-        <td className="data-table__cell--hide-below-768">
+        <td className="data-table__cell--hide-below-768" data-label="Channels">
           <ChannelsCell row={row} channelsStatus={channelsStatus} />
         </td>
         <td className="av-actions">
@@ -442,11 +488,17 @@ function VariantRows({
             tone="ghost"
             disabled={adjustDisabled}
             title={adjustHint}
+            aria-describedby={!canAdjust ? 'stock-viewer-hint' : undefined}
             data-testid={`stock-adjust-${key}`}
             onClick={() => onAdjust?.({ variant: row.variant, stock: row.stock })}
           >
             Adjust stock
           </Button>
+          {canAdjust && staled ? (
+            <span className="av-sub" data-testid={`stock-adjust-hint-${key}`}>
+              {adjustHint}
+            </span>
+          ) : null}
         </td>
       </tr>
       {!loading && stock ? (
@@ -468,6 +520,7 @@ function VariantRows({
 
 function HeldCell({ row }: { row: Row }): ReactElement {
   const { stock, state } = row;
+  if (state === 'restricted') return <span className="av-dash">—</span>;
   if (state === 'loading') return <Skeleton width="2.5rem" />;
   if (state === 'unknown' || !stock || stock.heldCounted === null) {
     return <span className="av-unknown">Couldn&apos;t read</span>;
@@ -502,6 +555,7 @@ function HeldCell({ row }: { row: Row }): ReactElement {
 
 function AtpCell({ row }: { row: Row }): ReactElement {
   const { stock, state } = row;
+  if (state === 'restricted') return <span className="av-dash">—</span>;
   if (state === 'loading') return <Skeleton width="3rem" />;
   if (state === 'unknown' || !stock || stock.availableToPromise === null) {
     return (
@@ -542,6 +596,7 @@ function ChannelsCell({
   channelsStatus: 'ok' | 'partial' | 'unavailable';
 }): ReactElement {
   const { stock, state } = row;
+  if (state === 'restricted') return <span className="av-dash">—</span>;
   if (state === 'loading') return <Skeleton width="5rem" />;
   if (channelsStatus === 'unavailable') return <span className="av-dash">Couldn&apos;t list channels</span>;
   if (!stock || stock.channels.length === 0) return <span className="av-dash">Not published</span>;

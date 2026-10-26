@@ -175,6 +175,19 @@ describe('ProductsListPage', () => {
     expect(screen.getByText('Another Product')).toBeInTheDocument();
   });
 
+  it('should carry the stock list test ids from the stock mockup on the table, rows and name links', async () => {
+    const mockApi = createMockApiClient({
+      products: { list: vi.fn().mockResolvedValue(sampleProducts) },
+    });
+
+    renderWithProviders(<ProductsListPage />, { apiClient: mockApi });
+
+    await screen.findByText('Test Product');
+    expect(screen.getByTestId('stock-list-table')).toBeInTheDocument();
+    const row = screen.getByTestId('stock-list-row-SKU-001');
+    expect(within(row).getByTestId('stock-list-open-SKU-001')).toHaveTextContent('Test Product');
+  });
+
   it('captures demo_products_viewed once with a result-count bucket on load (#1788)', async () => {
     const mockApi = createMockApiClient({
       products: { list: vi.fn().mockResolvedValue(sampleProducts) },

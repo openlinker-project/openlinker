@@ -150,16 +150,26 @@ function SourceCell({ row }: { row: InventoryMovementRow }): ReactElement {
   if (kind === null) return <span className="muted-text">-</span>;
   let ref: ReactNode = null;
   if (row.sourceRef) {
+    // Never the raw internal id as link text: the label is the order or
+    // return number, and the id survives only in the title for support.
     if (row.sourceKind === 'order') {
       ref = (
-        <Link className="mono-text" to={`/orders/${encodeURIComponent(row.sourceRef)}`}>
-          {row.sourceRef}
+        <Link
+          className="mono-text"
+          to={`/orders/${encodeURIComponent(row.sourceRef)}`}
+          title={row.sourceLabel ? undefined : row.sourceRef}
+        >
+          {row.sourceLabel ?? 'Order'}
         </Link>
       );
     } else if (row.sourceKind === 'return') {
       ref = (
-        <Link className="mono-text" to={`/returns/${encodeURIComponent(row.sourceRef)}`}>
-          {row.sourceRef}
+        <Link
+          className="mono-text"
+          to={`/returns/${encodeURIComponent(row.sourceRef)}`}
+          title={row.sourceLabel ? undefined : row.sourceRef}
+        >
+          {row.sourceLabel ?? 'Return'}
         </Link>
       );
     } else {
@@ -273,6 +283,12 @@ export function StockMovementsTable({
       rows={[...rows]}
       rowKey={(row) => `${row.kind}:${row.id}`}
       cardView={{
+        listTestId: 'stock-movements-table',
+        attributes: (row) => ({
+          'data-testid': 'stock-movement-row',
+          'data-movement-type': presentMovementType(row).token,
+          'data-movement-status': row.status,
+        }),
         title: (row) => <TypeCell row={row} />,
         subtitle: (row) => (
           <>

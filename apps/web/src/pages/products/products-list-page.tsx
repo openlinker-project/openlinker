@@ -832,7 +832,11 @@ export function ProductsListPage(): ReactElement {
               <ProductThumbnail src={product.images?.[0]} name={product.name} />
               <span className="products-cell-stack">
                 <span className="ds-row" style={{ gap: 'var(--space-2)', alignItems: 'center' }}>
-                  <Link to={product.id} className="product-row__name product-row__name--link">
+                  <Link
+                    to={product.id}
+                    className="product-row__name product-row__name--link"
+                    data-testid={`stock-list-open-${product.sku ?? product.id}`}
+                  >
                     {product.name}
                   </Link>
                   {(product.variantCount ?? 0) > 1 ? (
@@ -1426,6 +1430,8 @@ export function ProductsListPage(): ReactElement {
           <DataTable
             caption="Products"
             className="products-table"
+            tableTestId="stock-list-table"
+            rowAttributes={(product) => ({ 'data-testid': `stock-list-row-${product.sku ?? product.id}` })}
             columns={columns}
             rows={items}
             rowKey={(product) => product.id}

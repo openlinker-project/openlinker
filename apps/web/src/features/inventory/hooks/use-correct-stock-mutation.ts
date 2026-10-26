@@ -10,6 +10,7 @@
  */
 import { useMutation, useQueryClient, type UseMutationResult } from '@tanstack/react-query';
 import { useApiClient } from '../../../app/api/api-client-provider';
+import { productsQueryKeys } from '../../products';
 import { inventoryQueryKeys } from '../api/inventory.query-keys';
 import type { CorrectStockInput, CorrectStockResult } from '../api/inventory-correction.types';
 
@@ -33,6 +34,8 @@ export function useCorrectStockMutation(): UseMutationResult<
         queryClient.invalidateQueries({ queryKey: inventoryQueryKeys.stockViewAll() }),
         queryClient.invalidateQueries({ queryKey: inventoryQueryKeys.listAll() }),
         queryClient.invalidateQueries({ queryKey: inventoryQueryKeys.movementsAll() }),
+        // The products list, its KPIs and the product detail show stock too.
+        queryClient.invalidateQueries({ queryKey: productsQueryKeys.all }),
       ]);
     },
   });

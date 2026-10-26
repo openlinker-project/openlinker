@@ -30870,6 +30870,30 @@ legend.analytics-settings-dialog__label {
   row-gap: var(--space-2);
 }
 
+/* `.toolbar__group` is nowrap by default; five controls overflow at 1440 px
+   and push "To" out of sight (F-01), so the group wraps like the listings one. */
+.stock-movements-toolbar .toolbar__group {
+  flex-wrap: wrap;
+  align-items: flex-end;
+  row-gap: var(--space-2);
+}
+
+/* One filter per row on a phone (F-02). */
+@media (max-width: 767.98px) {
+  .stock-movements-toolbar .toolbar__group {
+    flex-direction: column;
+    align-items: stretch;
+    width: 100%;
+  }
+
+  .stock-movements-toolbar .stock-movements-search,
+  .stock-movements-toolbar .stock-movements-field,
+  .stock-movements-toolbar .stock-movements-field input[type='date'] {
+    width: 100%;
+    min-width: 0;
+  }
+}
+
 .stock-movements-field {
   display: inline-flex;
   flex-direction: column;
@@ -30948,8 +30972,19 @@ legend.analytics-settings-dialog__label {
 @media (max-width: 767.98px) {
   .av-summary { gap: var(--space-3) var(--space-4); }
   .variant-drawer__meta { grid-template-columns: minmax(0, 1fr); }
-  /* The table scrolls sideways at this width; keep the drawer pinned to the visible part. */
-  .av-detail-row .variant-drawer { position: sticky; left: var(--space-2); box-sizing: border-box; width: calc(100vw - 5rem); max-width: calc(100vw - 5rem); }
+  /* Stacked rows instead of a sideways-scrolling table (U9): each variant is a
+     block with its label/value pairs, so "Adjust stock" and the drawer are
+     reachable without horizontal scrolling. The header row stays for screen
+     readers only. */
+  .av-table thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+  .av-table, .av-table tbody, .av-table tr, .av-table td { display: block; width: 100%; box-sizing: border-box; }
+  .av-table tr.data-table__row { padding: var(--space-3) 0; border-bottom: 1px solid var(--border-subtle); }
+  .av-table td { padding: var(--space-1) var(--space-3); }
+  .av-table td[data-label] { display: flex; justify-content: space-between; align-items: baseline; gap: var(--space-3); text-align: right; }
+  .av-table td[data-label]::before { content: attr(data-label); color: var(--text-muted); font-size: 0.75rem; text-align: left; flex: none; }
+  .av-table td.data-table__cell--hide-below-768 { display: none; }
+  .av-table td.av-actions { text-align: left; white-space: normal; padding-top: var(--space-2); }
+  .av-detail-row[hidden] { display: none; }
 }
 
 .av-subtitle { margin: var(--space-4) 0 var(--space-2); font-size: 0.875rem; font-weight: 600; color: var(--text-secondary); }

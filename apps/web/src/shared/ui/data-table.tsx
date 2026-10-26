@@ -92,6 +92,17 @@ export interface DataTableCardView<Row> {
    * and its detail.
    */
   actions?: (row: Row) => ReactNode;
+  /**
+   * Stable test hook for the card list root, the mobile counterpart of
+   * `tableTestId` (#3568). Opt-in.
+   */
+  listTestId?: string;
+  /**
+   * Per-card attribute hook, the mobile counterpart of `rowAttributes`
+   * (#3568), spread onto the card's `<li>`. `className` and `onClick` are
+   * owned by the primitive and are not applied.
+   */
+  attributes?: (row: Row) => Record<string, string>;
 }
 
 /**
@@ -837,7 +848,7 @@ export function DataTable<Row>({
       ) : null}
 
       {renderCards && cardView ? (
-        <ul className="data-table__cards">
+        <ul className="data-table__cards" data-testid={cardView.listTestId}>
           {isEmpty ? (
             <li className="data-table__cards-empty">{emptyNode}</li>
           ) : (
@@ -881,6 +892,12 @@ export function DataTable<Row>({
   return scrollRegion;
 }
 
+function sanitizeCardAttributes(attributes: Record<string, string> | undefined): Record<string, string> {
+  if (!attributes) return {};
+  const reserved = new Set(['className', 'onClick', 'style', 'key']);
+  return Object.fromEntries(Object.entries(attributes).filter(([name]) => !reserved.has(name)));
+}
+
 interface DataTableCardProps<Row> {
   row: Row;
   cardView: DataTableCardView<Row>;
@@ -918,6 +935,7 @@ function DataTableCard<Row>({
 
   return (
     <li
+      {...sanitizeCardAttributes(cardView.attributes?.(row))}
       className={href ? 'data-table__card data-table__card--linked' : 'data-table__card'}
       onClick={onClick}
     >

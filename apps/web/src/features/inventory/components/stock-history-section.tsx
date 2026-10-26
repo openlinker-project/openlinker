@@ -13,6 +13,8 @@
  */
 import { useState, type ReactElement } from 'react';
 import { Link } from 'react-router-dom';
+import { ApiError } from '../../../shared/api/api-error';
+import { usePermission } from '../../../shared/auth/use-permission';
 import { Select } from '../../../shared/ui/select';
 import { ErrorState, LoadingState } from '../../../shared/ui/feedback-state';
 import { Button } from '../../../shared/ui/button';
@@ -53,24 +55,27 @@ export function StockHistorySection({
   const variant = variants.find((v) => v.id === selectedId) ?? variants[0];
   const variantId = variant?.id;
   const connectionNames = useConnectionNames();
+  // The history reads are inventory:read; a role without it is told so rather
+  // than shown a raw 403.
+  const canRead = usePermission('inventory:read');
 
   const filters = { productId, productVariantId: variantId };
   const rows = useInventoryMovementsQuery(
     filters,
     { limit: HISTORY_PAGE_SIZE, offset: 0 },
-    { enabled: variantId !== undefined },
+    { enabled: variantId !== undefined && canRead },
   );
   // Dedicated read, so "Last change" never depends on what the 10-row table
   // page happens to hold.
   const latest = useInventoryMovementsQuery(
     { ...filters, kind: 'movements' },
     { limit: 1, offset: 0 },
-    { enabled: variantId !== undefined },
+    { enabled: variantId !== undefined && canRead },
   );
   const promised = useInventoryMovementsQuery(
     { ...filters, kind: 'promised' },
     { limit: PROMISED_SCAN_LIMIT, offset: 0 },
-    { enabled: variantId !== undefined },
+    { enabled: variantId !== undefined && canRead },
   );
   const stock = useInventoryQuery(
     { productId, productVariantId: variantId, excludeStale: true },
@@ -78,6 +83,20 @@ export function StockHistorySection({
   );
 
   if (variant === undefined) return null;
+
+  const forbidden = rows.error instanceof ApiError && rows.error.isForbidden();
+  if (!canRead || forbidden) {
+    return (
+      <div className="panel" data-testid="stock-history">
+        <div className="panel__header">
+          <h3 style={{ margin: 0 }}>Stock history</h3>
+        </div>
+        <p className="muted-text" data-testid="stock-history-restricted">
+          Stock history is visible to admins, operators and viewers. Ask an administrator if you need it.
+        </p>
+      </div>
+    );
+  }
 
   const items = rows.data?.items ?? [];
   const lastChange = latest.data?.items[0] ?? null;
@@ -106,7 +125,6 @@ export function StockHistorySection({
         </div>
         <Select
           aria-label="Choose variant"
-          style={{ minWidth: '16rem' }}
           data-testid="stock-history-variant"
           value={variant.id}
           onChange={(event) => setSelectedId(event.target.value)}
