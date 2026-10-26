@@ -147,6 +147,36 @@ export {
 export { InventorySaleReversalService } from './application/services/inventory-sale-reversal.service';
 export { IInventoryMovementService } from './application/services/inventory-movement.service.interface';
 export { InventoryMovementService } from './application/services/inventory-movement.service';
+export { IInventoryCorrectionService } from './application/services/inventory-correction.service.interface';
+export { InventoryCorrectionService } from './application/services/inventory-correction.service';
+export {
+  CorrectionConfirmationRequiredError,
+  CorrectionContendedError,
+  InventoryCorrectionRefusedError,
+  InventoryCorrectionTargetRefusedError,
+  InventoryCorrectionVariantNotFoundError,
+} from './domain/exceptions/inventory-correction.errors';
+export {
+  InventoryCorrectionTargetRefusalReasonValues,
+  InventoryCorrectionPreconditionReasonValues,
+  InventoryCorrectionRefusalReasonValues,
+  InventoryCorrectionModeValues,
+  INVENTORY_CORRECTION_CONFIRM_ABSOLUTE_UNITS,
+  INVENTORY_CORRECTION_CONFIRM_RELATIVE_SHARE,
+  requiresLargeChangeConfirmation,
+} from './domain/types/inventory-correction.types';
+export type {
+  CorrectStockInput,
+  InventoryCorrectionAdjustmentOutcome,
+  InventoryCorrectionMaster,
+  InventoryCorrectionMode,
+  InventoryCorrectionPreconditionReason,
+  InventoryCorrectionRefusalReason,
+  InventoryCorrectionResult,
+  InventoryCorrectionStatus,
+  InventoryCorrectionTarget,
+  InventoryCorrectionTargetRefusalReason,
+} from './domain/types/inventory-correction.types';
 
 // Application Types
 export {

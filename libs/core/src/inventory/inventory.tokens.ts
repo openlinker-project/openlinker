@@ -55,3 +55,5 @@ export const INVENTORY_SALE_REVERSAL_SERVICE_TOKEN = Symbol('IInventorySaleRever
 // #3565 — the append-only stock movement ledger.
 export const INVENTORY_MOVEMENT_REPOSITORY_TOKEN = Symbol('InventoryMovementRepositoryPort');
 export const INVENTORY_MOVEMENT_SERVICE_TOKEN = Symbol('IInventoryMovementService');
+
+export const INVENTORY_CORRECTION_SERVICE_TOKEN = Symbol('IInventoryCorrectionService');
