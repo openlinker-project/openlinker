@@ -670,6 +670,45 @@ describe('InvoicingController', () => {
       });
     });
 
+    it('refused connection setting -> 422 carrying the adapter reason, so the panel can link to the connection', async () => {
+      orders.getOrderRecord.mockResolvedValue(makeOrderRecord());
+      invoiceService.getInvoice.mockResolvedValue(null);
+      const reason =
+        'The seller tax number on this connection is not the one registered with your eparagony account. Correct it in the connection settings, then retry (code 41).';
+      invoiceService.issueInvoice.mockRejectedValue(
+        Object.assign(new Error('eparagony.pl POST documents failed (400)'), {
+          failureMode: 'rejected',
+          failureCause: 'connection-setting-rejected',
+          reason,
+        }),
+      );
+      const error = await controller.issueInvoice(dto).catch((e: unknown) => e);
+      expect((error as UnprocessableEntityException).getResponse()).toEqual({
+        message: reason,
+        error: 'InvoiceIssueRejected',
+        failureCode: 'connection-setting-rejected',
+        failureReason: reason,
+      });
+    });
+
+    it('vouched provider reason -> 422 message carries the provider code', async () => {
+      orders.getOrderRecord.mockResolvedValue(makeOrderRecord());
+      invoiceService.getInvoice.mockResolvedValue(null);
+      invoiceService.issueInvoice.mockRejectedValue(
+        Object.assign(new Error('eparagony.pl POST documents failed (400)'), {
+          failureMode: 'rejected',
+          reasonIsOperatorSafe: true,
+          reason: 'The provider rejected the document (code 57).',
+        }),
+      );
+      const error = await controller.issueInvoice(dto).catch((e: unknown) => e);
+      expect((error as UnprocessableEntityException).getResponse()).toEqual({
+        message: 'The provider rejected the document (code 57).',
+        error: 'InvoiceIssueRejected',
+        failureCode: 'provider-rejected',
+      });
+    });
+
     it('OrderSnapshotUnavailableError from the service path -> 422 generic', async () => {
       orders.getOrderRecord.mockResolvedValue(makeOrderRecord());
       invoiceService.getInvoice.mockResolvedValue(null);
