@@ -60,7 +60,20 @@ import {
   FULFILLMENT_WORK_QUERY_SERVICE_TOKEN,
   type IFulfillmentWorkQueryService,
 } from '@openlinker/core/fulfillment';
-import { ORDER_TAG_SERVICE_TOKEN } from '@openlinker/core/orders';
+import type { Response } from 'express';
+import {
+  ORDER_CHANGE_SERVICE_TOKEN,
+  ORDER_TAG_SERVICE_TOKEN,
+  type IOrderChangeService,
+} from '@openlinker/core/orders';
+import { ORDER_CANCELLATION_SERVICE_TOKEN } from '../application/interfaces/order-cancellation.service.interface';
+import type { IOrderCancellationService } from '../application/interfaces/order-cancellation.service.interface';
+import {
+  CancelCorrectionFailedError,
+  OrderCancellationNoteRequiredError,
+  OrderCancellationNotFoundError,
+  OrderCancellationRefusedError,
+} from '../application/errors/order-cancellation.errors';
 
 import { SOURCE_FULFILLMENT_STATUS_SERVICE_TOKEN } from '../application/interfaces/source-fulfillment-status.service.interface';
 
@@ -77,6 +90,8 @@ describe('OrdersController', () => {
   let salesDocumentView: jest.Mocked<ISalesDocumentViewService>;
   let testFixtureService: jest.Mocked<IOrderTestFixtureService>;
   let fulfillmentWork: jest.Mocked<IFulfillmentWorkQueryService>;
+  let orderChanges: jest.Mocked<IOrderChangeService>;
+  let orderCancellation: jest.Mocked<IOrderCancellationService>;
 
   const mockOrder = new OrderRecord(
     'ol_order_001',
@@ -326,6 +341,17 @@ describe('OrdersController', () => {
             listForOrder: jest.fn().mockResolvedValue([]),
           },
         },
+        // #3540 - no open amendment unless a test says so.
+        {
+          provide: ORDER_CHANGE_SERVICE_TOKEN,
+          useValue: {
+            findOrderIdsWithOpenAmendment: jest.fn().mockResolvedValue(new Set<string>()),
+          },
+        },
+        {
+          provide: ORDER_CANCELLATION_SERVICE_TOKEN,
+          useValue: { cancelOrder: jest.fn(), confirmChange: jest.fn() },
+        },
       ],
     }).compile();
 
@@ -341,6 +367,8 @@ describe('OrdersController', () => {
     salesDocumentView = module.get(SALES_DOCUMENT_VIEW_SERVICE_TOKEN);
     testFixtureService = module.get(ORDER_TEST_FIXTURE_SERVICE_TOKEN);
     fulfillmentWork = module.get(FULFILLMENT_WORK_QUERY_SERVICE_TOKEN);
+    orderChanges = module.get(ORDER_CHANGE_SERVICE_TOKEN);
+    orderCancellation = module.get(ORDER_CANCELLATION_SERVICE_TOKEN);
   });
 
   describe('listOrders', () => {
@@ -1704,6 +1732,190 @@ describe('OrdersController', () => {
         controller.countOrders({ cancelled: false, phase: 'cancelled' })
       ).rejects.toThrow(/contradicts/);
       expect(repository.countMany).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('open amendment -> amending phase (#3540)', () => {
+    it('should derive the amending phase on the detail read when an order change is open', async () => {
+      repository.findById.mockResolvedValue(mockOrder);
+      orderChanges.findOrderIdsWithOpenAmendment.mockResolvedValue(new Set(['ol_order_001']));
+
+      const result = await controller.getOrder('ol_order_001');
+
+      expect(result.lifecyclePhase).toBe('amending');
+    });
+
+    it('should not derive amending when no order change is open', async () => {
+      repository.findById.mockResolvedValue(mockOrder);
+
+      const result = await controller.getOrder('ol_order_001');
+
+      expect(result.lifecyclePhase).not.toBe('amending');
+    });
+
+    it('should batch the amendment read once for a whole list page', async () => {
+      repository.findMany.mockResolvedValue({ items: [mockOrder], total: 1 });
+      orderChanges.findOrderIdsWithOpenAmendment.mockResolvedValue(new Set(['ol_order_001']));
+
+      const result = await controller.listOrders({ limit: 20, offset: 0 });
+
+      expect(orderChanges.findOrderIdsWithOpenAmendment).toHaveBeenCalledTimes(1);
+      expect(orderChanges.findOrderIdsWithOpenAmendment).toHaveBeenCalledWith(['ol_order_001']);
+      expect(result.items[0].lifecyclePhase).toBe('amending');
+    });
+  });
+
+  describe('cancelOrder (#3540)', () => {
+    const USER = { id: 'user-1', username: 'op', role: 'admin' } as never;
+    const cancelledResult = {
+      status: 'cancelled' as const,
+      changeId: 'change-1',
+      cancelledAt: new Date('2026-09-30T10:00:00.000Z'),
+      participants: [],
+      otherParticipantsRelayFailed: false,
+      voidedShipmentIds: [],
+      cancelledWorkIds: [],
+      stockRestoreEnqueued: true,
+      correctionProposal: null,
+      correctionUnavailableReason: null,
+    };
+    const response = { status: jest.fn() } as never as Response;
+
+    beforeEach(() => {
+      (response.status as jest.Mock).mockClear();
+    });
+
+    it('should 404 before touching the service when the order does not exist', async () => {
+      repository.findById.mockResolvedValue(null);
+
+      await expect(
+        controller.cancelOrder('ol_order_missing', { reason: 'fraud' }, USER, response)
+      ).rejects.toBeInstanceOf(NotFoundException);
+      expect(orderCancellation.cancelOrder).not.toHaveBeenCalled();
+    });
+
+    it('should stamp the actor from the session and send only the reason code and trimmed note', async () => {
+      repository.findById.mockResolvedValue(mockOrder);
+      orderCancellation.cancelOrder.mockResolvedValue(cancelledResult);
+
+      const result = await controller.cancelOrder(
+        'ol_order_001',
+        { reason: 'other', note: '  buyer phoned  ', acknowledgeAcceptedWork: true },
+        USER,
+        response
+      );
+
+      expect(orderCancellation.cancelOrder).toHaveBeenCalledWith({
+        internalOrderId: 'ol_order_001',
+        reason: 'other',
+        note: 'buyer phoned',
+        acknowledgeAcceptedWork: true,
+        actorUserId: 'user-1',
+      });
+      expect(result.cancelledAt).toBe('2026-09-30T10:00:00.000Z');
+      expect(response.status).not.toHaveBeenCalled();
+    });
+
+    it('should answer 202 when the channel has not answered', async () => {
+      repository.findById.mockResolvedValue(mockOrder);
+      orderCancellation.cancelOrder.mockResolvedValue({
+        ...cancelledResult,
+        status: 'pending',
+        cancelledAt: null,
+      });
+
+      const result = await controller.cancelOrder('ol_order_001', { reason: 'fraud' }, USER, response);
+
+      expect(response.status).toHaveBeenCalledWith(202);
+      expect(result.status).toBe('pending');
+      expect(result.cancelledAt).toBeNull();
+    });
+
+    it.each([
+      'ORDER_ALREADY_CANCELLED',
+      'ORDER_ALREADY_SHIPPED',
+      'ORDER_HAS_FISCAL_RECEIPT',
+      'INVOICE_NOT_SETTLED',
+      'ORDER_CANCEL_IN_FLIGHT',
+      'ORDER_WORK_ACCEPTED_NEEDS_ACK',
+      'ORDER_CANCEL_CONTENDED',
+      'LABEL_NOT_VOIDABLE',
+      'CHANNEL_REFUSED_CANCEL',
+    ] as const)('should map a %s refusal to a 409 carrying that machine code', async (code) => {
+      repository.findById.mockResolvedValue(mockOrder);
+      orderCancellation.cancelOrder.mockRejectedValue(
+        new OrderCancellationRefusedError(code, 'operator message')
+      );
+
+      const error = await controller
+        .cancelOrder('ol_order_001', { reason: 'fraud' }, USER, response)
+        .catch((e: unknown) => e);
+
+      expect(error).toBeInstanceOf(ConflictException);
+      expect((error as ConflictException).getResponse()).toMatchObject({
+        error: code,
+        message: 'operator message',
+      });
+    });
+
+    it('should map a missing note for other to 400', async () => {
+      repository.findById.mockResolvedValue(mockOrder);
+      orderCancellation.cancelOrder.mockRejectedValue(new OrderCancellationNoteRequiredError());
+
+      await expect(
+        controller.cancelOrder('ol_order_001', { reason: 'other' }, USER, response)
+      ).rejects.toBeInstanceOf(BadRequestException);
+    });
+  });
+
+  describe('confirmChange (#3540)', () => {
+    const USER = { id: 'user-1', username: 'op', role: 'admin' } as never;
+    it('should pass the order, change and session actor to the service', async () => {
+      orderCancellation.confirmChange.mockResolvedValue({
+        changeId: 'change-9',
+        kind: 'order.cancel_correction',
+        status: 'confirmed',
+        invoiceRecordId: 'inv-2',
+        invoiceStatus: 'issued',
+        documentNumber: 'FK/1',
+      });
+
+      const result = await controller.confirmChange('ol_order_001', 'change-9', USER);
+
+      expect(orderCancellation.confirmChange).toHaveBeenCalledWith({
+        internalOrderId: 'ol_order_001',
+        changeId: 'change-9',
+        actorUserId: 'user-1',
+      });
+      expect(result.status).toBe('confirmed');
+    });
+
+    it('should map a foreign or unknown change to 404', async () => {
+      orderCancellation.confirmChange.mockRejectedValue(new OrderCancellationNotFoundError('nope'));
+
+      await expect(controller.confirmChange('ol_order_001', 'x', USER)).rejects.toBeInstanceOf(
+        NotFoundException
+      );
+    });
+
+    it('should map an already-confirmed change to 409 with its code', async () => {
+      orderCancellation.confirmChange.mockRejectedValue(
+        new OrderCancellationRefusedError('CHANGE_ALREADY_CONFIRMED', 'done')
+      );
+
+      await expect(controller.confirmChange('ol_order_001', 'x', USER)).rejects.toMatchObject({
+        response: expect.objectContaining({ error: 'CHANGE_ALREADY_CONFIRMED' }),
+      });
+    });
+
+    it('should map a provider failure to 422 CORRECTION_FAILED', async () => {
+      orderCancellation.confirmChange.mockRejectedValue(
+        new CancelCorrectionFailedError('provider said no', 'provider-rejected')
+      );
+
+      await expect(controller.confirmChange('ol_order_001', 'x', USER)).rejects.toMatchObject({
+        response: expect.objectContaining({ error: 'CORRECTION_FAILED' }),
+      });
     });
   });
 

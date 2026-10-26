@@ -7,7 +7,12 @@
  * @module apps/api/src/orders
  */
 import { Module } from '@nestjs/common';
-import { OrdersModule as CoreOrdersModule } from '@openlinker/core/orders';
+import {
+  OrderChangesModule as CoreOrderChangesModule,
+  OrdersModule as CoreOrdersModule,
+} from '@openlinker/core/orders';
+import { FiscalizationModule as CoreFiscalizationModule } from '@openlinker/core/fiscalization';
+import { FulfillmentModule as CoreFulfillmentModule } from '@openlinker/core/fulfillment';
 import { InvoicingModule as CoreInvoicingModule } from '@openlinker/core/invoicing';
 import { MappingsModule as CoreMappingsModule } from '@openlinker/core/mappings';
 import { FulfillmentModule as CoreFulfillmentModule } from '@openlinker/core/fulfillment';
@@ -27,6 +32,8 @@ import { OrderTagAssignmentsController } from './http/order-tag-assignments.cont
 import { OrderExportsController } from './http/order-exports.controller';
 import { SourceFulfillmentStatusService } from './application/services/source-fulfillment-status.service';
 import { SOURCE_FULFILLMENT_STATUS_SERVICE_TOKEN } from './application/interfaces/source-fulfillment-status.service.interface';
+import { OrderCancellationService } from './application/services/order-cancellation.service';
+import { ORDER_CANCELLATION_SERVICE_TOKEN } from './application/interfaces/order-cancellation.service.interface';
 
 @Module({
   // CoreMappingsModule (#1791) provides FULFILLMENT_ROUTING_SERVICE_TOKEN —
@@ -49,8 +56,17 @@ import { SOURCE_FULFILLMENT_STATUS_SERVICE_TOKEN } from './application/interface
   // CoreIntegrationsModule + CoreIdentifierMappingModule (#3365) supply the two
   // seams `SourceFulfillmentStatusService` composes: resolving the order's own
   // source adapter, and resolving the source-native order id to ask about.
+  //
+  // #3540 - the operator cancel composes `orders`, `shipping`, `invoicing`,
+  // `fiscalization` and `fulfillment`. It is composed HERE because `shipping`
+  // already imports `orders`, so core's own orders module cannot import it back.
+  // CoreOrderChangesModule is the ADR-044 leaf module that provides
+  // ORDER_CHANGE_SERVICE_TOKEN.
   imports: [
     CoreOrdersModule,
+    CoreOrderChangesModule,
+    CoreFiscalizationModule,
+    CoreFulfillmentModule,
     CoreInvoicingModule,
     CoreMappingsModule,
     CoreInventoryModule,
@@ -90,6 +106,8 @@ import { SOURCE_FULFILLMENT_STATUS_SERVICE_TOKEN } from './application/interface
   // `integrations` adapter, and doing that inside core would add an
   // `orders -> integrations` runtime edge for one read surface.
   providers: [
+    OrderCancellationService,
+    { provide: ORDER_CANCELLATION_SERVICE_TOKEN, useExisting: OrderCancellationService },
     SourceFulfillmentStatusService,
     {
       provide: SOURCE_FULFILLMENT_STATUS_SERVICE_TOKEN,
