@@ -311,6 +311,10 @@ export const benchParcelCopy = {
     hint: 'Scanning works either way. This records that you saw it, for this box.',
     failed: 'That did not save. The note stays open - press it again.',
     lockedOut: 'This box is assigned to another packer, so your reading was not saved.',
+    workCancelled: 'This box was cancelled, so your reading was not saved.',
+    noBuyerNote: 'The order no longer has a buyer note, so there is nothing to record.',
+    /** The buyer left a note but this installation keeps no note text. */
+    textNotStored: 'The buyer left a note, but this installation does not store its text.',
     readBy: (who: string, time: string): string => `Read by ${who} at ${time}`,
     you: 'you',
     someoneElse: 'a colleague',

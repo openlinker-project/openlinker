@@ -39,6 +39,12 @@ export interface BenchBuyerNoteProps {
   readonly parcel: BenchParcel;
   /** Whether this session may record a reading (`bench:write`). */
   readonly canAcknowledge: boolean;
+  /**
+   * The order has a note whose text this installation does not store (B-12).
+   * The parcel carries no flag for it, so the caller reads it off the worklist
+   * row. The card then says so and still offers the acknowledgement.
+   */
+  readonly textNotStored?: boolean;
 }
 
 function NoteIcon(): ReactElement {
@@ -59,16 +65,21 @@ function NoteIcon(): ReactElement {
   );
 }
 
-export function BenchBuyerNote({ parcel, canAcknowledge }: BenchBuyerNoteProps): ReactElement | null {
+export function BenchBuyerNote({
+  parcel,
+  canAcknowledge,
+  textNotStored = false,
+}: BenchBuyerNoteProps): ReactElement | null {
   const { session } = useSession();
   const acknowledge = useBenchBuyerNoteAcknowledgeMutation();
   const [expanded, setExpanded] = useState(false);
   const textRef = useRef<HTMLParagraphElement>(null);
   // Measured, never estimated: only the browser knows whether the clamp cut
   // anything off at this width and font size.
-  const overflowing = useClampOverflow(textRef, !expanded, [parcel.buyerNote]);
+  const noText = parcel.buyerNote === null || parcel.buyerNote.trim().length === 0;
+  const overflowing = useClampOverflow(textRef, !expanded && !noText, [parcel.buyerNote]);
 
-  if (parcel.buyerNote === null || parcel.buyerNote.trim().length === 0) return null;
+  if (noText && !textNotStored) return null;
 
   const currentUserId = session.user?.id ?? null;
   const read = parcel.buyerNoteAcknowledgedAt !== null;
@@ -101,28 +112,36 @@ export function BenchBuyerNote({ parcel, canAcknowledge }: BenchBuyerNoteProps):
             )}
           </StatusBadge>
         </div>
-        <p
-          className={`bench-buyer-note__text${expanded ? '' : ' bench-buyer-note__text--clamped'}`}
-          id={textId}
-          ref={textRef}
-          lang="und"
-          data-testid="bench-buyer-note-text"
-        >
-          {parcel.buyerNote}
-        </p>
-        <div className="bench-buyer-note__foot">
-          <Button
-            tone="ghost"
-            data-testid="bench-buyer-note-expand"
-            aria-expanded={expanded}
-            aria-controls={textId}
-            onClick={() => {
-              setExpanded((value) => !value);
-            }}
+        {noText ? (
+          <p className="bench-buyer-note__text" data-testid="bench-buyer-note-text-not-stored">
+            {COPY.textNotStored}
+          </p>
+        ) : (
+          <p
+            className={`bench-buyer-note__text${expanded ? '' : ' bench-buyer-note__text--clamped'}`}
+            id={textId}
+            ref={textRef}
+            lang="und"
+            data-testid="bench-buyer-note-text"
           >
-            {expanded ? COPY.showLess : COPY.showAll}
-          </Button>
-        </div>
+            {parcel.buyerNote}
+          </p>
+        )}
+        {overflowing || expanded ? (
+          <div className="bench-buyer-note__foot">
+            <Button
+              tone="ghost"
+              data-testid="bench-buyer-note-expand"
+              aria-expanded={expanded}
+              aria-controls={textId}
+              onClick={() => {
+                setExpanded((value) => !value);
+              }}
+            >
+              {expanded ? COPY.showLess : COPY.showAll}
+            </Button>
+          </div>
+        ) : null}
       </section>
     );
   }
@@ -145,17 +164,23 @@ export function BenchBuyerNote({ parcel, canAcknowledge }: BenchBuyerNoteProps):
           {wholeOrder ? COPY.metaWholeOrder : COPY.meta}
         </span>
       </div>
-      <p
-        className={`bench-buyer-note__text${
-          !expanded ? ' bench-buyer-note__text--clamped' : ''
-        }`}
-        id={textId}
-        ref={textRef}
-        lang="und"
-        data-testid="bench-buyer-note-text"
-      >
-        {parcel.buyerNote}
-      </p>
+      {noText ? (
+        <p className="bench-buyer-note__text" data-testid="bench-buyer-note-text-not-stored">
+          {COPY.textNotStored}
+        </p>
+      ) : (
+        <p
+          className={`bench-buyer-note__text${
+            !expanded ? ' bench-buyer-note__text--clamped' : ''
+          }`}
+          id={textId}
+          ref={textRef}
+          lang="und"
+          data-testid="bench-buyer-note-text"
+        >
+          {parcel.buyerNote}
+        </p>
+      )}
       {others.length > 0 ? (
         <p className="bench-buyer-note__others" data-testid="bench-buyer-note-others">
           {others
@@ -175,7 +200,13 @@ export function BenchBuyerNote({ parcel, canAcknowledge }: BenchBuyerNoteProps):
       ) : null}
       {failed ? (
         <p className="bench-buyer-note__error" role="alert" data-testid="bench-buyer-note-error">
-          {refusedReason === 'not-claimable-by-viewer' ? COPY.lockedOut : COPY.failed}
+          {refusedReason === 'not-claimable-by-viewer'
+            ? COPY.lockedOut
+            : refusedReason === 'work-cancelled'
+              ? COPY.workCancelled
+              : refusedReason === 'no-buyer-note'
+                ? COPY.noBuyerNote
+                : COPY.failed}
         </p>
       ) : null}
       <div className="bench-buyer-note__foot">

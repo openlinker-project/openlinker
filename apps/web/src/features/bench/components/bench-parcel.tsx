@@ -86,6 +86,9 @@ import type { BenchParcel, BenchParcelLine } from '../api/bench-parcel.types';
 import { usePermission } from '../../../shared/auth/use-permission';
 import { useBenchInteractive } from '../hooks/use-bench-interactive';
 import { useBenchParcelQuery } from '../hooks/use-bench-parcel-query';
+import { useQueryClient } from '@tanstack/react-query';
+import { benchQueryKeys } from '../api/bench-work.query-keys';
+import type { BenchWorkList } from '../api/bench-work.types';
 import { useBenchLayout } from '../hooks/use-bench-layout';
 import { useBenchPresenceQuery } from '../hooks/use-bench-presence';
 import { isUnreachableFailure, useBenchReachability } from '../hooks/use-bench-reachability';
@@ -157,6 +160,10 @@ export function BenchParcelView({
   onSwitchParcel,
 }: BenchParcelProps): ReactElement {
   const query = useBenchParcelQuery(workId);
+  // B-12: the parcel carries no "a note exists" flag, the worklist row does.
+  // Read from the rail's cache only (no extra request); absent means not known.
+  const queryClient = useQueryClient();
+  const cachedWork = queryClient.getQueryData<BenchWorkList>(benchQueryKeys.work());
   const verify = useBenchVerifyMutation();
   const reopen = useBenchReopenMutation();
   const undo = useBenchUndoMutation();
@@ -796,7 +803,11 @@ export function BenchParcelView({
       {/* #3539 (D12, mockup M2) - the buyer's own message, above the hero card.
           Read only; "I have read the note" records the reading for THIS parcel
           and never gates a scan or closes the box. */}
-      <BenchBuyerNote parcel={parcel} canAcknowledge={canWrite} />
+      <BenchBuyerNote
+        parcel={parcel}
+        canAcknowledge={canWrite}
+        textNotStored={cachedWork?.works.some((w) => w.workId === workId && w.hasBuyerNote) === true}
+      />
 
       {/* The mockup's hero card (#3401): the ONE line this box is waiting for
           next, with the visible scan field. Derived, never stored — see
