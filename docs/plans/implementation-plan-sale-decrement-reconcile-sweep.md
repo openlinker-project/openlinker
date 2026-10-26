@@ -42,7 +42,7 @@ Consequence to state in the docblock: a job that was enqueued and then died (`de
 ### Grace and age bounds
 
 - Grace `OL_SALE_DECREMENT_RECONCILE_GRACE_MS` (default 10 min, clamped): keeps the sweep off a work whose producer is still mid-enqueue.
-- Lookback `OL_SALE_DECREMENT_RECONCILE_LOOKBACK_MS` (default 7 days, clamped 1 h .. 14 days): the frontier is "no `sync_jobs` row", and `sync_jobs` is pruned (#2946, 30 days for succeeded), so without a floor pruned rows make old decremented works look lost and the first deploy re-decrements every pre-#3453 work. Found in `/tech-review`; the max stays below the retention.
+- Lookback `OL_SALE_DECREMENT_RECONCILE_LOOKBACK_MS` (default 10 days - above the 7 day Redis dedup-key TTL - clamped 1 h .. 14 days): the frontier is "no `sync_jobs` row", and `sync_jobs` is pruned (#2946, 30 days for succeeded), so without a floor pruned rows make old decremented works look lost and the first deploy re-decrements every pre-#3453 work. Found in `/tech-review`; the max stays below the retention.
 - Stuck horizon is not needed: an enqueued work leaves the frontier at once. A page in which every enqueue failed is reported (`sale_decrement_reconcile_page_all_failed`), as #2346 / #2712 surface starvation.
 - Budget derived at 50 per run (one unit is one local `sync_jobs` insert, cheaper than the relay sweep's 25).
 

@@ -41,10 +41,10 @@ describe('resolveSaleDecrementReconcileGraceMs', () => {
 });
 
 describe('resolveSaleDecrementReconcileLookbackMs', () => {
-  it('should return the 7 day default when the value is absent or malformed', () => {
-    expect(resolveSaleDecrementReconcileLookbackMs(undefined)).toBe(7 * DAY_MS);
-    expect(resolveSaleDecrementReconcileLookbackMs('abc')).toBe(7 * DAY_MS);
-    expect(resolveSaleDecrementReconcileLookbackMs('-1')).toBe(7 * DAY_MS);
+  it('should return the 10 day default, above the 7 day dedup-key TTL, when the value is absent or malformed', () => {
+    expect(resolveSaleDecrementReconcileLookbackMs(undefined)).toBe(10 * DAY_MS);
+    expect(resolveSaleDecrementReconcileLookbackMs('abc')).toBe(10 * DAY_MS);
+    expect(resolveSaleDecrementReconcileLookbackMs('-1')).toBe(10 * DAY_MS);
   });
 
   it('should honour a value inside the bounds', () => {

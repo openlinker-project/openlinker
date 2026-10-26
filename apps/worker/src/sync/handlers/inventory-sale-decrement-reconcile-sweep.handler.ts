@@ -32,9 +32,15 @@
  * frontier-as-query with no cursor and no `runBoundedSweep` - an advancing offset
  * over a shrinking set steps over rows, which here means a sale never lowered.
  *
- * Enqueueing under the SAME key means a race with a slow original enqueue is a
- * harmless `isExisting: true`. A job that was enqueued and then died is NOT
- * covered: it is an operator-visible dead job, and re-driving it here would loop.
+ * Enqueueing under the SAME key means a candidate can only answer
+ * `isExisting: true` when the Redis `jobdedup:` key outlives a job that has no
+ * `sync_jobs` row - a lost enqueue the key is now hiding, NOT a harmless race (a
+ * candidate is selected precisely because no row exists). It is therefore warned
+ * per candidate and counted toward the starvation check. The lookback default
+ * sits above that key's 7 day TTL, so the key has expired by the time a work
+ * is old enough to matter for most of the window. A job that was enqueued and
+ * then died is NOT covered: it is an operator-visible dead job, and re-driving
+ * it here would loop.
  *
  * ## Lane and scope
  *
@@ -122,7 +128,9 @@ export class InventorySaleDecrementReconcileSweepHandler implements SyncJobHandl
 
     const lockToken = await this.syncLock.acquire(lockKey, lockTtlMs);
     if (lockToken === null) {
-      this.logger.log(`inventory.saleDecrement.reconcileSweep skipped: ${lockKey} already in progress`);
+      this.logger.log(
+        `inventory.saleDecrement.reconcileSweep skipped: ${lockKey} already in progress`
+      );
       return { outcome: 'ok' };
     }
 
@@ -135,7 +143,7 @@ export class InventorySaleDecrementReconcileSweepHandler implements SyncJobHandl
       });
 
       let enqueued = 0;
-      let alreadyQueued = 0;
+      let stuckDedupKey = 0;
       let failed = 0;
 
       // Sequential: one local insert each, and a per-candidate failure must not
@@ -149,7 +157,15 @@ export class InventorySaleDecrementReconcileSweepHandler implements SyncJobHandl
             idempotencyKey: candidate.dedupeKey,
           });
           if (result.isExisting) {
-            alreadyQueued += 1;
+            // No `sync_jobs` row exists (that is the frontier), so a deduplicated
+            // enqueue means a dedup key with no job behind it: a stuck state, and
+            // the sale stays un-lowered until the key expires.
+            stuckDedupKey += 1;
+            this.logger.warn(
+              `sale_decrement_reconcile_stuck_dedup_key: work ${candidate.workId} ` +
+                `(order ${candidate.orderId}) has no decrement job, but enqueueing was ` +
+                'deduplicated; a stale dedup key is hiding the lost enqueue'
+            );
           } else {
             enqueued += 1;
             this.logger.warn(
@@ -167,18 +183,20 @@ export class InventorySaleDecrementReconcileSweepHandler implements SyncJobHandl
         }
       }
 
-      if (page.candidates.length > 0 && failed === page.candidates.length) {
-        // Oldest-first with no cursor: enough permanently failing candidates fill
-        // the page and starve the rest, so the condition is SURFACED.
+      if (page.candidates.length > 0 && enqueued === 0 && failed + stuckDedupKey > 0) {
+        // Oldest-first with no cursor: enough candidates that can never be enqueued
+        // (failing, or hidden behind a stale dedup key) fill the page and starve the
+        // rest, so the condition is SURFACED.
         this.logger.error(
           `sale_decrement_reconcile_page_all_failed: none of ${String(page.candidates.length)} ` +
-            `candidate(s) could be enqueued; the oldest will be re-read next tick`
+            `candidate(s) could be enqueued (failed=${String(failed)}, ` +
+            `stuckDedupKey=${String(stuckDedupKey)}); the oldest will be re-read next tick`
         );
       }
 
       this.logger.log(
         `inventory.saleDecrement.reconcileSweep: examined=${String(page.candidates.length)}, ` +
-          `enqueued=${String(enqueued)}, alreadyQueued=${String(alreadyQueued)}, ` +
+          `enqueued=${String(enqueued)}, stuckDedupKey=${String(stuckDedupKey)}, ` +
           `failed=${String(failed)}`
       );
 

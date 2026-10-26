@@ -57,8 +57,13 @@ export function resolveSaleDecrementReconcileGraceMs(raw: string | undefined): n
  * would lower the master's stock for an order long since handled. The default
  * sits well below the retention floor; the max stays below it too, so no
  * configuration can reopen the window.
+ *
+ * The default is ALSO above the 7 day Redis dedup-key TTL of the job enqueue
+ * (`RedisStreamsJobEnqueueService`): a key with no job behind it hides a lost
+ * enqueue from this pass until it expires, so a lookback at or below that TTL
+ * could let the key outlive the whole window and the sale never be lowered.
  */
-const SALE_DECREMENT_RECONCILE_LOOKBACK_DEFAULT_MS = 7 * 24 * 60 * 60 * 1000;
+const SALE_DECREMENT_RECONCILE_LOOKBACK_DEFAULT_MS = 10 * 24 * 60 * 60 * 1000;
 const SALE_DECREMENT_RECONCILE_LOOKBACK_MIN_MS = 60 * 60 * 1000;
 const SALE_DECREMENT_RECONCILE_LOOKBACK_MAX_MS = 14 * 24 * 60 * 60 * 1000;
 

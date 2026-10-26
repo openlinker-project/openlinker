@@ -70,7 +70,7 @@ describe('Sale-decrement reconcile frontier (#3629)', () => {
   /** An order record plus a work routed for it, the work aged `ageMinutes`. */
   const seedRoutedWork = async (
     orderId: string,
-    options: { ageMinutes?: number; cancelledOrder?: boolean } = {}
+    options: { ageMinutes?: number; cancelledOrder?: boolean; cancelledWork?: boolean } = {}
   ): Promise<FulfillmentWork> => {
     await createTestOrderRecord(harness.getDataSource(), {
       internalOrderId: orderId,
@@ -90,6 +90,11 @@ describe('Sale-decrement reconcile frontier (#3629)', () => {
         `UPDATE "fulfillment_works" SET "createdAt" = now() - ($1 || ' minutes')::interval WHERE "id" = $2`,
         [String(options.ageMinutes ?? 60), work.id]
       );
+    if (options.cancelledWork === true) {
+      await harness
+        .getDataSource()
+        .query(`UPDATE "fulfillment_works" SET "status" = 'cancelled' WHERE "id" = $1`, [work.id]);
+    }
     return work;
   };
 
@@ -141,6 +146,12 @@ describe('Sale-decrement reconcile frontier (#3629)', () => {
 
   it('should not select a work on a cancelled order', async () => {
     await seedRoutedWork('ol_order_cancelled', { cancelledOrder: true });
+
+    expect((await list()).candidates).toEqual([]);
+  });
+
+  it('should not select a cancelled work', async () => {
+    await seedRoutedWork('ol_order_work_cancelled', { cancelledWork: true });
 
     expect((await list()).candidates).toEqual([]);
   });

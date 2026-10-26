@@ -8,9 +8,9 @@
  *
  * "A work that already has a decrement job is never re-enqueued" is a property of
  * the frontier query (`NOT EXISTS` over `sync_jobs`), proved against real
- * Postgres in `inventory-sale-decrement-reconcile.int-spec.ts`; here the handler
- * additionally proves it enqueues under the SAME key, so a race with a slow
- * original enqueue is a harmless `isExisting`.
+ * Postgres in `fulfillment-sale-decrement-reconcile.int-spec.ts`; here the handler
+ * additionally proves it enqueues under the SAME key, and that a deduplicated
+ * enqueue (a stale dedup key with no job row) is warned and counted as starvation.
  *
  * @module apps/worker/src/sync/handlers/__tests__
  */
@@ -95,15 +95,39 @@ describe('InventorySaleDecrementReconcileSweepHandler (#3629)', () => {
     expect(errors).toEqual([]);
   });
 
-  it('should treat an already-queued job as progress, not a failure', async () => {
+  it('should warn about a deduplicated enqueue, because the frontier has no job row', async () => {
     reconcile.listWorksMissingSaleDecrementJob.mockResolvedValue({
-      candidates: [candidate('w-1')],
+      candidates: [candidate('w-1'), candidate('w-2')],
+    });
+    jobEnqueue.enqueueJob
+      .mockResolvedValueOnce({ jobId: 'j', isExisting: true })
+      .mockResolvedValueOnce({ jobId: 'j', isExisting: false });
+
+    await handler.execute(job());
+
+    const warn = handler['logger'].warn as jest.Mock;
+    expect(
+      warn.mock.calls.some(
+        ([m]) =>
+          String(m).includes('sale_decrement_reconcile_stuck_dedup_key') &&
+          String(m).includes('w-1')
+      )
+    ).toBe(true);
+    // One candidate was enqueued, so the page is not starved.
+    expect(errors).toEqual([]);
+  });
+
+  it('should surface a page in which every candidate is hidden behind a stale dedup key', async () => {
+    reconcile.listWorksMissingSaleDecrementJob.mockResolvedValue({
+      candidates: [candidate('w-1'), candidate('w-2')],
     });
     jobEnqueue.enqueueJob.mockResolvedValue({ jobId: 'j', isExisting: true });
 
     await handler.execute(job());
 
-    expect(errors).toEqual([]);
+    expect(errors.some((line) => line.includes('sale_decrement_reconcile_page_all_failed'))).toBe(
+      true
+    );
   });
 
   it('should skip a run whose lock is held by a peer', async () => {
@@ -180,11 +204,13 @@ describe('InventorySaleDecrementReconcileSweepHandler (#3629)', () => {
   it('should pass the default lookback and honour the environment override (#3629)', async () => {
     await handler.execute(job());
     expect(reconcile.listWorksMissingSaleDecrementJob).toHaveBeenLastCalledWith(
-      expect.objectContaining({ lookbackMs: 7 * 24 * 60 * 60 * 1000 })
+      expect.objectContaining({ lookbackMs: 10 * 24 * 60 * 60 * 1000 })
     );
 
     configService.get.mockImplementation((key: string) =>
-      key === 'OL_SALE_DECREMENT_RECONCILE_LOOKBACK_MS' ? String(2 * 24 * 60 * 60 * 1000) : undefined
+      key === 'OL_SALE_DECREMENT_RECONCILE_LOOKBACK_MS'
+        ? String(2 * 24 * 60 * 60 * 1000)
+        : undefined
     );
     await handler.execute(job());
     expect(reconcile.listWorksMissingSaleDecrementJob).toHaveBeenLastCalledWith(
