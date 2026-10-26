@@ -455,6 +455,9 @@ export class BulkListingSubmitService implements IBulkListingSubmitService {
    * snapshot says `ended`, so a variant whose offer is over can be listed again
    * (#1934/F2). Previously the query had no status predicate at all despite
    * this docstring, which made an ended offer block its variant permanently.
+   * It likewise excludes an `inactive` offer whose creation the marketplace
+   * refused (E2E-25) - that offer can never sell, and the "Fix this one" path
+   * must be able to list the variant again.
    *
    * One batched count query rather than
    * a per-variant fan-out; a variant with `count > 0` is skipped with a warning

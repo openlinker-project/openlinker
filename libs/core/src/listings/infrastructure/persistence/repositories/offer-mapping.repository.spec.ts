@@ -1093,4 +1093,84 @@ describe('OfferMappingRepository', () => {
       ]);
     });
   });
+
+  describe('refused-at-creation offers (E2E-25)', () => {
+    interface CountQb {
+      select: jest.Mock;
+      addSelect: jest.Mock;
+      leftJoin: jest.Mock;
+      innerJoin: jest.Mock;
+      where: jest.Mock;
+      andWhere: jest.Mock;
+      groupBy: jest.Mock;
+      getRawMany: jest.Mock;
+    }
+
+    function buildCountQb(rows: Array<Record<string, unknown>>): CountQb {
+      const qb = {} as CountQb;
+      for (const method of [
+        'select',
+        'addSelect',
+        'leftJoin',
+        'innerJoin',
+        'where',
+        'andWhere',
+        'groupBy',
+      ] as const) {
+        qb[method] = jest.fn().mockReturnValue(qb);
+      }
+      qb.getRawMany = jest.fn().mockResolvedValue(rows);
+      return qb;
+    }
+
+    function deadOfferCall(qb: CountQb): [string, Record<string, unknown>] | undefined {
+      return (qb.andWhere.mock.calls as Array<[string, Record<string, unknown>]>).find(
+        ([sql]) => typeof sql === 'string' && sql.includes('offer_creation_records')
+      );
+    }
+
+    it('should leave an inactive offer whose latest creation the marketplace refused out of the duplicate count', async () => {
+      const qb = buildCountQb([{ internalId: 'ol_variant_1', count: '1' }]);
+      (ormRepository.createQueryBuilder as jest.Mock).mockReturnValue(qb);
+
+      await repository.countByConnectionAndVariants('conn-uuid', ['ol_variant_1']);
+
+      const call = deadOfferCall(qb);
+      expect(call).toBeDefined();
+      const [sql, parameters] = call as [string, Record<string, unknown>];
+      // Negated, and null-safe over the LEFT join: a mapping with no snapshot
+      // row must still count.
+      expect(sql.startsWith('NOT (COALESCE(snapshot."publicationStatus" = ')).toBe(true);
+      expect(sql).toContain('ORDER BY ocr."createdAt" DESC');
+      expect(sql).toContain('LIMIT 1');
+      expect(parameters).toEqual({
+        deadOfferInactiveStatus: 'inactive',
+        deadOfferFailedStatus: 'failed',
+        deadOfferUnknownOutcomeCodes: [
+          'OFFER_CREATION_JOB_DEAD',
+          'POLL_TIMEOUT',
+          'OFFER_POLL_NOT_SUPPORTED',
+        ],
+      });
+    });
+
+    it('should return the dead offer ids for one variant with the same predicate, not negated', async () => {
+      const qb = buildCountQb([{ externalId: 'allegro-offer-dead' }]);
+      (ormRepository.createQueryBuilder as jest.Mock).mockReturnValue(qb);
+
+      const ids = await repository.findDeadFailedCreationOfferIds('conn-uuid', 'ol_variant_1');
+
+      expect(ids).toEqual(['allegro-offer-dead']);
+      expect(qb.innerJoin).toHaveBeenCalledWith(
+        OfferStatusSnapshotOrmEntity,
+        'snapshot',
+        expect.any(String)
+      );
+      const [sql] = deadOfferCall(qb) as [string, Record<string, unknown>];
+      expect(sql.startsWith('(COALESCE(snapshot."publicationStatus" = ')).toBe(true);
+      expect(qb.andWhere).toHaveBeenCalledWith('mapping.internalId = :internalId', {
+        internalId: 'ol_variant_1',
+      });
+    });
+  });
 });

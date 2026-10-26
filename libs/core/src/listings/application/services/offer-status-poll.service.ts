@@ -58,9 +58,11 @@ import {
 } from '../../listings.tokens';
 import type { OfferCreationRecord } from '../../domain/entities/offer-creation-record.entity';
 import { OfferCreationRecordRepositoryPort } from '../../domain/ports/offer-creation-record-repository.port';
-import type {
-  OfferCreationError,
-  OfferCreationStatus,
+import {
+  OFFER_CREATION_POLL_NOT_SUPPORTED_ERROR_CODE,
+  OFFER_CREATION_POLL_TIMEOUT_ERROR_CODE,
+  type OfferCreationError,
+  type OfferCreationStatus,
 } from '../../domain/types/offer-creation-record.types';
 import type { IOfferStatusPollService } from '../interfaces/offer-status-poll.service.interface';
 import { IBulkListingProgressService } from './bulk-listing-progress.service.interface';
@@ -148,7 +150,7 @@ export class OfferStatusPollService implements IOfferStatusPollService {
       await this.markFailedAtomically(
         record,
         `POLL_TIMEOUT after ${this.cadence.maxAttempts} attempts`,
-        'POLL_TIMEOUT'
+        OFFER_CREATION_POLL_TIMEOUT_ERROR_CODE
       );
       // A validator that outran the poll budget may still activate the offer;
       // reconcile the live snapshot so the operator view isn't left stale (#1760).
@@ -168,7 +170,11 @@ export class OfferStatusPollService implements IOfferStatusPollService {
     if (!isOfferStatusReader(adapter)) {
       const reason = new OfferPollNotSupportedException(input.connectionId);
       this.logger.error(reason.message);
-      await this.markFailedAtomically(record, reason.message, 'OFFER_POLL_NOT_SUPPORTED');
+      await this.markFailedAtomically(
+        record,
+        reason.message,
+        OFFER_CREATION_POLL_NOT_SUPPORTED_ERROR_CODE
+      );
       return { outcome: 'business_failure' };
     }
 
@@ -291,7 +297,7 @@ export class OfferStatusPollService implements IOfferStatusPollService {
         record,
         `Allegro never finished validating offer ${current.externalOfferId} after ` +
           `${this.cadence.maxAttempts} poll iterations`,
-        'POLL_TIMEOUT'
+        OFFER_CREATION_POLL_TIMEOUT_ERROR_CODE
       );
       this.logger.warn(
         `Poll cadence exhausted for record ${current.offerCreationRecordId} (offer ${current.externalOfferId}) — marked failed.`

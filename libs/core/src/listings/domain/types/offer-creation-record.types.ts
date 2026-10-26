@@ -81,6 +81,36 @@ export interface OfferCreationError {
 export const OFFER_CREATION_JOB_DEAD_ERROR_CODE = 'OFFER_CREATION_JOB_DEAD';
 
 /**
+ * OL-defined code for a record the creation poller gave up on because the
+ * marketplace never finished validating inside the poll budget. The platform
+ * may still activate the offer afterwards (#1760).
+ */
+export const OFFER_CREATION_POLL_TIMEOUT_ERROR_CODE = 'POLL_TIMEOUT';
+
+/**
+ * OL-defined code for a record the poller could not follow because the
+ * connection's adapter cannot read offer status. Nothing was learned about
+ * the offer itself.
+ */
+export const OFFER_CREATION_POLL_NOT_SUPPORTED_ERROR_CODE = 'OFFER_POLL_NOT_SUPPORTED';
+
+/**
+ * The `failed` record codes that do NOT mean the marketplace refused the
+ * offer - OpenLinker stopped watching, and the offer's real outcome is
+ * unknown (E2E-25).
+ *
+ * The duplicate guard reads a `failed` creation as "this offer is dead, the
+ * variant may be listed again" only when the failure was the marketplace's
+ * own refusal. An offer behind one of these codes may still go live, so
+ * re-listing its variant could put a second live offer on the channel.
+ */
+export const OFFER_CREATION_UNKNOWN_OUTCOME_ERROR_CODES: readonly string[] = [
+  OFFER_CREATION_JOB_DEAD_ERROR_CODE,
+  OFFER_CREATION_POLL_TIMEOUT_ERROR_CODE,
+  OFFER_CREATION_POLL_NOT_SUPPORTED_ERROR_CODE,
+];
+
+/**
  * Input contract for `OfferCreationRecordRepositoryPort.create`.
  *
  * Dedicated input type (not `Omit<OfferCreationRecord, ...>`) so the write
