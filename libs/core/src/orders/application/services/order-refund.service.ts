@@ -16,11 +16,22 @@ import { Inject, Injectable } from '@nestjs/common';
 import { Logger } from '@openlinker/shared/logging';
 
 import type { RefundRecord } from '../../domain/entities/refund-record.entity';
+import { decideRefundCeiling } from '../../domain/domain-services/refund-ceiling.domain-service';
 import { RefundCurrencyMismatchException } from '../../domain/exceptions/refund-currency-mismatch.exception';
 import { RefundRecordRepositoryPort } from '../../domain/ports/refund-record-repository.port';
+import {
+  describeRefundCeilingVerdict,
+  evaluateRefundCeiling,
+  REFUND_CEILING_ACKNOWLEDGED_LOG_TOKEN,
+  REFUND_CEILING_UNKNOWN_LOG_TOKEN,
+} from '../../domain/types/refund-ceiling.types';
 import type { CreateRefundRecordInput, RefundSummary } from '../../domain/types/refund-record.types';
+import { IOrderRecordService } from '../interfaces/order-record.service.interface';
 import type { IOrderRefundService } from '../interfaces/order-refund.service.interface';
-import { ORDER_REFUND_RECORD_REPOSITORY_TOKEN } from '../../orders.tokens';
+import {
+  ORDER_RECORD_SERVICE_TOKEN,
+  ORDER_REFUND_RECORD_REPOSITORY_TOKEN,
+} from '../../orders.tokens';
 
 @Injectable()
 export class OrderRefundService implements IOrderRefundService {
@@ -29,6 +40,8 @@ export class OrderRefundService implements IOrderRefundService {
   constructor(
     @Inject(ORDER_REFUND_RECORD_REPOSITORY_TOKEN)
     private readonly refundRepository: RefundRecordRepositoryPort,
+    @Inject(ORDER_RECORD_SERVICE_TOKEN)
+    private readonly orderRecords: IOrderRecordService,
   ) {}
 
   async recordRefund(input: CreateRefundRecordInput): Promise<RefundRecord> {
@@ -42,12 +55,54 @@ export class OrderRefundService implements IOrderRefundService {
       );
     }
 
+    await this.enforceRefundCeiling(input);
+
     const refund = await this.refundRepository.create(input);
     this.logger.log(
       `Recorded refund ${refund.id} for order ${input.internalOrderId}: ` +
         `${input.amount} ${input.currency} (${input.reason})`,
     );
     return refund;
+  }
+
+  /**
+   * Enforcement point B (#3289): defence in depth behind the returns
+   * pre-flight, and the only guard on the direct `POST /orders/:id/refunds`
+   * route. Reads the SAME predicate the returns path does. See
+   * `refund-ceiling.types.ts` for the `in_doubt` gap this cannot see.
+   */
+  private async enforceRefundCeiling(input: CreateRefundRecordInput): Promise<void> {
+    const [order, summaries] = await Promise.all([
+      this.orderRecords.getOrderRecord(input.internalOrderId),
+      this.refundRepository.summarizeByOrderIds([input.internalOrderId]),
+    ]);
+    const verdict = evaluateRefundCeiling({
+      context: {
+        order:
+          order === null
+            ? null
+            : {
+                totalAmount: order.totalAmount,
+                currency: order.currency,
+                taxTreatment: order.taxTreatment,
+                totalTaxTreatment: order.totalTaxTreatment,
+              },
+        alreadyRefunded: summaries.get(input.internalOrderId) ?? null,
+      },
+      requestedAmount: input.amount,
+      requestedCurrency: input.currency,
+    });
+    const disposition = decideRefundCeiling(
+      input.internalOrderId,
+      verdict,
+      input.acknowledgeAboveCeiling
+    );
+    const facts = describeRefundCeilingVerdict(input.internalOrderId, verdict);
+    if (disposition === 'acknowledged') {
+      this.logger.warn(`${REFUND_CEILING_ACKNOWLEDGED_LOG_TOKEN}: ${facts}`);
+    } else if (disposition === 'unknown') {
+      this.logger.warn(`${REFUND_CEILING_UNKNOWN_LOG_TOKEN}: ${facts} - proceeding unchecked`);
+    }
   }
 
   async getRefundsForOrder(internalOrderId: string): Promise<RefundRecord[]> {

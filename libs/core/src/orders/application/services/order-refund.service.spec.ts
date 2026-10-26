@@ -5,12 +5,18 @@ import { RefundRecord } from '../../domain/entities/refund-record.entity';
 import { RefundCurrencyMismatchException } from '../../domain/exceptions/refund-currency-mismatch.exception';
 import type { RefundRecordRepositoryPort } from '../../domain/ports/refund-record-repository.port';
 import type { CreateRefundRecordInput } from '../../domain/types/refund-record.types';
-import { ORDER_REFUND_RECORD_REPOSITORY_TOKEN } from '../../orders.tokens';
+import {
+  ORDER_RECORD_SERVICE_TOKEN,
+  ORDER_REFUND_RECORD_REPOSITORY_TOKEN,
+} from '../../orders.tokens';
+import { RefundCeilingExceededException } from '../../domain/exceptions/refund-ceiling-exceeded.exception';
+import type { IOrderRecordService } from '../interfaces/order-record.service.interface';
 import { OrderRefundService } from './order-refund.service';
 
 describe('OrderRefundService', () => {
   let service: OrderRefundService;
   let refundRepository: jest.Mocked<RefundRecordRepositoryPort>;
+  let orderRecords: { getOrderRecord: jest.Mock };
 
   const sampleRefund = new RefundRecord(
     'a1b2c3d4-0000-0000-0000-000000000000',
@@ -32,12 +38,19 @@ describe('OrderRefundService', () => {
       summarizeByOrderIds: jest.fn(),
     };
 
+    orderRecords = { getOrderRecord: jest.fn().mockResolvedValue(null) };
+    mockRefundRepository.summarizeByOrderIds.mockResolvedValue(new Map());
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         OrderRefundService,
         {
           provide: ORDER_REFUND_RECORD_REPOSITORY_TOKEN,
           useValue: mockRefundRepository,
+        },
+        {
+          provide: ORDER_RECORD_SERVICE_TOKEN,
+          useValue: orderRecords as unknown as IOrderRecordService,
         },
       ],
     }).compile();
@@ -97,6 +110,70 @@ describe('OrderRefundService', () => {
         RefundCurrencyMismatchException,
       );
       expect(refundRepository.create).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('recordRefund - refund ceiling (#3289)', () => {
+    const input: CreateRefundRecordInput = {
+      internalOrderId: 'ol_order_abc123',
+      amount: '60.00',
+      currency: 'PLN',
+      reason: 'withdrawal',
+      note: null,
+      recordedAt: new Date('2026-01-15T10:00:00Z'),
+    };
+
+    beforeEach(() => {
+      orderRecords.getOrderRecord.mockResolvedValue({
+        totalAmount: 100,
+        currency: 'PLN',
+        taxTreatment: null,
+        totalTaxTreatment: null,
+      });
+      refundRepository.findByOrderId.mockResolvedValue([]);
+      refundRepository.create.mockResolvedValue(sampleRefund);
+      refundRepository.summarizeByOrderIds.mockResolvedValue(
+        new Map([['ol_order_abc123', { count: 1, totalAmount: '50.00', currency: 'PLN' }]]),
+      );
+    });
+
+    it('should refuse a second refund that pushes the order past its total', async () => {
+      await expect(service.recordRefund(input)).rejects.toBeInstanceOf(
+        RefundCeilingExceededException,
+      );
+      expect(refundRepository.create).not.toHaveBeenCalled();
+    });
+
+    it('should record the same refund when acknowledgeAboveCeiling is set', async () => {
+      const warn = jest.spyOn(
+        (service as unknown as { logger: { warn: (m: string) => void } }).logger,
+        'warn',
+      );
+
+      await service.recordRefund({ ...input, acknowledgeAboveCeiling: true });
+
+      expect(refundRepository.create).toHaveBeenCalled();
+      expect(warn).toHaveBeenCalledWith(
+        expect.stringContaining('refund_ceiling_exceeded_acknowledged'),
+      );
+    });
+
+    it('should proceed and warn refund_ceiling_unknown when the order has no total', async () => {
+      orderRecords.getOrderRecord.mockResolvedValue({
+        totalAmount: null,
+        currency: null,
+        taxTreatment: null,
+        totalTaxTreatment: null,
+      });
+      const warn = jest.spyOn(
+        (service as unknown as { logger: { warn: (m: string) => void } }).logger,
+        'warn',
+      );
+
+      await service.recordRefund(input);
+
+      expect(refundRepository.create).toHaveBeenCalled();
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining('refund_ceiling_unknown'));
     });
   });
 

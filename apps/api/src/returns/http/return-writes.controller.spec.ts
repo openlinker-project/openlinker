@@ -15,6 +15,8 @@
 import 'reflect-metadata';
 import { ROLES_KEY } from '../../auth/decorators/roles.decorator';
 import type { AuthenticatedUser } from '../../auth/auth.types';
+import { ConflictException } from '@nestjs/common';
+import { RefundCeilingExceededException } from '@openlinker/core/orders';
 import { ReturnLineNotFoundError, ReturnNotFoundError } from '@openlinker/core/returns';
 import { ReturnWritesController } from './return-writes.controller';
 
@@ -45,6 +47,7 @@ describe('ReturnWritesController', () => {
   let refunds: Record<string, jest.Mock>;
   let proposals: Record<string, jest.Mock>;
   let orderRefunds: Record<string, jest.Mock>;
+  let orderRecords: Record<string, jest.Mock>;
   let controller: ReturnWritesController;
 
   beforeEach(() => {
@@ -62,7 +65,8 @@ describe('ReturnWritesController', () => {
     authorizeService = { authorize: jest.fn() };
     refunds = { triggerRefund: jest.fn() };
     proposals = { buildProposal: jest.fn(), previewProposal: jest.fn() };
-    orderRefunds = { recordRefund: jest.fn() };
+    orderRefunds = { recordRefund: jest.fn(), getRefundSummariesForOrders: jest.fn() };
+    orderRecords = { getOrderRecord: jest.fn() };
 
     controller = new ReturnWritesController(
       returns as never,
@@ -70,7 +74,8 @@ describe('ReturnWritesController', () => {
       authorizeService as never,
       refunds as never,
       proposals as never,
-      orderRefunds as never
+      orderRefunds as never,
+      orderRecords as never
     );
   });
 
@@ -252,6 +257,72 @@ describe('ReturnWritesController', () => {
       // insert twice and inflate the order's refund total.
       expect(orderRefunds.recordRefund).toHaveBeenCalledWith(
         expect.objectContaining({ idempotencyKey: `return:${RETURN_ID}:a+b` })
+      );
+    });
+
+    it('should answer 409 refund_ceiling_exceeded when the service refuses the excess', async () => {
+      returns.getReturn.mockResolvedValue({
+        id: RETURN_ID,
+        internalOrderId: 'ol_order_1',
+        lines: [{ id: LINE_ID }],
+      });
+      orderRecords.getOrderRecord.mockResolvedValue({
+        totalAmount: 100,
+        currency: 'PLN',
+        taxTreatment: null,
+        totalTaxTreatment: null,
+      });
+      orderRefunds.getRefundSummariesForOrders.mockResolvedValue(
+        new Map([['ol_order_1', { count: 1, totalAmount: '100.00', currency: 'PLN' }]])
+      );
+      refunds.triggerRefund.mockRejectedValue(
+        new RefundCeilingExceededException('ol_order_1', '100.00', '100.00', '19.99', 'PLN')
+      );
+
+      const error = await controller.confirmRefund(RETURN_ID, body, USER).catch((e: unknown) => e);
+
+      expect(error).toBeInstanceOf(ConflictException);
+      expect((error as ConflictException).getResponse()).toMatchObject({
+        code: 'refund_ceiling_exceeded',
+      });
+      expect(refunds.triggerRefund).toHaveBeenCalledWith(
+        RETURN_ID,
+        expect.objectContaining({
+          acknowledgeAboveCeiling: false,
+          refundCeilingContext: expect.objectContaining({
+            alreadyRefunded: { count: 1, totalAmount: '100.00', currency: 'PLN' },
+          }),
+        })
+      );
+    });
+
+    it('should forward acknowledgeAboveCeiling to both the trigger and the record write', async () => {
+      refunds.triggerRefund.mockResolvedValue({
+        moneyState: 'triggered',
+        claimedLineIds: ['a'],
+        providerMessage: null,
+        refundRecordIntent: {
+          returnId: RETURN_ID,
+          internalOrderId: 'ol_order_1',
+          amount: '19.99',
+          currency: 'PLN',
+          reason: 'other',
+          note: null,
+          executedBy: 'operator_out_of_band',
+          recordedAt: new Date('2026-08-02T00:00:00.000Z'),
+          providerRefundId: null,
+        },
+      });
+      orderRefunds.recordRefund.mockResolvedValue({ id: 'refund-1' });
+
+      await controller.confirmRefund(RETURN_ID, { ...body, acknowledgeAboveCeiling: true }, USER);
+
+      expect(refunds.triggerRefund).toHaveBeenCalledWith(
+        RETURN_ID,
+        expect.objectContaining({ acknowledgeAboveCeiling: true })
+      );
+      expect(orderRefunds.recordRefund).toHaveBeenCalledWith(
+        expect.objectContaining({ acknowledgeAboveCeiling: true })
       );
     });
 
