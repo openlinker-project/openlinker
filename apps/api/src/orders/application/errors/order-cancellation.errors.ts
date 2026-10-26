@@ -22,6 +22,7 @@ export const OrderCancellationRefusalCodeValues = [
   'CHANGE_EXPIRED',
   'CHANGE_NOT_OPEN',
   'CHANGE_KIND_NOT_CONFIRMABLE',
+  'CORRECTION_SUPERSEDED',
   'CORRECTION_IN_PROGRESS',
   'CORRECTION_NEEDS_RECONCILIATION',
 ] as const;
@@ -53,6 +54,15 @@ export class OrderCancellationNoteRequiredError extends Error {
   constructor() {
     super('A note is required when the cancellation reason is "other".');
     this.name = 'OrderCancellationNoteRequiredError';
+    Error.captureStackTrace(this, this.constructor);
+  }
+}
+
+/** A 400: the reason is not one of the closed cancel reasons. */
+export class OrderCancellationInvalidReasonError extends Error {
+  constructor(public readonly reason: string) {
+    super(`"${reason}" is not a valid cancellation reason.`);
+    this.name = 'OrderCancellationInvalidReasonError';
     Error.captureStackTrace(this, this.constructor);
   }
 }

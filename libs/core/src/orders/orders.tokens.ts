@@ -83,6 +83,9 @@ export const ORDER_HOLD_PROJECTION_RECONCILE_SERVICE_TOKEN = Symbol(
   'IOrderHoldProjectionReconcileService'
 );
 
+/** Cleanup a cancelled order owes, shared by the operator and observed paths (#3540). */
+export const ORDER_CANCELLATION_EFFECTS_SERVICE_TOKEN = Symbol('IOrderCancellationEffectsService');
+
 /** Fulfilment dispatch relay (#2401). `FulfillmentDispatchRelayService` binds here. */
 export const FULFILLMENT_DISPATCH_RELAY_SERVICE_TOKEN = Symbol('IFulfillmentDispatchRelayService');
 // One per-order sales-document read (#2516, ADR-065).

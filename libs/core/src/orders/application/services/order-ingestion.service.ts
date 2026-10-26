@@ -47,8 +47,11 @@ import {
   ORDER_ITEM_REF_RESOLVER_SERVICE_TOKEN,
   ORDER_LIFECYCLE_RELAY_SERVICE_TOKEN,
   ORDER_CHANGE_SERVICE_TOKEN,
+  ORDER_CANCELLATION_EFFECTS_SERVICE_TOKEN,
 } from '../../orders.tokens';
+import { IOrderCancellationEffectsService } from '../interfaces/order-cancellation-effects.service.interface';
 import { IOrderChangeService } from './order-change.service.interface';
+import type { OrderChange } from '../../domain/entities/order-change.entity';
 import { IOrderRecordService } from '../interfaces/order-record.service.interface';
 import { IOrderItemRefResolverService } from '../interfaces/order-item-ref-resolver.service.interface';
 import { IOrderLifecycleRelayService } from '../interfaces/order-lifecycle-relay.service.interface';
@@ -264,7 +267,12 @@ export class OrderIngestionService implements IOrderIngestionService {
     // operator's still-open cancel request. Appended last like every dependency
     // since. Leaf-module edge (`OrderChangesModule`), no cycle.
     @Inject(ORDER_CHANGE_SERVICE_TOKEN)
-    private readonly orderChanges: IOrderChangeService
+    private readonly orderChanges: IOrderChangeService,
+    // #3540 (B-18): the cleanup a cancelled order owes, run for an OBSERVED
+    // confirmation of an operator cancel request exactly as the operator path
+    // runs it. Same module, no cycle.
+    @Inject(ORDER_CANCELLATION_EFFECTS_SERVICE_TOKEN)
+    private readonly cancellationEffects: IOrderCancellationEffectsService
   ) {}
 
   async ingestOrders(
@@ -1771,6 +1779,12 @@ export class OrderIngestionService implements IOrderIngestionService {
         if (change.kind !== 'order.cancel_request') continue;
         if (await this.orderChanges.confirm(change.id, `source:${connectionId}`)) {
           await this.orderChanges.claimApplied(change.id);
+          // The operator path does this cleanup after the source's HTTP answer;
+          // here that answer never came back, so without it the work stays live,
+          // the hold stays held and an invoiced order gets no credit proposal
+          // (B-18). Idempotent, so a racing operator path is harmless. Only the
+          // confirm WINNER runs it: a loser's peer already owns the cleanup.
+          await this.runObservedCancelEffects(internalOrderId, change);
         }
       }
     } catch (error) {
@@ -1778,6 +1792,26 @@ export class OrderIngestionService implements IOrderIngestionService {
         `Could not confirm the open cancel request for order ${internalOrderId} from the source's cancellation: ${
           error instanceof Error ? error.message : String(error)
         }`
+      );
+    }
+  }
+
+  private async runObservedCancelEffects(
+    internalOrderId: string,
+    change: OrderChange
+  ): Promise<void> {
+    try {
+      const rawReason = change.payload?.['reason'];
+      await this.cancellationEffects.applyEffects({
+        internalOrderId,
+        cancelledAt: new Date(),
+        reason: typeof rawReason === 'string' ? rawReason : 'other',
+        actorUserId: change.requestedBy,
+      });
+    } catch (error) {
+      this.logger.error(
+        `Observed cancel of order ${internalOrderId} confirmed, but the cancellation cleanup failed`,
+        error instanceof Error ? error.stack : undefined
       );
     }
   }

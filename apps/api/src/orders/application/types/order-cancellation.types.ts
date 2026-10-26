@@ -7,7 +7,13 @@
  *
  * @module apps/api/src/orders/application/types
  */
-import type { OrderCancelReason } from '@openlinker/core/orders';
+import {
+  OrderCancelCorrectionUnavailableReasonValues,
+  type OrderCancelCorrectionProposal,
+  type OrderCancelCorrectionProposalLine,
+  type OrderCancelCorrectionUnavailableReason,
+  type OrderCancelReason,
+} from '@openlinker/core/orders';
 
 export interface CancelOrderInput {
   readonly internalOrderId: string;
@@ -47,29 +53,13 @@ export interface CancelParticipantOutcome {
 }
 
 /** One line of the credit proposal, as the confirm dialog shows it. */
-export interface CancelCorrectionProposalLine {
-  readonly originalLineNumber: number;
-  readonly name: string;
-  readonly previousQuantity: number;
-  readonly newQuantity: number;
-}
+export type CancelCorrectionProposalLine = OrderCancelCorrectionProposalLine;
 
-export interface CancelCorrectionProposal {
-  readonly changeId: string;
-  readonly invoiceRecordId: string;
-  readonly documentNumber: string | null;
-  readonly currency: string;
-  readonly lines: readonly CancelCorrectionProposalLine[];
-}
+export type CancelCorrectionProposal = OrderCancelCorrectionProposal;
 
 /** Why an invoiced order's credit proposal could not be built; the cancel still stands. */
-export const CancelCorrectionUnavailableReasonValues = [
-  'no-line-snapshot',
-  'not-fully-issued',
-  'proposal-failed',
-] as const;
-export type CancelCorrectionUnavailableReason =
-  (typeof CancelCorrectionUnavailableReasonValues)[number];
+export const CancelCorrectionUnavailableReasonValues = OrderCancelCorrectionUnavailableReasonValues;
+export type CancelCorrectionUnavailableReason = OrderCancelCorrectionUnavailableReason;
 
 export interface CancelOrderResult {
   /** `cancelled`: applied. `pending`: the channel's answer is unknown; the request stays open. */

@@ -198,6 +198,14 @@ describe('OrderChangeService', () => {
     expect(repository.decline).not.toHaveBeenCalled();
   });
 
+  it('should record an abandon reason as declinedReason on the expired row (abandon reason)', async () => {
+    repository.expire.mockResolvedValue(true);
+
+    await service.abandon('change-1', 'label-not-voidable');
+
+    expect(repository.expire).toHaveBeenCalledWith('change-1', expect.any(Date), 'label-not-voidable');
+  });
+
   describe('findOrderIdsWithOpenAmendment (#3540)', () => {
     it('should ask the repository for amendment REQUESTS only, never return.* kinds or correction proposals', async () => {
       repository.findOrderIdsWithOpenChanges.mockResolvedValue(new Set(['order-a']));
@@ -269,6 +277,40 @@ describe('OrderChangeService', () => {
         ['new', true],
         ['old', false],
       ]);
+    });
+
+    it('should keep an old correction proposal open until confirmed or abandoned (B-17)', async () => {
+      const old = new Date(Date.now() - 48 * 3_600_000);
+      const correction = new OrderChange(
+        'corr', ORDER_ID, 'order.cancel_correction', 'correction:cancel:o:i', 'requested',
+        null, 'user-1', old, null, null, null, null, old, old
+      );
+      repository.listByOrder.mockResolvedValue([correction]);
+
+      const [item] = await service.listOperatorChangesByOrder(ORDER_ID);
+
+      expect(item.open).toBe(true);
+    });
+
+    it('should reuse an old open correction proposal instead of expiring it (B-17)', async () => {
+      const old = new Date(Date.now() - 48 * 3_600_000);
+      const correction = new OrderChange(
+        'corr', ORDER_ID, 'order.cancel_correction', 'correction:cancel:o:i', 'requested',
+        null, 'user-1', old, null, null, null, null, old, old
+      );
+      repository.findOpenByTarget.mockResolvedValue(correction);
+
+      const result = await service.openOrReuse({
+        internalOrderId: ORDER_ID,
+        kind: 'order.cancel_correction',
+        targetRef: 'correction:cancel:o:i',
+        payload: null,
+        requestedBy: 'user-1',
+        requestedAt: new Date(),
+      });
+
+      expect(result.opened).toBe(false);
+      expect(repository.expire).not.toHaveBeenCalled();
     });
 
     it('should never report a terminal row open', async () => {

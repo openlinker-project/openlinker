@@ -144,7 +144,7 @@ describe('OrderLifecycleRelayService', () => {
     });
 
     expect(result.targets).toEqual([
-      { connectionId: 'ps-a', outcome: 'rejected', detail: 'boom' },
+      { connectionId: 'ps-a', outcome: 'rejected', detail: 'boom', adapterThrew: true },
       { connectionId: 'ps-b', outcome: 'applied', detail: undefined },
     ]);
   });

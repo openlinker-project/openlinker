@@ -538,6 +538,8 @@ export class ErliOrderSourceAdapter
         };
       }
 
+      // The cancel reason stays in OpenLinker (#3540): Erli has no confirmed cancel
+      // call, only the stock restore below, so `event.reason` has no field to ride.
       case 'cancelled': {
         if (!this.offerManager || !this.inventoryQuery) {
           return {

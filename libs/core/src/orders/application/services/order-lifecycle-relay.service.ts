@@ -203,7 +203,7 @@ export class OrderLifecycleRelayService implements IOrderLifecycleRelayService {
           `${input.internalOrderId}: ${detail}`,
         error instanceof Error ? error.stack : undefined
       );
-      return { connectionId, outcome: 'rejected', detail };
+      return { connectionId, outcome: 'rejected', detail, adapterThrew: true };
     }
   }
 

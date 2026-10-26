@@ -107,6 +107,8 @@ export class ShoperOrderStatusWriter implements OrderStatusWriteback {
         case 'dispatched':
           return await this.writeDispatched(event.externalOrderId, normalizeTrackingNumber(event.trackingNumber));
 
+        // No cancel is written at all, so there is nowhere for a cancel reason to
+        // go (#3540); it stays in OpenLinker.
         case 'cancelled':
           return await this.writeStatus(event.externalOrderId, 'cancelled');
 
