@@ -189,4 +189,59 @@ describe('order edits overlay - re-ingestion (integration, #3542)', () => {
     const ready = (await repository.findById(ORDER_ID)) as OrderRecord;
     expect(ready.orderEdits?.rev).toBe(1);
   });
+
+  describe('discount (#3543)', () => {
+    const discount = (amount: string, changeId: string): NonNullable<ApplyOrderEditInput['discount']> => ({
+      ...STAMP,
+      changeId,
+      amount,
+      currency: 'PLN',
+      perLine: [{ orderItemId: 'l1', amount }],
+    });
+
+    const total = (record: OrderRecord): number => (record.orderSnapshot.totals as { total: number }).total;
+
+    it('should survive a re-ingestion, and the channel keeps the price the buyer paid', async () => {
+      await repository.upsertWithLineItems(makeOrder(channelSnapshot('BOUGHT')), []);
+      await repository.applyOrderEdit({ internalOrderId: ORDER_ID, expectedRev: 0, discount: discount('6.00', 'd1') });
+
+      await repository.upsertWithLineItems(makeOrder(channelSnapshot('READY_FOR_PROCESSING')), []);
+
+      const record = (await repository.findById(ORDER_ID)) as OrderRecord;
+      expect(total(record)).toBe(24);
+      expect((record.orderSnapshot.totals as { discountTotal?: number }).discountTotal).toBe(6);
+      expect((record.orderSnapshot.items as Array<{ price: number }>)[0].price).toBe(8);
+      expect((record.channelSnapshot.totals as { total: number }).total).toBe(30);
+      expect((record.channelSnapshot.items as Array<{ price: number }>)[0].price).toBe(10);
+      expect(record.orderEdits?.discount?.changeId).toBe('d1');
+    });
+
+    it('should replace a second discount in the database, never stack it', async () => {
+      await repository.upsertWithLineItems(makeOrder(channelSnapshot('BOUGHT')), []);
+      await repository.applyOrderEdit({ internalOrderId: ORDER_ID, expectedRev: 0, discount: discount('6.00', 'd1') });
+      await repository.applyOrderEdit({ internalOrderId: ORDER_ID, expectedRev: 1, discount: discount('3.00', 'd2') });
+
+      const record = (await repository.findById(ORDER_ID)) as OrderRecord;
+
+      expect(total(record)).toBe(27);
+      expect(record.orderEdits?.discount).toMatchObject({ changeId: 'd2', amount: '3.00' });
+      expect(record.orderEdits?.rev).toBe(2);
+    });
+
+    it('should read the channel total again once the discount is set to zero, and keep the other edits', async () => {
+      await repository.upsertWithLineItems(makeOrder(channelSnapshot('BOUGHT')), []);
+      await repository.applyOrderEdit({
+        internalOrderId: ORDER_ID,
+        expectedRev: 0,
+        lines: { l1: { ...STAMP, quantity: 2 } },
+        discount: discount('4.00', 'd1'),
+      });
+      await repository.applyOrderEdit({ internalOrderId: ORDER_ID, expectedRev: 1, discount: discount('0.00', 'd2') });
+
+      const record = (await repository.findById(ORDER_ID)) as OrderRecord;
+
+      expect(total(record)).toBe(20);
+      expect((record.orderSnapshot.items as Array<{ quantity: number }>)[0].quantity).toBe(2);
+    });
+  });
 });

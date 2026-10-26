@@ -1,7 +1,7 @@
 /**
  * Order Edits Controller (#3542, D9)
  *
- * `POST /orders/:internalOrderId/edits/{address,lines,delivery-method}` - the
+ * `POST /orders/:internalOrderId/edits/{address,lines,delivery-method,discount}` - the
  * operator's post-import edits, saved in OpenLinker only (the channel keeps its
  * original) - and `GET .../edits`, the order beside the channel's own record.
  *
@@ -25,7 +25,11 @@ import {
   Post,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
-import { ORDER_RECORD_SERVICE_TOKEN, type IOrderRecordService } from '@openlinker/core/orders';
+import {
+  ORDER_RECORD_SERVICE_TOKEN,
+  RefundCeilingExceededException,
+  type IOrderRecordService,
+} from '@openlinker/core/orders';
 
 import { CurrentUser } from '../../auth/decorators/current-user.decorator';
 import { Roles } from '../../auth/decorators/roles.decorator';
@@ -42,15 +46,21 @@ import {
 import {
   EditOrderAddressRequestDto,
   EditOrderDeliveryMethodRequestDto,
+  EditOrderDiscountRequestDto,
   EditOrderLinesRequestDto,
 } from './dto/edit-order-request.dto';
-import { OrderEditResponseDto, OrderEditsViewDto } from './dto/order-edit-response.dto';
+import {
+  OrderDiscountResponseDto,
+  OrderEditResponseDto,
+  OrderEditsViewDto,
+} from './dto/order-edit-response.dto';
 
 const REFUSAL_CODES =
   'ORDER_ALREADY_CANCELLED | ORDER_ALREADY_SHIPPED | ORDER_AMENDMENT_IN_FLIGHT | ORDER_NOT_READY | ' +
   'ORDER_PACKED | LABEL_ALREADY_BOUGHT | SALES_DOCUMENT_ISSUED | QUANTITY_ONLY_DECREASES | ' +
   'QUANTITY_BELOW_FULFILLED | ORDER_WOULD_BE_EMPTY | EDIT_AFTER_HANDOFF | ORDER_WORK_ACCEPTED_NEEDS_ACK | LINE_PRICE_NOT_RESOLVABLE | ' +
-  'ADDRESS_EDIT_NEEDS_PII_STORAGE | ORDER_EDIT_CONTENDED | NOTHING_CHANGED';
+  'ADDRESS_EDIT_NEEDS_PII_STORAGE | ORDER_EDIT_CONTENDED | NOTHING_CHANGED | DISCOUNT_EXCEEDS_TOTAL | ' +
+  'ORDER_HAS_FISCAL_RECEIPT | INVOICE_NOT_SETTLED';
 
 @ApiBearerAuth()
 @ApiTags('orders')
@@ -200,6 +210,49 @@ export class OrderEditsController {
     }
   }
 
+  @Roles('admin')
+  @Post('discount')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Grant, replace or remove an order discount (a money event, saved in OpenLinker only)',
+    description:
+      'Exactly one of `amount` (decimal, order currency) or `percent` (of the goods value). One discount per ' +
+      'order: a second REPLACES the first, `"0"` removes it. The channel keeps the price the buyer paid; ' +
+      'documents, labels and the amount to collect read the discounted figures. Unpaid / cash-on-delivery: ' +
+      'the amount to collect falls. Paid: a refund intent for the difference is opened (confirm it with ' +
+      'POST /orders/:id/changes/:changeId/confirm once the seller refunded on the channel; refused above ' +
+      'the order\'s refund ceiling unless `acknowledgeAboveCeiling`). An already issued invoice gets a ' +
+      'correction proposal to confirm the same way. With `dryRun` nothing is saved.',
+  })
+  @ApiResponse({ status: 200, type: OrderDiscountResponseDto })
+  @ApiResponse({ status: 400, description: 'Invalid amount or percent' })
+  @ApiResponse({ status: 403, description: 'Insufficient permissions' })
+  @ApiResponse({ status: 404, description: 'Order not found' })
+  @ApiResponse({
+    status: 409,
+    description: REFUSAL_CODES + ' | refund_ceiling_exceeded (`code`, with ceiling / alreadyRefunded / requested / currency)',
+  })
+  async editDiscount(
+    @Param('internalOrderId') internalOrderId: string,
+    @Body() dto: EditOrderDiscountRequestDto,
+    @CurrentUser() user: AuthenticatedUser
+  ): Promise<OrderDiscountResponseDto> {
+    try {
+      return OrderDiscountResponseDto.from(
+        await this.edits.editDiscount({
+          internalOrderId,
+          actorUserId: user.id,
+          dryRun: dto.dryRun === true,
+          amount: dto.amount ?? null,
+          percent: dto.percent ?? null,
+          acknowledgeAboveCeiling: dto.acknowledgeAboveCeiling === true,
+        })
+      );
+    } catch (error) {
+      throw this.toHttpException(error);
+    }
+  }
+
   /**
    * One mapping for every refusal the service models. The machine code travels
    * in `error` (the `ORDER_ALREADY_ON_HOLD` shape): several 409s here have
@@ -212,6 +265,18 @@ export class OrderEditsController {
         statusCode: HttpStatus.CONFLICT,
         error: error.code,
         message: error.message,
+      });
+    }
+    if (error instanceof RefundCeilingExceededException) {
+      return new ConflictException({
+        statusCode: HttpStatus.CONFLICT,
+        error: 'Conflict',
+        code: error.code,
+        message: error.message,
+        ceiling: error.ceiling,
+        alreadyRefunded: error.alreadyRefunded,
+        requested: error.requested,
+        currency: error.currency,
       });
     }
     if (error instanceof OrderEditNotFoundError) {
