@@ -195,6 +195,14 @@ export function ProductDetailPage(): ReactElement {
                   )}
                 </span>
                 <span className="product-detail-hero__fact">
+                  <span className="product-detail-hero__fact-label">Category</span>
+                  {product.categoryBreadcrumb && product.categoryBreadcrumb.length > 0 ? (
+                    <span>{product.categoryBreadcrumb.map((node) => node.name).join(' › ')}</span>
+                  ) : (
+                    <span className="text-muted">—</span>
+                  )}
+                </span>
+                <span className="product-detail-hero__fact">
                   <span className="product-detail-hero__fact-label">Created</span>
                   <TimeDisplay className="mono-text tabular" iso={product.createdAt} />
                 </span>
@@ -308,6 +316,8 @@ export function ProductDetailPage(): ReactElement {
               <VariantDetailPanel
                 variant={variants[0]!}
                 stock={stockByVariant.get(variants[0]!.id)}
+                productTaxRate={product.taxRate ?? null}
+                productTaxRateUnknownReason={product.taxRateUnknownReason ?? null}
                 connections={offerCreatorConnections}
                 onListingsCount={handleListingsCount}
               />

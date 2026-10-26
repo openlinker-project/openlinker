@@ -42,6 +42,11 @@ const WITHOUT_OWN_TEST: Readonly<Record<string, string>> = {
   // Key factory. Its one property — that a write reaches every sibling query —
   // is asserted through the mutations, where it can actually be observed.
   'api/sourcing-rules.query-keys.ts': 'asserted through use-sourcing-rule-mutations.test.tsx',
+  // #2954 - shape-only; parsing is covered by routing-dry-run.schema.test.ts.
+  'api/routing-dry-run.types.ts': 'shape-only; parsing is covered by routing-dry-run.schema.test.ts',
+  // #2954 - a one-call wrapper over the api client; its request is asserted
+  // through the panel, which is where the body it sends is observable.
+  'hooks/use-routing-dry-run-mutation.ts': 'covered by sourcing-rules-test-panel.test.tsx',
   'components/sourcing-rule-locked-dialog.tsx':
     'rendered and asserted through sourcing-rules-section.test.tsx',
   // The two read hooks are exercised through the section and the page, which is

@@ -553,6 +553,8 @@ export function createMockApiClient(
       // #2558 — default so a rejected-clearance resend affordance doesn't hit
       // `undefined` in a test that doesn't override it.
       resendToAuthority: vi.fn().mockResolvedValue(null),
+      // DEF-02 / DEF-03: no verification link unless a test supplies one.
+      getVerificationLink: vi.fn().mockResolvedValue({ url: null }),
       ...overrides.invoicing,
     } as ApiClient['invoicing'],
     operationalSettings: {
@@ -1077,6 +1079,11 @@ export function createMockApiClient(
       remove: vi.fn().mockResolvedValue(undefined),
       ...overrides.sourcingRules,
     } as ApiClient['sourcingRules'],
+    // #2954. A test that never opts in must not reach a real dry run.
+    routingDryRun: {
+      run: vi.fn().mockRejectedValue(new Error('routingDryRun.run was not mocked')),
+      ...overrides.routingDryRun,
+    } as ApiClient['routingDryRun'],
     // The default is the healthy-but-empty deployment: no returns, and returns
     // ingestion IS configured — so a test that renders the list without opting
     // in gets the neutral "no returns yet" branch rather than the

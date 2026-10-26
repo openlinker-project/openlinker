@@ -44,6 +44,7 @@ describe('invoicing.types', () => {
       'invalid-currency',
       'sale-classification-required',
       'connection-setup-incomplete',
+      'acknowledgement-required',
       'provider-rejected',
       'transport-timeout',
       'provider-error',

@@ -78,7 +78,7 @@ describe('KsefSetupForm', () => {
 
     fireEvent.change(screen.getByLabelText('Connection name'), { target: { value: 'KSeF main' } });
     fireEvent.change(screen.getByLabelText('Environment'), { target: { value: 'prod' } });
-    fireEvent.change(screen.getByLabelText('Seller NIP'), { target: { value: '12-3456789-0' } });
+    fireEvent.change(screen.getByLabelText('Seller NIP'), { target: { value: '11-8998177-9' } });
     fireEvent.change(screen.getByLabelText('Authentication type'), {
       target: { value: 'qualified-seal' },
     });
@@ -101,7 +101,7 @@ describe('KsefSetupForm', () => {
     // defaults to PL, so the seller carries an address with just the ISO code.
     expect(payload.config.env).toBe('prod');
     expect(payload.config.seller).toEqual({
-      nip: '1234567890',
+      nip: '1189981779',
       address: { countryIso2: 'PL' },
     });
     // Write-only: secret travels only in credentials, never in config.
@@ -117,7 +117,7 @@ describe('KsefSetupForm', () => {
     renderWithProviders(<KsefSetupForm />, { apiClient });
 
     fireEvent.change(screen.getByLabelText('Connection name'), { target: { value: 'KSeF main' } });
-    fireEvent.change(screen.getByLabelText('Seller NIP'), { target: { value: '1234567890' } });
+    fireEvent.change(screen.getByLabelText('Seller NIP'), { target: { value: '1189981779' } });
     fireEvent.change(screen.getByLabelText('Seller legal name'), {
       target: { value: 'ACME Sp. z o.o.' },
     });
@@ -137,7 +137,7 @@ describe('KsefSetupForm', () => {
     const payload = create.mock.calls[0][0] as { config: Record<string, unknown> };
     // The nested shape `resolveSeller` reads; `line2` is omitted when blank.
     expect(payload.config.seller).toEqual({
-      nip: '1234567890',
+      nip: '1189981779',
       name: 'ACME Sp. z o.o.',
       address: {
         line1: 'ul. Przykładowa 1',

@@ -55,6 +55,6 @@ Because `getProduct` is the port boundary where a deleted product must become `M
 ## 5. Risks and stated gaps
 
 - Multi-variant mapping and `options` -> `attributes` shape are **not live-verified** (no such product on the trial shop). Recorded in the PR; fixtures from the Postman schema.
-- Only the main image is exposed; the rest need `product-images` (one extra call per product) and are a follow-up.
+- Only the main image was exposed at first. Since the gallery follow-up, `getProduct` reads `product-images` (one extra call per product); `getProducts` still exposes the main image only.
 - `price` semantics (gross vs net) for `price_type` are assumed gross-as-catalogue-price, consistent with the spike's order test (O4); to be confirmed with #3677's tax work.
 - Description is passed through as stored HTML; sanitisation belongs to the inbound boundary (`sanitizeStoredHtml`), not the adapter.

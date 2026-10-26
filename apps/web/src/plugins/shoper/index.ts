@@ -9,6 +9,7 @@
  *
  * @module plugins/shoper
  */
+import { publicApiBaseUrl } from '../../shared/config/public-api-base-url';
 import type { OpenLinkerPlugin } from '../../shared/plugins';
 import { definePlugin } from '../define-plugin';
 import { ShoperConnectionActions } from './components/shoper-connection-actions';
@@ -30,8 +31,7 @@ export const shoperPlugin: OpenLinkerPlugin = definePlugin({
       to: '/connections/new/shoper',
       badge: 'API token',
     },
-    getCallbackUrlDefault: () =>
-      typeof window !== 'undefined' ? window.location.origin : undefined,
+    getCallbackUrlDefault: publicApiBaseUrl,
     StructuredConfigSection: ShoperStructuredSection,
     connectionConfig: shoperConnectionConfig,
     ConnectionActions: ShoperConnectionActions,

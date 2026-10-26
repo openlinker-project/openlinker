@@ -1,4 +1,5 @@
 import type { Connection, IdentifierMappingPort } from '@openlinker/core/identifier-mapping';
+import { Logger } from '@openlinker/shared/logging';
 
 import { ShoperNetworkError } from '../../../../domain/exceptions/shoper-network.error';
 import { ShoperNotMappedException } from '../../../../domain/exceptions/shoper-not-mapped.exception';
@@ -8,6 +9,7 @@ import {
   LIVE_OPTION_VALUES,
   LIVE_VARIANT_STOCKS,
   MAP_CONTEXT,
+  SHOP_HOST,
   buildProduct,
   buildStock,
   envelope,
@@ -22,6 +24,7 @@ import {
   isModifiedProductLister,
   isProductTaxRateReader,
 } from '@openlinker/core/products';
+import type { ShoperProductImage } from '../../../../domain/types/shoper-api.types';
 import { ShoperApiError } from '../../../../domain/exceptions/shoper-api.error';
 import { ShoperProductMasterAdapter } from '../shoper-product-master.adapter';
 
@@ -59,7 +62,11 @@ const TAX_TABLE = new Map(
   ].map(([tax_id, value, name]) => [tax_id, { tax_id, value, name }]),
 );
 
-function setup(): Harness {
+function setup(
+  shopContext: { get: () => Promise<typeof MAP_CONTEXT> } = {
+    get: () => Promise.resolve(MAP_CONTEXT),
+  },
+): Harness {
   const get = jest.fn();
   const taxTable = { get: jest.fn().mockResolvedValue(TAX_TABLE) };
   const mapping = {
@@ -77,7 +84,7 @@ function setup(): Harness {
   const adapter = new ShoperProductMasterAdapter(
     { get } as unknown as ShoperHttpClient,
     mapping as unknown as IdentifierMappingPort,
-    { get: () => Promise.resolve(MAP_CONTEXT) } as unknown as ShoperShopContextProvider,
+    shopContext as unknown as ShoperShopContextProvider,
     taxTable as unknown as ShoperTaxTableProvider,
     new ShoperOptionTableProvider({ get } as unknown as ShoperHttpClient),
     { id: CONNECTION_ID } as Connection,
@@ -226,6 +233,147 @@ describe('ShoperProductMasterAdapter', () => {
   });
 
   describe('getProduct', () => {
+    const image = (gfx: string, extra: Record<string, string> = {}): ShoperProductImage => ({
+      gfx_id: gfx,
+      product_id: '93',
+      unic_name: gfx,
+      extension: 'jpg',
+      main: '0',
+      order: '0',
+      ...extra,
+    });
+
+    it('should return the whole gallery, main image first, then in the shop gallery order', async () => {
+      const { adapter, get } = setup();
+      respond(get, {
+        '/products/93': buildProduct(),
+        '/product-images': envelope([
+          image('302', { order: '2' }),
+          image('301', { order: '1' }),
+          image('300', { main: '1', order: '5' }),
+          image('303', { hidden: '1' }),
+          image('999', { product_id: '94' }),
+        ]),
+      });
+
+      const product = await adapter.getProduct('ol_product_1');
+
+      expect(product.images).toEqual([
+        `https://${SHOP_HOST}/userdata/public/gfx/300.jpg`,
+        `https://${SHOP_HOST}/userdata/public/gfx/301.jpg`,
+        `https://${SHOP_HOST}/userdata/public/gfx/302.jpg`,
+      ]);
+      const calls = get.mock.calls as Array<[string, Record<string, unknown>]>;
+      const imageCall = calls.find(([path]) => path === '/product-images');
+      expect(imageCall?.[1]).toEqual(expect.objectContaining({ filters: '{"product_id":93}' }));
+    });
+
+    it('should report the main category path, reading only the names of its nodes', async () => {
+      const { adapter, get } = setup();
+      respond(get, {
+        '/products/93': buildProduct({ category_id: '38', categories: [38] }),
+        '/categories-tree': [{ id: 2, children: [{ id: 38, children: [] }] }, { id: 5, children: [] }],
+        '/categories': envelope([
+          { category_id: '2', translations: { pl_PL: { name: 'Dom i kuchnia' } } },
+          { category_id: '38', translations: { pl_PL: { name: 'Ceramika' } } },
+        ]),
+      });
+
+      const product = await adapter.getProduct('ol_product_1');
+
+      expect(product.categoryBreadcrumb).toEqual([
+        { id: '2', name: 'Dom i kuchnia' },
+        { id: '38', name: 'Ceramika' },
+      ]);
+      const calls = get.mock.calls as Array<[string, Record<string, unknown>]>;
+      const categoryCall = calls.find(([path]) => path === '/categories');
+      expect(categoryCall?.[1]).toEqual(
+        expect.objectContaining({ filters: '{"category_id":{"in":[2,38]}}' }),
+      );
+    });
+
+    it('should read the category tree once for several products on one adapter', async () => {
+      const { adapter, get } = setup();
+      respond(get, {
+        '/products/93': buildProduct({ category_id: '38', categories: [38] }),
+        '/categories-tree': [{ id: 2, children: [{ id: 38, children: [] }] }],
+        '/categories': envelope([
+          { category_id: '2', translations: { pl_PL: { name: 'Dom i kuchnia' } } },
+          { category_id: '38', translations: { pl_PL: { name: 'Ceramika' } } },
+        ]),
+      });
+
+      const first = await adapter.getProduct('ol_product_1');
+      const second = await adapter.getProduct('ol_product_1');
+
+      expect(first.categoryBreadcrumb).toHaveLength(2);
+      expect(second.categoryBreadcrumb).toHaveLength(2);
+      const treeReads = get.mock.calls.filter(([path]) => path === '/categories-tree');
+      expect(treeReads).toHaveLength(1);
+    });
+
+    it('should report an unreadable tree as a failed read, not as a category missing from it', async () => {
+      const warn = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+      const { adapter, get } = setup();
+      const routes: Record<string, unknown> = {
+        '/products/93': buildProduct({ category_id: '38', categories: [38] }),
+        '/categories-tree': { oops: true },
+        '/categories': envelope([
+          { category_id: '2', translations: { pl_PL: { name: 'Dom i kuchnia' } } },
+          { category_id: '38', translations: { pl_PL: { name: 'Ceramika' } } },
+        ]),
+      };
+      respond(get, routes);
+
+      const product = await adapter.getProduct('ol_product_1');
+
+      expect(product).not.toHaveProperty('categoryBreadcrumb');
+      const messages = warn.mock.calls.map(([message]) => String(message));
+      expect(
+        messages.some((m) => m.includes('category path of product 93 could not be read'))
+      ).toBe(true);
+      expect(messages.some((m) => m.includes('is not in the category tree'))).toBe(false);
+      expect(get.mock.calls.some(([path]) => path === '/categories')).toBe(false);
+
+      // The failed read is not kept: the next product reads the tree again.
+      routes['/categories-tree'] = [{ id: 2, children: [{ id: 38, children: [] }] }];
+      const retried = await adapter.getProduct('ol_product_1');
+
+      expect(retried.categoryBreadcrumb).toEqual([
+        { id: '2', name: 'Dom i kuchnia' },
+        { id: '38', name: 'Ceramika' },
+      ]);
+      warn.mockRestore();
+    });
+
+    it('should still return the product, without a path, when the categories cannot be read', async () => {
+      const { adapter, get } = setup();
+      respond(get, { '/products/93': buildProduct() });
+
+      const product = await adapter.getProduct('ol_product_1');
+
+      expect(product.id).toBe('ol_product_1');
+      expect(product).not.toHaveProperty('categoryBreadcrumb');
+    });
+
+    it('should keep the main image when the gallery cannot be read', async () => {
+      const { adapter, get } = setup();
+      respond(get, { '/products/93': buildProduct() });
+
+      const product = await adapter.getProduct('ol_product_1');
+
+      expect(product.images).toEqual([`https://${SHOP_HOST}/userdata/public/gfx/207.png`]);
+    });
+
+    it('should keep the main image when the gallery is empty', async () => {
+      const { adapter, get } = setup();
+      respond(get, { '/products/93': buildProduct(), '/product-images': envelope([]) });
+
+      const product = await adapter.getProduct('ol_product_1');
+
+      expect(product.images).toEqual([`https://${SHOP_HOST}/userdata/public/gfx/207.png`]);
+    });
+
     it('should resolve the Shoper id from the mapping and return the product under its internal id', async () => {
       const { adapter, get, mapping } = setup();
       respond(get, { '/products/93': buildProduct() });
@@ -259,6 +407,38 @@ describe('ShoperProductMasterAdapter', () => {
     function failWith(get: jest.Mock, error: Error): void {
       get.mockRejectedValue(error);
     }
+
+    it('should start the shop context read before the product read answers', async () => {
+      let releaseProduct: () => void = () => undefined;
+      const contextGet = jest.fn(() => Promise.resolve(MAP_CONTEXT));
+      const { adapter, get } = setup({ get: contextGet });
+      get.mockImplementation((path: string) => {
+        if (path === '/products/93') {
+          return new Promise((resolve) => {
+            releaseProduct = (): void => resolve({ status: 200, data: buildProduct() });
+          });
+        }
+        return Promise.resolve({ status: 200, data: envelope([]) });
+      });
+
+      const read = adapter.getProduct('ol_product_1');
+      await new Promise((resolve) => setImmediate(resolve));
+
+      expect(contextGet).toHaveBeenCalledTimes(1);
+      releaseProduct();
+      await expect(read).resolves.toMatchObject({ id: 'ol_product_1' });
+    });
+
+    it('should report the deletion, not a shop context failure, when both reads fail', async () => {
+      const { adapter, get } = setup({
+        get: () => Promise.reject(new ShoperNetworkError('ECONNRESET')),
+      });
+      failWith(get, new ShoperApiError(404, 'invalid_request', 'Resource not found'));
+
+      const error = await adapter.getProduct('ol_product_1').catch((e: unknown) => e);
+
+      expect(error).toBeInstanceOf(MasterProductNotFoundError);
+    });
 
     it('should translate Shoper’s structured 404 into the neutral MasterProductNotFoundError', async () => {
       const { adapter, get } = setup();
@@ -555,7 +735,7 @@ describe('ShoperProductMasterAdapter', () => {
       expect(variants.every((v) => v.productId === 'ol_product_1')).toBe(true);
     });
 
-    it('should map the live multi-variant product options to attributes, and a simple stock to null', async () => {
+    it('should map the live multi-variant product options to attributes and leave out its base row', async () => {
       const { adapter, get } = setup();
       respond(get, {
         '/product-stocks': envelope(LIVE_STOCKS_OF_PRODUCT_93),
@@ -565,13 +745,34 @@ describe('ShoperProductMasterAdapter', () => {
 
       const variants = await adapter.getProductVariants('ol_product_1');
 
+      // Stock 215 is the base row (`options: []`): no buyer can pick it, so it
+      // is not a variant (it used to add a phantom variant and double the stock).
       expect(variants.map((v) => [v.id, v.attributes])).toEqual([
-        ['ol_215', null],
         ['ol_217', { Kolor: 'biszkoptowy' }],
         ['ol_218', { Kolor: 'Shoper blue' }],
       ]);
       // One option is read once for both siblings that use it.
       expect(get.mock.calls.filter(([path]) => path === '/options/10')).toHaveLength(1);
+    });
+
+    it('should price a variant that keeps the base price at the base price, not at "0.00"', async () => {
+      const { adapter, get } = setup();
+      respond(get, {
+        '/product-stocks': envelope([
+          { ...LIVE_STOCKS_OF_PRODUCT_93[0], price: '79.00', price_type: '0' },
+          { ...LIVE_STOCKS_OF_PRODUCT_93[1], price: '0.00', price_type: '0' },
+          { ...LIVE_STOCKS_OF_PRODUCT_93[2], price: '5.00', price_type: '2' },
+        ]),
+        '/options/10': LIVE_OPTION_COLOUR,
+        '/option-values': envelope(LIVE_OPTION_VALUES),
+      });
+
+      const variants = await adapter.getProductVariants('ol_product_1');
+
+      expect(variants.map((v) => [v.id, v.price])).toEqual([
+        ['ol_217', 79],
+        ['ol_218', 84],
+      ]);
     });
 
     it('should sync a variant with null attributes, not fail, when its option cannot be read', async () => {

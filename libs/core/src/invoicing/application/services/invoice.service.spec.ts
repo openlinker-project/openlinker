@@ -362,6 +362,40 @@ describe('InvoiceService', () => {
       );
     });
 
+    it('(a3c) DEF-07/33: snapshots the dates the adapter printed and fills documentContent.saleDate', async () => {
+      repo.findByIdempotencyKey.mockResolvedValue(null);
+      repo.create.mockResolvedValue(makeRecord({ id: 'rec-1', status: 'pending' }));
+      adapter.issueInvoice.mockResolvedValue({
+        ...makeIssuedFromAdapter(),
+        documentDates: { issueDate: '2026-01-22', saleDate: '2026-01-20' },
+      });
+      repo.updateOutcome.mockResolvedValue(makeRecord({ id: 'rec-1', status: 'issued' }));
+
+      await service.issueInvoice(makeCmd({ saleDate: '2026-01-19' }));
+
+      const patch = repo.updateOutcome.mock.calls[0]?.[1] as {
+        issuedLineSnapshot?: { issueDate?: string; saleDate?: string };
+        documentContent?: { saleDate: string | null } | null;
+      };
+      expect(patch.issuedLineSnapshot).toMatchObject({ issueDate: '2026-01-22', saleDate: '2026-01-20' });
+      expect(patch.documentContent?.saleDate).toBe('2026-01-20');
+    });
+
+    it('(a3d) DEF-07: falls back to the command sale date when the adapter reports no dates', async () => {
+      repo.findByIdempotencyKey.mockResolvedValue(null);
+      repo.create.mockResolvedValue(makeRecord({ id: 'rec-1', status: 'pending' }));
+      adapter.issueInvoice.mockResolvedValue(makeIssuedFromAdapter());
+      repo.updateOutcome.mockResolvedValue(makeRecord({ id: 'rec-1', status: 'issued' }));
+
+      await service.issueInvoice(makeCmd({ saleDate: '2026-01-19' }));
+
+      const patch = repo.updateOutcome.mock.calls[0]?.[1] as {
+        issuedLineSnapshot?: { issueDate?: string; saleDate?: string };
+      };
+      expect(patch.issuedLineSnapshot?.saleDate).toBe('2026-01-19');
+      expect(patch.issuedLineSnapshot?.issueDate).toBeUndefined();
+    });
+
     it('persists a reported unlinked-catalogue-line count on the issued patch', async () => {
       repo.findByIdempotencyKey.mockResolvedValue(null);
       repo.create.mockResolvedValue(makeRecord({ id: 'rec-1', status: 'pending' }));
@@ -1561,6 +1595,41 @@ describe('InvoiceService', () => {
       );
     });
 
+    it('DEF-09: refuses a buyer override before calling a provider that cannot carry it', async () => {
+      const override = makeBuyer();
+
+      await expect(
+        service.issueCorrection(makeCorrectionCmd({ buyerOverride: override })),
+      ).rejects.toThrow('BuyerIdentityCorrector');
+
+      expect(correctionAdapter.issueCorrection).not.toHaveBeenCalled();
+      expect(repo.updateOutcome).toHaveBeenLastCalledWith(
+        'corr-rec',
+        expect.objectContaining({ status: 'failed', failureMode: 'rejected' }),
+      );
+    });
+
+    it('DEF-09: lets a buyer override through to a provider that declares it', async () => {
+      Object.assign(correctionAdapter, { honoursBuyerOverride: true });
+
+      await service.issueCorrection(makeCorrectionCmd({ buyerOverride: makeBuyer() }));
+
+      expect(correctionAdapter.issueCorrection).toHaveBeenCalled();
+    });
+
+    it('DEF-07: keeps the original sale date on the correction snapshot', async () => {
+      await service.issueCorrection(
+        makeCorrectionCmd({ originalDocument: { ...makeOriginalDocument(), saleDate: '2026-06-20' } }),
+      );
+
+      expect(repo.updateOutcome).toHaveBeenLastCalledWith(
+        'corr-rec',
+        expect.objectContaining({
+          issuedLineSnapshot: expect.objectContaining({ saleDate: '2026-06-20' }),
+        }),
+      );
+    });
+
     it('applies a quantity delta and leaves price untouched', async () => {
       await service.issueCorrection(
         makeCorrectionCmd({ lines: [{ originalLineNumber: 2, newQuantity: 5 }] }),
@@ -1841,6 +1910,27 @@ describe('InvoiceService', () => {
         expect(correctionAdapter.issueCorrection).not.toHaveBeenCalled();
       });
     });
+
+    it('snapshots the buyerOverride buyer (not the original) when supplied (#1582)', async () => {
+      const override = new BuyerProfile(
+        'Corrected Buyer',
+        { scheme: 'pl-nip', value: '5252248481' },
+        { line1: 'ul. Nowa 5', line2: null, city: 'Gdansk', postalCode: '80-001', countryIso2: 'PL' },
+        'company',
+      );
+      // DEF-09 refuses an override for a provider that cannot carry it, so the
+      // snapshot is only reachable through one that declares it can.
+      Object.assign(correctionAdapter, { honoursBuyerOverride: true });
+
+      await service.issueCorrection(makeCorrectionCmd({ buyerOverride: override }));
+
+      expect(repo.updateOutcome).toHaveBeenLastCalledWith(
+        'corr-rec',
+        expect.objectContaining({
+          issuedLineSnapshot: expect.objectContaining({ buyer: override }),
+        }),
+      );
+    });
   });
 
   describe('numbering allocation (#1575)', () => {
@@ -1988,6 +2078,39 @@ describe('InvoiceService', () => {
       expect(consumer.issueInvoice).toHaveBeenCalledWith(
         expect.objectContaining({ documentNumber: 'FV/2026/06/0007' }),
       );
+    });
+  });
+
+  describe('applyRegulatoryClearance (#1582)', () => {
+    it('persists the clearanceDetail from the clearance result', async () => {
+      repo.updateOutcome.mockResolvedValue(makeRecord({ id: 'rec-1' }));
+
+      await service.applyRegulatoryClearance('rec-1', {
+        regulatoryStatus: 'rejected',
+        clearanceReference: null,
+        clearanceDetail: 'KSeF status 440: buyer NIP invalid',
+      });
+
+      expect(repo.updateOutcome).toHaveBeenCalledWith('rec-1', {
+        regulatoryStatus: 'rejected',
+        clearanceReference: null,
+        clearanceDetail: 'KSeF status 440: buyer NIP invalid',
+      });
+    });
+
+    it('clears a stale clearanceDetail when the result carries none (e.g. a resend)', async () => {
+      repo.updateOutcome.mockResolvedValue(makeRecord({ id: 'rec-1' }));
+
+      await service.applyRegulatoryClearance('rec-1', {
+        regulatoryStatus: 'submitted',
+        clearanceReference: null,
+      });
+
+      expect(repo.updateOutcome).toHaveBeenCalledWith('rec-1', {
+        regulatoryStatus: 'submitted',
+        clearanceReference: null,
+        clearanceDetail: null,
+      });
     });
   });
 });
