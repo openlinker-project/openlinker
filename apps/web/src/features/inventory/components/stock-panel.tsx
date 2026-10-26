@@ -121,6 +121,8 @@ export function StockPanel({
   const view = query.data ?? null;
   const stockByVariant = view ? new Map(view.variants.map((v) => [v.productVariantId, v])) : null;
   const rows = buildRows(variants, inventoryItems, stockByVariant, pending);
+  // A negative master figure means more was sold than the master holds.
+  const oversoldCount = rows.filter((row) => row.masterAvailable < 0).length;
   const anyUnknown = !pending && rows.some((row) => row.state === 'unknown');
   const summary = view ? summarizeStock(view.variants) : null;
   const staleVariants = view ? view.variants.filter((v) => v.isStaleSync) : [];
@@ -253,6 +255,14 @@ export function StockPanel({
               <dt>Master stock</dt>
               <dd data-testid="stock-summary-master">
                 {summary ? summary.masterStock : rows.reduce((sum, row) => sum + row.masterAvailable, 0)}
+                {oversoldCount > 0 ? (
+                  <>
+                    {' '}
+                    <StatusBadge tone="error" compact withDot>
+                      {oversoldCount} oversold
+                    </StatusBadge>
+                  </>
+                ) : null}
               </dd>
             </div>
             <div>

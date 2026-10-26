@@ -232,4 +232,14 @@ describe('StockPanel', () => {
     });
     expect(await screen.findByTestId('stock-empty')).toBeInTheDocument();
   });
+
+  it('should show an oversold badge in the summary when the master figure is negative', async () => {
+    renderPanel({
+      stock: view([
+        stockVariant({ productVariantId: 'v1', sku: 'KCN-WHT', masterAvailable: -2, availableToPromise: 0 }),
+        stockVariant({ productVariantId: 'v2', sku: 'KCN-GRY' }),
+      ]),
+    });
+    expect(await screen.findByTestId('stock-summary-master')).toHaveTextContent('1 oversold');
+  });
 });

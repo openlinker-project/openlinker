@@ -122,10 +122,6 @@ export function ProductDetailPage(): ReactElement {
   const variants = product.variants ?? [];
   const inventoryItems = inventoryQuery.data?.items ?? [];
 
-  const stockByVariant = new Map(
-    inventoryItems.filter((item) => item.productVariantId !== null).map((item) => [item.productVariantId as string, item]),
-  );
-
   const totalAvailable = inventoryItems.reduce((sum, item) => sum + item.availableQuantity, 0);
   const oversoldCount = inventoryItems.filter((item) => item.availableQuantity < 0).length;
   const availableTone = deriveAvailableTone(totalAvailable, oversoldCount);
@@ -318,7 +314,6 @@ export function ProductDetailPage(): ReactElement {
                 {isSingleVariant ? (
                   <VariantDetailPanel
                     variant={variants[0]!}
-                    stock={stockByVariant.get(variants[0]!.id)}
                     productTaxRate={product.taxRate ?? null}
                     productTaxRateUnknownReason={product.taxRateUnknownReason ?? null}
                     connections={offerCreatorConnections}
@@ -327,7 +322,6 @@ export function ProductDetailPage(): ReactElement {
                 ) : (
                   <VariantStockTable
                     variants={variants}
-                    stockByVariant={stockByVariant}
                     currency={product.currency}
                     productTaxRate={product.taxRate ?? null}
                     productTaxRateUnknownReason={product.taxRateUnknownReason ?? null}
