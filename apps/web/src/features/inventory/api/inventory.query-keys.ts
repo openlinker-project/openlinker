@@ -1,4 +1,8 @@
 import type { InventoryFilters, InventoryPagination } from './inventory.types';
+import type {
+  InventoryMovementFilters,
+  InventoryMovementPagination,
+} from './inventory-movements.types';
 import type { InventoryLocationFilters, InventoryLocationListPagination } from './inventory-locations.types';
 
 export const inventoryQueryKeys = {
@@ -33,4 +37,11 @@ export const inventoryQueryKeys = {
     ['inventory', 'duplicate-positions', maxGroups ?? null] as const,
   // #3240 — install-wide live read, same axis-free shape as duplicatePositions.
   provenanceBackfillStatus: () => ['inventory', 'provenance-backfill-status'] as const,
+  // #3568 - rows and the count are keyed apart so a count is cached per filter
+  // set and never shared across pages.
+  movementsAll: () => ['inventory', 'movements'] as const,
+  movements: (filters?: InventoryMovementFilters, pagination?: InventoryMovementPagination) =>
+    ['inventory', 'movements', 'rows', filters ?? {}, pagination ?? {}] as const,
+  movementsCount: (filters?: InventoryMovementFilters) =>
+    ['inventory', 'movements', 'count', filters ?? {}] as const,
 };

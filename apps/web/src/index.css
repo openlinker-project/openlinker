@@ -30761,3 +30761,134 @@ legend.analytics-settings-dialog__label {
 .ksef-issue-options__lines-scroll {
   overflow-x: auto;
 }
+
+/* Stock movement history (#3568) - page-specific rules from the M7 mockup. */
+.stock-movements-table th,
+.stock-movements-table td {
+  vertical-align: top;
+}
+
+.stock-movements-table td:first-child,
+.stock-movements-table th:first-child {
+  white-space: nowrap;
+}
+
+.stock-movement-chip--muted {
+  border-style: dashed;
+  opacity: 0.85;
+}
+
+.stock-movement__arrow {
+  color: var(--text-muted);
+  padding: 0 2px;
+}
+
+.stock-movement__unknown {
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+.stock-movement__delta--pos {
+  color: var(--status-success-fg);
+}
+
+.stock-movement__delta--neg {
+  color: var(--status-error-fg);
+}
+
+.stock-movement__delta--void {
+  color: var(--text-muted);
+  text-decoration: line-through;
+  text-decoration-color: var(--border-strong);
+}
+
+.stock-movement__source-kind {
+  font-size: 0.75rem;
+  margin-bottom: 1px;
+}
+
+.stock-movement__reason {
+  font-size: 0.75rem;
+  margin-top: 3px;
+  max-width: 15rem;
+}
+
+.stock-movement__promise-line {
+  font-size: 0.8125rem;
+  color: var(--text-secondary);
+}
+
+.stock-movement__promised-badge {
+  margin-left: 4px;
+}
+
+.stock-movement-row--refused {
+  box-shadow: inset 3px 0 0 var(--status-error-border);
+}
+
+.stock-movement-row--in-doubt {
+  box-shadow: inset 3px 0 0 var(--status-warning-border);
+}
+
+.stock-movement-row--promised {
+  background: var(--bg-subtle);
+}
+
+.stock-history__summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-5);
+  margin: 0 0 var(--space-4);
+  padding: 0;
+}
+
+.stock-history__summary > div {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.stock-history__summary dt {
+  margin: 0;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.stock-history__summary dd {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.stock-history__actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: var(--space-3);
+}
+
+.stock-movements-toolbar {
+  flex-wrap: wrap;
+  row-gap: var(--space-2);
+}
+
+.stock-movements-field {
+  display: inline-flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.stock-movements-field input[type='date'] {
+  min-width: 9.5rem;
+}
+
+.stock-movements-search {
+  min-width: 15rem;
+  flex: 1 1 15rem;
+}
+
+.stock-movements-summary-line {
+  margin: 0 0 var(--space-3);
+  color: var(--text-secondary);
+  font-size: 0.875rem;
+}

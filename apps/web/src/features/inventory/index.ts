@@ -69,3 +69,6 @@ export { useInventoryAvailabilityBatchQuery } from './hooks/use-inventory-availa
 // Query-key factory re-exported so the bulk wizard's chunked per-variant
 // availability fan-out (#1741) shares cache entries with the batch hook above.
 export { inventoryQueryKeys } from './api/inventory.query-keys';
+
+// #3568 - the product detail page mounts the stock history section.
+export { StockHistorySection, type StockHistoryVariant } from './components/stock-history-section';

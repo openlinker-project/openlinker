@@ -507,6 +507,9 @@ export function createMockApiClient(
       // are defaulted together or a test would set one and silently keep the
       // other's stale answer.
       listLocations: vi.fn().mockResolvedValue({ items: [], total: 0, page: 1, limit: 100 }),
+      // #3568. An install with no movements; the count is only requested for a full page.
+      listMovements: vi.fn().mockResolvedValue({ items: [], limit: 20, offset: 0 }),
+      countMovements: vi.fn().mockResolvedValue({ total: 0 }),
       listActiveLocations: vi.fn().mockResolvedValue({ items: [], total: 0, page: 1, limit: 1 }),
       bootstrapLocations: vi.fn().mockResolvedValue({ created: [], existingCodes: [] }),
       ...overrides.inventory,

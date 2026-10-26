@@ -14,6 +14,7 @@ import { useProductQuery } from '../../features/products/hooks/use-product-query
 import { ProductGallery } from '../../features/products/components/product-gallery';
 import { ProductSourceSection } from '../../features/products/components/product-source-section';
 import { useInventoryQuery } from '../../features/inventory/hooks/use-inventory-query';
+import { StockHistorySection } from '../../features/inventory';
 import { useConnectionsQuery, type Connection } from '../../features/connections';
 import { useWriteAccess } from '../../shared/auth/use-permission';
 import { useDemoMode } from '../../features/system';
@@ -327,6 +328,7 @@ export function ProductDetailPage(): ReactElement {
               />
             )}
           </section>
+          <StockHistorySection productId={product.id} productName={product.name} variants={variants} />
         </TabsContent>
 
         <TabsContent value={VIEW_CONTENT}>
