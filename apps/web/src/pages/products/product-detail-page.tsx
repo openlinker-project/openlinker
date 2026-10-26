@@ -14,7 +14,12 @@ import { useProductQuery } from '../../features/products/hooks/use-product-query
 import { ProductGallery } from '../../features/products/components/product-gallery';
 import { ProductSourceSection } from '../../features/products/components/product-source-section';
 import { useInventoryQuery } from '../../features/inventory/hooks/use-inventory-query';
-import { StockHistorySection, StockPanel } from '../../features/inventory';
+import {
+  StockCorrectionDialog,
+  StockHistorySection,
+  StockPanel,
+  type StockAdjustTarget,
+} from '../../features/inventory';
 import { useConnectionsQuery, type Connection } from '../../features/connections';
 import { usePermission, useWriteAccess } from '../../shared/auth/use-permission';
 import { useDemoMode } from '../../features/system';
@@ -71,6 +76,7 @@ export function ProductDetailPage(): ReactElement {
   const demoMode = useDemoMode();
   const write = useWriteAccess('listings:write', demoMode);
   const canAdjustStock = usePermission('inventory:write');
+  const [adjustTarget, setAdjustTarget] = useState<StockAdjustTarget | null>(null);
   const [pickerOpen, setPickerOpen] = useState(false);
   const offerCreatorConnections = useMemo<Connection[]>(
     () =>
@@ -309,6 +315,7 @@ export function ProductDetailPage(): ReactElement {
                   variants={variants}
                   inventoryItems={inventoryItems}
                   canAdjust={canAdjustStock}
+                  onAdjust={setAdjustTarget}
                 />
                 <h4 className="av-subtitle">Listings &amp; prices</h4>
                 {isSingleVariant ? (
@@ -334,6 +341,9 @@ export function ProductDetailPage(): ReactElement {
               </>
             )}
           </section>
+          {canAdjustStock ? (
+            <StockCorrectionDialog target={adjustTarget} onClose={() => setAdjustTarget(null)} />
+          ) : null}
           <StockHistorySection productId={product.id} productName={product.name} variants={variants} />
         </TabsContent>
 

@@ -30953,3 +30953,25 @@ legend.analytics-settings-dialog__label {
 }
 
 .av-subtitle { margin: var(--space-4) 0 var(--space-2); font-size: 0.875rem; font-weight: 600; color: var(--text-secondary); }
+
+/* Manual stock correction dialog (#3567, mockup m6). Page-specific layout only. */
+.sc-dialog { max-width: 34rem; max-height: calc(100vh - 24px); overflow-y: auto; }
+.sc-dialog--compact { max-width: 28rem; }
+.sc-form { display: grid; gap: var(--space-3); }
+.sc-diff { margin: 0; font-size: 0.875rem; color: var(--text-secondary); }
+.sc-diff ins { text-decoration: none; font-weight: 600; color: var(--text-primary); }
+.sc-section-head { margin: 0; font-size: 0.75rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-muted); }
+.sc-impact { list-style: none; margin: 0; padding: 0; display: grid; border: 1px solid var(--border-subtle); border-radius: var(--radius-lg); background: var(--bg-surface); }
+.sc-impact__row { display: grid; grid-template-columns: 10rem minmax(0, 1fr) 4.5rem; gap: var(--space-2) var(--space-4); align-items: start; padding: var(--space-3); border-top: 1px solid var(--border-subtle); font-size: 0.8125rem; }
+.sc-impact__row:first-child { border-top: 0; }
+.sc-impact__what { font-weight: 600; color: var(--text-primary); }
+.sc-impact__sub { display: block; font-weight: 400; font-size: 0.75rem; color: var(--text-muted); }
+.sc-impact__how { color: var(--text-secondary); line-height: 1.45; }
+.sc-impact__qty { text-align: right; font-weight: 600; font-variant-numeric: tabular-nums; }
+@media (max-width: 599.98px) {
+  .sc-impact__row { grid-template-columns: minmax(0, 1fr); }
+  .sc-impact__qty { text-align: left; }
+}
+.sc-footnote { margin: 0; font-size: 0.75rem; color: var(--text-muted); }
+.sc-attempt { margin: 0 0 var(--space-2); font-size: 0.8125rem; color: var(--text-secondary); }
+.sc-check { display: flex; gap: var(--space-2); align-items: center; margin-top: var(--space-2); }

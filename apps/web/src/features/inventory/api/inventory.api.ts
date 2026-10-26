@@ -20,6 +20,11 @@ import type {
   InventoryMovementPagination,
   InventoryMovementsPage,
 } from './inventory-movements.types';
+import type {
+  CorrectionTarget,
+  CorrectStockInput,
+  CorrectStockResult,
+} from './inventory-correction.types';
 import type { PaginatedTotal } from '../../../shared/api/paginated-total.types';
 import { normalizeCountryIso2 } from './inventory-locations.types';
 import type {
@@ -109,6 +114,10 @@ export interface InventoryApi {
   ) => Promise<InventoryMovementsPage>;
   /** GET /inventory/movements/count - the total behind `listMovements` (#3568). */
   countMovements: (filters?: InventoryMovementFilters, init?: RequestInit) => Promise<PaginatedTotal>;
+  /** GET /inventory/:variantId/correction-target - which master a correction would write to (#3567). */
+  getCorrectionTarget: (productVariantId: string) => Promise<CorrectionTarget>;
+  /** POST /inventory/:variantId/adjust - a manual stock correction (#3567). */
+  correctStock: (productVariantId: string, input: CorrectStockInput) => Promise<CorrectStockResult>;
 }
 
 interface ApiRequest {
@@ -229,6 +238,17 @@ export function createInventoryApi(request: ApiRequest): InventoryApi {
     countMovements(filters, init): Promise<PaginatedTotal> {
       // No pagination: the answer depends on the filters alone.
       return request<PaginatedTotal>(`/inventory/movements/count${buildMovementsQuery(filters)}`, init);
+    },
+    getCorrectionTarget(productVariantId): Promise<CorrectionTarget> {
+      return request<CorrectionTarget>(
+        `/inventory/${encodeURIComponent(productVariantId)}/correction-target`,
+      );
+    },
+    correctStock(productVariantId, input): Promise<CorrectStockResult> {
+      return request<CorrectStockResult>(`/inventory/${encodeURIComponent(productVariantId)}/adjust`, {
+        method: 'POST',
+        body: JSON.stringify(input),
+      });
     },
   };
 }

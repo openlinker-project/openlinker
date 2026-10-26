@@ -11,8 +11,8 @@
  * that are only recorded are different numbers. And a variant the master has
  * stopped reporting is labelled, not quietly zeroed.
  *
- * The correction dialog is not mounted here: `onAdjust` is the seam it hangs
- * off, and the button is DISABLED (not hidden) for a session without write
+ * The correction dialog (#3567) is not mounted here: `onAdjust` is the seam the
+ * page hangs it off, and the button is DISABLED (not hidden) for a session without write
  * access, so a view-only user can see that the capability exists.
  *
  * @module apps/web/src/features/inventory/components

@@ -13,6 +13,12 @@ export const inventoryQueryKeys = {
   // #3569 - one product's stock view; a sibling of `list`, not a child, so the
   // locations/list invalidations do not drop it.
   stockView: (productId: string) => ['inventory', 'stock-view', productId] as const,
+  // #3567 - prefixes a correction settles against: every product's stock view
+  // and every inventory list read, without naming a product.
+  stockViewAll: () => ['inventory', 'stock-view'] as const,
+  listAll: () => ['inventory', 'list'] as const,
+  correctionTarget: (productVariantId: string) =>
+    ['inventory', 'correction-target', productVariantId] as const,
   // #2407 — install-wide, so no connection axis: the active-location count is
   // a property of the deployment, not of the connection whose page renders it.
   activeLocations: () => ['inventory', 'locations', 'active'] as const,

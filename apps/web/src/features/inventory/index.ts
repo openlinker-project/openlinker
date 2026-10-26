@@ -82,5 +82,7 @@ export { StockHistorySection, type StockHistoryVariant } from './components/stoc
 // #3569 - the M25 stock panel on the product detail page. `onAdjust` is the
 // seam the correction dialog (M6) mounts behind.
 export { StockPanel, type StockPanelProps, type StockAdjustTarget } from './components/stock-panel';
+// #3567 - the manual stock correction dialog opened from the panel's `onAdjust`.
+export { StockCorrectionDialog } from './components/stock-correction-dialog';
 export { useStockViewQuery } from './hooks/use-stock-view-query';
 export { deriveAtpStatus, type AtpStatus } from './lib/stock-view';
