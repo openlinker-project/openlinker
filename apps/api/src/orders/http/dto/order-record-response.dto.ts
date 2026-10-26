@@ -32,6 +32,7 @@ import {
   type HoldReason,
 } from '@openlinker/core/order-lifecycle';
 import { OrderHoldDto } from './order-hold-response.dto';
+import { OrderEditsViewDto } from './order-edit-response.dto';
 import {
   FulfillmentBlockReasonValues,
   type FulfillmentBlockReason,
@@ -140,6 +141,24 @@ export class OrderRecordResponseDto {
       'onto the shared projection deliberately, not reading the gap.',
   })
   buyerTaxId?: BuyerTaxId;
+
+  @ApiProperty({
+    description:
+      'True when an operator has edited this order in OpenLinker (#3542, D9): its address, line ' +
+      'quantities or delivery method differ from what the channel reported. `orderSnapshot` is then ' +
+      'the order AS EDITED; the channel keeps its original. Cheap, so it is on every list row.',
+  })
+  editedInOpenLinker!: boolean;
+
+  @ApiPropertyOptional({
+    type: OrderEditsViewDto,
+    nullable: true,
+    description:
+      'The order beside the channel\'s own record of it: every edited figure given twice (channel ' +
+      'original and after the edit), plus the edit history. DETAIL READ ONLY (it reads the change ' +
+      'history, one query); null on an order nobody edited.',
+  })
+  edits?: OrderEditsViewDto | null;
 
   @ApiPropertyOptional({
     enum: SalesDocumentGateBlockReasonValues,
