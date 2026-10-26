@@ -972,7 +972,9 @@ function BulkEditModalForm({
         if (isEanAcknowledged(edit.eanAcknowledgedFor, eanTrimmed)) {
           overrides.eanOverrideAcknowledged = true;
         }
-        if (edit.title !== undefined) overrides.title = edit.title;
+        // A cleared title inherits the base, like a cleared price: an offer
+        // cannot be listed without a title.
+        if (edit.title !== undefined && edit.title.trim() !== '') overrides.title = edit.title;
         if (edit.description !== undefined) overrides.description = edit.description;
         if (edit.imageUrls !== undefined) overrides.imageUrls = edit.imageUrls;
         if (edit.categoryId !== undefined) overrides.categoryId = edit.categoryId;
@@ -2675,6 +2677,7 @@ function VariantScopeForm({
           <InheritableTextField
             label="Title"
             overridden={edit.title !== undefined}
+            blankInheritsBase
             value={edit.title ?? ''}
             baseValue={baseValues.title}
             ariaLabel={`Title for ${label}`}
@@ -2781,6 +2784,7 @@ function VariantScopeForm({
         <InheritableTextField
           label="Price"
           overridden={edit.price !== undefined}
+          blankInheritsBase
           value={edit.price ?? ''}
           baseValue={basePriceValue}
           ariaLabel={`Price for ${label}`}
@@ -2901,6 +2905,7 @@ function InheritableTextField({
   type,
   provNode,
   onReset,
+  blankInheritsBase,
   onChange,
 }: {
   label: string;
@@ -2914,9 +2919,16 @@ function InheritableTextField({
   provNode?: ReactNode;
   /** Custom reset handler; when set the reset control always shows. */
   onReset?: () => void;
+  /**
+   * Set where saving drops an emptied override (title, price): the field then
+   * shows the value it will fall back to, instead of an empty "override".
+   */
+  blankInheritsBase?: boolean;
   onChange: (next: string | undefined) => void;
 }): ReactElement {
   const displayValue = overridden ? value : baseValue;
+  const blankFallsBack =
+    blankInheritsBase === true && overridden && value.trim() === '' && baseValue !== '';
   const showReset = overridden || Boolean(onReset);
   return (
     <div className="bulk-editor__field">
@@ -2936,11 +2948,17 @@ function InheritableTextField({
         ].join(' ')}
         value={displayValue}
         aria-label={ariaLabel}
+        placeholder={blankFallsBack ? baseValue : undefined}
         onChange={(e) => {
           const typed = e.target.value;
           onChange(typed === baseValue ? undefined : typed);
         }}
       />
+      {blankFallsBack ? (
+        <div className="hint" style={{ color: 'var(--text-muted)', fontSize: 12 }}>
+          Left empty, this variant uses the base value: {baseValue}
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -4153,6 +4171,7 @@ function ShopVariantScopeForm({
         <InheritableTextField
           label="Price"
           overridden={edit.price !== undefined}
+          blankInheritsBase
           value={edit.price ?? ''}
           baseValue={basePriceValue}
           ariaLabel={`Price for ${label}`}

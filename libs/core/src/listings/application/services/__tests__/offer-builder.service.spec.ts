@@ -697,6 +697,21 @@ describe('OfferBuilderService', () => {
       expect(result.overrides?.imageUrls).toEqual(['https://example.com/custom.jpg']);
     });
 
+    it('should use the master name when overrides.title is blank', async () => {
+      // The bulk editor sends `title: ''` for a variant whose title field was
+      // cleared; publishing that would create an offer with no title.
+      for (const blank of ['', '   ']) {
+        const result = await service.buildCreateOfferCommand({
+          internalVariantId: VARIANT_ID,
+          connectionId: MARKETPLACE_CONN_ID,
+          stock: 1,
+          overrides: { title: blank },
+        });
+
+        expect(result.overrides?.title).toBe('Test Product');
+      }
+    });
+
     it('shapes the description with the format the destination DECLARES, not the fallback', async () => {
       // The point of ADR-046: the destination's own declaration drives the
       // shaping. This format allows `h3`, which the conservative fallback does

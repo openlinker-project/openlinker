@@ -1418,6 +1418,44 @@ describe('BulkEditModal', () => {
       const included = onSave.mock.calls[0][3] as Record<string, boolean>;
       expect(included).toEqual({ var_s: true, var_m: true });
     });
+
+    it('should inherit the base title and price when a variant clears them, and say so', async () => {
+      const onSave = vi.fn();
+      renderWithProviders(
+        <BulkEditModal
+          open
+          onOpenChange={() => undefined}
+          row={makeMultiRow()}
+          connection={connection}
+          canBrowseCategories={false}
+          currency="PLN"
+          defaults={DEFAULTS}
+          focusVariantId="var_m"
+          onSave={onSave}
+        />,
+      );
+
+      const title = screen.getByLabelText('Title for Rozmiar: M');
+      const baseTitle = (title as HTMLInputElement).value;
+      expect(baseTitle).not.toBe('');
+      fireEvent.change(title, { target: { value: '' } });
+      expect(title).toHaveAttribute('placeholder', baseTitle);
+      const price = screen.getByLabelText('Price for Rozmiar: M');
+      fireEvent.change(price, { target: { value: '' } });
+      expect(price).toHaveAttribute('placeholder', '12.00');
+      expect(screen.getAllByText(/Left empty, this variant uses the base value/)).toHaveLength(2);
+
+      fireEvent.click(screen.getByRole('button', { name: 'Save all' }));
+
+      await waitFor(() => { expect(onSave).toHaveBeenCalledTimes(1); });
+      const perVariant = onSave.mock.calls[0][2] as Record<
+        string,
+        { price?: unknown; overrides?: { title?: string } }
+      >;
+      // An empty title used to be sent as `title: ''` and became the offer's title.
+      expect(perVariant.var_m?.overrides?.title).toBeUndefined();
+      expect(perVariant.var_m?.price).toBeUndefined();
+    });
   });
 
   describe('per-variant default images', () => {

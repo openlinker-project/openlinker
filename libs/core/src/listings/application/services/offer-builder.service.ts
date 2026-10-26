@@ -214,7 +214,10 @@ export class OfferBuilderService implements IOfferBuilderService {
       siblings.filter((sibling) => sibling.isStale !== true).length
     );
 
-    const title = input.overrides?.title ?? product.name;
+    // A blank override is an emptied field, not a title: no destination lists
+    // an offer without one, so it falls back to the master name exactly like
+    // an absent override does.
+    const title = input.overrides?.title?.trim() ? input.overrides.title : product.name;
     // ADR-046: shape the description into what THIS destination accepts, using
     // the format the already-resolved adapter declares. Returns undefined when
     // nothing survives, which the cleanup below then omits - the Allegro

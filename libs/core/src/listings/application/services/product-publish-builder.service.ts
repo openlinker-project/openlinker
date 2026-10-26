@@ -407,7 +407,9 @@ export class ProductPublishBuilderService implements IProductPublishBuilderServi
     product: { name: string; description: string | null; images: string[] | null },
     descriptionFormat: DescriptionFormat
   ): PublishProductContent | undefined {
-    const title = overrides?.title ?? product.name;
+    // A blank override is an emptied field, not a title - same fallback as an
+    // absent one, since a shop product cannot be published without a name.
+    const title = overrides?.title?.trim() ? overrides.title : product.name;
     // ADR-046: shape for the shop's declared format. `getDescriptionFormat` is
     // required on `ShopProductManagerPort`, so a shop always declares one.
     const description = formatDescriptionForDestination(

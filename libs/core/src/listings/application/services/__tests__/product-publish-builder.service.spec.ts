@@ -134,6 +134,15 @@ describe('ProductPublishBuilderService', () => {
     expect(command).not.toHaveProperty('sku');
   });
 
+  it('should use the master name when the content title override is blank', async () => {
+    const command = await service.buildPublishProductCommand({
+      ...baseInput,
+      content: { title: '  ' },
+    });
+
+    expect(command.content?.title).toBe('Widget');
+  });
+
   it('should pass master stock through unchanged when the connection has no buffer (default 0) (#1844)', async () => {
     const command = await service.buildPublishProductCommand(baseInput);
 
