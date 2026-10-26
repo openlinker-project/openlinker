@@ -60,6 +60,39 @@ export function isConnectionSetupIncompleteError(error: unknown): boolean {
 }
 
 /**
+ * A refusal the operator may overrule (DEF-23/26/30/31): the server read the
+ * sale as one it would not issue by default and named the code to send back
+ * in `acknowledgeWarnings` to go ahead anyway. Two shapes carry it - a 422
+ * `acknowledgement-required` from the provider adapter, and a 409
+ * `OrderNotIssuable` for a cancelled or refunded order. `message` is the
+ * server's own PII-free sentence, written to be shown as is.
+ */
+export interface AcknowledgementRequest {
+  warningCode: string;
+  message: string;
+}
+
+export function readAcknowledgementRequest(error: unknown): AcknowledgementRequest | null {
+  if (!(error instanceof ApiError) || (error.status !== 422 && error.status !== 409)) {
+    return null;
+  }
+  const body = error.details as
+    | { error?: unknown; failureCode?: unknown; warningCode?: unknown; failureReason?: unknown }
+    | null;
+  if (typeof body?.warningCode !== 'string' || body.warningCode === '') {
+    return null;
+  }
+  const overrulable =
+    (error.status === 422 && body.failureCode === 'acknowledgement-required') ||
+    (error.status === 409 && body.error === 'OrderNotIssuable');
+  if (!overrulable) {
+    return null;
+  }
+  const message = typeof body.failureReason === 'string' ? body.failureReason : error.message;
+  return { warningCode: body.warningCode, message };
+}
+
+/**
  * Discriminates the "no numbering series configured" 400 (AC #6). The invoicing
  * controller maps `MissingNumberingSeriesException` to a 400 carrying
  * `{ error: 'MissingNumberingSeriesException' }`, so an issue-without-series

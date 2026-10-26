@@ -106,7 +106,8 @@ export class ConnectionController {
 
   private async toResponse(
     connection: Connection,
-    user?: AuthenticatedUser
+    user?: AuthenticatedUser,
+    warnings?: string[]
   ): Promise<ConnectionResponseDto> {
     let supported: string[] = [];
     let variantGrouping: VariantGroupingModel = resolveVariantGroupingModel(undefined);
@@ -115,6 +116,7 @@ export class ConnectionController {
     // resolveRequiresCredentials itself.
     let requiresCredentials = true;
     let archivable = true;
+    let publicConfigKeys: readonly string[] = [];
     try {
       const metadata = await this.integrationsService.resolveAdapterMetadata({
         platformType: connection.platformType,
@@ -125,6 +127,7 @@ export class ConnectionController {
       defaultRateLimit = metadata.defaultRateLimit ?? null;
       requiresCredentials = resolveRequiresCredentials(metadata);
       archivable = resolveArchivable(metadata);
+      publicConfigKeys = metadata.publicConfigKeys ?? [];
     } catch (error) {
       // Unknown adapter (e.g., legacy row with unmapped platformType). Leave
       // supportedCapabilities empty (and variantGrouping/defaultRateLimit at
@@ -144,7 +147,9 @@ export class ConnectionController {
       user?.role,
       this.demoModeService.isDemoModeEnabled(),
       requiresCredentials,
-      archivable
+      archivable,
+      warnings,
+      publicConfigKeys
     );
   }
 
@@ -164,7 +169,8 @@ export class ConnectionController {
     @CurrentUser() user: AuthenticatedUser
   ): Promise<ConnectionResponseDto> {
     const connection = await this.connectionService.create(dto);
-    return this.toResponse(connection, user);
+    const warnings = await this.connectionService.findSharedRateLimitBucketWarnings(connection);
+    return this.toResponse(connection, user, warnings);
   }
 
   @Roles('admin', 'operator', 'viewer')
@@ -229,7 +235,8 @@ export class ConnectionController {
       }),
     };
     const connection = await this.connectionService.update(id, patch);
-    return this.toResponse(connection, user);
+    const warnings = await this.connectionService.findSharedRateLimitBucketWarnings(connection);
+    return this.toResponse(connection, user, warnings);
   }
 
   @Roles('admin', 'operator', 'viewer')

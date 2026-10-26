@@ -232,3 +232,34 @@ describe('ConnectionResponseDto.fromDomain', () => {
     });
   });
 });
+
+describe('ConnectionResponseDto.fromDomain publicConfig (DEF-02)', () => {
+  const ksef: Connection = {
+    ...baseConnection,
+    platformType: 'ksef',
+    config: { env: 'prod', seller: { nip: '1189981779' }, allowCrossBorder: true },
+  };
+
+  it('should expose the declared scalar keys to an operator whose config is hidden', () => {
+    const dto = ConnectionResponseDto.fromDomain(
+      ksef, [], 'parent-child', null, 'operator', false, true, true, undefined, ['env'],
+    );
+
+    expect(dto.config).toEqual({});
+    expect(dto.publicConfig).toEqual({ env: 'prod' });
+  });
+
+  it('should never expose an undeclared or structured key', () => {
+    const dto = ConnectionResponseDto.fromDomain(
+      ksef, [], 'parent-child', null, 'viewer', false, true, true, undefined, ['seller'],
+    );
+
+    expect(dto.publicConfig).toEqual({});
+  });
+
+  it('should default to an empty publicConfig', () => {
+    const dto = ConnectionResponseDto.fromDomain(ksef, [], 'parent-child', null, 'operator');
+
+    expect(dto.publicConfig).toEqual({});
+  });
+});

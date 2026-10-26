@@ -63,6 +63,7 @@ describe('InventoryController', () => {
       getDuplicatePositionReport: jest.fn(),
       getProvenanceBackfillStatus: jest.fn(),
       resolveStockOwner: jest.fn(),
+      listPublishedReservedByLocation: jest.fn(),
     };
 
     const module: TestingModule = await Test.createTestingModule({

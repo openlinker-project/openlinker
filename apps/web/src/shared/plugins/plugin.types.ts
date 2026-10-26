@@ -34,7 +34,11 @@ import type { ApiRequest, PluginApiNamespaces } from '../../app/api/api-client';
 import type { GroupRoleGate } from '../../app/nav-registry.types';
 import type { Connection } from '../../features/connections/api/connections.types';
 import type { EditConnectionFormValues } from '../../features/connections/components/edit-connection.schema';
-import type { CorrectionSuggestedLine, InvoiceRecord } from '../../features/invoicing';
+import type {
+  CorrectionSuggestedLine,
+  InvoiceRecord,
+  IssueInvoiceOptions,
+} from '../../features/invoicing';
 import type { StructuredError } from '../types/structured-error.types';
 
 /**
@@ -623,6 +627,33 @@ export interface InvoiceCorrectionFlowProps {
 }
 
 /**
+ * One order line as the per-issue options slot sees it: enough to name the
+ * line, nothing that identifies the buyer.
+ */
+export interface InvoiceIssueOptionsLine {
+  id: string;
+  name: string | null;
+  quantity: number;
+}
+
+/**
+ * Props the per-provider "options for this invoice" slot receives (DEF-20).
+ * Rendered by the host inside the manual-issue disclosure, before the Issue
+ * button. The plugin only collects what the operator states about THIS sale
+ * (fiscal annotations, an extra party, per-line markers) - never a default
+ * applied on its own, and never anything that sets a rate. The host owns the
+ * value and sends it with the issue request. Absent means the provider takes
+ * no per-issue options.
+ */
+export interface InvoiceIssueOptionsProps {
+  connection: Connection;
+  lines: InvoiceIssueOptionsLine[];
+  value: IssueInvoiceOptions;
+  onChange: (next: IssueInvoiceOptions) => void;
+  disabled?: boolean;
+}
+
+/**
  * Build-time contribution bag. Folded by the host at module load.
  */
 export interface BuildContribution {
@@ -799,6 +830,12 @@ export interface PlatformContribution {
    * the correction affordance is hidden for that provider.
    */
   invoiceCorrectionFlow?: ComponentType<InvoiceCorrectionFlowProps>;
+  /**
+   * Invoicing: per-issue options the operator states about one sale when
+   * issuing by hand (DEF-20). Resolved via `usePlatform(connection.platformType)`.
+   * Absent means the issue request carries no per-issue options.
+   */
+  invoiceIssueOptions?: ComponentType<InvoiceIssueOptionsProps>;
   /**
    * Pack bench: the body and actions of a registered fiscal receipt's card
    * (#3647). Resolved via `usePlatform(document.platformType)`. Absent means the

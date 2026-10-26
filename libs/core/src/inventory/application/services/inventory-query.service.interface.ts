@@ -22,6 +22,7 @@ import type {
   InventoryOwnerQuery,
   InventoryOwnerResolution,
 } from '../../domain/types/inventory-owner.types';
+import type { LocatedReservedSum } from '../../domain/ports/reservation-ledger-reader.port';
 import type { PaginatedInventoryView } from '../types/inventory-view.types';
 
 export interface IInventoryQueryService {
@@ -154,4 +155,26 @@ export interface IInventoryQueryService {
    * lesson).
    */
   resolveStockOwner(query: InventoryOwnerQuery): Promise<InventoryOwnerResolution>;
+
+  /**
+   * Units OpenLinker has already PROMISED, per `(location, variant)` (#3475):
+   * the live, non-stale sum of `held` reservations stamped `atpEffect =
+   * 'published'` (ADR-061 decision 1) - the same definition `IAvailabilityService`
+   * subtracts, partitioned by location because the fulfilment router chooses
+   * between locations rather than publishing one number.
+   *
+   * Only `published` holds count: a `diagnostic` hold is recorded for visibility
+   * and by definition restricts nothing. Only LOCATED positions appear. Entries
+   * exist only for non-zero pairs; an absent pair means nothing is promised.
+   *
+   * `excludeOrderRecordId` leaves out one order's own holds - the router passes the
+   * order it is placing, whose hold exists before routing runs (#3480).
+   *
+   * Throws when the ledger cannot be read. A caller that must not over-allocate
+   * has to treat that as "unknown", never as zero.
+   */
+  listPublishedReservedByLocation(
+    variantIds: readonly string[],
+    options?: { readonly excludeOrderRecordId?: string }
+  ): Promise<readonly LocatedReservedSum[]>;
 }

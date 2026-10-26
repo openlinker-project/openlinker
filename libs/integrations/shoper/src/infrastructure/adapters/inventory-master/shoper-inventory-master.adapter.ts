@@ -10,7 +10,9 @@
  * Variant model (SPIKE-3638 M1): `product-stocks` is the variant grain, so each
  * stock row is ONE `Inventory`, variant-keyed by the same `stock_id` the
  * `ProductMaster` already minted a `ProductVariant` for - the two capabilities
- * agree on what a variant is. Stock is pooled and location-less (ADR-058
+ * agree on what a variant is. A product with variants also has a base row
+ * (`options: []`) no buyer can pick; it is not a variant on either side
+ * (`partitionShoperStocks`). Stock is pooled and location-less (ADR-058
  * decision 2) and Shoper has no reservation concept (`reserved` is 0).
  *
  * Three behaviours are load-bearing:
@@ -55,6 +57,7 @@ import { ShoperWarehousesNotSupportedException } from '../../../domain/exception
 import type { ShoperStock } from '../../../domain/types/shoper-api.types';
 import type { ShoperHttpClient } from '../../http/shoper-http-client';
 import { fetchShoperStocks } from '../../http/shoper-stocks';
+import { partitionShoperStocks } from '../../mappers/shoper-product.mapper';
 import {
   mapShoperStockToInventory,
   readShoperStockLevel,
@@ -158,12 +161,15 @@ export class ShoperInventoryMasterAdapter implements InventoryMasterPort {
     productId: string,
   ): Promise<ShoperStock[]> {
     try {
-      return await fetchShoperStocks(this.client, externalId, (count) =>
+      const stocks = await fetchShoperStocks(this.client, externalId, (count) =>
         this.logger.warn(
           `Shoper returned ${count} stock row(s) of another product while reading product ` +
             `${externalId}; dropped (connection: ${this.connection.id})`,
         ),
       );
+      // Only the rows a buyer can pick: the base row of a product with variants
+      // would report the product's stock a second time (and is never written).
+      return [...partitionShoperStocks(stocks).variants];
     } catch (error) {
       if (error instanceof ShoperApiError && error.isResourceNotFound()) {
         await this.productReader.read(externalId, productId);

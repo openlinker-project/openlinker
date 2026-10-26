@@ -222,6 +222,16 @@ export interface AdapterMetadata {
   archivable?: boolean;
 
   /**
+   * Config keys any role may read (DEF-02). `ConnectionResponseDto` hides the
+   * whole config from non-admins, which also hid facts the UI needs to tell the
+   * truth - KSeF's QR code points at a different portal per environment, so an
+   * operator was shown a TEST-portal code for a production invoice. Only keys
+   * an adapter declares here, and only scalar values, are exposed as
+   * `publicConfig`; never a secret, URL or identifier. Absent means none.
+   */
+  publicConfigKeys?: string[];
+
+  /**
    * Overrides `ConnectionService.create`'s inferred default for
    * `enabledCapabilities` when the caller omits the field entirely (#3350).
    *
