@@ -15,7 +15,7 @@
  */
 import type { ReactElement } from 'react';
 import { Button, Popover, PopoverContent, PopoverTrigger, StatusBadge } from '../../../shared/ui';
-import { hasCoverageAttention } from '../lib/data-coverage-copy.lib';
+import { hasCoverageAttention } from '../lib/data-coverage.copy';
 import type { CoverageCategoryRow } from '../api/analytics-coverage.types';
 
 export const ANALYTICS_DATA_COVERAGE_ANCHOR_ID = 'analytics-data-coverage';
