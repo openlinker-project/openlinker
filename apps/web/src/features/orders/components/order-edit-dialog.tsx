@@ -130,6 +130,10 @@ export function OrderEditDialog({
   const [dryRuns, setDryRuns] = useState<OrderEditDryRun[]>([]);
   const [failure, setFailure] = useState<Failure | null>(null);
   const [busy, setBusy] = useState<'reviewing' | 'saving' | null>(null);
+  // The discount was filled in with a quantity change, so the quantities go first.
+  const [discountDeferred, setDiscountDeferred] = useState(false);
+  // The quantities were saved and the discount is still waiting for its own review.
+  const [quantitiesSaved, setQuantitiesSaved] = useState(false);
 
   // Reset when the dialog OPENS, not whenever `initial` changes: a partly saved
   // edit refetches the order, and that must not wipe the refusal being shown.
@@ -145,6 +149,8 @@ export function OrderEditDialog({
       setDryRuns([]);
       setFailure(null);
       setBusy(null);
+      setDiscountDeferred(false);
+      setQuantitiesSaved(false);
     }
   }, [open, resetForm, resetMutation]);
 
@@ -163,12 +169,33 @@ export function OrderEditDialog({
   const reviewDisabled =
     busy !== null || changed.size === 0 || [...changed].some((section) => locked.has(section));
 
+  /**
+   * What goes out now. A discount filled in beside a quantity change is held
+   * back: its money would be worked out on the order as saved TODAY, not after
+   * the new quantities, so it is previewed and saved on its own afterwards.
+   */
+  const planForNow = (
+    submitted: OrderEditFormValues,
+    dryRun: boolean,
+  ): { plan: PlannedOrderEdit[]; deferred: boolean } => {
+    const full = planOrderEdits(submitted, initial, { dryRun });
+    const deferred =
+      full.some((planned) => planned.section === 'lines') &&
+      full.some((planned) => planned.section === 'discount');
+    return {
+      plan: deferred ? full.filter((planned) => planned.section !== 'discount') : full,
+      deferred,
+    };
+  };
+
   const run = (planned: PlannedOrderEdit): Promise<EditOrderOutput> =>
     mutation.mutateAsync({ internalOrderId, edit: planned.edit });
 
   const review = form.handleSubmit(async (submitted: OrderEditFormValues): Promise<void> => {
-    const plan = planOrderEdits(submitted, initial, { dryRun: true });
+    const { plan, deferred } = planForNow(submitted, true);
     if (plan.length === 0) return;
+    setDiscountDeferred(deferred);
+    setQuantitiesSaved(false);
     setFailure(null);
     setBusy('reviewing');
     const runs: OrderEditDryRun[] = [];
@@ -186,7 +213,7 @@ export function OrderEditDialog({
   });
 
   const save = async (): Promise<void> => {
-    const plan = planOrderEdits(form.getValues(), initial, { dryRun: false });
+    const { plan, deferred } = planForNow(form.getValues(), false);
     setFailure(null);
     setBusy('saving');
     const saved: OrderEditSection[] = [];
@@ -207,6 +234,14 @@ export function OrderEditDialog({
     }
     setBusy(null);
     onSaved(outputs);
+    if (deferred) {
+      // Stay open on the form: the discount is still filled in for its own review.
+      setStep('form');
+      setDryRuns([]);
+      setDiscountDeferred(false);
+      setQuantitiesSaved(true);
+      return;
+    }
     onOpenChange(false);
   };
 
@@ -223,7 +258,12 @@ export function OrderEditDialog({
         >
           <DialogTitle>{`Review changes to ${title}`}</DialogTitle>
           <DialogDescription>Check what changes and where it’s used before you save.</DialogDescription>
-          <OrderEditReview dryRuns={dryRuns} lineMeta={lineMeta} channelName={sourceName} />
+          <OrderEditReview
+            dryRuns={dryRuns}
+            lineMeta={lineMeta}
+            channelName={sourceName}
+            discountDeferred={discountDeferred}
+          />
           <div className="dialog__footer dialog__footer--split">
             <Button
               type="button"
@@ -293,6 +333,11 @@ export function OrderEditDialog({
           />
         ) : null}
         {failure && failureView !== 'blocked' ? <FailureAlert failure={failure} /> : null}
+        {quantitiesSaved ? (
+          <Alert tone="success" title="Quantities saved" data-testid="order-edit-quantities-saved">
+            The discount is still filled in below. Review it now.
+          </Alert>
+        ) : null}
 
         <form
           onSubmit={(event) => {

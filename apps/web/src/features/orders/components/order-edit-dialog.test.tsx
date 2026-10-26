@@ -342,6 +342,38 @@ describe('OrderEditDialog review and save (#3544, D9)', () => {
     expect(await screen.findByTestId('order-edit-correction')).toHaveTextContent(/fiscal receipt/);
   });
 
+  it('should refuse to preview a discount filled in beside a quantity change, and save the quantities alone', async () => {
+    const editOrderLines = vi
+      .fn()
+      .mockResolvedValueOnce(
+        editResult({ view: view({ lines: [{ orderLineId: 'line_a', channelQuantity: 3, quantity: 2 }] }) }),
+      )
+      .mockResolvedValueOnce(editResult({ dryRun: false, changeId: 'change_lines' }));
+    const editOrderDiscount = vi.fn();
+    const { onSaved, onOpenChange } = renderDialog({ editOrderLines, editOrderDiscount });
+    const user = userEvent.setup();
+
+    await setQuantity(user, 0, '2');
+    await user.type(await screen.findByTestId('order-edit-discount-amount'), '15');
+    await user.click(screen.getByTestId('order-edit-review-button'));
+
+    expect(await screen.findByTestId('order-edit-discount-deferred')).toHaveTextContent(
+      'Save the quantity change first, then apply the discount.',
+    );
+    expect(screen.queryByTestId('order-edit-money')).not.toBeInTheDocument();
+    expect(editOrderDiscount).not.toHaveBeenCalled();
+
+    await user.click(screen.getByTestId('order-edit-save'));
+
+    expect(await screen.findByTestId('order-edit-quantities-saved')).toBeInTheDocument();
+    expect(editOrderLines).toHaveBeenCalledTimes(2);
+    expect(editOrderDiscount).not.toHaveBeenCalled();
+    expect(onSaved).toHaveBeenCalledWith([expect.objectContaining({ changeId: 'change_lines' })]);
+    // The dialog stays open with the discount still filled in, ready for its own review.
+    expect(onOpenChange).not.toHaveBeenCalledWith(false);
+    expect(screen.getByTestId('order-edit-discount-amount')).toHaveValue('15');
+  });
+
   it('should go back to editing without saving', async () => {
     const editOrderAddress = vi.fn().mockResolvedValue(editResult());
     renderDialog({ editOrderAddress });

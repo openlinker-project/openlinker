@@ -39,7 +39,7 @@ describe('mockup M1 edit testids (#3544)', () => {
         'order-edit-dialog',
         'order-edit-review-button',
         'order-edit-diff',
-        'order-edit-money',
+        'order-edit-discount-deferred',
         'order-edit-save',
         'order-edit-blocked',
         'order-edit-locked-lines',

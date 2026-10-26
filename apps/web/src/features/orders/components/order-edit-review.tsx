@@ -12,10 +12,12 @@
  * paid one, with the refund-ceiling verdict. OpenLinker moves no money, so the
  * paid branch never says "refund" as something OpenLinker does.
  *
- * **A quantity edit and a discount in one review are two dry runs**, each
- * computed against the order as it is saved today. The total beside the lowered
- * quantities is therefore the quantities' alone, and the review says so rather
- * than printing a combined figure nothing calculated.
+ * **A quantity edit and a discount are never previewed together.** Each dry run
+ * is computed against the order as it is saved today, so a discount previewed
+ * beside new quantities would print money that is not what gets saved. The
+ * dialog drops the discount from that review (`discountDeferred`) and says to
+ * save the quantities first; a money figure here is always the server's figure
+ * for what is about to be saved.
  *
  * @module apps/web/src/features/orders/components
  */
@@ -49,6 +51,12 @@ export interface OrderEditReviewProps {
   lineMeta: readonly OrderEditLineMeta[];
   /** Display name of the source connection. */
   channelName: string | null;
+  /**
+   * The discount was filled in alongside a quantity change. It is NOT previewed:
+   * a dry run reads the order as saved today, so its money would not be what is
+   * saved after the quantities. The operator saves the quantities first.
+   */
+  discountDeferred?: boolean;
 }
 
 function isDiscountResult(output: EditOrderOutput): output is OrderDiscountResult {
@@ -77,6 +85,7 @@ export function OrderEditReview({
   dryRuns,
   lineMeta,
   channelName,
+  discountDeferred = false,
 }: OrderEditReviewProps): ReactElement {
   const channel = channelName ?? 'the sales channel';
   const bySection = new Map(dryRuns.map((run) => [run.section, run.output] as const));
@@ -89,11 +98,9 @@ export function OrderEditReview({
   })();
   const metaById = new Map(lineMeta.map((meta) => [meta.orderLineId, meta] as const));
 
-  const quantityTotals = linesOutput ? totalsOf(linesOutput) : null;
-  const discountTotals = discountOutput ? totalsOf(discountOutput) : null;
-  // See the module docblock: with both, the total shown is the quantities' alone.
-  const shownTotals = quantityTotals ?? discountTotals;
-  const combinedMoney = quantityTotals !== null && discountOutput !== null;
+  const shownTotals =
+    (linesOutput ? totalsOf(linesOutput) : null) ??
+    (discountOutput ? totalsOf(discountOutput) : null);
 
   return (
     <div className="order-edit-review" data-testid="order-edit-review">
@@ -185,13 +192,18 @@ export function OrderEditReview({
             </tbody>
           </table>
         </div>
-        {combinedMoney ? (
-          <p className="form-field__description" data-testid="order-edit-combined-note">
-            The total is for the new quantities alone. The discount below is worked out on the order
-            as it is saved today, and is worked out again when you save.
-          </p>
-        ) : null}
       </div>
+
+      {discountDeferred ? (
+        <Alert
+          tone="info"
+          title="The discount is reviewed separately"
+          data-testid="order-edit-discount-deferred"
+        >
+          Save the quantity change first, then apply the discount. The discount stays filled in, so
+          you can review it right after.
+        </Alert>
+      ) : null}
 
       <div className="dialog-section">
         <p className="dialog-section__head">Where this change is used</p>

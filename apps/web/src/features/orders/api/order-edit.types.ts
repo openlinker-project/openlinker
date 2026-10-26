@@ -139,6 +139,10 @@ export interface OrderDiscountProposalEntry {
   amount: string | null;
   /** Corrections: the document being corrected. */
   invoiceRecordId: string | null;
+  /** Corrections: the document's number, as persisted when the proposal was drafted. */
+  documentNumber: string | null;
+  /** Corrections: the repriced lines as persisted, so a reload still shows them. */
+  lines: DiscountCorrectionLine[] | null;
 }
 
 /** The order beside the channel's own record of it. `null` on an order nobody edited. */
