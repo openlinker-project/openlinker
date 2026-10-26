@@ -110,13 +110,17 @@ export {
 } from './domain/types/order.types';
 export { OrderPickupPointTypeValues } from './domain/types/order.types';
 export type { BuyerTaxId } from './domain/types/buyer-tax-id.types';
-export type { BuyerNote } from './domain/types/buyer-note.types';
+export type { BuyerNote, BuyerNoteListState } from './domain/types/buyer-note.types';
 export {
   readSourceBuyerNote,
   hasBuyerNoteText,
   encodeBuyerNoteColumn,
   decodeBuyerNoteColumn,
   normaliseCountryColumn,
+  classifyBuyerNoteForList,
+  buildBuyerNotePreview,
+  BuyerNoteListStateValues,
+  BUYER_NOTE_PREVIEW_MAX_CHARACTERS,
 } from './domain/types/buyer-note.types';
 export {
   readBuyerTaxId,

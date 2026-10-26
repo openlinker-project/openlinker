@@ -511,6 +511,8 @@ export class BenchWorkService implements IBenchWorkService {
       assignmentState,
       claimable,
       completedAt: work.completedAt?.toISOString() ?? null,
+      hasBuyerNote: order?.hasBuyerNote ?? false,
+      buyerNoteAcknowledgedAt: work.buyerNoteAcknowledgedAt?.toISOString() ?? null,
     };
   }
 }

@@ -216,6 +216,8 @@ export class BenchWorkController {
         assignmentState: work.assignmentState,
         claimable: work.claimable,
         completedAt: work.completedAt,
+        hasBuyerNote: work.hasBuyerNote,
+        buyerNoteAcknowledgedAt: work.buyerNoteAcknowledgedAt,
       })),
       executorName: view.executorName,
       routing: {

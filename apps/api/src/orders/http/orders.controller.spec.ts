@@ -1789,6 +1789,29 @@ describe('OrdersController', () => {
       });
     });
 
+    it('carries a state and a one-line preview on every list row, and keeps the full text off it', async () => {
+      const long = `\n  ${'x'.repeat(200)}\nsecond line`;
+      repository.findMany.mockResolvedValue({
+        items: [
+          orderRecordWith({ buyerNote: long, hasBuyerNote: true }),
+          orderRecordWith({ buyerNote: '', hasBuyerNote: false }),
+          orderRecordWith({ buyerNote: null, hasBuyerNote: false }),
+          orderRecordWith({ buyerNote: null, hasBuyerNote: true }),
+        ],
+        total: 4,
+      });
+
+      const { items } = await controller.listOrders({ limit: 20, offset: 0 });
+
+      expect(items.map((i) => i.buyerNoteState)).toEqual(['present', 'none', 'unknown', 'present']);
+      expect(items[0].buyerNotePreview).toBe('x'.repeat(120));
+      expect(items[1].buyerNotePreview).toBeNull();
+      expect(items[2].buyerNotePreview).toBeNull();
+      // Flagged but text not stored (hash-only mode): present, nothing to preview.
+      expect(items[3].buyerNotePreview).toBeNull();
+      expect(items[0]).not.toHaveProperty('buyerNote');
+    });
+
     it('projects the three note states on the detail read', async () => {
       repository.findById.mockResolvedValue(orderRecordWith({ buyerNote: 'Leave at the door' }));
       expect((await controller.getOrder('ol_order_001')).buyerNote).toBe('Leave at the door');

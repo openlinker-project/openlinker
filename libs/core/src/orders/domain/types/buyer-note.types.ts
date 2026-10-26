@@ -76,6 +76,49 @@ export function decodeBuyerNoteColumn(column: string | null | undefined): BuyerN
   return column.length === 0 ? null : column;
 }
 
+/** The three states a LIST row can say about the note, text-free (#3538). */
+export const BuyerNoteListStateValues = ['present', 'none', 'unknown'] as const;
+export type BuyerNoteListState = (typeof BuyerNoteListStateValues)[number];
+
+/**
+ * Classify an order's note for the list. `present` is the denormalised flag;
+ * otherwise the stored column decides: `''` is the source asserting none, a
+ * NULL column is unknown. Under `OL_STORE_PII=false` no text is stored, so a
+ * note-less row cannot tell none from unknown and reads `unknown` - a stated
+ * limit, not a claim that the source said nothing.
+ */
+export function classifyBuyerNoteForList(
+  hasBuyerNote: boolean,
+  state: BuyerNote,
+): BuyerNoteListState {
+  if (hasBuyerNote) {
+    return 'present';
+  }
+  return state === null ? 'none' : 'unknown';
+}
+
+/** The list preview is bounded so a long note never rides in a list payload. */
+export const BUYER_NOTE_PREVIEW_MAX_CHARACTERS = 120;
+
+/**
+ * First non-empty line of the note, trimmed and cut to
+ * {@link BUYER_NOTE_PREVIEW_MAX_CHARACTERS}. No ellipsis character is added: the
+ * client truncates visually. `null` when no text is stored.
+ */
+export function buildBuyerNotePreview(state: BuyerNote): string | null {
+  if (typeof state !== 'string') {
+    return null;
+  }
+  const first = state
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .find((line) => line.length > 0);
+  if (first === undefined) {
+    return null;
+  }
+  return Array.from(first).slice(0, BUYER_NOTE_PREVIEW_MAX_CHARACTERS).join('');
+}
+
 /**
  * Normalise an address country to the persisted 2-letter column form, or `null`
  * when absent. Country is not PII and survives address redaction.
