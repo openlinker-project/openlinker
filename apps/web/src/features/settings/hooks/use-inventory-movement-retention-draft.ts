@@ -38,6 +38,8 @@ export interface InventoryMovementRetentionDraft {
   setAcknowledged: (next: boolean) => void;
   reset: () => void;
   save: () => void;
+  /** Clears the stored value back to the env var, then the built-in default (`null`). */
+  clear: () => void;
 }
 
 export function useInventoryMovementRetentionDraft(
@@ -79,6 +81,20 @@ export function useInventoryMovementRetentionDraft(
     reset: (): void => {
       setDaysState(savedDays);
       setAcknowledged(false);
+    },
+    clear: (): void => {
+      mutation.mutate(
+        { inventoryMovementRetentionDays: null },
+        {
+          onSuccess: () => {
+            showToast({
+              tone: 'success',
+              title: 'History retention reset',
+              description: 'The default window applies from the next clean-up.',
+            });
+          },
+        }
+      );
     },
     save: (): void => {
       if (days === null) {

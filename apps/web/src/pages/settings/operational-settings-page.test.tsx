@@ -400,6 +400,75 @@ describe('OperationalSettingsPage', () => {
     ).toBeInTheDocument();
   });
 
+  describe('stock history retention (#3565)', () => {
+    const history = (value: number, source: string): Record<string, unknown> =>
+      view({
+        inventoryMovementRetentionDays: {
+          ...numeric(value, 730, 1825, 'Beyond about two years the table is mostly storage cost.'),
+          source,
+        },
+      });
+    const NAME = 'Days stock movement history is kept';
+
+    it('should render the resolved value with the rung it came from', async () => {
+      renderPage({ get: vi.fn().mockResolvedValue(history(400, 'env')) });
+
+      expect(await screen.findByRole('spinbutton', { name: NAME })).toHaveValue(400);
+      expect(screen.getByText("400 (from this server's environment)")).toBeInTheDocument();
+    });
+
+    it('should save only inventoryMovementRetentionDays', async () => {
+      const update = vi.fn().mockResolvedValue(undefined);
+      const user = userEvent.setup();
+      renderPage({ update, get: vi.fn().mockResolvedValue(history(365, 'default')) });
+
+      const box = await screen.findByRole('spinbutton', { name: NAME });
+      await user.clear(box);
+      await user.type(box, '500');
+      await user.click(screen.getByRole('button', { name: 'Save history retention' }));
+
+      await waitFor(() => {
+        expect(update).toHaveBeenCalledWith({ inventoryMovementRetentionDays: 500 });
+      });
+    });
+
+    it('should require the acknowledgement above 730 days and then send the flag', async () => {
+      const update = vi.fn().mockResolvedValue(undefined);
+      const user = userEvent.setup();
+      renderPage({ update, get: vi.fn().mockResolvedValue(history(365, 'default')) });
+
+      const box = await screen.findByRole('spinbutton', { name: NAME });
+      await user.clear(box);
+      await user.type(box, '1000');
+
+      const save = screen.getByRole('button', { name: 'Save history retention' });
+      expect(save).toBeDisabled();
+
+      await user.click(screen.getByRole('checkbox', { name: /I understand/ }));
+      expect(save).toBeEnabled();
+      await user.click(save);
+
+      await waitFor(() => {
+        expect(update).toHaveBeenCalledWith({
+          inventoryMovementRetentionDays: 1000,
+          acknowledgeAboveRecommended: true,
+        });
+      });
+    });
+
+    it('should send null when the stored value is cleared back to the default', async () => {
+      const update = vi.fn().mockResolvedValue(undefined);
+      const user = userEvent.setup();
+      renderPage({ update, get: vi.fn().mockResolvedValue(history(200, 'setting')) });
+
+      await user.click(await screen.findByRole('button', { name: 'Use the default' }));
+
+      await waitFor(() => {
+        expect(update).toHaveBeenCalledWith({ inventoryMovementRetentionDays: null });
+      });
+    });
+  });
+
   describe('job retention (#2946, D16)', () => {
     it('should render both retention values with their provenance', async () => {
       renderPage({

@@ -72,6 +72,14 @@ export function InventoryMovementRetentionSection({
         </p>
       ) : null}
 
+      {setting.source === 'setting' ? (
+        <div className="pacing-save__actions">
+          <Button tone="secondary" disabled={retention.saving} onClick={retention.clear}>
+            Use the default
+          </Button>
+        </div>
+      ) : null}
+
       {retention.changed ? (
         <div className="pacing-save pacing-save--inline" data-dirty="true">
           <div className="pacing-save__text">
