@@ -4,11 +4,13 @@
  * `inventory.saleDecrement.reconcileSweep` selects works inside a createdAt
  * window, oldest first, and without this the driving scan is a sequential read
  * of the table every 15 minutes. Synthetic sequential prefix per
- * docs/migrations.md rule 3. It first landed as 1937370002000, which
- * `AddInvoiceClearanceDetail` (#1578) had already taken, and TypeORM orders
- * a shared timestamp arbitrarily; it moved past the tail (1937390000000).
- * The statement is IF NOT EXISTS, so a database that already recorded the
- * old name re-runs it as a no-op.
+ * docs/migrations.md rule 3.
+ *
+ * Renumbered from 1937370002000, which add-invoice-clearance-detail (#1578)
+ * landed on `main` with first. A shared prefix leaves the apply order
+ * undefined and `check-migration-timestamps` refuses it. The `up()` is
+ * `IF NOT EXISTS`, so a database that already ran it under the old name
+ * applies this one as a no-op.
  */
 import type { MigrationInterface, QueryRunner } from 'typeorm';
 
