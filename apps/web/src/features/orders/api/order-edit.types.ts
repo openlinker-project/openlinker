@@ -160,6 +160,17 @@ export interface OrderEditsView {
   discountProposals: OrderDiscountProposalEntry[];
   cod: { channelAmount: string; amount: string | null; currency: string } | null;
   history: OrderEditHistoryEntry[];
+  /**
+   * Quantity edits whose line the channel no longer reports: the edit no longer
+   * applies and needs an operator's attention. Absent on an older payload.
+   */
+  unmatchedLineEdits?: OrderEditUnmatchedLineEdit[];
+}
+
+export interface OrderEditUnmatchedLineEdit {
+  orderLineId: string;
+  editedQuantity: number;
+  editedAt: string;
 }
 
 export interface OrderEditLineStock {

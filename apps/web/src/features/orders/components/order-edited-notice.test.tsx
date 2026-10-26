@@ -236,4 +236,71 @@ describe('OrderEditedNotice (#3544)', () => {
     expect(screen.queryByTestId('order-edit-confirm-refund')).not.toBeInTheDocument();
     expect(screen.queryByTestId('order-edit-review-correction')).not.toBeInTheDocument();
   });
+
+  it('should resend the same discount amount to open a refund that failed (B-37)', async () => {
+    const user = userEvent.setup();
+    const editOrderDiscount = vi.fn().mockResolvedValue({});
+    const onDiscountResent = vi.fn();
+    const api = createMockApiClient({
+      orders: { editOrderDiscount },
+      system: { getConfig: vi.fn().mockResolvedValue({ demoMode: false }) },
+    });
+    renderWithProviders(
+      <OrderEditedNotice
+        internalOrderId={ORDER_ID}
+        edits={edits()}
+        sourceName="Allegro"
+        onDiscountResent={onDiscountResent}
+        sessionDiscount={
+          {
+            refundIntentFailed: true,
+            discount: { amount: '15.00', currency: 'PLN' },
+          } as unknown as OrderDiscountResult
+        }
+      />,
+      { apiClient: api, sessionAdapter: createAuthenticatedSessionAdapter(ADMIN) },
+    );
+
+    expect(await screen.findByTestId('order-edit-refund-intent-failed')).not.toHaveTextContent(
+      /from Confirm refund/,
+    );
+    await user.click(screen.getByTestId('order-edit-resend-discount'));
+    await waitFor(() => {
+      expect(editOrderDiscount).toHaveBeenCalledWith(ORDER_ID, { amount: '15.00' });
+    });
+    await waitFor(() => {
+      expect(onDiscountResent).toHaveBeenCalled();
+    });
+  });
+
+  it('should list edits the channel no longer reports as needing attention', async () => {
+    renderNotice({
+      edits: edits({
+        unmatchedLineEdits: [
+          { orderLineId: 'line_gone', editedQuantity: 1, editedAt: '2026-09-25T09:41:00.000Z' },
+        ],
+      }),
+    });
+    const alert = await screen.findByTestId('order-edit-unmatched');
+    expect(alert).toHaveTextContent('needs attention');
+    expect(alert).toHaveTextContent(/Line line_gone: lowered to 1/);
+  });
+
+  it('should render nothing when the only edit is a removed discount (E-64)', () => {
+    renderNotice({
+      edits: edits({
+        lines: [],
+        totals: null,
+        discount: {
+          amount: '0.00',
+          currency: 'PLN',
+          perLine: [],
+          changeId: 'c1',
+          editedAt: '2026-09-25T09:41:00.000Z',
+          editedBy: null,
+        },
+      }),
+    });
+    expect(screen.queryByTestId('order-edit-notice')).not.toBeInTheDocument();
+  });
 });

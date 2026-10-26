@@ -38,6 +38,7 @@ import {
 import { FormField } from '../../../shared/ui/form-field';
 import { Input } from '../../../shared/ui/input';
 import { Select } from '../../../shared/ui/select';
+import { formatAmount } from '../../../shared/format/format-amount';
 import type { ParsedOrderSnapshot } from '../api/order-snapshot.schema';
 import type { OrderEditsView } from '../api/order-edit.types';
 import {
@@ -91,6 +92,8 @@ export interface OrderEditDialogProps {
 
 interface Failure {
   error: Error;
+  /** The section whose request the server refused. */
+  section: OrderEditSection | null;
   /** Sections saved before this one was refused. Empty for a dry run. */
   saved: readonly OrderEditSection[];
 }
@@ -154,6 +157,13 @@ export function OrderEditDialog({
     }
   }, [open, resetForm, resetMutation]);
 
+  // The EFFECTIVE snapshot total is the edited one, so it is the channel's figure only
+  // while nothing was edited; otherwise the server's `channelTotal` is the only truth.
+  const paidOnChannel = edits?.totals
+    ? { amount: edits.totals.channelTotal, currency: edits.totals.currency }
+    : !edits && snapshot.totals
+      ? { amount: snapshot.totals.total, currency: snapshot.totals.currency }
+      : null;
   const title = orderNumber ?? internalOrderId;
   const channel = sourceName ?? 'the sales channel';
   const values = form.watch();
@@ -164,7 +174,7 @@ export function OrderEditDialog({
   const ceiling = failure ? readRefundCeilingFigures(failure.error) : null;
   const refusalCode: OrderEditErrorCode | null =
     failureView === 'blocked' ? failureCode : failure === null ? predictedRefusal : null;
-  const locked = lockedSectionsFor(refusalCode);
+  const locked = lockedSectionsFor(refusalCode, failure?.section ?? null);
   const needsAck = (acceptedWork && changed.has('lines')) || failureView === 'needs-ack';
   const reviewDisabled =
     busy !== null || changed.size === 0 || [...changed].some((section) => locked.has(section));
@@ -199,14 +209,16 @@ export function OrderEditDialog({
     setFailure(null);
     setBusy('reviewing');
     const runs: OrderEditDryRun[] = [];
+    let refusedSection: OrderEditSection | null = null;
     try {
       for (const planned of plan) {
+        refusedSection = planned.section;
         runs.push({ section: planned.section, output: await run(planned) });
       }
       setDryRuns(runs);
       setStep('review');
     } catch (error) {
-      setFailure({ error: error as Error, saved: [] });
+      setFailure({ error: error as Error, section: refusedSection, saved: [] });
     } finally {
       setBusy(null);
     }
@@ -225,7 +237,7 @@ export function OrderEditDialog({
       } catch (error) {
         // A section that already went in reads as "nothing changed" on a retry.
         if (readOrderEditErrorCode(error) === 'NOTHING_CHANGED') continue;
-        setFailure({ error: error as Error, saved });
+        setFailure({ error: error as Error, section: planned.section, saved });
         setStep('form');
         setBusy(null);
         if (saved.length > 0) onSaved(outputs);
@@ -572,8 +584,8 @@ export function OrderEditDialog({
           ) : null}
 
           <p className="order-edit-totals-note" data-testid="order-edit-paid-note">
-            {snapshot.totals
-              ? `The buyer paid ${snapshot.totals.total.toFixed(2)} ${snapshot.totals.currency} on ${channel}. The review shows the total after your changes.`
+            {paidOnChannel
+              ? `The buyer paid ${formatAmount(paidOnChannel.amount, paidOnChannel.currency)} on ${channel}. The review shows the total after your changes.`
               : 'The review shows the total after your changes.'}
           </p>
 

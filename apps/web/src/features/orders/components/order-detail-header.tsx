@@ -87,7 +87,10 @@ export function OrderDetailHeader({ order, snapshot, tags }: OrderDetailHeaderPr
         {/* #2310 — beside the health badge, never instead of it (ADR-059).
             Header badges are full-size, so no `compact` here. */}
         <OrderPhaseOrWaitingBadge order={order} />
-        <OrderEditedBadge edited={order.editedInOpenLinker} />
+        <OrderEditedBadge
+          edited={order.editedInOpenLinker}
+          needsAttention={order.editsNeedAttention}
+        />
         {/* C-23: the channel snapshot keeps saying `processing` until a re-poll,
             so beside a Cancelled phase badge it reads as a second, contradicting
             status. The summary row carries it, labelled as the channel's own. */}

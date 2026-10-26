@@ -44,6 +44,8 @@ export const ORDER_EDIT_ERROR_CODES = [
   'DISCOUNT_EXCEEDS_TOTAL',
   'ORDER_HAS_FISCAL_RECEIPT',
   'INVOICE_NOT_SETTLED',
+  'LINE_PRICE_NOT_RESOLVABLE',
+  'DISCOUNT_BELOW_REFUNDED',
 ] as const;
 export type OrderEditErrorCode = (typeof ORDER_EDIT_ERROR_CODES)[number];
 
@@ -82,6 +84,8 @@ const BLOCKED_CODES: readonly OrderEditErrorCode[] = [
   'ADDRESS_EDIT_NEEDS_PII_STORAGE',
   'ORDER_HAS_FISCAL_RECEIPT',
   'INVOICE_NOT_SETTLED',
+  'LINE_PRICE_NOT_RESOLVABLE',
+  'DISCOUNT_BELOW_REFUNDED',
 ];
 
 export function classifyOrderEditRefusal(code: OrderEditErrorCode | null): OrderEditRefusalView {
@@ -117,9 +121,11 @@ export const ORDER_EDIT_REFUSAL_COPY: Record<OrderEditErrorCode, OrderEditRefusa
   },
   ORDER_ALREADY_SHIPPED: {
     title: 'The parcel is on its way',
-    fallbackReason: 'This order has already shipped, so it cannot be edited.',
+    fallbackReason:
+      'This order has already shipped, so its address, delivery method and items can no longer be changed. A discount still can.',
     steps: ['When the parcel comes back, use the returns flow.'],
-    locks: EVERY_SECTION,
+    // A discount is still allowed after shipping: it changes money, not the parcel.
+    locks: ['address', 'delivery', 'lines'],
     remedy: null,
   },
   ORDER_AMENDMENT_IN_FLIGHT: {
@@ -170,6 +176,20 @@ export const ORDER_EDIT_REFUSAL_COPY: Record<OrderEditErrorCode, OrderEditRefusa
     steps: ['Wait for the invoice to finish issuing, then add the discount.'],
     locks: ['discount'],
     remedy: { target: 'invoicing', label: 'Go to Sales document' },
+  },
+  LINE_PRICE_NOT_RESOLVABLE: {
+    title: 'Items can’t be changed',
+    fallbackReason: 'OpenLinker can not work out this line’s gross price, so it can not lower it.',
+    steps: ['Cancel the order and ask the buyer to order again.'],
+    locks: ['lines'],
+    remedy: null,
+  },
+  DISCOUNT_BELOW_REFUNDED: {
+    title: 'The discount is lower than what was refunded',
+    fallbackReason: 'A discount refund was already confirmed, so the discount can not go below it.',
+    steps: [],
+    locks: ['discount'],
+    remedy: null,
   },
   EDIT_AFTER_HANDOFF: {
     title: 'The order is with an outside warehouse',
@@ -248,8 +268,18 @@ export function orderEditErrorNeedsRefresh(code: OrderEditErrorCode | null): boo
 }
 
 /** The sections locked by a refusal, as a set. An unknown or absent code locks nothing. */
-export function lockedSectionsFor(code: OrderEditErrorCode | null): ReadonlySet<OrderEditSection> {
-  return new Set(code === null ? [] : ORDER_EDIT_REFUSAL_COPY[code].locks);
+export function lockedSectionsFor(
+  code: OrderEditErrorCode | null,
+  refusedSection: OrderEditSection | null = null,
+): ReadonlySet<OrderEditSection> {
+  if (code === null) return new Set();
+  const locks = ORDER_EDIT_REFUSAL_COPY[code].locks;
+  // A refusal of a section the code does not normally lock (a discount refused
+  // by a bought label) locks that section, not the sections the code is about.
+  if (refusedSection !== null && !locks.includes(refusedSection)) {
+    return new Set([refusedSection]);
+  }
+  return new Set(locks);
 }
 
 // ---- rules mirrored from the server, as a convenience ----------------------

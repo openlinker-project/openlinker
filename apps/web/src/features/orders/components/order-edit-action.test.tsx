@@ -102,4 +102,37 @@ describe('OrderEditAction (#3544)', () => {
 
     expect(await screen.findByTestId('order-edit-blocked')).toHaveTextContent(/already packed/);
   });
+
+  it('should keep only the discount editable for a shipped order', async () => {
+    renderAction({ shipped: true });
+    const user = userEvent.setup();
+
+    await user.click(await screen.findByTestId('order-edit-button'));
+
+    expect(await screen.findByTestId('order-edit-blocked')).toHaveTextContent(/on its way/);
+    expect(screen.getByTestId('order-edit-locked-address')).toBeInTheDocument();
+    expect(screen.getByTestId('order-edit-locked-lines')).toBeInTheDocument();
+    expect(screen.getByTestId('order-edit-discount')).toBeInTheDocument();
+  });
+
+  it('should state the channel total, not the edited one, in the paid note (B-36)', async () => {
+    renderAction({
+      edits: {
+        editedAt: '2026-09-25T09:41:00.000Z',
+        address: null,
+        lines: [],
+        deliveryMethod: null,
+        totals: { currency: 'JPY', channelTotal: 1500, total: 1200, difference: 300, taxRestated: false },
+        discount: null,
+        discountProposals: [],
+        cod: null,
+        history: [],
+      },
+    });
+    const user = userEvent.setup();
+    await user.click(await screen.findByTestId('order-edit-button'));
+    const note = await screen.findByTestId('order-edit-paid-note');
+    expect(note).toHaveTextContent(/1,500/);
+    expect(note).not.toHaveTextContent(/1,500\.00/);
+  });
 });
