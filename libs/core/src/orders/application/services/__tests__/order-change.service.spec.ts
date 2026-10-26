@@ -58,6 +58,7 @@ describe('OrderChangeService', () => {
       findOpenByOrder: jest.fn(),
       findOrderIdsWithOpenChanges: jest.fn(),
       findById: jest.fn(),
+      listByOrder: jest.fn(),
       insertRequested: jest.fn(),
       confirm: jest.fn(),
       decline: jest.fn(),
@@ -242,6 +243,42 @@ describe('OrderChangeService', () => {
 
       const openSince = repository.findOpenByOrder.mock.calls[0][1];
       expect(Date.now() - openSince.getTime()).toBeLessThanOrEqual(24 * 60 * 60 * 1000 + 1000);
+    });
+  });
+
+  describe('listOperatorChangesByOrder (#3540)', () => {
+    it('should ask for order.* kinds only, never return.* ones', async () => {
+      repository.listByOrder.mockResolvedValue([]);
+
+      await service.listOperatorChangesByOrder(ORDER_ID);
+
+      expect(repository.listByOrder).toHaveBeenCalledWith(ORDER_ID, [
+        'order.cancel_request',
+        'order.cancel_correction',
+      ]);
+    });
+
+    it('should report a fresh requested row open and a stale one not open', async () => {
+      const stale = buildChange({ id: 'old', requestedAt: new Date(Date.now() - 48 * 3_600_000) });
+      const fresh = buildChange({ id: 'new', requestedAt: new Date() });
+      repository.listByOrder.mockResolvedValue([fresh, stale]);
+
+      const result = await service.listOperatorChangesByOrder(ORDER_ID);
+
+      expect(result.map((item) => [item.change.id, item.open])).toEqual([
+        ['new', true],
+        ['old', false],
+      ]);
+    });
+
+    it('should never report a terminal row open', async () => {
+      repository.listByOrder.mockResolvedValue([
+        buildChange({ status: 'confirmed', requestedAt: new Date() }),
+      ]);
+
+      const [item] = await service.listOperatorChangesByOrder(ORDER_ID);
+
+      expect(item.open).toBe(false);
     });
   });
 });

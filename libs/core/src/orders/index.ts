@@ -596,6 +596,7 @@ export type {
 export type {
   IOrderChangeService,
   OpenOrderChangeResult,
+  OrderChangeListItem,
 } from './application/services/order-change.service.interface';
 
 // The automation facts projection (#2363). Exported because it has two callers

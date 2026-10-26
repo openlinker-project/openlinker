@@ -14,6 +14,7 @@ import type { OrderChange } from '../../domain/entities/order-change.entity';
 import { OrderChangeRepositoryPort } from '../../domain/ports/order-change-repository.port';
 import {
   OrderAmendmentRequestKindValues,
+  OrderChangeKindValues,
   type CreateOrderChangeInput,
   type OrderChangeKind,
 } from '../../domain/types/order-change.types';
@@ -22,6 +23,7 @@ import { ORDER_CHANGE_REPOSITORY_TOKEN } from '../../orders.tokens';
 import type {
   IOrderChangeService,
   OpenOrderChangeResult,
+  OrderChangeListItem,
 } from './order-change.service.interface';
 
 @Injectable()
@@ -101,6 +103,18 @@ export class OrderChangeService implements IOrderChangeService {
       OrderAmendmentRequestKindValues,
       this.openSince()
     );
+  }
+
+  async listOperatorChangesByOrder(internalOrderId: string): Promise<OrderChangeListItem[]> {
+    const changes = await this.repository.listByOrder(
+      internalOrderId,
+      OrderChangeKindValues.filter((kind) => kind.startsWith('order.'))
+    );
+    const now = new Date();
+    return changes.map((change) => ({
+      change,
+      open: change.isOpen() && !this.isStale(change, now),
+    }));
   }
 
   async findById(id: string): Promise<OrderChange | null> {

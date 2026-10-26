@@ -77,6 +77,7 @@ describe('ReturnAuthorizeService', () => {
       findLatestByTarget: jest.fn().mockResolvedValue(null),
       findOpenByOrder: jest.fn().mockResolvedValue([]),
       findOrderIdsWithOpenAmendment: jest.fn().mockResolvedValue(new Set<string>()),
+      listOperatorChangesByOrder: jest.fn().mockResolvedValue([]),
       findById: jest.fn().mockResolvedValue(null),
     };
 

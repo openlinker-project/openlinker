@@ -154,6 +154,7 @@ import {
   ORDER_CHANGE_SERVICE_TOKEN,
   ORDER_TAG_SERVICE_TOKEN,
   type IOrderChangeService,
+  type OrderChange,
   type IOrderTagService,
 } from '@openlinker/core/orders';
 import {
@@ -170,7 +171,10 @@ import type {
   CancelOrderResult,
   ConfirmOrderChangeResult,
 } from '../application/types/order-cancellation.types';
+import { OrderChangeResponseDto } from './dto/order-change-response.dto';
 import { CancelOrderRequestDto } from './dto/cancel-order-request.dto';
+import type {
+  CancelCorrectionProposalLineDto} from './dto/cancel-order-response.dto';
 import {
   CancelOrderResponseDto,
   ConfirmOrderChangeResponseDto,
@@ -1418,6 +1422,28 @@ export class OrdersController {
     }
   }
 
+  @Roles('admin', 'operator', 'viewer')
+  @Get(':internalOrderId/changes')
+  @ApiOperation({
+    summary: "Read an order's operator changes",
+    description:
+      'Every `order.*` change proposal against the order, newest first: cancel requests and the credit ' +
+      'proposals they leave behind. `return.*` changes are not listed here. Lets a reloaded page, or a ' +
+      'second admin, find a pending cancel and the correction awaiting confirmation.',
+  })
+  @ApiResponse({ status: 200, type: [OrderChangeResponseDto] })
+  @ApiResponse({ status: 404, description: 'Order not found' })
+  async listOrderChanges(
+    @Param('internalOrderId') internalOrderId: string
+  ): Promise<OrderChangeResponseDto[]> {
+    const order = await this.orderRecordRepository.findById(internalOrderId);
+    if (!order) {
+      throw new NotFoundException(`Order not found: ${internalOrderId}`);
+    }
+    const items = await this.orderChanges.listOperatorChangesByOrder(internalOrderId);
+    return items.map(({ change, open }) => this.toOrderChangeDto(change, open));
+  }
+
   @Roles('admin')
   @Post(':internalOrderId/test-fixtures/mark-pre-rollout-era')
   @HttpCode(HttpStatus.OK)
@@ -1573,6 +1599,43 @@ export class OrdersController {
       });
     }
     return error;
+  }
+
+  private toOrderChangeDto(change: OrderChange, open: boolean): OrderChangeResponseDto {
+    const raw = change.payload ?? {};
+    const isCancel = change.kind === 'order.cancel_request';
+    const isCorrection = change.kind === 'order.cancel_correction';
+    const rawLines = Array.isArray(raw['lines']) ? (raw['lines'] as unknown[]) : [];
+    return {
+      id: change.id,
+      kind: change.kind,
+      status: change.status,
+      open,
+      requestedAt: change.requestedAt.toISOString(),
+      confirmedAt:
+        change.status === 'confirmed' && change.terminalisedAt
+          ? change.terminalisedAt.toISOString()
+          : null,
+      declinedReason: change.declinedReason,
+      payload: {
+        cancelRequest: isCancel
+          ? {
+              reason: typeof raw['reason'] === 'string' ? raw['reason'] : '',
+              note: typeof raw['note'] === 'string' ? raw['note'] : null,
+            }
+          : null,
+        correction:
+          isCorrection && typeof raw['invoiceRecordId'] === 'string'
+            ? {
+                invoiceRecordId: raw['invoiceRecordId'],
+                documentNumber:
+                  typeof raw['documentNumber'] === 'string' ? raw['documentNumber'] : null,
+                currency: typeof raw['currency'] === 'string' ? raw['currency'] : '',
+                lines: rawLines as CancelCorrectionProposalLineDto[],
+              }
+            : null,
+      },
+    };
   }
 
   private async hasOpenAmendment(internalOrderId: string): Promise<boolean> {
