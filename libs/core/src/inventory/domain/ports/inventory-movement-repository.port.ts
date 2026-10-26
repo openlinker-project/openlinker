@@ -36,10 +36,10 @@ export interface InventoryMovementRepositoryPort {
   settle(id: string, settlement: SettleInventoryMovementInput): Promise<boolean>;
 
   /**
-   * Fill `quantityBefore` / `quantityAfter` (and mark `applied`) on a row a caller
+   * Fill `quantityAfter` and the derived `quantityBefore` (`after - requested delta`), and mark `applied`, on a row a caller
    * already claimed. `false` when the row is unknown or already settled otherwise.
    */
-  attachQuantities(id: string, quantityBefore: number | null, quantityAfter: number): Promise<boolean>;
+  attachQuantities(id: string, quantityAfter: number): Promise<boolean>;
 
   /** Merged history: stored movements plus reservations as "Promised" rows. */
   listHistory(

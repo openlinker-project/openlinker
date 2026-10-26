@@ -474,7 +474,17 @@ describe('InventoryService', () => {
 
       await service.setInventory(persisted, 'conn-a', { attachToMovementId: 'mov-1' });
 
-      expect(movementRepository.attachQuantities).toHaveBeenCalledWith('mov-1', 5, 9);
+      expect(movementRepository.attachQuantities).toHaveBeenCalledWith('mov-1', 9);
+      expect(movementRepository.append).not.toHaveBeenCalled();
+    });
+
+    it('should write no ledger row for a new position born with zero stock', async () => {
+      const persisted = createItem({ availableQuantity: 0, updatedAt: at });
+      inventoryRepository.findByProductAndVariant.mockResolvedValue(null);
+      inventoryRepository.upsert.mockResolvedValue(persisted);
+
+      await service.setInventory(persisted, 'conn-a');
+
       expect(movementRepository.append).not.toHaveBeenCalled();
     });
 
@@ -485,7 +495,7 @@ describe('InventoryService', () => {
 
       await service.setInventory(persisted, 'conn-a', { attachToMovementId: 'mov-1' });
 
-      expect(movementRepository.attachQuantities).toHaveBeenCalledWith('mov-1', 5, 5);
+      expect(movementRepository.attachQuantities).toHaveBeenCalledWith('mov-1', 5);
     });
 
     it('should not fail the stock write nor skip propagation when the ledger write fails', async () => {

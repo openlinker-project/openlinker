@@ -160,7 +160,6 @@ export class InventoryService implements IInventoryService {
       if (movement !== undefined && isInventoryMovementAttachment(movement)) {
         const attached = await this.movementRepository.attachQuantities(
           movement.attachToMovementId,
-          before,
           upserted.availableQuantity
         );
         if (!attached) {
@@ -171,6 +170,10 @@ export class InventoryService implements IInventoryService {
         return;
       }
       if (previous !== null && previous.availableQuantity === upserted.availableQuantity) {
+        return;
+      }
+      // A brand-new position born empty changed nothing: no "+0" row.
+      if (previous === null && upserted.availableQuantity === 0) {
         return;
       }
       await this.movementRepository.append({

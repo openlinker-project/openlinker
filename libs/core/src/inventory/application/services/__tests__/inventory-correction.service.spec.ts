@@ -75,10 +75,10 @@ class InMemoryMovementRepository {
   });
 
   attachQuantities = jest.fn(
-    async (id: string, before: number | null, after: number): Promise<boolean> => {
+    async (id: string, after: number): Promise<boolean> => {
       const row = this.rows.get(id);
       if (row === undefined || row.status !== 'pending') return false;
-      this.rows.set(id, this.with(row, 'applied', { status: 'applied', quantityBefore: before, quantityAfter: after }));
+      this.rows.set(id, this.with(row, 'applied', { status: 'applied', quantityBefore: after - (row.quantityDelta ?? 0), quantityAfter: after }));
       return true;
     }
   );
@@ -170,7 +170,7 @@ function build(): Harness {
     setInventory: jest.fn(
       async (_item: unknown, _owner: unknown, ctx?: { attachToMovementId: string }) => {
         if (ctx !== undefined) {
-          await movements.attachQuantities(ctx.attachToMovementId, 10, 15);
+          await movements.attachQuantities(ctx.attachToMovementId, 15);
         }
       }
     ),
@@ -463,6 +463,76 @@ describe('InventoryCorrectionService', () => {
         expect.objectContaining({ status: 'applied', quantityAfter: 15 })
       );
       expect(result.status).toBe('applied');
+    });
+
+    it('should settle the row itself when the mirror resolves but the ledger attach was swallowed', async () => {
+      const h = build();
+      h.inventoryService.setInventory.mockResolvedValue(undefined);
+      const result = await h.service.correctStock(baseInput);
+      const row = h.movements.rows.get(result.movementId);
+      expect(row?.status).toBe('applied');
+      expect(row?.quantityAfter).toBe(15);
+      expect(row?.quantityBefore).toBe(10);
+      expect(row?.quantityDelta).toBe(5);
+    });
+
+    it('should record no before/after when the master reports no resulting quantity', async () => {
+      const h = build();
+      h.adapter.adjustInventory.mockResolvedValue({
+        id: 'x',
+        productId: PRODUCT_ID,
+        quantity: Number.NaN,
+        reserved: 0,
+        available: Number.NaN,
+      });
+      const result = await h.service.correctStock(baseInput);
+      const row = h.movements.rows.get(result.movementId);
+      expect(row?.status).toBe('applied');
+      expect(row?.quantityBefore).toBeNull();
+      expect(row?.quantityAfter).toBeNull();
+      expect(result.quantityAfter).toBeNull();
+      expect(h.inventoryService.setInventory).not.toHaveBeenCalled();
+    });
+
+    it('should refuse master-unreadable in set mode when the only entry belongs to another variant', async () => {
+      const h = build();
+      h.adapter.listInventory.mockResolvedValue([
+        { id: 'x', productId: PRODUCT_ID, variantId: 'ol_variant_other', quantity: 3, reserved: 0, available: 3 },
+      ]);
+      await expect(
+        h.service.correctStock({ ...baseInput, mode: 'set', quantity: 8 })
+      ).rejects.toMatchObject({ reason: 'master-unreadable' });
+      expect(h.adapter.adjustInventory).not.toHaveBeenCalled();
+    });
+
+    it('should use the lone product-level entry in set mode when it carries no variant id', async () => {
+      const h = build();
+      h.adapter.listInventory.mockResolvedValue([
+        { id: 'x', productId: PRODUCT_ID, quantity: 3, reserved: 0, available: 3 },
+      ]);
+      await h.service.correctStock({ ...baseInput, mode: 'set', quantity: 8 });
+      expect(h.movements.insertPending).toHaveBeenCalledWith(
+        expect.objectContaining({ quantityDelta: 5 })
+      );
+    });
+
+    it('should refuse idempotency-key-reused when the same key asks for a different quantity', async () => {
+      const h = build();
+      const key = '7b2f2b0a-3c43-4c0b-8f3a-1d0f9d6b6f21';
+      await h.service.correctStock({ ...baseInput, idempotencyKey: key });
+      await expect(
+        h.service.correctStock({ ...baseInput, quantity: 9, idempotencyKey: key })
+      ).rejects.toMatchObject({ reason: 'idempotency-key-reused' });
+      expect(h.adapter.adjustInventory).toHaveBeenCalledTimes(1);
+    });
+
+    it('should refuse idempotency-key-reused when the same key carries a different reason', async () => {
+      const h = build();
+      const key = '7b2f2b0a-3c43-4c0b-8f3a-1d0f9d6b6f22';
+      await h.service.correctStock({ ...baseInput, idempotencyKey: key });
+      await expect(
+        h.service.correctStock({ ...baseInput, operatorReason: 'damaged', idempotencyKey: key })
+      ).rejects.toMatchObject({ reason: 'idempotency-key-reused' });
     });
 
     it('should settle refused with the verbatim sentence on a known not-supported refusal', async () => {

@@ -163,7 +163,7 @@ export class InventoryCorrectionService implements IInventoryCorrectionService {
     if (input.idempotencyKey !== undefined) {
       const existing = await this.movements.findByIdempotencyKey(idempotencyKey);
       if (existing !== null) {
-        return this.replay(existing, target, master);
+        return this.replay(existing, target, master, input);
       }
     }
 
@@ -218,10 +218,10 @@ export class InventoryCorrectionService implements IInventoryCorrectionService {
         if (winner === null) {
           throw new Error(`Stock correction claim vanished: ${idempotencyKey}`);
         }
-        return await this.replayLocked(winner, target, master);
+        return await this.replayLocked(winner, target, master, input);
       }
 
-      return await this.cross(claimed, adapter, target, master, delta, currentForThreshold);
+      return await this.cross(claimed, adapter, target, master, delta);
     } finally {
       await this.syncLock.release(lockKey, lockToken);
     }
@@ -233,8 +233,7 @@ export class InventoryCorrectionService implements IInventoryCorrectionService {
     adapter: InventoryMasterPort,
     target: ResolvedTarget,
     master: InventoryCorrectionMaster,
-    delta: number,
-    currentQuantity: number
+    delta: number
   ): Promise<InventoryCorrectionResult> {
     let result: InventoryAdjustmentResult;
     try {
@@ -283,20 +282,24 @@ export class InventoryCorrectionService implements IInventoryCorrectionService {
     };
     const resultingQuantity = Number.isFinite(result.available) ? result.available : null;
 
-    let mirrored = false;
     if (resultingQuantity !== null) {
-      mirrored = await this.mirror(target, resultingQuantity, claimed.id);
+      await this.mirror(target, resultingQuantity, claimed.id);
     } else {
       this.logger.warn(
         `Manual stock correction ${claimed.id} applied, but the product master reported no ` +
           'quantity; the next stock sync will publish it'
       );
     }
-    if (!mirrored) {
-      // setInventory completes the row itself; without it the row would stay pending.
+    // setInventory completes the row through its best-effort ledger write, which
+    // can fail silently. No `pending` row may survive a returned answer, so the
+    // row is re-read and, if still pending, settled here. The recorded chain
+    // describes the MASTER: before = after - requested delta; with no reported
+    // quantity both stay null rather than being guessed from the mirror.
+    const afterMirror = await this.movements.findById(claimed.id);
+    if (afterMirror === null || afterMirror.status === 'pending') {
       await this.movements.settle(claimed.id, {
         status: 'applied',
-        quantityBefore: currentQuantity,
+        quantityBefore: resultingQuantity === null ? null : resultingQuantity - delta,
         quantityAfter: resultingQuantity,
       });
     }
@@ -306,7 +309,7 @@ export class InventoryCorrectionService implements IInventoryCorrectionService {
       claimed.id,
       'applied',
       delta,
-      row?.quantityBefore ?? currentQuantity,
+      row?.quantityBefore ?? (resultingQuantity === null ? null : resultingQuantity - delta),
       row?.quantityAfter ?? resultingQuantity,
       adjustmentOutcome,
       master,
@@ -376,9 +379,11 @@ export class InventoryCorrectionService implements IInventoryCorrectionService {
     target: ResolvedTarget
   ): Promise<{ available: number; reserved: number } | undefined> {
     const entries = await adapter.listInventory(target.productId);
+    // Never another variant's number: the lone-entry fallback is for a master
+    // that reports one product-level entry (no variant id) only.
     return (
       entries.find((entry) => entry.variantId === target.productVariantId) ??
-      (entries.length === 1 ? entries[0] : undefined)
+      (entries.length === 1 && !entries[0].variantId ? entries[0] : undefined)
     );
   }
 
@@ -409,10 +414,11 @@ export class InventoryCorrectionService implements IInventoryCorrectionService {
   private async replay(
     existing: InventoryMovement,
     target: ResolvedTarget,
-    master: InventoryCorrectionMaster
+    master: InventoryCorrectionMaster,
+    input: CorrectStockInput
   ): Promise<InventoryCorrectionResult> {
     if (existing.status !== 'pending') {
-      return this.replayLocked(existing, target, master);
+      return this.replayLocked(existing, target, master, input);
     }
     // A pending row is either a live peer or a dead process; only the position
     // lock tells them apart.
@@ -427,7 +433,7 @@ export class InventoryCorrectionService implements IInventoryCorrectionService {
     }
     try {
       const fresh = (await this.movements.findById(existing.id)) ?? existing;
-      return await this.replayLocked(fresh, target, master);
+      return await this.replayLocked(fresh, target, master, input);
     } finally {
       await this.syncLock.release(lockKey, lockToken);
     }
@@ -436,9 +442,14 @@ export class InventoryCorrectionService implements IInventoryCorrectionService {
   private async replayLocked(
     existing: InventoryMovement,
     target: ResolvedTarget,
-    master: InventoryCorrectionMaster
+    master: InventoryCorrectionMaster,
+    input: CorrectStockInput
   ): Promise<InventoryCorrectionResult> {
-    if (existing.productVariantId !== target.productVariantId || existing.reason !== 'manual_correction') {
+    if (
+      existing.productVariantId !== target.productVariantId ||
+      existing.reason !== 'manual_correction' ||
+      !this.sameRequest(existing, input)
+    ) {
       throw new InventoryCorrectionRefusedError(
         'idempotency-key-reused',
         'This idempotency key was already used for a different stock change'
@@ -469,6 +480,19 @@ export class InventoryCorrectionService implements IInventoryCorrectionService {
           : null,
       deduplicated: true,
     };
+  }
+
+  /**
+   * A replay must ask for the same change. `delta` mode states the delta, so it
+   * is compared directly. `set` mode's delta depends on the master's stock at
+   * claim time, which a replay does not re-read; the stored target is the
+   * resulting quantity of an applied row, so that is what is compared (a row
+   * that never applied has none, and only the reason is compared).
+   */
+  private sameRequest(existing: InventoryMovement, input: CorrectStockInput): boolean {
+    if (existing.operatorReason !== input.operatorReason) return false;
+    if (input.mode === 'delta') return existing.quantityDelta === input.quantity;
+    return existing.quantityAfter === null || existing.quantityAfter === input.quantity;
   }
 
   private report(
