@@ -171,6 +171,43 @@ describe('ShoperOrderProcessorAdapter', () => {
       }
     });
 
+    it("should book a simple product's line on its base stock row through the variant mapping", async () => {
+      // A simple product has no variant stocks; the product master keeps its
+      // base stock row (live: product 163, "OLE2E Miska prosta") as its single
+      // ProductVariant, so the line resolves through the same variant lookup.
+      const { adapter, post, mapping } = setup();
+      mapping.getExternalIds.mockImplementation((type: string, id: string) =>
+        Promise.resolve(
+          type === 'ProductVariant' && id === 'ol_variant_simple'
+            ? [{ connectionId: 'conn-1', externalId: '271' }]
+            : [],
+        ),
+      );
+
+      await adapter.createOrder(
+        order({
+          items: [
+            {
+              id: 'line-1',
+              productId: 'ol_product_simple',
+              variantId: 'ol_variant_simple',
+              quantity: 1,
+              price: 49.99,
+              taxRate: '23',
+            },
+          ],
+        }),
+      );
+
+      expect(mapping.getExternalIds).toHaveBeenCalledWith('ProductVariant', 'ol_variant_simple');
+      const lines = post.mock.calls
+        .filter(([path]) => path === '/order-products')
+        .map(([, body]) => body as Record<string, unknown>);
+      expect(lines).toHaveLength(1);
+      expect(lines[0].stock_id).toBe(271);
+      expect(lines[0]).not.toHaveProperty('product_id');
+    });
+
     it('should still return the order when the post-create stock check fails', async () => {
       const { adapter, del } = setup(undefined, true, true);
 

@@ -425,6 +425,9 @@ export class ShoperOrderProcessorAdapter
   }
 
   private async externalVariantId(item: OrderItem): Promise<string> {
+    // A simple product needs no special case: the product master keeps its base
+    // stock row as its single ProductVariant (`partitionSellableShoperStocks`),
+    // so this mapping resolves straight to that row's `stock_id`.
     if (item.variantId === undefined) {
       throw new ShoperNotMappedException(item.productId, this.connection.id);
     }
