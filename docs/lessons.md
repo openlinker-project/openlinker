@@ -2830,3 +2830,30 @@ touch is re-sent - "does not crash" does not cover "does not delete".
 mock them.
 
 **Source**: #3729
+
+## Write the channel snapshot, never the effective one, once an overlay exists
+
+**Context**: operator edits to an order (#3542) are an overlay merged over the
+channel's `orderSnapshot` when a record is read, because ingestion rewrites the
+snapshot wholesale on every poll. `OrderRecord.orderSnapshot` is therefore the
+EFFECTIVE (edited) view.
+
+**Problem**: any code that reads `record.orderSnapshot`, changes it and writes
+it back - or diffs it against the channel - now treats the operator's edit as
+the channel's own words. The source-amendment diff would report every edit as a
+source amendment on the next poll, and a read-modify-write would persist the
+edit into the channel original, where re-ingestion could no longer tell them
+apart. A reader cannot see the difference: both views have the same shape.
+
+**Rule**: read `record.channelSnapshot` for anything about what the channel
+reported or charged (amendment diff, FX, analytics) and for anything WRITTEN
+back to the `orderSnapshot` column; `toOrm` must map `channelSnapshot`. Keep a
+spec that `toOrm`/`upsert` writes the channel snapshot even when `orderEdits` is
+non-empty. Do not add `orderEdits` to an ingestion statement: a column the
+statement never names is what survives it.
+
+**Applies to**: `libs/core/src/orders` repositories, services and any worker
+handler that touches `order_records.orderSnapshot`.
+
+**Source**: #3542
+
