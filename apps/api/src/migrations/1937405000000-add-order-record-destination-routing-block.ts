@@ -46,19 +46,19 @@
  * Generated: 2026-09-08 (synthetic sequential prefix per docs/migrations.md
  * rule 3).
  *
- * RENUMBERED twice before merge: `1875000003400` -> `1878000000000` -> `1937400000000`.
+ * RENUMBERED three times before merge: `1875000003400` -> `1878000000000` -> `1937400000000` -> `1937405000000`.
  * Each time `main`'s migration tail (checked by `check-migration-timestamps.mjs`
  * against `origin/main`, which cannot see sibling PRs) overtook the number while
- * the PR waited in review. `1937400000000` sits above `main`'s tail
- * (`1937370002000`) AND above the value another open PR had claimed at the time
- * (`1937390000000`). An offset protects against a sibling branch,
+ * the PR waited in review. `1937405000000` sits above `main`'s tail
+ * (`1937390000000`) AND above the value another open PR had claimed at the time
+ * (`1937400000000`, product-gpsr). An offset protects against a sibling branch,
  * not against the branch being outlived by the queue ahead of it; a late-merging
  * migration is renumbered rather than nudged.
  */
 import type { MigrationInterface, QueryRunner } from 'typeorm';
 
-export class AddOrderRecordDestinationRoutingBlock1937400000000 implements MigrationInterface {
-  name = 'AddOrderRecordDestinationRoutingBlock1937400000000';
+export class AddOrderRecordDestinationRoutingBlock1937405000000 implements MigrationInterface {
+  name = 'AddOrderRecordDestinationRoutingBlock1937405000000';
 
   public async up(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(
