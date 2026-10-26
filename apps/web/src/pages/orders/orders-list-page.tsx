@@ -67,7 +67,7 @@ import { OrderDestinationRoutingBadge } from '../../features/orders/components/o
 import { OrderEditedBadge } from '../../features/orders/components/order-edited-badge';
 import { useRetryOrderDestinationMutation } from '../../features/orders/hooks/use-retry-order-destination-mutation';
 import { ReadOnlyLock } from '../../shared/ui/read-only-lock';
-import { useWriteAccess } from '../../shared/auth/use-permission';
+import { useIsAdmin, useWriteAccess } from '../../shared/auth/use-permission';
 import { DEMO_READ_ONLY_ACTION_MESSAGE } from '../../shared/config/demo-mode';
 import { useDemoMode, useStoresPersonalData } from '../../features/system';
 import { captureDemoEvent } from '../../features/demo';
@@ -89,9 +89,17 @@ import { isFulfilmentOwnedByDestination } from '../../features/orders/lib/fulfil
 import { deriveDeliveryOutcome, hasLiveOlCarrierRoute } from '../../features/orders/lib/delivery-outcome';
 import { DeliveryOutcomeChip } from '../../features/orders/components/delivery-chip';
 import { resolveDeliveryOwner } from '../../features/orders/lib/delivery-owner';
-import { capSelectionPerSource, sourcesAtCap } from '../../features/orders/lib/dispatch-input';
+import { capSelectionPerSource } from '../../features/orders/lib/dispatch-input';
 import { BulkDispatchDialog } from '../../features/orders/components/bulk-dispatch-dialog';
 import { BulkTagPopover } from '../../features/orders/components/bulk-tag-popover';
+import { BulkCancelDialog } from '../../features/orders/components/bulk-cancel-dialog';
+import { BulkBuyerNoteReadDialog } from '../../features/orders/components/bulk-buyer-note-read-dialog';
+import {
+  BULK_ACTIONS_COPY,
+  BULK_ORDER_ACTION_MAX,
+  bulkSelectionBlockReason,
+  splitBuyerNoteCandidates,
+} from '../../features/orders/lib/bulk-order-actions.copy';
 import { OrderExportDialog } from '../../features/orders/components/order-export-dialog';
 import { useOrderExportBackgroundToast } from '../../features/orders/hooks/use-order-export';
 import { OrderColumnVisibilityControl } from '../../features/orders/components/order-column-visibility-control';
@@ -387,6 +395,9 @@ export function OrdersListPage(): ReactElement {
   );
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkOpen, setBulkOpen] = useState(false);
+  const [bulkCancelOpen, setBulkCancelOpen] = useState(false);
+  const [bulkReadOpen, setBulkReadOpen] = useState(false);
+  const isAdmin = useIsAdmin();
   const [exportOpen, setExportOpen] = useState(false);
   // D35: admin and operator only — a viewer never sees the Export button.
   const exportAccess = useWriteAccess('orders:export', demoMode);
@@ -493,41 +504,39 @@ export function OrdersListPage(): ReactElement {
     [connectionsQuery.data],
   );
 
-  // Already-shipped orders can't be dispatched — their checkbox is disabled.
-  const isSelectable = (order: OrderRecord): boolean =>
+  // Selection is decoupled from dispatch (#3619): any row can be selected for
+  // cancel, tag or "mark message read" (cap: the backend's 100 per request).
+  // The dispatch rules - already-shipped rows excluded, 25 per source - now
+  // apply only to the "Dispatch N" button, which sends the eligible subset.
+  const isDispatchable = (order: OrderRecord): boolean =>
     order.fulfillmentState !== 'dispatched' && order.fulfillmentState !== 'delivered';
 
-  const selectableItems = useMemo(() => items.filter(isSelectable), [items]);
   const selectedOrders = useMemo(
     () => items.filter((o) => selectedIds.has(o.internalOrderId)),
     [items, selectedIds],
   );
-  // Source groups that have hit the per-source cap — their unselected rows
-  // disable (but already-selected rows stay toggleable so you can deselect).
-  const atCapSources = useMemo(
-    () => sourcesAtCap(selectedOrders, BULK_DISPATCH_MAX_ITEMS),
+  const dispatchOrders = useMemo(
+    () =>
+      capSelectionPerSource(selectedOrders.filter(isDispatchable), BULK_DISPATCH_MAX_ITEMS),
     [selectedOrders],
   );
-  // The header "select all" caps each source independently, so its target count
-  // is the capped selectable set — header reads `all` only once that's reached.
-  const cappedSelectableCount = useMemo(
-    () => capSelectionPerSource(selectableItems, BULK_DISPATCH_MAX_ITEMS).length,
-    [selectableItems],
-  );
-  const selectedVisibleCount = useMemo(
-    () => selectableItems.reduce((n, o) => n + (selectedIds.has(o.internalOrderId) ? 1 : 0), 0),
-    [selectableItems, selectedIds],
-  );
+  const shippedExcluded = selectedOrders.filter((o) => !isDispatchable(o)).length;
+  const overCapExcluded = selectedOrders.length - shippedExcluded - dispatchOrders.length;
+  const selectionBlockReason = bulkSelectionBlockReason(selectedOrders.length);
+  const noteSplit = useMemo(() => splitBuyerNoteCandidates(selectedOrders), [selectedOrders]);
+  const selectAllTarget = Math.min(items.length, BULK_ORDER_ACTION_MAX);
+  const selectedVisibleCount = selectedOrders.length;
   const headerCheckboxState: 'all' | 'some' | 'none' =
     selectedVisibleCount === 0
       ? 'none'
-      : selectedVisibleCount >= cappedSelectableCount
+      : selectedVisibleCount >= selectAllTarget
         ? 'all'
         : 'some';
   const distinctSelectedSources = useMemo(
     () => new Set(selectedOrders.map((o) => o.sourceConnectionId)).size,
     [selectedOrders],
   );
+  const bulkWrite = retryWrite.canWrite;
 
   function toggleSelectRow(order: OrderRecord): void {
     setSelectedIds((prev) => {
@@ -537,13 +546,7 @@ export function OrdersListPage(): ReactElement {
         next.delete(id);
         return next;
       }
-      // Enforce the per-source cap on add (count from current page's selection).
-      const sourceCount = items.reduce(
-        (n, o) =>
-          o.sourceConnectionId === order.sourceConnectionId && prev.has(o.internalOrderId) ? n + 1 : n,
-        0,
-      );
-      if (sourceCount >= BULK_DISPATCH_MAX_ITEMS) return prev;
+      if (prev.size >= BULK_ORDER_ACTION_MAX) return prev;
       next.add(id);
       return next;
     });
@@ -551,12 +554,10 @@ export function OrdersListPage(): ReactElement {
 
   function toggleSelectHeader(): void {
     setSelectedIds((prev) => {
-      const allSelected =
-        selectableItems.length > 0 && selectableItems.every((o) => prev.has(o.internalOrderId));
+      const target = items.slice(0, BULK_ORDER_ACTION_MAX);
+      const allSelected = target.length > 0 && target.every((o) => prev.has(o.internalOrderId));
       if (allSelected) return new Set();
-      return new Set(
-        capSelectionPerSource(selectableItems, BULK_DISPATCH_MAX_ITEMS).map((o) => o.internalOrderId),
-      );
+      return new Set(target.map((o) => o.internalOrderId));
     });
   }
 
@@ -567,30 +568,18 @@ export function OrdersListPage(): ReactElement {
   /**
    * Per-row selection checkbox (#1109) — shared verbatim by the desktop select
    * column and the mobile card select slot (#1620) so multi-select behaves
-   * identically in both layouts (already-shipped rows disabled; per-source cap
-   * enforced on add).
+   * identically in both layouts (the 100-order cap is enforced on add).
    */
   function renderSelectCheckbox(order: OrderRecord): ReactElement {
-    if (!isSelectable(order)) {
-      return (
-        <CheckboxCell
-          state="none"
-          disabled
-          onToggle={() => {}}
-          ariaLabel={`${order.internalOrderId} is already shipped`}
-          tooltip="Already shipped"
-        />
-      );
-    }
     const checked = selectedIds.has(order.internalOrderId);
-    const disabled = !checked && atCapSources.has(order.sourceConnectionId);
+    const disabled = !checked && selectedIds.size >= BULK_ORDER_ACTION_MAX;
     return (
       <CheckboxCell
         state={checked ? 'all' : 'none'}
         disabled={disabled}
         onToggle={() => { toggleSelectRow(order); }}
         ariaLabel={checked ? `Unselect ${order.internalOrderId}` : `Select ${order.internalOrderId}`}
-        tooltip={disabled ? `Max ${BULK_DISPATCH_MAX_ITEMS} per source` : undefined}
+        tooltip={disabled ? BULK_ACTIONS_COPY.selectionCapTooltip : undefined}
       />
     );
   }
@@ -1061,7 +1050,6 @@ export function OrdersListPage(): ReactElement {
       retryWrite.demoReadOnly,
       // Selection state — the select column re-renders as checkboxes toggle (#1109).
       selectedIds,
-      atCapSources,
       headerCheckboxState,
       // Sort controls in the merged-column headers (#1713) — rebuild so the
       // active-state arrows track the current sort/dir. `sortLabel` is a
@@ -1419,19 +1407,63 @@ export function OrdersListPage(): ReactElement {
             footer={
               selectionEnabled ? (
               <BulkActionBar
+                data-testid="orders-bulk-bar"
                 count={selectedOrders.length}
                 itemNoun="order"
                 hint={
-                  distinctSelectedSources > 1
-                    ? `${distinctSelectedSources} sources · Dispatch: max ${BULK_DISPATCH_MAX_ITEMS} per source`
-                    : `Dispatch: max ${BULK_DISPATCH_MAX_ITEMS} per source`
+                  <span data-testid="orders-bulk-hint">
+                    {selectionBlockReason ??
+                      (dispatchOrders.length < selectedOrders.length
+                        ? BULK_ACTIONS_COPY.dispatchHint(
+                            dispatchOrders.length,
+                            selectedOrders.length,
+                            shippedExcluded,
+                            overCapExcluded,
+                            BULK_DISPATCH_MAX_ITEMS,
+                          )
+                        : distinctSelectedSources > 1
+                          ? `${distinctSelectedSources} sources · ${BULK_ACTIONS_COPY.dispatchDefaultHint(BULK_DISPATCH_MAX_ITEMS)}`
+                          : BULK_ACTIONS_COPY.dispatchDefaultHint(BULK_DISPATCH_MAX_ITEMS))}
+                  </span>
                 }
                 actions={
                   <>
                     <Button tone="ghost" onClick={clearSelection}>
                       Clear
                     </Button>
-                    <BulkTagPopover selectedOrders={selectedOrders} />
+                    {bulkWrite ? (
+                      <BulkTagPopover
+                        selectedOrders={selectedOrders}
+                        disabledReason={selectionBlockReason}
+                      />
+                    ) : null}
+                    {bulkWrite ? (
+                      <Button
+                        tone="secondary"
+                        data-testid="orders-bulk-read"
+                        disabled={selectionBlockReason !== null || noteSplit.candidates.length === 0}
+                        title={
+                          selectionBlockReason ??
+                          (noteSplit.candidates.length === 0
+                            ? 'None of the selected orders has an unread buyer message'
+                            : undefined)
+                        }
+                        onClick={() => { setBulkReadOpen(true); }}
+                      >
+                        {BULK_ACTIONS_COPY.read.trigger}
+                      </Button>
+                    ) : null}
+                    {bulkWrite && isAdmin ? (
+                      <Button
+                        tone="danger"
+                        data-testid="orders-bulk-cancel"
+                        disabled={selectionBlockReason !== null}
+                        title={selectionBlockReason ?? undefined}
+                        onClick={() => { setBulkCancelOpen(true); }}
+                      >
+                        {BULK_ACTIONS_COPY.cancel.trigger(selectedOrders.length)}
+                      </Button>
+                    ) : null}
                     {exportAccess.canWrite ? (
                       <Button
                         tone="secondary"
@@ -1443,8 +1475,14 @@ export function OrdersListPage(): ReactElement {
                         {PAGE_COPY.exportSelected(selectedOrders.length)}
                       </Button>
                     ) : null}
-                    <Button tone="primary" onClick={() => { setBulkOpen(true); }}>
-                      Dispatch {selectedOrders.length}
+                    <Button
+                      tone="primary"
+                      data-testid="orders-bulk-dispatch"
+                      disabled={dispatchOrders.length === 0}
+                      title={dispatchOrders.length === 0 ? 'None of the selected orders can be dispatched' : undefined}
+                      onClick={() => { setBulkOpen(true); }}
+                    >
+                      Dispatch {dispatchOrders.length}
                     </Button>
                   </>
                 }
@@ -1810,8 +1848,22 @@ export function OrdersListPage(): ReactElement {
       <BulkDispatchDialog
         open={bulkOpen}
         onOpenChange={setBulkOpen}
-        orders={selectedOrders}
+        orders={dispatchOrders}
         channelLabelFor={channelLabelForBulk}
+        onComplete={clearSelection}
+      />
+
+      <BulkCancelDialog
+        open={bulkCancelOpen}
+        onOpenChange={setBulkCancelOpen}
+        orderIds={selectedOrders.map((o) => o.internalOrderId)}
+        onComplete={clearSelection}
+      />
+
+      <BulkBuyerNoteReadDialog
+        open={bulkReadOpen}
+        onOpenChange={setBulkReadOpen}
+        orders={selectedOrders}
         onComplete={clearSelection}
       />
 

@@ -150,4 +150,54 @@ describe('BulkTagPopover (#3532/#3533)', () => {
 
     expect(screen.queryByRole('menuitem', { name: 'Manage tags' })).toBeNull();
   });
+
+  it('should switch to remove mode and bulk-remove a tag the selection carries', async () => {
+    const bulkRemoveTag = vi.fn().mockResolvedValue({
+      tagId: 'tag-3',
+      removed: 3,
+      notTagged: 0,
+      failed: 0,
+      results: [],
+    });
+    renderMenu({ bulkRemoveTag });
+    const user = userEvent.setup();
+    await openMenu(user);
+
+    await user.click(screen.getByRole('menuitem', { name: 'Remove a tag from 3 orders…' }));
+    // Only tags some selected order carries are offered (VIP, B2B), not Fragile.
+    expect(screen.queryByRole('menuitem', { name: /Fragile/ })).toBeNull();
+    await user.click(screen.getByRole('menuitem', { name: /B2B/ }));
+
+    await waitFor(() => {
+      expect(bulkRemoveTag).toHaveBeenCalledWith('tag-3', ['ol_order_1', 'ol_order_2', 'ol_order_3']);
+    });
+    expect(await findToastTitle('Tag removed')).toBeInTheDocument();
+    expect(await findToastDescription('B2B removed from 3 orders.')).toBeInTheDocument();
+  });
+
+  it('should warn and list every order in a details view when some rows fail', async () => {
+    const bulkAssignTag = vi.fn().mockResolvedValue({
+      tagId: 'tag-1',
+      added: 1,
+      alreadyTagged: 1,
+      failed: 1,
+      results: [
+        { orderId: 'ol_order_1', outcome: 'already-tagged' },
+        { orderId: 'ol_order_2', outcome: 'added' },
+        { orderId: 'ol_order_3', outcome: 'failed', reason: 'Unexpected error (correlationId: x).' },
+      ],
+    });
+    renderMenu({ bulkAssignTag });
+    const user = userEvent.setup();
+    await openMenu(user);
+
+    await user.click(screen.getByRole('menuitem', { name: /VIP/ }));
+
+    expect(await findToastTitle('VIP: some orders failed')).toBeInTheDocument();
+    const details = await screen.findByTestId('orders-bulk-tag-details');
+    expect(details).toHaveTextContent('ol_order_3');
+    expect(details).toHaveTextContent('Unexpected error (correlationId: x).');
+    expect(details).toHaveTextContent('Already had it');
+    expect(screen.getAllByTestId('orders-bulk-result-row')).toHaveLength(3);
+  });
 });
