@@ -93,6 +93,7 @@ import { FulfillmentWorkRouteHandler } from './handlers/fulfillment-work-route.h
 import { FulfillmentWorkRelaySweepHandler } from './handlers/fulfillment-work-relay-sweep.handler';
 import { InventorySaleDecrementHandler } from './handlers/inventory-sale-decrement.handler';
 import { FulfillmentWorkRerouteSweepHandler } from './handlers/fulfillment-work-reroute-sweep.handler';
+import { InventorySaleDecrementReconcileSweepHandler } from './handlers/inventory-sale-decrement-reconcile-sweep.handler';
 import { MarketplaceSourceFulfillmentStatusSyncHandler } from './handlers/marketplace-source-fulfillment-status-sync.handler';
 import { FulfillmentWorkTimeoutSweepHandler } from './handlers/fulfillment-work-timeout-sweep.handler';
 import { PaymentStatusRefreshHandler } from './handlers/payment-status-refresh.handler';
@@ -201,6 +202,7 @@ import { HandlerRegistrationService } from './handlers/handler-registration.serv
     FulfillmentWorkRelaySweepHandler,
     InventorySaleDecrementHandler,
     FulfillmentWorkRerouteSweepHandler,
+    InventorySaleDecrementReconcileSweepHandler,
     HandlerRegistrationService,
     {
       // Dedicated client for JobIntakeConsumer's blocking XREADGROUP loop. On

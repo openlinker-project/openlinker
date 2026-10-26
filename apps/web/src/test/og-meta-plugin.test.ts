@@ -121,4 +121,59 @@ describe('og-meta plugin', () => {
       expect(metaContents(html, 'og:title')).toEqual(['$&amp; $$ $1 OpenLinker Admin']);
     });
   });
+
+  describe('search indexing (#3709)', () => {
+    const DEMO_ORIGIN = 'https://app.demo.openlinker.io';
+
+    function canonicalHrefs(html: string): string[] {
+      return [...html.matchAll(/<link\s+rel="canonical"\s+href="([^"]*)"\s*\/>/g)].map(
+        (match) => match[1]
+      );
+    }
+
+    it('should emit noindex, no canonical and the admin title when nothing is set', () => {
+      const html = buildHtml({});
+
+      expect(metaContents(html, 'robots')).toEqual(['noindex, nofollow']);
+      expect(canonicalHrefs(html)).toEqual([]);
+      expect(html).toContain('<title>OpenLinker Admin</title>');
+    });
+
+    it('should stay noindex when the opt-in is set without a site origin', () => {
+      // A canonical needs an absolute origin; without one the flag alone must
+      // not flip a self-hosted build to indexable.
+      const html = buildHtml({ VITE_OL_SEO_INDEXABLE: 'true' });
+
+      expect(metaContents(html, 'robots')).toEqual(['noindex, nofollow']);
+      expect(canonicalHrefs(html)).toEqual([]);
+    });
+
+    it('should stay noindex when the opt-in is any value other than "true"', () => {
+      const html = buildHtml({ VITE_OL_SEO_INDEXABLE: '1', VITE_OG_SITE_URL: DEMO_ORIGIN });
+
+      expect(metaContents(html, 'robots')).toEqual(['noindex, nofollow']);
+    });
+
+    it('should emit index, a canonical and the demo copy when opted in with an origin', () => {
+      const html = buildHtml({
+        VITE_OL_SEO_INDEXABLE: 'true',
+        VITE_OG_SITE_URL: `${DEMO_ORIGIN}/`,
+      });
+      const demoTitle = 'OpenLinker Demo – open-source e-commerce orchestration platform';
+
+      expect(metaContents(html, 'robots')).toEqual(['index, follow']);
+      expect(canonicalHrefs(html)).toEqual([`${DEMO_ORIGIN}/`]);
+      expect(html).toContain(`<title>${demoTitle}</title>`);
+      expect(metaContents(html, 'og:title')).toEqual([demoTitle]);
+      expect(metaContents(html, 'twitter:title')).toEqual([demoTitle]);
+      expect(metaContents(html, 'description')[0]).toMatch(/^Live read-only demo of OpenLinker/);
+      expect(metaContents(html, 'og:description')).toEqual(metaContents(html, 'description'));
+    });
+
+    it('should leave no unresolved %TOKEN% in an indexable build', () => {
+      const html = buildHtml({ VITE_OL_SEO_INDEXABLE: 'true', VITE_OG_SITE_URL: DEMO_ORIGIN });
+
+      expect(html).not.toMatch(/%[A-Z][A-Z0-9_]*%/);
+    });
+  });
 });

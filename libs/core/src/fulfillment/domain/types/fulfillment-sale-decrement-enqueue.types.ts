@@ -44,8 +44,14 @@ export interface SaleDecrementEnqueueIntent {
  * while nothing re-requests; the day a re-route or re-request path lands, this
  * key needs a generation segment (same constraint as `fulfillment:dispatch:*`).
  */
+/**
+ * The key's fixed prefix. Exported so the reconcile sweep's SQL derives its
+ * `idempotencyKey` match from the SAME constant the producers build with.
+ */
+export const SALE_DECREMENT_JOB_DEDUPE_PREFIX = 'inventory:sale-decrement:';
+
 export function buildSaleDecrementJobDedupeKey(workId: string): string {
-  return `inventory:sale-decrement:${workId}`;
+  return `${SALE_DECREMENT_JOB_DEDUPE_PREFIX}${workId}`;
 }
 
 /**
