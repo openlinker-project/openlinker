@@ -162,6 +162,9 @@ export class RoutingDryRunService implements IRoutingDryRunService {
     return [...rules].sort((a, b) => a.position - b.position || a.id.localeCompare(b.id));
   }
 
+  // The subject is a union, so the type makes `orderId` and `basket` mutually
+  // exclusive; "exactly one of the two" on the wire is enforced by the controller,
+  // not here, so a second caller must validate its own input.
   private async buildInput(
     request: DryRunRequest
   ): Promise<{ input: RoutingInput; routingSkipReason: FulfillmentRoutingSkipReason | null }> {

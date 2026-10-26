@@ -5,10 +5,11 @@
  * order go, and what would my unsaved rules change?". It calls the router's
  * non-committing `evaluate()` only; nothing is written.
  *
- * Admin only, like the rules it tests: the page that hosts it is admin-only, and
- * the dry run exposes stock and location facts an operator does not otherwise see
- * on that page. This is a READ in effect (no state changes) but a POST in shape,
- * because the body carries an order or basket and an optional draft ruleset.
+ * Read-authorised (admin, operator, viewer; never packer), per #2954: an operator
+ * can inspect where an order would go before anyone arms a rule. This is a READ
+ * in effect (no state changes) but a POST in shape, because the body carries an
+ * order or basket and an optional draft ruleset. Editing the rules stays
+ * admin-only on `OmsSourcingRulesController`.
  *
  * It lives in its own controller, not on `OmsSourcingRulesController`, so the
  * rules CRUD's class-level role default cannot be inherited by accident.
@@ -36,7 +37,7 @@ import {
 import { RoutingDryRunRequestDto } from './dto/routing-dry-run-request.dto';
 import { RoutingDryRunResponseDto } from './dto/routing-dry-run-response.dto';
 
-@Roles('admin')
+@Roles('admin', 'operator', 'viewer')
 @ApiBearerAuth()
 @ApiTags('oms')
 @Controller('connections/:connectionId/sourcing-rules')

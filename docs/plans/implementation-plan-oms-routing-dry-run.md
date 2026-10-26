@@ -53,12 +53,12 @@ Rules are `@openlinker/oms` vocabulary (REVIEW H7: opaque across the core port).
 3. `router.evaluate(input)`; when `draftRules` is present: coerce every draft through `coerceRoutingRule` (400 listing the invalid ones), require `isDraftRuleEvaluator(router)`, evaluate again with the draft, diff.
 4. Never call `route()`; never touch `markFulfillmentBlock`/attention/any write.
 
-**E. Controller + DTOs.** `OmsRoutingDryRunController`, `POST connections/:connectionId/sourcing-rules/dry-run`, `@Roles('admin')` (decided with the user: the rules page is admin-only, so the dry run is too; it changes no state). Request DTO: `orderId` XOR `basket`, optional `draftRules[]`. Response: `saved: RoutingEvaluation`, `draft?: RoutingEvaluation`, `changedLines?: …`, explanation rendered with the router-supplied display labels, `unfulfillable[].reason` verbatim. Register in `OmsApiModule`.
+**E. Controller + DTOs.** `OmsRoutingDryRunController`, `POST connections/:connectionId/sourcing-rules/dry-run`, `@Roles('admin', 'operator', 'viewer')` (the #2954 AC says read-authorised: an operator inspects before anyone arms a rule; it changes no state. Rule CRUD stays admin-only. Revised after review from an earlier admin-only decision). Request DTO: `orderId` XOR `basket`, optional `draftRules[]`. Response: `saved: RoutingEvaluation`, `draft?: RoutingEvaluation`, `changedLines?: …`, explanation rendered with the router-supplied display labels, `unfulfillable[].reason` verbatim. Register in `OmsApiModule`.
 
 ### 3.2 Frontend
 
 - `features/oms/api/`: `routing-dry-run.api.ts`, types, TanStack mutation hook (server state), Zod schema for the response (`unfulfillable.reason` kept an opaque string).
-- `features/oms/components/sourcing-rules-test-panel.tsx` rendering the six states `empty`, `picking`, `routable`, `unfulfillable`, `compare`, `error` with the `data-testid`s of the mockup; order picker reuses `GET /orders?search=` (masked buyer names); basket builder with RHF + Zod; draft = the dialog's unsaved rule order/edits supplied by the rules section.
+- `features/oms/components/sourcing-rules-test-panel.tsx` rendering the six states `empty`, `picking`, `routable`, `unfulfillable`, `compare`, `error` with the `data-testid`s of the mockup; order picker reuses `GET /orders?search=` (masked buyer names); basket builder with RHF + Zod; draft = an unsaved ruleset supplied by the caller. **Deferred:** every edit on the rules page saves at once, so the page has no unsaved draft to pass and the compare toggle is reachable only in component tests until a draft-editing flow exists (follow-up).
 - Mounted in `sourcing-rules-section.tsx`. No raw `fetch`, CSS tokens only, badges carry text.
 - Copy in a `*.copy.ts` so `check-ui-vocabulary` covers it.
 - Copy the M9 mockup into `docs/plans/mockups/oms-mvp/` (read for scripts first; it came from a shared artifact).

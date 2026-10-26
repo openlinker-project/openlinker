@@ -9,11 +9,16 @@
  *  - the resolver, rule source and router are really wired for this controller
  *    (a missing provider is an API BOOT or request failure no unit spec sees);
  *  - a draft that could not be saved cannot be evaluated: it answers 400;
- *  - admin-only: an operator is refused.
+ *  - read-authorised: admin, operator and viewer may inspect; a packer is refused.
  *
  * @module apps/api/test/integration
  */
-import { loginAsAdmin, loginAsOperator } from './helpers/test-auth.helper';
+import {
+  loginAsAdmin,
+  loginAsOperator,
+  loginAsPacker,
+  loginAsViewer,
+} from './helpers/test-auth.helper';
 import { createTestConnection } from './helpers/test-connection.helper';
 import type { IntegrationTestHarness } from './setup';
 import { getTestHarness, resetTestHarness, teardownTestHarness } from './setup';
@@ -172,15 +177,32 @@ describe('OMS routing dry run (integration)', () => {
       .expect(400);
   });
 
-  it('should refuse an operator: the dry run is admin-only', async () => {
+  it.each([
+    ['operator', loginAsOperator],
+    ['viewer', loginAsViewer],
+  ])('should let a %s run the dry run: it is read-authorised', async (_role, login) => {
     const adminToken = await loginAsAdmin(harness.getHttp(), harness.getDataSource());
     const connectionId = await createConnection(adminToken, 'openlinker');
-    const operatorToken = await loginAsOperator(harness.getHttp(), harness.getDataSource());
+    const token = await login(harness.getHttp(), harness.getDataSource());
+
+    const response = await harness
+      .getHttp()
+      .post(`/v1/connections/${connectionId}/sourcing-rules/dry-run`)
+      .set('Authorization', `Bearer ${token}`)
+      .send({ basket });
+
+    expect(response.status).toBe(200);
+  });
+
+  it('should refuse a packer: the dry run is not a bench surface', async () => {
+    const adminToken = await loginAsAdmin(harness.getHttp(), harness.getDataSource());
+    const connectionId = await createConnection(adminToken, 'openlinker');
+    const packerToken = await loginAsPacker(harness.getHttp(), harness.getDataSource());
 
     await harness
       .getHttp()
       .post(`/v1/connections/${connectionId}/sourcing-rules/dry-run`)
-      .set('Authorization', `Bearer ${operatorToken}`)
+      .set('Authorization', `Bearer ${packerToken}`)
       .send({ basket })
       .expect(403);
   });

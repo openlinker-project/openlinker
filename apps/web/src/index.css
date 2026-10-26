@@ -29800,6 +29800,61 @@ legend.analytics-settings-dialog__label {
 }
 
 /* ============================================================
+   SOURCING RULES TEST PANEL (#2954)
+
+   "Where would this order go?" - an order search or a basket, and the router's
+   own answer. Token-only and layout-only: the result copy comes from the router
+   and is rendered verbatim, so nothing here styles a specific reason.
+   ============================================================ */
+
+.sourcing-test {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  margin-top: var(--space-5);
+  padding: var(--space-5);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--bg-surface);
+}
+
+.sourcing-test__title {
+  margin: 0;
+  font-size: 1.125rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.sourcing-test__modes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.sourcing-test__orders {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin: var(--space-2) 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.sourcing-test__basket-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--space-3);
+  margin-bottom: var(--space-3);
+}
+
+@media (max-width: 640px) {
+  .sourcing-test {
+    padding: var(--space-4);
+  }
+}
+
+/* ============================================================
    SOURCING RULE DIALOG (#3058)
 
    The authoring form for one sourcing rule. Its only bespoke control is the
