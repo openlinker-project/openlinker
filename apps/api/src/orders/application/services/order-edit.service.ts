@@ -195,6 +195,11 @@ interface PreparedEdit {
   readonly patch: Omit<ApplyOrderEditInput, 'internalOrderId' | 'expectedRev'>;
   /** Discount only: what the money event amounts to, decided before anything is written. */
   readonly discountPlan?: DiscountPlan;
+  /**
+   * Discount only: the requested amount is already the stored one, so there is
+   * nothing to write - only proposals a failed earlier attempt left missing.
+   */
+  readonly ensureOnly?: boolean;
   /** Lines only: what to do to work, holds and stock once the overlay is written. */
   readonly loweredLines: ReadonlyArray<{
     readonly orderLineId: string;
@@ -571,6 +576,18 @@ export class OrderEditService implements IOrderEditService {
       return this.finishInterruptedEdit(record, prepared, prepared.recoverChangeId, input.actorUserId);
     }
 
+    if (prepared.ensureOnly && prepared.discountPlan !== undefined) {
+      const discountChangeId = record.orderEdits?.discount?.changeId ?? '';
+      const ensured = await this.followUpDiscount(record, prepared.discountPlan, discountChangeId, false);
+      return {
+        dryRun: false,
+        changeId: discountChangeId,
+        view: (await this.getEditsView(record)) as OrderEditsView,
+        stock: [],
+        discount: ensured,
+      };
+    }
+
     const { change } = await this.changes.openOrReuse({
       internalOrderId: input.internalOrderId,
       kind: prepared.kind,
@@ -607,7 +624,7 @@ export class OrderEditService implements IOrderEditService {
     const discount =
       prepared.discountPlan === undefined
         ? undefined
-        : await this.followUpDiscount(written, prepared.discountPlan, change.id);
+        : await this.followUpDiscount(written, prepared.discountPlan, change.id, true);
 
     const confirmed = await this.changes.confirm(change.id, `operator:${input.actorUserId ?? 'system'}`);
     if (confirmed) {
@@ -965,11 +982,9 @@ export class OrderEditService implements IOrderEditService {
 
     const amount = this.resolveDiscountAmount(input, goodsGrossValue(baseItems), currency, exponent);
     const currentAmount = effectiveDiscountAmount(record.orderEdits?.discount);
-    if (amount === currentAmount) {
-      throw new OrderEditRefusedError(
-        'NOTHING_CHANGED',
-        amount === 0 ? 'This order has no discount to remove.' : 'The order already has that discount.'
-      );
+    const sameAmount = amount === currentAmount;
+    if (sameAmount && amount === 0) {
+      throw new OrderEditRefusedError('NOTHING_CHANGED', 'This order has no discount to remove.');
     }
 
     let plan: PlannedOrderDiscount | null = null;
@@ -996,6 +1011,41 @@ export class OrderEditService implements IOrderEditService {
       paymentBranch
     );
     const refund = await this.planRefund(record, amount, paymentBranch, currency, exponent, input);
+
+    if (sameAmount) {
+      // Idempotent resubmission: the discount is saved, so only a proposal a
+      // failed earlier attempt left behind may still be missing.
+      const open = await this.changes.findOpenByOrder(record.internalOrderId);
+      const refundMissing =
+        refund !== null && !open.some((change) => change.kind === 'order.discount_refund');
+      const correctionMissing =
+        correction !== null &&
+        !open.some(
+          (change) =>
+            change.kind === 'order.discount_correction' &&
+            change.payload?.invoiceRecordId === correction.invoice.id
+        );
+      if (!refundMissing && !correctionMissing) {
+        throw new OrderEditRefusedError('NOTHING_CHANGED', 'The order already has that discount.');
+      }
+      const existing = record.orderEdits?.discount as OrderDiscountEdit;
+      return {
+        kind: 'order.discount_change',
+        targetRef: discountEditTargetRef(record.internalOrderId),
+        payload: {},
+        patch: { discount: existing },
+        loweredLines: [],
+        ensureOnly: true,
+        discountPlan: {
+          paymentBranch,
+          currency,
+          amount,
+          refund: refundMissing ? refund : null,
+          correction: correctionMissing ? correction : null,
+          correctionUnavailableReason,
+        },
+      };
+    }
 
     const now = new Date().toISOString();
     const discount: OrderDiscountEdit = {
@@ -1251,7 +1301,8 @@ export class OrderEditService implements IOrderEditService {
   private async followUpDiscount(
     written: OrderRecord,
     plan: DiscountPlan,
-    discountChangeId: string
+    discountChangeId: string,
+    retireOpenProposals: boolean
   ): Promise<OrderDiscountOutcome> {
     const orderId = written.internalOrderId;
     let refundChangeId: string | null = null;
@@ -1260,7 +1311,7 @@ export class OrderEditService implements IOrderEditService {
     let correctionFailed = false;
 
     try {
-      const open = await this.changes.findOpenByOrder(orderId);
+      const open = retireOpenProposals ? await this.changes.findOpenByOrder(orderId) : [];
       for (const change of open) {
         if (change.kind === 'order.discount_refund' || change.kind === 'order.discount_correction') {
           await this.changes.abandon(change.id);

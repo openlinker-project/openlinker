@@ -626,11 +626,11 @@ describe('OrderEditService (#3542)', () => {
       });
     }
 
-    const stored = (amount: string): OrderRecord['orderEdits'] => ({
+    const stored = (amount: string, changeId = 'old'): OrderRecord['orderEdits'] => ({
       v: 1,
       rev: 1,
       discount: {
-        changeId: 'old',
+        changeId,
         editedAt: '2026-10-01T00:00:00.000Z',
         editedBy: null,
         amount,
@@ -763,7 +763,7 @@ describe('OrderEditService (#3542)', () => {
         expect(result.view.totals).toMatchObject({ channelTotal: 50, total: 50 });
       });
 
-      it('should refuse a discount equal to the current one, and removing none', async () => {
+      it('should answer NOTHING_CHANGED for the same amount when no proposal is missing, and for removing none', async () => {
         current = discountOrder('awaiting', { orderEdits: stored('5.00') });
         expect(await refusal(service.editDiscount({ ...discountBase, amount: '5' }))).toBe('NOTHING_CHANGED');
 
@@ -975,6 +975,57 @@ describe('OrderEditService (#3542)', () => {
         expect(changes.confirm).toHaveBeenCalledWith('chg-1', 'operator:user-1');
       });
 
+      it('should re-open a lost refund intent on a same-amount resubmit without touching the overlay', async () => {
+        current = discountOrder('paid', { orderEdits: stored('10.00', 'd1') });
+
+        const result = await service.editDiscount({ ...discountBase, amount: '10' });
+
+        expect(orderRecords.applyOrderEdit).not.toHaveBeenCalled();
+        expect(changes.confirm).not.toHaveBeenCalled();
+        expect(changes.abandon).not.toHaveBeenCalled();
+        expect(changes.openOrReuse).toHaveBeenCalledTimes(1);
+        expect(changes.openOrReuse).toHaveBeenCalledWith(
+          expect.objectContaining({
+            kind: 'order.discount_refund',
+            targetRef: `refund:discount:${ORDER_ID}:d1`,
+            payload: expect.objectContaining({ amount: '10.00' }),
+          })
+        );
+        expect(result.discount?.refundIntent).toMatchObject({ amount: '10.00' });
+      });
+
+      it('should answer NOTHING_CHANGED for the same amount when the intent is already open', async () => {
+        current = discountOrder('paid', { orderEdits: stored('10.00', 'd1') });
+        changes.findOpenByOrder.mockResolvedValue([
+          Object.assign(Object.create(OrderChange.prototype) as OrderChange, {
+            id: 'intent',
+            kind: 'order.discount_refund',
+          }),
+        ]);
+
+        expect(await refusal(service.editDiscount({ ...discountBase, amount: '10' }))).toBe('NOTHING_CHANGED');
+        expect(changes.openOrReuse).not.toHaveBeenCalled();
+      });
+
+      it('should answer NOTHING_CHANGED once a confirmed intent covers the whole discount', async () => {
+        current = discountOrder('paid', { orderEdits: stored('10.00', 'd1') });
+        changes.findByOrderAndKinds.mockImplementation((_id, kinds) =>
+          Promise.resolve(
+            kinds[0] === 'order.discount_refund'
+              ? [
+                  Object.assign(Object.create(OrderChange.prototype) as OrderChange, {
+                    kind: 'order.discount_refund',
+                    status: 'confirmed',
+                    payload: { amount: '10.00' },
+                  }),
+                ]
+              : []
+          )
+        );
+
+        expect(await refusal(service.editDiscount({ ...discountBase, amount: '10' }))).toBe('NOTHING_CHANGED');
+      });
+
       it('should return the intent without saving anything on a dry run', async () => {
         const result = await service.editDiscount({ ...discountBase, amount: '10', dryRun: true });
 
@@ -1017,6 +1068,30 @@ describe('OrderEditService (#3542)', () => {
           expect.objectContaining({ originalLineNumber: 1, newUnitPriceGross: 10 }),
           expect.objectContaining({ originalLineNumber: 2, newUnitPriceGross: 20 }),
         ]);
+      });
+
+      it('should re-open a lost correction proposal on a same-amount resubmit, and not when one is open', async () => {
+        current = discountOrder('awaiting', { orderEdits: stored('10.00', 'd1') });
+        invoices.getLatestInvoiceForOrder.mockResolvedValue(issuedInvoice() as never);
+
+        const result = await service.editDiscount({ ...discountBase, amount: '10' });
+
+        expect(orderRecords.applyOrderEdit).not.toHaveBeenCalled();
+        expect(changes.openOrReuse).toHaveBeenCalledTimes(1);
+        expect(changes.openOrReuse).toHaveBeenCalledWith(
+          expect.objectContaining({ kind: 'order.discount_correction' })
+        );
+        expect(result.discount?.correctionProposal).not.toBeNull();
+
+        changes.openOrReuse.mockClear();
+        changes.findOpenByOrder.mockResolvedValue([
+          Object.assign(Object.create(OrderChange.prototype) as OrderChange, {
+            id: 'corr',
+            kind: 'order.discount_correction',
+            payload: { invoiceRecordId: 'inv-1' },
+          }),
+        ]);
+        expect(await refusal(service.editDiscount({ ...discountBase, amount: '10' }))).toBe('NOTHING_CHANGED');
       });
 
       it('should skip a document line whose price already equals the target', async () => {
