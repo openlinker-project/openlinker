@@ -207,7 +207,12 @@ export class OfferBuilderService implements IOfferBuilderService {
     // #824 barcode filter) can be smaller and need not match. Resolved after the
     // validation throw above so a build that fails validation skips the read.
     const siblings = await this.productsService.getVariantsByProductId(variant.productId);
-    const variantGroup = this.resolveVariantGroup(variant, siblings.length);
+    // A sibling deleted at the master (#1689 `isStale`) is not listed, so it
+    // must not turn the last live variant into a group of one.
+    const variantGroup = this.resolveVariantGroup(
+      variant,
+      siblings.filter((sibling) => sibling.isStale !== true).length
+    );
 
     const title = input.overrides?.title ?? product.name;
     // ADR-046: shape the description into what THIS destination accepts, using

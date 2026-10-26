@@ -171,7 +171,13 @@ export class ProductPublishBuilderService implements IProductPublishBuilderServi
       input.content?.imageUrls != null
         ? null
         : resolveVariantDefaultImages(variant, siblings, product.images);
-    const variantGroup = this.resolveVariantGroup(variant, siblings, variationImages);
+    // A sibling deleted at the master (#1689 `isStale`) is not published, so it
+    // neither makes a group of one nor adds its values to the parent's options.
+    const variantGroup = this.resolveVariantGroup(
+      variant,
+      siblings.filter((sibling) => sibling.isStale !== true),
+      variationImages
+    );
 
     // #1844 / #2323 — hold back the destination's per-connection stock safety
     // buffer so a fast-moving item keeps a cushion and can't oversell between

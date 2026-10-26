@@ -425,6 +425,37 @@ describe('ProductPublishBuilderService', () => {
       expect(command.variantGroup).toBeUndefined();
     });
 
+    it('should leave variantGroup absent when every other sibling was deleted at the master', async () => {
+      products.getVariantsByProductId.mockResolvedValue([
+        { id: VARIANT, productId: 'prod-1', attributes: { Color: 'Red' } },
+        { id: 'ol_variant_bbbb', productId: 'prod-1', attributes: {}, isStale: true },
+      ]);
+
+      const command = await service.buildPublishProductCommand(baseInput);
+
+      expect(command.variantGroup).toBeUndefined();
+    });
+
+    it('should leave a deleted sibling out of the parent options', async () => {
+      products.getVariantsByProductId.mockResolvedValue([
+        { id: VARIANT, productId: 'prod-1', attributes: { Color: 'Red' } },
+        { id: 'ol_variant_bbbb', productId: 'prod-1', attributes: { Color: 'Blue' } },
+        { id: 'ol_variant_cccc', productId: 'prod-1', attributes: { Color: 'Green' }, isStale: true },
+      ]);
+      products.getVariant.mockResolvedValue({
+        id: VARIANT,
+        productId: 'prod-1',
+        attributes: { Color: 'Red' },
+        ean: null,
+        gtin: null,
+        sku: null,
+      });
+
+      const command = await service.buildPublishProductCommand(baseInput);
+
+      expect(command.variantGroup?.groupAttributeValues).toEqual({ Color: ['Red', 'Blue'] });
+    });
+
     it('should stamp a variantGroup with the union of sibling attribute values for a multi-variant product', async () => {
       products.getVariantsByProductId.mockResolvedValue([
         { id: VARIANT, productId: 'prod-1', attributes: { Color: 'Red', Size: 'M' } },

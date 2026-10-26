@@ -1107,6 +1107,21 @@ describe('OfferBuilderService', () => {
       expect(result.variantGroup).toBeUndefined();
     });
 
+    it('should leave variantGroup absent when the only sibling was deleted at the master', async () => {
+      productsService.getVariantsByProductId.mockResolvedValue([
+        defaultVariant,
+        { ...siblingVariant, isStale: true } as ProductVariant,
+      ]);
+
+      const result = await service.buildCreateOfferCommand({
+        internalVariantId: VARIANT_ID,
+        connectionId: MARKETPLACE_CONN_ID,
+        stock: 1,
+      });
+
+      expect(result.variantGroup).toBeUndefined();
+    });
+
     it('should populate the group ref with empty attributes when variant attributes are null', async () => {
       multiVariant(null);
 
