@@ -1,0 +1,724 @@
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#faf9f5;color:#141413}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<title>Order cancel and edit</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="../../../../apps/web/src/index.css">
+<link rel="stylesheet" href="ol-kit.css">
+<script src="ol-kit.js" defer></script>
+<style>
+  /* Page-specific layout only. Everything else is real ol.css. */
+  [data-mk-show][hidden], .oc-closed .dialog__overlay, .oc-closed .dialog__content { display: none !important; }
+  .oc-num { text-align: right; white-space: nowrap; }
+  .oc-was { color: var(--text-muted); font-size: 0.75rem; margin-left: var(--space-1); }
+
+  /* "What happens" / "Where this change is used": one row per system that is touched. */
+  .oc-impact { list-style: none; margin: 0; padding: 0; display: grid; border: 1px solid var(--border-subtle); border-radius: var(--radius-lg); background: var(--bg-surface); }
+  .oc-impact__row { display: grid; grid-template-columns: 8.5rem minmax(0, 1fr); gap: var(--space-2) var(--space-4); align-items: start; padding: var(--space-3); border-top: 1px solid var(--border-subtle); font-size: 0.8125rem; }
+  .oc-impact__head { display: flex; flex-direction: column; align-items: flex-start; gap: var(--space-1); }
+  .oc-impact__row:first-child { border-top: 0; }
+  .oc-impact__what { font-weight: 600; color: var(--text-primary); }
+  .oc-impact__sub { display: block; font-weight: 400; font-size: 0.75rem; color: var(--text-muted); }
+  .oc-impact__how { color: var(--text-secondary); line-height: 1.45; }
+  .oc-impact__row--off .oc-impact__what { color: var(--text-secondary); }
+  @media (max-width: 599.98px) {
+    .oc-impact__row { grid-template-columns: minmax(0, 1fr); }
+    .oc-impact__head { flex-direction: row; justify-content: space-between; align-items: baseline; gap: var(--space-3); }
+  }
+
+  /* Before/after diff */
+  .oc-diff del { color: var(--text-muted); text-decoration: line-through; text-decoration-color: var(--status-error); }
+  .oc-diff ins { text-decoration: none; font-weight: 600; color: var(--text-primary); }
+
+  .oc-form { display: grid; gap: var(--space-3); }
+  .oc-inline { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
+  .oc-locked { opacity: 0.6; }
+  .oc-check { display: flex; gap: var(--space-2); align-items: flex-start; font-size: 0.8125rem; margin-top: var(--space-2); }
+  .oc-steps { margin-top: var(--space-2); }
+  /* Mockup only: keep the dialog clear of the sticky mockup bar. */
+  .oc-dialog-scope .dialog__content { top: calc(var(--mk-bar-h, 0px) + (100vh - var(--mk-bar-h, 0px)) / 2); max-height: calc(100vh - var(--mk-bar-h, 0px) - 24px); }
+  .oc-list { margin: var(--space-1) 0 0; padding-left: 1.1rem; display: grid; gap: 2px; }
+  .oc-totals-note { margin: 0; font-size: 0.75rem; color: var(--text-secondary); text-align: right; }
+  .oc-edited { color: var(--text-muted); font-size: 0.75rem; }
+</style>
+
+<div data-ol-page data-active="Orders" data-crumb-group="Operations" data-crumb="Orders">
+  <section class="page-section">
+    <div class="page-header page-header--split">
+      <div class="page-header__content">
+        <a class="back-link" href="#"><span class="back-link__glyph" aria-hidden="true">←</span><span class="back-link__label">Orders</span></a>
+        <p class="eyebrow">Orders</p>
+        <h2 class="page-title">Order detail</h2>
+      </div>
+      <div class="page-header__actions"><div class="toolbar__group">
+        <span data-mk-show="order cancel-confirm cancel-progress cancel-label cancel-shipped edit-form edit-review edit-blocked edit-saved" class="toolbar__group">
+          <button type="button" class="button button--secondary" data-go="edit-form">Edit order</button>
+          <button type="button" class="button button--secondary" data-go="cancel-confirm">Cancel order</button><span class="mk-pin">1</span>
+        </span>
+        <span data-mk-show="cancel-done" class="toolbar__group">
+          <button type="button" class="button button--primary">Confirm refund</button>
+        </span>
+      </div></div>
+    </div>
+
+    <!-- ===== Order header (OrderDetailHeader) ===== -->
+    <header class="order-header">
+      <div class="order-header__top">
+        <h1 class="order-header__title">Order ALG-24817</h1>
+        <span class="status-badge status-badge--success"><span class="status-badge__dot" aria-hidden="true"></span>Synced</span>
+        <span data-mk-show="order cancel-confirm cancel-label edit-form edit-review edit-blocked edit-saved" class="status-badge status-badge--neutral"><span class="status-badge__dot" aria-hidden="true"></span>Ready</span>
+        <span data-mk-show="cancel-progress" class="status-badge status-badge--warning status-badge--pulse"><span class="status-badge__dot" aria-hidden="true"></span>Change pending</span>
+        <span data-mk-show="cancel-shipped" class="status-badge status-badge--info"><span class="status-badge__dot" aria-hidden="true"></span>With carrier</span>
+        <span data-mk-show="cancel-done" class="status-badge status-badge--neutral"><span class="status-badge__dot" aria-hidden="true"></span>Cancelled</span>
+        <span data-mk-show="order cancel-confirm cancel-progress cancel-label edit-form edit-review edit-blocked edit-saved" class="status-badge status-badge--neutral"><span class="status-badge__dot" aria-hidden="true"></span>processing</span>
+        <span data-mk-show="cancel-shipped" class="status-badge status-badge--neutral"><span class="status-badge__dot" aria-hidden="true"></span>shipped</span>
+        <span data-mk-show="cancel-done" class="status-badge status-badge--neutral"><span class="status-badge__dot" aria-hidden="true"></span>cancelled</span>
+        <span class="status-badge status-badge--success"><span class="status-badge__dot" aria-hidden="true"></span>Paid</span>
+        <span data-mk-show="edit-saved" class="status-badge status-badge--info"><span class="status-badge__dot" aria-hidden="true"></span>Edited in OpenLinker</span><span data-mk-show="edit-saved" class="mk-pin">16</span>
+      </div>
+      <p class="order-header__phase-note muted-text" data-mk-show="order cancel-confirm cancel-label edit-form edit-review edit-blocked edit-saved">Ready — waiting to be dispatched.</p>
+      <p class="order-header__phase-note muted-text" data-mk-show="cancel-progress">A requested change is waiting for the channel to confirm.</p>
+      <p class="order-header__phase-note muted-text" data-mk-show="cancel-shipped">With the carrier, waiting on delivery.</p>
+      <p class="order-header__phase-note muted-text" data-mk-show="cancel-done">This order was cancelled.</p>
+
+      <div class="order-header__sub">
+        <span class="copyable-id"><code class="copyable-id__value mono-text" title="ol_order_8c41d2e9f07a4b3c9d15e6a2b7f0c318">ol_order_8c41d2e9f07a4b3c9d15e6a2b7f0c318</code><button type="button" class="copyable-id__copy">Copy</button></span>
+        <span class="order-route">
+          <span class="order-route__node"><span class="order-route__dot" aria-hidden="true"></span><span class="entity-label"><span class="entity-label__name">Allegro · ceramika_nowak</span></span><span class="order-route__role">source</span></span>
+          <span class="order-route__arrow" aria-hidden="true">→</span>
+          <span class="order-route__node"><span class="order-route__dot order-route__dot--accent" aria-hidden="true"></span><span class="entity-label"><span class="entity-label__name">PrestaShop · ceramikanowak.pl</span></span><span class="order-route__role">destination</span></span>
+        </span>
+        <span class="order-header__received">Placed <span class="mono-text tabular">25 Sep 2026, 09:12</span> <span class="muted-text">· today</span></span>
+      </div>
+      <div class="order-header__summary-line">
+        <strong>3 items · <span data-mk-show="order cancel-confirm cancel-progress cancel-label cancel-shipped cancel-done edit-form edit-review edit-blocked">6 units</span><span data-mk-show="edit-saved">5 units</span></strong>
+        <span class="order-header__summary-sep">—</span>
+        <a class="order-product-link" href="#">Kubek ceramiczny 350 ml, biały</a>
+        <span class="muted-text">+2 more</span>
+        <span class="order-header__summary-sep">·</span>
+        <span class="mono-text tabular" data-mk-show="order cancel-confirm cancel-progress cancel-label cancel-shipped cancel-done edit-form edit-review edit-blocked">348.99 PLN</span>
+        <span class="mono-text tabular" data-mk-show="edit-saved">294.99 PLN</span>
+      </div>
+    </header>
+
+    <!-- ===== Health strip ===== -->
+    <div class="order-health" role="group" aria-label="Order health">
+      <div class="order-health__cell"><div class="order-health__k">Sync</div><div class="order-health__v">1 of 1 synced</div><div class="order-health__hint">All destinations reconciled</div></div>
+      <div class="order-health__cell"><div class="order-health__k">Fulfillment</div>
+        <div class="order-health__v" data-mk-show="order cancel-confirm cancel-progress cancel-label cancel-done edit-form edit-review edit-blocked edit-saved">Not shipped</div>
+        <div class="order-health__v" data-mk-show="cancel-shipped">Dispatched</div>
+        <div class="order-health__hint" data-mk-show="order cancel-confirm cancel-progress edit-form edit-review edit-blocked edit-saved">Awaiting dispatch</div>
+        <div class="order-health__hint" data-mk-show="cancel-label">Label ready, not handed over</div>
+        <div class="order-health__hint" data-mk-show="cancel-shipped">With InPost since 14:32</div>
+        <div class="order-health__hint" data-mk-show="cancel-done">Order cancelled</div>
+      </div>
+      <div class="order-health__cell"><div class="order-health__k">Total</div>
+        <div class="order-health__v mono-text tabular" data-mk-show="order cancel-confirm cancel-progress cancel-label cancel-shipped cancel-done edit-form edit-review edit-blocked">348.99 PLN</div>
+        <div class="order-health__v mono-text tabular" data-mk-show="edit-saved">294.99 PLN</div>
+        <div class="order-health__hint" data-mk-show="order cancel-confirm cancel-progress cancel-label cancel-shipped cancel-done edit-form edit-review edit-blocked">3 items · source-priced</div>
+        <div class="order-health__hint" data-mk-show="edit-saved">Buyer paid 348.99 PLN on Allegro</div>
+      </div>
+    </div>
+
+    <!-- ===== State banners (same slot as the failed-destinations Alert) ===== -->
+    <div class="alert alert--info" role="status" data-mk-show="cancel-progress">
+      <div class="alert__content"><strong class="alert__title">Cancelling — waiting for Allegro</strong>
+        <div class="alert__description">OpenLinker asked Allegro to cancel this order at 11:02. Stock, the PrestaShop order and the correction invoice follow once Allegro confirms.</div></div>
+    </div>
+
+    <div class="alert alert--warning" role="status" data-mk-show="cancel-done">
+      <div class="alert__content"><strong class="alert__title">Order cancelled — 2 things are left for you</strong><span class="mk-pin">10</span>
+        <div class="alert__description">
+          <ol class="oc-list">
+            <li>Refund <b class="mono-text">348.99 PLN</b> to the buyer in Allegro Sales Center, then use <b>Confirm refund</b> so OpenLinker records it.</li>
+            <li>Review and issue the correction invoice for <span class="mono-text">FV/412/09/2026</span>.</li>
+          </ol>
+        </div></div>
+      <div class="alert__actions"><button type="button" class="button button--secondary button--sm">Review correction</button></div>
+    </div>
+
+    <div class="alert alert--info" role="status" data-mk-show="edit-saved">
+      <div class="alert__content"><strong class="alert__title">This order was edited in OpenLinker</strong>
+        <div class="alert__description">Allegro still shows the order as the buyer placed it: 3 × Kubek ceramiczny, 348.99 PLN. Refund <b class="mono-text">54.00 PLN</b> on Allegro, then confirm the refund here.</div></div>
+      <div class="alert__actions"><button type="button" class="button button--secondary button--sm">Confirm refund</button></div>
+    </div>
+
+    <!-- ===== Pricing & tax ===== -->
+    <section class="detail-section">
+      <h3 class="detail-section__title">Pricing &amp; tax</h3>
+      <div class="order-pricing">
+        <div class="order-line-items">
+          <div class="data-table__container">
+            <table class="data-table">
+              <thead><tr><th>Product</th><th>Tax rate</th><th class="oc-num">Qty</th><th class="oc-num">Unit price</th><th class="oc-num">Total</th></tr></thead>
+              <tbody>
+                <tr>
+                  <td><span class="order-line-item__product"><span class="order-line-item__product-info"><span class="order-line-item__name">Kubek ceramiczny 350 ml, biały</span><span class="order-line-item__sku mono-text">KUB-350-BIA</span></span></span></td>
+                  <td><span class="mono-text">23%</span></td>
+                  <td class="oc-num mono-text"><span data-mk-show="order cancel-confirm cancel-progress cancel-label cancel-shipped cancel-done edit-form edit-review edit-blocked">3</span><span data-mk-show="edit-saved">2 <span class="oc-was">was 3</span></span></td>
+                  <td class="oc-num mono-text">39.00 PLN</td>
+                  <td class="oc-num mono-text"><span data-mk-show="order cancel-confirm cancel-progress cancel-label cancel-shipped cancel-done edit-form edit-review edit-blocked">117.00 PLN</span><span data-mk-show="edit-saved">78.00 PLN</span></td>
+                </tr>
+                <tr>
+                  <td><span class="order-line-item__product"><span class="order-line-item__product-info"><span class="order-line-item__name">Talerz obiadowy 27 cm, grafitowy</span><span class="order-line-item__sku mono-text">TAL-27-GRA</span></span></span></td>
+                  <td><span class="mono-text">23%</span></td><td class="oc-num mono-text">2</td><td class="oc-num mono-text">54.00 PLN</td><td class="oc-num mono-text">108.00 PLN</td>
+                </tr>
+                <tr>
+                  <td><span class="order-line-item__product"><span class="order-line-item__product-info"><span class="order-line-item__name">Dzbanek 1,2 l, błękitny</span><span class="order-line-item__sku mono-text">DZB-12-BLE</span></span></span></td>
+                  <td><span class="mono-text">23%</span></td><td class="oc-num mono-text">1</td><td class="oc-num mono-text">109.00 PLN</td><td class="oc-num mono-text">109.00 PLN</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+        <div class="order-pricing__summary">
+          <dl class="order-totals" data-mk-show="order cancel-confirm cancel-progress cancel-label cancel-shipped cancel-done edit-form edit-review edit-blocked">
+            <div class="order-totals__row"><dt>Subtotal</dt><dd class="mono-text">334.00 PLN</dd></div>
+            <div class="order-totals__row"><dt>Shipping</dt><dd class="mono-text">14.99 PLN</dd></div>
+            <div class="order-totals__row"><dt>Tax <span class="muted-text">(incl.)</span></dt><dd class="mono-text">65.26 PLN</dd></div>
+            <div class="order-totals__row order-totals__row--total"><dt>Total</dt><dd class="mono-text">348.99 PLN</dd></div>
+          </dl>
+          <dl class="order-totals" data-mk-show="edit-saved">
+            <div class="order-totals__row"><dt>Subtotal</dt><dd class="mono-text">295.00 PLN</dd></div>
+            <div class="order-totals__row"><dt>Discount</dt><dd class="mono-text">−15.00 PLN</dd></div>
+            <div class="order-totals__row"><dt>Shipping</dt><dd class="mono-text">14.99 PLN</dd></div>
+            <div class="order-totals__row"><dt>Tax <span class="muted-text">(incl.)</span></dt><dd class="mono-text">55.16 PLN</dd></div>
+            <div class="order-totals__row order-totals__row--total"><dt>Total</dt><dd class="mono-text">294.99 PLN</dd></div>
+          </dl>
+          <span class="status-badge status-badge--neutral order-pricing__treatment">gross · source-authoritative</span>
+        </div>
+        <p class="order-pricing__note" data-mk-show="order cancel-confirm cancel-progress cancel-label cancel-shipped cancel-done edit-form edit-review edit-blocked">OpenLinker pins the <b>buyer-paid (gross) price</b> onto the destination — it does not use the destination’s catalog price.</p>
+        <p class="order-pricing__note" data-mk-show="edit-saved">Edited in OpenLinker on 25 Sep, 09:41 by admin. The buyer paid <b>348.99 PLN</b> on Allegro; the label, invoice and pack bench use the edited order (<b>294.99 PLN</b>).</p>
+      </div>
+    </section>
+
+    <!-- ===== Detail grid ===== -->
+    <div class="order-detail__primary-grid order-detail__primary-grid--split">
+      <div class="order-detail__stack">
+        <section class="detail-section">
+          <h3 class="detail-section__title">Summary</h3>
+          <dl class="key-value-list">
+            <dt class="key-value-list__label">Order #</dt><dd class="key-value-list__value key-value-list__value--mono mono-text">ALG-24817</dd>
+            <dt class="key-value-list__label">Source</dt><dd class="key-value-list__value"><span class="entity-label"><span class="entity-label__name">Allegro · ceramika_nowak</span></span></dd>
+            <dt class="key-value-list__label">Placed</dt><dd class="key-value-list__value">25 Sep 2026, 09:12</dd>
+            <dt class="key-value-list__label">Received (OL)</dt><dd class="key-value-list__value">25 Sep 2026, 09:14</dd>
+            <dt class="key-value-list__label">Ship by</dt><dd class="key-value-list__value"><span class="ds-row" style="gap:var(--space-2)">26 Sep 2026, 23:59 <span class="status-badge status-badge--info status-badge--compact"><span class="status-badge__dot" aria-hidden="true"></span>1 d left</span></span></dd>
+            <dt class="key-value-list__label">Buyer tax ID</dt><dd class="key-value-list__value"><span class="muted-text">None — the buyer did not ask for a company invoice</span></dd>
+          </dl>
+        </section>
+
+        <section class="detail-section">
+          <h3 class="detail-section__title">Packing</h3>
+          <div class="ds-row orders-packed-control" data-mk-show="order cancel-confirm cancel-progress cancel-label cancel-shipped cancel-done edit-form edit-review edit-saved">
+            <span class="muted-text">Not packed yet.</span>
+            <span class="muted-text" data-mk-show="order cancel-confirm cancel-progress">On the pack bench — claimed by <span class="mono-text">akowalczyk</span> at 10:48.</span>
+            <button type="button" class="button button--secondary button--sm" data-mk-show="order cancel-confirm cancel-progress cancel-label cancel-shipped edit-form edit-review edit-saved">Mark packed</button>
+          </div>
+          <div class="ds-row orders-packed-control" data-mk-show="edit-blocked">
+            <span class="orders-packed-state"><span class="orders-packed-tick__mark" aria-hidden="true">✓</span> Packed today, 11:20 by <span class="mono-text">akowalczyk</span></span>
+            <button type="button" class="button button--secondary button--sm">Mark not packed</button>
+          </div>
+        </section>
+
+        <section class="detail-section">
+          <h3 class="detail-section__title">Hold</h3>
+          <div class="ds-row order-hold-panel"><span class="muted-text">Not on hold.</span><button type="button" class="button button--secondary button--sm" data-mk-show="order cancel-confirm cancel-progress cancel-label cancel-shipped edit-form edit-review edit-blocked edit-saved">Put on hold</button></div>
+        </section>
+
+        <section class="detail-section">
+          <h3 class="detail-section__title">Sync status (1)</h3>
+          <ul class="order-sync-list">
+            <li class="order-sync-row"><span class="entity-label"><span class="entity-label__name">PrestaShop · ceramikanowak.pl</span></span>
+              <span class="status-badge status-badge--success status-badge--compact" data-mk-show="order cancel-confirm cancel-progress cancel-label cancel-shipped edit-form edit-review edit-blocked edit-saved">synced</span>
+              <span class="status-badge status-badge--neutral status-badge--compact" data-mk-show="cancel-done">cancelled</span>
+              <span class="order-sync-row__ext"><span class="mono-text">#4821</span></span></li>
+          </ul>
+        </section>
+      </div>
+
+      <div class="order-detail__stack">
+        <section class="detail-section order-delivery" aria-label="Delivery">
+          <h3 class="detail-section__title">Delivery</h3>
+          <div class="order-delivery__card">
+            <dl class="key-value-list">
+              <dt class="key-value-list__label">Shipped by</dt><dd class="key-value-list__value"><span class="order-delivery__shipped-by"><span>InPost ShipX</span> <span class="muted-text">· OpenLinker generates the label</span></span></dd>
+              <dt class="key-value-list__label">Ship to</dt>
+              <dd class="key-value-list__value">
+                <span class="order-delivery__addr" data-mk-show="order cancel-confirm cancel-progress cancel-label cancel-shipped cancel-done edit-form edit-review edit-blocked">Magdalena Wiśniewska<br>ul. Długa 12<br>31-147 Kraków<br>PL</span>
+                <span class="order-delivery__addr" data-mk-show="edit-saved">Magdalena Wiśniewska<br>ul. Długa 12/4<br>31-147 Kraków<br>PL<br><span class="oc-edited">Edited in OpenLinker · Allegro shows ul. Długa 12</span></span>
+              </dd>
+              <dt class="key-value-list__label">Method</dt><dd class="key-value-list__value">InPost Kurier</dd>
+              <dt class="key-value-list__label">Carrier</dt><dd class="key-value-list__value"><span class="order-delivery__carrier"><span>InPost</span>
+                <span class="status-badge status-badge--info status-badge--compact" data-mk-show="order cancel-confirm cancel-progress edit-form edit-review edit-blocked edit-saved">Awaiting label</span>
+                <span class="status-badge status-badge--success status-badge--compact" data-mk-show="cancel-label cancel-shipped">Label bought</span>
+                <span class="status-badge status-badge--neutral status-badge--compact" data-mk-show="cancel-done">Not shipped</span></span></dd>
+            </dl>
+          </div>
+        </section>
+
+        <section class="detail-section order-shipment-panel" id="shipment">
+          <header class="order-shipment-panel__header"><h3 class="detail-section__title">Shipment</h3>
+            <span class="status-badge status-badge--info" data-mk-show="cancel-label"><span class="status-badge__dot" aria-hidden="true"></span>generated</span>
+            <span class="status-badge status-badge--info" data-mk-show="cancel-shipped"><span class="status-badge__dot" aria-hidden="true"></span>in-transit</span>
+          </header>
+          <div class="state-card empty-state" role="status" data-mk-show="order cancel-confirm cancel-progress edit-form edit-review edit-blocked edit-saved">
+            <div class="state-card__header"><h2 class="state-card__title">No shipment yet</h2></div>
+            <p class="state-card__message">Generate a label to dispatch this order.</p>
+            <div class="state-card__actions"><button type="button" class="button button--primary button--sm">Generate label</button></div>
+          </div>
+          <div class="state-card empty-state" role="status" data-mk-show="cancel-done">
+            <div class="state-card__header"><h2 class="state-card__title">No shipment</h2></div>
+            <p class="state-card__message">This order was cancelled, so no label is generated for it.</p>
+          </div>
+          <div data-mk-show="cancel-label">
+            <ol class="shipment-lifecycle-rail" aria-label="Shipment lifecycle">
+              <li class="shipment-lifecycle-rail__step shipment-lifecycle-rail__step--current" aria-current="step"><span class="shipment-lifecycle-rail__node" aria-hidden="true"></span><span class="shipment-lifecycle-rail__label">Label ready</span></li>
+              <li class="shipment-lifecycle-rail__step"><span class="shipment-lifecycle-rail__node" aria-hidden="true"></span><span class="shipment-lifecycle-rail__label">Dispatched</span></li>
+              <li class="shipment-lifecycle-rail__step"><span class="shipment-lifecycle-rail__node" aria-hidden="true"></span><span class="shipment-lifecycle-rail__label">In transit</span></li>
+              <li class="shipment-lifecycle-rail__step"><span class="shipment-lifecycle-rail__node" aria-hidden="true"></span><span class="shipment-lifecycle-rail__label">Delivered</span></li>
+            </ol>
+            <div class="order-shipment-panel__body"><dl class="key-value-list">
+              <dt class="key-value-list__label">Carrier</dt><dd class="key-value-list__value">InPost Kurier</dd>
+              <dt class="key-value-list__label">Tracking</dt><dd class="key-value-list__value key-value-list__value--mono mono-text">630012345678901234567890</dd>
+              <dt class="key-value-list__label">Label</dt><dd class="key-value-list__value">Generated today, 12:05</dd>
+            </dl></div>
+            <div class="ds-row" style="margin-top:var(--space-3)"><button type="button" class="button button--secondary button--sm">Download label</button><button type="button" class="button button--secondary button--sm">Cancel shipment</button></div>
+          </div>
+          <div data-mk-show="cancel-shipped">
+            <ol class="shipment-lifecycle-rail" aria-label="Shipment lifecycle">
+              <li class="shipment-lifecycle-rail__step shipment-lifecycle-rail__step--done"><span class="shipment-lifecycle-rail__node" aria-hidden="true"></span><span class="shipment-lifecycle-rail__label">Label ready</span></li>
+              <li class="shipment-lifecycle-rail__step shipment-lifecycle-rail__step--done"><span class="shipment-lifecycle-rail__node" aria-hidden="true"></span><span class="shipment-lifecycle-rail__label">Dispatched</span></li>
+              <li class="shipment-lifecycle-rail__step shipment-lifecycle-rail__step--current shipment-lifecycle-rail__step--live" aria-current="step"><span class="shipment-lifecycle-rail__node" aria-hidden="true"></span><span class="shipment-lifecycle-rail__label">In transit</span></li>
+              <li class="shipment-lifecycle-rail__step"><span class="shipment-lifecycle-rail__node" aria-hidden="true"></span><span class="shipment-lifecycle-rail__label">Delivered</span></li>
+            </ol>
+            <div class="order-shipment-panel__body"><dl class="key-value-list">
+              <dt class="key-value-list__label">Carrier</dt><dd class="key-value-list__value">InPost Kurier</dd>
+              <dt class="key-value-list__label">Tracking</dt><dd class="key-value-list__value key-value-list__value--mono mono-text">630012345678901234567890</dd>
+              <dt class="key-value-list__label">Handed over</dt><dd class="key-value-list__value">Today, 14:32</dd>
+            </dl></div>
+          </div>
+        </section>
+
+        <section class="detail-section sales-document-panel" id="invoicing">
+          <header class="sales-document-panel__header"><h3 class="detail-section__title">Sales document</h3></header>
+          <div class="doc-slot doc-slot--filled" data-mk-show="order cancel-confirm cancel-progress cancel-label cancel-shipped cancel-done edit-blocked">
+            <div class="doc-slot__head"><span class="doc-slot__kind">invoice</span></div>
+            <div class="sales-document-panel__body">
+              <dl class="key-value-list">
+                <dt class="key-value-list__label">Number</dt><dd class="key-value-list__value key-value-list__value--mono mono-text">FV/412/09/2026</dd>
+                <dt class="key-value-list__label">Status</dt><dd class="key-value-list__value"><span class="status-badge status-badge--success status-badge--compact">Issued</span> <span class="status-badge status-badge--success status-badge--compact">KSeF accepted</span></dd>
+                <dt class="key-value-list__label">Issued</dt><dd class="key-value-list__value">25 Sep 2026, 10:30 · inFakt</dd>
+              </dl>
+              <div class="alert alert--warning" role="status" data-mk-show="cancel-done">
+                <div class="alert__content"><strong class="alert__title">Correction invoice ready to review</strong>
+                  <div class="alert__description">Draft for the full amount (−348.99 PLN). Nothing goes to KSeF until you issue it.</div></div>
+              </div>
+            </div>
+          </div>
+          <div class="doc-slot" data-mk-show="edit-form edit-review edit-saved">
+            <div class="doc-slot__head"><span class="doc-slot__kind">invoice</span></div>
+            <p class="sales-document-panel__notice muted-text" data-mk-show="edit-form edit-review">Not issued yet. It goes out in the next inFakt batch at 10:30.</p>
+            <p class="sales-document-panel__notice muted-text" data-mk-show="edit-saved">Not issued yet. It will be issued from the edited order (294.99 PLN) in the next inFakt batch at 10:30.</p>
+          </div>
+        </section>
+
+        <section class="order-customer-card" aria-label="Customer">
+          <header class="order-customer-card__header"><span class="order-customer-card__label">Customer</span></header>
+          <p class="order-customer-card__name">Magdalena Wiśniewska</p>
+          <p class="order-customer-card__email mono-text">8awgqyk6a5+cub31c122@allegromail.pl</p>
+        </section>
+      </div>
+    </div>
+
+    <!-- ===== Activity ===== -->
+    <section class="detail-section">
+      <h3 class="detail-section__title">Activity</h3>
+      <ol class="order-activity" aria-label="Order activity timeline">
+        <li class="order-activity__item"><span class="order-activity__dot order-activity__dot--default" aria-hidden="true"></span><div class="order-activity__body"><p class="order-activity__title">Order received<span class="order-activity__by">system · ingest</span></p><p class="order-activity__description">Ingested and ready for sync.</p></div><time class="order-activity__time">25 Sep 2026, 09:14</time></li>
+        <li class="order-activity__item"><span class="order-activity__dot order-activity__dot--success" aria-hidden="true"></span><div class="order-activity__body"><p class="order-activity__title">Order synced to PrestaShop · ceramikanowak.pl<span class="order-activity__by">system · attempt 1</span></p><p class="order-activity__description">External order <span class="mono-text">#4821</span></p></div><time class="order-activity__time">25 Sep 2026, 09:15</time></li>
+
+        <li class="order-activity__item" data-mk-show="edit-saved"><span class="order-activity__dot order-activity__dot--warning" aria-hidden="true"></span><div class="order-activity__body"><p class="order-activity__title">Order edited in OpenLinker<span class="order-activity__by">operator · admin</span></p><p class="order-activity__description">Shipping address changed (street); KUB-350-BIA quantity 3 → 2; discount 15.00 PLN (late dispatch). Not sent to Allegro. “Klientka prosi o nr mieszkania i tylko 2 kubki.”</p></div><time class="order-activity__time">25 Sep 2026, 09:41</time></li>
+        <li class="order-activity__item" data-mk-show="edit-saved"><span class="order-activity__dot order-activity__dot--warning" aria-hidden="true"></span><div class="order-activity__body"><p class="order-activity__title">Refund not confirmed yet<span class="order-activity__by">waiting on you</span></p><p class="order-activity__description">Refund 54.00 PLN on Allegro, then use Confirm refund.</p></div><span class="order-activity__time order-activity__time--pending">waiting</span></li>
+
+        <li class="order-activity__item" data-mk-show="edit-blocked"><span class="order-activity__dot order-activity__dot--success" aria-hidden="true"></span><div class="order-activity__body"><p class="order-activity__title">Order packed<span class="order-activity__by">operator</span></p><p class="order-activity__description">Marked packed by akowalczyk.</p></div><time class="order-activity__time">25 Sep 2026, 11:20</time></li>
+
+        <li class="order-activity__item" data-mk-show="cancel-progress"><span class="order-activity__dot order-activity__dot--warning" aria-hidden="true"></span><div class="order-activity__body"><p class="order-activity__title">Cancellation requested — Buyer asked to cancel<span class="order-activity__by">operator · admin</span></p><p class="order-activity__description">Waiting for Allegro to confirm.</p></div><time class="order-activity__time">25 Sep 2026, 11:02</time></li>
+
+        <li class="order-activity__item" data-mk-show="cancel-done"><span class="order-activity__dot order-activity__dot--default" aria-hidden="true"></span><div class="order-activity__body"><p class="order-activity__title">Cancellation requested — Buyer asked to cancel<span class="order-activity__by">operator · admin</span></p><p class="order-activity__description">“Klientka zamówiła dwa razy, prosi o anulowanie tego zamówienia.”</p></div><time class="order-activity__time">25 Sep 2026, 11:02</time></li>
+        <li class="order-activity__item" data-mk-show="cancel-done"><span class="order-activity__dot order-activity__dot--success" aria-hidden="true"></span><div class="order-activity__body"><p class="order-activity__title">Allegro confirmed the cancellation<span class="order-activity__by">system · writeback</span></p><p class="order-activity__description">The buyer now sees the order as cancelled.</p></div><time class="order-activity__time">25 Sep 2026, 11:02</time></li>
+        <li class="order-activity__item" data-mk-show="cancel-done"><span class="order-activity__dot order-activity__dot--success" aria-hidden="true"></span><div class="order-activity__body"><p class="order-activity__title">PrestaShop · ceramikanowak.pl order #4821 cancelled<span class="order-activity__by">system · writeback</span></p><p class="order-activity__description">The 6 units are back in stock there.</p></div><time class="order-activity__time">25 Sep 2026, 11:03</time></li>
+        <li class="order-activity__item" data-mk-show="cancel-done"><span class="order-activity__dot order-activity__dot--success" aria-hidden="true"></span><div class="order-activity__body"><p class="order-activity__title">Reserved stock released<span class="order-activity__by">system · stock</span></p><p class="order-activity__description">Allegro offers for KUB-350-BIA, TAL-27-GRA and DZB-12-BLE were updated.</p></div><time class="order-activity__time">25 Sep 2026, 11:03</time></li>
+        <li class="order-activity__item" data-mk-show="cancel-done"><span class="order-activity__dot order-activity__dot--warning" aria-hidden="true"></span><div class="order-activity__body"><p class="order-activity__title">Correction invoice drafted for FV/412/09/2026<span class="order-activity__by">system · invoicing</span></p><p class="order-activity__description">Waiting for you to review and issue it.</p></div><time class="order-activity__time">25 Sep 2026, 11:03</time></li>
+        <li class="order-activity__item" data-mk-show="cancel-done"><span class="order-activity__dot order-activity__dot--warning" aria-hidden="true"></span><div class="order-activity__body"><p class="order-activity__title">Refund not confirmed yet<span class="order-activity__by">waiting on you</span></p><p class="order-activity__description">Refund 348.99 PLN on Allegro, then use Confirm refund.</p></div><span class="order-activity__time order-activity__time--pending">waiting</span></li>
+      </ol>
+    </section>
+
+    <!-- =====================================================================
+         STATES. The page above is shared; each state adds its overlay.
+         ===================================================================== -->
+
+    <div data-mk-state="order" data-mk-label="Zamówienie"></div>
+
+    <!-- ---------- Cancel: confirm ---------- -->
+    <div data-mk-state="cancel-confirm" data-mk-label="Anuluj: potwierdź" hidden class="oc-dialog-scope">
+      <div class="dialog__overlay"></div>
+      <div class="dialog__content" role="dialog" aria-modal="true" aria-labelledby="cc-title">
+        <h2 class="dialog__title" id="cc-title">Cancel order ALG-24817?</h2>
+        <p class="dialog__description">OpenLinker asks Allegro to cancel it. Once Allegro confirms, the rest happens on its own — except the refund, which you make on Allegro.</p>
+        <form class="order-hold-dialog__form" onsubmit="return false" novalidate>
+          <div class="form-field">
+            <label class="form-field__label" for="cc-reason">Reason</label>
+            <select class="control control--select" id="cc-reason"><option>Buyer asked to cancel</option><option>Out of stock</option><option>Payment problem</option><option>Duplicate order</option><option>Other</option></select>
+            <p class="form-field__description">For your team. Allegro doesn’t receive a reason. <span class="mk-pin">2</span></p>
+          </div>
+          <div class="form-field">
+            <label class="form-field__label" for="cc-note">Note (optional)</label>
+            <textarea class="control" id="cc-note" rows="2">Klientka zamówiła dwa razy, prosi o anulowanie tego zamówienia.</textarea>
+          </div>
+
+          <div>
+            <p class="dialog-section__head">What happens <span class="mk-pin">3</span></p>
+            <ul class="oc-impact">
+              <li class="oc-impact__row"><span class="oc-impact__head"><span class="oc-impact__what">Allegro<span class="oc-impact__sub">ceramika_nowak</span></span><span class="status-badge status-badge--info status-badge--compact">Sent</span></span><span class="oc-impact__how">Marked as cancelled. The buyer sees the order as cancelled.</span></li>
+              <li class="oc-impact__row"><span class="oc-impact__head"><span class="oc-impact__what">Stock<span class="oc-impact__sub">6 units</span></span><span class="status-badge status-badge--info status-badge--compact">Automatic</span></span><span class="oc-impact__how">Reserved units are released, so your Allegro offers go back up. PrestaShop order #4821 is cancelled, which puts the units back in stock there.</span></li>
+              <li class="oc-impact__row"><span class="oc-impact__head"><span class="oc-impact__what">Invoice<span class="oc-impact__sub mono-text">FV/412/09/2026</span></span><span class="status-badge status-badge--warning status-badge--compact">You review</span></span><span class="oc-impact__how">Already accepted by KSeF, so it can’t be withdrawn. OpenLinker drafts a correction invoice for you to review and issue. <span class="mk-pin">4</span></span></li>
+              <li class="oc-impact__row"><span class="oc-impact__head"><span class="oc-impact__what">Money<span class="oc-impact__sub mono-text">348.99 PLN</span></span><span class="status-badge status-badge--warning status-badge--compact">Your action</span></span><span class="oc-impact__how">Not refunded by OpenLinker. Refund the buyer in Allegro Sales Center, then use <b>Confirm refund</b> here to record it. <span class="mk-pin">5</span></span></li>
+            </ul>
+          </div>
+
+          <div class="alert alert--warning" role="status">
+            <div class="alert__content"><strong class="alert__title">This order is on the pack bench</strong><span class="mk-pin">6</span>
+              <div class="alert__description">akowalczyk claimed it at 10:48 and may already be picking it. Cancelling takes it off the bench.
+                <label class="oc-check"><input type="checkbox" id="cc-ack"> <span>I’ve told the packer to stop</span></label>
+              </div></div>
+          </div>
+
+          <div class="dialog__footer">
+            <button type="button" class="button button--secondary" data-go="order">Keep order</button>
+            <button type="button" class="button button--danger" id="cc-submit" data-go="cancel-progress" disabled>Cancel order</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- ---------- Cancel: in progress ---------- -->
+    <div data-mk-state="cancel-progress" data-mk-label="Anuluj: w toku" hidden class="oc-dialog-scope">
+      <div class="dialog__overlay"></div>
+      <div class="dialog__content" role="dialog" aria-modal="true" aria-labelledby="cp-title">
+        <h2 class="dialog__title" id="cp-title">Cancelling order ALG-24817</h2>
+        <p class="dialog__description">Waiting for Allegro to confirm. You can close this window — the cancellation carries on and shows up in Activity. <span class="mk-pin">7</span></p>
+        <ol class="order-activity oc-steps" aria-label="Cancellation progress">
+          <li class="order-activity__item"><span class="order-activity__dot order-activity__dot--warning" aria-hidden="true"></span><div class="order-activity__body"><p class="order-activity__title">Ask Allegro to cancel</p><p class="order-activity__description"><span class="status-badge status-badge--warning status-badge--compact status-badge--pulse"><span class="status-badge__dot" aria-hidden="true"></span>Waiting for Allegro</span></p></div><time class="order-activity__time">11:02</time></li>
+          <li class="order-activity__item"><span class="order-activity__dot order-activity__dot--default" aria-hidden="true"></span><div class="order-activity__body"><p class="order-activity__title">Cancel PrestaShop order #4821</p><p class="order-activity__description">Starts after Allegro confirms.</p></div><span class="order-activity__time order-activity__time--pending">next</span></li>
+          <li class="order-activity__item"><span class="order-activity__dot order-activity__dot--default" aria-hidden="true"></span><div class="order-activity__body"><p class="order-activity__title">Release 6 reserved units</p><p class="order-activity__description">Starts after Allegro confirms.</p></div><span class="order-activity__time order-activity__time--pending">next</span></li>
+          <li class="order-activity__item"><span class="order-activity__dot order-activity__dot--default" aria-hidden="true"></span><div class="order-activity__body"><p class="order-activity__title">Draft correction invoice</p><p class="order-activity__description">For FV/412/09/2026, ready for you to review.</p></div><span class="order-activity__time order-activity__time--pending">next</span></li>
+          <li class="order-activity__item"><span class="order-activity__dot order-activity__dot--default" aria-hidden="true"></span><div class="order-activity__body"><p class="order-activity__title">Refund 348.99 PLN on Allegro</p><p class="order-activity__description">Your action — OpenLinker doesn’t move money.</p></div><span class="order-activity__time order-activity__time--pending">you</span></li>
+        </ol>
+        <div class="dialog__footer">
+          <button type="button" class="button button--secondary" data-close>Close</button>
+          <button type="button" class="button button--primary" data-go="cancel-done">Show result</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ---------- Cancel: refused, label bought ---------- -->
+    <div data-mk-state="cancel-label" data-mk-label="Anuluj: etykieta" hidden class="oc-dialog-scope">
+      <div class="dialog__overlay"></div>
+      <div class="dialog__content" role="dialog" aria-modal="true" aria-labelledby="cl-title">
+        <h2 class="dialog__title" id="cl-title">Cancel the shipment first</h2>
+        <p class="dialog__description">An InPost label was bought for this order today at 12:05. While the label exists the parcel can still be handed over, so OpenLinker won’t cancel the order yet. <span class="mk-pin">8</span></p>
+        <div class="alert alert--info" role="status">
+          <div class="alert__content"><strong class="alert__title">What to do</strong>
+            <div class="alert__description"><ol class="oc-list">
+              <li>Cancel the shipment. This voids label <span class="mono-text">630012345678901234567890</span> with InPost.</li>
+              <li>Cancel the order again.</li>
+            </ol></div></div>
+        </div>
+        <p class="panel-copy muted-text" style="margin-top:var(--space-3)">If the parcel is already with the courier, the label can’t be voided — see the parcel instead of cancelling.</p>
+        <div class="dialog__footer">
+          <button type="button" class="button button--secondary" data-go="order">Keep order</button>
+          <button type="button" class="button button--primary" data-close data-scroll="shipment">Go to shipment</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ---------- Cancel: refused, already shipped ---------- -->
+    <div data-mk-state="cancel-shipped" data-mk-label="Anuluj: wysłane" hidden class="oc-dialog-scope">
+      <div class="dialog__overlay"></div>
+      <div class="dialog__content" role="dialog" aria-modal="true" aria-labelledby="cs-title">
+        <h2 class="dialog__title" id="cs-title">This order can’t be cancelled</h2>
+        <div class="alert alert--error" role="alert">
+          <div class="alert__content"><strong class="alert__title">The parcel is on its way</strong><span class="mk-pin">9</span>
+            <div class="alert__description">InPost picked it up today at 14:32. Allegro and PrestaShop both show it as sent, so they would refuse a cancellation too.</div></div>
+        </div>
+        <p class="dialog-section__head" style="margin-top:var(--space-4)">What you can do instead</p>
+        <ol class="oc-list" style="font-size:0.8125rem">
+          <li>Ask the buyer to refuse the parcel, or to send it back after delivery. The return shows up on this order when the buyer opens it on Allegro.</li>
+          <li>Once the goods are back, refund the buyer on Allegro and confirm the refund here.</li>
+          <li>The invoice stays as issued. The return proposes the correction invoice.</li>
+        </ol>
+        <div class="dialog__footer">
+          <button type="button" class="button button--secondary" data-go="order">Close</button>
+        </div>
+      </div>
+    </div>
+
+    <div data-mk-state="cancel-done" data-mk-label="Anuluj: gotowe" hidden></div>
+
+    <!-- ---------- Edit: form ---------- -->
+    <div data-mk-state="edit-form" data-mk-label="Edycja: formularz" hidden class="oc-dialog-scope">
+      <div class="dialog__overlay"></div>
+      <div class="dialog__content dialog__content--wide" role="dialog" aria-modal="true" aria-labelledby="ef-title">
+        <h2 class="dialog__title" id="ef-title">Edit order ALG-24817</h2>
+        <p class="dialog__description">Your changes stay in OpenLinker and are used for the shipping label, the invoice and the pack bench. Allegro keeps the order as the buyer placed it — marketplace orders can’t be edited there. <span class="mk-pin">11</span></p>
+        <form class="oc-form" onsubmit="return false" novalidate>
+          <div class="dialog-section">
+            <p class="dialog-section__head">Shipping address</p>
+            <div class="form-field-row">
+              <div class="form-field"><label class="form-field__label" for="ef-name">Recipient</label><input class="control" id="ef-name" value="Magdalena Wiśniewska"></div>
+              <div class="form-field"><label class="form-field__label" for="ef-street">Street and number</label><input class="control" id="ef-street" value="ul. Długa 12/4"><p class="form-field__description">Changed · was ul. Długa 12</p></div>
+            </div>
+            <div class="form-field-row form-field-row--cols-3" style="margin-top:var(--space-3)">
+              <div class="form-field"><label class="form-field__label" for="ef-zip">Postcode</label><input class="control" id="ef-zip" value="31-147"></div>
+              <div class="form-field"><label class="form-field__label" for="ef-city">City</label><input class="control" id="ef-city" value="Kraków"></div>
+              <div class="form-field"><label class="form-field__label" for="ef-country">Country</label><select class="control control--select" id="ef-country"><option>Poland</option></select></div>
+            </div>
+          </div>
+
+          <div class="dialog-section">
+            <p class="dialog-section__head">Delivery method</p>
+            <div class="form-field">
+              <label class="form-field__label" for="ef-method">Method</label>
+              <select class="control control--select" id="ef-method"><option>InPost Kurier</option><option>InPost Paczkomat 24/7</option><option>DPD Kurier</option></select>
+              <p class="form-field__description">Decides which carrier OpenLinker buys the label from. The buyer paid 14.99 PLN for delivery on Allegro; that amount doesn’t change.</p>
+            </div>
+          </div>
+
+          <div class="dialog-section">
+            <p class="dialog-section__head">Items <span class="mk-pin">12</span></p>
+            <div class="data-table__container">
+              <table class="data-table">
+                <thead><tr><th>Product</th><th class="oc-num">Qty</th><th class="oc-num">Unit price</th><th class="oc-num">Total</th></tr></thead>
+                <tbody>
+                  <tr><td><span class="order-line-item__product-info"><span class="order-line-item__name">Kubek ceramiczny 350 ml, biały</span><span class="order-line-item__sku mono-text">KUB-350-BIA</span></span></td><td class="oc-num"><span class="oc-inline" style="justify-content:flex-end"><input class="control control--narrow" type="number" min="0" max="3" value="2" data-price="39" aria-label="Quantity, Kubek ceramiczny 350 ml"><span class="oc-was">of 3</span></span></td><td class="oc-num mono-text">39.00 PLN</td><td class="oc-num mono-text" data-line-total>78.00 PLN</td></tr>
+                  <tr><td><span class="order-line-item__product-info"><span class="order-line-item__name">Talerz obiadowy 27 cm, grafitowy</span><span class="order-line-item__sku mono-text">TAL-27-GRA</span></span></td><td class="oc-num"><span class="oc-inline" style="justify-content:flex-end"><input class="control control--narrow" type="number" min="0" max="2" value="2" data-price="54" aria-label="Quantity, Talerz obiadowy 27 cm"><span class="oc-was">of 2</span></span></td><td class="oc-num mono-text">54.00 PLN</td><td class="oc-num mono-text" data-line-total>108.00 PLN</td></tr>
+                  <tr><td><span class="order-line-item__product-info"><span class="order-line-item__name">Dzbanek 1,2 l, błękitny</span><span class="order-line-item__sku mono-text">DZB-12-BLE</span></span></td><td class="oc-num"><span class="oc-inline" style="justify-content:flex-end"><input class="control control--narrow" type="number" min="0" max="1" value="1" data-price="109" aria-label="Quantity, Dzbanek 1,2 l"><span class="oc-was">of 1</span></span></td><td class="oc-num mono-text">109.00 PLN</td><td class="oc-num mono-text" data-line-total>109.00 PLN</td></tr>
+                </tbody>
+              </table>
+            </div>
+            <p class="form-field__description" style="margin-top:var(--space-2)">You can lower a quantity or set it to 0. Raising it or adding products would be a new sale — ask the buyer to order again.</p>
+          </div>
+
+          <div class="dialog-section">
+            <p class="dialog-section__head">Discount <span class="mk-pin">13</span></p>
+            <div class="form-field-row">
+              <div class="form-field"><label class="form-field__label" for="ef-disc">Amount</label><span class="oc-inline"><input class="control control--narrow" id="ef-disc" type="number" min="0" step="0.01" value="15.00"> <span class="muted-text">PLN, gross</span></span></div>
+              <div class="form-field"><label class="form-field__label" for="ef-disc-reason">Reason</label><select class="control control--select" id="ef-disc-reason"><option>Late dispatch</option><option>Damaged packaging</option><option>Goodwill</option><option>Other</option></select></div>
+            </div>
+            <p class="form-field__description" style="margin-top:var(--space-2)">Lowers the invoice total. The buyer isn’t refunded automatically — you refund on Allegro.</p>
+          </div>
+
+          <div class="dialog-section">
+            <dl class="order-totals">
+              <div class="order-totals__row"><dt>Items</dt><dd class="mono-text" id="ef-items">295.00 PLN</dd></div>
+              <div class="order-totals__row"><dt>Discount</dt><dd class="mono-text" id="ef-disc-out">−15.00 PLN</dd></div>
+              <div class="order-totals__row"><dt>Shipping</dt><dd class="mono-text">14.99 PLN</dd></div>
+              <div class="order-totals__row order-totals__row--total"><dt>New total</dt><dd class="mono-text" id="ef-total">294.99 PLN</dd></div>
+            </dl>
+            <p class="oc-totals-note" style="margin-top:var(--space-2)">Buyer paid 348.99 PLN on Allegro · <b id="ef-refund">54.00 PLN</b> to refund there</p>
+          </div>
+
+          <div class="dialog__footer">
+            <button type="button" class="button button--secondary" data-go="order">Cancel</button>
+            <button type="button" class="button button--primary" data-go="edit-review">Review changes</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- ---------- Edit: diff review ---------- -->
+    <div data-mk-state="edit-review" data-mk-label="Edycja: zmiany" hidden class="oc-dialog-scope">
+      <div class="dialog__overlay"></div>
+      <div class="dialog__content dialog__content--wide" role="dialog" aria-modal="true" aria-labelledby="er-title">
+        <h2 class="dialog__title" id="er-title">Review changes to ALG-24817</h2>
+        <p class="dialog__description">Check what changes and where it’s used before you save.</p>
+        <div class="dialog-section">
+          <p class="dialog-section__head">Changes</p>
+          <div class="data-table__container">
+            <table class="data-table oc-diff">
+              <thead><tr><th>What</th><th>Before</th><th>After</th></tr></thead>
+              <tbody>
+                <tr><td>Shipping address</td><td><del>ul. Długa 12</del></td><td><ins>ul. Długa 12/4</ins></td></tr>
+                <tr><td><span class="order-line-item__product-info"><span class="order-line-item__name">Kubek ceramiczny 350 ml, biały</span><span class="order-line-item__sku mono-text">KUB-350-BIA</span></span></td><td class="mono-text"><del>3</del></td><td class="mono-text"><ins>2</ins></td></tr>
+                <tr><td>Discount</td><td><del>none</del></td><td><span class="order-line-item__product-info"><ins class="mono-text">−15.00 PLN</ins><span class="order-line-item__sku">Late dispatch</span></span></td></tr>
+                <tr><td>Order total</td><td class="mono-text"><del>348.99 PLN</del></td><td class="mono-text"><ins>294.99 PLN</ins></td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+        <div class="dialog-section">
+          <p class="dialog-section__head">Where this change is used <span class="mk-pin">14</span></p>
+          <ul class="oc-impact">
+            <li class="oc-impact__row"><span class="oc-impact__head"><span class="oc-impact__what">Shipping label<span class="oc-impact__sub">InPost Kurier</span></span><span class="status-badge status-badge--success status-badge--compact">Uses change</span></span><span class="oc-impact__how">The label is bought with the new address.</span></li>
+            <li class="oc-impact__row"><span class="oc-impact__head"><span class="oc-impact__what">Invoice<span class="oc-impact__sub">inFakt · not issued yet</span></span><span class="status-badge status-badge--success status-badge--compact">Uses change</span></span><span class="oc-impact__how">Issued for 2 × KUB-350-BIA with a 15.00 PLN discount: 294.99 PLN.</span></li>
+            <li class="oc-impact__row"><span class="oc-impact__head"><span class="oc-impact__what">Pack bench</span><span class="status-badge status-badge--success status-badge--compact">Uses change</span></span><span class="oc-impact__how">The packer is asked for 2 × KUB-350-BIA.</span></li>
+            <li class="oc-impact__row oc-impact__row--off"><span class="oc-impact__head"><span class="oc-impact__what">PrestaShop<span class="oc-impact__sub">order #4821</span></span><span class="status-badge status-badge--neutral status-badge--compact">Stock only</span></span><span class="oc-impact__how">The order isn’t changed. 1 × KUB-350-BIA is added back to stock there.</span></li>
+            <li class="oc-impact__row oc-impact__row--off"><span class="oc-impact__head"><span class="oc-impact__what">Allegro<span class="oc-impact__sub">ceramika_nowak</span></span><span class="status-badge status-badge--neutral status-badge--compact">Not sent</span></span><span class="oc-impact__how">Not sent. Allegro still shows 3 × Kubek, 348.99 PLN and the old address.</span></li>
+          </ul>
+        </div>
+        <div class="alert alert--warning" role="status">
+          <div class="alert__content"><strong class="alert__title">Refund 54.00 PLN on Allegro</strong>
+            <div class="alert__description">OpenLinker doesn’t move money. After you refund in Allegro Sales Center, use Confirm refund on this order so the invoice and what the buyer paid agree.</div></div>
+        </div>
+        <div class="form-field" style="margin-top:var(--space-3)">
+          <label class="form-field__label" for="er-note">Note for the timeline (optional)</label>
+          <textarea class="control" id="er-note" rows="2">Klientka prosi o nr mieszkania i tylko 2 kubki.</textarea>
+        </div>
+        <div class="dialog__footer dialog__footer--split">
+          <button type="button" class="button button--ghost" data-go="edit-form">Back to editing</button>
+          <span class="dialog__footer-group">
+            <button type="button" class="button button--secondary" data-go="order">Discard</button>
+            <button type="button" class="button button--primary" data-go="edit-saved">Save changes</button>
+          </span>
+        </div>
+      </div>
+    </div>
+
+    <!-- ---------- Edit: blocked ---------- -->
+    <div data-mk-state="edit-blocked" data-mk-label="Edycja: blokada" hidden class="oc-dialog-scope">
+      <div class="dialog__overlay"></div>
+      <div class="dialog__content dialog__content--wide" role="dialog" aria-modal="true" aria-labelledby="eb-title">
+        <h2 class="dialog__title" id="eb-title">Edit order ALG-24817</h2>
+        <p class="dialog__description">Your changes stay in OpenLinker. Allegro keeps the order as the buyer placed it.</p>
+        <div class="alert alert--warning" role="status">
+          <div class="alert__content"><strong class="alert__title">Items and discount can’t be changed</strong><span class="mk-pin">15</span>
+            <div class="alert__description">This order was packed at 11:20 by akowalczyk and invoice <span class="mono-text">FV/412/09/2026</span> is issued. To change what the buyer gets:
+              <ol class="oc-list">
+                <li>Mark the order as not packed, so the box is opened again.</li>
+                <li>Issue a correction invoice from Sales document on this page.</li>
+              </ol>
+              Or cancel the order and ask the buyer to order again.</div></div>
+        </div>
+        <form class="oc-form" onsubmit="return false" novalidate style="margin-top:var(--space-3)">
+          <div class="dialog-section">
+            <p class="dialog-section__head">Shipping address</p>
+            <div class="form-field-row">
+              <div class="form-field"><label class="form-field__label" for="eb-name">Recipient</label><input class="control" id="eb-name" value="Magdalena Wiśniewska"></div>
+              <div class="form-field"><label class="form-field__label" for="eb-street">Street and number</label><input class="control" id="eb-street" value="ul. Długa 12"><p class="form-field__description">Still editable — no label has been bought yet.</p></div>
+            </div>
+          </div>
+          <div class="dialog-section">
+            <p class="dialog-section__head">Delivery method</p>
+            <div class="form-field"><label class="form-field__label" for="eb-method">Method</label><select class="control control--select" id="eb-method"><option>InPost Kurier</option><option>InPost Paczkomat 24/7</option><option>DPD Kurier</option></select></div>
+          </div>
+          <div class="dialog-section oc-locked" aria-disabled="true">
+            <p class="dialog-section__head">Items · locked</p>
+            <div class="data-table__container">
+              <table class="data-table">
+                <thead><tr><th>Product</th><th class="oc-num">Qty</th></tr></thead>
+                <tbody>
+                  <tr><td>Kubek ceramiczny 350 ml, biały <span class="mono-text muted-text">KUB-350-BIA</span></td><td class="oc-num"><input class="control control--narrow" type="number" value="3" disabled aria-label="Quantity, Kubek ceramiczny 350 ml"></td></tr>
+                  <tr><td>Talerz obiadowy 27 cm, grafitowy <span class="mono-text muted-text">TAL-27-GRA</span></td><td class="oc-num"><input class="control control--narrow" type="number" value="2" disabled aria-label="Quantity, Talerz obiadowy 27 cm"></td></tr>
+                  <tr><td>Dzbanek 1,2 l, błękitny <span class="mono-text muted-text">DZB-12-BLE</span></td><td class="oc-num"><input class="control control--narrow" type="number" value="1" disabled aria-label="Quantity, Dzbanek 1,2 l"></td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+          <div class="dialog-section oc-locked" aria-disabled="true">
+            <p class="dialog-section__head">Discount · locked</p>
+            <span class="oc-inline"><input class="control control--narrow" type="number" value="0.00" disabled aria-label="Discount amount"> <span class="muted-text">PLN — the invoice is issued, use a correction invoice instead</span></span>
+          </div>
+          <div class="dialog__footer">
+            <button type="button" class="button button--secondary" data-go="order">Cancel</button>
+            <button type="button" class="button button--primary" disabled>Review changes</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <div data-mk-state="edit-saved" data-mk-label="Edycja: zapisana" hidden></div>
+  </section>
+</div>
+
+<aside class="mk-notes" aria-label="Adnotacje">
+  <h3>Adnotacje</h3>
+  <ol>
+    <li>Dane przykładowe (zamówienie Allegro → PrestaShop, InPost, inFakt). Jedna strona zamówienia; stany dokładają dialog albo zmieniają fragmenty strony. Przyciski w dialogach przełączają stany.</li>
+    <li data-mk-show="order cancel-confirm edit-form">Akcje w nagłówku strony (slot <code>PageLayout.actions</code>, dziś pusty na tej stronie) <span class="mk-pin">1</span>. Bramkowanie jak przy blokadach: admin + <code>orders:write</code>. <b>Luka:</b> nie ma dziś endpointu anulowania ani edycji — anulowanie jest tylko obserwowane ze źródła (<code>cancelledAt</code>, COALESCE).</li>
+    <li data-mk-show="cancel-confirm">Powód <span class="mk-pin">2</span> zostaje w OL: adapter Allegro robi tylko <code>PUT fulfillment = CANCELLED</code>, pole <code>reason</code> zdarzenia <code>cancelled</code> nie jest nigdzie wysyłane. Słownik powodów nie istnieje — do ustalenia (np. wzorem <code>HoldReason</code>).</li>
+    <li data-mk-show="cancel-confirm">Lista „What happens” <span class="mk-pin">3</span> odpowiada temu, co jest w kodzie: relay <code>OrderStatusWriteback</code> → Allegro CANCELLED, PrestaShop → stan „Cancelled” (odmowa, gdy wysłane), rezerwacje <code>closeForOrder('released')</code> → ATP → oferty w górę (ADR-028). <b>Erli inaczej:</b> jego „cancelled” tylko przywraca stan ofert — Erli nie dostaje informacji o anulowaniu; dla zamówienia z Erli ten wiersz musi mówić co innego.</li>
+    <li data-mk-show="cancel-confirm">Faktura <span class="mk-pin">4</span>: <b>konflikt z projektem.</b> DESIGN-oms-authority-model §6.4 mówi, że wystawiona faktura (i paragon) twardo zamyka okno anulowania przez operatora. Brief zakłada anulowanie + korektę. Do decyzji. Propozycja korekty to dziś tylko ścieżka zwrotów (<code>return.invoice_correction</code>, #2374) — dla anulowania trzeba nowego rodzaju.</li>
+    <li data-mk-show="cancel-confirm">Pieniądze <span class="mk-pin">5</span>: OL nie ma zapisu zwrotu (ADR-027) — sprzedawca zwraca w Allegro, OL zapisuje <code>RefundRecord</code> przez istniejący „Confirm refund”. Etykieta nigdy „Refund”.</li>
+    <li data-mk-show="cancel-confirm">Miękka bramka <span class="mk-pin">6</span> z §6.4: przyjęta praca na stanowisku pakowania wymaga jawnego potwierdzenia. Przycisk „Cancel order” jest nieaktywny do zaznaczenia pola.</li>
+    <li data-mk-show="cancel-progress">W toku <span class="mk-pin">7</span>: ADR-044 — OL proponuje, Allegro rozstrzyga, OL potwierdza z obserwacji. Najpierw tylko Allegro; stan, PrestaShop i korekta dopiero po potwierdzeniu. Faza zamówienia to istniejące <code>amending</code> („Change pending”). <b>Luka:</b> <code>OrderChangeKindValues</code> nie ma <code>cancel-request</code> (jest tylko w <code>OrderAmendmentKind</code>); wygasanie przez martwy job → „expired”. Zamknij dialog, by zobaczyć stronę.</li>
+    <li data-mk-show="cancel-label">Etykieta kupiona <span class="mk-pin">8</span>: <code>ShipmentCancellationService</code> anuluje przesyłkę tylko w stanie draft/generated — stąd ścieżka „najpierw Cancel shipment”. Czy OL ma to zrobić sam w jednym kroku? Do decyzji (unieważnienie etykiety jest nieodwracalne).</li>
+    <li data-mk-show="cancel-shipped">Wysłane <span class="mk-pin">9</span>: twarda odmowa (§6.4). Allegro i PrestaShop i tak odrzuciłyby zapis (<code>rejected</code> w adapterach). Dalej ścieżka zwrotów — zwrot z Allegro przychodzi z ich feedu.</li>
+    <li data-mk-show="cancel-done">Gotowe <span class="mk-pin">10</span>: płatność zostaje „Paid”, dopóki zwrot nie jest potwierdzony — celowo, żeby nie udawać, że pieniądze wróciły. Wpisy osi czasu są datowane; „Refund not confirmed” jest niedatowany (klasa <code>order-activity__time--pending</code>).</li>
+    <li data-mk-show="edit-form edit-review">Edycja <span class="mk-pin">11</span> to <b>nowe pojęcie</b>: poprawka po stronie OL, bez zdalnego czasownika. ADR-044/§6.2 opisują tylko propozycje do źródła/sklepu. <b>Luka:</b> gdzie trzymać poprawkę? Snapshot jest nadpisywany przy re-ingestii (<code>persistOrder</code>), więc potrzebna nakładka + reguła przy kolejnym pollu (jak ADR-017).</li>
+    <li data-mk-show="edit-form">Ilości <span class="mk-pin">12</span> tylko w dół — podniesienie to nowa sprzedaż, której OL nie obciąży. Na zamówieniu z routingiem linie pracy mają <code>totalQuantity</code> tylko przy wstawieniu — zmiana wymaga anulowania węższego zadania.</li>
+    <li data-mk-show="edit-form">Rabat <span class="mk-pin">13</span> łamie ADR-014 (cena źródła jest autorytatywna): faktura ≠ zapłacone. Dlatego zawsze liczymy „do zwrotu na Allegro”. <code>OrderAmendmentKind</code> nie ma rabatu. Do decyzji, czy w ogóle go wpuszczać.</li>
+    <li data-mk-show="edit-review">Gdzie działa <span class="mk-pin">14</span>: etykieta (dziś bierze adres ze snapshotu w FE — <code>dispatch-input.ts</code>), faktura (<code>order.items</code>), stanowisko pakowania. PrestaShop: brak członka <code>amended</code> w relayu, więc zamówienie się nie zmienia; zwrot 1 szt. np. przez <code>adjustInventory</code> (<code>manual_correction</code>) — do potwierdzenia.</li>
+    <li data-mk-show="edit-blocked">Blokada <span class="mk-pin">15</span>: spakowane (jest <code>DELETE /orders/:id/packed</code>) i wystawiona faktura (korekta ręczna z panelu). Adres zostaje edytowalny do kupna etykiety. Tryb <code>OL_STORE_PII=false</code>: adres w snapshocie jest zredagowany — edycja adresu tam nie zadziała.</li>
+    <li data-mk-show="edit-saved">Zapisane <span class="mk-pin">16</span>: osobny znacznik „Edited in OpenLinker”, a nie faza <code>amending</code> („waiting for the channel”) — tu nic nie czeka na kanał. Wszystkie powierzchnie pokazują obie liczby: zapłacone na Allegro i po edycji.</li>
+  </ol>
+</aside>
+
+<script>
+(function () {
+  function states() { return Array.prototype.slice.call(document.querySelectorAll('[data-mk-state]')); }
+  function current() { var s = states().filter(function (e) { return !e.hidden; })[0]; return s ? s.getAttribute('data-mk-state') : 'order'; }
+  function sync() {
+    var st = current();
+    Array.prototype.forEach.call(document.querySelectorAll('[data-mk-show]'), function (el) {
+      var want = el.getAttribute('data-mk-show').split(/\s+/).indexOf(st) < 0;
+      if (el.hidden !== want) el.hidden = want;
+    });
+  }
+  function reopen() { states().forEach(function (s) { s.classList.remove('oc-closed'); }); }
+  function go(id) {
+    var btn = document.querySelector('.mk-bar__states button[data-s="' + id + '"]');
+    reopen();
+    if (btn) btn.click(); else sync();
+    window.scrollTo(0, 0);
+  }
+  var obs = new MutationObserver(function () { reopen(); sync(); });
+  states().forEach(function (s) { obs.observe(s, { attributes: true, attributeFilter: ['hidden'] }); });
+
+  document.addEventListener('click', function (e) {
+    var t = e.target.closest ? e.target.closest('[data-go],[data-close],.mk-bar__states button') : null;
+    if (!t) return;
+    if (t.matches('.mk-bar__states button')) { reopen(); return; }
+    if (t.hasAttribute('data-go')) { e.preventDefault(); go(t.getAttribute('data-go')); return; }
+    if (t.hasAttribute('data-close')) {
+      var scope = t.closest('[data-mk-state]'); if (scope) scope.classList.add('oc-closed');
+      var target = t.getAttribute('data-scroll');
+      if (target) { var el = document.getElementById(target); if (el) el.scrollIntoView({ block: 'start' }); }
+    }
+  });
+
+  var ack = document.getElementById('cc-ack'), submit = document.getElementById('cc-submit');
+  if (ack && submit) ack.addEventListener('change', function () { submit.disabled = !ack.checked; });
+
+  function money(n) { return n.toFixed(2) + ' PLN'; }
+  function recalc() {
+    var items = 0;
+    Array.prototype.forEach.call(document.querySelectorAll('[data-mk-state="edit-form"] input[data-price]'), function (inp) {
+      var max = Number(inp.max), q = Math.max(0, Math.min(max, Math.floor(Number(inp.value) || 0)));
+      var line = q * Number(inp.getAttribute('data-price')); items += line;
+      var cell = inp.closest('tr').querySelector('[data-line-total]'); if (cell) cell.textContent = money(line);
+    });
+    var disc = Math.max(0, Number(document.getElementById('ef-disc').value) || 0);
+    var total = Math.max(0, items - disc + 14.99);
+    document.getElementById('ef-items').textContent = money(items);
+    document.getElementById('ef-disc-out').textContent = disc ? '−' + money(disc) : '0.00 PLN';
+    document.getElementById('ef-total').textContent = money(total);
+    document.getElementById('ef-refund').textContent = money(Math.max(0, 348.99 - total));
+  }
+  document.addEventListener('input', function (e) { if (e.target.closest && e.target.closest('[data-mk-state="edit-form"]')) recalc(); });
+
+  function barHeight() { var bar = document.querySelector('.mk-bar'); document.documentElement.style.setProperty('--mk-bar-h', (bar ? bar.offsetHeight : 0) + 'px'); }
+  window.addEventListener('resize', barHeight);
+  document.addEventListener('DOMContentLoaded', function () { sync(); barHeight(); setTimeout(function () { sync(); barHeight(); }, 0); });
+  sync();
+})();
+</script>
+
+</body></html>
