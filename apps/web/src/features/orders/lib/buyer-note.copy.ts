@@ -19,6 +19,8 @@ export const BUYER_NOTE_COPY = {
   copy: 'Copy',
   copied: 'Copied',
   copyAria: 'Copy the buyer note',
+  /** Shown when the browser refused the clipboard and the text was selected instead (B-13). */
+  copyFailedHint: 'Copy failed. The note is selected - press Ctrl+C to copy.',
   showAll: (characters: number): string => `Show the whole note (${String(characters)} characters)`,
   showLess: 'Show less',
   markRead: 'Mark as read',
@@ -30,6 +32,8 @@ export const BUYER_NOTE_COPY = {
   readBy: (who: string | null): string => (who === null ? 'Read' : `Read by ${who}`),
   /** Bench acknowledgement is a separate, per-parcel fact. */
   notReadAtBench: 'Not marked as read at the bench yet.',
+  /** The bench reads could not be loaded: unknown, not "none yet". */
+  benchReadsUnavailable: 'Bench reads could not be loaded.',
   readAtBench: 'Read at the bench',
   aPacker: 'a packer',
   /** A note exists but the deployment keeps no note text. */

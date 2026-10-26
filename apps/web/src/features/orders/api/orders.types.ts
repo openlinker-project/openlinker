@@ -639,9 +639,10 @@ export interface OrderRecord {
   buyerNoteReadByUserId?: string | null;
   /**
    * Per-parcel acknowledgements at the pack bench (#3538, D12), oldest first.
-   * Detail only; an unacknowledged parcel is simply absent.
+   * Detail only; an unacknowledged parcel is simply absent. `null` means the
+   * server could not load them (not "none yet").
    */
-  buyerNoteAcknowledgements?: BuyerNoteAcknowledgement[];
+  buyerNoteAcknowledgements?: BuyerNoteAcknowledgement[] | null;
   /**
    * The derived lifecycle phase (#2305/#2309) — "what is this order waiting on".
    * Derived server-side on every read; the FE never re-derives it. A SECOND

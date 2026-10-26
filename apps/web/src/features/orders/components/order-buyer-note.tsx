@@ -53,6 +53,12 @@ export interface OrderBuyerNoteProps {
   channelPlatform: string | null;
   /** When the buyer wrote it: the order's placement instant. */
   placedAt: string | null;
+  /**
+   * Whether the order has fulfilment work at all (B-15). Without it there is no
+   * bench to read the note at, so the bench line is not shown. Unknown (still
+   * loading) is treated as false.
+   */
+  hasFulfilmentWork?: boolean;
 }
 
 export function OrderBuyerNote({
@@ -60,6 +66,7 @@ export function OrderBuyerNote({
   channelLabel,
   channelPlatform,
   placedAt,
+  hasFulfilmentWork = false,
 }: OrderBuyerNoteProps): ReactElement | null {
   const view = readBuyerNote(order);
   const { session } = useSession();
@@ -68,6 +75,7 @@ export function OrderBuyerNote({
   const markRead = useMarkBuyerNoteReadMutation();
   const [expanded, setExpanded] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [copyFailed, setCopyFailed] = useState(false);
   const copiedTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const textRef = useRef<HTMLParagraphElement>(null);
   const noteText = view.kind === 'text' ? view.text : '';
@@ -109,7 +117,22 @@ export function OrderBuyerNote({
 
   const handleCopy = (): void => {
     void copyTextToClipboard(view.text).then((ok) => {
-      if (!ok) return;
+      if (!ok) {
+        // B-13: never fail silently. Select the visible text so Ctrl+C works.
+        const node = textRef.current;
+        if (node !== null && typeof window !== 'undefined') {
+          const selection = window.getSelection();
+          if (selection !== null) {
+            const range = document.createRange();
+            range.selectNodeContents(node);
+            selection.removeAllRanges();
+            selection.addRange(range);
+          }
+        }
+        setCopyFailed(true);
+        return;
+      }
+      setCopyFailed(false);
       setCopied(true);
       if (copiedTimer.current !== null) clearTimeout(copiedTimer.current);
       copiedTimer.current = setTimeout(() => {
@@ -182,6 +205,12 @@ export function OrderBuyerNote({
         {view.text}
       </p>
 
+      {copyFailed ? (
+        <p className="buyer-note__error" role="status" data-testid="order-buyer-note-copy-failed">
+          {COPY.copyFailedHint}
+        </p>
+      ) : null}
+
       {markRead.isError ? (
         <p className="buyer-note__error" role="alert" data-testid="order-buyer-note-error">
           {COPY.markReadFailed}
@@ -215,8 +244,12 @@ export function OrderBuyerNote({
         {view.readAt !== null ? (
           <TimeDisplay iso={view.readAt} className="mono-text tabular" />
         ) : null}
-        {view.acknowledgements.length === 0 ? (
-          <span data-testid="order-buyer-note-bench-state">{COPY.notReadAtBench}</span>
+        {view.acknowledgements === null ? (
+          <span data-testid="order-buyer-note-bench-state">{COPY.benchReadsUnavailable}</span>
+        ) : view.acknowledgements.length === 0 ? (
+          hasFulfilmentWork ? (
+            <span data-testid="order-buyer-note-bench-state">{COPY.notReadAtBench}</span>
+          ) : null
         ) : (
           <span className="buyer-note__bench" data-testid="order-buyer-note-bench-state">
             <StatusBadge tone="success" compact withDot>

@@ -73,7 +73,10 @@ import {
   mapReturnEventsToTimeline,
   useOrderReturnEventsQuery,
 } from '../../features/returns';
-import { OrderFulfillmentTasksPanel } from '../../features/fulfillment';
+import {
+  OrderFulfillmentTasksPanel,
+  useOrderFulfillmentTasksQuery,
+} from '../../features/fulfillment';
 import { useOmsRoutingState } from '../../features/fulfillment-authority';
 import { useSession } from '../../shared/auth/use-session';
 
@@ -152,6 +155,8 @@ export function OrderDetailPage(): ReactElement {
   // render with it) — the app has no other hash-scroll, and the panels mount
   // asynchronously, so a native browser jump on first paint would miss.
   const hasOrder = query.data !== undefined;
+  // B-15: shares its cache entry with the fulfilment panel below, so this adds no request.
+  const fulfilmentTasksQuery = useOrderFulfillmentTasksQuery(internalOrderId);
   useEffect(() => {
     if (!hasOrder) return;
     const targetId = location.hash.replace(/^#/, '');
@@ -472,6 +477,7 @@ export function OrderDetailPage(): ReactElement {
         }
         channelPlatform={sourcePlatformType}
         placedAt={snapshot.placedAt ?? null}
+        hasFulfilmentWork={(fulfilmentTasksQuery.data?.total ?? 0) > 0}
       />
 
       {snapshot.items.length > 0 || snapshot.totals ? (

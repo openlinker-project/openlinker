@@ -15,7 +15,7 @@ import { BUYER_NOTE_COPY as COPY } from './buyer-note.copy';
 import { describeNoteActor } from './buyer-note-presentation';
 
 export function mapBuyerNoteAcknowledgementsToEvents(
-  acknowledgements: readonly BuyerNoteAcknowledgement[] | undefined,
+  acknowledgements: readonly BuyerNoteAcknowledgement[] | null | undefined,
   currentUserId: string | null,
 ): DatedTimelineEvent[] {
   return (acknowledgements ?? [])
