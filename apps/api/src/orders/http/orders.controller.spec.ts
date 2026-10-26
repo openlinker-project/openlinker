@@ -346,6 +346,7 @@ describe('OrdersController', () => {
           provide: ORDER_CHANGE_SERVICE_TOKEN,
           useValue: {
             findOrderIdsWithOpenAmendment: jest.fn().mockResolvedValue(new Set<string>()),
+            listOperatorChangesByOrder: jest.fn().mockResolvedValue([]),
           },
         },
         {
@@ -1762,6 +1763,76 @@ describe('OrdersController', () => {
       expect(orderChanges.findOrderIdsWithOpenAmendment).toHaveBeenCalledTimes(1);
       expect(orderChanges.findOrderIdsWithOpenAmendment).toHaveBeenCalledWith(['ol_order_001']);
       expect(result.items[0].lifecyclePhase).toBe('amending');
+    });
+  });
+
+  describe('listOrderChanges (#3540)', () => {
+    const change = (overrides: Record<string, unknown>) =>
+      ({
+        id: 'change-1',
+        internalOrderId: 'ol_order_001',
+        kind: 'order.cancel_request',
+        status: 'requested',
+        payload: { reason: 'buyer-request', note: 'Called us' },
+        requestedAt: new Date('2026-09-25T11:02:00.000Z'),
+        terminalisedAt: null,
+        declinedReason: null,
+        ...overrides,
+      }) as never;
+
+    it('should answer 404 for an unknown order', async () => {
+      repository.findById.mockResolvedValue(null);
+
+      await expect(controller.listOrderChanges('missing')).rejects.toThrow(NotFoundException);
+      expect(orderChanges.listOperatorChangesByOrder).not.toHaveBeenCalled();
+    });
+
+    it('should project a pending cancel request with its reason and note', async () => {
+      repository.findById.mockResolvedValue(mockOrder);
+      orderChanges.listOperatorChangesByOrder.mockResolvedValue([{ change: change({}), open: true }]);
+
+      const [row] = await controller.listOrderChanges('ol_order_001');
+
+      expect(row).toMatchObject({
+        id: 'change-1',
+        kind: 'order.cancel_request',
+        open: true,
+        confirmedAt: null,
+        payload: { cancelRequest: { reason: 'buyer-request', note: 'Called us' }, correction: null },
+      });
+    });
+
+    it('should project a confirmed correction with its lines and document number', async () => {
+      repository.findById.mockResolvedValue(mockOrder);
+      orderChanges.listOperatorChangesByOrder.mockResolvedValue([
+        {
+          change: change({
+            id: 'change-2',
+            kind: 'order.cancel_correction',
+            status: 'confirmed',
+            terminalisedAt: new Date('2026-09-25T12:00:00.000Z'),
+            payload: {
+              invoiceRecordId: 'inv_1',
+              documentNumber: 'FV/1',
+              currency: 'PLN',
+              reason: 'Order cancelled (buyer-request)',
+              lines: [{ originalLineNumber: 1, name: 'Mug', previousQuantity: 2, newQuantity: 0 }],
+            },
+          }),
+          open: false,
+        },
+      ]);
+
+      const [row] = await controller.listOrderChanges('ol_order_001');
+
+      expect(row.confirmedAt).toBe('2026-09-25T12:00:00.000Z');
+      expect(row.payload.cancelRequest).toBeNull();
+      expect(row.payload.correction).toEqual({
+        invoiceRecordId: 'inv_1',
+        documentNumber: 'FV/1',
+        currency: 'PLN',
+        lines: [{ originalLineNumber: 1, name: 'Mug', previousQuantity: 2, newQuantity: 0 }],
+      });
     });
   });
 

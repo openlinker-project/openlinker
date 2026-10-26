@@ -77,6 +77,20 @@ export class OrderChangeRepository implements OrderChangeRepositoryPort {
     return entities.map((entity) => this.toDomain(entity));
   }
 
+  async listByOrder(
+    internalOrderId: string,
+    kinds: readonly OrderChangeKind[]
+  ): Promise<OrderChange[]> {
+    if (kinds.length === 0) {
+      return [];
+    }
+    const entities = await this.repository.find({
+      where: { internalOrderId, kind: In([...kinds]) },
+      order: { requestedAt: 'DESC', id: 'DESC' },
+    });
+    return entities.map((entity) => this.toDomain(entity));
+  }
+
   async findOrderIdsWithOpenChanges(
     internalOrderIds: readonly string[],
     kinds: readonly OrderChangeKind[],

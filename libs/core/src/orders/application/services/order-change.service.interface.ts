@@ -35,6 +35,17 @@ export interface OpenOrderChangeResult {
   expiredStale: boolean;
 }
 
+/** One row of {@link IOrderChangeService.listOperatorChangesByOrder}. */
+export interface OrderChangeListItem {
+  change: OrderChange;
+  /**
+   * Whether the proposal is STILL open: a `requested` row past the TTL reads
+   * `expired` in effect (expiry is lazy), and a reader that trusted `status`
+   * alone would show a change nobody will answer as pending for ever.
+   */
+  open: boolean;
+}
+
 export interface IOrderChangeService {
   /**
    * Open a proposal, or return the one already holding
@@ -95,6 +106,13 @@ export interface IOrderChangeService {
    * the derived lifecycle phase (#3540). One query for a whole page.
    */
   findOrderIdsWithOpenAmendment(internalOrderIds: readonly string[]): Promise<Set<string>>;
+
+  /**
+   * Every `order.*` proposal against one order (cancel requests and the credit
+   * proposals they leave), newest first (#3540). `return.*` kinds are excluded:
+   * they belong to the returns surface.
+   */
+  listOperatorChangesByOrder(internalOrderId: string): Promise<OrderChangeListItem[]>;
 
   /** One proposal by id, any status (#3540). */
   findById(id: string): Promise<OrderChange | null>;

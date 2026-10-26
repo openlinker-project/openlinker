@@ -104,6 +104,12 @@ export interface OrderChangeRepositoryPort {
   ): Promise<Set<string>>;
 
   /**
+   * Every proposal of one of `kinds` against one order, any status, newest
+   * first (#3540). The operator-facing read: what was asked, what became of it.
+   */
+  listByOrder(internalOrderId: string, kinds: readonly OrderChangeKind[]): Promise<OrderChange[]>;
+
+  /**
    * One proposal by id, any status; `null` when absent (#3540).
    */
   findById(id: string): Promise<OrderChange | null>;
