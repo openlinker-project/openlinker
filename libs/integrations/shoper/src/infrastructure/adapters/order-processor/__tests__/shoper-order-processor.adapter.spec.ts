@@ -594,13 +594,16 @@ describe('ShoperOrderProcessorAdapter', () => {
   describe('write (OrderStatusWriteback, #3643)', () => {
     // The event logic is `ShoperOrderStatusWriter`'s and is specified there; this
     // pins only that the processor delegates to it.
-    it('should write a dispatch as a parcel under a shipping method Shoper accepts', async () => {
-      const h = setup({ defaults: { parcelShippingId: 8 } });
-      h.get.mockImplementation((path: string) =>
-        path === '/parcels'
-          ? Promise.resolve({ status: 200, data: { list: [] } })
-          : Promise.reject(new Error(`unexpected GET ${path}`)),
-      );
+    it("should write a dispatch as a parcel under the order's own shipping method", async () => {
+      const h = setup({ defaults: { parcelShippingId: 9 } });
+      h.get.mockImplementation((path: string) => {
+        if (path === '/parcels') return Promise.resolve({ status: 200, data: { list: [] } });
+        if (path === '/orders/10') {
+          const order = { order_id: '10', shipping_id: '8', status_id: '2' };
+          return Promise.resolve({ status: 200, data: order });
+        }
+        return Promise.reject(new Error(`unexpected GET ${path}`));
+      });
 
       await expect(
         h.adapter.write({ type: 'dispatched', externalOrderId: '10', trackingNumber: 'T1' }),

@@ -36,6 +36,11 @@
  * **first** transition into `cancelled` relays the shop's cancellation the same
  * way (#1170); a marketplace refusal is surfaced as a logged `rejected`.
  *
+ * A destination `cancelled` on an order OL has ALREADY recorded as cancelled
+ * is the echo of OL's own relay (ADR-017 / ADR-027 self-echo suppression):
+ * it creates no branch-1 row, moves no existing row into `cancelled`, and
+ * relays nothing - see {@link isOwnCancelEcho}.
+ *
  * @module libs/core/src/shipping/application/services
  * @implements {IFulfillmentStatusSyncService}
  * @see {@link IOrderLifecycleRelayService} for the source writeback path
@@ -161,6 +166,48 @@ function isInitialCancel(status: FulfillmentStatus | null): boolean {
  */
 function isFirstCancelTransition(patch: UpdateShipmentInput): boolean {
   return patch.status === SHIPMENT_STATUS.Cancelled;
+}
+
+/**
+ * A destination reporting `cancelled` for an order OL already holds as
+ * cancelled is not news - it is the echo of OL's own cancellation relay.
+ *
+ * `OrderRecord.cancelledAt` is written only when the order's SOURCE reports
+ * the cancellation (`markCancelled` is its sole writer), and the ingestion path
+ * then relays that cancel to every destination. The destination dutifully moves
+ * its order to cancelled and the next status poll reads it back. Treating that
+ * as a shop-initiated cancel (#1170) would mint a `cancelled` branch-1 row for
+ * an order that never had a parcel - which rolls the order up to `failed`
+ * ("Dispatch failed") - and relay `cancelled` back to a source that is the very
+ * system that authored it. ADR-017 (ingestion echo guard) and ADR-027
+ * (self-echo suppression is a mandatory relay guardrail) both forbid that.
+ *
+ * Keyed on the order's state, not on who cancelled first: once the source has
+ * reported the cancel, a destination cancel carries no fact the source lacks,
+ * whichever system moved first. A shop-initiated cancel on an order the source
+ * has NOT cancelled still relays exactly as before.
+ */
+function isOwnCancelEcho(record: OrderRecord, snapshot: FulfillmentStatusSnapshot): boolean {
+  return snapshot.status === FULFILLMENT_STATUS.Cancelled && record.isCancelled;
+}
+
+/**
+ * Remove the `cancelled` transition (and its timestamp) from an update patch,
+ * keeping any other observed change such as a late tracking number.
+ *
+ * The existing row is necessarily `dispatched` or `delivered` here - branch-1
+ * rows are only ever born at a non-null status, and an already-`cancelled` row
+ * produces no status diff. Such a parcel physically left; the destination
+ * flipping to cancelled only echoes OL's order-level cancel and says nothing
+ * about the parcel coming back, so rewriting it to `cancelled` would turn a
+ * shipped order into "Dispatch failed".
+ */
+function withoutCancelTransition(patch: UpdateShipmentInput): UpdateShipmentInput {
+  if (patch.status !== SHIPMENT_STATUS.Cancelled) return patch;
+  const rest: UpdateShipmentInput = { ...patch };
+  delete rest.status;
+  delete rest.cancelledAt;
+  return rest;
 }
 
 @Injectable()
@@ -317,7 +364,14 @@ export class FulfillmentStatusSyncService implements IFulfillmentStatusSyncServi
           'outbound',
         );
 
+        const ownCancelEcho = isOwnCancelEcho(record, snapshot);
+
         if (!existing) {
+          if (ownCancelEcho) {
+            skipped += 1;
+            this.logOwnCancelEchoSkip(record.internalOrderId, connectionId);
+            continue;
+          }
           await this.createBranchOneShipment(
             record.internalOrderId,
             connectionId,
@@ -339,7 +393,15 @@ export class FulfillmentStatusSyncService implements IFulfillmentStatusSyncServi
             await this.relayCancelledToSource(record.internalOrderId, connectionId);
           }
         } else {
-          const patch = this.diffPatch(existing, snapshot);
+          const observedPatch = this.diffPatch(existing, snapshot);
+          const patch = ownCancelEcho ? withoutCancelTransition(observedPatch) : observedPatch;
+          if (patch !== observedPatch) {
+            this.logOwnCancelEchoSkip(record.internalOrderId, connectionId);
+            if (Object.keys(patch).length === 0) {
+              skipped += 1;
+              continue;
+            }
+          }
           if (Object.keys(patch).length > 0) {
             // Repair the link on a row minted BEFORE this order was routed
             // (#2402): it was born with no work to name, and the create path is
@@ -402,6 +464,14 @@ export class FulfillmentStatusSyncService implements IFulfillmentStatusSyncServi
       total: page.total,
       nextOffset,
     };
+  }
+
+  private logOwnCancelEchoSkip(internalOrderId: string, connectionId: string): void {
+    this.logger.debug(
+      `Ignoring destination cancellation of order ${internalOrderId} on connection ` +
+        `${connectionId}: the order is already cancelled at its source, so this is the ` +
+        `echo of OL's own cancel relay - no shipment change, no relay back`,
+    );
   }
 
   /**

@@ -101,6 +101,7 @@ import { listShoperMappingOptions } from '../../readers/shoper-mapping-options.r
 import { readShoperOrderParcels } from '../../readers/shoper-order-parcels.reader';
 import { ShoperOrderReferenceProvider } from '../../shop-context/shoper-order-reference.provider';
 import type { ShoperShopContextProvider } from '../../shop-context/shoper-shop-context.provider';
+import type { ShoperParcelShippingRefusalProvider } from '../../shop-context/shoper-parcel-shipping-refusal.provider';
 import { ShoperOrderStatusWriter } from '../order-status/shoper-order-status-writer';
 import type { ShoperOrderOptionsProvider } from '../../shop-context/shoper-order-options.provider';
 import type { ShoperTaxTableProvider } from '../../shop-context/shoper-tax-table.provider';
@@ -135,8 +136,10 @@ export class ShoperOrderProcessorAdapter
      * shares with the order source; the default (no cache) serves a bare build.
      */
     private readonly reference: ShoperOrderReferenceProvider = new ShoperOrderReferenceProvider(client),
+    /** Shared with the order source by the factory, so both roles remember one shop's refused parcel methods. */
+    parcelShippingRefusals?: ShoperParcelShippingRefusalProvider,
   ) {
-    this.statusWriter = new ShoperOrderStatusWriter(client, connection, reference);
+    this.statusWriter = new ShoperOrderStatusWriter(client, connection, reference, parcelShippingRefusals);
   }
 
   async createOrder(order: OrderCreate): Promise<OrderRef> {

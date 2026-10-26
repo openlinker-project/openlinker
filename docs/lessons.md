@@ -23,6 +23,32 @@ When a lesson hardens into a rule, **graduate it** to the canonical doc and leav
 
 ---
 
+## A destination status read-back must check whether OL itself caused the status it reads
+
+**Context**: branch-1 status sync (`FulfillmentStatusSyncService`) projects a destination
+shop's order status onto a shipment row and relays a shop-initiated cancel to the source
+(#1170).
+
+**Problem**: when the SOURCE cancelled an order, ingestion recorded `cancelledAt` and relayed
+the cancel to the destination (Shoper, PrestaShop, WooCommerce). The next status poll read
+that cancel back as if the shop had cancelled on its own: it minted a `cancelled` shipment
+row for an order that never had a parcel (rollup `failed`, UI "Dispatch failed") and relayed
+`cancelled` back to the source that authored it. Each half of the loop looked correct in its
+own spec; only a live round trip showed the echo.
+
+**Rule**: any read-back that turns a destination fact into OL state or into a relay must ask
+whether that fact is OL's own write coming back (ADR-017, ADR-027 self-echo suppression).
+For cancellation the test is `OrderRecord.isCancelled` - the source already knows, so the
+destination's cancel carries nothing new. Cover it with a case that seeds an OL-cancelled
+order, not only a shop-initiated one.
+
+**Applies to**: `libs/core/src/shipping/application/services/fulfillment-status-sync.service.ts`,
+any status read-back paired with an outbound relay.
+
+**Source**: Shoper integration live test, 2026-10-26.
+
+---
+
 ## Never route a one-field change through a full-upsert port
 
 **Context**: price-change propagation to a WooCommerce shop (#3144) reused

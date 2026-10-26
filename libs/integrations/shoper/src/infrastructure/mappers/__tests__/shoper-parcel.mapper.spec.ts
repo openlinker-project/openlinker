@@ -5,7 +5,7 @@ import {
   normalizeTrackingNumber,
   planShoperParcelWrite,
   readShoperDispatched,
-  selectShoperParcelShipping,
+  selectShoperParcelFallbackShipping,
 } from '../shoper-parcel.mapper';
 
 function parcel(id: string, code: string | null): ShoperParcel {
@@ -89,7 +89,7 @@ describe('shoper-parcel.mapper', () => {
     });
   });
 
-  describe('selectShoperParcelShipping', () => {
+  describe('selectShoperParcelFallbackShipping', () => {
     const SHIPPINGS: ShoperShippingRow[] = [
       { shipping_id: '1', engine: 'inpost', active: '1' },
       { shipping_id: '7', engine: 'personal', active: '0' },
@@ -97,29 +97,33 @@ describe('shoper-parcel.mapper', () => {
       { shipping_id: '9', engine: 'personal' },
     ];
 
-    it("should take the operator's configured method first, whatever the order uses", () => {
-      expect(
-        selectShoperParcelShipping({ configuredShippingId: 4, orderShippingId: 9, shippings: SHIPPINGS }),
-      ).toEqual({ shippingId: 4, source: 'config' });
+    it("should take the operator's configured method first, whatever the shop lists", () => {
+      expect(selectShoperParcelFallbackShipping({ configuredShippingId: 4, shippings: SHIPPINGS })).toEqual({
+        shippingId: 4,
+        source: 'config',
+      });
     });
 
-    it("should keep the order's own method when Shoper accepts a parcel for it, even an inactive one", () => {
+    it('should fall back to the first ACTIVE plain method when nothing is configured', () => {
       expect(
-        selectShoperParcelShipping({ configuredShippingId: undefined, orderShippingId: 7, shippings: SHIPPINGS }),
-      ).toEqual({ shippingId: 7, source: 'order' });
-    });
-
-    it('should fall back to the first ACTIVE plain method for an integrated order method', () => {
-      expect(
-        selectShoperParcelShipping({ configuredShippingId: undefined, orderShippingId: 1, shippings: SHIPPINGS }),
+        selectShoperParcelFallbackShipping({ configuredShippingId: undefined, shippings: SHIPPINGS }),
       ).toEqual({ shippingId: 8, source: 'fallback' });
+    });
+
+    it('should skip an excluded method, so a refused one is not tried twice', () => {
+      expect(
+        selectShoperParcelFallbackShipping({
+          configuredShippingId: undefined,
+          shippings: SHIPPINGS,
+          excluded: new Set([8]),
+        }),
+      ).toEqual({ shippingId: 9, source: 'fallback' });
     });
 
     it('should read a method with no active flag as active', () => {
       expect(
-        selectShoperParcelShipping({
+        selectShoperParcelFallbackShipping({
           configuredShippingId: undefined,
-          orderShippingId: null,
           shippings: [{ shipping_id: '9', engine: 'personal' }],
         }),
       ).toEqual({ shippingId: 9, source: 'fallback' });
@@ -127,9 +131,8 @@ describe('shoper-parcel.mapper', () => {
 
     it('should answer null when nothing qualifies', () => {
       expect(
-        selectShoperParcelShipping({
+        selectShoperParcelFallbackShipping({
           configuredShippingId: undefined,
-          orderShippingId: 1,
           shippings: [{ shipping_id: '1', engine: 'inpost', active: '1' }],
         }),
       ).toBeNull();

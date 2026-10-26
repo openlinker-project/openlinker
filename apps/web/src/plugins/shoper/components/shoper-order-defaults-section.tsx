@@ -70,9 +70,9 @@ const FIELD_COPY = {
   shoperParcelShippingId: {
     label: 'Delivery method for shipments',
     description:
-      'Recorded on the parcel when OpenLinker marks an order as shipped. Shoper refuses parcels for ' +
-      'carrier-integrated methods (InPost, DPD, ...), so pick a plain one. Not set: the order\'s own method ' +
-      'if Shoper accepts it, otherwise the first plain method in the shop.',
+      'Used for the parcel when OpenLinker marks an order as shipped. The order\'s own delivery method ' +
+      'is tried first. If Shoper refuses it (it does for some carrier-integrated methods, such as InPost ' +
+      'or DPD), this method is used instead, so pick a plain one. Not set: the first plain method in the shop.',
   },
   shoperCancelledStatusId: {
     label: 'Status for cancelled orders',

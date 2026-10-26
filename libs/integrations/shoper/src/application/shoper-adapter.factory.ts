@@ -31,6 +31,7 @@ import type { ShoperCustomerProvisioner } from '../infrastructure/provisioners/s
 import { ShoperInventoryMasterAdapter } from '../infrastructure/adapters/inventory-master/shoper-inventory-master.adapter';
 import { ShoperOrderSourceAdapter } from '../infrastructure/adapters/order-source/shoper-order-source.adapter';
 import { ShoperOrderReferenceProvider } from '../infrastructure/shop-context/shoper-order-reference.provider';
+import { ShoperParcelShippingRefusalProvider } from '../infrastructure/shop-context/shoper-parcel-shipping-refusal.provider';
 import { ShoperProductPublisherAdapter } from '../infrastructure/adapters/product-publisher/shoper-product-publisher.adapter';
 import { ShoperProductMasterAdapter } from '../infrastructure/adapters/product-master/shoper-product-master.adapter';
 import { ShoperHttpClient } from '../infrastructure/http/shoper-http-client';
@@ -96,6 +97,13 @@ export class ShoperAdapterFactory {
       cache,
       keyPrefix: `shoper:order-reference:${connection.id}:${base.host}`,
     });
+    // Also through the host cache, for the same reason: a parcel method Shoper
+    // refused must stay remembered across the per-call bags, or every dispatch
+    // pays the refused POST again. One instance serves both order roles.
+    const parcelShippingRefusals = new ShoperParcelShippingRefusalProvider({
+      cache,
+      keyPrefix: `shoper:parcel-shipping-refusal:${connection.id}:${base.host}`,
+    });
 
     return {
       productMaster: new ShoperProductMasterAdapter(
@@ -115,7 +123,13 @@ export class ShoperAdapterFactory {
         connection,
       ),
       productPublisher: new ShoperProductPublisherAdapter(client, shopContext, connection),
-      orderSource: new ShoperOrderSourceAdapter(client, orderReference, shopContext, connection),
+      orderSource: new ShoperOrderSourceAdapter(
+        client,
+        orderReference,
+        shopContext,
+        connection,
+        parcelShippingRefusals,
+      ),
       orderProcessor:
         customerProvisioner === undefined
           ? null
@@ -130,6 +144,7 @@ export class ShoperAdapterFactory {
               mappingConfig,
               this.warnedStockFlagConnections,
               orderReference,
+              parcelShippingRefusals,
             ),
     };
   }

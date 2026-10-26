@@ -8,9 +8,13 @@
  * adapter and one that only RECEIVES it through the order processor; both
  * delegate here, so the two roles cannot write the same event differently.
  *
- * - `dispatched` -> a parcel carrying the tracking number (#3643). Shoper refuses
- *   a parcel for a carrier-integrated shipping method, so the method is chosen by
- *   `selectShoperParcelShipping`, not taken from the order blindly.
+ * - `dispatched` -> a parcel carrying the tracking number (#3643), written under
+ *   the order's own shipping method first so it carries the carrier the buyer
+ *   chose. Shoper's API refuses a parcel for some methods (the carrier-integrated
+ *   ones) with "Nie znaleziono wartości"; on exactly that answer the parcel falls
+ *   back to `defaults.parcelShippingId`, else the shop's first plain method, and
+ *   the refusal is remembered so it costs one rejected call per method, not one
+ *   per dispatch.
  * - `cancelled` -> the order moves to a cancelled-type status (`PUT /orders/:id`).
  * - `in-progress` -> the order moves to an in-progress-type status.
  * - `delivered` -> unsupported: Shoper has no delivered status.
@@ -38,7 +42,10 @@ import type {
   ShoperShippingRow,
 } from '../../../domain/types/shoper-api.types';
 import type { ShoperStatusWritebackTarget } from '../../../domain/types/shoper-order-status.types';
-import type { ShoperParcelShippingChoice } from '../../../domain/types/shoper-parcel.types';
+import type {
+  ShoperParcelPostOutcome,
+  ShoperParcelShippingChoice,
+} from '../../../domain/types/shoper-parcel.types';
 import type { ShoperHttpClient } from '../../http/shoper-http-client';
 import { SHOPER_MAX_PAGE_SIZE, fetchAllShoperRows } from '../../http/shoper-pagination';
 import { readDefaults, toPositiveInt } from '../../mappers/shoper-order-input.mapper';
@@ -46,13 +53,14 @@ import {
   buildShoperParcelCreateRequest,
   normalizeTrackingNumber,
   planShoperParcelWrite,
-  selectShoperParcelShipping,
+  selectShoperParcelFallbackShipping,
 } from '../../mappers/shoper-parcel.mapper';
 import {
   pickShoperWritebackStatus,
   planShoperStatusWriteback,
 } from '../../mappers/shoper-status-writeback.mapper';
 import type { ShoperOrderReferenceProvider } from '../../shop-context/shoper-order-reference.provider';
+import { ShoperParcelShippingRefusalProvider } from '../../shop-context/shoper-parcel-shipping-refusal.provider';
 
 const ORDER_ID = /^\d+$/;
 
@@ -76,6 +84,13 @@ export class ShoperOrderStatusWriter implements OrderStatusWriteback {
     private readonly client: ShoperHttpClient,
     private readonly connection: Connection,
     private readonly reference: ShoperOrderReferenceProvider,
+    /**
+     * Shipping methods Shoper refused a parcel for. The factory passes one backed
+     * by the host cache; the default remembers for this instance only, which
+     * degrades to "try the order's method, then fall back" on every dispatch.
+     */
+    private readonly parcelShippingRefusals: ShoperParcelShippingRefusalProvider =
+      new ShoperParcelShippingRefusalProvider(),
   ) {}
 
   async write(event: OrderLifecycleEvent): Promise<OrderWritebackResult> {
@@ -195,11 +210,72 @@ export class ShoperOrderStatusWriter implements OrderStatusWriteback {
       return { outcome: 'applied' };
     }
 
-    const choice = await this.chooseParcelShipping(externalOrderId);
-    if ('refusal' in choice) {
-      return { outcome: 'rejected', detail: choice.refusal };
+    return this.createParcel(externalOrderId, trackingNumber);
+  }
+
+  /**
+   * Create the order's parcel. The order's own shipping method is tried first,
+   * unless Shoper is already known to refuse it; only Shoper's "value not found"
+   * answer moves the parcel to a fallback method. That answer is a validation
+   * refusal, so Shoper created nothing and the second POST cannot duplicate the
+   * first. Any other failure ends the attempt with the reason.
+   */
+  private async createParcel(
+    externalOrderId: string,
+    trackingNumber: string | undefined,
+  ): Promise<OrderWritebackResult> {
+    const order = await this.readOrder(externalOrderId);
+    if (order === null) {
+      return { outcome: 'rejected', detail: `Shoper order ${externalOrderId} not found` };
     }
 
+    const orderShippingId = toPositiveInt(order.shipping_id);
+    let refusedOrderMethod = false;
+    if (orderShippingId !== null) {
+      refusedOrderMethod = await this.parcelShippingRefusals.isRefused(orderShippingId);
+      if (!refusedOrderMethod) {
+        const own: ShoperParcelShippingChoice = { shippingId: orderShippingId, source: 'order' };
+        const attempt = await this.postParcel(externalOrderId, own, trackingNumber);
+        if (attempt.kind === 'created') {
+          return { outcome: 'applied' };
+        }
+        if (attempt.kind === 'rejected') {
+          return { outcome: 'rejected', detail: describeParcelFailure(attempt.error, own) };
+        }
+        refusedOrderMethod = true;
+        await this.parcelShippingRefusals.remember(orderShippingId);
+        this.logger.log(
+          `Shoper refused a parcel under order ${externalOrderId}'s own shipping method ${orderShippingId} ` +
+            `(${attempt.error.message}); using the fallback method (connection: ${this.connection.id})`,
+        );
+      }
+    }
+
+    const fallback = await this.chooseFallbackShipping(
+      externalOrderId,
+      refusedOrderMethod ? orderShippingId : null,
+    );
+    if ('refusal' in fallback) {
+      return { outcome: 'rejected', detail: fallback.refusal };
+    }
+    const attempt = await this.postParcel(externalOrderId, fallback, trackingNumber);
+    if (attempt.kind === 'created') {
+      return { outcome: 'applied' };
+    }
+    return {
+      outcome: 'rejected',
+      detail:
+        `${describeParcelFailure(attempt.error, fallback)}. ` +
+        'Shoper accepts a parcel only for a shipping method that is not carrier-integrated; ' +
+        `set connection config "${PARCEL_SHIPPING_KEY}" to the id of such a method in the shop`,
+    };
+  }
+
+  private async postParcel(
+    externalOrderId: string,
+    choice: ShoperParcelShippingChoice,
+    trackingNumber: string | undefined,
+  ): Promise<ShoperParcelPostOutcome> {
     try {
       await this.client.post<unknown>(
         '/parcels',
@@ -207,13 +283,7 @@ export class ShoperOrderStatusWriter implements OrderStatusWriteback {
       );
     } catch (error) {
       if (error instanceof ShoperApiError && error.statusCode === 400) {
-        return {
-          outcome: 'rejected',
-          detail:
-            `${error.message} (shipping method ${choice.shippingId}, chosen from ${choice.source}). ` +
-            'Shoper accepts a parcel only for a shipping method that is not carrier-integrated; ' +
-            `set connection config "${PARCEL_SHIPPING_KEY}" to the id of such a method in the shop`,
-        };
+        return error.isValueNotFound() ? { kind: 'method-refused', error } : { kind: 'rejected', error };
       }
       throw error;
     }
@@ -222,33 +292,29 @@ export class ShoperOrderStatusWriter implements OrderStatusWriteback {
         `(${choice.source})${trackingNumber === undefined ? ' without a tracking number' : ''} ` +
         `(connection: ${this.connection.id})`,
     );
-    return { outcome: 'applied' };
+    return { kind: 'created' };
   }
 
   /**
-   * The shipping method for a new parcel. A configured id needs no read; otherwise
-   * the order's own method and the shop's methods are read to find one Shoper
-   * accepts a parcel for.
+   * The method a parcel falls back to. A configured id needs no read; otherwise
+   * the shop's methods are read to find a plain one, skipping the order's own
+   * method when that is the one Shoper just refused.
    */
-  private async chooseParcelShipping(
+  private async chooseFallbackShipping(
     externalOrderId: string,
+    refusedShippingId: number | null,
   ): Promise<ShoperParcelShippingChoice | { readonly refusal: string }> {
     const configured = readDefaults(this.connection).parcelShippingId;
     if (configured !== undefined) {
       return { shippingId: configured, source: 'config' };
     }
-
-    const order = await this.readOrder(externalOrderId);
-    if (order === null) {
-      return { refusal: `Shoper order ${externalOrderId} not found` };
-    }
     const shippings = await fetchAllShoperRows<ShoperShippingRow>(this.client, '/shippings', {
       order: 'shipping_id ASC',
     });
-    const choice = selectShoperParcelShipping({
+    const choice = selectShoperParcelFallbackShipping({
       configuredShippingId: undefined,
-      orderShippingId: toPositiveInt(order.shipping_id),
       shippings,
+      excluded: new Set(refusedShippingId === null ? [] : [refusedShippingId]),
     });
     if (choice === null) {
       return {
@@ -333,4 +399,8 @@ export class ShoperOrderStatusWriter implements OrderStatusWriteback {
       throw error;
     }
   }
+}
+
+function describeParcelFailure(error: ShoperApiError, choice: ShoperParcelShippingChoice): string {
+  return `${error.message} (shipping method ${choice.shippingId}, chosen from ${choice.source})`;
 }
