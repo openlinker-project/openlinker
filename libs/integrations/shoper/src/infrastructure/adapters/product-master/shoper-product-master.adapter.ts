@@ -122,8 +122,15 @@ export class ShoperProductMasterAdapter implements ProductMasterPort, ProductTax
 
   async getProduct(productId: string): Promise<Product> {
     const externalId = await this.resolveExternalProductId(productId);
+    // The shop context does not depend on the product, so it is read alongside
+    // it. The product read is still awaited first: a deleted product must
+    // surface its own not-found (#1599), never a context failure that lost the
+    // race. The no-op catch only stops an unawaited rejection from being
+    // reported as unhandled; the awaited promise below still rejects.
+    const ctxRead = this.shopContext.get();
+    ctxRead.catch(() => undefined);
     const data = await this.readProduct(externalId, productId);
-    const ctx = await this.shopContext.get();
+    const ctx = await ctxRead;
     const product = mapShoperProduct(data, ctx);
     const gallery = await this.readGallery(externalId, ctx.host);
     // An empty or unreadable gallery keeps the main image the product row carries.

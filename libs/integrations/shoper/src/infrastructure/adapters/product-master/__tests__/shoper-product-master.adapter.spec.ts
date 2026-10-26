@@ -61,7 +61,11 @@ const TAX_TABLE = new Map(
   ].map(([tax_id, value, name]) => [tax_id, { tax_id, value, name }]),
 );
 
-function setup(): Harness {
+function setup(
+  shopContext: { get: () => Promise<typeof MAP_CONTEXT> } = {
+    get: () => Promise.resolve(MAP_CONTEXT),
+  },
+): Harness {
   const get = jest.fn();
   const taxTable = { get: jest.fn().mockResolvedValue(TAX_TABLE) };
   const mapping = {
@@ -79,7 +83,7 @@ function setup(): Harness {
   const adapter = new ShoperProductMasterAdapter(
     { get } as unknown as ShoperHttpClient,
     mapping as unknown as IdentifierMappingPort,
-    { get: () => Promise.resolve(MAP_CONTEXT) } as unknown as ShoperShopContextProvider,
+    shopContext as unknown as ShoperShopContextProvider,
     taxTable as unknown as ShoperTaxTableProvider,
     new ShoperOptionTableProvider({ get } as unknown as ShoperHttpClient),
     { id: CONNECTION_ID } as Connection,
@@ -314,6 +318,38 @@ describe('ShoperProductMasterAdapter', () => {
     function failWith(get: jest.Mock, error: Error): void {
       get.mockRejectedValue(error);
     }
+
+    it('should start the shop context read before the product read answers', async () => {
+      let releaseProduct: () => void = () => undefined;
+      const contextGet = jest.fn(() => Promise.resolve(MAP_CONTEXT));
+      const { adapter, get } = setup({ get: contextGet });
+      get.mockImplementation((path: string) => {
+        if (path === '/products/93') {
+          return new Promise((resolve) => {
+            releaseProduct = (): void => resolve({ status: 200, data: buildProduct() });
+          });
+        }
+        return Promise.resolve({ status: 200, data: envelope([]) });
+      });
+
+      const read = adapter.getProduct('ol_product_1');
+      await new Promise((resolve) => setImmediate(resolve));
+
+      expect(contextGet).toHaveBeenCalledTimes(1);
+      releaseProduct();
+      await expect(read).resolves.toMatchObject({ id: 'ol_product_1' });
+    });
+
+    it('should report the deletion, not a shop context failure, when both reads fail', async () => {
+      const { adapter, get } = setup({
+        get: () => Promise.reject(new ShoperNetworkError('ECONNRESET')),
+      });
+      failWith(get, new ShoperApiError(404, 'invalid_request', 'Resource not found'));
+
+      const error = await adapter.getProduct('ol_product_1').catch((e: unknown) => e);
+
+      expect(error).toBeInstanceOf(MasterProductNotFoundError);
+    });
 
     it('should translate Shoper’s structured 404 into the neutral MasterProductNotFoundError', async () => {
       const { adapter, get } = setup();
