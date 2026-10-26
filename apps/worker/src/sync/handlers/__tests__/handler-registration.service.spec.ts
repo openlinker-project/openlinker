@@ -64,7 +64,7 @@ describe('HandlerRegistrationService (ADR-050 lane partition, #2278)', () => {
     expect(() => registry.assertFullLaneCoverage()).not.toThrow();
   });
 
-  it('should partition the 65 job types 19/34/5/7 per ADR-050 decision 1', () => {
+  it('should partition the 66 job types 19/35/5/7 per ADR-050 decision 1', () => {
     // 17: four of the SIX fulfilment job types are `realtime` by
     // cost-of-starvation. The other two, #2712's
     // `fulfillment.work.timeoutSweep` and #2728's
@@ -148,11 +148,11 @@ describe('HandlerRegistrationService (ADR-050 lane partition, #2278)', () => {
     // enqueues, which stay `realtime`. #3534's `orders.export` is the
     // thirty-third: an operator-requested CSV/XLSX export is a query-then-write
     // job, not a buyer-facing write, the restatement driver's reasoning.
-    // `marketplace.sourceFulfillment.statusSync` is the thirty-fourth, laned
+    // #3629's inventory sale-decrement reconcile sweep is the thirty-fourth,
+    // and `marketplace.sourceFulfillment.statusSync` the thirty-fifth, laned
     // with its destination-side twin `marketplace.fulfillment.statusSync`: a
     // paced scan over parcels that have already shipped, each candidate a
-    // marketplace readback. #3629's inventory sale-decrement reconcile sweep
-    // is the thirty-fifth.
+    // marketplace readback.
     expect(registry.getJobTypesByLane('bulk')).toHaveLength(35);
     expect(registry.getJobTypesByLane('fiscal')).toHaveLength(5);
     expect(registry.getJobTypesByLane('fan-out')).toHaveLength(7);
