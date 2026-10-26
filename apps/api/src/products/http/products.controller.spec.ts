@@ -456,6 +456,23 @@ describe('ProductsController', () => {
         ]);
       });
 
+      it('should chunk the availability read at 200 variants per call', async () => {
+        productsService.listProducts.mockResolvedValue({ items: [makeProduct()], total: 1 });
+        const variants = Array.from({ length: 450 }, (_, i) =>
+          makeVariant({ id: `v${String(i)}`, productId: 'ol_product_1' })
+        );
+        productsService.getVariantsByProductIds.mockResolvedValue(variants);
+        availability.getPromisableQuantities.mockImplementation(({ variantIds }) =>
+          Promise.resolve(variantIds.map((id) => atp(id, 1)))
+        );
+
+        const result = await controller.listProducts({});
+
+        expect(availability.getPromisableQuantities.mock.calls.map((c) => c[0].variantIds.length))
+          .toEqual([200, 200, 50]);
+        expect(result.items[0].availableToPromise).toBe(450);
+      });
+
       it('should report the product unknown, never a partial sum, when any variant is unknown', async () => {
         productsService.listProducts.mockResolvedValue({ items: [makeProduct()], total: 1 });
         productsService.getVariantsByProductIds.mockResolvedValue([

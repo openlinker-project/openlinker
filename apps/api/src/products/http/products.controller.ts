@@ -55,6 +55,8 @@ import {
   IAvailabilityService,
   IInventoryQueryService,
   INVENTORY_QUERY_SERVICE_TOKEN,
+  MAX_STOCK_VIEW_VARIANT_IDS,
+  type PromisableQuantity,
 } from '@openlinker/core/inventory';
 import {
   IOfferMappingsService,
@@ -337,10 +339,19 @@ export class ProductsController {
     try {
       const variants = await this.productsService.getVariantsByProductIds(productIds);
       const variantIds = variants.map((v) => v.id);
-      const promisable = await this.availability.getPromisableQuantities({
-        variantIds,
-        scope: { kind: 'global' },
-      });
+      // Chunked at the same 200-id cap the stock view and the availability
+      // endpoint use, run sequentially: a page of 100 products can carry far
+      // more variants than that, and one unbounded IN-list is what the cap
+      // exists to prevent. Any failed chunk degrades the WHOLE page (below).
+      const promisable: PromisableQuantity[] = [];
+      for (let i = 0; i < variantIds.length; i += MAX_STOCK_VIEW_VARIANT_IDS) {
+        promisable.push(
+          ...(await this.availability.getPromisableQuantities({
+            variantIds: variantIds.slice(i, i + MAX_STOCK_VIEW_VARIANT_IDS),
+            scope: { kind: 'global' },
+          }))
+        );
+      }
       const atpByVariant = new Map(promisable.map((p) => [p.productVariantId, p]));
       const variantsByProduct = new Map<string, ProductVariant[]>();
       for (const variant of variants) {
