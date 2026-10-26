@@ -7,7 +7,7 @@
  *
  * @module apps/web/src/features/orders/lib
  */
-import type { OrderWorkStageValue } from '../api/orders.types';
+import type { FulfillmentBlockReasonValue, OrderWorkStageValue } from '../api/orders.types';
 
 /** The packing position, in time order. `satisfies` makes a new stage a compile error here. */
 export const ORDER_WORK_STAGE_COPY = {
@@ -32,7 +32,9 @@ export const HANDLED_IN_OPENLINKER_COPY = {
 
 /**
  * A held order's reason, as an operator reads it. Keyed by the BACKEND's persisted
- * value; the three #3485 states. The other held states (`routing-in-doubt`,
+ * value (`satisfies` ties the keys to the frontend mirror, and
+ * `check-fulfillment-reason-mirror.mjs` ties that mirror to core); the three
+ * #3485 states. The other held states (`routing-in-doubt`,
  * `routing-contended`, `routing-already-live-elsewhere`) are deliberately absent:
  * they are transient guards, not an order waiting on the operator, so they render
  * no badge rather than a misleading one.
@@ -56,7 +58,9 @@ export const WAITING_REASON_COPY = {
     hint: 'OpenLinker is holding this order: routing it failed. It is retried automatically.',
     tone: 'error',
   },
-} as const satisfies Record<
-  string,
-  { label: string; fact: string; hint: string; tone: 'warning' | 'error' }
+} as const satisfies Partial<
+  Record<
+    FulfillmentBlockReasonValue,
+    { label: string; fact: string; hint: string; tone: 'warning' | 'error' }
+  >
 >;

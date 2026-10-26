@@ -6,7 +6,7 @@
  */
 import { describe, expect, it } from 'vitest';
 
-import type { OrderHandledInOpenLinker } from '../api/orders.types';
+import type { FulfillmentBlockReasonValue, OrderHandledInOpenLinker } from '../api/orders.types';
 import {
   deriveWaiting,
   derivePackingStage,
@@ -55,7 +55,7 @@ describe('deriveWaiting', () => {
     expect(deriveWaiting({})).toBeNull();
   });
 
-  it.each(['routing-in-doubt', 'routing-contended', 'routing-already-live-elsewhere'])(
+  it.each(['routing-in-doubt', 'routing-contended', 'routing-already-live-elsewhere'] as const)(
     'should render no badge for the transient guard %s',
     (reason) => {
       expect(deriveWaiting({ fulfillmentBlockReason: reason })).toBeNull();
@@ -63,7 +63,9 @@ describe('deriveWaiting', () => {
   );
 
   it('should return null for a reason written by a newer release', () => {
-    expect(deriveWaiting({ fulfillmentBlockReason: 'routing-teleported' })).toBeNull();
+    // Not a member of the mirror: the shape an unknown persisted value takes at runtime.
+    const unknown = 'routing-teleported' as FulfillmentBlockReasonValue;
+    expect(deriveWaiting({ fulfillmentBlockReason: unknown })).toBeNull();
   });
 });
 

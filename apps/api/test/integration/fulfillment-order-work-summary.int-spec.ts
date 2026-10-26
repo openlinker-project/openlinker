@@ -52,6 +52,8 @@ describe('Order work summary (#3482)', () => {
   const query = (): IFulfillmentWorkQueryService =>
     harness.getApp().get<IFulfillmentWorkQueryService>(FULFILLMENT_WORK_QUERY_SERVICE_TOKEN);
 
+  const PACKER_USER_ID = '22222222-2222-2222-2222-222222222222';
+
   const seedWork = async (orderId: string, deliveryMethod = 'courier'): Promise<FulfillmentWork> =>
     repository().create({
       orderId,
@@ -61,11 +63,18 @@ describe('Order work summary (#3482)', () => {
       lines: [{ orderLineId: 'l-1', productVariantId: 'ol_variant_1', totalQuantity: 1 }],
     });
 
-  /** What the bench does when it shuts a box: sets the column, never `status`. */
+  /**
+   * What the bench does when it shuts a box: sets the column and the packer who
+   * shut it, never `status`. A closed parcel must name its actor
+   * (`CHK_fulfillment_works_closed_parcel_actor`).
+   */
   const closeParcelOnBench = async (workId: string): Promise<void> => {
     await harness
       .getDataSource()
-      .query(`UPDATE "fulfillment_works" SET "parcelClosedAt" = now() WHERE "id" = $1`, [workId]);
+      .query(
+        `UPDATE "fulfillment_works" SET "parcelClosedAt" = now(), "packedByUserId" = $2 WHERE "id" = $1`,
+        [workId, PACKER_USER_ID]
+      );
   };
 
   const setStatus = async (workId: string, status: string): Promise<void> => {
