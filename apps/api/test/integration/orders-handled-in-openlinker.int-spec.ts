@@ -98,10 +98,10 @@ describe('Orders handled in OpenLinker (#3482, integration)', () => {
 
   async function addScan(workId: string, voided = false): Promise<void> {
     const dataSource = harness.getDataSource();
-    const [line] = (await dataSource.query(
+    const [line] = await dataSource.query<{ id: string }[]>(
       `SELECT "id" FROM "fulfillment_work_lines" WHERE "fulfillmentWorkId" = $1 LIMIT 1`,
       [workId]
-    )) as Array<{ id: string }>;
+    );
     await dataSource.query(
       `INSERT INTO "fulfillment_work_verifications"
          ("id", "fulfillmentWorkId", "workLineId", "gestureId", "verifiedByUserId", "verifiedAt", "voidedAt")

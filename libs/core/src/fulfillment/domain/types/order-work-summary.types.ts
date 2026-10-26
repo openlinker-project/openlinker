@@ -105,6 +105,13 @@ export const stageOfFulfillmentWork = (work: FulfillmentWorkProgress): OrderWork
     case 'on_hold':
       if (work.parcelClosedAt) return 'packed';
       return work.hasVerification ? 'packing' : 'to-pack';
+    default:
+      // `status` is a plain `text` column cast at the repository boundary, so a
+      // value outside the union is reachable at runtime. Without this arm the
+      // function returns `undefined`, which passes the `!== null` filter in
+      // `summarizeOrderWork` and inflates `workCount`. An unknown status takes no
+      // part in the flow, exactly like `cancelled`.
+      return null;
   }
 };
 

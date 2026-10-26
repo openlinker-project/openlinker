@@ -351,8 +351,8 @@ export class FulfillmentWorkRepository implements FulfillmentWorkRepositoryPort 
   ): Promise<ReadonlyArray<FulfillmentWorkProgress & { readonly orderId: string }>> {
     if (orderIds.length === 0) return [];
     try {
-      // `orderId` leads `IDX_fulfillment_works_grouping`. Header columns only - no
-      // lines are hydrated, which is the point of a list-page read - plus one
+      // `orderId` leads `IDX_fulfillment_works_grouping`, which serves this
+      // `IN (...)`. Header columns only - no lines are hydrated, which is the point of a list-page read - plus one
       // EXISTS per work on the verification ledger (a same-context entity, so it
       // is joined through its ORM entity rather than a raw table name).
       const liveScan = this.verifications
@@ -386,11 +386,7 @@ export class FulfillmentWorkRepository implements FulfillmentWorkRepositoryPort 
         hasVerification: row.hasVerification === true,
       }));
     } catch (error) {
-      this.logger.error(
-        `Failed to read work progress for ${String(orderIds.length)} order(s)`,
-        (error as Error).stack
-      );
-      throw error;
+      throw new FulfillmentPersistenceError('findProgressByOrderIds', error);
     }
   }
 
