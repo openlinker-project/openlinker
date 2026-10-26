@@ -28,11 +28,26 @@
  * deadlock-ordering and double-release surface for a knob that is a safety
  * valve, not a fairness tool.
  *
+ * Cancellation while queued: the wait for a slot honours BOTH the ambient
+ * context signal (`runWithPriority`) and the request's own `init.signal`. A
+ * plugin arms its request timeout before calling the transport, so on a busy
+ * bucket that timer can fire while the request is still queued; before this,
+ * the wait ignored it, the slot was claimed anyway and the fetch then failed
+ * instantly on an already-aborted signal - a wasted slot and a late, confusing
+ * "timed out" error. Now the wait ends with `RateLimitAbortedError` and no slot
+ * is held, and a request aborted in the instant between the grant and the fetch
+ * hands its slot straight back without calling the network.
+ *
  * @module libs/shared/src/http
  */
 import type { RateLimiterRegistry } from '../rate-limit';
-import { getCurrentPriority, getCurrentRateLimitSignal, tightenRateLimit } from '../rate-limit';
-import type { ConnectionRateLimit } from '../rate-limit';
+import {
+  getCurrentPriority,
+  getCurrentRateLimitSignal,
+  RateLimitAbortedError,
+  tightenRateLimit,
+} from '../rate-limit';
+import type { ConnectionRateLimit, RateLimitRelease } from '../rate-limit';
 import type {
   FetchLike,
   ForConnectionOptions,
@@ -182,9 +197,22 @@ export class HttpTransportFactory implements HttpTransportFactoryPort {
       const policy = dividePolicy(rawPolicy, this.replicas);
       const limiter = this.registry.get(sharedBucketKey ?? connectionRef.current.id, policy);
       const priority = getCurrentPriority();
-      const signal = getCurrentRateLimitSignal();
+      const requestSignal = init?.signal ?? undefined;
+      const waitSignal = combineAbortSignals(getCurrentRateLimitSignal(), requestSignal);
 
-      const release = await limiter.acquire(policy, priority, signal);
+      let release: RateLimitRelease;
+      try {
+        release = await limiter.acquire(policy, priority, waitSignal.signal);
+      } finally {
+        waitSignal.dispose();
+      }
+      // The grant and the abort can land in the same tick. A request that is
+      // already cancelled must not reach the network on a slot it no longer
+      // wants, nor hold that slot while fetch rejects.
+      if (requestSignal?.aborted) {
+        release();
+        throw new RateLimitAbortedError();
+      }
       try {
         const response = await this.baseFetch(input, init);
         if (response.status === 429 || response.status === 503) {
@@ -228,6 +256,45 @@ export class HttpTransportFactory implements HttpTransportFactoryPort {
       }
     }
   }
+}
+
+interface CombinedAbortSignal {
+  signal: AbortSignal | undefined;
+  /** Detach the listeners this combination added. Safe to call more than once. */
+  dispose: () => void;
+}
+
+/**
+ * One signal that aborts when either input does, scoped to a single wait.
+ *
+ * Deliberately not `AbortSignal.any`: the context signal is typically the job
+ * runner's, which lives for the whole process, and `AbortSignal.any` ties every
+ * derived signal to it until garbage collection (Node has shipped leak fixes in
+ * exactly that path). Here the listeners are removed explicitly the moment the
+ * wait settles, so their lifetime is the wait's and nothing else.
+ */
+function combineAbortSignals(
+  first: AbortSignal | undefined,
+  second: AbortSignal | undefined
+): CombinedAbortSignal {
+  if (!first || !second || first === second) {
+    return { signal: first ?? second, dispose: (): void => undefined };
+  }
+  const controller = new AbortController();
+  if (first.aborted || second.aborted) {
+    controller.abort();
+    return { signal: controller.signal, dispose: (): void => undefined };
+  }
+  const onAbort = (): void => controller.abort();
+  first.addEventListener('abort', onAbort, { once: true });
+  second.addEventListener('abort', onAbort, { once: true });
+  return {
+    signal: controller.signal,
+    dispose: (): void => {
+      first.removeEventListener('abort', onAbort);
+      second.removeEventListener('abort', onAbort);
+    },
+  };
 }
 
 /**

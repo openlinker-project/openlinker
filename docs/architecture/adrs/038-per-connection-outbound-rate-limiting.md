@@ -36,7 +36,10 @@ per-call-site throttle:
    `HostServices.http` field.
 3. Priority (`background` vs `interactive`) and cancellation are carried by `AsyncLocalStorage`,
    entered once in `SyncJobRunner.processJob` and once in an apps/api `APP_INTERCEPTOR` — not
-   threaded through `SyncJobHandler.execute` or any adapter signature.
+   threaded through `SyncJobHandler.execute` or any adapter signature. The wait for a slot also
+   honours the request's own `init.signal` (2026-10-26): a request cancelled while queued ends with
+   `RateLimitAbortedError` and never claims a slot, and `apps/api` answers either limiter error
+   with 503 + `Retry-After` (`RateLimitBusyFilter`) rather than 500.
 4. Every plugin HTTP client takes an optional `fetchImpl: FetchLike = globalThis.fetch` constructor
    param; bare `fetch` becomes an ESLint `no-restricted-globals` error under `libs/integrations/**`,
    enforced by `scripts/check-outbound-http.mjs`.
