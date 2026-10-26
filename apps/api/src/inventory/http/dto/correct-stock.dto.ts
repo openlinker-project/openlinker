@@ -14,7 +14,9 @@ import {
   IsOptional,
   IsString,
   IsUUID,
+  Max,
   MaxLength,
+  Min,
 } from 'class-validator';
 import {
   InventoryCorrectionModeValues,
@@ -40,6 +42,8 @@ export class CorrectStockDto {
   // A negative `set` quantity is refused by the service as `invalid-quantity` (400): the
   // minimum depends on `mode`, which a per-property decorator cannot see.
   @IsInt()
+  @Min(-1_000_000)
+  @Max(1_000_000)
   quantity!: number;
 
   @ApiProperty({ enum: InventoryMovementOperatorReasonValues })

@@ -28,6 +28,7 @@ import {
   AVAILABILITY_SERVICE_TOKEN,
   INVENTORY_QUERY_SERVICE_TOKEN,
   LOCATION_SERVICE_TOKEN,
+  MAX_STOCK_VIEW_VARIANT_IDS,
   type AvailabilityProvenance,
   type IAvailabilityService,
   type IInventoryQueryService,
@@ -69,6 +70,15 @@ const CHANNEL_CAPABILITIES = ['OfferManager', 'ProductPublisher'] as const;
 /** Cap on concurrent per-connection name lookups. */
 const NAME_LOOKUP_CONCURRENCY = 10;
 const LEGACY_SOURCE_CONNECTION_ID = 'legacy';
+
+/** Split a list at the core read's per-call id cap (a product may carry far more variants). */
+function chunked<T>(items: readonly T[]): T[][] {
+  const chunks: T[][] = [];
+  for (let i = 0; i < items.length; i += MAX_STOCK_VIEW_VARIANT_IDS) {
+    chunks.push(items.slice(i, i + MAX_STOCK_VIEW_VARIANT_IDS));
+  }
+  return chunks;
+}
 
 export interface StaleSyncThreshold {
   readonly hours: number;
@@ -216,10 +226,15 @@ export class StockViewService {
     const variants = await this.products.getVariantsByProductId(productId);
     const variantIds = variants.map((v) => v.id);
     const threshold = await this.getStaleSyncThreshold();
-    const views = await this.inventoryQuery.getStockViewByVariantIds({
-      variantIds,
-      staleSyncThresholdMs: threshold.ms,
-    });
+    const views: VariantStockView[] = [];
+    for (const chunk of chunked(variantIds)) {
+      views.push(
+        ...(await this.inventoryQuery.getStockViewByVariantIds({
+          variantIds: chunk,
+          staleSyncThresholdMs: threshold.ms,
+        }))
+      );
+    }
 
     const [channelResult, locationNames, connectionNames, orderNumbers] = await Promise.all([
       this.resolveChannels(variantIds, views),
@@ -290,10 +305,14 @@ export class StockViewService {
       return { status: 'unavailable', channelsByVariant };
     }
 
-    let observed: Awaited<ReturnType<IOfferCommercialReadService['getObservedQuantities']>> = [];
+    const observed: Array<
+      Awaited<ReturnType<IOfferCommercialReadService['getObservedQuantities']>>[number]
+    > = [];
     let observedReadable = true;
     try {
-      observed = await this.commercial.getObservedQuantities(variantIds);
+      for (const chunk of chunked(variantIds)) {
+        observed.push(...(await this.commercial.getObservedQuantities(chunk)));
+      }
     } catch (error) {
       observedReadable = false;
       this.logger.error(
@@ -309,9 +328,12 @@ export class StockViewService {
     let partial = !observedReadable;
     for (const [connectionId, connection] of connections) {
       try {
-        const published = new Set(
-          await this.publishedVariants.getPublishedVariantIds(connectionId, variantIds)
-        );
+        const published = new Set<string>();
+        for (const chunk of chunked(variantIds)) {
+          for (const id of await this.publishedVariants.getPublishedVariantIds(connectionId, chunk)) {
+            published.add(id);
+          }
+        }
         if (published.size === 0) continue;
         const publishedIds = variantIds.filter((id) => published.has(id));
 
@@ -320,12 +342,17 @@ export class StockViewService {
         // Unknown ATP never reaches the Controls: it stays unknown here, so a
         // number is never invented for a variant OpenLinker cannot promise.
         const known = publishedIds.filter((id) => atpByVariant.get(id) !== null);
-        const controlled = known.length
-          ? await this.availability.applyPublishControlsBatch({
-              quantities: known.map((id) => atpByVariant.get(id) ?? 0),
+        const controlled: Array<
+          Awaited<ReturnType<IAvailabilityService['applyPublishControlsBatch']>>[number]
+        > = [];
+        for (const chunk of chunked(known)) {
+          controlled.push(
+            ...(await this.availability.applyPublishControlsBatch({
+              quantities: chunk.map((id) => atpByVariant.get(id) ?? 0),
               scope: { kind: 'channel', connectionId },
-            })
-          : [];
+            }))
+          );
+        }
         const willPublishByVariant = new Map(known.map((id, i) => [id, controlled[i]]));
 
         for (const variantId of publishedIds) {

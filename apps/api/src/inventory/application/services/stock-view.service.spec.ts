@@ -287,4 +287,36 @@ describe('StockViewService', () => {
     const withoutHolds = await service.getProductStockView('prod-1');
     expect(withoutHolds.variants[0].holds).toBeNull();
   });
+
+  it('should chunk the core read and the channel reads at 200 variant ids', async () => {
+    const many = Array.from({ length: 450 }, (_, n) => ({
+      id: `var-${String(n)}`,
+      productId: 'prod-1',
+      sku: null,
+      attributes: {},
+    })) as unknown as ProductVariant[];
+    products.getVariantsByProductId.mockResolvedValue(many);
+    inventoryQuery.getStockViewByVariantIds.mockImplementation(
+      ({ variantIds }: { variantIds: readonly string[] }) =>
+        Promise.resolve(variantIds.map((id) => view({ productVariantId: id })))
+    );
+    published.getPublishedVariantIds.mockImplementation((_c: string, ids: readonly string[]) =>
+      Promise.resolve([...ids])
+    );
+    availability.applyPublishControlsBatch.mockImplementation(
+      ({ quantities }: { quantities: readonly number[] }) =>
+        Promise.resolve(quantities.map(() => ({ quantity: 7, provenance: 'computed' as const })))
+    );
+
+    const result = await service.getProductStockView('prod-1');
+
+    expect(result.variants).toHaveLength(450);
+    const sizes = inventoryQuery.getStockViewByVariantIds.mock.calls.map(
+      ([input]) => input.variantIds.length
+    );
+    expect(sizes).toEqual([200, 200, 50]);
+    expect(Math.max(...commercial.getObservedQuantities.mock.calls.map(([ids]) => ids.length))).toBe(200);
+    expect(Math.max(...published.getPublishedVariantIds.mock.calls.map(([, ids]) => ids.length))).toBe(200);
+    expect(result.channelsStatus).toBe('ok');
+  });
 });

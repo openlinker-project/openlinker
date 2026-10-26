@@ -133,6 +133,8 @@ describe('InventoryCorrectionController', () => {
     it.each([
       ['unknown mode', { mode: 'add', quantity: 1, operatorReason: 'found' }],
       ['non-integer quantity', { mode: 'delta', quantity: 1.5, operatorReason: 'found' }],
+      ['quantity above the upper bound', { mode: 'delta', quantity: 1_000_001, operatorReason: 'found' }],
+      ['quantity below the lower bound', { mode: 'delta', quantity: -1_000_001, operatorReason: 'found' }],
       ['unknown reason', { mode: 'delta', quantity: 1, operatorReason: 'lost' }],
       ['long note', { mode: 'delta', quantity: 1, operatorReason: 'found', note: 'x'.repeat(501) }],
       ['bad key', { mode: 'delta', quantity: 1, operatorReason: 'found', idempotencyKey: 'abc' }],
