@@ -138,6 +138,7 @@ import type {
 } from './bulk-wizard.types';
 import {
   computeResolvedPrice,
+  defaultImagesForVariant,
   distinguishingLabel,
   duplicateEanVariantIds,
   isValidGtin,
@@ -473,6 +474,11 @@ interface VariantEdit {
   // numeric = raw text), so a dictionary override can use the same select /
   // combobox control the base scope uses (#1741). Absent key = inherited.
   params: Record<string, FormParameterValue>;
+}
+
+/** Same URLs in the same order - the published list is ordered, so order matters. */
+function sameImageList(a: readonly string[], b: readonly string[]): boolean {
+  return a.length === b.length && a.every((url, i) => url === b[i]);
 }
 
 function masterBarcodeOf(variant: BulkVariantRow): string {
@@ -1267,7 +1273,11 @@ function BulkEditModalForm({
                       included={included[v.variantId]}
                       baseValues={baseValues}
                       basePriceValue={resolveBasePrice(baseValues, pricingPolicy, v.masterPrice)}
-                      masterImages={masterImages}
+                      inheritedImages={baseImageUrls ?? defaultImagesForVariant(v, masterImages)}
+                      inheritsVariantDefault={
+                        baseImageUrls === undefined &&
+                        !sameImageList(defaultImagesForVariant(v, masterImages), masterImages)
+                      }
                       onZoom={setZoomSrc}
                       connection={connection}
                       baseCategoryPathNames={displayPathNames}
@@ -2083,7 +2093,18 @@ interface VariantScopeFormProps {
   baseValues: BulkEditModalValues;
   /** Concrete base price this variant inherits (pre-filled value, #1741). */
   basePriceValue: string;
-  masterImages: string[];
+  /**
+   * The images this variant is published with while it has no image override
+   * of its own: the shared-base set when the operator edited it (that override
+   * reaches every sibling at submit), else the variant's own default list.
+   */
+  inheritedImages: string[];
+  /**
+   * True when `inheritedImages` is this variant's OWN default (its pictures
+   * first, other siblings' left out) rather than the shared set, so the hint
+   * says which one the operator is looking at.
+   */
+  inheritsVariantDefault: boolean;
   /** Drives the per-variant category bar's declared grouping model (#1924). */
   connection: Connection;
   /** Resolved breadcrumb for the shared base's category, already computed once by the parent (#1924) - shown instead of the raw id. Null when unresolved (falls back to the id). */
@@ -2134,7 +2155,8 @@ function VariantScopeForm({
   included,
   baseValues,
   basePriceValue,
-  masterImages,
+  inheritedImages,
+  inheritsVariantDefault,
   connection,
   baseCategoryPathNames,
   categoryParameters,
@@ -2162,7 +2184,7 @@ function VariantScopeForm({
       ? 'Duplicate of another included variant - they would collapse to one Allegro card.'
       : '';
 
-  const effectiveImages = edit.imageUrls ?? masterImages;
+  const effectiveImages = edit.imageUrls ?? inheritedImages;
   const imagesOverridden = edit.imageUrls !== undefined;
   const [addingImage, setAddingImage] = useState(false);
   const [newImageUrl, setNewImageUrl] = useState('');
@@ -2797,7 +2819,9 @@ function VariantScopeForm({
         />
       </div>
 
-      {/* Images - inherit base set / override among master URLs. */}
+      {/* Images - inherit this variant's default (or the edited shared set) /
+          override. An override is this variant's alone: it never reaches a
+          sibling or the shared base. */}
       <div className="bulk-editor__field">
         <label>
           Images {imagesOverridden ? <ProvBadge kind="override" /> : <ProvBadge kind="inherit" />}
@@ -2807,7 +2831,7 @@ function VariantScopeForm({
               className="bulk-editor__reset"
               onClick={() => onPatch({ imageUrls: undefined })}
             >
-              ↺ reset to base
+              {inheritsVariantDefault ? '↺ reset to default' : '↺ reset to base'}
             </button>
           ) : null}
         </label>
@@ -2825,7 +2849,7 @@ function VariantScopeForm({
                 className="bulk-editor__img-x"
                 aria-label="Remove image"
                 onClick={() => {
-                  const base = edit.imageUrls ?? masterImages;
+                  const base = edit.imageUrls ?? inheritedImages;
                   const next = base.filter((_, idx) => idx !== i);
                   onPatch({ imageUrls: next });
                 }}
@@ -2884,7 +2908,9 @@ function VariantScopeForm({
         <div className="hint" style={{ color: 'var(--text-muted)', fontSize: 12 }}>
           {imagesOverridden
             ? 'Custom image set for this variant.'
-            : 'Inherits the base images - add or remove to override for this variant.'}
+            : inheritsVariantDefault
+              ? "This variant's default: its own images first, other variants' images left out - add or remove to override for this variant."
+              : 'Inherits the base images - add or remove to override for this variant.'}
         </div>
       </div>
 

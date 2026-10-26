@@ -1401,6 +1401,128 @@ describe('BulkEditModal', () => {
     });
   });
 
+  describe('per-variant default images', () => {
+    const gfx = (n: number): string => `https://shop.example/gfx/${n}.jpg`;
+
+    /** Product 161: gallery 312 (main), 313, 314 (red), 315 (green). */
+    function makeImageRow(opts: { withDefaults?: boolean } = {}): BulkWizardRow {
+      const withDefaults = opts.withDefaults ?? true;
+      const row = makeMultiRow();
+      const red: ProductVariant = {
+        ...makeVariant('var_s', { ean: '5901520000059', attributes: { Kolor: 'czerwony' } }),
+        images: [gfx(314)],
+        ...(withDefaults ? { defaultImages: [gfx(314), gfx(312), gfx(313)] } : {}),
+      };
+      const green: ProductVariant = {
+        ...makeVariant('var_m', { ean: '5900531001130', attributes: { Kolor: 'zielony' } }),
+        images: [gfx(315)],
+        ...(withDefaults ? { defaultImages: [gfx(315), gfx(312), gfx(313)] } : {}),
+      };
+      return {
+        ...row,
+        product: row.product
+          ? { ...row.product, images: [gfx(312), gfx(313), gfx(314), gfx(315)] }
+          : row.product,
+        primaryVariant: red,
+        // A shared category, so `Save all` has nothing else to block on.
+        override: { overrides: { categoryId: 'cat_glass' } },
+        variants: [
+          makeVariantRow(red, { attributes: { Kolor: 'czerwony' } }),
+          makeVariantRow(green, { attributes: { Kolor: 'zielony' } }),
+        ],
+      };
+    }
+
+    function variantImageField(): HTMLElement {
+      // The hint under the variant's image strip, in either state.
+      const hint = screen.getByText(
+        /add or remove to override for this variant|Custom image set for this variant/,
+      );
+      const field = hint.closest('.bulk-editor__field');
+      if (!(field instanceof HTMLElement)) throw new Error('variant image field not found');
+      return field;
+    }
+
+    function shownImages(): string[] {
+      return Array.from(variantImageField().querySelectorAll('img')).map((img) => img.getAttribute('src') ?? '');
+    }
+
+    it("shows the variant's own resolved default images and says so", () => {
+      renderWithProviders(
+        <BulkEditModal
+          open
+          onOpenChange={() => undefined}
+          row={makeImageRow()}
+          connection={connection}
+          canBrowseCategories={true}
+          currency="PLN"
+          defaults={DEFAULTS}
+          focusVariantId="var_s"
+          onSave={() => undefined}
+        />,
+      );
+
+      expect(shownImages()).toEqual([gfx(314), gfx(312), gfx(313)]);
+      expect(
+        screen.getByText(/This variant's default: its own images first, other variants' images left out/),
+      ).toBeInTheDocument();
+    });
+
+    it('falls back to the base images with the old copy when the API resolved no default', () => {
+      renderWithProviders(
+        <BulkEditModal
+          open
+          onOpenChange={() => undefined}
+          row={makeImageRow({ withDefaults: false })}
+          connection={connection}
+          canBrowseCategories={true}
+          currency="PLN"
+          defaults={DEFAULTS}
+          focusVariantId="var_s"
+          onSave={() => undefined}
+        />,
+      );
+
+      expect(shownImages()).toEqual([gfx(312), gfx(313), gfx(314), gfx(315)]);
+      expect(screen.getByText(/Inherits the base images/)).toBeInTheDocument();
+    });
+
+    it("keeps an edit to one variant's images out of its siblings and the shared base", async () => {
+      const onSave = vi.fn();
+      renderWithProviders(
+        <BulkEditModal
+          open
+          onOpenChange={() => undefined}
+          row={makeImageRow()}
+          connection={connection}
+          canBrowseCategories={true}
+          currency="PLN"
+          defaults={DEFAULTS}
+          focusVariantId="var_s"
+          onSave={onSave}
+        />,
+      );
+
+      // Drop red's own picture (the first thumbnail of its default list).
+      fireEvent.click(within(variantImageField()).getAllByRole('button', { name: 'Remove image' })[0]);
+      expect(shownImages()).toEqual([gfx(312), gfx(313)]);
+
+      fireEvent.click(screen.getByRole('button', { name: 'Save all' }));
+      await waitFor(() => { expect(onSave).toHaveBeenCalledTimes(1); });
+
+      const base = onSave.mock.calls[0][1] as { overrides?: { imageUrls?: string[] } };
+      const perVariant = onSave.mock.calls[0][2] as Record<
+        string,
+        { overrides?: { imageUrls?: string[] } }
+      >;
+      expect(perVariant.var_s?.overrides?.imageUrls).toEqual([gfx(312), gfx(313)]);
+      // Green keeps publishing its own default (no override sent), and the
+      // shared base carries no image set that would reach every sibling.
+      expect(perVariant.var_m?.overrides?.imageUrls).toBeUndefined();
+      expect(base.overrides?.imageUrls).toBeUndefined();
+    });
+  });
+
   describe('per-product pricing/stock policy (#1741)', () => {
     it('renders Price/Stock policy selects seeded from the batch policy on the multi-variant base scope', () => {
       renderWithProviders(
