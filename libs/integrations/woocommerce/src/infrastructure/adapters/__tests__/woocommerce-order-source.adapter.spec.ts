@@ -397,6 +397,30 @@ describe('WooCommerceOrderSourceAdapter', () => {
     });
 
     it.each([
+      ['a text', '  Ring twice ', 'Ring twice'],
+      ['the empty string core sends for none', '', null],
+    ])('should report the buyer note from customer_note: %s (#3538)', async (_label, note, expected) => {
+      const order = makeOrder({ customer_note: note });
+      const httpClient = makeHttpClient({ get: jest.fn().mockResolvedValue(order) });
+      const adapter = new WooCommerceOrderSourceAdapter(httpClient, makeConnection());
+
+      const result = await adapter.getOrder({ externalOrderId: '1' });
+
+      expect(result.buyerNote).toBe(expected);
+    });
+
+    it('should leave the buyer note unknown when the payload omits customer_note (#3538)', async () => {
+      const order = makeOrder({});
+      const httpClient = makeHttpClient({ get: jest.fn().mockResolvedValue(order) });
+      const adapter = new WooCommerceOrderSourceAdapter(httpClient, makeConnection());
+
+      const result = await adapter.getOrder({ externalOrderId: '1' });
+
+      expect(result.buyerNote).toBeUndefined();
+      expect('buyerNote' in result).toBe(false);
+    });
+
+    it.each([
       ['cod', 'processing', 'cash_on_delivery', 'cod', { amount: '109.98', currency: 'PLN' }],
       ['cod', 'on-hold', 'cash_on_delivery', 'cod', { amount: '109.98', currency: 'PLN' }],
       ['bacs', 'on-hold', 'bank_transfer', undefined, undefined],

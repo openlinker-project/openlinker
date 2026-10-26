@@ -10,7 +10,7 @@
  * @implements {OrderSourcePort}
  */
 
-import { PAYMENT_STATUS, readSourceBuyerTaxId } from '@openlinker/core/orders';
+import { PAYMENT_STATUS, readSourceBuyerNote, readSourceBuyerTaxId } from '@openlinker/core/orders';
 import type {
   OrderSourcePort,
   SourceOptionsReader,
@@ -993,6 +993,10 @@ export class AllegroOrderSourceAdapter
         // How the buyer pays (#3294), from the same `payment.type` the status
         // is derived from - mapped only where unambiguous, otherwise `unknown`.
         paymentMethod: deriveAllegroPaymentMethod(checkoutForm.payment),
+        // The buyer's checkout message (#3538). Allegro always returns the full
+        // checkout form, so an absent or blank `messageToSeller` is a positive
+        // "the buyer left none" (`null`), not an unread field.
+        buyerNote: readSourceBuyerNote(checkoutForm.messageToSeller) ?? null,
         // Allegro's own payment type (#3474) - the key of the operator's
         // payment mapping. Opaque to core; omitted when Allegro sent none.
         ...(checkoutForm.payment.type

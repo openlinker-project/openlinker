@@ -35,7 +35,12 @@ import type {
   IncomingOrderAddress,
   OrderPickupPoint,
 } from '@openlinker/core/orders';
-import { PAYMENT_STATUS, readSourceBuyerTaxId, toCodToCollect } from '@openlinker/core/orders';
+import {
+  PAYMENT_STATUS,
+  readSourceBuyerNote,
+  readSourceBuyerTaxId,
+  toCodToCollect,
+} from '@openlinker/core/orders';
 import type { PrestashopConnectionConfig } from '../../domain/types/prestashop-config.types';
 import type {
   PrestashopAddress,
@@ -59,6 +64,7 @@ import type { PrestashopOrderCurrencyResolver } from '../provisioners/prestashop
 import { PrestashopOrderFeedCapabilityCache } from '../provisioners/prestashop-order-feed-capability.cache';
 import {
   PrestashopApiException,
+  PrestashopAuthenticationException,
   PrestashopResourceNotFoundException,
 } from '@openlinker/integrations-prestashop';
 import { readAllPrestashopResourcePages } from '../http/prestashop-paged-read';
@@ -641,12 +647,20 @@ export class PrestashopOrderSourceAdapter implements OrderSourcePort {
         ? toCodToCollect(mapped.totals.total, currency)
         : undefined;
 
+    // Read last, after everything the order cannot do without: it is the one
+    // optional hydration, and an unreadable thread resource must not cost the
+    // order its other fields.
+    const buyerNote = await this.fetchBuyerNote(externalOrderId);
+
     return {
       externalOrderId,
       orderNumber: mapped.orderNumber,
       status,
       ...(paymentStatus !== undefined && { paymentStatus }),
       paymentMethod,
+      // Checkout message (#3538): `undefined` = the shop's thread resource could
+      // not be read (unknown), `null` = read and the buyer wrote nothing.
+      ...(buyerNote !== undefined && { buyerNote }),
       // The courier collects the whole order on delivery: nothing is paid in
       // advance on a COD order and PrestaShop states no separate amount, so it
       // is the order's gross total. Only while the order is reported `cod`.
@@ -812,6 +826,71 @@ export class PrestashopOrderSourceAdapter implements OrderSourcePort {
   }
 
   /**
+   * The buyer's checkout message (#3538): the buyer-authored messages of the
+   * order's `customer_threads`, joined oldest first.
+   *
+   * PrestaShop stores the checkout message as a `customer_message` on a
+   * `customer_thread` pointing at the order, and the same thread also carries
+   * staff replies, so only rows with `id_employee = 0` are the buyer's words.
+   * That filter is applied by the shop (and re-checked here); a staff reply must
+   * never reach the packer as if the buyer had said it.
+   *
+   * Three outcomes, never conflated: a resource the webservice key may not read
+   * is `undefined` (unknown, never "no note" - an unread field asserts nothing),
+   * a readable resource with no thread or no buyer message is `null`, and
+   * otherwise the text. Any other failure (5xx, network) propagates so the
+   * order sync retries rather than recording a guess.
+   *
+   * Two requests per order at most: threads by `id_order`, then every message of
+   * those threads in one pipe-joined OR read.
+   */
+  private async fetchBuyerNote(orderId: string | number): Promise<string | null | undefined> {
+    try {
+      const threads = await readAllPrestashopResourcePages<PrestashopCustomerThread>(
+        this.httpClient,
+        'customer_threads',
+        { custom: { id_order: orderId } },
+        { connectionId: this.connection.id, detail: `id_order=${String(orderId)}` }
+      );
+      if (!Array.isArray(threads)) {
+        return undefined;
+      }
+      const threadIds = threads.map((thread) => String(thread.id)).filter((id) => id !== '');
+      if (threadIds.length === 0) {
+        return null;
+      }
+      const messages = await readAllPrestashopResourcePages<PrestashopCustomerMessage>(
+        this.httpClient,
+        'customer_messages',
+        { custom: { id_customer_thread: threadIds, id_employee: 0 } },
+        { connectionId: this.connection.id, detail: `id_order=${String(orderId)}` }
+      );
+      if (!Array.isArray(messages)) {
+        return undefined;
+      }
+      const buyerMessages = messages
+        .filter((message) => Number(message.id_employee ?? 0) === 0)
+        .sort(
+          (a, b) =>
+            String(a.date_add ?? '').localeCompare(String(b.date_add ?? '')) ||
+            Number(a.id) - Number(b.id)
+        )
+        .map((message) => (typeof message.message === 'string' ? message.message.trim() : ''))
+        .filter((text) => text.length > 0);
+      return readSourceBuyerNote(buyerMessages.join('\n\n')) ?? null;
+    } catch (error) {
+      if (isThreadResourceInaccessible(error)) {
+        this.logger.warn(
+          `PrestaShop customer threads are not readable on connection ${this.connection.id}; ` +
+            `buyer note for order ${String(orderId)} stays unknown: ${(error as Error).message}`
+        );
+        return undefined;
+      }
+      throw error;
+    }
+  }
+
+  /**
    * The order's lines.
    *
    * **Nothing here is caught.** An order with no lines mirrors as an order with
@@ -841,4 +920,36 @@ export class PrestashopOrderSourceAdapter implements OrderSourcePort {
       }
     );
   }
+}
+
+/** The slice of a `customer_threads` row this adapter reads. */
+interface PrestashopCustomerThread {
+  id: string | number;
+  id_order?: string | number;
+}
+
+/** The slice of a `customer_messages` row this adapter reads. */
+interface PrestashopCustomerMessage {
+  id: string | number;
+  id_customer_thread?: string | number;
+  /** `0` / empty for a message written by the buyer, an employee id otherwise. */
+  id_employee?: string | number | null;
+  message?: string;
+  date_add?: string;
+}
+
+/**
+ * Is this failure "the webservice key may not read the thread resources"?
+ * PrestaShop answers a resource a key has no permission for with 401 (surfaced
+ * as an authentication exception) or 403; a shop without the resource answers
+ * 404. All three mean "cannot say", not "no note".
+ */
+function isThreadResourceInaccessible(error: unknown): boolean {
+  if (error instanceof PrestashopAuthenticationException) {
+    return true;
+  }
+  if (error instanceof PrestashopResourceNotFoundException) {
+    return true;
+  }
+  return error instanceof PrestashopApiException && error.statusCode === 403;
 }
