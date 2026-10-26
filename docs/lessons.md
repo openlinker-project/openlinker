@@ -23,6 +23,30 @@ When a lesson hardens into a rule, **graduate it** to the canonical doc and leav
 
 ---
 
+## Mirror every write OpenLinker makes to a product master
+
+**Context**: the stock movement ledger (#3565) records why a mirrored quantity changed, from `InventoryService.setInventory`.
+
+**Problem**: the return restock (#2370) called `adjustInventory` on the master and never wrote the mirror. The change surfaced only at the next master sync, where it read as an unattributed sync delta, and marketplaces kept the old stock until then.
+
+**Rule**: when OpenLinker changes stock in a master, mirror the adapter's resulting quantity through `setInventory` with a movement context, under the position lock, the way `InventorySaleDecrementService` does. A write that skips the mirror leaves history and channels wrong until the next sync.
+
+**Applies to**: `libs/core/src/inventory`, `libs/core/src/returns`, any new caller of `InventoryMasterPort.adjustInventory`.
+
+**Source**: #3565, ADR-079.
+
+## Filter dates on the operator's local day, not the UTC day
+
+**Context**: the stock movement history filter (#3568) first sent "From"/"To" as UTC day boundaries.
+
+**Problem**: an operator in Warsaw filtering "to 26 Sep" lost every movement after 26 Sep 22:00 local.
+
+**Rule**: convert a date input to the start and end of the LOCAL calendar day before sending ISO instants.
+
+**Applies to**: `apps/web` date filters.
+
+**Source**: #3568 review.
+
 ## Never route a one-field change through a full-upsert port
 
 **Context**: price-change propagation to a WooCommerce shop (#3144) reused
