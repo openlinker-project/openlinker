@@ -65,7 +65,6 @@ function invoice(overrides: Record<string, unknown> = {}): unknown {
     documentType: 'invoice',
     clearanceReference: null,
     isLeaseLive: () => false,
-    createdAt: new Date('2026-09-01T00:00:00.000Z'),
     issuedLineSnapshot: {
       currency: 'PLN',
       buyer: { name: 'B', taxId: null, address: {}, type: 'consumer' },
