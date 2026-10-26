@@ -1179,6 +1179,90 @@ describe('ShoperProductMasterAdapter', () => {
     });
   });
 
+  describe('variant images (stock gfx_id)', () => {
+    const gfx = (id: string): string => `https://sklep729770.shoparena.pl/userdata/public/gfx/${id}.jpg`;
+    /** Product 161 as read live (26 Oct 2026), re-pointed at this spec's product 93. */
+    const GALLERY = [
+      buildImage({ product_id: '93', gfx_id: '312', unic_name: '312', order: '1', main: 1 }),
+      buildImage({ product_id: '93', gfx_id: '313', unic_name: '313', order: '2' }),
+      buildImage({ product_id: '93', gfx_id: '314', unic_name: '314', order: '3' }),
+      buildImage({ product_id: '93', gfx_id: '315', unic_name: '315', order: '4' }),
+    ];
+    const STOCKS = [
+      buildStock({ stock_id: '264', extended: '0', options: [], gfx_id: null }),
+      buildStock({ stock_id: '265', extended: '1', options: [], gfx_id: '314' }),
+      buildStock({ stock_id: '266', extended: '1', options: [], gfx_id: '315' }),
+      buildStock({ stock_id: '267', extended: '1', options: [], gfx_id: null }),
+      buildStock({ stock_id: '268', extended: '1', options: [], gfx_id: '314' }),
+    ];
+
+    it('should give each variant the picture its stock points at, and null when it names none', async () => {
+      const { adapter, get } = setup();
+      respond(get, { '/product-stocks': envelope(STOCKS), '/product-images': envelope(GALLERY) });
+
+      const variants = await adapter.getProductVariants('ol_product_1');
+
+      expect(variants.map((v) => [v.id, v.images])).toEqual([
+        ['ol_265', [gfx('314')]],
+        ['ol_266', [gfx('315')]],
+        ['ol_267', null],
+        ['ol_268', [gfx('314')]],
+      ]);
+    });
+
+    it('should read the gallery once for getProduct and getProductVariants together', async () => {
+      const { adapter, get } = setup();
+      respond(get, {
+        '/products/93': buildProduct({ main_image: { unic_name: '312', extension: 'jpg' } }),
+        '/product-stocks': envelope(STOCKS),
+        '/product-images': envelope(GALLERY),
+      });
+
+      const product = await adapter.getProduct('ol_product_1');
+      await adapter.getProductVariants('ol_product_1');
+
+      expect(product.images).toEqual([gfx('312'), gfx('313'), gfx('314'), gfx('315')]);
+      expect(get.mock.calls.filter(([path]) => path === '/product-images')).toHaveLength(1);
+    });
+
+    it('should resolve a variant picture that is hidden from the product gallery', async () => {
+      const { adapter, get } = setup();
+      respond(get, {
+        '/product-stocks': envelope([STOCKS[2]]),
+        '/product-images': envelope([
+          GALLERY[0],
+          buildImage({ product_id: '93', gfx_id: '315', unic_name: '315', order: '4', hidden: '1' }),
+        ]),
+      });
+
+      const [variant] = await adapter.getProductVariants('ol_product_1');
+
+      expect(variant.images).toEqual([gfx('315')]);
+    });
+
+    it('should report null, never a guess, for a gfx_id the gallery does not hold', async () => {
+      const { adapter, get } = setup();
+      respond(get, {
+        '/product-stocks': envelope([buildStock({ stock_id: '265', gfx_id: '999' })]),
+        '/product-images': envelope(GALLERY),
+      });
+
+      const [variant] = await adapter.getProductVariants('ol_product_1');
+
+      expect(variant.images).toBeNull();
+    });
+
+    it('should not read the gallery when no stock names a picture', async () => {
+      const { adapter, get } = setup();
+      respond(get, { '/product-stocks': envelope([buildStock({ gfx_id: null })]) });
+
+      const [variant] = await adapter.getProductVariants('ol_product_1');
+
+      expect(variant.images).toBeNull();
+      expect(get.mock.calls.map((call: unknown[]) => String(call[0]))).toEqual(['/product-stocks']);
+    });
+  });
+
   describe('readProductTaxRate', () => {
     it('should be discoverable through the core guard', () => {
       expect(isProductTaxRateReader(setup().adapter)).toBe(true);

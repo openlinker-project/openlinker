@@ -13,6 +13,8 @@ import {
   buildShoperImageUrl,
   mapShoperProduct,
   mapShoperProductGallery,
+  indexShoperGalleryUrls,
+  shoperVariantImages,
   mapShoperStockToVariant,
   parseShoperNumber,
   pickShoperTranslation,
@@ -105,10 +107,16 @@ describe('mapShoperStockToVariant', () => {
       attributes: null,
       ean: '5901234123457',
       gtin: '5901234123457',
+      images: null,
       price: 1484.28,
       weight: 1,
       weightGrams: 1000,
     });
+  });
+
+  it('should carry the variant pictures it is given', () => {
+    const images = ['https://sklep729770.shoparena.pl/userdata/public/gfx/314.jpg'];
+    expect(mapShoperStockToVariant(buildStock(), 'p', MAP_CONTEXT, null, null, images).images).toEqual(images);
   });
 
   it.each([[null], [''], ['   ']])('should map an empty EAN %p to null, never to ""', (ean) => {
@@ -453,5 +461,29 @@ describe('mapShoperProductGallery', () => {
       LIVE_161,
     );
     expect(product.images).toEqual([gfx('312'), gfx('313'), gfx('314'), gfx('315')]);
+  });
+});
+
+describe('shoperVariantImages', () => {
+  const urls = indexShoperGalleryUrls(
+    [
+      buildImage({ gfx_id: '314', unic_name: '314' }),
+      buildImage({ gfx_id: '315', unic_name: '315', hidden: '1' }),
+      buildImage({ gfx_id: '316', unic_name: '../316' }),
+    ],
+    SHOP_HOST,
+  );
+
+  it.each([
+    ['314', [`https://${SHOP_HOST}/userdata/public/gfx/314.jpg`]],
+    [314, [`https://${SHOP_HOST}/userdata/public/gfx/314.jpg`]],
+    ['315', [`https://${SHOP_HOST}/userdata/public/gfx/315.jpg`]],
+    ['316', null],
+    ['999', null],
+    [null, null],
+    [undefined, null],
+    ['', null],
+  ])('should resolve gfx_id %p to %p', (gfx_id, expected) => {
+    expect(shoperVariantImages({ gfx_id }, urls)).toEqual(expected);
   });
 });

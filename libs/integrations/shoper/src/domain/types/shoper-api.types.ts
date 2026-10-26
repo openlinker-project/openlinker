@@ -114,6 +114,11 @@ export interface ShoperStock {
    * read omit it; see `selectSellableShoperStocks` for what it decides.
    */
   readonly extended?: string | number | null;
+  /**
+   * The `product-images.gfx_id` this variant shows, or null when it has no
+   * picture of its own (verified live, product 161: red and yellow share 314).
+   */
+  readonly gfx_id?: string | number | null;
 }
 
 /**

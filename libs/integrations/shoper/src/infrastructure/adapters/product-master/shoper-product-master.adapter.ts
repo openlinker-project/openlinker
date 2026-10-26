@@ -40,6 +40,8 @@
  * per adapter instance and skipped for a product with no main image, i.e. no
  * image at all), one filtered list read per page of products on the list and
  * bulk paths. See `mapShoperProductGallery` for the order and the hidden rule.
+ * A variant stock's `gfx_id` becomes that variant's own `images` - resolved
+ * against the same memoised gallery, read only when some stock names a picture.
  *
  * Filter syntax, both forms live-verified: `/products` takes the JSON form
  * (`filters={"product_id":{"in":[..]}}`, `{"translations.name":{"like":..}}`),
@@ -93,10 +95,12 @@ import {
   fetchShoperProductImagesForProducts,
 } from '../../http/shoper-product-images';
 import {
+  indexShoperGalleryUrls,
   mapShoperProduct,
   mapShoperStockToVariant,
   resolveShoperVariantAttributes,
   shoperStockOptionPairs,
+  shoperVariantImages,
 } from '../../mappers/shoper-product.mapper';
 import { resolveShoperExternalProductId } from '../../readers/shoper-product-id';
 import { ShoperGpsrReader } from '../../readers/shoper-gpsr.reader';
@@ -385,6 +389,7 @@ export class ShoperProductMasterAdapter
       }))
     );
 
+    const galleryUrls = await this.variantGalleryUrls(externalId, stocks, ctx.host);
     const variants: ProductVariant[] = [];
     for (const stock of stocks) {
       const internalId = idMap.get(`${stock.stock_id}:${this.connection.id}`);
@@ -393,8 +398,9 @@ export class ShoperProductMasterAdapter
         continue;
       }
       const attributes = await this.resolveVariantAttributes(stock, ctx.language);
+      const images = shoperVariantImages(stock, galleryUrls);
       variants.push({
-        ...mapShoperStockToVariant(stock, productId, ctx, attributes, base),
+        ...mapShoperStockToVariant(stock, productId, ctx, attributes, base, images),
         id: internalId,
       });
     }
@@ -641,6 +647,25 @@ export class ShoperProductMasterAdapter
       read.catch(() => this.galleryCache.delete(externalId));
     }
     return read;
+  }
+
+  /**
+   * `gfx_id` -> URL for the variants' own pictures. No stock naming a picture
+   * means no request; otherwise the product's gallery is read (shared with
+   * `getProduct`, so a sync pays for it once). A failure propagates, for the
+   * same reason a gallery failure does: syncing the variants without their
+   * pictures would clear the stored ones.
+   */
+  private async variantGalleryUrls(
+    externalId: string,
+    stocks: readonly ShoperStock[],
+    host: string,
+  ): Promise<Map<string, string>> {
+    const named = stocks.some((s) => s.gfx_id !== null && s.gfx_id !== undefined && s.gfx_id !== '');
+    if (!named) {
+      return new Map();
+    }
+    return indexShoperGalleryUrls(await this.readGalleryRows(externalId), host);
   }
 
   private resolveExternalProductId(productId: string): Promise<string> {

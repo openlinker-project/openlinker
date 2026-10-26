@@ -235,12 +235,47 @@ function resolveRelativeValue(
   }
 }
 
+/**
+ * Public URL of every gallery row by `gfx_id`, hidden rows INCLUDED: a hidden
+ * row is commonly a variant's own picture kept off the product card, and a
+ * variant stock still points at it.
+ */
+export function indexShoperGalleryUrls(
+  gallery: readonly ShoperProductImage[],
+  host: string,
+): Map<string, string> {
+  const urls = new Map<string, string>();
+  for (const image of gallery) {
+    const url = buildShoperImageUrl(host, image);
+    if (url !== null) {
+      urls.set(String(image.gfx_id), url);
+    }
+  }
+  return urls;
+}
+
+/**
+ * The picture a variant stock points at, as a one-image list, or `null` when it
+ * names none or names one the gallery does not hold (never guessed).
+ */
+export function shoperVariantImages(
+  stock: Pick<ShoperStock, 'gfx_id'>,
+  galleryUrls: ReadonlyMap<string, string>,
+): string[] | null {
+  if (stock.gfx_id === null || stock.gfx_id === undefined || String(stock.gfx_id) === '') {
+    return null;
+  }
+  const url = galleryUrls.get(String(stock.gfx_id));
+  return url === undefined ? null : [url];
+}
+
 export function mapShoperStockToVariant(
   stock: ShoperStock,
   productId: string,
   ctx: ShoperMapContext,
   attributes: Record<string, string> | null = null,
   base: ShoperStock | null = null,
+  images: string[] | null = null,
 ): Omit<ProductVariant, 'id'> {
   const ean = nonEmpty(stock.ean);
   const hasBase = base !== null && base.stock_id !== stock.stock_id;
@@ -265,6 +300,7 @@ export function mapShoperStockToVariant(
     attributes,
     ean,
     gtin: ean,
+    images,
     ...(price === undefined ? {} : { price }),
     ...(weight === undefined ? {} : { weight, weightGrams: Math.round(weight * 1000) }),
   };
