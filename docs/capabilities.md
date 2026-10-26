@@ -137,7 +137,8 @@ PL-first / PLN-only assumptions already baked into each adapter).
 `ShopCategoryBrowser` (read, #1834), `ShopAttributeReader` (read, #1835), and
 `ShopProductStatusReader` (read, #1845, including the grouped-variation-aware
 read) on its `ProductPublisher` adapter. Shoper implements `CategoryProvisioner`
-(write, #3713) on its `ProductPublisher` adapter. No shop adapter implements
+(write, #3713), `ShopCategoryBrowser`, `ShopAttributeReader` and
+`ShopProductStatusReader` (read, #3806) on its `ProductPublisher` adapter. No shop adapter implements
 `ShopCurrencyDeclarer` yet — a WooCommerce destination still falls back to
 `Connection.config.currency` (or an operator-set value) for the price-change
 currency-mismatch guard.

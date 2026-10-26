@@ -6,8 +6,11 @@ OpenLinker adapter for [Shoper](https://www.shoper.pl) (Polish SaaS e-commerce p
 six capabilities: `ProductMaster` (#3640: products, variants, categories, tax rate, deletion detection),
 `InventoryMaster` (#3641), `OrderProcessorManager` (#3642) with fulfilment writeback as a Shoper parcel (#3643),
 `OrderSource` (#3711), `ProductPublisher` (#3712) and `CategoryProvisioner` (#3713). Only `ProductMaster` and
-`InventoryMaster` are enabled by default on a new connection; the other four are opt-in. Webhooks (#3644) and a
-guided setup wizard in the web UI (#3702) are in place; see "Known gaps" for what is still open. Evidence base:
+`InventoryMaster` are enabled by default on a new connection; the other four are opt-in. #3806 completed the
+capability map on top of that: the shop's category tree, attributes and product status for the publish pickers
+(`ShopCategoryBrowser`, `ShopAttributeReader`, `ShopProductStatusReader`), delta and bulk catalogue reads,
+fulfilment read-back, signed webhooks (#3644), one shared request budget per shop and product GPSR data. A guided
+setup wizard is in the web UI (#3702). See "Known gaps" for what is still open. Evidence base:
 `docs/plans/analysis/SPIKE-3638-shoper-rest-api.md` and the live findings recorded in
 `docs/plans/implementation-plan-shoper-product-master-read.md`.
 
