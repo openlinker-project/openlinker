@@ -75,6 +75,9 @@ describe('ReturnAuthorizeService', () => {
       abandon: jest.fn(),
       claimApplied: jest.fn().mockResolvedValue(true),
       findLatestByTarget: jest.fn().mockResolvedValue(null),
+      findOpenByOrder: jest.fn().mockResolvedValue([]),
+      findOrderIdsWithOpenAmendment: jest.fn().mockResolvedValue(new Set<string>()),
+      findById: jest.fn().mockResolvedValue(null),
     };
 
     // The REAL guard, not a stub — the point is that this service refuses an orphan

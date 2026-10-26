@@ -82,6 +82,9 @@ describe('ReturnDeclineService', () => {
       abandon: jest.fn().mockResolvedValue(true),
       claimApplied: jest.fn().mockResolvedValue(true),
       findLatestByTarget: jest.fn().mockResolvedValue(null),
+      findOpenByOrder: jest.fn().mockResolvedValue([]),
+      findOrderIdsWithOpenAmendment: jest.fn().mockResolvedValue(new Set<string>()),
+      findById: jest.fn().mockResolvedValue(null),
     };
     declineReturn = jest.fn();
     integrations = {

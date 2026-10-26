@@ -12,9 +12,10 @@ import { Inject, Injectable } from '@nestjs/common';
 import { Logger } from '@openlinker/shared/logging';
 import type { OrderChange } from '../../domain/entities/order-change.entity';
 import { OrderChangeRepositoryPort } from '../../domain/ports/order-change-repository.port';
-import type {
-  CreateOrderChangeInput,
-  OrderChangeKind,
+import {
+  OrderMutationChangeKindValues,
+  type CreateOrderChangeInput,
+  type OrderChangeKind,
 } from '../../domain/types/order-change.types';
 import { ORDER_CHANGE_REPOSITORY_TOKEN } from '../../orders.tokens';
 import type {
@@ -97,6 +98,23 @@ export class OrderChangeService implements IOrderChangeService {
 
   async claimApplied(id: string): Promise<boolean> {
     return this.repository.claimApplied(id, new Date());
+  }
+
+  async findOpenByOrder(internalOrderId: string): Promise<OrderChange[]> {
+    return this.repository.findOpenByOrder(internalOrderId);
+  }
+
+  async findOrderIdsWithOpenAmendment(
+    internalOrderIds: readonly string[]
+  ): Promise<Set<string>> {
+    return this.repository.findOrderIdsWithOpenChanges(
+      internalOrderIds,
+      OrderMutationChangeKindValues
+    );
+  }
+
+  async findById(id: string): Promise<OrderChange | null> {
+    return this.repository.findById(id);
   }
 
   async findLatestByTarget(

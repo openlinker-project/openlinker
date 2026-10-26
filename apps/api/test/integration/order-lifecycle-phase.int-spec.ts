@@ -22,7 +22,11 @@ import type { IntegrationTestHarness } from './setup';
 import { getTestHarness, resetTestHarness, teardownTestHarness } from './setup';
 import { createTestOrderRecord } from './fixtures/order.fixtures';
 import type { OrderRecordRepositoryPort } from '@openlinker/core/orders';
-import { ORDER_RECORD_REPOSITORY_TOKEN } from '@openlinker/core/orders';
+import {
+  ORDER_CHANGE_SERVICE_TOKEN,
+  ORDER_RECORD_REPOSITORY_TOKEN,
+  type IOrderChangeService,
+} from '@openlinker/core/orders';
 import type { OrderLifecyclePhase } from '@openlinker/core/order-lifecycle';
 import {
   OrderLifecyclePhaseValues,
@@ -35,7 +39,7 @@ const SOURCE_B = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 const PAGE = { limit: 100, offset: 0 };
 
 /** Phases with no persisted source in Wave 1a — their SQL arms are `FALSE`. */
-const UNREACHABLE_PHASES: OrderLifecyclePhase[] = ['vendor_authoritative', 'held', 'amending'];
+const UNREACHABLE_PHASES: OrderLifecyclePhase[] = ['vendor_authoritative', 'held'];
 
 describe('Order lifecycle phase (integration)', () => {
   let harness: IntegrationTestHarness;
@@ -139,6 +143,13 @@ describe('Order lifecycle phase (integration)', () => {
    */
   async function classifyInTypescript(): Promise<Map<OrderLifecyclePhase, Set<string>>> {
     const { items } = await repository.findMany({}, PAGE);
+    // A REAL read since #3540 - hardcoding `false` would exempt the one input
+    // whose SQL arm (`EXISTS (open order-mutating change)`) this spec holds the
+    // TS ladder against.
+    const amending = await harness
+      .getApp()
+      .get<IOrderChangeService>(ORDER_CHANGE_SERVICE_TOKEN)
+      .findOrderIdsWithOpenAmendment(items.map((order) => order.internalOrderId));
     const byPhase = new Map<OrderLifecyclePhase, Set<string>>(
       OrderLifecyclePhaseValues.map((phase) => [phase, new Set<string>()])
     );
@@ -147,7 +158,7 @@ describe('Order lifecycle phase (integration)', () => {
         cancelledAt: order.cancelledAt ?? null,
         fulfillmentState: order.fulfillmentState,
         activeHoldReason: order.activeHoldReason,
-        hasOpenAmendment: false,
+        hasOpenAmendment: amending.has(order.internalOrderId),
         recordStatus: order.recordStatus,
         authority: DEFAULT_LIFECYCLE_AUTHORITY,
         vendorDeclaredPhase: null,
@@ -262,7 +273,7 @@ describe('Order lifecycle phase (integration)', () => {
     expect(summary.ready).toBe(0);
   });
 
-  it('leaves the three Wave-2/4 placeholder arms inert — 0 counts and no rows', async () => {
+  it('leaves the two still-unwired placeholder arms inert — 0 counts and no rows', async () => {
     await seedPhaseSet();
 
     const summary = await repository.countByLifecyclePhase({});
@@ -274,7 +285,65 @@ describe('Order lifecycle phase (integration)', () => {
     }
     expect(summary.vendorAuthoritative).toBe(0);
     expect(summary.held).toBe(0);
-    expect(summary.amending).toBe(0);
+    expect(summary.amending).toBe(0); // no open order change seeded
+  });
+
+  describe('amending (#3540)', () => {
+    const insertChange = async (
+      internalOrderId: string,
+      kind: string,
+      status: string,
+      targetRef: string
+    ): Promise<void> => {
+      await harness.getDataSource().query(
+        `INSERT INTO "order_changes"
+           ("internalOrderId", "kind", "targetRef", "status", "requestedAt")
+         VALUES ($1, $2, $3, $4, now())`,
+        [internalOrderId, kind, targetRef, status]
+      );
+    };
+
+    it('matches an order with an OPEN order-mutating change, and only that order', async () => {
+      const ds = harness.getDataSource();
+      const open = await createTestOrderRecord(ds, { sourceConnectionId: SOURCE_A, recordStatus: 'ready' });
+      const closed = await createTestOrderRecord(ds, { sourceConnectionId: SOURCE_A, recordStatus: 'ready' });
+      const returnOnly = await createTestOrderRecord(ds, { sourceConnectionId: SOURCE_A, recordStatus: 'ready' });
+      const cancelledAmending = await createTestOrderRecord(ds, {
+        sourceConnectionId: SOURCE_A,
+        recordStatus: 'ready',
+        cancelledAt: new Date('2026-01-02T03:04:05.000Z'),
+      });
+      await insertChange(open.internalOrderId, 'order.cancel_request', 'requested', `cancel:${open.internalOrderId}`);
+      await insertChange(closed.internalOrderId, 'order.cancel_request', 'confirmed', `cancel:${closed.internalOrderId}`);
+      await insertChange(returnOnly.internalOrderId, 'return.decline', 'requested', 'ol_return_x');
+      await insertChange(
+        cancelledAmending.internalOrderId,
+        'order.cancel_correction',
+        'requested',
+        `correction:cancel:${cancelledAmending.internalOrderId}:inv-1`
+      );
+
+      const amending = await repository.findMany({ lifecyclePhase: 'amending' }, PAGE);
+
+      // Only the open order.* change: a terminal one and a return.* one do not
+      // count, and a cancelled order stays `cancelled` (the ladder's arm 1).
+      expect(amending.items.map((order) => order.internalOrderId)).toEqual([open.internalOrderId]);
+      const summary = await repository.countByLifecyclePhase({});
+      expect(summary.amending).toBe(1);
+    });
+
+    it('agrees with the TS derivation for the same seeded rows', async () => {
+      const ds = harness.getDataSource();
+      const open = await createTestOrderRecord(ds, { sourceConnectionId: SOURCE_A, recordStatus: 'ready' });
+      await createTestOrderRecord(ds, { sourceConnectionId: SOURCE_A, recordStatus: 'ready' });
+      await insertChange(open.internalOrderId, 'order.cancel_request', 'pending', `cancel:${open.internalOrderId}`);
+
+      const expected = await classifyInTypescript();
+
+      expect([...(expected.get('amending') ?? [])]).toEqual([open.internalOrderId]);
+      const fromSql = await repository.findMany({ lifecyclePhase: 'amending' }, PAGE);
+      expect(fromSql.items.map((order) => order.internalOrderId)).toEqual([open.internalOrderId]);
+    });
   });
 
   it('ignores the cancelled scope — cancellation is the partition own top arm', async () => {

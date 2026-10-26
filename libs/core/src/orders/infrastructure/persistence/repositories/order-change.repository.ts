@@ -65,6 +65,36 @@ export class OrderChangeRepository implements OrderChangeRepositoryPort {
     return entity ? this.toDomain(entity) : null;
   }
 
+  async findOpenByOrder(internalOrderId: string): Promise<OrderChange[]> {
+    const entities = await this.repository.find({
+      where: { internalOrderId, status: In([...OPEN_ORDER_CHANGE_STATUSES]) },
+      order: { createdAt: 'ASC', id: 'ASC' },
+    });
+    return entities.map((entity) => this.toDomain(entity));
+  }
+
+  async findOrderIdsWithOpenChanges(
+    internalOrderIds: readonly string[],
+    kinds: readonly OrderChangeKind[]
+  ): Promise<Set<string>> {
+    if (internalOrderIds.length === 0 || kinds.length === 0) {
+      return new Set();
+    }
+    const rows = await this.repository
+      .createQueryBuilder('oc')
+      .select('DISTINCT oc."internalOrderId"', 'internalOrderId')
+      .where('oc."internalOrderId" IN (:...ids)', { ids: [...internalOrderIds] })
+      .andWhere('oc.status IN (:...statuses)', { statuses: [...OPEN_ORDER_CHANGE_STATUSES] })
+      .andWhere('oc.kind IN (:...kinds)', { kinds: [...kinds] })
+      .getRawMany<{ internalOrderId: string }>();
+    return new Set(rows.map((row) => row.internalOrderId));
+  }
+
+  async findById(id: string): Promise<OrderChange | null> {
+    const entity = await this.repository.findOne({ where: { id } });
+    return entity ? this.toDomain(entity) : null;
+  }
+
   async findLatestByTarget(
     internalOrderId: string,
     targetRef: string,

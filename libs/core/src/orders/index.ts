@@ -47,10 +47,12 @@ export type {
   OrderLifecycleEventType,
   OrderWritebackOutcome,
   OrderWritebackResult,
+  OrderWritebackScope,
 } from './domain/types/order-lifecycle-event.types';
 export {
   OrderLifecycleEventTypeValues,
   OrderWritebackOutcomeValues,
+  OrderWritebackScopeValues,
 } from './domain/types/order-lifecycle-event.types';
 
 // Return source reader (#2329 / ADR-060): the returns half of OrderSource.
@@ -534,8 +536,22 @@ export {
   isOrderChangeKind,
   isOrderChangeStatus,
   isOpenOrderChangeStatus,
+  OrderMutationChangeKindValues,
+  isOrderMutationChangeKind,
+  cancelRequestTargetRef,
+  cancelCorrectionTargetRef,
 } from './domain/types/order-change.types';
+// #3540 — why an operator cancels an order.
+export {
+  OrderCancelReasonValues,
+  isOrderCancelReason,
+  orderCancelReasonRequiresNote,
+  OPERATOR_ORDER_ORIGIN_ID,
+  orderStockRestoreDedupeKey,
+} from './domain/types/order-cancel.types';
+export type { OrderCancelReason } from './domain/types/order-cancel.types';
 export type {
+  OrderMutationChangeKind,
   OrderChangeKind,
   OrderChangeStatus,
   CreateOrderChangeInput,
