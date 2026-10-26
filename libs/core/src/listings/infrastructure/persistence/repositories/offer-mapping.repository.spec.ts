@@ -1150,6 +1150,7 @@ describe('OfferMappingRepository', () => {
           'OFFER_CREATION_JOB_DEAD',
           'POLL_TIMEOUT',
           'OFFER_POLL_NOT_SUPPORTED',
+          'PRODUCT_REMOVED',
         ],
       });
     });

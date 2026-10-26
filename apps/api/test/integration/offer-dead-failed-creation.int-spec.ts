@@ -173,6 +173,20 @@ describe('Dead failed-creation offers (E2E-25)', () => {
         },
       ],
     });
+    // The product details were removed with no reason on record; the seller
+    // may still activate the offer.
+    await seedOffer(dataSource, {
+      variantId: 'ol_variant_product_removed',
+      externalOfferId: 'offer-product-removed',
+      publicationStatus: 'inactive',
+      records: [
+        {
+          status: 'failed',
+          errors: [{ code: 'PRODUCT_REMOVED', message: 'Allegro removed the product details' }],
+          createdAt: '2026-10-26T09:00:00Z',
+        },
+      ],
+    });
     // A failed record with no reason recorded proves nothing.
     await seedOffer(dataSource, {
       variantId: 'ol_variant_no_reason',
@@ -220,6 +234,7 @@ describe('Dead failed-creation offers (E2E-25)', () => {
       'ol_variant_draft',
       'ol_variant_timeout',
       'ol_variant_job_dead',
+      'ol_variant_product_removed',
       'ol_variant_no_reason',
       'ol_variant_late_active',
       'ol_variant_activating',

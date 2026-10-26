@@ -143,6 +143,7 @@ export { OfferCreationRecord } from './domain/entities/offer-creation-record.ent
 export {
   OfferCreationStatusValues,
   OFFER_CREATION_STATUS,
+  OFFER_PRODUCT_REMOVED_WITHOUT_REASON_ERROR_CODE,
 } from './domain/types/offer-creation-record.types';
 export type {
   OfferCreationStatus,

@@ -80,6 +80,7 @@ import {
   OfferCreateRejectedException,
   CategoryNotFoundException,
   OfferNotFoundOnMarketplaceException,
+  OFFER_PRODUCT_REMOVED_WITHOUT_REASON_ERROR_CODE,
 } from '@openlinker/core/listings';
 import type {
   AllegroSafetyInformation,
@@ -1110,12 +1111,16 @@ export class AllegroOfferManagerAdapter
         return { publicationStatus, validationErrors: operation.errors, commercial };
       }
       if (this.isProductRemoved(offer)) {
+        // Synthesised from what is MISSING - no operation on record to give a
+        // reason - so core reads it as an unknown outcome, never as a refusal:
+        // the seller may still activate this offer, and re-listing its variant
+        // could then put a second live offer on Allegro.
         return {
           publicationStatus,
           validationErrors: [
             {
               field: 'productSet',
-              code: 'PRODUCT_REMOVED',
+              code: OFFER_PRODUCT_REMOVED_WITHOUT_REASON_ERROR_CODE,
               message: PRODUCT_REMOVED_WITHOUT_REASON_MESSAGE,
             },
           ],
