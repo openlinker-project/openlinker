@@ -426,6 +426,47 @@ describe('InventoryRepository', () => {
   // #2071 — the existing-row write used to be a `save()`, so which columns the
   // master sync could touch was an emergent property of TypeORM's diffing. These
   // pin the write set, on the row every published quantity derives from.
+  describe('findPositionsByVariantIds (#3621)', () => {
+    it('should short-circuit empty input without touching storage', async () => {
+      await expect(repository.findPositionsByVariantIds([])).resolves.toEqual([]);
+
+      expect(ormRepository.find).not.toHaveBeenCalled();
+    });
+
+    it('should read every position, stale ones included, in one parameterised statement', async () => {
+      const updatedAt = new Date('2026-10-26T10:00:00Z');
+      const live = Object.assign(new InventoryItemOrmEntity(), {
+        id: 'inv-1',
+        productId: 'prod-1',
+        productVariantId: 'var-1',
+        availableQuantity: 5,
+        reservedQuantity: 1,
+        locationId: null,
+        updatedAt,
+        isStale: false,
+        sourceConnectionId: 'conn-1',
+      });
+      const stale = Object.assign(new InventoryItemOrmEntity(), live, {
+        id: 'inv-2',
+        isStale: true,
+      });
+      ormRepository.find.mockResolvedValue([live, stale]);
+
+      const result = await repository.findPositionsByVariantIds(['var-1']);
+
+      expect(ormRepository.find).toHaveBeenCalledTimes(1);
+      const [options] = ormRepository.find.mock.calls[0] as [
+        { where: Record<string, unknown> },
+      ];
+      // No isStale predicate: the drill-down must be able to show a stale row.
+      expect(Object.keys(options.where)).toEqual(['productVariantId']);
+      expect(result.map((r) => [r.id, r.isStale, r.sourceConnectionId])).toEqual([
+        ['inv-1', false, 'conn-1'],
+        ['inv-2', true, 'conn-1'],
+      ]);
+    });
+  });
+
   describe('upsert write set (#2071)', () => {
     const existingRow = {
       id: 'inv-1',

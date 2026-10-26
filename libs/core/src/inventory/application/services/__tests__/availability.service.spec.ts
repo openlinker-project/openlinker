@@ -590,4 +590,27 @@ describe('AvailabilityService', () => {
       expect(await service.getAppliedReserve({ kind: 'global' })).toBe(0);
     });
   });
+  describe('getAppliedControls (#3621)', () => {
+    it('should report both the buffer and the zero threshold for a channel scope', async () => {
+      withConfig({ stockSafetyBuffer: 4, stockZeroThreshold: 3 });
+
+      const service = await build(new EmptyReservationLedgerReader());
+
+      expect(await service.getAppliedControls(CHANNEL_SCOPE)).toEqual({
+        buffer: 4,
+        zeroThreshold: 3,
+      });
+    });
+
+    it('should report neither Control for the global scope', async () => {
+      withConfig({ stockSafetyBuffer: 4, stockZeroThreshold: 3 });
+
+      const service = await build(new EmptyReservationLedgerReader());
+
+      expect(await service.getAppliedControls({ kind: 'global' })).toEqual({
+        buffer: 0,
+        zeroThreshold: 0,
+      });
+    });
+  });
 });

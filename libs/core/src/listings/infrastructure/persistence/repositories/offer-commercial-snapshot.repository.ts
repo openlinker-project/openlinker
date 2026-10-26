@@ -12,7 +12,8 @@
  */
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { In, Repository } from 'typeorm';
+import { OfferCommercialSnapshot } from '../../../domain/entities/offer-commercial-snapshot.entity';
 import type { OfferCommercialSnapshotRepositoryPort } from '../../../domain/ports/offer-commercial-snapshot-repository.port';
 import type { UpsertOfferCommercialSnapshotCommand } from '../../../domain/types/offer-commercial-snapshot.types';
 import { OfferCommercialSnapshotOrmEntity } from '../entities/offer-commercial-snapshot.orm-entity';
@@ -55,6 +56,28 @@ export class OfferCommercialSnapshotRepository implements OfferCommercialSnapsho
         updatedAt: () => 'now()',
       },
       { conflictPaths: ['connectionId', 'externalOfferId'] }
+    );
+  }
+
+  async findByVariantIds(variantIds: readonly string[]): Promise<OfferCommercialSnapshot[]> {
+    if (variantIds.length === 0) return [];
+    const entities = await this.ormRepository.find({
+      where: { internalVariantId: In([...variantIds]) },
+    });
+    return entities.map(
+      (entity) =>
+        new OfferCommercialSnapshot({
+          id: entity.id,
+          connectionId: entity.connectionId,
+          externalOfferId: entity.externalOfferId,
+          internalVariantId: entity.internalVariantId,
+          price: entity.price,
+          currency: entity.currency,
+          availableQuantity: entity.availableQuantity,
+          lastCommercialSyncedAt: entity.lastCommercialSyncedAt,
+          createdAt: entity.createdAt,
+          updatedAt: entity.updatedAt,
+        })
     );
   }
 }

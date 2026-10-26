@@ -212,6 +212,10 @@ export class AvailabilityService implements IAvailabilityService {
     }));
   }
 
+  async getAppliedControls(scope: AvailabilityScope): Promise<PublishControls> {
+    return this.resolvePublishControls(scope);
+  }
+
   async getAppliedReserve(scope: AvailabilityScope): Promise<number> {
     return (await this.resolvePublishControls(scope)).buffer;
   }

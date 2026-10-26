@@ -10,6 +10,7 @@
  *
  * @module libs/core/src/listings/domain/ports
  */
+import type { OfferCommercialSnapshot } from '../entities/offer-commercial-snapshot.entity';
 import type { UpsertOfferCommercialSnapshotCommand } from '../types/offer-commercial-snapshot.types';
 
 export interface OfferCommercialSnapshotRepositoryPort {
@@ -26,4 +27,12 @@ export interface OfferCommercialSnapshotRepositoryPort {
    * persisted row back.
    */
   upsert(command: UpsertOfferCommercialSnapshotCommand): Promise<void>;
+
+  /**
+   * Every snapshot for the given internal variant ids (#3621) - the first
+   * keyed read, arriving with its first consumer as this port's docblock
+   * promised. One parameterised statement; empty input returns `[]` without a
+   * storage round trip. A variant listed on several offers yields several rows.
+   */
+  findByVariantIds(variantIds: readonly string[]): Promise<OfferCommercialSnapshot[]>;
 }
