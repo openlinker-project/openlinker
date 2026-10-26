@@ -1,5 +1,5 @@
 /**
- * Offer Stock Restore — Write Incomplete Error
+ * Offer Stock Restore - Write Incomplete Error
  *
  * Raised when a cancellation restore tried every offer and at least one was not
  * written (the destination rejected it, the transport failed, or the publish

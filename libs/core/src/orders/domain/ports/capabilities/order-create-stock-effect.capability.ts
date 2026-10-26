@@ -1,7 +1,7 @@
 /**
  * Order Create Stock Effect Capability
  *
- * Optional sub-capability of `OrderProcessorManagerPort` — a destination
+ * Optional sub-capability of `OrderProcessorManagerPort` - a destination
  * declares that creating an order on it LOWERS that shop's own stock in the
  * same step (its order flow books the sale against stock).
  *

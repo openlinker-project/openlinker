@@ -11,7 +11,7 @@
  *      connection (`OfferMappingRepositoryPort.findMany`);
  *   3. reads the absolute available-to-promise per variant
  *      (`IInventoryQueryService.getAvailabilityByVariantIds`, #823) — master is
- *      authoritative, including 0 — together with the stock observation it was
+ *      authoritative, including 0 - together with the stock observation it was
  *      derived from;
  *   4. when the connection declares the `OfferStockRestorer` capability (no-op
  *      when honestly absent), writes those quantities through
@@ -332,7 +332,7 @@ export class OfferStockRestoreService implements IOfferStockRestoreService {
     // below: the ingestion hook enqueues this job on every `→ cancelled`
     // transition regardless of marketplace, and many connections restore their
     // own stock or expose no `OfferStockRestorer` at all. A capability that is
-    // unsupported / disabled on the connection is a routine no-op — not a job
+    // unsupported / disabled on the connection is a routine no-op - not a job
     // failure that should dead-letter. The capability is the participation
     // declaration only: the write itself goes through the ordered seam below.
     if (!(await this.participatesInRestore(connectionId, internalOrderId))) {
@@ -484,7 +484,7 @@ export class OfferStockRestoreService implements IOfferStockRestoreService {
   /**
    * Whether the source marketplace participates in core-driven stock restore:
    * its `OfferManager` adapter declares `OfferStockRestorer`. All three
-   * "doesn't participate" paths are routine no-ops, logged at debug — never
+   * "doesn't participate" paths are routine no-ops, logged at debug - never
    * `warn` (this fires on every cancellation platform-wide) and never thrown (a
    * thrown capability error would fail the job and dead-letter it):
    *   - `OfferManager` not supported by the adapter, or not enabled on the
