@@ -45,12 +45,19 @@ interface OrderLineItemsPanelProps {
    * no cost read at all, so a caller without an order id renders as before.
    */
   internalOrderId?: string;
+  /**
+   * The channel's own quantity for each line an operator lowered (#3544), by
+   * order line id. `items` is the order AS EDITED, so this is what lets the cell
+   * show both figures: "2 was 3". Absent for an order nobody edited.
+   */
+  channelQuantities?: ReadonlyMap<string, number>;
 }
 
 export function OrderLineItemsPanel({
   items,
   totals,
   internalOrderId,
+  channelQuantities,
 }: OrderLineItemsPanelProps): ReactElement {
   const currency = totals?.currency;
   const costs = useOrderLineCosts(internalOrderId);
@@ -98,7 +105,19 @@ export function OrderLineItemsPanel({
       id: 'qty',
       header: 'Qty',
       align: 'right',
-      cell: (item) => <span>{item.quantity}</span>,
+      cell: (item) => {
+        const channelQuantity = channelQuantities?.get(item.id);
+        return (
+          <span>
+            {item.quantity}
+            {channelQuantity !== undefined && channelQuantity !== item.quantity ? (
+              <span className="order-edit-was" data-testid="order-edit-line-was">
+                {` was ${channelQuantity}`}
+              </span>
+            ) : null}
+          </span>
+        );
+      },
     },
     {
       id: 'unitPrice',

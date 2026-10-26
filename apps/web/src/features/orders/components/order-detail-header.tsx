@@ -25,6 +25,7 @@ import type { ParsedOrderSnapshot, PaymentStatus } from '../api/order-snapshot.s
 import { deriveHealthLevel, healthLabel, rollupSyncStatus, totalUnits, type OrderHealthLevel } from '../lib/order-health';
 import { ORDER_LIFECYCLE_PHASE_WAITING_ON, isOrderLifecyclePhase } from '../lib/order-lifecycle-phase';
 import { OrderPhaseOrWaitingBadge } from './order-phase-or-waiting-badge';
+import { OrderEditedBadge } from './order-edited-badge';
 
 interface OrderDetailHeaderProps {
   order: OrderRecord;
@@ -86,6 +87,7 @@ export function OrderDetailHeader({ order, snapshot, tags }: OrderDetailHeaderPr
         {/* #2310 — beside the health badge, never instead of it (ADR-059).
             Header badges are full-size, so no `compact` here. */}
         <OrderPhaseOrWaitingBadge order={order} />
+        <OrderEditedBadge edited={order.editedInOpenLinker} />
         {/* C-23: the channel snapshot keeps saying `processing` until a re-poll,
             so beside a Cancelled phase badge it reads as a second, contradicting
             status. The summary row carries it, labelled as the channel's own. */}

@@ -109,15 +109,27 @@ export const ORDER_CANCEL_ERROR_CODES = [
 ] as const;
 export type OrderCancelErrorCode = (typeof ORDER_CANCEL_ERROR_CODES)[number];
 
-/** The backend's machine code off an error body, or null for anything else. */
-export function readOrderCancelErrorCode(error: unknown): OrderCancelErrorCode | null {
+/**
+ * The backend's machine code off an error body, restricted to `codes`, or null.
+ * One reader for every order write (cancel, confirm, edit): each states its own
+ * closed list, the body shape (`error` carries the code) is the same.
+ */
+export function readErrorCodeFrom<T extends string>(
+  error: unknown,
+  codes: readonly T[],
+): T | null {
   if (!(error instanceof ApiError)) return null;
   const details = error.details;
   if (typeof details !== 'object' || details === null) return null;
   const code = (details as { error?: unknown }).error;
-  return typeof code === 'string' && (ORDER_CANCEL_ERROR_CODES as readonly string[]).includes(code)
-    ? (code as OrderCancelErrorCode)
+  return typeof code === 'string' && (codes as readonly string[]).includes(code)
+    ? (code as T)
     : null;
+}
+
+/** The backend's machine code off an error body, or null for anything else. */
+export function readOrderCancelErrorCode(error: unknown): OrderCancelErrorCode | null {
+  return readErrorCodeFrom(error, ORDER_CANCEL_ERROR_CODES);
 }
 
 /** The server's own sentence, or the fallback when the error carries none. */
