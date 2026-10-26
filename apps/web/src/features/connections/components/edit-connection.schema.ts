@@ -270,8 +270,8 @@ export const editConnectionSchema = z
       ])
       .optional(),
     // OL's URL from PrestaShop's perspective — used by the webhook auto-install
-    // flow (#168). FE pre-fills this from `window.location.origin` on first
-    // render when empty so most operators don't have to think about it; dev
+    // flow (#168). FE pre-fills this with the API address the web app calls on
+    // first render when empty so most operators don't have to think about it; dev
     // override is `http://host.docker.internal:3000`.
     openlinkerCallbackBaseUrl: z
       .union([
@@ -288,7 +288,7 @@ export const editConnectionSchema = z
     // key `ErliWebhookProvisioningAdapter` reads (distinct from PrestaShop's
     // `openlinkerCallbackBaseUrl`; the two integrations chose different wire
     // key names before this field existed on the FE, so both are kept
-    // verbatim rather than unified). FE pre-fills from `window.location.origin`
+    // verbatim rather than unified). FE pre-fills from the web app's API address
     // via `getCallbackUrlDefault`, same convenience as PrestaShop's field.
     callbackBaseUrl: z
       .union([
