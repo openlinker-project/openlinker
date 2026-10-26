@@ -38,6 +38,7 @@ import type {
 import {
   PAYMENT_STATUS,
   readSourceBuyerNote,
+  decodeHtmlNoteText,
   readSourceBuyerTaxId,
   toCodToCollect,
 } from '@openlinker/core/orders';
@@ -650,7 +651,7 @@ export class PrestashopOrderSourceAdapter implements OrderSourcePort {
     // Read last, after everything the order cannot do without: it is the one
     // optional hydration, and an unreadable thread resource must not cost the
     // order its other fields.
-    const buyerNote = await this.fetchBuyerNote(externalOrderId);
+    const buyerNote = await this.fetchBuyerNote(externalOrderId, placedAtIso);
 
     return {
       externalOrderId,
@@ -849,7 +850,10 @@ export class PrestashopOrderSourceAdapter implements OrderSourcePort {
    * Two requests per order at most: threads by `id_order`, then every message of
    * those threads in one pipe-joined OR read.
    */
-  private async fetchBuyerNote(orderId: string | number): Promise<string | null | undefined> {
+  private async fetchBuyerNote(
+    orderId: string | number,
+    orderDateAdd?: string
+  ): Promise<string | null | undefined> {
     try {
       const threads = await readAllPrestashopResourcePages<PrestashopCustomerThread>(
         this.httpClient,
@@ -880,7 +884,19 @@ export class PrestashopOrderSourceAdapter implements OrderSourcePort {
             String(a.date_add ?? '').localeCompare(String(b.date_add ?? '')) ||
             Number(a.id) - Number(b.id)
         );
-      return readSourceBuyerNote(first?.message) ?? null;
+      if (first === undefined) {
+        return null;
+      }
+      // B-6: a buyer who left nothing at checkout can still contact the shop
+      // later, and that message lands on the same thread. Only a message written
+      // within CHECKOUT_NOTE_WINDOW_MS of the order's own `date_add` is the
+      // checkout note; anything later is a contact message, so the checkout
+      // note is asserted none. When the order's date cannot be read the two
+      // cannot be told apart and the earliest message stays the answer.
+      if (!isWithinCheckoutWindow(first.date_add, orderDateAdd)) {
+        return null;
+      }
+      return readSourceBuyerNote(decodeHtmlNoteText(first.message ?? '')) ?? null;
     } catch (error) {
       if (isThreadResourceInaccessible(error)) {
         this.logger.warn(
@@ -923,6 +939,33 @@ export class PrestashopOrderSourceAdapter implements OrderSourcePort {
       }
     );
   }
+}
+
+/**
+ * How long after the order's `date_add` a buyer message still counts as the
+ * checkout note. PrestaShop writes the order and its checkout message in the
+ * same request, so they land seconds apart; ten minutes tolerates clock and
+ * transaction skew while staying far short of a genuine follow-up message.
+ */
+const CHECKOUT_NOTE_WINDOW_MS = 10 * 60 * 1000;
+
+function parseShopTimestamp(value: string | undefined): number | undefined {
+  if (typeof value !== 'string' || value.trim() === '') {
+    return undefined;
+  }
+  // Both stamps come from the same shop in its own timezone; reading both as
+  // UTC keeps their difference exact whatever that timezone is.
+  const parsed = Date.parse(`${value.trim().replace(' ', 'T')}Z`);
+  return Number.isNaN(parsed) ? undefined : parsed;
+}
+
+function isWithinCheckoutWindow(messageDateAdd: string | undefined, orderDateAdd: string | undefined): boolean {
+  const orderAt = parseShopTimestamp(orderDateAdd);
+  if (orderAt === undefined) {
+    return true;
+  }
+  const messageAt = parseShopTimestamp(messageDateAdd);
+  return messageAt !== undefined && messageAt <= orderAt + CHECKOUT_NOTE_WINDOW_MS;
 }
 
 /** The slice of a `customer_threads` row this adapter reads. */

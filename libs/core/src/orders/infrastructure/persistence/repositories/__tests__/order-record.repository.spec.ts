@@ -1848,6 +1848,33 @@ describe('OrderRecordRepository', () => {
     });
   });
 
+  describe('buyer note and buyer order count reads (#3538)', () => {
+    it('should count only live earlier orders and tie-break equal instants by id (N-31)', async () => {
+      const where = jest.fn().mockReturnThis();
+      const andWhere = jest.fn().mockReturnThis();
+      (ormRepository.createQueryBuilder as jest.Mock).mockReturnValue({
+        where,
+        andWhere,
+        getCount: jest.fn().mockResolvedValue(2),
+      });
+
+      await repository.countEarlierOrdersForCustomer('cust', 'order-b', new Date('2026-01-01'));
+
+      const clauses = (andWhere.mock.calls as Array<[string]>).map(([sql]) => sql).join('\n');
+      expect(clauses).toContain('"cancelledAt" IS NULL');
+      expect(clauses).toContain('rec."internalOrderId" < :excludeInternalOrderId');
+    });
+
+    it('should not bump updatedAt when marking a note read (B-9)', async () => {
+      (ormRepository.update as jest.Mock).mockResolvedValue({ affected: 1 });
+
+      await repository.markBuyerNoteRead('order-1', new Date('2026-01-01'), 'user-1');
+
+      const [, patch] = (ormRepository.update as jest.Mock).mock.calls[0];
+      expect(patch).not.toHaveProperty('updatedAt');
+    });
+  });
+
   /**
    * #3507 G03-1 — the statement enumerates its own columns, so `toOrm`
    * stamping `entity.searchText` wrote nothing: a new order kept the column
@@ -1894,6 +1921,36 @@ describe('OrderRecordRepository', () => {
         expect(params).toContain('ord-001 sku-1');
       }
     );
+
+    it('should keep a stored note when the incoming note is unknown (B-5)', () => {
+      const { sql } = (repository as unknown as Builder).buildFrozenAttributionUpsert(
+        createOrmEntity(),
+        true
+      );
+      const updateHalf = sql.slice(sql.indexOf('DO UPDATE SET'));
+
+      expect(updateHalf).toContain(
+        'CASE WHEN (EXCLUDED."buyerNote" IS NULL AND EXCLUDED."hasBuyerNote" = false)'
+      );
+      expect(updateHalf).toMatch(/THEN "order_records"\."buyerNote" ELSE EXCLUDED\."buyerNote" END/);
+      expect(updateHalf).toMatch(/THEN "order_records"\."hasBuyerNote" ELSE EXCLUDED\."hasBuyerNote" END/);
+    });
+
+    it('should reset the read marker only when a different note text arrives (N-22)', () => {
+      const { sql, writeSet } = (repository as unknown as Builder).buildFrozenAttributionUpsert(
+        createOrmEntity(),
+        true
+      );
+      const updateHalf = sql.slice(sql.indexOf('DO UPDATE SET'));
+
+      expect(updateHalf).toContain('"buyerNoteReadAt" = CASE');
+      expect(updateHalf).toContain('"buyerNoteReadByUserId" = CASE');
+      expect(updateHalf).toContain(
+        'EXCLUDED."buyerNote" IS DISTINCT FROM "order_records"."buyerNote"'
+      );
+      // Still not a written column: markBuyerNoteRead stays its sole setter.
+      expect(writeSet.has('buyerNoteReadAt')).toBe(false);
+    });
 
     it('should write the text derived from the snapshot when upserting with PII stored', async () => {
       process.env.OL_STORE_PII = 'true';

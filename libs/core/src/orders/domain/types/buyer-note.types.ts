@@ -46,6 +46,41 @@ export function readSourceBuyerNote(raw: string | null | undefined): BuyerNote {
   return trimmed.length === 0 ? undefined : trimmed;
 }
 
+const HTML_NAMED_ENTITIES: Readonly<Record<string, string>> = {
+  amp: '&',
+  lt: '<',
+  gt: '>',
+  quot: '"',
+  apos: "'",
+  nbsp: ' ',
+};
+
+/**
+ * Decode a note a shop returned HTML-escaped (N-26): `<br>` variants become
+ * newlines and the common named / numeric entities become their characters.
+ * Shops (WooCommerce, PrestaShop) store the buyer's text through an HTML
+ * sanitiser, so `Tom & Jerry` arrives as `Tom &amp; Jerry`; the UI renders the
+ * note verbatim as text, so the decoding has to happen once, at ingestion. No
+ * other markup is touched or stripped. Entities are decoded in a single pass,
+ * so `&amp;lt;` yields `&lt;`, not `<`.
+ */
+export function decodeHtmlNoteText(raw: string): string {
+  return raw
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/&(#x[0-9a-f]+|#\d+|[a-z]+);/gi, (match, body: string) => {
+      if (body.startsWith('#')) {
+        const code =
+          body[1] === 'x' || body[1] === 'X'
+            ? parseInt(body.slice(2), 16)
+            : parseInt(body.slice(1), 10);
+        return Number.isInteger(code) && code > 0 && code <= 0x10ffff
+          ? String.fromCodePoint(code)
+          : match;
+      }
+      return HTML_NAMED_ENTITIES[body.toLowerCase()] ?? match;
+    });
+}
+
 /** True only for a real note text; unknown and asserted-none are both `false`. */
 export function hasBuyerNoteText(value: BuyerNote): boolean {
   return typeof value === 'string' && value.trim().length > 0;

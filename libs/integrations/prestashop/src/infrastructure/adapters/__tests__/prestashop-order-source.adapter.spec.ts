@@ -951,6 +951,48 @@ describe('PrestashopOrderSourceAdapter', () => {
       expect(incoming.buyerNote).toBe('First');
     });
 
+    it('should not treat a later contact message as the checkout note (B-6)', async () => {
+      script([
+        [],
+        [{ id: '5', id_order: '42' }],
+        [
+          { id: '12', id_customer_thread: '5', id_employee: '0', message: 'Where is my parcel?', date_add: '2024-01-03 09:00:00' },
+        ],
+      ]);
+
+      const incoming = await adapter.getOrder({ externalOrderId: '42' });
+
+      expect(incoming.buyerNote).toBeNull();
+    });
+
+    it('should accept a checkout message written within the window after the order (B-6)', async () => {
+      script([
+        [],
+        [{ id: '5', id_order: '42' }],
+        [
+          { id: '12', id_customer_thread: '5', id_employee: '0', message: 'Ring twice', date_add: '2024-01-01 10:04:00' },
+        ],
+      ]);
+
+      const incoming = await adapter.getOrder({ externalOrderId: '42' });
+
+      expect(incoming.buyerNote).toBe('Ring twice');
+    });
+
+    it('should decode HTML entities and line breaks in the note (N-26)', async () => {
+      script([
+        [],
+        [{ id: '5', id_order: '42' }],
+        [
+          { id: '12', id_customer_thread: '5', id_employee: '0', message: 'Tom &amp; Jerry<br />door 5', date_add: '2024-01-01 10:00:00' },
+        ],
+      ]);
+
+      const incoming = await adapter.getOrder({ externalOrderId: '42' });
+
+      expect(incoming.buyerNote).toBe('Tom & Jerry\ndoor 5');
+    });
+
     it('should ask the shop for the order thread and only buyer messages', async () => {
       const list = script([[], [{ id: '5' }, { id: '6' }], []]);
 

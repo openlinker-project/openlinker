@@ -16,6 +16,7 @@ import type { OrderSyncStatus } from '../../../domain/entities/order-record.enti
 import { OrderRecord } from '../../../domain/entities/order-record.entity';
 import type { Order } from '../../../domain/types/order.types';
 import { OrderRecordNotFoundException } from '../../../domain/exceptions/order-record-not-found.exception';
+import { NoBuyerNoteException } from '../../../domain/exceptions/no-buyer-note.exception';
 import type { IncomingOrder } from '../../../domain/types/incoming-order.types';
 import type { IOrderFxStampService } from '../../interfaces/order-fx-stamp.service.interface';
 import type { IReportingCurrencySettingsService } from '@openlinker/core/currency';
@@ -662,6 +663,20 @@ describe('OrderRecordService', () => {
         'customer-456',
         'order-123',
         expect.any(Date)
+      );
+    });
+
+    it('should count against the stored first-seen instant when the source has no placedAt (B-7)', async () => {
+      const firstSeen = new Date('2026-01-01T00:00:00.000Z');
+      repository.findById.mockResolvedValue({ createdAt: firstSeen } as OrderRecord);
+      repository.upsertWithLineItems.mockResolvedValue({} as OrderRecord);
+
+      await service.persistOrder(createMockOrder(), 'source-connection-123', 'event-1');
+
+      expect(repository.countEarlierOrdersForCustomer).toHaveBeenCalledWith(
+        'customer-456',
+        'order-123',
+        firstSeen
       );
     });
 
@@ -2197,7 +2212,7 @@ describe('OrderRecordService', () => {
 
   describe('markBuyerNoteRead (#3538)', () => {
     it('should stamp the actor and return the re-read record', async () => {
-      const record = { internalOrderId: 'order-1' } as OrderRecord;
+      const record = { internalOrderId: 'order-1', hasBuyerNote: true } as OrderRecord;
       repository.markBuyerNoteRead.mockResolvedValue(true);
       repository.findById.mockResolvedValue(record);
 
@@ -2208,7 +2223,7 @@ describe('OrderRecordService', () => {
     });
 
     it('should be idempotent: a replay returns the existing record without error', async () => {
-      const record = { internalOrderId: 'order-1' } as OrderRecord;
+      const record = { internalOrderId: 'order-1', hasBuyerNote: true } as OrderRecord;
       repository.markBuyerNoteRead.mockResolvedValue(false);
       repository.findById.mockResolvedValue(record);
 
@@ -2222,6 +2237,18 @@ describe('OrderRecordService', () => {
       await expect(service.markBuyerNoteRead('missing', 'user-1')).rejects.toThrow(
         OrderRecordNotFoundException
       );
+    });
+
+    it('should refuse when the order carries no buyer note and write nothing (B-8)', async () => {
+      repository.findById.mockResolvedValue({
+        internalOrderId: 'order-1',
+        hasBuyerNote: false,
+      } as OrderRecord);
+
+      await expect(service.markBuyerNoteRead('order-1', 'user-1')).rejects.toThrow(
+        NoBuyerNoteException
+      );
+      expect(repository.markBuyerNoteRead).not.toHaveBeenCalled();
     });
   });
 });

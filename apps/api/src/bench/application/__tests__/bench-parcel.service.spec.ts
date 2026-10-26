@@ -273,6 +273,18 @@ describe('BenchParcelService buyer-note acknowledgement (#3538)', () => {
     expect(verification.acknowledgeBuyerNote).not.toHaveBeenCalled();
   });
 
+  it('refuses to acknowledge the note of a cancelled parcel, and writes nothing (N-41)', async () => {
+    const { service, verification } = harness({
+      work: workView({ status: 'cancelled' }),
+      buyerNoteState: 'Ring twice',
+    });
+
+    const result = await service.acknowledgeBuyerNote('work-1', 'packer-1');
+
+    expect(result).toMatchObject({ outcome: 'refused', reason: 'work-cancelled' });
+    expect(verification.acknowledgeBuyerNote).not.toHaveBeenCalled();
+  });
+
   it('still acknowledges a note whose text is not stored', async () => {
     // `OL_STORE_PII=false`: the flag survives, the text does not.
     const { service } = harness({ hasBuyerNote: true });

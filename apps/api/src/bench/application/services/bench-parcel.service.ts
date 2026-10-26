@@ -470,6 +470,15 @@ export class BenchParcelService implements IBenchParcelService {
       };
     }
 
+    if (work.status === 'cancelled') {
+      const state = await this.verification.getState(workId);
+      return {
+        outcome: 'refused',
+        reason: 'work-cancelled',
+        parcel: await this.project(work, state),
+      };
+    }
+
     // `hasBuyerNote`, not the text: under `OL_STORE_PII=false` the text is not
     // stored but a note still exists, and acknowledging it stays meaningful.
     const [order] = await this.orders.findByIds([work.orderId]);

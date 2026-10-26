@@ -383,12 +383,13 @@ export class OrderRecordResponseDto {
 
   @ApiPropertyOptional({
     type: () => [BuyerNoteAcknowledgementDto],
+    nullable: true,
     description:
       'Per-parcel acknowledgements of the buyer note at the pack bench (#3538, D12), oldest first - one entry per ' +
       'FulfillmentWork that was acknowledged. Feeds the order Activity timeline ("Buyer note read at the bench"). ' +
-      'DETAIL READ ONLY; an unacknowledged parcel is simply absent.',
+      'DETAIL READ ONLY; an unacknowledged parcel is simply absent. `null` means the acknowledgements could not be loaded (distinct from `[]`, loaded and none).',
   })
-  buyerNoteAcknowledgements?: BuyerNoteAcknowledgementDto[];
+  buyerNoteAcknowledgements?: BuyerNoteAcknowledgementDto[] | null;
 
   @ApiPropertyOptional({
     nullable: true,

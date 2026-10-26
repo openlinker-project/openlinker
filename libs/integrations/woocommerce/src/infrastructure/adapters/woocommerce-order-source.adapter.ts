@@ -23,6 +23,7 @@ import type {
 } from '@openlinker/core/orders';
 import {
   readSourceBuyerNote,
+  decodeHtmlNoteText,
   readSourceBuyerTaxId,
   PAYMENT_METHOD,
   PAYMENT_STATUS,
@@ -206,7 +207,7 @@ export class WooCommerceOrderSourceAdapter implements OrderSourcePort {
       // a payload without the key is unknown, never "no note".
       ...(order.customer_note === undefined
         ? {}
-        : { buyerNote: readSourceBuyerNote(order.customer_note) ?? null }),
+        : { buyerNote: readSourceBuyerNote(decodeHtmlNoteText(order.customer_note)) ?? null }),
       customerExternalId: order.customer_id > 0 ? String(order.customer_id) : undefined,
       customerEmail: order.billing.email || undefined,
       items: order.line_items.map(mapLineItem),

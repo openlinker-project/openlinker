@@ -2810,7 +2810,7 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
   ): Promise<boolean> {
     const result = await this.repository.update(
       { internalOrderId, buyerNoteReadAt: IsNull() },
-      { buyerNoteReadAt: readAt, buyerNoteReadByUserId: readByUserId, updatedAt: new Date() }
+      { buyerNoteReadAt: readAt, buyerNoteReadByUserId: readByUserId }
     );
     return (result.affected ?? 0) > 0;
   }
@@ -2829,7 +2829,16 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
       .createQueryBuilder('rec')
       .where('rec.customerId = :customerId', { customerId })
       .andWhere('rec.internalOrderId != :excludeInternalOrderId', { excludeInternalOrderId })
-      .andWhere('COALESCE(rec."placedAt", rec."createdAt") < :before', { before })
+      // N-31: a cancelled order is not an earlier purchase; equal instants
+      // tie-break on the internal id so exactly one of two same-instant orders
+      // counts the other.
+      .andWhere('rec."cancelledAt" IS NULL')
+      .andWhere(
+        `(COALESCE(rec."placedAt", rec."createdAt") < :before
+          OR (COALESCE(rec."placedAt", rec."createdAt") = :before
+              AND rec."internalOrderId" < :excludeInternalOrderId))`,
+        { before, excludeInternalOrderId }
+      )
       .getCount();
   }
 
@@ -3271,8 +3280,31 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
       // `hasBuyerNote` is always written. `buyerNoteReadAt` /
       // `buyerNoteReadByUserId` are deliberately NOT here: sole writer
       // `markBuyerNoteRead`, so a re-ingestion cannot un-read a note.
-      add('buyerNote', entity.buyerNote ?? null);
-      add('hasBuyerNote', entity.hasBuyerNote ?? false);
+      //
+      // B-5: an UNKNOWN incoming note (column NULL and no note flag - the source
+      // could not read the field) must keep what is stored, otherwise a poll
+      // that failed to read the note wipes a stored note, its flag and its
+      // filter membership. An asserted-none ('') or a text still overwrites.
+      const incomingNoteUnknown = `(EXCLUDED."buyerNote" IS NULL AND EXCLUDED."hasBuyerNote" = false)`;
+      add('buyerNote', entity.buyerNote ?? null, {
+        update: `"buyerNote" = CASE WHEN ${incomingNoteUnknown}
+           THEN "order_records"."buyerNote" ELSE EXCLUDED."buyerNote" END`,
+      });
+      add('hasBuyerNote', entity.hasBuyerNote ?? false, {
+        update: `"hasBuyerNote" = CASE WHEN ${incomingNoteUnknown}
+           THEN "order_records"."hasBuyerNote" ELSE EXCLUDED."hasBuyerNote" END`,
+      });
+      // N-22: a DIFFERENT note text is a note the operator has not read. The
+      // read marker is still not part of the write set (`markBuyerNoteRead` is
+      // its sole setter); only this reset clause touches it, and only when a
+      // real text replaces a different stored one. Bench acknowledgements live
+      // on the fulfilment work and are untouched.
+      for (const column of ['buyerNoteReadAt', 'buyerNoteReadByUserId']) {
+        updateAssignments.push(`"${column}" = CASE
+           WHEN EXCLUDED."buyerNote" IS NOT NULL AND EXCLUDED."buyerNote" <> ''
+             AND EXCLUDED."buyerNote" IS DISTINCT FROM "order_records"."buyerNote"
+             THEN NULL ELSE "order_records"."${column}" END`);
+      }
       add('shippingCountry', entity.shippingCountry ?? null);
       add('billingCountry', entity.billingCountry ?? null);
       add('buyerOrderCount', entity.buyerOrderCount ?? null);

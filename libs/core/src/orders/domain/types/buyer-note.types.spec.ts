@@ -2,6 +2,7 @@ import {
   buildBuyerNotePreview,
   classifyBuyerNoteForList,
   decodeBuyerNoteColumn,
+  decodeHtmlNoteText,
   encodeBuyerNoteColumn,
   hasBuyerNoteText,
   normaliseCountryColumn,
@@ -86,6 +87,18 @@ describe('buyer note rules (#3538)', () => {
       expect(buildBuyerNotePreview(undefined)).toBeNull();
       expect(buildBuyerNotePreview(null)).toBeNull();
       expect(buildBuyerNotePreview('  \n ')).toBeNull();
+    });
+  });
+
+  describe('decodeHtmlNoteText (N-26)', () => {
+    it.each([
+      ['Tom &amp; Jerry', 'Tom & Jerry'],
+      ['a<br>b<BR />c', 'a\nb\nc'],
+      ['&quot;hi&quot; &#39;x&#39; &#x41;', '"hi" \'x\' A'],
+      ['&amp;lt;', '&lt;'],
+      ['&unknown; &#0;', '&unknown; &#0;'],
+    ])('should decode %p to %p', (raw, expected) => {
+      expect(decodeHtmlNoteText(raw)).toBe(expected);
     });
   });
 });

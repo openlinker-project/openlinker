@@ -592,6 +592,12 @@ export type BenchClaimRefusal = (typeof BenchClaimRefusalValues)[number];
 export const BenchBuyerNoteAcknowledgementRefusalValues = [
   'not-claimable-by-viewer',
   'no-buyer-note',
+  /**
+   * The parcel's work was cancelled (N-41): nobody packs it, so signing off its
+   * note would record a read for a box that will never ship. A CLOSED work is
+   * still allowed - a packer may acknowledge after finishing.
+   */
+  'work-cancelled',
 ] as const;
 
 export type BenchBuyerNoteAcknowledgementRefusal =

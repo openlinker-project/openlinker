@@ -239,7 +239,7 @@ export class BenchParcelController {
       'Per parcel: on a split order the note shows on every parcel and each is acknowledged separately. ' +
       'Fill-once and idempotent - a repeat answers `already-acknowledged` and keeps the first packer. ' +
       'It gates nothing: scanning never waits on it, and it is not a parcel close (ADR-071). Refused ' +
-      '`no-buyer-note` when the order has none and `not-claimable-by-viewer` under the same ADR-074 lock a scan enforces.',
+      '`work-cancelled` on a cancelled parcel (a closed one is still allowed), `no-buyer-note` when the order has none and `not-claimable-by-viewer` under the same ADR-074 lock a scan enforces.',
   })
   @ApiResponse({ status: 201, type: BenchBuyerNoteAcknowledgementResultResponseDto })
   @ApiResponse({ status: 401, description: 'An acknowledgement must name the packer' })

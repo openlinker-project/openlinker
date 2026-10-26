@@ -20,6 +20,7 @@ import {
   ORDER_TEST_FIXTURE_SERVICE_TOKEN,
   OrderRecord,
   OrderRecordNotFoundException,
+  NoBuyerNoteException,
   OrderDestinationNotFoundException,
   OrderDestinationNotRetryableException,
   MissingSourceExternalIdException,
@@ -1870,6 +1871,40 @@ describe('OrdersController', () => {
       await expect(controller.markBuyerNoteRead('missing', actor)).rejects.toBeInstanceOf(
         NotFoundException
       );
+    });
+
+    it('returns the marker the service set on the mark-read response (B-9)', async () => {
+      orderRecordService.markBuyerNoteRead.mockResolvedValue(
+        orderRecordWith({
+          hasBuyerNote: true,
+          buyerNoteReadAt: new Date('2026-10-02T08:00:00Z'),
+          buyerNoteReadByUserId: 'user-op-001',
+        })
+      );
+
+      const result = await controller.markBuyerNoteRead('ol_order_001', actor);
+
+      expect(result.buyerNoteReadAt).toBe('2026-10-02T08:00:00.000Z');
+      expect(result.buyerNoteReadByUserId).toBe('user-op-001');
+    });
+
+    it('answers 409 NO_BUYER_NOTE when the order has no note to mark read (B-8)', async () => {
+      orderRecordService.markBuyerNoteRead.mockRejectedValue(
+        new NoBuyerNoteException('ol_order_001')
+      );
+
+      await expect(controller.markBuyerNoteRead('ol_order_001', actor)).rejects.toMatchObject({
+        response: { error: 'NO_BUYER_NOTE' },
+      });
+    });
+
+    it('still serves the order detail when the acknowledgements cannot load (B-10)', async () => {
+      repository.findById.mockResolvedValue(orderRecordWith({ hasBuyerNote: true }));
+      fulfillmentWorkQuery.listBuyerNoteAcknowledgements.mockRejectedValue(new Error('db down'));
+
+      const result = await controller.getOrder('ol_order_001');
+
+      expect(result.buyerNoteAcknowledgements).toBeNull();
     });
 
     it('passes ?hasBuyerNote through to the repository filters', async () => {
