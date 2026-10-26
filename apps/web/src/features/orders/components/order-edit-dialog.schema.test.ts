@@ -88,6 +88,17 @@ describe('detectChangedSections', () => {
     expect([...changed].sort()).toEqual(['address', 'delivery', 'discount', 'lines']);
   });
 
+  it('should plan a delivery request for a method name change alone (B-34)', () => {
+    const next = values({ methodName: 'InPost Express' });
+    expect([...detectChangedSections(next, initial)]).toEqual(['delivery']);
+    const plan = planOrderEdits(next, initial, { dryRun: true });
+    expect(plan).toHaveLength(1);
+    expect(plan[0].edit).toMatchObject({
+      kind: 'delivery-method',
+      body: { methodId: 'inpost_kurier', methodName: 'InPost Express' },
+    });
+  });
+
   it('should treat a blank discount as untouched, and the same amount as unchanged', () => {
     const withDiscount = { ...initial, discountValue: '15.00' };
     expect(detectChangedSections({ ...withDiscount, discountValue: '' }, withDiscount).size).toBe(0);

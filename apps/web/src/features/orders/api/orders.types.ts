@@ -517,6 +517,8 @@ export interface OrderRecord {
    * every list row. Optional for graceful degradation on older payloads.
    */
   editedInOpenLinker?: boolean;
+  /** An edit refers to a line the channel no longer reports; see `edits.unmatchedLineEdits`. */
+  editsNeedAttention?: boolean;
   /**
    * The order beside the channel's own record of it (#3542): every edited figure
    * given twice, plus the edit history. DETAIL read only; `null` on an unedited

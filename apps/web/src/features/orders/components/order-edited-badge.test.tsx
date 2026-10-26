@@ -52,6 +52,14 @@ const edits: OrderEditsView = {
   ],
 };
 
+describe('OrderEditedBadge needs attention', () => {
+  it('should show the attention badge when an edit no longer applies', () => {
+    render(<OrderEditedBadge edited needsAttention />);
+    expect(screen.getByTestId('order-edit-attention-badge')).toHaveTextContent('needs attention');
+    expect(screen.queryByTestId('order-edit-saved-badge')).not.toBeInTheDocument();
+  });
+});
+
 describe('OrderEditedBadge (#3544)', () => {
   it('should mark an edited order and say nothing for any other value', () => {
     const { rerender } = render(<OrderEditedBadge edited />);

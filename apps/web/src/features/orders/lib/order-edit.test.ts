@@ -81,6 +81,20 @@ describe('lockedSectionsFor', () => {
     expect([...lockedSectionsFor('SALES_DOCUMENT_ISSUED')]).toEqual(['lines']);
   });
 
+  it('should lock only the refused section when a code does not normally lock it (B-35)', () => {
+    expect([...lockedSectionsFor('LABEL_ALREADY_BOUGHT', 'discount')]).toEqual(['discount']);
+    expect([...lockedSectionsFor('LABEL_ALREADY_BOUGHT', 'address')].sort()).toEqual([
+      'address',
+      'delivery',
+    ]);
+  });
+
+  it('should leave the discount editable on a shipped order', () => {
+    expect(lockedSectionsFor('ORDER_ALREADY_SHIPPED').has('discount')).toBe(false);
+    expect(lockedSectionsFor('DISCOUNT_BELOW_REFUNDED').has('discount')).toBe(true);
+    expect([...lockedSectionsFor('LINE_PRICE_NOT_RESOLVABLE')]).toEqual(['lines']);
+  });
+
   it('should lock every section for a packed order and none for a typing problem', () => {
     expect(lockedSectionsFor('ORDER_PACKED').size).toBe(4);
     expect(lockedSectionsFor('QUANTITY_ONLY_DECREASES').size).toBe(0);

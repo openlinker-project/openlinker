@@ -38,6 +38,8 @@ export interface OrderEditActionProps {
   packed: boolean;
   /** A holder already accepted or started work on this order (the soft gate). */
   acceptedWork: boolean;
+  /** The parcel is on its way: only the discount can still be edited. */
+  shipped?: boolean;
   /** The order is already in a terminal state, so no action is offered. */
   terminal: boolean;
   /** A change (an open cancel request) is already waiting for the channel. */
@@ -50,6 +52,7 @@ export function OrderEditAction({
   terminal,
   amending,
   packed,
+  shipped = false,
   ...dialogProps
 }: OrderEditActionProps): ReactElement | null {
   const demoMode = useDemoMode();
@@ -78,7 +81,7 @@ export function OrderEditAction({
       <OrderEditDialog
         open={open}
         onOpenChange={setOpen}
-        predictedRefusal={packed ? 'ORDER_PACKED' : null}
+        predictedRefusal={packed ? 'ORDER_PACKED' : shipped ? 'ORDER_ALREADY_SHIPPED' : null}
         {...dialogProps}
       />
     </>

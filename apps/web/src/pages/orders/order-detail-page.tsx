@@ -523,6 +523,7 @@ export function OrderDetailPage(): ReactElement {
           snapshot={snapshot}
           edits={order.edits}
           packed={order.packedAt !== null && order.packedAt !== undefined}
+          shipped={order.fulfillmentState === 'dispatched'}
           acceptedWork={hasAcceptedFulfilmentWork(fulfilmentTasksQuery.data?.works ?? [])}
           terminal={isOrderCancelTerminal({
             snapshotStatus: snapshot.status,
@@ -595,6 +596,7 @@ export function OrderDetailPage(): ReactElement {
         edits={order.edits}
         sourceName={cancelSourceName}
         sessionDiscount={sessionDiscount}
+        onDiscountResent={handleOrderEdited}
         onConfirmed={() => {
           void queryClient.invalidateQueries({ queryKey: invoicingQueryKeys.all });
         }}

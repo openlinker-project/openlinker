@@ -18,6 +18,9 @@
  * @module apps/web/src/features/orders/components
  */
 import { useState, type ReactElement } from 'react';
+import { useEditOrderMutation, type EditOrderOutput } from '../hooks/use-edit-order-mutation';
+import { readServerReason } from '../lib/order-cancel';
+import { formatDateTime } from '../../../shared/format/format-date';
 
 import { Alert } from '../../../shared/ui/alert';
 import { Button } from '../../../shared/ui/button';
@@ -43,6 +46,22 @@ export interface OrderEditedNoticeProps {
   sessionDiscount?: OrderDiscountResult | null;
   /** A refund or correction was confirmed; lets the page refresh invoice-side queries. */
   onConfirmed?: (result: ConfirmOrderChangeResult) => void;
+  /** The discount was re-sent (retrying a refund that could not be opened). */
+  onDiscountResent?: (outputs: readonly EditOrderOutput[]) => void;
+}
+
+/** An edits view whose only content is a removed (zero) discount: nothing is left to say. */
+function isOnlyRemovedDiscount(edits: OrderEditsView): boolean {
+  const discount = edits.discount;
+  const zero = discount === null || Number(discount.amount) === 0;
+  return (
+    zero &&
+    edits.address === null &&
+    edits.lines.length === 0 &&
+    edits.deliveryMethod === null &&
+    edits.discountProposals.length === 0 &&
+    (edits.unmatchedLineEdits ?? []).length === 0
+  );
 }
 
 export function OrderEditedNotice({
@@ -51,6 +70,7 @@ export function OrderEditedNotice({
   sourceName,
   sessionDiscount = null,
   onConfirmed,
+  onDiscountResent,
 }: OrderEditedNoticeProps): ReactElement | null {
   const demoMode = useDemoMode();
   const write = useWriteAccess('orders:write', demoMode);
@@ -58,8 +78,9 @@ export function OrderEditedNotice({
   const canAct = write.canWrite && isAdmin;
   const [refundOpen, setRefundOpen] = useState(false);
   const [correctionOpen, setCorrectionOpen] = useState(false);
+  const resend = useEditOrderMutation();
 
-  if (!edits) return null;
+  if (!edits || isOnlyRemovedDiscount(edits)) return null;
 
   const channel = sourceName ?? 'the sales channel';
   const refund = edits.discountProposals.find((p) => p.kind === 'order.discount_refund') ?? null;
@@ -68,6 +89,8 @@ export function OrderEditedNotice({
   const unavailable = correction === null ? (sessionDiscount?.correctionUnavailableReason ?? null) : null;
   const totals = edits.totals;
   const lowered = edits.lines.length;
+  const unmatched = edits.unmatchedLineEdits ?? [];
+  const sessionAmount = sessionDiscount?.discount?.amount ?? null;
 
   return (
     <>
@@ -135,11 +158,58 @@ export function OrderEditedNotice({
         ) : null}
         {sessionDiscount?.refundIntentFailed ? (
           <p data-testid="order-edit-refund-intent-failed">
-            The discount was saved, but OpenLinker could not open the refund for it. Refund the
-            difference on {channel} and record it from Confirm refund.
+            The discount was saved, but OpenLinker could not open the refund for it. Send the same
+            discount again to open it, then refund the difference on {channel}.
+            {canAct && sessionAmount !== null ? (
+              <>
+                {' '}
+                <Button
+                  type="button"
+                  tone="secondary"
+                  className="button--sm"
+                  disabled={resend.isPending}
+                  data-testid="order-edit-resend-discount"
+                  onClick={() => {
+                    resend.mutate(
+                      {
+                        internalOrderId,
+                        edit: { kind: 'discount', body: { amount: sessionAmount } },
+                      },
+                      { onSuccess: (output) => onDiscountResent?.([output]) },
+                    );
+                  }}
+                >
+                  {resend.isPending ? 'Sending…' : 'Send the discount again'}
+                </Button>
+              </>
+            ) : null}
+            {resend.isError ? (
+              <span role="alert" data-testid="order-edit-resend-error">
+                {' '}
+                {readServerReason(resend.error, 'Could not send the discount again.')}
+              </span>
+            ) : null}
           </p>
         ) : null}
       </Alert>
+      {unmatched.length > 0 ? (
+        <Alert
+          tone="warning"
+          title="Edited in OpenLinker - needs attention"
+          data-testid="order-edit-unmatched"
+        >
+          <p>
+            {`${channel} changed the lines of this order, so ${unmatched.length === 1 ? 'an edit' : 'these edits'} made here no longer apply. Check the items before you ship.`}
+          </p>
+          <ul>
+            {unmatched.map((entry) => (
+              <li key={`${entry.orderLineId}:${entry.editedAt}`} data-testid="order-edit-unmatched-line">
+                {`Line ${entry.orderLineId}: lowered to ${entry.editedQuantity} on ${formatDateTime(entry.editedAt)}`}
+              </li>
+            ))}
+          </ul>
+        </Alert>
+      ) : null}
 
       {refund ? (
         <OrderDiscountRefundDialog

@@ -233,7 +233,7 @@ export const CONFIRM_CORRECTION_ERROR_TITLES: Partial<Record<OrderCancelErrorCod
   CORRECTION_IN_PROGRESS: 'The correction is already being issued',
   CORRECTION_NEEDS_RECONCILIATION: 'The correction needs checking at the provider',
   CORRECTION_FAILED: 'The invoicing provider rejected the correction',
-  CORRECTION_SUPERSEDED: 'The invoice was already corrected',
+  CORRECTION_SUPERSEDED: 'The invoice was already corrected, or the order was cancelled',
 };
 
 /** The figures a `refund_ceiling_exceeded` 409 carries. */

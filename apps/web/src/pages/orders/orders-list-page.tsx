@@ -802,7 +802,11 @@ export function OrdersListPage(): ReactElement {
                   above; shared verbatim with the mobile card. */}
               <OrderDestinationRoutingBadge reason={order.destinationRoutingBlockReason} compact />
               {/* #3544 - an operator edited this order here; the channel keeps the original. */}
-              <OrderEditedBadge edited={order.editedInOpenLinker} compact />
+              <OrderEditedBadge
+                edited={order.editedInOpenLinker}
+                needsAttention={order.editsNeedAttention}
+                compact
+              />
               {/* #2356 — an inert state is an EXCEPTION, and rule 2 of the style
                   guide's order-row signal placement puts exceptions in the
                   Status group beside failure reasons. It is another badge
@@ -1740,7 +1744,11 @@ export function OrdersListPage(): ReactElement {
                       reason={order.destinationRoutingBlockReason}
                       compact
                     />
-                    <OrderEditedBadge edited={order.editedInOpenLinker} compact />
+                    <OrderEditedBadge
+                      edited={order.editedInOpenLinker}
+                      needsAttention={order.editsNeedAttention}
+                      compact
+                    />
                     <OmsAttentionBadges entries={order.omsAttention ?? []} compact />
                     <StatusBadge tone={fulfillment.tone} withDot compact>
                       {fulfillment.label}
