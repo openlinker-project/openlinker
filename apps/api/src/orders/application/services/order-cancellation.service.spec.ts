@@ -7,6 +7,7 @@ import { OPERATOR_ORDER_ORIGIN_ID, orderStockRestoreDedupeKey } from '@openlinke
 import { OrderCancellationService } from './order-cancellation.service';
 import {
   CancelCorrectionFailedError,
+  OrderCancellationInvalidReasonError,
   OrderCancellationNoteRequiredError,
   OrderCancellationNotFoundError,
   OrderCancellationRefusedError,
@@ -30,8 +31,8 @@ function order(overrides: Record<string, unknown> = {}): unknown {
   };
 }
 
-function shipment(id: string, status: string): unknown {
-  return { id, status };
+function shipment(id: string, status: string, shippingMethod = 'inpost'): unknown {
+  return { id, status, shippingMethod };
 }
 
 function change(id: string, overrides: Record<string, unknown> = {}): unknown {
@@ -58,6 +59,7 @@ function invoice(overrides: Record<string, unknown> = {}): unknown {
     documentType: 'invoice',
     clearanceReference: null,
     isLeaseLive: () => false,
+    createdAt: new Date('2026-09-01T00:00:00.000Z'),
     issuedLineSnapshot: {
       currency: 'PLN',
       buyer: { name: 'B', taxId: null, address: {}, type: 'consumer' },
@@ -84,7 +86,7 @@ describe('OrderCancellationService (#3540)', () => {
   let shipmentQuery: Mocked<{ getOutboundByOrderId: unknown }>;
   let shipmentCancellation: Mocked<{ cancel: unknown }>;
   let invoices: Mocked<{
-    getLatestInvoiceForOrder: unknown;
+    listInvoicesForOrders: unknown;
     getInvoiceById: unknown;
     issueCorrection: unknown;
   }>;
@@ -92,6 +94,7 @@ describe('OrderCancellationService (#3540)', () => {
   let fulfillment: Mocked<{ summarizeForOrder: unknown; cancelAllForOrder: unknown }>;
   let jobQueue: Mocked<{ enqueue: unknown }>;
   let lock: Mocked<{ acquire: unknown; release: unknown }>;
+  let effects: Mocked<{ applyEffects: unknown }>;
   let service: OrderCancellationService;
 
   const input = {
@@ -131,7 +134,7 @@ describe('OrderCancellationService (#3540)', () => {
     shipmentQuery = { getOutboundByOrderId: jest.fn().mockResolvedValue([]) };
     shipmentCancellation = { cancel: jest.fn().mockResolvedValue({}) };
     invoices = {
-      getLatestInvoiceForOrder: jest.fn().mockResolvedValue(null),
+      listInvoicesForOrders: jest.fn().mockResolvedValue([]),
       getInvoiceById: jest.fn(),
       issueCorrection: jest.fn(),
     };
@@ -143,6 +146,14 @@ describe('OrderCancellationService (#3540)', () => {
     jobQueue = { enqueue: jest.fn().mockResolvedValue('job-1') };
     lock = { acquire: jest.fn().mockResolvedValue('token'), release: jest.fn().mockResolvedValue(true) };
 
+    effects = {
+      applyEffects: jest.fn().mockResolvedValue({
+        cancelledWorkIds: [],
+        releasedHoldIds: [],
+        correctionProposal: null,
+        correctionUnavailableReason: null,
+      }),
+    };
     service = new OrderCancellationService(
       orderRecords as never,
       changes as never,
@@ -153,7 +164,8 @@ describe('OrderCancellationService (#3540)', () => {
       fiscal as never,
       fulfillment as never,
       jobQueue as never,
-      lock as never
+      lock as never,
+      effects as never
     );
   });
 
@@ -168,6 +180,13 @@ describe('OrderCancellationService (#3540)', () => {
       await expect(service.cancelOrder({ ...input, reason: 'other', note: '  ' })).rejects.toBeInstanceOf(
         OrderCancellationNoteRequiredError
       );
+      expect(lock.acquire).not.toHaveBeenCalled();
+    });
+
+    it('should answer a 400-class invalid-reason error for an unknown reason (B-41)', async () => {
+      await expect(
+        service.cancelOrder({ ...input, reason: 'whim' as never })
+      ).rejects.toBeInstanceOf(OrderCancellationInvalidReasonError);
       expect(lock.acquire).not.toHaveBeenCalled();
     });
 
@@ -190,26 +209,57 @@ describe('OrderCancellationService (#3540)', () => {
       expect(await refusal(service.cancelOrder(input))).toBe('ORDER_ALREADY_SHIPPED');
     });
 
-    it('should NOT refuse as shipped when the dispatched state comes from a label it can try to void', async () => {
-      orderRecords.getOrderRecord.mockResolvedValue(order({ fulfillmentState: 'dispatched' }));
+    it('should refuse as shipped when an OL label was already dispatched to the marketplace (B-20)', async () => {
       shipmentQuery.getOutboundByOrderId.mockResolvedValue([shipment('s1', 'dispatched')]);
 
-      const result = await service.cancelOrder(input);
+      expect(await refusal(service.cancelOrder(input))).toBe('ORDER_ALREADY_SHIPPED');
+      expect(shipmentCancellation.cancel).not.toHaveBeenCalled();
+      expect(changes.openOrReuse).not.toHaveBeenCalled();
+    });
 
-      expect(result.status).toBe('cancelled');
-      expect(shipmentCancellation.cancel).toHaveBeenCalledWith('s1');
+    it.each(['generated', 'dispatched', 'in-transit'])(
+      'should refuse as shipped for a marketplace-observed (omp) shipment in %s, never try a void (B-20)',
+      async (status) => {
+        shipmentQuery.getOutboundByOrderId.mockResolvedValue([shipment('s1', status, 'omp')]);
+
+        expect(await refusal(service.cancelOrder(input))).toBe('ORDER_ALREADY_SHIPPED');
+        expect(shipmentCancellation.cancel).not.toHaveBeenCalled();
+      }
+    );
+
+    it('should ignore a cancelled or failed observed shipment (B-20)', async () => {
+      shipmentQuery.getOutboundByOrderId.mockResolvedValue([
+        shipment('s1', 'cancelled', 'omp'),
+        shipment('s2', 'failed', 'omp'),
+      ]);
+
+      expect((await service.cancelOrder(input)).status).toBe('cancelled');
     });
 
     it('should refuse when a fiscal receipt blocks further registration', async () => {
       fiscal.getByOrderId.mockResolvedValue([{ blocksFurtherRegistration: true }]);
 
-      expect(await refusal(service.cancelOrder(input))).toBe('ORDER_HAS_FISCAL_RECEIPT');
+      const error = await service.cancelOrder(input).catch((e: unknown) => e);
+      expect((error as OrderCancellationRefusedError).code).toBe('ORDER_HAS_FISCAL_RECEIPT');
+      expect((error as Error).message).toContain('returned at the fiscal printer');
+      expect((error as Error).message).toContain('cannot be cancelled in OpenLinker');
     });
 
     it('should refuse an invoice that blocks but is not issued yet', async () => {
-      invoices.getLatestInvoiceForOrder.mockResolvedValue(invoice({ status: 'pending' }));
+      invoices.listInvoicesForOrders.mockResolvedValue([invoice({ status: 'pending' })]);
 
       expect(await refusal(service.cancelOrder(input))).toBe('INVOICE_NOT_SETTLED');
+    });
+
+    it('should not let a newer non-blocking failed record mask the issued document (B-19)', async () => {
+      invoices.listInvoicesForOrders.mockResolvedValue([
+        invoice({ id: 'inv-failed', status: 'failed', blocksIssuanceElsewhere: false }),
+        invoice(),
+      ]);
+
+      const result = await service.cancelOrder(input);
+
+      expect(result.status).toBe('cancelled');
     });
 
     it('should refuse a cancel already in flight', async () => {
@@ -233,7 +283,12 @@ describe('OrderCancellationService (#3540)', () => {
       fulfillment.summarizeForOrder.mockResolvedValue([
         { workId: 'w1', status: 'in_progress', requestStatus: 'accepted' },
       ]);
-      fulfillment.cancelAllForOrder.mockResolvedValue({ cancelledWorkIds: ['w1'], skippedWorkIds: [] });
+      effects.applyEffects.mockResolvedValue({
+        cancelledWorkIds: ['w1'],
+        releasedHoldIds: [],
+        correctionProposal: null,
+        correctionUnavailableReason: null,
+      });
 
       const result = await service.cancelOrder({ ...input, acknowledgeAcceptedWork: true });
 
@@ -291,7 +346,7 @@ describe('OrderCancellationService (#3540)', () => {
 
       expect((error as OrderCancellationRefusedError).code).toBe('LABEL_NOT_VOIDABLE');
       expect((error as Error).message).toContain('carrier does not support void');
-      expect(changes.abandon).toHaveBeenCalledWith('change-1');
+      expect(changes.abandon).toHaveBeenCalledWith('change-1', 'label-not-voidable');
       expect(relay.relay).not.toHaveBeenCalled();
       expect(orderRecords.markCancelled).not.toHaveBeenCalled();
     });
@@ -326,6 +381,30 @@ describe('OrderCancellationService (#3540)', () => {
         [SOURCE, 'source', 'notified'],
         [SHOP, 'destination', 'notified'],
       ]);
+    });
+
+    it('should leave the request open and report pending when the source adapter THREW (B-16)', async () => {
+      relay.relay.mockResolvedValueOnce({
+        targets: [{ connectionId: SOURCE, outcome: 'rejected', detail: 'timeout', adapterThrew: true }],
+      });
+
+      const result = await service.cancelOrder(input);
+
+      expect(result.status).toBe('pending');
+      expect(result.participants[0].effect).toBe('unreachable');
+      expect(changes.decline).not.toHaveBeenCalled();
+      expect(changes.confirm).not.toHaveBeenCalled();
+      expect(orderRecords.markCancelled).not.toHaveBeenCalled();
+      expect(relay.relay).toHaveBeenCalledTimes(1);
+    });
+
+    it('should still treat an adapter that RETURNED rejected as a refusal (B-16)', async () => {
+      relay.relay.mockResolvedValueOnce({
+        targets: [{ connectionId: SOURCE, outcome: 'rejected', detail: 'order already sent' }],
+      });
+
+      expect(await refusal(service.cancelOrder(input))).toBe('CHANNEL_REFUSED_CANCEL');
+      expect(changes.decline).toHaveBeenCalledWith('change-1', 'order already sent');
     });
 
     it('should apply when the source has no writeback capability', async () => {
@@ -406,10 +485,21 @@ describe('OrderCancellationService (#3540)', () => {
 
   describe('apply', () => {
     it('should confirm, claim, mark cancelled, restock under the ingestion dedupe key and cancel work', async () => {
-      fulfillment.cancelAllForOrder.mockResolvedValue({ cancelledWorkIds: ['w1'], skippedWorkIds: [] });
+      effects.applyEffects.mockResolvedValue({
+        cancelledWorkIds: ['w1'],
+        releasedHoldIds: ['hold-1'],
+        correctionProposal: null,
+        correctionUnavailableReason: null,
+      });
 
       const result = await service.cancelOrder(input);
 
+      expect(effects.applyEffects).toHaveBeenCalledWith({
+        internalOrderId: ORDER_ID,
+        cancelledAt: expect.any(Date),
+        reason: 'fraud',
+        actorUserId: ACTOR,
+      });
       expect(changes.confirm).toHaveBeenCalledWith('change-1', ACTOR);
       expect(changes.claimApplied).toHaveBeenCalledWith('change-1');
       expect(orderRecords.markCancelled).toHaveBeenCalledWith(ORDER_ID, expect.any(Date));
@@ -446,100 +536,40 @@ describe('OrderCancellationService (#3540)', () => {
 
       expect(orderRecords.markCancelled).toHaveBeenCalled();
       expect(jobQueue.enqueue).toHaveBeenCalled();
-      expect(fulfillment.cancelAllForOrder).toHaveBeenCalled();
+      expect(effects.applyEffects).toHaveBeenCalled();
       expect(result.status).toBe('cancelled');
     });
   });
 
   describe('invoiced order', () => {
-    it('should cancel and return a full credit proposal for an issued invoice', async () => {
-      invoices.getLatestInvoiceForOrder.mockResolvedValue(invoice());
-      changes.openOrReuse
-        .mockResolvedValueOnce({ change: change('change-1'), opened: true, expiredStale: false })
-        .mockResolvedValueOnce({
-          change: change('change-2', { kind: 'order.cancel_correction' }),
-          opened: true,
-          expiredStale: false,
-        });
-
-      const result = await service.cancelOrder(input);
-
-      expect(result.status).toBe('cancelled');
-      expect(result.correctionProposal).toEqual({
+    it('should return the credit proposal the shared cleanup opened, and issue nothing itself', async () => {
+      const proposal = {
         changeId: 'change-2',
         invoiceRecordId: 'inv-1',
         documentNumber: 'FV/1',
         currency: 'PLN',
-        lines: [
-          { originalLineNumber: 1, name: 'Shirt', previousQuantity: 2, newQuantity: 0 },
-          { originalLineNumber: 2, name: 'Shipping', previousQuantity: 1, newQuantity: 0 },
-        ],
+        lines: [{ originalLineNumber: 1, name: 'Shirt', previousQuantity: 2, newQuantity: 0 }],
+      };
+      effects.applyEffects.mockResolvedValue({
+        cancelledWorkIds: [],
+        releasedHoldIds: [],
+        correctionProposal: proposal,
+        correctionUnavailableReason: null,
       });
-      expect(changes.openOrReuse).toHaveBeenNthCalledWith(
-        2,
-        expect.objectContaining({
-          kind: 'order.cancel_correction',
-          targetRef: `correction:cancel:${ORDER_ID}:inv-1`,
-        })
-      );
-      // The credit is a PROPOSAL: nothing was issued.
+
+      const result = await service.cancelOrder(input);
+
+      expect(result.correctionProposal).toEqual(proposal);
       expect(invoices.issueCorrection).not.toHaveBeenCalled();
     });
 
-    it('should keep original line numbers when dropping a line that was already credited', async () => {
-      invoices.getLatestInvoiceForOrder.mockResolvedValue(
-        invoice({
-          issuedLineSnapshot: {
-            currency: 'PLN',
-            buyer: {},
-            lines: [
-              { name: 'Gone', quantity: 0 },
-              { name: 'Shirt', quantity: 1 },
-            ],
-          },
-        })
-      );
-      changes.openOrReuse
-        .mockResolvedValueOnce({ change: change('change-1'), opened: true, expiredStale: false })
-        .mockResolvedValueOnce({ change: change('change-2'), opened: true, expiredStale: false });
-
-      const result = await service.cancelOrder(input);
-
-      expect(result.correctionProposal?.lines).toEqual([
-        { originalLineNumber: 2, name: 'Shirt', previousQuantity: 1, newQuantity: 0 },
-      ]);
-    });
-
-    it('should still cancel and name why when the invoice carries no line snapshot', async () => {
-      invoices.getLatestInvoiceForOrder.mockResolvedValue(invoice({ issuedLineSnapshot: null }));
-
-      const result = await service.cancelOrder(input);
-
-      expect(result.status).toBe('cancelled');
-      expect(result.correctionProposal).toBeNull();
-      expect(result.correctionUnavailableReason).toBe('no-line-snapshot');
-    });
-
-    it('should still cancel and report proposal-failed when opening the proposal throws', async () => {
-      invoices.getLatestInvoiceForOrder.mockResolvedValue(invoice());
-      changes.openOrReuse
-        .mockResolvedValueOnce({ change: change('change-1'), opened: true, expiredStale: false })
-        .mockRejectedValueOnce(new Error('db'));
-
-      const result = await service.cancelOrder(input);
-
-      expect(result.status).toBe('cancelled');
-      expect(result.correctionUnavailableReason).toBe('proposal-failed');
-    });
-
-    it('should not propose a credit when the cancel stays pending', async () => {
-      invoices.getLatestInvoiceForOrder.mockResolvedValue(invoice());
+    it('should not run any cleanup when the cancel stays pending', async () => {
       relay.relay.mockRejectedValueOnce(new Error('boom'));
 
       const result = await service.cancelOrder(input);
 
       expect(result.correctionProposal).toBeNull();
-      expect(changes.openOrReuse).toHaveBeenCalledTimes(1);
+      expect(effects.applyEffects).not.toHaveBeenCalled();
     });
   });
 
@@ -620,6 +650,24 @@ describe('OrderCancellationService (#3540)', () => {
       invoices.getInvoiceById.mockResolvedValue(invoice({ orderId: 'ol_order_other' }));
 
       expect(await refusal(service.confirmChange(confirmInput))).toBe('CHANGE_NOT_OPEN');
+      expect(invoices.issueCorrection).not.toHaveBeenCalled();
+    });
+
+    it('should refuse and abandon when the invoice was corrected after the proposal (B-21)', async () => {
+      invoices.listInvoicesForOrders.mockResolvedValue([
+        invoice({
+          id: 'inv-9',
+          providerInvoiceNumber: 'FK/9',
+          createdAt: new Date('2026-09-05T00:00:00.000Z'),
+        }),
+        invoice(),
+      ]);
+
+      const error = await service.confirmChange(confirmInput).catch((e: unknown) => e);
+
+      expect((error as OrderCancellationRefusedError).code).toBe('CORRECTION_SUPERSEDED');
+      expect((error as Error).message).toContain('FK/9');
+      expect(changes.abandon).toHaveBeenCalledWith('change-2', 'correction-superseded');
       expect(invoices.issueCorrection).not.toHaveBeenCalled();
     });
 

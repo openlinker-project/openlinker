@@ -20,6 +20,7 @@ import { OrderFxReadService } from './application/services/order-fx-read.service
 import { OrderDestinationRetryService } from './application/services/order-destination-retry.service';
 import { OrderProvisioningResumeService } from './application/services/order-provisioning-resume.service';
 import { FulfillmentDispatchRelayService } from './application/services/fulfillment-dispatch-relay.service';
+import { OrderCancellationEffectsService } from './application/services/order-cancellation-effects.service';
 import { OrderLifecycleRelayService } from './application/services/order-lifecycle-relay.service';
 import { OrderRecordRepository } from './infrastructure/persistence/repositories/order-record.repository';
 import { OrderLineItemRepository } from './infrastructure/persistence/repositories/order-line-item.repository';
@@ -60,6 +61,7 @@ import {
   ORDER_PROVISIONING_RESUME_SERVICE_TOKEN,
   ORDER_ITEM_REF_RESOLVER_SERVICE_TOKEN,
   ORDER_LIFECYCLE_RELAY_SERVICE_TOKEN,
+  ORDER_CANCELLATION_EFFECTS_SERVICE_TOKEN,
   ORDER_REFUND_RECORD_REPOSITORY_TOKEN,
   ORDER_REFUND_SERVICE_TOKEN,
   ORDER_FX_READ_SERVICE_TOKEN,
@@ -179,6 +181,7 @@ export { ORDER_SYNC_SERVICE_TOKEN } from './orders.tokens';
     OrderDestinationRetryService,
     OrderProvisioningResumeService,
     OrderLifecycleRelayService,
+    OrderCancellationEffectsService,
     FulfillmentDispatchRelayService,
     OrderRecordRepository,
     OrderFxReadService,
@@ -243,6 +246,10 @@ export { ORDER_SYNC_SERVICE_TOKEN } from './orders.tokens';
     {
       provide: ORDER_LIFECYCLE_RELAY_SERVICE_TOKEN,
       useExisting: OrderLifecycleRelayService,
+    },
+    {
+      provide: ORDER_CANCELLATION_EFFECTS_SERVICE_TOKEN,
+      useExisting: OrderCancellationEffectsService,
     },
     {
       provide: FULFILLMENT_DISPATCH_RELAY_SERVICE_TOKEN,
@@ -339,6 +346,7 @@ export { ORDER_SYNC_SERVICE_TOKEN } from './orders.tokens';
     ORDER_DESTINATION_RETRY_SERVICE_TOKEN,
     ORDER_PROVISIONING_RESUME_SERVICE_TOKEN,
     ORDER_LIFECYCLE_RELAY_SERVICE_TOKEN,
+    ORDER_CANCELLATION_EFFECTS_SERVICE_TOKEN,
     FULFILLMENT_DISPATCH_RELAY_SERVICE_TOKEN,
     ORDER_REFUND_SERVICE_TOKEN,
     ORDER_FX_READ_SERVICE_TOKEN,

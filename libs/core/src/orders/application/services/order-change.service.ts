@@ -15,6 +15,7 @@ import { OrderChangeRepositoryPort } from '../../domain/ports/order-change-repos
 import {
   OrderAmendmentRequestKindValues,
   OrderChangeKindValues,
+  isOrderCorrectionChangeKind,
   type CreateOrderChangeInput,
   type OrderChangeKind,
 } from '../../domain/types/order-change.types';
@@ -81,10 +82,12 @@ export class OrderChangeService implements IOrderChangeService {
     return this.repository.decline(id, new Date(), reason);
   }
 
-  async abandon(id: string): Promise<boolean> {
+  async abandon(id: string, reason?: string): Promise<boolean> {
     // `expire`, not `decline`: nobody was asked, so there is no authority
     // refusal to record. See the interface docblock.
-    return this.repository.expire(id, new Date());
+    return reason === undefined
+      ? this.repository.expire(id, new Date())
+      : this.repository.expire(id, new Date(), reason);
   }
 
   async claimApplied(id: string): Promise<boolean> {
@@ -130,6 +133,12 @@ export class OrderChangeService implements IOrderChangeService {
   }
 
   private isStale(change: OrderChange, now: Date): boolean {
+    // A correction proposal is NOT a request waiting for a channel: nobody was
+    // asked, so there is no unanswered question to time out (B-17, #3540). It
+    // waits for the operator to confirm or abandon it, however long that takes.
+    if (isOrderCorrectionChangeKind(change.kind)) {
+      return false;
+    }
     return now.getTime() - change.requestedAt.getTime() >= resolveOrderChangeOpenTtlMs();
   }
 

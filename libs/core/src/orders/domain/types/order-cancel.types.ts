@@ -53,3 +53,43 @@ export const OPERATOR_ORDER_ORIGIN_ID = 'openlinker:operator';
 export function orderStockRestoreDedupeKey(connectionId: string, internalOrderId: string): string {
   return `marketplace:${connectionId}:stockRestore:${internalOrderId}`;
 }
+
+/** One line of the credit proposal a cancel leaves behind, as the confirm dialog shows it. */
+export interface OrderCancelCorrectionProposalLine {
+  readonly originalLineNumber: number;
+  readonly name: string;
+  readonly previousQuantity: number;
+  readonly newQuantity: number;
+}
+
+/** Shape persisted in `order.cancel_correction.payload` - no buyer data, product names only. */
+export interface OrderCancelCorrectionPayload {
+  readonly invoiceRecordId: string;
+  readonly documentNumber: string | null;
+  readonly currency: string;
+  readonly reason: string;
+  readonly lines: readonly OrderCancelCorrectionProposalLine[];
+}
+
+export interface OrderCancelCorrectionProposal {
+  readonly changeId: string;
+  readonly invoiceRecordId: string;
+  readonly documentNumber: string | null;
+  readonly currency: string;
+  readonly lines: readonly OrderCancelCorrectionProposalLine[];
+}
+
+/** Why an invoiced order's credit proposal could not be built; the cancel still stands. */
+export const OrderCancelCorrectionUnavailableReasonValues = [
+  'no-line-snapshot',
+  'not-fully-issued',
+  'proposal-failed',
+] as const;
+export type OrderCancelCorrectionUnavailableReason =
+  (typeof OrderCancelCorrectionUnavailableReasonValues)[number];
+
+/** Stored on an abandoned cancel request whose carrier could not void a label (B-20). */
+export const CANCEL_ABANDONED_LABEL_NOT_VOIDABLE = 'label-not-voidable';
+
+/** The note a cancel leaves on every hold it releases. */
+export const ORDER_CANCELLED_HOLD_RELEASE_NOTE = 'order cancelled';

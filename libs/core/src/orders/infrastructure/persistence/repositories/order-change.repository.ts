@@ -187,10 +187,12 @@ export class OrderChangeRepository implements OrderChangeRepositoryPort {
     return (result.affected ?? 0) > 0;
   }
 
-  async expire(id: string, at: Date): Promise<boolean> {
+  async expire(id: string, at: Date, reason?: string): Promise<boolean> {
     const result = await this.repository.update(
       { id, status: In([...OPEN_ORDER_CHANGE_STATUSES]) },
-      { status: 'expired', terminalisedAt: at }
+      reason === undefined
+        ? { status: 'expired', terminalisedAt: at }
+        : { status: 'expired', terminalisedAt: at, declinedReason: reason }
     );
     return (result.affected ?? 0) > 0;
   }

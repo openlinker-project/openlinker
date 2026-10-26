@@ -86,8 +86,13 @@ export interface IOrderChangeService {
    * timeout out of it. Releasing the target's slot immediately is the point:
    * without it a typo would hold the slot for a full TTL and block the
    * corrected retry.
+   *
+   * The optional `reason` is OpenLinker's own machine code for why it gave up
+   * (e.g. `label-not-voidable`), stored in `declinedReason` so a surface can tell
+   * an abandoned request from one that merely timed out. It is never the
+   * authority's words; the status stays `expired`.
    */
-  abandon(id: string): Promise<boolean>;
+  abandon(id: string, reason?: string): Promise<boolean>;
 
   /**
    * Claim the right to APPLY a confirmed change.

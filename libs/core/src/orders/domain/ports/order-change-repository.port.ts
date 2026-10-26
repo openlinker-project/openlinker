@@ -168,8 +168,13 @@ export interface OrderChangeRepositoryPort {
    * No reason is recorded: `declinedReason` means "the authority refused", and
    * an expiry is a structural timeout rather than a refusal. Conflating them
    * would make the column's one meaning two.
+   *
+   * The one exception is an explicit `reason` from OpenLinker itself (an
+   * abandoned request, B-16/#3540): it is recorded so an abandoned row reads
+   * differently from a timed-out one, and is a machine code never an authority's
+   * answer. Without it the column stays untouched.
    */
-  expire(id: string, at: Date): Promise<boolean>;
+  expire(id: string, at: Date, reason?: string): Promise<boolean>;
 
   /**
    * Claim the right to APPLY a confirmed change — `WHERE "appliedAt" IS NULL`.

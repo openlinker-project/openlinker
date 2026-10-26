@@ -163,6 +163,7 @@ import {
 } from '../application/interfaces/order-cancellation.service.interface';
 import {
   CancelCorrectionFailedError,
+  OrderCancellationInvalidReasonError,
   OrderCancellationNoteRequiredError,
   OrderCancellationNotFoundError,
   OrderCancellationRefusedError,
@@ -1587,7 +1588,10 @@ export class OrdersController {
     if (error instanceof OrderCancellationNotFoundError) {
       return new NotFoundException(error.message);
     }
-    if (error instanceof OrderCancellationNoteRequiredError) {
+    if (
+      error instanceof OrderCancellationNoteRequiredError ||
+      error instanceof OrderCancellationInvalidReasonError
+    ) {
       return new BadRequestException(error.message);
     }
     if (error instanceof CancelCorrectionFailedError) {

@@ -550,8 +550,22 @@ export {
   orderCancelReasonRequiresNote,
   OPERATOR_ORDER_ORIGIN_ID,
   orderStockRestoreDedupeKey,
+  CANCEL_ABANDONED_LABEL_NOT_VOIDABLE,
+  ORDER_CANCELLED_HOLD_RELEASE_NOTE,
+  OrderCancelCorrectionUnavailableReasonValues,
 } from './domain/types/order-cancel.types';
-export type { OrderCancelReason } from './domain/types/order-cancel.types';
+export type {
+  OrderCancelReason,
+  OrderCancelCorrectionPayload,
+  OrderCancelCorrectionProposal,
+  OrderCancelCorrectionProposalLine,
+  OrderCancelCorrectionUnavailableReason,
+} from './domain/types/order-cancel.types';
+export type {
+  IOrderCancellationEffectsService,
+  ApplyOrderCancellationEffectsInput,
+  OrderCancellationEffectsResult,
+} from './application/interfaces/order-cancellation-effects.service.interface';
 export type {
   OrderAmendmentRequestKind,
   OrderCorrectionChangeKind,

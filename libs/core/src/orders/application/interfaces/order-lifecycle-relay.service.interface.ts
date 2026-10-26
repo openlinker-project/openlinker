@@ -125,6 +125,18 @@ export interface OrderLifecycleRelayTargetResult {
    * never as transient.
    */
   unsupportedReason?: OrderWritebackUnsupportedReason;
+  /**
+   * True when the adapter THREW instead of returning a result (B-16, #3540).
+   *
+   * A thrown error (timeout, 5xx, connection reset) is reported as
+   * `outcome: 'rejected'` for every pre-existing caller, and that meaning is
+   * unchanged. But it is NOT a refusal: the channel never said no, and may have
+   * applied the write before the connection dropped. A caller that must tell "the
+   * channel declined" from "we do not know" (the operator cancel) reads this flag;
+   * a caller that ignores it behaves exactly as before. Absent means the adapter
+   * returned an answer.
+   */
+  adapterThrew?: boolean;
 }
 
 export interface OrderLifecycleRelayResult {

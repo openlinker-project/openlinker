@@ -1207,6 +1207,9 @@ export class PrestashopOrderProcessorManagerAdapter
           return { outcome: 'applied' };
         }
 
+        // The cancel reason stays in OpenLinker (#3540): an `order_histories` row
+        // records a state change and carries no reason field, so `event.reason`
+        // is deliberately not sent.
         case 'cancelled': {
           // Refuse if the shop already shipped/delivered. One read here; the
           // cancel carries no tracking, so we reuse the fetched state for the

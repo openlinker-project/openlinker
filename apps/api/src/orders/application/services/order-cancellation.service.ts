@@ -27,11 +27,15 @@
  * 4. Tell the SOURCE first. Only when it accepts (or has no verb to refuse with)
  *    are the other participants told and the order marked cancelled. A refusal
  *    declines the row and leaves the order live.
- * 5. Apply: confirm, `markCancelled`, enqueue the stock restore, cancel the
- *    fulfilment work, and for an invoiced order open the credit proposal.
+ * 5. Apply: confirm, `markCancelled`, enqueue the stock restore, then the shared
+ *    cleanup (`IOrderCancellationEffectsService`): cancel the fulfilment work,
+ *    release the order's hold, and for an invoiced order open the credit
+ *    proposal. The cleanup is shared with ingestion because a source that
+ *    confirms a pending cancel LATER, by observation, owes the same cleanup.
  *
- * A channel whose answer is UNKNOWN (the relay threw, or the adapter could not be
- * built) leaves the row open and reports `pending`: guessing "applied" would
+ * A channel whose answer is UNKNOWN (the relay threw, the adapter THREW mid-call
+ * - a timeout or 5xx may have been applied - or the adapter could not be built)
+ * leaves the row open and reports `pending`: guessing "applied" would
  * cancel locally an order the channel still sells, and guessing "refused" would
  * discard a cancel it may have taken.
  *
@@ -66,17 +70,20 @@ import {
   type InvoiceRecord,
 } from '@openlinker/core/invoicing';
 import {
-  cancelCorrectionTargetRef,
+  CANCEL_ABANDONED_LABEL_NOT_VOIDABLE,
   cancelRequestTargetRef,
   isOrderCancelReason,
+  ORDER_CANCELLATION_EFFECTS_SERVICE_TOKEN,
   ORDER_CHANGE_SERVICE_TOKEN,
   ORDER_LIFECYCLE_RELAY_SERVICE_TOKEN,
   ORDER_RECORD_SERVICE_TOKEN,
   OPERATOR_ORDER_ORIGIN_ID,
   orderCancelReasonRequiresNote,
   orderStockRestoreDedupeKey,
+  type IOrderCancellationEffectsService,
   type IOrderChangeService,
   type IOrderLifecycleRelayService,
+  type OrderCancelCorrectionPayload,
   type IOrderRecordService,
   type OrderChange,
   type OrderLifecycleRelayTargetResult,
@@ -86,6 +93,7 @@ import {
   SHIPMENT_CANCELLATION_SERVICE_TOKEN,
   SHIPMENT_QUERY_SERVICE_TOKEN,
   SHIPMENT_STATUS,
+  SHIPPING_METHOD,
   type IShipmentCancellationService,
   type IShipmentQueryService,
   type Shipment,
@@ -100,14 +108,13 @@ import { Logger } from '@openlinker/shared/logging';
 
 import {
   CancelCorrectionFailedError,
+  OrderCancellationInvalidReasonError,
   OrderCancellationNoteRequiredError,
   OrderCancellationNotFoundError,
   OrderCancellationRefusedError,
 } from '../errors/order-cancellation.errors';
 import type { IOrderCancellationService } from '../interfaces/order-cancellation.service.interface';
 import type {
-  CancelCorrectionProposal,
-  CancelCorrectionUnavailableReason,
   CancelOrderInput,
   CancelOrderResult,
   CancelParticipantEffect,
@@ -127,32 +134,17 @@ function orderCancelLockKey(internalOrderId: string): string {
   return `order:cancel:${internalOrderId}`;
 }
 
-/** Shipment statuses a carrier void can still act on. */
-const VOIDABLE_SHIPMENT_STATUSES: readonly string[] = [
-  SHIPMENT_STATUS.Draft,
-  SHIPMENT_STATUS.Generated,
-  SHIPMENT_STATUS.Dispatched,
-];
-
 /** Shipment statuses past which nothing can be voided: the parcel is with the carrier or the buyer. */
 const LEFT_THE_BUILDING_STATUSES: readonly string[] = [
   SHIPMENT_STATUS.InTransit,
   SHIPMENT_STATUS.Delivered,
 ];
 
-/** Shape persisted in `order.cancel_correction.payload` - no buyer data, product names only. */
-interface CancelCorrectionPayload {
-  readonly invoiceRecordId: string;
-  readonly documentNumber: string | null;
-  readonly currency: string;
-  readonly reason: string;
-  readonly lines: ReadonlyArray<{
-    readonly originalLineNumber: number;
-    readonly name: string;
-    readonly previousQuantity: number;
-    readonly newQuantity: number;
-  }>;
-}
+/** The only statuses a label OpenLinker bought can still be voided from. */
+const VOIDABLE_SHIPMENT_STATUSES: readonly string[] = [
+  SHIPMENT_STATUS.Draft,
+  SHIPMENT_STATUS.Generated,
+];
 
 @Injectable()
 export class OrderCancellationService implements IOrderCancellationService {
@@ -178,14 +170,16 @@ export class OrderCancellationService implements IOrderCancellationService {
     @Inject(SYNC_JOB_QUEUE_TOKEN)
     private readonly jobQueue: SyncJobQueuePort,
     @Inject(SYNC_LOCK_TOKEN)
-    private readonly lock: SyncLockPort
+    private readonly lock: SyncLockPort,
+    @Inject(ORDER_CANCELLATION_EFFECTS_SERVICE_TOKEN)
+    private readonly effects: IOrderCancellationEffectsService
   ) {}
 
   async cancelOrder(input: CancelOrderInput): Promise<CancelOrderResult> {
     if (!isOrderCancelReason(input.reason)) {
       // The DTO already refuses this; the service is a seam other callers (MCP,
       // bulk actions) will reach, so it does not trust its caller.
-      throw new OrderCancellationNoteRequiredError();
+      throw new OrderCancellationInvalidReasonError(String(input.reason));
     }
     if (orderCancelReasonRequiresNote(input.reason) && !input.note?.trim()) {
       throw new OrderCancellationNoteRequiredError();
@@ -213,8 +207,7 @@ export class OrderCancellationService implements IOrderCancellationService {
     }
 
     const shipments = await this.shipmentQuery.getOutboundByOrderId(input.internalOrderId);
-    const latestInvoice = await this.invoices.getLatestInvoiceForOrder(input.internalOrderId);
-    await this.assertCancellable(order, shipments, latestInvoice, input.acknowledgeAcceptedWork);
+    await this.assertCancellable(order, shipments, input.acknowledgeAcceptedWork);
 
     const { change, opened } = await this.changes.openOrReuse({
       internalOrderId: input.internalOrderId,
@@ -254,7 +247,6 @@ export class OrderCancellationService implements IOrderCancellationService {
       order,
       change,
       input,
-      latestInvoice,
       [...source.participants, ...others.participants],
       others.relayFailed,
       voidedShipmentIds
@@ -265,7 +257,6 @@ export class OrderCancellationService implements IOrderCancellationService {
   private async assertCancellable(
     order: OrderRecord,
     shipments: readonly Shipment[],
-    latestInvoice: InvoiceRecord | null,
     acknowledgeAcceptedWork: boolean
   ): Promise<void> {
     if (order.cancelledAt !== null) {
@@ -275,12 +266,23 @@ export class OrderCancellationService implements IOrderCancellationService {
       );
     }
 
-    const hasLabelToVoid = shipments.some((s) => s.status === SHIPMENT_STATUS.Dispatched);
-    const leftWithCarrier = shipments.some((s) => LEFT_THE_BUILDING_STATUSES.includes(s.status));
+    // Only a label OpenLinker bought and has not yet handed over can be voided
+    // (draft / generated). Anything else is a parcel the channel already believes
+    // shipped: an OL shipment that was `dispatched` (the marketplace was told),
+    // one with the carrier, or a marketplace-OBSERVED (branch-1, `omp`) row with
+    // no OL label to void at all (B-20 / C-37). Attempting a void on those would
+    // end in LABEL_NOT_VOIDABLE after work was already started; say so up front.
     const marketplaceSaysShipped =
-      (order.fulfillmentState === 'dispatched' || order.fulfillmentState === 'delivered') &&
-      !hasLabelToVoid;
-    if (leftWithCarrier || marketplaceSaysShipped) {
+      order.fulfillmentState === 'dispatched' || order.fulfillmentState === 'delivered';
+    const alreadyShipped = shipments.some(
+      (s) =>
+        LEFT_THE_BUILDING_STATUSES.includes(s.status) ||
+        s.status === SHIPMENT_STATUS.Dispatched ||
+        (s.shippingMethod === SHIPPING_METHOD.Omp &&
+          s.status !== SHIPMENT_STATUS.Cancelled &&
+          s.status !== SHIPMENT_STATUS.Failed)
+    );
+    if (alreadyShipped || marketplaceSaysShipped) {
       throw new OrderCancellationRefusedError(
         'ORDER_ALREADY_SHIPPED',
         'This order has already shipped, so it cannot be cancelled. Use the returns flow when the parcel comes back.'
@@ -291,11 +293,16 @@ export class OrderCancellationService implements IOrderCancellationService {
     if (registrations.some((r) => r.blocksFurtherRegistration)) {
       throw new OrderCancellationRefusedError(
         'ORDER_HAS_FISCAL_RECEIPT',
-        'A fiscal receipt was registered for this order and OpenLinker cannot correct a receipt. Cancel the sale on the fiscal device or with the receipt provider first.'
+        'A fiscal receipt was registered for this order. The receipt must be returned at the fiscal printer, and the order cannot be cancelled in OpenLinker.'
       );
     }
 
-    if (latestInvoice && latestInvoice.blocksIssuanceElsewhere && latestInvoice.status !== 'issued') {
+    // The gate reads the latest record that BLOCKS issuance, not the newest row:
+    // a later failed/rejected attempt does not block anything and must not mask
+    // an issued document either (B-19).
+    const invoiceRecords = await this.invoices.listInvoicesForOrders([order.internalOrderId]);
+    const blocking = invoiceRecords.find((record) => record.blocksIssuanceElsewhere);
+    if (blocking && blocking.status !== 'issued') {
       throw new OrderCancellationRefusedError(
         'INVOICE_NOT_SETTLED',
         'The invoice for this order has not finished issuing, so it cannot be corrected yet. Wait for it to settle, then cancel.'
@@ -332,7 +339,7 @@ export class OrderCancellationService implements IOrderCancellationService {
         await this.shipmentCancellation.cancel(shipment.id);
         voided.push(shipment.id);
       } catch (error) {
-        await this.changes.abandon(change.id);
+        await this.changes.abandon(change.id, CANCEL_ABANDONED_LABEL_NOT_VOIDABLE);
         const reason = error instanceof Error ? error.message : String(error);
         this.logger.warn(
           `order_cancel_label_not_voidable order=${change.internalOrderId} shipment=${shipment.id}: ${reason}`
@@ -384,6 +391,16 @@ export class OrderCancellationService implements IOrderCancellationService {
     }
     const participant = this.toParticipant(sourceResult, 'source');
 
+    if (sourceResult.outcome === 'rejected' && sourceResult.adapterThrew) {
+      // The adapter THREW (timeout, 5xx, reset): the channel never said no and
+      // may have applied the cancel before the connection dropped. Declining the
+      // row would discard a cancel it may have taken (B-16); leave it open, and
+      // let the observed cancellation or the TTL settle it.
+      this.logger.warn(
+        `order_cancel_source_write_threw order=${order.internalOrderId} change=${change.id}: ${sourceResult.detail ?? 'no detail'}; leaving the request open`
+      );
+      return { verdict: 'pending', participants: [participant] };
+    }
     if (sourceResult.outcome === 'rejected') {
       return {
         verdict: 'refused',
@@ -443,7 +460,7 @@ export class OrderCancellationService implements IOrderCancellationService {
       case 'applied':
         return target.scope === 'stock-only' ? 'stock-restored-only' : 'notified';
       case 'rejected':
-        return 'refused';
+        return target.adapterThrew ? 'unreachable' : 'refused';
       case 'unsupported':
         return target.unsupportedReason === 'adapter-unresolved' ? 'unreachable' : 'not-supported';
     }
@@ -453,7 +470,6 @@ export class OrderCancellationService implements IOrderCancellationService {
     order: OrderRecord,
     change: OrderChange,
     input: CancelOrderInput,
-    latestInvoice: InvoiceRecord | null,
     participants: readonly CancelParticipantOutcome[],
     otherParticipantsRelayFailed: boolean,
     voidedShipmentIds: readonly string[]
@@ -472,15 +488,12 @@ export class OrderCancellationService implements IOrderCancellationService {
     await this.orderRecords.markCancelled(order.internalOrderId, cancelledAt);
 
     const stockRestoreEnqueued = await this.enqueueStockRestore(order);
-    const cancelledWorkIds = await this.cancelWork(order.internalOrderId, cancelledAt);
-
-    let correctionProposal: CancelCorrectionProposal | null = null;
-    let correctionUnavailableReason: CancelCorrectionUnavailableReason | null = null;
-    if (latestInvoice && latestInvoice.status === 'issued') {
-      const proposed = await this.proposeCreditCorrection(order, latestInvoice, input);
-      correctionProposal = proposed.proposal;
-      correctionUnavailableReason = proposed.unavailable;
-    }
+    const cleanup = await this.effects.applyEffects({
+      internalOrderId: order.internalOrderId,
+      cancelledAt,
+      reason: input.reason,
+      actorUserId: input.actorUserId,
+    });
 
     return {
       status: 'cancelled',
@@ -489,10 +502,10 @@ export class OrderCancellationService implements IOrderCancellationService {
       participants,
       otherParticipantsRelayFailed,
       voidedShipmentIds,
-      cancelledWorkIds,
+      cancelledWorkIds: cleanup.cancelledWorkIds,
       stockRestoreEnqueued,
-      correctionProposal,
-      correctionUnavailableReason,
+      correctionProposal: cleanup.correctionProposal,
+      correctionUnavailableReason: cleanup.correctionUnavailableReason,
     };
   }
 
@@ -513,88 +526,6 @@ export class OrderCancellationService implements IOrderCancellationService {
         error instanceof Error ? error.stack : undefined
       );
       return false;
-    }
-  }
-
-  private async cancelWork(internalOrderId: string, cancelledAt: Date): Promise<string[]> {
-    try {
-      const result = await this.fulfillmentCancellation.cancelAllForOrder(internalOrderId, cancelledAt);
-      return [...result.cancelledWorkIds];
-    } catch (error) {
-      this.logger.error(
-        `Failed to cancel fulfilment work for operator-cancelled order ${internalOrderId}`,
-        error instanceof Error ? error.stack : undefined
-      );
-      return [];
-    }
-  }
-
-  /**
-   * Open the credit proposal for an issued invoice: every line to quantity zero.
-   * Best-effort - the order IS cancelled by now, so a failure here is reported as
-   * `proposal-failed` and the operator can still correct the invoice by hand.
-   */
-  private async proposeCreditCorrection(
-    order: OrderRecord,
-    invoice: InvoiceRecord,
-    input: CancelOrderInput
-  ): Promise<{
-    proposal: CancelCorrectionProposal | null;
-    unavailable: CancelCorrectionUnavailableReason | null;
-  }> {
-    if (!invoice.issuedLineSnapshot) {
-      return { proposal: null, unavailable: 'no-line-snapshot' };
-    }
-    if (!invoice.providerInvoiceId || !invoice.providerInvoiceNumber || !invoice.issuedAt) {
-      return { proposal: null, unavailable: 'not-fully-issued' };
-    }
-    // Numbered BEFORE filtering: `originalLineNumber` is the line's position on
-    // the issued document, and dropping an already-zero line must not renumber
-    // the rest.
-    const lines = invoice.issuedLineSnapshot.lines
-      .map((line, index) => ({
-        originalLineNumber: index + 1,
-        name: line.name,
-        previousQuantity: line.quantity,
-        newQuantity: 0,
-      }))
-      .filter((line) => line.previousQuantity > 0);
-    if (lines.length === 0) {
-      // Everything on the document was already credited; there is nothing to propose.
-      return { proposal: null, unavailable: null };
-    }
-    const payload: CancelCorrectionPayload = {
-      invoiceRecordId: invoice.id,
-      documentNumber: invoice.providerInvoiceNumber,
-      currency: invoice.issuedLineSnapshot.currency,
-      reason: `Order cancelled (${input.reason})`,
-      lines,
-    };
-    try {
-      const { change } = await this.changes.openOrReuse({
-        internalOrderId: order.internalOrderId,
-        kind: 'order.cancel_correction',
-        targetRef: cancelCorrectionTargetRef(order.internalOrderId, invoice.id),
-        payload: payload as unknown as Record<string, unknown>,
-        requestedBy: input.actorUserId,
-        requestedAt: new Date(),
-      });
-      return {
-        proposal: {
-          changeId: change.id,
-          invoiceRecordId: invoice.id,
-          documentNumber: invoice.providerInvoiceNumber,
-          currency: payload.currency,
-          lines,
-        },
-        unavailable: null,
-      };
-    } catch (error) {
-      this.logger.error(
-        `Failed to open the credit proposal for cancelled order ${order.internalOrderId}`,
-        error instanceof Error ? error.stack : undefined
-      );
-      return { proposal: null, unavailable: 'proposal-failed' };
     }
   }
 
@@ -663,6 +594,27 @@ export class OrderCancellationService implements IOrderCancellationService {
       );
     }
 
+    // The proposal was built against the document that was latest THEN. A
+    // correction issued since - by hand from the invoice panel, by a return or by
+    // a discount - already changed it, and crediting every line again would credit
+    // the same goods twice on a fiscal document (B-21).
+    const records = await this.invoices.listInvoicesForOrders([input.internalOrderId]);
+    const superseding = records.find(
+      (record) =>
+        record.id !== invoice.id &&
+        record.status === 'issued' &&
+        record.createdAt.getTime() > invoice.createdAt.getTime()
+    );
+    if (superseding) {
+      await this.changes.abandon(change.id, 'correction-superseded');
+      throw new OrderCancellationRefusedError(
+        'CORRECTION_SUPERSEDED',
+        `This invoice was already corrected after the proposal was made (${
+          superseding.providerInvoiceNumber ?? superseding.id
+        }), so the proposal was withdrawn. Review that document instead of issuing another credit.`
+      );
+    }
+
     let issued: InvoiceRecord;
     try {
       issued = await this.invoices.issueCorrection({
@@ -712,7 +664,7 @@ export class OrderCancellationService implements IOrderCancellationService {
     };
   }
 
-  private readCorrectionPayload(change: OrderChange): CancelCorrectionPayload {
+  private readCorrectionPayload(change: OrderChange): OrderCancelCorrectionPayload {
     const raw = change.payload;
     const lines = raw && Array.isArray(raw['lines']) ? (raw['lines'] as unknown[]) : null;
     if (
@@ -726,7 +678,7 @@ export class OrderCancellationService implements IOrderCancellationService {
         'This correction proposal is unreadable and cannot be confirmed.'
       );
     }
-    return raw as unknown as CancelCorrectionPayload;
+    return raw as unknown as OrderCancelCorrectionPayload;
   }
 
   private emptyResult(

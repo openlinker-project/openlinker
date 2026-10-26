@@ -158,6 +158,11 @@ export class AllegroOrderSourceAdapter
    * `needs-sandbox-probe`. No refund is issued — OL is never the money book of
    * record (ADR-027).
    *
+   * **The cancel reason stays in OpenLinker (#3540).** `cancelled.reason` is NOT
+   * sent: the verified `PUT .../fulfillment` body carries a status only, and this
+   * tree knows of no reason field on it. Inventing one would be a guess at a wire
+   * contract; the operator's reason is recorded on the `order.cancel_request`.
+   *
    * `delivered` and `in-progress` (#3526) are DECLINED (`unsupported`), rather
    * than guessed at. The only verified members of the fulfillment-status enum
    * `putFulfillment` writes are `SENT` and `CANCELLED` — a seller-settable
