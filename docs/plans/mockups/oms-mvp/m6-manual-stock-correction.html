@@ -133,7 +133,7 @@
 
           <p class="dialog-section__head">What channels will publish after this <span class="mk-pin">3</span></p>
           <ul class="sc-impact" data-testid="stock-correction-preview">
-            <li class="sc-impact__row" data-testid="stock-correction-preview-prestashop"><span class="sc-impact__what">PrestaShop<span class="text-muted" style="display:block;font-weight:400;font-size:0.75rem">Ceramika Nowak (master)</span></span><span class="sc-impact__how">Shows the corrected count directly.</span><span class="sc-impact__qty" id="sc-prev-ps">9</span></li>
+            <li class="sc-impact__row" data-testid="stock-correction-preview-master"><span class="sc-impact__what">PrestaShop<span class="text-muted" style="display:block;font-weight:400;font-size:0.75rem">Ceramika Nowak (master)</span></span><span class="sc-impact__how">Shows the corrected count directly.</span><span class="sc-impact__qty" id="sc-prev-ps">9</span></li>
             <li class="sc-impact__row" data-testid="stock-correction-preview-atp"><span class="sc-impact__what">Available to promise<span class="text-muted" style="display:block;font-weight:400;font-size:0.75rem">what channels start from</span></span><span class="sc-impact__how">New count minus the 2 units OpenLinker holds for open orders.</span><span class="sc-impact__qty" id="sc-prev-atp">7</span></li>
             <li class="sc-impact__row" data-testid="stock-correction-preview-allegro"><span class="sc-impact__what">Allegro<span class="text-muted" style="display:block;font-weight:400;font-size:0.75rem">ceramika_nowak</span></span><span class="sc-impact__how">Publishes available to promise minus a 2-unit safety buffer for this connection. <span class="mk-pin">4</span></span><span class="sc-impact__qty" id="sc-prev-allegro">5</span></li>
             <li class="sc-impact__row" data-testid="stock-correction-preview-erli"><span class="sc-impact__what">Erli<span class="text-muted" style="display:block;font-weight:400;font-size:0.75rem">ceramika_nowak</span></span><span class="sc-impact__how" id="sc-erli-how">Publishes available to promise as-is, but anything under 5 units is shown as sold out.</span><span class="sc-impact__qty" id="sc-prev-erli">7</span></li>
@@ -198,7 +198,6 @@
         <p class="form-field__description" style="margin-top:var(--space-2)">Turn off Advanced Stock Management for this product, or adjust the quantity from PrestaShop's own warehouse stock screen instead.</p>
         <div class="dialog__footer">
           <button type="button" class="button button--secondary" data-go="variants" data-testid="stock-correction-close">Close</button>
-          <button type="button" class="button button--primary">Open in PrestaShop</button>
         </div>
       </div>
     </div>
@@ -218,7 +217,6 @@
         <p class="form-field__description" style="margin-top:var(--space-2)">Check PrestaShop's own stock number before deciding what to do next. Filling in this form again would start a brand-new correction, which could double the change if the first one did land. <span class="mk-pin">9</span></p>
         <div class="dialog__footer">
           <button type="button" class="button button--secondary" data-go="variants" data-testid="stock-correction-close">Close</button>
-          <button type="button" class="button button--primary">Check current stock in PrestaShop</button>
         </div>
       </div>
     </div>
@@ -278,6 +276,7 @@
     <li><span class="mk-pin">7</span> Stan "odrzucona" to prawdziwy, udokumentowany przypadek: <code>depends_on_stock=1</code> (Advanced Stock Management) — zapis jest przyjęty i natychmiast nadpisany przez ASM. Pozostałe udokumentowane odmowy (kilka sklepów bez <code>shopId</code>, brak wiersza <code>stock_availables</code>) nie mają tu osobnego stanu — do dodania.</li>
     <li><span class="mk-pin">8</span>–<span class="mk-pin">9</span> "In doubt" to stan sieciowy, nie biznesowy: nie wiadomo, czy żądanie doszło. Celowo NIE ma tu przycisku "Spróbuj ponownie" — ponowne wysłanie tego samego formularza minie nowy klucz idempotencji (patrz #2368: klucz jest per-próba, np. <code>return:{returnId}:{lineId}:{seq}</code> dla zwrotów), więc może podwoić korektę. Bezpieczny retry to tylko automatyczny retry backendu z TYM SAMYM kluczem.</li>
     <li><span class="mk-pin">10</span> Rola z dostępem tylko do odczytu (np. Viewer) nie widzi tu żadnego endpointu zapisu — backend najpewniej ograniczy to do <code>admin</code>/<code>operator</code>, analogicznie do innych zapisów magazynowych w architekturze.</li>
+    <li><b>Zmiana po implementacji (#3567, 2026-10-26):</b> przyciski "Open in PrestaShop" i "Check current stock in PrestaShop" usunięte - nie ma znanego linku do panelu mastera, więc stany odmowy i braku potwierdzenia mają tylko Close. Wiersz mastera w podglądzie ma testid <code>stock-correction-preview-master</code> (neutralny wobec platformy), kanały <code>stock-correction-preview-&lt;platformType&gt;</code>.</li>
     <li><b>Rozstrzygnięte (D41, 2026-09-28):</b> przy więcej niż jednym połączeniu InventoryMaster korekta jest odrzucana z nazwanym powodem (jak blokada restocku zwrotu), a zmiana ponad 50 szt. lub 50% stanu wymaga potwierdzenia (blok "This is a large change" w formularzu, widoczny np. dla nowej ilości 10). Pierwotne pytania poniżej.</li>
     <li><b>Otwarte pytania (historyczne):</b> (a) Dziś nie istnieje żaden kontroler HTTP wywołujący <code>adjustInventory</code> ręcznie — potrzebny nowy endpoint + DTO + rola. (b) Co jeśli produkt ma więcej niż jedno połączenie z <code>InventoryMaster</code> (rywalizujący claim, #1904)? Który z nich jest "the" master do zapisu korekty — czy operator go wybiera, czy system automatycznie? Nieopisane. (c) Czy korekta powinna wymagać potwierdzenia (np. dla dużych zmian ilości) — nie ma dziś takiego progu w backendzie.</li>
     <li>Dane przykładowe: produkt, warianty, ceny i połączenia (PrestaShop/Allegro/Erli "Ceramika Nowak") są fikcyjne, dobrane dla realizmu polskiego e-commerce.</li>
