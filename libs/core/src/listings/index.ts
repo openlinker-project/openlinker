@@ -164,6 +164,7 @@ export type {
 } from './domain/types/bulk-listing-batch.types';
 export type { BulkListingBatchRepositoryPort } from './domain/ports/bulk-listing-batch-repository.port';
 export { BulkListingBatchNotFoundException } from './domain/exceptions/bulk-listing-batch-not-found.exception';
+export { DuplicateBulkBatchIdempotencyKeyError } from './domain/exceptions/duplicate-bulk-batch-idempotency-key.error';
 export { EmptyBulkSubmissionException } from './domain/exceptions/empty-bulk-submission.exception';
 export { AllVariantsAlreadyListedException } from './domain/exceptions/all-variants-already-listed.exception';
 export { InvalidEanException } from './domain/exceptions/invalid-ean.exception';

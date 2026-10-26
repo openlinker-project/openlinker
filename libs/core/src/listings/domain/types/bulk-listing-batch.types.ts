@@ -88,4 +88,13 @@ export interface CreateBulkListingBatchInput {
    * to the final schema.
    */
   sharedConfig: Record<string, unknown>;
+  /**
+   * Client-supplied idempotency key (`x-idempotency-key`). Unique per
+   * connection among non-null values, so a second `create` with the same
+   * `(connectionId, idempotencyKey)` raises
+   * `DuplicateBulkBatchIdempotencyKeyError` instead of persisting a second
+   * batch. Absent or null keeps the pre-key behaviour: every submit is a new
+   * batch.
+   */
+  idempotencyKey?: string | null;
 }

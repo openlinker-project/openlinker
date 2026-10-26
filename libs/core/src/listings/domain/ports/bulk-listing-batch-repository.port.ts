@@ -27,8 +27,28 @@ export interface BulkListingBatchRepositoryPort {
    * the repository owns those defaults so the input type captures the
    * invariant. `id`, `createdAt`, and `updatedAt` are assigned by the
    * repository.
+   *
+   * Throws `DuplicateBulkBatchIdempotencyKeyError` when `idempotencyKey` is
+   * set and another batch on the same connection already holds it.
    */
   create(input: CreateBulkListingBatchInput): Promise<BulkListingBatch>;
+
+  /**
+   * Look up the batch persisted under a client idempotency key on a
+   * connection. Returns null when none exists (or its key was released).
+   */
+  findByIdempotencyKey(
+    connectionId: string,
+    idempotencyKey: string
+  ): Promise<BulkListingBatch | null>;
+
+  /**
+   * Release a batch's idempotency key (set it to null) so the same key can
+   * start a fresh batch. Used only when a submit persisted the batch but
+   * enqueued nothing: holding the key there would answer every retry with a
+   * dead, empty batch. A missing row is a no-op.
+   */
+  clearIdempotencyKey(id: string): Promise<void>;
 
   /**
    * Look up a batch by primary key. Returns null when not found.

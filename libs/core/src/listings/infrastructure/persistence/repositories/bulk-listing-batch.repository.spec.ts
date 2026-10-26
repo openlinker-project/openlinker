@@ -9,12 +9,14 @@
 import type { TestingModule } from '@nestjs/testing';
 import { Test } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
+import { QueryFailedError } from 'typeorm';
 import type { Repository, UpdateResult } from 'typeorm';
 
 import { BulkListingBatchRepository } from './bulk-listing-batch.repository';
 import { BulkListingBatchOrmEntity } from '../entities/bulk-listing-batch.orm-entity';
 import { BulkListingBatch } from '../../../domain/entities/bulk-listing-batch.entity';
 import { BulkListingBatchNotFoundException } from '../../../domain/exceptions/bulk-listing-batch-not-found.exception';
+import { DuplicateBulkBatchIdempotencyKeyError } from '../../../domain/exceptions/duplicate-bulk-batch-idempotency-key.error';
 import type { CreateBulkListingBatchInput } from '../../../domain/types/bulk-listing-batch.types';
 
 describe('BulkListingBatchRepository', () => {
@@ -34,10 +36,17 @@ describe('BulkListingBatchRepository', () => {
     succeededCount: 0,
     failedCount: 0,
     sharedConfig: { publishImmediately: true },
+    idempotencyKey: null,
     createdAt: now,
     updatedAt: now,
     ...overrides,
   });
+
+  const uniqueViolation = (constraint: string): QueryFailedError =>
+    new QueryFailedError('INSERT INTO "bulk_offer_creation_batches"', [], {
+      code: '23505',
+      constraint,
+    } as unknown as Error);
 
   const buildUpdateResult = (affected: number): UpdateResult =>
     ({ affected, raw: [], generatedMaps: [] }) as UpdateResult;
@@ -47,6 +56,7 @@ describe('BulkListingBatchRepository', () => {
       findOne: jest.fn(),
       save: jest.fn(),
       increment: jest.fn(),
+      update: jest.fn(),
     } as unknown as jest.Mocked<Repository<BulkListingBatchOrmEntity>>;
 
     const module: TestingModule = await Test.createTestingModule({
@@ -106,6 +116,93 @@ describe('BulkListingBatchRepository', () => {
       const savedArg = ormRepository.save.mock.calls[0][0] as BulkListingBatchOrmEntity;
       expect(savedArg.sharedConfig).toEqual({});
       expect(result.sharedConfig).toEqual({});
+    });
+  });
+
+  describe('create with an idempotency key', () => {
+    const input: CreateBulkListingBatchInput = {
+      connectionId: 'conn-uuid',
+      initiatedBy: 'user-1',
+      totalCount: 2,
+      sharedConfig: {},
+      idempotencyKey: 'key-1',
+    };
+
+    it('should persist the key on the row and map it back onto the domain entity', async () => {
+      ormRepository.save.mockResolvedValue(buildOrm({ idempotencyKey: 'key-1' }));
+
+      const result = await repository.create(input);
+
+      const savedArg = ormRepository.save.mock.calls[0][0] as BulkListingBatchOrmEntity;
+      expect(savedArg.idempotencyKey).toBe('key-1');
+      expect(result.idempotencyKey).toBe('key-1');
+    });
+
+    it('should store null when no key is given', async () => {
+      ormRepository.save.mockResolvedValue(buildOrm());
+
+      const result = await repository.create({ ...input, idempotencyKey: undefined });
+
+      const savedArg = ormRepository.save.mock.calls[0][0] as BulkListingBatchOrmEntity;
+      expect(savedArg.idempotencyKey).toBeNull();
+      expect(result.idempotencyKey).toBeNull();
+    });
+
+    it('should translate a unique violation on the key index into the domain error', async () => {
+      ormRepository.save.mockRejectedValue(
+        uniqueViolation('UQ_bulk_offer_creation_batches_connection_idempotency_key'),
+      );
+
+      const error: unknown = await repository.create(input).catch((caught: unknown) => caught);
+
+      expect(error).toBeInstanceOf(DuplicateBulkBatchIdempotencyKeyError);
+      expect(error).toMatchObject({ connectionId: 'conn-uuid', idempotencyKey: 'key-1' });
+    });
+
+    it('should rethrow a unique violation on a different constraint unchanged', async () => {
+      const pkViolation = uniqueViolation('PK_bulk_offer_creation_batches');
+      ormRepository.save.mockRejectedValue(pkViolation);
+
+      await expect(repository.create(input)).rejects.toBe(pkViolation);
+    });
+
+    it('should rethrow the key-index violation unchanged when the input carried no key', async () => {
+      const violation = uniqueViolation('UQ_bulk_offer_creation_batches_connection_idempotency_key');
+      ormRepository.save.mockRejectedValue(violation);
+
+      await expect(repository.create({ ...input, idempotencyKey: null })).rejects.toBe(violation);
+    });
+  });
+
+  describe('findByIdempotencyKey', () => {
+    it('should look the batch up by connection and key', async () => {
+      ormRepository.findOne.mockResolvedValue(buildOrm({ idempotencyKey: 'key-1' }));
+
+      const result = await repository.findByIdempotencyKey('conn-uuid', 'key-1');
+
+      expect(ormRepository.findOne).toHaveBeenCalledWith({
+        where: { connectionId: 'conn-uuid', idempotencyKey: 'key-1' },
+      });
+      expect(result?.id).toBe('batch-uuid');
+    });
+
+    it('should return null when no batch holds the key', async () => {
+      ormRepository.findOne.mockResolvedValue(null);
+
+      await expect(repository.findByIdempotencyKey('conn-uuid', 'key-1')).resolves.toBeNull();
+    });
+  });
+
+  describe('clearIdempotencyKey', () => {
+    it('should null the key on the row', async () => {
+      ormRepository.update.mockResolvedValue(buildUpdateResult(1));
+
+      await repository.clearIdempotencyKey('batch-uuid');
+
+      expect(ormRepository.update).toHaveBeenCalledWith(
+        { id: 'batch-uuid' },
+        { idempotencyKey: null },
+      );
     });
   });
 
