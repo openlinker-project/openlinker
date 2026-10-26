@@ -84,6 +84,22 @@ describe('ShoperInventoryMasterAdapter', () => {
     ]);
   });
 
+  it('should not count the base row of a product with variants', async () => {
+    const { adapter, get } = setup();
+    shop(get, [
+      buildStock({ stock_id: '215', stock: '15', options: [] }),
+      buildStock({ stock_id: '217', stock: '5', default: '0', options: { '10': '68' } }),
+      buildStock({ stock_id: '218', stock: '10', default: '0', options: { '10': '76' } }),
+    ]);
+
+    const rows = await adapter.listInventory('ol_93');
+
+    expect(rows.map((r) => [r.variantId, r.quantity])).toEqual([
+      ['ol_217', 5],
+      ['ol_218', 10],
+    ]);
+  });
+
   it('should not probe the product while it still lists stock rows', async () => {
     const { adapter, get } = setup();
     shop(get, [buildStock()]);
@@ -480,6 +496,28 @@ describe('ShoperInventoryMasterAdapter', () => {
         ]);
       }
       expect(get).not.toHaveBeenCalled();
+    });
+
+    it('should not count the base row of a product with variants read from the warm copy', async () => {
+      const { adapter, get, mapping } = setup();
+      mapEveryId(mapping);
+      const rows = [
+        buildStock({ product_id: '7', stock_id: '70', stock: '15', options: [] }),
+        buildStock({ product_id: '7', stock_id: '71', stock: '5', default: '0', options: { '10': '68' } }),
+        buildStock({ product_id: '7', stock_id: '72', stock: '10', default: '0', options: { '10': '76' } }),
+      ];
+      get.mockResolvedValue({ status: 200, data: envelope(rows) });
+
+      await adapter.prefetchInventory(internal(['7']));
+      get.mockClear();
+
+      const inventory = await adapter.listInventory('ol_7');
+
+      expect(get).not.toHaveBeenCalled();
+      expect(inventory.map((r) => [r.variantId, r.quantity])).toEqual([
+        ['ol_71', 5],
+        ['ol_72', 10],
+      ]);
     });
 
     it('should still report a deletion from the shop’s own 404 for a product with no rows in the batch', async () => {

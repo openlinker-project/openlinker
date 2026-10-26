@@ -8,6 +8,7 @@ import {
   LIVE_OPTION_VALUES,
   LIVE_VARIANT_STOCKS,
   MAP_CONTEXT,
+  SHOP_HOST,
   buildProduct,
   buildStock,
   envelope,
@@ -23,6 +24,7 @@ import {
   isModifiedProductLister,
   isProductTaxRateReader,
 } from '@openlinker/core/products';
+import type { ShoperProductImage } from '../../../../domain/types/shoper-api.types';
 import { ShoperApiError } from '../../../../domain/exceptions/shoper-api.error';
 import type { ShoperMapContext } from '../../../mappers/shoper-product.mapper';
 import { ShoperProductMasterAdapter } from '../shoper-product-master.adapter';
@@ -61,7 +63,17 @@ const TAX_TABLE = new Map(
   ].map(([tax_id, value, name]) => [tax_id, { tax_id, value, name }]),
 );
 
-function setup(context: ShoperMapContext = MAP_CONTEXT): Harness {
+/**
+ * A plain context is served as-is; a `{ get }` provider is used verbatim so a
+ * test can control WHEN (or whether) the context read settles.
+ */
+function setup(
+  context: ShoperMapContext | { get: () => Promise<ShoperMapContext> } = MAP_CONTEXT,
+): Harness {
+  const shopContext =
+    'get' in context && typeof context.get === 'function'
+      ? context
+      : { get: () => Promise.resolve(context as ShoperMapContext) };
   const get = jest.fn();
   const taxTable = { get: jest.fn().mockResolvedValue(TAX_TABLE) };
   const mapping = {
@@ -79,7 +91,7 @@ function setup(context: ShoperMapContext = MAP_CONTEXT): Harness {
   const adapter = new ShoperProductMasterAdapter(
     { get } as unknown as ShoperHttpClient,
     mapping as unknown as IdentifierMappingPort,
-    { get: () => Promise.resolve(context) } as unknown as ShoperShopContextProvider,
+    shopContext as unknown as ShoperShopContextProvider,
     taxTable as unknown as ShoperTaxTableProvider,
     new ShoperOptionTableProvider({ get } as unknown as ShoperHttpClient),
     { id: CONNECTION_ID } as Connection,
@@ -228,6 +240,59 @@ describe('ShoperProductMasterAdapter', () => {
   });
 
   describe('getProduct', () => {
+    const image = (gfx: string, extra: Record<string, string> = {}): ShoperProductImage => ({
+      gfx_id: gfx,
+      product_id: '93',
+      unic_name: gfx,
+      extension: 'jpg',
+      main: '0',
+      order: '0',
+      ...extra,
+    });
+
+    it('should return the whole gallery, main image first, then in the shop gallery order', async () => {
+      const { adapter, get } = setup();
+      respond(get, {
+        '/products/93': buildProduct(),
+        '/product-images': envelope([
+          image('302', { order: '2' }),
+          image('301', { order: '1' }),
+          image('300', { main: '1', order: '5' }),
+          image('303', { hidden: '1' }),
+          image('999', { product_id: '94' }),
+        ]),
+      });
+
+      const product = await adapter.getProduct('ol_product_1');
+
+      expect(product.images).toEqual([
+        `https://${SHOP_HOST}/userdata/public/gfx/300.jpg`,
+        `https://${SHOP_HOST}/userdata/public/gfx/301.jpg`,
+        `https://${SHOP_HOST}/userdata/public/gfx/302.jpg`,
+      ]);
+      const calls = get.mock.calls as Array<[string, Record<string, unknown>]>;
+      const imageCall = calls.find(([path]) => path === '/product-images');
+      expect(imageCall?.[1]).toEqual(expect.objectContaining({ filters: '{"product_id":93}' }));
+    });
+
+    it('should keep the main image when the gallery cannot be read', async () => {
+      const { adapter, get } = setup();
+      respond(get, { '/products/93': buildProduct() });
+
+      const product = await adapter.getProduct('ol_product_1');
+
+      expect(product.images).toEqual([`https://${SHOP_HOST}/userdata/public/gfx/207.png`]);
+    });
+
+    it('should keep the main image when the gallery is empty', async () => {
+      const { adapter, get } = setup();
+      respond(get, { '/products/93': buildProduct(), '/product-images': envelope([]) });
+
+      const product = await adapter.getProduct('ol_product_1');
+
+      expect(product.images).toEqual([`https://${SHOP_HOST}/userdata/public/gfx/207.png`]);
+    });
+
     it('should resolve the Shoper id from the mapping and return the product under its internal id', async () => {
       const { adapter, get, mapping } = setup();
       respond(get, { '/products/93': buildProduct() });
@@ -284,7 +349,10 @@ describe('ShoperProductMasterAdapter', () => {
       const product = await adapter.getProduct('ol_product_1');
 
       expect(product.gpsr).toBeNull();
-      expect(get.mock.calls.map((call: unknown[]) => String(call[0]))).toEqual(['/products/93']);
+      expect(get.mock.calls.map((call: unknown[]) => String(call[0]))).toEqual([
+        '/products/93',
+        '/product-images',
+      ]);
     });
 
     it('should leave gpsr off the product, not fail it, when the registry read fails', async () => {
@@ -318,6 +386,38 @@ describe('ShoperProductMasterAdapter', () => {
     function failWith(get: jest.Mock, error: Error): void {
       get.mockRejectedValue(error);
     }
+
+    it('should start the shop context read before the product read answers', async () => {
+      let releaseProduct: () => void = () => undefined;
+      const contextGet = jest.fn(() => Promise.resolve(MAP_CONTEXT));
+      const { adapter, get } = setup({ get: contextGet });
+      get.mockImplementation((path: string) => {
+        if (path === '/products/93') {
+          return new Promise((resolve) => {
+            releaseProduct = (): void => resolve({ status: 200, data: buildProduct() });
+          });
+        }
+        return Promise.resolve({ status: 200, data: envelope([]) });
+      });
+
+      const read = adapter.getProduct('ol_product_1');
+      await new Promise((resolve) => setImmediate(resolve));
+
+      expect(contextGet).toHaveBeenCalledTimes(1);
+      releaseProduct();
+      await expect(read).resolves.toMatchObject({ id: 'ol_product_1' });
+    });
+
+    it('should report the deletion, not a shop context failure, when both reads fail', async () => {
+      const { adapter, get } = setup({
+        get: () => Promise.reject(new ShoperNetworkError('ECONNRESET')),
+      });
+      failWith(get, new ShoperApiError(404, 'invalid_request', 'Resource not found'));
+
+      const error = await adapter.getProduct('ol_product_1').catch((e: unknown) => e);
+
+      expect(error).toBeInstanceOf(MasterProductNotFoundError);
+    });
 
     it('should translate Shoper’s structured 404 into the neutral MasterProductNotFoundError', async () => {
       const { adapter, get } = setup();
@@ -727,7 +827,7 @@ describe('ShoperProductMasterAdapter', () => {
       expect(variants.every((v) => v.productId === 'ol_product_1')).toBe(true);
     });
 
-    it('should map the live multi-variant product options to attributes, and a simple stock to null', async () => {
+    it('should map the live multi-variant product options to attributes and leave out its base row', async () => {
       const { adapter, get } = setup();
       respond(get, {
         '/product-stocks': envelope(LIVE_STOCKS_OF_PRODUCT_93),
@@ -737,13 +837,34 @@ describe('ShoperProductMasterAdapter', () => {
 
       const variants = await adapter.getProductVariants('ol_product_1');
 
+      // Stock 215 is the base row (`options: []`): no buyer can pick it, so it
+      // is not a variant (it used to add a phantom variant and double the stock).
       expect(variants.map((v) => [v.id, v.attributes])).toEqual([
-        ['ol_215', null],
         ['ol_217', { Kolor: 'biszkoptowy' }],
         ['ol_218', { Kolor: 'Shoper blue' }],
       ]);
       // One option is read once for both siblings that use it.
       expect(get.mock.calls.filter(([path]) => path === '/options/10')).toHaveLength(1);
+    });
+
+    it('should price a variant that keeps the base price at the base price, not at "0.00"', async () => {
+      const { adapter, get } = setup();
+      respond(get, {
+        '/product-stocks': envelope([
+          { ...LIVE_STOCKS_OF_PRODUCT_93[0], price: '79.00', price_type: '0' },
+          { ...LIVE_STOCKS_OF_PRODUCT_93[1], price: '0.00', price_type: '0' },
+          { ...LIVE_STOCKS_OF_PRODUCT_93[2], price: '5.00', price_type: '2' },
+        ]),
+        '/options/10': LIVE_OPTION_COLOUR,
+        '/option-values': envelope(LIVE_OPTION_VALUES),
+      });
+
+      const variants = await adapter.getProductVariants('ol_product_1');
+
+      expect(variants.map((v) => [v.id, v.price])).toEqual([
+        ['ol_217', 79],
+        ['ol_218', 84],
+      ]);
     });
 
     it('should sync a variant with null attributes, not fail, when its option cannot be read', async () => {
@@ -1307,7 +1428,11 @@ describe('ShoperProductMasterAdapter', () => {
         await adapter.getProductVariants(`ol_${id}`);
         await adapter.readProductTaxRate({ productId: `ol_${id}` });
       }
-      expect(get).not.toHaveBeenCalled();
+      // The product and its stocks come from the warm copies; only the
+      // per-product gallery read still reaches the shop.
+      expect((get.mock.calls as Array<[string]>).filter(([p]) => p !== '/product-images')).toEqual(
+        [],
+      );
     });
 
     it('should leave a product the shop did not return unwarmed, so its own read reports the deletion', async () => {
@@ -1321,7 +1446,8 @@ describe('ShoperProductMasterAdapter', () => {
       await expect(adapter.getProduct('ol_3')).rejects.toBeInstanceOf(MasterProductNotFoundError);
       expect(get).toHaveBeenCalledWith('/products/3');
       await expect(adapter.getProduct('ol_1')).resolves.toMatchObject({ id: 'ol_1' });
-      expect(get).toHaveBeenCalledTimes(1);
+      expect(callsTo(get, '/products/3')).toBe(1);
+      expect(callsTo(get, '/products/1')).toBe(0);
     });
 
     it('should not ask for stocks when the shop returned none of the products', async () => {

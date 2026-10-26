@@ -4,7 +4,7 @@
  * Per-provider `invoiceCorrectionFlow` slot for Subiekt. Issues a correcting
  * document (faktura korygująca) via the #1241 HTTP endpoint
  * `POST /invoices/:invoiceId/correct`. The operator supplies:
- *   - an optional free-text reason;
+ *   - a free-text reason, recommended but not forced (DEF-32);
  *   - per-line new quantity and/or new unit price gross.
  *
  * The line table is the shared `CorrectionLineGrid` (#3090) whenever the
@@ -28,6 +28,9 @@ import {
   useInvoiceContentQuery,
   useIssueCorrectionMutation,
   type CorrectionLineInput,
+  CorrectionReasonField,
+  useCorrectionReason,
+  useWarningAcknowledgement,
 } from '../../../features/invoicing';
 
 interface LineRow {
@@ -65,9 +68,10 @@ export function SubiektInvoiceCorrectionFlow({
   const { t } = useTranslation();
   const { showToast } = useToast();
   const mutation = useIssueCorrectionMutation();
+  const acknowledgement = useWarningAcknowledgement(mutation.isPending);
   const { linesAreAuthoritative, query: contentQuery } = useInvoiceContentQuery(invoice.id);
 
-  const [reason, setReason] = useState('');
+  const reasonState = useCorrectionReason();
   const [lines, setLines] = useState<LineRow[]>([emptyRow()]);
   const [gridLines, setGridLines] = useState<CorrectionLineInput[]>([]);
   const [linesError, setLinesError] = useState<string | null>(null);
@@ -118,37 +122,50 @@ export function SubiektInvoiceCorrectionFlow({
       parsedLines = parsed;
     }
     setLinesError(null);
-    mutation.mutate(
-      {
-        invoiceId: invoice.id,
-        input: {
-          reason: reason.trim() !== '' ? reason.trim() : undefined,
-          lines: parsedLines,
-          idempotencyKey: idempotencyKeyRef.current,
+    // DEF-32: a missing reason warns once, then the operator decides.
+    if (!reasonState.confirmBeforeSubmit()) {
+      return;
+    }
+    const send = (acknowledgeWarnings: string[]): void => {
+      mutation.mutate(
+        {
+          invoiceId: invoice.id,
+          input: {
+            ...(acknowledgeWarnings.length > 0 ? { acknowledgeWarnings } : {}),
+            reason: reasonState.submittedReason,
+            lines: parsedLines,
+            idempotencyKey: idempotencyKeyRef.current,
+          },
         },
-      },
-      {
-        onSuccess: (correctionInvoice) => {
-          showToast({
-            tone: 'success',
-            title: t('subiekt.correction.issued', 'Correction issued'),
-            description: t(
-              'subiekt.correction.issuedBody',
-              'The correcting document was sent to Subiekt.',
-            ),
-          });
-          onCorrectionIssued(correctionInvoice.id);
-          onClose();
+        {
+          onSuccess: (correctionInvoice) => {
+            showToast({
+              tone: 'success',
+              title: t('subiekt.correction.issued', 'Correction issued'),
+              description: t(
+                'subiekt.correction.issuedBody',
+                'The correcting document was sent to Subiekt.',
+              ),
+            });
+            onCorrectionIssued(correctionInvoice.id);
+            onClose();
+          },
+          onError: (error) => {
+            // DEF-23/30/31: a refusal the operator may overrule asks instead of failing.
+            if (acknowledgement.offer(error, send)) {
+              return;
+            }
+            showToast({
+              tone: 'error',
+              title: t('subiekt.correction.failed', 'Correction failed'),
+              description: error.message,
+            });
+          },
         },
-        onError: (error) => {
-          showToast({
-            tone: 'error',
-            title: t('subiekt.correction.failed', 'Correction failed'),
-            description: error.message,
-          });
-        },
-      },
-    );
+      );
+    };
+    acknowledgement.reset();
+    send([]);
   }
 
   const isSubmitting = mutation.isPending;
@@ -188,23 +205,12 @@ export function SubiektInvoiceCorrectionFlow({
       </div>
 
       {/* Reason */}
-      <div className="field subiekt-correction__reason">
-        <label htmlFor="sk-reason">
-          {t('subiekt.correction.reasonLabel', 'Reason for correction')}
-        </label>
-        <textarea
-          id="sk-reason"
-          className="textarea"
-          placeholder={t(
-            'subiekt.correction.reasonPlaceholder',
-            'e.g. Partial return of the order',
-          )}
-          value={reason}
-          onChange={(e) => setReason(e.target.value)}
-          disabled={isSubmitting}
-          rows={3}
-        />
-      </div>
+      <CorrectionReasonField
+        state={reasonState}
+        name="sk"
+        disabled={isSubmitting}
+        className="subiekt-correction__reason"
+      />
 
       {/* Line items */}
       {linesError ? (
@@ -315,6 +321,7 @@ export function SubiektInvoiceCorrectionFlow({
             : t('subiekt.correction.submit', 'Issue correction')}
         </Button>
       </div>
+      {acknowledgement.dialog}
     </div>
   );
 }

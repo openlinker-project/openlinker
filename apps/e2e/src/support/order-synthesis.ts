@@ -41,6 +41,11 @@ export interface SynthesizeOrderOptions {
    */
   buyerVatNumber?: string;
   /**
+   * ISO-3166 alpha-2 country of the buyer's address. Defaults to `PL`. A
+   * foreign country is what the KSeF cross-border guard keys on (DEF-18).
+   */
+  buyerCountryIso?: string;
+  /**
    * PrestaShop currency id to denominate the order in. Defaults to the
    * webservice client's own default, which is the shop's first currency.
    *
@@ -292,7 +297,15 @@ export async function synthesizeOrder(
     );
   }
 
-  const countryId = (await ps.getCountryIdByIso('PL')) ?? '1';
+  const buyerCountryIso = (options.buyerCountryIso ?? 'PL').toUpperCase();
+  const countryId = await ps.getCountryIdByIso(buyerCountryIso);
+  if (!countryId && buyerCountryIso !== 'PL') {
+    throw new Error(`synthesizeOrder: the shop has no country ${buyerCountryIso}`);
+  }
+  const buyerAddress =
+    buyerCountryIso === 'PL'
+      ? { address1: 'ul. Testowa 1', city: 'Warszawa', postcode: '00-001' }
+      : { address1: 'Teststrasse 1', city: 'Berlin', postcode: '10115' };
   const suffix = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
   // PrestaShop's `isName` validator (customer/address first+last name) rejects
   // digits and most punctuation, so the unique `suffix` can't live in the
@@ -308,10 +321,8 @@ export async function synthesizeOrder(
     idCustomer: customer.id,
     alias: `e2e-${suffix}`,
     ...customerName,
-    address1: 'ul. Testowa 1',
-    city: 'Warszawa',
-    postcode: '00-001',
-    idCountry: countryId,
+    ...buyerAddress,
+    idCountry: countryId ?? '1',
     vatNumber: options.buyerVatNumber,
   });
 

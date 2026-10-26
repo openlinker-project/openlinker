@@ -420,6 +420,9 @@ export function EditConnectionForm({ connection }: EditConnectionFormProps): Rea
   const apiClient = useApiClient();
   const updateConnection = useUpdateConnectionMutation();
   const { showToast } = useToast();
+  // DEF-21: advisory notices the save returned. They outlive the toast, so the
+  // form stays put and lets the operator read them before moving on.
+  const [saveWarnings, setSaveWarnings] = useState<string[]>([]);
   const navigate = useNavigate();
   const demoMode = useDemoMode();
   const write = useWriteAccess('connections:write', demoMode);
@@ -781,7 +784,7 @@ export function EditConnectionForm({ connection }: EditConnectionFormProps): Rea
       if (needsMasterCatalog) {
         delete mergedConfig.pricingRule;
       }
-      await updateConnection.mutateAsync({
+      const saved = await updateConnection.mutateAsync({
         connectionId: connection.id,
         input: { ...input, config: mergedConfig },
       });
@@ -790,6 +793,10 @@ export function EditConnectionForm({ connection }: EditConnectionFormProps): Rea
         title: 'Connection updated',
         description: 'Connection settings have been saved.',
       });
+      if (saved?.warnings && saved.warnings.length > 0) {
+        setSaveWarnings(saved.warnings);
+        return;
+      }
       void navigate(`/connections/${connection.id}`);
     } catch (error) {
       // #3207 — a 400 naming `config.stockLocationOverride` (unknown/retired
@@ -840,6 +847,22 @@ export function EditConnectionForm({ connection }: EditConnectionFormProps): Rea
       {updateConnection.error ? (
         <Alert tone="error" title="Unable to update connection">
           {updateConnection.error.message}
+        </Alert>
+      ) : null}
+      {saveWarnings.length > 0 ? (
+        <Alert
+          tone="warning"
+          title="Saved, with something to check"
+          data-testid="connection-save-warnings"
+          action={
+            <Button tone="secondary" onClick={() => void navigate(`/connections/${connection.id}`)}>
+              Go to connection
+            </Button>
+          }
+        >
+          {saveWarnings.map((warning) => (
+            <p key={warning}>{warning}</p>
+          ))}
         </Alert>
       ) : null}
 

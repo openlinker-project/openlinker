@@ -53,6 +53,21 @@ export interface ShoperMainImage {
 }
 
 /**
+ * A `GET /product-images` row (only what the mapper reads). Listing one
+ * product's images takes the JSON filter form (`filters={"product_id":93}`);
+ * the bracket form answers 500 on this resource (verified live, 7 Oct 2026).
+ * `main` is `"1"` on the product's main image, `order` is its gallery position.
+ */
+export interface ShoperProductImage extends ShoperMainImage {
+  readonly gfx_id: string;
+  readonly product_id: string;
+  readonly main?: string | null;
+  readonly order?: string | null;
+  /** `"1"` for an image the shop does not show in the product gallery. */
+  readonly hidden?: string | null;
+}
+
+/**
  * A `product-stocks` row: the real VARIANT grain (SPIKE-3638 M1). Every Shoper
  * product has at least one, with a real `stock_id`.
  */
@@ -66,6 +81,16 @@ export interface ShoperStock {
   readonly default: string | null;
   readonly code: string | null;
   readonly ean: string | null;
+  /**
+   * How this row's `price` relates to the base row's price (Shoper's own
+   * `ProductStock::PRICE_TYPE_*`): `0` keep the base price (`price` is then
+   * meaningless, `"0.00"` on a live shop), `1` own price, `2` base plus `price`,
+   * `3` base minus `price`. Optional: rows captured before the field was read
+   * lack it, and those keep reading `price` as the row's own price.
+   */
+  readonly price_type?: string | null;
+  /** Same codes as `price_type`, applied to `weight` (`ProductStock::WEIGHT_TYPE_*`). */
+  readonly weight_type?: string | null;
   /** Variant option values; see {@link ShoperStockOptions}. */
   readonly options: ShoperStockOptions;
 }

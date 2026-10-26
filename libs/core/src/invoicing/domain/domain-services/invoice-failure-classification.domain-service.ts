@@ -45,6 +45,15 @@ const TAX_ID_REJECTION_MARKERS = ['tax id', 'tax-id', 'taxid', 'tax identifier']
 export const CONNECTION_SETUP_FAILURE_CAUSE = 'connection-setup';
 
 /**
+ * The value an adapter stamps on `failureCause` to say "this needs the
+ * operator's decision" - a refusal resting on OpenLinker's reading of the law,
+ * which the operator may override by acknowledging `warningCode`. Same review
+ * bar as {@link CONNECTION_SETUP_FAILURE_CAUSE}: `reason` must name no order or
+ * buyer data.
+ */
+export const NEEDS_ACKNOWLEDGEMENT_FAILURE_CAUSE = 'needs-acknowledgement';
+
+/**
  * Neutral shape read STRUCTURALLY off a caught adapter throwable (#1200) - it is
  * NOT an adapter error subclass and is NOT value-imported. Anything that cannot
  * be read as the terminal `'rejected'` is treated as the fiscal-safe
@@ -79,6 +88,8 @@ export interface InvoiceFailureCarrier {
    * authors itself and can simply declare.
    */
   failureCause?: unknown;
+  /** The code to acknowledge, set together with `failureCause: 'needs-acknowledgement'`. */
+  warningCode?: unknown;
 }
 
 export interface InvoiceFailureClassification {
@@ -105,6 +116,9 @@ const FAILURE_REASONS: Record<InvoiceFailureCode, string> = {
   // naming the missing setting (#3772).
   'connection-setup-incomplete':
     "This connection is missing a setting it needs to issue invoices. Complete the connection's settings and re-issue.",
+  // The fallback only: the adapter always supplies its own sentence.
+  'acknowledgement-required':
+    'This document needs your decision before it is issued. Review the warning and confirm to proceed.',
   'provider-rejected': 'The invoicing provider rejected the request.',
   'transport-timeout':
     'The invoicing request timed out; the document may or may not have been created.',
@@ -158,6 +172,9 @@ export function classifyInvoiceFailureCode(
   if ((error as InvoiceFailureCarrier | null)?.failureCause === CONNECTION_SETUP_FAILURE_CAUSE) {
     return 'connection-setup-incomplete';
   }
+  if ((error as InvoiceFailureCarrier | null)?.failureCause === NEEDS_ACKNOWLEDGEMENT_FAILURE_CAUSE) {
+    return 'acknowledgement-required';
+  }
   const haystack = readReason(error).toLowerCase();
   if (TAX_ID_REJECTION_MARKERS.some((marker) => haystack.includes(marker))) {
     return 'buyer-tax-id-invalid';
@@ -182,7 +199,7 @@ export function deriveInvoiceFailureReason(
   failureCode: InvoiceFailureCode,
   error?: unknown
 ): string {
-  if (failureCode === 'connection-setup-incomplete') {
+  if (failureCode === 'connection-setup-incomplete' || failureCode === 'acknowledgement-required') {
     const reason = (error as InvoiceFailureCarrier | null)?.reason;
     if (typeof reason === 'string' && reason.trim().length > 0) {
       return bound(reason.trim());
@@ -199,4 +216,14 @@ export function classifyInvoiceFailure(error: unknown): InvoiceFailureClassifica
     failureCode,
     failureReason: deriveInvoiceFailureReason(failureCode, error),
   };
+}
+
+/** The `warningCode` an acknowledgement-required refusal carries, or `null`. */
+export function readAcknowledgementWarningCode(error: unknown): string | null {
+  const carrier = error as InvoiceFailureCarrier | null;
+  return carrier?.failureCause === NEEDS_ACKNOWLEDGEMENT_FAILURE_CAUSE &&
+    typeof carrier.warningCode === 'string' &&
+    carrier.warningCode.length > 0
+    ? carrier.warningCode
+    : null;
 }

@@ -166,6 +166,14 @@ export class InvoiceRecord {
      */
     public readonly warehouseReleaseOutcome: WarehouseReleaseOutcome | null = null,
     public readonly warehouseReleaseNumber: string | null = null,
+    /**
+     * Opaque operator-facing clearance diagnostic (#1582) - the authority's
+     * rejection description/details captured by the `RegulatoryStatusReader`
+     * read, so the detail page can explain WHY a document was rejected. Neutral
+     * (ADR-026): a free-text blob, never interpreted in core. `null` until a
+     * read surfaces one (typically only on `rejected`).
+     */
+    public readonly clearanceDetail: string | null = null,
   ) {}
 
   /**

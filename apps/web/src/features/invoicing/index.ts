@@ -47,6 +47,13 @@ export {
   type CorrectionLinePickerProps,
 } from './components/correction-line-picker';
 export {
+  CorrectionReasonField,
+  useCorrectionReason,
+  CORRECTION_REASON_MAX_LENGTH,
+  type CorrectionReasonState,
+  type CorrectionReasonFieldProps,
+} from './components/correction-reason-field';
+export {
   CorrectionLineGrid,
   type CorrectionLineGridProps,
   type CorrectionSuggestedLine,
@@ -68,6 +75,7 @@ export { useRegulatoryConfirmationPreview } from './hooks/use-regulatory-confirm
 export type { ConfirmationPreviewKind } from './hooks/use-regulatory-confirmation-preview';
 export { useRegulatoryConfirmationDownload } from './hooks/use-regulatory-confirmation-download';
 export { useInvoiceSourceDocument } from './hooks/use-invoice-source-document';
+export { useInvoiceVerificationLinkQuery } from './hooks/use-invoice-verification-link-query';
 export { useInvoiceRenderedDocumentDownload } from './hooks/use-invoice-rendered-document-download';
 export {
   useSendInvoiceEmailMutation,
@@ -137,7 +145,13 @@ export {
   isConnectionSetupIncompleteError,
   isCapabilityDisabledError,
   resolveIssueErrorMessage,
+  readAcknowledgementRequest,
+  type AcknowledgementRequest,
 } from './lib/issue-error-message';
+export {
+  useWarningAcknowledgement,
+  type WarningAcknowledgement,
+} from './components/acknowledge-warning-dialog';
 export {
   deriveInvoiceDisplayStatus,
   canRetryInvoice,
@@ -202,6 +216,10 @@ export type {
   BulkIssueOutcome,
   CorrectionLineInput,
   IssueCorrectionInput,
+  IssueInvoiceOptions,
+  IssueInvoiceAnnotationsInput,
+  IssueInvoiceAdditionalPartyInput,
+  IssueInvoiceLineClassificationInput,
   IssuedDocumentContent,
   IssuedDocumentLine,
   InvoiceEmailLocale,
