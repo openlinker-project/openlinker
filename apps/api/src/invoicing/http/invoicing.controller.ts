@@ -105,12 +105,12 @@ import {
   classifyInvoiceFailure,
   classifyInvoiceFailureMode,
   readAcknowledgementWarningCode,
+  buildOriginalDocumentFromIssuedRecord,
 } from '@openlinker/core/invoicing';
 import type {
   InvoiceRecord,
   IssueInvoiceCommand,
   InvoiceRecordFilters,
-  IssuedLineSnapshot,
   OriginalDocumentSnapshot,
   TaxIdentifier,
   InvoicingPort,
@@ -963,7 +963,7 @@ export class InvoicingController {
 
       let originalDocument: OriginalDocumentSnapshot | undefined;
       if (original.issuedLineSnapshot) {
-        originalDocument = this.buildSnapshotFromRecord(original, original.issuedLineSnapshot);
+        originalDocument = buildOriginalDocumentFromIssuedRecord(original, original.issuedLineSnapshot);
       } else {
         const orderRecord = await this.orders.getOrderRecord(original.orderId);
         originalDocument = orderRecord
@@ -1452,45 +1452,6 @@ export class InvoicingController {
    */
   private toIsoDateOnly(date: Date): string {
     return date.toISOString().slice(0, 10);
-  }
-
-  /**
-   * Assemble `OriginalDocumentSnapshot` from the record's persisted issuance-time
-   * line snapshot (#1297) — the PRIMARY path. `buyer`/`currency`/`lines` come from
-   * the snapshot (the lines AS ISSUED, including the true buyer tax id — no
-   * `buyerTaxId: null` caveat and no order fetch); `documentType`/clearance/number/
-   * issue date come from the record itself. Transitional exception: a snapshot
-   * persisted by a correction of a PRE-#1297 record was seeded from the fallback
-   * reconstruction, so its `taxId` is `null` — a one-hop degradation that
-   * self-heals for documents issued after the snapshot column existed. The
-   * snapshot's `buyer` round-trips from jsonb as a plain structural object
-   * (`IssuedSnapshotBuyer`), so it is re-wrapped into a real `BuyerProfile` to
-   * match the fallback path's output shape.
-   */
-  private buildSnapshotFromRecord(
-    record: InvoiceRecord,
-    snapshot: IssuedLineSnapshot,
-  ): OriginalDocumentSnapshot {
-    return {
-      buyer: BuyerProfile.fromSnapshot(snapshot.buyer),
-      currency: snapshot.currency,
-      documentType: record.documentType.length > 0 ? record.documentType : 'invoice',
-      lines: snapshot.lines,
-      clearanceReference: record.clearanceReference,
-      // Non-null assertions (not `?? ''` / ternary fallbacks): the caller already
-      // asserts `providerInvoiceNumber` and `issuedAt` are non-null before this
-      // path runs, so masking a future guard regression behind an empty string
-      // would silently produce an invalid document number / issue date instead
-      // of surfacing the broken invariant.
-      documentNumber: record.providerInvoiceNumber!,
-      // The date the original PRINTED (DEF-33) when the snapshot has it: the
-      // UTC day of `issuedAt` is a different day for anything issued just after
-      // local midnight, and the correction must reference the original exactly.
-      issueDate: snapshot.issueDate ?? this.toIsoDateOnly(record.issuedAt!),
-      ...(snapshot.saleDate !== undefined ? { saleDate: snapshot.saleDate } : {}),
-      ...(snapshot.annotations ? { annotations: snapshot.annotations } : {}),
-      ...(snapshot.additionalParties?.length ? { additionalParties: snapshot.additionalParties } : {}),
-    };
   }
 
   /**

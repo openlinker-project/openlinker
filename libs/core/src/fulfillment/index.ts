@@ -155,6 +155,12 @@ export * from './domain/types/fulfillment-work-link.types';
 export * from './domain/types/order-work-summary.types';
 export type { IFulfillmentWorkQueryService } from './application/interfaces/fulfillment-work-query.service.interface';
 
+export type {
+  IFulfillmentOrderCancellationService,
+  OrderWorkSummary,
+  OrderWorkCancellationResult,
+} from './application/interfaces/fulfillment-order-cancellation.service.interface';
+
 export { RoutingDecision } from './domain/entities/routing-decision.entity';
 export { RoutingDecisionAlreadyLiveError } from './domain/exceptions/routing-decision-already-live.error';
 export { RoutingDecisionNoLongerLiveError } from './domain/exceptions/routing-decision-no-longer-live.error';
