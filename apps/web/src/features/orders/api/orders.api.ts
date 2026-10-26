@@ -38,7 +38,9 @@ import type {
   CancelOrderRequest,
   CancelOrderResult,
   ConfirmOrderChangeResult,
+  OrderChangeView,
 } from './order-cancel.types';
+import type { OrderRefundRecord, RecordOrderRefundRequest } from './order-refund.types';
 
 export interface OrdersApi {
   list: (filters?: OrderFilters, pagination?: OrderPagination) => Promise<PaginatedOrders>;
@@ -97,6 +99,14 @@ export interface OrdersApi {
     internalOrderId: string,
     changeId: string,
   ) => Promise<ConfirmOrderChangeResult>;
+  /** The order's operator changes, newest first: cancel requests and their credit proposals. */
+  listOrderChanges: (internalOrderId: string) => Promise<OrderChangeView[]>;
+  /** Record that the operator refunded the buyer. 409 `refund_ceiling_exceeded` carries the figures. */
+  recordRefund: (
+    internalOrderId: string,
+    body: RecordOrderRefundRequest,
+  ) => Promise<OrderRefundRecord>;
+  listRefunds: (internalOrderId: string) => Promise<OrderRefundRecord[]>;
   /**
    * Release a hold (#2341). Admin-only. Answers 409 `HOLD_ALREADY_RELEASED` on
    * a replay and 400 when a note is required and missing; the success body
@@ -339,6 +349,18 @@ export function createOrdersApi(request: ApiRequest, requestBlob: ApiBlobRequest
         `/orders/${encodeURIComponent(internalOrderId)}/changes/${encodeURIComponent(changeId)}/confirm`,
         { method: 'POST' },
       );
+    },
+    listOrderChanges(internalOrderId): Promise<OrderChangeView[]> {
+      return request<OrderChangeView[]>(`/orders/${encodeURIComponent(internalOrderId)}/changes`);
+    },
+    recordRefund(internalOrderId, body): Promise<OrderRefundRecord> {
+      return request<OrderRefundRecord>(`/orders/${encodeURIComponent(internalOrderId)}/refunds`, {
+        method: 'POST',
+        body: JSON.stringify(body),
+      });
+    },
+    listRefunds(internalOrderId): Promise<OrderRefundRecord[]> {
+      return request<OrderRefundRecord[]>(`/orders/${encodeURIComponent(internalOrderId)}/refunds`);
     },
     releaseHold(internalOrderId, holdId, body): Promise<ReleaseOrderHoldResult> {
       return request<ReleaseOrderHoldResult>(

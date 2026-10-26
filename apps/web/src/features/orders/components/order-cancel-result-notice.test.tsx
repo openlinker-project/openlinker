@@ -13,14 +13,53 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { OrderCancelResultNotice } from './order-cancel-result-notice';
 import { ApiError } from '../../../shared/api/api-error';
 import { createMockApiClient, renderWithProviders } from '../../../test/test-utils';
-import type { CancelOrderResult } from '../api/order-cancel.types';
+import type { CancelOrderResult, OrderChangeView } from '../api/order-cancel.types';
 
 const ORDER_ID = 'ol_order_1';
 
-function result(overrides: Partial<CancelOrderResult> = {}): CancelOrderResult {
+function cancelRequest(overrides: Partial<OrderChangeView> = {}): OrderChangeView {
+  return {
+    id: 'change_cancel',
+    kind: 'order.cancel_request',
+    status: 'confirmed',
+    open: false,
+    requestedAt: '2026-09-25T11:02:00.000Z',
+    confirmedAt: '2026-09-25T11:03:00.000Z',
+    declinedReason: null,
+    payload: { cancelRequest: { reason: 'buyer-request', note: null }, correction: null },
+    ...overrides,
+  };
+}
+
+function correction(overrides: Partial<OrderChangeView> = {}): OrderChangeView {
+  return {
+    id: 'change_1',
+    kind: 'order.cancel_correction',
+    status: 'requested',
+    open: true,
+    requestedAt: '2026-09-25T11:03:00.000Z',
+    confirmedAt: null,
+    declinedReason: null,
+    payload: {
+      cancelRequest: null,
+      correction: {
+        invoiceRecordId: 'inv_1',
+        documentNumber: 'FV/412/09/2026',
+        currency: 'PLN',
+        lines: [
+          { originalLineNumber: 1, name: 'Kubek ceramiczny', previousQuantity: 3, newQuantity: 0 },
+          { originalLineNumber: 2, name: 'Talerz obiadowy', previousQuantity: 2, newQuantity: 0 },
+        ],
+      },
+    },
+    ...overrides,
+  };
+}
+
+function session(overrides: Partial<CancelOrderResult> = {}): CancelOrderResult {
   return {
     status: 'cancelled',
-    changeId: 'change_1',
+    changeId: 'change_cancel',
     cancelledAt: '2026-09-25T11:02:00.000Z',
     participants: [],
     otherParticipantsRelayFailed: false,
@@ -33,19 +72,12 @@ function result(overrides: Partial<CancelOrderResult> = {}): CancelOrderResult {
   };
 }
 
-const PROPOSAL = {
-  changeId: 'change_1',
-  invoiceRecordId: 'inv_1',
-  documentNumber: 'FV/412/09/2026',
-  currency: 'PLN',
-  lines: [
-    { originalLineNumber: 1, name: 'Kubek ceramiczny', previousQuantity: 3, newQuantity: 0 },
-    { originalLineNumber: 2, name: 'Talerz obiadowy', previousQuantity: 2, newQuantity: 0 },
-  ],
-};
-
 function renderNotice(
-  value: CancelOrderResult,
+  props: {
+    changes: OrderChangeView[];
+    refundRecorded?: boolean;
+    sessionResult?: CancelOrderResult | null;
+  },
   confirmOrderChange = vi.fn().mockResolvedValue({
     changeId: 'change_1',
     kind: 'order.cancel_correction',
@@ -63,10 +95,12 @@ function renderNotice(
   });
   renderWithProviders(
     <OrderCancelResultNotice
-      result={value}
       internalOrderId={ORDER_ID}
+      changes={props.changes}
+      refundRecorded={props.refundRecorded ?? false}
       sourceName="Allegro"
       totalLabel="348.99 PLN"
+      sessionResult={props.sessionResult ?? null}
       onCorrectionConfirmed={onCorrectionConfirmed}
     />,
     { apiClient: api },
@@ -77,30 +111,44 @@ function renderNotice(
 afterEach(cleanup);
 
 describe('OrderCancelResultNotice (#3541)', () => {
-  it('should show a pending banner naming the channel when it has not answered', () => {
-    renderNotice(result({ status: 'pending', cancelledAt: null }));
+  it('should show a pending banner from the SERVER record when the channel has not answered', () => {
+    renderNotice({ changes: [cancelRequest({ status: 'requested', open: true, confirmedAt: null })] });
 
     expect(screen.getByTestId('order-cancel-pending')).toHaveTextContent('waiting for Allegro');
     expect(screen.queryByTestId('order-cancel-done')).not.toBeInTheDocument();
   });
 
-  it('should tell the operator the refund is theirs and the payment keeps reading Paid', () => {
-    renderNotice(result());
+  it('should render nothing for an order with no cancel request', () => {
+    renderNotice({ changes: [] });
+    expect(screen.queryByTestId('order-cancel-done')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('order-cancel-pending')).not.toBeInTheDocument();
+  });
+
+  it('should tell the operator the refund is theirs, point at Confirm refund and keep Paid', () => {
+    renderNotice({ changes: [cancelRequest()] });
 
     const refund = screen.getByTestId('order-cancel-done-refund');
     expect(refund).toHaveTextContent('Refund 348.99 PLN to the buyer yourself');
-    expect(refund).toHaveTextContent('keeps reading Paid until a refund is confirmed');
+    expect(refund).toHaveTextContent('keeps reading Paid');
+    expect(refund).toHaveTextContent('Confirm refund');
     expect(screen.getByTestId('order-cancel-done')).toHaveTextContent('1 thing is left for you');
   });
 
+  it('should stop asking for a refund once one is recorded, and disappear when nothing is left', () => {
+    renderNotice({ changes: [cancelRequest()], refundRecorded: true });
+
+    expect(screen.queryByTestId('order-cancel-done')).not.toBeInTheDocument();
+  });
+
   it('should state that only stock was restored for a channel with no confirmed cancel call', async () => {
-    renderNotice(
-      result({
+    renderNotice({
+      changes: [cancelRequest()],
+      sessionResult: session({
         participants: [
           { connectionId: 'c1', role: 'source', effect: 'stock-restored-only', detail: null },
         ],
       }),
-    );
+    });
 
     const participants = await screen.findByTestId('order-cancel-done-participants');
     expect(participants).toHaveTextContent('Stock restored only');
@@ -108,32 +156,35 @@ describe('OrderCancelResultNotice (#3541)', () => {
   });
 
   it('should not list a participant that was simply notified', () => {
-    renderNotice(
-      result({
+    renderNotice({
+      changes: [cancelRequest()],
+      sessionResult: session({
         participants: [{ connectionId: 'c1', role: 'source', effect: 'notified', detail: null }],
       }),
-    );
+    });
 
     expect(screen.queryByTestId('order-cancel-done-participants')).not.toBeInTheDocument();
   });
 
-  it('should explain why no correction was drafted for an invoiced order', () => {
-    renderNotice(result({ correctionUnavailableReason: 'no-line-snapshot' }));
+  it('should explain why no correction was drafted when the session knows', () => {
+    renderNotice({
+      changes: [cancelRequest()],
+      sessionResult: session({ correctionUnavailableReason: 'no-line-snapshot' }),
+    });
 
     expect(screen.getByTestId('order-cancel-done-correction-unavailable')).toHaveTextContent(
       /no record of the lines on the original invoice/,
     );
-    expect(screen.getByTestId('order-cancel-done')).toHaveTextContent('2 things are left for you');
   });
 
-  it('should list the lines going to zero and confirm the correction on request', async () => {
-    const { confirmOrderChange, onCorrectionConfirmed } = renderNotice(
-      result({ correctionProposal: PROPOSAL }),
-    );
+  it('should offer the correction from the server record after a reload, with no session result', async () => {
+    const { confirmOrderChange, onCorrectionConfirmed } = renderNotice({
+      changes: [correction(), cancelRequest()],
+      sessionResult: null,
+    });
     const user = userEvent.setup();
 
     expect(screen.getByTestId('order-cancel-done-correction')).toHaveTextContent('FV/412/09/2026');
-    // Nothing is sent until the operator asks.
     expect(confirmOrderChange).not.toHaveBeenCalled();
 
     await user.click(screen.getByTestId('order-cancel-review-correction'));
@@ -151,11 +202,15 @@ describe('OrderCancelResultNotice (#3541)', () => {
         expect.objectContaining({ documentNumber: 'KOR/1/09/2026' }),
       );
     });
-    // The page moves on: the review action is gone and the line says it was confirmed.
-    expect(await screen.findByTestId('order-cancel-done-correction')).toHaveTextContent(
-      'was confirmed as KOR/1/09/2026',
-    );
+  });
+
+  it('should not offer a correction that is already confirmed', () => {
+    renderNotice({
+      changes: [correction({ status: 'confirmed', open: false }), cancelRequest()],
+    });
+
     expect(screen.queryByTestId('order-cancel-review-correction')).not.toBeInTheDocument();
+    expect(screen.getByTestId('order-cancel-done-correction-confirmed')).toBeInTheDocument();
   });
 
   it('should keep the confirm button for a provider failure and show the provider reason', async () => {
@@ -165,7 +220,7 @@ describe('OrderCancelResultNotice (#3541)', () => {
       .mockRejectedValue(
         new ApiError(message, 422, { statusCode: 422, error: 'CORRECTION_FAILED', message }),
       );
-    renderNotice(result({ correctionProposal: PROPOSAL }), confirmOrderChange);
+    renderNotice({ changes: [correction(), cancelRequest()] }, confirmOrderChange);
     const user = userEvent.setup();
 
     await user.click(screen.getByTestId('order-cancel-review-correction'));
@@ -174,7 +229,6 @@ describe('OrderCancelResultNotice (#3541)', () => {
     const error = await screen.findByTestId('order-correction-error');
     expect(error).toHaveTextContent(message);
     expect(error).toHaveTextContent('The invoicing provider rejected the correction');
-    // The proposal stays open on the server, so a retry is offered.
     expect(screen.getByTestId('order-correction-confirm')).toBeEnabled();
   });
 
@@ -185,7 +239,7 @@ describe('OrderCancelResultNotice (#3541)', () => {
       .mockRejectedValue(
         new ApiError(message, 409, { statusCode: 409, error: 'CHANGE_EXPIRED', message }),
       );
-    renderNotice(result({ correctionProposal: PROPOSAL }), confirmOrderChange);
+    renderNotice({ changes: [correction(), cancelRequest()] }, confirmOrderChange);
     const user = userEvent.setup();
 
     await user.click(screen.getByTestId('order-cancel-review-correction'));

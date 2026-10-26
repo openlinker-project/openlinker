@@ -1,52 +1,138 @@
 /**
  * Order cancel timeline events (#3541, mockup M1 Activity)
  *
- * Maps the one cancel result the page holds into Activity rows. The timeline
- * learns nothing about cancelling: this builds `TimelineEvent`s and the page
- * hands them over (the `extraEvents` precedent, #2383).
+ * Maps the order's persisted change proposals and recorded refunds into Activity
+ * rows, so the cancel history survives a reload. The timeline learns nothing
+ * about cancelling: this builds `TimelineEvent`s and the page hands them over.
  *
  * **"Refund not confirmed yet" is UNDATED, deliberately.** It is a current-state
  * fact ("nobody has confirmed a refund"), not something that happened at an
- * instant, and dating it would assert a moment the data does not support. It is
- * also never labelled a refund done: OpenLinker moves no money.
+ * instant. It disappears once a refund is recorded, which then appears as a
+ * dated row. Nothing is ever labelled a refund that OpenLinker made: it moves no
+ * money.
  *
- * The result is session-local (see `OrderCancelResultNotice`), so these rows
- * appear for the operator who cancelled and not after a reload.
+ * Per-participant outcomes, stock release and voided labels are not persisted, so
+ * they come from the one cancel response the session holds (`sessionResult`) and
+ * are absent after a reload. The persisted rows still tell the story.
  *
  * @module apps/web/src/features/orders/components
  */
 import { ConnectionEntityLabel } from '../../connections';
-import type { CancelOrderResult, OrderCancelReason } from '../api/order-cancel.types';
+import type { CancelOrderResult, OrderChangeView } from '../api/order-cancel.types';
+import type { OrderRefundRecord } from '../api/order-refund.types';
 import { CANCEL_PARTICIPANT_EFFECT_COPY, orderCancelReasonLabel } from '../lib/order-cancel';
 import type { TimelineEvent } from './order-activity-timeline';
 
 export interface OrderCancelTimelineInput {
-  result: CancelOrderResult;
-  reason: OrderCancelReason | string;
-  /** When the response arrived. OpenLinker's own act, so OpenLinker's clock. */
-  requestedAt: string;
+  changes: readonly OrderChangeView[];
+  refunds: readonly OrderRefundRecord[];
   sourceName: string | null;
+  /** Session-only extras; see the module docblock. Matched to its change by id. */
+  sessionResult?: CancelOrderResult | null;
 }
 
 export function buildOrderCancelTimelineEvents(input: OrderCancelTimelineInput): TimelineEvent[] {
-  const { result, requestedAt } = input;
-  const events: TimelineEvent[] = [
-    {
-      id: `cancel-requested:${result.changeId}`,
-      timestamp: requestedAt,
-      title: `Cancellation requested: ${orderCancelReasonLabel(input.reason)}`,
+  const { changes, refunds, sessionResult } = input;
+  const events: TimelineEvent[] = [];
+  // Oldest first, so the rows read in the order things happened.
+  const ordered = [...changes].reverse();
+  let cancelConfirmed = false;
+
+  for (const change of ordered) {
+    if (change.kind === 'order.cancel_request') {
+      const request = change.payload.cancelRequest;
+      events.push({
+        id: `cancel-requested:${change.id}`,
+        timestamp: change.requestedAt,
+        title: `Cancellation requested: ${orderCancelReasonLabel(request?.reason ?? '')}`,
+        by: 'operator',
+        description:
+          request?.note ??
+          (change.open ? `Waiting for ${input.sourceName ?? 'the sales channel'} to confirm.` : undefined),
+        tone: change.open ? 'warning' : 'default',
+      });
+      if (change.status === 'confirmed') {
+        cancelConfirmed = true;
+        events.push({
+          id: `cancel-confirmed:${change.id}`,
+          timestamp: change.confirmedAt ?? change.requestedAt,
+          title: 'Order cancelled',
+          by: 'system · writeback',
+          description: 'The cancellation was applied.',
+          tone: 'success',
+        });
+        if (sessionResult?.changeId === change.id) {
+          events.push(...buildSessionEvents(sessionResult, change.confirmedAt ?? change.requestedAt));
+        }
+      } else if (change.status === 'declined') {
+        events.push({
+          id: `cancel-declined:${change.id}`,
+          timestamp: change.confirmedAt ?? change.requestedAt,
+          title: 'The sales channel refused the cancellation',
+          by: 'system · writeback',
+          description: change.declinedReason ?? undefined,
+          tone: 'error',
+        });
+      } else if (!change.open) {
+        events.push({
+          id: `cancel-expired:${change.id}`,
+          timestamp: null,
+          title: 'The cancellation request expired',
+          by: 'system',
+          description: 'The channel never answered. Cancel the order again if it should still be cancelled.',
+          tone: 'warning',
+        });
+      }
+    } else {
+      const proposal = change.payload.correction;
+      const number = proposal?.documentNumber ? ` for ${proposal.documentNumber}` : '';
+      events.push({
+        id: `cancel-correction:${change.id}`,
+        timestamp: change.requestedAt,
+        title: `Correction invoice drafted${number}`,
+        by: 'system · invoicing',
+        description: change.open ? 'Waiting for you to review and confirm it.' : undefined,
+        tone: change.open ? 'warning' : 'default',
+      });
+      if (change.status === 'confirmed') {
+        events.push({
+          id: `cancel-correction-confirmed:${change.id}`,
+          timestamp: change.confirmedAt ?? change.requestedAt,
+          title: `Correction invoice confirmed${number}`,
+          by: 'operator',
+          tone: 'success',
+        });
+      }
+    }
+  }
+
+  for (const refund of refunds) {
+    events.push({
+      id: `refund:${refund.id}`,
+      timestamp: refund.recordedAt,
+      title: `Refund confirmed: ${refund.amount} ${refund.currency}`,
       by: 'operator',
-      description:
-        result.status === 'pending'
-          ? `Waiting for ${input.sourceName ?? 'the sales channel'} to confirm.`
-          : undefined,
-      tone: result.status === 'pending' ? 'warning' : 'default',
-    },
-  ];
-  if (result.status === 'pending') return events;
+      description: refund.note ?? 'You recorded that you refunded the buyer.',
+      tone: 'success',
+    });
+  }
 
-  const at = result.cancelledAt ?? requestedAt;
+  if (cancelConfirmed && refunds.length === 0) {
+    events.push({
+      id: 'cancel-refund-pending',
+      timestamp: null,
+      title: 'Refund not confirmed yet',
+      by: 'waiting on you',
+      description: 'Refund the buyer yourself, then use Confirm refund. OpenLinker does not move money.',
+      tone: 'warning',
+    });
+  }
 
+  return events;
+}
+
+function buildSessionEvents(result: CancelOrderResult, at: string): TimelineEvent[] {
+  const events: TimelineEvent[] = [];
   for (const participant of result.participants) {
     const copy = CANCEL_PARTICIPANT_EFFECT_COPY[participant.effect];
     events.push({
@@ -62,7 +148,6 @@ export function buildOrderCancelTimelineEvents(input: OrderCancelTimelineInput):
       tone: participant.effect === 'notified' ? 'success' : copy.tone === 'error' ? 'error' : 'warning',
     });
   }
-
   if (result.voidedShipmentIds.length > 0) {
     events.push({
       id: `cancel-labels:${result.changeId}`,
@@ -73,7 +158,6 @@ export function buildOrderCancelTimelineEvents(input: OrderCancelTimelineInput):
       tone: 'success',
     });
   }
-
   if (result.stockRestoreEnqueued) {
     events.push({
       id: `cancel-stock:${result.changeId}`,
@@ -84,28 +168,5 @@ export function buildOrderCancelTimelineEvents(input: OrderCancelTimelineInput):
       tone: 'success',
     });
   }
-
-  if (result.correctionProposal) {
-    events.push({
-      id: `cancel-correction:${result.changeId}`,
-      timestamp: at,
-      title: `Correction invoice drafted${
-        result.correctionProposal.documentNumber ? ` for ${result.correctionProposal.documentNumber}` : ''
-      }`,
-      by: 'system · invoicing',
-      description: 'Waiting for you to review and confirm it.',
-      tone: 'warning',
-    });
-  }
-
-  events.push({
-    id: `cancel-refund:${result.changeId}`,
-    timestamp: null,
-    title: 'Refund not confirmed yet',
-    by: 'waiting on you',
-    description: 'Refund the buyer yourself. OpenLinker does not move money.',
-    tone: 'warning',
-  });
-
   return events;
 }
