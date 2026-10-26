@@ -22,6 +22,7 @@ import { AutomationExceptionFilter } from './automation-exception.filter';
 import { AvailabilityUnknownFilter } from './availability-unknown.filter';
 import { CapabilityNotSupportedFilter } from './capability-not-supported.filter';
 import { ConnectionExceptionFilter } from './connection-exception.filter';
+import { InventoryCorrectionExceptionFilter } from './inventory-correction-exception.filter';
 import { InventoryLocationExceptionFilter } from './inventory-location-exception.filter';
 import { ReturnsExceptionFilter } from './returns-exception.filter';
 import { TaxonomySourceUnavailableFilter } from './taxonomy-source-unavailable.filter';
@@ -36,6 +37,7 @@ export function buildGlobalExceptionFilters(): ExceptionFilter[] {
     new ConnectionExceptionFilter(),
     new TaxonomySourceUnavailableFilter(),
     new InventoryLocationExceptionFilter(),
+    new InventoryCorrectionExceptionFilter(),
     new AvailabilityUnknownFilter(),
     new ReturnsExceptionFilter(),
     new AutomationExceptionFilter(),
