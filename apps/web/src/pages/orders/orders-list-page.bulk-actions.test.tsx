@@ -49,18 +49,24 @@ const USER = (role: string, permissions: string[]): SessionUser => ({
   analyticsConsent: true,
 });
 
-function renderPage(items: OrderRecord[], user?: SessionUser) {
+function renderPage(items: OrderRecord[], user?: SessionUser, demoMode = false) {
+  const bulkCancelOrders = vi.fn();
+  const bulkMarkBuyerNoteRead = vi.fn();
   const api = createMockApiClient({
     orders: {
       list: vi.fn().mockResolvedValue(paginated(items)),
       listTags: vi.fn().mockResolvedValue([]),
+      bulkCancelOrders,
+      bulkMarkBuyerNoteRead,
     },
     connections: { list: vi.fn().mockResolvedValue([]) },
+    system: { getConfig: vi.fn().mockResolvedValue({ demoMode }) },
   });
-  return renderWithProviders(<OrdersListPage />, {
+  renderWithProviders(<OrdersListPage />, {
     apiClient: api,
     sessionAdapter: createAuthenticatedSessionAdapter(user),
   });
+  return { bulkCancelOrders, bulkMarkBuyerNoteRead };
 }
 
 beforeEach(() => {
@@ -150,5 +156,26 @@ describe('OrdersListPage bulk actions (#3619)', () => {
 
     expect(screen.getByTestId('orders-bulk-cancel')).toHaveTextContent('Cancel 100');
     expect(screen.getByRole('checkbox', { name: 'Select ol_100' })).toBeDisabled();
+  });
+
+  it('should show the bulk actions locked, with no request sent, to a demo read-only viewer', async () => {
+    const user = userEvent.setup();
+    const { bulkCancelOrders, bulkMarkBuyerNoteRead } = renderPage(
+      [makeOrder('ol_note', { hasBuyerNote: true, buyerNoteState: 'present' } as Partial<OrderRecord>)],
+      USER('viewer', ['orders:read']),
+      true,
+    );
+
+    await user.click(await screen.findByRole('checkbox', { name: 'Select ol_note' }));
+
+    expect(screen.getByTestId('orders-bulk-tags')).toBeDisabled();
+    expect(screen.getByTestId('orders-bulk-read')).toBeDisabled();
+    // Cancel stays admin-only: a viewer never sees it, demo or not.
+    expect(screen.queryByTestId('orders-bulk-cancel')).toBeNull();
+
+    await user.click(screen.getByTestId('orders-bulk-read'));
+    expect(screen.queryByTestId('orders-bulk-read-dialog')).toBeNull();
+    expect(bulkCancelOrders).not.toHaveBeenCalled();
+    expect(bulkMarkBuyerNoteRead).not.toHaveBeenCalled();
   });
 });
