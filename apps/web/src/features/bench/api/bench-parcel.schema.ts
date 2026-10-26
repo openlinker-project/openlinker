@@ -112,6 +112,7 @@ export const benchParcelSchema = z.object({
   // note, or sends null, means "no note", and failing the parse would hide the
   // whole box from the packer who is holding it.
   buyerNote: nullableString,
+  hasBuyerNote: z.boolean().optional(),
   buyerNoteAcknowledgedAt: nullableString,
   buyerNoteAcknowledgedByUserId: nullableString,
   otherParcelBuyerNoteAcknowledgements: z
