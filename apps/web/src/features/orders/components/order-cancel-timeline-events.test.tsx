@@ -113,7 +113,7 @@ describe('buildOrderCancelTimelineEvents (#3541)', () => {
     });
 
     expect(events.map((event) => event.title)).toEqual(
-      expect.arrayContaining(['Shipping label voided', 'Reserved stock released']),
+      expect.arrayContaining(['Shipment cancelled', 'Reserved stock released']),
     );
   });
 

@@ -175,9 +175,10 @@ function buildSessionEvents(result: CancelOrderResult, at: string): TimelineEven
     events.push({
       id: `cancel-labels:${result.changeId}`,
       timestamp: at,
-      title: 'Shipping label voided',
+      title: 'Shipment cancelled',
       by: 'system · shipping',
-      description: `${result.voidedShipmentIds.length} label${result.voidedShipmentIds.length === 1 ? ' was' : 's were'} voided with the carrier.`,
+      // A draft shipment is cancelled too, and it never had a label to void.
+      description: `${result.voidedShipmentIds.length} shipment${result.voidedShipmentIds.length === 1 ? ' was' : 's were'} cancelled. A label that was already bought is voided with the carrier.`,
       tone: 'success',
     });
   }
