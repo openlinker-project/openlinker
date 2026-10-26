@@ -1281,6 +1281,8 @@ export interface OrderTag {
   updatedAt: string;
 }
 
+import type { BulkOrderTagRowResult } from './order-bulk-actions.types';
+
 /** `POST /order-tags/:tagId/bulk-assign` result (#3532). */
 export interface BulkAssignOrderTagResult {
   tagId: string;
@@ -1288,6 +1290,10 @@ export interface BulkAssignOrderTagResult {
   added: number;
   /** Orders that already carried it. */
   alreadyTagged: number;
+  /** Orders whose row failed (#3545); 0 on a clean run. */
+  failed?: number;
+  /** Per-order outcome, in request order. Absent on a pre-#3545 payload. */
+  results?: BulkOrderTagRowResult[];
 }
 
 /**

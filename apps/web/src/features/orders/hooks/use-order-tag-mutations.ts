@@ -13,6 +13,7 @@ import { useMutation, useQueryClient, type UseMutationResult } from '@tanstack/r
 import { useApiClient } from '../../../app/api/api-client-provider';
 import { ordersQueryKeys } from '../api/orders.query-keys';
 import type { BulkAssignOrderTagResult, OrderTag, OrderTagColorValue } from '../api/orders.types';
+import type { BulkRemoveOrderTagResult } from '../api/order-bulk-actions.types';
 
 function useInvalidateOrdersList(): () => Promise<void> {
   const queryClient = useQueryClient();
@@ -118,6 +119,27 @@ export function useBulkAssignOrderTagMutation(): UseMutationResult<
 
   return useMutation({
     mutationFn: ({ tagId, orderIds }) => apiClient.orders.bulkAssignTag(tagId, orderIds),
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ordersQueryKeys.tags() }),
+        invalidateList(),
+      ]);
+    },
+  });
+}
+
+/** The bulk action bar's "Remove a tag" action (#3619). */
+export function useBulkRemoveOrderTagMutation(): UseMutationResult<
+  BulkRemoveOrderTagResult,
+  Error,
+  { tagId: string; orderIds: string[] }
+> {
+  const apiClient = useApiClient();
+  const queryClient = useQueryClient();
+  const invalidateList = useInvalidateOrdersList();
+
+  return useMutation({
+    mutationFn: ({ tagId, orderIds }) => apiClient.orders.bulkRemoveTag(tagId, orderIds),
     onSuccess: async () => {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ordersQueryKeys.tags() }),
