@@ -7,7 +7,7 @@ import 'reflect-metadata';
 import { validate } from 'class-validator';
 import { plainToInstance } from 'class-transformer';
 import { NotFoundException } from '@nestjs/common';
-import { OrderTagNotFoundError, type IOrderTagService } from '@openlinker/core/orders';
+import { OrderTagNotFoundError, type IOrderRecordService, type IOrderTagService } from '@openlinker/core/orders';
 import { BulkAssignOrderTagDto } from './dto/create-order-tag.dto';
 import { OrderTagsController } from './order-tags.controller';
 
@@ -15,11 +15,22 @@ const user = { id: 'user-1', role: 'operator' } as never;
 
 describe('OrderTagsController bulk routes (#3545)', () => {
   let service: { bulkAssign: jest.Mock; bulkUnassign: jest.Mock };
+  let records: { findByIds: jest.Mock };
   let controller: OrderTagsController;
 
   beforeEach(() => {
     service = { bulkAssign: jest.fn(), bulkUnassign: jest.fn() };
-    controller = new OrderTagsController(service as unknown as IOrderTagService);
+    records = {
+      findByIds: jest
+        .fn()
+        .mockImplementation((ids: string[]) =>
+          Promise.resolve(ids.map((internalOrderId) => ({ internalOrderId })))
+        ),
+    };
+    controller = new OrderTagsController(
+      service as unknown as IOrderTagService,
+      records as unknown as IOrderRecordService
+    );
   });
 
   it('should keep the legacy counts and add a per-row results array on bulk-assign', async () => {
@@ -44,6 +55,26 @@ describe('OrderTagsController bulk routes (#3545)', () => {
         { orderId: 'b', outcome: 'already-tagged' },
       ],
     });
+  });
+
+  it('should fail an unknown order id with ORDER_NOT_FOUND and not assign it (B-28)', async () => {
+    records.findByIds.mockResolvedValue([{ internalOrderId: 'a' }]);
+    service.bulkAssign.mockResolvedValue({
+      tagId: 't1',
+      added: 1,
+      alreadyTagged: 0,
+      addedOrderIds: ['a'],
+      alreadyTaggedOrderIds: [],
+    });
+
+    const res = await controller.bulkAssign('t1', user, { orderIds: ['a', 'ghost'] });
+
+    expect(service.bulkAssign).toHaveBeenCalledWith('t1', ['a'], 'user-1');
+    expect(res.failed).toBe(1);
+    expect(res.results).toEqual([
+      { orderId: 'a', outcome: 'added' },
+      { orderId: 'ghost', outcome: 'failed', code: 'ORDER_NOT_FOUND', reason: 'Order not found.' },
+    ]);
   });
 
   it('should report removed and not-tagged rows on bulk-remove', async () => {

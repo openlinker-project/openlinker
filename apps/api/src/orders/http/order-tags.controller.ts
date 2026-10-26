@@ -32,9 +32,11 @@ import { Roles } from '../../auth/decorators/roles.decorator';
 import { CurrentUser } from '../../auth/decorators/current-user.decorator';
 import { AuthenticatedUser } from '../../auth/auth.types';
 import {
+  ORDER_RECORD_SERVICE_TOKEN,
   ORDER_TAG_SERVICE_TOKEN,
   OrderTagLimitReachedError,
   OrderTagNotFoundError,
+  type IOrderRecordService,
   type IOrderTagService,
   type OrderTagWithCount,
 } from '@openlinker/core/orders';
@@ -61,7 +63,9 @@ export class OrderTagsController {
 
   constructor(
     @Inject(ORDER_TAG_SERVICE_TOKEN)
-    private readonly service: IOrderTagService
+    private readonly service: IOrderTagService,
+    @Inject(ORDER_RECORD_SERVICE_TOKEN)
+    private readonly orderRecordService: IOrderRecordService
   ) {}
 
   @Roles('admin', 'operator', 'viewer')
@@ -155,17 +159,24 @@ export class OrderTagsController {
   ): Promise<BulkAssignOrderTagResponseDto> {
     const orderIds = dedupeOrderIds(dto.orderIds);
     try {
-      const result = await this.service.bulkAssign(tagId, orderIds, user.id);
+      // tag_assignments has no FK to the order, so an unknown id would be written as a phantom row.
+      const known = new Set(
+        (await this.orderRecordService.findByIds(orderIds)).map((o) => o.internalOrderId)
+      );
+      const knownIds = orderIds.filter((id) => known.has(id));
+      const result = await this.service.bulkAssign(tagId, knownIds, user.id);
       const added = new Set(result.addedOrderIds);
+      const results: BulkOrderTagResultDto[] = orderIds.map((orderId) =>
+        known.has(orderId)
+          ? { orderId, outcome: added.has(orderId) ? 'added' : 'already-tagged' }
+          : { orderId, outcome: 'failed', code: 'ORDER_NOT_FOUND', reason: 'Order not found.' }
+      );
       return {
         tagId,
         added: result.added,
         alreadyTagged: result.alreadyTagged,
-        failed: 0,
-        results: orderIds.map((orderId) => ({
-          orderId,
-          outcome: added.has(orderId) ? 'added' : 'already-tagged',
-        })),
+        failed: orderIds.length - knownIds.length,
+        results,
       };
     } catch (error) {
       if (error instanceof OrderTagNotFoundError) {
@@ -182,7 +193,7 @@ export class OrderTagsController {
   @ApiOperation({
     summary:
       'Remove one tag from every named order (bulk action bar). Idempotent - an order that ' +
-      'does not carry it is reported in `notTagged`. At most 100 order ids.',
+      'does not carry it (including an id that names no order) is reported in `notTagged`. At most 100 order ids.',
   })
   @ApiResponse({ status: 200, type: BulkRemoveOrderTagResponseDto })
   @ApiResponse({ status: 400, description: 'Validation error (more than 100 order ids)' })

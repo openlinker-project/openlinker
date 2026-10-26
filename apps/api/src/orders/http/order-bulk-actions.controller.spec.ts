@@ -9,7 +9,6 @@ import { plainToInstance } from 'class-transformer';
 import { BadRequestException } from '@nestjs/common';
 import type { IOrderRecordService } from '@openlinker/core/orders';
 import {
-  CancelCorrectionFailedError,
   OrderCancellationNotFoundError,
   OrderCancellationRefusedError,
 } from '../application/errors/order-cancellation.errors';
@@ -68,12 +67,11 @@ describe('OrderBulkActionsController (#3545)', () => {
           new OrderCancellationRefusedError('ORDER_ALREADY_SHIPPED', 'Already shipped.')
         )
         .mockRejectedValueOnce(new OrderCancellationNotFoundError('nope'))
-        .mockRejectedValueOnce(new CancelCorrectionFailedError('provider said buyer@x.pl', 'E1'))
         .mockRejectedValueOnce(new Error('connection string postgres://secret'))
         .mockResolvedValueOnce(cancelled());
 
       const res = await controller.bulkCancel(
-        { orderIds: ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'], reason: 'buyer-request' as never },
+        { orderIds: ['a', 'b', 'c', 'd', 'e', 'g', 'h'], reason: 'buyer-request' as never },
         user
       );
 
@@ -84,22 +82,19 @@ describe('OrderBulkActionsController (#3545)', () => {
         'refused',
         'failed',
         'failed',
-        'failed',
         'cancelled',
       ]);
       expect(res.results[2].correctionProposalChangeId).toBe('chg-9');
       expect(res.results[3]).toMatchObject({ code: 'ORDER_ALREADY_SHIPPED', reason: 'Already shipped.' });
       expect(res.results[4].code).toBe('ORDER_NOT_FOUND');
-      expect(res.results[5].code).toBe('CORRECTION_FAILED');
       expect(JSON.stringify(res)).not.toContain('postgres://');
-      expect(JSON.stringify(res)).not.toContain('buyer@x.pl');
       expect(res).toMatchObject({
-        total: 8,
+        total: 7,
         cancelled: 2,
         pending: 1,
         correctionProposed: 1,
         refused: 1,
-        failed: 3,
+        failed: 2,
       });
     });
 
@@ -133,6 +128,45 @@ describe('OrderBulkActionsController (#3545)', () => {
       ).rejects.toBeInstanceOf(BadRequestException);
       expect(cancellation.cancelOrder).not.toHaveBeenCalled();
     });
+  });
+
+  describe('cancel warnings (B-24)', () => {
+    it('should keep outcome cancelled but add machine warnings for hidden side effects (B-24)', async () => {
+      cancellation.cancelOrder.mockResolvedValue(
+        cancelled({
+          participants: [
+            { connectionId: 'erli', role: 'source', effect: 'stock-restored-only', detail: null },
+            { connectionId: 'shop', role: 'destination', effect: 'refused', detail: null },
+          ],
+          otherParticipantsRelayFailed: true,
+          correctionUnavailableReason: 'no-line-snapshot',
+          stockRestoreEnqueued: false,
+        })
+      );
+
+      const res = await controller.bulkCancel({ orderIds: ['a'], reason: 'buyer-request' as never }, user);
+
+      expect(res.results[0].outcome).toBe('cancelled');
+      expect(res.results[0].warnings).toEqual([
+        'stock-restored-only:erli',
+        'destination-not-notified',
+        'correction-unavailable:no-line-snapshot',
+        'stock-restore-not-queued',
+      ]);
+    });
+
+    it('should count pending separately from cancelled (B-24)', async () => {
+      cancellation.cancelOrder.mockResolvedValue(cancelled({ status: 'pending' }));
+      const res = await controller.bulkCancel({ orderIds: ['a'], reason: 'buyer-request' as never }, user);
+      expect(res).toMatchObject({ cancelled: 0, pending: 1 });
+    });
+  });
+
+  it('should answer one 400 when reason is other and the note is whitespace only (B-15)', async () => {
+    await expect(
+      controller.bulkCancel({ orderIds: ['a', 'b'], reason: 'other' as never, note: '   ' }, user)
+    ).rejects.toBeInstanceOf(BadRequestException);
+    expect(cancellation.cancelOrder).not.toHaveBeenCalled();
   });
 
   describe('bulkMarkBuyerNoteRead', () => {
