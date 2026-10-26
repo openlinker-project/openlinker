@@ -248,4 +248,33 @@ describe('OrderCancelResultNotice (#3541)', () => {
     expect(await screen.findByTestId('order-correction-error')).toHaveTextContent(message);
     expect(screen.queryByTestId('order-correction-confirm')).not.toBeInTheDocument();
   });
+
+  it('should drop the confirm button when another document already corrected the invoice (B-22 supersede)', async () => {
+    const message = 'FV-KOR/9 already corrected this invoice.';
+    const confirmOrderChange = vi
+      .fn()
+      .mockRejectedValue(
+        new ApiError(message, 409, { statusCode: 409, error: 'CORRECTION_SUPERSEDED', message }),
+      );
+    renderNotice({ changes: [correction(), cancelRequest()] }, confirmOrderChange);
+    const user = userEvent.setup();
+
+    await user.click(screen.getByTestId('order-cancel-review-correction'));
+    await user.click(await screen.findByTestId('order-correction-confirm'));
+
+    expect(await screen.findByTestId('order-correction-error')).toHaveTextContent(message);
+    expect(screen.queryByTestId('order-correction-confirm')).not.toBeInTheDocument();
+  });
+
+  it('should say the channel could not be reached while the request stays open (unreachable)', () => {
+    renderNotice({
+      changes: [cancelRequest({ status: 'requested', open: true, confirmedAt: null })],
+      sessionResult: session({
+        status: 'pending',
+        participants: [{ connectionId: 'c1', role: 'source', effect: 'unreachable', detail: null }],
+      }),
+    });
+
+    expect(screen.getByTestId('order-cancel-pending')).toHaveTextContent('Could not reach Allegro; OpenLinker keeps asking');
+  });
 });

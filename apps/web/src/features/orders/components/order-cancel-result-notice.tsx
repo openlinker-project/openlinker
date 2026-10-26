@@ -75,9 +75,16 @@ export function OrderCancelResultNotice({
 
   if (cancelRequest?.open) {
     const channel = sourceName ?? 'the sales channel';
+    const unreachable =
+      sessionResult?.changeId === cancelRequest.id &&
+      sessionResult.participants.some(
+        (participant) => participant.role === 'source' && participant.effect === 'unreachable',
+      );
     return (
       <Alert tone="info" title={`Cancelling: waiting for ${channel}`} data-testid="order-cancel-pending">
-        {`OpenLinker asked ${channel} to cancel this order. Stock, connected shops and the correction invoice follow once it confirms.`}
+        {unreachable
+          ? `Could not reach ${channel}; OpenLinker keeps asking. Stock, connected shops and the correction invoice follow once it confirms.`
+          : `OpenLinker asked ${channel} to cancel this order. Stock, connected shops and the correction invoice follow once it confirms.`}
       </Alert>
     );
   }

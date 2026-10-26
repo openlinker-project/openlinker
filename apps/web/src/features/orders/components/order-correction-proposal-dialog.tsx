@@ -25,6 +25,10 @@ import {
   DialogFooter,
   DialogTitle,
 } from '../../../shared/ui/dialog';
+import { ReadOnlyLock } from '../../../shared/ui/read-only-lock';
+import { useIsAdmin, useWriteAccess } from '../../../shared/auth/use-permission';
+import { DEMO_READ_ONLY_ACTION_MESSAGE } from '../../../shared/config/demo-mode';
+import { useDemoMode } from '../../system';
 import { useToast } from '../../../shared/ui/toast-provider';
 import type {
   CancelCorrectionProposal,
@@ -46,6 +50,7 @@ const NOT_RETRYABLE: readonly OrderCancelErrorCode[] = [
   'CHANGE_KIND_NOT_CONFIRMABLE',
   'CORRECTION_IN_PROGRESS',
   'CORRECTION_NEEDS_RECONCILIATION',
+  'CORRECTION_SUPERSEDED',
 ];
 
 export interface OrderCorrectionProposalDialogProps {
@@ -65,6 +70,11 @@ export function OrderCorrectionProposalDialog({
 }: OrderCorrectionProposalDialogProps): ReactElement {
   const { showToast } = useToast();
   const mutation = useConfirmOrderChangeMutation();
+  // The confirm route is admin-only; everyone else reads the proposal.
+  const demoMode = useDemoMode();
+  const write = useWriteAccess('orders:write', demoMode);
+  const isAdmin = useIsAdmin();
+  const canConfirm = write.canWrite && isAdmin;
   // A previous attempt's error must not greet the next open.
   const { reset: resetMutation } = mutation;
   useEffect(() => {
@@ -139,16 +149,18 @@ export function OrderCorrectionProposalDialog({
               Close
             </Button>
           </DialogClose>
-          {retryable ? (
+          {retryable && (canConfirm || write.demoReadOnly) ? (
+            <ReadOnlyLock active={write.demoReadOnly} message={DEMO_READ_ONLY_ACTION_MESSAGE}>
             <Button
               type="button"
               tone="primary"
-              disabled={mutation.isPending}
+              disabled={mutation.isPending || write.demoReadOnly}
               data-testid="order-correction-confirm"
               onClick={confirm}
             >
               {mutation.isPending ? 'Confirming…' : 'Confirm correction'}
             </Button>
+            </ReadOnlyLock>
           ) : null}
         </DialogFooter>
       </DialogContent>
