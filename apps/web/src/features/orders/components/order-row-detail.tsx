@@ -26,6 +26,7 @@ import {
 } from '../api/order-snapshot.schema';
 import { invoiceBadge } from '../lib/order-row';
 import type { OrderRecord } from '../api/orders.types';
+import { OrderRowBuyerNote } from './order-row-buyer-note';
 
 interface OrderRowDetailProps {
   order: OrderRecord;
@@ -129,6 +130,11 @@ export function OrderRowDetail({
           </a>
         ) : null}
       </div>
+
+      {/* #3539 - the whole note, loaded on expansion; nothing without one. */}
+      {order.hasBuyerNote === true ? (
+        <OrderRowBuyerNote internalOrderId={order.internalOrderId} />
+      ) : null}
 
       <Field label="Order reference">
         {parsed.orderNumber ? <span className="mono">{parsed.orderNumber}</span> : EMPTY}

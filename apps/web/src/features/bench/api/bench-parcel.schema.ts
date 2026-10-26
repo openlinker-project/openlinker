@@ -23,6 +23,7 @@ import { z } from 'zod';
 
 import type {
   BenchActivityEntry,
+  BenchBuyerNoteAcknowledgementResult,
   BenchClaimNextResult,
   BenchClaimResult,
   BenchCompleteResult,
@@ -105,6 +106,23 @@ export const benchParcelSchema = z.object({
   // "no notes", and failing the parse would hide the whole box from the packer.
   packerNotes: z
     .array(benchPackerNoteSchema)
+    .nullish()
+    .transform((value) => value ?? []),
+  // #3539. All defaulted, for the same reason: an API that predates the buyer
+  // note, or sends null, means "no note", and failing the parse would hide the
+  // whole box from the packer who is holding it.
+  buyerNote: nullableString,
+  buyerNoteAcknowledgedAt: nullableString,
+  buyerNoteAcknowledgedByUserId: nullableString,
+  otherParcelBuyerNoteAcknowledgements: z
+    .array(
+      z.object({
+        workId: z.string(),
+        parcelIndex: z.number(),
+        acknowledgedAt: z.string(),
+        acknowledgedByUserId: nullableString,
+      })
+    )
     .nullish()
     .transform((value) => value ?? []),
 });
@@ -298,6 +316,18 @@ export const benchUndoResultSchema = z.object({
 
 export function parseBenchUndoResult(payload: unknown): BenchUndoResult {
   return benchUndoResultSchema.parse(payload);
+}
+
+export const benchBuyerNoteAcknowledgementResultSchema = z.object({
+  outcome: z.string(),
+  reason: nullableString,
+  parcel: benchParcelSchema,
+});
+
+export function parseBenchBuyerNoteAcknowledgementResult(
+  payload: unknown
+): BenchBuyerNoteAcknowledgementResult {
+  return benchBuyerNoteAcknowledgementResultSchema.parse(payload);
 }
 
 export const benchClaimResultSchema = z.object({
