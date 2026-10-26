@@ -106,6 +106,8 @@ import {
 // forever — a defect that only appears under load. Created here although #2399
 // owns the sweep: an index is cheap now and a second migration is not.
 @Index('IDX_fulfillment_works_request_status', ['requestStatus', 'updatedAt'])
+// Drives the sale-decrement reconcile sweep's lookback window + oldest-first order (#3629).
+@Index('IDX_fulfillment_works_created_at', ['createdAt', 'id'])
 // #2400's inbound-progress correlation read, deferred to #2399 because the
 // writer owns the shape (see the `externalWorkId` column docblock for the
 // per-connection-vs-intrinsic reasoning). Keyed `(assignedConnectionId,
