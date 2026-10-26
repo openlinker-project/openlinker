@@ -681,8 +681,8 @@ export class OrderCancellationService implements IOrderCancellationService {
       );
     }
 
-    if (spec.refuseWhenSuperseded === true) {
-      await this.assertNotSuperseded(change, invoice, input.internalOrderId);
+    if (spec.refuseWhenSuperseded === true && !own) {
+      await this.assertNotSuperseded(change, invoice, input.internalOrderId, correctionKey);
     }
 
     let issued: InvoiceRecord;
@@ -693,7 +693,7 @@ export class OrderCancellationService implements IOrderCancellationService {
         originalProviderInvoiceId: invoice.providerInvoiceId,
         documentType: 'corrected',
         reason: payload.reason,
-        lines: (payload.lines as ReadonlyArray<Record<string, unknown>>).map(spec.toCorrectionLine),
+        lines: (payload.lines as unknown as ReadonlyArray<Record<string, unknown>>).map(spec.toCorrectionLine),
         idempotencyKey: correctionKey,
         originalDocument: buildOriginalDocumentFromIssuedRecord(invoice, invoice.issuedLineSnapshot),
       });
@@ -737,13 +737,15 @@ export class OrderCancellationService implements IOrderCancellationService {
   private async assertNotSuperseded(
     change: OrderChange,
     invoice: InvoiceRecord,
-    internalOrderId: string
+    internalOrderId: string,
+    ownKey: string
   ): Promise<void> {
     const order = await this.orderRecords.getOrderRecord(internalOrderId);
     const latest = await this.invoices.getLatestInvoiceForOrder(internalOrderId);
     const laterIssued =
       latest !== null &&
       latest.id !== invoice.id &&
+      latest.idempotencyKey !== ownKey &&
       latest.status === 'issued' &&
       latest.createdAt.getTime() > invoice.createdAt.getTime();
     if ((order !== null && order.cancelledAt !== null) || laterIssued) {
