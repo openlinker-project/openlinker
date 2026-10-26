@@ -1419,7 +1419,7 @@ export class OrdersController {
     status: 409,
     description:
       'CHANGE_ALREADY_CONFIRMED | CHANGE_EXPIRED | CHANGE_NOT_OPEN | CHANGE_KIND_NOT_CONFIRMABLE | ' +
-      'CORRECTION_IN_PROGRESS | CORRECTION_NEEDS_RECONCILIATION | ' +
+      'CORRECTION_IN_PROGRESS | CORRECTION_NEEDS_RECONCILIATION | CORRECTION_SUPERSEDED | ' +
       'refund_ceiling_exceeded (`code`, with ceiling / alreadyRefunded / requested / currency)',
   })
   @ApiResponse({ status: 422, description: 'The invoicing provider rejected the correction' })

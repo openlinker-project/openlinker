@@ -789,7 +789,6 @@ describe('OrderEditService (#3542)', () => {
     describe('gates', () => {
       it.each([
         ['ORDER_ALREADY_CANCELLED', () => discountOrder('paid', { cancelledAt: new Date() })],
-        ['ORDER_ALREADY_SHIPPED', () => discountOrder('paid', { fulfillmentState: 'dispatched' })],
         ['ORDER_PACKED', () => discountOrder('paid', { packedAt: new Date() })],
         ['ORDER_NOT_READY', () => discountOrder('paid', { recordStatus: 'awaiting_mapping' })],
         ['ORDER_AMENDMENT_IN_FLIGHT', () => discountOrder('paid', { activeHoldReason: 'awaiting-amendment' })],
@@ -812,6 +811,53 @@ describe('OrderEditService (#3542)', () => {
         const result = await service.editDiscount({ ...discountBase, amount: '10' });
 
         expect(result.discount?.correctionProposal).not.toBeNull();
+      });
+    });
+
+    describe('after shipping and refund floor', () => {
+      it('should open a refund intent for a shipped paid order instead of refusing it (discount after shipping)', async () => {
+        current = discountOrder('paid', { fulfillmentState: 'dispatched', packedAt: new Date() });
+
+        const result = await service.editDiscount({ ...discountBase, amount: '10' });
+
+        expect(result.discount?.paymentBranch).toBe('paid');
+        expect(result.discount?.refundIntent).toMatchObject({ amount: '10.00' });
+      });
+
+      it('should refuse a discount on a shipped unpaid COD order (label carries the old amount)', async () => {
+        current = discountOrder('cod', { fulfillmentState: 'dispatched' }, {
+          codToCollect: { amount: '50.00', currency: 'PLN' },
+        });
+
+        expect(await refusal(service.editDiscount({ ...discountBase, amount: '10' }))).toBe('LABEL_ALREADY_BOUGHT');
+      });
+
+      it('should not treat a refunded cash-on-delivery order as COD (B-32)', async () => {
+        current = discountOrder('refunded', { paymentMethod: 'cash_on_delivery' });
+
+        const result = await service.editDiscount({ ...discountBase, amount: '10', dryRun: true });
+
+        expect(result.discount?.paymentBranch).toBe('unknown');
+        expect(result.discount?.refundIntent).toBeNull();
+      });
+
+      it('should refuse lowering a discount below a confirmed refund (B-33)', async () => {
+        current = discountOrder('paid', { orderEdits: stored('20.00') });
+        changes.findByOrderAndKinds.mockResolvedValue([
+          { kind: 'order.discount_refund', status: 'confirmed', payload: { amount: '20.00' } },
+        ] as never);
+
+        expect(await refusal(service.editDiscount({ ...discountBase, amount: '10' }))).toBe('DISCOUNT_BELOW_REFUNDED');
+        expect(await refusal(service.editDiscount({ ...discountBase, amount: '0' }))).toBe('DISCOUNT_BELOW_REFUNDED');
+      });
+
+      it('should still allow lowering a discount whose refund is not confirmed (B-33)', async () => {
+        current = discountOrder('paid', { orderEdits: stored('20.00') });
+        changes.findByOrderAndKinds.mockResolvedValue([
+          { kind: 'order.discount_refund', status: 'requested', payload: { amount: '20.00' } },
+        ] as never);
+
+        await expect(service.editDiscount({ ...discountBase, amount: '10', dryRun: true })).resolves.toBeDefined();
       });
     });
 

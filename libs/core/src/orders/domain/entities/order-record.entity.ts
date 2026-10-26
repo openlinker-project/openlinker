@@ -571,7 +571,16 @@ export class OrderRecord {
 
   /** Whether an operator has edited this order in OpenLinker (#3542). */
   get isEditedInOpenLinker(): boolean {
-    return this.orderEdits !== null;
+    const edits = this.orderEdits;
+    if (edits === null) return false;
+    // A discount that was removed leaves a zero overlay behind (the history
+    // still lists it); on its own that is not "edited".
+    return (
+      edits.address !== undefined ||
+      edits.deliveryMethod !== undefined ||
+      (edits.lines !== undefined && Object.keys(edits.lines).length > 0) ||
+      (edits.discount !== undefined && Number(edits.discount.amount) > 0)
+    );
   }
 
   /**

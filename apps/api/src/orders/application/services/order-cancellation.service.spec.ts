@@ -61,6 +61,7 @@ function invoice(overrides: Record<string, unknown> = {}): unknown {
     providerInvoiceId: 'prov-1',
     providerInvoiceNumber: 'FV/1',
     issuedAt: new Date('2026-09-01T00:00:00.000Z'),
+    createdAt: new Date('2026-09-01T00:00:00.000Z'),
     documentType: 'invoice',
     clearanceReference: null,
     isLeaseLive: () => false,
@@ -865,6 +866,27 @@ describe('OrderCancellationService (#3540)', () => {
 
       expect(await refusal(service.confirmChange(confirmInput))).toBe(code);
       expect(refunds.recordRefund).not.toHaveBeenCalled();
+    });
+
+    it('should refuse a discount correction on a cancelled order and retire the proposal (B-31)', async () => {
+      changes.findById.mockResolvedValue(correctionChange());
+      invoices.getInvoiceById.mockResolvedValue(invoice());
+      orderRecords.getOrderRecord.mockResolvedValue(order({ cancelledAt: new Date() }));
+
+      expect(await refusal(service.confirmChange(confirmInput))).toBe('CORRECTION_SUPERSEDED');
+      expect(changes.decline).toHaveBeenCalledWith('change-3', 'correction-superseded');
+      expect(invoices.issueCorrection).not.toHaveBeenCalled();
+    });
+
+    it('should refuse a discount correction when a later correction was already issued (B-31)', async () => {
+      changes.findById.mockResolvedValue(correctionChange());
+      invoices.getInvoiceById.mockResolvedValue(invoice());
+      invoices.getLatestInvoiceForOrder.mockResolvedValue(
+        invoice({ id: 'inv-9', createdAt: new Date('2026-09-05T00:00:00.000Z') })
+      );
+
+      expect(await refusal(service.confirmChange(confirmInput))).toBe('CORRECTION_SUPERSEDED');
+      expect(invoices.issueCorrection).not.toHaveBeenCalled();
     });
 
     it('should issue the discount correction with price deltas under its own key prefix', async () => {

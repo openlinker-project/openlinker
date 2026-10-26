@@ -52,11 +52,12 @@
  *   ceiling at creation) and payment stays "Paid" until the seller confirms they
  *   refunded on the channel (ADR-056: OpenLinker executes no refund).
  * - `cod`    - `paymentStatus === 'cod'`, or the neutral payment method is
- *   cash-on-delivery and the order is not paid. The amount to collect and the COD
+ *   cash-on-delivery and the order is neither paid nor refunded. The amount to collect and the COD
  *   amount a label not yet bought uses are the discounted figures. A bought label
  *   carries the old COD amount, so it refuses (`LABEL_ALREADY_BOUGHT`).
  * - `unpaid` - `paymentStatus === 'awaiting'`: the amount to collect falls.
- * - `unknown` - no payment status, or `refunded`. Treated like `unpaid` for
+ * - `unknown` - no payment status, or `refunded` (the status is read BEFORE the
+ *   payment method, so a refunded cash-on-delivery order is not `cod`). Treated like `unpaid` for
  *   documents and never as a refund intent: refunding on a guess moves money.
  *
  * Whatever the branch, documents issued afterwards read the discounted prices
@@ -473,8 +474,13 @@ export class OrderEditService implements IOrderEditService {
   }
 
   editDiscount(input: EditOrderDiscountInput): Promise<OrderEditResult> {
-    return this.run(input, (record, _assessment, shipments) =>
-      this.prepareDiscount(input, record, shipments)
+    // A discount is a money event, not a change to what ships, so it stays
+    // allowed once the parcel has left (D10); address, lines and delivery do not.
+    return this.run(
+      input,
+      (record, _assessment, shipments) => this.prepareDiscount(input, record, shipments),
+      false,
+      true
     );
   }
 
@@ -510,10 +516,11 @@ export class OrderEditService implements IOrderEditService {
       shipments: readonly Shipment[],
       documentIssued: boolean
     ) => Promise<PreparedEdit>,
-    checksDocuments = false
+    checksDocuments = false,
+    allowAfterShipping = false
   ): Promise<OrderEditResult> {
     if (input.dryRun) {
-      return this.runLocked(input, prepare, checksDocuments);
+      return this.runLocked(input, prepare, checksDocuments, allowAfterShipping);
     }
     const key = orderEditLockKey(input.internalOrderId);
     const token = await this.lock.acquire(key, ORDER_EDIT_LOCK_TTL_MS);
@@ -524,7 +531,7 @@ export class OrderEditService implements IOrderEditService {
       );
     }
     try {
-      return await this.runLocked(input, prepare, checksDocuments);
+      return await this.runLocked(input, prepare, checksDocuments, allowAfterShipping);
     } finally {
       await this.lock.release(key, token);
     }
@@ -538,7 +545,8 @@ export class OrderEditService implements IOrderEditService {
       shipments: readonly Shipment[],
       documentIssued: boolean
     ) => Promise<PreparedEdit>,
-    checksDocuments: boolean
+    checksDocuments: boolean,
+    allowAfterShipping: boolean
   ): Promise<OrderEditResult> {
     const record = await this.orderRecords.getOrderRecord(input.internalOrderId);
     if (!record) {
@@ -547,7 +555,7 @@ export class OrderEditService implements IOrderEditService {
 
     const shipments = await this.shipmentQuery.getOutboundByOrderId(input.internalOrderId);
     const assessment = await this.fulfillmentEdit.assessForEdit(input.internalOrderId);
-    await this.assertEditable(record, shipments, assessment);
+    await this.assertEditable(record, shipments, assessment, allowAfterShipping);
     const documentIssued = checksDocuments ? await this.hasIssuedDocument(record) : false;
 
     const prepared = await prepare(record, assessment, shipments, documentIssued);
@@ -732,7 +740,8 @@ export class OrderEditService implements IOrderEditService {
   private async assertEditable(
     record: OrderRecord,
     shipments: readonly Shipment[],
-    assessment: OrderWorkEditAssessment
+    assessment: OrderWorkEditAssessment,
+    allowAfterShipping: boolean
   ): Promise<void> {
     if (record.cancelledAt !== null) {
       throw new OrderEditRefusedError('ORDER_ALREADY_CANCELLED', 'This order is cancelled, so it cannot be edited.');
@@ -744,11 +753,11 @@ export class OrderEditService implements IOrderEditService {
       );
     }
     const leftWithCarrier = shipments.some((s) => LEFT_THE_BUILDING_STATUSES.includes(s.status));
-    if (
+    const shipped =
       leftWithCarrier ||
       record.fulfillmentState === 'dispatched' ||
-      record.fulfillmentState === 'delivered'
-    ) {
+      record.fulfillmentState === 'delivered';
+    if (shipped && !allowAfterShipping) {
       throw new OrderEditRefusedError(
         'ORDER_ALREADY_SHIPPED',
         'This order has already shipped, so it cannot be edited. Use the returns flow when the parcel comes back.'
@@ -765,7 +774,9 @@ export class OrderEditService implements IOrderEditService {
         'A cancellation of this order is waiting for the sales channel to answer. Wait for it to finish before editing.'
       );
     }
-    if (record.packedAt !== null || assessment.anyParcelClosed) {
+    // A shipped order is packed by definition; the discount exemption above
+    // must not be undone by the packed gate.
+    if (!(shipped && allowAfterShipping) && (record.packedAt !== null || assessment.anyParcelClosed)) {
       throw new OrderEditRefusedError(
         'ORDER_PACKED',
         'This order is already packed. Unpack it first (Mark as not packed), then edit it.'
@@ -998,8 +1009,22 @@ export class OrderEditService implements IOrderEditService {
       }
     }
 
+    await this.assertNotBelowRefunded(record, amount, exponent);
+
     const paymentBranch = this.paymentBranchOf(record);
     if (paymentBranch === 'cod') {
+      const shipped =
+        record.fulfillmentState === 'dispatched' ||
+        record.fulfillmentState === 'delivered' ||
+        shipments.some((s) => LEFT_THE_BUILDING_STATUSES.includes(s.status));
+      if (shipped) {
+        // The carrier collects the old cash-on-delivery amount on a parcel that
+        // already left, and a discount cannot change what it was told to collect.
+        throw new OrderEditRefusedError(
+          'LABEL_ALREADY_BOUGHT',
+          'This cash-on-delivery order already shipped with the old amount to collect, so a discount cannot be added.'
+        );
+      }
       this.assertLabelNotBoughtForCod(shipments);
     }
 
@@ -1151,10 +1176,58 @@ export class OrderEditService implements IOrderEditService {
   private paymentBranchOf(record: OrderRecord): DiscountPaymentBranch {
     const status = record.paymentStatus;
     if (status === 'paid') return 'paid';
+    if (status === 'refunded') return 'unknown';
     if (status === 'cod') return 'cod';
     if (record.paymentMethodOrUnknown === 'cash_on_delivery') return 'cod';
     if (status === 'awaiting') return 'unpaid';
     return 'unknown';
+  }
+
+  /**
+   * A CONFIRMED discount refund is money the seller already sent back on the
+   * channel; OpenLinker cannot take it back, so the discount may not fall below
+   * it. An unconfirmed discount may still be lowered (its open proposals are
+   * abandoned by the edit).
+   */
+  private async assertNotBelowRefunded(
+    record: OrderRecord,
+    amount: number,
+    exponent: number
+  ): Promise<void> {
+    const confirmed = await this.changes.findByOrderAndKinds(record.internalOrderId, [
+      'order.discount_refund',
+    ]);
+    const refunded = confirmed
+      .filter((change) => change.status === 'confirmed')
+      .reduce((sum, change) => sum + Number(change.payload?.amount ?? 0), 0);
+    if (Number(amount.toFixed(exponent)) < Number(refunded.toFixed(exponent))) {
+      throw new OrderEditRefusedError(
+        'DISCOUNT_BELOW_REFUNDED',
+        `${refunded.toFixed(exponent)} of this discount was already refunded to the buyer, and a refund cannot be taken back in OpenLinker. The discount cannot go below that amount.`
+      );
+    }
+  }
+
+  /**
+   * Retire every open discount proposal of an order (B-31). The cancellation
+   * path calls it once the order is cancelled: the cancel credit note supersedes
+   * them, and confirming an old discount correction afterwards would correct the
+   * same invoice twice. Best-effort per proposal; returns how many were retired.
+   */
+  async abandonOpenDiscountProposals(internalOrderId: string): Promise<number> {
+    const open = await this.changes.findOpenByOrder(internalOrderId);
+    let retired = 0;
+    for (const change of open) {
+      if (change.kind !== 'order.discount_refund' && change.kind !== 'order.discount_correction') continue;
+      try {
+        if (await this.changes.abandon(change.id)) retired += 1;
+      } catch (error) {
+        this.logger.error(
+          `Could not retire discount proposal ${change.id} of order ${internalOrderId}: ${this.describe(error)}`
+        );
+      }
+    }
+    return retired;
   }
 
   private assertLabelNotBoughtForCod(shipments: readonly Shipment[]): void {

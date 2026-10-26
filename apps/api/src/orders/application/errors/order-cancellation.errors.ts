@@ -24,6 +24,7 @@ export const OrderCancellationRefusalCodeValues = [
   'CHANGE_KIND_NOT_CONFIRMABLE',
   'CORRECTION_SUPERSEDED',
   'CORRECTION_IN_PROGRESS',
+  'CORRECTION_SUPERSEDED',
   'CORRECTION_NEEDS_RECONCILIATION',
 ] as const;
 export type OrderCancellationRefusalCode = (typeof OrderCancellationRefusalCodeValues)[number];

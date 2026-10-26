@@ -176,6 +176,7 @@ const DISCOUNT_CORRECTION_SPEC: CorrectionKindSpec = {
   noun: 'correction',
   expiredHint: 'Correct the invoice from the invoice page instead.',
   idempotencyPrefix: 'discount-correction',
+  refuseWhenSuperseded: true,
   toCorrectionLine: (line) => ({
     originalLineNumber: line['originalLineNumber'] as number,
     newUnitPriceGross: line['newUnitPriceGross'] as number,
@@ -196,6 +197,8 @@ interface CorrectionKindSpec {
   readonly noun: string;
   readonly expiredHint: string;
   readonly idempotencyPrefix: string;
+  /** Discount corrections are overtaken by a cancellation or a later correction (B-31). */
+  readonly refuseWhenSuperseded?: boolean;
   readonly toCorrectionLine: (line: Record<string, unknown>) => CorrectionLine;
 }
 
@@ -667,6 +670,10 @@ export class OrderCancellationService implements IOrderCancellationService {
       );
     }
 
+    if (spec.refuseWhenSuperseded === true) {
+      await this.assertNotSuperseded(change, invoice, input.internalOrderId);
+    }
+
     let issued: InvoiceRecord;
     try {
       issued = await this.invoices.issueCorrection({
@@ -712,6 +719,34 @@ export class OrderCancellationService implements IOrderCancellationService {
       documentNumber: issued.providerInvoiceNumber,
       refundRecordId: null,
     };
+  }
+
+  /**
+   * A discount correction proposed before a cancellation, or before another
+   * correction of the same invoice, must not be issued afterwards: it would
+   * correct the document a second time (B-31).
+   */
+  private async assertNotSuperseded(
+    change: OrderChange,
+    invoice: InvoiceRecord,
+    internalOrderId: string
+  ): Promise<void> {
+    const order = await this.orderRecords.getOrderRecord(internalOrderId);
+    const latest = await this.invoices.getLatestInvoiceForOrder(internalOrderId);
+    const laterIssued =
+      latest !== null &&
+      latest.id !== invoice.id &&
+      latest.status === 'issued' &&
+      latest.createdAt.getTime() > invoice.createdAt.getTime();
+    if ((order !== null && order.cancelledAt !== null) || laterIssued) {
+      // decline() only moves a `requested` row; abandon covers every open status.
+      const declined = await this.changes.decline(change.id, 'correction-superseded');
+      if (!declined) await this.changes.abandon(change.id);
+      throw new OrderCancellationRefusedError(
+        'CORRECTION_SUPERSEDED',
+        'This discount correction was overtaken by a cancellation or a later correction of the same invoice and can no longer be issued.'
+      );
+    }
   }
 
   /** `pending | requested` may be confirmed; every other status says why not. */
