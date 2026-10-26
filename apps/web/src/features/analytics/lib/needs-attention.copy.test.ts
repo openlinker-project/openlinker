@@ -3,7 +3,7 @@ import {
   deriveCoverageHeadline,
   deriveFailedSyncHeadline,
   deriveStockHeadline,
-} from './needs-attention-copy.lib';
+} from './needs-attention.copy';
 import type {
   CoverageGapItem,
   FailedSyncValueSummary,
