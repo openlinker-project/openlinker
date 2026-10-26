@@ -198,7 +198,7 @@ describe('OrderChangeService', () => {
   });
 
   describe('findOrderIdsWithOpenAmendment (#3540)', () => {
-    it('should ask the repository for the order-mutating kinds only, never return.* kinds', async () => {
+    it('should ask the repository for amendment REQUESTS only, never return.* kinds or correction proposals', async () => {
       repository.findOrderIdsWithOpenChanges.mockResolvedValue(new Set(['order-a']));
 
       const result = await service.findOrderIdsWithOpenAmendment(['order-a', 'order-b']);
@@ -206,7 +206,8 @@ describe('OrderChangeService', () => {
       expect(result).toEqual(new Set(['order-a']));
       expect(repository.findOrderIdsWithOpenChanges).toHaveBeenCalledWith(
         ['order-a', 'order-b'],
-        ['order.cancel_request', 'order.cancel_correction']
+        ['order.cancel_request'],
+        expect.any(Date)
       );
     });
   });
@@ -218,7 +219,29 @@ describe('OrderChangeService', () => {
       const result = await service.findOpenByOrder(ORDER_ID);
 
       expect(result).toHaveLength(1);
-      expect(repository.findOpenByOrder).toHaveBeenCalledWith(ORDER_ID);
+      expect(repository.findOpenByOrder).toHaveBeenCalledWith(ORDER_ID, expect.any(Date));
+    });
+
+    it('should bound openness by the SAME clamped TTL the lazy expiry uses', async () => {
+      process.env.OL_ORDER_CHANGE_OPEN_TTL_MS = '3600000';
+      repository.findOpenByOrder.mockResolvedValue([]);
+      const before = Date.now();
+
+      await service.findOpenByOrder(ORDER_ID);
+
+      const openSince = repository.findOpenByOrder.mock.calls[0][1];
+      expect(openSince.getTime()).toBeGreaterThanOrEqual(before - 3_600_000);
+      expect(openSince.getTime()).toBeLessThanOrEqual(Date.now() - 3_600_000);
+    });
+
+    it('should clamp an absurd TTL rather than treat everything as open for ever', async () => {
+      process.env.OL_ORDER_CHANGE_OPEN_TTL_MS = '999999999999';
+      repository.findOpenByOrder.mockResolvedValue([]);
+
+      await service.findOpenByOrder(ORDER_ID);
+
+      const openSince = repository.findOpenByOrder.mock.calls[0][1];
+      expect(Date.now() - openSince.getTime()).toBeLessThanOrEqual(24 * 60 * 60 * 1000 + 1000);
     });
   });
 });

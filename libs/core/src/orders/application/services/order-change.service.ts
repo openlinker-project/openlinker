@@ -13,27 +13,16 @@ import { Logger } from '@openlinker/shared/logging';
 import type { OrderChange } from '../../domain/entities/order-change.entity';
 import { OrderChangeRepositoryPort } from '../../domain/ports/order-change-repository.port';
 import {
-  OrderMutationChangeKindValues,
+  OrderAmendmentRequestKindValues,
   type CreateOrderChangeInput,
   type OrderChangeKind,
 } from '../../domain/types/order-change.types';
+import { resolveOrderChangeOpenTtlMs } from '../../domain/types/order-change-ttl.types';
 import { ORDER_CHANGE_REPOSITORY_TOKEN } from '../../orders.tokens';
 import type {
   IOrderChangeService,
   OpenOrderChangeResult,
 } from './order-change.service.interface';
-
-/**
- * How long an unanswered proposal may hold its target's slot.
- *
- * Clamped rather than trusted, following `OL_WEBHOOK_SKEW_WINDOW_MS`: a zero or
- * negative value would expire every proposal the instant it was opened —
- * turning the double-call guard off silently — and an unbounded one would
- * reinstate the permanent lock ADR-044 requires `EXPIRED` to prevent.
- */
-const OPEN_TTL_DEFAULT_MS = 15 * 60 * 1000;
-const OPEN_TTL_MIN_MS = 60 * 1000;
-const OPEN_TTL_MAX_MS = 24 * 60 * 60 * 1000;
 
 @Injectable()
 export class OrderChangeService implements IOrderChangeService {
@@ -101,7 +90,7 @@ export class OrderChangeService implements IOrderChangeService {
   }
 
   async findOpenByOrder(internalOrderId: string): Promise<OrderChange[]> {
-    return this.repository.findOpenByOrder(internalOrderId);
+    return this.repository.findOpenByOrder(internalOrderId, this.openSince());
   }
 
   async findOrderIdsWithOpenAmendment(
@@ -109,7 +98,8 @@ export class OrderChangeService implements IOrderChangeService {
   ): Promise<Set<string>> {
     return this.repository.findOrderIdsWithOpenChanges(
       internalOrderIds,
-      OrderMutationChangeKindValues
+      OrderAmendmentRequestKindValues,
+      this.openSince()
     );
   }
 
@@ -126,14 +116,16 @@ export class OrderChangeService implements IOrderChangeService {
   }
 
   private isStale(change: OrderChange, now: Date): boolean {
-    return now.getTime() - change.requestedAt.getTime() >= this.resolveTtlMs();
+    return now.getTime() - change.requestedAt.getTime() >= resolveOrderChangeOpenTtlMs();
   }
 
-  private resolveTtlMs(): number {
-    const raw = Number(process.env.OL_ORDER_CHANGE_OPEN_TTL_MS);
-    if (!Number.isFinite(raw) || raw <= 0) {
-      return OPEN_TTL_DEFAULT_MS;
-    }
-    return Math.min(Math.max(raw, OPEN_TTL_MIN_MS), OPEN_TTL_MAX_MS);
+  /**
+   * The instant a row must have been requested AFTER to still count as open.
+   * Expiry is lazy (only `openOrReuse` moves a stale row to `expired`), so a read
+   * that trusted `status` alone would report a change nobody will ever answer as
+   * open for ever.
+   */
+  private openSince(): Date {
+    return new Date(Date.now() - resolveOrderChangeOpenTtlMs());
   }
 }

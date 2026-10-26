@@ -50,9 +50,10 @@ import type {
   OrderLifecyclePhaseSummary,
   SalesDocumentMatchedRuleWrite,
 } from '../../../domain/types/order-record.types';
+import { resolveOrderChangeOpenTtlMs } from '../../../domain/types/order-change-ttl.types';
 import {
   OPEN_ORDER_CHANGE_STATUSES,
-  OrderMutationChangeKindValues,
+  OrderAmendmentRequestKindValues,
 } from '../../../domain/types/order-change.types';
 import type { SlaState, OrderSlaSummary } from '../../../domain/types/order-sla.types';
 import type { OrderLifecyclePhase } from '@openlinker/core/order-lifecycle';
@@ -2275,9 +2276,9 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
     //    of an order-amending kind. `return.*` kinds are about a return, not the
     //    order, so they are excluded by prefix. The status list and the prefix
     //    are the same facts as `OPEN_ORDER_CHANGE_STATUSES` and
-    //    `OrderMutationChangeKindValues`, rendered from them rather than
+    //    `OrderAmendmentRequestKindValues`, rendered from them rather than
     //    restated.
-    amending: `EXISTS (SELECT 1 FROM order_changes oc WHERE oc."internalOrderId" = rec."internalOrderId" AND oc."status" IN (${OPEN_ORDER_CHANGE_STATUSES.map((s) => `'${s}'`).join(', ')}) AND oc."kind" IN (${OrderMutationChangeKindValues.map((k) => `'${k}'`).join(', ')}))`,
+    amending: `EXISTS (SELECT 1 FROM order_changes oc WHERE oc."internalOrderId" = rec."internalOrderId" AND oc."status" IN (${OPEN_ORDER_CHANGE_STATUSES.map((s) => `'${s}'`).join(', ')}) AND oc."kind" IN (${OrderAmendmentRequestKindValues.map((k) => `'${k}'`).join(', ')}) AND oc."requestedAt" > now() - (CAST(:openChangeTtlMs AS bigint) * interval '1 millisecond'))`,
     // 8. OL's own ingest incompleteness.
     blocked: `rec."recordStatus" IN ('awaiting_mapping','source_deleted')`,
     // 9. Residual — always matches, which is what makes the `CASE` total.
@@ -2364,6 +2365,7 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
   ): void {
     qb.andWhere(`${OrderRecordRepository.LIFECYCLE_PHASE_EXPR} = :lifecyclePhase`, {
       lifecyclePhase,
+      openChangeTtlMs: resolveOrderChangeOpenTtlMs(),
     });
   }
 
@@ -2407,6 +2409,9 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
       );
     }
 
+    // The `amending` arm's TTL bound (#3540): an open change older than the TTL is
+    // not open, matching `OrderChangeRepository.findOrderIdsWithOpenChanges`.
+    qb.setParameter('openChangeTtlMs', resolveOrderChangeOpenTtlMs());
     OrderRecordRepository.applySummaryScope(qb, filters);
 
     const raw = await qb.getRawOne<Record<string, string>>();

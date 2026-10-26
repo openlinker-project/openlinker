@@ -293,13 +293,14 @@ describe('Order lifecycle phase (integration)', () => {
       internalOrderId: string,
       kind: string,
       status: string,
-      targetRef: string
+      targetRef: string,
+      requestedAt: Date = new Date()
     ): Promise<void> => {
       await harness.getDataSource().query(
         `INSERT INTO "order_changes"
            ("internalOrderId", "kind", "targetRef", "status", "requestedAt")
-         VALUES ($1, $2, $3, $4, now())`,
-        [internalOrderId, kind, targetRef, status]
+         VALUES ($1, $2, $3, $4, $5)`,
+        [internalOrderId, kind, targetRef, status, requestedAt]
       );
     };
 
@@ -318,9 +319,9 @@ describe('Order lifecycle phase (integration)', () => {
       await insertChange(returnOnly.internalOrderId, 'return.decline', 'requested', 'ol_return_x');
       await insertChange(
         cancelledAmending.internalOrderId,
-        'order.cancel_correction',
+        'order.cancel_request',
         'requested',
-        `correction:cancel:${cancelledAmending.internalOrderId}:inv-1`
+        `cancel:${cancelledAmending.internalOrderId}`
       );
 
       const amending = await repository.findMany({ lifecyclePhase: 'amending' }, PAGE);
@@ -330,6 +331,38 @@ describe('Order lifecycle phase (integration)', () => {
       expect(amending.items.map((order) => order.internalOrderId)).toEqual([open.internalOrderId]);
       const summary = await repository.countByLifecyclePhase({});
       expect(summary.amending).toBe(1);
+    });
+
+    it('does NOT derive amending from an open correction proposal alone', async () => {
+      const ds = harness.getDataSource();
+      const order = await createTestOrderRecord(ds, { sourceConnectionId: SOURCE_A, recordStatus: 'ready' });
+      await insertChange(
+        order.internalOrderId,
+        'order.cancel_correction',
+        'requested',
+        `correction:cancel:${order.internalOrderId}:inv-1`
+      );
+
+      const amending = await repository.findMany({ lifecyclePhase: 'amending' }, PAGE);
+
+      expect(amending.total).toBe(0);
+    });
+
+    it('does NOT derive amending from a request whose TTL elapsed but was never expired', async () => {
+      const ds = harness.getDataSource();
+      const stale = await createTestOrderRecord(ds, { sourceConnectionId: SOURCE_A, recordStatus: 'ready' });
+      const fresh = await createTestOrderRecord(ds, { sourceConnectionId: SOURCE_A, recordStatus: 'ready' });
+      const longAgo = new Date(Date.now() - 48 * 60 * 60 * 1000);
+      await insertChange(stale.internalOrderId, 'order.cancel_request', 'requested', `cancel:${stale.internalOrderId}`, longAgo);
+      await insertChange(fresh.internalOrderId, 'order.cancel_request', 'requested', `cancel:${fresh.internalOrderId}`);
+
+      // Still `requested` in the table - nothing has moved it to `expired`.
+      const expected = await classifyInTypescript();
+      const fromSql = await repository.findMany({ lifecyclePhase: 'amending' }, PAGE);
+
+      expect(fromSql.items.map((o) => o.internalOrderId)).toEqual([fresh.internalOrderId]);
+      expect([...(expected.get('amending') ?? [])]).toEqual([fresh.internalOrderId]);
+      expect((await repository.countByLifecyclePhase({})).amending).toBe(1);
     });
 
     it('agrees with the TS derivation for the same seeded rows', async () => {

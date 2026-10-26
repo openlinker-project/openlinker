@@ -46,7 +46,9 @@ import {
   ORDER_RECORD_SERVICE_TOKEN,
   ORDER_ITEM_REF_RESOLVER_SERVICE_TOKEN,
   ORDER_LIFECYCLE_RELAY_SERVICE_TOKEN,
+  ORDER_CHANGE_SERVICE_TOKEN,
 } from '../../orders.tokens';
+import { IOrderChangeService } from './order-change.service.interface';
 import { IOrderRecordService } from '../interfaces/order-record.service.interface';
 import { IOrderItemRefResolverService } from '../interfaces/order-item-ref-resolver.service.interface';
 import { IOrderLifecycleRelayService } from '../interfaces/order-lifecycle-relay.service.interface';
@@ -257,7 +259,12 @@ export class OrderIngestionService implements IOrderIngestionService {
     // deliberately running router-less, and that misconfiguration is otherwise
     // invisible (the router-less path is a silent, fully-specified pass-through).
     @Inject(FULFILLMENT_ROUTER_RESOLVER_TOKEN)
-    private readonly routerResolver: FulfillmentRouterResolverPort
+    private readonly routerResolver: FulfillmentRouterResolverPort,
+    // #3540: ADR-044 "confirms from observation" - an inbound cancel confirms an
+    // operator's still-open cancel request. Appended last like every dependency
+    // since. Leaf-module edge (`OrderChangesModule`), no cycle.
+    @Inject(ORDER_CHANGE_SERVICE_TOKEN)
+    private readonly orderChanges: IOrderChangeService
   ) {}
 
   async ingestOrders(
@@ -1708,6 +1715,8 @@ export class OrderIngestionService implements IOrderIngestionService {
       );
     }
 
+    await this.confirmOpenCancelRequest(internalOrderId, connectionId);
+
     const result = await this.orderLifecycleRelay.relay({
       internalOrderId,
       originConnectionId: connectionId,
@@ -1740,6 +1749,37 @@ export class OrderIngestionService implements IOrderIngestionService {
       this.logger.log(message);
     }
     return [];
+  }
+
+  /**
+   * ADR-044 "OL confirms from observation" (#3540): the source reporting the
+   * order cancelled IS the channel's answer to an operator's still-open
+   * `order.cancel_request`, so confirm it. Without this, a cancel whose HTTP
+   * answer never came back (the `pending` path) stays open although the channel
+   * has since cancelled.
+   *
+   * Best-effort and never fails ingestion: the order record is already marked
+   * cancelled, and the row would otherwise just age out through the TTL.
+   */
+  private async confirmOpenCancelRequest(
+    internalOrderId: string,
+    connectionId: string
+  ): Promise<void> {
+    try {
+      const open = await this.orderChanges.findOpenByOrder(internalOrderId);
+      for (const change of open) {
+        if (change.kind !== 'order.cancel_request') continue;
+        if (await this.orderChanges.confirm(change.id, `source:${connectionId}`)) {
+          await this.orderChanges.claimApplied(change.id);
+        }
+      }
+    } catch (error) {
+      this.logger.warn(
+        `Could not confirm the open cancel request for order ${internalOrderId} from the source's cancellation: ${
+          error instanceof Error ? error.message : String(error)
+        }`
+      );
+    }
   }
 
   /**

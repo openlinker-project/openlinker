@@ -11,10 +11,12 @@ import {
 } from './order-cancel.types';
 import {
   OrderChangeKindValues,
-  OrderMutationChangeKindValues,
+  OrderAmendmentRequestKindValues,
+  OrderCorrectionChangeKindValues,
+  isOrderCorrectionChangeKind,
   cancelCorrectionTargetRef,
   cancelRequestTargetRef,
-  isOrderMutationChangeKind,
+  isOrderAmendmentRequestKind,
 } from './order-change.types';
 
 describe('order cancel vocabulary (#3540)', () => {
@@ -41,14 +43,17 @@ describe('order cancel vocabulary (#3540)', () => {
 });
 
 describe('order change kinds (#3540)', () => {
-  it('should count only order.* kinds as order-mutating, never return.* kinds', () => {
-    expect(OrderMutationChangeKindValues).toEqual(['order.cancel_request', 'order.cancel_correction']);
-    expect(isOrderMutationChangeKind('return.decline')).toBe(false);
-    expect(isOrderMutationChangeKind('order.cancel_request')).toBe(true);
+  it('should count only an amendment REQUEST as amending - not return.* kinds and not correction proposals', () => {
+    expect(OrderAmendmentRequestKindValues).toEqual(['order.cancel_request']);
+    expect(isOrderAmendmentRequestKind('order.cancel_correction')).toBe(false);
+    expect(isOrderCorrectionChangeKind('order.cancel_correction')).toBe(true);
+    expect(isOrderCorrectionChangeKind('order.cancel_request')).toBe(false);
+    expect(isOrderAmendmentRequestKind('return.decline')).toBe(false);
+    expect(isOrderAmendmentRequestKind('order.cancel_request')).toBe(true);
   });
 
   it('should keep every mutation kind a member of the full vocabulary', () => {
-    for (const kind of OrderMutationChangeKindValues) {
+    for (const kind of [...OrderAmendmentRequestKindValues, ...OrderCorrectionChangeKindValues]) {
       expect(OrderChangeKindValues).toContain(kind);
     }
   });

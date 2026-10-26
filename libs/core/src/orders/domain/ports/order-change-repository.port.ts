@@ -84,10 +84,13 @@ export interface OrderChangeRepositoryPort {
   /**
    * Every OPEN proposal against one order, whatever its target (#3540).
    *
+   * Only rows requested AFTER `openSince` count: expiry is lazy, so a row whose
+   * TTL has elapsed but which nothing has expired yet is NOT open.
+   *
    * Answers "is anything in flight on this order?" — which `findOpenByTarget`
    * cannot, since it needs the target already in hand.
    */
-  findOpenByOrder(internalOrderId: string): Promise<OrderChange[]>;
+  findOpenByOrder(internalOrderId: string, openSince: Date): Promise<OrderChange[]>;
 
   /**
    * The subset of `internalOrderIds` holding at least one OPEN proposal of one of
@@ -96,7 +99,8 @@ export interface OrderChangeRepositoryPort {
    */
   findOrderIdsWithOpenChanges(
     internalOrderIds: readonly string[],
-    kinds: readonly OrderChangeKind[]
+    kinds: readonly OrderChangeKind[],
+    openSince: Date
   ): Promise<Set<string>>;
 
   /**

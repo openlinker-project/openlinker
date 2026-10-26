@@ -536,8 +536,10 @@ export {
   isOrderChangeKind,
   isOrderChangeStatus,
   isOpenOrderChangeStatus,
-  OrderMutationChangeKindValues,
-  isOrderMutationChangeKind,
+  OrderAmendmentRequestKindValues,
+  isOrderAmendmentRequestKind,
+  OrderCorrectionChangeKindValues,
+  isOrderCorrectionChangeKind,
   cancelRequestTargetRef,
   cancelCorrectionTargetRef,
 } from './domain/types/order-change.types';
@@ -551,7 +553,8 @@ export {
 } from './domain/types/order-cancel.types';
 export type { OrderCancelReason } from './domain/types/order-cancel.types';
 export type {
-  OrderMutationChangeKind,
+  OrderAmendmentRequestKind,
+  OrderCorrectionChangeKind,
   OrderChangeKind,
   OrderChangeStatus,
   CreateOrderChangeInput,
