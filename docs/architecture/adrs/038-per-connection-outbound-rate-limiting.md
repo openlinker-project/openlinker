@@ -111,6 +111,11 @@ adapter and `HttpTransportFactory` required zero code changes. The static `OL_WO
 removed: once the bucket is shared across every process and replica, dividing it further would only shrink the
 operator's configured cap for no reason.
 
+That client must carry non-blocking commands only: a blocking read on it (the worker's `jobs.sync` intake
+`XREADGROUP BLOCK` did exactly this until the 2026-10-26 fix) queues every limiter call behind it, each one
+times out and the process silently falls back to per-process limiting. Blocking consumers get a dedicated
+client of their own (see `docs/lessons.md`).
+
 Two Redis primitives, chosen to preserve the in-memory limiter's exact algorithm rather than substitute an
 approximate one:
 

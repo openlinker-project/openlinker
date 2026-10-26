@@ -12,9 +12,10 @@
  *
  * Structurally mirrors `WebhookToJobHandler` (long-polling consumer-group
  * loop, ACK-after-enqueue, dead-letter on a permanent fault). Runs on a
- * dedicated blocking Redis client — `JobIntakeConsumer` already blocks on the
- * worker's shared client, and two `XREADGROUP` calls cannot share one
- * connection.
+ * dedicated blocking Redis client: a blocking `XREADGROUP` holds its
+ * connection, so on the worker's shared client every other command (the
+ * cross-process rate limiter included) would queue behind it. `JobIntakeConsumer`
+ * has its own dedicated client for the same reason.
  *
  * @module apps/worker/src/events
  */
