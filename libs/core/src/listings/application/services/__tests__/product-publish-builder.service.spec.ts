@@ -452,6 +452,57 @@ describe('ProductPublishBuilderService', () => {
           Color: ['Red', 'Blue'],
           Size: ['M', 'L'],
         },
+        // No sibling reports a picture of its own, so the variation shows the
+        // product gallery - the behaviour before variant pictures existed.
+        imageUrls: ['http://img'],
+      });
+    });
+
+    describe('variation images', () => {
+      const red = {
+        id: VARIANT,
+        productId: 'prod-1',
+        attributes: { Color: 'Red' },
+        images: ['http://img/red'],
+      };
+      const green = {
+        id: 'ol_variant_green',
+        productId: 'prod-1',
+        attributes: { Color: 'Green' },
+        images: ['http://img/green'],
+      };
+
+      beforeEach(() => {
+        products.getVariantsByProductId.mockResolvedValue([red, green]);
+        products.getVariant.mockResolvedValue({ ...red, ean: null, gtin: null, sku: null });
+        productMaster.getProduct.mockResolvedValue({
+          name: 'Widget',
+          description: 'A widget',
+          images: ['http://img/main', 'http://img/red', 'http://img/green'],
+          price: 12.5,
+          currency: 'PLN',
+        });
+      });
+
+      it('should give the variation its own default images while the parent keeps the whole gallery', async () => {
+        const command = await service.buildPublishProductCommand(baseInput);
+
+        expect(command.variantGroup?.imageUrls).toEqual(['http://img/red', 'http://img/main']);
+        expect(command.content?.imageUrls).toEqual([
+          'http://img/main',
+          'http://img/red',
+          'http://img/green',
+        ]);
+      });
+
+      it('should leave the variation images out when the operator overrode the images', async () => {
+        const command = await service.buildPublishProductCommand({
+          ...baseInput,
+          content: { imageUrls: ['http://img/mine'] },
+        });
+
+        expect(command.variantGroup).not.toHaveProperty('imageUrls');
+        expect(command.content?.imageUrls).toEqual(['http://img/mine']);
       });
     });
 

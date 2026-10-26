@@ -26,6 +26,11 @@
  * consume it; auto-grouping adapters (Allegro) ignore it. Single-variant /
  * simple products leave `variantGroup` absent and list standalone.
  *
+ * Images: an operator override (`overrides.imageUrls`) wins unchanged;
+ * otherwise a variant is listed with `resolveVariantDefaultImages` - its own
+ * pictures first, then the product gallery minus the pictures dedicated to its
+ * siblings - so the red variant's offer does not show the green cup.
+ *
  * @module libs/core/src/listings/application/services
  * @implements {IOfferBuilderService}
  */
@@ -64,6 +69,7 @@ import type { Product, ProductGpsr, ProductMasterPort, ProductVariant } from '@o
 import {
   IProductsService,
   PRODUCTS_SERVICE_TOKEN,
+  resolveVariantDefaultImages,
 } from '@openlinker/core/products';
 
 import { MasterCatalogConnectionNotConfiguredException } from '../../domain/exceptions/master-catalog-connection-not-configured.exception';
@@ -212,7 +218,9 @@ export class OfferBuilderService implements IOfferBuilderService {
       input.overrides?.description ?? product.description,
       resolveOfferDescriptionFormat(destination)
     );
-    const imageUrls = input.overrides?.imageUrls ?? product.images;
+    const imageUrls =
+      input.overrides?.imageUrls ??
+      resolveVariantDefaultImages(variant, siblings, product.images);
 
     const overrides = {
       title,

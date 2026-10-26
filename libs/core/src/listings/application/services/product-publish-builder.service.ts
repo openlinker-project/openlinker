@@ -53,7 +53,11 @@ import type {
 } from '@openlinker/core/listings';
 import { isCategoryProvisioner } from '@openlinker/core/listings';
 import type { Category, ProductMasterPort, ProductVariant } from '@openlinker/core/products';
-import { IProductsService, PRODUCTS_SERVICE_TOKEN } from '@openlinker/core/products';
+import {
+  IProductsService,
+  PRODUCTS_SERVICE_TOKEN,
+  resolveVariantDefaultImages,
+} from '@openlinker/core/products';
 
 import { MasterCatalogConnectionNotConfiguredException } from '../../domain/exceptions/master-catalog-connection-not-configured.exception';
 import type { ProductPublishBuilderValidationIssue } from '../../domain/exceptions/product-publish-builder-validation.exception';
@@ -161,7 +165,13 @@ export class ProductPublishBuilderService implements IProductPublishBuilderServi
     // marketplace #1065 populate decision (sibling count only; the read
     // happens once per publish regardless of fan-out width).
     const siblings = await this.productsService.getVariantsByProductId(variant.productId);
-    const variantGroup = this.resolveVariantGroup(variant, siblings);
+    // A variation shows its own default images; the parent keeps the whole
+    // gallery in `content`. An operator image override wins for both, as before.
+    const variationImages =
+      input.content?.imageUrls != null
+        ? null
+        : resolveVariantDefaultImages(variant, siblings, product.images);
+    const variantGroup = this.resolveVariantGroup(variant, siblings, variationImages);
 
     // #1844 / #2323 — hold back the destination's per-connection stock safety
     // buffer so a fast-moving item keeps a cushion and can't oversell between
@@ -251,7 +261,8 @@ export class ProductPublishBuilderService implements IProductPublishBuilderServi
    */
   private resolveVariantGroup(
     variant: ProductVariant,
-    siblings: ProductVariant[]
+    siblings: ProductVariant[],
+    variationImages: string[] | null
   ): PublishProductVariantGroup | undefined {
     if (siblings.length <= 1) {
       return undefined;
@@ -271,6 +282,9 @@ export class ProductPublishBuilderService implements IProductPublishBuilderServi
       groupId: variant.productId,
       attributes: flattenAttributes(variant.attributes),
       groupAttributeValues,
+      ...(variationImages !== null && variationImages.length > 0
+        ? { imageUrls: variationImages }
+        : {}),
     };
   }
 

@@ -135,6 +135,15 @@ export interface PublishProductVariantGroup {
    * the adapter creates it as part of this call.
    */
   externalParentProductId?: string | null;
+  /**
+   * The images THIS sibling's own variation shows, resolved by
+   * `resolveVariantDefaultImages` (its own pictures first, then the product
+   * gallery minus its siblings' pictures). `content.imageUrls` stays the
+   * parent's whole gallery. Absent when the operator overrode the images - the
+   * override then applies to the variation as before - and an adapter that
+   * shows one picture per variation takes the first.
+   */
+  imageUrls?: string[];
 }
 
 /**

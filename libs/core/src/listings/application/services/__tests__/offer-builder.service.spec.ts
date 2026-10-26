@@ -1278,4 +1278,76 @@ describe('OfferBuilderService', () => {
       expect(result.condition).toBe('used');
     });
   });
+  describe('per-variant default images', () => {
+    const gfx = (id: number): string => `https://sklep729770.shoparena.pl/userdata/public/gfx/${id}.jpg`;
+    const variant = (id: string, images: string[] | null, isStale = false): ProductVariant =>
+      ({ ...defaultVariant, id, images, isStale }) as ProductVariant;
+    /** Product 161: stale base stock, red + yellow share 314, green 315, navy none. */
+    const P161 = {
+      base: variant('ol_variant_264', null, true),
+      red: variant('ol_variant_265', [gfx(314)]),
+      green: variant('ol_variant_266', [gfx(315)]),
+      navy: variant('ol_variant_267', null),
+      yellow: variant('ol_variant_268', [gfx(314)]),
+    };
+
+    async function imagesFor(
+      target: ProductVariant,
+      siblings: ProductVariant[],
+      gallery: string[],
+      overrideImages?: string[]
+    ): Promise<string[] | null | undefined> {
+      productsService.getVariant.mockResolvedValue(target);
+      productsService.getVariantsByProductId.mockResolvedValue(siblings);
+      productMaster.getProduct.mockResolvedValue({
+        id: 'ol_product_456',
+        name: 'OLE2E Kieliszek wariantowy',
+        sku: 'OLE2E-P1',
+        description: null,
+        price: 49.99,
+        currency: 'PLN',
+        images: gallery,
+      });
+      const result = await service.buildCreateOfferCommand({
+        internalVariantId: target.id,
+        connectionId: MARKETPLACE_CONN_ID,
+        stock: 1,
+        ...(overrideImages ? { overrides: { imageUrls: overrideImages } } : {}),
+      });
+      return result.overrides?.imageUrls;
+    }
+
+    const all161 = Object.values(P161);
+    const gallery161 = [gfx(312), gfx(313), gfx(314), gfx(315)];
+
+    it.each([
+      ['red', P161.red, [gfx(314), gfx(312), gfx(313)]],
+      ['yellow (shares 314 with red)', P161.yellow, [gfx(314), gfx(312), gfx(313)]],
+      ['green', P161.green, [gfx(315), gfx(312), gfx(313)]],
+      ['navy (no own image)', P161.navy, [gfx(312), gfx(313)]],
+    ])('lists %s with its own picture first and no sibling picture', async (_l, target, expected) => {
+      await expect(imagesFor(target, all161, gallery161)).resolves.toEqual(expected);
+    });
+
+    it('lists a simple product with the whole gallery (product 163)', async () => {
+      const only = variant('ol_variant_271', null);
+      await expect(imagesFor(only, [only], [gfx(318), gfx(319)])).resolves.toEqual([
+        gfx(318),
+        gfx(319),
+      ]);
+    });
+
+    it('lists the single variant of product 162 with its own picture first', async () => {
+      const v270 = variant('ol_variant_270', [gfx(317)]);
+      await expect(
+        imagesFor(v270, [variant('ol_variant_269', null, true), v270], [gfx(316), gfx(317)])
+      ).resolves.toEqual([gfx(317), gfx(316)]);
+    });
+
+    it('lets an operator image override win unchanged', async () => {
+      await expect(
+        imagesFor(P161.red, all161, gallery161, ['https://example.com/mine.jpg'])
+      ).resolves.toEqual(['https://example.com/mine.jpg']);
+    });
+  });
 });
