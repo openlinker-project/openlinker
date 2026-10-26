@@ -54,7 +54,6 @@ export {
 } from './hooks/use-fulfillment-assignment-runner';
 // Exported so the order page can invalidate tasks after an order cancel (#3541).
 export { fulfillmentQueryKeys } from './api/fulfillment.query-keys';
-export { useOrderFulfillmentTasksQuery } from './hooks/use-order-fulfillment-tasks-query';
 export { useHasMultipleLocations } from './hooks/use-has-multiple-locations';
 
 // The action set and its dialog — shared by the fulfilment screen and the
