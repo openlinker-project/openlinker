@@ -17,6 +17,7 @@ import {
   ArrayMinSize,
   IsArray,
   IsIn,
+  IsBoolean,
   IsInt,
   IsNotEmpty,
   IsOptional,
@@ -175,6 +176,17 @@ export class ConfirmReturnRefundDto {
   @IsString()
   @MaxLength(NOTE_MAX_LENGTH)
   note?: string;
+
+  @ApiPropertyOptional({
+    default: false,
+    description:
+      "Refund past the order's total. Without it such a refund is refused with 409 " +
+      '`refund_ceiling_exceeded`, before any money state moves. Per request only: logged, ' +
+      'never stored, and a retry must repeat it.',
+  })
+  @IsOptional()
+  @IsBoolean()
+  acknowledgeAboveCeiling?: boolean;
 }
 
 export class ConfirmReturnRefundResponseDto {

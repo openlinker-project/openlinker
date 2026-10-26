@@ -54,7 +54,12 @@ import {
   type IIntegrationsService,
 } from '@openlinker/core/integrations';
 import {
+  decideRefundCeiling,
+  describeRefundCeilingVerdict,
+  evaluateRefundCeiling,
   isRefundExecutor,
+  REFUND_CEILING_ACKNOWLEDGED_LOG_TOKEN,
+  REFUND_CEILING_UNKNOWN_LOG_TOKEN,
   type ExecuteRefundCommand,
   type OrderSourcePort,
   type RefundExecutor,
@@ -121,6 +126,33 @@ export class ReturnRefundService implements IReturnRefundService {
       throw new ReturnNotFoundError(returnId);
     }
 
+    // Enforcement point A (#3289): the order-level ceiling, BEFORE the lock, the
+    // claim and the executor - past the claim the money rail has moved, and on
+    // the executor path a boundary may have been crossed, so a refusal there
+    // would leave OL holding a settled rail with no record. The `in_doubt` gap
+    // this cannot see is stated on `refund-ceiling.types.ts`.
+    const refundCeiling = evaluateRefundCeiling({
+      context: input.refundCeilingContext ?? null,
+      requestedAmount: input.amount,
+      requestedCurrency: input.currency,
+    });
+    const ceilingDisposition = decideRefundCeiling(
+      internalOrderId,
+      refundCeiling,
+      input.acknowledgeAboveCeiling
+    );
+    if (ceilingDisposition === 'acknowledged') {
+      this.logger.warn(
+        `${REFUND_CEILING_ACKNOWLEDGED_LOG_TOKEN}: return ${returnId}, ` +
+          describeRefundCeilingVerdict(internalOrderId, refundCeiling)
+      );
+    } else if (ceilingDisposition === 'unknown') {
+      this.logger.warn(
+        `${REFUND_CEILING_UNKNOWN_LOG_TOKEN}: return ${returnId}, ` +
+          `${describeRefundCeilingVerdict(internalOrderId, refundCeiling)} - proceeding unchecked`
+      );
+    }
+
     const token = await this.lock.acquire(returnRefundLockKey(returnId), RETURN_REFUND_LOCK_TTL_MS);
     if (token === null) {
       // Refused before the executor is reached, and retryable — see the error.
@@ -177,6 +209,7 @@ export class ReturnRefundService implements IReturnRefundService {
             }
           : null,
         providerMessage: outcome.providerMessage,
+        refundCeiling,
       };
     } finally {
       await this.lock.release(returnRefundLockKey(returnId), token);

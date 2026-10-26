@@ -4,6 +4,7 @@ import { ConflictException, NotFoundException } from '@nestjs/common';
 import type { IOrderRefundService, IOrderRecordService, OrderRecord, RefundRecord } from '@openlinker/core/orders';
 import {
   DuplicateRefundRecordException,
+  RefundCeilingExceededException,
   RefundCurrencyMismatchException,
   ORDER_REFUND_SERVICE_TOKEN,
   ORDER_RECORD_SERVICE_TOKEN,
@@ -151,6 +152,35 @@ describe('RefundsController', () => {
 
       await expect(controller.recordRefund('ol_order_abc123', dto)).rejects.toThrow(
         ConflictException,
+      );
+    });
+
+    it('should map RefundCeilingExceededException to 409 with the refund_ceiling_exceeded code', async () => {
+      orderRecordService.getOrderRecord.mockResolvedValue({} as OrderRecord);
+      refundService.recordRefund.mockRejectedValue(
+        new RefundCeilingExceededException('ol_order_abc123', '100.00', '90.00', '49.99', 'PLN'),
+      );
+
+      const error = await controller
+        .recordRefund('ol_order_abc123', dto)
+        .catch((e: unknown) => e);
+
+      expect(error).toBeInstanceOf(ConflictException);
+      expect((error as ConflictException).getResponse()).toMatchObject({
+        code: 'refund_ceiling_exceeded',
+        ceiling: '100.00',
+        alreadyRefunded: '90.00',
+      });
+    });
+
+    it('should forward acknowledgeAboveCeiling to the service', async () => {
+      orderRecordService.getOrderRecord.mockResolvedValue({} as OrderRecord);
+      refundService.recordRefund.mockResolvedValue(sampleRefund);
+
+      await controller.recordRefund('ol_order_abc123', { ...dto, acknowledgeAboveCeiling: true });
+
+      expect(refundService.recordRefund).toHaveBeenCalledWith(
+        expect.objectContaining({ acknowledgeAboveCeiling: true }),
       );
     });
 

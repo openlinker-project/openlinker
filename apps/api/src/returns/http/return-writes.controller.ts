@@ -42,11 +42,24 @@
  *
  * @module apps/api/src/returns/http
  */
-import { Body, Controller, Get, Inject, Param, Post } from '@nestjs/common';
+import {
+  Body,
+  ConflictException,
+  Controller,
+  Get,
+  HttpStatus,
+  Inject,
+  Param,
+  Post,
+} from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import {
+  ORDER_RECORD_SERVICE_TOKEN,
   ORDER_REFUND_SERVICE_TOKEN,
+  RefundCeilingExceededException,
+  type IOrderRecordService,
   type IOrderRefundService,
+  type RefundCeilingContext,
 } from '@openlinker/core/orders';
 import {
   RETURN_AUTHORIZE_SERVICE_TOKEN,
@@ -115,7 +128,9 @@ export class ReturnWritesController {
     @Inject(RETURN_CORRECTION_PROPOSAL_SERVICE_TOKEN)
     private readonly proposals: IReturnCorrectionProposalService,
     @Inject(ORDER_REFUND_SERVICE_TOKEN)
-    private readonly orderRefunds: IOrderRefundService
+    private readonly orderRefunds: IOrderRefundService,
+    @Inject(ORDER_RECORD_SERVICE_TOKEN)
+    private readonly orderRecords: IOrderRecordService
   ) {}
 
   // Declared FIRST, before any `:returnId` route: `record` is a literal segment
@@ -403,13 +418,36 @@ export class ReturnWritesController {
     @Body() dto: ConfirmReturnRefundDto,
     @CurrentUser() user: AuthenticatedUser
   ): Promise<ConfirmReturnRefundResponseDto> {
-    const result = await this.refunds.triggerRefund(returnId, {
-      amount: dto.amount,
-      currency: dto.currency,
-      reason: dto.reason,
-      note: dto.note ?? null,
-      actorUserId: user.id,
-    });
+    const refundCeilingContext = await this.resolveRefundCeilingContext(returnId);
+    const acknowledgeAboveCeiling = dto.acknowledgeAboveCeiling === true;
+
+    let result: Awaited<ReturnType<IReturnRefundService['triggerRefund']>>;
+    try {
+      result = await this.refunds.triggerRefund(returnId, {
+        amount: dto.amount,
+        currency: dto.currency,
+        reason: dto.reason,
+        note: dto.note ?? null,
+        actorUserId: user.id,
+        refundCeilingContext,
+        acknowledgeAboveCeiling,
+      });
+    } catch (error) {
+      if (error instanceof RefundCeilingExceededException) {
+        // Refused before any money state moved (#3289).
+        throw new ConflictException({
+          statusCode: HttpStatus.CONFLICT,
+          error: 'Conflict',
+          code: error.code,
+          message: error.message,
+          ceiling: error.ceiling,
+          alreadyRefunded: error.alreadyRefunded,
+          requested: error.requested,
+          currency: error.currency,
+        });
+      }
+      throw error;
+    }
 
     const base = {
       moneyState: result.moneyState,
@@ -446,6 +484,10 @@ export class ReturnWritesController {
         // column before it can be stored. Today every shipped path is
         // `operator_out_of_band`, where it is always null, so nothing is lost.
         returnId: intent.returnId,
+        // Repeated here because the money state has already settled: a record
+        // write that re-refused an excess the operator just acknowledged would
+        // leave a refunded line with no RefundRecord (#3289).
+        acknowledgeAboveCeiling,
         // Deterministic per ATTEMPT, so one attempt cannot insert twice and
         // inflate `RefundSummary.totalAmount`. A second attempt claims different
         // lines (the first attempt's are no longer attemptable), so a legitimate
@@ -624,5 +666,43 @@ export class ReturnWritesController {
               })),
             },
     };
+  }
+
+  /**
+   * The order's total and prior refunds for the ceiling check (#3289), resolved
+   * here because `returns` takes no module edge to `orders`. Best-effort: any
+   * failure or an orphan yields `null` (ceiling unknown, warn-logged by the
+   * service) - the orphan refusal itself is the service's, and comes first.
+   */
+  private async resolveRefundCeilingContext(returnId: string): Promise<RefundCeilingContext | null> {
+    try {
+      const record = await this.returns.getReturn(returnId);
+      const orderId = record?.internalOrderId ?? null;
+      if (orderId === null) {
+        return null;
+      }
+      const [order, summaries] = await Promise.all([
+        this.orderRecords.getOrderRecord(orderId),
+        this.orderRefunds.getRefundSummariesForOrders([orderId]),
+      ]);
+      return {
+        order:
+          order === null
+            ? null
+            : {
+                totalAmount: order.totalAmount,
+                currency: order.currency,
+                taxTreatment: order.taxTreatment,
+                totalTaxTreatment: order.totalTaxTreatment,
+              },
+        alreadyRefunded: summaries.get(orderId) ?? null,
+      };
+    } catch (error) {
+      this.logger.warn(
+        `Could not resolve the refund ceiling context for return ${returnId}: ` +
+          `${error instanceof Error ? error.message : String(error)}`
+      );
+      return null;
+    }
   }
 }
