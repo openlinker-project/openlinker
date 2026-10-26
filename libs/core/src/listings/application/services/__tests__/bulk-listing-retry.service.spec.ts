@@ -136,6 +136,7 @@ describe('BulkListingRetryService', () => {
     };
     advancements = {
       markAdvancedIfNotExists: jest.fn(),
+      reclassifySucceededAsFailed: jest.fn(),
       deleteForRecord: jest.fn().mockResolvedValue(undefined),
     };
     const adapter = { createOffer: jest.fn() } as unknown as OfferManagerPort;

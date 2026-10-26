@@ -23,6 +23,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 
 import type { BulkBatchAdvancementRepositoryPort } from '../../../domain/ports/bulk-batch-advancement-repository.port';
+import type { BulkChildOutcome } from '../../../domain/types/bulk-child-outcome.types';
 import { BulkBatchAdvancementOrmEntity } from '../entities/bulk-batch-advancement.orm-entity';
 
 @Injectable()
@@ -35,11 +36,12 @@ export class BulkBatchAdvancementRepository implements BulkBatchAdvancementRepos
   async markAdvancedIfNotExists(
     bulkBatchId: string,
     offerCreationRecordId: string,
+    outcome: BulkChildOutcome
   ): Promise<{ created: boolean }> {
     const result = await this.repository
       .createQueryBuilder()
       .insert()
-      .values({ bulkBatchId, offerCreationRecordId })
+      .values({ bulkBatchId, offerCreationRecordId, outcome })
       .orIgnore()
       .execute();
     // RETURNING rows, not `identifiers` (#1084): empty ⇒ ON CONFLICT skipped the
@@ -47,6 +49,19 @@ export class BulkBatchAdvancementRepository implements BulkBatchAdvancementRepos
     // the (here-unreachable) empty-valueSet path where TypeORM leaves `raw`
     // undefined, matching the webhook-delivery gate's defensiveness.
     return { created: Array.isArray(result.raw) && result.raw.length > 0 };
+  }
+
+  async reclassifySucceededAsFailed(
+    bulkBatchId: string,
+    offerCreationRecordId: string
+  ): Promise<{ reclassified: boolean }> {
+    // The `outcome = 'succeeded'` guard IS the at-most-once gate: a replayed
+    // call finds the row already `failed` and affects nothing.
+    const result = await this.repository.update(
+      { bulkBatchId, offerCreationRecordId, outcome: 'succeeded' },
+      { outcome: 'failed' }
+    );
+    return { reclassified: (result.affected ?? 0) > 0 };
   }
 
   async deleteForRecord(

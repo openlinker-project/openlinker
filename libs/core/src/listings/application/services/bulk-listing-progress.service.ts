@@ -12,6 +12,13 @@
  * INSERT-ON-CONFLICT-DO-NOTHING) so retries + concurrent workers can't
  * double-increment the counters.
  *
+ * `reclassifyChildAsFailed` (E2E-21) corrects a child that was counted as
+ * `succeeded` when the marketplace accepted the create and then rejected the
+ * offer asynchronously: the creation poller terminalises such a record as
+ * `failed` minutes after the batch may already read COMPLETED. The
+ * correction is gated the same way, by a conditional UPDATE on the
+ * advancement row's recorded outcome, so a replayed poll never double-adjusts.
+ *
  * @module libs/core/src/listings/application/services
  * @implements {IBulkListingProgressService}
  */
@@ -51,7 +58,8 @@ export class BulkListingProgressService implements IBulkListingProgressService {
   ): Promise<BulkListingBatch | null> {
     const { created } = await this.advancementRepository.markAdvancedIfNotExists(
       batchId,
-      offerCreationRecordId
+      offerCreationRecordId,
+      outcome
     );
     if (!created) {
       this.logger.debug(
@@ -62,7 +70,47 @@ export class BulkListingProgressService implements IBulkListingProgressService {
 
     const delta = outcome === 'succeeded' ? { succeeded: 1 } : { failed: 1 };
     const batch = await this.bulkBatchRepository.incrementCounters(batchId, delta);
+    return this.settleIfFinished(batchId, batch);
+  }
 
+  async reclassifyChildAsFailed(
+    batchId: string,
+    offerCreationRecordId: string
+  ): Promise<BulkListingBatch | null> {
+    const { reclassified } = await this.advancementRepository.reclassifySucceededAsFailed(
+      batchId,
+      offerCreationRecordId
+    );
+    if (!reclassified) {
+      // Not counted yet (the poller won a race against the create handler's
+      // advance), already counted as failed, or a legacy row with no recorded
+      // outcome. The first case needs the child counted as failed now - the
+      // handler's later `succeeded` advance then dedupes on the existing row.
+      // The other two are no-ops inside `advanceBatchStatus`.
+      return this.advanceBatchStatus(batchId, offerCreationRecordId, 'failed');
+    }
+
+    this.logger.log(
+      `Reclassified bulk child as failed after an asynchronous rejection. batchId=${batchId} recordId=${offerCreationRecordId}`
+    );
+    // `incrementCounters` applies the succeeded delta before the failed one,
+    // so a concurrent sibling never observes a transiently "finished" batch.
+    const batch = await this.bulkBatchRepository.incrementCounters(batchId, {
+      succeeded: -1,
+      failed: 1,
+    });
+    return this.settleIfFinished(batchId, batch);
+  }
+
+  /**
+   * The single terminal-status rule (completed / partially-failed / failed),
+   * shared by the first-time advance and the reclassification so the two
+   * cannot drift. Returns `null` while children are still outstanding.
+   */
+  private async settleIfFinished(
+    batchId: string,
+    batch: BulkListingBatch
+  ): Promise<BulkListingBatch | null> {
     const finished = batch.succeededCount + batch.failedCount === batch.totalCount;
     if (!finished) return null;
 
