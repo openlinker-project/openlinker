@@ -1412,6 +1412,7 @@ describe('OrdersController', () => {
         blockDetail: null,
         otherRecords: [],
         matchedRule: null,
+        afterIssueAttention: null,
         ...overrides,
       };
     }

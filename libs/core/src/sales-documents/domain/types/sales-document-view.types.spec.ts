@@ -145,6 +145,7 @@ describe('SalesDocumentView', () => {
         blockDetail: null,
         otherRecords: [],
         matchedRule: null,
+        afterIssueAttention: null,
       };
 
       expect(view.documentKind).toBeNull();
@@ -162,6 +163,7 @@ describe('SalesDocumentView', () => {
         blockDetail: null,
         otherRecords: [],
         matchedRule: null,
+        afterIssueAttention: null,
       };
 
       expect(view.documentKind).toBe('fiscal-receipt');
@@ -196,6 +198,7 @@ describe('SalesDocumentView', () => {
           },
         ],
         matchedRule: null,
+        afterIssueAttention: null,
       };
 
       expect(view.otherRecords).toHaveLength(1);

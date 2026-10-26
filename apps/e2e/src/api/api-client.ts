@@ -720,6 +720,15 @@ export class ApiClient {
       ),
     getById: (internalOrderId: string): Promise<OrderRecord> =>
       this.request<OrderRecord>(`/orders/${internalOrderId}`),
+    /** Record a refund against an order (#2036); used to drive the DEF-26 gate. */
+    recordRefund: (
+      internalOrderId: string,
+      input: { amount: string; currency: string; reason: string; note?: string; idempotencyKey?: string },
+    ): Promise<{ id: string }> =>
+      this.request<{ id: string }>(`/orders/${internalOrderId}/refunds`, {
+        method: 'POST',
+        body: JSON.stringify(input),
+      }),
     /**
      * Per-health-bucket counts plus the orthogonal sales-document block count
      * (#929/#2100). Deliberately un-scoped here: the endpoint is not
@@ -849,6 +858,9 @@ export class ApiClient {
         method: 'POST',
         body: JSON.stringify(input),
       }),
+    /** The authority's public verification link (KSeF KOD I), built server-side (DEF-02/03). */
+    verificationLink: (invoiceId: string): Promise<{ url: string | null }> =>
+      this.request<{ url: string | null }>(`/invoices/${invoiceId}/verification-link`),
     /** Re-send a rejected document to the tax authority (#1121). */
     resendToKsef: (invoiceId: string): Promise<InvoiceRecord> =>
       this.request<InvoiceRecord>(`/invoices/${invoiceId}/resend-to-ksef`, { method: 'POST' }),

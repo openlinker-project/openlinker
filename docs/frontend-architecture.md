@@ -99,8 +99,9 @@ A feature must keep its public-facing modules inside the canonical subdirectory 
 serving the `/automations` route, plural) ships its public barrel and is registered in both
 `no-restricted-imports` pattern groups for every canonical subdirectory, even though its only
 consumers today are its own pages (which may deep-import). The slug is registered up front because
-it must match the `features/automation` scan root in `scripts/check-ui-vocabulary.mjs` — a silent
-singular/plural drift between the two makes that gate skip the folder it was written to cover. The
+it must match the `features/automation` folder name. Since #2737 `scripts/check-ui-vocabulary.mjs`
+scans every `features/*` slice by discovery rather than from a list, so a singular/plural drift no
+longer makes that gate skip the folder - but the barrel slug and the folder must still agree. The
 composer (#2365) and the dry run + fired log (#2366) consume the barrel.
 
 **Cross-feature consumption example (#2411):** `fulfillment` — the work-grain
