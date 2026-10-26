@@ -74,7 +74,7 @@ describe('BulkListingBatchRepository', () => {
   };
   /** Renders each raw setter the builder received, e.g. `"failedCount" + :failedDelta`. */
   const renderedSetters = (builder: CounterBuilder): Record<string, string> => {
-    const set = builder.set.mock.calls[0][0] as Record<string, () => string>;
+    const [[set]] = builder.set.mock.calls as [[Record<string, () => string>]];
     return Object.fromEntries(Object.entries(set).map(([column, fn]) => [column, fn()]));
   };
 
