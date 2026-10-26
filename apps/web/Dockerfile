@@ -63,6 +63,19 @@ ENV VITE_OL_SEO_INDEXABLE=$VITE_OL_SEO_INDEXABLE
 
 RUN pnpm --filter @openlinker/web build
 
+# X-Robots-Tag for the nginx stage (#3709). The meta tag only covers HTML, so a
+# non-indexable build also sends the header, which reaches every response
+# (assets, robots.txt, the og:image). The decision is read back from the BUILT
+# index.html rather than re-deriving it from the build args here: og-meta.ts
+# stays the one place the rule lives. It fails closed - only an explicit
+# `index, follow` meta leaves the header out, so a changed or missing tag
+# still yields `noindex`.
+RUN if grep -q '<meta name="robots" content="index, follow"' apps/web/dist/index.html; then \
+      : > apps/web/x-robots-tag.conf; \
+    else \
+      echo 'add_header X-Robots-Tag "noindex, nofollow" always;' > apps/web/x-robots-tag.conf; \
+    fi
+
 # Runtime stage — nginx serving the static bundle, as a non-root user (#1411).
 # nginxinc/nginx-unprivileged is the official image built for exactly this:
 # it already runs as uid 101 (nginx) and listens on 8080 instead of the
@@ -70,6 +83,10 @@ RUN pnpm --filter @openlinker/web build
 FROM nginxinc/nginx-unprivileged:1.31-alpine AS runtime
 
 COPY apps/web/nginx.conf /etc/nginx/conf.d/default.conf
+# Outside conf.d/ on purpose: nginx auto-includes conf.d/*.conf at http level,
+# where a bare add_header would apply on its own; nginx.conf includes it by
+# path inside each block instead.
+COPY --from=build /app/apps/web/x-robots-tag.conf /etc/nginx/snippets/x-robots-tag.conf
 COPY --from=build /app/apps/web/dist /usr/share/nginx/html
 
 EXPOSE 8080
