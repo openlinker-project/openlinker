@@ -34,6 +34,11 @@ import type {
   OrderExportRun,
   CreateOrderExportRequest,
 } from './orders.types';
+import type {
+  CancelOrderRequest,
+  CancelOrderResult,
+  ConfirmOrderChangeResult,
+} from './order-cancel.types';
 
 export interface OrdersApi {
   list: (filters?: OrderFilters, pagination?: OrderPagination) => Promise<PaginatedOrders>;
@@ -81,6 +86,17 @@ export interface OrdersApi {
     internalOrderId: string,
     body: PlaceOrderHoldRequest,
   ) => Promise<PlaceOrderHoldResult>;
+  /**
+   * Cancel an order at the operator's request (#3540/#3541). HTTP 200 resolves
+   * `cancelled`, HTTP 202 resolves `pending`; a refusal is an `ApiError` whose
+   * body `error` carries the machine code.
+   */
+  cancelOrder: (internalOrderId: string, body: CancelOrderRequest) => Promise<CancelOrderResult>;
+  /** Confirm the credit proposal a cancelled, invoiced order left behind. */
+  confirmOrderChange: (
+    internalOrderId: string,
+    changeId: string,
+  ) => Promise<ConfirmOrderChangeResult>;
   /**
    * Release a hold (#2341). Admin-only. Answers 409 `HOLD_ALREADY_RELEASED` on
    * a replay and 400 when a note is required and missing; the success body
@@ -310,6 +326,18 @@ export function createOrdersApi(request: ApiRequest, requestBlob: ApiBlobRequest
       return request<PlaceOrderHoldResult>(
         `/orders/${encodeURIComponent(internalOrderId)}/holds`,
         { method: 'POST', body: JSON.stringify(body) },
+      );
+    },
+    cancelOrder(internalOrderId, body): Promise<CancelOrderResult> {
+      return request<CancelOrderResult>(
+        `/orders/${encodeURIComponent(internalOrderId)}/cancel`,
+        { method: 'POST', body: JSON.stringify(body) },
+      );
+    },
+    confirmOrderChange(internalOrderId, changeId): Promise<ConfirmOrderChangeResult> {
+      return request<ConfirmOrderChangeResult>(
+        `/orders/${encodeURIComponent(internalOrderId)}/changes/${encodeURIComponent(changeId)}/confirm`,
+        { method: 'POST' },
       );
     },
     releaseHold(internalOrderId, holdId, body): Promise<ReleaseOrderHoldResult> {
