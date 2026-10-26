@@ -666,6 +666,7 @@ export class InvoiceRecordRepository implements InvoiceRecordRepositoryPort {
       entity.unlinkedCatalogueLines,
       entity.warehouseReleaseOutcome,
       entity.warehouseReleaseNumber,
+      entity.clearanceDetail,
     );
   }
 }

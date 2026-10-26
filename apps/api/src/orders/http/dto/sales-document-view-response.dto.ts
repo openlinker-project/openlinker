@@ -43,10 +43,12 @@ import {
 import type { InvoiceFailureCode, InvoiceFailureMode } from '@openlinker/core/invoicing';
 import {
   CoreSalesDocumentKindValues,
+  SalesDocumentAfterIssueAttentionValues,
   SalesDocumentGateBlockReasonValues,
   SalesDocumentUnresolvedReasonValues,
 } from '@openlinker/core/sales-documents';
 import type {
+  SalesDocumentAfterIssueAttention,
   SalesDocumentGateBlockReason,
   SalesDocumentIdentity,
   SalesDocumentMatchedRuleView,
@@ -319,6 +321,17 @@ export class SalesDocumentViewResponseDto {
       'before concluding that no rule decided an order\'s kind.',
   })
   matchedRule!: SalesDocumentMatchedRuleViewDto | null;
+
+  @ApiProperty({
+    enum: SalesDocumentAfterIssueAttentionValues,
+    nullable: true,
+    description:
+      'DEF-26: the sale changed after its document was made (cancelled, or refunded in whole or in ' +
+      'part), so the document may need a correction. Derived on every read from the live order and ' +
+      'its refunds, never stored. `null` when there is no live document or nothing changed. A ' +
+      'suggestion only: whether a correction is due is the operator\'s call.',
+  })
+  afterIssueAttention!: SalesDocumentAfterIssueAttention | null;
 }
 
 /**
@@ -341,6 +354,7 @@ export function toSalesDocumentViewDto(view: SalesDocumentView): SalesDocumentVi
     blockDetail: view.blockDetail,
     otherRecords: view.otherRecords.map(toOtherRecordDto),
     matchedRule: view.matchedRule === null ? null : toMatchedRuleViewDto(view.matchedRule),
+    afterIssueAttention: view.afterIssueAttention,
   };
 }
 

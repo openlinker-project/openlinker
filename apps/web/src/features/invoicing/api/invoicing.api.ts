@@ -95,6 +95,12 @@ export interface InvoicingApi {
    * error.
    */
   getContent: (invoiceId: string) => Promise<IssuedDocumentContent>;
+  /**
+   * The authority's public verification link for a cleared invoice (KSeF:
+   * KOD I), built by the provider adapter from the exact submitted document.
+   * `url` is null when the provider offers none or the invoice is not cleared.
+   */
+  getVerificationLink: (invoiceId: string) => Promise<{ url: string | null }>;
 }
 
 interface ApiRequest {
@@ -141,6 +147,11 @@ export function createInvoicingApi(request: ApiRequest, requestBlob: ApiBlobRequ
     getContent(invoiceId): Promise<IssuedDocumentContent> {
       return request<IssuedDocumentContent>(
         `/invoices/${encodeURIComponent(invoiceId)}/content`,
+      );
+    },
+    getVerificationLink(invoiceId): Promise<{ url: string | null }> {
+      return request<{ url: string | null }>(
+        `/invoices/${encodeURIComponent(invoiceId)}/verification-link`,
       );
     },
     list(filters, pagination): Promise<PaginatedInvoices> {

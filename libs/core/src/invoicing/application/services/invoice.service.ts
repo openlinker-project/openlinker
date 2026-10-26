@@ -54,6 +54,7 @@ import {
 import type { InvoiceRecord } from '../../domain/entities/invoice-record.entity';
 import type { InvoicingPort } from '../../domain/ports/invoicing.port';
 import { isCorrectionIssuer } from '../../domain/ports/capabilities/correction-issuer.capability';
+import { isBuyerIdentityCorrector } from '../../domain/ports/capabilities/buyer-identity-corrector.capability';
 import { isDocumentNumberConsumer } from '../../domain/ports/capabilities/document-number-consumer.capability';
 import { DuplicateInvoiceRecordException } from '../../domain/exceptions/duplicate-invoice-record.exception';
 import { InvoiceRecordNotFoundException } from '../../domain/exceptions/invoice-record-not-found.exception';
@@ -88,6 +89,7 @@ import type {
   IssuedDocumentLine,
   IssuedDocumentLineAmounts,
   IssuedDocumentSeller,
+  IssuedDocumentDates,
   IssuedLineSnapshot,
   IssueInvoiceCommand,
   IssueInvoiceResult,
@@ -756,13 +758,16 @@ export class InvoiceService implements IInvoiceService {
       seller,
       sourceDocument,
       documentLines,
+      documentDates,
       unlinkedCatalogueLines,
       warehouseRelease,
     } =
       issueResult;
     // #2251: prefer the document's OWN per-line amounts over core's
     // recomputation, so the stored figure matches the paper to the grosz.
-    const documentContent = this.buildContent(cmd, issued, seller ?? null, documentLines);
+    const documentContent = this.buildContent(cmd, issued, seller ?? null, documentLines, {
+      saleDate: documentDates?.saleDate ?? cmd.saleDate ?? null,
+    });
     // #1297: snapshot the exact issue-command inputs (buyer/currency/lines) so a
     // later correction diffs against the lines AS ISSUED, not the order's current
     // state. Verbatim from the command — no recomputation.
@@ -770,6 +775,11 @@ export class InvoiceService implements IInvoiceService {
       buyer: cmd.buyer,
       currency: cmd.currency,
       lines: cmd.lines,
+      // DEF-07 / DEF-33: the dates as printed, so a correction keys its own
+      // date-dependent values (the exchange rate) on the same day the original did.
+      ...snapshotDates(documentDates, cmd.saleDate),
+      ...(cmd.annotations ? { annotations: cmd.annotations } : {}),
+      ...(cmd.additionalParties?.length ? { additionalParties: cmd.additionalParties } : {}),
     };
 
     const patch: InvoiceOutcomePatch = {
@@ -1076,7 +1086,7 @@ export class InvoiceService implements IInvoiceService {
     if (!isCorrectionIssuer(adapter)) {
       // Adapter resolved but doesn't implement CorrectionIssuer: update the row
       // to failed (in-doubt) and throw so the caller can surface the 422.
-      await this.repo.updateOutcome(pending.id, {
+      await this.repo.updateOutcome(recordId, {
         status: 'failed',
         errorMessage: 'Provider does not support correction issuance.',
         failureMode: 'rejected',
@@ -1085,6 +1095,23 @@ export class InvoiceService implements IInvoiceService {
         leaseExpiresAt: null,
       });
       throw new CapabilityNotSupportedException(cmd.connectionId, 'CorrectionIssuer');
+    }
+
+    // DEF-09: a buyer override only means something if the provider puts it on
+    // the document. One that does not would issue a correction for the ORIGINAL
+    // buyer while this record's snapshot claimed the new one, so it is refused
+    // here, before anything is sent - nothing exists at the provider yet.
+    if (cmd.buyerOverride && !isBuyerIdentityCorrector(adapter)) {
+      await this.repo.updateOutcome(recordId, {
+        status: 'failed',
+        errorMessage: 'Provider cannot change the buyer on a correction.',
+        failureMode: 'rejected',
+        failureCode: 'provider-rejected',
+        failureReason:
+          'This invoicing provider cannot change the buyer on a correction. Correct the buyer in the provider directly.',
+        leaseExpiresAt: null,
+      });
+      throw new CapabilityNotSupportedException(cmd.connectionId, 'BuyerIdentityCorrector');
     }
 
     // Single issuance instant for the correction (#1692): threaded into BOTH the
@@ -1121,9 +1148,9 @@ export class InvoiceService implements IInvoiceService {
       const sanitized = this.sanitizeError(error);
       const { failureMode, failureCode, failureReason } = classifyInvoiceFailure(error);
       this.logger.warn(
-        `Correction issuance failed for record ${pending.id} (failureMode=${failureMode}, failureCode=${failureCode}): ${sanitized}`,
+        `Correction issuance failed for record ${recordId} (failureMode=${failureMode}, failureCode=${failureCode}): ${sanitized}`,
       );
-      await this.repo.updateOutcome(pending.id, {
+      await this.repo.updateOutcome(recordId, {
         status: 'failed',
         errorMessage: sanitized,
         failureMode,
@@ -1135,37 +1162,49 @@ export class InvoiceService implements IInvoiceService {
       throw error;
     }
 
-    const { record: issued, seller, sourceDocument, documentLines } = issueResult;
+    const { record: issued, seller, sourceDocument, documentLines, documentDates } = issueResult;
+
+    // #1582: the buyer captured on the correction's own snapshot is the OVERRIDE
+    // buyer when one was supplied (a buyer-identity correction), else the original
+    // document's buyer - so a correction-of-correction diffs against the buyer as
+    // actually corrected.
+    const correctionBuyer = cmd.buyerOverride ?? cmd.originalDocument?.buyer;
 
     // #1297: snapshot the correction's OWN post-correction ("after") lines so a
     // correction-of-correction diffs against them, not the live order. Derived
     // from the caller-assembled original snapshot (`cmd.originalDocument.lines`,
     // the "before" state) with the per-line deltas applied. Only when the caller
-    // supplied `originalDocument` (order still resolvable); absent → persist null
+    // supplied `originalDocument` (order still resolvable); absent -> persist null
     // and the next correction falls back to order-derived reconstruction.
     const correctedLines = cmd.originalDocument
       ? applyCorrectionDeltas(cmd.originalDocument.lines, cmd.lines)
       : null;
     const issuedLineSnapshot: IssuedLineSnapshot | null =
-      cmd.originalDocument && correctedLines
+      cmd.originalDocument && correctedLines && correctionBuyer
         ? {
-            buyer: cmd.originalDocument.buyer,
+            buyer: correctionBuyer,
             currency: cmd.originalDocument.currency,
             lines: correctedLines,
+            // A correction does not move the sale date: it stays the original's.
+            ...snapshotDates(documentDates, cmd.originalDocument.saleDate),
+            ...(cmd.originalDocument.annotations ? { annotations: cmd.originalDocument.annotations } : {}),
+            ...(cmd.originalDocument.additionalParties?.length
+              ? { additionalParties: cmd.originalDocument.additionalParties }
+              : {}),
           }
         : null;
     // W2/W3 (#1229 follow-up): a correction's displayed content and source
-    // document were previously never persisted at all — every corrected
+    // document were previously never persisted at all - every corrected
     // invoice's "View"/"Preview" 409'd with "no source document available"
     // even when the adapter (KSeF) had built and submitted a real FA(3) XML.
     // Mirrors `issueInvoice`'s persistence exactly, built from the corrected
     // ("after") lines rather than the original ones.
     const documentContent =
-      correctedLines && cmd.originalDocument
+      correctedLines && cmd.originalDocument && correctionBuyer
         ? this.buildContent(
             {
               lines: correctedLines,
-              buyer: cmd.originalDocument.buyer,
+              buyer: correctionBuyer,
               currency: cmd.originalDocument.currency,
             },
             issued,
@@ -1174,10 +1213,11 @@ export class InvoiceService implements IInvoiceService {
             // amounts overwrite the stored ones. Without this the record would
             // keep the pre-correction figures while the paper says otherwise.
             documentLines,
+            { saleDate: documentDates?.saleDate ?? cmd.originalDocument.saleDate ?? null },
           )
         : null;
 
-    return this.repo.updateOutcome(pending.id, {
+    return this.repo.updateOutcome(recordId, {
       status: 'issued',
       providerType: issued.providerType,
       documentType: issued.documentType,
@@ -1352,6 +1392,9 @@ export class InvoiceService implements IInvoiceService {
     return this.repo.updateOutcome(invoiceId, {
       regulatoryStatus: result.regulatoryStatus,
       clearanceReference: result.clearanceReference ?? null,
+      // #1582: persist the authority's operator-facing rejection diagnostic (or
+      // clear a stale one when a resend moves the document off `rejected`).
+      clearanceDetail: result.clearanceDetail ?? null,
     });
   }
 
@@ -1397,6 +1440,7 @@ export class InvoiceService implements IInvoiceService {
     record: InvoiceRecord,
     seller: IssuedDocumentSeller | null,
     documentLines?: IssuedDocumentLineAmounts[],
+    dates: { saleDate: string | null } = { saleDate: null },
   ): IssuedDocumentContent {
     const reported = new Map<number, IssuedDocumentLineAmounts>(
       (documentLines ?? []).map((entry) => [entry.lineNumber, entry]),
@@ -1452,7 +1496,7 @@ export class InvoiceService implements IInvoiceService {
       totals,
       currency: cmd.currency,
       issueDate: record.issuedAt ? record.issuedAt.toISOString() : null,
-      saleDate: null,
+      saleDate: dates.saleDate,
       payment: null,
     };
   }
@@ -1501,4 +1545,24 @@ export function freezeBuyerTaxIdAtIssue(cmd: IssueInvoiceCommand): string | null
   // `''` is the asserted-none encoding and the ONLY assertion that survives a
   // document carrying no id; everything else collapses to "not asserted".
   return cmd.buyerTaxIdAssertion === '' ? '' : null;
+}
+
+/**
+ * The printed dates to keep on an {@link IssuedLineSnapshot}: what the adapter
+ * reported, else the command's own sale date. Absent fields stay absent so a
+ * snapshot never claims a date nothing printed.
+ */
+function snapshotDates(
+  documentDates: IssuedDocumentDates | undefined,
+  fallbackSaleDate: string | undefined,
+): Pick<IssuedLineSnapshot, 'issueDate' | 'saleDate'> {
+  const out: Pick<IssuedLineSnapshot, 'issueDate' | 'saleDate'> = {};
+  if (documentDates?.issueDate !== undefined) {
+    out.issueDate = documentDates.issueDate;
+  }
+  const saleDate = documentDates?.saleDate ?? fallbackSaleDate;
+  if (saleDate) {
+    out.saleDate = saleDate;
+  }
+  return out;
 }

@@ -105,6 +105,32 @@ describe('SubiektInvoiceCorrectionFlow', () => {
     expect(onClose).toHaveBeenCalledOnce();
   });
 
+  it('warns once when the reason is empty, then lets the operator submit without one (DEF-32)', async () => {
+    const issueCorrection = vi.fn().mockResolvedValue(makeInvoice({ id: 'ol_invoice_noreason' }));
+    renderWithProviders(
+      <SubiektInvoiceCorrectionFlow
+        invoice={makeInvoice()}
+        connection={subiektConnection}
+        onClose={vi.fn()}
+        onCorrectionIssued={vi.fn()}
+      />,
+      { apiClient: createMockApiClient({ invoicing: { issueCorrection } }) },
+    );
+
+    const lineInput = await screen.findByLabelText(/Line number 1/i);
+    fireEvent.change(lineInput, { target: { value: '1' } });
+    const qtyInput = await screen.findByLabelText(/New qty, line 1/i);
+    fireEvent.change(qtyInput, { target: { value: '0' } });
+    fireEvent.click(await screen.findByRole('button', { name: /Issue correction/i }));
+
+    expect(await screen.findByText(/submit again to issue the correction without one/i)).toBeTruthy();
+    expect(issueCorrection).not.toHaveBeenCalled();
+
+    fireEvent.click(await screen.findByRole('button', { name: /Issue correction/i }));
+    await waitFor(() => expect(issueCorrection).toHaveBeenCalledOnce());
+    expect(issueCorrection.mock.calls[0][1].reason).toBeUndefined();
+  });
+
   it('submits issueCorrection with reason and line data on form submit', async () => {
     const correctionInvoice = makeInvoice({ id: 'ol_invoice_correction' });
     const issueCorrection = vi.fn().mockResolvedValue(correctionInvoice);
@@ -177,6 +203,9 @@ describe('SubiektInvoiceCorrectionFlow', () => {
     // Edit the SECOND row (the 80.00 one) rather than typing a number.
     fireEvent.change(qtyInputs[1], { target: { value: '0' } });
 
+    fireEvent.change(await screen.findByLabelText(/Reason for correction/i), {
+      target: { value: 'Partial return' },
+    });
     fireEvent.click(await screen.findByRole('button', { name: /Issue correction/i }));
 
     await waitFor(() => {
@@ -212,6 +241,9 @@ describe('SubiektInvoiceCorrectionFlow', () => {
     const lineInputs = await screen.findAllByLabelText(/Line number/i);
     fireEvent.change(lineInputs[0], { target: { value: '2' } });
 
+    fireEvent.change(await screen.findByLabelText(/Reason for correction/i), {
+      target: { value: 'Partial return' },
+    });
     fireEvent.click(await screen.findByRole('button', { name: /Issue correction/i }));
 
     await waitFor(() => {

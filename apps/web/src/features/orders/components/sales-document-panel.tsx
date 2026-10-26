@@ -89,10 +89,12 @@ import { DocumentLifecycle } from '../../../shared/ui/document-lifecycle';
 import { resolveSalesDocumentReasonCopy } from '../../sales-documents';
 import { resolveInvoiceHeadline, resolveFiscalHeadline } from '../lib/sales-document-headline';
 import { describeMatchedSalesDocumentRule } from '../lib/describe-matched-sales-document-rule';
+import { resolveAfterIssueAttentionCopy } from '../lib/after-issue-attention-copy';
 
 import {
   useOrderInvoiceQuery,
   useIssueInvoiceMutation,
+  useWarningAcknowledgement,
   resolveIssueErrorMessage,
   isMissingNumberingSeriesError,
   isConnectionSetupIncompleteError,
@@ -134,6 +136,7 @@ import {
   type FiscalRegistrationRecord,
 } from '../../fiscalization';
 
+import type { IssueInvoiceOptions } from '../../invoicing';
 import type { OrderRecord } from '../api/orders.types';
 import { parseOrderSnapshot } from '../api/order-snapshot.schema';
 import type { ParsedOrderItem, ParsedOrderTotals } from '../api/order-snapshot.schema';
@@ -261,10 +264,13 @@ export function SalesDocumentPanel({ order }: SalesDocumentPanelProps): ReactEle
   const [switchTargetId, setSwitchTargetId] = useState<string | null>(null);
   const [correctionOpen, setCorrectionOpen] = useState(false);
   const [missingNumbering, setMissingNumbering] = useState(false);
+  // DEF-20: what the operator states about this sale when issuing by hand.
+  const [issueOptions, setIssueOptions] = useState<IssueInvoiceOptions>({});
 
   const invoiceWrite = useWriteAccess('invoices:write', demoMode);
   const invoiceQuery = useOrderInvoiceQuery(order.internalOrderId);
   const issueMutation = useIssueInvoiceMutation();
+  const issueAcknowledgement = useWarningAcknowledgement(issueMutation.isPending);
   const resendMutation = useResendToAuthorityMutation();
 
   // ── Fiscalization data + actions ──────────────────────────────────────
@@ -289,6 +295,10 @@ export function SalesDocumentPanel({ order }: SalesDocumentPanelProps): ReactEle
   // document) AND "one did, but has since been deleted" — the disclosure is
   // simply absent either way, never rendered with a stale/guessed explanation.
   const matchedRule = order.salesDocument?.matchedRule ?? null;
+  const afterIssueAttention = resolveAfterIssueAttentionCopy(
+    order.salesDocument?.afterIssueAttention,
+    t,
+  );
   const matchedRuleConnectionName =
     matchedRule !== null
       ? (allConnections.find((c) => c.id === matchedRule.connectionId)?.name ?? matchedRule.connectionId)
@@ -410,6 +420,7 @@ export function SalesDocumentPanel({ order }: SalesDocumentPanelProps): ReactEle
   const platform = usePlatform(invoicingConnection?.platformType);
   const InvoiceDetailSection = platform?.invoiceDetailSection ?? null;
   const InvoiceCorrectionFlow = platform?.invoiceCorrectionFlow ?? null;
+  const InvoiceIssueOptions = platform?.invoiceIssueOptions ?? null;
 
   const showConnectionPicker = !invoice && invoicingConnections.length > 1;
   const requiresConnectionPick = showConnectionPicker && issuableConnection === null;
@@ -431,10 +442,21 @@ export function SalesDocumentPanel({ order }: SalesDocumentPanelProps): ReactEle
   const invoiceSettled = !invoiceQuery.isError && !invoiceQuery.isLoading;
 
   const issueOn = (connection: { id: string }): void => {
+    issueAcknowledgement.reset();
+    submitIssue(connection, []);
+  };
+
+  const submitIssue = (connection: { id: string }, acknowledgeWarnings: string[]): void => {
     setMissingNumbering(false);
     announce(t('invoice.announce.issuing', 'Issuing the invoice.'));
     issueMutation.mutate(
-      { connectionId: connection.id, orderId: order.internalOrderId, documentType },
+      {
+        connectionId: connection.id,
+        orderId: order.internalOrderId,
+        documentType,
+        ...issueOptions,
+        ...(acknowledgeWarnings.length > 0 ? { acknowledgeWarnings } : {}),
+      },
       {
         onSuccess: () => {
           setSwitchTargetId(null);
@@ -446,6 +468,12 @@ export function SalesDocumentPanel({ order }: SalesDocumentPanelProps): ReactEle
           });
         },
         onError: (error) => {
+          // DEF-26 and friends: a refusal the operator may overrule opens a
+          // confirm dialog instead of a toast.
+          if (issueAcknowledgement.offer(error, (codes) => submitIssue(connection, codes))) {
+            announce(t('invoice.announce.needsConfirmation', 'The invoice needs your confirmation.'));
+            return;
+          }
           if (isMissingNumberingSeriesError(error)) {
             announce(
               t('invoice.announce.numberingMissing', 'Numbering is not configured.'),
@@ -751,6 +779,14 @@ export function SalesDocumentPanel({ order }: SalesDocumentPanelProps): ReactEle
             )
             .join('; ')}
           .
+        </Alert>
+      ) : null}
+
+      {/* DEF-26 - the sale changed after its document was made. A pointer,
+          not a verdict: whether a correction is due is the operator's call. */}
+      {afterIssueAttention ? (
+        <Alert tone="warning" data-testid="sales-document-after-issue-attention">
+          <strong>{afterIssueAttention.short}.</strong> {afterIssueAttention.detail}
         </Alert>
       ) : null}
 
@@ -1475,6 +1511,19 @@ export function SalesDocumentPanel({ order }: SalesDocumentPanelProps): ReactEle
                     disabled={issueMutation.isPending || invoiceWrite.demoReadOnly}
                     className="sales-document-panel__doc-type"
                   />
+                  {InvoiceIssueOptions && invoicingConnection ? (
+                    <InvoiceIssueOptions
+                      connection={invoicingConnection}
+                      lines={snapshotItems.map((item) => ({
+                        id: item.id,
+                        name: item.name ?? null,
+                        quantity: item.quantity,
+                      }))}
+                      value={issueOptions}
+                      onChange={setIssueOptions}
+                      disabled={issueMutation.isPending || invoiceWrite.demoReadOnly}
+                    />
+                  ) : null}
                   <ReadOnlyLock
                     active={invoiceWrite.demoReadOnly}
                     message={DEMO_READ_ONLY_ACTION_MESSAGE}
@@ -1563,6 +1612,7 @@ export function SalesDocumentPanel({ order }: SalesDocumentPanelProps): ReactEle
           ) : null}
         </div>
       ) : null}
+      {issueAcknowledgement.dialog}
     </section>
   );
 }

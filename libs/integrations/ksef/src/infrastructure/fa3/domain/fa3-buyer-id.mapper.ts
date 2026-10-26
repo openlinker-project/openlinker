@@ -16,6 +16,7 @@
  */
 import type { TaxIdentifier } from '@openlinker/core/invoicing';
 import { InvalidBuyerIdentificationException } from '../../../domain/exceptions/fa3-builder.exception';
+import { normalizePlNip } from '../../adapters/nip-checksum';
 
 /**
  * Resolved FA(3) `Podmiot2` identity — a discriminated union the builder pattern
@@ -60,8 +61,10 @@ export const COUNTRY_PREFIXED_ID_PATTERN = EU_VAT_PATTERN;
  * rather than ever rendering `undefined` into a persisted identifier.
  */
 export function resolveBuyerIdSchemeTag(taxId: TaxIdentifier): string {
-  if (taxId.scheme !== undefined) return taxId.scheme.toLowerCase();
-  return NIP_PATTERN.test(taxId.value.trim()) ? 'pl-nip' : 'untagged';
+  if (taxId.scheme !== undefined && taxId.scheme.trim().length > 0) {
+    return taxId.scheme.trim().toLowerCase();
+  }
+  return NIP_PATTERN.test(normalizePlNip(taxId.value)) ? 'pl-nip' : 'untagged';
 }
 
 /**
@@ -79,12 +82,15 @@ export function resolveBuyerIdentity(taxId: TaxIdentifier | null): BuyerIdentity
   const value = taxId.value.trim();
   const scheme = resolveScheme(taxId.scheme, value);
 
-  // Domestic Polish buyer → <NIP> (10 digits).
+  // Domestic Polish buyer → <NIP> (10 digits). Separators are stripped here as
+  // well as at the API (DEF-11): an old snapshot, an ingested order or an MCP
+  // caller can still carry `526-000-12-46`, and `TNrNIP` admits digits only.
   if (scheme === 'pl-nip') {
-    if (!NIP_PATTERN.test(value)) {
+    const nip = normalizePlNip(value);
+    if (!NIP_PATTERN.test(nip)) {
       throw new InvalidBuyerIdentificationException(scheme, 'NIP must be exactly 10 digits');
     }
-    return { kind: 'nip', nip: value };
+    return { kind: 'nip', nip };
   }
 
   // EU buyer → <KodUE> + <NrVatUE>. The 2-letter prefix is the country code; the
@@ -135,10 +141,12 @@ export function resolveBuyerIdentity(taxId: TaxIdentifier | null): BuyerIdentity
  * it) supplies the scheme and never reaches the inference at all.
  */
 function resolveScheme(scheme: string | undefined, value: string): string {
-  if (scheme !== undefined) {
-    return scheme.toLowerCase();
+  // Trimmed as well as lowercased (DEF-39): `' pl-nip '` passes the API check,
+  // and an untrimmed scheme would fall through to the foreign-id branch below.
+  if (scheme !== undefined && scheme.trim().length > 0) {
+    return scheme.trim().toLowerCase();
   }
-  if (NIP_PATTERN.test(value)) {
+  if (NIP_PATTERN.test(normalizePlNip(value))) {
     return 'pl-nip';
   }
   throw new InvalidBuyerIdentificationException(

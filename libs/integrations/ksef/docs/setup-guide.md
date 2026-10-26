@@ -102,6 +102,19 @@ Non-secret config persisted on the connection row (`KsefConnectionConfig`):
 | `seller` | ✅ for issuance | ✅ | Seller identity (`Podmiot1`) stamped on every FA(3): `seller.nip`, `seller.name`, `seller.address { line1, line2?, city, postalCode, countryIso2 }`. Optional at connection-create time, but required before the connection can issue. |
 | `payment` | optional | ✅ (edit form) | Default payment details (#1311) emitted as the FA(3) `Platnosc` block on every issued invoice: `payment.formaPlatnosci` (payment-method code → `FormaPlatnosci`), `payment.paymentTermDays` (due date computed from the issue date → `TerminPlatnosci`), `payment.bankAccount { nrRb, bankName?, swift? }` (→ `RachunekBankowy`), and `payment.skonto { amount, conditions }` (early-payment discount → `Skonto`; both sub-fields required together). Omitting `formaPlatnosci` leaves payment info off issued invoices entirely. |
 
+| `allowCrossBorder` | optional | ✅ (edit form) | Lets the connection issue an original invoice to a buyer in another country (DEF-18). Off by default, because OpenLinker cannot choose the WDT / export / OSS band by itself: turn it on only if your catalogue already carries the right rate for those sales. Must be a boolean; the string `"true"` is refused at save. Corrections are never blocked by it. |
+| `annotationsDefault` | optional | ✅ (edit form, "Tax treatment") | Defaults stamped on every invoice from this connection (DEF-20/22): `cashAccounting` (P_16), `selfBilling` (P_17), `marginScheme` + `marginKind` (P_PMarzy_*), and `exemptionBasis { kind: statute \| directive \| other, text }` (P_19A/B/C) for `zw` lines. An invoice can override each one when issued by hand. If a `zw` line has no basis configured, a placeholder text is written: the connection form warns while the basis is empty, and each issue that uses the placeholder logs a warning. |
+
+**Your decision, not ours.** These switches state how YOUR sales are taxed.
+OpenLinker does not interpret the law for you: where a choice is a reading of
+the rules (a cross-border sale, a margin scheme, an exemption, a buyer tax
+number changed in a correction, a cancelled order issued by hand) it warns and
+asks you to confirm, and only refuses what KSeF itself would reject.
+
+**Upgrading from a build before DEF-18:** a connection that already had
+`allowCrossBorder` stored as a string must be saved again with the checkbox,
+or the next save is refused.
+
 > **Note:** the seller's tax identifier lives on the connection's `seller.nip`
 > field, not as a bare top-level `sellerNip` — it travels as part of the
 > structured seller-profile object so the adapter can hand it straight to the
@@ -209,6 +222,16 @@ corrects, and a correction-of-correction diffs against the prior correction's
 own lines. Only records issued before the snapshot column existed fall back to
 rebuilding `originalDocument` from the order's *current* state (the pre-#1297
 path, with its `buyerTaxId: null` and line-fidelity caveats).
+
+**Reason.** The correction form marks the reason as recommended; submitting
+without one asks once, then goes ahead (DEF-32). A reason is at most 256
+characters, the FA(3) text limit.
+
+**Correcting the buyer.** A buyer-only correction (no line changes) is issued
+with `TypKorekty = 1` and the buyer as it was in `Podmiot2K` (DEF-23/24). If the
+buyer's NIP itself changes, the form warns that the Ministry's guidance is
+usually to correct the invoice to zero and issue a new one; you may confirm and
+go ahead.
 
 ---
 
@@ -409,6 +432,41 @@ the record leaves `pending-submission` - is a tracked follow-up.
 
 ---
 
+## Verification code (QR / kod weryfikacyjny)
+
+Since **1 Feb 2026**, any structured invoice handed to a buyer **outside** the
+KSeF system - a PDF, an email attachment, or an on-screen copy - must carry a QR
+**verification code** (*kod weryfikacyjny*) when the buyer has no KSeF access.
+This explicitly includes B2C consumers, buyers with no NIP, VAT-exempt buyers,
+and foreign buyers - i.e. OpenLinker's dominant e-commerce scenario.
+
+**OpenLinker emits KOD I (the online verification code).** Because OL always
+issues invoices online (submit -> clear -> UPO), KOD I is all that is required.
+KOD I is purely deterministic from **public** data and needs **no signing key or
+certificate**. The FA(3) invoice preview renders it as a QR encoding:
+
+```
+https://{host}/invoice/{sellerNIP}/{DD-MM-RRRR}/{Base64URL(SHA256(rawInvoiceXml))}
+```
+
+- `host` - `qr.ksef.mf.gov.pl` for `prod`, `qr-test.ksef.mf.gov.pl` for `test`,
+  `qr-demo.ksef.mf.gov.pl` for `demo` (taken from the connection's environment).
+- `DD-MM-RRRR` - the invoice issue date.
+- the hash - SHA-256 of the **exact submitted FA(3) XML bytes** (the persisted
+  source document), Base64URL-encoded.
+
+The link is built on the server and shown as a QR on the invoice; the KSeF
+number is its caption, and appears only once KSeF assigned one. No extra
+configuration is needed.
+
+> **KOD II (the offline, certificate-signed verification code) is not implemented.**
+> KOD II is required for invoices issued in KSeF *offline* mode. OpenLinker does
+> issue offline during a KSeF outage (see *Session-lifecycle resilience* above), so
+> an invoice still `KSeF: awaiting submission` should not be handed to a buyer as
+> a PDF until it clears. Tracked in #3620.
+
+---
+
 ## Limitations
 
 OpenLinker's KSeF support targets outbound issuance + clearance of FA(3)
@@ -420,6 +478,7 @@ OpenLinker's KSeF support targets outbound issuance + clearance of FA(3)
 | Batch (wsadowa) submission pipeline | OpenLinker issues via the online (interactive) session flow (`/sessions/online`); the batch pipeline (`/sessions/batch`) is a separate, deferred path. |
 | Inbound invoice retrieval | OpenLinker is a transmitter, not a KSeF inbox reader; pulling received invoices is out of scope. |
 | FA_PEF / PEF documents | Only the FA(3) VAT/KOR schema is planned. |
+| VAT-payer / "biała lista" (MF whitelist) verification | **Deliberately deferred (#1595).** A well-formed, checksum-valid NIP is not necessarily an active VAT-registered entity, but whitelist verification is a seller due-diligence/AML concern, not a KSeF-issuance blocker (issuance succeeds regardless of the buyer's VAT-payer status). If pursued later it belongs as an optional pre-issuance advisory around MF's `wl-api.mf.gov.pl`, not a hard block on the core issuance path. NIP **checksum** (mod-11) validation, by contrast, ships now at the FE + API boundaries. |
 | Auto-generated API reference | See the official OpenAPI at `https://api-test.ksef.mf.gov.pl/docs/v2`. |
 
 ---
@@ -436,8 +495,52 @@ OpenLinker's KSeF support targets outbound issuance + clearance of FA(3)
   vendored authoritative XSD's required-structure rule set (not a full native
   XSD engine — a deliberate constrained-CI decision). Run the MF example-pack /
   test-environment validation as the authoritative gate before production.
-- **Art. 108g payment-title note.** Carrying the KSeF number on the payment
-  title (Art. 108g) is tracked as future work and is not emitted today.
+- **Foreign-currency PLN/VAT conversion (resolved, #1581).** For a non-PLN
+  invoice (art. 106e ust. 11 ustawy o VAT) OpenLinker now additionally emits the
+  VAT amount expressed in PLN per tax band (`P_14_1W`/`P_14_2W`/`P_14_3W`) and the
+  exchange rate (`KursWaluty`) on each line. The rate source is the **National
+  Bank of Poland (NBP) table A average** (`api.nbp.pl`, a public JSON endpoint —
+  no new dependency), resolved for the **last business day preceding the tax
+  point**. *Resolution timing:* the rate is resolved fresh at issue time keyed to
+  the tax point (`saleDate` ?? issue date); a **correction** re-resolves keyed to
+  the **original** document's issue date, so — because NBP historical rates are
+  immutable — it reuses the exact rate the original was issued at (snapshot-
+  equivalent "as-issued" consistency without persisting the rate in country-
+  agnostic core, ADR-026). *Public-holiday caveat (documented MVP):* NBP returns
+  HTTP 404 on any non-publication day, so the client simply walks back one day at
+  a time (up to ~10 days) until it gets a rate — the same mechanism transparently
+  skips weekends **and** Polish public holidays; there is no separate holiday
+  calendar. If no rate can be resolved (NBP unreachable, or an out-of-range date),
+  issuance **fails** rather than emitting a conversion-less document (compliance
+  over availability). PLN invoices are unaffected (no conversion elements emitted).
+- **Art. 108g payment-title (number surfacing, #1581).** Art. 108g (transitional
+  from 2026) requires a bank transfer paying a KSeF invoice to carry the invoice's
+  35-character KSeF number in the payment title. Because KSeF assigns that number
+  only after clearance, OpenLinker surfaces it in a clearly-labeled, **copyable**
+  form on the invoice detail page (with an Art. 108g hint) so the operator/buyer
+  can paste it into the transfer. OpenLinker does **not** initiate bank transfers,
+  so automated payment-title injection is intentionally out of scope for the
+  invoicing adapter.
+- **MF certificate chain-of-trust (operator action for `prod`).** OpenLinker
+  verifies each MF public-key certificate against a pinned MF root CA before using
+  it to wrap a session secret. The authoritative Ministerstwo Finansow root CA is
+  **not bundled** - set `OL_KSEF_MF_ROOT_CA_PATH` to a PEM file containing the MF
+  root CA (and any intermediates) obtained from the MF/KSeF PKI publication. Until
+  it is configured, chain-of-trust is **skipped** (a loud boot warning is logged)
+  and trust relies on TLS transport security only. Configure this before `prod`.
+- **Certificate revocation (documented limitation).** Live OCSP/CRL revocation
+  checking is not performed today - the check is a tested seam with a no-network
+  default. Combined with the enforced short validity window and TLS transport, this
+  is an accepted MVP posture; a follow-up will add a networked OCSP/CRL checker.
+- **Token least-privilege (operator responsibility).** Generate the ksef-token
+  with **only** the "wystawianie faktur" (invoice-issuance, `InvoiceWrite`)
+  permission (see the tutorial). **Test connection** asks KSeF which grants the
+  token holds (`POST /permissions/query/personal/grants`) and tells you whether
+  `InvoiceWrite` is among them. The answer is advice, not a gate: a token is never
+  refused by the test, and when KSeF does not answer the query the result says the
+  permission was not verified. If issuance is then refused, the failure is a
+  distinct permission-denied error (`KsefPermissionDeniedException`, KSeF 403)
+  telling you to replace the token, not a timeout.
 
 ---
 
