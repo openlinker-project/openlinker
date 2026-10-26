@@ -62,6 +62,7 @@ interface HistoryRawRow {
   refusalReason: string | null;
   refusalDetail: string | null;
   occurredAt: Date;
+  sourceLabel: string | null;
 }
 
 function narrow<T extends string>(values: readonly T[], value: string | null): T | null {
@@ -157,25 +158,22 @@ export class InventoryMovementRepository implements InventoryMovementRepositoryP
     return (result.affected ?? 0) > 0;
   }
 
-  async attachQuantities(
-    id: string,
-    quantityBefore: number | null,
-    quantityAfter: number
-  ): Promise<boolean> {
+  async attachQuantities(id: string, quantityAfter: number): Promise<boolean> {
     // Only a row that has no quantities yet and did not end refused / in doubt:
     // an attachment must never rewrite what a settled row already recorded.
+    // `quantityDelta` stays what was requested and applied; `quantityBefore` is
+    // derived from the master's resulting quantity, so before/after describe the
+    // master and a drifted mirror is never attributed to the operator.
     const rows = (await this.repository.query(
       `UPDATE ${TABLE}
          SET "status" = 'applied',
-             "quantityBefore" = $2,
-             "quantityAfter" = $3,
-             "quantityDelta" = CASE WHEN $2::integer IS NULL THEN "quantityDelta"
-                                    ELSE $3::integer - $2::integer END
+             "quantityBefore" = $2::integer - "quantityDelta",
+             "quantityAfter" = $2::integer
        WHERE "id" = $1
          AND "status" IN ('pending', 'applied')
          AND "quantityAfter" IS NULL
        RETURNING "id"`,
-      [id, quantityBefore, quantityAfter]
+      [id, quantityAfter]
     )) as [unknown[], number];
     return (rows[1] ?? 0) > 0;
   }
@@ -294,14 +292,26 @@ export class InventoryMovementRepository implements InventoryMovementRepositoryP
         })
       );
       if (hasReasons) where.push(`m."reason" = ANY(${bind(filters.reasons)})`);
-      if (filters.needsAttention === true) where.push(`m."status" IN ('refused', 'in_doubt')`);
+      // A `pending` row older than a few minutes is a stuck claim (a crash or a
+      // lost mirror write), so it is surfaced like a failure.
+      if (filters.needsAttention === true) {
+        where.push(
+          `(m."status" IN ('refused', 'in_doubt') OR ` +
+            `(m."status" = 'pending' AND m."createdAt" < now() - interval '5 minutes'))`
+        );
+      }
       branches.push(`
         SELECT 'movement'::text AS "kind", m."id"::text AS "id", m."productId", m."productVariantId",
                pv."sku" AS "sku", p."name" AS "productName", m."locationId", m."sourceConnectionId",
                m."reason", m."status", m."quantityDelta", m."quantityBefore", m."quantityAfter",
                m."sourceKind", m."sourceRef", m."operatorReason", m."note", m."actorUserId",
-               m."refusalReason", m."refusalDetail", m."occurredAt"
+               m."refusalReason", m."refusalDetail", m."occurredAt",
+               CASE WHEN m."sourceKind" = 'order' THEN o."orderSnapshot"->>'orderNumber'
+                    WHEN m."sourceKind" = 'return' THEN rt."externalReturnId"
+                    ELSE NULL END AS "sourceLabel"
         FROM ${TABLE} m
+        LEFT JOIN "order_records" o ON m."sourceKind" = 'order' AND o."internalOrderId" = m."sourceRef"
+        LEFT JOIN "returns" rt ON m."sourceKind" = 'return' AND rt."id" = m."sourceRef"
         LEFT JOIN "product_variants" pv ON pv."id" = m."productVariantId"
         LEFT JOIN "products" p ON p."id" = m."productId"
         ${where.length > 0 ? `WHERE ${where.join(' AND ')}` : ''}`);
@@ -324,8 +334,10 @@ export class InventoryMovementRepository implements InventoryMovementRepositoryP
                'order'::varchar AS "sourceKind", r."orderRecordId" AS "sourceRef",
                NULL::varchar AS "operatorReason", NULL::text AS "note", NULL::text AS "actorUserId",
                NULL::varchar AS "refusalReason", NULL::text AS "refusalDetail",
-               COALESCE(r."closedAt", r."createdAt") AS "occurredAt"
+               COALESCE(r."closedAt", r."createdAt") AS "occurredAt",
+               o."orderSnapshot"->>'orderNumber' AS "sourceLabel"
         FROM "reservations" r
+        LEFT JOIN "order_records" o ON o."internalOrderId" = r."orderRecordId"
         JOIN "inventory_items" ii ON ii."id" = r."inventoryItemId"
         LEFT JOIN "product_variants" pv ON pv."id" = ii."productVariantId"
         LEFT JOIN "products" p ON p."id" = ii."productId"
@@ -364,6 +376,7 @@ export class InventoryMovementRepository implements InventoryMovementRepositoryP
       refusalReason: row.refusalReason,
       refusalDetail: row.refusalDetail,
       occurredAt: new Date(row.occurredAt),
+      sourceLabel: row.sourceLabel,
     };
   }
 

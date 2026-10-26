@@ -102,6 +102,14 @@ export class InventoryMovementResponseDto {
 
   @ApiProperty({ type: String, format: 'date-time' })
   occurredAt!: string;
+
+  @ApiProperty({
+    nullable: true,
+    type: String,
+    description:
+      "The order's number (order, sale and reservation rows) or the return's external id; null when there is none",
+  })
+  sourceLabel!: string | null;
 }
 
 export class PaginatedInventoryMovementsResponseDto {
@@ -147,5 +155,6 @@ export function toInventoryMovementResponseDto(
     refusalReason: row.refusalReason,
     refusalDetail: row.refusalDetail,
     occurredAt: row.occurredAt.toISOString(),
+    sourceLabel: row.sourceLabel,
   };
 }

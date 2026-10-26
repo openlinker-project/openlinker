@@ -178,6 +178,37 @@ describe('InventoryMovementRepository', () => {
     });
   });
 
+  describe('attachQuantities', () => {
+    it('should keep the requested delta and derive quantityBefore from the master result', async () => {
+      query.mockResolvedValue([[], 1]);
+
+      await expect(repository.attachQuantities('m1', 15)).resolves.toBe(true);
+
+      expect(sqlOf(0)).toContain('"quantityBefore" = $2::integer - "quantityDelta"');
+      expect(sqlOf(0)).not.toMatch(/"quantityDelta"\s*=/);
+      expect(paramsOf(0)).toEqual(['m1', 15]);
+    });
+  });
+
+  describe('history sourceLabel and needs-attention', () => {
+    beforeEach(() => query.mockResolvedValue([]));
+
+    it('should read the order number and the return external id through read-only joins', async () => {
+      await repository.listHistory({}, { limit: 10, offset: 0 });
+
+      const sql = sqlOf(0);
+      expect(sql).toContain(`o."orderSnapshot"->>'orderNumber'`);
+      expect(sql).toContain('rt."externalReturnId"');
+      expect(sql).toContain('AS "sourceLabel"');
+    });
+
+    it('should treat a pending row older than five minutes as needing attention', async () => {
+      await repository.listHistory({ needsAttention: true }, { limit: 10, offset: 0 });
+
+      expect(sqlOf(0)).toContain(`m."status" = 'pending' AND m."createdAt" < now() - interval '5 minutes'`);
+    });
+  });
+
   describe('insertPending', () => {
     it('should return null when the idempotency key already exists', async () => {
       query.mockResolvedValue([]);

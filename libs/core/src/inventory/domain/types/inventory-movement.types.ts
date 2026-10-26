@@ -172,6 +172,8 @@ export interface InventoryHistoryRow {
   readonly refusalReason: string | null;
   readonly refusalDetail: string | null;
   readonly occurredAt: Date;
+  /** The order's number (order / reservation rows) or the return's external id; `null` when there is none. */
+  readonly sourceLabel: string | null;
 }
 
 export interface PaginatedInventoryHistory {
