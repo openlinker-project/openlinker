@@ -25,9 +25,11 @@ changing what lint / type-check / smart-test do once the tree is proven.
    nested under another worktree (this repo has several) it would land in the parent worktree.
    `pnpm` itself only prepends the tree's own `node_modules/.bin`, so a missing install fails
    loudly there.
-5. The remaining and most plausible mechanism: `node_modules` copied or symlinked from a sibling
-   worktree to skip an install. pnpm's workspace links (`node_modules/@openlinker/*`) then point at
-   the sibling's packages, so eslint / tsc report that tree's paths while "checking" this one.
+5. The remaining and most plausible mechanism: `node_modules` linked into a sibling worktree to
+   skip an install. The workspace links (`node_modules/@openlinker/*`) then resolve to the
+   sibling's packages, so eslint / tsc report that tree's paths while "checking" this one. A plain
+   `cp -r` does not do this: pnpm writes workspace links as relative symlinks, so a copy resolves
+   into the copy's own tree.
 
 Root cause stated as far as it can be: the hook never asserted that the tree it runs in is the
 tree whose code the tools resolve. The exact trigger in the reporter's run is not recoverable
@@ -39,7 +41,8 @@ and is NOT claimed.
 `check:invariants`:
 
 - facts: `git rev-parse --show-toplevel`, `process.cwd()`, `realpath` of `node_modules`, of every
-  `node_modules/@openlinker/*` link, and of each `apps/*` / `libs/*` `node_modules` directory.
+  `node_modules/@openlinker/*` link, and of the `node_modules` directory of every package named by
+  the `packages:` globs in `pnpm-workspace.yaml` (`apps/*`, `libs/*`, `libs/integrations/*`).
 - rules (pure `evaluateWorktreeIdentity`): cwd real path == toplevel real path; every observed
   real path is inside the toplevel; `node_modules` must exist (a missing install is reported,
   not skipped - Finding 4); the set of observed workspace links must be non-empty, so a scan

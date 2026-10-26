@@ -14,15 +14,25 @@
  *   1. the working directory is the git toplevel (real paths compared);
  *   2. `node_modules` exists and resolves inside this toplevel;
  *   3. every workspace link under `node_modules/@openlinker/*` resolves inside
- *      this toplevel, as does every `apps/*` / `libs/*` `node_modules` directory;
- *   4. at least one workspace link was observed.
+ *      this toplevel, as does the `node_modules` directory of every package the
+ *      `packages:` globs in `pnpm-workspace.yaml` name (today `apps/*`, `libs/*`
+ *      and `libs/integrations/*` - read from the file, not restated here);
+ *   4. at least one workspace link was observed, and at least one workspace
+ *      glob was read.
  *
- * Rule 3 is the one that matters: copying or symlinking `node_modules` from a
- * sibling worktree to skip an install is the most plausible way to make eslint
- * and tsc report another tree's paths, because pnpm's workspace links then point
- * at the sibling's packages. Rule 2 reports a missing install rather than
- * skipping it: with no `node_modules` plain `node` resolves UPWARD, into the main
- * checkout (or a parent worktree, for a nested one) - measured, not assumed.
+ * Rule 1 always holds inside the hook itself: git runs hooks from the worktree
+ * root. It is kept for a DIRECT invocation (`node ../../scripts/...` from a
+ * package directory), where the tools would otherwise start from a subtree.
+ *
+ * Rule 3 is the one that matters: linking `node_modules` (or one workspace link)
+ * into another checkout to skip an install is the most plausible way to make
+ * eslint and tsc report another tree's paths, because the links then point at
+ * the sibling's packages. A plain `cp -r` of a sibling's `node_modules` is NOT
+ * caught, and does not need to be: pnpm writes workspace links as RELATIVE
+ * symlinks, so a copy resolves into the copy's own tree. Rule 2 reports a missing
+ * install rather than skipping it: with no `node_modules` plain `node` resolves
+ * UPWARD, into the main checkout (or a parent worktree, for a nested one) -
+ * measured, not assumed.
  *
  * WHAT THIS DOES NOT PROVE. The exact trigger in the reporter's run is not
  * recoverable and is not claimed. And a worktree that never ran `pnpm install`
@@ -48,9 +58,11 @@ import {
   mkdirSync,
   mkdtempSync,
   readdirSync,
+  readFileSync,
   realpathSync,
   rmSync,
   symlinkSync,
+  writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, sep } from 'node:path';
@@ -69,12 +81,22 @@ export function isInside(parent, child) {
  *   cwd:            real path of the working directory
  *   nodeModules:    real path of <toplevel>/node_modules, or null when absent
  *   workspaceLinks: [{ name, real }] for node_modules/@openlinker/*
- *   packageModules: [{ dir, real }] for apps|libs/<pkg>/node_modules that exist
+ *   workspaceGlobs: the `packages:` globs read from pnpm-workspace.yaml
+ *   unsupportedGlobs: globs this script cannot expand (see `expandWorkspaceGlob`)
+ *   packageModules: [{ dir, real }] for <package>/node_modules that exist
  * }
  */
 export function evaluateWorktreeIdentity(facts) {
   const problems = [];
-  const { toplevel, cwd, nodeModules, workspaceLinks, packageModules } = facts;
+  const {
+    toplevel,
+    cwd,
+    nodeModules,
+    workspaceLinks,
+    workspaceGlobs,
+    unsupportedGlobs,
+    packageModules,
+  } = facts;
 
   if (cwd !== toplevel) {
     problems.push(
@@ -91,7 +113,7 @@ export function evaluateWorktreeIdentity(facts) {
   } else if (!isInside(toplevel, nodeModules)) {
     problems.push(
       `node_modules resolves to ${nodeModules}, outside this tree (${toplevel}) - it is a link ` +
-        'or copy from another worktree'
+        'into another worktree'
     );
   }
 
@@ -108,6 +130,20 @@ export function evaluateWorktreeIdentity(facts) {
     if (!isInside(toplevel, real)) {
       problems.push(`${dir}/node_modules resolves to ${real}, outside this tree (${toplevel})`);
     }
+  }
+
+  if (workspaceGlobs.length === 0) {
+    problems.push(
+      'no package glob was read from pnpm-workspace.yaml, so no package node_modules was ' +
+        'checked - a scan that observes nothing must not pass'
+    );
+  }
+
+  for (const glob of unsupportedGlobs) {
+    problems.push(
+      `pnpm-workspace.yaml lists '${glob}', which this check cannot expand (it handles 'dir/*' ` +
+        'and plain directories) - extend expandWorkspaceGlob rather than leave those packages unchecked'
+    );
   }
 
   // Only meaningful once node_modules exists; a missing install is already reported.
@@ -131,6 +167,45 @@ function realOrNull(path) {
   }
 }
 
+/**
+ * The `packages:` globs of a pnpm-workspace.yaml, read TEXTUALLY so this stays a
+ * zero-dependency script. Takes the `- 'glob'` items of the top-level
+ * `packages:` block and stops at the next top-level key.
+ */
+export function parseWorkspaceGlobs(yamlText) {
+  const globs = [];
+  let inPackages = false;
+  for (const line of yamlText.split(/\r?\n/)) {
+    if (/^packages:\s*$/.test(line)) {
+      inPackages = true;
+      continue;
+    }
+    if (!inPackages) continue;
+    if (/^\S/.test(line)) break;
+    const item = /^\s+-\s*(['"]?)([^'"#\s]+)\1/.exec(line);
+    if (item) globs.push(item[2]);
+  }
+  return globs;
+}
+
+/**
+ * Package directories (relative to `toplevel`) one glob names, or null when the
+ * glob is a shape this script does not expand (`**`, a negation, a mid-path `*`)
+ * - reported as a problem rather than silently checking nothing.
+ */
+export function expandWorkspaceGlob(toplevel, glob) {
+  if (!glob.includes('*') && !glob.startsWith('!')) {
+    return existsSync(join(toplevel, glob)) ? [glob] : [];
+  }
+  const match = /^([^*!]+)\/\*$/.exec(glob);
+  if (match === null) return null;
+  const parent = join(toplevel, match[1]);
+  if (!existsSync(parent)) return [];
+  return readdirSync(parent, { withFileTypes: true })
+    .filter((entry) => entry.isDirectory())
+    .map((entry) => `${match[1]}/${entry.name}`);
+}
+
 /** Gather the facts for `toplevelPath` from the filesystem. */
 export function collectWorktreeFacts(toplevelPath, cwdPath = process.cwd()) {
   const toplevel = realpathSync(toplevelPath);
@@ -146,18 +221,37 @@ export function collectWorktreeFacts(toplevelPath, cwdPath = process.cwd()) {
     }
   }
 
-  const packageModules = [];
-  for (const group of ['apps', 'libs']) {
-    const groupDir = join(toplevel, group);
-    if (!existsSync(groupDir)) continue;
-    for (const pkg of readdirSync(groupDir)) {
-      const nm = join(groupDir, pkg, 'node_modules');
-      const real = realOrNull(nm);
-      if (real !== null) packageModules.push({ dir: `${group}/${pkg}`, real });
+  const workspaceFile = join(toplevel, 'pnpm-workspace.yaml');
+  const workspaceGlobs = existsSync(workspaceFile)
+    ? parseWorkspaceGlobs(readFileSync(workspaceFile, 'utf8'))
+    : [];
+
+  const unsupportedGlobs = [];
+  const packageDirs = new Set();
+  for (const glob of workspaceGlobs) {
+    const dirs = expandWorkspaceGlob(toplevel, glob);
+    if (dirs === null) {
+      unsupportedGlobs.push(glob);
+      continue;
     }
+    for (const dir of dirs) packageDirs.add(dir);
   }
 
-  return { toplevel, cwd, nodeModules, workspaceLinks, packageModules };
+  const packageModules = [];
+  for (const dir of [...packageDirs].sort()) {
+    const real = realOrNull(join(toplevel, dir, 'node_modules'));
+    if (real !== null) packageModules.push({ dir, real });
+  }
+
+  return {
+    toplevel,
+    cwd,
+    nodeModules,
+    workspaceLinks,
+    workspaceGlobs,
+    unsupportedGlobs,
+    packageModules,
+  };
 }
 
 function main() {
@@ -185,7 +279,7 @@ function main() {
   console.error(
     '\nA hook that cannot show it is validating THIS worktree must not report success. Fix the ' +
       'problem above and commit again. For a node_modules problem, run `pnpm install` in this ' +
-      'worktree (do not copy or link node_modules from another one).'
+      'worktree (do not link node_modules from another one).'
   );
   process.exit(1);
 }
@@ -210,6 +304,8 @@ function selfCheck() {
     cwd: T,
     nodeModules: `${T}/node_modules`,
     workspaceLinks: [{ name: 'core', real: `${T}/libs/core` }],
+    workspaceGlobs: ['apps/*', 'libs/*', 'libs/integrations/*'],
+    unsupportedGlobs: [],
     packageModules: [{ dir: 'apps/web', real: `${T}/apps/web/node_modules` }],
   };
 
@@ -255,6 +351,36 @@ function selfCheck() {
     1
   );
   eq(
+    'an integration package node_modules into a sibling fails',
+    evaluateWorktreeIdentity({
+      ...healthy,
+      packageModules: [
+        {
+          dir: 'libs/integrations/allegro',
+          real: '/work/b/libs/integrations/allegro/node_modules',
+        },
+      ],
+    }).length,
+    1
+  );
+  eq(
+    'no workspace glob read fails: nothing was checked',
+    evaluateWorktreeIdentity({ ...healthy, workspaceGlobs: [] }).length,
+    1
+  );
+  eq(
+    'an unexpandable workspace glob fails rather than checking nothing',
+    evaluateWorktreeIdentity({ ...healthy, unsupportedGlobs: ['libs/**'] }).length,
+    1
+  );
+  eq(
+    'the packages block is parsed and the next key ends it',
+    parseWorkspaceGlobs(
+      "packages:\n  - 'apps/*'\n  - \"libs/*\"\n  - libs/integrations/*  # comment\n\noverrides:\n  - 'x/*'\n"
+    ),
+    ['apps/*', 'libs/*', 'libs/integrations/*']
+  );
+  eq(
     'a sibling whose name merely starts the same is outside',
     isInside('/work/a', '/work/ab'),
     false
@@ -265,9 +391,12 @@ function selfCheck() {
   // --- real filesystem: the actual defect, symlinked node_modules -------------
   const base = mkdtempSync(join(tmpdir(), 'ol-worktree-identity-'));
   try {
+    const WORKSPACE_YAML = "packages:\n  - 'apps/*'\n  - 'libs/*'\n  - 'libs/integrations/*'\n";
     const makeTree = (name) => {
       const root = join(base, name);
       mkdirSync(join(root, 'libs', 'core'), { recursive: true });
+      mkdirSync(join(root, 'libs', 'integrations', 'allegro', 'node_modules'), { recursive: true });
+      writeFileSync(join(root, 'pnpm-workspace.yaml'), WORKSPACE_YAML);
       mkdirSync(join(root, 'node_modules', '@openlinker'), { recursive: true });
       symlinkSync(
         join('..', '..', 'libs', 'core'),
@@ -291,9 +420,11 @@ function selfCheck() {
     const linked = evaluateWorktreeIdentity(collectWorktreeFacts(c, c));
     eq('real tree: node_modules symlinked from a sibling fails', linked.length >= 1, true);
 
-    // Same sibling's links, copied rather than linked wholesale.
+    // One workspace link pointing into a sibling. pnpm never writes this itself
+    // (its links are relative); a hand-made absolute link does.
     const d = join(base, 'd');
     mkdirSync(join(d, 'libs', 'core'), { recursive: true });
+    writeFileSync(join(d, 'pnpm-workspace.yaml'), WORKSPACE_YAML);
     mkdirSync(join(d, 'node_modules', '@openlinker'), { recursive: true });
     symlinkSync(join(b, 'libs', 'core'), join(d, 'node_modules', '@openlinker', 'core'));
     eq(
@@ -302,8 +433,29 @@ function selfCheck() {
       1
     );
 
+    // An integration package whose node_modules is linked into a sibling: the
+    // `libs/integrations/*` glob a one-level apps|libs walk never reached.
+    const f = makeTree('f');
+    rmSync(join(f, 'libs', 'integrations', 'allegro', 'node_modules'), { recursive: true });
+    symlinkSync(
+      join(b, 'libs', 'integrations', 'allegro', 'node_modules'),
+      join(f, 'libs', 'integrations', 'allegro', 'node_modules')
+    );
+    const integrationFacts = collectWorktreeFacts(f, f);
+    eq(
+      'real tree: the integration package node_modules is observed',
+      integrationFacts.packageModules.map((m) => m.dir),
+      ['libs/integrations/allegro']
+    );
+    eq(
+      'real tree: an integration package node_modules linked into a sibling fails',
+      evaluateWorktreeIdentity(integrationFacts).length,
+      1
+    );
+
     const e = join(base, 'e');
     mkdirSync(join(e, 'libs', 'core'), { recursive: true });
+    writeFileSync(join(e, 'pnpm-workspace.yaml'), WORKSPACE_YAML);
     eq(
       'real tree: no node_modules fails',
       evaluateWorktreeIdentity(collectWorktreeFacts(e, e)).length,
@@ -319,7 +471,7 @@ function selfCheck() {
     process.exit(1);
   }
   console.log(
-    '✓ check-worktree-identity --self-check: rules and the symlinked-node_modules case behave.'
+    '✓ check-worktree-identity --self-check: rules, workspace globs and the linked-node_modules cases behave.'
   );
 }
 
