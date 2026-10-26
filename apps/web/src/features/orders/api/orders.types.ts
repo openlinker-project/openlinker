@@ -151,6 +151,8 @@ export const SalesDocumentUnresolvedReasonValues = [
   'threshold-currency-mismatch',
   // #3365 — capable connections exist but none declares a document kind.
   'no-connection-declares-document-kind',
+  // A rule names a connection that is disabled, gone, or can no longer issue.
+  'routed-connection-unavailable',
 ] as const;
 export type SalesDocumentUnresolvedReasonValue =
   (typeof SalesDocumentUnresolvedReasonValues)[number];
