@@ -331,15 +331,15 @@ export class OfferStockRestoreService implements IOfferStockRestoreService {
     // Resolve distinct external offer ids for these variants on the source
     // connection. One variant maps to at most one offer per connection here;
     // dedupe defensively so a variant with multiple mappings restores once.
-    const externalOfferIdByVariant = await this.resolveExternalOfferIds(connectionId, variantIds);
-    if (externalOfferIdByVariant.size === 0) {
+    const externalOfferIdsByVariant = await this.resolveExternalOfferIds(connectionId, variantIds);
+    if (externalOfferIdsByVariant.size === 0) {
       this.logger.debug(
         `Stock-restore skipped: no offer mapping for the order's variants [connectionId=${connectionId}, orderId=${internalOrderId}]`,
       );
       return this.skipped(release, 'skipped-no-targets');
     }
 
-    const mappedVariantIds = [...externalOfferIdByVariant.keys()];
+    const mappedVariantIds = [...externalOfferIdsByVariant.keys()];
     const availability = await this.inventoryQuery.getAvailabilityByVariantIds(mappedVariantIds);
     // #2323 — restore to available-to-promise, not raw master stock: this writes
     // a live marketplace quantity, so it must be net of OL's own outstanding
@@ -356,7 +356,7 @@ export class OfferStockRestoreService implements IOfferStockRestoreService {
 
     const targets: OfferStockRestoreTarget[] = [];
     const restorable: { externalOfferId: string; masterQuantity: number }[] = [];
-    for (const [variantId, externalOfferId] of externalOfferIdByVariant) {
+    for (const [variantId, externalOfferIds] of externalOfferIdsByVariant) {
       const masterQuantity = targetByVariant.get(variantId);
       // OMITTED, not zeroed, when availability is unknown. `getAvailability
       // ByVariantIds` zero-fills every id it can answer for, so an absent entry
@@ -364,7 +364,9 @@ export class OfferStockRestoreService implements IOfferStockRestoreService {
       // offer (#1689 uses exactly that primitive to pause one) on the strength
       // of a failed read. This is why the read is not defaulted to 0.
       if (masterQuantity === undefined) continue;
-      restorable.push({ externalOfferId, masterQuantity });
+      for (const externalOfferId of externalOfferIds) {
+        restorable.push({ externalOfferId, masterQuantity });
+      }
     }
 
     // Master is authoritative including 0, but what the destination is TOLD is
@@ -501,21 +503,30 @@ export class OfferStockRestoreService implements IOfferStockRestoreService {
    * `externalId`=offer id, `internalId`=variant id). Variants with no offer
    * mapping are omitted; the first mapping wins when a variant has several.
    */
+  /**
+   * EVERY offer mapped to each variant, not the first one. A variant that was
+   * relisted carries its old ended offer beside the live one, and the page has
+   * no order that puts the live one first: restoring "the first mapping" wrote
+   * the cancelled unit back to an ended offer and left the live one short
+   * (E2E-26). The value written is absolute, so writing it to the ended offer
+   * too is harmless - the same rule `inventory.propagateToMarketplaces` follows.
+   */
   private async resolveExternalOfferIds(
     connectionId: string,
     variantIds: string[],
-  ): Promise<Map<string, string>> {
-    const result = new Map<string, string>();
+  ): Promise<Map<string, string[]>> {
+    const result = new Map<string, string[]>();
     for (const variantId of variantIds) {
       const page = await this.offerMappings.findMappingPage(
         { connectionId, internalId: variantId },
         { limit: OFFER_MAPPING_PAGE_LIMIT, offset: 0 },
       );
-      const mapping = page.items[0];
-      if (mapping) {
-        result.set(variantId, mapping.externalId);
+      const externalIds = page.items.map((mapping) => mapping.externalId);
+      if (externalIds.length > 0) {
+        result.set(variantId, externalIds);
       }
     }
     return result;
   }
+
 }

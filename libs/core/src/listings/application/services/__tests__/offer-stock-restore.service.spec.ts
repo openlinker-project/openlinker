@@ -195,6 +195,25 @@ describe('OfferStockRestoreService', () => {
     ]);
   });
 
+  it('should restore every offer mapped to a relisted variant, not only the first (E2E-26)', async () => {
+    // A relisted variant keeps its old ended offer beside the live one; the
+    // page lists the ended one first, which is the order seen live.
+    const ENDED_OFFER = 'offer-ended-1';
+    orderRecordService.getOrderRecord.mockResolvedValue(orderRecord([{ variantId: VARIANT_A }]));
+    offerMappings.findMappingPage.mockResolvedValue({
+      items: [mapping(VARIANT_A, ENDED_OFFER), mapping(VARIANT_A, OFFER_A)],
+      total: 2,
+    });
+    inventoryQuery.getAvailabilityByVariantIds.mockResolvedValue(availability([[VARIANT_A, 20]]));
+
+    await service.restoreStockForCancelledOrder(CONNECTION_ID, ORDER_ID);
+
+    expect(restorer.restoreStockOnCancellation).toHaveBeenCalledWith([
+      { externalOfferId: ENDED_OFFER, quantity: 20, idempotencyKey: `stock-restore:${ORDER_ID}:${ENDED_OFFER}` },
+      { externalOfferId: OFFER_A, quantity: 20, idempotencyKey: `stock-restore:${ORDER_ID}:${OFFER_A}` },
+    ]);
+  });
+
   it('should restore a known zero (master authoritative including 0)', async () => {
     orderRecordService.getOrderRecord.mockResolvedValue(orderRecord([{ variantId: VARIANT_A }]));
     offerMappings.findMappingPage.mockResolvedValue({ items: [mapping(VARIANT_A, OFFER_A)], total: 1 });
