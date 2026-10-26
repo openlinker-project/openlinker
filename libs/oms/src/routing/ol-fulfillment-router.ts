@@ -212,6 +212,44 @@ export class OlFulfillmentRouter implements FulfillmentRouterPort {
       stock.set(key, (stock.get(key) ?? 0) + quantity);
     }
 
+    // #3475 - what OpenLinker has already PROMISED is not stock to route on.
+    //
+    // ONLY published holds are subtracted, and work lines are deliberately NOT.
+    // A routed order's hold is `published` (#3480) and is consumed once the sale
+    // decrement settles (#3453), which lowers the master's own quantity and
+    // rewrites this mirror - so from then on the units are already out of
+    // `availableQuantity`. Subtracting the unshipped work line as well would
+    // count them twice (a work line outlives its hold until the parcel ships).
+    // Until the decrement settles the hold stands in; a `blocked` / `in_doubt`
+    // decrement keeps it. That is the intent, NOT a guarantee of exactly once:
+    // `InventorySaleDecrementService` consumes the hold BEFORE it rewrites this
+    // mirror, so (1) between those two writes the units are in neither term and a
+    // concurrent route can allocate them, and (2) when the master reports no
+    // resulting quantity the mirror is not lowered until the next stock sync, so
+    // the router routes on units that no longer exist until then. Consuming first
+    // is right for the publish path (#3480) and is the unsafe order for this
+    // reader; the window is recorded in ADR-061 (#3475) rather than closed here.
+    //
+    // No try/catch: when the ledger cannot be read the router must fail, not
+    // route on raw stock - a swallowed read is a zero ledger term, i.e. the
+    // over-allocation this closes. The caller maps a throw to a retryable,
+    // re-routable hold (#3485).
+    const reserved = await this.deps.inventory.listPublishedReservedByLocation(variantIds, {
+      // The order being placed already holds its own units (#3480 writes the hold
+      // BEFORE routing). Counting them against itself would make the last unit
+      // look promised to the very order that is trying to claim it.
+      excludeOrderRecordId: input.orderId,
+    });
+    for (const { locationId, productVariantId, reserved: units } of reserved) {
+      const key = stockKey(locationId, productVariantId);
+      const available = stock.get(key);
+      if (available !== undefined) {
+        // Floored at zero: a hold can legitimately exceed a mirror the master
+        // has since lowered, and a negative stock would corrupt the rules.
+        stock.set(key, Math.max(0, available - units));
+      }
+    }
+
     return stock;
   }
 }

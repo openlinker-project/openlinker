@@ -16,6 +16,7 @@ import {
 import type { InventoryRepositoryPort } from '../../../domain/ports/inventory-repository.port';
 import type {
   ReservationLedgerReaderPort,
+  LocatedReservedSum,
   SumReservedInput,
 } from '../../../domain/ports/reservation-ledger-reader.port';
 import { EmptyReservationLedgerReader } from '../../../testing/empty-reservation-ledger.reader';
@@ -55,10 +56,19 @@ class FakeReservationLedger implements ReservationLedgerReaderPort {
     }
     return Promise.resolve(sums);
   }
+
+  // Not part of the variant-keyed ATP path under test (#3475's router read).
+  sumReservedByLocation(): Promise<readonly LocatedReservedSum[]> {
+    return Promise.resolve([]);
+  }
 }
 
 class ThrowingReservationLedger implements ReservationLedgerReaderPort {
   sumReservedByVariantIds(): Promise<ReadonlyMap<string, number>> {
+    return Promise.reject(new Error('ledger unavailable'));
+  }
+
+  sumReservedByLocation(): Promise<readonly LocatedReservedSum[]> {
     return Promise.reject(new Error('ledger unavailable'));
   }
 }
