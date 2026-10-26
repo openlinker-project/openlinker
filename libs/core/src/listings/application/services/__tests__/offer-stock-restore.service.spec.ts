@@ -190,8 +190,8 @@ describe('OfferStockRestoreService', () => {
 
     expect(restorer.restoreStockOnCancellation).toHaveBeenCalledTimes(1);
     expect(restorer.restoreStockOnCancellation).toHaveBeenCalledWith([
-      { externalOfferId: OFFER_A, quantity: 5 },
-      { externalOfferId: OFFER_B, quantity: 12 },
+      { externalOfferId: OFFER_A, quantity: 5, idempotencyKey: `stock-restore:${ORDER_ID}:${OFFER_A}` },
+      { externalOfferId: OFFER_B, quantity: 12, idempotencyKey: `stock-restore:${ORDER_ID}:${OFFER_B}` },
     ]);
   });
 
@@ -203,7 +203,7 @@ describe('OfferStockRestoreService', () => {
     await service.restoreStockForCancelledOrder(CONNECTION_ID, ORDER_ID);
 
     expect(restorer.restoreStockOnCancellation).toHaveBeenCalledWith([
-      { externalOfferId: OFFER_A, quantity: 0 },
+      { externalOfferId: OFFER_A, quantity: 0, idempotencyKey: `stock-restore:${ORDER_ID}:${OFFER_A}` },
     ]);
   });
 
@@ -438,7 +438,7 @@ describe('OfferStockRestoreService', () => {
       const result = await service.restoreStockForCancelledOrder(CONNECTION_ID, ORDER_ID);
 
       expect(restorer.restoreStockOnCancellation).toHaveBeenCalledWith([
-        { externalOfferId: OFFER_A, quantity: 7 },
+        { externalOfferId: OFFER_A, quantity: 7, idempotencyKey: `stock-restore:${ORDER_ID}:${OFFER_A}` },
       ]);
       expect(result.offersRestored).toBe(1);
     });
@@ -473,7 +473,7 @@ describe('OfferStockRestoreService', () => {
     await service.restoreStockForCancelledOrder(CONNECTION_ID, ORDER_ID);
 
     expect(restorer.restoreStockOnCancellation).toHaveBeenCalledWith([
-      { externalOfferId: OFFER_A, quantity: 3 },
+      { externalOfferId: OFFER_A, quantity: 3, idempotencyKey: `stock-restore:${ORDER_ID}:${OFFER_A}` },
     ]);
   });
 
@@ -579,7 +579,7 @@ describe('OfferStockRestoreService', () => {
     await service.restoreStockForCancelledOrder(CONNECTION_ID, ORDER_ID);
 
     expect(restorer.restoreStockOnCancellation).toHaveBeenCalledWith([
-      { externalOfferId: OFFER_A, quantity: 0 },
+      { externalOfferId: OFFER_A, quantity: 0, idempotencyKey: `stock-restore:${ORDER_ID}:${OFFER_A}` },
     ]);
   });
 });

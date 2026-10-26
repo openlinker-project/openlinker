@@ -6,6 +6,7 @@
  *
  * @module libs/integrations/allegro/src/infrastructure/adapters/__tests__
  */
+import { isOfferStockRestorer } from '@openlinker/core/listings';
 import { AllegroOfferManagerAdapter } from '../allegro-offer-manager.adapter';
 import type { IAllegroHttpClient } from '../../http/allegro-http-client.interface';
 import type { IdentifierMappingPort } from '@openlinker/core/identifier-mapping';
@@ -226,6 +227,42 @@ describe('AllegroOfferManagerAdapter', () => {
   describe('getDestinationCurrency (#3203)', () => {
     it('should declare PLN, matching the PL-first assumption baked into the adapter', () => {
       expect(adapter.getDestinationCurrency()).toBe('PLN');
+    });
+  });
+
+  describe('restoreStockOnCancellation (E2E-24)', () => {
+    it('should be narrowed by the OfferStockRestorer guard', () => {
+      expect(isOfferStockRestorer(adapter)).toBe(true);
+    });
+
+    it('should set each offer to its absolute target with a key stable across retries', async () => {
+      const spy = jest.spyOn(adapter, 'updateOfferQuantity').mockResolvedValue(undefined);
+
+      await adapter.restoreStockOnCancellation([
+        { externalOfferId: 'offer-1', quantity: 20, idempotencyKey: 'stock-restore:ol_order_1:offer-1' },
+        { externalOfferId: 'offer-2', quantity: 0, idempotencyKey: 'stock-restore:ol_order_1:offer-2' },
+      ]);
+
+      expect(spy).toHaveBeenNthCalledWith(1, {
+        offerId: 'offer-1',
+        quantity: 20,
+        idempotencyKey: 'stock-restore:ol_order_1:offer-1',
+      });
+      expect(spy).toHaveBeenNthCalledWith(2, {
+        offerId: 'offer-2',
+        quantity: 0,
+        idempotencyKey: 'stock-restore:ol_order_1:offer-2',
+      });
+    });
+
+    it('should still write when a target carries no key, under a fresh one', async () => {
+      const spy = jest.spyOn(adapter, 'updateOfferQuantity').mockResolvedValue(undefined);
+
+      await adapter.restoreStockOnCancellation([{ externalOfferId: 'offer-1', quantity: 5 }]);
+
+      expect(spy).toHaveBeenCalledWith(
+        expect.objectContaining({ offerId: 'offer-1', quantity: 5, idempotencyKey: expect.stringMatching(/^stock-restore:offer-1:/) })
+      );
     });
   });
 

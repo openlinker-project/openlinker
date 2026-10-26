@@ -387,7 +387,11 @@ export class OfferStockRestoreService implements IOfferStockRestoreService {
       // the unbuffered figure would restore straight through the operator's
       // cushion, and publishing 0 would deactivate a live offer.
       if (typeof quantity !== 'number') continue;
-      targets.push({ externalOfferId: entry.externalOfferId, quantity });
+      targets.push({
+        externalOfferId: entry.externalOfferId,
+        quantity,
+        idempotencyKey: `stock-restore:${internalOrderId}:${entry.externalOfferId}`,
+      });
     }
 
     if (targets.length === 0) {
