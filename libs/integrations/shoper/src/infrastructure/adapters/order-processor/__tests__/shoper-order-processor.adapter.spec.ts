@@ -95,7 +95,7 @@ function setup(
     { id: 'conn-1', config } as unknown as Connection,
     mappingConfig as unknown as IMappingConfigService,
   );
-  return { adapter, post, put, del, get, options, mappingConfig, resolveOrCreateCustomer };
+  return { adapter, post, put, del, get, options, mappingConfig, resolveOrCreateCustomer, mapping };
 }
 
 interface Harness {
@@ -111,6 +111,7 @@ interface Harness {
     resolvePaymentMapping: jest.Mock;
   };
   resolveOrCreateCustomer: jest.Mock;
+  mapping: { getExternalIds: jest.Mock };
 }
 
 describe('ShoperOrderProcessorAdapter', () => {
@@ -144,6 +145,25 @@ describe('ShoperOrderProcessorAdapter', () => {
         '/order-products',
         expect.objectContaining({ order_id: 10, price: 10, quantity: 1, name: 'SKU2', tax: '8%', tax_value: 8 }),
       ]);
+    });
+
+    it('should book each line on the variant stock row and never send product_id', async () => {
+      // Shoper: with both ids on a line, product_id wins and the product's
+      // DEFAULT stock is booked, so a variant line would land on the base stock.
+      const { adapter, post, mapping } = setup();
+      mapping.getExternalIds.mockImplementation((type: string, id: string) =>
+        Promise.resolve([
+          { connectionId: 'conn-1', externalId: type === 'ProductVariant' ? { ol_v1: '266', ol_v2: '271' }[id] ?? '0' : '161' },
+        ]),
+      );
+
+      await adapter.createOrder(order());
+
+      const lines = post.mock.calls.filter(([path]) => path === '/order-products').map(([, body]) => body as Record<string, unknown>);
+      expect(lines.map((line) => line.stock_id)).toEqual([266, 271]);
+      for (const line of lines) {
+        expect(line).not.toHaveProperty('product_id');
+      }
     });
 
     it('should still return the order when the post-create stock check fails', async () => {

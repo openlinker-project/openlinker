@@ -368,8 +368,12 @@ export class ShoperOrderProcessorAdapter
         throw this.unbuildable(`the shop has no tax for rate "${item.taxRate}" (line "${item.sku ?? item.id}")`);
       }
 
+      // Only the stock row is sent. Shoper documents that when a line carries
+      // both `product_id` and `stock_id`, `product_id` wins and the product's
+      // DEFAULT stock is used - so every variant line landed on the base stock
+      // (no option, the base code) and the variant's own stock was never
+      // decremented. The stock row names its product, so nothing is lost.
       lines.push({
-        product_id: Number(await this.externalId(CORE_ENTITY_TYPE.Product, item.productId)),
         stock_id: Number(await this.externalVariantId(item)),
         price,
         quantity: item.quantity,

@@ -360,7 +360,10 @@ export interface ShoperOrderCreateRequest {
 /** Body of `POST /order-products`. `price` is GROSS and `tax` is the tax NAME. */
 export interface ShoperOrderProductCreateRequest {
   readonly order_id: number;
-  readonly product_id: number;
+  /**
+   * The line's stock row. `product_id` is deliberately absent: sent together,
+   * Shoper ignores `stock_id` and books the product's default stock.
+   */
   readonly stock_id: number;
   readonly price: number;
   readonly quantity: number;
