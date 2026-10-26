@@ -94,6 +94,7 @@ import {
 import type { ReservationAtpEffect } from '@openlinker/core/inventory';
 import type { Order } from '../../domain/types/order.types';
 import type { OrderFeedEventType } from '../../domain/types/order-feed.types';
+import { orderStockRestoreDedupeKey } from '../../domain/types/order-cancel.types';
 import { compareOrderCursors } from '../../domain/types/order-cursor.types';
 import { withheldOnHoldError } from '../../domain/types/order-hold.types';
 import {
@@ -514,7 +515,7 @@ export class OrderIngestionService implements IOrderIngestionService {
             internalOrderId,
           },
           options: {
-            dedupeKey: `marketplace:${connectionId}:stockRestore:${internalOrderId}`,
+            dedupeKey: orderStockRestoreDedupeKey(connectionId, internalOrderId),
           },
         });
       } catch (error) {
@@ -669,7 +670,7 @@ export class OrderIngestionService implements IOrderIngestionService {
             internalOrderId,
           },
           options: {
-            dedupeKey: `marketplace:${connectionId}:stockRestore:${internalOrderId}`,
+            dedupeKey: orderStockRestoreDedupeKey(connectionId, internalOrderId),
           },
         });
       } catch (error) {

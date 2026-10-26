@@ -107,8 +107,24 @@ export type OrderLifecycleEvent =
 export const OrderWritebackOutcomeValues = ['applied', 'unsupported', 'rejected'] as const;
 export type OrderWritebackOutcome = (typeof OrderWritebackOutcomeValues)[number];
 
+/**
+ * How much of an `applied` writeback actually reached the participant (#3540).
+ *
+ * - `channel`    - the participant's own system now carries the fact (the
+ *   ordinary meaning of `applied`, and what an absent value means).
+ * - `stock-only` - OpenLinker did the compensating work it could (a stock
+ *   restore) but the participant has no confirmed verb to record the event
+ *   itself, so the channel still shows the order as live. Erli's `cancelled` is
+ *   the one case today. A caller that tells an operator "the channel was
+ *   notified" must read this, not just `outcome`.
+ */
+export const OrderWritebackScopeValues = ['channel', 'stock-only'] as const;
+export type OrderWritebackScope = (typeof OrderWritebackScopeValues)[number];
+
 export interface OrderWritebackResult {
   outcome: OrderWritebackOutcome;
   /** Operator-readable reason — required for `unsupported` / `rejected`. */
   detail?: string;
+  /** Reach of an `applied` outcome; absent means `channel`. See {@link OrderWritebackScope}. */
+  scope?: OrderWritebackScope;
 }
