@@ -192,3 +192,18 @@ export interface FulfillmentWorkRerouteSweepPayloadV1 {
   readonly schemaVersion: 1;
   readonly pageLimit?: number;
 }
+
+/**
+ * `inventory.saleDecrement.reconcileSweep` (#3629).
+ *
+ * A scheduler tick carries only `schemaVersion`; `pageLimit` lets an operator
+ * widen ONE run. No cursor field, and there must not be one: the pass is
+ * frontier-as-query - an enqueued work leaves the set because the producers'
+ * idempotency key then exists - so an offset would step over rows. The grace
+ * window is resolved from the environment through one path and is not on the
+ * payload (#2229).
+ */
+export interface InventorySaleDecrementReconcileSweepPayloadV1 {
+  readonly schemaVersion: 1;
+  readonly pageLimit?: number;
+}

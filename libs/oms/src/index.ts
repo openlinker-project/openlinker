@@ -41,6 +41,10 @@ export { createOlFulfillmentRouter, OlFulfillmentRouter } from './routing/ol-ful
 export { createOmsFulfillmentRouterResolver } from './routing/oms-fulfillment-router.resolver';
 export type { OmsFulfillmentRouterResolverDeps } from './routing/oms-fulfillment-router.resolver';
 export type { OlFulfillmentRouterDeps } from './routing/ol-fulfillment-router';
+export { isDraftRuleEvaluator } from './routing/draft-rule-evaluator.capability';
+export type { DraftRuleComparison, DraftRuleEvaluator } from './routing/draft-rule-evaluator.capability';
+export { diffRoutingEvaluations } from './routing/diff-routing-evaluations';
+export type { RoutingLineChange } from './routing/diff-routing-evaluations';
 export { evaluateRouting } from './routing/evaluate-routing';
 export type { RoutingPipelineResult } from './routing/evaluate-routing';
 export { coerceRoutingRule, coerceRoutingRules, isRoutingRule } from './routing/routing-rule.types';

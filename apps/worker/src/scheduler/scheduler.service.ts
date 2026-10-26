@@ -495,6 +495,7 @@ export class SchedulerService implements OnModuleDestroy {
       this.registerFulfillmentTimeoutSweepTask();
       this.registerFulfillmentRelaySweepTask();
       this.registerFulfillmentRerouteSweepTask();
+      this.registerSaleDecrementReconcileSweepTask();
       this.registerOrderHoldReconcileTask();
 
       // Drain plugin-contributed tasks — populated at `onModuleInit`, complete
@@ -1183,6 +1184,35 @@ export class SchedulerService implements OnModuleDestroy {
       generatePayload: () => ({ schemaVersion: 1 }),
       generateIdempotencyKey: (_connection, timestamp) =>
         `fulfillment:work:reroute-sweep:${timestamp}`,
+    });
+  }
+
+  /**
+   * Register the sale-decrement reconcile sweep (#3629, epic #3460).
+   *
+   * Bespoke rather than a `CORE_CAPABILITY_TASKS` row for the relay sweep's
+   * reason: it has no capability to scope by and no connection to run for. Its
+   * subject is a routed work whose decrement job was never enqueued. Global scope
+   * under the nil-UUID system connection; default ON, since it is inert on any
+   * install that does not route (no `fulfillment_works` rows).
+   *
+   * Every 15 minutes: a lost enqueue is a live oversell window, so the backstop
+   * should close it in minutes, not hours. The cadence is the TICK, not a cycle -
+   * there is no cursor, each tick takes the oldest page of what is still missing.
+   */
+  private registerSaleDecrementReconcileSweepTask(): void {
+    const systemConnection = this.buildSystemConnection();
+
+    this.tasks.push({
+      taskId: 'inventory-sale-decrement-reconcile-sweep',
+      jobType: 'inventory.saleDecrement.reconcileSweep',
+      cronExpression: '11,26,41,56 * * * *',
+      enabledEnvVar: 'OL_SALE_DECREMENT_RECONCILE_SWEEP_ENABLED',
+      enabledDefault: true,
+      connectionFilter: () => Promise.resolve([systemConnection]),
+      generatePayload: () => ({ schemaVersion: 1 }),
+      generateIdempotencyKey: (_connection, timestamp) =>
+        `inventory:sale-decrement:reconcile-sweep:${timestamp}`,
     });
   }
 

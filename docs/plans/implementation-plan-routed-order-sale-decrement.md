@@ -35,6 +35,11 @@ marketplace right away. Today nothing lowers it, so the last unit oversells.
   `bulk` lane, global scope. Tracked as #3629; must land before this is
   load-bearing on a pilot install, since the failure mode of an unenqueued
   decrement is the exact defect this slice exists to fix.
+  **Implemented in #3629** (`inventory.saleDecrement.reconcileSweep`; plan in
+  `implementation-plan-sale-decrement-reconcile-sweep.md`). One refinement to the
+  frontier described above: it is "no decrement JOB was ever enqueued" rather than
+  "a line with no decrement row", because lines that legitimately never get a row
+  would otherwise be re-driven for ever. Mark this resolved once #3629 merges.
 
 ## 2. Research (what we reuse)
 
