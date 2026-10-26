@@ -68,6 +68,7 @@ import {
   type IOrderChangeService,
 } from '@openlinker/core/orders';
 import { ORDER_CANCELLATION_SERVICE_TOKEN } from '../application/interfaces/order-cancellation.service.interface';
+import { ORDER_EDIT_SERVICE_TOKEN } from '../application/interfaces/order-edit.service.interface';
 import type { IOrderCancellationService } from '../application/interfaces/order-cancellation.service.interface';
 import {
   CancelCorrectionFailedError,
@@ -355,6 +356,10 @@ describe('OrdersController', () => {
         {
           provide: ORDER_CANCELLATION_SERVICE_TOKEN,
           useValue: { cancelOrder: jest.fn(), confirmChange: jest.fn() },
+        },
+        {
+          provide: ORDER_EDIT_SERVICE_TOKEN,
+          useValue: { getEditsView: jest.fn().mockResolvedValue(null) },
         },
       ],
     }).compile();
@@ -2001,6 +2006,39 @@ describe('OrdersController', () => {
       await expect(controller.confirmChange('ol_order_001', 'x', USER)).rejects.toMatchObject({
         response: expect.objectContaining({ error: 'CORRECTION_FAILED' }),
       });
+    });
+  });
+
+  describe('operator edits on the DTO (#3542)', () => {
+    it('should flag an edited order on the list row and read no edit history for it', async () => {
+      repository.findMany.mockResolvedValue({
+        items: [orderRecordWith({ orderEdits: { v: 1, rev: 1 } as never })],
+        total: 1,
+      });
+
+      const result = await controller.listOrders({ limit: 20, offset: 0 });
+
+      expect(result.items[0].editedInOpenLinker).toBe(true);
+      expect(result.items[0]).not.toHaveProperty('edits');
+    });
+
+    it('should report an unedited order as not edited', async () => {
+      repository.findMany.mockResolvedValue({ items: [mockOrder], total: 1 });
+
+      const result = await controller.listOrders({ limit: 20, offset: 0 });
+
+      expect(result.items[0].editedInOpenLinker).toBe(false);
+    });
+
+    it('should attach the edits view on the detail read only', async () => {
+      const view = { editedAt: '2026-10-26T10:00:00.000Z', lines: [], history: [] };
+      const editService = (controller as unknown as { orderEdit: { getEditsView: jest.Mock } }).orderEdit;
+      editService.getEditsView.mockResolvedValue(view);
+      repository.findById.mockResolvedValue(mockOrder);
+
+      const dto = await controller.getOrder('ol_order_001');
+
+      expect(dto.edits).toBe(view);
     });
   });
 

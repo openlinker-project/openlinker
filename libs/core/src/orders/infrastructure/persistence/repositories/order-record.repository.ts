@@ -3895,6 +3895,11 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
    *   very upsert is about to overwrite, so mapping them here would have the
    *   detecting re-poll erase its own finding. No source payload carries them
    *   either - they are OpenLinker's observation, not the source's report.
+   * - `orderEdits` (#3542) - sole writer `applyOrderEdit`. The operator's edit
+   *   lives in this column precisely because ingestion rewrites `orderSnapshot`
+   *   wholesale; mapping it here would let a re-poll write the ingestion path's
+   *   in-memory `null` over it. For the same reason `orderSnapshot` below is
+   *   mapped from `channelSnapshot`, never from the effective view.
    * - The five analytics scalars (#1985/#2832) - `placedAt` / `currency` /
    *   `taxTreatment` / `totalAmount` / `totalTaxTreatment` - are mapped by {@link upsertWithLineItems}
    *   directly, NOT here, because this shared conversion also backs
