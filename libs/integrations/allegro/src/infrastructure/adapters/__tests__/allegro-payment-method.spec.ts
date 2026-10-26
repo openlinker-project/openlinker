@@ -41,7 +41,7 @@ describe('deriveAllegroPaymentMethod', () => {
     expect(
       checkPaymentFactsConsistency({
         paymentMethod: deriveAllegroPaymentMethod(payment),
-        paymentStatus: deriveAllegroPaymentStatus(payment),
+        paymentStatus: deriveAllegroPaymentStatus({ payment }),
       })
     ).toEqual([]);
   });

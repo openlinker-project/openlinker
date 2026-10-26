@@ -884,7 +884,7 @@ export class AllegroOrderSourceAdapter
         checkoutForm.status === 'CANCELLED' || checkoutForm.fulfillment?.status === 'CANCELLED';
       const status = isCancelled
         ? 'cancelled'
-        : isAllegroCheckoutSettled(checkoutForm.payment)
+        : isAllegroCheckoutSettled(checkoutForm)
           ? 'processing'
           : 'pending';
       // Allegro's checkout-form carries no order-level created timestamp, so
@@ -928,7 +928,7 @@ export class AllegroOrderSourceAdapter
       // (decimal string preserved, no float round-trip). Keyed off the neutral
       // payment status (reusing `deriveAllegroPaymentStatus`, not a duplicate
       // COD-type compare); absent for prepaid / awaiting orders.
-      const paymentStatus = deriveAllegroPaymentStatus(checkoutForm.payment);
+      const paymentStatus = deriveAllegroPaymentStatus(checkoutForm);
       const codToCollect =
         paymentStatus === PAYMENT_STATUS.Cod
           ? {
