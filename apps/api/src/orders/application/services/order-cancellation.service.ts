@@ -234,7 +234,7 @@ export class OrderCancellationService implements IOrderCancellationService {
       await this.changes.decline(change.id, source.detail);
       const voidedNote =
         voidedShipmentIds.length > 0
-          ? ` ${String(voidedShipmentIds.length)} shipping label(s) had already been voided and stay voided.`
+          ? ` ${String(voidedShipmentIds.length)} shipment(s) had already been cancelled (a bought label voided with the carrier) and stay cancelled.`
           : '';
       throw new OrderCancellationRefusedError(
         'CHANNEL_REFUSED_CANCEL',
