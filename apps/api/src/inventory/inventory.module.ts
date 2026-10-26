@@ -9,11 +9,32 @@
  */
 import { Module } from '@nestjs/common';
 import { InventoryModule as CoreInventoryModule } from '@openlinker/core/inventory';
+import { IdentifierMappingModule } from '@openlinker/core/identifier-mapping';
+import { OperationalSettingsModule } from '@openlinker/core/operational-settings';
+import { OrdersModule } from '@openlinker/core/orders';
+import { ProductsModule as CoreProductsModule } from '@openlinker/core/products';
+import { ListingsModule } from '@openlinker/core/listings/services';
+// The HOST integrations module (apps/api): it re-exports the core one that
+// carries INTEGRATIONS_SERVICE_TOKEN. Aliased because both export one name.
+import { IntegrationsModule as HostIntegrationsModule } from '../integrations/integrations.module';
+import { StockViewService } from './application/services/stock-view.service';
 import { InventoryController } from './http/inventory.controller';
 import { InventoryLocationsController } from './http/inventory-locations.controller';
 
 @Module({
-  imports: [CoreInventoryModule],
+  // The stock view composes inventory with listings (channels, snapshots),
+  // products, orders (hold order numbers) and settings (stale threshold) at the
+  // interface layer, because core `inventory` may not import `listings`.
+  imports: [
+    CoreInventoryModule,
+    CoreProductsModule,
+    ListingsModule,
+    OrdersModule,
+    IdentifierMappingModule,
+    OperationalSettingsModule,
+    HostIntegrationsModule,
+  ],
   controllers: [InventoryController, InventoryLocationsController],
+  providers: [StockViewService],
 })
 export class InventoryModule {}

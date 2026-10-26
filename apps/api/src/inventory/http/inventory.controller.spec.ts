@@ -15,11 +15,22 @@ import {
   INVENTORY_QUERY_SERVICE_TOKEN,
   InventoryItemEntity as InventoryItem,
 } from '@openlinker/core/inventory';
-import type { IInventoryQueryService, InventoryItemView } from '@openlinker/core/inventory';
+import type {
+  IInventoryQueryService,
+  InventoryItemView,
+  VariantStockView,
+} from '@openlinker/core/inventory';
+import { NotFoundException } from '@nestjs/common';
+import {
+  StockViewProductNotFoundError,
+  StockViewService,
+  type ProductStockView,
+} from '../application/services/stock-view.service';
 
 describe('InventoryController', () => {
   let controller: InventoryController;
   let queryService: jest.Mocked<IInventoryQueryService>;
+  let stockView: jest.Mocked<Pick<StockViewService, 'getVariantStockViews' | 'getProductStockView'>>;
 
   const itemA = new InventoryItem(
     'inv-a',
@@ -60,6 +71,7 @@ describe('InventoryController', () => {
       findAvailabilityByVariantIds: jest.fn(),
       findBinCodesByVariantIds: jest.fn(),
       getProductStockAggregates: jest.fn(),
+      getStockViewByVariantIds: jest.fn(),
       getDuplicatePositionReport: jest.fn(),
       getProvenanceBackfillStatus: jest.fn(),
       resolveStockOwner: jest.fn(),
@@ -73,11 +85,19 @@ describe('InventoryController', () => {
           provide: INVENTORY_QUERY_SERVICE_TOKEN,
           useValue: mockQueryService,
         },
+        {
+          provide: StockViewService,
+          useValue: {
+            getVariantStockViews: jest.fn().mockResolvedValue([]),
+            getProductStockView: jest.fn(),
+          },
+        },
       ],
     }).compile();
 
     controller = module.get<InventoryController>(InventoryController);
     queryService = module.get(INVENTORY_QUERY_SERVICE_TOKEN);
+    stockView = module.get(StockViewService);
   });
 
   describe('listInventory', () => {
@@ -102,6 +122,8 @@ describe('InventoryController', () => {
         reservedQuantity: 5,
         locationId: null,
         updatedAt: '2026-04-01T00:00:00.000Z',
+        sourceConnectionId: null,
+        isStale: false,
         productName: 'Product One',
         productSku: 'SKU-1',
         productImageUrl: 'https://shop.test/img/1/cover.jpg',
@@ -139,35 +161,173 @@ describe('InventoryController', () => {
     });
   });
 
-  describe('getAvailability (#792)', () => {
-    it('passes the parsed variantIds through to the service and wraps the response in items[]', async () => {
+  describe('getAvailability (#792, #3621)', () => {
+    const stockViewRow = (overrides: Partial<VariantStockView> = {}): VariantStockView => ({
+      productVariantId: 'var-a',
+      masterAvailable: 5,
+      masterReserved: 0,
+      availableToPromise: 3,
+      provenance: 'computed',
+      observedAt: new Date('2026-10-26T10:00:00Z'),
+      stalenessMs: 7_200_000,
+      olHeldNotReflected: null,
+      heldCounted: 2,
+      heldRecordedOnly: 1,
+      livePositionCount: 1,
+      positions: [],
+      holds: [],
+      isStaleSync: false,
+      ...overrides,
+    });
+
+    it('should keep the legacy fields and add provenance, freshness and the held split', async () => {
       queryService.getAvailabilityByVariantIds.mockResolvedValue([
-        { productVariantId: 'var-a', totalAvailable: 5, locationCount: 1, availableToPromise: 5 },
-        { productVariantId: 'var-b', totalAvailable: 0, locationCount: 0, availableToPromise: 0 },
+        { productVariantId: 'var-a', totalAvailable: 5, locationCount: 1, availableToPromise: 3 },
       ]);
+      stockView.getVariantStockViews.mockResolvedValue([stockViewRow()]);
 
-      const result = await controller.getAvailability({
-        productVariantIds: ['var-a', 'var-b'],
-      });
+      const result = await controller.getAvailability({ productVariantIds: ['var-a'] });
 
-      expect(queryService.getAvailabilityByVariantIds).toHaveBeenCalledWith(['var-a', 'var-b']);
+      expect(queryService.getAvailabilityByVariantIds).toHaveBeenCalledWith(['var-a']);
+      expect(stockView.getVariantStockViews).toHaveBeenCalledWith(['var-a']);
       expect(result).toEqual({
         items: [
-          { productVariantId: 'var-a', totalAvailable: 5, locationCount: 1, availableToPromise: 5 },
-          { productVariantId: 'var-b', totalAvailable: 0, locationCount: 0, availableToPromise: 0 },
+          {
+            productVariantId: 'var-a',
+            totalAvailable: 5,
+            locationCount: 1,
+            availableToPromise: 3,
+            provenance: 'computed',
+            observedAt: '2026-10-26T10:00:00.000Z',
+            stalenessMs: 7_200_000,
+            isStaleSync: false,
+            olHeldNotReflected: null,
+            heldCounted: 2,
+            heldRecordedOnly: 1,
+            livePositionCount: 1,
+          },
         ],
       });
     });
 
+    it('should report an unknown promise as null with null held figures, never 0', async () => {
+      queryService.getAvailabilityByVariantIds.mockResolvedValue([
+        { productVariantId: 'var-a', totalAvailable: 5, locationCount: 1, availableToPromise: null },
+      ]);
+      stockView.getVariantStockViews.mockResolvedValue([
+        stockViewRow({
+          availableToPromise: null,
+          provenance: 'unknown',
+          heldCounted: null,
+          heldRecordedOnly: null,
+        }),
+      ]);
+
+      const [item] = (await controller.getAvailability({ productVariantIds: ['var-a'] })).items;
+
+      expect(item.availableToPromise).toBeNull();
+      expect(item.provenance).toBe('unknown');
+      expect(item.heldCounted).toBeNull();
+      expect(item.heldRecordedOnly).toBeNull();
+      // The raw master sum is unaffected by an unknown promise.
+      expect(item.totalAvailable).toBe(5);
+    });
+
+    it('should fall back to unknown, not zero, when the stock view has no row for a variant', async () => {
+      queryService.getAvailabilityByVariantIds.mockResolvedValue([
+        { productVariantId: 'var-a', totalAvailable: 0, locationCount: 0, availableToPromise: 0 },
+      ]);
+      stockView.getVariantStockViews.mockResolvedValue([]);
+
+      const [item] = (await controller.getAvailability({ productVariantIds: ['var-a'] })).items;
+
+      expect(item.availableToPromise).toBeNull();
+      expect(item.provenance).toBe('unknown');
+    });
+
     it('returns an empty items[] when the service returns no rows', async () => {
-      // Service-level zero-fill guarantees an entry per requested ID, but a
-      // direct caller passing a single-known-empty input still gets the
-      // empty-envelope shape.
       queryService.getAvailabilityByVariantIds.mockResolvedValue([]);
 
       const result = await controller.getAvailability({ productVariantIds: ['var-x'] });
 
       expect(result).toEqual({ items: [] });
+    });
+  });
+
+  describe('getStockView (#3621)', () => {
+    it('should answer 404 for an unknown product', async () => {
+      stockView.getProductStockView.mockRejectedValue(new StockViewProductNotFoundError('nope'));
+
+      await expect(controller.getStockView({ productId: 'nope' })).rejects.toThrow(
+        NotFoundException
+      );
+    });
+
+    it('should serialise dates to ISO strings and keep nulls as null', async () => {
+      const view: ProductStockView = {
+        productId: 'prod-1',
+        productName: 'Product One',
+        productSku: 'SKU-1',
+        staleSyncThreshold: { hours: 6, ms: 21_600_000, source: 'default' },
+        channelsStatus: 'ok',
+        variants: [
+          {
+            productVariantId: 'var-a',
+            sku: 'SKU-1-S',
+            attributes: { size: 'S' },
+            masterAvailable: 5,
+            masterReserved: 1,
+            availableToPromise: null,
+            provenance: 'unknown',
+            observedAt: new Date('2026-10-26T10:00:00Z'),
+            stalenessMs: 1,
+            olHeldNotReflected: null,
+            heldCounted: null,
+            heldRecordedOnly: null,
+            livePositionCount: 1,
+            isStaleSync: false,
+            positions: [
+              {
+                locationId: 'loc-1',
+                locationName: 'MAIN',
+                sourceConnectionId: 'conn-1',
+                sourceConnectionName: 'PrestaShop',
+                isStale: false,
+                availableQuantity: 5,
+                reservedQuantity: 1,
+                updatedAt: new Date('2026-10-26T10:00:00Z'),
+              },
+            ],
+            holds: null,
+            channels: [
+              {
+                connectionId: 'conn-2',
+                connectionName: 'Allegro',
+                platformType: 'allegro',
+                rule: { stockSafetyBuffer: 1, stockZeroThreshold: 0 },
+                willPublish: { quantity: null, provenance: 'unknown' },
+                channelShows: { quantity: null, observedAt: null },
+              },
+            ],
+          },
+        ],
+      };
+      stockView.getProductStockView.mockResolvedValue(view);
+
+      const result = await controller.getStockView({ productId: 'prod-1' });
+
+      expect(result.variants[0].observedAt).toBe('2026-10-26T10:00:00.000Z');
+      expect(result.variants[0].positions[0].updatedAt).toBe('2026-10-26T10:00:00.000Z');
+      expect(result.variants[0].holds).toBeNull();
+      expect(result.variants[0].channels[0].willPublish).toEqual({
+        quantity: null,
+        provenance: 'unknown',
+      });
+      expect(result.variants[0].channels[0].channelShows).toEqual({
+        quantity: null,
+        observedAt: null,
+      });
+      expect(result.staleSyncThreshold).toEqual({ hours: 6, ms: 21_600_000, source: 'default' });
     });
   });
 

@@ -50,7 +50,12 @@ import type {
   TaxRateJournalEntry,
 } from '@openlinker/core/products';
 import { IdentifierMappingPort } from '@openlinker/core/identifier-mapping';
-import { IInventoryQueryService, INVENTORY_QUERY_SERVICE_TOKEN } from '@openlinker/core/inventory';
+import {
+  AVAILABILITY_SERVICE_TOKEN,
+  IAvailabilityService,
+  IInventoryQueryService,
+  INVENTORY_QUERY_SERVICE_TOKEN,
+} from '@openlinker/core/inventory';
 import {
   IOfferMappingsService,
   OFFER_MAPPINGS_SERVICE_TOKEN,
@@ -77,6 +82,11 @@ import { TaxRateJournalResponseDto } from './dto/tax-rate-journal-entry-response
 import { AnyRole } from '../../auth/decorators/any-role.decorator';
 
 const MAX_VARIANTS_IN_DETAIL = 100;
+
+interface ProductAtp {
+  availableToPromise: number | null;
+  provenance: 'computed' | 'authority' | 'unknown';
+}
 
 // Cap on the number of connection ids accepted through the `unlistedOn` CSV
 // (#1720) - the realistic marketplace-connection count is single digits.
@@ -177,6 +187,10 @@ export class ProductsController {
     private readonly identifierMapping: IdentifierMappingPort,
     @Inject(INVENTORY_QUERY_SERVICE_TOKEN)
     private readonly inventoryQuery: IInventoryQueryService,
+    // #3621 - the list's available-to-promise column reads the availability
+    // seam, never the buffer helpers (no-direct-buffer-read.spec.ts).
+    @Inject(AVAILABILITY_SERVICE_TOKEN)
+    private readonly availability: IAvailabilityService,
     @Inject(OFFER_MAPPINGS_SERVICE_TOKEN)
     private readonly offerMappings: IOfferMappingsService,
     @Inject(SHOP_PRODUCT_MAPPINGS_SERVICE_TOKEN)
@@ -250,6 +264,7 @@ export class ProductsController {
         variantCounts,
         staleVariantCounts,
         externalIdLists,
+        atpByProduct,
       ] = await Promise.all([
         this.inventoryQuery.getProductStockAggregates(ids),
         this.offerMappings.countListedVariantsByProducts(ids),
@@ -264,6 +279,8 @@ export class ProductsController {
         Promise.all(
           ids.map((id) => this.identifierMapping.getExternalIds(CORE_ENTITY_TYPE.Product, id))
         ),
+        // #3621 - ONE batched read for the whole page, never per product.
+        this.resolveProductAtp(ids),
       ]);
 
       const aggregateByProduct = new Map(aggregates.map((a) => [a.productId, a]));
@@ -279,6 +296,9 @@ export class ProductsController {
         // Products with no inventory rows have no aggregate row - zero-fill
         // for display (no stock = 0 available / 0 reserved, never written).
         dto.totalAvailable = aggregate?.totalAvailable ?? 0;
+        const atp = atpByProduct.get(dto.id) ?? { availableToPromise: null, provenance: 'unknown' as const };
+        dto.availableToPromise = atp.availableToPromise;
+        dto.atpProvenance = atp.provenance;
         dto.totalReserved = aggregate?.totalReserved ?? 0;
         dto.stockUpdatedAt = aggregate?.stockUpdatedAt
           ? aggregate.stockUpdatedAt.toISOString()
@@ -296,6 +316,64 @@ export class ProductsController {
       limit,
       offset,
     };
+  }
+
+  /**
+   * Product-level available-to-promise for one page (#3621): the sum of its
+   * variants' global-scope ATP, from one variants read and one availability
+   * read for the whole page.
+   *
+   * **`null` is never a zero.** One unknown variant makes the product unknown
+   * (a sum over a partly-unknown set would assert a figure OpenLinker cannot
+   * stand behind), and so does a product with no variants (its stock is not
+   * variant-keyed, so this read cannot speak for it). A failed read degrades
+   * the whole page to unknown rather than failing the product list.
+   */
+  private async resolveProductAtp(
+    productIds: readonly string[]
+  ): Promise<Map<string, ProductAtp>> {
+    const result = new Map<string, ProductAtp>();
+    const unknown: ProductAtp = { availableToPromise: null, provenance: 'unknown' };
+    try {
+      const variants = await this.productsService.getVariantsByProductIds(productIds);
+      const variantIds = variants.map((v) => v.id);
+      const promisable = await this.availability.getPromisableQuantities({
+        variantIds,
+        scope: { kind: 'global' },
+      });
+      const atpByVariant = new Map(promisable.map((p) => [p.productVariantId, p]));
+      const variantsByProduct = new Map<string, ProductVariant[]>();
+      for (const variant of variants) {
+        const list = variantsByProduct.get(variant.productId) ?? [];
+        list.push(variant);
+        variantsByProduct.set(variant.productId, list);
+      }
+
+      for (const productId of productIds) {
+        const productVariants = variantsByProduct.get(productId) ?? [];
+        const answers = productVariants.map((v) => atpByVariant.get(v.id));
+        if (
+          productVariants.length === 0 ||
+          answers.some((a) => a === undefined || a.quantity === null)
+        ) {
+          result.set(productId, unknown);
+          continue;
+        }
+        const total = answers.reduce((sum, a) => sum + (a?.quantity ?? 0), 0);
+        const allAuthority = answers.every((a) => a?.provenance === 'authority');
+        result.set(productId, {
+          availableToPromise: total,
+          provenance: allAuthority ? 'authority' : 'computed',
+        });
+      }
+    } catch (error) {
+      this.logger.error(
+        `product_list_atp_read_failed products=${String(productIds.length)} - reporting unknown for the page`,
+        (error as Error).stack
+      );
+      return new Map(productIds.map((id) => [id, unknown]));
+    }
+    return result;
   }
 
   @AnyRole()
