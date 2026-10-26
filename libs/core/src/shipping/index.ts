@@ -275,6 +275,17 @@ export type {
 } from './application/types/fulfillment-status-sync.types';
 export { DEFAULT_UPDATED_SINCE_DAYS } from './application/types/fulfillment-status-sync.types';
 
+// Application - source-side fulfilment read-back (ADR-012 amendment). The
+// source-side twin of the seam above: one page of an order SOURCE's own view of
+// its orders' fulfilment, recorded as source-observed branch-1 rows. Interface +
+// result types only; the service is injected via
+// SOURCE_FULFILLMENT_STATUS_SYNC_SERVICE_TOKEN.
+export type { ISourceFulfillmentStatusSyncService } from './application/interfaces/source-fulfillment-status-sync.service.interface';
+export type {
+  SourceFulfillmentStatusSyncOptions,
+  SourceFulfillmentStatusSyncResult,
+} from './application/types/source-fulfillment-status-sync.types';
+
 // Application — shipment-first dispatch routing for a fulfilment work (#3506,
 // G02-4). Interface + outcome types only; the service is injected via
 // FULFILLMENT_WORK_DISPATCH_ROUTER_SERVICE_TOKEN by the API's parcel-closure

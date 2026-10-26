@@ -116,12 +116,12 @@ describe('Shoper plugin', () => {
     }
   });
 
-  it('should register the orders-poll backstop, the fulfilment read-back and the published-product status reconcile', () => {
+  it('should register the orders-poll backstop, both fulfilment read-backs and the published-product status reconcile', () => {
     const { host, schedulerRegister } = hostWithRegistries();
 
     createShoperPlugin().register?.(host);
 
-    expect(schedulerRegister).toHaveBeenCalledTimes(3);
+    expect(schedulerRegister).toHaveBeenCalledTimes(4);
     expect(schedulerRegister).toHaveBeenCalledWith(
       expect.objectContaining({ taskId: 'shoper-orders-poll', jobType: 'marketplace.orders.poll' }),
     );
@@ -129,6 +129,12 @@ describe('Shoper plugin', () => {
       expect.objectContaining({
         taskId: 'shoper-fulfillment-status-sync',
         jobType: 'marketplace.fulfillment.statusSync',
+      }),
+    );
+    expect(schedulerRegister).toHaveBeenCalledWith(
+      expect.objectContaining({
+        taskId: 'shoper-source-fulfillment-status-sync',
+        jobType: 'marketplace.sourceFulfillment.statusSync',
       }),
     );
     expect(schedulerRegister).toHaveBeenCalledWith(

@@ -1,7 +1,7 @@
 /**
  * Shoper Scheduler Tasks
  *
- * Two cron tasks:
+ * Four cron tasks:
  *
  *   - `shoper-orders-poll` (#3644) - the order-ingestion reconciliation
  *     backstop. Webhooks are the low-latency path, but a delivery can be lost
@@ -16,6 +16,13 @@
  *     through `FulfillmentStatusReader` and projects branch-1 `Shipment` rows.
  *     Rolling scan-offset cursor `shoper.fulfillmentStatus.scanOffset`; cadence
  *     and defaults follow the PrestaShop task.
+ *   - `shoper-source-fulfillment-status-sync` - the same read-back for a shop OL
+ *     ingests orders FROM: asks the shop, through `OrderFulfillmentReadback`,
+ *     whether somebody shipped an order in the Shoper panel, records a parcel
+ *     number OL does not already know, and relays it to the order's
+ *     destinations (ADR-012 amendment). Rolling scan-offset cursor
+ *     `shoper.sourceFulfillmentStatus.scanOffset`, distinct from the
+ *     destination task's so a shop that is both never shares one offset.
  *
  * The orders-poll cadence is relaxed (10 min) because webhooks already carry the
  * primary load and the shop's request budget (about 10 req/s per SHOP, shared
@@ -65,6 +72,26 @@ export function buildShoperSchedulerTasks(): SchedulerTaskConfig[] {
       }),
       generateIdempotencyKey: (connection: Connection, timestamp: string): string =>
         `marketplace:${connection.id}:shoper:fulfillment:status:sync:${timestamp}`,
+    },
+    {
+      // Default ON like every other Shoper task: a merchant packing in the
+      // Shoper panel is the ordinary case for a Shoper source, not an edge, and
+      // the per-order cost is bounded - an order OL already tracks is never
+      // read, and a recorded parcel is never read again.
+      taskId: 'shoper-source-fulfillment-status-sync',
+      platformType: SHOPER_PLATFORM_TYPE,
+      requiredCapability: 'OrderSource',
+      jobType: 'marketplace.sourceFulfillment.statusSync',
+      cronExpression: '*/15 * * * *',
+      enabledEnvVar: 'OL_SHOPER_SOURCE_FULFILLMENT_STATUS_SYNC_SCHEDULER_ENABLED',
+      generatePayload: (_connection: Connection) => ({
+        schemaVersion: 1 as const,
+        limit: 100,
+        cursorKey: 'shoper.sourceFulfillmentStatus.scanOffset',
+        updatedSinceDays: 30,
+      }),
+      generateIdempotencyKey: (connection: Connection, timestamp: string): string =>
+        `marketplace:${connection.id}:shoper:source:fulfillment:status:sync:${timestamp}`,
     },
     {
       // Steady-state shop product-status reconcile (#1845), the same task
