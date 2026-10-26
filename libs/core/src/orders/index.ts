@@ -479,6 +479,7 @@ export { DuplicateRefundRecordException } from './domain/exceptions/duplicate-re
 export { RefundCurrencyMismatchException } from './domain/exceptions/refund-currency-mismatch.exception';
 export { decideRefundCeiling } from './domain/domain-services/refund-ceiling.domain-service';
 export type { RefundCeilingDisposition } from './domain/domain-services/refund-ceiling.domain-service';
+export { RefundRecordContendedException } from './domain/exceptions/refund-record-contended.exception';
 export { RefundCeilingExceededException } from './domain/exceptions/refund-ceiling-exceeded.exception';
 export { OrderChangeVocabularyError } from './domain/exceptions/order-change-vocabulary.error';
 export { TaxCoveragePageCeilingExceededError } from './domain/exceptions/tax-coverage-page-ceiling-exceeded.error';
