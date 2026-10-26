@@ -321,6 +321,8 @@ export class ProductRepository implements ProductRepositoryPort {
       // Source-platform product-level attributes (#1752). DB `null` → omit
       // (optional + non-null on the domain interface).
       features: entity.features ?? undefined,
+      // The master's category path. DB `null` -> omit (optional on the domain).
+      categoryBreadcrumb: entity.categoryBreadcrumb ?? undefined,
       // #2255 — the read surface for the tax-rate state. `taxRateReadAt` is what
       // separates "the shop has no rate" from "nobody has asked", so it travels
       // with the code rather than being inferred from its absence.
@@ -361,6 +363,7 @@ export class ProductRepository implements ProductRepositoryPort {
     // transient error, and every later offer would publish without it. `null`
     // (the master positively reported none) is written.
     if (product.gpsr !== undefined) entity.gpsr = product.gpsr;
+    entity.categoryBreadcrumb = product.categoryBreadcrumb ?? null;
     if (product.createdAt) entity.createdAt = product.createdAt;
     if (product.updatedAt) entity.updatedAt = product.updatedAt;
     // `taxRate` / `taxRateCountry` / `taxRateReadAt` are deliberately absent

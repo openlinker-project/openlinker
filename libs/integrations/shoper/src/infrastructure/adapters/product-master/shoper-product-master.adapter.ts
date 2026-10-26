@@ -214,9 +214,10 @@ export class ShoperProductMasterAdapter
    */
   async prefetchProducts(externalIds: readonly string[]): Promise<void> {
     const ids = [...new Set(externalIds.map(String))].filter((id) => SHOPER_ID.test(id));
+    let warmed = 0;
     try {
       for (let i = 0; i < ids.length; i += SHOPER_MAX_PAGE_SIZE) {
-        await this.prefetchChunk(ids.slice(i, i + SHOPER_MAX_PAGE_SIZE));
+        warmed += await this.prefetchChunk(ids.slice(i, i + SHOPER_MAX_PAGE_SIZE));
       }
     } catch (error) {
       this.logger.warn(
@@ -225,9 +226,21 @@ export class ShoperProductMasterAdapter
           `${error instanceof Error ? error.message : String(error)}`
       );
     }
+    if (warmed > 0) {
+      // The category directory serves every product's placement path and
+      // breadcrumb; warming it here keeps the per-product loop request-free.
+      // Best-effort: a failure leaves each product to read it on its own.
+      await this.getCategories().catch((error: unknown) =>
+        this.logger.warn(
+          `Shoper category directory could not be prefetched (connection: ${this.connection.id}): ` +
+            `${error instanceof Error ? error.message : String(error)}`
+        )
+      );
+    }
   }
 
-  private async prefetchChunk(chunk: readonly string[]): Promise<void> {
+  /** Warms one chunk; returns how many of its products the shop returned. */
+  private async prefetchChunk(chunk: readonly string[]): Promise<number> {
     const result = await fetchShoperPage<ShoperProduct>(this.client, '/products', {
       page: 1,
       limit: SHOPER_MAX_PAGE_SIZE,
@@ -251,12 +264,13 @@ export class ShoperProductMasterAdapter
       this.productReader.seed(String(product.product_id), product);
     }
     if (returned.length === 0) {
-      return;
+      return 0;
     }
     const stocks = await fetchShoperStocksForProducts(this.client, returned);
     for (const [id, rows] of stocks) {
       this.stockCache.set(id, rows);
     }
+    return returned.length;
   }
 
   async getProduct(productId: string): Promise<Product> {
@@ -271,10 +285,20 @@ export class ShoperProductMasterAdapter
     const data = await this.readProduct(externalId, productId);
     const ctx = await ctxRead;
     const product = mapShoperProduct(data, ctx);
-    const gallery = await this.readGallery(externalId, ctx.host);
-    // An empty or unreadable gallery keeps the main image the product row carries.
+    // Independent reads, and neither throws: each logs its own failure and
+    // falls back, so running them together changes no outcome.
+    const [gallery, categoryBreadcrumb] = await Promise.all([
+      this.readGallery(externalId, ctx.host),
+      this.readCategoryBreadcrumb(data),
+    ]);
     return this.withGpsr(
-      { ...product, images: gallery.length > 0 ? gallery : product.images, id: productId },
+      {
+        ...product,
+        // An empty or unreadable gallery keeps the main image the product row carries.
+        images: gallery.length > 0 ? gallery : product.images,
+        ...(categoryBreadcrumb === null ? {} : { categoryBreadcrumb }),
+        id: productId,
+      },
       data,
     );
   }
@@ -474,6 +498,18 @@ export class ShoperProductMasterAdapter
       return [];
     }
 
+    return (await this.categoryPath(externalId, anchor)) ?? [];
+  }
+
+  /**
+   * The categories from the root down to `anchor`, read off the memoised
+   * directory (so a batch page pays for it once), or `null` when the path
+   * cannot be completed: the anchor or an ancestor is missing from the
+   * directory (an unnamed category is left out of it), the tree does not place
+   * it, or the parents loop. Never a truncated path. Shared by the placement
+   * path (`getProductCategories`) and the category breadcrumb.
+   */
+  private async categoryPath(externalId: string, anchor: string): Promise<Category[] | null> {
     const directory = new Map((await this.getCategories()).map((c) => [c.id, c]));
     const path: Category[] = [];
     const seen = new Set<string>();
@@ -493,7 +529,7 @@ export class ShoperProductMasterAdapter
           `Shoper product ${externalId}: the path of category ${anchor} cannot be completed at ` +
             `${currentId} (${gap ?? 'unknown'}); returning no categories (connection: ${this.connection.id})`
         );
-        return [];
+        return null;
       }
       seen.add(currentId);
       path.unshift(category);
@@ -688,6 +724,40 @@ export class ShoperProductMasterAdapter
           `(${error instanceof Error ? error.message : String(error)}, connection: ${this.connection.id})`,
       );
       return [];
+    }
+  }
+
+  /**
+   * The path of the product's main category (`category_id`, else its first
+   * category), root to leaf, or `null` when it has none or it cannot be read.
+   *
+   * Walked by `categoryPath` over the same memoised directory the placement
+   * path reads, so a batch page reads the directory once rather than once per
+   * product. Best-effort like the gallery: a failure, including a tree Shoper
+   * answered unreadably, is logged and the product syncs without a path.
+   */
+  private async readCategoryBreadcrumb(
+    data: ShoperProduct,
+  ): Promise<{ id: string; name: string }[] | null> {
+    const main = data.category_id === null || data.category_id === undefined ? '' : String(data.category_id).trim();
+    const leafId =
+      main.length > 0 && main !== '0'
+        ? main
+        : Array.isArray(data.categories) && data.categories.length > 0
+          ? String(data.categories[0])
+          : null;
+    if (leafId === null) {
+      return null;
+    }
+    try {
+      const path = await this.categoryPath(String(data.product_id), leafId);
+      return path === null ? null : path.map((category) => ({ id: category.id, name: category.name }));
+    } catch (error) {
+      this.logger.warn(
+        `Shoper category path of product ${data.product_id} could not be read; syncing without it ` +
+          `(${error instanceof Error ? error.message : String(error)}, connection: ${this.connection.id})`,
+      );
+      return null;
     }
   }
 

@@ -479,3 +479,7 @@ connection to rotate the secret, since the old URL has already shown it to anyon
 - `getProduct` (what the sync reads) returns the whole gallery from `product-images`: one extra call per product,
   first 50 images, main image first, hidden images left out. If that read fails or is empty, the main image is kept.
   `getProducts` (the list read) still returns the main image only.
+- `getProduct` also reports `categoryBreadcrumb`, the path of the product's main category (`category_id`, else its
+  first category). It is walked over the same category directory `getProductCategories` reads (memoised per adapter,
+  and warmed by the bulk prefetch, so a batch page reads it once). A node with no name, a category the tree does
+  not place, or a failed read gives no path, never a partial one, and never fails the product read.

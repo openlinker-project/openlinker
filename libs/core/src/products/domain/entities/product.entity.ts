@@ -52,9 +52,10 @@ export interface Product {
    * Master-derived full category path (root→leaf), each node carrying the
    * source-shop category id + name (#1096, F3). A richer companion to the bare
    * `categories` ids: a destination that accepts shop-native taxonomy (Erli
-   * `source:"shop"`) emits this as a breadcrumb. Absent/unset ⇒ the master could
-   * not resolve a path (falls back to the bare-id `categories`). Not persisted on
-   * the products table.
+   * `source:"shop"`) emits this as a breadcrumb, and the product page shows it.
+   * Absent/unset ⇒ the master could not resolve a path (falls back to the
+   * bare-id `categories`). Persisted on the `products.categoryBreadcrumb` jsonb
+   * column.
    */
   categoryBreadcrumb?: { id: string; name: string }[];
   /**

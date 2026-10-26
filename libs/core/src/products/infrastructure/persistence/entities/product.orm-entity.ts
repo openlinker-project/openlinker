@@ -49,6 +49,13 @@ export class ProductOrmEntity {
   features!: { name: string; value: string }[] | null;
 
   /**
+   * The master's own category path, root to leaf (`{ id, name }[]`). Null until
+   * a product sync populates it, and for a master that does not report one.
+   */
+  @Column({ type: 'jsonb', nullable: true })
+  categoryBreadcrumb!: { id: string; name: string }[] | null;
+
+  /**
    * Neutral tax-rate code the ProductMaster stated for this product (#2054,
    * ADR-063) - percent-as-string (`'23'`) or an exemption code (`'zw'`).
    * Populated by product sync, never by a person.

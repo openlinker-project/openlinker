@@ -1,4 +1,5 @@
 import type { Connection, IdentifierMappingPort } from '@openlinker/core/identifier-mapping';
+import { Logger } from '@openlinker/shared/logging';
 
 import { ShoperNetworkError } from '../../../../domain/exceptions/shoper-network.error';
 import { ShoperNotMappedException } from '../../../../domain/exceptions/shoper-not-mapped.exception';
@@ -275,6 +276,142 @@ describe('ShoperProductMasterAdapter', () => {
       expect(imageCall?.[1]).toEqual(expect.objectContaining({ filters: '{"product_id":93}' }));
     });
 
+    it('should report the main category path, reading only the names of its nodes', async () => {
+      const { adapter, get } = setup();
+      respond(get, {
+        '/products/93': buildProduct({ category_id: '38', categories: [38] }),
+        '/categories-tree': [{ id: 2, children: [{ id: 38, children: [] }] }, { id: 5, children: [] }],
+        '/categories': envelope([
+          { category_id: '2', translations: { pl_PL: { name: 'Dom i kuchnia' } } },
+          { category_id: '38', translations: { pl_PL: { name: 'Ceramika' } } },
+        ]),
+      });
+
+      const product = await adapter.getProduct('ol_product_1');
+
+      expect(product.categoryBreadcrumb).toEqual([
+        { id: '2', name: 'Dom i kuchnia' },
+        { id: '38', name: 'Ceramika' },
+      ]);
+      // The names come from the same memoised directory the placement path reads.
+      expect(get.mock.calls.filter(([path]) => path === '/categories-tree')).toHaveLength(1);
+    });
+
+    it('should read the category tree once for several products on one adapter', async () => {
+      const { adapter, get } = setup();
+      respond(get, {
+        '/products/93': buildProduct({ category_id: '38', categories: [38] }),
+        '/categories-tree': [{ id: 2, children: [{ id: 38, children: [] }] }],
+        '/categories': envelope([
+          { category_id: '2', translations: { pl_PL: { name: 'Dom i kuchnia' } } },
+          { category_id: '38', translations: { pl_PL: { name: 'Ceramika' } } },
+        ]),
+      });
+
+      const first = await adapter.getProduct('ol_product_1');
+      const second = await adapter.getProduct('ol_product_1');
+
+      expect(first.categoryBreadcrumb).toHaveLength(2);
+      expect(second.categoryBreadcrumb).toHaveLength(2);
+      const treeReads = get.mock.calls.filter(([path]) => path === '/categories-tree');
+      expect(treeReads).toHaveLength(1);
+    });
+
+    it('should report an unreadable tree as a failed read, not as a category missing from it', async () => {
+      const warn = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+      const { adapter, get } = setup();
+      const routes: Record<string, unknown> = {
+        '/products/93': buildProduct({ category_id: '38', categories: [38] }),
+        '/categories-tree': { oops: true },
+        '/categories': envelope([
+          { category_id: '2', translations: { pl_PL: { name: 'Dom i kuchnia' } } },
+          { category_id: '38', translations: { pl_PL: { name: 'Ceramika' } } },
+        ]),
+      };
+      respond(get, routes);
+
+      const product = await adapter.getProduct('ol_product_1');
+
+      expect(product).not.toHaveProperty('categoryBreadcrumb');
+      const messages = warn.mock.calls.map(([message]) => String(message));
+      expect(
+        messages.some((m) => m.includes('category path of product 93 could not be read'))
+      ).toBe(true);
+      expect(messages.some((m) => m.includes('is not in the category tree'))).toBe(false);
+
+      // The failed read is not kept: the next product reads the tree again.
+      routes['/categories-tree'] = [{ id: 2, children: [{ id: 38, children: [] }] }];
+      const retried = await adapter.getProduct('ol_product_1');
+
+      expect(retried.categoryBreadcrumb).toEqual([
+        { id: '2', name: 'Dom i kuchnia' },
+        { id: '38', name: 'Ceramika' },
+      ]);
+      warn.mockRestore();
+    });
+
+    it('should report no path when a node on it has no name, rather than a path with a gap', async () => {
+      const { adapter, get } = setup();
+      respond(get, {
+        '/products/93': buildProduct({ category_id: '38', categories: [38] }),
+        '/categories-tree': [{ id: 2, children: [{ id: 38, children: [] }] }],
+        '/categories': envelope([
+          { category_id: '2', translations: { pl_PL: { name: '' } } },
+          { category_id: '38', translations: { pl_PL: { name: 'Ceramika' } } },
+        ]),
+      });
+
+      const product = await adapter.getProduct('ol_product_1');
+
+      expect(product).not.toHaveProperty('categoryBreadcrumb');
+    });
+
+    it('should report no path for a category the tree does not place', async () => {
+      const { adapter, get } = setup();
+      respond(get, {
+        '/products/93': buildProduct({ category_id: '38', categories: [38] }),
+        '/categories-tree': [{ id: 2, children: [] }],
+        '/categories': envelope([
+          { category_id: '2', translations: { pl_PL: { name: 'Dom i kuchnia' } } },
+          { category_id: '38', translations: { pl_PL: { name: 'Ceramika' } } },
+        ]),
+      });
+
+      const product = await adapter.getProduct('ol_product_1');
+
+      expect(product).not.toHaveProperty('categoryBreadcrumb');
+    });
+
+    it('should anchor the path on the first assigned category when Shoper names no primary one', async () => {
+      const { adapter, get } = setup();
+      respond(get, {
+        '/products/93': buildProduct({ category_id: null, categories: [38, 5] }),
+        '/categories-tree': [{ id: 2, children: [{ id: 38, children: [] }] }, { id: 5, children: [] }],
+        '/categories': envelope([
+          { category_id: '2', translations: { pl_PL: { name: 'Dom i kuchnia' } } },
+          { category_id: '38', translations: { pl_PL: { name: 'Ceramika' } } },
+          { category_id: '5', translations: { pl_PL: { name: 'Ogród' } } },
+        ]),
+      });
+
+      const product = await adapter.getProduct('ol_product_1');
+
+      expect(product.categoryBreadcrumb).toEqual([
+        { id: '2', name: 'Dom i kuchnia' },
+        { id: '38', name: 'Ceramika' },
+      ]);
+    });
+
+    it('should still return the product, without a path, when the categories cannot be read', async () => {
+      const { adapter, get } = setup();
+      respond(get, { '/products/93': buildProduct() });
+
+      const product = await adapter.getProduct('ol_product_1');
+
+      expect(product.id).toBe('ol_product_1');
+      expect(product).not.toHaveProperty('categoryBreadcrumb');
+    });
+
     it('should keep the main image when the gallery cannot be read', async () => {
       const { adapter, get } = setup();
       respond(get, { '/products/93': buildProduct() });
@@ -349,10 +486,11 @@ describe('ShoperProductMasterAdapter', () => {
       const product = await adapter.getProduct('ol_product_1');
 
       expect(product.gpsr).toBeNull();
-      expect(get.mock.calls.map((call: unknown[]) => String(call[0]))).toEqual([
-        '/products/93',
-        '/product-images',
-      ]);
+      expect(
+        get.mock.calls
+          .map((call: unknown[]) => String(call[0]))
+          .filter((path) => !path.startsWith('/categories')),
+      ).toEqual(['/products/93', '/product-images']);
     });
 
     it('should leave gpsr off the product, not fail it, when the registry read fails', async () => {
@@ -1365,6 +1503,12 @@ describe('ShoperProductMasterAdapter', () => {
           const list = rows.slice((page - 1) * 50, page * 50);
           const pages = Math.max(1, Math.ceil(rows.length / 50));
           return Promise.resolve({ status: 200, data: envelope(list, { pages, page }) });
+        }
+        if (path === '/categories-tree') {
+          return Promise.resolve({ status: 200, data: [] });
+        }
+        if (path === '/categories') {
+          return Promise.resolve({ status: 200, data: envelope([]) });
         }
         if (path === '/product-stocks') {
           const id = String(query['filters[product_id]']);
