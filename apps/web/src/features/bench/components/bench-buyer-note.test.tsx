@@ -58,9 +58,10 @@ function renderNote(
   p: BenchParcel,
   acknowledge = vi.fn<(workId: string) => Promise<BenchBuyerNoteAcknowledgementResult>>(),
   canAcknowledge = true,
+  textNotStored = false,
 ) {
   const api = createMockApiClient({ bench: { acknowledgeBuyerNote: acknowledge } });
-  const utils = renderWithProviders(<BenchBuyerNote parcel={p} canAcknowledge={canAcknowledge} />, {
+  const utils = renderWithProviders(<BenchBuyerNote parcel={p} canAcknowledge={canAcknowledge} textNotStored={textNotStored} />, {
     apiClient: api,
     sessionAdapter: createAuthenticatedSessionAdapter({
       id: 'user_packer',
@@ -153,6 +154,7 @@ describe('BenchBuyerNote (#3539)', () => {
   });
 
   it('should collapse to "Read by you at HH:MM" with a way to show the whole note once acknowledged', async () => {
+    const restore = mockClampOverflow('bench-buyer-note-text');
     const at = new Date(2026, 8, 25, 14, 31).toISOString();
     renderNote(
       parcel({ buyerNoteAcknowledgedAt: at, buyerNoteAcknowledgedByUserId: 'user_packer', buyerNote: LONG }),
@@ -164,6 +166,7 @@ describe('BenchBuyerNote (#3539)', () => {
     expect(screen.queryByRole('button', { name: 'I have read the note' })).not.toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Show the whole note' }));
     expect(screen.getByRole('button', { name: 'Show less' })).toBeInTheDocument();
+    restore();
   });
 
   it('should keep the note open and say so when the save fails', async () => {
@@ -247,5 +250,44 @@ describe('BenchBuyerNote (#3539)', () => {
     // The other packer's reading does NOT satisfy this box.
     expect(screen.getByTestId('bench-buyer-note')).toHaveAttribute('data-state', 'unread');
     expect(screen.getByRole('button', { name: 'I have read the note' })).toBeEnabled();
+  });
+
+  it('should say the text is not stored and still offer the acknowledgement (B-12)', async () => {
+    const acknowledge = vi
+      .fn<(workId: string) => Promise<BenchBuyerNoteAcknowledgementResult>>()
+      .mockResolvedValue({ outcome: 'acknowledged', reason: null, parcel: parcel() });
+    renderNote(parcel({ buyerNote: null }), acknowledge, true, true);
+    const user = userEvent.setup();
+
+    expect(screen.getByTestId('bench-buyer-note-text-not-stored')).toHaveTextContent(
+      'does not store its text',
+    );
+    await user.click(screen.getByRole('button', { name: 'I have read the note' }));
+    await waitFor(() => {
+      expect(acknowledge).toHaveBeenCalledWith('w-1');
+    });
+  });
+
+  it('should not offer "Show the whole note" on the read view when nothing is clamped (B-14)', () => {
+    renderNote(
+      parcel({
+        buyerNoteAcknowledgedAt: new Date(2026, 8, 25, 14, 31).toISOString(),
+        buyerNoteAcknowledgedByUserId: 'user_packer',
+      }),
+    );
+
+    expect(screen.queryByTestId('bench-buyer-note-expand')).not.toBeInTheDocument();
+  });
+
+  it('should say the box was cancelled when the server refuses with work-cancelled (B-12)', async () => {
+    const acknowledge = vi
+      .fn<(workId: string) => Promise<BenchBuyerNoteAcknowledgementResult>>()
+      .mockResolvedValue({ outcome: 'refused', reason: 'work-cancelled', parcel: parcel() });
+    renderNote(parcel(), acknowledge);
+    const user = userEvent.setup();
+
+    await user.click(screen.getByRole('button', { name: 'I have read the note' }));
+
+    expect(await screen.findByTestId('bench-buyer-note-error')).toHaveTextContent(/cancelled/);
   });
 });
