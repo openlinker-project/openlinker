@@ -95,7 +95,7 @@ describe('FulfillmentStatusSyncService', () => {
       create: jest.fn(),
       findMany: jest.fn(),
       findById: jest.fn(),
-      findByOrderId: jest.fn(),
+      findByOrderId: jest.fn().mockResolvedValue([]),
       findActiveByOrderId: jest.fn(),
       findByProviderShipmentId: jest.fn(),
       findBranchOneByOrderAndConnection: jest.fn().mockResolvedValue(null),
@@ -502,6 +502,70 @@ describe('FulfillmentStatusSyncService', () => {
       const result = await service.sync(PS, { limit: 100 });
 
       expect(result).toMatchObject({ created: 1, failed: 0 });
+    });
+  });
+
+  describe('echo guard - a parcel the SOURCE reported (ADR-012 amendment)', () => {
+    const dispatched = {
+      status: FULFILLMENT_STATUS.Dispatched,
+      trackingNumber: 'SRC-TRK-1',
+      deliveredAt: null,
+    };
+
+    it('should not relay back to the source a parcel the source itself reported', async () => {
+      // The source-side read-back recorded SRC-TRK-1 on a source-observed row
+      // and relayed it here; the destination now reports it as shipped.
+      shipments.findByOrderId.mockResolvedValue([
+        makeBranchOneShipment({ id: 'ol_shipment_src', connectionId: ALLEGRO, trackingNumber: 'SRC-TRK-1' }),
+      ]);
+      orderRecords.findMany.mockResolvedValue({ items: [makeOrderRecord()], total: 1 });
+      getFulfillmentStatus.mockResolvedValue(dispatched);
+
+      const result = await service.sync(PS, { limit: 100 });
+
+      // The destination's own row is still projected - only the echo is withheld.
+      expect(result.created).toBe(1);
+      expect(shipments.findByOrderId).toHaveBeenCalledWith('ol_order_1', 'outbound');
+      expect(relay.relay).not.toHaveBeenCalled();
+    });
+
+    it('should still relay a DIFFERENT parcel than the one the source reported', async () => {
+      shipments.findByOrderId.mockResolvedValue([
+        makeBranchOneShipment({ id: 'ol_shipment_src', connectionId: ALLEGRO, trackingNumber: 'OTHER-TRK' }),
+      ]);
+      orderRecords.findMany.mockResolvedValue({ items: [makeOrderRecord()], total: 1 });
+      getFulfillmentStatus.mockResolvedValue(dispatched);
+
+      await service.sync(PS, { limit: 100 });
+
+      expect(relay.relay).toHaveBeenCalledTimes(1);
+    });
+
+    it('should not read a source-connection row WITH a provider id as source-observed', async () => {
+      // A source_brokered label (Allegro Delivery) sits on the source connection
+      // too, but it is OL's own label, never the source's report.
+      const brokeredLabel: Shipment = {
+        ...makeBranchOneShipment({ connectionId: ALLEGRO, trackingNumber: 'SRC-TRK-1' }),
+        providerShipmentId: 'alg-1',
+      } as Shipment;
+      shipments.findByOrderId.mockResolvedValue([brokeredLabel]);
+      orderRecords.findMany.mockResolvedValue({ items: [makeOrderRecord()], total: 1 });
+      getFulfillmentStatus.mockResolvedValue(dispatched);
+
+      await service.sync(PS, { limit: 100 });
+
+      expect(relay.relay).toHaveBeenCalledTimes(1);
+    });
+
+    it('should relay as before when the lookup fails (fails open to the pre-guard behaviour)', async () => {
+      shipments.findByOrderId.mockRejectedValue(new Error('db down'));
+      orderRecords.findMany.mockResolvedValue({ items: [makeOrderRecord()], total: 1 });
+      getFulfillmentStatus.mockResolvedValue(dispatched);
+
+      const result = await service.sync(PS, { limit: 100 });
+
+      expect(result.failed).toBe(0);
+      expect(relay.relay).toHaveBeenCalledTimes(1);
     });
   });
 

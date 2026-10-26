@@ -36,6 +36,11 @@
  * **first** transition into `cancelled` relays the shop's cancellation the same
  * way (#1170); a marketplace refusal is surfaced as a logged `rejected`.
  *
+ * The dispatch relay is withheld when the order already carries a
+ * SOURCE-observed row for the same parcel (`SourceFulfillmentStatusSyncService`,
+ * ADR-012 amendment): there the source shipped it, OL relayed it to this
+ * destination, and the destination reporting it back is that relay's echo.
+ *
  * @module libs/core/src/shipping/application/services
  * @implements {IFulfillmentStatusSyncService}
  * @see {@link IOrderLifecycleRelayService} for the source writeback path
@@ -331,7 +336,7 @@ export class FulfillmentStatusSyncService implements IFulfillmentStatusSyncServi
           // #1160: a branch-1 row born dispatched/delivered is the shop's first
           // shipped signal — relay mark-sent + tracking to the order's source.
           if (isInitialDispatch(snapshot.status)) {
-            await this.relayDispatchedToSource(record.internalOrderId, connectionId, snapshot);
+            await this.relayDispatchedToSource(record, connectionId, snapshot);
           }
           // #1170: a branch-1 row born cancelled is the shop's first cancel
           // signal — relay the cancellation to the order's source marketplace.
@@ -372,7 +377,7 @@ export class FulfillmentStatusSyncService implements IFulfillmentStatusSyncServi
             // the transition-gate (diffPatch returns empty on unchanged status)
             // makes this at-most-once across re-polls — no separate ledger.
             if (isFirstDispatchTransition(existing, patch)) {
-              await this.relayDispatchedToSource(record.internalOrderId, connectionId, snapshot);
+              await this.relayDispatchedToSource(record, connectionId, snapshot);
             }
             // #1170: relay only on the FIRST transition into cancelled — same
             // transition-gate at-most-once guarantee as the dispatch relay.
@@ -555,10 +560,19 @@ export class FulfillmentStatusSyncService implements IFulfillmentStatusSyncServi
    * sync loop. Durable retry / per-destination notify-state is deferred (#861).
    */
   private async relayDispatchedToSource(
-    internalOrderId: string,
+    record: OrderRecord,
     originConnectionId: string,
     snapshot: FulfillmentStatusSnapshot,
   ): Promise<void> {
+    const internalOrderId = record.internalOrderId;
+    if (await this.isEchoOfSourceObservedDispatch(record, snapshot.trackingNumber)) {
+      this.logger.debug(
+        `Branch-1 dispatch relay suppressed for order ${internalOrderId} (origin ` +
+          `${originConnectionId}): the source itself reported this parcel, so telling it ` +
+          `again would echo OL's own relay back (ADR-012 amendment).`,
+      );
+      return;
+    }
     try {
       await this.orderLifecycleRelay.relay({
         internalOrderId,
@@ -570,6 +584,41 @@ export class FulfillmentStatusSyncService implements IFulfillmentStatusSyncServi
         `Branch-1 dispatch relay failed for order ${internalOrderId} ` +
           `(origin ${originConnectionId}): ${this.message(error)}`,
       );
+    }
+  }
+
+  /**
+   * Whether this destination dispatch is the source's own, echoed back.
+   *
+   * The source-side read-back (`SourceFulfillmentStatusSyncService`) records a
+   * parcel a third party shipped in the SOURCE as a source-observed row - the
+   * source connection with no provider id - and relays it to this destination.
+   * The destination then reports that same parcel as shipped, and relaying it
+   * back to the source would write a second parcel there. So when the order
+   * carries a source-observed row for this tracking number (or this snapshot
+   * carries none), the source already knows and is not told again.
+   *
+   * Best-effort in the safe direction: a failed lookup answers `false`, so the
+   * relay runs exactly as it did before the source-side read-back existed.
+   */
+  private async isEchoOfSourceObservedDispatch(
+    record: OrderRecord,
+    trackingNumber: string | null,
+  ): Promise<boolean> {
+    try {
+      const rows = await this.shipments.findByOrderId(record.internalOrderId, 'outbound');
+      return rows.some(
+        (row) =>
+          row.connectionId === record.sourceConnectionId &&
+          row.providerShipmentId === null &&
+          (trackingNumber === null || row.trackingNumber === trackingNumber),
+      );
+    } catch (error) {
+      this.logger.warn(
+        `Could not check order ${record.internalOrderId} for a source-observed shipment; ` +
+          `relaying as usual: ${this.message(error)}`,
+      );
+      return false;
     }
   }
 
