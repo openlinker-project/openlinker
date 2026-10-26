@@ -488,20 +488,33 @@ The change was driven by two independent reviews (an OMS domain review and a com
 concluding that the **Ambiguous** row's question is both unanswerable and unnecessary, and it is
 recorded here rather than left to be discovered from the mockup.
 
-**Unanswerable.** The operator holds a parcel. `InvoiceLine` is `{name, quantity, unitPriceGross,
-taxRate, unit?}` — no id, no SKU — and on an ambiguous line both candidates carry the same product
-name. The buyer never chose a line either. Asking the operator to pick is asking them to invent an
-answer, which is the opposite of "shown rather than resolved".
+**Unanswerable.** The operator holds a parcel. When the picker was specified, `InvoiceLine` was
+`{name, quantity, unitPriceGross, taxRate, unit?}` — no id, no SKU — and on an ambiguous line both
+candidates carry the same product name. The buyer never chose a line either. Asking the operator to
+pick is asking them to invent an answer, which is the opposite of "shown rather than resolved".
+(`InvoiceLine` has since gained an optional `orderLineId`, #3312, which is what lets the matcher
+answer the question itself instead of asking it.)
 
 **Unnecessary.** OpenLinker builds that invoice itself from the order's own items, in order
 (`order-to-issue-invoice-command.mapper.ts:113`), so invoice line *N* is `order.items[N-1]`; the
 return line already arrives carrying `offerId`, `sku` and `unitPrice`. The join exists at ingestion
 and was simply never persisted — `ReturnLine.resolvedOrderLineId` was hardcoded `null`.
-**#3171 / #3172 resolved it**: the field is populated at ingestion today and is trustworthy. What
-remains a hard prerequisite for this section is narrowing `return-correction-matching
-.domain-service.ts` onto that field instead of matching by product name — until it is narrowed, the
-matcher still emits `status: 'ambiguous'` with a `candidates` list, a shape this grid cannot render,
-and no frontend sub-issue of #3087 should start.
+**#3171 / #3172 resolved it**: the field is populated at ingestion today and is trustworthy.
+
+**The matcher no longer blocks this section (#3312, merged 2026-09-25 as #3313).**
+`return-correction-matching.domain-service.ts` now matches id-first: it looks up
+`ReturnLine.resolvedOrderLineId` against `InvoiceLine.orderLineId` and falls back to the product
+name only when that join is unresolved, the invoice predates `orderLineId`, or the id is not on this
+invoice. `status: 'ambiguous'` is retired as a live outcome. It stays in
+`ReturnCorrectionLineStatusValues` so existing code keeps compiling, but the matcher never produces it.
+The condition it used to describe - more than one invoice line could be the one a returned item came
+from - now arrives as `status: 'no-match'` with `noMatchReason: 'ambiguous-invoice-line'`, and it
+still counts as correctable, so the proposal is still `'proposed'`. The grid can render that: a line
+the matcher cannot place on exactly one invoice line is still a line on the invoice, so it still has
+a row (see the ⚠ block below). Nothing in the matcher gates the frontend sub-issues of #3087 any more.
+Most of them have in fact shipped on `main` (#3088-#3090 and #3092-#3095, closed 2026-09-25), in the
+earlier per-returned-line shape plus a first `CorrectionLineGrid`; the mockup is the design that work
+now moves towards.
 
 **What replaces it.** A grid over the **invoice's own lines**, in document order — a recessed
 read-only *as invoiced* column, an editable *after correction* column carrying both the target
@@ -510,7 +523,8 @@ quantity and the target unit price (`CorrectionLine` has always had `newQuantity
 unexpressible), and a computed *credit*. A row's position **is** the line number a correction
 addresses, so nothing is ever asked. Alongside it, a reconciliation against the refund the channel
 has already paid — OpenLinker holds both figures and compares them nowhere today, and the first
-thing that comparison catches is delivery cost, which a name-join can never match.
+thing that comparison catches is delivery cost, which the matcher can never match: a delivery line
+carries no `orderLineId` and no product name a returned item could share (#3290 tracks crediting it).
 
 **What does NOT change.**
 
@@ -525,9 +539,18 @@ thing that comparison catches is delivery cost, which a name-join can never matc
   *"Came back, but not on this invoice"* (`body[data-state]="credit-unmatched"`) — carrying
   `no-line-by-name`, `no-line-name` and `quantity-exceeds-invoiced` with the reason stated per item.
   `disposition-not-confirmed` keeps its row in the grid, because that item *is* on the invoice.
+  `ambiguous-invoice-line` (#3312, the fifth reason) is a grid row too, for the same reason: the item
+  is on the invoice, OpenLinker just cannot tell which of its lines. It renders as a **highlighted,
+  non-blocking row** (`body[data-state]="credit-ambiguous-line"`): the candidate rows the matcher
+  returns are marked, nothing is pre-filled on them, and the reason is stated in the server's own
+  words (*"This return could not be matched to exactly one invoice line automatically. Check the
+  invoice by hand before crediting it."*). It is never a picker. The operator enters the quantity on
+  the line the invoice shows, in the same grid cells every other row uses, and the issue action stays
+  available.
 - **The Hard AC survives in its intent**, restated for the new shape: a draft with nothing needing
-  attention and one carrying either a blocked line or unmatched returned items must be visibly
-  different **before** the operator reaches the confirm button, not in a dialog after it.
+  attention and one carrying a blocked line, an `ambiguous-invoice-line` row or unmatched returned
+  items must be visibly different **before** the operator reaches the confirm button, not in a dialog
+  after it.
 
 ### 5.9 Loading / empty / error, detail
 

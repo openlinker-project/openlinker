@@ -12,26 +12,33 @@
    revision that asked the operator to pick which of two identical invoice
    lines a returned item belonged to. That question was dropped on the finding
    that it is BOTH unanswerable and unnecessary: the operator holds a parcel,
-   `InvoiceLine` carries no id and no SKU, and both candidates carry the same
-   product name — while OpenLinker builds the invoice itself from `order.items`
+   `InvoiceLine` carried no id and no SKU, and both candidates carry the same
+   product name - while OpenLinker builds the invoice itself from `order.items`
    in order (`order-to-issue-invoice-command.mapper.ts:113`), so the join is
    already in hand at ingestion and never had to be asked for.
 
    Two things follow, and both are load-bearing rather than housekeeping.
 
-   THE JOIN HAS SHIPPED; THE MATCHER NARROWING HAS NOT, AND THAT IS THE REAL
-   PREREQUISITE. #3171/#3172 resolved `ReturnLine.resolvedOrderLineId` at
-   ingestion — `return-order-line-resolver.service.ts` runs on every
-   `marketplace.return.sync`, and the field is trustworthy today. What still
-   gates every frontend sub-issue of #3087 is that `return-correction-matching
-   .domain-service.ts` has not been narrowed onto it: the matcher still joins
-   by product name and still emits `status: 'ambiguous'` with a `candidates`
-   list, which this grid has no row shape for. Until that narrowing lands, a
-   `'proposed'` outcome can carry a line this sheet cannot render. Three
-   further reads this sheet draws do not exist at all — the refund figure
-   beside the credit, per-line already-credited quantities, and the shipping
-   decision; each is named where it is used, in the "backend work that does
-   not exist yet" note further down. Nothing here claims they are built.
+   THE JOIN AND THE MATCHER NARROWING HAVE BOTH SHIPPED. #3171/#3172 resolved
+   `ReturnLine.resolvedOrderLineId` at ingestion, and #3312 (merged
+   2026-09-25 as #3313) narrowed `return-correction-matching
+   .domain-service.ts` onto it: the matcher looks the return line up by
+   `InvoiceLine.orderLineId` first and falls back to the product name only
+   when that join is unresolved, the invoice predates `orderLineId`, or the
+   id is not on this invoice. `status: 'ambiguous'` is retired as a live
+   outcome (the union still declares it; the rule never produces it). The
+   same condition now arrives as `status: 'no-match'` with
+   `noMatchReason: 'ambiguous-invoice-line'`, still counted as correctable,
+   and this grid renders it as a highlighted, non-blocking row - state
+   `credit-ambiguous-line`. Nothing in the matcher gates the frontend
+   sub-issues of #3087. Most of them have already shipped on `main`
+   (PRs #3376-#3379: the per-returned-line panel and a first
+   `CorrectionLineGrid` in features/invoicing); this file is the design that
+   work moves towards. Three reads this sheet draws still do not exist - the
+   refund figure beside the credit, per-line already-credited quantities, and
+   the shipping decision - and each is named where it is used, in the
+   "backend work that does not exist yet" note further down. Nothing here
+   claims they are built.
 
    SPEC § 5.8 IS AMENDED, NOT IGNORED.
    `docs/specs/product-spec-oms-returns-operator-ux.md` § 5.8 described the
@@ -974,6 +981,13 @@ input:disabled, select:disabled { background: var(--bg-surface-muted); color: va
 .credit-unmatched__item-name { font-size: 0.8125rem; color: var(--text-primary); }
 .credit-unmatched__reason { font-size: 0.75rem; color: var(--text-muted); }
 .credit-row__note { display: block; font-size: 0.75rem; color: var(--text-muted); margin-top: 2px; }
+/* `ambiguous-invoice-line` (#3312): a candidate row the matcher could not
+   choose between. Tinted because someone has to act on it (#2507), but with
+   the warning tone, not error: nothing is blocked and the issue action stays. */
+.credit-row--ambiguous td { background: var(--status-warning-soft); }
+.credit-row--ambiguous td:first-child { box-shadow: inset 3px 0 0 var(--status-warning); }
+.credit-row--ambiguous .credit-cell--after { background: var(--bg-surface); }
+.credit-row__note--ambiguous { color: var(--status-warning-fg); }
 /* Two inputs, one cell: the quantity and the unit price that SHOULD be on the
    invoice. Both editable, because a credit can come from fewer units, a lower
    price, or both. */
@@ -1544,6 +1558,8 @@ input:disabled, select:disabled { background: var(--bg-surface-muted); color: va
           <button type="button" class="switch-opt" data-credit="credit-lines-unauthoritative">Lines don't match</button>
           <button type="button" class="switch-opt" data-credit="credit-issued">Already issued</button>
           <button type="button" class="switch-opt" data-credit="credit-unmatched">Some items not on the invoice</button>
+          <button type="button" class="switch-opt" data-credit="credit-ambiguous-line">Can't tell which line</button>
+          <button type="button" class="switch-opt" data-credit="credit-nothing-correctable">Nothing to credit</button>
           <button type="button" class="switch-opt" data-credit="credit-read-only">Viewer account</button>
         </div>
         <p class="switch-row__note" data-role="credit-row-note">Swaps what the credit note panel returns.</p>
@@ -1771,6 +1787,20 @@ input:disabled, select:disabled { background: var(--bg-surface-muted); color: va
                     </dd>
                   </dl>
 
+                  <!-- `noMatchReason: 'ambiguous-invoice-line'` (#3312). The item IS on
+                       the invoice, so it is a grid concern, not an unmatched-block item:
+                       the candidate rows the matcher returns are marked below and nothing
+                       is pre-filled on them. The sentence is the server's own
+                       `describeCorrectionNoMatchReason` copy, verbatim. Never a picker:
+                       the operator types the quantity into the ordinary grid cells, and
+                       the issue action stays available. -->
+                  <div class="alert alert--warning" role="status" data-role="ambiguous" hidden>
+                    <div class="alert__content">
+                      <p class="alert__title"><b>Wireless earbuds</b> <span class="mono-text text-muted">EARB-01</span> &middot; 1 unit came back</p>
+                      <div class="alert__description"><p>This return could not be matched to exactly one invoice line automatically. Check the invoice by hand before crediting it.</p></div>
+                    </div>
+                  </div>
+
                   <div class="data-table__container">
                     <table class="data-table credit-grid">
                       <caption class="sr-only">Invoice lines, in the order they appear on the issued document</caption>
@@ -1784,9 +1814,12 @@ input:disabled, select:disabled { background: var(--bg-surface-muted); color: va
                         </tr>
                       </thead>
                       <tbody>
-                        <tr data-line="1" data-qty="2" data-unit="189" data-disposed="1">
+                        <tr data-line="1" data-qty="2" data-unit="189" data-disposed="1" data-prefill="1" data-ambiguous-candidate="1">
                           <td class="credit-grid__lp">1</td>
-                          <td>Wireless earbuds</td>
+                          <td>
+                            Wireless earbuds
+                            <span class="credit-row__note credit-row__note--ambiguous" data-role="ambiguous-note" hidden>The returned unit could belong to this line or to line 2. Not filled in.</span>
+                          </td>
                           <td class="credit-cell--invoiced data-table__cell--right">
                             <span class="data-table__stack">
                               <span class="tabular">2 &times; 189,00</span>
@@ -1811,9 +1844,12 @@ input:disabled, select:disabled { background: var(--bg-surface-muted); color: va
                           </td>
                         </tr>
 
-                        <tr class="credit-row--untouched" data-line="2" data-qty="1" data-unit="179" data-disposed="0">
+                        <tr class="credit-row--untouched" data-line="2" data-qty="1" data-unit="179" data-disposed="0" data-ambiguous-candidate="1">
                           <td class="credit-grid__lp">2</td>
-                          <td>Wireless earbuds</td>
+                          <td>
+                            Wireless earbuds
+                            <span class="credit-row__note credit-row__note--ambiguous" data-role="ambiguous-note" hidden>The returned unit could belong to this line or to line 1. Not filled in.</span>
+                          </td>
                           <td class="credit-cell--invoiced data-table__cell--right">
                             <span class="data-table__stack">
                               <span class="tabular">1 &times; 179,00</span>
@@ -1896,10 +1932,12 @@ input:disabled, select:disabled { background: var(--bg-surface-muted); color: va
                   <!-- Returned items that resolve to NO line on this invoice. The grid
                        above iterates the INVOICE's own lines, so an item that matches
                        none of them has no row in it — and § 22 Returns says in those
-                       words that a no-match line must never silently vanish. This is
-                       where the three remaining `ReturnCorrectionNoMatchReason` values
-                       land; the fourth, `disposition-not-confirmed`, keeps its row in
-                       the grid, because that item IS on the invoice. -->
+                       words that a no-match line must never silently vanish. Three of
+                       the five `ReturnCorrectionNoMatchReason` values land here. The
+                       other two keep a row in the grid, because those items ARE on the
+                       invoice: `disposition-not-confirmed` (row 4) and
+                       `ambiguous-invoice-line` (the marked candidate rows, state
+                       `credit-ambiguous-line`). -->
                   <section class="credit-unmatched" data-role="unmatched" hidden>
                     <h3 class="credit-unmatched__title">Came back, but not on this invoice</h3>
                     <p class="text-muted credit-unmatched__lead">
@@ -1917,7 +1955,7 @@ input:disabled, select:disabled { background: var(--bg-surface-muted); color: va
                       <li class="credit-unmatched__item" data-reason="no-line-name">
                         <span class="credit-unmatched__item-name"><span class="text-muted">Item with no name</span></span>
                         <span class="mono-text text-muted">&mdash;</span>
-                        <span class="credit-unmatched__reason">This returned line carries no product name, and a name is the only thing the invoice line offers to match on.</span>
+                        <span class="credit-unmatched__reason">This returned line carries no product name, so OpenLinker cannot check it against a line on this invoice. Issue the correction by hand on the invoice if it belongs there.</span>
                       </li>
                       <li class="credit-unmatched__item" data-reason="quantity-exceeds-invoiced">
                         <span class="credit-unmatched__item-name">Running shoes &mdash; size 42</span>
@@ -2227,7 +2265,8 @@ input:disabled, select:disabled { background: var(--bg-surface-muted); color: va
       <b>1. A grid over the invoice's own lines &mdash; not a card per returned line, and no picker.</b>
       An earlier revision of this sheet asked the operator to choose which of two identical invoice lines a
       returned item belonged to. That question is unanswerable: the operator holds a parcel, both candidate
-      lines carry the same product name, and <b>InvoiceLine</b> has no id and no SKU. It was also
+      lines carry the same product name, and <b>InvoiceLine</b> had no id and no SKU when it was asked
+      (it has carried <b>orderLineId</b> since #3312, which is what lets the matcher answer it instead). It was also
       unnecessary. OpenLinker builds the invoice itself from <b>order.items</b> in order
       (<b>order-to-issue-invoice-command.mapper.ts:113</b>), and <b>GET /invoices/:id/content</b> (#2076)
       returns those lines index-aligned with the very array a correction addresses &mdash; so a row's
@@ -2247,8 +2286,8 @@ input:disabled, select:disabled { background: var(--bg-surface-muted); color: va
       The question worth the operator's attention is therefore not &ldquo;which line&rdquo; but
       &ldquo;does this credit note match what the buyer actually got back&rdquo;. OpenLinker holds both
       figures and compares them nowhere today. That comparison is the loudest thing on the screen here,
-      and the first thing it catches is delivery cost &mdash; which the current matcher can never credit,
-      because it joins product names and a delivery line is not a product.
+      and the first thing it catches is delivery cost, which the matcher can never credit: a delivery
+      line carries no <b>orderLineId</b> and no product name a returned item could share (#3290).
     </p>
   </div>
 
@@ -2257,18 +2296,30 @@ input:disabled, select:disabled { background: var(--bg-surface-muted); color: va
     <p>
       The grid is built from <b>GET /invoices/:id/content</b> (#2076), whose lines are index-aligned with
       the array a correction addresses &mdash; so a row's position <i>is</i> its line number and nothing has
-      to be guessed. That read is shipped. Four things it depends on are not.
+      to be guessed. That read is shipped, and so is the matcher this grid pre-fills from.
     </p>
     <p>
-      <b>1. The matcher narrowing.</b> The join itself is done &mdash; <b>ReturnLine.resolvedOrderLineId</b>
-      is resolved at ingestion (#3171/#3172) and is trustworthy. What is not done is narrowing
-      <b>return-correction-matching.domain-service.ts</b> onto it: the matcher still joins by product
-      name and can still emit <b>status: 'ambiguous'</b> with a <b>candidates</b> list for a line this
-      grid has no row shape for &mdash; a <b>'proposed'</b> outcome can carry one of those today. Until
-      the matcher is narrowed, OpenLinker cannot pre-fill a single quantity, because a name-joined
-      match is not trustworthy enough to act on. The data needed to do it is already in hand at
-      ingestion &mdash; the return carries <b>offerId</b> and <b>unitPrice</b>, and the invoice is built
-      from <b>order.items</b> in order.
+      <b>Done: the matcher narrowing.</b> <b>ReturnLine.resolvedOrderLineId</b> is resolved at ingestion
+      (#3171/#3172), and #3312 (merged 2026-09-25 as #3313) narrowed
+      <b>return-correction-matching.domain-service.ts</b> onto it: the return line is looked up by
+      <b>InvoiceLine.orderLineId</b> first, and by product name only when that join is unresolved, the
+      invoice predates <b>orderLineId</b>, or the id is not on this invoice. A matched line carries the
+      invoice position and the quantity that should remain, which is what pre-fills row 1.
+      <b>status: 'ambiguous'</b> is no longer produced; the same condition arrives as
+      <b>status: 'no-match'</b> with <b>noMatchReason: 'ambiguous-invoice-line'</b> and its
+      <b>candidates</b>, and this grid renders it as marked rows (<b>credit-ambiguous-line</b>).
+      Nothing in the matcher gates the frontend sub-issues of #3087 any more.
+    </p>
+    <p>
+      Four things are still not built.
+    </p>
+    <p>
+      <b>1. The invoice position of a line whose disposal is unconfirmed.</b> Row 4 sits in the grid
+      because the screen protector is on the invoice. But the matcher checks
+      <b>disposition-not-confirmed</b> before any lookup and returns it with no candidates, so the
+      proposal does not say which invoice line it is. The shipped <b>CorrectionLineGrid</b> leaves it
+      on the return panel for that reason. To place it on its row, the proposal has to report that
+      position (the id lookup can answer it; it is just not run for this reason).
     </p>
     <p>
       <b>2. The refund figure.</b> The reconciliation compares this credit against what the channel already
@@ -2280,9 +2331,10 @@ input:disabled, select:disabled { background: var(--bg-surface-muted); color: va
       convenience: Business Central and Comarch ERP Optima both gate on it.
     </p>
     <p>
-      <b>4. Shipping.</b> Delivery is a real invoice line, so it appears in this grid &mdash; but the current
-      matcher joins product names, so it can never be matched, and delivery is today silently never
-      credited. A buyer who withdrew within 14 days is owed the cheapest delivery option back.
+      <b>4. Shipping.</b> Delivery is a real invoice line, so it appears in this grid. But no single order
+      item backs it, so it carries no <b>orderLineId</b>, and it shares no product name with a returned
+      item, so the matcher can never match it and delivery is today silently never credited (#3290).
+      A buyer who withdrew within 14 days is owed the cheapest delivery option back.
     </p>
     <p>
       Also unbuilt and out of this epic: a correction in a currency other than PLN cannot be filed
@@ -2315,10 +2367,25 @@ input:disabled, select:disabled { background: var(--bg-surface-muted); color: va
       <dt><b>frames</b></dt>
       <dd>flow-map &middot; returns-list &middot; return-detail &middot; confirm-dialog &middot; handoff-invoicing</dd>
       <dt><b>credit note</b></dt>
-      <dd>credit-draft &middot; credit-nothing-disposed &middot; credit-no-invoice &middot; credit-no-content &middot; credit-lines-unauthoritative &middot; credit-issued &middot; credit-unmatched &middot; credit-read-only &middot; credit-absent-orphan</dd>
+      <dd>credit-draft &middot; credit-nothing-disposed &middot; credit-no-invoice &middot; credit-no-content &middot; credit-lines-unauthoritative &middot; credit-issued &middot; credit-unmatched &middot; credit-ambiguous-line &middot; credit-nothing-correctable &middot; credit-read-only &middot; credit-absent-orphan</dd>
       <dt><b>page</b></dt>
       <dd>page-loaded &middot; detail-loading &middot; detail-error &middot; detail-unreadable &middot; detail-orphan</dd>
     </dl>
+    <p>
+      <b>Where each credit state comes from.</b> Most map onto a <b>ReturnCorrectionProposalOutcome</b>:
+      <b>credit-draft</b>, <b>credit-unmatched</b> and <b>credit-ambiguous-line</b> are all
+      <b>'proposed'</b> (the last two differ only in the line reasons they carry);
+      <b>credit-nothing-correctable</b> is <b>'nothing-correctable'</b>, where the body still comes back
+      in full so every reason is shown, but nothing is pre-filled; <b>credit-nothing-disposed</b> is
+      <b>'no-disposed-lines'</b>; <b>credit-no-invoice</b> is <b>'no-invoice'</b>; and
+      <b>credit-no-content</b> is <b>'no-line-snapshot'</b>. Two are not proposal outcomes at all.
+      <b>credit-lines-unauthoritative</b> comes from the invoice read, not the proposal:
+      <b>GET /invoices/:id/content</b> answers <b>linesIndexedByCorrection: false</b> (the web hook calls
+      it <b>linesAreAuthoritative</b>), so a row's position would not be the line a correction
+      addresses. <b>credit-issued</b> comes from invoicing too: a correction already issued against this invoice.
+      <b>credit-read-only</b> is the viewer role, and <b>credit-absent-orphan</b> is the 409 the
+      proposal answers for a return with no order.
+    </p>
     <p>
       <b>For the implementer.</b> Tokens are verbatim from <b>apps/web/src/index.css</b>. Two drifts are
       reproduced, not fixed: <b>.text-muted</b> has no rule despite 116 uses, so the app renders those spans
@@ -2441,8 +2508,27 @@ input:disabled, select:disabled { background: var(--bg-surface-muted); color: va
        alternative to it — a return can legitimately have creditable lines and
        unmatched ones at once. */
     'credit-unmatched': null,
+    /* `noMatchReason: 'ambiguous-invoice-line'` (#3312). Still a `'proposed'`
+       draft: the line is correctable, OpenLinker just cannot say which invoice
+       line it is, so the candidate rows are marked and none is pre-filled. */
+    'credit-ambiguous-line': null,
+    /* Outcome `'nothing-correctable'`: the body comes back in full so every
+       reason is readable, but nothing is pre-filled and no proposal row is
+       opened server-side. */
+    'credit-nothing-correctable': null,
     'credit-read-only': null
   };
+
+  /* What each grid state shows. Applied when a state is chosen, so every
+     state opens on the same figures however the grid was edited before. */
+  var GRID = {
+    'credit-draft': { prefill: true },
+    'credit-unmatched': { prefill: true, unmatched: true },
+    'credit-ambiguous-line': { prefill: false, ambiguous: true },
+    'credit-nothing-correctable': { prefill: false, unmatched: true },
+    'credit-read-only': { prefill: true }
+  };
+  var ambiguousAlert = qs('[data-role="ambiguous"]', panel);
 
   var state = 'credit-draft';
 
@@ -2517,7 +2603,7 @@ input:disabled, select:disabled { background: var(--bg-surface-muted); color: va
       '</b> more than the channel refunded. Check the quantities before issuing.';
   }
 
-  function renderActions() {
+  function renderActions(credited) {
     actions.innerHTML = '';
     var conf = STATES[state];
     if (state === 'credit-read-only') {
@@ -2527,6 +2613,14 @@ input:disabled, select:disabled { background: var(--bg-surface-muted); color: va
     if (conf && conf.action) {
       actions.innerHTML = '<a class="button button--secondary" href="' + conf.action.href + '">' +
         conf.action.label + '</a>';
+      return;
+    }
+    /* A credit note for nothing is not offered. This is what holds the action
+       back in `credit-ambiguous-line` and `credit-nothing-correctable`, and only
+       until the operator enters a change: the ambiguity itself never blocks. */
+    if (credited === 0) {
+      actions.innerHTML = '<button type="button" class="button" disabled>Issue credit note</button>' +
+        '<span class="text-muted">Nothing is credited yet. Change a quantity or a price first.</span>';
       return;
     }
     actions.innerHTML = '<button type="button" class="button">Issue credit note</button>' +
@@ -2565,9 +2659,22 @@ input:disabled, select:disabled { background: var(--bg-surface-muted); color: va
       return;
     }
 
-    badge.textContent = 'Draft — nothing sent';
-    badge.className = 'status-badge status-badge--review';
-    if (unmatched) unmatched.hidden = state !== 'credit-unmatched';
+    var grid = GRID[state] || {};
+    if (state === 'credit-nothing-correctable') {
+      badge.textContent = 'Nothing to credit';
+      badge.className = 'status-badge status-badge--neutral';
+    } else {
+      badge.textContent = 'Draft — nothing sent';
+      badge.className = 'status-badge status-badge--review';
+    }
+    if (unmatched) unmatched.hidden = !grid.unmatched;
+    if (ambiguousAlert) ambiguousAlert.hidden = !grid.ambiguous;
+    rows.forEach(function (tr) {
+      var marked = !!grid.ambiguous && tr.getAttribute('data-ambiguous-candidate') === '1';
+      tr.classList.toggle('credit-row--ambiguous', marked);
+      var note = qs('[data-role="ambiguous-note"]', tr);
+      if (note) note.hidden = !marked;
+    });
 
     var readOnly = state === 'credit-read-only';
     var credited = 0;
@@ -2584,12 +2691,22 @@ input:disabled, select:disabled { background: var(--bg-surface-muted); color: va
       var r = rowOf(tr);
       return !r.blocked && (Number(r.qtyInput.value) || 0) !== r.qty;
     }).length;
-    lead.innerHTML = '<b>OpenLinker filled this in from the ' +
-      (creditedLines === 1 ? '1 item' : creditedLines + ' items') + ' that came back.</b> ' +
-      'Nothing has been sent. ' + IRREVERSIBLE;
+    if (state === 'credit-ambiguous-line') {
+      lead.innerHTML = '<b>OpenLinker could not place 1 returned item on a single invoice line.</b> ' +
+        'It is marked below and nothing is filled in for it. Enter it on the line the invoice shows. ' +
+        'Nothing has been sent. ' + IRREVERSIBLE;
+    } else if (state === 'credit-nothing-correctable') {
+      lead.innerHTML = '<b>Nothing on this return can be credited yet.</b> ' +
+        'The reasons are listed below. You can still change a line by hand. ' +
+        'Nothing has been sent. ' + IRREVERSIBLE;
+    } else {
+      lead.innerHTML = '<b>OpenLinker filled this in from the ' +
+        (creditedLines === 1 ? '1 item' : creditedLines + ' items') + ' that came back.</b> ' +
+        'Nothing has been sent. ' + IRREVERSIBLE;
+    }
 
     renderReconcile(credited);
-    renderActions();
+    renderActions(credited);
     renderReadout();
   }
 
@@ -2666,6 +2783,15 @@ input:disabled, select:disabled { background: var(--bg-surface-muted); color: va
   function applyCredit(name) {
     state = name;
     setActive('credit', qs('[data-credit="' + name + '"]'));
+    var grid = GRID[name];
+    if (grid) {
+      rows.forEach(function (tr) {
+        var prefill = tr.getAttribute('data-prefill');
+        qs('.input--w-qty', tr).value =
+          grid.prefill && prefill !== null ? prefill : tr.getAttribute('data-qty');
+        qs('.input--w-price', tr).value = Number(tr.getAttribute('data-unit')).toFixed(2);
+      });
+    }
     renderAll();
   }
 
