@@ -271,7 +271,8 @@ reads as paid (verified live: `is_paid: true`). Any other or unknown state sends
 or awaiting order stays unpaid in the shop.
 
 **Phone is required** on both Shoper addresses (an empty one is a 400). The address's own is used, else the other
-address's; an order with no phone at all is refused rather than given an invented number.
+address's. When the source gives no phone at all (Allegro shows it only after payment), the order is created with the
+placeholder `000000000`, and the order's remarks (`notes`) say the number is a placeholder.
 
 **A half-built order is removed.** If a line fails after the header exists, `DELETE /orders/:id` is issued (live:
 this restores the stock the lines took). If that fails too, `ShoperPartialOrderException` names the order id; it is

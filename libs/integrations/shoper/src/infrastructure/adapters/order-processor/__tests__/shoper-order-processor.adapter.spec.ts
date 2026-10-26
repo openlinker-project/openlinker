@@ -16,7 +16,11 @@ import type { ShoperShopContextProvider } from '../../../shop-context/shoper-sho
 import { MAP_CONTEXT } from '../../../__tests__/shoper-test-data';
 import type { ShoperOrderOptionsProvider } from '../../../shop-context/shoper-order-options.provider';
 import type { ShoperTaxTableProvider } from '../../../shop-context/shoper-tax-table.provider';
-import { ShoperOrderProcessorAdapter } from '../shoper-order-processor.adapter';
+import {
+  SHOPER_PHONE_PLACEHOLDER,
+  SHOPER_PHONE_PLACEHOLDER_NOTE,
+  ShoperOrderProcessorAdapter,
+} from '../shoper-order-processor.adapter';
 
 const TAXES = new Map<string, ShoperTax>([
   ['1', { tax_id: '1', value: '23', name: '23%' }],
@@ -187,6 +191,35 @@ describe('ShoperOrderProcessorAdapter', () => {
       ]);
     });
 
+    it('should create an order with no phone under the placeholder and say why in the note', async () => {
+      const { adapter, post } = setup();
+
+      await adapter.createOrder(
+        order({ billingAddress: { ...address(), phone: undefined }, shippingAddress: { ...address(), phone: ' ' } }),
+      );
+
+      expect(post.mock.calls[0]).toEqual([
+        '/orders',
+        expect.objectContaining({
+          billing_address: expect.objectContaining({ phone: SHOPER_PHONE_PLACEHOLDER }),
+          delivery_address: expect.objectContaining({ phone: SHOPER_PHONE_PLACEHOLDER }),
+          notes: SHOPER_PHONE_PLACEHOLDER_NOTE,
+        }),
+      ]);
+    });
+
+    it('should not add the placeholder note when the source gave a phone', async () => {
+      const { adapter, post } = setup();
+
+      await adapter.createOrder(order());
+
+      expect(post).toHaveBeenNthCalledWith(
+        1,
+        '/orders',
+        expect.not.objectContaining({ notes: expect.anything() }),
+      );
+    });
+
     it('should prefer an operator mapping to the connection default', async () => {
       const { adapter, post, mappingConfig } = setup();
       mappingConfig.resolveCarrierMapping.mockResolvedValue('3');
@@ -309,7 +342,6 @@ describe('ShoperOrderProcessorAdapter', () => {
     it.each([
       ['a missing buyer email', { metadata: {} }],
       ['no lines', { items: [] }],
-      ['no phone on either address', { billingAddress: { ...address(), phone: undefined }, shippingAddress: { ...address(), phone: ' ' } }],
       ['no address', { billingAddress: undefined, shippingAddress: undefined }],
       ['a line without a tax rate', { items: [{ id: 'l', productId: 'p', variantId: 'v', quantity: 1, price: 1 }] }],
       ['a tax rate the shop does not have', { items: [{ id: 'l', productId: 'p', variantId: 'v', quantity: 1, price: 1, taxRate: '5' }] }],

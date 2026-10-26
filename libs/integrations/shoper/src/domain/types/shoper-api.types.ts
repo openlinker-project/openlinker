@@ -355,6 +355,8 @@ export interface ShoperOrderCreateRequest {
   readonly delivery_address: ShoperOrderAddress;
   /** Private note: the OpenLinker order id, for forensic recovery only (NOT a dedup key). */
   readonly notes_priv?: string;
+  /** Order remarks; set only to explain a placeholder phone. */
+  readonly notes?: string;
 }
 
 /** Body of `POST /order-products`. `price` is GROSS and `tax` is the tax NAME. */

@@ -109,6 +109,16 @@ import type { ShoperTaxTableProvider } from '../../shop-context/shoper-tax-table
 /** Shoper rounds to cents, so a smaller gap is not a real mismatch. */
 const SUM_TOLERANCE = 0.011;
 
+/**
+ * Sent when the source order carries no phone. Shoper refuses an empty one, and
+ * all zeros cannot be mistaken for a buyer's number.
+ */
+export const SHOPER_PHONE_PLACEHOLDER = '000000000';
+
+/** The order note that explains the placeholder to whoever opens the order in Shoper. */
+export const SHOPER_PHONE_PLACEHOLDER_NOTE =
+  'Phone number 000000000 is a placeholder: the marketplace did not provide the buyer\'s phone (for example, the order was not paid yet).';
+
 export class ShoperOrderProcessorAdapter
   implements OrderProcessorManagerPort, DestinationOptionsReader, OrderStatusWriteback, FulfillmentStatusReader
 {
@@ -312,9 +322,17 @@ export class ShoperOrderProcessorAdapter
       throw this.unbuildable('the order has no billing or shipping address');
     }
 
-    const phone = billing.phone?.trim() || delivery.phone?.trim();
-    if (!phone) {
-      throw this.unbuildable('the order has no phone number, which Shoper requires on its addresses');
+    // Shoper refuses an address with no phone, and a marketplace may not hand
+    // one over yet (Allegro shows it only once the checkout is paid). The order
+    // still belongs in the shop, so it goes in under a phone that is visibly not
+    // a real number, and the order's note says why.
+    const sourcePhone = billing.phone?.trim() || delivery.phone?.trim();
+    const phone = sourcePhone || SHOPER_PHONE_PLACEHOLDER;
+    if (!sourcePhone) {
+      this.logger.warn(
+        `Order ${order.internalOrderId} has no phone number; creating it on Shoper connection ` +
+          `${this.connection.id} with the placeholder ${SHOPER_PHONE_PLACEHOLDER}`,
+      );
     }
 
     const lines = await this.buildLines(order);
@@ -345,6 +363,7 @@ export class ShoperOrderProcessorAdapter
       billing_address: mapShoperOrderAddress(billing, phone),
       delivery_address: mapShoperOrderAddress(delivery, phone),
       notes_priv: marker,
+      ...(sourcePhone ? {} : { notes: SHOPER_PHONE_PLACEHOLDER_NOTE }),
     };
     return { header, lines, shippingCost, marker };
   }
