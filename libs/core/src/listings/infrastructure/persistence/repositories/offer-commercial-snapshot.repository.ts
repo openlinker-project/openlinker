@@ -47,7 +47,13 @@ export class OfferCommercialSnapshotRepository implements OfferCommercialSnapsho
         internalVariantId: command.internalVariantId,
         price: command.price,
         currency: command.currency,
-        availableQuantity: command.availableQuantity,
+        // A price-only observation must not erase a quantity seen earlier on the
+        // same offer: the column is left out of the upsert, so a conflict keeps it.
+        // (`lastCommercialSyncedAt` is shared by price and quantity, so it still
+        // advances; no per-quantity timestamp exists.)
+        ...(command.availableQuantity === null
+          ? {}
+          : { availableQuantity: command.availableQuantity }),
         lastCommercialSyncedAt: command.lastCommercialSyncedAt,
         // TypeORM 0.3.17 (pinned) does not bump `@UpdateDateColumn` on the
         // upsert-update path (fixed upstream in 0.3.18, typeorm#10458) -

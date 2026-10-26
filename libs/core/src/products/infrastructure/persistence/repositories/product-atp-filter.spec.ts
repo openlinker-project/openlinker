@@ -39,3 +39,11 @@ describe('PRODUCT_ATP_SUBQUERY', () => {
     expect(PRODUCT_ATP_SUBQUERY).not.toMatch(/\$\d|\$\{/);
   });
 });
+
+describe('stock sort', () => {
+  it('should order by the same ATP expression the list cell shows, not the master total', () => {
+    const source = readFileSync(join(__dirname, 'product.repository.ts'), 'utf8');
+    expect(source).toContain('qb.orderBy(PRODUCT_ATP_EXPR, dir)');
+    expect(source).not.toContain('qb.orderBy(TOTAL_STOCK_EXPR, dir)');
+  });
+});

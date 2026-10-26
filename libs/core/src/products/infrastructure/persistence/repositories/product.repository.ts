@@ -154,8 +154,7 @@ export class ProductRepository implements ProductRepositoryPort {
     // inventory context's ORM entity here is forbidden, and the join keeps
     // the cross-context import contract intact. Columns are camelCase in
     // Postgres and must be double-quoted in raw fragments.
-    const needsStockJoin =
-      filters.stock === 'oversold' || sort?.field === 'stock';
+    const needsStockJoin = filters.stock === 'oversold';
     if (needsStockJoin) {
       qb.leftJoin(
         (sub) =>
@@ -175,8 +174,12 @@ export class ProductRepository implements ProductRepositoryPort {
     // `out` / `low` filter on available to promise so they agree with the badge
     // (#3621, G-5); `oversold` stays on master stock because ATP is clamped at 0
     // and can never be negative.
-    if (filters.stock === 'out' || filters.stock === 'low') {
+    const needsAtpJoin =
+      filters.stock === 'out' || filters.stock === 'low' || sort?.field === 'stock';
+    if (needsAtpJoin) {
       qb.leftJoin(`(${PRODUCT_ATP_SUBQUERY})`, 'atp', 'atp."productId" = product.id');
+    }
+    if (filters.stock === 'out' || filters.stock === 'low') {
       if (filters.stock === 'out') {
         qb.andWhere(`${HAS_VARIANT_EXPR} AND ${PRODUCT_ATP_EXPR} = 0`);
       } else {
@@ -333,9 +336,9 @@ export class ProductRepository implements ProductRepositoryPort {
         qb.orderBy('product.updatedAt', dir);
         break;
       case 'stock':
-        // Joined via the grouped inventory_items subquery above; no-stock
-        // products sort as 0.
-        qb.orderBy(TOTAL_STOCK_EXPR, dir);
+        // The same available-to-promise figure the list cell shows (the `atp`
+        // join above), not the master total; no-stock products sort as 0.
+        qb.orderBy(PRODUCT_ATP_EXPR, dir);
         break;
       case 'createdAt':
         qb.orderBy('product.createdAt', dir);
