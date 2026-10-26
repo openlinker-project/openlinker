@@ -64,6 +64,18 @@ export class ProductResponseDto {
   features?: { name: string; value: string }[];
 
   @ApiPropertyOptional({
+    type: 'array',
+    items: {
+      type: 'object',
+      properties: { id: { type: 'string' }, name: { type: 'string' } },
+    },
+    description:
+      "The master's own category path, root to leaf (source-shop category id + name). " +
+      'Absent until a sync populates it, or when the master reports no path.',
+  })
+  categoryBreadcrumb?: { id: string; name: string }[];
+
+  @ApiPropertyOptional({
     nullable: true,
     description:
       'Neutral tax-rate code the shop stated (#2054): "23", "8", "5", "0", "zw", "np", "oo". ' +
