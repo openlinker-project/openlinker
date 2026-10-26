@@ -13,6 +13,9 @@ import { useApiClient } from '../../../app/api/api-client-provider';
 import { ordersQueryKeys } from '../api/orders.query-keys';
 import type { OrderChangeView } from '../api/order-cancel.types';
 
+/** How often an open cancel request is re-read. */
+export const ORDER_CHANGES_POLL_MS = 15_000;
+
 export function useOrderChangesQuery(internalOrderId: string): UseQueryResult<OrderChangeView[]> {
   const apiClient = useApiClient();
 
@@ -20,5 +23,13 @@ export function useOrderChangesQuery(internalOrderId: string): UseQueryResult<Or
     queryKey: ordersQueryKeys.changes(internalOrderId),
     queryFn: () => apiClient.orders.listOrderChanges(internalOrderId),
     enabled: Boolean(internalOrderId),
+    // A cancel waiting for the channel is answered by a webhook or the reconcile
+    // pass, neither of which pushes to this page; poll only while one is open.
+    refetchInterval: (query) => {
+      const open = query.state.data?.some(
+        (change) => change.kind === 'order.cancel_request' && change.open,
+      );
+      return open && !document.hidden ? ORDER_CHANGES_POLL_MS : false;
+    },
   });
 }

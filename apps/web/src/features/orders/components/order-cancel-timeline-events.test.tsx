@@ -116,4 +116,25 @@ describe('buildOrderCancelTimelineEvents (#3541)', () => {
       expect.arrayContaining(['Shipping label voided', 'Reserved stock released']),
     );
   });
+
+  it('should say the carrier would not void the label, not that the channel never answered (B-23)', () => {
+    const events = buildOrderCancelTimelineEvents({
+      ...BASE,
+      changes: [{ ...CANCEL, status: 'expired', open: false, confirmedAt: null, declinedReason: 'label-not-voidable' }],
+    });
+
+    expect(events.map((event) => event.title)).toContain(
+      'Cancelled request: the carrier would not void the label',
+    );
+    expect(events.some((event) => event.title === 'The cancellation request expired')).toBe(false);
+  });
+
+  it('should keep the expired copy for a true expiry (B-23)', () => {
+    const events = buildOrderCancelTimelineEvents({
+      ...BASE,
+      changes: [{ ...CANCEL, status: 'expired', open: false, confirmedAt: null }],
+    });
+
+    expect(events.map((event) => event.title)).toContain('The cancellation request expired');
+  });
 });

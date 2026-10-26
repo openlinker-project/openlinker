@@ -105,6 +105,7 @@ export const ORDER_CANCEL_ERROR_CODES = [
   'CORRECTION_IN_PROGRESS',
   'CORRECTION_NEEDS_RECONCILIATION',
   'CORRECTION_FAILED',
+  'CORRECTION_SUPERSEDED',
 ] as const;
 export type OrderCancelErrorCode = (typeof ORDER_CANCEL_ERROR_CODES)[number];
 
@@ -220,6 +221,7 @@ export const CONFIRM_CORRECTION_ERROR_TITLES: Partial<Record<OrderCancelErrorCod
   CORRECTION_IN_PROGRESS: 'The correction is already being issued',
   CORRECTION_NEEDS_RECONCILIATION: 'The correction needs checking at the provider',
   CORRECTION_FAILED: 'The invoicing provider rejected the correction',
+  CORRECTION_SUPERSEDED: 'The invoice was already corrected',
 };
 
 /** The figures a `refund_ceiling_exceeded` 409 carries. */
@@ -249,4 +251,24 @@ export function readRefundCeilingFigures(error: unknown): RefundCeilingFigures |
     requested: text(body.requested),
     currency: typeof body.currency === 'string' ? body.currency : '',
   };
+}
+
+/** Why a change row was abandoned by OpenLinker (the backend's `declinedReason`). */
+export function abandonReasonCopy(
+  reason: string | null,
+  documentNumber: string | null,
+): { title: string; description: string } | null {
+  if (reason === 'label-not-voidable') {
+    return {
+      title: 'Cancelled request: the carrier would not void the label',
+      description: 'The order was not cancelled. Void the label with the carrier, then cancel the order again.',
+    };
+  }
+  if (reason === 'correction-superseded') {
+    return {
+      title: `Correction no longer needed: ${documentNumber ?? 'a document'} already corrected the invoice`,
+      description: 'The invoice was corrected by another document, so this proposal was closed.',
+    };
+  }
+  return null;
 }

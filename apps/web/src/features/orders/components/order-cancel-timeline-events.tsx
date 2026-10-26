@@ -20,7 +20,7 @@
 import { ConnectionEntityLabel } from '../../connections';
 import type { CancelOrderResult, OrderChangeView } from '../api/order-cancel.types';
 import type { OrderRefundRecord } from '../api/order-refund.types';
-import { CANCEL_PARTICIPANT_EFFECT_COPY, orderCancelReasonLabel } from '../lib/order-cancel';
+import { abandonReasonCopy, CANCEL_PARTICIPANT_EFFECT_COPY, orderCancelReasonLabel } from '../lib/order-cancel';
 import type { TimelineEvent } from './order-activity-timeline';
 
 export interface OrderCancelTimelineInput {
@@ -73,6 +73,16 @@ export function buildOrderCancelTimelineEvents(input: OrderCancelTimelineInput):
           description: change.declinedReason ?? undefined,
           tone: 'error',
         });
+      } else if (!change.open && abandonReasonCopy(change.declinedReason, null)) {
+        const copy = abandonReasonCopy(change.declinedReason, null);
+        events.push({
+          id: `cancel-abandoned:${change.id}`,
+          timestamp: null,
+          title: copy?.title ?? '',
+          by: 'system',
+          description: copy?.description,
+          tone: 'warning',
+        });
       } else if (!change.open) {
         events.push({
           id: `cancel-expired:${change.id}`,
@@ -94,6 +104,19 @@ export function buildOrderCancelTimelineEvents(input: OrderCancelTimelineInput):
         description: change.open ? 'Waiting for you to review and confirm it.' : undefined,
         tone: change.open ? 'warning' : 'default',
       });
+      const abandoned = !change.open && change.status !== 'confirmed'
+        ? abandonReasonCopy(change.declinedReason, proposal?.documentNumber ?? null)
+        : null;
+      if (abandoned) {
+        events.push({
+          id: `cancel-correction-abandoned:${change.id}`,
+          timestamp: null,
+          title: abandoned.title,
+          by: 'system · invoicing',
+          description: abandoned.description,
+          tone: 'warning',
+        });
+      }
       if (change.status === 'confirmed') {
         events.push({
           id: `cancel-correction-confirmed:${change.id}`,
