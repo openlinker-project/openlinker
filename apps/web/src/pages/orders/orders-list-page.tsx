@@ -63,6 +63,7 @@ import {
 import { usePackersQuery } from '../../features/users';
 import { HANDLED_IN_OPENLINKER_COPY } from '../../features/orders/lib/handled-in-openlinker.copy';
 import { OrderHoldBadge } from '../../features/orders/components/order-hold-badge';
+import { OrderDestinationRoutingBadge } from '../../features/orders/components/order-destination-routing-badge';
 import { useRetryOrderDestinationMutation } from '../../features/orders/hooks/use-retry-order-destination-mutation';
 import { ReadOnlyLock } from '../../shared/ui/read-only-lock';
 import { useWriteAccess } from '../../shared/auth/use-permission';
@@ -786,6 +787,11 @@ export function OrdersListPage(): ReactElement {
                   beside the failure reasons (style guide § Order-row signal
                   placement rule 2), never in Shipment or Money. */}
               <OrderHoldBadge reason={order.activeHoldReason} compact />
+              {/* #2703 / #2704 - why routing left the destination fan-out
+                  narrowed. Without it a row reads "No destinations" whatever the
+                  cause. Status group, beside health, for the placement reason
+                  above; shared verbatim with the mobile card. */}
+              <OrderDestinationRoutingBadge reason={order.destinationRoutingBlockReason} compact />
               {/* #2356 — an inert state is an EXCEPTION, and rule 2 of the style
                   guide's order-row signal placement puts exceptions in the
                   Status group beside failure reasons. It is another badge
@@ -1707,6 +1713,10 @@ export function OrdersListPage(): ReactElement {
                     </StatusBadge>
                     <OrderPhaseOrWaitingBadge order={order} compact />
                     <OrderHoldBadge reason={order.activeHoldReason} compact />
+                    <OrderDestinationRoutingBadge
+                      reason={order.destinationRoutingBlockReason}
+                      compact
+                    />
                     <OmsAttentionBadges entries={order.omsAttention ?? []} compact />
                     <StatusBadge tone={fulfillment.tone} withDot compact>
                       {fulfillment.label}

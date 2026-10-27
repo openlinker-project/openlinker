@@ -78,6 +78,28 @@ describe('PrestashopSetupForm', () => {
     });
   });
 
+  it('should show the review step instead of creating when the form is submitted before the last step', async () => {
+    const create = vi.fn().mockResolvedValue(sampleConnection);
+    const apiClient = createMockApiClient({ connections: { create } });
+    const view = renderWithProviders(<PrestashopSetupForm />, { apiClient });
+
+    fillCredentialsStep(view.container, {
+      name: 'Main store',
+      url: 'https://shop.example.com',
+      key: 'WSKEY123',
+    });
+    await advanceToStep(view.container, 2);
+
+    const form = view.container.querySelector('form');
+    if (!form) throw new Error('wizard form not found');
+    fireEvent.submit(form);
+
+    expect(
+      await within(view.container).findByRole('button', { name: 'Create connection' })
+    ).toBeInTheDocument();
+    expect(create).not.toHaveBeenCalled();
+  });
+
   it('submits a PrestaShop connection after walking through every step', async () => {
     const create = vi.fn().mockResolvedValue(sampleConnection);
     const apiClient = createMockApiClient({ connections: { create } });

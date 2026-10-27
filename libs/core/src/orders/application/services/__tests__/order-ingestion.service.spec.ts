@@ -3203,6 +3203,13 @@ describe('OrderIngestionService', () => {
           'ol_order_int',
           expect.objectContaining({ reason })
         );
+        // #2703 - `syncOrder` is never called on this branch, so the routing
+        // reason an earlier run wrote is cleared HERE. Without it a stale
+        // "the router sent this nowhere" would stand beside the fresh hold.
+        expect(orderRecordService.markDestinationRoutingBlock).toHaveBeenCalledWith(
+          'ol_order_int',
+          null
+        );
       });
 
       const passThroughOutcomes: [RoutingCommitOutcome][] = [
