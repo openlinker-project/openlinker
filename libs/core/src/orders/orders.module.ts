@@ -19,6 +19,9 @@ import { OrderFxRestatementService } from './application/services/order-fx-resta
 import { OrderFxReadService } from './application/services/order-fx-read.service';
 import { OrderDestinationRetryService } from './application/services/order-destination-retry.service';
 import { OrderProvisioningResumeService } from './application/services/order-provisioning-resume.service';
+import { InvoiceMarketplaceUploadService } from './application/services/invoice-marketplace-upload.service';
+import { InvoiceMarketplaceUploadOrmEntity } from './infrastructure/persistence/entities/invoice-marketplace-upload.orm-entity';
+import { InvoiceMarketplaceUploadRepository } from './infrastructure/persistence/repositories/invoice-marketplace-upload.repository';
 import { FulfillmentDispatchRelayService } from './application/services/fulfillment-dispatch-relay.service';
 import { OrderCancellationEffectsService } from './application/services/order-cancellation-effects.service';
 import { OrderLifecycleRelayService } from './application/services/order-lifecycle-relay.service';
@@ -62,6 +65,8 @@ import {
   ORDER_FX_STAMP_SERVICE_TOKEN,
   ORDER_DESTINATION_RETRY_SERVICE_TOKEN,
   ORDER_PROVISIONING_RESUME_SERVICE_TOKEN,
+  INVOICE_MARKETPLACE_UPLOAD_REPOSITORY_TOKEN,
+  INVOICE_MARKETPLACE_UPLOAD_SERVICE_TOKEN,
   ORDER_ITEM_REF_RESOLVER_SERVICE_TOKEN,
   ORDER_LIFECYCLE_RELAY_SERVICE_TOKEN,
   ORDER_CANCELLATION_EFFECTS_SERVICE_TOKEN,
@@ -132,6 +137,7 @@ export { ORDER_SYNC_SERVICE_TOKEN } from './orders.tokens';
       OrderTagOrmEntity,
       OrderTagAssignmentOrmEntity,
       OrderExportRunOrmEntity,
+      InvoiceMarketplaceUploadOrmEntity,
     ]),
     IntegrationsModule, // Required for INTEGRATIONS_SERVICE_TOKEN and ADAPTER_FACTORY_RESOLVER_TOKEN
     IdentifierMappingModule, // Required for IDENTIFIER_MAPPING_SERVICE_TOKEN
@@ -247,6 +253,19 @@ export { ORDER_SYNC_SERVICE_TOKEN } from './orders.tokens';
       // `updateSyncStatus` to strand-mark withheld destinations.
       provide: ORDER_PROVISIONING_RESUME_SERVICE_TOKEN,
       useExisting: OrderProvisioningResumeService,
+    },
+    InvoiceMarketplaceUploadRepository,
+    {
+      provide: INVOICE_MARKETPLACE_UPLOAD_REPOSITORY_TOKEN,
+      useExisting: InvoiceMarketplaceUploadRepository,
+    },
+    InvoiceMarketplaceUploadService,
+    {
+      // #3549 - attaches an issued document to the marketplace order. In orders,
+      // not invoicing: it needs the order record, and InvoicingModule must never
+      // import an orders token.
+      provide: INVOICE_MARKETPLACE_UPLOAD_SERVICE_TOKEN,
+      useExisting: InvoiceMarketplaceUploadService,
     },
     {
       provide: ORDER_ITEM_REF_RESOLVER_SERVICE_TOKEN,
@@ -366,6 +385,9 @@ export { ORDER_SYNC_SERVICE_TOKEN } from './orders.tokens';
     ORDER_FX_RESTATEMENT_SERVICE_TOKEN,
     ORDER_DESTINATION_RETRY_SERVICE_TOKEN,
     ORDER_PROVISIONING_RESUME_SERVICE_TOKEN,
+    // Exported so the worker's upload handler and the API's status/retry routes
+    // resolve it by token (#3549).
+    INVOICE_MARKETPLACE_UPLOAD_SERVICE_TOKEN,
     ORDER_LIFECYCLE_RELAY_SERVICE_TOKEN,
     ORDER_CANCELLATION_EFFECTS_SERVICE_TOKEN,
     FULFILLMENT_DISPATCH_RELAY_SERVICE_TOKEN,

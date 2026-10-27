@@ -3,7 +3,7 @@
  *
  * Pins the ADR-050 lane partition (#2278): every `JobTypeValues` member is
  * registered with exactly one lane, the per-lane counts match the ADR's
- * table (19 realtime / 35 bulk / 5 fiscal / 7 fan-out across 66 job types -
+ * table (19 realtime / 36 bulk / 5 fiscal / 7 fan-out across 67 job types -
  * `subiekt.bridge.reachabilitySweep` joined `bulk` with #3358: it re-probes a
  * Subiekt connection's own reachability on a cron, nobody is waiting on any
  * one tick of it, and a late check costs nothing beyond a delayed log line;
@@ -64,7 +64,7 @@ describe('HandlerRegistrationService (ADR-050 lane partition, #2278)', () => {
     expect(() => registry.assertFullLaneCoverage()).not.toThrow();
   });
 
-  it('should partition the 66 job types 19/35/5/7 per ADR-050 decision 1', () => {
+  it('should partition the 67 job types 19/36/5/7 per ADR-050 decision 1', () => {
     // 17: four of the SIX fulfilment job types are `realtime` by
     // cost-of-starvation. The other two, #2712's
     // `fulfillment.work.timeoutSweep` and #2728's
@@ -153,7 +153,7 @@ describe('HandlerRegistrationService (ADR-050 lane partition, #2278)', () => {
     // with its destination-side twin `marketplace.fulfillment.statusSync`: a
     // paced scan over parcels that have already shipped, each candidate a
     // marketplace readback.
-    expect(registry.getJobTypesByLane('bulk')).toHaveLength(35);
+    expect(registry.getJobTypesByLane('bulk')).toHaveLength(36);
     expect(registry.getJobTypesByLane('fiscal')).toHaveLength(5);
     expect(registry.getJobTypesByLane('fan-out')).toHaveLength(7);
   });
