@@ -78,9 +78,13 @@ export type OrderRecordStatus = (typeof OrderRecordStatusValues)[number];
  *                            its master, #1689)
  *   2. `awaiting_mapping`  — `recordStatus = 'awaiting_mapping'` (can't sync yet)
  *   3. `needs_attention`   — not awaiting_mapping/source_deleted AND any destination `failed`
- *   4. `synced`            — not awaiting_mapping/source_deleted, no failed, AND any `synced`
+ *   4. `synced`            — not awaiting_mapping/source_deleted, no failed, AND
+ *                            (any `synced`, OR - #3482 - OpenLinker handles the
+ *                            order itself (a live pack-bench work) and it has
+ *                            shipped: `fulfillmentState` dispatched / delivered)
  *   5. `awaiting_dispatch` — the residual: everything else (no failed, no
- *                            synced: empty `syncStatus[]` / pending / syncing)
+ *                            synced: empty `syncStatus[]` / pending / syncing,
+ *                            and a handled order still on the bench)
  *
  * Buckets 3–5 gate on `NOT awaiting_mapping AND NOT source_deleted` (not
  * `recordStatus = 'ready'`) so the five remain a complete partition for ANY
@@ -137,6 +141,19 @@ export interface OrderHealthSummary {
    * badge and never aggregated here.
    */
   destinationRoutingBlocked: number;
+  /**
+   * #3482 - orders OpenLinker holds because of a fact about the order or the
+   * stock (`WaitingFulfillmentBlockReasonValues`: out of stock, no address,
+   * routing error). ORTHOGONAL to the health partition, like its neighbours.
+   */
+  waitingInOpenLinker: number;
+  /** When the oldest of those orders started waiting, or `null` when none waits. */
+  waitingInOpenLinkerOldestAt: Date | null;
+  /**
+   * #3482 - orders with a live pack-bench work whose box is not shut yet
+   * (To pack or Packing). ORTHOGONAL to the health partition.
+   */
+  onPackBench: number;
   /**
    * Orders where the shop and the channel named DIFFERENT tax rates (#2254).
    *
@@ -344,6 +361,18 @@ export interface OrderRecordFilters {
    * so the chip's number and its rows always agree.
    */
   destinationRoutingBlocked?: boolean;
+  /**
+   * #3482 - orders OpenLinker holds as waiting (the same subset the
+   * `waitingInOpenLinker` count reports). `true` keeps them, `false` the rest,
+   * omitted does not filter. ANDed with every other axis, never folded into
+   * `health`.
+   */
+  waitingInOpenLinker?: boolean;
+  /**
+   * #3482 - orders with a live pack-bench work whose box is not shut yet (the
+   * `onPackBench` count). Not `packed` (#2997), which reads `packedAt`.
+   */
+  onPackBench?: boolean;
   /**
    * Derived lifecycle-phase filter (#2309, ADR-059). Translated to a SQL
    * predicate by `OrderRecordRepository.applyLifecyclePhaseFilter`, which tests

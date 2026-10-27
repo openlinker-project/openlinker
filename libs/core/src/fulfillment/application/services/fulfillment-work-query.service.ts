@@ -58,7 +58,12 @@ export class FulfillmentWorkQueryService implements IFulfillmentWorkQueryService
     const worksByOrder = new Map<string, FulfillmentWorkProgress[]>();
     for (const row of rows) {
       const works = worksByOrder.get(row.orderId) ?? [];
-      works.push({ status: row.status, parcelClosedAt: row.parcelClosedAt });
+      works.push({
+        status: row.status,
+        parcelClosedAt: row.parcelClosedAt,
+        hasVerification: row.hasVerification,
+        assignedToUserId: row.assignedToUserId,
+      });
       worksByOrder.set(row.orderId, works);
     }
 

@@ -92,7 +92,7 @@ export class ListOrdersQueryDto extends PaginatedReadQueryDto {
   @ApiPropertyOptional({
     enum: OrderHealthValues,
     description:
-      'Filter by derived health bucket (#929) — partitions the set: source_deleted | awaiting_mapping | needs_attention | synced | awaiting_dispatch',
+      'Filter by derived health bucket (#929) — partitions the set: source_deleted | awaiting_mapping | needs_attention | synced | awaiting_dispatch. An order OpenLinker handles itself (#3482) is `synced` once it has shipped and `awaiting_dispatch` while still on the pack bench.',
   })
   @IsOptional()
   @IsEnum(OrderHealthValues)
@@ -196,6 +196,32 @@ export class ListOrdersQueryDto extends PaginatedReadQueryDto {
   @Transform(({ value }): unknown => (value === 'true' ? true : value === 'false' ? false : value))
   @IsBoolean()
   destinationRoutingBlocked?: boolean;
+
+  @ApiPropertyOptional({
+    type: Boolean,
+    description:
+      'Waiting-in-OpenLinker filter (#3482): true keeps only orders OpenLinker holds as waiting ' +
+      '(out of stock, no shipping address, routing error - #3485), false keeps only the rest, ' +
+      'omitted does not filter. Same subset the waitingInOpenLinker count reports. An INDEPENDENT ' +
+      'axis that composes with `health`, never a health bucket.',
+  })
+  @IsOptional()
+  // Same string-literal mapping + pass-through-to-400 posture as `salesDocumentBlocked`.
+  @Transform(({ value }): unknown => (value === 'true' ? true : value === 'false' ? false : value))
+  @IsBoolean()
+  waitingInOpenLinker?: boolean;
+
+  @ApiPropertyOptional({
+    type: Boolean,
+    description:
+      'On-pack-bench filter (#3482): true keeps only orders with a live pack-bench work whose box ' +
+      'is not shut yet (To pack or Packing), false keeps only the rest, omitted does not filter. ' +
+      'Same subset the onPackBench count reports. Not `packed` (#2997), which reads packedAt.',
+  })
+  @IsOptional()
+  @Transform(({ value }): unknown => (value === 'true' ? true : value === 'false' ? false : value))
+  @IsBoolean()
+  onPackBench?: boolean;
 
   @ApiPropertyOptional({
     type: Boolean,

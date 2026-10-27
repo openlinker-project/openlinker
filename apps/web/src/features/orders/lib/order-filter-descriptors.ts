@@ -83,6 +83,10 @@ export interface OrderListFilterState {
   invoicingBlocked: boolean;
   /** `?routing=blocked` — a routing decision narrowed the destination fan-out (#2703/#2704). */
   routingBlocked: boolean;
+  /** `?waiting=true` - OpenLinker holds the order as waiting (#3482). */
+  waitingInOpenLinker: boolean;
+  /** `?packBench=true` - the order has work on the pack bench, box not shut (#3482). */
+  onPackBench: boolean;
   phase?: OrderLifecyclePhaseValue;
   rateConflict: boolean;
   holdReason?: HoldReason;
@@ -266,6 +270,21 @@ export const ORDER_FILTER_DESCRIPTORS: Record<NarrowingOrderFilterKey, OrderFilt
     isActive: (s) => s.omsAttention,
     chip: (s) => single('attention', COPY.chipOms, s.omsAttention ? COPY.chipStopped : null),
   },
+  waitingInOpenLinker: {
+    param: 'waiting',
+    group: 'exceptions',
+    analyticsName: 'waiting_in_openlinker',
+    isActive: (s) => s.waitingInOpenLinker,
+    chip: (s) =>
+      single('waitingInOpenLinker', COPY.chipWaiting, s.waitingInOpenLinker ? COPY.chipWaitingValue : null),
+  },
+  onPackBench: {
+    param: 'packBench',
+    group: 'shipment',
+    analyticsName: 'on_pack_bench',
+    isActive: (s) => s.onPackBench,
+    chip: (s) => single('onPackBench', COPY.chipPackBench, s.onPackBench ? COPY.chipPackBenchValue : null),
+  },
   destinationRoutingBlocked: {
     param: 'routing',
     group: 'exceptions',
@@ -355,6 +374,8 @@ export function parseOrderListFilterState(params: URLSearchParams): OrderListFil
     fulfillmentState: pick(FulfillmentRollupStateValues, params.get('fulfillmentState')),
     invoicingBlocked: params.get('invoicing') === 'blocked',
     routingBlocked: params.get('routing') === 'blocked',
+    waitingInOpenLinker: params.get('waiting') === 'true',
+    onPackBench: params.get('packBench') === 'true',
     phase: isOrderLifecyclePhase(rawPhase) ? rawPhase : undefined,
     rateConflict: params.get('taxRate') === 'conflict',
     holdReason: isHoldReason(rawHold) ? rawHold : undefined,
@@ -376,6 +397,8 @@ export const ORDER_TOGGLE_FILTER_VALUES = {
   dueBefore: 'breaching',
   salesDocumentBlocked: 'blocked',
   destinationRoutingBlocked: 'blocked',
+  waitingInOpenLinker: 'true',
+  onPackBench: 'true',
   taxRateConflict: 'conflict',
   attention: 'true',
   openReturn: 'true',
@@ -400,6 +423,8 @@ export function toOrderQueryFilters(
     fulfillmentState: state.fulfillmentState,
     salesDocumentBlocked: state.invoicingBlocked ? true : undefined,
     destinationRoutingBlocked: state.routingBlocked ? true : undefined,
+    waitingInOpenLinker: state.waitingInOpenLinker ? true : undefined,
+    onPackBench: state.onPackBench ? true : undefined,
     phase: state.phase,
     taxRateConflict: state.rateConflict ? true : undefined,
     holdReason: state.holdReason,

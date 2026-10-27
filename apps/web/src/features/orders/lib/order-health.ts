@@ -97,6 +97,17 @@ export function deriveOrderHealth(order: OrderRecord): OrderHealthView {
     return { key: 'synced', ...ORDER_HEALTH_META.synced };
   }
 
+  // #3482 - an order OpenLinker handles itself has no destination rows, so it used
+  // to stay `awaiting_dispatch` for ever, even after delivery. While it is on the
+  // bench it IS awaiting dispatch; once it has shipped it is `synced`. Twin of
+  // `OrderRecordRepository.IS_SYNCED_HEALTH` - change both.
+  if (
+    isHandledInOpenLinker(order) &&
+    (order.fulfillmentState === 'dispatched' || order.fulfillmentState === 'delivered')
+  ) {
+    return { key: 'synced', ...ORDER_HEALTH_META.synced };
+  }
+
   return { key: 'awaiting_dispatch', ...ORDER_HEALTH_META.awaiting_dispatch };
 }
 

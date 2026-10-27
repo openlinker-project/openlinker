@@ -355,18 +355,38 @@ export class FulfillmentWorkRepository implements FulfillmentWorkRepositoryPort 
     if (orderIds.length === 0) return [];
     try {
       // `orderId` leads `IDX_fulfillment_works_grouping`, which serves this
-      // `IN (...)`. Header columns only: no lines are hydrated, which is the point
-      // of a list-page read.
-      const rows = await this.works.find({
-        where: { orderId: In([...orderIds]) },
-        select: { orderId: true, status: true, parcelClosedAt: true },
-      });
+      // `IN (...)`. Header columns only - no lines are hydrated, which is the point of a list-page read - plus one
+      // EXISTS per work on the verification ledger (a same-context entity, so it
+      // is joined through its ORM entity rather than a raw table name).
+      const liveScan = this.verifications
+        .createQueryBuilder('v')
+        .select('1')
+        .where('v.fulfillmentWorkId = fw.id')
+        .andWhere('v.voidedAt IS NULL')
+        .getQuery();
+      const rows = await this.works
+        .createQueryBuilder('fw')
+        .select('fw.orderId', 'orderId')
+        .addSelect('fw.status', 'status')
+        .addSelect('fw.parcelClosedAt', 'parcelClosedAt')
+        .addSelect('fw.assignedToUserId', 'assignedToUserId')
+        .addSelect(`EXISTS (${liveScan})`, 'hasVerification')
+        .where('fw.orderId IN (:...orderIds)', { orderIds: [...orderIds] })
+        .getRawMany<{
+          orderId: string;
+          status: string;
+          parcelClosedAt: Date | string | null;
+          assignedToUserId: string | null;
+          hasVerification: boolean;
+        }>();
       return rows.map((row) => ({
         orderId: row.orderId,
         // Cast at the boundary, like every other status read in this file: the
         // column is plain `text` and the union is enforced in TypeScript.
         status: row.status as FulfillmentWorkStatus,
-        parcelClosedAt: row.parcelClosedAt,
+        parcelClosedAt: row.parcelClosedAt === null ? null : new Date(row.parcelClosedAt),
+        assignedToUserId: row.assignedToUserId,
+        hasVerification: row.hasVerification === true,
       }));
     } catch (error) {
       throw new FulfillmentPersistenceError('findProgressByOrderIds', error);

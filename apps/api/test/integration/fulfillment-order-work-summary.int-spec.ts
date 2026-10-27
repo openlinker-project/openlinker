@@ -88,7 +88,12 @@ describe('Order work summary (#3482)', () => {
 
     const summaries = await query().summarizeWorkForOrders(['ol_order_a']);
 
-    expect(summaries.get('ol_order_a')).toEqual({ stage: 'to-pack', workCount: 1 });
+    expect(summaries.get('ol_order_a')).toEqual({
+      stage: 'to-pack',
+      workCount: 1,
+      assignment: 'single',
+      assignedToUserId: null,
+    });
   });
 
   it('should read a bench-closed parcel as packed although its status is still open', async () => {
@@ -97,7 +102,12 @@ describe('Order work summary (#3482)', () => {
 
     const summaries = await query().summarizeWorkForOrders(['ol_order_a']);
 
-    expect(summaries.get('ol_order_a')).toEqual({ stage: 'packed', workCount: 1 });
+    expect(summaries.get('ol_order_a')).toEqual({
+      stage: 'packed',
+      workCount: 1,
+      assignment: 'single',
+      assignedToUserId: null,
+    });
   });
 
   it('should leave an order with no work out of the result', async () => {
@@ -125,7 +135,12 @@ describe('Order work summary (#3482)', () => {
 
     const summaries = await query().summarizeWorkForOrders(['ol_order_a']);
 
-    expect(summaries.get('ol_order_a')).toEqual({ stage: 'to-pack', workCount: 2 });
+    expect(summaries.get('ol_order_a')).toEqual({
+      stage: 'to-pack',
+      workCount: 2,
+      assignment: 'single',
+      assignedToUserId: null,
+    });
   });
 
   it('should summarise every order of a page in one call', async () => {

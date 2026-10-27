@@ -7,13 +7,13 @@
  *
  * @module apps/web/src/features/orders/lib
  */
-import type { FulfillmentBlockReasonValue, OrderWorkStageValue } from '../api/orders.types';
+import type { OrderWorkStageValue, WaitingFulfillmentBlockReasonValue } from '../api/orders.types';
 
 /** The packing position, in time order. `satisfies` makes a new stage a compile error here. */
 export const ORDER_WORK_STAGE_COPY = {
   'to-pack': { label: 'To pack', mark: '○', hint: 'Waiting to be packed in OpenLinker' },
-  packing: { label: 'Packing', mark: '◐', hint: 'Being packed at a pack station now' },
-  packed: { label: 'Packed', mark: '✓', hint: 'Packed in OpenLinker' },
+  'packing': { label: 'Packing', mark: '◐', hint: 'Being packed at a pack station now' },
+  'packed': { label: 'Packed', mark: '✓', hint: 'Packed in OpenLinker' },
 } as const satisfies Record<
   OrderWorkStageValue,
   { label: string; mark: string; hint: string }
@@ -28,6 +28,12 @@ export const HANDLED_IN_OPENLINKER_COPY = {
   syncLabel: 'In OpenLinker',
   /** Mobile card fact labels. */
   waitingOnFact: 'Waiting on',
+  /** Who packs it, under To pack / Packing (mockup: "To pack · Unassigned"). */
+  unassigned: 'Unassigned',
+  /** An assigned packer whose name this page cannot resolve - never a raw id. */
+  assignedUnknown: 'Assigned',
+  /** A split order whose parcels are assigned to different packers. */
+  severalPackers: 'Several packers',
 } as const;
 
 /**
@@ -58,9 +64,7 @@ export const WAITING_REASON_COPY = {
     hint: 'OpenLinker is holding this order: routing it failed. It is retried automatically.',
     tone: 'error',
   },
-} as const satisfies Partial<
-  Record<
-    FulfillmentBlockReasonValue,
-    { label: string; fact: string; hint: string; tone: 'warning' | 'error' }
-  >
+} as const satisfies Record<
+  WaitingFulfillmentBlockReasonValue,
+  { label: string; fact: string; hint: string; tone: 'warning' | 'error' }
 >;

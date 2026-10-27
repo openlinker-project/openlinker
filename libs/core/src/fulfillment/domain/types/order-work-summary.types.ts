@@ -36,10 +36,53 @@ export const OrderWorkStageValues = [
 
 export type OrderWorkStage = (typeof OrderWorkStageValues)[number];
 
+/**
+ * The work statuses that take part in the packing flow (#3482). A work in any
+ * other status - `cancelled`, `incomplete`, or a value outside the union - is
+ * not "live" and makes no order look handled.
+ *
+ * ONE list for both sides of the rule: `stageOfFulfillmentWork` returns `null`
+ * for exactly the statuses absent here (pinned by its spec), and
+ * `OrderRecordRepository` builds its SQL `IN (...)` from this array, so the
+ * health count, the on-bench count and a row's `handledInOpenLinker` cannot
+ * disagree. A POSITIVE list on purpose: an unknown status is excluded in SQL
+ * just as the TypeScript `default` arm excludes it.
+ */
+export const PackingFlowFulfillmentWorkStatusValues = [
+  'open',
+  'scheduled',
+  'on_hold',
+  'in_progress',
+  'closed',
+] as const satisfies readonly FulfillmentWorkStatus[];
+
+/**
+ * The packing-flow statuses of a work still on the pack bench: everything but
+ * `closed`, which is packed. The bench never moves `status`, so a caller must
+ * ALSO require `parcelClosedAt IS NULL` (see `stageOfFulfillmentWork`).
+ */
+export const UnpackedFulfillmentWorkStatusValues = [
+  'open',
+  'scheduled',
+  'on_hold',
+  'in_progress',
+] as const satisfies readonly (typeof PackingFlowFulfillmentWorkStatusValues)[number][];
+
 export interface OrderWorkSummary {
   readonly stage: OrderWorkStage;
   /** How many live works the order has (a split order has several). */
   readonly workCount: number;
+  /**
+   * Who packs it, for a stage before `packed` (#3482, mockup: "To pack ·
+   * Unassigned", "Packing · <name>").
+   *
+   * - `single`: every live work agrees; `assignedToUserId` is that packer, or
+   *   `null` for "Unassigned".
+   * - `mixed`: a split order whose works are assigned to different people (or
+   *   some to nobody); no single name is true, so none is reported.
+   */
+  readonly assignment: 'single' | 'mixed';
+  readonly assignedToUserId: string | null;
 }
 
 /**
@@ -55,6 +98,14 @@ export interface FulfillmentWorkProgress {
   readonly status: FulfillmentWorkStatus;
   /** Set when the bench shut the box (D18). The bench's own "packed" fact. */
   readonly parcelClosedAt: Date | null;
+  /**
+   * At least one NON-voided verification (a scan) exists on the work. The bench
+   * writes one per scan and never moves `status`, so this is the only fact that
+   * says "someone is packing this box right now".
+   */
+  readonly hasVerification: boolean;
+  /** The packer the work is assigned to, `null` when nobody is (ADR-074). */
+  readonly assignedToUserId: string | null;
 }
 
 /**
@@ -69,8 +120,8 @@ export interface FulfillmentWorkProgress {
  *   work is gone, and a short-picked one waits for the router to re-source it,
  *   so neither may make an order look packed - **even with a closed parcel**.
  *
- * Known gap: scanning at the bench BEFORE the box is shut writes no column on
- * the work, so that window still reads `to-pack`.
+ * - A scan on the work (`hasVerification`) with the box still open is packing:
+ *   the bench records scans in its verification ledger, not in `status`.
  */
 export const stageOfFulfillmentWork = (work: FulfillmentWorkProgress): OrderWorkStage | null => {
   switch (work.status) {
@@ -84,7 +135,8 @@ export const stageOfFulfillmentWork = (work: FulfillmentWorkProgress): OrderWork
     case 'open':
     case 'scheduled':
     case 'on_hold':
-      return work.parcelClosedAt ? 'packed' : 'to-pack';
+      if (work.parcelClosedAt) return 'packed';
+      return work.hasVerification ? 'packing' : 'to-pack';
     default:
       // `status` is a plain `text` column cast at the repository boundary, so a
       // value outside the union is reachable at runtime. Without this arm the
@@ -105,9 +157,8 @@ export const stageOfFulfillmentWork = (work: FulfillmentWorkProgress): OrderWork
 export const summarizeOrderWork = (
   works: readonly FulfillmentWorkProgress[]
 ): OrderWorkSummary | null => {
-  const stages = works
-    .map(stageOfFulfillmentWork)
-    .filter((stage): stage is OrderWorkStage => stage !== null);
+  const live = works.filter((work) => stageOfFulfillmentWork(work) !== null);
+  const stages = live.map((work) => stageOfFulfillmentWork(work) as OrderWorkStage);
   if (stages.length === 0) return null;
 
   const earliest = OrderWorkStageValues.find((stage) => stages.includes(stage));
@@ -115,5 +166,9 @@ export const summarizeOrderWork = (
   // miss; the guard keeps the return type honest without a non-null assertion.
   if (earliest === undefined) return null;
 
-  return { stage: earliest, workCount: stages.length };
+  const assignees = new Set(live.map((work) => work.assignedToUserId));
+  const [onlyAssignee] = [...assignees];
+  return assignees.size === 1
+    ? { stage: earliest, workCount: stages.length, assignment: 'single', assignedToUserId: onlyAssignee ?? null }
+    : { stage: earliest, workCount: stages.length, assignment: 'mixed', assignedToUserId: null };
 };

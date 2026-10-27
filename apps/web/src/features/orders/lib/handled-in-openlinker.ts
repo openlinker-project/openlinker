@@ -11,6 +11,7 @@
  */
 import type { OrderHandledInOpenLinker, OrderRecord } from '../api/orders.types';
 import {
+  HANDLED_IN_OPENLINKER_COPY,
   ORDER_WORK_STAGE_COPY,
   WAITING_REASON_COPY,
 } from './handled-in-openlinker.copy';
@@ -72,6 +73,45 @@ export function showsPackingStage(
   const view = derivePackingStage(order.handledInOpenLinker);
   if (!view) return false;
   return !(view.stage === 'packed' && Boolean(order.packedAt));
+}
+
+/**
+ * Who packs it, for the line under "To pack" / "Packing" (#3482, mockup:
+ * "To pack · Unassigned", "Packing · <name>"), or `null` when there is nothing
+ * to say: no work, a packed parcel (its tick says when instead), or a response
+ * from before the assignment was projected.
+ *
+ * `nameById` is the packers roster, or `null` while that roster is not usable -
+ * still loading, failed, or never fetched. A name-dependent label then renders
+ * NOTHING: "Assigned" is a claim that this id does not resolve, and a roster
+ * that has not answered (or errored) has made no such statement. Only a roster
+ * that LOADED can say an id is unknown, and it reads "Assigned", never a raw id.
+ * "Unassigned" and "Several packers" need no roster and are unaffected.
+ */
+export function derivePackerLabel(
+  handled: OrderHandledInOpenLinker | undefined,
+  nameById: ReadonlyMap<string, string> | null
+): string | null {
+  const view = derivePackingStage(handled);
+  if (!view || view.stage === 'packed' || !handled?.assignment) return null;
+  if (handled.assignment === 'mixed') return HANDLED_IN_OPENLINKER_COPY.severalPackers;
+  if (!handled.assignedToUserId) return HANDLED_IN_OPENLINKER_COPY.unassigned;
+  if (nameById === null) return null;
+  return nameById.get(handled.assignedToUserId) ?? HANDLED_IN_OPENLINKER_COPY.assignedUnknown;
+}
+
+/** Does any row on the page need a packer's NAME (so the roster is worth fetching)? */
+export function needsPackerNames(
+  orders: ReadonlyArray<Pick<OrderRecord, 'handledInOpenLinker'>>
+): boolean {
+  return orders.some((order) => {
+    const handled = order.handledInOpenLinker;
+    return (
+      handled?.assignment === 'single' &&
+      Boolean(handled.assignedToUserId) &&
+      handled.stage !== 'packed'
+    );
+  });
 }
 
 /** Is the order handled in OpenLinker (it has live pack-bench work)? */

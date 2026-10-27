@@ -60,7 +60,7 @@ describe('FulfillmentWorkQueryService', () => {
 
     it('should omit an order that has no live work', async () => {
       works.findProgressByOrderIds.mockResolvedValue([
-        { orderId: 'ol_order_1', status: 'cancelled', parcelClosedAt: null },
+        { orderId: 'ol_order_1', status: 'cancelled', parcelClosedAt: null, hasVerification: false, assignedToUserId: null },
       ]);
 
       const summaries = await service.summarizeWorkForOrders(['ol_order_1', 'ol_order_2']);
@@ -70,26 +70,26 @@ describe('FulfillmentWorkQueryService', () => {
 
     it('should report the earliest stage for a split order and one entry per order', async () => {
       works.findProgressByOrderIds.mockResolvedValue([
-        { orderId: 'ol_order_1', status: 'closed', parcelClosedAt: null },
-        { orderId: 'ol_order_1', status: 'open', parcelClosedAt: null },
-        { orderId: 'ol_order_2', status: 'in_progress', parcelClosedAt: null },
+        { orderId: 'ol_order_1', status: 'closed', parcelClosedAt: null, hasVerification: false, assignedToUserId: null },
+        { orderId: 'ol_order_1', status: 'open', parcelClosedAt: null, hasVerification: false, assignedToUserId: null },
+        { orderId: 'ol_order_2', status: 'in_progress', parcelClosedAt: null, hasVerification: false, assignedToUserId: null },
       ]);
 
       const summaries = await service.summarizeWorkForOrders(['ol_order_1', 'ol_order_2']);
 
-      expect(summaries.get('ol_order_1')).toEqual({ stage: 'to-pack', workCount: 2 });
-      expect(summaries.get('ol_order_2')).toEqual({ stage: 'packing', workCount: 1 });
+      expect(summaries.get('ol_order_1')).toMatchObject({ stage: 'to-pack', workCount: 2 });
+      expect(summaries.get('ol_order_2')).toMatchObject({ stage: 'packing', workCount: 1 });
     });
 
     it('should report packed for a bench-closed parcel whose status was never moved', async () => {
       // The real shape the pack bench leaves behind: `status` stays `open`.
       works.findProgressByOrderIds.mockResolvedValue([
-        { orderId: 'ol_order_1', status: 'open', parcelClosedAt: new Date('2026-10-23T12:48:12Z') },
+        { orderId: 'ol_order_1', status: 'open', parcelClosedAt: new Date('2026-10-23T12:48:12Z'), hasVerification: false, assignedToUserId: null },
       ]);
 
       const summaries = await service.summarizeWorkForOrders(['ol_order_1']);
 
-      expect(summaries.get('ol_order_1')).toEqual({ stage: 'packed', workCount: 1 });
+      expect(summaries.get('ol_order_1')).toMatchObject({ stage: 'packed', workCount: 1 });
     });
   });
 
