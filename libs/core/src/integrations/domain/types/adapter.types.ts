@@ -8,7 +8,7 @@
  *
  * @module libs/core/src/integrations/domain/types
  */
-import type { ConnectionRateLimit } from '@openlinker/core/identifier-mapping';
+import type { Connection, ConnectionRateLimit } from '@openlinker/core/identifier-mapping';
 
 /**
  * Well-known core capabilities — the documented set OpenLinker ships with.
@@ -181,6 +181,26 @@ export interface AdapterMetadata {
   defaultRateLimit?: ConnectionRateLimit;
 
   /**
+   * Names the outbound rate-limit bucket a connection draws from, for a remote
+   * whose quota is scoped WIDER than one credential (ADR-038 § Amendment).
+   * Absent, or returning `undefined`, means the default: one bucket per
+   * connection id. Shoper is the first user - its limit is per shop and shared
+   * by every token on it, so two connections to one shop must pace together.
+   *
+   * A pure function of the connection (no I/O, never throws), and the ONE
+   * answer both sides consult: the plugin passes it to
+   * `HttpTransportFactoryPort.forConnection(..., { bucketKey })` at every call
+   * site, and `RateLimitStatusService` reads the same bucket for the operator's
+   * status panel, so what is reported is what is enforced. Under a shared
+   * bucket, `defaultRateLimit` is the remote's ceiling and `config.rateLimit`
+   * can only tighten it (`tightenRateLimit`). A function on a manifest is
+   * dropped by JSON serialisation (`GET /adapters`), which is harmless: the
+   * host never needs it on the wire. Read it through
+   * {@link readRateLimitBucketKey}.
+   */
+  resolveRateLimitBucketKey?: (connection: Pick<Connection, 'id' | 'config'>) => string | undefined;
+
+  /**
    * Whether a connection for this adapter must carry credentials (#2405,
    * ADR-055). Absent means `true` — every adapter that crosses a network
    * boundary needs them, so an adapter declaring nothing is unchanged.
@@ -339,3 +359,20 @@ export function resolveArchivable(
   return metadata?.archivable ?? true;
 }
 
+/**
+ * Read `AdapterMetadata.resolveRateLimitBucketKey` (ADR-038 § Amendment):
+ * the shared bucket a connection draws from, or `undefined` for the default
+ * per-connection bucket. Probed with `typeof` rather than trusted, so a
+ * manifest that crossed a serialisation boundary (and lost the function)
+ * degrades to the default instead of throwing. Same pure-rule shape as
+ * {@link resolveRequiresCredentials}.
+ */
+export function readRateLimitBucketKey(
+  metadata: Pick<AdapterMetadata, 'resolveRateLimitBucketKey'> | undefined | null,
+  connection: Pick<Connection, 'id' | 'config'>
+): string | undefined {
+  const resolve = metadata?.resolveRateLimitBucketKey;
+  if (typeof resolve !== 'function') return undefined;
+  const key = resolve(connection);
+  return key !== undefined && key.length > 0 ? key : undefined;
+}

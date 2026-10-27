@@ -241,8 +241,9 @@ export interface ShipmentRepositoryPort {
    * rather than writing it beside adds NO new failure mode - the release was
    * already an un-caught `await` on both failure paths - while making the
    * accounting structurally complete. Both callers are failure paths in
-   * `ShipmentStatusSyncService.relayWaybillToParticipants`; there is no third
-   * caller that could count a non-failure.
+   * `relayWaybillUnderClaim` (`waybill-relay.ts`, shared by the carrier poll and
+   * the source-side fulfilment read-back); there is no third caller that could
+   * count a non-failure.
    *
    * `failure` is REQUIRED, not optional. An optional argument would be a silent
    * decline: a caller that omitted it would release the claim and record

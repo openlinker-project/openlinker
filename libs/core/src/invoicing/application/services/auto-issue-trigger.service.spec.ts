@@ -17,6 +17,7 @@ import {
   AUTO_ISSUE_RETRY_BUDGET,
 } from './auto-issue-trigger.service';
 import { BuyerProfile } from '../../domain/entities/buyer-profile.entity';
+import { ConnectionNotFoundException } from '@openlinker/core/identifier-mapping';
 import type { ConnectionPort } from '@openlinker/core/identifier-mapping';
 import type { Connection } from '@openlinker/core/identifier-mapping';
 import type { ISyncJobsService } from '@openlinker/core/sync';
@@ -1633,6 +1634,228 @@ describe('AutoIssueTriggerService', () => {
           // the empty eligible set.
           detail: '1 capable connection, none declaring a document kind',
         },
+      });
+    });
+  });
+
+  // A rule's connection is a persisted value checked only when the rule is
+  // saved. Disabling, removing or stripping that connection afterwards used to
+  // reach a branch the gate called unreachable and answered `indeterminate`,
+  // so the order got no document, no job and no badge.
+  describe('a rule routing to a connection that cannot issue (routed-connection-unavailable)', () => {
+    const disabledSubiekt = (): Connection =>
+      makeConnection('auto-on-paid', { id: 'conn-disabled', status: 'disabled' });
+
+    const issuedInvoice = (): InvoiceRecord =>
+      new InvoiceRecord(
+        'inv-1',
+        'conn-disabled',
+        'order-1',
+        'subiekt-gt',
+        'invoice',
+        'issued',
+        null,
+        null,
+        'not-applicable',
+        null,
+        null,
+        null,
+        null,
+        null,
+        new Date('2026-08-01T10:00:00Z'),
+        new Date('2026-08-01T10:00:00Z'),
+        null,
+      );
+
+    function routeTo(
+      documentKind: 'invoice' | 'fiscal-receipt',
+      connectionId: string,
+      // `null` = a country default routed it, so no rule id travels along.
+      ruleId: string | null = 'rule-1',
+    ): void {
+      salesDocumentRules.resolveRouting.mockResolvedValue({
+        kind: 'route',
+        documentKind,
+        connectionId,
+        ...(ruleId === null ? {} : { ruleId }),
+      } satisfies SalesDocumentDecision);
+    }
+
+    it('reports a persisted block naming the connection when the rule targets a disabled invoicing connection', async () => {
+      // Another connection is active, so the gate reaches the dispatch step -
+      // the shape of the live report.
+      connectionPort.list.mockResolvedValue([makeFiscalConnection('auto-on-paid')]);
+      connectionPort.get.mockResolvedValue(disabledSubiekt());
+      routeTo('invoice', 'conn-disabled');
+
+      const outcome = await service.onOrderTransition(
+        makeOrderWithDelivery({ paymentStatus: 'paid' }),
+        'src-1',
+      );
+
+      expect(syncJobs.schedule).not.toHaveBeenCalled();
+      expect(connectionPort.get).toHaveBeenCalledWith('conn-disabled');
+      expect(outcome).toEqual({
+        kind: 'blocked',
+        block: {
+          reason: 'unresolved-routing',
+          unresolvedReason: 'routed-connection-unavailable',
+          detail: "Rule rule-1 routes this order's invoice to connection conn-disabled, which is disabled",
+        },
+        matchedRuleId: 'rule-1',
+      });
+    });
+
+    it('reports the block for a fiscal-receipt rule whose connection no longer exists', async () => {
+      connectionPort.list.mockResolvedValue([makeConnection('auto-on-paid')]);
+      connectionPort.get.mockRejectedValue(new ConnectionNotFoundException('conn-gone'));
+      routeTo('fiscal-receipt', 'conn-gone', null);
+
+      const outcome = await service.onOrderTransition(
+        makeOrderWithDelivery({ paymentStatus: 'paid' }),
+        'src-1',
+      );
+
+      expect(syncJobs.schedule).not.toHaveBeenCalled();
+      expect(outcome).toEqual({
+        kind: 'blocked',
+        block: {
+          reason: 'unresolved-routing',
+          unresolvedReason: 'routed-connection-unavailable',
+          detail: "Routing sends this order's receipt to connection conn-gone, which no longer exists",
+        },
+      });
+    });
+
+    it('reports the block, and enqueues nothing, for a fiscal-receipt rule whose active connection lost Fiscalization', async () => {
+      // Active and still an Invoicing candidate, so it IS in `connections` -
+      // the check has to be about the capability, not only about presence.
+      connectionPort.list.mockResolvedValue([makeConnection('auto-on-paid', { id: 'conn-inv' })]);
+      routeTo('fiscal-receipt', 'conn-inv');
+
+      const outcome = await service.onOrderTransition(
+        makeOrderWithDelivery({ paymentStatus: 'paid' }),
+        'src-1',
+      );
+
+      expect(syncJobs.schedule).not.toHaveBeenCalled();
+      expect(connectionPort.get).not.toHaveBeenCalled();
+      expect(outcome).toMatchObject({
+        kind: 'blocked',
+        block: {
+          unresolvedReason: 'routed-connection-unavailable',
+          detail: "Rule rule-1 routes this order's receipt to connection conn-inv, which does not have Fiscalization enabled",
+        },
+      });
+    });
+
+    it('names the missing capability when the connection is active but carries neither sales-document capability', async () => {
+      connectionPort.list.mockResolvedValue([makeFiscalConnection('auto-on-paid')]);
+      connectionPort.get.mockResolvedValue(
+        makeConnection('auto-on-paid', { id: 'conn-stripped', enabledCapabilities: ['OrderSource'] }),
+      );
+      routeTo('invoice', 'conn-stripped');
+
+      const outcome = await service.onOrderTransition(
+        makeOrderWithDelivery({ paymentStatus: 'paid' }),
+        'src-1',
+      );
+
+      expect(outcome).toMatchObject({
+        block: {
+          unresolvedReason: 'routed-connection-unavailable',
+          detail: expect.stringContaining('which does not have Invoicing enabled') as unknown as string,
+        },
+      });
+    });
+
+    it('still blocks when the connection cannot be read back - only the detail gets vaguer', async () => {
+      connectionPort.list.mockResolvedValue([makeFiscalConnection('auto-on-paid')]);
+      connectionPort.get.mockRejectedValue(new Error('db unavailable'));
+      routeTo('invoice', 'conn-disabled');
+
+      const outcome = await service.onOrderTransition(
+        makeOrderWithDelivery({ paymentStatus: 'paid' }),
+        'src-1',
+      );
+
+      expect(outcome).toMatchObject({
+        kind: 'blocked',
+        block: {
+          unresolvedReason: 'routed-connection-unavailable',
+          detail: expect.stringContaining(
+            'which is not an active connection that can issue it',
+          ) as unknown as string,
+        },
+      });
+    });
+
+    it('reports none when the order already carries a document - the block is about configuration, which stays true after issuance', async () => {
+      connectionPort.list.mockResolvedValue([makeFiscalConnection('auto-on-paid')]);
+      connectionPort.get.mockResolvedValue(disabledSubiekt());
+      invoices.getLatestInvoiceForOrder.mockResolvedValue(issuedInvoice());
+      routeTo('invoice', 'conn-disabled');
+
+      const outcome = await service.onOrderTransition(
+        makeOrderWithDelivery({ paymentStatus: 'paid' }),
+        'src-1',
+      );
+
+      expect(outcome).toEqual({ kind: 'none', matchedRuleId: 'rule-1' });
+      expect(syncJobs.schedule).not.toHaveBeenCalled();
+    });
+
+    describe('when no active connection can issue at all', () => {
+      it('still reports the block when a rule routes the order to the disabled connection', async () => {
+        // The only invoicing connection was disabled, so the active list is
+        // empty - which used to answer `none` before the rules were consulted.
+        connectionPort.list.mockResolvedValue([]);
+        connectionPort.get.mockResolvedValue(disabledSubiekt());
+        routeTo('invoice', 'conn-disabled');
+
+        const outcome = await service.onOrderTransition(
+          makeOrderWithDelivery({ paymentStatus: 'paid' }),
+          'src-1',
+        );
+
+        expect(outcome).toMatchObject({
+          kind: 'blocked',
+          block: { unresolvedReason: 'routed-connection-unavailable' },
+          matchedRuleId: 'rule-1',
+        });
+      });
+
+      it('keeps reporting none when the rules route nowhere', async () => {
+        connectionPort.list.mockResolvedValue([]);
+
+        const outcome = await service.onOrderTransition(
+          makeOrderWithDelivery({ paymentStatus: 'paid' }),
+          'src-1',
+        );
+
+        expect(salesDocumentRules.resolveRouting).toHaveBeenCalledTimes(1);
+        expect(outcome).toEqual({ kind: 'none' });
+      });
+
+      it('does not consult the rules for an order with no delivery country', async () => {
+        connectionPort.list.mockResolvedValue([]);
+
+        const outcome = await service.onOrderTransition(makeOrder({ paymentStatus: 'paid' }), 'src-1');
+
+        expect(salesDocumentRules.resolveRouting).not.toHaveBeenCalled();
+        expect(outcome).toEqual({ kind: 'none' });
+      });
+
+      it('leaves the persisted reason alone when the rules cannot be read', async () => {
+        connectionPort.list.mockResolvedValue([]);
+        salesDocumentRules.resolveRouting.mockRejectedValue(new Error('db unavailable'));
+
+        const outcome = await service.onOrderTransition(
+          makeOrderWithDelivery({ paymentStatus: 'paid' }),
+          'src-1',
+        );
+
+        expect(outcome).toEqual({ kind: 'indeterminate' });
       });
     });
   });

@@ -442,6 +442,15 @@ const ALLOW_LIST = new Map([
     ]),
   ],
 
+  // The dead failed-creation guard is a SQL predicate over a LEFT join, so the
+  // int-spec must drive the repository against real Postgres - a service-level
+  // read would not exercise the negated-NULL case it exists to pin. Like the
+  // #2944 row above, it has no rewire target and must NOT be dropped with #722.
+  [
+    'apps/api/test/integration/offer-dead-failed-creation.int-spec.ts',
+    new Set(['OfferMappingRepositoryPort']),
+  ],
+
   // apps → orders.OrderRecordRepositoryPort — rewire via IOrdersService
   ['apps/api/src/orders/http/orders.controller.ts', new Set(['OrderRecordRepositoryPort'])],
   ['apps/api/src/orders/http/orders.controller.spec.ts', new Set(['OrderRecordRepositoryPort'])],
@@ -451,6 +460,12 @@ const ALLOW_LIST = new Map([
   ],
   [
     'apps/api/test/integration/order-health-summary.int-spec.ts',
+    new Set(['OrderRecordRepositoryPort']),
+  ],
+  // #2703/#2704 — asserts the real raw-SQL UPDATE and the `COALESCE ... NOT IN`
+  // filter arm against Postgres, which only the repository reaches.
+  [
+    'apps/api/test/integration/order-destination-routing-block.int-spec.ts',
     new Set(['OrderRecordRepositoryPort']),
   ],
   // #3527/#3528 — trigram search + diacritic folding + the tracking-number OR

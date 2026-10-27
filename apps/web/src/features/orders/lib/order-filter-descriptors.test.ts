@@ -48,14 +48,17 @@ describe('ORDER_FILTER_DESCRIPTORS', () => {
         'hold',
         'invoicing',
         'openReturn',
+        'packBench',
         'packed',
         'phase',
+        'routing',
         'search',
         'slaState',
         'sourceConnectionId',
         'tag',
         'taxRate',
         'untagged',
+        'waiting',
       ].sort(),
     );
   });
@@ -81,6 +84,9 @@ describe('ORDER_FILTER_DESCRIPTORS', () => {
       packed: 'packed=false',
       holdReason: 'hold=operator',
       salesDocumentBlocked: 'invoicing=blocked',
+      destinationRoutingBlocked: 'routing=blocked',
+      waitingInOpenLinker: 'waiting=true',
+      onPackBench: 'packBench=true',
       attention: 'attention=true',
       taxRateConflict: 'taxRate=conflict',
       openReturn: 'openReturn=true',
@@ -125,18 +131,24 @@ describe('toOrderQueryFilters', () => {
   });
 
   it('should send present-only toggles as true or omit them when off', () => {
-    const on = toOrderQueryFilters(parse('invoicing=blocked&taxRate=conflict&attention=true&openReturn=true'), {
+    const on = toOrderQueryFilters(parse('invoicing=blocked&routing=blocked&waiting=true&packBench=true&taxRate=conflict&attention=true&openReturn=true'), {
       dueBefore: undefined,
       search: '',
     });
     expect(on).toMatchObject({
       salesDocumentBlocked: true,
+      destinationRoutingBlocked: true,
+      waitingInOpenLinker: true,
+      onPackBench: true,
       taxRateConflict: true,
       attention: true,
       openReturn: true,
     });
     const off = toOrderQueryFilters(parse(''), { dueBefore: undefined, search: '' });
     expect(off.salesDocumentBlocked).toBeUndefined();
+    expect(off.destinationRoutingBlocked).toBeUndefined();
+    expect(off.waitingInOpenLinker).toBeUndefined();
+    expect(off.onPackBench).toBeUndefined();
     expect(off.search).toBeUndefined();
   });
 });

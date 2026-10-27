@@ -161,6 +161,12 @@ describe('OrderRecordRepository paged/count predicate parity (#2944)', () => {
     ['omsAttention=true', { omsAttention: true }],
     ['omsAttention=false', { omsAttention: false }],
     ['activeHoldReason', { activeHoldReason: 'fraud-review' }],
+    ['destinationRoutingBlocked=true', { destinationRoutingBlocked: true }],
+    ['destinationRoutingBlocked=false', { destinationRoutingBlocked: false }],
+    ['waitingInOpenLinker=true', { waitingInOpenLinker: true }],
+    ['waitingInOpenLinker=false', { waitingInOpenLinker: false }],
+    ['onPackBench=true', { onPackBench: true }],
+    ['onPackBench=false', { onPackBench: false }],
     [
       'every filter at once',
       {
@@ -182,6 +188,9 @@ describe('OrderRecordRepository paged/count predicate parity (#2944)', () => {
         taxRateConflict: true,
         omsAttention: true,
         activeHoldReason: 'fraud-review',
+        destinationRoutingBlocked: true,
+        waitingInOpenLinker: true,
+        onPackBench: true,
       },
     ],
   ];

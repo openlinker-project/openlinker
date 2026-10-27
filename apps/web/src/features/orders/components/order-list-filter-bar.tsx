@@ -337,6 +337,19 @@ export function OrderListFilterBar({
       </Select>
     </FilterField>
   );
+  // #3482 - a list filter only: the bench itself is on /bench and /fulfillment.
+  const packBenchCheck = (
+    <FilterChecks>
+      <FilterCheck
+        label={COPY.checkPackBench}
+        checked={state.onPackBench}
+        count={summary?.onPackBench}
+        onChange={() => {
+          filtersApi.toggle('onPackBench');
+        }}
+      />
+    </FilterChecks>
+  );
   const holdField = (
     <FilterField label={COPY.fieldHold}>
       <Select
@@ -373,6 +386,24 @@ export function OrderListFilterBar({
         count={summary?.omsAttention}
         onChange={() => {
           filtersApi.toggle('attention');
+        }}
+      />
+      <FilterCheck
+        label={COPY.checkWaiting}
+        tone="warning"
+        checked={state.waitingInOpenLinker}
+        count={summary?.waitingInOpenLinker}
+        onChange={() => {
+          filtersApi.toggle('waitingInOpenLinker');
+        }}
+      />
+      <FilterCheck
+        label={COPY.checkRoutingBlocked}
+        tone="error"
+        checked={state.routingBlocked}
+        count={summary?.destinationRoutingBlocked}
+        onChange={() => {
+          filtersApi.toggle('destinationRoutingBlocked');
         }}
       />
       <FilterCheck
@@ -507,6 +538,7 @@ export function OrderListFilterBar({
       {fulfillmentField}
       {shipByField}
       {packingField}
+      {packBenchCheck}
     </>
   );
   const exceptionsBody = (
@@ -642,6 +674,7 @@ export function OrderListFilterBar({
             {fulfillmentField}
             {shipByField}
             {packingField}
+            {packBenchCheck}
           </FilterGroup>
           <FilterGroup legend={COPY.groupExceptions}>
             {holdField}
@@ -680,6 +713,52 @@ export function OrderListFilterBar({
               <span className="chip__count">
                 {`${salesDocsBlocked}${oldestAgeSuffix(summary?.salesDocumentBlockedOldestAt)}`}
               </span>
+            )}
+          </Chip>
+        ) : null}
+        {/* #3482 - attention, not failure: warning-toned, with the age of the
+            oldest wait folded into the label like the sales-documents chip. */}
+        {state.waitingInOpenLinker || summary?.waitingInOpenLinker ? (
+          <Chip
+            tone="warning"
+            active={state.waitingInOpenLinker}
+            onClick={() => {
+              filtersApi.toggle('waitingInOpenLinker');
+            }}
+          >
+            {COPY.quickWaiting}
+            {summary?.waitingInOpenLinker === undefined ? null : (
+              <span className="chip__count">
+                {`${summary.waitingInOpenLinker}${oldestAgeSuffix(summary.waitingInOpenLinkerOldestAt)}`}
+              </span>
+            )}
+          </Chip>
+        ) : null}
+        {/* #3482 - neutral and a list filter only, no action. */}
+        {state.onPackBench || summary?.onPackBench ? (
+          <Chip
+            active={state.onPackBench}
+            onClick={() => {
+              filtersApi.toggle('onPackBench');
+            }}
+          >
+            {COPY.quickPackBench}
+            {summary?.onPackBench === undefined ? null : (
+              <span className="chip__count">{summary.onPackBench}</span>
+            )}
+          </Chip>
+        ) : null}
+        {state.routingBlocked || summary?.destinationRoutingBlocked ? (
+          <Chip
+            tone="error"
+            active={state.routingBlocked}
+            onClick={() => {
+              filtersApi.toggle('destinationRoutingBlocked');
+            }}
+          >
+            {COPY.quickRoutingBlocked}
+            {summary?.destinationRoutingBlocked === undefined ? null : (
+              <span className="chip__count">{summary.destinationRoutingBlocked}</span>
             )}
           </Chip>
         ) : null}

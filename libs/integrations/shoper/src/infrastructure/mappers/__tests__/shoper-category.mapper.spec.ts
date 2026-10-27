@@ -1,10 +1,8 @@
 import type { ShoperCategory, ShoperCategoryTreeNode } from '../../../domain/types/shoper-api.types';
 import {
-  buildShoperCategoryBreadcrumb,
   findShoperCategoryChild,
   flattenShoperCategoryTree,
   joinShoperCategories,
-  shoperCategoryPathIds,
 } from '../shoper-category.mapper';
 
 function category(id: string, name: string | null, active = '1'): ShoperCategory {
@@ -171,38 +169,3 @@ describe('findShoperCategoryChild', () => {
   });
 });
 
-describe('shoperCategoryPathIds', () => {
-  const tree: ShoperCategoryTreeNode[] = [
-    { id: 2, children: [{ id: 7, children: [{ id: 9, children: [] }] }] },
-    { id: 3, children: [] },
-  ];
-
-  it('should return the ids from the root down to the leaf', () => {
-    expect(shoperCategoryPathIds(tree, '9')).toEqual(['2', '7', '9']);
-    expect(shoperCategoryPathIds(tree, '3')).toEqual(['3']);
-  });
-
-  it('should return null for a category the tree does not place', () => {
-    expect(shoperCategoryPathIds(tree, '42')).toBeNull();
-  });
-});
-
-describe('buildShoperCategoryBreadcrumb', () => {
-  const named = (id: string, name: string): ShoperCategory => ({
-    category_id: id,
-    translations: { pl_PL: { name } },
-  });
-
-  it('should name every node of the path in the shop language', () => {
-    expect(
-      buildShoperCategoryBreadcrumb(['2', '7'], [named('7', 'Ceramika'), named('2', 'Dom i kuchnia')], 'pl_PL'),
-    ).toEqual([
-      { id: '2', name: 'Dom i kuchnia' },
-      { id: '7', name: 'Ceramika' },
-    ]);
-  });
-
-  it('should return null when any node has no name, never a path with a hole', () => {
-    expect(buildShoperCategoryBreadcrumb(['2', '7'], [named('7', 'Ceramika')], 'pl_PL')).toBeNull();
-  });
-});

@@ -217,6 +217,20 @@ describe('ConnectionController', () => {
 
       expect(result.enabled).toBe(false);
       expect(result.requestsPerMinute).toBeUndefined();
+      expect(result.sharedBucket).toBe(false);
+    });
+
+    it('reports a shared bucket when the service says the limit is shared', async () => {
+      rateLimitStatusService.getStatus.mockResolvedValue({
+        enabled: true,
+        requestsPerMinute: 300,
+        maxConcurrent: 4,
+        sharedBucket: true,
+      });
+
+      const result = await controller.getRateLimitStatus('connection-123');
+
+      expect(result.sharedBucket).toBe(true);
     });
   });
 

@@ -135,6 +135,11 @@ import {
   type IShipmentQueryService,
 } from '@openlinker/core/shipping';
 import {
+  FULFILLMENT_WORK_QUERY_SERVICE_TOKEN,
+  type IFulfillmentWorkQueryService,
+  type OrderWorkSummary,
+} from '@openlinker/core/fulfillment';
+import {
   RETURNS_SERVICE_TOKEN,
   type IReturnsService,
   type OpenReturnOrderSummary,
@@ -173,6 +178,7 @@ import {
 } from './dto/order-hold-response.dto';
 import type { OrderInvoiceProjectionDto } from './dto/order-invoice-projection.dto';
 import type { OrderReservationShortfallDto } from './dto/order-reservation-shortfall.dto';
+import type { OrderHandledInOpenLinkerDto } from './dto/order-handled-in-openlinker.dto';
 import type { OrderOpenReturnDto } from './dto/order-open-return.dto';
 import {
   SalesDocumentViewResponseDto,
@@ -217,6 +223,9 @@ export function toOrderRecordFilters(
     slaState: query.slaState,
     fulfillmentState: query.fulfillmentState,
     salesDocumentBlocked: query.salesDocumentBlocked,
+    destinationRoutingBlocked: query.destinationRoutingBlocked,
+    waitingInOpenLinker: query.waitingInOpenLinker,
+    onPackBench: query.onPackBench,
     cancelled: query.cancelled,
     lifecyclePhase: query.phase,
     taxRateConflict: query.taxRateConflict,
@@ -368,6 +377,11 @@ export class OrdersController {
     // `orders` back, so the composition happens here.
     @Inject(RETURNS_SERVICE_TOKEN)
     private readonly returnsService: IReturnsService,
+    // #3482 — the packing stage of an order OpenLinker handles itself. `orders`
+    // may not import `fulfillment` work rows directly; the read crosses the
+    // service seam, one batch per page.
+    @Inject(FULFILLMENT_WORK_QUERY_SERVICE_TOKEN)
+    private readonly fulfillmentWork: IFulfillmentWorkQueryService,
     // #3532 — the tag ids rendered as the third line of the identity cell.
     @Inject(ORDER_TAG_SERVICE_TOKEN)
     private readonly tagService: IOrderTagService
@@ -487,6 +501,13 @@ export class OrdersController {
       items.map((order) => order.internalOrderId)
     );
 
+    // Batch the packing stage for the whole page (#3482) — same shape, same
+    // reason: one read across the page's order ids, never a per-row lookup. A
+    // FAILED read renders nothing and makes no "not routed" claim.
+    const handledByOrderId = await this.loadHandledInOpenLinker(
+      items.map((order) => order.internalOrderId)
+    );
+
     // Batch the tag ids for the whole page (#3532) — same shape, same reason.
     const tagsByOrderId = await this.tagService.getForOrders(
       items.map((order) => order.internalOrderId)
@@ -515,6 +536,10 @@ export class OrdersController {
         const openReturn = openReturnByOrderId.get(order.internalOrderId);
         if (openReturn) {
           dto.openReturn = this.toOpenReturnDto(openReturn);
+        }
+        const handled = handledByOrderId.get(order.internalOrderId);
+        if (handled) {
+          dto.handledInOpenLinker = this.toHandledInOpenLinkerDto(handled);
         }
         dto.tagIds = tagsByOrderId.get(order.internalOrderId) ?? [];
         return dto;
@@ -567,7 +592,7 @@ export class OrdersController {
   @ApiOperation({
     summary: 'Order health summary counts',
     description:
-      'Returns the count of order records per derived-health bucket (awaiting_mapping | needs_attention | synced | awaiting_dispatch) for the given source/customer/date scope. The four buckets partition the set, so `total` equals their sum — backs the list-page status segments.',
+      'Returns the count of order records per derived-health bucket (awaiting_mapping | needs_attention | synced | awaiting_dispatch) for the given source/customer/date scope. The buckets partition the set, so `total` equals their sum — backs the list-page status segments. An order OpenLinker handles itself (a live pack-bench work, #3482) counts as `synced` once it has shipped, and as `awaiting_dispatch` while it is still on the bench.',
   })
   @ApiResponse({
     status: 200,
@@ -589,6 +614,7 @@ export class OrdersController {
     return {
       ...summary,
       salesDocumentBlockedOldestAt: summary.salesDocumentBlockedOldestAt?.toISOString() ?? null,
+      waitingInOpenLinkerOldestAt: summary.waitingInOpenLinkerOldestAt?.toISOString() ?? null,
     };
   }
 
@@ -734,6 +760,14 @@ export class OrdersController {
     );
     if (openReturn) {
       dto.openReturn = this.toOpenReturnDto(openReturn);
+    }
+    // Packing stage (#3482) — the same projection the list carries, one read for
+    // this one order, so the row and the detail header cannot disagree.
+    const handled = (await this.loadHandledInOpenLinker([order.internalOrderId])).get(
+      order.internalOrderId
+    );
+    if (handled) {
+      dto.handledInOpenLinker = this.toHandledInOpenLinkerDto(handled);
     }
     dto.tagIds = await this.tagService.listForOrder(order.internalOrderId);
     return dto;
@@ -977,6 +1011,32 @@ export class OrdersController {
       );
       return [];
     }
+  }
+
+  private async loadHandledInOpenLinker(
+    internalOrderIds: string[]
+  ): Promise<ReadonlyMap<string, OrderWorkSummary>> {
+    if (internalOrderIds.length === 0) {
+      return new Map();
+    }
+    try {
+      return await this.fulfillmentWork.summarizeWorkForOrders(internalOrderIds);
+    } catch (error) {
+      this.logger.error(
+        `Failed to project the packing stage for a page of ${String(internalOrderIds.length)} order(s)`,
+        (error as Error).stack
+      );
+      return new Map();
+    }
+  }
+
+  private toHandledInOpenLinkerDto(summary: OrderWorkSummary): OrderHandledInOpenLinkerDto {
+    return {
+      stage: summary.stage,
+      workCount: summary.workCount,
+      assignment: summary.assignment,
+      assignedToUserId: summary.assignedToUserId,
+    };
   }
 
   private toOpenReturnDto(summary: OpenReturnOrderSummary): OrderOpenReturnDto {
@@ -1270,6 +1330,8 @@ export class OrdersController {
       salesDocumentBlockReason: order.salesDocumentBlockReason,
       salesDocumentUnresolvedReason: order.salesDocumentUnresolvedReason,
       salesDocumentBlockDetail: order.salesDocumentBlockDetail,
+      destinationRoutingBlockReason: order.destinationRoutingBlockReason,
+      destinationRoutingBlockDetail: order.destinationRoutingBlockDetail,
       salesDocumentBlockedAt: order.salesDocumentBlockedAt?.toISOString() ?? null,
       salesDocumentBlockReleasedAt: order.salesDocumentBlockReleasedAt?.toISOString() ?? null,
       // #2356 - on the SHARED toDto, like `packedAt` above: the badge renders on

@@ -28,6 +28,10 @@ import {
   resolveOfferLifecycle,
 } from '../../../domain/types/offer-lifecycle.types';
 import { readValidationProblems } from '../../../domain/types/offer-validation-problem.types';
+import {
+  OFFER_CREATION_STATUS,
+  OFFER_CREATION_UNKNOWN_OUTCOME_ERROR_CODES,
+} from '../../../domain/types/offer-creation-record.types';
 import type {
   OfferLifecycle,
   OfferLifecycleCounts,
@@ -98,9 +102,78 @@ interface OfferMappingListRawRow {
  * The one publication status that means the offer is genuinely over and the
  * variant may be listed again (#1934/F2). Every other status - including
  * `inactive` / `inactivating` - describes an offer that still exists on the
- * marketplace and could be reactivated, so re-listing it would duplicate.
+ * marketplace and could be reactivated, so re-listing it would duplicate. The
+ * single exception is an `inactive` offer whose creation the marketplace
+ * refused - see `deadFailedCreationSql` (E2E-25).
  */
 const ENDED_PUBLICATION_STATUS = 'ended';
+
+/** The one status a refused-at-creation offer may sit in to be re-listable (E2E-25). */
+const INACTIVE_PUBLICATION_STATUS = 'inactive';
+
+/**
+ * The offer-creation records table, read by `deadFailedCreationSql` as a raw
+ * correlated subquery (same context as this repository).
+ */
+const OFFER_CREATION_RECORDS_TABLE = 'offer_creation_records';
+
+/**
+ * A mapped offer that OpenLinker created, that the marketplace REFUSED, and
+ * that is not live (E2E-25).
+ *
+ * Allegro accepts an inline-product create with `202` and refuses the product
+ * later, asynchronously (`GtinNotExistsInGtinParameter` for an EAN unknown to
+ * GS1). The offer it already minted stays `inactive` for good and can be
+ * neither ended (`IllegalChangeInactiveOffer`) nor deleted (`405`), yet its
+ * identifier mapping survives - so without this predicate the duplicate guard
+ * read it as "already listed" and the variant could never be listed again.
+ *
+ * Every condition is required, which is what keeps the guard conservative:
+ * - the status snapshot EXISTS and reads `inactive`. `active`, `activating`
+ *   and `inactivating` are live or moving, and an absent snapshot is no
+ *   evidence of anything (#1934/F2);
+ * - the LATEST creation record for this exact offer (same offer id, same
+ *   connection, same variant) is `failed`. A later `draft` / `active` /
+ *   `validating` record means the offer is still in play;
+ * - that failure carries at least one error and none of them is an
+ *   unknown-outcome code. A poll timeout or a dead job means OpenLinker
+ *   stopped watching, not that the marketplace refused, and such an offer may
+ *   still go live.
+ *
+ * Always yields a boolean, never NULL: the caller negates it over a LEFT
+ * join, and `NOT NULL` would silently drop every snapshot-less mapping from
+ * the count - the opposite of the conservative default.
+ *
+ * `CASE` rather than an `AND` chain for the errors test: Postgres does not
+ * promise to short-circuit `AND`, and `jsonb_array_length` raises on a
+ * non-array (the `HAS_VALIDATION_MESSAGES_SQL` trap).
+ *
+ * Reads the `mapping` and `snapshot` aliases of the caller's query.
+ */
+function deadFailedCreationSql(): { sql: string; parameters: Record<string, unknown> } {
+  return {
+    sql:
+      `(COALESCE(snapshot."publicationStatus" = :deadOfferInactiveStatus, false) AND EXISTS (` +
+      `SELECT 1 FROM (` +
+      `SELECT ocr."status", ocr."errors" FROM "${OFFER_CREATION_RECORDS_TABLE}" ocr ` +
+      `WHERE ocr."externalOfferId" = mapping."externalId" ` +
+      `AND ocr."connectionId" = mapping."connectionId" ` +
+      `AND ocr."internalVariantId" = mapping."internalId" ` +
+      `ORDER BY ocr."createdAt" DESC, ocr."id" DESC LIMIT 1` +
+      `) latest ` +
+      `WHERE latest."status" = :deadOfferFailedStatus ` +
+      `AND (CASE WHEN jsonb_typeof(latest."errors") = 'array' ` +
+      `THEN jsonb_array_length(latest."errors") > 0 AND NOT EXISTS (` +
+      `SELECT 1 FROM jsonb_array_elements(latest."errors") AS err ` +
+      `WHERE err ->> 'code' IN (:...deadOfferUnknownOutcomeCodes)) ` +
+      `ELSE false END)))`,
+    parameters: {
+      deadOfferInactiveStatus: INACTIVE_PUBLICATION_STATUS,
+      deadOfferFailedStatus: OFFER_CREATION_STATUS.Failed,
+      deadOfferUnknownOutcomeCodes: [...OFFER_CREATION_UNKNOWN_OUTCOME_ERROR_CODES],
+    },
+  };
+}
 
 /**
  * Whether the status-snapshot LEFT join actually found a row (#2026). Mirrors
@@ -580,6 +653,13 @@ export class OfferMappingRepository implements OfferMappingRepositoryPort {
     // absence of a status read is not evidence the offer ended). `inactive` and
     // `inactivating` likewise still count: those offers exist and can be
     // reactivated, so re-listing them WOULD duplicate.
+    //
+    // Except an `inactive` offer whose creation the marketplace refused
+    // (E2E-25): it can never sell and cannot be ended, so counting it made the
+    // variant un-relistable for good. `deadFailedCreationSql` names the exact
+    // conditions. This read is shared by the submit guard and the FE
+    // "already on {destination}" chip, so the two cannot disagree.
+    const deadOffer = deadFailedCreationSql();
     const rows = await this.repository
       .createQueryBuilder('mapping')
       .select('mapping.internalId', 'internalId')
@@ -598,6 +678,7 @@ export class OfferMappingRepository implements OfferMappingRepositoryPort {
       .andWhere('(snapshot."publicationStatus" IS NULL OR snapshot."publicationStatus" != :ended)', {
         ended: ENDED_PUBLICATION_STATUS,
       })
+      .andWhere(`NOT ${deadOffer.sql}`, deadOffer.parameters)
       .groupBy('mapping.internalId')
       .getRawMany<{ internalId: string; count: string }>();
 
@@ -606,6 +687,30 @@ export class OfferMappingRepository implements OfferMappingRepositoryPort {
       if (count > 0) result.set(row.internalId, count);
     }
     return result;
+  }
+
+  async findDeadFailedCreationOfferIds(
+    connectionId: string,
+    internalId: string
+  ): Promise<string[]> {
+    const deadOffer = deadFailedCreationSql();
+    const rows = await this.repository
+      .createQueryBuilder('mapping')
+      .select('mapping.externalId', 'externalId')
+      // INNER join: the predicate requires a snapshot, so a mapping without
+      // one can never qualify.
+      .innerJoin(
+        OfferStatusSnapshotOrmEntity,
+        'snapshot',
+        'snapshot."externalOfferId" = mapping."externalId" ' +
+          'AND snapshot."connectionId" = mapping."connectionId"'
+      )
+      .where('mapping.entityType = :entityType', { entityType: OFFER_ENTITY_TYPE })
+      .andWhere('mapping.connectionId = :connectionId', { connectionId })
+      .andWhere('mapping.internalId = :internalId', { internalId })
+      .andWhere(deadOffer.sql, deadOffer.parameters)
+      .getRawMany<{ externalId: string }>();
+    return rows.map((row) => row.externalId);
   }
 
   async countListedVariantsByProducts(

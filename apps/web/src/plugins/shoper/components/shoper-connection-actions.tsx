@@ -3,8 +3,10 @@
  *
  * Plugin-owned action row for Shoper connections: "Configure webhooks"
  * (#3644). Registers one webhook with the shop that calls back into
- * OpenLinker. Shoper has no test ping, so success means the shop accepted
- * the registration.
+ * OpenLinker, carrying order events when Order source is enabled and product
+ * events when Product master is (the backend picks the set and refuses with
+ * neither). Shoper has no test ping, so success means the shop accepted the
+ * registration.
  *
  * @module plugins/shoper/components
  */
@@ -32,7 +34,11 @@ export function ShoperConnectionActions({
     typeof connection.config === 'object' &&
     connection.config !== null &&
     (connection.config as Record<string, unknown>).webhooksConfigured === true;
-  const orderSourceEnabled = connection.enabledCapabilities.includes('OrderSource');
+  // Mirrors the provisioner's own refusal: webhooks need a capability that
+  // consumes them. The backend refuses either way; this keeps the button honest.
+  const webhookCapabilityEnabled =
+    connection.enabledCapabilities.includes('OrderSource') ||
+    connection.enabledCapabilities.includes('ProductMaster');
 
   async function handleConfigureWebhooks(): Promise<void> {
     try {
@@ -41,7 +47,8 @@ export function ShoperConnectionActions({
         showToast({
           tone: 'success',
           title: 'Webhooks configured',
-          description: 'Shoper will now notify OpenLinker when an order is created or changes.',
+          description:
+            'Shoper will now notify OpenLinker when an order or a product is created or changes.',
         });
       } else {
         showToast({
@@ -64,15 +71,16 @@ export function ShoperConnectionActions({
       <div>
         <strong>Configure webhooks</strong>
         <p className="muted-text">
-          Registers a webhook in Shoper so new and changed orders reach OpenLinker right away.
-          Needs the OL callback URL and the Order source capability.
+          Registers a webhook in Shoper so new and changed orders and products reach OpenLinker
+          right away. Needs the OL callback URL and the Order source or Product master
+          capability; run it again after enabling one of them.
           {webhooksConfigured ? ' Currently configured ✓' : ''}
         </p>
       </div>
       <ReadOnlyLock active={readOnly} message={DEMO_READ_ONLY_ACTION_MESSAGE}>
         <Button
           tone={webhooksConfigured ? 'secondary' : 'primary'}
-          disabled={configureWebhooks.isPending || readOnly || !orderSourceEnabled}
+          disabled={configureWebhooks.isPending || readOnly || !webhookCapabilityEnabled}
           onClick={() => void handleConfigureWebhooks()}
         >
           {configureWebhooks.isPending

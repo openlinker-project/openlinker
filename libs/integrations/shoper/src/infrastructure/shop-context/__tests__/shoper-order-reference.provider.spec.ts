@@ -35,6 +35,26 @@ describe('ShoperOrderReferenceProvider', () => {
     expect(get).toHaveBeenCalledWith('/statuses', { order: 'status_id ASC', limit: 50, page: 1 });
   });
 
+  it('should list every typed status in numeric id order, with its active flag only when the shop sent one', async () => {
+    const get = jest.fn().mockResolvedValue(
+      envelope([
+        { status_id: '10', type: '4', active: '0', translations: { pl_PL: { name: 'anulowane' } } },
+        { status_id: '2', type: '2', active: '1', translations: { pl_PL: { name: 'w realizacji' } } },
+        { status_id: '1', type: '1', translations: { pl_PL: { name: 'złożone' } } },
+        { status_id: '12', type: null },
+      ]),
+    );
+    const provider = setup(get);
+
+    await expect(provider.listStatuses()).resolves.toEqual([
+      { statusId: '1', type: 1, labels: ['złożone'] },
+      { statusId: '2', type: 2, labels: ['w realizacji'], active: true },
+      { statusId: '10', type: 4, labels: ['anulowane'], active: false },
+    ]);
+    await provider.getStatus('2');
+    expect(get).toHaveBeenCalledTimes(1);
+  });
+
   it('should resolve a currency id to its upper-cased code', async () => {
     const get = jest.fn().mockResolvedValue(envelope([{ currency_id: '1', name: 'pln' }, { currency_id: '2', name: 'USD' }]));
     const provider = setup(get);

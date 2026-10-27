@@ -299,6 +299,14 @@ describe('mapShoperOrderToIncoming', () => {
     expect(checkPaymentFactsConsistency(prepaid)).toEqual([]);
   });
 
+  it("should carry the shop's own payment id verbatim, the key a payment mapping is looked up by", () => {
+    expect(mapShoperOrderToIncoming(buildOrderRow({ payment_id: '4' }), LINES, CTX).sourcePaymentMethod).toBe('4');
+    expect(mapShoperOrderToIncoming(buildOrderRow({ payment_id: 7 }), LINES, CTX).sourcePaymentMethod).toBe('7');
+    expect(mapShoperOrderToIncoming(buildOrderRow({ payment_id: null }), LINES, CTX)).not.toHaveProperty(
+      'sourcePaymentMethod',
+    );
+  });
+
   it('should drop a guest/blank customer id and an address with no street and no city', () => {
     const incoming = mapShoperOrderToIncoming(
       buildOrderRow({ user_id: '0', delivery_address: { street1: '', city: '' } }),

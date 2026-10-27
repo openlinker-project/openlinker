@@ -39,7 +39,12 @@
  *     them, and feeds whichever decision won into the SAME dispatch pipeline
  *     below regardless of which resolver produced it.)
  *  3. Validates the resolved connection actually supports the resolved
- *     `documentKind` before dispatch (decision 7): for `'invoice'`, by asking
+ *     `documentKind` before dispatch (decision 7). First structurally: the
+ *     connection must be among the active candidates from (1) and carry the
+ *     capability the kind needs. A rule's connection is a persisted value that
+ *     can point at a connection since disabled, removed or stripped of that
+ *     capability, and that is reported as `'routed-connection-unavailable'`.
+ *     Then, for `'invoice'`, by asking
  *     the resolved `InvoicingPort` adapter's `getSupportedDocumentTypes()` —
  *     the resolver's own structural check (capability enabled) already ran,
  *     this is the DEEPER, adapter-level check. `'fiscal-receipt'` has no
@@ -84,8 +89,10 @@
  *  - `none`          — job enqueued; or the `auto-on-*` condition is simply not
  *    met yet (level-evaluated, D3 — an unpaid order is waiting, not blocked); or
  *    no sales-document candidate exists at all; or a document already exists.
- *  - `indeterminate` — a compose/enqueue error, or the unreachable
- *    vanished-connection / unimplemented-aggregate branches. The caller leaves
+ *  - `indeterminate` - a compose/enqueue error, an unreadable projection or
+ *    rule set, or the unimplemented aggregate / self-routing branches. A routed
+ *    connection that cannot issue is NOT one of these: it is a persisted
+ *    `'routed-connection-unavailable'` block. The caller leaves
  *    the persisted reason ALONE: clearing on a deterministic error would erase a
  *    true reason and put nothing in its place, which is the silent decline §54
  *    forbids.
@@ -122,10 +129,11 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { ModuleRef } from '@nestjs/core';
 import {
+  ConnectionNotFoundException,
   ConnectionPort,
   CONNECTION_PORT_TOKEN,
 } from '@openlinker/core/identifier-mapping';
-import type { Connection } from '@openlinker/core/identifier-mapping';
+import type { Connection, ConnectionStatus } from '@openlinker/core/identifier-mapping';
 import {
   ISyncJobsService,
   SYNC_JOBS_SERVICE_TOKEN,
@@ -147,8 +155,10 @@ import {
 } from '@openlinker/core/integrations';
 import {
   ISalesDocumentRulesService,
+  REQUIRED_CAPABILITY_BY_CORE_KIND,
   SALES_DOCUMENT_RULES_SERVICE_TOKEN,
   chooseSalesDocumentDecision,
+  isCoreSalesDocumentKind,
   expandSalesDocumentRoutingCandidates,
   readSalesDocumentRouting,
 } from '@openlinker/core/sales-documents';
@@ -156,6 +166,7 @@ import type {
   SalesDocumentBlock,
   SalesDocumentBlockOutcome,
   SalesDocumentDecision,
+  SalesDocumentKind,
   SalesDocumentRoutingCandidate,
   SalesDocumentUnresolvedReason,
 } from '@openlinker/core/sales-documents';
@@ -216,6 +227,48 @@ export const AUTO_ISSUE_RETRY_BUDGET = 3;
 /** Capability names a connection must enable to be a routing candidate at all. */
 const INVOICING_CAPABILITY = 'Invoicing';
 const FISCALIZATION_CAPABILITY = 'Fiscalization';
+
+/**
+ * Operator-facing state of a connection that is not `active`, phrased to
+ * follow "which" in the `'routed-connection-unavailable'` detail. Keyed on
+ * the full status union so a new status is a compile error here, not an
+ * unexplained raw value on an operator screen.
+ */
+const CONNECTION_STATE_PHRASE: Readonly<Record<Exclude<ConnectionStatus, 'active'>, string>> = {
+  disabled: 'is disabled',
+  error: 'is in an error state',
+  needs_reauth: 'needs to be signed in again',
+  archived: 'is archived',
+};
+
+/**
+ * The capability `documentKind` needs that `connection` does not have
+ * enabled, or `null` when nothing is missing. Reads the same map the fallback
+ * resolver and the rule save-time guard read, so the three cannot disagree
+ * about which capability a kind needs. An open-world kind needs one of the
+ * two sales-document capabilities, which is all `connections` was filtered on.
+ */
+function missingRequiredCapability(
+  connection: Connection,
+  documentKind: SalesDocumentKind | null,
+): string | null {
+  if (documentKind !== null && isCoreSalesDocumentKind(documentKind)) {
+    const required = REQUIRED_CAPABILITY_BY_CORE_KIND[documentKind];
+    return connection.enabledCapabilities.includes(required) ? null : required;
+  }
+  const canIssueAny =
+    connection.enabledCapabilities.includes(INVOICING_CAPABILITY) ||
+    connection.enabledCapabilities.includes(FISCALIZATION_CAPABILITY);
+  return canIssueAny ? null : `${INVOICING_CAPABILITY} or ${FISCALIZATION_CAPABILITY}`;
+}
+
+/** The document a routing decision names, as a noun for the block detail. */
+function describeDocumentNoun(documentKind: SalesDocumentKind | null): string {
+  if (documentKind === 'invoice') return 'invoice';
+  if (documentKind === 'fiscal-receipt') return 'receipt';
+  if (documentKind === null) return 'document';
+  return `'${documentKind}' document`;
+}
 
 /**
  * Error names whose `message` is deterministic and PII-clean (each cites only
@@ -437,11 +490,20 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
     );
 
     if (connections.length === 0) {
-      // NOT a block: no connection can issue a sales document at all, so there
-      // is nothing for an operator to unblock on THIS order. Reporting a
-      // reason here would badge every order on an install that simply does
-      // not do invoicing or fiscalization.
-      return { kind: 'none' };
+      // Usually NOT a block: no connection can issue a sales document at all,
+      // so there is nothing for an operator to unblock on THIS order, and
+      // reporting a reason would badge every order on an install that simply
+      // does not do invoicing or fiscalization. The one exception is a rule
+      // that still routes this order somewhere - see the method.
+      //
+      // Cost, for a profiler reader: this adds ONE rule-engine read per order
+      // transition on an install with no capable connection (four
+      // country-scoped lookups run in parallel, sized by the operator's own
+      // rule count rather than by order volume), and none for an order with
+      // no delivery country. Accepted because the rules are the only place
+      // that can say this order should still get a document, and skipping the
+      // read would bring back the silent decline ADR-041 §54 forbids.
+      return this.reportWhenNothingCanIssue(order, sourceEventId);
     }
 
     // `selfRoutesDocumentKind` is hardcoded `false`: per #2158's own doc
@@ -681,8 +743,126 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
   }
 
   /**
-   * Dispatch a resolved `route` decision: validate the resolved connection
-   * still exists in the candidate list, then branch on `documentKind`.
+   * The zero-candidate exit. An install with no active connection able to issue
+   * gets `none`, exactly as before - unless the rule engine still routes this
+   * order to a connection. That happens when the operator disabled (or
+   * removed, or stripped the capability from) the only connection their rules
+   * name: the rules still say these orders get a document, and none ever will,
+   * which is the silent decline ADR-041 §54 forbids. Only a `route` answer
+   * counts here; every other answer keeps the old `none`, because with nothing
+   * able to issue there is no other routing outcome an operator could act on.
+   *
+   * Costs one rule-engine read per transition on such an install, and none on
+   * an order without a delivery country (no facts, so nothing to evaluate).
+   */
+  private async reportWhenNothingCanIssue(
+    order: Order,
+    sourceEventId?: string,
+  ): Promise<SalesDocumentBlockOutcome> {
+    const orderFacts = toSalesDocumentOrderFacts(order);
+    if (orderFacts === null) {
+      return { kind: 'none' };
+    }
+
+    let ruleDecision: SalesDocumentDecision;
+    try {
+      ruleDecision = await this.salesDocumentRules.resolveRouting(orderFacts);
+    } catch (error) {
+      // Leave any persisted reason alone: a failed read cannot tell us the
+      // rule that produced it has gone, so clearing it would be a guess.
+      const name = error instanceof Error ? error.name : 'UnknownError';
+      this.logger.warn(
+        `Could not read sales-document rules while no connection can issue; leaving the ` +
+          `persisted reason untouched: error=${name} orderId=${order.id}`,
+      );
+      return { kind: 'indeterminate' };
+    }
+
+    if (ruleDecision.kind !== 'route') {
+      return { kind: 'none' };
+    }
+    return this.reportRoutedConnectionUnavailable(ruleDecision, order, sourceEventId);
+  }
+
+  /**
+   * Report `'routed-connection-unavailable'`: routing named a connection that
+   * cannot issue the decided kind. `candidate` is the connection when it is
+   * active and capable of SOME sales document but not this one; when it is
+   * absent from the active candidates altogether it is read back so the detail
+   * can say why (disabled, gone, missing the capability).
+   *
+   * The block itself does not depend on that read: the connection is already
+   * known not to be able to issue, so a failed read only makes the detail
+   * vaguer. The detail carries ids and connection state only - it reaches an
+   * operator screen verbatim.
+   */
+  private async reportRoutedConnectionUnavailable(
+    decision: Extract<SalesDocumentDecision, { kind: 'route' }>,
+    order: Order,
+    sourceEventId?: string,
+    candidate?: Connection,
+  ): Promise<SalesDocumentBlockOutcome> {
+    const state = await this.describeRoutedConnectionState(decision, candidate);
+    const router =
+      decision.ruleId !== undefined ? `Rule ${decision.ruleId} routes` : 'Routing sends';
+    const detail =
+      `${router} this order's ${describeDocumentNoun(decision.documentKind)} to connection ` +
+      `${decision.connectionId}, which ${state}`;
+
+    this.logger.error(
+      `Auto-issue skipped: sales-document routing names connection ${decision.connectionId}, ` +
+        `which ${state}; issuing nothing. Enable it or point the rule at another connection. ` +
+        `orderId=${order.id} ruleId=${decision.ruleId ?? 'n/a'} ` +
+        `sourceEventId=${sourceEventId ?? 'n/a'}`,
+    );
+
+    return this.reportBlock(
+      { reason: 'unresolved-routing', unresolvedReason: 'routed-connection-unavailable', detail },
+      order.id,
+      decision.ruleId,
+    );
+  }
+
+  /** Why the routed connection cannot issue, phrased to follow "which". */
+  private async describeRoutedConnectionState(
+    decision: Extract<SalesDocumentDecision, { kind: 'route' }>,
+    candidate?: Connection,
+  ): Promise<string> {
+    let connection: Connection | undefined = candidate;
+    if (connection === undefined) {
+      try {
+        connection = await this.connectionPort.get(decision.connectionId);
+      } catch (error) {
+        if (error instanceof ConnectionNotFoundException) {
+          return 'no longer exists';
+        }
+        return 'is not an active connection that can issue it';
+      }
+    }
+
+    if (connection.status !== 'active') {
+      return CONNECTION_STATE_PHRASE[connection.status];
+    }
+    const missing = missingRequiredCapability(connection, decision.documentKind);
+    if (missing !== null) {
+      return `does not have ${missing} enabled`;
+    }
+    // Active and capable on a re-read, yet absent from the list read moments
+    // earlier: the connection changed in between. The block is still the truth
+    // for this evaluation, and the next transition re-decides.
+    return 'was not available when this order was checked';
+  }
+
+  /**
+   * Dispatch a resolved `route` decision: confirm the routed connection can
+   * issue the decided kind right now, then branch on `documentKind`.
+   *
+   * The confirmation is not defensive. The fallback resolver only ever picks
+   * from `connections`, but since #2173 the rule engine is consulted first, and
+   * a rule's (or a country default's) `connectionId` is a persisted value. It
+   * was checked against the connection when the rule was saved and is never
+   * re-checked, so a connection disabled, removed or stripped of a capability
+   * after that keeps receiving orders here.
    */
   private async dispatchRoute(
     decision: Extract<SalesDocumentDecision, { kind: 'route' }>,
@@ -695,19 +875,11 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
     buyerTaxId?: string | null,
   ): Promise<SalesDocumentBlockOutcome> {
     const connection = connections.find((candidate) => candidate.id === decision.connectionId);
-    if (connection === undefined) {
-      // Unreachable: `decision.connectionId` is always an id this method just
-      // read out of `connections`. Logged rather than returned silently
-      // because this method's whole contract is "at most one job, and never
-      // quietly none" — a silent return here would be indistinguishable from
-      // a legitimate skip while actually being a defect.
-      this.logger.error(
-        `Auto-issue skipped: selected connection ${decision.connectionId} vanished from the ` +
-          `candidate list it was chosen from. orderId=${order.id} sourceEventId=${sourceEventId ?? 'n/a'}`,
-      );
-      // NOT a block, and NOT a clear either: this is a defect, so neither naming a
-      // reason the operator cannot act on nor erasing one they can is right.
-      return { kind: 'indeterminate' };
+    if (
+      connection === undefined ||
+      missingRequiredCapability(connection, decision.documentKind) !== null
+    ) {
+      return this.reportRoutedConnectionUnavailable(decision, order, sourceEventId, connection);
     }
 
     if (decision.documentKind === null) {

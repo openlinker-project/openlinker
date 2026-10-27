@@ -12,6 +12,7 @@
 import {
   SalesDocumentAttentionReasonValues,
   SalesDocumentGateBlockReasonValues,
+  SalesDocumentUncountedUnresolvedReasonValues,
   SalesDocumentUnresolvedReasonValues,
   isSalesDocumentGateBlockReason,
   isSalesDocumentUnresolvedReason,
@@ -28,6 +29,7 @@ describe('sales-document reason vocabularies (ADR-041 decision 11)', () => {
       'no-configuration-for-country',
       'threshold-currency-mismatch',
       'no-connection-declares-document-kind',
+      'routed-connection-unavailable',
     ]);
   });
 
@@ -68,6 +70,18 @@ describe('sales-document reason vocabularies (ADR-041 decision 11)', () => {
       'trigger-model-batched',
     ]);
     expect(SalesDocumentAttentionReasonValues).not.toContain('trigger-model-manual');
+  });
+
+  it('should leave out of the install-level count only what an unconfigured install looks like', () => {
+    // A rule pointing at a connection that cannot issue is a misconfiguration
+    // with a direct remedy, and an install that never configured routing has
+    // no rule to point anywhere - so it counts, unlike the unconfigured state.
+    expect(SalesDocumentUncountedUnresolvedReasonValues).toEqual([
+      'no-connection-declares-document-kind',
+    ]);
+    expect(SalesDocumentUncountedUnresolvedReasonValues).not.toContain(
+      'routed-connection-unavailable',
+    );
   });
 
   it('should narrow only the declared unresolved reasons', () => {

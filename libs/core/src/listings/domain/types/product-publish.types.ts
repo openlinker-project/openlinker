@@ -135,6 +135,15 @@ export interface PublishProductVariantGroup {
    * the adapter creates it as part of this call.
    */
   externalParentProductId?: string | null;
+  /**
+   * The images THIS sibling's own variation shows, resolved by
+   * `resolveVariantDefaultImages` (its own pictures first, then the product
+   * gallery minus its siblings' pictures). `content.imageUrls` stays the
+   * parent's whole gallery. Absent when the operator overrode the images - the
+   * override then applies to the variation as before - and an adapter that
+   * shows one picture per variation takes the first.
+   */
+  imageUrls?: string[];
 }
 
 /**
@@ -272,4 +281,14 @@ export interface PublishProductResult {
    * variant's own `externalProductId`.
    */
   externalParentProductId?: string;
+  /**
+   * The shop's own VARIANT-grain id for this variant, reported only when it is a
+   * different id from `externalProductId` (Shoper: the product's `stock_id`).
+   * An order line on such a shop carries this id rather than the product id, so
+   * without it a product OpenLinker published could never be matched back when
+   * it is sold. The execution service persists it as a `ShopProductVariant`
+   * mapping. Omitted when the shop has no separate variant id, or when the
+   * adapter could not read it - a missing value never fails the publish.
+   */
+  externalVariantId?: string;
 }

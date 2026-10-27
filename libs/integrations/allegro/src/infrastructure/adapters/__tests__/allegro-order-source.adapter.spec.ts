@@ -574,7 +574,11 @@ describe('AllegroOrderSourceAdapter', () => {
           },
         ],
         summary: { totalToPay: { amount: '39.98', currency: 'PLN' } },
-        payment: { type: 'ONLINE', finishedAt: '2024-01-01T01:00:00Z' },
+        payment: {
+          type: 'ONLINE',
+          finishedAt: '2024-01-01T01:00:00Z',
+          paidAmount: { amount: '39.98', currency: 'PLN' },
+        },
       };
       httpClient.get.mockResolvedValueOnce({ data: checkoutForm, status: 200, headers: {} });
 
@@ -602,7 +606,7 @@ describe('AllegroOrderSourceAdapter', () => {
         taxTreatment: 'inclusive',
       });
       expect(incoming.shippingAddress?.city).toBe('Warsaw');
-      // #928 — prepaid ONLINE order with finishedAt → paid (dispatch permitted).
+      // #928 / E2E-22 — prepaid ONLINE order with money received → paid (dispatch permitted).
       expect(incoming.paymentStatus).toBe('paid');
       // #1435 — a prepaid (non-COD) order carries no sourced COD amount.
       expect(incoming.codToCollect).toBeUndefined();

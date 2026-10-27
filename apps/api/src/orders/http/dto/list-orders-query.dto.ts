@@ -92,7 +92,7 @@ export class ListOrdersQueryDto extends PaginatedReadQueryDto {
   @ApiPropertyOptional({
     enum: OrderHealthValues,
     description:
-      'Filter by derived health bucket (#929) — partitions the set: source_deleted | awaiting_mapping | needs_attention | synced | awaiting_dispatch',
+      'Filter by derived health bucket (#929) — partitions the set: source_deleted | awaiting_mapping | needs_attention | synced | awaiting_dispatch. An order OpenLinker handles itself (#3482) is `synced` once it has shipped and `awaiting_dispatch` while still on the pack bench.',
   })
   @IsOptional()
   @IsEnum(OrderHealthValues)
@@ -177,6 +177,51 @@ export class ListOrdersQueryDto extends PaginatedReadQueryDto {
   @Transform(({ value }): unknown => (value === 'true' ? true : value === 'false' ? false : value))
   @IsBoolean()
   salesDocumentBlocked?: boolean;
+
+  @ApiPropertyOptional({
+    type: Boolean,
+    description:
+      'Destination-routing filter (#2703/#2704): true keeps only orders whose routing decision ' +
+      'narrowed the destination fan-out in an ATTENTION-WORTHY way, false keeps only the rest, ' +
+      'omitted does not filter. Attention-worthy EXCLUDES "routed-to-no-destination" — a working ' +
+      'router deciding an order goes nowhere is a decision, not a fault — so true does not return ' +
+      'those and false does. Same subset the destinationRoutingBlocked count reports, so the two ' +
+      'always agree. An INDEPENDENT axis that composes with `health`: such an order is usually ' +
+      'also needs_attention, so folding them would hide one behind the other.',
+  })
+  @IsOptional()
+  // Same string-literal mapping + pass-through-to-400 posture as
+  // `salesDocumentBlocked` above; see that comment for why a stray value must not
+  // collapse to `undefined`.
+  @Transform(({ value }): unknown => (value === 'true' ? true : value === 'false' ? false : value))
+  @IsBoolean()
+  destinationRoutingBlocked?: boolean;
+
+  @ApiPropertyOptional({
+    type: Boolean,
+    description:
+      'Waiting-in-OpenLinker filter (#3482): true keeps only orders OpenLinker holds as waiting ' +
+      '(out of stock, no shipping address, routing error - #3485), false keeps only the rest, ' +
+      'omitted does not filter. Same subset the waitingInOpenLinker count reports. An INDEPENDENT ' +
+      'axis that composes with `health`, never a health bucket.',
+  })
+  @IsOptional()
+  // Same string-literal mapping + pass-through-to-400 posture as `salesDocumentBlocked`.
+  @Transform(({ value }): unknown => (value === 'true' ? true : value === 'false' ? false : value))
+  @IsBoolean()
+  waitingInOpenLinker?: boolean;
+
+  @ApiPropertyOptional({
+    type: Boolean,
+    description:
+      'On-pack-bench filter (#3482): true keeps only orders with a live pack-bench work whose box ' +
+      'is not shut yet (To pack or Packing), false keeps only the rest, omitted does not filter. ' +
+      'Same subset the onPackBench count reports. Not `packed` (#2997), which reads packedAt.',
+  })
+  @IsOptional()
+  @Transform(({ value }): unknown => (value === 'true' ? true : value === 'false' ? false : value))
+  @IsBoolean()
+  onPackBench?: boolean;
 
   @ApiPropertyOptional({
     type: Boolean,

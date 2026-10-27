@@ -1,6 +1,11 @@
 import type { Connection, IdentifierMappingPort } from '@openlinker/core/identifier-mapping';
 import type { IMappingConfigService } from '@openlinker/core/mappings';
 import type { Address, OrderCreate } from '@openlinker/core/orders';
+import {
+  isOrderContactRefresher,
+  isOrderCreateStockEffect,
+  lowersStockOnOrderCreate,
+} from '@openlinker/core/orders';
 
 import { ShoperApiError } from '../../../../domain/exceptions/shoper-api.error';
 import { ShoperDuplicateOrderException } from '../../../../domain/exceptions/shoper-duplicate-order.exception';
@@ -16,7 +21,11 @@ import type { ShoperShopContextProvider } from '../../../shop-context/shoper-sho
 import { MAP_CONTEXT } from '../../../__tests__/shoper-test-data';
 import type { ShoperOrderOptionsProvider } from '../../../shop-context/shoper-order-options.provider';
 import type { ShoperTaxTableProvider } from '../../../shop-context/shoper-tax-table.provider';
-import { ShoperOrderProcessorAdapter } from '../shoper-order-processor.adapter';
+import {
+  SHOPER_PHONE_PLACEHOLDER,
+  SHOPER_PHONE_PLACEHOLDER_NOTE,
+  ShoperOrderProcessorAdapter,
+} from '../shoper-order-processor.adapter';
 
 const TAXES = new Map<string, ShoperTax>([
   ['1', { tax_id: '1', value: '23', name: '23%' }],
@@ -95,7 +104,7 @@ function setup(
     { id: 'conn-1', config } as unknown as Connection,
     mappingConfig as unknown as IMappingConfigService,
   );
-  return { adapter, post, put, del, get, options, mappingConfig, resolveOrCreateCustomer };
+  return { adapter, post, put, del, get, options, mappingConfig, resolveOrCreateCustomer, mapping };
 }
 
 interface Harness {
@@ -111,6 +120,7 @@ interface Harness {
     resolvePaymentMapping: jest.Mock;
   };
   resolveOrCreateCustomer: jest.Mock;
+  mapping: { getExternalIds: jest.Mock };
 }
 
 describe('ShoperOrderProcessorAdapter', () => {
@@ -146,6 +156,62 @@ describe('ShoperOrderProcessorAdapter', () => {
       ]);
     });
 
+    it('should book each line on the variant stock row and never send product_id', async () => {
+      // Shoper: with both ids on a line, product_id wins and the product's
+      // DEFAULT stock is booked, so a variant line would land on the base stock.
+      const { adapter, post, mapping } = setup();
+      mapping.getExternalIds.mockImplementation((type: string, id: string) =>
+        Promise.resolve([
+          { connectionId: 'conn-1', externalId: type === 'ProductVariant' ? { ol_v1: '266', ol_v2: '271' }[id] ?? '0' : '161' },
+        ]),
+      );
+
+      await adapter.createOrder(order());
+
+      const lines = post.mock.calls.filter(([path]) => path === '/order-products').map(([, body]) => body as Record<string, unknown>);
+      expect(lines.map((line) => line.stock_id)).toEqual([266, 271]);
+      for (const line of lines) {
+        expect(line).not.toHaveProperty('product_id');
+      }
+    });
+
+    it("should book a simple product's line on its base stock row through the variant mapping", async () => {
+      // A simple product has no variant stocks; the product master keeps its
+      // base stock row (live: product 163, "OLE2E Miska prosta") as its single
+      // ProductVariant, so the line resolves through the same variant lookup.
+      const { adapter, post, mapping } = setup();
+      mapping.getExternalIds.mockImplementation((type: string, id: string) =>
+        Promise.resolve(
+          type === 'ProductVariant' && id === 'ol_variant_simple'
+            ? [{ connectionId: 'conn-1', externalId: '271' }]
+            : [],
+        ),
+      );
+
+      await adapter.createOrder(
+        order({
+          items: [
+            {
+              id: 'line-1',
+              productId: 'ol_product_simple',
+              variantId: 'ol_variant_simple',
+              quantity: 1,
+              price: 49.99,
+              taxRate: '23',
+            },
+          ],
+        }),
+      );
+
+      expect(mapping.getExternalIds).toHaveBeenCalledWith('ProductVariant', 'ol_variant_simple');
+      const lines = post.mock.calls
+        .filter(([path]) => path === '/order-products')
+        .map(([, body]) => body as Record<string, unknown>);
+      expect(lines).toHaveLength(1);
+      expect(lines[0].stock_id).toBe(271);
+      expect(lines[0]).not.toHaveProperty('product_id');
+    });
+
     it('should still return the order when the post-create stock check fails', async () => {
       const { adapter, del } = setup(undefined, true, true);
 
@@ -165,6 +231,35 @@ describe('ShoperOrderProcessorAdapter', () => {
           billing_address: expect.objectContaining({ phone: '600100200' }),
         }),
       ]);
+    });
+
+    it('should create an order with no phone under the placeholder and say why in the note', async () => {
+      const { adapter, post } = setup();
+
+      await adapter.createOrder(
+        order({ billingAddress: { ...address(), phone: undefined }, shippingAddress: { ...address(), phone: ' ' } }),
+      );
+
+      expect(post.mock.calls[0]).toEqual([
+        '/orders',
+        expect.objectContaining({
+          billing_address: expect.objectContaining({ phone: SHOPER_PHONE_PLACEHOLDER }),
+          delivery_address: expect.objectContaining({ phone: SHOPER_PHONE_PLACEHOLDER }),
+          notes: SHOPER_PHONE_PLACEHOLDER_NOTE,
+        }),
+      ]);
+    });
+
+    it('should not add the placeholder note when the source gave a phone', async () => {
+      const { adapter, post } = setup();
+
+      await adapter.createOrder(order());
+
+      expect(post).toHaveBeenNthCalledWith(
+        1,
+        '/orders',
+        expect.not.objectContaining({ notes: expect.anything() }),
+      );
     });
 
     it('should prefer an operator mapping to the connection default', async () => {
@@ -289,7 +384,6 @@ describe('ShoperOrderProcessorAdapter', () => {
     it.each([
       ['a missing buyer email', { metadata: {} }],
       ['no lines', { items: [] }],
-      ['no phone on either address', { billingAddress: { ...address(), phone: undefined }, shippingAddress: { ...address(), phone: ' ' } }],
       ['no address', { billingAddress: undefined, shippingAddress: undefined }],
       ['a line without a tax rate', { items: [{ id: 'l', productId: 'p', variantId: 'v', quantity: 1, price: 1 }] }],
       ['a tax rate the shop does not have', { items: [{ id: 'l', productId: 'p', variantId: 'v', quantity: 1, price: 1, taxRate: '5' }] }],
@@ -363,6 +457,152 @@ describe('ShoperOrderProcessorAdapter', () => {
       post.mockResolvedValue({ status: 200, data: {} });
 
       await expect(adapter.createOrder(order())).rejects.toBeInstanceOf(ShoperOrderUnbuildableException);
+    });
+  });
+
+  describe('OrderContactRefresher', () => {
+    // An Allegro order reaches the shop before payment with no phone, so it is
+    // created under the placeholder; after payment it is re-ingested with the
+    // real phone and core asks the adapter to write it back.
+    function shoperOrder(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+      return {
+        order_id: '10',
+        notes: SHOPER_PHONE_PLACEHOLDER_NOTE,
+        billing_address: { phone: SHOPER_PHONE_PLACEHOLDER, city: 'Warszawa' },
+        delivery_address: { phone: SHOPER_PHONE_PLACEHOLDER, city: 'Warszawa' },
+        ...overrides,
+      };
+    }
+
+    it('should be recognised by the core probe', () => {
+      const { adapter } = setup();
+      expect(isOrderContactRefresher(adapter)).toBe(true);
+    });
+
+    it('should replace the placeholder on both addresses and clear the placeholder note', async () => {
+      const { adapter, get, put } = setup();
+      get.mockResolvedValue({ status: 200, data: shoperOrder() });
+
+      await adapter.refreshOrderContact({ externalOrderId: '10', order: order() });
+
+      expect(get).toHaveBeenCalledWith('/orders/10');
+      // Only the phone: Shoper keeps every other address field on a partial PUT.
+      expect(put).toHaveBeenCalledTimes(1);
+      expect(put).toHaveBeenCalledWith('/orders/10', {
+        billing_address: { phone: '600100200' },
+        delivery_address: { phone: '600100200' },
+        notes: '',
+      });
+    });
+
+    it('should leave an operator-edited note alone', async () => {
+      const { adapter, get, put } = setup();
+      get.mockResolvedValue({ status: 200, data: shoperOrder({ notes: 'Call before delivery' }) });
+
+      await adapter.refreshOrderContact({ externalOrderId: '10', order: order() });
+
+      expect(put).toHaveBeenCalledWith('/orders/10', {
+        billing_address: { phone: '600100200' },
+        delivery_address: { phone: '600100200' },
+      });
+    });
+
+    it('should replace only the address that still carries the placeholder', async () => {
+      const { adapter, get, put } = setup();
+      get.mockResolvedValue({
+        status: 200,
+        data: shoperOrder({ billing_address: { phone: '500600700' } }),
+      });
+
+      await adapter.refreshOrderContact({ externalOrderId: '10', order: order() });
+
+      expect(put).toHaveBeenCalledWith('/orders/10', {
+        delivery_address: { phone: '600100200' },
+        notes: '',
+      });
+    });
+
+    it('should give each address its own phone, falling back to the other one', async () => {
+      const { adapter, get, put } = setup();
+      get.mockResolvedValue({ status: 200, data: shoperOrder() });
+
+      await adapter.refreshOrderContact({
+        externalOrderId: '10',
+        order: order({
+          billingAddress: { ...address(), phone: undefined },
+          shippingAddress: { ...address('Anna', 'Nowak'), phone: '700800900' },
+        }),
+      });
+
+      expect(put).toHaveBeenCalledWith('/orders/10', {
+        billing_address: { phone: '700800900' },
+        delivery_address: { phone: '700800900' },
+        notes: '',
+      });
+    });
+
+    it('should not write when the shop order already has a real phone', async () => {
+      // Created with a phone, or an operator fixed it by hand: either way it is
+      // not ours to overwrite.
+      const { adapter, get, put } = setup();
+      get.mockResolvedValue({
+        status: 200,
+        data: shoperOrder({
+          billing_address: { phone: '500600700' },
+          delivery_address: { phone: '500600700' },
+        }),
+      });
+
+      await adapter.refreshOrderContact({ externalOrderId: '10', order: order() });
+
+      expect(put).not.toHaveBeenCalled();
+    });
+
+    it('should neither read nor write when the incoming order still has no phone', async () => {
+      const { adapter, get, put } = setup();
+      const noPhone = { ...address(), phone: undefined };
+
+      await adapter.refreshOrderContact({
+        externalOrderId: '10',
+        order: order({ billingAddress: noPhone, shippingAddress: { ...noPhone, phone: '  ' } }),
+      });
+
+      expect(get).not.toHaveBeenCalled();
+      expect(put).not.toHaveBeenCalled();
+    });
+
+    it('should refuse a non-numeric order id before calling Shoper', async () => {
+      const { adapter, get } = setup();
+
+      await expect(
+        adapter.refreshOrderContact({ externalOrderId: '10/../users', order: order() }),
+      ).rejects.toBeInstanceOf(RangeError);
+      expect(get).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('OrderCreateStockEffect', () => {
+    it('should be recognised by the core probe', () => {
+      const { adapter } = setup();
+      expect(isOrderCreateStockEffect(adapter)).toBe(true);
+    });
+
+    it('should report a lowered stock when the shop subtracts stock on purchase', async () => {
+      const { adapter } = setup(undefined, true);
+      await expect(adapter.lowersStockOnOrderCreate()).resolves.toBe(true);
+      await expect(lowersStockOnOrderCreate(adapter)).resolves.toBe(true);
+    });
+
+    it('should report an untouched stock when the shop keeps it on purchase', async () => {
+      // shopping_update_stock_on_buy off: the shop never removed the units, so
+      // core must keep the order's holds.
+      const { adapter } = setup(undefined, false);
+      await expect(lowersStockOnOrderCreate(adapter)).resolves.toBe(false);
+    });
+
+    it('should read as not lowered when the shop settings cannot be read', async () => {
+      const { adapter } = setup(undefined, true, true);
+      await expect(lowersStockOnOrderCreate(adapter)).resolves.toBe(false);
     });
   });
 
@@ -592,175 +832,129 @@ describe('ShoperOrderProcessorAdapter', () => {
   });
 
   describe('write (OrderStatusWriteback, #3643)', () => {
-    function shopWith(parcels: readonly Record<string, unknown>[], shippingId: unknown = '8'): Harness {
-      const h = setup();
+    // The event logic is `ShoperOrderStatusWriter`'s and is specified there; this
+    // pins only that the processor delegates to it.
+    it("should write a dispatch as a parcel under the order's own shipping method", async () => {
+      const h = setup({ defaults: { parcelShippingId: 9 } });
       h.get.mockImplementation((path: string) => {
-        if (path === '/parcels') return Promise.resolve({ status: 200, data: { list: parcels } });
+        if (path === '/parcels') return Promise.resolve({ status: 200, data: { list: [] } });
         if (path === '/orders/10') {
-          return Promise.resolve({ status: 200, data: { order_id: '10', shipping_id: shippingId } });
+          const order = { order_id: '10', shipping_id: '8', status_id: '2' };
+          return Promise.resolve({ status: 200, data: order });
         }
-        return Promise.resolve({ status: 200, data: {} });
+        return Promise.reject(new Error(`unexpected GET ${path}`));
       });
-      return h;
-    }
-
-    it("should create a parcel with the tracking number and the order's own shipping method", async () => {
-      const h = shopWith([]);
 
       await expect(
-        h.adapter.write({ type: 'dispatched', externalOrderId: '10', trackingNumber: ' 6200000000001 ' }),
+        h.adapter.write({ type: 'dispatched', externalOrderId: '10', trackingNumber: 'T1' }),
       ).resolves.toEqual({ outcome: 'applied' });
 
-      expect(h.get).toHaveBeenCalledWith('/parcels', { 'filters[order_id]': '10', limit: 50 });
       expect(h.post).toHaveBeenCalledWith('/parcels', {
         order_id: 10,
         shipping_id: 8,
-        shipping_code: '6200000000001',
+        shipping_code: 'T1',
         sent: true,
       });
     });
 
-    it('should not send products, so Shoper ships the whole remainder', async () => {
-      const h = shopWith([]);
-
-      await h.adapter.write({ type: 'dispatched', externalOrderId: '10', trackingNumber: 'T1' });
-
-      const body = (h.post.mock.calls[0] as [string, Record<string, unknown>])[1];
-      expect(body).not.toHaveProperty('products');
-    });
-
-    it('should create a parcel without a tracking number when none is known yet', async () => {
-      const h = shopWith([]);
-
-      await expect(h.adapter.write({ type: 'dispatched', externalOrderId: '10' })).resolves.toEqual({
-        outcome: 'applied',
-      });
-
-      expect(h.post).toHaveBeenCalledWith('/parcels', { order_id: 10, shipping_id: 8, sent: true });
-    });
-
-    it('should write nothing when a parcel already carries the same tracking number', async () => {
-      const h = shopWith([{ parcel_id: '5', order_id: '10', shipping_code: 'T1' }]);
-
-      await expect(
-        h.adapter.write({ type: 'dispatched', externalOrderId: '10', trackingNumber: 'T1' }),
-      ).resolves.toEqual({ outcome: 'applied' });
-
-      expect(h.post).not.toHaveBeenCalled();
-      expect(h.put).not.toHaveBeenCalled();
-    });
-
-    it('should attach a late tracking number to the untracked parcel instead of creating another', async () => {
-      const h = shopWith([{ parcel_id: '5', order_id: '10', shipping_code: '' }]);
-
-      await expect(
-        h.adapter.write({ type: 'dispatched', externalOrderId: '10', trackingNumber: 'T2' }),
-      ).resolves.toEqual({ outcome: 'applied' });
-
-      expect(h.put).toHaveBeenCalledWith('/parcels/5', { shipping_code: 'T2', sent: true });
-      expect(h.post).not.toHaveBeenCalled();
-    });
-
-    it('should reject, writing nothing, when a parcel exists under a different tracking number', async () => {
-      const h = shopWith([{ parcel_id: '5', order_id: '10', shipping_code: 'T1' }]);
-
-      const result = await h.adapter.write({ type: 'dispatched', externalOrderId: '10', trackingNumber: 'T2' });
-
-      expect(result.outcome).toBe('rejected');
-      expect(result.detail).toContain('different tracking number');
-      expect(h.post).not.toHaveBeenCalled();
-      expect(h.put).not.toHaveBeenCalled();
-    });
-
-    it('should write nothing on a re-delivered dispatch without tracking when a parcel exists', async () => {
-      const h = shopWith([{ parcel_id: '5', order_id: '10', shipping_code: null }]);
-
-      await expect(h.adapter.write({ type: 'dispatched', externalOrderId: '10' })).resolves.toEqual({
-        outcome: 'applied',
-      });
-
-      expect(h.post).not.toHaveBeenCalled();
-      expect(h.put).not.toHaveBeenCalled();
-    });
-
-    it('should reject, and write nothing, when the parcels filter returned another order', async () => {
-      const h = shopWith([{ parcel_id: '9', order_id: '11', shipping_code: 'T1' }]);
-
-      const result = await h.adapter.write({ type: 'dispatched', externalOrderId: '10', trackingNumber: 'T1' });
-
-      expect(result).toEqual({
-        outcome: 'rejected',
-        detail: expect.stringContaining('was not honoured'),
-      });
-      expect(h.post).not.toHaveBeenCalled();
-      expect(h.put).not.toHaveBeenCalled();
-    });
-
-    it('should reject, and write nothing, when the order has more than one page of parcels', async () => {
-      const h = setup();
-      h.get.mockImplementation((path: string) =>
-        path === '/parcels'
-          ? Promise.resolve({ status: 200, data: { list: [], pages: 2 } })
-          : Promise.resolve({ status: 200, data: {} }),
-      );
-
-      const result = await h.adapter.write({ type: 'dispatched', externalOrderId: '10', trackingNumber: 'T1' });
-
-      expect(result).toEqual({ outcome: 'rejected', detail: expect.stringContaining('more than 50 parcels') });
-      expect(h.post).not.toHaveBeenCalled();
-    });
-
-    it('should reject when the Shoper order does not exist', async () => {
-      const h = setup();
-      h.get.mockImplementation((path: string) =>
-        path === '/parcels'
-          ? Promise.resolve({ status: 200, data: { list: [] } })
-          : Promise.reject(new ShoperApiError(404, 'invalid_request', 'not found')),
-      );
-
-      await expect(
-        h.adapter.write({ type: 'dispatched', externalOrderId: '10', trackingNumber: 'T1' }),
-      ).resolves.toEqual({ outcome: 'rejected', detail: 'Shoper order 10 not found' });
-      expect(h.post).not.toHaveBeenCalled();
-    });
-
-    it('should reject when the order has no shipping method', async () => {
-      const h = shopWith([], null);
-
-      const result = await h.adapter.write({ type: 'dispatched', externalOrderId: '10', trackingNumber: 'T1' });
-
-      expect(result.outcome).toBe('rejected');
-      expect(h.post).not.toHaveBeenCalled();
-    });
-
-    it('should report a failed parcel write as rejected with the reason', async () => {
-      const h = shopWith([]);
-      h.post.mockRejectedValue(new ShoperApiError(400, 'invalid_request', 'shipping_id invalid'));
-
-      const result = await h.adapter.write({ type: 'dispatched', externalOrderId: '10', trackingNumber: 'T1' });
-
-      expect(result.outcome).toBe('rejected');
-      expect(result.detail).toContain('shipping_id invalid');
-    });
-
-    it('should reject a non-numeric order id without calling the shop', async () => {
+    it('should report delivered as unsupported and write nothing', async () => {
       const h = setup();
 
-      const result = await h.adapter.write({ type: 'dispatched', externalOrderId: '../users', trackingNumber: 'T1' });
-
-      expect(result.outcome).toBe('rejected');
-      expect(h.get).not.toHaveBeenCalled();
-    });
-
-    it('should report cancellation as unsupported and write nothing', async () => {
-      const h = setup();
-
-      const result = await h.adapter.write({ type: 'cancelled', externalOrderId: '10' });
+      const result = await h.adapter.write({ type: 'delivered', externalOrderId: '10' });
 
       expect(result.outcome).toBe('unsupported');
-      expect(result.detail).toBeDefined();
-      expect(h.get).not.toHaveBeenCalled();
       expect(h.post).not.toHaveBeenCalled();
+      expect(h.put).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('getFulfillmentStatus (FulfillmentStatusReader)', () => {
+    const STATUS_TABLE = {
+      count: '4',
+      pages: 1,
+      page: 1,
+      list: [
+        { status_id: '2', type: '2', translations: { pl_PL: { name: 'w realizacji' } } },
+        { status_id: '6', type: '4', translations: { pl_PL: { name: 'zwrócone' } } },
+        { status_id: '7', type: '3', translations: { pl_PL: { name: 'przesyłka wysłana' } } },
+        { status_id: '10', type: '4', translations: { pl_PL: { name: 'anulowane' } } },
+      ],
+    };
+
+    function shopWith(statusId: string, parcels: readonly Record<string, unknown>[]): Harness {
+      const h = setup();
+      h.get.mockImplementation((path: string) => {
+        if (path === '/orders/10') return Promise.resolve({ status: 200, data: { order_id: '10', status_id: statusId } });
+        if (path === '/statuses') return Promise.resolve({ status: 200, data: STATUS_TABLE });
+        if (path === '/parcels') return Promise.resolve({ status: 200, data: { list: parcels } });
+        return Promise.reject(new Error(`unexpected GET ${path}`));
+      });
+      return h;
+    }
+
+    it('should report a sent parcel as dispatched with its tracking number', async () => {
+      const h = shopWith('7', [{ parcel_id: '3', order_id: '10', shipping_code: ' 6200000000001 ', sent: '1' }]);
+
+      await expect(h.adapter.getFulfillmentStatus({ externalOrderId: '10' })).resolves.toEqual({
+        status: 'dispatched',
+        trackingNumber: '6200000000001',
+        deliveredAt: null,
+      });
+      expect(h.get).toHaveBeenCalledWith('/parcels', { 'filters[order_id]': '10', limit: 50 });
+    });
+
+    it('should read a parcel with a send date but no flag as sent', async () => {
+      const h = shopWith('7', [{ parcel_id: '3', order_id: '10', shipping_code: null, send_date: '2026-10-20 10:00:00' }]);
+
+      await expect(h.adapter.getFulfillmentStatus({ externalOrderId: '10' })).resolves.toEqual({
+        status: 'dispatched',
+        trackingNumber: null,
+        deliveredAt: null,
+      });
+    });
+
+    it('should report nothing while the only parcel is not sent yet', async () => {
+      const h = shopWith('2', [{ parcel_id: '3', order_id: '10', shipping_code: '', sent: '0' }]);
+
+      await expect(h.adapter.getFulfillmentStatus({ externalOrderId: '10' })).resolves.toEqual({
+        status: null,
+        trackingNumber: null,
+        deliveredAt: null,
+      });
+    });
+
+    it('should report a cancelled status as cancelled, even over a sent parcel', async () => {
+      const h = shopWith('10', [{ parcel_id: '3', order_id: '10', shipping_code: 'T1', sent: '1' }]);
+
+      await expect(h.adapter.getFulfillmentStatus({ externalOrderId: '10' })).resolves.toMatchObject({
+        status: 'cancelled',
+      });
+      expect(h.get).not.toHaveBeenCalledWith('/parcels', expect.anything());
+    });
+
+    it('should keep a returned order that shipped as dispatched, and one that never shipped as cancelled', async () => {
+      const shipped = shopWith('6', [{ parcel_id: '3', order_id: '10', shipping_code: 'T1', sent: '1' }]);
+      await expect(shipped.adapter.getFulfillmentStatus({ externalOrderId: '10' })).resolves.toMatchObject({
+        status: 'dispatched',
+      });
+
+      const unshipped = shopWith('6', []);
+      await expect(unshipped.adapter.getFulfillmentStatus({ externalOrderId: '10' })).resolves.toMatchObject({
+        status: 'cancelled',
+      });
+    });
+
+    it('should refuse an answer when the parcels filter returned another order', async () => {
+      const h = shopWith('7', [{ parcel_id: '3', order_id: '11', shipping_code: 'T1', sent: '1' }]);
+
+      await expect(h.adapter.getFulfillmentStatus({ externalOrderId: '10' })).rejects.toThrow(ShoperNetworkError);
+    });
+
+    it('should refuse a non-numeric order id without calling the shop', async () => {
+      const h = setup();
+
+      await expect(h.adapter.getFulfillmentStatus({ externalOrderId: '../x' })).rejects.toThrow(RangeError);
+      expect(h.get).not.toHaveBeenCalled();
     });
   });
 });

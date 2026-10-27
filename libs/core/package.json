@@ -114,6 +114,11 @@
       "require": "./dist/returns/index.js",
       "default": "./dist/returns/index.js"
     },
+    "./orders/testing": {
+      "types": "./dist/orders/testing/index.d.ts",
+      "require": "./dist/orders/testing/index.js",
+      "default": "./dist/orders/testing/index.js"
+    },
     "./returns/testing": {
       "types": "./dist/returns/testing/index.d.ts",
       "require": "./dist/returns/testing/index.js",

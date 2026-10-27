@@ -3,7 +3,7 @@
  *
  * Pins the ADR-050 lane partition (#2278): every `JobTypeValues` member is
  * registered with exactly one lane, the per-lane counts match the ADR's
- * table (19 realtime / 34 bulk / 5 fiscal / 7 fan-out across 65 job types —
+ * table (19 realtime / 35 bulk / 5 fiscal / 7 fan-out across 66 job types -
  * `subiekt.bridge.reachabilitySweep` joined `bulk` with #3358: it re-probes a
  * Subiekt connection's own reachability on a cron, nobody is waiting on any
  * one tick of it, and a late check costs nothing beyond a delayed log line;
@@ -30,11 +30,12 @@
  * cost-of-starvation reason. `inventory.saleDecrement` joined `realtime`
  * with #3453 (a late decrement is an oversell window), and
  * `fulfillment.work.rerouteSweep` joined `bulk` with #3485, and `orders.export`
- * beside it with #3534.
+ * beside it with #3534. `marketplace.sourceFulfillment.statusSync` joined
+ * `bulk` beside its destination-side twin (ADR-012 amendment).
  *
  * @module apps/worker/src/sync/handlers
  */
-/* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-unsafe-call -- test constructs the service with 59 interchangeable dummy handlers */
+/* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-unsafe-call -- test constructs the service with 61 interchangeable dummy handlers */
 import type { SyncJobHandler } from '@openlinker/core/sync';
 import { JobTypeValues, SyncJobLaneValues } from '@openlinker/core/sync';
 import { SyncJobHandlerRegistry } from '../sync-job-handler.registry';
@@ -45,13 +46,13 @@ describe('HandlerRegistrationService (ADR-050 lane partition, #2278)', () => {
 
   beforeEach(() => {
     registry = new SyncJobHandlerRegistry();
-    // The constructor takes the registry followed by 59 handler instances.
+    // The constructor takes the registry followed by 61 handler instances.
     // The dummies are DISTINCT objects so that "these two job types share one
     // handler instance" (#2594) is a real assertion rather than a tautology;
     // the partition under test keys on jobType, so they are otherwise
     // interchangeable.
     const handlers = Array.from(
-      { length: 59 },
+      { length: 61 },
       () => ({ execute: jest.fn() }) as unknown as SyncJobHandler
     );
     const service = new (HandlerRegistrationService as any)(registry, ...handlers);
@@ -63,7 +64,7 @@ describe('HandlerRegistrationService (ADR-050 lane partition, #2278)', () => {
     expect(() => registry.assertFullLaneCoverage()).not.toThrow();
   });
 
-  it('should partition the 65 job types 19/34/5/7 per ADR-050 decision 1', () => {
+  it('should partition the 66 job types 19/35/5/7 per ADR-050 decision 1', () => {
     // 17: four of the SIX fulfilment job types are `realtime` by
     // cost-of-starvation. The other two, #2712's
     // `fulfillment.work.timeoutSweep` and #2728's
@@ -147,7 +148,12 @@ describe('HandlerRegistrationService (ADR-050 lane partition, #2278)', () => {
     // enqueues, which stay `realtime`. #3534's `orders.export` is the
     // thirty-third: an operator-requested CSV/XLSX export is a query-then-write
     // job, not a buyer-facing write, the restatement driver's reasoning.
-    expect(registry.getJobTypesByLane('bulk')).toHaveLength(34);
+    // #3629's inventory sale-decrement reconcile sweep is the thirty-fourth,
+    // and `marketplace.sourceFulfillment.statusSync` the thirty-fifth, laned
+    // with its destination-side twin `marketplace.fulfillment.statusSync`: a
+    // paced scan over parcels that have already shipped, each candidate a
+    // marketplace readback.
+    expect(registry.getJobTypesByLane('bulk')).toHaveLength(35);
     expect(registry.getJobTypesByLane('fiscal')).toHaveLength(5);
     expect(registry.getJobTypesByLane('fan-out')).toHaveLength(7);
   });
@@ -224,6 +230,9 @@ describe('HandlerRegistrationService (ADR-050 lane partition, #2278)', () => {
     // The buyer-facing path stays realtime.
     expect(registry.getLane('marketplace.order.sync')).toBe('realtime');
     expect(registry.getLane('marketplace.offerQuantity.update')).toBe('realtime');
+    // Both fulfilment read-backs are paced scans, source side as destination side.
+    expect(registry.getLane('marketplace.fulfillment.statusSync')).toBe('bulk');
+    expect(registry.getLane('marketplace.sourceFulfillment.statusSync')).toBe('bulk');
     // Enumerators are fan-out.
     expect(registry.getLane('marketplace.orders.poll')).toBe('fan-out');
     // #2330 returns: the lanes mirror the order path they were modelled on.

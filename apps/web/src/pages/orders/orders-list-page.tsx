@@ -51,8 +51,19 @@ import { useOrderStatusSummaryQuery } from '../../features/orders/hooks/use-orde
 import { useOrderSlaSummaryQuery } from '../../features/orders/hooks/use-order-sla-summary-query';
 import { useOrderLifecycleSummaryQuery } from '../../features/orders/hooks/use-order-lifecycle-summary-query';
 import { OmsAttentionBadges } from '../../features/fulfillment-authority';
-import { OrderPhaseBadge } from '../../features/orders/components/order-phase-badge';
+import { OrderPhaseOrWaitingBadge } from '../../features/orders/components/order-phase-or-waiting-badge';
+import { OrderPackingStage } from '../../features/orders/components/order-packing-stage';
+import {
+  derivePackerLabel,
+  deriveWaiting,
+  isHandledInOpenLinker,
+  needsPackerNames,
+  showsPackingStage,
+} from '../../features/orders/lib/handled-in-openlinker';
+import { usePackersQuery } from '../../features/users';
+import { HANDLED_IN_OPENLINKER_COPY } from '../../features/orders/lib/handled-in-openlinker.copy';
 import { OrderHoldBadge } from '../../features/orders/components/order-hold-badge';
+import { OrderDestinationRoutingBadge } from '../../features/orders/components/order-destination-routing-badge';
 import { useRetryOrderDestinationMutation } from '../../features/orders/hooks/use-retry-order-destination-mutation';
 import { ReadOnlyLock } from '../../shared/ui/read-only-lock';
 import { useWriteAccess } from '../../shared/auth/use-permission';
@@ -359,6 +370,19 @@ export function OrdersListPage(): ReactElement {
   // The 25-cap is enforced PER SOURCE connection, since the bulk endpoint takes
   // one source per request and the dialog fans out one call per source group.
   const items = query.data?.items ?? [];
+  // #3482 - the packer's name under "To pack" / "Packing". The roster is fetched
+  // only when a row on this page has an assigned, unpacked work.
+  const packersQuery = usePackersQuery({ enabled: needsPackerNames(items) });
+  // `null` until the roster has LOADED: a name-dependent label renders nothing
+  // while it is loading or after it failed, rather than claiming "Assigned" (which
+  // means "this id does not resolve") on the strength of a read that said nothing.
+  const packerNameById = useMemo(
+    () =>
+      packersQuery.isSuccess
+        ? new Map(packersQuery.data.packers.map((packer) => [packer.id, packer.username]))
+        : null,
+    [packersQuery.isSuccess, packersQuery.data]
+  );
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkOpen, setBulkOpen] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
@@ -713,7 +737,11 @@ export function OrdersListPage(): ReactElement {
           const destPlatform = order.syncStatus[0]
             ? platformByConnection.get(order.syncStatus[0].destinationConnectionId)
             : undefined;
-          const dest = channelLabel(destPlatform);
+          // An order OpenLinker handles itself has no destination row; say where it
+          // goes rather than leaving the target empty (#3482).
+          const dest = isHandledInOpenLinker(order)
+            ? HANDLED_IN_OPENLINKER_COPY.channelDestination
+            : channelLabel(destPlatform);
           if (!source) return <span className="text-muted">—</span>;
           return (
             <span className="orders-cell-stack">
@@ -743,7 +771,7 @@ export function OrdersListPage(): ReactElement {
               {/* #2310 — BESIDE the health badge, never instead of it: health
                   says "is something wrong", the phase says "what stage is it
                   at" (ADR-059). */}
-              <OrderPhaseBadge phase={order.lifecyclePhase} compact />
+              <OrderPhaseOrWaitingBadge order={order} compact />
               {/* #2350 — an exception, so a badge, and it belongs in the STATUS
                   group beside failure reasons (style guide § order-row signal
                   placement). BESIDE health for the same reason the phase is:
@@ -759,6 +787,11 @@ export function OrdersListPage(): ReactElement {
                   beside the failure reasons (style guide § Order-row signal
                   placement rule 2), never in Shipment or Money. */}
               <OrderHoldBadge reason={order.activeHoldReason} compact />
+              {/* #2703 / #2704 - why routing left the destination fan-out
+                  narrowed. Without it a row reads "No destinations" whatever the
+                  cause. Status group, beside health, for the placement reason
+                  above; shared verbatim with the mobile card. */}
+              <OrderDestinationRoutingBadge reason={order.destinationRoutingBlockReason} compact />
               {/* #2356 — an inert state is an EXCEPTION, and rule 2 of the style
                   guide's order-row signal placement puts exceptions in the
                   Status group beside failure reasons. It is another badge
@@ -843,6 +876,9 @@ export function OrdersListPage(): ReactElement {
           const canGenerateLabel =
             order.fulfillmentState === 'not-shipped' &&
             parsed.status !== 'cancelled' &&
+            // Work on the pack bench prints its label THERE (D46), so the list
+            // offers no "Generate label" for it (#3482).
+            !isHandledInOpenLinker(order) &&
             hasLiveOlCarrierRoute(order.deliveryResolution);
           return (
             <span className="orders-cell-stack">
@@ -853,6 +889,16 @@ export function OrdersListPage(): ReactElement {
               {isFulfilmentOwnedByDestination(order.syncStatus, fulfilmentOwnedIds) ? null : (
                 <OrderPackedTick packedAt={order.packedAt} layout="stack" emptyFallback={null} />
               )}
+              {/* #3482 - where an order OpenLinker handles itself has got in packing.
+                  Absent when no live work was found, so every other row is unchanged;
+                  and absent for a packed order with `packedAt`, whose tick above
+                  already says "Packed" and when. */}
+              {showsPackingStage(order) ? (
+                <OrderPackingStage
+                  handled={order.handledInOpenLinker}
+                  who={derivePackerLabel(order.handledInOpenLinker, packerNameById)}
+                />
+              ) : null}
               {/* When the row offers "Generate label" the CTA is deferred to sit
                   directly under the Awaiting-label delivery chip (the state it
                   resolves), so the top slot only carries the passive fulfillment
@@ -992,6 +1038,8 @@ export function OrdersListPage(): ReactElement {
       // constant), so listing it costs no rebuild — but that invariant lives two
       // files away, and a stale closure here would render stale channel labels.
       platforms,
+      // #3482 - the packer names under the packing stage.
+      packerNameById,
       retryMutation.isPending,
       retryMutation.variables,
       retryWrite.visible,
@@ -1234,6 +1282,48 @@ export function OrdersListPage(): ReactElement {
               </Button>
             }
           />
+        ) : filterState.waitingInOpenLinker ? (
+          /*
+            #3482 - nothing waiting is a good outcome, not a narrowed search coming
+            up empty. Worded "in this view" because other filters may be on.
+          */
+          <EmptyState
+            title="Nothing is waiting in OpenLinker in this view"
+            message="No order here is held for missing stock, a missing address or a routing error. Other filters are still applied."
+            action={
+              <Button onClick={filtersApi.clearAll}>
+                Clear filters
+              </Button>
+            }
+          />
+        ) : filterState.onPackBench ? (
+          /* #3482 - an empty pack bench is a good outcome too. */
+          <EmptyState
+            title="Nothing on the pack bench in this view"
+            message="No order here is waiting to be packed or being packed. Other filters are still applied."
+            action={
+              <Button onClick={filtersApi.clearAll}>
+                Clear filters
+              </Button>
+            }
+          />
+        ) : filterState.routingBlocked ? (
+          /*
+            #2703 / #2704 — `routing=blocked` counts only routing decisions that
+            named an unreachable destination, so an empty result is a good
+            outcome, not a narrowed search coming up empty. Ahead of the generic
+            `hasActiveFilters` arm for the same reason as `invoicingBlocked`
+            above, and worded "in this view" because other filters may be on.
+          */
+          <EmptyState
+            title="No routing problems in this view"
+            message="No order here was routed to a destination OpenLinker could not reach. Other filters are still applied."
+            action={
+              <Button onClick={filtersApi.clearAll}>
+                Clear filters
+              </Button>
+            }
+          />
         ) : debouncedSearch ? (
           /*
             #3529 (mockup M4 `noresults`) — its own arm, ahead of the generic
@@ -1455,7 +1545,9 @@ export function OrdersListPage(): ReactElement {
                 const canGenerateLabel =
                   order.fulfillmentState === 'not-shipped' &&
                   parsed.status !== 'cancelled' &&
+                  !isHandledInOpenLinker(order) &&
                   hasLiveOlCarrierRoute(order.deliveryResolution);
+                const waiting = deriveWaiting(order);
                 return (
                   <div className="orders-card-summary">
                     <dl className="orders-card-facts">
@@ -1525,7 +1617,17 @@ export function OrdersListPage(): ReactElement {
                         <dt>Customer</dt>
                         <dd>{cust ?? '—'}</dd>
                       </div>
-                      {isFulfilmentOwnedByDestination(order.syncStatus, fulfilmentOwnedIds) ? null : (
+                      {showsPackingStage(order) ? (
+                        <div>
+                          <dt>Packing</dt>
+                          <dd>
+                            <OrderPackingStage
+                              handled={order.handledInOpenLinker}
+                              who={derivePackerLabel(order.handledInOpenLinker, packerNameById)}
+                            />
+                          </dd>
+                        </div>
+                      ) : isFulfilmentOwnedByDestination(order.syncStatus, fulfilmentOwnedIds) ? null : (
                         <div>
                           <dt>Packed</dt>
                           <dd>
@@ -1541,6 +1643,12 @@ export function OrdersListPage(): ReactElement {
                           </dd>
                         </div>
                       )}
+                      {waiting ? (
+                        <div className="orders-card-facts__wide">
+                          <dt>{HANDLED_IN_OPENLINKER_COPY.waitingOnFact}</dt>
+                          <dd title={waiting.hint}>{waiting.fact}</dd>
+                        </div>
+                      ) : null}
                       <div className="orders-card-facts__wide">
                         <dt>Shipment</dt>
                         <dd>
@@ -1603,8 +1711,12 @@ export function OrdersListPage(): ReactElement {
                     <StatusBadge tone={h.tone} withDot compact>
                       {h.label}
                     </StatusBadge>
-                    <OrderPhaseBadge phase={order.lifecyclePhase} compact />
+                    <OrderPhaseOrWaitingBadge order={order} compact />
                     <OrderHoldBadge reason={order.activeHoldReason} compact />
+                    <OrderDestinationRoutingBadge
+                      reason={order.destinationRoutingBlockReason}
+                      compact
+                    />
                     <OmsAttentionBadges entries={order.omsAttention ?? []} compact />
                     <StatusBadge tone={fulfillment.tone} withDot compact>
                       {fulfillment.label}
