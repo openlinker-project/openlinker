@@ -667,6 +667,7 @@ export class InvoiceRecordRepository implements InvoiceRecordRepositoryPort {
       entity.warehouseReleaseOutcome,
       entity.warehouseReleaseNumber,
       entity.clearanceDetail,
+      entity.sourceDocumentHash,
     );
   }
 }

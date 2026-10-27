@@ -21,6 +21,7 @@ import {
   INVOICE_SERVICE_TOKEN,
   InvoiceRecord as InvoiceRecordClass,
   InvoiceRecordNotFoundException,
+  RegulatoryDocumentNotReadyError,
   UnsupportedRegulatoryDocumentKindError,
   DuplicateInvoiceRecordException,
   OrderAlreadyInvoicedException,
@@ -1711,6 +1712,24 @@ describe('InvoicingController', () => {
       await expect(
         controller.downloadDocument('rec-inv-1', mockResponse(), 'rendered'),
       ).rejects.toBeInstanceOf(ConflictException);
+    });
+
+    it('should 409 for kind=rendered when the adapter reports the document is not ready (#3620)', async () => {
+      invoiceService.getInvoiceById.mockResolvedValue(clearedRecord());
+      const adapter: InvoicingPort = {
+        issueInvoice: jest.fn(),
+        getInvoice: jest.fn(),
+        upsertCustomer: jest.fn(),
+        getSupportedDocumentTypes: jest.fn().mockReturnValue([]),
+        getRegulatoryDocument: jest
+          .fn()
+          .mockRejectedValue(new RegulatoryDocumentNotReadyError('rendered')),
+      } as InvoicingPort;
+      integrations.getCapabilityAdapter.mockResolvedValue(adapter);
+
+      await expect(
+        controller.downloadDocument('rec-inv-1', mockResponse(), 'rendered'),
+      ).rejects.toThrow('not available until the invoice is cleared');
     });
 
     it('should 409 for kind=rendered when the invoice is not yet cleared', async () => {
