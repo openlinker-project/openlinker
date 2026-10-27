@@ -141,7 +141,7 @@ read) on its `ProductPublisher` adapter. No shop adapter implements
 `Connection.config.currency` (or an operator-set value) for the price-change
 currency-mismatch guard.
 
-### `OrderProcessorManagerPort` / `OrderSourcePort` (orders) — 6
+### `OrderProcessorManagerPort` / `OrderSourcePort` (orders) — 7
 
 | Sub-capability | What it does | Method(s) | Guard |
 |---|---|---|---|
@@ -151,6 +151,7 @@ currency-mismatch guard.
 | `DestinationOptionsReader` | List a destination's carriers / order-statuses / payment-methods for mapping. | `listCarriers` · `listOrderStatuses` · `listPaymentMethods` | `isDestinationOptionsReader` |
 | `SourceOptionsReader` | List a source's order-statuses / delivery-methods / payment-methods for mapping. | `listOrderStatuses` · `listDeliveryMethods` · `listPaymentMethods` | `isSourceOptionsReader` |
 | `OrderCreateStockEffect` | Declare that creating an order on this destination lowered the shop's own stock, so core may consume the order's holds on positions that destination masters. Probed after the create; anything but a declared `true` keeps the holds until dispatch. Shoper answers from its `shopping_update_stock_on_buy` setting. | `lowersStockOnOrderCreate` | `isOrderCreateStockEffect` |
+| `OrderContactRefresher` | Reconcile an order the destination already holds with contact details the source revealed only later. Called best-effort on the create-skip path (the order is already mapped), never after a fresh create; a throw is warn-logged and does not change the sync result. Shoper replaces the placeholder phone it had to create the order with, but only while the shop order still carries it. | `refreshOrderContact` | `isOrderContactRefresher` |
 
 The canonical OL-owned order-lifecycle state machine (authoritative
 `updateOrderStatus` / `cancelOrder` / `processReturn` / `getOrders`) is

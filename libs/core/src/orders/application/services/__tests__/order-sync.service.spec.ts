@@ -1637,4 +1637,88 @@ describe('OrderSyncService', () => {
       }
     );
   });
+
+  describe('contact refresh on an order the destination already holds', () => {
+    // A source may reveal a contact field only after the first create (a
+    // marketplace showing the phone once the order is paid). The mapping makes
+    // every later run skip the create, so this is the only way the destination
+    // ever hears about it.
+    type RefreshingAdapter = jest.Mocked<OrderProcessorManagerPort> & {
+      refreshOrderContact: jest.Mock;
+    };
+    const makeRefreshingAdapter = (
+      refresh: jest.Mock = jest.fn().mockResolvedValue(undefined)
+    ): RefreshingAdapter =>
+      ({
+        createOrder: jest.fn().mockResolvedValue({ orderId: 'should-not-be-used' }),
+        refreshOrderContact: refresh,
+      }) as unknown as RefreshingAdapter;
+
+    const mapExisting = (): void => {
+      identifierMapping.getExternalIds.mockResolvedValue([
+        {
+          externalId: 'SHOP-42',
+          connectionId: 'dest-a',
+          platformType: 'shoper',
+          entityType: 'Order',
+        },
+      ]);
+    };
+
+    it('should ask the destination to refresh contact details with the mapped id when the create is skipped', async () => {
+      const adapter = makeRefreshingAdapter();
+      registerDestinations([{ connectionId: 'dest-a', adapter }]);
+      mapExisting();
+
+      await service.syncOrder({ order: createOrder(), sourceConnectionId: 'source-1' });
+
+      expect(adapter.createOrder).not.toHaveBeenCalled();
+      expect(adapter.refreshOrderContact).toHaveBeenCalledTimes(1);
+      expect(adapter.refreshOrderContact).toHaveBeenCalledWith({
+        externalOrderId: 'SHOP-42',
+        order: expect.objectContaining({ internalOrderId: 'ol_order_123' }),
+      });
+    });
+
+    it('should not ask for a refresh when the order was just created', async () => {
+      const adapter = makeRefreshingAdapter();
+      (adapter.createOrder as jest.Mock).mockResolvedValue({ orderId: 'SHOP-NEW' });
+      registerDestinations([{ connectionId: 'dest-a', adapter }]);
+
+      await service.syncOrder({ order: createOrder(), sourceConnectionId: 'source-1' });
+
+      expect(adapter.createOrder).toHaveBeenCalledTimes(1);
+      // The create itself carried the latest data.
+      expect(adapter.refreshOrderContact).not.toHaveBeenCalled();
+    });
+
+    it('should skip quietly when the destination does not implement the refresh', async () => {
+      const adapter = makeAdapter({ orderId: 'should-not-be-used' });
+      registerDestinations([{ connectionId: 'dest-a', adapter }]);
+      mapExisting();
+
+      const results = await service.syncOrder({
+        order: createOrder(),
+        sourceConnectionId: 'source-1',
+      });
+
+      expect(results[0]).toMatchObject({ status: 'success', orderRef: { orderId: 'SHOP-42' } });
+    });
+
+    it('should not fail order sync when the refresh throws', async () => {
+      const adapter = makeRefreshingAdapter(jest.fn().mockRejectedValue(new Error('shop down')));
+      registerDestinations([{ connectionId: 'dest-a', adapter }]);
+      mapExisting();
+
+      const results = await service.syncOrder({
+        order: createOrder(),
+        sourceConnectionId: 'source-1',
+      });
+
+      // The order is already at the destination; the next re-ingestion asks again.
+      expect(adapter.refreshOrderContact).toHaveBeenCalledTimes(1);
+      expect(results).toHaveLength(1);
+      expect(results[0]).toMatchObject({ status: 'success', orderRef: { orderId: 'SHOP-42' } });
+    });
+  });
 });

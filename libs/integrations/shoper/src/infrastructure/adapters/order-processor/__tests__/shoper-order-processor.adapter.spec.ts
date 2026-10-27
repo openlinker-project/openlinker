@@ -1,7 +1,11 @@
 import type { Connection, IdentifierMappingPort } from '@openlinker/core/identifier-mapping';
 import type { IMappingConfigService } from '@openlinker/core/mappings';
 import type { Address, OrderCreate } from '@openlinker/core/orders';
-import { isOrderCreateStockEffect, lowersStockOnOrderCreate } from '@openlinker/core/orders';
+import {
+  isOrderContactRefresher,
+  isOrderCreateStockEffect,
+  lowersStockOnOrderCreate,
+} from '@openlinker/core/orders';
 
 import { ShoperApiError } from '../../../../domain/exceptions/shoper-api.error';
 import { ShoperDuplicateOrderException } from '../../../../domain/exceptions/shoper-duplicate-order.exception';
@@ -453,6 +457,127 @@ describe('ShoperOrderProcessorAdapter', () => {
       post.mockResolvedValue({ status: 200, data: {} });
 
       await expect(adapter.createOrder(order())).rejects.toBeInstanceOf(ShoperOrderUnbuildableException);
+    });
+  });
+
+  describe('OrderContactRefresher', () => {
+    // An Allegro order reaches the shop before payment with no phone, so it is
+    // created under the placeholder; after payment it is re-ingested with the
+    // real phone and core asks the adapter to write it back.
+    function shoperOrder(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+      return {
+        order_id: '10',
+        notes: SHOPER_PHONE_PLACEHOLDER_NOTE,
+        billing_address: { phone: SHOPER_PHONE_PLACEHOLDER, city: 'Warszawa' },
+        delivery_address: { phone: SHOPER_PHONE_PLACEHOLDER, city: 'Warszawa' },
+        ...overrides,
+      };
+    }
+
+    it('should be recognised by the core probe', () => {
+      const { adapter } = setup();
+      expect(isOrderContactRefresher(adapter)).toBe(true);
+    });
+
+    it('should replace the placeholder on both addresses and clear the placeholder note', async () => {
+      const { adapter, get, put } = setup();
+      get.mockResolvedValue({ status: 200, data: shoperOrder() });
+
+      await adapter.refreshOrderContact({ externalOrderId: '10', order: order() });
+
+      expect(get).toHaveBeenCalledWith('/orders/10');
+      // Only the phone: Shoper keeps every other address field on a partial PUT.
+      expect(put).toHaveBeenCalledTimes(1);
+      expect(put).toHaveBeenCalledWith('/orders/10', {
+        billing_address: { phone: '600100200' },
+        delivery_address: { phone: '600100200' },
+        notes: '',
+      });
+    });
+
+    it('should leave an operator-edited note alone', async () => {
+      const { adapter, get, put } = setup();
+      get.mockResolvedValue({ status: 200, data: shoperOrder({ notes: 'Call before delivery' }) });
+
+      await adapter.refreshOrderContact({ externalOrderId: '10', order: order() });
+
+      expect(put).toHaveBeenCalledWith('/orders/10', {
+        billing_address: { phone: '600100200' },
+        delivery_address: { phone: '600100200' },
+      });
+    });
+
+    it('should replace only the address that still carries the placeholder', async () => {
+      const { adapter, get, put } = setup();
+      get.mockResolvedValue({
+        status: 200,
+        data: shoperOrder({ billing_address: { phone: '500600700' } }),
+      });
+
+      await adapter.refreshOrderContact({ externalOrderId: '10', order: order() });
+
+      expect(put).toHaveBeenCalledWith('/orders/10', {
+        delivery_address: { phone: '600100200' },
+        notes: '',
+      });
+    });
+
+    it('should give each address its own phone, falling back to the other one', async () => {
+      const { adapter, get, put } = setup();
+      get.mockResolvedValue({ status: 200, data: shoperOrder() });
+
+      await adapter.refreshOrderContact({
+        externalOrderId: '10',
+        order: order({
+          billingAddress: { ...address(), phone: undefined },
+          shippingAddress: { ...address('Anna', 'Nowak'), phone: '700800900' },
+        }),
+      });
+
+      expect(put).toHaveBeenCalledWith('/orders/10', {
+        billing_address: { phone: '700800900' },
+        delivery_address: { phone: '700800900' },
+        notes: '',
+      });
+    });
+
+    it('should not write when the shop order already has a real phone', async () => {
+      // Created with a phone, or an operator fixed it by hand: either way it is
+      // not ours to overwrite.
+      const { adapter, get, put } = setup();
+      get.mockResolvedValue({
+        status: 200,
+        data: shoperOrder({
+          billing_address: { phone: '500600700' },
+          delivery_address: { phone: '500600700' },
+        }),
+      });
+
+      await adapter.refreshOrderContact({ externalOrderId: '10', order: order() });
+
+      expect(put).not.toHaveBeenCalled();
+    });
+
+    it('should neither read nor write when the incoming order still has no phone', async () => {
+      const { adapter, get, put } = setup();
+      const noPhone = { ...address(), phone: undefined };
+
+      await adapter.refreshOrderContact({
+        externalOrderId: '10',
+        order: order({ billingAddress: noPhone, shippingAddress: { ...noPhone, phone: '  ' } }),
+      });
+
+      expect(get).not.toHaveBeenCalled();
+      expect(put).not.toHaveBeenCalled();
+    });
+
+    it('should refuse a non-numeric order id before calling Shoper', async () => {
+      const { adapter, get } = setup();
+
+      await expect(
+        adapter.refreshOrderContact({ externalOrderId: '10/../users', order: order() }),
+      ).rejects.toBeInstanceOf(RangeError);
+      expect(get).not.toHaveBeenCalled();
     });
   });
 

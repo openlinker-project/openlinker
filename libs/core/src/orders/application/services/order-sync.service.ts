@@ -39,6 +39,7 @@ import type {
 } from '../interfaces/order-sync.service.interface';
 import type { OrderProcessorManagerPort } from '../../domain/ports/order-processor-manager.port';
 import { lowersStockOnOrderCreate } from '../../domain/ports/capabilities/order-create-stock-effect.capability';
+import { isOrderContactRefresher } from '../../domain/ports/capabilities/order-contact-refresher.capability';
 import type { OrderCreate, OrderRef } from '../../domain/types/order-processor.types';
 import { OrderStatusValues } from '../../domain/types/order.types';
 import { IIntegrationsService } from '@openlinker/core/integrations';
@@ -330,14 +331,27 @@ export class OrderSyncService implements IOrderSyncService {
     const settled = await Promise.allSettled(
       destinations.map(({ connectionId, adapter }) =>
         this.createOrderIdempotently(adapter, connectionId, order.id, orderCreate).then(
-          async ({ orderRef, created }): Promise<SettledDestination> => ({
-            connectionId,
-            orderRef,
-            created,
-            // Asked after the create so an adapter can answer from the shop's
-            // own setting; never throws, so it cannot fail a create that landed.
-            lowersStock: await lowersStockOnOrderCreate(adapter),
-          })
+          async ({ orderRef, created }): Promise<SettledDestination> => {
+            // Outside the create lock (released by now) and only for an order
+            // that already existed there: a fresh create carried this data.
+            if (!created) {
+              await this.refreshDestinationContact(
+                adapter,
+                connectionId,
+                order.id,
+                orderRef,
+                orderCreate
+              );
+            }
+            return {
+              connectionId,
+              orderRef,
+              created,
+              // Asked after the create so an adapter can answer from the shop's
+              // own setting; never throws, so it cannot fail a create that landed.
+              lowersStock: await lowersStockOnOrderCreate(adapter),
+            };
+          }
         )
       )
     );
@@ -478,6 +492,39 @@ export class OrderSyncService implements IOrderSyncService {
             `${error instanceof Error ? error.message : String(error)}`
         );
       }
+    }
+  }
+
+  /**
+   * Let a destination that already holds this order reconcile contact fields
+   * the source revealed only after the first create (`OrderContactRefresher`).
+   *
+   * Without it a re-ingested order never reaches the destination again: the
+   * recorded mapping makes every later run skip the create, so a stand-in the
+   * destination needed at create time (a contact field the source had not
+   * provided yet) would stay forever. What to change, and what to leave alone
+   * because an operator already fixed it, is the adapter's decision.
+   *
+   * Best-effort and never throws: the order is already at the destination, so a
+   * failure here is warn-logged and the sync result stays a success. The next
+   * re-ingestion asks again.
+   */
+  private async refreshDestinationContact(
+    adapter: OrderProcessorManagerPort,
+    destinationConnectionId: string,
+    internalOrderId: string,
+    orderRef: OrderRef,
+    orderCreate: OrderCreate
+  ): Promise<void> {
+    if (!isOrderContactRefresher(adapter)) return;
+    try {
+      await adapter.refreshOrderContact({ externalOrderId: orderRef.orderId, order: orderCreate });
+    } catch (error) {
+      this.logger.warn(
+        `Could not refresh contact details of order ${internalOrderId} at destination ` +
+          `${destinationConnectionId} (destination order: ${orderRef.orderId}): ` +
+          `${error instanceof Error ? error.message : String(error)}`
+      );
     }
   }
 

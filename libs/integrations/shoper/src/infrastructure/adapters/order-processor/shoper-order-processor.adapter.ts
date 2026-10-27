@@ -40,11 +40,16 @@
  * parcel as dispatched and a cancelled status as cancelled, for the branch-1
  * shipment projection.
  *
+ * **Contact refresh (#3814 review).** `OrderContactRefresher` replaces the
+ * placeholder phone an order had to be created with (see
+ * {@link SHOPER_PHONE_PLACEHOLDER}) once the source provides the real one.
+ *
  * @module libs/integrations/shoper/src/infrastructure/adapters/order-processor
  * @implements {OrderProcessorManagerPort}
  * @implements {OrderStatusWriteback}
  * @implements {FulfillmentStatusReader}
  * @implements {OrderCreateStockEffect}
+ * @implements {OrderContactRefresher}
  */
 import type { Connection, IdentifierMappingPort } from '@openlinker/core/identifier-mapping';
 import { CORE_ENTITY_TYPE } from '@openlinker/core/identifier-mapping';
@@ -55,6 +60,7 @@ import type {
   FulfillmentStatusReader,
   FulfillmentStatusSnapshot,
   MappingOption,
+  OrderContactRefresher,
   OrderCreate,
   OrderItem,
   OrderCreateStockEffect,
@@ -76,6 +82,8 @@ import { ShoperPartialOrderException } from '../../../domain/exceptions/shoper-p
 import type { ShoperOrderDefaults } from '../../../domain/types/shoper-config.types';
 import type { PreparedShoperOrder } from '../../../domain/types/shoper-order-prepare.types';
 import type {
+  ShoperOrderContact,
+  ShoperOrderContactUpdate,
   ShoperOrderCreateRequest,
   ShoperOrderRef,
   ShoperOrderProductCreateRequest,
@@ -121,11 +129,25 @@ export const SHOPER_PHONE_PLACEHOLDER = '100000000';
 
 /**
  * The order note that explains the placeholder to whoever opens the order in
- * Shoper. It says where the real number is, because nothing writes it back: the
- * adapter only creates the order, so a later sync never touches its address.
+ * Shoper. The placeholder is written back: on the next sync after the
+ * marketplace provides the phone (for Allegro, once the order is paid),
+ * `refreshOrderContact` replaces it and clears this note - but only while the
+ * shop order still carries the placeholder and this exact note, so an operator
+ * who fixed either by hand keeps their version.
  */
 export const SHOPER_PHONE_PLACEHOLDER_NOTE =
-  `Phone number ${SHOPER_PHONE_PLACEHOLDER} is a placeholder: the marketplace did not provide the buyer's phone (for example, the order was not paid yet). It is not updated later - take the buyer's phone from the order on the marketplace.`;
+  `Phone number ${SHOPER_PHONE_PLACEHOLDER} is a placeholder: the marketplace did not provide the buyer's phone (for example, the order was not paid yet). It is replaced automatically once the marketplace provides the phone.`;
+
+/**
+ * The buyer's phone as the source reports it: billing first, then delivery,
+ * each with the other as its fallback address (the same pairing the create
+ * uses). Blank counts as absent.
+ */
+function readSourcePhone(order: OrderCreate): string | undefined {
+  const billing = order.billingAddress ?? order.shippingAddress;
+  const delivery = order.shippingAddress ?? order.billingAddress;
+  return billing?.phone?.trim() || delivery?.phone?.trim() || undefined;
+}
 
 export class ShoperOrderProcessorAdapter
   implements
@@ -133,7 +155,8 @@ export class ShoperOrderProcessorAdapter
     DestinationOptionsReader,
     OrderStatusWriteback,
     FulfillmentStatusReader,
-    OrderCreateStockEffect
+    OrderCreateStockEffect,
+    OrderContactRefresher
 {
   private readonly logger = new Logger(ShoperOrderProcessorAdapter.name);
   private readonly statusWriter: ShoperOrderStatusWriter;
@@ -230,6 +253,54 @@ export class ShoperOrderProcessorAdapter
     }
     this.warnOnSumMismatch(order, prepared, orderId);
     return { orderId };
+  }
+
+  /**
+   * `OrderContactRefresher`: replace the placeholder phone on an order this
+   * adapter created before the source knew the buyer's phone.
+   *
+   * Only the placeholder is replaced. An address whose phone is anything else
+   * (the real number, or one an operator typed in) is left alone, and the
+   * remark is cleared only when it is still exactly
+   * {@link SHOPER_PHONE_PLACEHOLDER_NOTE}, so operator-written notes survive.
+   *
+   * Cost: nothing when the incoming order still has no phone; otherwise one
+   * `GET /orders/:id` per call (core asks on every re-ingestion of an order
+   * already in the shop), plus one `PUT` only when a placeholder is found.
+   */
+  async refreshOrderContact(input: { externalOrderId: string; order: OrderCreate }): Promise<void> {
+    const { externalOrderId, order } = input;
+    const phone = readSourcePhone(order);
+    if (phone === undefined) {
+      return;
+    }
+    if (!/^\d+$/.test(externalOrderId)) {
+      throw new RangeError(
+        `Shoper order id must be numeric, got "${externalOrderId}" (connection: ${this.connection.id})`,
+      );
+    }
+
+    const { data: current } = await this.client.get<ShoperOrderContact>(`/orders/${externalOrderId}`);
+    const billingIsPlaceholder = current.billing_address?.phone?.trim() === SHOPER_PHONE_PLACEHOLDER;
+    const deliveryIsPlaceholder = current.delivery_address?.phone?.trim() === SHOPER_PHONE_PLACEHOLDER;
+    if (!billingIsPlaceholder && !deliveryIsPlaceholder) {
+      return;
+    }
+
+    // Each address gets its own phone, else the other's - what the create would
+    // have sent had the phone been known then (`mapShoperOrderAddress`).
+    const billingPhone = (order.billingAddress ?? order.shippingAddress)?.phone?.trim() || phone;
+    const deliveryPhone = (order.shippingAddress ?? order.billingAddress)?.phone?.trim() || phone;
+    const body: ShoperOrderContactUpdate = {
+      ...(billingIsPlaceholder ? { billing_address: { phone: billingPhone } } : {}),
+      ...(deliveryIsPlaceholder ? { delivery_address: { phone: deliveryPhone } } : {}),
+      ...(current.notes === SHOPER_PHONE_PLACEHOLDER_NOTE ? { notes: '' } : {}),
+    };
+    await this.client.put(`/orders/${externalOrderId}`, body);
+    this.logger.log(
+      `Replaced the placeholder phone on Shoper order ${externalOrderId} ` +
+        `(order: ${order.internalOrderId ?? '<unknown>'}, connection: ${this.connection.id})`,
+    );
   }
 
   /** The Shoper `user_id` the order must reference. */
@@ -352,7 +423,7 @@ export class ShoperOrderProcessorAdapter
     // one over yet (Allegro shows it only once the checkout is paid). The order
     // still belongs in the shop, so it goes in under a phone that is visibly not
     // a real number, and the order's note says why.
-    const sourcePhone = billing.phone?.trim() || delivery.phone?.trim();
+    const sourcePhone = readSourcePhone(order);
     const phone = sourcePhone || SHOPER_PHONE_PLACEHOLDER;
     if (!sourcePhone) {
       this.logger.warn(

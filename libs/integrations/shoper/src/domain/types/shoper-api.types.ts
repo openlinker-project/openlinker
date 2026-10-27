@@ -393,6 +393,28 @@ export interface ShoperOrderShipping {
 }
 
 /**
+ * The slice of `GET /orders/:id` the contact refresh reads: the phone on each
+ * address and the order remarks (verified live, 27 Oct 2026).
+ */
+export interface ShoperOrderContact {
+  readonly order_id: string | number;
+  readonly notes?: string | null;
+  readonly billing_address?: { readonly phone?: string | null } | null;
+  readonly delivery_address?: { readonly phone?: string | null } | null;
+}
+
+/**
+ * Body of `PUT /orders/:id` for the contact refresh. Shoper merges a partial
+ * address: sending only `phone` leaves every other address field as it was
+ * (verified live, 27 Oct 2026).
+ */
+export interface ShoperOrderContactUpdate {
+  readonly billing_address?: { readonly phone: string };
+  readonly delivery_address?: { readonly phone: string };
+  readonly notes?: string;
+}
+
+/**
  * A `GET /shippings` row as the parcel writeback reads it. `engine` names what
  * drives the method: `personal` for a plain, non-integrated one (verified live on
  * the trial shop, id 8), a carrier module for InPost, DPD and the like.

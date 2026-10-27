@@ -28,6 +28,10 @@ export {
   isOrderCreateStockEffect,
   lowersStockOnOrderCreate,
 } from './domain/ports/capabilities/order-create-stock-effect.capability';
+// Contact write-back for an order the destination already holds (#3814 review):
+// asked on the create-skip path only, best-effort.
+export type { OrderContactRefresher } from './domain/ports/capabilities/order-contact-refresher.capability';
+export { isOrderContactRefresher } from './domain/ports/capabilities/order-contact-refresher.capability';
 // Read-back counterpart to OrderFulfillmentUpdater (#834): branch-1
 // shipment-status projection from the OMP's view.
 export type { FulfillmentStatusReader } from './domain/ports/capabilities/fulfillment-status-reader.capability';
