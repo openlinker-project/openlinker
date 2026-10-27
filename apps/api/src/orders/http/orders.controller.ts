@@ -1437,6 +1437,9 @@ export class OrdersController {
       hasBuyerNote: order.hasBuyerNote,
       buyerNoteState: classifyBuyerNoteForList(order.hasBuyerNote, order.buyerNoteState),
       buyerNotePreview: buildBuyerNotePreview(order.buyerNoteState),
+      // The read marker is a timestamp, not free text, so the list may carry it:
+      // a bulk mark-read plan needs it to tell read notes from unread ones (B-3).
+      buyerNoteReadAt: order.buyerNoteReadAt ? order.buyerNoteReadAt.toISOString() : null,
       shippingCountry: order.shippingCountry,
       billingCountry: order.billingCountry,
       buyerOrderCount: order.buyerOrderCount,
