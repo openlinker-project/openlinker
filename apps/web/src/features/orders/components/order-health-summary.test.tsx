@@ -1,12 +1,13 @@
 /**
- * `OrderHealthSummary` Sync-cell hint tests (#2703 / #2704).
+ * Order Health Summary tests (#3482, #2703 / #2704)
  *
- * Pins which sentence the hint shows for each routing state, so it never claims
- * "No destinations configured" about a router's decision nor "All destinations
- * reconciled" after a partial narrowing.
+ * The Sync cell hint has several answers for an order with no destination rows,
+ * and the precedence between them is the point: handled in OpenLinker, then a
+ * routing reason, then nothing configured. With destination rows, a partial
+ * routing narrowing must not read as "All destinations reconciled".
  */
-import { render, screen } from '@testing-library/react';
-import { describe, expect, it } from 'vitest';
+import { cleanup, render, screen } from '@testing-library/react';
+import { afterEach, describe, expect, it } from 'vitest';
 
 import type { OrderSyncStatus } from '../api/orders.types';
 import {
@@ -15,6 +16,40 @@ import {
   DESTINATION_ROUTING_REASON_COPY,
 } from '../lib/destination-routing-copy';
 import { OrderHealthSummary } from './order-health-summary';
+
+afterEach(cleanup);
+
+const base = { syncStatus: [], fulfillment: 'not-shipped' as const, itemCount: 1 };
+
+describe('OrderHealthSummary - an order with no destination rows', () => {
+  it('should say handled in OpenLinker when the order has live pack-bench work', () => {
+    render(<OrderHealthSummary {...base} handledInOpenLinker={{ stage: 'packing', workCount: 1 }} />);
+    expect(screen.getByText('In OpenLinker')).toBeInTheDocument();
+    expect(screen.getByText('Handled in OpenLinker')).toBeInTheDocument();
+    expect(screen.queryByText('No destinations configured')).not.toBeInTheDocument();
+  });
+
+  it('should prefer handled-in-OpenLinker over a routed-nowhere reason', () => {
+    render(
+      <OrderHealthSummary
+        {...base}
+        destinationRoutingBlockReason="routed-to-no-destination"
+        handledInOpenLinker={{ stage: 'to-pack', workCount: 1 }}
+      />
+    );
+    expect(screen.getByText('Handled in OpenLinker')).toBeInTheDocument();
+  });
+
+  it('should keep the routed-nowhere copy when the order has no work', () => {
+    render(<OrderHealthSummary {...base} destinationRoutingBlockReason="routed-to-no-destination" />);
+    expect(screen.getByText('Routed nowhere')).toBeInTheDocument();
+  });
+
+  it('should still say nothing is configured when neither applies', () => {
+    render(<OrderHealthSummary {...base} />);
+    expect(screen.getByText('No destinations configured')).toBeInTheDocument();
+  });
+});
 
 const synced: OrderSyncStatus = {
   destinationConnectionId: 'dest-a',

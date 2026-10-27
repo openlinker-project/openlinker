@@ -28,6 +28,7 @@
  */
 import type { FulfillmentWork } from '../../domain/types/fulfillment-work.types';
 import type { FulfillmentWorkLinkResolution } from '../../domain/types/fulfillment-work-link.types';
+import type { OrderWorkSummary } from '../../domain/types/order-work-summary.types';
 
 export interface IFulfillmentWorkQueryService {
   /**
@@ -60,4 +61,16 @@ export interface IFulfillmentWorkQueryService {
    * model with its computed `supportedActions` stays #2406's.
    */
   findWorkById(workId: string): Promise<FulfillmentWork | null>;
+
+  /**
+   * The packing stage of every order in `orderIds` that has live work (#3482) —
+   * one batched read for a whole `/orders` page, the `getLatestInvoicesForOrders`
+   * (#1713) shape.
+   *
+   * An order absent from the map has no live work. That is "no work", never a
+   * positive claim that the order was not routed (see `OrderWorkSummary`).
+   */
+  summarizeWorkForOrders(
+    orderIds: readonly string[]
+  ): Promise<ReadonlyMap<string, OrderWorkSummary>>;
 }

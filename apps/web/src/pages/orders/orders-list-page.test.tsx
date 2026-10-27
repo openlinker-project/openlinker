@@ -1723,6 +1723,92 @@ describe('OrdersListPage', () => {
     expect(within(row).queryByRole('link', { name: /generate label/i })).not.toBeInTheDocument();
   });
 
+  describe('an order OpenLinker handles itself (#3482)', () => {
+    const olCarrierRoute: OrderRecord['deliveryResolution'] = {
+      source: 'rule',
+      processorKind: 'ol_managed_carrier',
+      processorConnectionId: 'conn-inpost',
+      processorAvailable: true,
+    };
+
+    it('should read "→ OpenLinker" in Channel and show the packing stage instead of an empty destination', async () => {
+      const handled: OrderRecord = {
+        ...syncedOrder,
+        syncStatus: [],
+        fulfillmentState: 'not-shipped',
+        handledInOpenLinker: { stage: 'packing', workCount: 1 },
+      };
+      const mockApi = createMockApiClient({
+        orders: { list: vi.fn().mockResolvedValue(paginated([handled])) },
+        connections: { list: vi.fn().mockResolvedValue([sampleConnection]) },
+      });
+
+      const { container } = renderWithProviders(<OrdersListPage />, { apiClient: mockApi });
+
+      await screen.findByText('ALG-882414');
+      const row = container.querySelector('.data-table__row') as HTMLElement;
+      expect(within(row).getByText(/→ OpenLinker/)).toBeInTheDocument();
+      expect(within(row).getByText('Packing')).toBeInTheDocument();
+    });
+
+    it('should NOT offer "Generate label" for an order whose work is on the pack bench (D46)', async () => {
+      const handled: OrderRecord = {
+        ...syncedOrder,
+        fulfillmentState: 'not-shipped',
+        deliveryResolution: olCarrierRoute,
+        handledInOpenLinker: { stage: 'to-pack', workCount: 1 },
+      };
+      const mockApi = createMockApiClient({
+        orders: { list: vi.fn().mockResolvedValue(paginated([handled])) },
+        connections: { list: vi.fn().mockResolvedValue([sampleConnection]) },
+      });
+
+      const { container } = renderWithProviders(<OrdersListPage />, { apiClient: mockApi });
+
+      await screen.findByText('ALG-882414');
+      const row = container.querySelector('.data-table__row') as HTMLElement;
+      expect(within(row).queryByRole('link', { name: /generate label/i })).not.toBeInTheDocument();
+    });
+
+    it('should still offer "Generate label" for an order OpenLinker does not handle', async () => {
+      const notHandled: OrderRecord = {
+        ...syncedOrder,
+        fulfillmentState: 'not-shipped',
+        deliveryResolution: olCarrierRoute,
+      };
+      const mockApi = createMockApiClient({
+        orders: { list: vi.fn().mockResolvedValue(paginated([notHandled])) },
+        connections: { list: vi.fn().mockResolvedValue([sampleConnection]) },
+      });
+
+      const { container } = renderWithProviders(<OrdersListPage />, { apiClient: mockApi });
+
+      await screen.findByText('ALG-882414');
+      const row = container.querySelector('.data-table__row') as HTMLElement;
+      expect(within(row).getByRole('link', { name: /generate label/i })).toBeInTheDocument();
+    });
+
+    it('should show "Waiting: stock" from the persisted reason in place of the phase pill', async () => {
+      const waiting: OrderRecord = {
+        ...syncedOrder,
+        syncStatus: [],
+        lifecyclePhase: 'held',
+        fulfillmentBlockReason: 'routing-refused',
+      };
+      const mockApi = createMockApiClient({
+        orders: { list: vi.fn().mockResolvedValue(paginated([waiting])) },
+        connections: { list: vi.fn().mockResolvedValue([sampleConnection]) },
+      });
+
+      const { container } = renderWithProviders(<OrdersListPage />, { apiClient: mockApi });
+
+      await screen.findByText('ALG-882414');
+      const row = container.querySelector('.data-table__row') as HTMLElement;
+      expect(within(row).getByText('Waiting: stock')).toBeInTheDocument();
+      expect(within(row).queryByText('On hold')).not.toBeInTheDocument();
+    });
+  });
+
   it('should render the Ships chip but SUPPRESS the rider chip on the list (rider is non-actionable here)', async () => {
     const shopFulfilledWithRider: OrderRecord = {
       ...syncedOrder,

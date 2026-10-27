@@ -123,6 +123,7 @@ import {
   type FulfillmentWorkStatus,
 } from '../../../domain/types/fulfillment-work-status.types';
 import type { FulfillmentWorkRejection } from '../../../domain/types/fulfillment-work-rejection.types';
+import type { FulfillmentWorkProgress } from '../../../domain/types/order-work-summary.types';
 import type { ParcelVerificationEvent } from '../../../domain/types/fulfillment-verification.types';
 import {
   clampWorklistLimit,
@@ -345,6 +346,30 @@ export class FulfillmentWorkRepository implements FulfillmentWorkRepositoryPort 
       return this.toDomain(header, lines);
     } catch (error) {
       throw new FulfillmentPersistenceError('findById', error);
+    }
+  }
+
+  async findProgressByOrderIds(
+    orderIds: readonly string[]
+  ): Promise<ReadonlyArray<FulfillmentWorkProgress & { readonly orderId: string }>> {
+    if (orderIds.length === 0) return [];
+    try {
+      // `orderId` leads `IDX_fulfillment_works_grouping`, which serves this
+      // `IN (...)`. Header columns only: no lines are hydrated, which is the point
+      // of a list-page read.
+      const rows = await this.works.find({
+        where: { orderId: In([...orderIds]) },
+        select: { orderId: true, status: true, parcelClosedAt: true },
+      });
+      return rows.map((row) => ({
+        orderId: row.orderId,
+        // Cast at the boundary, like every other status read in this file: the
+        // column is plain `text` and the union is enforced in TypeScript.
+        status: row.status as FulfillmentWorkStatus,
+        parcelClosedAt: row.parcelClosedAt,
+      }));
+    } catch (error) {
+      throw new FulfillmentPersistenceError('findProgressByOrderIds', error);
     }
   }
 

@@ -396,6 +396,7 @@ export function OrderDetailPage(): ReactElement {
         failedDestinationId={failedDestinations[0]?.destinationConnectionId ?? null}
         fulfillmentPending={connectionsQuery.isLoading || shipmentsQuery.isLoading}
         destinationRoutingBlockReason={order.destinationRoutingBlockReason}
+        handledInOpenLinker={order.handledInOpenLinker}
       />
 
       {failedDestinations.length > 0 ? (

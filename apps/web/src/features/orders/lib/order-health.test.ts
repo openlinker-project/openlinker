@@ -220,6 +220,42 @@ describe('syncCellLabel', () => {
   it('handles no destinations', () => {
     expect(syncCellLabel(rollupSyncStatus([]))).toBe('No destinations');
   });
+  it('says the order is handled in OpenLinker when it has live work and no destinations (#3482)', () => {
+    expect(
+      syncCellLabel(rollupSyncStatus([]), null, { stage: 'to-pack', workCount: 1 })
+    ).toBe('In OpenLinker');
+  });
+  it('lets handled-in-OpenLinker win over a routed-nowhere reason (#3482 / #2703)', () => {
+    expect(
+      syncCellLabel(rollupSyncStatus([]), 'routed-to-no-destination', {
+        stage: 'packing',
+        workCount: 1,
+      })
+    ).toBe('In OpenLinker');
+  });
+  it('keeps the routed-nowhere label when the order has no work (#2703)', () => {
+    expect(syncCellLabel(rollupSyncStatus([]), 'routed-to-no-destination')).toBe('Routed nowhere');
+  });
+  it('leaves an order that has destinations untouched by the handled field (#3482)', () => {
+    expect(
+      syncCellLabel(rollupSyncStatus([status({ status: 'synced' })]), null, {
+        stage: 'packed',
+        workCount: 1,
+      })
+    ).toBe('1 of 1 synced');
+  });
+});
+
+describe('healthLabel for an order OpenLinker handles itself (#3482)', () => {
+  it('should not say "No destinations" when the order has live work', () => {
+    expect(healthLabel('unknown', { stage: 'packed', workCount: 1 })).toBe('In OpenLinker');
+  });
+  it('should keep "No destinations" for an order with no work', () => {
+    expect(healthLabel('unknown')).toBe('No destinations');
+  });
+  it('should not touch any other level', () => {
+    expect(healthLabel('healthy', { stage: 'packed', workCount: 1 })).toBe('Synced');
+  });
 });
 
 describe('deriveFulfillment + fulfillmentLabel', () => {

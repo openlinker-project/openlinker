@@ -11808,6 +11808,9 @@ a.kpi-card:focus-visible {
 .orders-packed-tick { display: inline-flex; align-items: center; gap: 4px; font-size: 0.75rem; }
 .orders-packed-tick__mark { color: var(--status-success-fg); font-weight: 600; }
 .orders-packed-tick__label { color: var(--text-muted); }
+/* #3482 - the packing position reuses the Packed tick; only the mark colour varies per step. */
+.orders-packed-tick--to-pack .orders-packed-tick__mark { color: var(--text-muted); }
+.orders-packed-tick--packing .orders-packed-tick__mark { color: var(--status-info-fg); }
 .orders-packed-control { gap: var(--space-3); }
 .orders-packed-state { display: inline-flex; align-items: center; gap: 4px; }
 

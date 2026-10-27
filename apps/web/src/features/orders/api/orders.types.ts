@@ -549,6 +549,26 @@ export interface OrderRecord {
   /** PII-free elaboration of the routing reason (connection ids and counts only). */
   destinationRoutingBlockDetail?: string | null;
   /**
+   * Why OpenLinker holds this order itself instead of mirroring it (#3485),
+   * read from the persisted column - never derived in the browser (#2100).
+   * `null`/absent when nothing holds it. The vocabulary is the backend's; a
+   * value this build does not know renders nothing rather than a guess.
+   */
+  fulfillmentBlockReason?: FulfillmentBlockReasonValue | null;
+  /** PII-free elaboration of `fulfillmentBlockReason`, rendered verbatim or not at all. */
+  fulfillmentBlockDetail?: string | null;
+  /**
+   * Why the ingestion intercept deliberately did not route this order (#3455,
+   * #3487, #3488). Not a hold: such an order follows today's path.
+   */
+  fulfillmentRoutingSkipReason?: FulfillmentRoutingSkipReasonValue | null;
+  /**
+   * The packing position of an order OpenLinker handles itself (#3482). ABSENT
+   * means no live work was found - never a positive "not routed" claim - and it
+   * is a separate field, never a member of the health partition.
+   */
+  handledInOpenLinker?: OrderHandledInOpenLinker;
+  /**
    * Instant OpenLinker last observed the SOURCE amend this order after it was
    * already ingested (#2283) — a line removed, added or re-quantified, or the
    * shipping address edited. `null`/absent = never observed amended. An internal
@@ -662,6 +682,44 @@ export interface OrderRecord {
    * older API still type-checks. Treat absent and `unknown` identically.
    */
   paymentMethod?: PaymentMethod;
+}
+
+/**
+ * Why OpenLinker holds an order itself instead of mirroring it (#3485). Mirrors
+ * core `FulfillmentBlockReasonValues`; `check-fulfillment-reason-mirror.mjs`
+ * keeps the two identical, in value and order (#591: no core import here).
+ */
+export const FulfillmentBlockReasonValues = [
+  'routing-in-doubt',
+  'routing-contended',
+  'routing-already-live-elsewhere',
+  'routing-refused',
+  'routing-no-shipping-address',
+  'routing-failed',
+] as const;
+export type FulfillmentBlockReasonValue = (typeof FulfillmentBlockReasonValues)[number];
+
+/**
+ * Why the ingestion intercept deliberately did not route an order (#3455,
+ * #3487, #3488, #3636). Mirrors core `FulfillmentRoutingSkipReasonValues`, held
+ * equal by `check-fulfillment-reason-mirror.mjs`.
+ */
+export const FulfillmentRoutingSkipReasonValues = [
+  'own-shop-order',
+  'shipped-by-other-system',
+  'mirrored-before-routing',
+  'source-fulfilled',
+] as const;
+export type FulfillmentRoutingSkipReasonValue = (typeof FulfillmentRoutingSkipReasonValues)[number];
+
+/** Where an order OpenLinker handles itself has got in packing (#3482), in time order. */
+export const OrderWorkStageValues = ['to-pack', 'packing', 'packed'] as const;
+export type OrderWorkStageValue = (typeof OrderWorkStageValues)[number];
+
+export interface OrderHandledInOpenLinker {
+  /** A split order reports its EARLIEST stage across works. */
+  stage: OrderWorkStageValue;
+  workCount: number;
 }
 
 /** The open-return badge payload (#2998) — count plus a stage hint. */
