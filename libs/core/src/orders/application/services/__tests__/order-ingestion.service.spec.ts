@@ -84,7 +84,7 @@ describe('OrderIngestionService', () => {
   // reached. Every pre-existing spec therefore asserts the pass-through.
   let routingCommit: jest.Mocked<IRoutingCommitService>;
   let orderChanges: jest.Mocked<
-    Pick<IOrderChangeService, 'findOpenByOrder' | 'confirm' | 'claimApplied'>
+    Pick<IOrderChangeService, 'findOpenByOrder' | 'confirm' | 'claimApplied' | 'findLatestByTarget'>
   >;
   let connections: jest.Mocked<Pick<ConnectionPort, 'list'>>;
   let cancellationEffects: { applyEffects: jest.Mock };
@@ -225,6 +225,7 @@ describe('OrderIngestionService', () => {
 
     orderChanges = {
       findOpenByOrder: jest.fn().mockResolvedValue([]),
+      findLatestByTarget: jest.fn().mockResolvedValue(null),
       confirm: jest.fn().mockResolvedValue(true),
       claimApplied: jest.fn().mockResolvedValue(true),
     };
@@ -1844,6 +1845,28 @@ describe('OrderIngestionService', () => {
       expect(orderRecordService.markCancelled).toHaveBeenCalled();
       expect(orderChanges.confirm).toHaveBeenCalledWith('change-1', `source:${connectionId}`);
       expect(orderChanges.claimApplied).toHaveBeenCalledWith('change-1');
+    });
+
+    it('should not relay the channel echo of an operator cancel to the destinations again (C-40)', async () => {
+      orderChanges.findLatestByTarget.mockResolvedValue({
+        status: 'confirmed',
+        confirmedBy: 'user-9',
+      } as never);
+
+      await service.syncOrderFromSource(connectionId, externalOrderId, 'evt-1', 'cancelled');
+
+      expect(orderLifecycleRelay.relay).not.toHaveBeenCalled();
+    });
+
+    it('should still relay a cancel the channel started itself (C-40)', async () => {
+      orderChanges.findLatestByTarget.mockResolvedValue({
+        status: 'confirmed',
+        confirmedBy: `source:${connectionId}`,
+      } as never);
+
+      await service.syncOrderFromSource(connectionId, externalOrderId, 'evt-1', 'cancelled');
+
+      expect(orderLifecycleRelay.relay).toHaveBeenCalledTimes(1);
     });
 
     it('runs the same cancellation cleanup the operator path runs, as the requesting operator (B-18)', async () => {
