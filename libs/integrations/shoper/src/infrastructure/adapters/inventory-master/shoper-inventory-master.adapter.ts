@@ -8,11 +8,11 @@
  * implements a hold primitive).
  *
  * Variant model (SPIKE-3638 M1): `product-stocks` is the variant grain, so each
- * stock row is ONE `Inventory`, variant-keyed by the same `stock_id` the
+ * SELLABLE stock row is ONE `Inventory`, variant-keyed by the same `stock_id` the
  * `ProductMaster` already minted a `ProductVariant` for - the two capabilities
- * agree on what a variant is. A product with variants also has a base row
- * (`options: []`) no buyer can pick; it is not a variant on either side
- * (`partitionShoperStocks`). Stock is pooled and location-less (ADR-058
+ * agree on what a variant is because both select rows through
+ * `selectSellableShoperStocks` (the base stock of a product with variants is not
+ * one, and its stock is not counted). Stock is pooled and location-less (ADR-058
  * decision 2) and Shoper has no reservation concept (`reserved` is 0).
  *
  * Three behaviours are load-bearing:
@@ -61,12 +61,12 @@ import { ShoperInvalidStockLevelException } from '../../../domain/exceptions/sho
 import { ShoperNotSupportedException } from '../../../domain/exceptions/shoper-not-supported.exception';
 import { ShoperStockNotFoundException } from '../../../domain/exceptions/shoper-stock-not-found.exception';
 import { ShoperVariantRequiredException } from '../../../domain/exceptions/shoper-variant-required.exception';
+import { selectSellableShoperStocks } from '../../../domain/policies/shoper-sellable-stocks.policy';
 import { ShoperWarehousesNotSupportedException } from '../../../domain/exceptions/shoper-warehouses-not-supported.exception';
 import type { ShoperStock } from '../../../domain/types/shoper-api.types';
 import type { ShoperHttpClient } from '../../http/shoper-http-client';
 import { SHOPER_MAX_PAGE_SIZE } from '../../http/shoper-pagination';
 import { fetchShoperStocks, fetchShoperStocksForProducts } from '../../http/shoper-stocks';
-import { partitionShoperStocks } from '../../mappers/shoper-product.mapper';
 import {
   mapShoperStockToInventory,
   readShoperStockLevel,
@@ -153,17 +153,20 @@ export class ShoperInventoryMasterAdapter implements InventoryMasterPort, BulkIn
     );
 
     const warmed = this.stockCache.get(externalId);
-    const stocks =
+    const rows =
       warmed !== undefined
-        ? [...partitionShoperStocks(warmed).variants]
+        ? [...warmed]
         : await this.fetchStocksOrClassifyDeletion(externalId, productId);
-    if (stocks.length === 0) {
+    if (rows.length === 0) {
       // The deletion probe, spent only here. A product Shoper reports gone
       // raises the neutral error from the reader; one that still resolves is an
       // inferred absence and must not reach the sync as an empty list.
       await this.productReader.read(externalId, productId);
       throw new ShoperStockNotFoundException(productId, this.connection.id);
     }
+    // Never empty for a non-empty listing: a product's base stock stays its
+    // variant when it has no extended one.
+    const stocks = selectSellableShoperStocks(rows);
 
     // Every level is checked before any id is minted: a row that cannot be
     // reported must not leave mappings behind for a variant it never synced.
@@ -223,15 +226,12 @@ export class ShoperInventoryMasterAdapter implements InventoryMasterPort, BulkIn
     productId: string,
   ): Promise<ShoperStock[]> {
     try {
-      const stocks = await fetchShoperStocks(this.client, externalId, (count) =>
+      return await fetchShoperStocks(this.client, externalId, (count) =>
         this.logger.warn(
           `Shoper returned ${count} stock row(s) of another product while reading product ` +
             `${externalId}; dropped (connection: ${this.connection.id})`,
         ),
       );
-      // Only the rows a buyer can pick: the base row of a product with variants
-      // would report the product's stock a second time (and is never written).
-      return [...partitionShoperStocks(stocks).variants];
     } catch (error) {
       if (error instanceof ShoperApiError && error.isResourceNotFound()) {
         await this.productReader.read(externalId, productId);
@@ -411,10 +411,17 @@ export class ShoperInventoryMasterAdapter implements InventoryMasterPort, BulkIn
     ]);
   }
 
+  /**
+   * Only a sellable row is a candidate, so a product with one variant resolves
+   * to it without a `variantId`, and a variant id naming the base stock of a
+   * product with variants (a variant row synced before that rule) is refused
+   * rather than moving stock nobody can buy.
+   */
   private async pickStockRow(
-    stocks: ShoperStock[],
+    rows: ShoperStock[],
     adjustment: InventoryAdjustment,
   ): Promise<ShoperStock> {
+    const stocks = selectSellableShoperStocks(rows);
     if (adjustment.variantId !== undefined) {
       const mappings = await this.identifierMapping.getExternalIds(
         CORE_ENTITY_TYPE.ProductVariant,

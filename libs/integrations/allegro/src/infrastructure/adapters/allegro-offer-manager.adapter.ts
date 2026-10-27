@@ -80,6 +80,7 @@ import {
   OfferCreateRejectedException,
   CategoryNotFoundException,
   OfferNotFoundOnMarketplaceException,
+  OFFER_PRODUCT_REMOVED_WITHOUT_REASON_ERROR_CODE,
 } from '@openlinker/core/listings';
 import type {
   AllegroSafetyInformation,
@@ -123,6 +124,7 @@ import type {
   AllegroProductOfferCreateRequest,
   AllegroTaxSettingsResponse,
   AllegroProductOfferCreateResponse,
+  AllegroProductOfferOperationResponse,
   AllegroProductSetEntry,
   AllegroValidationError,
   AllegroShippingRatesResponse,
@@ -192,6 +194,35 @@ const CAT_PARAMS_CACHE_PREFIX = 'allegro:cat-params:';
  * shared across connections and reused by every breadcrumb walk that touches it.
  */
 const CATEGORY_NODE_CACHE_PREFIX = 'allegro:category-node:';
+
+/**
+ * Cache key prefix for the asynchronous create operation of one offer
+ * (E2E-11). Scoped per connection: an operation id is only readable with the
+ * token of the seller that created the offer.
+ */
+const CREATE_OPERATION_CACHE_PREFIX = 'allegro:offer-create-operation:';
+/**
+ * How long the create operation id is remembered. The creation poller gives
+ * up after ~10 minutes and the post-terminal snapshot reconcile runs within
+ * the next half hour; a day covers both with room to spare. After that the
+ * status read simply falls back to what the offer itself reports.
+ */
+const CREATE_OPERATION_TTL_SEC = 24 * 60 * 60;
+/**
+ * The `Location` of a 202 create names the operation:
+ * `.../sale/product-offers/{offerId}/operations/{operationId}`. Only the id is
+ * kept - the path is rebuilt from it, so no URL taken from a response is ever
+ * requested.
+ */
+const CREATE_OPERATION_LOCATION_PATTERN =
+  /\/sale\/product-offers\/([^/?#]+)\/operations\/([A-Za-z0-9-]+)(?:[?#]|$)/;
+/**
+ * Shown when Allegro removed the inline product card and the offer stayed
+ * inactive, but no create operation is on record to say why.
+ */
+const PRODUCT_REMOVED_WITHOUT_REASON_MESSAGE =
+  'Allegro removed the product details of this offer, so it stays inactive. ' +
+  'Allegro did not say why - activate the offer in the Allegro seller panel to see the reason.';
 
 /**
  * Upper bound on category-breadcrumb ancestor hops (#1752). Allegro's tree is
@@ -1066,7 +1097,140 @@ export class AllegroOfferManagerAdapter
     const publicationStatus = this.mapAllegroPublicationStatus(rawStatus);
     const validationErrors = this.mapValidationErrors(offer.validation?.errors ?? []);
 
+    // E2E-11: Allegro processes an inline-product create asynchronously. While
+    // it does, and after it rejects the product, the offer reads INACTIVE with
+    // an EMPTY `validation.errors` - the reason lives only on the create
+    // operation. Without this an offer still being processed, and one Allegro
+    // refused, both read as a clean draft with nothing to fix.
+    if (rawStatus === 'INACTIVE' && validationErrors.length === 0) {
+      const operation = await this.readCreateOperation(externalOfferId);
+      if (operation.kind === 'in-progress') {
+        return { publicationStatus: 'activating', validationErrors: [], commercial };
+      }
+      if (operation.kind === 'failed') {
+        return { publicationStatus, validationErrors: operation.errors, commercial };
+      }
+      if (this.isProductRemoved(offer)) {
+        // Synthesised from what is MISSING - no operation on record to give a
+        // reason - so core reads it as an unknown outcome, never as a refusal:
+        // the seller may still activate this offer, and re-listing its variant
+        // could then put a second live offer on Allegro.
+        return {
+          publicationStatus,
+          validationErrors: [
+            {
+              field: 'productSet',
+              code: OFFER_PRODUCT_REMOVED_WITHOUT_REASON_ERROR_CODE,
+              message: PRODUCT_REMOVED_WITHOUT_REASON_MESSAGE,
+            },
+          ],
+          commercial,
+        };
+      }
+    }
+
     return { publicationStatus, validationErrors, commercial };
+  }
+
+  /**
+   * What the asynchronous create operation of `offerId` says (E2E-11).
+   *
+   * `none` whenever there is nothing to read - no cache, no remembered
+   * operation (a synchronous 201 create, or one older than the TTL), or an
+   * operation Allegro no longer knows (404) - and also when the operation
+   * finished successfully, since the offer resource is then the authority.
+   * A failed operation answers 4xx with the usual `{ errors }` envelope; any
+   * other failure of the read propagates like every other transport error of
+   * the status read, so the poller retries instead of settling on a guess.
+   */
+  private async readCreateOperation(
+    offerId: string
+  ): Promise<
+    | { kind: 'none' }
+    | { kind: 'in-progress' }
+    | { kind: 'failed'; errors: CreateOfferValidationError[] }
+  > {
+    if (!this.cache) {
+      return { kind: 'none' };
+    }
+    const key = this.createOperationCacheKey(offerId);
+    let operationId: string | null;
+    try {
+      operationId = await this.cache.get<string>(key);
+    } catch (err) {
+      this.logger.warn(
+        `Could not read the remembered create operation of Allegro offer ${offerId}: connection=${this.connectionId} error=${(err as Error).message}`
+      );
+      return { kind: 'none' };
+    }
+    if (!operationId) {
+      return { kind: 'none' };
+    }
+
+    try {
+      const response = await this.httpClient.get<AllegroProductOfferOperationResponse>(
+        `/sale/product-offers/${offerId}/operations/${operationId}`
+      );
+      if (response.data?.operation?.status === 'IN_PROGRESS') {
+        return { kind: 'in-progress' };
+      }
+      return { kind: 'none' };
+    } catch (err) {
+      if (err instanceof AllegroApiException && err.statusCode === 404) {
+        return { kind: 'none' };
+      }
+      if (
+        err instanceof AllegroApiException &&
+        err.statusCode !== undefined &&
+        err.statusCode >= 400 &&
+        err.statusCode < 500 &&
+        (err.allegroErrors?.length ?? 0) > 0
+      ) {
+        return { kind: 'failed', errors: this.mapValidationErrors(err.allegroErrors ?? []) };
+      }
+      throw err;
+    }
+  }
+
+  /**
+   * Remember the asynchronous create operation named by a 202's `Location`
+   * (E2E-11). Best-effort and never throws: the offer already exists on
+   * Allegro at this point, and a throw would make the job retry the create -
+   * Allegro does not deduplicate product-offer creates, so that would mint a
+   * second offer.
+   */
+  private async rememberCreateOperation(
+    offerId: string,
+    location: string | undefined
+  ): Promise<void> {
+    if (!this.cache || !location) {
+      return;
+    }
+    const match = CREATE_OPERATION_LOCATION_PATTERN.exec(location);
+    if (!match || match[1] !== offerId) {
+      return;
+    }
+    try {
+      await this.cache.set(
+        this.createOperationCacheKey(offerId),
+        match[2],
+        CREATE_OPERATION_TTL_SEC
+      );
+    } catch (err) {
+      this.logger.warn(
+        `Could not remember the create operation of Allegro offer ${offerId}: connection=${this.connectionId} error=${(err as Error).message}`
+      );
+    }
+  }
+
+  private createOperationCacheKey(offerId: string): string {
+    return `${CREATE_OPERATION_CACHE_PREFIX}${this.connectionId}:${offerId}`;
+  }
+
+  private isProductRemoved(offer: AllegroProductOffer): boolean {
+    return (offer.productSet ?? []).some(
+      (entry) => entry.product?.publication?.status === 'REMOVED'
+    );
   }
 
   /**
@@ -2029,12 +2193,14 @@ export class AllegroOfferManagerAdapter
     );
 
     let response: AllegroProductOfferCreateResponse;
+    let operationLocation: string | undefined;
     try {
       const httpResponse = await this.httpClient.post<AllegroProductOfferCreateResponse>(
         '/sale/product-offers',
         body as unknown as Record<string, unknown>
       );
       response = httpResponse.data;
+      operationLocation = httpResponse.headers?.['location'];
     } catch (error) {
       if (error instanceof AllegroApiException && error.statusCode !== undefined) {
         // `allegroErrors` is populated by `AllegroHttpClient.handleError`
@@ -2053,6 +2219,12 @@ export class AllegroOfferManagerAdapter
         );
       }
       throw error;
+    }
+
+    // Only an activation request needs the operation: it is what lets the
+    // status read tell "still being processed" from "refused" (E2E-11).
+    if (cmd.publishImmediately) {
+      await this.rememberCreateOperation(response.id, operationLocation);
     }
 
     const validationErrors = this.mapValidationErrors(response.validation?.errors ?? []);

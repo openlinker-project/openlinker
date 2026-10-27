@@ -183,6 +183,21 @@ describe('MasterProductSyncService', () => {
     expect(persisted.description).toContain('Verdana');
   });
 
+  describe('variant images', () => {
+    it('should persist the pictures the master dedicates to each variant', async () => {
+      adapter.getProductVariants.mockResolvedValueOnce([
+        { ...makeVariant('ol_variant_1'), images: ['https://shop/gfx/314.jpg', ' ', 'https://shop/gfx/314.jpg'] },
+        { ...makeVariant('ol_variant_2'), images: null },
+        makeVariant('ol_variant_3'),
+      ]);
+
+      await service.syncFromMasterByExternalId(connectionId, externalId);
+
+      const persisted = productsService.upsertVariants.mock.calls[0][1];
+      expect(persisted.map((v) => v.images)).toEqual([['https://shop/gfx/314.jpg'], null, null]);
+    });
+  });
+
   describe('gpsr', () => {
     it('should carry the master-stated gpsr into the stored product when the master reports it', async () => {
       const gpsr = {

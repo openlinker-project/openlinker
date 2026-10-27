@@ -26,6 +26,11 @@
  * consume it; auto-grouping adapters (Allegro) ignore it. Single-variant /
  * simple products leave `variantGroup` absent and list standalone.
  *
+ * Images: an operator override (`overrides.imageUrls`) wins unchanged;
+ * otherwise a variant is listed with `resolveVariantDefaultImages` - its own
+ * pictures first, then the product gallery minus the pictures dedicated to its
+ * siblings - so the red variant's offer does not show the green cup.
+ *
  * @module libs/core/src/listings/application/services
  * @implements {IOfferBuilderService}
  */
@@ -64,6 +69,7 @@ import type { Product, ProductGpsr, ProductMasterPort, ProductVariant } from '@o
 import {
   IProductsService,
   PRODUCTS_SERVICE_TOKEN,
+  resolveVariantDefaultImages,
 } from '@openlinker/core/products';
 
 import { MasterCatalogConnectionNotConfiguredException } from '../../domain/exceptions/master-catalog-connection-not-configured.exception';
@@ -201,9 +207,17 @@ export class OfferBuilderService implements IOfferBuilderService {
     // #824 barcode filter) can be smaller and need not match. Resolved after the
     // validation throw above so a build that fails validation skips the read.
     const siblings = await this.productsService.getVariantsByProductId(variant.productId);
-    const variantGroup = this.resolveVariantGroup(variant, siblings.length);
+    // A sibling deleted at the master (#1689 `isStale`) is not listed, so it
+    // must not turn the last live variant into a group of one.
+    const variantGroup = this.resolveVariantGroup(
+      variant,
+      siblings.filter((sibling) => sibling.isStale !== true).length
+    );
 
-    const title = input.overrides?.title ?? product.name;
+    // A blank override is an emptied field, not a title: no destination lists
+    // an offer without one, so it falls back to the master name exactly like
+    // an absent override does.
+    const title = input.overrides?.title?.trim() ? input.overrides.title : product.name;
     // ADR-046: shape the description into what THIS destination accepts, using
     // the format the already-resolved adapter declares. Returns undefined when
     // nothing survives, which the cleanup below then omits - the Allegro
@@ -212,7 +226,9 @@ export class OfferBuilderService implements IOfferBuilderService {
       input.overrides?.description ?? product.description,
       resolveOfferDescriptionFormat(destination)
     );
-    const imageUrls = input.overrides?.imageUrls ?? product.images;
+    const imageUrls =
+      input.overrides?.imageUrls ??
+      resolveVariantDefaultImages(variant, siblings, product.images);
 
     const overrides = {
       title,

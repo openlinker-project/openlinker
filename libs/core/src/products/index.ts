@@ -40,6 +40,7 @@ export {
 // Domain Utils
 export { normalizeBarcode, normalizeToEan13 } from './domain/utils/barcode-normalization';
 export { coverImageUrl } from './domain/utils/product-cover-image';
+export { resolveVariantDefaultImages } from './domain/utils/variant-images';
 
 // Application Services
 export { IProductsService } from './application/services/products.service.interface';

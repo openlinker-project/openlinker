@@ -100,6 +100,36 @@ describe('ShoperInventoryMasterAdapter', () => {
     ]);
   });
 
+  it('should report the variant stocks of a product with variants, not its base stock', async () => {
+    const { adapter, get, mapping } = setup();
+    shop(get, [
+      buildStock({ stock_id: '264', stock: '10', extended: '0', options: [] }),
+      buildStock({ stock_id: '265', stock: '3', extended: '1', options: { '10': '82' } }),
+      buildStock({ stock_id: '266', stock: '0', extended: '1', options: { '10': '78' } }),
+    ]);
+
+    const rows = await adapter.listInventory('ol_93');
+
+    expect(rows.map((r) => [r.variantId, r.quantity])).toEqual([
+      ['ol_265', 3],
+      ['ol_266', 0],
+    ]);
+    // No variant or inventory id is minted for the base stock either.
+    const minted = (mapping.batchGetOrCreateInternalIds.mock.calls as Array<[Array<{ externalId: string }>]>)
+      .flatMap(([requests]) => requests.map((r) => r.externalId));
+    expect(minted).not.toContain('264');
+    expect(minted).not.toContain('stock:264');
+  });
+
+  it('should keep the base stock of a product with no variant stocks', async () => {
+    const { adapter, get } = setup();
+    shop(get, [buildStock({ stock_id: '271', stock: '7', extended: '0', options: [] })]);
+
+    const rows = await adapter.listInventory('ol_93');
+
+    expect(rows.map((r) => [r.variantId, r.quantity])).toEqual([['ol_271', 7]]);
+  });
+
   it('should not probe the product while it still lists stock rows', async () => {
     const { adapter, get } = setup();
     shop(get, [buildStock()]);
@@ -266,6 +296,30 @@ describe('ShoperInventoryMasterAdapter', () => {
       await adapter.adjustInventory({ productId: 'ol_93', variantId: 'ol_181', quantity: 1 });
 
       expect(put).toHaveBeenCalledWith('/product-stocks/181', { stock: 5 });
+    });
+
+    it('should adjust the one variant of a product without asking which, its base stock not being one', async () => {
+      const { adapter, put } = withPut([
+        buildStock({ stock_id: '269', stock: '50', extended: '0' }),
+        buildStock({ stock_id: '270', stock: '4', extended: '1', options: { '10': '68' } }),
+      ]);
+
+      await adapter.adjustInventory({ productId: 'ol_93', quantity: 1 });
+
+      expect(put).toHaveBeenCalledWith('/product-stocks/270', { stock: 5 });
+    });
+
+    it('should refuse a variantId naming the base stock of a product with variants, writing nothing', async () => {
+      const { adapter, put } = withPut([
+        buildStock({ stock_id: '181', stock: '50', extended: '0' }),
+        buildStock({ stock_id: '182', stock: '4', extended: '1', options: { '10': '68' } }),
+      ]);
+      // `withPut` maps every variant id to stock 181, the base row here.
+
+      await expect(
+        adapter.adjustInventory({ productId: 'ol_93', variantId: 'ol_181', quantity: 1 }),
+      ).rejects.toBeInstanceOf(ShoperStockNotFoundException);
+      expect(put).not.toHaveBeenCalled();
     });
 
     it('should refuse to guess the variant when several exist and none is named', async () => {

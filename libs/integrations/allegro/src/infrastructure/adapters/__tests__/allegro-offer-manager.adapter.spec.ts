@@ -146,6 +146,42 @@ describe('AllegroOfferManagerAdapter', () => {
     );
   });
 
+  /**
+   * A Map-backed CachePort plus an adapter wired to it - the create
+   * operation id is remembered there between the create and the status
+   * read (E2E-11).
+   */
+  function adapterWithCache(): { cached: AllegroOfferManagerAdapter; store: Map<string, unknown> } {
+    const store = new Map<string, unknown>();
+    const cache: CachePort = {
+      get: <T>(key: string): Promise<T | null> =>
+        Promise.resolve(store.has(key) ? (store.get(key) as T) : null),
+      set: (key: string, value: unknown): Promise<void> => {
+        store.set(key, value);
+        return Promise.resolve();
+      },
+      delete: (key: string): Promise<void> => {
+        store.delete(key);
+        return Promise.resolve();
+      },
+    };
+    const cached = new AllegroOfferManagerAdapter(
+      connectionId,
+      httpClient,
+      uploadHttpClient,
+      identifierMapping,
+      connection,
+      undefined,
+      undefined,
+      cache,
+      undefined,
+      DEFAULT_SELLER_DEFAULTS
+    );
+    return { cached, store };
+  }
+
+  const OPERATION_KEY = `allegro:offer-create-operation:${connectionId}:7782448611`;
+
   describe('getTaxonomyIdentity', () => {
     const withEnvironment = (environment?: 'sandbox' | 'production') =>
       new AllegroOfferManagerAdapter(
@@ -2048,6 +2084,72 @@ describe('AllegroOfferManagerAdapter', () => {
 
     afterEach(() => {
       fetchSpy.mockRestore();
+    });
+
+    describe('async create operation (E2E-11)', () => {
+      const operationLocation =
+        'https://api.allegro.pl.allegrosandbox.pl/sale/product-offers/7782448611/operations/dade5dc6-0b14-4236-9c6a-6a26b76c4c03';
+
+      it('remembers the operation named by a 202 Location when activation was requested', async () => {
+        const { cached, store } = adapterWithCache();
+        httpClient.post.mockResolvedValue({
+          data: { id: '7782448611', publication: { status: 'INACTIVE' } },
+          status: 202,
+          headers: { location: operationLocation },
+        } as never);
+
+        const result = await cached.createOffer({ ...baseCmd, publishImmediately: true });
+
+        expect(result.status).toBe('validating');
+        expect(store.get(OPERATION_KEY)).toBe('dade5dc6-0b14-4236-9c6a-6a26b76c4c03');
+      });
+
+      it('remembers nothing for a Location naming a different offer', async () => {
+        const { cached, store } = adapterWithCache();
+        httpClient.post.mockResolvedValue({
+          data: { id: '7782448611', publication: { status: 'INACTIVE' } },
+          status: 202,
+          headers: {
+            location:
+              'https://api.allegro.pl.allegrosandbox.pl/sale/product-offers/1/operations/dade5dc6-0b14-4236-9c6a-6a26b76c4c03',
+          },
+        } as never);
+
+        await cached.createOffer({ ...baseCmd, publishImmediately: true });
+
+        expect(store.size).toBe(0);
+      });
+
+      it('still returns the created offer when remembering the operation fails', async () => {
+        // The offer already exists on Allegro: a throw here would retry the
+        // create, and Allegro does not deduplicate product-offer creates.
+        const failing: CachePort = {
+          get: jest.fn(),
+          set: jest.fn().mockRejectedValue(new Error('redis down')),
+          delete: jest.fn(),
+        };
+        const cached = new AllegroOfferManagerAdapter(
+          connectionId,
+          httpClient,
+          uploadHttpClient,
+          identifierMapping,
+          connection,
+          undefined,
+          undefined,
+          failing,
+          undefined,
+          DEFAULT_SELLER_DEFAULTS
+        );
+        httpClient.post.mockResolvedValue({
+          data: { id: '7782448611', publication: { status: 'INACTIVE' } },
+          status: 202,
+          headers: { location: operationLocation },
+        } as never);
+
+        await expect(
+          cached.createOffer({ ...baseCmd, publishImmediately: true })
+        ).resolves.toMatchObject({ externalOfferId: '7782448611' });
+      });
     });
 
     describe('the tax rate (#2249, gated by #2260 review)', () => {
@@ -4036,6 +4138,128 @@ describe('AllegroOfferManagerAdapter', () => {
       // private-helper coverage is implicit: if the helper signature drifts,
       // both call sites fail TypeScript before the test runs.
       expect(httpClient.get).toHaveBeenCalledWith('/sale/product-offers/7781562863');
+    });
+  });
+
+  describe('getOfferStatus after an asynchronous create (E2E-11)', () => {
+    // Shapes recorded live on the Allegro sandbox, 2026-10-26: an inline
+    // product with an EAN unknown to GS1 was accepted with 202, the offer read
+    // INACTIVE with empty validation.errors throughout, and the reason only
+    // ever appeared on the create operation.
+    const inactiveOffer = (
+      productStatus = 'PROPOSED'
+    ): { data: unknown; status: number; headers: Record<string, string> } => ({
+      data: {
+        id: '7782448611',
+        publication: { status: 'INACTIVE' },
+        productSet: [{ product: { id: 'p-1', publication: { status: productStatus } } }],
+        validation: { errors: [] },
+      },
+      status: 200,
+      headers: {},
+    });
+
+    it('reports activating while the create operation is still in progress', async () => {
+      const { cached, store } = adapterWithCache();
+      store.set(OPERATION_KEY, 'dade5dc6-0b14-4236-9c6a-6a26b76c4c03');
+      httpClient.get.mockResolvedValueOnce(inactiveOffer() as never).mockResolvedValueOnce({
+        data: {
+          offer: { id: '7782448611' },
+          operation: { id: 'dade5dc6-0b14-4236-9c6a-6a26b76c4c03', status: 'IN_PROGRESS' },
+        },
+        status: 202,
+        headers: {},
+      } as never);
+
+      const result = await cached.getOfferStatus('7782448611');
+
+      expect(httpClient.get).toHaveBeenLastCalledWith(
+        '/sale/product-offers/7782448611/operations/dade5dc6-0b14-4236-9c6a-6a26b76c4c03'
+      );
+      // Not terminal: the poller keeps waiting instead of settling on "draft".
+      expect(result.publicationStatus).toBe('activating');
+      expect(result.validationErrors).toEqual([]);
+    });
+
+    it('reports the reason Allegro gave on a failed create operation', async () => {
+      const { cached, store } = adapterWithCache();
+      store.set(OPERATION_KEY, 'dade5dc6-0b14-4236-9c6a-6a26b76c4c03');
+      httpClient.get.mockResolvedValueOnce(inactiveOffer('REMOVED') as never).mockRejectedValueOnce(
+        new AllegroApiException('Unprocessable', 422, undefined, undefined, [
+          {
+            code: 'GtinNotExistsInGtinParameter',
+            message: 'EAN (GTIN) został oznaczony jako niezarejestrowany w GS1',
+            path: 'gtin-data-processor',
+            userMessage:
+              'Podany EAN (GTIN) jest niepoprawny. Podaj EAN (GTIN), który istnieje w bazie GS1.',
+          },
+        ])
+      );
+
+      const result = await cached.getOfferStatus('7782448611');
+
+      expect(result.publicationStatus).toBe('inactive');
+      expect(result.validationErrors).toEqual([
+        {
+          field: 'gtin-data-processor',
+          code: 'GtinNotExistsInGtinParameter',
+          message:
+            'Podany EAN (GTIN) jest niepoprawny. Podaj EAN (GTIN), który istnieje w bazie GS1.',
+        },
+      ]);
+    });
+
+    it('says the product was removed without a reason when no operation is on record', async () => {
+      const { cached } = adapterWithCache();
+      httpClient.get.mockResolvedValueOnce(inactiveOffer('REMOVED') as never);
+
+      const result = await cached.getOfferStatus('7782448611');
+
+      expect(httpClient.get).toHaveBeenCalledTimes(1);
+      expect(result.publicationStatus).toBe('inactive');
+      expect(result.validationErrors).toHaveLength(1);
+      expect(result.validationErrors[0]).toMatchObject({ code: 'PRODUCT_REMOVED' });
+      expect(result.validationErrors[0].message).toMatch(
+        /activate the offer in the Allegro seller panel/
+      );
+    });
+
+    it('falls back to the offer when Allegro no longer knows the operation', async () => {
+      const { cached, store } = adapterWithCache();
+      store.set(OPERATION_KEY, 'gone');
+      httpClient.get
+        .mockResolvedValueOnce(inactiveOffer() as never)
+        .mockRejectedValueOnce(new AllegroApiException('not found', 404));
+
+      const result = await cached.getOfferStatus('7782448611');
+
+      expect(result.publicationStatus).toBe('inactive');
+      expect(result.validationErrors).toEqual([]);
+    });
+
+    it('propagates a transport failure of the operation read so the poller retries', async () => {
+      const { cached, store } = adapterWithCache();
+      store.set(OPERATION_KEY, 'dade5dc6-0b14-4236-9c6a-6a26b76c4c03');
+      httpClient.get
+        .mockResolvedValueOnce(inactiveOffer() as never)
+        .mockRejectedValueOnce(new AllegroApiException('bad gateway', 502));
+
+      await expect(cached.getOfferStatus('7782448611')).rejects.toBeInstanceOf(AllegroApiException);
+    });
+
+    it('does not read the operation for an offer that is not inactive', async () => {
+      const { cached, store } = adapterWithCache();
+      store.set(OPERATION_KEY, 'dade5dc6-0b14-4236-9c6a-6a26b76c4c03');
+      httpClient.get.mockResolvedValueOnce({
+        data: { id: '7782448611', publication: { status: 'ACTIVE' } },
+        status: 200,
+        headers: {},
+      } as never);
+
+      const result = await cached.getOfferStatus('7782448611');
+
+      expect(httpClient.get).toHaveBeenCalledTimes(1);
+      expect(result.publicationStatus).toBe('active');
     });
   });
 

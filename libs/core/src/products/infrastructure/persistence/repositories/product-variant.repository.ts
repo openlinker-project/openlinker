@@ -382,6 +382,7 @@ export class ProductVariantRepository implements ProductVariantRepositoryPort {
       ean: entity.ean,
       gtin: entity.gtin,
       price: entity.price !== null ? Number(entity.price) : undefined,
+      images: entity.images,
       isStale: entity.isStale,
       staleAt: entity.staleAt,
       priceBasisPending: entity.priceBasisPending,
@@ -413,6 +414,9 @@ export class ProductVariantRepository implements ProductVariantRepositoryPort {
     entity.ean = variant.ean;
     entity.gtin = variant.gtin;
     entity.price = variant.price ?? null;
+    // Sync-derived like `attributes`: every master sync restates it, and a
+    // master that names no picture of the variant's own clears a stale one.
+    entity.images = variant.images ?? null;
     // Un-stale on reappearance: a master re-sync builds the domain variant
     // without staleness set, so upsert clears the flag (#1599). Callers that
     // intend to mark stale use markStaleExceptVariants, not upsert.

@@ -42,6 +42,16 @@ export interface ProductVariant {
   /** Master-derived, not persisted on the variants table. */
   weight?: number;
   /**
+   * Pictures the master dedicates to THIS variant, in the master's order
+   * (absolute URLs) - e.g. the red cup's photo on a product sold in four
+   * colours. Master-derived and persisted on the variants table, refreshed by
+   * every master sync. `null`/absent means the master names no picture of the
+   * variant's own, so the product gallery applies; it never means "no images".
+   * Not the variant's listing image list - that is resolved from this, its
+   * siblings and the product gallery by `resolveVariantDefaultImages`.
+   */
+  images?: string[] | null;
+  /**
    * Operator-authored PHYSICAL master data (#3403, mockup-parity epic
    * #3401), PERSISTED on `product_variants` — distinct from `weight` above,
    * which is master-derived and read fresh per publish call rather than

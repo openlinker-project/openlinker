@@ -13,9 +13,11 @@
  * stock rows in a few requests (see `prefetchProducts`).
  *
  * Variant model (SPIKE-3638 M1): `products` is the header and `product-stocks`
- * is the variant grain, so each stock row is one `ProductVariant` keyed by its
- * real `stock_id`. Unlike PrestaShop / WooCommerce, no synthetic variant is
- * minted for a simple product - Shoper already gives it a stock row and id.
+ * is the variant grain, so each SELLABLE stock row is one `ProductVariant` keyed
+ * by its real `stock_id`: the extended rows of a product that has variants, or
+ * the base row of one that has none (`selectSellableShoperStocks`). Unlike
+ * PrestaShop / WooCommerce, no synthetic variant is minted for a simple product
+ * - Shoper already gives it a stock row and id.
  *
  * Id handling mirrors `WooCommerceProductMasterAdapter`: methods taking a
  * product id take the INTERNAL one and resolve the Shoper id through the
@@ -32,6 +34,14 @@
  * registries, each read at most once per adapter instance and only when a
  * product references it) into the neutral `Product.gpsr`. A failed or dangling
  * reference leaves `gpsr` undefined - unknown - and never fails the read.
+ *
+ * Images: a product payload names only its `main_image`, so the gallery is read
+ * from `/product-images` - one request per product on the single path (memoised
+ * per adapter instance and skipped for a product with no main image, i.e. no
+ * image at all), one filtered list read per page of products on the list and
+ * bulk paths. See `mapShoperProductGallery` for the order and the hidden rule.
+ * A variant stock's `gfx_id` becomes that variant's own `images` - resolved
+ * against the same memoised gallery, read only when some stock names a picture.
  *
  * Filter syntax, both forms live-verified: `/products` takes the JSON form
  * (`filters={"product_id":{"in":[..]}}`, `{"translations.name":{"like":..}}`),
@@ -61,8 +71,10 @@ import { CORE_ENTITY_TYPE } from '@openlinker/core/identifier-mapping';
 import { Logger } from '@openlinker/shared/logging';
 
 import { ShoperNotSupportedException } from '../../../domain/exceptions/shoper-not-supported.exception';
+import { partitionSellableShoperStocks } from '../../../domain/policies/shoper-sellable-stocks.policy';
 import type {
   ShoperProduct,
+  ShoperProductImage,
   ShoperStock,
 } from '../../../domain/types/shoper-api.types';
 import { ShoperCategoryReader } from '../../readers/shoper-category.reader';
@@ -77,15 +89,18 @@ import {
   fetchShoperPage,
   fetchShoperWindow,
 } from '../../http/shoper-pagination';
-import { fetchShoperProductImages } from '../../http/shoper-product-images';
 import { fetchShoperStocks, fetchShoperStocksForProducts } from '../../http/shoper-stocks';
 import {
-  buildShoperGalleryUrls,
+  fetchShoperProductImages,
+  fetchShoperProductImagesForProducts,
+} from '../../http/shoper-product-images';
+import {
+  indexShoperGalleryUrls,
   mapShoperProduct,
   mapShoperStockToVariant,
-  partitionShoperStocks,
   resolveShoperVariantAttributes,
   shoperStockOptionPairs,
+  shoperVariantImages,
 } from '../../mappers/shoper-product.mapper';
 import { resolveShoperExternalProductId } from '../../readers/shoper-product-id';
 import { ShoperGpsrReader } from '../../readers/shoper-gpsr.reader';
@@ -108,6 +123,12 @@ export class ShoperProductMasterAdapter
   private categoryDirectory: Promise<Category[]> | null = null;
   /** Stock rows warmed by `prefetchProducts`, keyed by Shoper product id. Read-only paths only. */
   private readonly stockCache = new Map<string, ShoperStock[]>();
+  /**
+   * Gallery rows by Shoper product id, memoised as promises so concurrent
+   * callers share one request; a failure is dropped so the next call retries.
+   * Warmed by `prefetchProducts` and the list reads.
+   */
+  private readonly galleryCache = new Map<string, Promise<ShoperProductImage[]>>();
   private readonly categoryReader: ShoperCategoryReader;
   private readonly productReader: ShoperProductReader;
   private readonly gpsrReader: ShoperGpsrReader;
@@ -191,13 +212,15 @@ export class ShoperProductMasterAdapter
   }
 
   /**
-   * Warm a batch's products and stock rows (#2593 shape, `BulkProductReader`):
-   * per chunk of 50 ids, ONE `GET /products?filters={"product_id":{"in":[..]}}`
-   * seeding the shared product reader, and one filtered `/product-stocks` read
-   * for the products it returned. The per-product loop that follows then reads
-   * `/products/:id` and the product's stocks from memory - `getProduct`,
-   * `getProductCategories`, `readProductTaxRate` and `getProductVariants` all
-   * hit the warm copies - against two requests per product without it.
+   * Warm a batch's products, stock rows and galleries (#2593 shape,
+   * `BulkProductReader`): per chunk of 50 ids, ONE `GET /products?filters=
+   * {"product_id":{"in":[..]}}` seeding the shared product reader, one filtered
+   * `/product-stocks` read and one filtered `/product-images` read for the
+   * products it returned (each paged only as far as its rows need). The
+   * per-product loop that follows then reads `/products/:id`, the product's
+   * stocks and its gallery from memory - `getProduct`, `getProductCategories`,
+   * `readProductTaxRate` and `getProductVariants` all hit the warm copies -
+   * against three requests per product without it.
    *
    * Invisible except in request count, as the contract requires:
    *   - An id the shop did NOT return is left unwarmed, product and stocks, so
@@ -270,7 +293,27 @@ export class ShoperProductMasterAdapter
     for (const [id, rows] of stocks) {
       this.stockCache.set(id, rows);
     }
+    // After the stocks, so a failed gallery read still leaves them warm.
+    await this.warmGalleries(returned);
     return returned.length;
+  }
+
+  /**
+   * One filtered `/product-images` read (paged to the end) for up to 50 products,
+   * seeding the gallery memo. Like the stocks, a product the shop listed with no
+   * image gets an empty bucket - the same answer its own read would give.
+   */
+  private async warmGalleries(externalIds: readonly string[]): Promise<void> {
+    const pending = externalIds.filter((id) => !this.galleryCache.has(id));
+    for (let i = 0; i < pending.length; i += SHOPER_MAX_PAGE_SIZE) {
+      const buckets = await fetchShoperProductImagesForProducts(
+        this.client,
+        pending.slice(i, i + SHOPER_MAX_PAGE_SIZE),
+      );
+      for (const [id, rows] of buckets) {
+        this.galleryCache.set(id, Promise.resolve(rows));
+      }
+    }
   }
 
   async getProduct(productId: string): Promise<Product> {
@@ -284,18 +327,15 @@ export class ShoperProductMasterAdapter
     ctxRead.catch(() => undefined);
     const data = await this.readProduct(externalId, productId);
     const ctx = await ctxRead;
-    const product = mapShoperProduct(data, ctx);
-    // Independent reads, and neither throws: each logs its own failure and
-    // falls back, so running them together changes no outcome.
+    // Independent reads; the breadcrumb never throws, so a failed gallery read
+    // fails the product read exactly as it would on its own.
     const [gallery, categoryBreadcrumb] = await Promise.all([
-      this.readGallery(externalId, ctx.host),
+      this.readGallery(externalId, data),
       this.readCategoryBreadcrumb(data),
     ]);
     return this.withGpsr(
       {
-        ...product,
-        // An empty or unreadable gallery keeps the main image the product row carries.
-        images: gallery.length > 0 ? gallery : product.images,
+        ...mapShoperProduct(data, ctx, gallery),
         ...(categoryBreadcrumb === null ? {} : { categoryBreadcrumb }),
         id: productId,
       },
@@ -329,7 +369,9 @@ export class ShoperProductMasterAdapter
     const ctx = await this.shopContext.get();
     // A product with variants also has a base row nobody can buy; it is left
     // out, and kept only to resolve prices and weights stated relative to it.
-    const { variants: stocks, base } = partitionShoperStocks(await this.fetchAllStocks(externalId));
+    const { variants: stocks, base } = partitionSellableShoperStocks(
+      await this.fetchAllStocks(externalId),
+    );
     if (stocks.length === 0) {
       return [];
     }
@@ -347,6 +389,7 @@ export class ShoperProductMasterAdapter
       }))
     );
 
+    const galleryUrls = await this.variantGalleryUrls(externalId, stocks, ctx.host);
     const variants: ProductVariant[] = [];
     for (const stock of stocks) {
       const internalId = idMap.get(`${stock.stock_id}:${this.connection.id}`);
@@ -355,8 +398,9 @@ export class ShoperProductMasterAdapter
         continue;
       }
       const attributes = await this.resolveVariantAttributes(stock, ctx.language);
+      const images = shoperVariantImages(stock, galleryUrls);
       variants.push({
-        ...mapShoperStockToVariant(stock, productId, ctx, attributes, base),
+        ...mapShoperStockToVariant(stock, productId, ctx, attributes, base, images),
         id: internalId,
       });
     }
@@ -577,6 +621,53 @@ export class ShoperProductMasterAdapter
     return this.productReader.read(externalId, productId);
   }
 
+  /**
+   * The product's gallery rows. A product with no `main_image` has no image at
+   * all on Shoper, so it costs no request. A transport failure propagates: a
+   * gallery silently read as empty would drop every image but the main one
+   * from the catalogue on the next sync.
+   */
+  private readGallery(externalId: string, product: ShoperProduct): Promise<ShoperProductImage[]> {
+    if (product.main_image === null && !this.galleryCache.has(externalId)) {
+      return Promise.resolve([]);
+    }
+    return this.readGalleryRows(externalId);
+  }
+
+  private readGalleryRows(externalId: string): Promise<ShoperProductImage[]> {
+    let read = this.galleryCache.get(externalId);
+    if (read === undefined) {
+      read = fetchShoperProductImages(this.client, externalId, (count) =>
+        this.logger.warn(
+          `Shoper returned ${count} image(s) of another product while reading product ` +
+            `${externalId}; dropped (connection: ${this.connection.id})`,
+        ),
+      );
+      this.galleryCache.set(externalId, read);
+      read.catch(() => this.galleryCache.delete(externalId));
+    }
+    return read;
+  }
+
+  /**
+   * `gfx_id` -> URL for the variants' own pictures. No stock naming a picture
+   * means no request; otherwise the product's gallery is read (shared with
+   * `getProduct`, so a sync pays for it once). A failure propagates, for the
+   * same reason a gallery failure does: syncing the variants without their
+   * pictures would clear the stored ones.
+   */
+  private async variantGalleryUrls(
+    externalId: string,
+    stocks: readonly ShoperStock[],
+    host: string,
+  ): Promise<Map<string, string>> {
+    const named = stocks.some((s) => s.gfx_id !== null && s.gfx_id !== undefined && s.gfx_id !== '');
+    if (!named) {
+      return new Map();
+    }
+    return indexShoperGalleryUrls(await this.readGalleryRows(externalId), host);
+  }
+
   private resolveExternalProductId(productId: string): Promise<string> {
     return resolveShoperExternalProductId(this.identifierMapping, this.connection.id, productId);
   }
@@ -647,6 +738,11 @@ export class ShoperProductMasterAdapter
       return [];
     }
     const ctx = await this.shopContext.get();
+    // One filtered read for the page rather than one per product; a product with
+    // no main image has no image at all and is not asked about.
+    await this.warmGalleries(
+      items.filter((p) => p.main_image !== null).map((p) => String(p.product_id)),
+    );
     const idMap = await this.identifierMapping.batchGetOrCreateInternalIds(
       items.map((p) => ({
         entityType: CORE_ENTITY_TYPE.Product,
@@ -662,7 +758,10 @@ export class ShoperProductMasterAdapter
         this.logger.warn(`No internal id for Shoper product ${raw.product_id}`);
         continue;
       }
-      products.push(await this.withGpsr({ ...mapShoperProduct(raw, ctx), id: internalId }, raw));
+      const gallery = await this.readGallery(String(raw.product_id), raw);
+      products.push(
+        await this.withGpsr({ ...mapShoperProduct(raw, ctx, gallery), id: internalId }, raw),
+      );
     }
     return products;
   }
@@ -700,31 +799,6 @@ export class ShoperProductMasterAdapter
       );
     }
     return attributes;
-  }
-
-  /**
-   * The product's gallery URLs, or `[]` when it cannot be read. A failure is
-   * logged and does not fail the product read: the price, stock and text of a
-   * product matter more than its extra photos, and the caller keeps the main
-   * image. The cost is that a failed read shows only the main image until the
-   * next sync reads the gallery again.
-   */
-  private async readGallery(externalProductId: string, host: string): Promise<string[]> {
-    try {
-      const images = await fetchShoperProductImages(this.client, externalProductId, (count) =>
-        this.logger.warn(
-          `Shoper returned ${count} image row(s) of another product while reading product ` +
-            `${externalProductId}; dropped (connection: ${this.connection.id})`,
-        ),
-      );
-      return buildShoperGalleryUrls(host, images);
-    } catch (error) {
-      this.logger.warn(
-        `Shoper gallery of product ${externalProductId} could not be read; keeping the main image ` +
-          `(${error instanceof Error ? error.message : String(error)}, connection: ${this.connection.id})`,
-      );
-      return [];
-    }
   }
 
   /**

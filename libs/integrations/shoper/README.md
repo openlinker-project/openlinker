@@ -135,6 +135,22 @@ Paging (all observed on a live shop):
 - `filters[category_id]` and `filters[code]` are not valid on `products` (the shop answers 404); the
   `categoryIds` and `status` filters are therefore refused rather than ignored.
 
+### Upgrade note: the base stock of a variant product is no longer a variant
+
+Before this release a product with variants also synced its base stock row (`options: []`) as a
+`ProductVariant`, although no buyer can pick it. It is now kept aside (see **Variants** above). On an
+install that already synced such a product, the change is visible on the first master sync after the
+deploy, with no operator action:
+
+- The base-row variant is no longer reported, so the variant prune marks it **stale**.
+- Any marketplace offer listed against that variant is **paused** by the stale-variant chain (#1689):
+  its quantity is set to 0. That offer was selling an item that does not exist, so this is the intended
+  outcome, not a regression.
+- **Remediation:** list the product again per colour/size variant (the bulk offer wizard offers each
+  real variant). The paused offer stays paused; end it on the marketplace if it should not linger.
+
+Products with no variant rows are unaffected: their base stock stays their single variant.
+
 ### Deletion and the catalogue sweeps
 
 - **A deleted product** surfaces from `getProduct` as the neutral `MasterProductNotFoundError`, which core
@@ -476,9 +492,10 @@ connection to rotate the secret, since the old URL has already shown it to anyon
   short per-`(connection, stock)` `SyncLockPort` lock around the call, as #2617 does per offer.
 - Product `createdAt` / `updatedAt` are not set: Shoper sends zone-less local timestamps and parsing them with
   the process time zone would stamp a wrong instant.
-- `getProduct` (what the sync reads) returns the whole gallery from `product-images`: one extra call per product,
-  first 50 images, main image first, hidden images left out. If that read fails or is empty, the main image is kept.
-  `getProducts` (the list read) still returns the main image only.
+- `getProduct` (what the sync reads) returns the whole gallery from `product-images`: main image first, then the
+  shop's gallery order, hidden images left out. It costs one extra call per product (none for a product with no
+  main image), one filtered read per page on `getProducts` and one per chunk of 50 in the bulk prefetch. An empty
+  gallery keeps the main image; a failed read fails the product read rather than syncing the main image alone.
 - `getProduct` also reports `categoryBreadcrumb`, the path of the product's main category (`category_id`, else its
   first category). It is walked over the same category directory `getProductCategories` reads (memoised per adapter,
   and warmed by the bulk prefetch, so a batch page reads it once). A node with no name, a category the tree does

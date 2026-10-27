@@ -27,6 +27,7 @@ import { DuplicateBatchEanException } from '../../../domain/exceptions/duplicate
 import { CurrencyMismatchException } from '../../../domain/exceptions/currency-mismatch.exception';
 import { InvalidOverrideKeyException } from '../../../domain/exceptions/invalid-override-key.exception';
 import { ExpandedOfferCeilingExceededException } from '../../../domain/exceptions/expanded-offer-ceiling-exceeded.exception';
+import { DuplicateBulkBatchIdempotencyKeyError } from '../../../domain/exceptions/duplicate-bulk-batch-idempotency-key.error';
 import type { BulkListingBatchRepositoryPort } from '../../../domain/ports/bulk-listing-batch-repository.port';
 import type { OfferCreationRecordRepositoryPort } from '../../../domain/ports/offer-creation-record-repository.port';
 import type { OfferMappingRepositoryPort } from '../../../domain/ports/offer-mapping-repository.port';
@@ -110,6 +111,10 @@ describe('BulkListingSubmitService', () => {
       updateTotalCount: jest.fn().mockImplementation((id: string, totalCount: number) =>
         Promise.resolve(makeBatch({ id, totalCount }))
       ),
+      // Default: no batch holds any key yet.
+      findByIdempotencyKey: jest.fn().mockResolvedValue(null),
+      clearIdempotencyKey: jest.fn().mockResolvedValue(undefined),
+      reclassifySucceededChildAsFailed: jest.fn(),
     };
     offerCreationRecords = {
       create: jest.fn(),
@@ -1407,6 +1412,147 @@ describe('BulkListingSubmitService', () => {
       expect(offerCreationRecords.deleteById).toHaveBeenCalledWith('record-2-orphan');
       expect(offerCreationRecords.deleteById).not.toHaveBeenCalledWith('record-1');
       expect(bulkBatchRepo.updateTotalCount).toHaveBeenCalledWith('batch-1', 1);
+    });
+  });
+
+  describe('submit with an idempotency key', () => {
+    const keyedInput = {
+      connectionId,
+      initiatedBy,
+      productIds: ['v-a', 'v-b'],
+      sharedConfig: { stock: 5, publishImmediately: false },
+      idempotencyKey: 'key-1',
+    };
+
+    it('should persist the key with the batch before enqueueing anything', async () => {
+      const order: string[] = [];
+      bulkBatchRepo.create.mockImplementation(() => {
+        order.push('create');
+        return Promise.resolve(makeBatch());
+      });
+      enqueueService.enqueueCreation.mockImplementation(
+        (input: { internalVariantId: string }) => {
+          order.push('enqueue');
+          return Promise.resolve({
+            jobId: `job-${input.internalVariantId}`,
+            offerCreationRecord: { id: `record-${input.internalVariantId}` } as OfferCreationRecord,
+          });
+        }
+      );
+
+      const result = await service.submit(keyedInput);
+
+      expect(bulkBatchRepo.create).toHaveBeenCalledWith(
+        expect.objectContaining({ connectionId, idempotencyKey: 'key-1' })
+      );
+      expect(order).toEqual(['create', 'enqueue', 'enqueue']);
+      expect(result.deduplicated).toBeUndefined();
+      expect(result.jobIds).toEqual(['job-v-a', 'job-v-b']);
+    });
+
+    it('should return the same batch and enqueue jobs only once when the same key is submitted twice', async () => {
+      const first = await service.submit(keyedInput);
+      // The second call now finds the batch the first one persisted.
+      bulkBatchRepo.findByIdempotencyKey.mockResolvedValue(makeBatch({ id: first.batchId }));
+
+      const second = await service.submit(keyedInput);
+
+      expect(second.batchId).toBe(first.batchId);
+      expect(second).toEqual({
+        batchId: first.batchId,
+        jobIds: [],
+        skippedAlreadyListedCount: 0,
+        skippedAvailabilityUnknownCount: 0,
+        skippedInvalidEanCount: 0,
+        deduplicated: true,
+      });
+      expect(bulkBatchRepo.create).toHaveBeenCalledTimes(1);
+      expect(enqueueService.enqueueCreation).toHaveBeenCalledTimes(2);
+      expect(bulkBatchRepo.findByIdempotencyKey).toHaveBeenCalledWith(connectionId, 'key-1');
+    });
+
+    it('should answer a replay before touching the adapter', async () => {
+      bulkBatchRepo.findByIdempotencyKey.mockResolvedValue(makeBatch({ id: 'batch-earlier' }));
+
+      const result = await service.submit(keyedInput);
+
+      expect(result.batchId).toBe('batch-earlier');
+      expect(integrations.getCapabilityAdapter).not.toHaveBeenCalled();
+      expect(bulkBatchRepo.updateStatus).not.toHaveBeenCalled();
+    });
+
+    it('should return the winning batch and enqueue nothing when it loses the insert race', async () => {
+      // Both racers passed the replay check; this one's insert hit the index.
+      bulkBatchRepo.findByIdempotencyKey
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce(makeBatch({ id: 'batch-winner' }));
+      bulkBatchRepo.create.mockRejectedValue(
+        new DuplicateBulkBatchIdempotencyKeyError(connectionId, 'key-1')
+      );
+
+      const result = await service.submit(keyedInput);
+
+      expect(result).toEqual({
+        batchId: 'batch-winner',
+        jobIds: [],
+        skippedAlreadyListedCount: 0,
+        skippedAvailabilityUnknownCount: 0,
+        skippedInvalidEanCount: 0,
+        deduplicated: true,
+      });
+      expect(enqueueService.enqueueCreation).not.toHaveBeenCalled();
+      expect(bulkBatchRepo.updateStatus).not.toHaveBeenCalled();
+    });
+
+    it('should rethrow the duplicate error when the winner released its key before it could be read', async () => {
+      bulkBatchRepo.findByIdempotencyKey.mockResolvedValue(null);
+      bulkBatchRepo.create.mockRejectedValue(
+        new DuplicateBulkBatchIdempotencyKeyError(connectionId, 'key-1')
+      );
+
+      await expect(service.submit(keyedInput)).rejects.toBeInstanceOf(
+        DuplicateBulkBatchIdempotencyKeyError
+      );
+      expect(enqueueService.enqueueCreation).not.toHaveBeenCalled();
+    });
+
+    it('should release the key when nothing reached the stream so a retry runs for real', async () => {
+      enqueueService.enqueueCreation.mockRejectedValueOnce(new Error('Redis down'));
+
+      await expect(service.submit(keyedInput)).rejects.toThrow('Redis down');
+
+      expect(bulkBatchRepo.updateStatus).toHaveBeenCalledWith('batch-1', 'failed');
+      expect(bulkBatchRepo.clearIdempotencyKey).toHaveBeenCalledWith('batch-1');
+    });
+
+    it('should keep the key when some jobs already reached the stream', async () => {
+      enqueueService.enqueueCreation
+        .mockResolvedValueOnce({
+          jobId: 'job-v-a',
+          offerCreationRecord: { id: 'record-v-a' } as OfferCreationRecord,
+        })
+        .mockRejectedValueOnce(new Error('stream down'));
+
+      await expect(service.submit(keyedInput)).rejects.toThrow('stream down');
+
+      expect(bulkBatchRepo.clearIdempotencyKey).not.toHaveBeenCalled();
+    });
+
+    it('should keep the pre-key behaviour when no key is given', async () => {
+      const unkeyed = {
+        connectionId,
+        initiatedBy,
+        productIds: ['v-a', 'v-b'],
+        sharedConfig: { stock: 5, publishImmediately: false },
+      };
+
+      await service.submit(unkeyed);
+      await service.submit(unkeyed);
+
+      expect(bulkBatchRepo.findByIdempotencyKey).not.toHaveBeenCalled();
+      expect(bulkBatchRepo.create).toHaveBeenCalledTimes(2);
+      expect(bulkBatchRepo.create.mock.calls[0][0]).not.toHaveProperty('idempotencyKey');
+      expect(enqueueService.enqueueCreation).toHaveBeenCalledTimes(4);
     });
   });
 

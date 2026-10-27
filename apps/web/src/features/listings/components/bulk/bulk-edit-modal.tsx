@@ -102,6 +102,7 @@ import { BulkCategoryChooseModal } from './bulk-category-choose-modal';
 import { ShopCategoryPickerModal } from './shop-category-picker-modal';
 import { ShopAttributePicker } from './shop-attribute-picker';
 import { BulkImageLightbox } from './bulk-image-lightbox';
+import { BulkImageStrip } from './bulk-image-strip';
 import {
   blockerLabel,
   isCategoryBlocker,
@@ -138,6 +139,7 @@ import type {
 } from './bulk-wizard.types';
 import {
   computeResolvedPrice,
+  defaultImagesForVariant,
   distinguishingLabel,
   duplicateEanVariantIds,
   isValidGtin,
@@ -475,6 +477,11 @@ interface VariantEdit {
   params: Record<string, FormParameterValue>;
 }
 
+/** Same URLs in the same order - the published list is ordered, so order matters. */
+function sameImageList(a: readonly string[], b: readonly string[]): boolean {
+  return a.length === b.length && a.every((url, i) => url === b[i]);
+}
+
 function masterBarcodeOf(variant: BulkVariantRow): string {
   return (variant.variant.ean ?? variant.variant.gtin ?? '').trim();
 }
@@ -563,6 +570,18 @@ function BulkEditModalForm({
   const masterImages = useMemo(
     () => (row.product?.images ?? []).filter((u): u is string => typeof u === 'string' && u.trim() !== ''),
     [row.product?.images],
+  );
+  // The default set the base panel offers. A single-variant product is edited
+  // as one offer, and the backend lists that offer with the variant's default
+  // (its own picture first), so the panel must show the same list - not the
+  // bare product gallery - or the operator sees a different first image than
+  // the one published.
+  const baseDefaultImages = useMemo(
+    () =>
+      !isMultiVariant && row.variants[0]
+        ? defaultImagesForVariant(row.variants[0], masterImages)
+        : masterImages,
+    [isMultiVariant, row.variants, masterImages],
   );
 
   const [scope, setScope] = useState<string>(
@@ -793,6 +812,27 @@ function BulkEditModalForm({
     const valid = await baseForm.trigger();
     if (!valid) {
       setScope(isMultiVariant ? 'base' : 'simple');
+      // A missing category on a browsable destination has no inline field: it is
+      // marked only by the chip's warning triangle, so without this the click is
+      // a silent no-op - the dead-end #1946 removed for a variant category.
+      // Read the field state directly: `formState.errors` through this ref is
+      // only refreshed on the next render, so right after trigger() it is empty.
+      const categoryMissing = canBrowseCategories && !baseForm.getValues('categoryId');
+      showToast({
+        tone: 'error',
+        title: categoryMissing ? "Can't save yet - choose a category" : "Can't save yet - fix the highlighted fields",
+        description: categoryMissing
+          ? `${platformName} needs a category for every offer. Use "set category" at the top of this panel.`
+          : 'Each field that needs a change shows what to fix below it.',
+      });
+      const target = categoryMissing ? 'category' : baseForm.getFieldState('priceAmount').invalid ? 'price' : null;
+      if (target !== null) {
+        requestAnimationFrame(() => {
+          const anchor = document.querySelector(`[data-focus-field="${target}"]`);
+          anchor?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+          anchor?.querySelector<HTMLElement>('input:not([type="hidden"]), select, textarea, button')?.focus({ preventScroll: true });
+        });
+      }
       return;
     }
 
@@ -932,7 +972,9 @@ function BulkEditModalForm({
         if (isEanAcknowledged(edit.eanAcknowledgedFor, eanTrimmed)) {
           overrides.eanOverrideAcknowledged = true;
         }
-        if (edit.title !== undefined) overrides.title = edit.title;
+        // A cleared title inherits the base, like a cleared price: an offer
+        // cannot be listed without a title.
+        if (edit.title !== undefined && edit.title.trim() !== '') overrides.title = edit.title;
         if (edit.description !== undefined) overrides.description = edit.description;
         if (edit.imageUrls !== undefined) overrides.imageUrls = edit.imageUrls;
         if (edit.categoryId !== undefined) overrides.categoryId = edit.categoryId;
@@ -1202,11 +1244,16 @@ function BulkEditModalForm({
             platformParams={platformParams}
             onPlatformParamsChange={setPlatformParams}
             batchDeliveryPriceList={batchDeliveryPriceList}
-            masterImages={masterImages}
+            masterImages={baseDefaultImages}
             baseImageUrls={baseImageUrls}
             onBaseImageUrlsChange={setBaseImageUrls}
             onZoom={setZoomSrc}
             pricingPolicy={pricingPolicy}
+            inheritedSimplePrice={resolveBasePrice(
+              { ...baseValues, priceAmount: '' },
+              pricingPolicy,
+              row.variants[0]?.masterPrice ?? row.masterPrice,
+            )}
             onPricingPolicyChange={setPricingPolicy}
             stockPolicy={stockPolicy}
             onStockPolicyChange={setStockPolicy}
@@ -1246,7 +1293,11 @@ function BulkEditModalForm({
                       included={included[v.variantId]}
                       baseValues={baseValues}
                       basePriceValue={resolveBasePrice(baseValues, pricingPolicy, v.masterPrice)}
-                      masterImages={masterImages}
+                      inheritedImages={baseImageUrls ?? defaultImagesForVariant(v, masterImages)}
+                      inheritsVariantDefault={
+                        baseImageUrls === undefined &&
+                        !sameImageList(defaultImagesForVariant(v, masterImages), masterImages)
+                      }
                       onZoom={setZoomSrc}
                       connection={connection}
                       baseCategoryPathNames={displayPathNames}
@@ -1424,6 +1475,13 @@ interface BaseScopeFormProps {
    * `fieldset[disabled]`, which does not reach a `contenteditable` (#2200).
    */
   readOnly: boolean;
+  /**
+   * The price a simple product's offer gets when the Price field is left
+   * blank (the batch pricing policy over the master price), formatted, or ''
+   * when nothing resolves. Shown in the field so a blank one reads as that
+   * price rather than as an example value.
+   */
+  inheritedSimplePrice: string;
 
   /**
    * The destination's declared description contract (ADR-046). Resolved once by
@@ -1496,6 +1554,7 @@ function BaseScopeForm({
   onBaseImageUrlsChange,
   onZoom,
   pricingPolicy,
+  inheritedSimplePrice,
   onPricingPolicyChange,
   stockPolicy,
   onStockPolicyChange,
@@ -1510,8 +1569,6 @@ function BaseScopeForm({
   onReady,
   onValuesChange,
 }: BaseScopeFormProps): ReactElement {
-  const [addingImage, setAddingImage] = useState(false);
-  const [newImageUrl, setNewImageUrl] = useState('');
   const effectiveImages = baseImageUrls ?? masterImages;
   const imagesOverridden = baseImageUrls !== undefined;
   const schema = useMemo(() => makeBulkEditModalSchema(canBrowseCategories), [canBrowseCategories]);
@@ -1695,12 +1752,18 @@ function BaseScopeForm({
             <FormField
               name="bulk-edit-price"
               label="Price"
+              description={
+                inheritedSimplePrice !== ''
+                  ? `Leave blank to list at ${inheritedSimplePrice} ${currency} from the pricing policy.`
+                  : 'No master price - enter the price for this offer.'
+              }
               error={form.formState.errors.priceAmount?.message}
             >
               <Input
                 {...form.register('priceAmount')}
                 className="bulk-editor__input"
-                placeholder="79.00"
+                inputMode="decimal"
+                placeholder={inheritedSimplePrice}
                 aria-invalid={Boolean(form.formState.errors.priceAmount)}
               />
             </FormField>
@@ -1816,71 +1879,12 @@ function BaseScopeForm({
               </button>
             ) : null}
           </label>
-          <div className="bulk-editor__img-strip bulk-editor__img-strip--editable" data-focus-field="images">
-            {effectiveImages.map((url, i) => (
-              <span className="bulk-editor__img-thumb" key={`${url}-${i}`}>
-                <ThumbZoomButton url={url} onZoom={onZoom} />
-                <button
-                  type="button"
-                  className="bulk-editor__img-x"
-                  aria-label="Remove image"
-                  onClick={() => {
-                    const base = baseImageUrls ?? masterImages;
-                    onBaseImageUrlsChange(base.filter((_, idx) => idx !== i));
-                  }}
-                >
-                  ×
-                </button>
-              </span>
-            ))}
-            {!addingImage ? (
-              <button
-                type="button"
-                className="bulk-editor__img-add"
-                aria-label="Add image"
-                onClick={() => setAddingImage(true)}
-              >
-                ＋
-              </button>
-            ) : null}
-          </div>
-          {addingImage ? (
-            <div className="bulk-editor__img-add-row">
-              <Input
-                className="bulk-editor__input"
-                value={newImageUrl}
-                onChange={(e) => setNewImageUrl(e.target.value)}
-                placeholder="https://example.com/image.jpg"
-                aria-label="New image URL"
-              />
-              <Button
-                tone="primary"
-                type="button"
-                className="button--sm"
-                onClick={() => {
-                  const url = newImageUrl.trim();
-                  if (url === '') return;
-                  const base = baseImageUrls ?? masterImages;
-                  onBaseImageUrlsChange([...base, url]);
-                  setNewImageUrl('');
-                  setAddingImage(false);
-                }}
-              >
-                Add
-              </Button>
-              <Button
-                tone="ghost"
-                type="button"
-                className="button--sm"
-                onClick={() => {
-                  setNewImageUrl('');
-                  setAddingImage(false);
-                }}
-              >
-                Cancel
-              </Button>
-            </div>
-          ) : null}
+          <BulkImageStrip
+            images={effectiveImages}
+            onImagesChange={onBaseImageUrlsChange}
+            onZoom={onZoom}
+            focusTarget
+          />
           <div className="hint" style={{ color: 'var(--text-muted)', margin: '5px 0 0' }}>
             {effectiveImages.length === 0 ? 'No images yet - add an image URL to include one. ' : ''}
             {mode === 'simple'
@@ -2062,7 +2066,18 @@ interface VariantScopeFormProps {
   baseValues: BulkEditModalValues;
   /** Concrete base price this variant inherits (pre-filled value, #1741). */
   basePriceValue: string;
-  masterImages: string[];
+  /**
+   * The images this variant is published with while it has no image override
+   * of its own: the shared-base set when the operator edited it (that override
+   * reaches every sibling at submit), else the variant's own default list.
+   */
+  inheritedImages: string[];
+  /**
+   * True when `inheritedImages` is this variant's OWN default (its pictures
+   * first, other siblings' left out) rather than the shared set, so the hint
+   * says which one the operator is looking at.
+   */
+  inheritsVariantDefault: boolean;
   /** Drives the per-variant category bar's declared grouping model (#1924). */
   connection: Connection;
   /** Resolved breadcrumb for the shared base's category, already computed once by the parent (#1924) - shown instead of the raw id. Null when unresolved (falls back to the id). */
@@ -2113,7 +2128,8 @@ function VariantScopeForm({
   included,
   baseValues,
   basePriceValue,
-  masterImages,
+  inheritedImages,
+  inheritsVariantDefault,
   connection,
   baseCategoryPathNames,
   categoryParameters,
@@ -2141,10 +2157,8 @@ function VariantScopeForm({
       ? 'Duplicate of another included variant - they would collapse to one Allegro card.'
       : '';
 
-  const effectiveImages = edit.imageUrls ?? masterImages;
+  const effectiveImages = edit.imageUrls ?? inheritedImages;
   const imagesOverridden = edit.imageUrls !== undefined;
-  const [addingImage, setAddingImage] = useState(false);
-  const [newImageUrl, setNewImageUrl] = useState('');
 
   // Grouping-determining params (Marka/Stan) are locked to base by default; the
   // operator can unlock them per variant behind a warning (a per-variant value
@@ -2663,6 +2677,7 @@ function VariantScopeForm({
           <InheritableTextField
             label="Title"
             overridden={edit.title !== undefined}
+            blankInheritsBase
             value={edit.title ?? ''}
             baseValue={baseValues.title}
             ariaLabel={`Title for ${label}`}
@@ -2769,6 +2784,7 @@ function VariantScopeForm({
         <InheritableTextField
           label="Price"
           overridden={edit.price !== undefined}
+          blankInheritsBase
           value={edit.price ?? ''}
           baseValue={basePriceValue}
           ariaLabel={`Price for ${label}`}
@@ -2776,7 +2792,9 @@ function VariantScopeForm({
         />
       </div>
 
-      {/* Images - inherit base set / override among master URLs. */}
+      {/* Images - inherit this variant's default (or the edited shared set) /
+          override. An override is this variant's alone: it never reaches a
+          sibling or the shared base. */}
       <div className="bulk-editor__field">
         <label>
           Images {imagesOverridden ? <ProvBadge kind="override" /> : <ProvBadge kind="inherit" />}
@@ -2786,84 +2804,23 @@ function VariantScopeForm({
               className="bulk-editor__reset"
               onClick={() => onPatch({ imageUrls: undefined })}
             >
-              ↺ reset to base
+              {inheritsVariantDefault ? '↺ reset to default' : '↺ reset to base'}
             </button>
           ) : null}
         </label>
-        <div className="bulk-editor__img-strip bulk-editor__img-strip--editable" data-focus-field="images">
-          {effectiveImages.map((url, i) => (
-            <span
-              key={`${url}-${i}`}
-              className={['bulk-editor__img-thumb', imagesOverridden ? '' : 'bulk-editor__img-thumb--ghost']
-                .filter(Boolean)
-                .join(' ')}
-            >
-              <ThumbZoomButton url={url} onZoom={onZoom} />
-              <button
-                type="button"
-                className="bulk-editor__img-x"
-                aria-label="Remove image"
-                onClick={() => {
-                  const base = edit.imageUrls ?? masterImages;
-                  const next = base.filter((_, idx) => idx !== i);
-                  onPatch({ imageUrls: next });
-                }}
-              >
-                ×
-              </button>
-            </span>
-          ))}
-          {!addingImage ? (
-            <button
-              type="button"
-              className="bulk-editor__img-add"
-              aria-label="Add image"
-              onClick={() => setAddingImage(true)}
-            >
-              ＋
-            </button>
-          ) : null}
-        </div>
-        {addingImage ? (
-          <div className="bulk-editor__img-add-row">
-            <Input
-              className="bulk-editor__input"
-              value={newImageUrl}
-              onChange={(e) => setNewImageUrl(e.target.value)}
-              placeholder="https://example.com/image.jpg"
-              aria-label="New image URL"
-            />
-            <Button
-              tone="primary"
-              type="button"
-              className="button--sm"
-              onClick={() => {
-                const url = newImageUrl.trim();
-                if (url === '') return;
-                onPatch({ imageUrls: [...effectiveImages, url] });
-                setNewImageUrl('');
-                setAddingImage(false);
-              }}
-            >
-              Add
-            </Button>
-            <Button
-              tone="ghost"
-              type="button"
-              className="button--sm"
-              onClick={() => {
-                setNewImageUrl('');
-                setAddingImage(false);
-              }}
-            >
-              Cancel
-            </Button>
-          </div>
-        ) : null}
+        <BulkImageStrip
+          images={effectiveImages}
+          onImagesChange={(next) => onPatch({ imageUrls: next })}
+          onZoom={onZoom}
+          inherited={!imagesOverridden}
+          focusTarget
+        />
         <div className="hint" style={{ color: 'var(--text-muted)', fontSize: 12 }}>
           {imagesOverridden
             ? 'Custom image set for this variant.'
-            : 'Inherits the base images - add or remove to override for this variant.'}
+            : inheritsVariantDefault
+              ? "This variant's default: its own images first, other variants' images left out - add or remove to override for this variant."
+              : 'Inherits the base images - add or remove to override for this variant.'}
         </div>
       </div>
 
@@ -2948,6 +2905,7 @@ function InheritableTextField({
   type,
   provNode,
   onReset,
+  blankInheritsBase,
   onChange,
 }: {
   label: string;
@@ -2961,9 +2919,16 @@ function InheritableTextField({
   provNode?: ReactNode;
   /** Custom reset handler; when set the reset control always shows. */
   onReset?: () => void;
+  /**
+   * Set where saving drops an emptied override (title, price): the field then
+   * shows the value it will fall back to, instead of an empty "override".
+   */
+  blankInheritsBase?: boolean;
   onChange: (next: string | undefined) => void;
 }): ReactElement {
   const displayValue = overridden ? value : baseValue;
+  const blankFallsBack =
+    blankInheritsBase === true && overridden && value.trim() === '' && baseValue !== '';
   const showReset = overridden || Boolean(onReset);
   return (
     <div className="bulk-editor__field">
@@ -2983,41 +2948,18 @@ function InheritableTextField({
         ].join(' ')}
         value={displayValue}
         aria-label={ariaLabel}
+        placeholder={blankFallsBack ? baseValue : undefined}
         onChange={(e) => {
           const typed = e.target.value;
           onChange(typed === baseValue ? undefined : typed);
         }}
       />
+      {blankFallsBack ? (
+        <div className="hint" style={{ color: 'var(--text-muted)', fontSize: 12 }}>
+          Left empty, this variant uses the base value: {baseValue}
+        </div>
+      ) : null}
     </div>
-  );
-}
-
-/**
- * Zoomable thumbnail trigger (#1741). A `role="button"` span (not a native
- * `<button>`) so it stays clickable even inside the demo read-only `fieldset`
- * disabled cascade - zooming is always allowed; only edit actions are gated.
- * `stopPropagation` keeps the click from toggling the surrounding controls.
- */
-function ThumbZoomButton({ url, onZoom }: { url: string; onZoom: (src: string) => void }): ReactElement {
-  return (
-    <span
-      role="button"
-      tabIndex={0}
-      className="bulk-editor__thumb-btn"
-      aria-label="Zoom image"
-      onClick={(e) => {
-        e.stopPropagation();
-        onZoom(url);
-      }}
-      onKeyDown={(e) => {
-        if (e.key === 'Enter' || e.key === ' ') {
-          e.preventDefault();
-          onZoom(url);
-        }
-      }}
-    >
-      <img src={url} alt="" />
-    </span>
   );
 }
 
@@ -3845,8 +3787,6 @@ function ShopBaseScopeForm({
   simpleIncluded,
   onSimpleIncludedChange,
 }: ShopBaseScopeFormProps): ReactElement {
-  const [addingImage, setAddingImage] = useState(false);
-  const [newImageUrl, setNewImageUrl] = useState('');
   const effectiveImages = baseImageUrls ?? masterImages;
   const imagesOverridden = baseImageUrls !== undefined;
   const classes = ['bulk-editor__form', active ? 'bulk-editor__form--acc-open' : ''].filter(Boolean).join(' ');
@@ -4022,71 +3962,11 @@ function ShopBaseScopeForm({
             </button>
           ) : null}
         </label>
-        <div className="bulk-editor__img-strip bulk-editor__img-strip--editable">
-          {effectiveImages.map((url, i) => (
-            <span className="bulk-editor__img-thumb" key={`${url}-${i}`}>
-              <ThumbZoomButton url={url} onZoom={onZoom} />
-              <button
-                type="button"
-                className="bulk-editor__img-x"
-                aria-label="Remove image"
-                onClick={() => {
-                  const base = baseImageUrls ?? masterImages;
-                  onBaseImageUrlsChange(base.filter((_, idx) => idx !== i));
-                }}
-              >
-                ×
-              </button>
-            </span>
-          ))}
-          {!addingImage ? (
-            <button
-              type="button"
-              className="bulk-editor__img-add"
-              aria-label="Add image"
-              onClick={() => setAddingImage(true)}
-            >
-              ＋
-            </button>
-          ) : null}
-        </div>
-        {addingImage ? (
-          <div className="bulk-editor__img-add-row">
-            <Input
-              className="bulk-editor__input"
-              value={newImageUrl}
-              onChange={(e) => setNewImageUrl(e.target.value)}
-              placeholder="https://example.com/image.jpg"
-              aria-label="New image URL"
-            />
-            <Button
-              tone="primary"
-              type="button"
-              className="button--sm"
-              onClick={() => {
-                const url = newImageUrl.trim();
-                if (url === '') return;
-                const base = baseImageUrls ?? masterImages;
-                onBaseImageUrlsChange([...base, url]);
-                setNewImageUrl('');
-                setAddingImage(false);
-              }}
-            >
-              Add
-            </Button>
-            <Button
-              tone="ghost"
-              type="button"
-              className="button--sm"
-              onClick={() => {
-                setNewImageUrl('');
-                setAddingImage(false);
-              }}
-            >
-              Cancel
-            </Button>
-          </div>
-        ) : null}
+        <BulkImageStrip
+          images={effectiveImages}
+          onImagesChange={onBaseImageUrlsChange}
+          onZoom={onZoom}
+        />
         <div className="hint" style={{ color: 'var(--text-muted)', margin: '5px 0 0' }}>
           {effectiveImages.length === 0 ? 'No images yet - add an image URL to include one. ' : ''}
           Shared image set for every variant. Add or remove to override the master set.
@@ -4291,6 +4171,7 @@ function ShopVariantScopeForm({
         <InheritableTextField
           label="Price"
           overridden={edit.price !== undefined}
+          blankInheritsBase
           value={edit.price ?? ''}
           baseValue={basePriceValue}
           ariaLabel={`Price for ${label}`}
