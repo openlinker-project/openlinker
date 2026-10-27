@@ -1903,6 +1903,75 @@ describe('OrderIngestionService', () => {
       expect(orderLifecycleRelay.relay).toHaveBeenCalled();
     });
 
+    it('should run the cancellation cleanup once for a channel cancel with no operator request (C-30)', async () => {
+      orderChanges.findOpenByOrder.mockResolvedValue([] as never);
+      orderRecordService.getOrderRecord.mockResolvedValue({
+        sourceConnectionId: connectionId,
+        cancelledAt: null,
+      } as unknown as OrderRecord);
+
+      await service.syncOrderFromSource(connectionId, externalOrderId, 'evt-1', 'cancelled');
+
+      expect(cancellationEffects.applyEffects).toHaveBeenCalledTimes(1);
+      expect(cancellationEffects.applyEffects).toHaveBeenCalledWith(
+        expect.objectContaining({ internalOrderId: 'ol_order_cancel', actorUserId: null })
+      );
+    });
+
+    it('should not repeat the cancellation cleanup when the cancel was already recorded (C-30)', async () => {
+      orderChanges.findOpenByOrder.mockResolvedValue([] as never);
+      orderRecordService.getOrderRecord.mockResolvedValue({
+        sourceConnectionId: connectionId,
+        cancelledAt: new Date('2026-08-01T10:00:00.000Z'),
+      } as unknown as OrderRecord);
+
+      await service.syncOrderFromSource(connectionId, externalOrderId, 'evt-1', 'cancelled');
+
+      expect(cancellationEffects.applyEffects).not.toHaveBeenCalled();
+    });
+
+    it('should run the cleanup only once when an open request is also confirmed in the same pass (C-30)', async () => {
+      orderChanges.findOpenByOrder.mockResolvedValue([
+        { ...openRequest, requestedBy: 'user-9', payload: {} },
+      ] as never);
+      orderRecordService.getOrderRecord.mockResolvedValue({
+        sourceConnectionId: connectionId,
+        cancelledAt: null,
+      } as unknown as OrderRecord);
+
+      await service.syncOrderFromSource(connectionId, externalOrderId, 'evt-1', 'cancelled');
+
+      expect(cancellationEffects.applyEffects).toHaveBeenCalledTimes(1);
+    });
+
+    it('should confirm an open cancel request and run the cleanup when the cancel arrives as a plain update (C-4)', async () => {
+      const incoming = {
+        externalOrderId: 'checkout-update-cancel',
+        orderNumber: 'checkout-update-cancel',
+        status: 'cancelled',
+        items: [],
+        totals: { subtotal: 0, tax: 0, shipping: 0, total: 0, currency: 'PLN' },
+        createdAt: '2024-01-01T00:00:00Z',
+        updatedAt: '2024-01-02T00:00:00Z',
+      };
+      identifierMapping.getOrCreateInternalId.mockResolvedValue('ol_order_cancel');
+      integrationsService.getCapabilityAdapter.mockResolvedValue(orderSource);
+      orderSource.getOrder.mockResolvedValue(incoming);
+      orderSyncService.syncOrder.mockResolvedValue([]);
+      orderRecordService.getOrderRecord.mockResolvedValue({
+        sourceConnectionId: connectionId,
+        cancelledAt: null,
+      } as unknown as OrderRecord);
+      orderChanges.findOpenByOrder.mockResolvedValue([
+        { ...openRequest, requestedBy: 'user-9', payload: {} },
+      ] as never);
+
+      await service.syncOrderFromSource(connectionId, 'checkout-update-cancel');
+
+      expect(orderChanges.confirm).toHaveBeenCalledWith('change-1', `source:${connectionId}`);
+      expect(cancellationEffects.applyEffects).toHaveBeenCalledTimes(1);
+    });
+
     it('leaves every other open change alone', async () => {
       orderChanges.findOpenByOrder.mockResolvedValue([
         { id: 'c2', kind: 'order.cancel_correction' },
