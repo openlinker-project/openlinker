@@ -119,9 +119,13 @@ const SUM_TOLERANCE = 0.011;
  */
 export const SHOPER_PHONE_PLACEHOLDER = '100000000';
 
-/** The order note that explains the placeholder to whoever opens the order in Shoper. */
+/**
+ * The order note that explains the placeholder to whoever opens the order in
+ * Shoper. It says where the real number is, because nothing writes it back: the
+ * adapter only creates the order, so a later sync never touches its address.
+ */
 export const SHOPER_PHONE_PLACEHOLDER_NOTE =
-  `Phone number ${SHOPER_PHONE_PLACEHOLDER} is a placeholder: the marketplace did not provide the buyer's phone (for example, the order was not paid yet).`;
+  `Phone number ${SHOPER_PHONE_PLACEHOLDER} is a placeholder: the marketplace did not provide the buyer's phone (for example, the order was not paid yet). It is not updated later - take the buyer's phone from the order on the marketplace.`;
 
 export class ShoperOrderProcessorAdapter
   implements

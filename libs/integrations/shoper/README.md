@@ -295,6 +295,8 @@ or awaiting order stays unpaid in the shop.
 **Phone is required** on both Shoper addresses (an empty one is a 400). The address's own is used, else the other
 address's. When the source gives no phone at all (Allegro shows it only after payment), the order is created with the
 placeholder `100000000` (Shoper validates the format: all zeros are refused; a leading 1 is never a Polish subscriber number), and the order's remarks (`notes`) say the number is a placeholder.
+Nothing writes the real phone back once the buyer pays: the adapter only creates the order, and a later sync does not
+update its address. The operator takes the phone from the order on the marketplace; the remarks say so.
 
 **A half-built order is removed.** If a line fails after the header exists, `DELETE /orders/:id` is issued (live:
 this restores the stock the lines took). If that fails too, `ShoperPartialOrderException` names the order id; it is
