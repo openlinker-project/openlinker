@@ -118,26 +118,28 @@ export function CancelOrderDialog({
   const acknowledged = form.watch('acknowledgeAcceptedWork') === true;
   const canSubmit = !mutation.isPending && (!needsAck || acknowledged);
 
-  const submit = form.handleSubmit((values: CancelOrderSubmission): void => {
+  // mutateAsync, not mutate's per-call onSuccess: that callback is dropped when
+  // the component unmounts, and a confirmed cancel makes the order terminal, which
+  // unmounts this dialog (OrderCancelAction renders null) while the hook's own
+  // invalidation is still awaited. The participant outcomes would be lost with it.
+  const submit = form.handleSubmit(async (values: CancelOrderSubmission): Promise<void> => {
     const note = values.note?.trim();
-    mutation.mutate(
-      {
+    try {
+      const result = await mutation.mutateAsync({
         internalOrderId,
         reason: values.reason,
         note: note ? note : undefined,
         // Sent only when ticked: an untouched box must not claim an
         // acknowledgement the operator never gave.
         acknowledgeAcceptedWork: values.acknowledgeAcceptedWork === true ? true : undefined,
-      },
-      {
-        onSuccess: (result) => {
-          onResult(result, values.reason);
-          // `pending` keeps the dialog open on its progress view; a confirmed
-          // cancel hands over to the page's result notice.
-          if (result.status === 'cancelled') onOpenChange(false);
-        },
-      },
-    );
+      });
+      onResult(result, values.reason);
+      // `pending` keeps the dialog open on its progress view; a confirmed
+      // cancel hands over to the page's result notice.
+      if (result.status === 'cancelled') onOpenChange(false);
+    } catch {
+      // Surfaced through mutation.isError / classifyOrderCancelError below.
+    }
   });
 
   const keepButton = (label: string): ReactElement => (

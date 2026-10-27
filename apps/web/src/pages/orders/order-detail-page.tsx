@@ -290,8 +290,10 @@ export function OrderDetailPage(): ReactElement {
     cancelOutcome?.internalOrderId === order.internalOrderId ? cancelOutcome.result : null;
   const orderChanges = orderChangesQuery.data ?? [];
   const orderRefunds = orderRefundsQuery.data ?? [];
+  // A refund is not confirmable until the cancel is: an open request leaves the
+  // order amending and the money not yet owed (C-2).
   const hasCancelRequest = orderChanges.some(
-    (change) => change.kind === 'order.cancel_request' && (change.open || change.status === 'confirmed'),
+    (change) => change.kind === 'order.cancel_request' && change.status === 'confirmed',
   );
   const cancelTotalLabel = snapshot.totals
     ? formatAmount(snapshot.totals.total, snapshot.totals.currency)
