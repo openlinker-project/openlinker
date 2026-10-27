@@ -209,6 +209,16 @@ describe('OrderCancellationService (#3540)', () => {
       expect(await refusal(service.cancelOrder(input))).toBe('ORDER_ALREADY_SHIPPED');
     });
 
+    it('should void the label instead of refusing when the rollup reads dispatched but the label is only generated (C-6)', async () => {
+      orderRecords.getOrderRecord.mockResolvedValue(order({ fulfillmentState: 'dispatched' }));
+      shipmentQuery.getOutboundByOrderId.mockResolvedValue([shipment('s1', 'generated')]);
+
+      const result = await service.cancelOrder(input);
+
+      expect(shipmentCancellation.cancel).toHaveBeenCalledWith('s1');
+      expect(result.voidedShipmentIds).toEqual(['s1']);
+    });
+
     it('should refuse as shipped when an OL label was already dispatched to the marketplace (B-20)', async () => {
       shipmentQuery.getOutboundByOrderId.mockResolvedValue([shipment('s1', 'dispatched')]);
 
@@ -336,6 +346,15 @@ describe('OrderCancellationService (#3540)', () => {
 
       expect(shipmentCancellation.cancel.mock.calls.map((c: unknown[]) => c[0])).toEqual(['s1', 's4']);
       expect(result.voidedShipmentIds).toEqual(['s1', 's4']);
+    });
+
+    it('should not double the final period of the carrier message when a label is not voidable (C-6)', async () => {
+      shipmentQuery.getOutboundByOrderId.mockResolvedValue([shipment('s1', 'generated')]);
+      shipmentCancellation.cancel.mockRejectedValue(new Error('Resource not found.'));
+
+      const error = await service.cancelOrder(input).catch((e: unknown) => e);
+
+      expect((error as Error).message).not.toContain('..');
     });
 
     it('should abandon the request, not cancel, and tell no channel when a carrier cannot void', async () => {

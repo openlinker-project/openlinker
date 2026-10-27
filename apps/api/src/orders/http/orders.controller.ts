@@ -1408,7 +1408,7 @@ export class OrdersController {
   @ApiResponse({ status: 422, description: 'The invoicing provider rejected the correction' })
   async confirmChange(
     @Param('internalOrderId') internalOrderId: string,
-    @Param('changeId') changeId: string,
+    @Param('changeId', ParseUUIDPipe) changeId: string,
     @CurrentUser() user: AuthenticatedUser
   ): Promise<ConfirmOrderChangeResponseDto> {
     try {
