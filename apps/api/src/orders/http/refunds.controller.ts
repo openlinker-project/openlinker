@@ -27,6 +27,7 @@ import {
   BadRequestException,
   Body,
   ConflictException,
+  ServiceUnavailableException,
   Controller,
   Get,
   HttpCode,
@@ -45,6 +46,7 @@ import {
   RefundCurrencyMismatchException,
   RefundAmountPrecisionException,
   RefundRecordContendedException,
+  RefundLockUnavailableException,
   IOrderRefundService,
   IOrderRecordService,
   ORDER_REFUND_SERVICE_TOKEN,
@@ -126,6 +128,14 @@ export class RefundsController {
         throw new ConflictException({
           statusCode: HttpStatus.CONFLICT,
           error: 'Conflict',
+          code: error.code,
+          message: error.message,
+        });
+      }
+      if (error instanceof RefundLockUnavailableException) {
+        throw new ServiceUnavailableException({
+          statusCode: HttpStatus.SERVICE_UNAVAILABLE,
+          error: 'Service Unavailable',
           code: error.code,
           message: error.message,
         });

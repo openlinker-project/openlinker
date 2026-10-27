@@ -186,6 +186,27 @@ describe('OrderRefundService', () => {
       );
     });
 
+    it('should refuse with refund_lock_unavailable and never write when the lock store does not answer (R-16)', async () => {
+      jest.useFakeTimers();
+      try {
+        let answer: (token: string) => void = () => undefined;
+        lock.acquire.mockReturnValue(new Promise<string>((resolve) => { answer = resolve; }));
+
+        const pending = service.recordRefund({ ...input, amount: '10.00' });
+        const outcome = expect(pending).rejects.toMatchObject({ code: 'refund_lock_unavailable' });
+        await jest.advanceTimersByTimeAsync(5_000);
+        await outcome;
+
+        // The store comes back: the late lock is handed back, nothing is recorded.
+        answer('late-tok');
+        await jest.advanceTimersByTimeAsync(0);
+        expect(lock.release).toHaveBeenCalledWith('order:refund:ol_order_abc123', 'late-tok');
+        expect(refundRepository.create).not.toHaveBeenCalled();
+      } finally {
+        jest.useRealTimers();
+      }
+    });
+
     it('should throw RefundRecordContendedException without writing when the order lock is held', async () => {
       lock.acquire.mockResolvedValue(null);
 

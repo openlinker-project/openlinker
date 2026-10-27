@@ -482,6 +482,7 @@ export { decideRefundCeiling } from './domain/domain-services/refund-ceiling.dom
 export type { RefundCeilingDisposition } from './domain/domain-services/refund-ceiling.domain-service';
 export { RefundAmountPrecisionException } from './domain/exceptions/refund-amount-precision.exception';
 export { RefundRecordContendedException } from './domain/exceptions/refund-record-contended.exception';
+export { RefundLockUnavailableException } from './domain/exceptions/refund-lock-unavailable.exception';
 export { RefundCeilingExceededException } from './domain/exceptions/refund-ceiling-exceeded.exception';
 export { OrderChangeVocabularyError } from './domain/exceptions/order-change-vocabulary.error';
 export { TaxCoveragePageCeilingExceededError } from './domain/exceptions/tax-coverage-page-ceiling-exceeded.error';

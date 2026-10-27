@@ -61,6 +61,7 @@ import {
   RefundAmountPrecisionException,
   RefundCeilingExceededException,
   RefundRecordContendedException,
+  RefundLockUnavailableException,
   type IOrderRecordService,
   type IOrderRefundService,
   type RefundCeilingContext,
@@ -438,6 +439,14 @@ export class ReturnWritesController {
         throw new ConflictException({
           statusCode: HttpStatus.CONFLICT,
           error: 'Conflict',
+          code: error.code,
+          message: error.message,
+        });
+      }
+      if (error instanceof RefundLockUnavailableException) {
+        throw new ServiceUnavailableException({
+          statusCode: HttpStatus.SERVICE_UNAVAILABLE,
+          error: 'Service Unavailable',
           code: error.code,
           message: error.message,
         });
