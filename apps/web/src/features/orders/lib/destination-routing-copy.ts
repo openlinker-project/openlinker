@@ -78,7 +78,8 @@ export const DESTINATION_ROUTING_ATTENTION_REASONS: readonly DestinationRoutingB
 export const isDestinationRoutingBlockReason = (
   reason: string | null | undefined
 ): reason is DestinationRoutingBlockReasonValue =>
-  typeof reason === 'string' && reason in DESTINATION_ROUTING_REASON_COPY;
+  typeof reason === 'string' &&
+  (DestinationRoutingBlockReasonValues as readonly string[]).includes(reason);
 
 /**
  * Resolve copy for a persisted reason.
