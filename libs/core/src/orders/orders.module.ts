@@ -19,6 +19,7 @@ import { OrderFxRestatementService } from './application/services/order-fx-resta
 import { OrderFxReadService } from './application/services/order-fx-read.service';
 import { OrderDestinationRetryService } from './application/services/order-destination-retry.service';
 import { OrderProvisioningResumeService } from './application/services/order-provisioning-resume.service';
+import { OrderRoutingRetryService } from './application/services/order-routing-retry.service';
 import { FulfillmentDispatchRelayService } from './application/services/fulfillment-dispatch-relay.service';
 import { OrderLifecycleRelayService } from './application/services/order-lifecycle-relay.service';
 import { OrderRecordRepository } from './infrastructure/persistence/repositories/order-record.repository';
@@ -58,6 +59,7 @@ import {
   ORDER_FX_STAMP_SERVICE_TOKEN,
   ORDER_DESTINATION_RETRY_SERVICE_TOKEN,
   ORDER_PROVISIONING_RESUME_SERVICE_TOKEN,
+  ORDER_ROUTING_RETRY_SERVICE_TOKEN,
   ORDER_ITEM_REF_RESOLVER_SERVICE_TOKEN,
   ORDER_LIFECYCLE_RELAY_SERVICE_TOKEN,
   ORDER_REFUND_RECORD_REPOSITORY_TOKEN,
@@ -233,6 +235,13 @@ export { ORDER_SYNC_SERVICE_TOKEN } from './orders.tokens';
       provide: ORDER_PROVISIONING_RESUME_SERVICE_TOKEN,
       useExisting: OrderProvisioningResumeService,
     },
+    OrderRoutingRetryService,
+    {
+      // #3558 - re-routes a held order; reads the record repository, the
+      // connection list (router selection) and the job queue.
+      provide: ORDER_ROUTING_RETRY_SERVICE_TOKEN,
+      useExisting: OrderRoutingRetryService,
+    },
     {
       provide: ORDER_ITEM_REF_RESOLVER_SERVICE_TOKEN,
       useExisting: OrderItemRefResolverService,
@@ -335,6 +344,8 @@ export { ORDER_SYNC_SERVICE_TOKEN } from './orders.tokens';
     ORDER_FX_RESTATEMENT_SERVICE_TOKEN,
     ORDER_DESTINATION_RETRY_SERVICE_TOKEN,
     ORDER_PROVISIONING_RESUME_SERVICE_TOKEN,
+    // Exported for the worker's inventory propagation handler (#3558).
+    ORDER_ROUTING_RETRY_SERVICE_TOKEN,
     ORDER_LIFECYCLE_RELAY_SERVICE_TOKEN,
     FULFILLMENT_DISPATCH_RELAY_SERVICE_TOKEN,
     ORDER_REFUND_SERVICE_TOKEN,

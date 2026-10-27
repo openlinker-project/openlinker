@@ -999,6 +999,15 @@ export class OrderRecordService implements IOrderRecordService {
     await this.repository.updateFulfillmentBlock(internalOrderId, block);
   }
 
+  /** #3558 — thin read for the stock-change re-route. */
+  async listOrderIdsHeldForVariant(
+    reasons: readonly FulfillmentBlockReason[],
+    variantId: string,
+    limit: number
+  ): Promise<string[]> {
+    return this.repository.listOrderIdsHeldForVariant(reasons, variantId, limit);
+  }
+
   /** #3485 — thin read for the reroute sweep. */
   async listOrderIdsByFulfillmentBlockReasons(
     reasons: readonly FulfillmentBlockReason[],

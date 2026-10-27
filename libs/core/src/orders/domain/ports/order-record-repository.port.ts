@@ -634,6 +634,23 @@ export interface OrderRecordRepositoryPort {
   ): Promise<HeldOrderRef[]>;
 
   /**
+   * #3558 — ids of orders held with one of `reasons` whose line items include
+   * `variantId`, ascending by `internalOrderId`, at most `limit`.
+   *
+   * Answers "which held orders is THIS stock change about" for the stock-change
+   * re-route. Served by `order_line_items.orderRecordId` (indexed) after a filter
+   * on the variant, never by a scan of the snapshot jsonb. Only `ready` records
+   * have line items (`awaiting_mapping` snapshots reference external ids), which
+   * is the right set: an order that cannot name its variants is not waiting on
+   * one.
+   */
+  listOrderIdsHeldForVariant(
+    reasons: readonly FulfillmentBlockReason[],
+    variantId: string,
+    limit: number
+  ): Promise<string[]>;
+
+  /**
    * #3455 — record why the ingestion intercept deliberately did NOT route the
    * order while the OMS is on, or clear it with `null`. Level-triggered: the
    * intercept re-decides on every ingestion and writes the answer including

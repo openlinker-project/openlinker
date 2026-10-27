@@ -349,6 +349,14 @@ export type {
   OrderProvisioningResumeResult,
   ProvisioningResumeSkipReason,
 } from './application/interfaces/order-provisioning-resume.service.interface';
+export type {
+  IOrderRoutingRetryService,
+  OrderRoutingRetryResult,
+  OrderRoutingRetryRefusal,
+  RerouteHeldOrdersForVariantInput,
+  RerouteHeldOrdersResult,
+} from './application/interfaces/order-routing-retry.service.interface';
+export { OrderRoutingRetryRefusalValues } from './application/interfaces/order-routing-retry.service.interface';
 export { ProvisioningResumeSkipReasonValues } from './application/interfaces/order-provisioning-resume.service.interface';
 export type {
   IOrderLifecycleRelayService,
