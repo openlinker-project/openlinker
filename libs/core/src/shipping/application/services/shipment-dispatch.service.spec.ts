@@ -162,6 +162,7 @@ describe('ShipmentDispatchService', () => {
     resolveLinkForOrder: jest.Mock;
     listBlockingRejectionConnectionIds: jest.Mock;
     findWorkById: jest.Mock;
+    summarizeWorkForOrders: jest.Mock;
   };
   let jobQueue: { enqueue: jest.Mock; enqueueBulk: jest.Mock };
   let service: ShipmentDispatchService;
@@ -224,6 +225,7 @@ describe('ShipmentDispatchService', () => {
       recordEarlyCancellationSignal: jest.fn(),
       markSalesDocumentBlock: jest.fn(),
       markFulfillmentBlock: jest.fn(),
+      markDestinationRoutingBlock: jest.fn(),
       markFulfillmentRoutingSkip: jest.fn(),
       listOrderIdsByFulfillmentBlockReasons: jest.fn(),
       markPacked: jest.fn(),
@@ -264,6 +266,7 @@ describe('ShipmentDispatchService', () => {
       resolveLinkForOrder: jest.fn().mockResolvedValue({ kind: 'none' }),
       listBlockingRejectionConnectionIds: jest.fn().mockResolvedValue([]),
       findWorkById: jest.fn().mockResolvedValue(null),
+      summarizeWorkForOrders: jest.fn().mockResolvedValue(new Map()),
     };
     // #3365: every successful label buy enqueues the dispatch notification, so
     // the queue is present on every pre-existing test. Resolving by default

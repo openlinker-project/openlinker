@@ -143,6 +143,7 @@ export { OfferCreationRecord } from './domain/entities/offer-creation-record.ent
 export {
   OfferCreationStatusValues,
   OFFER_CREATION_STATUS,
+  OFFER_PRODUCT_REMOVED_WITHOUT_REASON_ERROR_CODE,
 } from './domain/types/offer-creation-record.types';
 export type {
   OfferCreationStatus,
@@ -164,6 +165,7 @@ export type {
 } from './domain/types/bulk-listing-batch.types';
 export type { BulkListingBatchRepositoryPort } from './domain/ports/bulk-listing-batch-repository.port';
 export { BulkListingBatchNotFoundException } from './domain/exceptions/bulk-listing-batch-not-found.exception';
+export { DuplicateBulkBatchIdempotencyKeyError } from './domain/exceptions/duplicate-bulk-batch-idempotency-key.error';
 export { EmptyBulkSubmissionException } from './domain/exceptions/empty-bulk-submission.exception';
 export { AllVariantsAlreadyListedException } from './domain/exceptions/all-variants-already-listed.exception';
 export { InvalidEanException } from './domain/exceptions/invalid-ean.exception';
@@ -468,6 +470,7 @@ export type {
 export { OfferStockRestoreOutcomeValues } from './application/types/offer-stock-restore.types';
 export { OfferStockRestoreReleaseIncompleteError } from './domain/exceptions/offer-stock-restore-release-incomplete.error';
 export { OfferStockRestoreReversalIncompleteError } from './domain/exceptions/offer-stock-restore-reversal-incomplete.error';
+export { OfferStockRestoreWriteIncompleteError } from './domain/exceptions/offer-stock-restore-write-incomplete.error';
 export type { IStaleOfferPauseService } from './application/interfaces/stale-offer-pause.service.interface';
 export type { StaleOfferPauseResult } from './domain/types/stale-offer-pause.types';
 export { OfferPollNotSupportedException } from './domain/exceptions/offer-poll-not-supported.exception';

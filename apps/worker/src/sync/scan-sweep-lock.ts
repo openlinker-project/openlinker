@@ -40,6 +40,7 @@ export type ScanSweepKind =
   | 'shop-product-status'
   | 'shipment-status'
   | 'fulfillment-status'
+  | 'source-fulfillment-status'
   | 'orders-tax-rate';
 
 /** `scan:{kind}:sweep:{connectionId}` - one in-flight run per connection. */

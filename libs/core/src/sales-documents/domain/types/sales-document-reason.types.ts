@@ -86,6 +86,28 @@ export const SalesDocumentUnresolvedReasonValues = [
    * Sales documents - which is why this must reach a badge rather than a log.
    */
   'no-connection-declares-document-kind',
+  /**
+   * Routing named a connection - through a rule or a country default - that
+   * cannot issue the document right now: it is not active (disabled, in an
+   * error state, waiting for re-authorisation, archived), it no longer exists,
+   * or it no longer has the capability that document kind needs.
+   *
+   * It exists because a rule's `connectionId` is a PERSISTED value, checked
+   * against the connection only when the rule is saved. Nothing re-checks it
+   * when the connection is later disabled, removed or loses a capability, so
+   * the rule keeps routing orders to it. Before this reason the gate treated
+   * that state as unreachable (true of the pre-#2170 resolver, whose pick is
+   * always drawn from the active candidate list) and answered `indeterminate`,
+   * which leaves the persisted reason untouched: no document, no job, no badge,
+   * one log line per order - the silent decline ADR-041 §54 forbids.
+   *
+   * It is a misconfiguration with a direct remedy - turn the connection back
+   * on, or point the rule at another one - so it is counted, unlike
+   * `'no-connection-declares-document-kind'`: an install that never configured
+   * routing has no rule to point anywhere, so this cannot be what an
+   * unconfigured install looks like.
+   */
+  'routed-connection-unavailable',
 ] as const;
 
 export type SalesDocumentUnresolvedReason = (typeof SalesDocumentUnresolvedReasonValues)[number];

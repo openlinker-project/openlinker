@@ -57,13 +57,19 @@ describe('ShoperStructuredSection', () => {
     expect(screen.getByLabelText(/default delivery method/i)).toBeTruthy();
     expect(screen.getByLabelText(/default payment method/i)).toBeTruthy();
     expect(screen.getByLabelText(/default order status/i)).toBeTruthy();
-    expect(screen.queryByText('Order source is off')).toBeNull();
+    expect(screen.queryByText('Nothing here uses webhooks')).toBeNull();
   });
 
-  it('should warn that webhooks need Order source when it is off', () => {
+  it('should not warn when only Product master is on, since product webhooks use it', () => {
     renderWithProviders(<Harness caps={['ProductMaster']} />);
 
-    expect(screen.getByText('Order source is off')).toBeTruthy();
+    expect(screen.queryByText('Nothing here uses webhooks')).toBeNull();
     expect(screen.getByText(/only when this shop receives orders/i)).toBeTruthy();
+  });
+
+  it('should warn when neither Order source nor Product master is on', () => {
+    renderWithProviders(<Harness caps={['InventoryMaster']} />);
+
+    expect(screen.getByText('Nothing here uses webhooks')).toBeTruthy();
   });
 });

@@ -8,6 +8,7 @@
  *
  * @module libs/core/src/listings/domain/ports
  */
+import type { BulkChildOutcome } from '../types/bulk-child-outcome.types';
 
 export interface BulkBatchAdvancementRepositoryPort {
   /**
@@ -21,10 +22,16 @@ export interface BulkBatchAdvancementRepositoryPort {
    *
    * Composite PK `(bulkBatchId, offerCreationRecordId)` guarantees the
    * race-free semantics at the DB level — no transaction needed.
+   *
+   * `outcome` is stored on the row so a later reclassification can tell which
+   * counter this advancement incremented. The reclassification itself lives on
+   * `BulkListingBatchRepositoryPort.reclassifySucceededChildAsFailed`, because
+   * the flip and the counter move must commit in one transaction.
    */
   markAdvancedIfNotExists(
     bulkBatchId: string,
     offerCreationRecordId: string,
+    outcome: BulkChildOutcome
   ): Promise<{ created: boolean }>;
 
   /**

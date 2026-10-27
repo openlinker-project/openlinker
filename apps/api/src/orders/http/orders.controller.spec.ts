@@ -55,6 +55,10 @@ import type {
 } from '@openlinker/core/mappings';
 import { SHIPMENT_QUERY_SERVICE_TOKEN } from '@openlinker/core/shipping';
 import { RETURNS_SERVICE_TOKEN } from '@openlinker/core/returns';
+import {
+  FULFILLMENT_WORK_QUERY_SERVICE_TOKEN,
+  type IFulfillmentWorkQueryService,
+} from '@openlinker/core/fulfillment';
 import { ORDER_TAG_SERVICE_TOKEN } from '@openlinker/core/orders';
 
 import { SOURCE_FULFILLMENT_STATUS_SERVICE_TOKEN } from '../application/interfaces/source-fulfillment-status.service.interface';
@@ -71,6 +75,7 @@ describe('OrdersController', () => {
   let provisioningResume: jest.Mocked<IOrderProvisioningResumeService>;
   let salesDocumentView: jest.Mocked<ISalesDocumentViewService>;
   let testFixtureService: jest.Mocked<IOrderTestFixtureService>;
+  let fulfillmentWork: jest.Mocked<IFulfillmentWorkQueryService>;
 
   const mockOrder = new OrderRecord(
     'ol_order_001',
@@ -124,6 +129,7 @@ describe('OrdersController', () => {
       markCancelled: jest.fn(),
       updateSalesDocumentBlock: jest.fn(),
       updateFulfillmentBlock: jest.fn(),
+      updateDestinationRoutingBlock: jest.fn(),
       listOrderIdsByFulfillmentBlockReasons: jest.fn(),
       updateFulfillmentRoutingSkipReason: jest.fn(),
       updateOmsAttention: jest.fn(),
@@ -294,6 +300,10 @@ describe('OrdersController', () => {
           useValue: { list: jest.fn().mockResolvedValue({ items: [], total: 0 }) },
         },
         {
+          provide: FULFILLMENT_WORK_QUERY_SERVICE_TOKEN,
+          useValue: { summarizeWorkForOrders: jest.fn().mockResolvedValue(new Map()) },
+        },
+        {
           provide: RETURNS_SERVICE_TOKEN,
           useValue: { getOpenReturnSummariesForOrders: jest.fn().mockResolvedValue(new Map()) },
         },
@@ -318,6 +328,7 @@ describe('OrdersController', () => {
     provisioningResume = module.get(ORDER_PROVISIONING_RESUME_SERVICE_TOKEN);
     salesDocumentView = module.get(SALES_DOCUMENT_VIEW_SERVICE_TOKEN);
     testFixtureService = module.get(ORDER_TEST_FIXTURE_SERVICE_TOKEN);
+    fulfillmentWork = module.get(FULFILLMENT_WORK_QUERY_SERVICE_TOKEN);
   });
 
   describe('listOrders', () => {
@@ -334,6 +345,61 @@ describe('OrdersController', () => {
       expect(result.items[0].syncStatus).toHaveLength(1);
       expect(result.items[0].syncStatus[0].status).toBe('synced');
       expect(result.items[0].syncStatus[0].externalOrderId).toBe('PS-456');
+    });
+
+    describe('handledInOpenLinker (#3482)', () => {
+      it('should read the packing stage once for the whole page and attach it per order', async () => {
+        const other = orderRecordWith({ internalOrderId: 'ol_order_002' });
+        repository.findMany.mockResolvedValue({ items: [mockOrder, other], total: 2 });
+        fulfillmentWork.summarizeWorkForOrders.mockResolvedValue(
+          new Map([['ol_order_001', { stage: 'packing' as const, workCount: 1, assignment: 'single' as const, assignedToUserId: null }]])
+        );
+
+        const result = await controller.listOrders({ limit: 20, offset: 0 });
+
+        expect(fulfillmentWork.summarizeWorkForOrders).toHaveBeenCalledTimes(1);
+        expect(fulfillmentWork.summarizeWorkForOrders).toHaveBeenCalledWith([
+          'ol_order_001',
+          'ol_order_002',
+        ]);
+        expect(result.items[0].handledInOpenLinker).toEqual({
+          stage: 'packing',
+          workCount: 1,
+          assignment: 'single',
+          assignedToUserId: null,
+        });
+        // Absent means "no live work found", never a "not routed" claim.
+        expect(result.items[1].handledInOpenLinker).toBeUndefined();
+      });
+
+      it('should not fail the list, and should claim nothing, when the read throws', async () => {
+        repository.findMany.mockResolvedValue({ items: [mockOrder], total: 1 });
+        fulfillmentWork.summarizeWorkForOrders.mockRejectedValue(new Error('db down'));
+
+        const result = await controller.listOrders({ limit: 20, offset: 0 });
+
+        expect(result.items).toHaveLength(1);
+        expect(result.items[0].handledInOpenLinker).toBeUndefined();
+      });
+
+      it('should skip the read entirely when the page is empty', async () => {
+        repository.findMany.mockResolvedValue({ items: [], total: 0 });
+
+        await controller.listOrders({ limit: 20, offset: 0 });
+
+        expect(fulfillmentWork.summarizeWorkForOrders).not.toHaveBeenCalled();
+      });
+    });
+
+    it('should forward ?waitingInOpenLinker and ?onPackBench to the repository filters (#3482)', async () => {
+      repository.findMany.mockResolvedValue({ items: [], total: 0 });
+
+      await controller.listOrders({ limit: 20, offset: 0, waitingInOpenLinker: true, onPackBench: false });
+
+      expect(repository.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ waitingInOpenLinker: true, onPackBench: false }),
+        expect.anything()
+      );
     });
 
     it('should pass filters to repository', async () => {
@@ -773,7 +839,8 @@ describe('OrdersController', () => {
         needsAttention: 1,
         synced: 1,
         awaitingDispatch: 9,
-        salesDocumentBlocked: 0, taxRateConflict: 0, salesDocumentBlockedOldestAt: null, salesDocumentIssuedOnRequest: 0, omsAttention: 0,
+        salesDocumentBlocked: 0, taxRateConflict: 0, salesDocumentBlockedOldestAt: null, salesDocumentIssuedOnRequest: 0, omsAttention: 0, destinationRoutingBlocked: 0,
+        waitingInOpenLinker: 0, waitingInOpenLinkerOldestAt: null, onPackBench: 0,
       });
 
       const result = await controller.statusSummary({});
@@ -781,6 +848,25 @@ describe('OrdersController', () => {
       expect(result.total).toBe(11);
       expect(result.needsAttention).toBe(1);
       expect(result.awaitingDispatch).toBe(9);
+    });
+
+    it('should report the waiting and pack-bench counts with the oldest wait as ISO (#3482)', async () => {
+      repository.countByHealth.mockResolvedValue({
+        total: 5,
+        sourceDeleted: 0,
+        awaitingMapping: 0,
+        needsAttention: 0,
+        synced: 1,
+        awaitingDispatch: 4,
+        salesDocumentBlocked: 0, taxRateConflict: 0, salesDocumentBlockedOldestAt: null, salesDocumentIssuedOnRequest: 0, omsAttention: 0, destinationRoutingBlocked: 0,
+        waitingInOpenLinker: 3, waitingInOpenLinkerOldestAt: new Date('2026-10-23T07:00:00Z'), onPackBench: 14,
+      });
+
+      const result = await controller.statusSummary({});
+
+      expect(result.waitingInOpenLinker).toBe(3);
+      expect(result.waitingInOpenLinkerOldestAt).toBe('2026-10-23T07:00:00.000Z');
+      expect(result.onPackBench).toBe(14);
     });
 
     it('should forward only the scope subset (source/date) to the repository (#929)', async () => {
@@ -791,7 +877,8 @@ describe('OrdersController', () => {
         needsAttention: 0,
         synced: 0,
         awaitingDispatch: 0,
-        salesDocumentBlocked: 0, taxRateConflict: 0, salesDocumentBlockedOldestAt: null, salesDocumentIssuedOnRequest: 0, omsAttention: 0,
+        salesDocumentBlocked: 0, taxRateConflict: 0, salesDocumentBlockedOldestAt: null, salesDocumentIssuedOnRequest: 0, omsAttention: 0, destinationRoutingBlocked: 0,
+        waitingInOpenLinker: 0, waitingInOpenLinkerOldestAt: null, onPackBench: 0,
       });
 
       await controller.statusSummary({
@@ -818,6 +905,22 @@ describe('OrdersController', () => {
       expect(result.customerId).toBe('ol_customer_001');
       expect(result.sourceConnectionId).toBe('conn-source-001');
       expect(result.orderSnapshot).toEqual({ externalOrderId: 'EXT-123', items: [] });
+    });
+
+    it('should carry the same handledInOpenLinker projection as the list row (#3482)', async () => {
+      repository.findById.mockResolvedValue(mockOrder);
+      fulfillmentWork.summarizeWorkForOrders.mockResolvedValue(
+        new Map([['ol_order_001', { stage: 'packed' as const, workCount: 2, assignment: 'single' as const, assignedToUserId: null }]])
+      );
+
+      const result = await controller.getOrder('ol_order_001');
+
+      expect(result.handledInOpenLinker).toEqual({
+        stage: 'packed',
+        workCount: 2,
+        assignment: 'single',
+        assignedToUserId: null,
+      });
     });
 
     it('should throw NotFoundException when order not found', async () => {

@@ -352,6 +352,7 @@ describe('computeBlockers', () => {
 
 // ── Per-variant helpers (#1741) ──────────────────────────────────────────────
 import {
+  defaultImagesForVariant,
   distinguishingLabel,
   duplicateEanVariantIds,
   effectiveVariantEan,
@@ -458,6 +459,30 @@ describe('imageCountForVariant', () => {
       override: { overrides: { imageUrls: [] } },
     });
     expect(imageCountForVariant(makeWizardRow([withOverride]), withOverride)).toBe(0);
+  });
+
+  it("counts the variant's resolved default images when it has no override", () => {
+    const red = makeVariant('red', {});
+    red.variant = { ...red.variant, defaultImages: ['314.jpg', 'a.jpg', 'b.jpg'] };
+    expect(imageCountForVariant(makeWizardRow([red]), red)).toBe(3);
+  });
+});
+
+describe('defaultImagesForVariant', () => {
+  it('reads the API-resolved default list', () => {
+    const red = makeVariant('red');
+    red.variant = { ...red.variant, defaultImages: ['314.jpg', ' ', '312.jpg'] };
+    expect(defaultImagesForVariant(red, ['312.jpg', '314.jpg'])).toEqual(['314.jpg', '312.jpg']);
+  });
+
+  it.each([
+    ['is absent (older API)', undefined],
+    ['is null', null],
+    ['is empty', []],
+  ])('falls back to the product images when the resolved list %s', (_label, defaultImages) => {
+    const v = makeVariant('v');
+    v.variant = { ...v.variant, defaultImages };
+    expect(defaultImagesForVariant(v, ['312.jpg', '313.jpg'])).toEqual(['312.jpg', '313.jpg']);
   });
 });
 

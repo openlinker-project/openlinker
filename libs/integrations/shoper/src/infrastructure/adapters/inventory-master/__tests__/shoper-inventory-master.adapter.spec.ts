@@ -1,4 +1,5 @@
 import type { Connection, IdentifierMappingPort } from '@openlinker/core/identifier-mapping';
+import { isBulkInventoryReader } from '@openlinker/core/inventory';
 import { MasterProductNotFoundError } from '@openlinker/core/products';
 
 import { ShoperApiError } from '../../../../domain/exceptions/shoper-api.error';
@@ -97,6 +98,36 @@ describe('ShoperInventoryMasterAdapter', () => {
       ['ol_217', 5],
       ['ol_218', 10],
     ]);
+  });
+
+  it('should report the variant stocks of a product with variants, not its base stock', async () => {
+    const { adapter, get, mapping } = setup();
+    shop(get, [
+      buildStock({ stock_id: '264', stock: '10', extended: '0', options: [] }),
+      buildStock({ stock_id: '265', stock: '3', extended: '1', options: { '10': '82' } }),
+      buildStock({ stock_id: '266', stock: '0', extended: '1', options: { '10': '78' } }),
+    ]);
+
+    const rows = await adapter.listInventory('ol_93');
+
+    expect(rows.map((r) => [r.variantId, r.quantity])).toEqual([
+      ['ol_265', 3],
+      ['ol_266', 0],
+    ]);
+    // No variant or inventory id is minted for the base stock either.
+    const minted = (mapping.batchGetOrCreateInternalIds.mock.calls as Array<[Array<{ externalId: string }>]>)
+      .flatMap(([requests]) => requests.map((r) => r.externalId));
+    expect(minted).not.toContain('264');
+    expect(minted).not.toContain('stock:264');
+  });
+
+  it('should keep the base stock of a product with no variant stocks', async () => {
+    const { adapter, get } = setup();
+    shop(get, [buildStock({ stock_id: '271', stock: '7', extended: '0', options: [] })]);
+
+    const rows = await adapter.listInventory('ol_93');
+
+    expect(rows.map((r) => [r.variantId, r.quantity])).toEqual([['ol_271', 7]]);
   });
 
   it('should not probe the product while it still lists stock rows', async () => {
@@ -267,6 +298,30 @@ describe('ShoperInventoryMasterAdapter', () => {
       expect(put).toHaveBeenCalledWith('/product-stocks/181', { stock: 5 });
     });
 
+    it('should adjust the one variant of a product without asking which, its base stock not being one', async () => {
+      const { adapter, put } = withPut([
+        buildStock({ stock_id: '269', stock: '50', extended: '0' }),
+        buildStock({ stock_id: '270', stock: '4', extended: '1', options: { '10': '68' } }),
+      ]);
+
+      await adapter.adjustInventory({ productId: 'ol_93', quantity: 1 });
+
+      expect(put).toHaveBeenCalledWith('/product-stocks/270', { stock: 5 });
+    });
+
+    it('should refuse a variantId naming the base stock of a product with variants, writing nothing', async () => {
+      const { adapter, put } = withPut([
+        buildStock({ stock_id: '181', stock: '50', extended: '0' }),
+        buildStock({ stock_id: '182', stock: '4', extended: '1', options: { '10': '68' } }),
+      ]);
+      // `withPut` maps every variant id to stock 181, the base row here.
+
+      await expect(
+        adapter.adjustInventory({ productId: 'ol_93', variantId: 'ol_181', quantity: 1 }),
+      ).rejects.toBeInstanceOf(ShoperStockNotFoundException);
+      expect(put).not.toHaveBeenCalled();
+    });
+
     it('should refuse to guess the variant when several exist and none is named', async () => {
       const { adapter, put } = withPut([buildStock({ stock_id: '180' }), buildStock({ stock_id: '181' })]);
 
@@ -394,5 +449,223 @@ describe('ShoperInventoryMasterAdapter', () => {
     ],
   ])('should reject %s as not supported', async (_name, call) => {
     await expect(call(setup().adapter)).rejects.toBeInstanceOf(ShoperNotSupportedException);
+  });
+
+  describe('prefetchInventory (BulkInventoryReader)', () => {
+    interface ShopQuery {
+      filters?: string;
+      page?: number;
+      'filters[product_id]'?: string;
+    }
+
+    interface InFilter {
+      product_id: { in: number[] };
+    }
+
+    const singleRead = (id: string): unknown =>
+      expect.objectContaining({ 'filters[product_id]': id });
+
+    function stockOf(id: string, level = '5'): ReturnType<typeof buildStock> {
+      return buildStock({ product_id: id, stock_id: `${id}0`, stock: level });
+    }
+
+    /** `existing` products with one stock row each; `rowless` exist but list no stock rows. */
+    function bulkShop(
+      get: jest.Mock,
+      existing: readonly string[],
+      rowless: readonly string[] = [],
+    ): void {
+      const has = new Set(existing);
+      const products = new Set([...existing, ...rowless]);
+      get.mockImplementation((path: string, query: ShopQuery = {}) => {
+        if (path === '/product-stocks' && query.filters !== undefined) {
+          const ids = (JSON.parse(query.filters) as { product_id: { in: number[] } }).product_id.in;
+          const rows = ids.map(String).filter((id) => has.has(id)).map((id) => stockOf(id));
+          const page = query.page ?? 1;
+          const list = rows.slice((page - 1) * 50, page * 50);
+          const pages = Math.max(1, Math.ceil(rows.length / 50));
+          return Promise.resolve({ status: 200, data: envelope(list, { pages, page }) });
+        }
+        if (path === '/product-stocks') {
+          const id = String(query['filters[product_id]']);
+          const rows = has.has(id) ? [stockOf(id, '9')] : [];
+          return Promise.resolve({ status: 200, data: envelope(rows) });
+        }
+        const single = /^\/products\/(\d+)$/.exec(path);
+        if (single !== null) {
+          const id = single[1];
+          return products.has(id)
+            ? Promise.resolve({ status: 200, data: buildProduct({ product_id: id }) })
+            : Promise.reject(NOT_FOUND);
+        }
+        return Promise.reject(new Error(`unexpected GET ${path}`));
+      });
+    }
+
+    function mapEveryId(
+      mapping: { getExternalIds: jest.Mock },
+      unmapped: readonly string[] = [],
+    ): void {
+      mapping.getExternalIds.mockImplementation((_type: string, productId: string) =>
+        Promise.resolve(
+          unmapped.includes(productId)
+            ? []
+            : [
+                {
+                  externalId: productId.replace(/^ol_/, ''),
+                  connectionId: CONNECTION_ID,
+                  platformType: 'shoper',
+                  entityType: 'Product',
+                },
+              ],
+        ),
+      );
+    }
+
+    const internal = (ids: readonly string[]): string[] => ids.map((id) => `ol_${id}`);
+    const range = (n: number): string[] => Array.from({ length: n }, (_, i) => String(i + 1));
+
+    it('should be offered through its guard, never through the manifest', () => {
+      expect(isBulkInventoryReader(setup().adapter)).toBe(true);
+    });
+
+    it('should read 120 products’ stock in ceil(120/50) = 3 requests, then none per product', async () => {
+      const { adapter, get, mapping } = setup();
+      mapEveryId(mapping);
+      const ids = range(120);
+      bulkShop(get, ids);
+
+      await adapter.prefetchInventory(internal(ids));
+
+      expect(get).toHaveBeenCalledTimes(3);
+      const chunks = (get.mock.calls as Array<[string, ShopQuery]>).map(
+        ([, q]) => (JSON.parse(String(q.filters)) as InFilter).product_id.in.length,
+      );
+      expect(chunks).toEqual([50, 50, 20]);
+
+      get.mockClear();
+      for (const id of ids) {
+        await expect(adapter.listInventory(`ol_${id}`)).resolves.toEqual([
+          expect.objectContaining({ productId: `ol_${id}`, quantity: 5 }),
+        ]);
+      }
+      expect(get).not.toHaveBeenCalled();
+    });
+
+    it('should not count the base row of a product with variants read from the warm copy', async () => {
+      const { adapter, get, mapping } = setup();
+      mapEveryId(mapping);
+      const rows = [
+        buildStock({ product_id: '7', stock_id: '70', stock: '15', options: [] }),
+        buildStock({ product_id: '7', stock_id: '71', stock: '5', default: '0', options: { '10': '68' } }),
+        buildStock({ product_id: '7', stock_id: '72', stock: '10', default: '0', options: { '10': '76' } }),
+      ];
+      get.mockResolvedValue({ status: 200, data: envelope(rows) });
+
+      await adapter.prefetchInventory(internal(['7']));
+      get.mockClear();
+
+      const inventory = await adapter.listInventory('ol_7');
+
+      expect(get).not.toHaveBeenCalled();
+      expect(inventory.map((r) => [r.variantId, r.quantity])).toEqual([
+        ['ol_71', 5],
+        ['ol_72', 10],
+      ]);
+    });
+
+    it('should still report a deletion from the shop’s own 404 for a product with no rows in the batch', async () => {
+      const { adapter, get, mapping } = setup();
+      mapEveryId(mapping);
+      bulkShop(get, ['1']);
+
+      await adapter.prefetchInventory(internal(['1', '2']));
+      get.mockClear();
+
+      await expect(adapter.listInventory('ol_2')).rejects.toBeInstanceOf(
+        MasterProductNotFoundError,
+      );
+      expect(get).toHaveBeenCalledWith('/products/2');
+    });
+
+    it('should still raise the inferred-absence error for a live product that lists no rows', async () => {
+      const { adapter, get, mapping } = setup();
+      mapEveryId(mapping);
+      bulkShop(get, ['1'], ['2']);
+
+      await adapter.prefetchInventory(internal(['1', '2']));
+
+      await expect(adapter.listInventory('ol_2')).rejects.toBeInstanceOf(
+        ShoperStockNotFoundException,
+      );
+    });
+
+    it('should skip an unmapped id, leaving its own read to raise the mapping gap', async () => {
+      const { adapter, get, mapping } = setup();
+      mapEveryId(mapping, ['ol_2']);
+      bulkShop(get, ['1', '2']);
+
+      await adapter.prefetchInventory(internal(['1', '2']));
+
+      const [, query] = get.mock.calls[0] as [string, ShopQuery];
+      expect(JSON.parse(String(query.filters))).toEqual({ product_id: { in: [1] } });
+      await expect(adapter.listInventory('ol_2')).rejects.toBeInstanceOf(ShoperNotMappedException);
+    });
+
+    it('should swallow a failed prefetch and fall back to the per-product read', async () => {
+      const { adapter, get, mapping } = setup();
+      mapEveryId(mapping);
+      get.mockRejectedValueOnce(new ShoperNetworkError('ECONNRESET'));
+
+      await expect(adapter.prefetchInventory(internal(['1']))).resolves.toBeUndefined();
+
+      bulkShop(get, ['1']);
+      get.mockClear();
+      await expect(adapter.listInventory('ol_1')).resolves.toEqual([
+        expect.objectContaining({ quantity: 9 }),
+      ]);
+      expect(get).toHaveBeenCalledWith('/product-stocks', singleRead('1'));
+    });
+
+    it('should seed nothing when the shop ignored the filter and answered with other products', async () => {
+      const { adapter, get, mapping } = setup();
+      mapEveryId(mapping);
+      get.mockImplementationOnce(() =>
+        Promise.resolve({ status: 200, data: envelope([stockOf('1'), stockOf('999')]) }),
+      );
+
+      await adapter.prefetchInventory(internal(['1']));
+
+      bulkShop(get, ['1']);
+      await expect(adapter.listInventory('ol_1')).resolves.toEqual([
+        expect.objectContaining({ quantity: 9 }),
+      ]);
+    });
+
+    it('should make no request on a multi-warehouse shop, whose reads are refused anyway', async () => {
+      const { adapter, get, mapping } = setup({ ...MAP_CONTEXT, warehousesEnabled: true });
+      mapEveryId(mapping);
+
+      await adapter.prefetchInventory(internal(['1']));
+
+      expect(get).not.toHaveBeenCalled();
+    });
+
+    it('should never adjust from the warm copy, and drop it for the product it wrote', async () => {
+      const { adapter, get, put, mapping } = setup();
+      mapEveryId(mapping);
+      bulkShop(get, ['1']);
+      await adapter.prefetchInventory(internal(['1']));
+      get.mockClear();
+
+      const result = await adapter.adjustInventory({ productId: 'ol_1', quantity: -2 });
+
+      // The warm copy says 5; the shop says 9, and the write starts from the shop.
+      expect(put).toHaveBeenCalledWith('/product-stocks/10', { stock: 7 });
+      expect(result.quantity).toBe(9);
+      get.mockClear();
+      await adapter.listInventory('ol_1');
+      expect(get).toHaveBeenCalledWith('/product-stocks', singleRead('1'));
+    });
   });
 });

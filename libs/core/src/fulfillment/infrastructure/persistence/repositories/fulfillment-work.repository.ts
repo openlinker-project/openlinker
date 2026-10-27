@@ -123,6 +123,7 @@ import {
   type FulfillmentWorkStatus,
 } from '../../../domain/types/fulfillment-work-status.types';
 import type { FulfillmentWorkRejection } from '../../../domain/types/fulfillment-work-rejection.types';
+import type { FulfillmentWorkProgress } from '../../../domain/types/order-work-summary.types';
 import type { ParcelVerificationEvent } from '../../../domain/types/fulfillment-verification.types';
 import {
   clampWorklistLimit,
@@ -345,6 +346,50 @@ export class FulfillmentWorkRepository implements FulfillmentWorkRepositoryPort 
       return this.toDomain(header, lines);
     } catch (error) {
       throw new FulfillmentPersistenceError('findById', error);
+    }
+  }
+
+  async findProgressByOrderIds(
+    orderIds: readonly string[]
+  ): Promise<ReadonlyArray<FulfillmentWorkProgress & { readonly orderId: string }>> {
+    if (orderIds.length === 0) return [];
+    try {
+      // `orderId` leads `IDX_fulfillment_works_grouping`, which serves this
+      // `IN (...)`. Header columns only - no lines are hydrated, which is the point of a list-page read - plus one
+      // EXISTS per work on the verification ledger (a same-context entity, so it
+      // is joined through its ORM entity rather than a raw table name).
+      const liveScan = this.verifications
+        .createQueryBuilder('v')
+        .select('1')
+        .where('v.fulfillmentWorkId = fw.id')
+        .andWhere('v.voidedAt IS NULL')
+        .getQuery();
+      const rows = await this.works
+        .createQueryBuilder('fw')
+        .select('fw.orderId', 'orderId')
+        .addSelect('fw.status', 'status')
+        .addSelect('fw.parcelClosedAt', 'parcelClosedAt')
+        .addSelect('fw.assignedToUserId', 'assignedToUserId')
+        .addSelect(`EXISTS (${liveScan})`, 'hasVerification')
+        .where('fw.orderId IN (:...orderIds)', { orderIds: [...orderIds] })
+        .getRawMany<{
+          orderId: string;
+          status: string;
+          parcelClosedAt: Date | string | null;
+          assignedToUserId: string | null;
+          hasVerification: boolean;
+        }>();
+      return rows.map((row) => ({
+        orderId: row.orderId,
+        // Cast at the boundary, like every other status read in this file: the
+        // column is plain `text` and the union is enforced in TypeScript.
+        status: row.status as FulfillmentWorkStatus,
+        parcelClosedAt: row.parcelClosedAt === null ? null : new Date(row.parcelClosedAt),
+        assignedToUserId: row.assignedToUserId,
+        hasVerification: row.hasVerification === true,
+      }));
+    } catch (error) {
+      throw new FulfillmentPersistenceError('findProgressByOrderIds', error);
     }
   }
 

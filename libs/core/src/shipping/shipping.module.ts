@@ -47,6 +47,7 @@ import { PickupPointRefreshService } from './application/services/pickup-point-r
 import { ShipmentDispatchNotificationService } from './application/services/shipment-dispatch-notification.service';
 import { ShipmentStatusSyncService } from './application/services/shipment-status-sync.service';
 import { FulfillmentStatusSyncService } from './application/services/fulfillment-status-sync.service';
+import { SourceFulfillmentStatusSyncService } from './application/services/source-fulfillment-status-sync.service';
 import { ShipmentLabelService } from './application/services/shipment-label.service';
 import { OrderFulfillmentProjectionService } from './application/services/order-fulfillment-projection.service';
 import { ShipmentLineService } from './application/services/shipment-line.service';
@@ -56,6 +57,7 @@ import {
   BULK_SHIPMENT_DISPATCH_SERVICE_TOKEN,
   FULFILLMENT_STATUS_SYNC_SERVICE_TOKEN,
   FULFILLMENT_WORK_DISPATCH_ROUTER_SERVICE_TOKEN,
+  SOURCE_FULFILLMENT_STATUS_SYNC_SERVICE_TOKEN,
   ORDER_FULFILLMENT_PROJECTION_SERVICE_TOKEN,
   PICKUP_POINT_CACHE_TOKEN,
   PICKUP_POINT_LOOKUP_SERVICE_TOKEN,
@@ -184,6 +186,14 @@ import {
       provide: FULFILLMENT_STATUS_SYNC_SERVICE_TOKEN,
       useExisting: FulfillmentStatusSyncService,
     },
+    // Source-side twin of the branch-1 read-back: records a waybill the order's
+    // SOURCE reports when somebody other than OL shipped it there, and relays it
+    // to the order's destinations (ADR-012 amendment).
+    SourceFulfillmentStatusSyncService,
+    {
+      provide: SOURCE_FULFILLMENT_STATUS_SYNC_SERVICE_TOKEN,
+      useExisting: SourceFulfillmentStatusSyncService,
+    },
     // #884 label-document fetch seam: resolves the shipment's provider adapter
     // and narrows the LabelDocumentReader sub-capability. Read-only.
     ShipmentLabelService,
@@ -244,6 +254,7 @@ import {
     SHIPMENT_DISPATCH_NOTIFICATION_SERVICE_TOKEN,
     SHIPMENT_STATUS_SYNC_SERVICE_TOKEN,
     FULFILLMENT_STATUS_SYNC_SERVICE_TOKEN,
+    SOURCE_FULFILLMENT_STATUS_SYNC_SERVICE_TOKEN,
     SHIPMENT_LABEL_SERVICE_TOKEN,
     FULFILLMENT_WORK_DISPATCH_ROUTER_SERVICE_TOKEN,
   ],

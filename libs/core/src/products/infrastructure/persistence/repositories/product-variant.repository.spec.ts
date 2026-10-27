@@ -191,3 +191,75 @@ describe('ProductVariantRepository priceBasisPending (ADR-077)', () => {
     expect(ormRepo.createQueryBuilder).not.toHaveBeenCalled();
   });
 });
+
+/**
+ * Variant images: master-derived like `attributes`, so the sync upsert owns the
+ * column - it writes what the master reported, and `null` when it reported
+ * nothing, so a picture removed at the master does not linger.
+ */
+describe('ProductVariantRepository images', () => {
+  let ormRepo: { save: jest.Mock; findOne: jest.Mock };
+  let repository: ProductVariantRepository;
+
+  const baseVariant: ProductVariant = {
+    id: 'ol_variant_1',
+    productId: 'ol_product_1',
+    sku: 'SKU-1',
+    attributes: { Kolor: 'czerwony' },
+    ean: null,
+    gtin: null,
+  };
+
+  const savedEntity = (): ProductVariantOrmEntity =>
+    (ormRepo.save.mock.calls as ProductVariantOrmEntity[][])[0][0];
+
+  beforeEach(() => {
+    ormRepo = {
+      save: jest.fn((entity: ProductVariantOrmEntity) => Promise.resolve(entity)),
+      findOne: jest.fn(),
+    };
+    repository = new ProductVariantRepository(
+      ormRepo as unknown as Repository<ProductVariantOrmEntity>
+    );
+  });
+
+  it('should write the images the master reported for the variant', async () => {
+    await repository.upsert({ ...baseVariant, images: ['https://shop/gfx/314.jpg'] });
+
+    expect(savedEntity().images).toEqual(['https://shop/gfx/314.jpg']);
+  });
+
+  it.each([
+    ['reported null', null],
+    ['reported nothing', undefined],
+  ])('should clear the column when the master %s', async (_label, images) => {
+    await repository.upsert({ ...baseVariant, images });
+
+    expect(savedEntity().images).toBeNull();
+  });
+
+  it('should read the stored images back onto the variant', async () => {
+    ormRepo.findOne.mockResolvedValue({
+      ...baseVariant,
+      price: null,
+      images: ['https://shop/gfx/314.jpg'],
+      isStale: false,
+      staleAt: null,
+      priceBasisPending: false,
+      taxRate: null,
+      taxRateCountry: null,
+      taxRateReadAt: null,
+      taxRateUnknownReason: null,
+      weightGrams: null,
+      lengthMm: null,
+      widthMm: null,
+      heightMm: null,
+      createdAt: new Date('2026-10-01T00:00:00Z'),
+      updatedAt: new Date('2026-10-01T00:00:00Z'),
+    });
+
+    const variant = await repository.findById('ol_variant_1');
+
+    expect(variant?.images).toEqual(['https://shop/gfx/314.jpg']);
+  });
+});

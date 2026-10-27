@@ -20,8 +20,10 @@
  *
  * Covers: dispatch relay (born-dispatched → source `write({dispatched})`), the
  * at-most-once transition gate (re-poll does not re-fire), the cancel relay
- * (#1170), and marketplace-rejection surfacing (a source `rejected` is reported,
- * never silently dropped, and does not break the sync loop).
+ * (#1170), marketplace-rejection surfacing (a source `rejected` is reported,
+ * never silently dropped, and does not break the sync loop), and own-cancel echo
+ * suppression (a destination cancel on an order the source already cancelled
+ * writes no shipment row and relays nothing).
  *
  * @module apps/api/test/integration
  */
@@ -85,7 +87,10 @@ describe('Fulfillment Status Sync → Source Relay Integration', () => {
    * resolves, and an OrderRecord mirrored to the destination (branch-1 by the
    * routing default — no rule = `omp_fulfilled`). Returns the dest connection id.
    */
-  async function seed(internalOrderId: string): Promise<{ destConnectionId: string }> {
+  async function seed(
+    internalOrderId: string,
+    options: { cancelledAt?: Date } = {},
+  ): Promise<{ destConnectionId: string }> {
     const dataSource = harness.getDataSource();
     const source = await createTestConnection(dataSource, {
       platformType: 'allegro',
@@ -116,6 +121,7 @@ describe('Fulfillment Status Sync → Source Relay Integration', () => {
       syncStatus: [
         { destinationConnectionId: dest.id, status: 'synced', externalOrderId: DEST_EXTERNAL_ID },
       ],
+      ...(options.cancelledAt ? { cancelledAt: options.cancelledAt } : {}),
     });
 
     return { destConnectionId: dest.id };
@@ -186,5 +192,22 @@ describe('Fulfillment Status Sync → Source Relay Integration', () => {
     ]);
     expect(result.created).toBe(1);
     expect(result.failed).toBe(0);
+  });
+
+  it('writes no shipment row and relays nothing when the destination echoes an OL-recorded cancel', async () => {
+    const internalOrderId = 'ol_order_relay_cancel_echo_1';
+    const { destConnectionId } = await seed(internalOrderId, {
+      cancelledAt: new Date('2026-05-27T09:30:00.000Z'),
+    });
+    stubs.dest.setNextSnapshot({ status: 'cancelled', trackingNumber: null, deliveredAt: null });
+
+    const result = await syncService().sync(destConnectionId, { limit: 50 });
+
+    expect(result).toMatchObject({ created: 0, skipped: 1, failed: 0 });
+    expect(stubs.source.writebackCalls).toEqual([]);
+    const rows: unknown[] = await harness
+      .getDataSource()
+      .query(`SELECT "id" FROM "shipments" WHERE "orderId" = $1`, [internalOrderId]);
+    expect(rows).toHaveLength(0);
   });
 });

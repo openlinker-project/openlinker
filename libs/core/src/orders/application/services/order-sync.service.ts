@@ -38,6 +38,8 @@ import type {
   OrderSyncResult,
 } from '../interfaces/order-sync.service.interface';
 import type { OrderProcessorManagerPort } from '../../domain/ports/order-processor-manager.port';
+import { lowersStockOnOrderCreate } from '../../domain/ports/capabilities/order-create-stock-effect.capability';
+import { isOrderContactRefresher } from '../../domain/ports/capabilities/order-contact-refresher.capability';
 import type { OrderCreate, OrderRef } from '../../domain/types/order-processor.types';
 import { OrderStatusValues } from '../../domain/types/order.types';
 import { IIntegrationsService } from '@openlinker/core/integrations';
@@ -53,15 +55,32 @@ import {
 } from '@openlinker/core/identifier-mapping';
 import { Logger } from '@openlinker/shared/logging';
 import { NoOrderDestinationsAvailableException } from '../../domain/exceptions/no-order-destinations-available.exception';
+import type { DestinationRoutingBlock } from '../../domain/types/destination-routing-block.types';
+import { deriveDestinationRoutingBlock } from '../../domain/types/destination-routing-block.types';
 import { OrderCreateContendedException } from '../../domain/exceptions/order-create-contended.exception';
 import { ORDER_CREATE_LOCK_TTL_MS, orderCreateLockKey } from './order-create-lock';
 import { IOrderRecordService } from '../interfaces/order-record.service.interface';
 import { IOrderHoldService } from '../interfaces/order-hold.service.interface';
 import {
+  MASTER_ABSORBED_RESERVATION_SERVICE_TOKEN,
   POST_SALE_INVENTORY_REFRESH_SERVICE_TOKEN,
+  type IMasterAbsorbedReservationService,
   type IPostSaleInventoryRefreshService,
 } from '@openlinker/core/inventory';
 import { ORDER_HOLD_SERVICE_TOKEN, ORDER_RECORD_SERVICE_TOKEN } from '../../orders.tokens';
+
+/** What one destination create did: a fresh order, or the one an earlier run made. */
+interface DestinationCreateOutcome {
+  readonly orderRef: OrderRef;
+  /** `false` when the order already existed there and no create was issued. */
+  readonly created: boolean;
+}
+
+/** A successful destination, and whether it declared that the create lowered its stock. */
+interface SettledDestination extends DestinationCreateOutcome {
+  readonly connectionId: string;
+  readonly lowersStock: boolean;
+}
 
 @Injectable()
 export class OrderSyncService implements IOrderSyncService {
@@ -81,7 +100,9 @@ export class OrderSyncService implements IOrderSyncService {
     @Inject(ORDER_HOLD_SERVICE_TOKEN)
     private readonly orderHoldService: IOrderHoldService,
     @Inject(POST_SALE_INVENTORY_REFRESH_SERVICE_TOKEN)
-    private readonly postSaleInventoryRefresh: IPostSaleInventoryRefreshService
+    private readonly postSaleInventoryRefresh: IPostSaleInventoryRefreshService,
+    @Inject(MASTER_ABSORBED_RESERVATION_SERVICE_TOKEN)
+    private readonly masterAbsorbedReservations: IMasterAbsorbedReservationService
   ) {}
 
   async syncOrder(request: OrderSyncRequest): Promise<OrderSyncResult[]> {
@@ -97,14 +118,42 @@ export class OrderSyncService implements IOrderSyncService {
       requestedDestinations
     );
 
-    // #2397 — an empty destination list now conflates THREE conditions, and
-    // only one of them is a non-event. `listCapabilityAdapters` is active-only,
-    // so they must be told apart here:
+    // #2703 / #2704 — the ONE write point for the destination-routing block.
+    //
+    // It sits here, above every branch, so the cancelled / held / dispatched /
+    // thrown paths each get exactly one write and cannot drift apart. The value
+    // is level-triggered: a run that narrows nothing writes `null`, which is the
+    // only thing that clears a stale reason once the routing configuration is
+    // fixed. On the throwing branches below it has already been persisted, which
+    // is the point — #2704 asks that an operator be able to see that a NAMED
+    // destination was unreachable rather than that "nothing is configured".
+    //
+    // Note the one branch this cannot cover: when the fulfilment intercept HOLDS
+    // an order, `syncOrder` is never called at all, so `OrderIngestionService`
+    // clears the reason there. Without that, a stale routing reason would stand
+    // beside a fresh `fulfillmentBlockReason` and assert "the router sent this
+    // nowhere" about an order that is in fact held.
+    await this.persistDestinationRoutingBlock(
+      order.id,
+      deriveDestinationRoutingBlock({
+        requestedDestinationIds: requestedDestinations,
+        resolvedCount: destinations.length,
+        unresolvedRequestedIds,
+      })
+    );
+
+    // #2397 — an empty destination list conflates THREE conditions, and only one
+    // of them is a non-event. `listCapabilityAdapters` is active-only, so they
+    // must be told apart here:
     //
     //   (a) nothing configured / everything inactive  -> throw, as today
     //   (b) the router deliberately named NOBODY      -> warn, return []
     //   (c) the router named ids none of which are
     //       currently eligible                        -> throw, naming them
+    //
+    // All three are now ALSO persisted as an operator-visible reason by the
+    // write above — (a) writes `null`, since "nothing configured" is not a
+    // routing narrowing and the resulting failed job is what reports it.
     if (destinations.length === 0) {
       if (requestedDestinations !== undefined && requestedDestinations.length === 0) {
         // (b) Ruling 1 — a deliberate empty routing decision is a NON-EVENT and
@@ -122,10 +171,14 @@ export class OrderSyncService implements IOrderSyncService {
         // this file's own philosophy: `skipped_cancelled` and `skipped_held`
         // exist precisely so "nothing went wrong" cannot be routed into a retry.
         //
-        // KNOWN COST (recorded, not hidden): no `syncStatus` row is written, so
-        // on `/orders` today such an order is indistinguishable from one with
-        // nothing configured — both render "No destinations". That is a real
-        // operator-facing gap in the surface, not a reason to throw here.
+        // The #2397 known cost is CLOSED (#2703): no `syncStatus` row is
+        // written — still correct, since there is no destination to key one on
+        // — but the order now carries a persisted
+        // `destinationRoutingBlockReason` of `'routed-to-no-destination'`, so
+        // `/orders` renders a working router making a decision distinctly from
+        // a configuration that was never set up. It is rendered NEUTRALLY and
+        // never counted: on an install that legitimately routes some orders
+        // nowhere this is a large, permanent and entirely healthy population.
         this.logger.warn(
           `Order ${order.id}: the routing decision named no destination for source connection ` +
             `${sourceConnectionId}; no destination provisioning and no sync-status rows written`
@@ -134,12 +187,20 @@ export class OrderSyncService implements IOrderSyncService {
       }
 
       // (a) and (c). The exception distinguishes them by whether it carries the
-      // unresolved ids. (c) is a genuine NEW regression: an order whose only
-      // routed destination is momentarily disabled becomes a total failure,
-      // where an unfiltered fan-out would still have reached its siblings. It
-      // throws rather than returning [] because the router asked for a
-      // destination and OpenLinker could not reach it — and the retry that
-      // follows is appropriate, since a disabled connection can be re-enabled.
+      // unresolved ids, and #2704 additionally persists (c) as
+      // `'routed-destinations-unavailable'` before this throw.
+      //
+      // #2704 RESOLVED: a routing decision is a REQUIREMENT, not a preference.
+      // It still throws rather than falling back to a sibling destination —
+      // the router asked for a destination OpenLinker could not reach, the
+      // retry that follows is appropriate since a disabled connection can be
+      // re-enabled, and substituting a different destination would be a ROUTING
+      // decision taken by the fan-out. This service resolves no router by
+      // design (see the file header), so it is not the layer that may choose
+      // one; a fallback ORDER is a router rule, and #2704 defers that to the
+      // router's own semantics. A silent substitution is worse than the failure
+      // it replaces. What changes here is only that the failure is now
+      // operator-visible as a NAMED unreachable destination.
       //
       // The ids handed over are the SOURCE-ECHO-EXCLUDED set, never the raw
       // request: naming the source connection as "not an eligible destination"
@@ -312,7 +373,27 @@ export class OrderSyncService implements IOrderSyncService {
     const settled = await Promise.allSettled(
       destinations.map(({ connectionId, adapter }) =>
         this.createOrderIdempotently(adapter, connectionId, order.id, orderCreate).then(
-          (orderRef) => ({ connectionId, orderRef })
+          async ({ orderRef, created }): Promise<SettledDestination> => {
+            // Outside the create lock (released by now) and only for an order
+            // that already existed there: a fresh create carried this data.
+            if (!created) {
+              await this.refreshDestinationContact(
+                adapter,
+                connectionId,
+                order.id,
+                orderRef,
+                orderCreate
+              );
+            }
+            return {
+              connectionId,
+              orderRef,
+              created,
+              // Asked after the create so an adapter can answer from the shop's
+              // own setting; never throws, so it cannot fail a create that landed.
+              lowersStock: await lowersStockOnOrderCreate(adapter),
+            };
+          }
         )
       )
     );
@@ -335,6 +416,11 @@ export class OrderSyncService implements IOrderSyncService {
       this.logger.warn(`Order ${order.id} create contended on a destination; retrying sync job`);
       throw contended.reason;
     }
+
+    // Runs BEFORE the post-sale refresh is enqueued, so that refresh - whose
+    // `setInventory` propagates the master's lowered number - can only ever
+    // read an ATP where the absorbed hold is already gone.
+    await this.consumeHoldsAbsorbedByDestinations(order, settled);
 
     // Best-effort post-sale close of the "it sold, so re-read the master and
     // propagate" loop (#2623). The sweep (`master.inventory.syncAll`) is the
@@ -394,6 +480,97 @@ export class OrderSyncService implements IOrderSyncService {
   }
 
   /**
+   * Consume the advisory holds each successful destination has absorbed.
+   *
+   * A destination that is also the product master owning a reserved position
+   * lowers its own stock when the order is created there, so a `published` hold
+   * for the same units would otherwise subtract them twice from what
+   * marketplaces are told, until the dispatch consume. Which holds qualify is
+   * the inventory context's decision (`IMasterAbsorbedReservationService`);
+   * this only says which connections received the order.
+   *
+   * Runs for a skipped create as well as a fresh one, because a re-ingestion is
+   * how a hold left open by an earlier run (or by a release that predates this
+   * step) gets closed. A fresh create does not republish here: the post-sale
+   * re-read enqueued right after does it with the master's new number. A
+   * skipped create does, since its re-read already ran and its key is spent.
+   *
+   * Only a destination that DECLARES the create lowers its stock
+   * (`OrderCreateStockEffect`) is asked. The assumption is per shop, not
+   * global: a shop configured not to subtract stock on purchase never removed
+   * the units, so consuming its holds would over-promise until the next master
+   * sync. An undeclared destination keeps its holds until dispatch.
+   *
+   * Best-effort: the destination create is the correctness-critical half and is
+   * already done. A failure leaves the hold standing - an under-sell until
+   * dispatch, never an oversell - and the next re-ingestion retries it.
+   */
+  private async consumeHoldsAbsorbedByDestinations(
+    order: OrderSyncRequest['order'],
+    settled: ReadonlyArray<PromiseSettledResult<SettledDestination>>
+  ): Promise<void> {
+    const productIds = order.items.map((item) => item.productId);
+    for (const outcome of settled) {
+      if (outcome.status !== 'fulfilled') continue;
+      const { connectionId, created, lowersStock } = outcome.value;
+      if (!lowersStock) {
+        this.logger.debug(
+          `Destination ${connectionId} does not declare that an order create lowers its stock; ` +
+            `order ${order.id} keeps its holds until dispatch`
+        );
+        continue;
+      }
+      try {
+        await this.masterAbsorbedReservations.consumeAbsorbedHolds({
+          orderRecordId: order.id,
+          masterConnectionId: connectionId,
+          productIds,
+          propagate: !created,
+        });
+      } catch (error) {
+        this.logger.warn(
+          `Could not consume holds absorbed by destination ${connectionId} for order ` +
+            `${order.id}; they stay until dispatch or the next re-ingestion: ` +
+            `${error instanceof Error ? error.message : String(error)}`
+        );
+      }
+    }
+  }
+
+  /**
+   * Let a destination that already holds this order reconcile contact fields
+   * the source revealed only after the first create (`OrderContactRefresher`).
+   *
+   * Without it a re-ingested order never reaches the destination again: the
+   * recorded mapping makes every later run skip the create, so a stand-in the
+   * destination needed at create time (a contact field the source had not
+   * provided yet) would stay forever. What to change, and what to leave alone
+   * because an operator already fixed it, is the adapter's decision.
+   *
+   * Best-effort and never throws: the order is already at the destination, so a
+   * failure here is warn-logged and the sync result stays a success. The next
+   * re-ingestion asks again.
+   */
+  private async refreshDestinationContact(
+    adapter: OrderProcessorManagerPort,
+    destinationConnectionId: string,
+    internalOrderId: string,
+    orderRef: OrderRef,
+    orderCreate: OrderCreate
+  ): Promise<void> {
+    if (!isOrderContactRefresher(adapter)) return;
+    try {
+      await adapter.refreshOrderContact({ externalOrderId: orderRef.orderId, order: orderCreate });
+    } catch (error) {
+      this.logger.warn(
+        `Could not refresh contact details of order ${internalOrderId} at destination ` +
+          `${destinationConnectionId} (destination order: ${orderRef.orderId}): ` +
+          `${error instanceof Error ? error.message : String(error)}`
+      );
+    }
+  }
+
+  /**
    * Create one order at one destination, idempotently, under a per-(order,
    * destination) lock — platform-agnostically, with no per-adapter create-or-skip
    * code (#909).
@@ -415,7 +592,7 @@ export class OrderSyncService implements IOrderSyncService {
     destinationConnectionId: string,
     internalOrderId: string,
     orderCreate: OrderCreate
-  ): Promise<OrderRef> {
+  ): Promise<DestinationCreateOutcome> {
     const lockKey = orderCreateLockKey(destinationConnectionId, internalOrderId);
     const token = await this.syncLock.acquire(lockKey, ORDER_CREATE_LOCK_TTL_MS);
 
@@ -426,7 +603,7 @@ export class OrderSyncService implements IOrderSyncService {
           `Order ${internalOrderId} already present at destination ${destinationConnectionId} ` +
             `(concurrent create resolved); skipping create`
         );
-        return { orderId: existing };
+        return { orderRef: { orderId: existing }, created: false };
       }
       throw new OrderCreateContendedException(internalOrderId, destinationConnectionId);
     }
@@ -440,7 +617,7 @@ export class OrderSyncService implements IOrderSyncService {
           `Order ${internalOrderId} already present at destination ${destinationConnectionId}; ` +
             `skipping create`
         );
-        return { orderId: existing };
+        return { orderRef: { orderId: existing }, created: false };
       }
 
       // Create-then-record is non-atomic: if createOrder succeeds but
@@ -457,7 +634,7 @@ export class OrderSyncService implements IOrderSyncService {
         orderRef,
         orderCreate.orderNumber
       );
-      return orderRef;
+      return { orderRef, created: true };
     } finally {
       // Best-effort release — never let a release failure mask the create result.
       try {
@@ -528,17 +705,65 @@ export class OrderSyncService implements IOrderSyncService {
   }
 
   /**
+   * Persist the destination-routing block, best-effort (#2703 / #2704).
+   *
+   * NEVER allowed to fail the sync, and never allowed to mask a real error: on
+   * the throwing branches this runs BEFORE the throw, so an exception raised
+   * here would replace `NoOrderDestinationsAvailableException` with a
+   * persistence fault and tell the operator the wrong thing entirely. The block
+   * is an operator-facing explanation, not a correctness input — mirroring
+   * `OrderIngestionService.persistFulfillmentOutcome`.
+   */
+  private async persistDestinationRoutingBlock(
+    internalOrderId: string,
+    block: DestinationRoutingBlock | null
+  ): Promise<void> {
+    try {
+      await this.orderRecordService.markDestinationRoutingBlock(internalOrderId, block);
+    } catch (error) {
+      const errorName = error instanceof Error ? error.name : 'UnknownError';
+      // ERROR, not warn, for two reasons. Losing this write means the operator
+      // loses the reason entirely and `/orders` falls back to the ambiguous "No
+      // destinations" — which is precisely the silence #2703 exists to remove,
+      // so it is not a warning about routing but a failure of OL's own
+      // bookkeeping. It also keeps the `warn` channel meaning exactly one thing
+      // on this path (the router narrowed the fan-out), which is what lets the
+      // #2397 tests assert a warn COUNT without a bookkeeping failure inflating
+      // it — a collision that surfaced as three failing tests rather than as a
+      // wrong log level, and would otherwise have been read as noise.
+      this.logger.error(
+        `Failed to persist the destination-routing block (swallowed): ` +
+          `error=${errorName} orderId=${internalOrderId} reason=${block?.reason ?? 'none'}`
+      );
+    }
+  }
+
+  /**
    * Resolve the destinations to dispatch to, applying the optional router
    * filter (#2397).
    *
-   * `unresolvedRequestedIds` is present ONLY when a filter was supplied AND
-   * nothing resolved — it is then the requested ids that named no eligible
-   * destination, source echoes already removed and deduped, and is EMPTY when
-   * every id named the source itself. `undefined` otherwise, so the field
-   * never has to be read together with `destinations` to be understood.
+   * `unresolvedRequestedIds` reads as THREE states (#2703 / #2704 widened this
+   * from #2397's two):
    *
-   * Each narrowing is reported exactly once: partially here as a warn, fully
-   * by the exception `syncOrder` raises from these ids.
+   *   - `undefined` — NO routing filter was supplied. The meaningful
+   *     distinction, and the state every install is in today.
+   *   - `[]` — a filter was supplied and every named id resolved (or every one
+   *     of them named the source itself, which the caller tells apart by the
+   *     request being non-empty).
+   *   - non-empty — some or all named ids resolved to no eligible destination,
+   *     source echoes already removed and deduped.
+   *
+   * #2397 returned the ids ONLY when nothing resolved, so that the field never
+   * had to be read together with `destinations`. That property is deliberately
+   * given up here: the PARTIAL case is exactly the combination
+   * `destinations.length > 0 && unresolved.length > 0`, and before #2704 it was
+   * reported by a `logger.warn` and nothing else — the order mirrored to fewer
+   * destinations than routing asked for with nothing outside the log to say so.
+   * The exception path is unaffected, since it only ever reads this field when
+   * `destinations` is empty.
+   *
+   * Source-echo ids are excluded from the unresolved set, and that exclusion is
+   * load-bearing rather than cosmetic — see the body.
    */
   private async resolveDestinations(
     sourceConnectionId: string,
@@ -606,14 +831,16 @@ export class OrderSyncService implements IOrderSyncService {
       );
     }
 
-    // Reported ONLY when nothing resolved. With a non-empty `filtered` the
-    // partial-narrowing warn above has already said everything there is to
-    // say, and returning `[]` there would make one value mean two different
-    // things — "everything resolved" and "only the source was named" — which
-    // is exactly the conflation this change exists to remove one level up.
-    return filtered.length > 0
-      ? { destinations: filtered }
-      : { destinations: filtered, unresolvedRequestedIds: unresolved };
+    // Always reported once a filter was supplied (#2704). The pre-#2704 rule
+    // returned the ids only when NOTHING resolved, which made the partial case
+    // — the order mirroring to fewer destinations than routing asked for —
+    // structurally invisible to the caller and therefore to the operator.
+    //
+    // "Everything resolved" and "only the source was named" are still told
+    // apart, and now by the caller rather than by this return: both yield `[]`
+    // here, and `syncOrder` distinguishes them by whether `destinations` is
+    // empty, which is the fact that actually separates the two.
+    return { destinations: filtered, unresolvedRequestedIds: unresolved };
   }
 
   /**

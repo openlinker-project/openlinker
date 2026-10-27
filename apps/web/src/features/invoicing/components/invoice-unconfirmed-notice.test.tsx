@@ -59,6 +59,17 @@ describe('InvoiceUnconfirmedNotice', () => {
       expect(screen.getByText(/e-paragony Sandbox did not answer in time\./)).toBeInTheDocument();
     });
 
+    it('should say the provider answered, not that it timed out, when the answer was inconclusive', () => {
+      renderNotice({ failureCode: 'provider-answer-inconclusive' });
+
+      expect(
+        screen.getByText(
+          /e-paragony Sandbox answered, but not in a way that says whether the invoice was created\./,
+        ),
+      ).toBeInTheDocument();
+      expect(screen.queryByText(/did not answer in time/)).not.toBeInTheDocument();
+    });
+
     it('should not claim a timeout when the failure code is something else', () => {
       renderNotice({ failureCode: null });
 

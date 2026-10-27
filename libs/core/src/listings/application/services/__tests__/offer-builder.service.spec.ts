@@ -30,7 +30,7 @@ import { createFakeAvailabilityService } from './fake-availability-service';
 describe('OfferBuilderService', () => {
   let service: OfferBuilderService;
   let productsService: jest.Mocked<
-    Pick<IProductsService, 'getVariant' | 'getVariantsByProductId' | 'getEffectiveTaxRate'>
+    Pick<IProductsService, 'getVariant' | 'getVariantsByProductId' | 'getEffectiveTaxRate' | 'getProduct'>
   >;
   let connectionPort: jest.Mocked<Pick<ConnectionPort, 'get'>>;
   let integrationsService: jest.Mocked<Pick<IIntegrationsService, 'getCapabilityAdapter'>>;
@@ -73,6 +73,9 @@ describe('OfferBuilderService', () => {
       getEffectiveTaxRate: jest
         .fn()
         .mockResolvedValue({ code: null, countryIso2: null, readAt: null }),
+      // The stored projection is read only as the GPSR fallback; nothing
+      // stored by default.
+      getProduct: jest.fn().mockResolvedValue(null),
     };
     connectionPort = {
       get: jest.fn().mockResolvedValue(defaultConnection as Connection),
@@ -694,6 +697,21 @@ describe('OfferBuilderService', () => {
       expect(result.overrides?.imageUrls).toEqual(['https://example.com/custom.jpg']);
     });
 
+    it('should use the master name when overrides.title is blank', async () => {
+      // The bulk editor sends `title: ''` for a variant whose title field was
+      // cleared; publishing that would create an offer with no title.
+      for (const blank of ['', '   ']) {
+        const result = await service.buildCreateOfferCommand({
+          internalVariantId: VARIANT_ID,
+          connectionId: MARKETPLACE_CONN_ID,
+          stock: 1,
+          overrides: { title: blank },
+        });
+
+        expect(result.overrides?.title).toBe('Test Product');
+      }
+    });
+
     it('shapes the description with the format the destination DECLARES, not the fallback', async () => {
       // The point of ADR-046: the destination's own declaration drives the
       // shaping. This format allows `h3`, which the conservative fallback does
@@ -1104,6 +1122,21 @@ describe('OfferBuilderService', () => {
       expect(result.variantGroup).toBeUndefined();
     });
 
+    it('should leave variantGroup absent when the only sibling was deleted at the master', async () => {
+      productsService.getVariantsByProductId.mockResolvedValue([
+        defaultVariant,
+        { ...siblingVariant, isStale: true } as ProductVariant,
+      ]);
+
+      const result = await service.buildCreateOfferCommand({
+        internalVariantId: VARIANT_ID,
+        connectionId: MARKETPLACE_CONN_ID,
+        stock: 1,
+      });
+
+      expect(result.variantGroup).toBeUndefined();
+    });
+
     it('should populate the group ref with empty attributes when variant attributes are null', async () => {
       multiVariant(null);
 
@@ -1207,6 +1240,52 @@ describe('OfferBuilderService', () => {
     });
   });
 
+  describe('gpsr', () => {
+    const input = { internalVariantId: VARIANT_ID, connectionId: MARKETPLACE_CONN_ID, stock: 1 };
+    const gpsr = {
+      producer: { name: 'Acme Sp. z o.o.' },
+      safetyInformation: { text: 'Keep away from children.' },
+    };
+
+    it('should thread the live master gpsr onto the command when the master reports it', async () => {
+      const live = await productMaster.getProduct();
+      productMaster.getProduct.mockResolvedValue({ ...live, gpsr });
+
+      const result = await service.buildCreateOfferCommand(input);
+
+      expect(result.gpsr).toEqual(gpsr);
+      expect(productsService.getProduct).not.toHaveBeenCalled();
+    });
+
+    it('should leave gpsr absent without a fallback read when the master reports none', async () => {
+      const live = await productMaster.getProduct();
+      productMaster.getProduct.mockResolvedValue({ ...live, gpsr: null });
+
+      const result = await service.buildCreateOfferCommand(input);
+
+      expect(result).not.toHaveProperty('gpsr');
+      expect(productsService.getProduct).not.toHaveBeenCalled();
+    });
+
+    it('should fall back to the stored gpsr when the live master did not report it', async () => {
+      productsService.getProduct.mockResolvedValue({ gpsr } as never);
+
+      const result = await service.buildCreateOfferCommand(input);
+
+      expect(productsService.getProduct).toHaveBeenCalledWith('ol_product_456');
+      expect(result.gpsr).toEqual(gpsr);
+    });
+
+    it('should build the command without gpsr when the fallback read throws', async () => {
+      productsService.getProduct.mockRejectedValue(new Error('db down'));
+
+      const result = await service.buildCreateOfferCommand(input);
+
+      expect(result).not.toHaveProperty('gpsr');
+      expect(result.price).toEqual({ amount: 49.99, currency: 'PLN' });
+    });
+  });
+
   describe('condition default (#1500)', () => {
     it('defaults condition to "new" when the operator supplies none', async () => {
       const result = await service.buildCreateOfferCommand({
@@ -1227,6 +1306,78 @@ describe('OfferBuilderService', () => {
       });
 
       expect(result.condition).toBe('used');
+    });
+  });
+  describe('per-variant default images', () => {
+    const gfx = (id: number): string => `https://sklep729770.shoparena.pl/userdata/public/gfx/${id}.jpg`;
+    const variant = (id: string, images: string[] | null, isStale = false): ProductVariant =>
+      ({ ...defaultVariant, id, images, isStale }) as ProductVariant;
+    /** Product 161: stale base stock, red + yellow share 314, green 315, navy none. */
+    const P161 = {
+      base: variant('ol_variant_264', null, true),
+      red: variant('ol_variant_265', [gfx(314)]),
+      green: variant('ol_variant_266', [gfx(315)]),
+      navy: variant('ol_variant_267', null),
+      yellow: variant('ol_variant_268', [gfx(314)]),
+    };
+
+    async function imagesFor(
+      target: ProductVariant,
+      siblings: ProductVariant[],
+      gallery: string[],
+      overrideImages?: string[]
+    ): Promise<string[] | null | undefined> {
+      productsService.getVariant.mockResolvedValue(target);
+      productsService.getVariantsByProductId.mockResolvedValue(siblings);
+      productMaster.getProduct.mockResolvedValue({
+        id: 'ol_product_456',
+        name: 'OLE2E Kieliszek wariantowy',
+        sku: 'OLE2E-P1',
+        description: null,
+        price: 49.99,
+        currency: 'PLN',
+        images: gallery,
+      });
+      const result = await service.buildCreateOfferCommand({
+        internalVariantId: target.id,
+        connectionId: MARKETPLACE_CONN_ID,
+        stock: 1,
+        ...(overrideImages ? { overrides: { imageUrls: overrideImages } } : {}),
+      });
+      return result.overrides?.imageUrls;
+    }
+
+    const all161 = Object.values(P161);
+    const gallery161 = [gfx(312), gfx(313), gfx(314), gfx(315)];
+
+    it.each([
+      ['red', P161.red, [gfx(314), gfx(312), gfx(313)]],
+      ['yellow (shares 314 with red)', P161.yellow, [gfx(314), gfx(312), gfx(313)]],
+      ['green', P161.green, [gfx(315), gfx(312), gfx(313)]],
+      ['navy (no own image)', P161.navy, [gfx(312), gfx(313)]],
+    ])('lists %s with its own picture first and no sibling picture', async (_l, target, expected) => {
+      await expect(imagesFor(target, all161, gallery161)).resolves.toEqual(expected);
+    });
+
+    it('lists a simple product with the whole gallery (product 163)', async () => {
+      const only = variant('ol_variant_271', null);
+      await expect(imagesFor(only, [only], [gfx(318), gfx(319)])).resolves.toEqual([
+        gfx(318),
+        gfx(319),
+      ]);
+    });
+
+    it('lists the single variant of product 162 with its own picture first', async () => {
+      const v270 = variant('ol_variant_270', [gfx(317)]);
+      await expect(
+        imagesFor(v270, [variant('ol_variant_269', null, true), v270], [gfx(316), gfx(317)])
+      ).resolves.toEqual([gfx(317), gfx(316)]);
+    });
+
+    it('lets an operator image override win unchanged', async () => {
+      await expect(
+        imagesFor(P161.red, all161, gallery161, ['https://example.com/mine.jpg'])
+      ).resolves.toEqual(['https://example.com/mine.jpg']);
     });
   });
 });

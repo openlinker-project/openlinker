@@ -21,6 +21,7 @@ import type {
 } from '../../domain/types/order-record.types';
 import type { FulfillmentRollupState } from '../../domain/types/order-fulfillment.types';
 import type { FulfillmentBlock, FulfillmentBlockReason } from '@openlinker/core/fulfillment';
+import type { DestinationRoutingBlock } from '../../domain/types/destination-routing-block.types';
 import type { FulfillmentRoutingSkipReason } from '../../domain/types/fulfillment-routing-eligibility.types';
 import type { HeldOrderRef } from '../../domain/ports/order-record-repository.port';
 import type {
@@ -307,6 +308,19 @@ export interface IOrderRecordService {
   markFulfillmentBlock(
     internalOrderId: string,
     block: FulfillmentBlock | null
+  ): Promise<void>;
+
+  /**
+   * Persist how a routing decision narrowed this order's destination fan-out
+   * (#2703 / #2704), or clear it with `null`.
+   *
+   * Level-triggered like {@link markFulfillmentBlock}: `OrderSyncService`
+   * re-decides on every run and writes the answer INCLUDING `null`, which is
+   * what clears a stale reason once the routing configuration is fixed.
+   */
+  markDestinationRoutingBlock(
+    internalOrderId: string,
+    block: DestinationRoutingBlock | null
   ): Promise<void>;
 
   /**

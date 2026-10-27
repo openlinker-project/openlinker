@@ -97,7 +97,8 @@ import {
   useWarningAcknowledgement,
   resolveIssueErrorMessage,
   isMissingNumberingSeriesError,
-  isConnectionSetupIncompleteError,
+  readConnectionSettingErrorCode,
+  isConnectionSettingFailureCode,
   deriveInvoiceDisplayStatus,
   canRetryInvoice,
   resolveFailureCopy,
@@ -440,6 +441,9 @@ export function SalesDocumentPanel({ order }: SalesDocumentPanelProps): ReactEle
 
   const invoiceDisplayStatus = deriveInvoiceDisplayStatus(invoice);
   const invoiceSettled = !invoiceQuery.isError && !invoiceQuery.isLoading;
+  // Computed once so the failure alert can tell whether the stored reason is
+  // already its headline (the connection-setting codes) and not repeat it.
+  const invoiceFailureHeadline = invoice ? resolveFailureCopy(invoice, t) : null;
 
   const issueOn = (connection: { id: string }): void => {
     issueAcknowledgement.reset();
@@ -485,12 +489,20 @@ export function SalesDocumentPanel({ order }: SalesDocumentPanelProps): ReactEle
           // error, so the panel shows what happened in place. Without this
           // the panel kept offering "Issue invoice" until a page reload.
           void invoiceQuery.refetch();
-          if (isConnectionSetupIncompleteError(error)) {
+          const connectionSettingCode = readConnectionSettingErrorCode(error);
+          if (connectionSettingCode !== null) {
             // Answered in place, like missing numbering: the refetched record
-            // renders an alert that names the missing setting and links to
-            // the connection. A toast on top would say it twice.
+            // renders an alert that names the setting and links to the
+            // connection. A toast on top would say it twice. The announcement
+            // follows the code the same way the Alert title does - a setting
+            // the provider refused is not a missing one.
             announce(
-              t('invoice.announce.connectionSetupIncomplete', 'The connection is missing a setting.'),
+              connectionSettingCode === 'connection-setting-rejected'
+                ? t(
+                    'invoice.announce.connectionSettingRejected',
+                    'The provider refused a setting on this connection.',
+                  )
+                : t('invoice.announce.connectionSetupIncomplete', 'The connection is missing a setting.'),
             );
             return;
           }
@@ -996,12 +1008,12 @@ export function SalesDocumentPanel({ order }: SalesDocumentPanelProps): ReactEle
                   and take the operator to the connection that holds it. The
                   link sits under the text rather than in the Alert's action
                   slot, which squeezes the sentence in a panel this narrow. */}
-              {invoice.failureCode === 'connection-setup-incomplete' ? (
+              {isConnectionSettingFailureCode(invoice.failureCode) ? (
                 <Alert
                   tone="warning"
-                  title={t(
-                    'invoice.setupIncomplete.title',
-                    '{connection} is not set up to issue invoices',
+                  title={(invoice.failureCode === 'connection-setting-rejected'
+                    ? t('invoice.settingRejected.title', '{connection} refused a setting on this connection')
+                    : t('invoice.setupIncomplete.title', '{connection} is not set up to issue invoices')
                   ).replace('{connection}', invoicingConnection?.name ?? t('invoice.setupIncomplete.thisConnection', 'This connection'))}
                   data-testid="invoice-setup-incomplete"
                 >
@@ -1019,7 +1031,20 @@ export function SalesDocumentPanel({ order }: SalesDocumentPanelProps): ReactEle
                 <div className="invoice-panel__inline-alert invoice-panel__inline-alert--error">
                   <span className="invoice-panel__inline-alert-bar" />
                   <span>
-                    <strong>{resolveFailureCopy(invoice, t)}</strong>
+                    <strong>{invoiceFailureHeadline}</strong>
+                    {/* The stored reason is PII-free by construction and, when
+                        the adapter vouched for it, carries the provider's own
+                        code - the one fact that tells an operator WHICH
+                        refusal this was. Same label as the in-doubt notice.
+                        Skipped when the headline already IS the reason, so
+                        the sentence is never shown twice whichever branch a
+                        code reaches. */}
+                    {invoice.failureReason && invoice.failureReason !== invoiceFailureHeadline ? (
+                      <span className="invoice-panel__inline-alert-detail text-muted" data-testid="invoice-failure-reason">
+                        {' '}
+                        {t('invoice.inDoubt.providerResponse', 'Provider response')}: {invoice.failureReason}
+                      </span>
+                    ) : null}
                   </span>
                 </div>
               )}

@@ -8,6 +8,7 @@
  * @module libs/core/src/products/infrastructure/persistence/entities
  */
 import { Entity, PrimaryColumn, Column, CreateDateColumn, UpdateDateColumn } from 'typeorm';
+import type { ProductGpsr } from '../../../domain/types/product-gpsr.types';
 
 @Entity('products')
 export class ProductOrmEntity {
@@ -88,6 +89,15 @@ export class ProductOrmEntity {
    */
   @Column({ type: 'varchar', length: 32, nullable: true })
   taxRateUnknownReason!: string | null;
+
+  /**
+   * GPSR data the ProductMaster stated (`ProductGpsr`), by value. Null when
+   * the master stated none or never reported any - the column cannot tell
+   * those apart, and nothing needs it to: both mean there is nothing to
+   * declare from the catalogue.
+   */
+  @Column({ type: 'jsonb', nullable: true })
+  gpsr!: ProductGpsr | null;
 
   @CreateDateColumn()
   createdAt!: Date;

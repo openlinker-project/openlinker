@@ -31,8 +31,8 @@ export interface InboundWebhookDecoderPort {
    * secret (e.g. cert-based) resolves its own material and may ignore `secret`.
    *
    * `query` carries the delivery URL's query parameters (first value of each
-   * key). It exists for a provider that authenticates by a token in the URL
-   * because it offers no signature a decoder can verify (Shoper). It is OPTIONAL
+   * key). It exists for a provider that also authenticates by a token in the
+   * delivery URL (Shoper, alongside its body signature). It is OPTIONAL
    * and ignored by every signature-based decoder, so adding it did not touch an
    * existing implementer. Never log it: it may hold the credential.
    */
