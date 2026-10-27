@@ -63,7 +63,11 @@ export class OmsMvpG05MockupPage {
         window.location.hash = s;
       }, state);
     }
-    await expect(this.stateRegion(state)).toBeVisible();
+    // Attached and not hidden, not toBeVisible(): several mockup states are an
+    // empty marker element (height 0) that Playwright treats as invisible even
+    // though it is the active state.
+    await expect(this.stateRegion(state)).toBeAttached();
+    await expect(this.stateRegion(state)).toHaveCount(1);
   }
 
   /** The named state's own section, only matched while it is the visible one. */
