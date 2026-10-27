@@ -34,6 +34,7 @@ import {
   readOrderCancelErrorCode,
   readRefundCeilingFigures,
   readServerReason,
+  remainingRefundable,
 } from '../lib/order-cancel';
 import { formatDecimalAmount } from '../lib/order-edit';
 
@@ -126,7 +127,7 @@ export function OrderDiscountRefundDialog({
             title="More than can still be refunded"
             data-testid="order-edit-refund-ceiling"
           >
-            {`This refund is ${ceiling.requested} ${ceiling.currency}, but only ${ceiling.ceiling} ${ceiling.currency} can still be refunded on this order (${ceiling.alreadyRefunded} ${ceiling.currency} already refunded).`}
+            {`This refund is ${ceiling.requested} ${ceiling.currency}, but only ${remainingRefundable(ceiling.ceiling, ceiling.alreadyRefunded)} ${ceiling.currency} can still be refunded on this order (${ceiling.alreadyRefunded} ${ceiling.currency} already refunded).`}
             <label className="order-cancel-check">
               <input
                 type="checkbox"

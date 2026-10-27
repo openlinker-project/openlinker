@@ -22,8 +22,9 @@ import type {
   DiscountPaymentBranch,
   DiscountRefundCeiling,
   OrderEditHistoryEntry,
+  OrderEditLineStock,
 } from '../api/order-edit.types';
-import { readErrorCodeFrom } from './order-cancel';
+import { readErrorCodeFrom, remainingRefundable } from './order-cancel';
 
 export const ORDER_EDIT_ERROR_CODES = [
   'ORDER_ALREADY_CANCELLED',
@@ -325,6 +326,38 @@ export const DISCOUNT_CORRECTION_UNAVAILABLE_COPY: Record<
     'OpenLinker could not draft the correction. Issue the correction from the invoice panel.',
 };
 
+/**
+ * What an edit's stock restore did, in operator words (E-52). A failed restore is
+ * a `warning` and names the server's reason; `not-applicable` is stated rather
+ * than hidden so silence never reads as "stock was put back".
+ */
+export function describeStockOutcome(stock: readonly OrderEditLineStock[]): {
+  tone: 'info' | 'warning';
+  text: string;
+} | null {
+  if (stock.length === 0) return null;
+  const failed = stock.filter((line) => line.stockRestored === false);
+  if (failed.length > 0) {
+    const reasons = Array.from(
+      new Set(failed.map((line) => line.detail).filter((d): d is string => Boolean(d))),
+    );
+    return {
+      tone: 'warning',
+      text: `Stock was not put back for ${failed.length === 1 ? 'one line' : `${failed.length} lines`}${
+        reasons.length > 0 ? ` (${reasons.join(', ')})` : ''
+      }. OpenLinker will try again.`,
+    };
+  }
+  const restored = stock.filter((line) => line.stockRestored === true).length;
+  if (restored > 0) {
+    return {
+      tone: 'info',
+      text: `Stock was put back for ${restored === 1 ? 'one line' : `${restored} lines`}.`,
+    };
+  }
+  return { tone: 'info', text: 'Stock was not changed: nothing needed putting back for this order.' };
+}
+
 /** The ceiling verdict as one operator sentence. */
 export function describeCeilingVerdict(ceiling: DiscountRefundCeiling): {
   tone: 'info' | 'warning';
@@ -333,13 +366,13 @@ export function describeCeilingVerdict(ceiling: DiscountRefundCeiling): {
   if (ceiling.status === 'within') {
     return {
       tone: 'info',
-      text: `Within what can still be refunded on this order (${ceiling.ceiling} ${ceiling.currency} left).`,
+      text: `Within what can still be refunded on this order (${remainingRefundable(ceiling.ceiling, ceiling.alreadyRefunded)} ${ceiling.currency} left).`,
     };
   }
   if (ceiling.status === 'exceeded') {
     return {
       tone: 'warning',
-      text: `More than can still be refunded on this order: ${ceiling.requested} ${ceiling.currency} requested, ${ceiling.ceiling} ${ceiling.currency} left after ${ceiling.alreadyRefunded} ${ceiling.currency} already refunded.`,
+      text: `More than can still be refunded on this order: ${ceiling.requested} ${ceiling.currency} requested, ${remainingRefundable(ceiling.ceiling, ceiling.alreadyRefunded)} ${ceiling.currency} left after ${ceiling.alreadyRefunded} ${ceiling.currency} already refunded.`,
     };
   }
   return {

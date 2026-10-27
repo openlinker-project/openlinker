@@ -153,7 +153,7 @@ describe('OrderEditedNotice (#3544)', () => {
     expect(onConfirmed).toHaveBeenCalledWith(expect.objectContaining({ refundRecordId: 'refund_1' }));
   });
 
-  it('should show the ceiling figures and resend only once acknowledged', async () => {
+  it('should show the remainder, not the ceiling, and resend only once acknowledged (E-42)', async () => {
     const confirmOrderChange = vi
       .fn()
       .mockRejectedValueOnce(
@@ -162,7 +162,7 @@ describe('OrderEditedNotice (#3544)', () => {
           error: 'Conflict',
           code: 'refund_ceiling_exceeded',
           message: 'over the ceiling',
-          ceiling: '10.00',
+          ceiling: '349.00',
           alreadyRefunded: '339.00',
           requested: '15.00',
           currency: 'PLN',
@@ -184,7 +184,7 @@ describe('OrderEditedNotice (#3544)', () => {
     await user.click(await screen.findByTestId('order-edit-refund-confirm'));
 
     const ceiling = await screen.findByTestId('order-edit-refund-ceiling');
-    expect(ceiling).toHaveTextContent('only 10.00 PLN');
+    expect(ceiling).toHaveTextContent('only 10.00 PLN can still be refunded (339.00 PLN already refunded)');
     expect(screen.getByTestId('order-edit-refund-confirm')).toBeDisabled();
 
     await user.click(screen.getByTestId('order-edit-refund-ack'));
@@ -223,6 +223,33 @@ describe('OrderEditedNotice (#3544)', () => {
       /has not finished issuing/,
     );
     expect(screen.getByTestId('order-edit-refund-intent-failed')).toBeInTheDocument();
+  });
+
+  it('should say stock was put back after a line edit (E-52)', async () => {
+    renderNotice({
+      sessionStock: [{ orderLineId: 'l1', stockRestored: true, detail: null }],
+    });
+    expect(await screen.findByTestId('order-edit-stock')).toHaveTextContent(
+      'Stock was put back for one line',
+    );
+  });
+
+  it('should make a failed stock restore visible with its reason (E-52)', async () => {
+    renderNotice({
+      sessionStock: [{ orderLineId: 'l1', stockRestored: false, detail: 'adapter-unresolved' }],
+    });
+    expect(await screen.findByTestId('order-edit-stock-failed')).toHaveTextContent(
+      /not put back for one line \(adapter-unresolved\)/,
+    );
+  });
+
+  it('should say stock was not changed when the restore is not applicable (E-52)', async () => {
+    renderNotice({
+      sessionStock: [{ orderLineId: 'l1', stockRestored: 'not-applicable', detail: null }],
+    });
+    expect(await screen.findByTestId('order-edit-stock')).toHaveTextContent(
+      'Stock was not changed',
+    );
   });
 
   it('should show the banner to a viewer but not the confirm actions', async () => {

@@ -139,14 +139,26 @@ describe('describeCeilingVerdict', () => {
     ).toBe('info');
     const exceeded = describeCeilingVerdict({
       status: 'exceeded',
-      ceiling: '10.00',
+      ceiling: '100.00',
       alreadyRefunded: '90.00',
       requested: '15.00',
       currency: 'PLN',
     });
     expect(exceeded.tone).toBe('warning');
     expect(exceeded.text).toContain('15.00 PLN requested');
+    expect(exceeded.text).toContain('10.00 PLN left after 90.00 PLN already refunded');
     expect(describeCeilingVerdict({ status: 'unknown', reason: 'x' }).text).toMatch(/could not check/);
+  });
+
+  it('should report the order ceiling minus what was already refunded as the remainder (E-42)', () => {
+    const verdict = describeCeilingVerdict({
+      status: 'exceeded',
+      ceiling: '315.00',
+      alreadyRefunded: '100.00',
+      requested: '250.00',
+      currency: 'PLN',
+    });
+    expect(verdict.text).toContain('215.00 PLN left after 100.00 PLN already refunded');
   });
 });
 

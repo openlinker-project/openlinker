@@ -265,6 +265,18 @@ export function readRefundCeilingFigures(error: unknown): RefundCeilingFigures |
   };
 }
 
+/**
+ * What can still be refunded: the server's `ceiling` is the order's TOTAL, not
+ * what is left, so the remainder is the total minus what was already refunded
+ * (E-42). Falls back to the total when either figure is not a plain decimal.
+ */
+export function remainingRefundable(ceiling: string, alreadyRefunded: string): string {
+  const total = Number(ceiling);
+  const refunded = Number(alreadyRefunded);
+  if (!Number.isFinite(total) || !Number.isFinite(refunded)) return ceiling;
+  return Math.max(0, Math.round(total * 100) / 100 - Math.round(refunded * 100) / 100).toFixed(2);
+}
+
 /** Why a change row was abandoned by OpenLinker (the backend's `declinedReason`). */
 export function abandonReasonCopy(
   reason: string | null,

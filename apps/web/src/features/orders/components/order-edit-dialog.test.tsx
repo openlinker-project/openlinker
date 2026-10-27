@@ -501,13 +501,13 @@ describe('OrderEditDialog refusals (#3544, edit-blocked)', () => {
     expect(editOrderLines.mock.calls[1][1].acknowledgeAcceptedWork).toBe(true);
   });
 
-  it('should render the refund ceiling figures and resend only once acknowledged', async () => {
+  it('should render the refund ceiling figures and resend only once acknowledged, with the remainder not the ceiling (E-42)', async () => {
     const editOrderDiscount = vi
       .fn()
       .mockRejectedValueOnce(
         refusal('Conflict', 'The refund would pass the ceiling.', 409, {
           code: 'refund_ceiling_exceeded',
-          ceiling: '10.00',
+          ceiling: '349.00',
           alreadyRefunded: '339.00',
           requested: '15.00',
           currency: 'PLN',
@@ -522,7 +522,7 @@ describe('OrderEditDialog refusals (#3544, edit-blocked)', () => {
 
     const ceiling = await screen.findByTestId('order-edit-ceiling-refusal');
     expect(ceiling).toHaveTextContent('15.00 PLN');
-    expect(ceiling).toHaveTextContent('only 10.00 PLN');
+    expect(ceiling).toHaveTextContent('only 10.00 PLN can still be refunded (339.00 PLN already refunded)');
     expect(editOrderDiscount.mock.calls[0][1].acknowledgeAboveCeiling).toBeUndefined();
 
     await user.click(screen.getByTestId('order-edit-ceiling-ack'));
