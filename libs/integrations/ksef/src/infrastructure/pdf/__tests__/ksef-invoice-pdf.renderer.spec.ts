@@ -59,6 +59,22 @@ describe('parseInvoice', () => {
     ]);
   });
 
+  it('should read the per-rate totals the invoice states, never compute them', () => {
+    const xml = FA3_XML.replace(
+      '<P_15>123.00</P_15>',
+      '<P_13_1>100.00</P_13_1><P_14_1>23.00</P_14_1><P_13_7>5.00</P_13_7><P_15>128.00</P_15>'
+    );
+
+    expect(parseInvoice(xml).rateTotals).toEqual([
+      { rate: '23%', net: '100.00', vat: '23.00' },
+      { rate: 'zw', net: '5.00', vat: null },
+    ]);
+  });
+
+  it('should report no rate totals when the invoice states none', () => {
+    expect(parseInvoice(FA3_XML).rateTotals).toEqual([]);
+  });
+
   it('should read a single-line invoice as a one-element list, not a bare object', () => {
     expect(parseInvoice(FA3_XML).lines).toHaveLength(1);
   });
@@ -98,6 +114,18 @@ describe('renderKsefInvoicePdf', () => {
     });
 
     expect(Buffer.from(a).equals(Buffer.from(b))).toBe(false);
+  });
+
+  it('should render an invoice whose unit price carries many decimals', async () => {
+    const xml = FA3_XML.replace('<P_9A>50.00</P_9A>', '<P_9A>406.49593496</P_9A>');
+
+    const bytes = await renderKsefInvoicePdf({
+      xml,
+      ksefNumber: KSEF_NUMBER,
+      verificationUrl: URL,
+    });
+
+    expect(Buffer.from(bytes.subarray(0, 5)).toString('latin1')).toBe('%PDF-');
   });
 
   it('should refuse a document that is not an FA(3) invoice', async () => {
