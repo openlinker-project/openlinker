@@ -10,9 +10,10 @@
  * order's `published` holds at create time (`IMasterAbsorbedReservationService`),
  * because the master's next read already carries the sale and the hold would
  * subtract it a second time. That is only true when the shop really lowered its
- * stock. A shop configured not to (Shoper's "do not subtract stock on purchase",
- * PrestaShop with stock management off) would have its holds consumed for units
- * it never removed, and OpenLinker would over-promise until the next master
+ * stock. A shop that did not (Shoper with "do not subtract stock on purchase",
+ * a WooCommerce order created `pending`, a PrestaShop order `validateOrder`
+ * moved to the error state) would have its holds consumed for units it never
+ * removed, and OpenLinker would over-promise until the next master
  * sync. A destination that declares nothing keeps the holds until dispatch -
  * the pre-existing behaviour, an under-sell and never an oversell.
  *
