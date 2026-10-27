@@ -127,4 +127,10 @@ export interface OrderWritebackResult {
   detail?: string;
   /** Reach of an `applied` outcome; absent means `channel`. See {@link OrderWritebackScope}. */
   scope?: OrderWritebackScope;
+  /**
+   * `rejected` only: the failure was transport-level (timeout, 5xx, reset), so the
+   * participant never answered and may have applied the write. Lets an adapter that
+   * catches its own errors give the relay the same signal a thrown error does.
+   */
+  transient?: boolean;
 }
