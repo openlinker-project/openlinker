@@ -19,6 +19,8 @@ import {
 import type { Response } from 'express';
 import {
   INVOICE_SERVICE_TOKEN,
+  INVOICE_ATTACHMENT_SERVICE_TOKEN,
+  type IInvoiceAttachmentService,
   InvoiceRecord as InvoiceRecordClass,
   InvoiceRecordNotFoundException,
   RegulatoryDocumentNotReadyError,
@@ -290,8 +292,10 @@ describe('InvoicingController', () => {
   let integrations: jest.Mocked<IIntegrationsService>;
   let paymentStatusRefreshService: jest.Mocked<IPaymentStatusRefreshService>;
   let connectionPort: jest.Mocked<Pick<ConnectionPort, 'get'>>;
+  let attachments: jest.Mocked<IInvoiceAttachmentService>;
 
   beforeEach(async () => {
+    attachments = { resolveAttachment: jest.fn().mockResolvedValue(null) };
     invoiceService = {
       issueInvoice: jest.fn(),
       issueCorrection: jest.fn(),
@@ -339,6 +343,7 @@ describe('InvoicingController', () => {
         { provide: INTEGRATIONS_SERVICE_TOKEN, useValue: mockIntegrations },
         { provide: PAYMENT_STATUS_REFRESH_SERVICE_TOKEN, useValue: paymentStatusRefreshService },
         { provide: CONNECTION_PORT_TOKEN, useValue: connectionPort },
+        { provide: INVOICE_ATTACHMENT_SERVICE_TOKEN, useValue: attachments },
       ],
     }).compile();
 
@@ -2169,6 +2174,52 @@ describe('InvoicingController', () => {
         InvoicingController.prototype.issueInvoice,
       ) as string[] | undefined;
       expect(roles).toEqual(['admin']);
+    });
+  });
+  describe('getAttachment (#3548)', () => {
+    it('should 404 for an unknown invoice', async () => {
+      attachments.resolveAttachment.mockResolvedValue(null);
+
+      await expect(controller.getAttachment('rec-missing')).rejects.toBeInstanceOf(NotFoundException);
+    });
+
+    it('should name the download route for a pdf and never embed the bytes', async () => {
+      attachments.resolveAttachment.mockResolvedValue({
+        state: 'pdf',
+        content: new Uint8Array([1, 2, 3]),
+        contentType: 'application/pdf',
+      });
+
+      const dto = await controller.getAttachment('rec-inv-1');
+
+      expect(dto).toEqual({
+        state: 'pdf',
+        url: null,
+        downloadPath: '/invoices/rec-inv-1/document?kind=rendered',
+        contentType: 'application/pdf',
+      });
+    });
+
+    it('should return the url for a link', async () => {
+      attachments.resolveAttachment.mockResolvedValue({ state: 'link', url: 'https://example.test/d' });
+
+      expect(await controller.getAttachment('rec-inv-1')).toEqual({
+        state: 'link',
+        url: 'https://example.test/d',
+        downloadPath: null,
+        contentType: null,
+      });
+    });
+
+    it.each(['waiting', 'none'] as const)('should answer %s with no url and no download path', async (state) => {
+      attachments.resolveAttachment.mockResolvedValue({ state });
+
+      expect(await controller.getAttachment('rec-inv-1')).toEqual({
+        state,
+        url: null,
+        downloadPath: null,
+        contentType: null,
+      });
     });
   });
 });

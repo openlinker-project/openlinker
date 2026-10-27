@@ -65,6 +65,13 @@ export const NUMBERING_SERIES_SERVICE_TOKEN = Symbol('INumberingSeriesService');
 export const OFFLINE_RESUBMISSION_SERVICE_TOKEN = Symbol('IOfflineResubmissionService');
 
 /**
+ * Binding token for the {@link IInvoiceAttachmentService} (#3548): the one read
+ * that resolves what can be attached (PDF bytes, a link, or a waiting/none
+ * state) for an issued document, whichever provider issued it.
+ */
+export const INVOICE_ATTACHMENT_SERVICE_TOKEN = Symbol('IInvoiceAttachmentService');
+
+/**
  * Binding token for the `IPendingRecoveryService` (#1700, mini-epic #1585). The
  * crash-recovery sweep that reconciles interrupted submits, falling back to the
  * {@link RegulatoryRecordLocator} authority lookup. Implementation lands in a

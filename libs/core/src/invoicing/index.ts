@@ -119,6 +119,9 @@ export type {
   OfflineResubmissionResult,
 } from './application/services/offline-resubmission.service.interface';
 export { OfflineResubmissionService } from './application/services/offline-resubmission.service';
+export type { IInvoiceAttachmentService } from './application/services/invoice-attachment.service.interface';
+export { InvoiceAttachmentService } from './application/services/invoice-attachment.service';
+export * from './domain/types/invoice-attachment.types';
 export type {
   IPendingRecoveryService,
   PendingRecoveryOptions,
