@@ -53,6 +53,7 @@ import { useOrderLifecycleSummaryQuery } from '../../features/orders/hooks/use-o
 import { OmsAttentionBadges } from '../../features/fulfillment-authority';
 import { OrderPhaseBadge } from '../../features/orders/components/order-phase-badge';
 import { OrderHoldBadge } from '../../features/orders/components/order-hold-badge';
+import { OrderDestinationRoutingBadge } from '../../features/orders/components/order-destination-routing-badge';
 import { useRetryOrderDestinationMutation } from '../../features/orders/hooks/use-retry-order-destination-mutation';
 import { ReadOnlyLock } from '../../shared/ui/read-only-lock';
 import { useWriteAccess } from '../../shared/auth/use-permission';
@@ -759,6 +760,11 @@ export function OrdersListPage(): ReactElement {
                   beside the failure reasons (style guide § Order-row signal
                   placement rule 2), never in Shipment or Money. */}
               <OrderHoldBadge reason={order.activeHoldReason} compact />
+              {/* #2703 / #2704 - why routing left the destination fan-out
+                  narrowed. Without it a row reads "No destinations" whatever the
+                  cause. Status group, beside health, for the placement reason
+                  above; shared verbatim with the mobile card. */}
+              <OrderDestinationRoutingBadge reason={order.destinationRoutingBlockReason} compact />
               {/* #2356 — an inert state is an EXCEPTION, and rule 2 of the style
                   guide's order-row signal placement puts exceptions in the
                   Status group beside failure reasons. It is another badge
@@ -1234,6 +1240,23 @@ export function OrdersListPage(): ReactElement {
               </Button>
             }
           />
+        ) : filterState.routingBlocked ? (
+          /*
+            #2703 / #2704 — `routing=blocked` counts only routing decisions that
+            named an unreachable destination, so an empty result is a good
+            outcome, not a narrowed search coming up empty. Ahead of the generic
+            `hasActiveFilters` arm for the same reason as `invoicingBlocked`
+            above, and worded "in this view" because other filters may be on.
+          */
+          <EmptyState
+            title="No routing problems in this view"
+            message="No order here was routed to a destination OpenLinker could not reach. Other filters are still applied."
+            action={
+              <Button onClick={filtersApi.clearAll}>
+                Clear filters
+              </Button>
+            }
+          />
         ) : debouncedSearch ? (
           /*
             #3529 (mockup M4 `noresults`) — its own arm, ahead of the generic
@@ -1605,6 +1628,10 @@ export function OrdersListPage(): ReactElement {
                     </StatusBadge>
                     <OrderPhaseBadge phase={order.lifecyclePhase} compact />
                     <OrderHoldBadge reason={order.activeHoldReason} compact />
+                    <OrderDestinationRoutingBadge
+                      reason={order.destinationRoutingBlockReason}
+                      compact
+                    />
                     <OmsAttentionBadges entries={order.omsAttention ?? []} compact />
                     <StatusBadge tone={fulfillment.tone} withDot compact>
                       {fulfillment.label}

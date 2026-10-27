@@ -142,6 +142,13 @@ describe('OrderSyncService', () => {
 
     orderRecordService = {
       getOrderRecord: jest.fn().mockResolvedValue(null),
+      // #2703 — `syncOrder` persists the destination-routing block on every
+      // path. The `as unknown as` cast below means a missing method is NOT a
+      // compile error, so omitting this made the call throw `TypeError` into
+      // the service's best-effort catch and inflated the `warn` count that the
+      // #2397 tests assert on: three failures that named the warn count and
+      // said nothing about the real cause.
+      markDestinationRoutingBlock: jest.fn().mockResolvedValue(undefined),
     } as unknown as jest.Mocked<IOrderRecordService>;
 
     orderHoldService = {
@@ -1223,6 +1230,102 @@ describe('OrderSyncService', () => {
 
       expect(results.map((r) => r.destinationConnectionId)).toEqual(['dest-a', 'dest-b']);
       expect(self.createOrder).not.toHaveBeenCalled();
+    });
+  });
+
+  // ── The destination-routing block write (#2703 / #2704) ───────────────────
+  // Level-triggered: every run states the answer, INCLUDING `null`, and `null` is
+  // the only thing that clears a stale reason. Clearing is the half of #2100's
+  // discipline that regresses silently, so each outcome is asserted explicitly.
+  describe('destination-routing block persistence', () => {
+    const lastBlock = (): unknown[] | undefined =>
+      orderRecordService.markDestinationRoutingBlock.mock.calls.at(-1);
+
+    it('should persist the partial-eligibility reason when the router narrowed the fan-out', async () => {
+      jest.spyOn(service['logger'], 'warn').mockImplementation(() => undefined);
+      registerDestinations([{ connectionId: 'dest-a', adapter: makeAdapter() }]);
+
+      await service.syncOrder({
+        order: createOrder(),
+        sourceConnectionId: 'source-1',
+        destinationConnectionIds: ['dest-a', 'dest-offline'],
+      });
+
+      expect(orderRecordService.markDestinationRoutingBlock).toHaveBeenCalledTimes(1);
+      expect(lastBlock()).toEqual([
+        createOrder().id,
+        expect.objectContaining({
+          reason: 'routed-destinations-partially-unavailable',
+          detail: expect.stringContaining('dest-offline'),
+        }),
+      ]);
+    });
+
+    it('should persist routed-to-no-destination, and not throw, when the router named nobody', async () => {
+      jest.spyOn(service['logger'], 'warn').mockImplementation(() => undefined);
+      registerDestinations([{ connectionId: 'dest-a', adapter: makeAdapter() }]);
+
+      await service.syncOrder({
+        order: createOrder(),
+        sourceConnectionId: 'source-1',
+        destinationConnectionIds: [],
+      });
+
+      expect(lastBlock()).toEqual([
+        createOrder().id,
+        expect.objectContaining({ reason: 'routed-to-no-destination' }),
+      ]);
+    });
+
+    it('should persist the reason BEFORE throwing when no named destination is eligible', async () => {
+      registerDestinations([{ connectionId: 'dest-a', adapter: makeAdapter() }]);
+
+      await expect(
+        service.syncOrder({
+          order: createOrder(),
+          sourceConnectionId: 'source-1',
+          destinationConnectionIds: ['dest-offline'],
+        })
+      ).rejects.toBeInstanceOf(NoOrderDestinationsAvailableException);
+
+      expect(lastBlock()).toEqual([
+        createOrder().id,
+        expect.objectContaining({ reason: 'routed-destinations-unavailable' }),
+      ]);
+    });
+
+    it('should write an explicit null when nothing narrowed the fan-out', async () => {
+      registerDestinations([{ connectionId: 'dest-a', adapter: makeAdapter() }]);
+
+      await service.syncOrder({ order: createOrder(), sourceConnectionId: 'source-1' });
+
+      expect(orderRecordService.markDestinationRoutingBlock).toHaveBeenCalledTimes(1);
+      expect(lastBlock()).toEqual([createOrder().id, null]);
+    });
+
+    it('should write null when the router named exactly the eligible destinations', async () => {
+      registerDestinations([{ connectionId: 'dest-a', adapter: makeAdapter() }]);
+
+      await service.syncOrder({
+        order: createOrder(),
+        sourceConnectionId: 'source-1',
+        destinationConnectionIds: ['dest-a'],
+      });
+
+      expect(lastBlock()).toEqual([createOrder().id, null]);
+    });
+
+    it('should not fail the sync when the block write itself fails', async () => {
+      orderRecordService.markDestinationRoutingBlock.mockRejectedValue(new Error('db down'));
+      jest.spyOn(service['logger'], 'error').mockImplementation(() => undefined);
+      registerDestinations([{ connectionId: 'dest-a', adapter: makeAdapter() }]);
+
+      const results = await service.syncOrder({
+        order: createOrder(),
+        sourceConnectionId: 'source-1',
+      });
+
+      expect(results).toHaveLength(1);
     });
   });
 

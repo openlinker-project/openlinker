@@ -55,6 +55,7 @@ export const ORDERS_LIST_FILTERS_COPY = {
   checkSalesDocsBlocked: 'Sales documents blocked',
   checkOmsStopped: 'OpenLinker stopped',
   checkRateConflict: 'Rate conflict',
+  checkRoutingBlocked: 'Routing blocked',
   checkOpenReturn: 'Open return',
   checkBreaching: 'Ship-by ≤ 24h or overdue',
   tagGroupAria: 'Tag',
@@ -73,6 +74,7 @@ export const ORDERS_LIST_FILTERS_COPY = {
   quickSalesDocsTitle: (issuedOnRequest: number): string =>
     `${issuedOnRequest} more are issued on request — waiting for you by configuration, not blocked.`,
   quickRateConflict: 'Rate conflict',
+  quickRoutingBlocked: 'Routing blocked',
   quickOmsStopped: 'OpenLinker stopped',
   quickOpenReturn: 'Open return',
   overdue: (n: number): string => `${n} overdue`,
@@ -107,6 +109,7 @@ export const ORDERS_LIST_FILTERS_COPY = {
   chipBlocked: 'Blocked',
   chipPhase: 'Stage',
   chipTaxRate: 'Tax rate',
+  chipRouting: 'Routing',
   chipConflict: 'Conflict',
   chipHold: 'Hold',
   chipOms: 'OpenLinker',

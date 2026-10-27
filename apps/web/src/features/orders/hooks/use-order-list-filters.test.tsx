@@ -53,6 +53,20 @@ describe('useOrderListFilters', () => {
     expect(params(result.current.search).get('invoicing')).toBeNull();
   });
 
+  it('should flip the routing-blocked toggle on and off and query it as true when toggled', () => {
+    const { result } = setup('');
+    act(() => {
+      result.current.api.toggle('destinationRoutingBlocked');
+    });
+    expect(params(result.current.search).get('routing')).toBe('blocked');
+    expect(result.current.api.filters.destinationRoutingBlocked).toBe(true);
+    act(() => {
+      result.current.api.toggle('destinationRoutingBlocked');
+    });
+    expect(params(result.current.search).get('routing')).toBeNull();
+    expect(result.current.api.filters.destinationRoutingBlocked).toBeUndefined();
+  });
+
   it('should clear both tag params in one write when a tag chip is removed', () => {
     const { result } = setup('?tag=t1&untagged=true&health=synced');
     act(() => {

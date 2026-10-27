@@ -46,6 +46,16 @@ export class OrderHealthSummaryResponseDto {
 
   @ApiProperty({
     description:
+      'Orders whose fulfilment routing decision narrowed the destination fan-out in an ' +
+      'attention-worthy way (#2703/#2704). ORTHOGONAL to the five health buckets and NOT part of ' +
+      'the partition — such an order is also counted in exactly one of them — so this number must ' +
+      'never be added to their sum. Counts the attention-worthy subset only: a deliberate ' +
+      '"routed-to-no-destination" decision is badged neutrally per order and never aggregated.',
+  })
+  destinationRoutingBlocked!: number;
+
+  @ApiProperty({
+    description:
       'Orders where the shop and the channel named DIFFERENT tax rates (#2254). Its OWN count, ' +
       'never part of salesDocumentBlocked: a conflict does not stop the invoice, so an order can ' +
       'be in conflict and perfectly healthy, and folding it in would print one number twice on ' +

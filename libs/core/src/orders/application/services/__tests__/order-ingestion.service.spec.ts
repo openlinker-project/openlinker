@@ -157,6 +157,7 @@ describe('OrderIngestionService', () => {
       markFulfillmentRoutingSkip: jest.fn().mockResolvedValue(undefined),
       markOmsAttention: jest.fn().mockResolvedValue(undefined),
       listOrderIdsByFulfillmentBlockReasons: jest.fn().mockResolvedValue([]),
+      markDestinationRoutingBlock: jest.fn().mockResolvedValue(undefined),
       recordAmendment: jest.fn().mockResolvedValue(undefined),
     } as unknown as jest.Mocked<IOrderRecordService>;
 
@@ -3229,6 +3230,13 @@ describe('OrderIngestionService', () => {
         expect(markBlock()).toHaveBeenCalledWith(
           'ol_order_int',
           expect.objectContaining({ reason })
+        );
+        // #2703 - `syncOrder` is never called on this branch, so the routing
+        // reason an earlier run wrote is cleared HERE. Without it a stale
+        // "the router sent this nowhere" would stand beside the fresh hold.
+        expect(orderRecordService.markDestinationRoutingBlock).toHaveBeenCalledWith(
+          'ol_order_int',
+          null
         );
       });
 
