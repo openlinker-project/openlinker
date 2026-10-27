@@ -177,3 +177,16 @@ export interface PaymentStatusRefreshByExternalIdPayloadV1 {
   /** Provider-native invoice id (matches `InvoiceRecord.providerInvoiceId`). */
   externalInvoiceId: string;
 }
+
+/**
+ * Payload for `invoicing.marketplaceUpload` (#3549). A REFERENCE only: the job
+ * re-reads the invoice and its attachable document at run time, because a KSeF
+ * invoice may not have its number (and therefore its PDF) when the job is
+ * enqueued, and a document snapshotted into the payload would be stale or absent.
+ * The marketplace connection comes from `job.connectionId`.
+ */
+export interface InvoicingMarketplaceUploadPayloadV1 {
+  schemaVersion: 1;
+  /** `InvoiceRecord.id` of the document to attach. */
+  invoiceId: string;
+}

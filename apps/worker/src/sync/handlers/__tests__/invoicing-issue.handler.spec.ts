@@ -12,6 +12,7 @@
  *
  * @module apps/worker/src/sync/handlers/__tests__
  */
+import type { IInvoiceMarketplaceUploadService } from '@openlinker/core/orders';
 import { InvoicingIssueHandler, MAX_INVOICE_LINES } from '../invoicing-issue.handler';
 import { BuyerProfile } from '@openlinker/core/invoicing';
 import { SyncJobExecutionError } from '@openlinker/core/sync';
@@ -116,6 +117,7 @@ describe('InvoicingIssueHandler', () => {
       postSaleInventoryRefresh,
       orderRecordService,
       orderRefundService,
+      { enqueueUpload: jest.fn().mockResolvedValue('enqueued') } as unknown as IInvoiceMarketplaceUploadService,
     );
     warnSpy = jest
       .spyOn(

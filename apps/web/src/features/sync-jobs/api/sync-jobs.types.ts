@@ -118,6 +118,7 @@ export const JOB_TYPE_VALUES = [
   'shop.product.statusSync', // Internal job — steady-state shop product-status reconcile (#1845).
   'shipping.pickupPoint.refreshFrequent', // Internal job — pickup-point directory refresh.
   'invoicing.issue', // Internal job — issues one invoice (#1120).
+  'invoicing.marketplaceUpload', // Internal job — attaches an issued invoice to its marketplace order (#3549).
   'invoicing.regulatoryStatus.reconcile', // Internal job — KSeF regulatory-status sweep (#1121).
   'invoicing.paymentStatus.refreshByExternalId', // Internal job — payment-status refresh from a provider webhook (#1354).
   'invoicing.offlineSubmission.resubmit', // Internal job — degraded-mode offline resubmission sweep (#1702).

@@ -69,6 +69,8 @@ import {
   IOrderRefundService,
   ORDER_RECORD_SERVICE_TOKEN,
   ORDER_REFUND_SERVICE_TOKEN,
+  INVOICE_MARKETPLACE_UPLOAD_SERVICE_TOKEN,
+  type IInvoiceMarketplaceUploadService,
 } from '@openlinker/core/orders';
 import { Logger } from '@openlinker/shared/logging';
 
@@ -93,6 +95,8 @@ export class InvoicingIssueHandler implements SyncJobHandler {
     private readonly orderRecords: IOrderRecordService,
     @Inject(ORDER_REFUND_SERVICE_TOKEN)
     private readonly orderRefunds: IOrderRefundService,
+    @Inject(INVOICE_MARKETPLACE_UPLOAD_SERVICE_TOKEN)
+    private readonly marketplaceUploads: IInvoiceMarketplaceUploadService,
   ) {}
 
   async execute(job: SyncJob): Promise<SyncJobHandlerResult> {
@@ -144,6 +148,8 @@ export class InvoicingIssueHandler implements SyncJobHandler {
       const record = await this.invoiceService.issueInvoice(command);
       if (record.status === 'issued') {
         await this.refreshMasterStockAfterDocument(record.id, payload);
+        // #3549: best-effort, never throws - the document is already committed.
+        await this.marketplaceUploads.enqueueUpload(record.id);
       }
       return { outcome: 'ok' };
     } catch (error) {

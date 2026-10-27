@@ -10,6 +10,7 @@
  * @implements {OrderSourcePort}
  */
 
+import { uploadBillingDocumentToAllegro } from '../util/upload-billing-document-to-allegro';
 import { PAYMENT_STATUS, readSourceBuyerTaxId } from '@openlinker/core/orders';
 import type {
   OrderSourcePort,
@@ -21,6 +22,9 @@ import type {
   MappingOption,
   ReturnSourceReader,
   ReturnDecliner,
+  OrderBillingDocumentUploader,
+  UploadBillingDocumentInput,
+  UploadBillingDocumentResult,
 } from '@openlinker/core/orders';
 import type {
   IncomingReturn,
@@ -124,7 +128,8 @@ export class AllegroOrderSourceAdapter
     OrderStatusWriteback,
     OrderFulfillmentReadback,
     ReturnSourceReader,
-    ReturnDecliner
+    ReturnDecliner,
+    OrderBillingDocumentUploader
 {
   private readonly logger = new Logger(AllegroOrderSourceAdapter.name);
 
@@ -675,6 +680,11 @@ export class AllegroOrderSourceAdapter
    * not know whether Allegro applied the change, and the proposal must stay open
    * (in doubt) rather than be recorded as refused.
    */
+  // OrderBillingDocumentUploader (#3549)
+  uploadBillingDocument(input: UploadBillingDocumentInput): Promise<UploadBillingDocumentResult> {
+    return uploadBillingDocumentToAllegro(this.httpClient, input);
+  }
+
   async declineReturn(command: ReturnDeclineCommand): Promise<ReturnDeclineResult> {
     const code = this.requireRejectionCode(command);
     const reason = this.resolveRejectionReason(command, code);

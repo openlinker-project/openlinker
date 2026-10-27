@@ -83,6 +83,7 @@ import { AutomationTriggerDeadlineSweepHandler } from './handlers/automation-tri
 import { ShopProductStatusSyncHandler } from './handlers/shop-product-status-sync.handler';
 import { DestinationTaxonomySyncHandler } from './handlers/destination-taxonomy-sync.handler';
 import { InvoicingIssueHandler } from './handlers/invoicing-issue.handler';
+import { InvoicingMarketplaceUploadHandler } from './handlers/invoicing-marketplace-upload.handler';
 import { FiscalizationRegisterHandler } from './handlers/fiscalization-register.handler';
 import { RegulatoryStatusReconcileHandler } from './handlers/regulatory-status-reconcile.handler';
 import { OfflineResubmitHandler } from './handlers/offline-resubmit.handler';
@@ -190,6 +191,7 @@ import { HandlerRegistrationService } from './handlers/handler-registration.serv
     ShopProductStatusSyncHandler,
     DestinationTaxonomySyncHandler,
     InvoicingIssueHandler,
+    InvoicingMarketplaceUploadHandler,
     FiscalizationRegisterHandler,
     RegulatoryStatusReconcileHandler,
     OfflineResubmitHandler,

@@ -1,0 +1,249 @@
+/**
+ * Invoice Marketplace Upload Service (#3549)
+ *
+ * Attaches an issued sales document to the marketplace order it was issued for,
+ * so the buyer sees it there. Best-effort by construction: it runs as its own
+ * job after issuance, never inside it, so nothing here can disturb a committed
+ * fiscal document.
+ *
+ * Lives in `orders`, not `invoicing`, for the same reason the auto-issue
+ * trigger REPORTS its outcome instead of persisting it: this needs the order
+ * record and the marketplace adapter, and `InvoicingModule` must never import an
+ * orders token (the one-way edge `invoicing-auto-issue-boot.int-spec.ts`
+ * guards). `OrdersModule` already imports `InvoicingModule`, so the dependency
+ * runs the permitted way, through `IInvoiceService` and `IInvoiceAttachmentService`.
+ *
+ * Order of work is deliberate. The attachment is resolved BEFORE the attempt is
+ * claimed, so a document that is merely not ready yet answers `waiting` without
+ * touching the row - polling for a KSeF number must not burn attempts or read as
+ * a failure. Only then is the attempt claimed, which is the at-most-once point.
+ *
+ * @module libs/core/src/orders/application/services
+ * @implements {IInvoiceMarketplaceUploadService}
+ */
+import { Inject, Injectable } from '@nestjs/common';
+import { Logger } from '@openlinker/shared/logging';
+import {
+  IIdentifierMappingService,
+  IDENTIFIER_MAPPING_SERVICE_TOKEN,
+  CORE_ENTITY_TYPE,
+} from '@openlinker/core/identifier-mapping';
+import { IIntegrationsService, INTEGRATIONS_SERVICE_TOKEN } from '@openlinker/core/integrations';
+import { JobEnqueuePort, JOB_ENQUEUE_TOKEN } from '@openlinker/core/sync';
+import {
+  IInvoiceService,
+  INVOICE_SERVICE_TOKEN,
+  INVOICE_ATTACHMENT_SERVICE_TOKEN,
+  type IInvoiceAttachmentService,
+} from '@openlinker/core/invoicing';
+import type {
+  IInvoiceMarketplaceUploadService,
+  InvoiceMarketplaceUploadResult,
+} from '../interfaces/invoice-marketplace-upload.service.interface';
+import { IOrderRecordService } from '../interfaces/order-record.service.interface';
+import type { OrderSourcePort } from '../../domain/ports/order-source.port';
+import {
+  isOrderBillingDocumentUploader,
+  type OrderBillingDocumentUploader,
+} from '../../domain/ports/capabilities/order-billing-document-uploader.capability';
+import { InvoiceMarketplaceUploadRepositoryPort } from '../../domain/ports/invoice-marketplace-upload-repository.port';
+import type {
+  InvoiceMarketplaceUpload,
+  InvoiceMarketplaceUploadFailureCode,
+  RecordInvoiceMarketplaceUploadOutcome,
+} from '../../domain/types/invoice-marketplace-upload.types';
+import type { UploadBillingDocumentResult } from '../../domain/types/order-billing-document.types';
+import {
+  INVOICE_MARKETPLACE_UPLOAD_REPOSITORY_TOKEN,
+  ORDER_RECORD_SERVICE_TOKEN,
+} from '../../orders.tokens';
+
+/** Characters a marketplace file name should not carry; the number may hold `/`. */
+const UNSAFE_FILE_NAME_CHARS = /[^A-Za-z0-9._-]+/g;
+
+@Injectable()
+export class InvoiceMarketplaceUploadService implements IInvoiceMarketplaceUploadService {
+  private readonly logger = new Logger(InvoiceMarketplaceUploadService.name);
+
+  constructor(
+    @Inject(INVOICE_MARKETPLACE_UPLOAD_REPOSITORY_TOKEN)
+    private readonly uploads: InvoiceMarketplaceUploadRepositoryPort,
+    @Inject(INVOICE_SERVICE_TOKEN)
+    private readonly invoices: IInvoiceService,
+    @Inject(INVOICE_ATTACHMENT_SERVICE_TOKEN)
+    private readonly attachments: IInvoiceAttachmentService,
+    @Inject(ORDER_RECORD_SERVICE_TOKEN)
+    private readonly orders: IOrderRecordService,
+    @Inject(IDENTIFIER_MAPPING_SERVICE_TOKEN)
+    private readonly identifierMapping: IIdentifierMappingService,
+    @Inject(INTEGRATIONS_SERVICE_TOKEN)
+    private readonly integrations: IIntegrationsService,
+    @Inject(JOB_ENQUEUE_TOKEN)
+    private readonly jobEnqueue: JobEnqueuePort,
+  ) {}
+
+  async enqueueUpload(
+    invoiceId: string,
+    options: { retry?: boolean } = {},
+  ): Promise<'enqueued' | 'skipped' | 'failed'> {
+    try {
+      const invoice = await this.invoices.getInvoiceById(invoiceId);
+      if (invoice === null) return 'skipped';
+      const order = await this.orders.getOrderRecord(invoice.orderId);
+      if (order === null) return 'skipped';
+      const idempotencyKey = options.retry
+        ? `invoice-upload:${invoiceId}:retry:${Date.now()}`
+        : `invoice-upload:${invoiceId}`;
+      await this.jobEnqueue.enqueueJob({
+        jobType: 'invoicing.marketplaceUpload',
+        connectionId: order.sourceConnectionId,
+        payload: { schemaVersion: 1, invoiceId },
+        idempotencyKey,
+      });
+      return 'enqueued';
+    } catch (error) {
+      this.logger.error(
+        `Could not enqueue the marketplace upload for invoice ${invoiceId}: ` +
+          `${error instanceof Error ? error.message : String(error)}`,
+      );
+      return 'failed';
+    }
+  }
+
+  async upload(invoiceId: string): Promise<InvoiceMarketplaceUploadResult> {
+    const invoice = await this.invoices.getInvoiceById(invoiceId);
+    if (invoice === null) return { kind: 'skipped', reason: 'invoice-not-found' };
+
+    const order = await this.orders.getOrderRecord(invoice.orderId);
+    if (order === null) return { kind: 'skipped', reason: 'order-not-found' };
+
+    const attachment = await this.attachments.resolveAttachment(invoiceId);
+    if (attachment !== null && attachment.state === 'waiting') return { kind: 'waiting' };
+
+    const claimed = await this.uploads.claimAttempt(invoiceId, order.sourceConnectionId);
+    if (claimed === null) return { kind: 'skipped', reason: 'already-settled' };
+
+    // Only real bytes can be uploaded. A link is not a file: re-fetching a
+    // provider-controlled url from the worker to forward it would open an
+    // outbound-fetch surface for a convenience, so a link-only document is
+    // recorded as having no file (and may gain one later - `no-file` stays
+    // claimable).
+    if (attachment === null || attachment.state !== 'pdf') {
+      return this.settle(claimed, { status: 'no-file' });
+    }
+
+    const externalOrderId = await this.resolveExternalOrderId(
+      invoice.orderId,
+      order.sourceConnectionId,
+    );
+    if (externalOrderId === null) {
+      return this.settle(claimed, { status: 'failed', lastFailureCode: 'order-unmapped' });
+    }
+
+    const uploader = await this.resolveUploader(order.sourceConnectionId);
+    if (uploader === 'unresolved') {
+      return this.settle(claimed, { status: 'failed', lastFailureCode: 'adapter-unresolved' });
+    }
+    if (uploader === null) {
+      return this.settle(claimed, { status: 'unsupported' });
+    }
+
+    const documentNumber =
+      invoice.documentNumber ?? invoice.providerInvoiceNumber ?? invoice.id;
+    let result: UploadBillingDocumentResult;
+    try {
+      result = await uploader.uploadBillingDocument({
+        externalOrderId,
+        documentNumber,
+        fileName: toFileName(documentNumber),
+        contentType: attachment.contentType,
+        content: attachment.content,
+      });
+    } catch (error) {
+      // An adapter is meant to answer through the result; a throw is an
+      // unmodelled condition, which a retry can still change. The message is
+      // logged and never persisted (it can carry order data).
+      this.logger.warn(
+        `Billing document upload threw for invoice ${invoiceId} on connection ` +
+          `${order.sourceConnectionId}: ${error instanceof Error ? error.message : String(error)}`,
+      );
+      return this.settle(claimed, { status: 'failed', lastFailureCode: 'transient' });
+    }
+    return this.settle(claimed, toOutcome(result));
+  }
+
+  getStatus(invoiceId: string): Promise<InvoiceMarketplaceUpload[]> {
+    return this.uploads.findByInvoiceId(invoiceId);
+  }
+
+  private async settle(
+    claimed: InvoiceMarketplaceUpload,
+    outcome: RecordInvoiceMarketplaceUploadOutcome,
+  ): Promise<InvoiceMarketplaceUploadResult> {
+    const applied = await this.uploads.recordOutcome(claimed.id, outcome);
+    if (!applied) {
+      // Another attempt settled the row between our claim and this write; its
+      // answer stands and ours must not overwrite it.
+      return { kind: 'skipped', reason: 'already-settled' };
+    }
+    return {
+      kind: 'settled',
+      status: outcome.status,
+      failureCode: outcome.lastFailureCode ?? null,
+    };
+  }
+
+  private async resolveExternalOrderId(
+    internalOrderId: string,
+    sourceConnectionId: string,
+  ): Promise<string | null> {
+    const mappings = await this.identifierMapping.getExternalIds(
+      CORE_ENTITY_TYPE.Order,
+      internalOrderId,
+    );
+    return mappings.find((mapping) => mapping.connectionId === sourceConnectionId)?.externalId ?? null;
+  }
+
+  /**
+   * `null` = the marketplace cannot take a document (adapter resolved, no
+   * capability); `'unresolved'` = the adapter could not be built, which is a
+   * transient condition (a disabled connection, a credential refresh).
+   */
+  private async resolveUploader(
+    connectionId: string,
+  ): Promise<(OrderSourcePort & OrderBillingDocumentUploader) | null | 'unresolved'> {
+    let adapter: OrderSourcePort;
+    try {
+      adapter = await this.integrations.getCapabilityAdapter<OrderSourcePort>(
+        connectionId,
+        'OrderSource',
+      );
+    } catch (error) {
+      this.logger.warn(
+        `Could not resolve the order source for connection ${connectionId}: ` +
+          `${error instanceof Error ? error.message : String(error)}`,
+      );
+      return 'unresolved';
+    }
+    return isOrderBillingDocumentUploader(adapter) ? adapter : null;
+  }
+}
+
+const toFileName = (documentNumber: string): string => {
+  const base = documentNumber.replace(UNSAFE_FILE_NAME_CHARS, '-').replace(/^-+|-+$/g, '');
+  return `${base.length > 0 ? base : 'document'}.pdf`;
+};
+
+const toOutcome = (result: UploadBillingDocumentResult): RecordInvoiceMarketplaceUploadOutcome => {
+  switch (result.outcome) {
+    case 'uploaded':
+    case 'already-present':
+      return { status: 'uploaded' };
+    case 'unsupported':
+      return { status: 'unsupported' };
+    case 'rejected':
+      return { status: 'failed', lastFailureCode: 'rejected' satisfies InvoiceMarketplaceUploadFailureCode };
+    case 'transient-failure':
+      return { status: 'failed', lastFailureCode: 'transient' satisfies InvoiceMarketplaceUploadFailureCode };
+  }
+};

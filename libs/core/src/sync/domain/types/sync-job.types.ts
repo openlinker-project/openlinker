@@ -244,6 +244,12 @@ export const JobTypeValues = [
   // Invoicing (core-owned policy; executed by worker — OL #1120)
   'invoicing.issue',
 
+  // Attaches an issued invoice's document to the marketplace order it was issued
+  // for (#3549). Best-effort and never part of issuance, so it is its own job.
+  // `connectionId` is the order's SOURCE connection (the marketplace), never the
+  // invoicing connection - that is the scope whose rate limit the call spends.
+  'invoicing.marketplaceUpload',
+
   // Fiscalization (core-owned policy; executed by worker — #2156, ADR-041 decision 7)
   'fiscalization.register',
 
