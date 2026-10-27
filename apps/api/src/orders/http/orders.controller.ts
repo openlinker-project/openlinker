@@ -51,6 +51,7 @@ import {
   NotFoundException,
   BadRequestException,
   ConflictException,
+  ServiceUnavailableException,
   ForbiddenException,
   InternalServerErrorException,
   UnprocessableEntityException,
@@ -96,6 +97,7 @@ import {
   IOrderTestFixtureService,
   RefundCeilingExceededException,
   RefundRecordContendedException,
+  RefundLockUnavailableException,
   TestFixturesDisabledException,
   classifyBuyerNoteForList,
   buildBuyerNotePreview} from '@openlinker/core/orders';
@@ -1616,6 +1618,15 @@ export class OrdersController {
       return new ConflictException({
         statusCode: HttpStatus.CONFLICT,
         error: 'Conflict',
+        code: error.code,
+        message: error.message,
+      });
+    }
+    if (error instanceof RefundLockUnavailableException) {
+      // Nothing was recorded and nothing will be recorded later (R-16): retryable.
+      return new ServiceUnavailableException({
+        statusCode: HttpStatus.SERVICE_UNAVAILABLE,
+        error: 'Service Unavailable',
         code: error.code,
         message: error.message,
       });

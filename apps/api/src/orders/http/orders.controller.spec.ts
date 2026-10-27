@@ -4,7 +4,11 @@
  * @module apps/api/src/orders/http
  */
 import type { TestingModule } from '@nestjs/testing';
-import { RefundCeilingExceededException, RefundRecordContendedException } from '@openlinker/core/orders';
+import {
+  RefundCeilingExceededException,
+  RefundLockUnavailableException,
+  RefundRecordContendedException,
+} from '@openlinker/core/orders';
 import { Test } from '@nestjs/testing';
 import { ParseUUIDPipe } from '@nestjs/common';
 import {
@@ -2092,6 +2096,19 @@ describe('OrdersController', () => {
       ).rejects.toMatchObject({
         response: expect.objectContaining({ code: 'refund_record_contended' }),
         status: 409,
+      });
+    });
+
+    it('should map an unanswered refund lock to 503 refund_lock_unavailable (R-16)', async () => {
+      orderCancellation.confirmChange.mockRejectedValue(
+        new RefundLockUnavailableException('ol_order_001')
+      );
+
+      await expect(
+        controller.confirmChange('ol_order_001', 'x', {}, USER)
+      ).rejects.toMatchObject({
+        response: expect.objectContaining({ code: 'refund_lock_unavailable' }),
+        status: 503,
       });
     });
 
