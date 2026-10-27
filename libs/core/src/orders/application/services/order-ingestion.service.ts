@@ -100,6 +100,7 @@ import type { ReservationAtpEffect } from '@openlinker/core/inventory';
 import type { Order } from '../../domain/types/order.types';
 import type { OrderFeedEventType } from '../../domain/types/order-feed.types';
 import { orderStockRestoreDedupeKey } from '../../domain/types/order-cancel.types';
+import { cancelRequestTargetRef } from '../../domain/types/order-change.types';
 import { compareOrderCursors } from '../../domain/types/order-cursor.types';
 import { withheldOnHoldError } from '../../domain/types/order-hold.types';
 import {
@@ -1723,7 +1724,19 @@ export class OrderIngestionService implements IOrderIngestionService {
       );
     }
 
+    const cancelledByOperator = await this.wasCancelledByOperator(internalOrderId);
+
     await this.confirmOpenCancelRequest(internalOrderId, connectionId);
+
+    if (cancelledByOperator) {
+      // The operator's own cancel already told every participant (and the channel
+      // answered it); this is the channel echoing that cancel back. Relaying it
+      // again would cancel at the destination a second time (C-40).
+      this.logger.debug(
+        `Not relaying the source's echo of the operator cancel of order ${internalOrderId}`
+      );
+      return [];
+    }
 
     const result = await this.orderLifecycleRelay.relay({
       internalOrderId,
@@ -1769,6 +1782,34 @@ export class OrderIngestionService implements IOrderIngestionService {
    * Best-effort and never fails ingestion: the order record is already marked
    * cancelled, and the row would otherwise just age out through the TTL.
    */
+  /**
+   * Whether an operator's cancel request for this order was already confirmed BY
+   * the operator (not from observation), i.e. the operator path already relayed.
+   * A read failure answers false: relaying twice is the lesser harm than not at all.
+   */
+  private async wasCancelledByOperator(internalOrderId: string): Promise<boolean> {
+    try {
+      const latest = await this.orderChanges.findLatestByTarget(
+        internalOrderId,
+        cancelRequestTargetRef(internalOrderId),
+        'order.cancel_request'
+      );
+      return (
+        latest !== null &&
+        latest.status === 'confirmed' &&
+        latest.confirmedBy !== null &&
+        !latest.confirmedBy.startsWith('source:')
+      );
+    } catch (error) {
+      this.logger.warn(
+        `Could not read the cancel request of order ${internalOrderId}: ${
+          error instanceof Error ? error.message : String(error)
+        }`
+      );
+      return false;
+    }
+  }
+
   private async confirmOpenCancelRequest(
     internalOrderId: string,
     connectionId: string
