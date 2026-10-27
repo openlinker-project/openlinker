@@ -182,6 +182,7 @@ export class OrderLifecycleRelayService implements IOrderLifecycleRelayService {
         connectionId,
         outcome: result.outcome,
         detail: result.detail,
+        ...(result.outcome === 'rejected' && result.transient ? { adapterThrew: true } : {}),
         ...(result.scope ? { scope: result.scope } : {}),
         // #3526: an adapter's own `default:` decline for an event kind it does
         // not support (e.g. a bare `unsupported` from an in-tree adapter's own

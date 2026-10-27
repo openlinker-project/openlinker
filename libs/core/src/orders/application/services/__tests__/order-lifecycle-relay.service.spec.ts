@@ -149,6 +149,21 @@ describe('OrderLifecycleRelayService', () => {
     ]);
   });
 
+  it('should report adapterThrew when an adapter returns a transient rejection (C-28)', async () => {
+    identifierMapping.getExternalIds.mockResolvedValue([mapping('ps-conn', 'ps-7')]);
+    integrations.getCapabilityAdapter.mockResolvedValue({
+      write: jest.fn().mockResolvedValue({ outcome: 'rejected', detail: 'timeout', transient: true }),
+    });
+
+    const result = await service.relay({
+      internalOrderId: 'ol_order_1',
+      originConnectionId: origin,
+      event: { type: 'cancelled' },
+    });
+
+    expect(result.targets[0]).toMatchObject({ outcome: 'rejected', adapterThrew: true });
+  });
+
   it('surfaces a rejected outcome returned by the adapter (e.g. already shipped)', async () => {
     identifierMapping.getExternalIds.mockResolvedValue([mapping('ps-conn', 'ps-7')]);
     integrations.getCapabilityAdapter.mockResolvedValue({

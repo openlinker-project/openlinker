@@ -426,6 +426,24 @@ describe('OrderCancellationService (#3540)', () => {
       expect(changes.decline).toHaveBeenCalledWith('change-1', 'order already sent');
     });
 
+    it('should not show the transport url or a doubled period in the refusal (C-5)', async () => {
+      relay.relay.mockResolvedValueOnce({
+        targets: [
+          {
+            connectionId: SOURCE,
+            outcome: 'rejected',
+            detail: 'Allegro API server error (409): http://g05after-faultproxy:8080/order/x/fulfillment.',
+          },
+        ],
+      });
+
+      const error = await service.cancelOrder(input).catch((e: unknown) => e);
+
+      expect((error as Error).message).not.toContain('http');
+      expect((error as Error).message).not.toContain('..');
+      expect(changes.decline).toHaveBeenCalledWith('change-1', 'Allegro API server error (409)');
+    });
+
     it('should apply when the source has no writeback capability', async () => {
       relay.relay.mockResolvedValueOnce({
         targets: [

@@ -130,6 +130,18 @@ import type {
  */
 const ORDER_CANCEL_LOCK_TTL_MS = 30_000;
 
+/**
+ * A channel's failure text is shown to the operator and stored on the request, but
+ * adapters embed the transport URL they called (an internal host in some deployments)
+ * and end their sentences with a period of their own (C-5).
+ */
+function operatorSafeDetail(detail: string): string {
+  return detail
+    .replace(/:?\s*https?:\/\/\S+/gi, '')
+    .replace(/[\s.]+$/, '')
+    .trim();
+}
+
 function orderCancelLockKey(internalOrderId: string): string {
   return `order:cancel:${internalOrderId}`;
 }
@@ -231,14 +243,14 @@ export class OrderCancellationService implements IOrderCancellationService {
       return this.emptyResult('pending', change.id, source.participants, voidedShipmentIds);
     }
     if (source.verdict === 'refused') {
-      await this.changes.decline(change.id, source.detail);
+      await this.changes.decline(change.id, operatorSafeDetail(source.detail));
       const voidedNote =
         voidedShipmentIds.length > 0
           ? ` ${String(voidedShipmentIds.length)} shipment(s) had already been cancelled (a bought label voided with the carrier) and stay cancelled.`
           : '';
       throw new OrderCancellationRefusedError(
         'CHANNEL_REFUSED_CANCEL',
-        `The sales channel refused the cancellation: ${source.detail}.${voidedNote}`
+        `The sales channel refused the cancellation: ${operatorSafeDetail(source.detail)}.${voidedNote}`
       );
     }
 
@@ -345,7 +357,7 @@ export class OrderCancellationService implements IOrderCancellationService {
         voided.push(shipment.id);
       } catch (error) {
         await this.changes.abandon(change.id, CANCEL_ABANDONED_LABEL_NOT_VOIDABLE);
-        const reason = (error instanceof Error ? error.message : String(error)).replace(/\.+$/, '');
+        const reason = operatorSafeDetail(error instanceof Error ? error.message : String(error));
         this.logger.warn(
           `order_cancel_label_not_voidable order=${change.internalOrderId} shipment=${shipment.id}: ${reason}`
         );
@@ -410,7 +422,7 @@ export class OrderCancellationService implements IOrderCancellationService {
       return {
         verdict: 'refused',
         participants: [participant],
-        detail: sourceResult.detail ?? 'no reason given',
+        detail: operatorSafeDetail(sourceResult.detail ?? 'no reason given'),
       };
     }
     if (
@@ -456,7 +468,7 @@ export class OrderCancellationService implements IOrderCancellationService {
       connectionId: target.connectionId,
       role,
       effect: this.effectOf(target),
-      detail: target.detail ?? null,
+      detail: target.detail ? operatorSafeDetail(target.detail) : null,
     };
   }
 

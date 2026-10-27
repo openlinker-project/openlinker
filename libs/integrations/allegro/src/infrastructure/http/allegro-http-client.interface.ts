@@ -28,6 +28,12 @@ export interface AllegroHttpRequestOptions {
    * genuine creates.
    */
   idempotent?: boolean;
+  /**
+   * Overrides the client's retry budget for this call. For a request an
+   * operator is waiting on: the default ladder (4 attempts x the request
+   * timeout) would hold the HTTP request open for minutes.
+   */
+  maxRetries?: number;
 }
 
 /**
