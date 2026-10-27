@@ -4,7 +4,7 @@
  * @module apps/api/src/orders/http
  */
 import type { TestingModule } from '@nestjs/testing';
-import { RefundCeilingExceededException } from '@openlinker/core/orders';
+import { RefundCeilingExceededException, RefundRecordContendedException } from '@openlinker/core/orders';
 import { Test } from '@nestjs/testing';
 import { ParseUUIDPipe } from '@nestjs/common';
 import {
@@ -2079,6 +2079,19 @@ describe('OrdersController', () => {
           requested: '12.50',
           currency: 'PLN',
         }),
+      });
+    });
+
+    it('should map a contended refund write to 409 refund_record_contended (E-31)', async () => {
+      orderCancellation.confirmChange.mockRejectedValue(
+        new RefundRecordContendedException('ol_order_001')
+      );
+
+      await expect(
+        controller.confirmChange('ol_order_001', 'x', {}, USER)
+      ).rejects.toMatchObject({
+        response: expect.objectContaining({ code: 'refund_record_contended' }),
+        status: 409,
       });
     });
 

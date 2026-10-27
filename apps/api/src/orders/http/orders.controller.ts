@@ -95,6 +95,7 @@ import {
   ORDER_TEST_FIXTURE_SERVICE_TOKEN,
   IOrderTestFixtureService,
   RefundCeilingExceededException,
+  RefundRecordContendedException,
   TestFixturesDisabledException,
   classifyBuyerNoteForList,
   buildBuyerNotePreview} from '@openlinker/core/orders';
@@ -1607,6 +1608,16 @@ export class OrdersController {
         alreadyRefunded: error.alreadyRefunded,
         requested: error.requested,
         currency: error.currency,
+      });
+    }
+    if (error instanceof RefundRecordContendedException) {
+      // Same body the refunds controller sends, which is the code the frontend
+      // already reads; two parallel confirms of one refund must not end in a 500 (E-31).
+      return new ConflictException({
+        statusCode: HttpStatus.CONFLICT,
+        error: 'Conflict',
+        code: error.code,
+        message: error.message,
       });
     }
     if (error instanceof OrderCancellationRefusedError) {
