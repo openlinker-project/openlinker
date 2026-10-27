@@ -545,6 +545,8 @@ export function OrdersListPage(): ReactElement {
   // Demo read-only viewers see the bulk actions locked, like Retry and Export.
   const bulkVisible = retryWrite.visible;
   const bulkLocked = retryWrite.demoReadOnly;
+  // Cancel is admin-only by route role, so outside demo a non-admin gets nothing;
+  // in demo it is shown locked like its siblings (documented write-affordance rule).
 
   function toggleSelectRow(order: OrderRecord): void {
     setSelectedIds((prev) => {
@@ -1467,7 +1469,7 @@ export function OrdersListPage(): ReactElement {
                         </Button>
                       </ReadOnlyLock>
                     ) : null}
-                    {bulkVisible && isAdmin ? (
+                    {bulkVisible && (isAdmin || bulkLocked) ? (
                       <ReadOnlyLock active={bulkLocked} message={DEMO_READ_ONLY_ACTION_MESSAGE}>
                         <Button
                           tone="danger"
