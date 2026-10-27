@@ -89,6 +89,10 @@ export function describeCancelWarning(
     const name = connectionName(code.slice('stock-restored-only:'.length));
     return `Stock was restored on ${name ?? 'one channel'} only.`;
   }
+  if (code.startsWith('participant-not-informed:')) {
+    const name = connectionName(code.slice('participant-not-informed:'.length));
+    return `${name ?? 'One channel'} cannot be told about a cancellation, so cancel it there by hand.`;
+  }
   if (code.startsWith('correction-unavailable:')) {
     const reason = code.slice('correction-unavailable:'.length);
     return `No credit note could be drafted${reason ? ` (${reason})` : ''}.`;
