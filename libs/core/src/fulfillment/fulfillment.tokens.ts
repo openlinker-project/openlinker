@@ -107,3 +107,10 @@ export const FULFILLMENT_SALE_DECREMENT_RECONCILE_SERVICE_TOKEN = Symbol(
 export const FULFILLMENT_RELAY_RECONCILE_SERVICE_TOKEN = Symbol(
   'IFulfillmentRelayReconcileService'
 );
+
+/**
+ * The #2731 stranded-routing-decision reaper. Consumed by the WORKER's
+ * `fulfillment.routing.reapSweep` handler and by the read-only routing-decision
+ * endpoint in `apps/api`; neither reaches the decision repository port.
+ */
+export const ROUTING_DECISION_REAPER_SERVICE_TOKEN = Symbol('IRoutingDecisionReaperService');

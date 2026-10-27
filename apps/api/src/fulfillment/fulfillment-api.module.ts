@@ -20,6 +20,7 @@ import { ShippingModule } from '@openlinker/core/shipping';
 import { FULFILLMENT_PARCEL_CLOSURE_NOTIFIER_TOKEN } from './application/interfaces/fulfillment-parcel-closure-notifier.service.interface';
 import { FulfillmentParcelClosureNotifierService } from './application/services/fulfillment-parcel-closure-notifier.service';
 import { FulfillmentWorkController } from './http/fulfillment-work.controller';
+import { RoutingDecisionController } from './http/routing-decision.controller';
 
 @Module({
   // Every cross-context join this board needs happens HERE, never inside
@@ -39,7 +40,9 @@ import { FulfillmentWorkController } from './http/fulfillment-work.controller';
   // All are reached through their published `I*Service` interfaces and never
   // a `*RepositoryPort`, and every page-shaped read is batched per page.
   imports: [CoreFulfillmentModule, OrdersModule, InventoryModule, ProductsModule, ShippingModule],
-  controllers: [FulfillmentWorkController],
+  // `RoutingDecisionController` (#2731) reads one order's routing decision
+  // through the core reaper service; it needs nothing beyond CoreFulfillmentModule.
+  controllers: [FulfillmentWorkController, RoutingDecisionController],
   providers: [
     FulfillmentParcelClosureNotifierService,
     {

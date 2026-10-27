@@ -28,7 +28,7 @@ import { resolveAuthorities } from './authority-resolution.types';
 import type { FulfillmentAuthorityBlock } from './fulfillment-authority-outcome.types';
 
 describe('AuthorityAttentionReasonValues', () => {
-  it('should declare the eight spec §4.2 states in table order, then #3453\'s, when read', () => {
+  it('should declare the eight spec §4.2 states in table order, then #3453\'s and #2731\'s, when read', () => {
     expect(AuthorityAttentionReasonValues).toEqual([
       'availability-unknown',
       'sourcing-ambiguous',
@@ -39,15 +39,16 @@ describe('AuthorityAttentionReasonValues', () => {
       'restock-blocked',
       'return-unmatched',
       'stock-decrement-blocked',
+      'routing-stuck',
     ]);
   });
 
   // §4.2 tables NINE rows; AF-X is owned by the automation body and models a
   // per-firing lifecycle no entry here carries. Asserted against an explicit
-  // count (eight §4.2 states plus #3453's `stock-decrement-blocked`) so a spec
-  // row count can never silently move this union.
+  // count (eight §4.2 states plus #3453's `stock-decrement-blocked` and #2731's
+  // `routing-stuck`) so a spec row count can never silently move this union.
   it('should not carry the automation-failure state when read', () => {
-    expect(AuthorityAttentionReasonValues).toHaveLength(9);
+    expect(AuthorityAttentionReasonValues).toHaveLength(10);
     expect(AuthorityAttentionReasonValues as readonly string[]).not.toContain('automation-failed');
   });
 
@@ -362,15 +363,18 @@ describe('AUTHORITY_ATTENTION_PRODUCER_REASONS', () => {
   it('should agree with the descriptor table in both directions when read', () => {
     // Every mapped state names the producer that maps to it...
     for (const producer of AuthorityAttentionProducerValues) {
-      const reason = AUTHORITY_ATTENTION_PRODUCER_REASONS[producer];
-      const descriptor = AUTHORITY_ATTENTION_REASON_DESCRIPTORS[reason];
-      expect(descriptor.origin).toBe('persisted');
-      expect(descriptor.producer).toBe(producer);
+      const reasons: readonly AuthorityAttentionReason[] = AUTHORITY_ATTENTION_PRODUCER_REASONS[producer];
+      expect(reasons.length).toBeGreaterThan(0);
+      for (const reason of reasons) {
+        const descriptor = AUTHORITY_ATTENTION_REASON_DESCRIPTORS[reason];
+        expect(descriptor.origin).toBe('persisted');
+        expect(descriptor.producer).toBe(producer);
+      }
     }
 
     // ...and every persisted state is reachable from some producer, so no state
     // is left with a writer it cannot be written by.
-    const mapped = new Set<string>(Object.values(AUTHORITY_ATTENTION_PRODUCER_REASONS));
+    const mapped = new Set<string>(Object.values(AUTHORITY_ATTENTION_PRODUCER_REASONS).flat());
     for (const reason of AuthorityAttentionReasonValues) {
       const isPersisted = AUTHORITY_ATTENTION_REASON_DESCRIPTORS[reason].origin === 'persisted';
       expect(mapped.has(reason)).toBe(isPersisted);
@@ -395,8 +399,18 @@ describe('AUTHORITY_ATTENTION_PRODUCER_REASONS', () => {
       kind: 'blocked',
       reason: 'line-unfulfillable',
     };
+    // #2731: `routing` legitimately carries a second state.
+    const ownSecond: AuthorityAttentionOutcome<'routing'> = {
+      kind: 'blocked',
+      reason: 'routing-stuck',
+    };
+    const peerOfSecond: AuthorityAttentionOutcome<'reservations'> = {
+      kind: 'blocked',
+      // @ts-expect-error `routing-stuck` belongs to `routing`, not `reservations`.
+      reason: 'routing-stuck',
+    };
 
-    expect([derived, peer, own]).toHaveLength(3);
+    expect([derived, peer, own, ownSecond, peerOfSecond]).toHaveLength(5);
   });
 
   it('should still let a caller holding a non-literal producer clear an entry', () => {

@@ -32,6 +32,7 @@ import { FulfillmentRelayReconcileService } from './application/services/fulfill
 import { FulfillmentSaleDecrementReconcileService } from './application/services/fulfillment-sale-decrement-reconcile.service';
 import { FulfillmentVerificationService } from './application/services/fulfillment-verification.service';
 import { RoutingCommitService } from './application/services/routing-commit.service';
+import { RoutingDecisionReaperService } from './application/services/routing-decision-reaper.service';
 import {
   FULFILLMENT_DISPATCH_TIMEOUT_SERVICE_TOKEN,
   FULFILLMENT_HANDSHAKE_SERVICE_TOKEN,
@@ -42,6 +43,7 @@ import {
   FULFILLMENT_SALE_DECREMENT_RECONCILE_SERVICE_TOKEN,
   FULFILLMENT_WORK_REPOSITORY_TOKEN,
   ROUTING_COMMIT_SERVICE_TOKEN,
+  ROUTING_DECISION_REAPER_SERVICE_TOKEN,
   ROUTING_DECISION_REPOSITORY_TOKEN,
   FULFILLMENT_WORK_QUERY_SERVICE_TOKEN,
   FULFILLMENT_WORKLIST_SERVICE_TOKEN,
@@ -110,6 +112,11 @@ import { RoutingDecisionRepository } from './infrastructure/persistence/reposito
     },
     RoutingCommitService,
     { provide: ROUTING_COMMIT_SERVICE_TOKEN, useExisting: RoutingCommitService },
+    RoutingDecisionReaperService,
+    {
+      provide: ROUTING_DECISION_REAPER_SERVICE_TOKEN,
+      useExisting: RoutingDecisionReaperService,
+    },
     FulfillmentWorklistService,
     { provide: FULFILLMENT_WORKLIST_SERVICE_TOKEN, useExisting: FulfillmentWorklistService },
     FulfillmentVerificationService,
@@ -135,6 +142,9 @@ import { RoutingDecisionRepository } from './infrastructure/persistence/reposito
     // order's work through this interface, never through the repository port.
     FULFILLMENT_WORK_QUERY_SERVICE_TOKEN,
     ROUTING_COMMIT_SERVICE_TOKEN,
+    // Exported for the worker's stranded-decision reaper and the read-only
+    // routing-decision endpoint (#2731); neither reaches the repository port.
+    ROUTING_DECISION_REAPER_SERVICE_TOKEN,
     // Exported for `FulfillmentApiModule` (#2406): the operator worklist read
     // model. `apps/api` reaches the aggregate through this interface and never
     // through `FulfillmentWorkRepositoryPort`, which stays off the barrel.

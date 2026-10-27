@@ -495,6 +495,7 @@ export class SchedulerService implements OnModuleDestroy {
       this.registerFulfillmentTimeoutSweepTask();
       this.registerFulfillmentRelaySweepTask();
       this.registerFulfillmentRerouteSweepTask();
+      this.registerFulfillmentRoutingReapSweepTask();
       this.registerSaleDecrementReconcileSweepTask();
       this.registerOrderHoldReconcileTask();
 
@@ -1184,6 +1185,42 @@ export class SchedulerService implements OnModuleDestroy {
       generatePayload: () => ({ schemaVersion: 1 }),
       generateIdempotencyKey: (_connection, timestamp) =>
         `fulfillment:work:reroute-sweep:${timestamp}`,
+    });
+  }
+
+  /**
+   * Register the stranded-routing-decision reaper (#2731).
+   *
+   * Its own method beside its fulfilment-sweep siblings, for their stated reason:
+   * coupling a task's REGISTRATION to a foreign concern's flag is how switching
+   * one thing off silently switches another off.
+   *
+   * A routing decision left `live` after an in-doubt `route()` holds its order as
+   * `routing-in-doubt`, which nothing else re-drives. This pass closes such a
+   * decision once it is past `OL_ROUTING_DECISION_TTL_MS` and routes the order
+   * again. Global scope under the nil-UUID system connection id; the route
+   * children carry the stranded decision's router connection.
+   *
+   * **Default ON**, and safe to be: it makes no platform call, and it is INERT on
+   * every install that does not route — `routing_decisions` is empty there.
+   *
+   * Every 15 minutes, so an order waits at most the TTL plus one tick. Minutes
+   * 4/19/34/49 avoid every other system-scoped sweep (the every-10 and
+   * every-20-minute ones, 7/22/37/52, 11/26/41/56, and minutes 15, 35 and 50).
+   */
+  private registerFulfillmentRoutingReapSweepTask(): void {
+    const systemConnection = this.buildSystemConnection();
+
+    this.tasks.push({
+      taskId: 'fulfillment-routing-reap-sweep',
+      jobType: 'fulfillment.routing.reapSweep',
+      cronExpression: '4,19,34,49 * * * *',
+      enabledEnvVar: 'OL_FULFILLMENT_ROUTING_REAP_SWEEP_ENABLED',
+      enabledDefault: true,
+      connectionFilter: () => Promise.resolve([systemConnection]),
+      generatePayload: () => ({ schemaVersion: 1 }),
+      generateIdempotencyKey: (_connection, timestamp) =>
+        `fulfillment:routing:reap-sweep:${timestamp}`,
     });
   }
 
