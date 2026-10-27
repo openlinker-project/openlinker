@@ -77,8 +77,10 @@ export function OrderHealthSummary({
             // #2703 — the routing reason REPLACES the "nothing configured"
             // sentence, which would otherwise be a false statement about the
             // operator's own configuration whenever a router decided this.
-            (routingCopy?.hint ?? 'No destinations configured')
-          ) : routingCopy?.tone === 'attention' ? (
+            (routingCopy?.tone === 'attention'
+              ? 'See the routing note below'
+              : (routingCopy?.hint ?? 'No destinations configured'))
+          ) : destinationRoutingBlockReason === 'routed-destinations-partially-unavailable' ? (
             // #2704 — a PARTIAL narrowing has destination rows, so the rollup is
             // not empty; "All destinations reconciled" would contradict the reason.
             'Some routed destinations were not reached'
