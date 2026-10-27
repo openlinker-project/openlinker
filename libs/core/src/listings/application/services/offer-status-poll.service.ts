@@ -67,11 +67,13 @@ import {
 import type { IOfferStatusPollService } from '../interfaces/offer-status-poll.service.interface';
 import { IBulkListingProgressService } from './bulk-listing-progress.service.interface';
 import { IOfferStatusSyncService } from './offer-status-sync.service.interface';
-import type {
-  OfferPollCadenceConfig,
-  PollOnceInput,
-  PollOnceResult,
-  ScheduleFirstPollInput,
+import {
+  offerPollDelaySeconds,
+  resolveOfferPollCadence,
+  type OfferPollCadenceConfig,
+  type PollOnceInput,
+  type PollOnceResult,
+  type ScheduleFirstPollInput,
 } from '../types/offer-status-poll.types';
 
 const POLL_JOB_TYPE = 'marketplace.offer.pollCreationStatus';
@@ -102,13 +104,7 @@ export class OfferStatusPollService implements IOfferStatusPollService {
     private readonly bulkProgress: IBulkListingProgressService,
     configService: ConfigService
   ) {
-    this.cadence = {
-      initialDelaySeconds:
-        configService.get<number>('OL_ALLEGRO_OFFER_POLL_INITIAL_DELAY_SECONDS') ?? 5,
-      backoffMultiplier: configService.get<number>('OL_ALLEGRO_OFFER_POLL_BACKOFF_MULTIPLIER') ?? 2,
-      maxDelaySeconds: configService.get<number>('OL_ALLEGRO_OFFER_POLL_MAX_DELAY_SECONDS') ?? 60,
-      maxAttempts: configService.get<number>('OL_ALLEGRO_OFFER_POLL_MAX_ATTEMPTS') ?? 12,
-    };
+    this.cadence = resolveOfferPollCadence((key) => configService.get<number>(key));
   }
 
   async scheduleFirstPoll(input: ScheduleFirstPollInput): Promise<void> {
@@ -436,14 +432,9 @@ export class OfferStatusPollService implements IOfferStatusPollService {
     }
   }
 
-  /**
-   * Cadence: `initialDelay × multiplier^(attempt-1)`, clamped to `maxDelay`.
-   * Pure function of `pollAttempt`; no side effects.
-   */
+  /** See `offerPollDelaySeconds`; the worst-case budget sums the same delays. */
   private computeDelaySeconds(pollAttempt: number): number {
-    const exp = pollAttempt - 1;
-    const raw = this.cadence.initialDelaySeconds * Math.pow(this.cadence.backoffMultiplier, exp);
-    return Math.min(raw, this.cadence.maxDelaySeconds);
+    return offerPollDelaySeconds(this.cadence, pollAttempt);
   }
 
   /**

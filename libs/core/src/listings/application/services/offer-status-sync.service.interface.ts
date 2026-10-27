@@ -68,11 +68,15 @@ export interface IOfferStatusSyncService {
    * Re-read and upsert the snapshot for a single offer (#1760). Returns the
    * observed publication status, or `null` when the adapter does not support
    * `OfferStatusReader`. An offer the marketplace reports as not found is
-   * recorded and returned as `ended` once its mapping is older than
-   * `OFFER_GONE_MIN_MAPPING_AGE_MS`; a younger (or undatable) one returns
-   * `null` and leaves the snapshot alone, since a just-created offer can
-   * briefly read as not found. Backs both the post-terminal reconcile job and
-   * the manual refresh action.
+   * recorded and returned as `ended` once it is old enough - dated from the
+   * later of its mapping and its variant's latest creation attempt, against
+   * `OFFER_GONE_MIN_AGE_FLOOR_MS` or three creation-poller budgets, whichever
+   * is larger. A younger (or undatable) one returns `null` and leaves the
+   * snapshot alone, since a just-created offer can briefly read as not found;
+   * it is re-checked when the rolling scan next reaches it, which on a large
+   * catalogue can be hours, or on the next `refreshOne`. Waiting is the safe
+   * direction: it delays a re-listing rather than allowing a duplicate. Backs
+   * both the post-terminal reconcile job and the manual refresh action.
    */
   refreshOne(
     connectionId: string,
