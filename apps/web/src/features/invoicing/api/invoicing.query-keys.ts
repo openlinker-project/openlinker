@@ -17,6 +17,8 @@ export const invoicingQueryKeys = {
   detail: (invoiceId: string) => ['invoicing', 'detail', invoiceId] as const,
   content: (invoiceId: string) => ['invoicing', 'content', invoiceId] as const,
   verificationLink: (invoiceId: string) => ['invoicing', 'verification-link', invoiceId] as const,
+  marketplaceUpload: (invoiceId: string) =>
+    ['invoicing', 'marketplace-upload', invoiceId] as const,
   list: (filters?: InvoiceFilters, pagination?: InvoicePagination) =>
     ['invoicing', 'list', filters ?? {}, pagination ?? {}] as const,
 };

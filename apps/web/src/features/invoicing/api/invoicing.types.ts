@@ -413,3 +413,36 @@ export interface IssuedDocumentContent {
    */
   linesIndexedByCorrection: boolean;
 }
+
+// ── Marketplace document upload (#3549) ──────────────────────────────────
+
+/**
+ * Mirrors `InvoiceMarketplaceUploadStatusValues` in core. The browser cannot
+ * import `@openlinker/core` (#591); an unrecognised value renders as a neutral
+ * unknown rather than being assumed to be one of these.
+ */
+export type InvoiceMarketplaceUploadStatus =
+  | 'pending'
+  | 'uploaded'
+  | 'failed'
+  | 'unsupported'
+  | 'no-file';
+
+export type InvoiceMarketplaceUploadFailureCode =
+  | 'rejected'
+  | 'transient'
+  | 'adapter-unresolved'
+  | 'order-unmapped';
+
+export interface InvoiceMarketplaceUploadEntry {
+  targetConnectionId: string;
+  status: InvoiceMarketplaceUploadStatus;
+  lastFailureCode: InvoiceMarketplaceUploadFailureCode | null;
+  attempts: number;
+  uploadedAt: string | null;
+}
+
+export interface InvoiceMarketplaceUploadState {
+  invoiceId: string;
+  uploads: InvoiceMarketplaceUploadEntry[];
+}
