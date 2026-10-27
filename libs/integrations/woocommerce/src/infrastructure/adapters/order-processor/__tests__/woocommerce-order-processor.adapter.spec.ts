@@ -1726,7 +1726,7 @@ describe('wooCommerceOrderReducedStock', () => {
   });
 });
 
-describe('WooCommerceOrderProcessorAdapter — OrderCreateStockEffect', () => {
+describe('WooCommerceOrderProcessorAdapter - OrderCreateStockEffect', () => {
   beforeEach(() => jest.clearAllMocks());
 
   async function createWith(response: Record<string, unknown>): Promise<WooCommerceOrderProcessorAdapter> {
