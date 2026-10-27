@@ -75,6 +75,11 @@ export interface Product {
    */
   features?: { name: string; value: string }[];
   /**
+   * The master's own category path, root to leaf (source-shop id + name).
+   * Absent until a sync populates it, or when the master reports no path.
+   */
+  categoryBreadcrumb?: { id: string; name: string }[];
+  /**
    * Neutral tax-rate code the shop stated (#2255), or `null` when it stated
    * none. Paired with `taxRateReadAt`, which is what separates "the shop has no
    * rate" from "nobody has asked yet" - the two need different remedies.

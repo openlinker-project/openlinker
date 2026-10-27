@@ -35,6 +35,7 @@ import {
   type InfaktWebhookSecretFormValues,
 } from './infakt-webhook-secret.schema';
 import { Dialog, DialogContent, DialogFooter, DialogTitle } from '../../../shared/ui/dialog';
+import { publicApiBaseUrl } from '../../../shared/config/public-api-base-url';
 import { Alert } from '../../../shared/ui/alert';
 import { Button } from '../../../shared/ui/button';
 import { ConfirmDialog } from '../../../shared/ui/confirm-dialog';
@@ -57,16 +58,16 @@ const OPTIONAL_INFAKT_EVENTS = ['Faktura oznaczona jako zapłacona'] as const;
 
 /**
  * Resolve the public OpenLinker host that serves inbound webhooks. Prefers an
- * operator-configured callback base, falling back to the current origin (correct
- * for shared-origin deployments; an operator on a split-origin setup sets the
- * override). Mirrors the InPost runbook's resolution.
+ * operator-configured callback base, falling back to the API address the web app
+ * itself calls (the page's own origin is the web app on a split-origin setup).
+ * Mirrors the InPost runbook's resolution.
  */
 function resolveApiBaseUrl(config: Connection['config']): string {
   const configured = config?.openlinkerCallbackBaseUrl;
   if (typeof configured === 'string' && configured.trim().length > 0) {
     return configured.trim().replace(/\/+$/, '');
   }
-  return window.location.origin;
+  return publicApiBaseUrl();
 }
 
 // Exported so the plugin's ConnectionActions row (#1770) can render the same

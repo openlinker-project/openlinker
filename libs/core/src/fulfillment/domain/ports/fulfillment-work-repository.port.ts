@@ -402,6 +402,22 @@ export interface UnrelayedShippedDispatch {
   readonly shippedAt: Date;
 }
 
+/** A routed work whose `inventory.saleDecrement` job was never enqueued (#3629). */
+export interface WorkMissingSaleDecrementJob {
+  readonly workId: string;
+  readonly orderId: string;
+  /** The connection the ORDER came through (#2609: never the holder). */
+  readonly orderSourceConnectionId: string;
+}
+
+export interface ListWorksMissingSaleDecrementJobRepoInput {
+  /** Consider only works created strictly before this instant (the grace cutoff). */
+  readonly createdBefore: Date;
+  /** Consider only works created at or after this instant (the lookback floor, below `sync_jobs` retention). */
+  readonly createdAfter: Date;
+  readonly limit: number;
+}
+
 export interface ListUnrelayedShippedDispatchesInput {
   /**
    * Consider only works whose earliest `shipped` claim is strictly older than
@@ -764,6 +780,19 @@ export interface FulfillmentWorkRepositoryPort {
   listUnrelayedShippedDispatches(
     input: ListUnrelayedShippedDispatchesInput
   ): Promise<UnrelayedShippedDispatch[]>;
+
+  /**
+   * The #3629 reconcile frontier: routed, non-cancelled works on a non-cancelled
+   * order for which NO `inventory.saleDecrement` job was ever enqueued, oldest first.
+   *
+   * **Frontier-as-query, no cursor** - an enqueued work leaves the set because the
+   * producers' idempotency key then exists in `sync_jobs`. A read-model reporting
+   * join onto `order_records` and `sync_jobs` by table name (ADR-036): read-only,
+   * parameterised, and dependent on `sync_jobs."idempotencyKey"` being unique.
+   */
+  listWorksMissingSaleDecrementJob(
+    input: ListWorksMissingSaleDecrementJobRepoInput
+  ): Promise<WorkMissingSaleDecrementJob[]>;
 
   /** At-most-once claim, `WHERE "dispatchRelayedAt" IS NULL`. #2401 is the caller. */
   claimDispatchRelay(workId: string, at: Date): Promise<boolean>;

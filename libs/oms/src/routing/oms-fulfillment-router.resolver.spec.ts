@@ -70,6 +70,7 @@ describe('createOmsFulfillmentRouterResolver', () => {
       } as unknown as ILocationService,
       inventory: {
         listInventoryItems: jest.fn().mockResolvedValue({ items: [], total: 0 }),
+        listPublishedReservedByLocation: jest.fn().mockResolvedValue([]),
       } as unknown as IInventoryQueryService,
       works: {
         listBlockingRejectionConnectionIds: jest.fn().mockResolvedValue([]),
@@ -110,6 +111,7 @@ describe('createOmsFulfillmentRouterResolver', () => {
           items: [{ item: { id: 'inv-1', locationId: 'loc-a', availableQuantity: 10 } }],
           total: 1,
         }),
+        listPublishedReservedByLocation: jest.fn().mockResolvedValue([]),
       } as unknown as IInventoryQueryService,
       works: {
         listBlockingRejectionConnectionIds: jest.fn().mockResolvedValue([]),

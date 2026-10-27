@@ -18745,6 +18745,21 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
   opacity: 0.85;
 }
 
+.guest-form__demo-links {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: var(--space-3);
+  margin-top: 2px;
+  font-size: 12px;
+}
+
+.guest-form__demo-links a {
+  color: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
 .guest-form__demo-register {
   justify-content: center;
 }
@@ -24454,6 +24469,14 @@ legend.analytics-settings-dialog__label {
   align-items: center;
 }
 
+/* ── Destination routing (#2703) ───────────────────────────────────────────
+   Same wrapper shape as the hold badge: the reason hint rides on a `title`
+   because `StatusBadge` takes none of its own.                                */
+.order-destination-routing-badge {
+  display: inline-flex;
+  align-items: center;
+}
+
 /* Detail-page panel. Same shape as the packed control it sits beside: the fact
    on the left, the single write affordance on the right, wrapping on narrow
    screens rather than pushing the button off-canvas.                          */
@@ -29886,6 +29909,61 @@ legend.analytics-settings-dialog__label {
      review calls out as operator-visible: the governing rule is the whole
      story of the table, and it had no affordance at all. */
   background: var(--bg-surface-muted);
+}
+
+/* ============================================================
+   SOURCING RULES TEST PANEL (#2954)
+
+   "Where would this order go?" - an order search or a basket, and the router's
+   own answer. Token-only and layout-only: the result copy comes from the router
+   and is rendered verbatim, so nothing here styles a specific reason.
+   ============================================================ */
+
+.sourcing-test {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  margin-top: var(--space-5);
+  padding: var(--space-5);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--bg-surface);
+}
+
+.sourcing-test__title {
+  margin: 0;
+  font-size: 1.125rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.sourcing-test__modes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.sourcing-test__orders {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin: var(--space-2) 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.sourcing-test__basket-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--space-3);
+  margin-bottom: var(--space-3);
+}
+
+@media (max-width: 640px) {
+  .sourcing-test {
+    padding: var(--space-4);
+  }
 }
 
 /* ============================================================
