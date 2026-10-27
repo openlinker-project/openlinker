@@ -88,8 +88,10 @@ import type {
   FulfillmentWorkTransaction,
   LatestActiveParcelVerification,
   ListUnrelayedShippedDispatchesInput,
+  ListWorksMissingSaleDecrementJobRepoInput,
   UnrelayedShippedDispatch,
   ListStalledUnsubmittedWorksInput,
+  WorkMissingSaleDecrementJob,
   ListTimedOutDispatchesInput,
   ParcelVerifiedCount,
   PlaceFulfillmentHoldInput,
@@ -114,6 +116,7 @@ import {
   isFulfillmentRequestStatus,
   type FulfillmentRequestStatus,
 } from '../../../domain/types/fulfillment-request-status.types';
+import { SALE_DECREMENT_JOB_DEDUPE_PREFIX } from '../../../domain/types/fulfillment-sale-decrement-enqueue.types';
 import { TERMINAL_FULFILLMENT_WORK_STATUSES } from '../../../domain/types/fulfillment-supported-actions.types';
 import {
   isFulfillmentWorkStatus,
@@ -781,6 +784,43 @@ export class FulfillmentWorkRepository implements FulfillmentWorkRepositoryPort 
       return [...byWorkId.values()];
     } catch (error) {
       throw new FulfillmentPersistenceError('listUnrelayedShippedDispatches', error);
+    }
+  }
+
+  async listWorksMissingSaleDecrementJob(
+    input: ListWorksMissingSaleDecrementJobRepoInput
+  ): Promise<WorkMissingSaleDecrementJob[]> {
+    try {
+      // Read-model reporting join (ADR-036): `order_records` and `sync_jobs` are
+      // other contexts' tables, joined by name, read-only, every value bound. It
+      // depends on `sync_jobs."idempotencyKey"` being globally unique and on the
+      // producers' key prefix, taken from `SALE_DECREMENT_JOB_DEDUPE_PREFIX` so the
+      // two cannot drift. It is a PREDICATE
+      // (a frontier), not display enrichment, which is what ADR-036 admits.
+      const rows = (await this.works.query(
+        `SELECT w."id" AS "workId", w."orderId" AS "orderId", o."sourceConnectionId" AS "sourceConnectionId"
+           FROM "fulfillment_works" w
+           JOIN "order_records" o
+             ON o."internalOrderId" = w."orderId"
+            AND o."cancelledAt" IS NULL
+          WHERE w."createdAt" < $1
+            AND w."createdAt" >= $4
+            AND w."status" <> 'cancelled'
+            AND NOT EXISTS (
+              SELECT 1 FROM "sync_jobs" j
+               WHERE j."idempotencyKey" = $2 || w."id"
+            )
+          ORDER BY w."createdAt" ASC, w."id" ASC
+          LIMIT $3`,
+        [input.createdBefore, SALE_DECREMENT_JOB_DEDUPE_PREFIX, input.limit, input.createdAfter]
+      )) as { workId: string; orderId: string; sourceConnectionId: string }[];
+      return rows.map((row) => ({
+        workId: row.workId,
+        orderId: row.orderId,
+        orderSourceConnectionId: row.sourceConnectionId,
+      }));
+    } catch (error) {
+      throw new FulfillmentPersistenceError('listWorksMissingSaleDecrementJob', error);
     }
   }
 

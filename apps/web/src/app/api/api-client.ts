@@ -104,6 +104,10 @@ import {
   type SourcingRulesApi,
 } from '../../features/oms/api/sourcing-rules.api';
 import {
+  createRoutingDryRunApi,
+  type RoutingDryRunApi,
+} from '../../features/oms/api/routing-dry-run.api';
+import {
   createFulfillmentAuthorityApi,
   type FulfillmentAuthorityApi,
 } from '../../features/fulfillment-authority/api/who-decides.api';
@@ -252,6 +256,7 @@ export interface CoreApiClient {
   salesDocumentList: SalesDocumentListApi;
   salesDocumentRules: SalesDocumentRulesApi;
   sourcingRules: SourcingRulesApi;
+  routingDryRun: RoutingDryRunApi;
   fulfillmentAuthority: FulfillmentAuthorityApi;
   fulfillment: FulfillmentApi;
   bench: BenchApi;
@@ -489,6 +494,7 @@ export function createApiClient({
     salesDocumentList: createSalesDocumentListApi(request),
     salesDocumentRules: createSalesDocumentRulesApi(request),
     sourcingRules: createSourcingRulesApi(request),
+    routingDryRun: createRoutingDryRunApi(request),
     automations: createAutomationsApi(request),
     fulfillmentAuthority: createFulfillmentAuthorityApi(request),
     fulfillment: createFulfillmentApi(request),

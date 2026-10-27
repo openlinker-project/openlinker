@@ -7,6 +7,7 @@ import {
   createMockApiClient,
   createAuthenticatedSessionAdapter,
 } from '../../test/test-utils';
+import { mockMobileViewport } from '../../test/viewport';
 import { ProductDetailPage } from './product-detail-page';
 import type { Product } from '../../features/products/api/products.types';
 import type { InventoryItem, PaginatedInventory } from '../../features/inventory/api/inventory.types';
@@ -470,6 +471,94 @@ describe('ProductDetailPage', () => {
     expect(await screen.findByRole('heading', { name: 'Listed on' })).toBeInTheDocument();
     expect(screen.queryByRole('heading', { name: /Variants & stock/ })).not.toBeInTheDocument();
     expect(container.querySelector('.variant-stock-table')).toBeNull();
+  });
+
+  it('should show the inherited product tax rate when the product has a single variant', async () => {
+    const mockApi = createMockApiClient({
+      products: {
+        getById: vi.fn().mockResolvedValue({ ...sampleProduct, taxRate: '23' }),
+      },
+    });
+
+    const { container } = renderWithProviders(
+      <Routes>
+        <Route path="/products/:id" element={<ProductDetailPage />} />
+      </Routes>,
+      { apiClient: mockApi, route: '/products/ol_product_abc123' },
+    );
+
+    await screen.findByRole('heading', { name: 'Listed on' });
+    const panel = container.querySelector('.variant-drawer--flush') as HTMLElement;
+    expect(within(panel).getByText('Tax rate')).toBeInTheDocument();
+    expect(within(panel).getByText('23%')).toBeInTheDocument();
+    expect(within(panel).getByText('inherited from the product')).toBeInTheDocument();
+  });
+
+  it('should show the missing-rate badge when a single-variant product has no tax rate', async () => {
+    const mockApi = createMockApiClient({
+      products: {
+        getById: vi.fn().mockResolvedValue({ ...sampleProduct, taxRate: null }),
+      },
+    });
+
+    const { container } = renderWithProviders(
+      <Routes>
+        <Route path="/products/:id" element={<ProductDetailPage />} />
+      </Routes>,
+      { apiClient: mockApi, route: '/products/ol_product_abc123' },
+    );
+
+    await screen.findByRole('heading', { name: 'Listed on' });
+    const panel = container.querySelector('.variant-drawer--flush') as HTMLElement;
+    expect(within(panel).getByText('No tax rate')).toBeInTheDocument();
+  });
+
+  it('should show the tax rate in the expanded mobile variant card', async () => {
+    const viewport = mockMobileViewport();
+    try {
+      const user = userEvent.setup();
+      const mockApi = createMockApiClient({
+        products: {
+          getById: vi.fn().mockResolvedValue({ ...multiVariantProduct, taxRate: '5' }),
+        },
+      });
+
+      const { container } = renderWithProviders(
+        <Routes>
+          <Route path="/products/:id" element={<ProductDetailPage />} />
+        </Routes>,
+        { apiClient: mockApi, route: '/products/ol_product_abc123' },
+      );
+
+      await user.click(
+        await screen.findByRole('button', { name: 'Toggle details for SKU-001-M' }),
+      );
+
+      const body = container.querySelector('.variant-card__body') as HTMLElement;
+      expect(within(body).getByText('Tax rate')).toBeInTheDocument();
+      expect(within(body).getByText('5%')).toBeInTheDocument();
+    } finally {
+      viewport.restore();
+    }
+  });
+
+  it('should show the category path from the shop in the product summary', async () => {
+    const mockApi = createMockApiClient({
+      products: {
+        getById: vi.fn().mockResolvedValue({
+          ...sampleProduct,
+          categoryBreadcrumb: [
+            { id: '2', name: 'Dom i kuchnia' },
+            { id: '7', name: 'Ceramika' },
+          ],
+        }),
+      },
+    });
+
+    renderDetailPage(mockApi);
+
+    const summary = await screen.findByRole('region', { name: 'Product summary' });
+    expect(within(summary).getByText('Dom i kuchnia › Ceramika')).toBeInTheDocument();
   });
 
   it('should render the variants table for a multi-variant product', async () => {

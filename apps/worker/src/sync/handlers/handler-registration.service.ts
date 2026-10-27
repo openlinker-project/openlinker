@@ -71,6 +71,7 @@ import { FulfillmentWorkRelaySweepHandler } from './fulfillment-work-relay-sweep
 import { FulfillmentWorkRerouteSweepHandler } from './fulfillment-work-reroute-sweep.handler';
 import { FulfillmentWorkTimeoutSweepHandler } from './fulfillment-work-timeout-sweep.handler';
 import { InventorySaleDecrementHandler } from './inventory-sale-decrement.handler';
+import { InventorySaleDecrementReconcileSweepHandler } from './inventory-sale-decrement-reconcile-sweep.handler';
 
 @Injectable()
 export class HandlerRegistrationService implements OnModuleInit {
@@ -137,7 +138,8 @@ export class HandlerRegistrationService implements OnModuleInit {
     private readonly fulfillmentWorkTimeoutSweepHandler: FulfillmentWorkTimeoutSweepHandler,
     private readonly fulfillmentWorkRelaySweepHandler: FulfillmentWorkRelaySweepHandler,
     private readonly inventorySaleDecrementHandler: InventorySaleDecrementHandler,
-    private readonly fulfillmentWorkRerouteSweepHandler: FulfillmentWorkRerouteSweepHandler
+    private readonly fulfillmentWorkRerouteSweepHandler: FulfillmentWorkRerouteSweepHandler,
+    private readonly inventorySaleDecrementReconcileSweepHandler: InventorySaleDecrementReconcileSweepHandler
   ) {}
 
   onModuleInit(): void {
@@ -670,6 +672,17 @@ export class HandlerRegistrationService implements OnModuleInit {
     this.handlerRegistry.register(
       'fulfillment.work.rerouteSweep',
       this.fulfillmentWorkRerouteSweepHandler,
+      'bulk'
+    );
+
+    // The lost-enqueue backstop for the decrement above (#3629). 'bulk', where its
+    // subject is 'realtime': the decrement is a sale a buyer is racing, whereas
+    // every candidate here has by construction gone at least the grace window
+    // without a job, so a lane slot's delay adds minutes to a condition that
+    // otherwise never ends. One local insert per candidate, no platform call.
+    this.handlerRegistry.register(
+      'inventory.saleDecrement.reconcileSweep',
+      this.inventorySaleDecrementReconcileSweepHandler,
       'bulk'
     );
 
