@@ -51,6 +51,11 @@ function cancelWarnings(result: CancelOrderResult): string[] {
     if (p.effect === 'stock-restored-only') {
       warnings.push(`stock-restored-only:${p.connectionId}`);
     }
+    // A channel that cannot express a cancel (Shoper) was told nothing; the single
+    // cancel lists it, so the bulk row must not read as a plain success (B-13).
+    if (p.effect === 'not-supported') {
+      warnings.push(`participant-not-informed:${p.connectionId}`);
+    }
   }
   const destinationNotTold =
     result.otherParticipantsRelayFailed === true ||

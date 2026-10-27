@@ -155,6 +155,21 @@ describe('OrderBulkActionsController (#3545)', () => {
       ]);
     });
 
+    it('should warn when a participant cannot be told about the cancel (B-13)', async () => {
+      cancellation.cancelOrder.mockResolvedValue(
+        cancelled({
+          participants: [
+            { connectionId: 'shoper', role: 'destination', effect: 'not-supported', detail: null },
+          ],
+        })
+      );
+
+      const res = await controller.bulkCancel({ orderIds: ['a'], reason: 'buyer-request' as never }, user);
+
+      expect(res.results[0].outcome).toBe('cancelled');
+      expect(res.results[0].warnings).toEqual(['participant-not-informed:shoper']);
+    });
+
     it('should count pending separately from cancelled (B-24)', async () => {
       cancellation.cancelOrder.mockResolvedValue(cancelled({ status: 'pending' }));
       const res = await controller.bulkCancel({ orderIds: ['a'], reason: 'buyer-request' as never }, user);
