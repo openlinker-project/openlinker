@@ -8,7 +8,8 @@
  *
  * @module apps/web/src/features/orders/hooks
  */
-import { useQuery, type UseQueryResult } from '@tanstack/react-query';
+import { useEffect, useRef } from 'react';
+import { useQuery, useQueryClient, type UseQueryResult } from '@tanstack/react-query';
 import { useApiClient } from '../../../app/api/api-client-provider';
 import { ordersQueryKeys } from '../api/orders.query-keys';
 import type { OrderChangeView } from '../api/order-cancel.types';
@@ -18,8 +19,9 @@ export const ORDER_CHANGES_POLL_MS = 15_000;
 
 export function useOrderChangesQuery(internalOrderId: string): UseQueryResult<OrderChangeView[]> {
   const apiClient = useApiClient();
+  const queryClient = useQueryClient();
 
-  return useQuery({
+  const query = useQuery({
     queryKey: ordersQueryKeys.changes(internalOrderId),
     queryFn: () => apiClient.orders.listOrderChanges(internalOrderId),
     enabled: Boolean(internalOrderId),
@@ -32,4 +34,19 @@ export function useOrderChangesQuery(internalOrderId: string): UseQueryResult<Or
       return open && !document.hidden ? ORDER_CHANGES_POLL_MS : false;
     },
   });
+
+  // The poll sees the cancel confirm by itself, but the order record (header
+  // badge, lifecycle phase) is a different read and would stay on "amending"
+  // until a reload (C-49).
+  const hadOpenCancel = useRef(false);
+  const hasOpenCancel =
+    query.data?.some((change) => change.kind === 'order.cancel_request' && change.open) ?? false;
+  useEffect(() => {
+    if (hadOpenCancel.current && !hasOpenCancel) {
+      void queryClient.invalidateQueries({ queryKey: ordersQueryKeys.all });
+    }
+    hadOpenCancel.current = hasOpenCancel;
+  }, [hasOpenCancel, queryClient]);
+
+  return query;
 }

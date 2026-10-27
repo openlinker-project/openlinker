@@ -96,6 +96,40 @@ describe('CancelOrderDialog (#3541)', () => {
     expect(onOpenChange).toHaveBeenCalledWith(false);
   });
 
+  it('should still hand the result to the page when the dialog unmounts before the cancel settles (C-35)', async () => {
+    let resolve: (value: CancelOrderResult) => void = () => undefined;
+    const cancelOrder = vi.fn().mockReturnValue(
+      new Promise<CancelOrderResult>((r) => {
+        resolve = r;
+      }),
+    );
+    const { onResult } = renderDialog(cancelOrder);
+    const user = userEvent.setup();
+
+    await user.click(await screen.findByTestId('order-cancel-submit'));
+    await waitFor(() => {
+      expect(cancelOrder).toHaveBeenCalled();
+    });
+    // A confirmed cancel makes the order terminal, which removes the action.
+    cleanup();
+    resolve(
+      result({
+        participants: [
+          { connectionId: 'c1', role: 'source', effect: 'not-supported', detail: null },
+        ],
+      }),
+    );
+
+    await waitFor(() => {
+      expect(onResult).toHaveBeenCalledWith(
+        expect.objectContaining({
+          participants: [expect.objectContaining({ effect: 'not-supported' })],
+        }),
+        expect.any(String),
+      );
+    });
+  });
+
   it('should require a note for the "other" reason before submitting', async () => {
     const { cancelOrder } = renderDialog();
     const user = userEvent.setup();

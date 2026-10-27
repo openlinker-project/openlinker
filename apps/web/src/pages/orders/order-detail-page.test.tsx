@@ -71,6 +71,31 @@ describe('OrderDetailPage', () => {
     expect(links.length).toBeGreaterThan(0);
   });
 
+  it('should not offer Confirm refund while the cancel request is still pending (C-2)', async () => {
+    const api = createMockApiClient({
+      orders: {
+        getById: vi.fn().mockResolvedValue(sampleOrder),
+        listOrderChanges: vi.fn().mockResolvedValue([
+          {
+            id: 'change_1',
+            kind: 'order.cancel_request',
+            status: 'requested',
+            open: true,
+            requestedAt: '2026-04-20T10:00:00.000Z',
+            confirmedAt: null,
+            declinedReason: null,
+            payload: { cancelRequest: { reason: 'buyer-request', note: null }, correction: null },
+          },
+        ]),
+      },
+    });
+
+    renderDetail(api);
+
+    await screen.findByTestId('order-cancel-pending');
+    expect(screen.queryByTestId('order-confirm-refund-button')).not.toBeInTheDocument();
+  });
+
   it('renders the order snapshot inside RawPayloadPanel (collapsed, expandable)', async () => {
     const api = createMockApiClient({
       orders: { getById: vi.fn().mockResolvedValue(sampleOrder) },
