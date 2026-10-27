@@ -20,7 +20,7 @@ import {
   syncCellLabel,
   type FulfillmentState,
 } from '../lib/order-health';
-import { resolveDestinationRoutingCopy } from '../lib/destination-routing-copy';
+import { resolveDestinationRoutingSyncHint } from '../lib/destination-routing-copy';
 
 interface OrderHealthSummaryProps {
   syncStatus: OrderSyncStatus[];
@@ -33,9 +33,9 @@ interface OrderHealthSummaryProps {
   fulfillmentPending?: boolean;
   /**
    * How routing narrowed this order's destination fan-out (#2703), read from the
-   * persisted column. Consulted ONLY when the rollup is empty, where it tells a
-   * working router's decision apart from a configuration that was never set up —
-   * two states that both rendered "No destinations" before.
+   * persisted column. Tells a working router's decision apart from a
+   * configuration that was never set up, and stops the hint claiming every
+   * destination was reconciled after a partial narrowing.
    */
   destinationRoutingBlockReason?: string | null;
 }
@@ -51,7 +51,10 @@ export function OrderHealthSummary({
 }: OrderHealthSummaryProps): ReactElement {
   const rollup = rollupSyncStatus(syncStatus);
   const alarm = rollup.failed > 0;
-  const routingCopy = resolveDestinationRoutingCopy(destinationRoutingBlockReason);
+  const routingHint = resolveDestinationRoutingSyncHint(
+    destinationRoutingBlockReason,
+    rollup.total > 0
+  );
 
   const fulfillmentHint = fulfillmentPending
     ? 'Checking…'
@@ -73,17 +76,13 @@ export function OrderHealthSummary({
         <div className="order-health__hint">
           {alarm && failedDestinationId ? (
             <ConnectionEntityLabel connectionId={failedDestinationId} showId={false} />
+          ) : routingHint !== null ? (
+            // #2703 / #2704 — the routing reason's own hint, from the copy
+            // module, replaces "No destinations configured" and "All
+            // destinations reconciled" where either would be false.
+            routingHint
           ) : rollup.total === 0 ? (
-            // #2703 — the routing reason REPLACES the "nothing configured"
-            // sentence, which would otherwise be a false statement about the
-            // operator's own configuration whenever a router decided this.
-            (routingCopy?.tone === 'attention'
-              ? 'See the routing note below'
-              : (routingCopy?.hint ?? 'No destinations configured'))
-          ) : destinationRoutingBlockReason === 'routed-destinations-partially-unavailable' ? (
-            // #2704 — a PARTIAL narrowing has destination rows, so the rollup is
-            // not empty; "All destinations reconciled" would contradict the reason.
-            'Some routed destinations were not reached'
+            'No destinations configured'
           ) : (
             'All destinations reconciled'
           )}
