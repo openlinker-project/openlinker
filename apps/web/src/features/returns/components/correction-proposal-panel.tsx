@@ -279,7 +279,7 @@ export function CorrectionProposalPanel({
 
       <ul className="returns-proposal-panel__lines">
         {proposal.lines.map((line) => (
-          <li className="returns-proposal-line" key={line.returnLineId}>
+          <li className="returns-proposal-line" key={`${line.returnLineId}:${String(line.selectedOriginalLineNumber ?? line.lineIndex)}`}>
             <div className="returns-proposal-line__head">
               <span>{line.name ?? line.sku ?? `Line ${line.lineIndex + 1}`}</span>
               <StatusBadge
