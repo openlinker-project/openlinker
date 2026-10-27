@@ -88,6 +88,19 @@ describe('OrdersListPage bulk actions (#3619)', () => {
     expect(screen.queryByTestId('orders-bulk-cancel')).toBeNull();
   });
 
+  it('should remove the bulk bar when a sort change leaves nothing selected (B-6, B-18)', async () => {
+    const user = userEvent.setup();
+    renderPage([makeOrder('ol_ready')]);
+
+    await user.click(await screen.findByRole('checkbox', { name: 'Select ol_ready' }));
+    expect(screen.getByTestId('orders-bulk-bar')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Customer, sort' }));
+
+    await screen.findByRole('checkbox', { name: 'Select ol_ready' });
+    expect(screen.queryByTestId('orders-bulk-bar')).toBeNull();
+  });
+
   it('should let a dispatched order be selected for cancel while Dispatch excludes it', async () => {
     const user = userEvent.setup();
     renderPage([

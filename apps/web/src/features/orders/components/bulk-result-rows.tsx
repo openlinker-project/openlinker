@@ -33,8 +33,8 @@ export function BulkResultRows({
   return (
     <div className="bulk-dispatch__results" data-testid={testId}>
       {rows.map((row) => (
-        <div key={row.orderId} className="bulk-dispatch__result-row" data-testid="orders-bulk-result-row">
-          <Link className="mono bulk-dispatch__ordid" to={`/orders/${encodeURIComponent(row.orderId)}`}>
+        <div key={row.orderId} className="bulk-dispatch__result-row bulk-result__row" data-testid="orders-bulk-result-row">
+          <Link className="mono bulk-dispatch__ordid bulk-result__ordid" to={`/orders/${encodeURIComponent(row.orderId)}`}>
             {row.orderId}
           </Link>
           <StatusBadge tone={row.tone} withDot compact>

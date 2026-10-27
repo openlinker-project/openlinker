@@ -1413,7 +1413,7 @@ export function OrdersListPage(): ReactElement {
             className="orders-table"
             stickyLeftColumns={selectionEnabled ? 2 : 1}
             footer={
-              selectionEnabled ? (
+              selectionEnabled && selectedOrders.length > 0 ? (
               <BulkActionBar
                 data-testid="orders-bulk-bar"
                 count={selectedOrders.length}
