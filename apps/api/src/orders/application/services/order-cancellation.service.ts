@@ -758,6 +758,15 @@ export class OrderCancellationService implements IOrderCancellationService {
           `This ${noun} was already confirmed.`
         );
       case 'expired':
+        // OpenLinker retires a proposal it replaced or made moot by writing the
+        // `expired` status WITH a machine reason; a timeout carries none. Only the
+        // timeout is an expiry the operator can act on with the hint (E-47).
+        if (typeof change.declinedReason === 'string') {
+          throw new OrderCancellationRefusedError(
+            'CHANGE_NOT_OPEN',
+            `This ${noun} proposal was replaced or withdrawn and can no longer be confirmed.`
+          );
+        }
         throw new OrderCancellationRefusedError(
           'CHANGE_EXPIRED',
           `This ${noun} proposal expired. ${expiredHint}`

@@ -869,6 +869,15 @@ describe('OrderCancellationService (#3540)', () => {
       expect(refunds.recordRefund).not.toHaveBeenCalled();
     });
 
+    it('should answer CHANGE_NOT_OPEN, not CHANGE_EXPIRED, for a proposal OL replaced (E-47)', async () => {
+      changes.findById.mockResolvedValue(
+        refundChange({ status: 'expired', declinedReason: 'superseded-by-newer-proposal' })
+      );
+
+      expect(await refusal(service.confirmChange(confirmInput))).toBe('CHANGE_NOT_OPEN');
+      expect(refunds.recordRefund).not.toHaveBeenCalled();
+    });
+
     it('should refuse a discount correction on a cancelled order and retire the proposal (B-31)', async () => {
       changes.findById.mockResolvedValue(correctionChange());
       invoices.getInvoiceById.mockResolvedValue(invoice());

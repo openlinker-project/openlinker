@@ -1007,7 +1007,7 @@ describe('OrderEditService (#3542)', () => {
 
         await service.editDiscount({ ...discountBase, amount: '8' });
 
-        expect(changes.abandon).toHaveBeenCalledWith('old-intent');
+        expect(changes.abandon).toHaveBeenCalledWith('old-intent', 'superseded-by-newer-proposal');
       });
 
       it('should keep the discount and report the failure when the intent cannot be opened', async () => {
