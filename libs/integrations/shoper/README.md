@@ -2,11 +2,17 @@
 
 OpenLinker adapter for [Shoper](https://www.shoper.pl) (Polish SaaS e-commerce platform), REST API.
 
-**Status:** connection skeleton (#3639) plus the **read side of `ProductMaster`** (#3675): products, variants,
-search and id enumeration. Categories (#3676), tax rate (#3677) and deletion detection (#3678) complete
-ProductMaster. `InventoryMaster` (#3686, #3687) and the `OrderProcessorManager` skeleton (#3692) are described
-below, and `OrderSource` (#3711) ingests the shop's own orders; fulfilment writeback and webhooks land in their own epics of the "Shoper MVP Integration" milestone. Evidence base: `docs/plans/analysis/SPIKE-3638-shoper-rest-api.md`
-and the live findings recorded in `docs/plans/implementation-plan-shoper-product-master-read.md`.
+**Status:** the "Shoper MVP Integration" milestone is complete (released in v0.16.1). The adapter advertises
+six capabilities: `ProductMaster` (#3640: products, variants, categories, tax rate, deletion detection),
+`InventoryMaster` (#3641), `OrderProcessorManager` (#3642) with fulfilment writeback as a Shoper parcel (#3643),
+`OrderSource` (#3711), `ProductPublisher` (#3712) and `CategoryProvisioner` (#3713). Only `ProductMaster` and
+`InventoryMaster` are enabled by default on a new connection; the other four are opt-in. #3806 completed the
+capability map on top of that: the shop's category tree, attributes and product status for the publish pickers
+(`ShopCategoryBrowser`, `ShopAttributeReader`, `ShopProductStatusReader`), delta and bulk catalogue reads,
+fulfilment read-back, signed webhooks (#3644), one shared request budget per shop and product GPSR data. A guided
+setup wizard is in the web UI (#3702). See "Known gaps" for what is still open. Evidence base:
+`docs/plans/analysis/SPIKE-3638-shoper-rest-api.md` and the live findings recorded in
+`docs/plans/implementation-plan-shoper-product-master-read.md`.
 
 | | |
 |---|---|
@@ -25,8 +31,9 @@ and the live findings recorded in `docs/plans/implementation-plan-shoper-product
 Rejected: `http://`, a path / query / port / credentials, IP addresses, `localhost`, single-label
 hosts and reserved / private suffixes (`.internal`, `.local`, `.lan`, ...). The token travels on every request, so HTTPS is the only transport.
 
-To create the connection through the API, send `platformType: "shoper"` and
-`adapterKey: "shoper.restapi.v1"` (the web UI does not list Shoper yet).
+In the web UI, pick Shoper under **New connection**: a guided setup asks for the shop address and the token.
+To create the connection through the API instead, send `platformType: "shoper"` and
+`adapterKey: "shoper.restapi.v1"`.
 
 ## Credentials
 
