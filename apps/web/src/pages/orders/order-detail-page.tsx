@@ -441,16 +441,17 @@ export function OrderDetailPage(): ReactElement {
         </Alert>
       ) : null}
 
+      <DestinationRoutingCallout
+        reason={order.destinationRoutingBlockReason}
+        detail={order.destinationRoutingBlockDetail}
+      />
+
       {/* #2350 — the shortfall callout, in the same full-width Alert slot as the
           failed-destinations callout. `warning`, not `error`: the order is at
           risk, not broken. Renders nothing when there is nothing to report and
           NEVER a "no shortfalls" reassurance — the loader catches to `[]` on
           failure, so absence and failure are indistinguishable and only the
           presence of an episode is a claim. */}
-      <DestinationRoutingCallout
-        reason={order.destinationRoutingBlockReason}
-        detail={order.destinationRoutingBlockDetail}
-      />
       <StockAtRiskCallout shortfalls={order.reservationShortfalls} />
 
       {snapshot.items.length > 0 || snapshot.totals ? (

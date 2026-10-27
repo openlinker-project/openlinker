@@ -18,9 +18,9 @@ import type { ReactNode } from 'react';
 import { Alert } from '../../../shared/ui/alert';
 import {
   DESTINATION_ROUTING_ATTENTION_REASONS,
+  isDestinationRoutingBlockReason,
   resolveDestinationRoutingCopy,
 } from '../lib/destination-routing-copy';
-import type { DestinationRoutingBlockReasonValue } from '../api/orders.types';
 
 export interface DestinationRoutingCalloutProps {
   reason: string | null | undefined;
@@ -32,10 +32,8 @@ export function DestinationRoutingCallout({
   detail,
 }: DestinationRoutingCalloutProps): ReactNode {
   const copy = resolveDestinationRoutingCopy(reason);
-  if (copy === null) return null;
-  if (!DESTINATION_ROUTING_ATTENTION_REASONS.includes(reason as DestinationRoutingBlockReasonValue)) {
-    return null;
-  }
+  if (copy === null || !isDestinationRoutingBlockReason(reason)) return null;
+  if (!DESTINATION_ROUTING_ATTENTION_REASONS.includes(reason)) return null;
 
   return (
     <Alert tone="warning" title={copy.label}>

@@ -32,9 +32,9 @@
 import type { ReactElement } from 'react';
 
 import { StatusBadge } from '../../../shared/ui/status-badge';
-import type { DestinationRoutingBlockReasonValue } from '../api/orders.types';
 import {
   DESTINATION_ROUTING_ATTENTION_REASONS,
+  isDestinationRoutingBlockReason,
   resolveDestinationRoutingCopy,
 } from '../lib/destination-routing-copy';
 
@@ -52,9 +52,8 @@ export function OrderDestinationRoutingBadge({
   const copy = resolveDestinationRoutingCopy(reason);
   if (copy === null) return null;
 
-  const needsAttention = DESTINATION_ROUTING_ATTENTION_REASONS.includes(
-    reason as DestinationRoutingBlockReasonValue
-  );
+  const needsAttention =
+    isDestinationRoutingBlockReason(reason) && DESTINATION_ROUTING_ATTENTION_REASONS.includes(reason);
 
   return (
     // `StatusBadge` takes no `title`, so the hint rides on a wrapper and is also

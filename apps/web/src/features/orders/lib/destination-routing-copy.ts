@@ -74,6 +74,12 @@ export const DESTINATION_ROUTING_ATTENTION_REASONS: readonly DestinationRoutingB
     (reason) => DESTINATION_ROUTING_REASON_COPY[reason].tone === 'attention'
   );
 
+/** Narrowing guard, so consumers need no `as` cast after a copy lookup. */
+export const isDestinationRoutingBlockReason = (
+  reason: string | null | undefined
+): reason is DestinationRoutingBlockReasonValue =>
+  typeof reason === 'string' && reason in DESTINATION_ROUTING_REASON_COPY;
+
 /**
  * Resolve copy for a persisted reason.
  *
@@ -84,10 +90,5 @@ export const DESTINATION_ROUTING_ATTENTION_REASONS: readonly DestinationRoutingB
 export const resolveDestinationRoutingCopy = (
   reason: string | null | undefined
 ): DestinationRoutingCopy | null => {
-  if (!reason) {
-    return null;
-  }
-  return (
-    DESTINATION_ROUTING_REASON_COPY[reason as DestinationRoutingBlockReasonValue] ?? null
-  );
+  return isDestinationRoutingBlockReason(reason) ? DESTINATION_ROUTING_REASON_COPY[reason] : null;
 };
