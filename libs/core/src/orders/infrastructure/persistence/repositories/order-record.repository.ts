@@ -3297,10 +3297,14 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
       // N-22: a DIFFERENT note text is a note the operator has not read. The
       // read marker is still not part of the write set (`markBuyerNoteRead` is
       // its sole setter); only this reset clause touches it, and only when a
-      // real text replaces a different stored one. Bench acknowledgements live
+      // real text replaces a different stored one, or when the source positively
+      // reports NO note (N-23: the note is cleared, so a read marker on it would
+      // outlive what it acknowledged). Bench acknowledgements live
       // on the fulfilment work and are untouched.
       for (const column of ['buyerNoteReadAt', 'buyerNoteReadByUserId']) {
         updateAssignments.push(`"${column}" = CASE
+           WHEN EXCLUDED."buyerNote" = ''
+             THEN NULL
            WHEN EXCLUDED."buyerNote" IS NOT NULL AND EXCLUDED."buyerNote" <> ''
              AND EXCLUDED."buyerNote" IS DISTINCT FROM "order_records"."buyerNote"
              THEN NULL ELSE "order_records"."${column}" END`);

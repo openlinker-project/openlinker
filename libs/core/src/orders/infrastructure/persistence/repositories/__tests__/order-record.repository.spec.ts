@@ -1952,6 +1952,23 @@ describe('OrderRecordRepository', () => {
       expect(writeSet.has('buyerNoteReadAt')).toBe(false);
     });
 
+    it('should clear the read marker together with the note when the source reports no note (N-23)', () => {
+      const { sql } = (repository as unknown as Builder).buildFrozenAttributionUpsert(
+        createOrmEntity(),
+        true
+      );
+      const updateHalf = sql.slice(sql.indexOf('DO UPDATE SET'));
+
+      expect(updateHalf).toMatch(
+        /"buyerNoteReadAt" = CASE\s+WHEN EXCLUDED\."buyerNote" = ''\s+THEN NULL/
+      );
+      expect(updateHalf).toMatch(
+        /"buyerNoteReadByUserId" = CASE\s+WHEN EXCLUDED\."buyerNote" = ''\s+THEN NULL/
+      );
+      // An unknown read (NULL) matches no WHEN arm, so the marker is kept (B-5).
+      expect(updateHalf).not.toMatch(/EXCLUDED\."buyerNote" IS NULL\s+THEN NULL/);
+    });
+
     it('should write the text derived from the snapshot when upserting with PII stored', async () => {
       process.env.OL_STORE_PII = 'true';
       mockUpsertReturning(createOrmEntity());
