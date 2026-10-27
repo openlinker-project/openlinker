@@ -737,8 +737,10 @@ export class OrderIngestionService implements IOrderIngestionService {
       // Without this clear a routing reason written by an earlier run would stand
       // beside the fresh `fulfillmentBlockReason` above and assert "the router
       // sent this nowhere" about an order that is in fact held — two reasons for
-      // one order, one of them stale. Clearing here is what keeps the two columns
-      // mutually exclusive and the value level-triggered across BOTH branches.
+      // one order, one of them stale. Clearing here keeps the two columns mutually
+      // exclusive on the paths that reach the fan-out decision (this one and
+      // `syncOrder`). An ingestion that exits earlier leaves the previous value
+      // until the next run - a bounded display fault, not a correctness one.
       await this.persistDestinationRoutingCleared(order.id);
     } else {
       results = await this.orderSyncService.syncOrder({

@@ -78,6 +78,10 @@ export function OrderHealthSummary({
             // sentence, which would otherwise be a false statement about the
             // operator's own configuration whenever a router decided this.
             (routingCopy?.hint ?? 'No destinations configured')
+          ) : routingCopy?.tone === 'attention' ? (
+            // #2704 — a PARTIAL narrowing has destination rows, so the rollup is
+            // not empty; "All destinations reconciled" would contradict the reason.
+            'Some routed destinations were not reached'
           ) : (
             'All destinations reconciled'
           )}

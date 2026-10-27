@@ -56,6 +56,7 @@ import { SalesDocumentPanel } from '../../features/orders/components/sales-docum
 import { UnlinkedCatalogueLinesBadge } from '../../features/orders/components/unlinked-catalogue-lines-badge';
 import { WarehouseReleaseBadge } from '../../features/orders/components/warehouse-release-badge';
 import { OrderDetailHeader } from '../../features/orders/components/order-detail-header';
+import { DestinationRoutingCallout } from '../../features/orders/components/destination-routing-callout';
 import { OrderHealthSummary } from '../../features/orders/components/order-health-summary';
 import { OrderPricingPanel } from '../../features/orders/components/order-pricing-panel';
 import { OrderDeliveryPanel } from '../../features/orders/components/order-delivery-panel';
@@ -446,6 +447,10 @@ export function OrderDetailPage(): ReactElement {
           NEVER a "no shortfalls" reassurance — the loader catches to `[]` on
           failure, so absence and failure are indistinguishable and only the
           presence of an episode is a claim. */}
+      <DestinationRoutingCallout
+        reason={order.destinationRoutingBlockReason}
+        detail={order.destinationRoutingBlockDetail}
+      />
       <StockAtRiskCallout shortfalls={order.reservationShortfalls} />
 
       {snapshot.items.length > 0 || snapshot.totals ? (
