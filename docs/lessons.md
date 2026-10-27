@@ -23,6 +23,157 @@ When a lesson hardens into a rule, **graduate it** to the canonical doc and leav
 
 ---
 
+## An Allegro offer that reads INACTIVE with no errors may still be processing - the reason lives on the create operation
+
+**Context**: an inline-product `POST /sale/product-offers` with `publication.status: ACTIVE` is
+answered `202` with a `Location` naming `/sale/product-offers/{offerId}/operations/{operationId}`.
+
+**Problem**: the offer resource reads `INACTIVE` with an EMPTY `validation.errors` both while Allegro
+is still processing (live: about 75 s) and after it refused the product (live:
+`GtinNotExistsInGtinParameter` for an EAN unknown to GS1). The creation poller read the first
+INACTIVE at +5 s and settled the record on a bare "draft" - the operator had nothing to fix.
+
+**Rule**: remember the operation id from the create's `Location` and read the operation before
+trusting an INACTIVE-without-errors offer. `202` + `operation.status: IN_PROGRESS` means still
+processing; a failed operation answers `4xx` with the usual `{ errors: [...] }` envelope, which is
+the reason. When no operation is on record, `productSet[].product.publication.status: REMOVED` is
+the only trace left - say so rather than reporting a clean draft.
+
+**Applies to**: `libs/integrations/allegro/src/infrastructure/adapters/allegro-offer-manager.adapter.ts`
+(`createOffer`, `getOfferStatus`).
+
+**Source**: E2E-11, live Allegro sandbox probe 2026-10-26.
+
+---
+
+## A request idempotency key the vendor remembers must not be the sale's document key
+
+**Context**: the eparagony adapters sent the sale's deterministic `documentToken` as the vendor
+`Idempotency-Key` header, and core keeps one idempotency key per order across retries.
+
+**Problem**: the vendor remembers a key even for a request it REFUSED. A refusal caused by data
+or config (live: a wrong seller tax number, `400` code 41) burned the key, so the corrected retry
+under the same key was answered `422` "key used with different data", stored in doubt, and the
+sale was stuck with Retry locked - fixing the cause could never succeed on that record.
+
+**Rule**: keep the per-sale exactly-once key (the document token the vendor refuses to hold
+twice) separate from the per-REQUEST replay key (header derived from that token plus the exact
+body). A `422` replay refusal proves an earlier request, not an earlier document: settle it by
+reading the token's status, and report `rejected` only on the vendor's positive "no such
+document" answer.
+
+**Applies to**: `libs/integrations/eparagony/src/infrastructure/http/eparagony-document-create.ts`,
+`document-token.policy.ts`, any adapter that sends a provider idempotency header.
+
+**Source**: live sandbox run on ol-demo-fresh, 2026-10-26.
+
+---
+
+## A button disabled while a mutation is pending does not stop a double click - latch synchronously, and make the server honour the key
+
+**Context**: the bulk offer wizard's confirm dialog disabled "Create offers" on
+`mutation.isPending` and told the operator a double submit returns the existing batch.
+
+**Problem**: both halves of that promise were missing. `isPending` disables the button only after a
+re-render, and a double click delivers its second click before that render, so `handleSubmit` ran
+twice. It minted a fresh idempotency key on every call, so the two requests carried different
+keys - and the server never read `x-idempotency-key` at all. Two batches, two Allegro offers per
+variant (Allegro does not deduplicate product-offer creates).
+
+**Rule**: guard a submit handler with a synchronous `useRef` latch set before the first `await`,
+never with render state alone. Mint a per-attempt key only after the latch, so one double click
+cannot mint two. When a UI promises server-side idempotency, check the controller actually reads
+the header and that a unique index (not a read-then-insert) enforces it under a race; a copy line
+is not an implementation.
+
+**Applies to**: `apps/web/src/features/listings/components/bulk/bulk-wizard.tsx`,
+`BulkListingSubmitService`, any submit path that creates marketplace objects.
+
+**Source**: live double-click reproduction on the Shoper/Allegro e2e run, 2026-10-26.
+
+---
+
+## A wait that sits in front of a request must honour that request's own cancellation
+
+**Context**: `HttpTransportFactory` waits for a rate-limit slot before calling `fetch`.
+Plugin HTTP clients (Shoper, Erli, eparagony, ...) arm their request timeout before they call
+the transport.
+
+**Problem**: the wait honoured only the ambient context signal, never `init.signal`. Under eight
+concurrent operator requests on a busy Shoper bucket, the 15 s request timers fired while the
+requests were still queued; each one then claimed a slot anyway and failed at 0 ms on its
+already-aborted signal - 27 such failures, each a wasted slot and an HTTP 500 reading "Shoper
+request timed out after 15000ms" for a request that never left OpenLinker.
+
+**Rule**: any gate a request queues behind (limiter, lock, semaphore) takes the request's own
+signal as well as the context one, releases immediately if the request was cancelled at the
+moment of the grant, and never calls the network on a cancelled request. Surface the outcome
+as "busy, nothing was sent" (503 + `Retry-After`), not as a server error.
+
+**Applies to**: `libs/shared/src/http/http-transport-factory.ts`, any future outbound gate,
+`apps/api/src/common/filters/rate-limit-busy.filter.ts`.
+
+**Source**: Shoper integration live test, 2026-10-26 (ADR-038).
+
+---
+
+## Never issue a blocking Redis command on a client other code shares
+
+**Context**: the cross-process rate limiter (`RedisRateLimiterAdapter`, ADR-038 #2015)
+runs on the global `'REDIS_CLIENT'`. In the worker, `JobIntakeConsumer` ran its
+`XREADGROUP ... BLOCK 5000` loop on that same client.
+
+**Problem**: a blocking command holds its node-redis connection until it returns, and every
+command issued on that client queues behind it. The limiter bounds each Redis call at 1 s, so
+in the worker its calls timed out behind the read and fell back to per-process limiting -
+26 fallbacks and 51 "still degraded" warnings in one 40-minute live run, worker only. The
+"shared per-shop bucket" was silently not shared: api and worker requests to the same shop
+landed 1 ms apart while each process on its own never went below 198 ms (300/min). Nothing
+failed, the warnings looked like a Redis blip, and unit specs mock the client so they could
+not see it. A sibling consumer's comment had even recorded that intake "already blocks" on the
+shared client without anyone treating that as a defect.
+
+**Rule**: a consumer that issues `XREADGROUP BLOCK`, `BLPOP`/`BRPOP` or any other blocking
+command gets its own dedicated client (a token + factory beside the consumer, quit on module
+destroy), and every non-blocking command on that stream may run on it too. Shared clients
+(`'REDIS_CLIENT'`, the limiter, locks, cache) carry non-blocking commands only. When a
+degraded-mode fallback fires in one process but not another, suspect the connection before
+suspecting Redis.
+
+**Applies to**: `apps/worker/src/sync/job-intake.consumer.ts`,
+`apps/worker/src/events/master-deletion-to-job.handler.ts`, any new Redis Streams consumer,
+`libs/shared/src/rate-limit/redis-rate-limiter.adapter.ts`.
+
+**Source**: Shoper integration live test, 2026-10-26 (ADR-038, ADR-049).
+
+---
+
+## A destination status read-back must check whether OL itself caused the status it reads
+
+**Context**: branch-1 status sync (`FulfillmentStatusSyncService`) projects a destination
+shop's order status onto a shipment row and relays a shop-initiated cancel to the source
+(#1170).
+
+**Problem**: when the SOURCE cancelled an order, ingestion recorded `cancelledAt` and relayed
+the cancel to the destination (Shoper, PrestaShop, WooCommerce). The next status poll read
+that cancel back as if the shop had cancelled on its own: it minted a `cancelled` shipment
+row for an order that never had a parcel (rollup `failed`, UI "Dispatch failed") and relayed
+`cancelled` back to the source that authored it. Each half of the loop looked correct in its
+own spec; only a live round trip showed the echo.
+
+**Rule**: any read-back that turns a destination fact into OL state or into a relay must ask
+whether that fact is OL's own write coming back (ADR-017, ADR-027 self-echo suppression).
+For cancellation the test is `OrderRecord.isCancelled` - the source already knows, so the
+destination's cancel carries nothing new. Cover it with a case that seeds an OL-cancelled
+order, not only a shop-initiated one.
+
+**Applies to**: `libs/core/src/shipping/application/services/fulfillment-status-sync.service.ts`,
+any status read-back paired with an outbound relay.
+
+**Source**: Shoper integration live test, 2026-10-26.
+
+---
+
 ## Never route a one-field change through a full-upsert port
 
 **Context**: price-change propagation to a WooCommerce shop (#3144) reused

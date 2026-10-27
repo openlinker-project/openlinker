@@ -9,9 +9,10 @@
  *
  * `getCapabilityAdapter` builds a fresh adapter bag on every call and memoises
  * nothing, so the shop-context request (`application-config`) would be repeated
- * once per resolution - one extra request per product job against a shop whose
- * request ceiling is unknown. The host cache, when wired, carries it between
- * resolutions for a few minutes (see `ShoperShopContextProvider`).
+ * once per resolution - one extra request per product job against a budget of
+ * about 10 requests per second per SHOP, shared by every token and integration
+ * on it (see `SHOPER_DEFAULT_RATE_LIMIT`). The host cache, when wired, carries
+ * it between resolutions for a few minutes (see `ShoperShopContextProvider`).
  *
  * @module libs/integrations/shoper/src/application
  */
@@ -30,6 +31,7 @@ import type { ShoperCustomerProvisioner } from '../infrastructure/provisioners/s
 import { ShoperInventoryMasterAdapter } from '../infrastructure/adapters/inventory-master/shoper-inventory-master.adapter';
 import { ShoperOrderSourceAdapter } from '../infrastructure/adapters/order-source/shoper-order-source.adapter';
 import { ShoperOrderReferenceProvider } from '../infrastructure/shop-context/shoper-order-reference.provider';
+import { ShoperParcelShippingRefusalProvider } from '../infrastructure/shop-context/shoper-parcel-shipping-refusal.provider';
 import { ShoperProductPublisherAdapter } from '../infrastructure/adapters/product-publisher/shoper-product-publisher.adapter';
 import { ShoperProductMasterAdapter } from '../infrastructure/adapters/product-master/shoper-product-master.adapter';
 import { ShoperHttpClient } from '../infrastructure/http/shoper-http-client';
@@ -88,6 +90,20 @@ export class ShoperAdapterFactory {
     // rest on sharing the instance; it rests on both going through this class.
     const productReader = new ShoperProductReader(client, connection.id);
     const taxTable = new ShoperTaxTableProvider(client);
+    // Through the host cache: the bag is rebuilt per call, so a per-instance memo
+    // alone would re-read these tables in every order job. One instance serves
+    // both order roles, which read the same status table.
+    const orderReference = new ShoperOrderReferenceProvider(client, {
+      cache,
+      keyPrefix: `shoper:order-reference:${connection.id}:${base.host}`,
+    });
+    // Also through the host cache, for the same reason: a parcel method Shoper
+    // refused must stay remembered across the per-call bags, or every dispatch
+    // pays the refused POST again. One instance serves both order roles.
+    const parcelShippingRefusals = new ShoperParcelShippingRefusalProvider({
+      cache,
+      keyPrefix: `shoper:parcel-shipping-refusal:${connection.id}:${base.host}`,
+    });
 
     return {
       productMaster: new ShoperProductMasterAdapter(
@@ -109,14 +125,10 @@ export class ShoperAdapterFactory {
       productPublisher: new ShoperProductPublisherAdapter(client, shopContext, connection),
       orderSource: new ShoperOrderSourceAdapter(
         client,
-        // Through the host cache: the bag is rebuilt per call, so a per-instance memo
-        // alone would re-read these tables in every order job.
-        new ShoperOrderReferenceProvider(client, {
-          cache,
-          keyPrefix: `shoper:order-reference:${connection.id}:${base.host}`,
-        }),
+        orderReference,
         shopContext,
         connection,
+        parcelShippingRefusals,
       ),
       orderProcessor:
         customerProvisioner === undefined
@@ -131,6 +143,8 @@ export class ShoperAdapterFactory {
               connection,
               mappingConfig,
               this.warnedStockFlagConnections,
+              orderReference,
+              parcelShippingRefusals,
             ),
     };
   }

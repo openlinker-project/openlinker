@@ -78,7 +78,9 @@ function mapOne(
 
   if (param.type === 'dictionary') {
     if (param.restrictions.multipleChoices) {
-      const ids = Array.isArray(raw) ? raw.filter((s) => s !== '') : [];
+      const ids = Array.isArray(raw)
+        ? raw.filter((s) => s !== '' && isKnownDictionaryId(param, s))
+        : [];
       return ids.length > 0 ? { id: param.id, valuesIds: ids } : null;
     }
     if (typeof raw !== 'string') return null;
@@ -95,7 +97,7 @@ function mapOne(
         : { id: param.id, values: [trimmed] };
     }
 
-    return { id: param.id, valuesIds: [trimmed] };
+    return isKnownDictionaryId(param, trimmed) ? { id: param.id, valuesIds: [trimmed] } : null;
   }
 
   // Range scalar (integer/float)
@@ -114,4 +116,20 @@ function mapOne(
   }
 
   return null;
+}
+
+/**
+ * Whether a dictionary value id belongs to this parameter's current dictionary.
+ *
+ * Changing the category keeps the form values keyed by parameter id, and a
+ * parameter such as "Stan" shares its id across categories while its dictionary
+ * does not. The select cannot show an id missing from its options, so it reads
+ * "Select…" while the old id would still be sent and rejected by the
+ * marketplace. Dropping it makes the payload match what the operator sees. A
+ * parameter that arrives without a dictionary keeps every id - there is nothing
+ * to check against.
+ */
+function isKnownDictionaryId(param: CategoryParameter, id: string): boolean {
+  if (!param.dictionary || param.dictionary.length === 0) return true;
+  return param.dictionary.some((entry) => entry.id === id);
 }

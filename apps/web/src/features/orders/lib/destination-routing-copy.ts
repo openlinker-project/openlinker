@@ -74,6 +74,13 @@ export const DESTINATION_ROUTING_ATTENTION_REASONS: readonly DestinationRoutingB
     (reason) => DESTINATION_ROUTING_REASON_COPY[reason].tone === 'attention'
   );
 
+/** Narrowing guard, so consumers need no `as` cast after a copy lookup. */
+export const isDestinationRoutingBlockReason = (
+  reason: string | null | undefined
+): reason is DestinationRoutingBlockReasonValue =>
+  typeof reason === 'string' &&
+  (DestinationRoutingBlockReasonValues as readonly string[]).includes(reason);
+
 /**
  * Resolve copy for a persisted reason.
  *
@@ -84,10 +91,39 @@ export const DESTINATION_ROUTING_ATTENTION_REASONS: readonly DestinationRoutingB
 export const resolveDestinationRoutingCopy = (
   reason: string | null | undefined
 ): DestinationRoutingCopy | null => {
-  if (!reason) {
+  return isDestinationRoutingBlockReason(reason) ? DESTINATION_ROUTING_REASON_COPY[reason] : null;
+};
+
+/** Sync-cell hint when routing needs attention and no destination row exists. */
+export const DESTINATION_ROUTING_ATTENTION_SYNC_HINT = 'Routing needs attention';
+
+/** Sync-cell hint when routing reached only some of the destinations it chose. */
+export const DESTINATION_ROUTING_PARTIAL_SYNC_HINT = 'Some routed destinations were not reached';
+
+/**
+ * The Sync-cell hint a routing reason contributes, or `null` when it contributes
+ * none and the cell keeps its own wording.
+ *
+ * With no destination rows the reason replaces "No destinations configured": an
+ * attention reason gets a short pointer (its full sentence and the unreachable
+ * ids are in the detail-page callout, so repeating it here would say it twice),
+ * while the neutral decision keeps its own hint because no callout renders for
+ * it. With destination rows only the PARTIAL reason contributes, since
+ * "All destinations reconciled" would contradict it; an unavailable reason
+ * beside rows from an earlier run leaves the callout to say so.
+ */
+export const resolveDestinationRoutingSyncHint = (
+  reason: string | null | undefined,
+  hasDestinationRows: boolean
+): string | null => {
+  if (!isDestinationRoutingBlockReason(reason)) {
     return null;
   }
-  return (
-    DESTINATION_ROUTING_REASON_COPY[reason as DestinationRoutingBlockReasonValue] ?? null
-  );
+  const copy = DESTINATION_ROUTING_REASON_COPY[reason];
+  if (!hasDestinationRows) {
+    return copy.tone === 'attention' ? DESTINATION_ROUTING_ATTENTION_SYNC_HINT : copy.hint;
+  }
+  return reason === 'routed-destinations-partially-unavailable'
+    ? DESTINATION_ROUTING_PARTIAL_SYNC_HINT
+    : null;
 };

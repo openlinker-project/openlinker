@@ -20,7 +20,7 @@ import {
   syncCellLabel,
   type FulfillmentState,
 } from '../lib/order-health';
-import { resolveDestinationRoutingCopy } from '../lib/destination-routing-copy';
+import { resolveDestinationRoutingSyncHint } from '../lib/destination-routing-copy';
 import { isHandledInOpenLinker } from '../lib/handled-in-openlinker';
 import { HANDLED_IN_OPENLINKER_COPY } from '../lib/handled-in-openlinker.copy';
 
@@ -35,9 +35,9 @@ interface OrderHealthSummaryProps {
   fulfillmentPending?: boolean;
   /**
    * How routing narrowed this order's destination fan-out (#2703), read from the
-   * persisted column. Consulted ONLY when the rollup is empty, where it tells a
-   * working router's decision apart from a configuration that was never set up —
-   * two states that both rendered "No destinations" before.
+   * persisted column. Tells a working router's decision apart from a
+   * configuration that was never set up, and stops the hint claiming every
+   * destination was reconciled after a partial narrowing.
    */
   destinationRoutingBlockReason?: string | null;
   /**
@@ -60,7 +60,10 @@ export function OrderHealthSummary({
 }: OrderHealthSummaryProps): ReactElement {
   const rollup = rollupSyncStatus(syncStatus);
   const alarm = rollup.failed > 0;
-  const routingCopy = resolveDestinationRoutingCopy(destinationRoutingBlockReason);
+  const routingHint = resolveDestinationRoutingSyncHint(
+    destinationRoutingBlockReason,
+    rollup.total > 0
+  );
   const handled = isHandledInOpenLinker({ handledInOpenLinker });
 
   const fulfillmentHint = fulfillmentPending
@@ -83,14 +86,17 @@ export function OrderHealthSummary({
         <div className="order-health__hint">
           {alarm && failedDestinationId ? (
             <ConnectionEntityLabel connectionId={failedDestinationId} showId={false} />
+          ) : rollup.total === 0 && handled ? (
+            // #3482 - handled in OpenLinker first: it has no destination rows by
+            // design, and live pack-bench work is not "routed nowhere".
+            HANDLED_IN_OPENLINKER_COPY.syncHint
+          ) : routingHint !== null ? (
+            // #2703 / #2704 — the routing reason's own hint, from the copy
+            // module, replaces "No destinations configured" and "All
+            // destinations reconciled" where either would be false.
+            routingHint
           ) : rollup.total === 0 ? (
-            // #2703 — the routing reason REPLACES the "nothing configured"
-            // sentence, which would otherwise be a false statement about the
-            // operator's own configuration whenever a router decided this.
-            // #3482 - handled in OpenLinker first: it has no destination rows by design.
-            handled
-              ? HANDLED_IN_OPENLINKER_COPY.syncHint
-              : (routingCopy?.hint ?? 'No destinations configured')
+            'No destinations configured'
           ) : (
             'All destinations reconciled'
           )}

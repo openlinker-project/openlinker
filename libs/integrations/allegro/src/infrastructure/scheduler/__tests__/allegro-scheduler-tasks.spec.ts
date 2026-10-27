@@ -2,13 +2,14 @@
  * Allegro Scheduler Tasks — Unit Spec
  *
  * Covers `buildAllegroSchedulerTasks`: enable-gate semantics for each of
- * the six tasks, payload shape, idempotency key, and the
+ * the eight tasks, payload shape, idempotency key, and the
  * `masterCatalogConnectionId` lookup on the offers-sync payload.
  *
  * @module libs/integrations/allegro/src/infrastructure/scheduler/__tests__
  */
 import type { ConfigService } from '@nestjs/config';
 import { Connection } from '@openlinker/core/identifier-mapping';
+import type { SchedulerTaskConfig } from '@openlinker/core/sync';
 import { buildAllegroSchedulerTasks } from '../allegro-scheduler-tasks';
 
 const makeConfig = (overrides: Record<string, string> = {}): jest.Mocked<ConfigService> => {
@@ -454,6 +455,59 @@ describe('buildAllegroSchedulerTasks', () => {
       expect(sweepPayload.limit).toBe(50);
       // Never 0 — an unbounded sweep is precisely what the age bound prevents.
       expect(sweepPayload.lookbackDays).toBe(90);
+    });
+  });
+
+  describe('source fulfillment status sync task (ADR-012 amendment)', () => {
+    const enabled = { OL_ALLEGRO_SOURCE_FULFILLMENT_STATUS_SYNC_SCHEDULER_ENABLED: 'true' };
+    const find = (config: Record<string, string>): SchedulerTaskConfig | undefined =>
+      buildAllegroSchedulerTasks(makeConfig(config)).find(
+        (t) => t.taskId === 'allegro-source-fulfillment-status-sync'
+      );
+
+    it('should NOT register by default - two Allegro requests per order is opt-in load', () => {
+      expect(find({})).toBeUndefined();
+    });
+
+    it('should register once opted in, gated on OrderSource and default-off at the tick too', () => {
+      const task = find(enabled);
+      expect(task?.platformType).toBe('allegro');
+      expect(task?.requiredCapability).toBe('OrderSource');
+      expect(task?.jobType).toBe('marketplace.sourceFulfillment.statusSync');
+      expect(task?.cronExpression).toBe('*/15 * * * *');
+      expect(task?.enabledEnvVar).toBe('OL_ALLEGRO_SOURCE_FULFILLMENT_STATUS_SYNC_SCHEDULER_ENABLED');
+      // The scheduler re-reads the env var each tick with THIS default, so it
+      // must agree with the registration gate above.
+      expect(task?.enabledDefault).toBe(false);
+    });
+
+    it('should page with its own scan-offset cursor key and key every tick', () => {
+      const task = find(enabled);
+      expect(task?.generatePayload(makeConnection())).toEqual({
+        schemaVersion: 1,
+        limit: 50,
+        cursorKey: 'allegro.sourceFulfillmentStatus.scanOffset',
+        updatedSinceDays: 30,
+      });
+      expect(task?.generateIdempotencyKey(makeConnection(), '2026-10-26-10-15')).toBe(
+        'marketplace:conn-allegro-1:source:fulfillment:status:sync:2026-10-26-10-15'
+      );
+    });
+
+    it('should honour the cron and page-limit overrides and reject a junk page limit', () => {
+      const custom = find({
+        ...enabled,
+        OL_ALLEGRO_SOURCE_FULFILLMENT_STATUS_SYNC_INTERVAL_CRON: '0 * * * *',
+        OL_ALLEGRO_SOURCE_FULFILLMENT_STATUS_SYNC_PAGE_LIMIT: '20',
+      });
+      expect(custom?.cronExpression).toBe('0 * * * *');
+      expect((custom?.generatePayload(makeConnection()) as { limit: number }).limit).toBe(20);
+
+      const junk = find({
+        ...enabled,
+        OL_ALLEGRO_SOURCE_FULFILLMENT_STATUS_SYNC_PAGE_LIMIT: 'nope',
+      });
+      expect((junk?.generatePayload(makeConnection()) as { limit: number }).limit).toBe(50);
     });
   });
 });

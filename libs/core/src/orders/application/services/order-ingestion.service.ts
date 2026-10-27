@@ -737,8 +737,10 @@ export class OrderIngestionService implements IOrderIngestionService {
       // Without this clear a routing reason written by an earlier run would stand
       // beside the fresh `fulfillmentBlockReason` above and assert "the router
       // sent this nowhere" about an order that is in fact held — two reasons for
-      // one order, one of them stale. Clearing here is what keeps the two columns
-      // mutually exclusive and the value level-triggered across BOTH branches.
+      // one order, one of them stale. Clearing here keeps the two columns mutually
+      // exclusive on the paths that reach the fan-out decision (this one and
+      // `syncOrder`). An ingestion that exits earlier leaves the previous value
+      // until the next run - a bounded display fault, not a correctness one.
       await this.persistDestinationRoutingCleared(order.id);
     } else {
       results = await this.orderSyncService.syncOrder({
@@ -1677,6 +1679,30 @@ export class OrderIngestionService implements IOrderIngestionService {
         `Failed to record cancellation on order record ${internalOrderId} — proceeding with the ` +
           `destination relay regardless; the record will remain queryable as non-cancelled until a ` +
           `future re-poll or retry observes the cancellation again`,
+        (error as Error).stack
+      );
+    }
+
+    // Release the order's holds and restore its stock (E2E-23). The full-resync
+    // path enqueues this on the `-> cancelled` transition, but a cancel that
+    // arrives as a feed event lands HERE and returns without re-reading the
+    // order, so without this the advisory hold stays `held` for good and every
+    // later publish keeps subtracting a unit nobody bought. Same job and dedupe
+    // key as the resync path, so whichever path sees the cancel first wins and
+    // the other is a no-op. The key has no TTL and no cancellation episode in
+    // it, so it also suppresses a SECOND cancellation of the same order (after
+    // an un-cancel at the source): that restore is a silent no-op, and the
+    // offer is corrected only by the next ordinary propagation.
+    try {
+      await this.jobQueue.enqueue({
+        type: 'marketplace.offer.stockRestore',
+        connectionId,
+        payload: { schemaVersion: 1, internalOrderId },
+        options: { dedupeKey: `marketplace:${connectionId}:stockRestore:${internalOrderId}` },
+      });
+    } catch (error) {
+      this.logger.error(
+        `Failed to enqueue stock-restore job for cancelled order [connectionId=${connectionId}, orderId=${internalOrderId}]; its holds stay live and marketplace stock will NOT be auto-restored`,
         (error as Error).stack
       );
     }

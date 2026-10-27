@@ -143,6 +143,9 @@ export {
 export {
   isMissingNumberingSeriesError,
   isConnectionSetupIncompleteError,
+  isConnectionSettingError,
+  readConnectionSettingErrorCode,
+  type ConnectionSettingFailureCode,
   isCapabilityDisabledError,
   resolveIssueErrorMessage,
   readAcknowledgementRequest,
@@ -156,6 +159,7 @@ export {
   deriveInvoiceDisplayStatus,
   canRetryInvoice,
   resolveFailureCopy,
+  isConnectionSettingFailureCode,
 } from './lib/derive-invoice-display';
 export {
   isPrimaryInvoicingConnection,

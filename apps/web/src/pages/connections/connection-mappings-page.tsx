@@ -379,7 +379,7 @@ export function ConnectionMappingsPage(): ReactElement {
         <MappingPairingBar pairing={pairing} />
         <EmptyState
           title={`Mapping isn't available for ${unsupportedLabel} connections yet`}
-          message="Order mapping is available for Allegro to PrestaShop and Erli to PrestaShop today. Support for more platforms is planned."
+          message="Order mapping is available for orders from Allegro, Erli and Shoper today. Support for more platforms is planned."
         />
       </PageLayout>
     );
@@ -396,7 +396,7 @@ export function ConnectionMappingsPage(): ReactElement {
         <MappingPairingBar pairing={pairing} />
         <EmptyState
           title="No supported marketplace is paired with this shop"
-          message="Order mappings are configured from the marketplace side. Open a supported marketplace connection (Allegro or Erli) and set its catalog to this shop to pair them."
+          message="Order mappings are configured from the marketplace side. Open a supported source connection (Allegro, Erli or Shoper) and set its catalog to this shop to pair them."
           action={
             <Link className="button button--secondary" to="/connections">
               Go to connections

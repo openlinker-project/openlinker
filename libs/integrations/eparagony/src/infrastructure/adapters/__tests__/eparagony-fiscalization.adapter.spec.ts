@@ -4,7 +4,10 @@ import type { RegisterTransactionCommand } from '@openlinker/core/fiscalization'
 import { EparagonyApiError } from '../../../domain/exceptions/eparagony-api.error';
 import { EparagonyConfigException } from '../../../domain/exceptions/eparagony-config.exception';
 import { EparagonyNetworkError } from '../../../domain/exceptions/eparagony-network.error';
-import { deriveDocumentToken } from '../../../domain/policies/document-token.policy';
+import {
+  deriveDocumentToken,
+  deriveRequestIdempotencyKey,
+} from '../../../domain/policies/document-token.policy';
 import type { EparagonyDocumentStatusResponse } from '../../../domain/types/eparagony-api.types';
 import type { EparagonyConnectionConfig } from '../../../domain/types/eparagony-config.types';
 import type { IEparagonyHttpClient } from '../../http/eparagony-http-client.interface';
@@ -134,10 +137,52 @@ describe('EparagonyFiscalizationAdapter', () => {
       expect(body.transactionToken).not.toBe(body.documentToken);
       expect(body.eReceipt.fiscalize).toBe(true);
       // The vendor's `Idempotency-Key` header rejects OL's colon-bearing raw key
-      // format, so the adapter sends the same derived `documentToken` there
-      // instead - that is what makes a transport-level re-issue safe.
-      expect(options.headers['Idempotency-Key']).toBe(body.documentToken);
+      // format, so the adapter sends a UUID derived from the document token
+      // plus the exact body - a transport-level re-issue of the same body
+      // therefore replays under the same key.
+      expect(options.headers['Idempotency-Key']).toBe(
+        deriveRequestIdempotencyKey(body.documentToken, body),
+      );
+      expect(options.headers['Idempotency-Key']).toMatch(/^[0-9A-Za-z_-]+$/);
       expect(options.idempotent).toBe(true);
+    });
+
+    it('should keep the document token but send a new request key when a retry carries a corrected body', async () => {
+      // The live failure: a refused attempt burns its request key at the
+      // vendor, so a corrected retry under the SAME key is refused as a replay
+      // with different data. The token - the exactly-once guard - must not move.
+      const first = makeClient([CONFIRMED]);
+      await makeAdapter(first, makeConfig({ posId: 'pos-wrong' })).registerTransaction(makeCommand());
+      const second = makeClient([CONFIRMED]);
+      await makeAdapter(second, makeConfig({ posId: 'pos-10' })).registerTransaction(makeCommand());
+
+      const [, firstBody, firstOptions] = first.post.mock.calls[0] as [
+        string,
+        { documentToken: string },
+        { headers: Record<string, string> },
+      ];
+      const [, secondBody, secondOptions] = second.post.mock.calls[0] as [
+        string,
+        { documentToken: string },
+        { headers: Record<string, string> },
+      ];
+      expect(secondBody.documentToken).toBe(firstBody.documentToken);
+      expect(secondOptions.headers['Idempotency-Key']).not.toBe(
+        firstOptions.headers['Idempotency-Key'],
+      );
+    });
+
+    it('should send the same request key when the same body is sent again', async () => {
+      const first = makeClient([CONFIRMED]);
+      await makeAdapter(first).registerTransaction(makeCommand());
+      const second = makeClient([CONFIRMED]);
+      await makeAdapter(second).registerTransaction(makeCommand());
+
+      const firstKey = (first.post.mock.calls[0] as [string, unknown, { headers: Record<string, string> }])[2]
+        .headers['Idempotency-Key'];
+      const secondKey = (second.post.mock.calls[0] as [string, unknown, { headers: Record<string, string> }])[2]
+        .headers['Idempotency-Key'];
+      expect(secondKey).toBe(firstKey);
     });
 
     it('carries the buyer tax number from the command all the way to the HTTP body (#3187)', async () => {
@@ -245,15 +290,54 @@ describe('EparagonyFiscalizationAdapter', () => {
       });
     });
 
-    it('should report an idempotency-key conflict as in-doubt rather than rejected', async () => {
-      // 422 means the SAME key was replayed with DIFFERENT data, so a document
-      // exists. Calling that rejected would invite the resend this contract
-      // exists to prevent.
+    it('should resolve a replayed request key to the document the vendor holds under the token', async () => {
+      // 422 proves an earlier REQUEST under the key, not a document. When the
+      // token's status shows a document, that document is the answer.
       const client = makeClient([CONFIRMED]);
+      client.post.mockRejectedValue(new EparagonyApiError('conflict', 422, null));
+
+      const result = await makeAdapter(client).registerTransaction(makeCommand());
+      expect(result.documentReference).toBe('334');
+    });
+
+    it('should report a replayed request key as rejected only when the vendor says it holds no document', async () => {
+      const client = makeClient([new EparagonyApiError('unknown token', 404, { errorCode: 92 })]);
+      client.post.mockRejectedValue(new EparagonyApiError('conflict', 422, { errorCode: 3 }));
+
+      await expect(makeAdapter(client).registerTransaction(makeCommand())).rejects.toMatchObject({
+        failureMode: 'rejected',
+        reason: expect.stringContaining('Nothing was issued'),
+      });
+      expect(logger.error).toHaveBeenCalledWith(
+        expect.stringContaining('eparagony_idempotency_key_body_mismatch'),
+      );
+    });
+
+    it('should not promise that a retry fixes a replayed key the vendor holds nothing under', async () => {
+      // The header is derived from the exact body, so a retry re-sends the same
+      // key and meets the same 422 - the copy must not offer Retry as the fix.
+      const client = makeClient([new EparagonyApiError('unknown token', 404, { errorCode: 92 })]);
+      client.post.mockRejectedValue(new EparagonyApiError('conflict', 422, { errorCode: 3 }));
+
+      const failure: unknown = await makeAdapter(client)
+        .registerTransaction(makeCommand())
+        .then(
+          () => undefined,
+          (error: unknown) => error,
+        );
+      expect(failure).toMatchObject({ reason: expect.stringContaining('Retrying will not help') });
+      expect(failure).not.toMatchObject({ reason: expect.stringContaining('Retry to send it again') });
+    });
+
+    it('should keep a replayed request key in doubt when the token status cannot be read', async () => {
+      // Without a positive answer nothing licenses a rejection: a document
+      // may exist behind the failed read.
+      const client = makeClient([new EparagonyNetworkError('timed out')]);
       client.post.mockRejectedValue(new EparagonyApiError('conflict', 422, null));
 
       await expect(makeAdapter(client).registerTransaction(makeCommand())).rejects.toMatchObject({
         failureMode: 'in-doubt',
+        failureCause: 'provider-answer-inconclusive',
       });
     });
 

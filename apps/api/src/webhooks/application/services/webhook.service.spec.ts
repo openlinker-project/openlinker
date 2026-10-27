@@ -95,10 +95,12 @@ describe('WebhookService (ADR-021 decoder dispatch + #2280 durable-spine gate)',
       clearProcessing: jest.fn().mockResolvedValue(undefined),
     };
     inboundRouting = {
-      resolveEvent: jest.fn().mockResolvedValue({ kind: 'routed', job: routedJob }),
+      resolveEvent: jest.fn().mockResolvedValue({ kind: 'routed', jobs: [routedJob] }),
     };
     jobGate = {
-      insertDeliveryWithJob: jest.fn().mockResolvedValue({ isNew: true, jobId: 'job-uuid-1' }),
+      insertDeliveryWithJobs: jest
+        .fn()
+        .mockResolvedValue({ isNew: true, jobId: 'job-uuid-1', jobIds: ['job-uuid-1'] }),
     };
     authRejectionRepository = {
       recordRejection: jest.fn().mockResolvedValue(undefined),
@@ -133,7 +135,7 @@ describe('WebhookService (ADR-021 decoder dispatch + #2280 durable-spine gate)',
       expect(result).toEqual({ verification_code: 'abc123' });
       expect(handshakeDecoder.verify).not.toHaveBeenCalled();
       expect(inboundRouting.resolveEvent).not.toHaveBeenCalled();
-      expect(jobGate.insertDeliveryWithJob).not.toHaveBeenCalled();
+      expect(jobGate.insertDeliveryWithJobs).not.toHaveBeenCalled();
     });
 
     it('proceeds to verify when detectHandshake returns null', async () => {
@@ -174,7 +176,9 @@ describe('WebhookService (ADR-021 decoder dispatch + #2280 durable-spine gate)',
       await service.processWebhook(provider, connectionId, rawBody, headers, { token: 'super-secret-token' });
 
       expect(JSON.stringify(inboundRouting.resolveEvent.mock.calls)).not.toContain('super-secret-token');
-      expect(JSON.stringify(jobGate.insertDeliveryWithJob.mock.calls)).not.toContain('super-secret-token');
+      expect(JSON.stringify(jobGate.insertDeliveryWithJobs.mock.calls)).not.toContain(
+        'super-secret-token'
+      );
     });
   });
 
@@ -187,14 +191,39 @@ describe('WebhookService (ADR-021 decoder dispatch + #2280 durable-spine gate)',
       expect(inboundRouting.resolveEvent).toHaveBeenCalledWith(
         expect.objectContaining({ eventId: 'e1', provider, connectionId })
       );
-      expect(jobGate.insertDeliveryWithJob).toHaveBeenCalledWith(
+      expect(jobGate.insertDeliveryWithJobs).toHaveBeenCalledWith(
         expect.objectContaining({
           eventId: 'e1',
           status: 'job_enqueued',
           externalId: '12345',
           signatureValid: true,
         }),
-        routedJob
+        [routedJob]
+      );
+    });
+
+    it('should hand every fanned-out job to the gate in one call when routing returns several', async () => {
+      const secondJob = {
+        ...routedJob,
+        jobType: 'master.inventory.syncByExternalId' as const,
+        idempotencyKey: `${routedJob.idempotencyKey}:master.inventory.syncByExternalId`,
+      };
+      inboundRouting.resolveEvent.mockResolvedValue({
+        kind: 'routed',
+        jobs: [routedJob, secondJob],
+      });
+      jobGate.insertDeliveryWithJobs.mockResolvedValue({
+        isNew: true,
+        jobId: 'job-uuid-1',
+        jobIds: ['job-uuid-1', 'job-uuid-2'],
+      });
+
+      await service.processWebhook(provider, connectionId, rawBody, headers);
+
+      expect(jobGate.insertDeliveryWithJobs).toHaveBeenCalledTimes(1);
+      expect(jobGate.insertDeliveryWithJobs).toHaveBeenCalledWith(
+        expect.objectContaining({ eventId: 'e1', status: 'job_enqueued' }),
+        [routedJob, secondJob]
       );
     });
 
@@ -204,7 +233,7 @@ describe('WebhookService (ADR-021 decoder dispatch + #2280 durable-spine gate)',
       await service.processWebhook(provider, connectionId, rawBody, headers);
 
       expect(inboundRouting.resolveEvent).not.toHaveBeenCalled();
-      expect(jobGate.insertDeliveryWithJob).not.toHaveBeenCalled();
+      expect(jobGate.insertDeliveryWithJobs).not.toHaveBeenCalled();
     });
 
     it('throws WebhookDecodeException (→400) and writes no row when the decoder rejects', async () => {
@@ -214,7 +243,7 @@ describe('WebhookService (ADR-021 decoder dispatch + #2280 durable-spine gate)',
         service.processWebhook(provider, connectionId, rawBody, headers),
       ).rejects.toThrow(WebhookDecodeException);
 
-      expect(jobGate.insertDeliveryWithJob).not.toHaveBeenCalled();
+      expect(jobGate.insertDeliveryWithJobs).not.toHaveBeenCalled();
     });
   });
 
@@ -224,9 +253,9 @@ describe('WebhookService (ADR-021 decoder dispatch + #2280 durable-spine gate)',
 
       await service.processWebhook(provider, connectionId, rawBody, headers);
 
-      expect(jobGate.insertDeliveryWithJob).toHaveBeenCalledWith(
+      expect(jobGate.insertDeliveryWithJobs).toHaveBeenCalledWith(
         expect.objectContaining({ status: 'received' }),
-        null
+        []
       );
     });
 
@@ -238,9 +267,9 @@ describe('WebhookService (ADR-021 decoder dispatch + #2280 durable-spine gate)',
 
       await service.processWebhook(provider, connectionId, rawBody, headers);
 
-      expect(jobGate.insertDeliveryWithJob).toHaveBeenCalledWith(
+      expect(jobGate.insertDeliveryWithJobs).toHaveBeenCalledWith(
         expect.objectContaining({ status: 'deadlettered', dlqReason: 'no-translator: foo.v1' }),
-        null
+        []
       );
     });
 
@@ -251,13 +280,17 @@ describe('WebhookService (ADR-021 decoder dispatch + #2280 durable-spine gate)',
         service.processWebhook(provider, connectionId, rawBody, headers),
       ).rejects.toThrow('db blip');
 
-      expect(jobGate.insertDeliveryWithJob).not.toHaveBeenCalled();
+      expect(jobGate.insertDeliveryWithJobs).not.toHaveBeenCalled();
     });
   });
 
   describe('Postgres dedup gate', () => {
     it('short-circuits to the idempotent 202 when the gate reports a replay', async () => {
-      jobGate.insertDeliveryWithJob.mockResolvedValue({ isNew: false, jobId: 'job-uuid-1' });
+      jobGate.insertDeliveryWithJobs.mockResolvedValue({
+        isNew: false,
+        jobId: 'job-uuid-1',
+        jobIds: ['job-uuid-1'],
+      });
 
       await service.processWebhook(provider, connectionId, rawBody, headers);
 
@@ -271,7 +304,7 @@ describe('WebhookService (ADR-021 decoder dispatch + #2280 durable-spine gate)',
 
       await service.processWebhook(provider, connectionId, rawBody, headers);
 
-      expect(jobGate.insertDeliveryWithJob).toHaveBeenCalledTimes(1);
+      expect(jobGate.insertDeliveryWithJobs).toHaveBeenCalledTimes(1);
     });
 
     it('does not throw — and deletes nothing — when markDone fails after the gate commit', async () => {
@@ -283,7 +316,7 @@ describe('WebhookService (ADR-021 decoder dispatch + #2280 durable-spine gate)',
     });
 
     it('propagates a gate failure so the source retries (transaction rolled back, nothing to delete)', async () => {
-      jobGate.insertDeliveryWithJob.mockRejectedValue(new Error('db down'));
+      jobGate.insertDeliveryWithJobs.mockRejectedValue(new Error('db down'));
 
       await expect(
         service.processWebhook(provider, connectionId, rawBody, headers),
@@ -300,7 +333,7 @@ describe('WebhookService (ADR-021 decoder dispatch + #2280 durable-spine gate)',
       ).rejects.toThrow(WebhookAuthenticationException);
 
       expect(decoder.extractEnvelope).not.toHaveBeenCalled();
-      expect(jobGate.insertDeliveryWithJob).not.toHaveBeenCalled();
+      expect(jobGate.insertDeliveryWithJobs).not.toHaveBeenCalled();
     });
 
     it('records a durable auth-rejection signal when the signature fails (#1814)', async () => {
@@ -315,7 +348,7 @@ describe('WebhookService (ADR-021 decoder dispatch + #2280 durable-spine gate)',
         connectionId,
         reason: 'invalid_signature',
       });
-      expect(jobGate.insertDeliveryWithJob).not.toHaveBeenCalled();
+      expect(jobGate.insertDeliveryWithJobs).not.toHaveBeenCalled();
     });
 
     it('still returns 401 when recording the auth-rejection fails (non-fatal, #1814)', async () => {
@@ -349,7 +382,7 @@ describe('WebhookService (ADR-021 decoder dispatch + #2280 durable-spine gate)',
       ).rejects.toThrow(WebhookReplayException);
 
       expect(decoder.extractEnvelope).not.toHaveBeenCalled();
-      expect(jobGate.insertDeliveryWithJob).not.toHaveBeenCalled();
+      expect(jobGate.insertDeliveryWithJobs).not.toHaveBeenCalled();
     });
   });
 });

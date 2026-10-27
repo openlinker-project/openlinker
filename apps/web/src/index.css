@@ -15492,6 +15492,34 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
   margin-top: var(--space-2);
 }
 .bulk-editor__img-add-row .bulk-editor__input { flex: 1; }
+.bulk-editor__img-add-row + .form-field__error { margin-top: var(--space-1); }
+
+/* ── Broken image thumbnail ── a tile whose image failed to load in the
+   browser. The outline plus the text badge carry the state together, so it
+   never rests on colour alone; the note under the strip says what to do. It
+   is a warning, not a block: a valid image can also fail here (CORS, a slow
+   CDN, offline). */
+.bulk-editor__img-thumb--broken {
+  border-color: var(--status-error-border);
+  box-shadow: inset 0 0 0 1px var(--status-error-border);
+  background: var(--status-error-soft);
+}
+.bulk-editor__img-broken {
+  position: absolute; left: 2px; right: 2px; bottom: 2px;
+  padding: 1px 2px;
+  border-radius: var(--radius-sm);
+  background: var(--bg-surface);
+  color: var(--status-error-fg);
+  font-size: 10px; line-height: 1.2;
+  text-align: center;
+  pointer-events: none;
+}
+.bulk-editor__img-note {
+  margin: var(--space-1) 0 0;
+  color: var(--status-warning-fg);
+  font-size: 12px;
+}
+.bulk-editor__img-note:empty { margin: 0; }
 
 /* CATEGORY PARAMETERS inside the bulk modal only (#7 / #8) - scoped to the
    platform slot so the single-offer wizard's step is untouched. */
