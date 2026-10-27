@@ -2645,6 +2645,31 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
   }
 
   /**
+   * #3558 — held orders that contain a variant. A join on the indexed
+   * `order_line_items.orderRecordId`; `DISTINCT` because an order may carry the
+   * same variant on two lines.
+   */
+  async listOrderIdsHeldForVariant(
+    reasons: readonly FulfillmentBlockReason[],
+    variantId: string,
+    limit: number
+  ): Promise<string[]> {
+    if (reasons.length === 0 || limit <= 0) return [];
+
+    const rows = await this.repository
+      .createQueryBuilder('rec')
+      .select('rec.internalOrderId', 'internalOrderId')
+      .distinct(true)
+      .innerJoin(OrderLineItemOrmEntity, 'line', 'line.orderRecordId = rec.internalOrderId')
+      .where('rec.fulfillmentBlockReason IN (:...reasons)', { reasons: [...reasons] })
+      .andWhere('line.variantId = :variantId', { variantId })
+      .orderBy('rec.internalOrderId', 'ASC')
+      .limit(limit)
+      .getRawMany<{ internalOrderId: string }>();
+    return rows.map((row) => row.internalOrderId);
+  }
+
+  /**
    * #3455 — the sole writer of `fulfillmentRoutingSkipReason`, level-triggered by
    * the ingestion intercept: it stores the answer INCLUDING `null`, which is what
    * clears a stale reason once the order is routed or the OMS is switched off.

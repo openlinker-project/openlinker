@@ -334,6 +334,16 @@ export interface IOrderRecordService {
   ): Promise<HeldOrderRef[]>;
 
   /**
+   * #3558 — ids of orders held with one of `reasons` whose line items include
+   * `variantId`, for the stock-change re-route. See the repository port.
+   */
+  listOrderIdsHeldForVariant(
+    reasons: readonly FulfillmentBlockReason[],
+    variantId: string,
+    limit: number
+  ): Promise<string[]>;
+
+  /**
    * #3455 — record why the fulfilment intercept deliberately did not route this
    * order while the OMS is on (`own-shop-order`, `shipped-by-other-system`,
    * `mirrored-before-routing`), or clear it with `null`. The write half of

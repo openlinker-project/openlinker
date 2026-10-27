@@ -31,6 +31,10 @@ import {
 } from '@openlinker/core/inventory';
 import { IIntegrationsService, INTEGRATIONS_SERVICE_TOKEN } from '@openlinker/core/integrations';
 import { IProductsService, PRODUCTS_SERVICE_TOKEN } from '@openlinker/core/products';
+import {
+  IOrderRoutingRetryService,
+  ORDER_ROUTING_RETRY_SERVICE_TOKEN,
+} from '@openlinker/core/orders';
 
 type SyncJob = SyncJobEntity;
 import { Logger } from '@openlinker/shared/logging';
@@ -72,7 +76,9 @@ export class InventoryPropagateToMarketplacesHandler implements SyncJobHandler {
     @Inject(PRODUCTS_SERVICE_TOKEN)
     private readonly productsService: IProductsService,
     @Inject(AVAILABILITY_SERVICE_TOKEN)
-    private readonly availabilityService: IAvailabilityService
+    private readonly availabilityService: IAvailabilityService,
+    @Inject(ORDER_ROUTING_RETRY_SERVICE_TOKEN)
+    private readonly orderRoutingRetry: IOrderRoutingRetryService
   ) {}
 
   async execute(job: SyncJob): Promise<SyncJobHandlerResult> {
@@ -172,6 +178,17 @@ export class InventoryPropagateToMarketplacesHandler implements SyncJobHandler {
       this.logger.debug(
         `Resolved publish quantity for product ${payload.productId}: ${promisableQuantity}`
       );
+
+      // #3558: orders held because a line could not be fulfilled are re-routed
+      // now rather than at the sweep's next tick. Best-effort and bounded (a page
+      // of orders, one attempt per order per hour) - the service never throws, so
+      // this cannot fail a stock write-back.
+      if (payload.variantId) {
+        await this.orderRoutingRetry.rerouteHeldOrdersForVariant({
+          variantId: payload.variantId,
+          observedAt: payload.inventoryUpdatedAt,
+        });
+      }
 
       // Stale-variant guard (#1689): a variant just zeroed by the stale-offer-
       // pause flow must not be re-raised by a concurrent inventory propagate
