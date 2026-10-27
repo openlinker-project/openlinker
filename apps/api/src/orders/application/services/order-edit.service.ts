@@ -1268,7 +1268,7 @@ export class OrderEditService implements IOrderEditService {
     for (const change of open) {
       if (change.kind !== 'order.discount_refund' && change.kind !== 'order.discount_correction') continue;
       try {
-        if (await this.changes.abandon(change.id)) retired += 1;
+        if (await this.changes.abandon(change.id, 'order-cancelled')) retired += 1;
       } catch (error) {
         this.logger.error(
           `Could not retire discount proposal ${change.id} of order ${internalOrderId}: ${this.describe(error)}`
@@ -1435,7 +1435,7 @@ export class OrderEditService implements IOrderEditService {
       const open = retireOpenProposals ? await this.changes.findOpenByOrder(orderId) : [];
       for (const change of open) {
         if (change.kind === 'order.discount_refund' || change.kind === 'order.discount_correction') {
-          await this.changes.abandon(change.id);
+          await this.changes.abandon(change.id, 'superseded-by-newer-proposal');
         }
       }
     } catch (error) {
