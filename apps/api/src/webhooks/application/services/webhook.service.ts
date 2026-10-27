@@ -212,9 +212,9 @@ export class WebhookService implements IWebhookService {
             : 'deadlettered',
       dlqReason: routing.kind === 'unroutable' ? routing.reason.slice(0, 500) : null,
     };
-    const gateResult = await this.jobGate.insertDeliveryWithJob(
+    const gateResult = await this.jobGate.insertDeliveryWithJobs(
       delivery,
-      routing.kind === 'routed' ? routing.job : null
+      routing.kind === 'routed' ? routing.jobs : []
     );
 
     if (!gateResult.isNew) {
@@ -233,7 +233,9 @@ export class WebhookService implements IWebhookService {
 
     if (routing.kind === 'routed') {
       this.logger.log(
-        `Webhook routed at ingress: provider=${provider}, connectionId=${connectionId}, eventId=${correlationId} → ${routing.job.jobType} (job ${gateResult.jobId ?? 'unknown'})`
+        `Webhook routed at ingress: provider=${provider}, connectionId=${connectionId}, eventId=${correlationId} → ${routing.jobs
+          .map((job, index) => `${job.jobType} (job ${gateResult.jobIds[index] ?? 'unknown'})`)
+          .join(', ')}`
       );
     } else if (routing.kind === 'unroutable') {
       this.logger.warn(

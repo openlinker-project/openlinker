@@ -1,6 +1,16 @@
 import type { Connection } from '@openlinker/core/identifier-mapping';
-import { isCategoryProvisioner } from '@openlinker/core/listings';
-import { isOrderStatusWriteback } from '@openlinker/core/orders';
+import {
+  isCategoryProvisioner,
+  isShopAttributeReader,
+  isShopCategoryBrowser,
+  isShopProductStatusReader,
+} from '@openlinker/core/listings';
+import type { OrderProcessorManagerPort, OrderSourcePort } from '@openlinker/core/orders';
+import {
+  isFulfillmentStatusReader,
+  isOrderStatusWriteback,
+  isSourceOptionsReader,
+} from '@openlinker/core/orders';
 import type { HostServices } from '@openlinker/plugin-sdk';
 
 import { ShoperInventoryMasterAdapter } from '../infrastructure/adapters/inventory-master/shoper-inventory-master.adapter';
@@ -68,7 +78,7 @@ describe('Shoper plugin', () => {
     }
   });
 
-  it('should expose the documented manifest with its six capabilities', () => {
+  it('should expose the documented manifest with its six dispatched capabilities and the publisher read sub-capabilities', () => {
     expect(shoperAdapterManifest).toMatchObject({
       adapterKey: 'shoper.restapi.v1',
       platformType: 'shoper',
@@ -79,10 +89,19 @@ describe('Shoper plugin', () => {
         'CategoryProvisioner',
         'OrderProcessorManager',
         'OrderSource',
+        'ShopCategoryBrowser',
+        'ShopProductStatusReader',
+        'ShopAttributeReader',
       ],
       isDefault: true,
     });
-    expect(shoperAdapterManifest.defaultRateLimit).toBeUndefined();
+    // Calibrated against the measured per-shop limit (10 req/s, shared by every
+    // integration on the shop): half of it, for every OpenLinker connection to
+    // the shop together, not copied from another platform.
+    expect(shoperAdapterManifest.defaultRateLimit).toEqual({
+      requestsPerMinute: 300,
+      maxConcurrent: 4,
+    });
     expect(createShoperPlugin().manifest).toBe(shoperAdapterManifest);
   });
 
@@ -97,14 +116,32 @@ describe('Shoper plugin', () => {
     }
   });
 
-  it('should register the orders-poll task that backs up a lost webhook', () => {
+  it('should register the orders-poll backstop, both fulfilment read-backs and the published-product status reconcile', () => {
     const { host, schedulerRegister } = hostWithRegistries();
 
     createShoperPlugin().register?.(host);
 
-    expect(schedulerRegister).toHaveBeenCalledTimes(1);
+    expect(schedulerRegister).toHaveBeenCalledTimes(4);
     expect(schedulerRegister).toHaveBeenCalledWith(
       expect.objectContaining({ taskId: 'shoper-orders-poll', jobType: 'marketplace.orders.poll' }),
+    );
+    expect(schedulerRegister).toHaveBeenCalledWith(
+      expect.objectContaining({
+        taskId: 'shoper-fulfillment-status-sync',
+        jobType: 'marketplace.fulfillment.statusSync',
+      }),
+    );
+    expect(schedulerRegister).toHaveBeenCalledWith(
+      expect.objectContaining({
+        taskId: 'shoper-source-fulfillment-status-sync',
+        jobType: 'marketplace.sourceFulfillment.statusSync',
+      }),
+    );
+    expect(schedulerRegister).toHaveBeenCalledWith(
+      expect.objectContaining({
+        taskId: 'shoper-product-status-sync',
+        jobType: 'shop.product.statusSync',
+      }),
     );
   });
 
@@ -159,6 +196,26 @@ describe('Shoper plugin', () => {
     expect(isCategoryProvisioner(adapter as ShoperProductPublisherAdapter)).toBe(true);
   });
 
+  it('should serve the advertised publisher read sub-capabilities by narrowing the ProductPublisher adapter, not by dispatch', async () => {
+    const { host } = hostWithRegistries();
+    const plugin = createShoperPlugin();
+
+    const publisher = await plugin.createCapabilityAdapter<ShoperProductPublisherAdapter>(
+      connection(),
+      'ProductPublisher',
+      host,
+    );
+
+    expect(isShopCategoryBrowser(publisher)).toBe(true);
+    expect(isShopProductStatusReader(publisher)).toBe(true);
+    expect(isShopAttributeReader(publisher)).toBe(true);
+    for (const subCapability of ['ShopCategoryBrowser', 'ShopProductStatusReader', 'ShopAttributeReader']) {
+      await expect(
+        plugin.createCapabilityAdapter<unknown>(connection(), subCapability, host),
+      ).rejects.toThrow(/does not support/);
+    }
+  });
+
   it('should resolve InventoryMaster to the Shoper inventory master adapter', async () => {
     const { host } = hostWithRegistries();
 
@@ -181,6 +238,10 @@ describe('Shoper plugin', () => {
     );
 
     expect(adapter).toBeInstanceOf(ShoperOrderSourceAdapter);
+    // A source-only shop is reached by the lifecycle relay through its source
+    // capability, and the mapping page reads its options through the same one.
+    expect(isOrderStatusWriteback(adapter as object)).toBe(true);
+    expect(isSourceOptionsReader(adapter as OrderSourcePort)).toBe(true);
   });
 
   it('should resolve OrderProcessorManager to the Shoper order processor adapter', async () => {
@@ -200,6 +261,7 @@ describe('Shoper plugin', () => {
     // The lifecycle relay reaches a destination through exactly this narrowing
     // (#3643): resolve as OrderProcessorManager, then isOrderStatusWriteback.
     expect(isOrderStatusWriteback(adapter as object)).toBe(true);
+    expect(isFulfillmentStatusReader(adapter as OrderProcessorManagerPort)).toBe(true);
   });
 
   it('should refuse OrderProcessorManager when built without the customer provisioner', async () => {
@@ -210,13 +272,78 @@ describe('Shoper plugin', () => {
     ).rejects.toThrow(/customer provisioner/);
   });
 
-  it('should route the connection through the connection-bound transport', async () => {
+  it('should route the connection through the paced connection-bound transport', async () => {
     const { host } = hostWithRegistries();
     const conn = connection();
 
     await createShoperPlugin().createCapabilityAdapter<unknown>(conn, 'ProductMaster', host);
 
-    expect(host.http.forConnection).toHaveBeenCalledWith(conn);
+    expect(host.http.forConnection).toHaveBeenCalledWith(
+      conn,
+      { requestsPerMinute: 300, maxConcurrent: 4 },
+      { bucketKey: 'shoper:host:sklep729770.shoparena.pl' },
+    );
+  });
+
+  describe('the shared per-shop rate-limit bucket', () => {
+    it('should give every spelling of one shop the same bucket when the baseUrl differs only in scheme or case', async () => {
+      const { host } = hostWithRegistries();
+      const plugin = createShoperPlugin();
+
+      await plugin.createCapabilityAdapter<unknown>(
+        connection({ id: 'c1', config: { baseUrl: 'SKLEP1.shoparena.pl' } }),
+        'ProductMaster',
+        host,
+      );
+      await plugin.createCapabilityAdapter<unknown>(
+        connection({ id: 'c2', config: { baseUrl: 'https://sklep1.shoparena.pl' } }),
+        'OrderSource',
+        host,
+      );
+
+      const bucketKeys = (host.http.forConnection as jest.Mock).mock.calls.map(
+        ([, , options]: [unknown, unknown, { bucketKey?: string }]) => options.bucketKey,
+      );
+      expect(bucketKeys).toEqual([
+        'shoper:host:sklep1.shoparena.pl',
+        'shoper:host:sklep1.shoparena.pl',
+      ]);
+    });
+
+    it('should give two different shops two different buckets', async () => {
+      const { host } = hostWithRegistries();
+      const plugin = createShoperPlugin();
+
+      await plugin.createCapabilityAdapter<unknown>(
+        connection({ id: 'c1', config: { baseUrl: 'sklep1.shoparena.pl' } }),
+        'ProductMaster',
+        host,
+      );
+      await plugin.createCapabilityAdapter<unknown>(
+        connection({ id: 'c2', config: { baseUrl: 'sklep2.shoparena.pl' } }),
+        'ProductMaster',
+        host,
+      );
+
+      const bucketKeys = (host.http.forConnection as jest.Mock).mock.calls.map(
+        ([, , options]: [unknown, unknown, { bucketKey?: string }]) => options.bucketKey,
+      );
+      expect(bucketKeys).toEqual(['shoper:host:sklep1.shoparena.pl', 'shoper:host:sklep2.shoparena.pl']);
+    });
+
+    it('should declare the same bucket on the manifest the transport is handed, so the status read shows the shop bucket', () => {
+      const resolve = shoperAdapterManifest.resolveRateLimitBucketKey;
+
+      expect(resolve?.(connection({ config: { baseUrl: 'https://SKLEP1.shoparena.pl' } }))).toBe(
+        'shoper:host:sklep1.shoparena.pl',
+      );
+    });
+
+    it('should fall back to the connection bucket when the baseUrl is unusable', () => {
+      expect(
+        shoperAdapterManifest.resolveRateLimitBucketKey?.(connection({ config: { baseUrl: '10.0.0.1' } })),
+      ).toBeUndefined();
+    });
   });
 
   describe('an unsupported capability', () => {

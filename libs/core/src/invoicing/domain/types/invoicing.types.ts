@@ -117,10 +117,28 @@ export type InvoiceFailureMode = (typeof InvoiceFailureModeValues)[number];
  *     the operator decides). Declared via `failureCause: 'needs-acknowledgement'`
  *     with a `warningCode`; `failureReason` is the adapter's own PII-free
  *     sentence. Re-issuing with that code in `acknowledgedWarnings` proceeds.
+ *   - `connection-setting-rejected`: a TERMINAL `rejected` failure where the
+ *     PROVIDER was contacted and refused a value that comes from the
+ *     connection's own settings - e.g. a seller tax number that is not the one
+ *     registered on the provider account. The sibling of
+ *     `connection-setup-incomplete`, with one difference that changes the copy:
+ *     the request DID reach the provider, so nothing may claim it was never
+ *     sent. Reached only when the adapter DECLARES it via `failureCause`, and,
+ *     like its sibling, `failureReason` is then the adapter's own sentence.
+ *     Must not collapse into `provider-rejected`, whose copy sends the operator
+ *     to the order's data when the fix is on the connection.
  *   - `provider-rejected`: any other TERMINAL `rejected` failure (safe to
  *     re-attempt once the underlying input is corrected).
  *   - `transport-timeout`: an `in-doubt` transport failure — the document MAY
- *     exist; NEVER auto-re-attempted, surfaced for manual reconciliation.
+ *     exist; NEVER auto-re-attempted, surfaced for manual reconciliation. The
+ *     DEFAULT in-doubt code, so an adapter that declares nothing keeps it.
+ *   - `provider-answer-inconclusive`: an `in-doubt` failure where the provider
+ *     DID answer, but with something that does not settle whether a document
+ *     exists (a conflict, a replayed-key refusal, a server error). Same safety
+ *     as `transport-timeout` - never auto-re-attempted - but saying "did not
+ *     answer in time" about a provider that answered would send the operator
+ *     looking for an outage that never happened. Reached only when the adapter
+ *     declares it via `failureCause`.
  *   - `provider-error`: an unclassifiable failure (the fiscal-safe default code,
  *     paired with the `in-doubt` mode).
  */
@@ -130,8 +148,10 @@ export const InvoiceFailureCodeValues = [
   'sale-classification-required',
   'connection-setup-incomplete',
   'acknowledgement-required',
+  'connection-setting-rejected',
   'provider-rejected',
   'transport-timeout',
+  'provider-answer-inconclusive',
   'provider-error',
 ] as const;
 export type InvoiceFailureCode = (typeof InvoiceFailureCodeValues)[number];

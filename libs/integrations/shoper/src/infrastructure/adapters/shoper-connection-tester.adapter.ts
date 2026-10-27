@@ -32,11 +32,13 @@ import type {
 import type { Connection } from '@openlinker/core/identifier-mapping';
 import { Logger } from '@openlinker/shared/logging';
 import type { HttpTransportFactoryPort } from '@openlinker/shared/http';
+import type { ConnectionRateLimit } from '@openlinker/shared/rate-limit';
 
 import { SHOPER_CONNECTION_TEST_PATH } from '../../shoper.constants';
 import { ShoperApiError } from '../../domain/exceptions/shoper-api.error';
 import { ShoperNetworkError } from '../../domain/exceptions/shoper-network.error';
 import { parseShoperBaseUrl } from '../../domain/policies/shoper-base-url.policy';
+import { buildShoperRateLimitBucketKey } from '../../domain/policies/shoper-rate-limit-bucket.policy';
 import type { ShoperApplicationConfig } from '../../domain/types/shoper-api.types';
 import type { ShoperCredentials } from '../../domain/types/shoper-credentials.types';
 import { ShoperHttpClient } from '../http/shoper-http-client';
@@ -44,7 +46,12 @@ import { ShoperHttpClient } from '../http/shoper-http-client';
 export class ShoperConnectionTesterAdapter implements ConnectionTesterPort {
   private readonly logger = new Logger(ShoperConnectionTesterAdapter.name);
 
-  constructor(private readonly http: HttpTransportFactoryPort) {}
+  constructor(
+    private readonly http: HttpTransportFactoryPort,
+    // The manifest's `defaultRateLimit`, passed in by `shoper-plugin.ts` rather
+    // than imported back from it, which would be a module-load cycle.
+    private readonly defaultRateLimit?: ConnectionRateLimit,
+  ) {}
 
   async test(
     connection: Connection,
@@ -87,7 +94,11 @@ export class ShoperConnectionTesterAdapter implements ConnectionTesterPort {
       // limiter as every other call site, not a bare fetch.
       const client = new ShoperHttpClient(
         { host: base.host, token: credentials.token },
-        this.http.forConnection(connection)
+        this.http.forConnection(connection, this.defaultRateLimit, {
+          // The shop's shared bucket: a test on one connection must queue
+          // behind live traffic another connection sends to the same shop.
+          bucketKey: buildShoperRateLimitBucketKey(base.host),
+        })
       );
       const response = await client.get<Partial<ShoperApplicationConfig>>(
         SHOPER_CONNECTION_TEST_PATH

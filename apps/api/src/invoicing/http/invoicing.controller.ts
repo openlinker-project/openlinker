@@ -1710,9 +1710,9 @@ export class InvoicingController {
     // already stored this exact classification on the record - `classifyInvoiceFailure`
     // is the one function both read - so the response and the record can never
     // disagree. The body carries only the closed code and PII-free sentences:
-    // `failureReason` is a fixed constant for every code except
-    // `connection-setup-incomplete`, where it is the adapter's own sentence the
-    // adapter vouched for by opting in. The raw message is still logged, never
+    // `failureReason` is a fixed constant per code unless the adapter vouched
+    // for its own sentence by opting in (a declared cause, or
+    // `reasonIsOperatorSafe`). The raw message is still logged, never
     // returned, since it may echo provider or buyer data.
     if (classifyInvoiceFailureMode(error) === 'rejected') {
       const { failureCode, failureReason } = classifyInvoiceFailure(error);
@@ -1726,7 +1726,9 @@ export class InvoicingController {
         message: failureReason,
         error: 'InvoiceIssueRejected',
         failureCode,
-        ...(failureCode === 'connection-setup-incomplete' || failureCode === 'acknowledgement-required'
+        ...(failureCode === 'connection-setup-incomplete' ||
+        failureCode === 'connection-setting-rejected' ||
+        failureCode === 'acknowledgement-required'
           ? { failureReason }
           : {}),
         // The code the operator sends back in `acknowledgeWarnings` to proceed.

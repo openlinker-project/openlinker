@@ -16,6 +16,7 @@
  * @module libs/core/src/products/domain/entities
  */
 
+import type { ProductGpsr } from '../types/product-gpsr.types';
 import type { TaxRateUnknownReason } from '../types/tax-rate.types';
 export interface Product {
   id: string;
@@ -84,4 +85,16 @@ export interface Product {
    * `not-configured` (a real answer the shop gave).
    */
   taxRateUnknownReason?: TaxRateUnknownReason | null;
+  /**
+   * What the master stated about the product under the EU General Product
+   * Safety Regulation (producer, responsible person, importer, safety
+   * information) - by value, never by a platform id. Persisted on the
+   * `products.gpsr` jsonb column.
+   *
+   * Three states, kept apart by the repository: `undefined` means the master
+   * did not report GPSR on this read (it does not model it, or its reference
+   * read failed) and leaves the stored value untouched; `null` means it reported
+   * that the product carries none; an object is what it stated.
+   */
+  gpsr?: ProductGpsr | null;
 }

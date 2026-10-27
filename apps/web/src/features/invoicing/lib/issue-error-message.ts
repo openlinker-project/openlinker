@@ -25,7 +25,7 @@
  * @module apps/web/src/features/invoicing/lib
  */
 import { ApiError } from '../../../shared/api/api-error';
-import type { CapabilityErrorBody } from '../api/invoicing.types';
+import type { CapabilityErrorBody, FailureCode } from '../api/invoicing.types';
 
 type Translate = (key: string, fallback: string) => string;
 
@@ -90,6 +90,43 @@ export function readAcknowledgementRequest(error: unknown): AcknowledgementReque
   }
   const message = typeof body.failureReason === 'string' ? body.failureReason : error.message;
   return { warningCode: body.warningCode, message };
+}
+
+/**
+ * True for either 422 whose fix is on the connection rather than the order:
+ * `connection-setup-incomplete` (nothing was sent) or
+ * `connection-setting-rejected` (the provider refused a connection setting,
+ * e.g. a seller tax number it does not have registered). The panel answers
+ * both in place with an alert linking to the connection's settings.
+ */
+export function isConnectionSettingError(error: unknown): boolean {
+  return readConnectionSettingErrorCode(error) !== null;
+}
+
+/** The two failure codes whose fix is on the connection rather than the order. */
+export type ConnectionSettingFailureCode = Extract<
+  FailureCode,
+  'connection-setup-incomplete' | 'connection-setting-rejected'
+>;
+
+/**
+ * Which of the two connection-setting 422s this is, or `null` for anything
+ * else. The two need different words wherever they are named - a setting the
+ * adapter found missing is not one the provider refused - so a caller that
+ * only knows "it is one of them" would state the wrong fact for one of them.
+ */
+export function readConnectionSettingErrorCode(error: unknown): ConnectionSettingFailureCode | null {
+  if (!(error instanceof ApiError) || error.status !== 422) {
+    return null;
+  }
+  const body = error.details as { error?: unknown; failureCode?: unknown } | null;
+  if (body?.error !== 'InvoiceIssueRejected') {
+    return null;
+  }
+  return body.failureCode === 'connection-setup-incomplete' ||
+    body.failureCode === 'connection-setting-rejected'
+    ? body.failureCode
+    : null;
 }
 
 /**

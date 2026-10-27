@@ -171,6 +171,25 @@ export function resolveSalesDocumentBlockCopy(
         offerSetPrimary: false,
       };
     }
+    // A rule's connection is checked only when the rule is saved, so it can
+    // still name a connection that has since been turned off, removed, or lost
+    // the capability. Generic "no route" copy would send the operator looking
+    // at the rules for a gap that is not there.
+    if (order.salesDocumentUnresolvedReason === 'routed-connection-unavailable') {
+      return {
+        tone: 'error',
+        title: t(
+          'salesDocument.panel.blockRoutedConnectionUnavailableTitle',
+          `Not ${v.pastParticiplePhrase}: the routed connection cannot ${v.actionVerb} it.`,
+        ),
+        body: t(
+          'salesDocument.panel.blockRoutedConnectionUnavailableBody',
+          `Your routing sends this ${v.documentNoun} to a connection that is turned off, has been removed, or can no longer ${v.actionVerb} it, so nothing was ${v.pastParticiplePhrase}. Turn that connection back on, or point the rule at another connection. You can also pick a connection above and ${v.actionVerb} this one by hand.`,
+        ),
+        detail,
+        offerSetPrimary: false,
+      };
+    }
     if (order.salesDocumentUnresolvedReason === 'threshold-currency-mismatch') {
       return {
         tone: 'error',

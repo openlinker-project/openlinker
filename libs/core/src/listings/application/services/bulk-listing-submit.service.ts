@@ -73,6 +73,7 @@ import { CurrencyMismatchException } from '../../domain/exceptions/currency-mism
 import { InvalidOverrideKeyException } from '../../domain/exceptions/invalid-override-key.exception';
 import { ExpandedOfferCeilingExceededException } from '../../domain/exceptions/expanded-offer-ceiling-exceeded.exception';
 import { AvailabilityUnknownError } from '../../domain/exceptions/availability-unknown.error';
+import { DuplicateBulkBatchIdempotencyKeyError } from '../../domain/exceptions/duplicate-bulk-batch-idempotency-key.error';
 import {
   BULK_LISTING_BATCH_REPOSITORY_TOKEN,
   OFFER_CREATION_RECORD_REPOSITORY_TOKEN,
@@ -128,6 +129,27 @@ export class BulkListingSubmitService implements IBulkListingSubmitService {
   async submit(input: BulkListingSubmitInput): Promise<BulkListingSubmitResult> {
     if (input.productIds.length === 0) {
       throw new EmptyBulkSubmissionException();
+    }
+
+    // Idempotent replay: a key that already names a batch on this connection
+    // answers with that batch before any adapter call or expansion, so a
+    // double submit costs one indexed read and can never enqueue a second set
+    // of offer creates (Allegro does not deduplicate product-offer creates).
+    // The payload is deliberately not compared with the original: the key is
+    // the client's statement that this is the same submission.
+    const idempotencyKey = input.idempotencyKey;
+    if (idempotencyKey) {
+      const existing = await this.bulkBatchRepository.findByIdempotencyKey(
+        input.connectionId,
+        idempotencyKey
+      );
+      if (existing) {
+        this.logger.log(
+          `Bulk submit deduplicated: idempotency key already names batch ${existing.id} ` +
+            `(connection=${input.connectionId})`
+        );
+        return deduplicatedResult(existing.id);
+      }
     }
 
     // 0. Validate the override-map key shapes + per-row currency and strip any
@@ -261,12 +283,38 @@ export class BulkListingSubmitService implements IBulkListingSubmitService {
     //    stored as the unstructured persistence projection of the typed
     //    `BulkSharedConfig` shape so future schema iterations don't require
     //    a migration.
-    const batch = await this.bulkBatchRepository.create({
-      connectionId: input.connectionId,
-      initiatedBy: input.initiatedBy,
-      totalCount: jobs.length,
-      sharedConfig: input.sharedConfig as unknown as Record<string, unknown>,
-    });
+    //    The key is written with the row, BEFORE anything is enqueued: the
+    //    partial unique index is what resolves two submits racing past the
+    //    replay check above, and it can only do that if the loser fails here,
+    //    while it still has nothing on the stream.
+    let batch: BulkListingBatch;
+    try {
+      batch = await this.bulkBatchRepository.create({
+        connectionId: input.connectionId,
+        initiatedBy: input.initiatedBy,
+        totalCount: jobs.length,
+        sharedConfig: input.sharedConfig as unknown as Record<string, unknown>,
+        ...(idempotencyKey ? { idempotencyKey } : {}),
+      });
+    } catch (error) {
+      if (idempotencyKey && error instanceof DuplicateBulkBatchIdempotencyKeyError) {
+        const winner = await this.bulkBatchRepository.findByIdempotencyKey(
+          input.connectionId,
+          idempotencyKey
+        );
+        if (winner) {
+          this.logger.log(
+            `Bulk submit lost the idempotency race to batch ${winner.id} ` +
+              `(connection=${input.connectionId}); returning it and enqueueing nothing`
+          );
+          return deduplicatedResult(winner.id);
+        }
+        // The winner released its key between our failed insert and this read
+        // (it enqueued nothing and gave the key back). Nothing was persisted
+        // for this call; the error tells the client to retry.
+      }
+      throw error;
+    }
 
     this.logger.log(
       `Bulk batch ${batch.id} persisted (connection=${input.connectionId}, ` +
@@ -334,6 +382,13 @@ export class BulkListingSubmitService implements IBulkListingSubmitService {
           await this.bulkBatchRepository.updateStatus(batch.id, nextStatus);
         } else {
           await this.bulkBatchRepository.updateStatus(batch.id, BULK_BATCH_STATUS.Failed);
+          // Nothing reached the stream, so a retry under the same key cannot
+          // duplicate anything. Keeping the key would answer that retry with
+          // this dead, empty batch and a 202, i.e. report success for a submit
+          // that did nothing; releasing it lets the retry run for real.
+          if (idempotencyKey) {
+            await this.bulkBatchRepository.clearIdempotencyKey(batch.id);
+          }
         }
       } catch (reconcileError) {
         this.logger.error(
@@ -400,6 +455,9 @@ export class BulkListingSubmitService implements IBulkListingSubmitService {
    * snapshot says `ended`, so a variant whose offer is over can be listed again
    * (#1934/F2). Previously the query had no status predicate at all despite
    * this docstring, which made an ended offer block its variant permanently.
+   * It likewise excludes an `inactive` offer whose creation the marketplace
+   * refused (E2E-25) - that offer can never sell, and the "Fix this one" path
+   * must be able to list the variant again.
    *
    * One batched count query rather than
    * a per-variant fan-out; a variant with `count > 0` is skipped with a warning
@@ -928,6 +986,23 @@ function stripVariantCategoryId(
   const rest: CreateOfferOverrides = { ...overrides };
   delete rest.categoryId;
   return rest;
+}
+
+/**
+ * The answer to a submit whose idempotency key already names a batch. It
+ * reports only what THIS call did, which is nothing: no job ids and no skips.
+ * The original submit's counts were never persisted, so replaying them would
+ * mean inventing them.
+ */
+function deduplicatedResult(batchId: string): BulkListingSubmitResult {
+  return {
+    batchId,
+    jobIds: [],
+    skippedAlreadyListedCount: 0,
+    skippedAvailabilityUnknownCount: 0,
+    skippedInvalidEanCount: 0,
+    deduplicated: true,
+  };
 }
 
 /**

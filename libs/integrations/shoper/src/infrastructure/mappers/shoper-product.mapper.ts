@@ -120,75 +120,72 @@ export function buildShoperImageUrl(host: string, image: ShoperMainImage): strin
   return `https://${host}/userdata/public/gfx/${image.unic_name}.${image.extension}`;
 }
 
+/** Shoper flags arrive as `"1"`, `1` or `true`; anything else is off. */
+function isShoperFlagSet(raw: string | number | boolean | null | undefined): boolean {
+  return raw === true || raw === 1 || raw === '1';
+}
+
+/** Sort key for `order`: a missing or unreadable value sorts after every real one. */
+function galleryOrder(raw: string | number | null | undefined): number {
+  const value = parseShoperNumber(raw);
+  return value === undefined ? Number.POSITIVE_INFINITY : value;
+}
+
+function gfxNumber(raw: string): number {
+  const value = Number(raw);
+  return Number.isFinite(value) ? value : Number.POSITIVE_INFINITY;
+}
+
 /**
- * Public URLs of a product's gallery, main image first, then in the shop's own
- * gallery order. Hidden images are left out (the shop does not show them to a
- * buyer, so they are not published either), as are rows whose file name is not
- * a plain file name. Duplicates collapse to their first position.
+ * The product gallery as the shop presents it: the main image first, then by
+ * `order`, then by `gfx_id` (a stable tie-break - two rows can share an `order`).
+ * A hidden row is left out; it is still reachable as a variant's own picture.
+ *
+ * `main_image` is the floor: when the gallery yields nothing visible (a shop
+ * that answers the header and the gallery inconsistently), the one picture the
+ * product payload itself names is kept rather than dropped. `null` only when
+ * there is genuinely no visible image.
  */
-export function buildShoperGalleryUrls(
+export function mapShoperProductGallery(
+  gallery: readonly ShoperProductImage[],
+  mainImage: ShoperMainImage | null,
   host: string,
-  images: readonly ShoperProductImage[],
-): string[] {
-  const position = (image: ShoperProductImage): number =>
-    parseShoperNumber(image.order) ?? Number.MAX_SAFE_INTEGER;
-  const isMain = (image: ShoperProductImage): number => (String(image.main) === '1' ? 0 : 1);
-  const sorted = images
-    .filter((image) => String(image.hidden) !== '1')
-    .slice()
+): string[] | null {
+  const mainGfx =
+    mainImage?.gfx_id === undefined || mainImage.gfx_id === null ? null : String(mainImage.gfx_id);
+  const isMain = (image: ShoperProductImage): boolean =>
+    isShoperFlagSet(image.main) || (mainGfx !== null && String(image.gfx_id) === mainGfx);
+
+  const ordered = gallery
+    .filter((image) => !isShoperFlagSet(image.hidden))
     .sort(
       (a, b) =>
-        isMain(a) - isMain(b) ||
-        position(a) - position(b) ||
-        (parseShoperNumber(a.gfx_id) ?? 0) - (parseShoperNumber(b.gfx_id) ?? 0),
+        Number(isMain(b)) - Number(isMain(a)) ||
+        galleryOrder(a.order) - galleryOrder(b.order) ||
+        gfxNumber(a.gfx_id) - gfxNumber(b.gfx_id),
     );
+
   const urls: string[] = [];
-  for (const image of sorted) {
+  for (const image of ordered) {
     const url = buildShoperImageUrl(host, image);
     if (url !== null && !urls.includes(url)) {
       urls.push(url);
     }
   }
-  return urls;
+  if (urls.length > 0) {
+    return urls;
+  }
+  if (mainImage === null || isShoperFlagSet(mainImage.hidden)) {
+    return null;
+  }
+  const mainUrl = buildShoperImageUrl(host, mainImage);
+  return mainUrl === null ? null : [mainUrl];
 }
 
 function weightInKilograms(raw: string | null, unit: string): number | undefined {
   // Only kilograms are converted with confidence; any other unit is left unset
   // rather than reported in the wrong magnitude.
   return unit === KILOGRAM ? parseShoperNumber(raw) : undefined;
-}
-
-/**
- * A product's stock rows split into what is sold and the row it is derived from.
- *
- * Every Shoper product has a base row (`options: []`). A product WITH variants
- * also has one row per option combination, and its base row is then not
- * something a buyer can pick: counting it as a variant added a phantom variant
- * and doubled the product's stock (live: S 5 + M 5 + L 5 reported as 30). So when
- * any row carries options, only those rows are variants, and the base row is
- * kept aside because variant prices and weights are stated relative to it.
- *
- * A row whose options are malformed still counts as an option row: it is not
- * the base row, and dropping it would hide a real variant.
- */
-export interface ShoperStockPartition {
-  readonly variants: readonly ShoperStock[];
-  /** The base row of a product that has option rows; `null` for a simple product. */
-  readonly base: ShoperStock | null;
-}
-
-export function partitionShoperStocks(stocks: readonly ShoperStock[]): ShoperStockPartition {
-  const isBase = (stock: ShoperStock): boolean => {
-    const pairs = shoperStockOptionPairs(stock.options);
-    return pairs !== 'malformed' && pairs.length === 0;
-  };
-  const optionRows = stocks.filter((stock) => !isBase(stock));
-  if (optionRows.length === 0) {
-    return { variants: stocks, base: null };
-  }
-  const baseRows = stocks.filter(isBase);
-  const base = baseRows.find((stock) => String(stock.default) === '1') ?? baseRows[0] ?? null;
-  return { variants: optionRows, base };
 }
 
 /** Shoper's `PRICE_TYPE_*` / `WEIGHT_TYPE_*` codes (identical for both fields). */
@@ -238,12 +235,47 @@ function resolveRelativeValue(
   }
 }
 
+/**
+ * Public URL of every gallery row by `gfx_id`, hidden rows INCLUDED: a hidden
+ * row is commonly a variant's own picture kept off the product card, and a
+ * variant stock still points at it.
+ */
+export function indexShoperGalleryUrls(
+  gallery: readonly ShoperProductImage[],
+  host: string,
+): Map<string, string> {
+  const urls = new Map<string, string>();
+  for (const image of gallery) {
+    const url = buildShoperImageUrl(host, image);
+    if (url !== null) {
+      urls.set(String(image.gfx_id), url);
+    }
+  }
+  return urls;
+}
+
+/**
+ * The picture a variant stock points at, as a one-image list, or `null` when it
+ * names none or names one the gallery does not hold (never guessed).
+ */
+export function shoperVariantImages(
+  stock: Pick<ShoperStock, 'gfx_id'>,
+  galleryUrls: ReadonlyMap<string, string>,
+): string[] | null {
+  if (stock.gfx_id === null || stock.gfx_id === undefined || String(stock.gfx_id) === '') {
+    return null;
+  }
+  const url = galleryUrls.get(String(stock.gfx_id));
+  return url === undefined ? null : [url];
+}
+
 export function mapShoperStockToVariant(
   stock: ShoperStock,
   productId: string,
   ctx: ShoperMapContext,
   attributes: Record<string, string> | null = null,
   base: ShoperStock | null = null,
+  images: string[] | null = null,
 ): Omit<ProductVariant, 'id'> {
   const ean = nonEmpty(stock.ean);
   const hasBase = base !== null && base.stock_id !== stock.stock_id;
@@ -268,24 +300,34 @@ export function mapShoperStockToVariant(
     attributes,
     ean,
     gtin: ean,
+    images,
     ...(price === undefined ? {} : { price }),
     ...(weight === undefined ? {} : { weight, weightGrams: Math.round(weight * 1000) }),
   };
 }
 
-export function mapShoperProduct(raw: ShoperProduct, ctx: ShoperMapContext): Omit<Product, 'id'> {
+/**
+ * @param gallery - the product's `product-images` rows. Omitted when the caller
+ *   did not read them, which keeps the product's `main_image` as its only
+ *   image; pass `[]` for a product the caller knows has no gallery.
+ */
+export function mapShoperProduct(
+  raw: ShoperProduct,
+  ctx: ShoperMapContext,
+  gallery?: readonly ShoperProductImage[],
+): Omit<Product, 'id'> {
   const translation = pickShoperTranslation(raw.translations, ctx.language);
   const sku = nonEmpty(raw.code);
   const weight =
     raw.stock === null ? undefined : weightInKilograms(raw.stock.weight, ctx.weightUnit);
-  const imageUrl = raw.main_image === null ? null : buildShoperImageUrl(ctx.host, raw.main_image);
+  const images = mapShoperProductGallery(gallery ?? [], raw.main_image, ctx.host);
 
   return {
     name: nonEmpty(translation?.name) ?? sku ?? `product-${raw.product_id}`,
     sku,
     price: raw.stock === null ? null : (parseShoperNumber(raw.stock.price) ?? null),
     description: nonEmpty(translation?.description),
-    images: imageUrl === null ? null : [imageUrl],
+    images,
     currency: ctx.currency,
     categories: raw.categories.map(String),
     ...(weight === undefined ? {} : { weight }),

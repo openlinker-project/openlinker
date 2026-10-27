@@ -14,6 +14,13 @@
  * Redis-stream bypass rationale (queue path doesn't support delayed
  * delivery, so the poll job goes through the DB-backed `nextRunAt`).
  *
+ * Bulk children (E2E-21): the create handler counts an accepted create
+ * (`validating`) as a succeeded child, because the create job itself
+ * succeeded. When this poller later terminalises that record as `failed`
+ * (a validation rejection, POLL_TIMEOUT, a vanished offer), it reclassifies
+ * the child on its batch so the batch counters and status match the
+ * records' final outcome.
+ *
  * @module libs/core/src/listings/application/services
  * @implements {IOfferStatusPollService}
  * @see {@link ISyncJobsService} for the cross-context scheduling seam (#718)
@@ -45,21 +52,28 @@ import {
 import { Logger } from '@openlinker/shared/logging';
 
 import {
+  BULK_LISTING_PROGRESS_SERVICE_TOKEN,
   OFFER_CREATION_RECORD_REPOSITORY_TOKEN,
   OFFER_STATUS_SYNC_SERVICE_TOKEN,
 } from '../../listings.tokens';
+import type { OfferCreationRecord } from '../../domain/entities/offer-creation-record.entity';
 import { OfferCreationRecordRepositoryPort } from '../../domain/ports/offer-creation-record-repository.port';
-import type {
-  OfferCreationError,
-  OfferCreationStatus,
+import {
+  OFFER_CREATION_POLL_NOT_SUPPORTED_ERROR_CODE,
+  OFFER_CREATION_POLL_TIMEOUT_ERROR_CODE,
+  type OfferCreationError,
+  type OfferCreationStatus,
 } from '../../domain/types/offer-creation-record.types';
 import type { IOfferStatusPollService } from '../interfaces/offer-status-poll.service.interface';
+import { IBulkListingProgressService } from './bulk-listing-progress.service.interface';
 import { IOfferStatusSyncService } from './offer-status-sync.service.interface';
-import type {
-  OfferPollCadenceConfig,
-  PollOnceInput,
-  PollOnceResult,
-  ScheduleFirstPollInput,
+import {
+  offerPollDelaySeconds,
+  resolveOfferPollCadence,
+  type OfferPollCadenceConfig,
+  type PollOnceInput,
+  type PollOnceResult,
+  type ScheduleFirstPollInput,
 } from '../types/offer-status-poll.types';
 
 const POLL_JOB_TYPE = 'marketplace.offer.pollCreationStatus';
@@ -86,15 +100,11 @@ export class OfferStatusPollService implements IOfferStatusPollService {
     private readonly syncJobs: ISyncJobsService,
     @Inject(OFFER_STATUS_SYNC_SERVICE_TOKEN)
     private readonly offerStatusSync: IOfferStatusSyncService,
+    @Inject(BULK_LISTING_PROGRESS_SERVICE_TOKEN)
+    private readonly bulkProgress: IBulkListingProgressService,
     configService: ConfigService
   ) {
-    this.cadence = {
-      initialDelaySeconds:
-        configService.get<number>('OL_ALLEGRO_OFFER_POLL_INITIAL_DELAY_SECONDS') ?? 5,
-      backoffMultiplier: configService.get<number>('OL_ALLEGRO_OFFER_POLL_BACKOFF_MULTIPLIER') ?? 2,
-      maxDelaySeconds: configService.get<number>('OL_ALLEGRO_OFFER_POLL_MAX_DELAY_SECONDS') ?? 60,
-      maxAttempts: configService.get<number>('OL_ALLEGRO_OFFER_POLL_MAX_ATTEMPTS') ?? 12,
-    };
+    this.cadence = resolveOfferPollCadence((key) => configService.get<number>(key));
   }
 
   async scheduleFirstPoll(input: ScheduleFirstPollInput): Promise<void> {
@@ -120,6 +130,12 @@ export class OfferStatusPollService implements IOfferStatusPollService {
       this.logger.debug(
         `Poll iteration ${input.pollAttempt} sees record ${input.offerCreationRecordId} already at terminal '${record.status}' — no-op.`
       );
+      // A runner retry of the iteration that failed the record lands here when
+      // that iteration's batch reclassification threw after the record write.
+      // Replay-safe, so re-running it is how that correction is not lost.
+      if (record.status === OFFER_CREATION_STATUS.Failed) {
+        await this.reclassifyBulkChildAsFailed(record);
+      }
       return { outcome: 'ok' };
     }
 
@@ -128,9 +144,9 @@ export class OfferStatusPollService implements IOfferStatusPollService {
     // bails when iteration N would exceed the cap (see scheduleNext below).
     if (input.pollAttempt > this.cadence.maxAttempts) {
       await this.markFailedAtomically(
-        input.offerCreationRecordId,
+        record,
         `POLL_TIMEOUT after ${this.cadence.maxAttempts} attempts`,
-        'POLL_TIMEOUT'
+        OFFER_CREATION_POLL_TIMEOUT_ERROR_CODE
       );
       // A validator that outran the poll budget may still activate the offer;
       // reconcile the live snapshot so the operator view isn't left stale (#1760).
@@ -151,9 +167,9 @@ export class OfferStatusPollService implements IOfferStatusPollService {
       const reason = new OfferPollNotSupportedException(input.connectionId);
       this.logger.error(reason.message);
       await this.markFailedAtomically(
-        input.offerCreationRecordId,
+        record,
         reason.message,
-        'OFFER_POLL_NOT_SUPPORTED'
+        OFFER_CREATION_POLL_NOT_SUPPORTED_ERROR_CODE
       );
       return { outcome: 'business_failure' };
     }
@@ -168,11 +184,7 @@ export class OfferStatusPollService implements IOfferStatusPollService {
       observedAt = new Date();
     } catch (err) {
       if (err instanceof OfferNotFoundOnMarketplaceException) {
-        await this.markFailedAtomically(
-          input.offerCreationRecordId,
-          err.message,
-          'OFFER_NOT_FOUND'
-        );
+        await this.markFailedAtomically(record, err.message, 'OFFER_NOT_FOUND');
         return { outcome: 'business_failure' };
       }
       throw err;
@@ -186,6 +198,9 @@ export class OfferStatusPollService implements IOfferStatusPollService {
         decision.recordStatus,
         decision.errors
       );
+      if (decision.recordStatus === OFFER_CREATION_STATUS.Failed) {
+        await this.reclassifyBulkChildAsFailed(record);
+      }
 
       // Smart classification readback (#737): when an offer transitions to
       // `active`, this is the canonical moment to read its classification
@@ -231,7 +246,7 @@ export class OfferStatusPollService implements IOfferStatusPollService {
     }
 
     // Still validating — schedule the next iteration if we haven't hit the cap.
-    await this.scheduleNext(input, record.internalVariantId);
+    await this.scheduleNext(input, record);
     return { outcome: 'ok' };
   }
 
@@ -269,16 +284,16 @@ export class OfferStatusPollService implements IOfferStatusPollService {
     }
   }
 
-  private async scheduleNext(current: PollOnceInput, internalVariantId: string): Promise<void> {
+  private async scheduleNext(current: PollOnceInput, record: OfferCreationRecord): Promise<void> {
     const nextAttempt = current.pollAttempt + 1;
     if (nextAttempt > this.cadence.maxAttempts) {
       // We've exhausted the cadence budget. Mark the record failed with a
       // POLL_TIMEOUT code and don't enqueue another iteration.
       await this.markFailedAtomically(
-        current.offerCreationRecordId,
+        record,
         `Allegro never finished validating offer ${current.externalOfferId} after ` +
           `${this.cadence.maxAttempts} poll iterations`,
-        'POLL_TIMEOUT'
+        OFFER_CREATION_POLL_TIMEOUT_ERROR_CODE
       );
       this.logger.warn(
         `Poll cadence exhausted for record ${current.offerCreationRecordId} (offer ${current.externalOfferId}) — marked failed.`
@@ -288,7 +303,7 @@ export class OfferStatusPollService implements IOfferStatusPollService {
       await this.scheduleSnapshotReconcile(
         current.connectionId,
         current.externalOfferId,
-        internalVariantId
+        record.internalVariantId
       );
       return;
     }
@@ -417,14 +432,9 @@ export class OfferStatusPollService implements IOfferStatusPollService {
     }
   }
 
-  /**
-   * Cadence: `initialDelay × multiplier^(attempt-1)`, clamped to `maxDelay`.
-   * Pure function of `pollAttempt`; no side effects.
-   */
+  /** See `offerPollDelaySeconds`; the worst-case budget sums the same delays. */
   private computeDelaySeconds(pollAttempt: number): number {
-    const exp = pollAttempt - 1;
-    const raw = this.cadence.initialDelaySeconds * Math.pow(this.cadence.backoffMultiplier, exp);
-    return Math.min(raw, this.cadence.maxDelaySeconds);
+    return offerPollDelaySeconds(this.cadence, pollAttempt);
   }
 
   /**
@@ -456,14 +466,30 @@ export class OfferStatusPollService implements IOfferStatusPollService {
   /**
    * Atomic record update: status='failed' + a single structured error. We
    * use `updateStatus` which already supports the `(status, errors)` write
-   * in one repo call — so a crash between two writes is impossible.
+   * in one repo call — so a crash between two writes is impossible. A bulk
+   * child is then reclassified on its batch.
    */
   private async markFailedAtomically(
-    recordId: string,
+    record: OfferCreationRecord,
     message: string,
     code: string
   ): Promise<void> {
     const error: OfferCreationError = { code, message };
-    await this.offerCreationRecords.updateStatus(recordId, OFFER_CREATION_STATUS.Failed, [error]);
+    await this.offerCreationRecords.updateStatus(record.id, OFFER_CREATION_STATUS.Failed, [error]);
+    await this.reclassifyBulkChildAsFailed(record);
+  }
+
+  /**
+   * Count a bulk child whose record just terminalised as `failed` as failed
+   * on its batch (E2E-21). Runs AFTER the record write so the record - the
+   * source of truth - never waits on batch bookkeeping. Deliberately not
+   * swallowed: a throw fails this iteration, and the runner's retry reaches
+   * the non-`validating` branch of `pollOnce`, which re-runs it. Replay-safe
+   * by construction (`reclassifyChildAsFailed` is gated on the advancement
+   * row), so that retry can never double-adjust.
+   */
+  private async reclassifyBulkChildAsFailed(record: OfferCreationRecord): Promise<void> {
+    if (!record.bulkBatchId) return;
+    await this.bulkProgress.reclassifyChildAsFailed(record.bulkBatchId, record.id);
   }
 }

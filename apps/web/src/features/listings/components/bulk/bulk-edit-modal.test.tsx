@@ -290,6 +290,74 @@ describe('BulkEditModal', () => {
     expect(savedVariantParams(onSave, 'var_s').map((p) => p.id)).toEqual(['ean_men']);
   });
 
+  // Found live (Shoper -> Allegro E2E): with no category the only signal is the
+  // chip's warning triangle, so Save all used to do nothing at all on click.
+  it('shows the price a blank Price field lists at, not an example value', () => {
+    renderWithProviders(
+      <BulkEditModal
+        open
+        onOpenChange={() => undefined}
+        row={makeRow()}
+        connection={connection}
+        canBrowseCategories={true}
+        currency="PLN"
+        defaults={DEFAULTS}
+        onSave={() => undefined}
+      />,
+    );
+
+    const price = screen.getByLabelText('Price');
+    expect(price).toHaveAttribute('placeholder', '12.00');
+    expect(screen.getByText('Leave blank to list at 12.00 PLN from the pricing policy.')).toBeInTheDocument();
+  });
+
+  it('explains a save blocked by a missing category instead of doing nothing', async () => {
+    const onSave = vi.fn();
+
+    renderWithProviders(
+      <BulkEditModal
+        open
+        onOpenChange={() => undefined}
+        row={makeRow()}
+        connection={connection}
+        canBrowseCategories={true}
+        currency="PLN"
+        defaults={DEFAULTS}
+        onSave={onSave}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Save all' }));
+
+    expect(await screen.findByText("Can't save yet - choose a category")).toBeInTheDocument();
+    expect(onSave).not.toHaveBeenCalled();
+  });
+
+  it('names the highlighted fields when the category is set but another field is invalid', async () => {
+    const onSave = vi.fn();
+    const row = makeRow();
+    row.resolvedCategoryId = '12345';
+
+    renderWithProviders(
+      <BulkEditModal
+        open
+        onOpenChange={() => undefined}
+        row={row}
+        connection={connection}
+        canBrowseCategories={true}
+        currency="PLN"
+        defaults={DEFAULTS}
+        onSave={onSave}
+      />,
+    );
+
+    fireEvent.change(screen.getByLabelText(/^Title/i), { target: { value: '' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save all' }));
+
+    expect(await screen.findByText("Can't save yet - fix the highlighted fields")).toBeInTheDocument();
+    expect(onSave).not.toHaveBeenCalled();
+  });
+
   it('blocks the save while an overridden category schema has not resolved (#1946)', async () => {
     const onSave = vi.fn();
     mockCategoryParameters = [eanSlot('ean_men')];
@@ -1349,6 +1417,425 @@ describe('BulkEditModal', () => {
       // Inclusion map covers both siblings.
       const included = onSave.mock.calls[0][3] as Record<string, boolean>;
       expect(included).toEqual({ var_s: true, var_m: true });
+    });
+
+    it('should inherit the base title and price when a variant clears them, and say so', async () => {
+      const onSave = vi.fn();
+      renderWithProviders(
+        <BulkEditModal
+          open
+          onOpenChange={() => undefined}
+          row={makeMultiRow()}
+          connection={connection}
+          canBrowseCategories={false}
+          currency="PLN"
+          defaults={DEFAULTS}
+          focusVariantId="var_m"
+          onSave={onSave}
+        />,
+      );
+
+      const title = screen.getByLabelText('Title for Rozmiar: M');
+      const baseTitle = (title as HTMLInputElement).value;
+      expect(baseTitle).not.toBe('');
+      fireEvent.change(title, { target: { value: '' } });
+      expect(title).toHaveAttribute('placeholder', baseTitle);
+      const price = screen.getByLabelText('Price for Rozmiar: M');
+      fireEvent.change(price, { target: { value: '' } });
+      expect(price).toHaveAttribute('placeholder', '12.00');
+      expect(screen.getAllByText(/Left empty, this variant uses the base value/)).toHaveLength(2);
+
+      fireEvent.click(screen.getByRole('button', { name: 'Save all' }));
+
+      await waitFor(() => { expect(onSave).toHaveBeenCalledTimes(1); });
+      const perVariant = onSave.mock.calls[0][2] as Record<
+        string,
+        { price?: unknown; overrides?: { title?: string } }
+      >;
+      // An empty title used to be sent as `title: ''` and became the offer's title.
+      expect(perVariant.var_m?.overrides?.title).toBeUndefined();
+      expect(perVariant.var_m?.price).toBeUndefined();
+    });
+  });
+
+  describe('per-variant default images', () => {
+    const gfx = (n: number): string => `https://shop.example/gfx/${n}.jpg`;
+
+    /** Product 161: gallery 312 (main), 313, 314 (red), 315 (green). */
+    function makeImageRow(opts: { withDefaults?: boolean } = {}): BulkWizardRow {
+      const withDefaults = opts.withDefaults ?? true;
+      const row = makeMultiRow();
+      const red: ProductVariant = {
+        ...makeVariant('var_s', { ean: '5901520000059', attributes: { Kolor: 'czerwony' } }),
+        images: [gfx(314)],
+        ...(withDefaults ? { defaultImages: [gfx(314), gfx(312), gfx(313)] } : {}),
+      };
+      const green: ProductVariant = {
+        ...makeVariant('var_m', { ean: '5900531001130', attributes: { Kolor: 'zielony' } }),
+        images: [gfx(315)],
+        ...(withDefaults ? { defaultImages: [gfx(315), gfx(312), gfx(313)] } : {}),
+      };
+      return {
+        ...row,
+        product: row.product
+          ? { ...row.product, images: [gfx(312), gfx(313), gfx(314), gfx(315)] }
+          : row.product,
+        primaryVariant: red,
+        // A shared category, so `Save all` has nothing else to block on.
+        override: { overrides: { categoryId: 'cat_glass' } },
+        variants: [
+          makeVariantRow(red, { attributes: { Kolor: 'czerwony' } }),
+          makeVariantRow(green, { attributes: { Kolor: 'zielony' } }),
+        ],
+      };
+    }
+
+    function variantImageField(): HTMLElement {
+      // The hint under the variant's image strip, in either state.
+      const hint = screen.getByText(
+        /add or remove to override for this variant|Custom image set for this variant/,
+      );
+      const field = hint.closest('.bulk-editor__field');
+      if (!(field instanceof HTMLElement)) throw new Error('variant image field not found');
+      return field;
+    }
+
+    function shownImages(): string[] {
+      return Array.from(variantImageField().querySelectorAll('img')).map((img) => img.getAttribute('src') ?? '');
+    }
+
+    it("shows a single-variant product's images in the order its offer is built with", () => {
+      // Product 162: gallery 316 (main), 317; its one variant owns 317, so the
+      // offer is built with [317, 316] and the editor must show that order.
+      const base = makeRow();
+      const variant: ProductVariant = {
+        ...base.variants[0].variant,
+        images: [gfx(317)],
+        defaultImages: [gfx(317), gfx(316)],
+      };
+      const row: BulkWizardRow = {
+        ...base,
+        product: base.product ? { ...base.product, images: [gfx(316), gfx(317)] } : base.product,
+        primaryVariant: variant,
+        variants: [{ ...base.variants[0], variant }],
+      };
+      renderWithProviders(
+        <BulkEditModal
+          open
+          onOpenChange={() => undefined}
+          row={row}
+          connection={connection}
+          canBrowseCategories={true}
+          currency="PLN"
+          defaults={DEFAULTS}
+          onSave={() => undefined}
+        />,
+      );
+
+      const shown = Array.from(document.querySelectorAll('img'))
+        .map((img) => img.getAttribute('src') ?? '')
+        .filter((src) => src.startsWith('https://shop.example/gfx/'));
+      expect(shown).toEqual([gfx(317), gfx(316)]);
+    });
+
+    it("shows the variant's own resolved default images and says so", () => {
+      renderWithProviders(
+        <BulkEditModal
+          open
+          onOpenChange={() => undefined}
+          row={makeImageRow()}
+          connection={connection}
+          canBrowseCategories={true}
+          currency="PLN"
+          defaults={DEFAULTS}
+          focusVariantId="var_s"
+          onSave={() => undefined}
+        />,
+      );
+
+      expect(shownImages()).toEqual([gfx(314), gfx(312), gfx(313)]);
+      expect(
+        screen.getByText(/This variant's default: its own images first, other variants' images left out/),
+      ).toBeInTheDocument();
+    });
+
+    it('falls back to the base images with the old copy when the API resolved no default', () => {
+      renderWithProviders(
+        <BulkEditModal
+          open
+          onOpenChange={() => undefined}
+          row={makeImageRow({ withDefaults: false })}
+          connection={connection}
+          canBrowseCategories={true}
+          currency="PLN"
+          defaults={DEFAULTS}
+          focusVariantId="var_s"
+          onSave={() => undefined}
+        />,
+      );
+
+      expect(shownImages()).toEqual([gfx(312), gfx(313), gfx(314), gfx(315)]);
+      expect(screen.getByText(/Inherits the base images/)).toBeInTheDocument();
+    });
+
+    it("keeps an edit to one variant's images out of its siblings and the shared base", async () => {
+      const onSave = vi.fn();
+      renderWithProviders(
+        <BulkEditModal
+          open
+          onOpenChange={() => undefined}
+          row={makeImageRow()}
+          connection={connection}
+          canBrowseCategories={true}
+          currency="PLN"
+          defaults={DEFAULTS}
+          focusVariantId="var_s"
+          onSave={onSave}
+        />,
+      );
+
+      // Drop red's own picture (the first thumbnail of its default list).
+      fireEvent.click(within(variantImageField()).getAllByRole('button', { name: 'Remove image' })[0]);
+      expect(shownImages()).toEqual([gfx(312), gfx(313)]);
+
+      fireEvent.click(screen.getByRole('button', { name: 'Save all' }));
+      await waitFor(() => { expect(onSave).toHaveBeenCalledTimes(1); });
+
+      const base = onSave.mock.calls[0][1] as { overrides?: { imageUrls?: string[] } };
+      const perVariant = onSave.mock.calls[0][2] as Record<
+        string,
+        { overrides?: { imageUrls?: string[] } }
+      >;
+      expect(perVariant.var_s?.overrides?.imageUrls).toEqual([gfx(312), gfx(313)]);
+      // Green keeps publishing its own default (no override sent), and the
+      // shared base carries no image set that would reach every sibling.
+      expect(perVariant.var_m?.overrides?.imageUrls).toBeUndefined();
+      expect(base.overrides?.imageUrls).toBeUndefined();
+    });
+
+    function renderVariantEditor(onSave: (...args: unknown[]) => void = () => undefined): void {
+      renderWithProviders(
+        <BulkEditModal
+          open
+          onOpenChange={() => undefined}
+          row={makeImageRow()}
+          connection={connection}
+          canBrowseCategories={true}
+          currency="PLN"
+          defaults={DEFAULTS}
+          focusVariantId="var_s"
+          onSave={onSave}
+        />,
+      );
+    }
+
+    function typeVariantImage(value: string): void {
+      const field = variantImageField();
+      fireEvent.click(within(field).getByRole('button', { name: 'Add image' }));
+      fireEvent.change(within(field).getByRole('textbox', { name: 'New image URL' }), {
+        target: { value },
+      });
+      fireEvent.click(within(field).getByRole('button', { name: 'Add' }));
+    }
+
+    it('should refuse an address that is not a web address and keep the input open', () => {
+      renderVariantEditor();
+
+      typeVariantImage('not a url');
+
+      const field = variantImageField();
+      const input = within(field).getByRole('textbox', { name: 'New image URL' });
+      expect(within(field).getByRole('alert')).toHaveTextContent(
+        'This is not a web address. Enter a full image address starting with https:// or http://',
+      );
+      expect(input).toHaveAttribute('aria-invalid', 'true');
+      expect(input).toHaveValue('not a url');
+      expect(shownImages()).toEqual([gfx(314), gfx(312), gfx(313)]);
+    });
+
+    it('should refuse an image that is already in the variant list', () => {
+      renderVariantEditor();
+
+      typeVariantImage(`  ${gfx(312)}  `);
+
+      expect(within(variantImageField()).getByRole('alert')).toHaveTextContent(
+        'This image is already in the list. Enter a different address.',
+      );
+      expect(shownImages()).toEqual([gfx(314), gfx(312), gfx(313)]);
+    });
+
+    it('should add a valid trimmed address to this variant only and save it', async () => {
+      const onSave = vi.fn();
+      renderVariantEditor(onSave);
+
+      typeVariantImage(`  ${gfx(999)} `);
+
+      expect(within(variantImageField()).queryByRole('alert')).not.toBeInTheDocument();
+      expect(within(variantImageField()).queryByRole('textbox', { name: 'New image URL' })).not.toBeInTheDocument();
+      expect(shownImages()).toEqual([gfx(314), gfx(312), gfx(313), gfx(999)]);
+
+      fireEvent.click(screen.getByRole('button', { name: 'Save all' }));
+      await waitFor(() => { expect(onSave).toHaveBeenCalledTimes(1); });
+      const perVariant = onSave.mock.calls[0][2] as Record<string, { overrides?: { imageUrls?: string[] } }>;
+      expect(perVariant.var_s?.overrides?.imageUrls).toEqual([gfx(314), gfx(312), gfx(313), gfx(999)]);
+    });
+
+    it('should mark a thumbnail that fails to load and still allow saving', async () => {
+      const onSave = vi.fn();
+      renderVariantEditor(onSave);
+
+      const field = variantImageField();
+      const brokenImg = Array.from(field.querySelectorAll('img')).find(
+        (img) => img.getAttribute('src') === gfx(312),
+      );
+      if (!brokenImg) throw new Error('thumbnail not found');
+      fireEvent.error(brokenImg);
+
+      expect(brokenImg.closest('.bulk-editor__img-thumb')).toHaveClass('bulk-editor__img-thumb--broken');
+      expect(within(field).getByText('Not loading')).toBeInTheDocument();
+      expect(
+        within(field).getByText(
+          '1 image could not be loaded. The address may be wrong or may not point to an image. Remove it or use another address.',
+        ),
+      ).toBeInTheDocument();
+
+      fireEvent.click(screen.getByRole('button', { name: 'Save all' }));
+      await waitFor(() => { expect(onSave).toHaveBeenCalledTimes(1); });
+    });
+
+    it('should clear the broken marker once the broken image is removed', () => {
+      renderVariantEditor();
+
+      const field = variantImageField();
+      const thumbs = Array.from(field.querySelectorAll('img'));
+      fireEvent.error(thumbs[1]);
+      expect(within(field).getByText('Not loading')).toBeInTheDocument();
+
+      fireEvent.click(within(field).getAllByRole('button', { name: 'Remove image' })[1]);
+
+      expect(within(variantImageField()).queryByText('Not loading')).not.toBeInTheDocument();
+      expect(within(variantImageField()).queryByText(/could not be loaded/)).not.toBeInTheDocument();
+    });
+  });
+
+  describe('simple offer image address validation', () => {
+    const imageA = 'https://shop.example/gfx/1.jpg';
+
+    function renderSimpleEditor(): void {
+      const row = makeRow();
+      row.product!.images = [imageA];
+      renderWithProviders(
+        <BulkEditModal
+          open
+          onOpenChange={() => undefined}
+          row={row}
+          connection={connection}
+          canBrowseCategories={false}
+          currency="PLN"
+          defaults={DEFAULTS}
+          onSave={() => undefined}
+        />,
+      );
+    }
+
+    function baseImageField(): HTMLElement {
+      const hint = screen.getByText(/Master image set for this offer/);
+      const field = hint.closest('.bulk-editor__field');
+      if (!(field instanceof HTMLElement)) throw new Error('base image field not found');
+      return field;
+    }
+
+    function baseImages(): string[] {
+      return Array.from(baseImageField().querySelectorAll('img')).map((img) => img.getAttribute('src') ?? '');
+    }
+
+    function typeBaseImage(value: string): void {
+      const field = baseImageField();
+      if (within(field).queryByRole('textbox', { name: 'New image URL' }) === null) {
+        fireEvent.click(within(field).getByRole('button', { name: 'Add image' }));
+      }
+      fireEvent.change(within(field).getByRole('textbox', { name: 'New image URL' }), {
+        target: { value },
+      });
+      fireEvent.click(within(field).getByRole('button', { name: 'Add' }));
+    }
+
+    it('should refuse "not a url" and add nothing', () => {
+      renderSimpleEditor();
+
+      typeBaseImage('not a url');
+
+      expect(within(baseImageField()).getByRole('alert')).toHaveTextContent(/This is not a web address/);
+      expect(baseImages()).toEqual([imageA]);
+    });
+
+    it('should refuse a javascript: address', () => {
+      renderSimpleEditor();
+
+      typeBaseImage('javascript:alert(1)');
+
+      expect(within(baseImageField()).getByRole('alert')).toHaveTextContent(/This is not a web address/);
+      expect(baseImages()).toEqual([imageA]);
+    });
+
+    it('should ask for an address when Add is pressed on an empty input', () => {
+      renderSimpleEditor();
+
+      typeBaseImage('   ');
+
+      expect(within(baseImageField()).getByRole('alert')).toHaveTextContent(
+        'Enter an image address, starting with https://.',
+      );
+    });
+
+    it('should clear the error as soon as the address is edited', () => {
+      renderSimpleEditor();
+
+      typeBaseImage('not a url');
+      fireEvent.change(within(baseImageField()).getByRole('textbox', { name: 'New image URL' }), {
+        target: { value: 'https://' },
+      });
+
+      expect(within(baseImageField()).queryByRole('alert')).not.toBeInTheDocument();
+    });
+
+    it('should add a valid address after correcting a refused one', () => {
+      renderSimpleEditor();
+
+      typeBaseImage('not a url');
+      typeBaseImage('https://example.com/file.jpg');
+
+      expect(within(baseImageField()).queryByRole('alert')).not.toBeInTheDocument();
+      expect(baseImages()).toEqual([imageA, 'https://example.com/file.jpg']);
+    });
+
+    it('should refuse a duplicate of an image already in the list', () => {
+      renderSimpleEditor();
+
+      typeBaseImage(imageA);
+
+      expect(within(baseImageField()).getByRole('alert')).toHaveTextContent(
+        'This image is already in the list. Enter a different address.',
+      );
+      expect(baseImages()).toEqual([imageA]);
+    });
+
+    it('should mark a thumbnail that fails to load', () => {
+      renderSimpleEditor();
+      typeBaseImage('https://example.com/file.pdf');
+
+      const pdfImg = Array.from(baseImageField().querySelectorAll('img')).find(
+        (img) => img.getAttribute('src') === 'https://example.com/file.pdf',
+      );
+      if (!pdfImg) throw new Error('thumbnail not found');
+      fireEvent.error(pdfImg);
+
+      expect(pdfImg.closest('.bulk-editor__img-thumb')).toHaveClass('bulk-editor__img-thumb--broken');
+      expect(within(baseImageField()).getByText(/1 image could not be loaded/)).toBeInTheDocument();
+
+      // A later successful load clears it - the failure may have been transient.
+      fireEvent.load(pdfImg);
+      expect(within(baseImageField()).queryByText(/could not be loaded/)).not.toBeInTheDocument();
     });
   });
 

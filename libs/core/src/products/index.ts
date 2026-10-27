@@ -40,6 +40,7 @@ export {
 // Domain Utils
 export { normalizeBarcode, normalizeToEan13 } from './domain/utils/barcode-normalization';
 export { coverImageUrl } from './domain/utils/product-cover-image';
+export { resolveVariantDefaultImages } from './domain/utils/variant-images';
 
 // Application Services
 export { IProductsService } from './application/services/products.service.interface';
@@ -122,6 +123,16 @@ export type {
   ReadProductTaxRateInput,
 } from './domain/ports/capabilities/product-tax-rate-reader.capability';
 export { isProductTaxRateReader } from './domain/ports/capabilities/product-tax-rate-reader.capability';
+
+// Neutral GPSR data a ProductMaster states about a product (EU 2023/988):
+// parties by value, never by platform id.
+export type {
+  GpsrAddress,
+  GpsrParty,
+  GpsrSafetyInformation,
+  ProductGpsr,
+} from './domain/types/product-gpsr.types';
+export { readProductGpsr } from './domain/types/product-gpsr.types';
 
 // Catalogue tax-rate coverage counts (#2054 / #2256) - named because they are
 // the return shape of two `IProductsService` methods a consumer must be able to

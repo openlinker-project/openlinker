@@ -29,24 +29,41 @@
  * The buyer email comes from `order.metadata.buyerEmail` (`OrderSyncService`
  * fills it from the source order's `customerEmail`, #948).
  *
- * **Fulfillment writeback (#3643).** As an order participant the adapter
- * implements `OrderStatusWriteback`: the lifecycle relay (ADR-027) hands it the
- * `dispatched` event OpenLinker emits when a parcel ships, and it records that as
- * a Shoper parcel carrying the tracking number. Partial shipment is not
- * expressed: the event carries no lines, so the parcel ships the whole remainder.
+ * **Lifecycle writeback (#3643).** As an order participant the adapter
+ * implements `OrderStatusWriteback` by delegating to `ShoperOrderStatusWriter`,
+ * which the order source shares: `dispatched` becomes a Shoper parcel carrying
+ * the tracking number, `cancelled` / `in-progress` move the order's status.
+ * Partial shipment is not expressed: the event carries no lines, so the parcel
+ * ships the whole remainder.
+ *
+ * **Fulfillment read-back (#834).** `FulfillmentStatusReader` reports a sent
+ * parcel as dispatched and a cancelled status as cancelled, for the branch-1
+ * shipment projection.
+ *
+ * **Contact refresh (#3814 review).** `OrderContactRefresher` replaces the
+ * placeholder phone an order had to be created with (see
+ * {@link SHOPER_PHONE_PLACEHOLDER}) once the source provides the real one.
  *
  * @module libs/integrations/shoper/src/infrastructure/adapters/order-processor
  * @implements {OrderProcessorManagerPort}
  * @implements {OrderStatusWriteback}
+ * @implements {FulfillmentStatusReader}
+ * @implements {OrderCreateStockEffect}
+ * @implements {OrderContactRefresher}
  */
 import type { Connection, IdentifierMappingPort } from '@openlinker/core/identifier-mapping';
 import { CORE_ENTITY_TYPE } from '@openlinker/core/identifier-mapping';
 import type { IMappingConfigService } from '@openlinker/core/mappings';
+import { FULFILLMENT_STATUS } from '@openlinker/core/orders';
 import type {
   DestinationOptionsReader,
+  FulfillmentStatusReader,
+  FulfillmentStatusSnapshot,
   MappingOption,
+  OrderContactRefresher,
   OrderCreate,
   OrderItem,
+  OrderCreateStockEffect,
   OrderLifecycleEvent,
   OrderProcessorManagerPort,
   OrderRef,
@@ -65,20 +82,19 @@ import { ShoperPartialOrderException } from '../../../domain/exceptions/shoper-p
 import type { ShoperOrderDefaults } from '../../../domain/types/shoper-config.types';
 import type { PreparedShoperOrder } from '../../../domain/types/shoper-order-prepare.types';
 import type {
-  ShoperOptionRow,
+  ShoperOrderContact,
+  ShoperOrderContactUpdate,
   ShoperOrderCreateRequest,
   ShoperOrderRef,
   ShoperOrderProductCreateRequest,
   ShoperOrderShipping,
-  ShoperParcel,
-  ShoperParcelTrackingUpdate,
 } from '../../../domain/types/shoper-api.types';
 import type { ShoperHttpClient } from '../../http/shoper-http-client';
-import { SHOPER_MAX_PAGE_SIZE, fetchShoperPage } from '../../http/shoper-pagination';
+import { mapShoperOrderStatus } from '../../mappers/shoper-incoming-order.mapper';
+import { isShoperParcelSent, normalizeTrackingNumber } from '../../mappers/shoper-parcel.mapper';
 import {
   expectedOrderSum,
   findShoperTaxForRate,
-  labelShoperOption,
   mapShoperOrderAddress,
   resolveGrossUnitPrice,
 } from '../../mappers/shoper-order.mapper';
@@ -90,23 +106,60 @@ import {
   requireDefault,
   toPositiveInt,
 } from '../../mappers/shoper-order-input.mapper';
-import {
-  buildShoperParcelCreateRequest,
-  normalizeTrackingNumber,
-  planShoperParcelWrite,
-} from '../../mappers/shoper-parcel.mapper';
 import type { ShoperCustomerProvisioner } from '../../provisioners/shoper-customer.provisioner';
+import { listShoperMappingOptions } from '../../readers/shoper-mapping-options.reader';
+import { readShoperOrderParcels } from '../../readers/shoper-order-parcels.reader';
+import { ShoperOrderReferenceProvider } from '../../shop-context/shoper-order-reference.provider';
 import type { ShoperShopContextProvider } from '../../shop-context/shoper-shop-context.provider';
+import type { ShoperParcelShippingRefusalProvider } from '../../shop-context/shoper-parcel-shipping-refusal.provider';
+import { ShoperOrderStatusWriter } from '../order-status/shoper-order-status-writer';
 import type { ShoperOrderOptionsProvider } from '../../shop-context/shoper-order-options.provider';
 import type { ShoperTaxTableProvider } from '../../shop-context/shoper-tax-table.provider';
 
 /** Shoper rounds to cents, so a smaller gap is not a real mismatch. */
 const SUM_TOLERANCE = 0.011;
 
+/**
+ * Sent when the source order carries no phone. Shoper refuses an empty phone and
+ * also validates its format: all zeros and too-short values are rejected (live,
+ * 26 Oct 2026), while this value passes for PL, DE and CZ addresses. In Poland a
+ * leading 1 is never a subscriber number, so it cannot reach a real person.
+ */
+export const SHOPER_PHONE_PLACEHOLDER = '100000000';
+
+/**
+ * The order note that explains the placeholder to whoever opens the order in
+ * Shoper. The placeholder is written back: on the next sync after the
+ * marketplace provides the phone (for Allegro, once the order is paid),
+ * `refreshOrderContact` replaces it and clears this note - but only while the
+ * shop order still carries the placeholder and this exact note, so an operator
+ * who fixed either by hand keeps their version.
+ */
+export const SHOPER_PHONE_PLACEHOLDER_NOTE =
+  `Phone number ${SHOPER_PHONE_PLACEHOLDER} is a placeholder: the marketplace did not provide the buyer's phone (for example, the order was not paid yet). It is replaced automatically once the marketplace provides the phone.`;
+
+/**
+ * The buyer's phone as the source reports it: billing first, then delivery,
+ * each with the other as its fallback address (the same pairing the create
+ * uses). Blank counts as absent.
+ */
+function readSourcePhone(order: OrderCreate): string | undefined {
+  const billing = order.billingAddress ?? order.shippingAddress;
+  const delivery = order.shippingAddress ?? order.billingAddress;
+  return billing?.phone?.trim() || delivery?.phone?.trim() || undefined;
+}
+
 export class ShoperOrderProcessorAdapter
-  implements OrderProcessorManagerPort, DestinationOptionsReader, OrderStatusWriteback
+  implements
+    OrderProcessorManagerPort,
+    DestinationOptionsReader,
+    OrderStatusWriteback,
+    FulfillmentStatusReader,
+    OrderCreateStockEffect,
+    OrderContactRefresher
 {
   private readonly logger = new Logger(ShoperOrderProcessorAdapter.name);
+  private readonly statusWriter: ShoperOrderStatusWriter;
 
   constructor(
     private readonly client: ShoperHttpClient,
@@ -124,7 +177,29 @@ export class ShoperOrderProcessorAdapter
      * process-global state.
      */
     private readonly warnedStockFlagConnections: Set<string> = new Set<string>(),
-  ) {}
+    /**
+     * The shop's status table. The factory passes the cache-backed instance it
+     * shares with the order source; the default (no cache) serves a bare build.
+     */
+    private readonly reference: ShoperOrderReferenceProvider = new ShoperOrderReferenceProvider(client),
+    /** Shared with the order source by the factory, so both roles remember one shop's refused parcel methods. */
+    parcelShippingRefusals?: ShoperParcelShippingRefusalProvider,
+  ) {
+    this.statusWriter = new ShoperOrderStatusWriter(client, connection, reference, parcelShippingRefusals);
+  }
+
+  /**
+   * `OrderCreateStockEffect`: whether the order this adapter just created
+   * lowered the shop's stock. Answered from the shop's own
+   * `shopping_update_stock_on_buy` setting (the same cached context
+   * `warnIfShopKeepsStock` reads), not a platform-wide claim: with it off the
+   * shop kept its stock, so core must keep the order's holds rather than
+   * consume them as already absorbed.
+   */
+  async lowersStockOnOrderCreate(): Promise<boolean> {
+    const context = await this.shopContext.get();
+    return context.decrementsStockOnOrder;
+  }
 
   async createOrder(order: OrderCreate): Promise<OrderRef> {
     // Phase 1 - resolve everything; nothing is written yet except the user.
@@ -178,6 +253,54 @@ export class ShoperOrderProcessorAdapter
     }
     this.warnOnSumMismatch(order, prepared, orderId);
     return { orderId };
+  }
+
+  /**
+   * `OrderContactRefresher`: replace the placeholder phone on an order this
+   * adapter created before the source knew the buyer's phone.
+   *
+   * Only the placeholder is replaced. An address whose phone is anything else
+   * (the real number, or one an operator typed in) is left alone, and the
+   * remark is cleared only when it is still exactly
+   * {@link SHOPER_PHONE_PLACEHOLDER_NOTE}, so operator-written notes survive.
+   *
+   * Cost: nothing when the incoming order still has no phone; otherwise one
+   * `GET /orders/:id` per call (core asks on every re-ingestion of an order
+   * already in the shop), plus one `PUT` only when a placeholder is found.
+   */
+  async refreshOrderContact(input: { externalOrderId: string; order: OrderCreate }): Promise<void> {
+    const { externalOrderId, order } = input;
+    const phone = readSourcePhone(order);
+    if (phone === undefined) {
+      return;
+    }
+    if (!/^\d+$/.test(externalOrderId)) {
+      throw new RangeError(
+        `Shoper order id must be numeric, got "${externalOrderId}" (connection: ${this.connection.id})`,
+      );
+    }
+
+    const { data: current } = await this.client.get<ShoperOrderContact>(`/orders/${externalOrderId}`);
+    const billingIsPlaceholder = current.billing_address?.phone?.trim() === SHOPER_PHONE_PLACEHOLDER;
+    const deliveryIsPlaceholder = current.delivery_address?.phone?.trim() === SHOPER_PHONE_PLACEHOLDER;
+    if (!billingIsPlaceholder && !deliveryIsPlaceholder) {
+      return;
+    }
+
+    // Each address gets its own phone, else the other's - what the create would
+    // have sent had the phone been known then (`mapShoperOrderAddress`).
+    const billingPhone = (order.billingAddress ?? order.shippingAddress)?.phone?.trim() || phone;
+    const deliveryPhone = (order.shippingAddress ?? order.billingAddress)?.phone?.trim() || phone;
+    const body: ShoperOrderContactUpdate = {
+      ...(billingIsPlaceholder ? { billing_address: { phone: billingPhone } } : {}),
+      ...(deliveryIsPlaceholder ? { delivery_address: { phone: deliveryPhone } } : {}),
+      ...(current.notes === SHOPER_PHONE_PLACEHOLDER_NOTE ? { notes: '' } : {}),
+    };
+    await this.client.put(`/orders/${externalOrderId}`, body);
+    this.logger.log(
+      `Replaced the placeholder phone on Shoper order ${externalOrderId} ` +
+        `(order: ${order.internalOrderId ?? '<unknown>'}, connection: ${this.connection.id})`,
+    );
   }
 
   /** The Shoper `user_id` the order must reference. */
@@ -296,9 +419,17 @@ export class ShoperOrderProcessorAdapter
       throw this.unbuildable('the order has no billing or shipping address');
     }
 
-    const phone = billing.phone?.trim() || delivery.phone?.trim();
-    if (!phone) {
-      throw this.unbuildable('the order has no phone number, which Shoper requires on its addresses');
+    // Shoper refuses an address with no phone, and a marketplace may not hand
+    // one over yet (Allegro shows it only once the checkout is paid). The order
+    // still belongs in the shop, so it goes in under a phone that is visibly not
+    // a real number, and the order's note says why.
+    const sourcePhone = readSourcePhone(order);
+    const phone = sourcePhone || SHOPER_PHONE_PLACEHOLDER;
+    if (!sourcePhone) {
+      this.logger.warn(
+        `Order ${order.internalOrderId} has no phone number; creating it on Shoper connection ` +
+          `${this.connection.id} with the placeholder ${SHOPER_PHONE_PLACEHOLDER}`,
+      );
     }
 
     const lines = await this.buildLines(order);
@@ -329,6 +460,7 @@ export class ShoperOrderProcessorAdapter
       billing_address: mapShoperOrderAddress(billing, phone),
       delivery_address: mapShoperOrderAddress(delivery, phone),
       notes_priv: marker,
+      ...(sourcePhone ? {} : { notes: SHOPER_PHONE_PLACEHOLDER_NOTE }),
     };
     return { header, lines, shippingCost, marker };
   }
@@ -352,8 +484,12 @@ export class ShoperOrderProcessorAdapter
         throw this.unbuildable(`the shop has no tax for rate "${item.taxRate}" (line "${item.sku ?? item.id}")`);
       }
 
+      // Only the stock row is sent. Shoper documents that when a line carries
+      // both `product_id` and `stock_id`, `product_id` wins and the product's
+      // DEFAULT stock is used - so every variant line landed on the base stock
+      // (no option, the base code) and the variant's own stock was never
+      // decremented. The stock row names its product, so nothing is lost.
       lines.push({
-        product_id: Number(await this.externalId(CORE_ENTITY_TYPE.Product, item.productId)),
         stock_id: Number(await this.externalVariantId(item)),
         price,
         quantity: item.quantity,
@@ -366,6 +502,9 @@ export class ShoperOrderProcessorAdapter
   }
 
   private async externalVariantId(item: OrderItem): Promise<string> {
+    // A simple product needs no special case: the product master keeps its base
+    // stock row as its single ProductVariant (`partitionSellableShoperStocks`),
+    // so this mapping resolves straight to that row's `stock_id`.
     if (item.variantId === undefined) {
       throw new ShoperNotMappedException(item.productId, this.connection.id);
     }
@@ -473,195 +612,63 @@ export class ShoperOrderProcessorAdapter
   // `defaults.paymentId` is the fallback when no mapping applies.
 
   listCarriers(): Promise<MappingOption[]> {
-    return this.listOptions('/shippings', 'shipping_id', 'shipping_id ASC');
+    return listShoperMappingOptions(this.client, 'shippings');
   }
 
   listOrderStatuses(): Promise<MappingOption[]> {
-    return this.listOptions('/statuses', 'status_id', 'status_id ASC');
+    return listShoperMappingOptions(this.client, 'statuses');
   }
 
   listPaymentMethods(): Promise<MappingOption[]> {
-    return this.listOptions('/payments', 'payment_id', 'payment_id ASC');
-  }
-
-  private async listOptions(
-    path: string,
-    idKey: 'shipping_id' | 'payment_id' | 'status_id',
-    order: string,
-  ): Promise<MappingOption[]> {
-    const options: MappingOption[] = [];
-    for (let page = 1; ; page += 1) {
-      const result = await fetchShoperPage<ShoperOptionRow>(this.client, path, {
-        page,
-        limit: SHOPER_MAX_PAGE_SIZE,
-        query: { order },
-      });
-      for (const row of result.items) {
-        const id = row[idKey];
-        if (id !== undefined) {
-          options.push({ value: String(id), label: labelShoperOption(row, String(id)) });
-        }
-      }
-      if (page >= result.pages) {
-        return options;
-      }
-    }
+    return listShoperMappingOptions(this.client, 'payments');
   }
 
   // ─── OrderStatusWriteback (#3643) ──────────────────────────────────────────
 
-  async write(event: OrderLifecycleEvent): Promise<OrderWritebackResult> {
-    // Path-traversal defence: the id is interpolated into a URL path.
-    if (!/^\d+$/.test(event.externalOrderId)) {
-      return {
-        outcome: 'rejected',
-        detail: `Invalid externalOrderId "${event.externalOrderId}" - expected a Shoper order id`,
-      };
-    }
-
-    try {
-      switch (event.type) {
-        case 'dispatched':
-          return await this.writeDispatched(event.externalOrderId, normalizeTrackingNumber(event.trackingNumber));
-
-        case 'cancelled':
-          // Shoper exposes no cancel OpenLinker can drive, and deleting the order
-          // would rewrite the shop's history. Surfaced, never silent.
-          return {
-            outcome: 'unsupported',
-            detail: 'Shoper has no order cancellation OpenLinker can write; cancel the order in the shop',
-          };
-
-        case 'delivered':
-          // Shoper has no delivered state OpenLinker can drive; declined as no-capability.
-          return {
-            outcome: 'unsupported',
-            detail: 'Shoper has no order status for delivered that OpenLinker can write',
-          };
-
-        case 'in-progress':
-          // Moving a Shoper order to a status needs an operator-chosen status mapping that
-          // does not exist for this adapter; declined rather than guessed.
-          return {
-            outcome: 'unsupported',
-            detail: 'Shoper has no in-progress order status OpenLinker can write without a status mapping',
-          };
-
-        default: {
-          // Compile break when a lifecycle member is added (#2286); returns rather
-          // than throws so a widened union degrades to a surfaced no-op (ADR-055).
-          const unhandled: never = event;
-          return {
-            outcome: 'unsupported',
-            detail: `unsupported order lifecycle event: ${JSON.stringify(unhandled)}`,
-          };
-        }
-      }
-    } catch (error) {
-      const detail = error instanceof Error ? error.message : String(error);
-      this.logger.error(
-        `OrderStatusWriteback '${event.type}' failed for Shoper order ${event.externalOrderId}: ` +
-          `${detail} (connection: ${this.connection.id})`,
-        error instanceof Error ? error.stack : undefined,
-      );
-      return { outcome: 'rejected', detail };
-    }
+  /** Delegated: the order source writes the same events the same way (see `ShoperOrderStatusWriter`). */
+  write(event: OrderLifecycleEvent): Promise<OrderWritebackResult> {
+    return this.statusWriter.write(event);
   }
 
-  private async writeDispatched(
-    externalOrderId: string,
-    trackingNumber: string | undefined,
-  ): Promise<OrderWritebackResult> {
-    const parcels = await this.client.get<{ list?: readonly ShoperParcel[]; pages?: number | string }>(
-      '/parcels',
-      { 'filters[order_id]': externalOrderId, limit: SHOPER_MAX_PAGE_SIZE },
-    );
-    const rows = parcels.data.list ?? [];
-    // Every guard below is downstream of this read, and an ignored filter would
-    // look exactly like "this order has no parcels" - a duplicate shipment record
-    // that no retry undoes. A row of ANOTHER order is positive proof the filter
-    // was not honoured, so refuse rather than conclude anything from the rest.
-    if (rows.some((p) => String(p.order_id) !== externalOrderId)) {
-      return {
-        outcome: 'rejected',
-        detail:
-          `Shoper returned parcels of other orders for order ${externalOrderId}, so the ` +
-          '`filters[order_id]` filter on /parcels was not honoured; refusing to write a parcel ' +
-          'it cannot check for duplicates',
-      };
-    }
-    // The filter works but the answer is incomplete: the parcel we would find or
-    // conflict with may be on a page this read never saw.
-    if (Number(parcels.data.pages ?? 1) > 1) {
-      return {
-        outcome: 'rejected',
-        detail:
-          `Shoper order ${externalOrderId} has more than ${SHOPER_MAX_PAGE_SIZE} parcels, ` +
-          'which this read does not page through; refusing to write a parcel it cannot check for duplicates',
-      };
-    }
-    const existing = rows;
-    // No lock around read-then-write, deliberately: a conditional claim is already
-    // the serialisation point, so two triggers for one dispatch cannot both reach
-    // this method. Which claim depends on the route: `Shipment.waybillRelayedAt`
-    // (#1947) for a shipment-grain dispatch, `fulfillment_works.dispatchRelayedAt`
-    // (#2401) for a router-fulfilled work, which has no Shipment at all.
-    const plan = planShoperParcelWrite(existing, trackingNumber);
+  // ─── FulfillmentStatusReader (#834) ────────────────────────────────────────
 
-    if (plan.kind === 'conflict') {
-      return {
-        outcome: 'rejected',
-        detail:
-          `Shoper order ${externalOrderId} already has a parcel under a different tracking number; ` +
-          'a second shipment cannot be written because partial shipment is not supported',
-      };
-    }
-
-    if (plan.kind === 'already-applied') {
-      this.logger.debug(
-        `Shoper order ${externalOrderId} already has a parcel for this dispatch (connection: ${this.connection.id})`,
+  /**
+   * The shop's view of an order OpenLinker created there, for the branch-1
+   * shipment read-back. Shoper has no "delivered" status, so `delivered` is never
+   * reported; what it does record is a SENT parcel (with the carrier's tracking
+   * number) and a terminal status.
+   *
+   * A cancelled-type status wins over a sent parcel: an order cancelled after its
+   * parcel left is cancelled. A refund or return status does not: those follow a
+   * shipment, so a sent parcel still reads as dispatched, and only a refunded
+   * order that never shipped reads as cancelled. Anything else is `null` - the
+   * shop has not acted on the order yet.
+   */
+  async getFulfillmentStatus(input: { externalOrderId: string }): Promise<FulfillmentStatusSnapshot> {
+    const { externalOrderId } = input;
+    if (!/^\d+$/.test(externalOrderId)) {
+      throw new RangeError(
+        `Shoper order id must be numeric, got "${externalOrderId}" (connection: ${this.connection.id})`,
       );
-      return { outcome: 'applied' };
     }
 
-    if (plan.kind === 'attach-tracking' && trackingNumber !== undefined) {
-      const body: ShoperParcelTrackingUpdate = { shipping_code: trackingNumber, sent: true };
-      await this.client.put(`/parcels/${plan.parcelId}`, body);
-      this.logger.log(
-        `Attached tracking to Shoper parcel ${plan.parcelId} of order ${externalOrderId} ` +
-          `(connection: ${this.connection.id})`,
-      );
-      return { outcome: 'applied' };
+    const { data: order } = await this.client.get<ShoperOrderShipping>(`/orders/${externalOrderId}`);
+    const statusId = toPositiveInt(order.status_id);
+    const neutral = mapShoperOrderStatus(statusId === null ? null : await this.reference.getStatus(String(statusId)));
+    if (neutral === 'cancelled') {
+      return { status: FULFILLMENT_STATUS.Cancelled, trackingNumber: null, deliveredAt: null };
     }
 
-    // The parcel takes the order's own shipping method, so it matches what the
-    // buyer chose rather than a configured default.
-    let shippingId: number | null;
-    try {
-      const order = await this.client.get<ShoperOrderShipping>(`/orders/${externalOrderId}`);
-      shippingId = toPositiveInt(order.data.shipping_id);
-    } catch (error) {
-      if (error instanceof ShoperApiError && error.isResourceNotFound()) {
-        return { outcome: 'rejected', detail: `Shoper order ${externalOrderId} not found` };
-      }
-      throw error;
+    const { rows } = await readShoperOrderParcels(this.client, externalOrderId);
+    const sent = rows.filter(isShoperParcelSent);
+    if (sent.length > 0) {
+      const tracked = sent.map((parcel) => normalizeTrackingNumber(parcel.shipping_code ?? undefined)).find(Boolean);
+      return { status: FULFILLMENT_STATUS.Dispatched, trackingNumber: tracked ?? null, deliveredAt: null };
     }
-    if (shippingId === null) {
-      return {
-        outcome: 'rejected',
-        detail: `Shoper order ${externalOrderId} has no shipping method, which a parcel requires`,
-      };
+    if (neutral === 'refunded') {
+      return { status: FULFILLMENT_STATUS.Cancelled, trackingNumber: null, deliveredAt: null };
     }
-
-    await this.client.post<unknown>(
-      '/parcels',
-      buildShoperParcelCreateRequest(Number(externalOrderId), shippingId, trackingNumber),
-    );
-    this.logger.log(
-      `Created Shoper parcel for order ${externalOrderId}` +
-        `${trackingNumber === undefined ? ' without a tracking number' : ''} (connection: ${this.connection.id})`,
-    );
-    return { outcome: 'applied' };
+    return { status: null, trackingNumber: null, deliveredAt: null };
   }
 
   // ─── Failure handling ──────────────────────────────────────────────────────

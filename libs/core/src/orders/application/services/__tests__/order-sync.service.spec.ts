@@ -6,7 +6,10 @@
  *
  * @module libs/core/src/orders/application/services/__tests__
  */
-import type { PostSaleInventoryRefreshService } from '@openlinker/core/inventory';
+import type {
+  IMasterAbsorbedReservationService,
+  PostSaleInventoryRefreshService,
+} from '@openlinker/core/inventory';
 import { OrderSyncService } from '../order-sync.service';
 import type { IIntegrationsService } from '@openlinker/core/integrations';
 import type { OrderProcessorManagerPort } from '../../../domain/ports/order-processor-manager.port';
@@ -37,10 +40,18 @@ describe('OrderSyncService', () => {
   let orderRecordService: jest.Mocked<IOrderRecordService>;
   let orderHoldService: jest.Mocked<IOrderHoldService>;
   let postSaleInventoryRefresh: jest.Mocked<PostSaleInventoryRefreshService>;
+  let masterAbsorbedReservations: jest.Mocked<IMasterAbsorbedReservationService>;
 
   const makeAdapter = (orderRef: OrderRef = { orderId: 'dest_order' }) =>
     ({
       createOrder: jest.fn().mockResolvedValue(orderRef),
+    }) as unknown as jest.Mocked<OrderProcessorManagerPort>;
+
+  /** A destination declaring that an order create lowers its own stock. */
+  const makeStockLoweringAdapter = (orderRef: OrderRef = { orderId: 'dest_order' }) =>
+    ({
+      createOrder: jest.fn().mockResolvedValue(orderRef),
+      lowersStockOnOrderCreate: () => Promise.resolve(true),
     }) as unknown as jest.Mocked<OrderProcessorManagerPort>;
 
   const registerDestinations = (
@@ -151,6 +162,20 @@ describe('OrderSyncService', () => {
       enqueue: jest.fn().mockResolvedValue(undefined),
     } as unknown as jest.Mocked<PostSaleInventoryRefreshService>;
 
+    masterAbsorbedReservations = {
+      consumeAbsorbedHolds: jest.fn().mockResolvedValue({
+        closed: 0,
+        alreadyTerminal: 0,
+        failed: 0,
+        keptUnattributed: 0,
+        keptOtherOwner: 0,
+        keptUnknownPosition: 0,
+        keptDiagnostic: 0,
+        keptSharedLine: 0,
+        propagationsEnqueued: 0,
+      }),
+    };
+
     service = new OrderSyncService(
       integrationsService,
       mappingConfigService,
@@ -158,7 +183,8 @@ describe('OrderSyncService', () => {
       identifierMapping,
       orderRecordService,
       orderHoldService,
-      postSaleInventoryRefresh
+      postSaleInventoryRefresh,
+      masterAbsorbedReservations
     );
   });
 
@@ -1571,6 +1597,231 @@ describe('OrderSyncService', () => {
       // Nothing decremented the master, so a refresh would spend outbound
       // quota against it for no observable change.
       expect(postSaleInventoryRefresh.enqueue).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('holds absorbed by a destination that is also the master', () => {
+    // A destination that masters the reserved stock lowers it when the order
+    // is created there, so its `published` hold must stop counting or the sale
+    // is subtracted twice. Which holds qualify is the inventory context's call;
+    // this service owns WHEN to ask, for WHICH connection, and whether that
+    // ask republishes.
+    it('should ask the destination to consume its holds without republishing when the order was just created', async () => {
+      registerDestinations([{ connectionId: 'dest-a', adapter: makeStockLoweringAdapter() }]);
+
+      await service.syncOrder({ order: createOrder(), sourceConnectionId: 'source-1' });
+
+      expect(masterAbsorbedReservations.consumeAbsorbedHolds).toHaveBeenCalledWith({
+        orderRecordId: 'ol_order_123',
+        masterConnectionId: 'dest-a',
+        productIds: ['ol_product_789'],
+        // The post-sale re-read enqueued next republishes with the master's
+        // lowered number; republishing here too could publish the pre-sale one.
+        propagate: false,
+      });
+    });
+
+    it('should consume before the post-sale refresh is enqueued', async () => {
+      registerDestinations([{ connectionId: 'dest-a', adapter: makeStockLoweringAdapter() }]);
+      const calls: string[] = [];
+      masterAbsorbedReservations.consumeAbsorbedHolds.mockImplementation(() => {
+        calls.push('consume');
+        return Promise.resolve({
+          closed: 1,
+          alreadyTerminal: 0,
+          failed: 0,
+          keptUnattributed: 0,
+          keptOtherOwner: 0,
+          keptUnknownPosition: 0,
+          keptDiagnostic: 0,
+          keptSharedLine: 0,
+          propagationsEnqueued: 0,
+        });
+      });
+      postSaleInventoryRefresh.enqueue.mockImplementation(() => {
+        calls.push('refresh');
+        return Promise.resolve();
+      });
+
+      await service.syncOrder({ order: createOrder(), sourceConnectionId: 'source-1' });
+
+      // The refresh's `setInventory` propagation must never read an ATP where
+      // the absorbed hold still subtracts.
+      expect(calls).toEqual(['consume', 'refresh']);
+    });
+
+    it('should republish when the order already existed at the destination', async () => {
+      const adapter = makeStockLoweringAdapter({ orderId: 'should-not-be-used' });
+      registerDestinations([{ connectionId: 'dest-a', adapter }]);
+      identifierMapping.getExternalIds.mockResolvedValue([
+        {
+          externalId: 'SHOP-42',
+          connectionId: 'dest-a',
+          platformType: 'shoper',
+          entityType: 'Order',
+        },
+      ]);
+
+      await service.syncOrder({ order: createOrder(), sourceConnectionId: 'source-1' });
+
+      expect(adapter.createOrder).not.toHaveBeenCalled();
+      // The earlier run's re-read already ran and its key is spent, so nothing
+      // else would publish the corrected number.
+      expect(masterAbsorbedReservations.consumeAbsorbedHolds).toHaveBeenCalledWith(
+        expect.objectContaining({ masterConnectionId: 'dest-a', propagate: true })
+      );
+    });
+
+    it('should ask only for destinations whose create succeeded', async () => {
+      registerDestinations([
+        { connectionId: 'dest-ok', adapter: makeStockLoweringAdapter() },
+        {
+          connectionId: 'dest-down',
+          adapter: {
+            createOrder: jest.fn().mockRejectedValue(new Error('destination down')),
+          } as unknown as OrderProcessorManagerPort,
+        },
+      ]);
+
+      await service.syncOrder({ order: createOrder(), sourceConnectionId: 'source-1' });
+
+      expect(masterAbsorbedReservations.consumeAbsorbedHolds).toHaveBeenCalledTimes(1);
+      expect(masterAbsorbedReservations.consumeAbsorbedHolds).toHaveBeenCalledWith(
+        expect.objectContaining({ masterConnectionId: 'dest-ok' })
+      );
+    });
+
+    it('should not fail order sync when consuming the holds throws', async () => {
+      registerDestinations([{ connectionId: 'dest-a', adapter: makeStockLoweringAdapter() }]);
+      masterAbsorbedReservations.consumeAbsorbedHolds.mockRejectedValue(new Error('db blip'));
+
+      const results = await service.syncOrder({
+        order: createOrder(),
+        sourceConnectionId: 'source-1',
+      });
+
+      expect(results[0]).toMatchObject({ status: 'success' });
+      // The hold stays, but the master still gets re-read.
+      expect(postSaleInventoryRefresh.enqueue).toHaveBeenCalled();
+    });
+
+    it.each([
+      ['declares nothing', makeAdapter],
+      [
+        'declares it does not lower stock',
+        () =>
+          ({
+            createOrder: jest.fn().mockResolvedValue({ orderId: 'dest_order' }),
+            lowersStockOnOrderCreate: () => Promise.resolve(false),
+          }) as unknown as OrderProcessorManagerPort,
+      ],
+      [
+        'fails to answer',
+        () =>
+          ({
+            createOrder: jest.fn().mockResolvedValue({ orderId: 'dest_order' }),
+            lowersStockOnOrderCreate: () => Promise.reject(new Error('shop settings unreadable')),
+          }) as unknown as OrderProcessorManagerPort,
+      ],
+    ])(
+      'should keep the holds when the destination %s',
+      async (_label: string, build: () => OrderProcessorManagerPort) => {
+        // A shop that did not lower its stock never removed the units, so
+        // consuming its holds would over-promise until the next master sync.
+        registerDestinations([{ connectionId: 'dest-a', adapter: build() }]);
+
+        const results = await service.syncOrder({
+          order: createOrder(),
+          sourceConnectionId: 'source-1',
+        });
+
+        expect(results[0]).toMatchObject({ status: 'success' });
+        expect(masterAbsorbedReservations.consumeAbsorbedHolds).not.toHaveBeenCalled();
+      }
+    );
+  });
+
+  describe('contact refresh on an order the destination already holds', () => {
+    // A source may reveal a contact field only after the first create (a
+    // marketplace showing the phone once the order is paid). The mapping makes
+    // every later run skip the create, so this is the only way the destination
+    // ever hears about it.
+    type RefreshingAdapter = jest.Mocked<OrderProcessorManagerPort> & {
+      refreshOrderContact: jest.Mock;
+    };
+    const makeRefreshingAdapter = (
+      refresh: jest.Mock = jest.fn().mockResolvedValue(undefined)
+    ): RefreshingAdapter =>
+      ({
+        createOrder: jest.fn().mockResolvedValue({ orderId: 'should-not-be-used' }),
+        refreshOrderContact: refresh,
+      }) as unknown as RefreshingAdapter;
+
+    const mapExisting = (): void => {
+      identifierMapping.getExternalIds.mockResolvedValue([
+        {
+          externalId: 'SHOP-42',
+          connectionId: 'dest-a',
+          platformType: 'shoper',
+          entityType: 'Order',
+        },
+      ]);
+    };
+
+    it('should ask the destination to refresh contact details with the mapped id when the create is skipped', async () => {
+      const adapter = makeRefreshingAdapter();
+      registerDestinations([{ connectionId: 'dest-a', adapter }]);
+      mapExisting();
+
+      await service.syncOrder({ order: createOrder(), sourceConnectionId: 'source-1' });
+
+      expect(adapter.createOrder).not.toHaveBeenCalled();
+      expect(adapter.refreshOrderContact).toHaveBeenCalledTimes(1);
+      expect(adapter.refreshOrderContact).toHaveBeenCalledWith({
+        externalOrderId: 'SHOP-42',
+        order: expect.objectContaining({ internalOrderId: 'ol_order_123' }),
+      });
+    });
+
+    it('should not ask for a refresh when the order was just created', async () => {
+      const adapter = makeRefreshingAdapter();
+      (adapter.createOrder as jest.Mock).mockResolvedValue({ orderId: 'SHOP-NEW' });
+      registerDestinations([{ connectionId: 'dest-a', adapter }]);
+
+      await service.syncOrder({ order: createOrder(), sourceConnectionId: 'source-1' });
+
+      expect(adapter.createOrder).toHaveBeenCalledTimes(1);
+      // The create itself carried the latest data.
+      expect(adapter.refreshOrderContact).not.toHaveBeenCalled();
+    });
+
+    it('should skip quietly when the destination does not implement the refresh', async () => {
+      const adapter = makeAdapter({ orderId: 'should-not-be-used' });
+      registerDestinations([{ connectionId: 'dest-a', adapter }]);
+      mapExisting();
+
+      const results = await service.syncOrder({
+        order: createOrder(),
+        sourceConnectionId: 'source-1',
+      });
+
+      expect(results[0]).toMatchObject({ status: 'success', orderRef: { orderId: 'SHOP-42' } });
+    });
+
+    it('should not fail order sync when the refresh throws', async () => {
+      const adapter = makeRefreshingAdapter(jest.fn().mockRejectedValue(new Error('shop down')));
+      registerDestinations([{ connectionId: 'dest-a', adapter }]);
+      mapExisting();
+
+      const results = await service.syncOrder({
+        order: createOrder(),
+        sourceConnectionId: 'source-1',
+      });
+
+      // The order is already at the destination; the next re-ingestion asks again.
+      expect(adapter.refreshOrderContact).toHaveBeenCalledTimes(1);
+      expect(results).toHaveLength(1);
+      expect(results[0]).toMatchObject({ status: 'success', orderRef: { orderId: 'SHOP-42' } });
     });
   });
 });

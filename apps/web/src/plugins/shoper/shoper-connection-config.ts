@@ -3,8 +3,10 @@
  *
  * The non-render half of Shoper's structured connection-config editing: the
  * three fallback ids `config.defaults.{shippingId,paymentId,statusId}` a Shoper
- * order needs when no operator mapping resolves one. Before this they were
- * reachable only by hand-editing the raw Config JSON.
+ * order needs when no operator mapping resolves one, plus the three ids the
+ * lifecycle writeback uses (`parcelShippingId`, `cancelledStatusId`,
+ * `inProgressStatusId`). Before this they were reachable only by hand-editing
+ * the raw Config JSON.
  *
  *   - `schemaShape` - a positive-integer string, or `''` for "not set". No
  *     stricter than `ShoperConnectionConfigShapeValidatorAdapter`, which
@@ -35,6 +37,12 @@ declare module '../../shared/plugins/plugin.types' {
     shoperPaymentId?: string;
     /** `config.defaults.statusId`. */
     shoperStatusId?: string;
+    /** `config.defaults.parcelShippingId`. */
+    shoperParcelShippingId?: string;
+    /** `config.defaults.cancelledStatusId`. */
+    shoperCancelledStatusId?: string;
+    /** `config.defaults.inProgressStatusId`. */
+    shoperInProgressStatusId?: string;
   }
 }
 
@@ -43,6 +51,9 @@ export const SHOPER_DEFAULT_FIELDS = [
   { field: 'shoperShippingId', key: 'shippingId', label: 'delivery method' },
   { field: 'shoperPaymentId', key: 'paymentId', label: 'payment method' },
   { field: 'shoperStatusId', key: 'statusId', label: 'order status' },
+  { field: 'shoperParcelShippingId', key: 'parcelShippingId', label: 'parcel delivery method' },
+  { field: 'shoperCancelledStatusId', key: 'cancelledStatusId', label: 'cancelled status' },
+  { field: 'shoperInProgressStatusId', key: 'inProgressStatusId', label: 'in-progress status' },
 ] as const;
 
 function positiveIntegerField(label: string): z.ZodTypeAny {
@@ -61,6 +72,9 @@ const shoperSchemaShape: ConnectionConfigContribution['schemaShape'] = {
   shoperShippingId: positiveIntegerField('delivery method id'),
   shoperPaymentId: positiveIntegerField('payment method id'),
   shoperStatusId: positiveIntegerField('order status id'),
+  shoperParcelShippingId: positiveIntegerField('parcel delivery method id'),
+  shoperCancelledStatusId: positiveIntegerField('cancelled status id'),
+  shoperInProgressStatusId: positiveIntegerField('in-progress status id'),
 };
 
 function readDefaultsBag(config: Record<string, unknown>): Record<string, unknown> {
@@ -102,11 +116,7 @@ export const shoperConnectionConfig: ConnectionConfigContribution = {
         ? String(value)
         : readConfigString(defaults, key);
     };
-    return {
-      shoperShippingId: read('shippingId'),
-      shoperPaymentId: read('paymentId'),
-      shoperStatusId: read('statusId'),
-    };
+    return Object.fromEntries(SHOPER_DEFAULT_FIELDS.map(({ field, key }) => [field, read(key)]));
   },
   applyToConfig: applyShoperConfig,
 };

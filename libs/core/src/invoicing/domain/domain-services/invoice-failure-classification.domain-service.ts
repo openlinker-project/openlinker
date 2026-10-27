@@ -54,6 +54,25 @@ export const CONNECTION_SETUP_FAILURE_CAUSE = 'connection-setup';
 export const NEEDS_ACKNOWLEDGEMENT_FAILURE_CAUSE = 'needs-acknowledgement';
 
 /**
+ * The value an adapter stamps on `failureCause` to say "the provider was
+ * contacted and refused a value that comes from the connection's own
+ * settings" (e.g. a seller tax number not registered on the provider
+ * account). Maps to `connection-setting-rejected`. Same promise as
+ * {@link CONNECTION_SETUP_FAILURE_CAUSE}: the `reason` names the setting and
+ * carries nothing taken from the order, the buyer or the provider's response.
+ */
+export const CONNECTION_SETTING_REJECTED_FAILURE_CAUSE = 'connection-setting-rejected';
+
+/**
+ * The value an adapter stamps on an `in-doubt` throwable to say "the provider
+ * answered, but the answer does not settle whether a document exists" - as
+ * opposed to a transport failure, where nothing was heard back. Maps to
+ * `provider-answer-inconclusive`; an in-doubt failure without it keeps the
+ * default `transport-timeout`.
+ */
+export const PROVIDER_ANSWER_INCONCLUSIVE_FAILURE_CAUSE = 'provider-answer-inconclusive';
+
+/**
  * Neutral shape read STRUCTURALLY off a caught adapter throwable (#1200) - it is
  * NOT an adapter error subclass and is NOT value-imported. Anything that cannot
  * be read as the terminal `'rejected'` is treated as the fiscal-safe
@@ -90,6 +109,21 @@ export interface InvoiceFailureCarrier {
   failureCause?: unknown;
   /** The code to acknowledge, set together with `failureCause: 'needs-acknowledgement'`. */
   warningCode?: unknown;
+  /**
+   * Opt-in, per throw: `true` declares that `reason` is a PII-free sentence the
+   * adapter composed from fixed text and the provider's NUMERIC codes only -
+   * never from order or buyer data and never from provider message text, which
+   * can echo the submitted document. Core then stores that sentence as
+   * `failureReason` whatever the code, so an operator sees which code the
+   * provider refused with instead of a generic "the provider rejected it".
+   *
+   * Same review bar as `failureCause`: core cannot verify the promise, so
+   * every adapter that sets it must build `reason` from constants and codes.
+   * Absent or anything but `true` keeps the fixed per-code sentence, which is
+   * why adapters whose `reason` may quote a provider message (e.g. a bridge
+   * relaying an ERP's error text) are unaffected.
+   */
+  reasonIsOperatorSafe?: unknown;
 }
 
 export interface InvoiceFailureClassification {
@@ -119,9 +153,15 @@ const FAILURE_REASONS: Record<InvoiceFailureCode, string> = {
   // The fallback only: the adapter always supplies its own sentence.
   'acknowledgement-required':
     'This document needs your decision before it is issued. Review the warning and confirm to proceed.',
+  // The fallback only: the adapter that declares this cause supplies its own
+  // sentence naming the refused setting.
+  'connection-setting-rejected':
+    "The invoicing provider refused a setting on this connection. Correct the connection's settings and re-issue.",
   'provider-rejected': 'The invoicing provider rejected the request.',
   'transport-timeout':
     'The invoicing request timed out; the document may or may not have been created.',
+  'provider-answer-inconclusive':
+    'The invoicing provider answered, but the answer does not settle whether the document was created.',
   'provider-error': 'The invoicing provider returned an unexpected error.',
 };
 
@@ -151,9 +191,11 @@ function readReason(error: unknown): string {
  * Derive the neutral code from the mode plus a STRUCTURAL read of the
  * throwable:
  *
- *   - `in-doubt` -> `transport-timeout`.
- *   - `rejected` with `failureCause: 'connection-setup'` -> `connection-setup-incomplete`
- *     (checked first: it is a declaration, not an inference from wording).
+ *   - `in-doubt` -> `transport-timeout`, unless the adapter declared
+ *     `failureCause: 'provider-answer-inconclusive'`.
+ *   - `rejected` with `failureCause: 'connection-setup'` -> `connection-setup-incomplete`,
+ *     and with `'connection-setting-rejected'` -> `connection-setting-rejected`
+ *     (checked first: a declaration, not an inference from wording).
  *   - `rejected`, else by the `reason`/message text: a tax-identifier
  *     rejection -> `buyer-tax-id-invalid`; a settlement-currency rejection ->
  *     `invalid-currency`; a missing sale classification ->
@@ -166,14 +208,23 @@ export function classifyInvoiceFailureCode(
   error: unknown,
   failureMode: InvoiceFailureMode
 ): InvoiceFailureCode {
+  const failureCause = (error as InvoiceFailureCarrier | null)?.failureCause;
   if (failureMode === 'in-doubt') {
-    return 'transport-timeout';
+    // Only an explicit declaration moves an in-doubt failure off the default:
+    // a provider that answered must not be described as one that timed out,
+    // and an adapter that declares nothing is not assumed to have heard back.
+    return failureCause === PROVIDER_ANSWER_INCONCLUSIVE_FAILURE_CAUSE
+      ? 'provider-answer-inconclusive'
+      : 'transport-timeout';
   }
-  if ((error as InvoiceFailureCarrier | null)?.failureCause === CONNECTION_SETUP_FAILURE_CAUSE) {
+  if (failureCause === CONNECTION_SETUP_FAILURE_CAUSE) {
     return 'connection-setup-incomplete';
   }
-  if ((error as InvoiceFailureCarrier | null)?.failureCause === NEEDS_ACKNOWLEDGEMENT_FAILURE_CAUSE) {
+  if (failureCause === NEEDS_ACKNOWLEDGEMENT_FAILURE_CAUSE) {
     return 'acknowledgement-required';
+  }
+  if (failureCause === CONNECTION_SETTING_REJECTED_FAILURE_CAUSE) {
+    return 'connection-setting-rejected';
   }
   const haystack = readReason(error).toLowerCase();
   if (TAX_ID_REJECTION_MARKERS.some((marker) => haystack.includes(marker))) {
@@ -189,18 +240,34 @@ export function classifyInvoiceFailureCode(
 }
 
 /**
+ * Codes reached only by an adapter DECLARING the cause - and declaring the
+ * cause is the adapter's promise that its `reason` is PII-free, so for these
+ * the adapter's own sentence is stored.
+ */
+const DECLARED_CAUSE_CODES: readonly InvoiceFailureCode[] = [
+  'connection-setup-incomplete',
+  'acknowledgement-required',
+  'connection-setting-rejected',
+  'provider-answer-inconclusive',
+];
+
+/**
  * The PII-free, operator-facing sentence for a code. A fixed constant per code,
- * so it can never echo provider or buyer data - with ONE exception: for
- * `connection-setup-incomplete` it is the adapter's own `reason`, which the
- * adapter vouched for by opting in (see {@link InvoiceFailureCarrier.failureCause}).
- * Bounded either way, for defence in depth.
+ * so it can never echo provider or buyer data - unless the adapter vouched for
+ * its own `reason`, either by declaring the cause (see
+ * {@link InvoiceFailureCarrier.failureCause}) or by setting
+ * {@link InvoiceFailureCarrier.reasonIsOperatorSafe}. Bounded either way, for
+ * defence in depth.
  */
 export function deriveInvoiceFailureReason(
   failureCode: InvoiceFailureCode,
   error?: unknown
 ): string {
-  if (failureCode === 'connection-setup-incomplete' || failureCode === 'acknowledgement-required') {
-    const reason = (error as InvoiceFailureCarrier | null)?.reason;
+  const carrier = error as InvoiceFailureCarrier | null | undefined;
+  const vouched =
+    DECLARED_CAUSE_CODES.includes(failureCode) || carrier?.reasonIsOperatorSafe === true;
+  if (vouched) {
+    const reason = carrier?.reason;
     if (typeof reason === 'string' && reason.trim().length > 0) {
       return bound(reason.trim());
     }

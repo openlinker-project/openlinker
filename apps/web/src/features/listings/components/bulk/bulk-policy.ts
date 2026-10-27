@@ -525,17 +525,41 @@ export function titleForRow(row: BulkWizardRow): string {
 
 // ── Per-variant helpers (#1741) ──────────────────────────────────────────────
 
+function nonBlankUrls(urls: readonly unknown[]): string[] {
+  return urls.filter((u): u is string => typeof u === 'string' && u.trim() !== '');
+}
+
+/**
+ * The images a sibling is published with when it has no image override of its
+ * own: the API-resolved `defaultImages` (its own pictures first, then the
+ * product gallery without the other siblings' pictures), else the product
+ * gallery. The rule lives server-side; the browser only reads its answer, so
+ * what the editor shows cannot drift from what the offer builder publishes.
+ */
+export function defaultImagesForVariant(
+  variant: Pick<BulkVariantRow, 'variant'>,
+  productImages: readonly string[],
+): string[] {
+  const resolved = variant.variant.defaultImages;
+  if (Array.isArray(resolved)) {
+    const urls = nonBlankUrls(resolved);
+    if (urls.length > 0) return urls;
+  }
+  return [...productImages];
+}
+
 /**
  * Effective per-variant image count - the variant's `imageUrls` override when
- * present, else the master product's image set. Feeds the Erli image gate so an
- * operator who removed every image on a variant still trips `erli:missing-image`.
+ * present, else its default images (see {@link defaultImagesForVariant}). Feeds
+ * the Erli image gate so an operator who removed every image on a variant still
+ * trips `erli:missing-image`.
  */
 export function imageCountForVariant(row: BulkWizardRow, variant: BulkVariantRow): number {
   const override = variant.override.overrides?.imageUrls;
   if (Array.isArray(override)) {
-    return override.filter((u) => typeof u === 'string' && u.trim() !== '').length;
+    return nonBlankUrls(override).length;
   }
-  return imageCountForRow(row);
+  return defaultImagesForVariant(variant, nonBlankUrls(row.product?.images ?? [])).length;
 }
 
 /**
