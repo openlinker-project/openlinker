@@ -42,6 +42,7 @@ import {
   type InvoiceRecordKeysetPage,
 } from '../../domain/ports/invoice-record-repository.port';
 import type { InvoiceRecordKeysetCursor } from '../../domain/types/invoicing.types';
+import { computeStoredDocumentHash } from '../../domain/types/stored-document-hash.types';
 import { InvoiceNumberingSeriesRepositoryPort } from '../../domain/ports/invoice-numbering-series-repository.port';
 import {
   CORRECTION_NUMBERING_DOCUMENT_TYPE,
@@ -812,6 +813,10 @@ export class InvoiceService implements IInvoiceService {
       // `undefined` when the adapter does not surface one — leaves the column
       // null and the endpoint 409s gracefully.
       sourceDocument: sourceDocument ?? null,
+      // #3620: hashed ONCE from the very bytes persisted above, in the same
+      // write-once patch - a verification link built from it cannot describe
+      // anything but the document that was sent.
+      sourceDocumentHash: sourceDocument ? computeStoredDocumentHash(sourceDocument) : null,
       // #1297: persist the issuance-time line snapshot on the same issued patch.
       issuedLineSnapshot,
       // How many lines the adapter could not link to the provider's catalogue.
@@ -1235,6 +1240,7 @@ export class InvoiceService implements IInvoiceService {
       issuedLineSnapshot,
       documentContent,
       sourceDocument: sourceDocument ?? null,
+      sourceDocumentHash: sourceDocument ? computeStoredDocumentHash(sourceDocument) : null,
       // Carried forward from the document being corrected when the correction
       // adapter reports nothing of its own.
       //

@@ -1512,6 +1512,39 @@ describe('InvoiceService', () => {
         expect.objectContaining({ sourceDocument: null }),
       );
     });
+
+    // #3620: the hash is taken once, from the bytes persisted in the same patch.
+    // The expected value is sha256 of `<Document>fake</Document>` computed outside
+    // the code under test (openssl, base64url), not by calling the same function.
+    it('should persist the Base64URL SHA-256 of the source document bytes beside it (#3620)', async () => {
+      const sourceDocument = {
+        contentType: 'application/xml',
+        contentBase64: 'PERvY3VtZW50PmZha2U8L0RvY3VtZW50Pg==',
+      };
+      adapter.issueInvoice.mockResolvedValue({ record: adapterRecord(), seller: SELLER, sourceDocument });
+      repo.create.mockResolvedValue(adapterRecord());
+      repo.updateOutcome.mockResolvedValue(adapterRecord());
+
+      await service.issueInvoice(command());
+
+      expect(repo.updateOutcome).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.objectContaining({ sourceDocumentHash: 'gOfnt_ANkNNtJoW0Vx99Kf-ks2URL9JVXkIfbgJzo30' }),
+      );
+    });
+
+    it('should persist no hash when the adapter surfaces no source document (#3620)', async () => {
+      adapter.issueInvoice.mockResolvedValue({ record: adapterRecord(), seller: SELLER });
+      repo.create.mockResolvedValue(adapterRecord());
+      repo.updateOutcome.mockResolvedValue(adapterRecord());
+
+      await service.issueInvoice(command());
+
+      expect(repo.updateOutcome).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.objectContaining({ sourceDocumentHash: null }),
+      );
+    });
   });
 
   // #1297 — the issued patch of a correction persists the correction's OWN
@@ -1690,6 +1723,24 @@ describe('InvoiceService', () => {
       expect(repo.updateOutcome).toHaveBeenLastCalledWith(
         'corr-rec',
         expect.objectContaining({ sourceDocument }),
+      );
+    });
+
+    it('persists the hash of a correction\'s own source document (#3620)', async () => {
+      const sourceDocument = {
+        contentType: 'application/xml',
+        contentBase64: 'PEZha3R1cmE+a29yZWtjamE8L0Zha3R1cmE+',
+      };
+      correctionAdapter.issueCorrection.mockResolvedValue({
+        record: makeRecord({ id: 'corr-rec', status: 'issued', documentType: 'corrected' }),
+        sourceDocument,
+      });
+
+      await service.issueCorrection(makeCorrectionCmd());
+
+      expect(repo.updateOutcome).toHaveBeenLastCalledWith(
+        'corr-rec',
+        expect.objectContaining({ sourceDocumentHash: '90u_ugN9-ktgrlQNgZAhKIHccm-mEVI9ITjRh1STh7Q' }),
       );
     });
 
