@@ -147,12 +147,21 @@ export function evaluateRefundCeiling(input: EvaluateRefundCeilingInput): Refund
 }
 
 /**
- * Refuse an amount with more fraction digits than the currency allows (R-18).
- * Validation lives here rather than in a DTO because only the service knows the
- * currency the amount is denominated in.
+ * Scale of `refund_records.amount` (`numeric(12,2)`). A KWD refund of 0.123 is
+ * refused rather than accepted and silently stored as 0.12.
+ */
+const REFUND_AMOUNT_STORED_FRACTION_DIGITS = 2;
+
+/**
+ * Refuse an amount with more fraction digits than the currency allows, or than
+ * the column stores (R-18). Validation lives here rather than in a DTO because
+ * only the service knows the currency the amount is denominated in.
  */
 export function assertRefundAmountPrecision(amount: string, currency: string): void {
-  const allowed = minorUnitExponentFor(currency.trim().toUpperCase());
+  const allowed = Math.min(
+    minorUnitExponentFor(currency.trim().toUpperCase()),
+    REFUND_AMOUNT_STORED_FRACTION_DIGITS
+  );
   const fraction = amount.trim().split('.')[1] ?? '';
   if (fraction.length > allowed) {
     throw new RefundAmountPrecisionException(amount, currency.trim().toUpperCase(), allowed);

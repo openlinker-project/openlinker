@@ -54,9 +54,15 @@ export class OrderRefundService implements IOrderRefundService {
   ) {}
 
   async recordRefund(
-    input: CreateRefundRecordInput,
+    rawInput: CreateRefundRecordInput,
     options?: RecordRefundOptions
   ): Promise<RefundRecord> {
+    // One spelling per currency in the table (R-17): the ceiling sums refunds
+    // by currency, and "pln" next to "PLN" would read as a second currency.
+    const input: CreateRefundRecordInput = {
+      ...rawInput,
+      currency: rawInput.currency.trim().toUpperCase(),
+    };
     assertRefundAmountPrecision(input.amount, input.currency);
     if (options?.orderLockHeld === true) {
       return this.recordRefundLocked(input);

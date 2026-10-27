@@ -169,6 +169,23 @@ describe('OrderRefundService', () => {
       expect(refundRepository.create).not.toHaveBeenCalled();
     });
 
+    it('should refuse a third decimal for KWD because the amount column keeps two (R-18)', async () => {
+      await expect(
+        service.recordRefund({ ...input, amount: '0.123', currency: 'KWD' })
+      ).rejects.toMatchObject({ code: 'refund_amount_precision', allowedFractionDigits: 2 });
+      expect(refundRepository.create).not.toHaveBeenCalled();
+    });
+
+    it('should store the currency upper-cased so one currency has one spelling (R-17)', async () => {
+      refundRepository.create.mockResolvedValue({ id: 'r1' } as never);
+
+      await service.recordRefund({ ...input, amount: '10.00', currency: ' pln ' });
+
+      expect(refundRepository.create).toHaveBeenCalledWith(
+        expect.objectContaining({ currency: 'PLN' })
+      );
+    });
+
     it('should throw RefundRecordContendedException without writing when the order lock is held', async () => {
       lock.acquire.mockResolvedValue(null);
 
