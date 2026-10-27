@@ -32,6 +32,7 @@ export {
 } from './components/regulatory-status-badge';
 export { regCardToneFor, type RegCardTone } from './lib/derive-invoice-display';
 export { InvoicePdfLink } from './components/invoice-pdf-link';
+export { InvoiceMarketplaceUploadStatus } from './components/invoice-marketplace-upload-status';
 export { InvoiceConnectionLock } from './components/invoice-connection-lock';
 export { InvoiceUnconfirmedNotice } from './components/invoice-unconfirmed-notice';
 export {
