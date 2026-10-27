@@ -51,6 +51,11 @@ function makeClient(fetchImpl: jest.Mock, overrides: Partial<typeof CONFIG> = {}
   );
 }
 
+function loggedWarnings(): string {
+  const calls = (logger.warn as jest.Mock).mock.calls as unknown[][];
+  return calls.map((call) => String(call[0])).join('\n');
+}
+
 describe('EparagonyHttpClient', () => {
   describe('token lifecycle', () => {
     it('should word a token-less response without naming a single document lane', async () => {
@@ -239,6 +244,47 @@ describe('EparagonyHttpClient', () => {
         failureMode: 'rejected',
         errorCode: 41,
       });
+    });
+
+    it('should log the vendor code and rejected field paths but never a buyer name', async () => {
+      (logger.warn as jest.Mock).mockClear();
+      const fetchImpl = makeFetch([
+        (url): Response =>
+          url.includes('/auth/token')
+            ? jsonResponse(200, tokenBody())
+            : jsonResponse(400, {
+                statusCode: 400,
+                errorCode: 41,
+                message:
+                  'eCorrectiveInvoice.correctingLines[0].netUnitPrice is invalid for "Jan Kowalski"',
+              }),
+      ]);
+      const error: unknown = await makeClient(fetchImpl)
+        .post('documents', {})
+        .then(() => null)
+        .catch((e: unknown) => e);
+
+      const logged = loggedWarnings();
+      expect(logged).toContain('code=41');
+      expect(logged).toContain('fields=eCorrectiveInvoice.correctingLines[0].netUnitPrice');
+      expect(logged).not.toContain('Kowalski');
+      expect((error as EparagonyApiError).reason).toContain(
+        'eCorrectiveInvoice.correctingLines[0].netUnitPrice',
+      );
+      expect((error as EparagonyApiError).reason).not.toContain('Kowalski');
+    });
+
+    it('should still never log the token endpoint body', async () => {
+      (logger.warn as jest.Mock).mockClear();
+      const fetchImpl = makeFetch([
+        (): Response =>
+          jsonResponse(401, { errorCode: 7, message: 'client_id secret-client-id is unknown' }),
+      ]);
+      await makeClient(fetchImpl)
+        .get('documents/x/status')
+        .catch(() => null);
+      const logged = loggedWarnings();
+      expect(logged).not.toContain('secret-client-id');
     });
 
     it('should carry an undocumented error code without throwing on the parse', async () => {

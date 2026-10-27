@@ -293,14 +293,17 @@ export class EparagonyHttpClient implements IEparagonyHttpClient {
         ? new RetryableHttpError(message, 'transport')
         : new EparagonyApiError(message, response.status, null);
     }
+    const parsedBody = truncated ? null : parseErrorBody(text);
+    const error = new EparagonyApiError(message, response.status, parsedBody);
     // Never log the body: a vendor validation message quotes the submitted
-    // document, which carries line names and buyer identifiers.
-    this.logger.warn(`eparagony.pl ${method} ${path} -> ${response.status}`);
-    return new EparagonyApiError(
-      message,
-      response.status,
-      truncated ? null : parseErrorBody(text),
-    );
+    // document, which carries line names and buyer identifiers. Only the
+    // numeric code and allowlisted schema field paths are kept, which is what
+    // makes a refusal diagnosable. (The token endpoint does not come through
+    // here and still logs nothing of its body.)
+    const code = error.errorCode === null ? '' : ` code=${error.errorCode}`;
+    const fields = error.rejectedFields.length === 0 ? '' : ` fields=${error.rejectedFields.join(',')}`;
+    this.logger.warn(`eparagony.pl ${method} ${path} -> ${response.status}${code}${fields}`);
+    return error;
   }
 
   private toExhaustedError(error: RetryableHttpError): Error {

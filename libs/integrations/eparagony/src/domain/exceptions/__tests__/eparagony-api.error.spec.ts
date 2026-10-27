@@ -139,4 +139,17 @@ describe('EparagonyApiError', () => {
       );
     });
   });
+
+  it('should name the rejected field in the reason without any value', () => {
+    const error = new EparagonyApiError('bad request', 400, {
+      errorCode: 57,
+      message: 'correctingMetadata.grossSaleValue does not match for Jan Kowalski',
+    });
+    expect(error.rejectedFields).toEqual(['correctingMetadata.grossSaleValue']);
+    expect(error.reason).toBe(
+      'The provider rejected the document (code 57). Field: correctingMetadata.grossSaleValue.',
+    );
+    expect(error.reason).not.toContain('Kowalski');
+    expect(classifyInvoiceFailure(error).failureReason).toBe(error.reason);
+  });
 });

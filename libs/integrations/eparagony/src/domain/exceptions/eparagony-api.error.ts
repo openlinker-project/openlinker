@@ -73,6 +73,7 @@ import type {
   PROVIDER_ANSWER_INCONCLUSIVE_FAILURE_CAUSE,
 } from '@openlinker/core/invoicing';
 
+import { extractRejectedFields } from '../policies/rejected-fields.policy';
 import type { EparagonyErrorBody } from '../types/eparagony-api.types';
 
 export type EparagonyFailureMode = 'rejected' | 'in-doubt';
@@ -98,6 +99,12 @@ export class EparagonyApiError extends Error {
 
   /** Vendor `errorCode`, when the body carried one. Open set - never switched exhaustively. */
   readonly errorCode: number | null;
+
+  /**
+   * Schema field paths the vendor named (allowlisted by `extractRejectedFields`,
+   * never values). Empty when the body named none or was not readable.
+   */
+  readonly rejectedFields: readonly string[];
 
   /**
    * Read structurally by core's invoice failure classification. Every `reason`
@@ -128,6 +135,7 @@ export class EparagonyApiError extends Error {
     super(message);
     this.name = 'EparagonyApiError';
     this.errorCode = readErrorCode(responseBody);
+    this.rejectedFields = extractRejectedFields(responseBody);
     this.failureMode = options?.failureMode ?? defaultFailureMode(statusCode, this.errorCode);
     // A known refusal is looked up only for a default-classified rejection: a
     // caller that supplied its own reason knows better, and a known text on an
@@ -139,7 +147,7 @@ export class EparagonyApiError extends Error {
     this.reason = (
       options?.reason ??
       known?.reason ??
-      defaultReason(statusCode, this.errorCode)
+      defaultReason(statusCode, this.errorCode, this.rejectedFields)
     ).slice(0, MAX_REASON_LENGTH);
     this.failureCause =
       options?.failureCause ??
@@ -183,7 +191,11 @@ function defaultFailureMode(statusCode: number, errorCode: number | null): Epara
   return 'rejected';
 }
 
-function defaultReason(statusCode: number, errorCode: number | null): string {
+function defaultReason(
+  statusCode: number,
+  errorCode: number | null,
+  rejectedFields: readonly string[]
+): string {
   const suffix = errorCode === null ? '' : ` (code ${errorCode})`;
   if (statusCode === 401 || statusCode === 403) {
     return `The provider rejected the connection's credentials or granted scopes${suffix}.`;
@@ -199,6 +211,9 @@ function defaultReason(statusCode: number, errorCode: number | null): string {
   }
   if (statusCode >= 500) {
     return `The provider returned a server error${suffix}.`;
+  }
+  if (rejectedFields.length > 0) {
+    return `The provider rejected the document${suffix}. Field: ${rejectedFields.join(', ')}.`;
   }
   return `The provider rejected the document${suffix}.`;
 }
