@@ -13,12 +13,13 @@
  * @implements {IOrderRefundService}
  */
 import { Inject, Injectable } from '@nestjs/common';
-import { SYNC_LOCK_TOKEN, type SyncLockPort } from '@openlinker/core/sync';
+import { SYNC_LOCK_TOKEN, type SyncLockPort, type SyncLockToken } from '@openlinker/core/sync';
 import { Logger } from '@openlinker/shared/logging';
 
 import type { RefundRecord } from '../../domain/entities/refund-record.entity';
 import { decideRefundCeiling } from '../../domain/domain-services/refund-ceiling.domain-service';
 import { RefundRecordContendedException } from '../../domain/exceptions/refund-record-contended.exception';
+import { RefundLockUnavailableException } from '../../domain/exceptions/refund-lock-unavailable.exception';
 import { RefundCurrencyMismatchException } from '../../domain/exceptions/refund-currency-mismatch.exception';
 import { RefundRecordRepositoryPort } from '../../domain/ports/refund-record-repository.port';
 import {
@@ -34,7 +35,11 @@ import type {
   IOrderRefundService,
   RecordRefundOptions,
 } from '../interfaces/order-refund.service.interface';
-import { ORDER_REFUND_LOCK_TTL_MS, orderRefundLockKey } from './order-refund-lock';
+import {
+  ORDER_REFUND_LOCK_ACQUIRE_TIMEOUT_MS,
+  ORDER_REFUND_LOCK_TTL_MS,
+  orderRefundLockKey,
+} from './order-refund-lock';
 import {
   ORDER_RECORD_SERVICE_TOKEN,
   ORDER_REFUND_RECORD_REPOSITORY_TOKEN,
@@ -80,7 +85,7 @@ export class OrderRefundService implements IOrderRefundService {
     // the #2047 invoice-issue-lock reasoning): unlocked, two concurrent writes
     // both read the old refunded sum and both pass.
     const lockKey = orderRefundLockKey(internalOrderId);
-    const token = await this.lock.acquire(lockKey, ORDER_REFUND_LOCK_TTL_MS);
+    const token = await this.acquireOrderRefundLock(lockKey, internalOrderId);
     if (token === null) {
       throw new RefundRecordContendedException(internalOrderId);
     }
@@ -88,6 +93,37 @@ export class OrderRefundService implements IOrderRefundService {
       return await work();
     } finally {
       await this.lock.release(lockKey, token);
+    }
+  }
+
+  /**
+   * Take the lock, or give up after ORDER_REFUND_LOCK_ACQUIRE_TIMEOUT_MS (R-16).
+   * A late answer is released straight away: the caller has already been told
+   * nothing was recorded, so holding the key would only block the retry.
+   */
+  private async acquireOrderRefundLock(
+    lockKey: string,
+    internalOrderId: string
+  ): Promise<SyncLockToken | null> {
+    let timedOut = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const acquiring = this.lock.acquire(lockKey, ORDER_REFUND_LOCK_TTL_MS);
+    const timeout = new Promise<never>((_, reject) => {
+      timer = setTimeout(() => {
+        timedOut = true;
+        reject(new RefundLockUnavailableException(internalOrderId));
+      }, ORDER_REFUND_LOCK_ACQUIRE_TIMEOUT_MS);
+    });
+    acquiring.then(
+      (late) => {
+        if (timedOut && late !== null) void this.lock.release(lockKey, late).catch(() => undefined);
+      },
+      () => undefined
+    );
+    try {
+      return await Promise.race([acquiring, timeout]);
+    } finally {
+      clearTimeout(timer);
     }
   }
 
