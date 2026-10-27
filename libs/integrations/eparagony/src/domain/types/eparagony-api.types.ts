@@ -320,9 +320,9 @@ export interface EparagonyCreateInvoiceRequest {
  * references the fiscal document itself.
  */
 export interface EparagonyCorrectedInvoiceMetadata {
-  // Required by the vendor here too: a live 400 (code 41) named both as missing
-  // on `correctedMetadata`, alongside `correctedLines`, whose own message was
-  // the same oneOf failure. `correctingMetadata` was NOT named, so it is not sent.
+  // Required by the vendor on both correction metadata blocks: a live 400
+  // (code 41) named them on `correctedMetadata`, and once that was fixed, on
+  // `correctingMetadata` (#3839).
   vatCalculationMethod: typeof EPARAGONY_VAT_CALCULATION_SUM_OF_RATES_NET;
   calculationValidation: typeof EPARAGONY_CALCULATION_VALIDATION_NONE;
   /** The ORIGINAL document's legal number. */
@@ -345,6 +345,8 @@ export interface EparagonyCorrectedInvoiceMetadata {
  * neither rather than sending a document the vendor would reject.
  */
 export interface EparagonyCorrectingInvoiceMetadata {
+  vatCalculationMethod: typeof EPARAGONY_VAT_CALCULATION_SUM_OF_RATES_NET;
+  calculationValidation: typeof EPARAGONY_CALCULATION_VALIDATION_NONE;
   merchantTIN: string;
   merchantName: string;
   merchantAddress: EparagonyEntityAddress;

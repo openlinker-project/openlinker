@@ -538,6 +538,8 @@ export function composeCorrectiveInvoiceDocument(
   };
 
   const correctingMetadata: EparagonyCorrectingInvoiceMetadata = {
+    vatCalculationMethod: EPARAGONY_VAT_CALCULATION_SUM_OF_RATES_NET,
+    calculationValidation: EPARAGONY_CALCULATION_VALIDATION_NONE,
     merchantTIN,
     merchantName,
     merchantAddress,

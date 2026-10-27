@@ -162,6 +162,8 @@ describe('composeCorrectiveInvoiceDocument - the wire shape', () => {
     const { eCorrectiveInvoice } = compose();
 
     expect(eCorrectiveInvoice.correctingMetadata).toEqual({
+      vatCalculationMethod: 'SUM_OF_RATES_NET',
+      calculationValidation: 'NONE',
       merchantTIN: '5252556107',
       merchantName: 'OpenLinker POC Sp. z o.o.',
       merchantAddress: {
