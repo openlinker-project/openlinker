@@ -67,7 +67,7 @@ function makeBuyer(taxId: TaxIdentifier | null = null, address = makeAddress()):
     'Firma Polska sc.',
     taxId,
     address,
-    taxId === null ? 'private' : 'company',
+    taxId === null ? 'private' : 'company'
   );
 }
 
@@ -76,7 +76,7 @@ function makeOriginalLines(): InvoiceLine[] {
 }
 
 function makeOriginalDocument(
-  overrides: Partial<OriginalDocumentSnapshot> = {},
+  overrides: Partial<OriginalDocumentSnapshot> = {}
 ): OriginalDocumentSnapshot {
   return {
     buyer: makeBuyer(),
@@ -113,7 +113,7 @@ function makeCommand(overrides: Partial<IssueCorrectionCommand> = {}): IssueCorr
 
 function composeDocument(
   command: IssueCorrectionCommand = makeCommand(),
-  config: EparagonyConnectionConfig = makeConfig(),
+  config: EparagonyConnectionConfig = makeConfig()
 ): ReturnType<typeof composeCorrectiveInvoiceDocument> {
   return composeCorrectiveInvoiceDocument({
     command,
@@ -125,7 +125,7 @@ function composeDocument(
 
 function compose(
   command: IssueCorrectionCommand = makeCommand(),
-  config: EparagonyConnectionConfig = makeConfig(),
+  config: EparagonyConnectionConfig = makeConfig()
 ): ReturnType<typeof composeCorrectiveInvoiceDocument>['request'] {
   return composeDocument(command, config).request;
 }
@@ -194,10 +194,9 @@ describe('composeCorrectiveInvoiceDocument - the wire shape', () => {
     expect(eCorrectiveInvoice.correctedMetadata.invoiceNumber).toBe('OL-POC/2026/B2B/1');
   });
 
-
   it("should stamp the correction's own issue date from the command's issuance instant", () => {
     const { eCorrectiveInvoice } = compose(
-      makeCommand({ issuedAt: new Date('2026-09-20T09:00:00.000Z') }),
+      makeCommand({ issuedAt: new Date('2026-09-20T09:00:00.000Z') })
     );
     expect(eCorrectiveInvoice.metadata.invoiceDate).toBe('2026-09-20');
     // Never confused with the ORIGINAL's date, which the linkage carries.
@@ -229,9 +228,7 @@ describe('composeCorrectiveInvoiceDocument - the wire shape', () => {
 
   it('should report the CORRECTED per-line figures as documentLines, keyed 1-based', () => {
     const { documentLines } = composeDocument();
-    expect(documentLines).toEqual([
-      { lineNumber: 1, unitNet: 40, net: 40, tax: 9.2, gross: 49.2 },
-    ]);
+    expect(documentLines).toEqual([{ lineNumber: 1, unitNet: 40, net: 40, tax: 9.2, gross: 49.2 }]);
   });
 
   it('should populate BOTH correctedLines (before) and correctingLines (after)', () => {
@@ -252,7 +249,7 @@ describe('composeCorrectiveInvoiceDocument - the wire shape', () => {
       ],
     });
     const { eCorrectiveInvoice } = compose(
-      makeCommand({ originalDocument, lines: [{ originalLineNumber: 1, newQuantity: 1 }] }),
+      makeCommand({ originalDocument, lines: [{ originalLineNumber: 1, newQuantity: 1 }] })
     );
 
     expect(eCorrectiveInvoice.correctingLines).toEqual([
@@ -261,13 +258,13 @@ describe('composeCorrectiveInvoiceDocument - the wire shape', () => {
     ]);
     // The untouched line's own rate group is still summarised on the correction.
     expect(eCorrectiveInvoice.metadata.netValueByTaxRate).toEqual(
-      expect.objectContaining({ '8': 2778 }),
+      expect.objectContaining({ '8': 2778 })
     );
   });
 
   it('should apply a new unit price as well as a new quantity', () => {
     const { eCorrectiveInvoice } = compose(
-      makeCommand({ lines: [{ originalLineNumber: 1, newUnitPriceGross: 24.6 }] }),
+      makeCommand({ lines: [{ originalLineNumber: 1, newUnitPriceGross: 24.6 }] })
     );
     // Quantity is untouched at 2, so the corrected gross is 2 x 24.60 = 4920.
     expect(eCorrectiveInvoice.correctingMetadata.grossSaleValue).toBe(4920);
@@ -294,31 +291,31 @@ describe('composeCorrectiveInvoiceDocument - the wire shape', () => {
 describe('composeCorrectiveInvoiceDocument - refusals happen before the boundary', () => {
   it('should refuse when no original-document snapshot was supplied', () => {
     expect(() => compose(makeCommand({ originalDocument: undefined }))).toThrow(
-      EparagonyConfigException,
+      EparagonyConfigException
     );
   });
 
   it('should refuse a currency other than PLN, same as a plain invoice', () => {
     expect(() =>
-      compose(makeCommand({ originalDocument: makeOriginalDocument({ currency: 'EUR' }) })),
+      compose(makeCommand({ originalDocument: makeOriginalDocument({ currency: 'EUR' }) }))
     ).toThrow(EparagonyConfigException);
   });
 
   it('should refuse when the connection declares no seller tax number', () => {
     expect(() => compose(makeCommand(), makeConfig({ merchantTIN: undefined }))).toThrow(
-      EparagonyConfigException,
+      EparagonyConfigException
     );
   });
 
   it('should refuse when the connection declares no seller name, REQUIRED on a correction', () => {
     expect(() => compose(makeCommand(), makeConfig({ merchantName: undefined }))).toThrow(
-      EparagonyConfigException,
+      EparagonyConfigException
     );
   });
 
   it('should refuse when the connection declares no seller address, REQUIRED on a correction', () => {
     expect(() => compose(makeCommand(), makeConfig({ merchantAddress: undefined }))).toThrow(
-      EparagonyConfigException,
+      EparagonyConfigException
     );
   });
 
@@ -328,8 +325,8 @@ describe('composeCorrectiveInvoiceDocument - refusals happen before the boundary
         makeCommand(),
         makeConfig({
           merchantAddress: { ...SELLER_ADDRESS, number: '   ' },
-        }),
-      ),
+        })
+      )
     ).toThrow(EparagonyConfigException);
   });
 
@@ -363,17 +360,15 @@ describe('composeCorrectiveInvoiceDocument - refusals happen before the boundary
 
   it('should refuse when the original document carries no legal number to reference', () => {
     expect(() =>
-      compose(makeCommand({ originalDocument: makeOriginalDocument({ documentNumber: '  ' }) })),
+      compose(makeCommand({ originalDocument: makeOriginalDocument({ documentNumber: '  ' }) }))
     ).toThrow(EparagonyConfigException);
   });
 
   it('should refuse when core allocated no document number for the correction, rather than composing a document the vendor is known to reject (#3500)', () => {
     expect(() => compose(makeCommand({ documentNumber: undefined }))).toThrow(
-      EparagonyConfigException,
+      EparagonyConfigException
     );
-    expect(() => compose(makeCommand({ documentNumber: '   ' }))).toThrow(
-      EparagonyConfigException,
-    );
+    expect(() => compose(makeCommand({ documentNumber: '   ' }))).toThrow(EparagonyConfigException);
   });
 
   it('should refuse an original issue date that is not a YYYY-MM-DD calendar date', () => {
@@ -381,8 +376,8 @@ describe('composeCorrectiveInvoiceDocument - refusals happen before the boundary
       compose(
         makeCommand({
           originalDocument: makeOriginalDocument({ issueDate: '2026-09-15T00:00:00.000Z' }),
-        }),
-      ),
+        })
+      )
     ).toThrow(EparagonyConfigException);
   });
 
@@ -395,13 +390,13 @@ describe('composeCorrectiveInvoiceDocument - refusals happen before the boundary
 
   it('should refuse a correction line naming a position the original document does not have', () => {
     expect(() =>
-      compose(makeCommand({ lines: [{ originalLineNumber: 5, newQuantity: 1 }] })),
+      compose(makeCommand({ lines: [{ originalLineNumber: 5, newQuantity: 1 }] }))
     ).toThrow(EparagonyConfigException);
   });
 
   it('should refuse a correction line naming position 0, since positions are 1-based', () => {
     expect(() =>
-      compose(makeCommand({ lines: [{ originalLineNumber: 0, newQuantity: 1 }] })),
+      compose(makeCommand({ lines: [{ originalLineNumber: 0, newQuantity: 1 }] }))
     ).toThrow(EparagonyConfigException);
   });
 
@@ -413,8 +408,8 @@ describe('composeCorrectiveInvoiceDocument - refusals happen before the boundary
             { originalLineNumber: 1, newQuantity: 1 },
             { originalLineNumber: 1, newUnitPriceGross: 40 },
           ],
-        }),
-      ),
+        })
+      )
     ).toThrow(EparagonyConfigException);
   });
 
@@ -424,7 +419,89 @@ describe('composeCorrectiveInvoiceDocument - refusals happen before the boundary
 
   it('should refuse when the original document has no lines', () => {
     expect(() =>
-      compose(makeCommand({ originalDocument: makeOriginalDocument({ lines: [] }) })),
+      compose(makeCommand({ originalDocument: makeOriginalDocument({ lines: [] }) }))
+    ).toThrow(EparagonyConfigException);
+  });
+});
+
+describe('composeCorrectiveInvoiceDocument - quantity on the after side (#3838)', () => {
+  const twoLines = (): OriginalDocumentSnapshot =>
+    makeOriginalDocument({
+      lines: [
+        { name: 'T-shirt', quantity: 2, unitPriceGross: 49.2, taxRate: '23' },
+        { name: 'Socks', quantity: 3, unitPriceGross: 10, taxRate: '8' },
+      ],
+    });
+
+  it('should compose a full credit that takes every line to quantity 0', () => {
+    const { eCorrectiveInvoice } = compose(
+      makeCommand({
+        originalDocument: twoLines(),
+        lines: [
+          { originalLineNumber: 1, newQuantity: 0 },
+          { originalLineNumber: 2, newQuantity: 0 },
+        ],
+      })
+    );
+
+    expect(eCorrectiveInvoice.correctingLines).toEqual([
+      expect.objectContaining({
+        quantity: '0',
+        netUnitPrice: 0,
+        netTotalLineValue: 0,
+        taxValue: 0,
+      }),
+      expect.objectContaining({
+        quantity: '0',
+        netUnitPrice: 0,
+        netTotalLineValue: 0,
+        taxValue: 0,
+      }),
+    ]);
+    expect(eCorrectiveInvoice.correctingMetadata.grossSaleValue).toBe(0);
+    expect(eCorrectiveInvoice.metadata.grossSaleValue).toBe(0);
+    expect(eCorrectiveInvoice.metadata.netValueByTaxRate).toEqual({ '23': 0, '8': 0 });
+    // The "before" side still states what was originally invoiced.
+    expect(eCorrectiveInvoice.correctedMetadata.grossSaleValue).toBe(12840);
+  });
+
+  it('should compose a partial credit with per-rate totals for the remaining line', () => {
+    const { eCorrectiveInvoice } = compose(
+      makeCommand({
+        originalDocument: twoLines(),
+        lines: [{ originalLineNumber: 1, newQuantity: 0 }],
+      })
+    );
+
+    expect(eCorrectiveInvoice.correctingLines).toEqual([
+      expect.objectContaining({ productOrServiceName: 'T-shirt', quantity: '0' }),
+      expect.objectContaining({ productOrServiceName: 'Socks', quantity: '3' }),
+    ]);
+    expect(eCorrectiveInvoice.metadata.netValueByTaxRate).toEqual({ '23': 0, '8': 2778 });
+    expect(eCorrectiveInvoice.correctingMetadata.grossSaleValue).toBe(3000);
+  });
+
+  it('should still refuse a negative quantity on a correction line', () => {
+    expect(() =>
+      compose(makeCommand({ lines: [{ originalLineNumber: 1, newQuantity: -1 }] }))
+    ).toThrow(EparagonyConfigException);
+  });
+
+  it('should still refuse a non-finite quantity on a correction line', () => {
+    expect(() =>
+      compose(makeCommand({ lines: [{ originalLineNumber: 1, newQuantity: Number.NaN }] }))
+    ).toThrow(EparagonyConfigException);
+  });
+
+  it('should still refuse a zero quantity on the ORIGINAL ("before") lines', () => {
+    expect(() =>
+      compose(
+        makeCommand({
+          originalDocument: makeOriginalDocument({
+            lines: [{ name: 'T-shirt', quantity: 0, unitPriceGross: 49.2, taxRate: '23' }],
+          }),
+        })
+      )
     ).toThrow(EparagonyConfigException);
   });
 });

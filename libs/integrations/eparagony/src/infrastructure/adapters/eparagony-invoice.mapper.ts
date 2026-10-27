@@ -73,7 +73,11 @@ import type {
 import { CONNECTION_SETUP_FAILURE_CAUSE } from '@openlinker/core/invoicing';
 
 import { EparagonyConfigException } from '../../domain/exceptions/eparagony-config.exception';
-import { toMinorUnits, toQuantityString } from '../../domain/policies/money.policy';
+import {
+  toCorrectedQuantityString,
+  toMinorUnits,
+  toQuantityString,
+} from '../../domain/policies/money.policy';
 import {
   invoiceTaxRateFraction,
   isTaxedInvoiceRate,
@@ -273,7 +277,7 @@ export function composeInvoiceDocument(input: CreateInvoiceRequestInput): Compos
       // "unsupported currency" is one of core's CURRENCY_REJECTION_MARKERS, so
       // this refusal reaches the operator as `invalid-currency` rather than as
       // the generic provider-rejected copy.
-      `Unsupported currency for this invoicing connection: it issues in ${SETTLEMENT_CURRENCY} only.`,
+      `Unsupported currency for this invoicing connection: it issues in ${SETTLEMENT_CURRENCY} only.`
     );
   }
 
@@ -290,14 +294,14 @@ export function composeInvoiceDocument(input: CreateInvoiceRequestInput): Compos
       // the operator to correct the buyer's data instead.
       'This connection has no seller tax number set, which every invoice requires. Set it on the connection and re-issue.',
       undefined,
-      CONNECTION_SETUP_FAILURE_CAUSE,
+      CONNECTION_SETUP_FAILURE_CAUSE
     );
   }
 
   if (command.lines.length === 0) {
     throw new EparagonyConfigException(
       `eparagony.pl cannot invoice order ${command.orderId}: it has no lines`,
-      'The order has no lines, so there is nothing to invoice.',
+      'The order has no lines, so there is nothing to invoice.'
     );
   }
 
@@ -361,7 +365,7 @@ export function composeInvoiceDocument(input: CreateInvoiceRequestInput): Compos
       `eparagony.pl cannot invoice order ${command.orderId}: no document number was supplied, ` +
         `and this adapter never leaves the number for the vendor to generate`,
       'OpenLinker could not allocate a document number for this connection. Check the ' +
-        'connection’s numbering series and re-issue.',
+        'connection’s numbering series and re-issue.'
     );
   }
   metadata.invoiceNumber = documentNumber;
@@ -418,7 +422,7 @@ export function composeInvoiceDocument(input: CreateInvoiceRequestInput): Compos
  * not have.
  */
 export function composeCorrectiveInvoiceDocument(
-  input: CreateCorrectiveInvoiceRequestInput,
+  input: CreateCorrectiveInvoiceRequestInput
 ): ComposedCorrectiveInvoiceDocument {
   const { command, config, documentToken, transactionToken } = input;
   const orderId = command.orderId;
@@ -427,7 +431,7 @@ export function composeCorrectiveInvoiceDocument(
   if (originalDocument === undefined) {
     throw new EparagonyConfigException(
       `eparagony.pl cannot correct order ${orderId}: no original-document snapshot was supplied`,
-      'This document cannot be corrected: OpenLinker holds no reconstructable snapshot of the original invoice.',
+      'This document cannot be corrected: OpenLinker holds no reconstructable snapshot of the original invoice.'
     );
   }
 
@@ -439,7 +443,7 @@ export function composeCorrectiveInvoiceDocument(
       // "unsupported currency" is one of core's CURRENCY_REJECTION_MARKERS, so
       // this refusal reaches the operator as `invalid-currency` rather than as
       // the generic provider-rejected copy - the same wording the issue path uses.
-      `Unsupported currency for this invoicing connection: it issues in ${SETTLEMENT_CURRENCY} only.`,
+      `Unsupported currency for this invoicing connection: it issues in ${SETTLEMENT_CURRENCY} only.`
     );
   }
 
@@ -454,7 +458,7 @@ export function composeCorrectiveInvoiceDocument(
       // problem with the BUYER's data.
       'This connection has no seller tax number set, which every correction requires. Set it on the connection and re-issue.',
       undefined,
-      CONNECTION_SETUP_FAILURE_CAUSE,
+      CONNECTION_SETUP_FAILURE_CAUSE
     );
   }
 
@@ -470,7 +474,7 @@ export function composeCorrectiveInvoiceDocument(
         `which every correction requires. Set it on the connection and re-issue`,
       'This connection has no seller name set, which every correction requires. Set it on the connection and re-issue.',
       undefined,
-      CONNECTION_SETUP_FAILURE_CAUSE,
+      CONNECTION_SETUP_FAILURE_CAUSE
     );
   }
   // Read through the SAME completeness check the issue path uses, so a
@@ -484,7 +488,7 @@ export function composeCorrectiveInvoiceDocument(
         `address, which every correction requires. Set it on the connection and re-issue`,
       'This connection has no complete seller address set, which every correction requires. Set it on the connection and re-issue.',
       undefined,
-      CONNECTION_SETUP_FAILURE_CAUSE,
+      CONNECTION_SETUP_FAILURE_CAUSE
     );
   }
 
@@ -492,7 +496,7 @@ export function composeCorrectiveInvoiceDocument(
   if (originalDocumentNumber === null) {
     throw new EparagonyConfigException(
       `eparagony.pl cannot correct order ${orderId}: the original document carries no legal number`,
-      'The document being corrected has no legal number on file, so the correction cannot reference it.',
+      'The document being corrected has no legal number on file, so the correction cannot reference it.'
     );
   }
   // Shape-checked, never reformatted - the same treatment `saleEndDate` gets on
@@ -502,20 +506,20 @@ export function composeCorrectiveInvoiceDocument(
     throw new EparagonyConfigException(
       `eparagony.pl cannot correct order ${orderId}: the original document's issue date ` +
         `"${originalDocument.issueDate}" is not a YYYY-MM-DD calendar date`,
-      'The document being corrected has no usable issue date on file, so the correction cannot reference it.',
+      'The document being corrected has no usable issue date on file, so the correction cannot reference it.'
     );
   }
 
   if (originalDocument.lines.length === 0) {
     throw new EparagonyConfigException(
       `eparagony.pl cannot correct order ${orderId}: the original document has no lines`,
-      'The document being corrected has no lines, so there is nothing to correct.',
+      'The document being corrected has no lines, so there is nothing to correct.'
     );
   }
   if (command.lines.length === 0) {
     throw new EparagonyConfigException(
       `eparagony.pl cannot correct order ${orderId}: the correction names no lines`,
-      'The correction names no lines, so there is nothing to change.',
+      'The correction names no lines, so there is nothing to change.'
     );
   }
 
@@ -524,7 +528,7 @@ export function composeCorrectiveInvoiceDocument(
   // Both halves go through the identical rule, which is what keeps the "before"
   // and "after" totals comparable rather than merely adjacent.
   const original = composeLineSet(originalDocument.lines, orderId);
-  const corrected = composeLineSet(correctedFinalLines, orderId);
+  const corrected = composeLineSet(correctedFinalLines, orderId, { allowZeroQuantity: true });
 
   const consumerName = originalDocument.buyer.name;
   const consumerAddress = toEntityAddress(originalDocument.buyer.address, orderId);
@@ -578,7 +582,7 @@ export function composeCorrectiveInvoiceDocument(
       `eparagony.pl cannot correct order ${orderId}: no document number was supplied for the ` +
         `correction, and this adapter never leaves the number for the vendor to generate`,
       'OpenLinker could not allocate a document number for this connection. Check the ' +
-        'connection’s numbering series and re-issue.',
+        'connection’s numbering series and re-issue.'
     );
   }
   metadata.invoiceNumber = documentNumber;
@@ -634,7 +638,7 @@ export function composeCorrectiveInvoiceDocument(
 function applyCorrectionLines(
   originalLines: readonly InvoiceLine[],
   corrections: readonly CorrectionLine[],
-  orderId: string,
+  orderId: string
 ): InvoiceLine[] {
   const byLineNumber = new Map<number, CorrectionLine>();
   for (const correction of corrections) {
@@ -647,14 +651,14 @@ function applyCorrectionLines(
         `eparagony.pl cannot correct order ${orderId}: correction line number ` +
           `${String(correction.originalLineNumber)} does not name a line on the original document ` +
           `(it has ${String(originalLines.length)} line(s))`,
-        'The correction refers to a line that does not exist on the original document.',
+        'The correction refers to a line that does not exist on the original document.'
       );
     }
     if (byLineNumber.has(correction.originalLineNumber)) {
       throw new EparagonyConfigException(
         `eparagony.pl cannot correct order ${orderId}: correction line number ` +
           `${String(correction.originalLineNumber)} is named more than once`,
-        'The correction names the same original line more than once.',
+        'The correction names the same original line more than once.'
       );
     }
     byLineNumber.set(correction.originalLineNumber, correction);
@@ -683,7 +687,7 @@ function applyCorrectionLines(
  * address the operator has no way to read as "not configured".
  */
 export function toIssuedDocumentSeller(
-  config: EparagonyConnectionConfig,
+  config: EparagonyConnectionConfig
 ): IssuedDocumentSeller | null {
   const name = readNonEmpty(config.merchantName);
   const taxId = readNonEmpty(config.merchantTIN);
@@ -796,7 +800,7 @@ export function resolveBuyerHandleSchemeTag(scheme: string | undefined, value: s
  * state between submission and final acceptance. This is not one.
  */
 export function toRegulatoryClearanceResult(
-  body: EparagonyDocumentStatusResponse,
+  body: EparagonyDocumentStatusResponse
 ): RegulatoryClearanceResult {
   const processingMode = readUpper(body.processingMode);
   if (processingMode === EPARAGONY_PROCESSING_MODE_NONE) {
@@ -844,7 +848,7 @@ export function readDocumentUrl(body: EparagonyDocumentStatusResponse): string |
 
 /** The hub detail block, when the response carries a readable one. */
 export function readKsefInvoice(
-  body: EparagonyDocumentStatusResponse,
+  body: EparagonyDocumentStatusResponse
 ): EparagonyKsefInvoiceDetails | null {
   const raw = body.ksefInvoice;
   if (raw === null || typeof raw !== 'object' || Array.isArray(raw)) {
@@ -869,8 +873,14 @@ export function readKsefInvoice(
  * computed by the identical rule and their totals are comparable rather than
  * merely adjacent.
  */
-function composeLineSet(lines: readonly InvoiceLine[], orderId: string): ComposedLineSet {
-  const priced = lines.map((line, index) => toPricedLine(line, index, orderId));
+function composeLineSet(
+  lines: readonly InvoiceLine[],
+  orderId: string,
+  options: { allowZeroQuantity?: boolean } = {}
+): ComposedLineSet {
+  const priced = lines.map((line, index) =>
+    toPricedLine(line, index, orderId, options.allowZeroQuantity === true)
+  );
   const groups = groupByRate(priced);
 
   // Each line's share of its rate group's net, indexed by the line's ORIGINAL
@@ -936,7 +946,12 @@ function composeLineSet(lines: readonly InvoiceLine[], orderId: string): Compose
   return { lines: wireLines, documentLines, grossSaleValue, netValueByTaxRate, taxValueByTaxRate };
 }
 
-function toPricedLine(line: InvoiceLine, index: number, orderId: string): PricedInvoiceLine {
+function toPricedLine(
+  line: InvoiceLine,
+  index: number,
+  orderId: string,
+  allowZeroQuantity: boolean
+): PricedInvoiceLine {
   const code = resolveInvoiceTaxRateCode(line.taxRate);
   if (code === null) {
     // The remedy rides in the MESSAGE as well as in `reason`, for the reason
@@ -955,15 +970,19 @@ function toPricedLine(line: InvoiceLine, index: number, orderId: string): Priced
         (isRateless ? '. Set the rate on the product and re-issue' : ''),
       isRateless
         ? 'At least one order line carries no tax rate, and an invoice cannot state one on its behalf. Set the rate on the product and re-issue.'
-        : 'At least one order line carries a tax rate that cannot be expressed on an invoice in this regime.',
+        : 'At least one order line carries a tax rate that cannot be expressed on an invoice in this regime.'
     );
   }
 
-  const quantity = toQuantityString(line.quantity);
+  // Zero is legal only on the "after" side of a correction, where it is how a
+  // fully credited line is stated; an original invoice line keeps the > 0 rule.
+  const quantity = allowZeroQuantity
+    ? toCorrectedQuantityString(line.quantity)
+    : toQuantityString(line.quantity);
   if (quantity === null) {
     throw new EparagonyConfigException(
       `eparagony.pl cannot invoice order ${orderId}: line "${line.name}" has a non-invoiceable quantity ${line.quantity}`,
-      'At least one order line has a quantity that cannot be invoiced.',
+      'At least one order line has a quantity that cannot be invoiced.'
     );
   }
 
@@ -974,7 +993,7 @@ function toPricedLine(line: InvoiceLine, index: number, orderId: string): Priced
     // negative line on an original.
     throw new EparagonyConfigException(
       `eparagony.pl cannot invoice order ${orderId}: line "${line.name}" has a non-invoiceable total`,
-      'At least one order line has a total that cannot be invoiced.',
+      'At least one order line has a total that cannot be invoiced.'
     );
   }
 
@@ -991,7 +1010,7 @@ function toPricedLine(line: InvoiceLine, index: number, orderId: string): Priced
  * idempotency key would see "the same key with different data".
  */
 function groupByRate(
-  priced: PricedInvoiceLine[],
+  priced: PricedInvoiceLine[]
 ): Map<EparagonyInvoiceTaxRate, PricedInvoiceLine[]> {
   const groups = new Map<EparagonyInvoiceTaxRate, PricedInvoiceLine[]>();
   for (const member of priced) {
@@ -1059,7 +1078,7 @@ function groupByRate(
 function allocateGroupNet(
   members: readonly PricedInvoiceLine[],
   netGroup: number,
-  fraction: number,
+  fraction: number
 ): number[] {
   const allocation: number[] = [];
   let allocatedNet = 0;
@@ -1118,10 +1137,9 @@ function allocateGroupNet(
  * that must reconcile exactly, the per-rate summary, do.
  */
 function resolveNetUnitPrice(lineNet: number, quantity: number): number {
-  // UNREACHABLE today - `toPricedLine` refuses a non-positive or non-finite
-  // quantity several lines earlier, via `toQuantityString`. Kept so the division
-  // below cannot produce an infinity if that order ever changes, and noted so
-  // the next reader does not hunt for the input that reaches it.
+  // Reached with quantity 0 only for a fully credited line on the "after" side
+  // of a correction (net is 0 there, so the unit price is 0 too). Negative and
+  // non-finite quantities are refused earlier by `toPricedLine`.
   if (!Number.isFinite(quantity) || quantity <= 0) {
     return lineNet;
   }
@@ -1166,7 +1184,7 @@ function roundMinorUnits(value: number): number {
   if (!Number.isFinite(value)) {
     throw new EparagonyConfigException(
       `eparagony.pl cannot invoice: a tax split produced the non-finite amount ${value}`,
-      'This order produced an amount that cannot be stated on an invoice.',
+      'This order produced an amount that cannot be stated on an invoice.'
     );
   }
   const collapsed = Number(Math.abs(value).toFixed(4));
@@ -1219,7 +1237,7 @@ function toEntityAddress(address: BuyerAddress, orderId: string): EparagonyEntit
       `eparagony.pl cannot invoice order ${orderId}: the buyer's address is missing a part an ` +
         `invoice must state (street line, postcode, city or country). Complete the buyer's ` +
         `address on the order and re-issue`,
-      "The buyer's address is missing a part every invoice must state. Complete it on the order and re-issue.",
+      "The buyer's address is missing a part every invoice must state. Complete it on the order and re-issue."
     );
   }
 
@@ -1264,7 +1282,7 @@ function toEntityAddress(address: BuyerAddress, orderId: string): EparagonyEntit
  * a legally-issued document that OpenLinker then loses.
  */
 function readSellerEntityAddress(
-  address: EparagonySellerAddress | undefined,
+  address: EparagonySellerAddress | undefined
 ): EparagonyEntityAddress | null {
   if (address === undefined || address === null || typeof address !== 'object') {
     return null;

@@ -1,4 +1,4 @@
-import { toMinorUnits, toQuantityString } from '../money.policy';
+import { toCorrectedQuantityString, toMinorUnits, toQuantityString } from '../money.policy';
 
 describe('money.policy', () => {
   describe('toMinorUnits', () => {
@@ -42,5 +42,21 @@ describe('money.policy', () => {
       expect(toQuantityString(-1)).toBeNull();
       expect(toQuantityString(Number.NaN)).toBeNull();
     });
+  });
+});
+
+describe('toCorrectedQuantityString (#3838)', () => {
+  it('should accept zero, the value of a fully credited line', () => {
+    expect(toCorrectedQuantityString(0)).toBe('0');
+  });
+
+  it('should format positive quantities like toQuantityString', () => {
+    expect(toCorrectedQuantityString(1.234)).toBe('1.234');
+  });
+
+  it('should refuse negative and non-finite quantities', () => {
+    expect(toCorrectedQuantityString(-1)).toBeNull();
+    expect(toCorrectedQuantityString(Number.NaN)).toBeNull();
+    expect(toCorrectedQuantityString(Number.POSITIVE_INFINITY)).toBeNull();
   });
 });

@@ -56,3 +56,17 @@ export function toQuantityString(quantity: number): string | null {
   const trimmed = fixed.replace(/0+$/, '').replace(/\.$/, '');
   return trimmed.length === 0 ? null : trimmed;
 }
+
+/**
+ * Format a quantity for the "after" side of a correction, where `0` is the
+ * normal value of a fully credited line. The vendor's pattern
+ * (`^([0-9]{1,22}[.]?[0-9]{1,8})$`) accepts `0`; negative and non-finite
+ * quantities stay refused. Kept apart from {@link toQuantityString} so an
+ * original invoice line can never be registered at quantity 0.
+ */
+export function toCorrectedQuantityString(quantity: number): string | null {
+  if (quantity === 0) {
+    return '0';
+  }
+  return toQuantityString(quantity);
+}
