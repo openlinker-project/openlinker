@@ -14,6 +14,7 @@ import {
   isRegulatoryRecordLocator,
   isRegulatoryTransmitter,
   supportsRegulatoryDocumentKind,
+  RegulatoryDocumentNotReadyError,
   UnsupportedRegulatoryDocumentKindError,
 } from '@openlinker/core/invoicing';
 import type {
@@ -1049,10 +1050,13 @@ describe('KsefInvoicingAdapter', () => {
       expect(http.calls.map((c) => `${c.method} ${c.path}`)).toContain(`GET ${UPO_PATH}`);
     });
 
-    it('should reject a rendered-kind request with UnsupportedRegulatoryDocumentKindError', async () => {
+    it('should report a rendered-kind request on an uncleared record as not ready, never as unsupported', async () => {
       await expect(
-        adapter(new FakeKsefHttpClient()).getRegulatoryDocument(record(), 'rendered'),
-      ).rejects.toBeInstanceOf(UnsupportedRegulatoryDocumentKindError);
+        adapter(new FakeKsefHttpClient()).getRegulatoryDocument(
+          Object.assign(record(), { regulatoryStatus: 'submitted' as const }),
+          'rendered',
+        ),
+      ).rejects.toBeInstanceOf(RegulatoryDocumentNotReadyError);
     });
 
     it('should reject a source-kind request via the adapter (core serves it from the snapshot)', async () => {
@@ -1061,11 +1065,62 @@ describe('KsefInvoicingAdapter', () => {
       ).rejects.toBeInstanceOf(UnsupportedRegulatoryDocumentKindError);
     });
 
-    it('should declare confirmation as its only document kind so a surface never offers rendered (#3648)', () => {
+    it('should declare confirmation and rendered, and not source (#3648, #3620)', () => {
       const a = adapter(new FakeKsefHttpClient());
-      expect(a.supportedRegulatoryDocumentKinds()).toEqual(['confirmation']);
-      expect(supportsRegulatoryDocumentKind(a, 'rendered')).toBe(false);
+      expect(a.supportedRegulatoryDocumentKinds()).toEqual(['confirmation', 'rendered']);
+      expect(supportsRegulatoryDocumentKind(a, 'rendered')).toBe(true);
       expect(supportsRegulatoryDocumentKind(a, 'confirmation')).toBe(true);
+      expect(supportsRegulatoryDocumentKind(a, 'source')).toBe(false);
+    });
+  });
+
+  describe('rendered invoice PDF (#3620)', () => {
+    const XML =
+      '<Faktura><Podmiot1><DaneIdentyfikacyjne><NIP>1234567890</NIP><Nazwa>S</Nazwa></DaneIdentyfikacyjne></Podmiot1>' +
+      '<Fa><KodWaluty>PLN</KodWaluty><P_1>2026-02-01</P_1><P_2>FV/1</P_2><P_15>1.00</P_15></Fa></Faktura>';
+    const KSEF_NUMBER = '1234567890-20260201-0100001AF629-AF';
+
+    function pdfAdapter(): KsefInvoicingAdapter {
+      return new KsefInvoicingAdapter('conn-1', new FakeKsefHttpClient(), fakeCrypto(), fakeBuilder, SELLER, {
+        environment: 'prod',
+      });
+    }
+
+    function cleared(overrides: Partial<InvoiceRecord> = {}): InvoiceRecord {
+      return Object.assign(
+        new InvoiceRecord(
+          'rec-1', 'conn-1', 'ol_order_123', 'ksef', 'invoice', 'issued', 'sess|inv', null,
+          'accepted', KSEF_NUMBER, null, null, new Date(), null, new Date(), new Date(),
+        ),
+        { sourceDocument: { contentType: 'application/xml', contentBase64: Buffer.from(XML).toString('base64') } },
+        overrides,
+      );
+    }
+
+    it('should return PDF bytes for a cleared invoice', async () => {
+      const document = await pdfAdapter().getRegulatoryDocument(cleared(), 'rendered');
+
+      expect(document.contentType).toBe('application/pdf');
+      expect(Buffer.from(document.content.subarray(0, 5)).toString('latin1')).toBe('%PDF-');
+    });
+
+    it('should be byte-stable for the same invoice', async () => {
+      const first = await pdfAdapter().getRegulatoryDocument(cleared(), 'rendered');
+      const second = await pdfAdapter().getRegulatoryDocument(cleared(), 'rendered');
+
+      expect(Buffer.from(first.content).equals(Buffer.from(second.content))).toBe(true);
+    });
+
+    it.each([
+      ['not yet accepted', { regulatoryStatus: 'submitted' as const }],
+      ['pending submission (offline)', { regulatoryStatus: 'pending-submission' as const }],
+      ['no KSeF number yet', { clearanceReference: null }],
+      ['a malformed KSeF number', { clearanceReference: 'nope' }],
+      ['no stored source document', { sourceDocument: null }],
+    ])('should report the document as not ready when the invoice is %s', async (_label, overrides) => {
+      await expect(
+        pdfAdapter().getRegulatoryDocument(cleared(overrides), 'rendered'),
+      ).rejects.toBeInstanceOf(RegulatoryDocumentNotReadyError);
     });
   });
 
@@ -1105,6 +1160,22 @@ describe('KsefInvoicingAdapter', () => {
       const link = await linkAdapter(env).getVerificationLink(record());
 
       expect(link).toEqual({ url: `${host}/invoice/1234567890/01-02-2026/${FA3_HASH}` });
+    });
+
+    it('should build the link from the persisted hash, not by re-hashing the stored bytes (#3620)', async () => {
+      const link = await linkAdapter('prod').getVerificationLink(
+        Object.assign(record(), { sourceDocumentHash: 'persistedHash' }),
+      );
+
+      expect(link).toEqual({ url: 'https://qr.ksef.mf.gov.pl/invoice/1234567890/01-02-2026/persistedHash' });
+    });
+
+    it('should fall back to hashing the stored bytes for a row issued before the column existed (#3620)', async () => {
+      const link = await linkAdapter('prod').getVerificationLink(
+        Object.assign(record(), { sourceDocumentHash: null }),
+      );
+
+      expect(link?.url.endsWith(`/${FA3_HASH}`)).toBe(true);
     });
 
     it('should yield no link when the invoice is not accepted', async () => {

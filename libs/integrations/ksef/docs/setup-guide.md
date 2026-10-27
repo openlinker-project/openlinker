@@ -453,17 +453,33 @@ https://{host}/invoice/{sellerNIP}/{DD-MM-RRRR}/{Base64URL(SHA256(rawInvoiceXml)
   `qr-demo.ksef.mf.gov.pl` for `demo` (taken from the connection's environment).
 - `DD-MM-RRRR` - the invoice issue date.
 - the hash - SHA-256 of the **exact submitted FA(3) XML bytes** (the persisted
-  source document), Base64URL-encoded.
+  source document), Base64URL-encoded. It is taken **once, when the invoice is
+  issued**, and stored with the document (`invoice_records.sourceDocumentHash`),
+  so the link can only ever describe what was sent. A row issued before that
+  column existed has none; for those the hash is taken from the stored bytes,
+  which gives the same value.
 
 The link is built on the server and shown as a QR on the invoice; the KSeF
 number is its caption, and appears only once KSeF assigned one. No extra
 configuration is needed.
 
+**OpenLinker also renders its own PDF of the invoice (#3620).** KSeF returns XML
+only, but a marketplace order, an email and the pack bench need a document a
+person can open. `GET /invoices/:id/document?kind=rendered` returns a PDF built
+from the submitted FA(3) XML: seller, buyer, lines, the gross total, KOD I and
+the KSeF number as its caption. The same invoice always renders to the same
+bytes. It exists only for a **cleared** invoice - before KSeF assigns the number
+the read answers 409 ("not available until the invoice is cleared") rather than
+produce a document with an empty place where the legal element belongs.
+
 > **KOD II (the offline, certificate-signed verification code) is not implemented.**
-> KOD II is required for invoices issued in KSeF *offline* mode. OpenLinker does
-> issue offline during a KSeF outage (see *Session-lifecycle resilience* above), so
-> an invoice still `KSeF: awaiting submission` should not be handed to a buyer as
-> a PDF until it clears. Tracked in #3620.
+> KOD II is required for invoices issued in KSeF *offline* mode and is a URL signed
+> with the seller's **offline certificate**, which OpenLinker neither requests nor
+> stores. OpenLinker does issue offline during a KSeF outage (see
+> *Session-lifecycle resilience* above), so an invoice still
+> `KSeF: awaiting submission` has no PDF and no QR until it clears, and should not
+> be handed to a buyer before then. Obtaining and storing the offline certificate
+> is a separate piece of work, not part of the PDF.
 
 ---
 

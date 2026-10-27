@@ -174,6 +174,15 @@ export class InvoiceRecord {
      * read surfaces one (typically only on `rejected`).
      */
     public readonly clearanceDetail: string | null = null,
+    /**
+     * Base64URL SHA-256 of the exact {@link sourceDocument} bytes stored at issue
+     * time (#3620). Computed once, from the same buffer that was persisted, and
+     * written together with `sourceDocument` (write-once), so a verification link
+     * built from it can only describe the document that was sent - never a
+     * re-serialisation of it. `null` on rows issued before this column existed;
+     * a reader falls back to hashing `sourceDocument` for those.
+     */
+    public readonly sourceDocumentHash: string | null = null,
   ) {}
 
   /**

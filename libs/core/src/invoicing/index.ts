@@ -9,6 +9,7 @@
  * @module libs/core/src/invoicing
  */
 export * from './domain/types/invoicing.types';
+export * from './domain/types/stored-document-hash.types';
 export * from './domain/domain-services/invoice-failure-classification.domain-service';
 export * from './domain/types/invoice-numbering.types';
 export * from './domain/types/numbering-audit.types';
@@ -90,6 +91,7 @@ export { InvalidBuyerProfileError } from './application/mappers/errors/invalid-b
 export { InvalidInvoiceLineError } from './application/mappers/errors/invalid-invoice-line.error';
 export { UnsupportedPriceTreatmentError } from './application/mappers/errors/unsupported-price-treatment.error';
 export * from './domain/exceptions/unsupported-regulatory-document-kind.error';
+export * from './domain/exceptions/regulatory-document-not-ready.error';
 export {
   toIssueInvoiceCommand,
   OrderToIssueInvoiceCommandInput,

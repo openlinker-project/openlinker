@@ -91,6 +91,7 @@ import {
   MissingNumberingSeriesException,
   RegulatoryDocumentKindValues,
   UnsupportedRegulatoryDocumentKindError,
+  RegulatoryDocumentNotReadyError,
   isRegulatoryDocumentReader,
   isRegulatoryVerificationLinkReader,
   isRegulatoryResubmitter,
@@ -1929,6 +1930,11 @@ export class InvoicingController {
       if (error instanceof UnsupportedRegulatoryDocumentKindError) {
         throw new ConflictException(
           `Invoice ${invoiceId} provider cannot produce a '${kind}' document`,
+        );
+      }
+      if (error instanceof RegulatoryDocumentNotReadyError) {
+        throw new ConflictException(
+          `Invoice ${invoiceId} '${kind}' document is not available until the invoice is cleared`,
         );
       }
       throw error;
