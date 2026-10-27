@@ -648,7 +648,7 @@ export interface OrderRecord {
    * true). Read it through `readBuyerNote`, never with a bare truthiness test.
    */
   buyerNote?: string | null;
-  /** When an operator first marked the note read (#3538). `null` = unread. Detail only. */
+  /** When an operator first marked the note read (#3538). `null` = unread. On list and detail rows. */
   buyerNoteReadAt?: string | null;
   /** OL user id of whoever first marked it read. Moves with `buyerNoteReadAt`. */
   buyerNoteReadByUserId?: string | null;
