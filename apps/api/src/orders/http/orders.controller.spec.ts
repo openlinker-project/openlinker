@@ -1848,6 +1848,17 @@ describe('OrdersController', () => {
       ]);
     });
 
+    it('should carry the read marker on list rows when listing orders (B-3)', async () => {
+      repository.findMany.mockResolvedValue({
+        items: [orderRecordWith({ hasBuyerNote: true, buyerNoteReadAt: new Date('2026-10-01T08:00:00Z') })],
+        total: 1,
+      });
+
+      const result = await controller.listOrders({ limit: 20, offset: 0 });
+
+      expect(result.items[0].buyerNoteReadAt).toBe('2026-10-01T08:00:00.000Z');
+    });
+
     it('marks the note read as the acting user and projects the marker', async () => {
       orderRecordService.markBuyerNoteRead.mockResolvedValue(
         orderRecordWith({
