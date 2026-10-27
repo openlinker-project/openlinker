@@ -23,6 +23,29 @@ When a lesson hardens into a rule, **graduate it** to the canonical doc and leav
 
 ---
 
+## A request idempotency key the vendor remembers must not be the sale's document key
+
+**Context**: the eparagony adapters sent the sale's deterministic `documentToken` as the vendor
+`Idempotency-Key` header, and core keeps one idempotency key per order across retries.
+
+**Problem**: the vendor remembers a key even for a request it REFUSED. A refusal caused by data
+or config (live: a wrong seller tax number, `400` code 41) burned the key, so the corrected retry
+under the same key was answered `422` "key used with different data", stored in doubt, and the
+sale was stuck with Retry locked - fixing the cause could never succeed on that record.
+
+**Rule**: keep the per-sale exactly-once key (the document token the vendor refuses to hold
+twice) separate from the per-REQUEST replay key (header derived from that token plus the exact
+body). A `422` replay refusal proves an earlier request, not an earlier document: settle it by
+reading the token's status, and report `rejected` only on the vendor's positive "no such
+document" answer.
+
+**Applies to**: `libs/integrations/eparagony/src/infrastructure/http/eparagony-document-create.ts`,
+`document-token.policy.ts`, any adapter that sends a provider idempotency header.
+
+**Source**: live sandbox run on ol-demo-fresh, 2026-10-26.
+
+---
+
 ## A wait that sits in front of a request must honour that request's own cancellation
 
 **Context**: `HttpTransportFactory` waits for a rate-limit slot before calling `fetch`.
