@@ -36,6 +36,28 @@ describe('ShoperConnectionConfigShapeValidatorAdapter', () => {
     ]);
   });
 
+  it('should validate the writeback ids (parcel shipping, cancelled and in-progress status) like the other defaults', async () => {
+    await expect(
+      validator.validate({
+        baseUrl: 'xxxxx.shoparena.pl',
+        defaults: { parcelShippingId: 8, cancelledStatusId: '6', inProgressStatusId: null },
+      }),
+    ).resolves.toBeUndefined();
+
+    const error = await validator
+      .validate({
+        baseUrl: 'xxxxx.shoparena.pl',
+        defaults: { parcelShippingId: 'personal', cancelledStatusId: -1, inProgressStatusId: 1.5 },
+      })
+      .catch((e: unknown) => e);
+
+    expect((error as InvalidConnectionConfigException).errors.map((e) => e.path)).toEqual([
+      'defaults.parcelShippingId',
+      'defaults.cancelledStatusId',
+      'defaults.inProgressStatusId',
+    ]);
+  });
+
   it('should reject defaults that is not an object', async () => {
     const error = await validator
       .validate({ baseUrl: 'xxxxx.shoparena.pl', defaults: 5 })

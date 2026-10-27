@@ -18,7 +18,10 @@
  *   6. On first publish, persist the variant IdentifierMapping (idempotent on
  *      retry); for a grouped command, also persist the parent's mapping the
  *      first time it resolves.
- *   7. Update the record with externalProductId + final status.
+ *   7. When the shop reports a separate variant-grain id, make sure a
+ *      `ShopProductVariant` mapping holds it (on every publish, so products
+ *      published before the id was reported are back-filled).
+ *   8. Update the record with externalProductId + final status.
  *
  * Terminal domain failures (builder validation, master-catalog misconfig, shop
  * reject) are caught and recorded as `status='failed'`; the method resolves
@@ -298,6 +301,10 @@ export class ProductPublishExecutionService implements IProductPublishExecutionS
       }
     }
 
+    if (result.externalVariantId) {
+      await this.ensureVariantGrainMapping(input, result.externalVariantId);
+    }
+
     if (result.warnings?.length) {
       this.logger.warn(
         `Shop publish completed with non-fatal adapter warnings. connectionId=${input.connectionId} internalVariantId=${input.internalVariantId} externalProductId=${result.externalProductId} warnings=${JSON.stringify(result.warnings)}`,
@@ -446,10 +453,11 @@ export class ProductPublishExecutionService implements IProductPublishExecutionS
   private async assertMappingClaimsSameInternalId(
     externalId: string,
     connectionId: string,
-    expectedInternalId: string
+    expectedInternalId: string,
+    entityType: string = CORE_ENTITY_TYPE.ShopProduct
   ): Promise<void> {
     const mappedInternalId = await this.identifierMapping.getInternalId(
-      CORE_ENTITY_TYPE.ShopProduct,
+      entityType,
       externalId,
       connectionId
     );
@@ -459,6 +467,60 @@ export class ProductPublishExecutionService implements IProductPublishExecutionS
         connectionId,
         expectedInternalId,
         mappedInternalId
+      );
+    }
+  }
+
+  /**
+   * Persist the shop's variant-grain id (`PublishProductResult.externalVariantId`)
+   * as a `ShopProductVariant` mapping, so an order line carrying that id resolves
+   * back to the variant OpenLinker published.
+   *
+   * Runs on every publish that reports the id, not only on the first one: a
+   * product published before the adapter reported it has a `ShopProduct`
+   * mapping and no variant one, and its next re-publish is the only moment the
+   * gap can close. The read first keeps a routine re-publish from attempting an
+   * insert that is bound to collide. A mapping claiming a DIFFERENT variant is
+   * the same identity conflict the product mapping refuses, and is refused the
+   * same way rather than leaving orders to resolve to the wrong variant.
+   */
+  private async ensureVariantGrainMapping(
+    input: ExecutePublishProductInput,
+    externalVariantId: string
+  ): Promise<void> {
+    const entityType = CORE_ENTITY_TYPE.ShopProductVariant;
+    const mapped = await this.identifierMapping.getInternalId(
+      entityType,
+      externalVariantId,
+      input.connectionId
+    );
+    if (mapped === input.internalVariantId) {
+      return;
+    }
+    if (mapped !== null) {
+      throw new ShopProductMappingConflictException(
+        externalVariantId,
+        input.connectionId,
+        input.internalVariantId,
+        mapped
+      );
+    }
+    try {
+      await this.identifierMapping.createMapping(
+        entityType,
+        externalVariantId,
+        input.connectionId,
+        input.internalVariantId
+      );
+    } catch (error) {
+      if (!(error instanceof DuplicateIdentifierMappingError)) {
+        throw error;
+      }
+      await this.assertMappingClaimsSameInternalId(
+        externalVariantId,
+        input.connectionId,
+        input.internalVariantId,
+        entityType
       );
     }
   }

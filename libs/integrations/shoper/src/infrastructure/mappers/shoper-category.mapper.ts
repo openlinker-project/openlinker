@@ -19,12 +19,14 @@
  *
  * @module libs/integrations/shoper/src/infrastructure/mappers
  */
+import type { ShopCategory } from '@openlinker/core/listings';
 import type { Category } from '@openlinker/core/products';
 
 import type {
   ShoperCategory,
   ShoperCategoryTranslation,
   ShoperCategoryTreeNode,
+  ShoperProduct,
 } from '../../domain/types/shoper-api.types';
 
 export interface ShoperTreePosition {
@@ -155,48 +157,49 @@ export function findShoperCategoryChild(
 }
 
 /**
- * The ids from the root down to `leafId`, read off the tree, or `null` when the
- * tree does not place the leaf (its path is unknown, so none is reported).
- * `flattenShoperCategoryTree` keeps the first position of a node seen twice, so
- * the walk up cannot loop; the visited set guards a malformed parent chain too.
+ * The category a product's placement path is anchored on: its primary
+ * `category_id`, or - only when Shoper names none - the sole entry of
+ * `categories`. Several assigned categories with no primary is ambiguous, so
+ * `null` rather than a pick; `0` is Shoper's "none", never a category.
  */
-export function shoperCategoryPathIds(
-  tree: readonly ShoperCategoryTreeNode[],
-  leafId: string,
-): string[] | null {
-  const positions = flattenShoperCategoryTree(tree);
-  if (!positions.has(leafId)) {
-    return null;
+export function primaryShoperCategoryId(
+  product: Pick<ShoperProduct, 'category_id' | 'categories'>,
+): string | null {
+  const isId = (value: string): boolean => /^\d+$/.test(value) && value !== '0';
+  const primary = product.category_id == null ? '' : String(product.category_id);
+  if (isId(primary)) {
+    return primary;
   }
-  const path: string[] = [];
-  const visited = new Set<string>();
-  let current: string | undefined = leafId;
-  while (current !== undefined && !visited.has(current)) {
-    visited.add(current);
-    path.unshift(current);
-    current = positions.get(current)?.parentId;
-  }
-  return path;
+  const assigned = Array.isArray(product.categories) ? product.categories.map(String).filter(isId) : [];
+  return assigned.length === 1 ? assigned[0] : null;
 }
 
 /**
- * The named path for `pathIds`, or `null` when any node on it has no name in
- * any language. All or nothing: a breadcrumb with a missing middle would show
- * an operator a path the shop does not have.
+ * The direct children of `parentId` (`undefined` = the root level), as the
+ * neutral `ShopCategory` the publish category picker browses, sorted by name so
+ * the picker is stable across reads.
+ *
+ * A category the tree does not place is left out for the same reason
+ * `findShoperCategoryChild` skips it: its parent is unknown, so listing it at
+ * the root would state a place the shop never reported. Any `parentId` other
+ * than `undefined` is matched exactly, and an unknown one lists nothing rather
+ * than falling back to the root: repeating the root under a node would read as
+ * a cycle to the taxonomy walk.
  */
-export function buildShoperCategoryBreadcrumb(
-  pathIds: readonly string[],
-  list: readonly ShoperCategory[],
-  language: string,
-): { id: string; name: string }[] | null {
-  const byId = new Map(list.map((raw) => [String(raw.category_id), raw]));
-  const breadcrumb: { id: string; name: string }[] = [];
-  for (const id of pathIds) {
-    const name = pickTranslation(byId.get(id)?.translations, language)?.name?.trim();
-    if (name === undefined || name.length === 0) {
-      return null;
-    }
-    breadcrumb.push({ id, name });
-  }
-  return breadcrumb;
+export function selectShoperCategoryChildren(
+  categories: readonly Category[],
+  parentId: string | undefined,
+): ShopCategory[] {
+  return categories
+    .filter(
+      (category) =>
+        category.depth !== undefined &&
+        (parentId === undefined ? category.parentId === undefined : category.parentId === parentId),
+    )
+    .map((category) => ({
+      id: category.id,
+      name: category.name,
+      parentId: category.parentId ?? null,
+    }))
+    .sort((a, b) => a.name.localeCompare(b.name) || Number(a.id) - Number(b.id));
 }

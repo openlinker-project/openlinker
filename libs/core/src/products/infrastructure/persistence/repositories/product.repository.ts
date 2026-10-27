@@ -30,6 +30,7 @@ import type {
 import { LOW_STOCK_THRESHOLD } from '../../../domain/types/product.types';
 import type { StoredTaxRate } from '../../../domain/types/tax-rate.types';
 import { readTaxRateUnknownReason } from '../../../domain/types/tax-rate.types';
+import { readProductGpsr } from '../../../domain/types/product-gpsr.types';
 import type {
   ConnectionTaxRateCoverage,
   TaxRateCoverage,
@@ -329,6 +330,10 @@ export class ProductRepository implements ProductRepositoryPort {
       taxRateCountry: entity.taxRateCountry,
       taxRateReadAt: entity.taxRateReadAt,
       taxRateUnknownReason: readTaxRateUnknownReason(entity.taxRateUnknownReason),
+      // An entity echoed back by `save` carries `gpsr` only if this write set
+      // it, so `undefined` must stay `undefined` ("not known here") rather than
+      // be coerced into a null that would claim the product has none.
+      gpsr: entity.gpsr === undefined ? undefined : readProductGpsr(entity.gpsr),
       createdAt: entity.createdAt,
       updatedAt: entity.updatedAt,
     };
@@ -351,6 +356,13 @@ export class ProductRepository implements ProductRepositoryPort {
     entity.images = product.images;
     entity.categories = product.categories ?? null;
     entity.features = product.features ?? null;
+    // Unlike `features`, an undefined `gpsr` is left OFF the entity so TypeORM
+    // does not write the column at all. GPSR reaches a master through separate
+    // reference reads that can fail on their own; reading that failure as
+    // "the product has no producer" would erase a correct declaration on one
+    // transient error, and every later offer would publish without it. `null`
+    // (the master positively reported none) is written.
+    if (product.gpsr !== undefined) entity.gpsr = product.gpsr;
     entity.categoryBreadcrumb = product.categoryBreadcrumb ?? null;
     if (product.createdAt) entity.createdAt = product.createdAt;
     if (product.updatedAt) entity.updatedAt = product.updatedAt;

@@ -329,6 +329,12 @@ export interface RateLimitStatus {
   lastAcquiredAt?: string | null;
   /** Absent when no adapter reported one — never render a fabricated value. */
   resolveConcurrency?: ResolveConcurrencyCeiling;
+  /**
+   * The server's answer to "is this limit shared with other connections to
+   * the same remote?" (ADR-038 § Amendment). Read, never inferred from
+   * `platformType`; absent reads as not shared.
+   */
+  sharedBucket?: boolean;
 }
 
 /**

@@ -35,6 +35,9 @@ describe('shoperPlugin', () => {
   it('contributes the order defaults section together with its config contribution', () => {
     expect(shoperPlugin.platform?.StructuredConfigSection).toBeDefined();
     expect(Object.keys(shoperPlugin.platform?.connectionConfig?.schemaShape ?? {}).sort()).toEqual([
+      'shoperCancelledStatusId',
+      'shoperInProgressStatusId',
+      'shoperParcelShippingId',
       'shoperPaymentId',
       'shoperShippingId',
       'shoperStatusId',

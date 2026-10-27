@@ -7,6 +7,9 @@
  * @module apps/worker/src/sync
  */
 import { Module } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import type { RedisClientType } from 'redis';
+import { createClient } from 'redis';
 import { SyncModule } from '@openlinker/core/sync';
 import { EventsModule } from '@openlinker/core/events';
 import { IntegrationsModule } from '@openlinker/core/integrations';
@@ -28,6 +31,7 @@ import { FiscalizationModule } from '@openlinker/core/fiscalization';
 import { WorkerContentModule } from '../content/worker-content.module';
 import { PriceChangeObserverBindingModule } from './price-change-observer-binding.module';
 import { JobIntakeConsumer } from './job-intake.consumer';
+import { JOB_INTAKE_REDIS_CLIENT_BLOCKING_TOKEN } from './sync-worker.tokens';
 import { SyncJobRunner } from './sync-job.runner';
 import { SyncJobHandlerRegistry } from './handlers/sync-job-handler.registry';
 import { InventoryPropagateToMarketplacesHandler } from './handlers/inventory-propagate-to-marketplaces.handler';
@@ -90,6 +94,7 @@ import { FulfillmentWorkRelaySweepHandler } from './handlers/fulfillment-work-re
 import { InventorySaleDecrementHandler } from './handlers/inventory-sale-decrement.handler';
 import { FulfillmentWorkRerouteSweepHandler } from './handlers/fulfillment-work-reroute-sweep.handler';
 import { InventorySaleDecrementReconcileSweepHandler } from './handlers/inventory-sale-decrement-reconcile-sweep.handler';
+import { MarketplaceSourceFulfillmentStatusSyncHandler } from './handlers/marketplace-source-fulfillment-status-sync.handler';
 import { FulfillmentWorkTimeoutSweepHandler } from './handlers/fulfillment-work-timeout-sweep.handler';
 import { PaymentStatusRefreshHandler } from './handlers/payment-status-refresh.handler';
 import { AnalyticsCurrencyRecalculateHandler } from './handlers/analytics-currency-recalculate.handler';
@@ -163,6 +168,7 @@ import { HandlerRegistrationService } from './handlers/handler-registration.serv
     MarketplaceShipmentSyncByExternalIdHandler,
     ShippingShipmentNotifyDispatchedHandler,
     MarketplaceFulfillmentStatusSyncHandler,
+    MarketplaceSourceFulfillmentStatusSyncHandler,
     FulfillmentWorkStatusSyncHandler,
     MasterProductSyncHandler,
     MasterProductSyncBatchHandler,
@@ -198,6 +204,33 @@ import { HandlerRegistrationService } from './handlers/handler-registration.serv
     FulfillmentWorkRerouteSweepHandler,
     InventorySaleDecrementReconcileSweepHandler,
     HandlerRegistrationService,
+    {
+      // Dedicated client for JobIntakeConsumer's blocking XREADGROUP loop. On
+      // the shared 'REDIS_CLIENT' the read held the connection for up to 5 s at
+      // a time, so the cross-process rate limiter (and every lock and cache
+      // call) queued behind it, timed out after 1 s and degraded to
+      // per-process limiting. Closed by the consumer's onModuleDestroy.
+      provide: JOB_INTAKE_REDIS_CLIENT_BLOCKING_TOKEN,
+      useFactory: async (configService: ConfigService): Promise<RedisClientType> => {
+        const client = createClient({
+          socket: {
+            host: configService.get<string>('REDIS_HOST', 'localhost'),
+            port: configService.get<number>('REDIS_PORT', 6379),
+          },
+          password: configService.get<string>('REDIS_PASSWORD'),
+          database: configService.get<number>('REDIS_DB', 0),
+        });
+        try {
+          await client.connect();
+        } catch (error) {
+          throw new Error(
+            `SyncWorkerModule: Failed to connect JOB_INTAKE_REDIS_CLIENT_BLOCKING: ${error instanceof Error ? error.message : String(error)}`
+          );
+        }
+        return client as RedisClientType;
+      },
+      inject: [ConfigService],
+    },
   ],
 })
 export class SyncWorkerModule {}

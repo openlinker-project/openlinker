@@ -19,6 +19,7 @@ export { RateLimitPriorityValues } from './rate-limiter.types';
 export { RateLimitTimeoutError, RateLimitAbortedError } from './rate-limiter.errors';
 export type { RateLimiterPort } from './rate-limiter.port';
 export { RateLimiter, MAX_TOTAL_WAIT_MS } from './rate-limiter';
+export { tightenRateLimit } from './rate-limit-policy';
 export type { RateLimiterDeps } from './rate-limiter';
 export {
   createRateLimiterRegistry,

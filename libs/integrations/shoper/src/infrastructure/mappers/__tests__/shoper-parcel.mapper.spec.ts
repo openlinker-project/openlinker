@@ -1,8 +1,11 @@
-import type { ShoperParcel } from '../../../domain/types/shoper-api.types';
+import type { ShoperParcel, ShoperShippingRow } from '../../../domain/types/shoper-api.types';
 import {
+  acceptsShoperManualParcel,
   buildShoperParcelCreateRequest,
   normalizeTrackingNumber,
   planShoperParcelWrite,
+  readShoperDispatched,
+  selectShoperParcelFallbackShipping,
 } from '../shoper-parcel.mapper';
 
 function parcel(id: string, code: string | null): ShoperParcel {
@@ -47,6 +50,15 @@ describe('shoper-parcel.mapper', () => {
       expect(planShoperParcelWrite([parcel('5', '')], 'T2')).toEqual({
         kind: 'attach-tracking',
         parcelId: '5',
+        alreadySent: false,
+      });
+    });
+
+    it('should mark the attach as going to an already-sent parcel when Shoper reports it sent', () => {
+      expect(planShoperParcelWrite([{ ...parcel('5', ''), sent: '1' }], 'T2')).toEqual({
+        kind: 'attach-tracking',
+        parcelId: '5',
+        alreadySent: true,
       });
     });
 
@@ -64,6 +76,104 @@ describe('shoper-parcel.mapper', () => {
       expect(normalizeTrackingNumber(' T1 ')).toBe('T1');
       expect(normalizeTrackingNumber('   ')).toBeUndefined();
       expect(normalizeTrackingNumber(undefined)).toBeUndefined();
+    });
+  });
+
+  describe('acceptsShoperManualParcel', () => {
+    it('should accept only the plain personal engine, whatever its case', () => {
+      expect(acceptsShoperManualParcel({ shipping_id: '8', engine: 'personal' })).toBe(true);
+      expect(acceptsShoperManualParcel({ shipping_id: '8', engine: ' Personal ' })).toBe(true);
+      expect(acceptsShoperManualParcel({ shipping_id: '1', engine: 'inpost' })).toBe(false);
+      expect(acceptsShoperManualParcel({ shipping_id: '2', engine: null })).toBe(false);
+      expect(acceptsShoperManualParcel({ shipping_id: '3' })).toBe(false);
+    });
+  });
+
+  describe('selectShoperParcelFallbackShipping', () => {
+    const SHIPPINGS: ShoperShippingRow[] = [
+      { shipping_id: '1', engine: 'inpost', active: '1' },
+      { shipping_id: '7', engine: 'personal', active: '0' },
+      { shipping_id: '8', engine: 'personal', active: '1' },
+      { shipping_id: '9', engine: 'personal' },
+    ];
+
+    it("should take the operator's configured method first, whatever the shop lists", () => {
+      expect(selectShoperParcelFallbackShipping({ configuredShippingId: 4, shippings: SHIPPINGS })).toEqual({
+        shippingId: 4,
+        source: 'config',
+      });
+    });
+
+    it('should fall back to the first ACTIVE plain method when nothing is configured', () => {
+      expect(
+        selectShoperParcelFallbackShipping({ configuredShippingId: undefined, shippings: SHIPPINGS }),
+      ).toEqual({ shippingId: 8, source: 'fallback' });
+    });
+
+    it('should skip an excluded method, so a refused one is not tried twice', () => {
+      expect(
+        selectShoperParcelFallbackShipping({
+          configuredShippingId: undefined,
+          shippings: SHIPPINGS,
+          excluded: new Set([8]),
+        }),
+      ).toEqual({ shippingId: 9, source: 'fallback' });
+    });
+
+    it('should read a method with no active flag as active', () => {
+      expect(
+        selectShoperParcelFallbackShipping({
+          configuredShippingId: undefined,
+          shippings: [{ shipping_id: '9', engine: 'personal' }],
+        }),
+      ).toEqual({ shippingId: 9, source: 'fallback' });
+    });
+
+    it('should answer null when nothing qualifies', () => {
+      expect(
+        selectShoperParcelFallbackShipping({
+          configuredShippingId: undefined,
+          shippings: [{ shipping_id: '1', engine: 'inpost', active: '1' }],
+        }),
+      ).toBeNull();
+    });
+  });
+
+  describe('readShoperDispatched', () => {
+    const sent: ShoperParcel = { parcel_id: '1', order_id: '10', sent: '1' };
+    const unsent: ShoperParcel = { parcel_id: '1', order_id: '10', sent: '0' };
+
+    it('should read a sent parcel as dispatched when the status is cancelled', () => {
+      expect(readShoperDispatched({ type: 4, labels: ['anulowane'] }, [sent])).toBe(true);
+    });
+
+    it('should read a parcel with a send date as dispatched when it carries no sent flag', () => {
+      expect(readShoperDispatched(null, [{ parcel_id: '1', order_id: '10', send_date: '2026-10-01 10:00:00' }])).toBe(
+        true,
+      );
+    });
+
+    it('should read the sent status type as dispatched when no parcel was sent', () => {
+      expect(readShoperDispatched({ type: 3, labels: [] }, [unsent])).toBe(true);
+    });
+
+    it('should read new and in-progress status types as not dispatched when the parcels are unknown', () => {
+      expect(readShoperDispatched({ type: 1, labels: [] }, null)).toBe(false);
+      expect(readShoperDispatched({ type: 2, labels: [] }, null)).toBe(false);
+    });
+
+    it('should read a cancellation as not dispatched when the parcels are unknown', () => {
+      expect(readShoperDispatched({ type: 4, labels: ['anulowane'] }, null)).toBe(false);
+    });
+
+    it('should read a return as not dispatched only when its parcels were read and none was sent', () => {
+      expect(readShoperDispatched({ type: 4, labels: ['zwrot'] }, [unsent])).toBe(false);
+      expect(readShoperDispatched({ type: 4, labels: ['zwrot'] }, null)).toBeNull();
+    });
+
+    it('should read an unlisted status or an unknown type as unknown when no parcel was sent', () => {
+      expect(readShoperDispatched(null, [])).toBeNull();
+      expect(readShoperDispatched({ type: 9, labels: [] }, [])).toBeNull();
     });
   });
 });

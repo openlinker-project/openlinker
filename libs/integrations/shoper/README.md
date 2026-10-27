@@ -114,6 +114,14 @@ A passing test does **not** prove every area above was granted; each capability 
 - **Text** is read from `translations[<shop default language>]` (`application-config.default_language_name`);
   the translations' own `isdefault` flag reads `"0"` on every language and is not used.
 - **Images:** only the main image, `https://<host>/userdata/public/gfx/<unic_name>.<extension>`.
+- **GPSR** (EU 2023/988): the product's `safety_information` ids are resolved against the
+  `product-safety-producers` / `-responsibles` / `-importers` / `-certificates` registries into the neutral
+  `Product.gpsr` (producer, responsible person, importer, certificate names). A registry is read only when a
+  product references it, whole and at most once per adapter instance; a failed or dangling reference leaves
+  `gpsr` unknown (the stored value is kept) and logs a warning, never fails the product. Certificate
+  descriptions are not product safety text and are not mapped. Modelled from the published API schema, not
+  yet seen on a live payload - in particular whether the `/products` LIST embeds `safety_information` (a batch
+  prefetch reads it from there) is unverified.
 - Writes throw `ShoperNotSupportedException`.
 
 Paging (all observed on a live shop):
@@ -153,15 +161,31 @@ Paging (all observed on a live shop):
   that cycle. That is acceptable only because absence is never a deletion signal: `master.product.reconcile`
   enumerates OpenLinker's own mappings and re-reads each product, and deletion is concluded solely from
   Shoper's explicit 404. A skipped product is picked up by the next cycle; it is never staled for being missing.
+- **Batched catalogue reads (`BulkProductReader`).** The catalogue sweep's batch child warms a page of products
+  before its per-product loop: per 50 ids one `/products` read (`product_id in`) and one filtered
+  `/product-stocks` read, so `getProduct`, the tax-rate read and `getProductVariants` then cost nothing - about
+  2-3 requests per 50 products instead of two per product. An id the shop did not return is left unwarmed, so its
+  own read still reports a deletion; a failed or filter-ignoring prefetch falls back to per-product reads.
 - **The sweeps need no Shoper-specific scheduler code.** `master.product.syncAll`, `master.product.reconcile`
   (the deletion audit) and `master.product.syncDelta` are registered core-side by capability
   (`CORE_CAPABILITY_TASKS`, `capability: 'ProductMaster'`), so declaring `ProductMaster` is what enrols a
   connection. They walk the catalogue through `listExternalIds`, which pages in ascending `product_id` order.
-- **No modified-since rung.** Shoper has no bulk "changed since" query - only a per-object
-  `GET /object-mtime/<object>/<id>` (the plural form answers 500) - so `ModifiedProductLister` is not
-  implemented and the delta pass skips Shoper connections. The full pass is the only sweep, from day one.
-- Webhook-driven deletion detection (a `product.deleted` trigger) belongs to the webhook work (#3644); until
-  then the periodic `reconcile` audit is the deletion authority, as for any master without a delete hook.
+- **Modified-since rung (`ModifiedProductLister`).** `/products` accepts
+  `filters={"edit_date":{">=":"YYYY-MM-DD HH:MM:SS"}}` (live-verified), so the opt-in delta pass
+  (`OL_MASTER_PRODUCT_DELTA_SYNC_ENABLED`) can read only changed products. The bound is rendered in the shop's
+  own zone (`locale_timezone`) and only ever errs early: an unknown zone widens it by 14 h, a DST fall-back
+  moves it back an hour. Results are ordered by `product_id`, not `edit_date`, so a product edited mid-cycle
+  does not move and cannot shift another one out of the window. `edit_date` bumps on a name or category
+  edit, a variant stock/price write through the API, a variant add, a sale and an order line added; it does
+  **not** bump on a variant deleted through the API, an image added or removed, or stock returned (an order
+  line deleted, "return to stock"). Those reach OpenLinker only through the full pass, which therefore stays.
+- **Product webhooks are a trigger (#2647).** With `ProductMaster` enabled, "Configure webhooks" also
+  subscribes `product.create`, `product.edit` and `product.delete`; each routes to
+  `master.product.syncByExternalId`, which re-reads the product. Nothing in the delivery body is used, and a
+  delete is concluded only from the re-read's 404 envelope. A connection installed before this needs install
+  re-run to gain the product events. Shoper does not retry a failed delivery, so the periodic `reconcile` audit
+  stays the deletion backstop and the sweeps stay the change backstop. A panel stock edit also fires
+  `product.edit`; it re-syncs the product, while the stock itself still arrives through the inventory sweep.
 
 ## InventoryMaster (read)
 
@@ -177,6 +201,10 @@ at create and never retro-filled, so an existing connection must be edited.
   recognisably off): with the module active, `stock` is not known to be the whole pool, and a wrong level would
   be published to marketplaces. The error is terminal. It is raised per product, so on such a shop every product
   in an inventory sweep cycle ends as its own dead job - keep the connection to `ProductMaster` only.
+- **Batched stock reads (`BulkInventoryReader`).** The inventory sweep's batch child reads a page's stock rows in
+  one filtered `/product-stocks` read per 50 products (`product_id in`). A product with no rows in that answer is
+  probed exactly as on the per-product path, so deletion is still decided by the shop's own 404.
+  `adjustInventory` never uses the warm copy.
 - **An unreadable stock level is an error, never 0** - reading it as zero would zero a live offer. Retryable.
 - **Deletion** is reported only when Shoper itself says the product is gone (its own 404 envelope), as the
   neutral `MasterProductNotFoundError`. The product is only probed when its stock listing comes back empty (or
@@ -327,7 +355,17 @@ When OpenLinker ships an order it pushed into Shoper, the lifecycle relay (ADR-0
 `dispatched` event like any other order participant, and the adapter records it as a **Shoper parcel**:
 
 - `POST /parcels { order_id, shipping_id, shipping_code, sent: true }`. `shipping_code` is the tracking number;
-  `shipping_id` is read from the Shoper order itself (`GET /orders/:id`), so it matches the method the order uses.
+  `shipping_id` is first the Shoper order's own method (`GET /orders/:id`), so the parcel carries the carrier the
+  buyer chose.
+- **Fallback method.** Shoper's API refuses a parcel for some carrier-integrated methods (InPost, DPD, ... on the
+  trial shop) with a `400` whose description is "Nie znaleziono wartości". On exactly that answer - Shoper created
+  nothing - the parcel is written once more under `defaults.parcelShippingId` if set, else the shop's first active
+  plain (`personal`) method, else the dispatch is `rejected` naming that config key. Any other `400`, a `5xx` or a
+  timeout is reported as `rejected` without a fallback, so a request that may have landed is never repeated.
+- **A refused method is remembered** per connection for 24 hours through the host cache
+  (`shoper:parcel-shipping-refusal:<connection>:<host>:<shipping id>`), so each method costs at most one refused
+  `POST` a day rather than one per dispatch. Without a cache the memory lasts one adapter bag, which degrades to
+  "try the order's method, then fall back" on every dispatch.
 - **No `products[]`.** Shoper then ships exactly the quantity still unshipped on each line, which is the whole
   order the first time (#3638). Creating the parcel advances the order status per the shop's own
   `shopping_parcel_send_status_id`; no separate status call is made.
@@ -361,9 +399,10 @@ mapping is not persisted at `createOrder`, so a parcel always ships the remainde
 
 `ShoperOrderSourceAdapter` ingests orders placed in the shop (#3711). It is **opt-in**: `OrderSource` is in
 `supportedCapabilities` but not in `defaultEnabledCapabilities`, so a connection that exists only as a catalogue
-master never starts polling orders. **No scheduler task is registered** - a recurring poll is a separate decision,
-because the shop's request ceiling is unknown (SPIKE-3638 C5/C6, `x-shop-api-limit: 10`, unit unstated). Enabling
-`OrderSource` on a connection still opts it into the core tasks scoped to that capability (automation deadline sweep,
+master never starts polling orders. Once enabled, the `shoper-orders-poll` task backstops webhooks every 10 minutes
+(`OL_SHOPER_POLL_SCHEDULER_ENABLED`); the cadence is relaxed because webhooks carry the primary load and the shop's
+request budget (about 10 req/s per shop, shared by every integration on it - see *Known gaps*) is better spent on the
+work a delivery triggers. Enabling `OrderSource` on a connection still opts it into the core tasks scoped to that capability (automation deadline sweep,
 `returns.orphan.reconcile`, the order FX stamp sweep and the tax-rate backfill); none of them calls the shop's API.
 
 - **Feed (`listOrderFeed`)**: an `order_id` keyset - `order=order_id ASC` plus `filters[order_id][>]=<cursor>`
@@ -401,21 +440,46 @@ update channel; until it exists, a status change in the shop reaches OpenLinker 
 **Not mapped**: pickup point (locker) data, and the order's payment / delivery method ids beyond the delivery
 method label.
 
+## Webhooks
+
+"Configure webhooks" (`POST /connections/:id/webhooks/install`) registers ONE Shoper webhook carrying the order
+events (with `OrderSource`) and the product events (with `ProductMaster`). Each install rotates the connection's
+webhook secret. A delivery is accepted only when BOTH checks pass:
+
+- **Signature.** The secret is registered as the webhook's `secret`, and Shoper signs every delivery with it:
+  `x-webhook-sha1 = hex(sha1(x-webhook-id + ":" + secret + ":" + rawBody))`, over the raw body bytes.
+- **URL token.** The delivery URL is `.../webhooks/shoper/<connectionId>?token=<urlToken>`, where
+  `urlToken = hex(HMAC-SHA256(key = secret, message = "shoper-webhook-url-token:v1"))`. The secret itself is never
+  in the URL: the shop panel lists webhook URLs in plain text and proxies log them, and the token cannot be turned
+  back into the secret, so a leaked URL does not let anyone sign a delivery.
+
+A webhook installed before the URL token was derived still carries the raw secret as `?token=`. Its deliveries are
+still accepted (the signature still has to verify), but each one logs a warning: re-run "Configure webhooks" on the
+connection to rotate the secret, since the old URL has already shown it to anyone who could read it.
+
 ## Known gaps
 
-- **No rate limiting or retries yet.** The real request ceiling is unconfirmed (SPIKE-3638 C6); no
-  `defaultRateLimit` is declared. Set `config.rateLimit` on the connection if a shop needs a cap.
+- **Rate limit.** Shoper's limit is per SHOP and shared by every token and integration on it: a
+  sustained 10 req/s was answered in full, 15 req/s drew `429`s (an HTML page with no `Retry-After`),
+  and two tokens hammering one shop together got about 5 req/s each. OpenLinker therefore paces every
+  connection to one shop against ONE shared bucket, keyed by the normalised shop host
+  (`shoper:host:<host>`, ADR-038 § Amendment): a shop used as order source on one connection and as
+  publish destination on another shares a single budget. That budget is 300 req/min (5 req/s) with 4
+  in flight, half the shop's limit, leaving the rest to the merchant's panel and other integrations.
+  `config.rateLimit` on a connection can only make it stricter for that connection, never raise the
+  shop's budget. A `429` / `503` that reaches a job is deferred penalty-free (60 s / 300 s) instead of
+  spending a retry attempt. Still not covered: the merchant's OTHER integrations are invisible to
+  OpenLinker, so a busy ERP on the same shop can still push the shop over its limit.
 - **`adjustInventory` is a non-atomic read-modify-write** (Shoper has no conditional stock write and no
   idempotency key, so it reports `idempotency: 'unsupported'`): a change landing between the read and the PUT is
   overwritten, and a retry after a lost response applies the delta again. The remedy belongs at the call site: a
   short per-`(connection, stock)` `SyncLockPort` lock around the call, as #2617 does per offer.
-- The webhook signing algorithm (`x-webhook-sha1`) is unresolved; see #3644.
 - Product `createdAt` / `updatedAt` are not set: Shoper sends zone-less local timestamps and parsing them with
   the process time zone would stamp a wrong instant.
 - `getProduct` (what the sync reads) returns the whole gallery from `product-images`: one extra call per product,
   first 50 images, main image first, hidden images left out. If that read fails or is empty, the main image is kept.
   `getProducts` (the list read) still returns the main image only.
 - `getProduct` also reports `categoryBreadcrumb`, the path of the product's main category (`category_id`, else its
-  first category): `/categories-tree` plus one filtered `/categories` page for the path's names (JSON filter form,
-  like `/products`). A node with no name, a category the tree does not place, or a failed read gives no path, never
-  a partial one, and never fails the product read.
+  first category). It is walked over the same category directory `getProductCategories` reads (memoised per adapter,
+  and warmed by the bulk prefetch, so a batch page reads it once). A node with no name, a category the tree does
+  not place, or a failed read gives no path, never a partial one, and never fails the product read.

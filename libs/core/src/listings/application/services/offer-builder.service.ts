@@ -60,7 +60,7 @@ import {
   isTaxonomyBorrower,
 } from '@openlinker/core/listings';
 import type { TaxonomyOwner } from '@openlinker/core/listings';
-import type { ProductMasterPort, ProductVariant } from '@openlinker/core/products';
+import type { Product, ProductGpsr, ProductMasterPort, ProductVariant } from '@openlinker/core/products';
 import {
   IProductsService,
   PRODUCTS_SERVICE_TOKEN,
@@ -330,6 +330,15 @@ export class OfferBuilderService implements IOfferBuilderService {
       if (taxRate.countryIso2) command.taxRateCountry = taxRate.countryIso2;
     }
 
+    // GPSR travels by value so the destination can prefer a product-level
+    // declaration over its connection-level defaults. Set only when the master
+    // stated something: absent must reach the adapter as absent, so it keeps
+    // its own defaults rather than reading an empty object as "no producer".
+    const gpsr = await this.resolveProductGpsr(product, variant.productId);
+    if (gpsr) {
+      command.gpsr = gpsr;
+    }
+
     // #1065 — only set when populated, keeping the command shape tidy (mirrors
     // the `?? null` / cleanedOverrides posture above).
     if (variantGroup) {
@@ -341,6 +350,33 @@ export class OfferBuilderService implements IOfferBuilderService {
     );
 
     return command;
+  }
+
+  /**
+   * The product's GPSR declaration: the live master read first, because that
+   * is what every other field of the offer comes from; the stored catalogue
+   * projection only when the live read did not report GPSR at all (a master
+   * that does not model it, or whose GPSR reference read failed this time).
+   * The fallback is best-effort - an offer is still buildable from the
+   * destination's own defaults, so a failed read is logged, never raised.
+   */
+  private async resolveProductGpsr(
+    product: Product,
+    internalProductId: string
+  ): Promise<ProductGpsr | undefined> {
+    if (product.gpsr !== undefined) {
+      return product.gpsr ?? undefined;
+    }
+    try {
+      const stored = await this.productsService.getProduct(internalProductId);
+      return stored?.gpsr ?? undefined;
+    } catch (error) {
+      this.logger.warn(
+        `GPSR fallback read failed for product=${internalProductId}; the offer uses the ` +
+          `destination's own defaults: ${error instanceof Error ? error.message : String(error)}`
+      );
+      return undefined;
+    }
   }
 
   /**

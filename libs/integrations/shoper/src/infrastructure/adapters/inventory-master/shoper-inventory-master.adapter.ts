@@ -35,10 +35,18 @@
  *   - **An unreadable stock level is an error, never 0**: a master sync that
  *     read a missing value as zero would zero a live offer (the #1689 primitive).
  *
+ *
+ * Also implements the guard-only `BulkInventoryReader` rung (#2648 shape),
+ * never advertised in the manifest: `prefetchInventory` reads a batch's stock
+ * rows in a few filtered requests and `listInventory` serves them from memory.
+ * `adjustInventory` never reads the warm copy - a write must start from the
+ * shop's current level - and drops it for the product it wrote.
+ *
  * @module libs/integrations/shoper/src/infrastructure/adapters/inventory-master
  * @implements {InventoryMasterPort}
  */
 import type {
+  BulkInventoryReader,
   Inventory,
   InventoryAdjustment,
   InventoryAdjustmentResult,
@@ -56,7 +64,8 @@ import { ShoperVariantRequiredException } from '../../../domain/exceptions/shope
 import { ShoperWarehousesNotSupportedException } from '../../../domain/exceptions/shoper-warehouses-not-supported.exception';
 import type { ShoperStock } from '../../../domain/types/shoper-api.types';
 import type { ShoperHttpClient } from '../../http/shoper-http-client';
-import { fetchShoperStocks } from '../../http/shoper-stocks';
+import { SHOPER_MAX_PAGE_SIZE } from '../../http/shoper-pagination';
+import { fetchShoperStocks, fetchShoperStocksForProducts } from '../../http/shoper-stocks';
 import { partitionShoperStocks } from '../../mappers/shoper-product.mapper';
 import {
   mapShoperStockToInventory,
@@ -66,8 +75,10 @@ import { resolveShoperExternalProductId } from '../../readers/shoper-product-id'
 import type { ShoperProductReader } from '../../readers/shoper-product.reader';
 import type { ShoperShopContextProvider } from '../../shop-context/shoper-shop-context.provider';
 
-export class ShoperInventoryMasterAdapter implements InventoryMasterPort {
+export class ShoperInventoryMasterAdapter implements InventoryMasterPort, BulkInventoryReader {
   private readonly logger = new Logger(ShoperInventoryMasterAdapter.name);
+  /** Stock rows warmed by `prefetchInventory`, keyed by Shoper product id. `listInventory` only. */
+  private readonly stockCache = new Map<string, ShoperStock[]>();
 
   constructor(
     private readonly client: ShoperHttpClient,
@@ -78,6 +89,53 @@ export class ShoperInventoryMasterAdapter implements InventoryMasterPort {
   ) {}
 
   // ─── Read methods ──────────────────────────────────────────────────────────
+
+  /**
+   * Read the stock rows of a batch of products in one filtered `/product-stocks`
+   * read per chunk of 50 (`BulkInventoryReader`), mirroring the PrestaShop
+   * `prefetchInventory`. Takes INTERNAL ids, as `listInventory` does; each is
+   * resolved through the identifier mapping (a local read), and an unmapped one
+   * is skipped - its own `listInventory` raises the mapping gap.
+   *
+   * Every resolved id gets a bucket, empty when the shop listed no row for it.
+   * That is safe for the same reason it is on PrestaShop: `listInventory` treats
+   * an empty listing exactly as it does uncached - it probes the product, so a
+   * deleted product still reports the deletion from the shop's own 404 and a live
+   * one still raises the inferred-absence error. Nothing is concluded here.
+   *
+   * Best-effort: a failure (including a dropped filter, refused by
+   * `fetchShoperStocksForProducts`) clears the warm copy, is logged and swallowed,
+   * so the per-product reads run as before. A multi-warehouse shop is skipped,
+   * since every `listInventory` on it is refused anyway.
+   */
+  async prefetchInventory(internalProductIds: readonly string[]): Promise<void> {
+    if (internalProductIds.length === 0) {
+      return;
+    }
+    try {
+      const ctx = await this.shopContext.get();
+      if (ctx.warehousesEnabled) {
+        return;
+      }
+      const externalIds = await this.resolveExternalIds(internalProductIds);
+      for (let i = 0; i < externalIds.length; i += SHOPER_MAX_PAGE_SIZE) {
+        const buckets = await fetchShoperStocksForProducts(
+          this.client,
+          externalIds.slice(i, i + SHOPER_MAX_PAGE_SIZE),
+        );
+        for (const [id, rows] of buckets) {
+          this.stockCache.set(id, rows);
+        }
+      }
+    } catch (error) {
+      this.stockCache.clear();
+      this.logger.warn(
+        `Shoper bulk inventory prefetch failed for ${internalProductIds.length} product(s) ` +
+          `(connection: ${this.connection.id}); falling back to per-product reads: ` +
+          `${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+  }
 
   /** One `Inventory` per stock row (variant), in `stock_id` order. */
   async listInventory(productId: string): Promise<Inventory[]> {
@@ -94,7 +152,11 @@ export class ShoperInventoryMasterAdapter implements InventoryMasterPort {
       productId,
     );
 
-    const stocks = await this.fetchStocksOrClassifyDeletion(externalId, productId);
+    const warmed = this.stockCache.get(externalId);
+    const stocks =
+      warmed !== undefined
+        ? [...partitionShoperStocks(warmed).variants]
+        : await this.fetchStocksOrClassifyDeletion(externalId, productId);
     if (stocks.length === 0) {
       // The deletion probe, spent only here. A product Shoper reports gone
       // raises the neutral error from the reader; one that still resolves is an
@@ -246,6 +308,7 @@ export class ShoperInventoryMasterAdapter implements InventoryMasterPort {
     );
 
     await this.client.put(`/product-stocks/${encodeURIComponent(stock.stock_id)}`, { stock: next });
+    this.stockCache.delete(externalId);
 
     const level = await this.readBackLevel(externalId, stock.stock_id, next);
     const inventory = mapShoperStockToInventory(level, {
@@ -290,6 +353,25 @@ export class ShoperInventoryMasterAdapter implements InventoryMasterPort {
       );
       return written;
     }
+  }
+
+  /** Shoper ids for internal ids, de-duplicated; an unmapped id is skipped (`prefetchInventory`). */
+  private async resolveExternalIds(internalProductIds: readonly string[]): Promise<string[]> {
+    const externalIds: string[] = [];
+    for (const productId of internalProductIds) {
+      try {
+        externalIds.push(
+          await resolveShoperExternalProductId(
+            this.identifierMapping,
+            this.connection.id,
+            productId,
+          ),
+        );
+      } catch {
+        // Its own listInventory raises ShoperNotMappedException, the better-classified error.
+      }
+    }
+    return [...new Set(externalIds)].filter((id) => /^\d+$/.test(id));
   }
 
   private fetchStocks(externalId: string): Promise<ShoperStock[]> {
