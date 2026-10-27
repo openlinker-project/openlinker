@@ -196,12 +196,29 @@ describe('OrdersListPage bulk actions (#3619)', () => {
 
     expect(screen.getByTestId('orders-bulk-tags')).toBeDisabled();
     expect(screen.getByTestId('orders-bulk-read')).toBeDisabled();
-    // Cancel stays admin-only: a viewer never sees it, demo or not.
-    expect(screen.queryByTestId('orders-bulk-cancel')).toBeNull();
+    expect(screen.getByTestId('orders-bulk-cancel')).toBeDisabled();
 
     await user.click(screen.getByTestId('orders-bulk-read'));
     expect(screen.queryByTestId('orders-bulk-read-dialog')).toBeNull();
+    await user.click(screen.getByTestId('orders-bulk-cancel'));
     expect(bulkCancelOrders).not.toHaveBeenCalled();
     expect(bulkMarkBuyerNoteRead).not.toHaveBeenCalled();
+  });
+
+  it('should show bulk Cancel locked to a demo viewer and send no request on click (B-5)', async () => {
+    const user = userEvent.setup();
+    const { bulkCancelOrders } = renderPage(
+      [makeOrder('ol_a')],
+      USER('viewer', ['orders:read']),
+      true,
+    );
+
+    await user.click(await screen.findByRole('checkbox', { name: 'Select ol_a' }));
+    const cancel = screen.getByTestId('orders-bulk-cancel');
+    expect(cancel).toBeDisabled();
+    await user.click(cancel);
+
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(bulkCancelOrders).not.toHaveBeenCalled();
   });
 });
