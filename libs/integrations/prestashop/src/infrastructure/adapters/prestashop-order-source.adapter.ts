@@ -839,8 +839,10 @@ export class PrestashopOrderSourceAdapter implements OrderSourcePort {
    * Three outcomes, never conflated: a resource the webservice key may not read
    * is `undefined` (unknown, never "no note" - an unread field asserts nothing),
    * a readable resource with no thread or no buyer message is `null`, and
-   * otherwise the text. Any other failure (5xx, network) propagates so the
-   * order sync retries rather than recording a guess.
+   * otherwise the text. Any other failure (5xx, timeout, network) is ALSO
+   * unknown: a note read must never block order ingestion, since a shop whose
+   * thread endpoint is broken would otherwise never deliver the order at all.
+   * An unknown read never wipes a stored note and the next sync re-reads.
    *
    * ONLY the earliest buyer-authored message is the checkout note: PrestaShop
    * stores it as the first customer message of the order's thread, and later
@@ -905,7 +907,11 @@ export class PrestashopOrderSourceAdapter implements OrderSourcePort {
         );
         return undefined;
       }
-      throw error;
+      this.logger.warn(
+        `PrestaShop buyer note read failed on connection ${this.connection.id}; ` +
+          `note for order ${String(orderId)} stays unknown so the order still imports: ${(error as Error).message}`
+      );
+      return undefined;
     }
   }
 

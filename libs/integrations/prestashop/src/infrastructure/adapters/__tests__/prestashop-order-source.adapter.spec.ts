@@ -1036,11 +1036,14 @@ describe('PrestashopOrderSourceAdapter', () => {
       expect('buyerNote' in incoming).toBe(false);
     });
 
-    it('should propagate a server error rather than record a guess', async () => {
+    it('should import the order with the note unknown when the thread resource answers a server error (N-24)', async () => {
       const serverError = new PrestashopApiException('boom', 500, '');
       script([[], serverError]);
 
-      await expect(adapter.getOrder({ externalOrderId: '42' })).rejects.toBe(serverError);
+      const incoming = await adapter.getOrder({ externalOrderId: '42' });
+
+      expect(incoming.buyerNote).toBeUndefined();
+      expect('buyerNote' in incoming).toBe(false);
     });
   });
 
