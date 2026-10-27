@@ -355,12 +355,17 @@ export interface ShoperOrderCreateRequest {
   readonly delivery_address: ShoperOrderAddress;
   /** Private note: the OpenLinker order id, for forensic recovery only (NOT a dedup key). */
   readonly notes_priv?: string;
+  /** Order remarks; set only to explain a placeholder phone. */
+  readonly notes?: string;
 }
 
 /** Body of `POST /order-products`. `price` is GROSS and `tax` is the tax NAME. */
 export interface ShoperOrderProductCreateRequest {
   readonly order_id: number;
-  readonly product_id: number;
+  /**
+   * The line's stock row. `product_id` is deliberately absent: sent together,
+   * Shoper ignores `stock_id` and books the product's default stock.
+   */
   readonly stock_id: number;
   readonly price: number;
   readonly quantity: number;
@@ -385,6 +390,28 @@ export interface ShoperOrderShipping {
   readonly order_id: string | number;
   readonly shipping_id?: string | number | null;
   readonly status_id?: string | number | null;
+}
+
+/**
+ * The slice of `GET /orders/:id` the contact refresh reads: the phone on each
+ * address and the order remarks (verified live, 27 Oct 2026).
+ */
+export interface ShoperOrderContact {
+  readonly order_id: string | number;
+  readonly notes?: string | null;
+  readonly billing_address?: { readonly phone?: string | null } | null;
+  readonly delivery_address?: { readonly phone?: string | null } | null;
+}
+
+/**
+ * Body of `PUT /orders/:id` for the contact refresh. Shoper merges a partial
+ * address: sending only `phone` leaves every other address field as it was
+ * (verified live, 27 Oct 2026).
+ */
+export interface ShoperOrderContactUpdate {
+  readonly billing_address?: { readonly phone: string };
+  readonly delivery_address?: { readonly phone: string };
+  readonly notes?: string;
 }
 
 /**

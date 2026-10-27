@@ -261,6 +261,12 @@ created: user, variants, taxes, the three required ids, currency and prices are 
 Then `POST /orders` (header) and one `POST /order-products` per line, at the buyer-paid **gross** price (ADR-014;
 a Shoper line `price` is gross). The result is the Shoper-native order id.
 
+The adapter also declares `OrderCreateStockEffect`: `lowersStockOnOrderCreate()` answers from the shop's own
+`shopping_update_stock_on_buy` setting (the cached shop context). Core reads it after the create to decide whether
+the order's advisory holds on this shop's stock can be consumed as already absorbed. With the setting on, the shop
+lowered its stock and the holds are consumed; with it off (the owner keeps stock in an ERP or WMS), the shop's
+stock did not move, so the holds stay until dispatch rather than letting OpenLinker over-promise.
+
 **Header ids** (`shipping_id`, `payment_id`, `status_id`) are ids of rows in the shop's own `/shippings`,
 `/payments`, `/statuses`; Shoper has no catch-all, so OpenLinker never guesses one:
 
@@ -287,7 +293,13 @@ reads as paid (verified live: `is_paid: true`). Any other or unknown state sends
 or awaiting order stays unpaid in the shop.
 
 **Phone is required** on both Shoper addresses (an empty one is a 400). The address's own is used, else the other
-address's; an order with no phone at all is refused rather than given an invented number.
+address's. When the source gives no phone at all (Allegro shows it only after payment), the order is created with the
+placeholder `100000000` (Shoper validates the format: all zeros are refused; a leading 1 is never a Polish subscriber number), and the order's remarks (`notes`) say the number is a placeholder.
+The placeholder is written back: on the next sync after the marketplace provides the phone (for Allegro, once the
+order is paid), the adapter's `OrderContactRefresher` reads the shop order (`GET /orders/:id`) and, only for an address
+whose phone is still the placeholder, writes the real one (`PUT /orders/:id` with just `phone`; Shoper keeps every
+other address field). The remark is cleared at the same time, but only while it is still exactly the placeholder
+note, so an operator's own notes are never touched. A phone an operator already fixed by hand is left alone.
 
 **A half-built order is removed.** If a line fails after the header exists, `DELETE /orders/:id` is issued (live:
 this restores the stock the lines took). If that fails too, `ShoperPartialOrderException` names the order id; it is

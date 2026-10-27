@@ -25,6 +25,14 @@ WooCommerce REST API v3 adapter for OpenLinker — product catalog, inventory, a
 
 See [`docs/capabilities.md`](../../../docs/capabilities.md) for the full sub-capability catalog.
 
+The order processor also declares `OrderCreateStockEffect`. WooCommerce lowers stock only when an order reaches a
+paid-like status (`processing` / `completed` / `on-hold`, or `set_paid`), only with `woocommerce_manage_stock = yes`,
+and only for products that manage stock - so a `pending` order OpenLinker creates for an unpaid sale lowers nothing.
+Because that is a fact about the order rather than the store, the adapter answers from the created order itself:
+`true` only when every line in the `POST /orders` response carries the `_reduced_stock` item meta WooCommerce writes
+when it takes a line out of stock. Anything else - and an adapter that created no order, since core also asks after
+a skipped create - answers `false`, keeping the order's holds until dispatch.
+
 `ShopCategoryBrowser`, `ShopAttributeReader`, and `CategoryProvisioner` are
 sub-capabilities of `ShopProductManagerPort` implemented on the same
 `ProductPublisher` adapter instance; call sites narrow with

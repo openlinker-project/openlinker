@@ -6,6 +6,7 @@
  *
  * @module libs/integrations/allegro/src/infrastructure/adapters/__tests__
  */
+import { isOfferStockRestorer } from '@openlinker/core/listings';
 import { AllegroOfferManagerAdapter } from '../allegro-offer-manager.adapter';
 import type { IAllegroHttpClient } from '../../http/allegro-http-client.interface';
 import type { IdentifierMappingPort } from '@openlinker/core/identifier-mapping';
@@ -226,6 +227,60 @@ describe('AllegroOfferManagerAdapter', () => {
   describe('getDestinationCurrency (#3203)', () => {
     it('should declare PLN, matching the PL-first assumption baked into the adapter', () => {
       expect(adapter.getDestinationCurrency()).toBe('PLN');
+    });
+  });
+
+  describe('restoreStockOnCancellation (E2E-24)', () => {
+    it('should be narrowed by the OfferStockRestorer guard', () => {
+      expect(isOfferStockRestorer(adapter)).toBe(true);
+    });
+
+    it('should set each offer to its absolute target with a key stable across retries', async () => {
+      const spy = jest.spyOn(adapter, 'updateOfferQuantity').mockResolvedValue(undefined);
+
+      await adapter.restoreStockOnCancellation([
+        { externalOfferId: 'offer-1', quantity: 20, idempotencyKey: 'stock-restore:ol_order_1:offer-1' },
+        { externalOfferId: 'offer-2', quantity: 0, idempotencyKey: 'stock-restore:ol_order_1:offer-2' },
+      ]);
+
+      expect(spy).toHaveBeenNthCalledWith(1, {
+        offerId: 'offer-1',
+        quantity: 20,
+        idempotencyKey: 'stock-restore:ol_order_1:offer-1',
+      });
+      expect(spy).toHaveBeenNthCalledWith(2, {
+        offerId: 'offer-2',
+        quantity: 0,
+        idempotencyKey: 'stock-restore:ol_order_1:offer-2',
+      });
+    });
+
+    it('should refuse a target with no key and write nothing, rather than invent one', async () => {
+      const spy = jest.spyOn(adapter, 'updateOfferQuantity').mockResolvedValue(undefined);
+
+      await expect(
+        adapter.restoreStockOnCancellation([
+          { externalOfferId: 'offer-1', quantity: 5, idempotencyKey: 'stock-restore:ol_order_1:offer-1:5:t' },
+          { externalOfferId: 'offer-2', quantity: 5 },
+        ])
+      ).rejects.toThrow(/idempotencyKey is required.*offer-2/);
+      expect(spy).not.toHaveBeenCalled();
+    });
+
+    it('should try every offer past a failure and then throw the failures together', async () => {
+      const spy = jest
+        .spyOn(adapter, 'updateOfferQuantity')
+        .mockRejectedValueOnce(new Error('REJECTED'))
+        .mockResolvedValueOnce(undefined);
+
+      await expect(
+        adapter.restoreStockOnCancellation([
+          { externalOfferId: 'offer-1', quantity: 5, idempotencyKey: 'k1' },
+          { externalOfferId: 'offer-2', quantity: 7, idempotencyKey: 'k2' },
+        ])
+      ).rejects.toThrow(/1 of 2 offer\(s\).*offer-1: REJECTED/);
+      expect(spy).toHaveBeenCalledTimes(2);
+      expect(spy).toHaveBeenLastCalledWith({ offerId: 'offer-2', quantity: 7, idempotencyKey: 'k2' });
     });
   });
 
