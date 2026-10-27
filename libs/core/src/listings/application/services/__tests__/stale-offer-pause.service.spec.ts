@@ -62,6 +62,7 @@ describe('StaleOfferPauseService', () => {
       findMappingPage: jest.fn(),
       countByLifecycle: jest.fn(),
       countByConnectionAndVariants: jest.fn(),
+      findDeadFailedCreationOfferIds: jest.fn(),
       countListedVariantsByProducts: jest.fn(),
       findStaleMappedVariants: jest.fn().mockResolvedValue([]),
       findRecentlyListedVariantIds: jest.fn().mockResolvedValue([]),

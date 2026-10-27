@@ -23,6 +23,7 @@ import { AvailabilityUnknownFilter } from './availability-unknown.filter';
 import { CapabilityNotSupportedFilter } from './capability-not-supported.filter';
 import { ConnectionExceptionFilter } from './connection-exception.filter';
 import { InventoryLocationExceptionFilter } from './inventory-location-exception.filter';
+import { RateLimitBusyFilter } from './rate-limit-busy.filter';
 import { ReturnsExceptionFilter } from './returns-exception.filter';
 import { TaxonomySourceUnavailableFilter } from './taxonomy-source-unavailable.filter';
 
@@ -37,6 +38,7 @@ export function buildGlobalExceptionFilters(): ExceptionFilter[] {
     new TaxonomySourceUnavailableFilter(),
     new InventoryLocationExceptionFilter(),
     new AvailabilityUnknownFilter(),
+    new RateLimitBusyFilter(),
     new ReturnsExceptionFilter(),
     new AutomationExceptionFilter(),
   ];

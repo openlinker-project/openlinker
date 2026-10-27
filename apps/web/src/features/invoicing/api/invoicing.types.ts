@@ -45,14 +45,21 @@ export const FailureCodeValues = [
   // one-field config gap, not an order-data problem (#3031).
   'sale-classification-required',
   // The adapter refused before contacting the provider because the
-  // connection is missing a setting (#3772). The only code whose
-  // `failureReason` is the adapter's own sentence naming that setting.
+  // connection is missing a setting (#3772). `failureReason` is the adapter's
+  // own sentence naming that setting.
   'connection-setup-incomplete',
   // The document rests on a reading of the law OpenLinker is not sure of; the
   // operator decides by re-issuing with the returned `warningCode` acknowledged.
   'acknowledgement-required',
+  // The provider WAS contacted and refused a value from the connection's own
+  // settings (e.g. a seller tax number it does not have registered).
+  // `failureReason` is the adapter's own sentence naming that setting.
+  'connection-setting-rejected',
   'provider-rejected',
   'transport-timeout',
+  // In doubt, but the provider DID answer - with something that does not
+  // settle whether a document exists. Never a timeout.
+  'provider-answer-inconclusive',
   'provider-error',
 ] as const;
 export type FailureCode = (typeof FailureCodeValues)[number];

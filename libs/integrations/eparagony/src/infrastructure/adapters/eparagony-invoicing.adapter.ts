@@ -89,7 +89,6 @@ import {
   deriveTransactionToken,
 } from '../../domain/policies/document-token.policy';
 import {
-  EPARAGONY_ERROR_DOCUMENT_ALREADY_EXISTS,
   EPARAGONY_STATUS_CONFIRMED,
   EPARAGONY_STATUS_ERROR,
   EPARAGONY_STATUS_OFFLINE,
@@ -99,7 +98,6 @@ import {
 } from '../../domain/types/eparagony-api.types';
 import type { EparagonyConnectionConfig } from '../../domain/types/eparagony-config.types';
 import {
-  EPARAGONY_DOCUMENTS_PATH,
   MAX_STATUS_POLL_TIMEOUT_MS,
   STATUS_POLL_BACKOFF_MULTIPLIER,
   STATUS_POLL_INITIAL_DELAY_MS,
@@ -108,6 +106,7 @@ import {
   resolveStatusPollTimeoutMs,
   sleep,
 } from '../http/eparagony-document-status.reader';
+import { createEparagonyDocument } from '../http/eparagony-document-create';
 import type { IEparagonyHttpClient } from '../http/eparagony-http-client.interface';
 import { readDocumentStatus } from './eparagony-document.mapper';
 import {
@@ -271,7 +270,7 @@ export class EparagonyInvoicingAdapter
     // worst case could outlive both this adapter's own deadline and core's
     // in-flight CAS lease, which is exactly the invariant the module-load
     // assertion below is meant to protect.
-    await this.createDocument(request, documentToken, cmd.orderId, deadline);
+    await this.createDocument(request, cmd.orderId, deadline);
     const status = await this.pollToSettledIssuance(documentToken, deadline, cmd.orderId);
 
     return this.toIssueResult(cmd, status, documentToken, documentLines);
@@ -315,7 +314,7 @@ export class EparagonyInvoicingAdapter
 
     const deadline = Date.now() + EPARAGONY_ISSUE_DEADLINE_MS;
 
-    await this.createDocument(request, documentToken, cmd.orderId, deadline);
+    await this.createDocument(request, cmd.orderId, deadline);
     const status = await this.pollToSettledIssuance(documentToken, deadline, cmd.orderId);
 
     return this.buildIssueResult(
@@ -474,7 +473,6 @@ export class EparagonyInvoicingAdapter
     // document kind (#3193) - both bodies key off the same `documentToken` /
     // `transactionToken` pair, so the HTTP call itself is body-shape-agnostic.
     body: EparagonyCreateInvoiceRequest | EparagonyCreateCorrectiveInvoiceRequest,
-    documentToken: string,
     orderId: string,
     deadline: number,
   ): Promise<void> {
@@ -487,40 +485,16 @@ export class EparagonyInvoicingAdapter
     // timeout) rather than a `setTimeout(0)` that aborts before the request
     // leaves the process.
     const timeoutMs = Math.max(MIN_CREATE_TIMEOUT_MS, deadline - Date.now());
-    try {
-      await this.http.post<unknown>(EPARAGONY_DOCUMENTS_PATH, body, {
-        // `documentToken`, NOT core's raw `idempotencyKey`: the vendor requires
-        // this header to match `/^[0-9A-Za-z_-]+$/` and core's key carries
-        // colons. The token is a deterministic derivation of the same pair,
-        // shaped as a UUID, so it satisfies the character class while keeping
-        // the identical safety property the header exists for.
-        headers: { 'Idempotency-Key': documentToken },
-        // Safe to re-issue on a 5xx/network failure precisely BECAUSE of the
-        // header above: repeating a key with the same body cannot mint a second
-        // document, and therefore cannot issue a second invoice.
-        idempotent: true,
-        timeoutMs,
-      });
-      this.logger.log(
-        `eparagony.pl accepted the document for order ${orderId} as ${documentToken} ` +
-          `[connectionId=${this.connectionId}]`,
-      );
-    } catch (error) {
-      if (
-        error instanceof EparagonyApiError &&
-        error.errorCode === EPARAGONY_ERROR_DOCUMENT_ALREADY_EXISTS
-      ) {
-        // Our token is deterministic, so "already exists" means OUR earlier
-        // attempt landed. Reporting a rejection here would be the wrong-direction
-        // error: the status read below resolves what actually happened.
-        this.logger.warn(
-          `eparagony.pl already holds document ${documentToken} for order ${orderId}; ` +
-            `reading its status instead of re-creating [connectionId=${this.connectionId}]`,
-        );
-        return;
-      }
-      throw error;
-    }
+    // The shared create settles "already exists" and a replayed request key
+    // against the document token; see `eparagony-document-create.ts`.
+    await createEparagonyDocument({
+      http: this.http,
+      logger: this.logger,
+      connectionId: this.connectionId,
+      body,
+      orderId,
+      timeoutMs,
+    });
   }
 
   // -------------------------------------------------------------------------
@@ -589,14 +563,16 @@ export class EparagonyInvoicingAdapter
 
   /**
    * Terminal `ERROR`: the vendor explicitly reports the invoice was not issued.
-   * `rejected` is safe here for the reason it is on the receipt path - OL sends
-   * its own derived token as the vendor's `Idempotency-Key`, so re-crossing the
-   * boundary under the same key cannot issue a second document, which is what
-   * the neutral definition of `rejected` requires.
+   * `rejected` is safe here for the reason it is on the receipt path - every
+   * request for the sale carries the same deterministic `documentToken`, which
+   * the vendor never lets hold a second document, so re-crossing the boundary
+   * cannot issue a second invoice, which is what the neutral definition of
+   * `rejected` requires.
    *
-   * The operational consequence, recorded honestly: because the vendor replays
-   * the same key idempotently, a re-attempt under the same registration key
-   * returns this same failed document. A genuine retry needs a fresh key.
+   * The operational consequence, recorded honestly: because the vendor keeps
+   * the failed document under the token, a re-attempt under the same
+   * registration key meets this same failed document. A genuine retry needs a
+   * fresh key.
    */
   private toTerminalRejection(
     body: EparagonyDocumentStatusResponse,

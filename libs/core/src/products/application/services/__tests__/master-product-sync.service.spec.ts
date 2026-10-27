@@ -183,6 +183,64 @@ describe('MasterProductSyncService', () => {
     expect(persisted.description).toContain('Verdana');
   });
 
+  describe('variant images', () => {
+    it('should persist the pictures the master dedicates to each variant', async () => {
+      adapter.getProductVariants.mockResolvedValueOnce([
+        { ...makeVariant('ol_variant_1'), images: ['https://shop/gfx/314.jpg', ' ', 'https://shop/gfx/314.jpg'] },
+        { ...makeVariant('ol_variant_2'), images: null },
+        makeVariant('ol_variant_3'),
+      ]);
+
+      await service.syncFromMasterByExternalId(connectionId, externalId);
+
+      const persisted = productsService.upsertVariants.mock.calls[0][1];
+      expect(persisted.map((v) => v.images)).toEqual([['https://shop/gfx/314.jpg'], null, null]);
+    });
+  });
+
+  describe('gpsr', () => {
+    it('should carry the master-stated gpsr into the stored product when the master reports it', async () => {
+      const gpsr = {
+        producer: { name: 'Acme Sp. z o.o.', email: 'safety@acme.example' },
+        safetyInformation: { text: 'Keep away from fire.' },
+      };
+      adapter.getProduct.mockResolvedValueOnce({ ...makeProduct(), gpsr });
+
+      await service.syncFromMasterByExternalId(connectionId, externalId);
+
+      const persisted = productsService.upsertProduct.mock.calls[0][0];
+      expect(persisted.gpsr).toEqual(gpsr);
+    });
+
+    it('should pass an explicit null through when the master reports the product has none', async () => {
+      adapter.getProduct.mockResolvedValueOnce({ ...makeProduct(), gpsr: null });
+
+      await service.syncFromMasterByExternalId(connectionId, externalId);
+
+      expect(productsService.upsertProduct.mock.calls[0][0].gpsr).toBeNull();
+    });
+
+    it('should leave gpsr undefined when the master did not report it', async () => {
+      // Undefined is what makes the repository skip the column, so a stored
+      // declaration survives a master that cannot answer on this pass.
+      await service.syncFromMasterByExternalId(connectionId, externalId);
+
+      expect(productsService.upsertProduct.mock.calls[0][0].gpsr).toBeUndefined();
+    });
+
+    it('should carry gpsr on the page-batched path too', async () => {
+      const gpsr = { producer: { name: 'Acme' } };
+      adapter.getProduct.mockResolvedValue({ ...makeProduct(), gpsr });
+
+      await service.syncFromMasterByExternalIds(connectionId, ['1', '2']);
+
+      expect(productsService.upsertProduct).toHaveBeenCalledTimes(2);
+      for (const [persisted] of productsService.upsertProduct.mock.calls) {
+        expect(persisted.gpsr).toEqual(gpsr);
+      }
+    });
+  });
+
   it('does not emit when nothing was newly marked stale', async () => {
     productsService.markVariantsStaleExcept.mockResolvedValueOnce([]);
 

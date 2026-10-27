@@ -582,6 +582,33 @@ describe('WooCommerceProductPublisherAdapter', () => {
       });
     });
 
+    it('should give the variation its own image while the parent keeps the whole gallery', async () => {
+      http.post.mockResolvedValueOnce({ id: 500 }).mockResolvedValueOnce({ id: 501 });
+
+      await adapter.publishProduct(
+        baseCommand({
+          variantGroup: {
+            ...variantGroup,
+            externalParentProductId: null,
+            imageUrls: ['http://img/red.png'],
+          },
+        }),
+      );
+
+      expect(http.post.mock.calls[0][1]).toMatchObject({ images: [{ src: 'http://img/1.png' }] });
+      expect(http.post.mock.calls[1][1]).toMatchObject({ image: { src: 'http://img/red.png' } });
+    });
+
+    it('should fall back to the first content image when the variation names none', async () => {
+      http.post.mockResolvedValueOnce({ id: 500 }).mockResolvedValueOnce({ id: 501 });
+
+      await adapter.publishProduct(
+        baseCommand({ variantGroup: { ...variantGroup, externalParentProductId: null } }),
+      );
+
+      expect(http.post.mock.calls[1][1]).toMatchObject({ image: { src: 'http://img/1.png' } });
+    });
+
     it('should PUT the existing parent then POST a new variation when only the parent already exists', async () => {
       http.put.mockResolvedValue({ id: 500 });
       http.post.mockResolvedValue({ id: 502 });

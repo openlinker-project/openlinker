@@ -13,7 +13,12 @@
  */
 import { fireEvent, screen, waitFor, cleanup } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { renderWithProviders, createMockApiClient } from '../../../../test/test-utils';
+import type { Mock } from 'vitest';
+import {
+  renderWithProviders,
+  createMockApiClient,
+  findToastTitle,
+} from '../../../../test/test-utils';
 import { BulkWizard, mergeResolveOutcomes, seedRows } from './bulk-wizard';
 import type {
   BulkResolveCompletion,
@@ -23,6 +28,12 @@ import type {
 import type { BulkVariantRow, BulkWizardRow } from './bulk-wizard.types';
 import type { Product, ProductVariant } from '../../../products';
 import type { Connection } from '../../../connections';
+import type {
+  BulkOfferCreateRequest,
+  BulkOfferCreateResponse,
+} from '../../api/bulk-listings.types';
+
+type BulkCreateMock = Mock<(request: BulkOfferCreateRequest) => Promise<BulkOfferCreateResponse>>;
 
 const captureDemoEvent = vi.fn();
 vi.mock('../../../demo', () => ({
@@ -326,6 +337,22 @@ describe('seedRows (#1754 pre-selected variants)', () => {
     expect(rows[0].primaryVariant?.id).toBe('v2');
   });
 
+  it('leaves out a variant deleted at the master', () => {
+    const product = makeProduct('p1', ['base', 'red', 'green']);
+    (product.variants![0] as { isStale: boolean }).isStale = true;
+    const rows = seedRows([product]);
+    expect(rows[0].variants.map((v) => v.variantId)).toEqual(['red', 'green']);
+    expect(rows[0].primaryVariant?.id).toBe('red');
+  });
+
+  it('flags a product whose every variant was deleted at the master', () => {
+    const product = makeProduct('p1', ['only']);
+    (product.variants![0] as { isStale: boolean }).isStale = true;
+    const rows = seedRows([product]);
+    expect(rows[0].variants).toEqual([]);
+    expect(rows[0].blockers).toEqual(['no-variant']);
+  });
+
   it('includes every variant of a whole-product pick even when the set scopes a different product', () => {
     const rows = seedRows(
       [makeProduct('p1', ['v1', 'v2']), makeProduct('p2', ['v3', 'v4'])],
@@ -413,11 +440,15 @@ describe('BulkWizard — destinationResolvesCategoryAtSubmit (#2211)', () => {
     };
   }
 
-  async function renderAndResolve(capabilities: string[]): Promise<void> {
+  async function renderAndResolve(
+    capabilities: string[],
+    bulkCreate: BulkCreateMock = vi.fn(),
+  ): Promise<void> {
     const apiClient = createMockApiClient({
       connections: { list: vi.fn().mockResolvedValue([connection(capabilities)]) },
       listings: {
         checkPublishedVariants: vi.fn().mockResolvedValue({ publishedVariantIds: [] }),
+        bulkCreate,
       },
     });
 
@@ -465,6 +496,38 @@ describe('BulkWizard — destinationResolvesCategoryAtSubmit (#2211)', () => {
     // The manifest reading held while the step ran; only its report flips it.
     expect(resolveStub.received).toContain(false);
     expect(await screen.findByText('All included variants are ready.')).toBeInTheDocument();
+  }, 15000);
+
+  it('should send one submission when the confirm button is double-clicked', async () => {
+    resolveStub.outcomes = [unresolvedCategoryOutcome()];
+    resolveStub.completion = { catalogueLookupPerformed: true };
+    // Held open so the second click lands while the first submit is in flight,
+    // which is exactly the window a double click hits.
+    let settle: (value: BulkOfferCreateResponse) => void = () => undefined;
+    const bulkCreate: BulkCreateMock = vi.fn().mockReturnValue(
+      new Promise<BulkOfferCreateResponse>((resolve) => {
+        settle = resolve;
+      }),
+    );
+
+    await renderAndResolve([], bulkCreate);
+    const cta = await screen.findAllByRole('button', { name: 'Create offers (1)' });
+    fireEvent.click(cta[0]);
+    const confirm = await screen.findByRole('button', { name: 'Create offers' });
+
+    fireEvent.click(confirm);
+    fireEvent.click(confirm);
+
+    await waitFor(() => expect(bulkCreate).toHaveBeenCalledTimes(1));
+    settle({
+      batchId: 'batch-1',
+      jobIds: ['job-1'],
+      skippedAlreadyListedCount: 0,
+      skippedAvailabilityUnknownCount: 0,
+      skippedInvalidEanCount: 0,
+    });
+    expect(await findToastTitle('Batch submitted')).toBeInTheDocument();
+    expect(bulkCreate).toHaveBeenCalledTimes(1);
   }, 15000);
 
   it('keeps the category blocker when a catalogue lookup did run and matched nothing', async () => {

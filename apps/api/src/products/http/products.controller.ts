@@ -36,6 +36,7 @@ import {
   IProductsService,
   TAX_RATE_JOURNAL_SERVICE_TOKEN,
   ITaxRateJournalService,
+  resolveVariantDefaultImages,
 } from '@openlinker/core/products';
 import {
   IDENTIFIER_MAPPING_SERVICE_TOKEN,
@@ -108,6 +109,7 @@ function variantToDto(variant: ProductVariant): ProductVariantResponseDto {
     // normalised to `null` at the wire boundary so the FE sees a consistent
     // nullable shape.
     price: variant.price ?? null,
+    images: variant.images ?? null,
     // #2255 — the variant's own OVERRIDE, and only that. An absent override
     // means the product's rate applies, which the table renders as "inherited"
     // rather than as a gap; conflating the two would send the operator to fix
@@ -435,9 +437,19 @@ export class ProductsController {
       ...variants.map((v) => this.identifierMapping.getExternalIds(CORE_ENTITY_TYPE.Product, v.id)),
     ]);
 
+    // The default-images rule needs EVERY sibling (an image is a sibling's when
+    // that sibling names it), so a capped page is completed before resolving.
+    const siblings =
+      variantCount > variants.length
+        ? await this.productsService.getVariantsByProductId(id)
+        : variants;
+
     const variantDtos = variants.map((v, i) => {
       const dto = this.toVariantDto(v);
       dto.externalIds = variantExternalIdResults[i].map((e) => this.toExternalIdDto(e));
+      // Resolved here so the browser shows the list the offer builder will
+      // publish without holding a copy of the rule (#591: no core import).
+      dto.defaultImages = resolveVariantDefaultImages(v, siblings, product.images);
       return dto;
     });
 

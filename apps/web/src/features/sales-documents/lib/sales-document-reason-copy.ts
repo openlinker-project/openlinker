@@ -119,6 +119,18 @@ export const SALES_DOCUMENT_UNRESOLVED_REASON_COPY = {
     detail:
       'This system can issue documents, but no connection says which kind it should issue. Pick one in Settings, Sales documents routing, and orders start getting invoices.',
   },
+  /**
+   * A rule (or a country default) still names a connection that cannot issue
+   * the document: it was disabled, removed, or lost the capability after the
+   * rule was saved. The order is held until one of two things changes, and the
+   * copy names both. The connection id travels in the block detail, which the
+   * surfaces render beside this text.
+   */
+  'routed-connection-unavailable': {
+    short: 'Connection unavailable',
+    detail:
+      'Your routing sends this order to a connection that is turned off, has been removed, or can no longer issue this document, so nothing was issued. Turn that connection back on, or point the rule at another connection.',
+  },
 } satisfies Record<SalesDocumentUnresolvedReasonValue, SalesDocumentReasonCopy>;
 
 /**

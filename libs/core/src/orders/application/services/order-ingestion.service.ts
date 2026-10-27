@@ -1683,6 +1683,30 @@ export class OrderIngestionService implements IOrderIngestionService {
       );
     }
 
+    // Release the order's holds and restore its stock (E2E-23). The full-resync
+    // path enqueues this on the `-> cancelled` transition, but a cancel that
+    // arrives as a feed event lands HERE and returns without re-reading the
+    // order, so without this the advisory hold stays `held` for good and every
+    // later publish keeps subtracting a unit nobody bought. Same job and dedupe
+    // key as the resync path, so whichever path sees the cancel first wins and
+    // the other is a no-op. The key has no TTL and no cancellation episode in
+    // it, so it also suppresses a SECOND cancellation of the same order (after
+    // an un-cancel at the source): that restore is a silent no-op, and the
+    // offer is corrected only by the next ordinary propagation.
+    try {
+      await this.jobQueue.enqueue({
+        type: 'marketplace.offer.stockRestore',
+        connectionId,
+        payload: { schemaVersion: 1, internalOrderId },
+        options: { dedupeKey: `marketplace:${connectionId}:stockRestore:${internalOrderId}` },
+      });
+    } catch (error) {
+      this.logger.error(
+        `Failed to enqueue stock-restore job for cancelled order [connectionId=${connectionId}, orderId=${internalOrderId}]; its holds stay live and marketplace stock will NOT be auto-restored`,
+        (error as Error).stack
+      );
+    }
+
     const result = await this.orderLifecycleRelay.relay({
       internalOrderId,
       originConnectionId: connectionId,

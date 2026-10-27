@@ -22,6 +22,7 @@ describe('CoverageGapReadService', () => {
       countMany: jest.fn(),
       findMappingPage: jest.fn(),
       countByConnectionAndVariants: jest.fn(),
+      findDeadFailedCreationOfferIds: jest.fn(),
       countByLifecycle: jest.fn(),
       countListedVariantsByProducts: jest.fn(),
       findStaleMappedVariants: jest.fn(),

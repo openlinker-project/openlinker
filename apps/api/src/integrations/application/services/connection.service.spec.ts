@@ -600,6 +600,36 @@ describe('ConnectionService', () => {
       );
     });
 
+    // The adapter supporting ProductMaster is not the operator choosing it: a
+    // connection created as a publish destination only must not have its shop
+    // catalogue pulled in as master data. Same gate as the recurring scheduler.
+    it('should skip the catalogue bootstrap when ProductMaster is supported but not enabled', async () => {
+      const publishOnly = new Connection(
+        'connection-123',
+        'shoper',
+        'Publish destination',
+        'active',
+        {},
+        'cred_123',
+        new Date(),
+        new Date(),
+        undefined,
+        ['ProductPublisher']
+      );
+      connectionPort.create.mockResolvedValue(publishOnly);
+      integrationsService.getAdapter.mockResolvedValue({
+        connection: publishOnly,
+        adapter: {},
+        metadata: { supportedCapabilities: ['ProductMaster', 'ProductPublisher'] },
+      } as unknown as Awaited<ReturnType<IIntegrationsService['getAdapter']>>);
+
+      await service.create(payload);
+
+      expect(jobEnqueue.enqueueJob).not.toHaveBeenCalledWith(
+        expect.objectContaining({ jobType: 'master.product.syncAll' })
+      );
+    });
+
     it('should not fail connection creation when bootstrap enqueue throws', async () => {
       connectionPort.create.mockResolvedValue(mockConnection);
       integrationsService.getAdapter.mockRejectedValue(new Error('adapter resolution failed'));
@@ -1510,6 +1540,109 @@ describe('ConnectionService', () => {
 
         await expect(
           service.update('connection-123', { status: 'active' } as ConnectionUpdate)
+        ).resolves.toEqual(enabled);
+      });
+    });
+
+    describe('catalogue bootstrap on enable', () => {
+      const withState = (
+        status: 'active' | 'disabled',
+        enabledCapabilities: string[]
+      ): Connection =>
+        new Connection(
+          'connection-123',
+          'shoper',
+          'Test Connection',
+          status,
+          {},
+          'cred_123',
+          new Date(),
+          new Date(),
+          undefined,
+          enabledCapabilities
+        );
+
+      const syncAll = expect.objectContaining({
+        jobType: 'master.product.syncAll',
+        idempotencyKey: 'bootstrap:connection-123:product:syncAll',
+      });
+
+      beforeEach(() => {
+        integrationsService.getAdapter.mockResolvedValue({
+          connection: mockConnection,
+          adapter: {},
+          metadata: { supportedCapabilities: ['ProductMaster', 'ProductPublisher'] },
+        } as unknown as Awaited<ReturnType<IIntegrationsService['getAdapter']>>);
+        integrationsService.resolveAdapterMetadata.mockResolvedValue({
+          adapterKey: 'shoper.restapi.v1',
+          platformType: 'shoper',
+          supportedCapabilities: ['ProductMaster', 'ProductPublisher'],
+        } as unknown as Awaited<ReturnType<IIntegrationsService['resolveAdapterMetadata']>>);
+      });
+
+      // Create skipped the bootstrap because ProductMaster was off then, so
+      // switching it on is the first moment the catalogue should be pulled.
+      it('should enqueue the bootstrap when ProductMaster is switched on', async () => {
+        connectionPort.get.mockResolvedValue(withState('active', ['ProductPublisher']));
+        connectionPort.update.mockResolvedValue(
+          withState('active', ['ProductPublisher', 'ProductMaster'])
+        );
+
+        await service.update('connection-123', {
+          enabledCapabilities: ['ProductPublisher', 'ProductMaster'],
+        } as ConnectionUpdate);
+
+        expect(jobEnqueue.enqueueJob).toHaveBeenCalledWith(syncAll);
+      });
+
+      it('should enqueue the bootstrap when a master connection transitions to active', async () => {
+        connectionPort.get.mockResolvedValue(withState('disabled', ['ProductMaster']));
+        connectionPort.update.mockResolvedValue(withState('active', ['ProductMaster']));
+
+        await service.update('connection-123', { status: 'active' } as ConnectionUpdate);
+
+        expect(jobEnqueue.enqueueJob).toHaveBeenCalledWith(syncAll);
+      });
+
+      it('should not enqueue when a publish-only connection transitions to active', async () => {
+        connectionPort.get.mockResolvedValue(withState('disabled', ['ProductPublisher']));
+        connectionPort.update.mockResolvedValue(withState('active', ['ProductPublisher']));
+
+        await service.update('connection-123', { status: 'active' } as ConnectionUpdate);
+
+        expect(jobEnqueue.enqueueJob).not.toHaveBeenCalledWith(syncAll);
+      });
+
+      it('should not enqueue when ProductMaster was already enabled and nothing transitions', async () => {
+        connectionPort.get.mockResolvedValue(withState('active', ['ProductMaster']));
+        connectionPort.update.mockResolvedValue(withState('active', ['ProductMaster']));
+
+        await service.update('connection-123', { name: 'Renamed' } as ConnectionUpdate);
+
+        expect(jobEnqueue.enqueueJob).not.toHaveBeenCalled();
+      });
+
+      it('should not enqueue when ProductMaster is switched off', async () => {
+        connectionPort.get.mockResolvedValue(withState('active', ['ProductMaster', 'ProductPublisher']));
+        connectionPort.update.mockResolvedValue(withState('active', ['ProductPublisher']));
+
+        await service.update('connection-123', {
+          enabledCapabilities: ['ProductPublisher'],
+        } as ConnectionUpdate);
+
+        expect(jobEnqueue.enqueueJob).not.toHaveBeenCalledWith(syncAll);
+      });
+
+      it('should not fail the update when the bootstrap enqueue throws', async () => {
+        connectionPort.get.mockResolvedValue(withState('active', ['ProductPublisher']));
+        const enabled = withState('active', ['ProductPublisher', 'ProductMaster']);
+        connectionPort.update.mockResolvedValue(enabled);
+        jobEnqueue.enqueueJob.mockRejectedValue(new Error('stream unavailable'));
+
+        await expect(
+          service.update('connection-123', {
+            enabledCapabilities: ['ProductPublisher', 'ProductMaster'],
+          } as ConnectionUpdate)
         ).resolves.toEqual(enabled);
       });
     });

@@ -101,6 +101,14 @@ export interface BulkListingSubmitInput {
    * excluded contributes zero jobs.
    */
   excludedVariantIds?: string[];
+  /**
+   * Client idempotency key (the `x-idempotency-key` header). When set, a
+   * submit whose `(connectionId, idempotencyKey)` already names a batch
+   * returns that batch (`deduplicated: true`) and persists / enqueues nothing,
+   * including when two submits race in the same millisecond. Absent keeps the
+   * pre-key behaviour: every submit creates a new batch.
+   */
+  idempotencyKey?: string;
 }
 
 /**
@@ -184,6 +192,16 @@ export interface BulkListingSubmitResult {
    * throws `InvalidEanException` in that case instead).
    */
   skippedInvalidEanCount: number;
+  /**
+   * True when the submit carried an idempotency key that already named a
+   * batch, so `batchId` is that earlier batch and nothing was persisted or
+   * enqueued by THIS call. In that case `jobIds` is empty and the three
+   * skipped counts are zero: they describe work this call did, and it did
+   * none (the counts of the original submit were never persisted, so they
+   * cannot be replayed). The batch page reads the real state by `batchId`.
+   * Absent or false on an ordinary submit.
+   */
+  deduplicated?: boolean;
 }
 
 /**

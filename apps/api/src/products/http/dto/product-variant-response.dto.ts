@@ -34,6 +34,26 @@ export class ProductVariantResponseDto {
       'Master variant price, gross (what a buyer pays, excluding promotions). Nullable when not yet synced or when the master could not state a gross figure.',
   })
   price!: number | null;
+
+  @ApiPropertyOptional({
+    nullable: true,
+    type: [String],
+    description:
+      'Pictures the master dedicates to THIS variant (absolute URLs, in the master order). ' +
+      'null means no picture of its own - the product gallery applies - never "no images".',
+  })
+  images!: string[] | null;
+
+  @ApiPropertyOptional({
+    nullable: true,
+    type: [String],
+    description:
+      'The images an offer for this variant is listed with when nobody overrides them: its own ' +
+      'pictures first, then the product gallery without the pictures dedicated to its siblings. ' +
+      'Resolved server-side by the same rule the offer builder applies. Product detail only.',
+  })
+  defaultImages?: string[] | null;
+
   @ApiPropertyOptional({
     nullable: true,
     description:

@@ -13,9 +13,14 @@ function connection(enabledCapabilities: string[], config: Record<string, unknow
 }
 
 describe('ShoperConnectionActions', () => {
-  it('should disable the button when Order source is not enabled', () => {
-    render(<ShoperConnectionActions connection={connection(['ProductMaster'])} />);
+  it('should disable the button when neither Order source nor Product master is enabled', () => {
+    render(<ShoperConnectionActions connection={connection(['InventoryMaster'])} />);
     expect(screen.getByRole('button', { name: 'Configure webhooks' })).toBeDisabled();
+  });
+
+  it('should enable the button when only Product master is enabled, for product webhooks', () => {
+    render(<ShoperConnectionActions connection={connection(['ProductMaster'])} />);
+    expect(screen.getByRole('button', { name: 'Configure webhooks' })).toBeEnabled();
   });
 
   it('should enable the button when Order source is enabled', () => {
