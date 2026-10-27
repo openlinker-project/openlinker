@@ -28,9 +28,10 @@ import { formatAmount } from '../../../shared/format/format-amount';
 import { useIsAdmin, useWriteAccess } from '../../../shared/auth/use-permission';
 import { useDemoMode } from '../../system';
 import type { ConfirmOrderChangeResult } from '../api/order-cancel.types';
-import type { OrderDiscountResult, OrderEditsView } from '../api/order-edit.types';
+import type { OrderDiscountResult, OrderEditLineStock, OrderEditsView } from '../api/order-edit.types';
 import {
   DISCOUNT_CORRECTION_UNAVAILABLE_COPY,
+  describeStockOutcome,
   formatDecimalAmount,
 } from '../lib/order-edit';
 import { OrderCorrectionProposalDialog } from './order-correction-proposal-dialog';
@@ -44,6 +45,8 @@ export interface OrderEditedNoticeProps {
   sourceName: string | null;
   /** The one discount RESPONSE this session holds; see `OrderDetailPage`. */
   sessionDiscount?: OrderDiscountResult | null;
+  /** What the session's last line edit did to stock; not persisted, gone on reload. */
+  sessionStock?: readonly OrderEditLineStock[] | null;
   /** A refund or correction was confirmed; lets the page refresh invoice-side queries. */
   onConfirmed?: (result: ConfirmOrderChangeResult) => void;
   /** The discount was re-sent (retrying a refund that could not be opened). */
@@ -69,6 +72,7 @@ export function OrderEditedNotice({
   edits,
   sourceName,
   sessionDiscount = null,
+  sessionStock = null,
   onConfirmed,
   onDiscountResent,
 }: OrderEditedNoticeProps): ReactElement | null {
@@ -90,6 +94,7 @@ export function OrderEditedNotice({
   const totals = edits.totals;
   const lowered = edits.lines.length;
   const unmatched = edits.unmatchedLineEdits ?? [];
+  const stockOutcome = describeStockOutcome(sessionStock ?? []);
   const sessionAmount = sessionDiscount?.discount?.amount ?? null;
 
   return (
@@ -107,6 +112,9 @@ export function OrderEditedNotice({
           <p data-testid="order-edit-cod">
             {`Cash on delivery: collect ${formatDecimalAmount(edits.cod.amount, edits.cod.currency)} (${channel} has ${formatDecimalAmount(edits.cod.channelAmount, edits.cod.currency)}).`}
           </p>
+        ) : null}
+        {stockOutcome && stockOutcome.tone === 'info' ? (
+          <p data-testid="order-edit-stock">{stockOutcome.text}</p>
         ) : null}
         {refund ? (
           <p data-testid="order-edit-refund-pending">
@@ -192,6 +200,11 @@ export function OrderEditedNotice({
           </p>
         ) : null}
       </Alert>
+      {stockOutcome && stockOutcome.tone === 'warning' ? (
+        <Alert tone="warning" title="Stock was not put back" data-testid="order-edit-stock-failed">
+          <p>{stockOutcome.text}</p>
+        </Alert>
+      ) : null}
       {unmatched.length > 0 ? (
         <Alert
           tone="warning"

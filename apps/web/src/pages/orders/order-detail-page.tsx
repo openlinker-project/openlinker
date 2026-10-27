@@ -94,7 +94,7 @@ import type { CancelOrderResult } from '../../features/orders/api/order-cancel.t
 import { OrderEditAction } from '../../features/orders/components/order-edit-action';
 import { OrderEditedNotice } from '../../features/orders/components/order-edited-notice';
 import { buildOrderEditTimelineEvents } from '../../features/orders/components/order-edit-timeline-events';
-import type { OrderDiscountResult } from '../../features/orders/api/order-edit.types';
+import type { OrderDiscountResult, OrderEditLineStock } from '../../features/orders/api/order-edit.types';
 import type { EditOrderOutput } from '../../features/orders/hooks/use-edit-order-mutation';
 import type { OrderEditRemedyTarget } from '../../features/orders/lib/order-edit';
 import { hasAcceptedFulfilmentWork, isOrderCancelTerminal } from '../../features/orders/lib/order-cancel';
@@ -168,6 +168,10 @@ export function OrderDetailPage(): ReactElement {
   // The one discount RESPONSE this session holds (#3544): it carries what the
   // server does not persist (the repriced invoice lines of a correction, whether
   // the refund intent could be opened) and is gone after a reload, by design.
+  const [stockOutcome, setStockOutcome] = useState<{
+    internalOrderId: string;
+    stock: OrderEditLineStock[];
+  } | null>(null);
   const [discountOutcome, setDiscountOutcome] = useState<{
     internalOrderId: string;
     result: OrderDiscountResult;
@@ -333,7 +337,14 @@ export function OrderDetailPage(): ReactElement {
   const sessionDiscount =
     discountOutcome?.internalOrderId === order.internalOrderId ? discountOutcome.result : null;
   const editTimeline = buildOrderEditTimelineEvents(order.edits, cancelSourceName);
+  const sessionStock = stockOutcome?.internalOrderId === order.internalOrderId ? stockOutcome.stock : null;
   const handleOrderEdited = (outputs: readonly EditOrderOutput[]): void => {
+    // The restore outcome is not persisted on the order, so it is held for this
+    // session only; an edit without line changes reports none (E-52).
+    const stock = outputs.flatMap((output) =>
+      'stock' in output && !output.dryRun ? output.stock : [],
+    );
+    if (stock.length > 0) setStockOutcome({ internalOrderId: order.internalOrderId, stock });
     const discount = outputs.find(
       (output): output is OrderDiscountResult => 'paymentBranch' in output,
     );
@@ -596,6 +607,7 @@ export function OrderDetailPage(): ReactElement {
         edits={order.edits}
         sourceName={cancelSourceName}
         sessionDiscount={sessionDiscount}
+        sessionStock={sessionStock}
         onDiscountResent={handleOrderEdited}
         onConfirmed={() => {
           void queryClient.invalidateQueries({ queryKey: invoicingQueryKeys.all });

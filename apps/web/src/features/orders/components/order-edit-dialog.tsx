@@ -45,7 +45,7 @@ import {
   useEditOrderMutation,
   type EditOrderOutput,
 } from '../hooks/use-edit-order-mutation';
-import { readRefundCeilingFigures, readServerReason } from '../lib/order-cancel';
+import { readRefundCeilingFigures, readServerReason, remainingRefundable } from '../lib/order-cancel';
 import {
   classifyOrderEditRefusal,
   lockedSectionsFor,
@@ -571,7 +571,7 @@ export function OrderEditDialog({
               title="More than can still be refunded"
               data-testid="order-edit-ceiling-refusal"
             >
-              {`The refund for this discount is ${ceiling.requested} ${ceiling.currency}, but only ${ceiling.ceiling} ${ceiling.currency} can still be refunded on this order (${ceiling.alreadyRefunded} ${ceiling.currency} already refunded).`}
+              {`The refund for this discount is ${ceiling.requested} ${ceiling.currency}, but only ${remainingRefundable(ceiling.ceiling, ceiling.alreadyRefunded)} ${ceiling.currency} can still be refunded on this order (${ceiling.alreadyRefunded} ${ceiling.currency} already refunded).`}
               <label className="order-cancel-check">
                 <input
                   type="checkbox"
