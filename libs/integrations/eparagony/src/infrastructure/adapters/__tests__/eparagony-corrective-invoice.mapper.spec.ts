@@ -143,11 +143,19 @@ describe('composeCorrectiveInvoiceDocument - the wire shape', () => {
 
     expect(eCorrectiveInvoice.invoiceType).toBe('VAT');
     expect(eCorrectiveInvoice.correctedMetadata).toEqual({
+      vatCalculationMethod: 'SUM_OF_RATES_NET',
+      calculationValidation: 'NONE',
       invoiceNumber: 'OL-POC/2026/B2B/1',
       invoiceDate: '2026-09-15',
       // The ORIGINAL total: 2 units at 49.20 gross = 9840 minor units.
       grossSaleValue: 9840,
     });
+  });
+
+  it('should send correctedLines carrying the original lines', () => {
+    const { eCorrectiveInvoice } = compose();
+    expect(eCorrectiveInvoice.correctedLines).toBeDefined();
+    expect(eCorrectiveInvoice.correctedLines?.length).toBeGreaterThan(0);
   });
 
   it('should compose correctingMetadata from the corrected totals with the full seller identity', () => {

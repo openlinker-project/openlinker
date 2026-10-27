@@ -530,6 +530,8 @@ export function composeCorrectiveInvoiceDocument(
   const consumerAddress = toEntityAddress(originalDocument.buyer.address, orderId);
 
   const correctedMetadata: EparagonyCorrectedInvoiceMetadata = {
+    vatCalculationMethod: EPARAGONY_VAT_CALCULATION_SUM_OF_RATES_NET,
+    calculationValidation: EPARAGONY_CALCULATION_VALIDATION_NONE,
     invoiceNumber: originalDocumentNumber,
     invoiceDate: originalDocument.issueDate,
     grossSaleValue: original.grossSaleValue,
