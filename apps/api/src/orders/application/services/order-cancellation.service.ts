@@ -272,8 +272,13 @@ export class OrderCancellationService implements IOrderCancellationService {
     // one with the carrier, or a marketplace-OBSERVED (branch-1, `omp`) row with
     // no OL label to void at all (B-20 / C-37). Attempting a void on those would
     // end in LABEL_NOT_VOIDABLE after work was already started; say so up front.
+    // The rollup reads `dispatched` as soon as a label is generated, so it cannot
+    // veto a cancel while OL still holds a label it can void (C-6): the shipment
+    // statuses are the authority there, and the rollup only decides when none exist.
+    const holdsVoidableLabel = shipments.some((s) => VOIDABLE_SHIPMENT_STATUSES.includes(s.status));
     const marketplaceSaysShipped =
-      order.fulfillmentState === 'dispatched' || order.fulfillmentState === 'delivered';
+      !holdsVoidableLabel &&
+      (order.fulfillmentState === 'dispatched' || order.fulfillmentState === 'delivered');
     const alreadyShipped = shipments.some(
       (s) =>
         LEFT_THE_BUILDING_STATUSES.includes(s.status) ||
@@ -340,7 +345,7 @@ export class OrderCancellationService implements IOrderCancellationService {
         voided.push(shipment.id);
       } catch (error) {
         await this.changes.abandon(change.id, CANCEL_ABANDONED_LABEL_NOT_VOIDABLE);
-        const reason = error instanceof Error ? error.message : String(error);
+        const reason = (error instanceof Error ? error.message : String(error)).replace(/\.+$/, '');
         this.logger.warn(
           `order_cancel_label_not_voidable order=${change.internalOrderId} shipment=${shipment.id}: ${reason}`
         );

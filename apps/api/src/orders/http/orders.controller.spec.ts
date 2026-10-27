@@ -5,6 +5,7 @@
  */
 import type { TestingModule } from '@nestjs/testing';
 import { Test } from '@nestjs/testing';
+import { ParseUUIDPipe } from '@nestjs/common';
 import {
   BadRequestException,
   ConflictException,
@@ -1940,6 +1941,17 @@ describe('OrdersController', () => {
   });
 
   describe('confirmChange (#3540)', () => {
+    it('should validate changeId as a uuid so a malformed id answers 400 (no case id, runner R)', () => {
+      const args = Reflect.getMetadata(
+        '__routeArguments__',
+        OrdersController,
+        'confirmChange'
+      ) as Record<string, { data?: string; pipes?: unknown[] }>;
+      const changeArg = Object.values(args).find((a) => a.data === 'changeId');
+
+      expect(changeArg?.pipes).toContain(ParseUUIDPipe);
+    });
+
     const USER = { id: 'user-1', username: 'op', role: 'admin' } as never;
     it('should pass the order, change and session actor to the service', async () => {
       orderCancellation.confirmChange.mockResolvedValue({
