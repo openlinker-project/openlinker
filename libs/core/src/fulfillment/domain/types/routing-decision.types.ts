@@ -93,6 +93,17 @@ export const RoutingDecisionAbandonReasonValues = [
   'plan-carries-holds',
   /** #2395: same reasoning one field over — an unfulfillable line has no commit path yet. */
   'plan-carries-unfulfillable',
+  /**
+   * #2731: the decision sat `live` past the routing-decision TTL after an
+   * in-doubt `route()` and the reaper closed it.
+   *
+   * The ONE member that does not describe a router answer. It records OL's
+   * inference that nothing is still in flight, never anything the router
+   * declared (#2243), which is why the reap writes no `routerDecisionRef`. Safe
+   * only because the TTL floor sits above the longest `route()` budget any
+   * configuration allows — see `routing-decision-ttl.types.ts`.
+   */
+  'stranded-past-ttl',
 ] as const;
 
 export type RoutingDecisionAbandonReason = (typeof RoutingDecisionAbandonReasonValues)[number];

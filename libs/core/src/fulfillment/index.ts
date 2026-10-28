@@ -218,6 +218,13 @@ export * from './domain/types/fulfillment-dispatch-timeout.types';
 export type { IFulfillmentDispatchTimeoutService } from './application/interfaces/fulfillment-dispatch-timeout.service.interface';
 export * from './application/types/fulfillment-dispatch-timeout-sweep.types';
 
+// The stranded-routing-decision reaper (#2731). The SERVICE INTERFACE, its I/O
+// and the pure TTL rules cross the barrel; the decision repository port's
+// reads stay behind the service.
+export * from './domain/types/routing-decision-ttl.types';
+export type { IRoutingDecisionReaperService } from './application/interfaces/routing-decision-reaper.service.interface';
+export * from './application/types/routing-decision-reaper.types';
+
 // The dispatch-relay reconcile pass (#2728). The pure rules, the read seam and
 // its I/O shapes; the re-drive itself is `orders`' `relayDispatch` and is
 // deliberately not reachable from here.

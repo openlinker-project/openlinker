@@ -305,6 +305,13 @@ export const JobTypeValues = [
   // stock arrives. Global scope under the nil-UUID system connection id, like
   // its timeout- and relay-sweep siblings.
   'fulfillment.work.rerouteSweep',
+
+  // The stranded-routing-decision reaper (#2731). Closes a routing decision left
+  // `live` after an in-doubt `route()` once it is past the routing-decision TTL,
+  // then re-enters routing for its order by enqueueing `fulfillment.work.route`
+  // under the decision's own router. Global scope under the nil-UUID system
+  // connection id, like the other fulfilment sweeps.
+  'fulfillment.routing.reapSweep',
   // The lost-enqueue backstop for `inventory.saleDecrement` (#3629, epic #3460).
   // Both producers swallow an enqueue failure by design (the routing intercept is
   // fail-open), and the decrement job has no cron, so a lost enqueue leaves the

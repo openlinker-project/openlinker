@@ -71,6 +71,7 @@ import { FulfillmentWorkRelaySweepHandler } from './fulfillment-work-relay-sweep
 import { FulfillmentWorkRerouteSweepHandler } from './fulfillment-work-reroute-sweep.handler';
 import { MarketplaceSourceFulfillmentStatusSyncHandler } from './marketplace-source-fulfillment-status-sync.handler';
 import { FulfillmentWorkTimeoutSweepHandler } from './fulfillment-work-timeout-sweep.handler';
+import { FulfillmentRoutingReapSweepHandler } from './fulfillment-routing-reap-sweep.handler';
 import { InventorySaleDecrementHandler } from './inventory-sale-decrement.handler';
 import { InventorySaleDecrementReconcileSweepHandler } from './inventory-sale-decrement-reconcile-sweep.handler';
 
@@ -143,7 +144,8 @@ export class HandlerRegistrationService implements OnModuleInit {
     private readonly inventorySaleDecrementReconcileSweepHandler: InventorySaleDecrementReconcileSweepHandler,
     // Appended LAST so the positional construction in the registration spec
     // keeps every earlier handler in its slot.
-    private readonly marketplaceSourceFulfillmentStatusSyncHandler: MarketplaceSourceFulfillmentStatusSyncHandler
+    private readonly marketplaceSourceFulfillmentStatusSyncHandler: MarketplaceSourceFulfillmentStatusSyncHandler,
+    private readonly fulfillmentRoutingReapSweepHandler: FulfillmentRoutingReapSweepHandler
   ) {}
 
   onModuleInit(): void {
@@ -168,7 +170,8 @@ export class HandlerRegistrationService implements OnModuleInit {
     // `fulfillment.work.relaySweep` beside it (#2728) — both cron-paced
     // reconcilers over work that is already stalled by definition — and
     // `fulfillment.work.rerouteSweep` (#3485) is a third, over orders held
-    // because routing could not place them.
+    // because routing could not place them, and `fulfillment.routing.reapSweep`
+    // (#2731) a fourth, over routing decisions stranded past their TTL.
     // `fulfillment.work.autoDispatch` (#3340, closing #2729) and
     // `marketplace.sourceFulfillment.statusSync` joined `bulk` beside its
     // destination-side twin (ADR-012 amendment).
@@ -687,6 +690,17 @@ export class HandlerRegistrationService implements OnModuleInit {
     this.handlerRegistry.register(
       'fulfillment.work.rerouteSweep',
       this.fulfillmentWorkRerouteSweepHandler,
+      'bulk'
+    );
+
+    // Stranded-routing-decision reaper (#2731). 'bulk', for the timeout sweep's
+    // reason: every candidate has by construction waited past the TTL, so a lane
+    // slot's delay adds minutes to a condition measured in an hour or more, and
+    // the pass makes no platform call. The re-route itself runs in the
+    // `fulfillment.work.route` child it enqueues, on 'realtime'.
+    this.handlerRegistry.register(
+      'fulfillment.routing.reapSweep',
+      this.fulfillmentRoutingReapSweepHandler,
       'bulk'
     );
 

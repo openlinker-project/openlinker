@@ -35,7 +35,16 @@
 
 const DEFAULT_ROUTE_LOCK_TTL_MS = 120_000;
 const MIN_ROUTE_LOCK_TTL_MS = 10_000;
-const MAX_ROUTE_LOCK_TTL_MS = 600_000;
+/**
+ * The longest routing lock TTL any configuration can produce, and therefore the
+ * outer bound on one `route()` call (its budget is half the TTL).
+ *
+ * Exported for one reader: the #2731 reaper's TTL floor is asserted to sit above
+ * it, so no setting of either env var can reap a decision whose router call may
+ * still be inside its budget.
+ */
+export const FULFILLMENT_ROUTE_LOCK_TTL_MAX_MS = 600_000;
+const MAX_ROUTE_LOCK_TTL_MS = FULFILLMENT_ROUTE_LOCK_TTL_MAX_MS;
 
 /**
  * How much of the TTL the router call may consume.

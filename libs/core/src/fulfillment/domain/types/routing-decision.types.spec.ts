@@ -30,12 +30,14 @@ describe('RoutingDecisionAbandonReason', () => {
   it('should declare only reasons grounded in shipped code', () => {
     // #2393 ships `PendingRoutingPlanNotSupportedError` and
     // `checkRoutingPlanConservesQuantities`; #2395 adds the two Wave-3a
-    // refusals of a plan that cannot be committed whole.
+    // refusals of a plan that cannot be committed whole; #2731 adds the
+    // reaper's close of a decision stranded past its TTL.
     expect([...RoutingDecisionAbandonReasonValues]).toEqual([
       'plan-pending',
       'plan-not-conserving',
       'plan-carries-holds',
       'plan-carries-unfulfillable',
+      'stranded-past-ttl',
     ]);
   });
 
@@ -48,6 +50,15 @@ describe('RoutingDecisionAbandonReason', () => {
     // shipments. In-doubt leaves the decision `live` instead.
     expect([...RoutingDecisionAbandonReasonValues]).not.toContain('router-timeout');
     expect([...RoutingDecisionAbandonReasonValues]).not.toContain('router-failed');
+  });
+
+  it('should keep the reaper reason distinct from a timeout reason (#2731)', () => {
+    // The reaper closes a decision only after the TTL, never at the moment the
+    // router call is in doubt, so its reason names the elapsed TTL and not the
+    // router outcome. A `router-timeout` member would invite closing on the
+    // timeout itself, which is the #2395 double-ship.
+    expect(isRoutingDecisionAbandonReason('stranded-past-ttl')).toBe(true);
+    expect(readRoutingDecisionAbandonReason('stranded-past-ttl')).toBe('stranded-past-ttl');
   });
 
   it('should read an unrecognised persisted value as absent rather than throwing', () => {
