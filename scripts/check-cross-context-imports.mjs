@@ -158,7 +158,7 @@ const ALLOW_LIST = new Map([
   // (#1635, mirrors the pre-existing password-reset.service.spec.ts entry above)
   [
     'apps/api/src/auth/password-reset-round-trip.spec.ts',
-    new Set(['PasswordResetTokenRepositoryPort', 'UserRepositoryPort']),
+    new Set(['PasswordResetTokenRepositoryPort', 'UserRepositoryPort', 'SmtpMailerAdapter']),
   ],
 
   // apps → users.UserRepositoryPort — rewire via IUsersService

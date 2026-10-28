@@ -5,7 +5,7 @@
  * sending it. Selected as the default transport when no SMTP config is
  * present, so offline development works without a mail server.
  *
- * @module apps/api/src/auth/adapters
+ * @module libs/core/src/mailer/infrastructure/adapters
  */
 import { Injectable, Logger } from '@nestjs/common';
 import type { EmailMessage, MailerPort } from '@openlinker/core/users';

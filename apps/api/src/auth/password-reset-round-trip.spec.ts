@@ -30,7 +30,7 @@ import {
 import { PasswordResetService } from './password-reset.service';
 import { AuthService } from './auth.service';
 import { MailerPasswordResetNotifierAdapter } from './adapters/mailer-password-reset-notifier.adapter';
-import { SmtpMailerAdapter, type SmtpTransport } from './adapters/smtp-mailer.adapter';
+import { SmtpMailerAdapter, type SmtpTransport } from '@openlinker/core/mailer';
 
 const makeConfig = (values: Record<string, string | number> = {}): ConfigService =>
   ({

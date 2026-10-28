@@ -22,4 +22,9 @@ export type {
 export { MAILER_SMTP_CREDENTIALS_REF } from './domain/types/mailer-credentials.types';
 export type { IMailerSettingsService } from './application/services/mailer-settings.service.interface';
 export { MailerModule } from './mailer.module';
+export { MailerTransportModule } from './mailer-transport.module';
+export { ConsoleMailerAdapter } from './infrastructure/adapters/console-mailer.adapter';
+export { SmtpMailerAdapter } from './infrastructure/adapters/smtp-mailer.adapter';
+export type { SmtpTransport } from './infrastructure/adapters/smtp-mailer.adapter';
+export { DbBackedMailerAdapter } from './infrastructure/adapters/db-backed-mailer.adapter';
 export * from './mailer.tokens';
