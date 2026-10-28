@@ -174,6 +174,30 @@ any status read-back paired with an outbound relay.
 
 ---
 
+## Take the lock before the READ of a read-then-write money guard
+
+**Context**: the refund ceiling (#3289) compares a refund against
+`order total - already refunded` and then writes a `RefundRecord`. The returns
+confirm flow read the ceiling context, moved the money state and wrote the
+record in three steps; the first version locked only the final write.
+
+**Problem**: a lock around the write alone does not serialize the guard. Two
+concurrent refunds both read the same "already refunded" sum before either
+writes, both pass the ceiling, and the order is refunded twice over. The guard
+looked correct in every sequential spec and the double-refund appeared only
+under concurrency.
+
+**Rule**: when a guard reads state and a later write changes that same state,
+the per-order lock must be held from before the read until after the write
+(`runUnderOrderRefundLock`, with `orderLockHeld` passed down so the inner write
+does not re-acquire a non-re-entrant lock). Add an overlapping-call spec; a
+sequential one passes against no lock at all.
+
+**Applies to**: `OrderRefundService`, `ReturnRefundService`,
+`return-writes.controller.ts` confirm flow, and any future money ceiling.
+
+**Source**: #3289
+
 ## Never route a one-field change through a full-upsert port
 
 **Context**: price-change propagation to a WooCommerce shop (#3144) reused

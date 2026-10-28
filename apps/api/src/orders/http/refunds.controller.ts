@@ -39,7 +39,7 @@ import {
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { Logger } from '@openlinker/shared/logging';
-import type { RefundRecord } from '@openlinker/core/orders';
+import type { RefundCeilingVerdict, RefundRecord } from '@openlinker/core/orders';
 import {
   DuplicateRefundRecordException,
   RefundCeilingExceededException,
@@ -55,6 +55,7 @@ import {
 import { Roles } from '../../auth/decorators/roles.decorator';
 import { RecordRefundRequestDto } from './dto/record-refund-request.dto';
 import { RefundRecordResponseDto } from './dto/refund-record-response.dto';
+import { toRefundCeilingVerdictDto } from './dto/refund-ceiling-verdict.dto';
 
 @ApiTags('orders')
 @ApiBearerAuth()
@@ -96,6 +97,7 @@ export class RefundsController {
     );
 
     try {
+      let ceilingVerdict: RefundCeilingVerdict | null = null;
       const refund = await this.refundService.recordRefund({
         internalOrderId,
         amount: dto.amount,
@@ -105,9 +107,19 @@ export class RefundsController {
         recordedAt: dto.recordedAt ? new Date(dto.recordedAt) : new Date(),
         idempotencyKey: dto.idempotencyKey ?? null,
         acknowledgeAboveCeiling: dto.acknowledgeAboveCeiling === true,
+      }, {
+        onCeilingVerdict: (verdict) => {
+          ceilingVerdict = verdict;
+        },
       });
 
-      return this.toDto(refund);
+      const response = this.toDto(refund);
+      // An unknown ceiling lets the refund through unchecked; the caller is told
+      // so here rather than only in a server log (#3289).
+      if (ceilingVerdict !== null) {
+        response.refundCeiling = toRefundCeilingVerdictDto(ceilingVerdict);
+      }
+      return response;
     } catch (error) {
       if (error instanceof DuplicateRefundRecordException) {
         throw new ConflictException('A refund with this idempotencyKey already exists for this order');

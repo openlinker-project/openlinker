@@ -36,6 +36,7 @@ import {
   type ReturnOrigin,
 } from '@openlinker/core/returns';
 import { RefundReasonValues, type RefundReason } from '@openlinker/core/orders/types';
+import { RefundCeilingVerdictDto } from '../../orders/http/dto/refund-ceiling-verdict.dto';
 
 const NOTE_MAX_LENGTH = 500;
 
@@ -229,4 +230,12 @@ export class ConfirmReturnRefundResponseDto {
 
   @ApiProperty({ nullable: true, description: "The source's own words, where it said anything." })
   providerMessage!: string | null;
+
+  @ApiProperty({
+    type: () => RefundCeilingVerdictDto,
+    description:
+      'The order-level refund-ceiling verdict this attempt was decided on (#3289). `status: unknown` means the ' +
+      'ceiling could not be checked and the refund proceeded UNCHECKED; `reason` says why.',
+  })
+  refundCeiling!: RefundCeilingVerdictDto;
 }

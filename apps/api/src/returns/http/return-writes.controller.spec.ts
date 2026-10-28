@@ -242,6 +242,7 @@ describe('ReturnWritesController', () => {
         moneyState: 'triggered',
         claimedLineIds: ['b', 'a'],
         providerMessage: null,
+        refundCeiling: { status: 'unknown', reason: 'order-total-unknown' } as const,
         refundRecordIntent: {
           returnId: RETURN_ID,
           internalOrderId: 'ol_order_1',
@@ -310,6 +311,7 @@ describe('ReturnWritesController', () => {
         moneyState: 'triggered',
         claimedLineIds: ['a'],
         providerMessage: null,
+        refundCeiling: { status: 'unknown', reason: 'order-total-unknown' } as const,
         refundRecordIntent: {
           returnId: RETURN_ID,
           internalOrderId: 'ol_order_1',
@@ -353,6 +355,7 @@ describe('ReturnWritesController', () => {
         moneyState: 'triggered',
         claimedLineIds: ['a'],
         providerMessage: null,
+        refundCeiling: { status: 'unknown', reason: 'order-total-unknown' } as const,
         refundRecordIntent: {
           returnId: RETURN_ID,
           internalOrderId: 'ol_order_1',
@@ -426,11 +429,47 @@ describe('ReturnWritesController', () => {
       expect(error).toBeInstanceOf(BadRequestException);
     });
 
+    it('should report the ceiling verdict on the confirm response, including an unknown one (#3289)', async () => {
+      refunds.triggerRefund.mockResolvedValue({
+        moneyState: 'denied',
+        claimedLineIds: [],
+        providerMessage: null,
+        refundRecordIntent: null,
+        refundCeiling: { status: 'unknown', reason: 'currency-differs' },
+      });
+
+      const unknown = await controller.confirmRefund(RETURN_ID, body, USER);
+      expect(unknown.refundCeiling).toEqual({ status: 'unknown', reason: 'currency-differs' });
+
+      refunds.triggerRefund.mockResolvedValue({
+        moneyState: 'denied',
+        claimedLineIds: [],
+        providerMessage: null,
+        refundRecordIntent: null,
+        refundCeiling: {
+          status: 'within',
+          ceiling: '100.00',
+          alreadyRefunded: '0.00',
+          requested: '19.99',
+          currency: 'PLN',
+        },
+      });
+      const within = await controller.confirmRefund(RETURN_ID, body, USER);
+      expect(within.refundCeiling).toEqual({
+        status: 'within',
+        ceiling: '100.00',
+        alreadyRefunded: '0.00',
+        requested: '19.99',
+        currency: 'PLN',
+      });
+    });
+
     it('should report moneyMoved:false without writing when no money moved', async () => {
       refunds.triggerRefund.mockResolvedValue({
         moneyState: 'denied',
         claimedLineIds: [],
         providerMessage: 'Source refused',
+        refundCeiling: { status: 'unknown', reason: 'order-total-unknown' } as const,
         refundRecordIntent: null,
       });
 
@@ -447,6 +486,7 @@ describe('ReturnWritesController', () => {
         moneyState: 'triggered',
         claimedLineIds: ['a'],
         providerMessage: null,
+        refundCeiling: { status: 'unknown', reason: 'order-total-unknown' } as const,
         refundRecordIntent: {
           returnId: RETURN_ID,
           internalOrderId: 'ol_order_1',
@@ -476,6 +516,7 @@ describe('ReturnWritesController', () => {
         moneyState: 'triggered',
         claimedLineIds: ['a'],
         providerMessage: null,
+        refundCeiling: { status: 'unknown', reason: 'order-total-unknown' } as const,
         refundRecordIntent: {
           returnId: RETURN_ID,
           internalOrderId: 'o',

@@ -66,6 +66,7 @@ import {
   type IOrderRefundService,
   type RefundCeilingContext,
 } from '@openlinker/core/orders';
+import { toRefundCeilingVerdictDto } from '../../orders/http/dto/refund-ceiling-verdict.dto';
 import {
   RETURN_AUTHORIZE_SERVICE_TOKEN,
   RETURN_CORRECTION_PROPOSAL_SERVICE_TOKEN,
@@ -499,6 +500,8 @@ export class ReturnWritesController {
       moneyState: result.moneyState,
       claimedLineIds: result.claimedLineIds,
       providerMessage: result.providerMessage,
+      // Reported, not only logged: an `unknown` ceiling proceeded unchecked (#3289).
+      refundCeiling: toRefundCeilingVerdictDto(result.refundCeiling),
     };
 
     const intent = result.refundRecordIntent;

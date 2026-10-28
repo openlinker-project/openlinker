@@ -9,6 +9,7 @@
  * @module application/interfaces
  */
 import type { RefundRecord } from '../../domain/entities/refund-record.entity';
+import type { RefundCeilingVerdict } from '../../domain/types/refund-ceiling.types';
 import type { CreateRefundRecordInput, RefundSummary } from '../../domain/types/refund-record.types';
 
 export interface RecordRefundOptions {
@@ -18,6 +19,13 @@ export interface RecordRefundOptions {
    * not acquire it again - the lock is not re-entrant.
    */
   orderLockHeld?: boolean;
+  /**
+   * Receives the ceiling verdict the write was decided on, including an
+   * `unknown` one that let the refund through unchecked (#3289). A callback
+   * rather than a wider return type so every existing caller of `recordRefund`
+   * keeps its `RefundRecord`.
+   */
+  onCeilingVerdict?: (verdict: RefundCeilingVerdict) => void;
 }
 
 export interface IOrderRefundService {
