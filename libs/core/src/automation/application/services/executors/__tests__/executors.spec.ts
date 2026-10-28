@@ -233,6 +233,93 @@ describe('SendEmailExecutorService', () => {
     expect(result.status).toBe('done');
   });
 
+  it('should render the buyer name and the newest tracking number (#3553)', async () => {
+    const sent: Array<{ subject: string; text: string }> = [];
+    const mailer = {
+      sendEmail: jest.fn((message: { subject: string; text: string }) => {
+        sent.push(message);
+        return Promise.resolve();
+      }),
+    };
+    const orders = {
+      getOrderRecord: jest.fn().mockResolvedValue({
+        buyerName: 'Jan Kowalski',
+        placedAt: null,
+        dispatchByAt: null,
+      }),
+    };
+    const shipments = { getLatestOutboundTrackingNumber: jest.fn().mockResolvedValue('TRK123') };
+    const executor = new SendEmailExecutorService(
+      stubResolver({
+        MAILER_TOKEN: mailer,
+        ORDER_RECORD_SERVICE_TOKEN: orders,
+        SHIPMENT_QUERY_SERVICE_TOKEN: shipments,
+      }),
+    );
+
+    const result = await executor.execute(
+      input({
+        action: 'send-email',
+        recipient: { kind: 'address', address: 'ops@example.com' },
+        subject: 'Hi {buyer.name}',
+        body: 'Tracking: {shipment.tracking}',
+      }),
+    );
+
+    expect(result.status).toBe('done');
+    expect(sent[0]).toEqual(
+      expect.objectContaining({ subject: 'Hi Jan Kowalski', text: 'Tracking: TRK123' }),
+    );
+  });
+
+  it('should render the fallbacks when the name is not stored and no shipment exists (#3553)', async () => {
+    const sent: Array<{ subject: string; text: string }> = [];
+    const mailer = {
+      sendEmail: jest.fn((message: { subject: string; text: string }) => {
+        sent.push(message);
+        return Promise.resolve();
+      }),
+    };
+    const orders = {
+      getOrderRecord: jest.fn().mockResolvedValue({ placedAt: null, dispatchByAt: null }),
+    };
+    const shipments = { getLatestOutboundTrackingNumber: jest.fn().mockResolvedValue(null) };
+    const executor = new SendEmailExecutorService(
+      stubResolver({
+        MAILER_TOKEN: mailer,
+        ORDER_RECORD_SERVICE_TOKEN: orders,
+        SHIPMENT_QUERY_SERVICE_TOKEN: shipments,
+      }),
+    );
+
+    await executor.execute(
+      input({
+        action: 'send-email',
+        recipient: { kind: 'address', address: 'ops@example.com' },
+        subject: 'Hi {buyer.name}',
+        body: 'Tracking: {shipment.tracking}',
+      }),
+    );
+
+    expect(sent[0]).toEqual(
+      expect.objectContaining({ subject: 'Hi customer', text: 'Tracking: not yet' }),
+    );
+  });
+
+  it('should still send, with the tracking fallback, when the shipment read fails (#3553)', async () => {
+    const mailer = { sendEmail: jest.fn().mockResolvedValue(undefined) };
+    const shipments = {
+      getLatestOutboundTrackingNumber: jest.fn().mockRejectedValue(new Error('db down')),
+    };
+    const executor = new SendEmailExecutorService(
+      stubResolver({ MAILER_TOKEN: mailer, SHIPMENT_QUERY_SERVICE_TOKEN: shipments }),
+    );
+
+    const result = await executor.execute(input(EMAIL_TO_ADDRESS));
+
+    expect(result.status).toBe('done');
+  });
+
   it('should fail (not throw) when the mailer throws', async () => {
     const mailer = { sendEmail: jest.fn().mockRejectedValue(new Error('smtp down')) };
     const executor = new SendEmailExecutorService(stubResolver({ MAILER_TOKEN: mailer }));

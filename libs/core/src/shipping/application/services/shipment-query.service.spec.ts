@@ -166,6 +166,31 @@ describe('ShipmentQueryService', () => {
     });
   });
 
+  describe('getLatestOutboundTrackingNumber (#3553)', () => {
+    it('should be null when the order has no shipment', async () => {
+      repository.findByOrderId.mockResolvedValue([]);
+
+      await expect(service.getLatestOutboundTrackingNumber('ol_order_1')).resolves.toBeNull();
+    });
+
+    it('should be null when no shipment has a tracking number yet', async () => {
+      repository.findByOrderId.mockResolvedValue([{ trackingNumber: null } as Shipment]);
+
+      await expect(service.getLatestOutboundTrackingNumber('ol_order_1')).resolves.toBeNull();
+    });
+
+    it('should return the newest tracking number and ask for outbound only', async () => {
+      repository.findByOrderId.mockResolvedValue([
+        { trackingNumber: 'OLD', createdAt: new Date('2026-05-01T00:00:00Z') } as Shipment,
+        { trackingNumber: 'NEW', createdAt: new Date('2026-05-02T00:00:00Z') } as Shipment,
+        { trackingNumber: null, createdAt: new Date('2026-05-03T00:00:00Z') } as Shipment,
+      ]);
+
+      await expect(service.getLatestOutboundTrackingNumber('ol_order_1')).resolves.toBe('NEW');
+      expect(repository.findByOrderId).toHaveBeenCalledWith('ol_order_1', 'outbound');
+    });
+  });
+
   describe('hasConsumedReservations (#2348)', () => {
     it('should be false when the order has no shipments at all', async () => {
       repository.findByOrderId.mockResolvedValue([]);

@@ -527,6 +527,29 @@ export class OrderRecord {
   }
 
   /**
+   * The buyer's name as the source reported it (#3553), billing address first,
+   * then shipping. Pure derivation of the already-loaded snapshot (ADR-011).
+   *
+   * `undefined` under `OL_STORE_PII=false`: the snapshot's addresses are then
+   * redacted to a placeholder and carry no name, which this getter treats as
+   * ABSENT rather than returning the placeholder. A caller must render its own
+   * fallback, never an empty string or the redaction marker.
+   */
+  get buyerName(): string | undefined {
+    for (const key of ['billingAddress', 'shippingAddress'] as const) {
+      const raw = this.orderSnapshot[key];
+      if (typeof raw !== 'object' || raw === null) continue;
+      const address = raw as Record<string, unknown>;
+      const first = typeof address.firstName === 'string' ? address.firstName.trim() : '';
+      const last = typeof address.lastName === 'string' ? address.lastName.trim() : '';
+      const name = `${first} ${last}`.trim();
+      if (name.length === 0 || name.includes('[REDACTED]')) continue;
+      return name;
+    }
+    return undefined;
+  }
+
+  /**
    * Typed, fail-safe read of the marketplace-sourced COD collect amount (#1435)
    * from the snapshot. Pure derivation of an already-loaded field (ADR-011): no
    * I/O, no mutation. Mirrors the {@link paymentStatus} getter — centralises the
