@@ -47,8 +47,19 @@ import { Inject, Injectable } from '@nestjs/common';
 import {
   buildFulfillmentParcelClosureIdempotencyKey,
   FULFILLMENT_PROGRESS_SERVICE_TOKEN,
+  FULFILLMENT_WORKLIST_SERVICE_TOKEN,
   type IFulfillmentProgressService,
+  type IFulfillmentWorklistService,
 } from '@openlinker/core/fulfillment';
+import {
+  isPresentButInvalidAutoDispatchTrigger,
+  readAutoDispatchConfig,
+} from '@openlinker/core/identifier-mapping';
+import {
+  INTEGRATIONS_SERVICE_TOKEN,
+  type IIntegrationsService,
+} from '@openlinker/core/integrations';
+import { JOB_ENQUEUE_TOKEN, type JobEnqueuePort } from '@openlinker/core/sync';
 import {
   FULFILLMENT_WORK_DISPATCH_ROUTER_SERVICE_TOKEN,
   type IFulfillmentWorkDispatchRouterService,
@@ -69,7 +80,13 @@ export class FulfillmentParcelClosureNotifierService implements IFulfillmentParc
     @Inject(FULFILLMENT_PROGRESS_SERVICE_TOKEN)
     private readonly progress: IFulfillmentProgressService,
     @Inject(FULFILLMENT_WORK_DISPATCH_ROUTER_SERVICE_TOKEN)
-    private readonly router: IFulfillmentWorkDispatchRouterService
+    private readonly router: IFulfillmentWorkDispatchRouterService,
+    @Inject(INTEGRATIONS_SERVICE_TOKEN)
+    private readonly integrations: IIntegrationsService,
+    @Inject(FULFILLMENT_WORKLIST_SERVICE_TOKEN)
+    private readonly worklist: IFulfillmentWorklistService,
+    @Inject(JOB_ENQUEUE_TOKEN)
+    private readonly jobEnqueue: JobEnqueuePort
   ) {}
 
   async notifyParcelClosed(input: NotifyFulfillmentParcelClosedInput): Promise<void> {
@@ -81,6 +98,14 @@ export class FulfillmentParcelClosureNotifierService implements IFulfillmentParc
         idempotencyKey: buildFulfillmentParcelClosureIdempotencyKey(input.workId, input.closedAt),
         occurredAt: input.closedAt,
       });
+
+      // #2729 (D1): the parcel closing is also the moment a connection that
+      // chose `on-parcel-closed` buys its label. Attempted for a `duplicate`
+      // too - the job's idempotency key makes a repeat a no-op, and it lets a
+      // replayed close heal an enqueue that failed the first time.
+      if (outcome.status === 'duplicate' || outcome.status === 'recorded') {
+        await this.maybeEnqueueAutoDispatch(input);
+      }
 
       if (outcome.status === 'duplicate') {
         // An earlier close (bench + worklist can both legally close the same
@@ -116,6 +141,48 @@ export class FulfillmentParcelClosureNotifierService implements IFulfillmentParc
         `Could not notify the order's channel that fulfilment work ${input.workId} shipped: ` +
           `${error instanceof Error ? error.message : String(error)}`,
         error instanceof Error ? error.stack : undefined
+      );
+    }
+  }
+
+  /**
+   * Enqueue `fulfillment.work.autoDispatch` when the holder chose
+   * `on-parcel-closed` (#2729, D1).
+   *
+   * The close that calls this is SYSTEM-driven (the last verification closes the
+   * parcel inside the transaction that records it, bench D18), so reacting to
+   * it adds no bench route and no close verb - the ADR-071 amendment records
+   * why that is not a bench "close" operation.
+   *
+   * BEST-EFFORT, like everything in this notifier: the close has committed, and
+   * a failed enqueue costs the operator one manual label at the bench. The key
+   * is the one the accept producer uses, so the two producers can never both
+   * land a job for one work.
+   */
+  private async maybeEnqueueAutoDispatch(input: NotifyFulfillmentParcelClosedInput): Promise<void> {
+    try {
+      const { connection } = await this.integrations.getAdapter(input.connectionId);
+      const autoDispatch = readAutoDispatchConfig(connection.config);
+      if (!autoDispatch.enabled || autoDispatch.trigger !== 'on-parcel-closed') {
+        return;
+      }
+      if (isPresentButInvalidAutoDispatchTrigger(connection.config)) {
+        this.logger.warn(
+          `autoDispatch.trigger on connection ${input.connectionId} is not a recognised value`
+        );
+      }
+      const work = await this.worklist.get(input.workId);
+      await this.jobEnqueue.enqueueJob({
+        jobType: 'fulfillment.work.autoDispatch',
+        // The work's own holder, never a synthetic scope (#2609).
+        connectionId: input.connectionId,
+        payload: { schemaVersion: 1, workId: input.workId, orderId: work.orderId },
+        idempotencyKey: `fulfillment:autoDispatch:${input.workId}`,
+      });
+    } catch (error) {
+      this.logger.warn(
+        `Could not enqueue fulfillment.work.autoDispatch for closed work ${input.workId}: ` +
+          `${error instanceof Error ? error.message : String(error)}`
       );
     }
   }

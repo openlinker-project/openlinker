@@ -209,8 +209,14 @@ export interface ConnectionConfig {
    */
   autoDispatch?: {
     enabled?: boolean;
+    /** When the label is bought (#2729, D1): `'on-accept'` (default) or `'on-parcel-closed'`. */
+    trigger?: string;
     parcelTemplate?: string;
     defaultWeightGrams?: number;
+    /** Default parcel box in mm (#3571); set all three or none. */
+    lengthMm?: number;
+    widthMm?: number;
+    heightMm?: number;
   };
   [key: string]: unknown;
 }

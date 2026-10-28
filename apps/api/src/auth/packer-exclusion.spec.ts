@@ -220,6 +220,15 @@ const PACKER_GRANTED_ROUTES: readonly string[] = [
   // issue an invoice or fiscal document (bench-never-issues.spec.ts). The packer
   // still reaches no /shipments/* write directly (ADR-071: no new principal).
   'BenchLabelController.replaceLabel',
+  // #2729 (D46). The other packer-reachable label WRITE: buy the label for a box
+  // that has none, when the holder's automatic labels are off. Narrower than the
+  // /shipments/* routes for the same reasons as replaceLabel, and narrower still:
+  // the body is EMPTY, so the packer supplies no parcel at all - weight, box and
+  // template come from the connection's configured defaults, the recipient from
+  // the order, through the one shared decision (`planAutoDispatch`). It refuses
+  // while automatic labels are on and when a label already exists. Serialised
+  // per work. Not a close verb: the box is shut by the last verification.
+  'BenchLabelController.generateLabel',
   // pack-bench completion. Declare a parcel finished and off the bench — the completion act
   // after the last scan (label applied, invoice inside, box on the
   // trolley). Scoped exactly as getParcel scopes it, plus the ADR-074 lock a

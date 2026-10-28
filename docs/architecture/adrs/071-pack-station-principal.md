@@ -67,6 +67,21 @@ Three reasons, in order of weight:
 
 **Revisit when** inherited boxes are found closed under a packer who did not know they were taking them on, or terminal switching outgrows D16's "a few times a shift". Either brings back an in-bench switch, and the D13 statement must move with it.
 
+## Amendment (#2729, 2026-10-22): reacting to the system-driven close is not a bench "close" operation, and the bench may buy a label for a box that has none
+
+Two additions, both about *labels*, neither about *closing*. The guard `no-parcel-commit-route.spec.ts` stays as written: no route path under `bench/` gains a `close`, `commit`, `finish` or `seal` verb, and `parcelClosedAt` is still written only by the last verification (D18).
+
+**1. A connection may choose to buy its label when the parcel closes (`autoDispatch.trigger = 'on-parcel-closed'`, decision D1).** The close is **system-driven**: the last verification closes the parcel inside the transaction that records it, and `FulfillmentParcelClosureNotifierService` is already called from that point to tell the order's channel the parcel shipped (#3525). Enqueueing `fulfillment.work.autoDispatch` from the same point is a *reaction* to an event the system produced, not a way for a person to close a box, so it is not the operation this ADR forbids and it adds no route, verb, or principal. It is best-effort and never propagates, as everything in that notifier is: the close has committed, and a failed enqueue costs one manual label. The default stays `on-accept`, so no existing connection changes behaviour.
+
+**2. `POST /bench/work/:workId/label` buys the label for a parcel that has none, when the holder's automatic labels are off (D46).** `packer` may call it, for the same reasons `label/replace` (#3654) is open to `packer`, and narrower still:
+
+- **The body is empty.** A packer supplies no parcel at all: the weight, box and template come from the connection's configured defaults (#3571), and the recipient is derived from the order, through the *same* decision automatic dispatch makes (`planAutoDispatch`, `@openlinker/core/shipping`). A packer therefore cannot steer a paid label to an address or a size of their choosing.
+- **It is a refusal-first route.** It refuses, with a named reason and nothing bought, while automatic labels are on (the job buys it, and a manual buy would race it), when a label already exists (replacing one is `label/replace`), and on every refusal the shared decision makes (`no-weight`, `no-address`, `no-dimensions`).
+- **It is not a close.** A packed-but-unlabelled box (story F4) is exactly the case it serves, and it never touches `parcelClosedAt` or any scan.
+- **It is serialised per work** and goes through `IShipmentDispatchService`, which takes the per-order lock, so it also serialises against auto-dispatch and the operator routes.
+
+The route is added to `EXPECTED_BENCH_WRITES` and to `packer-exclusion.spec.ts` by name, as a decision rather than an exemption.
+
 ## References
 
 - #2080 (this decision), #2079 (the guard), #1032 § 6C/6D (the superseded design)

@@ -332,3 +332,211 @@ export function resolveOrderDispatchTarget(
   });
   return { deliveryIntent, recipient, paczkomatId: order.pickupPoint?.id };
 }
+
+// ---------------------------------------------------------------------------
+// The decision, once (#2729)
+// ---------------------------------------------------------------------------
+//
+// Three callers need the same answer to "may a label be bought for this work,
+// and with which parcel and recipient": the `fulfillment.work.autoDispatch`
+// worker handler, the bench's own label route (D46) and the settings preview.
+// A decision duplicated across them drifts, and the preview is only worth
+// showing if it cannot disagree with the real purchase. So the refusal rules
+// live HERE, as plain functions over plain arguments, and each caller is a thin
+// loader around them.
+//
+// Data enters as ARGUMENTS (variant weights, the order, the carrier's declared
+// requirements): this context does not depend on `products`, and a
+// `shipping -> products` edge would close `products -> listings -> shipping`.
+//
+// The steps are exported separately because the worker handler must keep its
+// historical evaluation ORDER (weight, then the order snapshot read, then the
+// address, then the carrier lookup) - a step that throws a retryable error must
+// not be reached before a refusal that precedes it. {@link planAutoDispatch}
+// composes the same steps in that order for the callers that have every input
+// up front.
+
+/** Connection-wide parcel settings the planner reads (a subset of `AutoDispatchConfig`). */
+export interface AutoDispatchPlanConfig {
+  readonly parcelTemplate?: string;
+  readonly defaultWeightGrams?: number;
+  readonly lengthMm?: number;
+  readonly widthMm?: number;
+  readonly heightMm?: number;
+}
+
+/**
+ * Step 1 - the parcel. `null` is the `no-weight` refusal.
+ *
+ * The routing rule's parcel profile wins over the connection default, field by
+ * field (#3651); see {@link mergeAutoDispatchParcelOptions}.
+ */
+export function planAutoDispatchParcel(input: {
+  readonly lines: readonly AutoDispatchWorkLine[];
+  readonly variantWeightGrams: ReadonlyMap<string, number | null | undefined>;
+  readonly parcelProfile: AutoDispatchParcelProfile | null;
+  readonly config: AutoDispatchPlanConfig;
+}): ShipmentParcel | null {
+  return resolveAutoDispatchParcel(
+    input.lines,
+    input.variantWeightGrams,
+    mergeAutoDispatchParcelOptions(input.parcelProfile, input.config)
+  );
+}
+
+export type AutoDispatchTargetPlan =
+  | {
+      readonly kind: 'ready';
+      readonly deliveryIntent: DeliveryIntent;
+      readonly recipient: ShipmentRecipient;
+      readonly paczkomatId: string | undefined;
+    }
+  | { readonly kind: 'refused'; readonly reason: 'no-address' };
+
+/** Step 2 - who it is addressed to. `no-address` when no deliverable recipient exists. */
+export function planAutoDispatchTarget(
+  order: Pick<Order, 'shipping' | 'pickupPoint' | 'shippingAddress' | 'customerEmail'>
+): AutoDispatchTargetPlan {
+  const { deliveryIntent, recipient, paczkomatId } = resolveOrderDispatchTarget(order);
+  if (recipient === null) {
+    return { kind: 'refused', reason: 'no-address' };
+  }
+  return { kind: 'ready', deliveryIntent, recipient, paczkomatId };
+}
+
+/**
+ * Step 3 - the carrier's declared requirements. `requirements` is `null` when
+ * nothing is to be required (an OMP-fulfilled resolution, an adapter that
+ * declares none, or no resolvable method - that last one is
+ * `no-delivery-method`, decided by `dispatch()`).
+ */
+export function checkAutoDispatchDimensions(
+  parcel: ShipmentParcel,
+  requirements: { readonly requiresDimensions: boolean } | null
+): 'no-dimensions' | null {
+  if (requirements === null) {
+    return null;
+  }
+  return findMissingParcelRequirement(parcel, requirements) === null ? null : 'no-dimensions';
+}
+
+export type AutoDispatchPlan =
+  | {
+      readonly kind: 'ready';
+      readonly parcel: ShipmentParcel;
+      readonly deliveryIntent: DeliveryIntent;
+      readonly recipient: ShipmentRecipient;
+      readonly paczkomatId: string | undefined;
+    }
+  | { readonly kind: 'refused'; readonly reason: 'no-weight' | 'no-address' | 'no-dimensions' };
+
+/**
+ * The whole decision for callers that already hold every input: the bench label
+ * route and the settings preview. `requirementsFor` maps the resolved delivery
+ * intent to the carrier's declared requirements (see
+ * {@link checkAutoDispatchDimensions}); it is called only once a recipient
+ * exists, so a refusal that precedes it never depends on the carrier lookup.
+ */
+export function planAutoDispatch(input: {
+  readonly lines: readonly AutoDispatchWorkLine[];
+  readonly variantWeightGrams: ReadonlyMap<string, number | null | undefined>;
+  readonly parcelProfile: AutoDispatchParcelProfile | null;
+  readonly config: AutoDispatchPlanConfig;
+  readonly order: Pick<Order, 'shipping' | 'pickupPoint' | 'shippingAddress' | 'customerEmail'>;
+  readonly requirementsFor: (
+    deliveryIntent: DeliveryIntent
+  ) => { readonly requiresDimensions: boolean } | null;
+}): AutoDispatchPlan {
+  const parcel = planAutoDispatchParcel(input);
+  if (parcel === null) {
+    return { kind: 'refused', reason: 'no-weight' };
+  }
+  const target = planAutoDispatchTarget(input.order);
+  if (target.kind === 'refused') {
+    return target;
+  }
+  if (checkAutoDispatchDimensions(parcel, input.requirementsFor(target.deliveryIntent)) !== null) {
+    return { kind: 'refused', reason: 'no-dimensions' };
+  }
+  return {
+    kind: 'ready',
+    parcel,
+    deliveryIntent: target.deliveryIntent,
+    recipient: target.recipient,
+    paczkomatId: target.paczkomatId,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Reading refusals back (#2729)
+// ---------------------------------------------------------------------------
+
+/**
+ * Who has to act on a refused auto-dispatch.
+ *
+ * - `needs-input` - nothing will change until an operator does (a missing
+ *   weight, an address, a box on the routing rule, a held order, or a job whose
+ *   retries are exhausted).
+ * - `retrying` - the job is still on the retry ladder; a carrier outage or a
+ *   timing race may clear on its own.
+ */
+export const AutoDispatchRefusalBucketValues = ['needs-input', 'retrying'] as const;
+export type AutoDispatchRefusalBucket = (typeof AutoDispatchRefusalBucketValues)[number];
+
+/**
+ * The `outcomeReason` strings the auto-dispatch handler writes on a
+ * `business_failure`, and the neutral reason each stands for. One table, so the
+ * handler and the operator read cannot disagree about a string.
+ */
+export const AUTO_DISPATCH_OUTCOME_REASONS = {
+  auto_dispatch_not_enabled: 'not-enabled',
+  auto_dispatch_no_weight: 'no-weight',
+  auto_dispatch_no_dimensions: 'no-dimensions',
+  auto_dispatch_no_address: 'no-address',
+  auto_dispatch_no_delivery_method: 'no-delivery-method',
+  auto_dispatch_work_not_eligible: 'work-not-eligible',
+  auto_dispatch_shipment_claimed_by_sibling_work: 'shipment-claimed-by-sibling-work',
+  auto_dispatch_payload_invalid: 'payload-invalid',
+} as const;
+
+export type AutoDispatchOutcomeReason = keyof typeof AUTO_DISPATCH_OUTCOME_REASONS;
+export type AutoDispatchRefusalCode =
+  | (typeof AUTO_DISPATCH_OUTCOME_REASONS)[AutoDispatchOutcomeReason]
+  | 'carrier-refused'
+  | 'unknown';
+
+/**
+ * Classify an auto-dispatch job into a refusal code + bucket, or `null` when it
+ * is not a refusal.
+ *
+ * - A succeeded `business_failure` is terminal: its `outcomeReason` names the
+ *   refusal and the bucket is `needs-input`. An unrecognised reason reads as
+ *   `unknown` rather than being dropped - a row an operator cannot see is the
+ *   failure this read exists to remove. A succeeded `ok` is not a refusal
+ *   (`already-has-label` is a success).
+ * - A `dead` job exhausted its retries, so it needs an operator.
+ * - Any other non-succeeded job that reached this function carries an error
+ *   (the caller filters), which is the retry ladder: `retrying`.
+ */
+export function classifyAutoDispatchJob(job: {
+  readonly status: 'queued' | 'running' | 'succeeded' | 'dead';
+  readonly outcome?: string | null;
+  readonly outcomeReason?: string | null;
+}): { readonly code: AutoDispatchRefusalCode; readonly bucket: AutoDispatchRefusalBucket } | null {
+  if (job.status === 'succeeded') {
+    if (job.outcome !== 'business_failure') {
+      return null;
+    }
+    const known =
+      job.outcomeReason === null || job.outcomeReason === undefined
+        ? undefined
+        : (AUTO_DISPATCH_OUTCOME_REASONS as Record<string, AutoDispatchRefusalCode>)[
+            job.outcomeReason
+          ];
+    return { code: known ?? 'unknown', bucket: 'needs-input' };
+  }
+  if (job.status === 'dead') {
+    return { code: 'carrier-refused', bucket: 'needs-input' };
+  }
+  return { code: 'carrier-refused', bucket: 'retrying' };
+}

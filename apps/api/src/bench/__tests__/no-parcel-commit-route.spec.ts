@@ -61,13 +61,18 @@ const BENCH_HTTP_ROOT = resolve(__dirname, '..', 'http');
  * exit was `reopen` - which unpacks a box that was packed correctly.
  * `label/replace` (#3654) is a shipping write, not a packing one: it voids the
  * label already on the box and buys one for the new parcel size, and never
- * touches `parcelClosedAt` or any scan. All listed as deliberate writes rather
- * than silently exempted from the guard this file exists to be.
+ * touches `parcelClosedAt` or any scan. `label` (#2729, D46) is the same kind
+ * of write one step earlier: it buys the label for a box that has none, when
+ * the holder's automatic labels are off, and it too never touches
+ * `parcelClosedAt` or a scan - the box is still shut only by the last
+ * verification. All listed as deliberate writes rather than silently exempted
+ * from the guard this file exists to be.
  */
 const EXPECTED_BENCH_WRITES = [
   'POST bench/work/:workId/claim',
   'POST bench/work/:workId/complete',
   'POST bench/work/:workId/complete/undo',
+  'POST bench/work/:workId/label',
   'POST bench/work/:workId/label/replace',
   'POST bench/work/:workId/presence',
   'POST bench/work/:workId/reopen',
