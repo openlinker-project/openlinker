@@ -1067,6 +1067,12 @@ export interface PaginatedOrders {
   offset: number;
 }
 
+/** `POST /orders/:id/retry-routing` (#3558): the route job is only enqueued. */
+export interface RetryOrderRoutingResult {
+  internalOrderId: string;
+  jobId: string;
+}
+
 export interface RetryOrderDestinationResult {
   internalOrderId: string;
   destinationConnectionId: string;
