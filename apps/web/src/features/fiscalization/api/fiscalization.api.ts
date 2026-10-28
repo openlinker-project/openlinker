@@ -19,6 +19,8 @@
  * @module apps/web/src/features/fiscalization/api
  */
 import type {
+  SendReceiptEmailInput,
+  SendReceiptEmailResult,
   AcceptedFiscalRegistration,
   FiscalRegistrationProgressView,
   FiscalRegistrationRecord,
@@ -32,6 +34,8 @@ export interface FiscalizationApi {
   register: (input: RegisterFiscalTransactionInput) => Promise<AcceptedFiscalRegistration>;
   getProgress: (orderId: string, connectionId: string) => Promise<FiscalRegistrationProgressView>;
   reconcile: (id: string) => Promise<ReconcileFiscalRegistrationResult>;
+  /** `POST /fiscal-registrations/:id/send-email` (#3550). */
+  sendEmail: (id: string, input: SendReceiptEmailInput) => Promise<SendReceiptEmailResult>;
 }
 
 interface ApiRequest {
@@ -66,6 +70,12 @@ export function createFiscalizationApi(request: ApiRequest): FiscalizationApi {
       return request<ReconcileFiscalRegistrationResult>(
         `/fiscal-registrations/${encodeURIComponent(id)}/reconcile`,
         { method: 'POST' },
+      );
+    },
+    sendEmail(id, input): Promise<SendReceiptEmailResult> {
+      return request<SendReceiptEmailResult>(
+        `/fiscal-registrations/${encodeURIComponent(id)}/send-email`,
+        { method: 'POST', headers: JSON_HEADERS, body: JSON.stringify(input) },
       );
     },
   };

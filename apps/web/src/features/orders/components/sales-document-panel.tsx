@@ -78,6 +78,7 @@ import { KeyValueList, type KeyValueItem } from '../../../shared/ui/key-value-li
 import { ApiError } from '../../../shared/api/api-error';
 import { usePlatform } from '../../../shared/plugins';
 import { ReadOnlyLock } from '../../../shared/ui/read-only-lock';
+import { SendDocumentEmail } from './send-document-email';
 import { useWriteAccess, useIsAdmin } from '../../../shared/auth/use-permission';
 import { DEMO_READ_ONLY_ACTION_MESSAGE } from '../../../shared/config/demo-mode';
 import { formatAmount } from '../../../shared/format/format-amount';
@@ -867,6 +868,8 @@ export function SalesDocumentPanel({ order }: SalesDocumentPanelProps): ReactEle
               <KeyValueList items={buildInvoiceFieldItems(invoice, showRegulatoryBadge, t)} />
               {/* #3549 - did the document reach the marketplace order? */}
               <InvoiceMarketplaceUploadStatus invoiceId={invoice.id} />
+              {/* #3551 - one neutral email control for every provider. */}
+              <SendDocumentEmail kind="invoice" documentId={invoice.id} />
               {InvoiceDetailSection && invoicingConnection ? (
                 <InvoiceDetailSection invoice={invoice} connection={invoicingConnection} />
               ) : null}
@@ -1288,6 +1291,14 @@ export function SalesDocumentPanel({ order }: SalesDocumentPanelProps): ReactEle
                   "Why this document?" connection lock (unlike the invoice
                   slot's InvoiceConnectionLock), so this is the receipt's only
                   routing-rationale disclosure. */}
+              {/* #3551 - the mail carries OpenLinker's own summary, not the legal receipt. */}
+              <p className="sales-document-panel__notice" data-testid="receipt-email-summary-note">
+                {t(
+                  'fiscalReceipt.email.summaryNote',
+                  "The email carries OpenLinker's summary and a link to the legal e-receipt at the provider.",
+                )}
+              </p>
+              <SendDocumentEmail kind="fiscal-receipt" documentId={fiscalRecord.id} />
               {whyKindDisclosure}
               {/* #2559 — a registered receipt is final. OpenLinker never issues
                   a fiscal correction, so this state must not imply one is

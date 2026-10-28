@@ -1325,3 +1325,18 @@ export interface CreateOrderExportRequest {
   // "current view" without restating every field here.
   [key: string]: unknown;
 }
+
+/**
+ * One attempt to email a sales document to the buyer (#3550/#3551), from
+ * `GET /orders/:orderId/document-emails`. Carries no recipient by design.
+ */
+export interface OrderDocumentEmailEntry {
+  id: string;
+  documentKind: string;
+  documentId: string;
+  sentVia: 'provider' | 'openlinker' | null;
+  outcome: 'sent' | 'failed';
+  failureReason: string | null;
+  failureMessage: string | null;
+  createdAt: string;
+}

@@ -48,6 +48,8 @@ import {
 } from '../../features/orders/components/order-notes-panel';
 import { OrderTagsHeaderRow } from '../../features/orders/components/order-tags-header-row';
 import { useOrderNotesTimelineQuery } from '../../features/orders/hooks/use-order-notes-timeline-query';
+import { useOrderDocumentEmailsQuery } from '../../features/orders/hooks/use-order-document-emails-query';
+import { mapDocumentEmailsToEvents } from '../../features/orders/lib/document-email-timeline-events';
 import { mapNoteTimelineToEvents } from '../../features/orders/lib/order-note-timeline-events';
 import { resolvePlatformLabel } from '../../features/mappings';
 import { usePlatforms } from '../../shared/plugins';
@@ -107,6 +109,7 @@ export function OrderDetailPage(): ReactElement {
   // #3531 — the notes' authored acts, same non-fatal contract as returns: an
   // unreadable answer contributes no rows rather than failing the timeline.
   const noteTimelineQuery = useOrderNotesTimelineQuery(internalOrderId);
+  const documentEmailsQuery = useOrderDocumentEmailsQuery(internalOrderId);
   const platforms = usePlatforms();
   // #3505 — whether fulfilment routing is on decides whether an order with no
   // fulfilment tasks gets a section saying so.
@@ -232,6 +235,7 @@ export function OrderDetailPage(): ReactElement {
     session.user?.id ?? null,
   );
   const noteTimelineEvents = mapNoteTimelineToEvents(noteTimelineQuery.data ?? []);
+  const documentEmailEvents = mapDocumentEmailsToEvents(documentEmailsQuery.data ?? []);
   const failedDestinations = order.syncStatus.filter((s) => s.status === 'failed');
 
   const connections = connectionsQuery.data ?? [];
@@ -644,7 +648,7 @@ export function OrderDetailPage(): ReactElement {
           packedByUserId={order.packedByUserId}
           salesDocumentBlockedAt={order.salesDocumentBlockedAt}
           salesDocumentBlockReleasedAt={order.salesDocumentBlockReleasedAt}
-          extraEvents={[...returnTimelineEvents, ...noteTimelineEvents]}
+          extraEvents={[...returnTimelineEvents, ...noteTimelineEvents, ...documentEmailEvents]}
           holds={order.holdHistory}
           automationRuns={automationRunsQuery.data?.runs ?? []}
         />

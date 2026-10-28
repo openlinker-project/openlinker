@@ -140,3 +140,16 @@ export interface FiscalRegistrationProgressView {
   record: FiscalRegistrationRecord | null;
   inFlight: SalesDocumentInFlight | null;
 }
+
+/** `POST /fiscal-registrations/:id/send-email` body (#3550). */
+export interface SendReceiptEmailInput {
+  recipient?: string;
+  locale?: 'pl' | 'en';
+}
+
+/** `POST /fiscal-registrations/:id/send-email` response (#3550). */
+export interface SendReceiptEmailResult {
+  delivered: boolean;
+  recipient: string | null;
+  sentVia?: 'provider' | 'openlinker';
+}
