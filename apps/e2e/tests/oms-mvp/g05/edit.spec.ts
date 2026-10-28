@@ -10,6 +10,8 @@
  * @module tests/oms-mvp/g05
  */
 import { test, expect } from '../../../src/fixtures/test';
+import { attachMockupComparison } from '../../../src/support/oms-mvp-g05-compare';
+import { G05_MOCKUP_FILES } from '../../../src/pages/oms-mvp-g05-mockup.page';
 import {
   externalOrderIdOf,
   findAllegroOrder,
@@ -22,7 +24,7 @@ test.describe('G05 golden path 3 - edit (#3546)', () => {
     api,
     world,
     jobs,
-  }) => {
+  }, testInfo) => {
     const order = await findAllegroOrder(api, world, 'unshipped');
     test.skip(!order, 'No unshipped, uninvoiced, not-cancelled Allegro order is ingested on this stack.');
     const quantity = lowerableLineQuantity(order!);
@@ -42,16 +44,36 @@ test.describe('G05 golden path 3 - edit (#3546)', () => {
     );
 
     const street = `E2E G05 Street ${Date.now()}`;
+    await attachMockupComparison(page, testInfo, {
+      mockupFile: G05_MOCKUP_FILES.m1,
+      mockupState: 'order',
+      label: 'M1 order',
+    });
     await page.getByTestId('order-edit-street').fill(street);
     await page.getByTestId('order-edit-line-quantity').first().fill(String(quantity! - 1));
+    await attachMockupComparison(page, testInfo, {
+      mockupFile: G05_MOCKUP_FILES.m1,
+      mockupState: 'edit-form',
+      label: 'M1 edit-form',
+    });
     await page.getByTestId('order-edit-review-button').click();
 
     await expect(page.getByTestId('order-edit-diff')).toBeVisible();
     await expect(page.getByTestId('order-edit-impact')).toBeVisible();
+    await attachMockupComparison(page, testInfo, {
+      mockupFile: G05_MOCKUP_FILES.m1,
+      mockupState: 'edit-review',
+      label: 'M1 edit-review',
+    });
     await page.getByTestId('order-edit-save').click();
 
     await expect(page.getByTestId('order-edit-saved-badge').first()).toBeVisible();
     await expect(page.getByTestId('order-edit-notice')).toBeVisible();
+    await attachMockupComparison(page, testInfo, {
+      mockupFile: G05_MOCKUP_FILES.m1,
+      mockupState: 'edit-saved',
+      label: 'M1 edit-saved',
+    });
 
     // A re-poll of the source order must keep the edits.
     const externalOrderId = externalOrderIdOf(order!);

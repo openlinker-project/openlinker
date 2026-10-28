@@ -33,6 +33,27 @@ export const G05_ORDER_IDS = [
   'ol_order_e2eg05bulk00000003',
 ] as const;
 
+/** Orders for the mockup states the golden paths do not touch (#3546). */
+export const G05_STATE_ORDER_IDS = {
+  none: 'ol_order_e2eg05state00000none',
+  long: 'ol_order_e2eg05state00000long',
+  label: 'ol_order_e2eg05state0000label',
+  packed: 'ol_order_e2eg05state000packed',
+} as const;
+
+const G05_LABEL_SHIPMENT_ID = 'ol_shipment_e2eg05state0000label';
+const G05_MULTI_WORK_ID = 'ol_fulfillmentwork_e2eg05multi00001';
+
+/** A note long enough to be clamped on order detail (the mockup's `long` is 563 characters). */
+export const G05_LONG_NOTE_TEXT = [
+  'Dzien dobry, zamawiam ten zestaw jako prezent urodzinowy dla mamy, dlatego mam kilka prosb:',
+  '1) prosze o zapakowanie kazdego przedmiotu osobno, w papier a nie w folie babelkowa,',
+  '2) prosze nie wkladac do paczki paragonu ani faktury, wszystko dostane mailem,',
+  '3) jesli ktorys kubek bedzie uszkodzony, prosze o telefon przed wysylka, nie po,',
+  '4) adres dostawy to adres mojej mamy, domofon nie dziala, prosze dzwonic do drzwi.',
+  'Z gory dziekuje za pomoc i pozdrawiam serdecznie, to dla mnie wazne zamowienie.',
+].join('\n');
+
 function snapshot(orderNumber: string): string {
   return JSON.stringify({
     orderNumber,
@@ -124,9 +145,150 @@ export async function seedBenchOrderWithBuyerNote(): Promise<{
   return { seed, internalOrderId };
 }
 
+async function clearStateRows(client: Client): Promise<void> {
+  const stateIds = Object.values(G05_STATE_ORDER_IDS);
+  await client.query(`DELETE FROM fulfillment_work_lines WHERE "fulfillmentWorkId" = $1`, [
+    G05_MULTI_WORK_ID,
+  ]);
+  await client.query(`DELETE FROM fulfillment_works WHERE id = $1`, [G05_MULTI_WORK_ID]);
+  await client.query(`DELETE FROM shipments WHERE "orderId" = ANY($1::text[])`, [stateIds]);
+  await client.query(`DELETE FROM order_records WHERE "internalOrderId" = ANY($1::text[])`, [
+    stateIds,
+  ]);
+}
+
+async function insertStateOrder(
+  client: Client,
+  orderId: string,
+  orderNumber: string,
+  opts: { note: string | null; packed: boolean },
+): Promise<void> {
+  await client.query(
+    `INSERT INTO order_records
+       ("internalOrderId", "sourceConnectionId", "orderSnapshot", "recordStatus", "placedAt", "currency", "totalAmount", "buyerNote", "hasBuyerNote", "packedAt", "createdAt", "updatedAt")
+     VALUES ($1, $2, $3::jsonb, 'ready', now(), 'PLN', 39.98, $4, $5, $6, now(), now())`,
+    [
+      orderId,
+      SOURCE_CONNECTION_ID,
+      snapshot(orderNumber),
+      opts.note,
+      opts.note !== null,
+      opts.packed ? new Date().toISOString() : null,
+    ],
+  );
+}
+
+/** M2 `none`: a ready order with no buyer note at all. */
+export async function seedOrderWithoutBuyerNote(): Promise<string> {
+  return withClient('seedOrderWithoutBuyerNote', async (client) => {
+    await clearStateRows(client);
+    await ensureSourceConnection(client);
+    await insertStateOrder(client, G05_STATE_ORDER_IDS.none, 'E2E-G05-NONE-001', {
+      note: null,
+      packed: false,
+    });
+    return G05_STATE_ORDER_IDS.none;
+  });
+}
+
+/** M2 `long`: a ready order whose buyer note is long enough to be clamped. */
+export async function seedOrderWithLongBuyerNote(): Promise<string> {
+  return withClient('seedOrderWithLongBuyerNote', async (client) => {
+    await clearStateRows(client);
+    await ensureSourceConnection(client);
+    await insertStateOrder(client, G05_STATE_ORDER_IDS.long, 'E2E-G05-LONG-001', {
+      note: G05_LONG_NOTE_TEXT,
+      packed: false,
+    });
+    return G05_STATE_ORDER_IDS.long;
+  });
+}
+
+/**
+ * M1 `cancel-label`: a ready order holding a `generated` outbound label on a
+ * connection with no carrier adapter, so voiding it fails and the cancel is
+ * refused with LABEL_NOT_VOIDABLE.
+ */
+export async function seedOrderWithGeneratedLabel(): Promise<string> {
+  return withClient('seedOrderWithGeneratedLabel', async (client) => {
+    await clearStateRows(client);
+    await ensureSourceConnection(client);
+    await insertStateOrder(client, G05_STATE_ORDER_IDS.label, 'E2E-G05-LABEL-001', {
+      note: null,
+      packed: false,
+    });
+    await client.query(
+      `INSERT INTO shipments
+         (id, "orderId", "connectionId", "shippingMethod", status, direction, carrier, "providerShipmentId")
+       VALUES ($1, $2, $3, 'courier', 'generated', 'outbound', 'InPost', 'e2e-g05-label-0001')`,
+      [G05_LABEL_SHIPMENT_ID, G05_STATE_ORDER_IDS.label, SOURCE_CONNECTION_ID],
+    );
+    return G05_STATE_ORDER_IDS.label;
+  });
+}
+
+/** M1 `edit-blocked`: a ready order already marked packed, so editing is refused. */
+export async function seedPackedOrder(): Promise<string> {
+  return withClient('seedPackedOrder', async (client) => {
+    await clearStateRows(client);
+    await ensureSourceConnection(client);
+    await insertStateOrder(client, G05_STATE_ORDER_IDS.packed, 'E2E-G05-PACKED-001', {
+      note: null,
+      packed: true,
+    });
+    return G05_STATE_ORDER_IDS.packed;
+  });
+}
+
+/**
+ * M2 `multi`: the bench "working" parcel with an unread note PLUS a second,
+ * already closed parcel of the same order whose note reading was recorded by a
+ * different user, so the bench shows "read on parcel 2 of 2". Returns the same
+ * shape as {@link seedBenchOrderWithBuyerNote}.
+ */
+export async function seedBenchOrderWithTwoParcels(): Promise<{
+  readonly seed: BenchSeedResult;
+  readonly internalOrderId: string;
+}> {
+  const first = await seedBenchOrderWithBuyerNote();
+  await withClient('seedBenchOrderWithTwoParcels', async (client) => {
+    await clearStateRows(client);
+    const user = await client.query<{ id: string }>(`SELECT id FROM users ORDER BY "createdAt" LIMIT 1`);
+    const userId = user.rows[0]?.id;
+    if (userId === undefined) throw new Error('no user row to attribute the second parcel reading to');
+    const work = await client.query<{
+      locationId: string;
+      assignedConnectionId: string;
+      productVariantId: string;
+    }>(
+      `SELECT w."locationId", w."assignedConnectionId", l."productVariantId"
+         FROM fulfillment_works w
+         JOIN fulfillment_work_lines l ON l."fulfillmentWorkId" = w.id
+        WHERE w.id = $1 LIMIT 1`,
+      [first.seed.workId],
+    );
+    const base = work.rows[0];
+    if (base === undefined) throw new Error(`bench work ${first.seed.workId} has no line row`);
+    await client.query(
+      `INSERT INTO fulfillment_works
+         (id, "orderId", "locationId", "assignedConnectionId", "deliveryMethod", status, "requestStatus", "acceptedAt", "parcelClosedAt", "packedByService", "buyerNoteAcknowledgedAt", "buyerNoteAcknowledgedByUserId")
+       VALUES ($1, $2, $3, $4, 'courier', 'open', 'accepted', now(), now(), 'e2e-seed', now(), $5)`,
+      [G05_MULTI_WORK_ID, first.internalOrderId, base.locationId, base.assignedConnectionId, userId],
+    );
+    await client.query(
+      `INSERT INTO fulfillment_work_lines
+         (id, "fulfillmentWorkId", "orderLineId", "productVariantId", "totalQuantity", "fulfilledQuantity", "cancelledQuantity")
+       VALUES (gen_random_uuid(), $1, 'line-2', $2, 2, 2, 0)`,
+      [G05_MULTI_WORK_ID, base.productVariantId],
+    );
+  });
+  return first;
+}
+
 /** Remove every order this module wrote. */
 export async function clearG05Seed(): Promise<void> {
   await withClient('clearG05Seed', async (client) => {
+    await clearStateRows(client);
     await client.query(`DELETE FROM order_records WHERE "internalOrderId" = ANY($1::text[])`, [
       [...G05_ORDER_IDS],
     ]);

@@ -17,6 +17,8 @@
  * @module tests/oms-mvp/g05
  */
 import { test, expect } from '../../../src/fixtures/test';
+import { attachMockupComparison } from '../../../src/support/oms-mvp-g05-compare';
+import { G05_MOCKUP_FILES } from '../../../src/pages/oms-mvp-g05-mockup.page';
 import { readSystemConfig } from '../../../src/support/access-control';
 import { provisionPacker, seedPackerBrowserSession } from '../../../src/support/provision-packer';
 import { clearBenchSeed } from '../../../src/support/bench-seed';
@@ -34,7 +36,7 @@ test.describe('G05 golden path 1 - buyer note read (#3546)', () => {
 
   test('should keep the buyer note read after a reload when the operator marks it read', async ({
     page,
-  }) => {
+  }, testInfo) => {
     const [orderId] = await seedBuyerNoteOrders();
 
     await page.goto(`/orders/${orderId}`);
@@ -42,6 +44,11 @@ test.describe('G05 golden path 1 - buyer note read (#3546)', () => {
     await expect(note).toBeVisible();
     await expect(note).toHaveAttribute('data-state', 'unread');
     await expect(page.getByTestId('order-buyer-note-text')).toContainText(G05_NOTE_TEXT);
+    await attachMockupComparison(page, testInfo, {
+      mockupFile: G05_MOCKUP_FILES.m2,
+      mockupState: 'detail',
+      label: 'M2 detail',
+    });
 
     await page.getByTestId('order-buyer-note-mark-read').click();
     await expect(note).toHaveAttribute('data-state', 'read');
@@ -61,7 +68,7 @@ test.describe('G05 golden path 4 - bench acknowledgement (#3546)', () => {
     page,
     api,
     env,
-  }) => {
+  }, testInfo) => {
     const config = await readSystemConfig(env);
     test.skip(
       config.demoMode,
@@ -84,10 +91,20 @@ test.describe('G05 golden path 4 - bench acknowledgement (#3546)', () => {
     await expect(benchNote).toBeVisible();
     await expect(benchNote).toHaveAttribute('data-state', 'unread');
     await expect(page.getByTestId('bench-buyer-note-text')).toContainText(G05_NOTE_TEXT);
+    await attachMockupComparison(page, testInfo, {
+      mockupFile: G05_MOCKUP_FILES.m2,
+      mockupState: 'bench',
+      label: 'M2 bench',
+    });
 
     await page.getByTestId('bench-buyer-note-acknowledge').click();
     await expect(benchNote).toHaveAttribute('data-state', 'read');
     await expect(page.getByTestId('bench-buyer-note-read-badge')).toBeVisible();
+    await attachMockupComparison(page, testInfo, {
+      mockupFile: G05_MOCKUP_FILES.m2,
+      mockupState: 'bench-ack',
+      label: 'M2 bench-ack',
+    });
 
     // Back to the operator's session: the acknowledgement is part of the
     // order's own Activity timeline.
