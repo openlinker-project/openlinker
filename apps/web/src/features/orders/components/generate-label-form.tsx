@@ -182,8 +182,13 @@ export function GenerateLabelForm({
   // `pickupPointResolvesAsync` PlatformContribution slot. `usePlatform` is a
   // hook — keep this call unconditional at the top of the component.
   const sourcePlatform = usePlatform(sourceConnection?.platformType);
+  // E-59: an operator who changed the delivery method in OpenLinker and left no
+  // pickup point removed it on purpose. Allegro is not going to supply one, so
+  // "waiting for Allegro" would be false and its Retry button would do nothing.
+  const pickupRemovedInOpenLinker = !hasPickupPoint && order.edits?.deliveryMethod != null;
   const showPickupRetryHint =
     !hasPickupPoint &&
+    !pickupRemovedInOpenLinker &&
     !isLikelyCourier &&
     sourcePlatform?.pickupPointResolvesAsync === true &&
     isWithinPickupPointRetryWindow(order.createdAt);
@@ -507,6 +512,16 @@ export function GenerateLabelForm({
       {/* AC-3 retry hint (#839) — Allegro-source order whose pickup-point
           hasn't arrived yet. Non-blocking: operator can still proceed with
           the kurier fallback, or refetch to see if Allegro has caught up. */}
+      {pickupRemovedInOpenLinker && !isLikelyCourier ? (
+        <Alert tone="info" className="generate-label-form__pickup-removed">
+          <strong>Pickup point removed in OpenLinker</strong>
+          <p>
+            You removed the buyer&apos;s pickup point from this order, so there is none to deliver
+            to. Edit the delivery method to add a point, or ship by courier.
+          </p>
+        </Alert>
+      ) : null}
+
       {showPickupRetryHint ? (
         <Alert tone="info" className="generate-label-form__pickup-retry">
           <strong>Pickup point not yet available</strong>
