@@ -15,6 +15,8 @@ describe('renderAutomationTemplate', () => {
       orderTotal: '99 PLN',
       orderPlacedAt: '2026-09-01',
       orderDispatchBy: '2026-09-03',
+      buyerName: 'Jan Kowalski',
+      shipmentTracking: 'TRK123',
       holdReason: 'awaiting_payment',
       ruleName: 'Notify ops',
     };
@@ -22,17 +24,22 @@ describe('renderAutomationTemplate', () => {
 
     const rendered = renderAutomationTemplate(template, context);
 
-    expect(rendered).toBe('REF-1 99 PLN 2026-09-01 2026-09-03 awaiting_payment Notify ops');
+    expect(rendered).toBe(
+      'REF-1 99 PLN 2026-09-01 2026-09-03 Jan Kowalski TRK123 awaiting_payment Notify ops',
+    );
     expect(rendered).not.toContain('{');
   });
 
   it('should render an UNRESOLVABLE spec field verbatim rather than a false fallback', () => {
-    // `{order.source}` / `{buyer.name}` / `{shipment.tracking}` have no source in
-    // this build. Rendering them verbatim reads as "not supported"; rendering
-    // `unknown` would read as a fact about the buyer or the parcel.
-    expect(
-      renderAutomationTemplate('{order.source} {buyer.name} {shipment.tracking}', {}),
-    ).toBe('{order.source} {buyer.name} {shipment.tracking}');
+    // `{order.source}` has no source in this build. Rendering it verbatim reads
+    // as "not supported"; rendering `unknown` would read as a fact.
+    expect(renderAutomationTemplate('{order.source}', {})).toBe('{order.source}');
+  });
+
+  it("should render the buyer.name and shipment.tracking fallbacks when both are absent (#3553)", () => {
+    expect(renderAutomationTemplate('Hi {buyer.name}, tracking: {shipment.tracking}', {})).toBe(
+      'Hi customer, tracking: not yet',
+    );
   });
 
   it('should render an unrecognised placeholder VERBATIM rather than blanking it', () => {

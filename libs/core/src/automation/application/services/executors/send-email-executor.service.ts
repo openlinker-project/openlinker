@@ -24,6 +24,7 @@ import { Injectable } from '@nestjs/common';
 import { Logger } from '@openlinker/shared/logging';
 
 import type { IOrderRecordService } from '@openlinker/core/orders';
+import type { IShipmentQueryService } from '@openlinker/core/shipping';
 import type { MailerPort } from '@openlinker/core/users';
 
 import {
@@ -118,15 +119,17 @@ export class SendEmailExecutorService implements AutomationActionExecutorPort {
       to = buyerEmail;
     }
 
-    // `{order.source}` / `{buyer.name}` / `{shipment.tracking}` are deliberately
-    // absent from the resolvable set — see `AUTOMATION_MERGE_FIELDS`. An operator
-    // who types one gets it back verbatim, which reads as "not supported" rather
-    // than as a fact about their order.
+    // `{order.source}` is deliberately absent from the resolvable set — see
+    // `AUTOMATION_MERGE_FIELDS`. An operator who types it gets it back verbatim,
+    // which reads as "not supported" rather than as a fact about their order.
+    const shipmentTracking = await this.readTrackingNumber(input);
     const context = {
       orderReference: input.facts.subjectId,
       orderTotal: formatMergeAmount(input.facts.totalGross, input.facts.currency),
       orderPlacedAt: formatMergeDate(record?.placedAt),
       orderDispatchBy: formatMergeDate(record?.dispatchByAt),
+      buyerName: record?.buyerName,
+      shipmentTracking,
       holdReason: input.facts.holdReason,
       ruleName: input.rule.name,
     };
@@ -150,6 +153,33 @@ export class SendEmailExecutorService implements AutomationActionExecutorPort {
         // The mailer's own words, verbatim (#2387).
         report: { attributedTo: AUTOMATION_MAILER_REPORTER, message },
       };
+    }
+  }
+
+  /**
+   * Best-effort tracking read for `{shipment.tracking}` (#3553). Resolved through
+   * the delegate seam, so `automation` takes no `shipping` sibling edge. A
+   * missing binding or a failed read renders the field's "not yet" fallback: a
+   * parcel with no number yet is a normal state, and a read fault must not fail
+   * an email whose other fields are fine.
+   */
+  private async readTrackingNumber(
+    input: AutomationActionExecutionInput,
+  ): Promise<string | undefined> {
+    if (input.facts.subjectKind !== 'order') return undefined;
+    const shipments = this.delegates.resolve<IShipmentQueryService>({
+      barrel: '@openlinker/core/shipping',
+      tokenName: 'SHIPMENT_QUERY_SERVICE_TOKEN',
+    });
+    if (!shipments) return undefined;
+    try {
+      return (await shipments.getLatestOutboundTrackingNumber(input.facts.subjectId)) ?? undefined;
+    } catch (error) {
+      this.logger.warn(
+        `Automation "${input.rule.name}" (${input.rule.id}) could not read the tracking number of ` +
+          `order ${input.facts.subjectId}: ${error instanceof Error ? error.message : String(error)}`,
+      );
+      return undefined;
     }
   }
 

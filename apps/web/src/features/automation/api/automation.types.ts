@@ -397,12 +397,11 @@ export type AutomationAmountOp = (typeof AUTOMATION_AMOUNT_OP_VALUES)[number];
  * silently produces an email that reads as broken, whereas a visible
  * `{ordr.reference}` is a typo the operator can see and fix.
  *
- * **Six, not the spec's nine, and the three absentees are the point.** The
- * backend resolves six; `{order.source}`, `{buyer.name}` and `{shipment.tracking}`
- * have no resolvable source in this slice, so `renderAutomationTemplate` returns
- * them verbatim — meaning a composer that OFFERED them shipped
- * `Hi {buyer.name}, your order {shipment.tracking} has shipped` to real buyers,
- * literally, while the step recorded `done`. Offering a field the backend cannot
+ * **Eight, not the spec's nine, and the absentee is the point.** The backend
+ * resolves eight; `{order.source}` has no resolvable source, so
+ * `renderAutomationTemplate` returns it verbatim — meaning a composer that
+ * OFFERED it shipped `Sold on {order.source}` to real buyers, literally, while
+ * the step recorded `done`. Offering a field the backend cannot
  * render is a promise the composer makes and the backend cannot keep.
  *
  * `apps/web` has no `@openlinker/*` dependency, so this cannot be an import;
@@ -419,6 +418,11 @@ export const AUTOMATION_MERGE_FIELDS = [
     token: '{order.dispatchBy}',
     renders: 'the marketplace dispatch deadline (YYYY-MM-DD, UTC), or "no deadline"',
   },
+  {
+    token: '{buyer.name}',
+    renders: "the buyer's name as the source reported it, or \"customer\" when it is not stored",
+  },
+  { token: '{shipment.tracking}', renders: 'the tracking number, or "not yet"' },
   { token: '{hold.reason}', renders: "the current hold's reason, or \"no hold\"" },
   { token: '{rule.name}', renders: "the automation's own name" },
 ] as const;
