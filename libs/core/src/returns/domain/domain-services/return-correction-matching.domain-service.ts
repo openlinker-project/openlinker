@@ -163,7 +163,10 @@ export function classifyReturnCorrectionLines(
   // `flatMap`, because a logical order line the invoice carries as several
   // document lines (an E-45 rounding split) yields one entry per document line
   // touched. Every other input still yields exactly one entry.
-  return lines.flatMap((line) => classifyOne(line, byOrderLineId, byName));
+  const orderLineIdByNumber = new Map<number, string | undefined>(
+    snapshotLines.map((snapshotLine, position) => [position + 1, snapshotLine.orderLineId])
+  );
+  return lines.flatMap((line) => classifyOne(line, byOrderLineId, byName, orderLineIdByNumber));
 }
 
 /**
@@ -233,7 +236,8 @@ function indexSnapshotByName(
 function classifyOne(
   line: CorrectionReturnLineInput,
   byOrderLineId: Map<string, ReturnCorrectionCandidate[]>,
-  byName: Map<string, ReturnCorrectionCandidate[]>
+  byName: Map<string, ReturnCorrectionCandidate[]>,
+  orderLineIdByNumber: ReadonlyMap<number, string | undefined>
 ): ReturnCorrectionProposalLine[] {
   // Checked FIRST, ahead of BOTH lookups: a line whose disposal OL could not
   // confirm must not be credited even when its join is perfectly known. The
@@ -271,6 +275,16 @@ function classifyOne(
     return [noMatch(line, 'no-line-by-name', [])];
   }
 
+  // E-45: name candidates that all carry ONE orderLineId are the parts of a
+  // split order line, not an ambiguity. Candidates without an id, or with
+  // different ids, stay on the ambiguity path.
+  const sharedIds = new Set(
+    byNameCandidates.map((candidate) => orderLineIdByNumber.get(candidate.originalLineNumber))
+  );
+  const [sharedId] = [...sharedIds];
+  if (byNameCandidates.length > 1 && sharedIds.size === 1 && sharedId !== undefined) {
+    return classifyAcrossOrderLineParts(line, byNameCandidates);
+  }
   return [classifyAgainstCandidates(line, byNameCandidates)];
 }
 
