@@ -109,6 +109,7 @@ function makeFiscalRecord(over: Partial<FiscalRegistrationRecord> = {}): FiscalR
     artefacts: [],
     failureMode: null,
     failureReason: null,
+    providerFailureDetails: null,
     createdAt: '2026-08-14T09:43:00.000Z',
     updatedAt: '2026-08-14T09:44:00.000Z',
     ...over,
@@ -1311,5 +1312,57 @@ describe('SalesDocumentPanel — invoice in-doubt (#3766)', () => {
     expect(screen.getAllByTestId('invoice-unconfirmed')).toHaveLength(1);
     expect(container.querySelector('.invoice-connection-lock')).toBeNull();
     expect(screen.queryByText('Still assigned to')).toBeNull();
+  });
+});
+
+describe('SalesDocumentPanel - provider failure details (#3843)', () => {
+  const rejected = makeFiscalRecord({
+    status: 'failed',
+    failureMode: 'rejected',
+    failureReason: 'The fiscal printer could not register the sale.',
+    providerFailureDetails: {
+      errorCode: '83',
+      deviceErrorCode: '16',
+      documentId: '70a7fd05-3c1e-4b8a-9f2d-61e0c4a7b93e',
+      hint: null,
+    },
+  });
+
+  function renderAs(sessionAdapter: ReturnType<typeof createAuthenticatedSessionAdapter>): void {
+    renderWithProviders(<SalesDocumentPanel order={order} />, {
+      apiClient: createMockApiClient({
+        connections: { list: vi.fn().mockResolvedValue([fiscalConnection]) },
+        fiscalization: { listForOrder: vi.fn().mockResolvedValue([rejected]) },
+      }),
+      sessionAdapter,
+    });
+  }
+
+  it('shows the provider identifiers and a copy action to an admin', async () => {
+    renderAs(createAuthenticatedSessionAdapter());
+
+    expect(await screen.findByTestId('fiscal-failure-details')).toBeInTheDocument();
+    expect(screen.getByText('83')).toBeInTheDocument();
+    expect(screen.getByText('16')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Copy details' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Register receipt' })).toBeInTheDocument();
+  });
+
+  it('gives a viewer the short sentence with no identifiers and no register action', async () => {
+    renderAs(
+      createAuthenticatedSessionAdapter({
+        id: 'user_viewer',
+        username: 'viewer',
+        email: 'viewer@example.com',
+        role: 'viewer',
+        permissions: ['orders:read', 'invoices:read'],
+        analyticsConsent: true,
+      }),
+    );
+
+    expect(await screen.findByText(/An admin can see the details/)).toBeInTheDocument();
+    expect(screen.queryByTestId('fiscal-failure-details')).toBeNull();
+    expect(screen.queryByText('83')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Register receipt' })).toBeNull();
   });
 });
