@@ -54,6 +54,8 @@ describe('buyer note rules (#3538)', () => {
       ['pl', 'PL'],
       [' de ', 'DE'],
       ['Poland', null],
+      ['POL', null], // N-29: alpha-3 is stored as unknown, never truncated
+      [' pol ', null],
       ['', null],
       [undefined, null],
       [null, null],
