@@ -16,6 +16,8 @@
  */
 import type { Page } from '@playwright/test';
 import { test, expect } from '../../../src/fixtures/test';
+import { attachMockupComparison } from '../../../src/support/oms-mvp-g05-compare';
+import { G05_MOCKUP_FILES } from '../../../src/pages/oms-mvp-g05-mockup.page';
 import { G05_ORDER_IDS, clearG05Seed, seedBuyerNoteOrders } from '../../../src/support/oms-mvp-g05-seed';
 
 async function selectSeededOrders(page: Page): Promise<void> {
@@ -34,8 +36,15 @@ test.describe('G05 golden path 5 - bulk actions (#3546)', () => {
     await clearG05Seed();
   });
 
-  test('should report each order outcome when three orders are bulk marked read', async ({ page }) => {
+  test('should report each order outcome when three orders are bulk marked read', async ({
+    page,
+  }, testInfo) => {
     await selectSeededOrders(page);
+    await attachMockupComparison(page, testInfo, {
+      mockupFile: G05_MOCKUP_FILES.m3,
+      mockupState: 'bulk',
+      label: 'M3 bulk',
+    });
     await page.getByTestId('orders-bulk-read').click();
     await expect(page.getByTestId('orders-bulk-read-plan')).toBeVisible();
     await page.getByTestId('orders-bulk-read-submit').click();

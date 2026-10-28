@@ -13,6 +13,8 @@
  * @module tests/oms-mvp/g05
  */
 import { test, expect } from '../../../src/fixtures/test';
+import { attachMockupComparison } from '../../../src/support/oms-mvp-g05-compare';
+import { G05_MOCKUP_FILES } from '../../../src/pages/oms-mvp-g05-mockup.page';
 import { findAllegroOrder } from '../../../src/support/oms-mvp-g05-orders';
 
 test.describe('G05 golden path 2 - cancel (#3546)', () => {
@@ -21,15 +23,25 @@ test.describe('G05 golden path 2 - cancel (#3546)', () => {
     api,
     world,
     poll,
-  }) => {
+  }, testInfo) => {
     const order = await findAllegroOrder(api, world, 'unshipped');
     test.skip(!order, 'No unshipped, uninvoiced, not-cancelled Allegro order is ingested on this stack.');
 
     await page.goto(`/orders/${order!.internalOrderId}`);
+    await attachMockupComparison(page, testInfo, {
+      mockupFile: G05_MOCKUP_FILES.m1,
+      mockupState: 'order',
+      label: 'M1 order',
+    });
     await page.getByTestId('order-cancel-button').click();
     const dialog = page.getByTestId('order-cancel-dialog');
     await expect(dialog).toBeVisible();
     await expect(page.getByTestId('order-cancel-impact')).toBeVisible();
+    await attachMockupComparison(page, testInfo, {
+      mockupFile: G05_MOCKUP_FILES.m1,
+      mockupState: 'cancel-confirm',
+      label: 'M1 cancel-confirm',
+    });
 
     await page.getByTestId('order-cancel-reason').selectOption('buyer-request');
     await page.getByTestId('order-cancel-submit').click();
@@ -39,6 +51,12 @@ test.describe('G05 golden path 2 - cancel (#3546)', () => {
     await expect(
       page.getByTestId('order-cancel-progress').or(page.getByTestId('order-cancel-done')),
     ).toBeVisible();
+    const stillPending = await page.getByTestId('order-cancel-progress').isVisible();
+    await attachMockupComparison(page, testInfo, {
+      mockupFile: G05_MOCKUP_FILES.m1,
+      mockupState: stillPending ? 'cancel-progress' : 'cancel-done',
+      label: stillPending ? 'M1 cancel-progress' : 'M1 cancel-done (answered in request)',
+    });
 
     await poll.until(
       () => api.orders.getById(order!.internalOrderId),
@@ -54,7 +72,7 @@ test.describe('G05 golden path 2 - cancel (#3546)', () => {
     api,
     world,
     poll,
-  }) => {
+  }, testInfo) => {
     const order = await findAllegroOrder(api, world, 'invoiced');
     test.skip(!order, 'No invoiced, unshipped, not-cancelled Allegro order is ingested on this stack.');
 
@@ -75,13 +93,18 @@ test.describe('G05 golden path 2 - cancel (#3546)', () => {
     await page.reload();
     await expect(page.getByTestId('order-cancel-done-correction')).toBeVisible();
     await expect(page.getByTestId('order-cancel-review-correction')).toBeVisible();
+    await attachMockupComparison(page, testInfo, {
+      mockupFile: G05_MOCKUP_FILES.m1,
+      mockupState: 'cancel-done',
+      label: 'M1 cancel-done',
+    });
   });
 
   test('should refuse with the server reason when a shipped order is cancelled', async ({
     page,
     api,
     world,
-  }) => {
+  }, testInfo) => {
     const order = await findAllegroOrder(api, world, 'shipped');
     test.skip(!order, 'No dispatched or delivered, not-cancelled Allegro order is ingested on this stack.');
 
@@ -98,6 +121,11 @@ test.describe('G05 golden path 2 - cancel (#3546)', () => {
     const refusal = page.getByTestId('order-cancel-shipped-refusal');
     await expect(refusal).toBeVisible();
     await expect(refusal).not.toBeEmpty();
+    await attachMockupComparison(page, testInfo, {
+      mockupFile: G05_MOCKUP_FILES.m1,
+      mockupState: 'cancel-shipped',
+      label: 'M1 cancel-shipped',
+    });
     expect((await api.orders.getById(order!.internalOrderId)).cancelledAt ?? null).toBeNull();
   });
 });
