@@ -290,12 +290,16 @@ export type InvoiceEmailLocale = (typeof InvoiceEmailLocaleValues)[number];
 export interface SendInvoiceEmailInput {
   locale?: InvoiceEmailLocale;
   sendCopy?: boolean;
+  /** Edited address (#3550). Absent means the order's own buyer address. */
+  recipient?: string;
 }
 
 /** `POST /invoices/:invoiceId/send-email` response (#1353). */
 export interface SendInvoiceEmailResult {
   delivered: boolean;
   recipient: string | null;
+  /** Who delivered it (#3550): the provider itself or OpenLinker's mailer. */
+  sentVia?: 'provider' | 'openlinker';
 }
 
 /** `POST /invoices/bulk-issue` request body (#1355). Fans out over the single
