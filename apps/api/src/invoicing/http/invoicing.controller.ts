@@ -1802,16 +1802,17 @@ export class InvoicingController {
     summary: 'What can be attached for this issued document (#3548)',
     description:
       'One answer for every provider: real PDF bytes (`pdf`, streamed by `downloadPath`), a public ' +
-      'link (`link`), `waiting` while the document is not cleared yet, or `none` when it is cleared ' +
-      'and still has nothing attachable. Never a 5xx for a missing document: `waiting` and `none` ' +
-      'are answers, not failures.',
+      'link (`link`), `waiting` while the document is not cleared yet or the provider did not ' +
+      'answer, or `none` when it is cleared and still has nothing attachable. Never a 5xx for a ' +
+      'missing document: `waiting` and `none` are answers, not failures. Never downloads the ' +
+      'document: a `pdf` is reported from what the provider declares it can render.',
   })
   @ApiResponse({ status: 200, type: InvoiceAttachmentResponseDto })
   @ApiResponse({ status: 404, description: 'Invoice not found' })
   async getAttachment(
     @Param('invoiceId', invoiceIdPipe()) invoiceId: string,
   ): Promise<InvoiceAttachmentResponseDto> {
-    const attachment = await this.attachments.resolveAttachment(invoiceId);
+    const attachment = await this.attachments.describeAttachment(invoiceId);
     if (attachment === null) {
       throw new NotFoundException(`Invoice not found: ${invoiceId}`);
     }
