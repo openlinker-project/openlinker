@@ -77,7 +77,9 @@ import {
 } from '@openlinker/core/integrations';
 import {
   INVOICE_SERVICE_TOKEN,
+  INVOICE_ATTACHMENT_SERVICE_TOKEN,
   IInvoiceService,
+  type IInvoiceAttachmentService,
   toIssueInvoiceCommand,
   InvalidBuyerProfileError,
   InvalidInvoiceLineError,
@@ -142,6 +144,7 @@ import { IssueCorrectionRequestDto } from './dto/issue-correction-request.dto';
 import { GetInvoiceForOrderQueryDto } from './dto/get-invoice-for-order-query.dto';
 import { ListInvoicesQueryDto } from './dto/list-invoices-query.dto';
 import { InvoiceRecordResponseDto } from './dto/invoice-record-response.dto';
+import { InvoiceAttachmentResponseDto } from './dto/invoice-attachment-response.dto';
 import { OrderSummaryProjectionDto } from '../../orders/http/dto/order-summary-projection.dto';
 import { IssuedDocumentContentDto } from './dto/issued-document-content.dto';
 import { PaginatedInvoicesResponseDto } from './dto/paginated-invoices-response.dto';
@@ -216,6 +219,8 @@ export class InvoicingController {
     private readonly connectionPort: ConnectionPort,
     @Inject(ORDER_REFUND_SERVICE_TOKEN)
     private readonly refunds: IOrderRefundService,
+    @Inject(INVOICE_ATTACHMENT_SERVICE_TOKEN)
+    private readonly attachments: IInvoiceAttachmentService,
   ) {}
 
   @Roles('admin', 'operator', 'viewer')
@@ -1789,6 +1794,29 @@ export class InvoicingController {
       // the asserted-none state, not an empty id.
       buyerTaxId: decodeBuyerTaxIdColumn(record.buyerTaxId),
     };
+  }
+
+  @Roles('admin', 'operator', 'viewer')
+  @Get('invoices/:invoiceId/attachment')
+  @ApiOperation({
+    summary: 'What can be attached for this issued document (#3548)',
+    description:
+      'One answer for every provider: real PDF bytes (`pdf`, streamed by `downloadPath`), a public ' +
+      'link (`link`), `waiting` while the document is not cleared yet or the provider did not ' +
+      'answer, or `none` when it is cleared and still has nothing attachable. Never a 5xx for a ' +
+      'missing document: `waiting` and `none` are answers, not failures. Never downloads the ' +
+      'document: a `pdf` is reported from what the provider declares it can render.',
+  })
+  @ApiResponse({ status: 200, type: InvoiceAttachmentResponseDto })
+  @ApiResponse({ status: 404, description: 'Invoice not found' })
+  async getAttachment(
+    @Param('invoiceId', invoiceIdPipe()) invoiceId: string,
+  ): Promise<InvoiceAttachmentResponseDto> {
+    const attachment = await this.attachments.describeAttachment(invoiceId);
+    if (attachment === null) {
+      throw new NotFoundException(`Invoice not found: ${invoiceId}`);
+    }
+    return InvoiceAttachmentResponseDto.fromDomain(invoiceId, attachment);
   }
 
   @Roles('admin', 'operator', 'viewer')
