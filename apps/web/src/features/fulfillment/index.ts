@@ -25,6 +25,8 @@
  */
 export { OrderFulfillmentTasksPanel } from './components/order-fulfillment-tasks-panel';
 export type { OrderFulfillmentTasksPanelProps } from './components/order-fulfillment-tasks-panel';
+export { RoutingDecisionPanel } from './components/routing-decision-panel';
+export type { RoutingDecisionPanelProps } from './components/routing-decision-panel';
 
 // #3098 — the two sections the routed detail page mounts, plus #3291's
 // holder panel folded into the body. Exported so `pages/fulfillment` can

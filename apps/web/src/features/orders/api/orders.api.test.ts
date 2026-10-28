@@ -164,3 +164,15 @@ describe('orders api — lifecycle phase (#2310)', () => {
     expect(paths[0]).toContain('sourceConnectionId=conn-1');
   });
 });
+
+describe('orders api — retryRouting (#3558)', () => {
+  it('POSTs to the encoded retry-routing path', async () => {
+    const request = vi.fn(async () => ({ internalOrderId: 'ol_order_1', jobId: 'j1' }) as never);
+    const api = createOrdersApi(request, vi.fn(async () => new Blob()));
+
+    const result = await api.retryRouting('ol_order_1');
+
+    expect(request).toHaveBeenCalledWith('/orders/ol_order_1/retry-routing', { method: 'POST' });
+    expect(result.jobId).toBe('j1');
+  });
+});
