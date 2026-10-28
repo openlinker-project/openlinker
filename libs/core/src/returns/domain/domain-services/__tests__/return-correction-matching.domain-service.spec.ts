@@ -149,6 +149,33 @@ describe('classifyReturnCorrectionLines (#2374)', () => {
       expect(results.every((r) => r.status === 'matched' && r.returnLineId === 'line-1')).toBe(true);
     });
 
+    it('should match by name across split parts sharing one orderLineId and credit the remainder part first when the return has no resolved id (E-45 split, by name)', () => {
+      const results = classifyReturnCorrectionLines(
+        [line({ resolvedOrderLineId: null, quantityDisposed: 2 })],
+        [
+          snapshotLine({ quantity: 2, orderLineId: 'order-item-1' }),
+          snapshotLine({ quantity: 1, orderLineId: 'order-item-1' }),
+        ]
+      );
+
+      expect(results.map((r) => [r.selectedOriginalLineNumber, r.quantityDisposed, r.newQuantity])).toEqual([
+        [2, 1, 0],
+        [1, 1, 1],
+      ]);
+    });
+
+    it('should stay ambiguous by name when same-name candidates carry different orderLineIds (E-45 split, by name)', () => {
+      const [result] = classifyReturnCorrectionLines(
+        [line()],
+        [
+          snapshotLine({ orderLineId: 'order-item-1' }),
+          snapshotLine({ orderLineId: 'order-item-2' }),
+        ]
+      );
+
+      expect(result.noMatchReason).toBe('ambiguous-invoice-line');
+    });
+
     it('should report quantity-exceeds-invoiced when the split parts together invoiced fewer units than returned (E-45 split)', () => {
       const [result] = classifyReturnCorrectionLines(
         [line({ resolvedOrderLineId: 'order-item-1', quantityDisposed: 4 })],
