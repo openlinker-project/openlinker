@@ -171,3 +171,35 @@ describe('OrderRecordRepository - operator edit overlay (#3542)', () => {
     });
   });
 });
+
+describe('OrderRecordRepository.applyOrderEdit - raw UPDATE result shape (E-66)', () => {
+  const input = {
+    internalOrderId: 'ol_order_1',
+    expectedRev: 0,
+    deliveryMethod: { v: 1 },
+  } as unknown as Parameters<OrderRecordRepository['applyOrderEdit']>[0];
+
+  const build = (updateResult: unknown): { repo: OrderRecordRepository; findOne: jest.Mock } => {
+    const findOne = jest.fn().mockResolvedValue(null);
+    const query = jest.fn().mockResolvedValue(updateResult);
+    return {
+      repo: new OrderRecordRepository({ query, findOne } as unknown as Repository<OrderRecordOrmEntity>),
+      findOne,
+    };
+  };
+
+  it('should report not-applied when the guarded UPDATE matched no row (E-66, [rows, 0] shape)', async () => {
+    const { repo, findOne } = build([[], 0]);
+
+    await expect(repo.applyOrderEdit(input)).resolves.toBeNull();
+    expect(findOne).not.toHaveBeenCalled();
+  });
+
+  it('should re-read the row when the guarded UPDATE matched one (E-66, [rows, 1] shape)', async () => {
+    const { repo, findOne } = build([[{ internalOrderId: 'x' }], 1]);
+
+    await repo.applyOrderEdit(input);
+
+    expect(findOne).toHaveBeenCalledTimes(1);
+  });
+});
