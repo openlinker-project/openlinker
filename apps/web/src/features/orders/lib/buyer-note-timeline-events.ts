@@ -33,3 +33,34 @@ export function mapBuyerNoteAcknowledgementsToEvents(
       }),
     );
 }
+
+/**
+ * N-22: a changed note text resets the office read marker but leaves bench
+ * acknowledgements alone, so nothing else tells the operator the text moved
+ * under a packer who already read it. One entry, at the instant of the change,
+ * and only when some bench acknowledgement is OLDER than it - a change before
+ * anybody read the note is not news.
+ */
+export function mapBuyerNoteChangeToEvents(
+  changedAt: string | null | undefined,
+  acknowledgements: readonly BuyerNoteAcknowledgement[] | null | undefined,
+): DatedTimelineEvent[] {
+  if (!changedAt) return [];
+  const changed = Date.parse(changedAt);
+  if (Number.isNaN(changed)) return [];
+  const readEarlier = (acknowledgements ?? []).some((ack) => {
+    const read = Date.parse(ack.acknowledgedAt);
+    return !Number.isNaN(read) && read < changed;
+  });
+  if (!readEarlier) return [];
+  return [
+    {
+      id: 'buyer-note-changed-after-read',
+      timestamp: changedAt,
+      title: COPY.changedAfterReadTitle,
+      by: COPY.changedAfterReadBy,
+      description: COPY.changedAfterReadDescription,
+      tone: 'warning',
+    },
+  ];
+}

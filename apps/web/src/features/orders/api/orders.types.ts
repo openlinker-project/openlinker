@@ -638,6 +638,12 @@ export interface OrderRecord {
   /** OL user id of whoever first marked it read. Moves with `buyerNoteReadAt`. */
   buyerNoteReadByUserId?: string | null;
   /**
+   * When the note text last changed while a different text was stored (N-22).
+   * `null` = never changed. Detail only. Compare with the acknowledgements: a
+   * change does not reset a bench read, so the timeline says it happened.
+   */
+  buyerNoteChangedAt?: string | null;
+  /**
    * Per-parcel acknowledgements at the pack bench (#3538, D12), oldest first.
    * Detail only; an unacknowledged parcel is simply absent. `null` means the
    * server could not load them (not "none yet").

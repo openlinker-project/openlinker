@@ -48,6 +48,11 @@ export const BUYER_NOTE_COPY = {
   // Activity timeline
   timelineTitle: 'Buyer note read at the bench',
   timelineBy: 'bench',
+  /** N-22: the text moved under a bench acknowledgement, which a change does not reset. */
+  changedAfterReadTitle: 'Buyer note changed after it was read at the bench',
+  changedAfterReadBy: 'buyer',
+  changedAfterReadDescription:
+    'The note text was replaced after a packer marked it read. Packers who already read the earlier text have not seen this one.',
   timelineDescription: (who: string | null): string =>
     who === null ? 'Read by a packer.' : `Read by ${who}.`,
 } as const;
