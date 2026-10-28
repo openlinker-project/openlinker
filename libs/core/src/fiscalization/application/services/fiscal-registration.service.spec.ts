@@ -732,7 +732,7 @@ describe('FiscalRegistrationService', () => {
       adapter.registerTransaction.mockRejectedValue(
         Object.assign(new Error('internal detail'), {
           failureMode: 'rejected',
-          reason: 'The fiscal printer could not register the sale.',
+          reason: 'The fiscal device could not register the sale.',
           providerErrorCode: '83',
           providerDeviceErrorCode: '16',
           providerDocumentId: 'doc-token-1',

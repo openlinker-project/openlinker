@@ -12,14 +12,14 @@ describe('readFiscalProviderFailureDetails', () => {
       providerErrorCode: '83',
       providerDeviceErrorCode: 16,
       providerDocumentId: '70a7fd05-3c1e-4b8a-9f2d-61e0c4a7b93e',
-      providerErrorHint: 'Check the printer.',
+      providerErrorHint: 'Check the device.',
     });
 
     expect(readFiscalProviderFailureDetails(error)).toEqual({
       errorCode: '83',
       deviceErrorCode: '16',
       documentId: '70a7fd05-3c1e-4b8a-9f2d-61e0c4a7b93e',
-      hint: 'Check the printer.',
+      hint: 'Check the device.',
     });
   });
 
@@ -31,7 +31,7 @@ describe('readFiscalProviderFailureDetails', () => {
 
   it('should drop a code or document id that is free text rather than an identifier', () => {
     const error = {
-      providerErrorCode: '83 printer error: Secret Product Name',
+      providerErrorCode: '83 device error: Secret Product Name',
       providerDeviceErrorCode: 'Kod bledu drukarki: 16',
       providerDocumentId: 'document for Jan Kowalski',
     };
