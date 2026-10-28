@@ -110,6 +110,17 @@ export class EparagonyApiError extends Error {
   /** Declared cause for core's classification, when one applies. */
   readonly failureCause: EparagonyFailureCause | undefined;
 
+  /**
+   * PII-free identifiers core reads structurally and shows the operator
+   * (#3843), so a failure can be looked up or quoted to eparagony.pl support.
+   * Digits and a token only: the vendor's message never reaches any of them.
+   */
+  readonly providerErrorCode: string | null;
+  readonly providerDeviceErrorCode: string | null;
+  readonly providerDocumentId: string | null;
+  /** OpenLinker's own explanation for an exactly-recognised printer answer. */
+  readonly providerErrorHint: string | null;
+
   constructor(
     message: string,
     readonly statusCode: number,
@@ -123,6 +134,9 @@ export class EparagonyApiError extends Error {
       failureMode?: EparagonyFailureMode;
       reason?: string;
       failureCause?: EparagonyFailureCause;
+      documentToken?: string;
+      deviceErrorCode?: string | null;
+      errorHint?: string | null;
     }
   ) {
     super(message);
@@ -145,6 +159,10 @@ export class EparagonyApiError extends Error {
       options?.failureCause ??
       known?.failureCause ??
       defaultFailureCause(statusCode, this.failureMode);
+    this.providerErrorCode = this.errorCode === null ? null : String(this.errorCode);
+    this.providerDeviceErrorCode = options?.deviceErrorCode ?? null;
+    this.providerDocumentId = options?.documentToken ?? null;
+    this.providerErrorHint = options?.errorHint ?? null;
     Error.captureStackTrace(this, this.constructor);
   }
 

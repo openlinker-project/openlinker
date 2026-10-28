@@ -13,6 +13,8 @@
  *
  * @module libs/core/src/fiscalization/domain/types
  */
+import type { FiscalProviderFailureDetails } from './fiscal-provider-failure-details.types';
+
 
 /**
  * Lifecycle of one registration attempt against one connection.
@@ -591,6 +593,8 @@ export interface FiscalRegistrationOutcomePatch {
   failureReason?: string | null;
   /** INTERNAL-ONLY bounded diagnostic. Never exposed to API callers. */
   errorMessage?: string | null;
+  /** PII-free identifiers of the provider's refusal (#3843). Safe to expose. */
+  providerFailureDetails?: FiscalProviderFailureDetails | null;
   leaseExpiresAt?: Date | null;
 }
 

@@ -728,6 +728,52 @@ describe('FiscalRegistrationService', () => {
       );
     });
 
+    it('should persist the provider identifiers an adapter declared on a rejection', async () => {
+      adapter.registerTransaction.mockRejectedValue(
+        Object.assign(new Error('internal detail'), {
+          failureMode: 'rejected',
+          reason: 'The fiscal printer could not register the sale.',
+          providerErrorCode: '83',
+          providerDeviceErrorCode: '16',
+          providerDocumentId: 'doc-token-1',
+        }),
+      );
+      repo.updateOutcome.mockResolvedValue(record('failed', { failureMode: 'rejected' }));
+
+      await service.register(command());
+
+      expect(repo.updateOutcome).toHaveBeenCalledWith(
+        'rec-1',
+        expect.objectContaining({
+          status: 'failed',
+          providerFailureDetails: {
+            errorCode: '83',
+            deviceErrorCode: '16',
+            documentId: 'doc-token-1',
+            hint: null,
+          },
+        }),
+      );
+    });
+
+    it('should clear the provider identifiers on the success patch', async () => {
+      adapter.registerTransaction.mockResolvedValue({
+        providerType: 'provider-a',
+        providerReference: null,
+        documentReference: null,
+        signingIdentity: null,
+        registeredAt: NOW,
+        artefacts: [],
+      });
+
+      await service.register(command());
+
+      expect(repo.updateOutcome).toHaveBeenCalledWith(
+        'rec-1',
+        expect.objectContaining({ providerFailureDetails: null }),
+      );
+    });
+
     it('should release the lease on the success patch', async () => {
       adapter.registerTransaction.mockResolvedValue({
         providerType: 'provider-a',

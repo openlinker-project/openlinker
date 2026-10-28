@@ -50,6 +50,7 @@ import {
   deriveDocumentToken,
   deriveTransactionToken,
 } from '../../domain/policies/document-token.policy';
+import { readFiscalDeviceError } from '../../domain/policies/fiscal-device-error.policy';
 import {
   EPARAGONY_STATUS_CONFIRMED,
   EPARAGONY_STATUS_ERROR,
@@ -291,10 +292,12 @@ export class EparagonyFiscalizationAdapter
   ): EparagonyApiError {
     const errorCode = typeof body.errorCode === 'number' ? body.errorCode : null;
     // The vendor's `errorDescription` quotes the printer and can echo a product
-    // name, so it is logged but never promoted into the operator-facing reason
-    // core persists on the record.
+    // name, so it is logged but never promoted into anything core persists. What
+    // the operator sees is derived from it by `readFiscalDeviceError`: digits
+    // and OpenLinker's own sentences only (#3843).
     const description =
       typeof body.errorDescription === 'string' ? body.errorDescription : 'no description';
+    const reading = readFiscalDeviceError(errorCode, body.errorDescription);
     this.logger.warn(
       `eparagony.pl reported a terminal error for document ${documentToken} (order ${orderId}, ` +
         `code ${errorCode ?? 'none'}): ${description} [connectionId=${this.connectionId}]`,
@@ -308,8 +311,10 @@ export class EparagonyFiscalizationAdapter
       { errorCode },
       {
         failureMode: 'rejected',
-        reason:
-          'The fiscal device reported an error and did not register the sale. Check the device, then register again under a new key.',
+        reason: reading.reason,
+        documentToken,
+        deviceErrorCode: reading.deviceErrorCode,
+        errorHint: reading.hint,
       },
     );
   }

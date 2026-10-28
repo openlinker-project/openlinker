@@ -21,6 +21,32 @@ import type {
 } from '@openlinker/core/fiscalization';
 
 /**
+ * PII-free identifiers of a provider refusal (#3843). An allowlist of four
+ * shaped values, validated by core before persistence - never free text from
+ * the provider.
+ */
+export class FiscalProviderFailureDetailsDto {
+  @ApiPropertyOptional({ description: "The provider's own error code, digits only.", nullable: true, example: '83' })
+  errorCode!: string | null;
+
+  @ApiPropertyOptional({
+    description: "The fiscal device's own error code, digits only. Its meaning depends on the device model.",
+    nullable: true,
+    example: '16',
+  })
+  deviceErrorCode!: string | null;
+
+  @ApiPropertyOptional({ description: "The provider's identifier for the attempt.", nullable: true })
+  documentId!: string | null;
+
+  @ApiPropertyOptional({
+    description: 'An explanation composed by OpenLinker from fixed text for an answer it recognised exactly.',
+    nullable: true,
+  })
+  hint!: string | null;
+}
+
+/**
  * One customer-facing output a registration produced.
  *
  * This DTO is the PAYLOAD-BEARING one: it carries `content` because the panel's
@@ -122,6 +148,17 @@ export class FiscalRegistrationResponseDto {
 
   @ApiPropertyOptional({ description: 'PII-free operator-facing reason', nullable: true })
   failureReason!: string | null;
+
+  @ApiPropertyOptional({
+    description:
+      "PII-free identifiers of the provider's refusal, for looking the failure up or quoting it " +
+      "to the provider's support (#3843). Codes are digits only; the provider's own error text " +
+      'is never carried. Null when the provider declared none, including every record written ' +
+      'before the field existed.',
+    type: FiscalProviderFailureDetailsDto,
+    nullable: true,
+  })
+  providerFailureDetails!: FiscalProviderFailureDetailsDto | null;
 
   @ApiProperty({
     description:
