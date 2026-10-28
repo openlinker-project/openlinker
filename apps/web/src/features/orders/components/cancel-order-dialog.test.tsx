@@ -218,7 +218,9 @@ describe('CancelOrderDialog (#3541)', () => {
     ['INVOICE_NOT_SETTLED', 'The invoice has not finished issuing.', 'The invoice has not finished issuing'],
     ['ORDER_ALREADY_CANCELLED', 'Order is already cancelled.', 'This order is already cancelled'],
     ['CHANNEL_REFUSED_CANCEL', 'Allegro refused: the order is paid out.', 'The sales channel refused the cancellation'],
-  ])('should render the server reason for %s on the form', async (code, message, title) => {
+    ['ORDER_CANCEL_IN_FLIGHT', 'A cancellation of this order is already running.', 'A cancellation is already in progress'],
+    ['ORDER_CANCEL_CONTENDED', 'Another operator holds the cancel lock; try again shortly.', 'Someone else is cancelling this order right now'],
+  ])('should render the server reason for %s on the form (C-51)', async (code, message, title) => {
     renderDialog(vi.fn().mockRejectedValue(refusal(code, message)));
     const user = userEvent.setup();
 
