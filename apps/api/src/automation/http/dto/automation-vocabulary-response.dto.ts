@@ -9,10 +9,9 @@
  *
  * **`actions[].availability` is why this endpoint matters as much as the matrix.**
  * The legality matrix answers *"may this action follow this trigger?"* and says
- * nothing about whether OpenLinker ships the operation. Five of the six cannot
- * run today: A1/A2/A5/A6 are `unavailable` (no underlying operation exists), and
- * A4 is `partial` (`MAILER_TOKEN` is bound only in the API process, while the T4
- * deadline sweep fires from the worker). Presenting six ready actions would let
+ * nothing about whether OpenLinker ships the operation. Four of the six cannot
+ * run today: A1/A2/A5/A6 are `unavailable` (no underlying operation exists). A4
+ * is `available` since #3552 bound the mailer in the worker too. Presenting six ready actions would let
  * an operator arm one and learn the truth from a failed run — the silent-decline
  * defect class this programme keeps closing.
  *

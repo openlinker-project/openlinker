@@ -33,15 +33,16 @@ describe('AUTOMATION_ACTION_AVAILABILITY', () => {
     }
   });
 
-  it('should report only relay-status-to-source as available in this build', () => {
+  it('should report relay-status-to-source and send-email as available in this build', () => {
     const available = AutomationActionValues.filter(
       (action) => availabilityForAction(action).availability === 'available',
     );
-    expect(available).toEqual(['relay-status-to-source']);
+    expect(available).toEqual(expect.arrayContaining(['relay-status-to-source', 'send-email']))
+    expect(available).toHaveLength(2);
   });
 
-  it('should report send-email as partial, since the mailer is bound in the API process only', () => {
-    expect(availabilityForAction('send-email').availability).toBe('partial');
+  it('should report send-email as available now that both hosts bind the mailer (#3552)', () => {
+    expect(availabilityForAction('send-email')).toEqual({ availability: 'available', reason: null });
   });
 
   it('should be the single source of the unavailable executor copy', () => {

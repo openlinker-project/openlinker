@@ -14,7 +14,7 @@
  *   MAIL_SMTP_PASSWORD  - SMTP password (optional)
  *   MAIL_FROM           - default From address (default "no-reply@openlinker.local")
  *
- * @module apps/api/src/auth/adapters
+ * @module libs/core/src/mailer/infrastructure/adapters
  */
 import { Injectable, Logger } from '@nestjs/common';
 import type { ConfigService } from '@nestjs/config';
