@@ -20,11 +20,11 @@
 
 /** Identifiers of one provider refusal. Every field is optional and PII-free. */
 export interface FiscalProviderFailureDetails {
-  /** The provider's own error code, digits only (eparagony.pl: `83`). */
+  /** The provider's own error code, digits only (e.g. `83`). */
   errorCode: string | null;
   /** The fiscal device's own error code, digits only; device-model specific. */
   deviceErrorCode: string | null;
-  /** The provider's identifier for the attempt (eparagony.pl: the document token). */
+  /** The provider's identifier for the attempt (e.g. a document token). */
   documentId: string | null;
   /**
    * An operator-facing explanation the ADAPTER composed from fixed text, for a
