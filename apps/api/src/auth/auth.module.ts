@@ -20,7 +20,7 @@ import { APP_GUARD } from '@nestjs/core';
 import { JwtModule } from '@nestjs/jwt';
 import { PassportModule } from '@nestjs/passport';
 import { ConfigModule, ConfigService } from '@nestjs/config';
-import { MAILER_TOKEN, PASSWORD_RESET_NOTIFIER_TOKEN, UsersModule } from '@openlinker/core/users';
+import { PASSWORD_RESET_NOTIFIER_TOKEN, UsersModule } from '@openlinker/core/users';
 import { MailerModule as CoreMailerModule, MailerTransportModule } from '@openlinker/core/mailer';
 import { SyncModule as CoreSyncModule } from '@openlinker/core/sync';
 import { JwtStrategy } from './strategies/jwt.strategy';
@@ -107,6 +107,6 @@ import { UsersApiModule } from '../users/users.module';
   // modules that import AuthModule (e.g. AppModule for AppController,
   // #1619) can inject JwtService to verify a bearer token without
   // enforcing auth on a @Public() route.
-  exports: [AuthService, MAILER_TOKEN, JwtModule],
+  exports: [AuthService, MailerTransportModule, JwtModule],
 })
 export class AuthModule {}
