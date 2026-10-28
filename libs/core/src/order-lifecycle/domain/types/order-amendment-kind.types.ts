@@ -1,7 +1,7 @@
 /**
  * Order Amendment Kind (#2305, ADR-059 / ADR-044; design §6.2)
  *
- * What kind of change an ADR-044 change proposal asks for. Each of the four
+ * What kind of change an ADR-044 change proposal asks for. Each of the five
  * values is justified by a REAL remote verb on at least one in-scope
  * destination — the union is not a taxonomy of everything an order could
  * conceivably change, it is the set of changes some adapter can actually be
@@ -16,7 +16,7 @@
  */
 
 /**
- * The four amendment kinds.
+ * The five amendment kinds.
  *
  * - `address-change`         — redirect the delivery address.
  * - `line-quantity-change`   — change a line's quantity. **Lower only.** The
@@ -30,12 +30,15 @@
  * - `cancel-request`         — ask the authority to cancel; OL proposes, the
  *   authority disposes, OL confirms from observation (ADR-044).
  * - `delivery-method-change` — change the carrier / delivery option.
+ * - `discount-change`        — change the order-level discount (#3543). Like
+ *   the quantity edit it is an OpenLinker-side overlay amendment, confirmed at
+ *   write time; it corresponds to the `order.discount_change` change kind.
  *
  * ## Two shapes of amendment
  *
  * `cancel-request` is a REQUEST a channel answers: it stays open until the
  * channel disposes of it and is what derives the `amending` phase. The other
- * three are, with the OMS on (D9, #3542), CONFIRMED AT WRITE TIME: the operator's
+ * four are, with the OMS on (D9, #3542), CONFIRMED AT WRITE TIME: the operator's
  * submit applies them to the OpenLinker order and confirms the change row in the
  * same breath, so they never derive `amending`. Only a channel that supports the
  * change would also be written back to, and none of the four adapters does today.
@@ -45,6 +48,7 @@ export const OrderAmendmentKindValues = [
   'line-quantity-change',
   'cancel-request',
   'delivery-method-change',
+  'discount-change',
 ] as const;
 
 export type OrderAmendmentKind = (typeof OrderAmendmentKindValues)[number];
