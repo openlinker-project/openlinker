@@ -59,7 +59,10 @@ describe('InvoiceMarketplaceUploadService', () => {
         providerInvoiceNumber: null,
       }),
     };
-    attachments = { resolveAttachment: jest.fn().mockResolvedValue(pdf) };
+    attachments = {
+      resolveAttachment: jest.fn().mockResolvedValue(pdf),
+      describeAttachment: jest.fn(),
+    };
     orders = { getOrderRecord: jest.fn().mockResolvedValue({ sourceConnectionId: CONNECTION }) };
     mapping = {
       getExternalIds: jest

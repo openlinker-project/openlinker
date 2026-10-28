@@ -10,8 +10,12 @@
  *
  * - `pdf`     - real document bytes the caller can attach directly.
  * - `link`    - no bytes, but a public url for the document.
- * - `waiting` - the document exists but is not cleared yet; try again later.
- * - `none`    - cleared (or nothing to clear) and still nothing attachable.
+ * - `waiting` - nothing attachable right now, but there may be later: the
+ *               document is not cleared yet, or a source that could answer
+ *               failed to (a provider outage is not a statement that nothing
+ *               exists). Try again later.
+ * - `none`    - cleared (or nothing to clear), every source answered, and
+ *               there is still nothing attachable. Stop asking.
  *
  * Country-agnostic (ADR-026): no regime vocabulary. The url is opaque.
  *
@@ -23,6 +27,18 @@ export type InvoiceAttachmentState = (typeof InvoiceAttachmentStateValues)[numbe
 
 export type InvoiceAttachment =
   | { state: 'pdf'; content: Uint8Array; contentType: string }
+  | { state: 'link'; url: string }
+  | { state: 'waiting' }
+  | { state: 'none' };
+
+/**
+ * The same answer without the document bytes, for a caller that only needs to
+ * know what it could attach (the HTTP read). Producing it never downloads the
+ * document: a `pdf` is reported from the provider's declared ability to render
+ * one, so a status check does not spend a provider call it then throws away.
+ */
+export type InvoiceAttachmentSummary =
+  | { state: 'pdf' }
   | { state: 'link'; url: string }
   | { state: 'waiting' }
   | { state: 'none' };

@@ -3,7 +3,8 @@
  *
  * One read, every provider: the cases below are the provider matrix the issue
  * names (bytes, stored url, verification link) plus the two states a surface must
- * tell apart - `waiting` ("not yet") and `none` ("not going to be").
+ * tell apart - `waiting` ("not yet", including "the provider did not answer")
+ * and `none` ("not going to be").
  */
 import type { IIntegrationsService } from '@openlinker/core/integrations';
 import { InvoiceRecord } from '../../domain/entities/invoice-record.entity';
@@ -73,6 +74,8 @@ describe('InvoiceAttachmentService', () => {
         'an offline document awaiting submission',
         { regulatoryStatus: 'pending-submission' as const },
       ],
+      // Not in the terminal regulatory set, so it is not guessed final.
+      ['a clearance the regime has not settled', { regulatoryStatus: 'cleared' as const }],
     ])('should report waiting for %s, without touching the provider', async (_label, overrides) => {
       repo.findById.mockResolvedValue(record(overrides));
 
@@ -214,20 +217,107 @@ describe('InvoiceAttachmentService', () => {
       });
     });
 
-    it('should report none, not an error, when the provider cannot be resolved and there is no url', async () => {
+    it('should report waiting, not none, when the provider cannot be resolved and there is no url', async () => {
       repo.findById.mockResolvedValue(record());
       integrations.getCapabilityAdapter.mockRejectedValue(new Error('connection disabled'));
 
-      expect(await service.resolveAttachment('rec-1')).toEqual({ state: 'none' });
+      // A disabled or re-authenticating connection says nothing about whether
+      // the document exists, and a consumer treats `none` as final.
+      expect(await service.resolveAttachment('rec-1')).toEqual({ state: 'waiting' });
     });
 
-    it('should fall through when the verification link read throws', async () => {
+    it('should report waiting, not none, when the verification link read throws', async () => {
       repo.findById.mockResolvedValue(record());
       integrations.getCapabilityAdapter.mockResolvedValue({
         getVerificationLink: jest.fn().mockRejectedValue(new Error('boom')),
       });
 
+      expect(await service.resolveAttachment('rec-1')).toEqual({ state: 'waiting' });
+    });
+
+    it('should report waiting, not none, when the rendered read fails and nothing else exists', async () => {
+      repo.findById.mockResolvedValue(record());
+      integrations.getCapabilityAdapter.mockResolvedValue({
+        getRegulatoryDocument: jest.fn().mockRejectedValue(new Error('socket hang up')),
+      });
+
+      expect(await service.resolveAttachment('rec-1')).toEqual({ state: 'waiting' });
+    });
+
+    it('should still conclude none when the provider says it cannot render this kind', async () => {
+      repo.findById.mockResolvedValue(record());
+      integrations.getCapabilityAdapter.mockResolvedValue({
+        getRegulatoryDocument: jest
+          .fn()
+          .mockRejectedValue(new UnsupportedRegulatoryDocumentKindError('rendered')),
+      });
+
+      // An explicit "I cannot" is an answer, unlike an outage.
       expect(await service.resolveAttachment('rec-1')).toEqual({ state: 'none' });
+    });
+
+    it('should prefer a link that did answer over waiting on a source that failed', async () => {
+      repo.findById.mockResolvedValue(record());
+      integrations.getCapabilityAdapter.mockResolvedValue({
+        getRegulatoryDocument: jest.fn().mockRejectedValue(new Error('socket hang up')),
+        getVerificationLink: jest.fn().mockResolvedValue({ url: 'https://qr.example/invoice/1' }),
+      });
+
+      expect(await service.resolveAttachment('rec-1')).toEqual({
+        state: 'link',
+        url: 'https://qr.example/invoice/1',
+      });
+    });
+  });
+
+  describe('describeAttachment', () => {
+    it('should answer null for an unknown invoice', async () => {
+      repo.findById.mockResolvedValue(null);
+
+      expect(await service.describeAttachment('missing')).toBeNull();
+    });
+
+    it('should report pdf from the declared ability to render, without downloading', async () => {
+      const getRegulatoryDocument = jest.fn();
+      repo.findById.mockResolvedValue(record());
+      integrations.getCapabilityAdapter.mockResolvedValue({ getRegulatoryDocument });
+
+      expect(await service.describeAttachment('rec-1')).toEqual({ state: 'pdf' });
+      expect(getRegulatoryDocument).not.toHaveBeenCalled();
+    });
+
+    it('should not report pdf for a provider that cannot render the kind', async () => {
+      repo.findById.mockResolvedValue(record({ pdfUrl: 'https://x.test/a.pdf' }));
+      integrations.getCapabilityAdapter.mockResolvedValue({
+        getRegulatoryDocument: jest.fn(),
+        supportedRegulatoryDocumentKinds: () => ['confirmation'],
+      });
+
+      expect(await service.describeAttachment('rec-1')).toEqual({
+        state: 'link',
+        url: 'https://x.test/a.pdf',
+      });
+    });
+
+    it('should report waiting for a document that is not cleared, without touching the provider', async () => {
+      repo.findById.mockResolvedValue(record({ regulatoryStatus: 'submitted' }));
+
+      expect(await service.describeAttachment('rec-1')).toEqual({ state: 'waiting' });
+      expect(integrations.getCapabilityAdapter).not.toHaveBeenCalled();
+    });
+
+    it('should report waiting when the provider cannot be resolved and there is no url', async () => {
+      repo.findById.mockResolvedValue(record());
+      integrations.getCapabilityAdapter.mockRejectedValue(new Error('connection disabled'));
+
+      expect(await service.describeAttachment('rec-1')).toEqual({ state: 'waiting' });
+    });
+
+    it('should report none when the provider has nothing and every source answered', async () => {
+      repo.findById.mockResolvedValue(record());
+      integrations.getCapabilityAdapter.mockResolvedValue(bareAdapter());
+
+      expect(await service.describeAttachment('rec-1')).toEqual({ state: 'none' });
     });
   });
 });
