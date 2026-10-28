@@ -159,6 +159,10 @@ const harness = createIntegrationTestHarness({
     // rows would then leak across cases and collide on
     // UQ_fiscal_registration_records_connection_idempotency. Truncate explicitly.
     'fiscal_registration_records',
+    // document_email_deliveries (#3550) — one row per manual document email.
+    // No FK by design (references by value), so it sits outside the CASCADE
+    // closure `truncateTables` walks; truncate explicitly so a case starts clean.
+    'document_email_deliveries',
     // refund_records (#2036) — order-scoped refund-capture projection. No
     // ORM/migration FK to order_records (plain indexed text column, matching
     // the invoice_records precedent); truncate explicitly so each refund case

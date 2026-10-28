@@ -18,7 +18,13 @@ export class ConsoleMailerAdapter implements MailerPort {
     this.logger.log(
       `[mail] to=${message.to} subject=${JSON.stringify(message.subject)} text=${JSON.stringify(
         message.text,
-      )}`,
+      )}` +
+        // Names and sizes only: the bytes of a buyer's invoice do not belong in a log.
+        (message.attachments?.length
+          ? ` attachments=${JSON.stringify(
+              message.attachments.map((a) => `${a.filename} (${String(a.content.byteLength)} B)`),
+            )}`
+          : ''),
     );
     return Promise.resolve();
   }
