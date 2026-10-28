@@ -295,7 +295,10 @@ describe('InvoicingController', () => {
   let attachments: jest.Mocked<IInvoiceAttachmentService>;
 
   beforeEach(async () => {
-    attachments = { resolveAttachment: jest.fn().mockResolvedValue(null) };
+    attachments = {
+      resolveAttachment: jest.fn().mockResolvedValue(null),
+      describeAttachment: jest.fn().mockResolvedValue(null),
+    };
     invoiceService = {
       issueInvoice: jest.fn(),
       issueCorrection: jest.fn(),
@@ -2178,17 +2181,13 @@ describe('InvoicingController', () => {
   });
   describe('getAttachment (#3548)', () => {
     it('should 404 for an unknown invoice', async () => {
-      attachments.resolveAttachment.mockResolvedValue(null);
+      attachments.describeAttachment.mockResolvedValue(null);
 
       await expect(controller.getAttachment('rec-missing')).rejects.toBeInstanceOf(NotFoundException);
     });
 
-    it('should name the download route for a pdf and never embed the bytes', async () => {
-      attachments.resolveAttachment.mockResolvedValue({
-        state: 'pdf',
-        content: new Uint8Array([1, 2, 3]),
-        contentType: 'application/pdf',
-      });
+    it('should name the download route for a pdf and never download the document', async () => {
+      attachments.describeAttachment.mockResolvedValue({ state: 'pdf' });
 
       const dto = await controller.getAttachment('rec-inv-1');
 
@@ -2196,29 +2195,28 @@ describe('InvoicingController', () => {
         state: 'pdf',
         url: null,
         downloadPath: '/invoices/rec-inv-1/document?kind=rendered',
-        contentType: 'application/pdf',
       });
+      // The status read must not fetch bytes it would then throw away.
+      expect(attachments.resolveAttachment).not.toHaveBeenCalled();
     });
 
     it('should return the url for a link', async () => {
-      attachments.resolveAttachment.mockResolvedValue({ state: 'link', url: 'https://example.test/d' });
+      attachments.describeAttachment.mockResolvedValue({ state: 'link', url: 'https://example.test/d' });
 
       expect(await controller.getAttachment('rec-inv-1')).toEqual({
         state: 'link',
         url: 'https://example.test/d',
         downloadPath: null,
-        contentType: null,
       });
     });
 
     it.each(['waiting', 'none'] as const)('should answer %s with no url and no download path', async (state) => {
-      attachments.resolveAttachment.mockResolvedValue({ state });
+      attachments.describeAttachment.mockResolvedValue({ state });
 
       expect(await controller.getAttachment('rec-inv-1')).toEqual({
         state,
         url: null,
         downloadPath: null,
-        contentType: null,
       });
     });
   });
