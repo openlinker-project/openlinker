@@ -151,6 +151,7 @@ const harness = createIntegrationTestHarness({
     // No ORM/migration FK; truncate explicitly so each invoicing case (incl.
     // the (connectionId, idempotencyKey) dedup assertion) starts clean.
     'invoice_records',
+    'invoice_marketplace_uploads',
     // fiscal_registration_records (#1908) — order- + connection-scoped
     // fiscalization projection. Its migration declares NO FK by design (same
     // choice as invoice_records), so the table sits outside the CASCADE closure

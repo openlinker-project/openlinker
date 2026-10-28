@@ -47,7 +47,7 @@ describe('InvoiceMarketplaceUploadService', () => {
 
   beforeEach(() => {
     uploads = {
-      findByInvoiceId: jest.fn(),
+      findByInvoiceId: jest.fn().mockResolvedValue([]),
       claimAttempt: jest.fn().mockResolvedValue(claimedRow()),
       recordOutcome: jest.fn().mockResolvedValue(true),
     };
@@ -99,7 +99,8 @@ describe('InvoiceMarketplaceUploadService', () => {
       contentType: 'application/pdf',
       content: pdf.content,
     });
-    expect(uploads.recordOutcome).toHaveBeenCalledWith('upload-1', { status: 'uploaded' });
+    // The claimed attempt number fences the write against a later takeover.
+    expect(uploads.recordOutcome).toHaveBeenCalledWith('upload-1', 1, { status: 'uploaded' });
     expect(result).toEqual({ kind: 'settled', status: 'uploaded', failureCode: null });
   });
 
@@ -251,6 +252,24 @@ describe('InvoiceMarketplaceUploadService', () => {
     );
   });
 
+  it('should not download the document again for a row that is already terminal', async () => {
+    uploads.findByInvoiceId.mockResolvedValue([
+      claimedRow({ status: 'uploaded', targetConnectionId: CONNECTION }),
+    ]);
+
+    expect(await service.upload('inv-1')).toEqual({ kind: 'skipped', reason: 'already-settled' });
+    expect(attachments.resolveAttachment).not.toHaveBeenCalled();
+    expect(uploads.claimAttempt).not.toHaveBeenCalled();
+  });
+
+  it('should still upload when only another connection holds a terminal row', async () => {
+    uploads.findByInvoiceId.mockResolvedValue([
+      claimedRow({ status: 'uploaded', targetConnectionId: 'other-connection' }),
+    ]);
+
+    expect((await service.upload('inv-1')).kind).toBe('settled');
+  });
+
   describe('enqueueUpload', () => {
     it('should enqueue under the marketplace connection with a stable key', async () => {
       expect(await service.enqueueUpload('inv-1')).toBe('enqueued');
@@ -266,6 +285,13 @@ describe('InvoiceMarketplaceUploadService', () => {
       await service.enqueueUpload('inv-1', { retry: true });
       const key = enqueue.enqueueJob.mock.calls[0][0].idempotencyKey as string;
       expect(key).toMatch(/^invoice-upload:inv-1:retry:\d+$/);
+    });
+
+    it('should give the clearance trigger its own key, one per invoice', async () => {
+      await service.enqueueUpload('inv-1', { cleared: true });
+      expect(enqueue.enqueueJob).toHaveBeenCalledWith(
+        expect.objectContaining({ idempotencyKey: 'invoice-upload:inv-1:cleared' }),
+      );
     });
 
     it('should report failed instead of throwing when the enqueue breaks', async () => {

@@ -10,7 +10,6 @@
  * @implements {OrderSourcePort}
  */
 
-import { uploadBillingDocumentToAllegro } from '../util/upload-billing-document-to-allegro';
 import { PAYMENT_STATUS, readSourceBuyerTaxId } from '@openlinker/core/orders';
 import type {
   OrderSourcePort,
@@ -94,6 +93,7 @@ import type {
 } from '../../domain/types/allegro-customer-return.types';
 import { toIncomingReturn, toReturnFeedItem } from './allegro-customer-return.mapper';
 import { toNeutralTaxRate } from './allegro-tax-rate.mapper';
+import { uploadBillingDocumentToAllegro } from '../util/upload-billing-document-to-allegro';
 
 type OrderFeedItem = OrderFeedOutput['items'][number];
 
@@ -655,6 +655,11 @@ export class AllegroOrderSourceAdapter
    */
   readonly declineReasonCodes: readonly string[] = ALLEGRO_RETURN_REJECTION_CODES;
 
+  /** OrderBillingDocumentUploader (#3549): attach an issued document to the order. */
+  uploadBillingDocument(input: UploadBillingDocumentInput): Promise<UploadBillingDocumentResult> {
+    return uploadBillingDocumentToAllegro(this.httpClient, input);
+  }
+
   /**
    * Ask Allegro to reject a customer return's refund.
    *
@@ -680,11 +685,6 @@ export class AllegroOrderSourceAdapter
    * not know whether Allegro applied the change, and the proposal must stay open
    * (in doubt) rather than be recorded as refused.
    */
-  // OrderBillingDocumentUploader (#3549)
-  uploadBillingDocument(input: UploadBillingDocumentInput): Promise<UploadBillingDocumentResult> {
-    return uploadBillingDocumentToAllegro(this.httpClient, input);
-  }
-
   async declineReturn(command: ReturnDeclineCommand): Promise<ReturnDeclineResult> {
     const code = this.requireRejectionCode(command);
     const reason = this.resolveRejectionReason(command, code);

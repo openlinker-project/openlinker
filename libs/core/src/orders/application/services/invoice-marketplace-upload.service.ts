@@ -84,7 +84,7 @@ export class InvoiceMarketplaceUploadService implements IInvoiceMarketplaceUploa
 
   async enqueueUpload(
     invoiceId: string,
-    options: { retry?: boolean } = {},
+    options: { retry?: boolean; cleared?: boolean } = {},
   ): Promise<'enqueued' | 'skipped' | 'failed'> {
     try {
       const invoice = await this.invoices.getInvoiceById(invoiceId);
@@ -93,7 +93,9 @@ export class InvoiceMarketplaceUploadService implements IInvoiceMarketplaceUploa
       if (order === null) return 'skipped';
       const idempotencyKey = options.retry
         ? `invoice-upload:${invoiceId}:retry:${Date.now()}`
-        : `invoice-upload:${invoiceId}`;
+        : options.cleared
+          ? `invoice-upload:${invoiceId}:cleared`
+          : `invoice-upload:${invoiceId}`;
       await this.jobEnqueue.enqueueJob({
         jobType: 'invoicing.marketplaceUpload',
         connectionId: order.sourceConnectionId,
@@ -117,9 +119,26 @@ export class InvoiceMarketplaceUploadService implements IInvoiceMarketplaceUploa
     const order = await this.orders.getOrderRecord(invoice.orderId);
     if (order === null) return { kind: 'skipped', reason: 'order-not-found' };
 
+    // A row that is already terminal needs nothing, and resolving the
+    // attachment downloads the document from the provider - two triggers (the
+    // first job and the clearance) must not cost two downloads for one upload.
+    // The claim below still decides; this only avoids wasted work.
+    const existing = await this.uploads.findByInvoiceId(invoiceId);
+    if (
+      existing.some(
+        (row) =>
+          row.targetConnectionId === order.sourceConnectionId &&
+          (row.status === 'uploaded' || row.status === 'unsupported'),
+      )
+    ) {
+      return { kind: 'skipped', reason: 'already-settled' };
+    }
+
     const attachment = await this.attachments.resolveAttachment(invoiceId);
     if (attachment !== null && attachment.state === 'waiting') return { kind: 'waiting' };
 
+    // `null` = terminal, or another attempt holds the row right now; either way
+    // there is nothing for this run to send.
     const claimed = await this.uploads.claimAttempt(invoiceId, order.sourceConnectionId);
     if (claimed === null) return { kind: 'skipped', reason: 'already-settled' };
 
@@ -180,10 +199,10 @@ export class InvoiceMarketplaceUploadService implements IInvoiceMarketplaceUploa
     claimed: InvoiceMarketplaceUpload,
     outcome: RecordInvoiceMarketplaceUploadOutcome,
   ): Promise<InvoiceMarketplaceUploadResult> {
-    const applied = await this.uploads.recordOutcome(claimed.id, outcome);
+    const applied = await this.uploads.recordOutcome(claimed.id, claimed.attempts, outcome);
     if (!applied) {
-      // Another attempt settled the row between our claim and this write; its
-      // answer stands and ours must not overwrite it.
+      // Another attempt settled the row, or took it over after our lease ran
+      // out; its answer stands and ours must not overwrite it.
       return { kind: 'skipped', reason: 'already-settled' };
     }
     return {
