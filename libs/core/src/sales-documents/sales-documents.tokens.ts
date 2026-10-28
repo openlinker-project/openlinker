@@ -21,3 +21,7 @@ export const SALES_DOCUMENT_COUNTRY_ACKNOWLEDGMENT_REPOSITORY_TOKEN = Symbol(
   'SalesDocumentCountryAcknowledgmentRepositoryPort',
 );
 export const SALES_DOCUMENT_RULES_SERVICE_TOKEN = Symbol('ISalesDocumentRulesService');
+export const DOCUMENT_EMAIL_DELIVERY_REPOSITORY_TOKEN = Symbol(
+  'DocumentEmailDeliveryRepositoryPort',
+);
+export const DOCUMENT_EMAIL_DELIVERY_SERVICE_TOKEN = Symbol('IDocumentEmailDeliveryService');

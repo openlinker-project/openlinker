@@ -60,6 +60,36 @@ describe('SmtpMailerAdapter', () => {
   });
 });
 
+describe('SmtpMailerAdapter attachments (#3550)', () => {
+  it('forwards attachments to the transport', async () => {
+    const transport: jest.Mocked<SmtpTransport> = { sendMail: jest.fn().mockResolvedValue({}) };
+    const adapter = new SmtpMailerAdapter(transport, 'no-reply@openlinker.local');
+    const pdf = new Uint8Array([1, 2, 3]);
+
+    await adapter.sendEmail({
+      to: 'a@b.com',
+      subject: 'Invoice',
+      text: 'Attached',
+      attachments: [{ filename: 'invoice.pdf', content: pdf, contentType: 'application/pdf' }],
+    });
+
+    expect(transport.sendMail).toHaveBeenCalledWith(
+      expect.objectContaining({
+        attachments: [{ filename: 'invoice.pdf', content: pdf, contentType: 'application/pdf' }],
+      }),
+    );
+  });
+
+  it('should not add an attachments key when there is nothing to attach', async () => {
+    const transport: jest.Mocked<SmtpTransport> = { sendMail: jest.fn().mockResolvedValue({}) };
+    const adapter = new SmtpMailerAdapter(transport, 'no-reply@openlinker.local');
+
+    await adapter.sendEmail({ to: 'a@b.com', subject: 'Hi', text: 'Body', attachments: [] });
+
+    expect(transport.sendMail.mock.calls[0][0]).not.toHaveProperty('attachments');
+  });
+});
+
 describe('ConsoleMailerAdapter', () => {
   it('resolves without throwing (logs only)', async () => {
     const adapter = new ConsoleMailerAdapter();
