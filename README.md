@@ -7,9 +7,11 @@
 
 **[openlinker.io](https://openlinker.io)** · [Docs](https://docs.openlinker.io) · [Live demo](https://app.demo.openlinker.io) · [Architecture](https://openlinker.io/en/architecture) · [Integrations](https://openlinker.io/en/integrations) · [vs BaseLinker](https://openlinker.io/en/vs/baselinker)
 
-**Sync orders, inventory, and listings between your shop and the marketplaces you sell on. Self-hosted, open-source, pluggable.**
+**Self-hosted, open-source order orchestration for multichannel sellers: take in orders from every channel, keep stock in sync, issue documents and ship, with an optional built-in order management system (OMS).**
 
-If you sell on your own shop *and* on marketplaces like Allegro, you've already lived the pain: orders coming in from multiple places, inventory drifting between channels, manually rewriting product descriptions for every listing, customer data scattered across systems. The usual answers are SaaS channel managers (you pay forever and your data lives on their servers) or custom scripts (fragile and yours to maintain alone). OpenLinker is the third option: a self-hosted, open-source orchestration platform that does the same job, on your servers, with your data, with code you can read and extend.
+If you sell on your own shop *and* on marketplaces like Allegro, you've already lived the pain: orders coming in from multiple places, inventory drifting between channels, manually rewriting product descriptions for every listing, customer data scattered across systems. The usual answers are SaaS channel managers (you pay forever and your data lives on their servers) or custom scripts (fragile and yours to maintain alone). OpenLinker is the third option: a self-hosted, open-source order orchestration platform that does the same job, on your servers, with your data, with code you can read and extend.
+
+By default OpenLinker mirrors each marketplace order into your shop and keeps the two in step. Switch on the optional OMS module and OpenLinker keeps the order itself: it decides where each order is packed, runs the packing at a pack bench, and only lowers stock in your shop. See [Order management (OMS)](#order-management-oms).
 
 > **Status: alpha, pre-1.0.** Expect rough edges; report them.
 
@@ -27,6 +29,9 @@ If you sell on your own shop *and* on marketplaces like Allegro, you've already 
 - **Orders flow automatically.** Every Allegro order creates a PrestaShop order, with the buyer auto-provisioned as a customer. Cursor-based and resumable — nothing's lost if anything pauses.
 - **Stock stays in sync, both ways.** Sell on Allegro, your shop stock drops. Restock in your shop, Allegro listings update. No per-platform spreadsheet.
 - **Create listings without copy-pasting.** Pick a product, pick a category (or look it up by EAN), get an Allegro offer up with images, parameters, GPSR data, and your saved seller policies — from one wizard. AI can draft the description if you let it.
+- **Handle the order after it arrives.** Put an order on hold, cancel it from OpenLinker (the channel is told where its API allows), correct the address, quantities or delivery method, or give a discount, alone or for up to 100 orders at once. Buyer checkout notes reach the packer, who confirms them per parcel.
+- **Work returns in one place.** Record a return, receive the parcel, restock or scrap each line, and get a draft credit note. Refunds you made on the channel are recorded and capped at what the order was worth.
+- **Pack orders in OpenLinker (optional).** Turn on the OMS module and packers work from a pack bench while a supervisor assigns parcels.
 - **Run multiple stores from one dashboard.** Each connection has its own encrypted credentials and config. Two PrestaShop stores plus three Allegro accounts? One OpenLinker instance.
 - **You own everything.** Self-hosted, Apache 2.0. No subscription, no per-order pricing, no vendor that can shut you off. You host it; that's the trade.
 
@@ -45,20 +50,23 @@ If you sell on your own shop *and* on marketplaces like Allegro, you've already 
 | **[PrestaShop](./libs/integrations/prestashop/)** | Shop *(source + destination)* | ✅ Live |
 | **[WooCommerce](./libs/integrations/woocommerce/)** *([guide](./libs/integrations/woocommerce/docs/setup-guide.md))* | Shop *(source + destination + inventory)* | ✅ Live |
 | **[Shoper](./libs/integrations/shoper/)** | Shop *(source + destination + inventory, product publish)* | ✅ Live |
-| **[Allegro](./libs/integrations/allegro/)** *([guide](./libs/integrations/allegro/docs/setup-guide.md))* | Marketplace *(source + offers + shipping)* | ✅ Live |
+| **[Allegro](./libs/integrations/allegro/)** *([guide](./libs/integrations/allegro/docs/setup-guide.md))* | Marketplace *(source + offers + shipping + returns intake)* | ✅ Live |
 | **[Erli](./libs/integrations/erli/)** *([guide](./libs/integrations/erli/docs/setup-guide.md))* | Marketplace *(offers + source)* | ✅ Live |
 | **[AI router](./libs/integrations/ai/)** *(Anthropic, OpenAI)* | Content suggestion | ✅ Live |
 | **[InPost](./libs/integrations/inpost/)** *([guide](./libs/integrations/inpost/docs/setup-guide.md))* | Shipping *(ShipX — paczkomat + kurier, labels, webhooks)* | ✅ Live |
 | **[DPD](./libs/integrations/dpd-polska/)** *([guide](./libs/integrations/dpd-polska/docs/setup-guide.md))* | Shipping *(REST labels + protocols, SOAP tracking)* | ✅ Live |
 | **[Subiekt GT](./libs/integrations/subiekt/)** *([guide](./libs/integrations/subiekt/docs/setup-guide.md) · [tutorial](./libs/integrations/subiekt/docs/tutorial.md))* | Invoicing · Catalogue · Stock · Order ingestion · Order creation *(via the Sfera GT bridge, COM automation)* | ✅ Live |
-| **[Subiekt nexo](./libs/integrations/subiekt-nexo/)** *([guide](./libs/integrations/subiekt-nexo/docs/setup-guide.md) · [tutorial](./libs/integrations/subiekt-nexo/docs/tutorial.md))* | Invoicing *(via the Sfera bridge — first `InvoicingPort` adapter)* | ✅ Live |
+| **[Subiekt nexo](./libs/integrations/subiekt-nexo/)** *([guide](./libs/integrations/subiekt-nexo/docs/setup-guide.md) · [tutorial](./libs/integrations/subiekt-nexo/docs/tutorial.md))* | Invoicing *(via the Sfera bridge, a separate product from Subiekt GT)* | ✅ Live |
 | **[KSeF](./libs/integrations/ksef/)** *([guide](./libs/integrations/ksef/docs/setup-guide.md) · [tutorial](./libs/integrations/ksef/docs/tutorial.md))* | Invoicing *(Polish national e-invoicing)* | ✅ Live |
 | **[Infakt](./libs/integrations/infakt/)** *([guide](./libs/integrations/infakt/docs/setup-guide.md))* | Invoicing *(accounting SaaS — issues invoices and relays them to KSeF on the seller's behalf)* | ✅ Live |
 | **[eparagony.pl](./libs/integrations/eparagony/)** *([guide](./libs/integrations/eparagony/docs/setup-guide.md))* | Fiscal receipts · Invoicing *(the vendor drives the seller's fiscal printer and relays invoices to KSeF)* | ✅ Live |
+| **[OpenLinker OMS](./libs/oms/)** | Order management *(routing, fulfilment work, pack bench; off until an operator enables it)* | ✅ Live, opt-in |
 | Shopify · BigCommerce · Magento | Shop | 📋 Planned |
 | eBay · Amazon · OLX · Empik · Bol | Marketplace | 📋 Planned |
 | DHL · FedEx · ORLEN Paczka · GLS | Shipping *(siblings under `ShippingProviderManagerPort`)* | 📋 Planned |
 | Fakturownia · iFirma · wFirma | Invoicing *(siblings under `InvoicingPort`)* | 📋 Planned |
+
+TikTok Shop, Amazon, eBay and Shopify are in research ([#2878](https://github.com/openlinker-project/openlinker/issues/2878)), with no code yet.
 
 Planned items are open for community contributions — see [Adding your own integration](#adding-your-own-integration) below.
 
@@ -70,18 +78,43 @@ OpenLinker is built around a small set of capability ports. Each integration imp
 
 | Capability | What it does | Integrations |
 |---|---|---|
-| **Catalog & inventory** | Read products, variants, and stock from a master shop | PrestaShop · WooCommerce · Shoper |
-| **Orders** | Ingest from any source *(event journal or watermark)*; create + manage them in a destination shop | PrestaShop *(source + destination)* · WooCommerce *(source + destination)* · Shoper *(source + destination)* · Allegro *(source)* · Erli *(source)* |
-| **Offers / listings** | Manage marketplace offers — categories, prices, quantities, seller policies, GPSR data | Allegro · Erli |
+| **Catalog & inventory** | Read products, variants, and stock from a master shop | PrestaShop · WooCommerce · Shoper · Subiekt GT |
+| **Orders** | Ingest from any source *(event journal or watermark)*; create + manage them in a destination shop | PrestaShop *(source + destination)* · WooCommerce *(source + destination)* · Shoper *(source + destination)* · Subiekt GT *(source + destination)* · Allegro *(source)* · Erli *(source)* |
+| **Offers / listings** | Manage marketplace offers: categories, prices, quantities, seller policies, GPSR data | Allegro · Erli · WooCommerce *(stock write-back only)* |
+| **Returns** | Read marketplace returns and their status; decline a return on the channel | Allegro |
+| **Fulfilment** | Take routed work, report it accepted, and record it shipped *(via `FulfillmentExecutorPort`)* | OpenLinker OMS |
 | **Shipping** | Generate labels + handover protocols, fetch tracking *(via `ShippingProviderManagerPort`)* | Allegro · InPost · DPD |
 | **Invoicing** | Issue fiscal documents and, where supported, submit them to a tax authority for clearance *(via `InvoicingPort`)* | Subiekt GT · Subiekt nexo · KSeF · Infakt · eparagony.pl |
 | **Fiscal receipts** | Register a sale as a fiscal receipt through a provider that drives the fiscal device *(via `FiscalizationPort`)* | eparagony.pl |
 | **Content suggestion** | Provider-agnostic AI completions with editable, versioned prompts | AI router *(Anthropic, OpenAI)* |
 | **Auth & ops** | Per-integration connection testers, webhook provisioners, OAuth, retry classifiers, credentials/config validators | All integrations |
 
-See [`docs/capabilities.md`](./docs/capabilities.md) for the full, code-synced vocabulary — every capability port, its base contract, and all 31 sub-capabilities with descriptions and guards — and [`docs/architecture-overview.md`](./docs/architecture-overview.md) for the contracts plugin authors implement against.
+See [`docs/capabilities.md`](./docs/capabilities.md) for the full, code-synced vocabulary — every capability port, its base contract, and every sub-capability with its description and guard — and [`docs/architecture-overview.md`](./docs/architecture-overview.md) for the contracts plugin authors implement against.
 
 **Host-provided, regardless of integration:** encrypted credentials store · multi-connection per platform type *(two PrestaShop stores from one instance)* · identifier mapping with a single unified seed *(`ol_product_*`, `ol_order_*`, `ol_variant_*`, …)* · customer identity resolution with optional email-fallback · PII-aware storage *(full or hash-only)* · sync-job orchestration with retry classification + outcome tracking · browser-based admin UI.
+
+---
+
+## Order management (OMS)
+
+OpenLinker ships its own order management system as an optional module, [`libs/oms`](./libs/oms/). It is off on a fresh install. Nothing changes until an operator turns it on.
+
+**Who owns the order.** With the OMS off, OpenLinker mirrors each marketplace order into your shop, and the shop is where the order lives. With the OMS on and OpenLinker doing the fulfilment, OpenLinker is the system of record for that order: it is not created in your shop or ERP, which only has its stock lowered (and given back if the order is cancelled). Orders that come from your shop itself, orders the marketplace ships for you, and orders already mirrored before the switch stay on the old path. The full rule is in [ADR-055](./docs/architecture/adrs/055-oms-as-credentialless-connection-plugin.md) and issue [#3483](https://github.com/openlinker-project/openlinker/issues/3483).
+
+**How to turn it on.** Open **Connections**, pick the **OpenLinker OMS** setup card, and follow the **Pack orders in OpenLinker** wizard (`/settings/packing`). It creates the OMS connection and makes it the system that decides where orders are packed. You can see and change who decides what on **Settings > Who decides what**.
+
+**What you get once it is on:**
+
+| Area | What it does | Status |
+|---|---|---|
+| Routing | Each new order is assigned to a location and becomes packing work. An order that cannot be placed is held in OpenLinker, never sent to the shop. Held orders are retried when stock changes, every 15 minutes, and on an operator's **Retry routing** click; a routing call that never answered is closed after a time limit. | ⚠️ Preview. No shipped stock integration reports a location yet, so routing needs a manual stock location per connection. The routing-rules, locations and stock-location screens appear only when the web app is built with `VITE_OL_OMS_ROUTING_UI_ENABLED=true`; the API is always on. |
+| Pack bench | `/bench`: a packer scans items and closes the parcel. Closing a parcel records it as shipped and tells the sales channel. | ✅ |
+| Assign packing work | `/fulfillment`: a supervisor puts parcels in front of named packers. Assignment is a hint, not a lock. | ✅ |
+| Who decides what | `/settings/who-decides`: shows which system decides stock, routing, fulfilment, lifecycle and returns, with one-click presets. | ✅ |
+| Stock promises | Every order records a stock hold. Holds lower the stock you publish only for orders OpenLinker routes or ships itself. Holds are released on cancel and on dispatch; expiry does not release them yet. | ⚠️ |
+| Labels | Buy a label from the bench for a parcel. Automatic labels stay opt-in per connection. | ⚠️ |
+
+**What it is not.** It is not a warehouse management system (no bin locations or pick paths), and in practice it runs one warehouse: stock is not split per location yet. It never moves money: refunds are recorded, not executed. It is not a tax engine: tax rates come from your shop.
 
 ---
 
@@ -91,7 +124,7 @@ See [`docs/capabilities.md`](./docs/capabilities.md) for the full, code-synced v
 
 **Role:** shop / destination
 
-OpenLinker's PrestaShop integration. Implements the full shop surface: catalog and inventory reads, order ingestion via the `date_upd` watermark, order creation with auto-provisioned guest customers, status lifecycle, cancellations, and returns. Ships the **OL Dynamic Carrier** PrestaShop module so buyer-paid shipping costs from marketplaces round-trip correctly into PrestaShop orders without breaking existing carriers. Registers connection tester, webhook provisioner, and connection-config + credentials shape validators with the host.
+OpenLinker's PrestaShop integration. Implements the full shop surface: catalog and inventory reads, order ingestion via the `date_upd` watermark, order creation with auto-provisioned guest customers, status lifecycle, and cancellations. Ships the **OL Dynamic Carrier** PrestaShop module so buyer-paid shipping costs from marketplaces round-trip correctly into PrestaShop orders without breaking existing carriers. Registers connection tester, webhook provisioner, and connection-config + credentials shape validators with the host.
 
 **~7.6k LOC source** · [`libs/integrations/prestashop/`](./libs/integrations/prestashop/) · [README](./libs/integrations/prestashop/README.md) · *also the recommended starting point when adding a new shop or marketplace plugin*
 
@@ -117,6 +150,7 @@ OpenLinker's AI router for content generation. Wraps Anthropic and OpenAI behind
 
 - **vs SaaS channel managers** *(BaseLinker, ChannelEngine, ChannelAdvisor)* — you own the data, you own the code, and your bill is your hosting bill. No per-order pricing, no vendor lock-in, no surprise terms changes.
 - **vs custom scripts** — a tested foundation that doesn't break the next time Allegro changes their API. Real integration tests run against a real PrestaShop install via Testcontainers.
+- **vs enterprise OMS** *(Manhattan, IBM Sterling, Fluent)* - OpenLinker's OMS module is built for one warehouse and a handful of channels, not a multi-node network. It is not a warehouse management system.
 - **vs headless commerce platforms** *(Medusa, Vendure, Spree)* — OpenLinker is the **integration plumbing** for the shop you already have, not a replacement shop platform. Keep PrestaShop (or WooCommerce, BigCommerce, …) running; add OpenLinker alongside it.
 
 ---
@@ -132,18 +166,30 @@ How OpenLinker measures against the standard set of multichannel-orchestration f
 | **Orders** | | |
 | Ingest orders from any source *(marketplace or shop)* | ✅ | `OrderSourcePort` |
 | Create + manage orders in destination shop | ✅ | `OrderProcessorManagerPort` |
+| Hold and release an order | ✅ | Admin only; order holds API + order page |
+| Cancel an order from OpenLinker | ✅ | Admin only. Allegro, PrestaShop, WooCommerce and Subiekt GT are told; Shoper is not; Erli gets its stock back only. The cancel reason stays in OpenLinker. |
+| Edit an imported order *(address, lower quantities, delivery method, discount)* | ⚠️ | Admin only. The change lives in OpenLinker; no channel or shop is updated. |
+| Bulk order actions *(cancel, tag, mark read)* | ✅ | Up to 100 orders, with a result per order |
+| Buyer checkout note, confirmed at the pack bench | ✅ | Allegro, Erli, WooCommerce, PrestaShop; text kept only with PII storage on |
+| Route orders to a location *(OMS)* | ⚠️ | Opt-in OMS module; preview, see [Order management](#order-management-oms) |
+| Pack bench + packing assignment *(OMS)* | ✅ | Opt-in OMS module |
 | Generate invoices / fiscal documents *(+ tax-authority clearance)* | ✅ | `InvoicingPort` — Subiekt GT, Subiekt nexo, KSeF, Infakt, eparagony.pl |
+| KSeF invoice as PDF | ✅ | Drawn by OpenLinker once KSeF clears the invoice, with KOD I. No KOD II, so an offline invoice has no PDF until it clears. |
+| Attach the invoice to the marketplace order | ⚠️ | Allegro only, automatic after issue; only PDF files are sent (KSeF, inFakt). Bulk-issued and older invoices are not sent. |
 | Accounting export / GL / valuation | — | *Out of scope; integrate accounting separately* |
 | **Inventory & catalog** | | |
 | Read products, variants, attributes | ✅ | `ProductMasterPort` |
 | Read inventory levels | ✅ | `InventoryMasterPort` |
-| Multi-location / multi-warehouse stock | 🛣️ | `InventoryMasterPort` accepts `locationId`; not yet exercised by an adapter |
+| Multi-location / multi-warehouse stock | 🛣️ | Location records and a routing layer exist, but no shipped integration reports stock per location yet, so in practice one warehouse |
+| Stock promised to orders *(reservations)* | ⚠️ | Recorded for every order; lowers published stock only for orders OpenLinker routes or ships itself |
+| Per-variant product images | 🛣️ | Planned |
 | Bulk offer creation | ✅ | Bulk offer-creation batch *(Allegro)* + bulk shop-publish *(WooCommerce)* |
-| Bulk quantity batch-update | ⚠️ | `OfferQuantityBatchUpdater` sub-capability defined; no adapter implements it yet |
+| Bulk quantity batch-update | ✅ | `OfferQuantityBatchUpdater`: Allegro; other marketplaces write one offer at a time |
 | **Marketplace listings** | | |
 | Create + update offers *(categories, policies, GPSR)* | ✅ | `OfferManagerPort` + sub-capability ports |
 | AI offer descriptions | ✅ | `AiCompletionPort` |
-| Repricing / dynamic pricing rules | 🛣️ | `PricingAuthorityPort` planned |
+| Pricing rules *(markup or margin per connection, price-change review)* | ✅ | Per-connection pricing rule; price changes are applied by hand unless you change the sync mode |
+| Dynamic repricing | 🛣️ | `PricingAuthorityPort` planned |
 | **Customers** | | |
 | Identity resolution across channels | ✅ | Customer-identity service + plugin-provided email normalizer |
 | GDPR-friendly PII modes *(full or hash-only)* | ✅ | Host-provided storage policy |
@@ -156,16 +202,20 @@ How OpenLinker measures against the standard set of multichannel-orchestration f
 | Fetch tracking + push status back to marketplace | ✅ | `ShippingProviderManagerPort` tracking + order-status writeback *(ADR-027)* |
 | **Payments** | | |
 | Payment status from order data | ✅ | Part of the `IncomingOrder` shape from `OrderSourcePort` |
-| Refunds / returns lifecycle | 🛣️ | OL-owned order-status state machine deferred (#1032); the `refunded` payment status is read-only forward-compat *(no source emits it in v1)* |
+| Returns: record, receive, restock or scrap, draft credit note | ✅ | Returns workspace; restock goes back to your shop or ERP |
+| Returns pulled in from the marketplace | ⚠️ | Allegro only, off by default *(`OL_ALLEGRO_RETURNS_POLL_SCHEDULER_ENABLED`, `OL_ALLEGRO_RETURNS_STATUS_SYNC_SCHEDULER_ENABLED`)*; the Allegro endpoint is beta |
+| Refunds | ⚠️ | Recorded, never executed: you refund on the channel, OpenLinker records it. Capped at what the order was worth unless you override. |
 | Payment provider integrations *(Stripe, P24, …)* | 🛣️ | `PaymentProcessorPort` planned |
 | **Operations** | | |
 | Multiple shops + marketplaces in one instance | ✅ | Host-provided connection model |
-| Multi-user with roles | ⚠️ | Host-provided JWT + admin role gate; finer-grained roles are a known gap |
+| Multi-user with roles | ✅ | Admin, operator, viewer and packer, enforced on every API route |
 | Encrypted credentials store | ✅ | Host-provided crypto service |
 | Webhooks *(HMAC + replay + dedup)* | ✅ | Host-provided webhook pipeline |
 | Sync-job retry + outcome tracking | ✅ | Host-provided sync-job service + plugin-provided retry classifier |
-| Workflow automation *("when X, do Y" rules)* | — | *Out of scope; write a worker handler instead* |
-| Reporting / analytics dashboard | — | *Out of scope; export via the API* |
+| Workflow automation *("when X, do Y" rules)* | ⚠️ | Rule editor at `/automations`. Rules fire today when an order is packed or nears its dispatch deadline, and can relay the order status to the channel or send an email. |
+| Reporting / analytics dashboard | ✅ | Sales, channels, top products and data-coverage panels on the home page |
+| Cost price + margin analytics | 🛣️ | Planned |
+| CSV export of analytics reports | 🛣️ | Planned |
 
 Spot a gap that's on your evaluation checklist? Open a [feature request](./.github/ISSUE_TEMPLATE/feature_request.md) — the table is a living scorecard, not a fixed roadmap.
 
@@ -187,7 +237,24 @@ Marketplace (Allegro)                           Shop (PrestaShop)
               (identifier mapping · retries · dedup · projections)
 ```
 
-Every platform — shop or marketplace — implements the same set of typed capability ports (`OrderSourcePort`, `OrderProcessorManagerPort`, `ProductMasterPort`, `InventoryMasterPort`, `OfferManagerPort`). Core orchestration is platform-agnostic; per-platform behaviour lives in self-registering plugin packages. Full picture in [Architecture Overview](./docs/architecture-overview.md).
+That is the default: OpenLinker mirrors the order into your shop. With the [OMS module](#order-management-oms) on, OpenLinker keeps the order instead:
+
+```
+Marketplace (Allegro)                           Shop or ERP (product master)
+   │                                                   ▲
+   │ 1. order event                                    │ 5. lower stock
+   ▼                                                   │    (no order created)
+[OrderSourcePort]                                      │
+   │                                                   │
+   ▼                                                   │
+OpenLinker OMS ── 2. route to a location ── 3. packing work ── 4. pack bench
+   │                                                               │
+   └──────── order held here if it cannot be routed                │
+                                                                   ▼
+                                         6. parcel shipped, channel told
+```
+
+Every platform (shop or marketplace) implements the same set of typed capability ports (`OrderSourcePort`, `OrderProcessorManagerPort`, `ProductMasterPort`, `InventoryMasterPort`, `OfferManagerPort`, plus shipping, invoicing, fiscalization and fulfilment ports). Core orchestration is platform-agnostic; per-platform behaviour lives in self-registering plugin packages. Full picture in [Architecture Overview](./docs/architecture-overview.md).
 
 ---
 
@@ -211,7 +278,7 @@ Full walkthrough in the [Plugin Author Guide](./docs/plugin-author-guide.md). Th
 
 - **Capabilities are open-world.** `Capability`, `EntityType`, and `PlatformType` are open strings at the registry boundary. Add `ShippingProvider`, `PricingAuthority`, or anything else without a core PR — the well-known set is a hint, not a gate.
 
-- **Framework-free domain.** `libs/core/src/**/domain/` has zero NestJS / TypeORM imports. Runtime-enforced: `@openlinker/core` exposes only 28 explicit subpaths via `package.json#exports`, ESLint blocks deep imports in plugin packages, and `package exports` block the runtime path entirely.
+- **Framework-free domain.** `libs/core/src/**/domain/` has zero NestJS / TypeORM imports. Runtime-enforced: `@openlinker/core` exposes only explicit subpaths via `package.json#exports`, ESLint blocks deep imports in plugin packages, and `package exports` block the runtime path entirely.
 
 - **Framework-neutral plugin SDK.** [`@openlinker/plugin-sdk`](./libs/plugin-sdk/) ships the `AdapterPlugin` contract, the `HostServices` bag, and the typed `dispatchCapability<T>` helper. Plugins compile against the SDK, not against the host's NestJS / TypeORM.
 
