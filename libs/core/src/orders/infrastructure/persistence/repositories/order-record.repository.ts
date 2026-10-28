@@ -2957,7 +2957,16 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
       ]
     )) as unknown;
 
-    if (!Array.isArray(rows) || rows.length === 0) return null;
+    // TypeORM's Postgres runner answers an UPDATE as `[rows, rowCount]`, so
+    // `rows.length` is always 2 and says nothing about whether the guarded
+    // statement matched (E-66). The affected count is what decides.
+    const affected =
+      Array.isArray(rows) && typeof rows[1] === 'number'
+        ? rows[1]
+        : Array.isArray(rows)
+          ? rows.length
+          : 0;
+    if (affected === 0) return null;
     const entity = await this.repository.findOne({ where: { internalOrderId: input.internalOrderId } });
     return entity === null ? null : this.toDomain(entity);
   }
