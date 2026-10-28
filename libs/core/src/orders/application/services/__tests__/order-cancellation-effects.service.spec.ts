@@ -175,6 +175,23 @@ describe('OrderCancellationEffectsService (#3540)', () => {
       expect(result.correctionUnavailableReason).toBe('no-line-snapshot');
     });
 
+    it.each([
+      ['no provider id', { providerInvoiceId: null }],
+      ['no document number', { providerInvoiceNumber: null }],
+      ['no issue instant', { issuedAt: null }],
+    ])(
+      'should name not-fully-issued and open no proposal when the invoice has %s (C-31, E-41)',
+      async (_label, overrides) => {
+        invoices.getLatestIssuedInvoiceForOrder.mockResolvedValue(invoice(overrides));
+
+        const result = await service.applyEffects(input);
+
+        expect(result.correctionProposal).toBeNull();
+        expect(result.correctionUnavailableReason).toBe('not-fully-issued');
+        expect(changes.openOrReuse).not.toHaveBeenCalled();
+      }
+    );
+
     it('should report proposal-failed when opening the proposal throws', async () => {
       invoices.getLatestIssuedInvoiceForOrder.mockResolvedValue(invoice());
       changes.openOrReuse.mockRejectedValue(new Error('db'));
