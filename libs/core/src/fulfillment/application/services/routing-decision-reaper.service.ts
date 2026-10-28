@@ -20,6 +20,7 @@ import { Logger } from '@openlinker/shared/logging';
 
 import type { RoutingDecision } from '../../domain/entities/routing-decision.entity';
 import { RoutingDecisionRepositoryPort } from '../../domain/ports/routing-decision-repository.port';
+import type { RoutingLockPort } from '../../domain/ports/routing-lock.port';
 import {
   describeRoutingDecisionTtl,
   isRoutingDecisionStranded,
@@ -27,6 +28,7 @@ import {
 } from '../../domain/types/routing-decision-ttl.types';
 import { ROUTING_DECISION_REPOSITORY_TOKEN } from '../../fulfillment.tokens';
 import type { IRoutingDecisionReaperService } from '../interfaces/routing-decision-reaper.service.interface';
+import { FULFILLMENT_ROUTE_LOCK_TTL_MS, fulfillmentRouteLockKey } from './routing-commit-lock';
 import {
   ROUTING_DECISION_REAP_FALLBACK_DETAIL,
   type GetRoutingDecisionStatusInput,
@@ -57,11 +59,12 @@ export class RoutingDecisionReaperService implements IRoutingDecisionReaperServi
 
     let reaped = 0;
     let raced = 0;
+    let busy = 0;
     let failed = 0;
     const intents: RoutingDecisionReapIntent[] = [];
 
     for (const candidate of candidates) {
-      const outcome = await this.reapOne(candidate);
+      const outcome = await this.reapOne(candidate, input.lock);
       if (outcome === 'reaped') {
         reaped += 1;
         intents.push({
@@ -73,6 +76,8 @@ export class RoutingDecisionReaperService implements IRoutingDecisionReaperServi
         });
       } else if (outcome === 'raced') {
         raced += 1;
+      } else if (outcome === 'busy') {
+        busy += 1;
       } else {
         failed += 1;
       }
@@ -90,7 +95,15 @@ export class RoutingDecisionReaperService implements IRoutingDecisionReaperServi
       );
     }
 
-    return { examined: candidates.length, reaped, raced, failed, ttlMs: input.ttlMs, intents };
+    return {
+      examined: candidates.length,
+      reaped,
+      raced,
+      busy,
+      failed,
+      ttlMs: input.ttlMs,
+      intents,
+    };
   }
 
   async getStatusForOrder(
@@ -114,12 +127,44 @@ export class RoutingDecisionReaperService implements IRoutingDecisionReaperServi
   }
 
   /**
-   * Reap ONE candidate through the unchanged `terminalise`.
+   * Reap ONE candidate through the unchanged `terminalise`, holding the order's
+   * routing lock.
+   *
+   * The lock is what makes the reap safe. The candidate's age counts from
+   * `createdAt`, but a resumed decision calls the router again without writing
+   * the row, so an old decision can still have a call in flight. Every
+   * `route()` call holds `fulfillment:route:{orderId}` for longer than its
+   * budget; when we hold it instead, no call is running. A held lock means
+   * `busy`: leave the decision live and look again next tick.
    *
    * No `routerDecisionRef`: the router named nothing, and a silence is OL's
    * inference, never recorded as something the router declared (#2243).
    */
-  private async reapOne(candidate: RoutingDecision): Promise<'reaped' | 'raced' | 'failed'> {
+  private async reapOne(
+    candidate: RoutingDecision,
+    lock: RoutingLockPort
+  ): Promise<'reaped' | 'raced' | 'busy' | 'failed'> {
+    const lockKey = fulfillmentRouteLockKey(candidate.orderId);
+    let token: string | null;
+    try {
+      token = await lock.acquire(lockKey, FULFILLMENT_ROUTE_LOCK_TTL_MS);
+    } catch (error) {
+      this.logger.error(
+        `Failed to take the routing lock for stranded decision ${candidate.id}: ${
+          error instanceof Error ? error.message : String(error)
+        }`
+      );
+      return 'failed';
+    }
+
+    if (token === null) {
+      this.logger.log(
+        `Stranded routing decision ${candidate.id} was not reaped: order ${candidate.orderId} ` +
+          `is being routed right now`
+      );
+      return 'busy';
+    }
+
     try {
       const applied = await this.decisions.terminalise({
         decisionId: candidate.id,
@@ -135,11 +180,12 @@ export class RoutingDecisionReaperService implements IRoutingDecisionReaperServi
         return 'raced';
       }
 
-      // Error level and a fixed token: a reap means an order waited past the TTL
-      // with nothing routing it, which an operator should be able to alert on.
-      // A router that keeps going in doubt is reaped again every TTL, and this
-      // line is what makes that repetition visible rather than silent.
-      this.logger.error(
+      // Warn level and a fixed token: a reap is a correct recovery, not a
+      // failure, but it means an order waited past the TTL with nothing routing
+      // it, which an operator should be able to alert on. A router that keeps
+      // going in doubt is reaped again every TTL, and this line is what makes
+      // that repetition visible rather than silent.
+      this.logger.warn(
         `routing_decision_reaped decisionId=${candidate.id} orderId=${candidate.orderId} ` +
           `router=${candidate.routerConnectionId} createdAt=${candidate.createdAt.toISOString()}`
       );
@@ -151,6 +197,15 @@ export class RoutingDecisionReaperService implements IRoutingDecisionReaperServi
         }`
       );
       return 'failed';
+    } finally {
+      try {
+        await lock.release(lockKey, token);
+      } catch (error) {
+        // The lock expires on its own TTL; the reap itself is already decided.
+        this.logger.warn(
+          `Failed to release ${lockKey}: ${error instanceof Error ? error.message : String(error)}`
+        );
+      }
     }
   }
 }

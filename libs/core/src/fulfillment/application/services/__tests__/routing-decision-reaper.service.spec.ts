@@ -36,9 +36,11 @@ describe('RoutingDecisionReaperService (#2731)', () => {
     terminalise: jest.Mock;
     findLatestByOrderId: jest.Mock;
   };
+  let lock: { acquire: jest.Mock; release: jest.Mock };
   let service: RoutingDecisionReaperService;
 
   beforeEach(() => {
+    lock = { acquire: jest.fn().mockResolvedValue('token'), release: jest.fn().mockResolvedValue(true) };
     repository = {
       listStrandedLive: jest.fn().mockResolvedValue([]),
       terminalise: jest.fn().mockResolvedValue(true),
@@ -49,7 +51,7 @@ describe('RoutingDecisionReaperService (#2731)', () => {
 
   describe('reapStranded', () => {
     it('should read candidates created before now minus the TTL, within the limit', async () => {
-      await service.reapStranded({ limit: 25, ttlMs: TTL_MS, now: NOW });
+      await service.reapStranded({ limit: 25, ttlMs: TTL_MS, now: NOW, lock });
 
       expect(repository.listStrandedLive).toHaveBeenCalledWith({
         createdBefore: new Date('2026-10-27T11:00:00.000Z'),
@@ -60,7 +62,7 @@ describe('RoutingDecisionReaperService (#2731)', () => {
     it('should abandon a stranded decision with the reaper reason and no router reference', async () => {
       repository.listStrandedLive.mockResolvedValue([decision()]);
 
-      await service.reapStranded({ limit: 25, ttlMs: TTL_MS, now: NOW });
+      await service.reapStranded({ limit: 25, ttlMs: TTL_MS, now: NOW, lock });
 
       expect(repository.terminalise).toHaveBeenCalledWith({
         decisionId: 'ol_routingdecision_1',
@@ -73,9 +75,16 @@ describe('RoutingDecisionReaperService (#2731)', () => {
     it('should report an intent with the routing-stuck attention and the routing-failed fallback when reaped', async () => {
       repository.listStrandedLive.mockResolvedValue([decision()]);
 
-      const result = await service.reapStranded({ limit: 25, ttlMs: TTL_MS, now: NOW });
+      const result = await service.reapStranded({ limit: 25, ttlMs: TTL_MS, now: NOW, lock });
 
-      expect(result).toMatchObject({ examined: 1, reaped: 1, raced: 0, failed: 0, ttlMs: TTL_MS });
+      expect(result).toMatchObject({
+        examined: 1,
+        reaped: 1,
+        raced: 0,
+        busy: 0,
+        failed: 0,
+        ttlMs: TTL_MS,
+      });
       expect(result.intents).toEqual([
         {
           orderId: 'ol_order_1',
@@ -84,7 +93,7 @@ describe('RoutingDecisionReaperService (#2731)', () => {
           attention: {
             kind: 'blocked',
             reason: 'routing-stuck',
-            detail: 'Routing got no answer within 60 minutes and was restarted',
+            detail: 'Routing got no answer within 60 minutes; it will be retried',
           },
           fallbackBlock: { reason: 'routing-failed', detail: 'stranded-past-ttl' },
         },
@@ -95,7 +104,7 @@ describe('RoutingDecisionReaperService (#2731)', () => {
       repository.listStrandedLive.mockResolvedValue([decision()]);
       repository.terminalise.mockResolvedValue(false);
 
-      const result = await service.reapStranded({ limit: 25, ttlMs: TTL_MS, now: NOW });
+      const result = await service.reapStranded({ limit: 25, ttlMs: TTL_MS, now: NOW, lock });
 
       expect(result).toMatchObject({ reaped: 0, raced: 1, failed: 0 });
       expect(result.intents).toEqual([]);
@@ -110,16 +119,61 @@ describe('RoutingDecisionReaperService (#2731)', () => {
         .mockRejectedValueOnce(new Error('db down'))
         .mockResolvedValueOnce(true);
 
-      const result = await service.reapStranded({ limit: 25, ttlMs: TTL_MS, now: NOW });
+      const result = await service.reapStranded({ limit: 25, ttlMs: TTL_MS, now: NOW, lock });
 
       expect(result).toMatchObject({ examined: 2, reaped: 1, failed: 1 });
       expect(result.intents.map((intent) => intent.orderId)).toEqual(['o-2']);
     });
 
+    it('should take the order\'s routing lock before reaping and release it after', async () => {
+      repository.listStrandedLive.mockResolvedValue([decision()]);
+
+      await service.reapStranded({ limit: 25, ttlMs: TTL_MS, now: NOW, lock });
+
+      expect(lock.acquire).toHaveBeenCalledWith('fulfillment:route:ol_order_1', expect.any(Number));
+      expect(lock.acquire.mock.invocationCallOrder[0]).toBeLessThan(
+        repository.terminalise.mock.invocationCallOrder[0] ?? Number.POSITIVE_INFINITY
+      );
+      expect(lock.release).toHaveBeenCalledWith('fulfillment:route:ol_order_1', 'token');
+    });
+
+    it('should leave the decision live and count it busy when a route() call holds the lock', async () => {
+      // A resumed decision calls the router again without writing the row, so
+      // its age says nothing about whether a call is in flight. The lock does.
+      repository.listStrandedLive.mockResolvedValue([decision()]);
+      lock.acquire.mockResolvedValue(null);
+
+      const result = await service.reapStranded({ limit: 25, ttlMs: TTL_MS, now: NOW, lock });
+
+      expect(repository.terminalise).not.toHaveBeenCalled();
+      expect(lock.release).not.toHaveBeenCalled();
+      expect(result).toMatchObject({ examined: 1, reaped: 0, busy: 1, failed: 0 });
+      expect(result.intents).toEqual([]);
+    });
+
+    it('should count a failure when the lock cannot be taken, and write nothing', async () => {
+      repository.listStrandedLive.mockResolvedValue([decision()]);
+      lock.acquire.mockRejectedValue(new Error('redis down'));
+
+      const result = await service.reapStranded({ limit: 25, ttlMs: TTL_MS, now: NOW, lock });
+
+      expect(repository.terminalise).not.toHaveBeenCalled();
+      expect(result).toMatchObject({ reaped: 0, busy: 0, failed: 1 });
+    });
+
+    it('should release the lock even when the reap write throws', async () => {
+      repository.listStrandedLive.mockResolvedValue([decision()]);
+      repository.terminalise.mockRejectedValue(new Error('db down'));
+
+      await service.reapStranded({ limit: 25, ttlMs: TTL_MS, now: NOW, lock });
+
+      expect(lock.release).toHaveBeenCalledWith('fulfillment:route:ol_order_1', 'token');
+    });
+
     it('should propagate a failure of the frontier read itself', async () => {
       repository.listStrandedLive.mockRejectedValue(new Error('db down'));
 
-      await expect(service.reapStranded({ limit: 25, ttlMs: TTL_MS, now: NOW })).rejects.toThrow(
+      await expect(service.reapStranded({ limit: 25, ttlMs: TTL_MS, now: NOW, lock })).rejects.toThrow(
         'db down'
       );
     });

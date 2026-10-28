@@ -39,9 +39,10 @@ describe('resolveRoutingDecisionTtlMs (#2731)', () => {
   });
 
   it('should keep the floor above the longest route() budget any configuration allows', () => {
-    // A reap frees the live slot. If the floor could fall inside a router
-    // call's budget, a late answer and a fresh decision could both exist. The
-    // budget is half the lock TTL, so the lock TTL's own maximum is a safe
+    // A margin, not the guarantee: the reaper also takes the routing lock, which
+    // covers a RESUMED call the createdAt-based age cannot see. The floor keeps
+    // a decision's own first call out of reach even before the lock is asked.
+    // The budget is half the lock TTL, so the lock TTL's maximum is a safe
     // (stricter) bound to assert against.
     expect(ROUTING_DECISION_TTL_MIN_MS).toBeGreaterThan(FULFILLMENT_ROUTE_LOCK_TTL_MAX_MS);
   });
@@ -50,13 +51,13 @@ describe('resolveRoutingDecisionTtlMs (#2731)', () => {
 describe('describeRoutingDecisionTtl (#2731)', () => {
   it('should state minutes below two hours', () => {
     expect(describeRoutingDecisionTtl(60 * 60 * 1000)).toBe(
-      'Routing got no answer within 60 minutes and was restarted'
+      'Routing got no answer within 60 minutes; it will be retried'
     );
   });
 
   it('should state hours from two hours up', () => {
     expect(describeRoutingDecisionTtl(24 * 60 * 60 * 1000)).toBe(
-      'Routing got no answer within 24 hours and was restarted'
+      'Routing got no answer within 24 hours; it will be retried'
     );
   });
 });

@@ -12,14 +12,22 @@
  * only when something routes the order again. Nothing else does, so without a
  * reaper the order waits for ever with no badge and no retry.
  *
- * ## Why the floor is the safety bound
+ * ## The floor is a margin, the routing lock is the guarantee
  *
- * A reap frees the slot. If it fired while a `route()` call could still be
- * inside its budget, a late answer and a fresh decision could both exist. One
- * call is budgeted at half the routing lock TTL, and that TTL is clamped to at
- * most `FULFILLMENT_ROUTE_LOCK_TTL_MAX_MS` (10 minutes), so a floor of 15
- * minutes keeps every configuration safe. A spec asserts that relationship
- * rather than this comment.
+ * A reap frees the slot. If it fired while a `route()` call was still inside
+ * its budget, a late answer and a fresh decision could both exist. The TTL is
+ * measured from `createdAt`, and a RESUME calls the router again without
+ * writing the row, so the age of a decision says nothing about whether a call
+ * is in flight right now. What does is the per-order routing lock: every
+ * `route()` call runs while holding `fulfillment:route:{orderId}`, and its
+ * budget is strictly shorter than that lock's TTL. The reaper therefore takes
+ * the same lock before reaping and skips the decision while it is held (see
+ * `RoutingDecisionReaperService`).
+ *
+ * The floor stays above the longest budget any configuration allows (half of
+ * `FULFILLMENT_ROUTE_LOCK_TTL_MAX_MS`) so that a decision is never reaped within
+ * the window its own first call could still be running, even before the lock
+ * is consulted. A spec asserts that relationship.
  *
  * For the in-process OL router a late answer cannot commit anyway: a timed-out
  * `route()` result is discarded and the commit happens only in
@@ -69,15 +77,19 @@ export function resolveRoutingDecisionTtlMs(raw: string | undefined): number {
 /**
  * The operator-facing sentence, built from the SAME number the cutoff uses.
  *
+ * Says "will be retried", never "was restarted": the worker re-routes at once
+ * when a router is available and otherwise leaves the order to the reroute
+ * sweep, so only the retry is a promise both paths keep.
+ *
  * PII-free (`AuthorityAttentionEntry.detail` takes ids and counts only).
  */
 export function describeRoutingDecisionTtl(ttlMs: number): string {
   const minutes = Math.round(ttlMs / 60_000);
   if (minutes < 120) {
-    return `Routing got no answer within ${String(minutes)} minutes and was restarted`;
+    return `Routing got no answer within ${String(minutes)} minutes; it will be retried`;
   }
   const hours = Math.round(ttlMs / 3_600_000);
-  return `Routing got no answer within ${String(hours)} hours and was restarted`;
+  return `Routing got no answer within ${String(hours)} hours; it will be retried`;
 }
 
 /** The instant before which a `live` decision counts as stranded. */

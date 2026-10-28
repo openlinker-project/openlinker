@@ -8,13 +8,17 @@
  *  - a decision inside the TTL, or already terminal, is left alone;
  *  - a reap and a late commit racing on ONE decision produce exactly one winner,
  *    because both go through `terminalise`'s `WHERE state = 'live'`. Issued
- *    concurrently: a sequential test would pass against no guard at all.
+ *    concurrently: a sequential test would pass against no guard at all;
+ *  - a decision whose order's routing lock is held — a `route()` call, first or
+ *    resumed, is in flight — is left live, against the real Redis lock.
  *
  * @module apps/api/test/integration
  */
 import { randomUUID } from 'node:crypto';
 
 import {
+  FULFILLMENT_ROUTE_LOCK_TTL_MS,
+  fulfillmentRouteLockKey,
   ROUTING_DECISION_REAPER_SERVICE_TOKEN,
   ROUTING_DECISION_REPOSITORY_TOKEN,
 } from '@openlinker/core/fulfillment';
@@ -24,6 +28,7 @@ import type {
   RoutingDecision,
   TerminaliseRoutingDecisionInput,
 } from '@openlinker/core/fulfillment';
+import { SYNC_LOCK_TOKEN, type SyncLockPort } from '@openlinker/core/sync';
 
 import {
   getTestHarness,
@@ -49,6 +54,7 @@ describe('Stranded routing decision reaper (#2731)', () => {
   let harness: IntegrationTestHarness;
   let repo: RoutingDecisionRepositoryView;
   let reaper: IRoutingDecisionReaperService;
+  let lock: SyncLockPort;
 
   beforeAll(async () => {
     harness = await getTestHarness();
@@ -56,6 +62,7 @@ describe('Stranded routing decision reaper (#2731)', () => {
     reaper = harness
       .getApp()
       .get<IRoutingDecisionReaperService>(ROUTING_DECISION_REAPER_SERVICE_TOKEN);
+    lock = harness.getApp().get<SyncLockPort>(SYNC_LOCK_TOKEN);
   }, 180_000);
 
   afterEach(async () => {
@@ -84,7 +91,7 @@ describe('Stranded routing decision reaper (#2731)', () => {
     const orderId = newOrderId();
     const stranded = await claimAged(orderId, 2 * TTL_MS);
 
-    const result = await reaper.reapStranded({ limit: 50, ttlMs: TTL_MS, now: new Date() });
+    const result = await reaper.reapStranded({ limit: 50, ttlMs: TTL_MS, now: new Date(), lock });
 
     expect(result.reaped).toBe(1);
     expect(result.intents.map((intent) => intent.decisionId)).toEqual([stranded.id]);
@@ -103,7 +110,7 @@ describe('Stranded routing decision reaper (#2731)', () => {
   it('should leave a live decision inside the TTL alone', async () => {
     const fresh = await claimAged(newOrderId(), TTL_MS / 2);
 
-    const result = await reaper.reapStranded({ limit: 50, ttlMs: TTL_MS, now: new Date() });
+    const result = await reaper.reapStranded({ limit: 50, ttlMs: TTL_MS, now: new Date(), lock });
 
     expect(result.examined).toBe(0);
     expect((await repo.findById(fresh.id))?.state).toBe('live');
@@ -113,7 +120,7 @@ describe('Stranded routing decision reaper (#2731)', () => {
     const old = await claimAged(newOrderId(), 3 * TTL_MS);
     await repo.terminalise({ decisionId: old.id, state: 'committed', routerDecisionRef: 'v-1' });
 
-    const result = await reaper.reapStranded({ limit: 50, ttlMs: TTL_MS, now: new Date() });
+    const result = await reaper.reapStranded({ limit: 50, ttlMs: TTL_MS, now: new Date(), lock });
 
     expect(result.examined).toBe(0);
     expect((await repo.findById(old.id))?.state).toBe('committed');
@@ -123,7 +130,7 @@ describe('Stranded routing decision reaper (#2731)', () => {
     const stranded = await claimAged(newOrderId(), 2 * TTL_MS);
 
     const [reap, commit] = await Promise.all([
-      reaper.reapStranded({ limit: 50, ttlMs: TTL_MS, now: new Date() }),
+      reaper.reapStranded({ limit: 50, ttlMs: TTL_MS, now: new Date(), lock }),
       repo.terminalise({ decisionId: stranded.id, state: 'committed', routerDecisionRef: 'late' }),
     ]);
 
@@ -133,6 +140,31 @@ describe('Stranded routing decision reaper (#2731)', () => {
     expect(stored?.state).toBe(reapWon ? 'abandoned' : 'committed');
     // A lost reap reports no intent, so nothing re-routes an order that just committed.
     expect(reap.intents).toHaveLength(reapWon ? 1 : 0);
+  });
+
+  it('should leave a stranded decision live while its order is being routed', async () => {
+    const orderId = newOrderId();
+    const stranded = await claimAged(orderId, 2 * TTL_MS);
+    // As a resumed route() call holds it: old by createdAt, yet in flight.
+    const lockKey = fulfillmentRouteLockKey(orderId);
+    const token = await lock.acquire(lockKey, FULFILLMENT_ROUTE_LOCK_TTL_MS);
+    expect(token).not.toBeNull();
+
+    try {
+      const result = await reaper.reapStranded({ limit: 50, ttlMs: TTL_MS, now: new Date(), lock });
+
+      expect(result).toMatchObject({ examined: 1, reaped: 0, busy: 1 });
+      expect((await repo.findById(stranded.id))?.state).toBe('live');
+    } finally {
+      await lock.release(lockKey, token as string);
+    }
+
+    // Once the call is over the next tick reaps it, and leaves the lock free.
+    const next = await reaper.reapStranded({ limit: 50, ttlMs: TTL_MS, now: new Date(), lock });
+    expect(next.reaped).toBe(1);
+    const again = await lock.acquire(lockKey, FULFILLMENT_ROUTE_LOCK_TTL_MS);
+    expect(again).not.toBeNull();
+    await lock.release(lockKey, again as string);
   });
 
   it('should read the latest decision for an order, stranded or not', async () => {

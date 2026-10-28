@@ -42,7 +42,9 @@ export class RoutingDecisionController {
     summary: "Read an order's latest routing decision",
     description:
       'Read-only. Reports the state, the router it waits on, its age and the time limit after ' +
-      'which the reaper closes a decision stuck `live`. Nothing here acts on the decision.',
+      'which the reaper closes a decision stuck `live`. Nothing here acts on the decision. ' +
+      'The time limit is read from this API process (`OL_ROUTING_DECISION_TTL_MS`); the reaper runs ' +
+      'in the worker and uses the worker\'s value, so the two agree only when both carry the same setting.',
   })
   @ApiResponse({ status: 200, type: RoutingDecisionStatusResponseDto })
   @ApiResponse({ status: 404, description: 'The order has no routing decision.' })

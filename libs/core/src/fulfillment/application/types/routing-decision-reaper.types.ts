@@ -8,6 +8,7 @@
  */
 import type { AuthorityAttentionOutcome } from '@openlinker/core/fulfillment-authority';
 
+import type { RoutingLockPort } from '../../domain/ports/routing-lock.port';
 import type { FulfillmentBlock } from '../../domain/types/fulfillment-block-reason.types';
 import type {
   RoutingDecisionAbandonReason,
@@ -22,6 +23,13 @@ export interface ReapStrandedDecisionsInput {
   /** Resolved once per run by the caller through `resolveRoutingDecisionTtlMs`. */
   readonly ttlMs: number;
   readonly now: Date;
+  /**
+   * The per-order routing lock, passed in exactly as `RoutingCommitService`
+   * takes it: this leaf may not inject `SyncLockPort`. The reaper reaps a
+   * decision only while it holds `fulfillment:route:{orderId}`, so it can never
+   * close a decision whose `route()` call — first or resumed — is in flight.
+   */
+  readonly lock: RoutingLockPort;
 }
 
 /**
@@ -33,13 +41,14 @@ export interface ReapStrandedDecisionsInput {
 export interface RoutingDecisionReapIntent {
   readonly orderId: string;
   readonly decisionId: string;
-  /** The router the stranded decision was waiting on; the re-route runs under it. */
+  /** The router the stranded decision was waiting on. Reported only; the re-route selects its own. */
   readonly routerConnectionId: string;
   /** The `routing` producer entry to record before the re-route (`routing-stuck`). */
   readonly attention: AuthorityAttentionOutcome<'routing'>;
   /**
-   * The block to write ONLY when the re-route could not be enqueued, so
-   * `fulfillment.work.rerouteSweep` picks the order up instead. Written
+   * The block to write ONLY when the order cannot be re-routed now — no router
+   * is available, or the re-route could not be enqueued — so
+   * `fulfillment.work.rerouteSweep` picks it up once it can. Written
    * unconditionally it would race the re-route, which writes the order's real
    * hold state itself.
    */
@@ -51,6 +60,11 @@ export interface ReapStrandedDecisionsResult {
   readonly reaped: number;
   /** A peer (a late commit or refusal, or another reaper) terminalised it first. */
   readonly raced: number;
+  /**
+   * The order's routing lock was held, so a `route()` call may be in flight.
+   * Left live and examined again next tick; never a failure.
+   */
+  readonly busy: number;
   readonly failed: number;
   readonly ttlMs: number;
   readonly intents: readonly RoutingDecisionReapIntent[];
