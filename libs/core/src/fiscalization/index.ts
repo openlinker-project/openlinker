@@ -12,6 +12,7 @@
  * @module libs/core/src/fiscalization
  */
 export * from './domain/types/fiscalization.types';
+export * from './domain/types/fiscal-provider-failure-details.types';
 // The exactly-once key format and the accepted-request shape (#2525).
 export * from './domain/types/fiscal-registration-request.types';
 // Where one order's registration is, as a poll reads it (#2526).

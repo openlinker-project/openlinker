@@ -405,6 +405,69 @@ describe('EparagonyFiscalizationAdapter', () => {
       });
     });
 
+    it('should carry the vendor code, printer code and document token as structured fields when the device fails', async () => {
+      const client = makeClient([
+        {
+          status: 'ERROR',
+          documentType: 'RECEIPT',
+          errorCode: 83,
+          errorDescription: 'Kod bledu drukarki: 16',
+        },
+      ]);
+
+      const error = (await makeAdapter(client)
+        .registerTransaction(makeCommand())
+        .catch((caught: unknown) => caught)) as EparagonyApiError;
+
+      expect(error.providerErrorCode).toBe('83');
+      expect(error.providerDeviceErrorCode).toBe('16');
+      expect(error.providerDocumentId).toMatch(/\S+/);
+      // 83 has a documented meaning, so the sentence names its causes.
+      expect(error.reason).toContain('fiscal printer could not register the sale');
+      expect(error.providerErrorHint).toBeNull();
+    });
+
+    it('should never let a product name in the vendor description reach any field core reads', async () => {
+      const client = makeClient([
+        {
+          status: 'ERROR',
+          documentType: 'RECEIPT',
+          errorCode: 83,
+          errorDescription: 'Kod bledu drukarki: 16 - bledna nazwa towaru: Secret Product Name',
+        },
+      ]);
+
+      const error = (await makeAdapter(client)
+        .registerTransaction(makeCommand())
+        .catch((caught: unknown) => caught)) as EparagonyApiError;
+
+      // Everything core reads off the throwable, serialised together.
+      const readByCore = JSON.stringify({
+        reason: error.reason,
+        providerErrorCode: error.providerErrorCode,
+        providerDeviceErrorCode: error.providerDeviceErrorCode,
+        providerDocumentId: error.providerDocumentId,
+        providerErrorHint: error.providerErrorHint,
+      });
+      expect(readByCore).not.toContain('Secret Product Name');
+      expect(error.providerDeviceErrorCode).toBe('16');
+    });
+
+    it('should keep the generic sentence for a vendor code with no documented meaning', async () => {
+      const client = makeClient([
+        { status: 'ERROR', documentType: 'RECEIPT', errorCode: 412, errorDescription: 'whatever' },
+      ]);
+
+      const error = (await makeAdapter(client)
+        .registerTransaction(makeCommand())
+        .catch((caught: unknown) => caught)) as EparagonyApiError;
+
+      expect(error.providerErrorCode).toBe('412');
+      // The code is shown as a structured field, so it is not appended here too.
+      expect(error.reason).not.toContain('412');
+      expect(error.providerDeviceErrorCode).toBeNull();
+    });
+
     it('should read the status instead of failing when the document already exists under our token', async () => {
       const client = makeClient([CONFIRMED]);
       client.post.mockRejectedValue(

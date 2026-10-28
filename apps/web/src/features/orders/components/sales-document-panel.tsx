@@ -72,6 +72,7 @@ import { captureDemoEvent } from '../../demo';
 import { useTranslation } from '../../../shared/i18n';
 import { useToast } from '../../../shared/ui/toast-provider';
 import { Alert } from '../../../shared/ui/alert';
+import { AccessGate } from '../../../shared/ui/access-gate';
 import { Button } from '../../../shared/ui/button';
 import { Select } from '../../../shared/ui/select';
 import { KeyValueList, type KeyValueItem } from '../../../shared/ui/key-value-list';
@@ -133,6 +134,8 @@ import {
   deriveFiscalReceiptDisplayStatus,
   canRetryFiscalReceipt,
   resolveFiscalFailureCopy,
+  FiscalFailureDetails,
+  CopyFiscalFailureDetailsButton,
   FiscalArtefactList,
   type FiscalRegistrationRecord,
 } from '../../fiscalization';
@@ -1300,33 +1303,67 @@ export function SalesDocumentPanel({ order }: SalesDocumentPanelProps): ReactEle
 
           {fiscalSettled && fiscalDisplayStatus === 'rejected' && fiscalRecord ? (
             <>
-              <Alert tone="error">
-                {resolveFiscalFailureCopy(fiscalRecord, t)}{' '}
-                {t(
-                  'fiscalReceipt.rejected.retrySafe',
-                  'Nothing was created, so registering again is safe.',
-                )}
-              </Alert>
-              <div className="sales-document-panel__actions">
-                <Button
-                  tone="secondary"
-                  disabled={registerMutation.isPending || !canRetryFiscalReceipt(fiscalRecord)}
-                  onClick={() => handleRegister(fiscalRecord.connectionId)}
+              {/* #3843: the cause and the provider's identifiers are for someone
+                  who acts on the order; a read-only role gets the fact alone. */}
+              <AccessGate
+                require="orders:write"
+                fallback={
+                  <Alert tone="error">
+                    {t(
+                      'fiscalReceipt.rejected.readOnly',
+                      'The fiscal device did not register this sale, and nothing was created. An admin can see the details and register it again.',
+                    )}
+                  </Alert>
+                }
+              >
+                <Alert
+                  tone="error"
+                  action={<CopyFiscalFailureDetailsButton details={fiscalRecord.providerFailureDetails} />}
                 >
-                  {t('fiscalReceipt.action.retry', 'Register receipt')}
-                </Button>
-              </div>
+                  <p>
+                    {resolveFiscalFailureCopy(fiscalRecord, t)}{' '}
+                    {t(
+                      'fiscalReceipt.rejected.retrySafe',
+                      'Nothing was created, so registering again is safe.',
+                    )}
+                  </p>
+                  <FiscalFailureDetails details={fiscalRecord.providerFailureDetails} />
+                </Alert>
+              </AccessGate>
+              {/* Registering is admin-only on the API, so another role is never
+                  shown a control that would answer 403; demo mode keeps it
+                  visible but disabled, like every other write here. */}
+              {isAdmin || demoMode ? (
+                <div className="sales-document-panel__actions">
+                  <Button
+                    tone="secondary"
+                    disabled={
+                      fiscalDemoReadOnly ||
+                      registerMutation.isPending ||
+                      !canRetryFiscalReceipt(fiscalRecord)
+                    }
+                    onClick={() => handleRegister(fiscalRecord.connectionId)}
+                  >
+                    {t('fiscalReceipt.action.retry', 'Register receipt')}
+                  </Button>
+                </div>
+              ) : null}
             </>
           ) : null}
 
           {fiscalSettled && fiscalDisplayStatus === 'in-doubt' && fiscalRecord ? (
             <>
               <Alert tone="warning" title={t('fiscalReceipt.inDoubt.title', 'This sale may already be registered')}>
-                {resolveFiscalFailureCopy(fiscalRecord, t)}{' '}
-                {t(
-                  'fiscalReceipt.inDoubt.noRetry',
-                  'Registering again could produce a second fiscal receipt, so OpenLinker will not do that on its own.',
-                )}
+                <p>
+                  {resolveFiscalFailureCopy(fiscalRecord, t)}{' '}
+                  {t(
+                    'fiscalReceipt.inDoubt.noRetry',
+                    'Registering again could produce a second fiscal receipt, so OpenLinker will not do that on its own.',
+                  )}
+                </p>
+                <AccessGate require="orders:write">
+                  <FiscalFailureDetails details={fiscalRecord.providerFailureDetails} />
+                </AccessGate>
               </Alert>
               <div className="sales-document-panel__actions">
                 <Button tone="secondary" disabled={reconcileMutation.isPending} onClick={handleReconcile}>

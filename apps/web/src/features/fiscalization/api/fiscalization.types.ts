@@ -41,8 +41,26 @@ export interface FiscalRegistrationRecord {
   artefacts: FiscalArtefact[] | null;
   failureMode: FiscalRegistrationFailureMode | null;
   failureReason: string | null;
+  /**
+   * PII-free identifiers of the provider's refusal (#3843). `null` when the
+   * provider declared none, which includes every record written before the
+   * field existed - those render the failure sentence alone, as before.
+   */
+  providerFailureDetails: FiscalProviderFailureDetails | null;
   createdAt: string;
   updatedAt: string;
+}
+
+/** Mirrors `FiscalProviderFailureDetails` in `@openlinker/core/fiscalization`. */
+export interface FiscalProviderFailureDetails {
+  /** The provider's own error code, digits only. */
+  errorCode: string | null;
+  /** The fiscal device's own code, digits only. Its meaning depends on the device model. */
+  deviceErrorCode: string | null;
+  /** The provider's identifier for the attempt. */
+  documentId: string | null;
+  /** OpenLinker's explanation for a provider answer it recognised exactly. */
+  hint: string | null;
 }
 
 /**

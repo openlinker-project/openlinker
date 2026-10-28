@@ -47,3 +47,7 @@ export {
   canRetryFiscalReceipt,
   resolveFiscalFailureCopy,
 } from './lib/derive-fiscal-receipt-display';
+export {
+  FiscalFailureDetails,
+  CopyFiscalFailureDetailsButton,
+} from './components/fiscal-failure-details';

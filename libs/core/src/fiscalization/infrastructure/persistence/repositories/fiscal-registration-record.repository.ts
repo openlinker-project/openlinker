@@ -137,6 +137,9 @@ export class FiscalRegistrationRecordRepository
     if (patch.failureMode !== undefined) entity.failureMode = patch.failureMode;
     if (patch.failureReason !== undefined) entity.failureReason = patch.failureReason;
     if (patch.errorMessage !== undefined) entity.errorMessage = patch.errorMessage;
+    if (patch.providerFailureDetails !== undefined) {
+      entity.providerFailureDetails = patch.providerFailureDetails;
+    }
     if (patch.leaseExpiresAt !== undefined) entity.leaseExpiresAt = patch.leaseExpiresAt;
 
     const saved = await this.repository.save(entity);
@@ -276,6 +279,7 @@ export class FiscalRegistrationRecordRepository
       entity.leaseExpiresAt ?? null,
       entity.createdAt,
       entity.updatedAt,
+      entity.providerFailureDetails ?? null,
     );
   }
 }

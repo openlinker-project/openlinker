@@ -3087,6 +3087,81 @@ textarea,
   color: inherit;
 }
 
+/* ── Fiscal failure details (#3843) ──
+   The provider's identifiers inside a failed-receipt alert, under its
+   sentence. The rule above them takes the alert's own tone so they read as
+   part of this failure, not as a second notice. */
+.fiscal-failure-details {
+  display: grid;
+  gap: var(--space-2);
+  margin-top: var(--space-1);
+  padding-top: var(--space-2);
+  border-top: 1px solid var(--border-default);
+}
+
+.alert--error .fiscal-failure-details {
+  border-top-color: var(--status-error-border);
+}
+
+.alert--warning .fiscal-failure-details {
+  border-top-color: var(--status-warning-border);
+}
+
+.fiscal-failure-details__hint {
+  margin: 0;
+  color: var(--text-primary);
+}
+
+.fiscal-failure-details__list {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: var(--space-1) var(--space-3);
+  margin: 0;
+  font-size: 0.75rem;
+}
+
+/* `display: contents` keeps each dt/dd pair in its own wrapper for markup
+   while the grid still lines labels and values up across rows. */
+.fiscal-failure-details__row {
+  display: contents;
+}
+
+.fiscal-failure-details__row dt {
+  align-self: center;
+  color: var(--text-muted);
+}
+
+.fiscal-failure-details__row dd {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  margin: 0;
+}
+
+.fiscal-failure-details__row .copyable-id {
+  min-width: 0;
+  max-width: 100%;
+}
+
+/* Touch screens have no hover, so the per-value copy button is always shown. */
+@media (hover: none) {
+  .fiscal-failure-details .copyable-id__copy {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@media (max-width: 480px) {
+  .fiscal-failure-details__list {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0;
+  }
+
+  .fiscal-failure-details__row dd {
+    margin-bottom: var(--space-2);
+  }
+}
+
 /* ── Duplicate-positions two-condition readiness checklist (#3073, #3240) ──
    Two independent conditions (no duplicate groups AND the #2317 provenance
    backfill drained) rendered as a list inside the readiness Alert, each
