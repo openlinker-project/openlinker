@@ -49,7 +49,10 @@ import {
 import { OrderTagsHeaderRow } from '../../features/orders/components/order-tags-header-row';
 import { useOrderNotesTimelineQuery } from '../../features/orders/hooks/use-order-notes-timeline-query';
 import { mapNoteTimelineToEvents } from '../../features/orders/lib/order-note-timeline-events';
-import { mapBuyerNoteAcknowledgementsToEvents } from '../../features/orders/lib/buyer-note-timeline-events';
+import {
+  mapBuyerNoteAcknowledgementsToEvents,
+  mapBuyerNoteChangeToEvents,
+} from '../../features/orders/lib/buyer-note-timeline-events';
 import { OrderBuyerNote } from '../../features/orders/components/order-buyer-note';
 import { resolvePlatformLabel } from '../../features/mappings';
 import { usePlatforms } from '../../shared/plugins';
@@ -243,6 +246,11 @@ export function OrderDetailPage(): ReactElement {
   const buyerNoteTimelineEvents = mapBuyerNoteAcknowledgementsToEvents(
     order.buyerNoteAcknowledgements,
     session.user?.id ?? null,
+  );
+  // N-22 - the note text changed after a bench read; bench reads are not reset.
+  const buyerNoteChangeEvents = mapBuyerNoteChangeToEvents(
+    order.buyerNoteChangedAt,
+    order.buyerNoteAcknowledgements,
   );
   const failedDestinations = order.syncStatus.filter((s) => s.status === 'failed');
 
@@ -669,7 +677,7 @@ export function OrderDetailPage(): ReactElement {
           packedByUserId={order.packedByUserId}
           salesDocumentBlockedAt={order.salesDocumentBlockedAt}
           salesDocumentBlockReleasedAt={order.salesDocumentBlockReleasedAt}
-          extraEvents={[...returnTimelineEvents, ...noteTimelineEvents, ...buyerNoteTimelineEvents]}
+          extraEvents={[...returnTimelineEvents, ...noteTimelineEvents, ...buyerNoteTimelineEvents, ...buyerNoteChangeEvents]}
           holds={order.holdHistory}
           automationRuns={automationRunsQuery.data?.runs ?? []}
         />
