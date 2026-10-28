@@ -20,9 +20,10 @@ export interface InvoiceMarketplaceUploadRepositoryPort {
   /**
    * Claim the next attempt: create the row if absent, otherwise move it back to
    * `pending` and count the attempt - in ONE statement, and only from a state
-   * that allows a retry. Returns the claimed row, or `null` when the row is
-   * terminal (`uploaded`, `unsupported`), which means "nothing to do", not an
-   * error. Two concurrent claims cannot both win a `pending` row.
+   * that allows a retry (`failed`, `no-file`) or from a `pending` row whose
+   * lease ran out (a crashed attempt). Returns the claimed row, or `null` when
+   * the row is terminal or another attempt holds it, which means "nothing to do
+   * now", not an error. Two concurrent claims cannot both win.
    */
   claimAttempt(
     invoiceRecordId: string,
@@ -30,9 +31,14 @@ export interface InvoiceMarketplaceUploadRepositoryPort {
   ): Promise<InvoiceMarketplaceUpload | null>;
 
   /**
-   * Settle a claimed attempt. Guarded on `status = 'pending'`, so an outcome can
-   * never overwrite a row another attempt already settled. Returns whether this
-   * call applied.
+   * Settle a claimed attempt. Guarded on `status = 'pending'` AND on the attempt
+   * number the claim returned, so neither a row another attempt already settled
+   * nor a row a later attempt took over after this one's lease ran out can be
+   * overwritten. Returns whether this call applied.
    */
-  recordOutcome(id: string, outcome: RecordInvoiceMarketplaceUploadOutcome): Promise<boolean>;
+  recordOutcome(
+    id: string,
+    claimedAttempt: number,
+    outcome: RecordInvoiceMarketplaceUploadOutcome,
+  ): Promise<boolean>;
 }

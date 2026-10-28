@@ -53,10 +53,16 @@ export interface IInvoiceMarketplaceUploadService {
    * `retry` mints a fresh idempotency key. The first-time key is permanent
    * (`sync_jobs.idempotencyKey` is unique and has no TTL), so an operator's
    * retry under it would silently dedup against the first job.
+   *
+   * `cleared` is the second automatic trigger: the document's regulatory status
+   * just settled (the reconcile sweep reports it). The first job polls a
+   * not-yet-cleared document only through its retry ladder, which ends; this is
+   * what still sends a document cleared after that. It has its own key, one per
+   * invoice, because the first key may belong to a job that already died.
    */
   enqueueUpload(
     invoiceId: string,
-    options?: { retry?: boolean },
+    options?: { retry?: boolean; cleared?: boolean },
   ): Promise<'enqueued' | 'skipped' | 'failed'>;
 
   /** The upload rows of an invoice, for the status read and the order timeline. */

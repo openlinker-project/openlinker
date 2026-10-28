@@ -405,10 +405,12 @@ export type {
   InvoiceMarketplaceUpload,
   InvoiceMarketplaceUploadFailureCode,
   InvoiceMarketplaceUploadStatus,
+  RecordInvoiceMarketplaceUploadOutcome,
 } from './domain/types/invoice-marketplace-upload.types';
 export {
   InvoiceMarketplaceUploadFailureCodeValues,
   InvoiceMarketplaceUploadStatusValues,
+  UPLOAD_CLAIM_LEASE_MS,
 } from './domain/types/invoice-marketplace-upload.types';
 export type {
   IOrderLifecycleRelayService,

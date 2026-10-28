@@ -65,9 +65,22 @@ export interface RecordInvoiceMarketplaceUploadOutcome {
   lastFailureCode?: InvoiceMarketplaceUploadFailureCode | null;
 }
 
-/** States from which a new attempt may be claimed. */
+/**
+ * States from which a new attempt may be claimed outright. `pending` is NOT one
+ * of them: a pending row is an attempt in flight, and a second claim on it would
+ * send the same document twice. It is taken over only once its lease
+ * ({@link UPLOAD_CLAIM_LEASE_MS}) has run out, which is how a crashed attempt is
+ * recovered.
+ */
 export const CLAIMABLE_UPLOAD_STATUSES: readonly InvoiceMarketplaceUploadStatus[] = [
-  'pending',
   'failed',
   'no-file',
 ];
+
+/**
+ * How long a claimed attempt owns its row. Comfortably above one attempt's worst
+ * case (resolving the document plus the marketplace calls, each bounded by its
+ * HTTP client's own timeout and retries), so a live attempt is never taken over;
+ * short enough that a crashed one is retried on the next job run.
+ */
+export const UPLOAD_CLAIM_LEASE_MS = 15 * 60 * 1000;

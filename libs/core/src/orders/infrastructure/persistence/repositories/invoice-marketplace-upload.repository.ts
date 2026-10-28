@@ -16,6 +16,7 @@ import { Repository } from 'typeorm';
 import type { InvoiceMarketplaceUploadRepositoryPort } from '../../../domain/ports/invoice-marketplace-upload-repository.port';
 import {
   CLAIMABLE_UPLOAD_STATUSES,
+  UPLOAD_CLAIM_LEASE_MS,
   InvoiceMarketplaceUploadFailureCodeValues,
   InvoiceMarketplaceUploadStatusValues,
   type InvoiceMarketplaceUpload,
@@ -58,8 +59,11 @@ export class InvoiceMarketplaceUploadRepository implements InvoiceMarketplaceUpl
     targetConnectionId: string,
   ): Promise<InvoiceMarketplaceUpload | null> {
     // INSERT ... ON CONFLICT DO UPDATE ... WHERE: the WHERE is what makes a
-    // terminal row (`uploaded`, `unsupported`) answer zero rows instead of being
-    // dragged back to `pending`. `gen_random_uuid()` because a raw insert does
+    // terminal row (`uploaded`, `unsupported`) and a pending row another attempt
+    // still holds answer zero rows instead of being claimed again. A pending row
+    // is taken over only once its lease ran out (a crashed attempt). The UPDATE
+    // takes the row lock, so two concurrent claims serialise and the second sees
+    // the first's fresh `updatedAt`. `gen_random_uuid()` because a raw insert does
     // not go through TypeORM's id generation.
     const rows = (await this.repository.query(
       `INSERT INTO "invoice_marketplace_uploads"
@@ -70,14 +74,22 @@ export class InvoiceMarketplaceUploadRepository implements InvoiceMarketplaceUpl
              "attempts" = "invoice_marketplace_uploads"."attempts" + 1,
              "updatedAt" = now()
          WHERE "invoice_marketplace_uploads"."status" = ANY($3)
+            OR ("invoice_marketplace_uploads"."status" = 'pending'
+                AND "invoice_marketplace_uploads"."updatedAt" < now() - make_interval(secs => $4))
        RETURNING *`,
-      [invoiceRecordId, targetConnectionId, [...CLAIMABLE_UPLOAD_STATUSES]],
+      [
+        invoiceRecordId,
+        targetConnectionId,
+        [...CLAIMABLE_UPLOAD_STATUSES],
+        UPLOAD_CLAIM_LEASE_MS / 1000,
+      ],
     )) as UploadRow[];
     return rows.length === 0 ? null : this.rowToDomain(rows[0]);
   }
 
   async recordOutcome(
     id: string,
+    claimedAttempt: number,
     outcome: RecordInvoiceMarketplaceUploadOutcome,
   ): Promise<boolean> {
     const result = await this.repository
@@ -90,6 +102,9 @@ export class InvoiceMarketplaceUploadRepository implements InvoiceMarketplaceUpl
       })
       .where('"id" = :id', { id })
       .andWhere('"status" = :pending', { pending: 'pending' })
+      // The attempt number is the fencing token: an attempt whose lease ran out
+      // and was taken over must not settle the row the newer attempt owns.
+      .andWhere('"attempts" = :claimedAttempt', { claimedAttempt })
       .execute();
     return (result.affected ?? 0) > 0;
   }
