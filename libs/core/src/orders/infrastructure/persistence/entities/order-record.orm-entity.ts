@@ -378,6 +378,13 @@ export class OrderRecordOrmEntity {
   buyerNoteReadByUserId!: string | null;
 
   /**
+   * When a real note text replaced a different stored one (N-22). Set only by
+   * the ingestion upsert's CASE clause; excluded from `toOrm`.
+   */
+  @Column({ type: 'timestamptz', nullable: true })
+  buyerNoteChangedAt!: Date | null;
+
+  /**
    * Shipping / billing address country (#3538, D7), ISO-3166 alpha-2, `NULL`
    * when the address is absent. Country is not PII and survives redaction.
    * Ready-path only.

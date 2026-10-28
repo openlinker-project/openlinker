@@ -3309,6 +3309,18 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
              AND EXCLUDED."buyerNote" IS DISTINCT FROM "order_records"."buyerNote"
              THEN NULL ELSE "order_records"."${column}" END`);
       }
+      // N-22: bench acknowledgements are not reset by a changed text, so the
+      // instant of the change is kept for the Activity timeline. Only a text
+      // replacing a different NON-EMPTY stored one counts: a note first
+      // arriving (or an unknown incoming read, B-5) is not a change, and the
+      // value is never written from the entity.
+      add('buyerNoteChangedAt', null, {
+        update: `"buyerNoteChangedAt" = CASE
+           WHEN EXCLUDED."buyerNote" IS NOT NULL
+             AND "order_records"."buyerNote" IS NOT NULL AND "order_records"."buyerNote" <> ''
+             AND EXCLUDED."buyerNote" IS DISTINCT FROM "order_records"."buyerNote"
+             THEN now() ELSE "order_records"."buyerNoteChangedAt" END`,
+      });
       add('shippingCountry', entity.shippingCountry ?? null);
       add('billingCountry', entity.billingCountry ?? null);
       add('buyerOrderCount', entity.buyerOrderCount ?? null);
@@ -3661,7 +3673,8 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
       entity.buyerNoteReadByUserId ?? null,
       entity.shippingCountry ?? null,
       entity.billingCountry ?? null,
-      entity.buyerOrderCount ?? null
+      entity.buyerOrderCount ?? null,
+      entity.buyerNoteChangedAt ?? null
     );
   }
 
@@ -3740,6 +3753,7 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
    *   null a peer's reason on every re-poll and leave the order reading `ready`
    *   while a hold is open. **It is excluded from `upsert()`'s raw column tuple
    *   too** - the `toOrm` exclusion alone is only half the job there.
+   * - `buyerNoteChangedAt` (N-22) - written only by the upsert's CASE clause.
    * - `buyerNoteReadAt` / `buyerNoteReadByUserId` (#3538) - sole writer
    *   {@link markBuyerNoteRead} (guarded fill-once). Ingestion carries no read
    *   knowledge, so round-tripping them would un-read the note on every re-poll.

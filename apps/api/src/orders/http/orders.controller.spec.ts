@@ -1824,6 +1824,16 @@ describe('OrdersController', () => {
       expect((await controller.getOrder('ol_order_001')).buyerNote).toBeUndefined();
     });
 
+    it('projects when the note text changed, and null when it never did (N-22)', async () => {
+      repository.findById.mockResolvedValue(
+        orderRecordWith({ buyerNoteChangedAt: new Date('2026-10-02T10:00:00Z') })
+      );
+      expect((await controller.getOrder('ol_order_001')).buyerNoteChangedAt).toBe('2026-10-02T10:00:00.000Z');
+
+      repository.findById.mockResolvedValue(orderRecordWith({ buyerNoteChangedAt: null }));
+      expect((await controller.getOrder('ol_order_001')).buyerNoteChangedAt).toBeNull();
+    });
+
     it('projects the read marker and the per-parcel acknowledgements on the detail read', async () => {
       repository.findById.mockResolvedValue(
         orderRecordWith({

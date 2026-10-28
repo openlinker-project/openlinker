@@ -1952,6 +1952,20 @@ describe('OrderRecordRepository', () => {
       expect(writeSet.has('buyerNoteReadAt')).toBe(false);
     });
 
+    it('should record when the note text changed without resetting any acknowledgement (N-22)', () => {
+      const { sql } = (repository as unknown as Builder).buildFrozenAttributionUpsert(
+        createOrmEntity(),
+        true
+      );
+      const updateHalf = sql.slice(sql.indexOf('DO UPDATE SET'));
+
+      expect(updateHalf).toMatch(
+        /"buyerNoteChangedAt" = CASE[\s\S]*?EXCLUDED\."buyerNote" IS DISTINCT FROM "order_records"\."buyerNote"\s+THEN now\(\) ELSE "order_records"\."buyerNoteChangedAt" END/
+      );
+      // A note arriving for the first time is not a change.
+      expect(updateHalf).toContain(`"order_records"."buyerNote" IS NOT NULL AND "order_records"."buyerNote" <> ''`);
+    });
+
     it('should clear the read marker together with the note when the source reports no note (N-23)', () => {
       const { sql } = (repository as unknown as Builder).buildFrozenAttributionUpsert(
         createOrmEntity(),

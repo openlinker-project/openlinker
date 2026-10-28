@@ -382,6 +382,15 @@ export class OrderRecordResponseDto {
   buyerNoteReadByUserId?: string | null;
 
   @ApiPropertyOptional({
+    nullable: true,
+    description:
+      'When the buyer note text last changed while a different text was stored (ISO 8601, N-22). null = never ' +
+      'changed. A changed text resets the read marker but NOT bench acknowledgements, so a surface compares this ' +
+      'with `buyerNoteAcknowledgements[].acknowledgedAt` to say the note changed after it was read. DETAIL READ ONLY.',
+  })
+  buyerNoteChangedAt?: string | null;
+
+  @ApiPropertyOptional({
     type: () => [BuyerNoteAcknowledgementDto],
     nullable: true,
     description:

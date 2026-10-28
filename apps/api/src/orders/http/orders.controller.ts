@@ -722,6 +722,7 @@ export class OrdersController {
     dto.buyerNote = order.buyerNoteState;
     dto.buyerNoteReadAt = order.buyerNoteReadAt ? order.buyerNoteReadAt.toISOString() : null;
     dto.buyerNoteReadByUserId = order.buyerNoteReadByUserId;
+    dto.buyerNoteChangedAt = order.buyerNoteChangedAt ? order.buyerNoteChangedAt.toISOString() : null;
     // B-10: the acknowledgements are a supplementary read from another context;
     // a failure there must not turn the whole order detail into a 500. `null`
     // means "could not load", distinct from `[]` (loaded, none acknowledged).

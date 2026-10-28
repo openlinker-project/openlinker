@@ -503,7 +503,16 @@ export class OrderRecord {
      * OpenLinker (#3538, D7). Computed OL-side at ingestion, never read from a
      * channel; `null` (unknown) when the order has no resolved customer.
      */
-    public readonly buyerOrderCount: number | null = null
+    public readonly buyerOrderCount: number | null = null,
+    /**
+     * When the buyer note's text last CHANGED while a different text was
+     * already stored (N-22). `null` = never changed (the first arrival of a
+     * note is not a change). Lets the order Activity say a note was edited
+     * after it was read at the bench; bench acknowledgements are not reset, so
+     * nothing else tells the operator the text moved under them. Written only
+     * by the ingestion upsert's CASE; never round-tripped from the entity.
+     */
+    public readonly buyerNoteChangedAt: Date | null = null
   ) {}
 
   /**
