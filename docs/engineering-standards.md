@@ -1678,6 +1678,7 @@ pre-commit hook and refuses the commit when the working directory is not the git
 - How to test
 - Related issues
 - Screenshots (if UI changes)
+- A `## Docs` section stating the documentation impact (`path → what changed`, or `None - <reason>` for a doc-neutral change) - a self-attested convention the `/work` and `/ship` skills require so the documentation decision is visible in review
 
 ---
 
