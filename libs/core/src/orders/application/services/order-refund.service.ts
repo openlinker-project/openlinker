@@ -26,6 +26,7 @@ import {
   assertRefundAmountPrecision,
   describeRefundCeilingVerdict,
   evaluateRefundCeiling,
+  type RefundCeilingVerdict,
   REFUND_CEILING_ACKNOWLEDGED_LOG_TOKEN,
   REFUND_CEILING_UNKNOWN_LOG_TOKEN,
 } from '../../domain/types/refund-ceiling.types';
@@ -70,10 +71,10 @@ export class OrderRefundService implements IOrderRefundService {
     };
     assertRefundAmountPrecision(input.amount, input.currency);
     if (options?.orderLockHeld === true) {
-      return this.recordRefundLocked(input);
+      return this.recordRefundLocked(input, options.onCeilingVerdict);
     }
     return this.runUnderOrderRefundLock(input.internalOrderId, () =>
-      this.recordRefundLocked(input)
+      this.recordRefundLocked(input, options?.onCeilingVerdict)
     );
   }
 
@@ -127,7 +128,10 @@ export class OrderRefundService implements IOrderRefundService {
     }
   }
 
-  private async recordRefundLocked(input: CreateRefundRecordInput): Promise<RefundRecord> {
+  private async recordRefundLocked(
+    input: CreateRefundRecordInput,
+    onCeilingVerdict?: (verdict: RefundCeilingVerdict) => void
+  ): Promise<RefundRecord> {
     const existing = await this.refundRepository.findByOrderId(input.internalOrderId);
     const existingCurrency = existing[0]?.currency;
     // Normalised like the ceiling predicate (B-3): "pln" and "PLN" are one currency.
@@ -142,7 +146,7 @@ export class OrderRefundService implements IOrderRefundService {
       );
     }
 
-    await this.enforceRefundCeiling(input);
+    await this.enforceRefundCeiling(input, onCeilingVerdict);
 
     const refund = await this.refundRepository.create(input);
     this.logger.log(
@@ -158,7 +162,10 @@ export class OrderRefundService implements IOrderRefundService {
    * route. Reads the SAME predicate the returns path does. See
    * `refund-ceiling.types.ts` for the `in_doubt` gap this cannot see.
    */
-  private async enforceRefundCeiling(input: CreateRefundRecordInput): Promise<void> {
+  private async enforceRefundCeiling(
+    input: CreateRefundRecordInput,
+    onCeilingVerdict?: (verdict: RefundCeilingVerdict) => void
+  ): Promise<void> {
     const [order, summaries] = await Promise.all([
       this.orderRecords.getOrderRecord(input.internalOrderId),
       this.refundRepository.summarizeByOrderIds([input.internalOrderId]),
@@ -184,6 +191,10 @@ export class OrderRefundService implements IOrderRefundService {
       verdict,
       input.acknowledgeAboveCeiling
     );
+    // Reported before the disposition is acted on, so an exceeded-and-refused
+    // verdict (which throws in `decideRefundCeiling` above) is the only path
+    // that never reaches the caller - and that one answers 409 with the figures.
+    onCeilingVerdict?.(verdict);
     const facts = describeRefundCeilingVerdict(input.internalOrderId, verdict);
     if (disposition === 'acknowledged') {
       this.logger.warn(`${REFUND_CEILING_ACKNOWLEDGED_LOG_TOKEN}: ${facts}`);

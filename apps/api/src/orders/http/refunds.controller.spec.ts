@@ -118,6 +118,42 @@ describe('RefundsController', () => {
       expect(result.amount).toBe('49.99');
     });
 
+    it('should report an unknown ceiling verdict on the response instead of only logging it (#3289)', async () => {
+      orderRecordService.getOrderRecord.mockResolvedValue({} as OrderRecord);
+      refundService.recordRefund.mockImplementation((_input, options) => {
+        options?.onCeilingVerdict?.({ status: 'unknown', reason: 'order-total-unknown' });
+        return Promise.resolve(sampleRefund);
+      });
+
+      const result = await controller.recordRefund('ol_order_abc123', dto);
+
+      expect(result.refundCeiling).toEqual({ status: 'unknown', reason: 'order-total-unknown' });
+    });
+
+    it('should report the figures when the ceiling was checked (#3289)', async () => {
+      orderRecordService.getOrderRecord.mockResolvedValue({} as OrderRecord);
+      refundService.recordRefund.mockImplementation((_input, options) => {
+        options?.onCeilingVerdict?.({
+          status: 'within',
+          ceiling: '100.00',
+          alreadyRefunded: '0.00',
+          requested: '49.99',
+          currency: 'PLN',
+        });
+        return Promise.resolve(sampleRefund);
+      });
+
+      const result = await controller.recordRefund('ol_order_abc123', dto);
+
+      expect(result.refundCeiling).toEqual({
+        status: 'within',
+        ceiling: '100.00',
+        alreadyRefunded: '0.00',
+        requested: '49.99',
+        currency: 'PLN',
+      });
+    });
+
     it('should default recordedAt to now when the DTO omits it', async () => {
       orderRecordService.getOrderRecord.mockResolvedValue({} as OrderRecord);
       refundService.recordRefund.mockResolvedValue(sampleRefund);

@@ -269,6 +269,23 @@ describe('OrderRefundService', () => {
       expect(refundRepository.create).toHaveBeenCalled();
       expect(warn).toHaveBeenCalledWith(expect.stringContaining('refund_ceiling_unknown'));
     });
+
+    it('should hand the unknown verdict and its reason to the caller, not only to the log (#3289)', async () => {
+      orderRecords.getOrderRecord.mockResolvedValue({
+        totalAmount: null,
+        currency: null,
+        taxTreatment: null,
+        totalTaxTreatment: null,
+      });
+      const onCeilingVerdict = jest.fn();
+
+      await service.recordRefund(input, { onCeilingVerdict });
+
+      expect(onCeilingVerdict).toHaveBeenCalledWith({
+        status: 'unknown',
+        reason: 'order-total-unknown',
+      });
+    });
   });
 
   describe('getRefundsForOrder', () => {
