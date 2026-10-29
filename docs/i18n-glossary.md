@@ -9,7 +9,7 @@ Add a row when a new domain term reaches the UI. Change a row only together with
 - **Buttons and menu items** use the imperative, second person singular, no pronoun: "Zapisz zmiany", "Utwórz przesyłkę", "Anuluj".
 - **Messages** are neutral and direct. No "Pan/Pani", no exclamation marks, no apologies: "Nie udało się zapisać zmian. Spróbuj ponownie."
 - **Sentence case** in both languages; only proper names are capitalised.
-- **Plural forms**: every count has `one`, `few` and `many` forms (1 zamówienie, 2 zamówienia, 5 zamówień).
+- **Plural forms**: every count has `one`, `few`, `many` and `other` forms (1 zamówienie, 2 zamówienia, 5 zamówień; `other` is for fractions, 1,5 zamówienia). The count is written `{n}`; keep the token.
 - **Brand and platform names are not translated**: OpenLinker, Allegro, Erli, InPost, Paczkomat, DPD, WooCommerce, PrestaShop, Subiekt, inFakt, KSeF.
 - **Legal and tax terms already in Polish stay as they are**: NIP, KSeF, UPO, paragon, faktura.
 - A plain hyphen, never an em dash.
@@ -31,12 +31,15 @@ Add a row when a new domain term reaches the UI. Change a row only together with
 | Marketplace | Marketplace | kept in English, common in Polish e-commerce |
 | Online shop | Sklep internetowy | |
 | Sales channel | Kanał sprzedaży | |
+| Destination | Miejsce docelowe | where a listing or product is published |
 | Shipment | Przesyłka | |
 | Parcel | Paczka | |
 | Shipping label | Etykieta nadawcza | |
 | Tracking number | Numer przesyłki | |
 | Carrier | Przewoźnik | |
 | Parcel locker | Automat paczkowy | "Paczkomat" only for InPost (brand) |
+| Pickup point | Punkt odbioru | |
+| Waybill | List przewozowy | |
 | Dispatch | Nadanie | verb: nadaj |
 | Fulfilment | Realizacja zamówienia | short form "realizacja" in tight space |
 | Fulfilment task | Zadanie realizacji | |
@@ -65,7 +68,7 @@ Add a row when a new domain term reaches the UI. Change a row only together with
 | Parameter | Parametr | marketplace category parameter |
 | Mapping | Mapowanie | |
 | Sync | Synchronizacja | verb: synchronizuj |
-| Job | Zadanie | background job |
+| Job | Zadanie w tle | background job; plain "zadanie" in tight space |
 | Webhook | Webhook | |
 | Automation | Automatyzacja | |
 | Needs attention | Wymaga uwagi | |
@@ -73,5 +76,5 @@ Add a row when a new domain term reaches the UI. Change a row only together with
 | Publish | Opublikuj | |
 | Bulk | Zbiorczo | "Edycja zbiorcza", "Publikacja zbiorcza" |
 | Settings | Ustawienia | |
-| Sign in / sign out | Zaloguj się / Wyloguj | |
+| Sign in / sign out | Zaloguj się / Wyloguj się | |
 | Language | Język | |
