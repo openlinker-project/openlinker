@@ -33,6 +33,9 @@ import {
   type CoverageResolutionStatus,
 } from '@openlinker/core/orders';
 
+export const CoverageCountUnitValues = ['orders', 'lines'] as const;
+export type CoverageCountUnit = (typeof CoverageCountUnitValues)[number];
+
 export class CoverageCategoryRowDto {
   @ApiProperty({ enum: CoverageCategoryValues })
   category!: CoverageCategory;
@@ -40,11 +43,22 @@ export class CoverageCategoryRowDto {
   @ApiProperty({ enum: CoverageResolutionStatusValues })
   status!: CoverageResolutionStatus;
 
-  @ApiProperty({ description: 'Total orders in this category for the requested range.' })
+  @ApiProperty({
+    description:
+      "Total affected items in this category for the requested range - orders, or order lines when `countUnit` is 'lines'.",
+  })
   affectedCount!: number;
 
   @ApiProperty({
-    description: 'A small sample of affected internal order ids, newest-first.',
+    enum: CoverageCountUnitValues,
+    description:
+      "What `affectedCount` counts. Every category counts 'orders' except `no-cost` (G11-D), which counts 'lines': a cost gap is a property of a line, and an order can hold several.",
+  })
+  countUnit!: CoverageCountUnit;
+
+  @ApiProperty({
+    description:
+      'A small sample of affected internal order ids, newest-first. Always empty for `no-cost`, which counts lines and has no per-order drill-down yet.',
     type: [String],
   })
   sampleOrderIds!: string[];
@@ -60,12 +74,14 @@ export class CoverageCategoryRowDto {
     category: CoverageCategory,
     affectedCount: number,
     sampleOrderIds: string[],
-    activeRunId: string | null = null
+    activeRunId: string | null = null,
+    countUnit: CoverageCountUnit = 'orders'
   ): CoverageCategoryRowDto {
     const dto = new CoverageCategoryRowDto();
     dto.category = category;
     dto.status = activeRunId ? 'in-progress' : 'open';
     dto.affectedCount = affectedCount;
+    dto.countUnit = countUnit;
     dto.sampleOrderIds = sampleOrderIds;
     if (activeRunId) {
       dto.activeRunId = activeRunId;

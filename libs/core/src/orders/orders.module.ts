@@ -47,6 +47,7 @@ import { OrderExportService } from './application/services/order-export.service'
 import { OrderSearchTextReindexService } from './application/services/order-search-text-reindex.service';
 import { TaxRateBackfillService } from './application/services/tax-rate-backfill.service';
 import { OrderTestFixtureService } from './application/services/order-test-fixture.service';
+import { MarginAnalyticsService } from './application/services/margin-analytics.service';
 import { TaxCoverageDetectionService } from './application/services/tax-coverage-detection.service';
 import { DisplayCurrencyConversionService } from './application/services/display-currency-conversion.service';
 import {
@@ -68,6 +69,7 @@ import {
   ORDER_TEST_FIXTURE_SERVICE_TOKEN,
   FULFILLMENT_DISPATCH_RELAY_SERVICE_TOKEN,
   SALES_DOCUMENT_VIEW_SERVICE_TOKEN,
+  MARGIN_ANALYTICS_SERVICE_TOKEN,
   TAX_COVERAGE_DETECTION_SERVICE_TOKEN,
   DISPLAY_CURRENCY_CONVERSION_SERVICE_TOKEN,
   ORDER_CANCELLATION_SIGNAL_REPOSITORY_TOKEN,
@@ -185,6 +187,7 @@ export { ORDER_SYNC_SERVICE_TOKEN } from './orders.tokens';
     TaxRateBackfillService,
     OrderTestFixtureService,
     TaxCoverageDetectionService,
+    MarginAnalyticsService,
     DisplayCurrencyConversionService,
     OrderCancellationSignalRepository,
     OrderColumnPresetRepository,
@@ -282,6 +285,10 @@ export { ORDER_SYNC_SERVICE_TOKEN } from './orders.tokens';
       useExisting: TaxCoverageDetectionService,
     },
     {
+      provide: MARGIN_ANALYTICS_SERVICE_TOKEN,
+      useExisting: MarginAnalyticsService,
+    },
+    {
       provide: DISPLAY_CURRENCY_CONVERSION_SERVICE_TOKEN,
       useExisting: DisplayCurrencyConversionService,
     },
@@ -357,6 +364,8 @@ export { ORDER_SYNC_SERVICE_TOKEN } from './orders.tokens';
     // Exported so the `/analytics/coverage` endpoint (#2466) can inject the
     // tax A/B/C detector seam (#2465).
     TAX_COVERAGE_DETECTION_SERVICE_TOKEN,
+    // Exported so `/analytics/margin*` and the no-cost coverage row can inject the margin reads (#3588).
+    MARGIN_ANALYTICS_SERVICE_TOKEN,
     // Exported so the `/analytics` display-currency read surface (a later
     // phase of #2452) can inject this seam (#2458, ADR-064).
     DISPLAY_CURRENCY_CONVERSION_SERVICE_TOKEN,

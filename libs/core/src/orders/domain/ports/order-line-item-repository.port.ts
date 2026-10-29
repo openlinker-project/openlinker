@@ -20,6 +20,12 @@
 import type { OrderLineItem } from '../entities/order-line-item.entity';
 import type { ConnectionUnitsSold, SalesAnalyticsFilters } from '../types/order-sales-analytics.types';
 import type {
+  MarginDailyRow,
+  MarginProductFilters,
+  MarginProductRow,
+  MarginVariantRow,
+} from '../types/order-margin-analytics.types';
+import type {
   ProductChannelBreakdownRow,
   ProductRankingRow,
   TopProductFilters,
@@ -142,6 +148,44 @@ export interface OrderLineItemRepositoryPort {
     filters: SalesAnalyticsFilters,
     reportingCurrency: string
   ): Promise<VariantChannelBreakdownRow[]>;
+
+  /**
+   * Margin by UTC day x source connection (#3588, D27). Net-revenue population
+   * is the top-products NET figure's; a line is "covered" only with a recorded
+   * cost in the order's native currency (G11-C); every other net-revenue line
+   * is a gap with exactly one reason. See `order-margin-analytics.types.ts`.
+   */
+  getMarginDailyRows(
+    filters: SalesAnalyticsFilters,
+    reportingCurrency: string,
+    includeBackfilledPreRollout?: boolean
+  ): Promise<MarginDailyRow[]>;
+
+  /** Margin ranked by product; `total` = distinct products in scope before paging. */
+  getMarginProductRanking(
+    filters: MarginProductFilters,
+    reportingCurrency: string,
+    includeBackfilledPreRollout?: boolean
+  ): Promise<{ rows: MarginProductRow[]; total: number }>;
+
+  /** One product's margin split by variant (`variantId: null` = unresolved lines). */
+  getMarginVariantRows(
+    productId: string,
+    filters: SalesAnalyticsFilters,
+    reportingCurrency: string,
+    includeBackfilledPreRollout?: boolean
+  ): Promise<MarginVariantRow[]>;
+
+  /**
+   * Lines in net revenue with no usable cost (the no-cost Data Coverage
+   * count, G11-D: lines, not orders). Equals the sum of every margin gap's
+   * `lineCount` for the same scope.
+   */
+  countUncoveredLines(
+    filters: SalesAnalyticsFilters,
+    reportingCurrency: string,
+    includeBackfilledPreRollout?: boolean
+  ): Promise<number>;
 
   /**
    * A page of one connection's rate-less lines for the tax-rate backfill

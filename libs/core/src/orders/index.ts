@@ -370,6 +370,27 @@ export type {
   TaxRateBackfillPageInput,
   TaxRateBackfillPageResult,
 } from './application/services/tax-rate-backfill.service.interface';
+export type { IMarginAnalyticsService } from './application/services/margin-analytics.service.interface';
+export {
+  MarginBucketValues,
+  MarginSortByValues,
+} from './domain/types/order-margin-analytics.types';
+export type {
+  MarginAnalytics,
+  MarginBucket,
+  MarginChannel,
+  MarginFigures,
+  MarginGapSum,
+  MarginProductFilters,
+  MarginProductsResult,
+  MarginProductVariantsResult,
+  MarginProductView,
+  MarginSortBy,
+  MarginTrendPoint,
+  MarginVariantView,
+} from './domain/types/order-margin-analytics.types';
+export { MarginGapReasonValues } from './domain/order-line-cost-snapshot';
+export type { MarginGapReason } from './domain/order-line-cost-snapshot';
 export type { ITaxCoverageDetectionService } from './application/services/tax-coverage-detection.service.interface';
 export type { IOrderTestFixtureService } from './application/interfaces/order-test-fixture.service.interface';
 export type { IDisplayCurrencyConversionService } from './application/interfaces/display-currency-conversion.service.interface';
