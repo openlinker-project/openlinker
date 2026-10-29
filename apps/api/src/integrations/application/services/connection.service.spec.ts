@@ -943,6 +943,55 @@ describe('ConnectionService', () => {
       });
     });
 
+    describe('config.buyerEmails validation (#3554)', () => {
+      const withEmails = (buyerEmails: unknown, enabledCapabilities?: string[]) => ({
+        ...payload,
+        ...(enabledCapabilities ? { enabledCapabilities } : {}),
+        config: { ...payload.config, buyerEmails },
+      });
+
+      it('should accept a shop enabling order-confirmed with a valid sender', async () => {
+        connectionPort.create.mockResolvedValue(mockConnection);
+        await expect(
+          service.create(
+            withEmails(
+              {
+                enabled: true,
+                templates: { 'order-confirmed': { enabled: true, replyTo: 'help@shop.pl' } },
+              },
+              ['ProductMaster', 'OfferManager']
+            ) as never
+          )
+        ).resolves.toEqual(mockConnection);
+      });
+
+      it('should reject order-confirmed on a marketplace connection', async () => {
+        await expect(
+          service.create(
+            withEmails({ enabled: true, templates: { 'order-confirmed': { enabled: true } } }, [
+              'OfferManager',
+            ]) as never
+          )
+        ).rejects.toThrow(/sent by a shop/);
+      });
+
+      it('should reject an unknown template and a sender with a line break', async () => {
+        await expect(
+          service.create(
+            withEmails({ enabled: true, templates: { marketing: { enabled: true } } }) as never
+          )
+        ).rejects.toThrow(/unknown template/);
+        await expect(
+          service.create(
+            withEmails({
+              enabled: true,
+              templates: { shipped: { enabled: true, fromAddress: 'a@b.pl\nBcc: x@y.pl' } },
+            }) as never
+          )
+        ).rejects.toThrow(/single email address/);
+      });
+    });
+
     describe('config.rateLimit validation (#1810)', () => {
       it('should accept a create with both knobs within bounds', async () => {
         connectionPort.create.mockResolvedValue(mockConnection);

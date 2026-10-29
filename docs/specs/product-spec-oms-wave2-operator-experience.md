@@ -530,7 +530,7 @@ justifies the wave"* — so the honest first-run page recommends that one and ge
 The card disappears permanently once any rule exists (active or not); it never returns after the
 operator deletes their last rule, because at that point they know what the page is for.
 
-### 5.2 The v1 trigger set (exactly 8)
+### 5.2 The trigger set (8 in v1, 11 since #3554)
 
 **Admission rule:** a trigger is admissible only if it names a fact OpenLinker **persists**, at a
 grain OpenLinker **writes**, in a wave that has **already shipped** by Wave 2. No derived-with-a-clock
@@ -546,12 +546,15 @@ facts, no facts produced by a gated wave.
 | T6 | `return.received` | *"Returned goods arrive"* | `ReturnLine.quantityReceived` > 0 (Wave 2, T4) | `edge` | Wave 2 | — |
 | T7 | `return.disposed` | *"A return is restocked or scrapped"* | disposition recorded (Wave 2, T5) | `edge` | Wave 2 | disposition (any / restock / scrap) |
 | T8 | `inventory.reservation_shortfall` | *"We've promised more of something than we have"* | shortfall fact on a named order (Wave 2, I6) | `edge` | Wave 2 | — |
+| T9 | `order.received` | *"A new order comes in"* | first `order_records` persistence (#3554, D8 of #3517) | `edge` | #3554 | — |
+| T10 | `order.shipped` | *"An order is shipped"* | `order_records.fulfillmentState` entering `dispatched` / `delivered` (#3554) | `edge` | #3554 | — |
+| T11 | `order.document_issued` | *"An invoice or receipt is issued"* | the order's originating `invoice_records` row issued, or `fiscal_registration_records` row registered (#3554) | `edge` | #3554 | — |
 
 **Firing semantics — the two kinds, stated per trigger.** Without this, a *standing condition* like
 T8 (a shortfall is true until somebody fixes it) is a level-triggered fact that a naive
 implementation re-evaluates every recompute and emails about hourly, forever.
 
-**`edge` — fires on the transition, once per transition.** T1, T2, T5, T6, T7, T8. The firing is
+**`edge` — fires on the transition, once per transition.** T1, T2, T5–T11. The firing is
 caused by the *write* that creates the fact, so re-reading, re-ingesting or re-computing the same
 fact fires nothing. Concretely:
 
@@ -565,6 +568,20 @@ fact fires nothing. Concretely:
   times. That is intended: each is a real arrival.
 - **T8** fires on the transition into shortfall for a given (order, sku) — **not** on every
   recompute while the shortfall persists. It re-fires only if the shortfall clears and then recurs.
+- **T9** fires once per order, when ingestion persists it for the first time; a re-poll, a webhook
+  replay or a status update re-ingesting the same order fires nothing. It ships with the existing
+  condition fields; the fraud fields D8 names (payment method, buyer order count, blocklist hit)
+  arrive with #3597 / #3598.
+- **T10** fires on the guarded write that moves the order's fulfilment rollup from a not-shipped
+  state into `dispatched` / `delivered`; a later recompute of an already-shipped order fires nothing.
+  A cancelled-then-redispatched order fires again, as a second transition.
+- **T11** fires once per order: the #2047 guard allows one originating document, and a correction
+  never fires it.
+- **Buyer emails (#3554) send at most once per subject** on their own side, whatever the trigger
+  does: three T6 arrivals for one return, or two T10 transitions for one order, still mean one
+  email to the buyer; the repeats are recorded as `suppressed / already-sent`.
+- **T6 facts are return-shaped.** `returns` does not read the order, so a T6 rule's
+  `orderCountry` / `orderTotalGross` conditions read as unknown and do not match.
 
 **`deadline sweep` — fires when a clock crosses a persisted timestamp.** T3 and T4 only. There is no
 event to hang these on: the fact is "time has passed", so a periodic evaluator is required. Rules:
@@ -730,6 +747,9 @@ silently never fires. The composer offers **only legal pairs**, from one declare
 | T6 return received | — | — | — | ✓ | — | — |
 | T7 return disposed | — | — | ✓ | ✓ | — | — |
 | T8 shortfall | — | — | — | ✓ | ✓ | — |
+| T9 order received | — | — | — | ✓ | ✓ | — |
+| T10 order shipped | — | — | — | ✓ | — | — |
+| T11 document issued | — | — | — | ✓ | — | — |
 
 Two of these are the load-bearing ones, and both should be read as the product:
 

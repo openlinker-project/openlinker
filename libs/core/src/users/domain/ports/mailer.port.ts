@@ -34,6 +34,10 @@ export interface EmailMessage {
   html?: string;
   /** Files to attach (#3550). Absent means none. */
   attachments?: readonly EmailAttachment[];
+  /** Sender override (#3554). Absent means the transport's configured sender. */
+  from?: string;
+  /** Reply-To address (#3554). Absent means none. */
+  replyTo?: string;
 }
 
 export interface MailerPort {

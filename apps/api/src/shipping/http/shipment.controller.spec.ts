@@ -162,6 +162,8 @@ describe('ShipmentController', () => {
       getCurrencyMismatchOrders: jest.fn(),
       getCurrencyMismatchOrdersByConnection: jest.fn(),
       getProductMatchingErrorOrders: jest.fn(),
+      notifyOrderReceived: jest.fn(),
+      notifyDocumentIssued: jest.fn(),
     };
     controller = new ShipmentController(
       query,
