@@ -28,6 +28,8 @@ import { getEnvBoolean } from '@openlinker/shared/config';
 import {
   CONNECTION_PORT_TOKEN,
   buyerEmailChannelKindOf,
+  isSingleEmailAddress,
+  readBuyerEmailsConfig,
   type Connection,
   type ConnectionPort,
 } from '@openlinker/core/identifier-mapping';
@@ -50,6 +52,8 @@ import type {
   IBuyerEmailNotificationService,
   SendBuyerEmailInput,
   SendBuyerEmailResult,
+  SendBuyerEmailTestInput,
+  SendBuyerEmailTestResult,
 } from '../interfaces/buyer-email-notification.service.interface';
 
 /** The timeline shows recent sends; an order is not emailed hundreds of times. */
@@ -131,6 +135,51 @@ export class BuyerEmailNotificationService implements IBuyerEmailNotificationSer
     }
     await this.settle(claim.id, 'sent');
     return { status: 'sent', deliveryId: claim.id };
+  }
+
+  async sendTest(input: SendBuyerEmailTestInput): Promise<SendBuyerEmailTestResult> {
+    if (!isSingleEmailAddress(input.to)) {
+      return {
+        status: 'refused',
+        reason: 'invalid-address',
+        message: 'Enter one email address to send the test to.',
+      };
+    }
+    let connection: Connection;
+    try {
+      connection = await this.connections.get(input.connectionId);
+    } catch {
+      return {
+        status: 'refused',
+        reason: 'connection-not-found',
+        message: 'The connection could not be found.',
+      };
+    }
+    const template = readBuyerEmailsConfig(connection.config).templates[input.templateKey];
+    const mailer = this.resolveMailer();
+    if (mailer === null) {
+      return { status: 'failed', message: 'No email sender is configured in this process.' };
+    }
+    try {
+      await mailer.sendEmail({
+        to: input.to,
+        subject: input.subject,
+        text: input.text,
+        ...(template?.fromAddress ? { from: template.fromAddress } : {}),
+        ...(template?.replyTo ? { replyTo: template.replyTo } : {}),
+      });
+      return { status: 'sent' };
+    } catch (error) {
+      // The mailer's words go to the log only: they can carry a host or a
+      // credential fragment, which a browser must not see.
+      this.logger.warn(`Buyer email test send failed: ${describe(error)}`);
+      return {
+        status: 'failed',
+        message: isRecipientRejectedError(error)
+          ? 'The mail server refused this address.'
+          : 'The email could not be sent. Check the mail settings.',
+      };
+    }
   }
 
   listForOrder(internalOrderId: string): Promise<BuyerEmailDelivery[]> {

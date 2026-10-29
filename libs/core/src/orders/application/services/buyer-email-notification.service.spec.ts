@@ -144,3 +144,74 @@ describe('BuyerEmailNotificationService', () => {
     expect(result).toEqual({ status: 'sent', deliveryId: 'd-1' });
   });
 });
+
+describe('BuyerEmailNotificationService.sendTest (#3555)', () => {
+  const testInput = {
+    connectionId: 'conn-1',
+    templateKey: 'shipped' as const,
+    to: 'me@shop.pl',
+    subject: 'Test',
+    text: 'Body',
+  };
+  let connections: jest.Mocked<Pick<ConnectionPort, 'get'>>;
+  let mailer: jest.Mocked<MailerPort>;
+  let repository: jest.Mocked<BuyerEmailDeliveryRepositoryPort>;
+  let service: BuyerEmailNotificationService;
+
+  beforeEach(() => {
+    connections = { get: jest.fn() };
+    mailer = { sendEmail: jest.fn() };
+    repository = {
+      recordSuppression: jest.fn(),
+      claimSend: jest.fn(),
+      settleClaim: jest.fn(),
+      releaseClaim: jest.fn(),
+      listByOrder: jest.fn(),
+    };
+    service = new BuyerEmailNotificationService(
+      repository,
+      connections as unknown as ConnectionPort,
+      { get: jest.fn(() => mailer) } as unknown as ModuleRef
+    );
+  });
+
+  it('should send with the template sender even when the connection has not opted in', async () => {
+    connections.get.mockResolvedValue(
+      connection(
+        {
+          buyerEmails: {
+            enabled: false,
+            templates: { shipped: { enabled: false, fromAddress: 'shop@x.pl' } },
+          },
+        },
+        ['ProductMaster']
+      )
+    );
+
+    const result = await service.sendTest(testInput);
+
+    expect(result).toEqual({ status: 'sent' });
+    expect(mailer.sendEmail).toHaveBeenCalledWith(
+      expect.objectContaining({ to: 'me@shop.pl', from: 'shop@x.pl' })
+    );
+    expect(repository.claimSend).not.toHaveBeenCalled();
+    expect(repository.recordSuppression).not.toHaveBeenCalled();
+  });
+
+  it('should refuse an address that is not a single email', async () => {
+    const result = await service.sendTest({ ...testInput, to: 'a@b.pl, c@d.pl' });
+
+    expect(result).toMatchObject({ status: 'refused', reason: 'invalid-address' });
+    expect(mailer.sendEmail).not.toHaveBeenCalled();
+  });
+
+  it('should answer failed without the transport message when the send throws', async () => {
+    connections.get.mockResolvedValue(connection({}, ['ProductMaster']));
+    mailer.sendEmail.mockRejectedValue(new Error('connect ECONNREFUSED 10.0.0.5:587'));
+
+    const result = await service.sendTest(testInput);
+
+    expect(result.status).toBe('failed');
+    expect(JSON.stringify(result)).not.toContain('10.0.0.5');
+  });
+});

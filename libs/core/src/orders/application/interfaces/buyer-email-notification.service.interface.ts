@@ -39,7 +39,27 @@ export type SendBuyerEmailResult =
   | { status: 'bounced'; message: string }
   | { status: 'failed'; message: string };
 
+/**
+ * A test send from the template editor (#3555): the operator's own address,
+ * the text they are editing, the connection's sender for that template. Not
+ * gated by the opt-in (testing a template before switching it on is the point)
+ * and never recorded on an order.
+ */
+export interface SendBuyerEmailTestInput {
+  connectionId: string;
+  templateKey: BuyerEmailTemplate;
+  to: string;
+  subject: string;
+  text: string;
+}
+
+export type SendBuyerEmailTestResult =
+  | { status: 'sent' }
+  | { status: 'refused'; reason: 'invalid-address' | 'connection-not-found'; message: string }
+  | { status: 'failed'; message: string };
+
 export interface IBuyerEmailNotificationService {
   send(input: SendBuyerEmailInput): Promise<SendBuyerEmailResult>;
+  sendTest(input: SendBuyerEmailTestInput): Promise<SendBuyerEmailTestResult>;
   listForOrder(internalOrderId: string): Promise<BuyerEmailDelivery[]>;
 }

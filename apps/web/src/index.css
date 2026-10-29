@@ -31035,3 +31035,70 @@ legend.analytics-settings-dialog__label {
 .ksef-issue-options__lines-scroll {
   overflow-x: auto;
 }
+
+/* ── Buyer emails (#3555, mockup M21) ─────────────────────────────────────── */
+.buyer-email-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: var(--space-3);
+}
+.buyer-email-list__item {
+  margin: 0;
+  display: grid;
+  gap: var(--space-1);
+}
+.buyer-email-list__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+.buyer-email-list__item p {
+  margin: 0;
+}
+.buyer-email-list__time {
+  font-size: 0.75rem;
+}
+.buyer-emails-table td,
+.buyer-emails-table th {
+  vertical-align: top;
+}
+.buyer-email-editor {
+  display: grid;
+  gap: var(--space-4);
+  grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
+}
+@media (max-width: 900px) {
+  .buyer-email-editor {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+.buyer-email-editor__form {
+  display: grid;
+  gap: var(--space-4);
+}
+.buyer-email-editor__variables {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+.buyer-email-editor__preview {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  margin: 0;
+}
+.buyer-email-editor__actions {
+  display: flex;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+.buyer-emails-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: 44px;
+  font-weight: 600;
+}

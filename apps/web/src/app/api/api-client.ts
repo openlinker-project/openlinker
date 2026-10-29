@@ -125,6 +125,7 @@ import {
 } from '../../features/posthog-settings/api/posthog-settings.api';
 import { createProductsApi, type ProductsApi } from '../../features/products/api/products.api';
 import { createAutomationsApi, type AutomationsApi } from '../../features/automation';
+import { createBuyerEmailsApi, type BuyerEmailsApi } from '../../features/buyer-emails/api/buyer-emails.api';
 import { createReturnsApi, type ReturnsApi } from '../../features/returns';
 import { createShipmentsApi, type ShipmentsApi } from '../../features/shipments/api/shipments.api';
 import {
@@ -242,6 +243,7 @@ export interface CoreApiClient {
   pricingSync: PricingSyncApi;
   mailerSettings: MailerSettingsApi;
   automations: AutomationsApi;
+  buyerEmails: BuyerEmailsApi;
   mcpTokens: McpTokensApi;
   operationalSettings: OperationalSettingsApi;
   orders: OrdersApi;
@@ -496,6 +498,7 @@ export function createApiClient({
     sourcingRules: createSourcingRulesApi(request),
     routingDryRun: createRoutingDryRunApi(request),
     automations: createAutomationsApi(request),
+    buyerEmails: createBuyerEmailsApi(request),
     fulfillmentAuthority: createFulfillmentAuthorityApi(request),
     fulfillment: createFulfillmentApi(request),
     bench: createBenchApi(request, requestBlob),
