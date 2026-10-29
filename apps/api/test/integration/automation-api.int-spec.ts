@@ -177,7 +177,7 @@ describe('Automation API Integration', () => {
         .set('Authorization', `Bearer ${token}`)
         .expect(200);
 
-      expect(res.body).toHaveLength(8);
+      expect(res.body).toHaveLength(11);
       expect(res.body.find((r: { trigger: string }) => r.trigger === 'order.packed').ruleCount).toBe(
         1,
       );
@@ -308,7 +308,7 @@ describe('Automation API Integration', () => {
         .set('Authorization', `Bearer ${token}`)
         .expect(200);
 
-      expect(res.body.triggers).toHaveLength(8);
+      expect(res.body.triggers).toHaveLength(11);
       expect(res.body.actions).toHaveLength(6);
       expect(res.body.stepBounds).toEqual({ min: 1, max: 3 });
       expect(res.body.legalActions['order.packed']['dispatch-shipment']).toBe(true);
