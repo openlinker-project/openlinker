@@ -31,6 +31,7 @@ import {
   deriveStockStatus,
   STOCK_STATUS_BADGE_TONE,
   STOCK_STATUS_LABEL,
+  VariantThumbnail,
 } from '../../features/products';
 
 interface VariantStockTableProps {
@@ -95,6 +96,7 @@ export function VariantStockTable(props: VariantStockTableProps): ReactElement {
         <thead>
           <tr>
             <th aria-hidden="true"></th>
+            <th>Photo</th>
             <th>Variant</th>
             <th>Tax rate</th>
             <th>Stock</th>
@@ -149,6 +151,67 @@ function statusTone(status: string): StatusBadgeTone {
   if (normalised === 'ACTIVE' || normalised === 'BIDDING') return 'success';
   if (normalised === 'ENDED' || normalised === 'INACTIVE') return 'warning';
   return 'neutral';
+}
+
+function variantSlug(variant: ProductVariant): string {
+  return (variant.sku ?? variant.id).toLowerCase();
+}
+
+/**
+ * The variant's resolved pictures (#3587): its own, else the product's. The API
+ * resolves the list; `imagesFromProduct` says which it was, so a borrowed
+ * picture is dimmed and labelled instead of passing as the variant's own.
+ */
+function VariantPhotoCell({ variant }: { variant: ProductVariant }): ReactElement {
+  return (
+    <VariantThumbnail
+      src={variant.imageUrls?.[0]}
+      name={variantHeadline(variant)}
+      size="sm"
+      dimmed={variant.imagesFromProduct === true}
+    />
+  );
+}
+
+function VariantPhotosSection({ variant }: { variant: ProductVariant }): ReactElement | null {
+  const urls = variant.imageUrls ?? [];
+  const fromProduct = variant.imagesFromProduct === true;
+  const slug = variantSlug(variant);
+  return (
+    <div className="variant-drawer__photos">
+      <div className="variant-drawer__label">Photos</div>
+      <div className="variant-photo-source">
+        <StatusBadge tone={fromProduct || urls.length === 0 ? 'neutral' : 'success'} withDot compact>
+          {urls.length === 0
+            ? 'No photos'
+            : fromProduct
+              ? 'From product'
+              : `Variant photos (${urls.length})`}
+        </StatusBadge>
+        <span className="variant-drawer__meta-muted" data-testid="variant-photo-source">
+          {urls.length === 0
+            ? 'Neither this variant nor the product has a photo.'
+            : fromProduct
+              ? 'This variant has no photos of its own, so the product photos are used.'
+              : 'Photos synced from the master for this variant.'}
+        </span>
+      </div>
+      {urls.length > 0 ? (
+        <div className="variant-photo-strip" data-testid={`variant-photo-strip-${slug}`}>
+          {urls.map((url, index) => (
+            <VariantThumbnail
+              key={url}
+              src={url}
+              name={variantHeadline(variant)}
+              size="lg"
+              dimmed={fromProduct}
+              testId={`variant-photo-${slug}-${index}`}
+            />
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
 }
 
 function variantHasAttributes(variant: ProductVariant): boolean {
@@ -452,6 +515,8 @@ function VariantDetailBody({
         </div>
       ) : null}
 
+      <VariantPhotosSection variant={variant} />
+
       <VariantMetaGrid
         variant={variant}
         available={available}
@@ -655,7 +720,7 @@ function VariantStockRow({
 
   return (
     <>
-      <tr className={isOpen ? 'is-open' : undefined}>
+      <tr className={isOpen ? 'is-open' : undefined} data-testid={`variant-row-${variantSlug(variant)}`}>
         <td className="variant-stock-table__expand-cell">
           <button
             type="button"
@@ -668,6 +733,9 @@ function VariantStockRow({
               <path d="M4 2l4 4-4 4" />
             </svg>
           </button>
+        </td>
+        <td>
+          <VariantPhotoCell variant={variant} />
         </td>
         <td>
           <div className="variant-stock-table__name">
@@ -706,7 +774,7 @@ function VariantStockRow({
         </td>
       </tr>
       <tr className={`variant-stock-table__expand-row${isOpen ? ' is-open' : ''}`}>
-        <td colSpan={5}>
+        <td colSpan={6}>
           <div className="variant-stock-table__expand-content">
             <div className="variant-stock-table__expand-content-inner">
               <div className="variant-drawer">
@@ -760,7 +828,7 @@ function VariantStockCard({
   const meta = variantMetaLine(variant);
 
   return (
-    <div className="variant-card">
+    <div className="variant-card" data-testid={`variant-row-${variantSlug(variant)}`}>
       <button
         type="button"
         className="variant-card__header"
@@ -768,6 +836,7 @@ function VariantStockCard({
         aria-label={`Toggle details for ${variant.sku ?? variant.id}`}
         onClick={() => setOpen((prev) => !prev)}
       >
+        <VariantPhotoCell variant={variant} />
         <span className="variant-stock-table__name">
           <span className="variant-stock-table__sku mono-text">{variantHeadline(variant)}</span>
           {meta ? <span className="variant-stock-table__meta">{meta}</span> : null}

@@ -24,3 +24,4 @@ export {
   STOCK_STATUS_LABEL,
   type StockStatus,
 } from './lib/product-stock-status';
+export { VariantThumbnail, type VariantThumbnailProps } from './components/variant-thumbnail';
