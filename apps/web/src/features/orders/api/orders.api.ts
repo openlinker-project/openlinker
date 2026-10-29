@@ -23,6 +23,7 @@ import type {
   PlaceOrderHoldResult,
   ReleaseOrderHoldRequest,
   ReleaseOrderHoldResult,
+  OrderLineCostsResult,
   OrderNote,
   CreateOrderNoteRequest,
   UpdateOrderNoteRequest,
@@ -85,6 +86,8 @@ export interface OrdersApi {
     holdId: string,
     body: ReleaseOrderHoldRequest,
   ) => Promise<ReleaseOrderHoldResult>;
+  /** Cost at order time and margin per line (#3588); admin/operator/viewer only. */
+  listLineCosts: (internalOrderId: string) => Promise<OrderLineCostsResult>;
   /** An order's notes, oldest first (#3531). */
   listNotes: (internalOrderId: string) => Promise<OrderNote[]>;
   /** The notes' authored acts for the Activity timeline (#3531), parsed. */
@@ -300,6 +303,11 @@ export function createOrdersApi(request: ApiRequest, requestBlob: ApiBlobRequest
       return request<ReleaseOrderHoldResult>(
         `/orders/${encodeURIComponent(internalOrderId)}/holds/${encodeURIComponent(holdId)}/release`,
         { method: 'POST', body: JSON.stringify(body) },
+      );
+    },
+    listLineCosts(internalOrderId): Promise<OrderLineCostsResult> {
+      return request<OrderLineCostsResult>(
+        `/orders/${encodeURIComponent(internalOrderId)}/line-costs`,
       );
     },
     listNotes(internalOrderId): Promise<OrderNote[]> {

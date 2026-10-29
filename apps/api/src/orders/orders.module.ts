@@ -8,6 +8,7 @@
  */
 import { Module } from '@nestjs/common';
 import { OrdersModule as CoreOrdersModule } from '@openlinker/core/orders';
+import { AnalyticsModule as CoreAnalyticsModule } from '@openlinker/core/analytics';
 import { InvoicingModule as CoreInvoicingModule } from '@openlinker/core/invoicing';
 import { MappingsModule as CoreMappingsModule } from '@openlinker/core/mappings';
 import { FulfillmentModule as CoreFulfillmentModule } from '@openlinker/core/fulfillment';
@@ -22,6 +23,7 @@ import { RefundsController } from './http/refunds.controller';
 import { SalesDocumentsController } from './http/sales-documents.controller';
 import { OrderColumnPresetsController } from './http/order-column-presets.controller';
 import { OrderNotesController } from './http/order-notes.controller';
+import { OrderLineCostsController } from './http/order-line-costs.controller';
 import { OrderTagsController } from './http/order-tags.controller';
 import { OrderTagAssignmentsController } from './http/order-tag-assignments.controller';
 import { OrderExportsController } from './http/order-exports.controller';
@@ -51,6 +53,8 @@ import { SOURCE_FULFILLMENT_STATUS_SERVICE_TOKEN } from './application/interface
   // source adapter, and resolving the source-native order id to ask about.
   imports: [
     CoreOrdersModule,
+    // #3588: ANALYTICS_DISPLAY_SETTINGS_SERVICE_TOKEN - the net-sales era setting the line-cost read honours.
+    CoreAnalyticsModule,
     CoreInvoicingModule,
     CoreMappingsModule,
     CoreInventoryModule,
@@ -82,6 +86,7 @@ import { SOURCE_FULFILLMENT_STATUS_SERVICE_TOKEN } from './application/interface
     RefundsController,
     SalesDocumentsController,
     OrderNotesController,
+    OrderLineCostsController,
     OrderTagsController,
     OrderTagAssignmentsController,
   ],

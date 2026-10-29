@@ -253,3 +253,94 @@ export interface VariantCostInput {
   netUnitCost: string | null;
   currency: string | null;
 }
+
+/** Gap reasons shared with the margin read (mirrors `MarginGapReasonValues`). */
+export type CostGapReason =
+  | 'no-cost'
+  | 'cost-entered-after-sale'
+  | 'no-variant'
+  | 'currency-mismatch';
+
+/** Mirrors `CostCoverageResponseDto` (#3588). Percent fields are 0..100, not ratios. */
+export interface CostCoverage {
+  days: number;
+  from: string;
+  to: string;
+  currency: string;
+  soldVariantCount: number;
+  soldVariantsWithoutCost: number;
+  netSales: number;
+  netSalesWithoutCost: number;
+  /** Percent 0..100, `null` without net sales. */
+  coveragePct: number | null;
+  notInMarginNetSales: number;
+  gapByReason: { reason: CostGapReason; lineCount: number; netAmount: number }[];
+  top3: {
+    variantId: string;
+    productId: string;
+    name: string | null;
+    sku: string | null;
+    attributes: Record<string, string> | null;
+    netSales: number;
+  }[];
+  /** Percent 0..100 of `netSalesWithoutCost`. */
+  top3SharePct: number | null;
+  productOnlyNetSales: number;
+}
+
+/** Mirrors `CostSummaryResponseDto`. */
+export interface CostSummary {
+  variantsWithoutCost: number;
+  productsWithoutCost: number;
+  variantsWithCost: number;
+}
+
+export const COST_WORKLIST_TAB_VALUES = ['sold', 'all', 'has-cost'] as const;
+export type CostWorklistTab = (typeof COST_WORKLIST_TAB_VALUES)[number];
+
+export interface CostWorklistFilters {
+  tab: CostWorklistTab;
+  q?: string;
+  /** Source connection id of the sales. */
+  channel?: string;
+}
+
+export interface CostWorklistPagination {
+  limit: number;
+  offset: number;
+}
+
+export interface CostWorklistRow {
+  variantId: string;
+  productId: string;
+  productName: string;
+  sku: string | null;
+  attributes: Record<string, string> | null;
+  netUnitCost: string | null;
+  costCurrency: string | null;
+  costUpdatedAt: string | null;
+  netSales30d: number;
+  units30d: number;
+  soldOn: { connectionId: string; platformType: string | null; name: string | null }[];
+}
+
+/** The page WITHOUT its total (`?withTotal=false`); the API omits `total`, never zeroes it. */
+export interface CostWorklistPage {
+  currency: string;
+  items: CostWorklistRow[];
+  limit: number;
+  offset: number;
+}
+
+export interface BulkFillVariantCostInput {
+  variantIds: string[];
+  netUnitCost: string;
+  currency: string;
+}
+
+/** Variant ids, by outcome. */
+export interface BulkFillVariantCostResult {
+  filled: string[];
+  skippedAlreadySet: string[];
+  notFound: string[];
+}

@@ -16,6 +16,13 @@ import type {
   ProductVariantSummary,
   VariantCost,
   VariantCostInput,
+  CostCoverage,
+  CostSummary,
+  CostWorklistFilters,
+  CostWorklistPage,
+  CostWorklistPagination,
+  BulkFillVariantCostInput,
+  BulkFillVariantCostResult,
 } from './products.types';
 
 export interface ProductsApi {
@@ -47,6 +54,17 @@ export interface ProductsApi {
   getVariantCosts: (productId: string) => Promise<VariantCost[]>;
   /** Record (both fields set) or clear (both null) a variant's cost. Admin only. */
   setVariantCost: (variantId: string, input: VariantCostInput) => Promise<VariantCost>;
+  /** Cost coverage of the last N days of sales (#3588). */
+  getCostCoverage: (days?: number) => Promise<CostCoverage>;
+  getCostSummary: () => Promise<CostSummary>;
+  /** One work-list page WITHOUT its total. Pair with {@link ProductsApi.countCostWorklist}. */
+  getCostWorklist: (
+    filters: CostWorklistFilters,
+    pagination: CostWorklistPagination,
+  ) => Promise<CostWorklistPage>;
+  countCostWorklist: (filters: CostWorklistFilters, init?: RequestInit) => Promise<PaginatedTotal>;
+  /** Fill one cost across variants, only where none is set. Admin only. */
+  bulkFillVariantCost: (input: BulkFillVariantCostInput) => Promise<BulkFillVariantCostResult>;
 }
 
 interface ApiRequest {
@@ -109,5 +127,46 @@ export function createProductsApi(request: ApiRequest): ProductsApi {
         body: JSON.stringify(input),
       });
     },
+    getCostCoverage(days = 30): Promise<CostCoverage> {
+      return request<CostCoverage>(`/products/cost-coverage?days=${String(days)}`);
+    },
+    getCostSummary(): Promise<CostSummary> {
+      return request<CostSummary>('/products/cost-coverage/summary');
+    },
+    async getCostWorklist(filters, pagination): Promise<CostWorklistPage> {
+      const params = costWorklistParams(filters);
+      params.set('limit', String(pagination.limit));
+      params.set('offset', String(pagination.offset));
+      params.set('withTotal', 'false');
+      const body = await request<{ currency: string; items: CostWorklistPage['items'] }>(
+        `/products/variants/cost-worklist?${params.toString()}`,
+      );
+      return {
+        currency: body.currency,
+        items: body.items,
+        limit: pagination.limit,
+        offset: pagination.offset,
+      };
+    },
+    countCostWorklist(filters, init): Promise<PaginatedTotal> {
+      return request<PaginatedTotal>(
+        `/products/variants/cost-worklist/count?${costWorklistParams(filters).toString()}`,
+        init,
+      );
+    },
+    bulkFillVariantCost(input): Promise<BulkFillVariantCostResult> {
+      return request<BulkFillVariantCostResult>('/products/variants/cost', {
+        method: 'PATCH',
+        body: JSON.stringify(input),
+      });
+    },
   };
+}
+
+function costWorklistParams(filters: CostWorklistFilters): URLSearchParams {
+  const params = new URLSearchParams();
+  params.set('tab', filters.tab);
+  if (filters.q) params.set('q', filters.q);
+  if (filters.channel) params.set('channel', filters.channel);
+  return params;
 }

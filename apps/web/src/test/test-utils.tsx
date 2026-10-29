@@ -341,6 +341,7 @@ export function createMockApiClient(
         rateBasis: 'current',
         includeBackfilledTaxRatesInNetSales: false,
         netGrossBasis: 'gross',
+        trackMargin: true,
         updatedAt: null,
         updatedByUserId: null,
       }),
@@ -686,6 +687,7 @@ export function createMockApiClient(
         ready: 0,
       }),
       getById: vi.fn().mockResolvedValue(null),
+      listLineCosts: vi.fn().mockResolvedValue({ currency: null, lines: [] }),
       retryDestination: vi.fn().mockResolvedValue({
         internalOrderId: '',
         destinationConnectionId: '',
@@ -871,6 +873,30 @@ export function createMockApiClient(
       // #3588 - no recorded costs unless a test says otherwise.
       getVariantCosts: vi.fn().mockResolvedValue([]),
       setVariantCost: vi.fn(),
+      // Nothing sold without a cost unless a test says otherwise, so no
+      // reminder renders by accident.
+      getCostCoverage: vi.fn().mockResolvedValue({
+        days: 30,
+        from: '2026-09-01T00:00:00.000Z',
+        to: '2026-10-01T00:00:00.000Z',
+        currency: 'PLN',
+        soldVariantCount: 0,
+        soldVariantsWithoutCost: 0,
+        netSales: 0,
+        netSalesWithoutCost: 0,
+        coveragePct: null,
+        notInMarginNetSales: 0,
+        gapByReason: [],
+        top3: [],
+        top3SharePct: null,
+        productOnlyNetSales: 0,
+      }),
+      getCostSummary: vi
+        .fn()
+        .mockResolvedValue({ variantsWithoutCost: 0, productsWithoutCost: 0, variantsWithCost: 0 }),
+      getCostWorklist: vi.fn().mockResolvedValue({ currency: 'PLN', items: [], limit: 20, offset: 0 }),
+      countCostWorklist: vi.fn().mockResolvedValue({ total: 0 }),
+      bulkFillVariantCost: vi.fn(),
       ...overrides.products,
     }) as ApiClient['products'],
     promptTemplates: {

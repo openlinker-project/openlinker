@@ -1097,6 +1097,38 @@ export interface OrderLifecyclePhaseSummary {
 }
 
 /**
+ * One line of an order's cost-at-order-time read (#3588, D27). Mirrors
+ * `apps/api/src/orders/http/dto/order-line-costs-response.dto.ts`. Amounts are
+ * in the ORDER currency; `0` cost is real, `null` means not recorded.
+ */
+export type OrderLineGapReason =
+  | 'no-cost'
+  | 'cost-entered-after-sale'
+  | 'no-variant'
+  | 'currency-mismatch';
+
+export interface OrderLineCost {
+  lineNumber: number;
+  productId: string;
+  variantId: string | null;
+  sku: string | null;
+  quantity: number;
+  netAmount: number | null;
+  costState: 'recorded' | 'not-recorded';
+  unitCostNet: string | null;
+  unitCostCurrency: string | null;
+  costOfGoods: number | null;
+  margin: number | null;
+  gapReason: OrderLineGapReason | null;
+  netEligible: boolean;
+}
+
+export interface OrderLineCostsResult {
+  currency: string | null;
+  lines: OrderLineCost[];
+}
+
+/**
  * An internal order note (#3531). `editedAt` is the "edited" marker (D33);
  * `showToPacker` is decision D12's pack-bench visibility flag.
  */

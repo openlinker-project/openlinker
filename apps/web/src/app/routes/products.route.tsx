@@ -4,6 +4,9 @@ import type { RouteCrumbHandle } from '../nav-registry.types';
 const productsListCrumb: RouteCrumbHandle = {
   crumb: { group: 'Operations', title: 'Products' },
 };
+const costPricesCrumb: RouteCrumbHandle = {
+  crumb: { group: 'Operations', title: 'Cost prices' },
+};
 const productDetailCrumb: RouteCrumbHandle = {
   crumb: { group: 'Operations', title: 'Product' },
 };
@@ -17,6 +20,14 @@ export const productsRoute: RouteObject = {
       lazy: async () => {
         const { ProductsListPage } = await import('../../pages/products/products-list-page');
         return { Component: ProductsListPage };
+      },
+    },
+    {
+      path: 'cost-prices',
+      handle: costPricesCrumb,
+      lazy: async () => {
+        const { CostPricesPage } = await import('../../pages/products/cost-prices-page');
+        return { Component: CostPricesPage };
       },
     },
     {
