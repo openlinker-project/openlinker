@@ -66,23 +66,23 @@ function renderNote(
  * test measures, so the measurement is what gets mocked.
  */
 function mockClampOverflow(testId: string): () => void {
-  const scroll = Object.getOwnPropertyDescriptor(Element.prototype, 'scrollHeight');
-  const client = Object.getOwnPropertyDescriptor(Element.prototype, 'clientHeight');
-  Object.defineProperty(Element.prototype, 'scrollHeight', {
+  const scroll = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'scrollHeight');
+  const client = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'clientHeight');
+  Object.defineProperty(HTMLElement.prototype, 'scrollHeight', {
     configurable: true,
-    get(this: Element) {
+    get(this: HTMLElement) {
       return this.getAttribute('data-testid') === testId ? 200 : 0;
     },
   });
-  Object.defineProperty(Element.prototype, 'clientHeight', {
+  Object.defineProperty(HTMLElement.prototype, 'clientHeight', {
     configurable: true,
-    get(this: Element) {
+    get(this: HTMLElement) {
       return this.getAttribute('data-testid') === testId ? 80 : 0;
     },
   });
   return () => {
-    if (scroll) Object.defineProperty(Element.prototype, 'scrollHeight', scroll);
-    if (client) Object.defineProperty(Element.prototype, 'clientHeight', client);
+    if (scroll) Object.defineProperty(HTMLElement.prototype, 'scrollHeight', scroll);
+    if (client) Object.defineProperty(HTMLElement.prototype, 'clientHeight', client);
   };
 }
 
@@ -250,13 +250,15 @@ describe('OrderBuyerNote (#3539)', () => {
   });
 
   it('should select the note and show a Ctrl+C hint when the clipboard is refused (B-13)', async () => {
+    // setup() installs user-event's own clipboard stub, so it must run first or it
+    // silently replaces the refusing one below and the copy "succeeds".
+    const user = userEvent.setup();
     Object.defineProperty(navigator, 'clipboard', {
       configurable: true,
       value: { writeText: vi.fn().mockRejectedValue(new Error('denied')) },
     });
     document.execCommand = vi.fn().mockReturnValue(false);
     renderNote({ hasBuyerNote: true, buyerNote: NOTE });
-    const user = userEvent.setup();
 
     await user.click(screen.getByTestId('order-buyer-note-copy'));
 
