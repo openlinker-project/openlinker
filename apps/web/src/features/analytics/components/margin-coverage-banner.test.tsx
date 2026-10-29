@@ -1,4 +1,4 @@
-import { cleanup, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { MarginCoverageBanner } from './margin-coverage-banner';
 import { createMockApiClient, renderWithProviders } from '../../../test/test-utils';
@@ -28,26 +28,40 @@ function margin(costCoveragePct: number | null): MarginAnalytics {
   };
 }
 
-function renderBanner(
-  pct: number | null,
-  trackMargin = true
-): void {
+interface Reads {
+  getSettings: ReturnType<typeof vi.fn>;
+  getMargin: ReturnType<typeof vi.fn>;
+}
+
+function renderBanner(pct: number | null, trackMargin = true): Reads {
+  const getSettings = vi.fn().mockResolvedValue({
+    displayCurrency: 'PLN',
+    displayCurrencySource: 'default',
+    rateBasis: 'current',
+    includeBackfilledTaxRatesInNetSales: false,
+    netGrossBasis: 'gross',
+    trackMargin,
+    updatedAt: null,
+    updatedByUserId: null,
+  });
+  const getMargin = vi.fn().mockResolvedValue(margin(pct));
   renderWithProviders(<MarginCoverageBanner filters={{ from: '2026-09-01', to: '2026-09-30' }} />, {
     apiClient: createMockApiClient({
-      analytics: { getMargin: vi.fn().mockResolvedValue(margin(pct)) },
-      analyticsSettings: {
-        getSettings: vi.fn().mockResolvedValue({
-          displayCurrency: 'PLN',
-          displayCurrencySource: 'default',
-          rateBasis: 'current',
-          includeBackfilledTaxRatesInNetSales: false,
-          netGrossBasis: 'gross',
-          trackMargin,
-          updatedAt: null,
-          updatedByUserId: null,
-        }),
-      },
+      analytics: { getMargin },
+      analyticsSettings: { getSettings },
     }),
+  });
+  return { getSettings, getMargin };
+}
+
+/** Both reads were made and React has re-rendered with their answers. */
+async function settled(reads: Reads): Promise<void> {
+  await waitFor(() => {
+    expect(reads.getSettings).toHaveBeenCalled();
+    expect(reads.getMargin).toHaveBeenCalled();
+  });
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 0));
   });
 }
 
@@ -65,23 +79,17 @@ describe('MarginCoverageBanner', () => {
   });
 
   it('should render nothing when coverage is at or above 98%', async () => {
-    renderBanner(0.98);
-    await waitFor(() => {
-      expect(screen.queryByTestId('cost-coverage-banner')).not.toBeInTheDocument();
-    });
+    await settled(renderBanner(0.98));
+    expect(screen.queryByTestId('cost-coverage-banner')).not.toBeInTheDocument();
   });
 
   it('should render nothing when there is no net revenue to cover', async () => {
-    renderBanner(null);
-    await waitFor(() => {
-      expect(screen.queryByTestId('cost-coverage-banner')).not.toBeInTheDocument();
-    });
+    await settled(renderBanner(null));
+    expect(screen.queryByTestId('cost-coverage-banner')).not.toBeInTheDocument();
   });
 
   it('should render nothing when margin tracking is off', async () => {
-    renderBanner(0.5, false);
-    await waitFor(() => {
-      expect(screen.queryByTestId('cost-coverage-banner')).not.toBeInTheDocument();
-    });
+    await settled(renderBanner(0.5, false));
+    expect(screen.queryByTestId('cost-coverage-banner')).not.toBeInTheDocument();
   });
 });

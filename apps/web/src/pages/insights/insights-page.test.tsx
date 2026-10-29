@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   createMockApiClient,
@@ -637,26 +637,29 @@ describe('InsightsPage data to fill in (#3588)', () => {
   });
 
   it('should render no panel when margin tracking is off', async () => {
+    const getSettings = vi.fn().mockResolvedValue({
+      displayCurrency: 'PLN',
+      displayCurrencySource: 'default',
+      rateBasis: 'current',
+      includeBackfilledTaxRatesInNetSales: false,
+      netGrossBasis: 'gross',
+      trackMargin: false,
+      updatedAt: null,
+      updatedByUserId: null,
+    });
     renderWithProviders(<InsightsPage />, {
       apiClient: createMockApiClient({
         products: { getCostCoverage: vi.fn().mockResolvedValue(costCoverage()) },
-        analyticsSettings: {
-          getSettings: vi.fn().mockResolvedValue({
-            displayCurrency: 'PLN',
-            displayCurrencySource: 'default',
-            rateBasis: 'current',
-            includeBackfilledTaxRatesInNetSales: false,
-            netGrossBasis: 'gross',
-            trackMargin: false,
-            updatedAt: null,
-            updatedByUserId: null,
-          }),
-        },
+        analyticsSettings: { getSettings },
       }),
     });
     await screen.findByText('Operations overview');
     await waitFor(() => {
-      expect(screen.queryByTestId('insights-setup-gaps')).not.toBeInTheDocument();
+      expect(getSettings).toHaveBeenCalled();
     });
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    expect(screen.queryByTestId('insights-setup-gaps')).not.toBeInTheDocument();
   });
 });
