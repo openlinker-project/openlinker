@@ -25,7 +25,7 @@ import { setActiveLocale } from './active-locale';
 import { applyZodLocale } from './zod-locale';
 import { getBcp47Locale } from './locale';
 import { isMessagesLoaded, loadMessages } from './messages';
-import { resolveInitialLocale, storeLocale } from './resolve-locale';
+import { readPseudoRequested, resolveInitialLocale, storeLocale } from './resolve-locale';
 import {
   isSupportedLocale,
   SOURCE_LOCALE,
@@ -77,6 +77,12 @@ export function LocaleProvider({
     return first;
   });
   const [lastPinned, setLastPinned] = useState(pinned);
+  const [pseudo, setPseudo] = useState<boolean>(
+    () =>
+      pinned === undefined &&
+      typeof window !== 'undefined' &&
+      readPseudoRequested(window.location.search, import.meta.env.DEV),
+  );
 
   // A new pinned value replaces the state during render, so the old language
   // never commits (React's "adjust state when a prop changes" pattern).
@@ -115,6 +121,7 @@ export function LocaleProvider({
       const apply = (): void => {
         if (!isPinned) storeLocale(next);
         announceLocale(next);
+        setPseudo(false);
         setLocaleState(next);
       };
       // Load first, then switch: the screen keeps the current language until
@@ -130,9 +137,10 @@ export function LocaleProvider({
     () => ({
       locale,
       setLocale,
+      pseudo,
       t: (key, fallback) => catalog[key] ?? fallback,
     }),
-    [locale, setLocale, catalog],
+    [locale, setLocale, pseudo, catalog],
   );
 
   return <LocaleContext.Provider value={value}>{children}</LocaleContext.Provider>;

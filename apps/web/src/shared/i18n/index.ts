@@ -21,6 +21,8 @@ export { definePluginMessages } from './define-plugin-messages';
 export type { PluginMessages, PluginMessagesOptions } from './define-plugin-messages';
 export { defineCopy, resolveCopy } from './define-copy';
 export { interpolate } from './interpolate';
+export { fit } from './fit';
+export { pseudoLocalize, PSEUDO_LOCALE_CODE } from './pseudo';
 export type { InterpolationParams } from './interpolate';
 export { renderRich } from './render-rich';
 export type { RichParts } from './render-rich';

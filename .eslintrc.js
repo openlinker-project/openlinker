@@ -963,5 +963,29 @@ module.exports = {
         ],
       },
     },
+    {
+      // No hardcoded user-facing text (ADR-079, #3859). Every word an operator
+      // reads comes from a `*.copy.ts` file in English and Polish. Enabled per
+      // folder as each one is migrated (#3868-#3885); add the folder here in
+      // the same PR that moves its copy.
+      files: ['apps/web/src/shared/ui/**/*.tsx'],
+      excludedFiles: ['**/*.test.tsx', '**/*.copy.ts'],
+      plugins: ['i18next'],
+      rules: {
+        'i18next/no-literal-string': [
+          'error',
+          {
+            mode: 'jsx-text-only',
+            'jsx-attributes': {
+              include: ['aria-label', 'title', 'placeholder', 'alt', 'label', 'message', 'description'],
+            },
+            words: {
+              // Glyphs, keyboard hints and markers carry no language.
+              exclude: ['[0-9!-/:-@[-`{-~]+', '[A-Z_-]+', '⌘K', '[•↗×⌕ⓘ…—–→←›▼↑↓↵·✓⧉✕🔒+]+', 'esc'],
+            },
+          },
+        ],
+      },
+    },
   ],
 };
