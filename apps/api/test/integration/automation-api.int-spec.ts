@@ -150,7 +150,7 @@ describe('Automation API Integration', () => {
       expect(res.body.isActive).toBe(false);
       // …and the response says what the rule can actually do in this build.
       expect(res.body.actionAvailability).toEqual([
-        { action: 'send-email', availability: 'partial', reason: expect.any(String) },
+        { action: 'send-email', availability: 'available', reason: null },
       ]);
     });
 
@@ -313,12 +313,12 @@ describe('Automation API Integration', () => {
       expect(res.body.stepBounds).toEqual({ min: 1, max: 3 });
       expect(res.body.legalActions['order.packed']['dispatch-shipment']).toBe(true);
       expect(res.body.legalActions['return.received']['dispatch-shipment']).toBe(false);
-      // The five that cannot fully run — the API is where an operator learns what
+      // The four that cannot fully run — the API is where an operator learns what
       // they can actually arm.
       const notReady = res.body.actions.filter(
         (a: { availability: string }) => a.availability !== 'available',
       );
-      expect(notReady).toHaveLength(5);
+      expect(notReady).toHaveLength(4);
       expect(
         notReady.every((a: { reason: string | null }) => typeof a.reason === 'string'),
       ).toBe(true);

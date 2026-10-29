@@ -9,10 +9,9 @@
  * store (`CoreIntegrationsModule`), not on this module's own table.
  *
  * The concrete `MailerPort` adapter (console/SMTP transport + nodemailer)
- * lives in `apps/api/src/auth/adapters/` — this module only owns settings
- * persistence + resolution, mirroring how `AiModule` owns AI provider
- * settings while the Vercel completion adapters live in
- * `libs/integrations/ai/`.
+ * is bound by `MailerTransportModule` (#3552), which both `apps/api` and
+ * `apps/worker` import - this module only owns settings persistence +
+ * resolution.
  *
  * @module libs/core/src/mailer
  */
