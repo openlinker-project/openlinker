@@ -3,14 +3,28 @@
  *
  * What happened to one automatic buyer email: `sent`, `suppressed` (the gate
  * refused it, with a closed reason) or `bounced` (the mail server refused the
- * recipient). A transport outage is not a delivery outcome - nothing reached
- * the buyer's server either way - so it is reported as a failed automation step
- * and not recorded here.
+ * recipient). `pending` is the at-most-once claim taken BEFORE the send: the
+ * row that holds the subject's slot while the mailer runs. A transport outage
+ * is not a delivery outcome - nothing reached the buyer's server - so its claim
+ * is released and it is reported as a failed automation step instead.
+ *
+ * A `pending` row that outlives its send means the process died mid-send; it
+ * keeps the slot, so the buyer may miss that email but never gets it twice.
  *
  * @module libs/core/src/orders/domain/types
  */
-export const BuyerEmailOutcomeValues = ['sent', 'suppressed', 'bounced'] as const;
+export const BuyerEmailOutcomeValues = ['pending', 'sent', 'suppressed', 'bounced'] as const;
 export type BuyerEmailOutcome = (typeof BuyerEmailOutcomeValues)[number];
+
+/** Why the gate refused to send - one closed reason per refusal, for the timeline. */
+export const BuyerEmailSuppressionReasonValues = [
+  'emails-off-for-connection',
+  'template-not-enabled',
+  'template-not-allowed-on-channel',
+  'no-buyer-address',
+  'already-sent',
+] as const;
+export type BuyerEmailSuppressionReason = (typeof BuyerEmailSuppressionReasonValues)[number];
 
 export function isBuyerEmailOutcome(value: unknown): value is BuyerEmailOutcome {
   return (

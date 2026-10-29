@@ -33,6 +33,7 @@ import {
   isPresentButInvalidFulfilmentOwnedByDestination,
   ConnectionInUseException,
   BUYER_EMAILS_CONFIG_KEY,
+  buyerEmailChannelKindOf,
   MarketplaceBuyerEmailTemplateValues,
   isBuyerEmailTemplate,
   isSingleEmailAddress,
@@ -200,9 +201,8 @@ export class ConnectionService implements IConnectionService {
    * on every write; the channel rule (a marketplace may not enable
    * `order-confirmed`) only on the TRANSITION against the persisted config, so
    * an unrelated patch is not refused for a state this guard once let through.
-   * The channel is read from capabilities, never `platformType`: a connection
-   * that sells through `OfferManager` without being a `ProductMaster` is a
-   * marketplace (a shop such as WooCommerce carries both).
+   * The channel comes from `buyerEmailChannelKindOf`, the same rule the send
+   * gate applies, so the two cannot disagree about a connection.
    */
   private validateBuyerEmailsConfig(
     config: Record<string, unknown>,
@@ -228,8 +228,7 @@ export class ConnectionService implements IConnectionService {
       return fail('templates must be an object');
     }
     const previous = readBuyerEmailsConfig(persistedConfig);
-    const isMarketplace =
-      capabilities.includes('OfferManager') && !capabilities.includes('ProductMaster');
+    const isMarketplace = buyerEmailChannelKindOf(capabilities) === 'marketplace';
     for (const [key, value] of Object.entries(templates)) {
       if (!isBuyerEmailTemplate(key)) {
         return fail(`unknown template "${key}"`);

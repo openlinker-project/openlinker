@@ -171,11 +171,9 @@ export {
 export type { PaymentMethod } from './domain/types/payment-method.types';
 export {
   decideBuyerEmail,
-  BuyerEmailSuppressionReasonValues,
   BUYER_EMAIL_SUPPRESSION_MESSAGE,
 } from './domain/domain-services/buyer-email-gate.domain-service';
 export type {
-  BuyerEmailSuppressionReason,
   BuyerEmailChannelKind,
   BuyerEmailGateInput,
   BuyerEmailGateDecision,
@@ -754,8 +752,10 @@ export * from './domain/types/order-discount-split.types';
 export { BuyerEmailDelivery } from './domain/entities/buyer-email-delivery.entity';
 export {
   BuyerEmailOutcomeValues,
+  BuyerEmailSuppressionReasonValues,
   isBuyerEmailOutcome,
   type BuyerEmailOutcome,
+  type BuyerEmailSuppressionReason,
 } from './domain/types/buyer-email-delivery.types';
 export type {
   IBuyerEmailNotificationService,

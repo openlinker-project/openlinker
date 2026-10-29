@@ -579,7 +579,8 @@ fact fires nothing. Concretely:
   never fires it.
 - **Buyer emails (#3554) send at most once per subject** on their own side, whatever the trigger
   does: three T6 arrivals for one return, or two T10 transitions for one order, still mean one
-  email to the buyer; the repeats are recorded as `suppressed / already-sent`.
+  email to the buyer; the repeats are recorded as `suppressed / already-sent`. The slot is taken
+  before the send, so two concurrent firings cannot both email.
 - **T6 facts are return-shaped.** `returns` does not read the order, so a T6 rule's
   `orderCountry` / `orderTotalGross` conditions read as unknown and do not match.
 

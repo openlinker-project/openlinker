@@ -31,6 +31,21 @@ export const MarketplaceBuyerEmailTemplateValues = [
   'return-received',
 ] as const satisfies readonly BuyerEmailTemplate[];
 
+/** Which side of a sale a connection is, for the buyer-email channel rule. */
+export type BuyerEmailChannelKind = 'marketplace' | 'shop';
+
+/**
+ * Read from capabilities, never `platformType`: a connection that sells through
+ * `OfferManager` without being a `ProductMaster` is a marketplace (a shop such as
+ * WooCommerce carries both). The one rule both the send gate and the connection
+ * write validation apply, so they cannot disagree about a connection.
+ */
+export function buyerEmailChannelKindOf(capabilities: readonly string[]): BuyerEmailChannelKind {
+  return capabilities.includes('OfferManager') && !capabilities.includes('ProductMaster')
+    ? 'marketplace'
+    : 'shop';
+}
+
 export interface BuyerEmailTemplateConfig {
   enabled: boolean;
   fromAddress?: string;
