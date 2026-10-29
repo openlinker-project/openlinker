@@ -1,4 +1,4 @@
-import { cleanup, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ProductsListPage } from './products-list-page';
 import { createMockApiClient, renderWithProviders } from '../../test/test-utils';
@@ -9,27 +9,27 @@ beforeEach(() => {
 });
 afterEach(cleanup);
 
-function renderList(trackMargin: boolean): void {
+function renderList(trackMargin: boolean): { getSettings: ReturnType<typeof vi.fn> } {
+  const getSettings = vi.fn().mockResolvedValue({
+    displayCurrency: 'PLN',
+    displayCurrencySource: 'default',
+    rateBasis: 'current',
+    includeBackfilledTaxRatesInNetSales: false,
+    netGrossBasis: 'gross',
+    trackMargin,
+    updatedAt: null,
+    updatedByUserId: null,
+  });
   renderWithProviders(<ProductsListPage />, {
     apiClient: createMockApiClient({
       products: {
         getCostCoverage: vi.fn().mockResolvedValue(costCoverage()),
         getCostSummary: vi.fn().mockResolvedValue(costSummary()),
       },
-      analyticsSettings: {
-        getSettings: vi.fn().mockResolvedValue({
-          displayCurrency: 'PLN',
-          displayCurrencySource: 'default',
-          rateBasis: 'current',
-          includeBackfilledTaxRatesInNetSales: false,
-          netGrossBasis: 'gross',
-          trackMargin,
-          updatedAt: null,
-          updatedByUserId: null,
-        }),
-      },
+      analyticsSettings: { getSettings },
     }),
   });
+  return { getSettings };
 }
 
 describe('ProductsListPage cost reminders (#3588)', () => {
@@ -46,11 +46,16 @@ describe('ProductsListPage cost reminders (#3588)', () => {
   });
 
   it('should hide the banner and the chip but keep the Cost prices action when margin tracking is off', async () => {
-    renderList(false);
+    const { getSettings } = renderList(false);
     await screen.findByTestId('products-open-cost-prices');
+    // Positive signal first: the settings read was made and React re-rendered.
     await waitFor(() => {
-      expect(screen.queryByTestId('cost-coverage-banner')).not.toBeInTheDocument();
-      expect(screen.queryByTestId('products-filter-no-cost')).not.toBeInTheDocument();
+      expect(getSettings).toHaveBeenCalled();
     });
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    expect(screen.queryByTestId('cost-coverage-banner')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('products-filter-no-cost')).not.toBeInTheDocument();
   });
 });
