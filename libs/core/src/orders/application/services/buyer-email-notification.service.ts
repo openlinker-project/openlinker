@@ -29,7 +29,7 @@ import {
   CONNECTION_PORT_TOKEN,
   buyerEmailChannelKindOf,
   isSingleEmailAddress,
-  readBuyerEmailsConfig,
+  readBuyerEmailTemplateSender,
   type Connection,
   type ConnectionPort,
 } from '@openlinker/core/identifier-mapping';
@@ -155,7 +155,9 @@ export class BuyerEmailNotificationService implements IBuyerEmailNotificationSer
         message: 'The connection could not be found.',
       };
     }
-    const template = readBuyerEmailsConfig(connection.config).templates[input.templateKey];
+    // Not `readBuyerEmailsConfig`: that reads an opted-out connection as having
+    // no templates, and a test send is what an operator does before opting in.
+    const sender = readBuyerEmailTemplateSender(connection.config, input.templateKey);
     const mailer = this.resolveMailer();
     if (mailer === null) {
       return { status: 'failed', message: 'No email sender is configured in this process.' };
@@ -165,8 +167,8 @@ export class BuyerEmailNotificationService implements IBuyerEmailNotificationSer
         to: input.to,
         subject: input.subject,
         text: input.text,
-        ...(template?.fromAddress ? { from: template.fromAddress } : {}),
-        ...(template?.replyTo ? { replyTo: template.replyTo } : {}),
+        ...(sender.fromAddress ? { from: sender.fromAddress } : {}),
+        ...(sender.replyTo ? { replyTo: sender.replyTo } : {}),
       });
       return { status: 'sent' };
     } catch (error) {
