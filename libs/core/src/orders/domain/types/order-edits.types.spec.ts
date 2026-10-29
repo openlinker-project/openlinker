@@ -109,11 +109,16 @@ describe('applyOrderEditsToSnapshot', () => {
   });
 
   it('should drop the COD amount once nothing is left to collect', () => {
-    const merged = applyOrderEditsToSnapshot(channelSnapshot(), {
-      v: 1,
-      rev: 1,
-      lines: { l1: { ...stamp, quantity: 0 }, l2: { ...stamp, quantity: 0 } },
-    });
+    // The COD amount here equals the lines' gross value (3 x 10 + 1 x 30), so
+    // removing every line leaves nothing to collect.
+    const merged = applyOrderEditsToSnapshot(
+      { ...channelSnapshot(), codToCollect: { amount: '60.00', currency: 'PLN' } },
+      {
+        v: 1,
+        rev: 1,
+        lines: { l1: { ...stamp, quantity: 0 }, l2: { ...stamp, quantity: 0 } },
+      }
+    );
     expect(merged.codToCollect).toBeUndefined();
   });
 });
