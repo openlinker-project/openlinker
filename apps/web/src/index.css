@@ -30988,23 +30988,22 @@ legend.analytics-settings-dialog__label {
 }
 
 .language-switch__popover {
-  position: absolute;
-  right: 0;
-  bottom: calc(100% + 8px);
-  width: 228px;
+  /* In a portal on <body>, placed by the component next to its trigger and
+     centred on it (Motion adds the -50% translate), so a parent's
+     overflow: hidden cannot clip it. */
+  position: fixed;
+  width: 200px;
   z-index: 40;
   background: var(--bg-surface);
   border: 1px solid var(--border-default);
   border-radius: var(--radius-xl);
   padding: 6px;
   box-shadow: var(--shadow-overlay);
-  transform-origin: calc(100% - 24px) 100%;
+  transform-origin: 50% 100%;
 }
 
 .language-switch__popover--down {
-  bottom: auto;
-  top: calc(100% + 8px);
-  transform-origin: calc(100% - 24px) 0;
+  transform-origin: 50% 0;
 }
 
 .language-switch__head {
@@ -31037,19 +31036,11 @@ legend.analytics-settings-dialog__label {
   color: var(--text-primary);
 }
 
-.language-switch__option.is-focus:not(.is-unavailable) {
+.language-switch__option.is-focus {
   background: var(--bg-surface-muted);
 }
 
-.language-switch__option.is-unavailable {
-  cursor: default;
-  color: var(--text-muted);
-}
 
-.language-switch__option.is-unavailable .language-flag {
-  filter: grayscale(1);
-  opacity: 0.55;
-}
 
 /* Positioned behind the row's content and outside the grid flow, so the
    flag and name sit in the same place on every row. */
@@ -31082,14 +31073,6 @@ legend.analytics-settings-dialog__label {
   color: var(--text-muted);
 }
 
-.language-switch__soon {
-  font-size: 10.5px;
-  font-weight: 600;
-  padding: 1px 6px;
-  border-radius: var(--radius-pill);
-  background: var(--bg-surface-muted);
-  color: var(--text-muted);
-}
 
 /* Long labels truncate with the full text on hover instead of breaking the
    240 px sidebar once Polish copy is longer than English. */
