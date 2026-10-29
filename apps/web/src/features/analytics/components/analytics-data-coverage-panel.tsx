@@ -83,6 +83,12 @@ interface AnalyticsDataCoveragePanelProps {
    */
   openCategory?: CoverageCategory | null;
   onOpenCategoryChange?: (category: CoverageCategory | null) => void;
+  /**
+   * The `no-cost` row has no detail dialog: its drill-down is the Margin
+   * panel's own coverage note, which already lists the reasons. Called
+   * instead of opening a dialog for that row.
+   */
+  onOpenMarginCoverage?: () => void;
 }
 
 function isTaxCategory(category: CoverageCategory): category is TaxCoverageCategory {
@@ -94,6 +100,7 @@ export function AnalyticsDataCoveragePanel({
   onOpenSettings,
   openCategory: controlledOpenCategory,
   onOpenCategoryChange,
+  onOpenMarginCoverage,
 }: AnalyticsDataCoveragePanelProps): ReactElement {
   const { showToast } = useToast();
   const demoMode = useDemoMode();
@@ -113,6 +120,10 @@ export function AnalyticsDataCoveragePanel({
   const [offset, setOffset] = useState(0);
 
   function openDetail(category: CoverageCategory): void {
+    if (category === 'no-cost') {
+      onOpenMarginCoverage?.();
+      return;
+    }
     setOffset(0);
     setOpenCategory(category);
   }
@@ -353,7 +364,7 @@ export function AnalyticsDataCoveragePanel({
             <div className="attention-list__body">
               <span className="attention-list__headline">Nothing to do</span>
               <span className="attention-list__sub">
-                {DATA_COVERAGE_CHECK_COUNT} checks · currency, tax rates, product matching
+                {DATA_COVERAGE_CHECK_COUNT} checks · currency, tax rates, product matching, cost
               </span>
             </div>
           </li>

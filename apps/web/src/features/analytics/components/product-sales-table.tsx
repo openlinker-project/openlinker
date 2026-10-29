@@ -6,9 +6,8 @@
  * net sales or units via a `SegmentedControl`; both figures stay visible in
  * both states, because an operator comparing "sells most money" against
  * "sells most items" needs the pair, not one swapped for the other. The
- * sort choice is local UI state (not URL state) — a per-section toggle
- * isn't, by itself, worth a shareable search param (see the plan's own
- * judgment-call note).
+ * sort choice is URL state (`productSort`) since #3590: the CSV export must
+ * rank exactly as the screen does, and a shared link should too.
  *
  * Product/variant identity, never SKU: `TopProductRow.productId` is the
  * cross-channel join key (#1988 already groups by `productId`) — Allegro
@@ -96,7 +95,8 @@
  *
  * @module features/analytics/components
  */
-import { type ReactElement, useMemo, useState } from 'react';
+import { type ReactElement, useMemo } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { DataTable, type DataTableColumn } from '../../../shared/ui/data-table';
 import { Button } from '../../../shared/ui/button';
 import { EmptyValue } from '../../../shared/ui/empty-value';
@@ -113,6 +113,7 @@ import {
   type Product,
 } from '../../products';
 import { useDemoMode } from '../../system';
+import { ExportCsvButton } from './export-csv-button';
 import { useTopProductsQuery } from '../hooks/use-top-products-query';
 import { useSalesAnalyticsQuery } from '../hooks/use-sales-analytics-query';
 import { useCoverageCrossReferenceQuery } from '../hooks/use-coverage-cross-reference-query';
@@ -379,6 +380,12 @@ function resolveNotListedConnectionIds(
   return coverageGapAvailable ? row.missingFromConnectionIds : [];
 }
 
+export const PRODUCT_SORT_PARAM = 'productSort';
+
+function parseProductSort(value: string | null): TopProductsSortBy {
+  return value === 'units' ? 'units' : 'revenue';
+}
+
 export function ProductSalesTable({
   filters,
   coverage,
@@ -387,7 +394,14 @@ export function ProductSalesTable({
   netGrossBasis = 'gross',
 }: ProductSalesTableProps): ReactElement {
   const currencyRecalculating = isCurrencyRecalculating(coverage);
-  const [sortBy, setSortBy] = useState<TopProductsSortBy>('revenue');
+  // The ranking lives in the URL so the CSV export and the screen share it.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const sortBy = parseProductSort(searchParams.get(PRODUCT_SORT_PARAM));
+  function setSortBy(next: TopProductsSortBy): void {
+    const nextParams = new URLSearchParams(searchParams);
+    nextParams.set(PRODUCT_SORT_PARAM, next);
+    setSearchParams(nextParams);
+  }
   const query = useTopProductsQuery({ ...filters, sortBy, limit: DEFAULT_LIMIT, offset: 0 });
   const connectionsQuery = useConnectionsQuery();
   const intFormat = useNumberFormat();
@@ -539,12 +553,30 @@ export function ProductSalesTable({
     <article className="panel panel--dense">
       <div className="panel__header">
         <h3 className="section-title">Top products</h3>
-        <SegmentedControl
-          options={SORT_OPTIONS}
-          value={sortBy}
-          onChange={setSortBy}
-          aria-label="Rank products by"
-        />
+        <div className="analytics-export-row">
+          <SegmentedControl
+            options={SORT_OPTIONS}
+            value={sortBy}
+            onChange={setSortBy}
+            aria-label="Rank products by"
+          />
+          <ExportCsvButton
+            testId="export-csv-top-products"
+            reportLabel="Top products"
+            request={{
+              report: 'top-products',
+              filters: {
+                from: filters.from,
+                to: filters.to,
+                sourceConnectionId: filters.sourceConnectionId,
+              },
+              basis: netGrossBasis,
+              sortBy,
+            }}
+            displayCurrency={filters.displayCurrency}
+            reportingCurrency={headline?.currency ?? null}
+          />
+        </div>
       </div>
       <DataTable
         caption="Top products with per-channel split"

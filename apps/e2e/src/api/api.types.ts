@@ -957,7 +957,7 @@ export interface DescriptionFormatView {
 // completeness of `CoverageCategory` but have no seed path in this suite —
 // see the follow-up issue referenced from `tests/analytics/mockup-parity.spec.ts`.
 
-export type CoverageCategory = 'currency' | 'tax-a' | 'tax-b' | 'tax-c' | 'product-matching';
+export type CoverageCategory = 'currency' | 'tax-a' | 'tax-b' | 'tax-c' | 'product-matching' | 'no-cost';
 export type CoverageResolutionStatus = 'open' | 'in-progress' | 'resolved' | 'failed';
 
 /** GET /analytics/settings response. */
