@@ -9,7 +9,7 @@ import { TooltipProvider } from '../../shared/ui/tooltip';
 import { env } from '../../shared/config/env';
 import { isAnalyticsConsentRequiredError } from '../../shared/api/analytics-consent-error';
 import { ThemeProvider } from '../../shared/theme';
-import { LocaleProvider } from '../../shared/i18n';
+import { LocaleKeyed, LocaleProvider } from '../../shared/i18n';
 import { PluginRegistryProvider } from '../../shared/plugins';
 import { plugins } from '../../plugins';
 
@@ -71,7 +71,9 @@ export function AppProviders({ children }: PropsWithChildren): ReactElement {
             <ToastProvider>
               <TooltipProvider>
                 <ApiClientProvider client={apiClient}>
-                  <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+                  <QueryClientProvider client={queryClient}>
+                    <LocaleKeyed>{children}</LocaleKeyed>
+                  </QueryClientProvider>
                 </ApiClientProvider>
               </TooltipProvider>
             </ToastProvider>

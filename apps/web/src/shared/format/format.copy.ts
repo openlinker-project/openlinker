@@ -17,7 +17,7 @@ export const formatCopy = defineCopy({
       dueNow: 'due now',
     },
     compactDuration: {
-      days: '{n}d',
+      days: { one: '{n}d', other: '{n}d' },
       hours: '{n}h',
       minutes: '{n}m',
     },
@@ -29,16 +29,19 @@ export const formatCopy = defineCopy({
     },
     relative: {
       justNow: 'just now',
+      minutesAgo: '{n}m ago',
+      hoursAgo: '{n}h ago',
+      daysAgo: { one: '{n}d ago', other: '{n}d ago' },
     },
   },
   pl: {
     shipBy: {
       left: 'zostało {duration}',
       overdue: 'Po terminie {duration}',
-      dueNow: 'termin mija teraz',
+      dueNow: 'termin teraz',
     },
     compactDuration: {
-      days: '{n} d',
+      days: { one: '{n} dzień', few: '{n} dni', many: '{n} dni', other: '{n} dnia' },
       hours: '{n} godz.',
       minutes: '{n} min',
     },
@@ -50,6 +53,14 @@ export const formatCopy = defineCopy({
     },
     relative: {
       justNow: 'przed chwilą',
+      minutesAgo: '{n} min temu',
+      hoursAgo: '{n} godz. temu',
+      daysAgo: {
+        one: '{n} dzień temu',
+        few: '{n} dni temu',
+        many: '{n} dni temu',
+        other: '{n} dnia temu',
+      },
     },
   },
 });

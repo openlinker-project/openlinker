@@ -8,6 +8,7 @@
  * @module shared/format
  */
 import type { SupportedLocale } from '../i18n/i18n.types';
+import { numberFormat } from '../i18n/intl-cache';
 import { formattingLocale } from './format-locale';
 
 export function formatAmount(
@@ -17,9 +18,9 @@ export function formatAmount(
 ): string {
   const tag = formattingLocale(locale);
   if (currency) {
-    return new Intl.NumberFormat(tag, { style: 'currency', currency }).format(amount);
+    return numberFormat(tag, { style: 'currency', currency }).format(amount);
   }
-  return new Intl.NumberFormat(tag, {
+  return numberFormat(tag, {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   }).format(amount);
