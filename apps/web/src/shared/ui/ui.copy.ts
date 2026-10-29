@@ -231,6 +231,8 @@ export const uiCopy = defineCopy({
     languageSwitch: {
       label: 'Language',
       current: 'Language: {name}',
+      beta: 'Beta',
+      betaHint: 'Some content may not be translated yet.',
     },
   },
   pl: {
@@ -482,6 +484,8 @@ export const uiCopy = defineCopy({
     languageSwitch: {
       label: 'Język',
       current: 'Język: {name}',
+      beta: 'Beta',
+      betaHint: 'Część zawartości może być jeszcze nieprzetłumaczona.',
     },
   },
 });

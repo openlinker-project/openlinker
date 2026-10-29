@@ -34,10 +34,15 @@ interface LanguageOption {
   code: LanguageFlagCode;
   /** The language's name in that language. */
   name: string;
+  /**
+   * The translation is not complete: some screens still fall back to English.
+   * Polish carries it until the lock-in step (#3891) makes it complete.
+   */
+  beta?: boolean;
 }
 
 const LANGUAGE_OPTIONS: readonly LanguageOption[] = [
-  { code: 'pl', name: 'Polski' },
+  { code: 'pl', name: 'Polski', beta: true },
   { code: 'en', name: 'English' },
 ];
 
@@ -66,6 +71,28 @@ const indexOf = (code: string): number =>
     LANGUAGE_OPTIONS.findIndex((option) => option.code === code)
   );
 
+/**
+ * Narrows a wrapped text box to its widest line. CSS cannot: once text wraps,
+ * the box keeps its full max width and leaves empty space beside a centred
+ * line. Measured in the box's own (unscaled) pixels, since Motion may be
+ * mid-scale when this runs.
+ */
+function shrinkToText(el: HTMLElement | null): void {
+  if (!el) return;
+  el.style.width = '';
+  const range = document.createRange();
+  range.selectNodeContents(el);
+  const widest = Math.max(0, ...Array.from(range.getClientRects(), (rect) => rect.width));
+  const scale = el.getBoundingClientRect().width / el.offsetWidth || 1;
+  const style = getComputedStyle(el);
+  const chrome =
+    parseFloat(style.paddingLeft) +
+    parseFloat(style.paddingRight) +
+    parseFloat(style.borderLeftWidth) +
+    parseFloat(style.borderRightWidth);
+  if (widest > 0) el.style.width = `${Math.ceil(widest / scale + chrome) + 1}px`;
+}
+
 /** The next option in `direction`, wrapping at either end. */
 function step(from: number, direction: 1 | -1): number {
   const count = LANGUAGE_OPTIONS.length;
@@ -86,6 +113,8 @@ export function LanguageSwitch({
   const locale = localeContext?.locale ?? 'en';
   const copy = useCopy(uiCopy).languageSwitch;
   const [open, setOpen] = useState(false);
+  const [betaHint, setBetaHint] = useState(false);
+  const betaHintId = useId();
   const down = placement === 'down';
   const [focus, setFocus] = useState(0);
   const rootRef = useRef<HTMLDivElement>(null);
@@ -280,7 +309,12 @@ export function LanguageSwitch({
               <div className="language-switch__head" id={headId}>
                 {copy.label}
               </div>
-              <motion.ul
+              {/* The Beta option's description for screen readers. Kept outside the
+                rows: a row's grid would otherwise give it a cell of its own. */}
+            <span id={betaHintId} className="sr-only">
+              {copy.betaHint}
+            </span>
+            <motion.ul
                 ref={listRef}
                 id={listId}
                 className="language-switch__list"
@@ -302,6 +336,7 @@ export function LanguageSwitch({
                       role="option"
                       lang={option.code}
                       aria-selected={selected}
+                    aria-describedby={option.beta ? betaHintId : undefined}
                       className={['language-switch__option', index === focus ? 'is-focus' : '']
                         .filter(Boolean)
                         .join(' ')}
@@ -324,6 +359,47 @@ export function LanguageSwitch({
                         {option.name}
                         <small>{option.code.toUpperCase()}</small>
                       </span>
+                      {option.beta ? (
+                        <span
+                          className="language-switch__beta"
+                          onPointerEnter={() => setBetaHint(true)}
+                          onPointerLeave={() => setBetaHint(false)}
+                        >
+                          {copy.beta}
+                        </span>
+                      ) : null}
+                      {/* A hover popover in the list's own motion language:
+                          the same spring, scale and blur, centred over the
+                          row. Decorative; screen readers get the same
+                          sentence through the option's description. */}
+                      <AnimatePresence>
+                        {option.beta && betaHint ? (
+                          <motion.span
+                            ref={shrinkToText}
+                            className="language-switch__hint"
+                            aria-hidden="true"
+                            initial={{ opacity: 0, scale: 0.92, x: '-50%', y: 4, filter: 'blur(4px)' }}
+                            animate={{
+                              opacity: 1,
+                              scale: 1,
+                              x: '-50%',
+                              y: 0,
+                              filter: 'blur(0px)',
+                              transition: { ...SPRING, delay: 0.12 },
+                            }}
+                            exit={{
+                              opacity: 0,
+                              scale: 0.96,
+                              x: '-50%',
+                              y: 2,
+                              filter: 'blur(2px)',
+                              transition: { duration: 0.12 },
+                            }}
+                          >
+                            {copy.betaHint}
+                          </motion.span>
+                        ) : null}
+                      </AnimatePresence>
                     </motion.li>
                   );
                 })}
