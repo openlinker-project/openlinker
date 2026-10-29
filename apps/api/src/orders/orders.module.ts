@@ -15,7 +15,6 @@ import { FiscalizationModule as CoreFiscalizationModule } from '@openlinker/core
 import { FulfillmentModule as CoreFulfillmentModule } from '@openlinker/core/fulfillment';
 import { InvoicingModule as CoreInvoicingModule } from '@openlinker/core/invoicing';
 import { MappingsModule as CoreMappingsModule } from '@openlinker/core/mappings';
-import { FulfillmentModule as CoreFulfillmentModule } from '@openlinker/core/fulfillment';
 import { InventoryModule as CoreInventoryModule } from '@openlinker/core/inventory';
 import { ShippingModule as CoreShippingModule } from '@openlinker/core/shipping';
 import { ReturnsModule as CoreReturnsModule } from '@openlinker/core/returns';
@@ -70,10 +69,6 @@ import { ORDER_CANCELLATION_SERVICE_TOKEN } from './application/interfaces/order
     CoreInvoicingModule,
     CoreMappingsModule,
     CoreInventoryModule,
-    // CoreFulfillmentModule (#3482) provides FULFILLMENT_WORK_QUERY_SERVICE_TOKEN —
-    // the list row's packing stage for an order OpenLinker handles itself. Composed
-    // here, in the interface layer, like the shortfall and open-return projections.
-    CoreFulfillmentModule,
     CoreShippingModule,
     CoreReturnsModule,
     // CoreSyncModule (#3534) provides JOB_ENQUEUE_TOKEN — the export
