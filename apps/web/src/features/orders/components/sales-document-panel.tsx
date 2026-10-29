@@ -113,6 +113,7 @@ import {
   DocumentTypeSelect,
   DOCUMENT_TYPE_LABEL_FALLBACK,
   InvoicePdfLink,
+  InvoiceMarketplaceUploadStatus,
   resolveSalesDocumentBlockCopy,
   resolveMissingTaxRateScope,
   splitShippingAcrossRates,
@@ -864,6 +865,8 @@ export function SalesDocumentPanel({ order }: SalesDocumentPanelProps): ReactEle
             <div className="sales-document-panel__body">
               <DocumentLifecycle kind="invoice" steps={resolveInvoiceLifecycleSteps(invoice, t)} />
               <KeyValueList items={buildInvoiceFieldItems(invoice, showRegulatoryBadge, t)} />
+              {/* #3549 - did the document reach the marketplace order? */}
+              <InvoiceMarketplaceUploadStatus invoiceId={invoice.id} />
               {InvoiceDetailSection && invoicingConnection ? (
                 <InvoiceDetailSection invoice={invoice} connection={invoicingConnection} />
               ) : null}

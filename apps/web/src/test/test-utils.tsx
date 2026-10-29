@@ -555,6 +555,9 @@ export function createMockApiClient(
       resendToAuthority: vi.fn().mockResolvedValue(null),
       // DEF-02 / DEF-03: no verification link unless a test supplies one.
       getVerificationLink: vi.fn().mockResolvedValue({ url: null }),
+      // #3549: no upload attempts unless a test supplies some.
+      getMarketplaceUpload: vi.fn().mockResolvedValue({ invoiceId: '', uploads: [] }),
+      retryMarketplaceUpload: vi.fn().mockResolvedValue({ queued: true }),
       ...overrides.invoicing,
     } as ApiClient['invoicing'],
     operationalSettings: {
