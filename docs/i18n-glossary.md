@@ -31,15 +31,15 @@ Add a row when a new domain term reaches the UI. Change a row only together with
 | Marketplace | Marketplace | kept in English, common in Polish e-commerce |
 | Online shop | Sklep internetowy | |
 | Sales channel | Kanał sprzedaży | |
-| Destination | Miejsce docelowe | where a listing or product is published |
+| Destination | Kanał docelowy | where a listing or product is published (a connection, not a place) |
 | Shipment | Przesyłka | |
 | Parcel | Paczka | |
 | Shipping label | Etykieta nadawcza | |
-| Tracking number | Numer przesyłki | |
+| Tracking number | Numer przesyłki | what the buyer is given to follow the parcel; the same identifier as the waybill number, so use "Numer przesyłki" in buyer-facing and status text |
 | Carrier | Przewoźnik | |
 | Parcel locker | Automat paczkowy | "Paczkomat" only for InPost (brand) |
 | Pickup point | Punkt odbioru | |
-| Waybill | List przewozowy | |
+| Waybill | List przewozowy | the document; say "List przewozowy" only when the document is meant, otherwise "Numer przesyłki" |
 | Dispatch | Nadanie | verb: nadaj |
 | Fulfilment | Realizacja zamówienia | short form "realizacja" in tight space |
 | Fulfilment task | Zadanie realizacji | |
@@ -49,7 +49,8 @@ Add a row when a new domain term reaches the UI. Change a row only together with
 | Refund | Zwrot pieniędzy | money going back; never just "zwrot" |
 | Restock | Przyjęcie na stan | |
 | Stock | Stan magazynowy | |
-| Inventory | Magazyn | the area / module |
+| Inventory | Stany magazynowe | the area / module |
+| Warehouse | Magazyn | a physical site, as in "Magazyn główny"; never the name of the module |
 | Warehouse location | Lokalizacja magazynowa | |
 | Reservation | Rezerwacja | |
 | Hold | Wstrzymanie | verb: wstrzymaj |
@@ -68,7 +69,7 @@ Add a row when a new domain term reaches the UI. Change a row only together with
 | Parameter | Parametr | marketplace category parameter |
 | Mapping | Mapowanie | |
 | Sync | Synchronizacja | verb: synchronizuj |
-| Job | Zadanie w tle | background job; plain "zadanie" in tight space |
+| Job | Zadanie w tle | background job; never shortened to bare "zadanie", which means the fulfilment task |
 | Webhook | Webhook | |
 | Automation | Automatyzacja | |
 | Needs attention | Wymaga uwagi | |
@@ -78,3 +79,15 @@ Add a row when a new domain term reaches the UI. Change a row only together with
 | Settings | Ustawienia | |
 | Sign in / sign out | Zaloguj się / Wyloguj się | |
 | Language | Język | |
+
+## Never in copy
+
+Words that describe how OpenLinker is built, not what the operator does. `check-ui-vocabulary` bans the English ones; the Polish counterparts are not machine-checked, so reviewers watch for them.
+
+| English (banned) | Polish counterpart (banned) |
+|---|---|
+| authority | autorytet |
+| phase | faza |
+| holder | posiadacz |
+| gateway | bramka |
+| posture | postawa |

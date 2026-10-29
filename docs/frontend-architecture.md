@@ -308,6 +308,9 @@ State ownership rules:
 - form state: React Hook Form
 - session state: `SessionProvider`
 - local UI state: component-local `useState` or `useReducer`
+- locale: `LocaleProvider` (persisted in `localStorage`; not session state)
+
+Locale passes the global-store test without a store: it is client-owned, app-wide, must survive route changes and is kept out of the URL on purpose. It is a single scalar context, like the theme, so it needs no general-purpose store. The "must not assume localStorage" rule below is about the session and does not apply to it.
 
 ### Server State
 
@@ -493,7 +496,7 @@ Initial variables:
 
 - `VITE_API_BASE_URL`
 - `VITE_APP_ENV`
-- `VITE_DEFAULT_UI_LOCALE` - the language a session opens in when the operator has not chosen one (`pl` or `en`; see § Internationalization)
+- `VITE_DEFAULT_UI_LOCALE` - the language a session opens in when the operator has not chosen one (`pl` or `en`; a blank or unsupported value counts as unset; see § Internationalization). Available from #3856.
 
 Rules:
 
@@ -577,9 +580,11 @@ Rules:
 
 *See [ADR-079](./architecture/adrs/079-frontend-owned-ui-translation.md) for the decision rationale.*
 
+> This section describes the target state of the #3855-#3859 stack. The hooks, the provider, the `locale` prop and `VITE_DEFAULT_UI_LOCALE` exist from #3856; the formatters from #3857; the language switch and translated primitives from #3858; the lint and copy checks from #3859. Merge the stack as one unit.
+
 The app ships English and Polish. English is the default today; #3890 makes Polish the default once the daily screens are translated. Every user-facing word is owned by the frontend; the API never sends translated text. Everything lives behind `apps/web/src/shared/i18n/`, the only import path a component uses.
 
-`LocaleProvider` is mounted once, at the app root in `app/providers/app-providers.tsx`. Tests and stories pin it with `<LocaleProvider locale="en">`.
+`LocaleProvider` is mounted once, at the app root in `app/providers/app-providers.tsx`. Tests pin it with `<LocaleProvider locale="en">`.
 
 ### Copy files
 
@@ -615,9 +620,9 @@ Placement:
 - **New copy goes in one file per feature folder**, sectioned by component: `features/<name>/lib/<name>.copy.ts`. Pages read their feature's copy file.
 - **A file of its own** when a component's copy passes about 40 keys, or would push the feature file past about 400 lines (for example `bulk-edit-modal.copy.ts` beside `bulk-edit-modal.tsx`).
 - **Existing per-component copy files keep their place and their name** (for example the 14 files in `features/returns/lib/` and the 4 in `features/bench/lib/`). They are reshaped in place to `{ en, pl }`; nobody merges them into one file and nobody renames a `-copy.ts` file to `.copy.ts`.
-- **Shared files**: `shared/ui/ui.copy.ts` for primitives, `shared/format/format.copy.ts` for the formatters, `app/app.copy.ts` for the shell.
+- **Shared files**: `shared/ui/ui.copy.ts` for primitives, `shared/format/format.copy.ts` for the formatters, `app/app.copy.ts` for the shell. `shared/ui/filter.copy.ts` (a plain English `FILTER_COPY`) is not migrated yet.
 - **Plugins** ship their own copy in `plugins/<name>/<name>.copy.ts`, read with the same `useCopy`; there is no separate plugin catalogue.
-- New files use the `.copy.ts` suffix. `scripts/check-ui-vocabulary.mjs` scans files ending `.copy.ts` or `-copy.ts`, but only inside its `SCAN_ROOTS`.
+- New files use the `.copy.ts` suffix. `scripts/check-ui-vocabulary.mjs` scans every `.copy.ts` / `-copy.ts` file under `apps/web/src/features/*` and every file under `apps/web/src` that calls `defineCopy`, which covers `shared/`, `app/` and `plugins/` copy too. `scripts/check-copy-locales.mjs` additionally checks placeholders, length budgets and em dashes in every copy file. The vocabulary check reads English only: the Polish counterparts of the banned words are listed in [i18n-glossary.md](./i18n-glossary.md) for review.
 
 `defineCopy` infers the shape from `en` and checks `pl` against it: Polish can never carry a key English lacks, and types plural entries per language (`one`/`other` for English, `one`/`few`/`many`/`other` for Polish). Until the lock-in step a missing Polish key falls back to English for that key only.
 
@@ -633,18 +638,21 @@ An object whose keys are exactly `one` and `other` is read as a plural, so never
 | `useFormat()` | `number`, `percent`, `money`, `date`, `time`, `dateTime`, `relativeTime`, `duration`, `list`, `country` | every number, amount and date shown to an operator |
 | `renderRich(text, parts)` | React nodes | a link or bold word inside a translated sentence |
 | `getLocale()` | the active locale outside React | the API client's `Accept-Language` header |
+| `useActiveLocale()` / `getBcp47Locale()` | the active locale / its BCP-47 tag, without requiring a provider | read-only consumers such as shared primitives and formatters |
+| `fit(text, budget)` | the text, checked against a length budget | copy that must fit a fixed-width control; `check-copy-locales` reads the budgets |
+| `LocaleKeyed` | wrapper | remounts the routed tree on a language change so module-level text refreshes; mounted in `app-providers.tsx` |
+| `useNumberFormat()` | a `NumberFormat` | legacy shim like `t()`; new code uses `useFormat()` |
 | `LanguageSwitch` (in `shared/ui`) | component | the switch in the sidebar footer and on signed-out pages |
 
-Interpolation uses `{name}` placeholders. A plural or a date is never built by string concatenation.
+Plugin authors pin a language with `SupportedLocale` and never build a `LocaleContextValue` by hand. Interpolation uses `{name}` placeholders. A plural or a date is never built by string concatenation.
 
 The pre-existing `useTranslation()` / `t(key, fallback)` (#612) stays as a compatibility shim for its existing call sites and gets no new callers.
 
 ### Choosing the language
 
-1. `?lang=pl|en` on any URL - switches and saves (support, screenshots, Playwright).
+1. `?lang=pl|en` on any URL - switches and saves, then the parameter is removed from the address bar so a reload cannot overwrite a later choice (support, screenshots, Playwright).
 2. `localStorage` - the operator's last choice.
-3. `VITE_DEFAULT_UI_LOCALE` - the deployment default, read in `shared/config/env.ts`. Build-time, like every `VITE_*` variable. Unset or blank means `en` today; #3890 changes that default to `pl`.
-4. `pl` - only when the variable holds a language the app does not support.
+3. `VITE_DEFAULT_UI_LOCALE` - the deployment default, read in `shared/config/env.ts`. Build-time, like every `VITE_*` variable. Unset, blank or a language the app does not support all mean the same thing: `en` today; #3890 changes that default to `pl`. A mistyped value therefore never silently picks the other language.
 
 There is no locale prefix in the URL: this is a signed-in app with no SEO need, and a link shared between colleagues must open in each reader's own language. The browser's `navigator.language` is deliberately not consulted. A later step stores the choice on the user profile.
 
@@ -668,7 +676,7 @@ Text a third-party provider returns is always shown verbatim behind a translated
 
 ### Tests
 
-Unit tests and Playwright run in English: the shared render helper and the e2e fixtures pin `en`, so the existing text queries keep working whatever the default is. Polish gets its own targeted tests.
+Unit tests and Playwright run in English: the Vitest setup file and `env`, the shared render helper and the e2e fixtures pin `en`, so the existing text queries keep working whatever the default is. Polish gets its own targeted tests.
 
 ## Components And Pages
 

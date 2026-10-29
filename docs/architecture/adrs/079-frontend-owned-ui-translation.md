@@ -12,7 +12,7 @@ keeps English as a choice. The frontend already has a no-op seam
 (`apps/web/src/shared/i18n`, #612): `t(key, fallback)` over an empty catalog,
 used in about 520 places. An inventory found about 11,000 rows of user-facing
 text across 553 components, about 1,500 of them already in `*.copy.ts` files
-that `scripts/check-ui-vocabulary.mjs` reads. Polish needs one/few/many plural
+that `scripts/check-ui-vocabulary.mjs` reads. Polish needs one/few/many/other plural
 forms. The API answers errors mostly with English sentences.
 
 ## Decision
@@ -27,9 +27,9 @@ forms. The API answers errors mostly with English sentences.
    `Intl.PluralRules`, `useFormat` for numbers, money, dates and relative time.
    No plural or date is built by string concatenation.
 3. **No locale in the URL.** The language is resolved as `?lang=` (saved), then
-   `localStorage`, then `VITE_DEFAULT_UI_LOCALE`, then `pl` for a value the app
-   does not support. The variable defaults to `en` until #3890 makes Polish the
-   default. A later step saves the choice on the user profile.
+   `localStorage`, then `VITE_DEFAULT_UI_LOCALE`, then the built-in default. An unset, blank
+   or unsupported variable all resolve to the same default: `en` until #3890
+   makes it `pl`. A later step saves the choice on the user profile.
 4. **The frontend owns every user-facing word.** The backend will gain stable
    error codes and params (an error envelope, #3860 to #3867) but never
    translated text. Until it does, the frontend maps the machine values an
@@ -60,12 +60,12 @@ forms. The API answers errors mostly with English sentences.
 
 **Pros:**
 - One file holds both languages, so a missing Polish string is a type error once
-  the type is strict, and an agent sees what to translate.
+  the type is strict (the lock-in step, #3890; until then a missing key falls back to English), and an agent sees what to translate.
 - Extends an existing convention and check script; no new i18n runtime library (the language switch uses Motion, a general animation library).
-- Tests stay English by pinning the locale in the shared render helper.
+- Tests stay English by pinning the locale in the Vitest setup file and `env`, with the shared render helper as a second pin.
 
 **Cons / trade-offs:**
-- About 150 lines of our own code (types, hooks, plurals, rich text, checks).
+- About 1,400 lines of our own code (about 950 of runtime in `shared/i18n/`, about 470 of check scripts).
 - Every language ships in the main bundle until per-locale splitting is added.
 - Export to translator tools needs a script.
 
