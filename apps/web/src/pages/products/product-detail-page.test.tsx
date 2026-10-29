@@ -759,6 +759,25 @@ describe('ProductDetailPage', () => {
     }
   });
 
+  it('should show the category path from the shop in the product summary', async () => {
+    const mockApi = createMockApiClient({
+      products: {
+        getById: vi.fn().mockResolvedValue({
+          ...sampleProduct,
+          categoryBreadcrumb: [
+            { id: '2', name: 'Dom i kuchnia' },
+            { id: '7', name: 'Ceramika' },
+          ],
+        }),
+      },
+    });
+
+    renderDetailPage(mockApi);
+
+    const summary = await screen.findByRole('region', { name: 'Product summary' });
+    expect(within(summary).getByText('Dom i kuchnia › Ceramika')).toBeInTheDocument();
+  });
+
   it('should render the variants table for a multi-variant product', async () => {
     const mockApi = createMockApiClient({
       products: {

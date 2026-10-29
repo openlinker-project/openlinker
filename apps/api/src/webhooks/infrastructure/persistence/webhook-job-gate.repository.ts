@@ -3,7 +3,9 @@
  *
  * The transactional implementation of the durable webhook spine (#2280,
  * ADR-049 decision 1): one Postgres transaction inserting the
- * `webhook_deliveries` gate row and the `sync_jobs` work row together.
+ * `webhook_deliveries` gate row and the `sync_jobs` work row(s) together - a
+ * delivery a translator fanned out into several events commits all its jobs
+ * or none of them.
  *
  * Raw parameterized SQL, deliberately (the core webhook repository's own
  * precedent, #1511): the two tables belong to different core contexts, so an
@@ -40,14 +42,23 @@ export class WebhookJobGateRepository implements IWebhookJobGateService {
     private readonly dataSource: DataSource
   ) {}
 
-  async insertDeliveryWithJob(
+  async insertDeliveryWithJobs(
     delivery: WebhookDeliveryUpsertInput,
-    job: SyncJobRequest | null
+    jobs: readonly SyncJobRequest[]
   ): Promise<WebhookJobGateResult> {
     return this.dataSource.transaction(async (manager) => {
-      // Job FIRST: the delivery row carries the real id, and a replay against
-      // a job-less legacy row self-heals the job (interface docblock).
-      const jobId = job ? await this.insertOrFindJob(manager, job) : null;
+      // Jobs FIRST: the delivery row carries the real id, and a replay against
+      // a job-less legacy row self-heals the job (interface docblock). Every
+      // job goes in this same transaction, sequentially - a failure on any of
+      // them rolls back the ones before it AND the delivery row, so a source
+      // retry never finds half a fan-out recorded as delivered.
+      const jobIds: string[] = [];
+      for (const job of jobs) {
+        jobIds.push(await this.insertOrFindJob(manager, job));
+      }
+      // The delivery row has one downstream-job slot; it records the primary.
+      const job = jobs[0] ?? null;
+      const jobId = jobIds[0] ?? null;
 
       const deliveryRows = await manager.query<Array<{ id: string }>>(
         `INSERT INTO webhook_deliveries
@@ -86,7 +97,7 @@ export class WebhookJobGateRepository implements IWebhookJobGateService {
           await this.repairDeadLetteredRow(manager, delivery, jobId, job?.jobType ?? null);
         }
       }
-      return { isNew, jobId };
+      return { isNew, jobId, jobIds };
     });
   }
 

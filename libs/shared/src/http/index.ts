@@ -7,6 +7,7 @@
  */
 export type {
   FetchLike,
+  ForConnectionOptions,
   HttpTransportFactoryPort,
   RateLimitedConnection,
 } from './http-transport-factory.port';

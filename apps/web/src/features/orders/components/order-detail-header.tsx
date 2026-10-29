@@ -24,7 +24,7 @@ import { paymentMethodChipLabel } from '../lib/payment-method-copy';
 import type { ParsedOrderSnapshot, PaymentStatus } from '../api/order-snapshot.schema';
 import { deriveHealthLevel, healthLabel, rollupSyncStatus, totalUnits, type OrderHealthLevel } from '../lib/order-health';
 import { ORDER_LIFECYCLE_PHASE_WAITING_ON, isOrderLifecyclePhase } from '../lib/order-lifecycle-phase';
-import { OrderPhaseBadge } from './order-phase-badge';
+import { OrderPhaseOrWaitingBadge } from './order-phase-or-waiting-badge';
 
 interface OrderDetailHeaderProps {
   order: OrderRecord;
@@ -76,11 +76,11 @@ export function OrderDetailHeader({ order, snapshot, tags }: OrderDetailHeaderPr
       <div className="order-header__top">
         <h1 className="order-header__title">{title}</h1>
         <StatusBadge tone={HEALTH_TONE[healthLevel]} withDot pulse={healthLevel === 'pending'}>
-          {healthLabel(healthLevel)}
+          {healthLabel(healthLevel, order.handledInOpenLinker)}
         </StatusBadge>
         {/* #2310 — beside the health badge, never instead of it (ADR-059).
             Header badges are full-size, so no `compact` here. */}
-        <OrderPhaseBadge phase={order.lifecyclePhase} />
+        <OrderPhaseOrWaitingBadge order={order} />
         {snapshot.status ? (
           <StatusBadge tone="neutral" withDot>
             {snapshot.status}

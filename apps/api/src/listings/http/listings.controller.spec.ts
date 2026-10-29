@@ -154,6 +154,7 @@ describe('ListingsController', () => {
       findMappingPage: jest.fn(),
       countByLifecycle: jest.fn().mockResolvedValue(emptyOfferLifecycleCounts()),
       countByConnectionAndVariants: jest.fn().mockResolvedValue(new Map<string, number>()),
+      findDeadFailedCreationOfferIds: jest.fn().mockResolvedValue([]),
       countListedVariantsByProducts: jest.fn().mockResolvedValue([]),
       findStaleMappedVariants: jest.fn().mockResolvedValue([]),
       findRecentlyListedVariantIds: jest.fn().mockResolvedValue([]),

@@ -6,10 +6,18 @@
  * `listExternalIds`, `getCategories` and `getProductCategories`. Every write
  * throws `ShoperNotSupportedException` (a silent no-op would read as "done").
  *
+ * Also implements two guard-only rungs (ADR-048), never advertised in the
+ * manifest: `ModifiedProductLister` over the `edit_date` filter - see
+ * `listExternalIdsModifiedSince` for what that timestamp does and does not
+ * cover - and `BulkProductReader`, a prefetch that warms a batch's products and
+ * stock rows in a few requests (see `prefetchProducts`).
+ *
  * Variant model (SPIKE-3638 M1): `products` is the header and `product-stocks`
- * is the variant grain, so each stock row is one `ProductVariant` keyed by its
- * real `stock_id`. Unlike PrestaShop / WooCommerce, no synthetic variant is
- * minted for a simple product - Shoper already gives it a stock row and id.
+ * is the variant grain, so each SELLABLE stock row is one `ProductVariant` keyed
+ * by its real `stock_id`: the extended rows of a product that has variants, or
+ * the base row of one that has none (`selectSellableShoperStocks`). Unlike
+ * PrestaShop / WooCommerce, no synthetic variant is minted for a simple product
+ * - Shoper already gives it a stock row and id.
  *
  * Id handling mirrors `WooCommerceProductMasterAdapter`: methods taking a
  * product id take the INTERNAL one and resolve the Shoper id through the
@@ -20,6 +28,20 @@
  * budget, operator-settable at runtime), not a Shoper page, so the adapter
  * covers any window with pages of 50 and slices - nothing is refused and no
  * window is ever shifted (see `fetchShoperWindow`).
+ *
+ * GPSR: `getProduct` / `getProducts` resolve the product's `safety_information`
+ * references through `ShoperGpsrReader` (the four `product-safety-*`
+ * registries, each read at most once per adapter instance and only when a
+ * product references it) into the neutral `Product.gpsr`. A failed or dangling
+ * reference leaves `gpsr` undefined - unknown - and never fails the read.
+ *
+ * Images: a product payload names only its `main_image`, so the gallery is read
+ * from `/product-images` - one request per product on the single path (memoised
+ * per adapter instance and skipped for a product with no main image, i.e. no
+ * image at all), one filtered list read per page of products on the list and
+ * bulk paths. See `mapShoperProductGallery` for the order and the hidden rule.
+ * A variant stock's `gfx_id` becomes that variant's own `images` - resolved
+ * against the same memoised gallery, read only when some stock names a picture.
  *
  * Filter syntax, both forms live-verified: `/products` takes the JSON form
  * (`filters={"product_id":{"in":[..]}}`, `{"translations.name":{"like":..}}`),
@@ -40,19 +62,25 @@ import type {
   ProductTaxRateReader,
   ReadProductTaxRateInput,
   TaxRateResolution,
+  ModifiedProductLister,
+  ListExternalIdsModifiedSinceInput,
+  BulkProductReader,
 } from '@openlinker/core/products';
 import type { IdentifierMappingPort, Connection } from '@openlinker/core/identifier-mapping';
 import { CORE_ENTITY_TYPE } from '@openlinker/core/identifier-mapping';
 import { Logger } from '@openlinker/shared/logging';
 
 import { ShoperNotSupportedException } from '../../../domain/exceptions/shoper-not-supported.exception';
+import { partitionSellableShoperStocks } from '../../../domain/policies/shoper-sellable-stocks.policy';
 import type {
   ShoperProduct,
+  ShoperProductImage,
   ShoperStock,
 } from '../../../domain/types/shoper-api.types';
 import { ShoperCategoryReader } from '../../readers/shoper-category.reader';
-import { joinShoperCategories } from '../../mappers/shoper-category.mapper';
+import { joinShoperCategories, primaryShoperCategoryId } from '../../mappers/shoper-category.mapper';
 import { mapShoperTaxRow } from '../../mappers/shoper-tax-rate.mapper';
+import { toShoperLocalBound } from '../../mappers/shoper-shop-time.mapper';
 import type { ShoperOptionEntry, ShoperOptionTableProvider } from '../../shop-context/shoper-option-table.provider';
 import type { ShoperTaxTableProvider } from '../../shop-context/shoper-tax-table.provider';
 import type { ShoperHttpClient, ShoperQuery } from '../../http/shoper-http-client';
@@ -61,17 +89,21 @@ import {
   fetchShoperPage,
   fetchShoperWindow,
 } from '../../http/shoper-pagination';
-import { fetchShoperProductImages } from '../../http/shoper-product-images';
-import { fetchShoperStocks } from '../../http/shoper-stocks';
+import { fetchShoperStocks, fetchShoperStocksForProducts } from '../../http/shoper-stocks';
 import {
-  buildShoperGalleryUrls,
+  fetchShoperProductImages,
+  fetchShoperProductImagesForProducts,
+} from '../../http/shoper-product-images';
+import {
+  indexShoperGalleryUrls,
   mapShoperProduct,
   mapShoperStockToVariant,
-  partitionShoperStocks,
   resolveShoperVariantAttributes,
   shoperStockOptionPairs,
+  shoperVariantImages,
 } from '../../mappers/shoper-product.mapper';
 import { resolveShoperExternalProductId } from '../../readers/shoper-product-id';
+import { ShoperGpsrReader } from '../../readers/shoper-gpsr.reader';
 import type { ShoperProductReader } from '../../readers/shoper-product.reader';
 import type { ShoperShopContextProvider } from '../../shop-context/shoper-shop-context.provider';
 
@@ -84,11 +116,22 @@ const DEFAULT_WINDOW = SHOPER_MAX_PAGE_SIZE;
 /** A Shoper id is a positive integer; anything else cannot be one. */
 const SHOPER_ID = /^\d+$/;
 
-export class ShoperProductMasterAdapter implements ProductMasterPort, ProductTaxRateReader {
+export class ShoperProductMasterAdapter
+  implements ProductMasterPort, ProductTaxRateReader, ModifiedProductLister, BulkProductReader
+{
   private readonly logger = new Logger(ShoperProductMasterAdapter.name);
   private categoryDirectory: Promise<Category[]> | null = null;
+  /** Stock rows warmed by `prefetchProducts`, keyed by Shoper product id. Read-only paths only. */
+  private readonly stockCache = new Map<string, ShoperStock[]>();
+  /**
+   * Gallery rows by Shoper product id, memoised as promises so concurrent
+   * callers share one request; a failure is dropped so the next call retries.
+   * Warmed by `prefetchProducts` and the list reads.
+   */
+  private readonly galleryCache = new Map<string, Promise<ShoperProductImage[]>>();
   private readonly categoryReader: ShoperCategoryReader;
   private readonly productReader: ShoperProductReader;
+  private readonly gpsrReader: ShoperGpsrReader;
 
   constructor(
     private readonly client: ShoperHttpClient,
@@ -103,6 +146,7 @@ export class ShoperProductMasterAdapter implements ProductMasterPort, ProductTax
   ) {
     this.productReader = productReader;
     this.categoryReader = new ShoperCategoryReader(client);
+    this.gpsrReader = new ShoperGpsrReader(client, connection.id);
   }
 
   // ─── Read methods ──────────────────────────────────────────────────────────
@@ -120,6 +164,158 @@ export class ShoperProductMasterAdapter implements ProductMasterPort, ProductTax
     return rows.map((p) => String(p.product_id));
   }
 
+  /**
+   * Shoper ids of the products whose `edit_date` is at or after `since`
+   * (`filters={"edit_date":{">=":"<shop-local time>"}}`, live-verified).
+   *
+   * WHAT BUMPS `edit_date` (measured on a live shop, 2026-10-22/23): a name or
+   * category edit, a variant's stock or price written through the API, adding a
+   * variant, a sale, and an order line being added. WHAT DOES NOT: deleting a
+   * variant through the API, adding or deleting an image, and stock coming back
+   * (an order line deleted, the panel's "return to stock"). Those changes are
+   * invisible to this rung, so the full `master.product.syncAll` pass stays the
+   * backstop, and stock is not this rung's business at all - the inventory sweep
+   * owns it. A caller must not read an empty result as "nothing changed".
+   *
+   * TIME: `edit_date` is a naive shop-local timestamp, so `since` is rendered in
+   * the shop's zone (`application-config.locale_timezone`, Europe/Warsaw on every
+   * shop seen) by `toShoperLocalBound`, which only ever errs EARLY: an unknown
+   * zone widens the bound by 14 h, and a DST fall-back within the next hour
+   * moves it back by the repeated hour. Re-reading a product is free; skipping
+   * one is not.
+   *
+   * ORDER: `product_id ASC`, deliberately NOT `edit_date ASC`. Offset paging over
+   * a live set is stable only if a row does not MOVE while the cycle reads it.
+   * Under `edit_date` order a product re-edited mid-cycle jumps to the tail and
+   * shifts every later row one place left, stepping over one; under `product_id`
+   * order it stays put, a product entering the set only shifts rows RIGHT (one
+   * re-read, harmless) and a new product lands at the tail. It is also the one
+   * order the other sweeps already rely on, and a single unique key, so there
+   * are no ties for the shop to break differently between two pages.
+   */
+  async listExternalIdsModifiedSince(input: ListExternalIdsModifiedSinceInput): Promise<string[]> {
+    const { timezone } = await this.shopContext.get();
+    const bound = toShoperLocalBound(input.since, timezone ?? null);
+    const rows = await fetchShoperWindow<Pick<ShoperProduct, 'product_id'>>(
+      this.client,
+      '/products',
+      {
+        offset: input.offset,
+        limit: input.limit,
+        query: {
+          order: PRODUCT_ORDER,
+          filters: JSON.stringify({ edit_date: { '>=': bound } }),
+        },
+      }
+    );
+    return rows.map((p) => String(p.product_id));
+  }
+
+  /**
+   * Warm a batch's products, stock rows and galleries (#2593 shape,
+   * `BulkProductReader`): per chunk of 50 ids, ONE `GET /products?filters=
+   * {"product_id":{"in":[..]}}` seeding the shared product reader, one filtered
+   * `/product-stocks` read and one filtered `/product-images` read for the
+   * products it returned (each paged only as far as its rows need). The
+   * per-product loop that follows then reads `/products/:id`, the product's
+   * stocks and its gallery from memory - `getProduct`, `getProductCategories`,
+   * `readProductTaxRate` and `getProductVariants` all hit the warm copies -
+   * against three requests per product without it.
+   *
+   * Invisible except in request count, as the contract requires:
+   *   - An id the shop did NOT return is left unwarmed, product and stocks, so
+   *     its own `GET /products/:id` is what answers - and a 404 there is the
+   *     deletion signal, exactly as without the prefetch. Nothing here concludes
+   *     a deletion from an absence.
+   *   - A stock bucket is seeded only for a product the products read returned,
+   *     so an empty bucket means "the shop listed this product and no stock rows
+   *     for it" - the same answer its own stocks read would give.
+   *   - A row of an id nobody asked for means the filter was dropped; the chunk
+   *     is refused before anything from it is seeded.
+   *   - Any failure is logged and swallowed; whatever was not warmed is read per
+   *     product as before. No identifier mapping is created here.
+   */
+  async prefetchProducts(externalIds: readonly string[]): Promise<void> {
+    const ids = [...new Set(externalIds.map(String))].filter((id) => SHOPER_ID.test(id));
+    let warmed = 0;
+    try {
+      for (let i = 0; i < ids.length; i += SHOPER_MAX_PAGE_SIZE) {
+        warmed += await this.prefetchChunk(ids.slice(i, i + SHOPER_MAX_PAGE_SIZE));
+      }
+    } catch (error) {
+      this.logger.warn(
+        `Shoper bulk product prefetch failed for ${ids.length} product(s) ` +
+          `(connection: ${this.connection.id}); falling back to per-product reads: ` +
+          `${error instanceof Error ? error.message : String(error)}`
+      );
+    }
+    if (warmed > 0) {
+      // The category directory serves every product's placement path and
+      // breadcrumb; warming it here keeps the per-product loop request-free.
+      // Best-effort: a failure leaves each product to read it on its own.
+      await this.getCategories().catch((error: unknown) =>
+        this.logger.warn(
+          `Shoper category directory could not be prefetched (connection: ${this.connection.id}): ` +
+            `${error instanceof Error ? error.message : String(error)}`
+        )
+      );
+    }
+  }
+
+  /** Warms one chunk; returns how many of its products the shop returned. */
+  private async prefetchChunk(chunk: readonly string[]): Promise<number> {
+    const result = await fetchShoperPage<ShoperProduct>(this.client, '/products', {
+      page: 1,
+      limit: SHOPER_MAX_PAGE_SIZE,
+      query: {
+        order: PRODUCT_ORDER,
+        filters: JSON.stringify({ product_id: { in: chunk.map(Number) } }),
+      },
+    });
+    const requested = new Set(chunk);
+    for (const product of result.items) {
+      if (!requested.has(String(product.product_id))) {
+        throw new Error(
+          `Shoper answered a products read for ${chunk.length} id(s) with product ` +
+            `${String(product.product_id)}, which was not asked for - the filter was not applied`
+        );
+      }
+    }
+
+    const returned = result.items.map((product) => String(product.product_id));
+    for (const product of result.items) {
+      this.productReader.seed(String(product.product_id), product);
+    }
+    if (returned.length === 0) {
+      return 0;
+    }
+    const stocks = await fetchShoperStocksForProducts(this.client, returned);
+    for (const [id, rows] of stocks) {
+      this.stockCache.set(id, rows);
+    }
+    // After the stocks, so a failed gallery read still leaves them warm.
+    await this.warmGalleries(returned);
+    return returned.length;
+  }
+
+  /**
+   * One filtered `/product-images` read (paged to the end) for up to 50 products,
+   * seeding the gallery memo. Like the stocks, a product the shop listed with no
+   * image gets an empty bucket - the same answer its own read would give.
+   */
+  private async warmGalleries(externalIds: readonly string[]): Promise<void> {
+    const pending = externalIds.filter((id) => !this.galleryCache.has(id));
+    for (let i = 0; i < pending.length; i += SHOPER_MAX_PAGE_SIZE) {
+      const buckets = await fetchShoperProductImagesForProducts(
+        this.client,
+        pending.slice(i, i + SHOPER_MAX_PAGE_SIZE),
+      );
+      for (const [id, rows] of buckets) {
+        this.galleryCache.set(id, Promise.resolve(rows));
+      }
+    }
+  }
+
   async getProduct(productId: string): Promise<Product> {
     const externalId = await this.resolveExternalProductId(productId);
     // The shop context does not depend on the product, so it is read alongside
@@ -131,10 +327,20 @@ export class ShoperProductMasterAdapter implements ProductMasterPort, ProductTax
     ctxRead.catch(() => undefined);
     const data = await this.readProduct(externalId, productId);
     const ctx = await ctxRead;
-    const product = mapShoperProduct(data, ctx);
-    const gallery = await this.readGallery(externalId, ctx.host);
-    // An empty or unreadable gallery keeps the main image the product row carries.
-    return { ...product, images: gallery.length > 0 ? gallery : product.images, id: productId };
+    // Independent reads; the breadcrumb never throws, so a failed gallery read
+    // fails the product read exactly as it would on its own.
+    const [gallery, categoryBreadcrumb] = await Promise.all([
+      this.readGallery(externalId, data),
+      this.readCategoryBreadcrumb(data),
+    ]);
+    return this.withGpsr(
+      {
+        ...mapShoperProduct(data, ctx, gallery),
+        ...(categoryBreadcrumb === null ? {} : { categoryBreadcrumb }),
+        id: productId,
+      },
+      data,
+    );
   }
 
   async getProducts(filters?: ProductFilters): Promise<Product[]> {
@@ -163,7 +369,9 @@ export class ShoperProductMasterAdapter implements ProductMasterPort, ProductTax
     const ctx = await this.shopContext.get();
     // A product with variants also has a base row nobody can buy; it is left
     // out, and kept only to resolve prices and weights stated relative to it.
-    const { variants: stocks, base } = partitionShoperStocks(await this.fetchAllStocks(externalId));
+    const { variants: stocks, base } = partitionSellableShoperStocks(
+      await this.fetchAllStocks(externalId),
+    );
     if (stocks.length === 0) {
       return [];
     }
@@ -181,6 +389,7 @@ export class ShoperProductMasterAdapter implements ProductMasterPort, ProductTax
       }))
     );
 
+    const galleryUrls = await this.variantGalleryUrls(externalId, stocks, ctx.host);
     const variants: ProductVariant[] = [];
     for (const stock of stocks) {
       const internalId = idMap.get(`${stock.stock_id}:${this.connection.id}`);
@@ -189,8 +398,9 @@ export class ShoperProductMasterAdapter implements ProductMasterPort, ProductTax
         continue;
       }
       const attributes = await this.resolveVariantAttributes(stock, ctx.language);
+      const images = shoperVariantImages(stock, galleryUrls);
       variants.push({
-        ...mapShoperStockToVariant(stock, productId, ctx, attributes, base),
+        ...mapShoperStockToVariant(stock, productId, ctx, attributes, base, images),
         id: internalId,
       });
     }
@@ -262,8 +472,8 @@ export class ShoperProductMasterAdapter implements ProductMasterPort, ProductTax
    *
    * Built at most ONCE per adapter instance: a caller resolving categories for
    * a page of products would otherwise rebuild the whole directory (the tree
-   * plus every list page) per product, against a shop with an unknown request
-   * ceiling. Memoised as a promise so concurrent callers share one build, and a
+   * plus every list page) per product, against a request budget of about 10/s
+   * per shop that every integration on it shares. Memoised as a promise so concurrent callers share one build, and a
    * failure is dropped so the next call retries. Each caller gets its own array.
    */
   async getCategories(): Promise<Category[]> {
@@ -301,6 +511,24 @@ export class ShoperProductMasterAdapter implements ProductMasterPort, ProductTax
   }
 
   /**
+   * The product's placement as ONE path, root to leaf: the primary category
+   * (`category_id`) and every ancestor above it, each carrying the `parentId` and
+   * tree `depth` of the directory. The publish builder provisions exactly this
+   * path on the destination, so returning the leaf alone made it create the leaf
+   * a second time at the root (a product in "Kuchnia > Zestawy" published into a
+   * new root "Zestawy").
+   *
+   * Single-branch, the same rule the PrestaShop master follows with
+   * `id_category_default`: the other categories a Shoper product is also
+   * assigned to are not returned, because the builder treats the list as one
+   * path and a second branch would be stitched into it. Only when Shoper names
+   * no primary category is a sole entry of `categories` used as the anchor.
+   *
+   * A path that cannot be completed - the anchor or an ancestor is missing from
+   * the directory, the tree does not place it, or the parents loop - yields `[]`
+   * (publish uncategorised) rather than a truncated path, since a truncated path
+   * is precisely what lands a category at the wrong level.
+   *
    * Reads the product through the same translating read as `getProduct`, so a
    * product Shoper reports gone surfaces here as the neutral
    * `MasterProductNotFoundError` too - core may reach a deleted product through
@@ -309,24 +537,49 @@ export class ShoperProductMasterAdapter implements ProductMasterPort, ProductTax
   async getProductCategories(productId: string): Promise<Category[]> {
     const externalId = await this.resolveExternalProductId(productId);
     const data = await this.readProduct(externalId, productId);
-    const ids = Array.isArray(data.categories) ? data.categories.map(String) : [];
-    if (ids.length === 0) {
+    const anchor = primaryShoperCategoryId(data);
+    if (anchor === null) {
       return [];
     }
 
+    return (await this.categoryPath(externalId, anchor)) ?? [];
+  }
+
+  /**
+   * The categories from the root down to `anchor`, read off the memoised
+   * directory (so a batch page pays for it once), or `null` when the path
+   * cannot be completed: the anchor or an ancestor is missing from the
+   * directory (an unnamed category is left out of it), the tree does not place
+   * it, or the parents loop. Never a truncated path. Shared by the placement
+   * path (`getProductCategories`) and the category breadcrumb.
+   */
+  private async categoryPath(externalId: string, anchor: string): Promise<Category[] | null> {
     const directory = new Map((await this.getCategories()).map((c) => [c.id, c]));
-    const categories: Category[] = [];
-    for (const id of ids) {
-      const category = directory.get(id);
-      if (category === undefined) {
+    const path: Category[] = [];
+    const seen = new Set<string>();
+    let currentId: string | undefined = anchor;
+    while (currentId !== undefined) {
+      const category = directory.get(currentId);
+      const gap =
+        category === undefined
+          ? 'not in the directory'
+          : category.depth === undefined
+            ? 'not placed in the tree'
+            : seen.has(currentId)
+              ? 'parents loop'
+              : null;
+      if (category === undefined || gap !== null) {
         this.logger.warn(
-          `Shoper product ${externalId} references unknown category ${id}, skipped (connection: ${this.connection.id})`
+          `Shoper product ${externalId}: the path of category ${anchor} cannot be completed at ` +
+            `${currentId} (${gap ?? 'unknown'}); returning no categories (connection: ${this.connection.id})`
         );
-        continue;
+        return null;
       }
-      categories.push(category);
+      seen.add(currentId);
+      path.unshift(category);
+      currentId = category.parentId;
     }
-    return categories;
+    return path;
   }
 
   // ─── Not supported in this milestone ───────────────────────────────────────
@@ -366,6 +619,53 @@ export class ShoperProductMasterAdapter implements ProductMasterPort, ProductTax
    */
   private readProduct(externalId: string, productId: string): Promise<ShoperProduct> {
     return this.productReader.read(externalId, productId);
+  }
+
+  /**
+   * The product's gallery rows. A product with no `main_image` has no image at
+   * all on Shoper, so it costs no request. A transport failure propagates: a
+   * gallery silently read as empty would drop every image but the main one
+   * from the catalogue on the next sync.
+   */
+  private readGallery(externalId: string, product: ShoperProduct): Promise<ShoperProductImage[]> {
+    if (product.main_image === null && !this.galleryCache.has(externalId)) {
+      return Promise.resolve([]);
+    }
+    return this.readGalleryRows(externalId);
+  }
+
+  private readGalleryRows(externalId: string): Promise<ShoperProductImage[]> {
+    let read = this.galleryCache.get(externalId);
+    if (read === undefined) {
+      read = fetchShoperProductImages(this.client, externalId, (count) =>
+        this.logger.warn(
+          `Shoper returned ${count} image(s) of another product while reading product ` +
+            `${externalId}; dropped (connection: ${this.connection.id})`,
+        ),
+      );
+      this.galleryCache.set(externalId, read);
+      read.catch(() => this.galleryCache.delete(externalId));
+    }
+    return read;
+  }
+
+  /**
+   * `gfx_id` -> URL for the variants' own pictures. No stock naming a picture
+   * means no request; otherwise the product's gallery is read (shared with
+   * `getProduct`, so a sync pays for it once). A failure propagates, for the
+   * same reason a gallery failure does: syncing the variants without their
+   * pictures would clear the stored ones.
+   */
+  private async variantGalleryUrls(
+    externalId: string,
+    stocks: readonly ShoperStock[],
+    host: string,
+  ): Promise<Map<string, string>> {
+    const named = stocks.some((s) => s.gfx_id !== null && s.gfx_id !== undefined && s.gfx_id !== '');
+    if (!named) {
+      return new Map();
+    }
+    return indexShoperGalleryUrls(await this.readGalleryRows(externalId), host);
   }
 
   private resolveExternalProductId(productId: string): Promise<string> {
@@ -438,6 +738,11 @@ export class ShoperProductMasterAdapter implements ProductMasterPort, ProductTax
       return [];
     }
     const ctx = await this.shopContext.get();
+    // One filtered read for the page rather than one per product; a product with
+    // no main image has no image at all and is not asked about.
+    await this.warmGalleries(
+      items.filter((p) => p.main_image !== null).map((p) => String(p.product_id)),
+    );
     const idMap = await this.identifierMapping.batchGetOrCreateInternalIds(
       items.map((p) => ({
         entityType: CORE_ENTITY_TYPE.Product,
@@ -453,9 +758,22 @@ export class ShoperProductMasterAdapter implements ProductMasterPort, ProductTax
         this.logger.warn(`No internal id for Shoper product ${raw.product_id}`);
         continue;
       }
-      products.push({ ...mapShoperProduct(raw, ctx), id: internalId });
+      const gallery = await this.readGallery(String(raw.product_id), raw);
+      products.push(
+        await this.withGpsr({ ...mapShoperProduct(raw, ctx, gallery), id: internalId }, raw),
+      );
     }
     return products;
+  }
+
+  /**
+   * Attach the product's GPSR data when the shop reported any answer.
+   * `undefined` (not reported, or not resolvable this time) adds no key, so
+   * the stored declaration is left as it is.
+   */
+  private async withGpsr(product: Product, raw: ShoperProduct): Promise<Product> {
+    const gpsr = await this.gpsrReader.resolve(raw.safety_information, String(raw.product_id));
+    return gpsr === undefined ? product : { ...product, gpsr };
   }
 
   /** Exhausts every page of a product's stocks (a product may have more than 50 variants). */
@@ -484,31 +802,44 @@ export class ShoperProductMasterAdapter implements ProductMasterPort, ProductTax
   }
 
   /**
-   * The product's gallery URLs, or `[]` when it cannot be read. A failure is
-   * logged and does not fail the product read: the price, stock and text of a
-   * product matter more than its extra photos, and the caller keeps the main
-   * image. The cost is that a failed read shows only the main image until the
-   * next sync reads the gallery again.
+   * The path of the product's main category (`category_id`, else its first
+   * category), root to leaf, or `null` when it has none or it cannot be read.
+   *
+   * Walked by `categoryPath` over the same memoised directory the placement
+   * path reads, so a batch page reads the directory once rather than once per
+   * product. Best-effort like the gallery: a failure, including a tree Shoper
+   * answered unreadably, is logged and the product syncs without a path.
    */
-  private async readGallery(externalProductId: string, host: string): Promise<string[]> {
+  private async readCategoryBreadcrumb(
+    data: ShoperProduct,
+  ): Promise<{ id: string; name: string }[] | null> {
+    const main = data.category_id === null || data.category_id === undefined ? '' : String(data.category_id).trim();
+    const leafId =
+      main.length > 0 && main !== '0'
+        ? main
+        : Array.isArray(data.categories) && data.categories.length > 0
+          ? String(data.categories[0])
+          : null;
+    if (leafId === null) {
+      return null;
+    }
     try {
-      const images = await fetchShoperProductImages(this.client, externalProductId, (count) =>
-        this.logger.warn(
-          `Shoper returned ${count} image row(s) of another product while reading product ` +
-            `${externalProductId}; dropped (connection: ${this.connection.id})`,
-        ),
-      );
-      return buildShoperGalleryUrls(host, images);
+      const path = await this.categoryPath(String(data.product_id), leafId);
+      return path === null ? null : path.map((category) => ({ id: category.id, name: category.name }));
     } catch (error) {
       this.logger.warn(
-        `Shoper gallery of product ${externalProductId} could not be read; keeping the main image ` +
+        `Shoper category path of product ${data.product_id} could not be read; syncing without it ` +
           `(${error instanceof Error ? error.message : String(error)}, connection: ${this.connection.id})`,
       );
-      return [];
+      return null;
     }
   }
 
   private fetchAllStocks(externalProductId: string): Promise<ShoperStock[]> {
+    const warmed = this.stockCache.get(externalProductId);
+    if (warmed !== undefined) {
+      return Promise.resolve([...warmed]);
+    }
     // The filter-ignored guard lives in `fetchShoperStocks`; this only reports it.
     return fetchShoperStocks(this.client, externalProductId, (count) =>
       this.logger.warn(

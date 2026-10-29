@@ -794,6 +794,8 @@ export function KsefFa3View({
           KSeF number is shown as the caption below the QR. */}
       {verificationUrl !== null ? (
         <section className="ksef-fa3-view__verification">
+          {/* 148 is mirrored by `.ksef-verification-pending__frame` (the
+              not-cleared placeholder, #3547) - change both together. */}
           <QrCode
             value={verificationUrl}
             size={148}

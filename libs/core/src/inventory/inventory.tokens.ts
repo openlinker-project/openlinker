@@ -34,6 +34,11 @@ export const RESERVATION_SHORTFALL_REPOSITORY_TOKEN = Symbol(
 export const RESERVATION_SHORTFALL_SERVICE_TOKEN = Symbol('IReservationShortfallService');
 // Order-shaped seam over the ledger (#2344, ADR-061)
 export const RESERVATION_SERVICE_TOKEN = Symbol('IReservationService');
+// Consumes the holds a destination that is also their product master absorbed
+// by receiving the order.
+export const MASTER_ABSORBED_RESERVATION_SERVICE_TOKEN = Symbol(
+  'IMasterAbsorbedReservationService'
+);
 // Connection-provenance backfill (#2317, ADR-058 ladder step (ii))
 export const INVENTORY_PROVENANCE_BACKFILL_SERVICE_TOKEN = Symbol(
   'IInventoryProvenanceBackfillService'

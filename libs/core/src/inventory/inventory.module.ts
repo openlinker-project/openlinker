@@ -31,6 +31,7 @@ import { InventoryQueryService } from './application/services/inventory-query.se
 import { LocationService } from './application/services/location.service';
 import { AvailabilityService } from './application/services/availability.service';
 import { ReservationService } from './application/services/reservation.service';
+import { MasterAbsorbedReservationService } from './application/services/master-absorbed-reservation.service';
 import { ReservationExpiryService } from './application/services/reservation-expiry.service';
 import { ReservationShortfallService } from './application/services/reservation-shortfall.service';
 import { UnavailableOrderHoldReader } from './infrastructure/reservations/unavailable-order-hold.reader';
@@ -46,6 +47,7 @@ import {
   RESERVATION_OBLIGATION_READERS_TOKEN,
   RESERVATION_REPOSITORY_TOKEN,
   RESERVATION_SERVICE_TOKEN,
+  MASTER_ABSORBED_RESERVATION_SERVICE_TOKEN,
   RESERVATION_SHORTFALL_REPOSITORY_TOKEN,
   RESERVATION_SHORTFALL_SERVICE_TOKEN,
   INVENTORY_REPOSITORY_TOKEN,
@@ -120,6 +122,8 @@ export {
     ReservationShortfallRepository,
     ReservationShortfallService,
     ReservationService,
+    // Consumes holds a destination-that-is-also-the-master absorbed.
+    MasterAbsorbedReservationService,
     // #2346 — the state-dependent expiry sweep. The obligation readers map is
     // bound as a VALUE rather than a class so its mapped type over
     // `ReservationObligationKindValues` is checked here: a kind added without a
@@ -183,6 +187,10 @@ export {
     {
       provide: RESERVATION_SERVICE_TOKEN,
       useExisting: ReservationService,
+    },
+    {
+      provide: MASTER_ABSORBED_RESERVATION_SERVICE_TOKEN,
+      useExisting: MasterAbsorbedReservationService,
     },
     {
       provide: RESERVATION_OBLIGATION_READERS_TOKEN,
@@ -292,6 +300,7 @@ export {
     RESERVATION_LEDGER_READER_TOKEN,
     RESERVATION_REPOSITORY_TOKEN,
     RESERVATION_SERVICE_TOKEN,
+    MASTER_ABSORBED_RESERVATION_SERVICE_TOKEN,
     RESERVATION_EXPIRY_SERVICE_TOKEN,
     RESERVATION_OBLIGATION_READERS_TOKEN,
     RESERVATION_SHORTFALL_REPOSITORY_TOKEN,

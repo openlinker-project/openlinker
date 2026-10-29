@@ -45,6 +45,7 @@ import type { FulfillmentRequestStatus } from '../types/fulfillment-request-stat
 import type { FulfillmentWork } from '../types/fulfillment-work.types';
 import type { FulfillmentWorkRejection } from '../types/fulfillment-work-rejection.types';
 import type { FulfillmentWorkStatus } from '../types/fulfillment-work-status.types';
+import type { FulfillmentWorkProgress } from '../types/order-work-summary.types';
 import type {
   FulfillmentWorkListFilter,
   FulfillmentWorkPage,
@@ -401,6 +402,22 @@ export interface UnrelayedShippedDispatch {
   readonly shippedAt: Date;
 }
 
+/** A routed work whose `inventory.saleDecrement` job was never enqueued (#3629). */
+export interface WorkMissingSaleDecrementJob {
+  readonly workId: string;
+  readonly orderId: string;
+  /** The connection the ORDER came through (#2609: never the holder). */
+  readonly orderSourceConnectionId: string;
+}
+
+export interface ListWorksMissingSaleDecrementJobRepoInput {
+  /** Consider only works created strictly before this instant (the grace cutoff). */
+  readonly createdBefore: Date;
+  /** Consider only works created at or after this instant (the lookback floor, below `sync_jobs` retention). */
+  readonly createdAfter: Date;
+  readonly limit: number;
+}
+
 export interface ListUnrelayedShippedDispatchesInput {
   /**
    * Consider only works whose earliest `shipped` claim is strictly older than
@@ -542,6 +559,19 @@ export interface FulfillmentWorkRepositoryPort {
 
   findById(workId: string): Promise<FulfillmentWork | null>;
   findByOrderId(orderId: string): Promise<FulfillmentWork[]>;
+
+  /**
+   * The packing-relevant facts of every work covering ANY of `orderIds` (#3482) —
+   * one `WHERE "orderId" IN (…)` for a whole list page, never a per-order read.
+   *
+   * `status` AND `parcelClosedAt`, because the pack bench records its progress in
+   * its own columns and never moves `status`. Header columns only, no lines:
+   * hydrating every line of every work on a page would be the N+1 this exists to
+   * avoid. An order with no work is absent from the result.
+   */
+  findProgressByOrderIds(
+    orderIds: readonly string[]
+  ): Promise<ReadonlyArray<FulfillmentWorkProgress & { readonly orderId: string }>>;
 
   /**
    * The worklist read (#2406) — filtered, ordered and BOUNDED.
@@ -750,6 +780,19 @@ export interface FulfillmentWorkRepositoryPort {
   listUnrelayedShippedDispatches(
     input: ListUnrelayedShippedDispatchesInput
   ): Promise<UnrelayedShippedDispatch[]>;
+
+  /**
+   * The #3629 reconcile frontier: routed, non-cancelled works on a non-cancelled
+   * order for which NO `inventory.saleDecrement` job was ever enqueued, oldest first.
+   *
+   * **Frontier-as-query, no cursor** - an enqueued work leaves the set because the
+   * producers' idempotency key then exists in `sync_jobs`. A read-model reporting
+   * join onto `order_records` and `sync_jobs` by table name (ADR-036): read-only,
+   * parameterised, and dependent on `sync_jobs."idempotencyKey"` being unique.
+   */
+  listWorksMissingSaleDecrementJob(
+    input: ListWorksMissingSaleDecrementJobRepoInput
+  ): Promise<WorkMissingSaleDecrementJob[]>;
 
   /** At-most-once claim, `WHERE "dispatchRelayedAt" IS NULL`. #2401 is the caller. */
   claimDispatchRelay(workId: string, at: Date): Promise<boolean>;

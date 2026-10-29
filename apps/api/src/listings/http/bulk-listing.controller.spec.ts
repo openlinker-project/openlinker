@@ -27,6 +27,7 @@ import {
   BulkListingBatch,
   BulkListingBatchNotFoundException,
   BulkRetryMissingSnapshotException,
+  DuplicateBulkBatchIdempotencyKeyError,
   EmptyBulkSubmissionException,
   NoFailedChildrenToRetryException,
 } from '@openlinker/core/listings';
@@ -101,6 +102,7 @@ describe('BulkListingController', () => {
         skippedAlreadyListedCount: 0,
         skippedAvailabilityUnknownCount: 0,
         skippedInvalidEanCount: 0,
+        deduplicated: false,
       });
       expect(bulkSubmit.submit).toHaveBeenCalledWith({
         connectionId: dto.connectionId,
@@ -113,6 +115,88 @@ describe('BulkListingController', () => {
           generateDescription: true,
           descriptionTone: 'concise',
         },
+      });
+    });
+
+    describe('x-idempotency-key', () => {
+      const dto: BulkOfferCreateRequestDto = {
+        connectionId: '00000000-0000-4000-8000-000000000000',
+        productIds: ['v-a'],
+        sharedConfig: { stock: 1, publishImmediately: false },
+      };
+
+      beforeEach(() => {
+        bulkSubmit.submit.mockResolvedValue({
+          batchId: 'b-1',
+          jobIds: ['job-1'],
+          skippedAlreadyListedCount: 0,
+          skippedAvailabilityUnknownCount: 0,
+          skippedInvalidEanCount: 0,
+        });
+      });
+
+      it('should pass the header through to the service input', async () => {
+        await controller.submit(dto, adminUser, 'key-1');
+
+        expect(bulkSubmit.submit).toHaveBeenCalledWith(
+          expect.objectContaining({ idempotencyKey: 'key-1' })
+        );
+      });
+
+      it('should trim surrounding whitespace from the header', async () => {
+        await controller.submit(dto, adminUser, '  key-1  ');
+
+        expect(bulkSubmit.submit).toHaveBeenCalledWith(
+          expect.objectContaining({ idempotencyKey: 'key-1' })
+        );
+      });
+
+      it.each([undefined, '', '   '])(
+        'should leave the key out of the input when the header is %p',
+        async (header) => {
+          await controller.submit(dto, adminUser, header);
+
+          expect(bulkSubmit.submit.mock.calls[0][0]).not.toHaveProperty('idempotencyKey');
+        }
+      );
+
+      it('should reject an over-long header with 400 and never call the service', async () => {
+        await expect(controller.submit(dto, adminUser, 'k'.repeat(201))).rejects.toBeInstanceOf(
+          BadRequestException
+        );
+        expect(bulkSubmit.submit).not.toHaveBeenCalled();
+      });
+
+      it('should report a deduplicated submit as such', async () => {
+        bulkSubmit.submit.mockResolvedValue({
+          batchId: 'b-earlier',
+          jobIds: [],
+          skippedAlreadyListedCount: 0,
+          skippedAvailabilityUnknownCount: 0,
+          skippedInvalidEanCount: 0,
+          deduplicated: true,
+        });
+
+        const response = await controller.submit(dto, adminUser, 'key-1');
+
+        expect(response).toEqual({
+          batchId: 'b-earlier',
+          jobIds: [],
+          skippedAlreadyListedCount: 0,
+          skippedAvailabilityUnknownCount: 0,
+          skippedInvalidEanCount: 0,
+          deduplicated: true,
+        });
+      });
+
+      it('should map an unresolved idempotency race to 409', async () => {
+        bulkSubmit.submit.mockRejectedValue(
+          new DuplicateBulkBatchIdempotencyKeyError(dto.connectionId, 'key-1')
+        );
+
+        await expect(controller.submit(dto, adminUser, 'key-1')).rejects.toBeInstanceOf(
+          ConflictException
+        );
       });
     });
 

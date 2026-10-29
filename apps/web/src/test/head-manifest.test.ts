@@ -26,7 +26,15 @@ const PUBLIC_DIR = join(WEB_ROOT, 'public');
  * review) — a green build, a broken card. Anything not listed here is assumed
  * to be that mistake.
  */
-const ALLOWED_HTML_TOKENS = ['OG_TITLE_PREFIX', 'OG_IMAGE_URL', 'OG_URL_TAG'];
+const ALLOWED_HTML_TOKENS = [
+  'OG_TITLE_PREFIX',
+  'OG_IMAGE_URL',
+  'OG_URL_TAG',
+  'PAGE_TITLE',
+  'PAGE_DESCRIPTION',
+  'ROBOTS_TAG',
+  'CANONICAL_TAG',
+];
 
 /** Every `%TOKEN%` occurrence in the source HTML, deduplicated. */
 function extractHtmlTokens(html: string): string[] {

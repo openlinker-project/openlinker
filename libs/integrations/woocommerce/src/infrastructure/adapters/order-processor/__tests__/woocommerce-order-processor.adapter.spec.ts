@@ -11,10 +11,16 @@
 import {
   WooCommerceOrderProcessorAdapter,
   isValidEmail,
+  wooCommerceOrderReducedStock,
 } from '../woocommerce-order-processor.adapter';
 import { toPositiveInt } from '../../../utils/woocommerce-utils';
 import { WC_ORDER_STATUS_MAP, WC_ORDER_STATUS_VALUES } from '../woocommerce-order.types';
-import { isOrderStatusWriteback, isDestinationOptionsReader } from '@openlinker/core/orders';
+import {
+  isOrderStatusWriteback,
+  isDestinationOptionsReader,
+  isOrderCreateStockEffect,
+  lowersStockOnOrderCreate,
+} from '@openlinker/core/orders';
 import { WC_ORDER_STATUS_LABELS } from '../woocommerce-options.types';
 import type { IWooCommerceHttpClient } from '../../../http/woocommerce-http-client.interface';
 import type { IdentifierMappingPort, Connection } from '@openlinker/core/identifier-mapping';
@@ -1693,5 +1699,88 @@ describe('WooCommerceOrderProcessorAdapter — DestinationOptionsReader', () => 
 
       expect(options).toEqual([]);
     });
+  });
+});
+
+// ─── OrderCreateStockEffect ──────────────────────────────────────────────────
+
+describe('wooCommerceOrderReducedStock', () => {
+  const reduced = (qty: unknown): { meta_data: Array<{ key: string; value: unknown }> } => ({ meta_data: [{ key: '_reduced_stock', value: qty }] });
+
+  it('should answer true when every line carries a positive _reduced_stock', () => {
+    expect(wooCommerceOrderReducedStock([reduced('2'), reduced(1)])).toBe(true);
+  });
+
+  it('should answer false when one line was not taken out of stock', () => {
+    expect(wooCommerceOrderReducedStock([reduced('2'), { meta_data: [] }])).toBe(false);
+  });
+
+  it('should answer false when the marker is zero or unreadable', () => {
+    expect(wooCommerceOrderReducedStock([reduced('0')])).toBe(false);
+    expect(wooCommerceOrderReducedStock([reduced('abc')])).toBe(false);
+  });
+
+  it('should answer false when the response carries no lines', () => {
+    expect(wooCommerceOrderReducedStock(undefined)).toBe(false);
+    expect(wooCommerceOrderReducedStock([])).toBe(false);
+  });
+});
+
+describe('WooCommerceOrderProcessorAdapter - OrderCreateStockEffect', () => {
+  beforeEach(() => jest.clearAllMocks());
+
+  async function createWith(response: Record<string, unknown>): Promise<WooCommerceOrderProcessorAdapter> {
+    const httpClient = makeHttpClient();
+    const identifierMapping = makeIdentifierMapping();
+    mockMinimalMappings(identifierMapping);
+    httpClient.post.mockResolvedValue({ id: 99, number: 'WC-99', ...response });
+    const adapter = makeAdapter(httpClient, identifierMapping);
+    await adapter.createOrder(makeOrder());
+    return adapter;
+  }
+
+  it('should be detected by the isOrderCreateStockEffect guard', () => {
+    const adapter = makeAdapter(makeHttpClient(), makeIdentifierMapping());
+    expect(isOrderCreateStockEffect(adapter)).toBe(true);
+  });
+
+  it('should answer true when the created order reduced stock on every line', async () => {
+    const adapter = await createWith({
+      line_items: [{ id: 1, meta_data: [{ key: '_reduced_stock', value: '1' }] }],
+    });
+    expect(await lowersStockOnOrderCreate(adapter)).toBe(true);
+  });
+
+  it('should answer false when the created order reduced nothing (e.g. a pending order or stock management off)', async () => {
+    const adapter = await createWith({ line_items: [{ id: 1, meta_data: [] }] });
+    expect(await lowersStockOnOrderCreate(adapter)).toBe(false);
+  });
+
+  it('should answer false when the response does not say (no line items read back)', async () => {
+    const adapter = await createWith({});
+    expect(await lowersStockOnOrderCreate(adapter)).toBe(false);
+  });
+
+  it('should answer false when this instance created no order (a skipped create)', async () => {
+    const adapter = makeAdapter(makeHttpClient(), makeIdentifierMapping());
+    expect(await lowersStockOnOrderCreate(adapter)).toBe(false);
+  });
+
+  it('should not keep an earlier answer when a later create fails', async () => {
+    const httpClient = makeHttpClient();
+    const identifierMapping = makeIdentifierMapping();
+    mockMinimalMappings(identifierMapping);
+    httpClient.post.mockResolvedValueOnce({
+      id: 99,
+      number: 'WC-99',
+      line_items: [{ id: 1, meta_data: [{ key: '_reduced_stock', value: '1' }] }],
+    });
+    const adapter = makeAdapter(httpClient, identifierMapping);
+    await adapter.createOrder(makeOrder());
+
+    httpClient.post.mockRejectedValueOnce(new Error('boom'));
+    await expect(adapter.createOrder(makeOrder())).rejects.toThrow();
+
+    expect(await lowersStockOnOrderCreate(adapter)).toBe(false);
   });
 });

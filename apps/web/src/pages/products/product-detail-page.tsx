@@ -269,6 +269,14 @@ export function ProductDetailPage(): ReactElement {
                   )}
                 </span>
                 <span className="product-detail-hero__fact">
+                  <span className="product-detail-hero__fact-label">Category</span>
+                  {product.categoryBreadcrumb && product.categoryBreadcrumb.length > 0 ? (
+                    <span>{product.categoryBreadcrumb.map((node) => node.name).join(' › ')}</span>
+                  ) : (
+                    <span className="text-muted">—</span>
+                  )}
+                </span>
+                <span className="product-detail-hero__fact">
                   <span className="product-detail-hero__fact-label">Created</span>
                   <TimeDisplay className="mono-text tabular" iso={product.createdAt} />
                 </span>

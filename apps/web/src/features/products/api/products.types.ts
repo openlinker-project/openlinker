@@ -27,6 +27,20 @@ export interface ProductVariant {
    */
   price: number | null;
   /**
+   * Pictures the master dedicates to THIS variant, in the master's order.
+   * `null` means none of its own - the product gallery applies - never "no
+   * images". Optional: a response from an older API omits it.
+   */
+  images?: string[] | null;
+  /**
+   * The images an offer for this variant is published with when nobody
+   * overrides them, resolved by the API with the same rule the offer builder
+   * applies (its own pictures first, then the product gallery without its
+   * siblings' pictures). Product detail only; absent elsewhere and from an
+   * older API, where the product gallery is the honest fallback.
+   */
+  defaultImages?: string[] | null;
+  /**
    * The variant's OWN tax-rate override (#2255). `null` means NO OVERRIDE - the
    * product's rate applies - never "no rate". Only a master that keys tax per
    * variant sets it, so on PrestaShop every variant is null and the product's
@@ -74,6 +88,11 @@ export interface Product {
    * the stock drawer). Absent/empty until a sync populates them.
    */
   features?: { name: string; value: string }[];
+  /**
+   * The master's own category path, root to leaf (source-shop id + name).
+   * Absent until a sync populates it, or when the master reports no path.
+   */
+  categoryBreadcrumb?: { id: string; name: string }[];
   /**
    * Neutral tax-rate code the shop stated (#2255), or `null` when it stated
    * none. Paired with `taxRateReadAt`, which is what separates "the shop has no

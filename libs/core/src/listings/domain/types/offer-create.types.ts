@@ -10,6 +10,7 @@
  * @module libs/core/src/listings/domain/types
  */
 
+import type { ProductGpsr } from '@openlinker/core/products';
 import type { OfferParameter } from './offer-parameter.types';
 import type { OfferPublicationStatus } from './offer-status-read.types';
 import type { OfferValidationScope } from './offer-validation-problem.types';
@@ -288,6 +289,19 @@ export interface CreateOfferCommand {
    * buyer's country; OSS is out of scope (ADR-063 § 7).
    */
   taxRateCountry?: string;
+  /**
+   * What the product's master stated under the EU General Product Safety
+   * Regulation, by value (producer, responsible person, importer, safety
+   * information). Threaded by `OfferBuilderService` from the master product.
+   *
+   * A product-level declaration is more specific than any connection-level
+   * default an adapter holds, so an adapter that can express it SHOULD prefer
+   * it - but it maps the neutral value onto its own registry itself (Allegro
+   * matches the producer by name against the seller's responsible producers)
+   * and MUST NOT create a record on the marketplace to make a match happen.
+   * Absent means the master stated nothing; the adapter keeps its defaults.
+   */
+  gpsr?: ProductGpsr;
 }
 
 /**

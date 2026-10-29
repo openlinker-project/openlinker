@@ -15,11 +15,19 @@ function makeWork(id: string, orderId = 'ol_order_1'): FulfillmentWork {
 }
 
 describe('FulfillmentWorkQueryService', () => {
-  let works: jest.Mocked<Pick<FulfillmentWorkRepositoryPort, 'findByOrderId' | 'findById'>>;
+  let works: jest.Mocked<Pick<
+      FulfillmentWorkRepositoryPort,
+      'findByOrderId' | 'findById' | 'findProgressByOrderIds'
+    >
+  >;
   let service: FulfillmentWorkQueryService;
 
   beforeEach(() => {
-    works = { findByOrderId: jest.fn(), findById: jest.fn() };
+    works = {
+      findByOrderId: jest.fn(),
+      findById: jest.fn(),
+      findProgressByOrderIds: jest.fn(),
+    };
     service = new FulfillmentWorkQueryService(works as unknown as FulfillmentWorkRepositoryPort);
   });
 
@@ -36,6 +44,52 @@ describe('FulfillmentWorkQueryService', () => {
       works.findById.mockResolvedValue(null);
 
       await expect(service.findWorkById('ol_fulfillmentwork_missing')).resolves.toBeNull();
+    });
+  });
+
+  describe('summarizeWorkForOrders (#3482)', () => {
+    it('should read the whole page in one batched call', async () => {
+      works.findProgressByOrderIds.mockResolvedValue([]);
+
+      await service.summarizeWorkForOrders(['ol_order_1', 'ol_order_2']);
+
+      expect(works.findProgressByOrderIds).toHaveBeenCalledTimes(1);
+      expect(works.findProgressByOrderIds).toHaveBeenCalledWith(['ol_order_1', 'ol_order_2']);
+      expect(works.findByOrderId).not.toHaveBeenCalled();
+    });
+
+    it('should omit an order that has no live work', async () => {
+      works.findProgressByOrderIds.mockResolvedValue([
+        { orderId: 'ol_order_1', status: 'cancelled', parcelClosedAt: null, hasVerification: false, assignedToUserId: null },
+      ]);
+
+      const summaries = await service.summarizeWorkForOrders(['ol_order_1', 'ol_order_2']);
+
+      expect(summaries.size).toBe(0);
+    });
+
+    it('should report the earliest stage for a split order and one entry per order', async () => {
+      works.findProgressByOrderIds.mockResolvedValue([
+        { orderId: 'ol_order_1', status: 'closed', parcelClosedAt: null, hasVerification: false, assignedToUserId: null },
+        { orderId: 'ol_order_1', status: 'open', parcelClosedAt: null, hasVerification: false, assignedToUserId: null },
+        { orderId: 'ol_order_2', status: 'in_progress', parcelClosedAt: null, hasVerification: false, assignedToUserId: null },
+      ]);
+
+      const summaries = await service.summarizeWorkForOrders(['ol_order_1', 'ol_order_2']);
+
+      expect(summaries.get('ol_order_1')).toMatchObject({ stage: 'to-pack', workCount: 2 });
+      expect(summaries.get('ol_order_2')).toMatchObject({ stage: 'packing', workCount: 1 });
+    });
+
+    it('should report packed for a bench-closed parcel whose status was never moved', async () => {
+      // The real shape the pack bench leaves behind: `status` stays `open`.
+      works.findProgressByOrderIds.mockResolvedValue([
+        { orderId: 'ol_order_1', status: 'open', parcelClosedAt: new Date('2026-10-23T12:48:12Z'), hasVerification: false, assignedToUserId: null },
+      ]);
+
+      const summaries = await service.summarizeWorkForOrders(['ol_order_1']);
+
+      expect(summaries.get('ol_order_1')).toMatchObject({ stage: 'packed', workCount: 1 });
     });
   });
 

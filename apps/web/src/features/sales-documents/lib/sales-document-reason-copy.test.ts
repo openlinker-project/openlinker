@@ -62,6 +62,20 @@ describe('sales-document reason copy', () => {
     expect(copy?.keepsAction).toBe(false);
   });
 
+  it('should name both remedies when routing points at a connection that cannot issue', () => {
+    const copy = resolveSalesDocumentReasonCopy(
+      'unresolved-routing',
+      'routed-connection-unavailable'
+    );
+    expect(copy?.short).toBe('Connection unavailable');
+    // Saying only "no route" would send the operator to the rules looking for a
+    // gap; the rule is fine, its connection is not.
+    expect(copy?.detail).toMatch(/turn that connection back on/i);
+    expect(copy?.detail).toMatch(/point the rule at another connection/i);
+    expect(copy?.tone).toBe('error');
+    expect(copy?.keepsAction).toBe(false);
+  });
+
   it('should fall back to the generic routing copy when no routing reason travelled along', () => {
     const copy = resolveSalesDocumentReasonCopy('unresolved-routing', null);
     expect(copy?.short).toBe(SALES_DOCUMENT_GATE_REASON_COPY['unresolved-routing'].short);

@@ -45,8 +45,10 @@ describe('invoicing.types', () => {
       'sale-classification-required',
       'connection-setup-incomplete',
       'acknowledgement-required',
+      'connection-setting-rejected',
       'provider-rejected',
       'transport-timeout',
+      'provider-answer-inconclusive',
       'provider-error',
     ]);
   });

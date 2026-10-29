@@ -96,6 +96,7 @@ export const JOB_TYPE_VALUES = [
   'marketplace.shipment.statusSync', // Internal job — marketplace shipment status read-back.
   'marketplace.shipment.syncByExternalId', // Internal job — per-shipment sync by marketplace id.
   'marketplace.fulfillment.statusSync', // Internal job — marketplace fulfilment read-back (#834); NOT the OMS one below.
+  'marketplace.sourceFulfillment.statusSync', // Internal job - reads a shipment a third party made in the order's source (ADR-012 amendment).
   'fulfillment.work.statusSync', // Internal job — OMS executor progress ingress (#2400).
   'fulfillment.work.dispatch', // Internal job — offers a routed fulfilment work to its holder (#2399).
   'fulfillment.work.autoDispatch', // Internal job — buys the shipping label on acceptance, when opted in (#3340).
@@ -137,6 +138,7 @@ export const JOB_TYPE_VALUES = [
   'subiekt.bridge.reachabilitySweep', // Internal job — periodic Subiekt bridge probe (#3358).
   'inventory.saleDecrement', // Internal job — lowers master stock once per routed order line.
   'fulfillment.work.rerouteSweep', // Internal job — re-routes orders held for lack of stock once it arrives.
+  'inventory.saleDecrement.reconcileSweep', // Internal job — enqueues a routed order's lost stock-decrement job.
   'marketplace.offer.pauseStale', // Internal job — not user-triggerable; listed here for status display only.
   'marketplace.offer.pauseStaleSweep',
 ] as const;

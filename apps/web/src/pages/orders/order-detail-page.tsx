@@ -56,6 +56,7 @@ import { SalesDocumentPanel } from '../../features/orders/components/sales-docum
 import { UnlinkedCatalogueLinesBadge } from '../../features/orders/components/unlinked-catalogue-lines-badge';
 import { WarehouseReleaseBadge } from '../../features/orders/components/warehouse-release-badge';
 import { OrderDetailHeader } from '../../features/orders/components/order-detail-header';
+import { DestinationRoutingCallout } from '../../features/orders/components/destination-routing-callout';
 import { OrderHealthSummary } from '../../features/orders/components/order-health-summary';
 import { OrderPricingPanel } from '../../features/orders/components/order-pricing-panel';
 import { OrderDeliveryPanel } from '../../features/orders/components/order-delivery-panel';
@@ -394,6 +395,8 @@ export function OrderDetailPage(): ReactElement {
         itemCount={snapshot.items.length}
         failedDestinationId={failedDestinations[0]?.destinationConnectionId ?? null}
         fulfillmentPending={connectionsQuery.isLoading || shipmentsQuery.isLoading}
+        destinationRoutingBlockReason={order.destinationRoutingBlockReason}
+        handledInOpenLinker={order.handledInOpenLinker}
       />
 
       {failedDestinations.length > 0 ? (
@@ -438,6 +441,11 @@ export function OrderDetailPage(): ReactElement {
           </ul>
         </Alert>
       ) : null}
+
+      <DestinationRoutingCallout
+        reason={order.destinationRoutingBlockReason}
+        detail={order.destinationRoutingBlockDetail}
+      />
 
       {/* #2350 — the shortfall callout, in the same full-width Alert slot as the
           failed-destinations callout. `warning`, not `error`: the order is at

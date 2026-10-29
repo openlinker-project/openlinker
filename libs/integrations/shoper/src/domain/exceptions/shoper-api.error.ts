@@ -14,11 +14,20 @@
 /** Upper bound on the shop-supplied description echoed into a message. */
 const MAX_DESCRIPTION_LENGTH = 200;
 
+/**
+ * Shoper's validation answer for a referenced id it cannot resolve ("Nie
+ * znaleziono wartości", observed live on `POST /parcels` naming a
+ * carrier-integrated shipping method), folded the way {@link foldDescription}
+ * folds the shop's text, so a stray diacritic encoding or casing does not hide it.
+ */
+const VALUE_NOT_FOUND_DESCRIPTION = 'nie znaleziono wartosci';
+
 export class ShoperApiError extends Error {
   constructor(
     readonly statusCode: number,
     readonly errorCode?: string,
-    errorDescription?: string,
+    /** The shop's own `error_description`, untruncated; the message carries a bounded copy. */
+    readonly errorDescription?: string,
   ) {
     super(buildMessage(statusCode, errorCode, errorDescription));
     this.name = 'ShoperApiError';
@@ -46,6 +55,33 @@ export class ShoperApiError extends Error {
   isResourceNotFound(): boolean {
     return this.statusCode === 404 && this.errorCode === 'invalid_request';
   }
+
+  /**
+   * True when Shoper rejected the request because a value it references does
+   * not resolve ("Nie znaleziono wartości"). A `400` that says anything else -
+   * a malformed body, a missing field - is a different fault and is NOT this,
+   * so a caller may treat this answer as "pick another value" without also
+   * retrying requests that are simply wrong. A rejected validation creates
+   * nothing on the shop.
+   */
+  isValueNotFound(): boolean {
+    return (
+      this.statusCode === 400 &&
+      this.errorDescription !== undefined &&
+      foldDescription(this.errorDescription).includes(VALUE_NOT_FOUND_DESCRIPTION)
+    );
+  }
+}
+
+/** Lower-case, strip diacritics (NFD + combining marks) and the Polish ł, collapse whitespace. */
+function foldDescription(text: string): string {
+  return text
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/ł/gi, 'l')
+    .toLowerCase()
+    .replace(/\s+/g, ' ')
+    .trim();
 }
 
 function buildMessage(statusCode: number, errorCode?: string, errorDescription?: string): string {

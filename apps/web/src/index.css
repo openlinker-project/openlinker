@@ -11808,6 +11808,10 @@ a.kpi-card:focus-visible {
 .orders-packed-tick { display: inline-flex; align-items: center; gap: 4px; font-size: 0.75rem; }
 .orders-packed-tick__mark { color: var(--status-success-fg); font-weight: 600; }
 .orders-packed-tick__label { color: var(--text-muted); }
+/* #3482 - the packing position reuses the Packed tick; only the mark colour varies per step. */
+.orders-packed-tick--to-pack .orders-packed-tick__mark { color: var(--text-muted); }
+.orders-packed-tick--packing .orders-packed-tick__mark { color: var(--status-info-fg); }
+.orders-packed-tick__who { color: var(--text-secondary); }
 .orders-packed-control { gap: var(--space-3); }
 .orders-packed-state { display: inline-flex; align-items: center; gap: 4px; }
 
@@ -15488,6 +15492,34 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
   margin-top: var(--space-2);
 }
 .bulk-editor__img-add-row .bulk-editor__input { flex: 1; }
+.bulk-editor__img-add-row + .form-field__error { margin-top: var(--space-1); }
+
+/* ── Broken image thumbnail ── a tile whose image failed to load in the
+   browser. The outline plus the text badge carry the state together, so it
+   never rests on colour alone; the note under the strip says what to do. It
+   is a warning, not a block: a valid image can also fail here (CORS, a slow
+   CDN, offline). */
+.bulk-editor__img-thumb--broken {
+  border-color: var(--status-error-border);
+  box-shadow: inset 0 0 0 1px var(--status-error-border);
+  background: var(--status-error-soft);
+}
+.bulk-editor__img-broken {
+  position: absolute; left: 2px; right: 2px; bottom: 2px;
+  padding: 1px 2px;
+  border-radius: var(--radius-sm);
+  background: var(--bg-surface);
+  color: var(--status-error-fg);
+  font-size: 10px; line-height: 1.2;
+  text-align: center;
+  pointer-events: none;
+}
+.bulk-editor__img-note {
+  margin: var(--space-1) 0 0;
+  color: var(--status-warning-fg);
+  font-size: 12px;
+}
+.bulk-editor__img-note:empty { margin: 0; }
 
 /* CATEGORY PARAMETERS inside the bulk modal only (#7 / #8) - scoped to the
    platform slot so the single-offer wizard's step is untouched. */
@@ -18636,6 +18668,48 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
   max-width: 32ch;
 }
 
+/* KOD I not-cleared placeholder (#3547, M24 `not-cleared`): a dashed frame
+ * the size of the QR in the FA(3) preview, beside why the code is not there
+ * yet. Dashed so it reads as "not here yet" rather than as a broken image.
+ * The frame's 148px matches `<QrCode size={148}>` in ksef-fa3-view.tsx - change
+ * both together. */
+.ksef-verification-pending {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: var(--space-4);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--border-default);
+}
+
+.ksef-verification-pending__frame {
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  width: 148px;
+  height: 148px;
+  padding: var(--space-2);
+  box-sizing: border-box;
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  text-align: center;
+}
+
+.ksef-verification-pending__text {
+  flex: 1 1 12rem;
+  min-width: 0;
+  display: grid;
+  gap: var(--space-1);
+  font-size: 0.8125rem;
+  color: var(--text-secondary);
+}
+
+.ksef-verification-pending__text strong {
+  color: var(--text-primary);
+}
+
 /* ── Inline Disclosure (#1303) ───────────────────────────────────────
  * Native <details>/<summary> "collapsed value + Change affordance"
  * pattern. First use: Infakt's default-payment-method field, which
@@ -18740,6 +18814,21 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
 .guest-form__demo-bar span {
   font-size: 12px;
   opacity: 0.85;
+}
+
+.guest-form__demo-links {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: var(--space-3);
+  margin-top: 2px;
+  font-size: 12px;
+}
+
+.guest-form__demo-links a {
+  color: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
 }
 
 .guest-form__demo-register {
@@ -24518,6 +24607,14 @@ legend.analytics-settings-dialog__label {
   align-items: center;
 }
 
+/* ── Destination routing (#2703) ───────────────────────────────────────────
+   Same wrapper shape as the hold badge: the reason hint rides on a `title`
+   because `StatusBadge` takes none of its own.                                */
+.order-destination-routing-badge {
+  display: inline-flex;
+  align-items: center;
+}
+
 /* Detail-page panel. Same shape as the packed control it sits beside: the fact
    on the left, the single write affordance on the right, wrapping on narrow
    screens rather than pushing the button off-canvas.                          */
@@ -29950,6 +30047,61 @@ legend.analytics-settings-dialog__label {
      review calls out as operator-visible: the governing rule is the whole
      story of the table, and it had no affordance at all. */
   background: var(--bg-surface-muted);
+}
+
+/* ============================================================
+   SOURCING RULES TEST PANEL (#2954)
+
+   "Where would this order go?" - an order search or a basket, and the router's
+   own answer. Token-only and layout-only: the result copy comes from the router
+   and is rendered verbatim, so nothing here styles a specific reason.
+   ============================================================ */
+
+.sourcing-test {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  margin-top: var(--space-5);
+  padding: var(--space-5);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--bg-surface);
+}
+
+.sourcing-test__title {
+  margin: 0;
+  font-size: 1.125rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.sourcing-test__modes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.sourcing-test__orders {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin: var(--space-2) 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.sourcing-test__basket-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--space-3);
+  margin-bottom: var(--space-3);
+}
+
+@media (max-width: 640px) {
+  .sourcing-test {
+    padding: var(--space-4);
+  }
 }
 
 /* ============================================================

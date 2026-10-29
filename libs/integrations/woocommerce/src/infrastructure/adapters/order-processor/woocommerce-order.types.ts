@@ -110,6 +110,18 @@ export interface WooCommerceOrderResponse {
    * — never written by this adapter.
    */
   total?: string;
+  /**
+   * The booked line items, read back after create only for their item meta:
+   * WooCommerce stamps `_reduced_stock` on each line it took out of stock, which
+   * is how the adapter answers `OrderCreateStockEffect` for the order it created.
+   */
+  line_items?: WooCommerceOrderLineItemResponse[];
+}
+
+/** One booked line of a WooCommerce order response - only what the adapter reads. */
+export interface WooCommerceOrderLineItemResponse {
+  id?: number;
+  meta_data?: Array<{ key?: string; value?: unknown }>;
 }
 
 // ─── Customer shapes ──────────────────────────────────────────────────────────

@@ -109,6 +109,12 @@ export {
 } from './application/services/availability.service.interface';
 export { AvailabilityService } from './application/services/availability.service';
 export { IReservationService } from './application/services/reservation.service.interface';
+export type {
+  IMasterAbsorbedReservationService,
+  ConsumeAbsorbedHoldsInput,
+  ConsumeAbsorbedHoldsResult,
+} from './application/services/master-absorbed-reservation.service.interface';
+export { MasterAbsorbedReservationService } from './application/services/master-absorbed-reservation.service';
 export {
   IReservationExpiryService,
   ExpireReservationsInput,

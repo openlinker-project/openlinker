@@ -75,7 +75,6 @@ import {
 import {
   FULFILLMENT_ROUTER_RESOLVER_TOKEN,
   ROUTING_COMMIT_SERVICE_TOKEN,
-  buildRoutingShipTo,
   deriveFulfillmentDispatchEnqueueIntents,
   deriveRoutingHoldOutcome,
   deriveSaleDecrementEnqueueIntents,
@@ -85,8 +84,6 @@ import {
   type FulfillmentRouterResolverPort,
   type IRoutingCommitService,
   type RoutingCommitOutcome,
-  type RoutingInputLine,
-  type RoutingShipTo,
 } from '@openlinker/core/fulfillment';
 import {
   isFulfillmentRouterUnroutable,
@@ -110,6 +107,10 @@ import type { OrderRecord } from '../../domain/entities/order-record.entity';
 import type { SalesDocumentBlockOutcome } from '@openlinker/core/sales-documents';
 import type { OrderRecordStatus } from '../../domain/types/order-record.types';
 import type { ItemResolutionFailureKind } from './order-item-ref-resolver.types';
+import {
+  projectOrderForRouting,
+  type OrderRoutingProjection,
+} from '../../domain/project-order-for-routing';
 import { getEnvBoolean } from '@openlinker/shared/config';
 import { Logger } from '@openlinker/shared/logging';
 import { diffOrderAmendment } from '../../domain/order-amendment-diff';
@@ -178,13 +179,6 @@ type RoutingTarget =
   | { readonly kind: 'skip'; readonly reason: FulfillmentRoutingSkipReason }
   | { readonly kind: 'pass' }
   | { readonly kind: 'indeterminate' };
-
-/** The ADR-062 allowlist projection handed to a router. */
-interface RoutingProjection {
-  readonly lines: RoutingInputLine[];
-  readonly shipTo: RoutingShipTo;
-  readonly requestedDeliveryMethod: string | null;
-}
 
 @Injectable()
 export class OrderIngestionService implements IOrderIngestionService {
@@ -738,6 +732,16 @@ export class OrderIngestionService implements IOrderIngestionService {
         `Withholding destination mirror for order ${order.id}: fulfilment routing ` +
           `held it (${routing.block?.reason ?? 'routed'})`
       );
+      // #2703 / #2704 — `OrderSyncService` owns the destination-routing block and
+      // writes it on every branch it takes, but it is NEVER CALLED on this one.
+      // Without this clear a routing reason written by an earlier run would stand
+      // beside the fresh `fulfillmentBlockReason` above and assert "the router
+      // sent this nowhere" about an order that is in fact held — two reasons for
+      // one order, one of them stale. Clearing here keeps the two columns mutually
+      // exclusive on the paths that reach the fan-out decision (this one and
+      // `syncOrder`). An ingestion that exits earlier leaves the previous value
+      // until the next run - a bounded display fault, not a correctness one.
+      await this.persistDestinationRoutingCleared(order.id);
     } else {
       results = await this.orderSyncService.syncOrder({
         order,
@@ -1436,39 +1440,16 @@ export class OrderIngestionService implements IOrderIngestionService {
   private projectOrderForRouting(
     order: Order,
     shippingAddressHash: string | null
-  ): RoutingProjection | null {
-    const shippingAddress = order.shippingAddress;
-    if (shippingAddress === undefined) {
-      return null;
-    }
-
-    return {
-      lines: order.items.map((item) => ({
-        orderLineId: item.id,
-        // A work line needs a variant. `variantId` is optional on `OrderItem`, so
-        // fall back to the product id rather than emitting a blank — a work
-        // object pointing at no variant is unpickable stock nothing would report.
-        productVariantId: item.variantId ?? item.productId,
-        quantity: item.quantity,
-      })),
-      // The OPAQUE key `RoutingInput.requestedDeliveryMethod` documents — the
-      // source's own method id, never a neutral vocabulary.
-      requestedDeliveryMethod: order.shipping?.methodId ?? null,
-      shipTo: buildRoutingShipTo(
-        {
-          countryIso2: shippingAddress.country,
-          postalCode: shippingAddress.postalCode,
-          city: shippingAddress.city,
-          addressHash: shippingAddressHash,
-        },
-        {
-          // `getEnvBoolean`, NOT `getPiiConfig()`: the latter throws when
-          // `OL_PII_HASH_SALT` is unset regardless of the flag, which would break
-          // routing on every ordinary deployment that never enabled hash-only mode.
-          storePii: getEnvBoolean('OL_STORE_PII', true),
-        }
-      ),
-    };
+  ): OrderRoutingProjection | null {
+    // The reduction itself is the shared pure rule (#2954); only the PII flag is
+    // read here. `getEnvBoolean`, NOT `getPiiConfig()`: the latter throws when
+    // `OL_PII_HASH_SALT` is unset regardless of the flag, which would break
+    // routing on every ordinary deployment that never enabled hash-only mode.
+    return projectOrderForRouting(
+      order,
+      shippingAddressHash,
+      getEnvBoolean('OL_STORE_PII', true)
+    );
   }
 
   /**
@@ -1531,6 +1512,30 @@ export class OrderIngestionService implements IOrderIngestionService {
       const errorName = error instanceof Error ? error.name : 'UnknownError';
       this.logger.warn(
         `Failed to persist the fulfilment routing skip reason (swallowed): ` +
+          `error=${errorName} orderId=${internalOrderId}`
+      );
+    }
+  }
+
+  /**
+   * Clear the destination-routing block (#2703 / #2704) on the held branch.
+   *
+   * Best-effort and never able to fail ingestion, exactly like
+   * {@link persistFulfillmentOutcome} beside it: the value is an operator-facing
+   * explanation, and a stale one is a display fault rather than a correctness
+   * one. `OrderSyncService` owns every other write of this column.
+   *
+   * Logged at `error`, like that sibling's own swallow path: a failed CLEAR
+   * leaves a stale routing reason standing beside a fresh `fulfillmentBlockReason`,
+   * the two-reasons-for-one-order state this write exists to prevent.
+   */
+  private async persistDestinationRoutingCleared(internalOrderId: string): Promise<void> {
+    try {
+      await this.orderRecordService.markDestinationRoutingBlock(internalOrderId, null);
+    } catch (error) {
+      const errorName = error instanceof Error ? error.name : 'UnknownError';
+      this.logger.error(
+        `Failed to clear the destination-routing block (swallowed): ` +
           `error=${errorName} orderId=${internalOrderId}`
       );
     }
@@ -1674,6 +1679,30 @@ export class OrderIngestionService implements IOrderIngestionService {
         `Failed to record cancellation on order record ${internalOrderId} — proceeding with the ` +
           `destination relay regardless; the record will remain queryable as non-cancelled until a ` +
           `future re-poll or retry observes the cancellation again`,
+        (error as Error).stack
+      );
+    }
+
+    // Release the order's holds and restore its stock (E2E-23). The full-resync
+    // path enqueues this on the `-> cancelled` transition, but a cancel that
+    // arrives as a feed event lands HERE and returns without re-reading the
+    // order, so without this the advisory hold stays `held` for good and every
+    // later publish keeps subtracting a unit nobody bought. Same job and dedupe
+    // key as the resync path, so whichever path sees the cancel first wins and
+    // the other is a no-op. The key has no TTL and no cancellation episode in
+    // it, so it also suppresses a SECOND cancellation of the same order (after
+    // an un-cancel at the source): that restore is a silent no-op, and the
+    // offer is corrected only by the next ordinary propagation.
+    try {
+      await this.jobQueue.enqueue({
+        type: 'marketplace.offer.stockRestore',
+        connectionId,
+        payload: { schemaVersion: 1, internalOrderId },
+        options: { dedupeKey: `marketplace:${connectionId}:stockRestore:${internalOrderId}` },
+      });
+    } catch (error) {
+      this.logger.error(
+        `Failed to enqueue stock-restore job for cancelled order [connectionId=${connectionId}, orderId=${internalOrderId}]; its holds stay live and marketplace stock will NOT be auto-restored`,
         (error as Error).stack
       );
     }

@@ -55,6 +55,7 @@ function makeVariant(overrides: Partial<ProductVariant> = {}): ProductVariant {
     ean: overrides.ean ?? '1234567890123',
     gtin: overrides.gtin ?? null,
     price: overrides.price,
+    images: overrides.images,
     createdAt: overrides.createdAt ?? new Date('2026-01-01T00:00:00Z'),
     updatedAt: overrides.updatedAt ?? new Date('2026-01-01T00:00:00Z'),
     isStale: overrides.isStale,
@@ -639,6 +640,47 @@ describe('ProductsController', () => {
       productsService.getProduct.mockResolvedValue(null);
 
       await expect(controller.getProduct('nonexistent')).rejects.toThrow(NotFoundException);
+    });
+
+    it('should expose each variant own images and its resolved default listing images', async () => {
+      const gfx = (n: number): string => `https://shop.example/gfx/${n}.jpg`;
+      productsService.getProduct.mockResolvedValue(
+        makeProduct({ images: [gfx(312), gfx(313), gfx(314), gfx(315)] })
+      );
+      productsService.listVariants.mockResolvedValue({
+        items: [
+          makeVariant({ id: 'red', images: [gfx(314)] }),
+          makeVariant({ id: 'green', images: [gfx(315)] }),
+          makeVariant({ id: 'navy', images: null }),
+        ],
+        total: 3,
+      });
+      identifierMapping.getExternalIds.mockResolvedValue([]);
+
+      const result = await controller.getProduct('ol_product_1');
+
+      expect(result.variants!.map((v) => [v.id, v.images, v.defaultImages])).toEqual([
+        ['red', [gfx(314)], [gfx(314), gfx(312), gfx(313)]],
+        ['green', [gfx(315)], [gfx(315), gfx(312), gfx(313)]],
+        ['navy', null, [gfx(312), gfx(313)]],
+      ]);
+      // Every sibling was on the page, so no second read was needed.
+      expect(productsService.getVariantsByProductId).not.toHaveBeenCalled();
+    });
+
+    it('should resolve default images against every sibling when the detail page is capped', async () => {
+      const gfx = (n: number): string => `https://shop.example/gfx/${n}.jpg`;
+      const navy = makeVariant({ id: 'navy', images: null });
+      const offPage = makeVariant({ id: 'off-page', images: [gfx(2)] });
+      productsService.getProduct.mockResolvedValue(makeProduct({ images: [gfx(1), gfx(2)] }));
+      productsService.listVariants.mockResolvedValue({ items: [navy], total: 101 });
+      productsService.getVariantsByProductId.mockResolvedValue([navy, offPage]);
+      identifierMapping.getExternalIds.mockResolvedValue([]);
+
+      const result = await controller.getProduct('ol_product_1');
+
+      expect(productsService.getVariantsByProductId).toHaveBeenCalledWith('ol_product_1');
+      expect(result.variants![0].defaultImages).toEqual([gfx(1)]);
     });
 
     it('should load external IDs in parallel', async () => {

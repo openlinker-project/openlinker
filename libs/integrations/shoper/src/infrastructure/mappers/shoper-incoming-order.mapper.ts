@@ -349,6 +349,11 @@ export function mapShoperOrderToIncoming(
     row.is_cash_on_delivery === true ? toCodToCollect(total, currency) : undefined;
   const orderUrl = nonEmpty(row.order_url);
   const shippingId = nonEmpty(row.shipping_id === null || row.shipping_id === undefined ? undefined : String(row.shipping_id));
+  // The shop's own payment id, verbatim: the key an operator's payment mapping is
+  // looked up by, and the same value `listPaymentMethods` offers on the mapping page.
+  const sourcePaymentMethod = nonEmpty(
+    row.payment_id === null || row.payment_id === undefined ? undefined : String(row.payment_id),
+  );
 
   return {
     externalOrderId: String(row.order_id),
@@ -357,6 +362,7 @@ export function mapShoperOrderToIncoming(
     status: mapShoperOrderStatus(ctx.status),
     ...(paymentStatus === undefined ? {} : { paymentStatus }),
     paymentMethod: mapShoperPaymentMethod(row),
+    ...(sourcePaymentMethod === undefined ? {} : { sourcePaymentMethod }),
     ...(userId !== undefined && userId > 0 ? { customerExternalId: String(row.user_id) } : {}),
     ...(email === undefined ? {} : { customerEmail: email }),
     items: lines.map(mapLine),

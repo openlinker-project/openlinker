@@ -36,7 +36,10 @@ per-call-site throttle:
    `HostServices.http` field.
 3. Priority (`background` vs `interactive`) and cancellation are carried by `AsyncLocalStorage`,
    entered once in `SyncJobRunner.processJob` and once in an apps/api `APP_INTERCEPTOR` — not
-   threaded through `SyncJobHandler.execute` or any adapter signature.
+   threaded through `SyncJobHandler.execute` or any adapter signature. The wait for a slot also
+   honours the request's own `init.signal` (2026-10-26): a request cancelled while queued ends with
+   `RateLimitAbortedError` and never claims a slot, and `apps/api` answers either limiter error
+   with 503 + `Retry-After` (`RateLimitBusyFilter`) rather than 500.
 4. Every plugin HTTP client takes an optional `fetchImpl: FetchLike = globalThis.fetch` constructor
    param; bare `fetch` becomes an ESLint `no-restricted-globals` error under `libs/integrations/**`,
    enforced by `scripts/check-outbound-http.mjs`.
@@ -110,6 +113,11 @@ both `apps/api` and `apps/worker`. `RateLimiterPort`'s method signatures are unc
 adapter and `HttpTransportFactory` required zero code changes. The static `OL_WORKER_REPLICAS` division is
 removed: once the bucket is shared across every process and replica, dividing it further would only shrink the
 operator's configured cap for no reason.
+
+That client must carry non-blocking commands only: a blocking read on it (the worker's `jobs.sync` intake
+`XREADGROUP BLOCK` did exactly this until the 2026-10-26 fix) queues every limiter call behind it, each one
+times out and the process silently falls back to per-process limiting. Blocking consumers get a dedicated
+client of their own (see `docs/lessons.md`).
 
 Two Redis primitives, chosen to preserve the in-memory limiter's exact algorithm rather than substitute an
 approximate one:
@@ -233,3 +241,46 @@ Starving one host's traffic behind another's remains a real concern; the mechani
 - Related issues: #1810, #1772, #1815, #2015 (closed the cross-process coordination gap — see § "Cross-process coordination — resolved" above)
 - Related PRs: #1941 (PrestaShop-only #1815 prerequisite this ADR generalizes)
 - Primary doc section: [docs/architecture-overview.md § Sync Manager](../../architecture-overview.md#7-sync-manager), [§ Plugin Manager / Integrations](../../architecture-overview.md#10-plugin-manager--integrations)
+
+## Amendment (2026-10-25): shared bucket for a remote quota scoped wider than a credential
+
+**Context.** § "The cap is per connection" rests on one premise: *remotes scope quotas by credential*.
+Shoper does not. Its API limit is per SHOP and shared by every token and every integration installed on
+that shop - measured live: a sustained 10 req/s is answered in full, 15 req/s draws `429`s, and two
+tokens hammering one shop together get about 5 req/s each. Two OpenLinker connections to one shop are an
+ordinary setup (the shop as order source on one connection, as publish destination on another), and with
+one bucket per connection they paced independently, so together they could exceed the shop's budget.
+
+**Decision.**
+
+1. `HttpTransportFactoryPort.forConnection` gains an optional third argument,
+   `options?: { bucketKey?: string }`. Absent (or empty) keeps the default - one bucket per connection
+   id, byte-identical for every plugin that does not pass it. A third argument rather than a widened
+   second one, because `defaultRateLimit` is itself a `ConnectionRateLimit` and an options bag in that
+   slot would make every existing call site ambiguous to read.
+2. Under a shared bucket the policy is `tightenRateLimit(defaultRateLimit, config.rateLimit)`
+   (`@openlinker/shared/rate-limit`): the plugin's `defaultRateLimit` is the remote's ceiling, and a
+   connection's own `config.rateLimit` can only make each knob stricter for that connection, never raise
+   it. One connection's generous config must not loosen a budget every sibling draws from. It is ONE
+   acquire on the shared bucket, not a second acquire on the connection-id bucket: a stricter
+   connection claims against its own lower concurrency cap and advances the shared pacing key by its
+   own longer interval, which can only slow the shared bucket, never speed it up. A second limiter
+   would express the per-connection limit exactly, at the cost of ordering two acquires (and two
+   releases) on every call, for a knob that is a safety valve rather than a fairness tool.
+3. The cached `FetchLike` is keyed by connection id AND bucket key, so a call site asking for a
+   different bucket is never handed a closure bound to the wrong one. `evict(connectionId)` drops the
+   connection's own bucket and its cached shared-bucket fetches, but evicts a SHARED bucket only once no
+   other connection in the process still uses it - disabling one of two connections to a shop must not
+   reset the limiter the other is queued on.
+4. A plugin opts in through `AdapterMetadata.resolveRateLimitBucketKey?(connection)`, a pure function
+   that every `forConnection` call site in the plugin uses AND `RateLimitStatusService` reads (through
+   `readRateLimitBucketKey`), so the operator's status panel shows the bucket that is actually paced and
+   the policy through the same `tightenRateLimit`. For a shared bucket the live counters are therefore
+   the shop's (every connection drawing from it in that process), not the one connection's.
+
+**Shoper is the first user**: `shoper:host:<normalised host>`, from `parseShoperBaseUrl`, at a budget of
+300 req/min with 4 in flight - half of the measured shop limit, leaving the rest to the merchant's panel
+and other integrations, which OpenLinker cannot see. The per-connection default, the reasoning against
+per-HOST buckets, and Allegro's single-bucket-across-two-hosts shape above are unchanged: a shared key
+names the remote's quota scope, not a hostname, and is only for a remote that documents (or is measured
+to have) a quota wider than one credential.

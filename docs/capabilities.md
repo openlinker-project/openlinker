@@ -136,12 +136,14 @@ PL-first / PLN-only assumptions already baked into each adapter).
 **Adapter coverage:** WooCommerce implements `CategoryProvisioner` (write),
 `ShopCategoryBrowser` (read, #1834), `ShopAttributeReader` (read, #1835), and
 `ShopProductStatusReader` (read, #1845, including the grouped-variation-aware
-read) on its `ProductPublisher` adapter. No shop adapter implements
+read) on its `ProductPublisher` adapter. Shoper implements `CategoryProvisioner`
+(write, #3713), `ShopCategoryBrowser`, `ShopAttributeReader` and
+`ShopProductStatusReader` (read, #3806) on its `ProductPublisher` adapter. No shop adapter implements
 `ShopCurrencyDeclarer` yet — a WooCommerce destination still falls back to
 `Connection.config.currency` (or an operator-set value) for the price-change
 currency-mismatch guard.
 
-### `OrderProcessorManagerPort` / `OrderSourcePort` (orders) — 5
+### `OrderProcessorManagerPort` / `OrderSourcePort` (orders) — 7
 
 | Sub-capability | What it does | Method(s) | Guard |
 |---|---|---|---|
@@ -150,6 +152,8 @@ currency-mismatch guard.
 | `FulfillmentStatusReader` | Read a destination order's current fulfillment status. | `getFulfillmentStatus` | `isFulfillmentStatusReader` |
 | `DestinationOptionsReader` | List a destination's carriers / order-statuses / payment-methods for mapping. | `listCarriers` · `listOrderStatuses` · `listPaymentMethods` | `isDestinationOptionsReader` |
 | `SourceOptionsReader` | List a source's order-statuses / delivery-methods / payment-methods for mapping. | `listOrderStatuses` · `listDeliveryMethods` · `listPaymentMethods` | `isSourceOptionsReader` |
+| `OrderCreateStockEffect` | Declare that creating an order on this destination lowered the shop's own stock, so core may consume the order's holds on positions that destination masters. Probed after the create; anything but a declared `true` keeps the holds until dispatch. Shoper answers from its `shopping_update_stock_on_buy` setting; PrestaShop from the state `validateOrder` created the order in (not `PS_STOCK_MANAGEMENT`, which does not gate the decrement), refusing packs and legacy `depends_on_stock` rows; WooCommerce from the `_reduced_stock` item meta on the created order's lines (stock drops only for a paid-like status on a stock-managed product). PrestaShop and WooCommerce answer for the order the same adapter instance just created, so a skipped create answers `false`. | `lowersStockOnOrderCreate` | `isOrderCreateStockEffect` |
+| `OrderContactRefresher` | Reconcile an order the destination already holds with contact details the source revealed only later. Called best-effort on the create-skip path (the order is already mapped), never after a fresh create; a throw is warn-logged and does not change the sync result. Shoper replaces the placeholder phone it had to create the order with, but only while the shop order still carries it. | `refreshOrderContact` | `isOrderContactRefresher` |
 
 The canonical OL-owned order-lifecycle state machine (authoritative
 `updateOrderStatus` / `cancelOrder` / `processReturn` / `getOrders`) is

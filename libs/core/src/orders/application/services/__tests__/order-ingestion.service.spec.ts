@@ -157,6 +157,7 @@ describe('OrderIngestionService', () => {
       markFulfillmentRoutingSkip: jest.fn().mockResolvedValue(undefined),
       markOmsAttention: jest.fn().mockResolvedValue(undefined),
       listOrderIdsByFulfillmentBlockReasons: jest.fn().mockResolvedValue([]),
+      markDestinationRoutingBlock: jest.fn().mockResolvedValue(undefined),
       recordAmendment: jest.fn().mockResolvedValue(undefined),
     } as unknown as jest.Mocked<IOrderRecordService>;
 
@@ -1826,6 +1827,34 @@ describe('OrderIngestionService', () => {
       expect(markCancelledOrder).toBeLessThan(relayOrder);
     });
 
+    it('should enqueue the stock-restore job that releases the holds when a cancel event arrives (E2E-23)', async () => {
+      identifierMapping.getInternalId.mockResolvedValue('ol_order_cancel');
+      orderRecordService.getOrderRecord.mockResolvedValue({
+        sourceConnectionId: connectionId,
+      } as unknown as OrderRecord);
+
+      await service.syncOrderFromSource(connectionId, externalOrderId, 'evt-1', 'cancelled');
+
+      expect(jobQueue.enqueue).toHaveBeenCalledWith({
+        type: 'marketplace.offer.stockRestore',
+        connectionId,
+        payload: { schemaVersion: 1, internalOrderId: 'ol_order_cancel' },
+        options: { dedupeKey: `marketplace:${connectionId}:stockRestore:ol_order_cancel` },
+      });
+    });
+
+    it('should still relay the cancel when the stock-restore enqueue fails (E2E-23)', async () => {
+      identifierMapping.getInternalId.mockResolvedValue('ol_order_cancel');
+      orderRecordService.getOrderRecord.mockResolvedValue({
+        sourceConnectionId: connectionId,
+      } as unknown as OrderRecord);
+      jobQueue.enqueue.mockRejectedValueOnce(new Error('queue down'));
+
+      await service.syncOrderFromSource(connectionId, externalOrderId, 'evt-1', 'cancelled');
+
+      expect(orderLifecycleRelay.relay).toHaveBeenCalled();
+    });
+
     it('does NOT mark the record cancelled when the order was never ingested (no internal mapping) — instead records a durable early-cancellation signal (#2069)', async () => {
       identifierMapping.getInternalId.mockResolvedValue(null);
 
@@ -3201,6 +3230,13 @@ describe('OrderIngestionService', () => {
         expect(markBlock()).toHaveBeenCalledWith(
           'ol_order_int',
           expect.objectContaining({ reason })
+        );
+        // #2703 - `syncOrder` is never called on this branch, so the routing
+        // reason an earlier run wrote is cleared HERE. Without it a stale
+        // "the router sent this nowhere" would stand beside the fresh hold.
+        expect(orderRecordService.markDestinationRoutingBlock).toHaveBeenCalledWith(
+          'ol_order_int',
+          null
         );
       });
 

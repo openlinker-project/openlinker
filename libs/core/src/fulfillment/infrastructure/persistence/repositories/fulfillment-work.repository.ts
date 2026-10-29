@@ -88,8 +88,10 @@ import type {
   FulfillmentWorkTransaction,
   LatestActiveParcelVerification,
   ListUnrelayedShippedDispatchesInput,
+  ListWorksMissingSaleDecrementJobRepoInput,
   UnrelayedShippedDispatch,
   ListStalledUnsubmittedWorksInput,
+  WorkMissingSaleDecrementJob,
   ListTimedOutDispatchesInput,
   ParcelVerifiedCount,
   PlaceFulfillmentHoldInput,
@@ -114,12 +116,14 @@ import {
   isFulfillmentRequestStatus,
   type FulfillmentRequestStatus,
 } from '../../../domain/types/fulfillment-request-status.types';
+import { SALE_DECREMENT_JOB_DEDUPE_PREFIX } from '../../../domain/types/fulfillment-sale-decrement-enqueue.types';
 import { TERMINAL_FULFILLMENT_WORK_STATUSES } from '../../../domain/types/fulfillment-supported-actions.types';
 import {
   isFulfillmentWorkStatus,
   type FulfillmentWorkStatus,
 } from '../../../domain/types/fulfillment-work-status.types';
 import type { FulfillmentWorkRejection } from '../../../domain/types/fulfillment-work-rejection.types';
+import type { FulfillmentWorkProgress } from '../../../domain/types/order-work-summary.types';
 import type { ParcelVerificationEvent } from '../../../domain/types/fulfillment-verification.types';
 import {
   clampWorklistLimit,
@@ -342,6 +346,50 @@ export class FulfillmentWorkRepository implements FulfillmentWorkRepositoryPort 
       return this.toDomain(header, lines);
     } catch (error) {
       throw new FulfillmentPersistenceError('findById', error);
+    }
+  }
+
+  async findProgressByOrderIds(
+    orderIds: readonly string[]
+  ): Promise<ReadonlyArray<FulfillmentWorkProgress & { readonly orderId: string }>> {
+    if (orderIds.length === 0) return [];
+    try {
+      // `orderId` leads `IDX_fulfillment_works_grouping`, which serves this
+      // `IN (...)`. Header columns only - no lines are hydrated, which is the point of a list-page read - plus one
+      // EXISTS per work on the verification ledger (a same-context entity, so it
+      // is joined through its ORM entity rather than a raw table name).
+      const liveScan = this.verifications
+        .createQueryBuilder('v')
+        .select('1')
+        .where('v.fulfillmentWorkId = fw.id')
+        .andWhere('v.voidedAt IS NULL')
+        .getQuery();
+      const rows = await this.works
+        .createQueryBuilder('fw')
+        .select('fw.orderId', 'orderId')
+        .addSelect('fw.status', 'status')
+        .addSelect('fw.parcelClosedAt', 'parcelClosedAt')
+        .addSelect('fw.assignedToUserId', 'assignedToUserId')
+        .addSelect(`EXISTS (${liveScan})`, 'hasVerification')
+        .where('fw.orderId IN (:...orderIds)', { orderIds: [...orderIds] })
+        .getRawMany<{
+          orderId: string;
+          status: string;
+          parcelClosedAt: Date | string | null;
+          assignedToUserId: string | null;
+          hasVerification: boolean;
+        }>();
+      return rows.map((row) => ({
+        orderId: row.orderId,
+        // Cast at the boundary, like every other status read in this file: the
+        // column is plain `text` and the union is enforced in TypeScript.
+        status: row.status as FulfillmentWorkStatus,
+        parcelClosedAt: row.parcelClosedAt === null ? null : new Date(row.parcelClosedAt),
+        assignedToUserId: row.assignedToUserId,
+        hasVerification: row.hasVerification === true,
+      }));
+    } catch (error) {
+      throw new FulfillmentPersistenceError('findProgressByOrderIds', error);
     }
   }
 
@@ -781,6 +829,43 @@ export class FulfillmentWorkRepository implements FulfillmentWorkRepositoryPort 
       return [...byWorkId.values()];
     } catch (error) {
       throw new FulfillmentPersistenceError('listUnrelayedShippedDispatches', error);
+    }
+  }
+
+  async listWorksMissingSaleDecrementJob(
+    input: ListWorksMissingSaleDecrementJobRepoInput
+  ): Promise<WorkMissingSaleDecrementJob[]> {
+    try {
+      // Read-model reporting join (ADR-036): `order_records` and `sync_jobs` are
+      // other contexts' tables, joined by name, read-only, every value bound. It
+      // depends on `sync_jobs."idempotencyKey"` being globally unique and on the
+      // producers' key prefix, taken from `SALE_DECREMENT_JOB_DEDUPE_PREFIX` so the
+      // two cannot drift. It is a PREDICATE
+      // (a frontier), not display enrichment, which is what ADR-036 admits.
+      const rows = (await this.works.query(
+        `SELECT w."id" AS "workId", w."orderId" AS "orderId", o."sourceConnectionId" AS "sourceConnectionId"
+           FROM "fulfillment_works" w
+           JOIN "order_records" o
+             ON o."internalOrderId" = w."orderId"
+            AND o."cancelledAt" IS NULL
+          WHERE w."createdAt" < $1
+            AND w."createdAt" >= $4
+            AND w."status" <> 'cancelled'
+            AND NOT EXISTS (
+              SELECT 1 FROM "sync_jobs" j
+               WHERE j."idempotencyKey" = $2 || w."id"
+            )
+          ORDER BY w."createdAt" ASC, w."id" ASC
+          LIMIT $3`,
+        [input.createdBefore, SALE_DECREMENT_JOB_DEDUPE_PREFIX, input.limit, input.createdAfter]
+      )) as { workId: string; orderId: string; sourceConnectionId: string }[];
+      return rows.map((row) => ({
+        workId: row.workId,
+        orderId: row.orderId,
+        orderSourceConnectionId: row.sourceConnectionId,
+      }));
+    } catch (error) {
+      throw new FulfillmentPersistenceError('listWorksMissingSaleDecrementJob', error);
     }
   }
 

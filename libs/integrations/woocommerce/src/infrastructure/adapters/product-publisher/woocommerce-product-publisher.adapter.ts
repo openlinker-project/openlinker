@@ -816,8 +816,10 @@ export class WooCommerceProductPublisherAdapter
     if (cmd.barcode) typed.global_unique_id = cmd.barcode;
     if (cmd.weight != null) typed.weight = String(cmd.weight);
     // Single sideloaded image, create-only (same re-import churn guard as the
-    // simple-product / parent paths, #1846 fix 7).
-    const imageUrl = cmd.content?.imageUrls?.[0];
+    // simple-product / parent paths, #1846 fix 7). The variation's OWN default
+    // images come first - `content.imageUrls` is the parent's whole gallery, so
+    // its first entry would give every variation the product's main picture.
+    const imageUrl = group.imageUrls?.[0] ?? cmd.content?.imageUrls?.[0];
     if (!isUpsert && imageUrl != null) typed.image = { src: imageUrl };
 
     const attributes = group.attributes

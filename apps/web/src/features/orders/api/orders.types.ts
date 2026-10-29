@@ -151,9 +151,32 @@ export const SalesDocumentUnresolvedReasonValues = [
   'threshold-currency-mismatch',
   // #3365 — capable connections exist but none declares a document kind.
   'no-connection-declares-document-kind',
+  // A rule names a connection that is disabled, gone, or can no longer issue.
+  'routed-connection-unavailable',
 ] as const;
 export type SalesDocumentUnresolvedReasonValue =
   (typeof SalesDocumentUnresolvedReasonValues)[number];
+
+// How a fulfilment routing decision narrowed an order's destination fan-out
+// (#2703/#2704). Hand-mirrored from `DestinationRoutingBlockReasonValues` in
+// `@openlinker/core/orders` per the FE-001 contract strategy (the browser bundle
+// cannot import core).
+//
+// ENFORCED, not merely commented: `scripts/check-destination-routing-reason-mirror.mjs`
+// fails `pnpm check:invariants` on any drift in either direction, VALUE AND ORDER.
+//
+// `'routed-to-no-destination'` is a working router making a DECISION and is
+// rendered neutrally; the other three name a destination the router asked for
+// that OpenLinker could not reach. Only those three are counted — see
+// `DESTINATION_ROUTING_ATTENTION_REASONS` in `../lib/destination-routing-copy`.
+export const DestinationRoutingBlockReasonValues = [
+  'routed-to-no-destination',
+  'routed-destinations-unavailable',
+  'routed-destinations-partially-unavailable',
+  'routed-to-source-only',
+] as const;
+export type DestinationRoutingBlockReasonValue =
+  (typeof DestinationRoutingBlockReasonValues)[number];
 
 // ── Sales-document view (#2516/#2552, ADR-065) ──────────────────────────────
 // Hand-mirrored from `SalesDocumentView` (`@openlinker/core/sales-documents`)
@@ -517,6 +540,35 @@ export interface OrderRecord {
   /** PII-free elaboration of the block reason (ids and counts only). */
   salesDocumentBlockDetail?: string | null;
   /**
+   * How a fulfilment routing decision narrowed this order's destination fan-out
+   * (#2703/#2704), or `null` when it narrowed nothing — which is every order
+   * until a router is wired. Independent of `health` and of
+   * `salesDocumentBlockReason`; an order routinely carries none, one or both.
+   */
+  destinationRoutingBlockReason?: DestinationRoutingBlockReasonValue | null;
+  /** PII-free elaboration of the routing reason (connection ids and counts only). */
+  destinationRoutingBlockDetail?: string | null;
+  /**
+   * Why OpenLinker holds this order itself instead of mirroring it (#3485),
+   * read from the persisted column - never derived in the browser (#2100).
+   * `null`/absent when nothing holds it. The vocabulary is the backend's; a
+   * value this build does not know renders nothing rather than a guess.
+   */
+  fulfillmentBlockReason?: FulfillmentBlockReasonValue | null;
+  /** PII-free elaboration of `fulfillmentBlockReason`, rendered verbatim or not at all. */
+  fulfillmentBlockDetail?: string | null;
+  /**
+   * Why the ingestion intercept deliberately did not route this order (#3455,
+   * #3487, #3488). Not a hold: such an order follows today's path.
+   */
+  fulfillmentRoutingSkipReason?: FulfillmentRoutingSkipReasonValue | null;
+  /**
+   * The packing position of an order OpenLinker handles itself (#3482). ABSENT
+   * means no live work was found - never a positive "not routed" claim - and it
+   * is a separate field, never a member of the health partition.
+   */
+  handledInOpenLinker?: OrderHandledInOpenLinker;
+  /**
    * Instant OpenLinker last observed the SOURCE amend this order after it was
    * already ingested (#2283) — a line removed, added or re-quantified, or the
    * shipping address edited. `null`/absent = never observed amended. An internal
@@ -630,6 +682,63 @@ export interface OrderRecord {
    * older API still type-checks. Treat absent and `unknown` identically.
    */
   paymentMethod?: PaymentMethod;
+}
+
+/**
+ * Why OpenLinker holds an order itself instead of mirroring it (#3485). Mirrors
+ * core `FulfillmentBlockReasonValues`; `check-fulfillment-reason-mirror.mjs`
+ * keeps the two identical, in value and order (#591: no core import here).
+ */
+export const FulfillmentBlockReasonValues = [
+  'routing-in-doubt',
+  'routing-contended',
+  'routing-already-live-elsewhere',
+  'routing-refused',
+  'routing-no-shipping-address',
+  'routing-failed',
+] as const;
+export type FulfillmentBlockReasonValue = (typeof FulfillmentBlockReasonValues)[number];
+
+/**
+ * Why the ingestion intercept deliberately did not route an order (#3455,
+ * #3487, #3488, #3636). Mirrors core `FulfillmentRoutingSkipReasonValues`, held
+ * equal by `check-fulfillment-reason-mirror.mjs`.
+ */
+export const FulfillmentRoutingSkipReasonValues = [
+  'own-shop-order',
+  'shipped-by-other-system',
+  'mirrored-before-routing',
+  'source-fulfilled',
+] as const;
+export type FulfillmentRoutingSkipReasonValue = (typeof FulfillmentRoutingSkipReasonValues)[number];
+
+/** Where an order OpenLinker handles itself has got in packing (#3482), in time order. */
+export const OrderWorkStageValues = ['to-pack', 'packing', 'packed'] as const;
+export type OrderWorkStageValue = (typeof OrderWorkStageValues)[number];
+
+/**
+ * The held reasons an operator reads as "waiting in OpenLinker" (#3482). Mirror of
+ * core `WaitingFulfillmentBlockReasonValues`, held equal by
+ * `scripts/check-handled-in-openlinker-mirror.mjs`. One member per line.
+ */
+export const WaitingFulfillmentBlockReasonValues = [
+  'routing-refused',
+  'routing-no-shipping-address',
+  'routing-failed',
+] as const satisfies readonly FulfillmentBlockReasonValue[];
+export type WaitingFulfillmentBlockReasonValue = (typeof WaitingFulfillmentBlockReasonValues)[number];
+
+export interface OrderHandledInOpenLinker {
+  /** A split order reports its EARLIEST stage across works. */
+  stage: OrderWorkStageValue;
+  workCount: number;
+  /**
+   * `single`: every live work agrees on its packer (`assignedToUserId`, or `null`
+   * for Unassigned). `mixed`: a split order with different packers. Optional for
+   * a response from part 1 of #3482.
+   */
+  assignment?: 'single' | 'mixed';
+  assignedToUserId?: string | null;
 }
 
 /** The open-return badge payload (#2998) — count plus a stage hint. */
@@ -772,6 +881,23 @@ export interface OrderHealthSummary {
    */
   salesDocumentBlocked?: number;
   /**
+   * Orders whose routing decision narrowed the destination fan-out in an
+   * ATTENTION-WORTHY way (#2703/#2704). Orthogonal to the five health buckets
+   * and never part of their sum, exactly like `salesDocumentBlocked`. Excludes
+   * the neutral `'routed-to-no-destination'` decision.
+   */
+  destinationRoutingBlocked?: number;
+  /**
+   * #3482 - orders OpenLinker holds as waiting (out of stock, no address, a
+   * routing error). Orthogonal to the health buckets, never part of their sum.
+   * Optional for an older API.
+   */
+  waitingInOpenLinker?: number;
+  /** When the oldest waiting order started waiting (ISO 8601), or `null` / absent. */
+  waitingInOpenLinkerOldestAt?: string | null;
+  /** #3482 - orders with a live pack-bench work whose box is not shut (To pack / Packing). */
+  onPackBench?: number;
+  /**
    * Orders where the shop and the channel named DIFFERENT tax rates (#2254).
    * Its OWN count, never inside `salesDocumentBlocked` — a conflict does not
    * stop the invoice, so an order can be in conflict and perfectly healthy.
@@ -828,6 +954,15 @@ export interface OrderFilters {
    * `health` — "synced AND invoicing blocked" is the common shape of the problem.
    */
   salesDocumentBlocked?: boolean;
+  /**
+   * #2703/#2704 — its own axis, ANDed with `health` and the others server-side.
+   * `true` keeps only orders carrying an attention-worthy routing narrowing.
+   */
+  destinationRoutingBlocked?: boolean;
+  /** #3482 - its own axis: `true` keeps only orders OpenLinker holds as waiting. */
+  waitingInOpenLinker?: boolean;
+  /** #3482 - its own axis: `true` keeps only orders with work on the pack bench. */
+  onPackBench?: boolean;
   /**
    * Cancellation filter (#2306): `false` excludes cancelled orders, `true` keeps
    * only them, omitted does not filter. The dispatch-risk page passes `false` so

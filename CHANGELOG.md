@@ -12,6 +12,35 @@ From `0.2.0` onward this file is generated automatically by
 Commits. The `0.1.0` entry below is the hand-curated baseline of what shipped
 before automated releases began.
 
+## [0.17.0](https://github.com/openlinker-project/openlinker/compare/v0.16.1...v0.17.0) (2026-10-27)
+
+
+### Features
+
+* **api:** serve robots.txt that disallows crawling ([#3788](https://github.com/openlinker-project/openlinker/issues/3788)) ([2d1dc3e](https://github.com/openlinker-project/openlinker/commit/2d1dc3e16a66f2d65a78f7328617d328f5345990)), closes [#3787](https://github.com/openlinker-project/openlinker/issues/3787)
+* **ksef:** land KSeF legal completeness ([#1578](https://github.com/openlinker-project/openlinker/issues/1578)) on main, with fixes for 39 defects ([#3793](https://github.com/openlinker-project/openlinker/issues/3793)) ([e211f2e](https://github.com/openlinker-project/openlinker/commit/e211f2ee49cf1f4ec9364ed4b73d2f6896fd1279))
+* **ksef:** restore KOD I verification QR on the invoice preview ([#3547](https://github.com/openlinker-project/openlinker/issues/3547)) ([#3783](https://github.com/openlinker-project/openlinker/issues/3783)) ([bd0ac84](https://github.com/openlinker-project/openlinker/commit/bd0ac84f9beb9bfa09aa4b1dc10215d8bc02dcc5))
+* **oms:** dry-run the fulfilment router on an order or basket ([#2954](https://github.com/openlinker-project/openlinker/issues/2954)) ([#3778](https://github.com/openlinker-project/openlinker/issues/3778)) ([49923e0](https://github.com/openlinker-project/openlinker/commit/49923e055bf195b7e27439b217586d8782fe693c))
+* **orders:** show an order handled in OpenLinker on /orders ([#3797](https://github.com/openlinker-project/openlinker/issues/3797)) ([3757680](https://github.com/openlinker-project/openlinker/commit/3757680a86d83b134907898b4759219c92f16f5b))
+* **orders:** waiting and pack-bench filters, health after shipping, packer names ([#3799](https://github.com/openlinker-project/openlinker/issues/3799)) ([3ac5a1f](https://github.com/openlinker-project/openlinker/commit/3ac5a1f8a5edb4617a8361208da919070551b4dc))
+* **products:** store the shop's category path and show it on the product page ([#3796](https://github.com/openlinker-project/openlinker/issues/3796)) ([84cb0a8](https://github.com/openlinker-project/openlinker/commit/84cb0a838b66d783c561aff006c4a743abbac36d))
+* **shoper:** complete the capability map with pickers, order read-back, signed webhooks, a shared rate limit and GPSR ([#3811](https://github.com/openlinker-project/openlinker/issues/3811)) ([7e59fde](https://github.com/openlinker-project/openlinker/commit/7e59fde41b34933cef5b38df17bc8fc3299504fd))
+* **web:** noindex admin SPA by default, build-time opt-in for the public demo ([#3792](https://github.com/openlinker-project/openlinker/issues/3792)) ([02f9827](https://github.com/openlinker-project/openlinker/commit/02f9827811874582917fa563590db17360074ce8))
+* **web:** scan every feature slice in check-ui-vocabulary by default ([#2737](https://github.com/openlinker-project/openlinker/issues/2737)) ([#3776](https://github.com/openlinker-project/openlinker/issues/3776)) ([d69d055](https://github.com/openlinker-project/openlinker/commit/d69d055e78701167dc4e78f766f4ba48aec68d2f))
+
+
+### Bug Fixes
+
+* **dx:** make the pre-commit hook prove which worktree it validates ([#2767](https://github.com/openlinker-project/openlinker/issues/2767)) ([#3777](https://github.com/openlinker-project/openlinker/issues/3777)) ([fab14a0](https://github.com/openlinker-project/openlinker/commit/fab14a0634050a19bc0c0f6a63503f812f3c0b56))
+* **inventory:** reconcile sweep for a lost inventory.saleDecrement enqueue ([#3629](https://github.com/openlinker-project/openlinker/issues/3629)) ([#3779](https://github.com/openlinker-project/openlinker/issues/3779)) ([784f98c](https://github.com/openlinker-project/openlinker/commit/784f98cefc1247d74c745a01b8ec257885a7980a))
+* **invoicing:** explain provider refusals and let a corrected retry reach the provider ([#3812](https://github.com/openlinker-project/openlinker/issues/3812)) ([936937b](https://github.com/openlinker-project/openlinker/commit/936937bdf496fe6fb7f2cfe59236a9550f53beb3))
+* **listings:** carry Shoper variant pictures to Allegro and fix the bulk offer wizard ([#3813](https://github.com/openlinker-project/openlinker/issues/3813)) ([1110c46](https://github.com/openlinker-project/openlinker/commit/1110c464bdfbe6dbb5fed8dbb4db814ee74402f9))
+* **oms:** do not route stock OpenLinker has already promised ([#3475](https://github.com/openlinker-project/openlinker/issues/3475)) ([#3780](https://github.com/openlinker-project/openlinker/issues/3780)) ([ed0e546](https://github.com/openlinker-project/openlinker/commit/ed0e546344ab07be1eb22ff852b8f560f104c2ce))
+* **orders:** book Shoper variant stock, ignore failed payments and restore stock on cancellation ([#3814](https://github.com/openlinker-project/openlinker/issues/3814)) ([54fba43](https://github.com/openlinker-project/openlinker/commit/54fba436f283833ae815d7dd2b3c97ddfe73f048))
+* **orders:** persist why a routing decision narrowed the destination fan-out ([#3014](https://github.com/openlinker-project/openlinker/issues/3014)) ([b493bd2](https://github.com/openlinker-project/openlinker/commit/b493bd2b5f0754e041e01837af42fa18aba9d821))
+* **shoper:** count only real variants, inherit their price, and import the whole gallery ([#3795](https://github.com/openlinker-project/openlinker/issues/3795)) ([56fe87c](https://github.com/openlinker-project/openlinker/commit/56fe87c4f90ff1804bb57c8a515bb7f01f814ca7))
+* **web:** connection wizards stop on review, webhook URLs use the API address, tax rate on every product view ([#3794](https://github.com/openlinker-project/openlinker/issues/3794)) ([e7406e5](https://github.com/openlinker-project/openlinker/commit/e7406e5de31aae44810fffece81b5f6fd8cc9458))
+
 ## [0.16.1](https://github.com/openlinker-project/openlinker/compare/v0.16.0...v0.16.1) (2026-10-22)
 
 

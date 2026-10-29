@@ -4,18 +4,19 @@ import {
   LIVE_VARIANT_STOCKS,
   MAP_CONTEXT,
   SHOP_HOST,
+  buildImage,
   buildProduct,
   buildStock,
 } from '../../__tests__/shoper-test-data';
-import type { ShoperProductImage } from '../../../domain/types/shoper-api.types';
 import type { ShoperOptionEntry } from '../../shop-context/shoper-option-table.provider';
 import {
-  buildShoperGalleryUrls,
   buildShoperImageUrl,
   mapShoperProduct,
+  mapShoperProductGallery,
+  indexShoperGalleryUrls,
+  shoperVariantImages,
   mapShoperStockToVariant,
   parseShoperNumber,
-  partitionShoperStocks,
   pickShoperTranslation,
   resolveShoperVariantAttributes,
   shoperStockOptionPairs,
@@ -106,10 +107,16 @@ describe('mapShoperStockToVariant', () => {
       attributes: null,
       ean: '5901234123457',
       gtin: '5901234123457',
+      images: null,
       price: 1484.28,
       weight: 1,
       weightGrams: 1000,
     });
+  });
+
+  it('should carry the variant pictures it is given', () => {
+    const images = ['https://sklep729770.shoparena.pl/userdata/public/gfx/314.jpg'];
+    expect(mapShoperStockToVariant(buildStock(), 'p', MAP_CONTEXT, null, null, images).images).toEqual(images);
   });
 
   it.each([[null], [''], ['   ']])('should map an empty EAN %p to null, never to ""', (ean) => {
@@ -345,45 +352,138 @@ describe('mapShoperStockToVariant attributes', () => {
   });
 });
 
-describe('partitionShoperStocks', () => {
-  it('should keep every row of a simple product and report no base row', () => {
-    const stocks = [buildStock({ stock_id: '181', options: [] })];
-    expect(partitionShoperStocks(stocks)).toEqual({ variants: stocks, base: null });
+describe('mapShoperProductGallery', () => {
+  const gfx = (id: string): string => `https://${SHOP_HOST}/userdata/public/gfx/${id}.jpg`;
+  /** Product 161's live gallery: 312 main, then 313, 314 (red variant), 315 (green variant). */
+  const LIVE_161 = [
+    buildImage({ gfx_id: '312', unic_name: '312', order: '1', main: 1 }),
+    buildImage({ gfx_id: '313', unic_name: '313', order: '2' }),
+    buildImage({ gfx_id: '314', unic_name: '314', order: '3' }),
+    buildImage({ gfx_id: '315', unic_name: '315', order: '4' }),
+  ];
+  const MAIN_312 = { unic_name: '312', extension: 'jpg', gfx_id: '312', hidden: '0' };
+
+  it('should return every image of the live gallery, main first, then by order', () => {
+    expect(mapShoperProductGallery([...LIVE_161].reverse(), MAIN_312, SHOP_HOST)).toEqual([
+      gfx('312'),
+      gfx('313'),
+      gfx('314'),
+      gfx('315'),
+    ]);
   });
 
-  it('should drop the live base row of a product with options and keep it as the base', () => {
-    const { variants, base } = partitionShoperStocks(LIVE_VARIANT_STOCKS);
-    expect(variants.map((s) => s.stock_id)).toEqual(['217', '218']);
-    expect(base?.stock_id).toBe('215');
+  it('should put the main image first even when its order is not the lowest', () => {
+    const gallery = [
+      buildImage({ gfx_id: '1', unic_name: '1', order: '1' }),
+      buildImage({ gfx_id: '2', unic_name: '2', order: '5', main: 1 }),
+    ];
+    expect(mapShoperProductGallery(gallery, null, SHOP_HOST)).toEqual([gfx('2'), gfx('1')]);
   });
 
-  it('should keep a row with malformed options as a variant, never as the base', () => {
-    const malformed = buildStock({ stock_id: '300', default: '0', options: ['x'] as unknown as [] });
-    const { variants, base } = partitionShoperStocks([buildStock({ stock_id: '299' }), malformed]);
-    expect(variants.map((s) => s.stock_id)).toEqual(['300']);
-    expect(base?.stock_id).toBe('299');
-  });
-});
-
-describe('buildShoperGalleryUrls', () => {
-  const row = (gfx: string, extra: Record<string, string> = {}): ShoperProductImage => ({
-    gfx_id: gfx,
-    product_id: '93',
-    unic_name: gfx,
-    extension: 'png',
-    ...extra,
+  it('should recognise the main image by the product main_image gfx_id when the row flag is absent', () => {
+    const gallery = [
+      buildImage({ gfx_id: '1', unic_name: '1', order: '1', main: null }),
+      buildImage({ gfx_id: '2', unic_name: '2', order: '2', main: null }),
+    ];
+    const main = { unic_name: '2', extension: 'jpg', gfx_id: 2 };
+    expect(mapShoperProductGallery(gallery, main, SHOP_HOST)).toEqual([gfx('2'), gfx('1')]);
   });
 
-  it('should drop a file name that is not a plain file name and collapse duplicates', () => {
-    expect(
-      buildShoperGalleryUrls(SHOP_HOST, [row('1', { main: '1' }), row('../x'), row('1')]),
-    ).toEqual([`https://${SHOP_HOST}/userdata/public/gfx/1.png`]);
+  it('should break an order tie by gfx_id, and put an unreadable order last', () => {
+    const gallery = [
+      buildImage({ gfx_id: '9', unic_name: '9', order: '2' }),
+      buildImage({ gfx_id: '8', unic_name: '8', order: null }),
+      buildImage({ gfx_id: '7', unic_name: '7', order: '2' }),
+      buildImage({ gfx_id: '6', unic_name: '6', order: '1' }),
+    ];
+    expect(mapShoperProductGallery(gallery, null, SHOP_HOST)).toEqual([
+      gfx('6'),
+      gfx('7'),
+      gfx('9'),
+      gfx('8'),
+    ]);
+  });
+
+  it('should leave a hidden image out of the product gallery', () => {
+    const gallery = [
+      ...LIVE_161.slice(0, 3),
+      buildImage({ gfx_id: '315', unic_name: '315', order: '4', hidden: '1' }),
+    ];
+    expect(mapShoperProductGallery(gallery, MAIN_312, SHOP_HOST)).toEqual([
+      gfx('312'),
+      gfx('313'),
+      gfx('314'),
+    ]);
+  });
+
+  it('should return null for an empty gallery when the product names no main image', () => {
+    expect(mapShoperProductGallery([], null, SHOP_HOST)).toBeNull();
+  });
+
+  it('should keep the product main_image when the gallery read came back empty', () => {
+    expect(mapShoperProductGallery([], MAIN_312, SHOP_HOST)).toEqual([gfx('312')]);
+  });
+
+  it('should return null rather than a hidden main image when nothing visible is left', () => {
+    const hiddenMain = { ...MAIN_312, hidden: '1' };
+    const gallery = [buildImage({ gfx_id: '312', unic_name: '312', main: 1, hidden: '1' })];
+    expect(mapShoperProductGallery(gallery, hiddenMain, SHOP_HOST)).toBeNull();
+  });
+
+  it('should skip an image whose file name is not a plain file name', () => {
+    const gallery = [
+      buildImage({ gfx_id: '1', unic_name: '../x', order: '1' }),
+      buildImage({ gfx_id: '2', unic_name: '2', order: '2' }),
+    ];
+    expect(mapShoperProductGallery(gallery, null, SHOP_HOST)).toEqual([gfx('2')]);
+  });
+
+  it('should collapse a duplicate image to its first position', () => {
+    const gallery = [
+      buildImage({ gfx_id: '1', unic_name: '1', order: '1', main: 1 }),
+      buildImage({ gfx_id: '2', unic_name: '1', order: '2' }),
+    ];
+    expect(mapShoperProductGallery(gallery, null, SHOP_HOST)).toEqual([gfx('1')]);
   });
 
   it('should place a row with no order after the ordered ones', () => {
-    expect(buildShoperGalleryUrls(SHOP_HOST, [row('8'), row('9', { order: '1' })])).toEqual([
-      `https://${SHOP_HOST}/userdata/public/gfx/9.png`,
-      `https://${SHOP_HOST}/userdata/public/gfx/8.png`,
-    ]);
+    const gallery = [
+      buildImage({ gfx_id: '8', unic_name: '8', order: undefined }),
+      buildImage({ gfx_id: '9', unic_name: '9', order: '1' }),
+    ];
+    expect(mapShoperProductGallery(gallery, null, SHOP_HOST)).toEqual([gfx('9'), gfx('8')]);
+  });
+
+  it('should be what mapShoperProduct reports as the product images', () => {
+    const product = mapShoperProduct(
+      buildProduct({ product_id: '161', main_image: MAIN_312 }),
+      MAP_CONTEXT,
+      LIVE_161,
+    );
+    expect(product.images).toEqual([gfx('312'), gfx('313'), gfx('314'), gfx('315')]);
+  });
+});
+
+describe('shoperVariantImages', () => {
+  const urls = indexShoperGalleryUrls(
+    [
+      buildImage({ gfx_id: '314', unic_name: '314' }),
+      buildImage({ gfx_id: '315', unic_name: '315', hidden: '1' }),
+      buildImage({ gfx_id: '316', unic_name: '../316' }),
+    ],
+    SHOP_HOST,
+  );
+
+  it.each([
+    ['314', [`https://${SHOP_HOST}/userdata/public/gfx/314.jpg`]],
+    [314, [`https://${SHOP_HOST}/userdata/public/gfx/314.jpg`]],
+    ['315', [`https://${SHOP_HOST}/userdata/public/gfx/315.jpg`]],
+    ['316', null],
+    ['999', null],
+    [null, null],
+    [undefined, null],
+    ['', null],
+  ])('should resolve gfx_id %p to %p', (gfx_id, expected) => {
+    expect(shoperVariantImages({ gfx_id }, urls)).toEqual(expected);
   });
 });

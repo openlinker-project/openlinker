@@ -125,6 +125,9 @@ describe('invoicingBlockedBadge (#2100)', () => {
     expect(invoicingBlockedBadge('unresolved-routing', 'net-priced-order')).toMatchObject({
       label: 'Order is net-priced',
     });
+    expect(
+      invoicingBlockedBadge('unresolved-routing', 'routed-connection-unavailable'),
+    ).toMatchObject({ label: 'Connection unavailable', tone: 'error' });
   });
 
   it('falls back to the generic routing label when no routing reason travelled along', () => {

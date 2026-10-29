@@ -6,6 +6,7 @@
  *
  * @module libs/integrations/allegro/src/infrastructure/adapters/__tests__
  */
+import { isOfferStockRestorer } from '@openlinker/core/listings';
 import { AllegroOfferManagerAdapter } from '../allegro-offer-manager.adapter';
 import type { IAllegroHttpClient } from '../../http/allegro-http-client.interface';
 import type { IdentifierMappingPort } from '@openlinker/core/identifier-mapping';
@@ -146,6 +147,42 @@ describe('AllegroOfferManagerAdapter', () => {
     );
   });
 
+  /**
+   * A Map-backed CachePort plus an adapter wired to it - the create
+   * operation id is remembered there between the create and the status
+   * read (E2E-11).
+   */
+  function adapterWithCache(): { cached: AllegroOfferManagerAdapter; store: Map<string, unknown> } {
+    const store = new Map<string, unknown>();
+    const cache: CachePort = {
+      get: <T>(key: string): Promise<T | null> =>
+        Promise.resolve(store.has(key) ? (store.get(key) as T) : null),
+      set: (key: string, value: unknown): Promise<void> => {
+        store.set(key, value);
+        return Promise.resolve();
+      },
+      delete: (key: string): Promise<void> => {
+        store.delete(key);
+        return Promise.resolve();
+      },
+    };
+    const cached = new AllegroOfferManagerAdapter(
+      connectionId,
+      httpClient,
+      uploadHttpClient,
+      identifierMapping,
+      connection,
+      undefined,
+      undefined,
+      cache,
+      undefined,
+      DEFAULT_SELLER_DEFAULTS
+    );
+    return { cached, store };
+  }
+
+  const OPERATION_KEY = `allegro:offer-create-operation:${connectionId}:7782448611`;
+
   describe('getTaxonomyIdentity', () => {
     const withEnvironment = (environment?: 'sandbox' | 'production') =>
       new AllegroOfferManagerAdapter(
@@ -190,6 +227,60 @@ describe('AllegroOfferManagerAdapter', () => {
   describe('getDestinationCurrency (#3203)', () => {
     it('should declare PLN, matching the PL-first assumption baked into the adapter', () => {
       expect(adapter.getDestinationCurrency()).toBe('PLN');
+    });
+  });
+
+  describe('restoreStockOnCancellation (E2E-24)', () => {
+    it('should be narrowed by the OfferStockRestorer guard', () => {
+      expect(isOfferStockRestorer(adapter)).toBe(true);
+    });
+
+    it('should set each offer to its absolute target with a key stable across retries', async () => {
+      const spy = jest.spyOn(adapter, 'updateOfferQuantity').mockResolvedValue(undefined);
+
+      await adapter.restoreStockOnCancellation([
+        { externalOfferId: 'offer-1', quantity: 20, idempotencyKey: 'stock-restore:ol_order_1:offer-1' },
+        { externalOfferId: 'offer-2', quantity: 0, idempotencyKey: 'stock-restore:ol_order_1:offer-2' },
+      ]);
+
+      expect(spy).toHaveBeenNthCalledWith(1, {
+        offerId: 'offer-1',
+        quantity: 20,
+        idempotencyKey: 'stock-restore:ol_order_1:offer-1',
+      });
+      expect(spy).toHaveBeenNthCalledWith(2, {
+        offerId: 'offer-2',
+        quantity: 0,
+        idempotencyKey: 'stock-restore:ol_order_1:offer-2',
+      });
+    });
+
+    it('should refuse a target with no key and write nothing, rather than invent one', async () => {
+      const spy = jest.spyOn(adapter, 'updateOfferQuantity').mockResolvedValue(undefined);
+
+      await expect(
+        adapter.restoreStockOnCancellation([
+          { externalOfferId: 'offer-1', quantity: 5, idempotencyKey: 'stock-restore:ol_order_1:offer-1:5:t' },
+          { externalOfferId: 'offer-2', quantity: 5 },
+        ])
+      ).rejects.toThrow(/idempotencyKey is required.*offer-2/);
+      expect(spy).not.toHaveBeenCalled();
+    });
+
+    it('should try every offer past a failure and then throw the failures together', async () => {
+      const spy = jest
+        .spyOn(adapter, 'updateOfferQuantity')
+        .mockRejectedValueOnce(new Error('REJECTED'))
+        .mockResolvedValueOnce(undefined);
+
+      await expect(
+        adapter.restoreStockOnCancellation([
+          { externalOfferId: 'offer-1', quantity: 5, idempotencyKey: 'k1' },
+          { externalOfferId: 'offer-2', quantity: 7, idempotencyKey: 'k2' },
+        ])
+      ).rejects.toThrow(/1 of 2 offer\(s\).*offer-1: REJECTED/);
+      expect(spy).toHaveBeenCalledTimes(2);
+      expect(spy).toHaveBeenLastCalledWith({ offerId: 'offer-2', quantity: 7, idempotencyKey: 'k2' });
     });
   });
 
@@ -2050,6 +2141,72 @@ describe('AllegroOfferManagerAdapter', () => {
       fetchSpy.mockRestore();
     });
 
+    describe('async create operation (E2E-11)', () => {
+      const operationLocation =
+        'https://api.allegro.pl.allegrosandbox.pl/sale/product-offers/7782448611/operations/dade5dc6-0b14-4236-9c6a-6a26b76c4c03';
+
+      it('remembers the operation named by a 202 Location when activation was requested', async () => {
+        const { cached, store } = adapterWithCache();
+        httpClient.post.mockResolvedValue({
+          data: { id: '7782448611', publication: { status: 'INACTIVE' } },
+          status: 202,
+          headers: { location: operationLocation },
+        } as never);
+
+        const result = await cached.createOffer({ ...baseCmd, publishImmediately: true });
+
+        expect(result.status).toBe('validating');
+        expect(store.get(OPERATION_KEY)).toBe('dade5dc6-0b14-4236-9c6a-6a26b76c4c03');
+      });
+
+      it('remembers nothing for a Location naming a different offer', async () => {
+        const { cached, store } = adapterWithCache();
+        httpClient.post.mockResolvedValue({
+          data: { id: '7782448611', publication: { status: 'INACTIVE' } },
+          status: 202,
+          headers: {
+            location:
+              'https://api.allegro.pl.allegrosandbox.pl/sale/product-offers/1/operations/dade5dc6-0b14-4236-9c6a-6a26b76c4c03',
+          },
+        } as never);
+
+        await cached.createOffer({ ...baseCmd, publishImmediately: true });
+
+        expect(store.size).toBe(0);
+      });
+
+      it('still returns the created offer when remembering the operation fails', async () => {
+        // The offer already exists on Allegro: a throw here would retry the
+        // create, and Allegro does not deduplicate product-offer creates.
+        const failing: CachePort = {
+          get: jest.fn(),
+          set: jest.fn().mockRejectedValue(new Error('redis down')),
+          delete: jest.fn(),
+        };
+        const cached = new AllegroOfferManagerAdapter(
+          connectionId,
+          httpClient,
+          uploadHttpClient,
+          identifierMapping,
+          connection,
+          undefined,
+          undefined,
+          failing,
+          undefined,
+          DEFAULT_SELLER_DEFAULTS
+        );
+        httpClient.post.mockResolvedValue({
+          data: { id: '7782448611', publication: { status: 'INACTIVE' } },
+          status: 202,
+          headers: { location: operationLocation },
+        } as never);
+
+        await expect(
+          cached.createOffer({ ...baseCmd, publishImmediately: true })
+        ).resolves.toMatchObject({ externalOfferId: '7782448611' });
+      });
+    });
+
     describe('the tax rate (#2249, gated by #2260 review)', () => {
       const withStrict = (value: string | undefined, run: () => Promise<void>) => async () => {
         const previous = process.env['OL_TAX_RATE_STRICT_ENABLED'];
@@ -3095,6 +3252,192 @@ describe('AllegroOfferManagerAdapter', () => {
       });
     });
 
+    describe('product GPSR precedence', () => {
+      const REGISTRY = {
+        data: {
+          responsibleProducers: [
+            { id: 'rp-acme', name: 'acme label', producerData: { tradeName: 'Acme Sp. z o.o.' } },
+            { id: 'rp-beta', name: 'Beta GmbH' },
+          ],
+        },
+        status: 200,
+        headers: {},
+      };
+
+      type GpsrBody = {
+        productSet?: Array<{
+          product?: { id?: string };
+          responsibleProducer?: { id: string };
+          safetyInformation?: Record<string, unknown>;
+        }>;
+      };
+
+      const created = (): ReturnType<typeof mockHttpResponse> =>
+        mockHttpResponse({ id: 'allegro-offer-gpsr', publication: { status: 'INACTIVE' } });
+
+      const warnLines = (target: AllegroOfferManagerAdapter): jest.SpyInstance =>
+        jest.spyOn((target as unknown as { logger: { warn: (m: string) => void } }).logger, 'warn');
+
+      const withoutGpsrDefaults = (): AllegroOfferManagerAdapter =>
+        new AllegroOfferManagerAdapter(
+          connectionId,
+          httpClient,
+          uploadHttpClient,
+          identifierMapping,
+          connection,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          {
+            location: DEFAULT_SELLER_DEFAULTS.location,
+            responsibleProducerId: '',
+            safetyInformation: {} as AllegroSellerDefaultsConfig['safetyInformation'],
+          }
+        );
+
+      it('should use the matched registry producer instead of sellerDefaults when the product names one', async () => {
+        httpClient.get.mockResolvedValue(REGISTRY);
+        httpClient.post.mockResolvedValue(created());
+
+        await adapter.createOffer({
+          ...baseCmd,
+          gpsr: { producer: { name: '  acme   SP. z o.o. ' } },
+        });
+
+        const body = httpClient.post.mock.calls[0][1] as GpsrBody;
+        expect(httpClient.get).toHaveBeenCalledWith('/sale/responsible-producers');
+        expect(body.productSet?.[0]?.responsibleProducer).toEqual({ id: 'rp-acme' });
+        // No product safety text: the connection default still applies.
+        expect(body.productSet?.[0]?.safetyInformation).toEqual({ type: 'NO_SAFETY_INFORMATION' });
+      });
+
+      it('should keep sellerDefaults and warn when no registry producer matches', async () => {
+        httpClient.get.mockResolvedValue(REGISTRY);
+        httpClient.post.mockResolvedValue(created());
+        const warn = warnLines(adapter);
+
+        await adapter.createOffer({ ...baseCmd, gpsr: { producer: { name: 'Gamma S.A.' } } });
+
+        const body = httpClient.post.mock.calls[0][1] as GpsrBody;
+        expect(body.productSet?.[0]?.responsibleProducer).toEqual({ id: 'rp-test-1' });
+        expect(warn).toHaveBeenCalledWith(expect.stringContaining('allegro_gpsr_producer_unmatched'));
+      });
+
+      it('should keep sellerDefaults and warn when two registry producers match the name', async () => {
+        httpClient.get.mockResolvedValue({
+          ...REGISTRY,
+          data: { responsibleProducers: [{ id: 'a', name: 'Acme' }, { id: 'b', name: 'ACME' }] },
+        });
+        httpClient.post.mockResolvedValue(created());
+        const warn = warnLines(adapter);
+
+        await adapter.createOffer({ ...baseCmd, gpsr: { producer: { name: 'acme' } } });
+
+        const body = httpClient.post.mock.calls[0][1] as GpsrBody;
+        expect(body.productSet?.[0]?.responsibleProducer).toEqual({ id: 'rp-test-1' });
+        expect(warn).toHaveBeenCalledWith(expect.stringContaining('(ambiguous)'));
+      });
+
+      it('should keep sellerDefaults when the registry read fails', async () => {
+        httpClient.get.mockRejectedValue(new Error('503'));
+        httpClient.post.mockResolvedValue(created());
+
+        await adapter.createOffer({ ...baseCmd, gpsr: { producer: { name: 'Beta GmbH' } } });
+
+        const body = httpClient.post.mock.calls[0][1] as GpsrBody;
+        expect(body.productSet?.[0]?.responsibleProducer).toEqual({ id: 'rp-test-1' });
+      });
+
+      it('should write the product safety text as a TEXT block over sellerDefaults', async () => {
+        httpClient.post.mockResolvedValue(created());
+
+        await adapter.createOffer({
+          ...baseCmd,
+          gpsr: { safetyInformation: { text: 'Keep away from children.', certificateNames: ['CE'] } },
+        });
+
+        const body = httpClient.post.mock.calls[0][1] as GpsrBody;
+        expect(body.productSet?.[0]?.safetyInformation).toEqual({
+          type: 'TEXT',
+          description: 'Keep away from children.',
+        });
+        // No producer on the product: no registry read at all.
+        expect(httpClient.get).not.toHaveBeenCalled();
+      });
+
+      it('should keep sellerDefaults safety information when the product text is too long', async () => {
+        httpClient.post.mockResolvedValue(created());
+
+        await adapter.createOffer({
+          ...baseCmd,
+          gpsr: { safetyInformation: { text: 'x'.repeat(5001) } },
+        });
+
+        const body = httpClient.post.mock.calls[0][1] as GpsrBody;
+        expect(body.productSet?.[0]?.safetyInformation).toEqual({ type: 'NO_SAFETY_INFORMATION' });
+      });
+
+      it('should apply the product declaration on the card-linked path too', async () => {
+        httpClient.get.mockResolvedValue(REGISTRY);
+        httpClient.post.mockResolvedValue(created());
+
+        await adapter.createOffer({
+          ...baseCmd,
+          productCardId: 'card-1',
+          gpsr: { producer: { name: 'Beta GmbH' }, safetyInformation: { text: 'Warning.' } },
+        });
+
+        const body = httpClient.post.mock.calls[0][1] as GpsrBody;
+        expect(body.productSet).toEqual([
+          {
+            product: { id: 'card-1' },
+            responsibleProducer: { id: 'rp-beta' },
+            safetyInformation: { type: 'TEXT', description: 'Warning.' },
+          },
+        ]);
+      });
+
+      it('should accept missing GPSR sellerDefaults when the product supplies both values', async () => {
+        httpClient.get.mockResolvedValue(REGISTRY);
+        httpClient.post.mockResolvedValue(created());
+
+        await withoutGpsrDefaults().createOffer({
+          ...baseCmd,
+          gpsr: { producer: { name: 'Beta GmbH' }, safetyInformation: { text: 'Warning.' } },
+        });
+
+        const body = httpClient.post.mock.calls[0][1] as GpsrBody;
+        expect(body.productSet?.[0]?.responsibleProducer).toEqual({ id: 'rp-beta' });
+      });
+
+      it('should still report a missing default the product could not supply', async () => {
+        httpClient.get.mockResolvedValue(REGISTRY);
+
+        await expect(
+          withoutGpsrDefaults().createOffer({
+            ...baseCmd,
+            gpsr: { producer: { name: 'Gamma S.A.' }, safetyInformation: { text: 'Warning.' } },
+          })
+        ).rejects.toMatchObject({
+          name: 'OfferCreateRejectedException',
+          errors: [expect.objectContaining({ field: 'sellerDefaults.responsibleProducerId' })],
+        });
+        expect(httpClient.post).not.toHaveBeenCalled();
+      });
+
+      it('should never create a responsible producer on Allegro', async () => {
+        httpClient.get.mockResolvedValue({ ...REGISTRY, data: { responsibleProducers: [] } });
+        httpClient.post.mockResolvedValue(created());
+
+        await adapter.createOffer({ ...baseCmd, gpsr: { producer: { name: 'Unregistered Ltd' } } });
+
+        const postedPaths = httpClient.post.mock.calls.map(([path]) => path);
+        expect(postedPaths).toEqual(['/sale/product-offers']);
+        expect(httpClient.put).not.toHaveBeenCalled();
+      });
+    });
+
     describe('seller defaults (#430)', () => {
       it('throws OfferCreateRejectedException with SELLER_DEFAULTS_NOT_CONFIGURED when sellerDefaults are missing', async () => {
         // Construct an adapter without sellerDefaults — preflight must fire.
@@ -3850,6 +4193,128 @@ describe('AllegroOfferManagerAdapter', () => {
       // private-helper coverage is implicit: if the helper signature drifts,
       // both call sites fail TypeScript before the test runs.
       expect(httpClient.get).toHaveBeenCalledWith('/sale/product-offers/7781562863');
+    });
+  });
+
+  describe('getOfferStatus after an asynchronous create (E2E-11)', () => {
+    // Shapes recorded live on the Allegro sandbox, 2026-10-26: an inline
+    // product with an EAN unknown to GS1 was accepted with 202, the offer read
+    // INACTIVE with empty validation.errors throughout, and the reason only
+    // ever appeared on the create operation.
+    const inactiveOffer = (
+      productStatus = 'PROPOSED'
+    ): { data: unknown; status: number; headers: Record<string, string> } => ({
+      data: {
+        id: '7782448611',
+        publication: { status: 'INACTIVE' },
+        productSet: [{ product: { id: 'p-1', publication: { status: productStatus } } }],
+        validation: { errors: [] },
+      },
+      status: 200,
+      headers: {},
+    });
+
+    it('reports activating while the create operation is still in progress', async () => {
+      const { cached, store } = adapterWithCache();
+      store.set(OPERATION_KEY, 'dade5dc6-0b14-4236-9c6a-6a26b76c4c03');
+      httpClient.get.mockResolvedValueOnce(inactiveOffer() as never).mockResolvedValueOnce({
+        data: {
+          offer: { id: '7782448611' },
+          operation: { id: 'dade5dc6-0b14-4236-9c6a-6a26b76c4c03', status: 'IN_PROGRESS' },
+        },
+        status: 202,
+        headers: {},
+      } as never);
+
+      const result = await cached.getOfferStatus('7782448611');
+
+      expect(httpClient.get).toHaveBeenLastCalledWith(
+        '/sale/product-offers/7782448611/operations/dade5dc6-0b14-4236-9c6a-6a26b76c4c03'
+      );
+      // Not terminal: the poller keeps waiting instead of settling on "draft".
+      expect(result.publicationStatus).toBe('activating');
+      expect(result.validationErrors).toEqual([]);
+    });
+
+    it('reports the reason Allegro gave on a failed create operation', async () => {
+      const { cached, store } = adapterWithCache();
+      store.set(OPERATION_KEY, 'dade5dc6-0b14-4236-9c6a-6a26b76c4c03');
+      httpClient.get.mockResolvedValueOnce(inactiveOffer('REMOVED') as never).mockRejectedValueOnce(
+        new AllegroApiException('Unprocessable', 422, undefined, undefined, [
+          {
+            code: 'GtinNotExistsInGtinParameter',
+            message: 'EAN (GTIN) został oznaczony jako niezarejestrowany w GS1',
+            path: 'gtin-data-processor',
+            userMessage:
+              'Podany EAN (GTIN) jest niepoprawny. Podaj EAN (GTIN), który istnieje w bazie GS1.',
+          },
+        ])
+      );
+
+      const result = await cached.getOfferStatus('7782448611');
+
+      expect(result.publicationStatus).toBe('inactive');
+      expect(result.validationErrors).toEqual([
+        {
+          field: 'gtin-data-processor',
+          code: 'GtinNotExistsInGtinParameter',
+          message:
+            'Podany EAN (GTIN) jest niepoprawny. Podaj EAN (GTIN), który istnieje w bazie GS1.',
+        },
+      ]);
+    });
+
+    it('says the product was removed without a reason when no operation is on record', async () => {
+      const { cached } = adapterWithCache();
+      httpClient.get.mockResolvedValueOnce(inactiveOffer('REMOVED') as never);
+
+      const result = await cached.getOfferStatus('7782448611');
+
+      expect(httpClient.get).toHaveBeenCalledTimes(1);
+      expect(result.publicationStatus).toBe('inactive');
+      expect(result.validationErrors).toHaveLength(1);
+      expect(result.validationErrors[0]).toMatchObject({ code: 'PRODUCT_REMOVED' });
+      expect(result.validationErrors[0].message).toMatch(
+        /activate the offer in the Allegro seller panel/
+      );
+    });
+
+    it('falls back to the offer when Allegro no longer knows the operation', async () => {
+      const { cached, store } = adapterWithCache();
+      store.set(OPERATION_KEY, 'gone');
+      httpClient.get
+        .mockResolvedValueOnce(inactiveOffer() as never)
+        .mockRejectedValueOnce(new AllegroApiException('not found', 404));
+
+      const result = await cached.getOfferStatus('7782448611');
+
+      expect(result.publicationStatus).toBe('inactive');
+      expect(result.validationErrors).toEqual([]);
+    });
+
+    it('propagates a transport failure of the operation read so the poller retries', async () => {
+      const { cached, store } = adapterWithCache();
+      store.set(OPERATION_KEY, 'dade5dc6-0b14-4236-9c6a-6a26b76c4c03');
+      httpClient.get
+        .mockResolvedValueOnce(inactiveOffer() as never)
+        .mockRejectedValueOnce(new AllegroApiException('bad gateway', 502));
+
+      await expect(cached.getOfferStatus('7782448611')).rejects.toBeInstanceOf(AllegroApiException);
+    });
+
+    it('does not read the operation for an offer that is not inactive', async () => {
+      const { cached, store } = adapterWithCache();
+      store.set(OPERATION_KEY, 'dade5dc6-0b14-4236-9c6a-6a26b76c4c03');
+      httpClient.get.mockResolvedValueOnce({
+        data: { id: '7782448611', publication: { status: 'ACTIVE' } },
+        status: 200,
+        headers: {},
+      } as never);
+
+      const result = await cached.getOfferStatus('7782448611');
+
+      expect(httpClient.get).toHaveBeenCalledTimes(1);
+      expect(result.publicationStatus).toBe('active');
     });
   });
 

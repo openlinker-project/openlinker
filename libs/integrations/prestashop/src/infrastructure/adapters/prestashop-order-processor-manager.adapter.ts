@@ -11,8 +11,14 @@
  * external order id. PS-side duplicate-key recovery (recover the existing order
  * id by reference) is retained as defense-in-depth.
  *
+ * Stock effect (`OrderCreateStockEffect`): PrestaShop lowers stock as
+ * `validateOrder` creates the order, except in `PS_OS_CANCELED` / `PS_OS_ERROR`
+ * - a fact about the created order, answered for it by
+ * `PrestashopOrderStockEffectResolver`.
+ *
  * @module libs/integrations/prestashop/src/infrastructure/adapters
  * @implements {OrderProcessorManagerPort}
+ * @implements {OrderCreateStockEffect}
  */
 import type { OrderProcessorManagerPort, OrderCreate, OrderRef } from '@openlinker/core/orders';
 import type {
@@ -24,7 +30,11 @@ import type {
   OrderLifecycleEvent,
   OrderWritebackResult,
 } from '@openlinker/core/orders';
-import type { FulfillmentStatusReader, FulfillmentStatusSnapshot } from '@openlinker/core/orders';
+import type {
+  FulfillmentStatusReader,
+  FulfillmentStatusSnapshot,
+  OrderCreateStockEffect,
+} from '@openlinker/core/orders';
 import {
   extractTrackingFromCarriers,
   extractTrackingFromOrder,
@@ -74,6 +84,7 @@ import {
 import { PrestashopAmbiguousWriteException } from '../../domain/exceptions/prestashop-ambiguous-write.exception';
 import { PrestashopOrderStateUnresolvedException } from '../../domain/exceptions/prestashop-order-state-unresolved.exception';
 import { PrestashopOrderStateCatalog } from '../provisioners/prestashop-order-state.catalog';
+import { PrestashopOrderStockEffectResolver } from '../provisioners/prestashop-order-stock-effect.resolver';
 import { hashEmail } from '@openlinker/shared/config';
 
 /**
@@ -143,9 +154,23 @@ export class PrestashopOrderProcessorManagerAdapter
     DestinationOptionsReader,
     OrderFulfillmentUpdater,
     OrderStatusWriteback,
-    FulfillmentStatusReader
+    FulfillmentStatusReader,
+    OrderCreateStockEffect
 {
   private readonly logger = new Logger(PrestashopOrderProcessorManagerAdapter.name);
+
+  private readonly stockEffect: PrestashopOrderStockEffectResolver;
+
+  /**
+   * The order this instance last created (or recovered) and its PrestaShop
+   * product ids - what {@link lowersStockOnOrderCreate} answers about. Per
+   * instance because core asks the very adapter it created the order with,
+   * and a fresh adapter is built per resolution (see `orderStates` below).
+   */
+  private lastCreatedOrder: { orderId: string; productIds: string[] } | null = null;
+
+  /** The answer for {@link lastCreatedOrder}, read once. */
+  private lastCreatedOrderLowersStock: Promise<boolean> | null = null;
 
   /**
    * Per-instance cache of the shop's own `order_states` rows (#2607), used in
@@ -184,9 +209,38 @@ export class PrestashopOrderProcessorManagerAdapter
     private readonly mappingConfigService?: IMappingConfigService
   ) {
     this.orderStates = new PrestashopOrderStateCatalog(httpClient, connection.id);
+    this.stockEffect = new PrestashopOrderStockEffectResolver(httpClient, connection.id);
+  }
+
+  /**
+   * `OrderCreateStockEffect`: whether the order this adapter just created
+   * lowered PrestaShop's stock. Answered for that order, from the state
+   * PrestaShop actually created it in, because the shop has no setting that
+   * decides it (`PS_STOCK_MANAGEMENT` does not gate the decrement).
+   *
+   * `false` when this instance created no order - core also asks after a
+   * skipped create (the order already existed from an earlier run), and this
+   * instance has no record of that order, so its holds stay until dispatch
+   * rather than being consumed on a guess.
+   */
+  async lowersStockOnOrderCreate(): Promise<boolean> {
+    const created = this.lastCreatedOrder;
+    if (created === null) {
+      return false;
+    }
+    this.lastCreatedOrderLowersStock ??= this.stockEffect.lowersStock(
+      created.orderId,
+      created.productIds
+    );
+    return this.lastCreatedOrderLowersStock;
   }
 
   async createOrder(order: OrderCreate): Promise<OrderRef> {
+    // Cleared first so a create that fails part-way can never leave an earlier
+    // order's answer standing.
+    this.lastCreatedOrder = null;
+    this.lastCreatedOrderLowersStock = null;
+
     this.logger.log(
       `Creating PrestaShop order: orderNumber=${order.orderNumber || 'N/A'}, ` +
         `status=${order.status}, items=${order.items.length}, total=${order.totals.total} ${order.totals.currency}`
@@ -723,6 +777,11 @@ export class PrestashopOrderProcessorManagerAdapter
       // The line prices are now materialised into `order_detail`; the pin rows
       // have served their purpose. Best-effort cleanup (never throws).
       await this.cleanupPinnedPrices(pinnedPriceIds);
+
+      this.lastCreatedOrder = {
+        orderId: externalOrderId,
+        productIds: [...externalProductIds.values()].map(String),
+      };
 
       // Step 9: Return the destination-native external order id (#909).
       return {

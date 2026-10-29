@@ -45,6 +45,12 @@ export class ProductVariantOrmEntity {
   @Column({ type: 'decimal', precision: 10, scale: 2, nullable: true })
   price!: number | null;
 
+  // Pictures the master dedicates to this variant (absolute URLs, in order).
+  // Sync-derived like `attributes`, so the master-sync upsert owns it; null
+  // means "no picture of its own", never "no images".
+  @Column({ type: 'jsonb', nullable: true })
+  images!: string[] | null;
+
   // Soft-mark for a variant that no longer appears in the master's
   // getProductVariants response, or whose product 404s at the master
   // (#1599 — the products-context counterpart of inventory_items.isStale,

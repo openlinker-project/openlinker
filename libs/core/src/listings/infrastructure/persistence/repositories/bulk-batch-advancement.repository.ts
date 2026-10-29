@@ -23,6 +23,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 
 import type { BulkBatchAdvancementRepositoryPort } from '../../../domain/ports/bulk-batch-advancement-repository.port';
+import type { BulkChildOutcome } from '../../../domain/types/bulk-child-outcome.types';
 import { BulkBatchAdvancementOrmEntity } from '../entities/bulk-batch-advancement.orm-entity';
 
 @Injectable()
@@ -35,11 +36,12 @@ export class BulkBatchAdvancementRepository implements BulkBatchAdvancementRepos
   async markAdvancedIfNotExists(
     bulkBatchId: string,
     offerCreationRecordId: string,
+    outcome: BulkChildOutcome
   ): Promise<{ created: boolean }> {
     const result = await this.repository
       .createQueryBuilder()
       .insert()
-      .values({ bulkBatchId, offerCreationRecordId })
+      .values({ bulkBatchId, offerCreationRecordId, outcome })
       .orIgnore()
       .execute();
     // RETURNING rows, not `identifiers` (#1084): empty ⇒ ON CONFLICT skipped the

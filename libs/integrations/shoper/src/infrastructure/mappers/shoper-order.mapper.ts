@@ -22,7 +22,8 @@ const ISO2 = /^[A-Za-z]{2}$/;
 /**
  * Shoper REQUIRES a phone on both addresses (live: an empty one is a 400 naming
  * `phone`). The address's own wins; `fallbackPhone` is the OTHER address's, so a
- * source that states one phone still fills both. Never invented.
+ * source that states one phone still fills both. When the source states none,
+ * the adapter passes its labelled placeholder as `fallbackPhone`.
  */
 export function mapShoperOrderAddress(address: Address, fallbackPhone?: string): ShoperOrderAddress {
   return {

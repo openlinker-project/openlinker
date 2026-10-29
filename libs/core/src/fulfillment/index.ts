@@ -152,6 +152,7 @@ export type { IFulfillmentRelayGateService } from './application/interfaces/fulf
 // to ask what work covers an order. The repository port stays off the barrel;
 // `check-cross-context-imports.mjs` denies a cross-context `*RepositoryPort`.
 export * from './domain/types/fulfillment-work-link.types';
+export * from './domain/types/order-work-summary.types';
 export type { IFulfillmentWorkQueryService } from './application/interfaces/fulfillment-work-query.service.interface';
 
 export { RoutingDecision } from './domain/entities/routing-decision.entity';
@@ -223,6 +224,12 @@ export * from './application/types/fulfillment-dispatch-timeout-sweep.types';
 export * from './domain/types/fulfillment-relay-reconcile.types';
 export type { IFulfillmentRelayReconcileService } from './application/interfaces/fulfillment-relay-reconcile.service.interface';
 export * from './application/types/fulfillment-relay-reconcile-sweep.types';
+
+// The sale-decrement reconcile read (#3629). The enqueue is the worker's:
+// `fulfillment` may not import `@openlinker/core/sync`.
+export * from './domain/types/fulfillment-sale-decrement-reconcile.types';
+export type { IFulfillmentSaleDecrementReconcileService } from './application/interfaces/fulfillment-sale-decrement-reconcile.service.interface';
+export * from './application/types/fulfillment-sale-decrement-reconcile-sweep.types';
 
 export { FulfillmentModule } from './fulfillment.module';
 

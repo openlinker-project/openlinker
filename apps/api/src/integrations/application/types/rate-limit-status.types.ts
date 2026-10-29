@@ -30,4 +30,11 @@ export interface EffectiveRateLimitStatus {
    * resolved (a configuration state, never a claim that nothing paces it).
    */
   resolveConcurrency?: ResolveConcurrencyCeiling;
+  /**
+   * `true` when the connection paces against a bucket wider than itself
+   * (ADR-038 § Amendment) - so the live counters include other connections'
+   * traffic and `config.rateLimit` can only tighten the manifest ceiling.
+   * Absent means the bucket is this connection's own.
+   */
+  sharedBucket?: boolean;
 }
