@@ -99,11 +99,12 @@ export class OrderDocumentEmailService implements IOrderDocumentEmailService {
     const order = await this.orderRecords.getOrderRecord(record.orderId);
     const buyerEmail = order?.buyerEmail ?? null;
     const given = input.recipient?.trim() ?? '';
+    const noKnownAddress = given.length === 0 && buyerEmail === null;
 
     // No address anywhere on our side (hash-only PII mode, or a source that sends
     // none): the provider still holds its own client address and could always
     // send, so try it before refusing. Only the mailer needs an address of ours.
-    if (given.length === 0 && buyerEmail === null && record.providerInvoiceId) {
+    if (noKnownAddress && record.providerInvoiceId) {
       const viaProvider = await this.trySendViaProvider(ctx, record, input, null);
       if (viaProvider !== null) return viaProvider;
     }
@@ -117,7 +118,7 @@ export class OrderDocumentEmailService implements IOrderDocumentEmailService {
     // differ from the order's; the result reports the one it echoed.
     const overridden =
       given.length > 0 && recipient.address.toLowerCase() !== (buyerEmail ?? '').toLowerCase();
-    if (!overridden && record.providerInvoiceId && !(given.length === 0 && buyerEmail === null)) {
+    if (!overridden && record.providerInvoiceId && !noKnownAddress) {
       const viaProvider = await this.trySendViaProvider(ctx, record, input, recipient.address);
       if (viaProvider !== null) return viaProvider;
     }
