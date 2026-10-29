@@ -28,6 +28,9 @@ export const ordersQueryKeys = {
     ['orders', 'lifecycle-summary', filters ?? {}] as const,
   detail: (internalOrderId: string) => ['orders', 'detail', internalOrderId] as const,
   /** An order's notes (#3531). */
+  /** Document-email attempts for the Activity timeline (#3551). */
+  documentEmails: (internalOrderId: string) =>
+    ['orders', 'document-emails', internalOrderId] as const,
   notes: (internalOrderId: string) => ['orders', 'notes', internalOrderId] as const,
   /** The workspace tag vocabulary (#3532). */
   tags: () => ['orders', 'tags'] as const,

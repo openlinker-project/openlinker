@@ -464,6 +464,7 @@ export function createMockApiClient(
       // #1909 — empty list default: the normal never-registered state, never a
       // 404 (OpenLinker never asserts an order requires a receipt).
       listForOrder: vi.fn().mockResolvedValue([]),
+      sendEmail: vi.fn().mockResolvedValue({ delivered: true, recipient: null, sentVia: 'openlinker' }),
       register: vi.fn().mockResolvedValue({
         orderId: 'ord_1',
         connectionId: 'conn_fiscal',
@@ -668,6 +669,7 @@ export function createMockApiClient(
         ready: 0,
       }),
       getById: vi.fn().mockResolvedValue(null),
+      listDocumentEmails: vi.fn().mockResolvedValue([]),
       retryDestination: vi.fn().mockResolvedValue({
         internalOrderId: '',
         destinationConnectionId: '',
