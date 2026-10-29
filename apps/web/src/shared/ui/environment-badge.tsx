@@ -34,7 +34,7 @@ export function getEnvironmentMeta(appEnv: string): EnvironmentMeta {
     case 'local':
     case 'test':
       return {
-        label: copy.development,
+        label: copy.developmentShort,
         shortLabel: copy.developmentShort,
         tone: 'info',
       };
