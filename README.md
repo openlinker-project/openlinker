@@ -28,6 +28,7 @@ If you sell on your own shop *and* on marketplaces like Allegro, you've already 
 - **Stock stays in sync, both ways.** Sell on Allegro, your shop stock drops. Restock in your shop, Allegro listings update. No per-platform spreadsheet.
 - **Create listings without copy-pasting.** Pick a product, pick a category (or look it up by EAN), get an Allegro offer up with images, parameters, GPSR data, and your saved seller policies — from one wizard. AI can draft the description if you let it.
 - **Run multiple stores from one dashboard.** Each connection has its own encrypted credentials and config. Two PrestaShop stores plus three Allegro accounts? One OpenLinker instance.
+- **Work in English or Polish.** Pick the language from the switch at the bottom of the sidebar or in the corner of the sign-in page; a deployment sets its default with `VITE_DEFAULT_UI_LOCALE` ([details](./docs/frontend-architecture.md#internationalization-i18n)). Polish is in **beta**: some screens may still show English text while the translation is finished. Progress is tracked in the [Interface language milestone](https://github.com/openlinker-project/openlinker/milestone/6).
 - **You own everything.** Self-hosted, Apache 2.0. No subscription, no per-order pricing, no vendor that can shut you off. You host it; that's the trade.
 
 <p align="center">
