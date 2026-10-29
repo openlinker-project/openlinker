@@ -440,8 +440,8 @@ export interface OrderRecordFilters {
    */
   packed?: boolean;
   /**
-   * "Has a buyer note" filter (#3538). `true` -> `hasBuyerNote = true`, `false`
-   * -> `hasBuyerNote = false`, absent -> no arm. A plain indexed boolean test
+   * "Has a buyer note" filter (#3538). `true` -> `hasBuyerNote = true` AND
+   * `recordStatus = 'ready'` (N-20), `false` -> `hasBuyerNote = false`, absent -> no arm. A plain indexed boolean test
    * over a denormalized column; ANDed with every other axis.
    */
   hasBuyerNote?: boolean;
