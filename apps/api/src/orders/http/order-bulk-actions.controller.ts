@@ -66,7 +66,11 @@ function cancelWarnings(result: CancelOrderResult): string[] {
   if (result.correctionUnavailableReason) {
     warnings.push(`correction-unavailable:${result.correctionUnavailableReason}`);
   }
-  if (result.stockRestoreEnqueued === false) warnings.push('stock-restore-not-queued');
+  // A pending cancel has queued nothing yet by design: the order is not cancelled until
+  // the channel answers, so "not queued" would be a false claim (B-12).
+  if (result.status === 'cancelled' && result.stockRestoreEnqueued === false) {
+    warnings.push('stock-restore-not-queued');
+  }
   return warnings;
 }
 
