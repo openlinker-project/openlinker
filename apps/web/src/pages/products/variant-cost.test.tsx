@@ -58,7 +58,7 @@ function cost(overrides: Partial<VariantCost>): VariantCost {
 function renderWith(
   ui: React.ReactElement,
   rows: VariantCost[],
-  options: { adapter?: typeof adminAdapter; setVariantCost?: Mock } = {}
+  options: { adapter?: typeof adminAdapter; setVariantCost?: Mock; demoMode?: boolean } = {}
 ): Mock {
   const setVariantCost: Mock = options.setVariantCost ?? vi.fn().mockResolvedValue(cost({}));
   renderWithProviders(ui, {
@@ -67,6 +67,7 @@ function renderWith(
         getVariantCosts: vi.fn().mockResolvedValue(rows),
         setVariantCost: setVariantCost as never,
       },
+      system: { getConfig: vi.fn().mockResolvedValue({ demoMode: options.demoMode ?? false }) },
     }),
     sessionAdapter: options.adapter ?? adminAdapter,
   });
@@ -154,5 +155,13 @@ describe('VariantCostSection', () => {
       'Only an admin can change cost prices.'
     );
     expect(screen.queryByTestId('variant-cost-clear-kub-350-bia')).not.toBeInTheDocument();
+  });
+
+  it('should lock Edit cost behind the demo tooltip for a demo viewer, without the admin-only reason', async () => {
+    renderWith(section, [cost({})], { adapter: viewerAdapter, demoMode: true });
+    const edit = await screen.findByTestId('variant-cost-edit-kub-350-bia');
+    await waitFor(() => expect(edit.closest('.read-only-lock')).not.toBeNull());
+    expect(edit).toBeDisabled();
+    expect(screen.queryByTestId('variant-cost-readonly-reason')).not.toBeInTheDocument();
   });
 });
