@@ -6,7 +6,6 @@
  */
 import { cleanup, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { MemoryRouter } from 'react-router-dom';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { BulkCancelDialog } from './bulk-cancel-dialog';
@@ -42,9 +41,7 @@ function renderDialog(bulkCancelOrders = vi.fn().mockResolvedValue(MIXED)) {
   const onComplete = vi.fn();
   const api = createMockApiClient({ orders: { bulkCancelOrders } });
   renderWithProviders(
-    <MemoryRouter>
-      <BulkCancelDialog open onOpenChange={onOpenChange} orderIds={IDS} onComplete={onComplete} />
-    </MemoryRouter>,
+    <BulkCancelDialog open onOpenChange={onOpenChange} orderIds={IDS} onComplete={onComplete} />,
     { apiClient: api },
   );
   return { bulkCancelOrders, onOpenChange, onComplete };
