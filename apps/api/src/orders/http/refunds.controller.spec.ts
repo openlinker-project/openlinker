@@ -113,6 +113,7 @@ describe('RefundsController', () => {
           reason: 'withdrawal',
           note: null,
         }),
+        expect.objectContaining({ onCeilingVerdict: expect.any(Function) }),
       );
       expect(result.id).toBe(sampleRefund.id);
       expect(result.amount).toBe('49.99');
@@ -172,12 +173,14 @@ describe('RefundsController', () => {
 
       expect(refundService.recordRefund).toHaveBeenCalledWith(
         expect.objectContaining({ idempotencyKey: 'retry-1' }),
+        expect.anything(),
       );
 
       await controller.recordRefund('ol_order_abc123', dto);
 
       expect(refundService.recordRefund).toHaveBeenLastCalledWith(
         expect.objectContaining({ idempotencyKey: null }),
+        expect.anything(),
       );
     });
 
@@ -218,6 +221,7 @@ describe('RefundsController', () => {
 
       expect(refundService.recordRefund).toHaveBeenCalledWith(
         expect.objectContaining({ acknowledgeAboveCeiling: true }),
+        expect.anything(),
       );
     });
 
