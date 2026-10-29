@@ -29,6 +29,7 @@ import { devUiRoute } from './dev-ui.route';
 import { insightsRoute } from './insights.route';
 import { inventoryLocationsRoute } from './inventory-locations.route';
 import { orderTagsSettingsRoute } from './order-tags-settings.route';
+import { buyerEmailsRoute, buyerEmailEditorRoute } from './buyer-emails.route';
 import { listingsRoute } from './listings.route';
 import { aiProviderSettingsRoute } from './ai-provider-settings.route';
 import { mcpTokensRoute } from './mcp-tokens.route';
@@ -85,6 +86,8 @@ export function buildCoreChildren(omsRoutingUiEnabled: boolean): RouteObject[] {
     connectionsRoute,
     ...(omsRoutingUiEnabled ? [inventoryLocationsRoute] : []),
     orderTagsSettingsRoute,
+    buyerEmailsRoute,
+    buyerEmailEditorRoute,
     adaptersRoute,
     newConnectionRoute,
     advancedNewConnectionRoute,

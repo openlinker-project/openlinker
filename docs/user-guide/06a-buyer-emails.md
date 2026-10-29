@@ -21,35 +21,30 @@ is refused on a marketplace connection. There are no marketing emails.
 
 ## Switching buyer emails on
 
-Two things must both be on for an email to go out.
+Open **Settings → Buyer emails** (admin only) and pick the connection.
 
-**1. The connection's opt-in.** On the connection's Edit page, in the raw
-configuration, add a `buyerEmails` block. Turn the emails on as a whole, then
-switch on each email you want:
+1. Tick **Send buyer emails for this connection**. Until you do, nothing is
+   sent for that connection, whatever else is set.
+2. Click **Edit** next to an email and tick **Send this email**. Here you can
+   also set a **sender address** and a **reply-to address** for this email on
+   this connection. Leave the sender empty to use the one from the mail
+   settings.
+3. Adjust the **subject** and **message** if you like. Click a variable, such
+   as `{order.reference}`, `{buyer.name}` or `{shipment.tracking}`, to insert
+   it; the preview shows the result with sample values.
+4. **Save changes.**
 
-```json
-"buyerEmails": {
-  "enabled": true,
-  "templates": {
-    "shipped": { "enabled": true, "replyTo": "help@your-shop.pl" },
-    "document-issued": { "enabled": true },
-    "return-received": { "enabled": true },
-    "order-confirmed": { "enabled": true, "fromAddress": "orders@your-shop.pl" }
-  }
-}
-```
+The subject and message are shared by every connection; the switches and
+the sender belong to one connection. A marketplace connection does not list
+"Order confirmed" at all, and the page says why.
 
-`fromAddress` and `replyTo` are optional and per email. Leave them out to use
-the sender from the mail settings. Each must be a single plain address.
+### Sending a test
 
-**2. The automation rule.** OpenLinker ships one ready-made rule per email,
-named `Buyer email: …`, switched **off**. Open **Automations**, find the rule,
-adjust the subject and body if you like, and switch it on. The text can use the
-usual merge fields, such as `{order.reference}`, `{buyer.name}`, `{order.total}`
-and `{shipment.tracking}`.
-
-A dedicated settings screen for buyer emails is planned; until then the two
-steps above are the way to set it up.
+In the editor, type your own address under **Send a test** and click **Send
+test email**. It sends the subject and message exactly as typed, with this
+connection's sender, through the same mail transport real emails use. A test
+is not recorded on any order, and it works even before the email is switched
+on.
 
 ---
 

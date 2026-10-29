@@ -183,6 +183,11 @@ export function createMockApiClient(
     // layer returns (`{items, droppedCount}`), not a bare array — a mock that
     // returned `[]` would let a component read `.items` as undefined and pass,
     // while the real client never can.
+    buyerEmails: {
+      listForOrder: vi.fn().mockResolvedValue([]),
+      sendTest: vi.fn().mockResolvedValue(undefined),
+      ...overrides.buyerEmails,
+    },
     automations: {
       getVocabulary: vi.fn().mockResolvedValue({
         triggers: [],

@@ -50,6 +50,11 @@ import { OrderTagsHeaderRow } from '../../features/orders/components/order-tags-
 import { useOrderNotesTimelineQuery } from '../../features/orders/hooks/use-order-notes-timeline-query';
 import { useOrderDocumentEmailsQuery } from '../../features/orders/hooks/use-order-document-emails-query';
 import { mapDocumentEmailsToEvents } from '../../features/orders/lib/document-email-timeline-events';
+import {
+  OrderBuyerEmailsPanel,
+  mapBuyerEmailsToEvents,
+  useOrderBuyerEmailsQuery,
+} from '../../features/buyer-emails';
 import { mapNoteTimelineToEvents } from '../../features/orders/lib/order-note-timeline-events';
 import { resolvePlatformLabel } from '../../features/mappings';
 import { usePlatforms } from '../../shared/plugins';
@@ -110,6 +115,7 @@ export function OrderDetailPage(): ReactElement {
   // unreadable answer contributes no rows rather than failing the timeline.
   const noteTimelineQuery = useOrderNotesTimelineQuery(internalOrderId);
   const documentEmailsQuery = useOrderDocumentEmailsQuery(internalOrderId);
+  const buyerEmailsQuery = useOrderBuyerEmailsQuery(internalOrderId);
   const platforms = usePlatforms();
   // #3505 — whether fulfilment routing is on decides whether an order with no
   // fulfilment tasks gets a section saying so.
@@ -236,6 +242,7 @@ export function OrderDetailPage(): ReactElement {
   );
   const noteTimelineEvents = mapNoteTimelineToEvents(noteTimelineQuery.data ?? []);
   const documentEmailEvents = mapDocumentEmailsToEvents(documentEmailsQuery.data ?? []);
+  const buyerEmailEvents = mapBuyerEmailsToEvents(buyerEmailsQuery.data ?? []);
   const failedDestinations = order.syncStatus.filter((s) => s.status === 'failed');
 
   const connections = connectionsQuery.data ?? [];
@@ -586,6 +593,7 @@ export function OrderDetailPage(): ReactElement {
             <WarehouseReleaseBadge invoice={snapshot.invoice} />
           </div>
           <OrderCustomerCard customerId={order.customerId} sourceConnectionId={order.sourceConnectionId} />
+          <OrderBuyerEmailsPanel internalOrderId={order.internalOrderId} />
         </div>
       </div>
 
@@ -648,7 +656,12 @@ export function OrderDetailPage(): ReactElement {
           packedByUserId={order.packedByUserId}
           salesDocumentBlockedAt={order.salesDocumentBlockedAt}
           salesDocumentBlockReleasedAt={order.salesDocumentBlockReleasedAt}
-          extraEvents={[...returnTimelineEvents, ...noteTimelineEvents, ...documentEmailEvents]}
+          extraEvents={[
+            ...returnTimelineEvents,
+            ...noteTimelineEvents,
+            ...documentEmailEvents,
+            ...buyerEmailEvents,
+          ]}
           holds={order.holdHistory}
           automationRuns={automationRunsQuery.data?.runs ?? []}
         />

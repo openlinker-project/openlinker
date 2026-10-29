@@ -23,6 +23,7 @@ import { SalesDocumentsController } from './http/sales-documents.controller';
 import { OrderColumnPresetsController } from './http/order-column-presets.controller';
 import { OrderNotesController } from './http/order-notes.controller';
 import { OrderBuyerEmailsController } from './http/order-buyer-emails.controller';
+import { BuyerEmailsController } from './http/buyer-emails.controller';
 import { OrderTagsController } from './http/order-tags.controller';
 import { OrderTagAssignmentsController } from './http/order-tag-assignments.controller';
 import { OrderExportsController } from './http/order-exports.controller';
@@ -84,6 +85,7 @@ import { SOURCE_FULFILLMENT_STATUS_SERVICE_TOKEN } from './application/interface
     SalesDocumentsController,
     OrderNotesController,
     OrderBuyerEmailsController,
+    BuyerEmailsController,
     OrderTagsController,
     OrderTagAssignmentsController,
   ],
