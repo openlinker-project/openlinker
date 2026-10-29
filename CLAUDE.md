@@ -115,6 +115,8 @@ See `docs/engineering-standards.md` for the full list. Key patterns:
 
 ### User-facing copy (frontend)
 
+The helpers below live in `apps/web/src/shared/i18n/` from #3856 on.
+
 - Never write user-visible text inline in TSX, a toast, a validation message or a constant. Add it to the feature's `*.copy.ts` under **both** `en` and `pl` in the same edit.
 - Write the Polish yourself, using `docs/i18n-glossary.md`. Never copy English into `pl` as a placeholder.
 - Counts use `usePlural` (`one/few/many/other` for Polish); numbers, money and dates use `useFormat`.

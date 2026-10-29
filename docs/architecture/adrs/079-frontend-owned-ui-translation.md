@@ -27,14 +27,18 @@ forms. The API answers errors mostly with English sentences.
    `Intl.PluralRules`, `useFormat` for numbers, money, dates and relative time.
    No plural or date is built by string concatenation.
 3. **No locale in the URL.** The language is resolved as `?lang=` (saved), then
-   `localStorage`, then `VITE_DEFAULT_UI_LOCALE`, then `pl`. A later step saves
-   it on the user profile.
-4. **The frontend owns every user-facing word.** The backend gains stable error
-   codes and params (an error envelope) but never translated text.
+   `localStorage`, then `VITE_DEFAULT_UI_LOCALE`, then `pl` for a value the app
+   does not support. The variable defaults to `en` until #3890 makes Polish the
+   default. A later step saves the choice on the user profile.
+4. **The frontend owns every user-facing word.** The backend will gain stable
+   error codes and params (an error envelope, #3860 to #3867) but never
+   translated text. Until it does, the frontend maps the machine values an
+   endpoint already sends and shows any other server sentence behind a
+   translated prefix.
 5. **Product rules**: brand and platform names are not translated; English copy
    uses British spelling ("fulfilment"); copy uses a plain hyphen, never an em
    dash; copy speaks to operators, not developers; copy addressed to a Polish
-   provider is bilingual, Polish first; the KSeF statement (oswiadczenie) stays
+   provider is bilingual, Polish first; the KSeF statement (oświadczenie) stays
    Polish in both languages.
 
 ## Alternatives considered
@@ -57,7 +61,7 @@ forms. The API answers errors mostly with English sentences.
 **Pros:**
 - One file holds both languages, so a missing Polish string is a type error once
   the type is strict, and an agent sees what to translate.
-- Extends an existing convention and check script; no new runtime dependency.
+- Extends an existing convention and check script; no new i18n runtime library (the language switch uses Motion, a general animation library).
 - Tests stay English by pinning the locale in the shared render helper.
 
 **Cons / trade-offs:**

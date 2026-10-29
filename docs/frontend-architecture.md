@@ -577,7 +577,9 @@ Rules:
 
 *See [ADR-079](./architecture/adrs/079-frontend-owned-ui-translation.md) for the decision rationale.*
 
-The app ships Polish (default) and English. Every user-facing word is owned by the frontend; the API sends codes and params, never translated text. Everything lives behind `apps/web/src/shared/i18n/`, the only import path a component uses.
+The app ships English and Polish. English is the default today; #3890 makes Polish the default once the daily screens are translated. Every user-facing word is owned by the frontend; the API never sends translated text. Everything lives behind `apps/web/src/shared/i18n/`, the only import path a component uses.
+
+`LocaleProvider` is mounted once, at the app root in `app/providers/app-providers.tsx`. Tests and stories pin it with `<LocaleProvider locale="en">`.
 
 ### Copy files
 
@@ -610,12 +612,16 @@ export const ordersCopy = defineCopy({
 
 Placement:
 
-- **One copy file per feature folder**, sectioned by component: `features/<name>/lib/<name>.copy.ts`. Pages read their feature's copy file.
-- **A file of its own** only for a very large component (for example `bulk-edit-modal.copy.ts` beside `bulk-edit-modal.tsx`).
-- **One shared file for primitives**: `shared/ui/ui.copy.ts`. Shell copy lives in `app/app.copy.ts`; plugin copy in `plugins/<name>/<name>.copy.ts`.
-- Existing `*.copy.ts` and `*-copy.ts` files are reshaped in place to `{ en, pl }`. A file whose name ends `.copy.ts` is what `scripts/check-ui-vocabulary.mjs` scans for literals, so new copy files use that suffix.
+- **New copy goes in one file per feature folder**, sectioned by component: `features/<name>/lib/<name>.copy.ts`. Pages read their feature's copy file.
+- **A file of its own** when a component's copy passes about 40 keys, or would push the feature file past about 400 lines (for example `bulk-edit-modal.copy.ts` beside `bulk-edit-modal.tsx`).
+- **Existing per-component copy files keep their place and their name** (for example the 14 files in `features/returns/lib/` and the 4 in `features/bench/lib/`). They are reshaped in place to `{ en, pl }`; nobody merges them into one file and nobody renames a `-copy.ts` file to `.copy.ts`.
+- **Shared files**: `shared/ui/ui.copy.ts` for primitives, `shared/format/format.copy.ts` for the formatters, `app/app.copy.ts` for the shell.
+- **Plugins** ship their own copy in `plugins/<name>/<name>.copy.ts`, read with the same `useCopy`; there is no separate plugin catalogue.
+- New files use the `.copy.ts` suffix. `scripts/check-ui-vocabulary.mjs` scans files ending `.copy.ts` or `-copy.ts`, but only inside its `SCAN_ROOTS`.
 
 `defineCopy` infers the shape from `en` and checks `pl` against it: Polish can never carry a key English lacks, and types plural entries per language (`one`/`other` for English, `one`/`few`/`many`/`other` for Polish). Until the lock-in step a missing Polish key falls back to English for that key only.
+
+An object whose keys are exactly `one` and `other` is read as a plural, so never name a section that way. Plural forms put the count in `{n}`; every language keeps that token.
 
 ### Hooks and helpers
 
@@ -624,10 +630,10 @@ Placement:
 | `useLocale()` | `locale`, `setLocale`, `locales`, `bcp47` | the language switch, `<html lang>`, anything that needs the language |
 | `useCopy(featureCopy)` | the copy object for the active language, English fallback per key | every component that renders text |
 | `usePlural()` | `plural(n, forms)` on `Intl.PluralRules` | counts |
-| `useFormat()` | `number`, `money`, `date`, `dateTime`, `relativeTime`, `duration`, `list` | every number, amount and date shown to an operator |
+| `useFormat()` | `number`, `percent`, `money`, `date`, `time`, `dateTime`, `relativeTime`, `duration`, `list`, `country` | every number, amount and date shown to an operator |
 | `renderRich(text, parts)` | React nodes | a link or bold word inside a translated sentence |
 | `getLocale()` | the active locale outside React | the API client's `Accept-Language` header |
-| `LanguageSwitch` | component | the switch in the sidebar footer and on signed-out pages |
+| `LanguageSwitch` (in `shared/ui`) | component | the switch in the sidebar footer and on signed-out pages |
 
 Interpolation uses `{name}` placeholders. A plural or a date is never built by string concatenation.
 
@@ -637,23 +643,27 @@ The pre-existing `useTranslation()` / `t(key, fallback)` (#612) stays as a compa
 
 1. `?lang=pl|en` on any URL - switches and saves (support, screenshots, Playwright).
 2. `localStorage` - the operator's last choice.
-3. `VITE_DEFAULT_UI_LOCALE` - the deployment default, read in `shared/config/env.ts`. Build-time, like every `VITE_*` variable.
-4. `pl`.
+3. `VITE_DEFAULT_UI_LOCALE` - the deployment default, read in `shared/config/env.ts`. Build-time, like every `VITE_*` variable. Unset or blank means `en` today; #3890 changes that default to `pl`.
+4. `pl` - only when the variable holds a language the app does not support.
 
 There is no locale prefix in the URL: this is a signed-in app with no SEO need, and a link shared between colleagues must open in each reader's own language. The browser's `navigator.language` is deliberately not consulted. A later step stores the choice on the user profile.
 
 ### Server text
 
-API errors carry a stable `code` (and `params` / `fields`) next to an English `message` that exists only as a developer fallback. The frontend resolves a code to copy; it never renders the server sentence to an operator except as a marked fallback in development. Text a third-party provider returns is shown verbatim behind a translated prefix.
+**Planned (#3860 to #3867):** API errors will carry a stable `code` (and `params` / `fields`) next to an English `message` that exists only as a developer fallback, and the frontend will resolve the code to copy. That envelope does not exist yet: `ApiError` has no `code` field today, and only a few endpoints send a machine value (for example `ORDER_ALREADY_ON_HOLD` in the `error` field).
+
+**Until then:** map the machine values an endpoint already sends (`error`, `reason`) to copy in the feature's copy file. For anything else, show the server `message` behind a translated prefix, for example "The server said: {message}". Never build Polish around an English server sentence.
+
+Text a third-party provider returns is always shown verbatim behind a translated prefix.
 
 ### Product rules for copy
 
 - Brand and platform names are not translated (OpenLinker, Allegro, Erli, InPost, Paczkomat, ...).
-- English copy uses British spelling ("fulfilment"); identifiers in code keep "fulfillment".
+- English copy uses British spelling ("fulfilment"); identifiers in code keep "fulfillment". Existing US spellings in copy ("Fulfillment routing") are converted when an extraction PR moves that string into a copy file, not in a separate sweep.
 - A plain hyphen, never an em dash.
 - Copy speaks to operators: no class names, env var names, capability names or roadmap wording.
 - Copy addressed to a Polish provider (for example the InPost webhook e-mail template) is bilingual, Polish first, whatever the UI language.
-- The KSeF statement (oswiadczenie) stays Polish in both languages; it is a legal text.
+- The KSeF statement (oświadczenie) stays Polish in both languages; it is a legal text.
 - Polish terms follow [docs/i18n-glossary.md](./i18n-glossary.md).
 
 ### Tests
