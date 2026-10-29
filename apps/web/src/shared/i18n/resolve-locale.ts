@@ -14,10 +14,19 @@ import { FALLBACK_LOCALE, isSupportedLocale, type SupportedLocale } from './i18n
 export const LOCALE_STORAGE_KEY = 'openlinker.locale';
 export const LOCALE_QUERY_PARAM = 'lang';
 
+/**
+ * Read a language tag the way an operator or a deployment writes it:
+ * case-insensitive, and a region (`pl-PL`, `en_GB`) is ignored.
+ */
+export function normalizeLocaleTag(value: string | null | undefined): SupportedLocale | null {
+  if (!value) return null;
+  const primary = value.trim().toLowerCase().split(/[-_]/)[0];
+  return isSupportedLocale(primary) ? primary : null;
+}
+
 export function readStoredLocale(): SupportedLocale | null {
   try {
-    const value = window.localStorage.getItem(LOCALE_STORAGE_KEY);
-    return isSupportedLocale(value) ? value : null;
+    return normalizeLocaleTag(window.localStorage.getItem(LOCALE_STORAGE_KEY));
   } catch {
     return null;
   }
@@ -32,8 +41,7 @@ export function storeLocale(locale: SupportedLocale): void {
 }
 
 export function readQueryLocale(search: string): SupportedLocale | null {
-  const value = new URLSearchParams(search).get(LOCALE_QUERY_PARAM);
-  return isSupportedLocale(value) ? value : null;
+  return normalizeLocaleTag(new URLSearchParams(search).get(LOCALE_QUERY_PARAM));
 }
 
 export interface ResolveLocaleInput {
@@ -48,9 +56,7 @@ export function resolveLocale({
   deploymentDefault,
 }: ResolveLocaleInput): SupportedLocale {
   return (
-    readQueryLocale(search) ??
-    stored ??
-    (isSupportedLocale(deploymentDefault) ? deploymentDefault : FALLBACK_LOCALE)
+    readQueryLocale(search) ?? stored ?? normalizeLocaleTag(deploymentDefault) ?? FALLBACK_LOCALE
   );
 }
 

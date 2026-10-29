@@ -2,9 +2,10 @@
  * i18n Types
  *
  * Type contract for the locale + translation seam. The app ships Polish and
- * English (ADR-079); `LocaleCode` stays widened to `string` so the legacy
- * `t(key, fallback)` catalog contract (#612) keeps accepting plugin-supplied
- * codes, while everything new speaks `SupportedLocale`.
+ * English (ADR-079) and everything speaks `SupportedLocale`. `LocaleCode` is
+ * kept as an alias for existing imports; it no longer admits other codes, so
+ * a plugin that pinned `<LocaleProvider locale="de">` now gets a type error
+ * instead of a silent switch to English.
  *
  * @module shared/i18n
  * @see {@link LocaleProvider} for the React-side wiring
@@ -17,7 +18,8 @@ export const LocaleCodeValues = ['pl', 'en'] as const;
 
 export type SupportedLocale = (typeof LocaleCodeValues)[number];
 
-export type LocaleCode = SupportedLocale | string;
+/** @deprecated Use `SupportedLocale`. */
+export type LocaleCode = SupportedLocale;
 
 /**
  * The language every copy object must be complete in. Polish falls back to it

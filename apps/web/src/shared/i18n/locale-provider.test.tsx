@@ -15,9 +15,9 @@ import { useNumberFormat } from './use-number-format';
 import { useLocale } from './use-locale';
 import { useCopy } from './use-copy';
 import { defineCopy } from './define-copy';
-import { getLocale } from './active-locale';
+import { getLocale, setActiveLocale } from './active-locale';
 import { LOCALE_STORAGE_KEY } from './resolve-locale';
-import type { TranslationCatalog } from './i18n.types';
+import type { SupportedLocale, TranslationCatalog } from './i18n.types';
 
 function TranslationProbe(): React.ReactElement {
   const { t, locale } = useTranslation();
@@ -38,6 +38,10 @@ function NumberFormatProbe({ value }: { value: number }): React.ReactElement {
 afterEach(() => {
   cleanup();
   window.localStorage.clear();
+  window.history.replaceState({}, '', '/');
+  vi.restoreAllMocks();
+  setActiveLocale('en');
+  document.documentElement.lang = '';
 });
 
 const probeCopy = defineCopy({
@@ -113,9 +117,9 @@ describe('LocaleProvider', () => {
     expect(screen.getByTestId('formatted')).toHaveTextContent('1,234,567');
   });
 
-  it('should switch language without a reload and persist the choice', () => {
+  it('should switch language without a reload and persist the choice when not pinned', () => {
     render(
-      <LocaleProvider locale="en">
+      <LocaleProvider>
         <SwitchProbe />
       </LocaleProvider>,
     );
@@ -146,12 +150,78 @@ describe('LocaleProvider', () => {
     expect(getLocale()).toBe('pl');
   });
 
-  it('should treat an unsupported pinned locale as English', () => {
+  it('should treat an unsupported pinned locale as English when a JavaScript caller passes one', () => {
     render(
+      // @ts-expect-error - the prop only admits supported locales
       <LocaleProvider locale="xx">
         <SwitchProbe />
       </LocaleProvider>,
     );
     expect(screen.getByTestId('current')).toHaveTextContent('en');
+  });
+
+  it('should not save the choice when the provider is pinned', () => {
+    window.localStorage.setItem(LOCALE_STORAGE_KEY, 'en');
+    render(
+      <LocaleProvider locale="en">
+        <SwitchProbe />
+      </LocaleProvider>,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'switch' }));
+    expect(screen.getByTestId('current')).toHaveTextContent('pl');
+    expect(window.localStorage.getItem(LOCALE_STORAGE_KEY)).toBe('en');
+  });
+
+  it('should open in the stored language on the first render when not pinned', () => {
+    window.localStorage.setItem(LOCALE_STORAGE_KEY, 'pl');
+    render(
+      <LocaleProvider>
+        <SwitchProbe />
+      </LocaleProvider>,
+    );
+    expect(screen.getByTestId('title')).toHaveTextContent('Zamówienia');
+  });
+
+  it('should let ?lang= win over the stored language when not pinned', () => {
+    window.localStorage.setItem(LOCALE_STORAGE_KEY, 'pl');
+    window.history.replaceState({}, '', '/?lang=en');
+    render(
+      <LocaleProvider>
+        <SwitchProbe />
+      </LocaleProvider>,
+    );
+    expect(screen.getByTestId('title')).toHaveTextContent('Orders');
+    expect(window.localStorage.getItem(LOCALE_STORAGE_KEY)).toBe('en');
+  });
+
+  it('should still switch when storage throws', () => {
+    vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+      throw new Error('blocked');
+    });
+    vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => {
+      throw new Error('blocked');
+    });
+    render(
+      <LocaleProvider>
+        <SwitchProbe />
+      </LocaleProvider>,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'switch' }));
+    expect(screen.getByTestId('title')).toHaveTextContent('Zamówienia');
+  });
+
+  it('should follow a new pinned locale when the prop changes', () => {
+    const { rerender } = render(
+      <LocaleProvider locale="en">
+        <SwitchProbe />
+      </LocaleProvider>,
+    );
+    const next: SupportedLocale = 'pl';
+    rerender(
+      <LocaleProvider locale={next}>
+        <SwitchProbe />
+      </LocaleProvider>,
+    );
+    expect(screen.getByTestId('title')).toHaveTextContent('Zamówienia');
   });
 });
