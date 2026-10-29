@@ -944,6 +944,23 @@ describe('ConnectionService', () => {
     });
 
     describe('config.buyerEmails validation (#3554)', () => {
+      // The channel rule reads OfferManager, which the default PrestaShop
+      // manifest mock does not advertise; a shop that also sells through
+      // OfferManager (WooCommerce's shape) needs it to be enable-able at all.
+      beforeEach(() => {
+        integrationsService.resolveAdapterMetadata.mockResolvedValue({
+          adapterKey: 'prestashop.webservice.v1',
+          platformType: 'prestashop',
+          supportedCapabilities: [
+            'ProductMaster',
+            'InventoryMaster',
+            'OrderSource',
+            'OrderProcessorManager',
+            'OfferManager',
+          ],
+        } as never);
+      });
+
       const withEmails = (buyerEmails: unknown, enabledCapabilities?: string[]) => ({
         ...payload,
         ...(enabledCapabilities ? { enabledCapabilities } : {}),

@@ -1433,6 +1433,8 @@ describe('InvoiceService', () => {
         )),
       );
 
+      repo.updateOutcome.mockResolvedValue(adapterRecord());
+
       await service.issueInvoice(command());
 
       expect(integrations.getCapabilityAdapter).toHaveBeenCalledWith('conn-1', 'Invoicing');

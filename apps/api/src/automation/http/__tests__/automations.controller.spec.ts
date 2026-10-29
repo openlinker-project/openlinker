@@ -124,7 +124,7 @@ describe('AutomationsController', () => {
       // A trigger missing from the index reads as "not supported" rather than
       // "nothing configured", and only the second is actionable.
       const summary = await controller.getSummary();
-      expect(summary).toHaveLength(8);
+      expect(summary).toHaveLength(11);
       expect(summary.find((row) => row.trigger === 'order.packed')?.ruleCount).toBe(3);
       expect(summary.find((row) => row.trigger === 'return.received')?.ruleCount).toBe(0);
     });
@@ -197,12 +197,12 @@ describe('AutomationsController', () => {
   });
 
   describe('the vocabulary', () => {
-    it('should report every trigger and action, with the 48-cell legality matrix', () => {
+    it('should report every trigger and action, with the 66-cell legality matrix', () => {
       const vocabulary = controller.getVocabulary();
-      expect(vocabulary.triggers).toHaveLength(8);
+      expect(vocabulary.triggers).toHaveLength(11);
       expect(vocabulary.actions).toHaveLength(6);
       const cells = Object.values(vocabulary.legalActions).flatMap((row) => Object.values(row));
-      expect(cells).toHaveLength(48);
+      expect(cells).toHaveLength(66);
     });
 
     it('should report the four actions that cannot fully run in this build', () => {
