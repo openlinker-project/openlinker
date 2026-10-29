@@ -27,7 +27,7 @@ import {
   Inject,
   Param,
   Query,
-  StreamableFile,
+  type StreamableFile,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiParam, ApiResponse, ApiTags } from '@nestjs/swagger';
 import {

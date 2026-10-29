@@ -7,7 +7,7 @@
  *
  * @module apps/api/test/integration
  */
-import { StreamableFile } from '@nestjs/common';
+import type { StreamableFile } from '@nestjs/common';
 import { OrderLineItemOrmEntity, OrderRecordOrmEntity } from '@openlinker/core/orders/orm-entities';
 import { SalesAnalyticsController } from '../../src/analytics/http/sales-analytics.controller';
 import { TopProductsController } from '../../src/analytics/http/top-products.controller';
