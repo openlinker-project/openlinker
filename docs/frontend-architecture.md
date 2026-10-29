@@ -676,6 +676,10 @@ Text a third-party provider returns is always shown verbatim behind a translated
 - The KSeF statement (oświadczenie) stays Polish in both languages; it is a legal text.
 - Polish terms follow [docs/i18n-glossary.md](./i18n-glossary.md).
 
+### A partly translated interface is accepted
+
+The language switch appears on every page as soon as #3858 lands, while only the shared primitives, the formatters and the shell are translated; page bodies follow feature by feature (the extraction issues). Choosing Polski therefore gives a mostly English page body for a while, and the Beta badge on the language says so. This is accepted rather than gated behind a build flag, because the fallback is per key and never blank, and a visible switch is how operators and reviewers find the gaps. Add a release-note line when the stack ships.
+
 ### Tests
 
 Unit tests and Playwright run in English: the Vitest setup file and `env`, the shared render helper and the e2e fixtures pin `en`, so the existing text queries keep working whatever the default is. Polish gets its own targeted tests.

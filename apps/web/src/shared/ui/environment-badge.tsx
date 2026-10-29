@@ -1,6 +1,8 @@
 import type { ReactElement } from 'react';
 import { env } from '../config/env';
 import { APP_VERSION } from '../config/app-version';
+import { getLocale } from '../i18n/active-locale';
+import { resolveCopy } from '../i18n/define-copy';
 import { useCopy } from '../i18n/use-copy';
 import { interpolate } from '../i18n/interpolate';
 import { uiCopy } from './ui.copy';
@@ -21,25 +23,10 @@ function toReadableLabel(value: string): string {
     .join(' ');
 }
 
-/**
- * Environment names stay in English in every language: they are technical
- * terms operators and support use as-is, and "Deweloperskie" reads oddly.
- * Only the screen-reader label around them is translated.
- */
-const ENVIRONMENT_NAMES = {
-  development: 'Development',
-  developmentShort: 'Dev',
-  staging: 'Staging',
-  stagingShort: 'Stg',
-  preview: 'Preview',
-  previewShort: 'Prev',
-  production: 'Production',
-  productionShort: 'Prod',
-  custom: 'Custom',
-} as const;
-
 export function getEnvironmentMeta(appEnv: string): EnvironmentMeta {
-  const copy = ENVIRONMENT_NAMES;
+  // Names are identical in both languages (see `ui.copy.ts`), so the active
+  // language is read only to satisfy the copy lookup.
+  const copy = resolveCopy(uiCopy, getLocale()).environment.names;
   const normalized = appEnv.trim().toLowerCase();
 
   switch (normalized) {

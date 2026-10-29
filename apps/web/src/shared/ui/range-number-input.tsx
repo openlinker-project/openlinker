@@ -37,7 +37,10 @@ import {
   type KeyboardEvent,
   type ReactElement,
 } from 'react';
+import { interpolate } from '../i18n/interpolate';
+import { useCopy } from '../i18n/use-copy';
 import { Input } from './input';
+import { uiCopy } from './ui.copy';
 
 export interface RangeNumberMarker {
   readonly value: number;
@@ -101,6 +104,7 @@ export const RangeNumberInput = forwardRef<HTMLInputElement, RangeNumberInputPro
     }: RangeNumberInputProps,
     ref
   ): ReactElement {
+    const copy = useCopy(uiCopy).rangeNumber;
     const generatedId = useId();
     const sliderId = id ?? `${generatedId}-slider`;
     const textErrorId = `${generatedId}-text-error`;
@@ -125,7 +129,7 @@ export const RangeNumberInput = forwardRef<HTMLInputElement, RangeNumberInputPro
 
     const clamp = (next: number): number => Math.min(Math.max(next, min), max);
 
-    const rangeMessage = `Enter a whole number from ${String(min)} to ${String(max)}.`;
+    const rangeMessage = interpolate(copy.outOfRange, { min, max });
 
     const commit = (next: number): void => {
       setText(String(next));
@@ -143,7 +147,9 @@ export const RangeNumberInput = forwardRef<HTMLInputElement, RangeNumberInputPro
         return;
       }
       if (parsed < min || parsed > max) {
-        setTextError(`${rangeMessage} Leaving the field sets it to ${String(clamp(parsed))}.`);
+        setTextError(
+          `${rangeMessage} ${interpolate(copy.clampOnBlur, { value: clamp(parsed) })}`,
+        );
         return;
       }
       setTextError(null);

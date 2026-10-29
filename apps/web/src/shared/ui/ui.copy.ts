@@ -69,6 +69,11 @@ export const uiCopy = defineCopy({
       useCustom: 'Use as custom value:',
       remove: 'Remove {label}',
       selectedCount: { one: '{n} selected', other: '{n} selected' },
+      noMatch: 'No options match “{query}”.',
+    },
+    rangeNumber: {
+      outOfRange: 'Enter a whole number from {min} to {max}.',
+      clampOnBlur: 'Leaving the field sets it to {value}.',
     },
     commandPalette: {
       placeholder: 'Search…',
@@ -126,6 +131,19 @@ export const uiCopy = defineCopy({
       label: 'No value',
     },
     environment: {
+      // Identical in both languages on purpose: technical terms operators and
+      // support use as-is.
+      names: {
+        development: 'Development',
+        developmentShort: 'Dev',
+        staging: 'Staging',
+        stagingShort: 'Stg',
+        preview: 'Preview',
+        previewShort: 'Prev',
+        production: 'Production',
+        productionShort: 'Prod',
+        custom: 'Custom',
+      },
       version: 'v{version}',
       ariaLabel: 'Environment {env}',
       ariaLabelVersion: 'Environment {env}, version {version}',
@@ -239,7 +257,7 @@ export const uiCopy = defineCopy({
     common: {
       retry: 'Spróbuj ponownie',
       select: 'Wybierz',
-      selected: 'Wybrano',
+      selected: 'Wybrany',
       copy: 'Kopiuj',
       copied: 'Skopiowano',
       copyId: 'Kopiuj {id}',
@@ -313,6 +331,11 @@ export const uiCopy = defineCopy({
       useCustom: 'Użyj jako własnej wartości:',
       remove: 'Usuń {label}',
       selectedCount: { one: 'Wybrano {n}', few: 'Wybrano {n}', many: 'Wybrano {n}', other: 'Wybrano {n}' },
+      noMatch: 'Brak opcji pasujących do „{query}”.',
+    },
+    rangeNumber: {
+      outOfRange: 'Wpisz liczbę całkowitą od {min} do {max}.',
+      clampOnBlur: 'Po opuszczeniu pola zostanie ustawiona wartość {value}.',
     },
     commandPalette: {
       placeholder: 'Szukaj…',
@@ -346,8 +369,8 @@ export const uiCopy = defineCopy({
     },
     density: {
       group: 'Gęstość wierszy',
-      cozy: 'Wygodna gęstość',
-      compact: 'Zwarta gęstość',
+      cozy: 'Widok wygodny',
+      compact: 'Widok zwarty',
     },
     desktopOnly: {
       title: 'Otwórz na komputerze, aby edytować',
@@ -370,6 +393,17 @@ export const uiCopy = defineCopy({
       label: 'Brak wartości',
     },
     environment: {
+      names: {
+        development: 'Development',
+        developmentShort: 'Dev',
+        staging: 'Staging',
+        stagingShort: 'Stg',
+        preview: 'Preview',
+        previewShort: 'Prev',
+        production: 'Production',
+        productionShort: 'Prod',
+        custom: 'Custom',
+      },
       version: 'v{version}',
       ariaLabel: 'Środowisko {env}',
       ariaLabelVersion: 'Środowisko {env}, wersja {version}',
@@ -408,7 +442,7 @@ export const uiCopy = defineCopy({
       next: 'Następna',
     },
     rawPayload: {
-      title: 'Dane',
+      title: 'Treść (payload)',
       copy: 'Kopiuj dane',
       copied: 'Skopiowano dane',
       collapse: 'Zwiń',
