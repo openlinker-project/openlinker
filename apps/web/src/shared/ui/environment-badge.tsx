@@ -21,12 +21,25 @@ function toReadableLabel(value: string): string {
     .join(' ');
 }
 
-export type EnvironmentCopy = { readonly [K in keyof (typeof uiCopy.en)['environment']]: string };
+/**
+ * Environment names stay in English in every language: they are technical
+ * terms operators and support use as-is, and "Deweloperskie" reads oddly.
+ * Only the screen-reader label around them is translated.
+ */
+const ENVIRONMENT_NAMES = {
+  development: 'Development',
+  developmentShort: 'Dev',
+  staging: 'Staging',
+  stagingShort: 'Stg',
+  preview: 'Preview',
+  previewShort: 'Prev',
+  production: 'Production',
+  productionShort: 'Prod',
+  custom: 'Custom',
+} as const;
 
-export function getEnvironmentMeta(
-  appEnv: string,
-  copy: EnvironmentCopy = uiCopy.en.environment,
-): EnvironmentMeta {
+export function getEnvironmentMeta(appEnv: string): EnvironmentMeta {
+  const copy = ENVIRONMENT_NAMES;
   const normalized = appEnv.trim().toLowerCase();
 
   switch (normalized) {
@@ -88,7 +101,7 @@ export function EnvironmentBadge({
   className = '',
 }: EnvironmentBadgeProps): ReactElement {
   const copy = useCopy(uiCopy).environment;
-  const environment = getEnvironmentMeta(appEnv, copy);
+  const environment = getEnvironmentMeta(appEnv);
   const classes = [
     'context-chip',
     `context-chip--${environment.tone}`,
