@@ -61,7 +61,6 @@ import {
   type IFulfillmentWorkQueryService,
 } from '@openlinker/core/fulfillment';
 import { ORDER_TAG_SERVICE_TOKEN } from '@openlinker/core/orders';
-import { FULFILLMENT_WORK_QUERY_SERVICE_TOKEN } from '@openlinker/core/fulfillment';
 
 import { SOURCE_FULFILLMENT_STATUS_SERVICE_TOKEN } from '../application/interfaces/source-fulfillment-status.service.interface';
 
@@ -311,7 +310,10 @@ describe('OrdersController', () => {
         },
         {
           provide: FULFILLMENT_WORK_QUERY_SERVICE_TOKEN,
-          useValue: { summarizeWorkForOrders: jest.fn().mockResolvedValue(new Map()) },
+          useValue: {
+            summarizeWorkForOrders: jest.fn().mockResolvedValue(new Map()),
+            ...fulfillmentWorkQuery,
+          },
         },
         {
           provide: RETURNS_SERVICE_TOKEN,
@@ -323,10 +325,6 @@ describe('OrdersController', () => {
             getForOrders: jest.fn().mockResolvedValue(new Map()),
             listForOrder: jest.fn().mockResolvedValue([]),
           },
-        },
-        {
-          provide: FULFILLMENT_WORK_QUERY_SERVICE_TOKEN,
-          useValue: fulfillmentWorkQuery,
         },
       ],
     }).compile();
