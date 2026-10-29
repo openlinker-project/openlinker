@@ -28,6 +28,8 @@ import { CurrencyMismatchException } from '../../../domain/exceptions/currency-m
 import { InvalidOverrideKeyException } from '../../../domain/exceptions/invalid-override-key.exception';
 import { ExpandedOfferCeilingExceededException } from '../../../domain/exceptions/expanded-offer-ceiling-exceeded.exception';
 import { DuplicateBulkBatchIdempotencyKeyError } from '../../../domain/exceptions/duplicate-bulk-batch-idempotency-key.error';
+import { MasterStockNotSyncedException } from '../../../domain/exceptions/master-stock-not-synced.exception';
+import { AvailabilityUnknownError } from '../../../domain/exceptions/availability-unknown.error';
 import type { BulkListingBatchRepositoryPort } from '../../../domain/ports/bulk-listing-batch-repository.port';
 import type { OfferCreationRecordRepositoryPort } from '../../../domain/ports/offer-creation-record-repository.port';
 import type { OfferMappingRepositoryPort } from '../../../domain/ports/offer-mapping-repository.port';
@@ -1285,6 +1287,147 @@ describe('BulkListingSubmitService', () => {
       ).rejects.toBeInstanceOf(InvalidOverrideKeyException);
 
       expect(bulkBatchRepo.create).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('single-variant stock taken from master (#3851)', () => {
+    /** Two simple products, each its own single-variant family. */
+    const wireSimpleProducts = (
+      availability: Array<{
+        productVariantId: string;
+        totalAvailable: number;
+        locationCount: number;
+        availableToPromise: number | null;
+      }>
+    ): void => {
+      const built = [
+        variant({ id: 'ol_variant_a', productId: 'P-a', ean: '5901234123457' }),
+        variant({ id: 'ol_variant_b', productId: 'P-b', ean: '5901234123464' }),
+      ];
+      products.getVariant.mockImplementation((id: string) =>
+        Promise.resolve(built.find((v) => v.id === id) ?? null)
+      );
+      products.getVariantsByProductId.mockImplementation((productId: string) =>
+        Promise.resolve(built.filter((v) => v.productId === productId))
+      );
+      inventoryQuery.getAvailabilityByVariantIds.mockResolvedValue(availability);
+    };
+
+    it('should leave out a single-variant offer whose master stock has no inventory position', async () => {
+      wireSimpleProducts([
+        { productVariantId: 'ol_variant_a', totalAvailable: 0, locationCount: 0, availableToPromise: 0 },
+        { productVariantId: 'ol_variant_b', totalAvailable: 4, locationCount: 1, availableToPromise: 4 },
+      ]);
+
+      const result = await service.submit({
+        connectionId,
+        initiatedBy,
+        productIds: ['ol_variant_a', 'ol_variant_b'],
+        sharedConfig: { stock: 1, publishImmediately: true },
+        perVariantOverrides: {
+          ol_variant_a: { stock: 0, stockFromMaster: true },
+          ol_variant_b: { stock: 4, stockFromMaster: true },
+        },
+      });
+
+      expect(enqueueService.enqueueCreation).toHaveBeenCalledTimes(1);
+      expect(enqueueService.enqueueCreation.mock.calls[0][0]).toMatchObject({
+        internalVariantId: 'ol_variant_b',
+        stock: 4,
+      });
+      expect(result.skippedAvailabilityUnknownCount).toBe(1);
+    });
+
+    it('should leave out a single-variant offer whose availability is unresolved', async () => {
+      wireSimpleProducts([
+        { productVariantId: 'ol_variant_a', totalAvailable: 6, locationCount: 1, availableToPromise: null },
+        { productVariantId: 'ol_variant_b', totalAvailable: 4, locationCount: 1, availableToPromise: 4 },
+      ]);
+
+      const result = await service.submit({
+        connectionId,
+        initiatedBy,
+        productIds: ['ol_variant_a', 'ol_variant_b'],
+        sharedConfig: { stock: 1, publishImmediately: true },
+        perVariantOverrides: {
+          ol_variant_a: { stock: 6, stockFromMaster: true },
+          ol_variant_b: { stock: 4, stockFromMaster: true },
+        },
+      });
+
+      expect(enqueueService.enqueueCreation).toHaveBeenCalledTimes(1);
+      expect(result.skippedAvailabilityUnknownCount).toBe(1);
+    });
+
+    it('should keep a known zero master stock, which lists the offer as a draft', async () => {
+      wireSimpleProducts([
+        { productVariantId: 'ol_variant_a', totalAvailable: 0, locationCount: 1, availableToPromise: 0 },
+      ]);
+
+      await service.submit({
+        connectionId,
+        initiatedBy,
+        productIds: ['ol_variant_a'],
+        sharedConfig: { stock: 1, publishImmediately: true },
+        perVariantOverrides: { ol_variant_a: { stock: 0, stockFromMaster: true } },
+      });
+
+      expect(enqueueService.enqueueCreation.mock.calls[0][0]).toMatchObject({
+        internalVariantId: 'ol_variant_a',
+        stock: 0,
+        publishImmediately: false,
+      });
+    });
+
+    it('should list an operator stock without consulting master inventory', async () => {
+      wireSimpleProducts([]);
+
+      await service.submit({
+        connectionId,
+        initiatedBy,
+        productIds: ['ol_variant_a'],
+        sharedConfig: { stock: 1, publishImmediately: true },
+        perVariantOverrides: { ol_variant_a: { stock: 3 } },
+      });
+
+      expect(inventoryQuery.getAvailabilityByVariantIds).not.toHaveBeenCalled();
+      expect(enqueueService.enqueueCreation.mock.calls[0][0]).toMatchObject({
+        internalVariantId: 'ol_variant_a',
+        stock: 3,
+      });
+    });
+
+    it('should name an unsynced stock, not a transient failure, when nothing is left to list', async () => {
+      wireSimpleProducts([
+        { productVariantId: 'ol_variant_a', totalAvailable: 0, locationCount: 0, availableToPromise: 0 },
+      ]);
+
+      await expect(
+        service.submit({
+          connectionId,
+          initiatedBy,
+          productIds: ['ol_variant_a'],
+          sharedConfig: { stock: 1, publishImmediately: true },
+          perVariantOverrides: { ol_variant_a: { stock: 0, stockFromMaster: true } },
+        })
+      ).rejects.toBeInstanceOf(MasterStockNotSyncedException);
+      expect(bulkBatchRepo.create).not.toHaveBeenCalled();
+    });
+
+    it('should keep reporting a transient read failure when no excluded offer lacks a position', async () => {
+      wireSimpleProducts([
+        { productVariantId: 'ol_variant_a', totalAvailable: 2, locationCount: 1, availableToPromise: null },
+      ]);
+
+      await expect(
+        service.submit({
+          connectionId,
+          initiatedBy,
+          productIds: ['ol_variant_a'],
+          sharedConfig: { stock: 1, publishImmediately: true },
+          perVariantOverrides: { ol_variant_a: { stock: 2, stockFromMaster: true } },
+        })
+      ).rejects.toBeInstanceOf(AvailabilityUnknownError);
     });
   });
 

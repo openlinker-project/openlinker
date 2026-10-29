@@ -37,6 +37,7 @@ import {
   imageCountForVariant,
   isValidGtin,
   productCategoryIdOf,
+  siblingStockBlockers,
   titleForVariant,
 } from './bulk-policy';
 import { collapseToInvalidBarcode } from './bulk-blockers';
@@ -266,6 +267,12 @@ export function BulkResolveStep({
     const availabilityByVariant = new Map<string, number>();
     for (const q of availabilityResults) {
       for (const item of q.data?.items ?? []) {
+        // The endpoint zero-fills a variant with no inventory position, so a
+        // bare `totalAvailable` cannot tell "the master says 0" from "the stock
+        // sync has not reached this variant yet" (#3851). Only a variant with a
+        // position and a resolved available-to-promise has a stock OpenLinker
+        // knows; the rest stay out of the map and resolve to `null`.
+        if (item.locationCount === 0 || item.availableToPromise === null) continue;
         availabilityByVariant.set(item.productVariantId, item.totalAvailable);
       }
     }
@@ -302,9 +309,7 @@ export function BulkResolveStep({
           platformValidate,
           destinationResolvesCategoryAtSubmit: categoryResolvesAtSubmit,
         });
-        // Master stock is authoritative + read-only for multi-variant siblings
-        // (incl. 0 -> out-of-stock, not a create error). Plan §11.
-        if (isMulti) blockers = blockers.filter((b) => b !== 'no-master-stock');
+        if (isMulti) blockers = siblingStockBlockers(blockers, masterStock);
         // A supplied-but-invalid barcode is a hard GS1 gate (plan §10.1 / B5) and
         // its own cause since #2240. The collapse rule itself lives in
         // `collapseToInvalidBarcode` - shared with `recomputeVariantBlockers`,

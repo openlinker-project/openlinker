@@ -73,6 +73,7 @@ import { CurrencyMismatchException } from '../../domain/exceptions/currency-mism
 import { InvalidOverrideKeyException } from '../../domain/exceptions/invalid-override-key.exception';
 import { ExpandedOfferCeilingExceededException } from '../../domain/exceptions/expanded-offer-ceiling-exceeded.exception';
 import { AvailabilityUnknownError } from '../../domain/exceptions/availability-unknown.error';
+import { MasterStockNotSyncedException } from '../../domain/exceptions/master-stock-not-synced.exception';
 import { DuplicateBulkBatchIdempotencyKeyError } from '../../domain/exceptions/duplicate-bulk-batch-idempotency-key.error';
 import {
   BULK_LISTING_BATCH_REPOSITORY_TOKEN,
@@ -246,8 +247,10 @@ export class BulkListingSubmitService implements IBulkListingSubmitService {
       afterAlreadyListed,
       variantsById
     );
-    const masterStock = await this.resolveMasterStock(
-      listableJobs.filter((job) => job.useMasterStock).map((job) => job.variantId)
+    const { masterStock, unpositioned } = await this.resolveMasterStock(
+      listableJobs
+        .filter((job) => job.useMasterStock || job.stockFromMaster === true)
+        .map((job) => job.variantId)
     );
 
     // #2323 — a master-stock job whose availability came back UNKNOWN is
@@ -256,13 +259,25 @@ export class BulkListingSubmitService implements IBulkListingSubmitService {
     // "no stock": listing it would either publish a guessed number or (via the
     // old `?? 0`) create a permanently-draft 0-stock offer the operator never
     // asked for. Excluding is the only answer that asserts nothing false.
-    const unknownAvailability = listableJobs.filter(
-      (job) => job.useMasterStock && !masterStock.has(job.variantId)
-    );
+    //
+    // #3851 - a single-variant job whose stock the client took from master
+    // (`stockFromMaster`) is held to the same rule, and additionally to having
+    // an inventory position at all: the zero-filled answer for a variant the
+    // stock sync has not reached yet is a 0 nobody observed, and the client's
+    // figure for it was that same 0. Expanded siblings keep reading a missing
+    // position as a known 0 (#1741); only the client-resolved path is narrowed.
+    const isUnknownStock = (job: ExpandedVariantJob): boolean => {
+      if (job.useMasterStock) return !masterStock.has(job.variantId);
+      if (job.stockFromMaster === true) {
+        return !masterStock.has(job.variantId) || unpositioned.has(job.variantId);
+      }
+      return false;
+    };
+    const unknownAvailability = listableJobs.filter(isUnknownStock);
     const jobs =
       unknownAvailability.length === 0
         ? listableJobs
-        : listableJobs.filter((job) => !job.useMasterStock || masterStock.has(job.variantId));
+        : listableJobs.filter((job) => !isUnknownStock(job));
     if (unknownAvailability.length > 0) {
       this.logger.warn(
         `bulk_listing_variant_excluded_availability_unknown connection=${input.connectionId} ` +
@@ -270,10 +285,16 @@ export class BulkListingSubmitService implements IBulkListingSubmitService {
           `not be resolved for these variants; they were left out of the batch rather than ` +
           `published at a guessed quantity`
       );
-      // Every job excluded means the whole read failed, which is transient.
-      // Reporting an empty submission would blame the operator's selection for
-      // an infrastructure outage and invite them to re-pick the same variants.
+      // Every job excluded on an unresolved read means the read failed, which
+      // is transient. Reporting an empty submission would blame the operator's
+      // selection for an infrastructure outage and invite them to re-pick the
+      // same variants. A variant with no position is different: no retry
+      // changes it until the stock sync runs, so that is named instead.
       if (jobs.length === 0) {
+        const notSynced = unknownAvailability.find((job) => unpositioned.has(job.variantId));
+        if (notSynced) {
+          throw new MasterStockNotSyncedException(unknownAvailability.length);
+        }
         throw new AvailabilityUnknownError(input.connectionId, unknownAvailability[0].variantId);
       }
     }
@@ -608,7 +629,15 @@ export class BulkListingSubmitService implements IBulkListingSubmitService {
           );
           continue;
         }
-        jobs.push({ variantId: selectedId, selectedId, useMasterStock: false, clearProductCard: false });
+        jobs.push({
+          variantId: selectedId,
+          selectedId,
+          useMasterStock: false,
+          clearProductCard: false,
+          ...(input.perVariantOverrides?.[selectedId]?.stockFromMaster === true
+            ? { stockFromMaster: true }
+            : {}),
+        });
         variantsById.set(selectedId, selectedVariant);
         continue;
       }
@@ -818,17 +847,29 @@ export class BulkListingSubmitService implements IBulkListingSubmitService {
    * backfilled from `totalAvailable`, which would publish the un-reserved
    * quantity and oversell by exactly the outstanding holds. The caller excludes
    * such variants from the batch rather than listing them at a guessed number.
+   *
+   * `unpositioned` names the variants with no live inventory position (#3851):
+   * the read zero-fills them as a known 0, which is right for a sibling and for
+   * propagation, so it stays in the map; a caller that must tell "the master
+   * says 0" from "the stock sync has not reached it" reads this set.
    */
-  private async resolveMasterStock(variantIds: string[]): Promise<Map<string, number>> {
-    if (variantIds.length === 0) return new Map();
+  private async resolveMasterStock(
+    variantIds: string[]
+  ): Promise<{ masterStock: Map<string, number>; unpositioned: Set<string> }> {
+    if (variantIds.length === 0) return { masterStock: new Map(), unpositioned: new Set() };
     const rows = await this.inventoryQuery.getAvailabilityByVariantIds(variantIds);
-    return new Map(
-      rows
-        .filter((row): row is typeof row & { availableToPromise: number } =>
-          row.availableToPromise !== null
-        )
-        .map((row) => [row.productVariantId, row.availableToPromise])
-    );
+    return {
+      masterStock: new Map(
+        rows
+          .filter((row): row is typeof row & { availableToPromise: number } =>
+            row.availableToPromise !== null
+          )
+          .map((row) => [row.productVariantId, row.availableToPromise])
+      ),
+      unpositioned: new Set(
+        rows.filter((row) => row.locationCount === 0).map((row) => row.productVariantId)
+      ),
+    };
   }
 
   /**

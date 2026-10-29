@@ -538,7 +538,13 @@ export function BulkWizard({
             excludedVariantIds.push(v.variantId);
             continue;
           }
-          perVariantOverrides[v.variantId] = buildVariantOverride(v, config, rowPricingPolicy, rowStockPolicy);
+          perVariantOverrides[v.variantId] = buildVariantOverride(
+            v,
+            config,
+            rowPricingPolicy,
+            rowStockPolicy,
+            row.variants.length === 1,
+          );
         }
         if (includedReady.length === 0) continue;
         const primaryId = (row.primaryVariant ?? row.variants[0].variant).id;
@@ -1030,6 +1036,7 @@ function toWireOverride(override: BulkPerProductOverride): BulkPerProductOverrid
   // reintroduce this class of whole-request rejection.
   const wire: BulkPerProductOverride = {};
   if (override.stock !== undefined) wire.stock = override.stock;
+  if (override.stockFromMaster === true) wire.stockFromMaster = true;
   if (override.publishImmediately !== undefined) {
     wire.publishImmediately = override.publishImmediately;
   }
@@ -1043,12 +1050,23 @@ function buildVariantOverride(
   config: BulkWizardConfig,
   pricingPolicy: PricingPolicy,
   stockPolicy: StockPolicy,
+  isSingleVariant: boolean,
 ): BulkPerProductOverride {
   const price = computeResolvedPrice(pricingPolicy, variant.masterPrice, variant.override);
   const stock = computeResolvedStock(stockPolicy, variant.masterStock, variant.override);
+  // A single-variant offer lists at the `stock` sent here, so the server cannot
+  // tell a figure the wizard read from master from one the operator typed.
+  // Saying which lets it refuse the first when the variant has no stock
+  // position (#3851) - the defence behind the Review step's `stock-unknown`
+  // blocker. Multi-variant siblings always list at master stock server-side.
+  const stockFromMaster =
+    isSingleVariant &&
+    variant.override.stock === undefined &&
+    (stockPolicy.mode === 'use-master' || stockPolicy.mode === 'cap');
   return toWireOverride({
     ...variant.override,
     stock: stock.value ?? undefined,
+    ...(stockFromMaster ? { stockFromMaster: true } : {}),
     price:
       variant.override.price ??
       (price.value !== null ? { amount: price.value, currency: config.currency } : undefined),

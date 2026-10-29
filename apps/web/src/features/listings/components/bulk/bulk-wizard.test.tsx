@@ -530,6 +530,31 @@ describe('BulkWizard — destinationResolvesCategoryAtSubmit (#2211)', () => {
     expect(bulkCreate).toHaveBeenCalledTimes(1);
   }, 15000);
 
+  // #3851: a simple product's stock is the only figure the server publishes, so
+  // the request has to say when the wizard read it from master rather than the
+  // operator typing it - that is what lets the server refuse an unsynced one.
+  it('should mark a single-variant stock read from master on the request', async () => {
+    resolveStub.outcomes = [unresolvedCategoryOutcome()];
+    const bulkCreate: BulkCreateMock = vi.fn().mockResolvedValue({
+      batchId: 'batch-1',
+      jobIds: ['job-1'],
+      skippedAlreadyListedCount: 0,
+      skippedAvailabilityUnknownCount: 0,
+      skippedInvalidEanCount: 0,
+    });
+
+    await renderAndResolve([], bulkCreate);
+    fireEvent.click((await screen.findAllByRole('button', { name: 'Create offers (1)' }))[0]);
+    fireEvent.click(await screen.findByRole('button', { name: 'Create offers' }));
+
+    await waitFor(() => expect(bulkCreate).toHaveBeenCalledTimes(1));
+    const request = bulkCreate.mock.calls[0][0];
+    expect(request.perVariantOverrides?.ol_variant_1).toMatchObject({
+      stock: 5,
+      stockFromMaster: true,
+    });
+  }, 15000);
+
   describe('leave guard (#3851)', () => {
     /** The browser-side half of the guard; the in-app half needs a data router (own spec). */
     function unloadIsHeld(): boolean {

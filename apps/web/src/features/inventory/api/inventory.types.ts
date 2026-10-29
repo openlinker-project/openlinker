@@ -52,6 +52,12 @@ export interface InventoryAvailability {
   productVariantId: string;
   totalAvailable: number;
   locationCount: number;
+  /**
+   * Units OpenLinker will promise (#2323). `null` means availability could not
+   * be determined - never a zero. Optional only so an older API (or a fixture
+   * that predates the field) still type-checks; every current response carries it.
+   */
+  availableToPromise?: number | null;
 }
 
 export interface InventoryAvailabilityResponse {

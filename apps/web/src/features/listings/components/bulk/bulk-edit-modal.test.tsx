@@ -563,6 +563,57 @@ describe('BulkEditModal', () => {
     expect(baseOverride.overrides?.categoryId).toBeUndefined();
   });
 
+  describe('simple-product stock (#3851)', () => {
+    function renderSimple(row: BulkWizardRow, onSave = vi.fn()): ReturnType<typeof vi.fn> {
+      renderWithProviders(
+        <BulkEditModal
+          open
+          onOpenChange={() => undefined}
+          row={row}
+          connection={connection}
+          canBrowseCategories={false}
+          currency="PLN"
+          defaults={DEFAULTS}
+          onSave={onSave}
+        />,
+      );
+      return onSave;
+    }
+
+    it('does not turn an untouched pre-filled stock into an override', async () => {
+      // The field is pre-filled with 0 when OpenLinker has no stock. Saving it
+      // untouched used to list the offer at 0 past the stock-unknown blocker.
+      const onSave = renderSimple({ ...makeRow(), masterStock: null });
+      expect(
+        screen.getByText('No stock synced from the master catalog yet. Enter the stock to list this offer now.'),
+      ).toBeInTheDocument();
+
+      fireEvent.click(screen.getByRole('button', { name: 'Save all' }));
+
+      await waitFor(() => { expect(onSave).toHaveBeenCalledTimes(1); });
+      expect((onSave.mock.calls[0][1] as { stock?: number }).stock).toBeUndefined();
+    });
+
+    it('emits a stock the operator typed', async () => {
+      const onSave = renderSimple({ ...makeRow(), masterStock: null });
+
+      fireEvent.change(screen.getByLabelText('Stock'), { target: { value: '7' } });
+      fireEvent.click(screen.getByRole('button', { name: 'Save all' }));
+
+      await waitFor(() => { expect(onSave).toHaveBeenCalledTimes(1); });
+      expect((onSave.mock.calls[0][1] as { stock?: number }).stock).toBe(7);
+    });
+
+    it('keeps a stock override from an earlier save', async () => {
+      const onSave = renderSimple({ ...makeRow(), override: { stock: 3 } });
+
+      fireEvent.click(screen.getByRole('button', { name: 'Save all' }));
+
+      await waitFor(() => { expect(onSave).toHaveBeenCalledTimes(1); });
+      expect((onSave.mock.calls[0][1] as { stock?: number }).stock).toBe(3);
+    });
+  });
+
   it('opens the zoom lightbox when an editor image thumbnail is clicked (#1741)', () => {
     const row = makeRow();
     row.product!.images = ['https://example.com/a.jpg'];

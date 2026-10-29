@@ -1047,12 +1047,20 @@ function BulkEditModalForm({
     // explicit Price/Stock inputs instead.
     const pricingDiverges = isMultiVariant && !pricingPolicyEquals(pricingPolicy, batchPricingPolicy);
     const stockDiverges = isMultiVariant && !stockPolicyEquals(stockPolicy, batchStockPolicy);
+    // Stock is only meaningful for a simple product; master stock is
+    // authoritative (incl. 0) for multi-variant siblings. It is emitted only
+    // when the operator set it - now, or on an earlier save - because the field
+    // is pre-filled from the master (or `0` when OpenLinker has none), and
+    // emitting that untouched pre-fill made it an explicit override: a variant
+    // whose stock was never synced listed at 0 with no blocker, and a batch
+    // stock policy was silently replaced by the master figure (#3851).
+    const stockSetByOperator =
+      !isMultiVariant &&
+      (row.override.stock !== undefined || Number(values.stock) !== Number(initialBase.stock));
     const baseOverride: BulkPerProductOverride = {
       publishImmediately: values.publishImmediately,
       ...(baseAmount !== '' ? { price: { amount: Number(baseAmount.replace(',', '.')), currency } } : {}),
-      // Stock is only meaningful for a simple product; master stock is
-      // authoritative (incl. 0) for multi-variant siblings.
-      ...(!isMultiVariant ? { stock: Number(values.stock) } : {}),
+      ...(stockSetByOperator ? { stock: Number(values.stock) } : {}),
       ...(pricingDiverges ? { pricingPolicy } : {}),
       ...(stockDiverges ? { stockPolicy } : {}),
       overrides: {
@@ -1875,7 +1883,20 @@ function BaseScopeForm({
                 aria-invalid={Boolean(form.formState.errors.priceAmount)}
               />
             </FormField>
-            <FormField name="bulk-edit-stock" label="Stock" error={form.formState.errors.stock?.message}>
+            <FormField
+              name="bulk-edit-stock"
+              label="Stock"
+              description={
+                // A simple product's master stock reaches the row only once the
+                // stock sync has a position for it (#3851); until then the
+                // pre-filled 0 is not a stock, and saying so is the only way an
+                // operator can tell the two apart.
+                row.override.stock === undefined && row.masterStock === null
+                  ? 'No stock synced from the master catalog yet. Enter the stock to list this offer now.'
+                  : undefined
+              }
+              error={form.formState.errors.stock?.message}
+            >
               <Input
                 type="number"
                 min={0}

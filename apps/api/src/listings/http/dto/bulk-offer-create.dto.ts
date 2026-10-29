@@ -106,6 +106,17 @@ export class PerOverrideDto {
   @Min(0)
   stock?: number;
 
+  @ApiPropertyOptional({
+    description:
+      'Set when `stock` was resolved from master inventory rather than chosen by the operator ' +
+      '(#3851). Read on a single-variant offer only: the offer is left out of the batch when ' +
+      'OpenLinker holds no inventory position for the variant or cannot resolve its ' +
+      'availability, instead of listing at the submitted figure.',
+  })
+  @IsOptional()
+  @IsBoolean()
+  stockFromMaster?: boolean;
+
   @ApiPropertyOptional()
   @IsOptional()
   @IsBoolean()

@@ -59,6 +59,7 @@ export const NEUTRAL_BLOCKER_CHIPS: Record<string, ChipDescriptor> = {
   },
   'no-master-price': { tone: 'error', label: 'no master price', fixable: true, field: 'price' },
   'no-master-stock': { tone: 'error', label: 'no master stock', fixable: true },
+  'stock-unknown': { tone: 'error', label: 'stock not synced', fixable: true },
   'currency-mismatch': { tone: 'warning', label: 'currency mismatch', fixable: true },
   'already-listed': { tone: 'neutral', label: 'already listed', fixable: false },
   // The category schema could not be fetched, so no bound could be checked
