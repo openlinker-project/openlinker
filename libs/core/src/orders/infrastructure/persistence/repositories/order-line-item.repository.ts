@@ -11,7 +11,7 @@
  */
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import type { SelectQueryBuilder } from 'typeorm';
+import type { ObjectLiteral, SelectQueryBuilder } from 'typeorm';
 import { In, Repository } from 'typeorm';
 import { OrderLineItemOrmEntity } from '../entities/order-line-item.orm-entity';
 import { OrderRecordOrmEntity } from '../entities/order-record.orm-entity';
@@ -36,6 +36,14 @@ import type {
   MarginSums,
   MarginVariantRow,
 } from '../../../domain/types/order-margin-analytics.types';
+import type {
+  CostCoverageRawFigures,
+  CostCoverageTopVariantRow,
+  CostSummary,
+  CostWorklistCountFilters,
+  CostWorklistFilters,
+  CostWorklistRow,
+} from '../../../domain/types/cost-coverage.types';
 import {
   grossRevenueLineAmountSql,
   netSalesLineNetAmountSql,
@@ -805,6 +813,270 @@ export class OrderLineItemRepository implements OrderLineItemRepositoryPort {
     this.applyTopProductsScope(qb, filters);
     const row = await qb.getRawOne<{ uncovered: string }>();
     return Number(row?.uncovered ?? 0);
+  }
+
+  /**
+   * Cost coverage of a window (#3588). Same net-revenue population as the
+   * margin reads (`inRevenue`), and the gap split is the margin classification
+   * itself, so `sum(gaps) + covered = netSales` holds here too. "Without cost"
+   * is the variant's CURRENT state (`pv."netUnitCost" IS NULL`, non-stale
+   * variants only so the figures match the work list's `sold` tab).
+   *
+   * Cross-context table join (ADR-036): `product_variants` belongs to
+   * `products`; read by table name, never written, and the line's own snapshot
+   * stays the only source of any margin figure.
+   */
+  async getCostCoverageFigures(
+    filters: SalesAnalyticsFilters,
+    reportingCurrency: string,
+    includeBackfilledPreRollout = false
+  ): Promise<CostCoverageRawFigures> {
+    const { inRevenue, netAmount, gapConditions } =
+      this.buildMarginSqlFragments(includeBackfilledPreRollout);
+    const soldVariant = `${inRevenue} AND ${this.liveVariantCondition()}`;
+    const withoutCost = `${soldVariant} AND pv."netUnitCost" IS NULL`;
+
+    const qb = this.repository
+      .createQueryBuilder('li')
+      .innerJoin(OrderRecordOrmEntity, 'rec', 'rec."internalOrderId" = li."orderRecordId"')
+      .leftJoin('product_variants', 'pv', 'pv."id" = li."variantId"')
+      .select(`COUNT(DISTINCT li."variantId") FILTER (WHERE ${soldVariant})`, 'sold_variants')
+      .addSelect(
+        `COUNT(DISTINCT li."variantId") FILTER (WHERE ${withoutCost})`,
+        'sold_without_cost'
+      )
+      .addSelect(`COALESCE(SUM(${netAmount}) FILTER (WHERE ${inRevenue}), 0)`, 'net_sales')
+      .addSelect(
+        `COALESCE(SUM(${netAmount}) FILTER (WHERE ${withoutCost}), 0)`,
+        'net_sales_without_cost'
+      )
+      .addSelect(
+        `COALESCE(SUM(${netAmount}) FILTER (WHERE ${inRevenue} AND li."variantId" IS NULL), 0)`,
+        'product_only_net_sales'
+      )
+      .setParameter('reportingCurrency', reportingCurrency);
+    for (const reason of MarginGapReasonValues) {
+      const alias = reason.replace(/-/g, '_');
+      qb.addSelect(`COUNT(*) FILTER (WHERE ${gapConditions[reason]})`, `gap_${alias}_lines`).addSelect(
+        `COALESCE(SUM(${netAmount}) FILTER (WHERE ${gapConditions[reason]}), 0)`,
+        `gap_${alias}_net`
+      );
+    }
+    this.applyTopProductsScope(qb, filters);
+
+    const row = await qb.getRawOne<Record<string, string | null>>();
+    return {
+      soldVariantCount: Number(row?.sold_variants ?? 0),
+      soldVariantsWithoutCost: Number(row?.sold_without_cost ?? 0),
+      netSales: Number(row?.net_sales ?? 0),
+      netSalesWithoutCost: Number(row?.net_sales_without_cost ?? 0),
+      productOnlyNetSales: Number(row?.product_only_net_sales ?? 0),
+      gaps: MarginGapReasonValues.map((reason) => {
+        const alias = reason.replace(/-/g, '_');
+        return {
+          reason,
+          lineCount: Number(row?.[`gap_${alias}_lines`] ?? 0),
+          netAmount: Number(row?.[`gap_${alias}_net`] ?? 0),
+        };
+      }),
+    };
+  }
+
+  async getTopVariantsWithoutCost(
+    filters: SalesAnalyticsFilters,
+    reportingCurrency: string,
+    limit: number,
+    includeBackfilledPreRollout = false
+  ): Promise<CostCoverageTopVariantRow[]> {
+    const { inRevenue, netAmount } = this.buildMarginSqlFragments(includeBackfilledPreRollout);
+    const qb = this.repository
+      .createQueryBuilder('li')
+      .innerJoin(OrderRecordOrmEntity, 'rec', 'rec."internalOrderId" = li."orderRecordId"')
+      .leftJoin('product_variants', 'pv', 'pv."id" = li."variantId"')
+      .select('li."variantId"', 'variant_id')
+      .addSelect('MIN(li."productId")', 'product_id')
+      .addSelect(`COALESCE(SUM(${netAmount}), 0)`, 'net_sales')
+      .where(`${inRevenue} AND ${this.liveVariantCondition()} AND pv."netUnitCost" IS NULL`)
+      .groupBy('li."variantId"')
+      .orderBy('net_sales', 'DESC')
+      .addOrderBy('variant_id', 'ASC')
+      .limit(limit)
+      .setParameter('reportingCurrency', reportingCurrency);
+    this.applyTopProductsScope(qb, filters);
+
+    const rows = await qb.getRawMany<{ variant_id: string; product_id: string; net_sales: string }>();
+    return rows.map((row) => ({
+      variantId: row.variant_id,
+      productId: row.product_id,
+      netSales: Number(row.net_sales),
+    }));
+  }
+
+  async findCostWorklistRows(
+    filters: CostWorklistFilters,
+    salesWindow: SalesAnalyticsFilters,
+    reportingCurrency: string,
+    includeBackfilledPreRollout = false
+  ): Promise<CostWorklistRow[]> {
+    const qb = this.buildCostWorklistQuery(
+      filters,
+      salesWindow,
+      reportingCurrency,
+      includeBackfilledPreRollout
+    )
+      .select('pv."id"', 'variant_id')
+      .addSelect('pv."productId"', 'product_id')
+      .addSelect('p."name"', 'product_name')
+      .addSelect('pv."sku"', 'sku')
+      .addSelect('pv."attributes"', 'attributes')
+      .addSelect('pv."netUnitCost"', 'net_unit_cost')
+      .addSelect('pv."costCurrency"', 'cost_currency')
+      .addSelect('pv."costUpdatedAt"', 'cost_updated_at')
+      .addSelect('COALESCE(s."net_sales", 0)', 'net_sales')
+      .addSelect('COALESCE(s."units", 0)', 'units')
+      .addSelect('s."connection_ids"', 'connection_ids');
+
+    if (filters.tab === 'has-cost') {
+      qb.orderBy('pv."costUpdatedAt"', 'DESC', 'NULLS LAST').addOrderBy('pv."id"', 'ASC');
+    } else {
+      qb.orderBy('net_sales', 'DESC')
+        .addOrderBy('pv."sku"', 'ASC', 'NULLS LAST')
+        .addOrderBy('pv."id"', 'ASC');
+    }
+    qb.limit(filters.limit).offset(filters.offset);
+
+    const rows = await qb.getRawMany<{
+      variant_id: string;
+      product_id: string;
+      product_name: string;
+      sku: string | null;
+      attributes: Record<string, string> | null;
+      net_unit_cost: string | null;
+      cost_currency: string | null;
+      cost_updated_at: Date | null;
+      net_sales: string;
+      units: string;
+      connection_ids: string[] | null;
+    }>();
+    return rows.map((row) => ({
+      variantId: row.variant_id,
+      productId: row.product_id,
+      productName: row.product_name,
+      sku: row.sku,
+      attributes: row.attributes,
+      netUnitCost: row.net_unit_cost,
+      costCurrency: row.cost_currency,
+      costUpdatedAt: row.cost_updated_at,
+      netSales30d: Number(row.net_sales),
+      units30d: Number(row.units),
+      soldOnConnectionIds: row.connection_ids ?? [],
+    }));
+  }
+
+  async countCostWorklist(
+    filters: CostWorklistCountFilters,
+    salesWindow: SalesAnalyticsFilters,
+    reportingCurrency: string,
+    includeBackfilledPreRollout = false
+  ): Promise<number> {
+    const row = await this.buildCostWorklistQuery(
+      filters,
+      salesWindow,
+      reportingCurrency,
+      includeBackfilledPreRollout
+    )
+      .select('COUNT(*)', 'total')
+      .getRawOne<{ total: string }>();
+    return Number(row?.total ?? 0);
+  }
+
+  async getCostSummary(): Promise<CostSummary> {
+    // ADR-036: read-only table-name read of `product_variants`, owned by `products`.
+    const row = await this.repository.manager
+      .createQueryBuilder()
+      .from('product_variants', 'pv')
+      .select('COUNT(*) FILTER (WHERE pv."netUnitCost" IS NULL)', 'variants_without_cost')
+      .addSelect(
+        'COUNT(DISTINCT pv."productId") FILTER (WHERE pv."netUnitCost" IS NULL)',
+        'products_without_cost'
+      )
+      .addSelect('COUNT(*) FILTER (WHERE pv."netUnitCost" IS NOT NULL)', 'variants_with_cost')
+      .where('pv."isStale" = false')
+      .getRawOne<{
+        variants_without_cost: string;
+        products_without_cost: string;
+        variants_with_cost: string;
+      }>();
+    return {
+      variantsWithoutCost: Number(row?.variants_without_cost ?? 0),
+      productsWithoutCost: Number(row?.products_without_cost ?? 0),
+      variantsWithCost: Number(row?.variants_with_cost ?? 0),
+    };
+  }
+
+  /** The variant exists and is not stale: the only variants an operator can act on. */
+  private liveVariantCondition(): string {
+    return 'pv."id" IS NOT NULL AND pv."isStale" = false';
+  }
+
+  /**
+   * Shared FROM/WHERE of the work list rows and its count: `product_variants`
+   * (base, read by table name - ADR-036) joined to `products` for the name
+   * search, and to a per-variant sales aggregate over the net-revenue
+   * population of the window. All user input is bound as a parameter.
+   */
+  private buildCostWorklistQuery(
+    filters: CostWorklistCountFilters,
+    salesWindow: SalesAnalyticsFilters,
+    reportingCurrency: string,
+    includeBackfilledPreRollout: boolean
+  ): SelectQueryBuilder<ObjectLiteral> {
+    const { inRevenue, netAmount } = this.buildMarginSqlFragments(includeBackfilledPreRollout);
+    const sales = this.repository
+      .createQueryBuilder('li')
+      .innerJoin(OrderRecordOrmEntity, 'rec', 'rec."internalOrderId" = li."orderRecordId"')
+      .select('li."variantId"', 'variant_id')
+      .addSelect(`COALESCE(SUM(${netAmount}) FILTER (WHERE ${inRevenue}), 0)`, 'net_sales')
+      .addSelect(`COALESCE(SUM(li."quantity") FILTER (WHERE ${inRevenue}), 0)`, 'units')
+      .addSelect(
+        `ARRAY_AGG(DISTINCT li."sourceConnectionId"::text) FILTER (WHERE ${inRevenue})`,
+        'connection_ids'
+      )
+      .where('li."variantId" IS NOT NULL')
+      .groupBy('li."variantId"')
+      .setParameter('reportingCurrency', reportingCurrency);
+    this.applyTopProductsScope(sales, {
+      from: salesWindow.from,
+      to: salesWindow.to,
+      sourceConnectionId: filters.channel,
+    });
+
+    const qb = this.repository.manager
+      .createQueryBuilder()
+      .from('product_variants', 'pv')
+      .innerJoin('products', 'p', 'p."id" = pv."productId"')
+      .leftJoin(`(${sales.getQuery()})`, 's', 's."variant_id" = pv."id"')
+      .setParameters(sales.getParameters())
+      .where('pv."isStale" = false');
+
+    if (filters.tab === 'has-cost') {
+      qb.andWhere('pv."netUnitCost" IS NOT NULL');
+    } else {
+      qb.andWhere('pv."netUnitCost" IS NULL');
+      if (filters.tab === 'sold') {
+        qb.andWhere('COALESCE(s."net_sales", 0) > 0');
+      }
+    }
+    if (filters.channel) {
+      qb.andWhere('s."variant_id" IS NOT NULL');
+    }
+    const q = filters.q?.trim();
+    if (q) {
+      qb.andWhere('(p."name" ILIKE :worklistQ OR pv."sku" ILIKE :worklistQ)', {
+        worklistQ: `%${q.replace(/[\\%_]/g, (c) => `\\${c}`)}%`,
+      });
+    }
+    return qb;
   }
 
   /**

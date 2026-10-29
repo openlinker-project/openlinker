@@ -26,6 +26,14 @@ import type {
   MarginVariantRow,
 } from '../types/order-margin-analytics.types';
 import type {
+  CostCoverageRawFigures,
+  CostCoverageTopVariantRow,
+  CostSummary,
+  CostWorklistCountFilters,
+  CostWorklistFilters,
+  CostWorklistRow,
+} from '../types/cost-coverage.types';
+import type {
   ProductChannelBreakdownRow,
   ProductRankingRow,
   TopProductFilters,
@@ -239,4 +247,43 @@ export interface OrderLineItemRepositoryPort {
   findProductRefsByOrderIds(
     orderRecordIds: string[]
   ): Promise<Map<string, Array<{ productId: string; variantId: string | null }>>>;
+
+  /**
+   * Cost coverage of a window (#3588): net sales on variants that currently
+   * have no cost, the sold-variant counts and the margin gap split, over the
+   * same net-revenue population as the margin reads. `product_variants` is
+   * read by table name (ADR-036) only to classify a line's variant.
+   */
+  getCostCoverageFigures(
+    filters: SalesAnalyticsFilters,
+    reportingCurrency: string,
+    includeBackfilledPreRollout?: boolean
+  ): Promise<CostCoverageRawFigures>;
+
+  /** Top variants that currently have no cost, ranked by net sales in the window. */
+  getTopVariantsWithoutCost(
+    filters: SalesAnalyticsFilters,
+    reportingCurrency: string,
+    limit: number,
+    includeBackfilledPreRollout?: boolean
+  ): Promise<CostCoverageTopVariantRow[]>;
+
+  /** One page of the cost work list; the sales columns cover `salesWindow`. */
+  findCostWorklistRows(
+    filters: CostWorklistFilters,
+    salesWindow: SalesAnalyticsFilters,
+    reportingCurrency: string,
+    includeBackfilledPreRollout?: boolean
+  ): Promise<CostWorklistRow[]>;
+
+  /** Total of {@link findCostWorklistRows} for the same filters, no paging. */
+  countCostWorklist(
+    filters: CostWorklistCountFilters,
+    salesWindow: SalesAnalyticsFilters,
+    reportingCurrency: string,
+    includeBackfilledPreRollout?: boolean
+  ): Promise<number>;
+
+  /** Catalogue-wide cost counts (non-stale variants), no date window. */
+  getCostSummary(): Promise<CostSummary>;
 }

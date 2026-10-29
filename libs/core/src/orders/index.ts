@@ -389,6 +389,24 @@ export type {
   MarginTrendPoint,
   MarginVariantView,
 } from './domain/types/order-margin-analytics.types';
+export type { ICostCoverageService } from './application/services/cost-coverage.service.interface';
+export {
+  COST_COVERAGE_DEFAULT_DAYS,
+  COST_COVERAGE_MAX_DAYS,
+  COST_COVERAGE_MIN_DAYS,
+  COST_WORKLIST_SALES_WINDOW_DAYS,
+  CostWorklistTabValues,
+} from './domain/types/cost-coverage.types';
+export type {
+  CostCoverageResult,
+  CostCoverageTopVariant,
+  CostSummary,
+  CostWorklistCountFilters,
+  CostWorklistFilters,
+  CostWorklistResult,
+  CostWorklistRow,
+  CostWorklistTab,
+} from './domain/types/cost-coverage.types';
 export { MarginGapReasonValues } from './domain/order-line-cost-snapshot';
 export type { MarginGapReason } from './domain/order-line-cost-snapshot';
 export type { ITaxCoverageDetectionService } from './application/services/tax-coverage-detection.service.interface';
