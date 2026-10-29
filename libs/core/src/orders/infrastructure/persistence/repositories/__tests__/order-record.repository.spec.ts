@@ -1841,6 +1841,11 @@ describe('OrderRecordRepository', () => {
       const sql = upsertSql();
 
       for (const column of columns) {
+        // `orderEdits` is a read-only guard: the DO UPDATE CASE branches read it
+        // to keep an operator-edited address, and the statement never writes it.
+        if (column === 'orderEdits') {
+          continue;
+        }
         const named = sql.includes(`"${column}"`);
         const inWriteSet = UPSERT_WRITE_SET.includes(column);
         // The write set the test asserts against must stay the statement's own.
@@ -1917,7 +1922,9 @@ describe('OrderRecordRepository', () => {
         const insertHalf = sql.slice(0, sql.indexOf('VALUES'));
         const updateHalf = sql.slice(sql.indexOf('DO UPDATE SET'));
         expect(insertHalf).toContain('"searchText"');
-        expect(updateHalf).toContain('"searchText" = EXCLUDED."searchText"');
+        expect(updateHalf).toMatch(
+          /"searchText" = CASE WHEN "order_records"\."orderEdits" \? 'address'\s+THEN "order_records"\."searchText" ELSE EXCLUDED\."searchText" END/
+        );
         expect(writeSet.has('searchText')).toBe(true);
         expect(params).toContain('ord-001 sku-1');
       }

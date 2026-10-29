@@ -2857,3 +2857,25 @@ handler that touches `order_records.orderSnapshot`.
 
 **Source**: #3542
 
+
+## Read the affected count of a raw UPDATE from `result[1]`, never `rows.length`
+
+**Context**: an order edit that lost its row (#3542, case E-66) was reported as
+confirmed. The repository issued a raw `UPDATE ... WHERE` through TypeORM's
+`query()` and decided success from the returned array's length.
+
+**Problem**: on TypeORM 0.3.17 with the Postgres driver, `query()` returns
+`[rows, rowCount]` for `UPDATE` and `DELETE`, but plain rows for
+`INSERT ... RETURNING`. So `rows.length` on an `UPDATE` result is always 2,
+whether zero or a hundred rows matched, and the "did it apply" check could
+never be false.
+
+**Rule**: for a raw `UPDATE` / `DELETE`, read the affected count from
+`result[1]`. Keep the `INSERT ... RETURNING` idiom (`raw.length > 0`) for
+inserts only. Pin it with a spec whose mock returns the real driver shape,
+including the zero-row case.
+
+**Applies to**: raw `query()` calls in `libs/core/**/infrastructure/**`
+repositories.
+
+**Source**: #3542, fixed in 20362a600.
