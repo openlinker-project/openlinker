@@ -12,6 +12,7 @@ import { SourcingRulesTile } from '../../features/oms';
 import { SyncPacingTile } from '../../features/settings';
 import { InventoryLocationsTile } from '../../features/inventory';
 import { OrderTagsSettingsTile } from '../../features/orders/components/order-tags-settings-tile';
+import { BuyerEmailsTile } from '../../features/buyer-emails';
 import { PageLayout } from '../../shared/ui/page-layout';
 
 export function SettingsPage(): ReactElement {
@@ -39,6 +40,7 @@ export function SettingsPage(): ReactElement {
           {omsRoutingUi && isAdmin ? <span className="toolbar-chip">Sourcing rules</span> : null}
           {isAdmin ? <span className="toolbar-chip">Sync pacing</span> : null}
           {isAdmin ? <span className="toolbar-chip">Order tags</span> : null}
+          {isAdmin ? <span className="toolbar-chip">Buyer emails</span> : null}
           {/* Role-ungated — see `InventoryLocationsTile`'s docblock. */}
           {omsRoutingUi ? <span className="toolbar-chip">Inventory locations</span> : null}
           <span className="toolbar-chip">Upcoming</span>
@@ -130,6 +132,7 @@ export function SettingsPage(): ReactElement {
 
         {/* ── Order tags (admin-only, #3532/#3533, D34) ─────────────── */}
         {isAdmin ? <OrderTagsSettingsTile /> : null}
+        {isAdmin ? <BuyerEmailsTile /> : null}
 
         {/* Deliberately NOT admin-gated — see `InventoryLocationsTile`'s docblock. */}
         {omsRoutingUi ? <InventoryLocationsTile /> : null}

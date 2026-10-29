@@ -822,4 +822,6 @@ export type {
   IBuyerEmailNotificationService,
   SendBuyerEmailInput,
   SendBuyerEmailResult,
+  SendBuyerEmailTestInput,
+  SendBuyerEmailTestResult,
 } from './application/interfaces/buyer-email-notification.service.interface';
