@@ -28,7 +28,7 @@ import { useIsAdmin, useWriteAccess } from '../../../shared/auth/use-permission'
 import { DEMO_READ_ONLY_ACTION_MESSAGE } from '../../../shared/config/demo-mode';
 import { useDemoMode } from '../../system';
 import type { OrderHold, ProvisioningResume } from '../api/orders.types';
-import { holdReasonLabel } from '../lib/order-hold.types';
+import { holdReasonLabel, isReleasedByOrderCancel } from '../lib/order-hold.types';
 import { PlaceOrderHoldDialog } from './place-order-hold-dialog';
 import { ReleaseOrderHoldDialog } from './release-order-hold-dialog';
 
@@ -148,6 +148,8 @@ export function OrderHoldPanel({
                     {' by '}
                     <span className="mono-text">{hold.releasedByUserId}</span>
                   </>
+                ) : isReleasedByOrderCancel(hold) ? (
+                  ' by OpenLinker (order cancelled)'
                 ) : null}
                 {hold.releaseNote ? ` — ${hold.releaseNote}` : ''}
               </span>

@@ -12,6 +12,7 @@
  * @implements {IOrderCancellationEffectsService}
  */
 import { Inject, Injectable } from '@nestjs/common';
+import { ModuleRef } from '@nestjs/core';
 import {
   FULFILLMENT_ORDER_CANCELLATION_SERVICE_TOKEN,
   type IFulfillmentOrderCancellationService,
@@ -29,7 +30,15 @@ import {
   type OrderCancelCorrectionUnavailableReason,
 } from '../../domain/types/order-cancel.types';
 import { cancelCorrectionTargetRef } from '../../domain/types/order-change.types';
-import { ORDER_CHANGE_SERVICE_TOKEN, ORDER_HOLD_SERVICE_TOKEN } from '../../orders.tokens';
+import type {
+  OrderLabelVoiderPort,
+  OrderLabelVoidOutcome,
+} from '../../domain/ports/order-label-voider.port';
+import {
+  ORDER_CHANGE_SERVICE_TOKEN,
+  ORDER_HOLD_SERVICE_TOKEN,
+  ORDER_LABEL_VOIDER_TOKEN,
+} from '../../orders.tokens';
 import type {
   ApplyOrderCancellationEffectsInput,
   IOrderCancellationEffectsService,
@@ -50,7 +59,8 @@ export class OrderCancellationEffectsService implements IOrderCancellationEffect
     @Inject(ORDER_CHANGE_SERVICE_TOKEN)
     private readonly changes: IOrderChangeService,
     @Inject(INVOICE_SERVICE_TOKEN)
-    private readonly invoices: IInvoiceService
+    private readonly invoices: IInvoiceService,
+    private readonly moduleRef: ModuleRef
   ) {}
 
   async applyEffects(
@@ -58,6 +68,7 @@ export class OrderCancellationEffectsService implements IOrderCancellationEffect
   ): Promise<OrderCancellationEffectsResult> {
     const cancelledWorkIds = await this.cancelWork(input.internalOrderId, input.cancelledAt);
     const releasedHoldIds = await this.releaseHolds(input);
+    const labelVoids = input.voidLabels === false ? [] : await this.voidLabels(input);
 
     let correctionProposal: OrderCancelCorrectionProposal | null = null;
     let correctionUnavailableReason: OrderCancelCorrectionUnavailableReason | null = null;
@@ -80,7 +91,47 @@ export class OrderCancellationEffectsService implements IOrderCancellationEffect
       correctionUnavailableReason = proposed.unavailable;
     }
 
-    return { cancelledWorkIds, releasedHoldIds, correctionProposal, correctionUnavailableReason };
+    return { cancelledWorkIds, releasedHoldIds, labelVoids, correctionProposal, correctionUnavailableReason };
+  }
+
+  /**
+   * Void the labels OpenLinker bought for the order. Best-effort: the channel has
+   * already cancelled, so a label that cannot be voided is reported and the rest
+   * of the cleanup carries on. The voider lives in `shipping`, which depends on
+   * this context, so it is resolved lazily; a process that never wires shipping
+   * has no labels to void.
+   */
+  private async voidLabels(
+    input: ApplyOrderCancellationEffectsInput
+  ): Promise<readonly OrderLabelVoidOutcome[]> {
+    let voider: OrderLabelVoiderPort;
+    try {
+      voider = this.moduleRef.get<OrderLabelVoiderPort>(ORDER_LABEL_VOIDER_TOKEN, {
+        strict: false,
+      });
+    } catch {
+      this.logger.warn(
+        `order_cancel_label_voider_not_wired order=${input.internalOrderId}: shipping is not wired into this process, so no label was voided`
+      );
+      return [];
+    }
+    try {
+      const outcomes = await voider.voidLabelsForOrder(input.internalOrderId);
+      for (const outcome of outcomes) {
+        if (outcome.outcome === 'failed') {
+          this.logger.warn(
+            `order_cancel_label_not_voided order=${input.internalOrderId} shipment=${outcome.shipmentId}: ${outcome.detail ?? 'no detail'}`
+          );
+        }
+      }
+      return outcomes;
+    } catch (error) {
+      this.logger.error(
+        `Failed to void the labels of cancelled order ${input.internalOrderId}`,
+        error instanceof Error ? error.stack : undefined
+      );
+      return [];
+    }
   }
 
   private async cancelWork(internalOrderId: string, cancelledAt: Date): Promise<string[]> {
@@ -102,8 +153,9 @@ export class OrderCancellationEffectsService implements IOrderCancellationEffect
   /**
    * Release the order's open hold: a cancelled order must not keep a "held" badge
    * or block anything. A service-placed hold is released AS that service (the only
-   * service the policy admits); a user-placed one as the acting operator, and is
-   * left alone, with a warning, when there is no operator to attribute it to.
+   * service the policy admits); a user-placed one as the acting operator, or as
+   * OpenLinker itself when the channel reported the cancel and there is no
+   * operator (4b) - leaving it held would badge a cancelled order for ever.
    */
   private async releaseHolds(input: ApplyOrderCancellationEffectsInput): Promise<string[]> {
     try {
@@ -113,13 +165,7 @@ export class OrderCancellationEffectsService implements IOrderCancellationEffect
         ? ({ kind: 'service', service: open.placedByService } as const)
         : input.actorUserId
           ? ({ kind: 'user', userId: input.actorUserId } as const)
-          : null;
-      if (!releasedBy) {
-        this.logger.warn(
-          `order_cancel_hold_not_released order=${input.internalOrderId} hold=${open.id}: no operator to release a user-placed hold as`
-        );
-        return [];
-      }
+          : ({ kind: 'system', cause: 'order-cancelled' } as const);
       await this.holds.release({
         holdId: open.id,
         note: ORDER_CANCELLED_HOLD_RELEASE_NOTE,

@@ -473,6 +473,10 @@ export type {
   OrderSearchTextReindexRunResult,
 } from './domain/types/order-search-text-reindex.types';
 export * from './orders.tokens';
+export type {
+  OrderLabelVoiderPort,
+  OrderLabelVoidOutcome,
+} from './domain/ports/order-label-voider.port';
 
 // Domain entities
 export { OrderRecord } from './domain/entities/order-record.entity';
@@ -582,6 +586,7 @@ export { OrderChange } from './domain/entities/order-change.entity';
 export { OrderHold } from './domain/entities/order-hold.entity';
 export type {
   OrderHoldPlacedBy,
+  OrderHoldReleasedBy,
   PlaceOrderHoldInput,
   ReleaseOrderHoldInput,
 } from './domain/types/order-hold.types';

@@ -536,6 +536,7 @@ describe('OrderCancellationService (#3540)', () => {
         cancelledAt: expect.any(Date),
         reason: 'fraud',
         actorUserId: ACTOR,
+        voidLabels: false, // (4a) the operator path voided the labels itself; effects must not void twice
       });
       expect(changes.confirm).toHaveBeenCalledWith('change-1', ACTOR);
       expect(changes.claimApplied).toHaveBeenCalledWith('change-1');

@@ -36,6 +36,8 @@ describe('OrderCancellationEffectsService (#3540)', () => {
   let holds: { getOpenHold: jest.Mock; release: jest.Mock };
   let changes: { openOrReuse: jest.Mock };
   let invoices: { getLatestIssuedInvoiceForOrder: jest.Mock };
+  let moduleRef: { get: jest.Mock };
+  let voider: { voidLabelsForOrder: jest.Mock };
   let service: OrderCancellationEffectsService;
 
   beforeEach(() => {
@@ -49,11 +51,14 @@ describe('OrderCancellationEffectsService (#3540)', () => {
         .mockResolvedValue({ change: { id: 'change-2' }, opened: true, expiredStale: false }),
     };
     invoices = { getLatestIssuedInvoiceForOrder: jest.fn().mockResolvedValue(null) };
+    voider = { voidLabelsForOrder: jest.fn().mockResolvedValue([]) };
+    moduleRef = { get: jest.fn().mockReturnValue(voider) };
     service = new OrderCancellationEffectsService(
       fulfillment as never,
       holds as never,
       changes as never,
-      invoices as never
+      invoices as never,
+      moduleRef as never
     );
   });
 
@@ -96,13 +101,27 @@ describe('OrderCancellationEffectsService (#3540)', () => {
       );
     });
 
-    it('should leave a user-placed hold alone when there is no operator to attribute it to', async () => {
+    it('should release a person-placed hold as the system with the cancel note when no operator is known (4b)', async () => {
       holds.getOpenHold.mockResolvedValue({ id: 'hold-1', placedByService: null });
 
       const result = await service.applyEffects({ ...input, actorUserId: null });
 
-      expect(holds.release).not.toHaveBeenCalled();
-      expect(result.releasedHoldIds).toEqual([]);
+      expect(holds.release).toHaveBeenCalledWith({
+        holdId: 'hold-1',
+        note: 'order cancelled',
+        releasedBy: { kind: 'system', cause: 'order-cancelled' },
+      });
+      expect(result.releasedHoldIds).toEqual(['hold-1']);
+    });
+
+    it('should keep releasing a service-placed hold as that service when no operator is known (4b)', async () => {
+      holds.getOpenHold.mockResolvedValue({ id: 'hold-1', placedByService: 'fraud-check' });
+
+      await service.applyEffects({ ...input, actorUserId: null });
+
+      expect(holds.release).toHaveBeenCalledWith(
+        expect.objectContaining({ releasedBy: { kind: 'service', service: 'fraud-check' } })
+      );
     });
 
     it('should do nothing when no hold is open, and survive a release failure', async () => {
@@ -206,6 +225,46 @@ describe('OrderCancellationEffectsService (#3540)', () => {
 
       expect(result.correctionProposal).toBeNull();
       expect(result.correctionUnavailableReason).toBeNull();
+    });
+  });
+
+  describe('labels (4a)', () => {
+    it('should void the bought labels and report each outcome when the channel cancelled (4a)', async () => {
+      voider.voidLabelsForOrder.mockResolvedValue([{ shipmentId: 's1', outcome: 'voided' }]);
+
+      const result = await service.applyEffects({ ...input, actorUserId: null });
+
+      expect(voider.voidLabelsForOrder).toHaveBeenCalledWith(ORDER_ID);
+      expect(result.labelVoids).toEqual([{ shipmentId: 's1', outcome: 'voided' }]);
+    });
+
+    it('should not abort the other effects when voiding a label fails (4a)', async () => {
+      voider.voidLabelsForOrder.mockRejectedValue(new Error('carrier down'));
+      holds.getOpenHold.mockResolvedValue({ id: 'hold-1', placedByService: null });
+
+      const result = await service.applyEffects({ ...input, actorUserId: null });
+
+      expect(result.labelVoids).toEqual([]);
+      expect(result.cancelledWorkIds).toEqual(['w1']);
+      expect(result.releasedHoldIds).toEqual(['hold-1']);
+    });
+
+    it('should carry on without voiding when shipping is not wired into the process (4a)', async () => {
+      moduleRef.get.mockImplementation(() => {
+        throw new Error('not found');
+      });
+
+      const result = await service.applyEffects({ ...input, actorUserId: null });
+
+      expect(result.labelVoids).toEqual([]);
+      expect(result.cancelledWorkIds).toEqual(['w1']);
+    });
+
+    it('should not void again when the operator path already voided the labels (4a)', async () => {
+      const result = await service.applyEffects({ ...input, voidLabels: false });
+
+      expect(voider.voidLabelsForOrder).not.toHaveBeenCalled();
+      expect(result.labelVoids).toEqual([]);
     });
   });
 });

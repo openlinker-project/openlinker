@@ -17,6 +17,7 @@
  *
  * @module libs/core/src/orders/application/interfaces
  */
+import type { OrderLabelVoidOutcome } from '../../domain/ports/order-label-voider.port';
 import type {
   OrderCancelCorrectionProposal,
   OrderCancelCorrectionUnavailableReason,
@@ -29,11 +30,20 @@ export interface ApplyOrderCancellationEffectsInput {
   readonly reason: string;
   /** The operator who cancelled (or who asked for the cancel the source later confirmed). */
   readonly actorUserId: string | null;
+  /**
+   * Void the order's bought labels as part of the cleanup (default true). The
+   * operator path voids them itself, BEFORE it asks the channel (a label that
+   * cannot be voided refuses the cancel), so it passes false rather than
+   * calling the carrier twice.
+   */
+  readonly voidLabels?: boolean;
 }
 
 export interface OrderCancellationEffectsResult {
   readonly cancelledWorkIds: readonly string[];
   readonly releasedHoldIds: readonly string[];
+  /** Per-label outcome of the best-effort void; empty when none applied or the path voids itself. */
+  readonly labelVoids: readonly OrderLabelVoidOutcome[];
   readonly correctionProposal: OrderCancelCorrectionProposal | null;
   readonly correctionUnavailableReason: OrderCancelCorrectionUnavailableReason | null;
 }
