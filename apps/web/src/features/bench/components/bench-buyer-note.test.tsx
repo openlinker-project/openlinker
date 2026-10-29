@@ -82,23 +82,23 @@ function renderNote(
  * test measures, so the measurement is what gets mocked.
  */
 function mockClampOverflow(testId: string): () => void {
-  const scroll = Object.getOwnPropertyDescriptor(Element.prototype, 'scrollHeight');
-  const client = Object.getOwnPropertyDescriptor(Element.prototype, 'clientHeight');
-  Object.defineProperty(Element.prototype, 'scrollHeight', {
+  const scroll = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'scrollHeight');
+  const client = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'clientHeight');
+  Object.defineProperty(HTMLElement.prototype, 'scrollHeight', {
     configurable: true,
-    get(this: Element) {
+    get(this: HTMLElement) {
       return this.getAttribute('data-testid') === testId ? 200 : 0;
     },
   });
-  Object.defineProperty(Element.prototype, 'clientHeight', {
+  Object.defineProperty(HTMLElement.prototype, 'clientHeight', {
     configurable: true,
-    get(this: Element) {
+    get(this: HTMLElement) {
       return this.getAttribute('data-testid') === testId ? 80 : 0;
     },
   });
   return () => {
-    if (scroll) Object.defineProperty(Element.prototype, 'scrollHeight', scroll);
-    if (client) Object.defineProperty(Element.prototype, 'clientHeight', client);
+    if (scroll) Object.defineProperty(HTMLElement.prototype, 'scrollHeight', scroll);
+    if (client) Object.defineProperty(HTMLElement.prototype, 'clientHeight', client);
   };
 }
 
