@@ -101,7 +101,6 @@ import {
   BuyerProfile,
   isBankAccountsReader,
   isBankAccountDefaultSetter,
-  isInvoiceEmailSender,
   isPaymentMarker,
   PAYMENT_STATUS_REFRESH_SERVICE_TOKEN,
   IPaymentStatusRefreshService,
@@ -125,9 +124,11 @@ import type {
 import {
   decodeBuyerTaxIdColumn,
   ORDER_RECORD_SERVICE_TOKEN,
+  ORDER_DOCUMENT_EMAIL_SERVICE_TOKEN,
   ORDER_REFUND_SERVICE_TOKEN,
   INVOICE_MARKETPLACE_UPLOAD_SERVICE_TOKEN,
   type IInvoiceMarketplaceUploadService,
+  IOrderDocumentEmailService,
   IOrderRecordService,
   IOrderRefundService,
   toLiveOrderIssuanceFacts,
@@ -136,7 +137,12 @@ import {
   buildOrderSummary,
 } from '@openlinker/core/orders';
 import type { Order, OrderRecord, OrderSummary } from '@openlinker/core/orders';
-import { decideLiveOrderIssuance, type LiveOrderIssuanceDecision } from '@openlinker/core/sales-documents';
+import {
+  decideLiveOrderIssuance,
+  DOCUMENT_EMAIL_DELIVERY_SERVICE_TOKEN,
+  type IDocumentEmailDeliveryService,
+  type LiveOrderIssuanceDecision,
+} from '@openlinker/core/sales-documents';
 import {
   CONNECTION_PORT_TOKEN,
   ConnectionPort,
@@ -162,6 +168,8 @@ import { BankAccountResponseDto } from './dto/bank-account-response.dto';
 import { SendInvoiceEmailRequestDto } from './dto/send-invoice-email-request.dto';
 import { SendInvoiceEmailResponseDto } from './dto/send-invoice-email-response.dto';
 import { MarkInvoicePaidRequestDto } from './dto/mark-invoice-paid-request.dto';
+import { toDocumentEmailException } from '../../common/http/document-email-refusal';
+import { DocumentEmailDeliveryResponseDto } from './dto/document-email-delivery-response.dto';
 import { Roles } from '../../auth/decorators/roles.decorator';
 
 /** MIME → download-filename extension; the UPO is labelled by its real content type. */
@@ -227,6 +235,10 @@ export class InvoicingController {
     private readonly attachments: IInvoiceAttachmentService,
     @Inject(INVOICE_MARKETPLACE_UPLOAD_SERVICE_TOKEN)
     private readonly marketplaceUploads: IInvoiceMarketplaceUploadService,
+    @Inject(ORDER_DOCUMENT_EMAIL_SERVICE_TOKEN)
+    private readonly documentEmails: IOrderDocumentEmailService,
+    @Inject(DOCUMENT_EMAIL_DELIVERY_SERVICE_TOKEN)
+    private readonly documentEmailDeliveries: IDocumentEmailDeliveryService,
   ) {}
 
   @Roles('admin', 'operator', 'viewer')
@@ -1164,49 +1176,54 @@ export class InvoicingController {
   @Post('invoices/:invoiceId/send-email')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
-    summary: 'Email an issued invoice to the buyer (#1353)',
+    summary: 'Email an issued invoice to the buyer (#1353, #3550)',
     description:
-      'Triggers the connection\'s Invoicing provider to render + email the issued document to ' +
-      'the buyer (e.g. inFakt\'s deliver_via_email). OpenLinker only triggers the send — the ' +
-      'provider composes and delivers the message to the buyer\'s stored email (no recipient ' +
-      'override). Optional neutral locale (pl/en) and send-copy flag. 501 when the resolved ' +
-      'adapter does not implement InvoiceEmailSender.',
+      "Works for every provider. A connection with its own email capability (inFakt) sends it " +
+      "itself while the address is unchanged; otherwise OpenLinker's mailer sends it with the " +
+      'document attached (or linked). `sentVia` says which. The recipient defaults to the ' +
+      "buyer's address on the order and can be edited; an edited address is always sent by " +
+      "OpenLinker's mailer. A manual send is never refused because the connection's automatic " +
+      'buyer emails are off. A refusal carries a readable `message` and a machine `code`.',
   })
-  @ApiResponse({ status: 200, description: 'Delivery triggered', type: SendInvoiceEmailResponseDto })
+  @ApiResponse({ status: 200, description: 'Handed to the sender', type: SendInvoiceEmailResponseDto })
+  @ApiResponse({ status: 400, description: 'No recipient, or the recipient is not an email address' })
   @ApiResponse({ status: 404, description: 'Invoice not found' })
-  @ApiResponse({ status: 422, description: 'Invoice not fully issued (no provider invoice id)' })
-  @ApiResponse({ status: 501, description: 'Adapter does not implement InvoiceEmailSender' })
-  @ApiResponse({ status: 502, description: 'Invoicing provider unavailable or call failed' })
+  @ApiResponse({ status: 409, description: 'The document is not ready yet (not cleared)' })
+  @ApiResponse({ status: 422, description: 'Not fully issued, or no document to attach' })
+  @ApiResponse({ status: 502, description: 'The provider or the mailer failed' })
+  @ApiResponse({ status: 503, description: 'Email sending is not configured on this server' })
   async sendInvoiceEmail(
     @Param('invoiceId', invoiceIdPipe()) invoiceId: string,
     @Body() dto: SendInvoiceEmailRequestDto,
+    @CurrentUser() user: AuthenticatedUser,
   ): Promise<SendInvoiceEmailResponseDto> {
-    const record = await this.invoiceService.getInvoiceById(invoiceId);
-    if (!record) {
-      throw new NotFoundException(`Invoice not found: ${invoiceId}`);
+    const result = await this.documentEmails.sendInvoiceEmail({
+      invoiceId,
+      recipient: dto.recipient,
+      locale: dto.locale,
+      sendCopy: dto.sendCopy,
+      actorUserId: user.id,
+    });
+    if (result.status === 'refused') {
+      throw toDocumentEmailException(result);
     }
-    if (!record.providerInvoiceId) {
-      throw new UnprocessableEntityException(
-        `Invoice ${invoiceId} has no provider invoice id — it may not be fully issued yet`,
-      );
-    }
+    return { delivered: true, recipient: result.recipient, sentVia: result.sentVia };
+  }
 
-    const adapter = await this.resolveInvoicingAdapter(record.connectionId);
-    if (!isInvoiceEmailSender(adapter)) {
-      throw new NotImplementedException(
-        `Adapter for invoice ${invoiceId} does not implement InvoiceEmailSender`,
-      );
-    }
-    try {
-      const result = await adapter.sendByEmail({
-        externalInvoiceId: record.providerInvoiceId,
-        locale: dto.locale,
-        sendCopy: dto.sendCopy,
-      });
-      return { delivered: result.delivered, recipient: result.recipient };
-    } catch (error) {
-      throw this.toProviderBadGateway(error, 'sendByEmail', invoiceId);
-    }
+  @Roles('admin', 'operator', 'viewer')
+  @Get('orders/:orderId/document-emails')
+  @ApiOperation({
+    summary: "An order's document email attempts (#3550)",
+    description:
+      'Newest first: each manual attempt to email an invoice or a receipt to the buyer, sent or ' +
+      'failed, for the order timeline. Carries no recipient address.',
+  })
+  @ApiResponse({ status: 200, type: [DocumentEmailDeliveryResponseDto] })
+  async listDocumentEmails(
+    @Param('orderId') orderId: string,
+  ): Promise<DocumentEmailDeliveryResponseDto[]> {
+    const rows = await this.documentEmailDeliveries.listForOrder(orderId);
+    return rows.map((row) => DocumentEmailDeliveryResponseDto.from(row));
   }
 
   @Roles('admin')

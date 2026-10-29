@@ -14,6 +14,7 @@ import { OrderIngestionService } from './application/services/order-ingestion.se
 import { OrderItemRefResolverService } from './application/services/order-item-ref-resolver.service';
 import { OrderRecordService } from './application/services/order-record.service';
 import { SalesDocumentViewService } from './application/services/sales-document-view.service';
+import { OrderDocumentEmailService } from './application/services/order-document-email.service';
 import { OrderFxStampService } from './application/services/order-fx-stamp.service';
 import { OrderFxRestatementService } from './application/services/order-fx-restatement.service';
 import { OrderFxReadService } from './application/services/order-fx-read.service';
@@ -73,6 +74,7 @@ import {
   ORDER_TEST_FIXTURE_SERVICE_TOKEN,
   FULFILLMENT_DISPATCH_RELAY_SERVICE_TOKEN,
   SALES_DOCUMENT_VIEW_SERVICE_TOKEN,
+  ORDER_DOCUMENT_EMAIL_SERVICE_TOKEN,
   TAX_COVERAGE_DETECTION_SERVICE_TOKEN,
   DISPLAY_CURRENCY_CONVERSION_SERVICE_TOKEN,
   ORDER_CANCELLATION_SIGNAL_REPOSITORY_TOKEN,
@@ -177,6 +179,7 @@ export { ORDER_SYNC_SERVICE_TOKEN } from './orders.tokens';
     OrderItemRefResolverService,
     OrderRecordService,
     SalesDocumentViewService,
+    OrderDocumentEmailService,
     OrderFxStampService,
     OrderFxRestatementService,
     OrderDestinationRetryService,
@@ -293,6 +296,10 @@ export { ORDER_SYNC_SERVICE_TOKEN } from './orders.tokens';
       useExisting: OrderTestFixtureService,
     },
     {
+      provide: ORDER_DOCUMENT_EMAIL_SERVICE_TOKEN,
+      useExisting: OrderDocumentEmailService,
+    },
+    {
       provide: SALES_DOCUMENT_VIEW_SERVICE_TOKEN,
       useExisting: SalesDocumentViewService,
     },
@@ -376,6 +383,7 @@ export { ORDER_SYNC_SERVICE_TOKEN } from './orders.tokens';
     // Exported so the API's orders controller can compose the per-order
     // sales-document projection for the list and the detail panel (#2516).
     SALES_DOCUMENT_VIEW_SERVICE_TOKEN,
+    ORDER_DOCUMENT_EMAIL_SERVICE_TOKEN,
     // Exported so the `/analytics/coverage` endpoint (#2466) can inject the
     // tax A/B/C detector seam (#2465).
     TAX_COVERAGE_DETECTION_SERVICE_TOKEN,

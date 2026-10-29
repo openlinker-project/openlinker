@@ -19,6 +19,7 @@ import { IntegrationsModule as CoreIntegrationsModule } from '@openlinker/core/i
 import { InvoicingModule } from '@openlinker/core/invoicing';
 import { OrdersModule } from '@openlinker/core/orders';
 import { IdentifierMappingModule } from '@openlinker/core/identifier-mapping';
+import { SalesDocumentsModule } from '@openlinker/core/sales-documents';
 import { IntegrationsModule } from '../integrations/integrations.module';
 import { InvoicingController } from './http/invoicing.controller';
 import { NumberingSeriesController } from './http/numbering-series.controller';
@@ -32,6 +33,8 @@ import { NumberingSeriesController } from './http/numbering-series.controller';
     CoreIntegrationsModule,
     IntegrationsModule,
     IdentifierMappingModule,
+    // DOCUMENT_EMAIL_DELIVERY_SERVICE_TOKEN for the order timeline read (#3550).
+    SalesDocumentsModule,
   ],
   controllers: [InvoicingController, NumberingSeriesController],
 })

@@ -108,3 +108,5 @@ export const INVOICE_MARKETPLACE_UPLOAD_REPOSITORY_TOKEN = Symbol(
 
 /** Binding token for the {@link IInvoiceMarketplaceUploadService} (#3549). */
 export const INVOICE_MARKETPLACE_UPLOAD_SERVICE_TOKEN = Symbol('IInvoiceMarketplaceUploadService');
+/** Manual "send this sales document to the buyer" for every provider (#3550). */
+export const ORDER_DOCUMENT_EMAIL_SERVICE_TOKEN = Symbol('IOrderDocumentEmailService');

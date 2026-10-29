@@ -12,7 +12,7 @@
  * @module apps/api/src/invoicing/http/dto
  */
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { IsBoolean, IsIn, IsOptional } from 'class-validator';
+import { IsBoolean, IsIn, IsOptional, IsString, MaxLength } from 'class-validator';
 import { InvoiceEmailLocaleValues, type InvoiceEmailLocale } from '@openlinker/core/invoicing';
 
 export class SendInvoiceEmailRequestDto {
@@ -24,7 +24,19 @@ export class SendInvoiceEmailRequestDto {
   @IsIn(InvoiceEmailLocaleValues)
   locale?: InvoiceEmailLocale;
 
-  @ApiPropertyOptional({ description: 'Also send a copy to the seller.' })
+  @ApiPropertyOptional({
+    description:
+      "Where to send it. Defaults to the buyer's address on the order. A different address " +
+      "is sent by OpenLinker's own mailer, because a provider's mechanism cannot take one. " +
+      'Validated server-side.',
+    maxLength: 254,
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(254)
+  recipient?: string;
+
+  @ApiPropertyOptional({ description: 'Also send a copy to the seller (provider sends only).' })
   @IsOptional()
   @IsBoolean()
   sendCopy?: boolean;

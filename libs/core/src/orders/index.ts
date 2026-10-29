@@ -338,6 +338,19 @@ export { IOrderRecordService } from './application/interfaces/order-record.servi
 export { OrderRecordService } from './application/services/order-record.service';
 export { ISalesDocumentViewService } from './application/interfaces/sales-document-view.service.interface';
 export { SalesDocumentViewService } from './application/services/sales-document-view.service';
+// #3550 - manual "send this sales document to the buyer".
+export type {
+  IOrderDocumentEmailService,
+  OrderDocumentEmailResult,
+  SendInvoiceEmailInput,
+  SendReceiptEmailInput,
+} from './application/interfaces/order-document-email.service.interface';
+export {
+  ORDER_DOCUMENT_EMAIL_REFUSAL_MESSAGE,
+  OrderDocumentEmailRefusalValues,
+  type OrderDocumentEmailLocale,
+  type OrderDocumentEmailRefusal,
+} from './domain/types/order-document-email.types';
 export type {
   SalesDocumentListAmount,
   SalesDocumentListCursor,

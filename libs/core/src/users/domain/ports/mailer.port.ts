@@ -10,6 +10,19 @@
  * @module libs/core/src/users/domain/ports
  */
 
+/**
+ * A file sent with the message (#3550). Optional on {@link EmailMessage}, so an
+ * implementer that ignores attachments still compiles and every existing caller
+ * is untouched. Bytes are carried as `Uint8Array`: no Node `Buffer` type leaks
+ * into core.
+ */
+export interface EmailAttachment {
+  filename: string;
+  content: Uint8Array;
+  /** MIME type, e.g. `application/pdf`. */
+  contentType: string;
+}
+
 export interface EmailMessage {
   /** Recipient address. */
   to: string;
@@ -19,6 +32,8 @@ export interface EmailMessage {
   text: string;
   /** Optional HTML body. */
   html?: string;
+  /** Files to attach (#3550). Absent means none. */
+  attachments?: readonly EmailAttachment[];
 }
 
 export interface MailerPort {

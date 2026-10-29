@@ -67,7 +67,9 @@ import type {
   RegisterTransactionCommand,
 } from '@openlinker/core/fiscalization';
 import {
+  IOrderDocumentEmailService,
   IOrderRecordService,
+  ORDER_DOCUMENT_EMAIL_SERVICE_TOKEN,
   ORDER_RECORD_SERVICE_TOKEN,
   OrderSnapshotUnavailableError,
   orderFromReadySnapshot,
@@ -81,6 +83,11 @@ import { FiscalRegistrationResponseDto } from './dto/fiscal-registration-respons
 import { ReconcileFiscalRegistrationResponseDto } from './dto/reconcile-fiscal-registration-response.dto';
 import { RegisterFiscalTransactionRequestDto } from './dto/register-fiscal-transaction-request.dto';
 import { Roles } from '../../auth/decorators/roles.decorator';
+import { CurrentUser } from '../../auth/decorators/current-user.decorator';
+import { AuthenticatedUser } from '../../auth/auth.types';
+import { toDocumentEmailException } from '../../common/http/document-email-refusal';
+import { SendInvoiceEmailResponseDto } from '../../invoicing/http/dto/send-invoice-email-response.dto';
+import { SendReceiptEmailRequestDto } from './dto/send-receipt-email-request.dto';
 
 /**
  * The exactly-once key for this surface.
@@ -110,6 +117,8 @@ export class FiscalizationController {
     private readonly fiscalRegistrations: IFiscalRegistrationService,
     @Inject(ORDER_RECORD_SERVICE_TOKEN)
     private readonly orders: IOrderRecordService,
+    @Inject(ORDER_DOCUMENT_EMAIL_SERVICE_TOKEN)
+    private readonly documentEmails: IOrderDocumentEmailService,
   ) {}
 
   @Roles('admin')
@@ -327,6 +336,42 @@ export class FiscalizationController {
     } catch (error) {
       throw this.toHttpException(error);
     }
+  }
+
+  @Roles('admin')
+  @Post('fiscal-registrations/:id/send-email')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Email a registered receipt to the buyer (#3550)',
+    description:
+      "Sent by OpenLinker's mailer. The message is OpenLinker's own SUMMARY of the receipt plus " +
+      'the link to the legal e-receipt at the vendor, and says in terms that the summary is not ' +
+      'the receipt. A registration that is not registered yet, or has no e-receipt link, is ' +
+      'refused. The recipient defaults to the buyer\'s address on the order and can be edited. ' +
+      'A refusal carries a readable `message` and a machine `code`.',
+  })
+  @ApiResponse({ status: 200, type: SendInvoiceEmailResponseDto })
+  @ApiResponse({ status: 400, description: 'No recipient, or the recipient is not an email address' })
+  @ApiResponse({ status: 404, description: 'Registration record not found' })
+  @ApiResponse({ status: 409, description: 'The registration is not registered yet' })
+  @ApiResponse({ status: 422, description: 'Registration failed, or there is no e-receipt link' })
+  @ApiResponse({ status: 502, description: 'The mailer failed' })
+  @ApiResponse({ status: 503, description: 'Email sending is not configured on this server' })
+  async sendReceiptEmail(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: SendReceiptEmailRequestDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ): Promise<SendInvoiceEmailResponseDto> {
+    const result = await this.documentEmails.sendReceiptEmail({
+      registrationId: id,
+      recipient: dto.recipient,
+      locale: dto.locale,
+      actorUserId: user.id,
+    });
+    if (result.status === 'refused') {
+      throw toDocumentEmailException(result);
+    }
+    return { delivered: true, recipient: result.recipient, sentVia: result.sentVia };
   }
 
   /**

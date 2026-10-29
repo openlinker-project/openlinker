@@ -18,8 +18,13 @@ import { SalesDocumentRuleRepository } from './infrastructure/persistence/reposi
 import { SalesDocumentCountryDefaultRepository } from './infrastructure/persistence/repositories/sales-document-country-default.repository';
 import { SalesDocumentThresholdRepository } from './infrastructure/persistence/repositories/sales-document-threshold.repository';
 import { SalesDocumentCountryAcknowledgmentRepository } from './infrastructure/persistence/repositories/sales-document-country-acknowledgment.repository';
+import { DocumentEmailDeliveryOrmEntity } from './infrastructure/persistence/entities/document-email-delivery.orm-entity';
+import { DocumentEmailDeliveryRepository } from './infrastructure/persistence/repositories/document-email-delivery.repository';
+import { DocumentEmailDeliveryService } from './application/services/document-email-delivery.service';
 import { SalesDocumentRulesService } from './application/services/sales-document-rules.service';
 import {
+  DOCUMENT_EMAIL_DELIVERY_REPOSITORY_TOKEN,
+  DOCUMENT_EMAIL_DELIVERY_SERVICE_TOKEN,
   SALES_DOCUMENT_COUNTRY_ACKNOWLEDGMENT_REPOSITORY_TOKEN,
   SALES_DOCUMENT_COUNTRY_DEFAULT_REPOSITORY_TOKEN,
   SALES_DOCUMENT_RULES_SERVICE_TOKEN,
@@ -34,6 +39,7 @@ import {
       SalesDocumentCountryDefaultOrmEntity,
       SalesDocumentThresholdOrmEntity,
       SalesDocumentCountryAcknowledgmentOrmEntity,
+      DocumentEmailDeliveryOrmEntity,
     ]),
   ],
   providers: [
@@ -56,6 +62,13 @@ import {
     },
     SalesDocumentRulesService,
     { provide: SALES_DOCUMENT_RULES_SERVICE_TOKEN, useExisting: SalesDocumentRulesService },
+    DocumentEmailDeliveryRepository,
+    {
+      provide: DOCUMENT_EMAIL_DELIVERY_REPOSITORY_TOKEN,
+      useExisting: DocumentEmailDeliveryRepository,
+    },
+    DocumentEmailDeliveryService,
+    { provide: DOCUMENT_EMAIL_DELIVERY_SERVICE_TOKEN, useExisting: DocumentEmailDeliveryService },
   ],
   exports: [
     SALES_DOCUMENT_RULE_REPOSITORY_TOKEN,
@@ -63,6 +76,8 @@ import {
     SALES_DOCUMENT_THRESHOLD_REPOSITORY_TOKEN,
     SALES_DOCUMENT_COUNTRY_ACKNOWLEDGMENT_REPOSITORY_TOKEN,
     SALES_DOCUMENT_RULES_SERVICE_TOKEN,
+    DOCUMENT_EMAIL_DELIVERY_REPOSITORY_TOKEN,
+    DOCUMENT_EMAIL_DELIVERY_SERVICE_TOKEN,
   ],
 })
 export class SalesDocumentsModule {}
