@@ -11,7 +11,7 @@ import type { FulfillmentRequestStatus } from '../../domain/types/fulfillment-re
 import type { FulfillmentWorkStatus } from '../../domain/types/fulfillment-work-status.types';
 
 /** The slice of a work object an order-level cancel decision needs. */
-export interface OrderWorkSummary {
+export interface OrderCancellationWorkSummary {
   readonly workId: string;
   readonly status: FulfillmentWorkStatus;
   readonly requestStatus: FulfillmentRequestStatus;
@@ -27,7 +27,7 @@ export interface OrderWorkCancellationResult {
 
 export interface IFulfillmentOrderCancellationService {
   /** Every work object covering the order, terminal ones included. Empty for an unrouted order. */
-  summarizeForOrder(orderId: string): Promise<readonly OrderWorkSummary[]>;
+  summarizeForOrder(orderId: string): Promise<readonly OrderCancellationWorkSummary[]>;
 
   /**
    * Cancel every non-terminal work object on the order with the reason

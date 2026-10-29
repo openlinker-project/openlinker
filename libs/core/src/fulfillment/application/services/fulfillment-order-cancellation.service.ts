@@ -13,7 +13,7 @@ import { isTerminalFulfillmentWorkStatus } from '../../domain/types/fulfillment-
 import type {
   IFulfillmentOrderCancellationService,
   OrderWorkCancellationResult,
-  OrderWorkSummary,
+  OrderCancellationWorkSummary,
 } from '../interfaces/fulfillment-order-cancellation.service.interface';
 
 @Injectable()
@@ -25,7 +25,7 @@ export class FulfillmentOrderCancellationService implements IFulfillmentOrderCan
     private readonly works: FulfillmentWorkRepositoryPort
   ) {}
 
-  async summarizeForOrder(orderId: string): Promise<readonly OrderWorkSummary[]> {
+  async summarizeForOrder(orderId: string): Promise<readonly OrderCancellationWorkSummary[]> {
     const works = await this.works.findByOrderId(orderId);
     return works.map((work) => ({
       workId: work.id,

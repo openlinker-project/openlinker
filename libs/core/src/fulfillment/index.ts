@@ -157,7 +157,7 @@ export type { IFulfillmentWorkQueryService } from './application/interfaces/fulf
 
 export type {
   IFulfillmentOrderCancellationService,
-  OrderWorkSummary,
+  OrderCancellationWorkSummary,
   OrderWorkCancellationResult,
 } from './application/interfaces/fulfillment-order-cancellation.service.interface';
 
