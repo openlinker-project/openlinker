@@ -1167,6 +1167,109 @@ describe('BulkEditModal', () => {
       expect(screen.getByLabelText('Zalezny for Rozmiar: M')).toBeInTheDocument();
     });
 
+    describe('attribute prefill (#3851)', () => {
+      // `S` deliberately has no entry: a value with no exact match stays empty.
+      const sizeParam = {
+        id: 'p_rozmiar',
+        name: 'Rozmiar',
+        type: 'dictionary',
+        required: true,
+        restrictions: {},
+        section: 'product',
+        dictionary: [{ id: 'r_m', value: 'm' }],
+      };
+
+      function rowInBaseCategory(): BulkWizardRow {
+        return { ...makeMultiRow(), override: { overrides: { categoryId: 'cat_men' } } };
+      }
+
+      it('fills a sibling parameter from its matching attribute and leaves a no-match sibling empty', async () => {
+        const onSave = vi.fn();
+        mockCategoryParameters = [sizeParam];
+        renderWithProviders(
+          <BulkEditModal
+            open
+            onOpenChange={() => undefined}
+            row={rowInBaseCategory()}
+            connection={connection}
+            canBrowseCategories={true}
+            currency="PLN"
+            defaults={DEFAULTS}
+            focusVariantId="var_m"
+            onSave={onSave}
+          />,
+        );
+
+        await waitFor(() => {
+          expect(screen.getByLabelText('Rozmiar for Rozmiar: M')).toHaveValue('r_m');
+        });
+
+        fireEvent.click(screen.getByRole('button', { name: 'Save all' }));
+        await waitFor(() => { expect(onSave).toHaveBeenCalledTimes(1); });
+
+        expect(savedVariantParams(onSave, 'var_m')).toContainEqual(
+          expect.objectContaining({ id: 'p_rozmiar', valuesIds: ['r_m'] }),
+        );
+        expect(savedVariantParams(onSave, 'var_s').map((p) => p.id)).not.toContain('p_rozmiar');
+        // Per-variant only - the shared base never carries a sibling's attribute.
+        const baseOverride = onSave.mock.calls[0][1] as {
+          overrides?: { parameters?: Array<{ id: string }> };
+        };
+        expect((baseOverride.overrides?.parameters ?? []).map((p) => p.id)).not.toContain(
+          'p_rozmiar',
+        );
+      });
+
+      it('never overwrites a value the shared base already carries', async () => {
+        mockCategoryParameters = [sizeParam];
+        renderWithProviders(
+          <BulkEditModal
+            open
+            onOpenChange={() => undefined}
+            row={{ ...rowInBaseCategory(), editFormValues: { parameters: { p_rozmiar: 'r_m' } } }}
+            connection={connection}
+            canBrowseCategories={true}
+            currency="PLN"
+            defaults={DEFAULTS}
+            focusVariantId="var_m"
+            onSave={() => undefined}
+          />,
+        );
+
+        // Inherited from the base, not turned into a per-variant override.
+        await waitFor(() => {
+          expect(screen.getByLabelText('Rozmiar for Rozmiar: M')).toBeInTheDocument();
+        });
+        expect(screen.queryByText(/reset to base/)).not.toBeInTheDocument();
+      });
+
+      it('does not count its own prefill as an unsaved edit', async () => {
+        const onOpenChange = vi.fn();
+        mockCategoryParameters = [sizeParam];
+        renderWithProviders(
+          <BulkEditModal
+            open
+            onOpenChange={onOpenChange}
+            row={rowInBaseCategory()}
+            connection={connection}
+            canBrowseCategories={true}
+            currency="PLN"
+            defaults={DEFAULTS}
+            focusVariantId="var_m"
+            onSave={() => undefined}
+          />,
+        );
+        await waitFor(() => {
+          expect(screen.getByLabelText('Rozmiar for Rozmiar: M')).toHaveValue('r_m');
+        });
+
+        fireEvent.click(screen.getByRole('button', { name: 'Close editor' }));
+
+        expect(onOpenChange).toHaveBeenCalledWith(false);
+        expect(screen.queryByText('Discard changes?')).not.toBeInTheDocument();
+      });
+    });
+
     describe('grouping-param per-variant override (#1741)', () => {
       const stanParam = {
         id: 'p_stan',

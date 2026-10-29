@@ -122,7 +122,11 @@ import {
   categoryParametersToOfferParameters,
 } from '../category-parameters-to-offer-parameters';
 import { isParameterVisible } from '../category-parameter-visibility';
-import { injectEanParameter, isEanParameterName } from '../auto-prefill-parameters';
+import {
+  injectEanParameter,
+  isEanParameterName,
+  prefillFromVariantAttributes,
+} from '../auto-prefill-parameters';
 import type { CategoryParameter, OfferParameter } from '../../api/listings.types';
 import type { CategoryParameterFormValues, FormParameterValue } from '../category-parameter-form.types';
 import {
@@ -478,6 +482,42 @@ interface VariantEdit {
   params: Record<string, FormParameterValue>;
 }
 
+/** Whether a form value carries anything - `''`, `[]` and `undefined` all read as empty. */
+function hasFormValue(value: FormParameterValue): boolean {
+  if (value === undefined) return false;
+  if (typeof value === 'string') return value.trim() !== '';
+  if (Array.isArray(value)) return value.length > 0;
+  return value.from.trim() !== '' || value.to.trim() !== '';
+}
+
+/**
+ * The variant edits as the operator left them, for the dirty check (#3851): an
+ * attribute-prefilled value still equal to what was filled is not an edit, and
+ * one the operator cleared is (marked `null`, which no real value can be).
+ */
+function withoutAutoFilledParams(
+  variantEdits: Record<string, VariantEdit>,
+  autoFilled: Record<string, CategoryParameterFormValues>,
+): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const [variantId, edit] of Object.entries(variantEdits)) {
+    const filled = autoFilled[variantId];
+    if (!filled) {
+      out[variantId] = edit;
+      continue;
+    }
+    const params: Record<string, FormParameterValue | null> = {};
+    for (const [paramId, value] of Object.entries(edit.params)) {
+      if (JSON.stringify(value) !== JSON.stringify(filled[paramId])) params[paramId] = value;
+    }
+    for (const paramId of Object.keys(filled)) {
+      if (!(paramId in edit.params)) params[paramId] = null;
+    }
+    out[variantId] = { ...edit, params };
+  }
+  return out;
+}
+
 /** Same URLs in the same order - the published list is ordered, so order matters. */
 function sameImageList(a: readonly string[], b: readonly string[]): boolean {
   return a.length === b.length && a.every((url, i) => url === b[i]);
@@ -620,6 +660,17 @@ function BulkEditModalForm({
     for (const v of row.variants) map[v.variantId] = v.included;
     return map;
   });
+  // Per-variant parameter values the editor filled from the variant's own
+  // attributes (#3851), by variant id then parameter id. Kept so the dirty check
+  // can tell a value WE wrote from one the operator typed - otherwise opening
+  // and closing the editor would ask to discard changes nobody made.
+  const [autoFilledParams, setAutoFilledParams] = useState<
+    Record<string, CategoryParameterFormValues>
+  >({});
+  // `variantId:paramId` pairs the prefill already decided on, filled or not. A
+  // pair is decided once: a value the operator cleared or replaced must not
+  // come back when a schema re-resolves.
+  const prefillDecidedRef = useRef<Set<string>>(new Set());
 
   // Product-level platform overrides (#1096) - shared base scope.
   const [platformParams, setPlatformParams] = useState<Record<string, unknown>>(
@@ -769,7 +820,7 @@ function BulkEditModalForm({
   // ── Dirty tracking (vs the on-open snapshot) ──
   const snapshotRef = useRef<string | null>(null);
   const liveState = JSON.stringify({
-    variantEdits,
+    variantEdits: withoutAutoFilledParams(variantEdits, autoFilledParams),
     included,
     platformParams,
     baseValues,
@@ -805,6 +856,62 @@ function BulkEditModalForm({
       return { ...prev, [variantId]: { ...current, params } };
     });
   }, []);
+
+  // ── Attribute prefill (#3851) ──
+  // A sibling's distinguishing attributes (`Kolor: czerwony`) fill the category
+  // parameter of the same name, as a per-variant override the operator can
+  // reset. Per-variant only: a sibling attribute is by definition not shared,
+  // so the base is never written. Runs once a sibling's schema is known (its
+  // own category's, else the base's), and never over a value already present -
+  // the operator's, or one the shared base carries for every sibling.
+  useEffect(() => {
+    if (!isMultiVariant) return;
+    const baseParams = (baseValues.parameters ?? {}) as CategoryParameterFormValues;
+    const fills: Record<string, CategoryParameterFormValues> = {};
+    for (const variant of row.variants) {
+      const edit = variantEdits[variant.variantId];
+      if (!edit) continue;
+      const schema = variantParamSchema(edit);
+      if (schema === null || schema.length === 0) continue;
+      const perVariantSchema = schema.filter(
+        (p) => !BASE_ONLY_PARAM_NAMES.includes(p.name.trim().toLowerCase()),
+      );
+      const candidates = prefillFromVariantAttributes(
+        perVariantSchema,
+        variant.distinguishingAttributes,
+      );
+      for (const [paramId, value] of Object.entries(candidates)) {
+        const key = `${variant.variantId}:${paramId}`;
+        if (prefillDecidedRef.current.has(key)) continue;
+        prefillDecidedRef.current.add(key);
+        if (hasFormValue(edit.params[paramId]) || hasFormValue(baseParams[paramId])) continue;
+        fills[variant.variantId] = { ...(fills[variant.variantId] ?? {}), [paramId]: value };
+      }
+    }
+    if (Object.keys(fills).length === 0) return;
+    setVariantEdits((prev) => {
+      const next = { ...prev };
+      for (const [variantId, values] of Object.entries(fills)) {
+        const current = next[variantId];
+        if (!current) continue;
+        const params = { ...current.params };
+        // Re-checked against the latest state: the operator may have typed in
+        // the same field between this render and the update.
+        for (const [paramId, value] of Object.entries(values)) {
+          if (!hasFormValue(params[paramId])) params[paramId] = value;
+        }
+        next[variantId] = { ...current, params };
+      }
+      return next;
+    });
+    setAutoFilledParams((prev) => {
+      const next = { ...prev };
+      for (const [variantId, values] of Object.entries(fills)) {
+        next[variantId] = { ...(next[variantId] ?? {}), ...values };
+      }
+      return next;
+    });
+  }, [isMultiVariant, row.variants, variantEdits, variantParamSchema, baseValues.parameters]);
 
   // ── Save ──
   const handleSaveAll = async (): Promise<void> => {
