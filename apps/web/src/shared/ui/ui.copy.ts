@@ -240,7 +240,6 @@ export const uiCopy = defineCopy({
     languageSwitch: {
       label: 'Language',
       current: 'Language: {name}',
-      soon: 'Soon',
     },
   },
   pl: {
@@ -501,7 +500,6 @@ export const uiCopy = defineCopy({
     languageSwitch: {
       label: 'Język',
       current: 'Język: {name}',
-      soon: 'Wkrótce',
     },
   },
 });

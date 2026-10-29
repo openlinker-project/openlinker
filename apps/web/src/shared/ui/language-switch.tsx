@@ -4,8 +4,9 @@
  * The operator's language picker (ADR-079): a pill with the current flag and
  * code that opens a list of every language with its flag, code and native
  * name. Native names, not translated ones, so someone who cannot read the
- * current language still finds theirs. Languages without a catalog yet are
- * listed as "Soon" and cannot be picked. Opens upward in the sidebar footer
+ * current language still finds theirs. Only languages the app ships are
+ * listed. The list is centred on the trigger, rendered in a portal so the
+ * sidebar's `overflow: hidden` cannot clip it, and opens upward in the sidebar footer
  * and downward in the signed-out corner (`placement`). Motion animates the
  * popover, the sliding selection border and the flag flip; every animation
  * is skipped under `prefers-reduced-motion` through the app's `MotionConfig`.
@@ -13,11 +14,19 @@
  * @module shared/ui
  */
 import { AnimatePresence, motion } from 'motion/react';
-import { useEffect, useId, useRef, useState, type KeyboardEvent, type ReactElement } from 'react';
+import {
+  useEffect,
+  useId,
+  useRef,
+  useState,
+  type CSSProperties,
+  type KeyboardEvent,
+  type ReactElement,
+} from 'react';
+import { createPortal } from 'react-dom';
 import { useCopy } from '../i18n/use-copy';
 import { interpolate } from '../i18n/interpolate';
 import { useOptionalLocale } from '../i18n/use-locale';
-import { isSupportedLocale } from '../i18n/i18n.types';
 import { LanguageFlag, type LanguageFlagCode } from './language-flag';
 import { uiCopy } from './ui.copy';
 
@@ -30,28 +39,37 @@ interface LanguageOption {
 const LANGUAGE_OPTIONS: readonly LanguageOption[] = [
   { code: 'pl', name: 'Polski' },
   { code: 'en', name: 'English' },
-  { code: 'de', name: 'Deutsch' },
-  { code: 'es', name: 'Español' },
-  { code: 'nl', name: 'Nederlands' },
-  { code: 'ja', name: '日本語' },
 ];
 
 const SPRING = { type: 'spring', stiffness: 520, damping: 34, mass: 0.7 } as const;
 
+/** Matches `.language-switch__popover` width; used to keep it on screen. */
+const POPOVER_WIDTH = 200;
+const GAP = 8;
+
+/**
+ * Fixed position of the list: centred on the trigger, moved inwards only as
+ * far as needed to stay inside the viewport.
+ */
+function popoverPosition(trigger: DOMRect, down: boolean): CSSProperties {
+  const half = POPOVER_WIDTH / 2;
+  const centre = trigger.left + trigger.width / 2;
+  const left = Math.min(Math.max(centre, GAP + half), window.innerWidth - GAP - half);
+  return down
+    ? { left, top: trigger.bottom + GAP }
+    : { left, bottom: window.innerHeight - trigger.top + GAP };
+}
+
 const indexOf = (code: string): number =>
   Math.max(
     0,
-    LANGUAGE_OPTIONS.findIndex((option) => option.code === code),
+    LANGUAGE_OPTIONS.findIndex((option) => option.code === code)
   );
 
-/** The next pickable option in `step` direction; the "Soon" ones are skipped. */
+/** The next option in `direction`, wrapping at either end. */
 function step(from: number, direction: 1 | -1): number {
   const count = LANGUAGE_OPTIONS.length;
-  for (let offset = 1; offset <= count; offset += 1) {
-    const index = (from + direction * offset + count) % count;
-    if (isSupportedLocale(LANGUAGE_OPTIONS[index].code)) return index;
-  }
-  return from;
+  return (from + direction + count) % count;
 }
 
 export interface LanguageSwitchProps {
@@ -68,10 +86,13 @@ export function LanguageSwitch({
   const locale = localeContext?.locale ?? 'en';
   const copy = useCopy(uiCopy).languageSwitch;
   const [open, setOpen] = useState(false);
+  const down = placement === 'down';
   const [focus, setFocus] = useState(0);
   const rootRef = useRef<HTMLDivElement>(null);
   const listRef = useRef<HTMLUListElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
+  const popoverRef = useRef<HTMLDivElement>(null);
+  const [position, setPosition] = useState<CSSProperties>({});
   const listId = useId();
   const headId = useId();
 
@@ -80,15 +101,27 @@ export function LanguageSwitch({
   useEffect(() => {
     if (!open) return undefined;
     const onPointerDown = (event: PointerEvent): void => {
-      if (rootRef.current && !rootRef.current.contains(event.target as Node)) setOpen(false);
+      const target = event.target as Node;
+      // The list lives in a portal, outside the root, so check both.
+      if (rootRef.current?.contains(target) || popoverRef.current?.contains(target)) return;
+      setOpen(false);
+    };
+    const place = (): void => {
+      if (triggerRef.current) {
+        setPosition(popoverPosition(triggerRef.current.getBoundingClientRect(), down));
+      }
     };
     document.addEventListener('pointerdown', onPointerDown);
+    window.addEventListener('resize', place);
+    window.addEventListener('scroll', place, true);
     const frame = requestAnimationFrame(() => listRef.current?.focus());
     return () => {
       document.removeEventListener('pointerdown', onPointerDown);
+      window.removeEventListener('resize', place);
+      window.removeEventListener('scroll', place, true);
       cancelAnimationFrame(frame);
     };
-  }, [open]);
+  }, [open, down]);
 
   function close(): void {
     setOpen(false);
@@ -96,16 +129,19 @@ export function LanguageSwitch({
   }
 
   function choose(option: LanguageOption): void {
-    const { code } = option;
-    if (!isSupportedLocale(code)) return;
-    localeContext?.setLocale(code);
+    localeContext?.setLocale(option.code);
     close();
   }
 
   function toggle(): void {
     // Set before opening, so `aria-activedescendant` names the current
     // language on the very first render of the list.
-    if (!open) setFocus(indexOf(locale));
+    if (!open) {
+      setFocus(indexOf(locale));
+      if (triggerRef.current) {
+        setPosition(popoverPosition(triggerRef.current.getBoundingClientRect(), down));
+      }
+    }
     setOpen((value) => !value);
   }
 
@@ -129,7 +165,6 @@ export function LanguageSwitch({
 
   if (localeContext === null) return null;
 
-  const down = placement === 'down';
   const classes = ['language-switch', className].filter(Boolean).join(' ');
 
   return (
@@ -187,75 +222,91 @@ export function LanguageSwitch({
           />
         </motion.svg>
       </button>
-      <AnimatePresence>
-        {open ? (
-          <motion.div
-            className={['language-switch__popover', down ? 'language-switch__popover--down' : '']
-              .filter(Boolean)
-              .join(' ')}
-            initial={{ opacity: 0, scale: 0.92, y: down ? -6 : 6, filter: 'blur(4px)' }}
-            animate={{ opacity: 1, scale: 1, y: 0, filter: 'blur(0px)' }}
-            exit={{ opacity: 0, scale: 0.96, y: down ? -4 : 4, filter: 'blur(2px)', transition: { duration: 0.12 } }}
-            transition={SPRING}
-          >
-            <div className="language-switch__head" id={headId}>
-              {copy.label}
-            </div>
-            <motion.ul
-              ref={listRef}
-              id={listId}
-              className="language-switch__list"
-              role="listbox"
-              tabIndex={-1}
-              aria-labelledby={headId}
-              aria-activedescendant={`${listId}-${LANGUAGE_OPTIONS[focus].code}`}
-              onKeyDown={onKeyDown}
-              initial="hidden"
-              animate="show"
-              variants={{ show: { transition: { staggerChildren: 0.035, delayChildren: 0.04 } } }}
+      {createPortal(
+        <AnimatePresence>
+          {open ? (
+            <motion.div
+              ref={popoverRef}
+              style={position}
+              className={['language-switch__popover', down ? 'language-switch__popover--down' : '']
+                .filter(Boolean)
+                .join(' ')}
+              // `x: '-50%'` centres the list on the trigger; Motion owns `transform`,
+              // so the CSS cannot do it with its own translate.
+              initial={{
+                opacity: 0,
+                scale: 0.92,
+                x: '-50%',
+                y: down ? -6 : 6,
+                filter: 'blur(4px)',
+              }}
+              animate={{ opacity: 1, scale: 1, x: '-50%', y: 0, filter: 'blur(0px)' }}
+              exit={{
+                opacity: 0,
+                scale: 0.96,
+                x: '-50%',
+                y: down ? -4 : 4,
+                filter: 'blur(2px)',
+                transition: { duration: 0.12 },
+              }}
+              transition={SPRING}
             >
-              {LANGUAGE_OPTIONS.map((option, index) => {
-                const available = isSupportedLocale(option.code);
-                const selected = option.code === locale;
-                return (
-                  <motion.li
-                    key={option.code}
-                    id={`${listId}-${option.code}`}
-                    role="option"
-                    lang={option.code}
-                    aria-selected={selected}
-                    aria-disabled={!available}
-                    className={[
-                      'language-switch__option',
-                      index === focus ? 'is-focus' : '',
-                      available ? '' : 'is-unavailable',
-                    ]
-                      .filter(Boolean)
-                      .join(' ')}
-                    variants={{ hidden: { opacity: 0, x: -8 }, show: { opacity: 1, x: 0, transition: SPRING } }}
-                    onPointerMove={() => setFocus(index)}
-                    onClick={() => choose(option)}
-                  >
-                    {selected ? (
-                      <motion.span
-                        className="language-switch__selected"
-                        layoutId={`${listId}-selected`}
-                        transition={SPRING}
-                      />
-                    ) : null}
-                    <LanguageFlag code={option.code} />
-                    <span className="language-switch__name">
-                      {option.name}
-                      <small>{option.code.toUpperCase()}</small>
-                    </span>
-                    {available ? null : <span className="language-switch__soon">{copy.soon}</span>}
-                  </motion.li>
-                );
-              })}
-            </motion.ul>
-          </motion.div>
-        ) : null}
-      </AnimatePresence>
+              <div className="language-switch__head" id={headId}>
+                {copy.label}
+              </div>
+              <motion.ul
+                ref={listRef}
+                id={listId}
+                className="language-switch__list"
+                role="listbox"
+                tabIndex={-1}
+                aria-labelledby={headId}
+                aria-activedescendant={`${listId}-${LANGUAGE_OPTIONS[focus].code}`}
+                onKeyDown={onKeyDown}
+                initial="hidden"
+                animate="show"
+                variants={{ show: { transition: { staggerChildren: 0.035, delayChildren: 0.04 } } }}
+              >
+                {LANGUAGE_OPTIONS.map((option, index) => {
+                  const selected = option.code === locale;
+                  return (
+                    <motion.li
+                      key={option.code}
+                      id={`${listId}-${option.code}`}
+                      role="option"
+                      lang={option.code}
+                      aria-selected={selected}
+                      className={['language-switch__option', index === focus ? 'is-focus' : '']
+                        .filter(Boolean)
+                        .join(' ')}
+                      variants={{
+                        hidden: { opacity: 0, x: -8 },
+                        show: { opacity: 1, x: 0, transition: SPRING },
+                      }}
+                      onPointerMove={() => setFocus(index)}
+                      onClick={() => choose(option)}
+                    >
+                      {selected ? (
+                        <motion.span
+                          className="language-switch__selected"
+                          layoutId={`${listId}-selected`}
+                          transition={SPRING}
+                        />
+                      ) : null}
+                      <LanguageFlag code={option.code} />
+                      <span className="language-switch__name">
+                        {option.name}
+                        <small>{option.code.toUpperCase()}</small>
+                      </span>
+                    </motion.li>
+                  );
+                })}
+              </motion.ul>
+            </motion.div>
+          ) : null}
+        </AnimatePresence>,
+        document.body
+      )}
     </div>
   );
 }

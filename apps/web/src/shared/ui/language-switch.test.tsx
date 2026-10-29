@@ -1,7 +1,7 @@
 /**
  * LanguageSwitch - unit tests
  *
- * Covers switching, the unavailable languages, keyboard use and the
+ * Covers switching, the listed languages, keyboard use and the
  * no-provider fallback.
  *
  * @module shared/ui
@@ -45,13 +45,10 @@ describe('LanguageSwitch', () => {
     expect(screen.getByRole('button', { name: 'Język: Polski' })).toBeInTheDocument();
   });
 
-  it('should not switch to a language that has no catalog yet', () => {
+  it('should list only the languages the app ships', () => {
     renderSwitch();
     fireEvent.click(screen.getByRole('button', { name: 'Language: English' }));
-    const deutsch = screen.getByRole('option', { name: /Deutsch/ });
-    expect(deutsch).toHaveAttribute('aria-disabled', 'true');
-    fireEvent.click(deutsch);
-    expect(screen.getByRole('button', { name: 'Language: English' })).toBeInTheDocument();
+    expect(screen.getAllByRole('option').map((o) => o.getAttribute('lang'))).toEqual(['pl', 'en']);
   });
 
   it('should pick with the keyboard and close on Escape', () => {
@@ -102,16 +99,15 @@ describe('LanguageSwitch', () => {
     expect(list).toHaveAttribute('aria-activedescendant', english.id);
   });
 
-  it('should skip the unavailable languages with the arrow keys', () => {
+  it('should wrap around the list with the arrow keys', () => {
     renderSwitch();
     fireEvent.click(screen.getByRole('button', { name: 'Language: English' }));
     const list = screen.getByRole('listbox');
     const polski = screen.getByRole('option', { name: /Polski/ });
     const english = screen.getByRole('option', { name: /English/ });
-    // Down from English passes the four "Soon" languages and wraps to Polski.
+    // Down from the last language wraps to the first, and up goes back.
     fireEvent.keyDown(list, { key: 'ArrowDown' });
     expect(list).toHaveAttribute('aria-activedescendant', polski.id);
-    // Up from Polski wraps past them back to English.
     fireEvent.keyDown(list, { key: 'ArrowUp' });
     expect(list).toHaveAttribute('aria-activedescendant', english.id);
   });
