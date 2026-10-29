@@ -695,7 +695,10 @@ export class OrderLineItemRepository implements OrderLineItemRepositoryPort {
       entity.createdAt,
       entity.taxRate,
       entity.taxSource,
-      entity.taxRateReadAt
+      entity.taxRateReadAt,
+      entity.unitCostNet,
+      entity.unitCostCurrency,
+      entity.costState
     );
   }
 
