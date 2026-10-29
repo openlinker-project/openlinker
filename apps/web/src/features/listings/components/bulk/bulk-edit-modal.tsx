@@ -105,6 +105,7 @@ import { BulkImageLightbox } from './bulk-image-lightbox';
 import { BulkImageStrip } from './bulk-image-strip';
 import {
   blockerLabel,
+  categoryNotSetApplies,
   isCategoryBlocker,
   isVariantScopeFixable,
   CATEGORY_EFFECT_CHIP,
@@ -2204,6 +2205,15 @@ function VariantScopeForm({
    * for it - see the banner below.
    */
   const productCategorySet = (baseValues.categoryId ?? '').trim() !== '';
+  // The category this variant would submit under as the editor stands now, in
+  // the submit's own order (#2240): own override, product tier, own match.
+  // Drives the `category not set` chip so it clears the moment a category is
+  // picked, not only after Save recomputes the blockers (#3851).
+  const liveCategoryId =
+    (edit.categoryId ?? '').trim() ||
+    (baseValues.categoryId ?? '').trim() ||
+    variant.resolvedCategoryId ||
+    null;
   // Breadcrumb name instead of the raw id when the base's path is already
   // resolved (#1924) - falls back to the id (or "Not set on base") only
   // while the path hasn't resolved yet.
@@ -2471,7 +2481,7 @@ function VariantScopeForm({
               {blockerLabel(blocker)}
             </StatusBadge>
           ))}
-          {variant.blockers.some((b) => isCategoryBlocker(b) && b !== 'invalid-barcode') ? (
+          {categoryNotSetApplies(variant.blockers, liveCategoryId) ? (
             <StatusBadge tone={CATEGORY_EFFECT_CHIP.tone} withDot>
               {CATEGORY_EFFECT_CHIP.label}
             </StatusBadge>

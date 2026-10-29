@@ -125,6 +125,25 @@ export function isCategoryBlocker(blocker: string): boolean {
 }
 
 /**
+ * Whether the editor's `category not set` consequence chip applies (#3851).
+ *
+ * The cause half comes from the resolve-time blockers - a cause other than
+ * `invalid-barcode` is only emitted where the destination does not resolve the
+ * category at submit, so it is what makes the consequence true at all. The
+ * category half must be LIVE: `liveCategoryId` is the category the editor would
+ * submit right now (the same variant -> product -> resolved chain the submit
+ * uses, #2240). Reading only the blockers kept the chip on screen after the
+ * operator picked a category, asserting a problem that no longer existed.
+ */
+export function categoryNotSetApplies(
+  blockers: readonly string[],
+  liveCategoryId: string | null,
+): boolean {
+  if (liveCategoryId !== null && liveCategoryId.trim() !== '') return false;
+  return blockers.some((b) => isCategoryBlocker(b) && b !== 'invalid-barcode');
+}
+
+/**
  * Collapse a row's blockers onto `invalid-barcode` as the single category cause
  * (#2240).
  *

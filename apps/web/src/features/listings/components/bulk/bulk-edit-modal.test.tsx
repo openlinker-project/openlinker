@@ -906,6 +906,42 @@ describe('BulkEditModal', () => {
       expect(screen.getByLabelText('EAN for Rozmiar: M')).toHaveValue('5900531001130');
     });
 
+    // #3851: the chip used to read the resolve-time blockers alone, so it stayed
+    // on screen after the operator picked a category, until Save recomputed them.
+    it('drops the category not set chip as soon as a product category is entered', () => {
+      const row = makeMultiRow();
+      const blockedRow: BulkWizardRow = {
+        ...row,
+        variants: row.variants.map((v) =>
+          v.variantId === 'var_m' ? { ...v, blockers: ['no-match'] } : v,
+        ),
+      };
+      renderWithProviders(
+        <BulkEditModal
+          open
+          onOpenChange={() => undefined}
+          row={blockedRow}
+          connection={connection}
+          canBrowseCategories={false}
+          currency="PLN"
+          defaults={DEFAULTS}
+          focusVariantId="var_m"
+          onSave={() => undefined}
+        />,
+      );
+      expect(screen.getByText('category not set')).toBeInTheDocument();
+
+      fireEvent.click(screen.getByRole('radio', { name: /Shared base/ }));
+      fireEvent.change(screen.getByLabelText('Allegro category ID'), {
+        target: { value: '12345' },
+      });
+      fireEvent.click(screen.getByRole('radio', { name: /Rozmiar: M/ }));
+
+      expect(screen.queryByText('category not set')).not.toBeInTheDocument();
+      // The cause is still true - only its consequence went away.
+      expect(screen.getByText('no catalog match')).toBeInTheDocument();
+    });
+
     it('shows the variant category without expanding the disclosure (#2240)', () => {
       renderWithProviders(
         <BulkEditModal
