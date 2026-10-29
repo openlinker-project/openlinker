@@ -430,6 +430,9 @@ export class OrderRecordService implements IOrderRecordService {
       // source is authoritative, so a later ready re-ingestion from a source
       // that omits the field also writes `null` over an earlier value.
       order.paymentMethod ?? null,
+      // destinationRoutingBlockReason / Detail: owned by their own writer.
+      null,
+      null,
       buyerNote,
       hasBuyerNote,
       // buyerNoteReadAt / buyerNoteReadByUserId: sole writer markBuyerNoteRead.

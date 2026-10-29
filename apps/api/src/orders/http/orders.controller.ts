@@ -110,10 +110,6 @@ import {
   INVOICE_SERVICE_TOKEN,
   IInvoiceService,
 } from '@openlinker/core/invoicing';
-import {
-  FULFILLMENT_WORK_QUERY_SERVICE_TOKEN,
-  type IFulfillmentWorkQueryService,
-} from '@openlinker/core/fulfillment';
 import { Logger } from '@openlinker/shared/logging';
 import type { InvoiceRecord } from '@openlinker/core/invoicing';
 import {
@@ -392,12 +388,7 @@ export class OrdersController {
     private readonly fulfillmentWork: IFulfillmentWorkQueryService,
     // #3532 — the tag ids rendered as the third line of the identity cell.
     @Inject(ORDER_TAG_SERVICE_TOKEN)
-    private readonly tagService: IOrderTagService,
-    // #3538 - the per-parcel buyer-note acknowledgements the Activity timeline
-    // renders. Composed here, in the interface layer, so `orders` takes no new
-    // edge to `fulfillment` inside core.
-    @Inject(FULFILLMENT_WORK_QUERY_SERVICE_TOKEN)
-    private readonly fulfillmentWorkQuery: IFulfillmentWorkQueryService
+    private readonly tagService: IOrderTagService
   ) {}
 
   @Roles('admin', 'operator', 'viewer')
@@ -728,7 +719,7 @@ export class OrdersController {
     // means "could not load", distinct from `[]` (loaded, none acknowledged).
     try {
       dto.buyerNoteAcknowledgements = (
-        await this.fulfillmentWorkQuery.listBuyerNoteAcknowledgements(order.internalOrderId)
+        await this.fulfillmentWork.listBuyerNoteAcknowledgements(order.internalOrderId)
       ).map((ack) => ({
         workId: ack.workId,
         acknowledgedAt: ack.acknowledgedAt.toISOString(),
