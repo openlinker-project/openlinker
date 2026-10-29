@@ -5,7 +5,6 @@
  */
 import { cleanup, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { MemoryRouter } from 'react-router-dom';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { BulkBuyerNoteReadDialog } from './bulk-buyer-note-read-dialog';
@@ -34,9 +33,7 @@ const ORDERS = [
 function renderDialog(orders: OrderRecord[], bulkMarkBuyerNoteRead = vi.fn()) {
   const api = createMockApiClient({ orders: { bulkMarkBuyerNoteRead } });
   renderWithProviders(
-    <MemoryRouter>
-      <BulkBuyerNoteReadDialog open onOpenChange={vi.fn()} orders={orders} />
-    </MemoryRouter>,
+    <BulkBuyerNoteReadDialog open onOpenChange={vi.fn()} orders={orders} />,
     { apiClient: api },
   );
   return bulkMarkBuyerNoteRead;
