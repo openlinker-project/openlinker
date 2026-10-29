@@ -170,6 +170,7 @@ One pointer per section, identical format every time.
 | [ADR-076](./076-frontend-display-derivation-over-server-vocabularies.md) | A frontend may derive a display sentence from server-owned vocabularies, never legality | Accepted | 2026-09-28 |
 | [ADR-077](./077-catalogue-prices-are-gross.md) | Catalogue prices are gross; tax-basis conversion is adapter-owned | Proposed | 2026-10-12 |
 | [ADR-078](./078-neutral-fiscal-annotation-flags.md) | Neutral fiscal-annotation flags on the invoicing command (cash-basis/self-billing/split-payment/margin/exemption/triangulation) - provider maps to FA(3) Adnotacje | Accepted | 2026-07-15 |
+| [ADR-080](./080-operator-cost-price-snapshotted-at-ingestion.md) | Operator cost price on variants, snapshotted onto order lines at ingestion; margin on net revenue with explicit gaps | Accepted | 2026-10-29 |
 
 > *Dates for pre-trail ADRs (001, 004) are approximate to the month — the underlying decisions predate the project's current git history. Other dates are merge-date of the cited PR.*
 
