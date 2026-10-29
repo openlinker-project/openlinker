@@ -381,7 +381,14 @@ describe('OrderEditService (#3542)', () => {
 
     it('should never offer a channel anything: no relay, no cancel, no refund is reachable from here', () => {
       const members = Object.getOwnPropertyNames(OrderEditService.prototype);
-      expect(members.filter((name) => /relay|refund|cancelOrder|writeback/i.test(name))).toEqual([]);
+      // planRefund and assertNotBelowRefunded stay inside OL (the discount refund
+      // proposal and its ceiling check); everything else matching is a channel call.
+      const ownSide = ['planRefund', 'assertNotBelowRefunded'];
+      expect(
+        members.filter(
+          (name) => /relay|refund|cancelOrder|writeback/i.test(name) && !ownSide.includes(name)
+        )
+      ).toEqual([]);
     });
 
     it('should refuse a quantity edit of a net-priced line with no reported gross price (B-38)', async () => {
