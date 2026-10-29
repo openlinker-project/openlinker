@@ -5701,6 +5701,13 @@ a.delivery-rider-banner__button:focus-visible {
   min-height: 100dvh;
   padding: 1.5rem;
   background: var(--bg-canvas);
+  position: relative;
+}
+
+.guest-layout__language {
+  position: absolute;
+  top: max(1rem, env(safe-area-inset-top, 0px));
+  right: max(1rem, env(safe-area-inset-right, 0px));
 }
 
 .guest-card {
@@ -30912,4 +30919,182 @@ legend.analytics-settings-dialog__label {
 
 .ksef-issue-options__lines-scroll {
   overflow-x: auto;
+}
+
+/* Language switch (#3858, ADR-079). Flag pill + popover listing every
+   language with flag, code and native name. Opens upward in the sidebar
+   footer, downward in the signed-out corner. */
+.language-switch {
+  position: relative;
+}
+
+.language-switch__trigger {
+  font: inherit;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 8px 5px 6px;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--border-default);
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 600;
+  box-shadow: var(--shadow-xs);
+}
+
+.language-switch__trigger:hover,
+.language-switch__trigger[aria-expanded='true'] {
+  border-color: var(--accent-primary);
+}
+
+.language-switch__trigger:focus-visible,
+.language-switch__trigger[aria-expanded='true'] {
+  outline: none;
+  box-shadow: var(--shadow-focus);
+}
+
+.language-switch__flag-wrap {
+  display: inline-block;
+  perspective: 120px;
+  width: 22px;
+  height: 15px;
+}
+
+.language-switch__flag-face {
+  display: block;
+}
+
+.language-switch__code {
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  letter-spacing: 0.02em;
+}
+
+.language-switch__chevron {
+  width: 10px;
+  height: 10px;
+  color: var(--text-muted);
+}
+
+.language-flag {
+  display: block;
+  width: 22px;
+  height: 15px;
+  border-radius: 3px;
+  box-shadow: 0 0 0 1px rgb(15 18 26 / 0.12);
+  overflow: hidden;
+}
+
+.language-switch__popover {
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + 8px);
+  width: 228px;
+  z-index: 40;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-xl);
+  padding: 6px;
+  box-shadow: var(--shadow-overlay);
+  transform-origin: calc(100% - 24px) 100%;
+}
+
+.language-switch__popover--down {
+  bottom: auto;
+  top: calc(100% + 8px);
+  transform-origin: calc(100% - 24px) 0;
+}
+
+.language-switch__head {
+  padding: 6px 8px 8px;
+  font-size: 11.5px;
+  color: var(--text-muted);
+  font-weight: 500;
+}
+
+.language-switch__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 2px;
+  outline: none;
+}
+
+.language-switch__option {
+  position: relative;
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  height: 44px;
+  padding: 0 8px;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--text-primary);
+}
+
+.language-switch__option.is-focus:not(.is-unavailable) {
+  background: var(--bg-surface-muted);
+}
+
+.language-switch__option.is-unavailable {
+  cursor: default;
+  color: var(--text-muted);
+}
+
+.language-switch__option.is-unavailable .language-flag {
+  filter: grayscale(1);
+  opacity: 0.55;
+}
+
+/* Positioned behind the row's content and outside the grid flow, so the
+   flag and name sit in the same place on every row. */
+.language-switch__selected {
+  position: absolute;
+  inset: 0;
+  border-radius: var(--radius-md);
+  background: var(--accent-primary-soft);
+  box-shadow: inset 0 0 0 1.5px var(--accent-primary);
+  pointer-events: none;
+}
+
+.language-switch__option > :not(.language-switch__selected) {
+  position: relative;
+  z-index: 1;
+}
+
+.language-switch__option[aria-selected='true'] .language-switch__name {
+  font-weight: 600;
+}
+
+.language-switch__name {
+  display: grid;
+  line-height: 1.25;
+}
+
+.language-switch__name small {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--text-muted);
+}
+
+.language-switch__soon {
+  font-size: 10.5px;
+  font-weight: 600;
+  padding: 1px 6px;
+  border-radius: var(--radius-pill);
+  background: var(--bg-surface-muted);
+  color: var(--text-muted);
+}
+
+/* Long labels truncate with the full text on hover instead of breaking the
+   240 px sidebar once Polish copy is longer than English. */
+.shell-nav__link-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }

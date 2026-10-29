@@ -644,6 +644,8 @@ An object whose keys are exactly `one` and `other` is read as a plural, so never
 | `useNumberFormat()` | a `NumberFormat` | legacy shim like `t()`; new code uses `useFormat()` |
 | `LanguageSwitch` (in `shared/ui`) | component | the switch in the sidebar footer and on signed-out pages |
 
+The switch itself is `LanguageSwitch` in `shared/ui` (it animates with Motion, so the headless-library policy puts it there), mounted in the sidebar footer and in the signed-out layouts. Shared primitives read their default labels from `shared/ui/ui.copy.ts`; outside a `LocaleProvider` the read-only hooks fall back to English instead of throwing.
+
 Plugin authors pin a language with `SupportedLocale` and never build a `LocaleContextValue` by hand. Interpolation uses `{name}` placeholders. A plural or a date is never built by string concatenation.
 
 The pre-existing `useTranslation()` / `t(key, fallback)` (#612) stays as a compatibility shim for its existing call sites and gets no new callers.
@@ -831,6 +833,7 @@ No **styled** external UI library (no shadcn/ui, MUI, Mantine, Chakra, Ant Desig
 | `cmdk` | headless command-menu (keyboard nav, filtering, composable groups) | `shared/ui/command-palette.tsx` |
 | `@tiptap/*` | headless rich-text editing (ProseMirror schema + commands, zero visuals, no shipped CSS) | `shared/ui/rich-text-editor.tsx` |
 | `dompurify` | HTML sanitization before render | `shared/ui/rich-text-view.tsx` |
+| `motion` | animation (spring transitions, presence, reduced-motion support) | `shared/ui/language-switch.tsx`, app-wide settings in `shared/ui/motion-provider.tsx` |
 
 Rules:
 

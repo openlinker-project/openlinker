@@ -32,6 +32,8 @@
  */
 import DOMPurify from 'dompurify';
 import { forwardRef, useMemo, type ComponentPropsWithoutRef } from 'react';
+import { useCopy } from '../i18n/use-copy';
+import { uiCopy } from './ui.copy';
 
 /**
  * Tags a rendered description may contain. Wider than any single destination's
@@ -70,9 +72,10 @@ export interface RichTextViewProps extends Omit<ComponentPropsWithoutRef<'div'>,
 }
 
 export const RichTextView = forwardRef<HTMLDivElement, RichTextViewProps>(function RichTextView(
-  { html, emptyLabel = 'No description', className = '', ...rest },
+  { html, emptyLabel, className = '', ...rest },
   ref,
 ) {
+  const copy = useCopy(uiCopy).richTextView;
   const clean = useMemo(() => {
     if (html === null || html === undefined || html.trim() === '') return '';
     return DOMPurify.sanitize(html, {
@@ -89,7 +92,7 @@ export const RichTextView = forwardRef<HTMLDivElement, RichTextViewProps>(functi
 
   if (clean === '') {
     return (
-      <p className={['rich-text-view__empty', className].filter(Boolean).join(' ')}>{emptyLabel}</p>
+      <p className={['rich-text-view__empty', className].filter(Boolean).join(' ')}>{emptyLabel ?? copy.empty}</p>
     );
   }
 

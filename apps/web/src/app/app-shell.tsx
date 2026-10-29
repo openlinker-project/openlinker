@@ -29,6 +29,7 @@ import { useOmsRoutingState } from '../features/fulfillment-authority';
 import type { NavGroup } from './nav-registry.types';
 import { useNavCounts, type NavCounts } from './hooks/use-nav-counts';
 import { Button } from '../shared/ui/button';
+import { LanguageSwitch } from '../shared/ui/language-switch';
 import { EnvironmentBadge } from '../shared/ui/environment-badge';
 import {
   DropdownMenu,
@@ -111,7 +112,9 @@ function SidebarNav({ ariaLabel, counts, groups, onNavigate }: SidebarNavProps):
                           isActive ? 'shell-nav__link shell-nav__link--active' : 'shell-nav__link'
                         }
                       >
-                        <span className="shell-nav__link-label">{item.label}</span>
+                        <span className="shell-nav__link-label" title={item.label}>
+                          {item.label}
+                        </span>
                         {countText !== null ? (
                           <span className="shell-nav__link-count mono-text">{countText}</span>
                         ) : null}
@@ -158,6 +161,7 @@ function WorkspaceFooter({ onLogout, username, location, demoMode }: WorkspaceFo
     <div className="shell-workspace">
       <div className="shell-workspace__header">
         <strong className="shell-workspace__name">Default organization</strong>
+        <LanguageSwitch placement="up" />
       </div>
       {demoMode ? (
         <a

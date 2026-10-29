@@ -6,6 +6,7 @@ import { createJwtBearerSessionAdapter } from '../../shared/auth/jwt-bearer-sess
 import { SessionProvider } from '../../shared/auth/session-provider';
 import { ToastProvider } from '../../shared/ui/toast-provider';
 import { TooltipProvider } from '../../shared/ui/tooltip';
+import { MotionProvider } from '../../shared/ui/motion-provider';
 import { env } from '../../shared/config/env';
 import { isAnalyticsConsentRequiredError } from '../../shared/api/analytics-consent-error';
 import { ThemeProvider } from '../../shared/theme';
@@ -66,6 +67,7 @@ export function AppProviders({ children }: PropsWithChildren): ReactElement {
   return (
     <ThemeProvider>
       <LocaleProvider>
+        <MotionProvider>
         <PluginRegistryProvider plugins={plugins}>
           <SessionProvider adapter={sessionAdapter}>
             <ToastProvider>
@@ -79,6 +81,7 @@ export function AppProviders({ children }: PropsWithChildren): ReactElement {
             </ToastProvider>
           </SessionProvider>
         </PluginRegistryProvider>
+        </MotionProvider>
       </LocaleProvider>
     </ThemeProvider>
   );

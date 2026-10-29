@@ -11,6 +11,8 @@
  * went with the Settings tile.
  */
 import { forwardRef, type ComponentPropsWithoutRef } from 'react';
+import { useCopy } from '../i18n/use-copy';
+import { uiCopy } from './ui.copy';
 
 export type DemoBannerProps = ComponentPropsWithoutRef<'div'>;
 
@@ -18,13 +20,13 @@ export const DemoBanner = forwardRef<HTMLDivElement, DemoBannerProps>(function D
   { className = '', ...props },
   ref,
 ) {
+  const copy = useCopy(uiCopy).demoBanner;
   const classes = ['demo-banner', className].filter(Boolean).join(' ');
   return (
-    <div ref={ref} className={classes} role="note" aria-label="Demo mode notice" {...props}>
+    <div ref={ref} className={classes} role="note" aria-label={copy.label} {...props}>
       <span className="demo-banner__icon" aria-hidden="true">🔒</span>
       <span>
-        <strong>Demo mode — read-only.</strong> You can explore all data; write actions are
-        disabled.
+        <strong>{copy.title}</strong> {copy.body}
       </span>
     </div>
   );

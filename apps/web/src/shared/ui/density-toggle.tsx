@@ -8,6 +8,8 @@
  * `compact` (tighter rows for dense ops tables).
  */
 import { useCallback, useEffect, useState, type ReactElement } from 'react';
+import { useCopy } from '../i18n/use-copy';
+import { uiCopy } from './ui.copy';
 
 export type Density = 'cozy' | 'compact';
 
@@ -44,16 +46,17 @@ export function useDensity(): [Density, (next: Density) => void] {
 }
 
 export function DensityToggle(): ReactElement {
+  const copy = useCopy(uiCopy).density;
   const [density, setDensity] = useDensity();
   return (
-    <div className="density-toggle" role="group" aria-label="Row density">
+    <div className="density-toggle" role="group" aria-label={copy.group}>
       <button
         type="button"
         className={`density-toggle__option ${density === 'cozy' ? 'is-active' : ''}`}
         onClick={() => setDensity('cozy')}
         aria-pressed={density === 'cozy'}
-        aria-label="Cozy density"
-        title="Cozy density"
+        aria-label={copy.cozy}
+        title={copy.cozy}
       >
         <span className="density-toggle__icon" aria-hidden="true">
           <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.4">
@@ -68,8 +71,8 @@ export function DensityToggle(): ReactElement {
         className={`density-toggle__option ${density === 'compact' ? 'is-active' : ''}`}
         onClick={() => setDensity('compact')}
         aria-pressed={density === 'compact'}
-        aria-label="Compact density"
-        title="Compact density"
+        aria-label={copy.compact}
+        title={copy.compact}
       >
         <span className="density-toggle__icon" aria-hidden="true">
           <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.4">

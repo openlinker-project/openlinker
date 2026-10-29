@@ -17,16 +17,17 @@
 import { useMemo, useRef, type KeyboardEvent, type ReactElement } from 'react';
 import { useTheme } from '../theme/use-theme';
 import { ThemeValues, type Theme } from '../theme/theme.types';
+import { useCopy } from '../i18n/use-copy';
+import { uiCopy } from './ui.copy';
 
 interface ThemeOption {
-  label: string;
   value: Theme;
 }
 
 const THEME_OPTIONS: ThemeOption[] = [
-  { value: 'light', label: 'Light' },
-  { value: 'dark', label: 'Dark' },
-  { value: 'system', label: 'System' },
+  { value: 'light' },
+  { value: 'dark' },
+  { value: 'system' },
 ];
 
 // Defensive check — guards against drift between ThemeValues and the
@@ -44,8 +45,9 @@ interface ThemeToggleProps {
 
 export function ThemeToggle({
   className = '',
-  label = 'Theme',
+  label,
 }: ThemeToggleProps): ReactElement {
+  const copy = useCopy(uiCopy).theme;
   const { theme, setTheme } = useTheme();
   const optionRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const classes = ['theme-toggle', className].filter(Boolean).join(' ');
@@ -98,7 +100,7 @@ export function ThemeToggle({
   }
 
   return (
-    <div role="radiogroup" aria-label={label} className={classes}>
+    <div role="radiogroup" aria-label={label ?? copy.label} className={classes}>
       {THEME_OPTIONS.map((option, index) => {
         const selected = theme === option.value;
         return (
@@ -115,7 +117,7 @@ export function ThemeToggle({
             onClick={() => setTheme(option.value)}
             onKeyDown={(event) => handleKeyDown(event, index)}
           >
-            {option.label}
+            {copy[option.value]}
           </button>
         );
       })}
