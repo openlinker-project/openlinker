@@ -2144,7 +2144,7 @@ describe('OrdersController', () => {
   describe('operator edits on the DTO (#3542)', () => {
     it('should flag an edited order on the list row and read no edit history for it', async () => {
       repository.findMany.mockResolvedValue({
-        items: [orderRecordWith({ orderEdits: { v: 1, rev: 1 } as never })],
+        items: [orderRecordWith({ orderEdits: { v: 1, rev: 1, address: { address1: 'New 1', city: 'Warsaw' } } as never })],
         total: 1,
       });
 
