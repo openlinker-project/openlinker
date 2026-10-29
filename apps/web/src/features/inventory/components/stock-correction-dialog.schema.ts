@@ -57,9 +57,9 @@ export const STOCK_CORRECTION_DEFAULT_VALUES: StockCorrectionFormValues = {
 };
 
 export const REASON_LABEL: Record<CorrectionReason, string> = {
-  count_correction: 'Count correction (physical stock check)',
-  found: 'Found extra stock',
-  damaged: 'Damaged or written off',
+  count_correction: 'Counted (physical stock check)',
+  found: 'Found or received',
+  damaged: 'Damaged or lost',
   other: 'Other',
 };
 
@@ -118,7 +118,8 @@ export const INLINE_ERROR_COPY: Record<string, string> = {
   contended: 'Another correction for this variant is being applied right now. Wait a moment and save again.',
   'no-change': 'This would not change the stock - the master already has that number.',
   'master-unreadable':
-    "OpenLinker couldn't read the current stock from the master, so it did not send anything. Try again in a moment.",
+    "Couldn't read the current stock for this item from {master}. Nothing changed. Try again in a moment.",
+  'insufficient-stock': 'There is not enough stock in the master for this removal. Nothing changed.',
   'idempotency-key-reused':
     'This correction was already submitted with different values. Close this dialog and start a new one.',
 };

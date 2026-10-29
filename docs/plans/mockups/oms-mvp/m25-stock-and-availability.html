@@ -72,6 +72,7 @@
 </style>
 </head>
 <body>
+<div style="margin:0;padding:10px 16px;background:#fff7e0;border-bottom:1px solid #e3c776;font:13px/1.45 -apple-system,BlinkMacSystemFont,sans-serif;color:#5a4400" data-mk-note="changed-after-implementation"><b>Changed after implementation, 2026-10-29:</b> The separate stock panel table below no longer exists. Stock is a column of the product page's ONE variants table (Variant, Tax rate, Stock, Listings, Price): "N to sell" with a status badge, and a second line "N in <shop> · K reserved" only when K is above 0. The drawer content (sum, reserving orders, positions, Adjust stock, Stock history link) now lives in the expanded row, and listing cards add "Sends N" and "Last check" next to the live Qty. Vocabulary: to sell, reserved, buffer; never held or promised; "Short by N" replaces Oversold; "Not known" replaces Unknown. Test ids moved onto the table's own elements (stock-variant-row-*, stock-variant-toggle-*, stock-master-*, stock-held-*, stock-atp-*, stock-adjust-*, stock-channels-*), and the Available tile carries stock-summary-atp / -master / -held. The alerts (viewer, restricted, not known, stale, locations, two shops, empty, loading) render above the table. The correction dialog's "within a minute" line appears only when the product has channels (N-04).</div>
 
 <div data-ol-page data-active="Products" data-crumb-group="Operations" data-crumb="Kubek ceramiczny Nordic 350 ml">
   <section class="page-section">

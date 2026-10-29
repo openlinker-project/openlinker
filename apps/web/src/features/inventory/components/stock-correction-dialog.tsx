@@ -63,7 +63,7 @@ import {
   toCorrectStockInput,
   type StockCorrectionFormValues,
 } from './stock-correction-dialog.schema';
-import type { StockAdjustTarget } from './stock-panel';
+import type { StockAdjustTarget } from '../lib/stock-row';
 
 export interface StockCorrectionDialogProps {
   /** `null` closes the dialog; a value opens it for that variant. */
@@ -89,6 +89,10 @@ export function StockCorrectionDialog({ target, onClose }: StockCorrectionDialog
       </DialogContent>
     </Dialog>
   );
+}
+
+function formatSigned(value: number): string {
+  return value > 0 ? `+${value}` : value < 0 ? `−${Math.abs(value)}` : '0';
 }
 
 function variantLabel(target: StockAdjustTarget): { name: string; sku: string | null } {
@@ -124,6 +128,27 @@ interface ServerConfirmation {
   relativeThreshold: number | null;
 }
 
+interface SentCorrection {
+  /** The count the operator saw when they sent it. */
+  before: number | null;
+  mode: StockCorrectionFormValues['mode'];
+  /** What they typed: the target quantity in set mode, the signed change in delta mode. */
+  entry: number;
+}
+
+/** The master's count as the server read it, when the refusal carries one. */
+function errorCurrentQuantity(error: Error | null): number | null {
+  const details = error instanceof ApiError ? error.details : null;
+  const record = typeof details === 'object' && details !== null ? (details as Record<string, unknown>) : {};
+  return numberOrNull(record.currentQuantity);
+}
+
+function insufficientStockCopy(masterName: string, count: number | null): string {
+  return count === null
+    ? `${masterName} doesn't have enough stock for this removal, so nothing changed.`
+    : `${masterName} has only ${count}, so nothing changed.`;
+}
+
 function numberOrNull(value: unknown): number | null {
   return typeof value === 'number' && Number.isFinite(value) ? value : null;
 }
@@ -157,6 +182,9 @@ function DialogBody({
   const mutation = useCorrectStockMutation();
   const [ackedDelta, setAckedDelta] = useState<number | null>(null);
   const [serverConfirm, setServerConfirm] = useState<ServerConfirmation | null>(null);
+  // Frozen when the request goes out: a refetch of the target after an in-doubt
+  // result must not change what the result view says was attempted.
+  const [sent, setSent] = useState<SentCorrection | null>(null);
 
   const form = useForm<StockCorrectionFormValues>({
     defaultValues: STOCK_CORRECTION_DEFAULT_VALUES,
@@ -170,9 +198,18 @@ function DialogBody({
   const masterName = ready?.connectionName ?? 'the master';
 
   const entry = readEntry(values);
+  // Advisory only: `current` is OpenLinker's mirror, which can lag the master,
+  // and the server judges the removal against a fresh master read
+  // (`insufficient-stock`). Blocking here would refuse removals the server
+  // accepts (docs/lessons.md, #2240), so the form warns and lets it through.
+  const removalTooLarge =
+    values.mode === 'delta' && entry !== null && current !== null && entry < 0 && -entry > current;
+  const removalWarning = removalTooLarge
+    ? `OpenLinker shows only ${current} in ${masterName}. ${masterName} checks its own count when you save and refuses the change if there isn't enough.`
+    : undefined;
   const entryValid = entry !== null && (values.mode === 'delta' ? entry !== 0 : entry >= 0);
   const delta = current !== null && entry !== null && entryValid ? correctionDelta(values.mode, entry, current) : null;
-  const newQuantity = current !== null && delta !== null ? current + delta : null;
+  const newQuantity = current !== null && delta !== null ? Math.max(0, current + delta) : null;
   const needsConfirmation =
     delta !== null && current !== null && (isLargeChange(delta, current) || serverConfirm?.sentDelta === delta);
   const acknowledged = delta !== null && ackedDelta === delta;
@@ -197,6 +234,7 @@ function DialogBody({
     const parsed = readEntry(formValues);
     if (parsed === null || ready === null || current === null) return;
     const sentDelta = correctionDelta(formValues.mode, parsed, current);
+    setSent({ before: current, mode: formValues.mode, entry: parsed });
     try {
       await mutation.mutateAsync({
         productVariantId: target.variant.id,
@@ -240,6 +278,7 @@ function DialogBody({
         result={mutation.data}
         target={target}
         reason={values.reason}
+        sent={sent ?? { before: current, mode: values.mode, entry: entry ?? 0 }}
         onClose={onClose}
         previewFor={(quantity) =>
           computeCorrectionPreview({ newMasterQuantity: quantity, currentQuantity: current, stock: target.stock })
@@ -283,7 +322,9 @@ function DialogBody({
   const inlineError =
     code === 'confirmation-required' || mutation.error === null
       ? null
-      : (INLINE_ERROR_COPY[code ?? ''] ?? mutation.error.message);
+      : code === 'insufficient-stock'
+        ? insufficientStockCopy(masterName, errorCurrentQuantity(mutation.error))
+        : (INLINE_ERROR_COPY[code ?? ''] ?? mutation.error.message).replace(/\{master\}/g, masterName);
 
   return (
     <div data-testid="stock-correction-dialog">
@@ -329,7 +370,7 @@ function DialogBody({
             label="Change by"
             name="delta"
             error={form.formState.errors.delta?.message}
-            description="Use a minus sign to reduce stock, e.g. -2."
+            description={removalWarning ?? 'Use a minus sign to reduce stock, e.g. -2.'}
           >
             <Input type="text" inputMode="numeric" data-testid="stock-correction-delta" {...form.register('delta')} />
           </FormField>
@@ -382,7 +423,12 @@ function DialogBody({
           </dd>
         </dl>
 
-        <PreviewSection preview={preview} masterName={masterName} stockKnown={target.stock !== null} />
+        <PreviewSection
+          preview={preview}
+          masterName={masterName}
+          stockKnown={target.stock !== null}
+          hasChannels={(target.stock?.channels.length ?? 0) > 0}
+        />
 
         <DialogFooter>
           <Button type="button" tone="secondary" onClick={onClose} data-testid="stock-correction-cancel">
@@ -410,15 +456,15 @@ function serverLargeChangeSentence(confirm: ServerConfirmation): string {
 function heldSentence(target: StockAdjustTarget): string {
   const held = target.stock?.heldCounted;
   if (held === null || held === undefined) return '';
-  return held > 0 ? ` OpenLinker holds ${held} of them for open orders.` : '';
+  return held > 0 ? ` ${held} of them are reserved for open orders.` : '';
 }
 
 function channelHow(channel: ChannelPreview): string {
   const parts: string[] = [];
   parts.push(
     channel.stockSafetyBuffer > 0
-      ? `Publishes available to promise minus a ${channel.stockSafetyBuffer}-unit safety buffer for this connection.`
-      : 'Publishes available to promise as-is.',
+      ? `Publishes what you can sell minus a ${channel.stockSafetyBuffer}-unit buffer for this connection.`
+      : 'Publishes what you can sell as-is.',
   );
   if (channel.stockZeroThreshold > 0) {
     parts.push(`Anything under ${channel.stockZeroThreshold} units is shown as sold out.`);
@@ -427,17 +473,19 @@ function channelHow(channel: ChannelPreview): string {
 }
 
 function qty(value: number | null): ReactNode {
-  return value === null ? 'Unknown' : value;
+  return value === null ? 'Not known' : value;
 }
 
 function PreviewSection({
   preview,
   masterName,
   stockKnown,
+  hasChannels,
 }: {
   preview: CorrectionPreview | null;
   masterName: string;
   stockKnown: boolean;
+  hasChannels: boolean;
 }): ReactElement {
   return (
     <>
@@ -462,13 +510,13 @@ function PreviewSection({
           </li>
           <li className="sc-impact__row" data-testid="stock-correction-preview-atp">
             <span className="sc-impact__what">
-              Available to promise
+              To sell
               <span className="sc-impact__sub">what channels start from</span>
             </span>
             <span className="sc-impact__how">
               {preview.heldCounted === null
-                ? "OpenLinker couldn't read its holds for open orders, so this is not known."
-                : `New count minus the ${preview.heldCounted} units OpenLinker holds for open orders.`}
+                ? "OpenLinker couldn't read the reserved count, so this is not known."
+                : `New count minus the ${preview.heldCounted} units reserved for open orders.`}
             </span>
             <span className="sc-impact__qty">{qty(preview.availableToPromise)}</span>
           </li>
@@ -488,7 +536,9 @@ function PreviewSection({
           ))}
         </ul>
       )}
-      <p className="sc-footnote">Marketplaces usually catch up within a minute of the master confirming.</p>
+      {hasChannels ? (
+        <p className="sc-footnote">Marketplaces usually catch up within a minute of the master confirming.</p>
+      ) : null}
     </>
   );
 }
@@ -522,18 +572,28 @@ function ResultView({
   result,
   target,
   reason,
+  sent,
   onClose,
   previewFor,
 }: {
   result: CorrectStockResult;
   target: StockAdjustTarget;
   reason: StockCorrectionFormValues['reason'];
+  /** What the operator sent; refused and in-doubt results carry no count of their own. */
+  sent: SentCorrection;
   onClose: () => void;
   previewFor: (quantity: number) => CorrectionPreview;
 }): ReactElement {
   const master = result.master.connectionName;
-  const before = result.quantityBefore;
-  const attemptedTo = before === null ? null : before + result.requestedDelta;
+  const before = result.quantityBefore ?? sent.before;
+  // Set mode shows the operator's own target. The server's delta was worked out
+  // against its own read of the master, which can differ from the count shown.
+  const attemptedTo =
+    sent.mode === 'set' ? sent.entry : sent.before === null ? null : sent.before + sent.entry;
+  const attempt =
+    attemptedTo === null
+      ? `change of ${formatSigned(sent.entry)}`
+      : `${sent.before ?? '?'} → ${attemptedTo}`;
   const { name, sku } = variantLabel(target);
 
   if (result.status === 'applied') {
@@ -595,7 +655,7 @@ function ResultView({
       <div data-testid="stock-correction-refused">
         <DialogTitleFor target={target} />
         <p className="sc-attempt">
-          Attempted: {before ?? '?'} → {attemptedTo ?? '?'} · {REASON_LABEL[reason]}{' '}
+          Attempted: {attempt} · {REASON_LABEL[reason]}{' '}
           <StatusBadge tone="error">Not applied</StatusBadge>
         </p>
         <Alert tone="error" title={`${master} refused this change`} data-testid="stock-correction-refused-reason">
@@ -614,7 +674,7 @@ function ResultView({
     <div data-testid="stock-correction-in-doubt">
       <DialogTitleFor target={target} />
       <p className="sc-attempt">
-        Sent: {before ?? '?'} → {attemptedTo ?? '?'} · {REASON_LABEL[reason]}
+        Sent: {attempt} · {REASON_LABEL[reason]}
       </p>
       <Alert tone="warning" title={`We couldn't confirm this reached ${master}`}>
         OpenLinker lost contact right after sending this correction. It may already be applied.

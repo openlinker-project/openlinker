@@ -62,7 +62,7 @@ const STATUS_PRESENTATION: Record<string, { label: string; tone: MovementStatusT
   refused: { label: 'Refused', tone: 'error' },
   in_doubt: { label: 'In doubt', tone: 'warning' },
   pending: { label: 'Pending', tone: 'info' },
-  held: { label: 'Held', tone: 'info' },
+  held: { label: 'Reserved', tone: 'info' },
   released: { label: 'Released', tone: 'neutral' },
   consumed: { label: 'Consumed', tone: 'success' },
   expired: { label: 'Expired', tone: 'neutral' },

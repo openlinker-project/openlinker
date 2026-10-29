@@ -730,19 +730,19 @@ export function ProductsListPage(): ReactElement {
         <span className="products-cell-stack" data-testid={`stock-list-cell-${product.sku ?? product.id}`}>
           {product.availableToPromise === null ? (
             <span className="av-unknown" title="OpenLinker doesn't know. Not zero.">
-              Unknown
+              Not known
             </span>
           ) : (
             <span>
               <span className="products-stock-value mono tabular">{product.availableToPromise}</span>{' '}
               <span className="text-muted" style={{ fontSize: '0.75rem' }}>
-                to promise
+                to sell
               </span>
             </span>
           )}
           {atpStatus === 'unknown' ? (
             <StatusBadge tone="neutral" withDot compact>
-              Unknown
+              Not known
             </StatusBadge>
           ) : (
             <StatusBadge tone={STOCK_STATUS_BADGE_TONE[atpStatus]} withDot compact>
@@ -1498,6 +1498,10 @@ export function ProductsListPage(): ReactElement {
                 `${expanded ? 'Collapse' : 'Expand'} variant stock for ${product.name}`,
             }}
             cardView={{
+              // The same hooks the desktop table carries, so a stock check reads
+              // a card exactly as it reads a row.
+              listTestId: 'stock-list-cards',
+              attributes: (product) => ({ 'data-testid': `stock-list-row-${product.sku ?? product.id}` }),
               select: (product) => renderSelectCheckbox(product),
               title: (product) => (
                 <span className="product-row">
@@ -1538,10 +1542,11 @@ export function ProductsListPage(): ReactElement {
                       }
                       withDot
                       compact
+                      data-testid={`stock-list-cell-${product.sku ?? product.id}`}
                     >
                       {product.availableToPromise === null
-                        ? 'Unknown'
-                        : `${product.availableToPromise} to promise · ${STOCK_STATUS_LABEL[deriveStockStatus(product.availableToPromise)]}`}
+                        ? 'Not known'
+                        : `${product.availableToPromise} to sell · ${STOCK_STATUS_LABEL[deriveStockStatus(product.availableToPromise)]}`}
                     </StatusBadge>
                   ) : product.totalAvailable !== undefined ? (
                     <StatusBadge

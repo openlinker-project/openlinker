@@ -5,9 +5,12 @@
  * select, with a summary strip, the movement table and a link to the global
  * page pre-filtered to the SKU. Read-only for every role that can see the page.
  *
- * "Available now" is the sum of the variant's inventory rows; "Promised (held)"
- * is the sum of its held reservations (a promise never lowers the stock). "Last
+ * "Available now" is the sum of the variant's inventory rows; "Reserved" is the
+ * sum of its held reservations (a reservation never lowers the stock). "Last
  * change" is the newest movement (any status, never a reservation) from its own query.
+ *
+ * The variant can be chosen from outside (`selectedVariantId`): the variants
+ * table's "Stock history" link points this section at the row it was clicked on.
  *
  * @module apps/web/src/features/inventory/components
  */
@@ -35,6 +38,9 @@ export interface StockHistorySectionProps {
   productId: string;
   productName?: string | null;
   variants: readonly StockHistoryVariant[];
+  /** Variant chosen from outside the section; the select still works and reports through the callback. */
+  selectedVariantId?: string | null;
+  onSelectedVariantChange?: (variantId: string) => void;
 }
 
 const HISTORY_PAGE_SIZE = 10;
@@ -50,8 +56,11 @@ export function StockHistorySection({
   productId,
   productName,
   variants,
+  selectedVariantId = null,
+  onSelectedVariantChange,
 }: StockHistorySectionProps): ReactElement | null {
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [localSelectedId, setLocalSelectedId] = useState<string | null>(null);
+  const selectedId = selectedVariantId ?? localSelectedId;
   const variant = variants.find((v) => v.id === selectedId) ?? variants[0];
   const variantId = variant?.id;
   const connectionNames = useConnectionNames();
@@ -87,7 +96,7 @@ export function StockHistorySection({
   const forbidden = rows.error instanceof ApiError && rows.error.isForbidden();
   if (!canRead || forbidden) {
     return (
-      <div className="panel" data-testid="stock-history">
+      <div className="panel" id="stock-history" data-testid="stock-history">
         <div className="panel__header">
           <h3 style={{ margin: 0 }}>Stock history</h3>
         </div>
@@ -113,7 +122,7 @@ export function StockHistorySection({
   const viewAllHref = `/inventory/movements?productVariantId=${encodeURIComponent(variant.id)}`;
 
   return (
-    <div className="panel" data-testid="stock-history">
+    <div className="panel" id="stock-history" data-testid="stock-history">
       <div className="panel__header">
         <div>
           {productName ? (
@@ -127,7 +136,10 @@ export function StockHistorySection({
           aria-label="Choose variant"
           data-testid="stock-history-variant"
           value={variant.id}
-          onChange={(event) => setSelectedId(event.target.value)}
+          onChange={(event) => {
+            setLocalSelectedId(event.target.value);
+            onSelectedVariantChange?.(event.target.value);
+          }}
         >
           {variants.map((v) => (
             <option key={v.id} value={v.id}>
@@ -143,7 +155,7 @@ export function StockHistorySection({
           <dd className="mono-text tabular">{availableNow ?? '—'}</dd>
         </div>
         <div>
-          <dt>Promised (held)</dt>
+          <dt>Reserved</dt>
           <dd className="mono-text tabular">{promisedHeld ?? '—'}</dd>
         </div>
         <div>
@@ -159,7 +171,7 @@ export function StockHistorySection({
           </dd>
         </div>
         <div>
-          <dt>Master connection</dt>
+          <dt>Stock source</dt>
           <dd>{masterId ? (connectionNames.get(masterId) ?? masterId) : '—'}</dd>
         </div>
       </dl>

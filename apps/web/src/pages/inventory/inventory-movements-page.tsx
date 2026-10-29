@@ -3,7 +3,7 @@
  * `attention`)
  *
  * `/inventory/movements` - every applied, refused or unconfirmed change to a
- * variant's stock plus the reservations that only promise it. Read-only (no
+ * variant's stock plus the reservations that set stock aside for orders. Read-only (no
  * export: there is no export format yet). Filters live in the URL; the total is
  * a second stage and is never rendered as `0` while unknown.
  *
@@ -48,7 +48,7 @@ const PAGE_COPY = {
   eyebrow: 'Products',
   title: 'Stock movement history',
   description:
-    "Every applied, refused, or unconfirmed change to a variant's stock — plus the reservations that only promise it.",
+    "Every applied, refused, or unconfirmed change to a variant's stock - plus the reservations that set stock aside for orders.",
 } as const;
 
 export function InventoryMovementsPage(): ReactElement {
@@ -214,7 +214,7 @@ function InventoryMovementsContent(): ReactElement {
             data-testid="stock-movements-chip-promised"
             onClick={() => selectChip('promised')}
           >
-            Promised only
+            Reserved only
           </Chip>
         </div>
       </div>

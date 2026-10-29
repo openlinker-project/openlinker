@@ -232,7 +232,7 @@ describe('ProductsListPage', () => {
     expect(within(table).getByText('reserved 2')).toBeInTheDocument();
   });
 
-  it('renders the stock badge from available to promise and never shows null as out of stock', async () => {
+  it('renders the stock badge from what can be sold and never shows null as out of stock', async () => {
     const mockApi = createMockApiClient({
       products: {
         list: vi.fn().mockResolvedValue({
@@ -252,7 +252,8 @@ describe('ProductsListPage', () => {
     // Master says 40 (would read "In stock"); available to promise is 3.
     expect(within(table).getByText('Low stock')).toBeInTheDocument();
     expect(within(table).getByText('master 40')).toBeInTheDocument();
-    expect(within(table).getAllByText('Unknown').length).toBeGreaterThan(0);
+    expect(within(table).getAllByText('Not known').length).toBeGreaterThan(0);
+    expect(within(table).queryByText('Unknown')).toBeNull();
     expect(within(table).queryByText('Out of stock')).toBeNull();
   });
 
@@ -704,6 +705,53 @@ describe('ProductsListPage', () => {
     await waitFor(() => {
       expect(list).toHaveBeenCalledWith(expect.anything(), PAGE, { field: 'stock', dir: 'desc' });
     });
+  });
+
+  it('should say to sell on the desktop row and never to promise', async () => {
+    const mockApi = createMockApiClient({
+      products: {
+        list: vi.fn().mockResolvedValue({
+          ...sampleProducts,
+          items: [{ ...sampleProducts.items[0]!, totalAvailable: 40, availableToPromise: 3, atpProvenance: 'computed' }],
+        }),
+      },
+    });
+
+    renderWithProviders(<ProductsListPage />, { apiClient: mockApi });
+
+    await screen.findByText('Test Product');
+    const cell = screen.getByTestId('stock-list-cell-SKU-001');
+    expect(cell).toHaveTextContent('3');
+    expect(cell).toHaveTextContent('to sell');
+    expect(cell).not.toHaveTextContent('promise');
+  });
+
+  it('should give a mobile card the same row and cell test ids as the desktop row, and say to sell', async () => {
+    const { restore } = mockMobileViewport();
+    try {
+      const mockApi = createMockApiClient({
+        products: {
+          list: vi.fn().mockResolvedValue({
+            ...sampleProducts,
+            items: [
+              { ...sampleProducts.items[0]!, totalAvailable: 40, availableToPromise: 3, atpProvenance: 'computed' },
+              { ...sampleProducts.items[1]!, totalAvailable: 0, availableToPromise: null, atpProvenance: 'unknown' },
+            ],
+          }),
+        },
+      });
+
+      renderWithProviders(<ProductsListPage />, { apiClient: mockApi });
+
+      await screen.findByText('Test Product');
+      expect(screen.getByTestId('stock-list-cards')).toBeInTheDocument();
+      const card = screen.getByTestId('stock-list-row-SKU-001');
+      expect(within(card).getByTestId('stock-list-cell-SKU-001')).toHaveTextContent('3 to sell · Low stock');
+      const unknownCard = screen.getByTestId('stock-list-row-ol_product_def456');
+      expect(within(unknownCard).getByTestId('stock-list-cell-ol_product_def456')).toHaveTextContent('Not known');
+    } finally {
+      restore();
+    }
   });
 
   // ── Mobile card disclosure (#1720) ──────────────────────────────────

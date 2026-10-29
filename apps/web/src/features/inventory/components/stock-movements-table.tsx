@@ -4,12 +4,14 @@
  * The one table both the product-detail "Stock history" section and the global
  * `/inventory/movements` page render, so the cell rules live in one place:
  *
- * - a reservation row is a "Promised" row - delta "-", "Stock unchanged" and
- *   "Promised a -> b" - because a reservation never changes the stock;
+ * - a reservation row is a "Reserved" row - delta "-", "Stock unchanged" and
+ *   "Reserved a -> b" - because a reservation never changes the stock;
  * - a refused movement's delta is struck through and its after-quantity reads
  *   "Not applied" (nothing changed), with the adapter's own sentence beneath;
  * - an in-doubt movement's after-quantity reads "?" - OpenLinker does not know
- *   whether the write landed.
+ *   whether the write landed;
+ * - an applied movement with no before-quantity created a new position, so it
+ *   reads "new -> n". "?" is for in-doubt (or refused) rows only.
  *
  * @module apps/web/src/features/inventory/components
  */
@@ -64,7 +66,7 @@ function DeltaCell({ row }: { row: InventoryMovementRow }): ReactElement {
 function BeforeAfterCell({ row }: { row: InventoryMovementRow }): ReactElement {
   if (row.kind === 'reservation') {
     const promised =
-      row.status === 'held' ? `Promised 0 → ${row.quantityDelta}` : `Promised ${row.quantityDelta} → 0`;
+      row.status === 'held' ? `Reserved 0 → ${row.quantityDelta}` : `Reserved ${row.quantityDelta} → 0`;
     return (
       <>
         <div className="muted-text" style={{ fontSize: '0.8125rem' }}>
@@ -96,7 +98,10 @@ function BeforeAfterCell({ row }: { row: InventoryMovementRow }): ReactElement {
   }
   return (
     <>
-      <span className="mono-text tabular">{row.quantityBefore ?? '?'}</span>
+      <span className="mono-text tabular" data-testid="stock-movement-before">
+        {row.quantityBefore ??
+          (row.status === 'applied' && row.quantityAfter !== null ? 'new' : '?')}
+      </span>
       <span className="stock-movement__arrow" aria-hidden="true">
         {' '}
         →{' '}
@@ -120,7 +125,7 @@ function TypeCell({ row }: { row: InventoryMovementRow }): ReactElement {
           className="stock-movement__promised-badge"
           data-testid="stock-movement-promised"
         >
-          Promised
+          Reserved
         </StatusBadge>
       ) : null}
       {note ? <div className="muted-text stock-movement__reason">{note}</div> : null}

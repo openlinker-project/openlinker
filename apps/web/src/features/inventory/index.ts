@@ -79,10 +79,27 @@ export { inventoryQueryKeys } from './api/inventory.query-keys';
 // #3568 - the product detail page mounts the stock history section.
 export { StockHistorySection, type StockHistoryVariant } from './components/stock-history-section';
 
-// #3569 - the M25 stock panel on the product detail page. `onAdjust` is the
-// seam the correction dialog (M6) mounts behind.
-export { StockPanel, type StockPanelProps, type StockAdjustTarget } from './components/stock-panel';
+// #3569 - the M25 stock figures on the product detail page. They live in the
+// variants table: the alerts above it, the "Stock" cell in each row and the stock
+// half of each expanded row. `onAdjust` is the seam the correction dialog (M6)
+// mounts behind.
+export { StockAlerts, type StockAlertsProps } from './components/stock-alerts';
+export { StockCell } from './components/stock-cell';
+export { StockActions, StockMetaCells, StockNarrative } from './components/stock-variant-detail';
+export {
+  buildStockRows,
+  deriveRowStatus,
+  stockRowKey,
+  type BuildStockRowsInput,
+  type ProductStockModel,
+  type StockAdjustTarget,
+  type StockPanelVariant,
+  type StockRowModel,
+  type StockRowState,
+  type StockRowStatus,
+} from './lib/stock-row';
 // #3567 - the manual stock correction dialog opened from the panel's `onAdjust`.
 export { StockCorrectionDialog } from './components/stock-correction-dialog';
 export { useStockViewQuery } from './hooks/use-stock-view-query';
+export { useConnectionNames } from './hooks/use-connection-names';
 export { deriveAtpStatus, summarizeStock, type AtpStatus, type StockSummary } from './lib/stock-view';

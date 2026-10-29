@@ -138,12 +138,14 @@ describe('InventoryMovementsPage', () => {
     expect(alert).toHaveTextContent('1 unconfirmed');
   });
 
-  it('should request only promised rows for the Promised only chip and offer no export', async () => {
+  it('should request only reservation rows for the Reserved only chip and offer no export', async () => {
     const listMovements = vi.fn().mockResolvedValue(page([]));
     const apiClient = createMockApiClient({ inventory: { listMovements } });
     renderMovements({ apiClient });
 
-    await userEvent.click(await screen.findByTestId('stock-movements-chip-promised'));
+    const chip = await screen.findByTestId('stock-movements-chip-promised');
+    expect(chip).toHaveTextContent('Reserved only');
+    await userEvent.click(chip);
     await waitFor(() =>
       expect(listMovements).toHaveBeenLastCalledWith(expect.objectContaining({ kind: 'promised' }), expect.anything()),
     );

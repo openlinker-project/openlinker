@@ -78,7 +78,7 @@ describe('computeCorrectionPreview', () => {
     ).toBe(0);
   });
 
-  it('should report Unknown instead of a number when the held count is unknown', () => {
+  it('should report not known instead of a number when the reserved count is unknown', () => {
     const preview = computeCorrectionPreview({
       newMasterQuantity: 9,
       currentQuantity: 6,

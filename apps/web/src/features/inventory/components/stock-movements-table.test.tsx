@@ -99,7 +99,7 @@ describe('StockMovementsTable', () => {
     expect(within(tr).getByText('Sklep Gorski')).toBeInTheDocument();
   });
 
-  it('should show a reservation as Promised with stock unchanged and no delta', () => {
+  it('should show a reservation as Reserved with stock unchanged and no delta', () => {
     renderTable([
       row({
         kind: 'reservation',
@@ -114,7 +114,8 @@ describe('StockMovementsTable', () => {
     expect(tr).toHaveAttribute('data-movement-type', 'reservation');
     expect(within(tr).getByTestId('stock-movement-promised')).toBeInTheDocument();
     expect(within(tr).getByText('Stock unchanged')).toBeInTheDocument();
-    expect(within(tr).getByText('Promised 0 → 3')).toBeInTheDocument();
+    expect(within(tr).getByText('Reserved 0 → 3')).toBeInTheDocument();
+    expect(within(tr).getByTestId('stock-movement-promised')).toHaveTextContent('Reserved');
     expect(within(tr).queryByTestId('stock-movement-delta')).not.toBeInTheDocument();
   });
 
@@ -146,6 +147,26 @@ describe('StockMovementsTable', () => {
     expect(within(tr).getByTestId('stock-movement-after')).toHaveTextContent('?');
     expect(within(tr).getByText('Damaged - Broken in transit')).toBeInTheDocument();
     expect(within(tr).getByText('Anna Wisniewska')).toBeInTheDocument();
+  });
+
+  it('should show an applied movement with no earlier count as a new position, not a question mark', () => {
+    renderTable([row({ reason: 'master_sync', status: 'applied', quantityBefore: null, quantityAfter: 1000, quantityDelta: 1000 })]);
+    const tr = screen.getByTestId('stock-movement-row');
+    expect(within(tr).getByTestId('stock-movement-before')).toHaveTextContent('new');
+    expect(within(tr).getByTestId('stock-movement-after')).toHaveTextContent('1000');
+    expect(tr).not.toHaveTextContent('?');
+  });
+
+  it('should keep the question mark for an applied movement with neither count', () => {
+    renderTable([row({ reason: 'master_sync', status: 'applied', quantityBefore: null, quantityAfter: null })]);
+    expect(within(screen.getByTestId('stock-movement-row')).getByTestId('stock-movement-before')).toHaveTextContent('?');
+  });
+
+  it('should keep the question mark for an in-doubt movement with no earlier count', () => {
+    renderTable([row({ reason: 'manual_correction', status: 'in_doubt', quantityBefore: null, quantityAfter: null, sourceKind: 'operator', sourceRef: null })]);
+    const tr = screen.getByTestId('stock-movement-row');
+    expect(within(tr).getByTestId('stock-movement-before')).toHaveTextContent('?');
+    expect(within(tr).getByTestId('stock-movement-after')).toHaveTextContent('?');
   });
 
   it('should name an operator whose account no longer exists as Unknown user', () => {

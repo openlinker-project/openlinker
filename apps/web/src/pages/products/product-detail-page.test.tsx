@@ -155,7 +155,10 @@ function renderDetailPage(apiClient: ReturnType<typeof createMockApiClient>, sig
   );
 }
 
-function stockViewOf(atpByVariant: Record<string, number | null>): unknown {
+function stockViewOf(
+  atpByVariant: Record<string, number | null>,
+  overrides: Record<string, Record<string, unknown>> = {},
+): unknown {
   return {
     productId: 'ol_product_abc123',
     productName: 'Test Product',
@@ -181,8 +184,80 @@ function stockViewOf(atpByVariant: Record<string, number | null>): unknown {
       positions: [],
       holds: [],
       channels: [],
+      ...overrides[id],
     })),
   };
+}
+
+const PS_POSITION = {
+  locationId: 'loc1',
+  locationName: 'Main',
+  sourceConnectionId: 'conn_ps',
+  sourceConnectionName: 'PrestaShop',
+  isStale: false,
+  availableQuantity: 8,
+  reservedQuantity: 0,
+  updatedAt: '2026-01-15T10:00:00.000Z',
+};
+
+const ALLEGRO_CHANNEL = {
+  connectionId: 'conn_al',
+  connectionName: 'Allegro',
+  platformType: 'allegro',
+  rule: { stockSafetyBuffer: 2, stockZeroThreshold: 0 },
+  willPublish: { quantity: 1, provenance: 'computed' },
+  channelShows: { quantity: 1, observedAt: '2026-01-15T10:00:00.000Z' },
+};
+
+/** Variant 1 holds 8 in PrestaShop with 5 reserved for 4 orders and 2 reserved but not counted. */
+const RESERVED_VARIANT = {
+  masterAvailable: 8,
+  availableToPromise: 3,
+  heldCounted: 5,
+  heldRecordedOnly: 2,
+  positions: [PS_POSITION],
+  holds: [
+    { orderRecordId: 'o1', orderNumber: '#10482', quantity: 2, atpEffect: 'published', expiresAt: '2026-02-01T00:00:00.000Z' },
+    { orderRecordId: 'o2', orderNumber: '#10479', quantity: 1, atpEffect: 'published', expiresAt: '2026-02-01T00:00:00.000Z' },
+    { orderRecordId: 'o3', orderNumber: '#10475', quantity: 1, atpEffect: 'published', expiresAt: '2026-02-01T00:00:00.000Z' },
+    { orderRecordId: 'o4', orderNumber: '#10470', quantity: 1, atpEffect: 'published', expiresAt: '2026-02-01T00:00:00.000Z' },
+    { orderRecordId: 'o5', orderNumber: '#10460', quantity: 2, atpEffect: 'diagnostic', expiresAt: '2026-02-01T00:00:00.000Z' },
+  ],
+  channels: [ALLEGRO_CHANNEL],
+};
+
+/** The second variant holds 8 in the shop with nothing reserved, unless a spec says otherwise. */
+function withPlainSibling(
+  overrides: Record<string, Record<string, unknown>>,
+): Record<string, Record<string, unknown>> {
+  return { ol_product_var2: { masterAvailable: 8, heldCounted: 0 }, ...overrides };
+}
+
+function multiVariantApi(
+  overrides: Record<string, Record<string, unknown>>,
+  extra: Parameters<typeof createMockApiClient>[0] = {},
+): ReturnType<typeof createMockApiClient> {
+  return createMockApiClient({
+    products: { getById: vi.fn().mockResolvedValue(multiVariantProduct) },
+    inventory: {
+      list: vi.fn().mockResolvedValue(paginatedInventory([])),
+      stockView: vi
+        .fn()
+        .mockResolvedValue(stockViewOf({ ol_product_var1: 3, ol_product_var2: 8 }, withPlainSibling(overrides))),
+    },
+    listings: {
+      list: vi.fn().mockImplementation((filters?: { internalId?: string }) =>
+        Promise.resolve(
+          paginatedListings(
+            filters?.internalId === 'ol_product_var1'
+              ? [offerMapping({ id: 'ol_offer_1', externalId: 'ALG-1', connectionId: 'conn_al' })]
+              : [],
+          ),
+        ),
+      ),
+    },
+    ...extra,
+  });
 }
 
 describe('ProductDetailPage', () => {
@@ -311,7 +386,7 @@ describe('ProductDetailPage', () => {
     expect(within(kpiCard).getByText('0')).toBeInTheDocument();
   });
 
-  it('should show Unknown, neutral, in the hero badge and the Available KPI when available to promise is unknown', async () => {
+  it('should show not known, neutral, in the hero badge and the Available KPI when what can be sold is unknown', async () => {
     const mockApi = createMockApiClient({
       products: { getById: vi.fn().mockResolvedValue(sampleProduct) },
       inventory: {
@@ -322,9 +397,10 @@ describe('ProductDetailPage', () => {
 
     renderDetailPage(mockApi, true);
 
-    expect(await screen.findByTestId('product-stock-badge-unknown')).toHaveTextContent('Stock unknown');
+    expect(await screen.findByTestId('product-stock-badge-unknown')).toHaveTextContent('Stock not known');
     const kpiCard = await findAvailableKpiCard();
-    expect(within(kpiCard).getByText('Unknown')).toBeInTheDocument();
+    expect(within(kpiCard).getByTestId('stock-summary-atp')).toHaveTextContent('—');
+    expect(within(kpiCard).getByText('not known right now')).toBeInTheDocument();
     expect(kpiCard).not.toHaveClass('kpi-card--success');
     expect(within(kpiCard).queryByText('40')).not.toBeInTheDocument();
   });
@@ -370,7 +446,7 @@ describe('ProductDetailPage', () => {
     expect(await screen.findByTestId('stock-back-to-products')).toHaveAttribute('href', '/products');
   });
 
-  it('should render the stock panel as out-of-stock (not low-stock) when available to promise is exactly zero, and no stock column in the listings table', async () => {
+  it('should render the stock cell as out of stock (not low stock) when what can be sold is exactly zero', async () => {
     const mockApi = createMockApiClient({
       products: {
         getById: vi.fn().mockResolvedValue(multiVariantProduct),
@@ -420,13 +496,14 @@ describe('ProductDetailPage', () => {
       },
     );
 
-    const atp = await screen.findByTestId('stock-atp-SKU-001-M');
+    const row = await screen.findByTestId('stock-variant-row-SKU-001-M');
     await waitFor(() => {
-      expect(atp).toHaveTextContent('Out of stock');
+      expect(row).toHaveTextContent('Out of stock');
     });
-    expect(atp).not.toHaveTextContent('Low stock');
-    expect(screen.getByTestId('stock-master-SKU-001-M')).toHaveTextContent('0');
-    expect(container.querySelector('.stock-cell--error, .stock-cell--warning')).toBeNull();
+    expect(row).not.toHaveTextContent('Low stock');
+    expect(screen.getByTestId('stock-atp-SKU-001-M')).toHaveTextContent('0');
+    expect(container.querySelector('.stock-cell--error')).not.toBeNull();
+    expect(container.querySelector('.stock-cell--warning')).toBeNull();
   });
 
   it('should route the description through RichTextView instead of printing its tags (ADR-046)', async () => {
@@ -449,7 +526,7 @@ describe('ProductDetailPage', () => {
     expect(screen.queryByText(/<p>/)).toBeNull();
   });
 
-  it('should render the Available KPI with warning tone and an oversold description when some stock is oversold but the total remains positive', async () => {
+  it('should render the Available KPI with warning tone and a short count when reserved units exceed what the master holds but the total remains positive', async () => {
     const productWithTwoVariants: Product = {
       ...sampleProduct,
       variants: [
@@ -482,7 +559,14 @@ describe('ProductDetailPage', () => {
             inventoryItem({ id: 'ol_inv_2', productVariantId: 'ol_product_var2', availableQuantity: 10 }),
           ]),
         ),
-        stockView: vi.fn().mockResolvedValue(stockViewOf({ ol_product_var1: 0, ol_product_var2: 8 })),
+        stockView: vi
+          .fn()
+          .mockResolvedValue(
+            stockViewOf(
+              { ol_product_var1: 0, ol_product_var2: 8 },
+              { ol_product_var1: { masterAvailable: 40, heldCounted: 42 } },
+            ),
+          ),
       },
     });
 
@@ -490,8 +574,9 @@ describe('ProductDetailPage', () => {
 
     const kpiCard = await findAvailableKpiCard();
     await waitFor(() => expect(kpiCard).toHaveClass('kpi-card--warning'));
-    expect(within(kpiCard).getByText('8')).toBeInTheDocument();
-    expect(within(kpiCard).getByText(/1 oversold/)).toBeInTheDocument();
+    expect(within(kpiCard).getByTestId('stock-summary-atp')).toHaveTextContent('8');
+    expect(within(kpiCard).getByText(/1 short/)).toBeInTheDocument();
+    expect(within(kpiCard).queryByText(/oversold/i)).not.toBeInTheDocument();
   });
 
   it('should toggle the variant drawer and render the matching per-listing detail', async () => {
@@ -518,7 +603,7 @@ describe('ProductDetailPage', () => {
 
     renderDetailPage(mockApi);
 
-    const toggle = await screen.findByRole('button', { name: 'Toggle listings for SKU-001-M' });
+    const toggle = await screen.findByRole('button', { name: 'Toggle details for SKU-001-M' });
     expect(toggle).toHaveAttribute('aria-expanded', 'false');
 
     await user.click(toggle);
@@ -691,6 +776,257 @@ describe('ProductDetailPage', () => {
     expect(await screen.findByRole('heading', { name: 'Variants & stock (2)' })).toBeInTheDocument();
     expect(screen.queryByRole('heading', { name: 'Variants & stock' })).not.toBeInTheDocument();
     expect(container.querySelector('.variant-stock-table')).not.toBeNull();
+  });
+
+  it('should render exactly one variants table, with stock folded into it and no second table', async () => {
+    renderDetailPage(multiVariantApi({ ol_product_var1: RESERVED_VARIANT }), true);
+
+    await screen.findByTestId('stock-variant-row-SKU-001-M');
+    expect(document.querySelectorAll('table.variant-stock-table')).toHaveLength(1);
+    expect(screen.queryByTestId('stock-variants-table')).not.toBeInTheDocument();
+    expect(screen.queryByText('Listings & prices')).not.toBeInTheDocument();
+    const headers = within(document.querySelector('table.variant-stock-table') as HTMLElement)
+      .getAllByRole('columnheader')
+      .map((header) => header.textContent);
+    // The leading expand column is aria-hidden, so it is not a column header to a reader.
+    expect(headers).toEqual(['Variant', 'Tax rate', 'Stock', 'Listings', 'Price']);
+  });
+
+  it('should show what can be sold with a badge and the shop count behind it only when something is reserved', async () => {
+    renderDetailPage(multiVariantApi({ ol_product_var1: RESERVED_VARIANT }), true);
+
+    const reservedRow = await screen.findByTestId('stock-variant-row-SKU-001-M');
+    expect(await within(reservedRow).findByText('Low stock')).toBeInTheDocument();
+    expect(screen.getByTestId('stock-atp-SKU-001-M')).toHaveTextContent('3');
+    expect(reservedRow).toHaveTextContent('to sell');
+    expect(screen.getByTestId('stock-master-SKU-001-M')).toHaveTextContent('8 in PrestaShop');
+    expect(screen.getByTestId('stock-held-SKU-001-M')).toHaveTextContent('5 reserved');
+
+    const plainRow = screen.getByTestId('stock-variant-row-SKU-001-L');
+    expect(plainRow).toHaveTextContent('to sell');
+    expect(within(plainRow).queryByText(/reserved/)).not.toBeInTheDocument();
+    expect(screen.queryByTestId('stock-master-SKU-001-L')).not.toBeInTheDocument();
+  });
+
+  it('should say Short by N instead of Oversold when more is reserved than the master holds', async () => {
+    renderDetailPage(
+      multiVariantApi({
+        ol_product_var1: { ...RESERVED_VARIANT, masterAvailable: 2, availableToPromise: 0, heldCounted: 5 },
+      }),
+      true,
+    );
+
+    const row = await screen.findByTestId('stock-variant-row-SKU-001-M');
+    expect(await within(row).findByText('Short by 3')).toBeInTheDocument();
+    expect(row).not.toHaveTextContent(/oversold/i);
+  });
+
+  it('should show a dash and Not known for a product whose stock is not known, never a zero', async () => {
+    renderDetailPage(
+      multiVariantApi({
+        ol_product_var1: { availableToPromise: null, provenance: 'unknown', heldCounted: null },
+        ol_product_var2: { availableToPromise: null, provenance: 'unknown', heldCounted: null },
+      }),
+      true,
+    );
+
+    const row = await screen.findByTestId('stock-variant-row-SKU-001-M');
+    expect(await within(row).findByText('Not known')).toBeInTheDocument();
+    expect(screen.getByTestId('stock-atp-SKU-001-M')).toHaveTextContent('—');
+    expect(screen.getByTestId('stock-unknown-alert')).toBeInTheDocument();
+    expect(screen.getByTestId('stock-retry')).toHaveTextContent('Try again');
+  });
+
+  it('should label a variant the master stopped reporting as missing in the master', async () => {
+    renderDetailPage(
+      multiVariantApi({
+        ol_product_var1: {
+          masterAvailable: 0,
+          availableToPromise: 0,
+          heldCounted: 0,
+          livePositionCount: 0,
+          positions: [{ ...PS_POSITION, isStale: true }],
+        },
+      }),
+      true,
+    );
+
+    const row = await screen.findByTestId('stock-variant-row-SKU-001-M');
+    expect(await within(row).findByText('Missing in PrestaShop')).toBeInTheDocument();
+  });
+
+  it('should put every alert above the variants table', async () => {
+    renderDetailPage(
+      multiVariantApi({
+        ol_product_var1: { availableToPromise: null, provenance: 'unknown', heldCounted: null },
+      }),
+      true,
+    );
+
+    const alert = await screen.findByTestId('stock-unknown-alert');
+    const table = document.querySelector('table.variant-stock-table') as HTMLElement;
+    expect(alert.compareDocumentPosition(table) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it('should explain the sum, list the reserving orders on request and keep recorded-only holds out of it', async () => {
+    const user = userEvent.setup();
+    renderDetailPage(multiVariantApi({ ol_product_var1: RESERVED_VARIANT }), true);
+
+    await user.click(await screen.findByTestId('stock-variant-toggle-SKU-001-M'));
+
+    expect(screen.getByTestId('stock-formula-SKU-001-M')).toHaveTextContent(
+      '8 in PrestaShop − 5 reserved for 4 orders = 3 to sell',
+    );
+    expect(screen.getByTestId('stock-provenance-SKU-001-M')).toHaveTextContent('PrestaShop');
+    expect(screen.getByTestId('stock-provenance-SKU-001-M')).toHaveTextContent('worked out by OpenLinker');
+    expect(screen.getByTestId('stock-recorded-SKU-001-M')).toHaveTextContent(
+      "2 more are reserved for orders OpenLinker doesn't fulfil. They don't lower what you can sell.",
+    );
+    expect(screen.queryByTestId('stock-holds-SKU-001-M')).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Show the 4 orders' }));
+    expect(screen.getByTestId('stock-holds-SKU-001-M')).toBeInTheDocument();
+    expect(screen.getByTestId('stock-hold-#10482')).toHaveTextContent('2 reserved');
+    expect(screen.getByRole('link', { name: 'Order #10482' })).toHaveAttribute('href', '/orders/o1');
+  });
+
+  it('should add Sends and Last check to the listing card and keep the live Qty', async () => {
+    const user = userEvent.setup();
+    const mockApi = multiVariantApi({ ol_product_var1: RESERVED_VARIANT });
+    renderDetailPage(mockApi, true);
+
+    await user.click(await screen.findByTestId('stock-variant-toggle-SKU-001-M'));
+
+    const channels = await screen.findByTestId('stock-channels-SKU-001-M');
+    const card = within(channels).getByTestId('stock-channel-SKU-001-M-allegro-ALG-1');
+    expect(card).toHaveTextContent('Sends 1 (2 kept as buffer)');
+    expect(card).toHaveTextContent(/Last check .*: 1/);
+    expect(
+      screen.getByText(/Sends = what OpenLinker publishes\. Qty = what the offer shows now/),
+    ).toBeInTheDocument();
+  });
+
+  it('should disable Adjust stock with the reason for a variant kept in two locations', async () => {
+    renderDetailPage(
+      multiVariantApi({
+        ol_product_var1: {
+          ...RESERVED_VARIANT,
+          livePositionCount: 2,
+          positions: [PS_POSITION, { ...PS_POSITION, locationId: 'loc2', locationName: 'Back room' }],
+        },
+      }),
+      true,
+    );
+
+    const button = await screen.findByTestId('stock-adjust-SKU-001-M');
+    expect(button).toBeDisabled();
+    expect(screen.getByTestId('stock-adjust-hint-SKU-001-M')).toHaveTextContent(
+      'This variant is in 2 locations. Correct it in PrestaShop.',
+    );
+    expect(screen.getByTestId('stock-multi-location-alert')).toBeInTheDocument();
+    expect(screen.getByTestId('stock-positions-SKU-001-M')).toBeInTheDocument();
+  });
+
+  it('should show a two-shops banner and refuse corrections when two connections count one variant', async () => {
+    renderDetailPage(
+      multiVariantApi({
+        ol_product_var1: {
+          ...RESERVED_VARIANT,
+          livePositionCount: 2,
+          positions: [
+            PS_POSITION,
+            {
+              ...PS_POSITION,
+              locationId: null,
+              locationName: null,
+              sourceConnectionId: 'conn_woo',
+              sourceConnectionName: 'WooCommerce',
+              availableQuantity: 6,
+            },
+          ],
+        },
+      }),
+      true,
+    );
+
+    const banner = await screen.findByTestId('stock-multi-source-alert');
+    expect(banner).toHaveTextContent('PrestaShop and WooCommerce');
+    expect(banner).toHaveTextContent("new orders don't reserve it");
+    expect(screen.getByTestId('stock-adjust-SKU-001-M')).toBeDisabled();
+    expect(screen.getByTestId('stock-adjust-hint-SKU-001-M')).toHaveTextContent('Two shops count this variant');
+  });
+
+  it('should point the stock history at the variant whose link was clicked', async () => {
+    const user = userEvent.setup();
+    const listMovements = vi.fn().mockResolvedValue({ items: [], limit: 10, offset: 0 });
+    const mockApi = multiVariantApi(
+      { ol_product_var1: RESERVED_VARIANT },
+      { inventory: { list: vi.fn().mockResolvedValue(paginatedInventory([])), stockView: vi.fn().mockResolvedValue(stockViewOf({ ol_product_var1: 3, ol_product_var2: 8 }, withPlainSibling({ ol_product_var1: RESERVED_VARIANT }))), listMovements } },
+    );
+    renderDetailPage(mockApi, true);
+
+    await user.click(await screen.findByTestId('stock-variant-toggle-SKU-001-L'));
+    await user.click(screen.getByTestId('stock-movements-SKU-001-L'));
+
+    expect(screen.getByTestId('stock-history-variant')).toHaveValue('ol_product_var2');
+    await waitFor(() =>
+      expect(listMovements).toHaveBeenCalledWith(
+        expect.objectContaining({ productVariantId: 'ol_product_var2' }),
+        expect.anything(),
+      ),
+    );
+  });
+
+  it('should carry the headline figures on the Available tile', async () => {
+    renderDetailPage(multiVariantApi({ ol_product_var1: RESERVED_VARIANT }), true);
+
+    const kpiCard = await findAvailableKpiCard();
+    await waitFor(() => expect(within(kpiCard).getByTestId('stock-summary-atp')).toHaveTextContent('11'));
+    expect(within(kpiCard).getByTestId('stock-summary-master')).toHaveTextContent('16 in PrestaShop');
+    expect(within(kpiCard).getByTestId('stock-summary-held')).toHaveTextContent('5 reserved');
+    expect(await screen.findByTestId('stock-summary-synced')).toHaveTextContent('Stock synced');
+  });
+
+  it('should show the number and badge on a collapsed mobile card', async () => {
+    const viewport = mockMobileViewport();
+    try {
+      renderDetailPage(multiVariantApi({ ol_product_var1: RESERVED_VARIANT }), true);
+
+      const card = await screen.findByTestId('stock-variant-row-SKU-001-M');
+      expect(card).toHaveClass('variant-card');
+      expect(await within(card).findByText('Low stock')).toBeInTheDocument();
+      expect(screen.getByTestId('stock-atp-SKU-001-M')).toHaveTextContent('3');
+      expect(screen.getByTestId('stock-variant-toggle-SKU-001-M')).toHaveAttribute('aria-expanded', 'false');
+    } finally {
+      viewport.restore();
+    }
+  });
+
+  it('should disable Adjust stock for a viewer with the reason beside it', async () => {
+    renderWithProviders(
+      <Routes>
+        <Route path="/products/:id" element={<ProductDetailPage />} />
+      </Routes>,
+      {
+        apiClient: multiVariantApi({ ol_product_var1: RESERVED_VARIANT }),
+        route: '/products/ol_product_abc123',
+        sessionAdapter: createAuthenticatedSessionAdapter({
+          id: 'u',
+          username: 'viewer',
+          email: null,
+          role: 'viewer',
+          permissions: ['inventory:read'],
+          analyticsConsent: true,
+        }),
+      },
+    );
+
+    expect(await screen.findByTestId('stock-viewer-notice')).toHaveTextContent('view-only access');
+    const button = await screen.findByTestId('stock-adjust-SKU-001-M');
+    expect(button).toBeDisabled();
+    expect(screen.getByTestId('stock-adjust-hint-SKU-001-M')).toHaveTextContent(
+      'Only admins and operators can change stock.',
+    );
   });
 
   it('should open the gallery lightbox, navigate with the keyboard, and close it', async () => {

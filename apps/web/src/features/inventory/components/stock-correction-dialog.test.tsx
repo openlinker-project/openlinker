@@ -6,7 +6,8 @@ import { createMockApiClient, renderWithProviders } from '../../../test/test-uti
 import type { CorrectionTarget, CorrectStockResult } from '../api/inventory-correction.types';
 import type { StockViewVariant } from '../api/inventory.types';
 import { StockCorrectionDialog } from './stock-correction-dialog';
-import { StockPanel } from './stock-panel';
+import { buildStockRows } from '../lib/stock-row';
+import { StockActions } from './stock-variant-detail';
 
 afterEach(() => {
   cleanup();
@@ -114,14 +115,14 @@ describe('StockCorrectionDialog', () => {
     expect(screen.getByTestId('stock-correction-diff')).toHaveTextContent('6 → 9');
   });
 
-  it('should show Unknown for channels when the held count is unknown', async () => {
+  it('should show Not known for channels when the reserved count is unknown', async () => {
     renderDialog({}, { ...adjustTarget, stock: stock({ heldCounted: null }) });
     await screen.findByTestId('stock-correction-dialog');
 
     await userEvent.type(screen.getByTestId('stock-correction-quantity'), '9');
 
-    expect(screen.getByTestId('stock-correction-preview-atp')).toHaveTextContent('Unknown');
-    expect(screen.getByTestId('stock-correction-preview-allegro')).toHaveTextContent('Unknown');
+    expect(screen.getByTestId('stock-correction-preview-atp')).toHaveTextContent('Not known');
+    expect(screen.getByTestId('stock-correction-preview-allegro')).toHaveTextContent('Not known');
     expect(screen.getByTestId('stock-correction-preview-allegro')).not.toHaveTextContent(/\b[0-9]+\s*$/);
   });
 
@@ -316,24 +317,143 @@ describe('StockCorrectionDialog', () => {
   });
 });
 
+describe('StockCorrectionDialog outcomes and guards', () => {
+  it('should show the count the dialog started from, not a question mark, when the master refuses', async () => {
+    renderDialog({
+      correctStock: vi.fn().mockResolvedValue(
+        result({ status: 'refused', quantityBefore: null, quantityAfter: null, requestedDelta: 3, refusal: null }),
+      ),
+    });
+    await screen.findByTestId('stock-correction-dialog');
+    await userEvent.type(screen.getByTestId('stock-correction-quantity'), '9');
+    await userEvent.click(screen.getByTestId('stock-correction-submit'));
+
+    const refused = await screen.findByTestId('stock-correction-refused');
+    expect(refused).toHaveTextContent('Attempted: 6 → 9');
+    expect(refused).not.toHaveTextContent('?');
+  });
+
+  it('should show the count the dialog started from, not a question mark, when the outcome is in doubt', async () => {
+    renderDialog({
+      correctStock: vi.fn().mockResolvedValue(
+        result({ status: 'in_doubt', quantityBefore: null, quantityAfter: null, requestedDelta: 3 }),
+      ),
+    });
+    await screen.findByTestId('stock-correction-dialog');
+    await userEvent.type(screen.getByTestId('stock-correction-quantity'), '9');
+    await userEvent.click(screen.getByTestId('stock-correction-submit'));
+
+    const inDoubt = await screen.findByTestId('stock-correction-in-doubt');
+    expect(inDoubt).toHaveTextContent('Sent: 6 → 9');
+    expect(inDoubt).not.toHaveTextContent('?');
+  });
+
+  it('should show the operator target, not the server delta, when a set-mode correction is refused', async () => {
+    renderDialog({
+      correctStock: vi.fn().mockResolvedValue(
+        result({ status: 'refused', quantityBefore: null, quantityAfter: null, requestedDelta: 2, refusal: null }),
+      ),
+    });
+    await screen.findByTestId('stock-correction-dialog');
+    await userEvent.type(screen.getByTestId('stock-correction-quantity'), '9');
+    await userEvent.click(screen.getByTestId('stock-correction-submit'));
+
+    expect(await screen.findByTestId('stock-correction-refused')).toHaveTextContent('Attempted: 6 → 9');
+  });
+
+  it('should warn but not block when a removal is larger than the stock OpenLinker shows', async () => {
+    renderDialog({});
+    await screen.findByTestId('stock-correction-dialog');
+
+    await userEvent.click(screen.getByTestId('stock-correction-mode-delta'));
+    await userEvent.type(screen.getByTestId('stock-correction-delta'), '-7');
+
+    // The mirror can lag the master; the server judges against a fresh read.
+    expect(screen.getByText(/OpenLinker shows only 6 in PrestaShop - Ceramika Nowak\./)).toBeInTheDocument();
+    expect(screen.queryByText(/remove at most/)).toBeNull();
+    expect(screen.getByTestId('stock-correction-diff')).toHaveTextContent('6 → 0');
+  });
+
+  it('should allow removing exactly the stock that is there', async () => {
+    renderDialog({});
+    await screen.findByTestId('stock-correction-dialog');
+
+    await userEvent.click(screen.getByTestId('stock-correction-mode-delta'));
+    await userEvent.type(screen.getByTestId('stock-correction-delta'), '-6');
+
+    expect(screen.getByTestId('stock-correction-submit')).toBeEnabled();
+  });
+
+  it('should name the master count when the server refuses with insufficient-stock', async () => {
+    renderDialog({
+      correctStock: vi.fn().mockRejectedValue(new ApiError('no', 409, { code: 'insufficient-stock', currentQuantity: 5 })),
+    });
+    await screen.findByTestId('stock-correction-dialog');
+    await userEvent.type(screen.getByTestId('stock-correction-quantity'), '2');
+    await userEvent.click(screen.getByTestId('stock-correction-submit'));
+
+    expect(await screen.findByTestId('stock-correction-error')).toHaveTextContent(
+      'PrestaShop - Ceramika Nowak has only 5, so nothing changed.',
+    );
+  });
+
+  it('should not claim a read happened when the master cannot be reached', async () => {
+    renderDialog({
+      correctStock: vi.fn().mockRejectedValue(new ApiError('down', 409, { code: 'master-unreadable' })),
+    });
+    await screen.findByTestId('stock-correction-dialog');
+    await userEvent.type(screen.getByTestId('stock-correction-quantity'), '9');
+    await userEvent.click(screen.getByTestId('stock-correction-submit'));
+
+    const error = await screen.findByTestId('stock-correction-error');
+    expect(error).toHaveTextContent('Nothing changed');
+    expect(error).toHaveTextContent('PrestaShop - Ceramika Nowak');
+  });
+
+  it('should leave out the "within a minute" promise when the product has no channels', async () => {
+    renderDialog({}, { ...adjustTarget, stock: stock({ channels: [] }) });
+    await screen.findByTestId('stock-correction-dialog');
+    await userEvent.type(screen.getByTestId('stock-correction-quantity'), '9');
+
+    expect(screen.queryByText(/usually catch up within a minute/i)).not.toBeInTheDocument();
+  });
+
+  it('should keep the "within a minute" promise when the product has channels', async () => {
+    renderDialog({});
+    await screen.findByTestId('stock-correction-dialog');
+    await userEvent.type(screen.getByTestId('stock-correction-quantity'), '9');
+
+    expect(screen.getByText(/usually catch up within a minute/i)).toBeInTheDocument();
+  });
+});
+
+
 describe('Adjust stock entry point', () => {
   it('should not open the dialog for a view-only session', async () => {
     const onAdjust = vi.fn();
-    const api = createMockApiClient({});
+    const variant = { id: 'v1', sku: 'KCN-350-GRY', attributes: null };
+    const rows = buildStockRows({
+      variants: [variant],
+      inventoryItems: [],
+      stockByVariant: new Map([['v1', stock()]]),
+      pending: false,
+      restricted: false,
+      canAdjust: false,
+      fallbackMasterName: null,
+    });
     renderWithProviders(
-      <StockPanel
-        productId="p1"
-        variants={[{ id: 'v1', sku: 'KCN-350-GRY', attributes: null }]}
-        inventoryItems={[]}
-        canAdjust={false}
-        onAdjust={onAdjust}
+      <StockActions
+        row={rows.get('v1')!}
+        stock={{ rows, channelsStatus: 'ok', canAdjust: false, onAdjust }}
       />,
-      { apiClient: api },
+      { apiClient: createMockApiClient({}) },
     );
 
     const button = await screen.findByTestId('stock-adjust-KCN-350-GRY');
     expect(button).toBeDisabled();
-    expect(screen.getByTestId('stock-viewer-notice')).toBeInTheDocument();
+    expect(screen.getByTestId('stock-adjust-hint-KCN-350-GRY')).toHaveTextContent(
+      'Only admins and operators can change stock.',
+    );
     await userEvent.click(button);
     expect(onAdjust).not.toHaveBeenCalled();
   });
