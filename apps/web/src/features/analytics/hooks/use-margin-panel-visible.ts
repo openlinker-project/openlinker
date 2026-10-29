@@ -2,12 +2,12 @@
  * Margin panel visibility gate
  *
  * The single place that decides whether the Margin panel renders on
- * /analytics. Today it is always visible; the `trackMargin` admin setting
- * (a later phase) is read here and nowhere else, so turning the panel off
- * is one edit.
+ * /analytics: it is visible unless the `trackMargin` admin setting is off.
  *
  * @module features/analytics/hooks
  */
+import { useTrackMargin } from './use-track-margin';
+
 export function useMarginPanelVisible(): boolean {
-  return true;
+  return useTrackMargin();
 }

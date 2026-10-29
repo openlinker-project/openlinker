@@ -72,6 +72,11 @@ export type {
 export { MarginPanel, ANALYTICS_MARGIN_ANCHOR_ID } from './components/margin-panel';
 export { ExportCsvButton } from './components/export-csv-button';
 export { useMarginPanelVisible } from './hooks/use-margin-panel-visible';
+export { useTrackMargin } from './hooks/use-track-margin';
+export {
+  MarginCoverageBanner,
+  MARGIN_COVERAGE_BANNER_THRESHOLD,
+} from './components/margin-coverage-banner';
 export { useMarginAnalyticsQuery, useMarginProductsQuery } from './hooks/use-margin-analytics-query';
 export type {
   MarginAnalytics,

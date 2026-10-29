@@ -36,6 +36,7 @@ import {
   useAnalyticsSettingsQuery,
   useAnalyticsTrustQuery,
   useMarginPanelVisible,
+  MarginCoverageBanner,
   useSalesAnalyticsQuery,
   type CoverageCategory,
   type DisplayCurrencyRateBasis,
@@ -224,6 +225,7 @@ export function AnalyticsPage(): ReactElement {
           </div>
         }
       />
+      {marginVisible ? <MarginCoverageBanner filters={{ from, to }} /> : null}
       <AnalyticsConvertNote
         filters={salesFilters}
         coverage={coverageQuery.data}

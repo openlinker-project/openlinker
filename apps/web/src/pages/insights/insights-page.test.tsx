@@ -8,6 +8,7 @@ import {
   sampleConnection,
 } from '../../test/test-utils';
 import { InsightsPage } from './insights-page';
+import { costCoverage } from '../../test/cost-test-fixtures';
 import type { Connection } from '../../features/connections/api/connections.types';
 import type {
   JobType,
@@ -605,6 +606,57 @@ describe('InsightsPage', () => {
         'href',
         '/jobs-logs?status=dead&connectionId=conn_failing'
       );
+    });
+  });
+});
+
+describe('InsightsPage data to fill in (#3588)', () => {
+  afterEach(cleanup);
+
+  it('should list sold variants without a cost with the top-3 share', async () => {
+    renderWithProviders(<InsightsPage />, {
+      apiClient: createMockApiClient({
+        products: {
+          getCostCoverage: vi.fn().mockResolvedValue(costCoverage()),
+        },
+      }),
+    });
+    const item = await screen.findByTestId('insights-gap-cost-price');
+    expect(item).toHaveTextContent('9 variants you sold in the last 30 days have no cost price');
+    expect(item).toHaveTextContent('3 of them make up 74% of that.');
+    expect(screen.getByTestId('insights-gap-cost-price-open')).toHaveAttribute(
+      'href',
+      '/products/cost-prices'
+    );
+  });
+
+  it('should render no panel when nothing sold is missing a cost', async () => {
+    renderWithProviders(<InsightsPage />, { apiClient: createMockApiClient() });
+    await screen.findByText('Operations overview');
+    expect(screen.queryByTestId('insights-setup-gaps')).not.toBeInTheDocument();
+  });
+
+  it('should render no panel when margin tracking is off', async () => {
+    renderWithProviders(<InsightsPage />, {
+      apiClient: createMockApiClient({
+        products: { getCostCoverage: vi.fn().mockResolvedValue(costCoverage()) },
+        analyticsSettings: {
+          getSettings: vi.fn().mockResolvedValue({
+            displayCurrency: 'PLN',
+            displayCurrencySource: 'default',
+            rateBasis: 'current',
+            includeBackfilledTaxRatesInNetSales: false,
+            netGrossBasis: 'gross',
+            trackMargin: false,
+            updatedAt: null,
+            updatedByUserId: null,
+          }),
+        },
+      }),
+    });
+    await screen.findByText('Operations overview');
+    await waitFor(() => {
+      expect(screen.queryByTestId('insights-setup-gaps')).not.toBeInTheDocument();
     });
   });
 });
