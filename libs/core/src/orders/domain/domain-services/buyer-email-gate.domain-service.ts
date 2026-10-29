@@ -9,18 +9,12 @@
 import {
   MarketplaceBuyerEmailTemplateValues,
   readBuyerEmailsConfig,
+  type BuyerEmailChannelKind,
   type BuyerEmailTemplate,
   type ConnectionConfig,
 } from '@openlinker/core/identifier-mapping';
 
-export const BuyerEmailSuppressionReasonValues = [
-  'emails-off-for-connection',
-  'template-not-enabled',
-  'template-not-allowed-on-channel',
-  'no-buyer-address',
-  'already-sent',
-] as const;
-export type BuyerEmailSuppressionReason = (typeof BuyerEmailSuppressionReasonValues)[number];
+import type { BuyerEmailSuppressionReason } from '../types/buyer-email-delivery.types';
 
 /** The operator-facing sentence for each reason - one source for the run log and the timeline. */
 export const BUYER_EMAIL_SUPPRESSION_MESSAGE = {
@@ -29,10 +23,10 @@ export const BUYER_EMAIL_SUPPRESSION_MESSAGE = {
   'template-not-allowed-on-channel':
     'A marketplace connection does not send this email; the shop sends it.',
   'no-buyer-address': 'No buyer email address is stored for this order.',
-  'already-sent': 'The buyer already received this email.',
+  'already-sent': 'This email was already sent, or is being sent, for this subject.',
 } as const satisfies Record<BuyerEmailSuppressionReason, string>;
 
-export type BuyerEmailChannelKind = 'marketplace' | 'shop';
+export type { BuyerEmailChannelKind };
 
 export interface BuyerEmailGateInput {
   connectionConfig: ConnectionConfig | null | undefined;

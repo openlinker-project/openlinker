@@ -104,13 +104,32 @@ describe('OrderRecordService — buyer-email triggers (#3554)', () => {
     await expect(service.updateFulfillmentState(ORDER_ID, 'dispatched')).resolves.toBeUndefined();
   });
 
-  it('should fire order.received with the ingestion instant', async () => {
+  it('should fire order.received dated by the placement, evaluated at the ingestion instant', async () => {
     const at = new Date('2026-10-29T10:00:00Z');
+    const placedAt = new Date('2026-03-15T08:00:00Z');
+    const base = buildRecord(null, null);
+    const record = Object.assign(Object.create(Object.getPrototypeOf(base)), base, {
+      placedAt,
+    }) as OrderRecord;
 
-    await service.notifyOrderReceived(buildRecord(null, null), at);
+    await service.notifyOrderReceived(record, at);
 
     expect(emit).toHaveBeenCalledWith(
-      expect.objectContaining({ trigger: 'order.received', now: at })
+      expect.objectContaining({
+        trigger: 'order.received',
+        now: at,
+        facts: expect.objectContaining({ occurredAt: placedAt }),
+      })
+    );
+  });
+
+  it('should date order.received by createdAt when the source reported no placement', async () => {
+    await service.notifyOrderReceived(buildRecord(null, null), new Date('2026-10-29T10:00:00Z'));
+
+    expect(emit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        facts: expect.objectContaining({ occurredAt: new Date('2026-04-01T00:00:00Z') }),
+      })
     );
   });
 

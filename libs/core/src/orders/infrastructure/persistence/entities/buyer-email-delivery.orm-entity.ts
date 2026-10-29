@@ -11,6 +11,17 @@ import { Column, CreateDateColumn, Entity, Index, PrimaryGeneratedColumn } from 
 
 @Entity('buyer_email_deliveries')
 @Index('IDX_buyer_email_deliveries_order_created', ['internalOrderId', 'createdAt'])
+// The at-most-once send slot (#3554): one live claim or sent row per subject.
+// Declared here under the migration's name so the `synchronize`-built test
+// schema enforces it too.
+@Index(
+  'UQ_buyer_email_deliveries_subject_claim',
+  ['internalOrderId', 'templateKey', 'subjectRef'],
+  {
+    unique: true,
+    where: `"outcome" IN ('pending', 'sent')`,
+  }
+)
 export class BuyerEmailDeliveryOrmEntity {
   @PrimaryGeneratedColumn('uuid')
   id!: string;

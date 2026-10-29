@@ -209,7 +209,10 @@ export interface IOrderRecordService {
 
   /**
    * Fire the `order.received` automation trigger (#3554, D8) for an order
-   * persisted for the first time. Best-effort: never throws.
+   * persisted for the first time. Best-effort: never throws. The fact's instant
+   * is the order's own `placedAt` (falling back to `createdAt`), so the rule
+   * retroactivity floor keeps an imported back catalogue from firing;
+   * `receivedAt` is only the evaluation clock.
    */
   notifyOrderReceived(record: OrderRecord, receivedAt: Date): Promise<void>;
 

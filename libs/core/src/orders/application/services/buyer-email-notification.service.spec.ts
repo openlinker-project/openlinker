@@ -3,7 +3,7 @@ import type { Connection, ConnectionPort } from '@openlinker/core/identifier-map
 import type { MailerPort } from '@openlinker/core/users';
 import type { BuyerEmailDeliveryRepositoryPort } from '../../domain/ports/buyer-email-delivery-repository.port';
 import { BuyerEmailDelivery } from '../../domain/entities/buyer-email-delivery.entity';
-import { BuyerEmailNotificationService, channelKindOf } from './buyer-email-notification.service';
+import { BuyerEmailNotificationService } from './buyer-email-notification.service';
 
 const connection = (config: Record<string, unknown>, enabledCapabilities: string[]): Connection =>
   ({ id: 'conn-1', config, enabledCapabilities }) as unknown as Connection;
@@ -32,24 +32,31 @@ describe('BuyerEmailNotificationService', () => {
   };
 
   beforeEach(() => {
+    const delivery = (
+      row: {
+        internalOrderId: string;
+        connectionId: string;
+        subjectRef: string;
+        recipient: string | null;
+      },
+      outcome: 'pending' | 'suppressed'
+    ): BuyerEmailDelivery =>
+      new BuyerEmailDelivery(
+        'd-1',
+        row.internalOrderId,
+        row.connectionId,
+        'shipped',
+        row.subjectRef,
+        outcome,
+        null,
+        row.recipient,
+        new Date()
+      );
     repository = {
-      record: jest.fn((row) =>
-        Promise.resolve(
-          new BuyerEmailDelivery(
-            'd-1',
-            row.internalOrderId,
-            row.connectionId,
-            row.templateKey,
-            row.subjectRef,
-            row.outcome,
-            row.suppressionReason,
-            row.recipient,
-            new Date()
-          )
-        )
-      ),
-      hasSent: jest.fn().mockResolvedValue(false),
-      markBounced: jest.fn(),
+      recordSuppression: jest.fn((row) => Promise.resolve(delivery(row, 'suppressed'))),
+      claimSend: jest.fn((row) => Promise.resolve(delivery(row, 'pending'))),
+      settleClaim: jest.fn().mockResolvedValue(undefined),
+      releaseClaim: jest.fn().mockResolvedValue(undefined),
       listByOrder: jest.fn(),
     };
     connections = { get: jest.fn() };
@@ -69,23 +76,26 @@ describe('BuyerEmailNotificationService', () => {
 
     expect(result).toMatchObject({ status: 'suppressed', reason: 'emails-off-for-connection' });
     expect(mailer.sendEmail).not.toHaveBeenCalled();
-    expect(repository.record).toHaveBeenCalledTimes(1);
-    expect(repository.record).toHaveBeenCalledWith(
-      expect.objectContaining({ outcome: 'suppressed' })
+    expect(repository.claimSend).not.toHaveBeenCalled();
+    expect(repository.recordSuppression).toHaveBeenCalledWith(
+      expect.objectContaining({ suppressionReason: 'emails-off-for-connection' })
     );
   });
 
-  it('should send with the per-template reply-to and record one sent row when opted in', async () => {
+  it('should claim the slot, send with the per-template reply-to and settle it as sent', async () => {
     connections.get.mockResolvedValue(connection(optedIn, ['OfferManager']));
 
     const result = await service.send(input);
 
     expect(result).toEqual({ status: 'sent', deliveryId: 'd-1' });
+    expect(repository.claimSend).toHaveBeenCalledTimes(1);
     expect(mailer.sendEmail).toHaveBeenCalledWith(
       expect.objectContaining({ to: input.recipient, replyTo: 'help@shop.pl' })
     );
-    expect(repository.record).toHaveBeenCalledTimes(1);
-    expect(repository.record).toHaveBeenCalledWith(expect.objectContaining({ outcome: 'sent' }));
+    expect(repository.settleClaim).toHaveBeenCalledWith('d-1', 'sent');
+    expect(repository.claimSend.mock.invocationCallOrder[0]).toBeLessThan(
+      mailer.sendEmail.mock.invocationCallOrder[0]
+    );
   });
 
   it('should record bounced when the mail server refuses the recipient', async () => {
@@ -97,33 +107,40 @@ describe('BuyerEmailNotificationService', () => {
     const result = await service.send(input);
 
     expect(result.status).toBe('bounced');
-    expect(repository.record).toHaveBeenCalledWith(expect.objectContaining({ outcome: 'bounced' }));
+    expect(repository.settleClaim).toHaveBeenCalledWith('d-1', 'bounced');
+    expect(repository.releaseClaim).not.toHaveBeenCalled();
   });
 
-  it('should not send twice for the same subject', async () => {
+  it('should not send when the subject slot is already held', async () => {
     connections.get.mockResolvedValue(connection(optedIn, ['OfferManager']));
-    repository.hasSent.mockResolvedValue(true);
+    repository.claimSend.mockResolvedValue(null);
 
     const result = await service.send(input);
 
     expect(result).toMatchObject({ status: 'suppressed', reason: 'already-sent' });
     expect(mailer.sendEmail).not.toHaveBeenCalled();
+    expect(repository.recordSuppression).toHaveBeenCalledWith(
+      expect.objectContaining({ suppressionReason: 'already-sent' })
+    );
   });
 
-  it('should record nothing when the transport is unreachable', async () => {
+  it('should release the slot when the transport is unreachable', async () => {
     connections.get.mockResolvedValue(connection(optedIn, ['OfferManager']));
     mailer.sendEmail.mockRejectedValue(new Error('connect ECONNREFUSED'));
 
     const result = await service.send(input);
 
     expect(result.status).toBe('failed');
-    expect(repository.record).not.toHaveBeenCalled();
+    expect(repository.releaseClaim).toHaveBeenCalledWith('d-1');
+    expect(repository.settleClaim).not.toHaveBeenCalled();
   });
-});
 
-describe('channelKindOf', () => {
-  it('should read a shop carrying OfferManager and ProductMaster as a shop', () => {
-    expect(channelKindOf(['ProductMaster', 'OfferManager'])).toBe('shop');
-    expect(channelKindOf(['OfferManager', 'OrderSource'])).toBe('marketplace');
+  it('should still report sent when settling the claim fails, since the email has gone', async () => {
+    connections.get.mockResolvedValue(connection(optedIn, ['OfferManager']));
+    repository.settleClaim.mockRejectedValue(new Error('db down'));
+
+    const result = await service.send(input);
+
+    expect(result).toEqual({ status: 'sent', deliveryId: 'd-1' });
   });
 });

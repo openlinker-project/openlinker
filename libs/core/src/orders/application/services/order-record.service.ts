@@ -740,7 +740,16 @@ export class OrderRecordService implements IOrderRecordService {
   }
 
   async notifyOrderReceived(record: OrderRecord, receivedAt: Date): Promise<void> {
-    await this.emitOrderTrigger('order.received', record, receivedAt);
+    // The fact is the BUYER placing the order, not OpenLinker reading it: the
+    // retroactivity floor compares this instant with the rule's creation, so a
+    // first sync of a shop's back catalogue must not read as fresh orders and
+    // email every past buyer (#3554 review).
+    await this.emitOrderTrigger(
+      'order.received',
+      record,
+      record.placedAt ?? record.createdAt,
+      receivedAt
+    );
   }
 
   async notifyDocumentIssued(internalOrderId: string, issuedAt: Date): Promise<void> {
@@ -1126,13 +1135,14 @@ export class OrderRecordService implements IOrderRecordService {
   private async emitOrderTrigger(
     trigger: 'order.received' | 'order.shipped' | 'order.document_issued',
     record: OrderRecord,
-    occurredAt: Date
+    occurredAt: Date,
+    now: Date = occurredAt
   ): Promise<void> {
     try {
       await this.automationEmission.emit({
         trigger,
         facts: buildOrderAutomationFacts(record, occurredAt),
-        now: occurredAt,
+        now,
       });
     } catch (error) {
       this.logger.warn(

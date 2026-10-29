@@ -2,10 +2,10 @@
  * Buyer Email Delivery persistence Integration Test (#3554)
  *
  * Proves `buyer_email_deliveries` against real Postgres: every outcome is
- * recorded and read back newest first for its order, the at-most-once check
- * sees only SENT rows for the same subject, a later bounce moves a sent row to
- * bounced exactly once, and a row this build cannot read is left out of the
- * timeline rather than shown as something it may not be.
+ * recorded and read back newest first for its order, the at-most-once send
+ * slot admits exactly one of two concurrent claims for a subject and frees
+ * itself on a release or a bounce, and a row this build cannot read is left
+ * out of the timeline rather than shown as something it may not be.
  *
  * @module apps/api/test/integration/orders
  */
@@ -25,8 +25,6 @@ const base = {
   connectionId: 'conn-1',
   templateKey: 'return-received' as const,
   subjectRef: 'ol_return_1',
-  outcome: 'sent' as const,
-  suppressionReason: null,
   recipient: 'buyer@example.com',
 };
 
@@ -49,13 +47,10 @@ describe('buyer_email_deliveries persistence (integration)', () => {
     await teardownTestHarness();
   });
 
-  it('should record each outcome and list an order newest first', async () => {
-    await repository.record({
-      ...base,
-      outcome: 'suppressed',
-      suppressionReason: 'emails-off-for-connection',
-    });
-    await repository.record({ ...base });
+  it('should record a suppression and a settled send, newest first', async () => {
+    await repository.recordSuppression({ ...base, suppressionReason: 'emails-off-for-connection' });
+    const claim = await repository.claimSend({ ...base });
+    await repository.settleClaim(claim!.id, 'sent');
 
     const rows = await repository.listByOrder('ol_order_1', 10);
 
@@ -63,33 +58,39 @@ describe('buyer_email_deliveries persistence (integration)', () => {
     expect(rows[1]?.suppressionReason).toBe('emails-off-for-connection');
   });
 
-  it('should see a sent email for the same subject only', async () => {
-    await repository.record({ ...base });
-    await repository.record({
-      ...base,
-      subjectRef: 'ol_return_2',
-      outcome: 'suppressed',
-      suppressionReason: 'template-not-enabled',
-    });
+  it('should let exactly one of two concurrent claims for one subject win', async () => {
+    // A return received in two parcels on two lines: nothing serialises the
+    // two firings, so the index must.
+    const [first, second] = await Promise.all([
+      repository.claimSend({ ...base }),
+      repository.claimSend({ ...base }),
+    ]);
 
-    expect(await repository.hasSent('ol_order_1', 'return-received', 'ol_return_1')).toBe(true);
-    expect(await repository.hasSent('ol_order_1', 'return-received', 'ol_return_2')).toBe(false);
-    expect(await repository.hasSent('ol_order_1', 'shipped', 'ol_return_1')).toBe(false);
+    expect([first, second].filter((claim) => claim !== null)).toHaveLength(1);
   });
 
-  it('should move a sent row to bounced exactly once', async () => {
-    const sent = await repository.record({ ...base });
+  it('should keep the slot once sent, and scope it to the subject', async () => {
+    const claim = await repository.claimSend({ ...base });
+    await repository.settleClaim(claim!.id, 'sent');
 
-    expect(await repository.markBounced(sent.id)).toBe(true);
-    expect(await repository.markBounced(sent.id)).toBe(false);
+    expect(await repository.claimSend({ ...base })).toBeNull();
+    expect(await repository.claimSend({ ...base, subjectRef: 'ol_return_2' })).not.toBeNull();
+    expect(await repository.claimSend({ ...base, templateKey: 'shipped' })).not.toBeNull();
+  });
 
-    const [row] = await repository.listByOrder('ol_order_1', 10);
-    expect(row?.outcome).toBe('bounced');
+  it('should free the slot when a claim is released or bounces', async () => {
+    const released = await repository.claimSend({ ...base });
+    await repository.releaseClaim(released!.id);
+    const bounced = await repository.claimSend({ ...base });
+    expect(bounced).not.toBeNull();
+    await repository.settleClaim(bounced!.id, 'bounced');
+
+    expect(await repository.claimSend({ ...base })).not.toBeNull();
   });
 
   it('should leave out a row this build cannot read', async () => {
-    await repository.record({ ...base });
-    await orm.insert({ ...base, templateKey: 'marketing', outcome: 'sent' });
+    await repository.recordSuppression({ ...base, suppressionReason: 'template-not-enabled' });
+    await orm.insert({ ...base, templateKey: 'marketing', outcome: 'sent', suppressionReason: null });
 
     const rows = await repository.listByOrder('ol_order_1', 10);
 

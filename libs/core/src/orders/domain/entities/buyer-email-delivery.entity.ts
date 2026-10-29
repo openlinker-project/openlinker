@@ -8,8 +8,10 @@
  * @module libs/core/src/orders/domain/entities
  */
 import type { BuyerEmailTemplate } from '@openlinker/core/identifier-mapping';
-import type { BuyerEmailSuppressionReason } from '../domain-services/buyer-email-gate.domain-service';
-import type { BuyerEmailOutcome } from '../types/buyer-email-delivery.types';
+import type {
+  BuyerEmailOutcome,
+  BuyerEmailSuppressionReason,
+} from '../types/buyer-email-delivery.types';
 
 export class BuyerEmailDelivery {
   constructor(

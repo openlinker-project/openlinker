@@ -9,7 +9,7 @@
  */
 import type { BuyerEmailTemplate } from '@openlinker/core/identifier-mapping';
 import type { BuyerEmailDelivery } from '../../domain/entities/buyer-email-delivery.entity';
-import type { BuyerEmailSuppressionReason } from '../../domain/domain-services/buyer-email-gate.domain-service';
+import type { BuyerEmailSuppressionReason } from '../../domain/types/buyer-email-delivery.types';
 
 export interface SendBuyerEmailInput {
   internalOrderId: string;
@@ -29,8 +29,8 @@ export interface SendBuyerEmailInput {
 
 /**
  * `failed` means nothing reached a recipient's server and nothing was recorded:
- * the connection could not be read, no mailer is bound, or the transport was
- * unreachable. It is the caller's to report (an automation step marks itself
+ * the connection could not be read, no mailer is bound, the send could not be
+ * claimed, or the transport was unreachable (its claim is then released). It is the caller's to report (an automation step marks itself
  * failed).
  */
 export type SendBuyerEmailResult =
@@ -41,7 +41,5 @@ export type SendBuyerEmailResult =
 
 export interface IBuyerEmailNotificationService {
   send(input: SendBuyerEmailInput): Promise<SendBuyerEmailResult>;
-  /** A bounce reported after the send. `false` when no sent row has that id. */
-  recordBounce(deliveryId: string): Promise<boolean>;
   listForOrder(internalOrderId: string): Promise<BuyerEmailDelivery[]>;
 }
