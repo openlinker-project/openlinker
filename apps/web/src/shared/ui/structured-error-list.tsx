@@ -26,6 +26,9 @@
  */
 import { useCallback, useState, type ReactElement } from 'react';
 import type { StructuredError, StructuredErrorTranslation } from '../types/structured-error.types';
+import { useCopy } from '../i18n/use-copy';
+import { interpolate } from '../i18n/interpolate';
+import { uiCopy } from './ui.copy';
 
 // Re-exported so existing consumers (`import type { StructuredError } from
 // '.../shared/ui/structured-error-list'`) keep working. Canonical source
@@ -43,6 +46,7 @@ export function StructuredErrorList({
   translate,
   className = '',
 }: StructuredErrorListProps): ReactElement | null {
+  const copy = useCopy(uiCopy).structuredErrors;
   if (!errors || errors.length === 0) {
     return null;
   }
@@ -50,7 +54,7 @@ export function StructuredErrorList({
   const classes = ['structured-error-list', className].filter(Boolean).join(' ');
 
   return (
-    <ul className={classes} aria-label="Errors">
+    <ul className={classes} aria-label={copy.label}>
       {errors.map((error, index) => (
         <StructuredErrorRow
           key={`${error.code}-${error.field ?? 'no-field'}-${index}`}
@@ -68,6 +72,7 @@ interface StructuredErrorRowProps {
 }
 
 function StructuredErrorRow({ error, translate }: StructuredErrorRowProps): ReactElement {
+  const copy = useCopy(uiCopy).structuredErrors;
   const translation = translate?.(error) ?? null;
   const primaryMessage = translation?.message ?? error.message;
 
@@ -79,7 +84,7 @@ function StructuredErrorRow({ error, translate }: StructuredErrorRowProps): Reac
         <span className="structured-error-list__message">{primaryMessage}</span>
         {translation ? (
           <details className="structured-error-list__raw">
-            <summary>Original message</summary>
+            <summary>{copy.original}</summary>
             <span className="structured-error-list__raw-body">{error.message}</span>
           </details>
         ) : null}
@@ -106,6 +111,7 @@ function StructuredErrorRow({ error, translate }: StructuredErrorRowProps): Reac
  */
 function FieldBreadcrumb({ path }: { path: string }): ReactElement {
   const segments = path.split('.').filter((s) => s.length > 0);
+  const copy = useCopy(uiCopy).structuredErrors;
   const [copied, setCopied] = useState(false);
 
   const handleCopy = useCallback(() => {
@@ -128,10 +134,14 @@ function FieldBreadcrumb({ path }: { path: string }): ReactElement {
         type="button"
         className="structured-error-list__field structured-error-list__field--single mono-text"
         onClick={handleCopy}
-        aria-label={copied ? `Copied ${path}` : `Copy field path ${path}`}
+        aria-label={
+        copied
+          ? interpolate(copy.copiedPath, { path })
+          : interpolate(copy.copyPath, { path })
+      }
       >
         {segments[0]}
-        {copied ? <span className="structured-error-list__copied">copied</span> : null}
+        {copied ? <span className="structured-error-list__copied">{copy.copied}</span> : null}
       </button>
     );
   }
@@ -144,7 +154,11 @@ function FieldBreadcrumb({ path }: { path: string }): ReactElement {
       type="button"
       className="structured-error-list__field mono-text"
       onClick={handleCopy}
-      aria-label={copied ? `Copied ${path}` : `Copy field path ${path}`}
+      aria-label={
+        copied
+          ? interpolate(copy.copiedPath, { path })
+          : interpolate(copy.copyPath, { path })
+      }
     >
       {trail.map((seg, i) => (
         <span key={i} className="structured-error-list__field-trail">
@@ -155,7 +169,7 @@ function FieldBreadcrumb({ path }: { path: string }): ReactElement {
         </span>
       ))}
       <span className="structured-error-list__field-leaf">{leaf}</span>
-      {copied ? <span className="structured-error-list__copied">copied</span> : null}
+      {copied ? <span className="structured-error-list__copied">{copy.copied}</span> : null}
     </button>
   );
 }

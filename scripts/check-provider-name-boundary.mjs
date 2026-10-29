@@ -10,7 +10,9 @@
  *
  * Bans `eparagony`, `ksef`, `paragon` and `kasa` (case-insensitive, whole
  * word) from operator-facing copy in `apps/web/src/**` outside
- * `apps/web/src/plugins/`.
+ * `apps/web/src/plugins/`. The Polish branch of a `defineCopy` file is not
+ * scanned (ADR-079): there "paragon" and "kasa" are the ordinary Polish words
+ * for receipt and cash register.
  *
  * ---------------------------------------------------------------------------
  * SCOPE - operator-facing copy only, the scope `check-ui-vocabulary.mjs`
@@ -52,6 +54,7 @@
 import { readFile, readdir, stat } from 'node:fs/promises';
 import { join, relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import ts from 'typescript';
 
 const __dirname = fileURLToPath(new URL('.', import.meta.url));
 const repoRoot = join(__dirname, '..');
@@ -212,10 +215,44 @@ export function isInsidePlugins(relPath) {
   return relPath === PLUGINS_DIR || relPath.startsWith(PLUGINS_DIR + sep);
 }
 
+/**
+ * 1-based line ranges of the Polish branch of every `defineCopy({ en, pl })`
+ * call (ADR-079). Polish copy is not scanned: "paragon" (receipt) and "kasa"
+ * (cash register) are ordinary Polish words there, not provider names, and
+ * the English branch of the same key still carries the provider-neutral
+ * wording this guard protects.
+ */
+export function polishCopyLineRanges(source) {
+  if (!source.includes('defineCopy(')) return [];
+  const sf = ts.createSourceFile('copy.ts', source, ts.ScriptTarget.Latest, true);
+  const ranges = [];
+  const lineOf = (pos) => sf.getLineAndCharacterOfPosition(pos).line + 1;
+  const visit = (node) => {
+    if (
+      ts.isCallExpression(node) &&
+      ts.isIdentifier(node.expression) &&
+      node.expression.text === 'defineCopy' &&
+      node.arguments.length === 1 &&
+      ts.isObjectLiteralExpression(node.arguments[0])
+    ) {
+      for (const prop of node.arguments[0].properties) {
+        if (ts.isPropertyAssignment(prop) && ts.isIdentifier(prop.name) && prop.name.text === 'pl') {
+          ranges.push([lineOf(prop.getStart(sf)), lineOf(prop.getEnd())]);
+        }
+      }
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(sf);
+  return ranges;
+}
+
 export function findViolations(path, source) {
   const strings = isCopyModule(path) ? extractCopyStrings(source) : extractTsxStrings(source);
+  const polish = isCopyModule(path) ? polishCopyLineRanges(source) : [];
   const hits = [];
   for (const { text, line } of strings) {
+    if (polish.some(([from, to]) => line >= from && line <= to)) continue;
     const term = matchProviderTerm(text);
     if (term) hits.push({ term, line, text });
   }
@@ -313,6 +350,12 @@ function selfCheck() {
   eq('matches kasa', matchProviderTerm('Kasa fiskalna'), 'kasa');
   eq('does not match a substring', matchProviderTerm('Parking paragonal'), null);
   eq('neutral copy passes', matchProviderTerm('Authority rejected'), null);
+
+  // Polish branch of a defineCopy file is not scanned; the English branch is.
+  const bilingual = "defineCopy({\n  en: { kind: 'Fiscal receipt' },\n  pl: { kind: 'Paragon fiskalny' },\n});";
+  eq('polish copy ignored', findViolations('x.copy.ts', bilingual), []);
+  const leaky = "defineCopy({\n  en: { kind: 'Paragon issued' },\n  pl: { kind: 'Paragon' },\n});";
+  eq('english copy still scanned', findViolations('x.copy.ts', leaky).map((h) => h.term), ['paragon']);
 
   // Extraction scope: JSX text and allow-listed attributes ARE scanned...
   eq(

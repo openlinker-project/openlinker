@@ -16,6 +16,9 @@
  * address a step by number.
  */
 import type { ReactElement, ReactNode } from 'react';
+import { useCopy } from '../i18n/use-copy';
+import { interpolate } from '../i18n/interpolate';
+import { uiCopy } from './ui.copy';
 
 export interface SetupStepperProps {
   steps: readonly string[];
@@ -53,10 +56,11 @@ export function SetupStepper({
   stepMeta,
 }: SetupStepperProps): ReactElement {
   const reached = maxReachedStep ?? currentStep;
+  const copy = useCopy(uiCopy).setupStepper;
 
   return (
     <nav
-      aria-label="Setup progress"
+      aria-label={copy.label}
       className={['setup-stepper', orientation === 'vertical' ? 'setup-stepper--vertical' : '', className]
         .filter(Boolean)
         .join(' ')}
@@ -134,7 +138,7 @@ export function SetupStepper({
       {/* Mobile: compact "Step N of M" with dots */}
       <div className="setup-stepper__mobile" aria-hidden="true">
         <span className="setup-stepper__mobile-label">
-          Step {currentStep + 1} of {steps.length}
+          {interpolate(copy.step, { current: currentStep + 1, total: steps.length })}
         </span>
         <span className="setup-stepper__mobile-title">{steps[currentStep]}</span>
         <ol className="setup-stepper__dots">

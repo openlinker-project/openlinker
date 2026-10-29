@@ -11,7 +11,7 @@
  * @module shared/i18n
  */
 export { LocaleProvider } from './locale-provider';
-export { useLocale } from './use-locale';
+export { useLocale, useActiveLocale, useOptionalLocale } from './use-locale';
 export type { UseLocaleResult } from './use-locale';
 export { useCopy } from './use-copy';
 export { useMessages, getMessages } from './use-messages';

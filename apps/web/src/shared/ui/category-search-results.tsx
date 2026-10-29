@@ -29,6 +29,10 @@
 import { forwardRef } from 'react';
 import { Button } from './button';
 import { LoadingState, ErrorState, EmptyState } from './feedback-state';
+import { useCopy } from '../i18n/use-copy';
+import { interpolate } from '../i18n/interpolate';
+import { usePlural } from '../i18n/use-plural';
+import { uiCopy } from './ui.copy';
 
 /**
  * Minimal hit shape. Structurally compatible with `CategorySearchHit` from
@@ -107,12 +111,15 @@ export const CategorySearchResults = forwardRef<HTMLUListElement, CategorySearch
     },
     ref
   ) {
+    const copy = useCopy(uiCopy).categorySearch;
+    const common = useCopy(uiCopy).common;
+    const plural = usePlural();
     if (isLoading) {
       return (
         <LoadingState
           liveRegion="off"
-          title="Searching categories"
-          message="Searching the whole tree…"
+          title={copy.searchingTitle}
+          message={copy.searchingMessage}
         />
       );
     }
@@ -120,9 +127,9 @@ export const CategorySearchResults = forwardRef<HTMLUListElement, CategorySearch
     if (error) {
       return (
         <ErrorState
-          title="Unable to search categories"
+          title={copy.errorTitle}
           message={error.message}
-          action={<Button onClick={onRetry}>Retry</Button>}
+          action={<Button onClick={onRetry}>{common.retry}</Button>}
         />
       );
     }
@@ -134,8 +141,8 @@ export const CategorySearchResults = forwardRef<HTMLUListElement, CategorySearch
         return (
           <EmptyState
             liveRegion="off"
-            title="No categories synced yet"
-            message="This destination's category tree has not been synced. Search will work once the first sync completes."
+            title={copy.unsyncedTitle}
+            message={copy.unsyncedMessage}
           />
         );
       }
@@ -143,8 +150,8 @@ export const CategorySearchResults = forwardRef<HTMLUListElement, CategorySearch
       return (
         <EmptyState
           liveRegion="off"
-          title="No matching categories"
-          message={`Nothing in this tree matches "${query.trim()}". Try a shorter or differently-spelled term.`}
+          title={copy.noMatchTitle}
+          message={interpolate(copy.noMatchMessage, { query: query.trim() })}
         />
       );
     }
@@ -157,7 +164,7 @@ export const CategorySearchResults = forwardRef<HTMLUListElement, CategorySearch
             the user initiated a navigation and focus moves — which is why the
             feedback states above keep `liveRegion="off"`. */}
         <p className="sr-only" role="status" aria-live="polite">
-          {`${results.length} ${results.length === 1 ? 'category' : 'categories'} found`}
+          {plural(results.length, copy.found)}
         </p>
         <ul
           ref={ref}
@@ -198,7 +205,7 @@ export const CategorySearchResults = forwardRef<HTMLUListElement, CategorySearch
                       ))}
                     </small>
                   ) : (
-                    <small className="category-search-results__path">Top level</small>
+                    <small className="category-search-results__path">{copy.topLevel}</small>
                   )}
                 </span>
 
@@ -208,17 +215,17 @@ export const CategorySearchResults = forwardRef<HTMLUListElement, CategorySearch
                     type="button"
                     className="button--sm"
                     aria-pressed={isCurrent}
-                    aria-label={`Select ${hit.name}`}
+                    aria-label={interpolate(copy.selectNamed, { name: hit.name })}
                     disabled={disabled}
                     onClick={() => onSelect(hit)}
                   >
-                    {isCurrent ? 'Selected' : 'Select'}
+                    {isCurrent ? common.selected : common.select}
                   </Button>
                 ) : (
                   // A non-leaf marketplace hit is a real match but not a valid
                   // destination. Saying so beats hiding the row, which would look
                   // like the search missed it.
-                  <span className="category-search-results__unselectable">Not selectable</span>
+                  <span className="category-search-results__unselectable">{copy.notSelectable}</span>
                 )}
               </li>
             );

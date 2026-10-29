@@ -34,6 +34,10 @@ import {
   type RichTextProfile,
 } from './rich-text-profiles';
 import type { DescriptionFormat } from './rich-text.types';
+import { useCopy } from '../i18n/use-copy';
+import { interpolate } from '../i18n/interpolate';
+import { useFormat } from '../i18n/use-format';
+import { uiCopy } from './ui.copy';
 
 export interface RichTextEditorProps {
   /**
@@ -67,7 +71,8 @@ export interface RichTextEditorProps {
 interface ToolbarButton {
   id: string;
   label: string;
-  title: string;
+  /** Heading level; the accessible name comes from the copy file. */
+  level?: number;
   enabled: (profile: RichTextProfile) => boolean;
   isActive: (editor: Editor) => boolean;
   run: (editor: Editor) => void;
@@ -77,7 +82,6 @@ const TOOLBAR: ToolbarButton[] = [
   {
     id: 'bold',
     label: 'B',
-    title: 'Bold',
     enabled: (p) => p.marks.includes('bold'),
     isActive: (e) => e.isActive('bold'),
     run: (e) => void e.chain().focus().toggleBold().run(),
@@ -89,7 +93,6 @@ const TOOLBAR: ToolbarButton[] = [
     // should learn that where they press the button, not in a paragraph nobody
     // reads.
     label: 'I',
-    title: 'Italic',
     enabled: (p) => p.marks.includes('italic'),
     isActive: (e) => e.isActive('italic'),
     run: (e) => void e.chain().focus().toggleItalic().run(),
@@ -97,7 +100,6 @@ const TOOLBAR: ToolbarButton[] = [
   {
     id: 'underline',
     label: 'U',
-    title: 'Underline',
     enabled: (p) => p.marks.includes('underline'),
     isActive: (e) => e.isActive('underline'),
     run: (e) => void e.chain().focus().toggleUnderline().run(),
@@ -105,23 +107,20 @@ const TOOLBAR: ToolbarButton[] = [
   {
     id: 'strike',
     label: 'S',
-    title: 'Strikethrough',
     enabled: (p) => p.marks.includes('strike'),
     isActive: (e) => e.isActive('strike'),
     run: (e) => void e.chain().focus().toggleStrike().run(),
   },
   {
     id: 'bulletList',
-    label: '• —',
-    title: 'Bullet list',
+    label: '•',
     enabled: (p) => p.bulletList,
     isActive: (e) => e.isActive('bulletList'),
     run: (e) => void e.chain().focus().toggleBulletList().run(),
   },
   {
     id: 'orderedList',
-    label: '1. —',
-    title: 'Numbered list',
+    label: '1.',
     enabled: (p) => p.orderedList,
     isActive: (e) => e.isActive('orderedList'),
     run: (e) => void e.chain().focus().toggleOrderedList().run(),
@@ -132,7 +131,7 @@ function headingButtons(profile: RichTextProfile): ToolbarButton[] {
   return profile.headingLevels.map((level) => ({
     id: `h${level}`,
     label: `H${level}`,
-    title: `Heading ${level}`,
+    level,
     enabled: () => true,
     isActive: (e: Editor) => e.isActive('heading', { level }),
     run: (e: Editor) => void e.chain().focus().toggleHeading({ level: level as never }).run(),
@@ -208,7 +207,7 @@ export function RichTextEditor({
   value,
   onChange,
   disabled = false,
-  placeholder = 'Describe the product…',
+  placeholder,
   toolbarSlot,
   'aria-label': ariaLabel,
   'aria-invalid': ariaInvalid,
@@ -216,6 +215,21 @@ export function RichTextEditor({
   id,
   className = '',
 }: RichTextEditorProps): ReactElement {
+  const copy = useCopy(uiCopy).richText;
+  const { number } = useFormat();
+  const placeholderText = placeholder ?? copy.placeholder;
+  const toolTitle = (button: ToolbarButton): string => {
+    if (button.level !== undefined) return interpolate(copy.heading, { level: button.level });
+    const byId: Record<string, string> = {
+      bold: copy.bold,
+      italic: copy.italic,
+      underline: copy.underline,
+      strike: copy.strike,
+      bulletList: copy.bulletList,
+      orderedList: copy.numberedList,
+    };
+    return byId[button.id] ?? button.label;
+  };
   // A signature rather than the object identity. The schema genuinely must be
   // rebuilt when the destination's contract changes - and ONLY then. Keying on
   // the `format` prop's identity instead means a caller who writes an inline
@@ -262,7 +276,7 @@ export function RichTextEditor({
 
   const editor = useEditor(
     {
-      extensions: buildRichTextExtensions(profile, placeholder),
+      extensions: buildRichTextExtensions(profile, placeholderText),
       content: safeValue,
       editable: !disabled,
       onUpdate: ({ editor: instance }) => {
@@ -373,7 +387,7 @@ export function RichTextEditor({
     return (
       <div className={['rich-text', 'rich-text--loading', className].filter(Boolean).join(' ')}>
         <div className="rich-text__surface" aria-busy="true">
-          <p className="rich-text__loading-note">Loading the destination's formatting rules…</p>
+          <p className="rich-text__loading-note">{copy.loadingFormat}</p>
         </div>
       </div>
     );
@@ -381,7 +395,7 @@ export function RichTextEditor({
 
   return (
     <div className={['rich-text', className].filter(Boolean).join(' ')}>
-      <div className="rich-text__toolbar" role="toolbar" aria-label="Formatting">
+      <div className="rich-text__toolbar" role="toolbar" aria-label={copy.toolbar}>
         {buttons.map((button) => {
           const active = editor !== null && button.isActive(editor);
           return (
@@ -391,10 +405,10 @@ export function RichTextEditor({
               className={['rich-text__tool', active ? 'is-active' : ''].filter(Boolean).join(' ')}
               title={
                 button.id === 'italic' && profile.italicPublishesAsBold
-                  ? 'Italic — this destination has no italic tag, so it publishes as bold'
-                  : button.title
+                  ? copy.italicAsBold
+                  : toolTitle(button)
               }
-              aria-label={button.title}
+              aria-label={toolTitle(button)}
               aria-pressed={active}
               disabled={disabled || sourceMode || editor === null}
               onClick={() => {
@@ -412,13 +426,13 @@ export function RichTextEditor({
             className={['rich-text__tool', editor?.isActive('link') === true ? 'is-active' : '']
               .filter(Boolean)
               .join(' ')}
-            title="Add or edit link"
-            aria-label="Add or edit link"
+            title={copy.link}
+            aria-label={copy.link}
             disabled={disabled || sourceMode || editor === null}
             onClick={() => {
               if (editor === null) return;
               const previous = (editor.getAttributes('link').href as string | undefined) ?? 'https://';
-              const href = window.prompt('Link target', previous);
+              const href = window.prompt(copy.linkTarget, previous);
               if (href === null) return;
               const chain = editor.chain().focus().extendMarkRange('link');
               if (href === '') chain.unsetLink().run();
@@ -442,7 +456,7 @@ export function RichTextEditor({
               else enterSourceMode();
             }}
           >
-            {sourceMode ? 'Rich text' : 'HTML'}
+            {sourceMode ? copy.richMode : copy.htmlMode}
           </Button>
         </div>
       </div>
@@ -451,7 +465,11 @@ export function RichTextEditor({
         <textarea
           className="rich-text__source"
           spellCheck={false}
-          aria-label={ariaLabel === undefined ? 'HTML source' : `${ariaLabel} (HTML source)`}
+          aria-label={
+            ariaLabel === undefined
+              ? copy.htmlSource
+              : interpolate(copy.htmlSourceNamed, { label: ariaLabel })
+          }
           value={sourceDraft}
           readOnly={disabled}
           onChange={(event) => setSourceDraft(event.target.value)}
@@ -463,7 +481,7 @@ export function RichTextEditor({
       <div className="rich-text__footer">
         {!format.declared && (
           <span className="rich-text__undeclared">
-            This destination has not declared its description format — showing a safe subset.
+            {copy.undeclared}
           </span>
         )}
         {profile.maxBytes !== null && (
@@ -476,10 +494,10 @@ export function RichTextEditor({
               .filter(Boolean)
               .join(' ')}
           >
-            {bytes.toLocaleString()} / {profile.maxBytes.toLocaleString()} bytes
+            {interpolate(copy.bytes, { bytes: number(bytes), max: number(profile.maxBytes) })}
             {/* Colour is never the only signal: the near state said "watch out"
                 in amber and nothing else. */}
-            {overCap ? ' — over the destination limit' : nearCap ? ' — near the limit' : ''}
+            {overCap ? copy.overLimit : nearCap ? copy.nearLimit : ''}
           </span>
         )}
       </div>

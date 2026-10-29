@@ -1,4 +1,6 @@
 import type { ReactElement, ReactNode } from 'react';
+import { useCopy } from '../i18n/use-copy';
+import { uiCopy } from './ui.copy';
 
 type AriaLive = 'assertive' | 'off' | 'polite';
 
@@ -22,15 +24,16 @@ interface EmptyStateProps extends BaseStateProps {
 }
 
 export function LoadingState({
-  eyebrow = 'Loading',
+  eyebrow,
   liveRegion = 'polite',
   message,
   title,
 }: LoadingStateProps): ReactElement {
+  const copy = useCopy(uiCopy).feedback;
   return (
     <div className="state-card state-card--loading" role="status" aria-live={liveRegion}>
       <div className="state-card__header">
-        <p className="eyebrow">{eyebrow}</p>
+        <p className="eyebrow">{eyebrow ?? copy.loading}</p>
         <h2 className="state-card__title">{title}</h2>
       </div>
       <p className="state-card__message">{message}</p>
@@ -96,11 +99,12 @@ export function AccessDeniedState({
   );
 }
 
-export function ErrorState({ action, eyebrow = 'Error', message, title }: BaseStateProps): ReactElement {
+export function ErrorState({ action, eyebrow, message, title }: BaseStateProps): ReactElement {
+  const copy = useCopy(uiCopy).feedback;
   return (
     <div className="state-card state-card--error" role="alert">
       <div className="state-card__header">
-        <p className="eyebrow">{eyebrow}</p>
+        <p className="eyebrow">{eyebrow ?? copy.error}</p>
         <h2 className="state-card__title">{title}</h2>
       </div>
       <p className="state-card__message">{message}</p>

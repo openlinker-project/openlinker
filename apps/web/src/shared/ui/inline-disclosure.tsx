@@ -12,6 +12,8 @@
  * @module shared/ui
  */
 import type { ReactElement, ReactNode } from 'react';
+import { useCopy } from '../i18n/use-copy';
+import { uiCopy } from './ui.copy';
 
 export interface InlineDisclosureProps {
   label: string;
@@ -26,16 +28,17 @@ export function InlineDisclosure({
   label,
   value,
   children,
-  changeLabel = 'Change',
+  changeLabel,
   defaultOpen = false,
   className,
 }: InlineDisclosureProps): ReactElement {
+  const copy = useCopy(uiCopy).inlineDisclosure;
   return (
     <details className={['inline-disclosure', className].filter(Boolean).join(' ')} open={defaultOpen}>
       <summary className="inline-disclosure__summary">
         <span className="inline-disclosure__label">{label}</span>{' '}
         <span className="inline-disclosure__value">{value}</span>{' '}
-        <span className="inline-disclosure__cta">{changeLabel} →</span>
+        <span className="inline-disclosure__cta">{changeLabel ?? copy.change} →</span>
       </summary>
       <div className="inline-disclosure__panel">{children}</div>
     </details>

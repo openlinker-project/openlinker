@@ -23,6 +23,8 @@
  * @module shared/ui
  */
 import type { ReactElement } from 'react';
+import { useCopy } from '../i18n/use-copy';
+import { uiCopy } from './ui.copy';
 
 /**
  * The two sales-document kinds, mirroring `SalesDocumentKind`
@@ -31,14 +33,26 @@ import type { ReactElement } from 'react';
  */
 export type DocumentKind = 'invoice' | 'fiscal-receipt';
 
-/** Accessible name per kind, and for the no-decision case. */
+/**
+ * English accessible name per kind. Kept for callers outside a component;
+ * components resolve the active language through `useDocumentKindLabels`.
+ */
 export const DOCUMENT_KIND_LABEL: Record<DocumentKind, string> = {
-  invoice: 'Invoice',
-  'fiscal-receipt': 'Fiscal receipt',
+  invoice: uiCopy.en.documentKind.invoice,
+  'fiscal-receipt': uiCopy.en.documentKind.fiscalReceipt,
 };
 
 /** What the struck circle means. Not "unknown": routing reached no decision. */
-export const NO_DOCUMENT_LABEL = 'No document';
+export const NO_DOCUMENT_LABEL = uiCopy.en.documentKind.none;
+
+/** Kind names in the active language, and the no-decision label. */
+export function useDocumentKindLabels(): { kind: Record<DocumentKind, string>; none: string } {
+  const copy = useCopy(uiCopy).documentKind;
+  return {
+    kind: { invoice: copy.invoice, 'fiscal-receipt': copy.fiscalReceipt },
+    none: copy.none,
+  };
+}
 
 export interface DocumentKindGlyphProps {
   /** `null` renders the no-document silhouette. */
@@ -59,7 +73,8 @@ export function DocumentKindGlyph({
   label,
   className = '',
 }: DocumentKindGlyphProps): ReactElement {
-  const name = label ?? (kind === null ? NO_DOCUMENT_LABEL : DOCUMENT_KIND_LABEL[kind]);
+  const labels = useDocumentKindLabels();
+  const name = label ?? (kind === null ? labels.none : labels.kind[kind]);
   const classes = ['document-glyph', className].filter(Boolean).join(' ');
   const a11y = decorative
     ? ({ 'aria-hidden': true } as const)

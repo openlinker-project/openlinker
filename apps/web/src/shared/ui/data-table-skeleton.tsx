@@ -25,6 +25,8 @@
 import type { ReactElement } from 'react';
 import type { DataTableHideBreakpoint } from './data-table';
 import { useMediaQuery } from './use-media-query';
+import { useCopy } from '../i18n/use-copy';
+import { uiCopy } from './ui.copy';
 
 /**
  * Narrow shape the skeleton cares about: `hideBelow` drives which cells are
@@ -87,8 +89,10 @@ export function DataTableSkeleton({
   columns,
   rows = DEFAULT_ROWS,
   rowAction = false,
-  label = 'Loading…',
+  label,
 }: DataTableSkeletonProps): ReactElement {
+  const common = useCopy(uiCopy).common;
+  const loadingLabel = label ?? common.loading;
   const normalized = normalizeColumns(columns);
   const isMobile = useMediaQuery('(max-width: 767.98px)');
   const tallestColumn = normalized.reduce((tallest, column) => Math.max(tallest, lineCount(column)), 1);
@@ -98,7 +102,7 @@ export function DataTableSkeleton({
 
   return (
     <div className="data-table-skeleton" role="status" aria-live="polite">
-      <span className="sr-only">{label}</span>
+      <span className="sr-only">{loadingLabel}</span>
       {isMobile ? (
         <ul className="data-table-skeleton__cards" aria-hidden="true">
           {Array.from({ length: rows }, (_, rowIndex) => (

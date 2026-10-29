@@ -7,6 +7,8 @@ import {
   type ComponentPropsWithoutRef,
   type ReactNode,
 } from 'react';
+import { useCopy } from '../i18n/use-copy';
+import { uiCopy } from './ui.copy';
 
 interface RawPayloadPanelProps extends Omit<ComponentPropsWithoutRef<'section'>, 'title'> {
   defaultOpen?: boolean;
@@ -17,9 +19,11 @@ interface RawPayloadPanelProps extends Omit<ComponentPropsWithoutRef<'section'>,
 
 export const RawPayloadPanel = forwardRef<HTMLElement, RawPayloadPanelProps>(
   function RawPayloadPanel(
-    { defaultOpen = false, description, payload, title = 'Payload', className = '', ...props },
+    { defaultOpen = false, description, payload, title, className = '', ...props },
     ref,
   ) {
+    const copy = useCopy(uiCopy).rawPayload;
+    const common = useCopy(uiCopy).common;
     const [open, setOpen] = useState(defaultOpen);
     const [copied, setCopied] = useState(false);
     const bodyId = useId();
@@ -46,7 +50,7 @@ export const RawPayloadPanel = forwardRef<HTMLElement, RawPayloadPanelProps>(
       <section ref={ref} className={classes} {...props}>
         <header className="raw-payload__header">
           <div className="raw-payload__heading">
-            <strong className="raw-payload__title">{title}</strong>
+            <strong className="raw-payload__title">{title ?? copy.title}</strong>
             {description ? <span className="raw-payload__description">{description}</span> : null}
           </div>
           <div className="raw-payload__actions">
@@ -54,9 +58,9 @@ export const RawPayloadPanel = forwardRef<HTMLElement, RawPayloadPanelProps>(
               type="button"
               className="raw-payload__action"
               onClick={handleCopy}
-              aria-label={copied ? 'Copied payload' : 'Copy payload'}
+              aria-label={copied ? copy.copied : copy.copy}
             >
-              {copied ? 'Copied' : 'Copy'}
+              {copied ? common.copied : common.copy}
             </button>
             <button
               type="button"
@@ -65,14 +69,14 @@ export const RawPayloadPanel = forwardRef<HTMLElement, RawPayloadPanelProps>(
               aria-expanded={open}
               aria-controls={bodyId}
             >
-              {open ? 'Collapse' : 'Expand'}
+              {open ? copy.collapse : copy.expand}
             </button>
           </div>
         </header>
         <pre
           id={bodyId}
           className="raw-payload__body mono-text"
-          aria-label="Payload content"
+          aria-label={copy.content}
           tabIndex={0}
           hidden={!open}
         >

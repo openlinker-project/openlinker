@@ -18,6 +18,9 @@ import {
   type ComponentPropsWithoutRef,
   type ReactElement,
 } from 'react';
+import { useCopy } from '../i18n/use-copy';
+import { interpolate } from '../i18n/interpolate';
+import { uiCopy } from './ui.copy';
 
 interface CopyableIdProps extends Omit<ComponentPropsWithoutRef<'span'>, 'children'> {
   /** The full identifier to copy to the clipboard. */
@@ -38,6 +41,7 @@ export const CopyableId = forwardRef<HTMLSpanElement, CopyableIdProps>(function 
   { id, label, copyLabel, copiedLabel, className = '', ...props },
   ref,
 ): ReactElement {
+  const common = useCopy(uiCopy).common;
   const [copied, setCopied] = useState(false);
   const resetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -73,9 +77,13 @@ export const CopyableId = forwardRef<HTMLSpanElement, CopyableIdProps>(function 
         type="button"
         className="copyable-id__copy"
         onClick={handleCopy}
-        aria-label={copied ? (copiedLabel ?? `Copied ${id}`) : (copyLabel ?? `Copy ${id}`)}
+        aria-label={
+          copied
+            ? (copiedLabel ?? interpolate(common.copiedId, { id }))
+            : (copyLabel ?? interpolate(common.copyId, { id }))
+        }
       >
-        {copied ? 'Copied' : 'Copy'}
+        {copied ? common.copied : common.copy}
       </button>
     </span>
   );

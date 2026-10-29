@@ -96,7 +96,12 @@ export { DetailSection } from './detail-section';
 export type { DetailSectionProps, DetailSectionTone } from './detail-section';
 
 // ── Sales documents (#2535) ────────────────────────────────────────
-export { DocumentKindGlyph, DOCUMENT_KIND_LABEL, NO_DOCUMENT_LABEL } from './document-kind-glyph';
+export {
+  DocumentKindGlyph,
+  DOCUMENT_KIND_LABEL,
+  NO_DOCUMENT_LABEL,
+  useDocumentKindLabels,
+} from './document-kind-glyph';
 export type { DocumentKind, DocumentKindGlyphProps } from './document-kind-glyph';
 export { DocumentHeadline } from './document-headline';
 export type { DocumentHeadlineProps, DocumentHeadlineTone } from './document-headline';
@@ -141,3 +146,8 @@ export { MASTER_DESCRIPTION_FORMAT } from './rich-text.types';
 // ── QR verification code (#1579) ────────────────────────────
 export { QrCode } from './qr-code';
 export type { QrCodeErrorCorrectionLevel } from './qr-code';
+export { LanguageSwitch } from './language-switch';
+export type { LanguageSwitchProps } from './language-switch';
+export { LanguageFlag } from './language-flag';
+export { MotionProvider } from './motion-provider';
+export { uiCopy } from './ui.copy';
