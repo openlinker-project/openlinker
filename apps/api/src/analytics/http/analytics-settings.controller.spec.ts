@@ -92,6 +92,7 @@ describe('AnalyticsSettingsController', () => {
         rateBasis: 'order-date',
         includeBackfilledTaxRatesInNetSales: true,
         netGrossBasis: 'net',
+        trackMargin: false,
         updatedAt: new Date('2026-08-01T00:00:00Z'),
         updatedByUserId: 'admin-1',
       };
@@ -105,6 +106,7 @@ describe('AnalyticsSettingsController', () => {
       expect(dto.rateBasis).toBe('order-date');
       expect(dto.includeBackfilledTaxRatesInNetSales).toBe(true);
       expect(dto.netGrossBasis).toBe('net');
+      expect(dto.trackMargin).toBe(false);
       expect(dto.updatedAt).toBe('2026-08-01T00:00:00.000Z');
       expect(dto.updatedByUserId).toBe('admin-1');
       expect(res.setHeader).toHaveBeenCalledWith('Cache-Control', 'no-store');
@@ -116,6 +118,7 @@ describe('AnalyticsSettingsController', () => {
         rateBasis: 'current',
         includeBackfilledTaxRatesInNetSales: false,
         netGrossBasis: 'gross',
+        trackMargin: true,
         updatedAt: null,
         updatedByUserId: null,
       };
@@ -152,6 +155,22 @@ describe('AnalyticsSettingsController', () => {
         'admin-1'
       );
       expect(res.setHeader).toHaveBeenCalledWith('Cache-Control', 'no-store');
+    });
+
+    it('forwards trackMargin when present and leaves it undefined when absent (absent keeps the stored value)', async () => {
+      const base: UpdateAnalyticsSettingsDto = {
+        displayCurrency: null,
+        rateBasis: 'current',
+        includeBackfilledTaxRatesInNetSales: false,
+        netGrossBasis: 'gross',
+      };
+
+      await controller.update({ ...base, trackMargin: false }, user, res as unknown as Response);
+      await controller.update(base, user, res as unknown as Response);
+
+      const calls = settings.updateSettings.mock.calls;
+      expect(calls[0][0].trackMargin).toBe(false);
+      expect(calls[1][0].trackMargin).toBeUndefined();
     });
 
     it('never writes to order_records — the controller has no reachable dependency on an order_records write surface', () => {
