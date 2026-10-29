@@ -178,13 +178,13 @@ describe('OrderEditsController (#3542)', () => {
         ...discountResult,
         view: {
           ...result.view,
-          totals: { currency: 'PLN', channelTotal: 50, total: 45, difference: 5, taxRestated: false },
+          totals: { currency: 'PLN', channelTotal: 50, total: 45, difference: 5, channelDiscountTotal: null, combinedDiscountTotal: null, taxRestated: false },
         },
       });
 
       const response = await controller.editDiscount('ol_order_1', { percent: 10 }, user);
 
-      expect(response.totals).toEqual({ currency: 'PLN', channelTotal: 50, total: 45, difference: 5 });
+      expect(response.totals).toEqual({ currency: 'PLN', channelTotal: 50, total: 45, difference: 5, channelDiscountTotal: null, combinedDiscountTotal: null });
       expect(response).toMatchObject({
         discount: null,
         amountToCollect: null,
