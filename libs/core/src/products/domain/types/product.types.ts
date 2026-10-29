@@ -114,6 +114,24 @@ export interface VariantPhysicalDimensionsFill {
   readonly heightMm?: number | null;
 }
 
+/**
+ * An operator-entered net unit cost (#3588): the pair is indivisible - a cost
+ * without a currency (or the reverse) is never representable.
+ */
+export interface VariantCost {
+  /** Decimal string, e.g. "12.5000" or "0.00". */
+  readonly netUnitCost: string;
+  /** ISO 4217 code, upper case. */
+  readonly currency: string;
+}
+
+/** Outcome of a bulk fill-when-NULL cost write (#3588). */
+export interface VariantCostFillResult {
+  readonly filled: string[];
+  readonly skippedAlreadySet: string[];
+  readonly notFound: string[];
+}
+
 // ---------------------------------------------------------------------------
 // Read API types (used by repository ports and application services)
 // ---------------------------------------------------------------------------

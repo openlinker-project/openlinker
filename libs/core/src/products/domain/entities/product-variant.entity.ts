@@ -66,6 +66,17 @@ export interface ProductVariant {
   widthMm?: number | null;
   heightMm?: number | null;
   /**
+   * Operator-authored NET (VAT-exclusive) unit cost (#3588, D27). Written only
+   * by `recordCost` / `fillCostIfAbsent`; a master sync never carries it.
+   * `netUnitCost` is a decimal STRING (numeric(12,4) round-trips as text, so no
+   * float drift); `null`/absent means "not recorded", never zero - `"0.0000"`
+   * is a real cost. `costCurrency` is set exactly when `netUnitCost` is.
+   */
+  netUnitCost?: string | null;
+  costCurrency?: string | null;
+  costUpdatedAt?: Date | null;
+  costUpdatedByUserId?: string | null;
+  /**
    * Soft-mark set when the variant is deleted at the master — absent from the
    * master's `getProductVariants` response, or the product itself 404s (#1599).
    * Optional at the domain level so adapter drafts and test factories may omit

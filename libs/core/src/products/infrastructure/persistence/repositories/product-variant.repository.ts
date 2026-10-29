@@ -24,6 +24,7 @@ import type {
   ProductPagination,
   PaginatedProductVariants,
   VariantPhysicalDimensionsFill,
+  VariantCost,
 } from '../../../domain/types/product.types';
 import type { StoredTaxRate } from '../../../domain/types/tax-rate.types';
 import { readTaxRateUnknownReason } from '../../../domain/types/tax-rate.types';
@@ -397,6 +398,11 @@ export class ProductVariantRepository implements ProductVariantRepositoryPort {
       lengthMm: entity.lengthMm,
       widthMm: entity.widthMm,
       heightMm: entity.heightMm,
+      // #3588 — operator-authored net cost, read-only at this layer.
+      netUnitCost: entity.netUnitCost,
+      costCurrency: entity.costCurrency,
+      costUpdatedAt: entity.costUpdatedAt,
+      costUpdatedByUserId: entity.costUpdatedByUserId,
       createdAt: entity.createdAt,
       updatedAt: entity.updatedAt,
     };
@@ -437,6 +443,11 @@ export class ProductVariantRepository implements ProductVariantRepositoryPort {
     // reason: they are operator-authored, never sync-derived, and a master
     // re-sync must not silently blank a value someone typed in.
     // `recordPhysicalDimensions` is their dedicated writer.
+    //
+    // The four #3588 cost columns (`netUnitCost`, `costCurrency`,
+    // `costUpdatedAt`, `costUpdatedByUserId`) are absent for the same reason,
+    // and a stricter one: provenance must never be restated by a sync.
+    // `recordCost` / `fillCostIfAbsent` are their only writers.
     return entity;
   }
 
@@ -518,6 +529,78 @@ export class ProductVariantRepository implements ProductVariantRepositoryPort {
     const outer = Array.isArray(result) ? result : [];
     const returned: unknown[] = Array.isArray(outer[0]) ? outer[0] : outer;
     return returned.length;
+  }
+
+  /**
+   * Record (or clear, with `null`) the operator-authored net unit cost (#3588).
+   * Unconditional, like `recordPhysicalDimensions`; stamps provenance. Returns
+   * false when no such variant exists.
+   */
+  async recordCost(
+    variantId: string,
+    cost: VariantCost | null,
+    actorUserId: string
+  ): Promise<boolean> {
+    const result = await this.repository.update(
+      { id: variantId },
+      {
+        netUnitCost: cost ? cost.netUnitCost : null,
+        costCurrency: cost ? cost.currency : null,
+        costUpdatedAt: new Date(),
+        costUpdatedByUserId: actorUserId,
+      }
+    );
+    return (result.affected ?? 0) > 0;
+  }
+
+  /**
+   * Fill-when-NULL bulk cost write (#3588): one statement, atomic with the
+   * "is it still empty" test, so a concurrent operator edit is never clobbered.
+   * Ids that exist but already carry a cost are reported as skipped; ids with
+   * no row as not found.
+   */
+  async fillCostIfAbsent(
+    variantIds: readonly string[],
+    cost: VariantCost,
+    actorUserId: string
+  ): Promise<{ filled: string[]; skippedAlreadySet: string[]; notFound: string[] }> {
+    const ids = Array.from(new Set(variantIds));
+    if (ids.length === 0) {
+      return { filled: [], skippedAlreadySet: [], notFound: [] };
+    }
+
+    const result = (await this.repository.query(
+      `UPDATE "product_variants"
+          SET "netUnitCost" = $2::numeric,
+              "costCurrency" = $3,
+              "costUpdatedAt" = now(),
+              "costUpdatedByUserId" = $4,
+              "updatedAt" = now()
+        WHERE "id" = ANY($1::text[])
+          AND "netUnitCost" IS NULL
+    RETURNING "id"`,
+      [ids, cost.netUnitCost, cost.currency, actorUserId]
+    )) as unknown;
+
+    // Same driver reply shape as fillPhysicalDimensionsIfAbsent.
+    const outer = Array.isArray(result) ? result : [];
+    const returned: unknown[] = Array.isArray(outer[0]) ? outer[0] : outer;
+    const filled = returned
+      .map((row) => (row as { id?: unknown }).id)
+      .filter((id): id is string => typeof id === 'string');
+    const filledSet = new Set(filled);
+
+    const rest = ids.filter((id) => !filledSet.has(id));
+    if (rest.length === 0) {
+      return { filled, skippedAlreadySet: [], notFound: [] };
+    }
+    const existing = await this.repository.find({ where: { id: In(rest) }, select: { id: true } });
+    const existingSet = new Set(existing.map((e) => e.id));
+    return {
+      filled,
+      skippedAlreadySet: rest.filter((id) => existingSet.has(id)),
+      notFound: rest.filter((id) => !existingSet.has(id)),
+    };
   }
 
   /**

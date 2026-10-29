@@ -263,3 +263,82 @@ describe('ProductVariantRepository images', () => {
     expect(variant?.images).toEqual(['https://shop/gfx/314.jpg']);
   });
 });
+
+describe('ProductVariantRepository cost (#3588)', () => {
+  let ormRepo: { save: jest.Mock; query: jest.Mock; update: jest.Mock; find: jest.Mock };
+  let repository: ProductVariantRepository;
+
+  beforeEach(() => {
+    ormRepo = {
+      save: jest.fn((entity: ProductVariantOrmEntity) => Promise.resolve(entity)),
+      query: jest.fn().mockResolvedValue([[], 0]),
+      update: jest.fn().mockResolvedValue({ affected: 1 }),
+      find: jest.fn().mockResolvedValue([]),
+    };
+    repository = new ProductVariantRepository(
+      ormRepo as unknown as Repository<ProductVariantOrmEntity>
+    );
+  });
+
+  it('should carry no cost key when the master-sync upsert writes a variant', async () => {
+    await repository.upsert({
+      id: 'v1',
+      productId: 'p1',
+      sku: null,
+      attributes: null,
+      ean: null,
+      gtin: null,
+      netUnitCost: '9.9900',
+      costCurrency: 'PLN',
+      costUpdatedAt: new Date(),
+      costUpdatedByUserId: 'someone',
+    });
+
+    const saved = (ormRepo.save.mock.calls as ProductVariantOrmEntity[][])[0][0];
+    for (const key of ['netUnitCost', 'costCurrency', 'costUpdatedAt', 'costUpdatedByUserId']) {
+      expect(Object.keys(saved)).not.toContain(key);
+    }
+  });
+
+  it('should stamp provenance and report whether the variant exists in recordCost', async () => {
+    await expect(
+      repository.recordCost('v1', { netUnitCost: '1.00', currency: 'PLN' }, 'u1')
+    ).resolves.toBe(true);
+    expect(ormRepo.update).toHaveBeenCalledWith(
+      { id: 'v1' },
+      expect.objectContaining({
+        netUnitCost: '1.00',
+        costCurrency: 'PLN',
+        costUpdatedByUserId: 'u1',
+        costUpdatedAt: expect.any(Date) as Date,
+      })
+    );
+
+    ormRepo.update.mockResolvedValue({ affected: 0 });
+    await expect(repository.recordCost('x', null, 'u1')).resolves.toBe(false);
+  });
+
+  it('should write NULLs for both cost columns when clearing', async () => {
+    await repository.recordCost('v1', null, 'u1');
+
+    expect(ormRepo.update).toHaveBeenCalledWith(
+      { id: 'v1' },
+      expect.objectContaining({ netUnitCost: null, costCurrency: null })
+    );
+  });
+
+  it('should bucket ids into filled, skippedAlreadySet and notFound', async () => {
+    ormRepo.query.mockResolvedValue([[{ id: 'a' }], 1]);
+    ormRepo.find.mockResolvedValue([{ id: 'b' }]);
+
+    const result = await repository.fillCostIfAbsent(
+      ['a', 'b', 'c', 'a'],
+      { netUnitCost: '2.00', currency: 'PLN' },
+      'u1'
+    );
+
+    expect(result).toEqual({ filled: ['a'], skippedAlreadySet: ['b'], notFound: ['c'] });
+    const [sql] = ormRepo.query.mock.calls[0] as [string, unknown[]];
+    expect(sql).toContain('"netUnitCost" IS NULL');
+  });
+});
