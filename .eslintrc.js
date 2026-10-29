@@ -1,3 +1,56 @@
+/**
+ * Syntax restrictions for every `apps/web/src` file. Named so the `shared/ui`
+ * i18n override can extend the list instead of replacing it: a later override's
+ * `no-restricted-syntax` replaces an earlier one wholesale, which would silently
+ * drop the ADR-046 and #702 bans there.
+ */
+const HARDCODED_JSX_CHILD_MESSAGE =
+  'Hardcoded user-facing text in a JSX child. Read it from the feature copy file (`*.copy.ts`, English and Polish) - see docs/frontend-architecture.md, Internationalization.';
+
+const WEB_RESTRICTED_SYNTAX = [
+  {
+    selector: "Identifier[name='WebPlugin']",
+    message:
+      '`WebPlugin` was unified into `OpenLinkerPlugin` (#702). Import `OpenLinkerPlugin` from `shared/plugins`.',
+  },
+  {
+    selector: "Identifier[name='PlatformPlugin']",
+    message:
+      '`PlatformPlugin` was unified into `OpenLinkerPlugin` (#702). For the runtime view returned by `usePlatform()`, import `Platform` from `shared/plugins`.',
+  },
+  {
+    selector: "Identifier[name='IN_TREE_PLUGINS']",
+    message:
+      '`IN_TREE_PLUGINS` was merged into the single `plugins` array (#702). Import `plugins` from `apps/web/src/plugins`.',
+  },
+  {
+    // ADR-046: `shared/ui/rich-text-view.tsx` is the ONLY sanctioned
+    // `dangerouslySetInnerHTML` in the app - it sanitizes with DOMPurify
+    // first and carries the reasoning. Anywhere else, render through
+    // `<RichTextView>` instead of re-deriving the safety argument.
+    // `eslint-plugin-react` is not installed, so this is expressed as a
+    // syntax restriction rather than `react/no-danger`.
+    selector: "JSXAttribute[name.name='dangerouslySetInnerHTML']",
+    message:
+      'dangerouslySetInnerHTML is restricted. Render stored HTML through the RichTextView primitive (shared/ui/rich-text-view.tsx), which sanitizes with DOMPurify - see ADR-046.',
+  },
+  {
+    // The same hole, reached without JSX. A selector that only matches
+    // the JSX attribute leaves `el.innerHTML = untrusted` and
+    // `insertAdjacentHTML` completely unrestricted, which is the more
+    // likely shape in an imperative helper or a test utility.
+    selector:
+      "AssignmentExpression[left.type='MemberExpression'][left.property.name=/^(innerHTML|outerHTML)$/]",
+    message:
+      'Assigning innerHTML/outerHTML is restricted. Render stored HTML through the RichTextView primitive (shared/ui/rich-text-view.tsx) - see ADR-046.',
+  },
+  {
+    selector: "CallExpression[callee.property.name='insertAdjacentHTML']",
+    message:
+      'insertAdjacentHTML is restricted. Render stored HTML through the RichTextView primitive (shared/ui/rich-text-view.tsx) - see ADR-046.',
+  },
+];
+
 module.exports = {
   parser: '@typescript-eslint/parser',
   parserOptions: {
@@ -44,7 +97,7 @@ module.exports = {
     // Syntax expected by the rule: `// eslint-disable-next-line rule -- reason`.
     // Pairs with `no-aggregating-enable` so blanket re-enables can't sneak
     // around the per-directive justification. `no-unused-disable` is
-    // intentionally NOT enabled here — that cleanup is a separate sweep.
+    // intentionally NOT enabled here - that cleanup is a separate sweep.
     'eslint-comments/require-description': ['error', { ignore: [] }],
     'eslint-comments/no-aggregating-enable': 'error',
     // Discourage deep relative imports - prefer path aliases for cross-layer/cross-package imports
@@ -823,47 +876,7 @@ module.exports = {
       rules: {
         'no-restricted-syntax': [
           'error',
-          {
-            selector: "Identifier[name='WebPlugin']",
-            message:
-              '`WebPlugin` was unified into `OpenLinkerPlugin` (#702). Import `OpenLinkerPlugin` from `shared/plugins`.',
-          },
-          {
-            selector: "Identifier[name='PlatformPlugin']",
-            message:
-              '`PlatformPlugin` was unified into `OpenLinkerPlugin` (#702). For the runtime view returned by `usePlatform()`, import `Platform` from `shared/plugins`.',
-          },
-          {
-            selector: "Identifier[name='IN_TREE_PLUGINS']",
-            message:
-              '`IN_TREE_PLUGINS` was merged into the single `plugins` array (#702). Import `plugins` from `apps/web/src/plugins`.',
-          },
-          {
-            // ADR-046: `shared/ui/rich-text-view.tsx` is the ONLY sanctioned
-            // `dangerouslySetInnerHTML` in the app - it sanitizes with DOMPurify
-            // first and carries the reasoning. Anywhere else, render through
-            // `<RichTextView>` instead of re-deriving the safety argument.
-            // `eslint-plugin-react` is not installed, so this is expressed as a
-            // syntax restriction rather than `react/no-danger`.
-            selector: "JSXAttribute[name.name='dangerouslySetInnerHTML']",
-            message:
-              'dangerouslySetInnerHTML is restricted. Render stored HTML through the RichTextView primitive (shared/ui/rich-text-view.tsx), which sanitizes with DOMPurify — see ADR-046.',
-          },
-          {
-            // The same hole, reached without JSX. A selector that only matches
-            // the JSX attribute leaves `el.innerHTML = untrusted` and
-            // `insertAdjacentHTML` completely unrestricted, which is the more
-            // likely shape in an imperative helper or a test utility.
-            selector:
-              "AssignmentExpression[left.type='MemberExpression'][left.property.name=/^(innerHTML|outerHTML)$/]",
-            message:
-              'Assigning innerHTML/outerHTML is restricted. Render stored HTML through the RichTextView primitive (shared/ui/rich-text-view.tsx) — see ADR-046.',
-          },
-          {
-            selector: "CallExpression[callee.property.name='insertAdjacentHTML']",
-            message:
-              'insertAdjacentHTML is restricted. Render stored HTML through the RichTextView primitive (shared/ui/rich-text-view.tsx) — see ADR-046.',
-          },
+          ...WEB_RESTRICTED_SYNTAX,
         ],
       },
     },
@@ -959,6 +972,68 @@ module.exports = {
                   'Backend apps must import from `@openlinker/core/<context>` top-level barrels — never deep sub-paths. The package.json wildcards were dropped in #591; deep aliases now fail at Node runtime. Symbol DI tokens are re-exported from the top-level barrel (#595).',
               },
             ],
+          },
+        ],
+      },
+    },
+    {
+      // No hardcoded user-facing text (ADR-079, #3859). Every word an operator
+      // reads comes from a `*.copy.ts` file in English and Polish. Enabled per
+      // folder as each one is migrated (#3868-#3885); add the folder here in
+      // the same PR that moves its copy.
+      files: ['apps/web/src/shared/ui/**/*.tsx'],
+      excludedFiles: ['**/*.test.tsx', '**/*.copy.ts'],
+      plugins: ['i18next'],
+      rules: {
+        'i18next/no-literal-string': [
+          'error',
+          {
+            // Text children only for now: attribute text (aria-label, title,
+            // placeholder) is checked once the extraction PRs have moved it,
+            // by switching this to `jsx-only` with an attribute list.
+            mode: 'jsx-text-only',
+            words: {
+              // `exclude` replaces the plugin's defaults, so the first four
+              // entries restore them; the rest are glyphs and keyboard hints.
+              exclude: [
+                '[0-9!-/:-@[-`{-~]+',
+                '[A-Z_-]+',
+                '^&(?:[a-zA-Z]+|#[0-9]+|#x[0-9a-fA-F]+);$',
+                /^\p{Emoji}+$/u,
+                '⌘K',
+                // \u2014 is the em dash glyph used as an empty-value marker.
+                '[•↗×⌕ⓘ…\u2014–→←›▼↑↓↵·✓⧉✕🔒+]+',
+                'esc',
+              ],
+            },
+          },
+        ],
+        // `jsx-text-only` skips a string whose parent is not the JSX element
+        // itself, so these three child shapes need their own selectors: a
+        // string, a template or a ternary branch with letters in it, written
+        // straight into JSX children. Attribute and variable text is still not
+        // covered (see docs/frontend-architecture.md, Guardrails).
+        'no-restricted-syntax': [
+          'error',
+          ...WEB_RESTRICTED_SYNTAX,
+          {
+            selector: "JSXElement > JSXExpressionContainer > Literal[value=/[A-Za-z]{2}/]",
+            message: HARDCODED_JSX_CHILD_MESSAGE,
+          },
+          {
+            selector:
+              "JSXElement > JSXExpressionContainer > TemplateLiteral > TemplateElement[value.raw=/[A-Za-z]{2}/]",
+            message: HARDCODED_JSX_CHILD_MESSAGE,
+          },
+          {
+            selector:
+              "JSXElement > JSXExpressionContainer > ConditionalExpression > Literal[value=/[A-Za-z]{2}/]",
+            message: HARDCODED_JSX_CHILD_MESSAGE,
+          },
+          {
+            selector:
+              "JSXElement > JSXExpressionContainer > LogicalExpression > Literal[value=/[A-Za-z]{2}/]",
+            message: HARDCODED_JSX_CHILD_MESSAGE,
           },
         ],
       },

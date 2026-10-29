@@ -49,5 +49,7 @@ export interface TranslationCatalog {
 export interface LocaleContextValue {
   readonly locale: SupportedLocale;
   readonly setLocale: (locale: SupportedLocale) => void;
+  /** Development-only pseudo-language (`?lang=xx`) is active. */
+  readonly pseudo: boolean;
   readonly t: (key: string, fallback: string) => string;
 }

@@ -56,7 +56,10 @@ describe('RegulatoryStatusBadge', () => {
   // populates it, can catch that regression.
   it('override outranks a POPULATED neutral catalog entry for the same status', () => {
     renderWithProviders(
-      <LocaleProvider catalog={{ 'invoice.regulatory.accepted': 'Accepted by the authority' }}>
+      <LocaleProvider
+        locale="en"
+        catalog={{ 'invoice.regulatory.accepted': 'Accepted by the authority' }}
+      >
         <RegulatoryStatusBadge status="accepted" labelOverrides={{ accepted: 'KSeF: accepted' }} />
       </LocaleProvider>,
     );
@@ -102,7 +105,10 @@ describe('RegulatoryStatusBadge', () => {
 
   it('renders the catalog entry over the neutral fallback when no override is given', () => {
     renderWithProviders(
-      <LocaleProvider catalog={{ 'invoice.regulatory.accepted': 'Accepted by the authority' }}>
+      <LocaleProvider
+        locale="en"
+        catalog={{ 'invoice.regulatory.accepted': 'Accepted by the authority' }}
+      >
         <RegulatoryStatusBadge status="accepted" />
       </LocaleProvider>,
     );

@@ -1,7 +1,19 @@
 import '@testing-library/jest-dom/vitest';
 import { cleanup } from '@testing-library/react';
-import { afterEach } from 'vitest';
+import { afterEach, beforeEach } from 'vitest';
 import { setActiveLocale } from '../shared/i18n/active-locale';
+import { LOCALE_STORAGE_KEY } from '../shared/i18n/resolve-locale';
+
+// Tests locate elements by English text (#3859, ADR-079). Start every test in
+// English with no stored choice, whatever the deployment default becomes.
+beforeEach(() => {
+  setActiveLocale('en');
+  try {
+    window.localStorage.removeItem(LOCALE_STORAGE_KEY);
+  } catch {
+    // Storage unavailable: nothing was stored either.
+  }
+});
 
 // Auto-unmount rendered components after every test. Without this, components
 // leak across tests within a file and their `useEffect` cleanups never run —

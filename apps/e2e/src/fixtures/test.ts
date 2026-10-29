@@ -44,6 +44,27 @@ interface TestFixtures {
 }
 
 export const test = base.extend<TestFixtures, WorkerFixtures>({
+  // Specs locate elements by English text. Pin the interface language so they
+  // keep passing whatever VITE_DEFAULT_UI_LOCALE the stack was built with
+  // (#3859, ADR-079). A spec that needs Polish navigates with `?lang=pl`,
+  // which saves Polish; the pin only fills an empty slot, so a reload or an
+  // internal link after that stays in Polish.
+  page: async ({ page }, use) => {
+    // 'openlinker.locale' is LOCALE_STORAGE_KEY in
+    // apps/web/src/shared/i18n/resolve-locale.ts; scripts/check-copy-locales.mjs
+    // fails the build when the two drift.
+    await page.addInitScript(() => {
+      try {
+        if (window.localStorage.getItem('openlinker.locale') === null) {
+          window.localStorage.setItem('openlinker.locale', 'en');
+        }
+      } catch {
+        // Storage blocked: the deployment default applies.
+      }
+    });
+    await use(page);
+  },
+
   env: [
     async ({}, use) => {
       await use(resolveEnv());

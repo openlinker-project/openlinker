@@ -652,7 +652,7 @@ The pre-existing `useTranslation()` / `t(key, fallback)` (#612) stays as a compa
 
 ### Choosing the language
 
-1. `?lang=pl|en` on any URL - switches and saves, then the parameter is removed from the address bar so a reload cannot overwrite a later choice (support, screenshots, Playwright).
+1. `?lang=pl|en` on any URL - switches and saves, then the parameter is removed from the address bar so a reload cannot overwrite a later choice (support, screenshots, Playwright). In a development build `?lang=xx` turns on the pseudo-language for the session (see Guardrails).
 2. `localStorage` - the operator's last choice.
 3. `VITE_DEFAULT_UI_LOCALE` - the deployment default, read in `shared/config/env.ts`. Build-time, like every `VITE_*` variable. Unset, blank or a language the app does not support all mean the same thing: `en` today; #3890 changes that default to `pl`. A mistyped value therefore never silently picks the other language.
 
@@ -682,7 +682,23 @@ The language switch appears on every page as soon as #3858 lands, while only the
 
 ### Tests
 
-Unit tests and Playwright run in English: the Vitest setup file and `env`, the shared render helper and the e2e fixtures pin `en`, so the existing text queries keep working whatever the default is. Polish gets its own targeted tests.
+Unit tests and Playwright run in English. `src/test/setup.ts` resets the active language to English and clears the stored choice before every test, the vitest config pins `VITE_DEFAULT_UI_LOCALE=en`, the shared render helper pins `<LocaleProvider locale="en">`, and the e2e fixture stores `en` when nothing is stored yet. The existing text queries keep working whatever the deployment default becomes; Polish gets its own targeted tests.
+
+### Guardrails
+
+- **`scripts/check-copy-locales.mjs`** (in `pnpm check:invariants`) reads every non-test file under `apps/web/src` that calls `defineCopy`, whatever the file is named. It fails on a Polish placeholder set that differs from English, a `fit(n, text)` budget exceeded in any language, or an em dash, and it warns when Polish is more than 1.6x and 15+ characters longer than English, or when a key's name appears in no other file (a heuristic for an unused key, so a warning only).
+  - It reads inline object literals, strings, `{name}` templates and `fit(<number>, <text>)`, looking through `as const`, `satisfies` and parentheses. Anything else - a language or a leaf held in a variable, a spread, a computed key, `${}` in a template, a non-literal budget, a call with no English text - is an **error**, so a file it cannot read never passes as clean. It also fails when it finds fewer copy files than it expects.
+  - `node scripts/check-copy-locales.mjs --self-check` runs first in `check:invariants` and proves every rule above fires on a fixture, including the leaf counts it reads.
+  - It also checks that the e2e fixture pins the same `localStorage` key the app reads.
+  - **Coverage report (not a gate):** `node scripts/check-copy-locales.mjs --report` prints, for every `defineCopy` file, how many English keys each other language has translated, most missing first, then a `TOTAL` line per language; add `--missing` to list the missing key paths. A plural counts as one key (translated when its `other` form is non-empty), Polish-only `few` / `many` are never extra keys, and an empty string counts as missing. It always exits 0 and is not part of `check:invariants`. A new language shows up in it with no extra code.
+- **`scripts/check-ui-vocabulary.mjs`** reads every `.copy.ts` / `-copy.ts` file under `features/*` and every file under `apps/web/src` that calls `defineCopy` (found by content, with a floor), English branch only. Its banned words are English; the Polish counterparts live in the glossary for review.
+- **`fit(n, text)`** marks a key that sits in a tight spot (button, nav item, chip, table header) with a character budget.
+- **No hardcoded text**: `i18next/no-literal-string` in `.eslintrc.js` fails on JSX text outside copy files, and three `no-restricted-syntax` selectors cover the shapes it skips in JSX children: `{'text'}`, a ternary label and a template literal. It is switched on folder by folder as each folder is migrated; add the folder to the override's `files` list in the same PR.
+  - **Known gap:** text in an attribute (`aria-label`, `title`, `placeholder`) or in a variable outside JSX is not caught; review covers it until the extraction PRs move it. A `jsx-only` mode was tried and rejected for now because it also flags every `tone="ghost"`-style prop (53 hits in `shared/ui` alone).
+  - **Escape hatch:** a brand name, unit or mixed-case code that trips the rule either goes in the copy file with identical `en` and `pl` values, or gets `// eslint-disable-next-line i18next/no-literal-string -- <reason>` (`eslint-comments/require-description` already demands the reason).
+  - `scripts/check-i18n-lint-rule.mjs` resolves the real config for a real `shared/ui` file and fails if the rule is off there or on for tests and copy files, if any `files` glob matches nothing, or if the sentence, `{'text'}`, ternary and template fixtures stop being reported. A typo in `files`, an empty glob or a later override can each silence the rule while `pnpm lint` stays green.
+- **Pseudo-language**: in a development build, `?lang=xx` renders English accented, bracketed and about 40% longer, and marks `<html data-pseudo-locale="true">`. It lasts for the browser session until a real language is picked. Plain English on that screen is a string that was never extracted; a broken layout is one that Polish will break too.
+- **Overflow pass**: `pnpm --filter @openlinker/e2e exec playwright test --project=setup --project=i18n` opens the daily screens in English, then in `pl` and `xx`, and fails when a button, header, badge or chip that fits in English no longer fits its text. It first proves it can catch a deliberately overflowing button. Run it against a local stack before merging a translation batch.
 
 ### Adding another language
 

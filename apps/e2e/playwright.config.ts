@@ -214,6 +214,16 @@ export default defineConfig({
       use: { ...devices['Desktop Chrome'], storageState: STORAGE_STATE },
     },
     {
+      // Interface language (#3859): measures that controls still fit their
+      // text in Polish and in the dev-only pseudo-language. Read-only, so
+      // a retry is harmless.
+      name: 'i18n',
+      testMatch: /i18n\/.*\.spec\.ts/,
+      retries: 1,
+      dependencies: ['setup'],
+      use: { ...devices['Desktop Chrome'], storageState: STORAGE_STATE },
+    },
+    {
       // Access-control coverage — independent of golden-path/full-flow. Depends
       // only on `setup` for the admin storageState the UI-reflection spec's
       // admin-session assertions consume; the viewer/guest browser cases build

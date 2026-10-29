@@ -24,7 +24,12 @@ import { env } from '../config/env';
 import { setActiveLocale } from './active-locale';
 import { applyZodLocale } from './zod-locale';
 import { getBcp47Locale } from './locale';
-import { resolveInitialLocale, storeLocale } from './resolve-locale';
+import {
+  clearPseudoRequested,
+  readPseudoRequested,
+  resolveInitialLocale,
+  storeLocale,
+} from './resolve-locale';
 import {
   isSupportedLocale,
   SOURCE_LOCALE,
@@ -76,6 +81,12 @@ export function LocaleProvider({
     return first;
   });
   const [lastPinned, setLastPinned] = useState(pinned);
+  const [pseudo, setPseudo] = useState<boolean>(
+    () =>
+      pinned === undefined &&
+      typeof window !== 'undefined' &&
+      readPseudoRequested(window.location.search, import.meta.env.DEV),
+  );
 
   // A new pinned value replaces the state during render, so the old language
   // never commits (React's "adjust state when a prop changes" pattern).
@@ -94,10 +105,22 @@ export function LocaleProvider({
     document.documentElement.lang = getBcp47Locale(locale);
   }, [locale]);
 
+  // A deterministic marker for the e2e overflow pass, which must tell "pseudo
+  // is on" apart from "this screen has no migrated text yet".
+  useEffect(() => {
+    if (!pseudo) return undefined;
+    document.documentElement.dataset.pseudoLocale = 'true';
+    return () => {
+      delete document.documentElement.dataset.pseudoLocale;
+    };
+  }, [pseudo]);
+
   const setLocale = useCallback(
     (next: SupportedLocale) => {
       if (!isPinned) storeLocale(next);
       announceLocale(next);
+      clearPseudoRequested();
+      setPseudo(false);
       setLocaleState(next);
     },
     [isPinned],
@@ -107,9 +130,10 @@ export function LocaleProvider({
     () => ({
       locale,
       setLocale,
+      pseudo,
       t: (key, fallback) => catalog[key] ?? fallback,
     }),
-    [locale, setLocale, catalog],
+    [locale, setLocale, pseudo, catalog],
   );
 
   return <LocaleContext.Provider value={value}>{children}</LocaleContext.Provider>;
