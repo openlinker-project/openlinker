@@ -289,11 +289,12 @@ export class AllegroOrderSourceAdapter
     status: string,
     options?: { maxRetries?: number }
   ): Promise<void> {
-    await this.httpClient.put(
-      `/order/checkout-forms/${externalOrderId}/fulfillment`,
-      { status },
-      options
-    );
+    const path = `/order/checkout-forms/${externalOrderId}/fulfillment`;
+    if (options === undefined) {
+      await this.httpClient.put(path, { status });
+      return;
+    }
+    await this.httpClient.put(path, { status }, options);
   }
 
   /**
