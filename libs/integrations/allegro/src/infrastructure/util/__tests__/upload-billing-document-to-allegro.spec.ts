@@ -8,6 +8,7 @@ import type {
 } from '../../http/allegro-http-client.interface';
 import {
   ALLEGRO_BILLING_DOCUMENT_MAX_BYTES,
+  attachBillingDocumentLinkToAllegro,
   uploadBillingDocumentToAllegro,
 } from '../upload-billing-document-to-allegro';
 
@@ -172,5 +173,57 @@ describe('uploadBillingDocumentToAllegro', () => {
         'transient-failure'
       );
     });
+  });
+});
+
+describe('attachBillingDocumentLinkToAllegro', () => {
+  const linkInput = {
+    externalOrderId: 'co-1',
+    documentNumber: 'FV/1',
+    url: 'https://eparagony.pl/r/123',
+  };
+  const linkClient = (post: jest.Mock): IAllegroHttpClient =>
+    ({ post }) as unknown as IAllegroHttpClient;
+
+  it('should send the url as JSON to the links resource', async () => {
+    const post = jest.fn().mockResolvedValue({ data: undefined });
+
+    expect(await attachBillingDocumentLinkToAllegro(linkClient(post), linkInput)).toEqual({
+      outcome: 'uploaded',
+    });
+    expect(post).toHaveBeenCalledWith('/order/co-1/billing-documents/links', {
+      url: 'https://eparagony.pl/r/123',
+    });
+  });
+
+  it('should read a 409 as the same url already on the order', async () => {
+    const post = jest.fn().mockRejectedValue(new AllegroApiException('x', 409));
+
+    expect(await attachBillingDocumentLinkToAllegro(linkClient(post), linkInput)).toEqual({
+      outcome: 'already-present',
+    });
+  });
+
+  it('should read a 422 as a link Allegro will not take, which no retry changes', async () => {
+    const post = jest.fn().mockRejectedValue(new AllegroApiException('x', 422));
+
+    expect(await attachBillingDocumentLinkToAllegro(linkClient(post), linkInput)).toEqual({
+      outcome: 'unsupported',
+      detail: 'link-not-accepted',
+    });
+  });
+
+  it.each([
+    [403, 'rejected'],
+    [404, 'rejected'],
+    [401, 'transient-failure'],
+    [429, 'transient-failure'],
+    [503, 'transient-failure'],
+  ])('should map HTTP %i to %s', async (status, outcome) => {
+    const post = jest.fn().mockRejectedValue(new AllegroApiException('x', status));
+
+    expect((await attachBillingDocumentLinkToAllegro(linkClient(post), linkInput)).outcome).toBe(
+      outcome
+    );
   });
 });

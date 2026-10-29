@@ -16,7 +16,9 @@ import type { JobEnqueuePort } from '@openlinker/core/sync';
 import { InvoiceMarketplaceUploadService } from './invoice-marketplace-upload.service';
 
 const CONNECTION = 'conn-allegro';
-const claimedRow = (overrides: Partial<InvoiceMarketplaceUpload> = {}): InvoiceMarketplaceUpload => ({
+const claimedRow = (
+  overrides: Partial<InvoiceMarketplaceUpload> = {}
+): InvoiceMarketplaceUpload => ({
   id: 'upload-1',
   invoiceRecordId: 'inv-1',
   targetConnectionId: CONNECTION,
@@ -82,12 +84,14 @@ describe('InvoiceMarketplaceUploadService', () => {
       orders as unknown as IOrderRecordService,
       mapping as unknown as IIdentifierMappingService,
       integrations as unknown as IIntegrationsService,
-      enqueue as unknown as JobEnqueuePort,
+      enqueue as unknown as JobEnqueuePort
     );
   });
 
   it('should upload the PDF to the order and record it as uploaded', async () => {
-    const uploader = { uploadBillingDocument: jest.fn().mockResolvedValue({ outcome: 'uploaded' }) };
+    const uploader = {
+      uploadBillingDocument: jest.fn().mockResolvedValue({ outcome: 'uploaded' }),
+    };
     integrations.getCapabilityAdapter.mockResolvedValue(uploader);
 
     const result = await service.upload('inv-1');
@@ -124,17 +128,94 @@ describe('InvoiceMarketplaceUploadService', () => {
   });
 
   it.each([
-    ['a link only', { state: 'link' as const, url: 'https://x.test/d' }],
+    ['a link a buyer cannot open', { state: 'link' as const, url: 'http://192.168.1.10/d.pdf' }],
     ['nothing attachable', { state: 'none' as const }],
-  ])('should record no-file, and upload nothing, when the document is %s', async (_label, attachment) => {
-    attachments.resolveAttachment.mockResolvedValue(attachment);
+  ])(
+    'should record no-file, and upload nothing, when the document is %s',
+    async (_label, attachment) => {
+      attachments.resolveAttachment.mockResolvedValue(attachment);
 
-    expect(await service.upload('inv-1')).toEqual({
-      kind: 'settled',
-      status: 'no-file',
-      failureCode: null,
+      expect(await service.upload('inv-1')).toEqual({
+        kind: 'settled',
+        status: 'no-file',
+        failureCode: null,
+      });
+      expect(integrations.getCapabilityAdapter).not.toHaveBeenCalled();
+    }
+  );
+
+  describe('a document only offered as a link', () => {
+    const link = { state: 'link' as const, url: 'https://ksef.example.pl/verify/abc' };
+
+    beforeEach(() => {
+      attachments.resolveAttachment.mockResolvedValue(link);
     });
-    expect(integrations.getCapabilityAdapter).not.toHaveBeenCalled();
+
+    it('should attach the link to the order, never fetching it', async () => {
+      const linker = {
+        uploadBillingDocument: jest.fn(),
+        attachBillingDocumentLink: jest.fn().mockResolvedValue({ outcome: 'uploaded' }),
+      };
+      integrations.getCapabilityAdapter.mockResolvedValue(linker);
+
+      expect(await service.upload('inv-1')).toEqual({
+        kind: 'settled',
+        status: 'uploaded',
+        failureCode: null,
+      });
+      expect(linker.attachBillingDocumentLink).toHaveBeenCalledWith({
+        externalOrderId: 'ext-order-1',
+        documentNumber: 'FV/2026/10/0001',
+        url: link.url,
+      });
+      expect(linker.uploadBillingDocument).not.toHaveBeenCalled();
+    });
+
+    it('should read a link the order already carries as uploaded', async () => {
+      integrations.getCapabilityAdapter.mockResolvedValue({
+        attachBillingDocumentLink: jest.fn().mockResolvedValue({ outcome: 'already-present' }),
+      });
+
+      expect(await service.upload('inv-1')).toMatchObject({ status: 'uploaded' });
+    });
+
+    it('should record unsupported when the marketplace will not take the link', async () => {
+      integrations.getCapabilityAdapter.mockResolvedValue({
+        attachBillingDocumentLink: jest
+          .fn()
+          .mockResolvedValue({ outcome: 'unsupported', detail: 'link-not-accepted' }),
+      });
+
+      expect(await service.upload('inv-1')).toMatchObject({ status: 'unsupported' });
+    });
+
+    it('should keep the row claimable when the marketplace takes files but no links', async () => {
+      const uploader = { uploadBillingDocument: jest.fn() };
+      integrations.getCapabilityAdapter.mockResolvedValue(uploader);
+
+      expect(await service.upload('inv-1')).toMatchObject({ status: 'no-file' });
+      expect(uploader.uploadBillingDocument).not.toHaveBeenCalled();
+    });
+
+    it('should record unsupported when the marketplace takes neither', async () => {
+      integrations.getCapabilityAdapter.mockResolvedValue({ getOrder: jest.fn() });
+
+      expect(await service.upload('inv-1')).toMatchObject({ status: 'unsupported' });
+    });
+
+    it('should prefer the file when the provider offers one', async () => {
+      attachments.resolveAttachment.mockResolvedValue(pdf);
+      const both = {
+        uploadBillingDocument: jest.fn().mockResolvedValue({ outcome: 'uploaded' }),
+        attachBillingDocumentLink: jest.fn(),
+      };
+      integrations.getCapabilityAdapter.mockResolvedValue(both);
+
+      await service.upload('inv-1');
+
+      expect(both.uploadBillingDocument).toHaveBeenCalled();
+      expect(both.attachBillingDocumentLink).not.toHaveBeenCalled();
+    });
   });
 
   it('should record unsupported when the marketplace adapter cannot take a billing document', async () => {
@@ -152,7 +233,7 @@ describe('InvoiceMarketplaceUploadService', () => {
       uploadBillingDocument: jest.fn().mockResolvedValue({ outcome: 'unsupported' }),
     });
 
-    expect((await service.upload('inv-1'))).toMatchObject({ status: 'unsupported' });
+    expect(await service.upload('inv-1')).toMatchObject({ status: 'unsupported' });
   });
 
   it('should record a transient failure and never persist the adapter detail', async () => {
@@ -170,7 +251,9 @@ describe('InvoiceMarketplaceUploadService', () => {
 
   it('should record a rejection as a failure no retry can change', async () => {
     integrations.getCapabilityAdapter.mockResolvedValue({
-      uploadBillingDocument: jest.fn().mockResolvedValue({ outcome: 'rejected', detail: 'too large' }),
+      uploadBillingDocument: jest
+        .fn()
+        .mockResolvedValue({ outcome: 'rejected', detail: 'too large' }),
     });
 
     expect(await service.upload('inv-1')).toEqual({
@@ -226,7 +309,11 @@ describe('InvoiceMarketplaceUploadService', () => {
   });
 
   it.each([
-    ['an unknown invoice', () => invoices.getInvoiceById.mockResolvedValue(null), 'invoice-not-found'],
+    [
+      'an unknown invoice',
+      () => invoices.getInvoiceById.mockResolvedValue(null),
+      'invoice-not-found',
+    ],
     ['an unknown order', () => orders.getOrderRecord.mockResolvedValue(null), 'order-not-found'],
   ])('should skip %s', async (_label, arrange, reason) => {
     arrange();
@@ -242,13 +329,15 @@ describe('InvoiceMarketplaceUploadService', () => {
       documentNumber: '///',
       providerInvoiceNumber: null,
     });
-    const uploader = { uploadBillingDocument: jest.fn().mockResolvedValue({ outcome: 'uploaded' }) };
+    const uploader = {
+      uploadBillingDocument: jest.fn().mockResolvedValue({ outcome: 'uploaded' }),
+    };
     integrations.getCapabilityAdapter.mockResolvedValue(uploader);
 
     await service.upload('inv-1');
 
     expect(uploader.uploadBillingDocument).toHaveBeenCalledWith(
-      expect.objectContaining({ fileName: 'document.pdf' }),
+      expect.objectContaining({ fileName: 'document.pdf' })
     );
   });
 
@@ -290,7 +379,7 @@ describe('InvoiceMarketplaceUploadService', () => {
     it('should give the clearance trigger its own key, one per invoice', async () => {
       await service.enqueueUpload('inv-1', { cleared: true });
       expect(enqueue.enqueueJob).toHaveBeenCalledWith(
-        expect.objectContaining({ idempotencyKey: 'invoice-upload:inv-1:cleared' }),
+        expect.objectContaining({ idempotencyKey: 'invoice-upload:inv-1:cleared' })
       );
     });
 

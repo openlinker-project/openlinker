@@ -40,9 +40,23 @@
  * - 401/408/429, every 5xx, a transport failure and an unreadable answer ->
  *   `transient-failure`.
  *
+ * ## Links
+ *
+ * A document the provider only offers as a url goes to
+ * `POST /order/{orderId}/billing-documents/links` (`uploadOrderBillingDocumentLink`,
+ * JSON `{ url }`, up to 10 per order, likewise NOT verified against the
+ * sandbox). The answers differ from the file upload in two places:
+ * - 409 means THIS url is already on the order, so it is `already-present`
+ *   with no listing needed - the url itself is the identity;
+ * - 422 is "the given URL is invalid", which per Allegro's announcement also
+ *   covers a domain outside the list it accepts. No retry of the same url can
+ *   change that, and the seller cannot fix it from here, so it is
+ *   `unsupported` rather than `rejected`.
+ *
  * @module libs/integrations/allegro/src/infrastructure/util
  */
 import type {
+  AttachBillingDocumentLinkInput,
   UploadBillingDocumentInput,
   UploadBillingDocumentResult,
 } from '@openlinker/core/orders';
@@ -99,6 +113,24 @@ export async function uploadBillingDocumentToAllegro(
       `/order/checkout-forms/${orderId}/invoices`,
       input.documentNumber
     );
+  }
+}
+
+export async function attachBillingDocumentLinkToAllegro(
+  httpClient: IAllegroHttpClient,
+  input: AttachBillingDocumentLinkInput
+): Promise<UploadBillingDocumentResult> {
+  try {
+    await httpClient.post(
+      `/order/${encodeURIComponent(input.externalOrderId)}/billing-documents/links`,
+      { url: input.url }
+    );
+    return { outcome: 'uploaded' };
+  } catch (error) {
+    const status = statusOf(error);
+    if (status === 409) return { outcome: 'already-present' };
+    if (status === 422) return { outcome: 'unsupported', detail: 'link-not-accepted' };
+    return classify(error);
   }
 }
 

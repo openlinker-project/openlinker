@@ -58,12 +58,19 @@ export {
 // above - narrow the dispatched OrderSource adapter with the guard.
 export type { OrderBillingDocumentUploader } from './domain/ports/capabilities/order-billing-document-uploader.capability';
 export { isOrderBillingDocumentUploader } from './domain/ports/capabilities/order-billing-document-uploader.capability';
+// Its link sibling: a marketplace that shows the buyer a link to the document.
+export type { OrderBillingDocumentLinker } from './domain/ports/capabilities/order-billing-document-linker.capability';
+export { isOrderBillingDocumentLinker } from './domain/ports/capabilities/order-billing-document-linker.capability';
 export type {
+  AttachBillingDocumentLinkInput,
   BillingDocumentUploadOutcome,
   UploadBillingDocumentInput,
   UploadBillingDocumentResult,
 } from './domain/types/order-billing-document.types';
-export { BillingDocumentUploadOutcomeValues } from './domain/types/order-billing-document.types';
+export {
+  BillingDocumentUploadOutcomeValues,
+  isShareableBillingDocumentUrl,
+} from './domain/types/order-billing-document.types';
 
 // Return source reader (#2329 / ADR-060): the returns half of OrderSource.
 // Advertised-without-dispatch — narrow the dispatched OrderSource adapter with
