@@ -30983,7 +30983,7 @@ legend.analytics-settings-dialog__label {
   width: 22px;
   height: 15px;
   border-radius: 3px;
-  box-shadow: 0 0 0 1px rgb(15 18 26 / 0.12);
+  box-shadow: 0 0 0 1px var(--border-default);
   overflow: hidden;
 }
 

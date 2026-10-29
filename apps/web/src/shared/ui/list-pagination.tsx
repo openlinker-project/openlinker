@@ -31,6 +31,7 @@ import { Button } from './button';
 import { formatPaginatedTotal, type PaginatedTotalState } from '../hooks/use-paginated-total';
 import { useCopy } from '../i18n/use-copy';
 import { interpolate } from '../i18n/interpolate';
+import { renderRich } from '../i18n/render-rich';
 import { useFormat } from '../i18n/use-format';
 import { uiCopy } from './ui.copy';
 
@@ -155,6 +156,19 @@ export const ListPagination = forwardRef<HTMLElement, ListPaginationProps>(funct
   const copy = useCopy(uiCopy).pagination;
   const { number } = useFormat();
 
+  const totalNode =
+    total !== null ? (
+      <span className="tabular">{formatPaginatedTotal(total, offset + rowCount)}</span>
+    ) : (
+      <span
+        className="tabular pagination__total-pending"
+        title={totalUnavailable ? copy.totalFailed : copy.counting}
+      >
+        {formatPaginatedTotal(total, offset + rowCount)}
+        {showTotalLoader ? <span className="pagination__counting-dot" aria-hidden="true" /> : null}
+      </span>
+    );
+
   return (
     <nav
       ref={ref}
@@ -172,23 +186,10 @@ export const ListPagination = forwardRef<HTMLElement, ListPaginationProps>(funct
           copy.noResults
         ) : (
           <>
-            {interpolate(copy.showing, { start: number(offset + 1), end: number(rangeEnd) })}{' '}
-            {total !== null ? (
-              <span className="tabular">{formatPaginatedTotal(total, offset + rowCount)}</span>
-            ) : (
-              <span
-                className="tabular pagination__total-pending"
-                title={
-                  totalUnavailable
-                    ? copy.totalFailed
-                    : copy.counting
-                }
-              >
-                {formatPaginatedTotal(total, offset + rowCount)}
-                {showTotalLoader ? (
-                  <span className="pagination__counting-dot" aria-hidden="true" />
-                ) : null}
-              </span>
+            {renderRich(
+              interpolate(copy.showing, { start: number(offset + 1), end: number(rangeEnd) }),
+              // One sentence per key: the total sits inside it, styled on its own.
+              { total: () => totalNode },
             )}
             {/*
                 A FAILED count gets visible, machine-readable text - not just a

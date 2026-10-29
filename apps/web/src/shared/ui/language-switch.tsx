@@ -17,7 +17,7 @@ import { useEffect, useId, useRef, useState, type KeyboardEvent, type ReactEleme
 import { useCopy } from '../i18n/use-copy';
 import { interpolate } from '../i18n/interpolate';
 import { useOptionalLocale } from '../i18n/use-locale';
-import { isSupportedLocale, type SupportedLocale } from '../i18n/i18n.types';
+import { isSupportedLocale } from '../i18n/i18n.types';
 import { LanguageFlag, type LanguageFlagCode } from './language-flag';
 import { uiCopy } from './ui.copy';
 
@@ -37,6 +37,22 @@ const LANGUAGE_OPTIONS: readonly LanguageOption[] = [
 ];
 
 const SPRING = { type: 'spring', stiffness: 520, damping: 34, mass: 0.7 } as const;
+
+const indexOf = (code: string): number =>
+  Math.max(
+    0,
+    LANGUAGE_OPTIONS.findIndex((option) => option.code === code),
+  );
+
+/** The next pickable option in `step` direction; the "Soon" ones are skipped. */
+function step(from: number, direction: 1 | -1): number {
+  const count = LANGUAGE_OPTIONS.length;
+  for (let offset = 1; offset <= count; offset += 1) {
+    const index = (from + direction * offset + count) % count;
+    if (isSupportedLocale(LANGUAGE_OPTIONS[index].code)) return index;
+  }
+  return from;
+}
 
 export interface LanguageSwitchProps {
   /** `up` in the sidebar footer, `down` in a top corner. */
@@ -63,7 +79,6 @@ export function LanguageSwitch({
 
   useEffect(() => {
     if (!open) return undefined;
-    setFocus(LANGUAGE_OPTIONS.findIndex((option) => option.code === locale));
     const onPointerDown = (event: PointerEvent): void => {
       if (rootRef.current && !rootRef.current.contains(event.target as Node)) setOpen(false);
     };
@@ -73,7 +88,7 @@ export function LanguageSwitch({
       document.removeEventListener('pointerdown', onPointerDown);
       cancelAnimationFrame(frame);
     };
-  }, [open, locale]);
+  }, [open]);
 
   function close(): void {
     setOpen(false);
@@ -81,9 +96,17 @@ export function LanguageSwitch({
   }
 
   function choose(option: LanguageOption): void {
-    if (!isSupportedLocale(option.code)) return;
-    localeContext?.setLocale(option.code as SupportedLocale);
+    const { code } = option;
+    if (!isSupportedLocale(code)) return;
+    localeContext?.setLocale(code);
     close();
+  }
+
+  function toggle(): void {
+    // Set before opening, so `aria-activedescendant` names the current
+    // language on the very first render of the list.
+    if (!open) setFocus(indexOf(locale));
+    setOpen((value) => !value);
   }
 
   function onKeyDown(event: KeyboardEvent<HTMLUListElement>): void {
@@ -92,10 +115,10 @@ export function LanguageSwitch({
       close();
     } else if (event.key === 'ArrowDown') {
       event.preventDefault();
-      setFocus((index) => (index + 1) % LANGUAGE_OPTIONS.length);
+      setFocus((index) => step(index, 1));
     } else if (event.key === 'ArrowUp') {
       event.preventDefault();
-      setFocus((index) => (index - 1 + LANGUAGE_OPTIONS.length) % LANGUAGE_OPTIONS.length);
+      setFocus((index) => step(index, -1));
     } else if (event.key === 'Enter' || event.key === ' ') {
       event.preventDefault();
       choose(LANGUAGE_OPTIONS[focus]);
@@ -119,7 +142,7 @@ export function LanguageSwitch({
         aria-expanded={open}
         aria-controls={open ? listId : undefined}
         aria-label={interpolate(copy.current, { name: current.name })}
-        onClick={() => setOpen((value) => !value)}
+        onClick={toggle}
       >
         <span className="language-switch__flag-wrap">
           <AnimatePresence mode="wait" initial={false}>

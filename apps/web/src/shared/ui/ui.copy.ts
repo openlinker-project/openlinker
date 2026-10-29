@@ -24,7 +24,7 @@ export const uiCopy = defineCopy({
       unknown: 'Unknown',
     },
     bulkActionBar: {
-      selected: 'selected',
+      selected: { one: 'selected', other: 'selected' },
       selectedCount: { one: '{n} item selected', other: '{n} items selected' },
     },
     categorySearch: {
@@ -56,8 +56,8 @@ export const uiCopy = defineCopy({
       more: '+{n} more',
       customValueTitle: 'Custom value (not from list)',
       searchOrCustom: 'Type to search or enter a custom value…',
-      searchCount: 'Type to search {n} options…',
-      searchCountHint: 'Type to search {n} options.',
+      searchCount: { one: 'Type to search {n} option…', other: 'Type to search {n} options…' },
+      searchCountHint: { one: 'Type to search {n} option.', other: 'Type to search {n} options.' },
       filter: 'Type to filter…',
       optionCount: { one: '{n} option', other: '{n} options' },
       showing: 'Showing {shown} of {total}',
@@ -143,6 +143,11 @@ export const uiCopy = defineCopy({
       loading: 'Loading',
       error: 'Error',
     },
+    accessDenied: {
+      eyebrow: 'No access',
+      title: "You don't have access to this",
+      message: "Your account's role doesn't include this screen. Ask an administrator if you need it.",
+    },
     fileUpload: {
       tooLarge: 'File is too large ({size}). Maximum allowed: {max}.',
       wrongType: 'File type "{type}" is not accepted. Allowed: {accept}.',
@@ -160,7 +165,7 @@ export const uiCopy = defineCopy({
     pagination: {
       label: 'Pagination',
       noResults: 'No results',
-      showing: 'Showing {start}–{end} of',
+      showing: 'Showing {start}–{end} of <total></total>',
       totalFailed: 'The full count could not be loaded. At least this many match.',
       counting: 'Counting the full result set',
       countUnavailable: '(count unavailable)',
@@ -194,9 +199,15 @@ export const uiCopy = defineCopy({
       htmlSource: 'HTML source',
       htmlSourceNamed: '{label} (HTML source)',
       undeclared: 'This destination has not declared its description format - showing a safe subset.',
-      bytes: '{bytes} / {max} bytes',
-      overLimit: ' - over the destination limit',
-      nearLimit: ' - near the limit',
+      bytes: { one: '{bytes} / {max} byte', other: '{bytes} / {max} bytes' },
+      bytesOverLimit: {
+        one: '{bytes} / {max} byte - over the destination limit',
+        other: '{bytes} / {max} bytes - over the destination limit',
+      },
+      bytesNearLimit: {
+        one: '{bytes} / {max} byte - near the limit',
+        other: '{bytes} / {max} bytes - near the limit',
+      },
     },
     richTextView: {
       empty: 'No description',
@@ -245,7 +256,7 @@ export const uiCopy = defineCopy({
       unknown: 'Nieznane',
     },
     bulkActionBar: {
-      selected: 'zaznaczono',
+      selected: { one: 'zaznaczony', few: 'zaznaczone', many: 'zaznaczonych', other: 'zaznaczonego' },
       selectedCount: {
         one: 'Zaznaczono {n} element',
         few: 'Zaznaczono {n} elementy',
@@ -274,7 +285,7 @@ export const uiCopy = defineCopy({
     },
     categoryTree: {
       path: 'Ścieżka kategorii',
-      root: 'Początek',
+      root: 'Wszystkie kategorie',
       loadingTitle: 'Ładowanie kategorii',
       loadingMessage: 'Pobieranie kategorii…',
       errorTitle: 'Nie udało się wczytać kategorii',
@@ -287,13 +298,23 @@ export const uiCopy = defineCopy({
       more: '+{n} więcej',
       customValueTitle: 'Własna wartość (spoza listy)',
       searchOrCustom: 'Wpisz, aby wyszukać, lub podaj własną wartość…',
-      searchCount: 'Wpisz, aby przeszukać {n} opcji…',
-      searchCountHint: 'Wpisz, aby przeszukać {n} opcji.',
+      searchCount: {
+        one: 'Wpisz, aby przeszukać {n} opcję…',
+        few: 'Wpisz, aby przeszukać {n} opcje…',
+        many: 'Wpisz, aby przeszukać {n} opcji…',
+        other: 'Wpisz, aby przeszukać {n} opcji…',
+      },
+      searchCountHint: {
+        one: 'Wpisz, aby przeszukać {n} opcję.',
+        few: 'Wpisz, aby przeszukać {n} opcje.',
+        many: 'Wpisz, aby przeszukać {n} opcji.',
+        other: 'Wpisz, aby przeszukać {n} opcji.',
+      },
       filter: 'Wpisz, aby filtrować…',
       optionCount: { one: '{n} opcja', few: '{n} opcje', many: '{n} opcji', other: '{n} opcji' },
       showing: 'Wyświetlono {shown} z {total}',
-      navigate: 'nawigacja',
-      select: 'wybór',
+      navigate: 'przejdź',
+      select: 'wybierz',
       close: 'zamknij',
       clearCustom: 'Wyczyść własną wartość',
       placeholder: 'Wybierz…',
@@ -374,6 +395,11 @@ export const uiCopy = defineCopy({
       loading: 'Ładowanie',
       error: 'Błąd',
     },
+    accessDenied: {
+      eyebrow: 'Brak dostępu',
+      title: 'Nie masz dostępu do tego ekranu',
+      message: 'Twoja rola nie obejmuje tego ekranu. Jeśli go potrzebujesz, poproś administratora.',
+    },
     fileUpload: {
       tooLarge: 'Plik jest za duży ({size}). Maksymalny rozmiar: {max}.',
       wrongType: 'Typ pliku „{type}” nie jest akceptowany. Dozwolone: {accept}.',
@@ -391,7 +417,7 @@ export const uiCopy = defineCopy({
     pagination: {
       label: 'Stronicowanie',
       noResults: 'Brak wyników',
-      showing: 'Wyświetlono {start}–{end} z',
+      showing: 'Wyświetlono {start}–{end} z <total></total>',
       totalFailed: 'Nie udało się wczytać pełnej liczby. Pasuje co najmniej tyle.',
       counting: 'Liczenie wszystkich wyników',
       countUnavailable: '(liczba niedostępna)',
@@ -425,9 +451,24 @@ export const uiCopy = defineCopy({
       htmlSource: 'Kod HTML',
       htmlSourceNamed: '{label} (kod HTML)',
       undeclared: 'To miejsce docelowe nie określiło formatu opisu - pokazujemy bezpieczny podzbiór.',
-      bytes: '{bytes} / {max} bajtów',
-      overLimit: ' - ponad limit miejsca docelowego',
-      nearLimit: ' - blisko limitu',
+      bytes: {
+        one: '{bytes} / {max} bajt',
+        few: '{bytes} / {max} bajty',
+        many: '{bytes} / {max} bajtów',
+        other: '{bytes} / {max} bajta',
+      },
+      bytesOverLimit: {
+        one: '{bytes} / {max} bajt - ponad limit miejsca docelowego',
+        few: '{bytes} / {max} bajty - ponad limit miejsca docelowego',
+        many: '{bytes} / {max} bajtów - ponad limit miejsca docelowego',
+        other: '{bytes} / {max} bajta - ponad limit miejsca docelowego',
+      },
+      bytesNearLimit: {
+        one: '{bytes} / {max} bajt - blisko limitu',
+        few: '{bytes} / {max} bajty - blisko limitu',
+        many: '{bytes} / {max} bajtów - blisko limitu',
+        other: '{bytes} / {max} bajta - blisko limitu',
+      },
     },
     richTextView: {
       empty: 'Brak opisu',
