@@ -174,6 +174,7 @@ export function createMockApiClient(
   const core: CoreApiClient = {
     request: overrides.request ?? vi.fn(),
     requestBlob: overrides.requestBlob ?? vi.fn(),
+    requestFile: overrides.requestFile ?? vi.fn(),
     requestStream: overrides.requestStream ?? vi.fn(),
     adapters: {
       list: vi.fn().mockResolvedValue([]),
@@ -256,6 +257,26 @@ export function createMockApiClient(
         unresolvedProductCount: 0,
         coverageGapAvailable: true,
       }),
+      getMargin: vi.fn().mockResolvedValue({
+        currency: 'PLN',
+        bucket: 'week',
+        headline: {
+          netRevenue: 0,
+          coveredNetRevenue: 0,
+          costOfGoods: 0,
+          grossMargin: 0,
+          marginPct: null,
+          costCoveragePct: null,
+          gaps: [],
+        },
+        trend: [],
+        channels: [],
+        excludedLineCount: 0,
+      }),
+      getMarginProducts: vi
+        .fn()
+        .mockResolvedValue({ currency: 'PLN', items: [], total: 0, unresolvedProductCount: 0 }),
+      exportCsv: vi.fn(),
       getCoverage: vi.fn().mockResolvedValue({
         categories: [
           { category: 'currency', status: 'open', affectedCount: 0, sampleOrderIds: [] },

@@ -68,3 +68,15 @@ export type {
   TopProductsResult,
   TopProductsSortBy,
 } from './api/top-products.types';
+
+export { MarginPanel, ANALYTICS_MARGIN_ANCHOR_ID } from './components/margin-panel';
+export { ExportCsvButton } from './components/export-csv-button';
+export { useMarginPanelVisible } from './hooks/use-margin-panel-visible';
+export { useMarginAnalyticsQuery, useMarginProductsQuery } from './hooks/use-margin-analytics-query';
+export type {
+  MarginAnalytics,
+  MarginFigures,
+  MarginFilters,
+  MarginProductRow,
+  MarginProductsResult,
+} from './api/margin-analytics.types';
