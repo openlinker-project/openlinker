@@ -11,6 +11,7 @@ import { InvalidVariantCostError, ProductVariantNotFoundError } from '@openlinke
 import type { IProductsService, Product, ProductVariant } from '@openlinker/core/products';
 import { ROLES_KEY } from '../../auth/decorators/roles.decorator';
 import type { AuthenticatedUser } from '../../auth/auth.types';
+import type { IProductCostReadsService } from '../application/services/product-cost-reads.service.interface';
 import { ProductCostController } from './product-cost.controller';
 import { ProductsController, VariantsController } from './products.controller';
 import { ProductsApiModule } from '../products.module';
@@ -55,7 +56,10 @@ describe('ProductCostController', () => {
       getProduct: jest.fn(),
       getVariantsByProductId: jest.fn(),
     };
-    controller = new ProductCostController(service as unknown as IProductsService);
+    controller = new ProductCostController(
+      service as unknown as IProductsService,
+      {} as unknown as IProductCostReadsService
+    );
   });
 
   describe('authorization metadata', () => {
