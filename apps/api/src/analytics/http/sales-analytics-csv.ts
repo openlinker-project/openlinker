@@ -15,9 +15,11 @@ import type { NetGrossBasis } from '@openlinker/core/analytics';
 import type { ChannelSalesAnalytics, SalesAndChannelAnalytics } from '@openlinker/core/orders';
 import { csvHeaderComments, csvStream, type CsvColumn } from '@openlinker/shared/csv';
 import { toInclusiveDay } from './export-range';
+import { channelCells, type ConnectionLabels } from './connection-labels';
 
 interface ChannelCsvRow {
   readonly channel: string;
+  readonly connection: string;
   readonly connectionId: string;
   readonly revenue: number | null;
   readonly orders: number;
@@ -30,14 +32,15 @@ const money = (value: number | null): string | null => (value === null ? null : 
 
 export function buildSalesByChannelRows(
   channels: readonly ChannelSalesAnalytics[],
-  basis: NetGrossBasis
+  basis: NetGrossBasis,
+  labels: ConnectionLabels
 ): ChannelCsvRow[] {
   const revenueOf = (c: ChannelSalesAnalytics): number => (basis === 'net' ? c.netRevenue : c.revenue);
   const aovOf = (c: ChannelSalesAnalytics): number | null =>
     basis === 'net' ? c.netAverageOrderValue : c.averageOrderValue;
 
   const rows: ChannelCsvRow[] = channels.map((c) => ({
-    channel: c.sourceConnectionId,
+    ...channelCells(labels, c.sourceConnectionId),
     connectionId: c.sourceConnectionId,
     revenue: c.currency === null ? null : revenueOf(c),
     orders: c.orderCount,
@@ -59,6 +62,7 @@ export function buildSalesByChannelRows(
       basis === 'net' ? orderCount - sum((c) => c.netExcludedCount) : orderCount;
     rows.push({
       channel: 'Total',
+      connection: '',
       connectionId: '',
       revenue,
       orders: orderCount,
@@ -79,6 +83,7 @@ export function buildSalesByChannelCsv(input: {
   from: Date;
   to: Date;
   basis: NetGrossBasis;
+  labels: ConnectionLabels;
   displayCurrencyRequested?: string;
   now?: Date;
 }): Readable {
@@ -87,12 +92,13 @@ export function buildSalesByChannelCsv(input: {
   const revenueLabel = basis === 'net' ? 'net_sales' : 'gmv';
   const columns: CsvColumn<ChannelCsvRow>[] = [
     { header: 'channel', value: (r) => r.channel },
-    { header: 'connection_id', value: (r) => r.connectionId },
+    { header: 'connection', value: (r) => r.connection },
     { header: revenueLabel, value: (r) => money(r.revenue) },
     { header: 'orders', value: (r) => r.orders },
     { header: 'aov', value: (r) => money(r.aov) },
     { header: 'units', value: (r) => r.units },
     { header: 'share_pct', value: (r) => (r.share === null ? null : (r.share * 100).toFixed(1)) },
+    { header: 'connection_id', value: (r) => r.connectionId },
   ];
 
   const entries = [
@@ -119,7 +125,7 @@ export function buildSalesByChannelCsv(input: {
     });
   }
 
-  return csvStream(columns, buildSalesByChannelRows(analytics.channels, basis), {
+  return csvStream(columns, buildSalesByChannelRows(analytics.channels, basis, input.labels), {
     comments: csvHeaderComments(entries),
   });
 }

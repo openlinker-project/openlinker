@@ -12,6 +12,7 @@ import { csvHeaderComments, csvStream, type CsvColumn } from '@openlinker/shared
 import type { TopProductFilters } from '@openlinker/core/orders';
 import type { TopProductRowDto, TopProductsResponseDto } from './dto/top-products-response.dto';
 import { toInclusiveDay } from './export-range';
+import { connectionHeaderLabel, type ConnectionLabels } from './connection-labels';
 
 export const TOP_PRODUCTS_CSV_PAGE_SIZE = 500;
 
@@ -38,6 +39,7 @@ export function buildTopProductsCsv(input: {
   from: Date;
   to: Date;
   basis: NetGrossBasis;
+  labels: ConnectionLabels;
   now?: Date;
 }): { stream: Readable; currency: string } {
   const { rows, basis } = input;
@@ -54,7 +56,7 @@ export function buildTopProductsCsv(input: {
     { header: 'units', value: (r) => r.units },
     ...channelIds.map(
       (id): CsvColumn<TopProductRowDto> => ({
-        header: `units_${id}`,
+        header: `units_${connectionHeaderLabel(input.labels, id)}`,
         value: (r) => r.channels.find((c) => c.sourceConnectionId === id)?.units ?? 0,
       })
     ),
