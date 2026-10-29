@@ -109,6 +109,9 @@ function harness(options: {
     acknowledgedByUserId: string | null;
   }>;
   acknowledgeBuyerNote?: jest.Mock;
+  /** #3586 — pictures of the variant / its product. */
+  variantImages?: string[] | null;
+  productImages?: string[] | null;
 }) {
   const work = options.work ?? workView();
 
@@ -184,11 +187,24 @@ function harness(options: {
     getVariantsByIds: jest
       .fn()
       .mockResolvedValue([
-        { id: 'ol_variant_1', productId: 'ol_product_1', sku: 'MUG-WHT-350', ean: '5901234123457', gtin: null },
+        {
+          id: 'ol_variant_1',
+          productId: 'ol_product_1',
+          sku: 'MUG-WHT-350',
+          ean: '5901234123457',
+          gtin: null,
+          images: options.variantImages ?? null,
+        },
       ]),
     getProductsByIds: jest
       .fn()
-      .mockResolvedValue([{ id: 'ol_product_1', name: 'Ceramic mug, matte white, 350 ml' }]),
+      .mockResolvedValue([
+        {
+          id: 'ol_product_1',
+          name: 'Ceramic mug, matte white, 350 ml',
+          images: options.productImages ?? null,
+        },
+      ]),
   } as unknown as IProductsService;
 
   const shipments = {
@@ -729,6 +745,21 @@ describe('BenchParcelService (#2418)', () => {
       expect(parcel.orderReference).toBe('OL-4471');
       expect(JSON.stringify(parcel)).not.toContain('Testowa');
       expect(JSON.stringify(parcel)).not.toContain('anna@example.test');
+    });
+
+    it("uses the variant's own picture when it has one (#3586)", async () => {
+      const { service } = harness({
+        variantImages: ['https://shop.test/red.jpg'],
+        productImages: ['https://shop.test/p.jpg'],
+      });
+      const line = (await service.getParcel('work-1')).lines[0];
+      expect(line.imageUrl).toBe('/products/variants/ol_variant_1/images/0');
+    });
+
+    it("falls back to the product's picture when the variant has none (#3586)", async () => {
+      const { service } = harness({ productImages: ['https://shop.test/p.jpg'] });
+      const line = (await service.getParcel('work-1')).lines[0];
+      expect(line.imageUrl).toBe('/products/ol_product_1/images/0');
     });
 
     it('describes the line from the catalogue so a packer can match the shelf label', async () => {

@@ -89,6 +89,8 @@ export class PrestashopProductMapper implements IPrestashopProductMapper {
       }
     });
 
+    const images = this.extractCombinationImages(combination);
+
     return {
       productId,
       sku: this.getStringField(combination.reference) || null,
@@ -97,7 +99,26 @@ export class PrestashopProductMapper implements IPrestashopProductMapper {
       gtin,
       price: this.parseNumber(combination.price),
       weight: this.parseNumber(combination.weight),
+      ...(images ? { images } : {}),
     };
+  }
+
+  /**
+   * The pictures dedicated to one combination, as the same URLs the product's
+   * own gallery carries (same `buildImageUrl`), so a variant picture can be
+   * matched against its product's. Id `0` and empty nodes mean "none".
+   */
+  private extractCombinationImages(combination: PrestashopCombination): string[] | undefined {
+    const entries = this.unwrapAssociationEntries(combination.associations?.images, 'image');
+    const urls: string[] = [];
+    for (const entry of entries) {
+      const id = this.readAssociationId(entry);
+      if (id === null || id === '0') {
+        continue;
+      }
+      urls.push(this.buildImageUrl(id));
+    }
+    return urls.length > 0 ? urls : undefined;
   }
 
   /**
@@ -457,10 +478,7 @@ export class PrestashopProductMapper implements IPrestashopProductMapper {
       return [];
     }
     const associations = product.associations as Record<string, unknown>;
-    const entries = this.unwrapAssociationEntries(
-      associations.product_features,
-      'product_feature'
-    );
+    const entries = this.unwrapAssociationEntries(associations.product_features, 'product_feature');
     const refs: PrestashopFeatureRef[] = [];
     for (const entry of entries) {
       if (entry === null || typeof entry !== 'object') {

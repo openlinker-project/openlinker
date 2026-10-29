@@ -8,6 +8,7 @@
 import type { TestingModule } from '@nestjs/testing';
 import { Test } from '@nestjs/testing';
 import { BadRequestException, NotFoundException } from '@nestjs/common';
+import { PATH_METADATA } from '@nestjs/common/constants';
 import { ProductImageProxyService } from '../application/services/product-image-proxy.service';
 import { ProductsController, VariantsController } from './products.controller';
 import { PRODUCTS_SERVICE_TOKEN, TAX_RATE_JOURNAL_SERVICE_TOKEN } from '@openlinker/core/products';
@@ -186,7 +187,10 @@ describe('ProductsController', () => {
         // absent provider fails the whole module and with it every test in this
         // file - which is how it went unnoticed, since nothing here exercises
         // the image route it was added for.
-        { provide: ProductImageProxyService, useValue: { getImage: jest.fn() } },
+        {
+          provide: ProductImageProxyService,
+          useValue: { getImage: jest.fn(), getVariantImage: jest.fn() },
+        },
       ],
     }).compile();
 
@@ -209,6 +213,7 @@ describe('ProductsController', () => {
     productsService.getVariantCountsByProductIds.mockResolvedValue(new Map());
     productsService.getStaleVariantCountsByProductIds.mockResolvedValue(new Map());
     identifierMapping.getExternalIds.mockResolvedValue([]);
+    productsService.getProductsByIds.mockResolvedValue([]);
   });
 
   describe('listProducts', () => {
@@ -577,6 +582,138 @@ describe('ProductsController', () => {
     });
   });
 
+  describe('variant pictures (#3586)', () => {
+    const gfx = (n: number): string => `https://shop.example/gfx/${n}.jpg`;
+
+    it('should point imageUrls at the variant route and mark own images as not from the product', async () => {
+      productsService.getProduct.mockResolvedValue(makeProduct({ images: [gfx(1), gfx(2)] }));
+      productsService.listVariants.mockResolvedValue({
+        items: [makeVariant({ id: 'red', images: [gfx(2)] })],
+        total: 1,
+      });
+
+      const result = await controller.getProduct('ol_product_1');
+
+      expect(result.variants![0].imageUrls).toEqual(['/products/variants/red/images/0']);
+      expect(result.variants![0].imagesFromProduct).toBe(false);
+    });
+
+    it("should fall back to the product's pictures when the variant has none of its own", async () => {
+      productsService.getProduct.mockResolvedValue(makeProduct({ images: [gfx(1), gfx(2)] }));
+      productsService.listVariants.mockResolvedValue({
+        items: [makeVariant({ id: 'navy', images: null })],
+        total: 1,
+      });
+
+      const result = await controller.getProduct('ol_product_1');
+
+      expect(result.variants![0].imageUrls).toEqual([
+        '/products/variants/navy/images/0',
+        '/products/variants/navy/images/1',
+      ]);
+      expect(result.variants![0].imagesFromProduct).toBe(true);
+    });
+
+    it('should report an empty list and imagesFromProduct=false when neither has pictures', async () => {
+      productsService.getProduct.mockResolvedValue(makeProduct({ images: null }));
+      productsService.listVariants.mockResolvedValue({
+        items: [makeVariant({ id: 'bare', images: null })],
+        total: 1,
+      });
+
+      const result = await controller.getProduct('ol_product_1');
+
+      expect(result.variants![0].imageUrls).toEqual([]);
+      expect(result.variants![0].imagesFromProduct).toBe(false);
+    });
+
+    it('should read the parent products of a variant page in ONE batched call', async () => {
+      productsService.listVariants.mockResolvedValue({
+        items: [
+          makeVariant({ id: 'a', productId: 'p1' }),
+          makeVariant({ id: 'b', productId: 'p1' }),
+          makeVariant({ id: 'c', productId: 'p2', images: [gfx(9)] }),
+        ],
+        total: 3,
+      });
+      productsService.getProductsByIds.mockResolvedValue([
+        makeProduct({ id: 'p1', images: [gfx(1)] }),
+      ]);
+
+      const result = await controller.listVariantsByProduct('p1', { limit: 20, offset: 0 });
+
+      expect(productsService.getProductsByIds).toHaveBeenCalledTimes(1);
+      expect(productsService.getProductsByIds).toHaveBeenCalledWith(['p1']);
+      expect(result.items.map((v) => v.imagesFromProduct)).toEqual([true, true, false]);
+    });
+
+    it('should not read products at all when every variant has its own pictures', async () => {
+      productsService.listVariants.mockResolvedValue({
+        items: [makeVariant({ images: [gfx(1)] })],
+        total: 1,
+      });
+
+      await controller.listVariantsByProduct('ol_product_1', { limit: 20, offset: 0 });
+
+      expect(productsService.getProductsByIds).not.toHaveBeenCalled();
+    });
+
+    it('should declare the variant image route before the routes that would capture it', () => {
+      const proto = ProductsController.prototype as unknown as Record<string, unknown>;
+      const order = Object.getOwnPropertyNames(proto);
+      const pathOf = (name: string): unknown => Reflect.getMetadata(PATH_METADATA, proto[name] as object);
+
+      expect(pathOf('getVariantImage')).toBe('variants/:variantId/images/:index');
+      expect(order.indexOf('getVariantImage')).toBeLessThan(order.indexOf('getProductImage'));
+      expect(order.indexOf('getVariantImage')).toBeLessThan(order.indexOf('getProduct'));
+      expect(order.indexOf('getVariantSummary')).toBeLessThan(order.indexOf('getProduct'));
+    });
+  });
+
+  describe('getVariantImage (#3586)', () => {
+    let images: { getVariantImage: jest.Mock };
+    const res = {
+      setHeader: jest.fn(),
+      end: jest.fn(),
+    };
+
+    beforeEach(() => {
+      images = (controller as unknown as { productImages: { getVariantImage: jest.Mock } })
+        .productImages;
+      res.setHeader.mockClear();
+      res.end.mockClear();
+    });
+
+    it('should stream the bytes with the same headers as the product route', async () => {
+      images.getVariantImage.mockResolvedValue({
+        kind: 'image',
+        image: { bytes: Buffer.from('abc'), contentType: 'image/jpeg' },
+      });
+
+      await controller.getVariantImage('v1', '0', res as never);
+
+      expect(images.getVariantImage).toHaveBeenCalledWith('v1', 0);
+      expect(res.setHeader).toHaveBeenCalledWith('Content-Type', 'image/jpeg');
+      expect(res.setHeader).toHaveBeenCalledWith('Cache-Control', 'private, max-age=3600');
+      expect(res.setHeader).toHaveBeenCalledWith('X-Content-Type-Options', 'nosniff');
+      expect(res.end).toHaveBeenCalled();
+    });
+
+    it('should answer 404 for a failure and for a malformed index', async () => {
+      images.getVariantImage.mockResolvedValue({ kind: 'failure', reason: 'not-found' });
+
+      await expect(controller.getVariantImage('v1', '5', res as never)).rejects.toThrow(
+        NotFoundException
+      );
+      await expect(controller.getVariantImage('v1', '-1', res as never)).rejects.toThrow(
+        NotFoundException
+      );
+      await expect(controller.getVariantImage('v1', 'x', res as never)).rejects.toThrow(
+        NotFoundException
+      );
+    });
+  });
+
   describe('listVariantsByProduct', () => {
     it('should return paginated variants for a product', async () => {
       const variants = [makeVariant()];
@@ -616,6 +753,8 @@ describe('ProductsController', () => {
         sku: 'SKU-RED-42',
         ean: '5901234123457',
         name: 'Red / 42',
+        imageUrls: [],
+        imagesFromProduct: false,
         isStale: false,
         staleAt: null,
       });
@@ -852,6 +991,7 @@ describe('VariantsController', () => {
     productsService = module.get(PRODUCTS_SERVICE_TOKEN);
 
     jest.clearAllMocks();
+    productsService.getProductsByIds.mockResolvedValue([]);
   });
 
   describe('searchVariants', () => {

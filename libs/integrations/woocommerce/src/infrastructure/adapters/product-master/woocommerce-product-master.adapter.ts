@@ -393,7 +393,11 @@ export class WooCommerceProductMasterAdapter
         this.logger.warn(`No internal ID for WC variation ${String(v.id)}`);
         continue;
       }
-      const mapped = this.mapper.mapVariation(v, productId);
+      const mapped = this.mapper.mapVariation(
+        v,
+        productId,
+        product.images?.map((i) => i.src),
+      );
       // A variation's `tax_class` of `parent` inherits the parent's class; its
       // own `tax_status` wins when it states one.
       const price = await this.toGrossCataloguePrice({
