@@ -258,7 +258,8 @@ export function OrderEditDialog({
   };
 
   const errors = form.formState.errors;
-  const linesRootError = (errors.lines as { message?: string } | undefined)?.message;
+  const linesErrors = errors.lines as { root?: { message?: string }; message?: string } | undefined;
+  const linesRootError = linesErrors?.root?.message ?? linesErrors?.message;
 
   // ---- edit-review ---------------------------------------------------------
   if (open && step === 'review') {
