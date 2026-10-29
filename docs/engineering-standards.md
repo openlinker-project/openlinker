@@ -1276,6 +1276,33 @@ async createProduct(@Body() dto: CreateProductDto): Promise<ProductResponse> {
 }
 ```
 
+### User-facing copy (frontend)
+
+*See [ADR-079](./architecture/adrs/079-frontend-owned-ui-translation.md) and [frontend-architecture.md § Internationalization](./frontend-architecture.md#internationalization-i18n).*
+
+Every word an operator reads in `apps/web` comes from a typed copy file, in English and Polish.
+
+- **File**: `*.copy.ts` (dot, not hyphen), exporting copy objects only - no logic, no components. One per feature folder at `features/<name>/lib/<name>.copy.ts`; `shared/ui/ui.copy.ts`; `app/app.copy.ts`; `plugins/<name>/<name>.copy.ts`; a file of its own only for a very large component.
+- **Shape**: `export const <name>Copy = defineCopy({ en: {...}, pl: {...} });`. Nest keys by component, then by element: `header.title`, `filters.status.label`.
+- **Keys**: `camelCase`, named for meaning, not for the English text (`emptyState.title`, not `noOrdersFound`). One key for a repeated sentence; one sentence per key, never fragments joined at runtime.
+- **Params**: `{name}` placeholders; the same placeholders in every language.
+- **Plurals**: `{ one, other }` in English, `{ one, few, many, other }` in Polish, rendered with `usePlural`.
+- **Numbers, money, dates**: `useFormat`. Never `toLocaleString()` without the active locale, `toFixed()` for display, or a hard-coded `'en-US'`.
+- **Style**: sentence case, plain hyphen (no em dash), British English, operator vocabulary, Polish terms from [i18n-glossary.md](./i18n-glossary.md).
+- **Server text**: render an API error through its `code`, never its `message`.
+
+✅ **Good**:
+```tsx
+const copy = useCopy(ordersCopy).header;
+const plural = usePlural();
+return <PageHeader title={copy.title}>{plural(count, copy.needsAttention)}</PageHeader>;
+```
+
+❌ **Bad**:
+```tsx
+<PageHeader title="Orders">{count} order{count === 1 ? '' : 's'} need attention</PageHeader>
+```
+
 ### Route authorization
 
 **Every HTTP route in `apps/api` declares its audience with exactly one of three decorators, and
