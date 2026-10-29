@@ -17525,6 +17525,114 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
   color: var(--text-muted);
   font-size: 0.8125rem;
 }
+
+/* ── Email to buyer card (#3551) ───────────────────────────────────── */
+.document-email {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  background: var(--bg-surface-elevated);
+}
+.document-email--waiting {
+  border-style: dashed;
+  border-color: var(--border-strong);
+  background: transparent;
+}
+.document-email__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+.document-email__title {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin: 0;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.document-email__icon {
+  flex: 0 0 auto;
+  color: var(--text-secondary);
+}
+.document-email__status {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+.document-email__status--sent {
+  color: var(--status-success-strong);
+}
+.document-email__status--failed {
+  color: var(--status-error-strong);
+}
+.document-email__dot {
+  width: 6px;
+  height: 6px;
+  border-radius: var(--radius-pill);
+  background: currentColor;
+}
+.document-email__last {
+  margin: 0;
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-sm);
+  background: var(--bg-surface);
+  color: var(--text-secondary);
+  font-size: 0.8125rem;
+  font-variant-numeric: tabular-nums;
+}
+.document-email__field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.document-email__label {
+  color: var(--text-primary);
+  font-size: 0.8125rem;
+  font-weight: 500;
+}
+.document-email__hint {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 0.75rem;
+}
+.document-email__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+.document-email__locale .segmented-control__option {
+  padding: var(--space-1) var(--space-3);
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  text-transform: none;
+}
+.document-email__waiting {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+.document-email__waiting-copy {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
+}
 /* The one-document slot on an order. Filled or empty, never a list — carried
    over verbatim from the epic's mockup (`apps/web/src/index.css` is what it
    was transcribed from). */

@@ -669,6 +669,7 @@ export function createMockApiClient(
         ready: 0,
       }),
       getById: vi.fn().mockResolvedValue(null),
+      listDocumentEmails: vi.fn().mockResolvedValue([]),
       retryDestination: vi.fn().mockResolvedValue({
         internalOrderId: '',
         destinationConnectionId: '',
