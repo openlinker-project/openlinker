@@ -30925,7 +30925,91 @@ legend.analytics-settings-dialog__label {
    language with flag, code and native name. Opens upward in the sidebar
    footer, downward in the signed-out corner. */
 .language-switch {
+  --switch-hue: var(--accent-primary);
+  --switch-tint: color-mix(in oklab, var(--switch-hue) 13%, var(--bg-surface));
+  --switch-edge: color-mix(in oklab, var(--switch-hue) 55%, var(--border-subtle));
+  --switch-overlap: 14px;
   position: relative;
+  isolation: isolate;
+  display: inline-flex;
+}
+
+/* Above the reveal, which tucks its last 14px under the pill. */
+.language-switch .language-switch__trigger {
+  position: relative;
+  z-index: 1;
+}
+
+/* The connection chip's reveal (Source column on /products), mirrored: it
+ * grows leftwards from behind the pill, because the switch sits against the
+ * sidebar's clipped right edge and in the right corner of signed-out pages. */
+.language-switch__reveal {
+  position: absolute;
+  z-index: 0;
+  top: 0;
+  bottom: 0;
+  right: calc(100% - var(--switch-overlap));
+  display: inline-flex;
+  align-items: center;
+  padding: 0 calc(var(--switch-overlap) + 8px) 0 11px;
+  border: 1px solid var(--switch-edge);
+  border-right: none;
+  border-radius: var(--radius-pill) 0 0 var(--radius-pill);
+  background: var(--switch-tint);
+  box-shadow: 0 4px 12px -6px color-mix(in oklab, var(--switch-hue) 45%, transparent);
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+  color: var(--text-primary);
+  /* Rolled up to its right edge, i.e. entirely behind the pill. */
+  clip-path: inset(-12px 0 -12px 100%);
+  pointer-events: none;
+  transition: clip-path var(--duration-fast) var(--ease-standard);
+}
+
+.language-switch__reveal-name {
+  opacity: 0;
+  transform: translateX(6px);
+  transition:
+    opacity var(--duration-fast) var(--ease-out),
+    transform var(--duration-fast) var(--ease-out);
+}
+
+/* Opening is slower and eased out so the name reads as unrolling; closing (the
+ * base rules) is quicker. Not while the list is open: the list names it already. */
+.language-switch:not(.is-open):hover .language-switch__reveal,
+.language-switch:not(.is-open):has(.language-switch__trigger:focus-visible) .language-switch__reveal {
+  clip-path: inset(-12px -12px -12px 0);
+  transition: clip-path var(--duration-slow) var(--ease-out);
+}
+
+.language-switch:not(.is-open):hover .language-switch__reveal-name,
+.language-switch:not(.is-open):has(.language-switch__trigger:focus-visible)
+  .language-switch__reveal-name {
+  opacity: 1;
+  transform: none;
+  transition:
+    opacity var(--duration-normal) var(--ease-out) 60ms,
+    transform var(--duration-slow) var(--ease-out) 40ms;
+}
+
+.language-switch:not(.is-open):hover .language-switch__trigger {
+  border-color: var(--switch-edge);
+}
+
+@media (hover: none) {
+  /* A tap opens the list straight away; a sticky hover state would leave the
+     name hanging out after the list closes. */
+  .language-switch__reveal {
+    display: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .language-switch__reveal,
+  .language-switch__reveal-name {
+    transition: none !important;
+  }
 }
 
 .language-switch__trigger {
