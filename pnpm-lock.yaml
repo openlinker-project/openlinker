@@ -188,9 +188,6 @@ importers:
       cookie-parser:
         specifier: ^1.4.7
         version: 1.4.7
-      nodemailer:
-        specifier: 6.9.14
-        version: 6.9.14
       passport:
         specifier: 0.7.0
         version: 0.7.0
@@ -255,9 +252,6 @@ importers:
       '@types/node':
         specifier: 20.11.30
         version: 20.11.30
-      '@types/nodemailer':
-        specifier: 6.4.15
-        version: 6.4.15
       '@types/passport-jwt':
         specifier: 4.0.1
         version: 4.0.1

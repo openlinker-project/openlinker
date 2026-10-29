@@ -5,9 +5,11 @@
  * DB-backed adapter and must actually deliver through whatever transport the
  * settings service reports.
  */
+import type { Provider } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import { MAILER_TOKEN, type MailerPort } from '@openlinker/core/users';
 import { DbBackedMailerAdapter } from '../infrastructure/adapters/db-backed-mailer.adapter';
+import { MailerTransportModule } from '../mailer-transport.module';
 import { MAILER_SETTINGS_SERVICE_TOKEN } from '../mailer.tokens';
 
 describe('MailerTransportModule binding', () => {
@@ -22,12 +24,14 @@ describe('MailerTransportModule binding', () => {
       fromAddress: 'no-reply@openlinker.local',
     });
 
-    // The module's own `imports` need a database; the binding under test is the
-    // provider declaration, so it is compiled against a stubbed settings service.
+    // The module's own `imports` need a database, so its declared providers -
+    // read off the real module, not restated here - are compiled against a
+    // stubbed settings service.
+    const declared = Reflect.getMetadata('providers', MailerTransportModule) as Provider[];
     const moduleRef = await Test.createTestingModule({
       providers: [
         { provide: MAILER_SETTINGS_SERVICE_TOKEN, useValue: { resolveTransportConfig } },
-        { provide: MAILER_TOKEN, useClass: DbBackedMailerAdapter },
+        ...declared,
       ],
     }).compile();
 
@@ -36,5 +40,6 @@ describe('MailerTransportModule binding', () => {
 
     expect(mailer).toBeInstanceOf(DbBackedMailerAdapter);
     expect(resolveTransportConfig).toHaveBeenCalledTimes(1);
+    expect(Reflect.getMetadata('exports', MailerTransportModule)).toEqual([MAILER_TOKEN]);
   });
 });

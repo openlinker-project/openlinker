@@ -16,7 +16,8 @@
  *
  * @module libs/core/src/mailer/infrastructure/adapters
  */
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
+import { Logger } from '@openlinker/shared/logging';
 import type { ConfigService } from '@nestjs/config';
 import type { Transporter } from 'nodemailer';
 import type { EmailMessage, MailerPort } from '@openlinker/core/users';

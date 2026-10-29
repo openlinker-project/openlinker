@@ -14,7 +14,8 @@
  *
  * @module libs/core/src/mailer/infrastructure/adapters
  */
-import { Inject, Injectable, Logger } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
+import { Logger } from '@openlinker/shared/logging';
 import { createTransport } from 'nodemailer';
 import { IMailerSettingsService } from '../../application/services/mailer-settings.service.interface';
 import { MAILER_SETTINGS_SERVICE_TOKEN } from '../../mailer.tokens';
