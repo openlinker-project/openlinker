@@ -1,57 +1,110 @@
 /**
  * Locale Provider
  *
- * Wraps the app in a no-op i18n seam (#612). Today the catalog is empty and
- * every `t(key, fallback)` returns `fallback`; the seam exists so plugin
- * authors and future per-feature string migrations have a stable target.
- *
- * **No string migration ships with this provider** — the only host-side
- * consumer is `useNumberFormat()` (replaces a single hardcoded
- * `Intl.NumberFormat('en-US')` in `app-shell.tsx`). Every other label in the
- * app remains inline English; migrating them is a per-feature follow-up.
+ * Holds the active language for the app. Without a `locale` prop it opens in
+ * the language `resolveInitialLocale` picks and lets the operator switch;
+ * a `locale` prop pins the starting language (tests pin English). Switching
+ * updates `<html lang>` and the language the API client sends, and re-renders
+ * copy without a reload; it is saved for the next visit only when the provider
+ * is not pinned, so a pinned harness never overwrites the operator's choice.
  *
  * @module shared/i18n
- * @see {@link useTranslation} for the consumer hook
- * @see {@link useNumberFormat} for locale-aware number formatting
+ * @see {@link useLocale} and {@link useCopy} for consumers
  */
-import { createContext, useMemo, type PropsWithChildren, type ReactElement } from 'react';
-import type {
-  LocaleCode,
-  LocaleContextValue,
-  TranslationCatalog,
+import {
+  createContext,
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  type PropsWithChildren,
+  type ReactElement,
+} from 'react';
+import { env } from '../config/env';
+import { setActiveLocale } from './active-locale';
+import { getBcp47Locale } from './locale';
+import { resolveInitialLocale, storeLocale } from './resolve-locale';
+import {
+  isSupportedLocale,
+  SOURCE_LOCALE,
+  type LocaleContextValue,
+  type SupportedLocale,
+  type TranslationCatalog,
 } from './i18n.types';
 
 export const LocaleContext = createContext<LocaleContextValue | null>(null);
 
+const EMPTY_CATALOG: TranslationCatalog = Object.freeze({});
+
 interface LocaleProviderProps extends PropsWithChildren {
   /**
-   * Defaults to `'en'`. Plugin authors and tests can override; the host has
-   * no UI for switching today (no `setLocale` exposed in v1 — adding one
-   * means introducing persistence and a switcher together).
+   * Starting language. Omit to resolve it from `?lang=`, storage and the
+   * deployment default.
    */
-  locale?: LocaleCode;
+  locale?: SupportedLocale;
   /**
-   * Defaults to `{}` (no-op `t`). A future loader will populate this from a
-   * per-locale JSON load; plugins shipping message catalogs can pass theirs
-   * directly during tests.
+   * Catalog for the legacy `t(key, fallback)` seam (#612); new copy lives in
+   * typed copy files instead.
    */
   catalog?: TranslationCatalog;
 }
 
+function initialLocale(pinned: SupportedLocale | undefined): SupportedLocale {
+  if (pinned === undefined) return resolveInitialLocale(env.VITE_DEFAULT_UI_LOCALE);
+  // A JavaScript caller can still pass anything; English is complete in every file.
+  return isSupportedLocale(pinned) ? pinned : SOURCE_LOCALE;
+}
+
 export function LocaleProvider({
-  locale = 'en',
+  locale: pinned,
   catalog = EMPTY_CATALOG,
   children,
 }: LocaleProviderProps): ReactElement {
+  const [locale, setLocaleState] = useState<SupportedLocale>(() => {
+    const first = initialLocale(pinned);
+    // Written where the language is decided, not on every render: a render
+    // React discards must not leave the global on a language nothing showed.
+    // Only the root provider may be unpinned; with nested providers the last
+    // one to decide wins.
+    setActiveLocale(first);
+    return first;
+  });
+  const [lastPinned, setLastPinned] = useState(pinned);
+
+  // A new pinned value replaces the state during render, so the old language
+  // never commits (React's "adjust state when a prop changes" pattern).
+  if (pinned !== lastPinned) {
+    setLastPinned(pinned);
+    if (pinned !== undefined) {
+      const next = initialLocale(pinned);
+      setActiveLocale(next);
+      setLocaleState(next);
+    }
+  }
+
+  const isPinned = pinned !== undefined;
+
+  useEffect(() => {
+    document.documentElement.lang = getBcp47Locale(locale);
+  }, [locale]);
+
+  const setLocale = useCallback(
+    (next: SupportedLocale) => {
+      if (!isPinned) storeLocale(next);
+      setActiveLocale(next);
+      setLocaleState(next);
+    },
+    [isPinned],
+  );
+
   const value = useMemo<LocaleContextValue>(
     () => ({
       locale,
+      setLocale,
       t: (key, fallback) => catalog[key] ?? fallback,
     }),
-    [locale, catalog],
+    [locale, setLocale, catalog],
   );
 
   return <LocaleContext.Provider value={value}>{children}</LocaleContext.Provider>;
 }
-
-const EMPTY_CATALOG: TranslationCatalog = Object.freeze({});

@@ -1342,7 +1342,7 @@ export function renderWithProviders(
   return render(ui, {
     wrapper: ({ children }) => (
       <MemoryRouter initialEntries={[route]}>
-        <LocaleProvider>
+        <LocaleProvider locale="en">
           <PluginRegistryProvider plugins={plugins}>
             <SessionProvider adapter={sessionAdapter}>
               <ToastProvider>
