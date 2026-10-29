@@ -93,6 +93,7 @@ import {
 } from '@openlinker/core/fulfillment-authority';
 import type { ReservationAtpEffect } from '@openlinker/core/inventory';
 import type { Order } from '../../domain/types/order.types';
+import type { LineCostCandidate } from '../../domain/order-line-cost-snapshot';
 import type { OrderFeedEventType } from '../../domain/types/order-feed.types';
 import { compareOrderCursors } from '../../domain/types/order-cursor.types';
 import { withheldOnHoldError } from '../../domain/types/order-hold.types';
@@ -603,6 +604,11 @@ export class OrderIngestionService implements IOrderIngestionService {
       internalCustomerId,
       resolvedItems
     );
+    // #3588 (D27): the cost snapshot candidates. NOT wrapped in a catch - a
+    // swallowed failure would freeze every line `not-recorded` for good (the
+    // snapshot is never upgraded), so the job retry is the right fallback.
+    const lineCostCandidates = await this.resolveLineCostCandidates(order);
+
     // The persisted record is captured for its `shippingAddressHash` (#2395),
     // which the #2396 routing projection needs and which the `order` object does
     // not carry. Hashing the snapshot instead would be wrong under hash-only
@@ -611,7 +617,8 @@ export class OrderIngestionService implements IOrderIngestionService {
       order,
       connectionId,
       sourceEventId ?? null,
-      incoming.externalUrl ?? null
+      incoming.externalUrl ?? null,
+      lineCostCandidates
     );
 
     // The order's ADR-012 fulfilment routing, resolved at most once and only if
@@ -1898,6 +1905,44 @@ export class OrderIngestionService implements IOrderIngestionService {
    * an empty string or a zero. It is what holds the document, and the gate
    * child is what reports it.
    */
+  /**
+   * ONE de-duplicated variant lookup per order (#3588, D27). A variant is a
+   * candidate only when it has a cost AND that cost existed when the order was
+   * placed (G11-G: `costUpdatedAt <= placedAt`, falling back to the order's
+   * `createdAt` the way analytics does), so an old order imported later never
+   * receives today's cost.
+   */
+  private async resolveLineCostCandidates(
+    order: Order
+  ): Promise<Map<string, LineCostCandidate>> {
+    const variantIds = [
+      ...new Set(
+        order.items.map((item) => item.variantId).filter((id): id is string => Boolean(id))
+      ),
+    ];
+    const candidates = new Map<string, LineCostCandidate>();
+    if (variantIds.length === 0) {
+      return candidates;
+    }
+    const placedAt = (order.placedAt ?? order.createdAt).getTime();
+    const variants = await this.productsService.getVariantsByIds(variantIds);
+    for (const variant of variants) {
+      if (
+        variant.netUnitCost == null ||
+        variant.costCurrency == null ||
+        variant.costUpdatedAt == null ||
+        variant.costUpdatedAt.getTime() > placedAt
+      ) {
+        continue;
+      }
+      candidates.set(variant.id, {
+        unitCostNet: variant.netUnitCost,
+        currency: variant.costCurrency,
+      });
+    }
+    return candidates;
+  }
+
   private async resolveLineTaxRate(
     productId: string,
     variantId: string | undefined,

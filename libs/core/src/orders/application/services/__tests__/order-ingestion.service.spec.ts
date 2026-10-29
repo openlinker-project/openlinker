@@ -187,6 +187,8 @@ describe('OrderIngestionService', () => {
         countryIso2: null,
         readAt: null,
       }),
+      // #3588: default "no variant has a cost".
+      getVariantsByIds: jest.fn().mockResolvedValue([]),
     } as unknown as jest.Mocked<IProductsService>;
     // #2250: the provenance journal. Default resolves to `null` (a repeat
     // observation), which is what `record` returns when nothing changed.
@@ -882,7 +884,9 @@ describe('OrderIngestionService', () => {
         connectionId,
         null,
         // sourceExternalUrl (#1713) — the test fixture's incoming order carries none.
-        null
+        null,
+        // lineCostCandidates (#3588) — no costed variant in the default fixture.
+        new Map()
       );
       expect(orderRecordService.persistIncomingSnapshot.mock.invocationCallOrder[0]).toBeLessThan(
         orderRecordService.persistOrder.mock.invocationCallOrder[0]
@@ -890,6 +894,72 @@ describe('OrderIngestionService', () => {
       expect(orderRecordService.persistOrder.mock.invocationCallOrder[0]).toBeLessThan(
         orderSyncService.syncOrder.mock.invocationCallOrder[0]
       );
+    });
+
+    describe('line cost snapshot candidates (#3588, D27)', () => {
+      const variantWithCost = (costUpdatedAt: Date | null, netUnitCost: string | null = '4.5000') =>
+        ({
+          id: 'ol_variant_1',
+          netUnitCost,
+          costCurrency: netUnitCost === null ? null : 'PLN',
+          costUpdatedAt,
+        }) as unknown as Awaited<ReturnType<IProductsService['getVariantsByIds']>>[number];
+
+      beforeEach(() => {
+        orderSyncService.syncOrder.mockResolvedValue([]);
+        orderItemRefResolver.tryResolve.mockResolvedValue({
+          resolved: true,
+          internalProductId: 'ol_product_1',
+          internalVariantId: 'ol_variant_1',
+        } as never);
+        orderSource.getOrder.mockResolvedValue({
+          ...baseIncoming,
+          placedAt: '2026-05-31T16:00:00.000Z',
+        });
+      });
+
+      it('should look variants up once, de-duplicated, and pass the candidate map to persistOrder', async () => {
+        productsService.getVariantsByIds.mockResolvedValue([
+          variantWithCost(new Date('2026-05-01T00:00:00.000Z')),
+        ]);
+
+        await service.syncOrderFromSource(connectionId, externalOrderId);
+
+        expect(productsService.getVariantsByIds).toHaveBeenCalledTimes(1);
+        const ids = productsService.getVariantsByIds.mock.calls[0][0];
+        expect(new Set(ids).size).toBe(ids.length);
+        const candidates = orderRecordService.persistOrder.mock.calls[0][4] as Map<string, unknown>;
+        expect(candidates.get('ol_variant_1')).toEqual({ unitCostNet: '4.5000', currency: 'PLN' });
+      });
+
+      it('should exclude a cost entered after the order was placed (G11-G)', async () => {
+        productsService.getVariantsByIds.mockResolvedValue([
+          variantWithCost(new Date('2026-06-15T00:00:00.000Z')),
+        ]);
+
+        await service.syncOrderFromSource(connectionId, externalOrderId);
+
+        const candidates = orderRecordService.persistOrder.mock.calls[0][4] as Map<string, unknown>;
+        expect(candidates.size).toBe(0);
+      });
+
+      it('should exclude a variant without a cost', async () => {
+        productsService.getVariantsByIds.mockResolvedValue([variantWithCost(null, null)]);
+
+        await service.syncOrderFromSource(connectionId, externalOrderId);
+
+        const candidates = orderRecordService.persistOrder.mock.calls[0][4] as Map<string, unknown>;
+        expect(candidates.size).toBe(0);
+      });
+
+      it('should propagate a lookup failure instead of freezing not-recorded', async () => {
+        productsService.getVariantsByIds.mockRejectedValue(new Error('db down'));
+
+        await expect(service.syncOrderFromSource(connectionId, externalOrderId)).rejects.toThrow(
+          'db down'
+        );
+        expect(orderRecordService.persistOrder).not.toHaveBeenCalled();
+      });
     });
 
     it('should carry incoming.placedAt onto the unified Order as a Date (#926)', async () => {

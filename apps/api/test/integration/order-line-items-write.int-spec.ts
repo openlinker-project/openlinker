@@ -96,6 +96,7 @@ describe('OrderRecord line-item transactional write (integration, #1985)', () =>
         taxRate: null,
         taxSource: null,
         taxRateReadAt: null,
+        cost: { costState: 'not-recorded', unitCostNet: null, unitCostCurrency: null },
       },
       {
         lineNumber: 1,
@@ -108,6 +109,7 @@ describe('OrderRecord line-item transactional write (integration, #1985)', () =>
         taxRate: null,
         taxSource: null,
         taxRateReadAt: null,
+        cost: { costState: 'not-recorded', unitCostNet: null, unitCostCurrency: null },
       },
     ]);
 
@@ -143,6 +145,7 @@ describe('OrderRecord line-item transactional write (integration, #1985)', () =>
         taxRate: null,
         taxSource: null,
         taxRateReadAt: null,
+        cost: { costState: 'not-recorded', unitCostNet: null, unitCostCurrency: null },
       },
       {
         lineNumber: 1,
@@ -155,6 +158,7 @@ describe('OrderRecord line-item transactional write (integration, #1985)', () =>
         taxRate: null,
         taxSource: null,
         taxRateReadAt: null,
+        cost: { costState: 'not-recorded', unitCostNet: null, unitCostCurrency: null },
       },
     ]);
 
@@ -171,6 +175,7 @@ describe('OrderRecord line-item transactional write (integration, #1985)', () =>
         taxRate: null,
         taxSource: null,
         taxRateReadAt: null,
+        cost: { costState: 'not-recorded', unitCostNet: null, unitCostCurrency: null },
       },
     ]);
 
@@ -202,6 +207,7 @@ describe('OrderRecord line-item transactional write (integration, #1985)', () =>
           taxRate: null,
           taxSource: null,
           taxRateReadAt: null,
+          cost: { costState: 'not-recorded', unitCostNet: null, unitCostCurrency: null },
         },
         {
           lineNumber: 0,
@@ -214,6 +220,7 @@ describe('OrderRecord line-item transactional write (integration, #1985)', () =>
           taxRate: null,
           taxSource: null,
           taxRateReadAt: null,
+          cost: { costState: 'not-recorded', unitCostNet: null, unitCostCurrency: null },
         },
       ])
     ).rejects.toThrow();
@@ -245,6 +252,7 @@ describe('OrderRecord line-item transactional write (integration, #1985)', () =>
         taxRate: null,
         taxSource: null,
         taxRateReadAt: null,
+        cost: { costState: 'not-recorded', unitCostNet: null, unitCostCurrency: null },
       },
     ]);
 
@@ -310,6 +318,7 @@ describe('OrderRecord line-item transactional write (integration, #1985)', () =>
       taxRate: null,
       taxSource: null,
       taxRateReadAt: null,
+      cost: { costState: 'not-recorded' as const, unitCostNet: null, unitCostCurrency: null },
     });
 
     it('leaves sourceConnectionId and sourceEventId untouched when a second write arrives from a different source', async () => {
@@ -373,6 +382,107 @@ describe('OrderRecord line-item transactional write (integration, #1985)', () =>
       expect(attribution.sourceEventId).toBe('evt-1');
       const lineItems = await findLineItems(internalOrderId);
       expect(lineItems).toHaveLength(1);
+    });
+  });
+
+  describe('cost snapshot carry-forward (#3588, D27)', () => {
+    const NOT_RECORDED = { costState: 'not-recorded' as const, unitCostNet: null, unitCostCurrency: null };
+    const recorded = (amount: string) => ({
+      costState: 'recorded' as const,
+      unitCostNet: amount,
+      unitCostCurrency: 'PLN',
+    });
+    const line = (
+      orderRecord: OrderRecord,
+      lineNumber: number,
+      variantId: string,
+      cost: typeof NOT_RECORDED | ReturnType<typeof recorded>
+    ) => ({
+      lineNumber,
+      productId: `ol_product_${variantId}`,
+      variantId,
+      quantity: 1,
+      unitPrice: 10,
+      sourceConnectionId: SOURCE_CONNECTION,
+      placedAt: orderRecord.placedAt,
+      taxRate: null,
+      taxSource: null,
+      taxRateReadAt: null,
+      cost,
+    });
+    const readCosts = async (
+      id: string
+    ): Promise<Array<{ variantId: string; costState: string; unitCostNet: string | null }>> =>
+      harness.getDataSource().query(
+        `SELECT "variantId", "costState", "unitCostNet" FROM "order_line_items" WHERE "orderRecordId" = $1 ORDER BY "lineNumber" ASC`,
+        [id]
+      );
+
+    it('stamps the cost on the first ingestion', async () => {
+      const id = `ol_order_cost_${Date.now()}_1`;
+      const order = makeOrderRecord(id);
+
+      await repository.upsertWithLineItems(order, [line(order, 0, 'v1', recorded('4.5000'))]);
+
+      expect(await readCosts(id)).toEqual([
+        { variantId: 'v1', costState: 'recorded', unitCostNet: '4.5000' },
+      ]);
+    });
+
+    it('keeps the old cost when the variant cost changed before re-ingestion', async () => {
+      const id = `ol_order_cost_${Date.now()}_2`;
+      const order = makeOrderRecord(id);
+      await repository.upsertWithLineItems(order, [line(order, 0, 'v1', recorded('4.5000'))]);
+
+      await repository.upsertWithLineItems(order, [line(order, 0, 'v1', recorded('9.0000'))]);
+
+      expect((await readCosts(id))[0].unitCostNet).toBe('4.5000');
+    });
+
+    it('keeps per-variant cost when the items are reordered', async () => {
+      const id = `ol_order_cost_${Date.now()}_3`;
+      const order = makeOrderRecord(id);
+      await repository.upsertWithLineItems(order, [
+        line(order, 0, 'v1', recorded('1.0000')),
+        line(order, 1, 'v2', recorded('2.0000')),
+      ]);
+
+      await repository.upsertWithLineItems(order, [
+        line(order, 0, 'v2', recorded('7.0000')),
+        line(order, 1, 'v1', recorded('7.0000')),
+      ]);
+
+      expect(await readCosts(id)).toEqual([
+        { variantId: 'v2', costState: 'recorded', unitCostNet: '2.0000' },
+        { variantId: 'v1', costState: 'recorded', unitCostNet: '1.0000' },
+      ]);
+    });
+
+    it('never upgrades a not-recorded line when a cost appears before re-ingestion', async () => {
+      const id = `ol_order_cost_${Date.now()}_4`;
+      const order = makeOrderRecord(id);
+      await repository.upsertWithLineItems(order, [line(order, 0, 'v1', NOT_RECORDED)]);
+
+      await repository.upsertWithLineItems(order, [line(order, 0, 'v1', recorded('5.0000'))]);
+
+      expect(await readCosts(id)).toEqual([
+        { variantId: 'v1', costState: 'not-recorded', unitCostNet: null },
+      ]);
+    });
+
+    it('rejects a recorded line without an amount at the database', async () => {
+      const id = `ol_order_cost_${Date.now()}_5`;
+      const order = makeOrderRecord(id);
+
+      await expect(
+        repository.upsertWithLineItems(order, [
+          line(order, 0, 'v1', {
+            costState: 'recorded',
+            unitCostNet: null,
+            unitCostCurrency: null,
+          } as never),
+        ])
+      ).rejects.toThrow();
     });
   });
 });
