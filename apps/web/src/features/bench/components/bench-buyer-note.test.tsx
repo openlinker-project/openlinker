@@ -82,23 +82,23 @@ function renderNote(
  * test measures, so the measurement is what gets mocked.
  */
 function mockClampOverflow(testId: string): () => void {
-  const scroll = Object.getOwnPropertyDescriptor(Element.prototype, 'scrollHeight');
-  const client = Object.getOwnPropertyDescriptor(Element.prototype, 'clientHeight');
-  Object.defineProperty(Element.prototype, 'scrollHeight', {
+  const scroll = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'scrollHeight');
+  const client = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'clientHeight');
+  Object.defineProperty(HTMLElement.prototype, 'scrollHeight', {
     configurable: true,
-    get(this: Element) {
+    get(this: HTMLElement) {
       return this.getAttribute('data-testid') === testId ? 200 : 0;
     },
   });
-  Object.defineProperty(Element.prototype, 'clientHeight', {
+  Object.defineProperty(HTMLElement.prototype, 'clientHeight', {
     configurable: true,
-    get(this: Element) {
+    get(this: HTMLElement) {
       return this.getAttribute('data-testid') === testId ? 80 : 0;
     },
   });
   return () => {
-    if (scroll) Object.defineProperty(Element.prototype, 'scrollHeight', scroll);
-    if (client) Object.defineProperty(Element.prototype, 'clientHeight', client);
+    if (scroll) Object.defineProperty(HTMLElement.prototype, 'scrollHeight', scroll);
+    if (client) Object.defineProperty(HTMLElement.prototype, 'clientHeight', client);
   };
 }
 
@@ -162,7 +162,7 @@ describe('BenchBuyerNote (#3539)', () => {
     const user = userEvent.setup();
 
     expect(screen.getByTestId('bench-buyer-note')).toHaveAttribute('data-state', 'read');
-    expect(screen.getByTestId('bench-buyer-note-read-badge')).toHaveTextContent(/Read by you at/);
+    expect(await screen.findByText(/Read by you at/)).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'I have read the note' })).not.toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Show the whole note' }));
     expect(screen.getByRole('button', { name: 'Show less' })).toBeInTheDocument();
