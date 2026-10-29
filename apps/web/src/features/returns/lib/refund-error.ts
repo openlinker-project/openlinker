@@ -102,3 +102,30 @@ export function describeRefundError(error: unknown): string {
 
   return error.message.length > 0 ? error.message : RETURN_REFUND_ERROR_COPY.generic;
 }
+
+/** The figures a 409 `refund_ceiling_exceeded` body carries (#3289). */
+export interface RefundCeilingExceededDetails {
+  ceiling: string;
+  alreadyRefunded: string;
+  requested: string;
+  currency: string;
+}
+
+/** `null` unless the error is the ceiling refusal, so other 409s keep their own copy. */
+export function readRefundCeilingExceeded(error: unknown): RefundCeilingExceededDetails | null {
+  if (!(error instanceof ApiError) || error.status !== 409) return null;
+  const d: unknown = error.details;
+  if (typeof d !== 'object' || d === null) return null;
+  const body = d as Record<string, unknown>;
+  if (body.code !== 'refund_ceiling_exceeded') return null;
+  const { ceiling, alreadyRefunded, requested, currency } = body;
+  if (
+    typeof ceiling !== 'string' ||
+    typeof alreadyRefunded !== 'string' ||
+    typeof requested !== 'string' ||
+    typeof currency !== 'string'
+  ) {
+    return null;
+  }
+  return { ceiling, alreadyRefunded, requested, currency };
+}

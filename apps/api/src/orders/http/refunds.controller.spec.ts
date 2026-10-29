@@ -4,6 +4,7 @@ import { ConflictException, NotFoundException } from '@nestjs/common';
 import type { IOrderRefundService, IOrderRecordService, OrderRecord, RefundRecord } from '@openlinker/core/orders';
 import {
   DuplicateRefundRecordException,
+  RefundCeilingExceededException,
   RefundCurrencyMismatchException,
   ORDER_REFUND_SERVICE_TOKEN,
   ORDER_RECORD_SERVICE_TOKEN,
@@ -31,6 +32,7 @@ describe('RefundsController', () => {
   beforeEach(async () => {
     const mockRefundService: jest.Mocked<IOrderRefundService> = {
       recordRefund: jest.fn(),
+      runUnderOrderRefundLock: jest.fn(),
       getRefundsForOrder: jest.fn(),
       getRefundsForReturn: jest.fn(),
       getRefundSummariesForOrders: jest.fn(),
@@ -111,9 +113,46 @@ describe('RefundsController', () => {
           reason: 'withdrawal',
           note: null,
         }),
+        expect.objectContaining({ onCeilingVerdict: expect.any(Function) }),
       );
       expect(result.id).toBe(sampleRefund.id);
       expect(result.amount).toBe('49.99');
+    });
+
+    it('should report an unknown ceiling verdict on the response instead of only logging it (#3289)', async () => {
+      orderRecordService.getOrderRecord.mockResolvedValue({} as OrderRecord);
+      refundService.recordRefund.mockImplementation((_input, options) => {
+        options?.onCeilingVerdict?.({ status: 'unknown', reason: 'order-total-unknown' });
+        return Promise.resolve(sampleRefund);
+      });
+
+      const result = await controller.recordRefund('ol_order_abc123', dto);
+
+      expect(result.refundCeiling).toEqual({ status: 'unknown', reason: 'order-total-unknown' });
+    });
+
+    it('should report the figures when the ceiling was checked (#3289)', async () => {
+      orderRecordService.getOrderRecord.mockResolvedValue({} as OrderRecord);
+      refundService.recordRefund.mockImplementation((_input, options) => {
+        options?.onCeilingVerdict?.({
+          status: 'within',
+          ceiling: '100.00',
+          alreadyRefunded: '0.00',
+          requested: '49.99',
+          currency: 'PLN',
+        });
+        return Promise.resolve(sampleRefund);
+      });
+
+      const result = await controller.recordRefund('ol_order_abc123', dto);
+
+      expect(result.refundCeiling).toEqual({
+        status: 'within',
+        ceiling: '100.00',
+        alreadyRefunded: '0.00',
+        requested: '49.99',
+        currency: 'PLN',
+      });
     });
 
     it('should default recordedAt to now when the DTO omits it', async () => {
@@ -134,12 +173,14 @@ describe('RefundsController', () => {
 
       expect(refundService.recordRefund).toHaveBeenCalledWith(
         expect.objectContaining({ idempotencyKey: 'retry-1' }),
+        expect.anything(),
       );
 
       await controller.recordRefund('ol_order_abc123', dto);
 
       expect(refundService.recordRefund).toHaveBeenLastCalledWith(
         expect.objectContaining({ idempotencyKey: null }),
+        expect.anything(),
       );
     });
 
@@ -151,6 +192,36 @@ describe('RefundsController', () => {
 
       await expect(controller.recordRefund('ol_order_abc123', dto)).rejects.toThrow(
         ConflictException,
+      );
+    });
+
+    it('should map RefundCeilingExceededException to 409 with the refund_ceiling_exceeded code', async () => {
+      orderRecordService.getOrderRecord.mockResolvedValue({} as OrderRecord);
+      refundService.recordRefund.mockRejectedValue(
+        new RefundCeilingExceededException('ol_order_abc123', '100.00', '90.00', '49.99', 'PLN'),
+      );
+
+      const error = await controller
+        .recordRefund('ol_order_abc123', dto)
+        .catch((e: unknown) => e);
+
+      expect(error).toBeInstanceOf(ConflictException);
+      expect((error as ConflictException).getResponse()).toMatchObject({
+        code: 'refund_ceiling_exceeded',
+        ceiling: '100.00',
+        alreadyRefunded: '90.00',
+      });
+    });
+
+    it('should forward acknowledgeAboveCeiling to the service', async () => {
+      orderRecordService.getOrderRecord.mockResolvedValue({} as OrderRecord);
+      refundService.recordRefund.mockResolvedValue(sampleRefund);
+
+      await controller.recordRefund('ol_order_abc123', { ...dto, acknowledgeAboveCeiling: true });
+
+      expect(refundService.recordRefund).toHaveBeenCalledWith(
+        expect.objectContaining({ acknowledgeAboveCeiling: true }),
+        expect.anything(),
       );
     });
 

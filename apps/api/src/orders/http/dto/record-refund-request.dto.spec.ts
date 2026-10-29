@@ -50,8 +50,8 @@ describe('RecordRefundRequestDto', () => {
     expect(errors[0].constraints).toHaveProperty('matches');
   });
 
-  it('should reject an amount with more than 2 decimal places', async () => {
-    const errors = await validate(buildDto({ ...validBase, amount: '49.999' }));
+  it('should reject an amount with more than 3 decimal places', async () => {
+    const errors = await validate(buildDto({ ...validBase, amount: '49.9999' }));
 
     expect(errors).toHaveLength(1);
     expect(errors[0].constraints).toHaveProperty('matches');

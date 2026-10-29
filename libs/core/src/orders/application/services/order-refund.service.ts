@@ -13,14 +13,38 @@
  * @implements {IOrderRefundService}
  */
 import { Inject, Injectable } from '@nestjs/common';
+import { SYNC_LOCK_TOKEN, type SyncLockPort, type SyncLockToken } from '@openlinker/core/sync';
 import { Logger } from '@openlinker/shared/logging';
 
 import type { RefundRecord } from '../../domain/entities/refund-record.entity';
+import { decideRefundCeiling } from '../../domain/domain-services/refund-ceiling.domain-service';
+import { RefundRecordContendedException } from '../../domain/exceptions/refund-record-contended.exception';
+import { RefundLockUnavailableException } from '../../domain/exceptions/refund-lock-unavailable.exception';
 import { RefundCurrencyMismatchException } from '../../domain/exceptions/refund-currency-mismatch.exception';
 import { RefundRecordRepositoryPort } from '../../domain/ports/refund-record-repository.port';
+import {
+  assertRefundAmountPrecision,
+  describeRefundCeilingVerdict,
+  evaluateRefundCeiling,
+  type RefundCeilingVerdict,
+  REFUND_CEILING_ACKNOWLEDGED_LOG_TOKEN,
+  REFUND_CEILING_UNKNOWN_LOG_TOKEN,
+} from '../../domain/types/refund-ceiling.types';
 import type { CreateRefundRecordInput, RefundSummary } from '../../domain/types/refund-record.types';
-import type { IOrderRefundService } from '../interfaces/order-refund.service.interface';
-import { ORDER_REFUND_RECORD_REPOSITORY_TOKEN } from '../../orders.tokens';
+import { IOrderRecordService } from '../interfaces/order-record.service.interface';
+import type {
+  IOrderRefundService,
+  RecordRefundOptions,
+} from '../interfaces/order-refund.service.interface';
+import {
+  ORDER_REFUND_LOCK_ACQUIRE_TIMEOUT_MS,
+  ORDER_REFUND_LOCK_TTL_MS,
+  orderRefundLockKey,
+} from './order-refund-lock';
+import {
+  ORDER_RECORD_SERVICE_TOKEN,
+  ORDER_REFUND_RECORD_REPOSITORY_TOKEN,
+} from '../../orders.tokens';
 
 @Injectable()
 export class OrderRefundService implements IOrderRefundService {
@@ -29,25 +53,154 @@ export class OrderRefundService implements IOrderRefundService {
   constructor(
     @Inject(ORDER_REFUND_RECORD_REPOSITORY_TOKEN)
     private readonly refundRepository: RefundRecordRepositoryPort,
+    @Inject(ORDER_RECORD_SERVICE_TOKEN)
+    private readonly orderRecords: IOrderRecordService,
+    @Inject(SYNC_LOCK_TOKEN)
+    private readonly lock: SyncLockPort,
   ) {}
 
-  async recordRefund(input: CreateRefundRecordInput): Promise<RefundRecord> {
+  async recordRefund(
+    rawInput: CreateRefundRecordInput,
+    options?: RecordRefundOptions
+  ): Promise<RefundRecord> {
+    // One spelling per currency in the table (R-17): the ceiling sums refunds
+    // by currency, and "pln" next to "PLN" would read as a second currency.
+    const input: CreateRefundRecordInput = {
+      ...rawInput,
+      currency: rawInput.currency.trim().toUpperCase(),
+    };
+    assertRefundAmountPrecision(input.amount, input.currency);
+    if (options?.orderLockHeld === true) {
+      return this.recordRefundLocked(input, options.onCeilingVerdict);
+    }
+    return this.runUnderOrderRefundLock(input.internalOrderId, () =>
+      this.recordRefundLocked(input, options?.onCeilingVerdict)
+    );
+  }
+
+  async runUnderOrderRefundLock<T>(
+    internalOrderId: string,
+    work: () => Promise<T>
+  ): Promise<T> {
+    // The ceiling is a read-then-write, so it is serialized per order (#3289,
+    // the #2047 invoice-issue-lock reasoning): unlocked, two concurrent writes
+    // both read the old refunded sum and both pass.
+    const lockKey = orderRefundLockKey(internalOrderId);
+    const token = await this.acquireOrderRefundLock(lockKey, internalOrderId);
+    if (token === null) {
+      throw new RefundRecordContendedException(internalOrderId);
+    }
+    try {
+      return await work();
+    } finally {
+      await this.lock.release(lockKey, token);
+    }
+  }
+
+  /**
+   * Take the lock, or give up after ORDER_REFUND_LOCK_ACQUIRE_TIMEOUT_MS (R-16).
+   * A late answer is released straight away: the caller has already been told
+   * nothing was recorded, so holding the key would only block the retry.
+   */
+  private async acquireOrderRefundLock(
+    lockKey: string,
+    internalOrderId: string
+  ): Promise<SyncLockToken | null> {
+    let timedOut = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const acquiring = this.lock.acquire(lockKey, ORDER_REFUND_LOCK_TTL_MS);
+    const timeout = new Promise<never>((_, reject) => {
+      timer = setTimeout(() => {
+        timedOut = true;
+        reject(new RefundLockUnavailableException(internalOrderId));
+      }, ORDER_REFUND_LOCK_ACQUIRE_TIMEOUT_MS);
+    });
+    acquiring.then(
+      (late) => {
+        if (timedOut && late !== null) void this.lock.release(lockKey, late).catch(() => undefined);
+      },
+      () => undefined
+    );
+    try {
+      return await Promise.race([acquiring, timeout]);
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  private async recordRefundLocked(
+    input: CreateRefundRecordInput,
+    onCeilingVerdict?: (verdict: RefundCeilingVerdict) => void
+  ): Promise<RefundRecord> {
     const existing = await this.refundRepository.findByOrderId(input.internalOrderId);
     const existingCurrency = existing[0]?.currency;
-    if (existingCurrency && existingCurrency !== input.currency) {
+    // Normalised like the ceiling predicate (B-3): "pln" and "PLN" are one currency.
+    if (
+      existingCurrency &&
+      existingCurrency.trim().toUpperCase() !== input.currency.trim().toUpperCase()
+    ) {
       throw new RefundCurrencyMismatchException(
         input.internalOrderId,
         existingCurrency,
-        input.currency,
+        input.currency
       );
     }
+
+    await this.enforceRefundCeiling(input, onCeilingVerdict);
 
     const refund = await this.refundRepository.create(input);
     this.logger.log(
       `Recorded refund ${refund.id} for order ${input.internalOrderId}: ` +
-        `${input.amount} ${input.currency} (${input.reason})`,
+        `${input.amount} ${input.currency} (${input.reason})`
     );
     return refund;
+  }
+
+  /**
+   * Enforcement point B (#3289): defence in depth behind the returns
+   * pre-flight, and the only guard on the direct `POST /orders/:id/refunds`
+   * route. Reads the SAME predicate the returns path does. See
+   * `refund-ceiling.types.ts` for the `in_doubt` gap this cannot see.
+   */
+  private async enforceRefundCeiling(
+    input: CreateRefundRecordInput,
+    onCeilingVerdict?: (verdict: RefundCeilingVerdict) => void
+  ): Promise<void> {
+    const [order, summaries] = await Promise.all([
+      this.orderRecords.getOrderRecord(input.internalOrderId),
+      this.refundRepository.summarizeByOrderIds([input.internalOrderId]),
+    ]);
+    const verdict = evaluateRefundCeiling({
+      context: {
+        order:
+          order === null
+            ? null
+            : {
+                totalAmount: order.totalAmount,
+                currency: order.currency,
+                taxTreatment: order.taxTreatment,
+                totalTaxTreatment: order.totalTaxTreatment,
+              },
+        alreadyRefunded: summaries.get(input.internalOrderId) ?? null,
+      },
+      requestedAmount: input.amount,
+      requestedCurrency: input.currency,
+    });
+    const disposition = decideRefundCeiling(
+      input.internalOrderId,
+      verdict,
+      input.acknowledgeAboveCeiling
+    );
+    // Reported before the disposition is acted on, so an exceeded-and-refused
+    // verdict (which throws in `decideRefundCeiling` above) is the only path
+    // that never reaches the caller - and that one answers 409 with the figures.
+    onCeilingVerdict?.(verdict);
+    const facts = describeRefundCeilingVerdict(input.internalOrderId, verdict);
+    if (disposition === 'acknowledged') {
+      this.logger.warn(`${REFUND_CEILING_ACKNOWLEDGED_LOG_TOKEN}: ${facts}`);
+    } else if (disposition === 'unknown') {
+      this.logger.warn(`${REFUND_CEILING_UNKNOWN_LOG_TOKEN}: ${facts} - proceeding unchecked`);
+    }
   }
 
   async getRefundsForOrder(internalOrderId: string): Promise<RefundRecord[]> {

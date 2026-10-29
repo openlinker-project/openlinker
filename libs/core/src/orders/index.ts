@@ -270,6 +270,25 @@ export {
 } from './domain/types/refund-record.types';
 export { RefundExecutedByValues } from './domain/types/refund-record.types';
 
+// The order's refund ceiling (#3289) — one pure predicate, read by both the
+// returns pre-flight and the RefundRecord write.
+export {
+  evaluateRefundCeiling,
+  assertRefundAmountPrecision,
+  describeRefundCeilingVerdict,
+  REFUND_CEILING_EXCEEDED_CODE,
+  REFUND_CEILING_ACKNOWLEDGED_LOG_TOKEN,
+  REFUND_CEILING_UNKNOWN_LOG_TOKEN,
+  RefundCeilingUnknownReasonValues,
+} from './domain/types/refund-ceiling.types';
+export type {
+  RefundCeilingContext,
+  RefundCeilingOrderFacts,
+  RefundCeilingVerdict,
+  RefundCeilingUnknownReason,
+  EvaluateRefundCeilingInput,
+} from './domain/types/refund-ceiling.types';
+
 // Refund EXECUTION (#2371, ADR-056) — the command/result a `RefundExecutor`
 // speaks. Declared here rather than in `returns` because the vocabulary is
 // orders' own and a refund is not inherently about a return.
@@ -459,6 +478,12 @@ export { OrderCreateContendedException } from './domain/exceptions/order-create-
 export { OrderSnapshotUnavailableError } from './domain/exceptions/order-snapshot-unavailable.error';
 export { DuplicateRefundRecordException } from './domain/exceptions/duplicate-refund-record.exception';
 export { RefundCurrencyMismatchException } from './domain/exceptions/refund-currency-mismatch.exception';
+export { decideRefundCeiling } from './domain/domain-services/refund-ceiling.domain-service';
+export type { RefundCeilingDisposition } from './domain/domain-services/refund-ceiling.domain-service';
+export { RefundAmountPrecisionException } from './domain/exceptions/refund-amount-precision.exception';
+export { RefundRecordContendedException } from './domain/exceptions/refund-record-contended.exception';
+export { RefundLockUnavailableException } from './domain/exceptions/refund-lock-unavailable.exception';
+export { RefundCeilingExceededException } from './domain/exceptions/refund-ceiling-exceeded.exception';
 export { OrderChangeVocabularyError } from './domain/exceptions/order-change-vocabulary.error';
 export { TaxCoveragePageCeilingExceededError } from './domain/exceptions/tax-coverage-page-ceiling-exceeded.error';
 

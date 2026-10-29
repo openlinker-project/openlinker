@@ -528,6 +528,8 @@ export interface ConfirmReturnRefundInput {
   currency: string;
   reason: string;
   note?: string;
+  /** Record a refund past the order's total (#3289). Per request only. */
+  acknowledgeAboveCeiling?: boolean;
 }
 
 export interface ConfirmReturnRefundResult {

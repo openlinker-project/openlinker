@@ -17,6 +17,7 @@ import {
   ArrayMinSize,
   IsArray,
   IsIn,
+  IsBoolean,
   IsInt,
   IsNotEmpty,
   IsOptional,
@@ -35,11 +36,12 @@ import {
   type ReturnOrigin,
 } from '@openlinker/core/returns';
 import { RefundReasonValues, type RefundReason } from '@openlinker/core/orders/types';
+import { RefundCeilingVerdictDto } from '../../orders/http/dto/refund-ceiling-verdict.dto';
 
 const NOTE_MAX_LENGTH = 500;
 
 /** Decimal string, matching the `RefundRecord.amount` convention. */
-const DECIMAL_AMOUNT = /^\d{1,13}(\.\d{1,2})?$/;
+const DECIMAL_AMOUNT = /^\d{1,13}(\.\d{1,3})?$/;
 
 /** ISO 4217, 3 uppercase letters. */
 const ISO_4217 = /^[A-Z]{3}$/;
@@ -157,7 +159,7 @@ export class ConfirmReturnRefundDto {
   })
   @IsString()
   @Matches(DECIMAL_AMOUNT, {
-    message: 'amount must be a decimal string with at most two fraction digits',
+    message: 'amount must be a decimal string with at most three fraction digits (the currency limit is enforced by the service)',
   })
   amount!: string;
 
@@ -175,6 +177,17 @@ export class ConfirmReturnRefundDto {
   @IsString()
   @MaxLength(NOTE_MAX_LENGTH)
   note?: string;
+
+  @ApiPropertyOptional({
+    default: false,
+    description:
+      "Refund past the order's total. Without it such a refund is refused with 409 " +
+      '`refund_ceiling_exceeded`, before any money state moves. Per request only: logged, ' +
+      'never stored, and a retry must repeat it.',
+  })
+  @IsOptional()
+  @IsBoolean()
+  acknowledgeAboveCeiling?: boolean;
 }
 
 export class ConfirmReturnRefundResponseDto {
@@ -217,4 +230,12 @@ export class ConfirmReturnRefundResponseDto {
 
   @ApiProperty({ nullable: true, description: "The source's own words, where it said anything." })
   providerMessage!: string | null;
+
+  @ApiProperty({
+    type: () => RefundCeilingVerdictDto,
+    description:
+      'The order-level refund-ceiling verdict this attempt was decided on (#3289). `status: unknown` means the ' +
+      'ceiling could not be checked and the refund proceeded UNCHECKED; `reason` says why.',
+  })
+  refundCeiling!: RefundCeilingVerdictDto;
 }

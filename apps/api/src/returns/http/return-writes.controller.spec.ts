@@ -15,6 +15,12 @@
 import 'reflect-metadata';
 import { ROLES_KEY } from '../../auth/decorators/roles.decorator';
 import type { AuthenticatedUser } from '../../auth/auth.types';
+import { BadRequestException, ConflictException, ServiceUnavailableException } from '@nestjs/common';
+import {
+  RefundAmountPrecisionException,
+  RefundCeilingExceededException,
+  RefundRecordContendedException,
+} from '@openlinker/core/orders';
 import { ReturnLineNotFoundError, ReturnNotFoundError } from '@openlinker/core/returns';
 import { ReturnWritesController } from './return-writes.controller';
 
@@ -45,6 +51,7 @@ describe('ReturnWritesController', () => {
   let refunds: Record<string, jest.Mock>;
   let proposals: Record<string, jest.Mock>;
   let orderRefunds: Record<string, jest.Mock>;
+  let orderRecords: Record<string, jest.Mock>;
   let controller: ReturnWritesController;
 
   beforeEach(() => {
@@ -62,7 +69,12 @@ describe('ReturnWritesController', () => {
     authorizeService = { authorize: jest.fn() };
     refunds = { triggerRefund: jest.fn() };
     proposals = { buildProposal: jest.fn(), previewProposal: jest.fn() };
-    orderRefunds = { recordRefund: jest.fn() };
+    orderRefunds = {
+      recordRefund: jest.fn(),
+      getRefundSummariesForOrders: jest.fn(),
+      runUnderOrderRefundLock: jest.fn((_orderId: string, work: () => Promise<unknown>) => work()),
+    };
+    orderRecords = { getOrderRecord: jest.fn() };
 
     controller = new ReturnWritesController(
       returns as never,
@@ -70,7 +82,8 @@ describe('ReturnWritesController', () => {
       authorizeService as never,
       refunds as never,
       proposals as never,
-      orderRefunds as never
+      orderRefunds as never,
+      orderRecords as never
     );
   });
 
@@ -229,6 +242,7 @@ describe('ReturnWritesController', () => {
         moneyState: 'triggered',
         claimedLineIds: ['b', 'a'],
         providerMessage: null,
+        refundCeiling: { status: 'unknown', reason: 'order-total-unknown' } as const,
         refundRecordIntent: {
           returnId: RETURN_ID,
           internalOrderId: 'ol_order_1',
@@ -251,8 +265,203 @@ describe('ReturnWritesController', () => {
       // Deterministic per attempt, and order-independent, so one attempt cannot
       // insert twice and inflate the order's refund total.
       expect(orderRefunds.recordRefund).toHaveBeenCalledWith(
-        expect.objectContaining({ idempotencyKey: `return:${RETURN_ID}:a+b` })
+        expect.objectContaining({ idempotencyKey: `return:${RETURN_ID}:a+b` }),
+        expect.anything()
       );
+    });
+
+    it('should answer 409 refund_ceiling_exceeded when the service refuses the excess', async () => {
+      returns.getReturn.mockResolvedValue({
+        id: RETURN_ID,
+        internalOrderId: 'ol_order_1',
+        lines: [{ id: LINE_ID }],
+      });
+      orderRecords.getOrderRecord.mockResolvedValue({
+        totalAmount: 100,
+        currency: 'PLN',
+        taxTreatment: null,
+        totalTaxTreatment: null,
+      });
+      orderRefunds.getRefundSummariesForOrders.mockResolvedValue(
+        new Map([['ol_order_1', { count: 1, totalAmount: '100.00', currency: 'PLN' }]])
+      );
+      refunds.triggerRefund.mockRejectedValue(
+        new RefundCeilingExceededException('ol_order_1', '100.00', '100.00', '19.99', 'PLN')
+      );
+
+      const error = await controller.confirmRefund(RETURN_ID, body, USER).catch((e: unknown) => e);
+
+      expect(error).toBeInstanceOf(ConflictException);
+      expect((error as ConflictException).getResponse()).toMatchObject({
+        code: 'refund_ceiling_exceeded',
+      });
+      expect(refunds.triggerRefund).toHaveBeenCalledWith(
+        RETURN_ID,
+        expect.objectContaining({
+          acknowledgeAboveCeiling: false,
+          refundCeilingContext: expect.objectContaining({
+            alreadyRefunded: { count: 1, totalAmount: '100.00', currency: 'PLN' },
+          }),
+        })
+      );
+    });
+
+    it('should forward acknowledgeAboveCeiling to both the trigger and the record write', async () => {
+      refunds.triggerRefund.mockResolvedValue({
+        moneyState: 'triggered',
+        claimedLineIds: ['a'],
+        providerMessage: null,
+        refundCeiling: { status: 'unknown', reason: 'order-total-unknown' } as const,
+        refundRecordIntent: {
+          returnId: RETURN_ID,
+          internalOrderId: 'ol_order_1',
+          amount: '19.99',
+          currency: 'PLN',
+          reason: 'other',
+          note: null,
+          executedBy: 'operator_out_of_band',
+          recordedAt: new Date('2026-08-02T00:00:00.000Z'),
+          providerRefundId: null,
+        },
+      });
+      orderRefunds.recordRefund.mockResolvedValue({ id: 'refund-1' });
+
+      await controller.confirmRefund(RETURN_ID, { ...body, acknowledgeAboveCeiling: true }, USER);
+
+      expect(refunds.triggerRefund).toHaveBeenCalledWith(
+        RETURN_ID,
+        expect.objectContaining({ acknowledgeAboveCeiling: true })
+      );
+      expect(orderRefunds.recordRefund).toHaveBeenCalledWith(
+        expect.objectContaining({ acknowledgeAboveCeiling: true }),
+        expect.anything()
+      );
+    });
+
+    it('should hold the order lock across the trigger and the record write and not re-acquire it (B-1)', async () => {
+      returns.getReturn.mockResolvedValue({
+        id: RETURN_ID,
+        internalOrderId: 'ol_order_1',
+        lines: [{ id: LINE_ID }],
+      });
+      orderRecords.getOrderRecord.mockResolvedValue({
+        totalAmount: 100,
+        currency: 'PLN',
+        taxTreatment: null,
+        totalTaxTreatment: null,
+      });
+      orderRefunds.getRefundSummariesForOrders.mockResolvedValue(new Map());
+      refunds.triggerRefund.mockResolvedValue({
+        moneyState: 'triggered',
+        claimedLineIds: ['a'],
+        providerMessage: null,
+        refundCeiling: { status: 'unknown', reason: 'order-total-unknown' } as const,
+        refundRecordIntent: {
+          returnId: RETURN_ID,
+          internalOrderId: 'ol_order_1',
+          amount: '19.99',
+          currency: 'PLN',
+          reason: 'other',
+          note: null,
+          executedBy: 'operator_out_of_band',
+          recordedAt: new Date(),
+          providerRefundId: null,
+        },
+      });
+      orderRefunds.recordRefund.mockResolvedValue({ id: 'refund-1' });
+
+      await controller.confirmRefund(RETURN_ID, body, USER);
+
+      expect(orderRefunds.runUnderOrderRefundLock).toHaveBeenCalledWith(
+        'ol_order_1',
+        expect.any(Function)
+      );
+      expect(orderRefunds.recordRefund).toHaveBeenCalledWith(expect.anything(), {
+        orderLockHeld: true,
+      });
+    });
+
+    it('should answer 409 refund_record_contended when the order lock is held by a peer (B-1)', async () => {
+      returns.getReturn.mockResolvedValue({
+        id: RETURN_ID,
+        internalOrderId: 'ol_order_1',
+        lines: [{ id: LINE_ID }],
+      });
+      orderRecords.getOrderRecord.mockResolvedValue(null);
+      orderRefunds.getRefundSummariesForOrders.mockResolvedValue(new Map());
+      orderRefunds.runUnderOrderRefundLock.mockRejectedValue(
+        new RefundRecordContendedException('ol_order_1')
+      );
+
+      const error = await controller.confirmRefund(RETURN_ID, body, USER).catch((e: unknown) => e);
+
+      expect(error).toBeInstanceOf(ConflictException);
+      expect(refunds.triggerRefund).not.toHaveBeenCalled();
+    });
+
+    it('should refuse with 503 refund_ceiling_unavailable before money moves when the context read fails (B-2)', async () => {
+      returns.getReturn.mockResolvedValue({
+        id: RETURN_ID,
+        internalOrderId: 'ol_order_1',
+        lines: [{ id: LINE_ID }],
+      });
+      orderRecords.getOrderRecord.mockRejectedValue(new Error('db down'));
+      orderRefunds.getRefundSummariesForOrders.mockResolvedValue(new Map());
+
+      const error = await controller.confirmRefund(RETURN_ID, body, USER).catch((e: unknown) => e);
+
+      expect(error).toBeInstanceOf(ServiceUnavailableException);
+      expect((error as ServiceUnavailableException).getResponse()).toMatchObject({
+        code: 'refund_ceiling_unavailable',
+      });
+      expect(refunds.triggerRefund).not.toHaveBeenCalled();
+    });
+
+    it('should answer 400 when the amount has more decimals than the currency allows (R-18)', async () => {
+      refunds.triggerRefund.mockRejectedValue(
+        new RefundAmountPrecisionException('19.99', 'JPY', 0)
+      );
+
+      const error = await controller
+        .confirmRefund(RETURN_ID, { ...body, currency: 'JPY' }, USER)
+        .catch((e: unknown) => e);
+
+      expect(error).toBeInstanceOf(BadRequestException);
+    });
+
+    it('should report the ceiling verdict on the confirm response, including an unknown one (#3289)', async () => {
+      refunds.triggerRefund.mockResolvedValue({
+        moneyState: 'denied',
+        claimedLineIds: [],
+        providerMessage: null,
+        refundRecordIntent: null,
+        refundCeiling: { status: 'unknown', reason: 'currency-differs' },
+      });
+
+      const unknown = await controller.confirmRefund(RETURN_ID, body, USER);
+      expect(unknown.refundCeiling).toEqual({ status: 'unknown', reason: 'currency-differs' });
+
+      refunds.triggerRefund.mockResolvedValue({
+        moneyState: 'denied',
+        claimedLineIds: [],
+        providerMessage: null,
+        refundRecordIntent: null,
+        refundCeiling: {
+          status: 'within',
+          ceiling: '100.00',
+          alreadyRefunded: '0.00',
+          requested: '19.99',
+          currency: 'PLN',
+        },
+      });
+      const within = await controller.confirmRefund(RETURN_ID, body, USER);
+      expect(within.refundCeiling).toEqual({
+        status: 'within',
+        ceiling: '100.00',
+        alreadyRefunded: '0.00',
+        requested: '19.99',
+        currency: 'PLN',
+      });
     });
 
     it('should report moneyMoved:false without writing when no money moved', async () => {
@@ -260,6 +469,7 @@ describe('ReturnWritesController', () => {
         moneyState: 'denied',
         claimedLineIds: [],
         providerMessage: 'Source refused',
+        refundCeiling: { status: 'unknown', reason: 'order-total-unknown' } as const,
         refundRecordIntent: null,
       });
 
@@ -276,6 +486,7 @@ describe('ReturnWritesController', () => {
         moneyState: 'triggered',
         claimedLineIds: ['a'],
         providerMessage: null,
+        refundCeiling: { status: 'unknown', reason: 'order-total-unknown' } as const,
         refundRecordIntent: {
           returnId: RETURN_ID,
           internalOrderId: 'ol_order_1',
@@ -305,6 +516,7 @@ describe('ReturnWritesController', () => {
         moneyState: 'triggered',
         claimedLineIds: ['a'],
         providerMessage: null,
+        refundCeiling: { status: 'unknown', reason: 'order-total-unknown' } as const,
         refundRecordIntent: {
           returnId: RETURN_ID,
           internalOrderId: 'o',

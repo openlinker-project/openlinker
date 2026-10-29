@@ -5,12 +5,21 @@ import { RefundRecord } from '../../domain/entities/refund-record.entity';
 import { RefundCurrencyMismatchException } from '../../domain/exceptions/refund-currency-mismatch.exception';
 import type { RefundRecordRepositoryPort } from '../../domain/ports/refund-record-repository.port';
 import type { CreateRefundRecordInput } from '../../domain/types/refund-record.types';
-import { ORDER_REFUND_RECORD_REPOSITORY_TOKEN } from '../../orders.tokens';
+import {
+  ORDER_RECORD_SERVICE_TOKEN,
+  ORDER_REFUND_RECORD_REPOSITORY_TOKEN,
+} from '../../orders.tokens';
+import { SYNC_LOCK_TOKEN } from '@openlinker/core/sync';
+import { RefundRecordContendedException } from '../../domain/exceptions/refund-record-contended.exception';
+import { RefundCeilingExceededException } from '../../domain/exceptions/refund-ceiling-exceeded.exception';
+import type { IOrderRecordService } from '../interfaces/order-record.service.interface';
 import { OrderRefundService } from './order-refund.service';
 
 describe('OrderRefundService', () => {
   let service: OrderRefundService;
   let refundRepository: jest.Mocked<RefundRecordRepositoryPort>;
+  let orderRecords: { getOrderRecord: jest.Mock };
+  let lock: { acquire: jest.Mock; release: jest.Mock };
 
   const sampleRefund = new RefundRecord(
     'a1b2c3d4-0000-0000-0000-000000000000',
@@ -32,12 +41,21 @@ describe('OrderRefundService', () => {
       summarizeByOrderIds: jest.fn(),
     };
 
+    lock = { acquire: jest.fn().mockResolvedValue('tok'), release: jest.fn().mockResolvedValue(undefined) };
+    orderRecords = { getOrderRecord: jest.fn().mockResolvedValue(null) };
+    mockRefundRepository.summarizeByOrderIds.mockResolvedValue(new Map());
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         OrderRefundService,
         {
           provide: ORDER_REFUND_RECORD_REPOSITORY_TOKEN,
           useValue: mockRefundRepository,
+        },
+        { provide: SYNC_LOCK_TOKEN, useValue: lock },
+        {
+          provide: ORDER_RECORD_SERVICE_TOKEN,
+          useValue: orderRecords as unknown as IOrderRecordService,
         },
       ],
     }).compile();
@@ -97,6 +115,176 @@ describe('OrderRefundService', () => {
         RefundCurrencyMismatchException,
       );
       expect(refundRepository.create).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('recordRefund - refund ceiling (#3289)', () => {
+    const input: CreateRefundRecordInput = {
+      internalOrderId: 'ol_order_abc123',
+      amount: '60.00',
+      currency: 'PLN',
+      reason: 'withdrawal',
+      note: null,
+      recordedAt: new Date('2026-01-15T10:00:00Z'),
+    };
+
+    beforeEach(() => {
+      orderRecords.getOrderRecord.mockResolvedValue({
+        totalAmount: 100,
+        currency: 'PLN',
+        taxTreatment: null,
+        totalTaxTreatment: null,
+      });
+      refundRepository.findByOrderId.mockResolvedValue([]);
+      refundRepository.create.mockResolvedValue(sampleRefund);
+      refundRepository.summarizeByOrderIds.mockResolvedValue(
+        new Map([['ol_order_abc123', { count: 1, totalAmount: '50.00', currency: 'PLN' }]]),
+      );
+    });
+
+    it('should not re-acquire the order lock when the caller already holds it (B-1)', async () => {
+      await service.recordRefund({ ...input, amount: '10.00' }, { orderLockHeld: true });
+
+      expect(lock.acquire).not.toHaveBeenCalled();
+      expect(refundRepository.create).toHaveBeenCalled();
+    });
+
+    it('should hold the lock for the whole of runUnderOrderRefundLock and release it after (B-1)', async () => {
+      const result = await service.runUnderOrderRefundLock('ol_order_abc123', () => Promise.resolve('done'));
+
+      expect(result).toBe('done');
+      expect(lock.release).toHaveBeenCalledWith('order:refund:ol_order_abc123', 'tok');
+    });
+
+    it('should treat currencies that differ only by case as the same currency (B-3)', async () => {
+      refundRepository.findByOrderId.mockResolvedValue([{ currency: 'pln' } as never]);
+
+      await expect(service.recordRefund({ ...input, amount: '10.00' })).resolves.toBeDefined();
+    });
+
+    it('should reject an amount with more decimals than the currency allows (R-18)', async () => {
+      await expect(
+        service.recordRefund({ ...input, amount: '10.5', currency: 'JPY' })
+      ).rejects.toMatchObject({ code: 'refund_amount_precision' });
+      expect(refundRepository.create).not.toHaveBeenCalled();
+    });
+
+    it('should refuse a third decimal for KWD because the amount column keeps two (R-18)', async () => {
+      await expect(
+        service.recordRefund({ ...input, amount: '0.123', currency: 'KWD' })
+      ).rejects.toMatchObject({ code: 'refund_amount_precision', allowedFractionDigits: 2 });
+      expect(refundRepository.create).not.toHaveBeenCalled();
+    });
+
+    it('should store the currency upper-cased so one currency has one spelling (R-17)', async () => {
+      refundRepository.create.mockResolvedValue({ id: 'r1' } as never);
+
+      await service.recordRefund({ ...input, amount: '10.00', currency: ' pln ' });
+
+      expect(refundRepository.create).toHaveBeenCalledWith(
+        expect.objectContaining({ currency: 'PLN' })
+      );
+    });
+
+    it('should refuse with refund_lock_unavailable and never write when the lock store does not answer (R-16)', async () => {
+      jest.useFakeTimers();
+      try {
+        let answer: (token: string) => void = () => undefined;
+        lock.acquire.mockReturnValue(new Promise<string>((resolve) => { answer = resolve; }));
+
+        const pending = service.recordRefund({ ...input, amount: '10.00' });
+        const outcome = expect(pending).rejects.toMatchObject({ code: 'refund_lock_unavailable' });
+        await jest.advanceTimersByTimeAsync(5_000);
+        await outcome;
+
+        // The store comes back: the late lock is handed back, nothing is recorded.
+        answer('late-tok');
+        await jest.advanceTimersByTimeAsync(0);
+        expect(lock.release).toHaveBeenCalledWith('order:refund:ol_order_abc123', 'late-tok');
+        expect(refundRepository.create).not.toHaveBeenCalled();
+      } finally {
+        jest.useRealTimers();
+      }
+    });
+
+    it('should throw RefundRecordContendedException without writing when the order lock is held', async () => {
+      lock.acquire.mockResolvedValue(null);
+
+      await expect(service.recordRefund(input)).rejects.toBeInstanceOf(
+        RefundRecordContendedException,
+      );
+      expect(refundRepository.create).not.toHaveBeenCalled();
+      expect(lock.release).not.toHaveBeenCalled();
+    });
+
+    it('should release the lock after a successful write', async () => {
+      await service.recordRefund({ ...input, amount: '10.00' });
+
+      expect(lock.acquire).toHaveBeenCalledWith('order:refund:ol_order_abc123', expect.any(Number));
+      expect(lock.release).toHaveBeenCalledWith('order:refund:ol_order_abc123', 'tok');
+    });
+
+    it('should release the lock when the ceiling refuses the refund', async () => {
+      await expect(service.recordRefund(input)).rejects.toBeInstanceOf(
+        RefundCeilingExceededException,
+      );
+      expect(lock.release).toHaveBeenCalledWith('order:refund:ol_order_abc123', 'tok');
+    });
+
+    it('should refuse a second refund that pushes the order past its total', async () => {
+      await expect(service.recordRefund(input)).rejects.toBeInstanceOf(
+        RefundCeilingExceededException,
+      );
+      expect(refundRepository.create).not.toHaveBeenCalled();
+    });
+
+    it('should record the same refund when acknowledgeAboveCeiling is set', async () => {
+      const warn = jest.spyOn(
+        (service as unknown as { logger: { warn: (m: string) => void } }).logger,
+        'warn',
+      );
+
+      await service.recordRefund({ ...input, acknowledgeAboveCeiling: true });
+
+      expect(refundRepository.create).toHaveBeenCalled();
+      expect(warn).toHaveBeenCalledWith(
+        expect.stringContaining('refund_ceiling_exceeded_acknowledged'),
+      );
+    });
+
+    it('should proceed and warn refund_ceiling_unknown when the order has no total', async () => {
+      orderRecords.getOrderRecord.mockResolvedValue({
+        totalAmount: null,
+        currency: null,
+        taxTreatment: null,
+        totalTaxTreatment: null,
+      });
+      const warn = jest.spyOn(
+        (service as unknown as { logger: { warn: (m: string) => void } }).logger,
+        'warn',
+      );
+
+      await service.recordRefund(input);
+
+      expect(refundRepository.create).toHaveBeenCalled();
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining('refund_ceiling_unknown'));
+    });
+
+    it('should hand the unknown verdict and its reason to the caller, not only to the log (#3289)', async () => {
+      orderRecords.getOrderRecord.mockResolvedValue({
+        totalAmount: null,
+        currency: null,
+        taxTreatment: null,
+        totalTaxTreatment: null,
+      });
+      const onCeilingVerdict = jest.fn();
+
+      await service.recordRefund(input, { onCeilingVerdict });
+
+      expect(onCeilingVerdict).toHaveBeenCalledWith({
+        status: 'unknown',
+        reason: 'order-total-unknown',
+      });
     });
   });
 

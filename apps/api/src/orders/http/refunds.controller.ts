@@ -24,8 +24,10 @@
  * @module apps/api/src/orders/http
  */
 import {
+  BadRequestException,
   Body,
   ConflictException,
+  ServiceUnavailableException,
   Controller,
   Get,
   HttpCode,
@@ -37,10 +39,14 @@ import {
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { Logger } from '@openlinker/shared/logging';
-import type { RefundRecord } from '@openlinker/core/orders';
+import type { RefundCeilingVerdict, RefundRecord } from '@openlinker/core/orders';
 import {
   DuplicateRefundRecordException,
+  RefundCeilingExceededException,
   RefundCurrencyMismatchException,
+  RefundAmountPrecisionException,
+  RefundRecordContendedException,
+  RefundLockUnavailableException,
   IOrderRefundService,
   IOrderRecordService,
   ORDER_REFUND_SERVICE_TOKEN,
@@ -49,6 +55,7 @@ import {
 import { Roles } from '../../auth/decorators/roles.decorator';
 import { RecordRefundRequestDto } from './dto/record-refund-request.dto';
 import { RefundRecordResponseDto } from './dto/refund-record-response.dto';
+import { toRefundCeilingVerdictDto } from './dto/refund-ceiling-verdict.dto';
 
 @ApiTags('orders')
 @ApiBearerAuth()
@@ -71,7 +78,10 @@ export class RefundsController {
   @ApiResponse({ status: 404, description: 'Order not found' })
   @ApiResponse({
     status: 409,
-    description: 'Duplicate idempotencyKey, or currency mismatch with a prior refund on this order',
+    description:
+      'Duplicate idempotencyKey, currency mismatch with a prior refund on this order, or ' +
+      'cumulative refunds past the order total (`code: refund_ceiling_exceeded`; ' +
+      'resubmit with `acknowledgeAboveCeiling: true` to record it deliberately)',
   })
   async recordRefund(
     @Param('internalOrderId') internalOrderId: string,
@@ -87,6 +97,7 @@ export class RefundsController {
     );
 
     try {
+      let ceilingVerdict: RefundCeilingVerdict | null = null;
       const refund = await this.refundService.recordRefund({
         internalOrderId,
         amount: dto.amount,
@@ -95,12 +106,54 @@ export class RefundsController {
         note: dto.note ?? null,
         recordedAt: dto.recordedAt ? new Date(dto.recordedAt) : new Date(),
         idempotencyKey: dto.idempotencyKey ?? null,
+        acknowledgeAboveCeiling: dto.acknowledgeAboveCeiling === true,
+      }, {
+        onCeilingVerdict: (verdict) => {
+          ceilingVerdict = verdict;
+        },
       });
 
-      return this.toDto(refund);
+      const response = this.toDto(refund);
+      // An unknown ceiling lets the refund through unchecked; the caller is told
+      // so here rather than only in a server log (#3289).
+      if (ceilingVerdict !== null) {
+        response.refundCeiling = toRefundCeilingVerdictDto(ceilingVerdict);
+      }
+      return response;
     } catch (error) {
       if (error instanceof DuplicateRefundRecordException) {
         throw new ConflictException('A refund with this idempotencyKey already exists for this order');
+      }
+      if (error instanceof RefundCeilingExceededException) {
+        throw new ConflictException({
+          statusCode: HttpStatus.CONFLICT,
+          error: 'Conflict',
+          code: error.code,
+          message: error.message,
+          ceiling: error.ceiling,
+          alreadyRefunded: error.alreadyRefunded,
+          requested: error.requested,
+          currency: error.currency,
+        });
+      }
+      if (error instanceof RefundRecordContendedException) {
+        throw new ConflictException({
+          statusCode: HttpStatus.CONFLICT,
+          error: 'Conflict',
+          code: error.code,
+          message: error.message,
+        });
+      }
+      if (error instanceof RefundLockUnavailableException) {
+        throw new ServiceUnavailableException({
+          statusCode: HttpStatus.SERVICE_UNAVAILABLE,
+          error: 'Service Unavailable',
+          code: error.code,
+          message: error.message,
+        });
+      }
+      if (error instanceof RefundAmountPrecisionException) {
+        throw new BadRequestException(error.message);
       }
       if (error instanceof RefundCurrencyMismatchException) {
         throw new ConflictException(error.message);
