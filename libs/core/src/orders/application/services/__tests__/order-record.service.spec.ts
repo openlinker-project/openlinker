@@ -1096,6 +1096,7 @@ describe('OrderRecordService', () => {
     it('does not call markCancelled or re-fetch for a non-cancelled order', async () => {
       const order = createMockOrder();
       order.status = 'pending';
+      order.placedAt = new Date('2026-01-01');
       const saved = {} as OrderRecord;
       repository.upsertWithLineItems.mockResolvedValue(saved);
 
