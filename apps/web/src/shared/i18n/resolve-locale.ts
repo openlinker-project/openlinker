@@ -108,3 +108,12 @@ export function readPseudoRequested(search: string, isDev: boolean): boolean {
     return fromQuery === PSEUDO_LOCALE_CODE;
   }
 }
+
+/** Ends the pseudo-language for this session; picking a real language does this. */
+export function clearPseudoRequested(): void {
+  try {
+    window.sessionStorage.removeItem(PSEUDO_SESSION_KEY);
+  } catch {
+    // Nothing was stored either.
+  }
+}
