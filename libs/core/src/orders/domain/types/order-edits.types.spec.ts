@@ -163,8 +163,30 @@ describe('describeEditedTotals', () => {
       channelTotal: 97.5,
       total: 87.5,
       difference: 10,
+      channelDiscountTotal: null,
+      combinedDiscountTotal: null,
       taxRestated: false,
     });
+  });
+
+  it('should combine the channel discount with the OpenLinker discount (E-44)', () => {
+    const snap = channelSnapshot();
+    (snap.totals as Record<string, unknown>).discountTotal = 5;
+    const view = describeEditedTotals(snap, {
+      v: 1,
+      rev: 1,
+      discount: { ...stamp, amount: '10.00', currency: 'PLN', perLine: [] },
+    } as OrderEdits);
+    expect(view).toMatchObject({ channelDiscountTotal: 5, combinedDiscountTotal: 15 });
+  });
+
+  it('should report the OpenLinker discount alone when the channel reported none (E-44)', () => {
+    const view = describeEditedTotals(channelSnapshot(), {
+      v: 1,
+      rev: 1,
+      discount: { ...stamp, amount: '10.00', currency: 'PLN', perLine: [] },
+    } as OrderEdits);
+    expect(view).toMatchObject({ channelDiscountTotal: null, combinedDiscountTotal: 10 });
   });
 });
 

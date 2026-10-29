@@ -49,6 +49,18 @@ export class OrderEditedTotalsDto {
       '`channelTotal - total`. Informational only: no refund intent is created (the discount money event owns that).',
   })
   difference!: number;
+  @ApiProperty({
+    nullable: true,
+    type: Number,
+    description: 'The whole-order discount the channel itself applied; null when the channel reported none.',
+  })
+  channelDiscountTotal!: number | null;
+  @ApiProperty({
+    nullable: true,
+    type: Number,
+    description: 'Channel discount + OpenLinker discount; null only when neither exists.',
+  })
+  combinedDiscountTotal!: number | null;
   @ApiProperty({ description: 'Always false: OpenLinker computes no tax, so `tax` stays the channel figure.' })
   taxRestated!: false;
 }
@@ -196,6 +208,8 @@ export class OrderDiscountResponseDto {
               channelTotal: result.view.totals.channelTotal,
               total: result.view.totals.total,
               difference: result.view.totals.difference,
+              channelDiscountTotal: result.view.totals.channelDiscountTotal,
+              combinedDiscountTotal: result.view.totals.combinedDiscountTotal,
             },
       paymentBranch: outcome.paymentBranch,
       amountToCollect: outcome.amountToCollect,

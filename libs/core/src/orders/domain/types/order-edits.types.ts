@@ -495,6 +495,13 @@ export interface OrderEditedTotals {
    * its own - a refund intent exists only for a discount on a paid order (#3543).
    */
   readonly difference: number;
+  /** The discount the channel itself applied to the whole order; null = the channel reported none (E-44). */
+  readonly channelDiscountTotal: number | null;
+  /**
+   * Channel discount + the OpenLinker discount, the single figure an operator sees (E-44).
+   * Null only when neither exists; computed here and nowhere else.
+   */
+  readonly combinedDiscountTotal: number | null;
   /** Always `false`: core computes no tax (ADR-063), so `tax` stays the channel's. */
   readonly taxRestated: false;
 }
@@ -509,11 +516,19 @@ export function describeEditedTotals(
   const effectiveTotal =
     isRecord(effective) && typeof effective.total === 'number' ? effective.total : totals.total;
   const currency = typeof totals.currency === 'string' ? totals.currency : '';
+  const channelDiscountTotal =
+    typeof totals.discountTotal === 'number' && totals.discountTotal > 0 ? totals.discountTotal : null;
+  const olDiscount = effectiveDiscountAmount(edits?.discount);
   return {
     currency,
     channelTotal: totals.total,
     total: effectiveTotal,
     difference: roundTo(totals.total - effectiveTotal, currency),
+    channelDiscountTotal,
+    combinedDiscountTotal:
+      channelDiscountTotal === null && olDiscount <= 0
+        ? null
+        : roundTo((channelDiscountTotal ?? 0) + olDiscount, currency),
     taxRestated: false,
   };
 }
