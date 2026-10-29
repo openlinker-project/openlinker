@@ -45,7 +45,9 @@ function build(
     orderItems: [{ id: 'x', productId: 'p-1', sku: 'KUB-1', quantity: 2, price: 123 }],
   } as unknown as OrderRecord;
   const orders = {
-    findById: jest.fn().mockImplementation(async (id: string) => (id === 'ord-1' ? record : null)),
+    findById: jest
+      .fn()
+      .mockImplementation((id: string) => Promise.resolve(id === 'ord-1' ? record : null)),
   } as unknown as OrderRecordRepositoryPort;
   const items = {
     findByOrderId: jest.fn().mockResolvedValue(lines),
@@ -91,7 +93,11 @@ describe('OrderLineCostService', () => {
 
   it('should report no-cost when not recorded and the variant has none now', async () => {
     const result = await build([line(1, 'v-1', null)]).getLineCosts('ord-1');
-    expect(result!.lines[0]).toMatchObject({ gapReason: 'no-cost', margin: null, costOfGoods: null });
+    expect(result!.lines[0]).toMatchObject({
+      gapReason: 'no-cost',
+      margin: null,
+      costOfGoods: null,
+    });
   });
 
   it('should report cost-entered-after-sale when not recorded but the variant has a cost now', async () => {
