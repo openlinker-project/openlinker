@@ -70,6 +70,23 @@ export class ShipmentQueryService implements IShipmentQueryService {
     return byWork;
   }
 
+  /** The contract is documented once on {@link IShipmentQueryService.getLatestOutboundTrackingNumber}. */
+  async getLatestOutboundTrackingNumber(orderId: string): Promise<string | null> {
+    const shipments = await this.shipments.findByOrderId(orderId, 'outbound');
+    // A cancelled or failed label's number points at a parcel that never left;
+    // `delivered` stays in, because that number is real.
+    const withTracking = shipments
+      .filter(
+        (shipment) =>
+          shipment.status !== 'cancelled' &&
+          shipment.status !== 'failed' &&
+          typeof shipment.trackingNumber === 'string' &&
+          shipment.trackingNumber.length > 0,
+      )
+      .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+    return withTracking[0]?.trackingNumber ?? null;
+  }
+
   /**
    * The contract — why the marker and not the ledger, why ANY shipment, and why
    * the fold rather than a repository `EXISTS` — is documented once on

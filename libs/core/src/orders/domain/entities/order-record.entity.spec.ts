@@ -242,3 +242,36 @@ describe('OrderRecord.isCancelled (#1984)', () => {
     expect(makeRecordWithCancelledAt(new Date('2026-08-01T00:00:00Z')).isCancelled).toBe(true);
   });
 });
+
+describe('OrderRecord.buyerName (#3553)', () => {
+  it('should read the billing name first', () => {
+    const record = makeRecord({
+      billingAddress: { firstName: 'Jan', lastName: 'Kowalski' },
+      shippingAddress: { firstName: 'Anna', lastName: 'Nowak' },
+    });
+
+    expect(record.buyerName).toBe('Jan Kowalski');
+  });
+
+  it('should fall back to the shipping name when billing has none', () => {
+    const record = makeRecord({
+      billingAddress: { city: 'Warsaw' },
+      shippingAddress: { firstName: 'Anna', lastName: 'Nowak' },
+    });
+
+    expect(record.buyerName).toBe('Anna Nowak');
+  });
+
+  it('should be undefined under hash-only mode, never the redaction marker', () => {
+    const record = makeRecord({
+      billingAddress: { address1: '[REDACTED]', city: '[REDACTED]', country: 'PL' },
+      shippingAddress: { firstName: '[REDACTED]', lastName: '[REDACTED]' },
+    });
+
+    expect(record.buyerName).toBeUndefined();
+  });
+
+  it('should be undefined when the snapshot carries no address', () => {
+    expect(makeRecord({}).buyerName).toBeUndefined();
+  });
+});

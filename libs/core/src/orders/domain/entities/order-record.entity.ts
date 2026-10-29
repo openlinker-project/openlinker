@@ -19,6 +19,7 @@ import type { BuyerTaxId } from '../types/buyer-tax-id.types';
 import type { FulfillmentRollupState } from '../types/order-fulfillment.types';
 import type { OrderDispatchWindow, OrderItem, PriceTaxTreatment } from '../types/order.types';
 import type { OrderAmendmentChange } from '../order-amendment-diff';
+import { REDACTED_PLACEHOLDER } from '../order-address-redaction';
 import type { DestinationRoutingBlockReason } from '../types/destination-routing-block.types';
 import type { FulfillmentRoutingSkipReason } from '../types/fulfillment-routing-eligibility.types';
 import type { AuthorityAttentionEntry } from '@openlinker/core/fulfillment-authority';
@@ -524,6 +525,29 @@ export class OrderRecord {
   get buyerEmail(): string | undefined {
     const value = this.orderSnapshot.customerEmail;
     return typeof value === 'string' && value.length > 0 ? value : undefined;
+  }
+
+  /**
+   * The buyer's name as the source reported it (#3553), billing address first,
+   * then shipping. Pure derivation of the already-loaded snapshot (ADR-011).
+   *
+   * `undefined` under `OL_STORE_PII=false`: the snapshot's addresses are then
+   * redacted to a placeholder and carry no name, which this getter treats as
+   * ABSENT rather than returning the placeholder. A caller must render its own
+   * fallback, never an empty string or the redaction marker.
+   */
+  get buyerName(): string | undefined {
+    for (const key of ['billingAddress', 'shippingAddress'] as const) {
+      const raw = this.orderSnapshot[key];
+      if (typeof raw !== 'object' || raw === null) continue;
+      const address = raw as Record<string, unknown>;
+      const first = typeof address.firstName === 'string' ? address.firstName.trim() : '';
+      const last = typeof address.lastName === 'string' ? address.lastName.trim() : '';
+      const name = `${first} ${last}`.trim();
+      if (name.length === 0 || name.includes(REDACTED_PLACEHOLDER)) continue;
+      return name;
+    }
+    return undefined;
   }
 
   /**
