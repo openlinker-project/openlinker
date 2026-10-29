@@ -154,7 +154,7 @@ export function extractCopies(source, fileName = 'copy.ts') {
       if (!arg || !ts.isObjectLiteralExpression(arg)) {
         problems.push({ line, message: 'defineCopy() must take one inline { en, pl } object.' });
       } else {
-        const langs = { en: new Map(), pl: new Map() };
+        const langs = Object.fromEntries(LANGUAGES.map((lang) => [lang, new Map()]));
         for (const prop of arg.properties) {
           const name = ts.isPropertyAssignment(prop) ? propertyName(prop.name) : null;
           if (name === null || !LANGUAGES.includes(name)) {
