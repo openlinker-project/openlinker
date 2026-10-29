@@ -684,6 +684,14 @@ The language switch appears on every page as soon as #3858 lands, while only the
 
 Unit tests and Playwright run in English: the Vitest setup file and `env`, the shared render helper and the e2e fixtures pin `en`, so the existing text queries keep working whatever the default is. Polish gets its own targeted tests.
 
+### Guardrails
+
+- **`scripts/check-copy-locales.mjs`** (in `pnpm check:invariants`) reads every `defineCopy` file and fails on a Polish placeholder that differs from English, a `fit(n, text)` budget exceeded in any language, or an em dash. It warns when Polish is more than 1.6x and 15+ characters longer than English.
+- **`fit(n, text)`** marks a key that sits in a tight spot (button, nav item, chip, table header) with a character budget.
+- **No hardcoded text**: `i18next/no-literal-string` in `.eslintrc.js` fails on JSX text outside copy files. It is switched on folder by folder as each folder is migrated; add the folder to the rule's `files` list in the same PR. It checks JSX text only; attributes such as `aria-label` are covered by review and the copy check.
+- **Pseudo-language**: in a development build, `?lang=xx` renders English accented, bracketed and about 40% longer. Plain English on that screen is a string that was never extracted; a broken layout is one that Polish will break too.
+- **Overflow pass**: `pnpm --filter @openlinker/e2e exec playwright test --project=setup --project=i18n` opens the daily screens in `pl` and `xx` and fails when a button, header, badge or chip no longer fits its text. Run it against a local stack before merging a translation batch.
+
 ### Adding another language
 
 Every translation lives in a `defineCopy({ en, pl })` call. The reliable way to list them is `grep -rl "defineCopy(" apps/web/src --include=*.ts --include=*.tsx | grep -v '\.test\.'`, not a file-name search: existing per-component copy files keep their `-copy.ts` names, and a `*copy.ts` file may not be converted yet. `scripts/check-copy-locales.mjs` finds files the same way. The engine is deliberately written for exactly the two shipped languages (ADR-079), so a new language is first a small engine change, then the translations. The steps below use French (`fr`) as the worked example.

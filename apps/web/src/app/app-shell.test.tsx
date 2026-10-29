@@ -99,7 +99,7 @@ function renderShell({
 
   return render(
     <ThemeProvider>
-      <LocaleProvider>
+      <LocaleProvider locale="en">
         <SessionProvider adapter={adapter}>
           <ToastProvider>
             <ApiClientProvider client={apiClient}>
@@ -467,7 +467,7 @@ describe('AppShell', () => {
 
     render(
       <ThemeProvider>
-        <LocaleProvider>
+        <LocaleProvider locale="en">
           <SessionProvider adapter={adapter}>
             <ToastProvider>
               <ApiClientProvider client={apiClient}>

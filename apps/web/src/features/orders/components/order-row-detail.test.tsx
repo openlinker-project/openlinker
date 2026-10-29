@@ -28,7 +28,7 @@ const baseOrder: OrderRecord = {
 
 function renderDetail(order: OrderRecord): ReturnType<typeof render> {
   return render(
-    <LocaleProvider>
+    <LocaleProvider locale="en">
       <MemoryRouter>
         <OrderRowDetail
           order={order}
@@ -61,7 +61,7 @@ describe('OrderRowDetail', () => {
     expect(screen.getByLabelText('Estimated')).toBeInTheDocument();
 
     rerender(
-      <LocaleProvider>
+      <LocaleProvider locale="en">
         <MemoryRouter>
           <OrderRowDetail
             order={{

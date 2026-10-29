@@ -27,7 +27,7 @@ function renderApp(
   const apiClient = createMockApiClient();
 
   const view = render(
-    <LocaleProvider>
+    <LocaleProvider locale="en">
       <PluginRegistryProvider plugins={inTreePlugins}>
         <SessionProvider adapter={sessionAdapter}>
           <ToastProvider>
