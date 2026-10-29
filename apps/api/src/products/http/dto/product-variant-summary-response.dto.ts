@@ -32,6 +32,21 @@ export class ProductVariantSummaryResponseDto {
   name?: string;
 
   @ApiProperty({
+    type: [String],
+    description:
+      'Proxy paths (relative to the API) of the pictures this variant is shown with: its own, ' +
+      "or the product's when it has none. Empty when neither has any. Never a shop url.",
+  })
+  imageUrls!: string[];
+
+  @ApiProperty({
+    description:
+      "true when the variant has no pictures of its own and imageUrls are the product's; " +
+      'false when it has its own, or when there are none at all.',
+  })
+  imagesFromProduct!: boolean;
+
+  @ApiProperty({
     description:
       'Whether this variant was deleted at the master (absent from the master catalog, or the product 404s). Its offers are auto-paused.',
   })

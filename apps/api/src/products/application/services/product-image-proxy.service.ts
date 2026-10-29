@@ -53,6 +53,7 @@ import { Inject, Injectable } from '@nestjs/common';
 import { PRODUCTS_SERVICE_TOKEN, type IProductsService } from '@openlinker/core/products';
 import { Logger } from '@openlinker/shared/logging';
 import { isProductImageUrlAllowed } from './product-image-url-safety';
+import { resolveVariantImageList } from '../../http/product-image-path';
 
 /** Long enough for a shop under load, short enough not to hold a worker. */
 const FETCH_TIMEOUT_MS = 8_000;
@@ -127,7 +128,28 @@ export class ProductImageProxyService {
 
   async getImage(productId: string, index: number): Promise<ProductImageResult> {
     const product = await this.products.getProduct(productId);
-    const url = product?.images?.[index];
+    return this.serveStoredUrl(product?.images?.[index], productId, index);
+  }
+
+  /**
+   * One picture of a variant's RESOLVED list: its own, or the product's when it
+   * has none (`resolveVariantImageList`). Same containment as `getImage`: the
+   * caller names an index, never a url.
+   */
+  async getVariantImage(variantId: string, index: number): Promise<ProductImageResult> {
+    const variant = await this.products.getVariant(variantId);
+    if (!variant) return { kind: 'failure', reason: 'not-found' };
+    const product =
+      (variant.images?.length ?? 0) > 0 ? null : await this.products.getProduct(variant.productId);
+    const { urls } = resolveVariantImageList(variant, product?.images);
+    return this.serveStoredUrl(urls[index], variantId, index);
+  }
+
+  private async serveStoredUrl(
+    url: string | null | undefined,
+    productId: string,
+    index: number
+  ): Promise<ProductImageResult> {
     if (url === undefined || url === null || url === '') {
       return { kind: 'failure', reason: 'not-found' };
     }

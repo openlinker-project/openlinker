@@ -107,6 +107,8 @@ function harness(options: {
   orders?: OrderRecord[];
   siblingIds?: Map<string, string[]>;
   adapterKey?: string;
+  /** #3586 — catalogue rows behind the rail's item images. */
+  catalogue?: { variants: unknown[]; products: unknown[] };
 } = {}): Harness {
   const page: FulfillmentWorkPageView = {
     works: [workView()],
@@ -149,8 +151,8 @@ function harness(options: {
     // in this harness is about scoping, sorting and eligibility, and a row with
     // no resolvable products still carries its counts.
     {
-      getVariantsByIds: jest.fn().mockResolvedValue([]),
-      getProductsByIds: jest.fn().mockResolvedValue([]),
+      getVariantsByIds: jest.fn().mockResolvedValue(options.catalogue?.variants ?? []),
+      getProductsByIds: jest.fn().mockResolvedValue(options.catalogue?.products ?? []),
     } as never
   );
 
@@ -166,6 +168,27 @@ function harness(options: {
     parcels,
   };
 }
+
+describe('BenchWorkService rail images (#3586)', () => {
+  it("should use the variant's own picture, else the product's", async () => {
+    const { service } = harness({
+      catalogue: {
+        variants: [
+          { id: 'v-1', productId: 'p-1', images: ['https://shop.test/red.jpg'] },
+          { id: 'v-2', productId: 'p-1', images: null },
+        ],
+        products: [{ id: 'p-1', name: 'Mug', images: ['https://shop.test/p.jpg'] }],
+      },
+    });
+
+    const view = await service.listBenchWork('viewer-1', true);
+
+    expect(view.works[0].items.map((item) => item.imageUrl)).toEqual([
+      '/products/variants/v-1/images/0',
+      '/products/p-1/images/0',
+    ]);
+  });
+});
 
 describe('BenchWorkService (#2416)', () => {
   describe('scoping (story B1, decision D8)', () => {

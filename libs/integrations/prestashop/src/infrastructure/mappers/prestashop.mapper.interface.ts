@@ -79,6 +79,13 @@ export interface PrestashopCombination {
       | {
           product_option_value?: Array<{ id: string | number }> | { id: string | number };
         };
+    // The pictures this combination is linked to (`display=full` carries them,
+    // so reading them costs no request). XML wraps entries in `{ image }`,
+    // JSON collapses to a flat array; an empty node is `''` or `{}`.
+    images?:
+      | Array<{ id: string | number }>
+      | { image?: { id: string | number } | Array<{ id: string | number }> }
+      | string;
   };
   [key: string]: unknown;
 }
