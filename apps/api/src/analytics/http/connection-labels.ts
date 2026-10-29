@@ -13,7 +13,23 @@ export interface ConnectionLabel {
 
 export type ConnectionLabels = ReadonlyMap<string, ConnectionLabel>;
 
+// Brand spellings the plain capitalisation below would get wrong. The browser
+// keeps its own copy in each plugin's `displayName`; this one serves files only.
+const PLATFORM_LABELS: Readonly<Record<string, string>> = {
+  prestashop: 'PrestaShop',
+  woocommerce: 'WooCommerce',
+  'subiekt-gt': 'Subiekt GT',
+  'subiekt-nexo': 'Subiekt nexo',
+  infakt: 'inFakt',
+  ksef: 'KSeF',
+  inpost: 'InPost',
+  'dpd-polska': 'DPD Polska',
+  openlinker: 'OpenLinker',
+};
+
 function platformLabel(platformType: string): string {
+  const known = PLATFORM_LABELS[platformType];
+  if (known !== undefined) return known;
   return platformType.length === 0
     ? platformType
     : platformType.charAt(0).toUpperCase() + platformType.slice(1);
