@@ -51,7 +51,7 @@ import { useDemoMode } from '../../system';
 import { useDebouncedValue } from '../../../shared/hooks/use-debounced-value';
 import type { Connection } from '../../connections';
 import { useInventoryAvailabilityBatchQuery } from '../../inventory';
-import { useProductQuery, useProductsQuery } from '../../products';
+import { useProductQuery, useProductsQuery, VariantThumbnail } from '../../products';
 import type { Product, ProductVariant } from '../../products';
 import { useShopPublishMutation } from '../hooks/use-shop-publish-mutation';
 import { useBulkShopPublishMutation } from '../hooks/use-bulk-shop-publish-mutation';
@@ -503,6 +503,12 @@ export function WoocommercePublishWizard({
                                         e.target.checked,
                                       )
                                     }
+                                  />
+                                  <VariantThumbnail
+                                    name={label}
+                                    src={variant.imageUrls?.[0]}
+                                    size="sm"
+                                    dimmed={variant.imagesFromProduct === true}
                                   />
                                   <span
                                     className="create-offer-variant-picker__variant-name shop-publish-picker__variant-name"
