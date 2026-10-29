@@ -26,10 +26,13 @@ import { Input } from '../../shared/ui/input';
 import { Select } from '../../shared/ui/select';
 import { StatusBadge } from '../../shared/ui/status-badge';
 import { TimeDisplay } from '../../shared/ui/time-display';
-import { usePermission } from '../../shared/auth/use-permission';
+import { ReadOnlyLock } from '../../shared/ui/read-only-lock';
+import { useWriteAccess } from '../../shared/auth/use-permission';
+import { useDemoMode } from '../../features/system';
 
 const COST_ERROR_COPY =
   'Enter a cost of 0 or more, with up to 2 decimals. Leave the field empty if you do not know it yet.';
+const DEMO_READ_ONLY_REASON = 'This is a read-only demo, so cost prices cannot be changed.';
 const READ_ONLY_REASON = 'Only an admin can change cost prices.';
 const FALLBACK_CURRENCIES = ['PLN', 'EUR', 'CZK'] as const;
 
@@ -233,7 +236,8 @@ export function VariantCostSection({
   sourceName?: string | null;
 }): ReactElement {
   const slug = variantSlug(variant);
-  const canEdit = usePermission('products:write');
+  const write = useWriteAccess('products:write', useDemoMode());
+  const canEdit = write.canWrite;
   const { cost, isKnown } = useVariantCost(variant);
   const clearMutation = useSetVariantCostMutation(variant.productId);
   const [editing, setEditing] = useState(false);
@@ -324,16 +328,18 @@ export function VariantCostSection({
               )}
             </>
           ) : (
-            <Button
-              type="button"
-              tone="secondary"
-              className="button--sm"
-              disabled
-              aria-describedby={readOnlyReasonId}
-              data-testid={`variant-cost-edit-${slug}`}
-            >
-              Edit cost
-            </Button>
+            <ReadOnlyLock active={write.demoReadOnly} message={DEMO_READ_ONLY_REASON}>
+              <Button
+                type="button"
+                tone="secondary"
+                className="button--sm"
+                disabled
+                aria-describedby={write.demoReadOnly ? undefined : readOnlyReasonId}
+                data-testid={`variant-cost-edit-${slug}`}
+              >
+                Edit cost
+              </Button>
+            </ReadOnlyLock>
           )}
         </div>
         {canEdit && recorded ? (
@@ -344,7 +350,7 @@ export function VariantCostSection({
             {clearMutation.error.message || 'The cost could not be cleared.'}
           </p>
         ) : null}
-        {!canEdit ? (
+        {!canEdit && !write.demoReadOnly ? (
           <p className="variant-cost__hint" id={readOnlyReasonId} data-testid="variant-cost-readonly-reason">
             {READ_ONLY_REASON}
           </p>
