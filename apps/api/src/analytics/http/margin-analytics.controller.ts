@@ -18,7 +18,15 @@
  *
  * @module apps/api/src/analytics/http
  */
-import { BadRequestException, Controller, Get, Inject, Param, Query } from '@nestjs/common';
+import {
+  BadRequestException,
+  Controller,
+  Get,
+  Inject,
+  Param,
+  Query,
+  type StreamableFile,
+} from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiParam, ApiResponse, ApiTags } from '@nestjs/swagger';
 import {
   MARGIN_ANALYTICS_SERVICE_TOKEN,
@@ -39,6 +47,17 @@ import {
   MarginProductsResponseDto,
   MarginProductVariantsResponseDto,
 } from './dto/margin-analytics-response.dto';
+import { assertExportRange, csvDownload, exportFilename } from './export-range';
+import { loadConnectionLabels } from './connection-labels';
+import {
+  CONNECTION_SERVICE_TOKEN,
+  type IConnectionService,
+} from '../../integrations/application/interfaces/connection.service.interface';
+import {
+  buildMarginByChannelCsv,
+  buildMarginByProductCsv,
+  readAllMarginProducts,
+} from './margin-analytics-csv';
 import {
   MARGIN_ANALYTICS_API_SERVICE_TOKEN,
   type IMarginAnalyticsApiService,
@@ -57,9 +76,17 @@ export class MarginAnalyticsController {
     @Inject(MARGIN_ANALYTICS_API_SERVICE_TOKEN)
     private readonly marginApiService: IMarginAnalyticsApiService,
     @Inject(ANALYTICS_DISPLAY_SETTINGS_SERVICE_TOKEN)
-    private readonly displaySettings: IAnalyticsDisplaySettingsService
+    private readonly displaySettings: IAnalyticsDisplaySettingsService,
+    @Inject(CONNECTION_SERVICE_TOKEN)
+    private readonly connections: IConnectionService
   ) {}
 
+  async getMargin(
+    query: MarginAnalyticsQueryDto & { format?: 'json' }
+  ): Promise<MarginAnalyticsResponseDto>;
+  async getMargin(
+    query: MarginAnalyticsQueryDto
+  ): Promise<MarginAnalyticsResponseDto | StreamableFile>;
   @Roles('admin', 'operator', 'viewer')
   @Get()
   @ApiOperation({
@@ -67,8 +94,14 @@ export class MarginAnalyticsController {
       'Gross margin on net revenue for a date range - headline, trend and per source connection',
   })
   @ApiResponse({ status: 200, type: MarginAnalyticsResponseDto })
-  async getMargin(@Query() query: MarginAnalyticsQueryDto): Promise<MarginAnalyticsResponseDto> {
+  async getMargin(
+    @Query() query: MarginAnalyticsQueryDto
+  ): Promise<MarginAnalyticsResponseDto | StreamableFile> {
     const { from, to } = this.parseAndValidateRange(query);
+    const isCsv = query.format === 'csv';
+    if (isCsv) {
+      assertExportRange(from, to);
+    }
     const { includeBackfilledTaxRatesInNetSales } = await this.displaySettings.getSettings();
 
     const analytics = await this.marginAnalytics.getMargin(
@@ -76,18 +109,66 @@ export class MarginAnalyticsController {
       query.bucket ?? 'day',
       includeBackfilledTaxRatesInNetSales
     );
-    return MarginAnalyticsResponseDto.fromDomain(analytics);
+    const response = MarginAnalyticsResponseDto.fromDomain(analytics);
+    if (isCsv) {
+      return csvDownload(
+        buildMarginByChannelCsv({
+          analytics: response,
+          from,
+          to,
+          labels: await loadConnectionLabels(this.connections),
+        }),
+        exportFilename({
+          report: 'margin-by-channel',
+          from,
+          to,
+          currency: response.currency,
+          basis: 'net',
+        })
+      );
+    }
+    return response;
   }
 
+  async getMarginProducts(
+    query: MarginProductsQueryDto & { format?: 'json' }
+  ): Promise<MarginProductsResponseDto>;
+  async getMarginProducts(
+    query: MarginProductsQueryDto
+  ): Promise<MarginProductsResponseDto | StreamableFile>;
   @Roles('admin', 'operator', 'viewer')
   @Get('products')
   @ApiOperation({ summary: 'Products ranked by gross margin, net revenue or margin %' })
   @ApiResponse({ status: 200, type: MarginProductsResponseDto })
   async getMarginProducts(
     @Query() query: MarginProductsQueryDto
-  ): Promise<MarginProductsResponseDto> {
+  ): Promise<MarginProductsResponseDto | StreamableFile> {
     const { from, to } = this.parseAndValidateRange(query);
+    const isCsv = query.format === 'csv';
+    if (isCsv) {
+      assertExportRange(from, to);
+    }
     const { includeBackfilledTaxRatesInNetSales } = await this.displaySettings.getSettings();
+
+    if (isCsv) {
+      // limit/offset are ignored: the file is the whole ranking, paged
+      // internally through the same service call the JSON route uses.
+      const { rows, currency } = await readAllMarginProducts(
+        (filters) =>
+          this.marginApiService.getMarginProducts(filters, includeBackfilledTaxRatesInNetSales),
+        {
+          from,
+          to,
+          sourceConnectionId: query.sourceConnectionId,
+          sortBy: query.sortBy ?? 'grossMargin',
+        }
+      );
+      const reporting = currency ?? 'unconverted';
+      return csvDownload(
+        buildMarginByProductCsv({ rows, currency: reporting, from, to }),
+        exportFilename({ report: 'margin-by-product', from, to, currency: reporting, basis: 'net' })
+      );
+    }
 
     return this.marginApiService.getMarginProducts(
       {
