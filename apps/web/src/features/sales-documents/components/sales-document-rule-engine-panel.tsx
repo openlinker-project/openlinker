@@ -63,7 +63,8 @@
 import { useMemo, useState, type ReactElement } from 'react';
 import { Button } from '../../../shared/ui/button';
 import { Combobox, type ComboboxOption } from '../../../shared/ui/combobox';
-import { ISO_3166_1_COUNTRIES } from '../../../shared/lib/iso-3166-1-countries';
+import { localizedCountries } from '../../../shared/format/format-country';
+import { useLocale } from '../../../shared/i18n';
 import { SalesDocumentCountryRoutingDialog } from './sales-document-country-routing-dialog';
 import { SalesDocumentMarketSection } from './sales-document-market-section';
 import { useSalesDocumentMarketsQuery } from '../hooks/use-sales-document-markets-query';
@@ -104,16 +105,17 @@ export function SalesDocumentRuleEnginePanel(): ReactElement {
     () => new Set((marketsQuery.data?.markets ?? []).map((market) => market.country)),
     [marketsQuery.data],
   );
+  const { locale } = useLocale();
   const countryOptions: ComboboxOption[] = useMemo(
     () =>
-      ISO_3166_1_COUNTRIES.map((country) => ({
+      localizedCountries(locale).map((country) => ({
         id: country.code,
         label: country.name,
         hint: country.code,
         disabled: existingCountries.has(country.code),
         disabledReason: 'Already in the list above',
       })),
-    [existingCountries],
+    [existingCountries, locale],
   );
 
   // A country not yet in the list (no orders, no config) has nowhere to

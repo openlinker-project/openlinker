@@ -15,25 +15,39 @@
  *
  * @module apps/web/src/shared/format
  */
+import { getLocale } from '../i18n/active-locale';
+import { resolveCopy } from '../i18n/define-copy';
+import { interpolate } from '../i18n/interpolate';
+import type { SupportedLocale } from '../i18n/i18n.types';
+import { formatCopy } from './format.copy';
+import { formattingLocale } from './format-locale';
 
-export function formatDurationMs(ms: number | null | undefined): string | null {
+export function formatDurationMs(
+  ms: number | null | undefined,
+  locale: SupportedLocale = getLocale(),
+): string | null {
   if (ms === null || ms === undefined || !Number.isFinite(ms) || ms < 0) {
     return null;
   }
+  const units = resolveCopy(formatCopy, locale).duration;
   if (ms < 1000) {
-    return `${Math.round(ms)} ms`;
+    return interpolate(units.milliseconds, { n: Math.round(ms) });
   }
   const seconds = ms / 1000;
   if (seconds < 60) {
     // One decimal below a minute: the difference between 1.2 s and 1.8 s is
     // the kind of thing this column exists to show.
-    return `${seconds.toFixed(1)} s`;
+    const value = new Intl.NumberFormat(formattingLocale(locale), {
+      minimumFractionDigits: 1,
+      maximumFractionDigits: 1,
+    }).format(seconds);
+    return interpolate(units.seconds, { n: value });
   }
   const totalSeconds = Math.round(seconds);
   const minutes = Math.floor(totalSeconds / 60);
   if (minutes < 60) {
-    return `${minutes}m ${totalSeconds % 60}s`;
+    return interpolate(units.minutesSeconds, { m: minutes, s: totalSeconds % 60 });
   }
   const hours = Math.floor(minutes / 60);
-  return `${hours}h ${minutes % 60}m`;
+  return interpolate(units.hoursMinutes, { h: hours, m: minutes % 60 });
 }
