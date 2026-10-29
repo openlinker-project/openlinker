@@ -36,7 +36,7 @@ describe('InvoiceMarketplaceUploadService', () => {
   let orders: { getOrderRecord: jest.Mock };
   let mapping: { getExternalIds: jest.Mock };
   let integrations: { getCapabilityAdapter: jest.Mock };
-  let enqueue: { enqueueJob: jest.Mock };
+  let enqueue: { enqueueJob: jest.Mock<Promise<{ jobId: string }>, [{ idempotencyKey: string }]> };
   let service: InvoiceMarketplaceUploadService;
 
   const pdf = {
@@ -283,7 +283,7 @@ describe('InvoiceMarketplaceUploadService', () => {
 
     it('should mint a fresh key for an operator retry', async () => {
       await service.enqueueUpload('inv-1', { retry: true });
-      const key = enqueue.enqueueJob.mock.calls[0][0].idempotencyKey as string;
+      const key = enqueue.enqueueJob.mock.calls[0][0].idempotencyKey;
       expect(key).toMatch(/^invoice-upload:inv-1:retry:\d+$/);
     });
 
