@@ -98,16 +98,26 @@ export class OrderDocumentEmailService implements IOrderDocumentEmailService {
 
     const order = await this.orderRecords.getOrderRecord(record.orderId);
     const buyerEmail = order?.buyerEmail ?? null;
+    const given = input.recipient?.trim() ?? '';
+
+    // No address anywhere on our side (hash-only PII mode, or a source that sends
+    // none): the provider still holds its own client address and could always
+    // send, so try it before refusing. Only the mailer needs an address of ours.
+    if (given.length === 0 && buyerEmail === null && record.providerInvoiceId) {
+      const viaProvider = await this.trySendViaProvider(ctx, record, input, null);
+      if (viaProvider !== null) return viaProvider;
+    }
+
     const recipient = this.resolveRecipient(input.recipient, buyerEmail);
     if (recipient.status === 'refused') return this.fail(ctx, null, null, recipient.reason);
 
     // Provider first - but only while the operator did not change the address,
     // because the provider's mechanism cannot take one (interface, property 1).
+    // Unchanged means the provider mails ITS stored client address, which can
+    // differ from the order's; the result reports the one it echoed.
     const overridden =
-      input.recipient !== undefined &&
-      input.recipient.trim().length > 0 &&
-      recipient.address.toLowerCase() !== (buyerEmail ?? '').toLowerCase();
-    if (!overridden && record.providerInvoiceId) {
+      given.length > 0 && recipient.address.toLowerCase() !== (buyerEmail ?? '').toLowerCase();
+    if (!overridden && record.providerInvoiceId && !(given.length === 0 && buyerEmail === null)) {
       const viaProvider = await this.trySendViaProvider(ctx, record, input, recipient.address);
       if (viaProvider !== null) return viaProvider;
     }
@@ -182,7 +192,7 @@ export class OrderDocumentEmailService implements IOrderDocumentEmailService {
     ctx: AttemptContext,
     record: InvoiceRecord,
     input: SendInvoiceEmailInput,
-    address: string
+    address: string | null
   ): Promise<OrderDocumentEmailResult | null> {
     let adapter: InvoicingPort;
     try {

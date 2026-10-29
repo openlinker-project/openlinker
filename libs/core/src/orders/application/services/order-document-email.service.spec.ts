@@ -236,6 +236,18 @@ describe('OrderDocumentEmailService', () => {
       expect(deliveries.record).not.toHaveBeenCalled();
     });
 
+    it('should let the provider send when the order carries no buyer address', async () => {
+      orderRecords.getOrderRecord.mockResolvedValue({ buyerEmail: undefined });
+      const sendByEmail = jest.fn().mockResolvedValue({ delivered: true, recipient: null });
+      integrations.getCapabilityAdapter.mockResolvedValue({ sendByEmail });
+
+      const result = await service.sendInvoiceEmail({ invoiceId: 'inv-1' });
+
+      expect(sendByEmail).toHaveBeenCalledTimes(1);
+      expect(result).toEqual({ status: 'sent', sentVia: 'provider', recipient: null });
+      expect(mailer!.sendEmail).not.toHaveBeenCalled();
+    });
+
     it('should ask for a recipient when the order carries no buyer address', async () => {
       orderRecords.getOrderRecord.mockResolvedValue({ buyerEmail: undefined });
 
