@@ -19,6 +19,7 @@
  * @see apps/web/src/shared/plugins/plugin.types.ts — the OpenLinkerPlugin contract (#702)
  */
 import { withApiVersion } from '../../shared/config/api-version';
+import { getBcp47Locale, getLocale } from '../../shared/i18n';
 import { createAdaptersApi, type AdaptersApi } from '../../features/adapters/api/adapters.api';
 import {
   createAiProviderSettingsApi,
@@ -312,6 +313,11 @@ export function createApiClient({
     }
     if (accessToken !== null) {
       headers.set('Authorization', `Bearer ${accessToken}`);
+    }
+    // The API ignores it today; it lets server-side features (e-mails, PDFs)
+    // follow the operator's language later without a frontend change.
+    if (!headers.has('Accept-Language')) {
+      headers.set('Accept-Language', getBcp47Locale(getLocale()));
     }
     return headers;
   }

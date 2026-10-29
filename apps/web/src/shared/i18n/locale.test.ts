@@ -16,6 +16,10 @@ describe('getBcp47Locale', () => {
     expect(getBcp47Locale('en')).toBe('en-US');
   });
 
+  it("should map 'pl' to BCP 47 'pl-PL'", () => {
+    expect(getBcp47Locale('pl')).toBe('pl-PL');
+  });
+
   it('should resolve every supported locale to a well-formed BCP 47 tag', () => {
     for (const locale of LocaleCodeValues) {
       expect(getBcp47Locale(locale)).toMatch(/^[a-z]{2}(-[A-Z]{2})?$/);
