@@ -284,6 +284,7 @@ export type {
 export type {
   MatchOrphanToOrderInput,
   RecordReturnInput,
+  RecordReturnOrderLines,
   RecordReturnLineInput,
 } from './application/services/returns.service.interface';
 export type { ReturnAttributionMatch } from './domain/ports/return-repository.port';

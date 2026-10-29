@@ -73,6 +73,14 @@ export interface RecordReturnLineInput {
   note: string | null;
 }
 
+/** The order's lines as the caller knows them (E-14). */
+export interface RecordReturnOrderLines {
+  /** Channel lines an OpenLinker edit lowered to quantity 0. */
+  removedByEdit: ReadonlyArray<{ sku: string | null; name: string | null }>;
+  /** Lines still live after edits; a shared identity keeps a return acceptable. */
+  live: ReadonlyArray<{ sku: string | null; name: string | null }>;
+}
+
 /**
  * What an operator supplies to open a return in OpenLinker (#2372).
  *
@@ -90,6 +98,12 @@ export interface RecordReturnInput {
   internalOrderId: string;
   sourceConnectionId: string;
   lines: RecordReturnLineInput[];
+  /**
+   * The order's lines, supplied by the caller (E-14): `returns` takes no orders
+   * service, so the interface layer that already holds the order composes this.
+   * Absent means "not checked", never "nothing removed".
+   */
+  orderLines?: RecordReturnOrderLines;
   /** The operator. Nullable so a future non-interactive writer is expressible. */
   actorUserId: string | null;
 }
