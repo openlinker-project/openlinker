@@ -68,19 +68,19 @@ export function AppProviders({ children }: PropsWithChildren): ReactElement {
     <ThemeProvider>
       <LocaleProvider>
         <MotionProvider>
-        <PluginRegistryProvider plugins={plugins}>
-          <SessionProvider adapter={sessionAdapter}>
-            <ToastProvider>
-              <TooltipProvider>
-                <ApiClientProvider client={apiClient}>
-                  <QueryClientProvider client={queryClient}>
-                    <LocaleKeyed>{children}</LocaleKeyed>
-                  </QueryClientProvider>
-                </ApiClientProvider>
-              </TooltipProvider>
-            </ToastProvider>
-          </SessionProvider>
-        </PluginRegistryProvider>
+          <PluginRegistryProvider plugins={plugins}>
+            <SessionProvider adapter={sessionAdapter}>
+              <ToastProvider>
+                <TooltipProvider>
+                  <ApiClientProvider client={apiClient}>
+                    <QueryClientProvider client={queryClient}>
+                      <LocaleKeyed>{children}</LocaleKeyed>
+                    </QueryClientProvider>
+                  </ApiClientProvider>
+                </TooltipProvider>
+              </ToastProvider>
+            </SessionProvider>
+          </PluginRegistryProvider>
         </MotionProvider>
       </LocaleProvider>
     </ThemeProvider>

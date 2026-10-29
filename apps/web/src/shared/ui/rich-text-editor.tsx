@@ -37,6 +37,7 @@ import type { DescriptionFormat } from './rich-text.types';
 import { useCopy } from '../i18n/use-copy';
 import { interpolate } from '../i18n/interpolate';
 import { useFormat } from '../i18n/use-format';
+import { usePlural } from '../i18n/use-plural';
 import { uiCopy } from './ui.copy';
 
 export interface RichTextEditorProps {
@@ -217,6 +218,7 @@ export function RichTextEditor({
 }: RichTextEditorProps): ReactElement {
   const copy = useCopy(uiCopy).richText;
   const { number } = useFormat();
+  const plural = usePlural();
   const placeholderText = placeholder ?? copy.placeholder;
   const toolTitle = (button: ToolbarButton): string => {
     if (button.level !== undefined) return interpolate(copy.heading, { level: button.level });
@@ -494,10 +496,13 @@ export function RichTextEditor({
               .filter(Boolean)
               .join(' ')}
           >
-            {interpolate(copy.bytes, { bytes: number(bytes), max: number(profile.maxBytes) })}
             {/* Colour is never the only signal: the near state said "watch out"
-                in amber and nothing else. */}
-            {overCap ? copy.overLimit : nearCap ? copy.nearLimit : ''}
+                in amber and nothing else, so the words carry it too. */}
+            {plural(
+              profile.maxBytes,
+              overCap ? copy.bytesOverLimit : nearCap ? copy.bytesNearLimit : copy.bytes,
+              { bytes: number(bytes), max: number(profile.maxBytes) },
+            )}
           </span>
         )}
       </div>

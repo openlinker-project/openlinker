@@ -12,6 +12,7 @@
  */
 import { forwardRef, type ComponentPropsWithoutRef, type ReactNode } from 'react';
 import { useCopy } from '../i18n/use-copy';
+import { useActiveLocale } from '../i18n/use-locale';
 import { usePlural } from '../i18n/use-plural';
 import { useFormat } from '../i18n/use-format';
 import type { PluralForms } from '../i18n/copy.types';
@@ -50,11 +51,14 @@ export const BulkActionBar = forwardRef<HTMLDivElement, BulkActionBarProps>(
     const copy = useCopy(uiCopy).bulkActionBar;
     const plural = usePlural();
     const { number } = useFormat();
+    const locale = useActiveLocale();
     // `itemNoun` is the pre-i18n English API; callers move to `selectedLabel`
-    // as their feature is extracted (#3868 onwards).
-    const regionLabel = itemNoun
-      ? `${number(count)} ${count === 1 ? itemNoun : `${itemNoun}s`} selected`
-      : plural(count, selectedLabel ?? copy.selectedCount);
+    // as their feature is extracted (#3868 onwards). It is English-only, so
+    // any other language uses the generic count instead.
+    const regionLabel =
+      itemNoun && locale === 'en'
+        ? `${number(count)} ${count === 1 ? itemNoun : `${itemNoun}s`} selected`
+        : plural(count, selectedLabel ?? copy.selectedCount);
 
     return (
       <div
@@ -69,7 +73,7 @@ export const BulkActionBar = forwardRef<HTMLDivElement, BulkActionBarProps>(
           <strong className="bulk-action-bar__num tabular" aria-live="polite">
             {number(count)}
           </strong>
-          <span className="bulk-action-bar__label">{copy.selected}</span>
+          <span className="bulk-action-bar__label">{plural(count, copy.selected)}</span>
         </div>
         {hint !== undefined && hint !== null ? (
           <div className="bulk-action-bar__hint">{hint}</div>

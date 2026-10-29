@@ -323,7 +323,7 @@ export const Combobox = forwardRef<HTMLButtonElement, ComboboxProps>(function Co
               allowCustomValues
                 ? copy.searchOrCustom
                 : filterFirst
-                  ? interpolate(copy.searchCount, { n: fmt.number(options.length) })
+                  ? plural(options.length, copy.searchCount)
                   : copy.filter
             }
             autoComplete="off"
@@ -352,7 +352,7 @@ export const Combobox = forwardRef<HTMLButtonElement, ComboboxProps>(function Co
           tabIndex={-1}
         >
           {!showOptions ? (
-            <EmptyHint text={interpolate(copy.searchCountHint, { n: fmt.number(options.length) })} />
+            <EmptyHint text={plural(options.length, copy.searchCountHint)} />
           ) : totalRows === 0 ? (
             <EmptyHint text={`No options match “${trimmed}”.`} />
           ) : useVirtual ? (

@@ -35,9 +35,10 @@ export function useLocale(): UseLocaleResult {
 
 /**
  * The active language for read-only consumers (copy, formatting, plurals).
- * Outside a provider it falls back to the module-level active language
- * (English until a provider mounts) instead of throwing, so a shared
- * primitive rendered on its own - as many tests do - still shows English.
+ * Outside a provider it falls back to the language the last provider rendered
+ * (English by default, and reset to English between tests) instead of
+ * throwing. It does not re-render on a switch, so it is for primitives
+ * rendered on their own, as many tests do, not for the app.
  */
 export function useActiveLocale(): SupportedLocale {
   const ctx = useContext(LocaleContext);
