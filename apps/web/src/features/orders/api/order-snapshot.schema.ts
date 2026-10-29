@@ -82,6 +82,8 @@ const orderTotalsSchema = z.object({
   shipping: z.number(),
   total: z.number(),
   currency: z.string(),
+  /** Whole-order discount the channel applied (absent = not reported). Optional so older snapshots still parse (E-44). */
+  discountTotal: z.number().nullish(),
   /** Whether `total` is tax-inclusive (gross) or tax-exclusive (net). Optional —
    *  absent for sources that don't report it. */
   // `.nullish()`, not `.optional()` (#939): core documents `null` as "the source

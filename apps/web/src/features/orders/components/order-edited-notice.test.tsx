@@ -125,6 +125,35 @@ describe('OrderEditedNotice (#3544)', () => {
     expect(notice).toHaveTextContent(/one line you lowered here/);
   });
 
+  it('should show the channel discount and the OpenLinker discount as one figure (E-44)', () => {
+    renderNotice({
+      edits: edits({
+        totals: {
+          currency: 'PLN',
+          channelTotal: 100,
+          total: 85,
+          difference: 15,
+          channelDiscountTotal: 5,
+          combinedDiscountTotal: 15,
+          taxRestated: false,
+        },
+        discount: { amount: '10.00', currency: 'PLN' } as OrderEditsView['discount'],
+      }),
+    });
+    const line = screen.getByTestId('order-edit-combined-discount');
+    expect(line).toHaveTextContent('at Allegro');
+    expect(line).toHaveTextContent('in OpenLinker');
+  });
+
+  it('should not claim a channel discount when the channel reported none (E-44)', () => {
+    renderNotice({
+      edits: edits({ discount: { amount: '10.00', currency: 'PLN' } as OrderEditsView['discount'] }),
+    });
+    const line = screen.getByTestId('order-edit-combined-discount');
+    expect(line).not.toHaveTextContent('at Allegro');
+    expect(line).toHaveTextContent('in OpenLinker');
+  });
+
   it('should show the cash-on-delivery amount beside the channel one', async () => {
     renderNotice({ edits: edits({ cod: { channelAmount: '348.99', amount: '294.99', currency: 'PLN' } }) });
     expect(await screen.findByTestId('order-edit-cod')).toHaveTextContent(

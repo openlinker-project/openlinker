@@ -35,6 +35,7 @@ import {
   formatDecimalAmount,
 } from '../lib/order-edit';
 import { OrderCorrectionProposalDialog } from './order-correction-proposal-dialog';
+import { describeCombinedDiscount } from '../lib/combined-discount';
 import { OrderDiscountRefundDialog } from './order-discount-refund-dialog';
 
 export interface OrderEditedNoticeProps {
@@ -96,6 +97,9 @@ export function OrderEditedNotice({
   const unmatched = edits.unmatchedLineEdits ?? [];
   const stockOutcome = describeStockOutcome(sessionStock ?? []);
   const sessionAmount = sessionDiscount?.discount?.amount ?? null;
+  const combinedDiscountText = totals
+    ? describeCombinedDiscount(totals, edits.discount ? Number(edits.discount.amount) : null, sourceName)
+    : null;
 
   return (
     <>
@@ -108,6 +112,7 @@ export function OrderEditedNotice({
             ? ` The order here is ${formatAmount(totals.total, totals.currency)}.`
             : ''}
         </p>
+        {combinedDiscountText ? <p data-testid="order-edit-combined-discount">{combinedDiscountText}</p> : null}
         {edits.cod && edits.cod.amount !== null && edits.cod.amount !== edits.cod.channelAmount ? (
           <p data-testid="order-edit-cod">
             {`Cash on delivery: collect ${formatDecimalAmount(edits.cod.amount, edits.cod.currency)} (${channel} has ${formatDecimalAmount(edits.cod.channelAmount, edits.cod.currency)}).`}

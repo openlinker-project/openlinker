@@ -44,6 +44,17 @@ export function OrderTotalsPanel({ totals }: OrderTotalsPanelProps): ReactElemen
           <dd className="mono-text">{formatAmount(totals.tax, currency)}</dd>
         </div>
       ) : null}
+      {typeof totals.discountTotal === 'number' && totals.discountTotal > 0 ? (
+        <div className="order-totals__row" data-testid="order-totals-discount">
+          <dt>
+            Discount{' '}
+            <span className="text-muted" style={{ fontWeight: 400 }}>
+              as reported by the channel
+            </span>
+          </dt>
+          <dd className="mono-text">{`−${formatAmount(totals.discountTotal, currency)}`}</dd>
+        </div>
+      ) : null}
       <div className="order-totals__row order-totals__row--total">
         <dt>Total</dt>
         <dd className="mono-text">{formatAmount(totals.total, currency)}</dd>

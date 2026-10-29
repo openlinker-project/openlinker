@@ -109,6 +109,10 @@ export interface OrderEditedTotals {
   /** The order total after the edit. */
   total: number;
   difference: number;
+  /** The channel's own whole-order discount; null = none reported. Absent on an older payload (E-44). */
+  channelDiscountTotal?: number | null;
+  /** Channel + OpenLinker discount; null only when neither exists. Absent on an older payload (E-44). */
+  combinedDiscountTotal?: number | null;
   taxRestated: false;
 }
 
@@ -239,7 +243,14 @@ export interface OrderDiscountResult {
   changeId: string | null;
   /** The current discount, `null` once removed. */
   discount: OrderDiscountView | null;
-  totals: { currency: string; channelTotal: number; total: number; difference: number } | null;
+  totals: {
+    currency: string;
+    channelTotal: number;
+    total: number;
+    difference: number;
+    channelDiscountTotal?: number | null;
+    combinedDiscountTotal?: number | null;
+  } | null;
   paymentBranch: DiscountPaymentBranch;
   /** Unpaid / COD: what is still to collect. `null` on a paid order. */
   amountToCollect: { amount: string; currency: string } | null;
