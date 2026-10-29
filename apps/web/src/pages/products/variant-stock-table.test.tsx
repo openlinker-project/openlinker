@@ -46,7 +46,7 @@ function variant(overrides: Partial<ProductVariant>): ProductVariant {
   };
 }
 
-function renderTable(variants: ProductVariant[]): ReturnType<typeof renderWithProviders> {
+function renderTable(variants: ProductVariant[], sourceName?: string): ReturnType<typeof renderWithProviders> {
   const requestBlob = vi.fn().mockResolvedValue(new Blob(['x'], { type: 'image/png' }));
   const request = vi.fn().mockResolvedValue({ items: [], total: 0, limit: 20, offset: 0 });
   return renderWithProviders(
@@ -58,6 +58,7 @@ function renderTable(variants: ProductVariant[]): ReturnType<typeof renderWithPr
       canCreateOffers={false}
       onCreateOffers={vi.fn()}
       onListingsCount={vi.fn()}
+      sourceName={sourceName}
     />,
     { apiClient: createMockApiClient({ requestBlob, request }) }
   );
@@ -102,5 +103,16 @@ describe('VariantStockTable photos', () => {
     const row = screen.getByTestId('variant-row-kub-350-gra');
     expect(row.querySelector('img')).toBeNull();
     expect(row.querySelector('.product-thumbnail')).not.toBeNull();
+  });
+
+  it('should name the source connection in the borrowed-photo sentence when known', async () => {
+    renderTable(
+      [variant({ imageUrls: ['/p/0'], imagesFromProduct: true })],
+      'Sklep Górski'
+    );
+    await userEvent.click(screen.getByRole('button', { name: /toggle listings for KUB-350-GRA/i }));
+    expect(screen.getByTestId('variant-photo-source')).toHaveTextContent(
+      'no photos of its own in Sklep Górski'
+    );
   });
 });

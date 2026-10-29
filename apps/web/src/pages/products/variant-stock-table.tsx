@@ -59,6 +59,8 @@ interface VariantStockTableProps {
   /** Opens the create-offer flow for this product (picker or wizard). */
   onCreateOffers: () => void;
   onListingsCount: (variantId: string, count: number) => void;
+  /** Display name of the product's source connection, for the photo-source line. */
+  sourceName?: string | null;
 }
 
 const MOBILE_QUERY = '(max-width: 639.98px)';
@@ -83,6 +85,7 @@ export function VariantStockTable(props: VariantStockTableProps): ReactElement {
             canCreateOffers={props.canCreateOffers}
             onCreateOffers={props.onCreateOffers}
             onListingsCount={props.onListingsCount}
+            sourceName={props.sourceName ?? null}
           />
         ))}
       </div>
@@ -117,6 +120,7 @@ export function VariantStockTable(props: VariantStockTableProps): ReactElement {
               canCreateOffers={props.canCreateOffers}
               onCreateOffers={props.onCreateOffers}
               onListingsCount={props.onListingsCount}
+              sourceName={props.sourceName ?? null}
             />
           ))}
         </tbody>
@@ -173,7 +177,13 @@ function VariantPhotoCell({ variant }: { variant: ProductVariant }): ReactElemen
   );
 }
 
-function VariantPhotosSection({ variant }: { variant: ProductVariant }): ReactElement | null {
+function VariantPhotosSection({
+  variant,
+  sourceName,
+}: {
+  variant: ProductVariant;
+  sourceName?: string | null;
+}): ReactElement | null {
   const urls = variant.imageUrls ?? [];
   const fromProduct = variant.imagesFromProduct === true;
   const slug = variantSlug(variant);
@@ -192,8 +202,12 @@ function VariantPhotosSection({ variant }: { variant: ProductVariant }): ReactEl
           {urls.length === 0
             ? 'Neither this variant nor the product has a photo.'
             : fromProduct
-              ? 'This variant has no photos of its own, so the product photos are used.'
-              : 'Photos synced from the master for this variant.'}
+              ? sourceName
+                ? `This variant has no photos of its own in ${sourceName}, so the product photos are used.`
+                : 'This variant has no photos of its own, so the product photos are used.'
+              : sourceName
+                ? `From ${sourceName}`
+                : 'Photos synced from the master for this variant.'}
         </span>
       </div>
       {urls.length > 0 ? (
@@ -493,8 +507,10 @@ function VariantDetailBody({
   isError,
   open,
   taxRate,
+  sourceName,
 }: {
   variant: ProductVariant;
+  sourceName?: string | null;
   available: number;
   reserved: number;
   connections: readonly Connection[];
@@ -515,7 +531,7 @@ function VariantDetailBody({
         </div>
       ) : null}
 
-      <VariantPhotosSection variant={variant} />
+      <VariantPhotosSection variant={variant} sourceName={sourceName} />
 
       <VariantMetaGrid
         variant={variant}
@@ -563,8 +579,10 @@ export function VariantDetailPanel({
   productTaxRateUnknownReason,
   connections,
   onListingsCount,
+  sourceName,
 }: {
   variant: ProductVariant;
+  sourceName?: string | null;
   stock: InventoryItem | undefined;
   productTaxRate: string | null;
   productTaxRateUnknownReason?: TaxRateUnknownReason | null;
@@ -584,6 +602,7 @@ export function VariantDetailPanel({
         isLoading={isLoading}
         isError={isError}
         open
+        sourceName={sourceName}
         taxRate={{
           productTaxRate,
           productTaxRateUnknownReason: productTaxRateUnknownReason ?? null,
@@ -699,8 +718,10 @@ function VariantStockRow({
   canCreateOffers,
   onCreateOffers,
   onListingsCount,
+  sourceName,
 }: {
   variant: ProductVariant;
+  sourceName?: string | null;
   productTaxRate: string | null;
   productTaxRateUnknownReason?: TaxRateUnknownReason | null;
   stock: InventoryItem | undefined;
@@ -788,6 +809,7 @@ function VariantStockRow({
                   isLoading={isLoading}
                   isError={isError}
                   open={isOpen}
+                  sourceName={sourceName}
                 />
               </div>
             </div>
@@ -809,8 +831,10 @@ function VariantStockCard({
   canCreateOffers,
   onCreateOffers,
   onListingsCount,
+  sourceName,
 }: {
   variant: ProductVariant;
+  sourceName?: string | null;
   stock: InventoryItem | undefined;
   currency: string | null;
   taxRate: InheritedTaxRate;
@@ -887,6 +911,7 @@ function VariantStockCard({
               isError={isError}
               open={isOpen}
               taxRate={taxRate}
+              sourceName={sourceName}
             />
           </div>
         </div>
