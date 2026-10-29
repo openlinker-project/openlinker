@@ -14,6 +14,8 @@ import type {
   PaginatedProducts,
   Product,
   ProductVariantSummary,
+  VariantCost,
+  VariantCostInput,
 } from './products.types';
 
 export interface ProductsApi {
@@ -41,6 +43,10 @@ export interface ProductsApi {
    * to enrich the Internal ID row with the variant's identifiers inline.
    */
   getVariant: (variantId: string) => Promise<ProductVariantSummary>;
+  /** Net unit costs of a product's variants (#3588). Admin/operator/viewer. */
+  getVariantCosts: (productId: string) => Promise<VariantCost[]>;
+  /** Record (both fields set) or clear (both null) a variant's cost. Admin only. */
+  setVariantCost: (variantId: string, input: VariantCostInput) => Promise<VariantCost>;
 }
 
 interface ApiRequest {
@@ -93,6 +99,15 @@ export function createProductsApi(request: ApiRequest): ProductsApi {
     },
     getVariant(variantId): Promise<ProductVariantSummary> {
       return request<ProductVariantSummary>(`/products/variants/${variantId}`);
+    },
+    getVariantCosts(productId): Promise<VariantCost[]> {
+      return request<VariantCost[]>(`/products/${productId}/variant-costs`);
+    },
+    setVariantCost(variantId, input): Promise<VariantCost> {
+      return request<VariantCost>(`/products/variants/${variantId}/cost`, {
+        method: 'PATCH',
+        body: JSON.stringify(input),
+      });
     },
   };
 }

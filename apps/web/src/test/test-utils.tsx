@@ -847,6 +847,9 @@ export function createMockApiClient(
       // enrichment renders the bare ID without an error in tests that don't
       // care about the SKU/EAN tags.
       getVariant: vi.fn().mockRejectedValue(new ApiError('Variant not found', 404, null)),
+      // #3588 - no recorded costs unless a test says otherwise.
+      getVariantCosts: vi.fn().mockResolvedValue([]),
+      setVariantCost: vi.fn(),
       ...overrides.products,
     }) as ApiClient['products'],
     promptTemplates: {

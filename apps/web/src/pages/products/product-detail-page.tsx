@@ -324,6 +324,7 @@ export function ProductDetailPage(): ReactElement {
                 connections={offerCreatorConnections}
                 onListingsCount={handleListingsCount}
                 sourceName={sourceName}
+                currency={product.currency}
               />
             ) : (
               <VariantStockTable

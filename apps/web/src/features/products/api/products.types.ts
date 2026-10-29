@@ -232,3 +232,24 @@ export interface ProductVariantSummary {
   /** Timestamp of the most recent stale-marking; null while the variant is live. */
   staleAt: string | null;
 }
+
+/**
+ * One variant's net unit cost (#3588). Cost is deliberately NOT on
+ * {@link ProductVariant}: the regular variant read is open to every role, the
+ * cost read is not. `netUnitCost` is a decimal string (never a number) and
+ * `null` means "not recorded", which is a different statement from `"0.0000"`.
+ */
+export interface VariantCost {
+  variantId: string;
+  sku?: string | null;
+  netUnitCost: string | null;
+  costCurrency: string | null;
+  costUpdatedAt: string | null;
+  costUpdatedByUserId: string | null;
+}
+
+/** Both set records a cost; both null clears it. */
+export interface VariantCostInput {
+  netUnitCost: string | null;
+  currency: string | null;
+}
