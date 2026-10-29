@@ -13,6 +13,7 @@ import {
 } from '@openlinker/core/orders';
 import { FiscalizationModule as CoreFiscalizationModule } from '@openlinker/core/fiscalization';
 import { FulfillmentModule as CoreFulfillmentModule } from '@openlinker/core/fulfillment';
+import { AnalyticsModule as CoreAnalyticsModule } from '@openlinker/core/analytics';
 import { InvoicingModule as CoreInvoicingModule } from '@openlinker/core/invoicing';
 import { MappingsModule as CoreMappingsModule } from '@openlinker/core/mappings';
 import { InventoryModule as CoreInventoryModule } from '@openlinker/core/inventory';
@@ -26,6 +27,7 @@ import { RefundsController } from './http/refunds.controller';
 import { SalesDocumentsController } from './http/sales-documents.controller';
 import { OrderColumnPresetsController } from './http/order-column-presets.controller';
 import { OrderNotesController } from './http/order-notes.controller';
+import { OrderLineCostsController } from './http/order-line-costs.controller';
 import { OrderTagsController } from './http/order-tags.controller';
 import { OrderTagAssignmentsController } from './http/order-tag-assignments.controller';
 import { OrderExportsController } from './http/order-exports.controller';
@@ -66,6 +68,8 @@ import { ORDER_CANCELLATION_SERVICE_TOKEN } from './application/interfaces/order
     CoreOrderChangesModule,
     CoreFiscalizationModule,
     CoreFulfillmentModule,
+    // #3588: ANALYTICS_DISPLAY_SETTINGS_SERVICE_TOKEN - the net-sales era setting the line-cost read honours.
+    CoreAnalyticsModule,
     CoreInvoicingModule,
     CoreMappingsModule,
     CoreInventoryModule,
@@ -93,6 +97,7 @@ import { ORDER_CANCELLATION_SERVICE_TOKEN } from './application/interfaces/order
     RefundsController,
     SalesDocumentsController,
     OrderNotesController,
+    OrderLineCostsController,
     OrderTagsController,
     OrderTagAssignmentsController,
   ],

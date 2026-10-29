@@ -512,10 +512,10 @@ export function OrderDetailPage(): ReactElement {
       <OrderDetailHeader
         order={order}
         snapshot={snapshot}
-        tags={<OrderTagsHeaderRow internalOrderId={order.internalOrderId} />}
+        tags={<OrderTagsHeaderRow internalOrderId={internalOrderId} />}
       />
 
-      <PinnedOrderNoteBanner internalOrderId={order.internalOrderId} />
+      <PinnedOrderNoteBanner internalOrderId={internalOrderId} />
 
       <OrderHealthSummary
         syncStatus={order.syncStatus}
@@ -613,7 +613,11 @@ export function OrderDetailPage(): ReactElement {
       {snapshot.items.length > 0 || snapshot.totals ? (
         <section className="detail-section">
           <h3 className="detail-section__title">Pricing &amp; tax</h3>
-          <OrderPricingPanel items={snapshot.items} totals={snapshot.totals} />
+          <OrderPricingPanel
+            items={snapshot.items}
+            totals={snapshot.totals}
+            internalOrderId={internalOrderId}
+          />
         </section>
       ) : null}
 
@@ -635,7 +639,7 @@ export function OrderDetailPage(): ReactElement {
               report the order as packed. */}
           {isFulfilmentOwnedByDestination(order.syncStatus, fulfilmentOwnedIds) ? null : (
             <OrderPackedControl
-              internalOrderId={order.internalOrderId}
+              internalOrderId={internalOrderId}
               packedAt={order.packedAt}
               packedByUserId={order.packedByUserId}
             />
@@ -653,7 +657,7 @@ export function OrderDetailPage(): ReactElement {
             // start moving again" alert leaked onto an order that was never
             // held — a false claim about someone else's order.
             key={order.internalOrderId}
-            internalOrderId={order.internalOrderId}
+            internalOrderId={internalOrderId}
             activeHold={order.activeHold}
             holdHistory={order.holdHistory}
           />
@@ -662,7 +666,7 @@ export function OrderDetailPage(): ReactElement {
               every order, independent of which integration it came through. */}
           <OrderNotesPanel
             key={order.internalOrderId}
-            internalOrderId={order.internalOrderId}
+            internalOrderId={internalOrderId}
             channelNames={orderChannelNames}
           />
 
@@ -755,7 +759,7 @@ export function OrderDetailPage(): ReactElement {
           panel's DOM once it can render nothing (`hideWhenEmpty`). */}
       <OrderFulfillmentTasksPanel
         key={`fulfilment-tasks:${order.internalOrderId}`}
-        internalOrderId={order.internalOrderId}
+        internalOrderId={internalOrderId}
         hideWhenEmpty={omsRouting !== 'on'}
       />
 
@@ -765,7 +769,7 @@ export function OrderDetailPage(): ReactElement {
           panel itself distinguishes (failed / unreadable / confirmed-empty). */}
       <OrderReturnsPanel
         key={order.internalOrderId}
-        internalOrderId={order.internalOrderId}
+        internalOrderId={internalOrderId}
       />
 
       {snapshot.parseWarnings.length > 0 ? (
