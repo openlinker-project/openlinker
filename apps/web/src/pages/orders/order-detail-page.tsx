@@ -61,7 +61,7 @@ import { OrderShipmentPanel } from '../../features/orders/components/order-shipm
 import { SalesDocumentPanel } from '../../features/orders/components/sales-document-panel';
 import { UnlinkedCatalogueLinesBadge } from '../../features/orders/components/unlinked-catalogue-lines-badge';
 import { WarehouseReleaseBadge } from '../../features/orders/components/warehouse-release-badge';
-import { OrderDetailHeader } from '../../features/orders/components/order-detail-header';
+import { OrderDetailHeader, isChannelStatusStale } from '../../features/orders/components/order-detail-header';
 import { DestinationRoutingCallout } from '../../features/orders/components/destination-routing-callout';
 import { OrderHealthSummary } from '../../features/orders/components/order-health-summary';
 import { OrderPricingPanel } from '../../features/orders/components/order-pricing-panel';
@@ -397,7 +397,19 @@ export function OrderDetailPage(): ReactElement {
     ...(snapshot.orderNumber
       ? [{ id: 'orderNumber', label: 'Order #', value: snapshot.orderNumber, mono: true }]
       : []),
-    ...(snapshot.status ? [{ id: 'status', label: 'Status', value: snapshot.status }] : []),
+    ...(snapshot.status
+      ? [
+          isChannelStatusStale(order.lifecyclePhase, snapshot.status)
+            ? {
+                // C-23: not the order's status - OL cancelled it and the channel
+                // has not re-polled yet.
+                id: 'status',
+                label: `Status at ${connectionsById.get(order.sourceConnectionId)?.name ?? 'channel'}`,
+                value: <span className="text-muted">{snapshot.status}</span>,
+              }
+            : { id: 'status', label: 'Status', value: snapshot.status },
+        ]
+      : []),
     {
       id: 'sourceConnection',
       label: 'Source',
