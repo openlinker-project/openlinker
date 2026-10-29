@@ -33,7 +33,9 @@ export class InventoryCorrectionTargetRefusedError extends Error {
 export class InventoryCorrectionRefusedError extends Error {
   constructor(
     public readonly reason: InventoryCorrectionPreconditionReason,
-    detail: string
+    detail: string,
+    /** The master quantity the refusal was judged against (`insufficient-stock`). */
+    public readonly currentQuantity?: number
   ) {
     super(detail);
     this.name = 'InventoryCorrectionRefusedError';

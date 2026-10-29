@@ -28,6 +28,7 @@ export type InventoryCorrectionTargetRefusalReason =
 export const InventoryCorrectionPreconditionReasonValues = [
   'master-unreadable',
   'no-change',
+  'insufficient-stock',
   'note-required',
   'invalid-quantity',
   'idempotency-key-reused',
@@ -112,4 +113,29 @@ export function requiresLargeChangeConfirmation(delta: number, current: number):
   const size = Math.abs(delta);
   if (size > INVENTORY_CORRECTION_CONFIRM_ABSOLUTE_UNITS) return true;
   return current > 0 && size > current * INVENTORY_CORRECTION_CONFIRM_RELATIVE_SHARE;
+}
+
+/**
+ * The master's quantity before a correction, as it must be RECORDED.
+ *
+ * The adapter write is a DELTA write in both modes, and the master's answer is
+ * the only authoritative number: the mirror can be stale and a shop-side sale can
+ * land between the pre-write read and the write. So whenever the answer is above
+ * zero or the delta is positive, no clamp happened and `after - delta` is exact,
+ * independent of any earlier read (a concurrent sale is then not blamed on the
+ * operator). An answer of 0 after a removal may be a clamp (only reachable
+ * through such a race); the pre-write read is then the best estimate, capped at
+ * the removal size because a larger before would contradict landing on exactly 0
+ * without a clamp. The recorded delta is `after - before`.
+ */
+export function resolveRecordedQuantityBefore(input: {
+  readonly requestedDelta: number;
+  readonly resultingQuantity: number;
+  /** The master's quantity read before the write (unused for a positive delta). */
+  readonly preWriteMasterQuantity: number;
+}): number {
+  if (input.resultingQuantity > 0 || input.requestedDelta > 0) {
+    return input.resultingQuantity - input.requestedDelta;
+  }
+  return Math.min(input.preWriteMasterQuantity, -input.requestedDelta);
 }

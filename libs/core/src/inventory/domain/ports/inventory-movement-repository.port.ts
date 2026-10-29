@@ -36,12 +36,15 @@ export interface InventoryMovementRepositoryPort {
   settle(id: string, settlement: SettleInventoryMovementInput): Promise<boolean>;
 
   /**
-   * Fill `quantityAfter` and the derived `quantityBefore` (`after - requested delta`), and mark `applied`, on a row a caller
-   * already claimed. `false` when the row is unknown or already settled otherwise.
+   * Fill `quantityBefore` and `quantityAfter`, rewrite `quantityDelta` to the
+   * change that really happened (`after - before`), and mark `applied`, on a row
+   * a caller already claimed. The claimed delta was only the request; a master
+   * that clamps applies less, and the ledger records what happened. `false` when
+   * the row is unknown or already settled otherwise.
    */
-  attachQuantities(id: string, quantityAfter: number): Promise<boolean>;
+  attachQuantities(id: string, quantityBefore: number, quantityAfter: number): Promise<boolean>;
 
-  /** Merged history: stored movements plus reservations as "Promised" rows. */
+  /** Merged history: stored movements plus reservations as "Reserved" rows. */
   listHistory(
     filters: InventoryMovementFilters,
     pagination: InventoryMovementPagination

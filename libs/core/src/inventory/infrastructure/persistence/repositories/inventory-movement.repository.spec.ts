@@ -179,14 +179,14 @@ describe('InventoryMovementRepository', () => {
   });
 
   describe('attachQuantities', () => {
-    it('should keep the requested delta and derive quantityBefore from the master result', async () => {
+    it('should set before, after and the applied delta explicitly when attaching', async () => {
       query.mockResolvedValue([[], 1]);
 
-      await expect(repository.attachQuantities('m1', 15)).resolves.toBe(true);
+      await expect(repository.attachQuantities('m1', 5, 0)).resolves.toBe(true);
 
-      expect(sqlOf(0)).toContain('"quantityBefore" = $2::integer - "quantityDelta"');
-      expect(sqlOf(0)).not.toMatch(/"quantityDelta"\s*=/);
-      expect(paramsOf(0)).toEqual(['m1', 15]);
+      expect(sqlOf(0)).toContain('"quantityBefore" = $2::integer');
+      expect(sqlOf(0)).toContain('"quantityDelta" = $3::integer - $2::integer');
+      expect(paramsOf(0)).toEqual(['m1', 5, 0]);
     });
   });
 

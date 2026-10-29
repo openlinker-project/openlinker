@@ -67,9 +67,14 @@ export interface InventoryMovementAttribution {
  * Completes a row a caller already claimed (the manual correction's `pending`
  * row): `setInventory` fills its before/after quantity rather than inserting a
  * second row for the same change.
+ *
+ * `quantityBefore` is what the master held before the write, as the caller read
+ * it. It is carried explicitly because deriving it from the requested delta is
+ * wrong whenever the master clamps (a removal larger than its stock).
  */
 export interface InventoryMovementAttachment {
   readonly attachToMovementId: string;
+  readonly quantityBefore: number;
 }
 
 export type InventoryMovementContext = InventoryMovementAttribution | InventoryMovementAttachment;
@@ -118,6 +123,8 @@ export interface SettleInventoryMovementInput {
   readonly status: Exclude<InventoryMovementStatus, 'pending'>;
   readonly quantityBefore?: number | null;
   readonly quantityAfter?: number | null;
+  /** The change that really happened (`after - before`), when it differs from the claimed request. */
+  readonly quantityDelta?: number;
   readonly refusalReason?: string | null;
   readonly refusalDetail?: string | null;
 }

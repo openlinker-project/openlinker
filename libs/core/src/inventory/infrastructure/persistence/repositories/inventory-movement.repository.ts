@@ -147,6 +147,7 @@ export class InventoryMovementRepository implements InventoryMovementRepositoryP
       .createQueryBuilder()
       .update(InventoryMovementOrmEntity)
       .set({
+        ...(settlement.quantityDelta !== undefined && { quantityDelta: settlement.quantityDelta }),
         status: settlement.status,
         quantityBefore: settlement.quantityBefore ?? null,
         quantityAfter: settlement.quantityAfter ?? null,
@@ -158,22 +159,28 @@ export class InventoryMovementRepository implements InventoryMovementRepositoryP
     return (result.affected ?? 0) > 0;
   }
 
-  async attachQuantities(id: string, quantityAfter: number): Promise<boolean> {
+  async attachQuantities(
+    id: string,
+    quantityBefore: number,
+    quantityAfter: number
+  ): Promise<boolean> {
     // Only a row that has no quantities yet and did not end refused / in doubt:
     // an attachment must never rewrite what a settled row already recorded.
-    // `quantityDelta` stays what was requested and applied; `quantityBefore` is
-    // derived from the master's resulting quantity, so before/after describe the
-    // master and a drifted mirror is never attributed to the operator.
+    // Before/after are what the master held, and `quantityDelta` is rewritten to
+    // `after - before`: the claimed delta was only the request, and a master that
+    // clamps (a removal past its stock) applies less. Deriving before from the
+    // request recorded a change that never happened.
     const rows = (await this.repository.query(
       `UPDATE ${TABLE}
          SET "status" = 'applied',
-             "quantityBefore" = $2::integer - "quantityDelta",
-             "quantityAfter" = $2::integer
+             "quantityBefore" = $2::integer,
+             "quantityAfter" = $3::integer,
+             "quantityDelta" = $3::integer - $2::integer
        WHERE "id" = $1
          AND "status" IN ('pending', 'applied')
          AND "quantityAfter" IS NULL
        RETURNING "id"`,
-      [id, quantityAfter]
+      [id, quantityBefore, quantityAfter]
     )) as [unknown[], number];
     return (rows[1] ?? 0) > 0;
   }

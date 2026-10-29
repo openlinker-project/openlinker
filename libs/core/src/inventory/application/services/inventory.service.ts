@@ -160,6 +160,7 @@ export class InventoryService implements IInventoryService {
       if (movement !== undefined && isInventoryMovementAttachment(movement)) {
         const attached = await this.movementRepository.attachQuantities(
           movement.attachToMovementId,
+          movement.quantityBefore,
           upserted.availableQuantity
         );
         if (!attached) {

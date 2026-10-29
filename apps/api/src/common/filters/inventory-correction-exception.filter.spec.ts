@@ -59,13 +59,22 @@ describe('InventoryCorrectionExceptionFilter', () => {
     expect(json).toHaveBeenCalledWith(expect.objectContaining({ code: 'contended' }));
   });
 
-  it('should return 409 for no-change and master-unreadable', () => {
-    for (const reason of ['no-change', 'master-unreadable'] as const) {
+  it('should return 409 for no-change, master-unreadable and insufficient-stock', () => {
+    for (const reason of ['no-change', 'master-unreadable', 'insufficient-stock'] as const) {
       const { host, status, json } = createHost();
       filter.catch(new InventoryCorrectionRefusedError(reason, 'x'), host);
       expect(status).toHaveBeenCalledWith(HttpStatus.CONFLICT);
       expect(json).toHaveBeenCalledWith(expect.objectContaining({ code: reason }));
     }
+  });
+
+  it('should carry currentQuantity in the body for insufficient-stock', () => {
+    const { host, status, json } = createHost();
+    filter.catch(new InventoryCorrectionRefusedError('insufficient-stock', 'x', 3), host);
+    expect(status).toHaveBeenCalledWith(HttpStatus.CONFLICT);
+    expect(json).toHaveBeenCalledWith(
+      expect.objectContaining({ code: 'insufficient-stock', currentQuantity: 3 })
+    );
   });
 
   it('should return 400 for note-required and invalid-quantity', () => {

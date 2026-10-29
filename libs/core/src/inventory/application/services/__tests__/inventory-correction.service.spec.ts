@@ -75,10 +75,10 @@ class InMemoryMovementRepository {
   });
 
   attachQuantities = jest.fn(
-    async (id: string, after: number): Promise<boolean> => {
+    async (id: string, before: number, after: number): Promise<boolean> => {
       const row = this.rows.get(id);
       if (row === undefined || row.status !== 'pending') return false;
-      this.rows.set(id, this.with(row, 'applied', { status: 'applied', quantityBefore: after - (row.quantityDelta ?? 0), quantityAfter: after }));
+      this.rows.set(id, this.with(row, 'applied', { status: 'applied', quantityBefore: before, quantityAfter: after, quantityDelta: after - before }));
       return true;
     }
   );
@@ -100,7 +100,7 @@ class InMemoryMovementRepository {
       row.sourceConnectionId,
       row.reason,
       status,
-      row.quantityDelta,
+      s.quantityDelta ?? row.quantityDelta,
       s.quantityBefore ?? row.quantityBefore,
       s.quantityAfter ?? row.quantityAfter,
       row.sourceKind,
@@ -168,9 +168,13 @@ function build(): Harness {
   };
   const inventoryService = {
     setInventory: jest.fn(
-      async (_item: unknown, _owner: unknown, ctx?: { attachToMovementId: string }) => {
+      async (
+        item: { availableQuantity: number },
+        _owner: unknown,
+        ctx?: { attachToMovementId: string; quantityBefore: number }
+      ) => {
         if (ctx !== undefined) {
-          await movements.attachQuantities(ctx.attachToMovementId, 15);
+          await movements.attachQuantities(ctx.attachToMovementId, ctx.quantityBefore, item.availableQuantity);
         }
       }
     ),
@@ -422,7 +426,7 @@ describe('InventoryCorrectionService', () => {
       expect(h.inventoryService.setInventory).toHaveBeenCalledWith(
         expect.anything(),
         OWNER,
-        { attachToMovementId: result.movementId }
+        { attachToMovementId: result.movementId, quantityBefore: 10 }
       );
       expect(result).toMatchObject({
         status: 'applied',
@@ -435,6 +439,95 @@ describe('InventoryCorrectionService', () => {
         adjustmentOutcome: { disposition: 'applied', idempotency: 'honoured', appliedAt: null },
       });
       expect(h.syncLock.release).toHaveBeenCalledWith(expect.any(String), 'token');
+    });
+
+    const masterAnswers = (h: Harness, available: number): void => {
+      h.adapter.adjustInventory.mockResolvedValue({
+        id: 'x',
+        productId: PRODUCT_ID,
+        quantity: available,
+        reserved: 0,
+        available,
+      });
+    };
+    const masterReads = (h: Harness, available: number): void => {
+      h.adapter.listInventory.mockResolvedValue([
+        { id: 'x', productId: PRODUCT_ID, variantId: VARIANT_ID, quantity: available, reserved: 0, available },
+      ]);
+    };
+
+    it('should not blame a concurrent sale on the operator when set mode lands above the read', async () => {
+      const h = build();
+      h.inventoryService.setInventory.mockResolvedValue(undefined);
+      masterReads(h, 5);
+      masterAnswers(h, 7);
+      const result = await h.service.correctStock({ ...baseInput, mode: 'set', quantity: 8 });
+      expect(result).toMatchObject({ quantityBefore: 4, quantityAfter: 7 });
+      expect(h.movements.rows.get(result.movementId)?.quantityDelta).toBe(3);
+    });
+
+    it('should record before from the master answer in delta mode when the mirror is stale', async () => {
+      const h = build();
+      h.inventoryService.setInventory.mockResolvedValue(undefined);
+      h.inventoryRepository.findLiveOwnerPositions.mockResolvedValue([position({ availableQuantity: 8 })]);
+      masterReads(h, 7);
+      masterAnswers(h, 6);
+      const result = await h.service.correctStock({ ...baseInput, quantity: -1 });
+      expect(result).toMatchObject({ quantityBefore: 7, quantityAfter: 6 });
+      expect(h.movements.rows.get(result.movementId)?.quantityDelta).toBe(-1);
+    });
+
+    it('should record the read stock and applied delta when a race clamps a removal to zero', async () => {
+      const h = build();
+      h.inventoryService.setInventory.mockResolvedValue(undefined);
+      masterReads(h, 3);
+      masterAnswers(h, 0);
+      const result = await h.service.correctStock({ ...baseInput, quantity: -3 });
+      expect(result).toMatchObject({ quantityBefore: 3, quantityAfter: 0 });
+      expect(h.movements.rows.get(result.movementId)?.quantityDelta).toBe(-3);
+    });
+
+    it('should record before from the answer when a positive delta is applied', async () => {
+      const h = build();
+      h.inventoryService.setInventory.mockResolvedValue(undefined);
+      masterAnswers(h, 13);
+      const result = await h.service.correctStock({ ...baseInput, quantity: 3 });
+      expect(result).toMatchObject({ quantityBefore: 10, quantityAfter: 13 });
+      expect(h.adapter.listInventory).not.toHaveBeenCalled();
+    });
+
+    it('should refuse insufficient-stock against the master read and write nothing when the mirror is stale-high', async () => {
+      const h = build();
+      h.inventoryRepository.findLiveOwnerPositions.mockResolvedValue([position({ availableQuantity: 9 })]);
+      masterReads(h, 3);
+      await expect(h.service.correctStock({ ...baseInput, quantity: -5 })).rejects.toMatchObject({
+        reason: 'insufficient-stock',
+        currentQuantity: 3,
+      });
+      expect(h.movements.insertPending).not.toHaveBeenCalled();
+      expect(h.adapter.adjustInventory).not.toHaveBeenCalled();
+    });
+
+    it('should refuse master-unreadable for a removal when the master read fails', async () => {
+      const h = build();
+      h.adapter.listInventory.mockRejectedValue(new Error('down'));
+      await expect(h.service.correctStock({ ...baseInput, quantity: -1 })).rejects.toMatchObject({
+        reason: 'master-unreadable',
+      });
+      expect(h.adapter.adjustInventory).not.toHaveBeenCalled();
+    });
+
+    it('should refuse idempotency-key-reused when a set row is replayed with a delta body whose numbers differ', async () => {
+      const h = build();
+      h.inventoryService.setInventory.mockResolvedValue(undefined);
+      const key = '7b2f2b0a-3c43-4c0b-8f3a-1d0f9d6b6f31';
+      masterReads(h, 10);
+      masterAnswers(h, 15);
+      await h.service.correctStock({ ...baseInput, mode: 'set', quantity: 15, idempotencyKey: key });
+      await expect(
+        h.service.correctStock({ ...baseInput, mode: 'delta', quantity: 7, idempotencyKey: key })
+      ).rejects.toMatchObject({ reason: 'idempotency-key-reused' });
+      expect(h.adapter.adjustInventory).toHaveBeenCalledTimes(1);
     });
 
     it('should report idempotency unsupported when the adapter reports no outcome', async () => {

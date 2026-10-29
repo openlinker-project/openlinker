@@ -9,11 +9,14 @@
  *  - `InventoryCorrectionVariantNotFoundError`   -> 404
  *  - `InventoryCorrectionTargetRefusedError`     -> 409, `code` = target reason
  *  - `InventoryCorrectionRefusedError`           -> 409 (`no-change`,
- *    `master-unreadable`, `idempotency-key-reused`) or 400 for the two reasons
+ *    `insufficient-stock`, `master-unreadable`, `idempotency-key-reused`) or 400 for the two reasons
  *    that are a malformed request (`note-required`, `invalid-quantity`)
  *  - `CorrectionConfirmationRequiredError`       -> 409, `code`
  *    `confirmation-required`, with both D41 thresholds
  *  - `CorrectionContendedError`                  -> 409, `code` `contended`
+ *
+ * `insufficient-stock` carries a top-level `currentQuantity` (the master stock it
+ * was judged against), the same field name `confirmation-required` uses.
  *
  * Outcomes AFTER the boundary (refused by the master, in doubt) are not errors:
  * the controller returns them as 200 responses.
@@ -91,7 +94,7 @@ export class InventoryCorrectionExceptionFilter implements ExceptionFilter {
     return {
       statusCode: malformed ? HttpStatus.BAD_REQUEST : HttpStatus.CONFLICT,
       code: exception.reason,
-      extra: {},
+      extra: exception.currentQuantity === undefined ? {} : { currentQuantity: exception.currentQuantity },
     };
   }
 }

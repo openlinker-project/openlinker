@@ -77,7 +77,7 @@ export class InventoryCorrectionController {
     status: 409,
     description:
       'Refused before the master: no-inventory-master | ambiguous-inventory-master | no-position | ' +
-      'unattributed-owner | adapter-unresolved | master-unreadable | no-change | confirmation-required | ' +
+      'unattributed-owner | adapter-unresolved | master-unreadable | no-change | insufficient-stock | confirmation-required | ' +
       'contended | idempotency-key-reused',
   })
   @ApiResponse({ status: 404, description: 'Unknown product variant' })

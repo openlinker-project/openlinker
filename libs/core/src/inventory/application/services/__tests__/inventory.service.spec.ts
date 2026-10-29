@@ -472,9 +472,9 @@ describe('InventoryService', () => {
       inventoryRepository.findByProductAndVariant.mockResolvedValue(createItem({ availableQuantity: 5 }));
       inventoryRepository.upsert.mockResolvedValue(persisted);
 
-      await service.setInventory(persisted, 'conn-a', { attachToMovementId: 'mov-1' });
+      await service.setInventory(persisted, 'conn-a', { attachToMovementId: 'mov-1', quantityBefore: 5 });
 
-      expect(movementRepository.attachQuantities).toHaveBeenCalledWith('mov-1', 9);
+      expect(movementRepository.attachQuantities).toHaveBeenCalledWith('mov-1', 5, 9);
       expect(movementRepository.append).not.toHaveBeenCalled();
     });
 
@@ -493,9 +493,9 @@ describe('InventoryService', () => {
       inventoryRepository.findByProductAndVariant.mockResolvedValue(createItem({ availableQuantity: 5 }));
       inventoryRepository.upsert.mockResolvedValue(persisted);
 
-      await service.setInventory(persisted, 'conn-a', { attachToMovementId: 'mov-1' });
+      await service.setInventory(persisted, 'conn-a', { attachToMovementId: 'mov-1', quantityBefore: 5 });
 
-      expect(movementRepository.attachQuantities).toHaveBeenCalledWith('mov-1', 5);
+      expect(movementRepository.attachQuantities).toHaveBeenCalledWith('mov-1', 5, 5);
     });
 
     it('should not fail the stock write nor skip propagation when the ledger write fails', async () => {
@@ -516,7 +516,7 @@ describe('InventoryService', () => {
       movementRepository.attachQuantities.mockRejectedValue(new Error('ledger down'));
 
       await expect(
-        service.setInventory(persisted, undefined, { attachToMovementId: 'mov-1' })
+        service.setInventory(persisted, undefined, { attachToMovementId: 'mov-1', quantityBefore: 5 })
       ).resolves.toBe(persisted);
     });
   });

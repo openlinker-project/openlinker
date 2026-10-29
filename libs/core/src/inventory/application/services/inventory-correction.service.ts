@@ -58,6 +58,7 @@ import { InventoryMovementRepositoryPort } from '../../domain/ports/inventory-mo
 import { InventoryRepositoryPort } from '../../domain/ports/inventory-repository.port';
 import {
   requiresLargeChangeConfirmation,
+  resolveRecordedQuantityBefore,
   type CorrectStockInput,
   type InventoryCorrectionAdjustmentOutcome,
   type InventoryCorrectionMaster,
@@ -171,15 +172,31 @@ export class InventoryCorrectionService implements IInventoryCorrectionService {
 
     let currentForThreshold = target.currentQuantity;
     let delta = input.quantity;
-    if (input.mode === 'set') {
+    // The pre-write master read: the mirror can be stale, so every judgement that
+    // depends on how much the master holds (set's delta, the removal guard) uses
+    // the master itself. A positive delta needs no read.
+    let preWriteMasterQuantity = target.currentQuantity;
+    if (input.mode === 'set' || input.quantity < 0) {
       const masterQuantity = await this.readMasterQuantity(adapter, target);
+      preWriteMasterQuantity = masterQuantity;
       currentForThreshold = masterQuantity;
-      delta = input.quantity - masterQuantity;
+      if (input.mode === 'set') delta = input.quantity - masterQuantity;
     }
     if (delta === 0) {
       throw new InventoryCorrectionRefusedError(
         'no-change',
         'The stock already equals the wanted quantity; nothing to change'
+      );
+    }
+    if (input.mode === 'delta' && currentForThreshold + delta < 0) {
+      // Refused before any master write, judged against the master's own stock:
+      // a removal larger than it can never be the operator's intent. A change
+      // landing between this read and the write may still be clamped; the
+      // ledger then records the real before/after.
+      throw new InventoryCorrectionRefusedError(
+        'insufficient-stock',
+        `Cannot remove ${String(-delta)} units: only ${String(currentForThreshold)} in stock`,
+        currentForThreshold
       );
     }
     if (requiresLargeChangeConfirmation(delta, currentForThreshold) && input.confirmLargeChange !== true) {
@@ -221,7 +238,7 @@ export class InventoryCorrectionService implements IInventoryCorrectionService {
         return await this.replayLocked(winner, target, master, input);
       }
 
-      return await this.cross(claimed, adapter, target, master, delta);
+      return await this.cross(claimed, adapter, target, master, delta, preWriteMasterQuantity);
     } finally {
       await this.syncLock.release(lockKey, lockToken);
     }
@@ -233,7 +250,8 @@ export class InventoryCorrectionService implements IInventoryCorrectionService {
     adapter: InventoryMasterPort,
     target: ResolvedTarget,
     master: InventoryCorrectionMaster,
-    delta: number
+    delta: number,
+    preWriteMasterQuantity: number
   ): Promise<InventoryCorrectionResult> {
     let result: InventoryAdjustmentResult;
     try {
@@ -282,8 +300,16 @@ export class InventoryCorrectionService implements IInventoryCorrectionService {
     };
     const resultingQuantity = Number.isFinite(result.available) ? result.available : null;
 
-    if (resultingQuantity !== null) {
-      await this.mirror(target, resultingQuantity, claimed.id);
+    const quantityBefore =
+      resultingQuantity === null
+        ? null
+        : resolveRecordedQuantityBefore({
+            requestedDelta: delta,
+            resultingQuantity,
+            preWriteMasterQuantity,
+          });
+    if (resultingQuantity !== null && quantityBefore !== null) {
+      await this.mirror(target, resultingQuantity, claimed.id, quantityBefore);
     } else {
       this.logger.warn(
         `Manual stock correction ${claimed.id} applied, but the product master reported no ` +
@@ -293,14 +319,21 @@ export class InventoryCorrectionService implements IInventoryCorrectionService {
     // setInventory completes the row through its best-effort ledger write, which
     // can fail silently. No `pending` row may survive a returned answer, so the
     // row is re-read and, if still pending, settled here. The recorded chain
-    // describes the MASTER: before = after - requested delta; with no reported
-    // quantity both stay null rather than being guessed from the mirror.
+    // describes the MASTER: before is what the master held when the claim was
+    // made (read in set mode, the mirrored position in delta mode), after is what
+    // it answered, and the recorded delta is after - before, NOT the request: a
+    // master that clamps applies less. With no reported quantity both stay null
+    // rather than being guessed from the mirror.
     const afterMirror = await this.movements.findById(claimed.id);
     if (afterMirror === null || afterMirror.status === 'pending') {
       await this.movements.settle(claimed.id, {
         status: 'applied',
-        quantityBefore: resultingQuantity === null ? null : resultingQuantity - delta,
+        quantityBefore,
         quantityAfter: resultingQuantity,
+        quantityDelta:
+          resultingQuantity === null || quantityBefore === null
+            ? undefined
+            : resultingQuantity - quantityBefore,
       });
     }
 
@@ -309,7 +342,7 @@ export class InventoryCorrectionService implements IInventoryCorrectionService {
       claimed.id,
       'applied',
       delta,
-      row?.quantityBefore ?? (resultingQuantity === null ? null : resultingQuantity - delta),
+      row?.quantityBefore ?? quantityBefore,
       row?.quantityAfter ?? resultingQuantity,
       adjustmentOutcome,
       master,
@@ -320,13 +353,14 @@ export class InventoryCorrectionService implements IInventoryCorrectionService {
   private async mirror(
     target: ResolvedTarget,
     availableQuantity: number,
-    movementId: string
+    movementId: string,
+    quantityBefore: number
   ): Promise<boolean> {
     try {
       await this.inventoryService.setInventory(
         this.toItem(target, availableQuantity, target.position.reservedQuantity),
         target.owner,
-        { attachToMovementId: movementId }
+        { attachToMovementId: movementId, quantityBefore }
       );
       return true;
     } catch (error) {
@@ -483,15 +517,33 @@ export class InventoryCorrectionService implements IInventoryCorrectionService {
   }
 
   /**
-   * A replay must ask for the same change. `delta` mode states the delta, so it
-   * is compared directly. `set` mode's delta depends on the master's stock at
-   * claim time, which a replay does not re-read; the stored target is the
-   * resulting quantity of an applied row, so that is what is compared (a row
-   * that never applied has none, and only the reason is compared).
+   * A replay must ask for the same change. The ledger stores no mode, so the
+   * comparison is by shape. `set` compares the requested target with the stored
+   * resulting quantity of an applied row (its delta depends on the master's stock
+   * at claim time, which a replay does not re-read; a row that never applied has
+   * no target and only the reason is compared). `delta` compares the delta
+   * directly, and also accepts a smaller recorded delta of the same sign when the
+   * row applied and landed on 0: that is a clamp, the only way the master applies
+   * less than asked.
+   *
+   * Limits: a cross-mode replay whose numbers coincide is accepted, because the
+   * ledger stores no mode and a column for a client bug is not worth a migration;
+   * one whose numbers differ stays `idempotency-key-reused`. The original request
+   * is not stored either, so a replay reports the row's recorded delta as
+   * `requestedDelta` - the applied change, which differs from the first answer's
+   * request only after a clamp or in set mode.
    */
   private sameRequest(existing: InventoryMovement, input: CorrectStockInput): boolean {
     if (existing.operatorReason !== input.operatorReason) return false;
-    if (input.mode === 'delta') return existing.quantityDelta === input.quantity;
+    if (input.mode === 'delta') {
+      if (existing.quantityDelta === input.quantity) return true;
+      return (
+        existing.status === 'applied' &&
+        existing.quantityAfter === 0 &&
+        Math.sign(existing.quantityDelta) === Math.sign(input.quantity) &&
+        Math.abs(existing.quantityDelta) < Math.abs(input.quantity)
+      );
+    }
     return existing.quantityAfter === null || existing.quantityAfter === input.quantity;
   }
 
