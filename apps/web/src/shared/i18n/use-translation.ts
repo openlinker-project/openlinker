@@ -1,9 +1,9 @@
 /**
  * useTranslation Hook
  *
- * Consumer hook for the i18n seam. Returns the current locale and a no-op
- * `t(key, fallback)` translator (v1 always returns `fallback` because the
- * host catalog is empty). Throws if mounted outside `LocaleProvider` — the
+ * Legacy consumer hook (#612): the current locale and a `t(key, fallback)`
+ * translator over the provider's flat catalog. Kept for its existing call
+ * sites; new copy goes through `defineCopy` + `useCopy` (ADR-079). Throws if mounted outside `LocaleProvider` — the
  * provider is wired at the app root, so this only fires in malformed test
  * setups.
  *
