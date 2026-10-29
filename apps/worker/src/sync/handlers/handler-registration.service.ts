@@ -59,6 +59,7 @@ import { AutomationTriggerDeadlineSweepHandler } from './automation-trigger-dead
 import { ShopProductStatusSyncHandler } from './shop-product-status-sync.handler';
 import { DestinationTaxonomySyncHandler } from './destination-taxonomy-sync.handler';
 import { InvoicingIssueHandler } from './invoicing-issue.handler';
+import { InvoicingMarketplaceUploadHandler } from './invoicing-marketplace-upload.handler';
 import { FiscalizationRegisterHandler } from './fiscalization-register.handler';
 import { RegulatoryStatusReconcileHandler } from './regulatory-status-reconcile.handler';
 import { OfflineResubmitHandler } from './offline-resubmit.handler';
@@ -128,6 +129,7 @@ export class HandlerRegistrationService implements OnModuleInit {
     private readonly shopProductStatusSyncHandler: ShopProductStatusSyncHandler,
     private readonly destinationTaxonomySyncHandler: DestinationTaxonomySyncHandler,
     private readonly invoicingIssueHandler: InvoicingIssueHandler,
+    private readonly invoicingMarketplaceUploadHandler: InvoicingMarketplaceUploadHandler,
     private readonly fiscalizationRegisterHandler: FiscalizationRegisterHandler,
     private readonly regulatoryStatusReconcileHandler: RegulatoryStatusReconcileHandler,
     private readonly offlineResubmitHandler: OfflineResubmitHandler,
@@ -546,6 +548,14 @@ export class HandlerRegistrationService implements OnModuleInit {
 
     // Register invoicing issue handler (OL #1120 — auto-issue trigger)
     this.handlerRegistry.register('invoicing.issue', this.invoicingIssueHandler, 'fiscal');
+    // Marketplace document upload (#3549): a follow-up to a committed document that
+    // nobody waits on, and the call spends the MARKETPLACE's rate limit, so it must
+    // never hold a `fiscal` or `realtime` slot.
+    this.handlerRegistry.register(
+      'invoicing.marketplaceUpload',
+      this.invoicingMarketplaceUploadHandler,
+      'bulk'
+    );
     // Register fiscalization register handler (#2156 — auto-issue cross-capability
     // gate). Post-ADR-050 registration; `fiscal` by the cost-of-starvation rule
     // (deadline-bearing, at-most-once) — the ADR's lane table is amended in #2278.

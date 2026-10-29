@@ -59,6 +59,7 @@ import {
   BadRequestException,
   ConflictException,
   NotFoundException,
+  ServiceUnavailableException,
   NotImplementedException,
   Res,
   UnprocessableEntityException,
@@ -125,6 +126,8 @@ import {
   decodeBuyerTaxIdColumn,
   ORDER_RECORD_SERVICE_TOKEN,
   ORDER_REFUND_SERVICE_TOKEN,
+  INVOICE_MARKETPLACE_UPLOAD_SERVICE_TOKEN,
+  type IInvoiceMarketplaceUploadService,
   IOrderRecordService,
   IOrderRefundService,
   toLiveOrderIssuanceFacts,
@@ -145,6 +148,7 @@ import { GetInvoiceForOrderQueryDto } from './dto/get-invoice-for-order-query.dt
 import { ListInvoicesQueryDto } from './dto/list-invoices-query.dto';
 import { InvoiceRecordResponseDto } from './dto/invoice-record-response.dto';
 import { InvoiceAttachmentResponseDto } from './dto/invoice-attachment-response.dto';
+import { InvoiceMarketplaceUploadResponseDto } from './dto/invoice-marketplace-upload-response.dto';
 import { OrderSummaryProjectionDto } from '../../orders/http/dto/order-summary-projection.dto';
 import { IssuedDocumentContentDto } from './dto/issued-document-content.dto';
 import { PaginatedInvoicesResponseDto } from './dto/paginated-invoices-response.dto';
@@ -221,6 +225,8 @@ export class InvoicingController {
     private readonly refunds: IOrderRefundService,
     @Inject(INVOICE_ATTACHMENT_SERVICE_TOKEN)
     private readonly attachments: IInvoiceAttachmentService,
+    @Inject(INVOICE_MARKETPLACE_UPLOAD_SERVICE_TOKEN)
+    private readonly marketplaceUploads: IInvoiceMarketplaceUploadService,
   ) {}
 
   @Roles('admin', 'operator', 'viewer')
@@ -513,6 +519,10 @@ export class InvoicingController {
       throw this.toHttpException(error);
     }
     await this.clearSalesDocumentBlock(dto.orderId);
+    if (issued.status === 'issued') {
+      // #3549: best-effort and never throws - the document is already committed.
+      await this.marketplaceUploads.enqueueUpload(issued.id);
+    }
     return this.toDto(issued);
   }
 
@@ -1817,6 +1827,50 @@ export class InvoicingController {
       throw new NotFoundException(`Invoice not found: ${invoiceId}`);
     }
     return InvoiceAttachmentResponseDto.fromDomain(invoiceId, attachment);
+  }
+
+  @Roles('admin', 'operator', 'viewer')
+  @Get('invoices/:invoiceId/marketplace-upload')
+  @ApiOperation({
+    summary: 'Whether the document reached the marketplace order (#3549)',
+    description:
+      'One entry per marketplace connection the document was offered to; an empty list means no ' +
+      'upload was attempted yet. Codes only - no provider message is ever returned.',
+  })
+  @ApiResponse({ status: 200, type: InvoiceMarketplaceUploadResponseDto })
+  @ApiResponse({ status: 404, description: 'Invoice not found' })
+  async getMarketplaceUpload(
+    @Param('invoiceId', invoiceIdPipe()) invoiceId: string,
+  ): Promise<InvoiceMarketplaceUploadResponseDto> {
+    const invoice = await this.invoiceService.getInvoiceById(invoiceId);
+    if (invoice === null) throw new NotFoundException(`Invoice not found: ${invoiceId}`);
+    return InvoiceMarketplaceUploadResponseDto.fromDomain(
+      invoiceId,
+      await this.marketplaceUploads.getStatus(invoiceId),
+    );
+  }
+
+  @Roles('admin')
+  @Post('invoices/:invoiceId/marketplace-upload/retry')
+  @HttpCode(202)
+  @ApiOperation({
+    summary: 'Queue another attempt to attach the document to the marketplace order (#3549)',
+    description:
+      'Queues a new upload job. Rows that already uploaded or that the marketplace cannot take ' +
+      'are left alone by the job itself, so retrying is always safe.',
+  })
+  @ApiResponse({ status: 202, description: 'Upload queued' })
+  @ApiResponse({ status: 404, description: 'Invoice not found' })
+  @ApiResponse({ status: 503, description: 'Could not queue the job' })
+  async retryMarketplaceUpload(
+    @Param('invoiceId', invoiceIdPipe()) invoiceId: string,
+  ): Promise<{ queued: true }> {
+    const result = await this.marketplaceUploads.enqueueUpload(invoiceId, { retry: true });
+    if (result === 'skipped') throw new NotFoundException(`Invoice not found: ${invoiceId}`);
+    if (result === 'failed') {
+      throw new ServiceUnavailableException('Could not queue the marketplace upload');
+    }
+    return { queued: true };
   }
 
   @Roles('admin', 'operator', 'viewer')

@@ -93,3 +93,18 @@ export const TAX_COVERAGE_DETECTION_SERVICE_TOKEN = Symbol('ITaxCoverageDetectio
 export const DISPLAY_CURRENCY_CONVERSION_SERVICE_TOKEN = Symbol(
   'IDisplayCurrencyConversionService'
 );
+
+/**
+ * Binding token for the {@link InvoiceMarketplaceUploadRepositoryPort} (#3549):
+ * the per-(invoice, target connection) state of attaching an issued document to
+ * the marketplace order it was issued for. Lives in `orders`, not `invoicing`:
+ * the service that writes it needs the order record, and `InvoicingModule` must
+ * never import an orders token (the one-way edge the auto-issue trigger's F3
+ * boot spec guards).
+ */
+export const INVOICE_MARKETPLACE_UPLOAD_REPOSITORY_TOKEN = Symbol(
+  'InvoiceMarketplaceUploadRepositoryPort',
+);
+
+/** Binding token for the {@link IInvoiceMarketplaceUploadService} (#3549). */
+export const INVOICE_MARKETPLACE_UPLOAD_SERVICE_TOKEN = Symbol('IInvoiceMarketplaceUploadService');

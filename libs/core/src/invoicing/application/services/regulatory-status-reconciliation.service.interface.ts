@@ -37,6 +37,13 @@ export interface RegulatoryStatusReconcileResult {
   readErrors: number;
   /** Total non-terminal records matching the query (for coverage logging). */
   total: number;
+  /**
+   * Records this run moved into a status a document is ready at (`accepted` or
+   * `not-applicable`). REPORTED rather than acted on: a caller that attaches the
+   * document somewhere (the marketplace upload, #3549) lives in a context
+   * invoicing must not import, so the worker reads this and enqueues it.
+   */
+  clearedInvoiceIds: string[];
 }
 
 export interface IRegulatoryStatusReconciliationService {

@@ -132,6 +132,20 @@ export interface IAllegroHttpClient {
   ): Promise<AllegroHttpResponse<T>>;
 
   /**
+   * Make PUT request with a raw binary body.
+   *
+   * The PUT counterpart of `postBinary`, for endpoints that take file bytes at a
+   * resource the caller already created (an order's billing document, #3549).
+   * Same auth header, retry and token-refresh machinery.
+   */
+  putBinary<T = unknown>(
+    path: string,
+    contentType: string,
+    body: Uint8Array,
+    options?: Omit<AllegroHttpRequestOptions, 'method' | 'body'>,
+  ): Promise<AllegroHttpResponse<T>>;
+
+  /**
    * Make POST request with a multipart/form-data body.
    *
    * Used for endpoints that accept file uploads with metadata

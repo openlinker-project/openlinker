@@ -53,6 +53,25 @@ export {
   OrderWritebackOutcomeValues,
 } from './domain/types/order-lifecycle-event.types';
 
+// Billing-document uploader (#3549): attaches an issued sales document to the
+// marketplace order it came from. Advertised-without-dispatch, like its sibling
+// above - narrow the dispatched OrderSource adapter with the guard.
+export type { OrderBillingDocumentUploader } from './domain/ports/capabilities/order-billing-document-uploader.capability';
+export { isOrderBillingDocumentUploader } from './domain/ports/capabilities/order-billing-document-uploader.capability';
+// Its link sibling: a marketplace that shows the buyer a link to the document.
+export type { OrderBillingDocumentLinker } from './domain/ports/capabilities/order-billing-document-linker.capability';
+export { isOrderBillingDocumentLinker } from './domain/ports/capabilities/order-billing-document-linker.capability';
+export type {
+  AttachBillingDocumentLinkInput,
+  BillingDocumentUploadOutcome,
+  UploadBillingDocumentInput,
+  UploadBillingDocumentResult,
+} from './domain/types/order-billing-document.types';
+export {
+  BillingDocumentUploadOutcomeValues,
+  isShareableBillingDocumentUrl,
+} from './domain/types/order-billing-document.types';
+
 // Return source reader (#2329 / ADR-060): the returns half of OrderSource.
 // Advertised-without-dispatch — narrow the dispatched OrderSource adapter with
 // the guard; never getCapabilityAdapter('ReturnSourceReader').
@@ -350,6 +369,22 @@ export type {
   ProvisioningResumeSkipReason,
 } from './application/interfaces/order-provisioning-resume.service.interface';
 export { ProvisioningResumeSkipReasonValues } from './application/interfaces/order-provisioning-resume.service.interface';
+// Issued document -> marketplace order upload (#3549).
+export type {
+  IInvoiceMarketplaceUploadService,
+  InvoiceMarketplaceUploadResult,
+} from './application/interfaces/invoice-marketplace-upload.service.interface';
+export type {
+  InvoiceMarketplaceUpload,
+  InvoiceMarketplaceUploadFailureCode,
+  InvoiceMarketplaceUploadStatus,
+  RecordInvoiceMarketplaceUploadOutcome,
+} from './domain/types/invoice-marketplace-upload.types';
+export {
+  InvoiceMarketplaceUploadFailureCodeValues,
+  InvoiceMarketplaceUploadStatusValues,
+  UPLOAD_CLAIM_LEASE_MS,
+} from './domain/types/invoice-marketplace-upload.types';
 export type {
   IOrderLifecycleRelayService,
   OrderLifecycleRelayInput,
