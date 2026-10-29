@@ -12,7 +12,11 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { OrderCancelResultNotice } from './order-cancel-result-notice';
 import { ApiError } from '../../../shared/api/api-error';
-import { createMockApiClient, renderWithProviders } from '../../../test/test-utils';
+import {
+  createAuthenticatedSessionAdapter,
+  createMockApiClient,
+  renderWithProviders,
+} from '../../../test/test-utils';
 import type { CancelOrderResult, OrderChangeView } from '../api/order-cancel.types';
 
 const ORDER_ID = 'ol_order_1';
@@ -103,7 +107,17 @@ function renderNotice(
       sessionResult={props.sessionResult ?? null}
       onCorrectionConfirmed={onCorrectionConfirmed}
     />,
-    { apiClient: api },
+    {
+      apiClient: api,
+      sessionAdapter: createAuthenticatedSessionAdapter({
+        id: 'u1',
+        username: 'admin',
+        email: null,
+        role: 'admin',
+        permissions: ['orders:write'],
+        analyticsConsent: true,
+      }),
+    },
   );
   return { confirmOrderChange, onCorrectionConfirmed };
 }
