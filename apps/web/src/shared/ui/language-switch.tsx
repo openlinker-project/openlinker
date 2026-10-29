@@ -170,7 +170,7 @@ export function LanguageSwitch({
 
   if (localeContext === null) return null;
 
-  const classes = ['language-switch', className].filter(Boolean).join(' ');
+  const classes = ['language-switch', open ? 'is-open' : '', className].filter(Boolean).join(' ');
 
   return (
     <div className={classes} ref={rootRef}>
@@ -227,6 +227,15 @@ export function LanguageSwitch({
           />
         </motion.svg>
       </button>
+      {/* The language's name unrolls from behind the pill on hover or keyboard
+          focus, like the connection chip in the Source column. Leftwards, because
+          the switch sits against a right edge in both of its homes. Decorative:
+          the trigger's accessible name already says it. */}
+      <span className="language-switch__reveal" aria-hidden="true">
+        <span className="language-switch__reveal-name" lang={current.code}>
+          {current.name}
+        </span>
+      </span>
       {createPortal(
         <AnimatePresence>
           {open ? (
