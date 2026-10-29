@@ -66,6 +66,8 @@ export interface IShipmentQueryService {
    *
    * Outbound only, for the reason given on {@link findByFulfillmentWorkIds}: a
    * return label shares the table and must never answer "where is my parcel".
+   * A `cancelled` or `failed` shipment is skipped, since its number names a
+   * parcel that never left; a `delivered` one still answers.
    */
   getLatestOutboundTrackingNumber(orderId: string): Promise<string | null>;
 

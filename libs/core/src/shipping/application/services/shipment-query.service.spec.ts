@@ -189,6 +189,36 @@ describe('ShipmentQueryService', () => {
       await expect(service.getLatestOutboundTrackingNumber('ol_order_1')).resolves.toBe('NEW');
       expect(repository.findByOrderId).toHaveBeenCalledWith('ol_order_1', 'outbound');
     });
+
+    it('should skip a newer cancelled or failed label and keep a delivered one', async () => {
+      repository.findByOrderId.mockResolvedValue([
+        makeShipment({
+          status: 'delivered',
+          trackingNumber: 'REAL',
+          createdAt: new Date('2026-05-01T00:00:00Z'),
+        }),
+        makeShipment({
+          status: 'failed',
+          trackingNumber: 'FAILED',
+          createdAt: new Date('2026-05-02T00:00:00Z'),
+        }),
+        makeShipment({
+          status: 'cancelled',
+          trackingNumber: 'CANCELLED',
+          createdAt: new Date('2026-05-03T00:00:00Z'),
+        }),
+      ]);
+
+      await expect(service.getLatestOutboundTrackingNumber('ol_order_1')).resolves.toBe('REAL');
+    });
+
+    it('should be null when the only numbered label was cancelled', async () => {
+      repository.findByOrderId.mockResolvedValue([
+        makeShipment({ status: 'cancelled', trackingNumber: 'CANCELLED' }),
+      ]);
+
+      await expect(service.getLatestOutboundTrackingNumber('ol_order_1')).resolves.toBeNull();
+    });
   });
 
   describe('hasConsumedReservations (#2348)', () => {

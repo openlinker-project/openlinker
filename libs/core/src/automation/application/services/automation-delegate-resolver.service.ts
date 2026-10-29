@@ -57,8 +57,8 @@ export class AutomationDelegateResolverService implements IAutomationDelegateRes
   /**
    * Resolve a sibling service, or `null` when it is not bound in this process.
    *
-   * `null` is a normal, expected answer rather than an error: `MAILER_TOKEN` is
-   * bound only in `apps/api` today, and automation fires from the worker. The
+   * `null` is a normal, expected answer rather than an error: a delegate's
+   * owning module may not be wired into every process or worker role. The
    * CALLER turns that into an operator-facing `failed` step naming the missing
    * binding — this resolver never decides what an absence means.
    */

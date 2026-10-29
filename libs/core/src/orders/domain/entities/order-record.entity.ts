@@ -19,6 +19,7 @@ import type { BuyerTaxId } from '../types/buyer-tax-id.types';
 import type { FulfillmentRollupState } from '../types/order-fulfillment.types';
 import type { OrderDispatchWindow, OrderItem, PriceTaxTreatment } from '../types/order.types';
 import type { OrderAmendmentChange } from '../order-amendment-diff';
+import { REDACTED_PLACEHOLDER } from '../order-address-redaction';
 import type { DestinationRoutingBlockReason } from '../types/destination-routing-block.types';
 import type { FulfillmentRoutingSkipReason } from '../types/fulfillment-routing-eligibility.types';
 import type { AuthorityAttentionEntry } from '@openlinker/core/fulfillment-authority';
@@ -543,7 +544,7 @@ export class OrderRecord {
       const first = typeof address.firstName === 'string' ? address.firstName.trim() : '';
       const last = typeof address.lastName === 'string' ? address.lastName.trim() : '';
       const name = `${first} ${last}`.trim();
-      if (name.length === 0 || name.includes('[REDACTED]')) continue;
+      if (name.length === 0 || name.includes(REDACTED_PLACEHOLDER)) continue;
       return name;
     }
     return undefined;
