@@ -198,18 +198,6 @@ export function LanguageSwitch({
             </motion.span>
           </AnimatePresence>
         </span>
-        <AnimatePresence mode="popLayout" initial={false}>
-          <motion.span
-            key={locale}
-            className="language-switch__code"
-            initial={{ y: 8, opacity: 0 }}
-            animate={{ y: 0, opacity: 1 }}
-            exit={{ y: -8, opacity: 0 }}
-            transition={SPRING}
-          >
-            {current.code.toUpperCase()}
-          </motion.span>
-        </AnimatePresence>
         <motion.svg
           className="language-switch__chevron"
           viewBox="0 0 10 10"
@@ -227,14 +215,38 @@ export function LanguageSwitch({
           />
         </motion.svg>
       </button>
-      {/* The language's name unrolls from behind the pill on hover or keyboard
-          focus, like the connection chip in the Source column. Leftwards, because
-          the switch sits against a right edge in both of its homes. Decorative:
-          the trigger's accessible name already says it. */}
-      <span className="language-switch__reveal" aria-hidden="true">
-        <span className="language-switch__reveal-name" lang={current.code}>
-          {current.name}
+      {/* On hover or keyboard focus a wider copy of the pill fades in over the
+          trigger, anchored to its right edge, and the language's name unrolls
+          to the right of the flag (the connection chip's reveal from the Source
+          column). Absolutely positioned, so nothing around it reflows, and it
+          grows leftwards, so the sidebar's clipped right edge and the login
+          page's corner never cut it off. Decorative: the trigger's accessible
+          name already says it, and pointer events pass through to the trigger. */}
+      <span
+        className="language-switch__peek"
+        aria-hidden="true"
+        // The peek only shows while the list is closed; its chevron matches the
+        // closed trigger's (pointing away from where the list opens).
+        style={{ '--peek-chevron': down ? '180deg' : '0deg' } as CSSProperties}
+      >
+        <LanguageFlag code={current.code} />
+        <span className="language-switch__reveal">
+          <span className="language-switch__reveal-clip">
+            <span className="language-switch__reveal-name" lang={current.code}>
+              {current.name}
+            </span>
+          </span>
         </span>
+        <svg className="language-switch__chevron" viewBox="0 0 10 10">
+          <path
+            d="M2 6.5L5 3.5L8 6.5"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.5"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        </svg>
       </span>
       {createPortal(
         <AnimatePresence>

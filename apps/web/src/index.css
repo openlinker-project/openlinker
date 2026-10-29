@@ -30928,48 +30928,68 @@ legend.analytics-settings-dialog__label {
   --switch-hue: var(--accent-primary);
   --switch-tint: color-mix(in oklab, var(--switch-hue) 13%, var(--bg-surface));
   --switch-edge: color-mix(in oklab, var(--switch-hue) 55%, var(--border-subtle));
-  --switch-overlap: 14px;
   position: relative;
   isolation: isolate;
   display: inline-flex;
+  /* Never squeezed by a flex row (the sidebar header): the name needs room. */
+  flex: none;
 }
 
-/* Above the reveal, which tucks its last 14px under the pill. */
-.language-switch .language-switch__trigger {
-  position: relative;
-  z-index: 1;
-}
-
-/* The connection chip's reveal (Source column on /products), mirrored: it
- * grows leftwards from behind the pill, because the switch sits against the
- * sidebar's clipped right edge and in the right corner of signed-out pages. */
-.language-switch__reveal {
+/* The hover pill: a copy of the trigger laid over it, right edges aligned,
+ * that widens leftwards while the name unrolls to the right of the flag (the
+ * connection chip's reveal, Source column on /products). Out of flow, so the
+ * row around the switch never reflows, and growing leftwards keeps it inside
+ * the sidebar's clipped right edge and the login page's corner. */
+.language-switch__peek {
   position: absolute;
-  z-index: 0;
+  z-index: 2;
   top: 0;
+  right: 0;
   bottom: 0;
-  right: calc(100% - var(--switch-overlap));
+  /* Its own width, not the trigger's: a positioned box otherwise shrinks to
+     its container and squeezes the flag and name. */
+  width: max-content;
   display: inline-flex;
   align-items: center;
-  padding: 0 calc(var(--switch-overlap) + 8px) 0 11px;
+  padding: 5px 8px 5px 6px;
   border: 1px solid var(--switch-edge);
-  border-right: none;
-  border-radius: var(--radius-pill) 0 0 var(--radius-pill);
+  border-radius: var(--radius-pill);
   background: var(--switch-tint);
   box-shadow: 0 4px 12px -6px color-mix(in oklab, var(--switch-hue) 45%, transparent);
+  color: var(--text-primary);
   font-size: 12px;
   font-weight: 600;
-  white-space: nowrap;
-  color: var(--text-primary);
-  /* Rolled up to its right edge, i.e. entirely behind the pill. */
-  clip-path: inset(-12px 0 -12px 100%);
+  opacity: 0;
   pointer-events: none;
-  transition: clip-path var(--duration-fast) var(--ease-standard);
+  transition: opacity var(--duration-fast) var(--ease-out) 80ms;
+}
+
+.language-switch__peek > * {
+  flex: none;
+}
+
+.language-switch__peek .language-switch__chevron {
+  margin-left: 6px;
+  transform: rotate(var(--peek-chevron, 0deg));
+}
+
+.language-switch__reveal {
+  display: grid;
+  grid-template-columns: 0fr;
+  transition: grid-template-columns var(--duration-fast) var(--ease-standard);
+}
+
+.language-switch__reveal-clip {
+  min-width: 0;
+  overflow: hidden;
 }
 
 .language-switch__reveal-name {
+  display: block;
+  padding-left: 7px;
+  white-space: nowrap;
   opacity: 0;
-  transform: translateX(6px);
+  transform: translateX(-6px);
   transition:
     opacity var(--duration-fast) var(--ease-out),
     transform var(--duration-fast) var(--ease-out);
@@ -30977,14 +30997,19 @@ legend.analytics-settings-dialog__label {
 
 /* Opening is slower and eased out so the name reads as unrolling; closing (the
  * base rules) is quicker. Not while the list is open: the list names it already. */
-.language-switch:not(.is-open):hover .language-switch__reveal,
-.language-switch:not(.is-open):has(.language-switch__trigger:focus-visible) .language-switch__reveal {
-  clip-path: inset(-12px -12px -12px 0);
-  transition: clip-path var(--duration-slow) var(--ease-out);
+.language-switch:not(.is-open):has(.language-switch__trigger:is(:hover, :focus-visible))
+  .language-switch__peek {
+  opacity: 1;
+  transition: opacity 80ms var(--ease-out);
 }
 
-.language-switch:not(.is-open):hover .language-switch__reveal-name,
-.language-switch:not(.is-open):has(.language-switch__trigger:focus-visible)
+.language-switch:not(.is-open):has(.language-switch__trigger:is(:hover, :focus-visible))
+  .language-switch__reveal {
+  grid-template-columns: 1fr;
+  transition: grid-template-columns var(--duration-slow) var(--ease-out);
+}
+
+.language-switch:not(.is-open):has(.language-switch__trigger:is(:hover, :focus-visible))
   .language-switch__reveal-name {
   opacity: 1;
   transform: none;
@@ -30993,19 +31018,16 @@ legend.analytics-settings-dialog__label {
     transform var(--duration-slow) var(--ease-out) 40ms;
 }
 
-.language-switch:not(.is-open):hover .language-switch__trigger {
-  border-color: var(--switch-edge);
-}
-
 @media (hover: none) {
   /* A tap opens the list straight away; a sticky hover state would leave the
-     name hanging out after the list closes. */
-  .language-switch__reveal {
+     name showing after the list closes. */
+  .language-switch__peek {
     display: none;
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .language-switch__peek,
   .language-switch__reveal,
   .language-switch__reveal-name {
     transition: none !important;
@@ -31050,11 +31072,6 @@ legend.analytics-settings-dialog__label {
   display: block;
 }
 
-.language-switch__code {
-  font-family: var(--font-mono);
-  font-size: 11.5px;
-  letter-spacing: 0.02em;
-}
 
 .language-switch__chevron {
   width: 10px;
