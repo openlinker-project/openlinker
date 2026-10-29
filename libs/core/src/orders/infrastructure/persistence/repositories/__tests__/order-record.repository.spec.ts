@@ -1814,6 +1814,11 @@ describe('OrderRecordRepository', () => {
         if (built.writeSet.has(column)) {
           continue;
         }
+        // `orderEdits` (#3542) is the one non-written column that is deliberately
+        // NOT reset: the overlay it carries has to reach the domain mapping.
+        if (column === 'orderEdits') {
+          continue;
+        }
         expect({ column, value: projected[column] }).toEqual({
           column,
           value: EMPTY_DEFAULTS[column] ?? null,
