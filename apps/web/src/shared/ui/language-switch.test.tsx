@@ -10,6 +10,7 @@ import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { MotionConfigContext } from 'motion/react';
 import { useContext, type ReactElement } from 'react';
 import { afterEach, describe, expect, it } from 'vitest';
+import { LocaleKeyed } from '../i18n/locale-keyed';
 import { LocaleProvider } from '../i18n/locale-provider';
 import { LOCALE_STORAGE_KEY } from '../i18n/resolve-locale';
 import { AccessDeniedState } from './feedback-state';
@@ -20,6 +21,7 @@ import { MotionProvider } from './motion-provider';
 afterEach(() => {
   cleanup();
   window.localStorage.clear();
+  document.documentElement.lang = '';
 });
 
 function renderSwitch(): void {
@@ -151,5 +153,36 @@ describe('shared primitives in Polish', () => {
       </LocaleProvider>,
     );
     expect(screen.getByText('Brak dostępu')).toBeInTheDocument();
+  });
+
+  it('should keep keyboard focus on the switch when the language change remounts the tree', async () => {
+    render(
+      <LocaleProvider>
+        <LocaleKeyed>
+          <LanguageSwitch />
+        </LocaleKeyed>
+      </LocaleProvider>,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Language: English' }));
+    fireEvent.click(screen.getByRole('option', { name: /Polski/ }));
+    const trigger = await screen.findByRole('button', { name: 'Język: Polski' });
+    expect(trigger).toHaveFocus();
+  });
+
+  it('should close the list and return focus to the trigger on Tab', () => {
+    renderSwitch();
+    const trigger = screen.getByRole('button', { name: 'Language: English' });
+    fireEvent.click(trigger);
+    const notPrevented = fireEvent.keyDown(screen.getByRole('listbox'), { key: 'Tab' });
+    expect(notPrevented).toBe(false);
+    expect(trigger).toHaveAttribute('aria-expanded', 'false');
+    expect(trigger).toHaveFocus();
+  });
+
+  it('should not write the choice to storage when the provider is pinned', () => {
+    renderSwitch();
+    fireEvent.click(screen.getByRole('button', { name: 'Language: English' }));
+    fireEvent.click(screen.getByRole('option', { name: /Polski/ }));
+    expect(window.localStorage.getItem(LOCALE_STORAGE_KEY)).toBeNull();
   });
 });

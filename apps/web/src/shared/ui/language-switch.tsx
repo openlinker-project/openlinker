@@ -1,9 +1,11 @@
 /**
  * LanguageSwitch
  *
- * The operator's language picker (ADR-079): a pill with the current flag and
- * code that opens a list of every language with its flag, code and native
- * name. Native names, not translated ones, so someone who cannot read the
+ * The operator's language picker (ADR-079): a pill showing the current flag
+ * that opens a list of every language with its flag, code and native name.
+ * The trigger is flag-only by design; on hover or focus the language's native
+ * name slides out beside the flag (and the trigger's accessible name always
+ * carries it). Native names, not translated ones, so someone who cannot read the
  * current language still finds theirs. Only languages the app ships are
  * listed. The list is centred on the trigger, rendered in a portal so the
  * sidebar's `overflow: hidden` cannot clip it, and opens upward in the sidebar footer
@@ -26,6 +28,7 @@ import {
 import { createPortal } from 'react-dom';
 import { useCopy } from '../i18n/use-copy';
 import { interpolate } from '../i18n/interpolate';
+import { LocaleCodeValues, type SupportedLocale } from '../i18n/i18n.types';
 import { useOptionalLocale } from '../i18n/use-locale';
 import { LanguageFlag, type LanguageFlagCode } from './language-flag';
 import { uiCopy } from './ui.copy';
@@ -41,10 +44,26 @@ interface LanguageOption {
   beta?: boolean;
 }
 
-const LANGUAGE_OPTIONS: readonly LanguageOption[] = [
-  { code: 'pl', name: 'Polski', beta: true },
-  { code: 'en', name: 'English' },
-];
+// A Record keyed by `SupportedLocale`: a language added to `LocaleCodeValues`
+// without a name here is a compile error instead of a missing list entry.
+const LANGUAGE_DETAILS: Record<SupportedLocale, { name: string; beta?: boolean }> = {
+  pl: { name: 'Polski', beta: true },
+  en: { name: 'English' },
+};
+
+const LANGUAGE_OPTIONS: readonly LanguageOption[] = LocaleCodeValues.map((code) => ({
+  code,
+  ...LANGUAGE_DETAILS[code],
+}));
+
+/**
+ * A language change remounts the routed tree (`LocaleKeyed`), and the switch
+ * is part of that tree, so the focused trigger disappears. The choice leaves a
+ * short-lived note; the switch that mounts next takes focus back, so a
+ * keyboard user is not dropped on <body>.
+ */
+const REFOCUS_WINDOW_MS = 1500;
+let refocusRequestedAt: number | null = null;
 
 const SPRING = { type: 'spring', stiffness: 520, damping: 34, mass: 0.7 } as const;
 
@@ -132,6 +151,19 @@ export function LanguageSwitch({
   const current = LANGUAGE_OPTIONS.find((option) => option.code === locale) ?? LANGUAGE_OPTIONS[0];
 
   useEffect(() => {
+    if (refocusRequestedAt === null) return;
+    const fresh = Date.now() - refocusRequestedAt < REFOCUS_WINDOW_MS;
+    if (!fresh) {
+      refocusRequestedAt = null;
+      return;
+    }
+    triggerRef.current?.focus();
+    // A hidden twin (the sidebar's, behind the mobile drawer) cannot take focus
+    // and leaves the note for the one that can.
+    if (document.activeElement === triggerRef.current) refocusRequestedAt = null;
+  }, []);
+
+  useEffect(() => {
     if (!open) return undefined;
     const onPointerDown = (event: PointerEvent): void => {
       const target = event.target as Node;
@@ -162,6 +194,7 @@ export function LanguageSwitch({
   }
 
   function choose(option: LanguageOption): void {
+    if (option.code !== locale) refocusRequestedAt = Date.now();
     localeContext?.setLocale(option.code);
     close();
   }
@@ -193,7 +226,10 @@ export function LanguageSwitch({
       event.preventDefault();
       choose(LANGUAGE_OPTIONS[focus]);
     } else if (event.key === 'Tab') {
-      setOpen(false);
+      // The list is portalled to the end of <body>, so letting Tab run would
+      // jump past the page; closing puts focus back on the trigger instead.
+      event.preventDefault();
+      close();
     }
   }
 

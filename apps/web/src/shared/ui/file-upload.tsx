@@ -78,7 +78,10 @@ export const FileUpload = forwardRef<HTMLInputElement, FileUploadProps>(function
   const inputRef = useRef<HTMLInputElement | null>(null);
   const copy = useCopy(uiCopy).fileUpload;
   const { number } = useFormat();
-  const formatBytes = (bytes: number): string => formatByteSize(bytes, number);
+  const formatBytes = useCallback(
+    (bytes: number): string => formatByteSize(bytes, number),
+    [number],
+  );
   const [isDragOver, setIsDragOver] = useState(false);
 
   const setRefs = useCallback(

@@ -354,7 +354,7 @@ export const Combobox = forwardRef<HTMLButtonElement, ComboboxProps>(function Co
           {!showOptions ? (
             <EmptyHint text={plural(options.length, copy.searchCountHint)} />
           ) : totalRows === 0 ? (
-            <EmptyHint text={`No options match “${trimmed}”.`} />
+            <EmptyHint text={interpolate(copy.noMatch, { query: trimmed })} />
           ) : useVirtual ? (
             <div style={{ height: virtualizer.getTotalSize(), position: 'relative' }}>
               {virtualizer.getVirtualItems().map((vRow) => {
