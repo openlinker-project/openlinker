@@ -32,9 +32,11 @@ describe('resolveLocale', () => {
     expect(resolveLocale({ search: '', stored: null, deploymentDefault: 'en' })).toBe('en');
   });
 
-  it('should fall back to Polish when the deployment default is unsupported', () => {
-    expect(resolveLocale({ search: '', stored: null, deploymentDefault: 'de' })).toBe('pl');
-    expect(resolveLocale({ search: '', stored: null, deploymentDefault: undefined })).toBe('pl');
+  it('should give an unsupported default the same result as an unset one', () => {
+    const unset = resolveLocale({ search: '', stored: null, deploymentDefault: undefined });
+    expect(resolveLocale({ search: '', stored: null, deploymentDefault: 'de' })).toBe(unset);
+    expect(resolveLocale({ search: '', stored: null, deploymentDefault: 'english' })).toBe(unset);
+    expect(unset).toBe('en');
   });
 
   it('should ignore an unsupported ?lang= value', () => {
@@ -52,8 +54,8 @@ describe('resolveLocale', () => {
     expect(resolveLocale({ search: '', stored: null, deploymentDefault: 'en_GB' })).toBe('en');
   });
 
-  it('should fall back to Polish when the deployment default is blank', () => {
-    expect(resolveLocale({ search: '', stored: null, deploymentDefault: '' })).toBe('pl');
+  it('should fall back to the unset default when the deployment default is blank', () => {
+    expect(resolveLocale({ search: '', stored: null, deploymentDefault: '' })).toBe('en');
   });
 });
 
@@ -62,6 +64,14 @@ describe('resolveInitialLocale', () => {
     window.history.replaceState(null, '', '/orders?lang=en');
     expect(resolveInitialLocale('pl')).toBe('en');
     expect(window.localStorage.getItem(LOCALE_STORAGE_KEY)).toBe('en');
+  });
+
+  it('should remove ?lang= from the address bar after saving it, keeping the rest', () => {
+    window.history.replaceState(null, '', '/orders?status=open&lang=pl#top');
+    resolveInitialLocale('en');
+    expect(window.location.pathname + window.location.search + window.location.hash).toBe(
+      '/orders?status=open#top',
+    );
   });
 
   it('should ignore a stored value that is not a supported locale', () => {

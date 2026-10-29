@@ -21,7 +21,8 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function merge(source: unknown, override: unknown): unknown {
   if (typeof source === 'string') {
-    return typeof override === 'string' ? override : source;
+    // An empty Polish string is a gap, not a translation: never show a blank.
+    return typeof override === 'string' && override !== '' ? override : source;
   }
   if (!isRecord(source)) return source;
   const result: Record<string, unknown> = {};

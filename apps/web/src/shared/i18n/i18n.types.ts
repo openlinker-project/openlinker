@@ -29,9 +29,11 @@ export const SOURCE_LOCALE: SupportedLocale = 'en';
 
 /**
  * Used when neither the operator nor the deployment named a supported
- * language (ADR-079 decision 3).
+ * language. An unset, blank or unsupported `VITE_DEFAULT_UI_LOCALE` all land
+ * here, so a mistyped value never silently picks the other language
+ * (ADR-079 decision 3). #3890 changes it to Polish.
  */
-export const FALLBACK_LOCALE: SupportedLocale = 'pl';
+export const FALLBACK_LOCALE: SupportedLocale = 'en';
 
 export function isSupportedLocale(value: unknown): value is SupportedLocale {
   return typeof value === 'string' && (LocaleCodeValues as readonly string[]).includes(value);
