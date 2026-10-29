@@ -21,6 +21,7 @@
  */
 import { IsDateString, IsIn, IsNotEmpty, IsOptional, IsUUID } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { NetGrossBasisValues, type NetGrossBasis } from '@openlinker/core/analytics';
 import { SUPPORTED_REPORTING_CURRENCIES } from '@openlinker/core/currency';
 import {
   DISPLAY_CURRENCY_RATE_BASIS_VALUES,
@@ -67,4 +68,23 @@ export class SalesAnalyticsQueryDto {
   @IsOptional()
   @IsIn(DISPLAY_CURRENCY_RATE_BASIS_VALUES)
   rateBasis?: DisplayCurrencyRateBasis;
+
+  @ApiPropertyOptional({
+    description:
+      "Response format. 'csv' streams the by-channel table as a file (range capped at 366 days); omit for JSON.",
+    enum: ['json', 'csv'],
+    default: 'json',
+  })
+  @IsOptional()
+  @IsIn(['json', 'csv'])
+  format?: 'json' | 'csv';
+
+  @ApiPropertyOptional({
+    description:
+      "CSV only: which revenue figures are written. Defaults to the stored analytics VAT-basis setting.",
+    enum: NetGrossBasisValues,
+  })
+  @IsOptional()
+  @IsIn(NetGrossBasisValues)
+  basis?: NetGrossBasis;
 }
