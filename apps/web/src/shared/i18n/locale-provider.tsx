@@ -24,7 +24,12 @@ import { env } from '../config/env';
 import { setActiveLocale } from './active-locale';
 import { applyZodLocale } from './zod-locale';
 import { getBcp47Locale } from './locale';
-import { readPseudoRequested, resolveInitialLocale, storeLocale } from './resolve-locale';
+import {
+  clearPseudoRequested,
+  readPseudoRequested,
+  resolveInitialLocale,
+  storeLocale,
+} from './resolve-locale';
 import {
   isSupportedLocale,
   SOURCE_LOCALE,
@@ -100,10 +105,18 @@ export function LocaleProvider({
     document.documentElement.lang = getBcp47Locale(locale);
   }, [locale]);
 
+  // A deterministic marker for the e2e overflow pass, which must tell "pseudo
+  // is on" apart from "this screen has no migrated text yet".
+  useEffect(() => {
+    if (pseudo) document.documentElement.dataset.pseudoLocale = 'true';
+    else delete document.documentElement.dataset.pseudoLocale;
+  }, [pseudo]);
+
   const setLocale = useCallback(
     (next: SupportedLocale) => {
       if (!isPinned) storeLocale(next);
       announceLocale(next);
+      clearPseudoRequested();
       setPseudo(false);
       setLocaleState(next);
     },

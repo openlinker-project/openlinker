@@ -928,6 +928,27 @@ function selfCheck() {
     findBannedTerms(extractCopyStrings("export const C = { a: 'the current phase' };"))[0]?.matched,
     'phase',
   );
+  // The bilingual `defineCopy({ en, pl })` shape (ADR-079, #3859): the English
+  // half is scanned like any copy literal, and the Polish half is read too
+  // without tripping on English terms it does not contain.
+  expect(
+    'flags a banned term in the English half of a defineCopy module',
+    findBannedTerms(
+      extractCopyStrings(
+        "export const c = defineCopy({ en: { a: 'the current phase' }, pl: { a: 'bieżący etap' } });",
+      ),
+    )[0]?.matched,
+    'phase',
+  );
+  expect(
+    'a clean defineCopy module yields no findings',
+    findBannedTerms(
+      extractCopyStrings(
+        "export const c = defineCopy({ en: { a: 'Orders' }, pl: { a: 'Zamówienia' } });",
+      ),
+    ).length,
+    0,
+  );
   expect(
     'reads the static chunks of a template literal',
     findBannedTerms(extractCopyStrings('export const C = `the ${x} gateway is down`;'))[0]?.matched,

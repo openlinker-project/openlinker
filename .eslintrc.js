@@ -975,10 +975,10 @@ module.exports = {
         'i18next/no-literal-string': [
           'error',
           {
+            // Text children only for now: attribute text (aria-label, title,
+            // placeholder) is checked once the extraction PRs have moved it,
+            // by switching this to `jsx-only` with an attribute list.
             mode: 'jsx-text-only',
-            'jsx-attributes': {
-              include: ['aria-label', 'title', 'placeholder', 'alt', 'label', 'message', 'description'],
-            },
             words: {
               // Glyphs, keyboard hints and markers carry no language.
               exclude: ['[0-9!-/:-@[-`{-~]+', '[A-Z_-]+', '⌘K', '[•↗×⌕ⓘ…—–→←›▼↑↓↵·✓⧉✕🔒+]+', 'esc'],

@@ -9,6 +9,7 @@
  * @module shared/ui
  */
 import { defineCopy } from '../i18n/define-copy';
+import { fit } from '../i18n/fit';
 
 export const uiCopy = defineCopy({
   en: {
@@ -86,8 +87,9 @@ export const uiCopy = defineCopy({
       trigger: 'Search orders, products, connections…',
     },
     confirmDialog: {
-      cancel: 'Cancel',
-      confirm: 'Confirm',
+      // Dialog buttons: `fit` keeps every language inside the button width.
+      cancel: fit(12, 'Cancel'),
+      confirm: fit(12, 'Confirm'),
     },
     dataTable: {
       emptyTitle: 'No records to display',
@@ -178,8 +180,8 @@ export const uiCopy = defineCopy({
       totalFailed: 'The full count could not be loaded. At least this many match.',
       counting: 'Counting the full result set',
       countUnavailable: '(count unavailable)',
-      previous: 'Previous',
-      next: 'Next',
+      previous: fit(12, 'Previous'),
+      next: fit(12, 'Next'),
     },
     rawPayload: {
       title: 'Payload',
