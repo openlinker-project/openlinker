@@ -11,6 +11,7 @@
 import { IsDateString, IsIn, IsInt, IsNotEmpty, IsOptional, IsUUID, Max, Min } from 'class-validator';
 import { Type } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { NetGrossBasisValues, type NetGrossBasis } from '@openlinker/core/analytics';
 import { TopProductSortByValues, type TopProductSortBy } from '@openlinker/core/orders';
 
 export class TopProductsQueryDto {
@@ -52,4 +53,23 @@ export class TopProductsQueryDto {
   @IsInt()
   @Min(0)
   offset?: number = 0;
+
+  @ApiPropertyOptional({
+    description:
+      "Response format. 'csv' streams the FULL ranking (limit/offset ignored; range capped at 366 days); omit for JSON.",
+    enum: ['json', 'csv'],
+    default: 'json',
+  })
+  @IsOptional()
+  @IsIn(['json', 'csv'])
+  format?: 'json' | 'csv';
+
+  @ApiPropertyOptional({
+    description:
+      "CSV only: which revenue figures are written. Defaults to the stored analytics VAT-basis setting.",
+    enum: NetGrossBasisValues,
+  })
+  @IsOptional()
+  @IsIn(NetGrossBasisValues)
+  basis?: NetGrossBasis;
 }

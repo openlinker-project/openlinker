@@ -44,7 +44,18 @@ export class MarginRangeQueryDto {
   sourceConnectionId?: string;
 }
 
-export class MarginAnalyticsQueryDto extends MarginRangeQueryDto {
+export class MarginCsvFormatQueryDto extends MarginRangeQueryDto {
+  @ApiPropertyOptional({
+    description: "Response format. 'csv' streams a file (range capped at 366 days); omit for JSON.",
+    enum: ['json', 'csv'],
+    default: 'json',
+  })
+  @IsOptional()
+  @IsIn(['json', 'csv'])
+  format?: 'json' | 'csv';
+}
+
+export class MarginAnalyticsQueryDto extends MarginCsvFormatQueryDto {
   @ApiPropertyOptional({
     enum: MarginBucketValues,
     default: 'day',
@@ -55,7 +66,7 @@ export class MarginAnalyticsQueryDto extends MarginRangeQueryDto {
   bucket?: MarginBucket = 'day';
 }
 
-export class MarginProductsQueryDto extends MarginRangeQueryDto {
+export class MarginProductsQueryDto extends MarginCsvFormatQueryDto {
   @ApiPropertyOptional({
     enum: MarginSortByValues,
     default: 'grossMargin',

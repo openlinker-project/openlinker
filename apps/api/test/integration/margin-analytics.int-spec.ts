@@ -20,6 +20,8 @@
  *
  * @module apps/api/test/integration
  */
+import type { StreamableFile } from '@nestjs/common';
+import { MarginAnalyticsController } from '../../src/analytics/http/margin-analytics.controller';
 import type { IntegrationTestHarness } from './setup';
 import { getTestHarness, resetTestHarness, teardownTestHarness } from './setup';
 import {
@@ -336,6 +338,43 @@ describe('Margin analytics (integration, #3588)', () => {
       byVariant.get('ol_variant_m4')?.gaps.find((g) => g.reason === 'cost-entered-after-sale')
         ?.lineCount
     ).toBe(1);
+  });
+
+  it('writes CSV rows equal to the JSON rows (#3589)', async () => {
+    await seedFixture();
+    const controller = harness.getApp().get(MarginAnalyticsController, { strict: false });
+    const range = { from: FILTERS.from.toISOString(), to: FILTERS.to.toISOString() };
+    const read = async (file: StreamableFile): Promise<string[]> => {
+      let out = '';
+      for await (const chunk of file.getStream()) out += String(chunk);
+      return out
+        .replace('\uFEFF', '')
+        .split('\r\n')
+        .filter((l) => l !== '' && !l.startsWith('#'));
+    };
+
+    const json = await controller.getMargin({ ...range });
+    const csv = await read(
+      (await controller.getMargin({ ...range, format: 'csv' })) as StreamableFile
+    );
+    expect(csv[0]).toContain('net_revenue');
+    const total = csv[csv.length - 1].split(',');
+    expect(total[0]).toBe('Total');
+    expect(Number(total[2])).toBeCloseTo(json.headline.netRevenue, 2);
+    expect(Number(total[5])).toBeCloseTo(json.headline.grossMargin, 2);
+    expect(Number(total[6])).toBeCloseTo((json.headline.marginPct ?? 0) * 100, 1);
+    expect(csv.length - 2).toBe(json.channels.length);
+
+    const jsonProducts = await controller.getMarginProducts({ ...range });
+    const csvProducts = await read(
+      (await controller.getMarginProducts({ ...range, format: 'csv', limit: 1 })) as StreamableFile
+    );
+    expect(csvProducts.length - 1).toBe(jsonProducts.total);
+    for (const [i, item] of jsonProducts.items.entries()) {
+      const cells = csvProducts[i + 1].split(',');
+      expect(cells[cells.length - 1]).toBe(item.productId);
+      if (item.marginPct === null) expect(cells[5]).toBe('');
+    }
   });
 
   it('folds the trend into UTC days and ISO weeks', async () => {

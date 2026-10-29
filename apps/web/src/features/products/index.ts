@@ -5,9 +5,17 @@
  * (today: `features/listings`) import the offer-creation wizard's product
  * picker queries and types from here.
  */
-export type { Product, ProductVariant, ProductVariantSummary } from './api/products.types';
+export type {
+  Product,
+  ProductVariant,
+  ProductVariantSummary,
+  VariantCost,
+  VariantCostInput,
+} from './api/products.types';
 export { useProductQuery } from './hooks/use-product-query';
 export { useVariantQuery } from './hooks/use-variant-query';
+export { useVariantCostsQuery } from './hooks/use-variant-costs-query';
+export { useSetVariantCostMutation } from './hooks/use-set-variant-cost-mutation';
 export { useProductsQuery } from './hooks/use-products-query';
 export { useProductsBatchQuery } from './hooks/use-products-batch-query';
 export {
@@ -24,3 +32,4 @@ export {
   STOCK_STATUS_LABEL,
   type StockStatus,
 } from './lib/product-stock-status';
+export { VariantThumbnail, type VariantThumbnailProps } from './components/variant-thumbnail';

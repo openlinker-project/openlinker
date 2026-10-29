@@ -30,15 +30,14 @@
 import { useCallback, type ReactElement } from 'react';
 
 import { useApiClient } from '../../../app/api/api-client-provider';
-import { useAuthenticatedImage } from '../../../shared/hooks/use-authenticated-image';
+import { AuthenticatedImage } from '../../../shared/ui/authenticated-thumbnail';
 
 export interface BenchThumbProps {
   /** The bench class for this slot — hero swatch, table cell, or dock strip. */
   readonly className: string;
   /**
-   * The API's own proxy path (`/products/:id/images/:index`), not a shop url.
-   * The bench read builds it with `productImageProxyPath`; see that module and
-   * `use-authenticated-image.ts` for why it cannot be a plain `<img src>`.
+   * The API's own proxy path (`/products/:id/images/:index` or the variant's
+   * `/products/variants/:id/images/:index`), not a shop url.
    */
   readonly imageUrl: string | null | undefined;
   /** Supplies the fallback letter. `null` renders an empty swatch. */
@@ -48,26 +47,15 @@ export interface BenchThumbProps {
 
 export function BenchThumb({ className, imageUrl, name, testId }: BenchThumbProps): ReactElement {
   const apiClient = useApiClient();
-  // Memoised, or the hook's effect re-runs on every render and re-fetches the
-  // same picture — its dependency list includes the fetcher.
-  const fetchImage = useCallback(
-    (path: string) => apiClient.requestBlob(path),
-    [apiClient]
-  );
-  const image = useAuthenticatedImage(imageUrl, fetchImage);
-  const initial = (name ?? '').trim().charAt(0).toUpperCase();
-
-  if (image.status === 'ready') {
-    return <img className={className} src={image.objectUrl} alt="" data-testid={testId} />;
-  }
-
-  // `loading`, `failed` and `absent` all render the same square. A spinner in a
-  // 44 px cell is noise, and a packer cannot act on the difference between "no
-  // photo" and "the photo did not arrive" — the item's codes below it are what
-  // they check against either way.
+  // Memoised, or the hook's effect re-runs on every render and re-fetches.
+  const fetchImage = useCallback((path: string) => apiClient.requestBlob(path), [apiClient]);
   return (
-    <span className={`${className} ${className}--empty`} aria-hidden="true" data-testid={testId}>
-      {initial}
-    </span>
+    <AuthenticatedImage
+      className={className}
+      imageUrl={imageUrl}
+      name={name}
+      fetchImage={fetchImage}
+      testId={testId}
+    />
   );
 }

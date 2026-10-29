@@ -3,13 +3,14 @@
  *
  * @module apps/api/src/analytics/http
  */
-import { BadRequestException } from '@nestjs/common';
+import { BadRequestException, StreamableFile } from '@nestjs/common';
 import { plainToInstance } from 'class-transformer';
 import { validate } from 'class-validator';
 import type { IAnalyticsDisplaySettingsService } from '@openlinker/core/analytics';
 import type { IMarginAnalyticsService, MarginAnalytics } from '@openlinker/core/orders';
 import { ROLES_KEY } from '../../auth/decorators/roles.decorator';
 import type { IMarginAnalyticsApiService } from '../application/services/margin-analytics-api.service.interface';
+import type { IConnectionService } from '../../integrations/application/interfaces/connection.service.interface';
 import { MarginAnalyticsController } from './margin-analytics.controller';
 import { MarginAnalyticsQueryDto, MarginProductsQueryDto } from './dto/margin-analytics-query.dto';
 
@@ -55,7 +56,12 @@ describe('MarginAnalyticsController', () => {
       controller: new MarginAnalyticsController(
         margin as unknown as IMarginAnalyticsService,
         api as unknown as IMarginAnalyticsApiService,
-        settings as unknown as IAnalyticsDisplaySettingsService
+        settings as unknown as IAnalyticsDisplaySettingsService,
+        {
+          list: jest
+            .fn()
+            .mockResolvedValue([{ id: 'conn-a', platformType: 'allegro', name: 'Sklep Górski' }]),
+        } as unknown as IConnectionService
       ),
       margin,
       api: api as jest.Mocked<IMarginAnalyticsApiService>,
@@ -134,6 +140,117 @@ describe('MarginAnalyticsController', () => {
       { from: new Date(range.from), to: new Date(range.to), sourceConnectionId: undefined },
       false
     );
+  });
+
+  describe('CSV export (#3589)', () => {
+    const readStream = async (file: StreamableFile): Promise<string> => {
+      let out = '';
+      for await (const chunk of file.getStream()) out += String(chunk);
+      return out;
+    };
+    const fig = (over: Record<string, unknown> = {}): Record<string, unknown> => ({
+      ...analytics.headline,
+      ...over,
+    });
+
+    it('writes margin by channel with comments, the excluded-lines line, rows and a Total row', async () => {
+      const { controller, margin } = build();
+      margin.getMargin.mockResolvedValue({
+        ...analytics,
+        channels: [
+          { ...fig(), sourceConnectionId: 'conn-a', revenueShare: 1 },
+          {
+            ...fig({ coveredNetRevenue: 0, marginPct: null }),
+            sourceConnectionId: 'gone',
+            revenueShare: 0,
+          },
+        ],
+      } as unknown as MarginAnalytics);
+
+      const file = await controller.getMargin({ ...range, format: 'csv' });
+      expect(file).toBeInstanceOf(StreamableFile);
+      const out = await readStream(file as StreamableFile);
+      const lines = out.replace('\uFEFF', '').split('\r\n');
+
+      expect(lines[0]).toBe('# report: OpenLinker margin by channel');
+      expect(out).toContain('# basis: net (VAT-exclusive)');
+      expect(out).toContain(
+        '# Lines without a cost are excluded from cost and margin: 1 lines, PLN 20.00 net revenue'
+      );
+      expect(out).toContain(
+        'channel,connection,net_revenue,covered_net_revenue,cost_of_goods,gross_margin,margin_pct,cost_coverage_pct,connection_id'
+      );
+      expect(out).toContain('Allegro,Sklep Górski,100.00,80.00,50.00,30.00,37.5,80.0,conn-a');
+      // No covered revenue: empty margin cells, never 0.
+      expect(out).toContain('Unknown,gone,100.00,0.00,50.00,,,80.0,gone');
+      expect(out).toContain('Total,,100.00,80.00,50.00,30.00,37.5,80.0,');
+      expect((file as StreamableFile).getHeaders().disposition).toContain(
+        'openlinker_margin-by-channel_2026-09-01_2026-09-07_PLN_net.csv'
+      );
+    });
+
+    it('writes margin by product from the full ranking, ignoring limit/offset', async () => {
+      const { controller, api } = build();
+      api.getMarginProducts.mockResolvedValue({
+        currency: 'PLN',
+        total: 2,
+        unresolvedProductCount: 0,
+        items: [
+          { ...fig(), productId: 'p1', name: 'Kubek', sku: 'K-1' },
+          {
+            ...fig({ coveredNetRevenue: 0, marginPct: null }),
+            productId: 'p2',
+            name: null,
+            sku: null,
+          },
+        ],
+      } as never);
+
+      const file = (await controller.getMarginProducts({
+        ...range,
+        format: 'csv',
+        limit: 5,
+        offset: 10,
+      })) as StreamableFile;
+      const out = await readStream(file);
+
+      expect(api.getMarginProducts).toHaveBeenCalledWith(
+        expect.objectContaining({ limit: 500, offset: 0 }),
+        false
+      );
+      expect(out).toContain(
+        'product,sku,net_revenue,covered_net_revenue,cost_of_goods,gross_margin,margin_pct,cost_coverage_pct,product_id'
+      );
+      expect(out).toContain('Kubek,K-1,100.00,80.00,50.00,30.00,37.5,80.0,p1');
+      expect(out).toContain('p2,,100.00,0.00,50.00,,,80.0,p2');
+    });
+
+    it('rejects a 367-day CSV range but leaves JSON on its own cap', async () => {
+      const { controller } = build();
+      const wide = { from: '2025-09-01T00:00:00.000Z', to: '2026-09-03T00:00:00.000Z' };
+
+      await expect(controller.getMargin({ ...wide, format: 'csv' })).rejects.toThrow(
+        BadRequestException
+      );
+      await expect(controller.getMarginProducts({ ...wide, format: 'csv' })).rejects.toThrow(
+        BadRequestException
+      );
+      expect(await controller.getMargin(wide)).toMatchObject({ currency: 'PLN' });
+    });
+
+    it('accepts format=csv and still rejects unknown params', async () => {
+      const check = async (cls: new () => object, body: object): Promise<number> =>
+        (
+          await validate(plainToInstance(cls, body), {
+            whitelist: true,
+            forbidNonWhitelisted: true,
+          })
+        ).length;
+      expect(await check(MarginAnalyticsQueryDto, { ...range, format: 'csv' })).toBe(0);
+      expect(await check(MarginProductsQueryDto, { ...range, format: 'csv' })).toBe(0);
+      expect(await check(MarginProductsQueryDto, { ...range, format: 'xml' })).toBeGreaterThan(0);
+      expect(await check(MarginAnalyticsQueryDto, { ...range, basis: 'gross' })).toBeGreaterThan(0);
+    });
   });
 
   it('restricts all three routes to admin, operator and viewer', () => {

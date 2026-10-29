@@ -39,4 +39,6 @@ export const productsQueryKeys = {
   count: (filters?: ProductFilters) => ['products', 'count', ...productFilterKey(filters)] as const,
   detail: (id: string) => ['products', 'detail', id] as const,
   variant: (variantId: string) => ['products', 'variant', variantId] as const,
+  /** Net unit costs of one product's variants (#3588). */
+  variantCosts: (productId: string) => ['products', 'variant-costs', productId] as const,
 };

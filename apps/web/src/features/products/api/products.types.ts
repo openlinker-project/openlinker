@@ -41,6 +41,14 @@ export interface ProductVariant {
    */
   defaultImages?: string[] | null;
   /**
+   * API proxy paths (`/products/variants/:id/images/:i`) over the RESOLVED
+   * pictures: the variant's own, else the product's. Needs the bearer token,
+   * so render through `VariantThumbnail`. Absent from an older API.
+   */
+  imageUrls?: string[];
+  /** True when `imageUrls` is the product's gallery because the variant has none of its own. */
+  imagesFromProduct?: boolean;
+  /**
    * The variant's OWN tax-rate override (#2255). `null` means NO OVERRIDE - the
    * product's rate applies - never "no rate". Only a master that keys tax per
    * variant sets it, so on PrestaShop every variant is null and the product's
@@ -217,8 +225,31 @@ export interface ProductVariantSummary {
   ean: string | null;
   /** Display label assembled from variant attributes (e.g. "Red / 42"). */
   name?: string;
+  imageUrls?: string[];
+  imagesFromProduct?: boolean;
   /** Whether this variant was deleted at the master (#1599). */
   isStale: boolean;
   /** Timestamp of the most recent stale-marking; null while the variant is live. */
   staleAt: string | null;
+}
+
+/**
+ * One variant's net unit cost (#3588). Cost is deliberately NOT on
+ * {@link ProductVariant}: the regular variant read is open to every role, the
+ * cost read is not. `netUnitCost` is a decimal string (never a number) and
+ * `null` means "not recorded", which is a different statement from `"0.0000"`.
+ */
+export interface VariantCost {
+  variantId: string;
+  sku?: string | null;
+  netUnitCost: string | null;
+  costCurrency: string | null;
+  costUpdatedAt: string | null;
+  costUpdatedByUserId: string | null;
+}
+
+/** Both set records a cost; both null clears it. */
+export interface VariantCostInput {
+  netUnitCost: string | null;
+  currency: string | null;
 }

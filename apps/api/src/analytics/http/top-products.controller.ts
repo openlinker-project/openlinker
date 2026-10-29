@@ -20,7 +20,15 @@
  * `sales-analytics.controller.ts` for the reasoning shared by every analytics
  * read.
  */
-import { BadRequestException, Controller, Get, Inject, Param, Query } from '@nestjs/common';
+import {
+  BadRequestException,
+  Controller,
+  Get,
+  Inject,
+  Param,
+  Query,
+  type StreamableFile,
+} from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiParam, ApiResponse, ApiTags } from '@nestjs/swagger';
 import {
   ANALYTICS_DISPLAY_SETTINGS_SERVICE_TOKEN,
@@ -35,6 +43,13 @@ import {
   type ITopProductsService,
 } from '../application/services/top-products.service.interface';
 import { Roles } from '../../auth/decorators/roles.decorator';
+import { assertExportRange, csvDownload, exportFilename } from './export-range';
+import { loadConnectionLabels } from './connection-labels';
+import {
+  CONNECTION_SERVICE_TOKEN,
+  type IConnectionService,
+} from '../../integrations/application/interfaces/connection.service.interface';
+import { buildTopProductsCsv, readAllTopProducts } from './top-products-csv';
 
 @ApiBearerAuth()
 @ApiTags('analytics')
@@ -44,9 +59,17 @@ export class TopProductsController {
     @Inject(TOP_PRODUCTS_SERVICE_TOKEN)
     private readonly topProductsService: ITopProductsService,
     @Inject(ANALYTICS_DISPLAY_SETTINGS_SERVICE_TOKEN)
-    private readonly displaySettings: IAnalyticsDisplaySettingsService
+    private readonly displaySettings: IAnalyticsDisplaySettingsService,
+    @Inject(CONNECTION_SERVICE_TOKEN)
+    private readonly connections: IConnectionService
   ) {}
 
+  async getTopProducts(
+    query: TopProductsQueryDto & { format?: 'json' }
+  ): Promise<TopProductsResponseDto>;
+  async getTopProducts(
+    query: TopProductsQueryDto
+  ): Promise<TopProductsResponseDto | StreamableFile>;
   @Roles('admin', 'operator', 'viewer')
   @Get('top-products')
   @ApiOperation({
@@ -56,17 +79,52 @@ export class TopProductsController {
       'Sorting by revenue only considers reporting-currency-stamped orders (see the per-row `currency`/`unconvertedRevenue`); a product whose orders are entirely unstamped ranks at revenue 0 and may not appear on this page at all, in which case its unconvertedRevenue is never surfaced either — sort by units to see it.',
   })
   @ApiResponse({ status: 200, type: TopProductsResponseDto })
-  async getTopProducts(@Query() query: TopProductsQueryDto): Promise<TopProductsResponseDto> {
+  async getTopProducts(
+    @Query() query: TopProductsQueryDto
+  ): Promise<TopProductsResponseDto | StreamableFile> {
     const from = new Date(query.from);
     const to = new Date(query.to);
     if (to.getTime() <= from.getTime()) {
       throw new BadRequestException('to must be after from');
     }
 
+    const isCsv = query.format === 'csv';
+    if (isCsv) {
+      assertExportRange(from, to);
+    }
+
     // Read fresh on every request (#2469): the setting is an operator toggle
     // whose whole point is that it takes effect on the next query, and `orders`
     // cannot read it itself without an `orders -> analytics` edge.
-    const { includeBackfilledTaxRatesInNetSales } = await this.displaySettings.getSettings();
+    const { includeBackfilledTaxRatesInNetSales, netGrossBasis } =
+      await this.displaySettings.getSettings();
+
+    if (isCsv) {
+      // limit/offset are ignored: the file is the whole ranking, paged
+      // internally through the same service call the JSON route uses.
+      const rows = await readAllTopProducts(
+        (filters) =>
+          this.topProductsService.getTopProducts(filters, includeBackfilledTaxRatesInNetSales),
+        {
+          from,
+          to,
+          sourceConnectionId: query.sourceConnectionId,
+          sortBy: query.sortBy ?? 'revenue',
+        }
+      );
+      const basis = query.basis ?? netGrossBasis ?? 'gross';
+      const { stream, currency } = buildTopProductsCsv({
+        rows,
+        from,
+        to,
+        basis,
+        labels: await loadConnectionLabels(this.connections),
+      });
+      return csvDownload(
+        stream,
+        exportFilename({ report: 'top-products', from, to, currency, basis })
+      );
+    }
 
     return this.topProductsService.getTopProducts(
       {
