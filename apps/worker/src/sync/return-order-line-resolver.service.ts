@@ -138,6 +138,18 @@ export class ReturnOrderLineResolverService {
 
       const unresolved = Object.entries(summary.unresolved);
       if (unresolved.length > 0) {
+        // E-14: an ingested return is a channel fact and is never refused, but a
+        // line naming an item an OpenLinker edit zeroed is reported rather than
+        // left as a bare unresolved count. Log-only: no attention state exists
+        // that is cheap to reuse for it.
+        const removedByEdit = this.removedByEditIdentities(order);
+        if (removedByEdit.length > 0) {
+          this.logger.warn(
+            `Return ${returnId}: ${unresolved.length} unresolved reason(s); order ` +
+              `${record.internalOrderId} has line(s) removed by an OpenLinker edit ` +
+              `(${removedByEdit.join(', ')}) - the return may name one of them (E-14)`
+          );
+        }
         // Reported, never defaulted. An unresolved line keeps `null` and the
         // correction path keeps its existing behaviour for it.
         this.logger.warn(
@@ -162,5 +174,24 @@ export class ReturnOrderLineResolverService {
       this.logger.error(`Failed to resolve order lines for return ${returnId}: ${message}`);
       return null;
     }
+  }
+
+  /** Channel lines (sku, else id) whose id the effective snapshot no longer carries. */
+  private removedByEditIdentities(order: {
+    orderSnapshot: Record<string, unknown>;
+    channelSnapshot: Record<string, unknown>;
+  }): string[] {
+    const ids = (snapshot: Record<string, unknown>): Array<Record<string, unknown>> => {
+      const items: unknown = snapshot.items;
+      return Array.isArray(items)
+        ? items.filter(
+            (item): item is Record<string, unknown> => typeof item === 'object' && item !== null
+          )
+        : [];
+    };
+    const liveIds = new Set(ids(order.orderSnapshot).map((item) => item.id));
+    return ids(order.channelSnapshot)
+      .filter((item) => !liveIds.has(item.id))
+      .map((item) => String(item.sku ?? item.id));
   }
 }

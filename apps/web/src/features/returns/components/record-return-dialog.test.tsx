@@ -167,6 +167,19 @@ describe('RecordReturnDialog', () => {
     expect(screen.queryByText(COPY.genericError)).not.toBeInTheDocument();
   });
 
+  it('should render a line removed by an order edit (409 line-removed-by-edit) as a field error (E-14)', async () => {
+    const record = vi.fn().mockRejectedValue(
+      new ApiError('Cannot record', 409, { reason: 'line-removed-by-edit' }),
+    );
+    renderDialog({ record });
+
+    await fillValidForm();
+    await userEvent.click(screen.getByRole('button', { name: COPY.confirm }));
+
+    expect(await screen.findByText(COPY.lineRemovedByEdit)).toBeInTheDocument();
+    expect(screen.queryByText(COPY.genericError)).not.toBeInTheDocument();
+  });
+
   it('should render an unknown-order 400 as a field error naming the typed id', async () => {
     const record = vi.fn().mockRejectedValue(
       new ApiError('Cannot record', 400, { reason: 'unknown-order' }),

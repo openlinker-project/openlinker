@@ -83,6 +83,7 @@ import {
   type IReturnCustodyService,
   type IReturnRefundService,
   type IReturnsService,
+  type RecordReturnOrderLines,
   type ReceiveLineResult,
   type RestockBlockedDetail,
   type ReturnCorrectionProposalResult,
@@ -159,12 +160,19 @@ export class ReturnWritesController {
       'The payload was inapplicable — `no-lines`, `invalid-quantity`, `unknown-order` or ' +
       '`order-not-on-connection`, in the response `reason`.',
   })
+  @ApiResponse({
+    status: 409,
+    description:
+      'A line names an item an OpenLinker order edit removed (`reason: line-removed-by-edit`).',
+  })
   async record(
     @Body() dto: RecordReturnDto,
     @CurrentUser() user: AuthenticatedUser
   ): Promise<RecordReturnResponseDto> {
+    const order = await this.orderRecords.getOrderRecord(dto.internalOrderId);
     const record = await this.returns.recordReturn({
       internalOrderId: dto.internalOrderId,
+      orderLines: order === null || order === undefined ? undefined : toRecordReturnOrderLines(order),
       sourceConnectionId: dto.sourceConnectionId,
       lines: dto.lines.map((line) => ({
         sku: line.sku ?? null,
@@ -775,4 +783,41 @@ export class ReturnWritesController {
       throw this.ceilingUnavailable(returnId, error);
     }
   }
+}
+
+/**
+ * E-14: which channel lines an OpenLinker edit zeroed. `orderSnapshot` is the
+ * effective view (edits applied, zeroed lines dropped) and `channelSnapshot`
+ * the channel's own, so the id difference is exactly the zeroed lines.
+ */
+function toRecordReturnOrderLines(order: {
+  orderSnapshot: Record<string, unknown>;
+  channelSnapshot: Record<string, unknown>;
+}): RecordReturnOrderLines {
+  const read = (snapshot: Record<string, unknown>): Array<{
+    id: string;
+    sku: string | null;
+    name: string | null;
+  }> => {
+    const items: unknown = snapshot.items;
+    if (!Array.isArray(items)) return [];
+    const out: Array<{ id: string; sku: string | null; name: string | null }> = [];
+    for (const raw of items) {
+      if (typeof raw !== 'object' || raw === null) continue;
+      const item = raw as Record<string, unknown>;
+      if (typeof item.id !== 'string') continue;
+      out.push({
+        id: item.id,
+        sku: typeof item.sku === 'string' ? item.sku : null,
+        name: typeof item.name === 'string' ? item.name : null,
+      });
+    }
+    return out;
+  };
+  const live = read(order.orderSnapshot);
+  const liveIds = new Set(live.map((item) => item.id));
+  return {
+    removedByEdit: read(order.channelSnapshot).filter((item) => !liveIds.has(item.id)),
+    live,
+  };
 }

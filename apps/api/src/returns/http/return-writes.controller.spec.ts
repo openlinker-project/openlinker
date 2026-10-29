@@ -657,6 +657,43 @@ describe('ReturnWritesController', () => {
       );
     });
 
+    it('should hand the service the lines an order edit removed (E-14)', async () => {
+      orderRecords.getOrderRecord.mockResolvedValue({
+        orderSnapshot: { items: [{ id: 'l2', sku: 'B', name: 'Gadget' }] },
+        channelSnapshot: {
+          items: [
+            { id: 'l1', sku: 'A', name: 'Widget' },
+            { id: 'l2', sku: 'B', name: 'Gadget' },
+          ],
+        },
+      });
+      returns.recordReturn.mockResolvedValue({
+        id: RETURN_ID,
+        internalOrderId: 'ol_order_1',
+        origin: 'operator_authored',
+        openedAt: new Date(),
+        createdAt: new Date(),
+      });
+
+      await controller.record(
+        {
+          internalOrderId: 'ol_order_1',
+          sourceConnectionId: 'conn-1',
+          lines: [{ reason: 'other', quantityAdvised: 1 }],
+        },
+        USER
+      );
+
+      expect(returns.recordReturn).toHaveBeenCalledWith(
+        expect.objectContaining({
+          orderLines: {
+            removedByEdit: [{ id: 'l1', sku: 'A', name: 'Widget' }],
+            live: [{ id: 'l2', sku: 'B', name: 'Gadget' }],
+          },
+        })
+      );
+    });
+
     it('should report the authorize outcome verbatim', async () => {
       authorizeService.authorize.mockResolvedValue({
         outcome: 'already-authorized',
