@@ -1763,6 +1763,7 @@ describe('OrderRecordRepository', () => {
     const EMPTY_DEFAULTS: Record<string, unknown> = {
       syncStatus: [],
       syncAttempts: [],
+      hasBuyerNote: false,
     };
 
     function allColumnProperties(): string[] {
