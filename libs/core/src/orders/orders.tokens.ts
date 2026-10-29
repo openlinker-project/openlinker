@@ -18,6 +18,8 @@ export const ORDER_DESTINATION_RETRY_SERVICE_TOKEN = Symbol('IOrderDestinationRe
 export const ORDER_PROVISIONING_RESUME_SERVICE_TOKEN = Symbol(
   'IOrderProvisioningResumeService'
 );
+// Re-routes a held order on an operator retry or a stock change (#3558).
+export const ORDER_ROUTING_RETRY_SERVICE_TOKEN = Symbol('IOrderRoutingRetryService');
 export const ORDER_ITEM_REF_RESOLVER_SERVICE_TOKEN = Symbol('IOrderItemRefResolverService');
 export const ORDER_LIFECYCLE_RELAY_SERVICE_TOKEN = Symbol('IOrderLifecycleRelayService');
 // Per-order reporting-currency stamp (#2125, ADR-040).
