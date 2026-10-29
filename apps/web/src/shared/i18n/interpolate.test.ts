@@ -14,6 +14,7 @@ describe('interpolate', () => {
   });
 
   it('should leave a placeholder without a value as written', () => {
-    expect(interpolate('Hello {name}', {})).toBe('Hello {name}');
+    const template: string = 'Hello {name}';
+    expect(interpolate(template, {})).toBe('Hello {name}');
   });
 });

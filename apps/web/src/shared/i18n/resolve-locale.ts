@@ -3,7 +3,8 @@
  *
  * Decides which language the app opens in (ADR-079 decision 3): a `?lang=`
  * override (saved), then the operator's stored choice, then the deployment
- * default `VITE_DEFAULT_UI_LOCALE`, then Polish. The browser language is
+ * default `VITE_DEFAULT_UI_LOCALE`, then `FALLBACK_LOCALE` (the same value an
+ * unset variable gives). The browser language is
  * deliberately not consulted. Storage access is guarded because private
  * windows and blocked site data make it throw.
  *
@@ -60,6 +61,18 @@ export function resolveLocale({
   );
 }
 
+// Saved once, then dropped: left in the URL it would re-apply on every reload
+// and overwrite a language the operator picked since.
+function stripQueryLocale(): void {
+  try {
+    const url = new URL(window.location.href);
+    url.searchParams.delete(LOCALE_QUERY_PARAM);
+    window.history.replaceState(window.history.state, '', url.pathname + url.search + url.hash);
+  } catch {
+    // History unavailable: the parameter simply stays.
+  }
+}
+
 /**
  * Resolve from the live browser state and persist a `?lang=` override so it
  * survives navigating away from the link that carried it.
@@ -69,6 +82,7 @@ export function resolveInitialLocale(deploymentDefault: string | undefined): Sup
   const fromQuery = readQueryLocale(search);
   if (fromQuery) {
     storeLocale(fromQuery);
+    stripQueryLocale();
     return fromQuery;
   }
   return resolveLocale({ search: '', stored: readStoredLocale(), deploymentDefault });

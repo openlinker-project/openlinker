@@ -636,7 +636,7 @@ An object whose keys are exactly `one` and `other` is read as a plural, so never
 | `useCopy(featureCopy)` | the copy object for the active language, English fallback per key | every component that renders text |
 | `usePlural()` | `plural(n, forms)` on `Intl.PluralRules` | counts |
 | `useFormat()` | `number`, `percent`, `money`, `date`, `time`, `dateTime`, `relativeTime`, `duration`, `list`, `country` | every number, amount and date shown to an operator |
-| `renderRich(text, parts)` | React nodes | a link or bold word inside a translated sentence |
+| `renderRich(text, parts, params?)` | React nodes | a link or bold word inside a translated sentence; pass `{name}` values as `params` so a tag inside server text stays text |
 | `getLocale()` | the active locale outside React | the API client's `Accept-Language` header |
 | `useActiveLocale()` / `getBcp47Locale()` | the active locale / its BCP-47 tag, without requiring a provider | read-only consumers such as shared primitives and formatters |
 | `fit(text, budget)` | the text, checked against a length budget | copy that must fit a fixed-width control; `check-copy-locales` reads the budgets |

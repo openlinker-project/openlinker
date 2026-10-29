@@ -29,4 +29,30 @@ describe('renderRich', () => {
     expect(screen.getByTestId('out')).toHaveTextContent('A x b');
     expect(screen.getByTestId('out').querySelector('script')).toBeNull();
   });
+
+  it('should not resolve a tag name that every object inherits', () => {
+    render(
+      <p data-testid="out">
+        {renderRich('a <constructor>b</constructor> <toString>c</toString>', {})}
+      </p>,
+    );
+    expect(screen.getByTestId('out')).toHaveTextContent('a b c');
+  });
+
+  it('should show a tag inside a param as text instead of markup', () => {
+    render(
+      <p data-testid="out">
+        {renderRich(
+          'Hello <b>{name}</b>',
+          { b: (chunk) => <strong>{chunk}</strong> },
+          { name: '<constructor>x</constructor><b>y</b>' },
+        )}
+      </p>,
+    );
+    expect(screen.getByTestId('out')).toHaveTextContent(
+      'Hello <constructor>x</constructor><b>y</b>',
+    );
+    expect(screen.getAllByText(/<b>y<\/b>/)).toHaveLength(1);
+    expect(screen.getByTestId('out').querySelectorAll('strong')).toHaveLength(1);
+  });
 });

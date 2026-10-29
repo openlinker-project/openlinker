@@ -60,21 +60,29 @@ export function LocaleProvider({
   catalog = EMPTY_CATALOG,
   children,
 }: LocaleProviderProps): ReactElement {
-  const [locale, setLocaleState] = useState<SupportedLocale>(() => initialLocale(pinned));
+  const [locale, setLocaleState] = useState<SupportedLocale>(() => {
+    const first = initialLocale(pinned);
+    // Written where the language is decided, not on every render: a render
+    // React discards must not leave the global on a language nothing showed.
+    // Only the root provider may be unpinned; with nested providers the last
+    // one to decide wins.
+    setActiveLocale(first);
+    return first;
+  });
   const [lastPinned, setLastPinned] = useState(pinned);
 
   // A new pinned value replaces the state during render, so the old language
   // never commits (React's "adjust state when a prop changes" pattern).
   if (pinned !== lastPinned) {
     setLastPinned(pinned);
-    if (pinned !== undefined) setLocaleState(initialLocale(pinned));
+    if (pinned !== undefined) {
+      const next = initialLocale(pinned);
+      setActiveLocale(next);
+      setLocaleState(next);
+    }
   }
 
   const isPinned = pinned !== undefined;
-
-  // Set during render, not in an effect: children's effects run before this
-  // provider's, and a child's first request must already carry the language.
-  setActiveLocale(locale);
 
   useEffect(() => {
     document.documentElement.lang = getBcp47Locale(locale);
@@ -83,6 +91,7 @@ export function LocaleProvider({
   const setLocale = useCallback(
     (next: SupportedLocale) => {
       if (!isPinned) storeLocale(next);
+      setActiveLocale(next);
       setLocaleState(next);
     },
     [isPinned],

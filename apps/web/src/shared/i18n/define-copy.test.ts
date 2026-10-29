@@ -27,7 +27,13 @@ const ordersCopy = defineCopy({
   },
 });
 
+const blankCopy = defineCopy({ en: { title: 'Orders' }, pl: { title: '' } });
+
 describe('resolveCopy', () => {
+  it('should fall back to English when the Polish string is empty', () => {
+    expect(resolveCopy(blankCopy, 'pl').title).toBe('Orders');
+  });
+
   it('should return English unchanged when the locale is en', () => {
     expect(resolveCopy(ordersCopy, 'en').title).toBe('Orders');
   });

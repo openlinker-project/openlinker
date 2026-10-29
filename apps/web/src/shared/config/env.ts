@@ -4,7 +4,8 @@ const envSchema = z.object({
   VITE_API_BASE_URL: z.url(),
   VITE_APP_ENV: z.string().min(1),
   // Not validated against the supported list here: an unsupported value must
-  // fall back to Polish (ADR-079), not fail the whole app at boot.
+  // fall back to the same default as an unset one (ADR-079), not fail the
+  // whole app at boot.
   VITE_DEFAULT_UI_LOCALE: z.string(),
 });
 
