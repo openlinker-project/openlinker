@@ -31174,6 +31174,49 @@ legend.analytics-settings-dialog__label {
   color: var(--text-muted);
 }
 
+/* An honest "not finished yet" on a language whose translation still falls
+ * back to English in places. In the info hue rather than the accent, so it
+ * never reads as the selection. */
+.language-switch__beta {
+  position: relative;
+  justify-self: end;
+  cursor: help;
+  padding: 2px 7px;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--status-info-border);
+  background: var(--status-info-soft);
+  color: var(--status-info);
+  font-size: 10.5px;
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+/* Hover popover for the Beta badge: the language list's surface and motion,
+ * scaled down, centred over the row (Motion adds the -50% translate). Wide
+ * enough for the Polish sentence to fit on two lines. */
+.language-switch__option > .language-switch__hint {
+  position: absolute;
+  z-index: 3;
+  left: 50%;
+  bottom: calc(100% + 6px);
+  /* The widest it may get; `shrinkToText` then narrows it to the text. */
+  width: 212px;
+  padding: 9px 12px;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg);
+  background: var(--bg-surface);
+  box-shadow: var(--shadow-md);
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 1.45;
+  white-space: normal;
+  text-align: center;
+  text-wrap: balance;
+  transform-origin: 50% 100%;
+  pointer-events: none;
+}
+
 
 /* Long labels truncate with the full text on hover instead of breaking the
    240 px sidebar once Polish copy is longer than English. */
