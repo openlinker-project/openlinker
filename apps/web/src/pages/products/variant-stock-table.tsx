@@ -22,6 +22,7 @@ import type { OfferMapping } from '../../features/listings/api/listings.types';
 import type { ProductVariant, TaxRateUnknownReason } from '../../features/products/api/products.types';
 import type { InventoryItem } from '../../features/inventory/api/inventory.types';
 import { formatTaxRate } from '../../shared/format/format-tax-rate';
+import { VariantCostCell, VariantCostSection } from './variant-cost';
 import { TimeDisplay } from '../../shared/ui/time-display';
 import { StatusBadge, type StatusBadgeTone } from '../../shared/ui/status-badge';
 import { useMediaQuery } from '../../shared/ui/use-media-query';
@@ -104,6 +105,7 @@ export function VariantStockTable(props: VariantStockTableProps): ReactElement {
             <th>Tax rate</th>
             <th>Stock</th>
             <th>Listings</th>
+            <th>Cost (net)</th>
             <th className="data-table__cell--right">Price</th>
           </tr>
         </thead>
@@ -508,9 +510,11 @@ function VariantDetailBody({
   open,
   taxRate,
   sourceName,
+  currency,
 }: {
   variant: ProductVariant;
   sourceName?: string | null;
+  currency?: string | null;
   available: number;
   reserved: number;
   connections: readonly Connection[];
@@ -532,6 +536,8 @@ function VariantDetailBody({
       ) : null}
 
       <VariantPhotosSection variant={variant} sourceName={sourceName} />
+
+      <VariantCostSection variant={variant} productCurrency={currency ?? null} sourceName={sourceName} />
 
       <VariantMetaGrid
         variant={variant}
@@ -580,9 +586,11 @@ export function VariantDetailPanel({
   connections,
   onListingsCount,
   sourceName,
+  currency,
 }: {
   variant: ProductVariant;
   sourceName?: string | null;
+  currency?: string | null;
   stock: InventoryItem | undefined;
   productTaxRate: string | null;
   productTaxRateUnknownReason?: TaxRateUnknownReason | null;
@@ -592,6 +600,8 @@ export function VariantDetailPanel({
   const { listings, total, isLoading, isError } = useVariantListings(variant, onListingsCount);
   return (
     <div className="variant-drawer variant-drawer--flush">
+      <div className="variant-drawer__label">Cost (net)</div>
+      <VariantCostCell variant={variant} />
       <VariantDetailBody
         variant={variant}
         available={stock?.availableQuantity ?? 0}
@@ -603,6 +613,7 @@ export function VariantDetailPanel({
         isError={isError}
         open
         sourceName={sourceName}
+        currency={currency ?? null}
         taxRate={{
           productTaxRate,
           productTaxRateUnknownReason: productTaxRateUnknownReason ?? null,
@@ -790,12 +801,15 @@ function VariantStockRow({
             onCreateOffers={onCreateOffers}
           />
         </td>
+        <td>
+          <VariantCostCell variant={variant} />
+        </td>
         <td className="data-table__cell--right variant-stock-table__price">
           {formatPrice(variant.price, currency)}
         </td>
       </tr>
       <tr className={`variant-stock-table__expand-row${isOpen ? ' is-open' : ''}`}>
-        <td colSpan={6}>
+        <td colSpan={8}>
           <div className="variant-stock-table__expand-content">
             <div className="variant-stock-table__expand-content-inner">
               <div className="variant-drawer">
@@ -810,6 +824,7 @@ function VariantStockRow({
                   isError={isError}
                   open={isOpen}
                   sourceName={sourceName}
+                  currency={currency}
                 />
               </div>
             </div>
@@ -889,6 +904,12 @@ function VariantStockCard({
               <span className="variant-card__cell-label">Price</span>
               <span className="variant-card__cell-value">{formatPrice(variant.price, currency)}</span>
             </span>
+            <span className="variant-card__cell">
+              <span className="variant-card__cell-label">Cost (net)</span>
+              <span className="variant-card__cell-value">
+                <VariantCostCell variant={variant} />
+              </span>
+            </span>
             <span className="variant-card__cell variant-card__cell--full">
               <span className="variant-card__cell-label">Listings</span>
               <VariantCoverage
@@ -912,6 +933,7 @@ function VariantStockCard({
               open={isOpen}
               taxRate={taxRate}
               sourceName={sourceName}
+              currency={currency}
             />
           </div>
         </div>
