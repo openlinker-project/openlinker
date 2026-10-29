@@ -28,12 +28,14 @@ import {
   AnalyticsSettingsDialog,
   AnalyticsTrustHeader,
   ChannelSalesTable,
+  MarginPanel,
   ProductSalesTable,
   computePresetRange,
   toExclusiveEndInstant,
   useAnalyticsCoverageQuery,
   useAnalyticsSettingsQuery,
   useAnalyticsTrustQuery,
+  useMarginPanelVisible,
   useSalesAnalyticsQuery,
   type CoverageCategory,
   type DisplayCurrencyRateBasis,
@@ -184,6 +186,10 @@ export function AnalyticsPage(): ReactElement {
   // `CoverageDetailDialog` implementation.
   const coverageQuery = useAnalyticsCoverageQuery(coverageFilters);
   const [openCoverageCategory, setOpenCoverageCategory] = useState<CoverageCategory | null>(null);
+  // Bumped by the Data Coverage "no cost" row: its drill-down is the Margin
+  // panel's own coverage note, so the panel opens and scrolls to it.
+  const [marginCoverageReveal, setMarginCoverageReveal] = useState(0);
+  const marginVisible = useMarginPanelVisible();
 
   return (
     <PageLayout
@@ -305,6 +311,14 @@ export function AnalyticsPage(): ReactElement {
                     onOpenCategory={setOpenCoverageCategory}
                     netGrossBasis={netGrossBasis}
                   />
+                  {marginVisible ? (
+                    <MarginPanel
+                      filters={{ from, to }}
+                      pageBasis={netGrossBasis}
+                      displayCurrency={displayCurrency}
+                      coverageRevealRequest={marginCoverageReveal}
+                    />
+                  ) : null}
                 </>
               )}
             </>
@@ -331,6 +345,7 @@ export function AnalyticsPage(): ReactElement {
               onOpenSettings={() => setSettingsDialogOpen(true)}
               openCategory={openCoverageCategory}
               onOpenCategoryChange={setOpenCoverageCategory}
+              onOpenMarginCoverage={() => setMarginCoverageReveal((n) => n + 1)}
             />
           </div>
         </>
