@@ -5,7 +5,7 @@ import { EnvironmentBadge, getEnvironmentMeta } from './environment-badge';
 describe('getEnvironmentMeta', () => {
   it('normalizes common environment labels', () => {
     expect(getEnvironmentMeta('development')).toEqual({
-      label: 'Development',
+      label: 'Dev',
       shortLabel: 'Dev',
       tone: 'info',
     });
