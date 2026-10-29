@@ -148,6 +148,21 @@ describe('OrderBuyerNote (#3539)', () => {
     }
   });
 
+  it('should count characters the way a person sees them when the note has emoji (N-2)', async () => {
+    const restore = mockClampOverflow('order-buyer-note-text');
+    try {
+      const note = `${'Dziękuję 😀 🇵🇱 👨‍👩‍👧‍👦\n'.repeat(8)}Anna`;
+      renderNote({ hasBuyerNote: true, buyerNote: note });
+
+      // 8 x ("Dziękuję " 9 + emoji + " " + flag + " " + family + newline) = 8 x 15, plus "Anna".
+      expect(
+        await screen.findByRole('button', { name: 'Show the whole note (124 characters)' }),
+      ).toBeInTheDocument();
+    } finally {
+      restore();
+    }
+  });
+
   it('should offer no expand control when the text fits the clamp, however long its source', () => {
     // No overflow mocked: layout reports nothing hidden.
     renderNote({ hasBuyerNote: true, buyerNote: LONG_NOTE });

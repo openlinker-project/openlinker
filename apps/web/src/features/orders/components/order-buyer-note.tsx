@@ -22,6 +22,7 @@
 import { useEffect, useRef, useState, type ReactElement } from 'react';
 
 import { useClampOverflow } from '../../../shared/hooks/use-clamp-overflow';
+import { countCharacters } from '../../../shared/lib/count-characters';
 
 import { useSession } from '../../../shared/auth/use-session';
 import { useWriteAccess } from '../../../shared/auth/use-permission';
@@ -229,7 +230,7 @@ export function OrderBuyerNote({
               setExpanded((value) => !value);
             }}
           >
-            {expanded ? COPY.showLess : COPY.showAll(view.text.length)}
+            {expanded ? COPY.showLess : COPY.showAll(countCharacters(view.text))}
           </Button>
         ) : null}
         {unread ? (
