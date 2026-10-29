@@ -104,7 +104,7 @@ describe('Analytics CSV export (integration, #3589)', () => {
     const dataRows = lines.slice(headerIndex + 1);
     expect(dataRows).toHaveLength(json.channels.length + 1);
     for (const channel of json.channels) {
-      const row = dataRows.find((l) => l.startsWith(`${channel.sourceConnectionId},`));
+      const row = dataRows.find((l) => l.endsWith(`,${channel.sourceConnectionId}`));
       expect(row).toBeDefined();
       const cells = (row as string).split(',');
       expect(Number(cells[2])).toBeCloseTo(channel.revenue, 2);

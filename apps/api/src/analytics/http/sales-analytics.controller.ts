@@ -81,6 +81,11 @@ import {
 } from './dto/sales-analytics-response.dto';
 import { Roles } from '../../auth/decorators/roles.decorator';
 import { assertExportRange, csvDownload, exportFilename } from './export-range';
+import { loadConnectionLabels } from './connection-labels';
+import {
+  CONNECTION_SERVICE_TOKEN,
+  type IConnectionService,
+} from '../../integrations/application/interfaces/connection.service.interface';
 import { buildSalesByChannelCsv, reportingCurrencyOf } from './sales-analytics-csv';
 
 /** Shared shape of a headline/channel row's currency-bucket fields — the input to `buildDisplayCurrencyConversion`. */
@@ -113,7 +118,9 @@ export class SalesAnalyticsController {
     @Inject(DISPLAY_CURRENCY_CONVERSION_SERVICE_TOKEN)
     private readonly displayCurrencyConversionService: IDisplayCurrencyConversionService,
     @Inject(ANALYTICS_DISPLAY_SETTINGS_SERVICE_TOKEN)
-    private readonly displaySettings: IAnalyticsDisplaySettingsService
+    private readonly displaySettings: IAnalyticsDisplaySettingsService,
+    @Inject(CONNECTION_SERVICE_TOKEN)
+    private readonly connections: IConnectionService
   ) {}
 
   async getSalesAnalytics(
@@ -171,6 +178,7 @@ export class SalesAnalyticsController {
           from,
           to,
           basis,
+          labels: await loadConnectionLabels(this.connections),
           displayCurrencyRequested: query.displayCurrency,
         }),
         exportFilename({

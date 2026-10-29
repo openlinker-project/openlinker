@@ -16,6 +16,7 @@ import { TopProductsController } from './top-products.controller';
 import { SalesAnalyticsQueryDto } from './dto/sales-analytics-query.dto';
 import { TopProductsQueryDto } from './dto/top-products-query.dto';
 import type { TopProductRowDto, TopProductsResponseDto } from './dto/top-products-response.dto';
+import type { IConnectionService } from '../../integrations/application/interfaces/connection.service.interface';
 import type { ITopProductsService } from '../application/services/top-products.service.interface';
 
 async function readStream(file: StreamableFile): Promise<string> {
@@ -57,6 +58,12 @@ const analytics = {
   channels: [channel('conn-a', 1000, 800, 0.6), channel('conn-b', 500, 400, 0.4)],
 } as unknown as SalesAndChannelAnalytics;
 
+const connections = {
+  list: jest.fn().mockResolvedValue([
+    { id: 'conn-a', platformType: 'allegro', name: 'Sklep Górski' },
+  ]),
+} as unknown as IConnectionService;
+
 const FROM = '2026-08-01T00:00:00.000Z';
 
 describe('SalesAnalyticsController CSV export', () => {
@@ -76,7 +83,8 @@ describe('SalesAnalyticsController CSV export', () => {
       controller: new SalesAnalyticsController(
         service as unknown as IOrderRecordService,
         {} as IDisplayCurrencyConversionService,
-        settings as unknown as IAnalyticsDisplaySettingsService
+        settings as unknown as IAnalyticsDisplaySettingsService,
+        connections
       ),
     };
   };
@@ -94,9 +102,10 @@ describe('SalesAnalyticsController CSV export', () => {
     expect(lines[0].startsWith('﻿# report: ')).toBe(true);
     expect(lines.some((l) => l === '# vat basis: gross (VAT-inclusive)')).toBe(true);
     expect(lines.some((l) => l.startsWith('# currency: PLN'))).toBe(true);
-    expect(lines).toContain('channel,connection_id,gmv,orders,aov,units,share_pct');
-    expect(lines).toContain('conn-a,conn-a,1000.00,10,100.00,21,60.0');
-    expect(lines).toContain('Total,,1500.00,20,75.00,42,100.0');
+    expect(lines).toContain('channel,connection,gmv,orders,aov,units,share_pct,connection_id');
+    expect(lines).toContain('Allegro,Sklep Górski,1000.00,10,100.00,21,60.0,conn-a');
+    expect(lines).toContain('Unknown,conn-b,500.00,10,50.00,21,40.0,conn-b');
+    expect(lines).toContain('Total,,1500.00,20,75.00,42,100.0,');
   });
 
   it('should write net figures and say so when basis=net', async () => {
@@ -191,7 +200,8 @@ describe('TopProductsController CSV export', () => {
       service,
       controller: new TopProductsController(
         service,
-        settings as unknown as IAnalyticsDisplaySettingsService
+        settings as unknown as IAnalyticsDisplaySettingsService,
+        connections
       ),
     };
   };
@@ -224,7 +234,7 @@ describe('TopProductsController CSV export', () => {
     const lines = text.split('\r\n');
     expect(lines.filter((l) => l.startsWith('Product') || l.startsWith("'=cmd"))).toHaveLength(501);
     expect(text).toContain("'=cmd");
-    expect(lines).toContain('product,product_id,sku,gmv,currency,units,units_conn-a');
+    expect(lines).toContain('product,product_id,sku,gmv,currency,units,units_Sklep Górski (Allegro)');
     expect(result.getHeaders().disposition).toContain('openlinker_top-products_');
   });
 

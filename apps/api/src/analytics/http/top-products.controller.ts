@@ -44,6 +44,11 @@ import {
 } from '../application/services/top-products.service.interface';
 import { Roles } from '../../auth/decorators/roles.decorator';
 import { assertExportRange, csvDownload, exportFilename } from './export-range';
+import { loadConnectionLabels } from './connection-labels';
+import {
+  CONNECTION_SERVICE_TOKEN,
+  type IConnectionService,
+} from '../../integrations/application/interfaces/connection.service.interface';
 import { buildTopProductsCsv, readAllTopProducts } from './top-products-csv';
 
 @ApiBearerAuth()
@@ -54,7 +59,9 @@ export class TopProductsController {
     @Inject(TOP_PRODUCTS_SERVICE_TOKEN)
     private readonly topProductsService: ITopProductsService,
     @Inject(ANALYTICS_DISPLAY_SETTINGS_SERVICE_TOKEN)
-    private readonly displaySettings: IAnalyticsDisplaySettingsService
+    private readonly displaySettings: IAnalyticsDisplaySettingsService,
+    @Inject(CONNECTION_SERVICE_TOKEN)
+    private readonly connections: IConnectionService
   ) {}
 
   async getTopProducts(
@@ -106,7 +113,13 @@ export class TopProductsController {
         }
       );
       const basis = query.basis ?? netGrossBasis ?? 'gross';
-      const { stream, currency } = buildTopProductsCsv({ rows, from, to, basis });
+      const { stream, currency } = buildTopProductsCsv({
+        rows,
+        from,
+        to,
+        basis,
+        labels: await loadConnectionLabels(this.connections),
+      });
       return csvDownload(
         stream,
         exportFilename({ report: 'top-products', from, to, currency, basis })
