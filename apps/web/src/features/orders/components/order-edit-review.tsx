@@ -25,6 +25,7 @@ import type { ReactElement } from 'react';
 
 import { Alert } from '../../../shared/ui/alert';
 import { StatusBadge } from '../../../shared/ui/status-badge';
+import { describeCombinedDiscount } from '../lib/combined-discount';
 import { formatAmount } from '../../../shared/format/format-amount';
 import type {
   OrderDiscountResult,
@@ -102,6 +103,11 @@ export function OrderEditReview({
     (linesOutput ? totalsOf(linesOutput) : null) ??
     (discountOutput ? totalsOf(discountOutput) : null);
 
+  const combinedDiscountText =
+    shownTotals && discountOutput?.discount
+      ? describeCombinedDiscount(shownTotals, Number(discountOutput.discount.amount), channelName)
+      : null;
+
   return (
     <div className="order-edit-review" data-testid="order-edit-review">
       <div className="dialog-section">
@@ -175,6 +181,12 @@ export function OrderEditReview({
                         ? `−${formatDecimalAmount(discountOutput.discount.amount, discountOutput.discount.currency)}`
                         : 'removed'}
                     </ins>
+                    {combinedDiscountText ? (
+                      <span className="text-muted" data-testid="order-edit-combined-discount">
+                        {' '}
+                        {combinedDiscountText}
+                      </span>
+                    ) : null}
                   </td>
                 </tr>
               ) : null}

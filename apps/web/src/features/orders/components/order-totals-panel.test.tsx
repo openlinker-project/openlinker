@@ -26,6 +26,13 @@ describe('OrderTotalsPanel', () => {
     expect(totalRow).toHaveClass('order-totals__row--total');
   });
 
+  it('shows the channel discount row only when the channel reported one (E-44)', () => {
+    const { rerender } = render(<OrderTotalsPanel totals={{ ...fullTotals, discountTotal: 5 }} />);
+    expect(screen.getByTestId('order-totals-discount')).toBeInTheDocument();
+    rerender(<OrderTotalsPanel totals={fullTotals} />);
+    expect(screen.queryByTestId('order-totals-discount')).toBeNull();
+  });
+
   it('omits shipping and tax rows when their value is zero', () => {
     render(
       <OrderTotalsPanel
