@@ -213,7 +213,7 @@ describe('OrderEditedNotice (#3544)', () => {
     await user.click(await screen.findByTestId('order-edit-refund-confirm'));
 
     const ceiling = await screen.findByTestId('order-edit-refund-ceiling');
-    expect(ceiling).toHaveTextContent('only 10.00 PLN can still be refunded (339.00 PLN already refunded)');
+    expect(ceiling).toHaveTextContent('only 10.00 PLN can still be refunded on this order (339.00 PLN already refunded)');
     expect(screen.getByTestId('order-edit-refund-confirm')).toBeDisabled();
 
     await user.click(screen.getByTestId('order-edit-refund-ack'));
