@@ -512,8 +512,14 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
 
     if (filters.hasBuyerNote !== undefined) {
       // #3538 - denormalized boolean, indexed, so the list total never expands
-      // the snapshot JSONB.
-      qb.andWhere(filters.hasBuyerNote ? 'rec."hasBuyerNote" = true' : 'rec."hasBuyerNote" = false');
+      // the snapshot JSONB. `true` also requires `recordStatus = 'ready'` (N-20):
+      // an order that went back to `awaiting_mapping` keeps the flag but is not
+      // one an operator can work on. `false` is deliberately unchanged.
+      qb.andWhere(
+        filters.hasBuyerNote
+          ? `rec."hasBuyerNote" = true AND rec."recordStatus" = 'ready'`
+          : 'rec."hasBuyerNote" = false'
+      );
     }
 
     if (filters.search !== undefined) {

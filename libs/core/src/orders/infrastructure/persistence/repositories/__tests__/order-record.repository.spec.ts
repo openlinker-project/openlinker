@@ -1922,6 +1922,28 @@ describe('OrderRecordRepository', () => {
       }
     );
 
+    it('should require recordStatus ready for hasBuyerNote=true and leave false unchanged (N-20)', () => {
+      const build = (hasBuyerNote: boolean): jest.Mock => {
+        const andWhere = jest.fn().mockReturnThis();
+        (ormRepository.createQueryBuilder as jest.Mock).mockReturnValue({
+          andWhere,
+          orderBy: jest.fn().mockReturnThis(),
+          addOrderBy: jest.fn().mockReturnThis(),
+          leftJoin: jest.fn().mockReturnThis(),
+          setParameter: jest.fn().mockReturnThis(),
+        });
+        (
+          repository as unknown as { buildFilteredQuery: (f: unknown) => unknown }
+        ).buildFilteredQuery({ hasBuyerNote });
+        return andWhere;
+      };
+
+      expect(build(true)).toHaveBeenCalledWith(
+        `rec."hasBuyerNote" = true AND rec."recordStatus" = 'ready'`
+      );
+      expect(build(false)).toHaveBeenCalledWith('rec."hasBuyerNote" = false');
+    });
+
     it('should keep a stored note when the incoming note is unknown (B-5)', () => {
       const { sql } = (repository as unknown as Builder).buildFrozenAttributionUpsert(
         createOrmEntity(),
