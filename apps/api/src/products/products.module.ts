@@ -12,6 +12,7 @@ import { IdentifierMappingModule } from '@openlinker/core/identifier-mapping';
 import { InventoryModule as CoreInventoryModule } from '@openlinker/core/inventory';
 import { ListingsModule } from '@openlinker/core/listings/services';
 import { ProductImageProxyService } from './application/services/product-image-proxy.service';
+import { ProductCostController } from './http/product-cost.controller';
 import { ProductsController, VariantsController } from './http/products.controller';
 
 @Module({
@@ -20,7 +21,9 @@ import { ProductsController, VariantsController } from './http/products.controll
   // interface layer - core ProductsModule stays free of sibling imports to
   // avoid Nest module cycles (inventory/listings already import products).
   imports: [CoreProductsModule, IdentifierMappingModule, CoreInventoryModule, ListingsModule],
-  controllers: [ProductsController, VariantsController],
+  // ProductCostController FIRST: its literal `variants/cost` and
+  // `:productId/variant-costs` routes must win over `variants/:variantId` / `:id`.
+  controllers: [ProductCostController, ProductsController, VariantsController],
   // #3340 follow-up — serves a product's picture from the shop, because the
   // url the catalogue sync stored is one only the backend can reach. See the
   // service's docblock.

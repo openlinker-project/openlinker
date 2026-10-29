@@ -27,6 +27,8 @@ export { ProductVariant } from './domain/entities/product-variant.entity';
 
 // Domain Exceptions
 export { MasterProductNotFoundError } from './domain/exceptions/master-product-not-found.error';
+export { ProductVariantNotFoundError } from './domain/exceptions/product-variant-not-found.error';
+export { InvalidVariantCostError } from './domain/exceptions/invalid-variant-cost.error';
 
 // Master-deletion event contract (#1599)
 export {
@@ -68,6 +70,8 @@ export {
   ProductUpdate,
   ProductVariantCreate,
   VariantPhysicalDimensionsFill,
+  VariantCost,
+  VariantCostFillResult,
   ProductListFilters,
   ProductVariantListFilters,
   ProductPagination,

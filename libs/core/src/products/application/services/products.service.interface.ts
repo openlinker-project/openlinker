@@ -17,6 +17,8 @@ import type {
   PaginatedProducts,
   PaginatedProductVariants,
   VariantPhysicalDimensionsFill,
+  VariantCost,
+  VariantCostFillResult,
 } from '../../domain/types/product.types';
 import type { StoredTaxRate } from '../../domain/types/tax-rate.types';
 import type {
@@ -59,6 +61,29 @@ export interface IProductsService {
   fillVariantsPhysicalDimensionsIfAbsent(
     fills: readonly VariantPhysicalDimensionsFill[]
   ): Promise<number>;
+
+  /**
+   * Record or clear (`null`) a variant's operator-authored net unit cost
+   * (#3588, D27). The pair (amount, currency) is validated here as well as at
+   * HTTP. Throws `ProductVariantNotFoundError` for an unknown id and
+   * `InvalidVariantCostError` for a malformed pair.
+   */
+  recordVariantCost(
+    variantId: string,
+    cost: VariantCost | null,
+    actorUserId: string
+  ): Promise<void>;
+
+  /**
+   * Bulk fill-when-NULL of one cost across many variants (#3588): never
+   * overwrites an existing cost.
+   */
+  fillVariantCostsIfAbsent(
+    variantIds: readonly string[],
+    netUnitCost: string,
+    currency: string,
+    actorUserId: string
+  ): Promise<VariantCostFillResult>;
 
   /**
    * Record what a ProductMaster said about a product's tax rate (#2054).
