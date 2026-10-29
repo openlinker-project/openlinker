@@ -16,7 +16,7 @@
  * @module apps/web/src/features/automation/api
  */
 
-/** The eight v1 triggers, in the backend's own declaration order. */
+/** The triggers, in the backend's own declaration order. */
 export const AUTOMATION_TRIGGER_VALUES = [
   'order.hold.placed',
   'order.hold.released',
@@ -26,6 +26,9 @@ export const AUTOMATION_TRIGGER_VALUES = [
   'return.received',
   'return.disposed',
   'inventory.reservation_shortfall',
+  'order.received',
+  'order.shipped',
+  'order.document_issued',
 ] as const;
 export type AutomationTrigger = (typeof AUTOMATION_TRIGGER_VALUES)[number];
 

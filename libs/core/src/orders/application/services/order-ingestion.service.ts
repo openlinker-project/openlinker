@@ -614,6 +614,14 @@ export class OrderIngestionService implements IOrderIngestionService {
       incoming.externalUrl ?? null
     );
 
+    // #3554 / D8: T9 `order.received`, once - only when the pre-persist read
+    // found no record, so a re-poll, a webhook replay or a status update
+    // re-ingesting the same order fires nothing. The ingestion lock (#906)
+    // serialises two first ingestions. Best-effort inside the service.
+    if (!existing) {
+      await this.orderRecordService.notifyOrderReceived(persisted, new Date());
+    }
+
     // The order's ADR-012 fulfilment routing, resolved at most once and only if
     // asked for: the reservation's `atpEffect` (#2344) and the #3488 routing
     // skip both read it, and a second resolve could answer differently if a rule

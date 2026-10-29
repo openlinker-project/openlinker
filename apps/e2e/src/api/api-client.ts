@@ -16,6 +16,9 @@
 import { ApiError } from './api-error';
 import type {
   SourceFulfillmentView,
+  AutomationRuleView,
+  AutomationRuleWriteInput,
+  BuyerEmailDeliveryView,
   AnalyticsCoverageView,
   AnalyticsRangeQuery,
   AnalyticsRemediationRun,
@@ -461,6 +464,25 @@ export class ApiClient {
      */
     listWork: (): Promise<{ works: unknown[] }> =>
       this.request<{ works: unknown[] }>('/bench/work'),
+  };
+
+  // ── Automations + buyer emails (#3554) ──────────────────────────────────
+  automations = {
+    /** `GET /automations/:id` — one rule, its full definition included. */
+    getById: (ruleId: string): Promise<AutomationRuleView> =>
+      this.request<AutomationRuleView>(`/automations/${ruleId}`),
+    /** `PUT /automations/:id` — a full replace; used to arm or disarm a rule. */
+    replace: (ruleId: string, body: AutomationRuleWriteInput): Promise<AutomationRuleView> =>
+      this.request<AutomationRuleView>(`/automations/${ruleId}`, {
+        method: 'PUT',
+        body: JSON.stringify(body),
+      }),
+  };
+
+  buyerEmails = {
+    /** `GET /orders/:id/buyer-emails` — the order's automatic buyer emails, newest first. */
+    forOrder: (internalOrderId: string): Promise<BuyerEmailDeliveryView[]> =>
+      this.request<BuyerEmailDeliveryView[]>(`/orders/${internalOrderId}/buyer-emails`),
   };
 
   // ── AI provider settings (admin only) ─────────────────────────────────────

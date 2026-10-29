@@ -116,6 +116,34 @@ export const AUTOMATION_LEGAL_ACTIONS = {
     'place-hold': true,
     'release-hold': false,
   },
+  // D8 (#3517): a freshly received order may be held for review or announced.
+  // Nothing irreversible: routing and auto-issue already run at ingestion.
+  'order.received': {
+    'issue-sales-document': false,
+    'dispatch-shipment': false,
+    'relay-status-to-source': false,
+    'send-email': true,
+    'place-hold': true,
+    'release-hold': false,
+  },
+  // #3554: announcements only. The dispatch and the document already happened,
+  // and the dispatch relay to the source runs on its own path.
+  'order.shipped': {
+    'issue-sales-document': false,
+    'dispatch-shipment': false,
+    'relay-status-to-source': false,
+    'send-email': true,
+    'place-hold': false,
+    'release-hold': false,
+  },
+  'order.document_issued': {
+    'issue-sales-document': false,
+    'dispatch-shipment': false,
+    'relay-status-to-source': false,
+    'send-email': true,
+    'place-hold': false,
+    'release-hold': false,
+  },
 } as const satisfies Record<AutomationTrigger, Record<AutomationActionKind, boolean>>;
 
 /**
@@ -162,6 +190,9 @@ export const AUTOMATION_LEGAL_CONDITION_FIELDS = {
   'return.received': ['sourceConnection', 'orderCountry', 'orderTotalGross'],
   'return.disposed': ['sourceConnection', 'orderCountry', 'orderTotalGross'],
   'inventory.reservation_shortfall': ['sourceConnection', 'orderCountry', 'orderTotalGross'],
+  'order.received': ['sourceConnection', 'orderCountry', 'orderTotalGross'],
+  'order.shipped': ['sourceConnection', 'orderCountry', 'orderTotalGross'],
+  'order.document_issued': ['sourceConnection', 'orderCountry', 'orderTotalGross'],
 } as const satisfies Record<AutomationTrigger, readonly AutomationConditionField[]>;
 
 /** Whether this condition field may be used to scope a rule on this trigger. */

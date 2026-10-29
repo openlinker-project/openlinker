@@ -96,6 +96,8 @@ import {
   RETURNS_SERVICE_TOKEN,
 } from './returns.tokens';
 
+import { AutomationModule } from '@openlinker/core/automation';
+
 @Module({
   imports: [
     TypeOrmModule.forFeature([ReturnOrmEntity, ReturnLineOrmEntity, ReturnLineEventOrmEntity]),
@@ -128,6 +130,9 @@ import {
     // SalesDocumentsModule, none of which reaches this one. Read-only: nothing
     // on this path issues a document.
     InvoicingModule,
+    // #3554: `AUTOMATION_TRIGGER_EMISSION_SERVICE_TOKEN`, so a receipt fires T6
+    // `return.received`. Acyclic - `AutomationModule` imports no sibling module.
+    AutomationModule,
     // #3486 restock per owning master: with more than one InventoryMaster
     // connection, the owner of a line's stock is read from position provenance
     // through `IInventoryQueryService.resolveStockOwner`. The SIXTH outbound

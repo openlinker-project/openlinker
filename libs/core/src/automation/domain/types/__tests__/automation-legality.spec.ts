@@ -27,10 +27,14 @@ const SPEC_MATRIX: Record<string, readonly boolean[]> = {
   'return.received': [false, false, false, true, false, false],
   'return.disposed': [false, false, true, true, false, false],
   'inventory.reservation_shortfall': [false, false, false, true, true, false],
+  // #3554: T9 per D8 (#3517); T10/T11 announce only.
+  'order.received': [false, false, false, true, true, false],
+  'order.shipped': [false, false, false, true, false, false],
+  'order.document_issued': [false, false, false, true, false, false],
 };
 
 describe('automation legality matrix', () => {
-  it('should cover exactly the eight triggers and six actions (48 cells)', () => {
+  it('should cover exactly the eleven triggers and six actions (66 cells)', () => {
     expect(Object.keys(AUTOMATION_LEGAL_ACTIONS).sort()).toEqual([...AutomationTriggerValues].sort());
     let cells = 0;
     for (const trigger of AutomationTriggerValues) {
@@ -39,7 +43,7 @@ describe('automation legality matrix', () => {
       );
       cells += Object.keys(AUTOMATION_LEGAL_ACTIONS[trigger]).length;
     }
-    expect(cells).toBe(48);
+    expect(cells).toBe(66);
   });
 
   describe.each(AutomationTriggerValues)('trigger %s', (trigger) => {

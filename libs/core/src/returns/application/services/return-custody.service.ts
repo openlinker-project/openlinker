@@ -98,6 +98,10 @@ import type {
   RestockBlockedDetail,
   ReturnRestockTarget,
 } from './return-custody.service.interface';
+import {
+  AUTOMATION_TRIGGER_EMISSION_SERVICE_TOKEN,
+  IAutomationTriggerEmissionService,
+} from '@openlinker/core/automation';
 
 @Injectable()
 export class ReturnCustodyService implements IReturnCustodyService {
@@ -115,7 +119,11 @@ export class ReturnCustodyService implements IReturnCustodyService {
     @Inject(SYNC_LOCK_TOKEN)
     private readonly lock: SyncLockPort,
     @Inject(INVENTORY_QUERY_SERVICE_TOKEN)
-    private readonly inventory: IInventoryQueryService
+    private readonly inventory: IInventoryQueryService,
+    // #3554: fires T6 `return.received`. Required by the container (no
+    // `@Optional()`); optional in the type only so a hand-built spec needs none.
+    @Inject(AUTOMATION_TRIGGER_EMISSION_SERVICE_TOKEN)
+    private readonly automation?: IAutomationTriggerEmissionService
   ) {}
 
   async receiveLine(lineId: string, input: ReceiveLineInput): Promise<ReceiveLineResult> {
@@ -149,7 +157,39 @@ export class ReturnCustodyService implements IReturnCustodyService {
       };
     });
 
+    await this.emitReturnReceived(event.returnId, at);
     return { line: await this.requireLine(lineId), event };
+  }
+
+  /**
+   * Fire T6 `return.received` for one receipt act (#3554), best-effort like T5:
+   * the receipt has committed, so a failed emission is logged and never fails
+   * the operator's write. It fires per ARRIVAL by design (#2360), so a return
+   * delivered in three parcels fires three times; a consumer that must act once
+   * per return (the buyer email) dedupes on its own side. The facts carry only
+   * what `returns` knows: no order country or total, so those conditions read
+   * as unknown on a T6 rule.
+   */
+  private async emitReturnReceived(returnId: string, at: Date): Promise<void> {
+    if (!this.automation) return;
+    try {
+      const record = await this.returns.getReturn(returnId);
+      await this.automation.emit({
+        trigger: 'return.received',
+        facts: {
+          subjectKind: 'return',
+          subjectId: returnId,
+          occurredAt: at,
+          ...(record ? { sourceConnectionId: record.sourceConnectionId } : {}),
+        },
+        now: at,
+      });
+    } catch (error) {
+      this.logger.warn(
+        `Automation emission failed for return.received on ${returnId}: ` +
+          `${error instanceof Error ? error.message : String(error)}`
+      );
+    }
   }
 
   async markLineNotReturned(

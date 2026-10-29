@@ -70,7 +70,7 @@ import { MissingNumberingSeriesException } from '../../domain/exceptions/missing
 import { deriveCorrectionFallbackKey } from '../../domain/idempotency/correction-fallback-key';
 import { taxRatePercentToFraction } from '../../domain/types/tax-rate-notation.types';
 import { findMissingTaxRate } from '../../domain/types/order-tax-rate-gate.types';
-import { isTaxRateEnforced } from '@openlinker/core/sales-documents';
+import { isTaxRateEnforced, notifySalesDocumentIssued } from '@openlinker/core/sales-documents';
 import { MissingTaxRateException } from '../../domain/exceptions/missing-tax-rate.exception';
 import { CapabilityNotSupportedException } from '@openlinker/core/integrations';
 // One classification for the stored record and the HTTP answer (#3772).
@@ -836,7 +836,20 @@ export class InvoiceService implements IInvoiceService {
       warehouseReleaseNumber:
         warehouseRelease?.outcome === 'released' ? warehouseRelease.documentNumber : null,
     };
-    return this.repo.updateOutcome(recordId, patch);
+    const updated = await this.repo.updateOutcome(recordId, patch);
+    // #3554: an originating invoice was issued - `order.document_issued`. This
+    // path never issues a correction (that is `issueCorrectionWithAdapter`), and
+    // the #2047 guard means it issues at most one originating document per order.
+    await notifySalesDocumentIssued(
+      this.moduleRef,
+      {
+        internalOrderId: updated.orderId,
+        documentKind: 'invoice',
+        issuedAt: updated.issuedAt ?? new Date(),
+      },
+      this.logger
+    );
+    return updated;
   }
 
   /**

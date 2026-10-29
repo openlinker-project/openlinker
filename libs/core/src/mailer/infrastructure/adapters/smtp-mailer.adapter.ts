@@ -25,6 +25,7 @@ import type { EmailMessage, MailerPort } from '@openlinker/core/users';
 export interface SmtpTransport {
   sendMail(options: {
     from: string;
+    replyTo?: string;
     to: string;
     subject: string;
     text: string;
@@ -47,7 +48,8 @@ export class SmtpMailerAdapter implements MailerPort {
 
   async sendEmail(message: EmailMessage): Promise<void> {
     await this.transport.sendMail({
-      from: this.from,
+      from: message.from ?? this.from,
+      ...(message.replyTo ? { replyTo: message.replyTo } : {}),
       to: message.to,
       subject: message.subject,
       text: message.text,
