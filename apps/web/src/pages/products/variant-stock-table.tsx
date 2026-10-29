@@ -21,6 +21,7 @@ import { useCategoryPathQuery } from '../../features/listings/hooks/use-category
 import type { OfferMapping } from '../../features/listings/api/listings.types';
 import type { ProductVariant, TaxRateUnknownReason } from '../../features/products/api/products.types';
 import type { InventoryItem } from '../../features/inventory/api/inventory.types';
+import { formatAmount } from '../../shared/format/format-amount';
 import { formatTaxRate } from '../../shared/format/format-tax-rate';
 import { TimeDisplay } from '../../shared/ui/time-display';
 import { StatusBadge, type StatusBadgeTone } from '../../shared/ui/status-badge';
@@ -130,7 +131,7 @@ function formatPrice(price: number | null, currency: string | null): ReactNode {
     return <span className="text-muted">—</span>;
   }
   if (currency) {
-    return new Intl.NumberFormat(undefined, { style: 'currency', currency }).format(price);
+    return formatAmount(price, currency);
   }
   return (
     <span className="text-muted" title="Currency unknown">

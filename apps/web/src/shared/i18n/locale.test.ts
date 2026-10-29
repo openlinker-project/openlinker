@@ -3,7 +3,7 @@
  *
  * `getBcp47Locale` is the single source of truth consumers call when building
  * per-row `Intl.*` formatters with dynamic options (currency, date), instead of
- * mirroring the `'en' → 'en-US'` mapping inline.
+ * mirroring the `'en' → 'en-GB'` mapping inline.
  *
  * @module shared/i18n
  */
@@ -12,8 +12,8 @@ import { getBcp47Locale } from './locale';
 import { LocaleCodeValues } from './i18n.types';
 
 describe('getBcp47Locale', () => {
-  it("should map 'en' to BCP 47 'en-US'", () => {
-    expect(getBcp47Locale('en')).toBe('en-US');
+  it("should map 'en' to BCP 47 'en-GB'", () => {
+    expect(getBcp47Locale('en')).toBe('en-GB');
   });
 
   it("should map 'pl' to BCP 47 'pl-PL'", () => {

@@ -17,8 +17,8 @@ import { formatCopy } from './format.copy';
 
 export function formatRelativeTime(
   iso: string,
-  locale?: SupportedLocale,
   now: number = Date.now(),
+  locale?: SupportedLocale,
 ): string {
   const active = locale ?? getLocale();
   const copy = resolveCopy(formatCopy, active).relative;

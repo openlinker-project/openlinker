@@ -54,7 +54,7 @@ describe('ProductDetailFields', () => {
     expect(screen.getByText('ol_product_1')).toBeInTheDocument();
     expect(screen.getByText('prestashop · 42')).toBeInTheDocument();
     expect(screen.getByText('PLN')).toBeInTheDocument();
-    expect(screen.getByText(/Aug 31, 2026/)).toBeInTheDocument();
+    expect(screen.getByText(/31 Aug 2026/)).toBeInTheDocument();
   });
 
   it('falls back to placeholders for every field when product is not resolved yet', () => {

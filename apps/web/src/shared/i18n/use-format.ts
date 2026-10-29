@@ -42,7 +42,7 @@ export function useFormat(): Formatters {
       date: (iso) => formatAbsoluteDate(iso, locale),
       dateTime: (iso) => formatDateTime(iso, locale),
       time: (iso) => formatAbsoluteTime(iso, locale),
-      relativeTime: (iso) => formatRelativeTime(iso, locale),
+      relativeTime: (iso) => formatRelativeTime(iso, undefined, locale),
       duration: (ms) => formatDurationMs(ms, locale),
       list: (items, type = 'conjunction') => listFormat(tag, { type }).format(items),
       country: (code) => formatCountryName(code, locale),

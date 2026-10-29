@@ -1,22 +1,18 @@
 /**
  * useNumberFormat Hook
  *
- * Returns a memoised `Intl.NumberFormat` for the current locale. Replaces
- * the previously hardcoded `new Intl.NumberFormat('en-US')` in
- * `app-shell.tsx` so the formatter follows the locale seam rather than
- * being pinned to en-US (#612).
- *
- * Today the only locale is `'en'`, which maps to BCP 47 `'en-US'`. When
- * additional locales land, extend `getBcp47Locale` in `./locale` — or replace
- * it with a proper resolver — without changing the public hook surface.
+ * Compatibility shim: returns a shared `Intl.NumberFormat` for the active
+ * language. New code uses `useFormat().number`; this stays for its existing
+ * callers and routes through the same formatter cache, so an inline `options`
+ * object that changes identity every render does not rebuild a formatter.
  *
  * @module shared/i18n
  */
-import { useMemo } from 'react';
-import { useTranslation } from './use-translation';
+import { numberFormat } from './intl-cache';
 import { getBcp47Locale } from './locale';
+import { useTranslation } from './use-translation';
 
 export function useNumberFormat(options?: Intl.NumberFormatOptions): Intl.NumberFormat {
   const { locale } = useTranslation();
-  return useMemo(() => new Intl.NumberFormat(getBcp47Locale(locale), options), [locale, options]);
+  return numberFormat(getBcp47Locale(locale), options);
 }
