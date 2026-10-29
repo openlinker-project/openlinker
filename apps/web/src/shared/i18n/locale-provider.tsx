@@ -108,8 +108,11 @@ export function LocaleProvider({
   // A deterministic marker for the e2e overflow pass, which must tell "pseudo
   // is on" apart from "this screen has no migrated text yet".
   useEffect(() => {
-    if (pseudo) document.documentElement.dataset.pseudoLocale = 'true';
-    else delete document.documentElement.dataset.pseudoLocale;
+    if (!pseudo) return undefined;
+    document.documentElement.dataset.pseudoLocale = 'true';
+    return () => {
+      delete document.documentElement.dataset.pseudoLocale;
+    };
   }, [pseudo]);
 
   const setLocale = useCallback(

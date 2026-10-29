@@ -119,6 +119,7 @@ The helpers below live in `apps/web/src/shared/i18n/` from #3856 on.
 
 - Never write user-visible text inline in TSX, a toast, a validation message or a constant. Add it to the feature's `*.copy.ts` under **both** `en` and `pl` in the same edit.
 - Write the Polish yourself, using `docs/i18n-glossary.md`. Never copy English into `pl` as a placeholder.
+- A key in a tight spot (button, nav item, chip, table header) is written `fit(n, 'text')` with a character budget that `check-copy-locales` enforces in both languages.
 - Counts use `usePlural` (`one/few/many/other` for Polish); numbers, money and dates use `useFormat`.
 - Interpolate `{name}`; use `renderRich` for a link or bold word inside a sentence; one sentence per key.
 - Plain hyphen, never an em dash. Copy speaks to operators, never names classes, env vars or capabilities.
