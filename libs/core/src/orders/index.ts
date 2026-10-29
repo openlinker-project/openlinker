@@ -155,6 +155,17 @@ export {
 } from './domain/types/payment-method.types';
 export type { PaymentMethod } from './domain/types/payment-method.types';
 export {
+  decideBuyerEmail,
+  BuyerEmailSuppressionReasonValues,
+  BUYER_EMAIL_SUPPRESSION_MESSAGE,
+} from './domain/domain-services/buyer-email-gate.domain-service';
+export type {
+  BuyerEmailSuppressionReason,
+  BuyerEmailChannelKind,
+  BuyerEmailGateInput,
+  BuyerEmailGateDecision,
+} from './domain/domain-services/buyer-email-gate.domain-service';
+export {
   PaymentFactsViolationValues,
   checkPaymentFactsConsistency,
 } from './domain/types/payment-facts-consistency.types';
@@ -616,3 +627,16 @@ export type { IOrderHoldProjectionReconcileService } from './application/interfa
 export type { HoldProjectionReconcileResult } from './domain/types/order-hold-projection.types';
 export { OrderHoldsModule } from './order-holds.module';
 export * from './domain/types/order-discount-split.types';
+
+// Automatic buyer emails, opt-in per connection (#3554).
+export { BuyerEmailDelivery } from './domain/entities/buyer-email-delivery.entity';
+export {
+  BuyerEmailOutcomeValues,
+  isBuyerEmailOutcome,
+  type BuyerEmailOutcome,
+} from './domain/types/buyer-email-delivery.types';
+export type {
+  IBuyerEmailNotificationService,
+  SendBuyerEmailInput,
+  SendBuyerEmailResult,
+} from './application/interfaces/buyer-email-notification.service.interface';

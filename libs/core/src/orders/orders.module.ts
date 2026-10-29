@@ -39,6 +39,9 @@ import { OrderColumnPresetOrmEntity } from './infrastructure/persistence/entitie
 import { OrderColumnPresetService } from './application/services/order-column-preset.service';
 import { OrderNoteRepository } from './infrastructure/persistence/repositories/order-note.repository';
 import { OrderNoteOrmEntity } from './infrastructure/persistence/entities/order-note.orm-entity';
+import { BuyerEmailDeliveryOrmEntity } from './infrastructure/persistence/entities/buyer-email-delivery.orm-entity';
+import { BuyerEmailDeliveryRepository } from './infrastructure/persistence/repositories/buyer-email-delivery.repository';
+import { BuyerEmailNotificationService } from './application/services/buyer-email-notification.service';
 import { OrderNoteRevisionOrmEntity } from './infrastructure/persistence/entities/order-note-revision.orm-entity';
 import { OrderNoteService } from './application/services/order-note.service';
 import { OrderTagRepository } from './infrastructure/persistence/repositories/order-tag.repository';
@@ -75,6 +78,8 @@ import {
   FULFILLMENT_DISPATCH_RELAY_SERVICE_TOKEN,
   SALES_DOCUMENT_VIEW_SERVICE_TOKEN,
   ORDER_DOCUMENT_EMAIL_SERVICE_TOKEN,
+  BUYER_EMAIL_DELIVERY_REPOSITORY_TOKEN,
+  BUYER_EMAIL_NOTIFICATION_SERVICE_TOKEN,
   TAX_COVERAGE_DETECTION_SERVICE_TOKEN,
   DISPLAY_CURRENCY_CONVERSION_SERVICE_TOKEN,
   ORDER_CANCELLATION_SIGNAL_REPOSITORY_TOKEN,
@@ -111,7 +116,11 @@ import { FiscalizationModule } from '@openlinker/core/fiscalization';
 // #2516: the projection resolves the prospective document kind through
 // `ISalesDocumentRulesService`. `sales-documents` is a sink with zero outbound
 // edges to sibling core contexts, so importing it cannot close a cycle.
-import { SalesDocumentsModule } from '@openlinker/core/sales-documents';
+import {
+  SalesDocumentsModule,
+  SALES_DOCUMENT_ISSUED_LISTENER_TOKEN,
+} from '@openlinker/core/sales-documents';
+import { SalesDocumentIssuedAutomationListener } from './application/services/sales-document-issued-automation.listener';
 
 // Re-export tokens for convenience
 export { ORDER_SYNC_SERVICE_TOKEN } from './orders.tokens';
@@ -126,6 +135,7 @@ export { ORDER_SYNC_SERVICE_TOKEN } from './orders.tokens';
       OrderCancellationSignalOrmEntity,
       OrderColumnPresetOrmEntity,
       OrderNoteOrmEntity,
+      BuyerEmailDeliveryOrmEntity,
       OrderNoteRevisionOrmEntity,
       OrderTagOrmEntity,
       OrderTagAssignmentOrmEntity,
@@ -299,6 +309,23 @@ export { ORDER_SYNC_SERVICE_TOKEN } from './orders.tokens';
       provide: ORDER_DOCUMENT_EMAIL_SERVICE_TOKEN,
       useExisting: OrderDocumentEmailService,
     },
+    BuyerEmailDeliveryRepository,
+    {
+      provide: BUYER_EMAIL_DELIVERY_REPOSITORY_TOKEN,
+      useExisting: BuyerEmailDeliveryRepository,
+    },
+    BuyerEmailNotificationService,
+    {
+      provide: BUYER_EMAIL_NOTIFICATION_SERVICE_TOKEN,
+      useExisting: BuyerEmailNotificationService,
+    },
+    // #3554: `invoicing` / `fiscalization` resolve this lazily (ModuleRef,
+    // strict: false) to fire `order.document_issued`; no module edge back.
+    SalesDocumentIssuedAutomationListener,
+    {
+      provide: SALES_DOCUMENT_ISSUED_LISTENER_TOKEN,
+      useExisting: SalesDocumentIssuedAutomationListener,
+    },
     {
       provide: SALES_DOCUMENT_VIEW_SERVICE_TOKEN,
       useExisting: SalesDocumentViewService,
@@ -384,6 +411,8 @@ export { ORDER_SYNC_SERVICE_TOKEN } from './orders.tokens';
     // sales-document projection for the list and the detail panel (#2516).
     SALES_DOCUMENT_VIEW_SERVICE_TOKEN,
     ORDER_DOCUMENT_EMAIL_SERVICE_TOKEN,
+    // Read by the automation send-email executor and the order timeline (#3554).
+    BUYER_EMAIL_NOTIFICATION_SERVICE_TOKEN,
     // Exported so the `/analytics/coverage` endpoint (#2466) can inject the
     // tax A/B/C detector seam (#2465).
     TAX_COVERAGE_DETECTION_SERVICE_TOKEN,

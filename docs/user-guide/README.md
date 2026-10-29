@@ -33,6 +33,9 @@ The guide is organized around the left-navigation groups in the admin UI:
 6. **[Orders](./06-orders.md)**
    Orders list, order detail, status timeline, line items, and the shipment panel.
 
+   - **[Buyer emails](./06a-buyer-emails.md)**
+     Opt-in emails to the buyer (order confirmed, shipped, document issued, return received), set per connection.
+
 7. **[Analytics](./07-analytics.md)**
    The revenue dashboard: date range, display currency, Net/Gross basis, KPI definitions, channel and product tables, Needs Attention, and the Data Coverage panel's five remediation flows.
 

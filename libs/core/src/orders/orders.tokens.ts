@@ -110,3 +110,6 @@ export const INVOICE_MARKETPLACE_UPLOAD_REPOSITORY_TOKEN = Symbol(
 export const INVOICE_MARKETPLACE_UPLOAD_SERVICE_TOKEN = Symbol('IInvoiceMarketplaceUploadService');
 /** Manual "send this sales document to the buyer" for every provider (#3550). */
 export const ORDER_DOCUMENT_EMAIL_SERVICE_TOKEN = Symbol('IOrderDocumentEmailService');
+/** Automatic buyer emails, opt-in per connection (#3554). */
+export const BUYER_EMAIL_DELIVERY_REPOSITORY_TOKEN = Symbol('BuyerEmailDeliveryRepositoryPort');
+export const BUYER_EMAIL_NOTIFICATION_SERVICE_TOKEN = Symbol('IBuyerEmailNotificationService');

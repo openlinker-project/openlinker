@@ -1197,3 +1197,40 @@ export interface ListingCommercial {
   availableQuantity: number | null;
   lastCommercialSyncedAt: string | null;
 }
+
+/** `GET /automations/:id` (#3554) - the fields the buyer-email spec reads. */
+export interface AutomationRuleView {
+  id: string;
+  name: string;
+  trigger: string;
+  triggerConfig: Record<string, unknown>;
+  conditions: unknown[];
+  actions: unknown[];
+  isActive: boolean;
+  effectiveFrom: string;
+  effectiveTo: string | null;
+}
+
+/** `PUT /automations/:id` body (#3554). */
+export interface AutomationRuleWriteInput {
+  name: string;
+  trigger: string;
+  triggerConfig: Record<string, unknown>;
+  conditions: unknown[];
+  actions: unknown[];
+  isActive?: boolean;
+  effectiveFrom: string;
+  effectiveTo?: string | null;
+}
+
+/** One row of `GET /orders/:id/buyer-emails` (#3554). */
+export interface BuyerEmailDeliveryView {
+  id: string;
+  connectionId: string;
+  templateKey: string;
+  subjectRef: string;
+  outcome: 'sent' | 'suppressed' | 'bounced';
+  suppressionReason: string | null;
+  suppressionMessage: string | null;
+  createdAt: string;
+}

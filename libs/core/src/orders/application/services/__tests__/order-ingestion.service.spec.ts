@@ -147,6 +147,7 @@ describe('OrderIngestionService', () => {
       persistIncomingSnapshot: jest.fn().mockResolvedValue({ cancelledAt: null }),
       updateSyncStatus: jest.fn().mockResolvedValue(undefined),
       getOrderRecord: jest.fn(),
+      notifyOrderReceived: jest.fn().mockResolvedValue(undefined),
       findMany: jest.fn(),
       findByIds: jest.fn(),
       markItemResolutionFailure: jest.fn().mockResolvedValue(undefined),
@@ -1244,6 +1245,26 @@ describe('OrderIngestionService', () => {
       expect(orderRecordService.persistIncomingSnapshot).toHaveBeenCalled();
       expect(orderRecordService.persistOrder).toHaveBeenCalled();
       expect(orderSyncService.syncOrder).toHaveBeenCalled();
+    });
+
+    it('should fire order.received when the order is ingested for the first time (#3554)', async () => {
+      orderRecordService.getOrderRecord.mockResolvedValue(null);
+      orderSyncService.syncOrder.mockResolvedValue([]);
+
+      await service.syncOrderFromSource(connectionId, externalOrderId);
+
+      expect(orderRecordService.notifyOrderReceived).toHaveBeenCalledTimes(1);
+    });
+
+    it('should not fire order.received when the order is re-ingested (#3554)', async () => {
+      orderRecordService.getOrderRecord.mockResolvedValue({
+        sourceConnectionId: connectionId,
+      } as unknown as OrderRecord);
+      orderSyncService.syncOrder.mockResolvedValue([]);
+
+      await service.syncOrderFromSource(connectionId, externalOrderId);
+
+      expect(orderRecordService.notifyOrderReceived).not.toHaveBeenCalled();
     });
 
     it('should proceed with ingestion when the existing order shares the same source connection (genuine same-source reconcile)', async () => {

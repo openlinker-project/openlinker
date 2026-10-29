@@ -158,6 +158,9 @@ function orderRecordColumnProperties(): readonly string[] {
   return orderRecordColumnPropertiesCache;
 }
 
+/** Rollup states that mean the order's parcels left (#3554, `order.shipped`). */
+const SHIPPED_FULFILLMENT_STATES = ['dispatched', 'delivered'] as const;
+
 @Injectable()
 export class OrderRecordRepository implements OrderRecordRepositoryPort {
   /**
@@ -2415,8 +2418,25 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
   async updateFulfillmentState(
     internalOrderId: string,
     fulfillmentState: FulfillmentRollupState
-  ): Promise<void> {
+  ): Promise<boolean> {
+    if ((SHIPPED_FULFILLMENT_STATES as readonly string[]).includes(fulfillmentState)) {
+      // The transition write: only a row not already shipped matches, so of two
+      // racing recomputes exactly one sees `affected > 0`.
+      const entered = await this.repository
+        .createQueryBuilder()
+        .update(OrderRecordOrmEntity)
+        .set({ fulfillmentState })
+        .where('"internalOrderId" = :internalOrderId', { internalOrderId })
+        .andWhere('("fulfillmentState" IS NULL OR "fulfillmentState" NOT IN (:...shipped))', {
+          shipped: SHIPPED_FULFILLMENT_STATES,
+        })
+        .execute();
+      if ((entered.affected ?? 0) > 0) {
+        return true;
+      }
+    }
     await this.repository.update({ internalOrderId }, { fulfillmentState });
+    return false;
   }
 
   /**

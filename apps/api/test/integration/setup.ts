@@ -163,6 +163,9 @@ const harness = createIntegrationTestHarness({
     // No FK by design (references by value), so it sits outside the CASCADE
     // closure `truncateTables` walks; truncate explicitly so a case starts clean.
     'document_email_deliveries',
+    // buyer_email_deliveries (#3554) — one row per automatic buyer email. No FK
+    // by design, so truncate explicitly for the same reason.
+    'buyer_email_deliveries',
     // refund_records (#2036) — order-scoped refund-capture projection. No
     // ORM/migration FK to order_records (plain indexed text column, matching
     // the invoice_records precedent); truncate explicitly so each refund case

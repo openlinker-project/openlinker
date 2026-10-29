@@ -727,7 +727,27 @@ export class OrderRecordService implements IOrderRecordService {
     internalOrderId: string,
     fulfillmentState: FulfillmentRollupState
   ): Promise<void> {
-    await this.repository.updateFulfillmentState(internalOrderId, fulfillmentState);
+    const enteredShipped = await this.repository.updateFulfillmentState(
+      internalOrderId,
+      fulfillmentState
+    );
+    if (enteredShipped) {
+      const record = await this.repository.findById(internalOrderId);
+      if (record) {
+        await this.emitOrderTrigger('order.shipped', record, new Date());
+      }
+    }
+  }
+
+  async notifyOrderReceived(record: OrderRecord, receivedAt: Date): Promise<void> {
+    await this.emitOrderTrigger('order.received', record, receivedAt);
+  }
+
+  async notifyDocumentIssued(internalOrderId: string, issuedAt: Date): Promise<void> {
+    const record = await this.repository.findById(internalOrderId);
+    if (record) {
+      await this.emitOrderTrigger('order.document_issued', record, issuedAt);
+    }
   }
 
   async markItemResolutionFailure(
@@ -1095,6 +1115,31 @@ export class OrderRecordService implements IOrderRecordService {
     input: { windowEnd: Date; now: Date; limit: number; offset: number }
   ): Promise<OrderRecord[]> {
     return this.repository.findDispatchDeadlineCandidates(connectionId, input);
+  }
+
+  /**
+   * Fire an order-subject edge trigger, best-effort (#3554: T9-T11, the T5
+   * shape). The write that caused the fact has already committed, so a failed
+   * emission is logged and swallowed rather than failing ingestion, a shipment
+   * projection or a document issue - the safe direction, as for `order.packed`.
+   */
+  private async emitOrderTrigger(
+    trigger: 'order.received' | 'order.shipped' | 'order.document_issued',
+    record: OrderRecord,
+    occurredAt: Date
+  ): Promise<void> {
+    try {
+      await this.automationEmission.emit({
+        trigger,
+        facts: buildOrderAutomationFacts(record, occurredAt),
+        now: occurredAt,
+      });
+    } catch (error) {
+      this.logger.warn(
+        `Automation emission failed for ${trigger} on ${record.internalOrderId}: ` +
+          `${(error as Error).message}`
+      );
+    }
   }
 
   private async emitPackedTrigger(record: OrderRecord, packedAt: Date): Promise<void> {

@@ -34,8 +34,8 @@ import {
 const MALFORMED: unknown[] = [null, undefined, 0, '', 'x', [], [1], true, { field: 'nope' }];
 
 describe('automation trigger vocabulary', () => {
-  it('should declare exactly the eight v1 triggers when read', () => {
-    expect(AutomationTriggerValues).toHaveLength(8);
+  it('should declare exactly the eleven triggers when read (#3554 added T9-T11)', () => {
+    expect(AutomationTriggerValues).toHaveLength(11);
   });
 
   it('should classify exactly two triggers as deadline sweeps when read', () => {

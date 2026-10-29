@@ -199,12 +199,26 @@ export interface IOrderRecordService {
    * Push a per-order fulfillment rollup (#1108) onto the order record. The
    * cross-context surface the shipping context calls after a shipment-status
    * change (`shipping → orders`, via this service — never the repository port).
-   * Best-effort/idempotent; a missing order row is a no-op.
+   * Best-effort/idempotent; a missing order row is a no-op. The write that moves
+   * the order into a shipped state fires `order.shipped` (#3554), once.
    */
   updateFulfillmentState(
     internalOrderId: string,
     fulfillmentState: FulfillmentRollupState
   ): Promise<void>;
+
+  /**
+   * Fire the `order.received` automation trigger (#3554, D8) for an order
+   * persisted for the first time. Best-effort: never throws.
+   */
+  notifyOrderReceived(record: OrderRecord, receivedAt: Date): Promise<void>;
+
+  /**
+   * Fire the `order.document_issued` automation trigger (#3554) once the
+   * order's originating invoice or fiscal receipt is issued. Best-effort:
+   * never throws; a missing order is a no-op.
+   */
+  notifyDocumentIssued(internalOrderId: string, issuedAt: Date): Promise<void>;
 
   /**
    * Record why item resolution failed at ingestion (#1689), honestly

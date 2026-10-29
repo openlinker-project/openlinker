@@ -238,6 +238,44 @@ describe('ReturnCustodyService', () => {
       expect(lastWrite?.outcome).toMatchObject({ custodyState: 'received', quantityReceived: 3 });
     });
 
+    it('should fire return.received for the receipt, once per arrival (#3554)', async () => {
+      const emit = jest.fn(() =>
+        Promise.resolve({ firedRuleIds: [], alreadyFiredRuleIds: [], evaluatedRuleCount: 0 })
+      );
+      const withAutomation = new ReturnCustodyService(
+        repository as never,
+        returns as never,
+        integrations as never,
+        products as never,
+        lock as never,
+        inventory as never,
+        { emit } as never
+      );
+
+      await withAutomation.receiveLine(LINE_ID, { quantity: 1 });
+
+      expect(emit).toHaveBeenCalledWith(
+        expect.objectContaining({
+          trigger: 'return.received',
+          facts: expect.objectContaining({ subjectKind: 'return' }),
+        })
+      );
+    });
+
+    it('should not fail the receipt when the emission fails (#3554)', async () => {
+      const withAutomation = new ReturnCustodyService(
+        repository as never,
+        returns as never,
+        integrations as never,
+        products as never,
+        lock as never,
+        inventory as never,
+        { emit: jest.fn(() => Promise.reject(new Error('down'))) } as never
+      );
+
+      await expect(withAutomation.receiveLine(LINE_ID, { quantity: 1 })).resolves.toBeDefined();
+    });
+
     it('should refuse an over-receipt with the actionable reason rather than a message', async () => {
       lineState = makeLine({ quantityReceived: 4 });
 
