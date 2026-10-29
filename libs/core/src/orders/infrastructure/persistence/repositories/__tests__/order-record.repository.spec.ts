@@ -24,6 +24,7 @@ describe('OrderRecordRepository', () => {
   let repository: OrderRecordRepository;
   let ormRepository: jest.Mocked<Repository<OrderRecordOrmEntity>>;
   let transactionalManager: {
+    find: jest.Mock;
     save: jest.Mock<Promise<unknown>, unknown[]>;
     delete: jest.Mock;
     query: jest.Mock<Promise<unknown>, unknown[]>;
@@ -41,6 +42,8 @@ describe('OrderRecordRepository', () => {
     transactionalManager = {
       save: jest.fn(),
       delete: jest.fn(),
+      // #3588: the prior line rows read for the cost carry-forward.
+      find: jest.fn().mockResolvedValue([]),
       // #2282: the order-record half of `upsertWithLineItems` is the shared
       // frozen-attribution raw statement, not `save()`.
       query: jest.fn(),
@@ -2273,6 +2276,7 @@ describe('OrderRecordRepository', () => {
           taxRate: null,
           taxSource: null,
           taxRateReadAt: null,
+          cost: { costState: 'not-recorded', unitCostNet: null, unitCostCurrency: null },
         },
       ]);
 

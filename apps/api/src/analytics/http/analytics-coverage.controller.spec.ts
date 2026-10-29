@@ -5,6 +5,7 @@
  */
 import { BadRequestException } from '@nestjs/common';
 import type {
+  IMarginAnalyticsService,
   IOrderRecordService,
   ITaxCoverageDetectionService,
   PaginatedCurrencyMismatchOrders,
@@ -61,6 +62,10 @@ describe('AnalyticsCoverageController (#2466)', () => {
     getOpenRun: jest.fn().mockResolvedValue(null),
   });
 
+  const createMarginAnalytics = (): jest.Mocked<Pick<IMarginAnalyticsService, 'countUncoveredLines'>> => ({
+    countUncoveredLines: jest.fn().mockResolvedValue(0),
+  });
+
   const emptyPage = { items: [], total: 0 };
 
   const emptyTaxPages = (): Record<TaxCoverageCategory, PaginatedTaxCoverageOrders> => ({
@@ -74,7 +79,8 @@ describe('AnalyticsCoverageController (#2466)', () => {
     taxCoverageDetectionService = createTaxCoverageDetectionService(),
     reportingCurrencySettings = createReportingCurrencySettings(),
     displaySettings = createDisplaySettings(),
-    remediationRuns = createRemediationRuns()
+    remediationRuns = createRemediationRuns(),
+    marginAnalytics = createMarginAnalytics()
   ): {
     controller: AnalyticsCoverageController;
     orderRecordService: ReturnType<typeof createOrderRecordService>;
@@ -82,13 +88,15 @@ describe('AnalyticsCoverageController (#2466)', () => {
     reportingCurrencySettings: ReturnType<typeof createReportingCurrencySettings>;
     displaySettings: ReturnType<typeof createDisplaySettings>;
     remediationRuns: ReturnType<typeof createRemediationRuns>;
+    marginAnalytics: ReturnType<typeof createMarginAnalytics>;
   } {
     const controller = new AnalyticsCoverageController(
       orderRecordService as unknown as IOrderRecordService,
       taxCoverageDetectionService as unknown as ITaxCoverageDetectionService,
       reportingCurrencySettings as unknown as IReportingCurrencySettingsService,
       displaySettings as unknown as IAnalyticsDisplaySettingsService,
-      remediationRuns as unknown as IAnalyticsRemediationRunService
+      remediationRuns as unknown as IAnalyticsRemediationRunService,
+      marginAnalytics as unknown as IMarginAnalyticsService
     );
     return {
       controller,
@@ -97,6 +105,7 @@ describe('AnalyticsCoverageController (#2466)', () => {
       reportingCurrencySettings,
       displaySettings,
       remediationRuns,
+      marginAnalytics,
     };
   }
 
@@ -119,15 +128,43 @@ describe('AnalyticsCoverageController (#2466)', () => {
 
     const result = await controller.getCoverage(query);
 
-    expect(result.categories).toHaveLength(5);
+    expect(result.categories).toHaveLength(6);
     expect(result.categories.map((c) => c.category).sort()).toEqual(
-      ['currency', 'product-matching', 'tax-a', 'tax-b', 'tax-c'].sort()
+      ['currency', 'no-cost', 'product-matching', 'tax-a', 'tax-b', 'tax-c'].sort()
     );
     for (const row of result.categories) {
       expect(row.affectedCount).toBe(0);
       expect(row.sampleOrderIds).toEqual([]);
       expect(row.status).toBe('open');
     }
+  });
+
+  it('reports the no-cost row in LINES (countUnit) and every other row in orders (G11-D)', async () => {
+    const { controller, orderRecordService, taxCoverageDetectionService, reportingCurrencySettings, marginAnalytics } =
+      buildController();
+    reportingCurrencySettings.resolve.mockResolvedValue('EUR');
+    orderRecordService.getCurrencyMismatchOrders.mockResolvedValue(
+      emptyPage as PaginatedCurrencyMismatchOrders
+    );
+    orderRecordService.getProductMatchingErrorOrders.mockResolvedValue(
+      emptyPage as PaginatedProductMatchingErrorOrders
+    );
+    taxCoverageDetectionService.getAllCategoryPages.mockResolvedValue(emptyTaxPages());
+    marginAnalytics.countUncoveredLines.mockResolvedValue(12);
+
+    const result = await controller.getCoverage(query);
+
+    const noCost = result.categories.find((row) => row.category === 'no-cost');
+    expect(noCost).toMatchObject({ affectedCount: 12, countUnit: 'lines', sampleOrderIds: [] });
+    for (const row of result.categories) {
+      if (row.category !== 'no-cost') {
+        expect(row.countUnit).toBe('orders');
+      }
+    }
+    expect(marginAnalytics.countUncoveredLines).toHaveBeenCalledWith(
+      { from: new Date(query.from), to: new Date(query.to), sourceConnectionId: undefined },
+      false
+    );
   });
 
   it('resolves the current reporting currency ONCE and threads it into both currency and tax reads', async () => {

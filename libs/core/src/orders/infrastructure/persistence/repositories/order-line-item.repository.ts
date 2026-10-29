@@ -28,11 +28,27 @@ import type {
   VariantChannelBreakdownRow,
   VariantRankingRow,
 } from '../../../domain/types/top-products.types';
+import { MarginGapReasonValues, type MarginGapReason } from '../../../domain/order-line-cost-snapshot';
+import type {
+  MarginDailyRow,
+  MarginProductFilters,
+  MarginProductRow,
+  MarginSums,
+  MarginVariantRow,
+} from '../../../domain/types/order-margin-analytics.types';
 import {
   grossRevenueLineAmountSql,
   netSalesLineNetAmountSql,
   netSalesLineNetEligibleConditionSql,
 } from '../../../domain/types/net-sales-tax-rate.types';
+
+/** Raw pg row of the margin SELECT list (numeric columns arrive as strings). */
+type MarginRawRow = {
+  net_revenue: string;
+  covered_net_revenue: string;
+  cost_of_goods: string;
+  excluded_line_count: string;
+} & Record<string, string | null | undefined>;
 
 @Injectable()
 export class OrderLineItemRepository implements OrderLineItemRepositoryPort {
@@ -679,6 +695,213 @@ export class OrderLineItemRepository implements OrderLineItemRepositoryPort {
     }
   }
 
+  /**
+   * Margin by UTC day x source connection (#3588, D27). Gross margin on NET
+   * revenue: the net-revenue population is exactly the top-products NET figure's
+   * (`stampedNonZeroKnownRate`: stamped in the current reporting currency,
+   * non-zero total, net-eligible), so margin `netRevenue` equals that figure
+   * for the same range (G11-E, no returns subtraction).
+   *
+   * Cross-context table join (ADR-036): `product_variants` is owned by
+   * `products` and is LEFT JOINed by table name purely to tell a line whose
+   * variant has since been given a cost (`cost-entered-after-sale`) from one
+   * whose variant has none (`no-cost`). It never feeds a figure - cost comes
+   * from the snapshot columns on the line itself, so a later cost edit cannot
+   * move an earlier margin.
+   */
+  async getMarginDailyRows(
+    filters: SalesAnalyticsFilters,
+    reportingCurrency: string,
+    includeBackfilledPreRollout = false
+  ): Promise<MarginDailyRow[]> {
+    const qb = this.createMarginQuery(reportingCurrency, includeBackfilledPreRollout)
+      .addSelect(`to_char(li."placedAt" AT TIME ZONE 'UTC', 'YYYY-MM-DD')`, 'day')
+      .addSelect('li."sourceConnectionId"', 'source_connection_id')
+      .groupBy('day')
+      .addGroupBy('li."sourceConnectionId"')
+      .orderBy('day', 'ASC')
+      .addOrderBy('source_connection_id', 'ASC');
+    this.applyTopProductsScope(qb, filters);
+
+    const rows = await qb.getRawMany<MarginRawRow & { day: string; source_connection_id: string }>();
+    return rows.map((row) => ({
+      day: row.day,
+      sourceConnectionId: row.source_connection_id,
+      ...this.toMarginSums(row),
+    }));
+  }
+
+  /** Margin ranked by product (#3588); `total` is the distinct product count in scope before paging. */
+  async getMarginProductRanking(
+    filters: MarginProductFilters,
+    reportingCurrency: string,
+    includeBackfilledPreRollout = false
+  ): Promise<{ rows: MarginProductRow[]; total: number }> {
+    const qb = this.createMarginQuery(reportingCurrency, includeBackfilledPreRollout)
+      .addSelect('li."productId"', 'product_id')
+      .groupBy('li."productId"');
+
+    if (filters.sortBy === 'marginPct') {
+      qb.orderBy('margin_pct', 'DESC', 'NULLS LAST');
+    } else {
+      qb.orderBy(filters.sortBy === 'grossMargin' ? 'gross_margin' : 'net_revenue', 'DESC');
+    }
+    qb.addOrderBy('product_id', 'ASC').limit(filters.limit).offset(filters.offset);
+    this.applyTopProductsScope(qb, filters);
+
+    const totalQb = this.repository
+      .createQueryBuilder('li')
+      .innerJoin(OrderRecordOrmEntity, 'rec', 'rec."internalOrderId" = li."orderRecordId"')
+      .select('COUNT(DISTINCT li."productId")', 'total');
+    this.applyTopProductsScope(totalQb, filters);
+
+    const [rows, totalRow] = await Promise.all([
+      qb.getRawMany<MarginRawRow & { product_id: string }>(),
+      totalQb.getRawOne<{ total: string }>(),
+    ]);
+
+    return {
+      rows: rows.map((row) => ({ productId: row.product_id, ...this.toMarginSums(row) })),
+      total: Number(totalRow?.total ?? 0),
+    };
+  }
+
+  /** One product's margin split by variant (#3588); `variantId: null` = lines that never resolved to a variant. */
+  async getMarginVariantRows(
+    productId: string,
+    filters: SalesAnalyticsFilters,
+    reportingCurrency: string,
+    includeBackfilledPreRollout = false
+  ): Promise<MarginVariantRow[]> {
+    const qb = this.createMarginQuery(reportingCurrency, includeBackfilledPreRollout)
+      .addSelect('li."variantId"', 'variant_id')
+      .andWhere('li."productId" = :marginProductId', { marginProductId: productId })
+      .groupBy('li."variantId"')
+      .orderBy('net_revenue', 'DESC')
+      .addOrderBy('variant_id', 'ASC', 'NULLS LAST');
+    this.applyTopProductsScope(qb, filters);
+
+    const rows = await qb.getRawMany<MarginRawRow & { variant_id: string | null }>();
+    return rows.map((row) => ({ variantId: row.variant_id, ...this.toMarginSums(row) }));
+  }
+
+  /**
+   * Lines that are in net revenue but carry no usable cost - the no-cost Data
+   * Coverage count (G11-D counts LINES, not orders). Same predicate as the sum
+   * of every margin gap bucket, so the coverage count and the margin gaps can
+   * never disagree.
+   */
+  async countUncoveredLines(
+    filters: SalesAnalyticsFilters,
+    reportingCurrency: string,
+    includeBackfilledPreRollout = false
+  ): Promise<number> {
+    const { inRevenue, covered } = this.buildMarginSqlFragments(includeBackfilledPreRollout);
+    const qb = this.repository
+      .createQueryBuilder('li')
+      .innerJoin(OrderRecordOrmEntity, 'rec', 'rec."internalOrderId" = li."orderRecordId"')
+      .select(`COUNT(*) FILTER (WHERE ${inRevenue} AND NOT (${covered}))`, 'uncovered')
+      .setParameter('reportingCurrency', reportingCurrency);
+    this.applyTopProductsScope(qb, filters);
+    const row = await qb.getRawOne<{ uncovered: string }>();
+    return Number(row?.uncovered ?? 0);
+  }
+
+  /**
+   * Shared SELECT list of every margin read: the additive sums only, grouped by
+   * the caller. See the port for the population rules.
+   */
+  private createMarginQuery(
+    reportingCurrency: string,
+    includeBackfilledPreRollout: boolean
+  ): SelectQueryBuilder<OrderLineItemOrmEntity> {
+    const { inRevenue, netAmount, covered, costOfGoods, gapConditions } =
+      this.buildMarginSqlFragments(includeBackfilledPreRollout);
+
+    const coveredNet = `COALESCE(SUM(${netAmount}) FILTER (WHERE ${covered}), 0)`;
+    const cogs = `COALESCE(SUM(${costOfGoods}) FILTER (WHERE ${covered}), 0)`;
+
+    const qb = this.repository
+      .createQueryBuilder('li')
+      .innerJoin(OrderRecordOrmEntity, 'rec', 'rec."internalOrderId" = li."orderRecordId"')
+      .leftJoin('product_variants', 'pv', 'pv."id" = li."variantId"')
+      .select(`COALESCE(SUM(${netAmount}) FILTER (WHERE ${inRevenue}), 0)`, 'net_revenue')
+      .addSelect(coveredNet, 'covered_net_revenue')
+      .addSelect(cogs, 'cost_of_goods')
+      .addSelect(`${coveredNet} - ${cogs}`, 'gross_margin')
+      .addSelect(`(${coveredNet} - ${cogs}) / NULLIF(${coveredNet}, 0)`, 'margin_pct')
+      .addSelect(`COUNT(*) FILTER (WHERE NOT COALESCE((${inRevenue}), false))`, 'excluded_line_count')
+      .setParameter('reportingCurrency', reportingCurrency);
+
+    for (const reason of MarginGapReasonValues) {
+      const alias = reason.replace(/-/g, '_');
+      qb.addSelect(`COUNT(*) FILTER (WHERE ${gapConditions[reason]})`, `gap_${alias}_lines`).addSelect(
+        `COALESCE(SUM(${netAmount}) FILTER (WHERE ${gapConditions[reason]}), 0)`,
+        `gap_${alias}_net`
+      );
+    }
+    return qb;
+  }
+
+  private toMarginSums(row: MarginRawRow): MarginSums {
+    return {
+      netRevenue: Number(row.net_revenue),
+      coveredNetRevenue: Number(row.covered_net_revenue),
+      costOfGoods: Number(row.cost_of_goods),
+      excludedLineCount: Number(row.excluded_line_count),
+      gaps: MarginGapReasonValues.map((reason) => {
+        const alias = reason.replace(/-/g, '_');
+        return {
+          reason,
+          lineCount: Number(row[`gap_${alias}_lines`] ?? 0),
+          netAmount: Number(row[`gap_${alias}_net`] ?? 0),
+        };
+      }),
+    };
+  }
+
+  /**
+   * SQL fragments of the margin reads. Every gap condition is a positive
+   * conjunction with `inRevenue`, and together they partition
+   * `inRevenue AND NOT covered`:
+   *  - covered: recorded cost whose currency equals the order's native currency
+   *    (G11-C: a different currency puts the line out of margin);
+   *  - no-variant: no variant on the line, not covered;
+   *  - currency-mismatch: has a variant, recorded cost, wrong currency;
+   *  - cost-entered-after-sale: has a variant, no snapshot, the variant has a cost now;
+   *  - no-cost: has a variant, no snapshot, the variant has none (or is gone).
+   * `fx` is the order's own implicit multiplier `reportingTotalAmount /
+   * totalAmount`, applied to revenue AND cost so both are in the reporting currency.
+   */
+  private buildMarginSqlFragments(includeBackfilledPreRollout: boolean): {
+    inRevenue: string;
+    netAmount: string;
+    covered: string;
+    costOfGoods: string;
+    gapConditions: Record<MarginGapReason, string>;
+  } {
+    const { lineNetAmount, stampedNonZeroKnownRate } = this.buildTopProductsSqlFragments(
+      includeBackfilledPreRollout
+    );
+    const fx = '(rec."reportingTotalAmount" / NULLIF(rec."totalAmount", 0))';
+    const inRevenue = `(${stampedNonZeroKnownRate})`;
+    const currencyMatches = `COALESCE(li."unitCostCurrency" = rec."currency", false)`;
+    const recorded = `li."costState" = 'recorded'`;
+    const covered = `${inRevenue} AND ${recorded} AND ${currencyMatches}`;
+    return {
+      inRevenue,
+      netAmount: `(${lineNetAmount}) * ${fx}`,
+      covered,
+      costOfGoods: `li."unitCostNet" * li."quantity" * ${fx}`,
+      gapConditions: {
+        'no-variant': `${inRevenue} AND li."variantId" IS NULL AND NOT (${recorded} AND ${currencyMatches})`,
+        'currency-mismatch': `${inRevenue} AND li."variantId" IS NOT NULL AND ${recorded} AND NOT ${currencyMatches}`,
+        'cost-entered-after-sale': `${inRevenue} AND li."variantId" IS NOT NULL AND NOT (${recorded}) AND pv."netUnitCost" IS NOT NULL`,
+        'no-cost': `${inRevenue} AND li."variantId" IS NOT NULL AND NOT (${recorded}) AND pv."netUnitCost" IS NULL`,
+      },
+    };
+  }
+
   private toDomain(entity: OrderLineItemOrmEntity): OrderLineItem {
     return new OrderLineItem(
       entity.id,
@@ -695,7 +918,10 @@ export class OrderLineItemRepository implements OrderLineItemRepositoryPort {
       entity.createdAt,
       entity.taxRate,
       entity.taxSource,
-      entity.taxRateReadAt
+      entity.taxRateReadAt,
+      entity.unitCostNet,
+      entity.unitCostCurrency,
+      entity.costState
     );
   }
 

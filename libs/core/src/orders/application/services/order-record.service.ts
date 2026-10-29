@@ -68,6 +68,7 @@ import {
   ORDER_CANCELLATION_SIGNAL_REPOSITORY_TOKEN,
 } from '../../orders.tokens';
 import { deriveOrderAnalyticsScalars, deriveOrderLineItems } from '../../domain/order-analytics-projection';
+import type { LineCostCandidate } from '../../domain/order-line-cost-snapshot';
 import { buildOrderAutomationFacts } from '../../domain/order-automation-facts-projection';
 import { buildSalesAndChannelAnalytics } from '../../domain/order-sales-aggregation';
 import { buildTopProducts } from '../../domain/top-products-aggregation';
@@ -143,7 +144,8 @@ export class OrderRecordService implements IOrderRecordService {
     order: Order,
     sourceConnectionId: string,
     sourceEventId: string | null = null,
-    sourceExternalUrl: string | null = null
+    sourceExternalUrl: string | null = null,
+    lineCostCandidates: ReadonlyMap<string, LineCostCandidate> = new Map()
   ): Promise<OrderRecord> {
     const piiConfig = getPiiConfig();
     const now = new Date();
@@ -388,7 +390,7 @@ export class OrderRecordService implements IOrderRecordService {
     // #1985: persist the order record AND its order_line_items rows in one
     // transaction — replaces the prior line-item set for this order so a
     // re-ingested order with a changed item list never leaves stale rows.
-    const lineItems = deriveOrderLineItems(order, sourceConnectionId);
+    const lineItems = deriveOrderLineItems(order, sourceConnectionId, lineCostCandidates);
     const saved = await this.repository.upsertWithLineItems(orderRecord, lineItems);
     // #2282 (ADR-057): the write path freezes source attribution, so a
     // divergence between what we asked to persist and what came back means a

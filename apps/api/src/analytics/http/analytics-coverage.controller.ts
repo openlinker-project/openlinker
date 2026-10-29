@@ -41,8 +41,10 @@ import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagg
 import { Roles } from '../../auth/decorators/roles.decorator';
 import {
   ORDER_RECORD_SERVICE_TOKEN,
+  MARGIN_ANALYTICS_SERVICE_TOKEN,
   TAX_COVERAGE_DETECTION_SERVICE_TOKEN,
   TaxCoverageCategoryValues,
+  type IMarginAnalyticsService,
   type IOrderRecordService,
   type ITaxCoverageDetectionService,
 } from '@openlinker/core/orders';
@@ -92,7 +94,9 @@ export class AnalyticsCoverageController {
     @Inject(ANALYTICS_DISPLAY_SETTINGS_SERVICE_TOKEN)
     private readonly displaySettings: IAnalyticsDisplaySettingsService,
     @Inject(ANALYTICS_REMEDIATION_RUN_SERVICE_TOKEN)
-    private readonly remediationRuns: IAnalyticsRemediationRunService
+    private readonly remediationRuns: IAnalyticsRemediationRunService,
+    @Inject(MARGIN_ANALYTICS_SERVICE_TOKEN)
+    private readonly marginAnalytics: IMarginAnalyticsService
   ) {}
 
   @Roles('admin', 'operator', 'viewer')
@@ -122,21 +126,24 @@ export class AnalyticsCoverageController {
     // on an order that has none.
     const { includeBackfilledTaxRatesInNetSales } = await this.displaySettings.getSettings();
 
-    const [currencyPage, taxPages, productMatchingPage, activeCurrencyRun] = await Promise.all([
-      this.orderRecordService.getCurrencyMismatchOrders(
-        salesFilters,
-        currentReportingCurrency,
-        pagination
-      ),
-      this.taxCoverageDetectionService.getAllCategoryPages(
-        salesFilters,
-        currentReportingCurrency,
-        pagination,
-        includeBackfilledTaxRatesInNetSales
-      ),
-      this.orderRecordService.getProductMatchingErrorOrders(healthFilters, pagination),
-      this.remediationRuns.getOpenRun(CURRENCY_REMEDIATION_CATEGORY),
-    ]);
+    const [currencyPage, taxPages, productMatchingPage, activeCurrencyRun, noCostLineCount] =
+      await Promise.all([
+        this.orderRecordService.getCurrencyMismatchOrders(
+          salesFilters,
+          currentReportingCurrency,
+          pagination
+        ),
+        this.taxCoverageDetectionService.getAllCategoryPages(
+          salesFilters,
+          currentReportingCurrency,
+          pagination,
+          includeBackfilledTaxRatesInNetSales
+        ),
+        this.orderRecordService.getProductMatchingErrorOrders(healthFilters, pagination),
+        this.remediationRuns.getOpenRun(CURRENCY_REMEDIATION_CATEGORY),
+        // Counts LINES (G11-D) with the same predicate as the margin gaps (#3588).
+        this.marginAnalytics.countUncoveredLines(salesFilters, includeBackfilledTaxRatesInNetSales),
+      ]);
 
     const categories: CoverageCategoryRowDto[] = [
       CoverageCategoryRowDto.of(
@@ -157,6 +164,7 @@ export class AnalyticsCoverageController {
         productMatchingPage.total,
         productMatchingPage.items.map((item) => item.internalOrderId)
       ),
+      CoverageCategoryRowDto.of('no-cost', noCostLineCount, [], null, 'lines'),
     ];
 
     const response = new AnalyticsCoverageResponseDto();

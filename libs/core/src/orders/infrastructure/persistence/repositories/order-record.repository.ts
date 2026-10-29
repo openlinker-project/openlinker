@@ -29,6 +29,7 @@ import type {
 } from '../../../domain/ports/order-record-repository.port';
 import { OrderRecord } from '../../../domain/entities/order-record.entity';
 import type { OrderLineItemDraft } from '../../../domain/order-analytics-projection';
+import { carryForwardLineCosts } from '../../../domain/order-line-cost-snapshot';
 import type { OrderSyncStatus, SyncAttempt } from '../../../domain/types/order-sync.types';
 import {
   isFulfillmentRoutingSkipReason,
@@ -3340,11 +3341,28 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
         throw new OrderRecordNotFoundException(orderRecord.internalOrderId);
       }
       const saved = this.fromRawRow(rows[0] as Record<string, unknown>, writeSet);
+      // #3588 (D27): the cost snapshot must survive this delete-then-reinsert.
+      // Read the prior rows AFTER the upsert above (its row lock serialises
+      // concurrent re-ingestion of this order) and BEFORE the delete.
+      const priorRows = await manager.find(OrderLineItemOrmEntity, {
+        where: { orderRecordId: orderRecord.internalOrderId },
+      });
+      const carried = carryForwardLineCosts(
+        priorRows.map((row) => ({
+          lineNumber: row.lineNumber,
+          productId: row.productId,
+          variantId: row.variantId,
+          costState: row.costState,
+          unitCostNet: row.unitCostNet,
+          unitCostCurrency: row.unitCostCurrency,
+        })),
+        lineItems
+      );
       await manager.delete(OrderLineItemOrmEntity, { orderRecordId: orderRecord.internalOrderId });
-      if (lineItems.length > 0) {
+      if (carried.length > 0) {
         await manager.save(
           OrderLineItemOrmEntity,
-          lineItems.map((item) => this.lineItemToOrm(orderRecord.internalOrderId, item))
+          carried.map((item) => this.lineItemToOrm(orderRecord.internalOrderId, item))
         );
       }
       return saved;
@@ -3729,6 +3747,10 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
     entity.taxRate = item.taxRate;
     entity.taxSource = item.taxSource;
     entity.taxRateReadAt = item.taxRateReadAt;
+    // #3588 - the snapshot, already reconciled with any prior row.
+    entity.costState = item.cost.costState;
+    entity.unitCostNet = item.cost.unitCostNet;
+    entity.unitCostCurrency = item.cost.unitCostCurrency;
     return entity;
   }
 }
