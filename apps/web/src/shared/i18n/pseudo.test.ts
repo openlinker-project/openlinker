@@ -16,7 +16,6 @@ import { useLocale } from './use-locale';
 afterEach(() => {
   clearPseudoRequested();
   window.history.replaceState({}, '', '/');
-  delete document.documentElement.dataset.pseudoLocale;
 });
 
 describe('pseudoLocalize', () => {
@@ -71,6 +70,14 @@ describe('pseudo-language in the provider', () => {
     render(createElement(LocaleProvider, null, createElement(Probe)));
     expect(document.documentElement.dataset.pseudoLocale).toBe('true');
     expect(screen.getByTestId('title').textContent).toMatch(/^\[.*\]$/);
+  });
+
+  it('should remove the <html> marker when the provider unmounts', () => {
+    window.history.replaceState({}, '', '/?lang=xx');
+    const { unmount } = render(createElement(LocaleProvider, null, createElement(Probe)));
+    expect(document.documentElement.dataset.pseudoLocale).toBe('true');
+    unmount();
+    expect(document.documentElement.dataset.pseudoLocale).toBeUndefined();
   });
 
   it('should end the pseudo-language when a real language is picked', () => {

@@ -1286,6 +1286,7 @@ Every word an operator reads in `apps/web` comes from a typed copy file, in Engl
 - **Shape**: `export const <name>Copy = defineCopy({ en: {...}, pl: {...} });`. Nest keys by component, then by element: `header.title`, `filters.status.label`.
 - **Keys**: `camelCase`, named for meaning, not for the English text (`emptyState.title`, not `noOrdersFound`). One key for a repeated sentence; one sentence per key, never fragments joined at runtime.
 - **Params**: `{name}` placeholders; the same placeholders in every language.
+- **Tight spots**: write a key that sits in a button, nav item, chip or header as `fit(n, 'text')`; `check-copy-locales` fails when either language exceeds `n` characters.
 - **Plurals**: `{ one, other }` in English, `{ one, few, many, other }` in Polish, rendered with `usePlural`; the count is `{n}`. An object with exactly the keys `one` and `other` is a plural, so never name a section that way.
 - **Numbers, money, dates**: `useFormat`. Never `toLocaleString()` without the active locale, `toFixed()` for display, or a hard-coded `'en-US'`.
 - **Style**: sentence case, plain hyphen (no em dash), British English, operator vocabulary, Polish terms from [i18n-glossary.md](./i18n-glossary.md).

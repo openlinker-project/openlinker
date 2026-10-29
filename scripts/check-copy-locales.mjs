@@ -28,9 +28,20 @@
  * that finds nothing must not read as "all clean". TypeScript already rejects
  * a Polish key English lacks, so key parity is not repeated here.
  *
+ * Not a gate: `--report` prints how far each language is translated, file by
+ * file, so someone adding or finishing a language can see the gaps. A plural
+ * (an English `{ one, other }` entry) counts as ONE key, translated when the
+ * language has a non-empty `other` form; Polish-only `few` / `many` are never
+ * extra keys, because totals are English's. An empty string counts as missing,
+ * the same way `resolveCopy` treats it. It reads the same files, through the
+ * same extraction and the same `LANGUAGES` list as the normal run, so a new
+ * language shows up with no extra code. It always exits 0.
+ *
  * Usage:
  *   node scripts/check-copy-locales.mjs
  *   node scripts/check-copy-locales.mjs --self-check   (proves every rule fires)
+ *   node scripts/check-copy-locales.mjs --report       (per-file coverage, most missing first, plus TOTAL)
+ *   node scripts/check-copy-locales.mjs --report --missing   (also list the missing key paths; --verbose is an alias)
  */
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join, relative } from 'node:path';
@@ -201,7 +212,7 @@ export function checkCopies({ copies, problems }, fileLabel) {
     for (const [key, enLeaf] of en) {
       if (enLeaf.budget !== null && enLeaf.text.length > enLeaf.budget) {
         errors.push(
-          `${fileLabel}:${enLeaf.line} en.${key} "${enLeaf.text}" is ${enLeaf.text.length} chars, budget ${enLeaf.budget}.`,
+          `${fileLabel}:${enLeaf.line} en.${key} "${enLeaf.text}" is ${enLeaf.text.length} chars, budget ${enLeaf.budget}. Shorten the English text or raise the budget in fit().`,
         );
       }
     }
@@ -211,7 +222,7 @@ export function checkCopies({ copies, problems }, fileLabel) {
       const enLeaf = en.get(enKey);
       if (placeholderSet(plLeaf.text) !== placeholderSet(enLeaf.text)) {
         errors.push(
-          `${fileLabel}:${plLeaf.line} pl.${key} placeholders {${placeholderSet(plLeaf.text)}} do not match en {${placeholderSet(enLeaf.text)}}.`,
+          `${fileLabel}:${plLeaf.line} pl.${key} placeholders {${placeholderSet(plLeaf.text)}} do not match en {${placeholderSet(enLeaf.text)}}. Keep every {name} token exactly as English writes it; a misspelt one renders as raw text.`,
         );
       }
       const budget = plLeaf.budget ?? enLeaf.budget;
@@ -267,11 +278,11 @@ function listSourceFiles(dir, out = []) {
   return out;
 }
 
-function run() {
-  const files = listSourceFiles(SCAN_ROOT);
+/** Every `defineCopy` file under the scan root, and the words used elsewhere. */
+function collectCopyFiles() {
   const copyFiles = [];
   const usedWords = new Set();
-  for (const file of files) {
+  for (const file of listSourceFiles(SCAN_ROOT)) {
     const source = readFileSync(file, 'utf8');
     const parsed = source.includes('defineCopy(') ? extractCopies(source, file) : null;
     if (parsed && (parsed.copies.length > 0 || parsed.problems.length > 0)) {
@@ -280,6 +291,103 @@ function run() {
       for (const word of source.match(/\w+/g) ?? []) usedWords.add(word);
     }
   }
+  return { copyFiles, usedWords };
+}
+
+/** The `e2e` fixture pins the language by writing the key the app reads. */
+function storageKeyMirrorErrors() {
+  const keyOf = (path, pattern) => readFileSync(join(ROOT, path), 'utf8').match(pattern)?.[1];
+  const app = keyOf('apps/web/src/shared/i18n/resolve-locale.ts', /LOCALE_STORAGE_KEY\s*=\s*'([^']+)'/);
+  const e2e = keyOf('apps/e2e/src/fixtures/test.ts', /localStorage\.getItem\('([^']+)'\)/);
+  if (!app || !e2e) return ['could not read the locale storage key from resolve-locale.ts and the e2e fixture.'];
+  return app === e2e
+    ? []
+    : [`apps/e2e/src/fixtures/test.ts pins "${e2e}" but the app reads "${app}" (LOCALE_STORAGE_KEY); the e2e English pin would silently stop working.`];
+}
+
+// ---------------------------------------------------------------------------
+// Coverage report (--report)
+// ---------------------------------------------------------------------------
+
+/** The unit a key counts as: a plural's parent path, or the key itself. */
+function unitOf(key) {
+  const dot = key.lastIndexOf('.');
+  return dot > 0 && PLURAL_KEYS.has(key.slice(dot + 1)) ? key.slice(0, dot) : key;
+}
+
+/**
+ * How much of English one language has translated. Units are English's: a
+ * plural group is one unit (translated when `<unit>.other` is non-empty), any
+ * other leaf is one unit (translated when the key exists and is non-empty).
+ * Keys only the language has (Polish `few` / `many`) never add to the total.
+ */
+export function coverageOf(copies, language) {
+  let total = 0;
+  let translated = 0;
+  const missing = [];
+  copies.forEach((copy, index) => {
+    const prefix = copies.length > 1 ? `[${index + 1}] ` : '';
+    const units = new Map();
+    for (const key of copy.en.keys()) {
+      const unit = unitOf(key);
+      units.set(unit, unit === key ? key : `${unit}.other`);
+    }
+    const leaves = copy[language];
+    for (const [unit, probe] of units) {
+      total += 1;
+      if ((leaves.get(probe)?.text ?? '') !== '') translated += 1;
+      else missing.push(`${prefix}${unit}`);
+    }
+  });
+  return { total, translated, missing };
+}
+
+const percent = (translated, total) => (total === 0 ? '-' : `${Math.floor((translated / total) * 100)}%`);
+
+/** @returns {string[]} report lines for the languages other than English. */
+export function formatReport(entries, languages, { listMissing = false } = {}) {
+  const targets = languages.filter((language) => language !== 'en');
+  const rows = entries.map(({ label, copies, unreadable }) => {
+    const per = targets.map((language) => ({ language, ...coverageOf(copies, language) }));
+    return { label, per, unreadable, missingCount: per.reduce((sum, c) => sum + c.missing.length, 0) };
+  });
+  rows.sort((a, b) => b.missingCount - a.missingCount || a.label.localeCompare(b.label));
+  const width = Math.max(5, ...rows.map((r) => r.label.length));
+  const lines = [];
+  for (const row of rows) {
+    const cells = row.per.map((c) => `${c.language} ${c.translated}/${c.total} (${percent(c.translated, c.total)})`);
+    const note = row.unreadable > 0 ? `   [${row.unreadable} unreadable shape(s), see the normal run]` : '';
+    lines.push(`${row.label.padEnd(width)}   ${cells.join('   ')}${note}`);
+    if (listMissing) {
+      for (const c of row.per) for (const key of c.missing) lines.push(`    ${c.language} missing: ${key}`);
+    }
+  }
+  const totals = targets.map((language) => {
+    let total = 0;
+    let translated = 0;
+    for (const { copies } of entries) {
+      const c = coverageOf(copies, language);
+      total += c.total;
+      translated += c.translated;
+    }
+    return `${language} ${translated}/${total} (${percent(translated, total)})`;
+  });
+  lines.push(`${'TOTAL'.padEnd(width)}   ${totals.join('   ')}`);
+  return lines;
+}
+
+function report(listMissing) {
+  const { copyFiles } = collectCopyFiles();
+  const entries = copyFiles.map(({ file, parsed }) => ({
+    label: relative(ROOT, file),
+    copies: parsed.copies,
+    unreadable: parsed.problems.length,
+  }));
+  for (const line of formatReport(entries, LANGUAGES, { listMissing })) console.log(line);
+}
+
+function run() {
+  const { copyFiles, usedWords } = collectCopyFiles();
 
   const errors = [];
   const warnings = [];
@@ -289,6 +397,7 @@ function run() {
         'The scan finding nothing is a broken scan, not a clean tree.',
     );
   }
+  errors.push(...storageKeyMirrorErrors());
   for (const { file, parsed } of copyFiles) {
     const label = relative(ROOT, file);
     const result = checkCopies(parsed, label);
@@ -387,6 +496,52 @@ function selfCheck() {
     failures.push(`unused key: expected one warning naming strayKey, got ${JSON.stringify(unused)}`);
   }
 
+  // Coverage counting: a plural is one key, Polish-only few/many add nothing,
+  // an empty string and a missing key are both missing.
+  const coverageFixture = [
+    'defineCopy({',
+    "  en: { title: 'Orders', header: { sub: 'S', count: { one: '{n} order', other: '{n} orders' } }, empty: 'None', days: { one: '{n} day', other: '{n} days' } },",
+    "  pl: { title: 'Zamówienia', header: { count: { one: 'a', few: 'b', many: 'c', other: 'd' } }, empty: '', days: { one: 'x' } },",
+    '});',
+  ].join('\n');
+  cases += 1;
+  const covered = coverageOf(extractCopies(coverageFixture).copies, 'pl');
+  if (covered.total !== 5 || covered.translated !== 2) {
+    failures.push(`coverage: expected 2/5 translated, got ${covered.translated}/${covered.total}`);
+  }
+  cases += 1;
+  if (JSON.stringify(covered.missing) !== JSON.stringify(['header.sub', 'empty', 'days'])) {
+    failures.push(`coverage: expected missing header.sub, empty, days; got ${JSON.stringify(covered.missing)}`);
+  }
+  cases += 1;
+  const fullEn = coverageOf(extractCopies(coverageFixture).copies, 'en');
+  if (fullEn.total !== 5 || fullEn.translated !== 5 || fullEn.missing.length !== 0) {
+    failures.push(`coverage: English must be complete against itself, got ${fullEn.translated}/${fullEn.total}`);
+  }
+  cases += 1;
+  const lines = formatReport(
+    [
+      { label: 'b.copy.ts', copies: extractCopies("defineCopy({ en: { a: 'A', b: 'B' }, pl: { a: 'x' } });").copies, unreadable: 0 },
+      { label: 'a.copy.ts', copies: extractCopies(coverageFixture).copies, unreadable: 0 },
+    ],
+    ['en', 'pl'],
+    { listMissing: true },
+  );
+  const expectedLines = [
+    'a.copy.ts   pl 2/5 (40%)',
+    '    pl missing: header.sub',
+    '    pl missing: empty',
+    '    pl missing: days',
+    'b.copy.ts   pl 1/2 (50%)',
+    '    pl missing: b',
+    'TOTAL       pl 3/7 (42%)',
+  ];
+  if (JSON.stringify(lines) !== JSON.stringify(expectedLines)) {
+    failures.push(`report: expected ${JSON.stringify(expectedLines)}, got ${JSON.stringify(lines)}`);
+  }
+  cases += 1;
+  if (storageKeyMirrorErrors().length > 0) failures.push(`storage key mirror: ${storageKeyMirrorErrors()[0]}`);
+
   if (failures.length > 0) {
     console.error('✗ check-copy-locales --self-check failed:\n');
     for (const f of failures) console.error(`  ${f}`);
@@ -395,5 +550,8 @@ function selfCheck() {
   console.log(`✓ check-copy-locales --self-check: ${cases} cases pass.`);
 }
 
-if (process.argv.includes('--self-check')) selfCheck();
-else run();
+const args = process.argv.slice(2);
+if (args.includes('--self-check')) selfCheck();
+else if (args.some((a) => ['--report', '--missing', '--verbose'].includes(a))) {
+  report(args.includes('--missing') || args.includes('--verbose'));
+} else run();

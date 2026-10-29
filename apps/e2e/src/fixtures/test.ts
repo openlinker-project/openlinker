@@ -50,6 +50,9 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
   // which saves Polish; the pin only fills an empty slot, so a reload or an
   // internal link after that stays in Polish.
   page: async ({ page }, use) => {
+    // 'openlinker.locale' is LOCALE_STORAGE_KEY in
+    // apps/web/src/shared/i18n/resolve-locale.ts; scripts/check-copy-locales.mjs
+    // fails the build when the two drift.
     await page.addInitScript(() => {
       try {
         if (window.localStorage.getItem('openlinker.locale') === null) {
