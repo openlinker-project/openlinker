@@ -45,6 +45,9 @@
 import { useEffect, useState } from 'react';
 import { hashKey, useQuery } from '@tanstack/react-query';
 import { useDebouncedValue } from './use-debounced-value';
+import { formattingLocale } from '../format/format-locale';
+import { numberFormat } from '../i18n/intl-cache';
+import type { SupportedLocale } from '../i18n/i18n.types';
 
 /**
  * How long a filter change must settle before the total is re-fetched.
@@ -223,9 +226,14 @@ export function inferTotalFromPage(page: {
  * One function so every surface showing the same total spells the placeholder
  * the same way - `<ListPagination>` and any per-page "N results" line alike.
  */
-export function formatPaginatedTotal(total: number | null, atLeast: number | null): string {
-  if (total !== null) return total.toLocaleString();
-  return atLeast !== null ? `${atLeast.toLocaleString()}+` : '—';
+export function formatPaginatedTotal(
+  total: number | null,
+  atLeast: number | null,
+  locale?: SupportedLocale,
+): string {
+  const format = numberFormat(formattingLocale(locale));
+  if (total !== null) return format.format(total);
+  return atLeast !== null ? `${format.format(atLeast)}+` : '—';
 }
 
 export function usePaginatedTotal<TData = PaginatedTotalPayload>(

@@ -1,20 +1,26 @@
 /**
- * Amount Formatter
+ * Amount formatting
  *
- * Currency-aware number formatting. When `currency` is a non-empty ISO-4217
- * code, formats as localised currency; otherwise falls back to a bare numeric
- * representation with two fraction digits. Centralised so every surface that
- * renders money (order totals, line-item unit/line prices, offer prices)
- * produces the same output for the same input.
+ * Formats a money amount in the app's language. The currency is the
+ * amount's own; only the separators and symbol placement follow the
+ * operator's language.
  *
- * @module apps/web/src/shared/format
+ * @module shared/format
  */
+import type { SupportedLocale } from '../i18n/i18n.types';
+import { numberFormat } from '../i18n/intl-cache';
+import { formattingLocale } from './format-locale';
 
-export function formatAmount(amount: number, currency: string | undefined): string {
+export function formatAmount(
+  amount: number,
+  currency: string | undefined,
+  locale?: SupportedLocale,
+): string {
+  const tag = formattingLocale(locale);
   if (currency) {
-    return new Intl.NumberFormat(undefined, { style: 'currency', currency }).format(amount);
+    return numberFormat(tag, { style: 'currency', currency }).format(amount);
   }
-  return new Intl.NumberFormat(undefined, {
+  return numberFormat(tag, {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   }).format(amount);

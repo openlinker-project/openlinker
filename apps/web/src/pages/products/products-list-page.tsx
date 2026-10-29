@@ -61,6 +61,7 @@ import {
   useProductsQuery,
 } from '../../features/products/hooks/use-products-query';
 import { useProductsTotal } from '../../features/products/hooks/use-products-total';
+import { formatAmount } from '../../shared/format/format-amount';
 import { formatPaginatedTotal } from '../../shared/hooks/use-paginated-total';
 import { ListPagination } from '../../shared/ui/list-pagination';
 import type {
@@ -114,7 +115,7 @@ function formatPrice(price: number | null, currency: string | null): ReactNode {
     return <span className="text-muted">-</span>;
   }
   if (currency) {
-    return new Intl.NumberFormat(undefined, { style: 'currency', currency }).format(price);
+    return formatAmount(price, currency);
   }
   return (
     <span className="text-muted" title="Currency unknown">

@@ -9,6 +9,12 @@
  *
  * @module shared/format
  */
+import { getLocale } from '../i18n/active-locale';
+import { resolveCopy } from '../i18n/define-copy';
+import { interpolate } from '../i18n/interpolate';
+import { formatPlural } from '../i18n/plural';
+import type { SupportedLocale } from '../i18n/i18n.types';
+import { formatCopy } from './format.copy';
 
 /** Urgency buckets for the ship-by deadline. `soon` is the warning threshold. */
 export const ShipByLevelValues = ['ok', 'soon', 'overdue'] as const;
@@ -22,34 +28,48 @@ export interface ShipByView {
 
 /** Hours within which the deadline is considered "breaching soon" (warning). */
 const SOON_THRESHOLD_MS = 24 * 60 * 60 * 1000;
+const MINUTE_MS = 60_000;
 
 /** Largest-unit magnitude of a non-negative duration: "2d" / "5h" / "12m". */
-function humanizeDuration(ms: number): string {
-  const totalMinutes = Math.floor(ms / 60_000);
+function humanizeDuration(ms: number, locale: SupportedLocale): string {
+  const units = resolveCopy(formatCopy, locale).compactDuration;
+  const totalMinutes = Math.floor(ms / MINUTE_MS);
   const days = Math.floor(totalMinutes / (60 * 24));
-  if (days >= 1) return `${days}d`;
+  if (days >= 1) return formatPlural(days, units.days, locale);
   const hours = Math.floor(totalMinutes / 60);
-  if (hours >= 1) return `${hours}h`;
-  return `${totalMinutes}m`;
+  if (hours >= 1) return interpolate(units.hours, { n: hours });
+  return interpolate(units.minutes, { n: totalMinutes });
 }
 
 /**
  * Format the ship-by deadline relative to `now`. `dueAtIso` null/invalid → null.
  */
-export function formatShipBy(dueAtIso: string | null, now: Date = new Date()): ShipByView | null {
+export function formatShipBy(
+  dueAtIso: string | null,
+  now: Date = new Date(),
+  locale: SupportedLocale = getLocale(),
+): ShipByView | null {
   if (!dueAtIso) return null;
   const dueMs = new Date(dueAtIso).getTime();
   if (Number.isNaN(dueMs)) return null;
 
+  const copy = resolveCopy(formatCopy, locale).shipBy;
   const diff = dueMs - now.getTime();
   if (diff <= 0) {
     return {
       level: 'overdue',
-      remaining: diff === 0 ? 'due now' : `Overdue ${humanizeDuration(-diff)}`,
+      remaining:
+        diff > -MINUTE_MS
+          ? copy.dueNow
+          : interpolate(copy.overdue, { duration: humanizeDuration(-diff, locale) }),
     };
   }
   return {
     level: diff <= SOON_THRESHOLD_MS ? 'soon' : 'ok',
-    remaining: `${humanizeDuration(diff)} left`,
+    // Under a minute the countdown would read "0m left"; the deadline is here.
+    remaining:
+      diff < MINUTE_MS
+        ? copy.dueNow
+        : interpolate(copy.left, { duration: humanizeDuration(diff, locale) }),
   };
 }
