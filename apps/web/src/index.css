@@ -5701,6 +5701,13 @@ a.delivery-rider-banner__button:focus-visible {
   min-height: 100dvh;
   padding: 1.5rem;
   background: var(--bg-canvas);
+  position: relative;
+}
+
+.guest-layout__language {
+  position: absolute;
+  top: max(1rem, env(safe-area-inset-top, 0px));
+  right: max(1rem, env(safe-area-inset-right, 0px));
 }
 
 .guest-card {
@@ -30912,4 +30919,309 @@ legend.analytics-settings-dialog__label {
 
 .ksef-issue-options__lines-scroll {
   overflow-x: auto;
+}
+
+/* Language switch (#3858, ADR-079). Flag pill + popover listing every
+   language with flag, code and native name. Opens upward in the sidebar
+   footer, downward in the signed-out corner. */
+.language-switch {
+  --switch-hue: var(--accent-primary);
+  --switch-tint: color-mix(in oklab, var(--switch-hue) 13%, var(--bg-surface));
+  --switch-edge: color-mix(in oklab, var(--switch-hue) 55%, var(--border-subtle));
+  position: relative;
+  isolation: isolate;
+  display: inline-flex;
+  /* Never squeezed by a flex row (the sidebar header): the name needs room. */
+  flex: none;
+}
+
+/* The hover pill: a copy of the trigger laid over it, right edges aligned,
+ * that widens leftwards while the name unrolls to the right of the flag (the
+ * connection chip's reveal, Source column on /products). Out of flow, so the
+ * row around the switch never reflows, and growing leftwards keeps it inside
+ * the sidebar's clipped right edge and the login page's corner. */
+.language-switch__peek {
+  position: absolute;
+  z-index: 2;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  /* Its own width, not the trigger's: a positioned box otherwise shrinks to
+     its container and squeezes the flag and name. */
+  width: max-content;
+  display: inline-flex;
+  align-items: center;
+  padding: 5px 8px 5px 6px;
+  border: 1px solid var(--switch-edge);
+  border-radius: var(--radius-pill);
+  background: var(--switch-tint);
+  box-shadow: 0 4px 12px -6px color-mix(in oklab, var(--switch-hue) 45%, transparent);
+  color: var(--text-primary);
+  font-size: 12px;
+  font-weight: 600;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--duration-fast) var(--ease-out) 80ms;
+}
+
+.language-switch__peek > * {
+  flex: none;
+}
+
+.language-switch__peek .language-switch__chevron {
+  margin-left: 6px;
+  transform: rotate(var(--peek-chevron, 0deg));
+}
+
+.language-switch__reveal {
+  display: grid;
+  grid-template-columns: 0fr;
+  transition: grid-template-columns var(--duration-fast) var(--ease-standard);
+}
+
+.language-switch__reveal-clip {
+  min-width: 0;
+  overflow: hidden;
+}
+
+.language-switch__reveal-name {
+  display: block;
+  padding-left: 7px;
+  white-space: nowrap;
+  opacity: 0;
+  transform: translateX(-6px);
+  transition:
+    opacity var(--duration-fast) var(--ease-out),
+    transform var(--duration-fast) var(--ease-out);
+}
+
+/* Opening is slower and eased out so the name reads as unrolling; closing (the
+ * base rules) is quicker. Not while the list is open: the list names it already. */
+.language-switch:not(.is-open):has(.language-switch__trigger:is(:hover, :focus-visible))
+  .language-switch__peek {
+  opacity: 1;
+  transition: opacity 80ms var(--ease-out);
+}
+
+.language-switch:not(.is-open):has(.language-switch__trigger:is(:hover, :focus-visible))
+  .language-switch__reveal {
+  grid-template-columns: 1fr;
+  transition: grid-template-columns var(--duration-slow) var(--ease-out);
+}
+
+.language-switch:not(.is-open):has(.language-switch__trigger:is(:hover, :focus-visible))
+  .language-switch__reveal-name {
+  opacity: 1;
+  transform: none;
+  transition:
+    opacity var(--duration-normal) var(--ease-out) 60ms,
+    transform var(--duration-slow) var(--ease-out) 40ms;
+}
+
+@media (hover: none) {
+  /* A tap opens the list straight away; a sticky hover state would leave the
+     name showing after the list closes. */
+  .language-switch__peek {
+    display: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .language-switch__peek,
+  .language-switch__reveal,
+  .language-switch__reveal-name {
+    transition: none !important;
+  }
+}
+
+.language-switch__trigger {
+  font: inherit;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 8px 5px 6px;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--border-default);
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 600;
+  box-shadow: var(--shadow-xs);
+}
+
+.language-switch__trigger:hover,
+.language-switch__trigger[aria-expanded='true'] {
+  border-color: var(--accent-primary);
+}
+
+.language-switch__trigger:focus-visible,
+.language-switch__trigger[aria-expanded='true'] {
+  outline: none;
+  box-shadow: var(--shadow-focus);
+}
+
+.language-switch__flag-wrap {
+  display: inline-block;
+  perspective: 120px;
+  width: 22px;
+  height: 15px;
+}
+
+.language-switch__flag-face {
+  display: block;
+}
+
+
+.language-switch__chevron {
+  width: 10px;
+  height: 10px;
+  color: var(--text-muted);
+}
+
+.language-flag {
+  display: block;
+  width: 22px;
+  height: 15px;
+  border-radius: 3px;
+  box-shadow: 0 0 0 1px var(--border-default);
+  overflow: hidden;
+}
+
+.language-switch__popover {
+  /* In a portal on <body>, placed by the component next to its trigger and
+     centred on it (Motion adds the -50% translate), so a parent's
+     overflow: hidden cannot clip it. */
+  position: fixed;
+  width: 200px;
+  z-index: 40;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-xl);
+  padding: 6px;
+  box-shadow: var(--shadow-overlay);
+  transform-origin: 50% 100%;
+}
+
+.language-switch__popover--down {
+  transform-origin: 50% 0;
+}
+
+.language-switch__head {
+  padding: 6px 8px 8px;
+  font-size: 11.5px;
+  color: var(--text-muted);
+  font-weight: 500;
+}
+
+.language-switch__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 2px;
+  outline: none;
+}
+
+.language-switch__option {
+  position: relative;
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  height: 44px;
+  padding: 0 8px;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--text-primary);
+}
+
+.language-switch__option.is-focus {
+  background: var(--bg-surface-muted);
+}
+
+
+
+/* Positioned behind the row's content and outside the grid flow, so the
+   flag and name sit in the same place on every row. */
+.language-switch__selected {
+  position: absolute;
+  inset: 0;
+  border-radius: var(--radius-md);
+  background: var(--accent-primary-soft);
+  box-shadow: inset 0 0 0 1.5px var(--accent-primary);
+  pointer-events: none;
+}
+
+.language-switch__option > :not(.language-switch__selected) {
+  position: relative;
+  z-index: 1;
+}
+
+.language-switch__option[aria-selected='true'] .language-switch__name {
+  font-weight: 600;
+}
+
+.language-switch__name {
+  display: grid;
+  line-height: 1.25;
+}
+
+.language-switch__name small {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--text-muted);
+}
+
+/* An honest "not finished yet" on a language whose translation still falls
+ * back to English in places. In the info hue rather than the accent, so it
+ * never reads as the selection. */
+.language-switch__beta {
+  position: relative;
+  justify-self: end;
+  cursor: help;
+  padding: 2px 7px;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--status-info-border);
+  background: var(--status-info-soft);
+  color: var(--status-info);
+  font-size: 10.5px;
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+/* Hover popover for the Beta badge: the language list's surface and motion,
+ * scaled down, centred over the row (Motion adds the -50% translate). Wide
+ * enough for the Polish sentence to fit on two lines. */
+.language-switch__option > .language-switch__hint {
+  position: absolute;
+  z-index: 3;
+  left: 50%;
+  bottom: calc(100% + 6px);
+  /* The widest it may get; `shrinkToText` then narrows it to the text. */
+  width: 212px;
+  padding: 9px 12px;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg);
+  background: var(--bg-surface);
+  box-shadow: var(--shadow-md);
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 1.45;
+  white-space: normal;
+  text-align: center;
+  text-wrap: balance;
+  transform-origin: 50% 100%;
+  pointer-events: none;
+}
+
+
+/* Long labels truncate with the full text on hover instead of breaking the
+   240 px sidebar once Polish copy is longer than English. */
+.shell-nav__link-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }

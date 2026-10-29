@@ -644,6 +644,8 @@ An object whose keys are exactly `one` and `other` is read as a plural, so never
 | `useNumberFormat()` | a `NumberFormat` | legacy shim like `t()`; new code uses `useFormat()` |
 | `LanguageSwitch` (in `shared/ui`) | component | the switch in the sidebar footer and on signed-out pages |
 
+The switch itself is `LanguageSwitch` in `shared/ui` (it animates with Motion, so the headless-library policy puts it there), mounted in the sidebar footer and in the signed-out layouts. Shared primitives read their default labels from `shared/ui/ui.copy.ts`; outside a `LocaleProvider` the read-only hooks fall back to English instead of throwing.
+
 Plugin authors pin a language with `SupportedLocale` and never build a `LocaleContextValue` by hand. Interpolation uses `{name}` placeholders. A plural or a date is never built by string concatenation.
 
 The pre-existing `useTranslation()` / `t(key, fallback)` (#612) stays as a compatibility shim for its existing call sites and gets no new callers.
@@ -673,6 +675,10 @@ Text a third-party provider returns is always shown verbatim behind a translated
 - Copy addressed to a Polish provider (for example the InPost webhook e-mail template) is bilingual, Polish first, whatever the UI language.
 - The KSeF statement (oświadczenie) stays Polish in both languages; it is a legal text.
 - Polish terms follow [docs/i18n-glossary.md](./i18n-glossary.md).
+
+### A partly translated interface is accepted
+
+The language switch appears on every page as soon as #3858 lands, while only the shared primitives, the formatters and the shell are translated; page bodies follow feature by feature (the extraction issues). Choosing Polski therefore gives a mostly English page body for a while, and the Beta badge on the language says so. This is accepted rather than gated behind a build flag, because the fallback is per key and never blank, and a visible switch is how operators and reviewers find the gaps. Add a release-note line when the stack ships.
 
 ### Tests
 
@@ -831,6 +837,7 @@ No **styled** external UI library (no shadcn/ui, MUI, Mantine, Chakra, Ant Desig
 | `cmdk` | headless command-menu (keyboard nav, filtering, composable groups) | `shared/ui/command-palette.tsx` |
 | `@tiptap/*` | headless rich-text editing (ProseMirror schema + commands, zero visuals, no shipped CSS) | `shared/ui/rich-text-editor.tsx` |
 | `dompurify` | HTML sanitization before render | `shared/ui/rich-text-view.tsx` |
+| `motion` | animation (spring transitions, presence, reduced-motion support) | `shared/ui/language-switch.tsx`, app-wide settings in `shared/ui/motion-provider.tsx` |
 
 Rules:
 

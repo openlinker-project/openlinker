@@ -45,6 +45,7 @@
     "@tiptap/react": "^3.30.2",
     "cmdk": "^1.1.1",
     "dompurify": "^3.4.11",
+    "motion": "^14.8.0",
     "posthog-js": "^1.398.3",
     "qrcode-generator": "^1.5.2",
     "react": "^19.2.4",

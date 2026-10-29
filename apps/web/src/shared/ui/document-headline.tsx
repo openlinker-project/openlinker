@@ -21,7 +21,7 @@
  * @module shared/ui
  */
 import type { ReactElement, ReactNode } from 'react';
-import { DocumentKindGlyph, DOCUMENT_KIND_LABEL, NO_DOCUMENT_LABEL } from './document-kind-glyph';
+import { DocumentKindGlyph, useDocumentKindLabels } from './document-kind-glyph';
 import type { DocumentKind } from './document-kind-glyph';
 
 /**
@@ -59,6 +59,7 @@ export function DocumentHeadline({
   className = '',
   'data-testid': dataTestId,
 }: DocumentHeadlineProps): ReactElement {
+  const labels = useDocumentKindLabels();
   const classes = ['document-headline', className].filter(Boolean).join(' ');
 
   return (
@@ -67,7 +68,7 @@ export function DocumentHeadline({
         {/* Decorative: the kind is the very next word. */}
         <DocumentKindGlyph kind={kind} decorative />
         <span className="document-headline__word">
-          {kind === null ? NO_DOCUMENT_LABEL : DOCUMENT_KIND_LABEL[kind]}
+          {kind === null ? labels.none : labels.kind[kind]}
           <span className="document-headline__sep" aria-hidden="true">
             {' · '}
           </span>

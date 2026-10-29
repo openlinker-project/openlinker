@@ -1,0 +1,830 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Language switch</title>
+<!-- Mockup for #3858 (ADR-079). Shipped design: Polish and English only, a Beta
+     badge with a hover hint on Polski, a centred list, and a flag-only trigger
+     whose hover pill slides the native name out to the right of the flag.
+     The component CSS below is copied verbatim from apps/web/src/index.css so
+     the mockup reads as this app; keep the two in step. -->
+<style>
+:root {
+  /* ── Typography ───────────────────────────────────────────────────── */
+  --font-sans: 'IBM Plex Sans', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
+    'Segoe UI', sans-serif;
+  --font-mono: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+    'Liberation Mono', monospace;
+
+  /* ── Surfaces ──────────────────────────────────────────────────────
+   * Warm-neutral OKLCH ramp (#775). Canvas is the page background;
+   * surface is the elevated card; shell sits between for sidebars and
+   * sticky bars. `bg-strong` is a deeper neutral for inset hovers and
+   * pressed states. `bg-surface-muted` / `bg-surface-hover` are kept
+   * as aliases for the FE-002 vocabulary that the rest of the CSS
+   * already uses.
+   */
+  --bg-canvas: oklch(99% 0.003 80);
+  --bg-shell: oklch(97.5% 0.004 80);
+  --bg-surface: #ffffff;
+  --bg-surface-elevated: oklch(99% 0.003 80);
+  --bg-muted: oklch(96% 0.005 80);
+  --bg-surface-muted: oklch(96% 0.005 80);
+  --bg-surface-hover: oklch(93% 0.006 80);
+  --bg-strong: oklch(93% 0.006 80);
+
+  /* ── Borders ──────────────────────────────────────────────────────── */
+  --border-subtle: oklch(93.5% 0.006 80);
+  --border-default: oklch(88% 0.008 80);
+  --border-strong: oklch(78% 0.010 80);
+  --border-focus: oklch(68% 0.18 50);
+
+  /* ── Text ─────────────────────────────────────────────────────────── */
+  --text-primary: oklch(20% 0.012 80);
+  --text-secondary: oklch(38% 0.010 80);
+  --text-muted: oklch(52% 0.008 80);
+  --text-disabled: oklch(70% 0.005 80);
+  --text-on-primary: oklch(18% 0.012 50); /* text on accent button */
+  --text-inverse: oklch(96% 0.005 80);
+  --text-link: oklch(50% 0.14 250);
+
+  /* ── Accent ───────────────────────────────────────────────────────
+   * Signal-orange brand accent (#775). Reverses the monochrome stance
+   * of #371 - the prior monochrome accent flattened the cockpit. The
+   * accent is used sparingly: primary buttons, active-tab underline,
+   * KPI top-rule, pulsing live dot, focus rings. Status hues remain
+   * reserved for status meaning.
+   *
+   * `--accent-primary` is the brand colour; `--text-on-primary` above
+   * is the legible text colour to pair with it on primary buttons.
+   */
+  --accent-primary: oklch(68% 0.18 50);
+  --accent-primary-hover: oklch(62% 0.19 50);
+  --accent-primary-active: oklch(56% 0.20 50);
+  --accent-primary-soft: oklch(96% 0.04 60);
+  --accent-primary-soft-strong: oklch(40% 0.16 50);
+  --accent-primary-border: oklch(85% 0.10 55);
+  --accent-focus: oklch(68% 0.18 50);
+  --accent-ring: oklch(68% 0.18 50 / 0.30);
+
+  /* ── Status: success ──────────────────────────────────────────────── */
+  --status-success: oklch(54% 0.14 150);
+  --status-success-soft: oklch(96% 0.04 150);
+  --status-success-border: oklch(85% 0.08 150);
+  --status-success-fg: oklch(36% 0.12 150);
+  --status-success-strong: oklch(36% 0.12 150);
+
+  /* ── Status: warning ──────────────────────────────────────────────── */
+  --status-warning: oklch(72% 0.16 85);
+  --status-warning-soft: oklch(96% 0.05 85);
+  --status-warning-border: oklch(85% 0.10 85);
+  --status-warning-fg: oklch(42% 0.12 80);
+  --status-warning-strong: oklch(42% 0.12 80);
+
+  /* ── Status: error ────────────────────────────────────────────────── */
+  --status-error: oklch(58% 0.20 25);
+  --status-error-soft: oklch(96% 0.04 25);
+  --status-error-border: oklch(85% 0.10 25);
+  --status-error-fg: oklch(42% 0.16 25);
+  --status-error-strong: oklch(42% 0.16 25);
+
+  /* ── Status: info ─────────────────────────────────────────────────── */
+  --status-info: oklch(56% 0.14 245);
+  --status-info-soft: oklch(96% 0.03 245);
+  --status-info-border: oklch(85% 0.08 245);
+  --status-info-fg: oklch(40% 0.12 245);
+  --status-info-strong: oklch(40% 0.12 245);
+
+  /* ── Viz: categorical series (#1739) ──────────────────────────────────
+   * Small categorical palette for proportion visuals (routing-split bar).
+   * NOT status hues - a series colour distinguishes entities (carriers,
+   * connections), never encodes health. `--viz-cat-muted` is the neutral
+   * "default / unassigned" bucket. */
+  --viz-cat-1: oklch(75% 0.13 85);
+  --viz-cat-2: oklch(60% 0.15 20);
+  --viz-cat-3: oklch(58% 0.12 245);
+  --viz-cat-4: oklch(60% 0.13 150);
+  --viz-cat-muted: oklch(82% 0.008 80);
+
+  /* ── Channel brand hues (#1752) ──────────────────────────────────────
+   * Per-marketplace dot/pill identity colours, previously copy-pasted as raw
+   * oklch literals across the orders, coverage, channel-pill, product-detail,
+   * and variant-drawer rulesets. Brand identity, NOT status - a channel hue
+   * distinguishes the platform, never encodes health. Single definition
+   * (identical in light/dark), mirroring the viz categorical set. */
+  --channel-allegro: oklch(70% 0.18 35);
+  --channel-prestashop: oklch(60% 0.18 250);
+  --channel-erli: oklch(66% 0.17 320);
+  --channel-woocommerce: oklch(64% 0.16 150);
+  --channel-amazon: oklch(72% 0.16 75);
+  --channel-shopify: oklch(64% 0.16 150);
+
+  /* ── Status: review / manual ──────────────────────────────────────── */
+  --status-review: oklch(58% 0.16 290);
+  --status-review-soft: oklch(96% 0.04 290);
+  --status-review-border: oklch(85% 0.08 290);
+  --status-review-fg: oklch(42% 0.14 290);
+  --status-review-strong: oklch(42% 0.14 290);
+
+  /* ── Status: conflict ─────────────────────────────────────────────── */
+  --status-conflict: oklch(64% 0.16 45);
+  --status-conflict-soft: oklch(96% 0.05 45);
+  --status-conflict-border: oklch(85% 0.10 45);
+  --status-conflict-strong: oklch(40% 0.14 45);
+
+  /* ── Status: disabled ─────────────────────────────────────────────── */
+  --status-disabled: oklch(55% 0.008 80);
+  --status-disabled-soft: oklch(95% 0.005 80);
+  --status-disabled-border: oklch(85% 0.008 80);
+  --status-disabled-fg: oklch(38% 0.010 80);
+  --status-disabled-strong: oklch(38% 0.010 80);
+
+  /* ── Tags (#3533) ─────────────────────────────────────────────────────
+   * A closed vocabulary of eight dot colours for the order-tag picker
+   * (`OrderTagPicker`) and the Settings tag manager. NOT status hues - a
+   * tag colour paints a small dot on a neutral pill (the `.channel-pill`
+   * precedent) and a tag always carries its name; colour is never the
+   * only signal. `[data-tag-color]` resolves one of these onto `--tag-c`,
+   * which `.order-tag__dot` reads. Single closed set, no per-tag custom
+   * hex - this is what "the design system's token set" means in #3532's
+   * AC. */
+  --tag-grey: oklch(62% 0.01 270);
+  --tag-blue: oklch(58% 0.15 255);
+  --tag-teal: oklch(60% 0.10 195);
+  --tag-green: oklch(60% 0.14 150);
+  --tag-amber: oklch(74% 0.15 80);
+  --tag-orange: oklch(66% 0.16 50);
+  --tag-pink: oklch(64% 0.17 350);
+  --tag-violet: oklch(58% 0.17 300);
+
+  /* ── Elevation ────────────────────────────────────────────────────── */
+  --shadow-soft: 0 1px 2px rgb(15 18 26 / 0.04), 0 6px 16px rgb(15 18 26 / 0.06);
+  --shadow-soft-hover: 0 2px 4px rgb(15 18 26 / 0.04), 0 12px 28px rgb(15 18 26 / 0.10);
+  --shadow-overlay: 0 24px 48px rgb(15 18 26 / 0.16), 0 8px 16px rgb(15 18 26 / 0.08);
+  --overlay-scrim: rgb(15 18 26 / 0.55);
+
+  --shadow-xs: 0 1px 2px rgb(15 18 26 / 0.04);
+  --shadow-sm: 0 1px 2px rgb(15 18 26 / 0.04), 0 1px 3px rgb(15 18 26 / 0.06);
+  --shadow-md: 0 2px 4px rgb(15 18 26 / 0.04), 0 6px 16px rgb(15 18 26 / 0.08);
+  --shadow-lg: 0 6px 12px rgb(15 18 26 / 0.06), 0 16px 32px rgb(15 18 26 / 0.10);
+  --shadow-focus: 0 0 0 3px var(--accent-ring);
+  --shadow-inset-top: inset 0 1px 0 rgb(255 255 255 / 0.6);
+
+  /* Primary button hover - accent-driven (#775). Kept as a named token
+     because existing CSS references it. The cascade through
+     `--accent-primary-hover` would also work, but the explicit token
+     makes the contract auditable in `tokens.ts`. */
+  --button-primary-bg-hover: oklch(62% 0.19 50);
+
+  /* ── Spacing scale (strict 4px grid) ─────────────────────────────── */
+  /* ── Layout heights (#2227) ────────────────────────────────────────
+   * The two pinned strips at the top of the shell, named once instead of
+   * repeated as a literal `52px` in `.shell-topbar` and `.demo-banner`. Height,
+   * not padding, so the value stays true: the banner carries a matching
+   * `min-height`.
+   */
+  --shell-topbar-height: 52px;
+  --demo-banner-height: 48px;
+
+  --space-1: 0.25rem; /* 4px */
+  --space-2: 0.5rem; /* 8px */
+  --space-3: 0.75rem; /* 12px */
+  --space-4: 1rem; /* 16px */
+  --space-5: 1.5rem; /* 24px */
+  --space-6: 2rem; /* 32px */
+  --space-7: 3rem; /* 48px */
+  --space-8: 4rem; /* 64px */
+
+  /* ── Radius scale ─────────────────────────────────────────────────── */
+  --radius-xs: 4px;
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 10px;
+  --radius-xl: 14px;
+  --radius-pill: 9999px;
+
+  /* ── Motion ─────────────────────────────────────────────────────────
+     Public tokens (they are in the catalog). They fit none of the kinds the
+     design-system exporter partitions custom properties by (colour, space,
+     radius, type, …), so each declares `@kind other` rather than leaving the
+     classification to be guessed (#2436). */
+  --duration-fast: 120ms; /* @kind other */
+  --duration-normal: 180ms; /* @kind other */
+  --duration-slow: 280ms; /* @kind other */
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1); /* @kind other */
+  --ease-standard: cubic-bezier(0.4, 0, 0.2, 1); /* @kind other */
+  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1); /* @kind other */
+
+  /* ── Tracking (letter-spacing) ────────────────────────────────────── */
+  --tracking-tight: -0.012em;
+  --tracking-normal: 0;
+  --tracking-wide: 0.02em;
+  --tracking-caps: 0.08em;
+
+  color-scheme: light;
+  font-family: var(--font-sans);
+  line-height: 1.5;
+  font-weight: 400;
+  color: var(--text-primary);
+  background: var(--bg-canvas);
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  font-feature-settings: 'cv11', 'ss01';
+}
+
+/* ── Dark mode ──────────────────────────────────────────────────────
+ * Activated via `data-theme="dark"` on <html> (see ThemeProvider and
+ * the FOUC guard in index.html). Only colour tokens are remapped -
+ * spacing, radii, shadows, and typography stay identical across themes.
+ * Status tones keep the same semantic names but shift to dark-friendly
+ * tints so soft backgrounds don't wash out on dark surfaces.
+ */
+html[data-theme='dark'] {
+  color-scheme: dark;
+
+  /* Primary button hover - accent-driven (#775). */
+  --button-primary-bg-hover: oklch(78% 0.18 50);
+
+  /* Surfaces - cool graphite ramp (#775). Hue 270 carries a faint
+     cool cast that keeps the dark palette from looking dead-neutral.
+     Elevation step sizes match the previous graphite ramp so existing
+     components carry over. */
+  --bg-canvas: oklch(14% 0.005 270);
+  --bg-shell: oklch(16% 0.006 270);
+  --bg-surface: oklch(19% 0.007 270);
+  --bg-surface-elevated: oklch(22% 0.008 270);
+  --bg-muted: oklch(24% 0.009 270);
+  --bg-surface-muted: oklch(24% 0.009 270);
+  --bg-surface-hover: oklch(28% 0.010 270);
+  --bg-strong: oklch(28% 0.010 270);
+
+  /* Borders */
+  --border-subtle: oklch(24% 0.010 270);
+  --border-default: oklch(30% 0.012 270);
+  --border-strong: oklch(42% 0.014 270);
+  --border-focus: oklch(72% 0.18 50);
+
+  /* Text */
+  --text-primary: oklch(96% 0.006 270);
+  --text-secondary: oklch(78% 0.010 270);
+  --text-muted: oklch(60% 0.012 270);
+  --text-disabled: oklch(42% 0.012 270);
+  --text-on-primary: oklch(16% 0.012 50); /* text on accent button - same black bias as light */
+  --text-inverse: oklch(20% 0.012 80);
+  --text-link: oklch(76% 0.14 245);
+
+  /* Accent - see :root for the rationale (#775). */
+  --accent-primary: oklch(72% 0.18 50);
+  --accent-primary-hover: oklch(78% 0.18 50);
+  --accent-primary-active: oklch(84% 0.16 50);
+  --accent-primary-soft: oklch(28% 0.08 50);
+  --accent-primary-soft-strong: oklch(86% 0.14 60);
+  --accent-primary-border: oklch(40% 0.14 55);
+  --accent-focus: oklch(72% 0.18 50);
+  --accent-ring: oklch(72% 0.18 50 / 0.40);
+
+  /* Status - success */
+  --status-success: oklch(68% 0.16 150);
+  --status-success-soft: oklch(26% 0.06 150);
+  --status-success-border: oklch(36% 0.10 150);
+  --status-success-fg: oklch(86% 0.14 150);
+  --status-success-strong: oklch(86% 0.14 150);
+
+  /* Status - warning */
+  --status-warning: oklch(78% 0.16 85);
+  --status-warning-soft: oklch(28% 0.07 85);
+  --status-warning-border: oklch(38% 0.10 85);
+  --status-warning-fg: oklch(88% 0.14 85);
+  --status-warning-strong: oklch(88% 0.14 85);
+
+  /* Status - error */
+  --status-error: oklch(70% 0.18 25);
+  --status-error-soft: oklch(28% 0.10 25);
+  --status-error-border: oklch(40% 0.14 25);
+  --status-error-fg: oklch(86% 0.14 25);
+  --status-error-strong: oklch(86% 0.14 25);
+
+  /* Status - info */
+  --status-info: oklch(72% 0.14 245);
+  --status-info-soft: oklch(26% 0.06 245);
+  --status-info-border: oklch(36% 0.10 245);
+  --status-info-fg: oklch(86% 0.12 245);
+  --status-info-strong: oklch(86% 0.12 245);
+
+  /* Viz - categorical series (#1739) */
+  --viz-cat-1: oklch(70% 0.12 85);
+  --viz-cat-2: oklch(62% 0.14 20);
+  --viz-cat-3: oklch(62% 0.11 245);
+  --viz-cat-4: oklch(62% 0.12 150);
+  --viz-cat-muted: oklch(42% 0.008 80);
+
+  /* Status - review */
+  --status-review: oklch(74% 0.14 290);
+  --status-review-soft: oklch(28% 0.06 290);
+  --status-review-border: oklch(38% 0.10 290);
+  --status-review-fg: oklch(88% 0.12 290);
+  --status-review-strong: oklch(88% 0.12 290);
+
+  /* Status - conflict */
+  --status-conflict: oklch(72% 0.16 45);
+  --status-conflict-soft: oklch(28% 0.08 45);
+  --status-conflict-border: oklch(40% 0.12 45);
+  --status-conflict-strong: oklch(88% 0.14 45);
+
+  /* Status - disabled */
+  --status-disabled: oklch(65% 0.010 270);
+  --status-disabled-soft: oklch(24% 0.010 270);
+  --status-disabled-border: oklch(34% 0.012 270);
+  --status-disabled-fg: oklch(82% 0.010 270);
+  --status-disabled-strong: oklch(82% 0.010 270);
+
+  /* Tags (#3533) - lighter/brighter variants for dark surfaces. */
+  --tag-grey: oklch(70% 0.01 270);
+  --tag-blue: oklch(70% 0.14 255);
+  --tag-teal: oklch(72% 0.10 195);
+  --tag-green: oklch(72% 0.14 150);
+  --tag-amber: oklch(80% 0.14 80);
+  --tag-orange: oklch(74% 0.15 50);
+  --tag-pink: oklch(74% 0.15 350);
+  --tag-violet: oklch(72% 0.15 300);
+
+  /* Elevation */
+  --shadow-soft: 0 1px 2px rgb(0 0 0 / 0.40), 0 8px 24px rgb(0 0 0 / 0.40);
+  --shadow-soft-hover: 0 2px 4px rgb(0 0 0 / 0.42), 0 12px 32px rgb(0 0 0 / 0.42);
+  --shadow-overlay: 0 24px 48px rgb(0 0 0 / 0.60), 0 8px 16px rgb(0 0 0 / 0.40);
+  --shadow-xs: 0 1px 2px rgb(0 0 0 / 0.40);
+  --shadow-sm: 0 1px 2px rgb(0 0 0 / 0.40), 0 1px 3px rgb(0 0 0 / 0.32);
+  --shadow-md: 0 2px 4px rgb(0 0 0 / 0.40), 0 6px 16px rgb(0 0 0 / 0.36);
+  --shadow-lg: 0 6px 12px rgb(0 0 0 / 0.42), 0 16px 32px rgb(0 0 0 / 0.40);
+  --shadow-focus: 0 0 0 3px var(--accent-ring);
+  --shadow-inset-top: inset 0 1px 0 rgb(255 255 255 / 0.04);
+  --overlay-scrim: rgb(0 0 0 / 0.72);
+}
+body { margin: 0; background: var(--bg-canvas, #f5f5f4); color: var(--text-primary); font-family: var(--font-sans); }
+.mock-bar { display: flex; gap: 8px; flex-wrap: wrap; padding: 12px 16px; border-bottom: 1px solid var(--border-default); background: var(--bg-surface); }
+.mock-bar button { font: inherit; font-size: 12px; padding: 4px 10px; border-radius: 999px; border: 1px solid var(--border-default); background: var(--bg-surface); color: var(--text-primary); cursor: pointer; }
+.mock-bar button[aria-pressed='true'] { border-color: var(--accent-primary); background: var(--accent-primary-soft); }
+.mock-stage { position: relative; margin: 24px; min-height: 260px; }
+.mock-state[hidden] { display: none; }
+.mock-sidebar { width: 240px; height: 240px; border: 1px solid var(--border-default); background: var(--bg-surface); border-radius: 12px; position: relative; padding: 12px; box-sizing: border-box; }
+.mock-sidebar__footer { position: absolute; left: 12px; right: 12px; bottom: 12px; display: flex; justify-content: space-between; align-items: center; font-size: 12px; color: var(--text-muted); }
+.mock-corner { display: flex; justify-content: flex-end; width: 420px; height: 160px; border: 1px solid var(--border-default); border-radius: 12px; background: var(--bg-surface); padding: 12px; box-sizing: border-box; }
+.mock-drawer { width: 390px; max-width: 100%; height: 300px; border: 1px solid var(--border-default); border-radius: 12px; background: var(--bg-surface); position: relative; }
+.mock-popover { position: absolute; transform: translateX(-50%); }
+.is-forced-hover .language-switch__peek { opacity: 1; }
+.is-forced-hover .language-switch__reveal { grid-template-columns: 1fr; }
+.is-forced-hover .language-switch__reveal-name { opacity: 1; transform: none; }
+/* Language switch (#3858, ADR-079). Flag pill + popover listing every
+   language with flag, code and native name. Opens upward in the sidebar
+   footer, downward in the signed-out corner. */
+.language-switch {
+  --switch-hue: var(--accent-primary);
+  --switch-tint: color-mix(in oklab, var(--switch-hue) 13%, var(--bg-surface));
+  --switch-edge: color-mix(in oklab, var(--switch-hue) 55%, var(--border-subtle));
+  position: relative;
+  isolation: isolate;
+  display: inline-flex;
+  /* Never squeezed by a flex row (the sidebar header): the name needs room. */
+  flex: none;
+}
+
+/* The hover pill: a copy of the trigger laid over it, right edges aligned,
+ * that widens leftwards while the name unrolls to the right of the flag (the
+ * connection chip's reveal, Source column on /products). Out of flow, so the
+ * row around the switch never reflows, and growing leftwards keeps it inside
+ * the sidebar's clipped right edge and the login page's corner. */
+.language-switch__peek {
+  position: absolute;
+  z-index: 2;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  /* Its own width, not the trigger's: a positioned box otherwise shrinks to
+     its container and squeezes the flag and name. */
+  width: max-content;
+  display: inline-flex;
+  align-items: center;
+  padding: 5px 8px 5px 6px;
+  border: 1px solid var(--switch-edge);
+  border-radius: var(--radius-pill);
+  background: var(--switch-tint);
+  box-shadow: 0 4px 12px -6px color-mix(in oklab, var(--switch-hue) 45%, transparent);
+  color: var(--text-primary);
+  font-size: 12px;
+  font-weight: 600;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--duration-fast) var(--ease-out) 80ms;
+}
+
+.language-switch__peek > * {
+  flex: none;
+}
+
+.language-switch__peek .language-switch__chevron {
+  margin-left: 6px;
+  transform: rotate(var(--peek-chevron, 0deg));
+}
+
+.language-switch__reveal {
+  display: grid;
+  grid-template-columns: 0fr;
+  transition: grid-template-columns var(--duration-fast) var(--ease-standard);
+}
+
+.language-switch__reveal-clip {
+  min-width: 0;
+  overflow: hidden;
+}
+
+.language-switch__reveal-name {
+  display: block;
+  padding-left: 7px;
+  white-space: nowrap;
+  opacity: 0;
+  transform: translateX(-6px);
+  transition:
+    opacity var(--duration-fast) var(--ease-out),
+    transform var(--duration-fast) var(--ease-out);
+}
+
+/* Opening is slower and eased out so the name reads as unrolling; closing (the
+ * base rules) is quicker. Not while the list is open: the list names it already. */
+.language-switch:not(.is-open):has(.language-switch__trigger:is(:hover, :focus-visible))
+  .language-switch__peek {
+  opacity: 1;
+  transition: opacity 80ms var(--ease-out);
+}
+
+.language-switch:not(.is-open):has(.language-switch__trigger:is(:hover, :focus-visible))
+  .language-switch__reveal {
+  grid-template-columns: 1fr;
+  transition: grid-template-columns var(--duration-slow) var(--ease-out);
+}
+
+.language-switch:not(.is-open):has(.language-switch__trigger:is(:hover, :focus-visible))
+  .language-switch__reveal-name {
+  opacity: 1;
+  transform: none;
+  transition:
+    opacity var(--duration-normal) var(--ease-out) 60ms,
+    transform var(--duration-slow) var(--ease-out) 40ms;
+}
+
+@media (hover: none) {
+  /* A tap opens the list straight away; a sticky hover state would leave the
+     name showing after the list closes. */
+  .language-switch__peek {
+    display: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .language-switch__peek,
+  .language-switch__reveal,
+  .language-switch__reveal-name {
+    transition: none !important;
+  }
+}
+
+.language-switch__trigger {
+  font: inherit;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 8px 5px 6px;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--border-default);
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 600;
+  box-shadow: var(--shadow-xs);
+}
+
+.language-switch__trigger:hover,
+.language-switch__trigger[aria-expanded='true'] {
+  border-color: var(--accent-primary);
+}
+
+.language-switch__trigger:focus-visible,
+.language-switch__trigger[aria-expanded='true'] {
+  outline: none;
+  box-shadow: var(--shadow-focus);
+}
+
+.language-switch__flag-wrap {
+  display: inline-block;
+  perspective: 120px;
+  width: 22px;
+  height: 15px;
+}
+
+.language-switch__flag-face {
+  display: block;
+}
+
+
+.language-switch__chevron {
+  width: 10px;
+  height: 10px;
+  color: var(--text-muted);
+}
+
+.language-flag {
+  display: block;
+  width: 22px;
+  height: 15px;
+  border-radius: 3px;
+  box-shadow: 0 0 0 1px var(--border-default);
+  overflow: hidden;
+}
+
+.language-switch__popover {
+  /* In a portal on <body>, placed by the component next to its trigger and
+     centred on it (Motion adds the -50% translate), so a parent's
+     overflow: hidden cannot clip it. */
+  position: fixed;
+  width: 200px;
+  z-index: 40;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-xl);
+  padding: 6px;
+  box-shadow: var(--shadow-overlay);
+  transform-origin: 50% 100%;
+}
+
+.language-switch__popover--down {
+  transform-origin: 50% 0;
+}
+
+.language-switch__head {
+  padding: 6px 8px 8px;
+  font-size: 11.5px;
+  color: var(--text-muted);
+  font-weight: 500;
+}
+
+.language-switch__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 2px;
+  outline: none;
+}
+
+.language-switch__option {
+  position: relative;
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  height: 44px;
+  padding: 0 8px;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--text-primary);
+}
+
+.language-switch__option.is-focus {
+  background: var(--bg-surface-muted);
+}
+
+
+
+/* Positioned behind the row's content and outside the grid flow, so the
+   flag and name sit in the same place on every row. */
+.language-switch__selected {
+  position: absolute;
+  inset: 0;
+  border-radius: var(--radius-md);
+  background: var(--accent-primary-soft);
+  box-shadow: inset 0 0 0 1.5px var(--accent-primary);
+  pointer-events: none;
+}
+
+.language-switch__option > :not(.language-switch__selected) {
+  position: relative;
+  z-index: 1;
+}
+
+.language-switch__option[aria-selected='true'] .language-switch__name {
+  font-weight: 600;
+}
+
+.language-switch__name {
+  display: grid;
+  line-height: 1.25;
+}
+
+.language-switch__name small {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--text-muted);
+}
+
+/* An honest "not finished yet" on a language whose translation still falls
+ * back to English in places. In the info hue rather than the accent, so it
+ * never reads as the selection. */
+.language-switch__beta {
+  position: relative;
+  justify-self: end;
+  cursor: help;
+  padding: 2px 7px;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--status-info-border);
+  background: var(--status-info-soft);
+  color: var(--status-info);
+  font-size: 10.5px;
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+/* Hover popover for the Beta badge: the language list's surface and motion,
+ * scaled down, centred over the row (Motion adds the -50% translate). Wide
+ * enough for the Polish sentence to fit on two lines. */
+.language-switch__option > .language-switch__hint {
+  position: absolute;
+  z-index: 3;
+  left: 50%;
+  bottom: calc(100% + 6px);
+  /* The widest it may get; `shrinkToText` then narrows it to the text. */
+  width: 212px;
+  padding: 9px 12px;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg);
+  background: var(--bg-surface);
+  box-shadow: var(--shadow-md);
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 1.45;
+  white-space: normal;
+  text-align: center;
+  text-wrap: balance;
+  transform-origin: 50% 100%;
+  pointer-events: none;
+}
+
+
+/* Long labels truncate with the full text on hover instead of breaking the
+   240 px sidebar once Polish copy is longer than English. */
+.shell-nav__link-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+</style>
+</head>
+<body>
+<div class="mock-bar" role="toolbar" aria-label="Mockup states">
+  <button data-go="rest" aria-pressed="true">rest</button>
+  <button data-go="hover" aria-pressed="false">hover</button>
+  <button data-go="open-up" aria-pressed="false">open-up</button>
+  <button data-go="open-down" aria-pressed="false">open-down</button>
+  <button data-go="beta-hint" aria-pressed="false">beta-hint</button>
+  <button data-go="login-corner" aria-pressed="false">login-corner</button>
+  <button data-go="mobile-drawer" aria-pressed="false">mobile-drawer</button>
+  <button data-theme-toggle aria-pressed="false">dark theme</button>
+</div>
+<div class="mock-stage">
+  <section class="mock-state" data-state="rest">
+    <div class="mock-sidebar"><div class="mock-sidebar__footer"><span>Default organization</span><div class="language-switch">
+  <button type="button" class="language-switch__trigger" aria-haspopup="listbox" aria-expanded="false" aria-label="Language: English">
+    <span class="language-switch__flag-wrap"><svg class="language-flag" viewBox="0 0 60 40"><rect width="60" height="40" fill="#012169"/><path d="M0 0L60 40M60 0L0 40" stroke="#fff" stroke-width="8"/><path d="M0 0L60 40M60 0L0 40" stroke="#c8102e" stroke-width="3"/><path d="M30 0V40M0 20H60" stroke="#fff" stroke-width="12"/><path d="M30 0V40M0 20H60" stroke="#c8102e" stroke-width="7"/></svg></span><svg class="language-switch__chevron" viewBox="0 0 10 10" aria-hidden="true"><path d="M2 6.5L5 3.5L8 6.5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+  </button>
+  <span class="language-switch__peek" aria-hidden="true" style="--peek-chevron:0deg"><svg class="language-flag" viewBox="0 0 60 40"><rect width="60" height="40" fill="#012169"/><path d="M0 0L60 40M60 0L0 40" stroke="#fff" stroke-width="8"/><path d="M0 0L60 40M60 0L0 40" stroke="#c8102e" stroke-width="3"/><path d="M30 0V40M0 20H60" stroke="#fff" stroke-width="12"/><path d="M30 0V40M0 20H60" stroke="#c8102e" stroke-width="7"/></svg><span class="language-switch__reveal"><span class="language-switch__reveal-clip"><span class="language-switch__reveal-name" lang="en">English</span></span></span><svg class="language-switch__chevron" viewBox="0 0 10 10" aria-hidden="true"><path d="M2 6.5L5 3.5L8 6.5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+</div></div></div>
+  </section>
+  <section class="mock-state" data-state="hover" hidden>
+    <div class="mock-sidebar"><div class="mock-sidebar__footer"><span>Default organization</span><div class="language-switch is-forced-hover">
+  <button type="button" class="language-switch__trigger" aria-haspopup="listbox" aria-expanded="false" aria-label="Language: English">
+    <span class="language-switch__flag-wrap"><svg class="language-flag" viewBox="0 0 60 40"><rect width="60" height="40" fill="#012169"/><path d="M0 0L60 40M60 0L0 40" stroke="#fff" stroke-width="8"/><path d="M0 0L60 40M60 0L0 40" stroke="#c8102e" stroke-width="3"/><path d="M30 0V40M0 20H60" stroke="#fff" stroke-width="12"/><path d="M30 0V40M0 20H60" stroke="#c8102e" stroke-width="7"/></svg></span><svg class="language-switch__chevron" viewBox="0 0 10 10" aria-hidden="true"><path d="M2 6.5L5 3.5L8 6.5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+  </button>
+  <span class="language-switch__peek" aria-hidden="true" style="--peek-chevron:0deg"><svg class="language-flag" viewBox="0 0 60 40"><rect width="60" height="40" fill="#012169"/><path d="M0 0L60 40M60 0L0 40" stroke="#fff" stroke-width="8"/><path d="M0 0L60 40M60 0L0 40" stroke="#c8102e" stroke-width="3"/><path d="M30 0V40M0 20H60" stroke="#fff" stroke-width="12"/><path d="M30 0V40M0 20H60" stroke="#c8102e" stroke-width="7"/></svg><span class="language-switch__reveal"><span class="language-switch__reveal-clip"><span class="language-switch__reveal-name" lang="en">English</span></span></span><svg class="language-switch__chevron" viewBox="0 0 10 10" aria-hidden="true"><path d="M2 6.5L5 3.5L8 6.5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+</div></div></div>
+  </section>
+  <section class="mock-state" data-state="open-up" hidden>
+    <div class="mock-sidebar" style="margin-top:130px"><div class="mock-sidebar__footer"><span>Default organization</span><div class="language-switch">
+  <button type="button" class="language-switch__trigger" aria-haspopup="listbox" aria-expanded="false" aria-label="Language: English">
+    <span class="language-switch__flag-wrap"><svg class="language-flag" viewBox="0 0 60 40"><rect width="60" height="40" fill="#012169"/><path d="M0 0L60 40M60 0L0 40" stroke="#fff" stroke-width="8"/><path d="M0 0L60 40M60 0L0 40" stroke="#c8102e" stroke-width="3"/><path d="M30 0V40M0 20H60" stroke="#fff" stroke-width="12"/><path d="M30 0V40M0 20H60" stroke="#c8102e" stroke-width="7"/></svg></span><svg class="language-switch__chevron" viewBox="0 0 10 10" aria-hidden="true"><path d="M2 6.5L5 3.5L8 6.5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+  </button>
+  <span class="language-switch__peek" aria-hidden="true" style="--peek-chevron:0deg"><svg class="language-flag" viewBox="0 0 60 40"><rect width="60" height="40" fill="#012169"/><path d="M0 0L60 40M60 0L0 40" stroke="#fff" stroke-width="8"/><path d="M0 0L60 40M60 0L0 40" stroke="#c8102e" stroke-width="3"/><path d="M30 0V40M0 20H60" stroke="#fff" stroke-width="12"/><path d="M30 0V40M0 20H60" stroke="#c8102e" stroke-width="7"/></svg><span class="language-switch__reveal"><span class="language-switch__reveal-clip"><span class="language-switch__reveal-name" lang="en">English</span></span></span><svg class="language-switch__chevron" viewBox="0 0 10 10" aria-hidden="true"><path d="M2 6.5L5 3.5L8 6.5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+</div></div></div>
+    <div style="position:absolute;left:190px;top:0"><div class="language-switch__popover mock-popover">
+  <div class="language-switch__head">Language</div>
+  <ul class="language-switch__list" role="listbox"><li role="option" lang="pl" aria-selected="false" class="language-switch__option">
+  <svg class="language-flag" viewBox="0 0 16 10"><rect width="16" height="5" fill="#fff"/><rect y="5" width="16" height="5" fill="#dc143c"/></svg>
+  <span class="language-switch__name">Polski<small>PL</small></span>
+  <span class="language-switch__beta">Beta</span>
+  
+</li><li role="option" lang="en" aria-selected="true" class="language-switch__option is-focus">
+  <span class="language-switch__selected"></span><svg class="language-flag" viewBox="0 0 60 40"><rect width="60" height="40" fill="#012169"/><path d="M0 0L60 40M60 0L0 40" stroke="#fff" stroke-width="8"/><path d="M0 0L60 40M60 0L0 40" stroke="#c8102e" stroke-width="3"/><path d="M30 0V40M0 20H60" stroke="#fff" stroke-width="12"/><path d="M30 0V40M0 20H60" stroke="#c8102e" stroke-width="7"/></svg>
+  <span class="language-switch__name">English<small>EN</small></span>
+  
+  
+</li></ul>
+</div></div>
+  </section>
+  <section class="mock-state" data-state="open-down" hidden>
+    <div class="mock-corner"><div class="language-switch">
+  <button type="button" class="language-switch__trigger" aria-haspopup="listbox" aria-expanded="false" aria-label="Language: English">
+    <span class="language-switch__flag-wrap"><svg class="language-flag" viewBox="0 0 60 40"><rect width="60" height="40" fill="#012169"/><path d="M0 0L60 40M60 0L0 40" stroke="#fff" stroke-width="8"/><path d="M0 0L60 40M60 0L0 40" stroke="#c8102e" stroke-width="3"/><path d="M30 0V40M0 20H60" stroke="#fff" stroke-width="12"/><path d="M30 0V40M0 20H60" stroke="#c8102e" stroke-width="7"/></svg></span><svg class="language-switch__chevron" viewBox="0 0 10 10" aria-hidden="true"><path d="M2 6.5L5 3.5L8 6.5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+  </button>
+  <span class="language-switch__peek" aria-hidden="true" style="--peek-chevron:180deg"><svg class="language-flag" viewBox="0 0 60 40"><rect width="60" height="40" fill="#012169"/><path d="M0 0L60 40M60 0L0 40" stroke="#fff" stroke-width="8"/><path d="M0 0L60 40M60 0L0 40" stroke="#c8102e" stroke-width="3"/><path d="M30 0V40M0 20H60" stroke="#fff" stroke-width="12"/><path d="M30 0V40M0 20H60" stroke="#c8102e" stroke-width="7"/></svg><span class="language-switch__reveal"><span class="language-switch__reveal-clip"><span class="language-switch__reveal-name" lang="en">English</span></span></span><svg class="language-switch__chevron" viewBox="0 0 10 10" aria-hidden="true"><path d="M2 6.5L5 3.5L8 6.5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+</div></div>
+    <div style="position:absolute;left:370px;top:56px"><div class="language-switch__popover mock-popover language-switch__popover--down">
+  <div class="language-switch__head">Language</div>
+  <ul class="language-switch__list" role="listbox"><li role="option" lang="pl" aria-selected="false" class="language-switch__option">
+  <svg class="language-flag" viewBox="0 0 16 10"><rect width="16" height="5" fill="#fff"/><rect y="5" width="16" height="5" fill="#dc143c"/></svg>
+  <span class="language-switch__name">Polski<small>PL</small></span>
+  <span class="language-switch__beta">Beta</span>
+  
+</li><li role="option" lang="en" aria-selected="true" class="language-switch__option is-focus">
+  <span class="language-switch__selected"></span><svg class="language-flag" viewBox="0 0 60 40"><rect width="60" height="40" fill="#012169"/><path d="M0 0L60 40M60 0L0 40" stroke="#fff" stroke-width="8"/><path d="M0 0L60 40M60 0L0 40" stroke="#c8102e" stroke-width="3"/><path d="M30 0V40M0 20H60" stroke="#fff" stroke-width="12"/><path d="M30 0V40M0 20H60" stroke="#c8102e" stroke-width="7"/></svg>
+  <span class="language-switch__name">English<small>EN</small></span>
+  
+  
+</li></ul>
+</div></div>
+  </section>
+  <section class="mock-state" data-state="beta-hint" hidden>
+    <div class="mock-sidebar" style="margin-top:150px"><div class="mock-sidebar__footer"><span>Domyślna organizacja</span><div class="language-switch">
+  <button type="button" class="language-switch__trigger" aria-haspopup="listbox" aria-expanded="false" aria-label="Język: Polski">
+    <span class="language-switch__flag-wrap"><svg class="language-flag" viewBox="0 0 16 10"><rect width="16" height="5" fill="#fff"/><rect y="5" width="16" height="5" fill="#dc143c"/></svg></span><svg class="language-switch__chevron" viewBox="0 0 10 10" aria-hidden="true"><path d="M2 6.5L5 3.5L8 6.5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+  </button>
+  <span class="language-switch__peek" aria-hidden="true" style="--peek-chevron:0deg"><svg class="language-flag" viewBox="0 0 16 10"><rect width="16" height="5" fill="#fff"/><rect y="5" width="16" height="5" fill="#dc143c"/></svg><span class="language-switch__reveal"><span class="language-switch__reveal-clip"><span class="language-switch__reveal-name" lang="pl">Polski</span></span></span><svg class="language-switch__chevron" viewBox="0 0 10 10" aria-hidden="true"><path d="M2 6.5L5 3.5L8 6.5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+</div></div></div>
+    <div style="position:absolute;left:190px;top:0"><div class="language-switch__popover mock-popover">
+  <div class="language-switch__head">Language</div>
+  <ul class="language-switch__list" role="listbox"><li role="option" lang="pl" aria-selected="true" class="language-switch__option is-focus">
+  <span class="language-switch__selected"></span><svg class="language-flag" viewBox="0 0 16 10"><rect width="16" height="5" fill="#fff"/><rect y="5" width="16" height="5" fill="#dc143c"/></svg>
+  <span class="language-switch__name">Polski<small>PL</small></span>
+  <span class="language-switch__beta">Beta</span>
+  <span class="language-switch__hint">Polish is still being translated. Some screens appear in English.</span>
+</li><li role="option" lang="en" aria-selected="false" class="language-switch__option">
+  <svg class="language-flag" viewBox="0 0 60 40"><rect width="60" height="40" fill="#012169"/><path d="M0 0L60 40M60 0L0 40" stroke="#fff" stroke-width="8"/><path d="M0 0L60 40M60 0L0 40" stroke="#c8102e" stroke-width="3"/><path d="M30 0V40M0 20H60" stroke="#fff" stroke-width="12"/><path d="M30 0V40M0 20H60" stroke="#c8102e" stroke-width="7"/></svg>
+  <span class="language-switch__name">English<small>EN</small></span>
+  
+  
+</li></ul>
+</div></div>
+  </section>
+  <section class="mock-state" data-state="login-corner" hidden>
+    <div class="mock-corner"><div class="language-switch is-forced-hover">
+  <button type="button" class="language-switch__trigger" aria-haspopup="listbox" aria-expanded="false" aria-label="Język: Polski">
+    <span class="language-switch__flag-wrap"><svg class="language-flag" viewBox="0 0 16 10"><rect width="16" height="5" fill="#fff"/><rect y="5" width="16" height="5" fill="#dc143c"/></svg></span><svg class="language-switch__chevron" viewBox="0 0 10 10" aria-hidden="true"><path d="M2 6.5L5 3.5L8 6.5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+  </button>
+  <span class="language-switch__peek" aria-hidden="true" style="--peek-chevron:180deg"><svg class="language-flag" viewBox="0 0 16 10"><rect width="16" height="5" fill="#fff"/><rect y="5" width="16" height="5" fill="#dc143c"/></svg><span class="language-switch__reveal"><span class="language-switch__reveal-clip"><span class="language-switch__reveal-name" lang="pl">Polski</span></span></span><svg class="language-switch__chevron" viewBox="0 0 10 10" aria-hidden="true"><path d="M2 6.5L5 3.5L8 6.5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+</div></div>
+  </section>
+  <section class="mock-state" data-state="mobile-drawer" hidden>
+    <div class="mock-drawer"><div class="mock-sidebar__footer" style="left:16px;right:16px"><span>Default organization</span><div class="language-switch">
+  <button type="button" class="language-switch__trigger" aria-haspopup="listbox" aria-expanded="false" aria-label="Language: English">
+    <span class="language-switch__flag-wrap"><svg class="language-flag" viewBox="0 0 60 40"><rect width="60" height="40" fill="#012169"/><path d="M0 0L60 40M60 0L0 40" stroke="#fff" stroke-width="8"/><path d="M0 0L60 40M60 0L0 40" stroke="#c8102e" stroke-width="3"/><path d="M30 0V40M0 20H60" stroke="#fff" stroke-width="12"/><path d="M30 0V40M0 20H60" stroke="#c8102e" stroke-width="7"/></svg></span><svg class="language-switch__chevron" viewBox="0 0 10 10" aria-hidden="true"><path d="M2 6.5L5 3.5L8 6.5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+  </button>
+  <span class="language-switch__peek" aria-hidden="true" style="--peek-chevron:0deg"><svg class="language-flag" viewBox="0 0 60 40"><rect width="60" height="40" fill="#012169"/><path d="M0 0L60 40M60 0L0 40" stroke="#fff" stroke-width="8"/><path d="M0 0L60 40M60 0L0 40" stroke="#c8102e" stroke-width="3"/><path d="M30 0V40M0 20H60" stroke="#fff" stroke-width="12"/><path d="M30 0V40M0 20H60" stroke="#c8102e" stroke-width="7"/></svg><span class="language-switch__reveal"><span class="language-switch__reveal-clip"><span class="language-switch__reveal-name" lang="en">English</span></span></span><svg class="language-switch__chevron" viewBox="0 0 10 10" aria-hidden="true"><path d="M2 6.5L5 3.5L8 6.5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+</div></div></div>
+    <div style="position:absolute;left:300px;top:60px"><div class="language-switch__popover mock-popover">
+  <div class="language-switch__head">Language</div>
+  <ul class="language-switch__list" role="listbox"><li role="option" lang="pl" aria-selected="false" class="language-switch__option">
+  <svg class="language-flag" viewBox="0 0 16 10"><rect width="16" height="5" fill="#fff"/><rect y="5" width="16" height="5" fill="#dc143c"/></svg>
+  <span class="language-switch__name">Polski<small>PL</small></span>
+  <span class="language-switch__beta">Beta</span>
+  
+</li><li role="option" lang="en" aria-selected="true" class="language-switch__option is-focus">
+  <span class="language-switch__selected"></span><svg class="language-flag" viewBox="0 0 60 40"><rect width="60" height="40" fill="#012169"/><path d="M0 0L60 40M60 0L0 40" stroke="#fff" stroke-width="8"/><path d="M0 0L60 40M60 0L0 40" stroke="#c8102e" stroke-width="3"/><path d="M30 0V40M0 20H60" stroke="#fff" stroke-width="12"/><path d="M30 0V40M0 20H60" stroke="#c8102e" stroke-width="7"/></svg>
+  <span class="language-switch__name">English<small>EN</small></span>
+  
+  
+</li></ul>
+</div></div>
+  </section>
+</div>
+<script>
+  var states = document.querySelectorAll('[data-state]');
+  var buttons = document.querySelectorAll('[data-go]');
+  function go(name) {
+    states.forEach(function (s) { s.hidden = s.getAttribute('data-state') !== name; });
+    buttons.forEach(function (b) { b.setAttribute('aria-pressed', String(b.getAttribute('data-go') === name)); });
+    history.replaceState(null, '', '#' + name);
+  }
+  buttons.forEach(function (b) { b.addEventListener('click', function () { go(b.getAttribute('data-go')); }); });
+  var toggle = document.querySelector('[data-theme-toggle]');
+  toggle.addEventListener('click', function () {
+    var dark = document.documentElement.getAttribute('data-theme') !== 'dark';
+    document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light');
+    toggle.setAttribute('aria-pressed', String(dark));
+  });
+  go((location.hash || '#rest').slice(1));
+</script>
+</body>
+</html>

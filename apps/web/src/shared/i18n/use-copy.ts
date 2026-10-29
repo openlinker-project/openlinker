@@ -7,11 +7,11 @@
  *
  * @module shared/i18n
  */
-import { useLocale } from './use-locale';
+import { useActiveLocale } from './use-locale';
 import { resolveCopy } from './define-copy';
 import type { CopyTree, LocaleCopy, ResolvedCopy } from './copy.types';
 
 export function useCopy<T extends CopyTree>(copy: LocaleCopy<T>): ResolvedCopy<T> {
-  const { locale } = useLocale();
+  const locale = useActiveLocale();
   return resolveCopy(copy, locale);
 }

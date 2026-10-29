@@ -29,6 +29,11 @@ import {
   type ReactElement,
 } from 'react';
 import { Popover, PopoverContent, PopoverTrigger } from './popover';
+import { useCopy } from '../i18n/use-copy';
+import { interpolate } from '../i18n/interpolate';
+import { usePlural } from '../i18n/use-plural';
+import { useFormat } from '../i18n/use-format';
+import { uiCopy } from './ui.copy';
 
 export interface ComboboxOption {
   /** Stable id; what `value.ids` references for dictionary mode. */
@@ -105,6 +110,9 @@ export const Combobox = forwardRef<HTMLButtonElement, ComboboxProps>(function Co
   const counterId = `${triggerId}-counter`;
   const searchId = `${triggerId}-search`;
 
+  const copy = useCopy(uiCopy).combobox;
+  const plural = usePlural();
+  const fmt = useFormat();
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
   const [activeIndex, setActiveIndex] = useState(0);
@@ -140,7 +148,9 @@ export const Combobox = forwardRef<HTMLButtonElement, ComboboxProps>(function Co
   // Determine current state for trigger label
   const selectedIds = value?.kind === 'dictionary' ? value.ids : [];
   const selectedCustom = value?.kind === 'custom' ? value.text : null;
-  const triggerSummary = formatTriggerSummary(value, optionsById, placeholder);
+  const triggerSummary = formatTriggerSummary(value, optionsById, placeholder ?? copy.placeholder, (n) =>
+    plural(n, copy.selectedCount),
+  );
 
   const listboxRef = useRef<HTMLDivElement>(null);
   const searchRef = useRef<HTMLInputElement>(null);
@@ -283,11 +293,13 @@ export const Combobox = forwardRef<HTMLButtonElement, ComboboxProps>(function Co
                 );
               })}
               {selectedIds.length > 3 ? (
-                <span className="combobox__chip-more">+{selectedIds.length - 3} more</span>
+                <span className="combobox__chip-more">
+                  {interpolate(copy.more, { n: selectedIds.length - 3 })}
+                </span>
               ) : null}
             </span>
           ) : selectedCustom ? (
-            <span className="combobox__custom-value" title="Custom value (not from list)">
+            <span className="combobox__custom-value" title={copy.customValueTitle}>
               {selectedCustom}
             </span>
           ) : (
@@ -309,10 +321,10 @@ export const Combobox = forwardRef<HTMLButtonElement, ComboboxProps>(function Co
             className="combobox__search"
             placeholder={
               allowCustomValues
-                ? 'Type to search or enter a custom value…'
+                ? copy.searchOrCustom
                 : filterFirst
-                  ? `Type to search ${options.length.toLocaleString()} options…`
-                  : 'Type to filter…'
+                  ? plural(options.length, copy.searchCount)
+                  : copy.filter
             }
             autoComplete="off"
             spellCheck={false}
@@ -323,8 +335,11 @@ export const Combobox = forwardRef<HTMLButtonElement, ComboboxProps>(function Co
           />
           <span className="combobox__counter" id={counterId} aria-live="polite">
             {!showOptions
-              ? `${options.length.toLocaleString()} ${pluralize(options.length, 'option')}`
-              : `Showing ${filteredOptions.length.toLocaleString()} of ${options.length.toLocaleString()}`}
+              ? plural(options.length, copy.optionCount)
+              : interpolate(copy.showing, {
+                  shown: fmt.number(filteredOptions.length),
+                  total: fmt.number(options.length),
+                })}
           </span>
         </div>
 
@@ -337,9 +352,9 @@ export const Combobox = forwardRef<HTMLButtonElement, ComboboxProps>(function Co
           tabIndex={-1}
         >
           {!showOptions ? (
-            <EmptyHint text={`Type to search ${options.length.toLocaleString()} options.`} />
+            <EmptyHint text={plural(options.length, copy.searchCountHint)} />
           ) : totalRows === 0 ? (
-            <EmptyHint text={`No options match “${trimmed}”.`} />
+            <EmptyHint text={interpolate(copy.noMatch, { query: trimmed })} />
           ) : useVirtual ? (
             <div style={{ height: virtualizer.getTotalSize(), position: 'relative' }}>
               {virtualizer.getVirtualItems().map((vRow) => {
@@ -418,13 +433,13 @@ export const Combobox = forwardRef<HTMLButtonElement, ComboboxProps>(function Co
           <span className="combobox__keyhint">
             <kbd>↑</kbd>
             <kbd>↓</kbd>
-            <span>navigate</span>
+            <span>{copy.navigate}</span>
             <span aria-hidden>·</span>
             <kbd>↵</kbd>
-            <span>select</span>
+            <span>{copy.select}</span>
             <span aria-hidden>·</span>
             <kbd>esc</kbd>
-            <span>close</span>
+            <span>{copy.close}</span>
           </span>
           {selectedCustom ? (
             <button
@@ -432,7 +447,7 @@ export const Combobox = forwardRef<HTMLButtonElement, ComboboxProps>(function Co
               className="combobox__clear"
               onClick={handleClearCustom}
             >
-              Clear custom value
+              {copy.clearCustom}
             </button>
           ) : null}
         </div>
@@ -444,21 +459,19 @@ export const Combobox = forwardRef<HTMLButtonElement, ComboboxProps>(function Co
 function formatTriggerSummary(
   value: ComboboxValue | null,
   optionsById: Map<string, ComboboxOption>,
-  placeholder: string | undefined,
+  placeholder: string,
+  selectedLabel: (count: number) => string,
 ): string {
-  if (!value) return placeholder ?? 'Select…';
+  if (!value) return placeholder;
   if (value.kind === 'custom') return value.text;
   if (value.ids.length === 1) {
     const opt = optionsById.get(value.ids[0]);
     return opt?.label ?? value.ids[0];
   }
-  if (value.ids.length === 0) return placeholder ?? 'Select…';
-  return `${value.ids.length} selected`;
+  if (value.ids.length === 0) return placeholder;
+  return selectedLabel(value.ids.length);
 }
 
-function pluralize(n: number, word: string): string {
-  return `${word}${n === 1 ? '' : 's'}`;
-}
 
 interface OptionRowProps {
   option: ComboboxOption;
@@ -535,6 +548,7 @@ function CustomMatchRow({
   onCommit,
   style,
 }: CustomMatchRowProps): ReactElement {
+  const copy = useCopy(uiCopy).combobox;
   const classes = [
     'combobox__option',
     'combobox__option--custom',
@@ -557,7 +571,7 @@ function CustomMatchRow({
         +
       </span>
       <span className="combobox__option-label">
-        Use as custom value:&nbsp;
+        {copy.useCustom}&nbsp;
         <em className="combobox__option-custom-text">{text}</em>
       </span>
     </div>
@@ -584,6 +598,7 @@ interface ChipPillProps {
 }
 
 function ChipPill({ label, onRemove }: ChipPillProps): ReactElement {
+  const copy = useCopy(uiCopy).combobox;
   return (
     <span className="combobox__chip" data-chip>
       <span className="combobox__chip-label">{label}</span>
@@ -595,7 +610,7 @@ function ChipPill({ label, onRemove }: ChipPillProps): ReactElement {
           onRemove();
         }}
         onMouseDown={(e) => e.stopPropagation()}
-        aria-label={`Remove ${label}`}
+        aria-label={interpolate(copy.remove, { label })}
       >
         ×
       </button>

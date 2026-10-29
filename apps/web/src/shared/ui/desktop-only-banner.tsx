@@ -7,6 +7,8 @@
  * guide.
  */
 import type { ReactElement, ReactNode } from 'react';
+import { useCopy } from '../i18n/use-copy';
+import { uiCopy } from './ui.copy';
 
 interface DesktopOnlyBannerProps {
   title?: string;
@@ -15,16 +17,17 @@ interface DesktopOnlyBannerProps {
 }
 
 export function DesktopOnlyBanner({
-  title = 'Open on a desktop screen to edit',
-  children = 'This editor needs a wider screen to show both sides side by side. The view below is read-only on this viewport.',
+  title,
+  children,
   className,
 }: DesktopOnlyBannerProps): ReactElement {
+  const copy = useCopy(uiCopy).desktopOnly;
   const classes = ['desktop-only-banner', className].filter(Boolean).join(' ');
   return (
     <div className={classes} role="note">
       <div>
-        <p className="desktop-only-banner__title">{title}</p>
-        <p>{children}</p>
+        <p className="desktop-only-banner__title">{title ?? copy.title}</p>
+        <p>{children ?? copy.body}</p>
       </div>
     </div>
   );

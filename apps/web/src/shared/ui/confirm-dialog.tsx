@@ -1,6 +1,8 @@
 import { useRef, type ReactElement, type ReactNode } from 'react';
 import { Button } from './button';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogTitle } from './dialog';
+import { useCopy } from '../i18n/use-copy';
+import { uiCopy } from './ui.copy';
 
 interface ConfirmDialogProps {
   cancelLabel?: string;
@@ -49,8 +51,8 @@ interface ConfirmDialogProps {
 }
 
 export function ConfirmDialog({
-  cancelLabel = 'Cancel',
-  confirmLabel = 'Confirm',
+  cancelLabel,
+  confirmLabel,
   description,
   body,
   isConfirming = false,
@@ -64,6 +66,7 @@ export function ConfirmDialog({
   overlayClassName,
   initialFocus = 'confirm',
 }: ConfirmDialogProps): ReactElement {
+  const copy = useCopy(uiCopy).confirmDialog;
   const confirmButtonRef = useRef<HTMLButtonElement>(null);
   const cancelButtonRef = useRef<HTMLButtonElement>(null);
 
@@ -82,7 +85,7 @@ export function ConfirmDialog({
         {body ? <div className="dialog__body">{body}</div> : null}
         <DialogFooter>
           <Button ref={cancelButtonRef} tone="secondary" onClick={() => onOpenChange(false)}>
-            {cancelLabel}
+            {cancelLabel ?? copy.cancel}
           </Button>
           <Button
             ref={confirmButtonRef}
@@ -90,7 +93,7 @@ export function ConfirmDialog({
             onClick={onConfirm}
             disabled={isConfirming || confirmDisabled}
           >
-            {confirmLabel}
+            {confirmLabel ?? copy.confirm}
           </Button>
         </DialogFooter>
       </DialogContent>

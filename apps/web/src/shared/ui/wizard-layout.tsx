@@ -9,6 +9,8 @@
  * @see {@link SetupStepper} for the stepper primitive this composes.
  */
 import type { PropsWithChildren, ReactElement, ReactNode } from 'react';
+import { useCopy } from '../i18n/use-copy';
+import { uiCopy } from './ui.copy';
 
 interface WizardLayoutProps extends PropsWithChildren {
   stepper: ReactNode;
@@ -25,6 +27,7 @@ export function WizardLayout({
   summary,
   stepperPlacement = 'top',
 }: WizardLayoutProps): ReactElement {
+  const copy = useCopy(uiCopy).wizard;
   const classes = ['wizard-layout', stepperPlacement === 'side' ? 'wizard-layout--side' : '', className]
     .filter(Boolean)
     .join(' ');
@@ -33,7 +36,7 @@ export function WizardLayout({
       <div className="wizard-layout__stepper">{stepper}</div>
       <div className="wizard-layout__form">{children}</div>
       {summary ? (
-        <aside className="wizard-layout__summary wizard-summary" aria-label="Setup summary">
+        <aside className="wizard-layout__summary wizard-summary" aria-label={copy.summary}>
           {summary}
         </aside>
       ) : null}

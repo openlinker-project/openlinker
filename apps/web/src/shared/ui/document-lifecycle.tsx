@@ -30,6 +30,9 @@ import type { ReactElement } from 'react';
 import { AbsentValue } from './absent-value';
 import { TimeDisplay } from './time-display';
 import type { DocumentKind } from './document-kind-glyph';
+import { useCopy } from '../i18n/use-copy';
+import { interpolate } from '../i18n/interpolate';
+import { uiCopy } from './ui.copy';
 
 /**
  * Where one step stands.
@@ -58,26 +61,27 @@ export interface DocumentLifecycleProps {
   className?: string;
 }
 
-/** Announced beside each step, so its state never rests on colour. */
-const STATE_WORD: Record<DocumentLifecycleStepState, string> = {
-  todo: 'not yet reached',
-  active: 'in progress',
-  done: 'done',
-  error: 'failed',
-};
 
 export function DocumentLifecycle({
   kind,
   steps,
-  label = 'Document lifecycle',
+  label,
   className = '',
 }: DocumentLifecycleProps): ReactElement | null {
+  const copy = useCopy(uiCopy).documentLifecycle;
+  // Announced beside each step, so its state never rests on colour.
+  const stateWord: Record<DocumentLifecycleStepState, string> = {
+    todo: copy.todo,
+    active: copy.active,
+    done: copy.done,
+    error: copy.error,
+  };
   if (kind !== 'invoice' || steps.length === 0) return null;
 
   const classes = ['document-lifecycle', className].filter(Boolean).join(' ');
 
   return (
-    <ol className={classes} aria-label={label}>
+    <ol className={classes} aria-label={label ?? copy.label}>
       {steps.map((step) => (
         <li
           key={step.id}
@@ -87,13 +91,13 @@ export function DocumentLifecycle({
           <StepMarker state={step.state} />
           <span className="document-lifecycle__label">
             {step.label}
-            <span className="sr-only">{`, ${STATE_WORD[step.state]}`}</span>
+            <span className="sr-only">{`, ${stateWord[step.state]}`}</span>
           </span>
           <span className="document-lifecycle__time">
             {step.at ? (
               <TimeDisplay iso={step.at} format="datetime" />
             ) : (
-              <AbsentValue label={`No time recorded for ${step.label}`} />
+              <AbsentValue label={interpolate(copy.noTime, { step: step.label })} />
             )}
           </span>
         </li>

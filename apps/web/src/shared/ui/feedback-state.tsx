@@ -1,4 +1,6 @@
 import type { ReactElement, ReactNode } from 'react';
+import { useCopy } from '../i18n/use-copy';
+import { uiCopy } from './ui.copy';
 
 type AriaLive = 'assertive' | 'off' | 'polite';
 
@@ -22,15 +24,16 @@ interface EmptyStateProps extends BaseStateProps {
 }
 
 export function LoadingState({
-  eyebrow = 'Loading',
+  eyebrow,
   liveRegion = 'polite',
   message,
   title,
 }: LoadingStateProps): ReactElement {
+  const copy = useCopy(uiCopy).feedback;
   return (
     <div className="state-card state-card--loading" role="status" aria-live={liveRegion}>
       <div className="state-card__header">
-        <p className="eyebrow">{eyebrow}</p>
+        <p className="eyebrow">{eyebrow ?? copy.loading}</p>
         <h2 className="state-card__title">{title}</h2>
       </div>
       <p className="state-card__message">{message}</p>
@@ -51,17 +54,6 @@ export function EmptyState({ action, eyebrow, liveRegion = 'polite', message, ti
   );
 }
 
-/**
- * The defaults `AccessDeniedState` speaks with when a caller has nothing more
- * specific to say. Generic on purpose: `shared` may not know which screen it
- * is rendered on.
- */
-export const ACCESS_DENIED_DEFAULT_COPY = {
-  eyebrow: 'No access',
-  title: "You don't have access to this",
-  message: "Your account's role doesn't include this screen. Ask an administrator if you need it.",
-} as const;
-
 interface AccessDeniedStateProps {
   /** Optional way out — a link to somewhere this session may go. Never a Retry. */
   action?: ReactNode;
@@ -80,27 +72,30 @@ interface AccessDeniedStateProps {
  */
 export function AccessDeniedState({
   action,
-  eyebrow = ACCESS_DENIED_DEFAULT_COPY.eyebrow,
-  message = ACCESS_DENIED_DEFAULT_COPY.message,
-  title = ACCESS_DENIED_DEFAULT_COPY.title,
+  eyebrow,
+  message,
+  title,
 }: AccessDeniedStateProps): ReactElement {
+  // Generic on purpose: `shared` may not know which screen it is rendered on.
+  const copy = useCopy(uiCopy).accessDenied;
   return (
     <div className="state-card state-card--denied" role="status" aria-live="off">
       <div className="state-card__header">
-        <p className="eyebrow">{eyebrow}</p>
-        <h2 className="state-card__title">{title}</h2>
+        <p className="eyebrow">{eyebrow ?? copy.eyebrow}</p>
+        <h2 className="state-card__title">{title ?? copy.title}</h2>
       </div>
-      <p className="state-card__message">{message}</p>
+      <p className="state-card__message">{message ?? copy.message}</p>
       {action ? <div className="state-card__actions">{action}</div> : null}
     </div>
   );
 }
 
-export function ErrorState({ action, eyebrow = 'Error', message, title }: BaseStateProps): ReactElement {
+export function ErrorState({ action, eyebrow, message, title }: BaseStateProps): ReactElement {
+  const copy = useCopy(uiCopy).feedback;
   return (
     <div className="state-card state-card--error" role="alert">
       <div className="state-card__header">
-        <p className="eyebrow">{eyebrow}</p>
+        <p className="eyebrow">{eyebrow ?? copy.error}</p>
         <h2 className="state-card__title">{title}</h2>
       </div>
       <p className="state-card__message">{message}</p>

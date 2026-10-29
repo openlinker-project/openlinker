@@ -36,6 +36,9 @@
 import { forwardRef, useState, type ReactElement } from 'react';
 import { Button } from './button';
 import { LoadingState, ErrorState, EmptyState } from './feedback-state';
+import { useCopy } from '../i18n/use-copy';
+import { interpolate } from '../i18n/interpolate';
+import { uiCopy } from './ui.copy';
 
 /**
  * Minimal node shape the primitive needs. Structurally compatible with
@@ -142,6 +145,8 @@ export const CategoryTreeBrowser = forwardRef<HTMLDivElement, CategoryTreeBrowse
     },
     ref,
   ): ReactElement {
+    const copy = useCopy(uiCopy).categoryTree;
+    const common = useCopy(uiCopy).common;
     const [breadcrumb, setBreadcrumb] = useState<CategoryTreeCrumb[]>([]);
 
     const isInvalid = Boolean(invalid) || Boolean(ariaInvalid);
@@ -188,14 +193,14 @@ export const CategoryTreeBrowser = forwardRef<HTMLDivElement, CategoryTreeBrowse
         aria-describedby={ariaDescribedBy}
         aria-invalid={isInvalid || undefined}
       >
-        <nav className="category-tree-browser__breadcrumb" aria-label="Category path">
+        <nav className="category-tree-browser__breadcrumb" aria-label={copy.path}>
           <button
             type="button"
             className="category-tree-browser__crumb"
             onClick={navigateToRoot}
             disabled={disabled || breadcrumb.length === 0}
           >
-            Root
+            {copy.root}
           </button>
           {breadcrumb.map((crumb, i) => (
             <span key={crumb.id} className="category-tree-browser__crumb-group">
@@ -218,24 +223,24 @@ export const CategoryTreeBrowser = forwardRef<HTMLDivElement, CategoryTreeBrowse
           {isLoading && (
             <LoadingState
               liveRegion="off"
-              title="Loading categories"
-              message="Fetching categories…"
+              title={copy.loadingTitle}
+              message={copy.loadingMessage}
             />
           )}
 
           {error && (
             <ErrorState
-              title="Unable to load categories"
+              title={copy.errorTitle}
               message={error.message}
-              action={onRetry ? <Button onClick={onRetry}>Retry</Button> : undefined}
+              action={onRetry ? <Button onClick={onRetry}>{common.retry}</Button> : undefined}
             />
           )}
 
           {nodes && nodes.length === 0 && !isLoading && !error && (
             <EmptyState
               liveRegion="off"
-              title="No subcategories"
-              message="This level has no children. Step back and pick a different branch."
+              title={copy.emptyTitle}
+              message={copy.emptyMessage}
             />
           )}
 
@@ -263,9 +268,9 @@ export const CategoryTreeBrowser = forwardRef<HTMLDivElement, CategoryTreeBrowse
                           type="button"
                           onClick={() => navigateInto(node)}
                           disabled={disabled}
-                          aria-label={`Browse into ${node.name}`}
+                          aria-label={interpolate(copy.browseInto, { name: node.name })}
                         >
-                          Browse
+                          {copy.browse}
                         </Button>
                       )}
                       {selectable && (
@@ -276,7 +281,7 @@ export const CategoryTreeBrowser = forwardRef<HTMLDivElement, CategoryTreeBrowse
                           disabled={disabled}
                           aria-pressed={isSelected}
                         >
-                          {isSelected ? 'Selected' : 'Select'}
+                          {isSelected ? common.selected : common.select}
                         </Button>
                       )}
                     </span>
