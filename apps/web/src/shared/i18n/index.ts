@@ -26,6 +26,7 @@ export type { Formatters } from './use-format';
 export { useTranslation } from './use-translation';
 export { useNumberFormat } from './use-number-format';
 export { getBcp47Locale } from './locale';
+export { LocaleKeyed } from './locale-keyed';
 export {
   LocaleCodeValues,
   SOURCE_LOCALE,

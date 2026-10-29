@@ -14,6 +14,7 @@ import { formatAbsoluteDate, formatAbsoluteTime, formatDateTime } from '../forma
 import { formatDurationMs } from '../format/format-duration-ms';
 import { formatRelativeTime } from '../format/format-relative-time';
 import { getBcp47Locale } from './locale';
+import { listFormat, numberFormat } from './intl-cache';
 import { useLocale } from './use-locale';
 
 export interface Formatters {
@@ -34,18 +35,16 @@ export function useFormat(): Formatters {
   return useMemo<Formatters>(() => {
     const tag = getBcp47Locale(locale);
     return {
-      number: (value, options) => new Intl.NumberFormat(tag, options).format(value),
+      number: (value, options) => numberFormat(tag, options).format(value),
       percent: (fraction, options) =>
-        new Intl.NumberFormat(tag, { style: 'percent', maximumFractionDigits: 1, ...options }).format(
-          fraction,
-        ),
+        numberFormat(tag, { style: 'percent', maximumFractionDigits: 1, ...options }).format(fraction),
       money: (amount, currency) => formatAmount(amount, currency, locale),
       date: (iso) => formatAbsoluteDate(iso, locale),
       dateTime: (iso) => formatDateTime(iso, locale),
       time: (iso) => formatAbsoluteTime(iso, locale),
       relativeTime: (iso) => formatRelativeTime(iso, locale),
       duration: (ms) => formatDurationMs(ms, locale),
-      list: (items, type = 'conjunction') => new Intl.ListFormat(tag, { type }).format(items),
+      list: (items, type = 'conjunction') => listFormat(tag, { type }).format(items),
       country: (code) => formatCountryName(code, locale),
     };
   }, [locale]);

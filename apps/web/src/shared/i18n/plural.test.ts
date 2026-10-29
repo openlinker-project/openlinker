@@ -21,8 +21,14 @@ describe('formatPlural', () => {
     [12, '12 zamówień'],
     [22, '22 zamówienia'],
     [25, '25 zamówień'],
+    [0, '0 zamówień'],
+    [112, '112 zamówień'],
   ])('should pick the Polish form for %i', (count, expected) => {
     expect(formatPlural(count, orders, 'pl')).toBe(expected);
+  });
+
+  it('should use the other form when the count is a fraction', () => {
+    expect(formatPlural(1.5, orders, 'pl')).toBe('1,5 zamówienia');
   });
 
   it('should pick English one/other', () => {

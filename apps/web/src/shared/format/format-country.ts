@@ -11,6 +11,7 @@
 import { getLocale } from '../i18n/active-locale';
 import type { SupportedLocale } from '../i18n/i18n.types';
 import { ISO_3166_1_COUNTRIES, type Iso3166Country } from '../lib/iso-3166-1-countries';
+import { collator, regionNames } from '../i18n/intl-cache';
 import { formattingLocale } from './format-locale';
 
 const ENGLISH_NAME = new Map(ISO_3166_1_COUNTRIES.map((c) => [c.code, c.name]));
@@ -19,7 +20,7 @@ export function formatCountryName(code: string, locale: SupportedLocale = getLoc
   const upper = code.toUpperCase();
   if (locale === 'en') return ENGLISH_NAME.get(upper) ?? upper;
   try {
-    const name = new Intl.DisplayNames([formattingLocale(locale)], { type: 'region' }).of(upper);
+    const name = regionNames(formattingLocale(locale)).of(upper);
     if (name && name !== upper) return name;
   } catch {
     // Unknown region code or no DisplayNames support: fall back below.
@@ -31,8 +32,8 @@ export function formatCountryName(code: string, locale: SupportedLocale = getLoc
  * The full ISO list with names in the app's language, sorted for a picker.
  */
 export function localizedCountries(locale: SupportedLocale = getLocale()): Iso3166Country[] {
-  const collator = new Intl.Collator(formattingLocale(locale));
+  const order = collator(formattingLocale(locale));
   return ISO_3166_1_COUNTRIES.map((c) => ({ code: c.code, name: formatCountryName(c.code, locale) })).sort(
-    (a, b) => collator.compare(a.name, b.name),
+    (a, b) => order.compare(a.name, b.name),
   );
 }

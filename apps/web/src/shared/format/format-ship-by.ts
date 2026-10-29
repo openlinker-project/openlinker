@@ -12,6 +12,7 @@
 import { getLocale } from '../i18n/active-locale';
 import { resolveCopy } from '../i18n/define-copy';
 import { interpolate } from '../i18n/interpolate';
+import { formatPlural } from '../i18n/plural';
 import type { SupportedLocale } from '../i18n/i18n.types';
 import { formatCopy } from './format.copy';
 
@@ -34,7 +35,7 @@ function humanizeDuration(ms: number, locale: SupportedLocale): string {
   const units = resolveCopy(formatCopy, locale).compactDuration;
   const totalMinutes = Math.floor(ms / MINUTE_MS);
   const days = Math.floor(totalMinutes / (60 * 24));
-  if (days >= 1) return interpolate(units.days, { n: days });
+  if (days >= 1) return formatPlural(days, units.days, locale);
   const hours = Math.floor(totalMinutes / 60);
   if (hours >= 1) return interpolate(units.hours, { n: hours });
   return interpolate(units.minutes, { n: totalMinutes });

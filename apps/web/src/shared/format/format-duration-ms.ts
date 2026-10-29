@@ -20,6 +20,7 @@ import { resolveCopy } from '../i18n/define-copy';
 import { interpolate } from '../i18n/interpolate';
 import type { SupportedLocale } from '../i18n/i18n.types';
 import { formatCopy } from './format.copy';
+import { numberFormat } from '../i18n/intl-cache';
 import { formattingLocale } from './format-locale';
 
 export function formatDurationMs(
@@ -37,7 +38,7 @@ export function formatDurationMs(
   if (seconds < 60) {
     // One decimal below a minute: the difference between 1.2 s and 1.8 s is
     // the kind of thing this column exists to show.
-    const value = new Intl.NumberFormat(formattingLocale(locale), {
+    const value = numberFormat(formattingLocale(locale), {
       minimumFractionDigits: 1,
       maximumFractionDigits: 1,
     }).format(seconds);

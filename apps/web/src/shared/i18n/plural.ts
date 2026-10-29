@@ -10,11 +10,12 @@
  */
 import type { PluralForms } from './copy.types';
 import { getBcp47Locale } from './locale';
+import { numberFormat, pluralRules } from './intl-cache';
 import { interpolate, type InterpolationParams } from './interpolate';
 import type { SupportedLocale } from './i18n.types';
 
 export function selectPluralForm(count: number, forms: PluralForms, locale: SupportedLocale): string {
-  const category = new Intl.PluralRules(getBcp47Locale(locale)).select(count);
+  const category = pluralRules(getBcp47Locale(locale)).select(count);
   const form = (forms as unknown as Record<string, string | undefined>)[category];
   return form ?? forms.other;
 }
@@ -25,6 +26,6 @@ export function formatPlural(
   locale: SupportedLocale,
   params: InterpolationParams = {},
 ): string {
-  const n = new Intl.NumberFormat(getBcp47Locale(locale)).format(count);
+  const n = numberFormat(getBcp47Locale(locale)).format(count);
   return interpolate(selectPluralForm(count, forms, locale), { ...params, n });
 }
