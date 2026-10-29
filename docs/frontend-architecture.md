@@ -678,6 +678,32 @@ Text a third-party provider returns is always shown verbatim behind a translated
 
 Unit tests and Playwright run in English: the Vitest setup file and `env`, the shared render helper and the e2e fixtures pin `en`, so the existing text queries keep working whatever the default is. Polish gets its own targeted tests.
 
+### Adding another language
+
+Every translation lives in a `defineCopy({ en, pl })` call. The reliable way to list them is `grep -rl "defineCopy(" apps/web/src --include=*.ts --include=*.tsx | grep -v '\.test\.'`, not a file-name search: existing per-component copy files keep their `-copy.ts` names, and a `*copy.ts` file may not be converted yet. `scripts/check-copy-locales.mjs` finds files the same way. The engine is deliberately written for exactly the two shipped languages (ADR-079), so a new language is first a small engine change, then the translations. The steps below use French (`fr`) as the worked example.
+
+**Part A - the engine (once, in this order)**
+
+1. `apps/web/src/shared/i18n/i18n.types.ts`: add the code to `LocaleCodeValues`. Its order is the order the switch lists languages in, and `SupportedLocale` follows from it, so the compiler now points at every place that still has to learn the language.
+2. `apps/web/src/shared/i18n/copy.types.ts`: add the language's field to `LocaleCopy`, optional and deep-partial the way `PolishCopy` is until the lock-in step (#3891), so features can be translated one at a time. Give it a plural type that matches its CLDR plural categories (French: `one`, `many`, `other`; look the language up in the [CLDR plural rules chart](https://www.unicode.org/cldr/charts/latest/supplemental/language_plural_rules.html)) and extend `PluralForms` if a category is new. Keep the `IsPlural` convention in mind: an object whose keys are exactly `one` and `other` is read as a plural, so never name a section that way.
+3. `apps/web/src/shared/i18n/define-copy.ts`: make `resolveCopy` merge the new field over English the way it merges `pl`, so a missing key falls back to English for that key only and an empty string counts as a gap.
+4. `apps/web/src/shared/i18n/locale.ts`: map the code to its BCP 47 tag in `getBcp47Locale` (for example `fr` to `fr-FR`). The formatters, `Accept-Language` and `<html lang>` all read it.
+5. `apps/web/src/shared/i18n/zod-locale.ts`: choose `z.locales.fr()` for the new code in `applyZodLocale`, so Zod's default messages follow the language.
+6. `apps/web/src/shared/format/format.copy.ts`: add the language's units and relative-time words. The shared formatters read this file, and the other languages' fields there are the template.
+7. `apps/web/src/shared/ui/language-switch.tsx`: add the language's native name ("Français") to `LANGUAGE_DETAILS`, with `beta: true` until its translation is complete; `LANGUAGE_OPTIONS` is derived from `LocaleCodeValues`, and the `Record` makes a missing entry a compile error. Add its flag SVG to the `switch` in `apps/web/src/shared/ui/language-flag.tsx`.
+8. `scripts/check-copy-locales.mjs`: add the code to `LANGUAGES` (this is also what makes `--report` list it) and teach the placeholder and plural comparison its plural categories (`PLURAL_KEYS`, `englishKeyFor`). Extend the `--self-check` cases to cover them.
+9. `docs/i18n-glossary.md`: add a column (or a sibling table) with the language's term for every row, and its writing rules (formality, imperative or not).
+10. ADR-079: record the decision to add the language, one line in a new amendment section.
+
+**Part B - the translations**
+
+11. Run the grep from the intro to get the file list. Translate each file's English into the new field using the glossary. English stays the fallback per key while the field is optional, so this can land feature by feature.
+12. When every file is complete, make the field required in `copy.types.ts` (the lock-in step, as #3891 does for Polish): `pnpm --filter @openlinker/web exec tsc -b` then lists every file and key still missing, which is the exact, compiler-enforced checklist. Then remove `beta: true` from the switch (as #3901 does for Polish).
+
+Tests keep running in English (pinned in `src/test/setup.ts` and the Vitest config), so add only targeted tests for the new language, for example its plural forms and the `locale.ts` mapping.
+
+To see where each language stands, run `node scripts/check-copy-locales.mjs --report` (add `--missing` to list the missing key paths): it prints, per copy file, how many English keys the language has translated, most missing first, plus a `TOTAL` line, and it picks the new language up as soon as step 8 is done. Until the field is required, that report and the optional-then-required type are the progress signal.
+
 ## Components And Pages
 
 Component conventions:
