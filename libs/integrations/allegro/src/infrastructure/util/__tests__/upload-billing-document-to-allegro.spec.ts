@@ -2,7 +2,10 @@
  * uploadBillingDocumentToAllegro tests (#3549)
  */
 import { AllegroApiException } from '../../../domain/exceptions/allegro-api.exception';
-import type { IAllegroHttpClient } from '../../http/allegro-http-client.interface';
+import type {
+  AllegroMultipartPart,
+  IAllegroHttpClient,
+} from '../../http/allegro-http-client.interface';
 import {
   ALLEGRO_BILLING_DOCUMENT_MAX_BYTES,
   uploadBillingDocumentToAllegro,
@@ -17,122 +20,126 @@ const input = {
 };
 
 interface Fake {
-  post: jest.Mock;
-  putBinary: jest.Mock;
+  postMultipart: jest.Mock;
   get: jest.Mock;
 }
 
 const fake = (overrides: Partial<Fake> = {}): Fake => ({
-  post: jest.fn().mockResolvedValue({ data: { id: 'inv-9' } }),
-  putBinary: jest.fn().mockResolvedValue({ data: {} }),
+  postMultipart: jest.fn().mockResolvedValue({ data: { id: 'inv-9' } }),
   get: jest.fn().mockResolvedValue({ data: { invoices: [] } }),
   ...overrides,
 });
 
 const conflict = (): jest.Mock => jest.fn().mockRejectedValue(new AllegroApiException('x', 409));
 const asClient = (f: Fake): IAllegroHttpClient => f as unknown as IAllegroHttpClient;
+const sentCall = (f: Fake): [string, AllegroMultipartPart[]] =>
+  f.postMultipart.mock.calls[0] as [string, AllegroMultipartPart[]];
 
 describe('uploadBillingDocumentToAllegro', () => {
-  it('should create the entry and then send the file', async () => {
+  it('should send the file and its number in one request', async () => {
     const http = fake();
 
     expect(await uploadBillingDocumentToAllegro(asClient(http), input)).toEqual({
       outcome: 'uploaded',
     });
-    expect(http.post).toHaveBeenCalledWith('/order/checkout-forms/co-1/invoices', {
-      file: { name: 'FV-1.pdf' },
-      invoiceNumber: 'FV/1',
+    expect(http.postMultipart).toHaveBeenCalledTimes(1);
+    const [path, [file, number]] = sentCall(http);
+    expect(path).toBe('/order/co-1/billing-documents/files');
+    expect(file).toEqual({
+      name: 'file',
+      fileName: 'FV-1.pdf',
+      contentType: 'application/pdf',
+      bytes: input.content,
     });
-    expect(http.putBinary).toHaveBeenCalledWith(
-      '/order/checkout-forms/co-1/invoices/inv-9/file',
-      'application/pdf',
-      input.content
-    );
+    expect(number.name).toBe('invoiceNumber');
+    // A plain form field: a fileName here would make Allegro read it as a second upload.
+    expect(number.fileName).toBeUndefined();
+    expect(number.contentType).toBe('text/plain; charset=utf-8');
+    expect(new TextDecoder().decode(number.bytes)).toBe('FV/1');
   });
 
-  it('should refuse a file over the 2 MB ceiling without calling Allegro', async () => {
+  it('should refuse a file over the 3 MB ceiling without calling Allegro', async () => {
     const http = fake();
     const big = { ...input, content: new Uint8Array(ALLEGRO_BILLING_DOCUMENT_MAX_BYTES + 1) };
 
-    expect((await uploadBillingDocumentToAllegro(asClient(http), big)).outcome).toBe('rejected');
-    expect(http.post).not.toHaveBeenCalled();
+    expect(await uploadBillingDocumentToAllegro(asClient(http), big)).toEqual({
+      outcome: 'rejected',
+      detail: 'document-too-large',
+    });
+    expect(http.postMultipart).not.toHaveBeenCalled();
+  });
+
+  it('should accept a PDF whose content type carries a parameter', async () => {
+    const http = fake();
+
+    expect(
+      await uploadBillingDocumentToAllegro(asClient(http), {
+        ...input,
+        contentType: 'Application/PDF; charset=binary',
+      })
+    ).toEqual({ outcome: 'uploaded' });
+    expect(sentCall(http)[1][0].contentType).toBe('application/pdf');
+  });
+
+  it('should refuse a document that is not a PDF without calling Allegro', async () => {
+    const http = fake();
+
+    expect(
+      await uploadBillingDocumentToAllegro(asClient(http), { ...input, contentType: 'text/xml' })
+    ).toEqual({ outcome: 'rejected', detail: 'document-not-pdf' });
+    expect(http.postMultipart).not.toHaveBeenCalled();
   });
 
   it.each([
+    [400, 'rejected'],
     [403, 'rejected'],
+    [413, 'rejected'],
     [422, 'rejected'],
     [401, 'transient-failure'],
     [429, 'transient-failure'],
     [503, 'transient-failure'],
-  ])('should map HTTP %i on create to %s', async (status, outcome) => {
-    const http = fake({ post: jest.fn().mockRejectedValue(new AllegroApiException('x', status)) });
+  ])('should map HTTP %i to %s', async (status, outcome) => {
+    const http = fake({
+      postMultipart: jest.fn().mockRejectedValue(new AllegroApiException('x', status)),
+    });
 
     expect((await uploadBillingDocumentToAllegro(asClient(http), input)).outcome).toBe(outcome);
   });
 
   it('should treat a transport error as transient', async () => {
-    const http = fake({ post: jest.fn().mockRejectedValue(new Error('socket')) });
+    const http = fake({ postMultipart: jest.fn().mockRejectedValue(new Error('socket')) });
 
     expect((await uploadBillingDocumentToAllegro(asClient(http), input)).outcome).toBe(
       'transient-failure'
     );
   });
 
-  it('should treat a create response without an id as transient', async () => {
-    const http = fake({ post: jest.fn().mockResolvedValue({ data: {} }) });
+  it('should treat a response without an id as transient, never as uploaded', async () => {
+    const http = fake({ postMultipart: jest.fn().mockResolvedValue({ data: {} }) });
 
     expect((await uploadBillingDocumentToAllegro(asClient(http), input)).outcome).toBe(
       'transient-failure'
     );
   });
 
-  describe('an entry left without its file (#3549 review)', () => {
-    it('should report a failed file upload as transient, never as uploaded', async () => {
+  describe('a conflict (the order already holds a file)', () => {
+    it('should report already-present when the order holds this document', async () => {
       const http = fake({
-        putBinary: jest.fn().mockRejectedValue(new AllegroApiException('x', 503)),
-      });
-
-      expect((await uploadBillingDocumentToAllegro(asClient(http), input)).outcome).toBe(
-        'transient-failure'
-      );
-    });
-
-    it('should send the file to the existing entry when the retry meets a conflict', async () => {
-      const http = fake({
-        post: conflict(),
+        postMultipart: conflict(),
         get: jest.fn().mockResolvedValue({
           data: { invoices: [{ id: 'inv-9', invoiceNumber: 'FV/1' }] },
         }),
       });
 
       expect(await uploadBillingDocumentToAllegro(asClient(http), input)).toEqual({
-        outcome: 'uploaded',
+        outcome: 'already-present',
       });
       expect(http.get).toHaveBeenCalledWith('/order/checkout-forms/co-1/invoices');
-      expect(http.putBinary).toHaveBeenCalledWith(
-        '/order/checkout-forms/co-1/invoices/inv-9/file',
-        'application/pdf',
-        input.content
-      );
-    });
-
-    it('should report already-present only when the entry already holds its file', async () => {
-      const http = fake({
-        post: conflict(),
-        get: jest.fn().mockResolvedValue({
-          data: { invoices: [{ id: 'inv-9', invoiceNumber: 'FV/1' }] },
-        }),
-        putBinary: conflict(),
-      });
-
-      expect((await uploadBillingDocumentToAllegro(asClient(http), input)).outcome).toBe(
-        'already-present'
-      );
     });
 
     it('should reject when the order holds a different document', async () => {
       const http = fake({
-        post: conflict(),
+        postMultipart: conflict(),
         get: jest.fn().mockResolvedValue({
           data: { invoices: [{ id: 'other', invoiceNumber: 'FV/OTHER' }] },
         }),
@@ -142,24 +149,22 @@ describe('uploadBillingDocumentToAllegro', () => {
         outcome: 'rejected',
         detail: 'order-has-another-document',
       });
-      expect(http.putBinary).not.toHaveBeenCalled();
     });
 
     it.each([
       ['an empty list', { data: { invoices: [] } }],
       ['an unreadable list', { data: { unexpected: true } }],
     ])('should retry rather than claim success on a conflict with %s', async (_label, listed) => {
-      const http = fake({ post: conflict(), get: jest.fn().mockResolvedValue(listed) });
+      const http = fake({ postMultipart: conflict(), get: jest.fn().mockResolvedValue(listed) });
 
       expect((await uploadBillingDocumentToAllegro(asClient(http), input)).outcome).toBe(
         'transient-failure'
       );
-      expect(http.putBinary).not.toHaveBeenCalled();
     });
 
-    it('should retry when the existing entries cannot be listed', async () => {
+    it('should retry when the existing documents cannot be listed', async () => {
       const http = fake({
-        post: conflict(),
+        postMultipart: conflict(),
         get: jest.fn().mockRejectedValue(new AllegroApiException('x', 503)),
       });
 
