@@ -93,6 +93,10 @@ export function LanguageSwitch({
   const triggerRef = useRef<HTMLButtonElement>(null);
   const popoverRef = useRef<HTMLDivElement>(null);
   const [position, setPosition] = useState<CSSProperties>({});
+  // A modal <dialog> (the mobile drawer) sits in the browser's top layer,
+  // above anything in <body> whatever its z-index, so the list goes into
+  // that dialog when the switch is inside one.
+  const [host, setHost] = useState<Element | null>(null);
   const listId = useId();
   const headId = useId();
 
@@ -138,6 +142,7 @@ export function LanguageSwitch({
     // language on the very first render of the list.
     if (!open) {
       setFocus(indexOf(locale));
+      setHost(triggerRef.current?.closest('dialog') ?? null);
       if (triggerRef.current) {
         setPosition(popoverPosition(triggerRef.current.getBoundingClientRect(), down));
       }
@@ -305,7 +310,7 @@ export function LanguageSwitch({
             </motion.div>
           ) : null}
         </AnimatePresence>,
-        document.body
+        host ?? document.body
       )}
     </div>
   );
