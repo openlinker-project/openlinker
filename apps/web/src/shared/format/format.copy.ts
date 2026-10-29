@@ -36,7 +36,7 @@ export const formatCopy = defineCopy({
   },
   pl: {
     shipBy: {
-      left: 'zostało {duration}',
+      left: '{duration} do terminu',
       overdue: 'Po terminie {duration}',
       dueNow: 'termin teraz',
     },

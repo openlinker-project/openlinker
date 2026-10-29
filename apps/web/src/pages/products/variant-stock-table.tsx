@@ -32,6 +32,7 @@ import {
 } from '../../features/inventory';
 import type { StockViewChannel } from '../../features/inventory';
 import type { ProductVariant, TaxRateUnknownReason } from '../../features/products/api/products.types';
+import { formatAmount } from '../../shared/format/format-amount';
 import { formatTaxRate } from '../../shared/format/format-tax-rate';
 import { VariantCostCell, VariantCostSection } from './variant-cost';
 import { TimeDisplay } from '../../shared/ui/time-display';
@@ -145,7 +146,7 @@ function formatPrice(price: number | null, currency: string | null): ReactNode {
     return <span className="text-muted">—</span>;
   }
   if (currency) {
-    return new Intl.NumberFormat(undefined, { style: 'currency', currency }).format(price);
+    return formatAmount(price, currency);
   }
   return (
     <span className="text-muted" title="Currency unknown">

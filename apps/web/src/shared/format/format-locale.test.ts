@@ -6,7 +6,9 @@
  *
  * @module shared/format
  */
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
+import { setActiveLocale } from '../i18n/active-locale';
+import { formatPlural } from '../i18n/plural';
 import { formatAmount } from './format-amount';
 import { formatAbsoluteDate, formatAbsoluteTime, formatDateTime } from './format-date';
 import { formatCountryName, localizedCountries } from './format-country';
@@ -37,7 +39,7 @@ describe('locale-aware shared formatters', () => {
     expect(plain(formatAbsoluteTime('2026-03-28T23:59:00.000Z', 'pl'))).toBe('23:59');
   });
 
-  it('should render a date-time across the 2026-03-29 DST change in Polish', () => {
+  it('should render consecutive date-times around midnight UTC in Polish', () => {
     expect(plain(formatDateTime('2026-03-29T00:30:00.000Z', 'pl'))).toBe('29 mar 2026, 00:30');
     expect(plain(formatDateTime('2026-03-29T03:30:00.000Z', 'pl'))).toBe('29 mar 2026, 03:30');
   });
@@ -50,21 +52,21 @@ describe('locale-aware shared formatters', () => {
 
   it('should render relative time in Polish', () => {
     const fiveMinutesAgo = new Date(NOW.getTime() - 5 * 60_000).toISOString();
-    expect(formatRelativeTime(fiveMinutesAgo, 'pl', NOW.getTime())).toBe('5 min temu');
-    expect(formatRelativeTime(fiveMinutesAgo, 'en', NOW.getTime())).toBe('5m ago');
-    expect(formatRelativeTime(NOW.toISOString(), 'pl', NOW.getTime())).toBe('przed chwilą');
+    expect(formatRelativeTime(fiveMinutesAgo, NOW.getTime(), 'pl')).toBe('5 min temu');
+    expect(formatRelativeTime(fiveMinutesAgo, NOW.getTime(), 'en')).toBe('5m ago');
+    expect(formatRelativeTime(NOW.toISOString(), NOW.getTime(), 'pl')).toBe('przed chwilą');
   });
 
   it('should pick the Polish plural for days ago', () => {
     const ago = (days: number): string =>
       new Date(NOW.getTime() - days * 24 * 60 * 60_000).toISOString();
-    expect(formatRelativeTime(ago(1), 'pl', NOW.getTime())).toBe('1 dzień temu');
-    expect(formatRelativeTime(ago(3), 'pl', NOW.getTime())).toBe('3 dni temu');
-    expect(formatRelativeTime(ago(3), 'en', NOW.getTime())).toBe('3d ago');
+    expect(formatRelativeTime(ago(1), NOW.getTime(), 'pl')).toBe('1 dzień temu');
+    expect(formatRelativeTime(ago(3), NOW.getTime(), 'pl')).toBe('3 dni temu');
+    expect(formatRelativeTime(ago(3), NOW.getTime(), 'en')).toBe('3d ago');
   });
 
   it('should render the ship-by countdown in Polish', () => {
-    expect(formatShipBy('2026-06-01T15:00:00.000Z', NOW, 'pl')?.remaining).toBe('zostało 3 godz.');
+    expect(formatShipBy('2026-06-01T15:00:00.000Z', NOW, 'pl')?.remaining).toBe('3 godz. do terminu');
   });
 
   it('should not render "0m left" under a minute before the deadline', () => {
@@ -77,7 +79,7 @@ describe('locale-aware shared formatters', () => {
   });
 
   it('should pluralise days in a Polish countdown', () => {
-    expect(formatShipBy('2026-06-04T12:00:00.000Z', NOW, 'pl')?.remaining).toBe('zostało 3 dni');
+    expect(formatShipBy('2026-06-04T12:00:00.000Z', NOW, 'pl')?.remaining).toBe('3 dni do terminu');
   });
 
   it('should use the Polish decimal separator for durations', () => {
@@ -90,5 +92,48 @@ describe('locale-aware shared formatters', () => {
     expect(formatCountryName('BA', 'en')).toBe('Bosnia and Herzegovina');
     expect(localizedCountries('pl').find((c) => c.code === 'DE')?.name).toBe('Niemcy');
     // Sorted by the language's collation; no picker test depends on the old curated order.
+  });
+});
+
+describe('the active language reaches formatters called without a locale', () => {
+  afterEach(() => setActiveLocale('en'));
+
+  it('should format money, dates and times the Polish way once the app is Polish', () => {
+    setActiveLocale('pl');
+    expect(plain(formatAmount(12490, 'PLN'))).toBe('12 490,00 zł');
+    expect(plain(formatAbsoluteDate('2026-10-30T15:00:00.000Z'))).toBe('30 paź 2026');
+    expect(plain(formatAbsoluteTime('2026-10-30T15:00:00.000Z'))).toBe('15:00');
+  });
+
+  it('should read English dates day-first on a 24-hour clock', () => {
+    expect(plain(formatDateTime('2026-10-30T15:00:00.000Z'))).toBe('30 Oct 2026, 15:00');
+  });
+});
+
+describe('invalid timestamps', () => {
+  it.each(['', 'garbage', '2026-13-45'])('should not throw for %j', (value) => {
+    expect(() => formatAbsoluteDate(value, 'pl')).not.toThrow();
+    expect(formatAbsoluteDate(value, 'pl')).toBe(value);
+    expect(formatDateTime(value, 'en')).toBe(value);
+    expect(formatAbsoluteTime(value, 'en')).toBe(value);
+  });
+
+  it('should not throw for null or undefined that slipped past the types', () => {
+    expect(formatDateTime(null as unknown as string, 'en')).toBe('');
+    expect(formatAbsoluteDate(undefined as unknown as string, 'en')).toBe('');
+  });
+});
+
+describe('formatPlural', () => {
+  const forms = {
+    one: '{n} zamówienie',
+    few: '{n} zamówienia',
+    many: '{n} zamówień',
+    other: '{n} zamówienia',
+  };
+
+  it('should choose the form from the value it prints', () => {
+    expect(formatPlural(1.0004, forms, 'pl')).toBe('1 zamówienie');
+    expect(formatPlural(1.5, forms, 'pl')).toBe('1,5 zamówienia');
   });
 });

@@ -14,10 +14,17 @@ import { numberFormat, pluralRules } from './intl-cache';
 import { interpolate, type InterpolationParams } from './interpolate';
 import type { SupportedLocale } from './i18n.types';
 
+const DISPLAY_FRACTION_DIGITS = 1000;
+
+function roundForDisplay(count: number): number {
+  return Math.round(count * DISPLAY_FRACTION_DIGITS) / DISPLAY_FRACTION_DIGITS;
+}
+
 export function selectPluralForm(count: number, forms: PluralForms, locale: SupportedLocale): string {
-  const category = pluralRules(getBcp47Locale(locale)).select(count);
-  const form = (forms as unknown as Record<string, string | undefined>)[category];
-  return form ?? forms.other;
+  // Select on the value `{n}` will print: 1.0004 prints "1", so it takes the
+  // singular rather than a plural beside the digit one.
+  const category = pluralRules(getBcp47Locale(locale)).select(roundForDisplay(count));
+  return forms[category as keyof PluralForms] ?? forms.other;
 }
 
 export function formatPlural(
