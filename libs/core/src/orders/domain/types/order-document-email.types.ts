@@ -33,8 +33,10 @@ export type OrderDocumentEmailLocale = 'pl' | 'en';
 export const ORDER_DOCUMENT_EMAIL_REFUSAL_MESSAGE: Record<OrderDocumentEmailRefusal, string> = {
   'document-not-found': 'This document does not exist.',
   'not-issued': 'This document was not fully issued, so there is nothing to send.',
+  // `waiting` from the attachment read also covers a provider that did not
+  // answer (#3548), so the sentence must not claim the document is uncleared.
   'document-not-ready':
-    'The document is not ready yet: it has not been cleared. Try again once it has.',
+    'The document cannot be fetched right now: it may not be cleared yet, or the provider did not answer. Try again in a moment.',
   'no-document':
     'There is no document to attach: the provider returned neither a file nor a link for it.',
   'no-recipient': 'This order has no buyer email address. Enter a recipient.',

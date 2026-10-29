@@ -219,6 +219,19 @@ describe('OrderDocumentEmailService', () => {
       });
     });
 
+    it('should not claim a cleared invoice is uncleared when the provider did not answer', async () => {
+      invoices.getInvoiceById.mockResolvedValue(invoice({ regulatoryStatus: 'cleared' }));
+      // The attachment read folds a provider outage into `waiting` (#3548).
+      attachments.resolveAttachment.mockResolvedValue({ state: 'waiting' });
+
+      const result = await service.sendInvoiceEmail({ invoiceId: 'inv-1' });
+
+      expect(result).toMatchObject({ status: 'refused', reason: 'document-not-ready' });
+      expect(result.status === 'refused' ? result.message : '').toMatch(/provider did not answer/);
+      expect(result.status === 'refused' ? result.message : '').not.toMatch(/has not been cleared/);
+      expect(mailer!.sendEmail).not.toHaveBeenCalled();
+    });
+
     it('should refuse an invoice that was not fully issued', async () => {
       invoices.getInvoiceById.mockResolvedValue(invoice({ status: 'pending' }));
 
