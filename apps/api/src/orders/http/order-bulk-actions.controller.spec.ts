@@ -161,6 +161,7 @@ describe('OrderBulkActionsController (#3545)', () => {
           participants: [
             { connectionId: 'shoper', role: 'destination', effect: 'not-supported', detail: null },
           ],
+          stockRestoreEnqueued: true,
         })
       );
 
@@ -168,6 +169,22 @@ describe('OrderBulkActionsController (#3545)', () => {
 
       expect(res.results[0].outcome).toBe('cancelled');
       expect(res.results[0].warnings).toEqual(['participant-not-informed:shoper']);
+    });
+
+    it('should not warn stock-restore-not-queued when the cancel is still pending (B-12)', async () => {
+      cancellation.cancelOrder.mockResolvedValue(
+        cancelled({ status: 'pending', stockRestoreEnqueued: false })
+      );
+      const res = await controller.bulkCancel({ orderIds: ['a'], reason: 'buyer-request' as never }, user);
+      expect(res.results[0].warnings).not.toContain('stock-restore-not-queued');
+    });
+
+    it('should still warn stock-restore-not-queued when a cancelled order queued no restore (B-12)', async () => {
+      cancellation.cancelOrder.mockResolvedValue(
+        cancelled({ status: 'cancelled', stockRestoreEnqueued: false })
+      );
+      const res = await controller.bulkCancel({ orderIds: ['a'], reason: 'buyer-request' as never }, user);
+      expect(res.results[0].warnings).toContain('stock-restore-not-queued');
     });
 
     it('should count pending separately from cancelled (B-24)', async () => {
