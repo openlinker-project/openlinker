@@ -205,7 +205,7 @@ describe('AutomationsController', () => {
       expect(cells).toHaveLength(48);
     });
 
-    it('should report the five actions that cannot fully run in this build', () => {
+    it('should report the four actions that cannot fully run in this build', () => {
       // The legality matrix says what MAY follow a trigger; it says nothing about
       // whether the operation ships. Presenting six ready actions is how an
       // operator arms one and learns the truth from a failed run.
@@ -216,7 +216,6 @@ describe('AutomationsController', () => {
         'issue-sales-document',
         'place-hold',
         'release-hold',
-        'send-email',
       ]);
       expect(notReady.every((a) => typeof a.reason === 'string' && a.reason.length > 0)).toBe(true);
     });

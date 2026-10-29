@@ -11,7 +11,8 @@
  *
  * @module libs/core/src/mailer/infrastructure/adapters
  */
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
+import { Logger } from '@openlinker/shared/logging';
 import { scrubEmailAddresses } from '@openlinker/core/sales-documents';
 import type { EmailMessage, MailerPort } from '@openlinker/core/users';
 import { redactRecipient } from './mail-log-redaction';

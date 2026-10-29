@@ -3,7 +3,7 @@
  * DB-backed router adapter that resolves the effective transport per send
  * (#1643). Moved with the adapters into core by #3552.
  */
-import { Logger } from '@nestjs/common';
+import { Logger } from '@openlinker/shared/logging';
 import type { IMailerSettingsService } from '../../application/services/mailer-settings.service.interface';
 import { ConsoleMailerAdapter } from './console-mailer.adapter';
 import { SmtpMailerAdapter, type SmtpTransport } from './smtp-mailer.adapter';
