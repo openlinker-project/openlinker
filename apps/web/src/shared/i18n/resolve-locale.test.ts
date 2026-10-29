@@ -40,6 +40,21 @@ describe('resolveLocale', () => {
   it('should ignore an unsupported ?lang= value', () => {
     expect(resolveLocale({ search: '?lang=xx', stored: 'en', deploymentDefault: 'pl' })).toBe('en');
   });
+
+  it('should accept ?lang= when written in capitals or with a region', () => {
+    expect(resolveLocale({ search: '?lang=PL', stored: 'en', deploymentDefault: 'en' })).toBe('pl');
+    expect(resolveLocale({ search: '?lang=pl-PL', stored: 'en', deploymentDefault: 'en' })).toBe(
+      'pl',
+    );
+  });
+
+  it('should accept a deployment default when written with a region', () => {
+    expect(resolveLocale({ search: '', stored: null, deploymentDefault: 'en_GB' })).toBe('en');
+  });
+
+  it('should fall back to Polish when the deployment default is blank', () => {
+    expect(resolveLocale({ search: '', stored: null, deploymentDefault: '' })).toBe('pl');
+  });
 });
 
 describe('resolveInitialLocale', () => {

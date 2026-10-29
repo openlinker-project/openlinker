@@ -39,9 +39,19 @@ export interface CopyTree {
   readonly [key: string]: string | EnglishPlural | CopyTree;
 }
 
+/**
+ * True only for an object whose keys are exactly `one` and `other`, so a
+ * section that happens to contain those keys next to others stays a section.
+ */
+type IsPlural<T> = T extends EnglishPlural
+  ? Exclude<keyof T, keyof EnglishPlural> extends never
+    ? true
+    : false
+  : false;
+
 type PolishOf<T> = T extends string
   ? string
-  : T extends EnglishPlural
+  : IsPlural<T> extends true
     ? PolishPlural
     : { readonly [K in keyof T]: PolishOf<T[K]> };
 
@@ -60,7 +70,7 @@ export type PolishCopy<T extends CopyTree> = DeepPartial<PolishOf<T>>;
  */
 export type ResolvedCopy<T> = T extends string
   ? string
-  : T extends EnglishPlural
+  : IsPlural<T> extends true
     ? PluralForms
     : { readonly [K in keyof T]: ResolvedCopy<T[K]> };
 

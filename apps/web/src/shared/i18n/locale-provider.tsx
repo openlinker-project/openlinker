@@ -4,8 +4,9 @@
  * Holds the active language for the app. Without a `locale` prop it opens in
  * the language `resolveInitialLocale` picks and lets the operator switch;
  * a `locale` prop pins the starting language (tests pin English). Switching
- * persists the choice, updates `<html lang>` and the language the API client
- * sends, and re-renders copy without a reload.
+ * updates `<html lang>` and the language the API client sends, and re-renders
+ * copy without a reload; it is saved for the next visit only when the provider
+ * is not pinned, so a pinned harness never overwrites the operator's choice.
  *
  * @module shared/i18n
  * @see {@link useLocale} and {@link useCopy} for consumers
@@ -26,7 +27,6 @@ import { resolveInitialLocale, storeLocale } from './resolve-locale';
 import {
   isSupportedLocale,
   SOURCE_LOCALE,
-  type LocaleCode,
   type LocaleContextValue,
   type SupportedLocale,
   type TranslationCatalog,
@@ -39,10 +39,9 @@ const EMPTY_CATALOG: TranslationCatalog = Object.freeze({});
 interface LocaleProviderProps extends PropsWithChildren {
   /**
    * Starting language. Omit to resolve it from `?lang=`, storage and the
-   * deployment default. An unsupported code falls back to English, the
-   * language every copy file is complete in.
+   * deployment default.
    */
-  locale?: LocaleCode;
+  locale?: SupportedLocale;
   /**
    * Catalog for the legacy `t(key, fallback)` seam (#612); new copy lives in
    * typed copy files instead.
@@ -50,8 +49,9 @@ interface LocaleProviderProps extends PropsWithChildren {
   catalog?: TranslationCatalog;
 }
 
-function initialLocale(pinned: LocaleCode | undefined): SupportedLocale {
+function initialLocale(pinned: SupportedLocale | undefined): SupportedLocale {
   if (pinned === undefined) return resolveInitialLocale(env.VITE_DEFAULT_UI_LOCALE);
+  // A JavaScript caller can still pass anything; English is complete in every file.
   return isSupportedLocale(pinned) ? pinned : SOURCE_LOCALE;
 }
 
@@ -61,10 +61,16 @@ export function LocaleProvider({
   children,
 }: LocaleProviderProps): ReactElement {
   const [locale, setLocaleState] = useState<SupportedLocale>(() => initialLocale(pinned));
+  const [lastPinned, setLastPinned] = useState(pinned);
 
-  useEffect(() => {
+  // A new pinned value replaces the state during render, so the old language
+  // never commits (React's "adjust state when a prop changes" pattern).
+  if (pinned !== lastPinned) {
+    setLastPinned(pinned);
     if (pinned !== undefined) setLocaleState(initialLocale(pinned));
-  }, [pinned]);
+  }
+
+  const isPinned = pinned !== undefined;
 
   // Set during render, not in an effect: children's effects run before this
   // provider's, and a child's first request must already carry the language.
@@ -74,10 +80,13 @@ export function LocaleProvider({
     document.documentElement.lang = getBcp47Locale(locale);
   }, [locale]);
 
-  const setLocale = useCallback((next: SupportedLocale) => {
-    storeLocale(next);
-    setLocaleState(next);
-  }, []);
+  const setLocale = useCallback(
+    (next: SupportedLocale) => {
+      if (!isPinned) storeLocale(next);
+      setLocaleState(next);
+    },
+    [isPinned],
+  );
 
   const value = useMemo<LocaleContextValue>(
     () => ({

@@ -13,7 +13,8 @@ import { Fragment, type ReactNode } from 'react';
 
 export type RichParts = Readonly<Record<string, (chunk: string) => ReactNode>>;
 
-const TAG = /<(\w+)>(.*?)<\/\1>/g;
+// `[\s\S]`, not `.`: a translated sentence may wrap a tag across lines.
+const TAG = /<(\w+)>([\s\S]*?)<\/\1>/g;
 
 export function renderRich(text: string, parts: RichParts): ReactNode {
   const nodes: ReactNode[] = [];

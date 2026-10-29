@@ -1,6 +1,7 @@
 import '@testing-library/jest-dom/vitest';
 import { cleanup } from '@testing-library/react';
 import { afterEach } from 'vitest';
+import { setActiveLocale } from '../shared/i18n/active-locale';
 
 // Auto-unmount rendered components after every test. Without this, components
 // leak across tests within a file and their `useEffect` cleanups never run —
@@ -12,6 +13,10 @@ import { afterEach } from 'vitest';
 // don't use globals, so we register it explicitly here.
 afterEach(() => {
   cleanup();
+  // A LocaleProvider writes the module-level active locale and <html lang>;
+  // reset both so one test's language never leaks into the next.
+  setActiveLocale('en');
+  document.documentElement.lang = '';
 });
 
 // happy-dom (and jsdom) do not fully implement HTMLDialogElement.showModal / .close
