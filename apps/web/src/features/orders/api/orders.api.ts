@@ -15,6 +15,7 @@ import type {
   PaginatedOrders,
   OrderRecord,
   RetryOrderDestinationResult,
+  RetryOrderRoutingResult,
   OrderHealthSummary,
   OrderHealthSummaryFilters,
   OrderSlaSummary,
@@ -59,6 +60,11 @@ export interface OrdersApi {
     internalOrderId: string,
     destinationConnectionId: string,
   ) => Promise<RetryOrderDestinationResult>;
+  /**
+   * Route a held order again (#3558). Answers 202 with the enqueued job; the
+   * outcome shows on the order itself. 409 carries a `code` naming why not.
+   */
+  retryRouting: (internalOrderId: string) => Promise<RetryOrderRoutingResult>;
   /**
    * Mark the order packed (#2287). Returns the updated record, and returns 200
    * on an idempotent replay too — marking an already-packed order keeps the
@@ -277,6 +283,12 @@ export function createOrdersApi(request: ApiRequest, requestBlob: ApiBlobRequest
     retryDestination(internalOrderId, destinationConnectionId): Promise<RetryOrderDestinationResult> {
       return request<RetryOrderDestinationResult>(
         `/orders/${encodeURIComponent(internalOrderId)}/destinations/${encodeURIComponent(destinationConnectionId)}/retry`,
+        { method: 'POST' },
+      );
+    },
+    retryRouting(internalOrderId): Promise<RetryOrderRoutingResult> {
+      return request<RetryOrderRoutingResult>(
+        `/orders/${encodeURIComponent(internalOrderId)}/retry-routing`,
         { method: 'POST' },
       );
     },

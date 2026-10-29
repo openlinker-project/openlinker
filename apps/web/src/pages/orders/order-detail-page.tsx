@@ -71,7 +71,7 @@ import {
   mapReturnEventsToTimeline,
   useOrderReturnEventsQuery,
 } from '../../features/returns';
-import { OrderFulfillmentTasksPanel } from '../../features/fulfillment';
+import { OrderFulfillmentTasksPanel, RoutingDecisionPanel } from '../../features/fulfillment';
 import { useOmsRoutingState } from '../../features/fulfillment-authority';
 import { useSession } from '../../shared/auth/use-session';
 
@@ -598,6 +598,15 @@ export function OrderDetailPage(): ReactElement {
       {/* The key is namespaced: `OrderReturnsPanel` below is keyed on the same
           order id, and two siblings sharing a key let React duplicate this
           panel's DOM once it can render nothing (`hideWhenEmpty`). */}
+      {/* #3557 - the routing decision (stuck / resolved / healthy). Read only.
+          Not even queried unless routing is on. Namespaced key, as above. */}
+      <RoutingDecisionPanel
+        key={`routing-decision:${order.internalOrderId}`}
+        internalOrderId={order.internalOrderId}
+        orderBlockReason={order.fulfillmentBlockReason}
+        enabled={omsRouting === 'on'}
+      />
+
       <OrderFulfillmentTasksPanel
         key={`fulfilment-tasks:${order.internalOrderId}`}
         internalOrderId={order.internalOrderId}

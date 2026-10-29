@@ -43,6 +43,8 @@ export {
 export type { ParsedOrderItem, ParsedOrderTotals } from './api/order-snapshot.schema';
 export type {
   OrderRecord,
+  // #3557 - the retry-routing result, read by the fulfilment feature's routing panel.
+  RetryOrderRoutingResult,
   OrderFilters,
   OrderPagination,
   PaginatedOrders,

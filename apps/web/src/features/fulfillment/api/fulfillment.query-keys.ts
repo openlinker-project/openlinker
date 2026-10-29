@@ -11,6 +11,8 @@ import type { FulfillmentTaskFilters } from './fulfillment.types';
 
 export const fulfillmentQueryKeys = {
   all: ['fulfillment'] as const,
+  /** An order's latest routing decision (#2731). Under the prefix so any action refreshes it. */
+  routingDecision: (orderId: string) => ['fulfillment', 'routing-decision', orderId] as const,
   worksByOrder: (orderId: string) => ['fulfillment', 'works', 'by-order', orderId] as const,
   /**
    * The worklist's rows. The filter object is part of the key, so changing a
