@@ -36,6 +36,20 @@ export type OrderHoldPlacedBy =
   | { kind: 'user'; userId: string }
   | { kind: 'service'; service: string };
 
+/**
+ * Who RELEASES a hold: a placer, or OpenLinker itself on a cancel (#3540, 4b).
+ *
+ * Kept off {@link OrderHoldPlacedBy} on purpose: a hold is never PLACED by the
+ * system actor, and widening the placing type would make that an expressible
+ * (and then schema-violating, `CHK_order_holds_actor`) call. The system variant
+ * exists because a cancel observed from the sales channel has no operator, yet a
+ * person-placed hold on a cancelled order must not stay "held" forever. It is
+ * recorded as no releasing user plus the cancel release note - no new column.
+ */
+export type OrderHoldReleasedBy =
+  | OrderHoldPlacedBy
+  | { kind: 'system'; cause: 'order-cancelled' };
+
 export interface PlaceOrderHoldInput {
   internalOrderId: string;
   reason: HoldReason;

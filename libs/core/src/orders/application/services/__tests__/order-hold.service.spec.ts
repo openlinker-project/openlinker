@@ -236,6 +236,37 @@ describe('OrderHoldService', () => {
       expect(repository.releaseHeld).not.toHaveBeenCalled();
     });
 
+    it('should release as the system with no releasing user when given the cancel note (4b)', async () => {
+      repository.findById.mockResolvedValue(hold({ placedByService: null, placedByUserId: 'user-9' }));
+      repository.releaseHeld.mockResolvedValue(
+        hold({ releasedAt: new Date(), releasedByUserId: null, releaseNote: 'order cancelled' })
+      );
+
+      const result = await service.release({
+        holdId: 'hold-1',
+        note: 'order cancelled',
+        releasedBy: { kind: 'system', cause: 'order-cancelled' },
+      });
+
+      expect(repository.releaseHeld).toHaveBeenCalledWith(
+        expect.objectContaining({ releaseNote: 'order cancelled', releasedByUserId: null })
+      );
+      expect(result.fact.type).toBe('released');
+    });
+
+    it('should refuse a system release without the cancel note (4b)', async () => {
+      repository.findById.mockResolvedValue(hold());
+
+      await expect(
+        service.release({
+          holdId: 'hold-1',
+          note: 'because',
+          releasedBy: { kind: 'system', cause: 'order-cancelled' },
+        })
+      ).rejects.toBeInstanceOf(HoldReleaseNotPermittedError);
+      expect(repository.releaseHeld).not.toHaveBeenCalled();
+    });
+
     it('should allow a user to release a service-placed hold when a note is supplied', async () => {
       repository.findById.mockResolvedValue(hold());
       repository.releaseHeld.mockResolvedValue(

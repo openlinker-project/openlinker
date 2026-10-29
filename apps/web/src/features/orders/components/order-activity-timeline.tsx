@@ -23,7 +23,7 @@ import {
   type OrderAmendmentChange,
   type OrderHold,
 } from '../api/orders.types';
-import { holdReasonLabel } from '../lib/order-hold.types';
+import { holdReasonLabel, isReleasedByOrderCancel } from '../lib/order-hold.types';
 import type { StatusBadgeTone } from '../../../shared/ui/status-badge';
 import {
   AUTOMATION_FAILURE_COPY,
@@ -257,6 +257,7 @@ function describePlacer(hold: OrderHold): string | undefined {
 
 /** Who released it. See {@link describePlacer} — same rule, same reason. */
 function describeReleaser(hold: OrderHold): string | undefined {
+  if (isReleasedByOrderCancel(hold)) return 'OpenLinker (order cancelled)';
   return hold.releasedByUserId ? 'operator' : undefined;
 }
 

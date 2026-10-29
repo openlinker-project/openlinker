@@ -1836,10 +1836,10 @@ export class OrderIngestionService implements IOrderIngestionService {
    * cancel with no operator request is cleaned up too (C-30, C-4).
    *
    * Stock restore and reservation release are NOT repeated here: the ingestion
-   * stock-restore job already covers them. Labels are not voided: the observed
-   * cancel is the channel's fact (nothing to abort), and shipping depends on
-   * orders, so core orders cannot reach the carrier without a module cycle; the
-   * operator path voids labels before cancelling.
+   * stock-restore job already covers them. Labels ARE voided, best-effort, through
+   * the lazily-resolved `OrderLabelVoiderPort` (shipping depends on orders, so
+   * core orders cannot import it without a module cycle); the operator path
+   * voids them itself before cancelling and opts out.
    */
   private async onSourceCancellationObserved(
     internalOrderId: string,

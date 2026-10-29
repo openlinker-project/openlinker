@@ -510,6 +510,8 @@ export class OrderCancellationService implements IOrderCancellationService {
       cancelledAt,
       reason: input.reason,
       actorUserId: input.actorUserId,
+      // Labels were voided above, before the channel was asked.
+      voidLabels: false,
     });
 
     return {
