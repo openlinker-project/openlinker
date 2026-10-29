@@ -11,6 +11,8 @@ export type {
   ProductVariantSummary,
   VariantCost,
   VariantCostInput,
+  CostCoverage,
+  CostSummary,
 } from './api/products.types';
 export { useProductQuery } from './hooks/use-product-query';
 export { useVariantQuery } from './hooks/use-variant-query';
@@ -33,3 +35,9 @@ export {
   type StockStatus,
 } from './lib/product-stock-status';
 export { VariantThumbnail, type VariantThumbnailProps } from './components/variant-thumbnail';
+export {
+  useCostCoverageQuery,
+  useCostSummaryQuery,
+  COST_COVERAGE_DAYS,
+} from './hooks/use-cost-coverage-query';
+export { CostCoverageBanner } from './components/cost-coverage-banner';

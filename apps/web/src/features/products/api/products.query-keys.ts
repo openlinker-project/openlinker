@@ -1,4 +1,4 @@
-import type { ProductFilters, ProductListSort, ProductPagination } from './products.types';
+import type { CostWorklistFilters, CostWorklistPagination, ProductFilters, ProductListSort, ProductPagination } from './products.types';
 
 /**
  * Every filter dimension spelled out (rather than the raw object) so key
@@ -41,4 +41,22 @@ export const productsQueryKeys = {
   variant: (variantId: string) => ['products', 'variant', variantId] as const,
   /** Net unit costs of one product's variants (#3588). */
   variantCosts: (productId: string) => ['products', 'variant-costs', productId] as const,
+  /** Cost coverage reads (#3588). One prefix so a save can refresh all of them. */
+  cost: ['products', 'cost'] as const,
+  costCoverage: (days: number) => ['products', 'cost', 'coverage', days] as const,
+  costSummary: ['products', 'cost', 'summary'] as const,
+  costWorklistRows: (filters: CostWorklistFilters, pagination: CostWorklistPagination) =>
+    [
+      'products',
+      'cost',
+      'worklist-rows',
+      filters.tab,
+      filters.q ?? '',
+      filters.channel ?? '',
+      pagination.limit,
+      pagination.offset,
+    ] as const,
+  /** Filters ONLY: paging reuses one cached count. */
+  costWorklistCount: (filters: CostWorklistFilters) =>
+    ['products', 'cost', 'worklist-count', filters.tab, filters.q ?? '', filters.channel ?? ''] as const,
 };

@@ -47,6 +47,11 @@ export interface AnalyticsSettingsView {
   includeBackfilledTaxRatesInNetSales: boolean;
   /** Default basis a view opens in when no `?netGrossBasis=` URL override is present. */
   netGrossBasis: NetGrossBasis;
+  /**
+   * Whether margin UI and the missing-cost reminders show (#3588, G11-F).
+   * Hides views only: the cost snapshot on order lines is written either way.
+   */
+  trackMargin: boolean;
   /** ISO timestamp of the last write to the settings row. `null` when no row exists yet. */
   updatedAt: string | null;
   /** Id of the user who last wrote the settings row. `null` when no row exists yet. */
@@ -59,4 +64,6 @@ export interface UpdateAnalyticsSettingsInput {
   rateBasis: RateBasis;
   includeBackfilledTaxRatesInNetSales: boolean;
   netGrossBasis: NetGrossBasis;
+  /** Optional: when absent the API keeps the stored value, so existing callers need not echo it. */
+  trackMargin?: boolean;
 }

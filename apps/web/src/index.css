@@ -31157,3 +31157,146 @@ legend.analytics-settings-dialog__label {
   font-size: 0.8125rem;
   color: var(--text-muted);
 }
+
+/* Cost prices work list (#3588, M30) */
+.cost-worklist {
+  display: grid;
+  gap: var(--space-4);
+  min-width: 0;
+}
+
+.cost-worklist__tabs-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.cost-worklist__toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  align-items: center;
+}
+
+.cost-worklist__toolbar .control {
+  min-width: 0;
+}
+
+.cost-worklist__name {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.cost-worklist__sku {
+  font-family: var(--font-mono);
+  font-size: 0.8125rem;
+  color: var(--text-muted);
+}
+
+.cost-worklist__num {
+  text-align: right;
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.cost-worklist__check {
+  width: 2.5rem;
+}
+
+.cost-worklist__inline {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  align-items: center;
+  justify-content: flex-end;
+}
+
+.cost-worklist__saved {
+  color: var(--status-success);
+  font-size: 0.8125rem;
+}
+
+.cost-worklist__row-saved {
+  background: var(--status-success-soft);
+}
+
+.cost-worklist__preview {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: var(--space-1);
+  font-size: 0.8125rem;
+}
+
+.cost-worklist__preview li {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.cost-coverage {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.cost-coverage__track {
+  position: relative;
+  height: 10px;
+  border-radius: 999px;
+  background: var(--status-warning-soft);
+  border: 1px solid var(--status-warning-border);
+  overflow: hidden;
+}
+
+.cost-coverage__fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  background: var(--status-success);
+  border-radius: 999px 0 0 999px;
+}
+
+.cost-coverage__legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-4);
+  font-size: 0.8125rem;
+  color: var(--text-secondary);
+}
+
+.tabs__count {
+  margin-left: var(--space-2);
+  font-variant-numeric: tabular-nums;
+  color: var(--text-muted);
+}
+
+.insights-gaps {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: var(--space-2);
+}
+
+.insights-gaps li {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-3);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--bg-surface);
+}
+
+.insights-gaps__body {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  flex: 1 1 18rem;
+}
