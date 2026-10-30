@@ -31,6 +31,12 @@ import { readTaxRateUnknownReason } from '../../../domain/types/tax-rate.types';
 import { normalizeBarcode, normalizeToEan13 } from '../../../domain/utils/barcode-normalization';
 import { CORE_ENTITY_TYPE } from '@openlinker/core/identifier-mapping';
 
+/**
+ * Deterministic variant order (#3588): without an ORDER BY the heap order moves
+ * on every UPDATE (each cost PATCH), so the product page's rows jumped.
+ */
+export const VARIANT_STABLE_ORDER = { sku: { direction: 'ASC', nulls: 'LAST' }, id: 'ASC' } as const;
+
 @Injectable()
 export class ProductVariantRepository implements ProductVariantRepositoryPort {
   constructor(
@@ -53,6 +59,7 @@ export class ProductVariantRepository implements ProductVariantRepositoryPort {
   async findByProductId(productId: string): Promise<ProductVariant[]> {
     const entities = await this.repository.find({
       where: { productId },
+      order: VARIANT_STABLE_ORDER,
     });
 
     return entities.map((entity) => this.toDomain(entity));
@@ -63,6 +70,7 @@ export class ProductVariantRepository implements ProductVariantRepositoryPort {
 
     const entities = await this.repository.find({
       where: { productId: In([...productIds]) },
+      order: VARIANT_STABLE_ORDER,
     });
 
     return entities.map((entity) => this.toDomain(entity));
