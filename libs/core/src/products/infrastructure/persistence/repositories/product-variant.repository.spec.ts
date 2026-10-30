@@ -358,3 +358,45 @@ describe('ProductVariantRepository stable variant order (#3588)', () => {
     });
   });
 });
+
+describe('ProductVariantRepository list ordering (#3588)', () => {
+  function build(): { repository: ProductVariantRepository; orders: unknown[][] } {
+    const orders: unknown[][] = [];
+    const qb: Record<string, jest.Mock> = {};
+    for (const m of ['where', 'andWhere', 'innerJoin', 'skip', 'take']) {
+      qb[m] = jest.fn().mockReturnValue(qb);
+    }
+    qb.orderBy = jest.fn((...a: unknown[]) => {
+      orders.push(['orderBy', ...a]);
+      return qb;
+    });
+    qb.addOrderBy = jest.fn((...a: unknown[]) => {
+      orders.push(['addOrderBy', ...a]);
+      return qb;
+    });
+    qb.getMany = jest.fn().mockResolvedValue([]);
+    qb.getManyAndCount = jest.fn().mockResolvedValue([[], 0]);
+    const repository = new ProductVariantRepository({
+      createQueryBuilder: jest.fn().mockReturnValue(qb),
+    } as unknown as Repository<ProductVariantOrmEntity>);
+    return { repository, orders };
+  }
+
+  const expected = [
+    ['orderBy', 'variant.createdAt', 'DESC'],
+    ['addOrderBy', 'variant.sku', 'ASC', 'NULLS LAST'],
+    ['addOrderBy', 'variant.id', 'ASC'],
+  ];
+
+  it('should break createdAt ties by sku then id when listing rows', async () => {
+    const { repository, orders } = build();
+    await repository.findManyRows({}, { offset: 0, limit: 10 });
+    expect(orders).toEqual(expected);
+  });
+
+  it('should break createdAt ties by sku then id when listing with a total', async () => {
+    const { repository, orders } = build();
+    await repository.findMany({}, { offset: 0, limit: 10 });
+    expect(orders).toEqual(expected);
+  });
+});
