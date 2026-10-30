@@ -34,6 +34,11 @@ describe('formatReceiptLineName', () => {
     expect(formatReceiptLineName('Shipping', '23', 'vat')).toBe('Shipping VAT 23%');
   });
 
+  it('should spell one rate one way whatever the source wrote', () => {
+    expect(formatReceiptLineName('Shipping', '23.00', 'plain')).toBe('Shipping 23%');
+    expect(formatReceiptLineName('Shipping', '5.50', 'plain')).toBe('Shipping 5.5%');
+  });
+
   it('should print a non-numeric code as it is', () => {
     expect(formatReceiptLineName('Shipping', 'zw', 'plain')).toBe('Shipping zw');
   });

@@ -111,7 +111,9 @@ export function formatReceiptLineName(
 ): string {
   const code = typeof rateCode === 'string' ? rateCode.trim() : '';
   if (code === '') return name;
-  const rate = /^\d+(\.\d+)?$/.test(code) ? `${code}%` : code;
+  // A source may spell 23% as '23.00' (Allegro); the printer compares names, so
+  // one rate must always produce one spelling.
+  const rate = /^\d+(\.\d+)?$/.test(code) ? `${String(Number(code))}%` : code;
   switch (format) {
     case 'brackets':
       return `${name} (${rate})`;
