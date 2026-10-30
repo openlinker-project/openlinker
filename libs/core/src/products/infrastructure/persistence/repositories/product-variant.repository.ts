@@ -252,6 +252,10 @@ export class ProductVariantRepository implements ProductVariantRepositoryPort {
   ): SelectQueryBuilder<ProductVariantOrmEntity> {
     return this.buildFilteredQuery(filters)
       .orderBy('variant.createdAt', 'DESC')
+      // Variants created by one sync share createdAt; without these ties fall back to heap
+      // order, which moves on every UPDATE (e.g. a cost edit) and makes rows jump (#3588).
+      .addOrderBy('variant.sku', 'ASC', 'NULLS LAST')
+      .addOrderBy('variant.id', 'ASC')
       .skip(pagination.offset)
       .take(pagination.limit);
   }
