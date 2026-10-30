@@ -82,6 +82,39 @@ export interface OrderChangeRepositoryPort {
   ): Promise<OrderChange | null>;
 
   /**
+   * Every OPEN proposal against one order, whatever its target (#3540).
+   *
+   * Only rows requested AFTER `openSince` count: expiry is lazy, so a row whose
+   * TTL has elapsed but which nothing has expired yet is NOT open.
+   *
+   * Answers "is anything in flight on this order?" — which `findOpenByTarget`
+   * cannot, since it needs the target already in hand.
+   */
+  findOpenByOrder(internalOrderId: string, openSince: Date): Promise<OrderChange[]>;
+
+  /**
+   * The subset of `internalOrderIds` holding at least one OPEN proposal of one of
+   * `kinds` (#3540). One query for a whole list page, never a per-row read; feeds
+   * the derived `amending` lifecycle phase.
+   */
+  findOrderIdsWithOpenChanges(
+    internalOrderIds: readonly string[],
+    kinds: readonly OrderChangeKind[],
+    openSince: Date
+  ): Promise<Set<string>>;
+
+  /**
+   * Every proposal of one of `kinds` against one order, any status, newest
+   * first (#3540). The operator-facing read: what was asked, what became of it.
+   */
+  listByOrder(internalOrderId: string, kinds: readonly OrderChangeKind[]): Promise<OrderChange[]>;
+
+  /**
+   * One proposal by id, any status; `null` when absent (#3540).
+   */
+  findById(id: string): Promise<OrderChange | null>;
+
+  /**
    * The most recent proposal of one kind against one target, open or terminal.
    *
    * Used to answer "what happened last time?" for an already-applied change,
@@ -135,8 +168,13 @@ export interface OrderChangeRepositoryPort {
    * No reason is recorded: `declinedReason` means "the authority refused", and
    * an expiry is a structural timeout rather than a refusal. Conflating them
    * would make the column's one meaning two.
+   *
+   * The one exception is an explicit `reason` from OpenLinker itself (an
+   * abandoned request, B-16/#3540): it is recorded so an abandoned row reads
+   * differently from a timed-out one, and is a machine code never an authority's
+   * answer. Without it the column stays untouched.
    */
-  expire(id: string, at: Date): Promise<boolean>;
+  expire(id: string, at: Date, reason?: string): Promise<boolean>;
 
   /**
    * Claim the right to APPLY a confirmed change — `WHERE "appliedAt" IS NULL`.

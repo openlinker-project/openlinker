@@ -180,3 +180,23 @@ export function describeProvisioningResume(
       };
   }
 }
+
+/**
+ * A cancel the sales channel reported releases the hold as OpenLinker itself: no
+ * releasing user, and the cancel note. Mirrors `ORDER_CANCELLED_HOLD_RELEASE_NOTE`
+ * (the browser cannot import core, #591); an unrecognised note just reads as an
+ * unattributed release, which is the pre-existing behaviour.
+ */
+const ORDER_CANCELLED_HOLD_RELEASE_NOTE = 'order cancelled';
+
+export function isReleasedByOrderCancel(hold: {
+  releasedAt: string | null;
+  releasedByUserId: string | null;
+  releaseNote: string | null;
+}): boolean {
+  return (
+    hold.releasedAt !== null &&
+    !hold.releasedByUserId &&
+    hold.releaseNote === ORDER_CANCELLED_HOLD_RELEASE_NOTE
+  );
+}

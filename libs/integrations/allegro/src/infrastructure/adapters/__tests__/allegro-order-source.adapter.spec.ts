@@ -363,10 +363,28 @@ describe('AllegroOrderSourceAdapter', () => {
 
     it('cancelled: sets the Allegro fulfillment status to CANCELLED and returns applied', async () => {
       const result = await adapter.write({ type: 'cancelled', externalOrderId: 'cf-1' });
-      expect(httpClient.put).toHaveBeenCalledWith('/order/checkout-forms/cf-1/fulfillment', {
-        status: 'CANCELLED',
-      });
+      expect(httpClient.put).toHaveBeenCalledWith(
+        '/order/checkout-forms/cf-1/fulfillment',
+        { status: 'CANCELLED' },
+        { maxRetries: 0 }
+      );
       expect(result).toEqual({ outcome: 'applied' });
+    });
+
+    it.each([
+      ['a 5xx', new AllegroApiException('Allegro API server error (500)', 500)],
+      ['a timeout', new AllegroApiException('Request timeout after 30000ms', undefined)],
+    ])('cancelled: flags %s as transient so the relay treats it as no answer (C-28)', async (_n, err) => {
+      httpClient.put.mockRejectedValueOnce(err);
+      const result = await adapter.write({ type: 'cancelled', externalOrderId: 'cf-1' });
+      expect(result.outcome).toBe('rejected');
+      expect(result.transient).toBe(true);
+    });
+
+    it('cancelled: a 4xx refusal is not transient (C-28)', async () => {
+      httpClient.put.mockRejectedValueOnce(new AllegroApiException('not allowed', 422));
+      const result = await adapter.write({ type: 'cancelled', externalOrderId: 'cf-1' });
+      expect(result.transient).toBeUndefined();
     });
 
     it('cancelled: returns rejected on a 4xx (e.g. forbidden transition)', async () => {

@@ -53,9 +53,12 @@ import {
   ConflictException,
   ForbiddenException,
   InternalServerErrorException,
+  UnprocessableEntityException,
   Inject,
   ParseUUIDPipe,
+  Res,
 } from '@nestjs/common';
+import { Response } from 'express';
 import {
   ApiBearerAuth,
   ApiExcludeEndpoint,
@@ -147,7 +150,36 @@ import {
   type IReturnsService,
   type OpenReturnOrderSummary,
 } from '@openlinker/core/returns';
-import { ORDER_TAG_SERVICE_TOKEN, type IOrderTagService } from '@openlinker/core/orders';
+import {
+  ORDER_CHANGE_SERVICE_TOKEN,
+  ORDER_TAG_SERVICE_TOKEN,
+  type IOrderChangeService,
+  type OrderChange,
+  type IOrderTagService,
+} from '@openlinker/core/orders';
+import {
+  ORDER_CANCELLATION_SERVICE_TOKEN,
+  type IOrderCancellationService,
+} from '../application/interfaces/order-cancellation.service.interface';
+import {
+  CancelCorrectionFailedError,
+  OrderCancellationInvalidReasonError,
+  OrderCancellationNoteRequiredError,
+  OrderCancellationNotFoundError,
+  OrderCancellationRefusedError,
+} from '../application/errors/order-cancellation.errors';
+import type {
+  CancelOrderResult,
+  ConfirmOrderChangeResult,
+} from '../application/types/order-cancellation.types';
+import { OrderChangeResponseDto } from './dto/order-change-response.dto';
+import { CancelOrderRequestDto } from './dto/cancel-order-request.dto';
+import type {
+  CancelCorrectionProposalLineDto} from './dto/cancel-order-response.dto';
+import {
+  CancelOrderResponseDto,
+  ConfirmOrderChangeResponseDto,
+} from './dto/cancel-order-response.dto';
 import { ListOrdersQueryDto } from './dto/list-orders-query.dto';
 import {
   SourceFulfillmentResponseDto,
@@ -388,7 +420,13 @@ export class OrdersController {
     private readonly fulfillmentWork: IFulfillmentWorkQueryService,
     // #3532 — the tag ids rendered as the third line of the identity cell.
     @Inject(ORDER_TAG_SERVICE_TOKEN)
-    private readonly tagService: IOrderTagService
+    private readonly tagService: IOrderTagService,
+    // #3540 - the open-amendment fact behind the derived `amending` phase, and
+    // the operator cancel. Both reach their records through service seams.
+    @Inject(ORDER_CHANGE_SERVICE_TOKEN)
+    private readonly orderChanges: IOrderChangeService,
+    @Inject(ORDER_CANCELLATION_SERVICE_TOKEN)
+    private readonly orderCancellation: IOrderCancellationService
   ) {}
 
   @Roles('admin', 'operator', 'viewer')
@@ -517,9 +555,16 @@ export class OrdersController {
       items.map((order) => order.internalOrderId)
     );
 
+    // Batch the open-amendment fact for the whole page (#3540) - the derived
+    // `amending` phase's one input that is not a column on the row. One query,
+    // never per row; the SQL twin of the `?phase=` filter reads the same fact.
+    const amendingOrderIds = await this.orderChanges.findOrderIdsWithOpenAmendment(
+      items.map((order) => order.internalOrderId)
+    );
+
     return {
       items: items.map((order) => {
-        const dto = this.toDto(order);
+        const dto = this.toDto(order, amendingOrderIds.has(order.internalOrderId));
         const invoice = invoiceByOrderId.get(order.internalOrderId);
         if (invoice) {
           dto.orderSnapshot = { ...dto.orderSnapshot, invoice: this.toInvoiceProjection(invoice) };
@@ -691,7 +736,7 @@ export class OrdersController {
     if (!order) {
       throw new NotFoundException(`Order not found: ${internalOrderId}`);
     }
-    const dto = this.toDto(order);
+    const dto = this.toDto(order, await this.hasOpenAmendment(internalOrderId));
     // Buyer tax id (#3180). DETAIL READ ONLY — off the shared `toDto`, so the
     // paged list never carries it. Unlike `activeHold` below this costs no extra
     // query (the column is already loaded); it is scoped for DATA MINIMISATION.
@@ -979,7 +1024,8 @@ export class OrdersController {
     @CurrentUser() user: AuthenticatedUser
   ): Promise<OrderRecordResponseDto> {
     try {
-      return this.toDto(await this.orderRecordService.markPacked(internalOrderId, user.id));
+      const packed = await this.orderRecordService.markPacked(internalOrderId, user.id);
+      return this.toDto(packed, await this.hasOpenAmendment(internalOrderId));
     } catch (error) {
       if (error instanceof OrderRecordNotFoundException) {
         throw new NotFoundException(error.message);
@@ -1004,7 +1050,8 @@ export class OrdersController {
     @Param('internalOrderId') internalOrderId: string
   ): Promise<OrderRecordResponseDto> {
     try {
-      return this.toDto(await this.orderRecordService.clearPacked(internalOrderId));
+      const cleared = await this.orderRecordService.clearPacked(internalOrderId);
+      return this.toDto(cleared, await this.hasOpenAmendment(internalOrderId));
     } catch (error) {
       if (error instanceof OrderRecordNotFoundException) {
         throw new NotFoundException(error.message);
@@ -1279,6 +1326,126 @@ export class OrdersController {
   }
 
   @Roles('admin')
+  @Post(':internalOrderId/cancel')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Cancel an order at the operator\'s request',
+    description:
+      'An ADR-044 proposal: OpenLinker asks the SOURCE sales channel to cancel, and cancels locally only ' +
+      'when the channel accepts (or has no cancel verb to refuse with). Outstanding shipping labels are ' +
+      'voided first; a carrier that cannot void stops the cancel before the channel hears anything. ' +
+      'On success the order is marked cancelled, stock is restored, open fulfilment work is cancelled and, ' +
+      'for an invoiced order, a credit proposal is returned for POST /orders/:id/changes/:changeId/confirm. ' +
+      'If the channel does not answer, the request stays open and the response is 202 `pending`. ' +
+      'Only the closed reason code is sent to a channel; the note is kept on the audit record. ' +
+      'The acting user is taken from the session, never the body.',
+  })
+  @ApiResponse({ status: 200, description: 'Order cancelled', type: CancelOrderResponseDto })
+  @ApiResponse({
+    status: 202,
+    description: 'The sales channel has not answered; the cancel request stays open',
+    type: CancelOrderResponseDto,
+  })
+  @ApiResponse({ status: 400, description: 'Unknown reason, or a note is missing for `other`' })
+  @ApiResponse({ status: 403, description: 'Insufficient permissions' })
+  @ApiResponse({ status: 404, description: 'Order not found' })
+  @ApiResponse({
+    status: 409,
+    description:
+      'ORDER_ALREADY_CANCELLED | ORDER_ALREADY_SHIPPED | ORDER_HAS_FISCAL_RECEIPT | INVOICE_NOT_SETTLED | ' +
+      'ORDER_CANCEL_IN_FLIGHT | ORDER_WORK_ACCEPTED_NEEDS_ACK | ORDER_CANCEL_CONTENDED | ' +
+      'LABEL_NOT_VOIDABLE | CHANNEL_REFUSED_CANCEL',
+  })
+  async cancelOrder(
+    @Param('internalOrderId') internalOrderId: string,
+    @Body() dto: CancelOrderRequestDto,
+    @CurrentUser() user: AuthenticatedUser,
+    @Res({ passthrough: true }) response: Response
+  ): Promise<CancelOrderResponseDto> {
+    // 404 first, before any state is read or written.
+    const order = await this.orderRecordRepository.findById(internalOrderId);
+    if (!order) {
+      throw new NotFoundException(`Order not found: ${internalOrderId}`);
+    }
+
+    try {
+      const result = await this.orderCancellation.cancelOrder({
+        internalOrderId,
+        reason: dto.reason,
+        note: dto.note?.trim() ? dto.note.trim() : null,
+        acknowledgeAcceptedWork: dto.acknowledgeAcceptedWork === true,
+        actorUserId: user.id,
+      });
+      if (result.status === 'pending') {
+        response.status(HttpStatus.ACCEPTED);
+      }
+      return this.toCancelOrderDto(result);
+    } catch (error) {
+      throw this.toCancellationHttpException(error);
+    }
+  }
+
+  @Roles('admin')
+  @Post(':internalOrderId/changes/:changeId/confirm')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Confirm a proposed order change',
+    description:
+      'Confirms a change the operator has reviewed. Today the only confirmable kind is the credit ' +
+      'proposal a cancelled, invoiced order leaves behind: confirming issues the correcting invoice ' +
+      '(an action that cannot be withdrawn once sent to a tax authority) under an idempotency key derived ' +
+      'from the change id. A provider failure leaves the proposal open so it can be retried.',
+  })
+  @ApiResponse({ status: 200, description: 'Change confirmed', type: ConfirmOrderChangeResponseDto })
+  @ApiResponse({ status: 403, description: 'Insufficient permissions' })
+  @ApiResponse({ status: 404, description: 'Order not found, or no such change on this order' })
+  @ApiResponse({
+    status: 409,
+    description:
+      'CHANGE_ALREADY_CONFIRMED | CHANGE_EXPIRED | CHANGE_NOT_OPEN | CHANGE_KIND_NOT_CONFIRMABLE | ' +
+      'CORRECTION_IN_PROGRESS | CORRECTION_NEEDS_RECONCILIATION',
+  })
+  @ApiResponse({ status: 422, description: 'The invoicing provider rejected the correction' })
+  async confirmChange(
+    @Param('internalOrderId') internalOrderId: string,
+    @Param('changeId', ParseUUIDPipe) changeId: string,
+    @CurrentUser() user: AuthenticatedUser
+  ): Promise<ConfirmOrderChangeResponseDto> {
+    try {
+      const result: ConfirmOrderChangeResult = await this.orderCancellation.confirmChange({
+        internalOrderId,
+        changeId,
+        actorUserId: user.id,
+      });
+      return result;
+    } catch (error) {
+      throw this.toCancellationHttpException(error);
+    }
+  }
+
+  @Roles('admin', 'operator', 'viewer')
+  @Get(':internalOrderId/changes')
+  @ApiOperation({
+    summary: "Read an order's operator changes",
+    description:
+      'Every `order.*` change proposal against the order, newest first: cancel requests and the credit ' +
+      'proposals they leave behind. `return.*` changes are not listed here. Lets a reloaded page, or a ' +
+      'second admin, find a pending cancel and the correction awaiting confirmation.',
+  })
+  @ApiResponse({ status: 200, type: [OrderChangeResponseDto] })
+  @ApiResponse({ status: 404, description: 'Order not found' })
+  async listOrderChanges(
+    @Param('internalOrderId') internalOrderId: string
+  ): Promise<OrderChangeResponseDto[]> {
+    const order = await this.orderRecordRepository.findById(internalOrderId);
+    if (!order) {
+      throw new NotFoundException(`Order not found: ${internalOrderId}`);
+    }
+    const items = await this.orderChanges.listOperatorChangesByOrder(internalOrderId);
+    return items.map(({ change, open }) => this.toOrderChangeDto(change, open));
+  }
+
+  @Roles('admin')
   @Post(':internalOrderId/test-fixtures/mark-pre-rollout-era')
   @HttpCode(HttpStatus.OK)
   // Kept out of the published OpenAPI document (#3127 review). The route is
@@ -1384,7 +1551,103 @@ export class OrdersController {
     };
   }
 
-  private toDto(order: OrderRecord): OrderRecordResponseDto {
+  private toCancelOrderDto(result: CancelOrderResult): CancelOrderResponseDto {
+    return {
+      status: result.status,
+      changeId: result.changeId,
+      cancelledAt: result.cancelledAt ? result.cancelledAt.toISOString() : null,
+      participants: result.participants.map((p) => ({ ...p })),
+      otherParticipantsRelayFailed: result.otherParticipantsRelayFailed,
+      voidedShipmentIds: [...result.voidedShipmentIds],
+      cancelledWorkIds: [...result.cancelledWorkIds],
+      stockRestoreEnqueued: result.stockRestoreEnqueued,
+      correctionProposal: result.correctionProposal
+        ? {
+            ...result.correctionProposal,
+            lines: result.correctionProposal.lines.map((line) => ({ ...line })),
+          }
+        : null,
+      correctionUnavailableReason: result.correctionUnavailableReason,
+    };
+  }
+
+  /**
+   * One mapping for every refusal the cancellation service models. The machine
+   * code travels in `error` (the `ORDER_ALREADY_ON_HOLD` shape) because two 409s
+   * here can have different remedies and a status code alone cannot tell the
+   * operator which one they are in.
+   */
+  private toCancellationHttpException(error: unknown): unknown {
+    if (error instanceof OrderCancellationRefusedError) {
+      return new ConflictException({
+        statusCode: HttpStatus.CONFLICT,
+        error: error.code,
+        message: error.message,
+      });
+    }
+    if (error instanceof OrderCancellationNotFoundError) {
+      return new NotFoundException(error.message);
+    }
+    if (
+      error instanceof OrderCancellationNoteRequiredError ||
+      error instanceof OrderCancellationInvalidReasonError
+    ) {
+      return new BadRequestException(error.message);
+    }
+    if (error instanceof CancelCorrectionFailedError) {
+      return new UnprocessableEntityException({
+        statusCode: HttpStatus.UNPROCESSABLE_ENTITY,
+        error: 'CORRECTION_FAILED',
+        message: error.message,
+        failureCode: error.failureCode,
+      });
+    }
+    return error;
+  }
+
+  private toOrderChangeDto(change: OrderChange, open: boolean): OrderChangeResponseDto {
+    const raw = change.payload ?? {};
+    const isCancel = change.kind === 'order.cancel_request';
+    const isCorrection = change.kind === 'order.cancel_correction';
+    const rawLines = Array.isArray(raw['lines']) ? (raw['lines'] as unknown[]) : [];
+    return {
+      id: change.id,
+      kind: change.kind,
+      status: change.status,
+      open,
+      requestedAt: change.requestedAt.toISOString(),
+      confirmedAt:
+        change.status === 'confirmed' && change.terminalisedAt
+          ? change.terminalisedAt.toISOString()
+          : null,
+      declinedReason: change.declinedReason,
+      payload: {
+        cancelRequest: isCancel
+          ? {
+              reason: typeof raw['reason'] === 'string' ? raw['reason'] : '',
+              note: typeof raw['note'] === 'string' ? raw['note'] : null,
+            }
+          : null,
+        correction:
+          isCorrection && typeof raw['invoiceRecordId'] === 'string'
+            ? {
+                invoiceRecordId: raw['invoiceRecordId'],
+                documentNumber:
+                  typeof raw['documentNumber'] === 'string' ? raw['documentNumber'] : null,
+                currency: typeof raw['currency'] === 'string' ? raw['currency'] : '',
+                lines: rawLines as CancelCorrectionProposalLineDto[],
+              }
+            : null,
+      },
+    };
+  }
+
+  private async hasOpenAmendment(internalOrderId: string): Promise<boolean> {
+    const ids = await this.orderChanges.findOrderIdsWithOpenAmendment([internalOrderId]);
+    return ids.has(internalOrderId);
+  }
+
+  private toDto(order: OrderRecord, hasOpenAmendment = false): OrderRecordResponseDto {
     const fulfillmentState = order.fulfillmentState ?? 'not-shipped';
     return {
       internalOrderId: order.internalOrderId,
@@ -1462,7 +1725,10 @@ export class OrdersController {
         // per row on the paged list; the SQL twin's `held` arm reads the same
         // column, which is what keeps this badge and `?phase=held` in agreement.
         activeHoldReason: order.activeHoldReason,
-        hasOpenAmendment: false, // Wave 2 — widened `order_changes.kind`
+        // #3540 - an OPEN `order.*` change (an operator cancel awaiting its
+        // channel). Supplied by the caller because it is one batched read per
+        // page, not a column; the SQL twin tests the same fact.
+        hasOpenAmendment,
         recordStatus: order.recordStatus,
         authority: DEFAULT_LIFECYCLE_AUTHORITY, // Wave 4 binds this per order at ingestion
         vendorDeclaredPhase: null, // Wave 4 — posture-B columns

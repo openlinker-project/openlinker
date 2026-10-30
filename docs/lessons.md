@@ -174,6 +174,32 @@ any status read-back paired with an outbound relay.
 
 ---
 
+## Never let an adapter's caught error read as the channel saying no
+
+**Context**: the operator order cancel (#3540) relays the cancel to the
+originating channel. The relay catches whatever the adapter throws and reports
+`outcome: 'rejected'`, the same value a genuine channel refusal carries (C-28,
+B-16).
+
+**Problem**: a timeout, a 5xx or a dropped connection is not a refusal. The
+channel never answered, and may have applied the write before the connection
+died. Treating it as `rejected` made the cancel flow abandon the change row, so a
+later retry looked like a fresh request against a cancel the channel had
+possibly already taken. Transient and definitive failures were indistinguishable
+at the one place that had to tell them apart.
+
+**Rule**: a layer that swallows an error into a result type must keep the fact
+that it was an error. Add an explicit flag (`adapterThrew`) rather than a new
+outcome value that existing callers would mishandle, document that absent means
+"the adapter answered", and make the caller that must tell "declined" from "we do
+not know" branch on it. Leave the change open on the unknown case, never discard
+it.
+
+**Applies to**: `OrderLifecycleRelayService`, `OrderCancellationService`, and any
+adapter-result mapper that converts a throw into a business outcome.
+
+**Source**: #3540
+
 ## Take the lock before the READ of a read-then-write money guard
 
 **Context**: the refund ceiling (#3289) compares a refund against

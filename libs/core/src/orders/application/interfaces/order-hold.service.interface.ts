@@ -28,7 +28,7 @@
  */
 import type { HoldReason, OmsLifecycleFact } from '@openlinker/core/order-lifecycle';
 import type { OrderHold } from '../../domain/entities/order-hold.entity';
-import type { OrderHoldPlacedBy } from '../../domain/types/order-hold.types';
+import type { OrderHoldPlacedBy, OrderHoldReleasedBy } from '../../domain/types/order-hold.types';
 
 export interface PlaceHoldRequest {
   internalOrderId: string;
@@ -47,7 +47,7 @@ export interface ReleaseHoldRequest {
    */
   note?: string | null;
   /** Symmetric with `PlaceHoldRequest.placedBy` — a release has an actor too. */
-  releasedBy: OrderHoldPlacedBy;
+  releasedBy: OrderHoldReleasedBy;
 }
 
 /**

@@ -33,6 +33,16 @@ export interface IShipmentQueryService {
   getActiveByOrderId(orderId: string): Promise<Shipment | null>;
 
   /**
+   * EVERY outbound shipment of an order, terminal ones included (#3540).
+   *
+   * Distinct from {@link getActiveByOrderId}, which returns only the latest
+   * non-terminal row: an operator cancel must void each outstanding label and a
+   * split order can carry several. Outbound only (#2373) - a return label is not
+   * something the buyer's order cancellation voids.
+   */
+  getOutboundByOrderId(orderId: string): Promise<readonly Shipment[]>;
+
+  /**
    * Outbound shipments for a page of `FulfillmentWork` ids, keyed by work id
    * (#2418) — the first read of the `shipments.fulfillmentWorkId` link #2402
    * persisted. Three pack-bench answers come off it: whether a parcel has

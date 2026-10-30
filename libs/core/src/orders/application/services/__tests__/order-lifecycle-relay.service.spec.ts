@@ -144,9 +144,24 @@ describe('OrderLifecycleRelayService', () => {
     });
 
     expect(result.targets).toEqual([
-      { connectionId: 'ps-a', outcome: 'rejected', detail: 'boom' },
+      { connectionId: 'ps-a', outcome: 'rejected', detail: 'boom', adapterThrew: true },
       { connectionId: 'ps-b', outcome: 'applied', detail: undefined },
     ]);
+  });
+
+  it('should report adapterThrew when an adapter returns a transient rejection (C-28)', async () => {
+    identifierMapping.getExternalIds.mockResolvedValue([mapping('ps-conn', 'ps-7')]);
+    integrations.getCapabilityAdapter.mockResolvedValue({
+      write: jest.fn().mockResolvedValue({ outcome: 'rejected', detail: 'timeout', transient: true }),
+    });
+
+    const result = await service.relay({
+      internalOrderId: 'ol_order_1',
+      originConnectionId: origin,
+      event: { type: 'cancelled' },
+    });
+
+    expect(result.targets[0]).toMatchObject({ outcome: 'rejected', adapterThrew: true });
   });
 
   it('surfaces a rejected outcome returned by the adapter (e.g. already shipped)', async () => {
@@ -404,6 +419,73 @@ describe('OrderLifecycleRelayService', () => {
       });
 
       expect(result.targets.map((t) => t.connectionId)).toEqual(['ps-conn']);
+    });
+  });
+
+  describe('operator sentinel origin and onlyConnectionIds (#3540)', () => {
+    it('includes the SOURCE when the origin is the operator sentinel, which names no participant', async () => {
+      identifierMapping.getExternalIds.mockResolvedValue([
+        mapping(origin, 'allegro-1'),
+        mapping('ps-conn', 'ps-7'),
+      ]);
+      const adapter = { write: jest.fn().mockResolvedValue({ outcome: 'applied' }) };
+      integrations.getCapabilityAdapter.mockResolvedValue(adapter);
+
+      const result = await service.relay({
+        internalOrderId: 'ol_order_1',
+        originConnectionId: 'openlinker:operator',
+        event: { type: 'cancelled', reason: 'fraud' },
+      });
+
+      expect(result.targets.map((t) => t.connectionId)).toEqual([origin, 'ps-conn']);
+    });
+
+    it('narrows the fan-out to the named connections only', async () => {
+      identifierMapping.getExternalIds.mockResolvedValue([
+        mapping(origin, 'allegro-1'),
+        mapping('ps-conn', 'ps-7'),
+      ]);
+      const adapter = { write: jest.fn().mockResolvedValue({ outcome: 'applied' }) };
+      integrations.getCapabilityAdapter.mockResolvedValue(adapter);
+
+      const result = await service.relay({
+        internalOrderId: 'ol_order_1',
+        originConnectionId: 'openlinker:operator',
+        onlyConnectionIds: [origin],
+        event: { type: 'cancelled' },
+      });
+
+      expect(result.targets.map((t) => t.connectionId)).toEqual([origin]);
+      expect(adapter.write).toHaveBeenCalledTimes(1);
+    });
+
+    it('still honours the exclusions when a connection is both named and excluded', async () => {
+      identifierMapping.getExternalIds.mockResolvedValue([mapping(origin, 'allegro-1')]);
+
+      const result = await service.relay({
+        internalOrderId: 'ol_order_1',
+        originConnectionId: origin,
+        onlyConnectionIds: [origin],
+        event: { type: 'cancelled' },
+      });
+
+      expect(result.targets).toEqual([]);
+    });
+
+    it('echoes the adapter scope so a stock-only cancel is not read as a channel cancel', async () => {
+      identifierMapping.getExternalIds.mockResolvedValue([mapping('erli-conn', 'e-1')]);
+      const adapter = {
+        write: jest.fn().mockResolvedValue({ outcome: 'applied', scope: 'stock-only' }),
+      };
+      integrations.getCapabilityAdapter.mockResolvedValue(adapter);
+
+      const result = await service.relay({
+        internalOrderId: 'ol_order_1',
+        originConnectionId: 'openlinker:operator',
+        event: { type: 'cancelled' },
+      });
+
+      expect(result.targets[0].scope).toBe('stock-only');
     });
   });
 });

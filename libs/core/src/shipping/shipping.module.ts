@@ -25,7 +25,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { IntegrationsModule } from '@openlinker/core/integrations';
 import { FulfillmentModule } from '@openlinker/core/fulfillment';
 import { MappingsModule } from '@openlinker/core/mappings';
-import { OrdersModule } from '@openlinker/core/orders';
+import { ORDER_LABEL_VOIDER_TOKEN, OrdersModule } from '@openlinker/core/orders';
 import { IdentifierMappingModule } from '@openlinker/core/identifier-mapping';
 import { SyncModule } from '@openlinker/core/sync';
 import { InventoryModule } from '@openlinker/core/inventory';
@@ -41,6 +41,7 @@ import { RedisPickupPointQueryStatsAdapter } from './infrastructure/adapters/red
 import { ShipmentDispatchService } from './application/services/shipment-dispatch.service';
 import { BulkShipmentDispatchService } from './application/services/bulk-shipment-dispatch.service';
 import { ShipmentQueryService } from './application/services/shipment-query.service';
+import { OrderLabelVoiderService } from './application/services/order-label-voider.service';
 import { ShipmentCancellationService } from './application/services/shipment-cancellation.service';
 import { PickupPointLookupService } from './application/services/pickup-point-lookup.service';
 import { PickupPointRefreshService } from './application/services/pickup-point-refresh.service';
@@ -141,6 +142,14 @@ import {
     {
       provide: SHIPMENT_CANCELLATION_SERVICE_TOKEN,
       useExisting: ShipmentCancellationService,
+    },
+    // #3540 (4a): the labels half of the observed-cancel cleanup. Bound to an
+    // orders-owned token that `OrderCancellationEffectsService` resolves lazily -
+    // it cannot inject it, because this module imports OrdersModule.
+    OrderLabelVoiderService,
+    {
+      provide: ORDER_LABEL_VOIDER_TOKEN,
+      useExisting: OrderLabelVoiderService,
     },
     RedisPickupPointCacheAdapter,
     {

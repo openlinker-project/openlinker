@@ -46,7 +46,12 @@ import {
   ORDER_RECORD_SERVICE_TOKEN,
   ORDER_ITEM_REF_RESOLVER_SERVICE_TOKEN,
   ORDER_LIFECYCLE_RELAY_SERVICE_TOKEN,
+  ORDER_CHANGE_SERVICE_TOKEN,
+  ORDER_CANCELLATION_EFFECTS_SERVICE_TOKEN,
 } from '../../orders.tokens';
+import { IOrderCancellationEffectsService } from '../interfaces/order-cancellation-effects.service.interface';
+import { IOrderChangeService } from './order-change.service.interface';
+import type { OrderChange } from '../../domain/entities/order-change.entity';
 import { IOrderRecordService } from '../interfaces/order-record.service.interface';
 import { IOrderItemRefResolverService } from '../interfaces/order-item-ref-resolver.service.interface';
 import { IOrderLifecycleRelayService } from '../interfaces/order-lifecycle-relay.service.interface';
@@ -94,6 +99,8 @@ import {
 import type { ReservationAtpEffect } from '@openlinker/core/inventory';
 import type { Order } from '../../domain/types/order.types';
 import type { OrderFeedEventType } from '../../domain/types/order-feed.types';
+import { orderStockRestoreDedupeKey } from '../../domain/types/order-cancel.types';
+import { cancelRequestTargetRef } from '../../domain/types/order-change.types';
 import { compareOrderCursors } from '../../domain/types/order-cursor.types';
 import { withheldOnHoldError } from '../../domain/types/order-hold.types';
 import {
@@ -256,7 +263,17 @@ export class OrderIngestionService implements IOrderIngestionService {
     // deliberately running router-less, and that misconfiguration is otherwise
     // invisible (the router-less path is a silent, fully-specified pass-through).
     @Inject(FULFILLMENT_ROUTER_RESOLVER_TOKEN)
-    private readonly routerResolver: FulfillmentRouterResolverPort
+    private readonly routerResolver: FulfillmentRouterResolverPort,
+    // #3540: ADR-044 "confirms from observation" - an inbound cancel confirms an
+    // operator's still-open cancel request. Appended last like every dependency
+    // since. Leaf-module edge (`OrderChangesModule`), no cycle.
+    @Inject(ORDER_CHANGE_SERVICE_TOKEN)
+    private readonly orderChanges: IOrderChangeService,
+    // #3540 (B-18): the cleanup a cancelled order owes, run for an OBSERVED
+    // confirmation of an operator cancel request exactly as the operator path
+    // runs it. Same module, no cycle.
+    @Inject(ORDER_CANCELLATION_EFFECTS_SERVICE_TOKEN)
+    private readonly cancellationEffects: IOrderCancellationEffectsService
   ) {}
 
   async ingestOrders(
@@ -493,6 +510,18 @@ export class OrderIngestionService implements IOrderIngestionService {
     const cancelledFromEarlySignal =
       snapshotRecord.cancelledAt != null || existing?.cancelledAt != null;
 
+    // C-4 / C-30: a cancellation that arrives as a plain order update (status
+    // CANCELLED, or a consumed early signal) takes the same seam as the
+    // `cancelled` feed event. `existing` is the pre-persist read, so a null
+    // `cancelledAt` there means this is the first time the cancel is observed.
+    if (
+      (incoming.status === 'cancelled' || cancelledFromEarlySignal) &&
+      existing != null &&
+      existing.cancelledAt == null
+    ) {
+      await this.onSourceCancellationObserved(internalOrderId, connectionId, true);
+    }
+
     // Early-fire cancellation hook (#1146): enqueue the stock-restore job
     // immediately after the raw snapshot is persisted and BEFORE item resolution
     // so the signal is never lost when MissingOrderItemMappingError is thrown at
@@ -514,7 +543,7 @@ export class OrderIngestionService implements IOrderIngestionService {
             internalOrderId,
           },
           options: {
-            dedupeKey: `marketplace:${connectionId}:stockRestore:${internalOrderId}`,
+            dedupeKey: orderStockRestoreDedupeKey(connectionId, internalOrderId),
           },
         });
       } catch (error) {
@@ -669,7 +698,7 @@ export class OrderIngestionService implements IOrderIngestionService {
             internalOrderId,
           },
           options: {
-            dedupeKey: `marketplace:${connectionId}:stockRestore:${internalOrderId}`,
+            dedupeKey: orderStockRestoreDedupeKey(connectionId, internalOrderId),
           },
         });
       } catch (error) {
@@ -1663,6 +1692,11 @@ export class OrderIngestionService implements IOrderIngestionService {
       return [];
     }
 
+    // Read BEFORE markCancelled (first-write-wins) so "first observation" can be
+    // told apart afterwards; an operator cancel stamps cancelledAt itself, so it
+    // reads as already observed and its own cleanup is not repeated (C-30).
+    const firstObservation = existing != null && existing.cancelledAt == null;
+
     // Durably record the cancellation on the order record itself (#1984) —
     // previously this handler only relayed to destinations and returned,
     // leaving no queryable trace of the cancellation on the order record.
@@ -1707,6 +1741,20 @@ export class OrderIngestionService implements IOrderIngestionService {
       );
     }
 
+    const cancelledByOperator = await this.wasCancelledByOperator(internalOrderId);
+
+    await this.onSourceCancellationObserved(internalOrderId, connectionId, firstObservation);
+
+    if (cancelledByOperator) {
+      // The operator's own cancel already told every participant (and the channel
+      // answered it); this is the channel echoing that cancel back. Relaying it
+      // again would cancel at the destination a second time (C-40).
+      this.logger.debug(
+        `Not relaying the source's echo of the operator cancel of order ${internalOrderId}`
+      );
+      return [];
+    }
+
     const result = await this.orderLifecycleRelay.relay({
       internalOrderId,
       originConnectionId: connectionId,
@@ -1739,6 +1787,131 @@ export class OrderIngestionService implements IOrderIngestionService {
       this.logger.log(message);
     }
     return [];
+  }
+
+  /**
+   * ADR-044 "OL confirms from observation" (#3540): the source reporting the
+   * order cancelled IS the channel's answer to an operator's still-open
+   * `order.cancel_request`, so confirm it. Without this, a cancel whose HTTP
+   * answer never came back (the `pending` path) stays open although the channel
+   * has since cancelled.
+   *
+   * Best-effort and never fails ingestion: the order record is already marked
+   * cancelled, and the row would otherwise just age out through the TTL.
+   */
+  /**
+   * Whether an operator's cancel request for this order was already confirmed BY
+   * the operator (not from observation), i.e. the operator path already relayed.
+   * A read failure answers false: relaying twice is the lesser harm than not at all.
+   */
+  private async wasCancelledByOperator(internalOrderId: string): Promise<boolean> {
+    try {
+      const latest = await this.orderChanges.findLatestByTarget(
+        internalOrderId,
+        cancelRequestTargetRef(internalOrderId),
+        'order.cancel_request'
+      );
+      return (
+        latest !== null &&
+        latest.status === 'confirmed' &&
+        latest.confirmedBy !== null &&
+        !latest.confirmedBy.startsWith('source:')
+      );
+    } catch (error) {
+      this.logger.warn(
+        `Could not read the cancel request of order ${internalOrderId}: ${
+          error instanceof Error ? error.message : String(error)
+        }`
+      );
+      return false;
+    }
+  }
+
+  /**
+   * The ONE seam for a cancellation the source reported, whichever shape it
+   * arrived in (`cancelled` feed event or a plain update with a cancelled
+   * status): confirm an open operator request, and on the first observation run
+   * the shared cleanup (work, holds, credit proposal) exactly once - from the
+   * confirmed request when there is one, otherwise on its own, so a channel-side
+   * cancel with no operator request is cleaned up too (C-30, C-4).
+   *
+   * Stock restore and reservation release are NOT repeated here: the ingestion
+   * stock-restore job already covers them. Labels ARE voided, best-effort, through
+   * the lazily-resolved `OrderLabelVoiderPort` (shipping depends on orders, so
+   * core orders cannot import it without a module cycle); the operator path
+   * voids them itself before cancelling and opts out.
+   */
+  private async onSourceCancellationObserved(
+    internalOrderId: string,
+    connectionId: string,
+    firstObservation: boolean
+  ): Promise<void> {
+    const effectsRan = await this.confirmOpenCancelRequest(internalOrderId, connectionId);
+    if (!firstObservation || effectsRan) return;
+    try {
+      await this.cancellationEffects.applyEffects({
+        internalOrderId,
+        cancelledAt: new Date(),
+        reason: 'other',
+        actorUserId: null,
+      });
+    } catch (error) {
+      this.logger.error(
+        `Observed cancel of order ${internalOrderId}: the cancellation cleanup failed`,
+        error instanceof Error ? error.stack : undefined
+      );
+    }
+  }
+
+  private async confirmOpenCancelRequest(
+    internalOrderId: string,
+    connectionId: string
+  ): Promise<boolean> {
+    let effectsRan = false;
+    try {
+      const open = await this.orderChanges.findOpenByOrder(internalOrderId);
+      for (const change of open) {
+        if (change.kind !== 'order.cancel_request') continue;
+        // A request exists, so its confirm winner (us or a peer) owns the cleanup.
+        effectsRan = true;
+        if (await this.orderChanges.confirm(change.id, `source:${connectionId}`)) {
+          await this.orderChanges.claimApplied(change.id);
+          // The operator path does this cleanup after the source's HTTP answer;
+          // here that answer never came back, so without it the work stays live,
+          // the hold stays held and an invoiced order gets no credit proposal
+          // (B-18). Idempotent, so a racing operator path is harmless. Only the
+          // confirm WINNER runs it: a loser's peer already owns the cleanup.
+          await this.runObservedCancelEffects(internalOrderId, change);
+        }
+      }
+    } catch (error) {
+      this.logger.warn(
+        `Could not confirm the open cancel request for order ${internalOrderId} from the source's cancellation: ${
+          error instanceof Error ? error.message : String(error)
+        }`
+      );
+    }
+    return effectsRan;
+  }
+
+  private async runObservedCancelEffects(
+    internalOrderId: string,
+    change: OrderChange
+  ): Promise<void> {
+    try {
+      const rawReason = change.payload?.['reason'];
+      await this.cancellationEffects.applyEffects({
+        internalOrderId,
+        cancelledAt: new Date(),
+        reason: typeof rawReason === 'string' ? rawReason : 'other',
+        actorUserId: change.requestedBy,
+      });
+    } catch (error) {
+      this.logger.error(
+        `Observed cancel of order ${internalOrderId} confirmed, but the cancellation cleanup failed`,
+        error instanceof Error ? error.stack : undefined
+      );
+    }
   }
 
   /**

@@ -78,6 +78,18 @@ describe('ShipmentQueryService', () => {
     service = new ShipmentQueryService(repository);
   });
 
+  describe('getOutboundByOrderId (#3540)', () => {
+    it('should read every outbound shipment of the order, terminal ones included', async () => {
+      const shipments = [makeShipment({ id: 's1' }), makeShipment({ id: 's2', status: 'cancelled' })];
+      repository.findByOrderId.mockResolvedValue(shipments);
+
+      const result = await service.getOutboundByOrderId('ol_order_1');
+
+      expect(result).toBe(shipments);
+      expect(repository.findByOrderId).toHaveBeenCalledWith('ol_order_1', 'outbound');
+    });
+  });
+
   describe('findByFulfillmentWorkIds', () => {
     it('should ask the repository once for the whole page, never per work', async () => {
       // The `getEarliestOrderDateByConnection` (#2083) N+1 precedent: batched
