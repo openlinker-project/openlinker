@@ -42,6 +42,13 @@ async function advanceOneStep(container: HTMLElement, expectedStepLabel: string)
   });
 }
 
+const SHIPPING_DEFAULT = {
+  name: 'Shipping',
+  rate: 'goods',
+  freeDelivery: 'omit',
+  rateFormat: 'plain',
+};
+
 describe('AllegroSetupForm', () => {
   afterEach(() => {
     vi.unstubAllGlobals();
@@ -89,6 +96,11 @@ describe('AllegroSetupForm', () => {
     await advanceOneStep(container, 'Product catalog');
     expect(within(container).getByLabelText(/product catalog connection/i)).toBeInTheDocument();
 
+    await advanceOneStep(container, 'Sales documents');
+    expect(
+      within(container).getByText('How should delivery appear on receipts and invoices?')
+    ).toBeInTheDocument();
+
     await advanceOneStep(container, 'Review & connect');
     expect(
       within(container).getByRole('button', { name: /connect with allegro/i })
@@ -104,6 +116,7 @@ describe('AllegroSetupForm', () => {
     fillCredentialsStep(container);
     await advanceOneStep(container, 'Environment');
     await advanceOneStep(container, 'Product catalog');
+    await advanceOneStep(container, 'Sales documents');
     await advanceOneStep(container, 'Review & connect');
     fireEvent.click(within(container).getByRole('button', { name: /connect with allegro/i }));
 
@@ -119,6 +132,7 @@ describe('AllegroSetupForm', () => {
     fillCredentialsStep(container);
     await advanceOneStep(container, 'Environment');
     await advanceOneStep(container, 'Product catalog');
+    await advanceOneStep(container, 'Sales documents');
     await advanceOneStep(container, 'Review & connect');
     fireEvent.click(within(container).getByRole('button', { name: /connect with allegro/i }));
 
@@ -137,6 +151,7 @@ describe('AllegroSetupForm', () => {
     fillCredentialsStep(container);
     await advanceOneStep(container, 'Environment');
     await advanceOneStep(container, 'Product catalog');
+    await advanceOneStep(container, 'Sales documents');
     await advanceOneStep(container, 'Review & connect');
     fireEvent.click(within(container).getByRole('button', { name: /connect with allegro/i }));
 
@@ -147,7 +162,128 @@ describe('AllegroSetupForm', () => {
         redirectUri: 'http://localhost:5173/integrations/allegro/connect/callback',
         environment: 'sandbox',
         connectionName: 'Allegro sandbox',
+        deliveryOnDocuments: { countries: {}, default: SHIPPING_DEFAULT },
       });
+    });
+  });
+
+  describe('sales documents step', () => {
+    const PL_SUGGESTION = {
+      country: 'PL',
+      defaultName: 'Koszt dostawy',
+      nameSuggestions: ['Koszt dostawy'],
+      rateMode: 'goods' as const,
+      omitFreeDelivery: true,
+      sources: [{ term: 'Source', text: 'Why' }],
+      sourceLabel: 'Source',
+      sourceUrl: 'https://example.com',
+      disclaimer: 'Not legal advice.',
+    };
+
+    type StartOAuth = NonNullable<
+      NonNullable<Parameters<typeof createMockApiClient>[0]>['allegro']
+    >['startOAuth'];
+
+    function suggestionsClient(startOAuth: StartOAuth): ReturnType<typeof createMockApiClient> {
+      return defaultApiClient({
+        allegro: { startOAuth },
+        deliveryOnDocuments: {
+          getSuggestions: vi.fn().mockResolvedValue({ suggestions: [PL_SUGGESTION] }),
+        },
+      });
+    }
+
+    async function reachSalesDocuments(container: HTMLElement): Promise<void> {
+      fillCredentialsStep(container);
+      await advanceOneStep(container, 'Environment');
+      await advanceOneStep(container, 'Product catalog');
+      await advanceOneStep(container, 'Sales documents');
+    }
+
+    const started = { authorizationUrl: 'https://allegro.pl/auth', state: 's' };
+
+    it('sends the suggested config built from the suggestions endpoint', async () => {
+      const startOAuth = vi.fn().mockResolvedValue(started);
+      vi.stubGlobal('location', { origin: 'http://localhost:5173', assign: vi.fn() });
+      const { container } = renderWithProviders(<AllegroSetupForm />, {
+        apiClient: suggestionsClient(startOAuth),
+      });
+
+      await reachSalesDocuments(container);
+      expect(
+        await within(container).findByText(/Orders to Poland say “Koszt dostawy”/)
+      ).toBeInTheDocument();
+      expect(within(container).getByText('Receipt for an order from Poland')).toBeInTheDocument();
+      await advanceOneStep(container, 'Review & connect');
+      fireEvent.click(within(container).getByRole('button', { name: /connect with allegro/i }));
+
+      await waitFor(() => {
+        expect(startOAuth).toHaveBeenCalledWith(
+          expect.objectContaining({
+            deliveryOnDocuments: {
+              countries: {
+                PL: {
+                  name: 'Koszt dostawy',
+                  rate: 'goods',
+                  freeDelivery: 'omit',
+                  rateFormat: 'plain',
+                },
+              },
+              default: SHIPPING_DEFAULT,
+            },
+          })
+        );
+      });
+    });
+
+    it('reveals the rules table for "Set it up myself" and sends its rows', async () => {
+      const startOAuth = vi.fn().mockResolvedValue(started);
+      vi.stubGlobal('location', { origin: 'http://localhost:5173', assign: vi.fn() });
+      const { container } = renderWithProviders(<AllegroSetupForm />, {
+        apiClient: suggestionsClient(startOAuth),
+      });
+
+      await reachSalesDocuments(container);
+      await within(container).findByText(/Orders to Poland say/);
+      fireEvent.click(within(container).getByLabelText(/Set it up myself/));
+
+      expect(
+        await within(container).findByRole('button', { name: '+ Add a country' })
+      ).toBeInTheDocument();
+      expect(within(container).getByText('All other countries')).toBeInTheDocument();
+      expect(
+        container.querySelector('aside[aria-label="Setup summary"]')
+      ).toHaveTextContent('Delivery on documents');
+
+      await advanceOneStep(container, 'Review & connect');
+      fireEvent.click(within(container).getByRole('button', { name: /connect with allegro/i }));
+      await waitFor(() => {
+        expect(startOAuth).toHaveBeenCalledWith(
+          expect.objectContaining({
+            deliveryOnDocuments: expect.objectContaining({ default: SHIPPING_DEFAULT }),
+          })
+        );
+      });
+    });
+
+    it('skips the step and sends no delivery config when re-authenticating', async () => {
+      const startOAuth = vi.fn().mockResolvedValue(started);
+      vi.stubGlobal('location', { origin: 'http://localhost:5173', assign: vi.fn() });
+      const { container } = renderWithProviders(<AllegroSetupForm />, {
+        apiClient: suggestionsClient(startOAuth),
+        route: '/?reauth=123e4567-e89b-12d3-a456-426614174000',
+      });
+
+      fillCredentialsStep(container);
+      await advanceOneStep(container, 'Environment');
+      await advanceOneStep(container, 'Product catalog');
+      await advanceOneStep(container, 'Review & connect');
+      fireEvent.click(within(container).getByRole('button', { name: /connect with allegro/i }));
+
+      await waitFor(() => {
+        expect(startOAuth).toHaveBeenCalledTimes(1);
+      });
+      expect(startOAuth.mock.calls[0][0]).not.toHaveProperty('deliveryOnDocuments');
     });
   });
 
@@ -188,6 +324,7 @@ describe('AllegroSetupForm', () => {
     fillCredentialsStep(container);
     await advanceOneStep(container, 'Environment');
     await advanceOneStep(container, 'Product catalog');
+    await advanceOneStep(container, 'Sales documents');
     await advanceOneStep(container, 'Review & connect');
     fireEvent.click(within(container).getByRole('button', { name: /connect with allegro/i }));
 

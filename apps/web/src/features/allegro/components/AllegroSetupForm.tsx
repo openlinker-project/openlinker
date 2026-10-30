@@ -8,7 +8,9 @@
  *      (required when at least one ProductMaster connection exists, per the
  *      style guide; the current form lets operators skip it but we still
  *      surface the relationship explicitly on this step)
- *   4. OAuth redirect — final review; submit redirects to Allegro's consent
+ *   4. Sales documents — how delivery appears on receipts and invoices
+ *      (skipped when re-authenticating an existing connection)
+ *   5. OAuth redirect — final review; submit redirects to Allegro's consent
  *      screen so the access token can come back through the callback page
  */
 import { useEffect, useState, type FormEvent, type ReactElement } from 'react';
@@ -25,6 +27,13 @@ import {
   type AllegroSetupFormValues,
 } from './allegro-setup.schema';
 import { AllegroSetupSummary } from './allegro-setup-summary';
+import {
+  DEFAULT_DELIVERY_WIZARD_VALUE,
+  DeliveryWizardStep,
+  useDeliveryLineSuggestionsQuery,
+  wizardRules,
+  wizardSummaryRows,
+} from '../../delivery-on-documents';
 import { Alert } from '../../../shared/ui/alert';
 import { BackLink } from '../../../shared/ui/back-link';
 import { Button } from '../../../shared/ui/button';
@@ -35,12 +44,21 @@ import { Select } from '../../../shared/ui/select';
 import { SetupStepper } from '../../../shared/ui/setup-stepper';
 import { WizardLayout } from '../../../shared/ui/wizard-layout';
 
-const STEP_LABELS = ['Credentials', 'Environment', 'Product catalog', 'Review & connect'] as const;
+const STEP_LABELS = [
+  'Credentials',
+  'Environment',
+  'Product catalog',
+  'Sales documents',
+  'Review & connect',
+] as const;
+
+const SALES_DOCUMENTS_STEP = 3;
 
 const STEP_FIELDS: ReadonlyArray<ReadonlyArray<Path<AllegroSetupFormValues>>> = [
   ['name', 'clientId', 'clientSecret'],
   ['environment'],
   ['masterCatalogConnectionId'],
+  [],
   [],
 ];
 
@@ -63,6 +81,9 @@ export function AllegroSetupForm(): ReactElement {
     resolver: zodResolver(allegroSetupSchema),
     mode: 'onBlur',
   });
+
+  const suggestionsQuery = useDeliveryLineSuggestionsQuery();
+  const suggestions = suggestionsQuery.data?.suggestions ?? [];
 
   const [stepIndex, setStepIndex] = useState(0);
   const [completedSteps, setCompletedSteps] = useState<ReadonlySet<number>>(new Set());
@@ -93,12 +114,25 @@ export function AllegroSetupForm(): ReactElement {
       const valid = await form.trigger([...fields]);
       if (!valid) return;
     }
-    setCompletedSteps((prev) => new Set(prev).add(stepIndex));
-    setStepIndex((i) => Math.min(i + 1, STEP_LABELS.length - 1));
+    const target = nextStep(stepIndex + 1, 1);
+    setCompletedSteps((prev) => {
+      const done = new Set(prev).add(stepIndex);
+      // A stepped-over step reads as done, not as a gap in the stepper.
+      if (target > stepIndex + 1) done.add(stepIndex + 1);
+      return done;
+    });
+    setStepIndex(target);
   }
 
   function goBack(): void {
-    setStepIndex((i) => Math.max(i - 1, 0));
+    setStepIndex((i) => nextStep(i - 1, -1));
+  }
+
+  // Re-authenticating rotates credentials only, so it has no sales-documents
+  // question to ask: the step is stepped over in both directions (#3911).
+  function nextStep(candidate: number, direction: 1 | -1): number {
+    const bounded = Math.min(Math.max(candidate, 0), STEP_LABELS.length - 1);
+    return reauthConnectionId && bounded === SALES_DOCUMENTS_STEP ? bounded + direction : bounded;
   }
 
   // A submit before the last step is Enter in a field, or the click that
@@ -117,7 +151,7 @@ export function AllegroSetupForm(): ReactElement {
     try {
       const redirectUri = `${window.location.origin}/integrations/allegro/connect/callback`;
       const { authorizationUrl } = await startOAuth.mutateAsync(
-        toStartOAuthInput(values, redirectUri, reauthConnectionId)
+        toStartOAuthInput(values, redirectUri, reauthConnectionId, suggestions)
       );
       // Clear the dirty flag so abandon-prevention doesn't pop a native
       // "leave page?" confirm when we navigate to Allegro's consent screen.
@@ -129,6 +163,10 @@ export function AllegroSetupForm(): ReactElement {
   });
 
   const values = form.watch();
+  const deliveryValue = values.deliveryOnDocuments ?? DEFAULT_DELIVERY_WIZARD_VALUE;
+  const deliverySummary = wizardSummaryRows(wizardRules(deliveryValue, suggestions))
+    .map((row) => `${row.label}: ${row.value}`)
+    .join('; ');
   const redirectUri = `${window.location.origin}/integrations/allegro/connect/callback`;
   const selectedCatalog = productMasterConnections.find(
     (c) => c.id === values.masterCatalogConnectionId
@@ -144,6 +182,8 @@ export function AllegroSetupForm(): ReactElement {
           values={values}
           stepIndex={stepIndex}
           selectedCatalogName={selectedCatalog?.name ?? null}
+          suggestions={suggestions}
+          showDelivery={!reauthConnectionId}
         />
       }
     >
@@ -283,7 +323,17 @@ export function AllegroSetupForm(): ReactElement {
           </>
         ) : null}
 
-        {stepIndex === 3 ? (
+        {stepIndex === SALES_DOCUMENTS_STEP ? (
+          <DeliveryWizardStep
+            value={deliveryValue}
+            suggestions={suggestions}
+            onChange={(next) =>
+              form.setValue('deliveryOnDocuments', next, { shouldDirty: true })
+            }
+          />
+        ) : null}
+
+        {stepIndex === 4 ? (
           <>
             <dl className="wizard-review-list">
               <dt>Name</dt>
@@ -298,6 +348,12 @@ export function AllegroSetupForm(): ReactElement {
               <dd>{values.environment === 'production' ? 'Production' : 'Sandbox'}</dd>
               <dt>Product catalog</dt>
               <dd>{selectedCatalog ? selectedCatalog.name : 'None (configure later)'}</dd>
+              {reauthConnectionId ? null : (
+                <>
+                  <dt>Delivery on documents</dt>
+                  <dd>{deliverySummary}</dd>
+                </>
+              )}
             </dl>
             <p className="muted-text panel-copy">
               After clicking <strong>Connect with Allegro</strong>, you will be redirected to
