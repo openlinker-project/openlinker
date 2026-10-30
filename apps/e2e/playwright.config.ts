@@ -63,6 +63,10 @@
  *                      published to the destination. The first three are
  *                      unreachable under jsdom AND happy-dom. Self-configuring;
  *                      `retries: 0` — the publish case creates a real offer.
+ *   - `delivery-on-documents` - delivery line wording/rate on receipts and invoices
+ *                      (#3912, ADR-079): settings tab, wizards, live eparagony
+ *                      sandbox receipts, preview, visual parity. Own auth bootstrap.
+ *                      `retries: 0` (registers real sandbox receipts).
  *   - `wizard-blockers` - category-blocker states in the same wizard (#2240):
  *                      which cause is reported, where the fix lives, and what
  *                      the confirmation says about variants that will not be
@@ -83,6 +87,9 @@ const env = resolveEnv();
 
 /** Shared browser session artifact written by the `setup` project. */
 export const STORAGE_STATE = '.auth/admin.json';
+
+/** Session artifact of the `delivery-on-documents-auth` bootstrap (kept apart from the shared one). */
+export const DELIVERY_STORAGE_STATE = '.auth/delivery-admin.json';
 
 export default defineConfig({
   testDir: './tests',
@@ -397,6 +404,29 @@ export default defineConfig({
       retries: 0,
       dependencies: ['setup'],
       use: { ...devices['Desktop Chrome'], storageState: STORAGE_STATE },
+    },
+    {
+      // Own minimal auth bootstrap, NOT the shared `setup` project: that one also
+      // runs the connection-topology preflight, which fails a near-empty stack
+      // ("No active connection enables ProductMaster") - exactly the stack this
+      // project is meant to run on, since it seeds its own connections.
+      name: 'delivery-on-documents-auth',
+      testMatch: /delivery-on-documents\/auth\.bootstrap\.ts/,
+      retries: 1,
+      use: { ...devices['Desktop Chrome'] },
+    },
+    {
+      // Delivery line on sales documents (#3912, ADR-079): the Mappings tab, the
+      // connection wizards, live eparagony receipts and visual parity with the
+      // committed mockup. Seeds its own order-source connection and PL/CZ/HU
+      // orders directly in Postgres (see `support/delivery-on-documents-seed.ts`).
+      // `retries: 0`: the live spec registers real receipts on a fiscal device
+      // sandbox, and a retry would register a second one.
+      name: 'delivery-on-documents',
+      testMatch: /delivery-on-documents\/.*\.spec\.ts/,
+      retries: 0,
+      dependencies: ['delivery-on-documents-auth'],
+      use: { ...devices['Desktop Chrome'], storageState: DELIVERY_STORAGE_STATE },
     },
   ],
 });
