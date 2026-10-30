@@ -8355,6 +8355,14 @@ a.kpi-card:focus-visible {
   outline: none;
 }
 
+/* An inactive Radix panel renders an empty `<div hidden>`, and the
+   `display: flex` above beat the UA `[hidden]` rule, so each one still took a
+   16px gap in the parent `.tabs` flex column - six hidden tabs pushed the
+   last tab's content ~100px down (#3912). */
+.tabs__content[hidden] {
+  display: none;
+}
+
 /* ── forceMount'd panel that exists only as an `aria-controls` target
    (#2448 / #2450 review) ────────────────────────────────────────────
    A `forceMount`ed, non-selected Radix panel keeps `present === true`, so
