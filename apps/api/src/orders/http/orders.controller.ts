@@ -73,6 +73,7 @@ import {
   ORDER_RECORD_SERVICE_TOKEN,
   IOrderRecordService,
   OrderRecordNotFoundException,
+  NoBuyerNoteException,
   OrderDestinationNotFoundException,
   OrderDestinationNotRetryableException,
   MissingSourceExternalIdException,
@@ -90,7 +91,9 @@ import {
   IOrderProvisioningResumeService,
   ORDER_TEST_FIXTURE_SERVICE_TOKEN,
   IOrderTestFixtureService,
-  TestFixturesDisabledException} from '@openlinker/core/orders';
+  TestFixturesDisabledException,
+  classifyBuyerNoteForList,
+  buildBuyerNotePreview} from '@openlinker/core/orders';
 import type {
   OrderRecord,
   OrderRecordFilters,
@@ -232,6 +235,7 @@ export function toOrderRecordFilters(
     omsAttention: query.attention,
     activeHoldReason: query.hold,
     packed: query.packed,
+    hasBuyerNote: query.hasBuyerNote,
     search: query.search,
     tagId: query.tag,
     untagged: query.untagged,
@@ -701,6 +705,32 @@ export class OrdersController {
     // through `decodeBuyerTaxIdColumn` so this DTO never has to remember that
     // `''` means "asserted none" rather than absence.
     dto.buyerTaxId = order.buyerTaxIdState;
+    // Buyer note (#3538) - DETAIL READ ONLY, for the same data-minimisation
+    // reason as `buyerTaxId` above: free text that may carry a phone number or a
+    // parcel locker, with no list consumer. `undefined` (key absent) = unknown or
+    // not stored; `null` = the source asserted none; a string = the note.
+    // `hasBuyerNote` and the read marker are the only note facts the list needs.
+    dto.buyerNote = order.buyerNoteState;
+    dto.buyerNoteReadAt = order.buyerNoteReadAt ? order.buyerNoteReadAt.toISOString() : null;
+    dto.buyerNoteReadByUserId = order.buyerNoteReadByUserId;
+    dto.buyerNoteChangedAt = order.buyerNoteChangedAt ? order.buyerNoteChangedAt.toISOString() : null;
+    // B-10: the acknowledgements are a supplementary read from another context;
+    // a failure there must not turn the whole order detail into a 500. `null`
+    // means "could not load", distinct from `[]` (loaded, none acknowledged).
+    try {
+      dto.buyerNoteAcknowledgements = (
+        await this.fulfillmentWork.listBuyerNoteAcknowledgements(order.internalOrderId)
+      ).map((ack) => ({
+        workId: ack.workId,
+        acknowledgedAt: ack.acknowledgedAt.toISOString(),
+        acknowledgedByUserId: ack.acknowledgedByUserId,
+      }));
+    } catch (error) {
+      this.logger.warn(
+        `Could not load buyer note acknowledgements for order ${order.internalOrderId}: ${(error as Error).message}`
+      );
+      dto.buyerNoteAcknowledgements = null;
+    }
     // Invoice projection (#1224): the FE invoice panel reads a neutral `invoice`
     // sub-tree off the snapshot. The list endpoint now shares the same projection
     // via a batch read (`getLatestInvoicesForOrders`, one query per page — #1713);
@@ -881,6 +911,47 @@ export class OrdersController {
       }
       if (error instanceof MissingSourceExternalIdException) {
         throw new InternalServerErrorException(error.message);
+      }
+      throw error;
+    }
+  }
+
+  @Roles('admin', 'operator')
+  @Post(':internalOrderId/buyer-note/read')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Mark an order’s buyer note read',
+    description:
+      'Records that an operator has read the buyer’s checkout note (#3538): stamps the instant (server-side) and the acting user. ' +
+      'Idempotent and fill-once - a repeat call returns the EXISTING marker rather than re-stamping, so the first reader is never overwritten. ' +
+      'It is a display fact: it gates nothing and does not change the note. This is the order-level marker; the per-parcel acknowledgement at the pack bench is separate.',
+  })
+  @ApiResponse({ status: 200, description: 'Order with the read marker set', type: OrderRecordResponseDto })
+  @ApiResponse({ status: 404, description: 'Order not found' })
+  @ApiResponse({ status: 409, description: 'NO_BUYER_NOTE - the order carries no buyer note to read' })
+  @ApiResponse({ status: 403, description: 'Insufficient permissions' })
+  async markBuyerNoteRead(
+    @Param('internalOrderId') internalOrderId: string,
+    @CurrentUser() user: AuthenticatedUser
+  ): Promise<OrderRecordResponseDto> {
+    try {
+      const record = await this.orderRecordService.markBuyerNoteRead(internalOrderId, user.id);
+      const dto = this.toDto(record);
+      // B-9: the endpoint's contract is to return the marker it just set (or the
+      // existing one on a replay); `toDto` is the list projection and omits it.
+      dto.buyerNoteReadAt = record.buyerNoteReadAt ? record.buyerNoteReadAt.toISOString() : null;
+      dto.buyerNoteReadByUserId = record.buyerNoteReadByUserId;
+      return dto;
+    } catch (error) {
+      if (error instanceof OrderRecordNotFoundException) {
+        throw new NotFoundException(error.message);
+      }
+      if (error instanceof NoBuyerNoteException) {
+        throw new ConflictException({
+          statusCode: HttpStatus.CONFLICT,
+          error: 'NO_BUYER_NOTE',
+          message: error.message,
+        });
       }
       throw error;
     }
@@ -1353,6 +1424,17 @@ export class OrdersController {
       // reaches the list and the detail response from one place.
       packedAt: order.packedAt ? order.packedAt.toISOString() : null,
       packedByUserId: order.packedByUserId,
+      // Buyer-note list facts (#3538) and the D7 country / repeat-buyer scalars.
+      // The note TEXT is deliberately not here - `getOrder` sets it.
+      hasBuyerNote: order.hasBuyerNote,
+      buyerNoteState: classifyBuyerNoteForList(order.hasBuyerNote, order.buyerNoteState),
+      buyerNotePreview: buildBuyerNotePreview(order.buyerNoteState),
+      // The read marker is a timestamp, not free text, so the list may carry it:
+      // a bulk mark-read plan needs it to tell read notes from unread ones (B-3).
+      buyerNoteReadAt: order.buyerNoteReadAt ? order.buyerNoteReadAt.toISOString() : null,
+      shippingCountry: order.shippingCountry,
+      billingCountry: order.billingCountry,
+      buyerOrderCount: order.buyerOrderCount,
       // Source-amendment fact (#2283). On the SHARED toDto for the same reason
       // as `packedAt`: one projection reaches both the list and the detail
       // response, so a follow-up list badge needs no second wiring.

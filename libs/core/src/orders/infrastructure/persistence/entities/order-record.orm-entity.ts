@@ -343,6 +343,67 @@ export class OrderRecordOrmEntity {
   paymentMethod!: string | null;
 
   /**
+   * The buyer's checkout note (#3538), three states in one column like
+   * `buyerTaxId`: `NULL` = not asserted or not stored, `''` = asserted none,
+   * otherwise the text. Round-trip through `encodeBuyerNoteColumn` /
+   * `decodeBuyerNoteColumn`.
+   *
+   * PII-gated at persistence: free text may carry a phone number or a parcel
+   * locker and bypasses the address redaction, so under `OL_STORE_PII=false` the
+   * text is not stored. Written only on the `'ready'` path
+   * (`upsertWithLineItems`), like `paymentMethod` above.
+   */
+  @Column({ type: 'text', nullable: true })
+  buyerNote!: string | null;
+
+  /**
+   * Whether a non-empty buyer note was reported (#3538). Indexed for the
+   * `?hasBuyerNote=` list filter. NOT PII-gated - it carries no content - so it
+   * is written even when {@link buyerNote} is not stored. Ready-path only, so an `awaiting_mapping` order with a note is invisible to `?hasBuyerNote=true` until it becomes ready.
+   */
+  @Index('IDX_order_records_hasBuyerNote')
+  @Column({ type: 'boolean', default: false })
+  hasBuyerNote!: boolean;
+
+  /**
+   * When an operator first marked the buyer note read (#3538). Sole writer
+   * `markBuyerNoteRead` (fill-once, guarded on `IS NULL`); excluded from the
+   * upsert so a re-ingestion cannot un-read a note.
+   */
+  @Column({ type: 'timestamptz', nullable: true })
+  buyerNoteReadAt!: Date | null;
+
+  /** Who marked it read; moves with `buyerNoteReadAt` in one statement. */
+  @Column({ type: 'varchar', nullable: true })
+  buyerNoteReadByUserId!: string | null;
+
+  /**
+   * When a real note text replaced a different stored one (N-22). Set only by
+   * the ingestion upsert's CASE clause; excluded from `toOrm`.
+   */
+  @Column({ type: 'timestamptz', nullable: true })
+  buyerNoteChangedAt!: Date | null;
+
+  /**
+   * Shipping / billing address country (#3538, D7), ISO-3166 alpha-2, `NULL`
+   * when the address is absent. Country is not PII and survives redaction.
+   * Ready-path only.
+   */
+  @Column({ type: 'varchar', length: 2, nullable: true })
+  shippingCountry!: string | null;
+
+  @Column({ type: 'varchar', length: 2, nullable: true })
+  billingCountry!: string | null;
+
+  /**
+   * Number of other earlier orders of the same resolved customer (#3538, D7),
+   * computed at ingestion; `NULL` when the order has no resolved customer.
+   * Ready-path only.
+   */
+  @Column({ type: 'integer', nullable: true })
+  buyerOrderCount!: number | null;
+
+  /**
    * Per-order reporting-currency snapshot (#2124, ADR-040) — six columns
    * written ONLY by the two narrow, conditional UPDATEs on the repository
    * (`claimFxIntentIfAbsent`, `stampFxIfAbsent`). The ingestion upsert

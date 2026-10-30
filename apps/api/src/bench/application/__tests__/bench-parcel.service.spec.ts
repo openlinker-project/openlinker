@@ -16,6 +16,7 @@
 import type {
   FulfillmentWorkView,
   IFulfillmentVerificationService,
+  IFulfillmentWorkQueryService,
   IFulfillmentWorklistService,
   ParcelVerificationState,
 } from '@openlinker/core/fulfillment';
@@ -58,6 +59,8 @@ const workView = (over: Partial<FulfillmentWorkView> = {}): FulfillmentWorkView 
     labelPrintedAt: null,
     completedAt: null,
     completedByUserId: null,
+    buyerNoteAcknowledgedAt: null,
+    buyerNoteAcknowledgedByUserId: null,
     createdAt: new Date('2026-09-01T09:00:00Z'),
     updatedAt: new Date('2026-09-01T09:00:00Z'),
     lines: [
@@ -97,6 +100,15 @@ function harness(options: {
   claimAssignment?: jest.Mock;
   /** #3525 */
   notifyParcelClosed?: jest.Mock;
+  /** #3538 - the order's note as `OrderRecord.buyerNoteState` reads it. */
+  buyerNoteState?: string | null;
+  hasBuyerNote?: boolean;
+  acknowledgements?: Array<{
+    workId: string;
+    acknowledgedAt: Date;
+    acknowledgedByUserId: string | null;
+  }>;
+  acknowledgeBuyerNote?: jest.Mock;
 }) {
   const work = options.work ?? workView();
 
@@ -136,6 +148,7 @@ function harness(options: {
     listVerifications: jest.fn().mockResolvedValue([]),
     markInvoicePrinted: jest.fn().mockResolvedValue(true),
     markLabelPrinted: jest.fn().mockResolvedValue(true),
+    acknowledgeBuyerNote: options.acknowledgeBuyerNote ?? jest.fn().mockResolvedValue(true),
     complete: options.complete ?? jest.fn().mockResolvedValue({ outcome: 'completed' }),
     undoCompletion:
       options.undoCompletion ?? jest.fn().mockResolvedValue({ outcome: 'undone' }),
@@ -151,6 +164,8 @@ function harness(options: {
     findByIds: jest.fn().mockResolvedValue([
       {
         internalOrderId: 'ol_order_1',
+        buyerNoteState: options.buyerNoteState,
+        hasBuyerNote: options.hasBuyerNote ?? options.buyerNoteState !== undefined,
         orderSnapshot: {
           orderNumber: 'OL-4471',
           shippingAddress: {
@@ -192,6 +207,12 @@ function harness(options: {
     getPackerVisibleForOrders: jest.fn().mockResolvedValue(new Map()),
   } as unknown as IOrderNoteService;
 
+  const workQuery = {
+    listBuyerNoteAcknowledgements: jest
+      .fn()
+      .mockResolvedValue(options.acknowledgements ?? []),
+  } as unknown as IFulfillmentWorkQueryService;
+
   const parcelClosureNotifier = {
     notifyParcelClosed: options.notifyParcelClosed ?? jest.fn().mockResolvedValue(undefined),
   } as unknown as IFulfillmentParcelClosureNotifier;
@@ -207,14 +228,84 @@ function harness(options: {
       inventory,
       users,
       notes,
-      parcelClosureNotifier
+      parcelClosureNotifier,
+      workQuery
     ),
     verification,
     orders,
     worklist,
     parcelClosureNotifier,
+    workQuery,
   };
 }
+
+describe('BenchParcelService buyer-note acknowledgement (#3538)', () => {
+  it('records the first acknowledgement as the viewer', async () => {
+    const { service, verification } = harness({ buyerNoteState: 'Ring twice' });
+
+    const result = await service.acknowledgeBuyerNote('work-1', 'packer-1');
+
+    expect(result.outcome).toBe('acknowledged');
+    expect(verification.acknowledgeBuyerNote).toHaveBeenCalledWith(
+      'work-1',
+      expect.any(Date),
+      'packer-1'
+    );
+  });
+
+  it('answers already-acknowledged on a replay, never an error', async () => {
+    const { service } = harness({
+      buyerNoteState: 'Ring twice',
+      acknowledgeBuyerNote: jest.fn().mockResolvedValue(false),
+    });
+
+    const result = await service.acknowledgeBuyerNote('work-1', 'packer-2');
+
+    expect(result).toMatchObject({ outcome: 'already-acknowledged', reason: null });
+  });
+
+  it('refuses when the order has no buyer note, and writes nothing', async () => {
+    const { service, verification } = harness({ hasBuyerNote: false });
+
+    const result = await service.acknowledgeBuyerNote('work-1', 'packer-1');
+
+    expect(result).toMatchObject({ outcome: 'refused', reason: 'no-buyer-note' });
+    expect(verification.acknowledgeBuyerNote).not.toHaveBeenCalled();
+  });
+
+  it('refuses to acknowledge the note of a cancelled parcel, and writes nothing (N-41)', async () => {
+    const { service, verification } = harness({
+      work: workView({ status: 'cancelled' }),
+      buyerNoteState: 'Ring twice',
+    });
+
+    const result = await service.acknowledgeBuyerNote('work-1', 'packer-1');
+
+    expect(result).toMatchObject({ outcome: 'refused', reason: 'work-cancelled' });
+    expect(verification.acknowledgeBuyerNote).not.toHaveBeenCalled();
+  });
+
+  it('still acknowledges a note whose text is not stored', async () => {
+    // `OL_STORE_PII=false`: the flag survives, the text does not.
+    const { service } = harness({ hasBuyerNote: true });
+
+    const result = await service.acknowledgeBuyerNote('work-1', 'packer-1');
+
+    expect(result.outcome).toBe('acknowledged');
+  });
+
+  it('refuses a packer the parcel is locked against', async () => {
+    const { service, verification } = harness({
+      work: workView({ assignedToUserId: 'someone-else', selfServeEligible: false }),
+      hasBuyerNote: true,
+    });
+
+    const result = await service.acknowledgeBuyerNote('work-1', 'packer-1');
+
+    expect(result).toMatchObject({ outcome: 'refused', reason: 'not-claimable-by-viewer' });
+    expect(verification.acknowledgeBuyerNote).not.toHaveBeenCalled();
+  });
+});
 
 describe('BenchParcelService (#2418)', () => {
   describe('story D2 — a parcel that must not be packed', () => {
@@ -527,6 +618,15 @@ describe('BenchParcelService (#2418)', () => {
         [
           'assignedToUserId',
           'buyerName',
+          // D12 (#3538) - the buyer's checkout note, read only, plus WHO read
+          // it at the bench for this parcel and for its siblings. The note is a
+          // deliberate new disclosure to the packer role; the three
+          // acknowledgement fields carry a user id and an instant, no PII.
+          'buyerNote',
+          'hasBuyerNote',
+          'buyerNoteAcknowledgedAt',
+          'buyerNoteAcknowledgedByUserId',
+          'otherParcelBuyerNoteAcknowledgements',
           'carrierName',
           'closedAt',
           'currency',
@@ -568,6 +668,58 @@ describe('BenchParcelService (#2418)', () => {
           'workLineId',
         ].sort()
       );
+    });
+
+    it('projects the buyer note verbatim, and null for every state without text (#3538)', async () => {
+      const withText = await harness({ buyerNoteState: 'No receipt in the box' }).service.getParcel('work-1');
+      const assertedNone = await harness({ buyerNoteState: null }).service.getParcel('work-1');
+      const unknown = await harness({}).service.getParcel('work-1');
+
+      expect(withText.buyerNote).toBe('No receipt in the box');
+      expect(assertedNone.buyerNote).toBeNull();
+      expect(unknown.buyerNote).toBeNull();
+    });
+
+    it('tells the parcel a note exists even when its text is not stored (B-12)', async () => {
+      const notStored = await harness({ hasBuyerNote: true }).service.getParcel('work-1');
+      const none = await harness({ buyerNoteState: null, hasBuyerNote: false }).service.getParcel('work-1');
+
+      expect(notStored.buyerNote).toBeNull();
+      expect(notStored.hasBuyerNote).toBe(true);
+      expect(none.hasBuyerNote).toBe(false);
+    });
+
+    it('reports this parcel and its siblings acknowledgements separately (#3538)', async () => {
+      const { service } = harness({
+        work: workView({ id: 'work-2' }),
+        siblings: new Map([['ol_order_1', ['work-1', 'work-2']]]),
+        buyerNoteState: 'Ring twice',
+        acknowledgements: [
+          { workId: 'work-1', acknowledgedAt: new Date('2026-10-01T09:00:00Z'), acknowledgedByUserId: 'packer-1' },
+          { workId: 'work-2', acknowledgedAt: new Date('2026-10-01T10:00:00Z'), acknowledgedByUserId: 'packer-2' },
+        ],
+      });
+
+      const parcel = await service.getParcel('work-2');
+
+      expect(parcel.buyerNoteAcknowledgedAt).toBe('2026-10-01T10:00:00.000Z');
+      expect(parcel.buyerNoteAcknowledgedByUserId).toBe('packer-2');
+      expect(parcel.otherParcelBuyerNoteAcknowledgements).toEqual([
+        {
+          workId: 'work-1',
+          parcelIndex: 1,
+          acknowledgedAt: '2026-10-01T09:00:00.000Z',
+          acknowledgedByUserId: 'packer-1',
+        },
+      ]);
+    });
+
+    it('reports an unacknowledged parcel with null markers (#3538)', async () => {
+      const parcel = await harness({}).service.getParcel('work-1');
+
+      expect(parcel.buyerNoteAcknowledgedAt).toBeNull();
+      expect(parcel.buyerNoteAcknowledgedByUserId).toBeNull();
+      expect(parcel.otherParcelBuyerNoteAcknowledgements).toEqual([]);
     });
 
     it('takes the buyer NAME from the snapshot and nothing else from it', async () => {

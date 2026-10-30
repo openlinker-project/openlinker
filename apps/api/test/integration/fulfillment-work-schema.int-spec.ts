@@ -146,6 +146,8 @@ describe('Fulfillment Work Schema Integration', () => {
         // ids elsewhere on this table: it names an OL user row.
         'assignedToUserId uuid NULL',
         'assignmentAttempt integer NOT NULL DEFAULT 0',
+        'buyerNoteAcknowledgedAt timestamp with time zone NULL',
+        'buyerNoteAcknowledgedByUserId character varying NULL',
         'cancellationReason character varying(64) NULL',
         'cancelledAt timestamp with time zone NULL',
         // The completion pair - the packer saying "this box is off my bench",

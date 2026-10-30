@@ -455,6 +455,19 @@ export class FulfillmentWorkOrmEntity {
   labelPrintedAt!: Date | null;
 
   /**
+   * When this parcel's buyer note was FIRST acknowledged at the bench (#3538,
+   * D12), or `null`. Fill-in-when-NULL - `acknowledgeBuyerNote` writes it
+   * `WHERE "buyerNoteAcknowledgedAt" IS NULL` together with the actor - and, like
+   * `invoicePrintedAt`, DOES NOT bump `version`: display-only, gates nothing.
+   */
+  @Column({ type: 'timestamptz', nullable: true })
+  buyerNoteAcknowledgedAt!: Date | null;
+
+  /** Who acknowledged it; no FK, like every user-id reference on this table. */
+  @Column({ type: 'varchar', nullable: true })
+  buyerNoteAcknowledgedByUserId!: string | null;
+
+  /**
    * When an operator declared this parcel finished and off the bench (pack-bench completion)
    * — the explicit completion act the `W3401` completion research found missing:
    * everything after the last scan (label applied, invoice inside, box on the

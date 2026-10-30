@@ -48,7 +48,12 @@ import type {
   PaymentMethod,
   PaymentStatus,
 } from '@openlinker/core/orders';
-import { PAYMENT_METHOD, readSourceBuyerTaxId, toCodToCollect } from '@openlinker/core/orders';
+import {
+  PAYMENT_METHOD,
+  readSourceBuyerNote,
+  readSourceBuyerTaxId,
+  toCodToCollect,
+} from '@openlinker/core/orders';
 
 import type {
   ErliOrder,
@@ -97,6 +102,9 @@ export function mapErliOrderToIncomingOrder(order: ErliOrder): IncomingOrder {
     pickupPoint: mapPickupPoint(order.delivery.pickupPlace),
     paymentStatus,
     paymentMethod: derivePaymentMethod(order.delivery.cod),
+    // The buyer's checkout comment (#3538). The mapper reads the whole order
+    // resource, so an absent or blank `comment` means the buyer left none.
+    buyerNote: readSourceBuyerNote(order.comment) ?? null,
     ...(codToCollect === undefined ? {} : { codToCollect }),
     placedAt: order.purchasedAt,
     // Derived ship-by (#1776) is attached by ErliOrderSourceAdapter.getOrder

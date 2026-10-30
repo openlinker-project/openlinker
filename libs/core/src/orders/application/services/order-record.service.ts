@@ -11,10 +11,12 @@
 import { Injectable, Inject } from '@nestjs/common';
 import type { Order, OrderDispatchWindow } from '../../domain/types/order.types';
 import { checkPaymentFactsConsistency } from '../../domain/types/payment-facts-consistency.types';
+import { encodeBuyerTaxIdColumn, readBuyerTaxId } from '../../domain/types/buyer-tax-id.types';
 import {
-  encodeBuyerTaxIdColumn,
-  readBuyerTaxId,
-} from '../../domain/types/buyer-tax-id.types';
+  encodeBuyerNoteColumn,
+  hasBuyerNoteText,
+  normaliseCountryColumn,
+} from '../../domain/types/buyer-note.types';
 import type { HeldOrderRef } from '../../domain/ports/order-record-repository.port';
 import { OrderRecordRepositoryPort } from '../../domain/ports/order-record-repository.port';
 import { OrderLineItemRepositoryPort } from '../../domain/ports/order-line-item-repository.port';
@@ -24,6 +26,7 @@ import type { OrderSyncStatus, SyncAttempt } from '../../domain/types/order-sync
 import type { IOrderRecordService } from '../interfaces/order-record.service.interface';
 import type { IncomingOrder } from '../../domain/types/incoming-order.types';
 import { OrderRecordNotFoundException } from '../../domain/exceptions/order-record-not-found.exception';
+import { NoBuyerNoteException } from '../../domain/exceptions/no-buyer-note.exception';
 import type {
   FailedSyncValueSummary,
   OrderHealthSummaryFilters,
@@ -126,6 +129,31 @@ export class OrderRecordService implements IOrderRecordService {
       }
     }
     this.paymentFactsWarnedOrderIds.add(orderId);
+  }
+
+  private async countBuyerOrders(order: Order, now: Date): Promise<number | null> {
+    if (!order.customerId) {
+      return null;
+    }
+    try {
+      // B-7: the order's OWN stable instant. `placedAt ?? now` made a source
+      // without `placedAt` (WooCommerce) count every later order and grow on
+      // each re-import. First-seen time (the stored record's `createdAt`) never
+      // moves; `now` is only right for an order never seen before.
+      const existing = order.placedAt ? null : await this.repository.findById(order.id);
+      const instant = order.placedAt ?? existing?.createdAt ?? now;
+      return await this.repository.countEarlierOrdersForCustomer(
+        order.customerId,
+        order.id,
+        instant
+      );
+    } catch (error) {
+      this.logger.warn(
+        `Could not count earlier orders for customer ${order.customerId} on order ${order.id}; ` +
+          `buyerOrderCount stays unknown: ${(error as Error).message}`
+      );
+      return null;
+    }
   }
 
   /**
@@ -322,6 +350,25 @@ export class OrderRecordService implements IOrderRecordService {
     // introduces no new failure mode on this path.
     const shippingAddressHash = this.deriveShippingAddressHash(order);
 
+    // Buyer note (#3538). The text is free input that bypasses the address
+    // redaction, so it follows the buyer-tax-id rule: stored only when
+    // `storePii`, and read back as "not asserted" otherwise. `hasBuyerNote`
+    // carries no content and is written in both modes, so every surface can say
+    // a note exists without keeping it.
+    const buyerNote = piiConfig.storePii ? encodeBuyerNoteColumn(order.buyerNote) : null;
+    const hasBuyerNote = hasBuyerNoteText(order.buyerNote);
+
+    // Country is not PII and survives redaction (D7); an absent address is
+    // unknown, never a default.
+    const shippingCountry = normaliseCountryColumn(order.shippingAddress?.country);
+    const billingCountry = normaliseCountryColumn(order.billingAddress?.country);
+
+    // How many other, earlier orders this resolved customer has (D7). Computed
+    // here from OpenLinker's own records, never read from a channel; unknown
+    // when the order resolved to no customer. A failed read must not lose the
+    // order, so it degrades to unknown.
+    const buyerOrderCount = await this.countBuyerOrders(order, now);
+
     const orderRecord = new OrderRecord(
       order.id,
       order.customerId || null,
@@ -382,7 +429,18 @@ export class OrderRecordService implements IOrderRecordService {
       // source said nothing - and read back as `'unknown'` in that case. The
       // source is authoritative, so a later ready re-ingestion from a source
       // that omits the field also writes `null` over an earlier value.
-      order.paymentMethod ?? null
+      order.paymentMethod ?? null,
+      // destinationRoutingBlockReason / Detail: owned by their own writer.
+      null,
+      null,
+      buyerNote,
+      hasBuyerNote,
+      // buyerNoteReadAt / buyerNoteReadByUserId: sole writer markBuyerNoteRead.
+      null,
+      null,
+      shippingCountry,
+      billingCountry,
+      buyerOrderCount
     );
 
     // #1985: persist the order record AND its order_line_items rows in one
@@ -1076,6 +1134,31 @@ export class OrderRecordService implements IOrderRecordService {
     }
     if (isFirstPack) {
       await this.emitPackedTrigger(record, packedAt);
+    }
+    return record;
+  }
+
+  /**
+   * Mark this order's buyer note read (#3538). The instant is stamped here, not
+   * taken from the caller. The guarded write reports `false` for an already-read
+   * order and for an absent row alike, so the re-read tells them apart: the
+   * record is returned untouched for the first, `OrderRecordNotFoundException`
+   * thrown for the second.
+   */
+  async markBuyerNoteRead(internalOrderId: string, readByUserId: string): Promise<OrderRecord> {
+    const current = await this.repository.findById(internalOrderId);
+    if (!current) {
+      throw new OrderRecordNotFoundException(internalOrderId);
+    }
+    // B-8: there is nothing to read; refuse rather than stamping a marker on an
+    // order that carries no note.
+    if (!current.hasBuyerNote) {
+      throw new NoBuyerNoteException(internalOrderId);
+    }
+    await this.repository.markBuyerNoteRead(internalOrderId, new Date(), readByUserId);
+    const record = await this.repository.findById(internalOrderId);
+    if (!record) {
+      throw new OrderRecordNotFoundException(internalOrderId);
     }
     return record;
   }

@@ -15,6 +15,7 @@ import { createTestConnection } from '../../../__tests__/fixtures/connection.fix
 import { PrestashopOrderMapper } from '../../mappers/prestashop-order.mapper';
 import {
   PrestashopApiException,
+  PrestashopAuthenticationException,
   PrestashopCurrencyUnknownException,
   PrestashopResourceNotFoundException,
   PrestashopTruncatedReadException,
@@ -49,13 +50,20 @@ function createStubCurrencyResolver(
  * `mockResolvedValueOnce(orders)` in this file would have its queue consumed by
  * the state read.
  */
+/** Flipped by the buyer-note describe so its own scripted thread reads reach the mock. */
+const serveThreads = { enabled: false };
+
 function serveOrderStates(client: jest.Mocked<IPrestashopWebserviceClient>): void {
   let listResources = client.listResources;
   const wrap = (inner: jest.Mock): jest.Mock =>
     jest.fn((resource: string, ...rest: unknown[]) =>
       resource === 'order_states'
         ? Promise.resolve([...DEFAULT_INSTALL_ORDER_STATES])
-        : (inner as (...args: unknown[]) => unknown)(resource, ...rest)
+        : resource === 'customer_threads' && !serveThreads.enabled
+          ? // The buyer-note read (#3538) is bookkeeping for every test that is not
+            // about it: an order with no thread, i.e. "the buyer wrote nothing".
+            Promise.resolve([])
+          : (inner as (...args: unknown[]) => unknown)(resource, ...rest)
     ) as unknown as jest.Mock;
   listResources = wrap(listResources as unknown as jest.Mock) as typeof listResources;
   Object.defineProperty(client, 'listResources', {
@@ -73,7 +81,7 @@ function serveOrderStates(client: jest.Mocked<IPrestashopWebserviceClient>): voi
  */
 function listCallsExcludingStates(client: jest.Mocked<IPrestashopWebserviceClient>): unknown[][] {
   const calls = (client.listResources as unknown as jest.Mock<unknown, unknown[]>).mock.calls;
-  return calls.filter((call) => call[0] !== 'order_states');
+  return calls.filter((call) => call[0] !== 'order_states' && call[0] !== 'customer_threads');
 }
 
 describe('PrestashopOrderSourceAdapter', () => {
@@ -887,6 +895,155 @@ describe('PrestashopOrderSourceAdapter', () => {
       const networkError = new Error('ECONNREFUSED');
       mockHttpClient.getResource = jest.fn().mockRejectedValueOnce(networkError);
       await expect(adapter.getOrder({ externalOrderId: '999' })).rejects.toBe(networkError);
+    });
+  });
+
+  describe('getOrder - buyer note (#3538)', () => {
+    const prestashopOrder: PrestashopOrder = {
+      id: '42',
+      reference: 'ORDER-042',
+      id_customer: '7',
+      current_state: '2',
+      total_paid: '99.99',
+      total_paid_tax_incl: '99.99',
+      total_paid_tax_excl: '99.99',
+      total_shipping: '0',
+      date_add: '2024-01-01 10:00:00',
+      date_upd: '2024-01-01 12:00:00',
+    };
+
+    beforeEach(() => {
+      serveThreads.enabled = true;
+    });
+    afterEach(() => {
+      serveThreads.enabled = false;
+    });
+
+    function script(responses: Array<unknown[] | Error>): jest.Mock {
+      const list = jest.fn();
+      for (const response of responses) {
+        if (response instanceof Error) {
+          list.mockRejectedValueOnce(response);
+        } else {
+          list.mockResolvedValueOnce(response);
+        }
+      }
+      mockHttpClient.getResource = jest.fn().mockResolvedValueOnce(prestashopOrder);
+      mockHttpClient.listResources = list as unknown as typeof mockHttpClient.listResources;
+      return list;
+    }
+
+    it('should return only the earliest buyer message, ignoring staff replies and later buyer messages', async () => {
+      // order_details, customer_threads, customer_messages
+      script([
+        [],
+        [{ id: '5', id_order: '42' }],
+        [
+          { id: '12', id_customer_thread: '5', id_employee: '0', message: 'Second', date_add: '2024-01-02 09:00:00' },
+          { id: '10', id_customer_thread: '5', id_employee: '0', message: 'First', date_add: '2024-01-01 10:00:00' },
+          { id: '9', id_customer_thread: '5', id_employee: '3', message: 'Staff first', date_add: '2024-01-01 09:00:00' },
+          { id: '11', id_customer_thread: '5', id_employee: '3', message: 'Staff reply', date_add: '2024-01-01 11:00:00' },
+        ],
+      ]);
+
+      const incoming = await adapter.getOrder({ externalOrderId: '42' });
+
+      expect(incoming.buyerNote).toBe('First');
+    });
+
+    it('should not treat a later contact message as the checkout note (B-6)', async () => {
+      script([
+        [],
+        [{ id: '5', id_order: '42' }],
+        [
+          { id: '12', id_customer_thread: '5', id_employee: '0', message: 'Where is my parcel?', date_add: '2024-01-03 09:00:00' },
+        ],
+      ]);
+
+      const incoming = await adapter.getOrder({ externalOrderId: '42' });
+
+      expect(incoming.buyerNote).toBeNull();
+    });
+
+    it('should accept a checkout message written within the window after the order (B-6)', async () => {
+      script([
+        [],
+        [{ id: '5', id_order: '42' }],
+        [
+          { id: '12', id_customer_thread: '5', id_employee: '0', message: 'Ring twice', date_add: '2024-01-01 10:04:00' },
+        ],
+      ]);
+
+      const incoming = await adapter.getOrder({ externalOrderId: '42' });
+
+      expect(incoming.buyerNote).toBe('Ring twice');
+    });
+
+    it('should decode HTML entities and line breaks in the note (N-26)', async () => {
+      script([
+        [],
+        [{ id: '5', id_order: '42' }],
+        [
+          { id: '12', id_customer_thread: '5', id_employee: '0', message: 'Tom &amp; Jerry<br />door 5', date_add: '2024-01-01 10:00:00' },
+        ],
+      ]);
+
+      const incoming = await adapter.getOrder({ externalOrderId: '42' });
+
+      expect(incoming.buyerNote).toBe('Tom & Jerry\ndoor 5');
+    });
+
+    it('should ask the shop for the order thread and only buyer messages', async () => {
+      const list = script([[], [{ id: '5' }, { id: '6' }], []]);
+
+      await adapter.getOrder({ externalOrderId: '42' });
+
+      const calls = list.mock.calls as unknown[][];
+      const threadCall = calls.find((call) => call[0] === 'customer_threads');
+      const messageCall = calls.find((call) => call[0] === 'customer_messages');
+      expect(threadCall?.[1]).toMatchObject({ custom: { id_order: '42' } });
+      expect(messageCall?.[1]).toMatchObject({
+        custom: { id_customer_thread: ['5', '6'], id_employee: 0 },
+      });
+    });
+
+    it('should report asserted none when the order has no thread', async () => {
+      script([[], []]);
+
+      const incoming = await adapter.getOrder({ externalOrderId: '42' });
+
+      expect(incoming.buyerNote).toBeNull();
+    });
+
+    it('should report asserted none when the thread holds no buyer message', async () => {
+      script([[], [{ id: '5' }], []]);
+
+      const incoming = await adapter.getOrder({ externalOrderId: '42' });
+
+      expect(incoming.buyerNote).toBeNull();
+    });
+
+    it.each([
+      ['an authentication refusal', new PrestashopAuthenticationException('no permission')],
+      ['a 403', new PrestashopApiException('forbidden', 403, '')],
+      ['a missing resource', new PrestashopResourceNotFoundException('no resource')],
+    ])('should leave the note unknown when the thread resource answers %s', async (_label, error) => {
+      script([[], error]);
+
+      const incoming = await adapter.getOrder({ externalOrderId: '42' });
+
+      expect(incoming.buyerNote).toBeUndefined();
+      expect('buyerNote' in incoming).toBe(false);
+    });
+
+    it('should import the order with the note unknown when the thread resource answers a server error (N-24)', async () => {
+      const serverError = new PrestashopApiException('boom', 500, '');
+      script([[], serverError]);
+
+      const incoming = await adapter.getOrder({ externalOrderId: '42' });
+
+      expect(incoming.buyerNote).toBeUndefined();
+      expect('buyerNote' in incoming).toBe(false);
     });
   });
 

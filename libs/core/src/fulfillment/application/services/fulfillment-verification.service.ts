@@ -285,6 +285,10 @@ export class FulfillmentVerificationService implements IFulfillmentVerificationS
     return this.works.markInvoicePrinted(workId, at);
   }
 
+  async acknowledgeBuyerNote(workId: string, at: Date, byUserId: string): Promise<boolean> {
+    return this.works.acknowledgeBuyerNote(workId, at, byUserId);
+  }
+
   async markLabelPrinted(workId: string, at: Date): Promise<boolean> {
     return this.works.markLabelPrinted(workId, at);
   }

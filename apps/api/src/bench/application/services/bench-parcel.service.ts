@@ -46,8 +46,10 @@ import { Logger } from '@openlinker/shared/logging';
 import {
   FULFILLMENT_VERIFICATION_SERVICE_TOKEN,
   FULFILLMENT_WORKLIST_SERVICE_TOKEN,
+  FULFILLMENT_WORK_QUERY_SERVICE_TOKEN,
   type FulfillmentWorkView,
   type IFulfillmentVerificationService,
+  type IFulfillmentWorkQueryService,
   type IFulfillmentWorklistService,
   type ParcelVerificationState,
 } from '@openlinker/core/fulfillment';
@@ -80,6 +82,7 @@ import {
 import {
   deriveBenchWorkState,
   isBenchWorkSelectable,
+  isCancelledBenchState,
   isClaimableByViewer,
 } from '../bench-work-eligibility';
 import { readBuyerName, readOrderReference } from '../bench-order-facts';
@@ -93,6 +96,7 @@ import type {
 } from '../interfaces/bench-parcel.service.interface';
 import type {
   BenchActivityEntryView,
+  BenchBuyerNoteAcknowledgementResultView,
   BenchClaimResultView,
   BenchCompleteResultView,
   BenchUndoCompletionResultView,
@@ -147,7 +151,11 @@ export class BenchParcelService implements IBenchParcelService {
     // #3525 - the SAME notifier the desktop worklist's manual close uses.
     // Best-effort by contract; never able to fail the scan.
     @Inject(FULFILLMENT_PARCEL_CLOSURE_NOTIFIER_TOKEN)
-    private readonly parcelClosureNotifier: IFulfillmentParcelClosureNotifier
+    private readonly parcelClosureNotifier: IFulfillmentParcelClosureNotifier,
+    // #3538 - the per-parcel buyer-note acknowledgements of the ORDER, read once
+    // per projection so a split order's other parcels can be shown.
+    @Inject(FULFILLMENT_WORK_QUERY_SERVICE_TOKEN)
+    private readonly workQuery: IFulfillmentWorkQueryService
   ) {}
 
   async getParcel(workId: string): Promise<BenchParcelView> {
@@ -445,6 +453,59 @@ export class BenchParcelService implements IBenchParcelService {
    * must too, since a parcel locked to a different packer must not be
    * finished by someone else either.
    */
+  async acknowledgeBuyerNote(
+    workId: string,
+    viewerId: string
+  ): Promise<BenchBuyerNoteAcknowledgementResultView> {
+    await this.noteActivity(viewerId);
+    const work = await this.loadBenchWork(workId);
+
+    // The SAME lock every other bench write checks (ADR-074): a packer locked
+    // out of a parcel does not get to sign off its buyer note either.
+    if (!isClaimableByViewer(work, viewerId)) {
+      const state = await this.verification.getState(workId);
+      return {
+        outcome: 'refused',
+        reason: 'not-claimable-by-viewer',
+        parcel: await this.project(work, state),
+      };
+    }
+
+    const refusal = this.refusalFor(work);
+    if (refusal !== null && isCancelledBenchState(refusal)) {
+      const state = await this.verification.getState(workId);
+      return {
+        outcome: 'refused',
+        reason: 'work-cancelled',
+        parcel: await this.project(work, state),
+      };
+    }
+
+    // `hasBuyerNote`, not the text: under `OL_STORE_PII=false` the text is not
+    // stored but a note still exists, and acknowledging it stays meaningful.
+    const [order] = await this.orders.findByIds([work.orderId]);
+    if (!order?.hasBuyerNote) {
+      const state = await this.verification.getState(workId);
+      return {
+        outcome: 'refused',
+        reason: 'no-buyer-note',
+        parcel: await this.project(work, state),
+      };
+    }
+
+    const applied = await this.verification.acknowledgeBuyerNote(workId, new Date(), viewerId);
+
+    // `project` reads the acknowledgements fresh, but the work row it is handed
+    // carries `version`-bearing state, so re-fetch like `completeParcel` does.
+    const fresh = await this.worklist.get(workId);
+    const state = await this.verification.getState(workId);
+    return {
+      outcome: applied ? 'acknowledged' : 'already-acknowledged',
+      reason: null,
+      parcel: await this.project(fresh, state),
+    };
+  }
+
   async completeParcel(input: BenchCompleteInput): Promise<BenchCompleteResultView> {
     await this.noteActivity(input.completedByUserId);
     const work = await this.loadBenchWork(input.workId);
@@ -721,11 +782,12 @@ export class BenchParcelService implements IBenchParcelService {
     work: FulfillmentWorkView,
     state: ParcelVerificationState
   ): Promise<BenchParcelView> {
-    const [order, siblings, lines, packerNotesByOrder] = await Promise.all([
+    const [order, siblings, lines, packerNotesByOrder, acknowledgements] = await Promise.all([
       this.orders.findByIds([work.orderId]).then((records) => records[0]),
       this.worklist.listSiblingWorkIds([work.orderId]),
       this.describeLines(work, state),
       this.notes.getPackerVisibleForOrders([work.orderId]),
+      this.workQuery.listBuyerNoteAcknowledgements(work.orderId),
     ]);
 
     // A parcel whose siblings could not be read is "1 of 1" rather than "1 of
@@ -733,6 +795,10 @@ export class BenchParcelService implements IBenchParcelService {
     const parcels = siblings.get(work.orderId) ?? [work.id];
     const index = parcels.indexOf(work.id);
     const hold = work.activeHolds[0];
+    // Read from the acknowledgement list rather than from `work`: the list is
+    // fetched inside this projection, so it is never staler than the response
+    // that carries it, whichever write preceded the call.
+    const ownAcknowledgement = acknowledgements.find((entry) => entry.workId === work.id);
 
     // Field-by-field, never a spread — see the view type's module note.
     return {
@@ -771,6 +837,24 @@ export class BenchParcelService implements IBenchParcelService {
       // D12 (#3531) - flagged notes only, read only, no tags. Absent from the
       // map (an order with none) reads as an empty array here rather than
       // undefined, matching every other array field on this view.
+      // #3538 (D12) - the order's buyer note, read only. `buyerNoteState` is a
+      // string only when text was stored; asserted-none, unknown and not-stored
+      // all read `null` here, because a packer can only act on words.
+      buyerNote:
+        typeof order?.buyerNoteState === 'string' ? order.buyerNoteState : null,
+      hasBuyerNote: order?.hasBuyerNote === true,
+      buyerNoteAcknowledgedAt: ownAcknowledgement?.acknowledgedAt.toISOString() ?? null,
+      buyerNoteAcknowledgedByUserId: ownAcknowledgement?.acknowledgedByUserId ?? null,
+      otherParcelBuyerNoteAcknowledgements: acknowledgements
+        .filter((entry) => entry.workId !== work.id)
+        .map((entry) => ({
+          workId: entry.workId,
+          parcelIndex: parcels.indexOf(entry.workId) + 1,
+          acknowledgedAt: entry.acknowledgedAt.toISOString(),
+          acknowledgedByUserId: entry.acknowledgedByUserId,
+        }))
+        // A sibling the parcel list could not place keeps no index to show.
+        .filter((entry) => entry.parcelIndex > 0),
       packerNotes: (packerNotesByOrder.get(work.orderId) ?? []).map((note) => ({
         id: note.id,
         body: note.body,

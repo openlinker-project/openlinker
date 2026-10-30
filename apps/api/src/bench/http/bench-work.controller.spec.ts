@@ -37,6 +37,8 @@ function view(over: Partial<BenchWorkListView> = {}): BenchWorkListView {
         assignmentState: 'unassigned',
         claimable: true,
         completedAt: null,
+        hasBuyerNote: true,
+        buyerNoteAcknowledgedAt: '2026-09-25T14:31:00.000Z',
       },
     ],
     executorName: 'Warehouse packing',
