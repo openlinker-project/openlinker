@@ -356,11 +356,14 @@ export async function captureMockupScreenshot(
   width: number,
   height: number,
   theme: VisualTheme,
+  interact?: (page: Page) => Promise<void>,
 ): Promise<string> {
   await mkdir(VISUAL_OUTPUT_DIR, { recursive: true });
   await page.setViewportSize({ width, height });
   await page.goto(`file://${MOCKUP_FILE}#${view}`);
+  await page.waitForLoadState('networkidle');
   await applyTheme(page, theme);
+  if (interact) await interact(page);
   const file = path.join(VISUAL_OUTPUT_DIR, `${stateStem(state, width, theme)}-mockup.png`);
   await page.screenshot({ path: file, fullPage: true });
   return file;

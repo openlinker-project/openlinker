@@ -61,6 +61,8 @@ export interface DeliverySeedOrder {
   shippingGross: number;
   currency?: string;
   city?: string;
+  /** Minutes before now the order was placed; orders from one country are ranked newest-first by the example read. */
+  placedMinutesAgo?: number;
 }
 
 /** The mixed-rate basket the preview and live specs share. */
@@ -80,6 +82,7 @@ const SEED_ORDERS: DeliverySeedOrder[] = [
     city: 'Krakow',
     items: [{ sku: 'D3912-C', name: 'Goods at 23', quantity: 2, unitPriceGross: 50, taxRate: '23' }],
     shippingGross: 10,
+    placedMinutesAgo: 5,
   },
   {
     orderId: DELIVERY_ORDER_IDS.plReduced,
@@ -87,6 +90,7 @@ const SEED_ORDERS: DeliverySeedOrder[] = [
     city: 'Gdansk',
     items: [{ sku: 'D3912-D', name: 'Goods at 8', quantity: 1, unitPriceGross: 80, taxRate: '8' }],
     shippingGross: 12,
+    placedMinutesAgo: 10,
   },
   {
     orderId: DELIVERY_ORDER_IDS.cz,
@@ -130,6 +134,7 @@ export async function insertDeliveryOrder(
   order: DeliverySeedOrder,
 ): Promise<void> {
   const currency = order.currency ?? 'PLN';
+  const placedAt = new Date(Date.now() - (order.placedMinutesAgo ?? 0) * 60_000);
   const goodsGross = order.items.reduce((sum, i) => sum + i.unitPriceGross * i.quantity, 0);
   const total = goodsGross + order.shippingGross;
   const address = {
@@ -168,21 +173,21 @@ export async function insertDeliveryOrder(
     billingAddress: address,
     shippingAddress: address,
     channel: 'allegro',
-    placedAt: new Date().toISOString(),
+    placedAt: placedAt.toISOString(),
   };
   await client.query(
     `INSERT INTO order_records
        ("internalOrderId", "sourceConnectionId", "orderSnapshot", "recordStatus", "placedAt",
         "currency", "totalAmount", "taxTreatment", "createdAt", "updatedAt")
-     VALUES ($1, $2, $3::jsonb, 'ready', now(), $4, $5, 'inclusive', now(), now())`,
-    [order.orderId, sourceConnectionId, JSON.stringify(snapshot), currency, total],
+     VALUES ($1, $2, $3::jsonb, 'ready', $6, $4, $5, 'inclusive', now(), now())`,
+    [order.orderId, sourceConnectionId, JSON.stringify(snapshot), currency, total, placedAt],
   );
   for (const [index, item] of items.entries()) {
     await client.query(
       `INSERT INTO order_line_items
          ("orderRecordId", "lineNumber", "productId", quantity, "unitPrice",
           "sourceConnectionId", "placedAt", "taxRate", "taxSource")
-       VALUES ($1, $2, $3, $4, $5, $6, now(), $7, 'shop')`,
+       VALUES ($1, $2, $3, $4, $5, $6, $8, $7, 'shop')`,
       [
         order.orderId,
         index,
@@ -191,6 +196,7 @@ export async function insertDeliveryOrder(
         item.unitPriceGross,
         sourceConnectionId,
         item.taxRate,
+        placedAt,
       ],
     );
   }
@@ -333,4 +339,11 @@ export async function setSourceDeliveryConfig(
 /** One settings row as the config stores it (goods mode, plain suffix). */
 export function goodsDeliverySettings(name: string): Record<string, unknown> {
   return { name, rate: 'goods', freeDelivery: 'omit', rateFormat: 'plain' };
+}
+
+/** Delete connections by exact name (a wizard-created connection has no known id). */
+export async function deleteConnectionsByName(name: string): Promise<void> {
+  await withClient('deleteConnectionsByName', async (client) => {
+    await client.query(`DELETE FROM connections WHERE name = $1`, [name]);
+  });
 }
