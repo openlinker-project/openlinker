@@ -154,6 +154,10 @@ const KNOWN_CONFIG_KNOBS = new Map([
     'libs/core/src/listings/domain/types/price-change-block.types.ts',
     { helper: 'readConnectionCurrency', key: 'config.currency' },
   ],
+  [
+    'libs/core/src/sales-documents/domain/types/delivery-line.types.ts',
+    { helper: 'readDeliveryOnDocuments', key: 'config.deliveryOnDocuments' },
+  ],
 ]);
 
 /**
@@ -376,7 +380,19 @@ const NON_KNOBS = new Map([
 // per-connection knobs in JSONB is the accretion #1032's rules model is meant to
 // replace, and that is still true - it is simply not something a review fix may
 // take on. The number is raised by one so the next knob asks again.
-const KNOB_THRESHOLD = 12;
+//
+// #3905 (ADR-079): raised from 12 to 13 for the twelfth knob,
+// `config.deliveryOnDocuments` - how the delivery line is named and taxed on
+// receipts and invoices, per buyer country, on the order-source connection.
+// Registered rather than excused, because it is exactly the counted shape. It
+// is per connection because one Allegro connection sells into several
+// countries and the operator names delivery per channel and per carrier; an
+// install-wide setting could not express that. It is also the first knob that
+// is itself a small rules table (a row per country plus a default), which is
+// the shape #1032's shared model would generalise - a useful data point for
+// #2169 rather than a reason to build that model inside this slice. The number
+// is raised by one so the next knob asks again.
+const KNOB_THRESHOLD = 13;
 
 /** Ladder rungs (ADR-048): sub-capabilities that declare master freshness. */
 const KNOWN_RUNGS = new Set(['modified-product-lister.capability.ts']);
