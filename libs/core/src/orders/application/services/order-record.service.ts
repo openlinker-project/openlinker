@@ -10,6 +10,7 @@
  */
 import { Injectable, Inject } from '@nestjs/common';
 import type { Order, OrderDispatchWindow } from '../../domain/types/order.types';
+import type { DeliveryCountryFact } from '../../domain/types/delivery-country-facts.types';
 import { checkPaymentFactsConsistency } from '../../domain/types/payment-facts-consistency.types';
 import {
   encodeBuyerTaxIdColumn,
@@ -774,6 +775,13 @@ export class OrderRecordService implements IOrderRecordService {
       since: since.toISOString(),
       markets,
     };
+  }
+
+  async getDeliveryCountryFacts(
+    sourceConnectionId: string,
+    since: Date
+  ): Promise<DeliveryCountryFact[]> {
+    return this.repository.getDeliveryCountryFacts(sourceConnectionId, since);
   }
 
   /**

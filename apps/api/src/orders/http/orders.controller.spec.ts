@@ -114,6 +114,7 @@ describe('OrdersController', () => {
       findByIds: jest.fn(),
       findEarliestOrderDateByConnection: jest.fn(),
       countOrdersByRoutingCountrySince: jest.fn(),
+      getDeliveryCountryFacts: jest.fn(),
       upsert: jest.fn(),
       upsertWithLineItems: jest.fn(),
       updateSyncStatus: jest.fn(),

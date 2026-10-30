@@ -3259,6 +3259,113 @@ describe('OrderRecordRepository', () => {
     });
   });
 
+  describe('getDeliveryCountryFacts (#3907)', () => {
+    function stubBuilders(
+      counts: { country: string; currency: string | null; order_count: string }[],
+      rates: { country: string; tax_rate: string; line_count: string }[],
+      examples: { country: string; items: unknown; totals: unknown }[]
+    ): jest.Mock[] {
+      const make = (rows: unknown[]): jest.Mock => {
+        const parts: Record<string, jest.Mock> = {};
+        for (const name of [
+          'select',
+          'addSelect',
+          'where',
+          'andWhere',
+          'groupBy',
+          'addGroupBy',
+          'orderBy',
+          'addOrderBy',
+          'innerJoin',
+          'distinctOn',
+        ]) {
+          parts[name] = jest.fn().mockReturnThis();
+        }
+        parts.getRawMany = jest.fn().mockResolvedValue(rows);
+        return parts as unknown as jest.Mock;
+      };
+      const builders = [make(counts), make(rates), make(examples)];
+      const create = ormRepository.createQueryBuilder as jest.Mock;
+      builders.forEach((builder) => create.mockReturnValueOnce(builder));
+      return builders;
+    }
+
+    it('should issue exactly three queries and never one per country', async () => {
+      stubBuilders(
+        [
+          { country: 'PL', currency: 'PLN', order_count: '5' },
+          { country: 'DE', currency: 'EUR', order_count: '2' },
+        ],
+        [],
+        []
+      );
+
+      await repository.getDeliveryCountryFacts('conn-1', new Date());
+
+      expect(ormRepository.createQueryBuilder).toHaveBeenCalledTimes(3);
+    });
+
+    it('should return an empty list without further queries when no order has a country', async () => {
+      stubBuilders([], [], []);
+
+      const result = await repository.getDeliveryCountryFacts('conn-1', new Date());
+
+      expect(result).toEqual([]);
+      expect(ormRepository.createQueryBuilder).toHaveBeenCalledTimes(1);
+    });
+
+    it('should assemble orders, rates by frequency, majority currency and example when rows exist', async () => {
+      stubBuilders(
+        [
+          { country: 'PL', currency: 'PLN', order_count: '6' },
+          { country: 'PL', currency: 'EUR', order_count: '1' },
+          { country: 'DE', currency: 'EUR', order_count: '2' },
+        ],
+        [
+          { country: 'PL', tax_rate: '8', line_count: '3' },
+          { country: 'PL', tax_rate: '23', line_count: '9' },
+        ],
+        [
+          {
+            country: 'PL',
+            items: [{ name: 'Shirt', quantity: 1, price: 10, taxRate: '23' }],
+            totals: { shipping: 4 },
+          },
+        ]
+      );
+
+      const result = await repository.getDeliveryCountryFacts('conn-1', new Date());
+
+      expect(result).toEqual([
+        {
+          country: 'PL',
+          orders: 7,
+          ratesSeen: ['23', '8'],
+          currency: 'PLN',
+          example: { lines: [{ name: 'Shirt', gross: 10, rate: '23' }], delivery: 4 },
+        },
+        { country: 'DE', orders: 2, ratesSeen: [], currency: 'EUR', example: null },
+      ]);
+    });
+
+    it('should scope every query to the source connection when reading', async () => {
+      const builders = stubBuilders(
+        [{ country: 'PL', currency: 'PLN', order_count: '1' }],
+        [],
+        []
+      );
+
+      await repository.getDeliveryCountryFacts('conn-1', new Date());
+
+      for (const builder of builders) {
+        const where = (builder as unknown as { where: jest.Mock }).where;
+        expect(where).toHaveBeenCalledWith('rec.sourceConnectionId = :sourceConnectionId', {
+          sourceConnectionId: 'conn-1',
+        });
+      }
+    });
+  });
+
   describe('countOrdersByRoutingCountrySince (#2518, ADR-066)', () => {
     function stubQueryBuilder(rows: { country: string; order_count: string }[]): {
       select: jest.Mock;
