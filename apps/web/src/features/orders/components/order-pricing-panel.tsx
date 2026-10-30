@@ -50,7 +50,7 @@ export function OrderPricingPanel({
 
       {totals ? (
         <div className="order-pricing__summary">
-          <OrderTotalsPanel totals={totals} />
+          <OrderTotalsPanel totals={totals} editedTotals={editedTotals} />
           {grossNet ? (
             <StatusBadge tone="neutral" className="order-pricing__treatment">
               {grossNet} · source-authoritative
