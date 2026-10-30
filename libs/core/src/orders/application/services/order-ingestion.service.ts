@@ -1910,7 +1910,9 @@ export class OrderIngestionService implements IOrderIngestionService {
    * candidate only when it has a cost AND that cost existed when the order was
    * placed (G11-G: `costUpdatedAt <= placedAt`, falling back to the order's
    * `createdAt` the way analytics does), so an old order imported later never
-   * receives today's cost.
+   * receives today's cost. Both instants are floored to the whole second
+   * first: sources such as WooCommerce truncate `placedAt` to the second, so a
+   * cost saved a few hundred ms before the sale must not look "after" it.
    */
   private async resolveLineCostCandidates(
     order: Order
@@ -1924,14 +1926,14 @@ export class OrderIngestionService implements IOrderIngestionService {
     if (variantIds.length === 0) {
       return candidates;
     }
-    const placedAt = (order.placedAt ?? order.createdAt).getTime();
+    const placedAtSecond = Math.floor((order.placedAt ?? order.createdAt).getTime() / 1000);
     const variants = await this.productsService.getVariantsByIds(variantIds);
     for (const variant of variants) {
       if (
         variant.netUnitCost == null ||
         variant.costCurrency == null ||
         variant.costUpdatedAt == null ||
-        variant.costUpdatedAt.getTime() > placedAt
+        Math.floor(variant.costUpdatedAt.getTime() / 1000) > placedAtSecond
       ) {
         continue;
       }

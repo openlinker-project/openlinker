@@ -943,6 +943,36 @@ describe('OrderIngestionService', () => {
         expect(candidates.size).toBe(0);
       });
 
+      it('should compare at second granularity: a cost saved within the order second is recorded', async () => {
+        orderSource.getOrder.mockResolvedValue({
+          ...baseIncoming,
+          placedAt: '2026-05-31T10:00:00.000Z',
+        });
+        productsService.getVariantsByIds.mockResolvedValue([
+          variantWithCost(new Date('2026-05-31T10:00:00.700Z')),
+        ]);
+
+        await service.syncOrderFromSource(connectionId, externalOrderId);
+
+        const candidates = orderRecordService.persistOrder.mock.calls[0][4] as Map<string, unknown>;
+        expect(candidates.has('ol_variant_1')).toBe(true);
+      });
+
+      it('should not record a cost saved in the second after the order', async () => {
+        orderSource.getOrder.mockResolvedValue({
+          ...baseIncoming,
+          placedAt: '2026-05-31T10:00:00.000Z',
+        });
+        productsService.getVariantsByIds.mockResolvedValue([
+          variantWithCost(new Date('2026-05-31T10:00:01.000Z')),
+        ]);
+
+        await service.syncOrderFromSource(connectionId, externalOrderId);
+
+        const candidates = orderRecordService.persistOrder.mock.calls[0][4] as Map<string, unknown>;
+        expect(candidates.size).toBe(0);
+      });
+
       it('should exclude a variant without a cost', async () => {
         productsService.getVariantsByIds.mockResolvedValue([variantWithCost(null, null)]);
 
