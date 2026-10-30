@@ -168,7 +168,8 @@ test.describe('G11 CSV - export @g11', () => {
   });
 
   test('CSV-5 a range over 366 days is refused with a code and a plain message; the UI shows it', async ({ openAs, http }) => {
-    const tooWide = { from: utcDay(-400), to: utcDay(1) };
+    // 380 days: past the export cap (366) but inside the screens' own 400-day window cap, which answers first beyond it.
+    const tooWide = { from: utcDay(-380), to: utcDay(1) };
     for (const report of Object.keys(REPORTS) as ExportReport[]) {
       const response = await csvOf(http.admin, report, tooWide);
       expect(response.status, report).toBe(400);
@@ -205,7 +206,11 @@ test.describe('G11 CSV - export @g11', () => {
       INSERT INTO order_line_items ("orderRecordId","lineNumber","productId","variantId",quantity,"unitPrice","sourceConnectionId","placedAt","taxRate","taxSource","taxRateReadAt","costState")
       SELECT o."orderRecordId", 100000 + g, 'ol_product_g11perf_' || g, NULL, 1, 10.00, o."sourceConnectionId", o."placedAt", o."taxRate", o."taxSource", o."taxRateReadAt", 'not-recorded'
         FROM generate_series(1, ${Math.trunc(rowCount)}) g,
-             (SELECT * FROM order_line_items WHERE "placedAt" IS NOT NULL ORDER BY "placedAt" DESC LIMIT 1) o`);
+             -- the donor line must sit on an order that counts toward net revenue (stamped, not cancelled, rate known)
+             (SELECT l.* FROM order_line_items l JOIN order_records r ON r."internalOrderId" = l."orderRecordId"
+               WHERE l."placedAt" IS NOT NULL AND l."taxRate" IS NOT NULL
+                 AND r."cancelledAt" IS NULL AND r."reportingCurrency" IS NOT NULL
+               ORDER BY l."placedAt" DESC LIMIT 1) o`);
     try {
       const timing = await http.admin.streamTiming('/analytics/margin/products', { query: { ...range, format: 'csv' } });
       const memoryAfter = apiMemory(ctx.setup.apiContainer);
@@ -241,7 +246,8 @@ test.describe('G11 CSV - export @g11', () => {
     expect(net.header).toContain('net_sales');
     expect(net.comments['vat basis']).toMatch(/net/i);
 
-    const marginGross = await csvOf(http.admin, 'margin-channel', range, { basis: 'gross' });
+    // Margin routes take no basis parameter at all (a stray one is a 400): they are net by construction.
+    const marginGross = await csvOf(http.admin, 'margin-channel', range);
     expect(parseCsv(marginGross.buffer).comments.basis, 'margin is always net').toMatch(/net/i);
     expect(marginGross.headers.get('content-disposition') ?? '').toMatch(/_net\.csv"/);
 
