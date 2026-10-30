@@ -39,6 +39,7 @@ import {
   ApiConsumes,
   ApiBody,
 } from '@nestjs/swagger';
+import { validateDeliveryOnDocumentsShape } from '@openlinker/core/sales-documents';
 import { Public } from '../../auth/decorators/public.decorator';
 import {
   IOAuthConnectionService,
@@ -121,6 +122,19 @@ export class AllegroController {
     state: string;
   }> {
     const environment = dto.environment || 'sandbox';
+    // Fail now, not after the operator has authorised on Allegro: the same
+    // check runs again in ConnectionService.create at callback time (#3905).
+    if (dto.deliveryOnDocuments && !dto.connectionId) {
+      const issues = validateDeliveryOnDocumentsShape(dto.deliveryOnDocuments);
+      if (issues.length > 0) {
+        throw new BadRequestException({
+          message: `Invalid deliveryOnDocuments: ${issues
+            .map((issue) => `${issue.path} ${issue.message}`)
+            .join('; ')}`,
+          errors: issues,
+        });
+      }
+    }
     this.logger.log(`Initiating OAuth flow for Allegro (environment: ${environment})`);
 
     // The neutral OAuthConnectionService owns the flow; the Allegro controller
@@ -141,6 +155,10 @@ export class AllegroController {
         environment,
         ...(dto.masterCatalogConnectionId
           ? { masterCatalogConnectionId: dto.masterCatalogConnectionId }
+          : {}),
+        // A reauth rotates credentials only and must not touch config (#3911).
+        ...(dto.deliveryOnDocuments && !dto.connectionId
+          ? { deliveryOnDocuments: dto.deliveryOnDocuments }
           : {}),
       },
     });

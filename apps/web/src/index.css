@@ -31067,4 +31067,36 @@ legend.analytics-settings-dialog__label {
 .dd-remove { margin-right: auto; color: var(--status-error-fg); }
 
 .dd-row--other th.dd-who { background: var(--bg-surface-muted); }
+/* ── Wizard step (#3911): one question, two answers ── */
+.dd-wizard { display: grid; gap: var(--space-4); }
+.dd-wizard__intro { display: grid; gap: var(--space-1); }
+.dd-wizard__intro h3 { margin: 0; font-size: 17px; font-weight: 600; color: var(--text-primary); }
+.dd-wizard__intro p { margin: 0; max-width: 72ch; }
+.dd-choices { display: grid; gap: var(--space-3); }
+.dd-choice {
+  display: grid; grid-template-columns: auto minmax(0, 1fr); gap: var(--space-3); align-items: start;
+  padding: var(--space-4);
+  border: 1px solid var(--border-default); border-radius: var(--radius-lg);
+  background: var(--bg-surface); cursor: pointer;
+}
+.dd-choice:hover { border-color: var(--border-strong); }
+.dd-choice--on { border-color: var(--accent-primary); box-shadow: 0 0 0 1px var(--accent-primary) inset; }
+.dd-choice input { margin-top: 3px; accent-color: var(--accent-primary); }
+.dd-choice input:focus-visible { outline: none; box-shadow: var(--shadow-focus); }
+.dd-choice__body { display: grid; gap: var(--space-2); min-width: 0; }
+.dd-choice__title { display: inline-flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); font-size: 15px; font-weight: 600; color: var(--text-primary); }
+.dd-choice__text { display: inline-flex; flex-wrap: wrap; align-items: center; gap: var(--space-1); font-size: 14px; color: var(--text-secondary); line-height: 1.45; }
+.dd-mini {
+  display: grid; gap: 2px; max-width: 22rem;
+  padding: var(--space-3);
+  border: 1px dashed var(--border-default); border-radius: var(--radius-md);
+  background: var(--bg-surface-muted);
+  font-family: var(--font-mono); font-size: 13px; font-variant-numeric: tabular-nums;
+}
+.dd-mini__title { font-family: var(--font-sans); font-size: 12px; color: var(--text-muted); margin-bottom: 2px; }
+.dd-mini__line { display: flex; justify-content: space-between; gap: var(--space-3); color: var(--text-primary); }
+.dd-mini__line--muted { color: var(--text-muted); }
+.dd-own { display: grid; gap: var(--space-3); }
+.dd-own__add { justify-self: start; }
+.dd-later { margin: 0; font-size: 13px; color: var(--text-muted); }
 /* ── end Delivery on documents (#3908) ── */

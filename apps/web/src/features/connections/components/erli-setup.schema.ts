@@ -11,12 +11,19 @@
  * FE and a future URL change never leaves a stale literal in stored
  * connections. `enabledCapabilities` is intentionally omitted from the payload
  * so the API defaults it to the adapter manifest's supported set (#984/#993
- * ship `OfferManager` / `OrderSource`).
+ * ship `OfferManager` / `OrderSource`). The wizard's "Sales documents" step adds
+ * `config.deliveryOnDocuments` (#3911, ADR-079).
  *
  * @module features/connections/components
  */
 import { z } from 'zod';
 import type { CreateConnectionInput } from '../api/connections.types';
+import {
+  DEFAULT_DELIVERY_WIZARD_VALUE,
+  wizardConfig,
+  type DeliveryLineSuggestion,
+  type DeliveryWizardValue,
+} from '../../delivery-on-documents';
 
 export const ERLI_ADAPTER_KEY = 'erli.shopapi.v1';
 
@@ -26,6 +33,8 @@ export const erliSetupSchema = z.object({
   name: z.string().trim().min(1, 'Connection name is required'),
   apiKey: z.string().trim().min(1, 'API key is required'),
   environment: z.enum(ErliEnvironmentValues),
+  // The answer to the "Sales documents" step; set through `setValue` (#3911).
+  deliveryOnDocuments: z.custom<DeliveryWizardValue>().optional(),
 });
 
 export type ErliSetupFormValues = z.input<typeof erliSetupSchema>;
@@ -35,9 +44,13 @@ export const ERLI_SETUP_DEFAULT_VALUES: ErliSetupFormValues = {
   name: '',
   apiKey: '',
   environment: 'sandbox',
+  deliveryOnDocuments: DEFAULT_DELIVERY_WIZARD_VALUE,
 };
 
-export function toCreateConnectionInput(values: ErliSetupFormSubmission): CreateConnectionInput {
+export function toCreateConnectionInput(
+  values: ErliSetupFormSubmission,
+  suggestions: readonly DeliveryLineSuggestion[] = [],
+): CreateConnectionInput {
   return {
     name: values.name,
     platformType: 'erli',
@@ -46,7 +59,13 @@ export function toCreateConnectionInput(values: ErliSetupFormSubmission): Create
     // Persist the neutral choice, not a derived URL: the BE adapter factory
     // maps `environment` → the concrete Shop API base URL, so a future
     // sandbox-URL change can't leave a stale literal in this connection's config.
-    config: { environment: values.environment },
+    config: {
+      environment: values.environment,
+      deliveryOnDocuments: wizardConfig(
+        values.deliveryOnDocuments ?? DEFAULT_DELIVERY_WIZARD_VALUE,
+        suggestions,
+      ),
+    },
     // enabledCapabilities is OMITTED on purpose: on the omitted path
     // `ConnectionService.create` defaults to the adapter manifest's supported
     // set (`rest.enabledCapabilities ?? [...metadata.supportedCapabilities]`),
