@@ -277,6 +277,32 @@ describe('OrderRecordService', () => {
       expect(callArg.recordStatus).toBe('ready');
     });
 
+    it('should keep cost out of the order snapshot and forward the candidates to the line derivation (#3588)', async () => {
+      const order = createMockOrder();
+      order.items[0].variantId = 'ol_variant_1';
+      repository.upsertWithLineItems.mockResolvedValue({} as OrderRecord);
+
+      await service.persistOrder(
+        order,
+        'source-connection-123',
+        'event-456',
+        null,
+        new Map([['ol_variant_1', { unitCostNet: '4.5000', currency: 'PLN' }]])
+      );
+
+      const [callArg, lineItems] = repository.upsertWithLineItems.mock.calls[0];
+      const snapshotItems = (callArg.orderSnapshot as { items: Array<Record<string, unknown>> })
+        .items;
+      for (const item of snapshotItems) {
+        expect(Object.keys(item).filter((k) => /cost/i.test(k))).toEqual([]);
+      }
+      expect(lineItems[0].cost).toEqual({
+        costState: 'recorded',
+        unitCostNet: '4.5000',
+        unitCostCurrency: 'PLN',
+      });
+    });
+
     it('should serialise OrderItem.name and imageUrl into the snapshot when present', async () => {
       const order = createMockOrder();
       order.items[0].name = 'Widget';

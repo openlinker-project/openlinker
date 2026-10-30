@@ -797,6 +797,44 @@ describe('PrestashopProductMapper', () => {
     });
   });
 
+  describe('mapVariant images', () => {
+    const base = { id: '100', id_product: '1' };
+
+    it('should build the combination own images with the product image URL format (JSON shape)', () => {
+      const result = mapper.mapVariant(
+        { ...base, associations: { images: [{ id: '12' }, { id: 7 }] } },
+        'p'
+      );
+
+      expect(result.images).toEqual([
+        `${STOREFRONT_BASE_URL}/img/p/1/2/12-large_default.jpg`,
+        `${STOREFRONT_BASE_URL}/img/p/7/7-large_default.jpg`,
+      ]);
+    });
+
+    it('should read the XML shape with a single image', () => {
+      const result = mapper.mapVariant(
+        { ...base, associations: { images: { image: { id: '5' } } } },
+        'p'
+      );
+
+      expect(result.images).toEqual([`${STOREFRONT_BASE_URL}/img/p/5/5-large_default.jpg`]);
+    });
+
+    it('should leave images unset when the combination has none', () => {
+      expect(mapper.mapVariant(base, 'p').images).toBeUndefined();
+    });
+
+    it('should ignore an empty node and id 0', () => {
+      expect(
+        mapper.mapVariant({ ...base, associations: { images: '' } }, 'p').images
+      ).toBeUndefined();
+      expect(
+        mapper.mapVariant({ ...base, associations: { images: { image: { id: '0' } } } }, 'p').images
+      ).toBeUndefined();
+    });
+  });
+
   describe('localizeField', () => {
     it('should read a flat string field', () => {
       expect(mapper.localizeField('Red')).toBe('Red');

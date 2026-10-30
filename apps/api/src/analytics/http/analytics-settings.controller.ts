@@ -99,6 +99,7 @@ export class AnalyticsSettingsController {
         rateBasis: dto.rateBasis,
         includeBackfilledTaxRatesInNetSales: dto.includeBackfilledTaxRatesInNetSales,
         netGrossBasis: dto.netGrossBasis,
+        trackMargin: dto.trackMargin,
       },
       user?.id
     );

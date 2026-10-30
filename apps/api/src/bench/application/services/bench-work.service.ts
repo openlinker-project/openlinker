@@ -91,7 +91,10 @@ import {
 } from '../interfaces/bench-parcel.service.interface';
 import { PRODUCTS_SERVICE_TOKEN, type IProductsService } from '@openlinker/core/products';
 
-import { productImageProxyPath } from '../../../products/http/product-image-path';
+import {
+  productImageProxyPath,
+  variantImageProxyPath,
+} from '../../../products/http/product-image-path';
 import type { IBenchWorkService } from '../interfaces/bench-work.service.interface';
 import type { BenchClaimNextResultView } from '../types/bench-parcel.types';
 import type {
@@ -103,8 +106,6 @@ import type {
   BenchWorkState,
   BenchWorkView,
 } from '../types/bench-work.types';
-
-
 
 /**
  * The most parcels this read will collect before it truncates.
@@ -437,7 +438,14 @@ export class BenchWorkService implements IBenchWorkService {
     order: OrderRecord | undefined,
     siblings: readonly string[] | undefined,
     viewerId: string,
-    variantById: ReadonlyMap<string, { readonly productId: string }>,
+    variantById: ReadonlyMap<
+      string,
+      {
+        readonly id: string;
+        readonly productId: string;
+        readonly images?: readonly string[] | null;
+      }
+    >,
     // Structural, and it carries `images` because `productImageProxyPath`
     // reads it - typing this as `{ name }` alone compiled under ts-jest and
     // failed the real build, which is the one that matters.
@@ -491,7 +499,11 @@ export class BenchWorkService implements IBenchWorkService {
             // is a fact the packer can act on, and a fabricated name is not.
             name: product?.name ?? null,
             quantity: Math.max(0, line.totalQuantity - line.cancelledQuantity),
-            imageUrl: productImageProxyPath(product),
+            // The variant's own picture when it has one (#3586), else the product's.
+            imageUrl:
+              variant !== undefined && (variant.images?.length ?? 0) > 0
+                ? variantImageProxyPath(variant, 0)
+                : productImageProxyPath(product),
           };
         })
         .filter((item) => item.quantity > 0)

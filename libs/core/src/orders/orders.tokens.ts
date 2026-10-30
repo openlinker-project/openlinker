@@ -89,6 +89,11 @@ export const FULFILLMENT_DISPATCH_RELAY_SERVICE_TOKEN = Symbol('IFulfillmentDisp
 export const SALES_DOCUMENT_VIEW_SERVICE_TOKEN = Symbol('ISalesDocumentViewService');
 // Data Coverage tax A/B/C detector (#2465).
 export const TAX_COVERAGE_DETECTION_SERVICE_TOKEN = Symbol('ITaxCoverageDetectionService');
+// Margin reads on net revenue + the no-cost coverage count (#3588, D27).
+export const MARGIN_ANALYTICS_SERVICE_TOKEN = Symbol('IMarginAnalyticsService');
+// Cost coverage + the missing-cost work list (#3588, mockup M30).
+export const COST_COVERAGE_SERVICE_TOKEN = Symbol('ICostCoverageService');
+export const ORDER_LINE_COST_SERVICE_TOKEN = Symbol('IOrderLineCostService');
 // Analytics display-currency conversion read model (#2458, ADR-064).
 export const DISPLAY_CURRENCY_CONVERSION_SERVICE_TOKEN = Symbol(
   'IDisplayCurrencyConversionService'

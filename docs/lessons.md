@@ -23,6 +23,20 @@ When a lesson hardens into a rule, **graduate it** to the canonical doc and leav
 
 ---
 
+## `order_line_items` is delete-then-reinsert: a value that must survive re-ingestion has to be carried forward inside the transaction
+
+**Context**: the per-line net cost snapshot (#3588, D27) is frozen at the first `ready` ingestion so a later cost edit never moves an earlier margin.
+
+**Problem**: `OrderRecordRepository.upsertWithLineItems` replaces an order's line rows wholesale on every re-ingestion. A column written only from the incoming draft is therefore recomputed every time, so a snapshot of "what the cost was then" silently becomes "what the cost is now" on the next poll. The line position is not a stable identity either (reorder, add, remove).
+
+**Rule**: any line-level fact that must outlive re-ingestion is read from the prior rows INSIDE the write transaction, after the `order_records` upsert (its row lock serialises concurrent re-ingestion) and before the delete, and carried across by `productId|variantId`, lowest prior lineNumber first, reused exactly as stored. A prior "not recorded" is never upgraded and a prior value is never replaced. Never swallow a failed lookup that feeds the snapshot: it would freeze "not recorded" for good.
+
+**Applies to**: `order-record.repository.ts upsertWithLineItems`, `order-line-cost-snapshot.ts`, any future denormalised column on `order_line_items`.
+
+**Source**: #3588 (epic #3516)
+
+---
+
 ## An Allegro offer that reads INACTIVE with no errors may still be processing - the reason lives on the create operation
 
 **Context**: an inline-product `POST /sale/product-offers` with `publication.status: ACTIVE` is

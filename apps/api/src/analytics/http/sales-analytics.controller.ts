@@ -50,7 +50,14 @@
  * pull request rather than applied silently. Behaviourally identical for every
  * role that exists today, so re-admitting `packer` is one word.
  */
-import { BadRequestException, Controller, Get, Inject, Query } from '@nestjs/common';
+import {
+  BadRequestException,
+  Controller,
+  Get,
+  Inject,
+  Query,
+  type StreamableFile,
+} from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import {
   DISPLAY_CURRENCY_CONVERSION_SERVICE_TOKEN,
@@ -73,6 +80,13 @@ import {
   SalesAnalyticsResponseDto,
 } from './dto/sales-analytics-response.dto';
 import { Roles } from '../../auth/decorators/roles.decorator';
+import { assertExportRange, csvDownload, exportFilename } from './export-range';
+import { loadConnectionLabels } from './connection-labels';
+import {
+  CONNECTION_SERVICE_TOKEN,
+  type IConnectionService,
+} from '../../integrations/application/interfaces/connection.service.interface';
+import { buildSalesByChannelCsv, reportingCurrencyOf } from './sales-analytics-csv';
 
 /** Shared shape of a headline/channel row's currency-bucket fields — the input to `buildDisplayCurrencyConversion`. */
 interface CurrencyBucketRow {
@@ -104,9 +118,17 @@ export class SalesAnalyticsController {
     @Inject(DISPLAY_CURRENCY_CONVERSION_SERVICE_TOKEN)
     private readonly displayCurrencyConversionService: IDisplayCurrencyConversionService,
     @Inject(ANALYTICS_DISPLAY_SETTINGS_SERVICE_TOKEN)
-    private readonly displaySettings: IAnalyticsDisplaySettingsService
+    private readonly displaySettings: IAnalyticsDisplaySettingsService,
+    @Inject(CONNECTION_SERVICE_TOKEN)
+    private readonly connections: IConnectionService
   ) {}
 
+  async getSalesAnalytics(
+    query: SalesAnalyticsQueryDto & { format?: 'json' }
+  ): Promise<SalesAnalyticsResponseDto>;
+  async getSalesAnalytics(
+    query: SalesAnalyticsQueryDto
+  ): Promise<SalesAnalyticsResponseDto | StreamableFile>;
   @Roles('admin', 'operator', 'viewer')
   @Get('sales')
   @ApiOperation({
@@ -116,11 +138,15 @@ export class SalesAnalyticsController {
   @ApiResponse({ status: 200, type: SalesAnalyticsResponseDto })
   async getSalesAnalytics(
     @Query() query: SalesAnalyticsQueryDto
-  ): Promise<SalesAnalyticsResponseDto> {
+  ): Promise<SalesAnalyticsResponseDto | StreamableFile> {
     const from = new Date(query.from);
     const to = new Date(query.to);
     if (to.getTime() <= from.getTime()) {
       throw new BadRequestException('to must be after from');
+    }
+    const isCsv = query.format === 'csv';
+    if (isCsv) {
+      assertExportRange(from, to);
     }
     const rangeDays = (to.getTime() - from.getTime()) / (24 * 60 * 60 * 1000);
     if (rangeDays > MAX_SALES_ANALYTICS_RANGE_DAYS) {
@@ -130,7 +156,8 @@ export class SalesAnalyticsController {
     }
 
     // Read fresh on every request — see the class doc comment.
-    const { includeBackfilledTaxRatesInNetSales } = await this.displaySettings.getSettings();
+    const { includeBackfilledTaxRatesInNetSales, netGrossBasis } =
+      await this.displaySettings.getSettings();
 
     const analytics = await this.orderRecordService.getSalesAndChannelAnalytics(
       {
@@ -140,6 +167,28 @@ export class SalesAnalyticsController {
       },
       includeBackfilledTaxRatesInNetSales
     );
+
+    if (isCsv) {
+      // Same service call as the JSON below, so the rows cannot diverge.
+      const basis = query.basis ?? netGrossBasis ?? 'gross';
+      return csvDownload(
+        buildSalesByChannelCsv({
+          analytics,
+          from,
+          to,
+          basis,
+          labels: await loadConnectionLabels(this.connections),
+          displayCurrencyRequested: query.displayCurrency,
+        }),
+        exportFilename({
+          report: 'sales-by-channel',
+          from,
+          to,
+          currency: reportingCurrencyOf(analytics),
+          basis,
+        })
+      );
+    }
 
     const dto = SalesAnalyticsResponseDto.fromDomain(analytics);
 

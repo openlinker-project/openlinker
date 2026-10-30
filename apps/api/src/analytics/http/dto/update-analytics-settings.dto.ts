@@ -16,8 +16,8 @@
  *
  * @module apps/api/src/analytics/http/dto
  */
-import { ApiProperty } from '@nestjs/swagger';
-import { IsBoolean, IsIn, ValidateIf } from 'class-validator';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { IsBoolean, IsIn, IsOptional, ValidateIf } from 'class-validator';
 import {
   NetGrossBasisValues,
   RateBasisValues,
@@ -59,4 +59,13 @@ export class UpdateAnalyticsSettingsDto {
   })
   @IsIn(NetGrossBasisValues as unknown as string[])
   netGrossBasis!: NetGrossBasis;
+
+  @ApiPropertyOptional({
+    type: Boolean,
+    description:
+      'Show margin and the missing-cost reminders in the UI (#3588). Display-only: the cost snapshot is still written at ingestion. Absent keeps the stored value.',
+  })
+  @IsOptional()
+  @IsBoolean()
+  trackMargin?: boolean;
 }

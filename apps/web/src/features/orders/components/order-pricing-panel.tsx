@@ -19,15 +19,17 @@ import { OrderTotalsPanel } from './order-totals-panel';
 interface OrderPricingPanelProps {
   items: ParsedOrderItem[];
   totals?: ParsedOrderTotals;
+  /** Enables the cost-at-order-time columns on the items table (#3588). */
+  internalOrderId?: string;
 }
 
-export function OrderPricingPanel({ items, totals }: OrderPricingPanelProps): ReactElement {
+export function OrderPricingPanel({ items, totals, internalOrderId }: OrderPricingPanelProps): ReactElement {
   const treatment = totals?.taxTreatment;
   const grossNet = treatment === 'inclusive' ? 'gross' : treatment === 'exclusive' ? 'net' : null;
 
   return (
     <div className="order-pricing">
-      {items.length > 0 ? <OrderLineItemsPanel items={items} totals={totals} /> : null}
+      {items.length > 0 ? <OrderLineItemsPanel items={items} totals={totals} internalOrderId={internalOrderId} /> : null}
 
       {totals ? (
         <div className="order-pricing__summary">

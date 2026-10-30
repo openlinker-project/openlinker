@@ -90,6 +90,9 @@ import {
   STOCK_STATUS_LABEL,
 } from '../../features/products';
 import { deriveProductStaleness } from '../../features/products/lib/product-staleness';
+import { CostCoverageBanner } from '../../features/products/components/cost-coverage-banner';
+import { useCostSummaryQuery } from '../../features/products/hooks/use-cost-coverage-query';
+import { useTrackMargin } from '../../features/analytics';
 import { ListingsCoveragePills } from './listings-coverage-pills';
 import { ProductRowDetail } from './product-row-detail';
 import { OfferProductPickerModal } from '../../features/listings/components/offer-product-picker-modal';
@@ -204,6 +207,11 @@ export function ProductsListPage(): ReactElement {
   // the operator their catalogue.
   const omsAttention = useOmsAttentionQuery();
   const availabilityUnknown = omsAttention.forReason('availability-unknown');
+
+  // #3588 - margin reminders. Off means hidden, never degraded: cost snapshots
+  // keep being written, only the views and nudges go quiet.
+  const trackMargin = useTrackMargin();
+  const costSummary = useCostSummaryQuery({ enabled: trackMargin });
 
   const rawTaxRateState = searchParams.get('taxRateState');
   const taxRateState =
@@ -969,6 +977,15 @@ export function ProductsListPage(): ReactElement {
       eyebrow="Operations"
       title="Products"
       description="Catalog cockpit — search, stock health, and per-channel listings coverage. Select up to 100 products to bulk-create offers."
+      actions={
+        <Link
+          className="button button--secondary"
+          to="/products/cost-prices"
+          data-testid="products-open-cost-prices"
+        >
+          Cost prices
+        </Link>
+      }
     >
       {/* KPI tiles double as filters (orders-segments mechanic). */}
       <div className="ds-grid ds-grid--4 products-segments">
@@ -1070,6 +1087,9 @@ export function ProductsListPage(): ReactElement {
           </button>
         ) : null}
       </div>
+
+      {/* #3588 - missing cost prices. Warning, per-session dismissal, gated on trackMargin. */}
+      {trackMargin ? <CostCoverageBanner /> : null}
 
       {/* #2255 — the sync suggestion. Four states, not one: idle, running,
           no-shop-connected, and dismissed. Dismissal is per SESSION, because a
@@ -1222,6 +1242,19 @@ export function ProductsListPage(): ReactElement {
           <Chip tone="error" active={hideFullyStale} onClick={toggleHideStale}>
             Hide deleted at source
           </Chip>
+          {trackMargin && (costSummary.data?.variantsWithoutCost ?? 0) > 0 ? (
+            // The list API has no "variant without a cost" filter, so the chip
+            // opens the work list's "All without cost" tab instead of
+            // narrowing this table.
+            <Link
+              className="chip"
+              to="/products/cost-prices?tab=all"
+              data-testid="products-filter-no-cost"
+            >
+              No cost price{' '}
+              <span className="chip__count">{costSummary.data?.variantsWithoutCost}</span>
+            </Link>
+          ) : null}
           {/* A known total needs no page, so a pure re-sort - which leaves the
               count key untouched - keeps the number on screen instead of
               unmounting the span for a round trip (#2957 review, S2). */}

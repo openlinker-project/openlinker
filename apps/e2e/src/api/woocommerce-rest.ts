@@ -16,6 +16,8 @@
  *
  * @module api
  */
+import { execFile } from 'node:child_process';
+
 
 export interface WooCommerceCategoryView {
   id: number;
@@ -381,7 +383,7 @@ export class WooCommerceRestClient {
     const timeout = setTimeout(() => controller.abort(), this.requestTimeoutMs);
     let response: Response;
     try {
-      response = await fetch(url, {
+      response = await wooFetch(url, {
         method,
         headers: {
           Accept: 'application/json',
@@ -426,4 +428,32 @@ function asNumberOrNull(value: unknown): number | null {
   if (value === null || value === undefined || value === '') return null;
   const n = Number(value);
   return Number.isFinite(n) ? n : null;
+}
+
+/**
+ * A stand whose WooCommerce site url is a Docker-internal name (`https://wc-tls`) cannot be
+ * reached from the host, so `OL_WC_DOCKER_EXEC=<container>` runs the request with node inside a
+ * container that can (the API's, which also trusts the stand's CA).
+ */
+async function wooFetch(url: string, init: RequestInit): Promise<Response> {
+  const container = process.env.OL_WC_DOCKER_EXEC?.trim();
+  if (!container) return fetch(url, init);
+  const script =
+    "let b='';process.stdin.on('data',d=>b+=d).on('end',async()=>{const i=JSON.parse(b);" +
+    "const r=await fetch(i.url,{method:i.method,headers:i.headers,body:i.body});" +
+    "process.stdout.write(JSON.stringify({status:r.status,text:await r.text()}));});";
+  const payload = JSON.stringify({
+    url,
+    method: init.method ?? 'GET',
+    headers: init.headers ?? {},
+    body: typeof init.body === 'string' ? init.body : undefined,
+  });
+  const out = await new Promise<string>((resolve, reject) => {
+    const child = execFile('docker', ['exec', '-i', container, 'node', '-e', script], { maxBuffer: 32 * 1024 * 1024 }, (error, stdout) =>
+      error ? reject(error) : resolve(stdout),
+    );
+    child.stdin?.end(payload);
+  });
+  const parsed = JSON.parse(out) as { status: number; text: string };
+  return new Response(parsed.text, { status: parsed.status });
 }

@@ -370,6 +370,50 @@ export type {
   TaxRateBackfillPageInput,
   TaxRateBackfillPageResult,
 } from './application/services/tax-rate-backfill.service.interface';
+export type { IMarginAnalyticsService } from './application/services/margin-analytics.service.interface';
+export {
+  MarginBucketValues,
+  MarginSortByValues,
+} from './domain/types/order-margin-analytics.types';
+export type {
+  MarginAnalytics,
+  MarginBucket,
+  MarginChannel,
+  MarginFigures,
+  MarginGapSum,
+  MarginProductFilters,
+  MarginProductsResult,
+  MarginProductVariantsResult,
+  MarginProductView,
+  MarginSortBy,
+  MarginTrendPoint,
+  MarginVariantView,
+} from './domain/types/order-margin-analytics.types';
+export type { IOrderLineCostService } from './application/services/order-line-cost.service.interface';
+export type {
+  OrderLineCostView,
+  OrderLineCostsResult,
+} from './domain/types/order-line-cost.types';
+export type { ICostCoverageService } from './application/services/cost-coverage.service.interface';
+export {
+  COST_COVERAGE_DEFAULT_DAYS,
+  COST_COVERAGE_MAX_DAYS,
+  COST_COVERAGE_MIN_DAYS,
+  COST_WORKLIST_SALES_WINDOW_DAYS,
+  CostWorklistTabValues,
+} from './domain/types/cost-coverage.types';
+export type {
+  CostCoverageResult,
+  CostCoverageTopVariant,
+  CostSummary,
+  CostWorklistCountFilters,
+  CostWorklistFilters,
+  CostWorklistResult,
+  CostWorklistRow,
+  CostWorklistTab,
+} from './domain/types/cost-coverage.types';
+export { MarginGapReasonValues } from './domain/order-line-cost-snapshot';
+export type { MarginGapReason } from './domain/order-line-cost-snapshot';
 export type { ITaxCoverageDetectionService } from './application/services/tax-coverage-detection.service.interface';
 export type { IOrderTestFixtureService } from './application/interfaces/order-test-fixture.service.interface';
 export type { IDisplayCurrencyConversionService } from './application/interfaces/display-currency-conversion.service.interface';

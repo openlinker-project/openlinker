@@ -12,6 +12,8 @@ import type { ProductRepositoryPort } from '../../domain/ports/product-repositor
 import type { ProductVariantRepositoryPort } from '../../domain/ports/product-variant-repository.port';
 import type { Product } from '../../domain/entities/product.entity';
 import type { ProductVariant } from '../../domain/entities/product-variant.entity';
+import { ProductVariantNotFoundError } from '../../domain/exceptions/product-variant-not-found.error';
+import { InvalidVariantCostError } from '../../domain/exceptions/invalid-variant-cost.error';
 import { PRODUCT_REPOSITORY_TOKEN, PRODUCT_VARIANT_REPOSITORY_TOKEN } from '../../products.tokens';
 
 function makeProduct(overrides: Partial<Product> = {}): Product {
@@ -82,6 +84,8 @@ describe('ProductsService', () => {
     findTaxRate: jest.fn(),
     recordPhysicalDimensions: jest.fn(),
     fillPhysicalDimensionsIfAbsent: jest.fn(),
+    recordCost: jest.fn(),
+    fillCostIfAbsent: jest.fn(),
   };
 
   beforeEach(async () => {
@@ -360,6 +364,71 @@ describe('ProductsService', () => {
       expect(variantRepo.fillPhysicalDimensionsIfAbsent).toHaveBeenCalledWith(fills);
       expect(variantRepo.recordPhysicalDimensions).not.toHaveBeenCalled();
       expect(filled).toBe(1);
+    });
+  });
+
+  describe('recordVariantCost (#3588)', () => {
+    it('should record a valid cost including 0.00', async () => {
+      variantRepo.recordCost.mockResolvedValue(true);
+
+      await service.recordVariantCost('v1', { netUnitCost: '0.00', currency: 'PLN' }, 'u1');
+
+      expect(variantRepo.recordCost).toHaveBeenCalledWith(
+        'v1',
+        { netUnitCost: '0.00', currency: 'PLN' },
+        'u1'
+      );
+    });
+
+    it('should clear the cost when given null', async () => {
+      variantRepo.recordCost.mockResolvedValue(true);
+
+      await service.recordVariantCost('v1', null, 'u1');
+
+      expect(variantRepo.recordCost).toHaveBeenCalledWith('v1', null, 'u1');
+    });
+
+    it('should throw ProductVariantNotFoundError when the variant does not exist', async () => {
+      variantRepo.recordCost.mockResolvedValue(false);
+
+      await expect(
+        service.recordVariantCost('nope', { netUnitCost: '1.00', currency: 'PLN' }, 'u1')
+      ).rejects.toBeInstanceOf(ProductVariantNotFoundError);
+    });
+
+    it.each([
+      ['malformed amount', { netUnitCost: '-1', currency: 'PLN' }],
+      ['too many decimals', { netUnitCost: '1.23456', currency: 'PLN' }],
+      ['lower-case currency', { netUnitCost: '1.00', currency: 'pln' }],
+      ['empty currency', { netUnitCost: '1.00', currency: '' }],
+    ])('should reject a %s without touching the repository', async (_label, cost) => {
+      await expect(service.recordVariantCost('v1', cost, 'u1')).rejects.toBeInstanceOf(
+        InvalidVariantCostError
+      );
+      expect(variantRepo.recordCost).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('fillVariantCostsIfAbsent (#3588)', () => {
+    it('should return the repository buckets', async () => {
+      const buckets = { filled: ['a'], skippedAlreadySet: ['b'], notFound: ['c'] };
+      variantRepo.fillCostIfAbsent.mockResolvedValue(buckets);
+
+      const result = await service.fillVariantCostsIfAbsent(['a', 'b', 'c'], '5.00', 'EUR', 'u1');
+
+      expect(variantRepo.fillCostIfAbsent).toHaveBeenCalledWith(
+        ['a', 'b', 'c'],
+        { netUnitCost: '5.00', currency: 'EUR' },
+        'u1'
+      );
+      expect(result).toEqual(buckets);
+    });
+
+    it('should reject an invalid pair before any write', async () => {
+      await expect(
+        service.fillVariantCostsIfAbsent(['a'], 'abc', 'EUR', 'u1')
+      ).rejects.toBeInstanceOf(InvalidVariantCostError);
+      expect(variantRepo.fillCostIfAbsent).not.toHaveBeenCalled();
     });
   });
 });
