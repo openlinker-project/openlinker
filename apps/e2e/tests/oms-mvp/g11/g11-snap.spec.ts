@@ -155,7 +155,8 @@ test.describe('G11 SNAP - cost snapshot @g11', () => {
     await page.goto(`/orders/${o1!.internalOrderId}`);
     const table = page.getByTestId('order-items-cost-table');
     await expect(table).toBeVisible();
-    await expect(table).toContainText('10.00');
+    // The column is the line total (mockup: qty 2, cost 45.60), and SNAP-1 sold 2 units at a unit cost of 10.
+    await expect(table).toContainText('20.00');
 
     await page.goto(`/orders/${o3!.internalOrderId}`);
     await expect(page.getByTestId('order-line-no-cost').first()).toBeVisible();
