@@ -1,0 +1,190 @@
+/**
+ * Live orders for the G11 suite (#3591)
+ *
+ * Every order a scenario needs is created in the SOURCE SHOP (PrestaShop via
+ * the webservice, WooCommerce via REST) and then waited for through the OL API
+ * until ingestion marks it `ready` - never inserted into OL's tables. The one
+ * thing a shop cannot do is back-date an order, so a scenario that needs
+ * "placed before the cost existed" moves the COST's timestamp instead (see
+ * `backdateCostTimestampPastNow` in `cost.ts`), which is the G11-G comparison
+ * seen from the other side.
+ *
+ * @module support/g11
+ */
+import type { ApiClient } from '../../api/api-client';
+import type { OrderRecord, Product, ProductVariant } from '../../api/api.types';
+import { WooCommerceRestClient } from '../../api/woocommerce-rest';
+import { buildWooCommerceClient } from '../woocommerce-client';
+import { waitForOrderByExternalId } from '../orders';
+import type { SyncJobs } from '../jobs';
+import { synthesizeOrder, type SynthesizedOrder } from '../order-synthesis';
+import type { Poller } from '../poller';
+// PLN is currency id 3 on the g11 stand (ps_currency); override with G11_PS_PLN_CURRENCY_ID.
+import { PlatformType, type World } from '../../world/world';
+import { lit, type G11Db } from './db';
+import type { G11Setup, G11VariantRef } from './setup';
+
+export interface G11Ctx {
+  setup: G11Setup;
+  api: ApiClient;
+  world: World;
+  jobs: SyncJobs;
+  poll: Poller;
+  db: G11Db;
+}
+
+function externalIdOf(
+  entity: { externalIds?: Array<{ connectionId: string; externalId: string }> },
+  connectionId: string,
+): string | undefined {
+  return entity.externalIds?.find((e) => e.connectionId === connectionId)?.externalId;
+}
+
+export async function loadDriver(
+  ctx: G11Ctx,
+  productId: string,
+  variantId: string,
+): Promise<{ product: Product; variant: ProductVariant }> {
+  const product = await ctx.api.products.getById(productId);
+  const variants = (await ctx.api.products.listVariants(productId)).items;
+  const variant = variants.find((v) => v.id === variantId);
+  if (!variant) throw new Error(`variant ${variantId} not found on product ${productId}`);
+  // The variants list does not carry external ids, and the shop-side order line needs the
+  // combination id; read the mapping the same way ingestion resolved it.
+  if (!variant.externalIds?.length) {
+    const rows = ctx.db.rows<{ externalId: string; connectionId: string }>(
+      `SELECT "externalId", "connectionId" FROM identifier_mappings WHERE "entityType" = 'ProductVariant' AND "internalId" = ${lit(variantId)}`,
+    );
+    variant.externalIds = rows.map((r) => ({ ...r, platformType: '' }));
+  }
+  return { product, variant };
+}
+
+/**
+ * The stand has no order destination, so every ingested order leaves a `marketplace.order.sync` job
+ * that fails on "No OrderProcessorManager destinations" and climbs its retry ladder. Those retries
+ * hold the realtime lane's per-scope slots and starve the next scenario's ingestion, so once the
+ * record is `ready` (the part G11 asserts) the debris is parked as dead. Queue housekeeping only:
+ * no order or cost row is touched.
+ */
+export function retireDestinationlessOrderJobs(ctx: G11Ctx): void {
+  ctx.db.exec(
+    `UPDATE sync_jobs SET status = 'dead' WHERE "jobType" = 'marketplace.order.sync' AND status = 'queued'
+       AND "lastError" LIKE '%No OrderProcessorManager destinations%'`,
+  );
+}
+
+/** One PrestaShop order for `quantity` units of the variant, ingested and `ready`. */
+export async function createPrestashopOrder(
+  ctx: G11Ctx,
+  productId: string,
+  ref: G11VariantRef,
+  quantity = 1,
+): Promise<SynthesizedOrder> {
+  const connectionId = ctx.setup.connections.prestashop;
+  if (!connectionId) throw new Error('setup.connections.prestashop is not set');
+  const ingestConnection = ctx.world
+    .connectionsFor(PlatformType.prestashop)
+    .find((c) => c.id === connectionId);
+  if (!ingestConnection) throw new Error(`PrestaShop connection ${connectionId} is not active on the stack`);
+  const driver = await loadDriver(ctx, productId, ref.variantId);
+  const created = await synthesizeOrder(
+    { api: ctx.api, world: ctx.world, jobs: ctx.jobs, poll: ctx.poll },
+    { driver, quantity, ingestConnection, currencyId: process.env.G11_PS_PLN_CURRENCY_ID ?? '3' },
+  );
+  retireDestinationlessOrderJobs(ctx);
+  return created;
+}
+
+export interface WooOrderResult {
+  externalOrderId: string;
+  order: OrderRecord;
+}
+
+/** One WooCommerce order with one line per entry in `lines`, ingested and `ready`. */
+export async function createWooOrder(
+  ctx: G11Ctx,
+  productId: string,
+  lines: Array<{ ref: G11VariantRef; quantity: number }>,
+): Promise<WooOrderResult> {
+  const connectionId = ctx.setup.connections.woocommerce;
+  if (!connectionId) throw new Error('setup.connections.woocommerce is not set');
+  const connection = ctx.world.connectionsFor(PlatformType.woocommerce).find((c) => c.id === connectionId);
+  const client: WooCommerceRestClient | null = buildWooCommerceClient(connection);
+  if (!connection || !client) {
+    throw new Error('WooCommerce client unavailable (connection inactive or OL_WC_CONSUMER_KEY/SECRET missing)');
+  }
+  const product = await ctx.api.products.getById(productId);
+  const wcProductId = externalIdOf(product, connectionId);
+  if (!wcProductId) throw new Error(`product ${productId} has no WooCommerce id mapped`);
+  const variants = (await ctx.api.products.listVariants(productId)).items;
+  const lineItems = lines.map(({ ref, quantity }) => {
+    const variant = variants.find((v) => v.id === ref.variantId);
+    // The variants list carries no external ids, so the variation id comes from the mapping table.
+    const variationId =
+      (variant ? externalIdOf(variant, connectionId) : undefined) ??
+      (variant
+        ? ctx.db.scalar(
+            `SELECT "externalId" FROM identifier_mappings WHERE "entityType" = 'ProductVariant' AND "internalId" = ${lit(variant.id)} AND "connectionId" = ${lit(connectionId)} LIMIT 1`,
+          ) ?? undefined
+        : undefined);
+    return {
+      productId: Number(wcProductId),
+      ...(variationId && variationId !== wcProductId ? { variationId: Number(variationId) } : {}),
+      quantity,
+    };
+  });
+  // WooCommerce stamps date_created to the second (truncated), and G11-G stores not-recorded for an order
+  // placed before the cost was entered, so a cost set a moment ago would otherwise outrank the order.
+  await new Promise((resolve) => setTimeout(resolve, 2_500));
+  const suffix = Date.now().toString(36);
+  const billing = {
+    firstName: 'Erik',
+    lastName: 'Testowy',
+    address1: 'ul. Testowa 1',
+    city: 'Warszawa',
+    postcode: '00-001',
+    country: 'PL',
+    email: `e2e-g11-${suffix}@e2e.openlinker.test`,
+  };
+  const created = await client.createOrder({ billing, lineItems, status: 'processing' });
+  const externalOrderId = String(created.id);
+  const order = await waitForOrderByExternalId(ctx.api, {
+    sourceConnectionId: connectionId,
+    externalOrderId,
+    timeoutMs: 180_000,
+    intervalMs: 3_000,
+    retriggerPoll: ctx.jobs.retriggerDirectOrderSync(connectionId, externalOrderId),
+  });
+  retireDestinationlessOrderJobs(ctx);
+  return { externalOrderId, order };
+}
+
+/** Re-run `marketplace.order.sync` for an order OL already holds (re-ingestion). */
+export async function reingestOrder(ctx: G11Ctx, connectionId: string, externalOrderId: string): Promise<void> {
+  const idempotencyKey = await ctx.jobs.trigger({
+    connectionId,
+    jobType: 'marketplace.order.sync',
+    payload: {
+      schemaVersion: 1,
+      externalOrderId,
+      sourceEventId: `${externalOrderId}:e2e-g11-reingest:${Date.now()}`,
+    },
+  });
+  // The stand has no order destination, so after ingesting the record the job's destination step
+  // fails and the job goes back on its retry ladder instead of reaching a terminal status. Ingestion
+  // (the part G11 cares about) is done once the job was attempted at all.
+  const key = idempotencyKey.replace(/'/g, "''");
+  const deadline = Date.now() + 180_000;
+  for (;;) {
+    const state = ctx.db.scalar(
+      `SELECT status || '|' || attempts FROM sync_jobs WHERE "idempotencyKey" = '${key}' AND "jobType" = 'marketplace.order.sync'`,
+    );
+    if (state) {
+      const [status, attempts] = state.split('|');
+      if (status === 'succeeded' || status === 'dead' || Number(attempts) >= 1) return;
+    }
+    if (Date.now() > deadline) throw new Error(`re-ingest job ${idempotencyKey} was never attempted (${state ?? 'no row'})`);
+    await new Promise((r) => setTimeout(r, 1000));
+  }
+}
