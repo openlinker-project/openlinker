@@ -445,11 +445,11 @@ describe('AnalyticsDataCoveragePanel (#2474)', () => {
     );
 
     expect(
-      await screen.findByText('214 lines have no cost, so they are not in margin')
+      await screen.findByText('214 lines are not in margin')
     ).toBeInTheDocument();
     expect(screen.queryByText(/orders have no cost/)).not.toBeInTheDocument();
 
-    await userEvent.click(screen.getByRole('button', { name: /214 lines have no cost/ }));
+    await userEvent.click(screen.getByRole('button', { name: /214 lines are not in margin/ }));
     expect(onOpenMarginCoverage).toHaveBeenCalledTimes(1);
   });
 });
