@@ -263,3 +263,51 @@ export function quantityScaledReconciliationEpsilon(
   }
   return Math.max(minorUnit, (minorUnit / 2) * totalQuantity);
 }
+
+/**
+ * The slice of an order the split needs, stated structurally so this leaf stays
+ * import-free (it may not value-import `orders`, and a type-only `Order` import
+ * would buy nothing here).
+ */
+export interface ShippingSplitOrderLike {
+  items: readonly {
+    taxRate?: string | null;
+    price: number;
+    unitPriceGross?: number;
+    quantity: number;
+  }[];
+  totals: {
+    shipping: number;
+    shippingGross?: number;
+    currency?: string | null;
+  };
+}
+
+/** Everything {@link splitShippingAcrossRates} is fed for one order. */
+export interface ShippingSplitInputs {
+  lines: ShippingSplitLine[];
+  shipping: number;
+  exponent: number;
+}
+
+/**
+ * The ONE place the split's inputs are derived from an order (#3905).
+ *
+ * The tax-rate gate and both document mappers used to build these separately,
+ * and the gate weighed by NET (`price`, `totals.shipping`) while the mappers
+ * weighed by GROSS - so on a net-priced source the gate approved or refused a
+ * split the issued document did not actually contain. Gross wins everywhere:
+ * the split is proportional, and net scales to gross by a different factor per
+ * rate, so a net weight shifts the shipping onto the wrong rate in a
+ * mixed-rate basket while the total still adds up.
+ */
+export function shippingSplitInputs(order: ShippingSplitOrderLike): ShippingSplitInputs {
+  return {
+    lines: order.items.map((item) => ({
+      taxRate: item.taxRate?.trim() ?? null,
+      gross: (item.unitPriceGross ?? item.price) * item.quantity,
+    })),
+    shipping: order.totals.shippingGross ?? order.totals.shipping,
+    exponent: minorUnitExponentFor(order.totals.currency),
+  };
+}

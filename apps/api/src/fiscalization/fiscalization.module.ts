@@ -10,12 +10,13 @@
  */
 import { Module } from '@nestjs/common';
 import { FiscalizationModule } from '@openlinker/core/fiscalization';
+import { IdentifierMappingModule } from '@openlinker/core/identifier-mapping';
 import { OrdersModule } from '@openlinker/core/orders';
 
 import { FiscalizationController } from './http/fiscalization.controller';
 
 @Module({
-  imports: [FiscalizationModule, OrdersModule],
+  imports: [FiscalizationModule, OrdersModule, IdentifierMappingModule],
   controllers: [FiscalizationController],
 })
 export class FiscalizationApiModule {}

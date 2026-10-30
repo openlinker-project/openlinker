@@ -98,3 +98,7 @@ export * from './domain/types/sales-document-in-flight.types';
 // nothing so both can value-import it without either owning the other's
 // wording.
 export * from './domain/types/gross-price-eligibility.types';
+// The delivery line on a sales document: per-country name, VAT-rate mode and the
+// rate suffix a receipt name carries (#3905, ADR-079). Import-free, here for the
+// same reason the shipping split is.
+export * from './domain/types/delivery-line.types';

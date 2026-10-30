@@ -3,7 +3,11 @@
  *
  * @module libs/core/src/invoicing/domain/types
  */
-import { describeMissingTaxRate, findMissingTaxRate } from './order-tax-rate-gate.types';
+import {
+  describeMissingTaxRate,
+  findMissingTaxRate,
+  findOrderTaxRateGap,
+} from './order-tax-rate-gate.types';
 
 describe('findMissingTaxRate', () => {
   it('should report nothing when every line carries a rate', () => {
@@ -62,5 +66,32 @@ describe('describeMissingTaxRate', () => {
     expect(describeMissingTaxRate({ lineCount: 2, totalLines: 2, firstLineRef: null })).toBe(
       '2 of 2 lines carry no tax rate'
     );
+  });
+});
+
+describe('findOrderTaxRateGap (#3905)', () => {
+  const zeroGrossBasket = [{ productId: 'ol_product_a', taxRate: '23', gross: 0 }];
+
+  it('should report the shipping scope when the split is uncomputable in goods mode', () => {
+    expect(findOrderTaxRateGap(zeroGrossBasket, 10)?.scope).toBe('shipping');
+  });
+
+  it('should not block on the shipping split when the delivery is fixed or spread', () => {
+    expect(findOrderTaxRateGap(zeroGrossBasket, 10, { skipShippingSplit: true })).toBeNull();
+  });
+
+  it('should still report a line with no rate when the shipping split is skipped', () => {
+    const finding = findOrderTaxRateGap([{ productId: 'ol_product_a', gross: 5 }], 10, {
+      skipShippingSplit: true,
+    });
+    expect(finding?.lineCount).toBe(1);
+  });
+
+  it('should accept a gross basket in a zero-decimal currency using its exponent', () => {
+    expect(
+      findOrderTaxRateGap([{ productId: 'ol_product_a', taxRate: '10', gross: 1000 }], 300, {
+        minorUnitExponent: 0,
+      })
+    ).toBeNull();
   });
 });

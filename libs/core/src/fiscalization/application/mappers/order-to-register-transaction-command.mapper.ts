@@ -23,11 +23,16 @@ import type { Order, OrderItem } from '@openlinker/core/orders';
 import { decodeBuyerTaxIdColumn } from '@openlinker/core/orders/types';
 import {
   describeNetPricedOrderRefusal,
-  minorUnitExponentFor,
+  formatReceiptLineName,
+  resolveDeliveryLine,
+  shippingSplitInputs,
+  spreadDeliveryAcrossLines,
   splitShippingAcrossRates,
   describeDiscountCause,
   quantityScaledReconciliationEpsilon,
+  type ResolvedDeliveryLine,
 } from '@openlinker/core/sales-documents';
+import { Logger } from '@openlinker/shared/logging';
 
 import type {
   FiscalRecipient,
@@ -37,12 +42,7 @@ import type {
 import { InvalidFiscalLineError } from './errors/invalid-fiscal-line.error';
 import { UnsupportedFiscalPriceTreatmentError } from './errors/unsupported-fiscal-price-treatment.error';
 
-/**
- * Default carrier-neutral label for the shipping line. Core has no locale, so
- * this English default is intentionally untranslated; a caller that has a locale
- * overrides it via {@link OrderToRegisterTransactionCommandInput.shippingLineName}.
- */
-const SHIPPING_LINE_NAME = 'Shipping';
+const logger = new Logger('OrderToRegisterTransactionCommandMapper');
 
 /** Inputs to {@link toRegisterTransactionCommand}. */
 export interface OrderToRegisterTransactionCommandInput {
@@ -54,8 +54,18 @@ export interface OrderToRegisterTransactionCommandInput {
    * run one.
    */
   idempotencyKey: string;
-  /** Optional locale-specific override for the shipping line label. */
+  /**
+   * Legacy single name for the shipping line (`config.invoicing.shippingLineName`).
+   * Used only when no {@link deliveryLine} is supplied (ADR-079 decision 5).
+   */
   shippingLineName?: string;
+  /**
+   * The delivery line resolved from the order-source connection's
+   * `deliveryOnDocuments` (#3905, ADR-079). Absent resolves to the legacy name
+   * (or `Shipping`) in `goods` mode - the pre-#3905 behaviour plus the rate
+   * suffix a receipt name always carries.
+   */
+  deliveryLine?: ResolvedDeliveryLine;
   /**
    * The order's `order_records.taxRateEra` marker (#2260 review), passed
    * through onto the command so the write-path tax-rate guard can exempt
@@ -99,6 +109,8 @@ export function toRegisterTransactionCommand(
   input: OrderToRegisterTransactionCommandInput,
 ): RegisterTransactionCommand {
   const { order, connectionId, idempotencyKey, shippingLineName, taxRateEra, buyerTaxId } = input;
+  const deliveryLine =
+    input.deliveryLine ?? resolveDeliveryLine(null, { legacyName: shippingLineName });
 
   // GROSS-only: a net-priced order would register net amounts labelled as gross,
   // and core may not convert (it never computes or defaults a tax rate). Fail
@@ -115,14 +127,7 @@ export function toRegisterTransactionCommand(
 
   const lines = order.items.map((item) => toFiscalLine(item, order.id));
 
-  lines.push(
-    ...toShippingLines(
-      order.totals.shippingGross ?? order.totals.shipping,
-      order.items,
-      order.totals.currency,
-      shippingLineName
-    ),
-  );
+  lines.push(...applyDelivery(lines, order, deliveryLine));
 
   assertLinesSumToTotal(lines, order.totals, order.id);
 
@@ -279,50 +284,77 @@ function toFiscalLine(item: OrderItem, orderId: string): FiscalTransactionLine {
 }
 
 /**
- * Compose the shipping lines from the order's gross shipping cost, or none when
- * the buyer paid nothing for shipping (no phantom line).
+ * Apply the delivery to the receipt: returns the delivery lines to append, and
+ * in `spread` mode raises the product lines in place instead and returns none.
  *
- * Shipping inherits the basket's rate, and a mixed-rate basket splits it in
- * proportion to line gross so the parts sum exactly to what the buyer paid
- * (#2248) - a fiscal receipt has to state a rate per line just as an invoice
- * does. When the split is uncomputable, one line with an empty rate is emitted
- * and the service refuses the whole registration; dropping the shipping instead
- * would understate the receipt total.
+ * A receipt registers what was paid, so it never carries a zero delivery line
+ * (ADR-079 decision 7) - `freeDelivery` is an invoice-only setting.
+ *
+ * Every delivery line NAMES its rate (ADR-079 decision 4). A fiscal printer
+ * binds a name to one rate and refuses it for good once the rate goes up after
+ * it went down, so one name at two rates on a mixed basket is what produced
+ * eparagony's errorCode 83; a name that changes with the rate cannot.
+ *
+ * Shipping inherits the basket's rate in `goods` mode, and a mixed-rate basket
+ * splits it in proportion to line gross so the parts sum exactly to what the
+ * buyer paid (#2248). When the split is uncomputable, one line with an empty
+ * rate is emitted and the service refuses the whole registration; dropping the
+ * shipping instead would understate the receipt total.
  */
-function toShippingLines(
-  shipping: number,
-  items: readonly OrderItem[],
-  currency: string | null | undefined,
-  name?: string,
+function applyDelivery(
+  lines: FiscalTransactionLine[],
+  order: Order,
+  delivery: ResolvedDeliveryLine
 ): FiscalTransactionLine[] {
+  const { lines: splitLines, shipping, exponent } = shippingSplitInputs(order);
   if (!Number.isFinite(shipping) || shipping <= 0) {
     return [];
   }
-  const label = name?.trim() || SHIPPING_LINE_NAME;
-  const parts = splitShippingAcrossRates(
-    shipping,
-    items.map((item) => ({
-      taxRate: item.taxRate?.trim() ?? null,
-      // The field is named `gross` and must be given one. On a gross-priced
-      // source `price` already is; on a net-priced one that reports its own
-      // gross figure (#3365) it is not, and a net weight is wrong here for a
-      // specific reason: the split is proportional, so a uniform-rate basket
-      // is unaffected, but a MIXED-rate one shifts, because net scales to
-      // gross by a different factor per rate. The shipping then lands under
-      // the wrong rate - silently, with the total still adding up.
-      gross: (item.unitPriceGross ?? item.price) * item.quantity,
-    })),
-    // The order's own currency decides how many decimals the parts round to, so
-    // they sum exactly in the units the buyer paid in (#2260 review).
-    minorUnitExponentFor(currency),
-  );
+
+  if (delivery.rate === 'fixed' && delivery.fixedRate !== undefined) {
+    return [
+      {
+        name: formatReceiptLineName(delivery.name, delivery.fixedRate, delivery.rateFormat),
+        quantity: 1,
+        unitPriceGross: shipping,
+        taxRate: delivery.fixedRate,
+        sku: null,
+      },
+    ];
+  }
+
+  if (delivery.rate === 'spread') {
+    const increases = spreadDeliveryAcrossLines(shipping, lines, exponent);
+    if (increases !== null) {
+      lines.forEach((line, index) => {
+        line.unitPriceGross = line.unitPriceGross + increases[index];
+      });
+      return [];
+    }
+    // The amount cannot be folded in exactly (no quantity-1 line to take the
+    // remainder), so fall back rather than invent a price.
+    logger.warn(
+      `Order ${order.id}: delivery cannot be spread across product lines; ` +
+        'falling back to a separate delivery line'
+    );
+  }
+
+  const parts = splitShippingAcrossRates(shipping, splitLines, exponent);
 
   if (parts === null) {
-    return [{ name: label, quantity: 1, unitPriceGross: shipping, taxRate: '', sku: null }];
+    return [
+      {
+        name: formatReceiptLineName(delivery.name, '', delivery.rateFormat),
+        quantity: 1,
+        unitPriceGross: shipping,
+        taxRate: '',
+        sku: null,
+      },
+    ];
   }
 
   return parts.map((part) => ({
-    name: label,
+    name: formatReceiptLineName(delivery.name, part.taxRate, delivery.rateFormat),
     quantity: 1,
     unitPriceGross: part.amount,
     taxRate: part.taxRate,
