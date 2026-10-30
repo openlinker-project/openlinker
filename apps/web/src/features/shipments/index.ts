@@ -41,6 +41,9 @@ export {
 } from './lib/processor';
 export type { ProcessorFilter, ProcessorKind } from './lib/processor';
 export { ProcessorBadge } from './components/processor-badge';
+// Exported so a page that composes several features can invalidate shipments after
+// a cross-feature act (the order cancel voids labels, #3541).
+export { shipmentsQueryKeys } from './api/shipments.query-keys';
 export { useShipmentsQuery } from './hooks/use-shipments-query';
 export { useOrderShipmentsQuery } from './hooks/use-order-shipments-query';
 export { useGenerateLabelMutation } from './hooks/use-generate-label-mutation';

@@ -3365,7 +3365,7 @@ textarea,
   min-width: 0;
 }
 
-@media (max-width: 640px) {
+@media (max-width: 599.98px) {
   .toolbar select,
   .toolbar .control--select,
   .toolbar .control {
@@ -6451,7 +6451,7 @@ a.delivery-rider-banner__button:focus-visible {
   color: var(--status-success-fg);
 }
 
-@media (max-width: 640px) {
+@media (max-width: 599.98px) {
   .eparagony-seller__address-row--street {
     grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   }
@@ -8374,7 +8374,7 @@ a.kpi-card:focus-visible {
    onto two lines. Scoped to this page's own aria-label, not a shared rule -
    the mapping tab bar's own mobile treatment (`aria-label='Mapping types'`,
    above) targets the wrong element there and isn't a working reference. */
-@media (max-width: 640px) {
+@media (max-width: 599.98px) {
   .tabs__list[aria-label='Listing lifecycle'] {
     flex-wrap: nowrap;
     overflow-x: auto;
@@ -10958,7 +10958,7 @@ a.kpi-card:focus-visible {
    ------------------------------------------ */
 
 .new-prompt-template-dialog {
-  max-width: 640px;
+  max-width: 599.98px;
 }
 
 .new-prompt-template-form {
@@ -15414,7 +15414,7 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
 
 .bulk-editor__acc-head { display: none; }
 
-@media (max-width: 640px) {
+@media (max-width: 599.98px) {
   .bulk-editor__content { max-width: 100%; max-height: 100vh; height: 100dvh; border-radius: 0; }
   .bulk-editor__body { display: block; overflow-y: auto; -webkit-overflow-scrolling: touch; }
   .bulk-editor__rail { display: none; }
@@ -15627,7 +15627,7 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
 }
 .bulk-editor__catpick-foot .grow { flex: 1; color: var(--text-muted); font-size: 12px; min-width: 140px; }
 
-@media (max-width: 640px) {
+@media (max-width: 599.98px) {
   .bulk-editor__catpick { max-width: 100%; max-height: 100vh; height: 100dvh; border-radius: 0; }
 }
 
@@ -21703,7 +21703,7 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
   line-height: 1.6;
 }
 
-@media (max-width: 640px) {
+@media (max-width: 599.98px) {
   .infakt-webhook__exchange { grid-template-columns: 1fr; }
   .infakt-webhook__seam { height: 1px; width: 100%; }
   .infakt-webhook__seam-glyph { transform: translate(-50%, -50%) rotate(90deg); }
@@ -21808,7 +21808,7 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
  * the source value heads the card and each remaining cell stacks beneath its
  * column label, surfaced from the visually-hidden <th> via `data-label`.
  */
-@media (max-width: 640px) {
+@media (max-width: 599.98px) {
   .mapping-pair__row {
     grid-template-columns: 1fr;
   }
@@ -23144,7 +23144,7 @@ legend.analytics-settings-dialog__label {
 .frame-grid--2 {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
-@media (max-width: 640px) {
+@media (max-width: 599.98px) {
   .frame-grid--2 {
     grid-template-columns: 1fr;
   }
@@ -23711,7 +23711,7 @@ legend.analytics-settings-dialog__label {
   white-space: nowrap;
 }
 
-@media (max-width: 640px) {
+@media (max-width: 599.98px) {
   .returns-order-panel__item {
     grid-template-columns: minmax(0, 1fr);
   }
@@ -24696,7 +24696,7 @@ legend.analytics-settings-dialog__label {
  * spans the row and clears the 44 px touch target the 28/32 px desktop button
  * heights do not reach on their own.
  */
-@media (max-width: 640px) {
+@media (max-width: 599.98px) {
   .automation-rules__state {
     width: 100%;
   }
@@ -26304,7 +26304,7 @@ legend.analytics-settings-dialog__label {
   margin-left: auto;
 }
 
-@media (max-width: 640px) {
+@media (max-width: 599.98px) {
   .assign-packing-work-card {
     align-items: stretch;
     flex-wrap: wrap;
@@ -26619,7 +26619,7 @@ legend.analytics-settings-dialog__label {
    and the overflow trigger right-aligned beneath it. AFTER the base rules
    above on purpose - a media block earlier in the file loses to them on
    source order, which is how this row used to stay `nowrap` on a phone. */
-@media (max-width: 640px) {
+@media (max-width: 599.98px) {
   .assign-packing-work-actions {
     flex-wrap: wrap;
     justify-content: flex-end;
@@ -27056,7 +27056,7 @@ legend.analytics-settings-dialog__label {
   color: var(--text-secondary);
 }
 
-@media (max-width: 640px) {
+@media (max-width: 599.98px) {
   .fulfilment-work-detail__compare {
     grid-template-columns: 1fr;
   }
@@ -28306,7 +28306,7 @@ legend.analytics-settings-dialog__label {
 }
 
 /* The mockup's own breakpoint for both. */
-@media (max-width: 640px) {
+@media (max-width: 599.98px) {
   .bench-hero {
     flex-direction: column;
     align-items: flex-start;
@@ -29806,7 +29806,7 @@ legend.analytics-settings-dialog__label {
 
 /* One column on a phone: even the thumbnail's own column costs more than it
    returns when the name beside it has 46 characters of room. */
-@media (max-width: 640px) {
+@media (max-width: 599.98px) {
   .bench-parcel-line {
     grid-template-columns: minmax(0, 1fr);
   }
@@ -30428,7 +30428,7 @@ legend.analytics-settings-dialog__label {
   border-radius: var(--radius-md);
 }
 
-@media (max-width: 640px) {
+@media (max-width: 599.98px) {
   .pricing-sync__rule-form {
     grid-template-columns: 1fr;
   }
@@ -31114,4 +31114,93 @@ legend.analytics-settings-dialog__label {
 .bench-work-row__buyer-note strong {
   font-weight: 600;
   color: var(--status-info-fg);
+}
+
+/* Order cancel dialog and result notice (#3541, mockup M1) */
+.order-cancel-impact {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  background: var(--bg-surface);
+}
+
+.order-cancel-impact__row {
+  display: grid;
+  grid-template-columns: 8.5rem minmax(0, 1fr);
+  gap: var(--space-2) var(--space-4);
+  align-items: start;
+  padding: var(--space-3);
+  border-top: 1px solid var(--border-subtle);
+  font-size: 0.8125rem;
+}
+
+.order-cancel-impact__row:first-child {
+  border-top: 0;
+}
+
+.order-cancel-impact__head {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-1);
+}
+
+.order-cancel-impact__what {
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.order-cancel-impact__sub {
+  display: block;
+  font-weight: 400;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.order-cancel-impact__how {
+  color: var(--text-secondary);
+  line-height: 1.45;
+}
+
+.order-cancel-list {
+  margin: var(--space-1) 0 0;
+  padding-left: 1.1rem;
+  display: grid;
+  gap: 2px;
+}
+
+.order-cancel-check {
+  display: flex;
+  gap: var(--space-2);
+  align-items: flex-start;
+  font-size: 0.8125rem;
+  margin-top: var(--space-2);
+}
+
+.order-cancel-diff del {
+  color: var(--text-muted);
+  text-decoration: line-through;
+  text-decoration-color: var(--status-error);
+}
+
+.order-cancel-diff ins {
+  text-decoration: none;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+@media (max-width: 599.98px) {
+  .order-cancel-impact__row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .order-cancel-impact__head {
+    flex-direction: row;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: var(--space-3);
+  }
 }

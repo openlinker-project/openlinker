@@ -157,6 +157,16 @@ interface OrderActivityTimelineProps {
    * every existing caller compiles untouched and renders no automation events.
    */
   automationRuns?: readonly AutomationRun[];
+  /**
+   * Rows appended AFTER the merged history, undated ones included (#3541).
+   *
+   * For a feature whose newest facts are current-state rather than dated - the
+   * order cancel's "Refund not confirmed yet" has no instant to sort on and
+   * must not be given one. `extraEvents` cannot carry it: that prop is dated by
+   * type so the merge has a defensible position for every row. Optional; absent
+   * leaves the rendered order identical to before the prop existed.
+   */
+  trailingEvents?: TimelineEvent[];
 }
 
 const STATUS_PAST_TENSE: Record<OrderSyncStatusValue, string> = {
@@ -626,6 +636,7 @@ export function OrderActivityTimeline({
   extraEvents,
   holds,
   automationRuns,
+  trailingEvents,
 }: OrderActivityTimelineProps): ReactElement {
   const authored = useMemo(
     () =>
@@ -670,8 +681,8 @@ export function OrderActivityTimeline({
   );
 
   const events = useMemo(
-    () => mergeTimelineEvents(authored, extraEvents ?? []),
-    [authored, extraEvents],
+    () => [...mergeTimelineEvents(authored, extraEvents ?? []), ...(trailingEvents ?? [])],
+    [authored, extraEvents, trailingEvents],
   );
 
   if (events.length === 0) {
