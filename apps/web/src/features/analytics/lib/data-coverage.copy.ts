@@ -100,13 +100,13 @@ export function deriveCoverageRowCopy(row: CoverageCategoryRow): DataCoverageRow
       };
     case 'no-cost':
       return {
-        headline: `${n} ${word} have no cost, so they are not in margin`,
-        sub: 'Margin is worked out only over lines with a recorded cost. Enter the cost on the product page.',
+        headline: `${n} ${word} are not in margin`,
+        sub: 'Margin counts only lines with a usable cost: a missing cost, a cost entered after the sale, an unmatched product or a different currency leaves a line out.',
         tone: 'info',
         badgeLabel: 'Info',
         actionLabel: 'See in margin',
         modalTitle: `${n} ${word} are not in margin`,
-        modalDescription: 'These order lines have no recorded cost, so margin leaves them out.',
+        modalDescription: 'Margin leaves these lines out because the cost is missing, was entered after the sale, the product is unmatched, or the cost currency differs from the order.',
       };
     default: {
       const exhaustive: never = row.category;
