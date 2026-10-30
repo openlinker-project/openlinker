@@ -289,6 +289,17 @@ export default defineConfig({
       use: { ...devices['Desktop Chrome'], storageState: STORAGE_STATE },
     },
     {
+      // OMS MVP order screens (G03 #3536, G05 #3546): mockup baselines plus
+      // golden paths. MUTATING - the G05 specs seed orders in Postgres and
+      // cancel or edit a located order - so `retries: 0`: a retry would act
+      // on an order the first attempt already changed.
+      name: 'oms-mvp',
+      testMatch: /oms-mvp\/.*\.spec\.ts/,
+      retries: 0,
+      dependencies: ['setup'],
+      use: { ...devices['Desktop Chrome'], storageState: STORAGE_STATE },
+    },
+    {
       // Order-ingestion behaviour asserted against a real source (#2277 — the
       // per-order currency). MUTATING: each spec synthesizes PrestaShop orders
       // through the webservice (customer, address, cart, order), so `retries: 0`
