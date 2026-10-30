@@ -61,6 +61,10 @@ import {
   UnsupportedFiscalPriceTreatmentError,
   toRegisterTransactionCommand,
 } from '@openlinker/core/fiscalization';
+import { normalizeShippingLineName } from '@openlinker/core/invoicing';
+import { CONNECTION_PORT_TOKEN, ConnectionPort } from '@openlinker/core/identifier-mapping';
+import { readDeliveryOnDocuments, resolveDeliveryLine } from '@openlinker/core/sales-documents';
+import type { DeliveryOnDocumentsConfig, ResolvedDeliveryLine } from '@openlinker/core/sales-documents';
 import type {
   FiscalRegistrationRecord,
   FiscalRegistrationRequestAccepted,
@@ -110,7 +114,49 @@ export class FiscalizationController {
     private readonly fiscalRegistrations: IFiscalRegistrationService,
     @Inject(ORDER_RECORD_SERVICE_TOKEN)
     private readonly orders: IOrderRecordService,
+    @Inject(CONNECTION_PORT_TOKEN)
+    private readonly connectionPort: ConnectionPort,
   ) {}
+
+  /**
+   * Resolve the delivery line for an order (#3905, ADR-079): the order-source
+   * connection's per-country settings, then the fiscal connection's legacy
+   * label, then the neutral default. A failed lookup degrades to the legacy
+   * label and never blocks the registration.
+   */
+  private async resolveDeliveryLineFor(
+    order: Order,
+    sourceConnectionId: string,
+    fiscalConnectionId: string,
+  ): Promise<ResolvedDeliveryLine> {
+    let legacyName: string | undefined;
+    let deliveryConfig: DeliveryOnDocumentsConfig | null = null;
+    try {
+      const fiscal = await this.connectionPort.get(fiscalConnectionId);
+      legacyName = normalizeShippingLineName(fiscal.config.invoicing?.shippingLineName);
+    } catch (error) {
+      this.logger.debug(
+        `Shipping-line label lookup failed for connection ${fiscalConnectionId}: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+    }
+    try {
+      const source = await this.connectionPort.get(sourceConnectionId);
+      deliveryConfig = readDeliveryOnDocuments(source.config);
+    } catch (error) {
+      this.logger.debug(
+        `Delivery settings lookup failed for connection ${sourceConnectionId}: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+    }
+    return resolveDeliveryLine(deliveryConfig, {
+      countryIso2: order.shippingAddress?.country,
+      methodId: order.shipping?.methodId,
+      legacyName,
+    });
+  }
 
   @Roles('admin')
   @Post('fiscal-registrations')
@@ -160,6 +206,14 @@ export class FiscalizationController {
         order,
         connectionId: dto.connectionId,
         idempotencyKey: fiscalRegistrationIdempotencyKey(dto.connectionId, dto.orderId),
+        // #3905, ADR-079: the same resolved delivery line the auto path uses.
+        // Without it a manual registration always said `Shipping`, whatever
+        // the operator had configured.
+        deliveryLine: await this.resolveDeliveryLineFor(
+          order,
+          record.sourceConnectionId,
+          dto.connectionId,
+        ),
         // #2260 review: a manual registration of a pre-rollout order must reach
         // the same verdict the manual invoice path does, so the marker travels
         // with the command rather than being re-derived (or lost) downstream.

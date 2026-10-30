@@ -93,6 +93,17 @@ export interface TaxRateGateBasketLine extends TaxRateGateLine {
   gross: number;
 }
 
+/** Optional knobs of {@link findOrderTaxRateGap}. */
+export interface FindOrderTaxRateGapOptions {
+  /**
+   * The order currency's minor-unit exponent, so the gate rounds the split the
+   * way the composer will (#3905). Absent keeps the default of two decimals.
+   */
+  minorUnitExponent?: number;
+  /** True when the resolved delivery line needs no rate split (`fixed` / `spread`). */
+  skipShippingSplit?: boolean;
+}
+
 /**
  * The ORDER-level gate: can a document state what tax was charged, for every
  * line it will actually compose?
@@ -113,14 +124,21 @@ export interface TaxRateGateBasketLine extends TaxRateGateLine {
  */
 export function findOrderTaxRateGap(
   lines: readonly TaxRateGateBasketLine[],
-  shipping: number
+  shipping: number,
+  options: FindOrderTaxRateGapOptions = {}
 ): MissingTaxRateFinding | null {
   const missing = findMissingTaxRate(lines);
   if (missing) return missing;
 
+  // A `fixed` or `spread` delivery (ADR-079 decision 6) never asks the basket
+  // which rate the shipping sits at, so the split cannot be the reason to hold
+  // the document. The item rates above are still checked.
+  if (options.skipShippingSplit === true) return null;
+
   const parts = splitShippingAcrossRates(
     shipping,
-    lines.map((line) => ({ taxRate: line.taxRate?.trim() ?? null, gross: line.gross }))
+    lines.map((line) => ({ taxRate: line.taxRate?.trim() ?? null, gross: line.gross })),
+    options.minorUnitExponent
   );
   if (parts !== null) return null;
 
