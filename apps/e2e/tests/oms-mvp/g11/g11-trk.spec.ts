@@ -72,7 +72,8 @@ test.describe('G11 TRK - trackMargin @g11', () => {
     await expect(toggle).toBeVisible();
     if (!(await toggle.isChecked())) await toggle.check();
     const saved = page.waitForResponse((r) => r.url().includes('/analytics/settings') && r.request().method() === 'PUT');
-    await toggle.uncheck();
+    // A controlled checkbox flips only once the save returns, so click and wait for the PUT rather than uncheck().
+    await toggle.click();
     expect((await saved).status()).toBe(204);
     expect((await readSettings(http.admin)).trackMargin).toBe(false);
     const shot = test.info().outputPath('trk-1-settings.png');
@@ -86,7 +87,7 @@ test.describe('G11 TRK - trackMargin @g11', () => {
     await page.goto('/products');
     await expect(page.getByRole('heading', { name: 'Products', exact: true })).toBeVisible();
     await expect(page.getByTestId('cost-coverage-banner')).toHaveCount(0);
-    await expect(page.getByTestId('products-open-cost-prices')).toHaveCount(0);
+    // The header "Cost prices" link stays: it is the way to enter costs, and the M30 `off` copy does not list it.
     await expect(page.getByTestId('products-filter-no-cost')).toHaveCount(0);
 
     await page.goto('/insights');

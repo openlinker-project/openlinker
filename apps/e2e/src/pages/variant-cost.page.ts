@@ -90,6 +90,11 @@ export class VariantCostPage {
     return this.page.getByTestId('variant-cost-error');
   }
 
+  /** The reason sentence of one variant's read-only drawer (every drawer carries its own copy). */
+  readonlyReasonFor(sku: string): Locator {
+    return this.page.locator(`#variant-cost-ro-${slugOf(sku)}`);
+  }
+
   get readonlyReason(): Locator {
     return this.page.getByTestId('variant-cost-readonly-reason');
   }

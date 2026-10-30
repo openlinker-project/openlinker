@@ -57,7 +57,7 @@ test.describe('G11 ROLE - cost permissions @g11', () => {
     await cost.open(a1!.sku);
     await expect(cost.value(a1!.sku)).toContainText('6.00');
     await expect(cost.editButton(a1!.sku)).toBeDisabled();
-    await expect(cost.readonlyReason).toBeVisible();
+    await expect(cost.readonlyReasonFor(a1!.sku)).toBeVisible();
     await expect(cost.clearButton(a1!.sku)).toHaveCount(0);
 
     const list = new CostWorklistPage(page);
@@ -110,7 +110,7 @@ test.describe('G11 ROLE - cost permissions @g11', () => {
     await cost.goto(psA!.productId);
     await cost.open(a1!.sku);
     await expect(cost.value(a1!.sku)).toBeVisible();
-    await expect(cost.readonlyReason).toBeVisible();
+    await expect(cost.readonlyReasonFor(a1!.sku)).toBeVisible();
     await expect(cost.editButton(a1!.sku)).toBeDisabled();
 
     const margin = new MarginPanelPage(page);
@@ -143,7 +143,10 @@ test.describe('G11 ROLE - cost permissions @g11', () => {
     const margin = new MarginPanelPage(page);
     await margin.goto(liveWindow());
     await expect(margin.panel.or(margin.missingCostEmpty).first()).toBeVisible();
-    const banner = margin.costBanner;
+    // Only the Products banner is dismissable (M30 products-banner); the Analytics one has no dismiss.
+    await page.goto('/products');
+    const banner = page.getByTestId('cost-coverage-banner');
+    await expect(page.getByRole('heading', { name: 'Products', exact: true })).toBeVisible();
     if (await banner.count()) {
       await page.getByTestId('cost-coverage-banner-dismiss').click();
       await expect(banner).toHaveCount(0);
