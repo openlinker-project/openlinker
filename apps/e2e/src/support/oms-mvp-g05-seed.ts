@@ -101,9 +101,15 @@ export async function seedBuyerNoteOrders(): Promise<readonly string[]> {
     for (const [index, orderId] of G05_ORDER_IDS.entries()) {
       await client.query(
         `INSERT INTO order_records
-           ("internalOrderId", "sourceConnectionId", "orderSnapshot", "recordStatus", "placedAt", "currency", "totalAmount", "buyerNote", "hasBuyerNote", "createdAt", "updatedAt")
-         VALUES ($1, $2, $3::jsonb, 'ready', now(), 'PLN', 39.98, $4, true, now(), now())`,
-        [orderId, SOURCE_CONNECTION_ID, snapshot(`E2E-G05-BULK-00${index + 1}`), G05_NOTE_TEXT],
+           ("internalOrderId", "sourceConnectionId", "orderSnapshot", "recordStatus", "placedAt", "currency", "totalAmount", "buyerNote", "hasBuyerNote", "searchText", "createdAt", "updatedAt")
+         VALUES ($1, $2, $3::jsonb, 'ready', now(), 'PLN', 39.98, $4, true, $5, now(), now())`,
+        [
+          orderId,
+          SOURCE_CONNECTION_ID,
+          snapshot(`E2E-G05-BULK-00${index + 1}`),
+          G05_NOTE_TEXT,
+          `e2e-g05-bulk-00${index + 1}`,
+        ],
       );
     }
     return [...G05_ORDER_IDS];
@@ -253,7 +259,7 @@ export async function seedBenchOrderWithTwoParcels(): Promise<{
   const first = await seedBenchOrderWithBuyerNote();
   await withClient('seedBenchOrderWithTwoParcels', async (client) => {
     await clearStateRows(client);
-    const user = await client.query<{ id: string }>(`SELECT id FROM users ORDER BY "createdAt" LIMIT 1`);
+    const user = await client.query<{ id: string }>(`SELECT id FROM users ORDER BY created_at LIMIT 1`);
     const userId = user.rows[0]?.id;
     if (userId === undefined) throw new Error('no user row to attribute the second parcel reading to');
     const work = await client.query<{

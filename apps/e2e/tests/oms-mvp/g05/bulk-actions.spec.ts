@@ -21,9 +21,9 @@ import { G05_MOCKUP_FILES } from '../../../src/pages/oms-mvp-g05-mockup.page';
 import { G05_ORDER_IDS, clearG05Seed, seedBuyerNoteOrders } from '../../../src/support/oms-mvp-g05-seed';
 
 async function selectSeededOrders(page: Page): Promise<void> {
-  await page.goto('/orders');
+  await page.goto('/orders?search=e2e-g05-bulk');
   for (const orderId of G05_ORDER_IDS) {
-    await page.getByLabel(`Select ${orderId}`).check();
+    await page.getByLabel(`Select ${orderId}`).check({ timeout: 15_000 });
   }
   await expect(page.getByTestId('orders-bulk-bar')).toBeVisible();
 }
@@ -80,7 +80,6 @@ test.describe('G05 golden path 5 - bulk actions (#3546)', () => {
   test('should report a row for every order when three orders are bulk cancelled', async ({ page }) => {
     await selectSeededOrders(page);
     const cancel = page.getByTestId('orders-bulk-cancel');
-    test.skip((await cancel.count()) === 0, 'Bulk cancel is admin-only and not offered to this session.');
     await cancel.click();
 
     await expect(page.getByTestId('orders-bulk-cancel-dialog')).toBeVisible();
