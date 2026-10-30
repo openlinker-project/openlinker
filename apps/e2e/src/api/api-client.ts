@@ -83,6 +83,7 @@ import type {
   SalesDocumentMarketsResponse,
   SalesDocumentRule,
   AcceptedFiscalRegistration,
+  FiscalRegistrationProgressView,
   FiscalRegistrationRecordSummary,
   SendInvoiceEmailInput,
   SendInvoiceEmailResult,
@@ -792,6 +793,16 @@ export class ApiClient {
         method: 'POST',
         body: JSON.stringify(input),
       }),
+    /**
+     * GET /orders/:orderId/fiscal-registration - the poll target for a registration
+     * that outlives the request that asked for it. A pure read: `progress` is
+     * `registered` only once the provider accepted the sale, and `record` is null
+     * while the job is still queued.
+     */
+    progress: (orderId: string, connectionId: string): Promise<FiscalRegistrationProgressView> =>
+      this.request<FiscalRegistrationProgressView>(
+        `/orders/${orderId}/fiscal-registration${buildQuery({ connectionId })}`,
+      ),
     /** Every fiscal-registration record an order holds, newest first, across connections. */
     listForOrder: (orderId: string): Promise<FiscalRegistrationRecordSummary[]> =>
       this.request<FiscalRegistrationRecordSummary[]>(
