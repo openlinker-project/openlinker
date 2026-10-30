@@ -148,6 +148,14 @@ describe('SalesAnalyticsController CSV export', () => {
     ).resolves.toBeInstanceOf(StreamableFile);
   });
 
+  it('should answer EXPORT_RANGE_TOO_WIDE (not the screen cap) for 401 days in CSV mode', async () => {
+    const { controller } = build();
+    const to401 = new Date(new Date(FROM).getTime() + 401 * 86_400_000).toISOString();
+    await expect(
+      controller.getSalesAnalytics({ from: FROM, to: to401, format: 'csv' })
+    ).rejects.toMatchObject({ response: { code: 'EXPORT_RANGE_TOO_WIDE' } });
+  });
+
   it('should leave JSON untouched and keep its 400-day cap when format is absent', async () => {
     const { controller } = build();
     const json = await controller.getSalesAnalytics({ from: FROM, to: '2026-09-01T00:00:00.000Z' });
