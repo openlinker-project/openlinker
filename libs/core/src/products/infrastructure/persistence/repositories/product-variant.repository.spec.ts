@@ -342,3 +342,19 @@ describe('ProductVariantRepository cost (#3588)', () => {
     expect(sql).toContain('"netUnitCost" IS NULL');
   });
 });
+
+describe('ProductVariantRepository stable variant order (#3588)', () => {
+  it('should read a product\'s variants ordered by sku (nulls last) then id', async () => {
+    const find = jest.fn().mockResolvedValue([]);
+    const repository = new ProductVariantRepository({
+      find,
+    } as unknown as Repository<ProductVariantOrmEntity>);
+
+    await repository.findByProductId('ol_product_1');
+
+    expect(find).toHaveBeenCalledWith({
+      where: { productId: 'ol_product_1' },
+      order: { sku: { direction: 'ASC', nulls: 'LAST' }, id: 'ASC' },
+    });
+  });
+});
