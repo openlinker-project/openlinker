@@ -12,6 +12,7 @@
  *
  * @module apps/api/src/fiscalization/http
  */
+import { CONNECTION_PORT_TOKEN } from '@openlinker/core/identifier-mapping';
 import { Test } from '@nestjs/testing';
 import {
   BadGatewayException,
@@ -145,6 +146,10 @@ describe('FiscalizationController', () => {
       providers: [
         { provide: FISCAL_REGISTRATION_SERVICE_TOKEN, useValue: service },
         { provide: ORDER_RECORD_SERVICE_TOKEN, useValue: orders },
+        {
+          provide: CONNECTION_PORT_TOKEN,
+          useValue: { get: jest.fn().mockResolvedValue({ config: {} }) },
+        },
       ],
     }).compile();
 

@@ -173,7 +173,11 @@ import type {
 import {
   SalesDocumentUncountedUnresolvedReasonValues,
   isTaxRateEnforced,
+  readDeliveryOnDocuments,
+  resolveDeliveryLine,
+  shippingSplitInputs,
 } from '@openlinker/core/sales-documents';
+import type { ResolvedDeliveryLine } from '@openlinker/core/sales-documents';
 import { Logger } from '@openlinker/shared/logging';
 import {
   describeMissingTaxRate,
@@ -1005,14 +1009,28 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
       // passed an items-only scan, enqueued, composed a blank-rate shipping line
       // and then threw on every attempt with no reason persisted anywhere - the
       // silent decline ADR-041 §54 forbids.
+      // The source connection is loaded BEFORE the gate (#3905): its
+      // `deliveryOnDocuments` decides whether the shipping needs a rate split
+      // at all, and the gate must ask the question the composer will.
+      const sourceConnection = await this.loadSourceConnection(sourceConnectionId);
+      const deliveryLine = this.resolveDeliveryLineFor(order, sourceConnection, connection);
       if (isTaxRateEnforced(taxRateEra)) {
+        // GROSS inputs, the same ones both mappers split by (#3905). The gate
+        // used to weigh by net `price` and `totals.shipping`, so on a
+        // net-priced source it judged a split the issued document did not hold.
+        const splitInputs = shippingSplitInputs(order);
         const missingRate = findOrderTaxRateGap(
-          order.items.map((item) => ({
+          order.items.map((item, index) => ({
             productId: item.productId,
             taxRate: item.taxRate,
-            gross: item.price * item.quantity,
+            gross: splitInputs.lines[index].gross,
           })),
-          order.totals.shipping,
+          splitInputs.shipping,
+          {
+            minorUnitExponent: splitInputs.exponent,
+            skipShippingSplit: deliveryLine.rate !== 'goods',
+            sourceShippingTaxRate: order.totals.shippingTaxRate,
+          },
         );
         if (missingRate) {
           return await this.reportBlock(
@@ -1040,7 +1058,7 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
       // #1694: resolve the source connection's neutral platformType for the
       // per-source numbering axis. Best-effort — a lookup failure leaves it
       // absent (routing falls back past the source axis), never aborting issuance.
-      const sourcePlatformType = await this.resolveSourcePlatformType(sourceConnectionId);
+      const sourcePlatformType = this.platformTypeOf(sourceConnection);
       const payload = this.composeInvoicePayload(
         order,
         connection.id,
@@ -1052,6 +1070,7 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
         sourcePlatformType,
         taxRateEra,
         buyerTaxId,
+        deliveryLine,
       );
 
       await this.syncJobs.schedule({
@@ -1144,14 +1163,28 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
       // could only fail, and persisted no reason for it, which is the silent
       // decline ADR-041 §54 forbids. The persisted reason columns are
       // document-kind-agnostic, so nothing else has to change to render it.
+      // The source connection is loaded BEFORE the gate (#3905): its
+      // `deliveryOnDocuments` decides whether the shipping needs a rate split
+      // at all, and the gate must ask the question the composer will.
+      const sourceConnection = await this.loadSourceConnection(sourceConnectionId);
+      const deliveryLine = this.resolveDeliveryLineFor(order, sourceConnection, connection);
       if (isTaxRateEnforced(taxRateEra)) {
+        // GROSS inputs, the same ones both mappers split by (#3905). The gate
+        // used to weigh by net `price` and `totals.shipping`, so on a
+        // net-priced source it judged a split the issued document did not hold.
+        const splitInputs = shippingSplitInputs(order);
         const missingRate = findOrderTaxRateGap(
-          order.items.map((item) => ({
+          order.items.map((item, index) => ({
             productId: item.productId,
             taxRate: item.taxRate,
-            gross: item.price * item.quantity,
+            gross: splitInputs.lines[index].gross,
           })),
-          order.totals.shipping,
+          splitInputs.shipping,
+          {
+            minorUnitExponent: splitInputs.exponent,
+            skipShippingSplit: deliveryLine.rate !== 'goods',
+            sourceShippingTaxRate: order.totals.shippingTaxRate,
+          },
         );
         if (missingRate) {
           return await this.reportBlock(
@@ -1187,6 +1220,7 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
         sourceEventId,
         taxRateEra,
         buyerTaxId,
+        deliveryLine,
       );
 
       await this.syncJobs.schedule({
@@ -1412,6 +1446,7 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
     sourcePlatformType?: string,
     taxRateEra?: string | null,
     buyerTaxId?: string | null,
+    deliveryLine?: ResolvedDeliveryLine,
   ): InvoicingIssuePayloadV1 {
     // The mapper owns the neutral Order->command rules and may surface
     // InvalidBuyerProfileError / UnsupportedPriceTreatmentError (both PII-clean).
@@ -1447,6 +1482,7 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
       connectionId: invoicingConnectionId,
       idempotencyKey,
       shippingLineName,
+      deliveryLine,
       taxRateEra,
       buyerTaxId: buyerTaxNumber.length > 0 ? { value: buyerTaxNumber } : null,
     });
@@ -1538,6 +1574,7 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
     sourceEventId?: string,
     taxRateEra?: string | null,
     buyerTaxId?: string | null,
+    deliveryLine?: ResolvedDeliveryLine,
   ): FiscalizationRegisterPayloadV1 {
     // eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/no-var-requires -- lazy require needed to break a CommonJS barrel-load cycle with `@openlinker/core/fiscalization` (see the doc comment above)
     const fiscalization = require('@openlinker/core/fiscalization') as {
@@ -1550,6 +1587,7 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
       connectionId: connection.id,
       idempotencyKey,
       shippingLineName: this.readShippingLineName(connection),
+      deliveryLine,
       taxRateEra,
       // #3187, ADR-073 decision 1 — the persisted three-state column; the
       // mapper decodes it and stamps the command only when there is a real
@@ -1588,27 +1626,50 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
   }
 
   /**
-   * Resolve the source connection's neutral `platformType` for the per-source
-   * numbering axis (#1694). Best-effort: any lookup failure returns `undefined`
-   * (the source axis is simply not applied) rather than breaking issuance — the
-   * downstream numbering resolution degrades gracefully past a missing source.
+   * Load the order-source connection once (#1694, #3905). Best-effort: a lookup
+   * failure returns `null` and the callers degrade - no per-source numbering
+   * axis, and the delivery line falls back to the legacy name - rather than
+   * breaking issuance.
    */
-  private async resolveSourcePlatformType(
-    sourceConnectionId: string,
-  ): Promise<string | undefined> {
+  private async loadSourceConnection(sourceConnectionId: string): Promise<Connection | null> {
     try {
-      const connection = await this.connectionPort.get(sourceConnectionId);
-      const platformType = connection.platformType.trim();
-      return platformType.length > 0 ? platformType : undefined;
+      return await this.connectionPort.get(sourceConnectionId);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       this.logger.debug(
-        `Source platformType lookup failed for connection ${sourceConnectionId}; ` +
-          `per-source numbering axis not applied: ${message}`,
+        `Source connection lookup failed for connection ${sourceConnectionId}; ` +
+          `per-source numbering axis and delivery settings not applied: ${message}`,
       );
-      return undefined;
+      return null;
     }
   }
+
+  /** The source connection's neutral `platformType` for the numbering axis (#1694). */
+  private platformTypeOf(sourceConnection: Connection | null): string | undefined {
+    const platformType = sourceConnection?.platformType.trim();
+    return platformType !== undefined && platformType.length > 0 ? platformType : undefined;
+  }
+
+  /**
+   * Resolve the delivery line for this order (#3905, ADR-079): the source
+   * connection's per-country settings, then the invoicing connection's legacy
+   * name, then the neutral default.
+   */
+  private resolveDeliveryLineFor(
+    order: Order,
+    sourceConnection: Connection | null,
+    invoicingConnection: Connection,
+  ): ResolvedDeliveryLine {
+    return resolveDeliveryLine(
+      sourceConnection !== null ? readDeliveryOnDocuments(sourceConnection.config) : null,
+      {
+        countryIso2: order.shippingAddress?.country,
+        methodId: order.shipping?.methodId,
+        legacyName: this.readShippingLineName(invoicingConnection),
+      },
+    );
+  }
+
 }
 
 /**

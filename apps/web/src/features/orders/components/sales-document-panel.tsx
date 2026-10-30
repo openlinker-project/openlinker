@@ -68,6 +68,11 @@ import { Link } from 'react-router-dom';
 import { Dialog, DialogContent, DialogTitle } from '../../../shared/ui/dialog';
 
 import { useConnectionsQuery } from '../../connections';
+import {
+  formatReceiptLineName,
+  readDeliveryOnDocuments,
+  resolveDeliveryLine,
+} from '../../delivery-on-documents/lib/delivery-line';
 import { captureDemoEvent } from '../../demo';
 import { useTranslation } from '../../../shared/i18n';
 import { useToast } from '../../../shared/ui/toast-provider';
@@ -138,6 +143,7 @@ import {
 } from '../../fiscalization';
 
 import type { IssueInvoiceOptions } from '../../invoicing';
+import type { ResolvedDeliveryLine } from '../../delivery-on-documents/lib/delivery-line';
 import type { OrderRecord } from '../api/orders.types';
 import { parseOrderSnapshot } from '../api/order-snapshot.schema';
 import type { ParsedOrderItem, ParsedOrderTotals } from '../api/order-snapshot.schema';
@@ -714,7 +720,21 @@ export function SalesDocumentPanel({ order }: SalesDocumentPanelProps): ReactEle
   // document before it exists; one unknown line rate makes the proportion
   // uncomputable, so the whole preview collapses to a single waiting row rather
   // than showing a split OL cannot stand behind.
-  const shippingSplitPreview = renderShippingSplitPreview(snapshotItems, parsedSnapshot.totals, t);
+  // #3909 - the delivery line's wording comes from the ORDER-SOURCE connection's
+  // config (ADR-079). An unreadable config (non-admin sessions do not receive
+  // it) resolves to the default "Shipping" line, which is what core does too.
+  const sourceConfig = allConnections.find((c) => c.id === order.sourceConnectionId)?.config;
+  const deliveryLine = resolveDeliveryLine(readDeliveryOnDocuments(sourceConfig), {
+    countryIso2: parsedSnapshot.shippingAddress?.country ?? null,
+    methodId: parsedSnapshot.shipping?.methodId ?? null,
+  });
+  const shippingSplitPreview = renderShippingSplitPreview(
+    snapshotItems,
+    parsedSnapshot.totals,
+    deliveryLine,
+    order.salesDocument?.documentKind === 'fiscal-receipt',
+    t,
+  );
   // #2260 review - which subject the block is about. Read once, so the copy, the
   // refusal beside the button and the receipt-side alert cannot disagree.
   const missingRateScope = missingRateReason ? resolveMissingTaxRateScope(rateLessLines) : null;
@@ -1675,10 +1695,38 @@ function collectRateLessLines(items: readonly ParsedOrderItem[]): RateLessLine[]
 function renderShippingSplitPreview(
   items: readonly ParsedOrderItem[],
   totals: ParsedOrderTotals | undefined,
+  deliveryLine: ResolvedDeliveryLine,
+  isReceipt: boolean,
   t: (key: string, fallback: string) => string,
 ): ReactElement | null {
-  const shipping = totals?.shipping ?? 0;
+  // Core splits the GROSS shipping by GROSS line weight; a net-priced source
+  // carries the gross figures beside the net ones (#3909).
+  const shipping = totals?.shippingGross ?? totals?.shipping ?? 0;
   if (!Number.isFinite(shipping) || shipping <= 0 || items.length === 0) return null;
+
+  // Fixed mode is one line at the operator's rate and spread mode has no
+  // delivery line at all, so neither splits across the basket.
+  if (deliveryLine.rate === 'fixed' && deliveryLine.fixedRate !== undefined) {
+    const baseName = isReceipt ? deliveryLine.name : deliveryLine.invoiceName;
+    const name = isReceipt
+      ? formatReceiptLineName(baseName, deliveryLine.fixedRate, deliveryLine.rateFormat)
+      : baseName;
+    return (
+      <p className="panel-copy">
+        {`${name}: ${formatAmount(shipping, totals?.currency)} at ${formatTaxRate(deliveryLine.fixedRate)}`}
+      </p>
+    );
+  }
+  if (deliveryLine.rate === 'spread') {
+    return (
+      <p className="panel-copy">
+        {t(
+          'invoice.panel.shippingSpread',
+          'Shipping is folded into the product lines; the document carries no separate delivery line.',
+        )}
+      </p>
+    );
+  }
 
   const anyUnknown = items.some((item) => !item.taxRate);
   if (anyUnknown) {
@@ -1699,7 +1747,7 @@ function renderShippingSplitPreview(
     shipping,
     items.map((item) => ({
       taxRate: item.taxRate ?? null,
-      gross: item.price * item.quantity,
+      gross: (item.unitPriceGross ?? item.price) * item.quantity,
     })),
     minorUnitExponentFor(totals?.currency),
   );
@@ -1708,12 +1756,19 @@ function renderShippingSplitPreview(
   // preview a split that does not exist.
   if (parts === null || parts.length <= 1) return null;
 
+  // Receipt lines carry the rate in the name (a printer binds a name to one
+  // rate); an invoice line never does.
+  const baseName = isReceipt ? deliveryLine.name : deliveryLine.invoiceName;
+  const lineName = (taxRate: string): string =>
+    isReceipt ? formatReceiptLineName(baseName, taxRate, deliveryLine.rateFormat) : baseName;
+
   return (
     <p className="panel-copy">
       {t('invoice.panel.shippingSplit', 'Shipping is split across the rates in this basket:')}{' '}
       {parts
         .map(
-          (part) => `${formatAmount(part.amount, totals?.currency)} at ${formatTaxRate(part.taxRate)}`,
+          (part) =>
+            `${lineName(part.taxRate)}: ${formatAmount(part.amount, totals?.currency)} at ${formatTaxRate(part.taxRate)}`,
         )
         .join(', ')}
       .

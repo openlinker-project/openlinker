@@ -27,6 +27,7 @@ import { ConfirmDialog } from '../../shared/ui/confirm-dialog';
 import { MappingPanel, type MappingRow } from '../../features/mappings/components/MappingPanel';
 import { RoutingRulesPanel } from '../../features/mappings/components/routing-rules-panel';
 import { AttributeRulesPanel } from '../../features/mappings/components/attribute-rules-panel';
+import { DeliveryOnDocumentsPanel } from '../../features/delivery-on-documents';
 import { publishDestinationKind } from '../../features/listings';
 import {
   MappingPairingBar,
@@ -52,7 +53,14 @@ import {
 } from '../../features/mappings/api/mappings.types';
 import { LoadingState, ErrorState, EmptyState } from '../../shared/ui/feedback-state';
 
-type TabId = 'fulfillment' | 'status' | 'carriers' | 'payments' | 'order-states' | 'attribute-rules';
+type TabId =
+  | 'fulfillment'
+  | 'status'
+  | 'carriers'
+  | 'payments'
+  | 'order-states'
+  | 'attribute-rules'
+  | 'delivery-on-documents';
 
 const ALL_TABS: TabId[] = [
   'fulfillment',
@@ -61,6 +69,7 @@ const ALL_TABS: TabId[] = [
   'payments',
   'order-states',
   'attribute-rules',
+  'delivery-on-documents',
 ];
 
 function isTabId(value: string): value is TabId {
@@ -73,7 +82,8 @@ function isTabId(value: string): value is TabId {
  * instead of the whole 6-list bundle on page load. Order-states' source axis
  * is the static `OL_ORDER_STATUS_OPTIONS`, so it only needs the destination
  * status list. Attribute rules (#1841) read no option bundle at all — the panel
- * owns its own data — so the tab contributes no keys.
+ * owns its own data — so the tab contributes no keys. The same holds for
+ * Delivery on documents (#3908).
  */
 const OPTION_KEYS_BY_TAB: Record<TabId, (keyof MappingOptions)[]> = {
   fulfillment: ['allegroDeliveryMethods'],
@@ -82,6 +92,7 @@ const OPTION_KEYS_BY_TAB: Record<TabId, (keyof MappingOptions)[]> = {
   payments: ['allegroPaymentProviders', 'prestashopPaymentModules'],
   'order-states': ['prestashopOrderStatuses'],
   'attribute-rules': [],
+  'delivery-on-documents': [],
 };
 
 /**
@@ -89,7 +100,7 @@ const OPTION_KEYS_BY_TAB: Record<TabId, (keyof MappingOptions)[]> = {
  * attribute rules render their own panel-owned empty states.
  */
 const EMPTY_STATE_MESSAGE_BY_TAB: Record<
-  Exclude<TabId, 'fulfillment' | 'attribute-rules'>,
+  Exclude<TabId, 'fulfillment' | 'attribute-rules' | 'delivery-on-documents'>,
   string
 > = {
   status:
@@ -227,6 +238,7 @@ export function ConnectionMappingsPage(): ReactElement {
     requestedTab !== null &&
     isTabId(requestedTab) &&
     (requestedTab !== 'fulfillment' || supportsOrderSource) &&
+    (requestedTab !== 'delivery-on-documents' || supportsOrderSource) &&
     (requestedTab !== 'order-states' || supportsOrderProcessor);
   const defaultTab: TabId = requestedTabAvailable ? requestedTab : fallbackTab;
   const [visitedTabs, setVisitedTabs] = useState<ReadonlySet<TabId>>(new Set());
@@ -305,6 +317,7 @@ export function ConnectionMappingsPage(): ReactElement {
       payments: make('payments'),
       'order-states': make('order-states'),
       'attribute-rules': make('attribute-rules'),
+      'delivery-on-documents': make('delivery-on-documents'),
     } satisfies Record<TabId, (dirty: boolean) => void>;
   }, []);
 
@@ -455,6 +468,9 @@ export function ConnectionMappingsPage(): ReactElement {
     ...(supportsOrderProcessor ? [{ id: 'order-states' as const, label: 'Order States' }] : []),
     ...(supportsAttributeRules
       ? [{ id: 'attribute-rules' as const, label: 'Attribute Rules' }]
+      : []),
+    ...(supportsOrderSource
+      ? [{ id: 'delivery-on-documents' as const, label: 'Delivery on documents' }]
       : []),
   ];
 
@@ -702,6 +718,15 @@ export function ConnectionMappingsPage(): ReactElement {
         {supportsAttributeRules && (
           <TabsContent value="attribute-rules">
             <AttributeRulesPanel connectionId={connectionId} />
+          </TabsContent>
+        )}
+
+        {supportsOrderSource && (
+          <TabsContent value="delivery-on-documents">
+            <DeliveryOnDocumentsPanel
+              connectionId={sourceConnectionId}
+              onDirtyChange={dirtyHandlers['delivery-on-documents']}
+            />
           </TabsContent>
         )}
       </Tabs>

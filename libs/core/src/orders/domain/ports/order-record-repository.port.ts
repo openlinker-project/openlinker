@@ -34,6 +34,7 @@ import type {
 import type { OrderFxIntent, OrderFxStamp } from '../types/order-fx.types';
 import type { StampedReportingCurrencyCount } from '../types/order-fx-read.types';
 import type { OrderAmendmentChange } from '../order-amendment-diff';
+import type { DeliveryCountryFact } from '../types/delivery-country-facts.types';
 import type { DailyOrderAggregateRow, SalesAnalyticsFilters } from '../types/order-sales-analytics.types';
 import type {
   CoverageDetectionPagination,
@@ -121,6 +122,18 @@ export interface OrderRecordRepositoryPort {
    * {@link findEarliestOrderDateByConnection}.
    */
   countOrdersByRoutingCountrySince(since: Date): Promise<{ country: string; orderCount: number }[]>;
+
+  /**
+   * Per-delivery-country facts for ONE source connection over a window (#3907,
+   * ADR-079 decision 8): order count, line VAT rates seen, most frequent
+   * currency, and the latest `ready` order as an anonymous example.
+   *
+   * Reads the same delivery-country expression routing evaluates on, scoped by
+   * `sourceConnectionId`, most orders first, capped at 20 countries. A bounded
+   * number of queries (counts, rates, examples), never one per country beyond
+   * the single example fetch. Returns no buyer data.
+   */
+  getDeliveryCountryFacts(sourceConnectionId: string, since: Date): Promise<DeliveryCountryFact[]>;
 
   /**
    * Upsert order record (create or update)

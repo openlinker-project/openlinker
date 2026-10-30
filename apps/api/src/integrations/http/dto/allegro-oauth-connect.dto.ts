@@ -6,7 +6,7 @@
  *
  * @module apps/api/src/integrations/http/dto
  */
-import { IsString, IsNotEmpty, IsOptional, IsUrl, IsUUID } from 'class-validator';
+import { IsString, IsNotEmpty, IsObject, IsOptional, IsUrl, IsUUID } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 /**
@@ -83,5 +83,16 @@ export class AllegroOAuthConnectDto {
   @IsUUID()
   @IsOptional()
   connectionId?: string;
-}
 
+  @ApiPropertyOptional({
+    description:
+      'How delivery appears on receipts and invoices, seeded into the new connection config ' +
+      'as `deliveryOnDocuments` (#3911, ADR-079). Validated when the connection is created. ' +
+      'Ignored when re-authenticating an existing connection.',
+    type: 'object',
+    additionalProperties: true,
+  })
+  @IsObject()
+  @IsOptional()
+  deliveryOnDocuments?: Record<string, unknown>;
+}

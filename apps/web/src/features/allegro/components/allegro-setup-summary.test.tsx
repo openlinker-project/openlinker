@@ -57,4 +57,30 @@ describe('AllegroSetupSummary', () => {
     );
     expect(screen.getByText('— not linked —')).toBeInTheDocument();
   });
+
+  it('shows what delivery on documents will save from the sales documents step', () => {
+    render(
+      <AllegroSetupSummary
+        values={ALLEGRO_SETUP_DEFAULT_VALUES}
+        stepIndex={3}
+        selectedCatalogName={null}
+        suggestions={[]}
+      />
+    );
+    expect(screen.getByText('Delivery on documents')).toBeInTheDocument();
+    expect(screen.getByText('All other countries')).toBeInTheDocument();
+    expect(screen.getByText('Shipping, same as the products')).toBeInTheDocument();
+  });
+
+  it('hides the delivery section on re-authentication', () => {
+    render(
+      <AllegroSetupSummary
+        values={ALLEGRO_SETUP_DEFAULT_VALUES}
+        stepIndex={4}
+        selectedCatalogName={null}
+        showDelivery={false}
+      />
+    );
+    expect(screen.queryByText('Delivery on documents')).toBeNull();
+  });
 });

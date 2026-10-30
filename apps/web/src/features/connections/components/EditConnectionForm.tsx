@@ -784,6 +784,17 @@ export function EditConnectionForm({ connection }: EditConnectionFormProps): Rea
       if (needsMasterCatalog) {
         delete mergedConfig.pricingRule;
       }
+      // #3908 - `config.deliveryOnDocuments` is owned by the mappings page's
+      // "Delivery on documents" tab, which writes it immediately. This form's
+      // `configText` snapshot predates any such save, so letting it through
+      // would restore a stale copy over the operator's newer settings. Keep
+      // whatever the fresh connection holds, and never let the snapshot add
+      // the key where the connection has none.
+      if (fresh.config.deliveryOnDocuments === undefined) {
+        delete mergedConfig.deliveryOnDocuments;
+      } else {
+        mergedConfig.deliveryOnDocuments = fresh.config.deliveryOnDocuments;
+      }
       const saved = await updateConnection.mutateAsync({
         connectionId: connection.id,
         input: { ...input, config: mergedConfig },

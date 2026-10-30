@@ -1130,6 +1130,20 @@ export interface AcceptedFiscalRegistration {
   redrivenFromDead: boolean;
 }
 
+/** GET /orders/:orderId/fiscal-registration - the progress read behind the receipt panel. */
+export interface FiscalRegistrationProgressView {
+  progress:
+    | 'not-requested'
+    | 'queued'
+    | 'running'
+    | 'stalled'
+    | 'interrupted'
+    | 'registered'
+    | 'rejected'
+    | 'in-doubt';
+  record: FiscalRegistrationRecordSummary | null;
+}
+
 export interface FiscalRegistrationRecordSummary {
   id: string;
   connectionId: string;

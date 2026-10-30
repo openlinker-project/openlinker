@@ -33,6 +33,7 @@ import type {
   SalesDocumentMarketDiscovery,
 } from '@openlinker/core/sales-documents';
 import type { OrderAmendmentChange } from '../../domain/order-amendment-diff';
+import type { DeliveryCountryFact } from '../../domain/types/delivery-country-facts.types';
 import type {
   SalesAnalyticsFilters,
   SalesAndChannelAnalytics,
@@ -194,6 +195,14 @@ export interface IOrderRecordService {
    * clock; pass it explicitly in tests.
    */
   discoverSalesDocumentMarkets(now?: Date): Promise<SalesDocumentMarketDiscovery>;
+
+  /**
+   * What one source connection's orders since `since` say about each delivery
+   * country (#3907, ADR-079 decision 8): counts, VAT rates seen, currency and
+   * an anonymous example order. Read-only, carries no buyer data, capped at 20
+   * countries, most orders first.
+   */
+  getDeliveryCountryFacts(sourceConnectionId: string, since: Date): Promise<DeliveryCountryFact[]>;
 
   /**
    * Push a per-order fulfillment rollup (#1108) onto the order record. The

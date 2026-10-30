@@ -8355,6 +8355,14 @@ a.kpi-card:focus-visible {
   outline: none;
 }
 
+/* An inactive Radix panel renders an empty `<div hidden>`, and the
+   `display: flex` above beat the UA `[hidden]` rule, so each one still took a
+   16px gap in the parent `.tabs` flex column - six hidden tabs pushed the
+   last tab's content ~100px down (#3912). */
+.tabs__content[hidden] {
+  display: none;
+}
+
 /* ── forceMount'd panel that exists only as an `aria-controls` target
    (#2448 / #2450 review) ────────────────────────────────────────────
    A `forceMount`ed, non-selected Radix panel keeps `present === true`, so
@@ -30913,3 +30921,195 @@ legend.analytics-settings-dialog__label {
 .ksef-issue-options__lines-scroll {
   overflow-x: auto;
 }
+
+/* ── Delivery on documents (#3908) ──
+   Ported from the approved mockup (docs/plans/mockups/delivery-on-documents.html).
+   Tokens only. Secondary text and a slightly darkened link colour throughout:
+   the muted token measured 3.4-4.2:1 on these surfaces, under the 4.5:1 AA
+   floor the #3912 contrast check enforces. */
+.dd-inline { display: inline-flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
+.dd-hint { margin: 0; font-size: 13px; color: var(--text-secondary); }
+
+/* ── Panel ── */
+.dd-panel { display: grid; gap: var(--space-4); max-width: 64rem; }
+.dd-panel > .panel__header { margin-bottom: 0; }
+.dd-lead { margin: calc(var(--space-3) * -1) 0 0; max-width: 78ch; }
+.dd-provider { margin: 0; font-size: 13px; color: var(--text-secondary); }
+
+/* ── Suggestion strip (first run) ── */
+.dd-suggest {
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--border-default);
+  border-left: 3px solid var(--accent-primary);
+  border-radius: var(--radius-md);
+  background: var(--bg-surface);
+  font-size: 14px;
+}
+.dd-suggest strong { color: var(--text-primary); font-weight: 600; }
+
+/* ── The rules table ── */
+.dd-table { overflow-x: auto; }
+.dd-table .data-table { width: 100%; }
+.dd-table th.dd-who { font-family: inherit; text-transform: none; letter-spacing: 0; font-size: 13px; color: var(--text-primary); background: none; position: static; }
+.dd-who { display: grid; gap: 2px; min-width: 11rem; }
+.dd-who__name { font-weight: 600; }
+.dd-row--other td, .dd-row--other th { background: var(--bg-surface-muted); }
+.dd-row--other { border-top: 2px solid var(--border-default); }
+.dd-namecell { display: grid; gap: 2px; }
+.dd-namecell__line { display: inline-flex; align-items: center; gap: var(--space-2); }
+/* The delivery line name is the cell's whole point, so it must never be cut:
+   lift the generic 20ch ellipsis `.data-table td .mono-text` applies. */
+.data-table td .dd-namecell__line { max-width: none; overflow: visible; white-space: normal; flex-wrap: wrap; }
+.dd-ratetag { white-space: nowrap; font-family: var(--font-sans); font-size: 11px; color: var(--text-secondary); padding: 0 6px; border: 1px dashed var(--border-default); border-radius: 9999px; }
+.dd-actions { white-space: nowrap; text-align: right !important; }
+.dd-actions .button + .button { margin-left: var(--space-1); }
+.dd-under { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-3); }
+.dd-under .dd-more { margin-left: var(--space-2); }
+
+/* ── Example ── */
+.dd-example { display: grid; gap: var(--space-3); padding-top: var(--space-2); }
+.dd-example__head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-3); }
+.dd-example__head h4 { margin: 0; font-size: 15px; font-weight: 600; color: var(--text-primary); }
+.dd-example__head .select { width: auto; min-width: 14rem; }
+
+/* What the documents say. Mono, because it is literally what gets printed. */
+.dd-sample { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-3); }
+.dd-sample__order, .dd-sample__col {
+  display: grid; align-content: start; gap: 4px;
+  padding: var(--space-3);
+  border-radius: var(--radius-md);
+  min-width: 0;
+}
+.dd-sample__order { border: 1px dashed var(--border-default); }
+.dd-sample__col { background: var(--bg-surface-muted); }
+.dd-sample__label { font-size: 12px; color: var(--text-secondary); }
+.dd-sample__line {
+  display: flex; justify-content: space-between; gap: var(--space-3);
+  font-family: var(--font-mono); font-size: 13px; font-variant-numeric: tabular-nums; color: var(--text-primary);
+}
+.dd-sample__line > span:first-child { overflow-wrap: anywhere; }
+.dd-sample__line > span:last-child { white-space: nowrap; }
+.dd-sample__line .muted-text { font-size: 12px; }
+.dd-sample__line--muted { color: var(--text-secondary); font-family: var(--font-sans); }
+.dd-sample__note { grid-column: 1 / -1; }
+
+/* ── Editor dialog ── */
+.dd-editor { display: grid; gap: var(--space-4); }
+.dd-editor__grid { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); gap: var(--space-5); align-items: start; }
+.dd-editor__form { display: grid; gap: var(--space-3); min-width: 0; }
+.dd-editor__form .form-field { margin: 0; }
+.dd-editor__pair { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: var(--space-3); }
+.dd-editor__preview {
+  position: sticky;
+  top: 0;
+  display: grid;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--bg-surface);
+}
+.dd-editor__preview .dd-sample { grid-template-columns: minmax(0, 1fr); }
+.dd-preview-title { font-size: 13px; font-weight: 600; color: var(--text-secondary); }
+.dd-fixed { display: grid; gap: var(--space-2); }
+.dd-fixed__seen { display: grid; gap: var(--space-1); }
+.dd-fixed__seen .chip { font: inherit; font-size: 13px; cursor: pointer; }
+.dd-name__own .dd-inline { justify-content: space-between; }
+.dd-editor__preview-head { display: grid; gap: var(--space-2); }
+.dd-name { display: grid; gap: var(--space-1); }
+.dd-name__own { display: grid; gap: 2px; }
+.dd-name__own .form-field__description,
+.dd-name__own .form-field__error { margin: 0; font-size: 12px; }
+.dd-more {
+  justify-self: start;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  color: color-mix(in oklch, var(--text-link) 82%, var(--text-primary));
+  background: none;
+  border: 0;
+  padding: 0;
+  height: auto;
+  cursor: pointer;
+}
+.dd-more:focus-visible { outline: none; box-shadow: var(--shadow-focus); border-radius: 4px; }
+.dd-more__body { display: grid; gap: var(--space-3); padding-top: var(--space-2); border-top: 1px solid var(--border-subtle); }
+.dd-check { margin: 0; }
+.dd-methods { display: grid; gap: var(--space-2); }
+.dd-methods__title { font-size: 13px; font-weight: 600; color: var(--text-secondary); }
+.dd-methods__row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 12rem) auto; gap: var(--space-2); align-items: start; }
+.dd-methods__method { padding-top: 6px; font-size: 13px; }
+
+@media (max-width: 860px) {
+  .dd-editor__grid { grid-template-columns: minmax(0, 1fr); }
+  .dd-editor__preview { position: static; }
+  .dd-sample { grid-template-columns: minmax(0, 1fr); }
+}
+.dd-table--stacked thead { display: none; }
+.dd-table--stacked tr { display: grid; grid-template-columns: minmax(0, 1fr); padding: var(--space-2) 0; }
+.dd-table--stacked tr + tr { border-top: 1px solid var(--border-subtle); }
+.dd-table--stacked .dd-row--other, .dd-table--stacked .dd-row--other th, .dd-table--stacked .dd-row--other td { background: var(--bg-surface-muted); }
+.dd-table--stacked th, .dd-table--stacked td { border-top: 0 !important; padding: var(--space-1) var(--space-4) !important; }
+.dd-table--stacked td[data-label] { display: grid; grid-template-columns: 7.5rem minmax(0, 1fr); gap: var(--space-2); align-items: baseline; }
+.dd-table--stacked td[data-label]::before { content: attr(data-label); font-size: 12px; color: var(--text-secondary); }
+.dd-table--stacked .dd-actions { text-align: left !important; padding-top: var(--space-2) !important; }
+@media (max-width: 640px) {
+  .dd-methods__row { grid-template-columns: minmax(0, 1fr); }
+  .dd-table thead { display: none; }
+  .dd-table tr { display: grid; grid-template-columns: minmax(0, 1fr); padding: var(--space-2) 0; }
+  .dd-table tr + tr { border-top: 1px solid var(--border-subtle); }
+  .dd-table .dd-row--other, .dd-table .dd-row--other th, .dd-table .dd-row--other td { background: var(--bg-surface-muted); }
+  .dd-table th, .dd-table td { border-top: 0 !important; padding: var(--space-1) var(--space-4) !important; }
+  .dd-table td[data-label] { display: grid; grid-template-columns: 7.5rem minmax(0, 1fr); gap: var(--space-2); align-items: baseline; }
+  .dd-table td[data-label]::before { content: attr(data-label); font-size: 12px; color: var(--text-secondary); }
+  .dd-table .dd-actions { text-align: left !important; padding-top: var(--space-2) !important; }
+}
+
+/* ── v5: calmer head, tips, collapsed example ── */
+.dd-panel__head { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: var(--space-3); }
+.dd-panel__head h3 { margin: 0 0 var(--space-1); }
+.dd-panel__head p { margin: 0; }
+.dd-head { gap: var(--space-1); }
+.dd-table thead .dd-head { font: inherit; }
+.dd-example { border-top: 1px solid var(--border-subtle); padding-top: var(--space-3); }
+.dd-example > summary { cursor: pointer; font-size: 14px; font-weight: 500; color: color-mix(in oklch, var(--text-link) 82%, var(--text-primary)); width: max-content; }
+.dd-example > summary:focus-visible { outline: none; box-shadow: var(--shadow-focus); border-radius: 4px; }
+.dd-example__body { display: grid; gap: var(--space-3); padding-top: var(--space-3); }
+.dd-example__body > .select { max-width: 18rem; }
+.dd-remove { margin-right: auto; color: var(--status-error-fg); }
+
+.dd-row--other th.dd-who { background: var(--bg-surface-muted); }
+/* ── Wizard step (#3911): one question, two answers ── */
+.dd-wizard { display: grid; gap: var(--space-4); }
+.dd-wizard__intro { display: grid; gap: var(--space-1); }
+.dd-wizard__intro h3 { margin: 0; font-size: 17px; font-weight: 600; color: var(--text-primary); }
+.dd-wizard__intro p { margin: 0; max-width: 72ch; }
+.dd-choices { display: grid; gap: var(--space-3); }
+.dd-choice {
+  display: grid; grid-template-columns: auto minmax(0, 1fr); gap: var(--space-3); align-items: start;
+  padding: var(--space-4);
+  border: 1px solid var(--border-default); border-radius: var(--radius-lg);
+  background: var(--bg-surface); cursor: pointer;
+}
+.dd-choice:hover { border-color: var(--border-strong); }
+.dd-choice--on { border-color: var(--accent-primary); box-shadow: 0 0 0 1px var(--accent-primary) inset; }
+.dd-choice input { margin-top: 3px; accent-color: var(--accent-primary); }
+.dd-choice input:focus-visible { outline: none; box-shadow: var(--shadow-focus); }
+.dd-choice__body { display: grid; gap: var(--space-2); min-width: 0; }
+.dd-choice__title { display: inline-flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); font-size: 15px; font-weight: 600; color: var(--text-primary); }
+.dd-choice__text { display: inline-flex; flex-wrap: wrap; align-items: center; gap: var(--space-1); font-size: 14px; color: var(--text-secondary); line-height: 1.45; }
+.dd-mini {
+  display: grid; gap: 2px; max-width: 22rem;
+  padding: var(--space-3);
+  border: 1px dashed var(--border-default); border-radius: var(--radius-md);
+  background: var(--bg-surface-muted);
+  font-family: var(--font-mono); font-size: 13px; font-variant-numeric: tabular-nums;
+}
+.dd-mini__title { font-family: var(--font-sans); font-size: 12px; color: var(--text-secondary); margin-bottom: 2px; }
+.dd-mini__line { display: flex; justify-content: space-between; gap: var(--space-3); color: var(--text-primary); }
+.dd-mini__line--muted { color: var(--text-secondary); }
+.dd-own { display: grid; gap: var(--space-3); }
+.dd-own__add { justify-self: start; }
+.dd-later { margin: 0; font-size: 13px; color: var(--text-secondary); }
+/* ── end Delivery on documents (#3908) ── */

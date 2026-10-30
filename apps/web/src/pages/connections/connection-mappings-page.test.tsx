@@ -595,4 +595,31 @@ describe('ConnectionMappingsPage', () => {
       await waitFor(() => expect(api.mappings.getOrderStateMappings).toHaveBeenCalledWith('ps_1'));
     });
   });
+  describe('Delivery on documents tab (#3908)', () => {
+    it('shows the tab when the source supports OrderSource', async () => {
+      renderAt(buildApiClient());
+
+      expect(await screen.findByRole('tab', { name: 'Delivery on documents' })).toBeInTheDocument();
+    });
+
+    it('hides the tab when the source does not support OrderSource', async () => {
+      const noOrderSource = marketplace({
+        id: 'alg_1',
+        platformType: 'allegro',
+        supportedCapabilities: [],
+        enabledCapabilities: [],
+      });
+      renderAt(buildApiClient({ connectionList: [noOrderSource, PRESTA], byId: { alg_1: noOrderSource, ps_1: PRESTA } }), '/connections/alg_1/mappings');
+
+      await screen.findByRole('tab', { name: 'Order Statuses' });
+      expect(screen.queryByRole('tab', { name: 'Delivery on documents' })).not.toBeInTheDocument();
+    });
+
+    it('opens on the deep-linked tab', async () => {
+      renderAt(buildApiClient(), '/connections/ps_1/mappings?tab=delivery-on-documents');
+
+      const tab = await screen.findByRole('tab', { name: 'Delivery on documents' });
+      expect(tab).toHaveAttribute('aria-selected', 'true');
+    });
+  });
 });

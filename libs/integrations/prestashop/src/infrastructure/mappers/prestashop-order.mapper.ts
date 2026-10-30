@@ -125,6 +125,12 @@ export class PrestashopOrderMapper implements IPrestashopOrderMapper {
         const gross = this.parseNumber(prestashopOrder.total_shipping_tax_incl);
         return gross !== undefined && Number.isFinite(gross) ? { shippingGross: gross } : {};
       })()),
+      // The delivery VAT rate PrestaShop itself charged. Carried, never
+      // computed (ADR-063); left unset when it is not credible.
+      ...(((): { shippingTaxRate?: string } => {
+        const rate = this.readCarrierTaxRate(prestashopOrder);
+        return rate !== undefined ? { shippingTaxRate: rate } : {};
+      })()),
       // A whole-order discount (`CartRule`) never reaches a line: PrestaShop
       // applies it outside `OrderDetail::setSpecificPrice()`, so the per-line
       // `reduction_*` fields read 0.00 while `total_paid_tax_incl` above is
@@ -186,6 +192,30 @@ export class PrestashopOrderMapper implements IPrestashopOrderMapper {
     }
 
     return String(rawId);
+  }
+
+  /**
+   * The carrier VAT rate as a percent code without trailing zeros (`'23.000'`
+   * -> `'23'`, `'5.500'` -> `'5.5'`).
+   *
+   * A `0` rate beside a shipping charge whose gross exceeds its net is treated
+   * as unknown: PrestaShop reports `0.000` for a carrier with no tax rules
+   * group even when tax was added by another rule, so the zero would state a
+   * rate the shop's own figures contradict.
+   */
+  private readCarrierTaxRate(order: PrestashopOrder): string | undefined {
+    const rate = this.parseNumber(order.carrier_tax_rate);
+    if (rate === undefined || !Number.isFinite(rate) || rate < 0 || rate > 100) {
+      return undefined;
+    }
+    if (rate === 0) {
+      const gross = this.parseNumber(order.total_shipping_tax_incl);
+      const net = this.parseNumber(order.total_shipping);
+      if (gross !== undefined && net !== undefined && gross > net) {
+        return undefined;
+      }
+    }
+    return String(Number(rate.toFixed(3)));
   }
 
   /**

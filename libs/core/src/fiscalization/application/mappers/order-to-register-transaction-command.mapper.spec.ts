@@ -4,6 +4,7 @@
  * @module libs/core/src/fiscalization/application/mappers
  */
 import type { Order } from '@openlinker/core/orders';
+import type { ResolvedDeliveryLine } from '@openlinker/core/sales-documents';
 
 import { toRegisterTransactionCommand } from './order-to-register-transaction-command.mapper';
 import { InvalidFiscalLineError } from './errors/invalid-fiscal-line.error';
@@ -110,13 +111,15 @@ describe('toRegisterTransactionCommand', () => {
       idempotencyKey: 'k',
     });
 
-    const shipping = cmd.lines.filter((line) => line.name === 'Shipping');
+    const shipping = cmd.lines.filter((line) => line.name.startsWith('Shipping'));
     expect(shipping.map((line) => ({ taxRate: line.taxRate, amount: line.unitPriceGross }))).toEqual(
       [
         { taxRate: '23', amount: 12.3 },
         { taxRate: '5', amount: 10.5 },
       ]
     );
+    // The name carries the rate, so one name is never sent at two rates (#3905).
+    expect(shipping.map((line) => line.name)).toEqual(['Shipping 23%', 'Shipping 5%']);
     // The composed lines still reconcile against the order's own total, which
     // is the guard this mapper already enforces - so a re-weighting that moved
     // money rather than re-labelling it would have thrown instead.
@@ -510,6 +513,120 @@ describe('toRegisterTransactionCommand', () => {
         buyerTaxId: 'not-a-real-looking-value-at-all',
       });
       expect(cmd.buyerTaxId).toBe('not-a-real-looking-value-at-all');
+    });
+  });
+  describe('delivery line (#3905, ADR-079)', () => {
+    const basket = (shipping: number, total: number): Partial<Order> => ({
+      items: [
+        { id: 'a', productId: 'p1', quantity: 1, price: 100, taxRate: '23', name: 'A' },
+        { id: 'b', productId: 'p2', quantity: 1, price: 50, taxRate: '5', name: 'B' },
+      ],
+      totals: { subtotal: 150, tax: 0, shipping, total, currency: 'PLN' },
+    });
+    const delivery = (over: Partial<ResolvedDeliveryLine> = {}): ResolvedDeliveryLine => ({
+      name: 'Koszt dostawy',
+      invoiceName: 'Dostawa',
+      rate: 'goods',
+      freeDelivery: 'omit',
+      rateFormat: 'plain',
+      ...over,
+    });
+
+    it('should name a single-rate delivery line with its rate when nothing is configured', () => {
+      const cmd = toRegisterTransactionCommand({
+        order: order({
+          items: [{ id: 'a', productId: 'p1', quantity: 1, price: 10, taxRate: '23' }],
+          totals: { subtotal: 10, tax: 0, shipping: 5, total: 15, currency: 'PLN' },
+        }),
+        connectionId: 'c',
+        idempotencyKey: 'k',
+      });
+      expect(cmd.lines[1]?.name).toBe('Shipping 23%');
+    });
+
+    it('should use the source delivery rate when items carry none (#3910)', () => {
+      const cmd = toRegisterTransactionCommand({
+        order: order({
+          items: [{ id: 'a', productId: 'p1', quantity: 1, price: 10, name: 'A' }],
+          totals: {
+            subtotal: 10,
+            tax: 0,
+            shipping: 5,
+            total: 15,
+            currency: 'PLN',
+            shippingTaxRate: '23',
+          },
+        }),
+        connectionId: 'c',
+        idempotencyKey: 'k',
+      });
+      expect(cmd.lines[1]).toMatchObject({ name: 'Shipping 23%', taxRate: '23', unitPriceGross: 5 });
+    });
+
+    it('should split a 23% + 5% basket into two suffixed lines with unchanged amounts', () => {
+      const cmd = toRegisterTransactionCommand({
+        order: order(basket(15, 165)),
+        connectionId: 'c',
+        idempotencyKey: 'k',
+        deliveryLine: delivery({ rateFormat: 'brackets' }),
+      });
+      const lines = cmd.lines.slice(2);
+      expect(lines.map((l) => l.name)).toEqual(['Koszt dostawy (23%)', 'Koszt dostawy (5%)']);
+      expect(lines.reduce((sum, l) => sum + l.unitPriceGross, 0)).toBeCloseTo(15, 2);
+    });
+
+    it('should emit one line at the fixed rate with no split', () => {
+      const cmd = toRegisterTransactionCommand({
+        order: order(basket(15, 165)),
+        connectionId: 'c',
+        idempotencyKey: 'k',
+        deliveryLine: delivery({ rate: 'fixed', fixedRate: '23', rateFormat: 'vat' }),
+      });
+      expect(cmd.lines.slice(2)).toEqual([
+        {
+          name: 'Koszt dostawy VAT 23%',
+          quantity: 1,
+          unitPriceGross: 15,
+          taxRate: '23',
+          sku: null,
+        },
+      ]);
+    });
+
+    it('should fold the delivery into product lines in spread mode and still reconcile', () => {
+      const cmd = toRegisterTransactionCommand({
+        order: order(basket(15, 165)),
+        connectionId: 'c',
+        idempotencyKey: 'k',
+        deliveryLine: delivery({ rate: 'spread' }),
+      });
+      expect(cmd.lines).toHaveLength(2);
+      const sum = cmd.lines.reduce((s, l) => s + l.quantity * l.unitPriceGross, 0);
+      expect(sum).toBeCloseTo(165, 2);
+    });
+
+    it('should fall back to a delivery line when the spread cannot be exact', () => {
+      const cmd = toRegisterTransactionCommand({
+        order: order({
+          items: [{ id: 'a', productId: 'p1', quantity: 3, price: 10, taxRate: '23', name: 'A' }],
+          totals: { subtotal: 30, tax: 0, shipping: 0.1, total: 30.1, currency: 'PLN' },
+        }),
+        connectionId: 'c',
+        idempotencyKey: 'k',
+        deliveryLine: delivery({ rate: 'spread' }),
+      });
+      expect(cmd.lines).toHaveLength(2);
+      expect(cmd.lines[1]?.name).toBe('Koszt dostawy 23%');
+    });
+
+    it('should never emit a zero delivery line on a receipt, even with free delivery shown', () => {
+      const cmd = toRegisterTransactionCommand({
+        order: order(basket(0, 150)),
+        connectionId: 'c',
+        idempotencyKey: 'k',
+        deliveryLine: delivery({ freeDelivery: 'show' }),
+      });
+      expect(cmd.lines).toHaveLength(2);
     });
   });
 });

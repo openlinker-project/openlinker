@@ -10,6 +10,7 @@
  * @see {@link IConnectionService} for the interface
  * @see {@link ConnectionPort} for the core port
  */
+import { validateDeliveryOnDocumentsShape } from '@openlinker/core/sales-documents';
 import {
   BadRequestException,
   ConflictException,
@@ -414,6 +415,27 @@ export class ConnectionService implements IConnectionService {
 
     this.validatePricingRuleConfig(config.pricingRule);
     this.validatePriceSyncModeConfig(config.priceSyncMode);
+  }
+
+  /**
+   * Core-owned shape check for `config.deliveryOnDocuments` (#3905, ADR-079).
+   * The rules live in the pure `validateDeliveryOnDocumentsShape` so the browser
+   * mirror and this write path cannot disagree. The READ side is deliberately
+   * forgiving (a stored value must never break an issuance); strictness belongs
+   * here, where there is an operator to tell. Absent or `null` stays absent.
+   */
+  private validateDeliveryOnDocumentsConfig(config: Record<string, unknown>): void {
+    const value = config.deliveryOnDocuments;
+    if (value === undefined || value === null) return;
+    const errors = validateDeliveryOnDocumentsShape(value);
+    if (errors.length > 0) {
+      throw new BadRequestException({
+        message: `Invalid config.deliveryOnDocuments: ${errors
+          .map((issue) => `${issue.path} ${issue.message}`)
+          .join('; ')}`,
+        errors,
+      });
+    }
   }
 
   private validatePricingRuleConfig(pricingRule: unknown): void {
@@ -928,6 +950,7 @@ export class ConnectionService implements IConnectionService {
         this.validateStockAndPricingConfig(rest.config);
         this.validateFulfilmentOwnedByDestinationConfig(rest.config);
         this.validateAutoDispatchConfig(rest.config);
+        this.validateDeliveryOnDocumentsConfig(rest.config);
         await this.validateStockLocationOverride(rest.config, undefined);
         await this.validateConfigShape(metadata.adapterKey, rest.config);
         // #2407 — above the credential-persistence block below, which requires
@@ -1224,6 +1247,7 @@ export class ConnectionService implements IConnectionService {
         this.validateStockAndPricingConfig(patch.config);
         this.validateFulfilmentOwnedByDestinationConfig(patch.config);
         this.validateAutoDispatchConfig(patch.config);
+        this.validateDeliveryOnDocumentsConfig(patch.config);
         await this.validateStockLocationOverride(patch.config, existing.config);
         await this.validateConfigShape(metadata.adapterKey, patch.config, existing.config);
         // #2407 — inside this branch, which is correct ONLY because

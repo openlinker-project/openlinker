@@ -103,6 +103,8 @@ import { isPaymentMethod } from '../../../domain/types/payment-method.types';
 import type { OrderFxIntent, OrderFxStamp } from '../../../domain/types/order-fx.types';
 import type { StampedReportingCurrencyCount } from '../../../domain/types/order-fx-read.types';
 import type { OrderAmendmentChange } from '../../../domain/order-amendment-diff';
+import type { DeliveryCountryFact } from '../../../domain/types/delivery-country-facts.types';
+import { toDeliveryCountryExample } from '../../../domain/delivery-country-example';
 import type {
   DailyOrderAggregateRow,
   SalesAnalyticsFilters,
@@ -261,6 +263,109 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
     // pg returns COUNT(*) as a string at the driver level, mirroring the
     // Number() the money columns already get in `toDomain`.
     return rows.map((row) => ({ country: row.country, orderCount: Number(row.order_count) }));
+  }
+
+  async getDeliveryCountryFacts(
+    sourceConnectionId: string,
+    since: Date
+  ): Promise<DeliveryCountryFact[]> {
+    const countryExpr = OrderRecordRepository.ROUTING_COUNTRY_EXPR;
+    const windowExpr = `COALESCE(rec."placedAt", rec."createdAt") >= :since`;
+
+    // Query 1: orders per (country, currency). Summing the currency rows gives
+    // the order count and the biggest row names the currency, so one grouped
+    // read serves both. The 20-country cap bounds every later query.
+    const countRows = await this.repository
+      .createQueryBuilder('rec')
+      .select(countryExpr, 'country')
+      .addSelect('rec.currency', 'currency')
+      .addSelect('COUNT(*)', 'order_count')
+      .where('rec.sourceConnectionId = :sourceConnectionId', { sourceConnectionId })
+      .andWhere(windowExpr, { since })
+      .andWhere(`${countryExpr} IS NOT NULL`)
+      .groupBy(countryExpr)
+      .addGroupBy('rec.currency')
+      .getRawMany<{ country: string; currency: string | null; order_count: string }>();
+
+    const ordersByCountry = new Map<string, number>();
+    const currencyCounts = new Map<string, Map<string, number>>();
+    for (const row of countRows) {
+      const count = Number(row.order_count);
+      ordersByCountry.set(row.country, (ordersByCountry.get(row.country) ?? 0) + count);
+      if (row.currency) {
+        const perCurrency = currencyCounts.get(row.country) ?? new Map<string, number>();
+        perCurrency.set(row.currency, (perCurrency.get(row.currency) ?? 0) + count);
+        currencyCounts.set(row.country, perCurrency);
+      }
+    }
+
+    const countries = [...ordersByCountry.entries()]
+      .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+      .slice(0, 20)
+      .map(([country]) => country);
+    if (countries.length === 0) {
+      return [];
+    }
+
+    // Query 2: line rate codes per country, joined through the denormalised
+    // line table rather than expanding snapshot JSON.
+    const rateRows = await this.repository
+      .createQueryBuilder('rec')
+      .innerJoin(OrderLineItemOrmEntity, 'oli', 'oli.orderRecordId = rec.internalOrderId')
+      .select(countryExpr, 'country')
+      .addSelect('oli.taxRate', 'tax_rate')
+      .addSelect('COUNT(*)', 'line_count')
+      .where('rec.sourceConnectionId = :sourceConnectionId', { sourceConnectionId })
+      .andWhere(windowExpr, { since })
+      .andWhere(`${countryExpr} IN (:...countries)`, { countries })
+      .andWhere('oli.taxRate IS NOT NULL')
+      .groupBy(countryExpr)
+      .addGroupBy('oli.taxRate')
+      .getRawMany<{ country: string; tax_rate: string; line_count: string }>();
+
+    const ratesByCountry = new Map<string, { rate: string; count: number }[]>();
+    for (const row of rateRows) {
+      const list = ratesByCountry.get(row.country) ?? [];
+      list.push({ rate: row.tax_rate, count: Number(row.line_count) });
+      ratesByCountry.set(row.country, list);
+    }
+
+    // Query 3: the latest READY order per country. Only the items and totals
+    // fragments are selected - never the whole snapshot - so no buyer field
+    // leaves the database.
+    const exampleRows = await this.repository
+      .createQueryBuilder('rec')
+      .distinctOn([countryExpr])
+      .select(countryExpr, 'country')
+      .addSelect(`rec."orderSnapshot"->'items'`, 'items')
+      .addSelect(`rec."orderSnapshot"->'totals'`, 'totals')
+      .where('rec.sourceConnectionId = :sourceConnectionId', { sourceConnectionId })
+      .andWhere(windowExpr, { since })
+      .andWhere('rec.recordStatus = :ready', { ready: 'ready' })
+      .andWhere(`${countryExpr} IN (:...countries)`, { countries })
+      .orderBy(countryExpr, 'ASC')
+      .addOrderBy('COALESCE(rec."placedAt", rec."createdAt")', 'DESC')
+      .getRawMany<{ country: string; items: unknown; totals: unknown }>();
+
+    const exampleByCountry = new Map(
+      exampleRows.map((row) => [row.country, toDeliveryCountryExample(row.items, row.totals)])
+    );
+
+    return countries.map((country) => {
+      const rates = [...(ratesByCountry.get(country) ?? [])].sort(
+        (a, b) => b.count - a.count || a.rate.localeCompare(b.rate)
+      );
+      const currencies = [...(currencyCounts.get(country) ?? new Map<string, number>())].sort(
+        (a, b) => b[1] - a[1] || a[0].localeCompare(b[0])
+      );
+      return {
+        country,
+        orders: ordersByCountry.get(country) ?? 0,
+        ratesSeen: rates.map((r) => r.rate),
+        currency: currencies[0]?.[0] ?? null,
+        example: exampleByCountry.get(country) ?? null,
+      };
+    });
   }
 
   /**

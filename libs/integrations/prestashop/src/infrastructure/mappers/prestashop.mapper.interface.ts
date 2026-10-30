@@ -146,6 +146,8 @@ export interface PrestashopOrder {
   total_shipping?: string | number;
   /** Gross shipping as PrestaShop computed it; the counterpart of `unit_price_tax_incl`. */
   total_shipping_tax_incl?: string | number;
+  /** VAT rate the carrier charged, in percent (e.g. `'23.000'`); read, never computed. */
+  carrier_tax_rate?: string | number;
   date_add?: string;
   date_upd?: string;
   associations?: {

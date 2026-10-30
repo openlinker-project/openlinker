@@ -819,6 +819,80 @@ describe('SalesDocumentPanel — shipping split preview (#2254)', () => {
     expect(3.34 + 3.33 + 3.33).toBeCloseTo(10, 2);
   });
 
+  it('weights the split by gross when the source priced the lines net (#3909)', async () => {
+    // Net weights are 100 : 100 (an even 5 / 5), gross weights are 123 : 108,
+    // which splits 10 as 5.32 / 4.68. The preview must follow core and use gross.
+    const record: OrderRecord = {
+      ...order,
+      orderSnapshot: {
+        items: [
+          { id: 'a', productId: 'p_a', quantity: 1, price: 100, unitPriceGross: 123, name: 'A', taxRate: '23' },
+          { id: 'b', productId: 'p_b', quantity: 1, price: 100, unitPriceGross: 108, name: 'B', taxRate: '8' },
+        ],
+        totals: {
+          subtotal: 200,
+          tax: 31,
+          shipping: 8.13,
+          shippingGross: 10,
+          total: 241,
+          currency: 'PLN',
+          taxTreatment: 'exclusive',
+        },
+      },
+    };
+    renderPanel(record);
+
+    const text = (await screen.findByText(/Shipping is split across the rates/i)).textContent ?? '';
+    expect(text).toContain(`${formatAmount(5.32, 'PLN')} at 23%`);
+    expect(text).toContain(`${formatAmount(4.68, 'PLN')} at 8%`);
+  });
+
+  it('names the delivery lines from the source connection config (#3909)', async () => {
+    const sourceConnection: Connection = {
+      ...sampleConnection,
+      id: 'conn_src',
+      config: {
+        deliveryOnDocuments: {
+          countries: {
+            PL: { name: 'Dostawa', rate: 'goods', freeDelivery: 'omit', rateFormat: 'plain' },
+          },
+        },
+      },
+    };
+    const record: OrderRecord = {
+      ...orderWithBasket(
+        [
+          { id: 'a', rate: '23', price: 100, quantity: 1 },
+          { id: 'b', rate: '8', price: 100, quantity: 1 },
+        ],
+        10,
+      ),
+    };
+    record.orderSnapshot = {
+      ...record.orderSnapshot,
+      shippingAddress: {
+        firstName: 'A',
+        lastName: 'B',
+        address1: 'x',
+        city: 'y',
+        postalCode: '00-001',
+        country: 'PL',
+      },
+    };
+    renderWithProviders(<SalesDocumentPanel order={record} />, {
+      apiClient: createMockApiClient({
+        connections: { list: vi.fn().mockResolvedValue([sourceConnection, invoicingConnection]) },
+        invoicing: { getForOrder: vi.fn().mockRejectedValue(notFound()) },
+      }),
+      ...adminSession,
+    });
+
+    const text = (await screen.findByText(/Shipping is split across the rates/i)).textContent ?? '';
+    // An invoice carries no rate suffix in the name.
+    expect(text).toContain('Dostawa: ');
+    expect(text).not.toContain('Dostawa 23%');
+  });
+
   it('renders an exemption code without a percent suffix', async () => {
     renderPanel(
       orderWithBasket(

@@ -1,3 +1,5 @@
+import type { DeliveryOnDocumentsConfig } from '../../delivery-on-documents';
+
 export interface StartAllegroOAuthInput {
   clientId: string;
   clientSecret: string;
@@ -11,6 +13,8 @@ export interface StartAllegroOAuthInput {
    * needs_reauth flag instead of creating a new connection (#819).
    */
   connectionId?: string;
+  /** How delivery appears on receipts and invoices; seeded into the new connection (#3911). */
+  deliveryOnDocuments?: DeliveryOnDocumentsConfig;
 }
 
 export interface StartAllegroOAuthResponse {

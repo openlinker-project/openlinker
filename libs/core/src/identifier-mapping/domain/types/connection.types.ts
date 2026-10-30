@@ -212,6 +212,16 @@ export interface ConnectionConfig {
     parcelTemplate?: string;
     defaultWeightGrams?: number;
   };
+  /**
+   * How the delivery line reads on sales documents, per buyer country (#3905,
+   * ADR-079). Set on the ORDER-SOURCE connection: it knows the delivery
+   * methods and the markets. Shape and rules live in `delivery-line.types.ts`
+   * (`@openlinker/core/sales-documents`), read via `readDeliveryOnDocuments`;
+   * typed `unknown` here because that leaf is import-free and this one must
+   * not depend on it. Without it a connection behaves as before, plus the rate
+   * suffix a receipt name always carries.
+   */
+  deliveryOnDocuments?: unknown;
   [key: string]: unknown;
 }
 

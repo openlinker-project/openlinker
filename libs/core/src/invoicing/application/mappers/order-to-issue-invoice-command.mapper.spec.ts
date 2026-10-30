@@ -13,6 +13,7 @@ import { InvalidBuyerProfileError } from './errors/invalid-buyer-profile.error';
 import { InvalidInvoiceLineError } from './errors/invalid-invoice-line.error';
 import { UnsupportedPriceTreatmentError } from './errors/unsupported-price-treatment.error';
 import { toIssueInvoiceCommand } from './order-to-issue-invoice-command.mapper';
+import type { ResolvedDeliveryLine } from '@openlinker/core/sales-documents';
 
 function makeAddress(overrides: Partial<Address> = {}): Address {
   return {
@@ -788,4 +789,115 @@ describe('toIssueInvoiceCommand', () => {
       expect(shippingLine?.name).toBe('Shipping');
     }
   );
+});
+
+describe('toIssueInvoiceCommand delivery line (#3905, ADR-079)', () => {
+  const delivery = (over: Partial<ResolvedDeliveryLine> = {}): ResolvedDeliveryLine => ({
+    name: 'Koszt dostawy',
+    invoiceName: 'Dostawa',
+    rate: 'goods',
+    freeDelivery: 'omit',
+    rateFormat: 'brackets',
+    ...over,
+  });
+  const mixed = (shipping: number, total: number): Order =>
+    makeOrder({
+      items: [
+        makeItem({ id: 'a', productId: 'p1', price: 100, taxRate: '23' }),
+        makeItem({ id: 'b', productId: 'p2', price: 50, taxRate: '5' }),
+      ],
+      totals: { subtotal: 150, tax: 0, shipping, total, currency: 'PLN' },
+    });
+
+  it('should use the invoice name with no rate suffix on split lines', () => {
+    const cmd = toIssueInvoiceCommand({
+      order: mixed(15, 165),
+      connectionId: 'c',
+      deliveryLine: delivery(),
+    });
+    expect(cmd.lines.slice(2).map((l) => l.name)).toEqual(['Dostawa', 'Dostawa']);
+  });
+
+  it('should keep Shipping when nothing is configured', () => {
+    const cmd = toIssueInvoiceCommand({ order: mixed(15, 165), connectionId: 'c' });
+    expect(cmd.lines[2]?.name).toBe('Shipping');
+  });
+
+  it('should emit one line at the fixed rate', () => {
+    const cmd = toIssueInvoiceCommand({
+      order: mixed(15, 165),
+      connectionId: 'c',
+      deliveryLine: delivery({ rate: 'fixed', fixedRate: '8' }),
+    });
+    expect(cmd.lines.slice(2)).toEqual([
+      { name: 'Dostawa', quantity: 1, unitPriceGross: 15, taxRate: '8' },
+    ]);
+  });
+
+  it('should spread the delivery into product lines and add none', () => {
+    const cmd = toIssueInvoiceCommand({
+      order: mixed(15, 165),
+      connectionId: 'c',
+      deliveryLine: delivery({ rate: 'spread' }),
+    });
+    expect(cmd.lines).toHaveLength(2);
+    expect(cmd.lines.reduce((sum, l) => sum + l.quantity * l.unitPriceGross, 0)).toBeCloseTo(165, 2);
+  });
+
+  it('should print a zero line at the dominant rate when free delivery is shown', () => {
+    const cmd = toIssueInvoiceCommand({
+      order: mixed(0, 150),
+      connectionId: 'c',
+      deliveryLine: delivery({ freeDelivery: 'show' }),
+    });
+    expect(cmd.lines[2]).toEqual({ name: 'Dostawa', quantity: 1, unitPriceGross: 0, taxRate: '23' });
+  });
+
+  it('should print the zero line at the fixed rate in fixed mode', () => {
+    const cmd = toIssueInvoiceCommand({
+      order: mixed(0, 150),
+      connectionId: 'c',
+      deliveryLine: delivery({ freeDelivery: 'show', rate: 'fixed', fixedRate: '8' }),
+    });
+    expect(cmd.lines[2]?.taxRate).toBe('8');
+  });
+
+  describe('source-reported delivery rate (#3910)', () => {
+    const rateless = (shippingTaxRate?: string): Order =>
+      makeOrder({
+        items: [makeItem({ id: 'a', productId: 'p1', price: 100, taxRate: undefined })],
+        totals: {
+          subtotal: 100,
+          tax: 0,
+          shipping: 10,
+          total: 110,
+          currency: 'PLN',
+          ...(shippingTaxRate !== undefined ? { shippingTaxRate } : {}),
+        },
+      });
+
+    it('should emit one delivery line at the source rate when items carry none', () => {
+      const cmd = toIssueInvoiceCommand({ order: rateless('23'), connectionId: 'c' });
+      expect(cmd.lines[1]).toMatchObject({ unitPriceGross: 10, taxRate: '23' });
+    });
+
+    it('should stay rate-less when the source reported no delivery rate', () => {
+      const cmd = toIssueInvoiceCommand({ order: rateless(), connectionId: 'c' });
+      expect(cmd.lines[1]?.taxRate).toBe('');
+    });
+
+    it('should let an operator fixed rate win over the source rate', () => {
+      const cmd = toIssueInvoiceCommand({
+        order: rateless('23'),
+        connectionId: 'c',
+        deliveryLine: delivery({ rate: 'fixed', fixedRate: '8' }),
+      });
+      expect(cmd.lines[1]?.taxRate).toBe('8');
+    });
+  });
+
+  it('should print no zero line when free delivery is omitted', () => {
+    const cmd = toIssueInvoiceCommand({ order: mixed(0, 150), connectionId: 'c', deliveryLine: delivery() });
+    expect(cmd.lines).toHaveLength(2);
+  });
 });

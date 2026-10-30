@@ -25,18 +25,16 @@ import { UnsupportedPriceTreatmentError } from './errors/unsupported-price-treat
 import {
   describeDiscountCause,
   describeNetPricedOrderRefusal,
-  minorUnitExponentFor,
   quantityScaledReconciliationEpsilon,
+  resolveDeliveryLine,
+  shippingSplitInputs,
+  spreadDeliveryAcrossLines,
   splitShippingAcrossRates,
+  type ResolvedDeliveryLine,
 } from '@openlinker/core/sales-documents';
+import { Logger } from '@openlinker/shared/logging';
 
-/**
- * Default carrier-neutral label for the shipping invoice line (#1517). Core is
- * language-agnostic and has no locale, so this English default is intentionally
- * untranslated; a caller that has a locale can override it via
- * {@link OrderToIssueInvoiceCommandInput.shippingLineName}.
- */
-const SHIPPING_LINE_NAME = 'Shipping';
+const logger = new Logger('OrderToIssueInvoiceCommandMapper');
 
 /** Inputs to {@link toIssueInvoiceCommand}. */
 export interface OrderToIssueInvoiceCommandInput {
@@ -63,19 +61,19 @@ export interface OrderToIssueInvoiceCommandInput {
    */
   source?: string;
   /**
-   * Optional override for the shipping-line label on a fiscal document. Core has
-   * no locale, so a caller that does (or that translates for a target market)
-   * can supply a localized name here; when absent the neutral English
-   * {@link SHIPPING_LINE_NAME} default is used.
-   *
-   * NOTE: no issuance caller wires this yet (`AutoIssueTriggerService`, the
-   * invoicing controller), so today the neutral default is the only live path
-   * and a PL/KSeF document still renders "Shipping". This is an intentional seam,
-   * not dead code: a localized label needs a locale source that does not exist in
-   * core yet (no per-connection locale setting; the provider is the natural owner
-   * of national wording per ADR-026). Wiring it is tracked as a follow-up (#1562).
+   * Legacy single name for the shipping line (`config.invoicing.shippingLineName`,
+   * #1517). Used only when no {@link deliveryLine} is supplied; ADR-079
+   * decision 5 puts it after the order-source connection's own settings.
    */
   shippingLineName?: string;
+  /**
+   * The delivery line resolved from the order-source connection's
+   * `deliveryOnDocuments` (#3905, ADR-079). An invoice never carries the rate
+   * suffix a receipt name does; this supplies the invoice wording, the rate
+   * mode and the free-delivery choice. Absent resolves to the legacy name (or
+   * `Shipping`) in `goods` mode, which is the pre-#3905 behaviour.
+   */
+  deliveryLine?: ResolvedDeliveryLine;
   /**
    * The order's `order_records.taxRateEra` marker (#2245 review), passed
    * straight through onto the command so the write-path tax-rate guard can
@@ -129,6 +127,8 @@ export function toIssueInvoiceCommand(
     throw new UnsupportedPriceTreatmentError(refusal);
   }
 
+  const deliveryLine =
+    input.deliveryLine ?? resolveDeliveryLine(null, { legacyName: shippingLineName });
   const buyer = buildBuyerProfile(order, buyerTaxId ?? null, {
     isPublicSectorEntity: buyerIsPublicSectorEntity,
     isTaxGroupMember: buyerIsTaxGroupMember,
@@ -139,19 +139,7 @@ export function toIssueInvoiceCommand(
   // order total, #1517). Emit it as a normal gross line so the provider adapter
   // resolves its tax rate the same way it does for product lines; core never
   // names a tax rate. Skipped when shipping is 0 (no phantom line).
-  lines.push(
-    ...toShippingLines(
-      // The gross shipping the source reported, when it reported one (#3365);
-      // otherwise `shipping`, which on a gross-priced source already is gross.
-      // Same shape as the per-line choice above, and guarded by the same gate:
-      // a net-priced order charging shipping with no gross figure never gets
-      // here.
-      order.totals.shippingGross ?? order.totals.shipping,
-      order.items,
-      order.totals.currency,
-      shippingLineName
-    )
-  );
+  lines.push(...applyDelivery(lines, order, deliveryLine));
 
   assertLinesSumToTotal(lines, order.totals, order.id);
 
@@ -395,22 +383,22 @@ function toInvoiceLine(item: OrderItem, orderId: string): InvoiceLine {
 }
 
 /**
- * Compose the shipping {@link InvoiceLine}s from the order's gross shipping
- * cost (#1517, extended by #2248).
+ * Apply the delivery to the invoice: returns the delivery lines to append, and
+ * in `spread` mode raises the product lines in place instead and returns none
+ * (#1517, #2248, #3905).
  *
  * Shipping inherits the basket's tax treatment, so a single-rate basket yields
- * ONE line at that rate — the ordinary case, unchanged in shape from before.
- * A mixed-rate basket yields N lines whose amounts sum exactly to the shipping
- * the buyer paid, split in proportion to what was bought at each rate.
+ * ONE line at that rate - the ordinary case. A mixed-rate basket yields N lines
+ * whose amounts sum exactly to the shipping the buyer paid, split in proportion
+ * to what was bought at each rate. The line carries the invoice wording with no
+ * rate suffix: on an invoice the rate is its own column (ADR-079 decision 4).
  *
- * Non-positive or non-finite shipping (0, negative, NaN) yields no line — no
- * phantom shipping line. `name` defaults to the neutral
- * {@link SHIPPING_LINE_NAME} when the caller supplies no (locale-specific)
- * override; a split line carries the same name, since the rate is what
- * distinguishes the parts and inventing "Shipping (23%)" would put regime
- * vocabulary in core.
+ * Non-positive or non-finite shipping yields no line - no phantom line - unless
+ * the operator chose `freeDelivery: 'show'`, which prints a zero line at the
+ * basket's dominant rate (or the fixed one) so the document says delivery was
+ * free rather than silent about it (ADR-079 decision 7).
  *
- * When the split is uncomputable — some line has no rate — a single line with
+ * When the split is uncomputable - some line has no rate - a single line with
  * an EMPTY rate is returned rather than nothing. Dropping the shipping would
  * understate the document total; the gate refuses the order before it reaches
  * a provider.
@@ -419,36 +407,48 @@ function toInvoiceLine(item: OrderItem, orderId: string): InvoiceLine {
  * `OrderItem` backs a shipping line, so there is no id to carry. Crediting a
  * return against this line is #3290's, not this matcher's, concern.
  */
-function toShippingLines(
-  shipping: number,
-  items: readonly OrderItem[],
-  currency: string | null | undefined,
-  name?: string
+function applyDelivery(
+  lines: InvoiceLine[],
+  order: Order,
+  delivery: ResolvedDeliveryLine
 ): InvoiceLine[] {
+  const { lines: splitLines, shipping, exponent } = shippingSplitInputs(order);
+  const label = delivery.invoiceName;
+
   if (!Number.isFinite(shipping) || shipping <= 0) {
-    return [];
+    if (delivery.freeDelivery !== 'show') return [];
+    const rate = delivery.rate === 'fixed' ? delivery.fixedRate : dominantRate(splitLines);
+    // An unknowable rate means no honest zero line to print; the order's own
+    // product lines already fail the gate if THEY lack one.
+    if (rate === undefined || rate === '') return [];
+    return [{ name: label, quantity: 1, unitPriceGross: 0, taxRate: rate }];
   }
-  const label = name?.trim() || SHIPPING_LINE_NAME;
-  const parts = splitShippingAcrossRates(
-    shipping,
-    items.map((item) => ({
-      taxRate: item.taxRate?.trim() ?? null,
-      // The field is named `gross` and must be given one. On a gross-priced
-      // source `price` already is; on a net-priced one that reports its own
-      // gross figure (#3365) it is not, and a net weight is wrong here for a
-      // specific reason: the split is proportional, so a uniform-rate basket
-      // is unaffected, but a MIXED-rate one shifts, because net scales to
-      // gross by a different factor per rate. The shipping then lands under
-      // the wrong rate - silently, with the total still adding up.
-      gross: (item.unitPriceGross ?? item.price) * item.quantity,
-    })),
-    // The order's own currency decides how many decimals the parts round to, so
-    // they sum exactly in the units the buyer paid in (#2260 review).
-    minorUnitExponentFor(currency)
-  );
+
+  if (delivery.rate === 'fixed' && delivery.fixedRate !== undefined) {
+    return [{ name: label, quantity: 1, unitPriceGross: shipping, taxRate: delivery.fixedRate }];
+  }
+
+  if (delivery.rate === 'spread') {
+    const increases = spreadDeliveryAcrossLines(shipping, lines, exponent);
+    if (increases !== null) {
+      lines.forEach((line, index) => {
+        line.unitPriceGross = line.unitPriceGross + increases[index];
+      });
+      return [];
+    }
+    logger.warn(
+      `Order ${order.id}: delivery cannot be spread across product lines; ` +
+        'falling back to a separate delivery line'
+    );
+  }
+
+  const parts = splitShippingAcrossRates(shipping, splitLines, exponent);
 
   if (parts === null) {
-    return [{ name: label, quantity: 1, unitPriceGross: shipping, taxRate: '' }];
+    // The basket cannot state a rate, but the source may have reported the one
+    // it charged on delivery (ADR-063: carried, never computed).
+    const sourceRate = order.totals.shippingTaxRate?.trim() ?? '';
+    return [{ name: label, quantity: 1, unitPriceGross: shipping, taxRate: sourceRate }];
   }
 
   return parts.map((part) => ({
@@ -457,4 +457,24 @@ function toShippingLines(
     unitPriceGross: part.amount,
     taxRate: part.taxRate,
   }));
+}
+
+/** The rate carrying the most gross in the basket, or `undefined` when none is known. */
+function dominantRate(
+  splitLines: readonly { taxRate: string | null; gross: number }[]
+): string | undefined {
+  const byRate = new Map<string, number>();
+  for (const line of splitLines) {
+    if (line.taxRate === null || line.taxRate === '') continue;
+    byRate.set(line.taxRate, (byRate.get(line.taxRate) ?? 0) + line.gross);
+  }
+  let best: string | undefined;
+  let bestGross = -1;
+  for (const [rate, gross] of byRate) {
+    if (gross > bestGross || (gross === bestGross && best !== undefined && rate < best)) {
+      best = rate;
+      bestGross = gross;
+    }
+  }
+  return best;
 }
