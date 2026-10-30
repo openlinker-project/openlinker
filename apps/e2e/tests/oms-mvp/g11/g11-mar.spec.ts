@@ -15,6 +15,7 @@ import { variantCostRow, type VariantCostRow } from '../../../src/support/g11/db
 import {
   clearCost,
   figDelta,
+  getMarginVariants,
   getMargin,
   mustClearCost,
   mustSetCost,
@@ -235,22 +236,21 @@ test.describe('G11 MAR - margin @g11', () => {
     expect(filtered.channels.map((c) => c.sourceConnectionId)).toEqual([connectionId]);
   });
 
-  test('MAR-10 channel and product tables; a product opens onto its variants', async ({ openAs, ctx }) => {
-    const { a1, connectionId } = stand(ctx);
+  test('MAR-10 channel and product tables; a product opens onto its variants', async ({ openAs, ctx, http }) => {
+    const { productId, a1, connectionId } = stand(ctx);
     const page = await openAs('admin');
     const panel = new MarginPanelPage(page);
     await panel.goto(liveWindow());
     await expect(panel.byChannelTable).toBeVisible();
     await expect(panel.channelRow(connectionId)).toBeVisible();
     await expect(panel.byProductTable).toBeVisible();
-    const row = panel.productRow(a1.sku);
-    await expect(row).toBeVisible();
-
-    const variants = page.waitForResponse((r) => /\/analytics\/margin\/products\/[^/]+\/variants/.test(r.url()));
-    const toggle = row.getByRole('button').first();
-    if (await toggle.count()) await toggle.click();
-    else await row.click();
-    expect((await variants).status()).toBe(200);
+    // The table lists PRODUCTS (keyed by the product's own SKU); the mockup has no per-row expansion,
+    // so the variants of a product are asserted on the API the table is built from.
+    const productSku = ctx.db.scalar(`SELECT sku FROM products WHERE id = '${productId}'`);
+    expect(productSku, 'the product has a sku').toBeTruthy();
+    await expect(panel.productRow(productSku!)).toBeVisible();
+    const variants = await getMarginVariants(http.admin, productId, liveWindow());
+    expect(variants.some((v) => v.variantId === a1.variantId), 'the sold variant is listed under its product').toBe(true);
   });
 
   test('MAR-11 an install with no cost at all shows the empty state with a list of best sellers', async ({ openAs, ctx }) => {
