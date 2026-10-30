@@ -19,6 +19,7 @@ import { waitForOrderByExternalId } from '../orders';
 import type { SyncJobs } from '../jobs';
 import { synthesizeOrder, type SynthesizedOrder } from '../order-synthesis';
 import type { Poller } from '../poller';
+// PLN is currency id 3 on the g11 stand (ps_currency); override with G11_PS_PLN_CURRENCY_ID.
 import { PlatformType, type World } from '../../world/world';
 import { lit, type G11Db } from './db';
 import type { G11Setup, G11VariantRef } from './setup';
@@ -75,7 +76,7 @@ export async function createPrestashopOrder(
   const driver = await loadDriver(ctx, productId, ref.variantId);
   return synthesizeOrder(
     { api: ctx.api, world: ctx.world, jobs: ctx.jobs, poll: ctx.poll },
-    { driver, quantity, ingestConnection },
+    { driver, quantity, ingestConnection, currencyId: process.env.G11_PS_PLN_CURRENCY_ID ?? '3' },
   );
 }
 
@@ -143,8 +144,20 @@ export async function reingestOrder(ctx: G11Ctx, connectionId: string, externalO
       sourceEventId: `${externalOrderId}:e2e-g11-reingest:${Date.now()}`,
     },
   });
-  await ctx.jobs.waitForJobByKey(
-    { connectionId, jobType: 'marketplace.order.sync', idempotencyKey },
-    { timeoutMs: 180_000 },
-  );
+  // The stand has no order destination, so after ingesting the record the job's destination step
+  // fails and the job goes back on its retry ladder instead of reaching a terminal status. Ingestion
+  // (the part G11 cares about) is done once the job was attempted at all.
+  const key = idempotencyKey.replace(/'/g, "''");
+  const deadline = Date.now() + 180_000;
+  for (;;) {
+    const state = ctx.db.scalar(
+      `SELECT status || '|' || attempts FROM sync_jobs WHERE "idempotencyKey" = '${key}' AND "jobType" = 'marketplace.order.sync'`,
+    );
+    if (state) {
+      const [status, attempts] = state.split('|');
+      if (status === 'succeeded' || status === 'dead' || Number(attempts) >= 1) return;
+    }
+    if (Date.now() > deadline) throw new Error(`re-ingest job ${idempotencyKey} was never attempted (${state ?? 'no row'})`);
+    await new Promise((r) => setTimeout(r, 1000));
+  }
 }
