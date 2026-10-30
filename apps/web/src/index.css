@@ -30950,6 +30950,9 @@ legend.analytics-settings-dialog__label {
 .dd-row--other { border-top: 2px solid var(--border-default); }
 .dd-namecell { display: grid; gap: 2px; }
 .dd-namecell__line { display: inline-flex; align-items: center; gap: var(--space-2); }
+/* The delivery line name is the cell's whole point, so it must never be cut:
+   lift the generic 20ch ellipsis `.data-table td .mono-text` applies. */
+.data-table td .dd-namecell__line { max-width: none; overflow: visible; white-space: normal; flex-wrap: wrap; }
 .dd-ratetag { font-family: var(--font-sans); font-size: 11px; color: var(--text-secondary); padding: 0 6px; border: 1px dashed var(--border-default); border-radius: 9999px; }
 .dd-actions { white-space: nowrap; text-align: right !important; }
 .dd-actions .button + .button { margin-left: var(--space-1); }

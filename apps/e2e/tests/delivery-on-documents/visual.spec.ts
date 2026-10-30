@@ -79,9 +79,11 @@ const STATES: readonly VisualState[] = [
       await expect(tab.row('Poland')).toBeVisible();
       await tab.editButton('Poland').click();
       await expect(tab.editor.title('Poland')).toBeVisible();
+      await waitForDialogSettled(_page);
     },
     arrangeMockup: async (page): Promise<void> => {
       await page.getByRole('button', { name: 'Edit Poland' }).click();
+      await waitForDialogSettled(page);
     },
   },
   {
@@ -105,10 +107,27 @@ const STATES: readonly VisualState[] = [
       await expect(pages.allegroWizard.step.ownTable).toBeVisible();
     },
     arrangeMockup: async (page): Promise<void> => {
-      await page.getByText('Set it up myself').first().click();
+      await page.locator('.dd-choice').filter({ hasText: 'Set it up myself' }).click();
     },
   },
 ];
+
+/**
+ * The dialog fades in; measuring mid-animation blends every colour toward the
+ * backdrop and reports contrast the settled UI does not have.
+ */
+async function waitForDialogSettled(page: Page): Promise<void> {
+  await page.waitForFunction(() => {
+    const dialog = document.querySelector('[role="dialog"]');
+    return dialog !== null && dialog.getAnimations({ subtree: true }).every((a) => a.playState !== 'running');
+  });
+}
+
+/** True when the element carrying the text is styled by this feature (`dd-*`), not merely inside it. */
+function ownsTheText(selector: string): boolean {
+  const last = selector.split(' > ').pop() ?? '';
+  return /\.dd-/.test(last);
+}
 
 const results: VisualStateSummary[] = [];
 
@@ -186,7 +205,7 @@ for (const state of STATES) {
           // the report rather than failing this spec.
           const offenders = summary?.contrastOffenders ?? [];
           const failing = offenders.filter(
-            (offender) => offender.ratio < 3 || offender.selector.includes('dd-'),
+            (offender) => offender.ratio < 3 || ownsTheText(offender.selector),
           );
           expect.soft(failing, 'low-contrast text').toEqual([]);
         });
