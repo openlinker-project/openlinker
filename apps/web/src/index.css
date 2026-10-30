@@ -31111,6 +31111,12 @@ legend.analytics-settings-dialog__label {
     width: 100%;
     min-width: 0;
   }
+
+  /* In a column the 15rem flex basis would become HEIGHT (H18). */
+  .stock-movements-toolbar .stock-movements-search,
+  .stock-movements-toolbar .stock-movements-field {
+    flex: 0 0 auto;
+  }
 }
 
 .stock-movements-field {

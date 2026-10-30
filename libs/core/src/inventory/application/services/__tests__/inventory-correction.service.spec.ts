@@ -649,6 +649,33 @@ describe('InventoryCorrectionService', () => {
       expect(result).toMatchObject({ status: 'refused', refusal: { reason: 'master-product-not-found' } });
     });
 
+    it('should settle refused master-product-not-found when a delta removal reads a deleted product', async () => {
+      const h = build();
+      h.adapter.listInventory.mockRejectedValue(new MasterProductNotFoundError(PRODUCT_ID, OWNER));
+      const result = await h.service.correctStock({ ...baseInput, quantity: -1 });
+      expect(result).toMatchObject({
+        status: 'refused',
+        refusal: { reason: 'master-product-not-found' },
+      });
+      expect(h.movements.insertPending).toHaveBeenCalledTimes(1);
+      expect(h.movements.settle).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({ status: 'refused', refusalReason: 'master-product-not-found' })
+      );
+      expect(h.adapter.adjustInventory).not.toHaveBeenCalled();
+    });
+
+    it('should settle refused master-product-not-found when set mode reads a deleted product', async () => {
+      const h = build();
+      h.adapter.listInventory.mockRejectedValue(new MasterProductNotFoundError(PRODUCT_ID, OWNER));
+      const result = await h.service.correctStock({ ...baseInput, mode: 'set', quantity: 4 });
+      expect(result).toMatchObject({
+        status: 'refused',
+        refusal: { reason: 'master-product-not-found' },
+      });
+      expect(h.adapter.adjustInventory).not.toHaveBeenCalled();
+    });
+
     it('should settle in_doubt on any other throw and never call the adapter again', async () => {
       const h = build();
       h.adapter.adjustInventory.mockRejectedValue(new Error('socket hang up'));

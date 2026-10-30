@@ -25,6 +25,7 @@ import {
   operatorReasonText,
   presentMovementStatus,
   presentMovementType,
+  presentRefusalText,
   sourceKindLabel,
 } from '../lib/stock-movement-copy';
 
@@ -133,9 +134,17 @@ function TypeCell({ row }: { row: InventoryMovementRow }): ReactElement {
   );
 }
 
-function StatusCell({ row }: { row: InventoryMovementRow }): ReactElement {
+function StatusCell({
+  row,
+  connectionNames,
+}: {
+  row: InventoryMovementRow;
+  connectionNames: ReadonlyMap<string, string>;
+}): ReactElement {
   const status = presentMovementStatus(row.status);
-  const reasonText = row.refusalDetail ?? row.refusalReason;
+  const masterName = row.sourceConnectionId ? (connectionNames.get(row.sourceConnectionId) ?? null) : null;
+  const reasonText =
+    presentRefusalText(row.refusalReason, row.refusalDetail, masterName) ?? row.refusalReason;
   return (
     <>
       <StatusBadge tone={status.tone} compact withDot>
@@ -247,7 +256,7 @@ export function StockMovementsTable({
   const status: DataTableColumn<InventoryMovementRow> = {
     id: 'status',
     header: 'Status',
-    cell: (row) => <StatusCell row={row} />,
+    cell: (row) => <StatusCell row={row} connectionNames={connectionNames} />,
   };
 
   const columns: DataTableColumn<InventoryMovementRow>[] =
@@ -301,7 +310,7 @@ export function StockMovementsTable({
             {layout === 'global' && row.sku ? ` · ${row.sku}` : ''}
           </>
         ),
-        meta: (row) => <StatusCell row={row} />,
+        meta: (row) => <StatusCell row={row} connectionNames={connectionNames} />,
         summary: (row) => (
           <>
             <DeltaCell row={row} /> <BeforeAfterCell row={row} />

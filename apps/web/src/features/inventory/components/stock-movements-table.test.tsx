@@ -138,6 +138,28 @@ describe('StockMovementsTable', () => {
     expect(within(tr).getByRole('link', { name: 'ol_return_1' })).toHaveAttribute('href', '/returns/ol_return_1');
   });
 
+  it('should show plain copy instead of internal ids when the master no longer has the product', () => {
+    renderTable([
+      row({
+        status: 'refused',
+        refusalReason: 'master-product-not-found',
+        refusalDetail: 'productId=ol_product_1, connectionId=c1',
+      }),
+    ]);
+    const reason = screen.getByTestId('stock-movement-reason');
+    expect(reason).toHaveTextContent('the shop no longer has this product. Nothing changed.');
+    expect(reason).not.toHaveTextContent('ol_product_1');
+  });
+
+  it('should strip internal ids from an unknown refusal detail', () => {
+    renderTable([
+      row({ status: 'refused', refusalReason: 'weird', refusalDetail: 'Rejected, productId=ol_product_1 connectionId=c1' }),
+    ]);
+    const reason = screen.getByTestId('stock-movement-reason');
+    expect(reason).toHaveTextContent('Rejected');
+    expect(reason).not.toHaveTextContent('ol_product_1');
+  });
+
   it('should show an in-doubt movement with a question mark after', () => {
     renderTable([
       row({ reason: 'manual_correction', status: 'in_doubt', quantityAfter: null, sourceKind: 'operator', sourceRef: null, actorUserId: 'u1', actorName: 'Anna Wisniewska', operatorReason: 'damaged', note: 'Broken in transit' }),

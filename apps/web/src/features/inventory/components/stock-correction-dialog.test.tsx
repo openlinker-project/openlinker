@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { cleanup, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -333,6 +334,27 @@ describe('StockCorrectionDialog outcomes and guards', () => {
     expect(refused).not.toHaveTextContent('?');
   });
 
+  it('should show plain copy without internal ids when the master no longer has the product', async () => {
+    renderDialog({
+      correctStock: vi.fn().mockResolvedValue(
+        result({
+          status: 'refused',
+          quantityBefore: null,
+          quantityAfter: null,
+          requestedDelta: 3,
+          refusal: { reason: 'master-product-not-found', detail: 'productId=ol_product_1, connectionId=c1' },
+        }),
+      ),
+    });
+    await screen.findByTestId('stock-correction-dialog');
+    await userEvent.type(screen.getByTestId('stock-correction-quantity'), '9');
+    await userEvent.click(screen.getByTestId('stock-correction-submit'));
+
+    const reason = await screen.findByTestId('stock-correction-refused-reason');
+    expect(reason).toHaveTextContent('no longer has this product. Nothing changed.');
+    expect(reason).not.toHaveTextContent('ol_product_1');
+  });
+
   it('should show the count the dialog started from, not a question mark, when the outcome is in doubt', async () => {
     renderDialog({
       correctStock: vi.fn().mockResolvedValue(
@@ -456,5 +478,74 @@ describe('Adjust stock entry point', () => {
     );
     await userEvent.click(button);
     expect(onAdjust).not.toHaveBeenCalled();
+  });
+
+  describe('opener focus and mid-save close', () => {
+    function Harness({ api }: { api: ReturnType<typeof createMockApiClient> }) {
+      void api;
+      const [target, setTarget] = useState<typeof adjustTarget | null>(null);
+      return (
+        <>
+          <button type="button" data-testid="stock-adjust-KCN-350-GRY" onClick={() => setTarget(adjustTarget)}>
+            Adjust stock
+          </button>
+          <StockCorrectionDialog target={target} onClose={() => setTarget(null)} />
+        </>
+      );
+    }
+
+    function renderHarness(correctStock: ReturnType<typeof vi.fn>) {
+      const api = createMockApiClient({
+        inventory: {
+          getCorrectionTarget: vi.fn().mockResolvedValue(readyTarget),
+          correctStock,
+        } as never,
+      });
+      renderWithProviders(<Harness api={api} />, { apiClient: api });
+    }
+
+    it('should return focus to the Adjust stock button after Done', async () => {
+      renderHarness(vi.fn().mockResolvedValue(result()));
+      await userEvent.click(screen.getByTestId('stock-adjust-KCN-350-GRY'));
+      await screen.findByTestId('stock-correction-dialog');
+      await userEvent.type(screen.getByTestId('stock-correction-quantity'), '7');
+      await userEvent.click(screen.getByTestId('stock-correction-submit'));
+      await userEvent.click(await screen.findByTestId('stock-correction-done'));
+
+      await waitFor(() => expect(screen.getByTestId('stock-adjust-KCN-350-GRY')).toHaveFocus());
+    });
+
+    it('should return focus to the Adjust stock button after Escape', async () => {
+      renderHarness(vi.fn().mockResolvedValue(result()));
+      await userEvent.click(screen.getByTestId('stock-adjust-KCN-350-GRY'));
+      await screen.findByTestId('stock-correction-dialog');
+      await userEvent.keyboard('{Escape}');
+
+      await waitFor(() => expect(screen.getByTestId('stock-adjust-KCN-350-GRY')).toHaveFocus());
+    });
+
+    it('should ignore Escape and outside clicks while a save is pending, wherever focus is', async () => {
+      let release: (value: CorrectStockResult) => void = () => undefined;
+      const correctStock = vi.fn().mockReturnValue(
+        new Promise<CorrectStockResult>((resolve) => {
+          release = resolve;
+        }),
+      );
+      renderHarness(correctStock);
+      await userEvent.click(screen.getByTestId('stock-adjust-KCN-350-GRY'));
+      await screen.findByTestId('stock-correction-dialog');
+      await userEvent.type(screen.getByTestId('stock-correction-quantity'), '7');
+      await userEvent.click(screen.getByTestId('stock-correction-submit'));
+      await screen.findByTestId('stock-correction-applying');
+
+      await userEvent.tab();
+      await userEvent.tab();
+      await userEvent.keyboard('{Escape}');
+      await userEvent.click(document.body);
+      expect(screen.getByTestId('stock-correction-applying')).toBeInTheDocument();
+
+      release(result());
+      expect(await screen.findByTestId('stock-correction-done')).toBeInTheDocument();
+    });
   });
 });

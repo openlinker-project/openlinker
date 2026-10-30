@@ -126,3 +126,28 @@ export const MOVEMENT_TYPE_FILTER_LABEL: Record<MovementTypeFilterValue, string>
 export function isMovementTypeFilterValue(value: string | null): value is MovementTypeFilterValue {
   return value !== null && (MOVEMENT_TYPE_FILTER_VALUES as readonly string[]).includes(value);
 }
+
+const INTERNAL_ID_PAIR = /\b(?:productId|connectionId|variantId)=\S+/g;
+
+/**
+ * The sentence an operator reads for a refused write. Known reasons get plain
+ * copy; an unknown reason keeps the adapter's words with internal ids removed,
+ * because an id is not something an operator can act on.
+ */
+export function presentRefusalText(
+  reason: string | null,
+  detail: string | null,
+  masterName: string | null,
+): string | null {
+  if (reason === 'master-product-not-found') {
+    return `${masterName ?? 'the shop'} no longer has this product. Nothing changed.`;
+  }
+  if (detail === null) return null;
+  const cleaned = detail
+    .replace(INTERNAL_ID_PAIR, '')
+    .replace(/\s+,/g, ',')
+    .replace(/[,;:\s]+$/, '')
+    .replace(/\s{2,}/g, ' ')
+    .trim();
+  return cleaned.length > 0 ? cleaned : null;
+}

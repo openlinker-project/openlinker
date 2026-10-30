@@ -20,7 +20,7 @@
  * @module apps/web/src/features/inventory/components
  */
 import { zodResolver } from '@hookform/resolvers/zod';
-import { useEffect, useMemo, useState, type ReactElement, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactElement, type ReactNode } from 'react';
 import { useForm } from 'react-hook-form';
 import { ApiError } from '../../../shared/api/api-error';
 import { Alert } from '../../../shared/ui/alert';
@@ -63,7 +63,8 @@ import {
   toCorrectStockInput,
   type StockCorrectionFormValues,
 } from './stock-correction-dialog.schema';
-import type { StockAdjustTarget } from '../lib/stock-row';
+import { presentRefusalText } from '../lib/stock-movement-copy';
+import { stockRowKey, type StockAdjustTarget } from '../lib/stock-row';
 
 export interface StockCorrectionDialogProps {
   /** `null` closes the dialog; a value opens it for that variant. */
@@ -74,15 +75,52 @@ export interface StockCorrectionDialogProps {
 export function StockCorrectionDialog({ target, onClose }: StockCorrectionDialogProps): ReactElement {
   // The body owns the mutation, so it is the one that knows a save is in
   // flight; it reports that up so the shell can refuse to close mid-save.
-  const [locked, setLocked] = useState(false);
+  // A ref, not state: a close request must read the CURRENT save state, not the
+  // value of the last render, or Esc after a Tab-cycle slips through mid-save.
+  const lockedRef = useRef(false);
+  const setLocked = useCallback((value: boolean): void => {
+    lockedRef.current = value;
+  }, []);
+  const openerRef = useRef<HTMLElement | null>(null);
+  if (target === null) {
+    openerRef.current = null;
+  } else if (openerRef.current === null && document.activeElement instanceof HTMLElement) {
+    // Radix moves focus into the dialog only after the first commit, so the
+    // opener is still the active element while the open renders.
+    openerRef.current = document.activeElement;
+  }
+  const lastKeyRef = useRef<string | null>(null);
+  if (target !== null) lastKeyRef.current = stockRowKey(target.variant);
+
+  const refuseWhileSaving = (event: Event): void => {
+    if (lockedRef.current) event.preventDefault();
+  };
+
   return (
     <Dialog
       open={target !== null}
       onOpenChange={(open) => {
-        if (!open && !locked) onClose();
+        if (!open && !lockedRef.current) onClose();
       }}
     >
-      <DialogContent className="sc-dialog">
+      <DialogContent
+        className="sc-dialog"
+        onEscapeKeyDown={refuseWhileSaving}
+        onPointerDownOutside={refuseWhileSaving}
+        onInteractOutside={refuseWhileSaving}
+        onCloseAutoFocus={(event) => {
+          // No Trigger wraps the opener, so Radix has nowhere to return focus to.
+          event.preventDefault();
+          const key = lastKeyRef.current;
+          const opener = openerRef.current;
+          const byTestId =
+            key === null ? null : document.querySelector<HTMLElement>(`[data-testid="stock-adjust-${key}"]`);
+          const toggle =
+            key === null ? null : document.querySelector<HTMLElement>(`[data-testid="stock-variant-toggle-${key}"]`);
+          const next = byTestId ?? (opener?.isConnected ? opener : null) ?? toggle;
+          next?.focus();
+        }}
+      >
         {target !== null ? (
           <DialogBody key={target.variant.id} target={target} onClose={onClose} onLockChange={setLocked} />
         ) : null}
@@ -659,7 +697,8 @@ function ResultView({
           <StatusBadge tone="error">Not applied</StatusBadge>
         </p>
         <Alert tone="error" title={`${master} refused this change`} data-testid="stock-correction-refused-reason">
-          {result.refusal?.detail ?? 'The master did not accept the change and gave no reason.'}
+          {presentRefusalText(result.refusal?.reason ?? null, result.refusal?.detail ?? null, master) ??
+            'The master did not accept the change and gave no reason.'}
         </Alert>
         <DialogFooter>
           <Button tone="secondary" onClick={onClose} data-testid="stock-correction-close">

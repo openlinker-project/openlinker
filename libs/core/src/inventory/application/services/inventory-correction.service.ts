@@ -178,6 +178,21 @@ export class InventoryCorrectionService implements IInventoryCorrectionService {
     let preWriteMasterQuantity = target.currentQuantity;
     if (input.mode === 'set' || input.quantity < 0) {
       const masterQuantity = await this.readMasterQuantity(adapter, target);
+      if (masterQuantity instanceof MasterProductGoneAtRead) {
+        // Same end state as the write path gives a master-deleted product: a
+        // recorded, refused correction. Retrying can never help.
+        const requested =
+          input.mode === 'set' ? input.quantity - target.currentQuantity : input.quantity;
+        return this.refuseGoneAtRead(
+          requested === 0 ? input.quantity : requested,
+          masterQuantity.detail,
+          target,
+          master,
+          input,
+          idempotencyKey,
+          note
+        );
+      }
       preWriteMasterQuantity = masterQuantity;
       currentForThreshold = masterQuantity;
       if (input.mode === 'set') delta = input.quantity - masterQuantity;
@@ -421,16 +436,67 @@ export class InventoryCorrectionService implements IInventoryCorrectionService {
     );
   }
 
+  private async refuseGoneAtRead(
+    delta: number,
+    detail: string,
+    target: ResolvedTarget,
+    master: InventoryCorrectionMaster,
+    input: CorrectStockInput,
+    idempotencyKey: string,
+    note: string
+  ): Promise<InventoryCorrectionResult> {
+    const claimed = await this.movements.insertPending({
+      productId: target.productId,
+      productVariantId: target.productVariantId,
+      locationId: target.position.locationId,
+      sourceConnectionId: target.owner,
+      reason: 'manual_correction',
+      quantityDelta: delta,
+      sourceKind: 'operator',
+      sourceRef: null,
+      actorUserId: input.actorUserId,
+      operatorReason: input.operatorReason,
+      note: note === '' ? null : note,
+      idempotencyKey,
+      occurredAt: new Date(),
+    });
+    if (claimed === null) {
+      const winner = await this.movements.findByIdempotencyKey(idempotencyKey);
+      if (winner === null) {
+        throw new Error(`Stock correction claim vanished: ${idempotencyKey}`);
+      }
+      return await this.replayLocked(winner, target, master, input);
+    }
+    await this.movements.settle(claimed.id, {
+      status: 'refused',
+      refusalReason: 'master-product-not-found',
+      refusalDetail: detail,
+    });
+    this.logger.warn(
+      `Manual stock correction refused: product gone at the master: movement=${claimed.id} ` +
+        `owner=${target.owner}`
+    );
+    return this.report(claimed.id, 'refused', delta, null, null, null, master, {
+      reason: 'master-product-not-found',
+      detail,
+    });
+  }
+
   private async readMasterQuantity(
     adapter: InventoryMasterPort,
     target: ResolvedTarget
-  ): Promise<number> {
+  ): Promise<number | MasterProductGoneAtRead> {
     try {
       const entry = await this.findMasterEntry(adapter, target);
       if (entry !== undefined && Number.isFinite(entry.available)) {
         return entry.available;
       }
     } catch (error) {
+      if (error instanceof MasterProductNotFoundError) {
+        return new MasterProductGoneAtRead(
+          error.message.trim() !== '' ? error.message : 'The product no longer exists at the master'
+        );
+      }
       throw new InventoryCorrectionRefusedError(
         'master-unreadable',
         `The product master's current stock could not be read: ${
@@ -644,6 +710,11 @@ export class InventoryCorrectionService implements IInventoryCorrectionService {
       },
     };
   }
+}
+
+/** Result marker: the pre-write read found the product deleted at the master. */
+class MasterProductGoneAtRead {
+  constructor(readonly detail: string) {}
 }
 
 /**
