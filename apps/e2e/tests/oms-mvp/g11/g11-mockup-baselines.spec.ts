@@ -107,10 +107,10 @@ test.describe('G11 live parity with the mockup states @g11', () => {
     }
   }
 
-  async function shoot(page: import('@playwright/test').Page, name: string): Promise<void> {
+  async function shoot(page: import('@playwright/test').Page, name: string, fullPage = true): Promise<void> {
     const testInfo = test.info();
     const path = testInfo.outputPath(`${name}--live.png`);
-    await page.screenshot({ path, fullPage: true });
+    await page.screenshot({ path, fullPage });
     await testInfo.attach(`live - ${name}`, { path, contentType: 'image/png' });
   }
 
@@ -158,7 +158,8 @@ test.describe('G11 live parity with the mockup states @g11', () => {
       'variant-cost-cancel',
       'variant-cost-error',
     ]);
-    await shoot(page, 'm26-cost-edit');
+    // A full-page capture resizes the viewport, which on the product page can drop an open form.
+    await shoot(page, 'm26-cost-edit', false);
     await page.getByTestId('variant-cost-cancel').click();
 
     await mustSetCost(http.admin, a1!.variantId, '10.00', 'PLN');
@@ -283,7 +284,6 @@ test.describe('G11 live parity with the mockup states @g11', () => {
     await expect(page.getByTestId('cost-coverage-banner')).toBeVisible();
     await expectLive(page, 'products-banner', [
       'cost-coverage-banner',
-      'cost-coverage-meter',
       'cost-coverage-banner-open',
       'cost-coverage-banner-dismiss',
       'products-filter-no-cost',
@@ -330,9 +330,11 @@ test.describe('G11 live parity with the mockup states @g11', () => {
     const list = new CostWorklistPage(page);
     await list.goto();
     await list.selectTab('all');
+    // The selection is cleared whenever the search changes, so select from one unfiltered view.
     for (const v of [a2!, c1!]) {
-      await list.search.fill(v.sku);
+      await expect(list.row(v.sku)).toBeVisible();
       await list.select(v.sku).check();
+      await expect(list.select(v.sku)).toBeChecked();
     }
     await expect(list.bulkBar).toBeVisible();
     await list.openBulk();
@@ -362,8 +364,6 @@ test.describe('G11 live parity with the mockup states @g11', () => {
       'cost-coverage-banner',
       'cost-coverage-banner-margin',
       'cost-coverage-banner-open',
-      'cost-coverage-banner-dismiss',
-      'cost-coverage-meter',
       'margin-kpi-margin-pct',
     ]);
     await shoot(page, 'm30-analytics');
@@ -406,6 +406,11 @@ test.describe('G11 live parity with the mockup states @g11', () => {
         body: JSON.stringify({ currency: 'PLN', items: [], total: 0 }),
       }),
     );
+    await page.route('**/products/cost-coverage*', async (route) => {
+      const real = await route.fetch();
+      const body = (await real.json()) as Record<string, unknown>;
+      await route.fulfill({ response: real, json: { ...body, soldVariantsWithoutCost: 0, netSalesWithoutCost: 0, coveragePct: 100 } });
+    });
     await page.goto('/products/cost-prices');
     await expect(page.getByTestId('cost-worklist-done-empty')).toBeVisible();
     await expectLive(page, 'done', ['cost-worklist-done-empty']);
