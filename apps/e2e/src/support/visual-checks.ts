@@ -134,6 +134,8 @@ export async function checkOverflow(page: Page, rootSelector: string): Promise<O
         if (style.overflowX !== 'hidden' && style.overflowX !== 'clip') continue;
         const text = (el.textContent ?? '').trim();
         if (text === '') continue;
+        // Visually-hidden screen-reader text is clipped to 1px on purpose.
+        if (el.classList.contains('sr-only') || el.closest('.sr-only') !== null) continue;
         if (el.scrollWidth <= el.clientWidth + 1) continue;
         clipped.push({
           selector: describe(el),

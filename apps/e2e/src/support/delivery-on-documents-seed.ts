@@ -261,7 +261,10 @@ export async function seedDeliveryOnDocuments(): Promise<void> {
           DELIVERY_CONNECTION_IDS.receipt,
           DELIVERY_SHOP_NAME,
           DELIVERY_SOURCE_NAME,
-          JSON.stringify({ masterCatalogConnectionId: DELIVERY_CONNECTION_IDS.shop }),
+          JSON.stringify({
+            environment: 'sandbox',
+            masterCatalogConnectionId: DELIVERY_CONNECTION_IDS.shop,
+          }),
         ],
       );
 

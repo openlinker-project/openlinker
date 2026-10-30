@@ -157,7 +157,7 @@ export class AllegroWizardPage {
     await this.page.getByLabel('Client ID').fill('delivery-e2e-client-id');
     await this.page.getByLabel('Client secret').fill('delivery-e2e-client-secret');
     await this.next().click();
-    await expect(this.page.getByLabel('Environment')).toBeVisible();
+    await expect(this.page.getByLabel('Environment', { exact: true })).toBeVisible();
     await this.next().click();
     await this.next().click();
     await expect(this.step.root).toBeVisible();
