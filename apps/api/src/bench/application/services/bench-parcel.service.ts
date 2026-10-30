@@ -82,6 +82,7 @@ import {
 import {
   deriveBenchWorkState,
   isBenchWorkSelectable,
+  isCancelledBenchState,
   isClaimableByViewer,
 } from '../bench-work-eligibility';
 import { readBuyerName, readOrderReference } from '../bench-order-facts';
@@ -470,7 +471,8 @@ export class BenchParcelService implements IBenchParcelService {
       };
     }
 
-    if (work.status === 'cancelled') {
+    const refusal = this.refusalFor(work);
+    if (refusal !== null && isCancelledBenchState(refusal)) {
       const state = await this.verification.getState(workId);
       return {
         outcome: 'refused',
