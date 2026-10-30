@@ -40,6 +40,12 @@ import type {
   ConfirmOrderChangeResult,
   OrderChangeView,
 } from './order-cancel.types';
+import type {
+  BulkBuyerNoteReadResult,
+  BulkCancelOrdersRequest,
+  BulkCancelOrdersResult,
+  BulkRemoveOrderTagResult,
+} from './order-bulk-actions.types';
 import type { OrderRefundRecord, RecordOrderRefundRequest } from './order-refund.types';
 import type {
   ConfirmOrderChangeRequest,
@@ -182,6 +188,12 @@ export interface OrdersApi {
   listOrderTags: (internalOrderId: string) => Promise<string[]>;
   /** Assign one tag to every named order — the bulk action bar (#3532). */
   bulkAssignTag: (tagId: string, orderIds: string[]) => Promise<BulkAssignOrderTagResult>;
+  /** Remove one tag from every named order (#3545). */
+  bulkRemoveTag: (tagId: string, orderIds: string[]) => Promise<BulkRemoveOrderTagResult>;
+  /** Cancel many orders with one reason; per-row outcomes, never all-or-nothing (#3545, admin). */
+  bulkCancelOrders: (body: BulkCancelOrdersRequest) => Promise<BulkCancelOrdersResult>;
+  /** Mark the buyer note read on many orders (#3545, admin and operator). */
+  bulkMarkBuyerNoteRead: (orderIds: string[]) => Promise<BulkBuyerNoteReadResult>;
 
   /** The caller's own saved column presets (#3530, D32). */
   listColumnPresets: () => Promise<OrderColumnPreset[]>;
@@ -491,6 +503,24 @@ export function createOrdersApi(request: ApiRequest, requestBlob: ApiBlobRequest
         `/order-tags/${encodeURIComponent(tagId)}/bulk-assign`,
         { method: 'POST', body: JSON.stringify({ orderIds }) },
       );
+    },
+    bulkRemoveTag(tagId, orderIds): Promise<BulkRemoveOrderTagResult> {
+      return request<BulkRemoveOrderTagResult>(
+        `/order-tags/${encodeURIComponent(tagId)}/bulk-remove`,
+        { method: 'POST', body: JSON.stringify({ orderIds }) },
+      );
+    },
+    bulkCancelOrders(body): Promise<BulkCancelOrdersResult> {
+      return request<BulkCancelOrdersResult>('/orders/bulk/cancel', {
+        method: 'POST',
+        body: JSON.stringify(body),
+      });
+    },
+    bulkMarkBuyerNoteRead(orderIds): Promise<BulkBuyerNoteReadResult> {
+      return request<BulkBuyerNoteReadResult>('/orders/bulk/buyer-note/read', {
+        method: 'POST',
+        body: JSON.stringify({ orderIds }),
+      });
     },
     assignTag(internalOrderId, tagId): Promise<void> {
       return request<void>(`/orders/${encodeURIComponent(internalOrderId)}/tags`, {

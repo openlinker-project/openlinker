@@ -13788,6 +13788,23 @@ input.bulk-dispatch__num--wide {
   border-bottom: 0;
 }
 
+/* The result list is read to learn WHICH order was refused, so the id is shown
+ * whole: it wraps anywhere instead of clamping to two lines (clones and real
+ * ids differ only at the tail), and the row itself wraps so a narrow dialog
+ * drops the badge and reason under the id rather than squeezing it out. */
+.bulk-result__row {
+  flex-wrap: wrap;
+}
+
+.bulk-result__ordid {
+  display: block;
+  -webkit-line-clamp: unset;
+  overflow: visible;
+  overflow-wrap: anywhere;
+  min-width: 0;
+  flex: 1 1 12rem;
+}
+
 .bulk-dispatch__result-detail {
   font-size: 0.8125rem;
 }

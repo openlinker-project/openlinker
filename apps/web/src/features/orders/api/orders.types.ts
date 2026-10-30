@@ -648,7 +648,7 @@ export interface OrderRecord {
    * true). Read it through `readBuyerNote`, never with a bare truthiness test.
    */
   buyerNote?: string | null;
-  /** When an operator first marked the note read (#3538). `null` = unread. Detail only. */
+  /** When an operator first marked the note read (#3538). `null` = unread. On list and detail rows. */
   buyerNoteReadAt?: string | null;
   /** OL user id of whoever first marked it read. Moves with `buyerNoteReadAt`. */
   buyerNoteReadByUserId?: string | null;
@@ -1243,6 +1243,8 @@ export interface OrderTag {
   updatedAt: string;
 }
 
+import type { BulkOrderTagRowResult } from './order-bulk-actions.types';
+
 /** `POST /order-tags/:tagId/bulk-assign` result (#3532). */
 export interface BulkAssignOrderTagResult {
   tagId: string;
@@ -1250,6 +1252,10 @@ export interface BulkAssignOrderTagResult {
   added: number;
   /** Orders that already carried it. */
   alreadyTagged: number;
+  /** Orders whose row failed (#3545); 0 on a clean run. */
+  failed?: number;
+  /** Per-order outcome, in request order. Absent on a pre-#3545 payload. */
+  results?: BulkOrderTagRowResult[];
 }
 
 /**
