@@ -134,9 +134,8 @@ export async function createWooOrder(
       quantity,
     };
   });
-  // WooCommerce stamps date_created to the second (truncated), and G11-G stores not-recorded for an order
-  // placed before the cost was entered, so a cost set a moment ago would otherwise outrank the order.
-  await new Promise((resolve) => setTimeout(resolve, 2_500));
+  // No settle wait: since #3588 (F5) cost and placedAt are compared at whole-second granularity, so an order
+  // created within the same second as the cost save is still `recorded`.
   const suffix = Date.now().toString(36);
   const billing = {
     firstName: 'Erik',
