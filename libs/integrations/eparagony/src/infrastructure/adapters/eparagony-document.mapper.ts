@@ -79,6 +79,8 @@ export function toCreateReceiptRequest(
     toProductLine(line, table, config, command.orderId),
   );
 
+  assertNoNameSharedAcrossRates(productLines, command.orderId);
+
   const grossSaleValue = toMinorUnits(command.totalGross);
   if (grossSaleValue === null || grossSaleValue < 0) {
     throw new EparagonyConfigException(
@@ -177,6 +179,43 @@ export function toCreateReceiptRequest(
   }
 
   return request;
+}
+
+/**
+ * The key a fiscal printer identifies a product by: whitespace-collapsed,
+ * lower-cased and cut to the 40 characters the device keeps. Polish letters are
+ * deliberately NOT folded - the device treats them as distinct characters.
+ */
+export function toPrinterNameKey(name: string): string {
+  return name.trim().replace(/\s+/g, ' ').toLowerCase().slice(0, 40);
+}
+
+/**
+ * Refuse a receipt where one printer name would be registered at two VAT rates.
+ * The device rejects that and then blocks the name, so it is cheaper to refuse
+ * before anything is sent. The REBATE balancing line is not a product line and
+ * is not checked.
+ */
+function assertNoNameSharedAcrossRates(
+  productLines: readonly EparagonyReceiptProductLine[],
+  orderId: string,
+): void {
+  const ratesByKey = new Map<string, { name: string; rates: Set<string> }>();
+  for (const line of productLines) {
+    const key = toPrinterNameKey(line.productOrServiceName);
+    const entry = ratesByKey.get(key) ?? { name: line.productOrServiceName, rates: new Set() };
+    entry.rates.add(line.taxRate);
+    ratesByKey.set(key, entry);
+  }
+  for (const { name, rates } of ratesByKey.values()) {
+    if (rates.size > 1) {
+      throw new EparagonyConfigException(
+        `eparagony.pl cannot register order ${orderId}: line name "${name}" is used at ` +
+          `${rates.size} different VAT rates (${[...rates].join(', ')})`,
+        'Two lines on this receipt share one name but carry different VAT rates. A fiscal printer refuses that and then blocks the name. Give each rate its own line name.',
+      );
+    }
+  }
 }
 
 function toProductLine(

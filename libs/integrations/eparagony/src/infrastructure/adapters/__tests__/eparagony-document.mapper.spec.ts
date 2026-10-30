@@ -11,6 +11,7 @@
 import type { RegisterTransactionCommand } from '@openlinker/core/fiscalization';
 
 import type { EparagonyConnectionConfig } from '../../../domain/types/eparagony-config.types';
+import { EparagonyConfigException } from '../../../domain/exceptions/eparagony-config.exception';
 import { toCreateReceiptRequest } from '../eparagony-document.mapper';
 
 function makeConfig(overrides: Partial<EparagonyConnectionConfig> = {}): EparagonyConnectionConfig {
@@ -154,5 +155,70 @@ describe('toCreateReceiptRequest — payment.paymentName (#3268 review)', () => 
     });
 
     expect('paymentName' in request.eReceipt.payment.payments[0]).toBe(false);
+  });
+});
+
+describe('toCreateReceiptRequest - one name at two VAT rates (#3906, ADR-079 decision 9)', () => {
+  function build(
+    lines: Array<{ name: string; taxRate: string }>,
+  ): ReturnType<typeof toCreateReceiptRequest> {
+    return toCreateReceiptRequest({
+      command: makeCommand({
+        lines: lines.map((l) => ({ ...l, quantity: 1, unitPriceGross: 10, sku: null })),
+        totalGross: 10 * lines.length,
+      }),
+      config: makeConfig(),
+      documentToken: 'doc-1',
+      transactionToken: 'txn-1',
+    });
+  }
+
+  it('should refuse when the same name carries two different rates', () => {
+    expect(() =>
+      build([
+        { name: 'Shipping', taxRate: '23' },
+        { name: 'Shipping', taxRate: '5' },
+      ]),
+    ).toThrow(EparagonyConfigException);
+  });
+
+  it('should refuse when names differ only by case and whitespace', () => {
+    expect(() =>
+      build([
+        { name: 'Shipping', taxRate: '23' },
+        { name: ' shipping  ', taxRate: '5' },
+      ]),
+    ).toThrow(EparagonyConfigException);
+  });
+
+  it('should pass when each rate has its own line name', () => {
+    expect(() =>
+      build([
+        { name: 'Koszt dostawy 23%', taxRate: '23' },
+        { name: 'Koszt dostawy 5%', taxRate: '5' },
+      ]),
+    ).not.toThrow();
+  });
+
+  it('should pass when the same name repeats at the same rate', () => {
+    expect(() =>
+      build([
+        { name: 'Shipping', taxRate: '23' },
+        { name: 'Shipping', taxRate: '23' },
+      ]),
+    ).not.toThrow();
+  });
+
+  it('should keep the line name out of the operator-facing reason', () => {
+    try {
+      build([
+        { name: 'Shipping', taxRate: '23' },
+        { name: 'Shipping', taxRate: '5' },
+      ]);
+      throw new Error('expected a refusal');
+    } catch (error) {
+      expect(error).toBeInstanceOf(EparagonyConfigException);
+      expect((error as EparagonyConfigException).reason).not.toContain('Shipping');
+    }
   });
 });
