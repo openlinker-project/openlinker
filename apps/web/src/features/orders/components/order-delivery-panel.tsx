@@ -34,6 +34,7 @@ import type {
   ParsedOrderShipping,
 } from '../api/order-snapshot.schema';
 import type { OrderDeliveryRider } from '../api/orders.types';
+import type { OrderEditsView } from '../api/order-edit.types';
 import type { DeliveryOutcome } from '../lib/delivery-outcome';
 import type { DeliveryOwner } from '../lib/delivery-owner';
 import { ConnectionDot } from './connection-dot';
@@ -89,6 +90,14 @@ interface OrderDeliveryPanelProps {
   sourceDeliveryMethodId?: string | null;
   /** Source delivery-method label (#1791) — Add-mapping pre-focus copy. */
   sourceDeliveryMethodName?: string | null;
+  /**
+   * The order beside the channel's record (#3544). Present only on an edited
+   * order; the panel then says what the channel still shows next to the edited
+   * address and method. `shippingAddress` / `shipping` are already the edited ones.
+   */
+  edits?: OrderEditsView | null;
+  /** Display name of the source connection, for "<channel> shows ...". */
+  channelName?: string | null;
 }
 
 function addressLines(address: ParsedAddress): ReactElement {
@@ -135,6 +144,8 @@ export function OrderDeliveryPanel({
   sourceConnectionId,
   sourceDeliveryMethodId,
   sourceDeliveryMethodName,
+  edits,
+  channelName,
 }: OrderDeliveryPanelProps): ReactElement {
   // Resolved unconditionally (never inside a branch) — see #893.
   const sourcePlatform = usePlatform(sourcePlatformType ?? undefined);
@@ -165,7 +176,25 @@ export function OrderDeliveryPanel({
     });
   }
   if (shippingAddress) {
-    items.push({ id: 'ship-to', label: 'Ship to', value: addressLines(shippingAddress) });
+    const originalAddress = edits?.address?.original ?? null;
+    items.push({
+      id: 'ship-to',
+      label: 'Ship to',
+      value: (
+        <>
+          {addressLines(shippingAddress)}
+          {edits?.address ? (
+            <span className="order-edit-edited" data-testid="order-edit-address-original">
+              {`Edited in OpenLinker · ${channelName ?? 'the channel'} shows ${
+                originalAddress
+                  ? [originalAddress.address1, originalAddress.address2].filter(Boolean).join(', ')
+                  : 'a different address'
+              }`}
+            </span>
+          ) : null}
+        </>
+      ),
+    });
   }
   // Always rendered (#1776) — the delivery-method label is a core "where it's
   // going" fact, so it must not blank out when the source order carried no
@@ -175,8 +204,18 @@ export function OrderDeliveryPanel({
   items.push({
     id: 'method',
     label: 'Method',
-    value:
-      shipping?.methodName ?? shipping?.methodId ?? methodFallback ?? pickupPoint?.name ?? '-',
+    value: (
+      <>
+        {shipping?.methodName ?? shipping?.methodId ?? methodFallback ?? pickupPoint?.name ?? '-'}
+        {edits?.deliveryMethod ? (
+          <span className="order-edit-edited" data-testid="order-edit-method-original">
+            {`Edited in OpenLinker · ${channelName ?? 'the channel'} shows ${
+              edits.deliveryMethod.original.name ?? edits.deliveryMethod.original.id ?? 'no method'
+            }`}
+          </span>
+        ) : null}
+      </>
+    ),
   });
   // Always rendered (unlike the fields above) — "-" fallback per #1617 so the
   // operator can tell "no carrier resolved" apart from "field doesn't exist".

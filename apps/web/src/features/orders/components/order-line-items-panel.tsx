@@ -37,9 +37,19 @@ interface OrderLineItemsPanelProps {
    * by `OrderTotalsPanel`.
    */
   totals?: ParsedOrderTotals;
+  /**
+   * The channel's own quantity for each line an operator lowered (#3544), by
+   * order line id. `items` is the order AS EDITED, so this is what lets the cell
+   * show both figures: "2 was 3". Absent for an order nobody edited.
+   */
+  channelQuantities?: ReadonlyMap<string, number>;
 }
 
-export function OrderLineItemsPanel({ items, totals }: OrderLineItemsPanelProps): ReactElement {
+export function OrderLineItemsPanel({
+  items,
+  totals,
+  channelQuantities,
+}: OrderLineItemsPanelProps): ReactElement {
   const currency = totals?.currency;
   // Borrowed from the bulk review step rather than invented: a 200-line order
   // gets an alert naming the offending lines and then leaves the operator to
@@ -85,7 +95,19 @@ export function OrderLineItemsPanel({ items, totals }: OrderLineItemsPanelProps)
       id: 'qty',
       header: 'Qty',
       align: 'right',
-      cell: (item) => <span>{item.quantity}</span>,
+      cell: (item) => {
+        const channelQuantity = channelQuantities?.get(item.id);
+        return (
+          <span>
+            {item.quantity}
+            {channelQuantity !== undefined && channelQuantity !== item.quantity ? (
+              <span className="order-edit-was" data-testid="order-edit-line-was">
+                {` was ${channelQuantity}`}
+              </span>
+            ) : null}
+          </span>
+        );
+      },
     },
     {
       id: 'unitPrice',

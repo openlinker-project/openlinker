@@ -26,6 +26,13 @@ describe('OrderTotalsPanel', () => {
     expect(totalRow).toHaveClass('order-totals__row--total');
   });
 
+  it('shows the channel discount row only when the channel reported one (E-44)', () => {
+    const { rerender } = render(<OrderTotalsPanel totals={{ ...fullTotals, discountTotal: 5 }} />);
+    expect(screen.getByTestId('order-totals-discount')).toBeInTheDocument();
+    rerender(<OrderTotalsPanel totals={fullTotals} />);
+    expect(screen.queryByTestId('order-totals-discount')).toBeNull();
+  });
+
   it('omits shipping and tax rows when their value is zero', () => {
     render(
       <OrderTotalsPanel
@@ -53,5 +60,34 @@ describe('OrderTotalsPanel', () => {
     expect(screen.queryByText(/€/)).toBeNull();
     // Still renders the numeric value with fixed fraction digits
     expect(screen.getAllByText('10.00').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('E-44: channel 5 + OpenLinker 10 shows two rows, 5 and 10, not a combined 15', () => {
+    render(
+      <OrderTotalsPanel
+        totals={{ ...fullTotals, discountTotal: 15 }}
+        editedTotals={{ channelDiscountTotal: 5, combinedDiscountTotal: 15 }}
+      />,
+    );
+    expect(screen.getByTestId('order-totals-discount')).toHaveTextContent('5.00');
+    expect(screen.getByTestId('order-totals-discount')).not.toHaveTextContent('15.00');
+    expect(screen.getByTestId('order-totals-openlinker-discount')).toHaveTextContent('10.00');
+  });
+
+  it('E-44: an OpenLinker-only discount shows only the OpenLinker row', () => {
+    render(
+      <OrderTotalsPanel
+        totals={{ ...fullTotals, discountTotal: 10 }}
+        editedTotals={{ channelDiscountTotal: null, combinedDiscountTotal: 10 }}
+      />,
+    );
+    expect(screen.queryByTestId('order-totals-discount')).toBeNull();
+    expect(screen.getByTestId('order-totals-openlinker-discount')).toHaveTextContent('10.00');
+  });
+
+  it('E-44: a channel-only discount on an unedited order shows only the channel row', () => {
+    render(<OrderTotalsPanel totals={{ ...fullTotals, discountTotal: 5 }} />);
+    expect(screen.getByTestId('order-totals-discount')).toHaveTextContent('5.00');
+    expect(screen.queryByTestId('order-totals-openlinker-discount')).toBeNull();
   });
 });

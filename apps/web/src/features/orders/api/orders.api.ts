@@ -41,6 +41,16 @@ import type {
   OrderChangeView,
 } from './order-cancel.types';
 import type { OrderRefundRecord, RecordOrderRefundRequest } from './order-refund.types';
+import type {
+  ConfirmOrderChangeRequest,
+  EditOrderAddressRequest,
+  EditOrderDeliveryMethodRequest,
+  EditOrderDiscountRequest,
+  EditOrderLinesRequest,
+  OrderDiscountResult,
+  OrderEditResult,
+  OrderEditsView,
+} from './order-edit.types';
 
 export interface OrdersApi {
   list: (filters?: OrderFilters, pagination?: OrderPagination) => Promise<PaginatedOrders>;
@@ -94,11 +104,35 @@ export interface OrdersApi {
    * body `error` carries the machine code.
    */
   cancelOrder: (internalOrderId: string, body: CancelOrderRequest) => Promise<CancelOrderResult>;
-  /** Confirm the credit proposal a cancelled, invoiced order left behind. */
+  /**
+   * Confirm a change the operator reviewed: the credit proposal a cancelled,
+   * invoiced order left, a discount's document correction, or (with the optional
+   * body) a discount's refund intent. A refund past the ceiling answers 409
+   * `refund_ceiling_exceeded` unless the body acknowledges it.
+   */
   confirmOrderChange: (
     internalOrderId: string,
     changeId: string,
+    body?: ConfirmOrderChangeRequest,
   ) => Promise<ConfirmOrderChangeResult>;
+  /**
+   * Post-import edits (#3542/#3543, D9). Admin-only, saved in OpenLinker only,
+   * and confirmed immediately. `dryRun: true` answers the would-be figures and
+   * every refusal without writing. A refusal is an `ApiError` whose body `error`
+   * carries the machine code.
+   */
+  editOrderAddress: (internalOrderId: string, body: EditOrderAddressRequest) => Promise<OrderEditResult>;
+  editOrderLines: (internalOrderId: string, body: EditOrderLinesRequest) => Promise<OrderEditResult>;
+  editOrderDeliveryMethod: (
+    internalOrderId: string,
+    body: EditOrderDeliveryMethodRequest,
+  ) => Promise<OrderEditResult>;
+  editOrderDiscount: (
+    internalOrderId: string,
+    body: EditOrderDiscountRequest,
+  ) => Promise<OrderDiscountResult>;
+  /** The order beside the channel's own record of it; `null` for an order nobody edited. */
+  getOrderEdits: (internalOrderId: string) => Promise<OrderEditsView | null>;
   /** The order's operator changes, newest first: cancel requests and their credit proposals. */
   listOrderChanges: (internalOrderId: string) => Promise<OrderChangeView[]>;
   /** Record that the operator refunded the buyer. 409 `refund_ceiling_exceeded` carries the figures. */
@@ -344,11 +378,38 @@ export function createOrdersApi(request: ApiRequest, requestBlob: ApiBlobRequest
         { method: 'POST', body: JSON.stringify(body) },
       );
     },
-    confirmOrderChange(internalOrderId, changeId): Promise<ConfirmOrderChangeResult> {
+    confirmOrderChange(internalOrderId, changeId, body): Promise<ConfirmOrderChangeResult> {
       return request<ConfirmOrderChangeResult>(
         `/orders/${encodeURIComponent(internalOrderId)}/changes/${encodeURIComponent(changeId)}/confirm`,
-        { method: 'POST' },
+        { method: 'POST', ...(body ? { body: JSON.stringify(body) } : {}) },
       );
+    },
+    editOrderAddress(internalOrderId, body): Promise<OrderEditResult> {
+      return request<OrderEditResult>(`/orders/${encodeURIComponent(internalOrderId)}/edits/address`, {
+        method: 'POST',
+        body: JSON.stringify(body),
+      });
+    },
+    editOrderLines(internalOrderId, body): Promise<OrderEditResult> {
+      return request<OrderEditResult>(`/orders/${encodeURIComponent(internalOrderId)}/edits/lines`, {
+        method: 'POST',
+        body: JSON.stringify(body),
+      });
+    },
+    editOrderDeliveryMethod(internalOrderId, body): Promise<OrderEditResult> {
+      return request<OrderEditResult>(
+        `/orders/${encodeURIComponent(internalOrderId)}/edits/delivery-method`,
+        { method: 'POST', body: JSON.stringify(body) },
+      );
+    },
+    editOrderDiscount(internalOrderId, body): Promise<OrderDiscountResult> {
+      return request<OrderDiscountResult>(`/orders/${encodeURIComponent(internalOrderId)}/edits/discount`, {
+        method: 'POST',
+        body: JSON.stringify(body),
+      });
+    },
+    getOrderEdits(internalOrderId): Promise<OrderEditsView | null> {
+      return request<OrderEditsView | null>(`/orders/${encodeURIComponent(internalOrderId)}/edits`);
     },
     listOrderChanges(internalOrderId): Promise<OrderChangeView[]> {
       return request<OrderChangeView[]>(`/orders/${encodeURIComponent(internalOrderId)}/changes`);
