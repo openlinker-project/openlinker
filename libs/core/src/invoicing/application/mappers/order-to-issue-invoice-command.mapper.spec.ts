@@ -862,6 +862,40 @@ describe('toIssueInvoiceCommand delivery line (#3905, ADR-079)', () => {
     expect(cmd.lines[2]?.taxRate).toBe('8');
   });
 
+  describe('source-reported delivery rate (#3910)', () => {
+    const rateless = (shippingTaxRate?: string): Order =>
+      makeOrder({
+        items: [makeItem({ id: 'a', productId: 'p1', price: 100, taxRate: undefined })],
+        totals: {
+          subtotal: 100,
+          tax: 0,
+          shipping: 10,
+          total: 110,
+          currency: 'PLN',
+          ...(shippingTaxRate !== undefined ? { shippingTaxRate } : {}),
+        },
+      });
+
+    it('should emit one delivery line at the source rate when items carry none', () => {
+      const cmd = toIssueInvoiceCommand({ order: rateless('23'), connectionId: 'c' });
+      expect(cmd.lines[1]).toMatchObject({ unitPriceGross: 10, taxRate: '23' });
+    });
+
+    it('should stay rate-less when the source reported no delivery rate', () => {
+      const cmd = toIssueInvoiceCommand({ order: rateless(), connectionId: 'c' });
+      expect(cmd.lines[1]?.taxRate).toBe('');
+    });
+
+    it('should let an operator fixed rate win over the source rate', () => {
+      const cmd = toIssueInvoiceCommand({
+        order: rateless('23'),
+        connectionId: 'c',
+        deliveryLine: delivery({ rate: 'fixed', fixedRate: '8' }),
+      });
+      expect(cmd.lines[1]?.taxRate).toBe('8');
+    });
+  });
+
   it('should print no zero line when free delivery is omitted', () => {
     const cmd = toIssueInvoiceCommand({ order: mixed(0, 150), connectionId: 'c', deliveryLine: delivery() });
     expect(cmd.lines).toHaveLength(2);

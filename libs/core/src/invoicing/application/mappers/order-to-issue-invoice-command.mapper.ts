@@ -445,7 +445,10 @@ function applyDelivery(
   const parts = splitShippingAcrossRates(shipping, splitLines, exponent);
 
   if (parts === null) {
-    return [{ name: label, quantity: 1, unitPriceGross: shipping, taxRate: '' }];
+    // The basket cannot state a rate, but the source may have reported the one
+    // it charged on delivery (ADR-063: carried, never computed).
+    const sourceRate = order.totals.shippingTaxRate?.trim() ?? '';
+    return [{ name: label, quantity: 1, unitPriceGross: shipping, taxRate: sourceRate }];
   }
 
   return parts.map((part) => ({

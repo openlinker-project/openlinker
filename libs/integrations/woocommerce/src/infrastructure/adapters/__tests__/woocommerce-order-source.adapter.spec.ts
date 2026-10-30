@@ -547,6 +547,43 @@ describe('WooCommerceOrderSourceAdapter', () => {
       await expect(adapter.getOrder({ externalOrderId: '1' })).rejects.toBe(serverError);
     });
 
+    describe('delivery VAT rate from tax_lines (#3910)', () => {
+      const readRate = async (taxLines: unknown): Promise<string | undefined> => {
+        const order = makeOrder({ tax_lines: taxLines } as never);
+        const adapter = new WooCommerceOrderSourceAdapter(
+          makeHttpClient({ get: jest.fn().mockResolvedValue(order) }),
+          makeConnection(),
+        );
+        const result = await adapter.getOrder({ externalOrderId: String(order.id) });
+        return result.totals.shippingTaxRate;
+      };
+
+      it('should carry the single rate that taxed shipping', async () => {
+        await expect(
+          readRate([
+            { rate_id: 1, rate_percent: 23, shipping_tax_total: '2.30' },
+            { rate_id: 2, rate_percent: 8, shipping_tax_total: '0.00' },
+          ]),
+        ).resolves.toBe('23');
+      });
+
+      it('should report unknown when several rates taxed shipping', async () => {
+        await expect(
+          readRate([
+            { rate_id: 1, rate_percent: 23, shipping_tax_total: '1.00' },
+            { rate_id: 2, rate_percent: 8, shipping_tax_total: '0.50' },
+          ]),
+        ).resolves.toBeUndefined();
+      });
+
+      it('should report unknown when no tax line carries shipping tax', async () => {
+        await expect(
+          readRate([{ rate_id: 1, rate_percent: 23, shipping_tax_total: '0.00' }]),
+        ).resolves.toBeUndefined();
+        await expect(readRate(undefined)).resolves.toBeUndefined();
+      });
+    });
+
     describe('gross amounts WooCommerce reports as components (#3365)', () => {
       // WC keeps line prices net and reports the tax beside them. Their sum is
       // what the buyer paid, which is what a fiscal document's gross line needs.

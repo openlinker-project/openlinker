@@ -425,6 +425,15 @@ export interface OrderTotals {
   shippingGross?: number;
 
   /**
+   * The VAT rate the SOURCE charged on delivery, as a percent-as-string code
+   * (`'23'`, `'8'`, `'0'`; ADR-063 vocabulary). Absent means the source did not
+   * report exactly one rate - never `0`. Carried, never computed (ADR-063): it
+   * only lets a document state the delivery rate when the basket's items carry
+   * none, and an operator `fixed` delivery rate always wins over it.
+   */
+  shippingTaxRate?: string;
+
+  /**
    * A whole-order discount the SOURCE applied and did NOT put on any line,
    * as the source itself reports it. Absent means it reported none - never
    * that there was none, and never `0`.
