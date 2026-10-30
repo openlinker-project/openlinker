@@ -87,10 +87,12 @@ test.describe('G11 WORK - cost banners and work list @g11', () => {
     await expect(banner).toBeVisible();
     await expect(banner).toContainText(String(coverage.soldVariantsWithoutCost));
     await expect(banner).toContainText(`last ${coverage.days} days`);
-    await expect(page.getByTestId('cost-coverage-meter').first()).toBeAttached();
     const shot = test.info().outputPath('work-1.png');
     await page.screenshot({ path: shot, fullPage: true });
     await test.info().attach('WORK-1', { path: shot, contentType: 'image/png' });
+    // The coverage meter belongs to the work list (M30 worklist), not to the Products banner.
+    await page.goto('/products/cost-prices');
+    await expect(page.getByTestId('cost-coverage-meter').first()).toBeAttached();
   });
 
   test('WORK-2 dismissing the banner lasts for the session, a new session shows it again', async ({ openAs, ctx, http }) => {
@@ -174,7 +176,8 @@ test.describe('G11 WORK - cost banners and work list @g11', () => {
     await expect(list.row(a2.sku)).toBeVisible();
     await list.addInline(a2.sku, '3.21', 'PLN');
     await expect(list.saved(a2.sku)).toBeVisible();
-    await expect(list.cost(a2.sku)).toContainText('3.21');
+    // A saved row shows the saved note in place of the cost cell until the list is reloaded.
+    await expect(list.saved(a2.sku)).toContainText('3.21');
     expect(variantCostRow(ctx.db, a2.variantId)?.netUnitCost).toBe('3.2100');
     expect(
       ctx.db.scalar(`SELECT count(*) FROM order_line_items WHERE "variantId" = '${a2.variantId}' AND "costState" = 'recorded'`),
@@ -193,10 +196,12 @@ test.describe('G11 WORK - cost banners and work list @g11', () => {
     const page = await openAs('admin');
     const list = new CostWorklistPage(page);
     await page.goto('/products/cost-prices?tab=all');
+    // Changing the search resets the selection (the page clears it on any filter change), so select
+    // everything from one unfiltered view of the "all" tab.
     for (const v of [a2!, b1!, c1!]) {
-      await list.search.fill(v.sku);
       await expect(list.row(v.sku)).toBeVisible();
       await list.select(v.sku).check();
+      await expect(list.select(v.sku)).toBeChecked();
     }
     await expect(list.bulkBar).toBeVisible();
     await list.openBulk();
@@ -223,8 +228,9 @@ test.describe('G11 WORK - cost banners and work list @g11', () => {
     const list = new CostWorklistPage(page);
     await page.goto('/products/cost-prices?tab=all');
     for (const v of [a2!, c1!]) {
-      await list.search.fill(v.sku);
+      await expect(list.row(v.sku)).toBeVisible();
       await list.select(v.sku).check();
+      await expect(list.select(v.sku)).toBeChecked();
     }
     await list.openBulk();
     await list.fillBulk('-5');
@@ -243,6 +249,15 @@ test.describe('G11 WORK - cost banners and work list @g11', () => {
     await page.route('**/products/variants/cost-worklist?*', (route) =>
       route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ currency: 'PLN', items: [], total: 0 }) }),
     );
+    // The done state also needs the coverage read to say nothing sold is uncosted.
+    await page.route('**/products/cost-coverage*', async (route) => {
+      const real = await route.fetch();
+      const body = (await real.json()) as Record<string, unknown>;
+      await route.fulfill({
+        response: real,
+        json: { ...body, soldVariantsWithoutCost: 0, netSalesWithoutCost: 0, coveragePct: 100 },
+      });
+    });
     await page.goto('/products/cost-prices');
     await expect(new CostWorklistPage(page).doneEmpty).toBeVisible();
   });
