@@ -51,9 +51,10 @@ test.describe('G11 IMG - variant pictures @g11', () => {
       srcs.push((await cost.photoStrip(v.sku).locator('img').first().getAttribute('src')) ?? '');
     }
     expect(srcs[0]).not.toBe(srcs[1]);
-    await expect(page.getByText('From product')).toHaveCount(0);
 
     const variants = (await http.admin.get(`/products/${psA!.productId}/variants`)).json<{ items: VariantBody[] }>();
+    // The product also holds the third combination (no own picture), whose row legitimately says "From product".
+    await expect(page.getByText('From product')).toHaveCount(variants.items.filter((i) => i.imagesFromProduct).length);
     for (const v of variants.items.filter((i) => [a1.variantId, a2.variantId].includes(i.id))) {
       expect(v.imagesFromProduct).toBe(false);
     }
@@ -77,7 +78,8 @@ test.describe('G11 IMG - variant pictures @g11', () => {
     await expect(cost.photoSource.filter({ hasText: /no photos of its own/i }).first()).toBeVisible();
     await expect.poll(() => allImagesLoaded(cost.photoStrip(withoutImage!.sku))).toBe(true);
 
-    const broken = await page.locator('img').evaluateAll((imgs) =>
+    // Scoped to the variants table: the product header gallery uses the shop's own (internal) urls, outside G11.
+    const broken = await page.getByTestId('variant-table-section').locator('img').evaluateAll((imgs) =>
       imgs.filter((img) => (img as HTMLImageElement).complete && (img as HTMLImageElement).naturalWidth === 0).length,
     );
     expect(broken, 'no broken <img> on the variants table').toBe(0);
@@ -98,7 +100,8 @@ test.describe('G11 IMG - variant pictures @g11', () => {
     const page = await openAs('admin');
     const cost = new VariantCostPage(page);
     await cost.goto(psB!.productId);
-    await expect(cost.photoSource.first()).toContainText(/product photos are used/i);
+    await cost.open(b1!.sku);
+    await expect(cost.photoSource.filter({ hasText: /product photos are used/i }).first()).toBeVisible();
   });
 
   test('IMG-4 the variant image proxy streams bytes and 404s out of range', async ({ ctx, http }) => {
