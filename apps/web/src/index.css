@@ -19736,6 +19736,73 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
   color: var(--text-muted);
 }
 
+.variant-stock-table__stock-cell {
+  display: inline-flex;
+  flex-direction: column;
+  gap: 4px;
+  align-items: flex-start;
+}
+
+.variant-stock-table__stock-line {
+  white-space: nowrap;
+}
+
+.variant-stock-table__stock-label {
+  font-size: 0.8125rem;
+  color: var(--text-secondary);
+}
+
+.variant-stock-table__stock-note {
+  display: block;
+  font-size: 0.75rem;
+  line-height: 1.4;
+  color: var(--text-secondary);
+}
+
+.variant-card__stock {
+  padding: 0 var(--space-4) var(--space-3);
+}
+
+.variant-drawer__stockline {
+  margin-bottom: var(--space-3);
+}
+
+.variant-drawer__note {
+  margin: var(--space-3) 0 0;
+  font-size: 0.8125rem;
+  line-height: 1.5;
+  color: var(--text-secondary);
+  white-space: normal;
+}
+
+.variant-drawer__note b {
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+}
+
+.variant-drawer__holds {
+  list-style: none;
+  margin: var(--space-2) 0 0;
+  padding: 0;
+  display: grid;
+  gap: var(--space-1);
+  max-width: 28rem;
+  font-size: 0.8125rem;
+}
+
+.variant-drawer__holds li {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-1) 0;
+  border-top: 1px solid var(--border-subtle);
+}
+
+.variant-drawer__links--stock {
+  margin-top: var(--space-3);
+  align-items: center;
+}
+
 .variant-stock-table__listings-cell {
   display: flex;
   flex-wrap: wrap;
@@ -30913,3 +30980,205 @@ legend.analytics-settings-dialog__label {
 .ksef-issue-options__lines-scroll {
   overflow-x: auto;
 }
+
+/* Stock movement history (#3568) - page-specific rules from the M7 mockup. */
+.stock-movements-table th,
+.stock-movements-table td {
+  vertical-align: top;
+}
+
+.stock-movements-table td:first-child,
+.stock-movements-table th:first-child {
+  white-space: nowrap;
+}
+
+.stock-movement-chip--muted {
+  border-style: dashed;
+  opacity: 0.85;
+}
+
+.stock-movement__arrow {
+  color: var(--text-muted);
+  padding: 0 2px;
+}
+
+.stock-movement__unknown {
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+.stock-movement__delta--pos {
+  color: var(--status-success-fg);
+}
+
+.stock-movement__delta--neg {
+  color: var(--status-error-fg);
+}
+
+.stock-movement__delta--void {
+  color: var(--text-muted);
+  text-decoration: line-through;
+  text-decoration-color: var(--border-strong);
+}
+
+.stock-movement__source-kind {
+  font-size: 0.75rem;
+  margin-bottom: 1px;
+}
+
+.stock-movement__reason {
+  font-size: 0.75rem;
+  margin-top: 3px;
+  max-width: 15rem;
+}
+
+.stock-movement__promise-line {
+  font-size: 0.8125rem;
+  color: var(--text-secondary);
+}
+
+.stock-movement__promised-badge {
+  margin-left: 4px;
+}
+
+.stock-movement-row--refused {
+  box-shadow: inset 3px 0 0 var(--status-error-border);
+}
+
+.stock-movement-row--in-doubt {
+  box-shadow: inset 3px 0 0 var(--status-warning-border);
+}
+
+.stock-movement-row--promised {
+  background: var(--bg-subtle);
+}
+
+.stock-history__summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-5);
+  margin: 0 0 var(--space-4);
+  padding: 0;
+}
+
+.stock-history__summary > div {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.stock-history__summary dt {
+  margin: 0;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.stock-history__summary dd {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.stock-history__actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: var(--space-3);
+}
+
+.stock-movements-toolbar {
+  flex-wrap: wrap;
+  row-gap: var(--space-2);
+}
+
+/* `.toolbar__group` is nowrap by default; five controls overflow at 1440 px
+   and push "To" out of sight (F-01), so the group wraps like the listings one. */
+.stock-movements-toolbar .toolbar__group {
+  flex-wrap: wrap;
+  align-items: flex-end;
+  row-gap: var(--space-2);
+}
+
+/* One filter per row on a phone (F-02). */
+@media (max-width: 767.98px) {
+  .stock-movements-toolbar .toolbar__group {
+    flex-direction: column;
+    align-items: stretch;
+    width: 100%;
+  }
+
+  .stock-movements-toolbar .stock-movements-search,
+  .stock-movements-toolbar .stock-movements-field,
+  .stock-movements-toolbar .stock-movements-field input[type='date'] {
+    width: 100%;
+    min-width: 0;
+  }
+
+  /* In a column the 15rem flex basis would become HEIGHT (H18). */
+  .stock-movements-toolbar .stock-movements-search,
+  .stock-movements-toolbar .stock-movements-field {
+    flex: 0 0 auto;
+  }
+}
+
+.stock-movements-field {
+  display: inline-flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.stock-movements-field input[type='date'] {
+  min-width: 9.5rem;
+}
+
+.stock-movements-search {
+  min-width: 15rem;
+  flex: 1 1 15rem;
+}
+
+.stock-movements-summary-line {
+  margin: 0 0 var(--space-3);
+  color: var(--text-secondary);
+  font-size: 0.875rem;
+}
+
+/* Stock figures on the product page (#3569, mockup m25). The variants table owns the
+   layout; these are the small pieces left from the old stock panel. */
+.av-sub { display: block; font-size: 0.75rem; color: var(--text-muted); margin-top: 2px; }
+.av-unknown { display: inline-flex; align-items: center; gap: var(--space-1); color: var(--status-warning-fg); font-weight: 600; }
+.av-ch-table { width: 100%; border-collapse: collapse; font-size: 0.8125rem; }
+.av-ch-table th { text-align: left; font-family: var(--font-mono); font-size: 0.625rem; letter-spacing: var(--tracking-caps); text-transform: uppercase; color: var(--text-muted); font-weight: 500; padding: 4px 8px 4px 0; border-bottom: 1px solid var(--border-subtle); }
+.av-ch-table td { padding: 6px 8px 6px 0; border-bottom: 1px solid var(--border-subtle); vertical-align: top; color: var(--text-secondary); }
+.av-ch-table td.av-ch-num { text-align: right; font-weight: 600; color: var(--text-primary); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.av-ch-table th.av-ch-num { text-align: right; }
+.av-ch-scroll { overflow-x: auto; }
+.av-positions { margin-top: var(--space-2); }
+
+.av-loading-note { display: flex; align-items: center; gap: var(--space-2); margin: 0 0 var(--space-3); font-size: 0.8125rem; color: var(--text-muted); }
+.av-skel { display: block; height: 0.75rem; border-radius: var(--radius-sm); }
+
+@media (max-width: 767.98px) {
+  .variant-drawer__meta { grid-template-columns: minmax(0, 1fr); }
+}
+
+/* Manual stock correction dialog (#3567, mockup m6). Page-specific layout only. */
+.sc-dialog { max-width: 34rem; max-height: calc(100vh - 24px); overflow-y: auto; }
+.sc-dialog--compact { max-width: 28rem; }
+.sc-form { display: grid; gap: var(--space-3); }
+.sc-diff { margin: 0; font-size: 0.875rem; color: var(--text-secondary); }
+.sc-diff ins { text-decoration: none; font-weight: 600; color: var(--text-primary); }
+.sc-section-head { margin: 0; font-size: 0.75rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-muted); }
+.sc-impact { list-style: none; margin: 0; padding: 0; display: grid; border: 1px solid var(--border-subtle); border-radius: var(--radius-lg); background: var(--bg-surface); }
+.sc-impact__row { display: grid; grid-template-columns: 10rem minmax(0, 1fr) 4.5rem; gap: var(--space-2) var(--space-4); align-items: start; padding: var(--space-3); border-top: 1px solid var(--border-subtle); font-size: 0.8125rem; }
+.sc-impact__row:first-child { border-top: 0; }
+.sc-impact__what { font-weight: 600; color: var(--text-primary); }
+.sc-impact__sub { display: block; font-weight: 400; font-size: 0.75rem; color: var(--text-muted); }
+.sc-impact__how { color: var(--text-secondary); line-height: 1.45; }
+.sc-impact__qty { text-align: right; font-weight: 600; font-variant-numeric: tabular-nums; }
+@media (max-width: 599.98px) {
+  .sc-impact__row { grid-template-columns: minmax(0, 1fr); }
+  .sc-impact__qty { text-align: left; }
+}
+.sc-footnote { margin: 0; font-size: 0.75rem; color: var(--text-muted); }
+.sc-attempt { margin: 0 0 var(--space-2); font-size: 0.8125rem; color: var(--text-secondary); }
+.sc-check { display: flex; gap: var(--space-2); align-items: center; margin-top: var(--space-2); }

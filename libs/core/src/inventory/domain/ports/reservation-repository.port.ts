@@ -33,6 +33,7 @@
  */
 import type { Reservation } from '../entities/reservation.entity';
 import type {
+  HeldReservationForVariant,
   ExtendReservationExpiryInput,
   ReleaseReservationInput,
   ReservationClaimInput,
@@ -158,6 +159,21 @@ export interface ReservationRepositoryPort {
     orderRecordId: string,
     orderLineIds?: readonly string[]
   ): Promise<readonly Reservation[]>;
+
+  /**
+   * The newest live `held` rows per variant (#3621), at most `perVariantLimit`
+   * each, newest first - the stock view's "who is this promised to" read.
+   *
+   * Joined to the position, so each row carries the VARIANT it sits on, and
+   * stale positions are excluded exactly as the ATP ledger sum excludes them
+   * (a hold on a staled position is not part of any total shown). One
+   * parameterised statement for the whole batch. Empty `variantIds` returns
+   * `[]` without a storage round trip.
+   */
+  listHeldByVariantIds(
+    variantIds: readonly string[],
+    perVariantLimit: number
+  ): Promise<readonly HeldReservationForVariant[]>;
 
   /**
    * EVERY row for one order, whatever its status — the terminal ones included.

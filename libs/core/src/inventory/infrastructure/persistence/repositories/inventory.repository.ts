@@ -22,7 +22,7 @@
 import { Injectable } from '@nestjs/common';
 import { Logger } from '@openlinker/shared/logging';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Brackets, QueryFailedError, Repository } from 'typeorm';
+import { Brackets, In, QueryFailedError, Repository } from 'typeorm';
 import { randomUUID } from 'crypto';
 import { InventoryItemOrmEntity } from '../entities/inventory-item.orm-entity';
 import type { InventoryRepositoryPort } from '../../../domain/ports/inventory-repository.port';
@@ -469,6 +469,18 @@ export class InventoryRepository implements InventoryRepositoryPort {
       totalReserved: Number(row.totalReserved),
       stockUpdatedAt: row.stockUpdatedAt instanceof Date ? row.stockUpdatedAt : new Date(row.stockUpdatedAt),
     }));
+  }
+
+  async findPositionsByVariantIds(
+    variantIds: readonly string[]
+  ): Promise<readonly InventoryItem[]> {
+    if (variantIds.length === 0) return [];
+
+    const entities = await this.repository.find({
+      where: { productVariantId: In([...variantIds]) },
+      order: { updatedAt: 'DESC', id: 'ASC' },
+    });
+    return entities.map((entity) => this.toDomain(entity));
   }
 
   async findBinCodesByVariantIds(

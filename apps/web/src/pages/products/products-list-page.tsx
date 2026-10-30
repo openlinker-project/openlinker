@@ -89,6 +89,7 @@ import {
   STOCK_STATUS_BADGE_TONE,
   STOCK_STATUS_LABEL,
 } from '../../features/products';
+import { deriveAtpStatus } from '../../features/inventory';
 import { deriveProductStaleness } from '../../features/products/lib/product-staleness';
 import { ListingsCoveragePills } from './listings-coverage-pills';
 import { ProductRowDetail } from './product-row-detail';
@@ -721,6 +722,39 @@ export function ProductsListPage(): ReactElement {
   );
 
   const renderStockCell = useCallback((product: Product): ReactNode => {
+    // #3569 - available to promise leads when the list carries it. `null` is
+    // "OpenLinker does not know", so it is never drawn as 0 or as Out of stock.
+    if (product.availableToPromise !== undefined) {
+      const atpStatus = deriveAtpStatus(product.availableToPromise);
+      return (
+        <span className="products-cell-stack" data-testid={`stock-list-cell-${product.sku ?? product.id}`}>
+          {product.availableToPromise === null ? (
+            <span className="av-unknown" title="OpenLinker doesn't know. Not zero.">
+              Not known
+            </span>
+          ) : (
+            <span>
+              <span className="products-stock-value mono tabular">{product.availableToPromise}</span>{' '}
+              <span className="text-muted" style={{ fontSize: '0.75rem' }}>
+                to sell
+              </span>
+            </span>
+          )}
+          {atpStatus === 'unknown' ? (
+            <StatusBadge tone="neutral" withDot compact>
+              Not known
+            </StatusBadge>
+          ) : (
+            <StatusBadge tone={STOCK_STATUS_BADGE_TONE[atpStatus]} withDot compact>
+              {STOCK_STATUS_LABEL[atpStatus]}
+            </StatusBadge>
+          )}
+          {product.totalAvailable !== undefined ? (
+            <span className="text-muted products-cell-sub tabular">master {product.totalAvailable}</span>
+          ) : null}
+        </span>
+      );
+    }
     if (product.totalAvailable === undefined) {
       return <span className="text-muted">-</span>;
     }
@@ -798,7 +832,11 @@ export function ProductsListPage(): ReactElement {
               <ProductThumbnail src={product.images?.[0]} name={product.name} />
               <span className="products-cell-stack">
                 <span className="ds-row" style={{ gap: 'var(--space-2)', alignItems: 'center' }}>
-                  <Link to={product.id} className="product-row__name product-row__name--link">
+                  <Link
+                    to={product.id}
+                    className="product-row__name product-row__name--link"
+                    data-testid={`stock-list-open-${product.sku ?? product.id}`}
+                  >
                     {product.name}
                   </Link>
                   {(product.variantCount ?? 0) > 1 ? (
@@ -1130,6 +1168,7 @@ export function ProductsListPage(): ReactElement {
       <div className="toolbar products-toolbar">
         <Input
           aria-label="Search products by name or SKU"
+          data-testid="stock-list-search"
           placeholder="Search by name or SKU…"
           value={searchInput}
           onChange={(e) => {
@@ -1196,6 +1235,7 @@ export function ProductsListPage(): ReactElement {
           {STOCK_CHIPS.map((chip) => (
             <Chip
               key={chip.value}
+              data-testid={`stock-list-chip-${chip.value}`}
               tone={chip.value === 'low' ? 'warning' : 'error'}
               active={stock === chip.value}
               onClick={() => {
@@ -1390,6 +1430,8 @@ export function ProductsListPage(): ReactElement {
           <DataTable
             caption="Products"
             className="products-table"
+            tableTestId="stock-list-table"
+            rowAttributes={(product) => ({ 'data-testid': `stock-list-row-${product.sku ?? product.id}` })}
             columns={columns}
             rows={items}
             rowKey={(product) => product.id}
@@ -1456,6 +1498,10 @@ export function ProductsListPage(): ReactElement {
                 `${expanded ? 'Collapse' : 'Expand'} variant stock for ${product.name}`,
             }}
             cardView={{
+              // The same hooks the desktop table carries, so a stock check reads
+              // a card exactly as it reads a row.
+              listTestId: 'stock-list-cards',
+              attributes: (product) => ({ 'data-testid': `stock-list-row-${product.sku ?? product.id}` }),
               select: (product) => renderSelectCheckbox(product),
               title: (product) => (
                 <span className="product-row">
@@ -1487,7 +1533,22 @@ export function ProductsListPage(): ReactElement {
                       {formatPrice(product.price, product.currency)}
                     </span>
                   ) : null}
-                  {product.totalAvailable !== undefined ? (
+                  {product.availableToPromise !== undefined ? (
+                    <StatusBadge
+                      tone={
+                        deriveAtpStatus(product.availableToPromise) === 'unknown'
+                          ? 'neutral'
+                          : STOCK_STATUS_BADGE_TONE[deriveStockStatus(product.availableToPromise as number)]
+                      }
+                      withDot
+                      compact
+                      data-testid={`stock-list-cell-${product.sku ?? product.id}`}
+                    >
+                      {product.availableToPromise === null
+                        ? 'Not known'
+                        : `${product.availableToPromise} to sell · ${STOCK_STATUS_LABEL[deriveStockStatus(product.availableToPromise)]}`}
+                    </StatusBadge>
+                  ) : product.totalAvailable !== undefined ? (
                     <StatusBadge
                       tone={STOCK_STATUS_BADGE_TONE[deriveStockStatus(product.totalAvailable)]}
                       withDot

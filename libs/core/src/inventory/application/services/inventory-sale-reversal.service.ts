@@ -59,6 +59,7 @@ import {
   type SaleDecrementLineRef,
   type SaleDecrementSettlement,
 } from '../../domain/ports/inventory-sale-decrement-repository.port';
+import type { InventoryMovementAttribution } from '../../domain/types/inventory-movement.types';
 import type { InventoryOwnerPosition } from '../../domain/types/inventory.types';
 import { buildSaleReversalIdempotencyKey } from '../../domain/types/inventory-sale-decrement.types';
 import {
@@ -363,7 +364,14 @@ export class InventorySaleReversalService implements IInventorySaleReversalServi
     resultingQuantity: number,
     row: InventorySaleDecrement
   ): Promise<void> {
-    await this.mirror(position, owner, resultingQuantity, position.reservedQuantity, row);
+    // Where OpenLinker itself raises the master's stock back: the
+    // `cancellation_restore` ledger row (#3565). The in-doubt re-read stays an
+    // unattributed `master_sync`.
+    await this.mirror(position, owner, resultingQuantity, position.reservedQuantity, row, {
+      reason: 'cancellation_restore',
+      sourceKind: 'order',
+      sourceRef: row.orderId,
+    });
   }
 
   private async mirror(
@@ -371,7 +379,8 @@ export class InventorySaleReversalService implements IInventorySaleReversalServi
     owner: string,
     availableQuantity: number,
     reservedQuantity: number,
-    row: InventorySaleDecrement
+    row: InventorySaleDecrement,
+    movement?: InventoryMovementAttribution
   ): Promise<void> {
     try {
       await this.inventoryService.setInventory(
@@ -386,7 +395,8 @@ export class InventorySaleReversalService implements IInventorySaleReversalServi
           false,
           owner
         ),
-        owner
+        owner,
+        movement
       );
     } catch (error) {
       // The master is already raised; only the mirror and its propagation are

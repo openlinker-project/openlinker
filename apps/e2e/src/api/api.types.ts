@@ -143,6 +143,12 @@ export interface Product {
    * to pick, say, a single-variant product out of a page.
    */
   variantCount?: number;
+  /**
+   * Available to promise summed over the product's variants, on the LIST read.
+   * `null` means OpenLinker does not know (never zero); absent means the
+   * payload predates the field.
+   */
+  availableToPromise?: number | null;
   /** Only on the DETAIL read (`GET /products/:id`), never on the list. */
   variants?: ProductVariant[];
   /**
@@ -1196,4 +1202,70 @@ export interface ListingCommercial {
   currency: string | null;
   availableQuantity: number | null;
   lastCommercialSyncedAt: string | null;
+}
+
+// ── Inventory correction + movement history (G08) ─────────────────────────
+
+export type StockCorrectionMode = 'set' | 'delta';
+export type StockCorrectionReason = 'count_correction' | 'found' | 'damaged' | 'other';
+
+/** `GET /inventory/:variantId/correction-target`. */
+export interface StockCorrectionTarget {
+  kind: 'ready' | 'refused';
+  reason: string | null;
+  connectionId: string | null;
+  connectionName: string | null;
+  platformType: string | null;
+  currentQuantity: number | null;
+}
+
+export interface StockCorrectionInput {
+  mode: StockCorrectionMode;
+  quantity: number;
+  operatorReason: StockCorrectionReason;
+  note?: string;
+  idempotencyKey: string;
+  confirmLargeChange?: boolean;
+}
+
+/** The 200 body of `POST /inventory/:variantId/adjust`. */
+export interface StockCorrectionResult {
+  status: 'applied' | 'refused' | 'in_doubt';
+  movementId: string;
+  requestedDelta: number;
+  quantityBefore: number | null;
+  quantityAfter: number | null;
+  deduplicated: boolean;
+}
+
+/** A 409 from the correction route: refused before the master was reached. */
+export interface StockCorrectionConflict {
+  code: string;
+  currentQuantity?: number | null;
+  [key: string]: unknown;
+}
+
+export type StockCorrectionOutcome =
+  | { kind: 'result'; result: StockCorrectionResult }
+  | { kind: 'conflict'; conflict: StockCorrectionConflict };
+
+export interface StockMovement {
+  kind: 'movement' | 'reservation';
+  id: string;
+  productVariantId: string | null;
+  sku: string | null;
+  reason: string | null;
+  status: string;
+  quantityBefore: number | null;
+  quantityAfter: number | null;
+  sourceKind: string | null;
+  operatorReason: string | null;
+  refusalReason: string | null;
+  occurredAt: string;
+}
+
+export interface ListStockMovementsQuery {
+  productVariantId?: string;
+  kind?: 'all' | 'movements' | 'promised';
+  limit?: number;
 }

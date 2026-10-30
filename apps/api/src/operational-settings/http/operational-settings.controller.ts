@@ -99,6 +99,8 @@ export class OperationalSettingsController {
           deletionAuditCadence: dto.deletionAuditCadence,
           syncJobRetentionDays: dto.syncJobRetentionDays,
           syncJobDeadRetentionDays: dto.syncJobDeadRetentionDays,
+          inventoryMovementRetentionDays: dto.inventoryMovementRetentionDays,
+          stockStaleSyncThresholdHours: dto.stockStaleSyncThresholdHours,
           acknowledgeAboveRecommended: dto.acknowledgeAboveRecommended,
         },
         user?.id ?? null

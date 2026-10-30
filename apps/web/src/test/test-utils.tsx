@@ -507,8 +507,22 @@ export function createMockApiClient(
       // are defaulted together or a test would set one and silently keep the
       // other's stale answer.
       listLocations: vi.fn().mockResolvedValue({ items: [], total: 0, page: 1, limit: 100 }),
+      // #3568. An install with no movements; the count is only requested for a full page.
+      listMovements: vi.fn().mockResolvedValue({ items: [], limit: 20, offset: 0 }),
+      countMovements: vi.fn().mockResolvedValue({ total: 0 }),
       listActiveLocations: vi.fn().mockResolvedValue({ items: [], total: 0, page: 1, limit: 1 }),
       bootstrapLocations: vi.fn().mockResolvedValue({ created: [], existingCodes: [] }),
+      // #3569 - the honest default is a stock view that names no variants, so a
+      // page test that never opts in sees the "unknown" state, not invented stock.
+      stockView: vi.fn().mockResolvedValue({
+        productId: '',
+        productName: '',
+        productSku: null,
+        staleSyncThreshold: { hours: 6, ms: 21_600_000, source: 'default' },
+        channelsStatus: 'ok',
+        variants: [],
+        generatedAt: '2026-01-15T10:00:00.000Z',
+      }),
       ...overrides.inventory,
     } as ApiClient['inventory'],
     invoicing: {

@@ -50,7 +50,12 @@ import {
 import type { Connection } from '@openlinker/core/identifier-mapping';
 import {
   INVENTORY_QUERY_SERVICE_TOKEN,
+  INVENTORY_SERVICE_TOKEN,
+  InventoryItemEntity,
+  saleDecrementPositionLockKey,
+  SALE_DECREMENT_POSITION_LOCK_TTL_MS,
   type IInventoryQueryService,
+  type IInventoryService,
   type InventoryAdjustmentResult,
   type InventoryMasterPort,
   type InventoryOwnerResolution,
@@ -115,7 +120,9 @@ export class ReturnCustodyService implements IReturnCustodyService {
     @Inject(SYNC_LOCK_TOKEN)
     private readonly lock: SyncLockPort,
     @Inject(INVENTORY_QUERY_SERVICE_TOKEN)
-    private readonly inventory: IInventoryQueryService
+    private readonly inventory: IInventoryQueryService,
+    @Inject(INVENTORY_SERVICE_TOKEN)
+    private readonly inventoryService: IInventoryService
   ) {}
 
   async receiveLine(lineId: string, input: ReceiveLineInput): Promise<ReceiveLineResult> {
@@ -646,7 +653,12 @@ export class ReturnCustodyService implements IReturnCustodyService {
       };
     });
 
-    const outcome = await this.writeMasterStock(plan, line, input.quantity, event);
+    const { outcome, resultingQuantity } = await this.writeMasterStock(
+      plan,
+      line,
+      input.quantity,
+      event
+    );
 
     // The counters move ONLY where the master's book took the units — and the
     // move is computed INSIDE the settle transaction, against the locked row.
@@ -673,6 +685,10 @@ export class ReturnCustodyService implements IReturnCustodyService {
           : null,
       outcome.countsTowardRestocked ? 'restock' : null
     );
+
+    if (outcome.countsTowardRestocked && plan.kind === 'ready' && resultingQuantity !== null) {
+      await this.mirrorRestock(plan, line, resultingQuantity);
+    }
 
     if (outcome.idempotencyUnsupported) {
       // Not a failure — the write landed. But a retry against this master WILL
@@ -723,10 +739,10 @@ export class ReturnCustodyService implements IReturnCustodyService {
     line: ReturnLine,
     quantity: number,
     event: ReturnLineEvent
-  ): Promise<RestockOutcome> {
+  ): Promise<{ outcome: RestockOutcome; resultingQuantity: number | null }> {
     if (plan.kind === 'blocked') {
       // Never a silent pick, and never a write to a book OpenLinker cannot name.
-      return plan.outcome;
+      return { outcome: plan.outcome, resultingQuantity: null };
     }
 
     try {
@@ -740,11 +756,92 @@ export class ReturnCustodyService implements IReturnCustodyService {
         // recomputes the identical key and a deduping master recognises it.
         idempotencyKey: `return:${line.returnId}:${line.id}:${event.seq}`,
       });
-      return classifyRestockSuccess(result);
+      return {
+        outcome: classifyRestockSuccess(result),
+        resultingQuantity: Number.isFinite(result.available) ? result.available : null,
+      };
     } catch (error) {
       // Catches `unknown`, deliberately — core cannot name a platform exception
       // type, and #2369's cache-outage fail-closed arrives through this door.
-      return classifyRestockFailure(error);
+      return { outcome: classifyRestockFailure(error), resultingQuantity: null };
+    }
+  }
+
+  /**
+   * Mirror an APPLIED restock into `inventory_items` (#3565).
+   *
+   * The restock goes to the product master through `adjustInventory` and, until
+   * now, never touched the mirror: the change only appeared at the next master
+   * sync, where it would have been recorded as an unattributed `master_sync`
+   * movement and reached the marketplaces late. Mirroring the adapter's own
+   * resulting quantity - the `InventorySaleDecrementService` shape - gives the
+   * ledger its `return_restock` row and propagates the stock at once.
+   *
+   * Best-effort and silent about its own failure: the master already holds the
+   * units and the disposition is settled, so nothing here may change the restock
+   * outcome. A position OpenLinker cannot attribute to the connection it wrote to
+   * (legacy provenance on a single-master install) is left to the next sync.
+   */
+  private async mirrorRestock(
+    plan: Extract<RestockPlan, { kind: 'ready' }>,
+    line: ReturnLine,
+    resultingQuantity: number
+  ): Promise<void> {
+    try {
+      const owner = await this.inventory.resolveStockOwner({
+        productId: plan.productId,
+        productVariantId: plan.variantId,
+        locationId: null,
+      });
+      if (owner.kind !== 'owner' || owner.ownerConnectionId !== plan.connectionId) {
+        this.logger.debug(
+          `Return line ${line.id}: restock applied but no position owned by the writing master ` +
+            'could be named; the next stock sync will record it'
+        );
+        return;
+      }
+      const { position } = owner;
+      // The SAME per-position lock the sale decrement mirrors under, so a
+      // return mirror and a sale mirror on one position cannot land out of
+      // order and leave a stale quantity. Contention skips the mirror - never
+      // waits, never fails the restock; the next master sync records it.
+      const lockKey = saleDecrementPositionLockKey(
+        owner.ownerConnectionId,
+        position.productId,
+        position.productVariantId
+      );
+      const lockToken = await this.lock.acquire(lockKey, SALE_DECREMENT_POSITION_LOCK_TTL_MS);
+      if (lockToken === null) {
+        this.logger.debug(
+          `Return line ${line.id}: restock applied but the stock position is being written ` +
+            'by another operation; the next stock sync will record it'
+        );
+        return;
+      }
+      try {
+        await this.inventoryService.setInventory(
+          new InventoryItemEntity(
+            position.inventoryItemId,
+            position.productId,
+            position.productVariantId,
+            resultingQuantity,
+            position.reservedQuantity,
+            position.locationId,
+            new Date(),
+            false,
+            owner.ownerConnectionId
+          ),
+          owner.ownerConnectionId,
+          { reason: 'return_restock', sourceKind: 'return', sourceRef: line.returnId }
+        );
+      } finally {
+        await this.lock.release(lockKey, lockToken);
+      }
+    } catch (error) {
+      this.logger.warn(
+        `Return line ${line.id}: restock landed in the product master, but the stock mirror ` +
+          `could not be updated: ${error instanceof Error ? error.message : String(error)}`
+      );
     }
   }
 

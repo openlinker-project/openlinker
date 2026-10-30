@@ -14,8 +14,21 @@ import { useProductQuery } from '../../features/products/hooks/use-product-query
 import { ProductGallery } from '../../features/products/components/product-gallery';
 import { ProductSourceSection } from '../../features/products/components/product-source-section';
 import { useInventoryQuery } from '../../features/inventory/hooks/use-inventory-query';
+import {
+  buildStockRows,
+  deriveRowStatus,
+  StockAlerts,
+  StockCorrectionDialog,
+  StockHistorySection,
+  summarizeStock,
+  useConnectionNames,
+  useStockViewQuery,
+  type ProductStockModel,
+  type StockAdjustTarget,
+} from '../../features/inventory';
+import { ApiError } from '../../shared/api/api-error';
 import { useConnectionsQuery, type Connection } from '../../features/connections';
-import { useWriteAccess } from '../../shared/auth/use-permission';
+import { usePermission, useWriteAccess } from '../../shared/auth/use-permission';
 import { useDemoMode } from '../../features/system';
 import { VariantStockTable, VariantDetailPanel } from './variant-stock-table';
 import { MarketplacePickerModal } from './marketplace-picker-modal';
@@ -26,13 +39,25 @@ import {
   STOCK_STATUS_LABEL,
 } from '../../features/products';
 
+/**
+ * What the product's headline stock figures say. Available to promise when the
+ * stock view can be read (the panel's own number), the master count only for a
+ * session that may not read the view, and never a number when OpenLinker does
+ * not know - "Unknown" is not zero.
+ */
+type HeadlineStock =
+  | { kind: 'loading' }
+  | { kind: 'unknown' }
+  | { kind: 'atp'; quantity: number }
+  | { kind: 'master'; quantity: number };
+
 const VIEW_PARAM = 'view';
 const VIEW_OVERVIEW = 'overview';
 const VIEW_CONTENT = 'content';
 
-function deriveAvailableTone(totalAvailable: number, oversoldCount: number): KpiCardTone {
+function deriveAvailableTone(totalAvailable: number, shortCount: number): KpiCardTone {
   if (totalAvailable <= 0) return 'error';
-  if (oversoldCount > 0) return 'warning';
+  if (shortCount > 0) return 'warning';
   if (totalAvailable <= DEFAULT_LOW_STOCK_THRESHOLD) return 'warning';
   return 'success';
 }
@@ -42,6 +67,12 @@ export function ProductDetailPage(): ReactElement {
   const [searchParams, setSearchParams] = useSearchParams();
   const query = useProductQuery(id);
   const inventoryQuery = useInventoryQuery({ productId: id });
+  const canReadStockView = usePermission('inventory:read');
+  // One cache entry, one request: the headline, the alerts and every row of the
+  // variants table read this same stock view.
+  const stockViewQuery = useStockViewQuery(id, { enabled: canReadStockView });
+  const connectionNames = useConnectionNames();
+  const [historyVariantId, setHistoryVariantId] = useState<string | null>(null);
 
   const activeView = searchParams.get(VIEW_PARAM) === VIEW_CONTENT ? VIEW_CONTENT : VIEW_OVERVIEW;
   const setActiveView = useCallback(
@@ -69,6 +100,8 @@ export function ProductDetailPage(): ReactElement {
   const connectionsQuery = useConnectionsQuery();
   const demoMode = useDemoMode();
   const write = useWriteAccess('listings:write', demoMode);
+  const canAdjustStock = usePermission('inventory:write');
+  const [adjustTarget, setAdjustTarget] = useState<StockAdjustTarget | null>(null);
   const [pickerOpen, setPickerOpen] = useState(false);
   const offerCreatorConnections = useMemo<Connection[]>(
     () =>
@@ -120,14 +153,57 @@ export function ProductDetailPage(): ReactElement {
   const variants = product.variants ?? [];
   const inventoryItems = inventoryQuery.data?.items ?? [];
 
-  const stockByVariant = new Map(
-    inventoryItems.filter((item) => item.productVariantId !== null).map((item) => [item.productVariantId as string, item]),
-  );
-
   const totalAvailable = inventoryItems.reduce((sum, item) => sum + item.availableQuantity, 0);
-  const oversoldCount = inventoryItems.filter((item) => item.availableQuantity < 0).length;
-  const availableTone = deriveAvailableTone(totalAvailable, oversoldCount);
-  const stockStatus = deriveStockStatus(totalAvailable);
+  const stockForbidden = stockViewQuery.error instanceof ApiError && stockViewQuery.error.isForbidden();
+  // To sell is an inventory:read figure. A session without it (or one the server
+  // refuses mid-session) sees the shop's own count and a plain notice - not
+  // "not known, try again", which a retry never fixes.
+  const stockRestricted = !canReadStockView || stockForbidden;
+  const stockPending = !stockRestricted && stockViewQuery.isPending && !stockViewQuery.isError;
+  const stockView = stockRestricted ? null : (stockViewQuery.data ?? null);
+  const masterConnectionId = product.externalIds?.[0]?.connectionId ?? null;
+  const stockRows = buildStockRows({
+    variants,
+    inventoryItems,
+    stockByVariant: stockView ? new Map(stockView.variants.map((v) => [v.productVariantId, v])) : null,
+    pending: stockPending,
+    restricted: stockRestricted,
+    canAdjust: canAdjustStock,
+    fallbackMasterName: masterConnectionId ? (connectionNames.get(masterConnectionId) ?? null) : null,
+  });
+  const stockModel: ProductStockModel = {
+    rows: stockRows,
+    channelsStatus: stockView?.channelsStatus ?? 'ok',
+    canAdjust: canAdjustStock,
+    onAdjust: setAdjustTarget,
+    onShowHistory: (variantId) => {
+      setHistoryVariantId(variantId);
+      const section = document.getElementById('stock-history');
+      if (section && typeof section.scrollIntoView === 'function') {
+        section.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
+    },
+  };
+  const shortCount = [...stockRows.values()].filter((row) => deriveRowStatus(row).kind === 'short').length;
+  const productMasterName = [...stockRows.values()].find((row) => row.sourceNames.length > 0)?.masterName
+    ?? (masterConnectionId ? (connectionNames.get(masterConnectionId) ?? null) : null);
+  const stockSummary = stockView ? summarizeStock(stockView.variants) : null;
+  const staleSync = stockView?.variants.some((v) => v.isStaleSync) ?? false;
+  let headline: HeadlineStock;
+  if (stockRestricted) headline = { kind: 'master', quantity: totalAvailable };
+  else if (stockPending) headline = { kind: 'loading' };
+  else if (
+    stockSummary !== null &&
+    stockSummary.availableToPromise !== null &&
+    // A variant the view does not name is a variant OpenLinker cannot vouch for.
+    variants.every((variant) => stockView?.variants.some((v) => v.productVariantId === variant.id))
+  ) {
+    headline = { kind: 'atp', quantity: stockSummary.availableToPromise };
+  } else headline = { kind: 'unknown' };
+  const headlineQuantity = headline.kind === 'atp' || headline.kind === 'master' ? headline.quantity : null;
+  const availableTone: KpiCardTone =
+    headlineQuantity === null ? 'neutral' : deriveAvailableTone(headlineQuantity, shortCount);
+  const stockStatus = headlineQuantity === null ? null : deriveStockStatus(headlineQuantity);
 
   // Distinct stock locations across the product's inventory rows (fallback 1
   // when the master reports no location). Feeds the Available KPI sub-line.
@@ -137,10 +213,7 @@ export function ProductDetailPage(): ReactElement {
         .map((item) => item.locationId)
         .filter((locationId): locationId is string => locationId !== null),
     ).size || 1;
-  const availableDescription =
-    oversoldCount > 0
-      ? `${oversoldCount} oversold`
-      : `across ${distinctLocationCount} location${distinctLocationCount === 1 ? '' : 's'}`;
+  const availableDescription = `across ${distinctLocationCount} location${distinctLocationCount === 1 ? '' : 's'}`;
 
   const isSingleVariant = variants.length === 1;
 
@@ -149,14 +222,9 @@ export function ProductDetailPage(): ReactElement {
     0,
   );
 
-  const latestStockSync = inventoryItems.reduce<string | null>((latest, item) => {
-    if (!latest || item.updatedAt > latest) return item.updatedAt;
-    return latest;
-  }, null);
-
   return (
     <PageLayout
-      backTo={{ to: '/products', label: 'Products' }}
+      backTo={{ to: '/products', label: 'Products', 'data-testid': 'stock-back-to-products' }}
       eyebrow="Products"
       title={<EntityLabel id={product.id} name={product.name} />}
     >
@@ -171,9 +239,20 @@ export function ProductDetailPage(): ReactElement {
             <ProductGallery images={product.images ?? []} name={product.name} />
             <div className="product-detail-hero__body">
               <div className="product-detail-hero__badges">
-                <StatusBadge compact withDot tone={STOCK_STATUS_BADGE_TONE[stockStatus]}>
-                  {STOCK_STATUS_LABEL[stockStatus]}
-                </StatusBadge>
+                {stockStatus !== null ? (
+                  <StatusBadge
+                    compact
+                    withDot
+                    tone={STOCK_STATUS_BADGE_TONE[stockStatus]}
+                    data-testid="product-stock-badge"
+                  >
+                    {STOCK_STATUS_LABEL[stockStatus]}
+                  </StatusBadge>
+                ) : (
+                  <StatusBadge compact withDot tone="neutral" data-testid="product-stock-badge-unknown">
+                    {headline.kind === 'loading' ? 'Checking stock' : 'Stock not known'}
+                  </StatusBadge>
+                )}
                 <StatusBadge compact tone="neutral">
                   {variants.length} variant{variants.length === 1 ? '' : 's'}
                 </StatusBadge>
@@ -225,8 +304,34 @@ export function ProductDetailPage(): ReactElement {
               <KpiCard
                 label="Available"
                 tone={availableTone}
-                value={totalAvailable}
-                description={availableDescription}
+                value={
+                  <span data-testid="stock-summary-atp">
+                    {headlineQuantity ?? (headline.kind === 'loading' ? '…' : '—')}
+                  </span>
+                }
+                description={
+                  headline.kind === 'atp' && stockSummary ? (
+                    <>
+                      to sell ·{' '}
+                      <span data-testid="stock-summary-master">
+                        {stockSummary.masterStock} in {productMasterName ?? 'the master'}
+                      </span>
+                      {stockSummary.heldCounted !== null && stockSummary.heldCounted > 0 ? (
+                        <>
+                          {' · '}
+                          <span data-testid="stock-summary-held">{stockSummary.heldCounted} reserved</span>
+                        </>
+                      ) : null}
+                      {shortCount > 0 ? ` · ${shortCount} short` : null}
+                    </>
+                  ) : headline.kind === 'unknown' ? (
+                    'not known right now'
+                  ) : headline.kind === 'loading' ? (
+                    'working out what you can sell'
+                  ) : (
+                    availableDescription
+                  )
+                }
               />
               <KpiCard label="Variants" value={variants.length} />
               <KpiCard label="Listings" value={totalListings} />
@@ -286,13 +391,21 @@ export function ProductDetailPage(): ReactElement {
             <div className="detail-section__title-row">
               <h3 className="detail-section__title">
                 {isSingleVariant
-                  ? 'Listed on'
+                  ? 'Variants & stock'
                   : `Variants & stock${variants.length > 0 ? ` (${variants.length})` : ''}`}
               </h3>
-              {latestStockSync ? (
-                <span className="sync-freshness">
-                  <span className="sync-freshness__dot" aria-hidden="true"></span>
-                  Stock synced <TimeDisplay iso={latestStockSync} />
+              {stockSummary?.lastSyncedAt ? (
+                <span
+                  className="sync-freshness"
+                  data-testid="stock-summary-synced"
+                  style={staleSync ? { color: 'var(--status-warning-fg)' } : undefined}
+                >
+                  <span
+                    className="sync-freshness__dot"
+                    aria-hidden="true"
+                    style={staleSync ? { background: 'var(--status-warning-strong)' } : undefined}
+                  ></span>
+                  Stock synced <TimeDisplay iso={stockSummary.lastSyncedAt} format="time" />
                 </span>
               ) : null}
             </div>
@@ -312,29 +425,54 @@ export function ProductDetailPage(): ReactElement {
               />
             ) : variants.length === 0 ? (
               <p className="text-muted">No variants found for this product.</p>
-            ) : isSingleVariant ? (
-              <VariantDetailPanel
-                variant={variants[0]!}
-                stock={stockByVariant.get(variants[0]!.id)}
-                productTaxRate={product.taxRate ?? null}
-                productTaxRateUnknownReason={product.taxRateUnknownReason ?? null}
-                connections={offerCreatorConnections}
-                onListingsCount={handleListingsCount}
-              />
             ) : (
-              <VariantStockTable
-                variants={variants}
-                stockByVariant={stockByVariant}
-                currency={product.currency}
-                productTaxRate={product.taxRate ?? null}
-                productTaxRateUnknownReason={product.taxRateUnknownReason ?? null}
-                connections={offerCreatorConnections}
-                canCreateOffers={write.visible}
-                onCreateOffers={handleCreateOffers}
-                onListingsCount={handleListingsCount}
-              />
+              <>
+                <StockAlerts
+                  rows={stockRows}
+                  view={stockView}
+                  restricted={stockRestricted}
+                  pending={stockPending}
+                  canAdjust={canAdjustStock}
+                  onRetry={() => {
+                    void stockViewQuery.refetch();
+                  }}
+                  masterConnectionId={masterConnectionId}
+                />
+                {isSingleVariant ? (
+                  <VariantDetailPanel
+                    variant={variants[0]!}
+                    productTaxRate={product.taxRate ?? null}
+                    productTaxRateUnknownReason={product.taxRateUnknownReason ?? null}
+                    connections={offerCreatorConnections}
+                    onListingsCount={handleListingsCount}
+                    stock={stockModel}
+                  />
+                ) : (
+                  <VariantStockTable
+                    variants={variants}
+                    currency={product.currency}
+                    productTaxRate={product.taxRate ?? null}
+                    productTaxRateUnknownReason={product.taxRateUnknownReason ?? null}
+                    connections={offerCreatorConnections}
+                    canCreateOffers={write.visible}
+                    onCreateOffers={handleCreateOffers}
+                    onListingsCount={handleListingsCount}
+                    stock={stockModel}
+                  />
+                )}
+              </>
             )}
           </section>
+          {canAdjustStock ? (
+            <StockCorrectionDialog target={adjustTarget} onClose={() => setAdjustTarget(null)} />
+          ) : null}
+          <StockHistorySection
+            productId={product.id}
+            productName={product.name}
+            variants={variants}
+            selectedVariantId={historyVariantId}
+            onSelectedVariantChange={setHistoryVariantId}
+          />
         </TabsContent>
 
         <TabsContent value={VIEW_CONTENT}>

@@ -81,6 +81,9 @@ const harness = createIntegrationTestHarness({
     // cannot reach it; a claim left by one case would otherwise make the next
     // case's decrement a no-op.
     'inventory_sale_decrements',
+    // #3565 — the stock movement ledger. No foreign key (an audit record
+    // outlives what it names), so the CASCADE walk cannot reach it.
+    'inventory_movements',
     'inventory_items',
     // inventory_locations (#2313) — operator-authored locations. Like
     // category_mappings and fulfillment_routing_rules, its FK lives in the

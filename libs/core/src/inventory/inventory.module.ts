@@ -13,6 +13,10 @@ import { InventoryItemOrmEntity } from './infrastructure/persistence/entities/in
 import { InventoryLocationOrmEntity } from './infrastructure/persistence/entities/inventory-location.orm-entity';
 import { ReservationOrmEntity } from './infrastructure/persistence/entities/reservation.orm-entity';
 import { ReservationShortfallEpisodeOrmEntity } from './infrastructure/persistence/entities/reservation-shortfall-episode.orm-entity';
+import { InventoryMovementOrmEntity } from './infrastructure/persistence/entities/inventory-movement.orm-entity';
+import { InventoryMovementRepository } from './infrastructure/persistence/repositories/inventory-movement.repository';
+import { InventoryMovementService } from './application/services/inventory-movement.service';
+import { InventoryCorrectionService } from './application/services/inventory-correction.service';
 import { InventorySaleDecrementOrmEntity } from './infrastructure/persistence/entities/inventory-sale-decrement.orm-entity';
 import { InventoryRepository } from './infrastructure/persistence/repositories/inventory.repository';
 import { LocationRepository } from './infrastructure/persistence/repositories/location.repository';
@@ -58,6 +62,9 @@ import {
   INVENTORY_SALE_DECREMENT_REPOSITORY_TOKEN,
   INVENTORY_SALE_DECREMENT_SERVICE_TOKEN,
   INVENTORY_SALE_REVERSAL_SERVICE_TOKEN,
+  INVENTORY_MOVEMENT_REPOSITORY_TOKEN,
+  INVENTORY_MOVEMENT_SERVICE_TOKEN,
+  INVENTORY_CORRECTION_SERVICE_TOKEN,
 } from './inventory.tokens';
 import { ProductsModule } from '@openlinker/core/products';
 import { IntegrationsModule } from '@openlinker/core/integrations';
@@ -92,6 +99,7 @@ export {
       ReservationOrmEntity,
       ReservationShortfallEpisodeOrmEntity,
       InventorySaleDecrementOrmEntity,
+      InventoryMovementOrmEntity,
     ]),
     ProductsModule, // Required for FK relationship to ProductOrmEntity
     IntegrationsModule, // Required for INTEGRATIONS_SERVICE_TOKEN (marketplace adapter resolution)
@@ -135,6 +143,10 @@ export {
     InventorySaleDecrementService,
     // #3479 — the inverse, on cancellation.
     InventorySaleReversalService,
+    // #3565 — the append-only stock movement ledger.
+    InventoryMovementRepository,
+    InventoryMovementService,
+    InventoryCorrectionService,
     // Then provide token bindings using useExisting
     {
       provide: INVENTORY_REPOSITORY_TOKEN,
@@ -263,6 +275,18 @@ export {
       provide: INVENTORY_SALE_REVERSAL_SERVICE_TOKEN,
       useExisting: InventorySaleReversalService,
     },
+    {
+      provide: INVENTORY_MOVEMENT_REPOSITORY_TOKEN,
+      useExisting: InventoryMovementRepository,
+    },
+    {
+      provide: INVENTORY_MOVEMENT_SERVICE_TOKEN,
+      useExisting: InventoryMovementService,
+    },
+    {
+      provide: INVENTORY_CORRECTION_SERVICE_TOKEN,
+      useExisting: InventoryCorrectionService,
+    },
   ],
   exports: [
     POST_SALE_INVENTORY_REFRESH_SERVICE_TOKEN,
@@ -285,6 +309,8 @@ export {
     INVENTORY_PROVENANCE_BACKFILL_SERVICE_TOKEN,
     INVENTORY_SALE_DECREMENT_SERVICE_TOKEN,
     INVENTORY_SALE_REVERSAL_SERVICE_TOKEN,
+    INVENTORY_MOVEMENT_SERVICE_TOKEN,
+    INVENTORY_CORRECTION_SERVICE_TOKEN,
   ],
 })
 export class InventoryModule {}

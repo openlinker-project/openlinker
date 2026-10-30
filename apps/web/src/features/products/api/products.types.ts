@@ -117,6 +117,13 @@ export interface Product {
    * listings coverage; absent on payloads that predate the cockpit BE.
    */
   totalAvailable?: number;
+  /**
+   * Product-level available to promise (#3621 / #3569, list only). `null` means
+   * OpenLinker does not know (paired with `atpProvenance: 'unknown'`) and must
+   * never be rendered as 0; absent means the payload predates the field.
+   */
+  availableToPromise?: number | null;
+  atpProvenance?: 'computed' | 'authority' | 'unknown';
   totalReserved?: number;
   stockUpdatedAt?: string | null;
   variantCount?: number;

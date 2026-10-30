@@ -51,6 +51,7 @@ const makeUserManagementService = (): jest.Mocked<IUserManagementService> => ({
   confirmEmail: jest.fn(),
   setPackStationLabel: jest.fn(),
   recordBenchActivity: jest.fn(),
+  getDisplayNames: jest.fn(),
   createUser: jest.fn(),
   reissueTemporaryPassword: jest.fn(),
 });

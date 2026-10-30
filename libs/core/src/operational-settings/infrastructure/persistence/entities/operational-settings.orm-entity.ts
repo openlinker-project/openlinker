@@ -36,6 +36,14 @@ export class OperationalSettingsOrmEntity {
   @Column({ type: 'integer', name: 'sync_job_dead_retention_days', nullable: true })
   syncJobDeadRetentionDays!: number | null;
 
+  /** Days an `inventory_movements` ledger row is kept before the retention prune deletes it (#3565). */
+  @Column({ type: 'integer', name: 'inventory_movement_retention_days', nullable: true })
+  inventoryMovementRetentionDays!: number | null;
+
+  /** Hours a stock observation may age before the stock view flags it stale (#3621). */
+  @Column({ type: 'integer', name: 'stock_stale_sync_threshold_hours', nullable: true })
+  stockStaleSyncThresholdHours!: number | null;
+
   @Column({ type: 'text', name: 'deletion_audit_cadence', nullable: true })
   deletionAuditCadence!: string | null;
 
