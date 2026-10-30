@@ -20,7 +20,7 @@ import type { SyncJobs } from '../jobs';
 import { synthesizeOrder, type SynthesizedOrder } from '../order-synthesis';
 import type { Poller } from '../poller';
 import { PlatformType, type World } from '../../world/world';
-import type { G11Db } from './db';
+import { lit, type G11Db } from './db';
 import type { G11Setup, G11VariantRef } from './setup';
 
 export interface G11Ctx {
@@ -48,6 +48,14 @@ export async function loadDriver(
   const variants = (await ctx.api.products.listVariants(productId)).items;
   const variant = variants.find((v) => v.id === variantId);
   if (!variant) throw new Error(`variant ${variantId} not found on product ${productId}`);
+  // The variants list does not carry external ids, and the shop-side order line needs the
+  // combination id; read the mapping the same way ingestion resolved it.
+  if (!variant.externalIds?.length) {
+    const rows = ctx.db.rows<{ externalId: string; connectionId: string }>(
+      `SELECT "externalId", "connectionId" FROM identifier_mappings WHERE "entityType" = 'ProductVariant' AND "internalId" = ${lit(variantId)}`,
+    );
+    variant.externalIds = rows.map((r) => ({ ...r, platformType: '' }));
+  }
   return { product, variant };
 }
 

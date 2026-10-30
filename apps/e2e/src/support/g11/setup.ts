@@ -145,6 +145,7 @@ export function applySecretsToEnv(setup: G11Setup): void {
   const overlay: Array<[string, string | undefined]> = [
     ['OL_PS_WEBSERVICE_KEY', setup.secrets?.psWebserviceKey],
     ['OL_PS_ADMIN_URL', setup.secrets?.psAdminUrl ?? setup.urls.prestashop],
+    ['OL_PS_HOST_HEADER', 'localhost:8080'],
     ['OL_WC_CONSUMER_KEY', setup.secrets?.wcConsumerKey],
     ['OL_WC_CONSUMER_SECRET', setup.secrets?.wcConsumerSecret],
   ];
