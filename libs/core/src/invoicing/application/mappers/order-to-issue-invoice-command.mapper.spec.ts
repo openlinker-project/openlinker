@@ -68,6 +68,75 @@ describe('toIssueInvoiceCommand', () => {
   // the invoice asks the buyer for more than they were charged, with every
   // figure on it internally consistent.
   describe('lines must add up to the order total', () => {
+    it('should split a multi-unit line so the document equals the discounted total when the line total is not divisible by its quantity (E-45)', () => {
+      // 3 x 60.00 = 180.00 less a 9.19 discount -> 170.81, which 3 units cannot carry evenly.
+      const command = toIssueInvoiceCommand({
+        order: makeOrder({
+          items: [makeItem({ quantity: 3, price: 56.94 })],
+          totals: {
+            subtotal: 170.81,
+            tax: 0,
+            shipping: 0,
+            total: 170.81,
+            discountTotal: 9.19,
+            currency: 'PLN',
+            taxTreatment: 'inclusive',
+          },
+        }),
+        connectionId: 'conn-1',
+      });
+      const sum = command.lines.reduce((s, l) => s + Math.round(l.quantity * l.unitPriceGross * 100), 0);
+      expect(sum).toBe(17081);
+      expect(command.lines.map((l) => [l.quantity, l.unitPriceGross])).toEqual([
+        [2, 56.94],
+        [1, 56.93],
+      ]);
+    });
+
+    it('should leave the shipping line untouched and split the goods line when Woo rounds 3 x 55.34 + 12.30 above the total (E-45)', () => {
+      const command = toIssueInvoiceCommand({
+        order: makeOrder({
+          items: [makeItem({ quantity: 3, price: 55.34 })],
+          totals: {
+            subtotal: 166.01,
+            tax: 0,
+            shipping: 12.3,
+            total: 178.31,
+            discountTotal: 5,
+            currency: 'PLN',
+            taxTreatment: 'inclusive',
+          },
+        }),
+        connectionId: 'conn-1',
+      });
+      const sum = command.lines.reduce((s, l) => s + Math.round(l.quantity * l.unitPriceGross * 100), 0);
+      expect(sum).toBe(17831);
+      expect(command.lines[command.lines.length - 1]).toMatchObject({ quantity: 1, unitPriceGross: 12.3 });
+    });
+
+    it('should absorb the gap on a single-unit goods line without adding a document line when one exists (E-45)', () => {
+      const command = toIssueInvoiceCommand({
+        order: makeOrder({
+          items: [
+            makeItem({ id: 'a', quantity: 3, price: 56.94 }),
+            makeItem({ id: 'b', quantity: 1, price: 10 }),
+          ],
+          totals: {
+            subtotal: 180.81,
+            tax: 0,
+            shipping: 0,
+            total: 180.81,
+            discountTotal: 1,
+            currency: 'PLN',
+            taxTreatment: 'inclusive',
+          },
+        }),
+        connectionId: 'conn-1',
+      });
+      expect(command.lines).toHaveLength(2);
+      expect(command.lines[1].unitPriceGross).toBe(9.99);
+    });
+
     it('refuses an order whose total is below what its own lines sum to', () => {
       expect(() =>
         toIssueInvoiceCommand({

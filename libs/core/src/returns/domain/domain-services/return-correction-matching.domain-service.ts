@@ -147,8 +147,10 @@ export function normalizeCorrectionLineName(name: string): string {
 /**
  * Classify every disposed return line against the issued document's lines.
  *
- * Order-preserving: the result is one entry per input line, in input order, so a
- * caller never has to re-associate. Lines with `quantityDisposed <= 0` are the
+ * Order-preserving: entries follow input order, one per input line - except a
+ * line crediting an order line the invoice split across several document lines
+ * (E-45), which yields one entry per document line touched, all sharing its
+ * `returnLineId`. Lines with `quantityDisposed <= 0` are the
  * caller's to exclude — this rule classifies what it is given.
  */
 export function classifyReturnCorrectionLines(
@@ -158,7 +160,13 @@ export function classifyReturnCorrectionLines(
   const byName = indexSnapshotByName(snapshotLines);
   const byOrderLineId = indexSnapshotByOrderLineId(snapshotLines);
 
-  return lines.map((line) => classifyOne(line, byOrderLineId, byName));
+  // `flatMap`, because a logical order line the invoice carries as several
+  // document lines (an E-45 rounding split) yields one entry per document line
+  // touched. Every other input still yields exactly one entry.
+  const orderLineIdByNumber = new Map<number, string | undefined>(
+    snapshotLines.map((snapshotLine, position) => [position + 1, snapshotLine.orderLineId])
+  );
+  return lines.flatMap((line) => classifyOne(line, byOrderLineId, byName, orderLineIdByNumber));
 }
 
 /**
@@ -228,14 +236,15 @@ function indexSnapshotByName(
 function classifyOne(
   line: CorrectionReturnLineInput,
   byOrderLineId: Map<string, ReturnCorrectionCandidate[]>,
-  byName: Map<string, ReturnCorrectionCandidate[]>
-): ReturnCorrectionProposalLine {
+  byName: Map<string, ReturnCorrectionCandidate[]>,
+  orderLineIdByNumber: ReadonlyMap<number, string | undefined>
+): ReturnCorrectionProposalLine[] {
   // Checked FIRST, ahead of BOTH lookups: a line whose disposal OL could not
   // confirm must not be credited even when its join is perfectly known. The
   // reason an operator needs is "attest the blocked restock", not a match
   // outcome — and any match answer would be the one they act on instead.
   if (line.hasUnconfirmedDisposition) {
-    return noMatch(line, 'disposition-not-confirmed', []);
+    return [noMatch(line, 'disposition-not-confirmed', [])];
   }
 
   // Also ahead of both lookups, deliberately: a line with no name recorded is
@@ -243,7 +252,7 @@ function classifyOne(
   // downstream candidate still carries a `name` the operator reads, and this
   // line has none to compare it against for a sanity check (#3312 review).
   if (line.name === null || line.name.trim() === '') {
-    return noMatch(line, 'no-line-name', []);
+    return [noMatch(line, 'no-line-name', [])];
   }
 
   // #3312 — id-first: deterministic, no name lookup, when the return's own
@@ -254,16 +263,75 @@ function classifyOne(
   if (line.resolvedOrderLineId !== null) {
     const idCandidates = byOrderLineId.get(line.resolvedOrderLineId);
     if (idCandidates !== undefined) {
-      return classifyAgainstCandidates(line, idCandidates);
+      // Document lines sharing one `orderLineId` are ONE logical order line
+      // (the invoice composer splits a discounted multi-unit line so the
+      // document adds up to the cent, E-45), never an ambiguity.
+      return classifyAcrossOrderLineParts(line, idCandidates);
     }
   }
 
   const byNameCandidates = byName.get(normalizeCorrectionLineName(line.name)) ?? [];
   if (byNameCandidates.length === 0) {
-    return noMatch(line, 'no-line-by-name', []);
+    return [noMatch(line, 'no-line-by-name', [])];
   }
 
-  return classifyAgainstCandidates(line, byNameCandidates);
+  // E-45: name candidates that all carry ONE orderLineId are the parts of a
+  // split order line, not an ambiguity. Candidates without an id, or with
+  // different ids, stay on the ambiguity path.
+  const sharedIds = new Set(
+    byNameCandidates.map((candidate) => orderLineIdByNumber.get(candidate.originalLineNumber))
+  );
+  const [sharedId] = [...sharedIds];
+  if (byNameCandidates.length > 1 && sharedIds.size === 1 && sharedId !== undefined) {
+    return classifyAcrossOrderLineParts(line, byNameCandidates);
+  }
+  return [classifyAgainstCandidates(line, byNameCandidates)];
+}
+
+/**
+ * Credit a returned line against the document lines that together carry ONE
+ * order line. A single part is the ordinary case. With several, the units are
+ * taken from the smallest part first (the 1-unit remainder an E-45 split
+ * creates), then the next, and one entry is emitted per part touched, so the
+ * correction names every affected line number with its own post-correction
+ * quantity. Fewer units invoiced in total than returned is
+ * `quantity-exceeds-invoiced`, as for a single line.
+ */
+function classifyAcrossOrderLineParts(
+  line: CorrectionReturnLineInput,
+  parts: readonly ReturnCorrectionCandidate[]
+): ReturnCorrectionProposalLine[] {
+  if (parts.length === 1) {
+    return [classifyAgainstCandidates(line, parts)];
+  }
+  const invoiced = parts.reduce((sum, part) => sum + part.quantity, 0);
+  if (invoiced < line.quantityDisposed) {
+    return [noMatch(line, 'quantity-exceeds-invoiced', [...parts])];
+  }
+  const ordered = [...parts].sort(
+    (a, b) => a.quantity - b.quantity || a.originalLineNumber - b.originalLineNumber
+  );
+  const result: ReturnCorrectionProposalLine[] = [];
+  let remaining = line.quantityDisposed;
+  for (const part of ordered) {
+    if (remaining <= 0) break;
+    const taken = Math.min(remaining, part.quantity);
+    remaining -= taken;
+    result.push({
+      returnLineId: line.returnLineId,
+      lineIndex: line.lineIndex,
+      name: line.name,
+      sku: line.sku,
+      quantityDisposed: taken,
+      status: 'matched',
+      candidates: [part],
+      selectedOriginalLineNumber: part.originalLineNumber,
+      newQuantity: part.quantity - taken,
+      noMatchReason: null,
+      candidatesPriceOrRateDiffer: false,
+    });
+  }
+  return result;
 }
 
 /**

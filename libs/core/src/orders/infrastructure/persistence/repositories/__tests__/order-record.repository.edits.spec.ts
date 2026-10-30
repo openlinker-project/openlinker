@@ -142,6 +142,20 @@ describe('OrderRecordRepository - operator edit overlay (#3542)', () => {
     expect(record.isEditedInOpenLinker).toBe(true);
   });
 
+  it('should not read as edited when the overlay holds only a removed discount (E-64)', () => {
+    const base = editedRecord();
+    const zero = (amount: string): OrderRecord =>
+      Object.assign(Object.create(OrderRecord.prototype) as OrderRecord, base, {
+        orderEdits: {
+          v: 1,
+          rev: 2,
+          discount: { changeId: 'c', editedAt: 't', editedBy: null, amount, currency: 'PLN', perLine: [] },
+        },
+      });
+    expect(zero('0.00').isEditedInOpenLinker).toBe(false);
+    expect(zero('5.00').isEditedInOpenLinker).toBe(true);
+  });
+
   it('should read nativeTotals from the channel figure, not the edited one', () => {
     expect(editedRecord().nativeTotals).toEqual({ amount: 30, currency: 'PLN' });
   });

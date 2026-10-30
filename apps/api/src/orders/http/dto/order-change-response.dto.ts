@@ -25,18 +25,56 @@ export class OrderChangeCorrectionPayloadDto {
   @ApiProperty({ type: [CancelCorrectionProposalLineDto] }) lines!: CancelCorrectionProposalLineDto[];
 }
 
+export class OrderChangeDiscountCorrectionLineDto {
+  @ApiProperty() originalLineNumber!: number;
+  @ApiProperty() name!: string;
+  @ApiProperty() previousUnitPriceGross!: number;
+  @ApiProperty() newUnitPriceGross!: number;
+}
+
+export class OrderChangeDiscountCorrectionPayloadDto {
+  @ApiProperty() invoiceRecordId!: string;
+  @ApiProperty({ nullable: true, type: String }) documentNumber!: string | null;
+  @ApiProperty() currency!: string;
+  @ApiProperty({ type: [OrderChangeDiscountCorrectionLineDto] })
+  lines!: OrderChangeDiscountCorrectionLineDto[];
+}
+
+export class OrderChangeDiscountRefundPayloadDto {
+  @ApiProperty({ description: 'Decimal string in the order currency.' }) amount!: string;
+  @ApiProperty() currency!: string;
+}
+
 export class OrderChangePayloadDto {
   @ApiProperty({ type: OrderChangeCancelRequestPayloadDto, nullable: true })
   cancelRequest!: OrderChangeCancelRequestPayloadDto | null;
 
   @ApiProperty({ type: OrderChangeCorrectionPayloadDto, nullable: true })
   correction!: OrderChangeCorrectionPayloadDto | null;
+
+  @ApiProperty({
+    type: OrderChangeDiscountCorrectionPayloadDto,
+    nullable: true,
+    description: '`order.discount_correction` only: the repriced lines of the proposed correction.',
+  })
+  discountCorrection!: OrderChangeDiscountCorrectionPayloadDto | null;
+
+  @ApiProperty({
+    type: OrderChangeDiscountRefundPayloadDto,
+    nullable: true,
+    description: '`order.discount_refund` only: the refund the seller makes on the channel.',
+  })
+  discountRefund!: OrderChangeDiscountRefundPayloadDto | null;
 }
 
 export class OrderChangeResponseDto {
   @ApiProperty() id!: string;
 
-  @ApiProperty({ enum: ['order.cancel_request', 'order.cancel_correction'] })
+  @ApiProperty({
+    description:
+      'Any `order.*` kind: `order.cancel_request`, `order.cancel_correction`, the four edit kinds, ' +
+      '`order.discount_refund` and `order.discount_correction`.',
+  })
   kind!: string;
 
   @ApiProperty({ description: 'Raw proposal status: pending | requested | confirmed | declined | canceled | expired.' })

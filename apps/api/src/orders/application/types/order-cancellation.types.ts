@@ -80,13 +80,21 @@ export interface ConfirmOrderChangeInput {
   readonly internalOrderId: string;
   readonly changeId: string;
   readonly actorUserId: string;
+  /**
+   * `order.discount_refund` only (#3543): record the refund even though it takes the
+   * order's cumulative refunds past its total (#3289). Request-scoped, never persisted.
+   */
+  readonly acknowledgeAboveCeiling?: boolean;
 }
 
 export interface ConfirmOrderChangeResult {
   readonly changeId: string;
   readonly kind: string;
   readonly status: 'confirmed';
-  readonly invoiceRecordId: string;
-  readonly invoiceStatus: string;
+  /** A correction kind: the issued correction. `null` for a refund confirmation. */
+  readonly invoiceRecordId: string | null;
+  readonly invoiceStatus: string | null;
   readonly documentNumber: string | null;
+  /** `order.discount_refund`: the `RefundRecord` the confirmation wrote. `null` otherwise. */
+  readonly refundRecordId: string | null;
 }

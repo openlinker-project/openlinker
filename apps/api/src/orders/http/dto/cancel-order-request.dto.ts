@@ -38,3 +38,15 @@ export class CancelOrderRequestDto {
   @IsBoolean()
   acknowledgeAcceptedWork?: boolean;
 }
+
+/** Body of POST /orders/:id/changes/:changeId/confirm. Optional: most kinds need nothing. */
+export class ConfirmOrderChangeRequestDto {
+  @ApiPropertyOptional({
+    description:
+      '`order.discount_refund` only: record the refund although it takes the order past its refund ceiling ' +
+      '(#3289). Without it the confirmation is refused with `refund_ceiling_exceeded`.',
+  })
+  @IsOptional()
+  @IsBoolean()
+  acknowledgeAboveCeiling?: boolean;
+}

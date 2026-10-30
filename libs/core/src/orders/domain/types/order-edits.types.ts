@@ -28,8 +28,12 @@
  *   cash-on-delivery amount falls by the same difference. `tax` is NOT restated:
  *   core computes no tax (ADR-063), so the figure stays the channel's and the
  *   view says so (`taxRestated: false`).
- * - `discount` is reserved for the discount money event (#3543). It is carried
- *   and preserved here, never read.
+ * - `discount` is the order-level discount money event (#3543, ADR-014
+ *   amendment). The CURRENT absolute amount is distributed across the lines that
+ *   remain after the quantity edits (`order-discount.types.ts` owns the split and
+ *   its rounding), each line's gross unit price falls accordingly so the lines
+ *   still sum to the restated total, `total`, `subtotal` and `discountTotal` are
+ *   restated and a cash-on-delivery amount falls by the same figure.
  *
  * Pure functions, no I/O, per the pure-rule exception in
  * `docs/engineering-standards.md`: the guard and the merge ARE the rules for this
@@ -39,6 +43,13 @@
  */
 import { minorUnitExponentFor } from '@openlinker/core/sales-documents';
 
+import {
+  applyDiscountToLines,
+  readOrderDiscountEdit,
+  effectiveDiscountAmount,
+  restateTotalsForDiscount,
+  type OrderDiscountEdit,
+} from './order-discount.types';
 import type {
   Address,
   Order,
@@ -80,8 +91,8 @@ export interface OrderEdits {
   /** Keyed by `OrderItem.id`. */
   readonly lines?: Readonly<Record<string, OrderLineEdit>>;
   readonly deliveryMethod?: OrderDeliveryMethodEdit;
-  /** Reserved for #3543. Preserved verbatim, never interpreted here. */
-  readonly discount?: Readonly<Record<string, unknown>>;
+  /** The current order-level discount (#3543). A zero amount means "removed". */
+  readonly discount?: OrderDiscountEdit;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -160,7 +171,7 @@ export function readOrderEdits(value: unknown): OrderEdits | null {
       };
     }
   }
-  const discount = isRecord(value.discount) ? value.discount : undefined;
+  const discount = readOrderDiscountEdit(value.discount);
   if (address === undefined && lines === undefined && deliveryMethod === undefined && discount === undefined) {
     return null;
   }
@@ -374,24 +385,40 @@ export function applyOrderEditsToSnapshot(
       delete merged.pickupPoint;
     }
   }
-  if (edits.lines !== undefined && Array.isArray(channelSnapshot.items)) {
+  if (
+    Array.isArray(channelSnapshot.items) &&
+    (edits.lines !== undefined || effectiveDiscountAmount(edits.discount) > 0)
+  ) {
     const outcome = applyLineEdits(
       readSnapshotItems(channelSnapshot.items),
       edits.lines,
       readLineEditTreatments(channelSnapshot.totals)
     );
-    merged.items = outcome.items;
     const totals = channelSnapshot.totals;
+    const currency = isRecord(totals) && typeof totals.currency === 'string' ? totals.currency : '';
+    const inclusive = !isRecord(totals) || totals.taxTreatment !== 'exclusive';
+    const discounted = applyDiscountToLines(outcome.items, edits.discount, currency, inclusive);
+    merged.items = discounted.items;
     if (isRecord(totals) && typeof totals.total === 'number' && typeof totals.subtotal === 'number') {
-      const currency = typeof totals.currency === 'string' ? totals.currency : '';
-      merged.totals = restateTotals(
+      const base = restateTotals(
         { ...totals, total: totals.total, subtotal: totals.subtotal, currency },
         outcome
+      );
+      merged.totals = restateTotalsForDiscount(
+        {
+          ...base,
+          ...(typeof totals.discountTotal === 'number' && { discountTotal: totals.discountTotal }),
+        },
+        discounted.amount,
+        inclusive
       );
     }
     const cod = channelSnapshot.codToCollect;
     if (isRecord(cod) && typeof cod.amount === 'string' && typeof cod.currency === 'string') {
-      const restated = restateCodToCollect({ amount: cod.amount, currency: cod.currency }, outcome.totalDelta);
+      const restated = restateCodToCollect(
+        { amount: cod.amount, currency: cod.currency },
+        outcome.totalDelta + discounted.amount
+      );
       if (restated === undefined) {
         delete merged.codToCollect;
       } else {
@@ -424,16 +451,30 @@ export function applyOrderEditsToOrder(order: Order, edits: OrderEdits | null): 
       delete merged.pickupPoint;
     }
   }
-  if (edits.lines !== undefined) {
+  if (edits.lines !== undefined || effectiveDiscountAmount(edits.discount) > 0) {
     const outcome = applyLineEdits<OrderItem>(
       order.items,
       edits.lines,
       readLineEditTreatments(order.totals)
     );
-    merged.items = outcome.items;
-    merged.totals = restateTotals(order.totals, outcome);
+    const inclusive = order.totals.taxTreatment !== 'exclusive';
+    const discounted = applyDiscountToLines(
+      outcome.items,
+      edits.discount,
+      order.totals.currency,
+      inclusive
+    );
+    merged.items = discounted.items;
+    merged.totals = restateTotalsForDiscount(
+      restateTotals(order.totals, outcome),
+      discounted.amount,
+      inclusive
+    );
     if (order.codToCollect !== undefined) {
-      const restated = restateCodToCollect(order.codToCollect, outcome.totalDelta);
+      const restated = restateCodToCollect(
+        order.codToCollect,
+        outcome.totalDelta + discounted.amount
+      );
       if (restated === undefined) {
         delete merged.codToCollect;
       } else {
@@ -449,8 +490,18 @@ export interface OrderEditedTotals {
   readonly currency: string;
   readonly channelTotal: number;
   readonly total: number;
-  /** `channelTotal - total`. Informational only: L6 creates no refund intent (#3543's money event). */
+  /**
+   * `channelTotal - total`: the quantity edits and the discount together. Informational on
+   * its own - a refund intent exists only for a discount on a paid order (#3543).
+   */
   readonly difference: number;
+  /** The discount the channel itself applied to the whole order; null = the channel reported none (E-44). */
+  readonly channelDiscountTotal: number | null;
+  /**
+   * Channel discount + the OpenLinker discount, the single figure an operator sees (E-44).
+   * Null only when neither exists; computed here and nowhere else.
+   */
+  readonly combinedDiscountTotal: number | null;
   /** Always `false`: core computes no tax (ADR-063), so `tax` stays the channel's. */
   readonly taxRestated: false;
 }
@@ -465,11 +516,19 @@ export function describeEditedTotals(
   const effectiveTotal =
     isRecord(effective) && typeof effective.total === 'number' ? effective.total : totals.total;
   const currency = typeof totals.currency === 'string' ? totals.currency : '';
+  const channelDiscountTotal =
+    typeof totals.discountTotal === 'number' && totals.discountTotal > 0 ? totals.discountTotal : null;
+  const olDiscount = effectiveDiscountAmount(edits?.discount);
   return {
     currency,
     channelTotal: totals.total,
     total: effectiveTotal,
     difference: roundTo(totals.total - effectiveTotal, currency),
+    channelDiscountTotal,
+    combinedDiscountTotal:
+      channelDiscountTotal === null && olDiscount <= 0
+        ? null
+        : roundTo((channelDiscountTotal ?? 0) + olDiscount, currency),
     taxRestated: false,
   };
 }
@@ -485,4 +544,6 @@ export interface ApplyOrderEditInput {
   readonly address?: OrderAddressEdit;
   readonly lines?: Readonly<Record<string, OrderLineEdit>>;
   readonly deliveryMethod?: OrderDeliveryMethodEdit;
+  /** Replaces the current discount wholesale (#3543). */
+  readonly discount?: OrderDiscountEdit;
 }

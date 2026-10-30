@@ -4,6 +4,11 @@
  * @module apps/api/src/orders/http
  */
 import type { TestingModule } from '@nestjs/testing';
+import {
+  RefundCeilingExceededException,
+  RefundLockUnavailableException,
+  RefundRecordContendedException,
+} from '@openlinker/core/orders';
 import { Test } from '@nestjs/testing';
 import { ParseUUIDPipe } from '@nestjs/common';
 import {
@@ -1806,7 +1811,12 @@ describe('OrdersController', () => {
         kind: 'order.cancel_request',
         open: true,
         confirmedAt: null,
-        payload: { cancelRequest: { reason: 'buyer-request', note: 'Called us' }, correction: null },
+        payload: {
+          cancelRequest: { reason: 'buyer-request', note: 'Called us' },
+          correction: null,
+          discountCorrection: null,
+          discountRefund: null,
+        },
       });
     });
 
@@ -1841,6 +1851,64 @@ describe('OrdersController', () => {
         currency: 'PLN',
         lines: [{ originalLineNumber: 1, name: 'Mug', previousQuantity: 2, newQuantity: 0 }],
       });
+    });
+  });
+
+  describe('listOrderChanges discount proposals (#3543)', () => {
+    const change = (overrides: Record<string, unknown>) =>
+      ({
+        id: 'change-d',
+        internalOrderId: 'ol_order_001',
+        status: 'requested',
+        requestedAt: new Date('2026-09-25T11:02:00.000Z'),
+        terminalisedAt: null,
+        declinedReason: null,
+        ...overrides,
+      }) as never;
+
+    it('should carry the repriced lines, document number and invoice id of a discount correction', async () => {
+      repository.findById.mockResolvedValue(mockOrder);
+      const lines = [
+        { originalLineNumber: 1, name: 'Mug', previousUnitPriceGross: 39, newUnitPriceGross: 36 },
+      ];
+      orderChanges.listOperatorChangesByOrder.mockResolvedValue([
+        {
+          change: change({
+            kind: 'order.discount_correction',
+            payload: { invoiceRecordId: 'inv_1', documentNumber: 'FV/1', currency: 'PLN', lines },
+          }),
+          open: true,
+        },
+      ]);
+
+      const [row] = await controller.listOrderChanges('ol_order_001');
+
+      expect(row.payload.discountCorrection).toEqual({
+        invoiceRecordId: 'inv_1',
+        documentNumber: 'FV/1',
+        currency: 'PLN',
+        lines,
+      });
+      expect(row.payload.correction).toBeNull();
+      expect(row.payload.discountRefund).toBeNull();
+    });
+
+    it('should carry the amount and currency of a discount refund intent', async () => {
+      repository.findById.mockResolvedValue(mockOrder);
+      orderChanges.listOperatorChangesByOrder.mockResolvedValue([
+        {
+          change: change({
+            kind: 'order.discount_refund',
+            payload: { amount: '15.00', currency: 'PLN' },
+          }),
+          open: true,
+        },
+      ]);
+
+      const [row] = await controller.listOrderChanges('ol_order_001');
+
+      expect(row.payload.discountRefund).toEqual({ amount: '15.00', currency: 'PLN' });
+      expect(row.payload.discountCorrection).toBeNull();
     });
   });
 
@@ -1968,22 +2036,86 @@ describe('OrdersController', () => {
         invoiceRecordId: 'inv-2',
         invoiceStatus: 'issued',
         documentNumber: 'FK/1',
+        refundRecordId: null,
       });
 
-      const result = await controller.confirmChange('ol_order_001', 'change-9', USER);
+      const result = await controller.confirmChange('ol_order_001', 'change-9', {}, USER);
 
       expect(orderCancellation.confirmChange).toHaveBeenCalledWith({
         internalOrderId: 'ol_order_001',
         changeId: 'change-9',
         actorUserId: 'user-1',
+        acknowledgeAboveCeiling: false,
       });
       expect(result.status).toBe('confirmed');
+    });
+
+    it('should forward acknowledgeAboveCeiling from the body (#3543)', async () => {
+      orderCancellation.confirmChange.mockResolvedValue({
+        changeId: 'change-9',
+        kind: 'order.discount_refund',
+        status: 'confirmed',
+        invoiceRecordId: null,
+        invoiceStatus: null,
+        documentNumber: null,
+        refundRecordId: 'refund-1',
+      });
+
+      await controller.confirmChange('ol_order_001', 'change-9', { acknowledgeAboveCeiling: true }, USER);
+
+      expect(orderCancellation.confirmChange).toHaveBeenCalledWith(
+        expect.objectContaining({ acknowledgeAboveCeiling: true })
+      );
+    });
+
+    it('should map an exceeded refund ceiling to 409 refund_ceiling_exceeded with the figures (#3543)', async () => {
+      orderCancellation.confirmChange.mockRejectedValue(
+        new RefundCeilingExceededException('ol_order_001', '50.00', '45.00', '12.50', 'PLN')
+      );
+
+      await expect(
+        controller.confirmChange('ol_order_001', 'x', {}, USER)
+      ).rejects.toMatchObject({
+        response: expect.objectContaining({
+          code: 'refund_ceiling_exceeded',
+          ceiling: '50.00',
+          alreadyRefunded: '45.00',
+          requested: '12.50',
+          currency: 'PLN',
+        }),
+      });
+    });
+
+    it('should map a contended refund write to 409 refund_record_contended (E-31)', async () => {
+      orderCancellation.confirmChange.mockRejectedValue(
+        new RefundRecordContendedException('ol_order_001')
+      );
+
+      await expect(
+        controller.confirmChange('ol_order_001', 'x', {}, USER)
+      ).rejects.toMatchObject({
+        response: expect.objectContaining({ code: 'refund_record_contended' }),
+        status: 409,
+      });
+    });
+
+    it('should map an unanswered refund lock to 503 refund_lock_unavailable (R-16)', async () => {
+      orderCancellation.confirmChange.mockRejectedValue(
+        new RefundLockUnavailableException('ol_order_001')
+      );
+
+      await expect(
+        controller.confirmChange('ol_order_001', 'x', {}, USER)
+      ).rejects.toMatchObject({
+        response: expect.objectContaining({ code: 'refund_lock_unavailable' }),
+        status: 503,
+      });
     });
 
     it('should map a foreign or unknown change to 404', async () => {
       orderCancellation.confirmChange.mockRejectedValue(new OrderCancellationNotFoundError('nope'));
 
-      await expect(controller.confirmChange('ol_order_001', 'x', USER)).rejects.toBeInstanceOf(
+      await expect(controller.confirmChange('ol_order_001', 'x', {}, USER)).rejects.toBeInstanceOf(
         NotFoundException
       );
     });
@@ -1993,7 +2125,7 @@ describe('OrdersController', () => {
         new OrderCancellationRefusedError('CHANGE_ALREADY_CONFIRMED', 'done')
       );
 
-      await expect(controller.confirmChange('ol_order_001', 'x', USER)).rejects.toMatchObject({
+      await expect(controller.confirmChange('ol_order_001', 'x', {}, USER)).rejects.toMatchObject({
         response: expect.objectContaining({ error: 'CHANGE_ALREADY_CONFIRMED' }),
       });
     });
@@ -2003,7 +2135,7 @@ describe('OrdersController', () => {
         new CancelCorrectionFailedError('provider said no', 'provider-rejected')
       );
 
-      await expect(controller.confirmChange('ol_order_001', 'x', USER)).rejects.toMatchObject({
+      await expect(controller.confirmChange('ol_order_001', 'x', {}, USER)).rejects.toMatchObject({
         response: expect.objectContaining({ error: 'CORRECTION_FAILED' }),
       });
     });
@@ -2012,7 +2144,7 @@ describe('OrdersController', () => {
   describe('operator edits on the DTO (#3542)', () => {
     it('should flag an edited order on the list row and read no edit history for it', async () => {
       repository.findMany.mockResolvedValue({
-        items: [orderRecordWith({ orderEdits: { v: 1, rev: 1 } as never })],
+        items: [orderRecordWith({ orderEdits: { v: 1, rev: 1, address: { address1: 'New 1', city: 'Warsaw' } } as never })],
         total: 1,
       });
 

@@ -3,7 +3,12 @@
  *
  * @module apps/api/src/orders/application/services
  */
-import { OPERATOR_ORDER_ORIGIN_ID, orderStockRestoreDedupeKey } from '@openlinker/core/orders';
+import {
+  DuplicateRefundRecordException,
+  OPERATOR_ORDER_ORIGIN_ID,
+  orderStockRestoreDedupeKey,
+  RefundCeilingExceededException,
+} from '@openlinker/core/orders';
 import { OrderCancellationService } from './order-cancellation.service';
 import {
   CancelCorrectionFailedError,
@@ -56,10 +61,10 @@ function invoice(overrides: Record<string, unknown> = {}): unknown {
     providerInvoiceId: 'prov-1',
     providerInvoiceNumber: 'FV/1',
     issuedAt: new Date('2026-09-01T00:00:00.000Z'),
+    createdAt: new Date('2026-09-01T00:00:00.000Z'),
     documentType: 'invoice',
     clearanceReference: null,
     isLeaseLive: () => false,
-    createdAt: new Date('2026-09-01T00:00:00.000Z'),
     issuedLineSnapshot: {
       currency: 'PLN',
       buyer: { name: 'B', taxId: null, address: {}, type: 'consumer' },
@@ -88,6 +93,7 @@ describe('OrderCancellationService (#3540)', () => {
   let invoices: Mocked<{
     listInvoicesForOrders: unknown;
     getInvoiceById: unknown;
+    getLatestInvoiceForOrder: unknown;
     issueCorrection: unknown;
   }>;
   let fiscal: Mocked<{ getByOrderId: unknown }>;
@@ -95,6 +101,7 @@ describe('OrderCancellationService (#3540)', () => {
   let jobQueue: Mocked<{ enqueue: unknown }>;
   let lock: Mocked<{ acquire: unknown; release: unknown }>;
   let effects: Mocked<{ applyEffects: unknown }>;
+  let refunds: Mocked<{ recordRefund: unknown; getRefundsForOrder: unknown }>;
   let service: OrderCancellationService;
 
   const input = {
@@ -136,6 +143,7 @@ describe('OrderCancellationService (#3540)', () => {
     invoices = {
       listInvoicesForOrders: jest.fn().mockResolvedValue([]),
       getInvoiceById: jest.fn(),
+      getLatestInvoiceForOrder: jest.fn().mockResolvedValue(null),
       issueCorrection: jest.fn(),
     };
     fiscal = { getByOrderId: jest.fn().mockResolvedValue([]) };
@@ -145,6 +153,10 @@ describe('OrderCancellationService (#3540)', () => {
     };
     jobQueue = { enqueue: jest.fn().mockResolvedValue('job-1') };
     lock = { acquire: jest.fn().mockResolvedValue('token'), release: jest.fn().mockResolvedValue(true) };
+    refunds = {
+      recordRefund: jest.fn().mockResolvedValue({ id: 'refund-1' }),
+      getRefundsForOrder: jest.fn().mockResolvedValue([]),
+    };
 
     effects = {
       applyEffects: jest.fn().mockResolvedValue({
@@ -165,7 +177,8 @@ describe('OrderCancellationService (#3540)', () => {
       fulfillment as never,
       jobQueue as never,
       lock as never,
-      effects as never
+      effects as never,
+      refunds as never
     );
   });
 
@@ -657,7 +670,13 @@ describe('OrderCancellationService (#3540)', () => {
       expect(changes.confirm).not.toHaveBeenCalled();
     });
 
-    it.each(['order.cancel_request', 'return.decline', 'return.authorize', 'return.invoice_correction'])(
+    it.each([
+      'order.cancel_request',
+      'return.decline',
+      'return.authorize',
+      'return.invoice_correction',
+      'order.discount_change',
+    ])(
       'should refuse to confirm a %s change here',
       async (kind) => {
         changes.findById.mockResolvedValue(correctionChange({ kind }));
@@ -758,6 +777,148 @@ describe('OrderCancellationService (#3540)', () => {
       });
 
       expect(await refusal(service.confirmChange(confirmInput))).toBe('CORRECTION_NEEDS_RECONCILIATION');
+    });
+  });
+
+  describe('confirmChange - discount kinds (#3543)', () => {
+    const confirmInput = { internalOrderId: ORDER_ID, changeId: 'change-3', actorUserId: ACTOR };
+    const refundChange = (overrides: Record<string, unknown> = {}): unknown =>
+      change('change-3', {
+        kind: 'order.discount_refund',
+        payload: { amount: '12.50', currency: 'PLN', reason: 'other', note: 'Discount granted in OpenLinker' },
+        ...overrides,
+      });
+    const correctionChange = (overrides: Record<string, unknown> = {}): unknown =>
+      change('change-3', {
+        kind: 'order.discount_correction',
+        payload: {
+          invoiceRecordId: 'inv-1',
+          documentNumber: 'FV/1',
+          currency: 'PLN',
+          reason: 'Discount granted in OpenLinker',
+          lines: [
+            { originalLineNumber: 1, name: 'Shirt', previousUnitPriceGross: 10, newUnitPriceGross: 8.75 },
+          ],
+        },
+        ...overrides,
+      });
+
+    it('should record the refund out of band under a key derived from the change id, then confirm', async () => {
+      changes.findById.mockResolvedValue(refundChange());
+
+      const result = await service.confirmChange(confirmInput);
+
+      expect(refunds.recordRefund).toHaveBeenCalledWith(
+        expect.objectContaining({
+          internalOrderId: ORDER_ID,
+          amount: '12.50',
+          currency: 'PLN',
+          reason: 'other',
+          note: 'Discount granted in OpenLinker',
+          idempotencyKey: 'discount-refund:change-3',
+          executedBy: 'operator_out_of_band',
+          acknowledgeAboveCeiling: false,
+        })
+      );
+      expect(changes.confirm).toHaveBeenCalledWith('change-3', ACTOR);
+      expect(changes.claimApplied).toHaveBeenCalledWith('change-3');
+      expect(result).toMatchObject({ status: 'confirmed', refundRecordId: 'refund-1', invoiceRecordId: null });
+    });
+
+    it('should pass acknowledgeAboveCeiling from the confirm body to the refund write', async () => {
+      changes.findById.mockResolvedValue(refundChange());
+
+      await service.confirmChange({ ...confirmInput, acknowledgeAboveCeiling: true });
+
+      expect(refunds.recordRefund).toHaveBeenCalledWith(
+        expect.objectContaining({ acknowledgeAboveCeiling: true })
+      );
+    });
+
+    it('should leave the intent open when the refund ceiling refuses', async () => {
+      changes.findById.mockResolvedValue(refundChange());
+      refunds.recordRefund.mockRejectedValue(
+        new RefundCeilingExceededException(ORDER_ID, '50.00', '45.00', '12.50', 'PLN')
+      );
+
+      await expect(service.confirmChange(confirmInput)).rejects.toBeInstanceOf(
+        RefundCeilingExceededException
+      );
+      expect(changes.confirm).not.toHaveBeenCalled();
+    });
+
+    it('should treat a duplicate key as an earlier attempt that already wrote the record', async () => {
+      changes.findById.mockResolvedValue(refundChange());
+      refunds.recordRefund.mockRejectedValue(new DuplicateRefundRecordException(ORDER_ID, 'discount-refund:change-3'));
+      refunds.getRefundsForOrder.mockResolvedValue([{ id: 'refund-0', idempotencyKey: 'discount-refund:change-3' }]);
+
+      const result = await service.confirmChange(confirmInput);
+
+      expect(result.refundRecordId).toBe('refund-0');
+      expect(changes.confirm).toHaveBeenCalledWith('change-3', ACTOR);
+    });
+
+    it.each([
+      ['confirmed', 'CHANGE_ALREADY_CONFIRMED'],
+      ['expired', 'CHANGE_EXPIRED'],
+      ['canceled', 'CHANGE_NOT_OPEN'],
+    ])('should refuse a %s refund intent with %s and record nothing', async (status, code) => {
+      changes.findById.mockResolvedValue(refundChange({ status }));
+
+      expect(await refusal(service.confirmChange(confirmInput))).toBe(code);
+      expect(refunds.recordRefund).not.toHaveBeenCalled();
+    });
+
+    it('should answer CHANGE_NOT_OPEN, not CHANGE_EXPIRED, for a proposal OL replaced (E-47)', async () => {
+      changes.findById.mockResolvedValue(
+        refundChange({ status: 'expired', declinedReason: 'superseded-by-newer-proposal' })
+      );
+
+      expect(await refusal(service.confirmChange(confirmInput))).toBe('CHANGE_NOT_OPEN');
+      expect(refunds.recordRefund).not.toHaveBeenCalled();
+    });
+
+    it('should refuse a discount correction on a cancelled order and retire the proposal (B-31)', async () => {
+      changes.findById.mockResolvedValue(correctionChange());
+      invoices.getInvoiceById.mockResolvedValue(invoice());
+      orderRecords.getOrderRecord.mockResolvedValue(order({ cancelledAt: new Date() }));
+
+      expect(await refusal(service.confirmChange(confirmInput))).toBe('CORRECTION_SUPERSEDED');
+      expect(changes.decline).toHaveBeenCalledWith('change-3', 'correction-superseded');
+      expect(invoices.issueCorrection).not.toHaveBeenCalled();
+    });
+
+    it('should refuse a discount correction when a later correction was already issued (B-31)', async () => {
+      changes.findById.mockResolvedValue(correctionChange());
+      invoices.getInvoiceById.mockResolvedValue(invoice());
+      invoices.getLatestInvoiceForOrder.mockResolvedValue(
+        invoice({ id: 'inv-9', createdAt: new Date('2026-09-05T00:00:00.000Z') })
+      );
+
+      expect(await refusal(service.confirmChange(confirmInput))).toBe('CORRECTION_SUPERSEDED');
+      expect(invoices.issueCorrection).not.toHaveBeenCalled();
+    });
+
+    it('should issue the discount correction with price deltas under its own key prefix', async () => {
+      changes.findById.mockResolvedValue(correctionChange());
+      invoices.getInvoiceById.mockResolvedValue(invoice());
+      invoices.issueCorrection.mockResolvedValue({
+        id: 'inv-2',
+        status: 'issued',
+        providerInvoiceNumber: 'FK/2',
+        isLeaseLive: () => false,
+      });
+
+      const result = await service.confirmChange(confirmInput);
+
+      expect(invoices.issueCorrection).toHaveBeenCalledWith(
+        expect.objectContaining({
+          idempotencyKey: 'discount-correction:change-3',
+          lines: [{ originalLineNumber: 1, newUnitPriceGross: 8.75 }],
+        })
+      );
+      expect(changes.confirm).toHaveBeenCalledWith('change-3', ACTOR);
+      expect(result).toMatchObject({ documentNumber: 'FK/2', refundRecordId: null });
     });
   });
 });

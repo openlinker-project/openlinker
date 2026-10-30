@@ -26,6 +26,11 @@ export const OrderEditRefusalCodeValues = [
   'ORDER_EDIT_CONTENDED',
   'NOTHING_CHANGED',
   'LINE_PRICE_NOT_RESOLVABLE',
+  // #3543: the discount money event.
+  'DISCOUNT_EXCEEDS_TOTAL',
+  'DISCOUNT_BELOW_REFUNDED',
+  'ORDER_HAS_FISCAL_RECEIPT',
+  'INVOICE_NOT_SETTLED',
 ] as const;
 export type OrderEditRefusalCode = (typeof OrderEditRefusalCodeValues)[number];
 

@@ -262,6 +262,33 @@ describe('toRegisterTransactionCommand', () => {
   });
 
   describe('the lines must add up to the total', () => {
+    it('should split a multi-unit line so the receipt equals the discounted total when 3 units cannot carry it evenly (E-45 receipt)', () => {
+      const cmd = toRegisterTransactionCommand({
+        order: order({
+          items: [
+            { id: 'i1', productId: 'ol_product_1', quantity: 3, price: 56.94, name: 'Widget', sku: 'W-1' },
+          ],
+          totals: {
+            subtotal: 170.81,
+            tax: 0,
+            shipping: 0,
+            total: 170.81,
+            discountTotal: 9.19,
+            currency: 'PLN',
+          },
+        }),
+        connectionId: 'conn-1',
+        idempotencyKey: 'k',
+      });
+
+      const sum = cmd.lines.reduce((s, l) => s + Math.round(l.quantity * l.unitPriceGross * 100), 0);
+      expect(sum).toBe(17081);
+      expect(cmd.lines.map((l) => [l.quantity, l.unitPriceGross])).toEqual([
+        [2, 56.94],
+        [1, 56.93],
+      ]);
+    });
+
     it('should refuse a sale whose lines do not sum to the reported gross total', () => {
       // `OrderTotals` has no discount field, so a source that folds a coupon into
       // `total` reports lines that sum higher. A fiscal document may not transmit
