@@ -1,5 +1,7 @@
 import { cleanup, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import type { ReactElement } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { SessionAdapter } from '../../shared/auth/session-adapter';
 import { createAuthenticatedSessionAdapter, createMockApiClient, renderWithProviders } from '../../test/test-utils';
@@ -198,11 +200,36 @@ describe('InventoryMovementsPage', () => {
     const apiClient = createMockApiClient({
       inventory: { listMovements: vi.fn().mockResolvedValue(page([row()])) },
     });
-    renderMovements({ apiClient });
+    // The harness mounts a MemoryRouter, so window.history is never touched; the
+    // router's own history is what Back walks, which this probe drives.
+    function BackProbe(): ReactElement {
+      const navigate = useNavigate();
+      const location = useLocation();
+      return (
+        <>
+          <span data-testid="probe-search">{location.search}</span>
+          <button type="button" data-testid="probe-back" onClick={() => void navigate(-1)}>
+            Back
+          </button>
+        </>
+      );
+    }
+    renderWithProviders(
+      <>
+        <InventoryMovementsPage />
+        <BackProbe />
+      </>,
+      { apiClient, sessionAdapter: createAuthenticatedSessionAdapter() }
+    );
     await screen.findAllByTestId('stock-movement-row');
-    const before = window.history.length;
+    expect(screen.getByTestId('probe-search')).toHaveTextContent('');
 
     await userEvent.click(screen.getByTestId('stock-movements-chip-attention'));
-    await waitFor(() => expect(window.history.length).toBe(before + 1));
+    await waitFor(() =>
+      expect(screen.getByTestId('probe-search').textContent).toContain('chip=attention')
+    );
+
+    await userEvent.click(screen.getByTestId('probe-back'));
+    await waitFor(() => expect(screen.getByTestId('probe-search').textContent).toBe(''));
   });
 });

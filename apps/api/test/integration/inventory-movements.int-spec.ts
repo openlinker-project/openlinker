@@ -14,8 +14,9 @@
  *
  * @module apps/api/test/integration
  */
+import type {
+  IInventoryService} from '@openlinker/core/inventory';
 import {
-  IInventoryService,
   InventoryItemEntity,
   INVENTORY_SERVICE_TOKEN,
 } from '@openlinker/core/inventory';
@@ -28,9 +29,10 @@ import {
   ProductOrmEntity,
   ProductVariantOrmEntity,
 } from '@openlinker/core/products/orm-entities';
+import type {
+  IntegrationTestHarness} from './setup';
 import {
   getTestHarness,
-  IntegrationTestHarness,
   resetTestHarness,
   teardownTestHarness,
 } from './setup';
@@ -179,7 +181,7 @@ describe('Inventory movements (#3565)', () => {
           quantityAfter: null,
           sourceKind: 'operator',
           sourceRef: null,
-          actorUserId: 'user-1',
+          actorUserId: '00000000-0000-4000-8000-0000000000a1',
           operatorReason: 'found',
           note: null,
           idempotencyKey: 'idem-refused-1',

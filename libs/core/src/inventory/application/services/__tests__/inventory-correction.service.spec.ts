@@ -461,7 +461,7 @@ describe('InventoryCorrectionService', () => {
       h.inventoryService.setInventory.mockResolvedValue(undefined);
       masterReads(h, 5);
       masterAnswers(h, 7);
-      const result = await h.service.correctStock({ ...baseInput, mode: 'set', quantity: 8 });
+      const result = await h.service.correctStock({ ...baseInput, mode: 'set', quantity: 8, confirmLargeChange: true });
       expect(result).toMatchObject({ quantityBefore: 4, quantityAfter: 7 });
       expect(h.movements.rows.get(result.movementId)?.quantityDelta).toBe(3);
     });
@@ -482,7 +482,7 @@ describe('InventoryCorrectionService', () => {
       h.inventoryService.setInventory.mockResolvedValue(undefined);
       masterReads(h, 3);
       masterAnswers(h, 0);
-      const result = await h.service.correctStock({ ...baseInput, quantity: -3 });
+      const result = await h.service.correctStock({ ...baseInput, quantity: -3, confirmLargeChange: true });
       expect(result).toMatchObject({ quantityBefore: 3, quantityAfter: 0 });
       expect(h.movements.rows.get(result.movementId)?.quantityDelta).toBe(-3);
     });
@@ -603,7 +603,7 @@ describe('InventoryCorrectionService', () => {
       h.adapter.listInventory.mockResolvedValue([
         { id: 'x', productId: PRODUCT_ID, quantity: 3, reserved: 0, available: 3 },
       ]);
-      await h.service.correctStock({ ...baseInput, mode: 'set', quantity: 8 });
+      await h.service.correctStock({ ...baseInput, mode: 'set', quantity: 8, confirmLargeChange: true });
       expect(h.movements.insertPending).toHaveBeenCalledWith(
         expect.objectContaining({ quantityDelta: 5 })
       );

@@ -253,7 +253,12 @@ describe('ProductsListPage', () => {
     expect(within(table).getByText('Low stock')).toBeInTheDocument();
     expect(within(table).getByText('master 40')).toBeInTheDocument();
     expect(within(table).getAllByText('Not known').length).toBeGreaterThan(0);
-    expect(within(table).queryByText('Unknown')).toBeNull();
+    // "Unknown" is still the name a connection chip falls back to for an
+    // unresolved connection; what must never carry it is a stock badge.
+    const unknownLabels = within(table)
+      .queryAllByText('Unknown')
+      .filter((el) => !el.classList.contains('connection-chip__name'));
+    expect(unknownLabels).toHaveLength(0);
     expect(within(table).queryByText('Out of stock')).toBeNull();
   });
 

@@ -697,8 +697,11 @@ describe('ReturnCustodyService', () => {
 
       // A mixed basket: each line's units go back to its own owner.
       it('should route each line to its own owner when two lines belong to different masters', async () => {
+        // Two reads per disposal: the restock plan, then the mirror (#3565).
         inventory.resolveStockOwner
           .mockResolvedValueOnce(ownedBy('master-a'))
+          .mockResolvedValueOnce(ownedBy('master-a'))
+          .mockResolvedValueOnce(ownedBy('master-b'))
           .mockResolvedValueOnce(ownedBy('master-b'));
 
         await service.disposeLine(LINE_ID, { quantity: 1, disposition: 'restock' });

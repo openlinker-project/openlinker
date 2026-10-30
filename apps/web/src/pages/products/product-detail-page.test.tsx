@@ -416,7 +416,9 @@ describe('ProductDetailPage', () => {
 
     renderDetailPage(mockApi, true);
 
-    expect(await screen.findByText('Low stock')).toBeInTheDocument();
+    // The variants table carries its own stock cell, so the hero badge is
+    // addressed by test id rather than by its text.
+    expect(await screen.findByTestId('product-stock-badge')).toHaveTextContent('Low stock');
     expect(screen.queryByText('In stock')).not.toBeInTheDocument();
   });
 
@@ -649,7 +651,7 @@ describe('ProductDetailPage', () => {
       },
     );
 
-    await screen.findByText(/SKU-001-M/);
+    await screen.findByTestId('stock-variant-row-SKU-001-M');
     // One CTA per gap row (both variants lack the Allegro listing).
     expect((await screen.findAllByRole('button', { name: '+ Create offer' })).length).toBeGreaterThan(0);
   });

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { cleanup, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ApiError } from '../../../shared/api/api-error';
@@ -403,6 +403,10 @@ describe('StockCorrectionDialog outcomes and guards', () => {
     await userEvent.click(screen.getByTestId('stock-correction-mode-delta'));
     await userEvent.type(screen.getByTestId('stock-correction-delta'), '-6');
 
+    // Removing the whole stock is a large change, so it still needs the tick;
+    // what it must NOT need is a larger count than the master holds.
+    expect(screen.getByTestId('stock-correction-submit')).toBeDisabled();
+    await userEvent.click(screen.getByTestId('stock-correction-large-change-confirm'));
     expect(screen.getByTestId('stock-correction-submit')).toBeEnabled();
   });
 
@@ -411,7 +415,7 @@ describe('StockCorrectionDialog outcomes and guards', () => {
       correctStock: vi.fn().mockRejectedValue(new ApiError('no', 409, { code: 'insufficient-stock', currentQuantity: 5 })),
     });
     await screen.findByTestId('stock-correction-dialog');
-    await userEvent.type(screen.getByTestId('stock-correction-quantity'), '2');
+    await userEvent.type(screen.getByTestId('stock-correction-quantity'), '5');
     await userEvent.click(screen.getByTestId('stock-correction-submit'));
 
     expect(await screen.findByTestId('stock-correction-error')).toHaveTextContent(
@@ -541,7 +545,10 @@ describe('Adjust stock entry point', () => {
       await userEvent.tab();
       await userEvent.tab();
       await userEvent.keyboard('{Escape}');
-      await userEvent.click(document.body);
+      // Radix sets pointer-events: none on the body while modal, so user-event
+      // refuses to click it; dispatch the outside pointerdown the dialog listens for.
+      fireEvent.pointerDown(document.body);
+      fireEvent.click(document.body);
       expect(screen.getByTestId('stock-correction-applying')).toBeInTheDocument();
 
       release(result());

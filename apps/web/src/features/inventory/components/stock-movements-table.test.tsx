@@ -128,6 +128,7 @@ describe('StockMovementsTable', () => {
         quantityAfter: null,
         sourceKind: 'return',
         sourceRef: 'ol_return_1',
+        sourceLabel: 'RET-1001',
         refusalDetail: 'Master needs reauthorization.',
       }),
     ]);
@@ -135,7 +136,7 @@ describe('StockMovementsTable', () => {
     expect(within(tr).getByTestId('stock-movement-after')).toHaveTextContent('Not applied');
     expect(within(tr).getByTestId('stock-movement-delta').className).toContain('stock-movement__delta--void');
     expect(within(tr).getByTestId('stock-movement-reason')).toHaveTextContent('Master needs reauthorization.');
-    expect(within(tr).getByRole('link', { name: 'ol_return_1' })).toHaveAttribute('href', '/returns/ol_return_1');
+    expect(within(tr).getByRole('link', { name: 'RET-1001' })).toHaveAttribute('href', '/returns/ol_return_1');
   });
 
   it('should show plain copy instead of internal ids when the master no longer has the product', () => {
@@ -147,7 +148,7 @@ describe('StockMovementsTable', () => {
       }),
     ]);
     const reason = screen.getByTestId('stock-movement-reason');
-    expect(reason).toHaveTextContent('the shop no longer has this product. Nothing changed.');
+    expect(reason).toHaveTextContent('Sklep Gorski no longer has this product. Nothing changed.');
     expect(reason).not.toHaveTextContent('ol_product_1');
   });
 

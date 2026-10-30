@@ -240,7 +240,12 @@ export function ProductDetailPage(): ReactElement {
             <div className="product-detail-hero__body">
               <div className="product-detail-hero__badges">
                 {stockStatus !== null ? (
-                  <StatusBadge compact withDot tone={STOCK_STATUS_BADGE_TONE[stockStatus]}>
+                  <StatusBadge
+                    compact
+                    withDot
+                    tone={STOCK_STATUS_BADGE_TONE[stockStatus]}
+                    data-testid="product-stock-badge"
+                  >
                     {STOCK_STATUS_LABEL[stockStatus]}
                   </StatusBadge>
                 ) : (

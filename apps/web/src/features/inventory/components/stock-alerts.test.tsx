@@ -1,4 +1,4 @@
-import { cleanup, screen } from '@testing-library/react';
+import { cleanup, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createMockApiClient, renderWithProviders } from '../../../test/test-utils';
@@ -127,7 +127,10 @@ describe('StockAlerts', () => {
       stock: pair({ positions: [], livePositionCount: 0, masterAvailable: 0, availableToPromise: 0, heldCounted: 0 }),
     });
     expect(await screen.findByTestId('stock-empty-open-connection')).toHaveAttribute('href', '/connections/conn_ps');
-    expect(screen.getByTestId('stock-empty')).toHaveTextContent('PrestaShop - Ceramika Nowak');
+    // The connection name arrives with the connections query, after the link renders.
+    await waitFor(() =>
+      expect(screen.getByTestId('stock-empty')).toHaveTextContent('PrestaShop - Ceramika Nowak')
+    );
   });
 
   it('should show a loading note while the stock view is pending', () => {
