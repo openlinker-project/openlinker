@@ -5,6 +5,7 @@
  */
 import type {
   BulkAssignOrderTagResult,
+  BulkUnassignOrderTagResult,
   OrderTag,
   OrderTagColor,
   OrderTagWithCount,
@@ -41,4 +42,10 @@ export interface IOrderTagService {
     internalOrderIds: readonly string[],
     assignedByUserId: string
   ): Promise<BulkAssignOrderTagResult>;
+
+  /** @throws {OrderTagNotFoundError} */
+  bulkUnassign(
+    tagId: string,
+    internalOrderIds: readonly string[]
+  ): Promise<BulkUnassignOrderTagResult>;
 }

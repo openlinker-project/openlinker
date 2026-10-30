@@ -5,6 +5,7 @@
  */
 import type {
   BulkAssignOrderTagResult,
+  BulkUnassignOrderTagResult,
   CreateOrderTagInput,
   OrderTag,
   OrderTagWithCount,
@@ -47,4 +48,10 @@ export interface OrderTagRepositoryPort {
     internalOrderIds: readonly string[],
     assignedByUserId: string
   ): Promise<BulkAssignOrderTagResult>;
+
+  /** Removes ONE tag from every named order; an order without it is reported, not an error (#3545). */
+  bulkUnassign(
+    tagId: string,
+    internalOrderIds: readonly string[]
+  ): Promise<BulkUnassignOrderTagResult>;
 }

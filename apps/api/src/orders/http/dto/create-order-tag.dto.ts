@@ -4,7 +4,15 @@
  * @module apps/api/src/orders/http/dto
  */
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsEnum, IsNotEmpty, IsOptional, IsString, MaxLength } from 'class-validator';
+import {
+  ArrayMaxSize,
+  IsEnum,
+  IsNotEmpty,
+  IsOptional,
+  IsString,
+  MaxLength,
+} from 'class-validator';
+import { BULK_ORDER_ACTION_MAX } from '../bulk-row-result';
 import { OrderTagColorValues, type OrderTagColor } from '@openlinker/core/orders';
 
 export class CreateOrderTagDto {
@@ -34,7 +42,11 @@ export class UpdateOrderTagDto {
 }
 
 export class BulkAssignOrderTagDto {
-  @ApiProperty({ type: [String] })
+  @ApiProperty({ type: [String], maxItems: BULK_ORDER_ACTION_MAX })
+  @ArrayMaxSize(BULK_ORDER_ACTION_MAX)
   @IsString({ each: true })
   orderIds!: string[];
 }
+
+/** Same body as bulk-assign (#3545). */
+export class BulkRemoveOrderTagDto extends BulkAssignOrderTagDto {}
