@@ -149,7 +149,7 @@ test.describe('G11 SNAP - cost snapshot @g11', () => {
     );
   });
 
-  test('SNAP-7 order detail shows the snapshot cost; "Add cost" does not change that order', async ({ openAs, ctx }) => {
+  test('SNAP-7 order detail shows the snapshot cost; "Add cost" does not change that order', async ({ openAs, ctx, http }) => {
     test.skip(!o1 || !o3, 'earlier scenarios did not create the orders');
     const page = await openAs('admin');
     await page.goto(`/orders/${o1!.internalOrderId}`);
@@ -158,6 +158,9 @@ test.describe('G11 SNAP - cost snapshot @g11', () => {
     // The column is the line total (mockup: qty 2, cost 45.60), and SNAP-1 sold 2 units at a unit cost of 10.
     await expect(table).toContainText('20.00');
 
+    // o3's variant has a cost by now (SNAP-4), which the panel reports as "entered after the sale". The
+    // plain `no-cost` row and its "Add cost" link (M30 order-line) need the variant to be uncosted again.
+    await mustClearCost(http.admin, psA(ctx).a2.variantId);
     await page.goto(`/orders/${o3!.internalOrderId}`);
     await expect(page.getByTestId('order-line-no-cost').first()).toBeVisible();
     await expect(page.getByTestId('order-line-cost-note')).toBeVisible();

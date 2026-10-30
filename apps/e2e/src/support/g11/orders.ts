@@ -60,6 +60,20 @@ export async function loadDriver(
   return { product, variant };
 }
 
+/**
+ * The stand has no order destination, so every ingested order leaves a `marketplace.order.sync` job
+ * that fails on "No OrderProcessorManager destinations" and climbs its retry ladder. Those retries
+ * hold the realtime lane's per-scope slots and starve the next scenario's ingestion, so once the
+ * record is `ready` (the part G11 asserts) the debris is parked as dead. Queue housekeeping only:
+ * no order or cost row is touched.
+ */
+export function retireDestinationlessOrderJobs(ctx: G11Ctx): void {
+  ctx.db.exec(
+    `UPDATE sync_jobs SET status = 'dead' WHERE "jobType" = 'marketplace.order.sync' AND status = 'queued'
+       AND "lastError" LIKE '%No OrderProcessorManager destinations%'`,
+  );
+}
+
 /** One PrestaShop order for `quantity` units of the variant, ingested and `ready`. */
 export async function createPrestashopOrder(
   ctx: G11Ctx,
@@ -74,10 +88,12 @@ export async function createPrestashopOrder(
     .find((c) => c.id === connectionId);
   if (!ingestConnection) throw new Error(`PrestaShop connection ${connectionId} is not active on the stack`);
   const driver = await loadDriver(ctx, productId, ref.variantId);
-  return synthesizeOrder(
+  const created = await synthesizeOrder(
     { api: ctx.api, world: ctx.world, jobs: ctx.jobs, poll: ctx.poll },
     { driver, quantity, ingestConnection, currencyId: process.env.G11_PS_PLN_CURRENCY_ID ?? '3' },
   );
+  retireDestinationlessOrderJobs(ctx);
+  return created;
 }
 
 export interface WooOrderResult {
@@ -104,13 +120,23 @@ export async function createWooOrder(
   const variants = (await ctx.api.products.listVariants(productId)).items;
   const lineItems = lines.map(({ ref, quantity }) => {
     const variant = variants.find((v) => v.id === ref.variantId);
-    const variationId = variant ? externalIdOf(variant, connectionId) : undefined;
+    // The variants list carries no external ids, so the variation id comes from the mapping table.
+    const variationId =
+      (variant ? externalIdOf(variant, connectionId) : undefined) ??
+      (variant
+        ? ctx.db.scalar(
+            `SELECT "externalId" FROM identifier_mappings WHERE "entityType" = 'ProductVariant' AND "internalId" = ${lit(variant.id)} AND "connectionId" = ${lit(connectionId)} LIMIT 1`,
+          ) ?? undefined
+        : undefined);
     return {
       productId: Number(wcProductId),
       ...(variationId && variationId !== wcProductId ? { variationId: Number(variationId) } : {}),
       quantity,
     };
   });
+  // WooCommerce stamps date_created to the second (truncated), and G11-G stores not-recorded for an order
+  // placed before the cost was entered, so a cost set a moment ago would otherwise outrank the order.
+  await new Promise((resolve) => setTimeout(resolve, 2_500));
   const suffix = Date.now().toString(36);
   const billing = {
     firstName: 'Erik',
@@ -130,6 +156,7 @@ export async function createWooOrder(
     intervalMs: 3_000,
     retriggerPoll: ctx.jobs.retriggerDirectOrderSync(connectionId, externalOrderId),
   });
+  retireDestinationlessOrderJobs(ctx);
   return { externalOrderId, order };
 }
 
