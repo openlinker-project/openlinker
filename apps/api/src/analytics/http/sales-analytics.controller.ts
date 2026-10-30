@@ -144,16 +144,15 @@ export class SalesAnalyticsController {
     if (to.getTime() <= from.getTime()) {
       throw new BadRequestException('to must be after from');
     }
+    const isCsv = query.format === 'csv';
+    if (isCsv) {
+      assertExportRange(from, to);
+    }
     const rangeDays = (to.getTime() - from.getTime()) / (24 * 60 * 60 * 1000);
     if (rangeDays > MAX_SALES_ANALYTICS_RANGE_DAYS) {
       throw new BadRequestException(
         `Range too wide: ${Math.ceil(rangeDays)} days exceeds the ${MAX_SALES_ANALYTICS_RANGE_DAYS}-day limit`
       );
-    }
-
-    const isCsv = query.format === 'csv';
-    if (isCsv) {
-      assertExportRange(from, to);
     }
 
     // Read fresh on every request — see the class doc comment.

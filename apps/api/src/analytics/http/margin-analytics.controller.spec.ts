@@ -112,6 +112,18 @@ describe('MarginAnalyticsController', () => {
     ).rejects.toThrow(BadRequestException);
   });
 
+  it('answers EXPORT_RANGE_TOO_WIDE for a CSV wider than 400 days, on both CSV routes', async () => {
+    const { controller } = build();
+    const wide = { from: '2025-01-01T00:00:00.000Z', to: '2026-09-08T00:00:00.000Z' };
+
+    await expect(controller.getMargin({ ...wide, format: 'csv' })).rejects.toMatchObject({
+      response: { code: 'EXPORT_RANGE_TOO_WIDE' },
+    });
+    await expect(controller.getMarginProducts({ ...wide, format: 'csv' })).rejects.toMatchObject({
+      response: { code: 'EXPORT_RANGE_TOO_WIDE' },
+    });
+  });
+
   it('forwards product ranking defaults and an explicit sort', async () => {
     const { controller, api } = build();
 

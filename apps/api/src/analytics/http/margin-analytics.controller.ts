@@ -97,11 +97,8 @@ export class MarginAnalyticsController {
   async getMargin(
     @Query() query: MarginAnalyticsQueryDto
   ): Promise<MarginAnalyticsResponseDto | StreamableFile> {
-    const { from, to } = this.parseAndValidateRange(query);
     const isCsv = query.format === 'csv';
-    if (isCsv) {
-      assertExportRange(from, to);
-    }
+    const { from, to } = this.parseAndValidateRange(query, isCsv);
     const { includeBackfilledTaxRatesInNetSales } = await this.displaySettings.getSettings();
 
     const analytics = await this.marginAnalytics.getMargin(
@@ -143,11 +140,8 @@ export class MarginAnalyticsController {
   async getMarginProducts(
     @Query() query: MarginProductsQueryDto
   ): Promise<MarginProductsResponseDto | StreamableFile> {
-    const { from, to } = this.parseAndValidateRange(query);
     const isCsv = query.format === 'csv';
-    if (isCsv) {
-      assertExportRange(from, to);
-    }
+    const { from, to } = this.parseAndValidateRange(query, isCsv);
     const { includeBackfilledTaxRatesInNetSales } = await this.displaySettings.getSettings();
 
     if (isCsv) {
@@ -206,11 +200,19 @@ export class MarginAnalyticsController {
     );
   }
 
-  private parseAndValidateRange(query: MarginRangeQueryDto): { from: Date; to: Date } {
+  private parseAndValidateRange(
+    query: MarginRangeQueryDto,
+    isCsv = false
+  ): { from: Date; to: Date } {
     const from = new Date(query.from);
     const to = new Date(query.to);
     if (to.getTime() <= from.getTime()) {
       throw new BadRequestException('to must be after from');
+    }
+    // A CSV answers the coded export error for ANY too-wide range, so the
+    // screens' generic window cap must not fire first (#3589).
+    if (isCsv) {
+      assertExportRange(from, to);
     }
     const rangeDays = (to.getTime() - from.getTime()) / (24 * 60 * 60 * 1000);
     if (rangeDays > MAX_MARGIN_RANGE_DAYS) {
