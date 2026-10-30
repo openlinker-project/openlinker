@@ -23,6 +23,18 @@ When a lesson hardens into a rule, **graduate it** to the canonical doc and leav
 
 ---
 
+## Never send one receipt line name at two VAT rates - the fiscal printer locks the name for good
+
+**Context**: eparagony.pl relays receipts to a physical fiscal printer. OpenLinker sent the delivery line as `Shipping` on every receipt while its VAT rate followed the basket (23% one day, 5% the next, both on one mixed-rate receipt).
+
+**Problem**: a Polish fiscal printer binds each line name to one VAT rate and refuses a name whose rate goes up after it went down (Dz.U. 2024 poz. 1654, § 2 pkt 1 and § 40 ust. 1). The refusal surfaces as `errorCode 83`, "schodek podatkowy", and the name then stays blocked at every rate on that device - only service can clear it. Name matching is case-insensitive, trims and collapses spaces, and compares the first 40 characters. A sandbox test burns real names, so experiments must use throwaway names (`testshiping<timestamp>`).
+
+**Rule**: a receipt line whose rate can vary carries the rate in its name (`Koszt dostawy 23%`), and one receipt never names one line at two rates. See [ADR-079](./architecture/adrs/079-delivery-line-on-sales-documents.md).
+
+**Applies to**: `libs/core/src/fiscalization/**` mappers, `libs/integrations/eparagony/**`, any future fiscal-receipt adapter, e2e against a fiscal sandbox.
+
+**Source**: #3913, #3905, #3906
+
 ## An Allegro offer that reads INACTIVE with no errors may still be processing - the reason lives on the create operation
 
 **Context**: an inline-product `POST /sale/product-offers` with `publication.status: ACTIVE` is
