@@ -43,9 +43,14 @@ export class VariantCostPage {
   async open(sku: string): Promise<void> {
     const add = this.page.getByTestId(`variant-cost-add-${slugOf(sku)}`);
     const edit = this.page.getByTestId(`variant-cost-edit-${slugOf(sku)}`);
-    if ((await add.count()) + (await edit.count()) > 0 && (await add.or(edit).first().isVisible())) return;
+    // The drawer body stays in the DOM while collapsed (zero height), so its
+    // buttons count as "visible"; the toggle's aria-expanded is the real state.
     const toggle = this.page.getByRole('button', { name: new RegExp(`Toggle listings for ${sku}`, 'i') });
-    if (await toggle.count()) await toggle.first().click();
+    if (await toggle.count()) {
+      const first = toggle.first();
+      if ((await first.getAttribute('aria-expanded')) !== 'true') await first.click();
+      await expect(first).toHaveAttribute('aria-expanded', 'true');
+    }
     await expect(add.or(edit).first()).toBeVisible();
   }
 
