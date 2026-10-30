@@ -37,6 +37,12 @@ const orderItemSchema = z.object({
   variantId: z.string().nullish(),
   quantity: z.number(),
   price: z.number(),
+  /**
+   * Tax-inclusive unit price, present when the source priced the line net
+   * (`price` is then the net figure). The shipping-split weight uses it so the
+   * preview divides delivery by the same gross the document does (#3909).
+   */
+  unitPriceGross: z.number().nullish(),
   sku: z.string().nullish(),
   name: z.string().nullish(),
   imageUrl: z.string().nullish(),
@@ -80,6 +86,8 @@ const orderTotalsSchema = z.object({
   subtotal: z.number(),
   tax: z.number(),
   shipping: z.number(),
+  /** Tax-inclusive shipping, when the source priced shipping net (#3909). */
+  shippingGross: z.number().nullish(),
   total: z.number(),
   currency: z.string(),
   /** Whether `total` is tax-inclusive (gross) or tax-exclusive (net). Optional —
