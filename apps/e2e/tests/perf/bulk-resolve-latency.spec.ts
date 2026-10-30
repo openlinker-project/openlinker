@@ -339,7 +339,7 @@ async function stubWizardApi(
       .split(',')
       .filter((s) => s.length > 0);
     return json(route, {
-      items: ids.map((id) => ({ productVariantId: id, totalAvailable: 12, locationCount: 1 })),
+      items: ids.map((id) => ({ productVariantId: id, totalAvailable: 12, locationCount: 1, positionCount: 1, availableToPromise: 12 })),
     });
   });
 }
