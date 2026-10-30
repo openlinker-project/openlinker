@@ -521,7 +521,33 @@ function mapTotals(order: WooCommerceOrder): IncomingOrderTotals {
         ? { shippingGross: roundCurrency(shipping + shippingTax) }
         : {};
     })()),
+    ...(((): { shippingTaxRate?: string } => {
+      const rate = readShippingTaxRate(order);
+      return rate !== undefined ? { shippingTaxRate: rate } : {};
+    })()),
   };
+}
+
+/**
+ * The one VAT rate WooCommerce charged on delivery, as a percent code.
+ *
+ * Read from the `tax_lines` that actually carry a non-zero
+ * `shipping_tax_total`; exactly one distinct rate yields it, none or several
+ * yield `undefined` (a delivery taxed at two rates has no single code, and
+ * guessing one would state a rate the shop did not charge - ADR-063).
+ */
+export function readShippingTaxRate(order: WooCommerceOrder): string | undefined {
+  const rates = new Set<string>();
+  for (const line of order.tax_lines ?? []) {
+    const shippingTax = Number(line.shipping_tax_total);
+    if (!Number.isFinite(shippingTax) || shippingTax === 0) continue;
+    const percent = line.rate_percent;
+    if (typeof percent !== 'number' || !Number.isFinite(percent) || percent < 0) {
+      return undefined;
+    }
+    rates.add(String(Number(percent.toFixed(3))));
+  }
+  return rates.size === 1 ? [...rates][0] : undefined;
 }
 
 function roundCurrency(amount: number): number {

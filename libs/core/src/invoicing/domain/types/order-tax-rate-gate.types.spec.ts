@@ -80,6 +80,18 @@ describe('findOrderTaxRateGap (#3905)', () => {
     expect(findOrderTaxRateGap(zeroGrossBasket, 10, { skipShippingSplit: true })).toBeNull();
   });
 
+  it('should not report the shipping scope when the source reported a delivery rate (#3910)', () => {
+    expect(
+      findOrderTaxRateGap(zeroGrossBasket, 10, { sourceShippingTaxRate: '23' })
+    ).toBeNull();
+  });
+
+  it('should ignore a blank source delivery rate', () => {
+    expect(findOrderTaxRateGap(zeroGrossBasket, 10, { sourceShippingTaxRate: ' ' })?.scope).toBe(
+      'shipping'
+    );
+  });
+
   it('should still report a line with no rate when the shipping split is skipped', () => {
     const finding = findOrderTaxRateGap([{ productId: 'ol_product_a', gross: 5 }], 10, {
       skipShippingSplit: true,

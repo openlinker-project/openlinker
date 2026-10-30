@@ -544,6 +544,25 @@ describe('toRegisterTransactionCommand', () => {
       expect(cmd.lines[1]?.name).toBe('Shipping 23%');
     });
 
+    it('should use the source delivery rate when items carry none (#3910)', () => {
+      const cmd = toRegisterTransactionCommand({
+        order: order({
+          items: [{ id: 'a', productId: 'p1', quantity: 1, price: 10, name: 'A' }],
+          totals: {
+            subtotal: 10,
+            tax: 0,
+            shipping: 5,
+            total: 15,
+            currency: 'PLN',
+            shippingTaxRate: '23',
+          },
+        }),
+        connectionId: 'c',
+        idempotencyKey: 'k',
+      });
+      expect(cmd.lines[1]).toMatchObject({ name: 'Shipping 23%', taxRate: '23', unitPriceGross: 5 });
+    });
+
     it('should split a 23% + 5% basket into two suffixed lines with unchanged amounts', () => {
       const cmd = toRegisterTransactionCommand({
         order: order(basket(15, 165)),

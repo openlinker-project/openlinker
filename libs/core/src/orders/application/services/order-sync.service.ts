@@ -330,6 +330,9 @@ export class OrderSyncService implements IOrderSyncService {
         ...(order.totals.shippingGross !== undefined
           ? { shippingGross: order.totals.shippingGross }
           : {}),
+        ...(order.totals.shippingTaxRate !== undefined
+          ? { shippingTaxRate: order.totals.shippingTaxRate }
+          : {}),
         // Carried so a destination that composes a document can say WHY its
         // lines and its total disagree, rather than only that they do.
         ...(order.totals.discountTotal !== undefined

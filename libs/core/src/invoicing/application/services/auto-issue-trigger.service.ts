@@ -1029,6 +1029,7 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
           {
             minorUnitExponent: splitInputs.exponent,
             skipShippingSplit: deliveryLine.rate !== 'goods',
+            sourceShippingTaxRate: order.totals.shippingTaxRate,
           },
         );
         if (missingRate) {
@@ -1182,6 +1183,7 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
           {
             minorUnitExponent: splitInputs.exponent,
             skipShippingSplit: deliveryLine.rate !== 'goods',
+            sourceShippingTaxRate: order.totals.shippingTaxRate,
           },
         );
         if (missingRate) {

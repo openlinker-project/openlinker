@@ -102,6 +102,12 @@ export interface FindOrderTaxRateGapOptions {
   minorUnitExponent?: number;
   /** True when the resolved delivery line needs no rate split (`fixed` / `spread`). */
   skipShippingSplit?: boolean;
+  /**
+   * The delivery rate the source reported (`order.totals.shippingTaxRate`). When
+   * set, the shipping charge has a rate to sit at even if the basket cannot
+   * state one, so the split is not a reason to hold the document.
+   */
+  sourceShippingTaxRate?: string;
 }
 
 /**
@@ -134,6 +140,9 @@ export function findOrderTaxRateGap(
   // which rate the shipping sits at, so the split cannot be the reason to hold
   // the document. The item rates above are still checked.
   if (options.skipShippingSplit === true) return null;
+  if (options.sourceShippingTaxRate !== undefined && options.sourceShippingTaxRate.trim() !== '') {
+    return null;
+  }
 
   const parts = splitShippingAcrossRates(
     shipping,
