@@ -121,6 +121,7 @@ import {
 import { getEnvBoolean } from '@openlinker/shared/config';
 import { Logger } from '@openlinker/shared/logging';
 import { diffOrderAmendment } from '../../domain/order-amendment-diff';
+import { applyOrderEditsToOrder } from '../../domain/types/order-edits.types';
 import { MissingOrderItemMappingError } from '../../domain/exceptions/missing-order-item-mapping.error';
 
 /**
@@ -626,7 +627,7 @@ export class OrderIngestionService implements IOrderIngestionService {
     }
 
     // Step 5: all items resolved — build unified order and upsert with recordStatus='ready'
-    const order = this.buildUnifiedOrder(
+    const channelOrder = this.buildUnifiedOrder(
       incoming,
       internalOrderId,
       internalCustomerId,
@@ -636,12 +637,23 @@ export class OrderIngestionService implements IOrderIngestionService {
     // which the #2396 routing projection needs and which the `order` object does
     // not carry. Hashing the snapshot instead would be wrong under hash-only
     // mode — see `projectOrderForRouting`.
+    //
+    // #3542: what is PERSISTED is always the channel's own order - the snapshot
+    // is the channel original and the operator's edits live in an overlay column
+    // this statement never names.
     const persisted = await this.orderRecordService.persistOrder(
-      order,
+      channelOrder,
       connectionId,
       sourceEventId ?? null,
       incoming.externalUrl ?? null
     );
+    // #3542: everything BELOW works from the live Order, not the snapshot -
+    // reservations, routing, the destination mirror, auto-issue. It must see the
+    // order as the operator edited it, or every poll would re-reserve the
+    // original quantity and re-route by the original delivery method. The
+    // overlay comes from the upsert's own RETURNING, so it is the one that
+    // applied to this very write rather than a read taken a moment earlier.
+    const order = applyOrderEditsToOrder(channelOrder, persisted?.orderEdits ?? null);
 
     // The order's ADR-012 fulfilment routing, resolved at most once and only if
     // asked for: the reservation's `atpEffect` (#2344) and the #3488 routing
@@ -1946,7 +1958,10 @@ export class OrderIngestionService implements IOrderIngestionService {
       // unset. Reading it here would put an unrelated configuration failure on
       // the ingestion path — swallowed by the catch below, so the fact would go
       // silently unrecorded. The default matches `getPiiConfig`'s own.
-      const changes = diffOrderAmendment(existing?.orderSnapshot ?? null, incoming, {
+      // The CHANNEL's snapshot on purpose (#3542): the diff answers "did the
+      // SOURCE change this order", and the effective view would report every
+      // operator edit as a source amendment on the next poll.
+      const changes = diffOrderAmendment(existing?.channelSnapshot ?? null, incoming, {
         storePii: getEnvBoolean('OL_STORE_PII', true),
       });
       if (changes.length === 0) {

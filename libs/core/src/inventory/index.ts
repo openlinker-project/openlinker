@@ -146,6 +146,8 @@ export {
 export { InventorySaleDecrementService } from './application/services/inventory-sale-decrement.service';
 export {
   IInventorySaleReversalService,
+  ReverseLineQuantityInput,
+  ReverseLineQuantityResult,
   ReverseSaleForOrderResult,
   SaleReversalLineOutcome,
 } from './application/services/inventory-sale-reversal.service.interface';
@@ -158,6 +160,9 @@ export {
   ReserveForOrderResult,
   CloseForOrderInput,
   CloseForOrderResult,
+  NarrowForOrderInput,
+  NarrowForOrderResult,
+  NarrowOrderLineInput,
   SkippedReservationLine,
   SkippedReservationReason,
   SkippedReservationReasonValues,

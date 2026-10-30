@@ -7,6 +7,7 @@
  *
  * @module libs/core/src/orders/application/interfaces
  */
+import type { ApplyOrderEditInput } from '../../domain/types/order-edits.types';
 import type { Order } from '../../domain/types/order.types';
 import type { OrderRecord, OrderSyncStatus } from '../../domain/entities/order-record.entity';
 import type { IncomingOrder } from '../../domain/types/incoming-order.types';
@@ -402,6 +403,16 @@ export interface IOrderRecordService {
    * unchanged; an unknown order throws `OrderRecordNotFoundException`.
    */
   clearPacked(internalOrderId: string): Promise<OrderRecord>;
+
+  /**
+   * Merge one operator edit into the order's overlay (#3542). The overlay
+   * survives every re-ingestion; `orderSnapshot` stays the channel original and
+   * `OrderRecord.orderSnapshot` is the merged, effective view.
+   *
+   * Returns the record after the write, or `null` when nothing was written (no
+   * such order, not `ready`, or a stale `expectedRev`).
+   */
+  applyOrderEdit(input: ApplyOrderEditInput): Promise<OrderRecord | null>;
 
   /**
    * Record that the source amended this order after it was already ingested

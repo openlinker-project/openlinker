@@ -33,6 +33,10 @@ import { SourceFulfillmentStatusService } from './application/services/source-fu
 import { SOURCE_FULFILLMENT_STATUS_SERVICE_TOKEN } from './application/interfaces/source-fulfillment-status.service.interface';
 import { OrderCancellationService } from './application/services/order-cancellation.service';
 import { ORDER_CANCELLATION_SERVICE_TOKEN } from './application/interfaces/order-cancellation.service.interface';
+import { OrderEditService } from './application/services/order-edit.service';
+import { ORDER_EDIT_SERVICE_TOKEN } from './application/interfaces/order-edit.service.interface';
+import { OrderEditsController } from './http/order-edits.controller';
+import { IntegrationsModule } from '../integrations/integrations.module';
 
 @Module({
   // CoreMappingsModule (#1791) provides FULFILLMENT_ROUTING_SERVICE_TOKEN —
@@ -77,6 +81,10 @@ import { ORDER_CANCELLATION_SERVICE_TOKEN } from './application/interfaces/order
     CoreSyncModule,
     CoreIntegrationsModule,
     CoreIdentifierMappingModule,
+    // The APP-LAYER integrations module (#3542) supplies CONNECTION_SERVICE_TOKEN:
+    // the order edit reads a work holder's connection to tell OpenLinker's own
+    // executor from a third party. No cycle - it imports only core modules.
+    IntegrationsModule,
   ],
   // ORDER MATTERS (#3507 G03-10). Express matches routes in registration
   // order and Nest registers controllers in this array's order, so the two
@@ -89,6 +97,7 @@ import { ORDER_CANCELLATION_SERVICE_TOKEN } from './application/interfaces/order
   controllers: [
     OrderColumnPresetsController,
     OrderExportsController,
+    OrderEditsController,
     OrdersController,
     RefundsController,
     SalesDocumentsController,
@@ -103,6 +112,9 @@ import { ORDER_CANCELLATION_SERVICE_TOKEN } from './application/interfaces/order
   providers: [
     OrderCancellationService,
     { provide: ORDER_CANCELLATION_SERVICE_TOKEN, useExisting: OrderCancellationService },
+    // #3542 - composed HERE for the reason the cancel above is: it needs `shipping`.
+    OrderEditService,
+    { provide: ORDER_EDIT_SERVICE_TOKEN, useExisting: OrderEditService },
     SourceFulfillmentStatusService,
     {
       provide: SOURCE_FULFILLMENT_STATUS_SERVICE_TOKEN,

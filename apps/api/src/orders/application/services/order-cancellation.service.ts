@@ -565,6 +565,10 @@ export class OrderCancellationService implements IOrderCancellationService {
       case 'return.decline':
       case 'return.authorize':
       case 'return.invoice_correction':
+      // An operator edit (#3542) is confirmed at write time; nothing is left to confirm.
+      case 'order.address_change':
+      case 'order.line_quantity_change':
+      case 'order.delivery_method_change':
         throw new OrderCancellationRefusedError(
           'CHANGE_KIND_NOT_CONFIRMABLE',
           `A change of kind ${change.kind} is not confirmed here.`

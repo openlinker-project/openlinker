@@ -201,6 +201,12 @@ describe('ReturnsExceptionFilter — the #2376 write-API refusals', () => {
     ],
     ['ReturnRecordRefusedError', new ReturnRecordRefusedError('no-lines'), 400, 'no-lines'],
     [
+      'ReturnRecordRefusedError line-removed-by-edit (E-14)',
+      new ReturnRecordRefusedError('line-removed-by-edit', 'Widget'),
+      409,
+      'line-removed-by-edit',
+    ],
+    [
       'ReturnRefundObservationInvalidError',
       new ReturnRefundObservationInvalidError('ret-1'),
       400,

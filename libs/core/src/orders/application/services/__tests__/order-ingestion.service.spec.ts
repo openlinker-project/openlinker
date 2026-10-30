@@ -2171,11 +2171,14 @@ describe('OrderIngestionService', () => {
       });
     });
 
-    const priorWithQuantity = (quantity: number): OrderRecord =>
-      ({
+    const priorWithQuantity = (quantity: number): OrderRecord => {
+      const snapshot = { status: 'BOUGHT', items: [{ id: 'l1', quantity, sku: 'SKU-l1' }] };
+      return {
         sourceConnectionId: connectionId,
-        orderSnapshot: { status: 'BOUGHT', items: [{ id: 'l1', quantity, sku: 'SKU-l1' }] },
-      }) as unknown as OrderRecord;
+        orderSnapshot: snapshot,
+        channelSnapshot: snapshot,
+      } as unknown as OrderRecord;
+    };
 
     it('should record the fact once with the observed changes when the source amended the order', async () => {
       orderRecordService.getOrderRecord.mockResolvedValue(priorWithQuantity(3));
@@ -2214,6 +2217,55 @@ describe('OrderIngestionService', () => {
       await service.syncOrderFromSource(connectionId, externalOrderId);
 
       expect(orderRecordService.recordAmendment).not.toHaveBeenCalled();
+    });
+
+    it('should diff against the CHANNEL snapshot so an operator edit is never reported as a source amendment (#3542)', async () => {
+      // The effective view says 1 (the operator lowered it); the channel still says 1
+      // and the source re-reports 1. Diffing the effective view against an incoming 3
+      // would be the false positive; here the channel original is what is compared.
+      orderSource.getOrder.mockResolvedValue({
+        ...incoming,
+        items: [{ ...incoming.items[0], quantity: 3 }],
+        totals: { ...incoming.totals, total: 30 },
+      });
+      orderRecordService.getOrderRecord.mockResolvedValue({
+        sourceConnectionId: connectionId,
+        orderSnapshot: { status: 'BOUGHT', items: [{ id: 'l1', quantity: 1, sku: 'SKU-l1' }] },
+        channelSnapshot: { status: 'BOUGHT', items: [{ id: 'l1', quantity: 3, sku: 'SKU-l1' }] },
+      } as unknown as OrderRecord);
+
+      await service.syncOrderFromSource(connectionId, externalOrderId);
+
+      expect(orderRecordService.recordAmendment).not.toHaveBeenCalled();
+    });
+
+    it('should persist the channel order but hand everything after it the order as edited (#3542)', async () => {
+      orderSource.getOrder.mockResolvedValue({
+        ...incoming,
+        items: [{ ...incoming.items[0], quantity: 3 }],
+        totals: { ...incoming.totals, subtotal: 30, total: 30 },
+      });
+      orderRecordService.getOrderRecord.mockResolvedValue(null);
+      orderRecordService.persistOrder.mockResolvedValueOnce({
+        shippingAddressHash: null,
+        orderEdits: {
+          v: 1,
+          rev: 1,
+          lines: {
+            l1: { changeId: 'chg-1', editedAt: '2026-10-26T10:00:00.000Z', editedBy: null, quantity: 1 },
+          },
+        },
+      } as never);
+
+      await service.syncOrderFromSource(connectionId, externalOrderId);
+
+      const persisted = orderRecordService.persistOrder.mock.calls[0][0];
+      expect(persisted.items[0].quantity).toBe(3);
+      expect(persisted.totals.total).toBe(30);
+
+      const request = orderSyncService.syncOrder.mock.calls[0][0];
+      expect(request.order.items[0].quantity).toBe(1);
+      expect(request.order.totals.total).toBe(10);
     });
 
     it('should not record anything on a first ingestion', async () => {

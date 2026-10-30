@@ -162,6 +162,10 @@ export function RecordReturnDialog({
             form.setError('sourceConnectionId', { message: COPY.orderNotOnConnection });
             return;
           }
+          if (reason === 'line-removed-by-edit') {
+            form.setError('itemName', { message: COPY.lineRemovedByEdit });
+            return;
+          }
           // `no-lines` / `invalid-quantity` should already be unreachable past
           // this form's own Zod validation, and anything else (404, 5xx,
           // network) falls through to `mutation.error` below.

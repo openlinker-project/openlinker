@@ -152,6 +152,7 @@ describe('ReturnCorrectionProposalService', () => {
       findOpenByOrder: jest.fn().mockResolvedValue([]),
       findOrderIdsWithOpenAmendment: jest.fn().mockResolvedValue(new Set<string>()),
       listOperatorChangesByOrder: jest.fn().mockResolvedValue([]),
+      findByOrderAndKinds: jest.fn(),
       findById: jest.fn().mockResolvedValue(null),
     };
 

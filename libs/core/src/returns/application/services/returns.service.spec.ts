@@ -593,6 +593,52 @@ describe('ReturnsService', () => {
       expect(repository.create).not.toHaveBeenCalled();
     });
 
+    describe('line removed by an order edit (E-14)', () => {
+      const orderLines = {
+        removedByEdit: [{ sku: 'SKU-1', name: 'Widget' }],
+        live: [{ sku: 'SKU-2', name: 'Gadget' }],
+      };
+
+      it('should refuse a line an order edit lowered to quantity 0 (E-14)', async () => {
+        const error = await service
+          .recordReturn({ ...recordInput, orderLines })
+          .catch((e: unknown) => e);
+
+        expect((error as ReturnRecordRefusedError).reason).toBe('line-removed-by-edit');
+        expect((error as ReturnRecordRefusedError).message).toContain('Widget');
+        expect(repository.create).not.toHaveBeenCalled();
+      });
+
+      it('should accept a line that is still live after the edit (E-14)', async () => {
+        await service.recordReturn({
+          ...recordInput,
+          lines: [{ ...line, sku: 'SKU-2', name: 'Gadget' }],
+          orderLines,
+        });
+
+        expect(repository.create).toHaveBeenCalledTimes(1);
+      });
+
+      it('should leave an unknown sku unchanged (E-14)', async () => {
+        await service.recordReturn({
+          ...recordInput,
+          lines: [{ ...line, sku: 'SKU-NOPE', name: 'Mystery' }],
+          orderLines,
+        });
+
+        expect(repository.create).toHaveBeenCalledTimes(1);
+      });
+
+      it('should accept the line when a live line shares its identity (E-14)', async () => {
+        await service.recordReturn({
+          ...recordInput,
+          orderLines: { ...orderLines, live: [{ sku: 'SKU-1', name: 'Widget' }] },
+        });
+
+        expect(repository.create).toHaveBeenCalledTimes(1);
+      });
+    });
+
     it('should create an operator-authored return with NO synthesised external id', async () => {
       await service.recordReturn(recordInput);
 

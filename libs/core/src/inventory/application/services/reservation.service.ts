@@ -39,6 +39,8 @@ import type { IReservationService } from './reservation.service.interface';
 import { ReservationNotHeldError } from '../../domain/exceptions/reservation-not-held.error';
 import type {
   CloseForOrderInput,
+  NarrowForOrderInput,
+  NarrowForOrderResult,
   CloseForOrderResult,
   ReserveForOrderInput,
   ReserveForOrderResult,
@@ -232,6 +234,72 @@ export class ReservationService implements IReservationService {
         'refusing to guess which one to reserve against'
     );
     return null;
+  }
+
+  async narrowForOrder(input: NarrowForOrderInput): Promise<NarrowForOrderResult> {
+    for (const line of input.lines) {
+      if (!Number.isInteger(line.quantity) || line.quantity < 0) {
+        throw new RangeError(
+          `Narrowed quantity must be a non-negative integer (order line ${line.orderLineId} asked for ${String(line.quantity)})`
+        );
+      }
+    }
+    const targets = new Map(input.lines.map((line) => [line.orderLineId, line.quantity]));
+    if (targets.size === 0) {
+      return { narrowed: 0, released: 0, untouched: 0, failed: 0 };
+    }
+
+    const held = await this.reservations.listHeldByOrderRecordId(input.orderRecordId, [
+      ...targets.keys(),
+    ]);
+    let narrowed = 0;
+    let released = 0;
+    let untouched = 0;
+    let failed = 0;
+
+    for (const reservation of held) {
+      const target = targets.get(reservation.orderLineId);
+      if (target === undefined || target >= reservation.quantity) {
+        untouched += 1;
+        continue;
+      }
+      try {
+        if (target === 0) {
+          await this.reservations.releaseHeld({
+            orderRecordId: reservation.orderRecordId,
+            orderLineId: reservation.orderLineId,
+            inventoryItemId: reservation.inventoryItemId,
+            terminalStatus: 'released',
+          });
+          released += 1;
+        } else {
+          await this.reservations.claimHeld([
+            {
+              orderRecordId: reservation.orderRecordId,
+              orderLineId: reservation.orderLineId,
+              inventoryItemId: reservation.inventoryItemId,
+              quantity: target,
+              atpEffect: reservation.atpEffect,
+              expiresAt: reservation.expiresAt,
+            },
+          ]);
+          narrowed += 1;
+        }
+      } catch (error) {
+        if (error instanceof ReservationNotHeldError) {
+          untouched += 1;
+          continue;
+        }
+        failed += 1;
+        this.logger.error(
+          `reservation_narrow_row_failed order=${reservation.orderRecordId} ` +
+            `line=${reservation.orderLineId} position=${reservation.inventoryItemId}`,
+          (error as Error).stack
+        );
+      }
+    }
+
+    return { narrowed, released, untouched, failed };
   }
 
   async closeForOrder(input: CloseForOrderInput): Promise<CloseForOrderResult> {

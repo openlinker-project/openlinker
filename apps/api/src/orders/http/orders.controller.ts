@@ -162,6 +162,10 @@ import {
   type IOrderCancellationService,
 } from '../application/interfaces/order-cancellation.service.interface';
 import {
+  ORDER_EDIT_SERVICE_TOKEN,
+  type IOrderEditService,
+} from '../application/interfaces/order-edit.service.interface';
+import {
   CancelCorrectionFailedError,
   OrderCancellationInvalidReasonError,
   OrderCancellationNoteRequiredError,
@@ -426,7 +430,10 @@ export class OrdersController {
     @Inject(ORDER_CHANGE_SERVICE_TOKEN)
     private readonly orderChanges: IOrderChangeService,
     @Inject(ORDER_CANCELLATION_SERVICE_TOKEN)
-    private readonly orderCancellation: IOrderCancellationService
+    private readonly orderCancellation: IOrderCancellationService,
+    // #3542 - the order beside the channel's own record of it, detail read only.
+    @Inject(ORDER_EDIT_SERVICE_TOKEN)
+    private readonly orderEdit: IOrderEditService
   ) {}
 
   @Roles('admin', 'operator', 'viewer')
@@ -776,6 +783,9 @@ export class OrdersController {
       );
       dto.buyerNoteAcknowledgements = null;
     }
+    // #3542: the order beside the channel's own record of it. DETAIL ONLY - it
+    // reads the change history. An unedited order costs no query at all.
+    dto.edits = await this.orderEdit.getEditsView(order);
     // Invoice projection (#1224): the FE invoice panel reads a neutral `invoice`
     // sub-tree off the snapshot. The list endpoint now shares the same projection
     // via a batch read (`getLatestInvoicesForOrders`, one query per page — #1713);
@@ -1655,6 +1665,8 @@ export class OrdersController {
       sourceConnectionId: order.sourceConnectionId,
       sourceEventId: order.sourceEventId,
       orderSnapshot: order.orderSnapshot,
+      editedInOpenLinker: order.isEditedInOpenLinker,
+      editsNeedAttention: order.editsNeedAttention,
       syncStatus: order.syncStatus.map((s) => this.toSyncStatusDto(s)),
       syncAttempts: order.syncAttempts.map((a) => this.toSyncAttemptDto(a)),
       recordStatus: order.recordStatus,

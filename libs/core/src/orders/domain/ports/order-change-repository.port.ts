@@ -115,6 +115,17 @@ export interface OrderChangeRepositoryPort {
   findById(id: string): Promise<OrderChange | null>;
 
   /**
+   * Every proposal of one of `kinds` against one order, any status, oldest first
+   * (#3542). The history read behind "Changed in OpenLinker only": an operator
+   * edit is confirmed the instant it is written, so it is never "open" and the
+   * open-only reads above cannot see it.
+   */
+  findByOrderAndKinds(
+    internalOrderId: string,
+    kinds: readonly OrderChangeKind[]
+  ): Promise<OrderChange[]>;
+
+  /**
    * The most recent proposal of one kind against one target, open or terminal.
    *
    * Used to answer "what happened last time?" for an already-applied change,

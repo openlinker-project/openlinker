@@ -161,6 +161,14 @@ export type {
   OrderWorkCancellationResult,
 } from './application/interfaces/fulfillment-order-cancellation.service.interface';
 
+export type {
+  IFulfillmentOrderEditService,
+  OrderWorkEditAssessment,
+  LowerLineQuantityInput,
+  LowerLineQuantityResult,
+  LowerLineOutcome,
+} from './application/interfaces/fulfillment-order-edit.service.interface';
+
 export { RoutingDecision } from './domain/entities/routing-decision.entity';
 export { RoutingDecisionAlreadyLiveError } from './domain/exceptions/routing-decision-already-live.error';
 export { RoutingDecisionNoLongerLiveError } from './domain/exceptions/routing-decision-no-longer-live.error';

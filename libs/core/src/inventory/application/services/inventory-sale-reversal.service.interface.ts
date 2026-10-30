@@ -31,6 +31,28 @@ export interface ReverseSaleForOrderResult {
   readonly lines: readonly SaleReversalLineOutcome[];
 }
 
+/** One line's partial give-back for an operator order edit (#3542). */
+export interface ReverseLineQuantityInput {
+  readonly internalOrderId: string;
+  readonly orderLineId: string;
+  /** Units the line was lowered by; the call gives back at most what was decremented. */
+  readonly units: number;
+  /** The order change that made the edit; the idempotency identity of the act. */
+  readonly changeId: string;
+}
+
+export interface ReverseLineQuantityResult {
+  /**
+   * `restored` - the master was raised (or a replay found it already was);
+   * `not-applicable` - nothing was ever decremented for the line (OMS off, not
+   * routed, storefront order), so there is nothing to give back;
+   * `failed` - a decrement exists but the master did not take the give-back.
+   */
+  readonly status: 'restored' | 'not-applicable' | 'failed';
+  readonly units: number;
+  readonly detail: string | null;
+}
+
 export interface IInventorySaleReversalService {
   /**
    * Raise every one of the order's successful `order_sale` decrements back
@@ -49,4 +71,15 @@ export interface IInventorySaleReversalService {
    * reversal row and never raises the master's stock twice.
    */
   reverseForOrder(internalOrderId: string): Promise<ReverseSaleForOrderResult>;
+
+  /**
+   * Give back part of ONE line's sale decrement (#3542): the units an operator
+   * lowered the line by, in the product master that owns it.
+   *
+   * Reverses only units actually decremented for the line, never more, and never
+   * units a whole-order reversal or an earlier edit already returned. Keyed
+   * `edit:{changeId}:{orderLineId}`, so a retry is a no-op. A later whole-order
+   * cancel reverses only what remains.
+   */
+  reverseLineQuantity(input: ReverseLineQuantityInput): Promise<ReverseLineQuantityResult>;
 }

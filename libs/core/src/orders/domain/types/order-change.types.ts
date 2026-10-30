@@ -67,6 +67,9 @@ export const OrderChangeKindValues = [
   'return.invoice_correction',
   'order.cancel_request',
   'order.cancel_correction',
+  'order.address_change',
+  'order.line_quantity_change',
+  'order.delivery_method_change',
 ] as const;
 
 export type OrderChangeKind = (typeof OrderChangeKindValues)[number];
@@ -113,6 +116,51 @@ export function isOrderCorrectionChangeKind(value: unknown): value is OrderCorre
     typeof value === 'string' &&
     (OrderCorrectionChangeKindValues as readonly string[]).includes(value)
   );
+}
+
+/**
+ * The kinds that are an operator EDITING an order in OpenLinker (#3542, D9).
+ *
+ * With the OMS on, OpenLinker owns the order, so these are not requests a channel
+ * answers: each row is opened, applied to the overlay and confirmed in one
+ * breath (the `return.authorize` shape - the row is the AUDIT RECORD of the
+ * operator's act). That is the "confirmed at write time" amendment kind.
+ *
+ * Deliberately NOT in {@link OrderAmendmentRequestKindValues}: nothing waits on a
+ * channel, so an edit must never put the order in the derived `amending` phase.
+ * "Edited in OpenLinker" is a separate marker, derived from the overlay.
+ */
+export const OrderOperatorEditKindValues = [
+  'order.address_change',
+  'order.line_quantity_change',
+  'order.delivery_method_change',
+] as const satisfies readonly OrderChangeKind[];
+
+export type OrderOperatorEditKind = (typeof OrderOperatorEditKindValues)[number];
+
+/** Pure coercion. Edit in the same commit as {@link OrderOperatorEditKindValues}. */
+export function isOrderOperatorEditKind(value: unknown): value is OrderOperatorEditKind {
+  return (
+    typeof value === 'string' && (OrderOperatorEditKindValues as readonly string[]).includes(value)
+  );
+}
+
+/**
+ * `targetRef`s of the operator edits. Disjoint from `cancel:`, `correction:` and
+ * a bare entity id, because `UQ_order_changes_open_target` is `(order, targetRef)`
+ * and carries no `kind`. One row per request: a lines edit changes several lines
+ * atomically, so its ref is per order, not per line.
+ */
+export function addressEditTargetRef(internalOrderId: string): string {
+  return `edit:address:${internalOrderId}`;
+}
+
+export function lineQuantityEditTargetRef(internalOrderId: string): string {
+  return `edit:lines:${internalOrderId}`;
+}
+
+export function deliveryMethodEditTargetRef(internalOrderId: string): string {
+  return `edit:delivery:${internalOrderId}`;
 }
 
 /** `targetRef` of the cancel request: one open cancel per order. */

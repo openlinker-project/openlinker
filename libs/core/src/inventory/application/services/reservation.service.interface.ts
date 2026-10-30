@@ -63,6 +63,8 @@
  * @see docs/architecture/adrs/061-advisory-reservations-and-availability-authority.md
  */
 import type {
+  NarrowForOrderInput,
+  NarrowForOrderResult,
   CloseForOrderInput,
   CloseForOrderResult,
   ReserveForOrderInput,
@@ -131,4 +133,19 @@ export interface IReservationService {
    * all-zero rather than warning.
    */
   closeForOrder(input: CloseForOrderInput): Promise<CloseForOrderResult>;
+
+  /**
+   * Lower the held quantity of an order's lines to a new, lower total (#3542).
+   *
+   * The order-edit half of the ledger: an operator who lowers a line has made OL
+   * promise fewer units, and leaving the old hold standing would keep
+   * subtracting stock the buyer is no longer taking from available-to-promise.
+   *
+   * It only ever LOWERS. A line whose hold is already at or below the target is
+   * left alone, and a line with no live hold (never reserved, already closed) is
+   * not created - re-reserving belongs to ingestion, which knows the routing
+   * outcome and so the `atpEffect` stamp. A target of `0` releases the hold.
+   * `atpEffect` and `expiresAt` are carried over untouched.
+   */
+  narrowForOrder(input: NarrowForOrderInput): Promise<NarrowForOrderResult>;
 }
