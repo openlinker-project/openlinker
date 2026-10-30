@@ -114,6 +114,52 @@ export interface BenchParcel {
   readonly lines: readonly BenchParcelLine[];
   /** Notes flagged "Show to packer". Empty is the ordinary case. */
   readonly packerNotes: readonly BenchPackerNote[];
+  /**
+   * The buyer's checkout note, verbatim and READ ONLY (#3539, D12). `null` for
+   * every state with no text to show - none left, the source could not say, or
+   * the deployment stores no note text - which the bench deliberately does not
+   * tell apart: a packer can only act on words they can read. It is the ORDER's
+   * note, so a split order shows it on every parcel.
+   */
+  readonly buyerNote: string | null;
+  /**
+   * Whether the order has a buyer note even when its text is not stored (B-12).
+   * Optional so a build ahead of the API still parses; absent falls back to the
+   * worklist row's flag.
+   */
+  readonly hasBuyerNote?: boolean;
+  /** When THIS parcel's note was first acknowledged at the bench, or `null`. */
+  readonly buyerNoteAcknowledgedAt: string | null;
+  /** Who acknowledged it - a raw OL user id, like `packedByUserId`. */
+  readonly buyerNoteAcknowledgedByUserId: string | null;
+  /**
+   * The acknowledgements of the order's OTHER parcels, for a split order.
+   * Context only: each packer acknowledges their own box.
+   */
+  readonly otherParcelBuyerNoteAcknowledgements: readonly BenchSiblingBuyerNoteAcknowledgement[];
+}
+
+/** One sibling parcel's buyer-note acknowledgement (#3539). */
+export interface BenchSiblingBuyerNoteAcknowledgement {
+  readonly workId: string;
+  /** 1-based, the same numbering `parcelIndex` uses. */
+  readonly parcelIndex: number;
+  readonly acknowledgedAt: string;
+  readonly acknowledgedByUserId: string | null;
+}
+
+/**
+ * What acknowledging one parcel's buyer note answers (#3539).
+ *
+ * `acknowledged` and `already-acknowledged` are both success: a replay keeps
+ * the FIRST packer. `refused` records nothing; `reason` is `no-buyer-note` or
+ * `not-claimable-by-viewer` (the ADR-074 lock), or something newer. `parcel`
+ * comes back on every outcome.
+ */
+export interface BenchBuyerNoteAcknowledgementResult {
+  readonly outcome: string;
+  readonly reason: string | null;
+  readonly parcel: BenchParcel;
 }
 
 /** What one verification did. `parcel` comes back on every outcome, refusals included. */

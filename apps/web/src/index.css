@@ -30913,3 +30913,205 @@ legend.analytics-settings-dialog__label {
 .ksef-issue-options__lines-scroll {
   overflow-x: auto;
 }
+
+/* ── Buyer note (#3539, mockup M2) ─────────────────────────────────────────
+   The buyer's voice, not a system message: a neutral surface with a blue
+   edge, never an Alert. Text is verbatim (`pre-wrap`) and clamped by line
+   count, not by characters. */
+.buyer-note {
+  display: grid;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-left: 3px solid var(--status-info);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-xs);
+}
+.buyer-note--unread {
+  border-left-width: 4px;
+}
+.buyer-note__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-3);
+}
+.buyer-note__title {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.buyer-note__title svg {
+  color: var(--status-info);
+}
+.buyer-note__meta {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+.buyer-note__actions {
+  margin-left: auto;
+  display: flex;
+  gap: var(--space-2);
+}
+.buyer-note__text {
+  margin: 0;
+  max-width: 75ch;
+  font-size: 0.9375rem;
+  line-height: 1.55;
+  color: var(--text-primary);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.buyer-note__text--clamped {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 4;
+  overflow: hidden;
+}
+.buyer-note__error {
+  margin: 0;
+  font-size: 0.8125rem;
+  color: var(--status-error-fg);
+}
+.buyer-note__bench {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+.buyer-note__foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-3);
+  margin: 0;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+/* Orders list: the row indicator is an icon and a line, not a badge. */
+.buyer-note-hint {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  max-width: 13rem;
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+}
+.buyer-note-hint svg {
+  flex: none;
+  color: var(--status-info);
+}
+.buyer-note-hint__text {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.buyer-note-clamp-2 {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+  white-space: normal;
+}
+
+/* Pack bench: info tone, larger text, read from arm's length. */
+.bench-buyer-note {
+  display: grid;
+  gap: var(--space-3);
+  padding: var(--space-4) var(--space-5);
+  border: 1px solid var(--status-info-border);
+  background: var(--status-info-soft);
+  border-radius: var(--radius-xl);
+}
+.bench-buyer-note__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-2) var(--space-3);
+}
+.bench-buyer-note__head .bench-parcel__field-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--status-info-fg);
+}
+.bench-buyer-note__meta {
+  font-size: 0.8125rem;
+  color: var(--text-secondary);
+}
+.bench-buyer-note__text {
+  margin: 0;
+  max-width: 62ch;
+  font-size: 1.125rem;
+  line-height: 1.5;
+  font-weight: 500;
+  color: var(--text-primary);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.bench-buyer-note__text--clamped {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 5;
+  overflow: hidden;
+}
+.bench-buyer-note__others {
+  margin: 0;
+  font-size: 0.8125rem;
+  color: var(--text-secondary);
+}
+.bench-buyer-note__foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-4);
+}
+.bench-buyer-note__foot .button {
+  min-height: 2.75rem;
+}
+.bench-buyer-note__hint {
+  font-size: 0.8125rem;
+  color: var(--text-secondary);
+  text-wrap: pretty;
+}
+.bench-buyer-note__error {
+  margin: 0;
+  font-size: 0.8125rem;
+  color: var(--status-error-fg);
+}
+.bench-buyer-note--read {
+  background: var(--bg-surface);
+  border-color: var(--border-default);
+  padding: var(--space-3) var(--space-4);
+  gap: var(--space-2);
+}
+.bench-buyer-note--read .bench-buyer-note__text {
+  font-size: 0.9375rem;
+  font-weight: 400;
+}
+.bench-buyer-note--read .bench-buyer-note__text--clamped {
+  -webkit-line-clamp: 1;
+}
+.bench-buyer-note--read .bench-buyer-note__foot .button {
+  min-height: 2.25rem;
+}
+
+.bench-work-row__buyer-note {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  text-wrap: pretty;
+}
+.bench-work-row__buyer-note strong {
+  font-weight: 600;
+  color: var(--status-info-fg);
+}

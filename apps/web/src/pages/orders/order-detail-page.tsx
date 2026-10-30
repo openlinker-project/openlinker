@@ -49,6 +49,11 @@ import {
 import { OrderTagsHeaderRow } from '../../features/orders/components/order-tags-header-row';
 import { useOrderNotesTimelineQuery } from '../../features/orders/hooks/use-order-notes-timeline-query';
 import { mapNoteTimelineToEvents } from '../../features/orders/lib/order-note-timeline-events';
+import {
+  mapBuyerNoteAcknowledgementsToEvents,
+  mapBuyerNoteChangeToEvents,
+} from '../../features/orders/lib/buyer-note-timeline-events';
+import { OrderBuyerNote } from '../../features/orders/components/order-buyer-note';
 import { resolvePlatformLabel } from '../../features/mappings';
 import { usePlatforms } from '../../shared/plugins';
 import { OrderShipmentPanel } from '../../features/orders/components/order-shipment-panel';
@@ -71,7 +76,10 @@ import {
   mapReturnEventsToTimeline,
   useOrderReturnEventsQuery,
 } from '../../features/returns';
-import { OrderFulfillmentTasksPanel } from '../../features/fulfillment';
+import {
+  OrderFulfillmentTasksPanel,
+  useOrderFulfillmentTasksQuery,
+} from '../../features/fulfillment';
 import { useOmsRoutingState } from '../../features/fulfillment-authority';
 import { useSession } from '../../shared/auth/use-session';
 
@@ -150,6 +158,8 @@ export function OrderDetailPage(): ReactElement {
   // render with it) — the app has no other hash-scroll, and the panels mount
   // asynchronously, so a native browser jump on first paint would miss.
   const hasOrder = query.data !== undefined;
+  // B-15: shares its cache entry with the fulfilment panel below, so this adds no request.
+  const fulfilmentTasksQuery = useOrderFulfillmentTasksQuery(internalOrderId);
   useEffect(() => {
     if (!hasOrder) return;
     const targetId = location.hash.replace(/^#/, '');
@@ -232,6 +242,16 @@ export function OrderDetailPage(): ReactElement {
     session.user?.id ?? null,
   );
   const noteTimelineEvents = mapNoteTimelineToEvents(noteTimelineQuery.data ?? []);
+  // #3539 - the bench's per-parcel buyer-note acknowledgements, from the order read itself.
+  const buyerNoteTimelineEvents = mapBuyerNoteAcknowledgementsToEvents(
+    order.buyerNoteAcknowledgements,
+    session.user?.id ?? null,
+  );
+  // N-22 - the note text changed after a bench read; bench reads are not reset.
+  const buyerNoteChangeEvents = mapBuyerNoteChangeToEvents(
+    order.buyerNoteChangedAt,
+    order.buyerNoteAcknowledgements,
+  );
   const failedDestinations = order.syncStatus.filter((s) => s.status === 'failed');
 
   const connections = connectionsQuery.data ?? [];
@@ -455,6 +475,19 @@ export function OrderDetailPage(): ReactElement {
           presence of an episode is a claim. */}
       <StockAtRiskCallout shortfalls={order.reservationShortfalls} />
 
+      {/* #3539 (mockup M2) - the buyer's own message, in the same full-width slot
+          as the callout above and ABOVE the panels the operator acts in. Not an
+          Alert: it is the buyer's voice. Renders nothing without a note. */}
+      <OrderBuyerNote
+        order={order}
+        channelLabel={
+          sourcePlatformType === null ? null : resolvePlatformLabel(platforms, sourcePlatformType)
+        }
+        channelPlatform={sourcePlatformType}
+        placedAt={snapshot.placedAt ?? null}
+        hasFulfilmentWork={(fulfilmentTasksQuery.data?.total ?? 0) > 0}
+      />
+
       {snapshot.items.length > 0 || snapshot.totals ? (
         <section className="detail-section">
           <h3 className="detail-section__title">Pricing &amp; tax</h3>
@@ -644,7 +677,7 @@ export function OrderDetailPage(): ReactElement {
           packedByUserId={order.packedByUserId}
           salesDocumentBlockedAt={order.salesDocumentBlockedAt}
           salesDocumentBlockReleasedAt={order.salesDocumentBlockReleasedAt}
-          extraEvents={[...returnTimelineEvents, ...noteTimelineEvents]}
+          extraEvents={[...returnTimelineEvents, ...noteTimelineEvents, ...buyerNoteTimelineEvents, ...buyerNoteChangeEvents]}
           holds={order.holdHistory}
           automationRuns={automationRunsQuery.data?.runs ?? []}
         />

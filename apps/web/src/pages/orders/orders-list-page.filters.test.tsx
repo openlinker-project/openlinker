@@ -155,6 +155,45 @@ describe('OrdersListPage filter bar', () => {
     expect(screen.queryByRole('group', { name: 'Active filters' })).not.toBeInTheDocument();
   });
 
+  it('should send hasBuyerNote=true to the server when the "With buyer note" chip is pressed', async () => {
+    const user = userEvent.setup();
+    const { list } = setup();
+    await screen.findByText('ALG-1');
+    expect(lastFilters(list).hasBuyerNote).toBeUndefined();
+
+    await user.click(screen.getByTestId('orders-filter-buyer-note'));
+
+    await waitFor(() => {
+      expect(lastFilters(list).hasBuyerNote).toBe(true);
+    });
+    expect(screen.getByTestId('orders-filter-buyer-note')).toHaveAttribute('aria-pressed', 'true');
+  });
+
+  it('should read hasBuyerNote from the URL so the filter survives a reload', async () => {
+    const { list } = setup('/orders?hasBuyerNote=true');
+    await screen.findByText('ALG-1');
+
+    expect(lastFilters(list).hasBuyerNote).toBe(true);
+    expect(screen.getByTestId('orders-filter-buyer-note')).toHaveAttribute('aria-pressed', 'true');
+  });
+
+  it('should show the buyer-note indicator on a row only when the order has a note', async () => {
+    const list = vi
+      .fn()
+      .mockResolvedValue(paginated([{ ...order, hasBuyerNote: true }]));
+    renderWithProviders(<OrdersListPage />, {
+      apiClient: createMockApiClient({
+        orders: { list },
+        connections: { list: vi.fn().mockResolvedValue([connection]) },
+      }),
+      route: '/orders',
+      sessionAdapter: createAuthenticatedSessionAdapter(),
+    });
+    await screen.findByText('ALG-1');
+
+    expect((await screen.findAllByTestId('order-buyer-note-hint')).length).toBeGreaterThan(0);
+  });
+
   it('should send packed=false when "Not packed yet" is chosen in the panel', async () => {
     const user = userEvent.setup();
     const { list } = setup();

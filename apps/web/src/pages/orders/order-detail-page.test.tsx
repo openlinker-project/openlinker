@@ -878,3 +878,37 @@ describe('OrderDetailPage - packing affordance for a destination that packs itse
     await waitFor(() => expect(screen.queryByText('Packing')).not.toBeInTheDocument());
   });
 });
+
+describe('OrderDetailPage — buyer note (#3539)', () => {
+  afterEach(cleanup);
+
+  it('should place the buyer note on the page and add the bench reading to the Activity timeline', async () => {
+    const getById = vi.fn().mockResolvedValue({
+      ...sampleOrder,
+      hasBuyerNote: true,
+      buyerNote: 'Proszę nie wkładać paragonu do paczki.',
+      buyerNoteReadAt: null,
+      buyerNoteAcknowledgements: [
+        { workId: 'w1', acknowledgedAt: '2026-04-20T12:00:00.000Z', acknowledgedByUserId: 'u7' },
+      ],
+    });
+    renderDetail(createMockApiClient({ orders: { getById } }));
+
+    expect(await screen.findByTestId('order-buyer-note-text')).toHaveTextContent(
+      'Proszę nie wkładać paragonu do paczki.',
+    );
+    expect(await screen.findByText('Buyer note read at the bench')).toBeInTheDocument();
+  });
+
+  it('should render no buyer note surface at all when the order has none', async () => {
+    const getById = vi.fn().mockResolvedValue({ ...sampleOrder, hasBuyerNote: false, buyerNote: null });
+    renderDetail(createMockApiClient({ orders: { getById } }));
+
+    await screen.findByText('Order detail');
+    await waitFor(() => {
+      expect(getById).toHaveBeenCalled();
+    });
+    expect(screen.queryByTestId('order-buyer-note')).not.toBeInTheDocument();
+    expect(screen.queryByText('Buyer note read at the bench')).not.toBeInTheDocument();
+  });
+});

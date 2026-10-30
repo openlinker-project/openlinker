@@ -69,6 +69,7 @@ export {
 } from './hooks/use-fulfillment-tasks-query';
 // #3097 — one task by id, for the detail page. Its key sits under the
 // `['fulfillment', ...]` prefix, so the action mutation below refreshes it.
+export { useOrderFulfillmentTasksQuery } from './hooks/use-order-fulfillment-tasks-query';
 export { useFulfillmentWorkQuery } from './hooks/use-fulfillment-work-query';
 export { useFulfillmentTaskActionMutation } from './hooks/use-fulfillment-task-action-mutation';
 // #3257 — the one place a fulfilment action becomes a request. Every surface

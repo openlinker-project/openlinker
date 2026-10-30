@@ -1000,6 +1000,9 @@ export function createMockApiClient(
       pingPresence: vi
         .fn<BenchApi['pingPresence']>()
         .mockRejectedValue(new Error('bench.pingPresence not stubbed')),
+      acknowledgeBuyerNote: vi
+        .fn<BenchApi['acknowledgeBuyerNote']>()
+        .mockRejectedValue(new Error('bench.acknowledgeBuyerNote not stubbed')),
       claimParcel: vi
         .fn<BenchApi['claimParcel']>()
         .mockRejectedValue(new Error('bench.claimParcel not stubbed')),

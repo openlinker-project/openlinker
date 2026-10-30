@@ -114,6 +114,9 @@ export const benchWorkCopy = {
     body: 'Pick a parcel from the list on the left to start scanning it into a box.',
   },
   row: {
+    /** The rail's one-line mention of the buyer's note (#3539, D12); the text is in the parcel. */
+    buyerNote: 'Buyer note',
+    buyerNoteRead: 'read',
     /**
      * What a row says about a line whose variant is not in the catalogue.
      *

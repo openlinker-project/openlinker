@@ -82,6 +82,7 @@ import { WarehouseReleaseBadge } from '../../features/orders/components/warehous
 import { StockAtRiskBadge } from '../../features/orders/components/stock-at-risk-badge';
 import { OrderOpenReturnBadge } from '../../features/orders/components/order-open-return-badge';
 import { OrderPackedTick } from '../../features/orders/components/order-packed-tick';
+import { OrderBuyerNoteHint } from '../../features/orders/components/order-buyer-note-hint';
 import { useFulfilmentOwnedConnectionIds } from '../../features/orders/hooks/use-fulfilment-owned-connection-ids';
 import { isFulfilmentOwnedByDestination } from '../../features/orders/lib/fulfilment-ownership';
 import { deriveDeliveryOutcome, hasLiveOlCarrierRoute } from '../../features/orders/lib/delivery-outcome';
@@ -716,12 +717,19 @@ export function OrdersListPage(): ReactElement {
         cell: (order) => {
           const parsed = parsedFor(order);
           const name = customerName(parsed);
-          if (!name) return <span className="text-muted">—</span>;
+          if (!name) {
+            return order.hasBuyerNote === true ? (
+              <OrderBuyerNoteHint hasBuyerNote={order.hasBuyerNote} preview={order.buyerNotePreview} />
+            ) : (
+              <span className="text-muted">—</span>
+            );
+          }
           const city = parsed.shippingAddress?.city;
           return (
             <span className="orders-cell-stack">
               <span>{name}</span>
               {city ? <span className="text-muted orders-cell-sub">{city}</span> : null}
+              <OrderBuyerNoteHint hasBuyerNote={order.hasBuyerNote} preview={order.buyerNotePreview} />
             </span>
           );
         },
@@ -1617,6 +1625,18 @@ export function OrdersListPage(): ReactElement {
                         <dt>Customer</dt>
                         <dd>{cust ?? '—'}</dd>
                       </div>
+                      {order.hasBuyerNote === true ? (
+                        <div className="orders-card-facts__wide">
+                          <dt>Buyer note</dt>
+                          <dd>
+                            <OrderBuyerNoteHint
+                              hasBuyerNote={order.hasBuyerNote}
+                              preview={order.buyerNotePreview}
+                              layout="card"
+                            />
+                          </dd>
+                        </div>
+                      ) : null}
                       {showsPackingStage(order) ? (
                         <div>
                           <dt>Packing</dt>
