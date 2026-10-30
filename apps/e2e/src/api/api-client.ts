@@ -60,6 +60,7 @@ import type {
   ListListingsQuery,
   ListOrdersQuery,
   ListProductsQuery,
+  ListStockMovementsQuery,
   ListUsersQuery,
   LoginResponse,
   MarkInvoicePaidInput,
@@ -68,6 +69,12 @@ import type {
   OfferCreationStatus,
   OfferMapping,
   OrderHealthSummary,
+  StockCorrectionInput,
+  StockCorrectionOutcome,
+  StockCorrectionResult,
+  StockCorrectionConflict,
+  StockCorrectionTarget,
+  StockMovement,
   OrderRecord,
   Paginated,
   Product,
@@ -541,6 +548,39 @@ export class ApiClient {
       this.request<InventoryAvailabilityResponse>(
         `/inventory/availability${buildQuery({ productVariantIds: variantIds.join(',') })}`,
       ).then((response) => response.items),
+    correctionTarget: (variantId: string): Promise<StockCorrectionTarget> =>
+      this.request<StockCorrectionTarget>(`/inventory/${variantId}/correction-target`),
+    /**
+     * Correct one variant's stock in its product master. A refusal decided
+     * BEFORE the master (409: insufficient-stock, confirmation-required, ...)
+     * is returned as a `conflict` rather than thrown, because specs assert on
+     * those bodies; every other failure still throws `ApiError`.
+     */
+    correct: async (
+      variantId: string,
+      input: StockCorrectionInput,
+    ): Promise<StockCorrectionOutcome> => {
+      try {
+        const result = await this.request<StockCorrectionResult>(
+          `/inventory/${variantId}/adjust`,
+          { method: 'POST', body: JSON.stringify(input) },
+        );
+        return { kind: 'result', result };
+      } catch (error) {
+        if (error instanceof ApiError && error.status === 409) {
+          return { kind: 'conflict', conflict: error.body as StockCorrectionConflict };
+        }
+        throw error;
+      }
+    },
+    movements: (query?: ListStockMovementsQuery): Promise<Paginated<StockMovement>> =>
+      this.request<Paginated<StockMovement>>(
+        `/inventory/movements${buildQuery({
+          productVariantId: query?.productVariantId,
+          kind: query?.kind,
+          limit: query?.limit,
+        })}`,
+      ),
   };
 
   // ── Listings (offers) ───────────────────────────────────────────────────
