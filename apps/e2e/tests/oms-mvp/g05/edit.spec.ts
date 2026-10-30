@@ -19,6 +19,51 @@ import {
 } from '../../../src/support/oms-mvp-g05-orders';
 
 test.describe('G05 golden path 3 - edit (#3546)', () => {
+  test('should show the refund intent when a discount is applied to a paid order', async ({
+    page,
+    api,
+    world,
+  }) => {
+    const order = await findAllegroOrder(api, world, 'unshipped');
+    test.skip(!order, 'No unshipped, uninvoiced, not-cancelled Allegro order is ingested on this stack.');
+
+    await page.goto(`/orders/${order!.internalOrderId}`);
+    // An already-edited order shows a "buyer paid" note derived from its edit totals,
+    // which says nothing about a recorded channel payment.
+    test.skip(
+      await page
+        .getByTestId('order-edit-notice')
+        .waitFor({ state: 'visible', timeout: 3_000 })
+        .then(() => true)
+        .catch(() => false),
+      'The located order was already edited, so its paid note is not evidence of a channel payment.',
+    );
+    const editButton = page.getByTestId('order-edit-button');
+    const editOffered = await editButton
+      .waitFor({ state: 'visible', timeout: 15_000 })
+      .then(() => editButton.isEnabled())
+      .catch(() => false);
+    test.skip(!editOffered, 'The edit action is not offered for the located order (packed or terminal).');
+    await editButton.click();
+    await expect(page.getByTestId('order-edit-dialog')).toBeVisible();
+    test.skip(
+      (await page.getByTestId('order-edit-paid-note').filter({ hasText: 'The buyer paid' }).count()) === 0,
+      'The located order has no recorded channel payment, so a discount produces no refund intent.',
+    );
+    test.skip(
+      (await page.getByTestId('order-edit-discount').count()) === 0,
+      'The discount section is locked for the located order.',
+    );
+
+    await page.getByTestId('order-edit-discount-amount').fill('1.00');
+    await page.getByTestId('order-edit-review-button').click();
+    await expect(page.getByTestId('order-edit-diff')).toBeVisible();
+    await page.getByTestId('order-edit-save').click();
+
+    await expect(page.getByTestId('order-edit-refund-pending')).toBeVisible();
+    await expect(page.getByTestId('order-edit-confirm-refund')).toBeVisible();
+  });
+
   test('should read "Edited in OpenLinker" and survive a re-poll when the address and a quantity are edited', async ({
     page,
     api,
@@ -32,10 +77,11 @@ test.describe('G05 golden path 3 - edit (#3546)', () => {
 
     await page.goto(`/orders/${order!.internalOrderId}`);
     const editButton = page.getByTestId('order-edit-button');
-    test.skip(
-      (await editButton.count()) === 0 || (await editButton.isDisabled()),
-      'The edit action is not offered for the located order (packed or terminal).',
-    );
+    const editOffered = await editButton
+      .waitFor({ state: 'visible', timeout: 15_000 })
+      .then(() => editButton.isEnabled())
+      .catch(() => false);
+    test.skip(!editOffered, 'The edit action is not offered for the located order (packed or terminal).');
     await editButton.click();
     await expect(page.getByTestId('order-edit-dialog')).toBeVisible();
     test.skip(
@@ -50,6 +96,10 @@ test.describe('G05 golden path 3 - edit (#3546)', () => {
       label: 'M1 order',
     });
     await page.getByTestId('order-edit-street').fill(street);
+    // The located order may carry no address at all; the review refuses an incomplete one.
+    await page.getByLabel('Postcode').fill('00-001');
+    await page.getByLabel('City').fill('Warszawa');
+    await page.getByLabel('Country').fill('PL');
     await page.getByTestId('order-edit-line-quantity').first().fill(String(quantity! - 1));
     await attachMockupComparison(page, testInfo, {
       mockupFile: G05_MOCKUP_FILES.m1,
@@ -92,39 +142,5 @@ test.describe('G05 golden path 3 - edit (#3546)', () => {
     await expect(page.getByTestId('order-edit-saved-badge').first()).toBeVisible();
     await expect(page.getByTestId('order-edit-notice')).toBeVisible();
     await expect(page.getByText(street).first()).toBeVisible();
-  });
-
-  test('should show the refund intent when a discount is applied to a paid order', async ({
-    page,
-    api,
-    world,
-  }) => {
-    const order = await findAllegroOrder(api, world, 'unshipped');
-    test.skip(!order, 'No unshipped, uninvoiced, not-cancelled Allegro order is ingested on this stack.');
-
-    await page.goto(`/orders/${order!.internalOrderId}`);
-    const editButton = page.getByTestId('order-edit-button');
-    test.skip(
-      (await editButton.count()) === 0 || (await editButton.isDisabled()),
-      'The edit action is not offered for the located order (packed or terminal).',
-    );
-    await editButton.click();
-    await expect(page.getByTestId('order-edit-dialog')).toBeVisible();
-    test.skip(
-      (await page.getByTestId('order-edit-paid-note').filter({ hasText: 'The buyer paid' }).count()) === 0,
-      'The located order has no recorded channel payment, so a discount produces no refund intent.',
-    );
-    test.skip(
-      (await page.getByTestId('order-edit-discount').count()) === 0,
-      'The discount section is locked for the located order.',
-    );
-
-    await page.getByTestId('order-edit-discount-amount').fill('1.00');
-    await page.getByTestId('order-edit-review-button').click();
-    await expect(page.getByTestId('order-edit-diff')).toBeVisible();
-    await page.getByTestId('order-edit-save').click();
-
-    await expect(page.getByTestId('order-edit-refund-pending')).toBeVisible();
-    await expect(page.getByTestId('order-edit-confirm-refund')).toBeVisible();
   });
 });
