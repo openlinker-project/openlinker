@@ -8,14 +8,30 @@
  */
 import type { ReactElement } from 'react';
 import { formatAmount } from '../../../shared/format/format-amount';
+import type { OrderEditedTotals } from '../api/order-edit.types';
 import type { ParsedOrderTotals } from '../api/order-snapshot.schema';
 
 interface OrderTotalsPanelProps {
   totals: ParsedOrderTotals;
+  /**
+   * Present only on an order edited in OpenLinker. There `totals.discountTotal`
+   * is the COMBINED figure (channel + OpenLinker), so the channel-labelled row
+   * must take the channel's own number from here (E-44).
+   */
+  editedTotals?: Pick<OrderEditedTotals, 'channelDiscountTotal' | 'combinedDiscountTotal'> | null;
 }
 
-export function OrderTotalsPanel({ totals }: OrderTotalsPanelProps): ReactElement {
+export function OrderTotalsPanel({ totals, editedTotals }: OrderTotalsPanelProps): ReactElement {
   const currency = totals.currency;
+  const snapshotDiscount = typeof totals.discountTotal === 'number' ? totals.discountTotal : 0;
+  // An older payload without the channel figure cannot be split, so it keeps the
+  // snapshot value on the channel row rather than inventing a share.
+  const splittable = editedTotals != null && editedTotals.channelDiscountTotal !== undefined;
+  const channelDiscount = splittable ? (editedTotals.channelDiscountTotal ?? 0) : snapshotDiscount;
+  const combinedDiscount = splittable
+    ? (editedTotals.combinedDiscountTotal ?? snapshotDiscount)
+    : snapshotDiscount;
+  const openLinkerDiscount = splittable ? Math.max(0, combinedDiscount - channelDiscount) : 0;
   return (
     <dl className="order-totals">
       <div className="order-totals__row">
@@ -44,7 +60,7 @@ export function OrderTotalsPanel({ totals }: OrderTotalsPanelProps): ReactElemen
           <dd className="mono-text">{formatAmount(totals.tax, currency)}</dd>
         </div>
       ) : null}
-      {typeof totals.discountTotal === 'number' && totals.discountTotal > 0 ? (
+      {channelDiscount > 0 ? (
         <div className="order-totals__row" data-testid="order-totals-discount">
           <dt>
             Discount{' '}
@@ -52,7 +68,13 @@ export function OrderTotalsPanel({ totals }: OrderTotalsPanelProps): ReactElemen
               as reported by the channel
             </span>
           </dt>
-          <dd className="mono-text">{`−${formatAmount(totals.discountTotal, currency)}`}</dd>
+          <dd className="mono-text">{`−${formatAmount(channelDiscount, currency)}`}</dd>
+        </div>
+      ) : null}
+      {openLinkerDiscount > 0 ? (
+        <div className="order-totals__row" data-testid="order-totals-openlinker-discount">
+          <dt>Discount in OpenLinker</dt>
+          <dd className="mono-text">{`−${formatAmount(openLinkerDiscount, currency)}`}</dd>
         </div>
       ) : null}
       <div className="order-totals__row order-totals__row--total">
