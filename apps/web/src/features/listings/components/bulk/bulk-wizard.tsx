@@ -54,6 +54,7 @@ import {
 } from './bulk-shop-review-step';
 import { ShopPublishTracker } from '../shop-publish-tracker';
 import { BulkConfirmModal } from './bulk-confirm-modal';
+import { BulkWizardLeaveGuard } from './bulk-wizard-leave-guard';
 import { NEUTRAL_BLOCKER_CHIPS, gatingBlockers, type ChipDescriptor } from './bulk-blockers';
 import { describeBulkSubmitOutcome } from './bulk-submit-summary';
 import {
@@ -143,6 +144,9 @@ export function BulkWizard({
   // clicks reached `handleSubmit`, each minted its own key, and the backend got
   // two distinct submissions (two batches, two offers per variant).
   const submitInFlightRef = useRef(false);
+  // Flipped by a successful marketplace submit just before it navigates to the
+  // batch page, so the leave guard lets that navigation through (#3851).
+  const leaveGuardReleasedRef = useRef(false);
 
   const demoMode = useDemoMode();
   const write = useWriteAccess('listings:write', demoMode);
@@ -151,6 +155,10 @@ export function BulkWizard({
   const [config, setConfig] = useState<BulkWizardConfig | null>(null);
   const [rows, setRows] = useState<BulkWizardRow[]>(() => seedRows(products, preSelectedVariantIds));
   const [confirmOpen, setConfirmOpen] = useState(false);
+  // Whether the operator changed anything the wizard would lose on leaving
+  // (#3851). Set by the three row-editing callbacks rather than diffed against
+  // the seed: a resolve alone is recomputable and must not trap the operator.
+  const [hasEdits, setHasEdits] = useState(false);
   // Live-selected connection id (before config is committed) so the stepper +
   // flow can branch by destination capability from the start (#1829). Seeded
   // from the picker/URL preselect; updated by the Config step's selector.
@@ -415,6 +423,7 @@ export function BulkWizard({
   const setVariantIncluded = useCallback(
     (productId: string, variantId: string, included: boolean) => {
       if (!config) return;
+      setHasEdits(true);
       setRows((prev) => reblockRows(prev, config, requiredByCategory, platformValidate, destinationResolvesCategoryAtSubmit, preflightContext, (row) =>
         row.productId !== productId
           ? row
@@ -433,6 +442,7 @@ export function BulkWizard({
   const setProductIncluded = useCallback(
     (productId: string, included: boolean) => {
       if (!config) return;
+      setHasEdits(true);
       setRows((prev) => reblockRows(prev, config, requiredByCategory, platformValidate, destinationResolvesCategoryAtSubmit, preflightContext, (row) =>
         row.productId !== productId
           ? row
@@ -453,6 +463,7 @@ export function BulkWizard({
       editFormValues: Record<string, unknown>,
     ) => {
       if (!config) return;
+      setHasEdits(true);
       setRows((prev) => reblockRows(prev, config, requiredByCategory, platformValidate, destinationResolvesCategoryAtSubmit, preflightContext, (row) => {
         if (row.productId !== productId) return row;
         // A simple product has no per-variant scope: its offer-level fields
@@ -527,7 +538,13 @@ export function BulkWizard({
             excludedVariantIds.push(v.variantId);
             continue;
           }
-          perVariantOverrides[v.variantId] = buildVariantOverride(v, config, rowPricingPolicy, rowStockPolicy);
+          perVariantOverrides[v.variantId] = buildVariantOverride(
+            v,
+            config,
+            rowPricingPolicy,
+            rowStockPolicy,
+            row.variants.length === 1,
+          );
         }
         if (includedReady.length === 0) continue;
         const primaryId = (row.primaryVariant ?? row.variants[0].variant).id;
@@ -601,6 +618,7 @@ export function BulkWizard({
           title: 'Batch submitted',
           description: describeBulkSubmitOutcome(selectedCount, result),
         });
+        leaveGuardReleasedRef.current = true;
         void navigate(`/listings/bulk-batches/${result.batchId}`);
       } catch {
         // Surfaced via mutation.error in the modal.
@@ -766,6 +784,10 @@ export function BulkWizard({
       }
     >
       <div className="bulk-wizard">
+        <BulkWizardLeaveGuard
+          active={hasEdits && shopBatchId === null}
+          released={leaveGuardReleasedRef}
+        />
         {/* #2227: every step but Config, which IS the destination form. Also
             not once a shop batch has submitted - `step` still reads 'review'
             there while the body is the publish tracker, and offering
@@ -1014,6 +1036,7 @@ function toWireOverride(override: BulkPerProductOverride): BulkPerProductOverrid
   // reintroduce this class of whole-request rejection.
   const wire: BulkPerProductOverride = {};
   if (override.stock !== undefined) wire.stock = override.stock;
+  if (override.stockFromMaster === true) wire.stockFromMaster = true;
   if (override.publishImmediately !== undefined) {
     wire.publishImmediately = override.publishImmediately;
   }
@@ -1027,12 +1050,23 @@ function buildVariantOverride(
   config: BulkWizardConfig,
   pricingPolicy: PricingPolicy,
   stockPolicy: StockPolicy,
+  isSingleVariant: boolean,
 ): BulkPerProductOverride {
   const price = computeResolvedPrice(pricingPolicy, variant.masterPrice, variant.override);
   const stock = computeResolvedStock(stockPolicy, variant.masterStock, variant.override);
+  // A single-variant offer lists at the `stock` sent here, so the server cannot
+  // tell a figure the wizard read from master from one the operator typed.
+  // Saying which lets it refuse the first when the variant has no stock
+  // position (#3851) - the defence behind the Review step's `stock-unknown`
+  // blocker. Multi-variant siblings always list at master stock server-side.
+  const stockFromMaster =
+    isSingleVariant &&
+    variant.override.stock === undefined &&
+    (stockPolicy.mode === 'use-master' || stockPolicy.mode === 'cap');
   return toWireOverride({
     ...variant.override,
     stock: stock.value ?? undefined,
+    ...(stockFromMaster ? { stockFromMaster: true } : {}),
     price:
       variant.override.price ??
       (price.value !== null ? { amount: price.value, currency: config.currency } : undefined),

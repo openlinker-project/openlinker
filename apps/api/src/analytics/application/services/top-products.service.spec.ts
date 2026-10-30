@@ -247,7 +247,7 @@ describe('TopProductsService', () => {
         { ...variant('v1', 'p1'), sku: 'V-1', attributes: { Size: 'M' } },
       ]);
       inventoryQueryService.findAvailabilityByVariantIds.mockResolvedValue([
-        { productVariantId: 'v1', totalAvailable: 7, locationCount: 1 },
+        { productVariantId: 'v1', totalAvailable: 7, locationCount: 1, positionCount: 1 },
       ]);
 
       const result = await service.getTopProductVariantSales('p1', salesFilters);
@@ -324,8 +324,8 @@ describe('TopProductsService', () => {
         variant('v2', 'p1'),
       ]);
       inventoryQueryService.findAvailabilityByVariantIds.mockResolvedValue([
-        { productVariantId: 'v1', totalAvailable: 3, locationCount: 1 },
-        { productVariantId: 'v2', totalAvailable: 0, locationCount: 1 },
+        { productVariantId: 'v1', totalAvailable: 3, locationCount: 1, positionCount: 1 },
+        { productVariantId: 'v2', totalAvailable: 0, locationCount: 1, positionCount: 1 },
       ]);
 
       const result = await service.getTopProductVariantSales('p1', salesFilters);
@@ -350,7 +350,7 @@ describe('TopProductsService', () => {
         variant('v2', 'p1'),
       ]);
       inventoryQueryService.findAvailabilityByVariantIds.mockResolvedValue([
-        { productVariantId: 'v1', totalAvailable: 0, locationCount: 1 },
+        { productVariantId: 'v1', totalAvailable: 0, locationCount: 1, positionCount: 1 },
       ]);
 
       const result = await service.getTopProductVariantSales('p1', salesFilters);

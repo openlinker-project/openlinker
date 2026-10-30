@@ -530,6 +530,87 @@ describe('BulkWizard — destinationResolvesCategoryAtSubmit (#2211)', () => {
     expect(bulkCreate).toHaveBeenCalledTimes(1);
   }, 15000);
 
+  // #3851: a simple product's stock is the only figure the server publishes, so
+  // the request has to say when the wizard read it from master rather than the
+  // operator typing it - that is what lets the server refuse an unsynced one.
+  it('should mark a single-variant stock read from master on the request', async () => {
+    resolveStub.outcomes = [unresolvedCategoryOutcome()];
+    const bulkCreate: BulkCreateMock = vi.fn().mockResolvedValue({
+      batchId: 'batch-1',
+      jobIds: ['job-1'],
+      skippedAlreadyListedCount: 0,
+      skippedAvailabilityUnknownCount: 0,
+      skippedInvalidEanCount: 0,
+    });
+
+    await renderAndResolve([], bulkCreate);
+    fireEvent.click((await screen.findAllByRole('button', { name: 'Create offers (1)' }))[0]);
+    fireEvent.click(await screen.findByRole('button', { name: 'Create offers' }));
+
+    await waitFor(() => expect(bulkCreate).toHaveBeenCalledTimes(1));
+    const request = bulkCreate.mock.calls[0][0];
+    expect(request.perVariantOverrides?.ol_variant_1).toMatchObject({
+      stock: 5,
+      stockFromMaster: true,
+    });
+  }, 15000);
+
+  describe('leave guard (#3851)', () => {
+    /** The browser-side half of the guard; the in-app half needs a data router (own spec). */
+    function unloadIsHeld(): boolean {
+      const event = new Event('beforeunload', { cancelable: true });
+      window.dispatchEvent(event);
+      return event.defaultPrevented;
+    }
+
+    function okResponse(): BulkOfferCreateResponse {
+      return {
+        batchId: 'batch-1',
+        jobIds: ['job-1'],
+        skippedAlreadyListedCount: 0,
+        skippedAvailabilityUnknownCount: 0,
+        skippedInvalidEanCount: 0,
+      };
+    }
+
+    it('should not hold an unload when the operator only resolved the batch', async () => {
+      resolveStub.outcomes = [unresolvedCategoryOutcome()];
+
+      await renderAndResolve([]);
+      await screen.findAllByRole('button', { name: 'Create offers (1)' });
+
+      expect(unloadIsHeld()).toBe(false);
+    }, 15000);
+
+    it('should hold an unload once the operator edited the batch', async () => {
+      resolveStub.outcomes = [unresolvedCategoryOutcome()];
+
+      await renderAndResolve([]);
+      const include = await screen.findByRole('checkbox', { name: /^Include all .* variants$/ });
+      fireEvent.click(include);
+      fireEvent.click(include);
+
+      await waitFor(() => expect(unloadIsHeld()).toBe(true));
+    }, 15000);
+
+    it('should release the guard once the batch was submitted', async () => {
+      resolveStub.outcomes = [unresolvedCategoryOutcome()];
+      const bulkCreate: BulkCreateMock = vi.fn().mockResolvedValue(okResponse());
+
+      await renderAndResolve([], bulkCreate);
+      const include = await screen.findByRole('checkbox', { name: /^Include all .* variants$/ });
+      fireEvent.click(include);
+      fireEvent.click(include);
+      await waitFor(() => expect(unloadIsHeld()).toBe(true));
+
+      fireEvent.click((await screen.findAllByRole('button', { name: 'Create offers (1)' }))[0]);
+      fireEvent.click(await screen.findByRole('button', { name: 'Create offers' }));
+
+      expect(await findToastTitle('Batch submitted')).toBeInTheDocument();
+      expect(unloadIsHeld()).toBe(false);
+    }, 15000);
+  });
+
   it('keeps the category blocker when a catalogue lookup did run and matched nothing', async () => {
     resolveStub.outcomes = [unresolvedCategoryOutcome()];
     resolveStub.completion = { catalogueLookupPerformed: true };

@@ -44,14 +44,22 @@ export interface PaginatedInventory {
 /**
  * Per-variant availability returned by `GET /inventory/availability` (#792 PR 2).
  *
- * One entry per requested productVariantId; `totalAvailable=0` and
- * `locationCount=0` signal a variant with no inventory rows (zero-filled
- * server-side so consumers can build a `Map<variantId, …>` directly).
+ * One entry per requested productVariantId; `positionCount=0` signals a variant with no
+ * inventory rows (zero-filled server-side so consumers can build a `Map<variantId, …>` directly).
  */
 export interface InventoryAvailability {
   productVariantId: string;
   totalAvailable: number;
+  /** Distinct non-null locations; a pooled position counts 0, so 0 does NOT mean no rows. */
   locationCount: number;
+  /** Live inventory positions, pooled included. 0 means never synced. */
+  positionCount: number;
+  /**
+   * Units OpenLinker will promise (#2323). `null` means availability could not
+   * be determined - never a zero. Optional only so an older API (or a fixture
+   * that predates the field) still type-checks; every current response carries it.
+   */
+  availableToPromise?: number | null;
 }
 
 export interface InventoryAvailabilityResponse {

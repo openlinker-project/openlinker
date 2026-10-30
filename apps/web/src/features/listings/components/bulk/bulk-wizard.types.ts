@@ -47,8 +47,13 @@ export const BulkRowBlockerValues = [
   'unknown-category-result',
   // Active pricing policy needs a master price and the variant has none.
   'no-master-price',
-  // Active stock policy needs a master stock value and it's 0 or null.
+  // Active stock policy needs a master stock value and the master reports 0.
   'no-master-stock',
+  // OpenLinker holds no stock for the variant at all (#3851) - no inventory
+  // position yet (the master stock sync has not reached it) or availability
+  // could not be resolved. Distinct from `no-master-stock`, which is a KNOWN 0:
+  // listing at an unknown stock published a 0-stock draft nobody asked for.
+  'stock-unknown',
   // Master price currency differs from the batch currency (use-master/markup only).
   'currency-mismatch',
   // Variant already has a live OfferMapping on the target connection (#1741,

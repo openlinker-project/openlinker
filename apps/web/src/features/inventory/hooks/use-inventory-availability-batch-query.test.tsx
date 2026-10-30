@@ -48,7 +48,7 @@ describe('useInventoryAvailabilityBatchQuery', () => {
     const availability = vi
       .fn()
       .mockRejectedValueOnce(new ApiError('boom', 503, null))
-      .mockResolvedValue({ items: [{ productVariantId: 'var_1', totalAvailable: 3, locationCount: 1 }] });
+      .mockResolvedValue({ items: [{ productVariantId: 'var_1', totalAvailable: 3, locationCount: 1, positionCount: 1 }] });
     const apiClient = createMockApiClient({ inventory: { availability } });
 
     const { result } = renderHook(

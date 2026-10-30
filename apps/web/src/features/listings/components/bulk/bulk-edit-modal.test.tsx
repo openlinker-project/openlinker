@@ -563,6 +563,57 @@ describe('BulkEditModal', () => {
     expect(baseOverride.overrides?.categoryId).toBeUndefined();
   });
 
+  describe('simple-product stock (#3851)', () => {
+    function renderSimple(row: BulkWizardRow, onSave = vi.fn()): ReturnType<typeof vi.fn> {
+      renderWithProviders(
+        <BulkEditModal
+          open
+          onOpenChange={() => undefined}
+          row={row}
+          connection={connection}
+          canBrowseCategories={false}
+          currency="PLN"
+          defaults={DEFAULTS}
+          onSave={onSave}
+        />,
+      );
+      return onSave;
+    }
+
+    it('does not turn an untouched pre-filled stock into an override', async () => {
+      // The field is pre-filled with 0 when OpenLinker has no stock. Saving it
+      // untouched used to list the offer at 0 past the stock-unknown blocker.
+      const onSave = renderSimple({ ...makeRow(), masterStock: null });
+      expect(
+        screen.getByText('No stock synced from the master catalog yet. Enter the stock to list this offer now.'),
+      ).toBeInTheDocument();
+
+      fireEvent.click(screen.getByRole('button', { name: 'Save all' }));
+
+      await waitFor(() => { expect(onSave).toHaveBeenCalledTimes(1); });
+      expect((onSave.mock.calls[0][1] as { stock?: number }).stock).toBeUndefined();
+    });
+
+    it('emits a stock the operator typed', async () => {
+      const onSave = renderSimple({ ...makeRow(), masterStock: null });
+
+      fireEvent.change(screen.getByLabelText('Stock'), { target: { value: '7' } });
+      fireEvent.click(screen.getByRole('button', { name: 'Save all' }));
+
+      await waitFor(() => { expect(onSave).toHaveBeenCalledTimes(1); });
+      expect((onSave.mock.calls[0][1] as { stock?: number }).stock).toBe(7);
+    });
+
+    it('keeps a stock override from an earlier save', async () => {
+      const onSave = renderSimple({ ...makeRow(), override: { stock: 3 } });
+
+      fireEvent.click(screen.getByRole('button', { name: 'Save all' }));
+
+      await waitFor(() => { expect(onSave).toHaveBeenCalledTimes(1); });
+      expect((onSave.mock.calls[0][1] as { stock?: number }).stock).toBe(3);
+    });
+  });
+
   it('opens the zoom lightbox when an editor image thumbnail is clicked (#1741)', () => {
     const row = makeRow();
     row.product!.images = ['https://example.com/a.jpg'];
@@ -906,6 +957,42 @@ describe('BulkEditModal', () => {
       expect(screen.getByLabelText('EAN for Rozmiar: M')).toHaveValue('5900531001130');
     });
 
+    // #3851: the chip used to read the resolve-time blockers alone, so it stayed
+    // on screen after the operator picked a category, until Save recomputed them.
+    it('drops the category not set chip as soon as a product category is entered', () => {
+      const row = makeMultiRow();
+      const blockedRow: BulkWizardRow = {
+        ...row,
+        variants: row.variants.map((v) =>
+          v.variantId === 'var_m' ? { ...v, blockers: ['no-match'] } : v,
+        ),
+      };
+      renderWithProviders(
+        <BulkEditModal
+          open
+          onOpenChange={() => undefined}
+          row={blockedRow}
+          connection={connection}
+          canBrowseCategories={false}
+          currency="PLN"
+          defaults={DEFAULTS}
+          focusVariantId="var_m"
+          onSave={() => undefined}
+        />,
+      );
+      expect(screen.getByText('category not set')).toBeInTheDocument();
+
+      fireEvent.click(screen.getByRole('radio', { name: /Shared base/ }));
+      fireEvent.change(screen.getByLabelText('Allegro category ID'), {
+        target: { value: '12345' },
+      });
+      fireEvent.click(screen.getByRole('radio', { name: /Rozmiar: M/ }));
+
+      expect(screen.queryByText('category not set')).not.toBeInTheDocument();
+      // The cause is still true - only its consequence went away.
+      expect(screen.getByText('no catalog match')).toBeInTheDocument();
+    });
+
     it('shows the variant category without expanding the disclosure (#2240)', () => {
       renderWithProviders(
         <BulkEditModal
@@ -1129,6 +1216,109 @@ describe('BulkEditModal', () => {
       );
       expect(screen.getByText('Show optional fields (1)')).toBeInTheDocument();
       expect(screen.getByLabelText('Zalezny for Rozmiar: M')).toBeInTheDocument();
+    });
+
+    describe('attribute prefill (#3851)', () => {
+      // `S` deliberately has no entry: a value with no exact match stays empty.
+      const sizeParam = {
+        id: 'p_rozmiar',
+        name: 'Rozmiar',
+        type: 'dictionary',
+        required: true,
+        restrictions: {},
+        section: 'product',
+        dictionary: [{ id: 'r_m', value: 'm' }],
+      };
+
+      function rowInBaseCategory(): BulkWizardRow {
+        return { ...makeMultiRow(), override: { overrides: { categoryId: 'cat_men' } } };
+      }
+
+      it('fills a sibling parameter from its matching attribute and leaves a no-match sibling empty', async () => {
+        const onSave = vi.fn();
+        mockCategoryParameters = [sizeParam];
+        renderWithProviders(
+          <BulkEditModal
+            open
+            onOpenChange={() => undefined}
+            row={rowInBaseCategory()}
+            connection={connection}
+            canBrowseCategories={true}
+            currency="PLN"
+            defaults={DEFAULTS}
+            focusVariantId="var_m"
+            onSave={onSave}
+          />,
+        );
+
+        await waitFor(() => {
+          expect(screen.getByLabelText('Rozmiar for Rozmiar: M')).toHaveValue('r_m');
+        });
+
+        fireEvent.click(screen.getByRole('button', { name: 'Save all' }));
+        await waitFor(() => { expect(onSave).toHaveBeenCalledTimes(1); });
+
+        expect(savedVariantParams(onSave, 'var_m')).toContainEqual(
+          expect.objectContaining({ id: 'p_rozmiar', valuesIds: ['r_m'] }),
+        );
+        expect(savedVariantParams(onSave, 'var_s').map((p) => p.id)).not.toContain('p_rozmiar');
+        // Per-variant only - the shared base never carries a sibling's attribute.
+        const baseOverride = onSave.mock.calls[0][1] as {
+          overrides?: { parameters?: Array<{ id: string }> };
+        };
+        expect((baseOverride.overrides?.parameters ?? []).map((p) => p.id)).not.toContain(
+          'p_rozmiar',
+        );
+      });
+
+      it('never overwrites a value the shared base already carries', async () => {
+        mockCategoryParameters = [sizeParam];
+        renderWithProviders(
+          <BulkEditModal
+            open
+            onOpenChange={() => undefined}
+            row={{ ...rowInBaseCategory(), editFormValues: { parameters: { p_rozmiar: 'r_m' } } }}
+            connection={connection}
+            canBrowseCategories={true}
+            currency="PLN"
+            defaults={DEFAULTS}
+            focusVariantId="var_m"
+            onSave={() => undefined}
+          />,
+        );
+
+        // Inherited from the base, not turned into a per-variant override.
+        await waitFor(() => {
+          expect(screen.getByLabelText('Rozmiar for Rozmiar: M')).toBeInTheDocument();
+        });
+        expect(screen.queryByText(/reset to base/)).not.toBeInTheDocument();
+      });
+
+      it('does not count its own prefill as an unsaved edit', async () => {
+        const onOpenChange = vi.fn();
+        mockCategoryParameters = [sizeParam];
+        renderWithProviders(
+          <BulkEditModal
+            open
+            onOpenChange={onOpenChange}
+            row={rowInBaseCategory()}
+            connection={connection}
+            canBrowseCategories={true}
+            currency="PLN"
+            defaults={DEFAULTS}
+            focusVariantId="var_m"
+            onSave={() => undefined}
+          />,
+        );
+        await waitFor(() => {
+          expect(screen.getByLabelText('Rozmiar for Rozmiar: M')).toHaveValue('r_m');
+        });
+
+        fireEvent.click(screen.getByRole('button', { name: 'Close editor' }));
+
+        expect(onOpenChange).toHaveBeenCalledWith(false);
+        expect(screen.queryByText('Discard changes?')).not.toBeInTheDocument();
+      });
     });
 
     describe('grouping-param per-variant override (#1741)', () => {

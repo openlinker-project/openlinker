@@ -105,6 +105,7 @@ import { BulkImageLightbox } from './bulk-image-lightbox';
 import { BulkImageStrip } from './bulk-image-strip';
 import {
   blockerLabel,
+  categoryNotSetApplies,
   isCategoryBlocker,
   isVariantScopeFixable,
   CATEGORY_EFFECT_CHIP,
@@ -121,7 +122,11 @@ import {
   categoryParametersToOfferParameters,
 } from '../category-parameters-to-offer-parameters';
 import { isParameterVisible } from '../category-parameter-visibility';
-import { injectEanParameter, isEanParameterName } from '../auto-prefill-parameters';
+import {
+  injectEanParameter,
+  isEanParameterName,
+  prefillFromVariantAttributes,
+} from '../auto-prefill-parameters';
 import type { CategoryParameter, OfferParameter } from '../../api/listings.types';
 import type { CategoryParameterFormValues, FormParameterValue } from '../category-parameter-form.types';
 import {
@@ -477,6 +482,42 @@ interface VariantEdit {
   params: Record<string, FormParameterValue>;
 }
 
+/** Whether a form value carries anything - `''`, `[]` and `undefined` all read as empty. */
+function hasFormValue(value: FormParameterValue): boolean {
+  if (value === undefined) return false;
+  if (typeof value === 'string') return value.trim() !== '';
+  if (Array.isArray(value)) return value.length > 0;
+  return value.from.trim() !== '' || value.to.trim() !== '';
+}
+
+/**
+ * The variant edits as the operator left them, for the dirty check (#3851): an
+ * attribute-prefilled value still equal to what was filled is not an edit, and
+ * one the operator cleared is (marked `null`, which no real value can be).
+ */
+function withoutAutoFilledParams(
+  variantEdits: Record<string, VariantEdit>,
+  autoFilled: Record<string, CategoryParameterFormValues>,
+): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const [variantId, edit] of Object.entries(variantEdits)) {
+    const filled = autoFilled[variantId];
+    if (!filled) {
+      out[variantId] = edit;
+      continue;
+    }
+    const params: Record<string, FormParameterValue | null> = {};
+    for (const [paramId, value] of Object.entries(edit.params)) {
+      if (JSON.stringify(value) !== JSON.stringify(filled[paramId])) params[paramId] = value;
+    }
+    for (const paramId of Object.keys(filled)) {
+      if (!(paramId in edit.params)) params[paramId] = null;
+    }
+    out[variantId] = { ...edit, params };
+  }
+  return out;
+}
+
 /** Same URLs in the same order - the published list is ordered, so order matters. */
 function sameImageList(a: readonly string[], b: readonly string[]): boolean {
   return a.length === b.length && a.every((url, i) => url === b[i]);
@@ -619,6 +660,17 @@ function BulkEditModalForm({
     for (const v of row.variants) map[v.variantId] = v.included;
     return map;
   });
+  // Per-variant parameter values the editor filled from the variant's own
+  // attributes (#3851), by variant id then parameter id. Kept so the dirty check
+  // can tell a value WE wrote from one the operator typed - otherwise opening
+  // and closing the editor would ask to discard changes nobody made.
+  const [autoFilledParams, setAutoFilledParams] = useState<
+    Record<string, CategoryParameterFormValues>
+  >({});
+  // `variantId:paramId` pairs the prefill already decided on, filled or not. A
+  // pair is decided once: a value the operator cleared or replaced must not
+  // come back when a schema re-resolves.
+  const prefillDecidedRef = useRef<Set<string>>(new Set());
 
   // Product-level platform overrides (#1096) - shared base scope.
   const [platformParams, setPlatformParams] = useState<Record<string, unknown>>(
@@ -768,7 +820,7 @@ function BulkEditModalForm({
   // ── Dirty tracking (vs the on-open snapshot) ──
   const snapshotRef = useRef<string | null>(null);
   const liveState = JSON.stringify({
-    variantEdits,
+    variantEdits: withoutAutoFilledParams(variantEdits, autoFilledParams),
     included,
     platformParams,
     baseValues,
@@ -804,6 +856,62 @@ function BulkEditModalForm({
       return { ...prev, [variantId]: { ...current, params } };
     });
   }, []);
+
+  // ── Attribute prefill (#3851) ──
+  // A sibling's distinguishing attributes (`Kolor: czerwony`) fill the category
+  // parameter of the same name, as a per-variant override the operator can
+  // reset. Per-variant only: a sibling attribute is by definition not shared,
+  // so the base is never written. Runs once a sibling's schema is known (its
+  // own category's, else the base's), and never over a value already present -
+  // the operator's, or one the shared base carries for every sibling.
+  useEffect(() => {
+    if (!isMultiVariant) return;
+    const baseParams = (baseValues.parameters ?? {}) as CategoryParameterFormValues;
+    const fills: Record<string, CategoryParameterFormValues> = {};
+    for (const variant of row.variants) {
+      const edit = variantEdits[variant.variantId];
+      if (!edit) continue;
+      const schema = variantParamSchema(edit);
+      if (schema === null || schema.length === 0) continue;
+      const perVariantSchema = schema.filter(
+        (p) => !BASE_ONLY_PARAM_NAMES.includes(p.name.trim().toLowerCase()),
+      );
+      const candidates = prefillFromVariantAttributes(
+        perVariantSchema,
+        variant.distinguishingAttributes,
+      );
+      for (const [paramId, value] of Object.entries(candidates)) {
+        const key = `${variant.variantId}:${paramId}`;
+        if (prefillDecidedRef.current.has(key)) continue;
+        prefillDecidedRef.current.add(key);
+        if (hasFormValue(edit.params[paramId]) || hasFormValue(baseParams[paramId])) continue;
+        fills[variant.variantId] = { ...(fills[variant.variantId] ?? {}), [paramId]: value };
+      }
+    }
+    if (Object.keys(fills).length === 0) return;
+    setVariantEdits((prev) => {
+      const next = { ...prev };
+      for (const [variantId, values] of Object.entries(fills)) {
+        const current = next[variantId];
+        if (!current) continue;
+        const params = { ...current.params };
+        // Re-checked against the latest state: the operator may have typed in
+        // the same field between this render and the update.
+        for (const [paramId, value] of Object.entries(values)) {
+          if (!hasFormValue(params[paramId])) params[paramId] = value;
+        }
+        next[variantId] = { ...current, params };
+      }
+      return next;
+    });
+    setAutoFilledParams((prev) => {
+      const next = { ...prev };
+      for (const [variantId, values] of Object.entries(fills)) {
+        next[variantId] = { ...(next[variantId] ?? {}), ...values };
+      }
+      return next;
+    });
+  }, [isMultiVariant, row.variants, variantEdits, variantParamSchema, baseValues.parameters]);
 
   // ── Save ──
   const handleSaveAll = async (): Promise<void> => {
@@ -939,12 +1047,20 @@ function BulkEditModalForm({
     // explicit Price/Stock inputs instead.
     const pricingDiverges = isMultiVariant && !pricingPolicyEquals(pricingPolicy, batchPricingPolicy);
     const stockDiverges = isMultiVariant && !stockPolicyEquals(stockPolicy, batchStockPolicy);
+    // Stock is only meaningful for a simple product; master stock is
+    // authoritative (incl. 0) for multi-variant siblings. It is emitted only
+    // when the operator set it - now, or on an earlier save - because the field
+    // is pre-filled from the master (or `0` when OpenLinker has none), and
+    // emitting that untouched pre-fill made it an explicit override: a variant
+    // whose stock was never synced listed at 0 with no blocker, and a batch
+    // stock policy was silently replaced by the master figure (#3851).
+    const stockSetByOperator =
+      !isMultiVariant &&
+      (row.override.stock !== undefined || Number(values.stock) !== Number(initialBase.stock));
     const baseOverride: BulkPerProductOverride = {
       publishImmediately: values.publishImmediately,
       ...(baseAmount !== '' ? { price: { amount: Number(baseAmount.replace(',', '.')), currency } } : {}),
-      // Stock is only meaningful for a simple product; master stock is
-      // authoritative (incl. 0) for multi-variant siblings.
-      ...(!isMultiVariant ? { stock: Number(values.stock) } : {}),
+      ...(stockSetByOperator ? { stock: Number(values.stock) } : {}),
       ...(pricingDiverges ? { pricingPolicy } : {}),
       ...(stockDiverges ? { stockPolicy } : {}),
       overrides: {
@@ -1767,7 +1883,20 @@ function BaseScopeForm({
                 aria-invalid={Boolean(form.formState.errors.priceAmount)}
               />
             </FormField>
-            <FormField name="bulk-edit-stock" label="Stock" error={form.formState.errors.stock?.message}>
+            <FormField
+              name="bulk-edit-stock"
+              label="Stock"
+              description={
+                // A simple product's master stock reaches the row only once the
+                // stock sync has a position for it (#3851); until then the
+                // pre-filled 0 is not a stock, and saying so is the only way an
+                // operator can tell the two apart.
+                row.override.stock === undefined && row.masterStock === null
+                  ? 'No stock synced from the master catalog yet. Enter the stock to list this offer now.'
+                  : undefined
+              }
+              error={form.formState.errors.stock?.message}
+            >
               <Input
                 type="number"
                 min={0}
@@ -2204,6 +2333,15 @@ function VariantScopeForm({
    * for it - see the banner below.
    */
   const productCategorySet = (baseValues.categoryId ?? '').trim() !== '';
+  // The category this variant would submit under as the editor stands now, in
+  // the submit's own order (#2240): own override, product tier, own match.
+  // Drives the `category not set` chip so it clears the moment a category is
+  // picked, not only after Save recomputes the blockers (#3851).
+  const liveCategoryId =
+    (edit.categoryId ?? '').trim() ||
+    (baseValues.categoryId ?? '').trim() ||
+    variant.resolvedCategoryId ||
+    null;
   // Breadcrumb name instead of the raw id when the base's path is already
   // resolved (#1924) - falls back to the id (or "Not set on base") only
   // while the path hasn't resolved yet.
@@ -2471,7 +2609,7 @@ function VariantScopeForm({
               {blockerLabel(blocker)}
             </StatusBadge>
           ))}
-          {variant.blockers.some((b) => isCategoryBlocker(b) && b !== 'invalid-barcode') ? (
+          {categoryNotSetApplies(variant.blockers, liveCategoryId) ? (
             <StatusBadge tone={CATEGORY_EFFECT_CHIP.tone} withDot>
               {CATEGORY_EFFECT_CHIP.label}
             </StatusBadge>
