@@ -134,6 +134,9 @@ describe('BulkConfirmModal', () => {
     expect(submit).toBeDisabled();
     fireEvent.click(submit);
     expect(onConfirm).not.toHaveBeenCalled();
+    expect(screen.queryByText('Publish immediately')).not.toBeInTheDocument();
+    expect(screen.queryByText(/idempotency protected/i)).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /cancel/i })).toBeInTheDocument();
   });
 
   it('should name every reason when no variant can be listed', () => {

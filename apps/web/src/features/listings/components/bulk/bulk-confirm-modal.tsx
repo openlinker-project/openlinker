@@ -149,6 +149,7 @@ export function BulkConfirmModal({
         )}
 
         <div style={{ marginTop: 'var(--space-4)', display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
+          {nothingToCreate ? null : (
           <label style={{ display: 'flex', alignItems: 'flex-start', gap: 'var(--space-2)' }}>
             <input
               type="checkbox"
@@ -174,6 +175,7 @@ export function BulkConfirmModal({
               </small>
             </span>
           </label>
+          )}
 
           {mixedPublishWarning ? (
             <Alert tone="warning">
@@ -185,7 +187,7 @@ export function BulkConfirmModal({
 
           {errorMessage !== null ? (
             <Alert tone="error">{errorMessage}</Alert>
-          ) : (
+          ) : nothingToCreate ? null : (
             <Alert tone="info">
               <strong>Idempotency protected.</strong> If you accidentally double-submit,
               OpenLinker returns the existing batch rather than creating a duplicate.
