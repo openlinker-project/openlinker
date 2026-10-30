@@ -1067,6 +1067,13 @@ export function createMockApiClient(
       }),
       ...overrides.salesDocumentRules,
     } as ApiClient['salesDocumentRules'],
+    // #3908. Empty by default: no suggestions and no observed orders is the
+    // honest first-run state, so a test opts in to anything richer.
+    deliveryOnDocuments: {
+      getSuggestions: vi.fn().mockResolvedValue({ suggestions: [] }),
+      getCountryFacts: vi.fn().mockResolvedValue({ windowDays: 30, countries: [] }),
+      ...overrides.deliveryOnDocuments,
+    } as ApiClient['deliveryOnDocuments'],
     // #3056. The default is a connection with no sourcing rules — the honest
     // empty ruleset, so a test that renders the table without opting in gets
     // the "no rules yet" branch rather than rows it never declared.
