@@ -471,6 +471,16 @@ function VariantDetailBody({
                   className="variant-listing-cards"
                   data-testid={stockRow ? `stock-channels-${stockRow.key}` : undefined}
                 >
+                  {stockRow && stock && showsChannelFigures && stock.channelsStatus !== 'ok' ? (
+                    <p
+                      className="variant-listing-card__note"
+                      data-testid={`stock-channels-partial-${stockRow.key}`}
+                    >
+                      {stock.channelsStatus === 'partial'
+                        ? 'Some marketplace figures couldn\u2019t be loaded right now. What OpenLinker sends is still correct.'
+                        : 'Marketplace figures couldn\u2019t be loaded right now. What OpenLinker sends is still correct.'}
+                    </p>
+                  ) : null}
                   {listings.map((listing) => (
                     <ListingDetailCard
                       key={listing.id}

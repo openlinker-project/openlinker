@@ -927,6 +927,41 @@ describe('ProductDetailPage', () => {
     ).toBeInTheDocument();
   });
 
+  it('should note that some marketplace figures could not be loaded when channelsStatus is partial', async () => {
+    const user = userEvent.setup();
+    const view = {
+      ...(stockViewOf(
+        { ol_product_var1: 3, ol_product_var2: 8 },
+        withPlainSibling({ ol_product_var1: RESERVED_VARIANT })
+      ) as Record<string, unknown>),
+      channelsStatus: 'partial',
+    };
+    const mockApi = multiVariantApi(
+      { ol_product_var1: RESERVED_VARIANT },
+      {
+        inventory: {
+          list: vi.fn().mockResolvedValue(paginatedInventory([])),
+          stockView: vi.fn().mockResolvedValue(view),
+        },
+      }
+    );
+    renderDetailPage(mockApi, true);
+
+    await user.click(await screen.findByTestId('stock-variant-toggle-SKU-001-M'));
+
+    expect(await screen.findByTestId('stock-channels-partial-SKU-001-M')).toHaveTextContent(
+      'Some marketplace figures couldn\u2019t be loaded right now. What OpenLinker sends is still correct.'
+    );
+  });
+
+  it('should not show the partial note when channelsStatus is ok', async () => {
+    const user = userEvent.setup();
+    renderDetailPage(multiVariantApi({ ol_product_var1: RESERVED_VARIANT }), true);
+    await user.click(await screen.findByTestId('stock-variant-toggle-SKU-001-M'));
+    await screen.findByTestId('stock-channels-SKU-001-M');
+    expect(screen.queryByTestId('stock-channels-partial-SKU-001-M')).not.toBeInTheDocument();
+  });
+
   it('should disable Adjust stock with the reason for a variant kept in two locations', async () => {
     renderDetailPage(
       multiVariantApi({
