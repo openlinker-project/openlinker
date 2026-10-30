@@ -92,6 +92,7 @@ export class InventoryController {
         productVariantId: i.productVariantId,
         totalAvailable: i.totalAvailable,
         locationCount: i.locationCount,
+        positionCount: i.positionCount,
         availableToPromise: i.availableToPromise,
       })),
     };

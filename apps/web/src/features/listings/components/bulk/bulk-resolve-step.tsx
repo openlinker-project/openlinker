@@ -272,7 +272,7 @@ export function BulkResolveStep({
         // sync has not reached this variant yet" (#3851). Only a variant with a
         // position and a resolved available-to-promise has a stock OpenLinker
         // knows; the rest stay out of the map and resolve to `null`.
-        if (item.locationCount === 0 || item.availableToPromise === null) continue;
+        if (item.positionCount === 0 || item.availableToPromise === null) continue;
         availabilityByVariant.set(item.productVariantId, item.totalAvailable);
       }
     }

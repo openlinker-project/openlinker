@@ -210,7 +210,7 @@ describe('get_availability tool', () => {
       ),
     getAvailabilityByVariantIds: (ids: readonly string[]) =>
       Promise.resolve(
-        ids.map((productVariantId) => ({ productVariantId, totalAvailable: 3, locationCount: 1 }))
+        ids.map((productVariantId) => ({ productVariantId, totalAvailable: 3, locationCount: 1, positionCount: 1 }))
       ),
   } as unknown as IInventoryQueryService;
 

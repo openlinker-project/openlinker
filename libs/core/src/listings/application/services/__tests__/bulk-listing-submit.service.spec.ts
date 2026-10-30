@@ -509,9 +509,9 @@ describe('BulkListingSubmitService', () => {
         variant({ id: 'v-c', productId: 'P', ean: '333' }),
       ]);
       inventoryQuery.getAvailabilityByVariantIds.mockResolvedValue([
-        { productVariantId: 'v-a', totalAvailable: 10, locationCount: 1, availableToPromise: 10 },
-        { productVariantId: 'v-b', totalAvailable: 5, locationCount: 1, availableToPromise: 5 },
-        { productVariantId: 'v-c', totalAvailable: 0, locationCount: 0, availableToPromise: 0 },
+        { productVariantId: 'v-a', totalAvailable: 10, locationCount: 1, positionCount: 1, availableToPromise: 10 },
+        { productVariantId: 'v-b', totalAvailable: 5, locationCount: 1, positionCount: 1, availableToPromise: 5 },
+        { productVariantId: 'v-c', totalAvailable: 0, locationCount: 0, positionCount: 0, availableToPromise: 0 },
       ]);
 
       const result = await service.submit({
@@ -546,9 +546,9 @@ describe('BulkListingSubmitService', () => {
         variant({ id: 'v-c', productId: 'P', ean: '333' }),
       ]);
       inventoryQuery.getAvailabilityByVariantIds.mockResolvedValue([
-        { productVariantId: 'v-a', totalAvailable: 1, locationCount: 1, availableToPromise: 1 },
-        { productVariantId: 'v-b', totalAvailable: 1, locationCount: 1, availableToPromise: 1 },
-        { productVariantId: 'v-c', totalAvailable: 1, locationCount: 1, availableToPromise: 1 },
+        { productVariantId: 'v-a', totalAvailable: 1, locationCount: 1, positionCount: 1, availableToPromise: 1 },
+        { productVariantId: 'v-b', totalAvailable: 1, locationCount: 1, positionCount: 1, availableToPromise: 1 },
+        { productVariantId: 'v-c', totalAvailable: 1, locationCount: 1, positionCount: 1, availableToPromise: 1 },
       ]);
 
       await service.submit({
@@ -598,8 +598,8 @@ describe('BulkListingSubmitService', () => {
         variant({ id: 'v-c', productId: 'P', gtin: '333' }),
       ]);
       inventoryQuery.getAvailabilityByVariantIds.mockResolvedValue([
-        { productVariantId: 'v-a', totalAvailable: 4, locationCount: 1, availableToPromise: 4 },
-        { productVariantId: 'v-c', totalAvailable: 2, locationCount: 1, availableToPromise: 2 },
+        { productVariantId: 'v-a', totalAvailable: 4, locationCount: 1, positionCount: 1, availableToPromise: 4 },
+        { productVariantId: 'v-c', totalAvailable: 2, locationCount: 1, positionCount: 1, availableToPromise: 2 },
       ]);
 
       await service.submit({
@@ -625,8 +625,8 @@ describe('BulkListingSubmitService', () => {
         variant({ id: 'v-c', productId: 'P', gtin: '333' }),
       ]);
       inventoryQuery.getAvailabilityByVariantIds.mockResolvedValue([
-        { productVariantId: 'v-a', totalAvailable: 4, locationCount: 1, availableToPromise: 4 },
-        { productVariantId: 'v-c', totalAvailable: 2, locationCount: 1, availableToPromise: 2 },
+        { productVariantId: 'v-a', totalAvailable: 4, locationCount: 1, positionCount: 1, availableToPromise: 4 },
+        { productVariantId: 'v-c', totalAvailable: 2, locationCount: 1, positionCount: 1, availableToPromise: 2 },
       ]);
 
       await service.submit({
@@ -670,9 +670,9 @@ describe('BulkListingSubmitService', () => {
         variant({ id: 'v-c', productId: 'P', ean: '333' }),
       ]);
       inventoryQuery.getAvailabilityByVariantIds.mockResolvedValue([
-        { productVariantId: 'v-b', totalAvailable: 1, locationCount: 1, availableToPromise: 1 },
-        { productVariantId: 'v-c', totalAvailable: 1, locationCount: 1, availableToPromise: 1 },
-        { productVariantId: 'v-a', totalAvailable: 1, locationCount: 1, availableToPromise: 1 },
+        { productVariantId: 'v-b', totalAvailable: 1, locationCount: 1, positionCount: 1, availableToPromise: 1 },
+        { productVariantId: 'v-c', totalAvailable: 1, locationCount: 1, positionCount: 1, availableToPromise: 1 },
+        { productVariantId: 'v-a', totalAvailable: 1, locationCount: 1, positionCount: 1, availableToPromise: 1 },
       ]);
 
       await service.submit({
@@ -694,8 +694,8 @@ describe('BulkListingSubmitService', () => {
         variant({ id: 'v-b', productId: 'P', ean: '222' }),
       ]);
       inventoryQuery.getAvailabilityByVariantIds.mockResolvedValue([
-        { productVariantId: 'v-a', totalAvailable: 3, locationCount: 1, availableToPromise: 3 },
-        { productVariantId: 'v-b', totalAvailable: 3, locationCount: 1, availableToPromise: 3 },
+        { productVariantId: 'v-a', totalAvailable: 3, locationCount: 1, positionCount: 1, availableToPromise: 3 },
+        { productVariantId: 'v-b', totalAvailable: 3, locationCount: 1, positionCount: 1, availableToPromise: 3 },
       ]);
 
       await service.submit({
@@ -733,7 +733,7 @@ describe('BulkListingSubmitService', () => {
       );
       products.getVariantsByProductId.mockResolvedValue(built);
       inventoryQuery.getAvailabilityByVariantIds.mockResolvedValue(
-        availability.map((a) => ({ ...a, locationCount: 1, availableToPromise: a.totalAvailable }))
+        availability.map((a) => ({ ...a, locationCount: 1, positionCount: 1, availableToPromise: a.totalAvailable }))
       );
     };
 
@@ -1297,6 +1297,7 @@ describe('BulkListingSubmitService', () => {
         productVariantId: string;
         totalAvailable: number;
         locationCount: number;
+        positionCount: number;
         availableToPromise: number | null;
       }>
     ): void => {
@@ -1315,8 +1316,8 @@ describe('BulkListingSubmitService', () => {
 
     it('should leave out a single-variant offer whose master stock has no inventory position', async () => {
       wireSimpleProducts([
-        { productVariantId: 'ol_variant_a', totalAvailable: 0, locationCount: 0, availableToPromise: 0 },
-        { productVariantId: 'ol_variant_b', totalAvailable: 4, locationCount: 1, availableToPromise: 4 },
+        { productVariantId: 'ol_variant_a', totalAvailable: 0, locationCount: 0, positionCount: 0, availableToPromise: 0 },
+        { productVariantId: 'ol_variant_b', totalAvailable: 4, locationCount: 1, positionCount: 1, availableToPromise: 4 },
       ]);
 
       const result = await service.submit({
@@ -1338,10 +1339,31 @@ describe('BulkListingSubmitService', () => {
       expect(result.skippedAvailabilityUnknownCount).toBe(1);
     });
 
+    it('should list a single-variant offer whose master stock sits in a pooled position', async () => {
+      wireSimpleProducts([
+        { productVariantId: 'ol_variant_a', totalAvailable: 11, locationCount: 0, positionCount: 1, availableToPromise: 11 },
+        { productVariantId: 'ol_variant_b', totalAvailable: 4, locationCount: 1, positionCount: 1, availableToPromise: 4 },
+      ]);
+
+      const result = await service.submit({
+        connectionId,
+        initiatedBy,
+        productIds: ['ol_variant_a', 'ol_variant_b'],
+        sharedConfig: { stock: 1, publishImmediately: true },
+        perVariantOverrides: {
+          ol_variant_a: { stock: 11, stockFromMaster: true },
+          ol_variant_b: { stock: 4, stockFromMaster: true },
+        },
+      });
+
+      expect(enqueueService.enqueueCreation).toHaveBeenCalledTimes(2);
+      expect(result.skippedAvailabilityUnknownCount).toBe(0);
+    });
+
     it('should leave out a single-variant offer whose availability is unresolved', async () => {
       wireSimpleProducts([
-        { productVariantId: 'ol_variant_a', totalAvailable: 6, locationCount: 1, availableToPromise: null },
-        { productVariantId: 'ol_variant_b', totalAvailable: 4, locationCount: 1, availableToPromise: 4 },
+        { productVariantId: 'ol_variant_a', totalAvailable: 6, locationCount: 1, positionCount: 1, availableToPromise: null },
+        { productVariantId: 'ol_variant_b', totalAvailable: 4, locationCount: 1, positionCount: 1, availableToPromise: 4 },
       ]);
 
       const result = await service.submit({
@@ -1361,7 +1383,7 @@ describe('BulkListingSubmitService', () => {
 
     it('should keep a known zero master stock, which lists the offer as a draft', async () => {
       wireSimpleProducts([
-        { productVariantId: 'ol_variant_a', totalAvailable: 0, locationCount: 1, availableToPromise: 0 },
+        { productVariantId: 'ol_variant_a', totalAvailable: 0, locationCount: 1, positionCount: 1, availableToPromise: 0 },
       ]);
 
       await service.submit({
@@ -1399,7 +1421,7 @@ describe('BulkListingSubmitService', () => {
 
     it('should name an unsynced stock, not a transient failure, when nothing is left to list', async () => {
       wireSimpleProducts([
-        { productVariantId: 'ol_variant_a', totalAvailable: 0, locationCount: 0, availableToPromise: 0 },
+        { productVariantId: 'ol_variant_a', totalAvailable: 0, locationCount: 0, positionCount: 0, availableToPromise: 0 },
       ]);
 
       await expect(
@@ -1416,7 +1438,7 @@ describe('BulkListingSubmitService', () => {
 
     it('should keep reporting a transient read failure when no excluded offer lacks a position', async () => {
       wireSimpleProducts([
-        { productVariantId: 'ol_variant_a', totalAvailable: 2, locationCount: 1, availableToPromise: null },
+        { productVariantId: 'ol_variant_a', totalAvailable: 2, locationCount: 1, positionCount: 1, availableToPromise: null },
       ]);
 
       await expect(
@@ -1444,8 +1466,8 @@ describe('BulkListingSubmitService', () => {
         variant({ id: 'v-b', productId: 'P' }), // no barcode — kept for Erli
       ]);
       inventoryQuery.getAvailabilityByVariantIds.mockResolvedValue([
-        { productVariantId: 'v-a', totalAvailable: 1, locationCount: 1, availableToPromise: 1 },
-        { productVariantId: 'v-b', totalAvailable: 1, locationCount: 1, availableToPromise: 1 },
+        { productVariantId: 'v-a', totalAvailable: 1, locationCount: 1, positionCount: 1, availableToPromise: 1 },
+        { productVariantId: 'v-b', totalAvailable: 1, locationCount: 1, positionCount: 1, availableToPromise: 1 },
       ]);
 
       await service.submit({
@@ -1468,7 +1490,7 @@ describe('BulkListingSubmitService', () => {
         variant({ id: 'v-b', productId: 'P', ean: '222' }),
       ]);
       inventoryQuery.getAvailabilityByVariantIds.mockResolvedValue([
-        { productVariantId: 'v-b', totalAvailable: 1, locationCount: 1, availableToPromise: 1 },
+        { productVariantId: 'v-b', totalAvailable: 1, locationCount: 1, positionCount: 1, availableToPromise: 1 },
       ]);
       // v-a already listed → skipped; only v-b enqueues.
       offerMappings.countByConnectionAndVariants.mockResolvedValue(new Map([['v-a', 1]]));

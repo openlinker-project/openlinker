@@ -180,6 +180,7 @@ export class InventoryQueryService implements IInventoryQueryService {
         productVariantId: id,
         totalAvailable: row?.totalAvailable ?? 0,
         locationCount: row?.locationCount ?? 0,
+        positionCount: row?.positionCount ?? 0,
         ...(row?.stockUpdatedAt !== undefined ? { stockUpdatedAt: row.stockUpdatedAt } : {}),
         // A variant with no positions carries a KNOWN zero, not `null` — the
         // #1844 master-is-authoritative-including-zero rule and #1689's

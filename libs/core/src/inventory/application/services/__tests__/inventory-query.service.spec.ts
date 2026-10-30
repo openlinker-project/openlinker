@@ -233,42 +233,42 @@ describe('InventoryQueryService', () => {
 
     it('passes through all-found rows unchanged in input order', async () => {
       inventoryRepository.findAvailabilityByVariantIds.mockResolvedValue([
-        { productVariantId: 'var-b', totalAvailable: 7, locationCount: 2 },
-        { productVariantId: 'var-a', totalAvailable: 3, locationCount: 1 },
+        { productVariantId: 'var-b', totalAvailable: 7, locationCount: 2, positionCount: 2 },
+        { productVariantId: 'var-a', totalAvailable: 3, locationCount: 1, positionCount: 1 },
       ]);
 
       const result = await service.getAvailabilityByVariantIds(['var-a', 'var-b']);
 
       expect(result).toEqual([
-        { productVariantId: 'var-a', totalAvailable: 3, locationCount: 1, availableToPromise: 3 },
-        { productVariantId: 'var-b', totalAvailable: 7, locationCount: 2, availableToPromise: 7 },
+        { productVariantId: 'var-a', totalAvailable: 3, locationCount: 1, positionCount: 1, availableToPromise: 3 },
+        { productVariantId: 'var-b', totalAvailable: 7, locationCount: 2, positionCount: 2, availableToPromise: 7 },
       ]);
     });
 
     it('zero-fills variants with no inventory rows so the caller can build a Map directly', async () => {
       inventoryRepository.findAvailabilityByVariantIds.mockResolvedValue([
-        { productVariantId: 'var-a', totalAvailable: 5, locationCount: 1 },
+        { productVariantId: 'var-a', totalAvailable: 5, locationCount: 1, positionCount: 1 },
       ]);
 
       const result = await service.getAvailabilityByVariantIds(['var-a', 'var-missing', 'var-also-missing']);
 
       expect(result).toEqual([
-        { productVariantId: 'var-a', totalAvailable: 5, locationCount: 1, availableToPromise: 5 },
-        { productVariantId: 'var-missing', totalAvailable: 0, locationCount: 0, availableToPromise: 0 },
-        { productVariantId: 'var-also-missing', totalAvailable: 0, locationCount: 0, availableToPromise: 0 },
+        { productVariantId: 'var-a', totalAvailable: 5, locationCount: 1, positionCount: 1, availableToPromise: 5 },
+        { productVariantId: 'var-missing', totalAvailable: 0, locationCount: 0, positionCount: 0, availableToPromise: 0 },
+        { productVariantId: 'var-also-missing', totalAvailable: 0, locationCount: 0, positionCount: 0, availableToPromise: 0 },
       ]);
     });
 
     it('preserves input order when the repo returns rows in a different order', async () => {
       inventoryRepository.findAvailabilityByVariantIds.mockResolvedValue([
-        { productVariantId: 'var-z', totalAvailable: 1, locationCount: 1 },
-        { productVariantId: 'var-a', totalAvailable: 2, locationCount: 1 },
+        { productVariantId: 'var-z', totalAvailable: 1, locationCount: 1, positionCount: 1 },
+        { productVariantId: 'var-a', totalAvailable: 2, locationCount: 1, positionCount: 1 },
       ]);
 
       const result = await service.getAvailabilityByVariantIds(['var-a', 'var-m', 'var-z']);
 
       expect(result.map((r) => r.productVariantId)).toEqual(['var-a', 'var-m', 'var-z']);
-      expect(result[1]).toEqual({ productVariantId: 'var-m', totalAvailable: 0, locationCount: 0, availableToPromise: 0 });
+      expect(result[1]).toEqual({ productVariantId: 'var-m', totalAvailable: 0, locationCount: 0, positionCount: 0, availableToPromise: 0 });
     });
   });
 

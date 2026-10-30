@@ -867,7 +867,7 @@ export class BulkListingSubmitService implements IBulkListingSubmitService {
           .map((row) => [row.productVariantId, row.availableToPromise])
       ),
       unpositioned: new Set(
-        rows.filter((row) => row.locationCount === 0).map((row) => row.productVariantId)
+        rows.filter((row) => row.positionCount === 0).map((row) => row.productVariantId)
       ),
     };
   }
