@@ -290,7 +290,9 @@ test.describe('G11 MAR - margin @g11', () => {
       expect(row.countUnit, row.category).toBe('orders');
     }
     const margin = await getMargin(http.admin, range);
-    expect(noCost!.affectedCount).toBe(sumGaps(margin.headline, 'no-cost').lineCount);
+    // Coverage counts every line in net revenue without a usable cost (the controller states it uses the
+    // margin-gap predicate), i.e. all gap reasons together, not only the `no-cost` reason.
+    expect(noCost!.affectedCount).toBe(sumGaps(margin.headline).lineCount);
   });
 
   test('MAR-14 a later cost change leaves every earlier trend point exactly as it was', async ({ ctx, http }) => {
