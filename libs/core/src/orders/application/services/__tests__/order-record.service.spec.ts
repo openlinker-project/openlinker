@@ -55,6 +55,7 @@ describe('OrderRecordService', () => {
       findByIds: jest.fn(),
       findEarliestOrderDateByConnection: jest.fn(),
       countOrdersByRoutingCountrySince: jest.fn(),
+      getDeliveryCountryFacts: jest.fn(),
       upsert: jest.fn(),
       upsertWithLineItems: jest.fn(),
       updateSyncStatus: jest.fn(),
@@ -1562,6 +1563,21 @@ describe('OrderRecordService', () => {
 
       expect(result).toBe(records);
       expect(repository.findByIds).toHaveBeenCalledWith(['order-123', 'order-456']);
+    });
+  });
+
+  describe('getDeliveryCountryFacts (#3907)', () => {
+    it('should delegate to the repository with the connection and window when called', async () => {
+      const facts = [
+        { country: 'PL', orders: 2, ratesSeen: ['23'], currency: 'PLN', example: null },
+      ];
+      repository.getDeliveryCountryFacts.mockResolvedValue(facts);
+      const since = new Date('2026-07-31T10:00:00.000Z');
+
+      const result = await service.getDeliveryCountryFacts('conn-1', since);
+
+      expect(result).toBe(facts);
+      expect(repository.getDeliveryCountryFacts).toHaveBeenCalledWith('conn-1', since);
     });
   });
 

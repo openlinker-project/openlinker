@@ -18,14 +18,21 @@ import { OrdersModule as CoreOrdersModule } from '@openlinker/core/orders';
 import { SalesDocumentRulesController } from './http/sales-document-rules.controller';
 import { SalesDocumentTemplatesController } from './http/sales-document-templates.controller';
 import { SalesDocumentMarketsController } from './http/sales-document-markets.controller';
+import { DeliveryLineSuggestionsController } from './http/delivery-line-suggestions.controller';
+import { DeliveryCountryFactsController } from './http/delivery-country-facts.controller';
+// #3907: the facts controller verifies the connection through the API-layer
+// connection service, which that module exports.
+import { IntegrationsModule as ApiIntegrationsModule } from '../integrations/integrations.module';
 import { SalesDocumentCapabilityGuardService } from './sales-document-capability-guard.service';
 
 @Module({
-  imports: [CoreSalesDocumentsModule, CoreIntegrationsModule, CoreOrdersModule],
+  imports: [CoreSalesDocumentsModule, CoreIntegrationsModule, CoreOrdersModule, ApiIntegrationsModule],
   controllers: [
     SalesDocumentRulesController,
     SalesDocumentTemplatesController,
     SalesDocumentMarketsController,
+    DeliveryLineSuggestionsController,
+    DeliveryCountryFactsController,
   ],
   providers: [SalesDocumentCapabilityGuardService],
 })
