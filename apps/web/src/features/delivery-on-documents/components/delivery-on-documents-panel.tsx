@@ -177,9 +177,9 @@ export function DeliveryOnDocumentsPanel({
       </div>
 
       {notice ? (
-        <div role="status" aria-live="polite">
-          <Alert tone="success">{notice}</Alert>
-        </div>
+        // `Alert` with a success tone is already a polite `role="status"`
+        // region; wrapping it in another one announced the notice twice.
+        <Alert tone="success">{notice}</Alert>
       ) : null}
 
       {strip && canEdit ? (

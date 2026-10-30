@@ -30916,9 +30916,11 @@ legend.analytics-settings-dialog__label {
 
 /* ── Delivery on documents (#3908) ──
    Ported from the approved mockup (docs/plans/mockups/delivery-on-documents.html).
-   Tokens only. */
+   Tokens only. Secondary text and a slightly darkened link colour throughout:
+   the muted token measured 3.4-4.2:1 on these surfaces, under the 4.5:1 AA
+   floor the #3912 contrast check enforces. */
 .dd-inline { display: inline-flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
-.dd-hint { margin: 0; font-size: 13px; color: var(--text-muted); }
+.dd-hint { margin: 0; font-size: 13px; color: var(--text-secondary); }
 
 /* ── Panel ── */
 .dd-panel { display: grid; gap: var(--space-4); max-width: 64rem; }
@@ -30948,7 +30950,7 @@ legend.analytics-settings-dialog__label {
 .dd-row--other { border-top: 2px solid var(--border-default); }
 .dd-namecell { display: grid; gap: 2px; }
 .dd-namecell__line { display: inline-flex; align-items: center; gap: var(--space-2); }
-.dd-ratetag { font-family: var(--font-sans); font-size: 11px; color: var(--text-muted); padding: 0 6px; border: 1px dashed var(--border-default); border-radius: 9999px; }
+.dd-ratetag { font-family: var(--font-sans); font-size: 11px; color: var(--text-secondary); padding: 0 6px; border: 1px dashed var(--border-default); border-radius: 9999px; }
 .dd-actions { white-space: nowrap; text-align: right !important; }
 .dd-actions .button + .button { margin-left: var(--space-1); }
 .dd-under { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-3); }
@@ -30970,7 +30972,7 @@ legend.analytics-settings-dialog__label {
 }
 .dd-sample__order { border: 1px dashed var(--border-default); }
 .dd-sample__col { background: var(--bg-surface-muted); }
-.dd-sample__label { font-size: 12px; color: var(--text-muted); }
+.dd-sample__label { font-size: 12px; color: var(--text-secondary); }
 .dd-sample__line {
   display: flex; justify-content: space-between; gap: var(--space-3);
   font-family: var(--font-mono); font-size: 13px; font-variant-numeric: tabular-nums; color: var(--text-primary);
@@ -31013,7 +31015,7 @@ legend.analytics-settings-dialog__label {
   font: inherit;
   font-size: 13px;
   font-weight: 500;
-  color: var(--text-link);
+  color: color-mix(in oklch, var(--text-link) 82%, var(--text-primary));
   background: none;
   border: 0;
   padding: 0;
@@ -31039,7 +31041,7 @@ legend.analytics-settings-dialog__label {
 .dd-table--stacked .dd-row--other, .dd-table--stacked .dd-row--other th, .dd-table--stacked .dd-row--other td { background: var(--bg-surface-muted); }
 .dd-table--stacked th, .dd-table--stacked td { border-top: 0 !important; padding: var(--space-1) var(--space-4) !important; }
 .dd-table--stacked td[data-label] { display: grid; grid-template-columns: 7.5rem minmax(0, 1fr); gap: var(--space-2); align-items: baseline; }
-.dd-table--stacked td[data-label]::before { content: attr(data-label); font-size: 12px; color: var(--text-muted); }
+.dd-table--stacked td[data-label]::before { content: attr(data-label); font-size: 12px; color: var(--text-secondary); }
 .dd-table--stacked .dd-actions { text-align: left !important; padding-top: var(--space-2) !important; }
 @media (max-width: 640px) {
   .dd-methods__row { grid-template-columns: minmax(0, 1fr); }
@@ -31049,7 +31051,7 @@ legend.analytics-settings-dialog__label {
   .dd-table .dd-row--other, .dd-table .dd-row--other th, .dd-table .dd-row--other td { background: var(--bg-surface-muted); }
   .dd-table th, .dd-table td { border-top: 0 !important; padding: var(--space-1) var(--space-4) !important; }
   .dd-table td[data-label] { display: grid; grid-template-columns: 7.5rem minmax(0, 1fr); gap: var(--space-2); align-items: baseline; }
-  .dd-table td[data-label]::before { content: attr(data-label); font-size: 12px; color: var(--text-muted); }
+  .dd-table td[data-label]::before { content: attr(data-label); font-size: 12px; color: var(--text-secondary); }
   .dd-table .dd-actions { text-align: left !important; padding-top: var(--space-2) !important; }
 }
 
@@ -31060,7 +31062,7 @@ legend.analytics-settings-dialog__label {
 .dd-head { gap: var(--space-1); }
 .dd-table thead .dd-head { font: inherit; }
 .dd-example { border-top: 1px solid var(--border-subtle); padding-top: var(--space-3); }
-.dd-example > summary { cursor: pointer; font-size: 14px; font-weight: 500; color: var(--text-link); width: max-content; }
+.dd-example > summary { cursor: pointer; font-size: 14px; font-weight: 500; color: color-mix(in oklch, var(--text-link) 82%, var(--text-primary)); width: max-content; }
 .dd-example > summary:focus-visible { outline: none; box-shadow: var(--shadow-focus); border-radius: 4px; }
 .dd-example__body { display: grid; gap: var(--space-3); padding-top: var(--space-3); }
 .dd-example__body > .select { max-width: 18rem; }
@@ -31093,10 +31095,10 @@ legend.analytics-settings-dialog__label {
   background: var(--bg-surface-muted);
   font-family: var(--font-mono); font-size: 13px; font-variant-numeric: tabular-nums;
 }
-.dd-mini__title { font-family: var(--font-sans); font-size: 12px; color: var(--text-muted); margin-bottom: 2px; }
+.dd-mini__title { font-family: var(--font-sans); font-size: 12px; color: var(--text-secondary); margin-bottom: 2px; }
 .dd-mini__line { display: flex; justify-content: space-between; gap: var(--space-3); color: var(--text-primary); }
-.dd-mini__line--muted { color: var(--text-muted); }
+.dd-mini__line--muted { color: var(--text-secondary); }
 .dd-own { display: grid; gap: var(--space-3); }
 .dd-own__add { justify-self: start; }
-.dd-later { margin: 0; font-size: 13px; color: var(--text-muted); }
+.dd-later { margin: 0; font-size: 13px; color: var(--text-secondary); }
 /* ── end Delivery on documents (#3908) ── */
