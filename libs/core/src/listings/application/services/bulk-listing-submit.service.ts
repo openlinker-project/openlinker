@@ -291,8 +291,9 @@ export class BulkListingSubmitService implements IBulkListingSubmitService {
       // same variants. A variant with no position is different: no retry
       // changes it until the stock sync runs, so that is named instead.
       if (jobs.length === 0) {
-        const notSynced = unknownAvailability.find((job) => unpositioned.has(job.variantId));
-        if (notSynced) {
+        // Only when EVERY excluded job is unpositioned: one transient read
+        // failure among them must not be reported as "not synced".
+        if (unknownAvailability.every((job) => unpositioned.has(job.variantId))) {
           throw new MasterStockNotSyncedException(unknownAvailability.length);
         }
         throw new AvailabilityUnknownError(input.connectionId, unknownAvailability[0].variantId);

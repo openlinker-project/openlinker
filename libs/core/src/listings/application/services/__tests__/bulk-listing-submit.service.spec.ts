@@ -1436,6 +1436,26 @@ describe('BulkListingSubmitService', () => {
       expect(bulkBatchRepo.create).not.toHaveBeenCalled();
     });
 
+    it('should report a transient read failure, not an unsynced stock, when only some excluded offers lack a position', async () => {
+      wireSimpleProducts([
+        { productVariantId: 'ol_variant_a', totalAvailable: 0, locationCount: 0, positionCount: 0, availableToPromise: 0 },
+        { productVariantId: 'ol_variant_b', totalAvailable: 2, locationCount: 1, positionCount: 1, availableToPromise: null },
+      ]);
+
+      await expect(
+        service.submit({
+          connectionId,
+          initiatedBy,
+          productIds: ['ol_variant_a', 'ol_variant_b'],
+          sharedConfig: { stock: 1, publishImmediately: true },
+          perVariantOverrides: {
+            ol_variant_a: { stock: 0, stockFromMaster: true },
+            ol_variant_b: { stock: 2, stockFromMaster: true },
+          },
+        })
+      ).rejects.toBeInstanceOf(AvailabilityUnknownError);
+    });
+
     it('should keep reporting a transient read failure when no excluded offer lacks a position', async () => {
       wireSimpleProducts([
         { productVariantId: 'ol_variant_a', totalAvailable: 2, locationCount: 1, positionCount: 1, availableToPromise: null },
