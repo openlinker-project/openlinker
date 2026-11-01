@@ -954,6 +954,32 @@ describe('ProductDetailPage', () => {
     );
   });
 
+  it('should still note unavailable marketplace figures when the listings query fails', async () => {
+    const user = userEvent.setup();
+    const view = {
+      ...(stockViewOf(
+        { ol_product_var1: 3, ol_product_var2: 8 },
+        withPlainSibling({ ol_product_var1: RESERVED_VARIANT })
+      ) as Record<string, unknown>),
+      channelsStatus: 'partial',
+    };
+    const mockApi = multiVariantApi(
+      { ol_product_var1: RESERVED_VARIANT },
+      {
+        inventory: {
+          list: vi.fn().mockResolvedValue(paginatedInventory([])),
+          stockView: vi.fn().mockResolvedValue(view),
+        },
+        listings: { list: vi.fn().mockRejectedValue(new Error('boom')) },
+      }
+    );
+    renderDetailPage(mockApi, true);
+
+    await user.click(await screen.findByTestId('stock-variant-toggle-SKU-001-M'));
+
+    expect(await screen.findByTestId('stock-channels-partial-SKU-001-M')).toBeInTheDocument();
+  });
+
   it('should not show the partial note when channelsStatus is ok', async () => {
     const user = userEvent.setup();
     renderDetailPage(multiVariantApi({ ol_product_var1: RESERVED_VARIANT }), true);
