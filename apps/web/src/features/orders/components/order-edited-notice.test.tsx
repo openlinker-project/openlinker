@@ -272,6 +272,13 @@ describe('OrderEditedNotice (#3544)', () => {
     );
   });
 
+  it('should tell the operator to retry when packing work was not narrowed', async () => {
+    renderNotice({ sessionWorkFailureCount: 2 });
+    expect(await screen.findByTestId('order-edit-work-failed')).toHaveTextContent(
+      'Packing work could not be updated for 2 lines. Retry the edit.',
+    );
+  });
+
   it('should say stock was not changed when the restore is not applicable (E-52)', async () => {
     renderNotice({
       sessionStock: [{ orderLineId: 'l1', stockRestored: 'not-applicable', detail: null }],

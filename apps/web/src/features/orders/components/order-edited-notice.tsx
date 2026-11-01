@@ -48,6 +48,8 @@ export interface OrderEditedNoticeProps {
   sessionDiscount?: OrderDiscountResult | null;
   /** What the session's last line edit did to stock; not persisted, gone on reload. */
   sessionStock?: readonly OrderEditLineStock[] | null;
+  /** Lines of the last edit whose packing work was not narrowed (session only). */
+  sessionWorkFailureCount?: number;
   /** A refund or correction was confirmed; lets the page refresh invoice-side queries. */
   onConfirmed?: (result: ConfirmOrderChangeResult) => void;
   /** The discount was re-sent (retrying a refund that could not be opened). */
@@ -74,6 +76,7 @@ export function OrderEditedNotice({
   sourceName,
   sessionDiscount = null,
   sessionStock = null,
+  sessionWorkFailureCount = 0,
   onConfirmed,
   onDiscountResent,
 }: OrderEditedNoticeProps): ReactElement | null {
@@ -205,6 +208,14 @@ export function OrderEditedNotice({
           </p>
         ) : null}
       </Alert>
+      {sessionWorkFailureCount > 0 ? (
+        <Alert tone="warning" title="Packing work not fully updated" data-testid="order-edit-work-failed">
+          <p>
+            Packing work could not be updated for {sessionWorkFailureCount}{' '}
+            {sessionWorkFailureCount === 1 ? 'line' : 'lines'}. Retry the edit.
+          </p>
+        </Alert>
+      ) : null}
       {stockOutcome && stockOutcome.tone === 'warning' ? (
         <Alert tone="warning" title="Stock was not put back" data-testid="order-edit-stock-failed">
           <p>{stockOutcome.text}</p>

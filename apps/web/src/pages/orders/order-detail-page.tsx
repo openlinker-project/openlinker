@@ -176,6 +176,10 @@ export function OrderDetailPage(): ReactElement {
     internalOrderId: string;
     stock: OrderEditLineStock[];
   } | null>(null);
+  const [workFailureOutcome, setWorkFailureOutcome] = useState<{
+    internalOrderId: string;
+    lineCount: number;
+  } | null>(null);
   const [discountOutcome, setDiscountOutcome] = useState<{
     internalOrderId: string;
     result: OrderDiscountResult;
@@ -343,7 +347,17 @@ export function OrderDetailPage(): ReactElement {
     discountOutcome?.internalOrderId === order.internalOrderId ? discountOutcome.result : null;
   const editTimeline = buildOrderEditTimelineEvents(order.edits, cancelSourceName);
   const sessionStock = stockOutcome?.internalOrderId === order.internalOrderId ? stockOutcome.stock : null;
+  const sessionWorkFailureCount =
+    workFailureOutcome?.internalOrderId === order.internalOrderId ? workFailureOutcome.lineCount : 0;
   const handleOrderEdited = (outputs: readonly EditOrderOutput[]): void => {
+    const workFailures = outputs.flatMap((output) =>
+      'workNarrowingFailures' in output && !output.dryRun ? (output.workNarrowingFailures ?? []) : [],
+    );
+    setWorkFailureOutcome(
+      workFailures.length > 0
+        ? { internalOrderId: order.internalOrderId, lineCount: workFailures.length }
+        : null,
+    );
     // The restore outcome is not persisted on the order, so it is held for this
     // session only; an edit without line changes reports none (E-52).
     const stock = outputs.flatMap((output) =>
@@ -617,6 +631,7 @@ export function OrderDetailPage(): ReactElement {
         sourceName={cancelSourceName}
         sessionDiscount={sessionDiscount}
         sessionStock={sessionStock}
+        sessionWorkFailureCount={sessionWorkFailureCount}
         onDiscountResent={handleOrderEdited}
         onConfirmed={() => {
           void queryClient.invalidateQueries({ queryKey: invoicingQueryKeys.all });

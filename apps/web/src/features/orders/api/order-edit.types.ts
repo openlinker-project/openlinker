@@ -183,6 +183,11 @@ export interface OrderEditLineStock {
   detail: string | null;
 }
 
+export interface OrderEditWorkNarrowingFailure {
+  orderLineId: string;
+  reason: string;
+}
+
 /** Result of the address / lines / delivery-method edits (and their dry runs). */
 export interface OrderEditResult {
   dryRun: boolean;
@@ -190,6 +195,8 @@ export interface OrderEditResult {
   changeId: string | null;
   view: OrderEditsView;
   stock: OrderEditLineStock[];
+  /** Lines whose packing work was not narrowed; the edit stays open and a retry finishes it. */
+  workNarrowingFailures?: OrderEditWorkNarrowingFailure[];
 }
 
 export const DiscountPaymentBranchValues = ['paid', 'cod', 'unpaid', 'unknown'] as const;
