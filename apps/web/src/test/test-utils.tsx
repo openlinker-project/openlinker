@@ -1,7 +1,7 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, screen, type RenderOptions, type RenderResult } from '@testing-library/react';
-import type { ReactElement } from 'react';
-import { MemoryRouter } from 'react-router-dom';
+import { createContext, useContext, type ReactElement, type ReactNode } from 'react';
+import { MemoryRouter, RouterProvider, createMemoryRouter } from 'react-router-dom';
 import { vi } from 'vitest';
 import type { ApiClient, CoreApiClient, PluginApiNamespaces } from '../app/api/api-client';
 import { ApiClientProvider } from '../app/api/api-client-provider';
@@ -31,6 +31,18 @@ interface RenderWithProvidersOptions extends Omit<RenderOptions, 'wrapper'> {
    * that need to assert registry-absent behavior or inject a fixture plugin.
    */
   plugins?: readonly OpenLinkerPlugin[];
+  /**
+   * Mount under `createMemoryRouter` + `RouterProvider` instead of a plain
+   * `MemoryRouter`. Needed by anything that calls a data-router-only hook
+   * (`useBlocker`, `useNavigation`, ...), e.g. the bulk wizard's leave guard.
+   */
+  dataRouter?: boolean;
+}
+
+const DataRouterChildrenContext = createContext<ReactNode>(null);
+
+function DataRouterChildrenSlot(): ReactElement {
+  return <>{useContext(DataRouterChildrenContext)}</>;
 }
 
 export const sampleConnection: Connection = {
@@ -1322,8 +1334,16 @@ export function renderWithProviders(
     route = '/',
     sessionAdapter = createNoopSessionAdapter(),
     plugins = inTreePlugins,
+    dataRouter = false,
     ...renderOptions
   } = options;
+  // One router per render so a rerender keeps navigation state; the children
+  // reach it through context rather than through a route element captured once.
+  const router = dataRouter
+    ? createMemoryRouter([{ path: '*', element: <DataRouterChildrenSlot /> }], {
+        initialEntries: [route],
+      })
+    : null;
   const queryClient = new QueryClient({
     defaultOptions: {
       queries: {
@@ -1339,24 +1359,31 @@ export function renderWithProviders(
 
   window.history.pushState({}, 'Test', route);
 
+  const withProviders = (children: ReactNode): ReactElement => (
+    <LocaleProvider>
+      <PluginRegistryProvider plugins={plugins}>
+        <SessionProvider adapter={sessionAdapter}>
+          <ToastProvider>
+            <TooltipProvider>
+              <ApiClientProvider client={apiClient}>
+                <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+              </ApiClientProvider>
+            </TooltipProvider>
+          </ToastProvider>
+        </SessionProvider>
+      </PluginRegistryProvider>
+    </LocaleProvider>
+  );
+
   return render(ui, {
-    wrapper: ({ children }) => (
-      <MemoryRouter initialEntries={[route]}>
-        <LocaleProvider>
-          <PluginRegistryProvider plugins={plugins}>
-            <SessionProvider adapter={sessionAdapter}>
-              <ToastProvider>
-                <TooltipProvider>
-                  <ApiClientProvider client={apiClient}>
-                    <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
-                  </ApiClientProvider>
-                </TooltipProvider>
-              </ToastProvider>
-            </SessionProvider>
-          </PluginRegistryProvider>
-        </LocaleProvider>
-      </MemoryRouter>
-    ),
+    wrapper: ({ children }) =>
+      router ? (
+        <DataRouterChildrenContext.Provider value={withProviders(children)}>
+          <RouterProvider router={router} />
+        </DataRouterChildrenContext.Provider>
+      ) : (
+        <MemoryRouter initialEntries={[route]}>{withProviders(children)}</MemoryRouter>
+      ),
     ...renderOptions,
   });
 }

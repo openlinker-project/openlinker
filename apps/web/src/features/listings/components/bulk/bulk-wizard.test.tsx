@@ -225,7 +225,7 @@ describe('BulkWizard — demo instrumentation (#1788)', () => {
         resolveConnectionName={() => 'My Allegro'}
         preselectedConnectionId="conn-1"
       />,
-      { apiClient },
+      { apiClient, dataRouter: true },
     );
 
     await screen.findByRole('option', { name: 'Courier 24h' }, { timeout: 5000 });
@@ -274,7 +274,7 @@ describe('BulkWizard — destination context (#2227)', () => {
         resolveConnectionName={() => 'My Allegro'}
         preselectedConnectionId="conn-1"
       />,
-      { apiClient },
+      { apiClient, dataRouter: true },
     );
 
     // Config IS the destination form: plain heading, no bar repeating the picker.
@@ -458,7 +458,7 @@ describe('BulkWizard — destinationResolvesCategoryAtSubmit (#2211)', () => {
         resolveConnectionName={() => 'Test destination'}
         preselectedConnectionId="conn-1"
       />,
-      { apiClient },
+      { apiClient, dataRouter: true },
     );
 
     const proceed = await screen.findByRole('button', { name: /Proceed/ }, { timeout: 5000 });

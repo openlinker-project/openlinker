@@ -17,8 +17,8 @@
  *
  * @module apps/web/src/features/listings/components/bulk
  */
-import { useCallback, useContext, useEffect, type ReactElement, type RefObject } from 'react';
-import { UNSAFE_DataRouterContext, useBlocker, type BlockerFunction } from 'react-router-dom';
+import { useCallback, useEffect, type ReactElement, type RefObject } from 'react';
+import { useBlocker, type BlockerFunction } from 'react-router-dom';
 import { ConfirmDialog } from '../../../../shared/ui';
 
 interface BulkWizardLeaveGuardProps {
@@ -28,7 +28,8 @@ interface BulkWizardLeaveGuardProps {
   released: RefObject<boolean>;
 }
 
-export function BulkWizardLeaveGuard({ active, released }: BulkWizardLeaveGuardProps): ReactElement | null {
+/** Needs a data router (`useBlocker` throws outside one); the app mounts `createBrowserRouter`. */
+export function BulkWizardLeaveGuard({ active, released }: BulkWizardLeaveGuardProps): ReactElement {
   useEffect(() => {
     if (!active) return;
     function handleBeforeUnload(event: BeforeUnloadEvent): void {
@@ -40,11 +41,7 @@ export function BulkWizardLeaveGuard({ active, released }: BulkWizardLeaveGuardP
     return () => window.removeEventListener('beforeunload', handleBeforeUnload);
   }, [active, released]);
 
-  // `useBlocker` throws outside a data router. The app always mounts one
-  // (`createBrowserRouter`), but the shared test wrapper is a plain
-  // `MemoryRouter`; there only the `beforeunload` half is meaningful.
-  const inDataRouter = useContext(UNSAFE_DataRouterContext) !== null;
-  return inDataRouter ? <NavigationBlocker active={active} released={released} /> : null;
+  return <NavigationBlocker active={active} released={released} />;
 }
 
 function NavigationBlocker({ active, released }: BulkWizardLeaveGuardProps): ReactElement {

@@ -1,10 +1,9 @@
 /**
  * BulkWizard leave guard through a real data router (#3851)
  *
- * The shared `renderWithProviders` wraps everything in a `MemoryRouter`, where
- * `useBlocker` is unavailable and only the `beforeunload` half of the guard
- * exists. These cases mount the real wizard under `createMemoryRouter` so the
- * in-app half is live, and pin the two ends that matter: an edited batch asks
+ * `useBlocker` only exists under a data router, so these cases mount the real
+ * wizard under `createMemoryRouter` (the shared `renderWithProviders` offers the
+ * same via `dataRouter: true`) and pin the two ends that matter: an edited batch asks
  * before the operator navigates away, and a submitted one does not ask before
  * the wizard's own navigation to the batch page.
  */
