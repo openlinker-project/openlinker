@@ -31,6 +31,11 @@ export class OrderEditLineStockDto {
   @ApiProperty({ nullable: true, type: String }) detail!: string | null;
 }
 
+export class OrderEditWorkNarrowingFailureDto {
+  @ApiProperty() orderLineId!: string;
+  @ApiProperty({ description: 'Why the packing work for this line was not narrowed.' }) reason!: string;
+}
+
 export class OrderEditsLineViewDto {
   @ApiProperty() orderLineId!: string;
   @ApiProperty({ description: 'What the channel reported.' }) channelQuantity!: number;
@@ -94,6 +99,13 @@ export class OrderEditResponseDto {
   @ApiProperty({ type: OrderEditsViewDto }) view!: OrderEditsViewDto;
   @ApiProperty({ type: [OrderEditLineStockDto], description: 'Lines edit only.' })
   stock!: OrderEditLineStockDto[];
+  @ApiProperty({
+    type: [OrderEditWorkNarrowingFailureDto],
+    description:
+      'Lines whose packing work could not be narrowed. The overlay is saved but the change stays open; ' +
+      'retrying the same edit finishes it.',
+  })
+  workNarrowingFailures!: OrderEditWorkNarrowingFailureDto[];
 
   static from(result: OrderEditResult): OrderEditResponseDto {
     return Object.assign(new OrderEditResponseDto(), {
@@ -101,6 +113,7 @@ export class OrderEditResponseDto {
       changeId: result.changeId,
       view: result.view,
       stock: [...result.stock],
+      workNarrowingFailures: [...result.workNarrowingFailures],
     });
   }
 }

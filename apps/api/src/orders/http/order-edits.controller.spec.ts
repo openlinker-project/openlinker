@@ -31,6 +31,7 @@ const result: OrderEditResult = {
     history: [],
   },
   stock: [{ orderLineId: 'l1', stockRestored: 'not-applicable', detail: null }],
+  workNarrowingFailures: [],
 };
 
 describe('OrderEditsController (#3542)', () => {

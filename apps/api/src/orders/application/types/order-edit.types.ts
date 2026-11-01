@@ -46,6 +46,12 @@ export interface OrderEditLineStock {
   readonly detail: string | null;
 }
 
+/** A lowered line whose packing work refused to narrow; the edit is left open to be retried. */
+export interface OrderEditWorkNarrowingFailure {
+  readonly orderLineId: string;
+  readonly reason: string;
+}
+
 export interface OrderEditsLineView {
   readonly orderLineId: string;
   readonly channelQuantity: number;
@@ -87,4 +93,6 @@ export interface OrderEditResult {
   readonly view: OrderEditsView;
   /** Lines edit only: per lowered line, whether the product master was given its stock back. */
   readonly stock: readonly OrderEditLineStock[];
+  /** Non-empty means the edit is saved but its change stays open: retry the edit to finish the packing work. */
+  readonly workNarrowingFailures: readonly OrderEditWorkNarrowingFailure[];
 }

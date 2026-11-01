@@ -62,7 +62,12 @@ import {
   type IInventorySaleReversalService,
   type IReservationService,
 } from '@openlinker/core/inventory';
-import { INVOICE_SERVICE_TOKEN, type IInvoiceService } from '@openlinker/core/invoicing';
+import {
+  INVOICE_ISSUE_LOCK_TTL_MS,
+  INVOICE_SERVICE_TOKEN,
+  invoiceIssueLockKey,
+  type IInvoiceService,
+} from '@openlinker/core/invoicing';
 import { INTEGRATIONS_SERVICE_TOKEN, type IIntegrationsService } from '@openlinker/core/integrations';
 import {
   addressEditTargetRef,
@@ -105,6 +110,7 @@ import type {
   EditOrderDeliveryMethodInput,
   EditOrderLinesInput,
   OrderEditLineStock,
+  OrderEditWorkNarrowingFailure,
   OrderEditResult,
   OrderEditsView,
 } from '../types/order-edit.types';
@@ -422,7 +428,31 @@ export class OrderEditService implements IOrderEditService {
       );
     }
     try {
-      return await this.runLocked(input, prepare, checksDocuments);
+      // The document gate and the overlay write must not straddle an issuance:
+      // `InvoiceService` serialises on its own per-order key, so the edit takes
+      // it too, always edit-then-invoice (nothing in the invoice path takes the
+      // edit lock, so the order cannot invert).
+      return checksDocuments
+        ? await this.withInvoiceIssueLock(input.internalOrderId, () =>
+            this.runLocked(input, prepare, checksDocuments)
+          )
+        : await this.runLocked(input, prepare, checksDocuments);
+    } finally {
+      await this.lock.release(key, token);
+    }
+  }
+
+  private async withInvoiceIssueLock<T>(internalOrderId: string, work: () => Promise<T>): Promise<T> {
+    const key = invoiceIssueLockKey(internalOrderId);
+    const token = await this.lock.acquire(key, INVOICE_ISSUE_LOCK_TTL_MS);
+    if (token === null) {
+      throw new OrderEditRefusedError(
+        'ORDER_EDIT_CONTENDED',
+        'A document is being issued for this order right now. Wait a moment and try the edit again.'
+      );
+    }
+    try {
+      return await work();
     } finally {
       await this.lock.release(key, token);
     }
@@ -457,6 +487,7 @@ export class OrderEditService implements IOrderEditService {
         changeId: null,
         view: await this.viewAfter(record, this.hypotheticalEdits(record, prepared)),
         stock: [],
+        workNarrowingFailures: [],
       };
     }
 
@@ -496,11 +527,21 @@ export class OrderEditService implements IOrderEditService {
       );
     }
 
-    const stock = await this.followUpLines(written, prepared, change.id);
+    const { stock, workNarrowingFailures } = await this.followUpLines(written, prepared, change.id);
 
-    const confirmed = await this.changes.confirm(change.id, `operator:${input.actorUserId ?? 'system'}`);
+    // A work that refused to narrow leaves the change open: the retry path
+    // (`findInterruptedLineEdit`) only recovers an OPEN change, so confirming here
+    // would close the one door through which the packing work gets finished.
+    const confirmed =
+      workNarrowingFailures.length === 0 &&
+      (await this.changes.confirm(change.id, `operator:${input.actorUserId ?? 'system'}`));
     if (confirmed) {
       await this.changes.claimApplied(change.id);
+    } else if (workNarrowingFailures.length > 0) {
+      this.logger.warn(
+        `Change ${change.id} of order ${input.internalOrderId} stays open: the packing work of ` +
+          `${workNarrowingFailures.length} line(s) was not narrowed; retrying the edit finishes it`
+      );
     } else {
       this.logger.warn(
         `Change ${change.id} was no longer open when confirming the ${prepared.kind} of order ` +
@@ -518,6 +559,7 @@ export class OrderEditService implements IOrderEditService {
       changeId: change.id,
       view: (await this.getEditsView(written)) as OrderEditsView,
       stock,
+      workNarrowingFailures,
     };
   }
 
@@ -582,8 +624,10 @@ export class OrderEditService implements IOrderEditService {
     changeId: string,
     actorUserId: string | null
   ): Promise<OrderEditResult> {
-    const stock = await this.followUpLines(record, prepared, changeId);
-    const confirmed = await this.changes.confirm(changeId, `operator:${actorUserId ?? 'system'}`);
+    const { stock, workNarrowingFailures } = await this.followUpLines(record, prepared, changeId);
+    const confirmed =
+      workNarrowingFailures.length === 0 &&
+      (await this.changes.confirm(changeId, `operator:${actorUserId ?? 'system'}`));
     if (confirmed) {
       await this.changes.claimApplied(changeId);
     }
@@ -596,6 +640,7 @@ export class OrderEditService implements IOrderEditService {
       changeId,
       view: (await this.getEditsView(record)) as OrderEditsView,
       stock,
+      workNarrowingFailures,
     };
   }
 
@@ -706,8 +751,9 @@ export class OrderEditService implements IOrderEditService {
   }
 
   private async hasIssuedDocument(record: OrderRecord): Promise<boolean> {
-    const latest = await this.invoices.getLatestInvoiceForOrder(record.internalOrderId);
-    if (latest !== null && latest.blocksIssuanceElsewhere) return true;
+    // Any blocking record, not the newest one: a newer rejected correction must
+    // not hide the issued invoice beneath it.
+    if ((await this.invoices.findBlockingInvoiceForOrder(record.internalOrderId)) !== null) return true;
     const registrations = await this.fiscal.getByOrderId(record.internalOrderId);
     return registrations.some((registration) => registration.blocksFurtherRegistration);
   }
@@ -720,9 +766,10 @@ export class OrderEditService implements IOrderEditService {
     written: OrderRecord,
     prepared: PreparedEdit,
     changeId: string
-  ): Promise<OrderEditLineStock[]> {
-    if (prepared.loweredLines.length === 0) return [];
+  ): Promise<{ stock: OrderEditLineStock[]; workNarrowingFailures: OrderEditWorkNarrowingFailure[] }> {
+    if (prepared.loweredLines.length === 0) return { stock: [], workNarrowingFailures: [] };
 
+    const workNarrowingFailures: OrderEditWorkNarrowingFailure[] = [];
     for (const line of prepared.loweredLines) {
       try {
         await this.fulfillmentEdit.lowerLineQuantity({
@@ -737,6 +784,10 @@ export class OrderEditService implements IOrderEditService {
           `Could not narrow the work for line ${line.orderLineId} of order ${written.internalOrderId}: ` +
             (error instanceof Error ? error.message : String(error))
         );
+        workNarrowingFailures.push({
+          orderLineId: line.orderLineId,
+          reason: error instanceof Error ? error.message : String(error),
+        });
       }
     }
 
@@ -778,7 +829,7 @@ export class OrderEditService implements IOrderEditService {
         });
       }
     }
-    return stock;
+    return { stock, workNarrowingFailures };
   }
 
   private stampChange(

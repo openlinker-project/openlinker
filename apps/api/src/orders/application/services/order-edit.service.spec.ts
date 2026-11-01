@@ -63,7 +63,7 @@ describe('OrderEditService (#3542)', () => {
   let orderRecords: jest.Mocked<Pick<IOrderRecordService, 'getOrderRecord' | 'applyOrderEdit'>>;
   let changes: jest.Mocked<IOrderChangeService>;
   let shipments: jest.Mocked<Pick<IShipmentQueryService, 'getOutboundByOrderId'>>;
-  let invoices: jest.Mocked<Pick<IInvoiceService, 'getLatestInvoiceForOrder'>>;
+  let invoices: jest.Mocked<Pick<IInvoiceService, 'findBlockingInvoiceForOrder'>>;
   let fiscal: jest.Mocked<Pick<IFiscalRegistrationService, 'getByOrderId'>>;
   let fulfillment: jest.Mocked<IFulfillmentOrderEditService>;
   let reservations: jest.Mocked<Pick<IReservationService, 'narrowForOrder'>>;
@@ -103,7 +103,7 @@ describe('OrderEditService (#3542)', () => {
       findByOrderAndKinds: jest.fn().mockResolvedValue([]),
     } as unknown as jest.Mocked<IOrderChangeService>;
     shipments = { getOutboundByOrderId: jest.fn().mockResolvedValue([]) };
-    invoices = { getLatestInvoiceForOrder: jest.fn().mockResolvedValue(null) };
+    invoices = { findBlockingInvoiceForOrder: jest.fn().mockResolvedValue(null) };
     fiscal = { getByOrderId: jest.fn().mockResolvedValue([]) };
     fulfillment = {
       assessForEdit: jest.fn().mockResolvedValue(assessment()),
@@ -436,12 +436,56 @@ describe('OrderEditService (#3542)', () => {
     });
 
     it('should refuse once a sales document is issued', async () => {
-      invoices.getLatestInvoiceForOrder.mockResolvedValue({ blocksIssuanceElsewhere: true } as never);
+      invoices.findBlockingInvoiceForOrder.mockResolvedValue({ blocksIssuanceElsewhere: true } as never);
       expect(await refusal(service.editLines(lowerL1))).toBe('SALES_DOCUMENT_ISSUED');
 
-      invoices.getLatestInvoiceForOrder.mockResolvedValue(null);
+      invoices.findBlockingInvoiceForOrder.mockResolvedValue(null);
       fiscal.getByOrderId.mockResolvedValue([{ blocksFurtherRegistration: true }] as never);
       expect(await refusal(service.editLines(lowerL1))).toBe('SALES_DOCUMENT_ISSUED');
+    });
+
+    it('should read blocking records, not the newest, so a later rejected correction cannot unblock the edit', async () => {
+      // The newest record is a rejected correction (non-blocking); the issued
+      // invoice beneath it still blocks, and only the blocking read sees it.
+      invoices.findBlockingInvoiceForOrder.mockResolvedValue({ blocksIssuanceElsewhere: true } as never);
+
+      expect(await refusal(service.editLines(lowerL1))).toBe('SALES_DOCUMENT_ISSUED');
+      expect(invoices.findBlockingInvoiceForOrder).toHaveBeenCalledWith(ORDER_ID);
+    });
+
+    it('should write nothing when an issuance holds the invoice lock', async () => {
+      lock.acquire.mockImplementation((key: string) =>
+        Promise.resolve(key.startsWith('invoice:issue:') ? null : 'token')
+      );
+
+      expect(await refusal(service.editLines(lowerL1))).toBe('ORDER_EDIT_CONTENDED');
+      expect(orderRecords.applyOrderEdit).not.toHaveBeenCalled();
+      expect(lock.release).toHaveBeenCalledTimes(1);
+    });
+
+    it('should leave the change open and report the line when the work cannot be narrowed, then finish on retry', async () => {
+      fulfillment.lowerLineQuantity.mockRejectedValueOnce(new Error('units already fulfilled'));
+
+      const result = await service.editLines(lowerL1);
+
+      expect(result.workNarrowingFailures).toEqual([{ orderLineId: 'l1', reason: 'units already fulfilled' }]);
+      expect(changes.confirm).not.toHaveBeenCalled();
+      expect(changes.claimApplied).not.toHaveBeenCalled();
+
+      const crashed = new OrderChange(
+        'chg-9', ORDER_ID, 'order.line_quantity_change', `edit:lines:${ORDER_ID}`, 'requested',
+        { lines: [{ orderLineId: 'l1', to: 1, removed: 2 }] },
+        'user-1', new Date(), null, null, null, null, new Date(), new Date()
+      );
+      orderRecords.getOrderRecord.mockResolvedValue(
+        record({ orderEdits: { v: 1, rev: 1, lines: { l1: { changeId: 'chg-9', editedAt: new Date().toISOString(), editedBy: null, quantity: 1 } } } })
+      );
+      changes.findByOrderAndKinds.mockResolvedValue([crashed]);
+
+      const retried = await service.editLines(lowerL1);
+
+      expect(retried.workNarrowingFailures).toEqual([]);
+      expect(changes.confirm).toHaveBeenCalledWith('chg-9', expect.any(String));
     });
 
     it('should refuse to go below what is already picked', async () => {
