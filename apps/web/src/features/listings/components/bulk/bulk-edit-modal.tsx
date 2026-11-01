@@ -1419,6 +1419,7 @@ function BulkEditModalForm({
                       baseCategoryPathNames={displayPathNames}
                       categoryParameters={renderableCategoryParameters}
                       ownCategoryParameters={ownVariantSchema(v.variantId)}
+                      autoFilledParams={autoFilledParams[v.variantId]}
                       ownCategoryParametersFailed={ownVariantSchemaFailed(v.variantId)}
                       onRetryOwnCategoryParameters={() => retryOwnVariantSchema(v.variantId)}
                       duplicateEan={dupEanIds.has(v.variantId)}
@@ -2226,6 +2227,12 @@ interface VariantScopeFormProps {
    * bouncing back to this scope with nothing to act on (#1950 review).
    */
   ownCategoryParametersFailed: boolean;
+  /**
+   * Values the editor filled from this variant's attributes (#3851), by
+   * parameter id. A parameter still holding exactly its filled value is
+   * marked as unsaved; once the operator edits it the mark goes.
+   */
+  autoFilledParams?: CategoryParameterFormValues;
   onRetryOwnCategoryParameters: () => void;
   duplicateEan: boolean;
   /** Opens the shared zoom lightbox for an image url (always allowed, #1741). */
@@ -2264,6 +2271,7 @@ function VariantScopeForm({
   categoryParameters,
   ownCategoryParameters,
   ownCategoryParametersFailed,
+  autoFilledParams,
   onRetryOwnCategoryParameters,
   duplicateEan,
   onZoom,
@@ -2393,6 +2401,28 @@ function VariantScopeForm({
   // combobox, number, or text). `opts.splitBadge` / `opts.onReset` customise the
   // provenance chip + reset for an unlocked base-only grouping param (#1741).
   const renderEditableParamControl = (
+    param: CategoryParameter,
+    opts?: { splitBadge?: boolean; onReset?: () => void },
+  ): ReactElement => {
+    const control = renderEditableParamField(param, opts);
+    // Shown only while the value is still exactly what the prefill wrote: the
+    // fill lives in unsaved editor state, so without the hint it reads like a
+    // saved value and closing the editor would quietly lose it.
+    const filled = autoFilledParams?.[param.id];
+    const stillPrefilled =
+      filled !== undefined && JSON.stringify(edit.params[param.id]) === JSON.stringify(filled);
+    if (!stillPrefilled) return control;
+    return (
+      <Fragment key={param.id}>
+        {control}
+        <div className="hint" style={{ color: 'var(--text-muted)', fontSize: 12 }}>
+          Filled from the variant&apos;s attributes - save to keep it.
+        </div>
+      </Fragment>
+    );
+  };
+
+  const renderEditableParamField = (
     param: CategoryParameter,
     opts?: { splitBadge?: boolean; onReset?: () => void },
   ): ReactElement => {

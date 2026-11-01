@@ -1319,6 +1319,51 @@ describe('BulkEditModal', () => {
         expect(onOpenChange).toHaveBeenCalledWith(false);
         expect(screen.queryByText('Discard changes?')).not.toBeInTheDocument();
       });
+
+      describe('prefill hint', () => {
+        const HINT = "Filled from the variant's attributes - save to keep it.";
+
+        function renderFocused(row: BulkWizardRow): void {
+          renderWithProviders(
+            <BulkEditModal
+              open
+              onOpenChange={() => undefined}
+              row={row}
+              connection={connection}
+              canBrowseCategories={true}
+              currency="PLN"
+              defaults={DEFAULTS}
+              focusVariantId="var_m"
+              onSave={() => undefined}
+            />,
+          );
+        }
+
+        it('shows the hint beside a prefilled value and drops it once the operator edits it', async () => {
+          mockCategoryParameters = [
+            { ...sizeParam, dictionary: [...sizeParam.dictionary, { id: 'r_l', value: 'l' }] },
+          ];
+          renderFocused(rowInBaseCategory());
+          const select = await screen.findByLabelText('Rozmiar for Rozmiar: M');
+          await waitFor(() => { expect(select).toHaveValue('r_m'); });
+          expect(screen.getByText(HINT)).toBeInTheDocument();
+
+          fireEvent.change(select, { target: { value: 'r_l' } });
+
+          await waitFor(() => { expect(screen.queryByText(HINT)).not.toBeInTheDocument(); });
+        });
+
+        it('does not show the hint for a value the shared base carries', async () => {
+          mockCategoryParameters = [sizeParam];
+          renderFocused({
+            ...rowInBaseCategory(),
+            editFormValues: { parameters: { p_rozmiar: 'r_m' } },
+          });
+          await screen.findByLabelText('Rozmiar for Rozmiar: M');
+
+          expect(screen.queryByText(HINT)).not.toBeInTheDocument();
+        });
+      });
     });
 
     describe('grouping-param per-variant override (#1741)', () => {
