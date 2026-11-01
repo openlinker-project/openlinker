@@ -296,7 +296,10 @@ describe('ProductVariantRepository cost (#3588)', () => {
 
     const saved = (ormRepo.save.mock.calls as ProductVariantOrmEntity[][])[0][0];
     for (const key of ['netUnitCost', 'costCurrency', 'costUpdatedAt', 'costUpdatedByUserId']) {
-      expect(Object.keys(saved)).not.toContain(key);
+      // The compiled entity class declares every column as an own property, so a
+      // key-presence check cannot work; `undefined` is what TypeORM's save skips,
+      // i.e. the column is left untouched.
+      expect((saved as unknown as Record<string, unknown>)[key]).toBeUndefined();
     }
   });
 

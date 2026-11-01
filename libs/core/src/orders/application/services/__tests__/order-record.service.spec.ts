@@ -895,6 +895,8 @@ describe('OrderRecordService', () => {
             taxRate: null,
             taxSource: null,
             taxRateReadAt: null,
+            // #3588 (D27) - no candidate was supplied, so the line is `not-recorded`, never zero.
+            cost: { costState: 'not-recorded', unitCostNet: null, unitCostCurrency: null },
           },
         ]);
       });

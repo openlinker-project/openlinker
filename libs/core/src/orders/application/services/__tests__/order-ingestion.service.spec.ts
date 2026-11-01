@@ -936,6 +936,11 @@ describe('OrderIngestionService', () => {
         } as never);
         orderSource.getOrder.mockResolvedValue({
           ...baseIncoming,
+          // Two lines on one variant: the lookup must still be de-duplicated.
+          items: [
+            { id: 'line-1', productRef: { type: 'variant' as const, externalId: 'ext-v1' }, quantity: 1, price: 10 },
+            { id: 'line-2', productRef: { type: 'variant' as const, externalId: 'ext-v1' }, quantity: 1, price: 10 },
+          ],
           placedAt: '2026-05-31T16:00:00.000Z',
         });
       });
@@ -968,6 +973,7 @@ describe('OrderIngestionService', () => {
       it('should compare at second granularity: a cost saved within the order second is recorded', async () => {
         orderSource.getOrder.mockResolvedValue({
           ...baseIncoming,
+          items: [{ id: 'line-1', productRef: { type: 'variant' as const, externalId: 'ext-v1' }, quantity: 1, price: 10 }],
           placedAt: '2026-05-31T10:00:00.000Z',
         });
         productsService.getVariantsByIds.mockResolvedValue([
@@ -983,6 +989,7 @@ describe('OrderIngestionService', () => {
       it('should not record a cost saved in the second after the order', async () => {
         orderSource.getOrder.mockResolvedValue({
           ...baseIncoming,
+          items: [{ id: 'line-1', productRef: { type: 'variant' as const, externalId: 'ext-v1' }, quantity: 1, price: 10 }],
           placedAt: '2026-05-31T10:00:00.000Z',
         });
         productsService.getVariantsByIds.mockResolvedValue([

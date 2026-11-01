@@ -54,7 +54,7 @@ const channel = (id: string, revenue: number, net: number, share: number): Sales
 });
 
 const analytics = {
-  headline: { currency: 'PLN' },
+  headline: { currency: 'PLN', trend: [] },
   channels: [channel('conn-a', 1000, 800, 0.6), channel('conn-b', 500, 400, 0.4)],
 } as unknown as SalesAndChannelAnalytics;
 
