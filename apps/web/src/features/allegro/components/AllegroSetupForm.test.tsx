@@ -250,7 +250,7 @@ describe('AllegroSetupForm', () => {
       expect(
         await within(container).findByRole('button', { name: '+ Add a country' })
       ).toBeInTheDocument();
-      expect(within(container).getByText('All other countries')).toBeInTheDocument();
+      expect(within(container).getByRole('table')).toHaveTextContent('All other countries');
       expect(
         container.querySelector('aside[aria-label="Setup summary"]')
       ).toHaveTextContent('Delivery on documents');

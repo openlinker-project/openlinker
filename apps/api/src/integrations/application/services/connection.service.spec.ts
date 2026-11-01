@@ -567,6 +567,7 @@ describe('ConnectionService', () => {
       });
 
       it('should accept a well-formed value', async () => {
+        connectionPort.create.mockResolvedValue(mockConnection);
         await expect(
           service.create({
             ...base,

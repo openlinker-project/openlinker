@@ -92,8 +92,12 @@ describe('DeliveryOnDocumentsPanel', () => {
     renderPanel(api);
 
     fireEvent.click(await screen.findByRole('button', { name: '+ Add a country' }));
-    const combobox = await screen.findByRole('combobox');
-    fireEvent.change(combobox, { target: { value: 'Pol' } });
+    // The trigger is a button; the list opens on click and filters through its
+    // own search input, which keeps it below the virtualisation threshold.
+    fireEvent.click(await screen.findByRole('combobox'));
+    const search = document.querySelector<HTMLInputElement>('input.combobox__search');
+    if (!search) throw new Error('combobox search input not rendered');
+    fireEvent.change(search, { target: { value: 'Pol' } });
     fireEvent.click(await screen.findByRole('option', { name: /Poland/ }));
     fireEvent.click(await screen.findByRole('button', { name: 'Add country' }));
 
@@ -142,7 +146,8 @@ describe('DeliveryOnDocumentsPanel', () => {
     await waitFor(() => expect(update).toHaveBeenCalled());
     const body = update.mock.calls[0][1] as { config: Record<string, unknown> };
     expect(body.config.salesDocument).toEqual({ documentKind: 'invoice' });
-    expect(body.config.deliveryOnDocuments).toBeUndefined();
+    // The other-countries row stays as the explicit default; Poland is gone.
+    expect(body.config.deliveryOnDocuments).toMatchObject({ countries: {} });
   });
 
   it('should still render the table when suggestions and country facts fail', async () => {

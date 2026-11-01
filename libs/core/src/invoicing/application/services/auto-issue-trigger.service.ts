@@ -1633,7 +1633,9 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
    */
   private async loadSourceConnection(sourceConnectionId: string): Promise<Connection | null> {
     try {
-      return await this.connectionPort.get(sourceConnectionId);
+      // A port that answers with nothing is the same as no connection, never a
+      // value to dereference.
+      return (await this.connectionPort.get(sourceConnectionId)) ?? null;
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       this.logger.debug(

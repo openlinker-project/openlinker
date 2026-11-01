@@ -31,7 +31,11 @@ import {
 const TERMINAL = ['FINISHED', 'FINISHED_APT', 'REJECTED', 'COMMISSION_REFUNDED'];
 const CURSOR_KEY = 'allegro.customerReturns.scanOffset';
 
-function observation(id: string, rawStatus: string, createdAt = '2026-08-01T09:00:00.000Z') {
+// Relative, never a calendar date: the sweep's age bound measures from now, so
+// a fixed date silently aged out of the window and failed every case at once.
+const TEN_DAYS_AGO = new Date(Date.now() - 10 * 24 * 60 * 60 * 1000).toISOString();
+
+function observation(id: string, rawStatus: string, createdAt = TEN_DAYS_AGO) {
   return {
     externalReturnId: id,
     externalOrderId: null,
