@@ -511,7 +511,7 @@ describe('BulkListingSubmitService', () => {
       inventoryQuery.getAvailabilityByVariantIds.mockResolvedValue([
         { productVariantId: 'v-a', totalAvailable: 10, locationCount: 1, positionCount: 1, availableToPromise: 10 },
         { productVariantId: 'v-b', totalAvailable: 5, locationCount: 1, positionCount: 1, availableToPromise: 5 },
-        { productVariantId: 'v-c', totalAvailable: 0, locationCount: 0, positionCount: 0, availableToPromise: 0 },
+        { productVariantId: 'v-c', totalAvailable: 0, locationCount: 1, positionCount: 1, availableToPromise: 0 },
       ]);
 
       const result = await service.submit({
@@ -1287,6 +1287,84 @@ describe('BulkListingSubmitService', () => {
       ).rejects.toBeInstanceOf(InvalidOverrideKeyException);
 
       expect(bulkBatchRepo.create).not.toHaveBeenCalled();
+    });
+    describe('sibling with no inventory position (#3851)', () => {
+      const wireFamily = (
+        rows: Array<{ id: string; positionCount: number; atp: number }>
+      ): void => {
+        const built = rows.map((r, i) =>
+          variant({ id: r.id, productId: 'P', ean: String(111 * (i + 1)) })
+        );
+        products.getVariant.mockResolvedValue(built[0]);
+        products.getVariantsByProductId.mockResolvedValue(built);
+        inventoryQuery.getAvailabilityByVariantIds.mockResolvedValue(
+          rows.map((r) => ({
+            productVariantId: r.id,
+            totalAvailable: r.atp,
+            locationCount: r.positionCount,
+            positionCount: r.positionCount,
+            availableToPromise: r.atp,
+          }))
+        );
+      };
+
+      it('should leave out an unpositioned sibling and list the rest', async () => {
+        wireFamily([
+          { id: 'v-a', positionCount: 1, atp: 10 },
+          { id: 'v-b', positionCount: 0, atp: 0 },
+        ]);
+
+        const result = await service.submit({
+          connectionId,
+          initiatedBy,
+          productIds: ['v-a'],
+          sharedConfig: { stock: 7, publishImmediately: false },
+        });
+
+        expect(enqueueService.enqueueCreation).toHaveBeenCalledTimes(1);
+        expect(enqueueService.enqueueCreation.mock.calls[0][0]).toMatchObject({
+          internalVariantId: 'v-a',
+          stock: 10,
+        });
+        expect(result.skippedAvailabilityUnknownCount).toBe(1);
+      });
+
+      it('should still list a positioned sibling reporting 0 at 0', async () => {
+        wireFamily([
+          { id: 'v-a', positionCount: 1, atp: 3 },
+          { id: 'v-b', positionCount: 1, atp: 0 },
+        ]);
+
+        const result = await service.submit({
+          connectionId,
+          initiatedBy,
+          productIds: ['v-a'],
+          sharedConfig: { stock: 7, publishImmediately: false },
+        });
+
+        expect(enqueueService.enqueueCreation).toHaveBeenCalledTimes(2);
+        expect(enqueueService.enqueueCreation.mock.calls[1][0]).toMatchObject({
+          internalVariantId: 'v-b',
+          stock: 0,
+        });
+        expect(result.skippedAvailabilityUnknownCount).toBe(0);
+      });
+
+      it('should name an unsynced stock when every sibling lacks a position', async () => {
+        wireFamily([
+          { id: 'v-a', positionCount: 0, atp: 0 },
+          { id: 'v-b', positionCount: 0, atp: 0 },
+        ]);
+
+        await expect(
+          service.submit({
+            connectionId,
+            initiatedBy,
+            productIds: ['v-a'],
+            sharedConfig: { stock: 7, publishImmediately: false },
+          })
+        ).rejects.toBeInstanceOf(MasterStockNotSyncedException);
+      });
     });
   });
 

@@ -643,10 +643,12 @@ export function toGtin14(code: string): string {
 /**
  * Stock blockers for a multi-variant sibling. Its stock is the master's,
  * authoritative and read-only (#823/#824, plan §11) whatever the batch policy
- * says, so a KNOWN 0 lists it out of stock rather than blocking. A stock
- * OpenLinker does not have at all (#3851) is different: the backend would list
- * it at 0 too, as a draft the operator never asked for, so it blocks - under
- * every policy, because none of them reaches a sibling's offer.
+ * says, so a KNOWN 0 (a position reporting 0) lists it out of stock rather than
+ * blocking. A stock OpenLinker does not have at all (#3851, no inventory
+ * position) is different: it is a 0 nobody observed, so it blocks - under every
+ * policy, because none of them reaches a sibling's offer. The backend applies
+ * the same rule (`isUnknownStock` in `BulkListingSubmitService`) and excludes
+ * such a sibling instead of listing it as a 0-stock draft.
  *
  * Shared by the Resolve step and `recomputeVariantBlockers` so the two cannot
  * disagree about a sibling.

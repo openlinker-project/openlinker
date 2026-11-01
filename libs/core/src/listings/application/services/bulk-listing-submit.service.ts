@@ -264,10 +264,15 @@ export class BulkListingSubmitService implements IBulkListingSubmitService {
     // (`stockFromMaster`) is held to the same rule, and additionally to having
     // an inventory position at all: the zero-filled answer for a variant the
     // stock sync has not reached yet is a 0 nobody observed, and the client's
-    // figure for it was that same 0. Expanded siblings keep reading a missing
-    // position as a known 0 (#1741); only the client-resolved path is narrowed.
+    // figure for it was that same 0. An expanded sibling is held to the same
+    // rule: a sibling with no position is a 0 nobody observed, whereas a
+    // sibling WITH a position reporting 0 is a known zero and still lists at 0
+    // (#1741). The frontend blocks the unpositioned case too
+    // (`siblingStockBlockers`); this is the server-side backing for it.
     const isUnknownStock = (job: ExpandedVariantJob): boolean => {
-      if (job.useMasterStock) return !masterStock.has(job.variantId);
+      if (job.useMasterStock) {
+        return !masterStock.has(job.variantId) || unpositioned.has(job.variantId);
+      }
       if (job.stockFromMaster === true) {
         return !masterStock.has(job.variantId) || unpositioned.has(job.variantId);
       }
@@ -850,9 +855,9 @@ export class BulkListingSubmitService implements IBulkListingSubmitService {
    * such variants from the batch rather than listing them at a guessed number.
    *
    * `unpositioned` names the variants with no live inventory position (#3851):
-   * the read zero-fills them as a known 0, which is right for a sibling and for
-   * propagation, so it stays in the map; a caller that must tell "the master
-   * says 0" from "the stock sync has not reached it" reads this set.
+   * the read zero-fills them as a known 0, which is right for propagation, so
+   * it stays in the map; a publishing caller that must tell "the master says 0"
+   * from "the stock sync has not reached it" reads this set.
    */
   private async resolveMasterStock(
     variantIds: string[]
