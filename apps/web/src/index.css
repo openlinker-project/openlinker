@@ -30992,6 +30992,20 @@ legend.analytics-settings-dialog__label {
   white-space: nowrap;
 }
 
+/* Badges stay on one line; the table scrolls instead of squeezing a pill. */
+.stock-movements-table .chip,
+.stock-movements-table .status-badge,
+.stock-movement__promised-badge,
+[data-testid='stock-movements-table'] .chip,
+[data-testid='stock-movements-table'] .status-badge {
+  white-space: nowrap;
+}
+
+.stock-movements-table td:has(> .chip),
+.stock-movements-table td:has(> .status-badge) {
+  min-width: 11rem;
+}
+
 .stock-movement-chip--muted {
   border-style: dashed;
   opacity: 0.85;
