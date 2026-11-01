@@ -944,9 +944,23 @@ describe('OrderCancellationService (#3540)', () => {
     it('should refuse a discount correction when a later correction was already issued (B-31)', async () => {
       changes.findById.mockResolvedValue(correctionChange());
       invoices.getInvoiceById.mockResolvedValue(invoice());
-      invoices.getLatestInvoiceForOrder.mockResolvedValue(
-        invoice({ id: 'inv-9', createdAt: new Date('2026-09-05T00:00:00.000Z') })
-      );
+      invoices.listInvoicesForOrders.mockResolvedValue([
+        invoice({ id: 'inv-9', createdAt: new Date('2026-09-05T00:00:00.000Z') }),
+        invoice(),
+      ]);
+
+      expect(await refusal(service.confirmChange(confirmInput))).toBe('CORRECTION_SUPERSEDED');
+      expect(invoices.issueCorrection).not.toHaveBeenCalled();
+    });
+
+    it('should still see an issued later correction hidden behind a newer rejected one (B-31)', async () => {
+      changes.findById.mockResolvedValue(correctionChange());
+      invoices.getInvoiceById.mockResolvedValue(invoice());
+      invoices.listInvoicesForOrders.mockResolvedValue([
+        invoice({ id: 'inv-rej', status: 'failed', createdAt: new Date('2026-09-06T00:00:00.000Z') }),
+        invoice({ id: 'inv-9', createdAt: new Date('2026-09-05T00:00:00.000Z') }),
+        invoice(),
+      ]);
 
       expect(await refusal(service.confirmChange(confirmInput))).toBe('CORRECTION_SUPERSEDED');
       expect(invoices.issueCorrection).not.toHaveBeenCalled();

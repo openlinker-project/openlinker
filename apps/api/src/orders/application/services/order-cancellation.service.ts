@@ -741,13 +741,16 @@ export class OrderCancellationService implements IOrderCancellationService {
     ownKey: string
   ): Promise<void> {
     const order = await this.orderRecords.getOrderRecord(internalOrderId);
-    const latest = await this.invoices.getLatestInvoiceForOrder(internalOrderId);
-    const laterIssued =
-      latest !== null &&
-      latest.id !== invoice.id &&
-      latest.idempotencyKey !== ownKey &&
-      latest.status === 'issued' &&
-      latest.createdAt.getTime() > invoice.createdAt.getTime();
+    // Every record, not the newest: a later rejected correction would otherwise
+    // hide an issued one beneath it and the proposal would correct twice.
+    const records = await this.invoices.listInvoicesForOrders([internalOrderId]);
+    const laterIssued = records.some(
+      (record) =>
+        record.id !== invoice.id &&
+        record.idempotencyKey !== ownKey &&
+        record.status === 'issued' &&
+        record.createdAt.getTime() > invoice.createdAt.getTime()
+    );
     if ((order !== null && order.cancelledAt !== null) || laterIssued) {
       // decline() only moves a `requested` row; abandon covers every open status.
       const declined = await this.changes.decline(change.id, 'correction-superseded');
