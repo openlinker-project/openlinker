@@ -290,10 +290,10 @@ function toFiscalLine(item: OrderItem, orderId: string): FiscalTransactionLine {
  * A receipt registers what was paid, so it never carries a zero delivery line
  * (ADR-079 decision 7) - `freeDelivery` is an invoice-only setting.
  *
- * Every delivery line NAMES its rate (ADR-079 decision 4). A fiscal printer
+ * Every delivery line NAMES its rate (ADR-079 decision 4). A fiscal device
  * binds a name to one rate and refuses it for good once the rate goes up after
- * it went down, so one name at two rates on a mixed basket is what produced
- * eparagony's errorCode 83; a name that changes with the rate cannot.
+ * it went down, so one name at two rates on a mixed basket gets the whole
+ * registration rejected; a name that changes with the rate cannot.
  *
  * Shipping inherits the basket's rate in `goods` mode, and a mixed-rate basket
  * splits it in proportion to line gross so the parts sum exactly to what the
@@ -314,7 +314,12 @@ function applyDelivery(
   if (delivery.rate === 'fixed' && delivery.fixedRate !== undefined) {
     return [
       {
-        name: formatReceiptLineName(delivery.name, delivery.fixedRate, delivery.rateFormat),
+        name: formatReceiptLineName(
+          delivery.name,
+          delivery.fixedRate,
+          delivery.rateFormat,
+          delivery.rateLabel,
+        ),
         quantity: 1,
         unitPriceGross: shipping,
         taxRate: delivery.fixedRate,
@@ -347,7 +352,12 @@ function applyDelivery(
     const sourceRate = order.totals.shippingTaxRate?.trim() ?? '';
     return [
       {
-        name: formatReceiptLineName(delivery.name, sourceRate, delivery.rateFormat),
+        name: formatReceiptLineName(
+          delivery.name,
+          sourceRate,
+          delivery.rateFormat,
+          delivery.rateLabel,
+        ),
         quantity: 1,
         unitPriceGross: shipping,
         taxRate: sourceRate,
@@ -357,7 +367,12 @@ function applyDelivery(
   }
 
   return parts.map((part) => ({
-    name: formatReceiptLineName(delivery.name, part.taxRate, delivery.rateFormat),
+    name: formatReceiptLineName(
+          delivery.name,
+          part.taxRate,
+          delivery.rateFormat,
+          delivery.rateLabel,
+        ),
     quantity: 1,
     unitPriceGross: part.amount,
     taxRate: part.taxRate,

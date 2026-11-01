@@ -19,7 +19,7 @@
 export const DELIVERY_ON_DOCUMENTS_CONFIG_KEY = 'deliveryOnDocuments';
 
 /**
- * How the delivery line's VAT rate is decided.
+ * How the delivery line's tax rate is decided.
  *
  * - `goods`: follows the basket, split in proportion to gross (ADR-063 § 5).
  * - `fixed`: one line at the operator's `fixedRate`, no split.
@@ -32,8 +32,12 @@ export type DeliveryLineRateMode = (typeof DeliveryLineRateModeValues)[number];
 export const DeliveryLineFreeModeValues = ['omit', 'show'] as const;
 export type DeliveryLineFreeMode = (typeof DeliveryLineFreeModeValues)[number];
 
-/** How a receipt line name carries its rate: `Name 23%`, `Name (23%)`, `Name VAT 23%`. */
-export const DeliveryLineRateFormatValues = ['plain', 'brackets', 'vat'] as const;
+/**
+ * How a receipt line name carries its rate: `Name 23%`, `Name (23%)`, or
+ * `Name <label> 23%` where the operator supplies the label (`rateLabel`). The
+ * label is data, never a word core knows: tax names differ by country.
+ */
+export const DeliveryLineRateFormatValues = ['plain', 'brackets', 'labelled'] as const;
 export type DeliveryLineRateFormat = (typeof DeliveryLineRateFormatValues)[number];
 
 /** One row of settings, as the operator authored it. */
@@ -44,6 +48,8 @@ export interface DeliveryLineSettings {
   fixedRate?: string;
   freeDelivery: DeliveryLineFreeMode;
   rateFormat: DeliveryLineRateFormat;
+  /** The word printed before the rate in `labelled` format. Required for it. */
+  rateLabel?: string;
   /** Invoice wording; the invoice never carries a rate suffix. Falls back to `name`. */
   invoiceName?: string | null;
   /** Per delivery-method names, keyed by `order.shipping.methodId`. */
@@ -67,39 +73,45 @@ export interface ResolvedDeliveryLine {
   fixedRate?: string;
   freeDelivery: DeliveryLineFreeMode;
   rateFormat: DeliveryLineRateFormat;
+  rateLabel?: string;
 }
 
 /** Name used when neither configuration nor the legacy key names the line. */
 export const DEFAULT_DELIVERY_LINE_NAME = 'Shipping';
 
 /**
- * The most characters a fiscal printer compares in a line name (Dz.U. 2024
+ * The most characters a fiscal device compares in a line name (Dz.U. 2024
  * poz. 1654). The limit applies to the name WITH its rate suffix.
  */
 export const MAX_RECEIPT_LINE_NAME = 40;
 
 /**
  * Characters the rate suffix takes for an ordinary two-digit whole rate
- * (`23%`): ` 23%` = 4, ` (23%)` = 6, ` VAT 23%` = 8. The budget is a fixed rule
+ * (`23%`): ` 23%` = 4, ` (23%)` = 6, and ` 23%` plus the label and a space for
+ * `labelled`. The budget is a fixed rule
  * rather than measured per order because the name is authored once, before any
  * order exists; a fractional rate (` 23.5%`) can exceed it, which is why the
- * formatter never truncates and the printer-side check is the adapter's.
+ * formatter never truncates and the device-side check is the adapter's.
  */
 const SUFFIX_RESERVE: Record<DeliveryLineRateFormat, number> = {
   plain: 4,
   brackets: 6,
-  vat: 8,
+  labelled: 4,
 };
 
-/** The longest name an operator may author for a given suffix format (36 / 34 / 32). */
-export function maxDeliveryLineNameLength(format: DeliveryLineRateFormat): number {
-  return MAX_RECEIPT_LINE_NAME - SUFFIX_RESERVE[format];
+/** The longest name an operator may author for a given suffix format (36 / 34, less the label). */
+export function maxDeliveryLineNameLength(
+  format: DeliveryLineRateFormat,
+  rateLabel?: string | null,
+): number {
+  const label = format === 'labelled' && typeof rateLabel === 'string' ? rateLabel.trim() : '';
+  return MAX_RECEIPT_LINE_NAME - SUFFIX_RESERVE[format] - (label === '' ? 0 : label.length + 1);
 }
 
 /**
  * Compose a receipt line name that states its rate.
  *
- * A fiscal printer binds a name to one rate, so the name must change when the
+ * A fiscal device binds a name to one rate, so the name must change when the
  * rate does. A numeric code gets a percent sign (`23` -> `23%`); a non-numeric
  * one (`zw`, `np`) is printed as it is. A blank code returns the bare name -
  * an unknown rate must not be dressed up as one.
@@ -108,17 +120,20 @@ export function formatReceiptLineName(
   name: string,
   rateCode: string | null | undefined,
   format: DeliveryLineRateFormat,
+  rateLabel?: string | null,
 ): string {
   const code = typeof rateCode === 'string' ? rateCode.trim() : '';
   if (code === '') return name;
-  // A source may spell 23% as '23.00' (Allegro); the printer compares names, so
+  // A source may spell 23% as '23.00' (Allegro); the device compares names, so
   // one rate must always produce one spelling.
   const rate = /^\d+(\.\d+)?$/.test(code) ? `${String(Number(code))}%` : code;
   switch (format) {
     case 'brackets':
       return `${name} (${rate})`;
-    case 'vat':
-      return `${name} VAT ${rate}`;
+    case 'labelled': {
+      const label = typeof rateLabel === 'string' ? rateLabel.trim() : '';
+      return label === '' ? `${name} ${rate}` : `${name} ${label} ${rate}`;
+    }
     case 'plain':
     default:
       return `${name} ${rate}`;
@@ -163,6 +178,10 @@ function readSettings(value: unknown): DeliveryLineSettings | null {
     freeDelivery,
     rateFormat,
   };
+
+  if (typeof value.rateLabel === 'string' && value.rateLabel.trim() !== '') {
+    settings.rateLabel = value.rateLabel.trim();
+  }
 
   if (rate === 'fixed') {
     // A fixed row without a usable rate would emit a rate-less line, which is
@@ -266,5 +285,6 @@ export function resolveDeliveryLine(
     rateFormat: row.rateFormat,
   };
   if (row.fixedRate !== undefined) resolved.fixedRate = row.fixedRate;
+  if (row.rateLabel !== undefined) resolved.rateLabel = row.rateLabel;
   return resolved;
 }

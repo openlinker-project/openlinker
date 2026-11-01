@@ -575,7 +575,7 @@ describe('ConnectionService', () => {
               baseUrl: 'https://new.com',
               deliveryOnDocuments: {
                 default: { name: 'Dostawa' },
-                countries: { pl: { name: 'Koszt dostawy', rateFormat: 'vat' } },
+                countries: { pl: { name: 'Koszt dostawy', rateFormat: 'labelled', rateLabel: 'VAT' } },
               },
             },
           })

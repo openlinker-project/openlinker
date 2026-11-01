@@ -45,6 +45,17 @@ export interface DeliveryRule {
 
 export const GENERIC_NAMES = ['Shipping', 'Delivery', 'Postage', 'Carriage'] as const;
 
+/**
+ * The word the `labelled` format prints before the rate. Core keeps the label
+ * as data because a tax is named differently per country; the editor offers
+ * this one, which is what the approved design shows.
+ */
+export const RATE_LABEL = 'VAT';
+
+/** The label stored for a format: only `labelled` carries one. */
+const labelFor = (format: DeliveryLineRateFormat): string | undefined =>
+  format === 'labelled' ? RATE_LABEL : undefined;
+
 export function neutralSettings(): DeliveryFormSettings {
   return {
     name: DEFAULT_DELIVERY_LINE_NAME,
@@ -102,6 +113,8 @@ export function toStoredSettings(form: DeliveryFormSettings): DeliveryLineSettin
     freeDelivery: form.freeDelivery,
     rateFormat: form.rateFormat,
   };
+  const label = labelFor(form.rateFormat);
+  if (label !== undefined) stored.rateLabel = label;
   if (form.rate === 'fixed') stored.fixedRate = form.fixedRate;
   if (form.invoiceName !== null) stored.invoiceName = form.invoiceName;
   if (Object.keys(form.methodNames).length > 0) stored.methodNames = { ...form.methodNames };
@@ -155,11 +168,16 @@ export function rateText(settings: DeliveryFormSettings): string {
 }
 
 export function receiptName(settings: DeliveryFormSettings, rate: string): string {
-  return formatReceiptLineName(settings.name, rate, settings.rateFormat);
+  return formatReceiptLineName(
+    settings.name,
+    rate,
+    settings.rateFormat,
+    labelFor(settings.rateFormat),
+  );
 }
 
 export const maxName = (format: DeliveryLineRateFormat): number =>
-  maxDeliveryLineNameLength(format);
+  maxDeliveryLineNameLength(format, labelFor(format));
 
 export function checkName(
   raw: string,

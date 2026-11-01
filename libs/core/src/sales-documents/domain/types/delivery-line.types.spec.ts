@@ -19,7 +19,8 @@ const config = {
       ' pl ': {
         name: 'Koszt dostawy',
         invoiceName: 'Dostawa',
-        rateFormat: 'vat',
+        rateFormat: 'labelled',
+        rateLabel: 'TAX',
         methodNames: { 'inpost-locker': 'Paczkomat' },
       },
       DE: { name: 'Versand', rate: 'fixed', fixedRate: '19', freeDelivery: 'show' },
@@ -31,7 +32,8 @@ describe('formatReceiptLineName', () => {
   it('should format every rate style', () => {
     expect(formatReceiptLineName('Shipping', '23', 'plain')).toBe('Shipping 23%');
     expect(formatReceiptLineName('Shipping', '23', 'brackets')).toBe('Shipping (23%)');
-    expect(formatReceiptLineName('Shipping', '23', 'vat')).toBe('Shipping VAT 23%');
+    expect(formatReceiptLineName('Shipping', '23', 'labelled', 'TAX')).toBe('Shipping TAX 23%');
+    expect(formatReceiptLineName('Shipping', '23', 'labelled')).toBe('Shipping 23%');
   });
 
   it('should spell one rate one way whatever the source wrote', () => {
@@ -45,7 +47,7 @@ describe('formatReceiptLineName', () => {
 
   it('should return the bare name for a blank rate', () => {
     expect(formatReceiptLineName('Shipping', '', 'plain')).toBe('Shipping');
-    expect(formatReceiptLineName('Shipping', null, 'vat')).toBe('Shipping');
+    expect(formatReceiptLineName('Shipping', null, 'labelled', 'TAX')).toBe('Shipping');
   });
 });
 
@@ -53,7 +55,8 @@ describe('maxDeliveryLineNameLength', () => {
   it('should leave room for the suffix within 40 characters', () => {
     expect(maxDeliveryLineNameLength('plain')).toBe(36);
     expect(maxDeliveryLineNameLength('brackets')).toBe(34);
-    expect(maxDeliveryLineNameLength('vat')).toBe(32);
+    expect(maxDeliveryLineNameLength('labelled', 'TAX')).toBe(32);
+    expect(maxDeliveryLineNameLength('labelled')).toBe(36);
   });
 });
 
@@ -115,7 +118,8 @@ describe('resolveDeliveryLine', () => {
     expect(line).toMatchObject({
       name: 'Koszt dostawy',
       invoiceName: 'Dostawa',
-      rateFormat: 'vat',
+      rateFormat: 'labelled',
+      rateLabel: 'TAX',
     });
   });
 
@@ -166,11 +170,11 @@ describe('validateDeliveryOnDocumentsShape', () => {
 
   it('should refuse a blank name, a percentage and an over-long name', () => {
     expect(validateDeliveryOnDocumentsShape({ default: { name: ' ' } })).toHaveLength(1);
-    expect(validateDeliveryOnDocumentsShape({ default: { name: 'VAT 23 %' } })[0]?.message).toMatch(
+    expect(validateDeliveryOnDocumentsShape({ default: { name: 'TAX 23 %' } })[0]?.message).toMatch(
       /percentage/,
     );
     expect(
-      validateDeliveryOnDocumentsShape({ default: { name: 'x'.repeat(33), rateFormat: 'vat' } })[0]
+      validateDeliveryOnDocumentsShape({ default: { name: 'x'.repeat(33), rateFormat: 'labelled', rateLabel: 'TAX' } })[0]
         ?.message,
     ).toMatch(/at most 32/);
     expect(validateDeliveryOnDocumentsShape({ default: { name: 'x'.repeat(36) } })).toEqual([]);

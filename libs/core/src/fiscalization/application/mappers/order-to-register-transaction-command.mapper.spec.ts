@@ -580,7 +580,7 @@ describe('toRegisterTransactionCommand', () => {
         order: order(basket(15, 165)),
         connectionId: 'c',
         idempotencyKey: 'k',
-        deliveryLine: delivery({ rate: 'fixed', fixedRate: '23', rateFormat: 'vat' }),
+        deliveryLine: delivery({ rate: 'fixed', fixedRate: '23', rateFormat: 'labelled', rateLabel: 'VAT' }),
       });
       expect(cmd.lines.slice(2)).toEqual([
         {

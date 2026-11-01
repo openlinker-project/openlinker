@@ -1709,7 +1709,12 @@ function renderShippingSplitPreview(
   if (deliveryLine.rate === 'fixed' && deliveryLine.fixedRate !== undefined) {
     const baseName = isReceipt ? deliveryLine.name : deliveryLine.invoiceName;
     const name = isReceipt
-      ? formatReceiptLineName(baseName, deliveryLine.fixedRate, deliveryLine.rateFormat)
+      ? formatReceiptLineName(
+          baseName,
+          deliveryLine.fixedRate,
+          deliveryLine.rateFormat,
+          deliveryLine.rateLabel,
+        )
       : baseName;
     return (
       <p className="panel-copy">
@@ -1760,7 +1765,9 @@ function renderShippingSplitPreview(
   // rate); an invoice line never does.
   const baseName = isReceipt ? deliveryLine.name : deliveryLine.invoiceName;
   const lineName = (taxRate: string): string =>
-    isReceipt ? formatReceiptLineName(baseName, taxRate, deliveryLine.rateFormat) : baseName;
+    isReceipt
+      ? formatReceiptLineName(baseName, taxRate, deliveryLine.rateFormat, deliveryLine.rateLabel)
+      : baseName;
 
   return (
     <p className="panel-copy">

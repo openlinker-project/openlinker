@@ -13,7 +13,7 @@ The name is also something operators want to choose, in their own language, and 
 ## Decision
 
 1. Delivery-line settings live on the **order-source** connection, in `config.deliveryOnDocuments = { default: Settings, countries: Record<ISO2, Settings> }` - the shape of `pricingRule`. JSONB, no migration.
-2. `Settings = { name, rate: 'goods' | 'fixed' | 'spread', fixedRate?, freeDelivery: 'omit' | 'show', rateFormat: 'plain' | 'brackets' | 'vat', invoiceName?, methodNames? }`.
+2. `Settings = { name, rate: 'goods' | 'fixed' | 'spread', fixedRate?, freeDelivery: 'omit' | 'show', rateFormat: 'plain' | 'brackets' | 'labelled', rateLabel?, invoiceName?, methodNames? }`. `labelled` prints an operator-supplied word before the rate (`Name VAT 23%`); the word is data, because tax names differ by country.
 3. The row is picked by the buyer's delivery country (`order.shippingAddress.country`, trimmed and upper-cased). Anything not listed, or no country, uses `default`.
 4. **A receipt line name always carries its VAT rate** (`Shipping 23%`), with or without configuration. The name plus suffix fits the 40 characters a printer compares. Invoices never get the suffix.
 5. Name precedence: `methodNames[order.shipping.methodId]`, the country row, `default`, the legacy `config.invoicing.shippingLineName` on the invoicing connection, then `Shipping`.

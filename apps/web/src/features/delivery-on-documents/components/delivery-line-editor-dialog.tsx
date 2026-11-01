@@ -36,6 +36,7 @@ import {
   countryName,
   maxName,
   neutralSettings,
+  RATE_LABEL,
   rateLabel,
   settingsFromSuggestion,
   stillEqualsSuggestion,
@@ -451,7 +452,7 @@ function EditorForm({
                     >
                       <option value="plain">{`${s.name} 23%`}</option>
                       <option value="brackets">{`${s.name} (23%)`}</option>
-                      <option value="vat">{`${s.name} VAT 23%`}</option>
+                      <option value="labelled">{`${s.name} ${RATE_LABEL} 23%`}</option>
                     </Select>
                   </FormField>
                   <label className="rate-limit-section__toggle dd-check">

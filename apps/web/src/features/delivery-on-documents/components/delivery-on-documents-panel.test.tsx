@@ -86,26 +86,23 @@ describe('DeliveryOnDocumentsPanel', () => {
     expect(screen.getAllByText('Same as the products').length).toBeGreaterThan(0);
   });
 
-  it('should keep other config keys when a country is added', async () => {
+  it('should keep other config keys when a country is saved', async () => {
     const update = vi.fn().mockResolvedValue(connectionWith({}));
-    const api = buildApi({ rateLimit: { maxConcurrent: 2 } }, { update, facts: [PL_FACT] });
+    const api = buildApi(
+      { rateLimit: { maxConcurrent: 2 }, deliveryOnDocuments: { countries: { PL: PL_ROW } } },
+      { update, facts: [PL_FACT] },
+    );
     renderPanel(api);
 
-    fireEvent.click(await screen.findByRole('button', { name: '+ Add a country' }));
-    // The trigger is a button; the list opens on click and filters through its
-    // own search input, which keeps it below the virtualisation threshold.
-    fireEvent.click(await screen.findByRole('combobox'));
-    const search = document.querySelector<HTMLInputElement>('input.combobox__search');
-    if (!search) throw new Error('combobox search input not rendered');
-    fireEvent.change(search, { target: { value: 'Pol' } });
-    fireEvent.click(await screen.findByRole('option', { name: /Poland/ }));
-    fireEvent.click(await screen.findByRole('button', { name: 'Add country' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Edit Poland' }));
+    const dialog = await screen.findByRole('dialog');
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Save' }));
 
     await waitFor(() => expect(update).toHaveBeenCalled());
     const body = update.mock.calls[0][1] as { config: Record<string, unknown> };
     expect(body.config.rateLimit).toEqual({ maxConcurrent: 2 });
     expect(body.config.deliveryOnDocuments).toMatchObject({
-      countries: { PL: { name: 'Shipping' } },
+      countries: { PL: { name: PL_ROW.name } },
     });
   });
 
