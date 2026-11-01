@@ -103,7 +103,9 @@ describe('OrderEditService (#3542)', () => {
   let orderRecords: jest.Mocked<Pick<IOrderRecordService, 'getOrderRecord' | 'applyOrderEdit'>>;
   let changes: jest.Mocked<IOrderChangeService>;
   let shipments: jest.Mocked<Pick<IShipmentQueryService, 'getOutboundByOrderId'>>;
-  let invoices: jest.Mocked<Pick<IInvoiceService, 'findBlockingInvoiceForOrder'>>;
+  let invoices: jest.Mocked<
+    Pick<IInvoiceService, 'findBlockingInvoiceForOrder' | 'getLatestIssuedInvoiceForOrder' | 'getInFlightIssuance'>
+  >;
   let fiscal: jest.Mocked<Pick<IFiscalRegistrationService, 'getByOrderId'>>;
   let fulfillment: jest.Mocked<IFulfillmentOrderEditService>;
   let reservations: jest.Mocked<Pick<IReservationService, 'narrowForOrder'>>;
@@ -144,7 +146,11 @@ describe('OrderEditService (#3542)', () => {
       findByOrderAndKinds: jest.fn().mockResolvedValue([]),
     } as unknown as jest.Mocked<IOrderChangeService>;
     shipments = { getOutboundByOrderId: jest.fn().mockResolvedValue([]) };
-    invoices = { findBlockingInvoiceForOrder: jest.fn().mockResolvedValue(null) };
+    invoices = {
+      findBlockingInvoiceForOrder: jest.fn().mockResolvedValue(null),
+      getLatestIssuedInvoiceForOrder: jest.fn().mockResolvedValue(null),
+      getInFlightIssuance: jest.fn().mockResolvedValue(null),
+    };
     fiscal = { getByOrderId: jest.fn().mockResolvedValue([]) };
     fulfillment = {
       assessForEdit: jest.fn().mockResolvedValue(assessment()),
@@ -857,7 +863,7 @@ describe('OrderEditService (#3542)', () => {
       });
 
       it('should allow a discount after a document is issued instead of refusing it', async () => {
-        invoices.getLatestInvoiceForOrder.mockResolvedValue(issuedInvoice() as never);
+        invoices.getLatestIssuedInvoiceForOrder.mockResolvedValue(issuedInvoice() as never);
 
         const result = await service.editDiscount({ ...discountBase, amount: '10' });
 
@@ -1134,7 +1140,7 @@ describe('OrderEditService (#3542)', () => {
 
     describe('issued documents', () => {
       it('should propose price corrections from the channel lines under a per-invoice key', async () => {
-        invoices.getLatestInvoiceForOrder.mockResolvedValue(issuedInvoice() as never);
+        invoices.getLatestIssuedInvoiceForOrder.mockResolvedValue(issuedInvoice() as never);
 
         const result = await service.editDiscount({ ...discountBase, amount: '10' });
 
@@ -1155,7 +1161,7 @@ describe('OrderEditService (#3542)', () => {
 
       it('should restore the channel price on a removed discount, whatever the document says now', async () => {
         current = discountOrder('awaiting', { orderEdits: stored('10.00') });
-        invoices.getLatestInvoiceForOrder.mockResolvedValue(
+        invoices.getLatestIssuedInvoiceForOrder.mockResolvedValue(
           issuedInvoice({ unitPrices: [8, 16] }) as never
         );
 
@@ -1169,7 +1175,7 @@ describe('OrderEditService (#3542)', () => {
 
       it('should re-open a lost correction proposal on a same-amount resubmit, and not when one is open', async () => {
         current = discountOrder('awaiting', { orderEdits: stored('10.00', 'd1') });
-        invoices.getLatestInvoiceForOrder.mockResolvedValue(issuedInvoice() as never);
+        invoices.getLatestIssuedInvoiceForOrder.mockResolvedValue(issuedInvoice() as never);
 
         const result = await service.editDiscount({ ...discountBase, amount: '10' });
 
@@ -1192,7 +1198,7 @@ describe('OrderEditService (#3542)', () => {
       });
 
       it('should skip a document line whose price already equals the target', async () => {
-        invoices.getLatestInvoiceForOrder.mockResolvedValue(
+        invoices.getLatestIssuedInvoiceForOrder.mockResolvedValue(
           issuedInvoice({ unitPrices: [8, 20] }) as never
         );
 
@@ -1202,7 +1208,7 @@ describe('OrderEditService (#3542)', () => {
       });
 
       it('should match a document issued before lines carried their id by position and product', async () => {
-        invoices.getLatestInvoiceForOrder.mockResolvedValue(issuedInvoice({ withLineIds: false }) as never);
+        invoices.getLatestIssuedInvoiceForOrder.mockResolvedValue(issuedInvoice({ withLineIds: false }) as never);
 
         const result = await service.editDiscount({ ...discountBase, amount: '10', dryRun: true });
 
@@ -1210,7 +1216,7 @@ describe('OrderEditService (#3542)', () => {
       });
 
       it('should report unmatched-lines instead of guessing which document line is which', async () => {
-        invoices.getLatestInvoiceForOrder.mockResolvedValue(
+        invoices.getLatestIssuedInvoiceForOrder.mockResolvedValue(
           issuedInvoice({ withLineIds: false, productIds: ['x', 'y'] }) as never
         );
 
@@ -1223,13 +1229,37 @@ describe('OrderEditService (#3542)', () => {
       });
 
       it('should refuse while the invoice has not finished issuing', async () => {
-        invoices.getLatestInvoiceForOrder.mockResolvedValue(issuedInvoice({ status: 'pending' }) as never);
+        invoices.getInFlightIssuance.mockResolvedValue({ since: new Date() } as never);
 
         expect(await refusal(service.editDiscount({ ...discountBase, amount: '10' }))).toBe('INVOICE_NOT_SETTLED');
       });
 
+      it('should refuse when only a non-issued blocking record exists', async () => {
+        invoices.findBlockingInvoiceForOrder.mockResolvedValue(issuedInvoice({ status: 'pending' }) as never);
+
+        expect(await refusal(service.editDiscount({ ...discountBase, amount: '10' }))).toBe('INVOICE_NOT_SETTLED');
+      });
+
+      it('should correct the issued invoice even when a newer rejected correction exists', async () => {
+        // The newest record is a rejected correction; the latest ISSUED read skips it.
+        invoices.getLatestIssuedInvoiceForOrder.mockResolvedValue(issuedInvoice() as never);
+
+        const result = await service.editDiscount({ ...discountBase, amount: '10', dryRun: true });
+
+        expect(result.discount?.correctionProposal).toMatchObject({ invoiceRecordId: 'inv-1' });
+      });
+
+      it('should write nothing when an issuance holds the invoice lock', async () => {
+        lock.acquire.mockImplementation((key: string) =>
+          Promise.resolve(key.startsWith('invoice:issue:') ? null : 'token')
+        );
+
+        expect(await refusal(service.editDiscount({ ...discountBase, amount: '10' }))).toBe('ORDER_EDIT_CONTENDED');
+        expect(orderRecords.applyOrderEdit).not.toHaveBeenCalled();
+      });
+
       it('should report a pre-snapshot document as unavailable', async () => {
-        invoices.getLatestInvoiceForOrder.mockResolvedValue(issuedInvoice({ snapshot: false }) as never);
+        invoices.getLatestIssuedInvoiceForOrder.mockResolvedValue(issuedInvoice({ snapshot: false }) as never);
 
         const result = await service.editDiscount({ ...discountBase, amount: '10', dryRun: true });
 

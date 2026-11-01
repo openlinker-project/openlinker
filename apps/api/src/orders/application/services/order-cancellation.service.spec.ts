@@ -904,6 +904,13 @@ describe('OrderCancellationService (#3540)', () => {
       expect(changes.confirm).toHaveBeenCalledWith('change-3', ACTOR);
     });
 
+    it('should refuse a refund confirm that lost the apply claim with CHANGE_NOT_OPEN', async () => {
+      changes.findById.mockResolvedValue(refundChange());
+      changes.claimApplied.mockResolvedValue(false);
+
+      expect(await refusal(service.confirmChange(confirmInput))).toBe('CHANGE_NOT_OPEN');
+    });
+
     it.each([
       ['confirmed', 'CHANGE_ALREADY_CONFIRMED'],
       ['expired', 'CHANGE_EXPIRED'],

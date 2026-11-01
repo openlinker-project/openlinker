@@ -483,6 +483,7 @@ export class OrderEditService implements IOrderEditService {
       input,
       (record, _assessment, shipments) => this.prepareDiscount(input, record, shipments),
       false,
+      true,
       true
     );
   }
@@ -520,7 +521,10 @@ export class OrderEditService implements IOrderEditService {
       documentIssued: boolean
     ) => Promise<PreparedEdit>,
     checksDocuments = false,
-    allowAfterShipping = false
+    allowAfterShipping = false,
+    // The discount reads and writes invoice state without gating on it, so it
+    // needs the issuance serialised even though it has no document gate.
+    serializesInvoice = checksDocuments
   ): Promise<OrderEditResult> {
     if (input.dryRun) {
       return this.runLocked(input, prepare, checksDocuments, allowAfterShipping);
@@ -538,7 +542,7 @@ export class OrderEditService implements IOrderEditService {
       // `InvoiceService` serialises on its own per-order key, so the edit takes
       // it too, always edit-then-invoice (nothing in the invoice path takes the
       // edit lock, so the order cannot invert).
-      return checksDocuments
+      return serializesInvoice
         ? await this.withInvoiceIssueLock(input.internalOrderId, () =>
             this.runLocked(input, prepare, checksDocuments, allowAfterShipping)
           )
@@ -620,6 +624,7 @@ export class OrderEditService implements IOrderEditService {
         changeId: discountChangeId,
         view: (await this.getEditsView(record)) as OrderEditsView,
         stock: [],
+        workNarrowingFailures: [],
         discount: ensured,
       };
     }
@@ -1358,15 +1363,29 @@ export class OrderEditService implements IOrderEditService {
       return { correction: null, correctionUnavailableReason: 'fiscal-receipt' };
     }
 
-    const latest = await this.invoices.getLatestInvoiceForOrder(record.internalOrderId);
-    if (latest === null || !latest.blocksIssuanceElsewhere) {
-      return { correction: null, correctionUnavailableReason: null };
-    }
-    if (latest.status !== 'issued') {
+    // The document to correct is the latest ISSUED one: a newer rejected
+    // correction is the newest record but not a document, and reading it as
+    // "the invoice" would answer "nothing to correct" for a sale that has one.
+    const inFlight = await this.invoices.getInFlightIssuance(record.internalOrderId);
+    if (inFlight !== null) {
       throw new OrderEditRefusedError(
         'INVOICE_NOT_SETTLED',
         'The invoice for this order has not finished issuing, so it cannot be corrected yet. Wait for it to settle, then add the discount.'
       );
+    }
+    const latest = await this.invoices.getLatestIssuedInvoiceForOrder(record.internalOrderId);
+    if (latest === null) {
+      // No issued document: a blocking record that is not issued (pending, or
+      // failed without knowing whether the provider created one) still means a
+      // document may exist, so it is refused rather than discounted past.
+      const blocking = await this.invoices.findBlockingInvoiceForOrder(record.internalOrderId);
+      if (blocking !== null) {
+        throw new OrderEditRefusedError(
+          'INVOICE_NOT_SETTLED',
+          'The invoice for this order has not finished issuing, so it cannot be corrected yet. Wait for it to settle, then add the discount.'
+        );
+      }
+      return { correction: null, correctionUnavailableReason: null };
     }
     const snapshot = latest.issuedLineSnapshot;
     if (!snapshot) return { correction: null, correctionUnavailableReason: 'no-line-snapshot' };

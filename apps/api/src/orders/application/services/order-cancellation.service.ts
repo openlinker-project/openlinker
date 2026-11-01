@@ -833,8 +833,16 @@ export class OrderCancellationService implements IOrderCancellationService {
       refundRecordId = existing.find((refund) => refund.idempotencyKey === idempotencyKey)?.id ?? null;
     }
 
+    // The record write above is idempotent under `discount-refund:{changeId}`, so
+    // losing the claim costs nothing; refusing stops a second concurrent confirm
+    // from reporting a success it did not apply.
     await this.changes.confirm(change.id, input.actorUserId);
-    await this.changes.claimApplied(change.id);
+    if (!(await this.changes.claimApplied(change.id))) {
+      throw new OrderCancellationRefusedError(
+        'CHANGE_NOT_OPEN',
+        'This refund proposal is no longer open.'
+      );
+    }
 
     return {
       changeId: change.id,
