@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Language switch</title>
-<!-- Mockup for #3858 (ADR-079). Shipped design: Polish and English only, a Beta
+<!-- Mockup for #3858 (ADR-081). Shipped design: Polish and English only, a Beta
      badge with a hover hint on Polski, a centred list, and a flag-only trigger
      whose hover pill slides the native name out to the right of the flag.
      The component CSS below is copied verbatim from apps/web/src/index.css so
@@ -377,7 +377,7 @@ body { margin: 0; background: var(--bg-canvas, #f5f5f4); color: var(--text-prima
 .is-forced-hover .language-switch__peek { opacity: 1; }
 .is-forced-hover .language-switch__reveal { grid-template-columns: 1fr; }
 .is-forced-hover .language-switch__reveal-name { opacity: 1; transform: none; }
-/* Language switch (#3858, ADR-079). Flag pill + popover listing every
+/* Language switch (#3858, ADR-081). Flag pill + popover listing every
    language with flag, code and native name. Opens upward in the sidebar
    footer, downward in the signed-out corner. */
 .language-switch {

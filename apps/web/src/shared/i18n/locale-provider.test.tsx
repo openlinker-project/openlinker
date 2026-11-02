@@ -8,13 +8,13 @@
  * @module shared/i18n
  */
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { LocaleProvider } from './locale-provider';
 import { useTranslation } from './use-translation';
 import { useNumberFormat } from './use-number-format';
 import { useLocale } from './use-locale';
-import { useCopy } from './use-copy';
-import { defineCopy } from './define-copy';
+import { definePluginMessages } from './define-plugin-messages';
+import { loadMessages } from './messages';
 import { getLocale, setActiveLocale } from './active-locale';
 import { LOCALE_STORAGE_KEY } from './resolve-locale';
 import type { SupportedLocale, TranslationCatalog } from './i18n.types';
@@ -44,14 +44,17 @@ afterEach(() => {
   document.documentElement.lang = '';
 });
 
-const probeCopy = defineCopy({
-  en: { title: 'Orders', subtitle: 'Every channel' },
-  pl: { title: 'Zamówienia' },
+const probe = definePluginMessages('test-provider-probe', {
+  messages: { title: 'Orders', subtitle: 'Every channel' },
+  loaders: { pl: () => Promise.resolve({ title: 'Zamówienia' }) },
 });
+
+// Registered after the test setup loaded Polish, so load it for this probe too.
+beforeAll(() => loadMessages('pl'));
 
 function SwitchProbe(): React.ReactElement {
   const { locale, setLocale, bcp47 } = useLocale();
-  const copy = useCopy(probeCopy);
+  const copy = probe.useMessages();
   return (
     <div>
       <span data-testid="current">{locale}</span>

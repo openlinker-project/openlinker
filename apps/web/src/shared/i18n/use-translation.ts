@@ -3,7 +3,7 @@
  *
  * Legacy consumer hook (#612): the current locale and a `t(key, fallback)`
  * translator over the provider's flat catalog. Kept for its existing call
- * sites; new copy goes through `defineCopy` + `useCopy` (ADR-079). Throws if mounted outside `LocaleProvider` — the
+ * sites; new copy goes in `locales/<lang>.json`, read with `useMessages` (ADR-081). Throws if mounted outside `LocaleProvider` — the
  * provider is wired at the app root, so this only fires in malformed test
  * setups.
  *

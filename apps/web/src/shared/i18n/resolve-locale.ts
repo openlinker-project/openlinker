@@ -1,7 +1,7 @@
 /**
  * Locale resolution
  *
- * Decides which language the app opens in (ADR-079 decision 3): a `?lang=`
+ * Decides which language the app opens in (ADR-081 decision 3): a `?lang=`
  * override (saved), then the operator's stored choice, then the deployment
  * default `VITE_DEFAULT_UI_LOCALE`, then `FALLBACK_LOCALE` (the same value an
  * unset variable gives). The browser language is
@@ -11,9 +11,11 @@
  * @module shared/i18n
  */
 import { FALLBACK_LOCALE, isSupportedLocale, type SupportedLocale } from './i18n.types';
+import { PSEUDO_LOCALE_CODE } from './pseudo';
 
 export const LOCALE_STORAGE_KEY = 'openlinker.locale';
 export const LOCALE_QUERY_PARAM = 'lang';
+const PSEUDO_SESSION_KEY = 'openlinker.pseudo-locale';
 
 /**
  * Read a language tag the way an operator or a deployment writes it:
@@ -86,4 +88,32 @@ export function resolveInitialLocale(deploymentDefault: string | undefined): Sup
     return fromQuery;
   }
   return resolveLocale({ search: '', stored: readStoredLocale(), deploymentDefault });
+}
+
+/**
+ * Whether the development-only pseudo-language was asked for (`?lang=xx`,
+ * remembered for the session). Always false in a production build.
+ */
+export function readPseudoRequested(search: string, isDev: boolean): boolean {
+  if (!isDev) return false;
+  const fromQuery = new URLSearchParams(search).get(LOCALE_QUERY_PARAM);
+  try {
+    if (fromQuery === PSEUDO_LOCALE_CODE) {
+      window.sessionStorage.setItem(PSEUDO_SESSION_KEY, '1');
+      return true;
+    }
+    if (fromQuery !== null) window.sessionStorage.removeItem(PSEUDO_SESSION_KEY);
+    return window.sessionStorage.getItem(PSEUDO_SESSION_KEY) === '1';
+  } catch {
+    return fromQuery === PSEUDO_LOCALE_CODE;
+  }
+}
+
+/** Ends the pseudo-language for this session; picking a real language does this. */
+export function clearPseudoRequested(): void {
+  try {
+    window.sessionStorage.removeItem(PSEUDO_SESSION_KEY);
+  } catch {
+    // Nothing was stored either.
+  }
 }

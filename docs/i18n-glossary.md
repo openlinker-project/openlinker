@@ -1,6 +1,6 @@
 # UI glossary: English and Polish
 
-The terms an operator meets in OpenLinker, with the one Polish form the UI uses for each. Translators and agents use this table so the same thing is never called two names. See [ADR-079](./architecture/adrs/079-frontend-owned-ui-translation.md) and [frontend-architecture.md § Internationalization](./frontend-architecture.md#internationalization-i18n).
+The terms an operator meets in OpenLinker, with the one Polish form the UI uses for each. Translators and agents use this table so the same thing is never called two names. See [ADR-081](./architecture/adrs/081-frontend-owned-ui-translation.md) and [frontend-architecture.md § Internationalization](./frontend-architecture.md#internationalization-i18n).
 
 Add a row when a new domain term reaches the UI. Change a row only together with every copy file that uses it.
 

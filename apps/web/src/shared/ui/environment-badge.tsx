@@ -23,7 +23,7 @@ function toReadableLabel(value: string): string {
 }
 
 export function getEnvironmentMeta(appEnv: string): EnvironmentMeta {
-  // Names are identical in both languages (see `ui.copy.ts`), so the active
+  // Names are identical in both languages (see the `ui` namespace), so the active
   // language is read only to satisfy the copy lookup.
   const copy = messagesIn('ui', getLocale()).environment.names;
   const normalized = appEnv.trim().toLowerCase();

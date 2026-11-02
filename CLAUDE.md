@@ -117,8 +117,9 @@ See `docs/engineering-standards.md` for the full list. Key patterns:
 
 The helpers below live in `apps/web/src/shared/i18n/` from #3856 on.
 
-- Never write user-visible text inline in TSX, a toast, a validation message or a constant. Add it to the feature's `*.copy.ts` under **both** `en` and `pl` in the same edit.
+- Never write user-visible text inline in TSX, a toast, a validation message or a constant. Add it to the feature's namespace in **both** `apps/web/src/locales/en.json` and `pl.json` in the same edit (a plugin: its own `plugins/<id>/locales/`), keys sorted (`pnpm i18n:sort`), and read it with `useMessages('<namespace>')`.
 - Write the Polish yourself, using `docs/i18n-glossary.md`. Never copy English into `pl` as a placeholder.
+- A key in a tight spot (button, nav item, chip, table header) gets a character budget in `locales/limits.json` that `check-locales` enforces in both languages.
 - Counts use `usePlural` (`one/few/many/other` for Polish); numbers, money and dates use `useFormat`.
 - Interpolate `{name}`; use `renderRich` for a link or bold word inside a sentence; one sentence per key.
 - Plain hyphen, never an em dash. Copy speaks to operators, never names classes, env vars or capabilities.
