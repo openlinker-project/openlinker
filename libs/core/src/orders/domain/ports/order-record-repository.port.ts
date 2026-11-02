@@ -525,6 +525,14 @@ export interface OrderRecordRepositoryPort {
   ): Promise<boolean>;
 
   /**
+   * Claim the one-time `order.shipped` announcement (#3554). A single guarded
+   * UPDATE on `shippedNotifiedAt IS NULL` AND a shipped `fulfillmentState`, so
+   * of any number of racing callers exactly one gets `true`, and an order that
+   * is not shipped (or no longer exists) gets `false`.
+   */
+  claimShippedNotification(internalOrderId: string): Promise<boolean>;
+
+  /**
    * Push the honest item-resolution-failure state onto the order record
    * (#1689) — either the ordinary, self-healing `'awaiting_mapping'` gap or
    * the permanently-unresolvable `'source_deleted'` state, with the

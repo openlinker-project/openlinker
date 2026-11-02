@@ -588,6 +588,19 @@ export class OrderRecord {
   }
 
   /**
+   * The order's number in the channel it came from (#3554) - Allegro's
+   * checkout-form id, a PrestaShop reference, a WooCommerce order number - the
+   * same value the order page shows as "Order #". This, not the internal
+   * `ol_order_*` id, is what a buyer or an operator can look the order up by.
+   * `undefined` when the source reported none (Erli sets no order number).
+   * Pure derivation of the already-loaded snapshot (ADR-011).
+   */
+  get orderNumber(): string | undefined {
+    const value = this.orderSnapshot.orderNumber;
+    return typeof value === 'string' && value.trim().length > 0 ? value.trim() : undefined;
+  }
+
+  /**
    * The buyer's name as the source reported it (#3553), billing address first,
    * then shipping. Pure derivation of the already-loaded snapshot (ADR-011).
    *

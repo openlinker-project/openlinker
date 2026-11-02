@@ -203,13 +203,29 @@ export interface IOrderRecordService {
    * Push a per-order fulfillment rollup (#1108) onto the order record. The
    * cross-context surface the shipping context calls after a shipment-status
    * change (`shipping → orders`, via this service — never the repository port).
-   * Best-effort/idempotent; a missing order row is a no-op. The write that moves
-   * the order into a shipped state fires `order.shipped` (#3554), once.
+   * Best-effort/idempotent; a missing order row is a no-op.
+   *
+   * A shipped state fires `order.shipped` (#3554), once per order, claimed on
+   * `shippedNotifiedAt`. The announcement WAITS for the carrier's tracking
+   * number: pass `trackingKnown: false` while no live outbound shipment has one
+   * yet (a carrier such as InPost mints it minutes after dispatch), and the
+   * trigger is left for {@link notifyShippedIfPending}. `delivered` announces
+   * regardless, since the parcel has arrived. Omitting `options` announces
+   * immediately, which is the pre-wait behaviour.
    */
   updateFulfillmentState(
     internalOrderId: string,
-    fulfillmentState: FulfillmentRollupState
+    fulfillmentState: FulfillmentRollupState,
+    options?: { trackingKnown?: boolean }
   ): Promise<void>;
+
+  /**
+   * Fire `order.shipped` if the order is shipped and has not announced it yet
+   * (#3554). For the shipping context to call once the wait is over: the
+   * tracking number arrived, or it never did and the grace period ran out.
+   * Best-effort: never throws, and a second call is a no-op.
+   */
+  notifyShippedIfPending(internalOrderId: string): Promise<void>;
 
   /**
    * Fire the `order.received` automation trigger (#3554, D8) for an order

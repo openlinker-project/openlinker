@@ -262,7 +262,10 @@ export class SendEmailExecutorService implements AutomationActionExecutorPort {
       ? await this.readTrackingNumber(input, orderId)
       : undefined;
     return {
-      orderReference: orderId ?? input.facts.subjectId,
+      // The channel's own order number, as the order page shows it: the internal
+      // `ol_order_*` id means nothing to a buyer. It is the fallback only for a
+      // source that reports no number (#3554).
+      orderReference: record?.orderNumber ?? orderId ?? input.facts.subjectId,
       orderTotal: formatMergeAmount(input.facts.totalGross, input.facts.currency),
       orderPlacedAt: formatMergeDate(record?.placedAt),
       orderDispatchBy: formatMergeDate(record?.dispatchByAt),

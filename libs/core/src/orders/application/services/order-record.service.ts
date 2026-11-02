@@ -785,17 +785,29 @@ export class OrderRecordService implements IOrderRecordService {
 
   async updateFulfillmentState(
     internalOrderId: string,
-    fulfillmentState: FulfillmentRollupState
+    fulfillmentState: FulfillmentRollupState,
+    options?: { trackingKnown?: boolean }
   ): Promise<void> {
-    const enteredShipped = await this.repository.updateFulfillmentState(
-      internalOrderId,
-      fulfillmentState
-    );
-    if (enteredShipped) {
+    await this.repository.updateFulfillmentState(internalOrderId, fulfillmentState);
+    if (fulfillmentState !== 'dispatched' && fulfillmentState !== 'delivered') return;
+    // A buyer told "your order shipped" with no tracking number gets no second
+    // email once the number arrives, so a dispatched order waits for it. A
+    // delivered parcel has nothing left to wait for.
+    if (fulfillmentState === 'dispatched' && options?.trackingKnown === false) return;
+    await this.notifyShippedIfPending(internalOrderId);
+  }
+
+  async notifyShippedIfPending(internalOrderId: string): Promise<void> {
+    try {
+      if (!(await this.repository.claimShippedNotification(internalOrderId))) return;
       const record = await this.repository.findById(internalOrderId);
       if (record) {
         await this.emitOrderTrigger('order.shipped', record, new Date());
       }
+    } catch (error) {
+      this.logger.warn(
+        `Could not announce order.shipped for ${internalOrderId}: ${(error as Error).message}`
+      );
     }
   }
 

@@ -34,6 +34,7 @@ import type { IOrderFulfillmentProjectionService } from '../interfaces/order-ful
 import { IShipmentLineService } from '../interfaces/shipment-line.service.interface';
 import { ShipmentRepositoryPort } from '../../domain/ports/shipment-repository.port';
 import { deriveFulfillmentRollup } from '../../domain/fulfillment-rollup';
+import { hasKnownTrackingNumber } from '../../domain/shipped-announcement';
 import { SHIPMENT_LINE_SERVICE_TOKEN, SHIPMENT_REPOSITORY_TOKEN } from '../../shipping.tokens';
 
 @Injectable()
@@ -70,10 +71,25 @@ export class OrderFulfillmentProjectionService implements IOrderFulfillmentProje
         shipments.map((s) => s.status),
         coverage,
       );
-      await this.orderRecords.updateFulfillmentState(orderId, rollup);
+      // #3554: tell the orders context whether the tracking number is known,
+      // so `order.shipped` can wait for it instead of announcing "not yet".
+      await this.orderRecords.updateFulfillmentState(orderId, rollup, {
+        trackingKnown: hasKnownTrackingNumber(shipments),
+      });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       this.logger.warn(`Fulfillment-rollup projection failed for order ${orderId}: ${message}`);
+    }
+  }
+
+  async announceShippedWithoutTracking(orderId: string): Promise<void> {
+    // `notifyShippedIfPending` is itself best-effort; the catch is for a mock or
+    // a future implementation that is not.
+    try {
+      await this.orderRecords.notifyShippedIfPending(orderId);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.logger.warn(`Shipped announcement failed for order ${orderId}: ${message}`);
     }
   }
 }

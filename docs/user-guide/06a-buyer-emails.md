@@ -5,7 +5,7 @@ OpenLinker can email the buyer at four moments in an order's life:
 | Email | Sent when | Allowed on |
 |---|---|---|
 | Order confirmed | OpenLinker takes a new order in for the first time | shops only (PrestaShop, WooCommerce, …) |
-| Shipped | the order's parcels are handed to the carrier | shops and marketplaces |
+| Shipped | the order's parcels are handed to the carrier and the tracking number is known | shops and marketplaces |
 | Document issued | the order's invoice or fiscal receipt is issued | shops and marketplaces |
 | Return received | a returned parcel is received at your warehouse | shops and marketplaces |
 
@@ -77,6 +77,13 @@ The record never shows the buyer's address, only what happened.
 
 ## Good to know
 
+- **Shipped** waits for the tracking number, so the email can include it.
+  Some carriers (InPost) issue the number a few minutes after the label, so the
+  email goes out then. If a carrier never issues one, the email is sent 30
+  minutes after dispatch without it, and at the latest when the parcel is
+  delivered.
+- `{order.reference}` is the order number the buyer knows from the shop or the
+  marketplace, the same one the order page shows as "Order #".
 - "Return received" rules cannot be limited by the order's country or total:
   the return does not carry those facts, so such a condition never matches.
 - If the email sender itself is down, nothing is recorded on the order; the

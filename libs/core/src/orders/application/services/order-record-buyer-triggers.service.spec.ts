@@ -54,13 +54,17 @@ function buildRecord(packedAt: Date | null, packedByUserId: string | null): Orde
 
 describe('OrderRecordService — buyer-email triggers (#3554)', () => {
   let repository: jest.Mocked<
-    Pick<OrderRecordRepositoryPort, 'updateFulfillmentState' | 'findById'>
+    Pick<OrderRecordRepositoryPort, 'updateFulfillmentState' | 'findById' | 'claimShippedNotification'>
   >;
   let emit: jest.Mock;
   let service: OrderRecordService;
 
   beforeEach(() => {
-    repository = { updateFulfillmentState: jest.fn(), findById: jest.fn() };
+    repository = {
+      updateFulfillmentState: jest.fn(),
+      findById: jest.fn(),
+      claimShippedNotification: jest.fn().mockResolvedValue(true),
+    };
     emit = jest
       .fn()
       .mockResolvedValue({ firedRuleIds: [], alreadyFiredRuleIds: [], evaluatedRuleCount: 0 });
@@ -74,12 +78,12 @@ describe('OrderRecordService — buyer-email triggers (#3554)', () => {
     );
   });
 
-  it('should fire order.shipped when the write moved the order into a shipped state', async () => {
-    repository.updateFulfillmentState.mockResolvedValue(true);
+  it('should fire order.shipped when the order is shipped and its tracking number is known', async () => {
     repository.findById.mockResolvedValue(buildRecord(null, null));
 
-    await service.updateFulfillmentState(ORDER_ID, 'dispatched');
+    await service.updateFulfillmentState(ORDER_ID, 'dispatched', { trackingKnown: true });
 
+    expect(repository.claimShippedNotification).toHaveBeenCalledWith(ORDER_ID);
     expect(emit).toHaveBeenCalledWith(
       expect.objectContaining({
         trigger: 'order.shipped',
@@ -88,12 +92,42 @@ describe('OrderRecordService — buyer-email triggers (#3554)', () => {
     );
   });
 
-  it('should not fire order.shipped when the order was already shipped', async () => {
-    repository.updateFulfillmentState.mockResolvedValue(false);
+  it('should not fire order.shipped when the order already announced it', async () => {
+    repository.claimShippedNotification.mockResolvedValue(false);
 
     await service.updateFulfillmentState(ORDER_ID, 'delivered');
 
     expect(emit).not.toHaveBeenCalled();
+  });
+
+  it('should wait for the tracking number before announcing a dispatched order', async () => {
+    await service.updateFulfillmentState(ORDER_ID, 'dispatched', { trackingKnown: false });
+
+    expect(repository.claimShippedNotification).not.toHaveBeenCalled();
+    expect(emit).not.toHaveBeenCalled();
+  });
+
+  it('should announce a delivered order even without a tracking number', async () => {
+    repository.findById.mockResolvedValue(buildRecord(null, null));
+
+    await service.updateFulfillmentState(ORDER_ID, 'delivered', { trackingKnown: false });
+
+    expect(emit).toHaveBeenCalledWith(expect.objectContaining({ trigger: 'order.shipped' }));
+  });
+
+  it('should not touch the shipped claim for a state that is not shipped', async () => {
+    await service.updateFulfillmentState(ORDER_ID, 'not-shipped');
+
+    expect(repository.claimShippedNotification).not.toHaveBeenCalled();
+  });
+
+  it('should announce through notifyShippedIfPending once the wait is over, and never throw', async () => {
+    repository.findById.mockResolvedValue(buildRecord(null, null));
+    await service.notifyShippedIfPending(ORDER_ID);
+    expect(emit).toHaveBeenCalledWith(expect.objectContaining({ trigger: 'order.shipped' }));
+
+    repository.claimShippedNotification.mockRejectedValue(new Error('db down'));
+    await expect(service.notifyShippedIfPending(ORDER_ID)).resolves.toBeUndefined();
   });
 
   it('should swallow a failed emission so the shipment projection is not failed', async () => {

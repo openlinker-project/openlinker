@@ -2466,6 +2466,18 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
     return false;
   }
 
+  async claimShippedNotification(internalOrderId: string): Promise<boolean> {
+    const result = await this.repository
+      .createQueryBuilder()
+      .update(OrderRecordOrmEntity)
+      .set({ shippedNotifiedAt: () => 'now()' })
+      .where('"internalOrderId" = :internalOrderId', { internalOrderId })
+      .andWhere('"shippedNotifiedAt" IS NULL')
+      .andWhere('"fulfillmentState" IN (:...shipped)', { shipped: SHIPPED_FULFILLMENT_STATES })
+      .execute();
+    return (result.affected ?? 0) > 0;
+  }
+
   /**
    * Push the honest item-resolution-failure state onto the order record
    * (#1689). Narrow absolute-set on `recordStatus` + `mappingFailureReason`

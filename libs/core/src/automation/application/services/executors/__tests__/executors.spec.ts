@@ -382,6 +382,29 @@ describe('SendEmailExecutorService', () => {
       );
     });
 
+    it("should put the channel's order number in {order.reference}, not the internal id", async () => {
+      const notifications = { send: jest.fn().mockResolvedValue({ status: 'sent', deliveryId: 'd-1' }) };
+      const executor = new SendEmailExecutorService(
+        stubResolver({
+          MAILER_TOKEN: { sendEmail: jest.fn() },
+          ORDER_RECORD_SERVICE_TOKEN: {
+            getOrderRecord: jest
+              .fn()
+              .mockResolvedValue({ ...ORDER, orderNumber: '461f8380-d6ae-11f1-a205-6d39a3fe2163' }),
+          },
+          BUYER_EMAIL_NOTIFICATION_SERVICE_TOKEN: notifications,
+        }),
+      );
+
+      await executor.execute(input(SHIPPED_TO_BUYER));
+
+      expect(notifications.send).toHaveBeenCalledWith(
+        expect.objectContaining({
+          subject: 'Your order 461f8380-d6ae-11f1-a205-6d39a3fe2163 shipped',
+        }),
+      );
+    });
+
     it('should report nothing-to-do with the reason when the connection has not opted in', async () => {
       const notifications = {
         send: jest.fn().mockResolvedValue({
