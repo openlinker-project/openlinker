@@ -3,6 +3,7 @@
  * the DB-backed router adapter that resolves the effective transport per
  * send (#1643), and the password-reset notifier that composes MailerPort.
  */
+import { Logger } from '@nestjs/common';
 import type { ConfigService } from '@nestjs/config';
 import { User, type MailerPort } from '@openlinker/core/users';
 import type { IMailerSettingsService } from '@openlinker/core/mailer';
@@ -10,6 +11,7 @@ import { ConsoleMailerAdapter } from './console-mailer.adapter';
 import { SmtpMailerAdapter, type SmtpTransport } from './smtp-mailer.adapter';
 import { MailerPasswordResetNotifierAdapter } from './mailer-password-reset-notifier.adapter';
 import { DbBackedMailerAdapter } from './db-backed-mailer.adapter';
+import { redactRecipient } from './mail-log-redaction';
 
 const sendMailMock = jest.fn().mockResolvedValue({});
 const createTransportMock = jest.fn((..._args: unknown[]) => ({ sendMail: sendMailMock }));
@@ -60,6 +62,36 @@ describe('SmtpMailerAdapter', () => {
   });
 });
 
+describe('SmtpMailerAdapter attachments (#3550)', () => {
+  it('forwards attachments to the transport', async () => {
+    const transport: jest.Mocked<SmtpTransport> = { sendMail: jest.fn().mockResolvedValue({}) };
+    const adapter = new SmtpMailerAdapter(transport, 'no-reply@openlinker.local');
+    const pdf = new Uint8Array([1, 2, 3]);
+
+    await adapter.sendEmail({
+      to: 'a@b.com',
+      subject: 'Invoice',
+      text: 'Attached',
+      attachments: [{ filename: 'invoice.pdf', content: pdf, contentType: 'application/pdf' }],
+    });
+
+    expect(transport.sendMail).toHaveBeenCalledWith(
+      expect.objectContaining({
+        attachments: [{ filename: 'invoice.pdf', content: pdf, contentType: 'application/pdf' }],
+      }),
+    );
+  });
+
+  it('should not add an attachments key when there is nothing to attach', async () => {
+    const transport: jest.Mocked<SmtpTransport> = { sendMail: jest.fn().mockResolvedValue({}) };
+    const adapter = new SmtpMailerAdapter(transport, 'no-reply@openlinker.local');
+
+    await adapter.sendEmail({ to: 'a@b.com', subject: 'Hi', text: 'Body', attachments: [] });
+
+    expect(transport.sendMail.mock.calls[0][0]).not.toHaveProperty('attachments');
+  });
+});
+
 describe('ConsoleMailerAdapter', () => {
   it('resolves without throwing (logs only)', async () => {
     const adapter = new ConsoleMailerAdapter();
@@ -73,6 +105,46 @@ describe('ConsoleMailerAdapter', () => {
     await expect(
       adapter.sendEmail({ to: 'a@b.com', subject: 'Hi', text: 'Body', html: '<p>Body</p>' }),
     ).resolves.toBeUndefined();
+  });
+});
+
+describe('mailer log redaction (#3550)', () => {
+  let logSpy: jest.SpyInstance;
+
+  beforeEach(() => {
+    logSpy = jest.spyOn(Logger.prototype, 'log').mockImplementation(() => undefined);
+  });
+
+  afterEach(() => {
+    logSpy.mockRestore();
+  });
+
+  const logged = (): string => (logSpy.mock.calls as unknown[][]).map((call) => String(call[0])).join('\n');
+
+  it('should keep only the domain of a recipient', () => {
+    expect(redactRecipient('jan.kowalski@example.pl')).toBe('[redacted]@example.pl');
+    expect(redactRecipient('not-an-address')).toBe('[redacted]');
+  });
+
+  it('should never log the buyer mailbox from the SMTP adapter', async () => {
+    const transport: jest.Mocked<SmtpTransport> = { sendMail: jest.fn().mockResolvedValue({}) };
+    const adapter = new SmtpMailerAdapter(transport, 'no-reply@openlinker.local');
+
+    await adapter.sendEmail({ to: 'buyer@example.pl', subject: 'Invoice FV/1', text: 'Body' });
+
+    expect(logged()).toContain('[redacted]@example.pl');
+    expect(logged()).not.toContain('buyer@example.pl');
+  });
+
+  it('should never log a mailbox from the console adapter, in the recipient or the body', async () => {
+    await new ConsoleMailerAdapter().sendEmail({
+      to: 'buyer@example.pl',
+      subject: 'For buyer@example.pl',
+      text: 'Reply to buyer@example.pl',
+    });
+
+    expect(logged()).toContain('[redacted]@example.pl');
+    expect(logged()).not.toContain('buyer@example.pl');
   });
 });
 

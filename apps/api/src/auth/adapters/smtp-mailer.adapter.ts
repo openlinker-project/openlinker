@@ -19,7 +19,9 @@
 import { Injectable, Logger } from '@nestjs/common';
 import type { ConfigService } from '@nestjs/config';
 import type { Transporter } from 'nodemailer';
+import { scrubEmailAddresses } from '@openlinker/core/sales-documents';
 import type { EmailMessage, MailerPort } from '@openlinker/core/users';
+import { redactRecipient } from './mail-log-redaction';
 
 export interface SmtpTransport {
   sendMail(options: {
@@ -28,6 +30,7 @@ export interface SmtpTransport {
     subject: string;
     text: string;
     html?: string;
+    attachments?: { filename: string; content: Uint8Array; contentType: string }[];
   }): Promise<unknown>;
 }
 
@@ -50,8 +53,20 @@ export class SmtpMailerAdapter implements MailerPort {
       subject: message.subject,
       text: message.text,
       html: message.html,
+      // Only set when there is something to attach, so a plain message reaches
+      // the transport exactly as it did before attachments existed.
+      ...(message.attachments && message.attachments.length > 0
+        ? { attachments: message.attachments.map((a) => ({ ...a })) }
+        : {}),
     });
-    this.logger.log(`[mail] sent to=${message.to} subject=${JSON.stringify(message.subject)}`);
+    this.logger.log(
+      // The recipient is a buyer on a document email (#3550): the log keeps its
+      // domain only, matching what an `OL_STORE_PII=false` deployment persists.
+      `[mail] sent to=${redactRecipient(message.to)} subject=${JSON.stringify(
+        scrubEmailAddresses(message.subject),
+      )}` +
+        (message.attachments?.length ? ` attachments=${String(message.attachments.length)}` : ''),
+    );
   }
 
   static fromConfig(configService: ConfigService, transporter: Transporter): SmtpMailerAdapter {
