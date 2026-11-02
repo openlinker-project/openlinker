@@ -41,7 +41,7 @@ describe('buildTriggerRows', () => {
     // A trigger absent from the index reads as "not supported" rather than
     // "nothing configured", and only the second is actionable.
     const rows = buildTriggerRows(summary, vocabulary);
-    expect(rows).toHaveLength(8);
+    expect(rows).toHaveLength(AUTOMATION_TRIGGER_VALUES.length);
   });
 
   it('should count only the legal actions that can actually run', () => {

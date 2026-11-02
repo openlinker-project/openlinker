@@ -275,3 +275,14 @@ describe('OrderRecord.buyerName (#3553)', () => {
     expect(makeRecord({}).buyerName).toBeUndefined();
   });
 });
+
+describe('OrderRecord.orderNumber (#3554)', () => {
+  it("should read the channel's order number from the snapshot", () => {
+    expect(makeRecord({ orderNumber: ' XKBKNABJK ' }).orderNumber).toBe('XKBKNABJK');
+  });
+
+  it('should be undefined when the source reported no number', () => {
+    expect(makeRecord({}).orderNumber).toBeUndefined();
+    expect(makeRecord({ orderNumber: '' }).orderNumber).toBeUndefined();
+  });
+});

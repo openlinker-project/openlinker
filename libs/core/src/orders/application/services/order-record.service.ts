@@ -785,9 +785,50 @@ export class OrderRecordService implements IOrderRecordService {
 
   async updateFulfillmentState(
     internalOrderId: string,
-    fulfillmentState: FulfillmentRollupState
+    fulfillmentState: FulfillmentRollupState,
+    options?: { trackingKnown?: boolean }
   ): Promise<void> {
     await this.repository.updateFulfillmentState(internalOrderId, fulfillmentState);
+    if (fulfillmentState !== 'dispatched' && fulfillmentState !== 'delivered') return;
+    // A buyer told "your order shipped" with no tracking number gets no second
+    // email once the number arrives, so a dispatched order waits for it. A
+    // delivered parcel has nothing left to wait for.
+    if (fulfillmentState === 'dispatched' && options?.trackingKnown === false) return;
+    await this.notifyShippedIfPending(internalOrderId);
+  }
+
+  async notifyShippedIfPending(internalOrderId: string): Promise<void> {
+    try {
+      if (!(await this.repository.claimShippedNotification(internalOrderId))) return;
+      const record = await this.repository.findById(internalOrderId);
+      if (record) {
+        await this.emitOrderTrigger('order.shipped', record, new Date());
+      }
+    } catch (error) {
+      this.logger.warn(
+        `Could not announce order.shipped for ${internalOrderId}: ${(error as Error).message}`
+      );
+    }
+  }
+
+  async notifyOrderReceived(record: OrderRecord, receivedAt: Date): Promise<void> {
+    // The fact is the BUYER placing the order, not OpenLinker reading it: the
+    // retroactivity floor compares this instant with the rule's creation, so a
+    // first sync of a shop's back catalogue must not read as fresh orders and
+    // email every past buyer (#3554 review).
+    await this.emitOrderTrigger(
+      'order.received',
+      record,
+      record.placedAt ?? record.createdAt,
+      receivedAt
+    );
+  }
+
+  async notifyDocumentIssued(internalOrderId: string, issuedAt: Date): Promise<void> {
+    const record = await this.repository.findById(internalOrderId);
+    if (record) {
+      await this.emitOrderTrigger('order.document_issued', record, issuedAt);
+    }
   }
 
   async markItemResolutionFailure(
@@ -1180,6 +1221,32 @@ export class OrderRecordService implements IOrderRecordService {
     input: { windowEnd: Date; now: Date; limit: number; offset: number }
   ): Promise<OrderRecord[]> {
     return this.repository.findDispatchDeadlineCandidates(connectionId, input);
+  }
+
+  /**
+   * Fire an order-subject edge trigger, best-effort (#3554: T9-T11, the T5
+   * shape). The write that caused the fact has already committed, so a failed
+   * emission is logged and swallowed rather than failing ingestion, a shipment
+   * projection or a document issue - the safe direction, as for `order.packed`.
+   */
+  private async emitOrderTrigger(
+    trigger: 'order.received' | 'order.shipped' | 'order.document_issued',
+    record: OrderRecord,
+    occurredAt: Date,
+    now: Date = occurredAt
+  ): Promise<void> {
+    try {
+      await this.automationEmission.emit({
+        trigger,
+        facts: buildOrderAutomationFacts(record, occurredAt),
+        now,
+      });
+    } catch (error) {
+      this.logger.warn(
+        `Automation emission failed for ${trigger} on ${record.internalOrderId}: ` +
+          `${(error as Error).message}`
+      );
+    }
   }
 
   private async emitPackedTrigger(record: OrderRecord, packedAt: Date): Promise<void> {

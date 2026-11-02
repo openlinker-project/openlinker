@@ -28,6 +28,7 @@ import { SalesDocumentsController } from './http/sales-documents.controller';
 import { OrderColumnPresetsController } from './http/order-column-presets.controller';
 import { OrderNotesController } from './http/order-notes.controller';
 import { OrderLineCostsController } from './http/order-line-costs.controller';
+import { OrderBuyerEmailsController } from './http/order-buyer-emails.controller';
 import { OrderTagsController } from './http/order-tags.controller';
 import { OrderTagAssignmentsController } from './http/order-tag-assignments.controller';
 import { OrderExportsController } from './http/order-exports.controller';
@@ -98,6 +99,7 @@ import { ORDER_CANCELLATION_SERVICE_TOKEN } from './application/interfaces/order
     SalesDocumentsController,
     OrderNotesController,
     OrderLineCostsController,
+    OrderBuyerEmailsController,
     OrderTagsController,
     OrderTagAssignmentsController,
   ],

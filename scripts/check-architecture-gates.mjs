@@ -120,6 +120,11 @@ const KNOWN_CONFIG_KNOBS = new Map([
     { helper: 'readAutoDispatchConfig', key: 'config.autoDispatch' },
   ],
   [
+    // #3554: per-connection buyer-email opt-in (D6 of epic #3510).
+    'libs/core/src/identifier-mapping/domain/types/buyer-emails-config.types.ts',
+    { helper: 'readBuyerEmailsConfig', key: 'config.buyerEmails' },
+  ],
+  [
     'libs/core/src/sales-documents/domain/types/sales-document-kind.types.ts',
     {
       helper: 'readSalesDocumentRouting',
@@ -376,7 +381,14 @@ const NON_KNOBS = new Map([
 // per-connection knobs in JSONB is the accretion #1032's rules model is meant to
 // replace, and that is still true - it is simply not something a review fix may
 // take on. The number is raised by one so the next knob asks again.
-const KNOB_THRESHOLD = 12;
+//
+// #3554 raised it to 13 for `config.buyerEmails`. Decision D6 (epic #3510) makes
+// buyer emails an opt-in PER CONNECTION by design - a marketplace may send only
+// transactional emails, a shop also its order confirmation - so an install-wide
+// setting would be the wrong scope, and the automation rules that carry the
+// email text cannot hold the opt-in either (a rule has no connection axis). The
+// #1032 question still stands; it is again raised by one so the next knob asks.
+const KNOB_THRESHOLD = 13;
 
 /** Ladder rungs (ADR-048): sub-capabilities that declare master freshness. */
 const KNOWN_RUNGS = new Set(['modified-product-lister.capability.ts']);
