@@ -7,6 +7,7 @@ describe('getEnvironmentMeta', () => {
     expect(getEnvironmentMeta('development')).toEqual({
       label: 'Dev',
       shortLabel: 'Dev',
+      accessibleLabel: 'Development',
       tone: 'info',
     });
 
@@ -27,6 +28,14 @@ describe('getEnvironmentMeta', () => {
 });
 
 describe('EnvironmentBadge', () => {
+  it('shows "Dev" but announces the full environment name', () => {
+    render(<EnvironmentBadge appEnv="development" version="1.4.0" />);
+
+    expect(screen.getByLabelText('Environment Development, version 1.4.0')).toHaveTextContent(
+      'Dev'
+    );
+  });
+
   it('renders the environment name with the release version below it', () => {
     render(<EnvironmentBadge appEnv="production" version="1.4.0" />);
 
