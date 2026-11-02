@@ -20,7 +20,10 @@ export class InvoiceAttachmentResponseDto {
   @ApiProperty({
     enum: InvoiceAttachmentStateValues,
     description:
-      '`pdf` - real bytes at `downloadPath`; `link` - a public `url`; `waiting` - nothing to ' +
+      '`pdf` - the provider declares it can render the document, streamed by `downloadPath`. ' +
+      'Declared, not downloaded: this read never fetches the bytes, so the download itself may ' +
+      'still answer 409 when the provider turns out not to be ready - do not promise the file ' +
+      'before it arrives; `link` - a public `url`; `waiting` - nothing to ' +
       'attach right now (not cleared yet, or the provider did not answer), try again later; ' +
       '`none` - cleared and there is still nothing to attach.',
   })

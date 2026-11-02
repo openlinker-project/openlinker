@@ -63,7 +63,14 @@ import {
   Res,
   UnprocessableEntityException,
 } from '@nestjs/common';
-import { ApiBearerAuth, ApiTags, ApiOperation, ApiProduces, ApiQuery, ApiResponse } from '@nestjs/swagger';
+import {
+  ApiBearerAuth,
+  ApiTags,
+  ApiOperation,
+  ApiProduces,
+  ApiQuery,
+  ApiResponse,
+} from '@nestjs/swagger';
 import { Response } from 'express';
 import { Logger } from '@openlinker/shared/logging';
 import { CurrentUser } from '../../auth/decorators/current-user.decorator';
@@ -133,11 +140,11 @@ import {
   buildOrderSummary,
 } from '@openlinker/core/orders';
 import type { Order, OrderRecord, OrderSummary } from '@openlinker/core/orders';
-import { decideLiveOrderIssuance, type LiveOrderIssuanceDecision } from '@openlinker/core/sales-documents';
 import {
-  CONNECTION_PORT_TOKEN,
-  ConnectionPort,
-} from '@openlinker/core/identifier-mapping';
+  decideLiveOrderIssuance,
+  type LiveOrderIssuanceDecision,
+} from '@openlinker/core/sales-documents';
+import { CONNECTION_PORT_TOKEN, ConnectionPort } from '@openlinker/core/identifier-mapping';
 import { normalizeBuyerTaxId } from './dto/buyer-tax-id.dto';
 import { IssueInvoiceRequestDto } from './dto/issue-invoice-request.dto';
 import { IssueCorrectionRequestDto } from './dto/issue-correction-request.dto';
@@ -220,7 +227,7 @@ export class InvoicingController {
     @Inject(ORDER_REFUND_SERVICE_TOKEN)
     private readonly refunds: IOrderRefundService,
     @Inject(INVOICE_ATTACHMENT_SERVICE_TOKEN)
-    private readonly attachments: IInvoiceAttachmentService,
+    private readonly attachments: IInvoiceAttachmentService
   ) {}
 
   @Roles('admin', 'operator', 'viewer')
@@ -237,12 +244,12 @@ export class InvoicingController {
   @ApiResponse({ status: 501, description: 'Adapter does not implement BankAccountsReader' })
   @ApiResponse({ status: 502, description: 'Invoicing provider unavailable or call failed' })
   async getBankAccounts(
-    @Param('connectionId', connectionIdPipe()) connectionId: string,
+    @Param('connectionId', connectionIdPipe()) connectionId: string
   ): Promise<BankAccountResponseDto[]> {
     const adapter = await this.resolveInvoicingAdapter(connectionId);
     if (!isBankAccountsReader(adapter)) {
       throw new NotImplementedException(
-        `Adapter for connection ${connectionId} does not implement BankAccountsReader`,
+        `Adapter for connection ${connectionId} does not implement BankAccountsReader`
       );
     }
     try {
@@ -275,12 +282,12 @@ export class InvoicingController {
   @ApiResponse({ status: 502, description: 'Invoicing provider unavailable or call failed' })
   async setDefaultBankAccount(
     @Param('connectionId', connectionIdPipe()) connectionId: string,
-    @Param('accountId', accountIdPipe()) accountId: string,
+    @Param('accountId', accountIdPipe()) accountId: string
   ): Promise<void> {
     const adapter = await this.resolveInvoicingAdapter(connectionId);
     if (!isBankAccountDefaultSetter(adapter)) {
       throw new NotImplementedException(
-        `Adapter for connection ${connectionId} does not implement BankAccountDefaultSetter`,
+        `Adapter for connection ${connectionId} does not implement BankAccountDefaultSetter`
       );
     }
     try {
@@ -301,7 +308,7 @@ export class InvoicingController {
     try {
       return await this.integrationsService.getCapabilityAdapter<InvoicingPort>(
         connectionId,
-        'Invoicing',
+        'Invoicing'
       );
     } catch (error) {
       if (error instanceof AdapterNotFoundException) {
@@ -334,7 +341,7 @@ export class InvoicingController {
       // is still observable rather than swallowed entirely.
       const message = error instanceof Error ? error.message : String(error);
       this.logger.debug(
-        `Shipping-line label lookup failed for connection ${connectionId}; using neutral default: ${message}`,
+        `Shipping-line label lookup failed for connection ${connectionId}; using neutral default: ${message}`
       );
       return undefined;
     }
@@ -348,9 +355,7 @@ export class InvoicingController {
    * is simply not applied) rather than breaking issuance — the per-source route
    * degrades gracefully to a source-wildcard route.
    */
-  private async resolveSourcePlatformType(
-    sourceConnectionId: string,
-  ): Promise<string | undefined> {
+  private async resolveSourcePlatformType(sourceConnectionId: string): Promise<string | undefined> {
     try {
       const connection = await this.connectionPort.get(sourceConnectionId);
       const platformType = connection.platformType.trim();
@@ -359,7 +364,7 @@ export class InvoicingController {
       const message = error instanceof Error ? error.message : String(error);
       this.logger.debug(
         `Source platformType lookup failed for connection ${sourceConnectionId}; ` +
-          `per-source numbering axis not applied: ${message}`,
+          `per-source numbering axis not applied: ${message}`
       );
       return undefined;
     }
@@ -425,7 +430,9 @@ export class InvoicingController {
       // original attempt is in flight (#1200) — surface 409 so the caller retries
       // later. An EXPIRED `issuing` lease falls through: it is re-claimable below.
       if (existing.status === 'pending' || existing.isLeaseLive(new Date())) {
-        throw new ConflictException(`Invoice issuance already in progress for order: ${dto.orderId}`);
+        throw new ConflictException(
+          `Invoice issuance already in progress for order: ${dto.orderId}`
+        );
       }
     }
 
@@ -443,7 +450,8 @@ export class InvoicingController {
             ? 'This order is cancelled. Confirm to issue an invoice for it anyway.'
             : 'This order is fully refunded. Confirm to issue an invoice for it anyway.',
         error: 'OrderNotIssuable',
-        code: liveDecision.reason === 'order-cancelled' ? 'ORDER_CANCELLED' : 'ORDER_FULLY_REFUNDED',
+        code:
+          liveDecision.reason === 'order-cancelled' ? 'ORDER_CANCELLED' : 'ORDER_FULLY_REFUNDED',
         warningCode: liveDecision.reason,
       });
     }
@@ -543,7 +551,7 @@ export class InvoicingController {
       const errorName = error instanceof Error ? error.name : 'UnknownError';
       this.logger.warn(
         `Failed to clear the sales-document block after issuing (swallowed): ` +
-          `error=${errorName} orderId=${orderId}`,
+          `error=${errorName} orderId=${orderId}`
       );
     }
   }
@@ -562,7 +570,10 @@ export class InvoicingController {
       'At most 100 ids per request. Returns a per-id outcome summary.',
   })
   @ApiResponse({ status: 200, description: 'Per-id retry summary', type: RetryInvoicesResponseDto })
-  @ApiResponse({ status: 400, description: 'Validation error (empty array, non-UUID ids, or batch > 100)' })
+  @ApiResponse({
+    status: 400,
+    description: 'Validation error (empty array, non-UUID ids, or batch > 100)',
+  })
   @ApiResponse({ status: 403, description: 'Insufficient permissions' })
   async retryInvoices(@Body() dto: RetryInvoicesRequestDto): Promise<RetryInvoicesResponseDto> {
     // De-duplicate ids while preserving first-seen order so a caller that repeats
@@ -657,7 +668,7 @@ export class InvoicingController {
       this.logger.warn(
         `Batch retry failed for invoice ${invoiceId} (${correlationId}): ${
           error instanceof Error ? error.message : String(error)
-        }`,
+        }`
       );
       return {
         id: invoiceId,
@@ -684,11 +695,18 @@ export class InvoicingController {
       'rate-limit ceilings (#1594), so a large batch throttles itself rather than ' +
       'relying solely on reactive backoff.',
   })
-  @ApiResponse({ status: 200, description: 'Per-id issue summary', type: BulkIssueInvoicesResponseDto })
-  @ApiResponse({ status: 400, description: 'Validation error (empty array, blank ids, or batch > 100)' })
+  @ApiResponse({
+    status: 200,
+    description: 'Per-id issue summary',
+    type: BulkIssueInvoicesResponseDto,
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'Validation error (empty array, blank ids, or batch > 100)',
+  })
   @ApiResponse({ status: 403, description: 'Insufficient permissions' })
   async bulkIssueInvoices(
-    @Body() dto: BulkIssueInvoicesRequestDto,
+    @Body() dto: BulkIssueInvoicesRequestDto
   ): Promise<BulkIssueInvoicesResponseDto> {
     // De-duplicate ids while preserving first-seen order so a caller that repeats
     // an id gets ONE outcome and the same order is never issued twice in a single
@@ -740,7 +758,7 @@ export class InvoicingController {
    */
   private async issueOneForOrder(
     connectionId: string,
-    orderId: string,
+    orderId: string
   ): Promise<BulkIssueInvoiceResultDto> {
     try {
       const record = await this.orders.getOrderRecord(orderId);
@@ -762,7 +780,11 @@ export class InvoicingController {
           };
         }
         if (existing.status === 'pending' || existing.isLeaseLive(new Date())) {
-          return { orderId, outcome: 'skipped', reason: 'Invoice issuance is already in progress.' };
+          return {
+            orderId,
+            outcome: 'skipped',
+            reason: 'Invoice issuance is already in progress.',
+          };
         }
       }
 
@@ -887,7 +909,7 @@ export class InvoicingController {
       this.logger.warn(
         `Bulk issue failed for order ${orderId} (${correlationId}): ${
           error instanceof Error ? error.message : String(error)
-        }`,
+        }`
       );
       return {
         orderId,
@@ -908,7 +930,11 @@ export class InvoicingController {
       'extract connectionId, orderId, and originalProviderInvoiceId. Requires the ' +
       'connection adapter to implement the CorrectionIssuer sub-capability.',
   })
-  @ApiResponse({ status: 201, description: 'Correction invoice issued', type: InvoiceRecordResponseDto })
+  @ApiResponse({
+    status: 201,
+    description: 'Correction invoice issued',
+    type: InvoiceRecordResponseDto,
+  })
   @ApiResponse({
     status: 409,
     description:
@@ -918,11 +944,14 @@ export class InvoicingController {
       'whether the provider created a document - retrying cannot settle it.',
   })
   @ApiResponse({ status: 404, description: 'Invoice not found' })
-  @ApiResponse({ status: 422, description: 'Provider rejected the correction or adapter does not support corrections' })
+  @ApiResponse({
+    status: 422,
+    description: 'Provider rejected the correction or adapter does not support corrections',
+  })
   @ApiResponse({ status: 403, description: 'Insufficient permissions' })
   async issueCorrection(
     @Param('invoiceId', invoiceIdPipe()) invoiceId: string,
-    @Body() dto: IssueCorrectionRequestDto,
+    @Body() dto: IssueCorrectionRequestDto
   ): Promise<InvoiceRecordResponseDto> {
     const original = await this.invoiceService.getInvoiceById(invoiceId);
     if (!original) {
@@ -930,7 +959,7 @@ export class InvoicingController {
     }
     if (!original.providerInvoiceId) {
       throw new UnprocessableEntityException(
-        `Invoice ${invoiceId} has no provider invoice id — it may not be fully issued yet`,
+        `Invoice ${invoiceId} has no provider invoice id — it may not be fully issued yet`
       );
     }
     if (!original.providerInvoiceNumber || !original.issuedAt) {
@@ -939,7 +968,7 @@ export class InvoicingController {
       // (1818000000004-backfill-ksef-provider-invoice-number.ts) to pass this check.
       throw new UnprocessableEntityException(
         `Invoice ${invoiceId} is missing document number / issue date — it may not be fully issued yet, ` +
-          `or it was issued before the provider stamped its document number and needs a one-off backfill`,
+          `or it was issued before the provider stamped its document number and needs a one-off backfill`
       );
     }
 
@@ -1005,7 +1034,9 @@ export class InvoicingController {
           newUnitPriceGross: l.newUnitPriceGross,
         })),
         idempotencyKey: dto.idempotencyKey,
-        ...(dto.acknowledgeWarnings?.length ? { acknowledgedWarnings: dto.acknowledgeWarnings } : {}),
+        ...(dto.acknowledgeWarnings?.length
+          ? { acknowledgedWarnings: dto.acknowledgeWarnings }
+          : {}),
         originalDocument,
         source,
         // #1582: optional buyer-identity override (e.g. a wrong NIP on the
@@ -1027,7 +1058,7 @@ export class InvoicingController {
               // their documents go, so the original's e-mail carries over.
               originalDocument?.buyer.email ?? null,
               dto.buyerOverride.isPublicSectorEntity,
-              dto.buyerOverride.isTaxGroupMember,
+              dto.buyerOverride.isTaxGroupMember
             )
           : undefined,
       });
@@ -1082,21 +1113,25 @@ export class InvoicingController {
   @ApiOperation({
     summary: 'Re-send a rejected invoice to the tax authority (KSeF)',
     description:
-      "Re-triggers transmission of an already-issued document whose clearance ended in " +
+      'Re-triggers transmission of an already-issued document whose clearance ended in ' +
       "'rejected', then refreshes the stored regulatory status. Gated to rejected documents " +
       '(409 otherwise) to avoid racing an in-flight submission or re-sending a cleared document. ' +
       'Requires the connection adapter to implement the RegulatoryResubmitter sub-capability ' +
       '(501 when unsupported). Neutral by design (ADR-026) — the core capability carries no ' +
       'regime vocabulary; only this operator-facing route name references KSeF, mirroring /upo.',
   })
-  @ApiResponse({ status: 200, description: 'Resubmitted; refreshed record', type: InvoiceRecordResponseDto })
+  @ApiResponse({
+    status: 200,
+    description: 'Resubmitted; refreshed record',
+    type: InvoiceRecordResponseDto,
+  })
   @ApiResponse({ status: 404, description: 'Invoice not found' })
   @ApiResponse({ status: 409, description: 'Invoice is not in a rejected state' })
   @ApiResponse({ status: 501, description: 'Adapter does not implement RegulatoryResubmitter' })
   @ApiResponse({ status: 502, description: 'Invoicing provider unavailable or the resend failed' })
   @ApiResponse({ status: 403, description: 'Insufficient permissions' })
   async resendToKsef(
-    @Param('invoiceId', invoiceIdPipe()) invoiceId: string,
+    @Param('invoiceId', invoiceIdPipe()) invoiceId: string
   ): Promise<InvoiceRecordResponseDto> {
     const record = await this.invoiceService.getInvoiceById(invoiceId);
     if (!record) {
@@ -1108,14 +1143,14 @@ export class InvoicingController {
     if (record.regulatoryStatus !== 'rejected') {
       throw new ConflictException(
         `Invoice ${invoiceId} is not in a rejected state (regulatory status ${record.regulatoryStatus}); ` +
-          'only rejected invoices can be re-sent',
+          'only rejected invoices can be re-sent'
       );
     }
 
     const adapter = await this.resolveInvoicingAdapter(record.connectionId);
     if (!isRegulatoryResubmitter(adapter)) {
       throw new NotImplementedException(
-        `Adapter for connection ${record.connectionId} does not implement RegulatoryResubmitter`,
+        `Adapter for connection ${record.connectionId} does not implement RegulatoryResubmitter`
       );
     }
 
@@ -1156,20 +1191,24 @@ export class InvoicingController {
   @ApiOperation({
     summary: 'Email an issued invoice to the buyer (#1353)',
     description:
-      'Triggers the connection\'s Invoicing provider to render + email the issued document to ' +
-      'the buyer (e.g. inFakt\'s deliver_via_email). OpenLinker only triggers the send — the ' +
-      'provider composes and delivers the message to the buyer\'s stored email (no recipient ' +
+      "Triggers the connection's Invoicing provider to render + email the issued document to " +
+      "the buyer (e.g. inFakt's deliver_via_email). OpenLinker only triggers the send — the " +
+      "provider composes and delivers the message to the buyer's stored email (no recipient " +
       'override). Optional neutral locale (pl/en) and send-copy flag. 501 when the resolved ' +
       'adapter does not implement InvoiceEmailSender.',
   })
-  @ApiResponse({ status: 200, description: 'Delivery triggered', type: SendInvoiceEmailResponseDto })
+  @ApiResponse({
+    status: 200,
+    description: 'Delivery triggered',
+    type: SendInvoiceEmailResponseDto,
+  })
   @ApiResponse({ status: 404, description: 'Invoice not found' })
   @ApiResponse({ status: 422, description: 'Invoice not fully issued (no provider invoice id)' })
   @ApiResponse({ status: 501, description: 'Adapter does not implement InvoiceEmailSender' })
   @ApiResponse({ status: 502, description: 'Invoicing provider unavailable or call failed' })
   async sendInvoiceEmail(
     @Param('invoiceId', invoiceIdPipe()) invoiceId: string,
-    @Body() dto: SendInvoiceEmailRequestDto,
+    @Body() dto: SendInvoiceEmailRequestDto
   ): Promise<SendInvoiceEmailResponseDto> {
     const record = await this.invoiceService.getInvoiceById(invoiceId);
     if (!record) {
@@ -1177,14 +1216,14 @@ export class InvoicingController {
     }
     if (!record.providerInvoiceId) {
       throw new UnprocessableEntityException(
-        `Invoice ${invoiceId} has no provider invoice id — it may not be fully issued yet`,
+        `Invoice ${invoiceId} has no provider invoice id — it may not be fully issued yet`
       );
     }
 
     const adapter = await this.resolveInvoicingAdapter(record.connectionId);
     if (!isInvoiceEmailSender(adapter)) {
       throw new NotImplementedException(
-        `Adapter for invoice ${invoiceId} does not implement InvoiceEmailSender`,
+        `Adapter for invoice ${invoiceId} does not implement InvoiceEmailSender`
       );
     }
     try {
@@ -1205,17 +1244,21 @@ export class InvoicingController {
   @ApiOperation({
     summary: 'Push an authoritative "paid" state to the provider (#1362)',
     description:
-      'Marks an already-issued document as paid with the connection\'s Invoicing provider - ' +
+      "Marks an already-issued document as paid with the connection's Invoicing provider - " +
       'the outbound counterpart to the payment-status webhook (#1354). Useful for orders ' +
       'settled before/outside the invoice itself (e.g. a marketplace order the buyer already ' +
       'paid the marketplace for), which a provider has no bank statement to auto-match ' +
       'against. After the provider accepts the mark, OL best-effort re-reads the payment ' +
       'status to refresh its own projection; the returned `paymentStatus` reflects that ' +
-      'immediate re-read and may not yet show `paid` if the provider\'s own processing ' +
-      'hasn\'t completed - this is not a failure. 501 when the resolved adapter does not ' +
+      "immediate re-read and may not yet show `paid` if the provider's own processing " +
+      "hasn't completed - this is not a failure. 501 when the resolved adapter does not " +
       'implement PaymentMarker.',
   })
-  @ApiResponse({ status: 200, description: 'Provider accepted the mark', type: InvoiceRecordResponseDto })
+  @ApiResponse({
+    status: 200,
+    description: 'Provider accepted the mark',
+    type: InvoiceRecordResponseDto,
+  })
   @ApiResponse({ status: 404, description: 'Invoice not found' })
   @ApiResponse({ status: 422, description: 'Invoice not fully issued (no provider invoice id)' })
   @ApiResponse({ status: 501, description: 'Adapter does not implement PaymentMarker' })
@@ -1223,7 +1266,7 @@ export class InvoicingController {
   async markInvoicePaid(
     @Param('invoiceId', invoiceIdPipe()) invoiceId: string,
     @Body() dto: MarkInvoicePaidRequestDto,
-    @CurrentUser() user: AuthenticatedUser,
+    @CurrentUser() user: AuthenticatedUser
   ): Promise<InvoiceRecordResponseDto> {
     const record = await this.invoiceService.getInvoiceById(invoiceId);
     if (!record) {
@@ -1231,14 +1274,14 @@ export class InvoicingController {
     }
     if (!record.providerInvoiceId) {
       throw new UnprocessableEntityException(
-        `Invoice ${invoiceId} has no provider invoice id - it may not be fully issued yet`,
+        `Invoice ${invoiceId} has no provider invoice id - it may not be fully issued yet`
       );
     }
 
     const adapter = await this.resolveInvoicingAdapter(record.connectionId);
     if (!isPaymentMarker(adapter)) {
       throw new NotImplementedException(
-        `Adapter for invoice ${invoiceId} does not implement PaymentMarker`,
+        `Adapter for invoice ${invoiceId} does not implement PaymentMarker`
       );
     }
 
@@ -1248,17 +1291,17 @@ export class InvoicingController {
     // tracked on the original invoice, not on a correction document.
     if (record.documentType === 'corrected') {
       this.logger.warn(
-        `Marking a correction document (invoice ${invoiceId}) as paid; payment is normally tracked on the original invoice, not its correction`,
+        `Marking a correction document (invoice ${invoiceId}) as paid; payment is normally tracked on the original invoice, not its correction`
       );
     }
     if (record.paymentStatus === 'paid' || record.paymentStatus === 'partially-paid') {
       this.logger.warn(
-        `Invoice ${invoiceId} local payment status is already '${record.paymentStatus}' before marking paid; proceeding at operator request`,
+        `Invoice ${invoiceId} local payment status is already '${record.paymentStatus}' before marking paid; proceeding at operator request`
       );
     }
 
     this.logger.log(
-      `Marking invoice ${invoiceId} (connection=${record.connectionId}) as paid, requested by user ${user.id}`,
+      `Marking invoice ${invoiceId} (connection=${record.connectionId}) as paid, requested by user ${user.id}`
     );
 
     const paidDate = dto.paidDate ? new Date(dto.paidDate) : new Date();
@@ -1278,12 +1321,14 @@ export class InvoicingController {
     try {
       const result = await this.paymentStatusRefreshService.refreshByExternalId(
         record.connectionId,
-        record.providerInvoiceId,
+        record.providerInvoiceId
       );
       projectionChanged = result.outcome === 'updated';
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      this.logger.warn(`Post-markPaid payment status refresh failed for invoice ${invoiceId}: ${message}`);
+      this.logger.warn(
+        `Post-markPaid payment status refresh failed for invoice ${invoiceId}: ${message}`
+      );
     }
 
     // Only re-read when the refresh actually wrote a new status; on 'unchanged'
@@ -1315,7 +1360,7 @@ export class InvoicingController {
   @ApiResponse({ status: 403, description: 'Insufficient permissions' })
   async getInvoiceForOrder(
     @Param('orderId') orderId: string,
-    @Query() query: GetInvoiceForOrderQueryDto,
+    @Query() query: GetInvoiceForOrderQueryDto
   ): Promise<InvoiceRecordResponseDto> {
     const record = await this.orders.getOrderRecord(orderId);
     if (!record) {
@@ -1384,11 +1429,11 @@ export class InvoicingController {
     };
     const page = await this.invoiceService.listInvoices(filter, { limit, offset });
     const orderSummaryByOrderId = await this.resolveOrderSummaries(
-      page.items.map((record) => record.orderId),
+      page.items.map((record) => record.orderId)
     );
     return {
       items: page.items.map((record) =>
-        this.toDto(record, orderSummaryByOrderId.get(record.orderId) ?? null),
+        this.toDto(record, orderSummaryByOrderId.get(record.orderId) ?? null)
       ),
       total: page.total,
       limit,
@@ -1404,7 +1449,9 @@ export class InvoicingController {
    * map (every row's summary `null`) on a batch-read failure — a broken
    * enrichment must never take down the primary invoices read.
    */
-  private async resolveOrderSummaries(orderIds: string[]): Promise<Map<string, OrderSummary | null>> {
+  private async resolveOrderSummaries(
+    orderIds: string[]
+  ): Promise<Map<string, OrderSummary | null>> {
     const distinct = [...new Set(orderIds)];
     if (distinct.length === 0) {
       return new Map();
@@ -1418,7 +1465,7 @@ export class InvoicingController {
     }
     const recordByOrderId = new Map(records.map((record) => [record.internalOrderId, record]));
     return new Map(
-      distinct.map((orderId) => [orderId, buildOrderSummary(recordByOrderId.get(orderId))]),
+      distinct.map((orderId) => [orderId, buildOrderSummary(recordByOrderId.get(orderId))])
     );
   }
 
@@ -1435,7 +1482,7 @@ export class InvoicingController {
       if (error instanceof OrderSnapshotUnavailableError) {
         // PII-clean, generic 422 — never echo snapshot contents.
         throw new UnprocessableEntityException(
-          `Order ${orderId} buyer details are unavailable for invoicing`,
+          `Order ${orderId} buyer details are unavailable for invoicing`
         );
       }
       throw error;
@@ -1443,9 +1490,7 @@ export class InvoicingController {
   }
 
   /** Map the optional B2B tax-id DTO onto the neutral, scheme-tagged identifier. */
-  private toTaxIdentifier(
-    dto: IssueInvoiceRequestDto['buyerTaxId'],
-  ): TaxIdentifier | null {
+  private toTaxIdentifier(dto: IssueInvoiceRequestDto['buyerTaxId']): TaxIdentifier | null {
     return dto ? normalizeBuyerTaxId(dto) : null;
   }
 
@@ -1527,7 +1572,7 @@ export class InvoicingController {
    */
   private withOperatorClassification(
     command: IssueInvoiceCommand,
-    dto: IssueInvoiceRequestDto,
+    dto: IssueInvoiceRequestDto
   ): IssueInvoiceCommand {
     let next = command;
     if (dto.annotations) {
@@ -1552,7 +1597,7 @@ export class InvoicingController {
       const unknown = [...byLine.keys()].filter((id) => !known.has(id));
       if (unknown.length > 0) {
         throw new BadRequestException(
-          `lineClassifications name order lines this invoice does not carry: ${unknown.join(', ')}`,
+          `lineClassifications name order lines this invoice does not carry: ${unknown.join(', ')}`
         );
       }
       next = {
@@ -1575,7 +1620,7 @@ export class InvoicingController {
   /** The shared live-order gate (DEF-26) for one order record. */
   private async decideLiveIssuance(record: OrderRecord): Promise<LiveOrderIssuanceDecision> {
     const summary = (await this.refunds.getRefundSummariesForOrders([record.internalOrderId])).get(
-      record.internalOrderId,
+      record.internalOrderId
     );
     return decideLiveOrderIssuance(toLiveOrderIssuanceFacts(record, summary));
   }
@@ -1687,7 +1732,7 @@ export class InvoicingController {
       this.logger.warn(
         `Invoice issuance rejected (${correlationId}, failureCode=${failureCode}): ${
           error instanceof Error ? error.message : String(error)
-        }`,
+        }`
       );
       return new UnprocessableEntityException({
         message: failureReason,
@@ -1712,7 +1757,7 @@ export class InvoicingController {
       const correlationId = `inv-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
       this.logger.warn(`Invoice issuance rejected (${correlationId}): ${error.message}`);
       return new UnprocessableEntityException(
-        `Invoice issuance was rejected by the provider (correlationId: ${correlationId})`,
+        `Invoice issuance was rejected by the provider (correlationId: ${correlationId})`
       );
     }
     return new UnprocessableEntityException('Invoice issuance was rejected by the provider');
@@ -1726,7 +1771,10 @@ export class InvoicingController {
    *   `null` — every call site except `listInvoices` is a single-record
    *   read/write with no batched order context to hand it.
    */
-  private toDto(record: InvoiceRecord, orderSummary: OrderSummary | null = null): InvoiceRecordResponseDto {
+  private toDto(
+    record: InvoiceRecord,
+    orderSummary: OrderSummary | null = null
+  ): InvoiceRecordResponseDto {
     return {
       id: record.id,
       connectionId: record.connectionId,
@@ -1766,12 +1814,13 @@ export class InvoicingController {
       'link (`link`), `waiting` while the document is not cleared yet or the provider did not ' +
       'answer, or `none` when it is cleared and still has nothing attachable. Never a 5xx for a ' +
       'missing document: `waiting` and `none` are answers, not failures. Never downloads the ' +
-      'document: a `pdf` is reported from what the provider declares it can render.',
+      'document: a `pdf` is reported from what the provider declares it can render, so the ' +
+      '`downloadPath` route may still answer 409 if the provider is not ready when it is called.',
   })
   @ApiResponse({ status: 200, type: InvoiceAttachmentResponseDto })
   @ApiResponse({ status: 404, description: 'Invoice not found' })
   async getAttachment(
-    @Param('invoiceId', invoiceIdPipe()) invoiceId: string,
+    @Param('invoiceId', invoiceIdPipe()) invoiceId: string
   ): Promise<InvoiceAttachmentResponseDto> {
     const attachment = await this.attachments.describeAttachment(invoiceId);
     if (attachment === null) {
@@ -1786,14 +1835,14 @@ export class InvoicingController {
     summary: "The tax authority's public verification link for an invoice",
     description:
       'The link a QR verification code on a copy handed outside the authority system encodes ' +
-      "(KSeF: KOD I). Built by the provider adapter from the document it submitted, so its host, " +
+      '(KSeF: KOD I). Built by the provider adapter from the document it submitted, so its host, ' +
       'date and hash are the ones the authority checks (DEF-02 / DEF-03). `url` is null when the ' +
       'provider offers no such link or the document is not cleared yet.',
   })
   @ApiResponse({ status: 200, description: '{ url: string | null }' })
   @ApiResponse({ status: 404, description: 'Invoice not found' })
   async getVerificationLink(
-    @Param('invoiceId', invoiceIdPipe()) invoiceId: string,
+    @Param('invoiceId', invoiceIdPipe()) invoiceId: string
   ): Promise<{ url: string | null }> {
     const record = await this.invoiceService.getInvoiceById(invoiceId);
     if (!record) {
@@ -1802,7 +1851,7 @@ export class InvoicingController {
     try {
       const adapter = await this.integrationsService.getCapabilityAdapter<InvoicingPort>(
         record.connectionId,
-        'Invoicing',
+        'Invoicing'
       );
       if (!isRegulatoryVerificationLinkReader(adapter)) {
         return { url: null };
@@ -1813,7 +1862,7 @@ export class InvoicingController {
       // A connection that cannot be resolved has no link to offer; the panel
       // then shows none rather than a guessed one.
       this.logger.warn(
-        `No verification link for invoice ${invoiceId}: ${error instanceof Error ? error.message : String(error)}`,
+        `No verification link for invoice ${invoiceId}: ${error instanceof Error ? error.message : String(error)}`
       );
       return { url: null };
     }
@@ -1828,18 +1877,24 @@ export class InvoicingController {
       'at issue time. 404 when the invoice id is unknown; 409 when the invoice carries no content ' +
       'snapshot yet (e.g. still pending, or issued by an adapter that did not capture content).',
   })
-  @ApiResponse({ status: 200, description: 'Issued-document content', type: IssuedDocumentContentDto })
+  @ApiResponse({
+    status: 200,
+    description: 'Issued-document content',
+    type: IssuedDocumentContentDto,
+  })
   @ApiResponse({ status: 404, description: 'Invoice not found' })
   @ApiResponse({ status: 409, description: 'No content snapshot available for this invoice' })
   @ApiResponse({ status: 403, description: 'Insufficient permissions' })
-  async getContent(@Param('invoiceId', invoiceIdPipe()) invoiceId: string): Promise<IssuedDocumentContentDto> {
+  async getContent(
+    @Param('invoiceId', invoiceIdPipe()) invoiceId: string
+  ): Promise<IssuedDocumentContentDto> {
     const record = await this.invoiceService.getInvoiceById(invoiceId);
     if (!record) {
       throw new NotFoundException(`Invoice not found: ${invoiceId}`);
     }
     if (!record.documentContent) {
       throw new ConflictException(
-        `No content snapshot is available for invoice ${invoiceId} (status ${record.status})`,
+        `No content snapshot is available for invoice ${invoiceId} (status ${record.status})`
       );
     }
     // #2076: `documentContent` and `issuedLineSnapshot` are separate columns
@@ -1850,7 +1905,7 @@ export class InvoicingController {
     // operator pick a position from an array the server will not index.
     return IssuedDocumentContentDto.fromDomain(
       record.documentContent,
-      record.issuedLineSnapshot != null,
+      record.issuedLineSnapshot != null
     );
   }
 
@@ -1877,7 +1932,7 @@ export class InvoicingController {
   async downloadDocument(
     @Param('invoiceId', invoiceIdPipe()) invoiceId: string,
     @Res() res: Response,
-    @Query('kind') kindParam?: string,
+    @Query('kind') kindParam?: string
   ): Promise<void> {
     const kind = this.parseDocumentKind(kindParam);
     const record = await this.invoiceService.getInvoiceById(invoiceId);
@@ -1890,7 +1945,7 @@ export class InvoicingController {
       // straight from the record, no provider round-trip.
       if (!record.sourceDocument) {
         throw new ConflictException(
-          `No source document is available for invoice ${invoiceId} (status ${record.status})`,
+          `No source document is available for invoice ${invoiceId} (status ${record.status})`
         );
       }
       this.streamStoredDocument(res, invoiceId, kind, record.sourceDocument);
@@ -1900,30 +1955,36 @@ export class InvoicingController {
     // `rendered` (and any future provider-served kind) goes through the adapter.
     if (record.status !== 'issued' || record.regulatoryStatus !== 'accepted') {
       throw new ConflictException(
-        `Document is not yet available for invoice ${invoiceId} (status ${record.status}, regulatory ${record.regulatoryStatus})`,
+        `Document is not yet available for invoice ${invoiceId} (status ${record.status}, regulatory ${record.regulatoryStatus})`
       );
     }
     const adapter = await this.integrationsService.getCapabilityAdapter<InvoicingPort>(
       record.connectionId,
-      'Invoicing',
+      'Invoicing'
     );
     if (!isRegulatoryDocumentReader(adapter)) {
       throw new ConflictException(
-        `Invoice ${invoiceId} provider does not expose downloadable documents`,
+        `Invoice ${invoiceId} provider does not expose downloadable documents`
       );
     }
     try {
       const document = await adapter.getRegulatoryDocument(record, kind);
-      this.streamBinaryDocument(res, invoiceId, kind, document.contentType, Buffer.from(document.content));
+      this.streamBinaryDocument(
+        res,
+        invoiceId,
+        kind,
+        document.contentType,
+        Buffer.from(document.content)
+      );
     } catch (error) {
       if (error instanceof UnsupportedRegulatoryDocumentKindError) {
         throw new ConflictException(
-          `Invoice ${invoiceId} provider cannot produce a '${kind}' document`,
+          `Invoice ${invoiceId} provider cannot produce a '${kind}' document`
         );
       }
       if (error instanceof RegulatoryDocumentNotReadyError) {
         throw new ConflictException(
-          `Invoice ${invoiceId} '${kind}' document is not available until the invoice is cleared`,
+          `Invoice ${invoiceId} '${kind}' document is not available until the invoice is cleared`
         );
       }
       throw error;
@@ -1944,24 +2005,27 @@ export class InvoicingController {
   @ApiResponse({ status: 404, description: 'Invoice not found' })
   @ApiResponse({ status: 409, description: 'UPO not yet available for this invoice' })
   @ApiResponse({ status: 403, description: 'Insufficient permissions' })
-  async downloadUpo(@Param('invoiceId', invoiceIdPipe()) invoiceId: string, @Res() res: Response): Promise<void> {
+  async downloadUpo(
+    @Param('invoiceId', invoiceIdPipe()) invoiceId: string,
+    @Res() res: Response
+  ): Promise<void> {
     const record = await this.invoiceService.getInvoiceById(invoiceId);
     if (!record) {
       throw new NotFoundException(`Invoice not found: ${invoiceId}`);
     }
     if (record.status !== 'issued' || record.regulatoryStatus !== 'accepted') {
       throw new ConflictException(
-        `UPO is not yet available for invoice ${invoiceId} (status ${record.status}, regulatory ${record.regulatoryStatus})`,
+        `UPO is not yet available for invoice ${invoiceId} (status ${record.status}, regulatory ${record.regulatoryStatus})`
       );
     }
 
     const adapter = await this.integrationsService.getCapabilityAdapter<InvoicingPort>(
       record.connectionId,
-      'Invoicing',
+      'Invoicing'
     );
     if (!isRegulatoryDocumentReader(adapter)) {
       throw new ConflictException(
-        `Invoice ${invoiceId} provider does not expose a confirmation document`,
+        `Invoice ${invoiceId} provider does not expose a confirmation document`
       );
     }
 
@@ -1970,11 +2034,17 @@ export class InvoicingController {
     // before any byte is written; `res.*` only ever runs on success.
     try {
       const document = await adapter.getRegulatoryDocument(record, 'confirmation');
-      this.streamBinaryDocument(res, invoiceId, 'confirmation', document.contentType, Buffer.from(document.content));
+      this.streamBinaryDocument(
+        res,
+        invoiceId,
+        'confirmation',
+        document.contentType,
+        Buffer.from(document.content)
+      );
     } catch (error) {
       if (error instanceof UnsupportedRegulatoryDocumentKindError) {
         throw new ConflictException(
-          `Invoice ${invoiceId} provider cannot produce a confirmation document`,
+          `Invoice ${invoiceId} provider cannot produce a confirmation document`
         );
       }
       throw error;
@@ -1995,7 +2065,9 @@ export class InvoicingController {
   @ApiResponse({ status: 200, description: 'Invoice record', type: InvoiceRecordResponseDto })
   @ApiResponse({ status: 404, description: 'Invoice not found' })
   @ApiResponse({ status: 403, description: 'Insufficient permissions' })
-  async getInvoice(@Param('invoiceId', invoiceIdPipe()) invoiceId: string): Promise<InvoiceRecordResponseDto> {
+  async getInvoice(
+    @Param('invoiceId', invoiceIdPipe()) invoiceId: string
+  ): Promise<InvoiceRecordResponseDto> {
     const record = await this.invoiceService.getInvoiceById(invoiceId);
     if (!record) {
       throw new NotFoundException(`Invoice not found: ${invoiceId}`);
@@ -2014,7 +2086,7 @@ export class InvoicingController {
       return value as RegulatoryDocumentKind;
     }
     throw new BadRequestException(
-      `Unknown document kind '${value}'. Supported: ${RegulatoryDocumentKindValues.join(', ')}`,
+      `Unknown document kind '${value}'. Supported: ${RegulatoryDocumentKindValues.join(', ')}`
     );
   }
 
@@ -2023,14 +2095,14 @@ export class InvoicingController {
     res: Response,
     invoiceId: string,
     kind: RegulatoryDocumentKind,
-    document: StoredDocument,
+    document: StoredDocument
   ): void {
     this.streamBinaryDocument(
       res,
       invoiceId,
       kind,
       document.contentType,
-      Buffer.from(document.contentBase64, 'base64'),
+      Buffer.from(document.contentBase64, 'base64')
     );
   }
 
@@ -2044,11 +2116,11 @@ export class InvoicingController {
     invoiceId: string,
     kind: RegulatoryDocumentKind,
     contentType: string,
-    body: Buffer,
+    body: Buffer
   ): void {
     if (body.length > 20 * 1024 * 1024) {
       throw new ConflictException(
-        `Document for invoice ${invoiceId} exceeds the 20 MB size limit (${body.length} bytes)`,
+        `Document for invoice ${invoiceId} exceeds the 20 MB size limit (${body.length} bytes)`
       );
     }
     const safeContentType = contentType.length > 0 ? contentType : 'application/octet-stream';
