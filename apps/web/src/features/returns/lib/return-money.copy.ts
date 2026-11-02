@@ -55,3 +55,13 @@ export const RETURN_REFUND_ERROR_COPY = {
       "A previous refund attempt crossed into the source and OpenLinker never learned what happened. Confirm what the source actually did before attempting another — do not retry blindly.",
   } as Record<ReturnRefundBlockReason, string>,
 } as const;
+
+/** The over-ceiling callout (#3289), beside the order-level Confirm refund dialog's. */
+export const RETURN_REFUND_CEILING_COPY = {
+  title: "This refund is more than the order's total",
+  figures: (d: { ceiling: string; alreadyRefunded: string; requested: string; currency: string }): string =>
+    `Order total ${d.ceiling} ${d.currency}, already refunded ${d.alreadyRefunded} ${d.currency}, ` +
+    `requested ${d.requested} ${d.currency}.`,
+  acknowledge: 'Record it anyway',
+  acknowledgeHint: 'Tick this to record the refund deliberately, then confirm again.',
+} as const;

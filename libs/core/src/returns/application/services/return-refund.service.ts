@@ -42,6 +42,15 @@
  * so the refusal path (and only the refusal path) runs one classifying read
  * before raising.
  *
+ * **7. Per-ORDER serialization is the CALLER's (B-1).** The ceiling context this
+ * service checks against is read by the caller, and the refund record that makes
+ * the money visible to the next ceiling read is written by the caller after this
+ * returns. Two returns of one order can therefore both pass unless the caller
+ * holds `IOrderRefundService.runUnderOrderRefundLock` across context read, this
+ * call AND the record write (passing `orderLockHeld` to `recordRefund`, which
+ * must not re-acquire: the lock is not re-entrant). This service takes only the
+ * per-return lock, never the order lock, so the two cannot deadlock.
+ *
  * **An orphan refunds nothing**, asserted through the ONE #2332 seam before
  * anything is written or locked.
  *
@@ -54,7 +63,13 @@ import {
   type IIntegrationsService,
 } from '@openlinker/core/integrations';
 import {
+  assertRefundAmountPrecision,
+  decideRefundCeiling,
+  describeRefundCeilingVerdict,
+  evaluateRefundCeiling,
   isRefundExecutor,
+  REFUND_CEILING_ACKNOWLEDGED_LOG_TOKEN,
+  REFUND_CEILING_UNKNOWN_LOG_TOKEN,
   type ExecuteRefundCommand,
   type OrderSourcePort,
   type RefundExecutor,
@@ -121,6 +136,36 @@ export class ReturnRefundService implements IReturnRefundService {
       throw new ReturnNotFoundError(returnId);
     }
 
+    // R-18: more fraction digits than the currency allows is refused, not rounded.
+    assertRefundAmountPrecision(input.amount, input.currency);
+
+    // Enforcement point A (#3289): the order-level ceiling, BEFORE the lock, the
+    // claim and the executor - past the claim the money rail has moved, and on
+    // the executor path a boundary may have been crossed, so a refusal there
+    // would leave OL holding a settled rail with no record. The `in_doubt` gap
+    // this cannot see is stated on `refund-ceiling.types.ts`.
+    const refundCeiling = evaluateRefundCeiling({
+      context: input.refundCeilingContext ?? null,
+      requestedAmount: input.amount,
+      requestedCurrency: input.currency,
+    });
+    const ceilingDisposition = decideRefundCeiling(
+      internalOrderId,
+      refundCeiling,
+      input.acknowledgeAboveCeiling
+    );
+    if (ceilingDisposition === 'acknowledged') {
+      this.logger.warn(
+        `${REFUND_CEILING_ACKNOWLEDGED_LOG_TOKEN}: return ${returnId}, ` +
+          describeRefundCeilingVerdict(internalOrderId, refundCeiling)
+      );
+    } else if (ceilingDisposition === 'unknown') {
+      this.logger.warn(
+        `${REFUND_CEILING_UNKNOWN_LOG_TOKEN}: return ${returnId}, ` +
+          `${describeRefundCeilingVerdict(internalOrderId, refundCeiling)} - proceeding unchecked`
+      );
+    }
+
     const token = await this.lock.acquire(returnRefundLockKey(returnId), RETURN_REFUND_LOCK_TTL_MS);
     if (token === null) {
       // Refused before the executor is reached, and retryable — see the error.
@@ -177,6 +222,7 @@ export class ReturnRefundService implements IReturnRefundService {
             }
           : null,
         providerMessage: outcome.providerMessage,
+        refundCeiling,
       };
     } finally {
       await this.lock.release(returnRefundLockKey(returnId), token);
