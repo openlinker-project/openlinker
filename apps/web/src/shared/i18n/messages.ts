@@ -19,6 +19,7 @@
 import en from '../../locales/en.json';
 import { mergeOverEnglish } from './merge';
 import { SOURCE_LOCALE, type SupportedLocale } from './i18n.types';
+import type { ResolvedCopy } from './copy.types';
 
 /** The core dictionary, typed from en.json. */
 export type Messages = typeof en;
@@ -106,6 +107,18 @@ export function namespaceFor(locale: SupportedLocale, namespace: string): unknow
   const entry = registry.get(namespace);
   if (entry === undefined) throw new Error(`i18n namespace "${namespace}" is not registered`);
   return loaded.get(cacheKey(locale, namespace)) ?? entry.base;
+}
+
+/**
+ * One core namespace for an explicit language, typed from en.json. For code
+ * that already holds the language it formats in - the shared formatters take
+ * it as a parameter so a test can pin it.
+ */
+export function messagesIn<N extends Namespace>(
+  namespace: N,
+  locale: SupportedLocale,
+): ResolvedCopy<Messages[N]> {
+  return namespaceFor(locale, namespace) as ResolvedCopy<Messages[N]>;
 }
 
 export function registeredNamespaces(): readonly string[] {

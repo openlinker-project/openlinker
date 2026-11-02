@@ -11,12 +11,12 @@
 import { useContext } from 'react';
 import { LocaleContext } from './locale-provider';
 import { getLocale } from './active-locale';
-import { namespaceFor, type Messages, type Namespace } from './messages';
+import { messagesIn, type Messages, type Namespace } from './messages';
 import type { ResolvedCopy } from './copy.types';
 
 export function useMessages<N extends Namespace>(namespace: N): ResolvedCopy<Messages[N]> {
   const ctx = useContext(LocaleContext);
-  return namespaceFor(ctx?.locale ?? getLocale(), namespace) as ResolvedCopy<Messages[N]>;
+  return messagesIn(namespace, ctx?.locale ?? getLocale());
 }
 
 /**
@@ -24,5 +24,5 @@ export function useMessages<N extends Namespace>(namespace: N): ResolvedCopy<Mes
  * label maps. Reads the language the provider last set.
  */
 export function getMessages<N extends Namespace>(namespace: N): ResolvedCopy<Messages[N]> {
-  return namespaceFor(getLocale(), namespace) as ResolvedCopy<Messages[N]>;
+  return messagesIn(namespace, getLocale());
 }

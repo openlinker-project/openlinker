@@ -22,6 +22,7 @@ import {
 } from 'react';
 import { env } from '../config/env';
 import { setActiveLocale } from './active-locale';
+import { applyZodLocale } from './zod-locale';
 import { getBcp47Locale } from './locale';
 import { isMessagesLoaded, loadMessages } from './messages';
 import { resolveInitialLocale, storeLocale } from './resolve-locale';
@@ -50,6 +51,11 @@ interface LocaleProviderProps extends PropsWithChildren {
   catalog?: TranslationCatalog;
 }
 
+function announceLocale(locale: SupportedLocale): void {
+  setActiveLocale(locale);
+  applyZodLocale(locale);
+}
+
 function initialLocale(pinned: SupportedLocale | undefined): SupportedLocale {
   if (pinned === undefined) return resolveInitialLocale(env.VITE_DEFAULT_UI_LOCALE);
   // A JavaScript caller can still pass anything; English is complete in every file.
@@ -67,7 +73,7 @@ export function LocaleProvider({
     // React discards must not leave the global on a language nothing showed.
     // Only the root provider may be unpinned; with nested providers the last
     // one to decide wins.
-    setActiveLocale(first);
+    announceLocale(first);
     return first;
   });
   const [lastPinned, setLastPinned] = useState(pinned);
@@ -78,7 +84,7 @@ export function LocaleProvider({
     setLastPinned(pinned);
     if (pinned !== undefined) {
       const next = initialLocale(pinned);
-      setActiveLocale(next);
+      announceLocale(next);
       setLocaleState(next);
     }
   }
@@ -108,7 +114,7 @@ export function LocaleProvider({
     (next: SupportedLocale) => {
       const apply = (): void => {
         if (!isPinned) storeLocale(next);
-        setActiveLocale(next);
+        announceLocale(next);
         setLocaleState(next);
       };
       // Load first, then switch: the screen keeps the current language until
