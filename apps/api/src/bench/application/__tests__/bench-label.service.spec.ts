@@ -16,6 +16,10 @@ import type {
 import type { SyncLockPort } from '@openlinker/core/sync';
 import { orderFromReadySnapshot } from '@openlinker/core/orders';
 
+import type {
+  AutoDispatchPlanContext,
+  IAutoDispatchPlanContextLoader,
+} from '../../../fulfillment/application/services/auto-dispatch-plan-context.loader';
 import type { IBenchParcelService } from '../interfaces/bench-parcel.service.interface';
 import { BenchLabelService, BenchLabelShipmentNotFoundError } from '../services/bench-label.service';
 import { BenchParcelNotAtThisBenchError } from '../services/bench-parcel.service';
@@ -40,6 +44,31 @@ function shipment(overrides: Partial<Shipment> = {}): Shipment {
 const work = (o: Partial<FulfillmentWorkView> = {}): FulfillmentWorkView =>
   ({ id: 'work-1', orderId: 'ol_order_1', assignedConnectionId: 'conn-oms', completedAt: null, ...o }) as FulfillmentWorkView;
 
+/** A work with one line, plus everything the shared decision reads, by default fully deliverable. */
+const workWithLine = (o: Partial<FulfillmentWorkView> = {}): FulfillmentWorkView =>
+  work({
+    lines: [{ productVariantId: 'v1', totalQuantity: 1, cancelledQuantity: 0 }],
+    ...o,
+  } as Partial<FulfillmentWorkView>);
+
+function planContextFor(overrides: Partial<AutoDispatchPlanContext> = {}): AutoDispatchPlanContext {
+  return {
+    record: { sourceConnectionId: 'src', sourceDeliveryMethodId: 'dm' },
+    order: {
+      customerEmail: 'a@b.pl',
+      shipping: { methodId: 'courier', methodName: 'Courier' },
+      shippingAddress: {
+        firstName: 'A', lastName: 'B', phone: '500', address1: 'Street 1', city: 'City',
+        postalCode: '00-001', country: 'PL',
+      },
+    },
+    parcelProfile: null,
+    variantWeightGrams: new Map([['v1', 700]]),
+    requirementsFor: () => null,
+    ...overrides,
+  } as unknown as AutoDispatchPlanContext;
+}
+
 describe('BenchLabelService', () => {
   let parcels: jest.Mocked<IBenchParcelService>;
   let shipments: jest.Mocked<IShipmentQueryService>;
@@ -48,6 +77,7 @@ describe('BenchLabelService', () => {
   let orderRecords: jest.Mocked<IOrderRecordService>;
   let integrations: jest.Mocked<IIntegrationsService>;
   let lock: jest.Mocked<SyncLockPort>;
+  let planContext: jest.Mocked<IAutoDispatchPlanContextLoader>;
   let service: BenchLabelService;
 
   const input = (parcel: Parameters<BenchLabelService['replaceLabel']>[0]['parcel']) => ({
@@ -86,7 +116,17 @@ describe('BenchLabelService', () => {
         postalCode: '00-001', country: 'PL',
       },
     });
-    service = new BenchLabelService(parcels, shipments, cancellation, dispatch, orderRecords, integrations, lock);
+    planContext = { load: jest.fn().mockResolvedValue(planContextFor()) };
+    service = new BenchLabelService(
+      parcels,
+      shipments,
+      cancellation,
+      dispatch,
+      orderRecords,
+      integrations,
+      lock,
+      planContext
+    );
   });
 
   it('should cancel the old label and buy a new one with the packer parcel when everything allows it', async () => {
@@ -257,5 +297,140 @@ describe('BenchLabelService', () => {
     expect(result).toEqual({ outcome: 'refused', reason: 'replace-in-progress' });
     expect(cancellation.cancel).not.toHaveBeenCalled();
     expect(lock.release).not.toHaveBeenCalled();
+  });
+
+  describe('generateLabel (#2729, D46)', () => {
+    const generate = () => service.generateLabel({ workId: 'work-1', actorUserId: 'user-1' });
+
+    beforeEach(() => {
+      // The state D46 is for: automatic labels OFF, a fallback weight configured, no label yet.
+      parcels.getWorkForDocuments.mockResolvedValue(workWithLine());
+      integrations.getAdapter.mockResolvedValue({
+        connection: { config: { autoDispatch: { enabled: false, defaultWeightGrams: 300 } } },
+      } as never);
+      shipments.findByFulfillmentWorkIds.mockResolvedValue(new Map([['work-1', []]]));
+    });
+
+    it('should buy the label from the catalogue weight and the order recipient, typing nothing', async () => {
+      const result = await generate();
+
+      expect(result).toEqual({ outcome: 'generated', shipmentId: 'ship-2' });
+      const arg = dispatch.dispatch.mock.calls[0][0];
+      expect(arg.parcel).toEqual({ weightGrams: 700 });
+      expect(arg.fulfillmentWorkId).toBe('work-1');
+      expect(arg.recipient.email).toBe('a@b.pl');
+      expect(lock.release).toHaveBeenCalledWith('bench:label-generate:work:work-1', 'tok');
+    });
+
+    it('should resolve the parcel from the configured defaults even though auto-dispatch is off', async () => {
+      planContext.load.mockResolvedValue(planContextFor({ variantWeightGrams: new Map() }));
+
+      await generate();
+
+      // No catalogue weight: the connection's fallback (read regardless of `enabled`) is used.
+      expect(dispatch.dispatch.mock.calls[0][0].parcel).toEqual({ weightGrams: 300 });
+    });
+
+    it('should refuse auto-dispatch-on and buy nothing while automatic labels are enabled', async () => {
+      integrations.getAdapter.mockResolvedValue({
+        connection: { config: { autoDispatch: { enabled: true } } },
+      } as never);
+
+      expect(await generate()).toEqual({ outcome: 'refused', reason: 'auto-dispatch-on' });
+      expect(dispatch.dispatch).not.toHaveBeenCalled();
+    });
+
+    it('should refuse already-has-label when a shipment already reached the provider', async () => {
+      shipments.findByFulfillmentWorkIds.mockResolvedValue(new Map([['work-1', [shipment()]]]));
+
+      expect(await generate()).toEqual({ outcome: 'refused', reason: 'already-has-label' });
+      expect(dispatch.dispatch).not.toHaveBeenCalled();
+    });
+
+    it('should not count a shipment that never got a provider id as a label', async () => {
+      shipments.findByFulfillmentWorkIds.mockResolvedValue(
+        new Map([['work-1', [shipment({ providerShipmentId: null })]]])
+      );
+
+      expect(await generate()).toMatchObject({ outcome: 'generated' });
+    });
+
+    it.each([
+      ['no-weight', planContextFor({ variantWeightGrams: new Map() }), {}],
+      ['no-address', planContextFor({ order: { customerEmail: '' } as never }), { defaultWeightGrams: 300 }],
+      ['no-dimensions', planContextFor({ requirementsFor: () => ({ requiresDimensions: true }) }), { defaultWeightGrams: 300 }],
+    ])('should refuse %s from the shared decision, before the carrier is called', async (reason, context, defaults) => {
+      integrations.getAdapter.mockResolvedValue({
+        connection: { config: { autoDispatch: { enabled: false, ...defaults } } },
+      } as never);
+      planContext.load.mockResolvedValue(context);
+
+      expect(await generate()).toEqual({ outcome: 'refused', reason });
+      expect(dispatch.dispatch).not.toHaveBeenCalled();
+    });
+
+    it('should accept a configured default box for a carrier that requires dimensions', async () => {
+      integrations.getAdapter.mockResolvedValue({
+        connection: {
+          config: { autoDispatch: { enabled: false, lengthMm: 300, widthMm: 200, heightMm: 100 } },
+        },
+      } as never);
+      planContext.load.mockResolvedValue(
+        planContextFor({ requirementsFor: () => ({ requiresDimensions: true }) })
+      );
+
+      await generate();
+
+      expect(dispatch.dispatch.mock.calls[0][0].parcel.dimensions).toEqual({
+        length: 300,
+        width: 200,
+        height: 100,
+      });
+    });
+
+    it('should refuse order-unreadable when the order cannot be read', async () => {
+      planContext.load.mockResolvedValue(planContextFor({ order: null }));
+      expect(await generate()).toEqual({ outcome: 'refused', reason: 'order-unreadable' });
+
+      planContext.load.mockResolvedValue(null);
+      expect(await generate()).toEqual({ outcome: 'refused', reason: 'order-unreadable' });
+    });
+
+    it('should refuse holder-unresolved when the work has no holder or its connection fails', async () => {
+      parcels.getWorkForDocuments.mockResolvedValue(workWithLine({ assignedConnectionId: null }));
+      expect(await generate()).toEqual({ outcome: 'refused', reason: 'holder-unresolved' });
+
+      parcels.getWorkForDocuments.mockResolvedValue(workWithLine());
+      integrations.getAdapter.mockRejectedValue(new Error('connection disabled'));
+      expect(await generate()).toEqual({ outcome: 'refused', reason: 'holder-unresolved' });
+      expect(dispatch.dispatch).not.toHaveBeenCalled();
+    });
+
+    it('should refuse no-label-processor when routing resolves to a processor that buys no label', async () => {
+      dispatch.dispatch.mockResolvedValue({ kind: 'omp-fulfilled' } as never);
+
+      expect(await generate()).toEqual({ outcome: 'refused', reason: 'no-label-processor' });
+    });
+
+    it('should answer carrier-refused, not throw, when the carrier rejects the label', async () => {
+      dispatch.dispatch.mockRejectedValue(new Error('carrier said no'));
+
+      expect(await generate()).toEqual({ outcome: 'refused', reason: 'carrier-refused' });
+    });
+
+    it('should refuse generate-in-progress and touch nothing when the per-work lock is held', async () => {
+      lock.acquire.mockResolvedValue(null as never);
+
+      expect(await generate()).toEqual({ outcome: 'refused', reason: 'generate-in-progress' });
+      expect(dispatch.dispatch).not.toHaveBeenCalled();
+      expect(lock.release).not.toHaveBeenCalled();
+    });
+
+    it('should let a work outside this bench surface as the scoping error, before anything else', async () => {
+      parcels.getWorkForDocuments.mockRejectedValue(new BenchParcelNotAtThisBenchError('work-1'));
+
+      await expect(generate()).rejects.toBeInstanceOf(BenchParcelNotAtThisBenchError);
+      expect(lock.acquire).not.toHaveBeenCalled();
+    });
   });
 });

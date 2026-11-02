@@ -22,7 +22,10 @@ describe('BenchLabelController — POST work/:workId/label/replace (#3654)', () 
   let controller: BenchLabelController;
 
   beforeEach(() => {
-    labels = { replaceLabel: jest.fn() } as jest.Mocked<IBenchLabelService>;
+    labels = {
+      replaceLabel: jest.fn(),
+      generateLabel: jest.fn(),
+    } as jest.Mocked<IBenchLabelService>;
     controller = new BenchLabelController(labels);
   });
 
@@ -140,5 +143,61 @@ describe('BenchLabelController — POST work/:workId/label/replace (#3654)', () 
     await expect(controller.replaceLabel('w', { weightGrams: 5 } as ReplaceLabelDto, user)).rejects.toBeInstanceOf(
       NotFoundException
     );
+  });
+});
+
+describe('BenchLabelController — POST work/:workId/label (#2729, D46)', () => {
+  let labels: jest.Mocked<IBenchLabelService>;
+  let controller: BenchLabelController;
+
+  beforeEach(() => {
+    labels = {
+      replaceLabel: jest.fn(),
+      generateLabel: jest.fn(),
+    } as jest.Mocked<IBenchLabelService>;
+    controller = new BenchLabelController(labels);
+  });
+
+  it('should name admin, operator and packer on the route', () => {
+    const roles = new Reflector().get<string[]>(ROLES_KEY, BenchLabelController.prototype.generateLabel);
+    expect([...roles].sort()).toEqual(['admin', 'operator', 'packer']);
+  });
+
+  it('should take no body, so a packer cannot name a parcel, address or shipment', () => {
+    // (workId, user): a handler that declared a `@Body()` parameter would be 3.
+    expect(BenchLabelController.prototype.generateLabel.length).toBe(2);
+  });
+
+  it('should pass the work and the token user, and answer the new shipment id', async () => {
+    labels.generateLabel.mockResolvedValue({ outcome: 'generated', shipmentId: 'ship-9' });
+
+    const res = await controller.generateLabel('work-1', user);
+
+    expect(labels.generateLabel).toHaveBeenCalledWith({ workId: 'work-1', actorUserId: 'user-1' });
+    expect(res).toEqual({ shipmentId: 'ship-9' });
+  });
+
+  it('should answer 409 with the reason, never a body that reads as success, when refused', async () => {
+    labels.generateLabel.mockResolvedValue({ outcome: 'refused', reason: 'auto-dispatch-on' });
+
+    await expect(controller.generateLabel('work-1', user)).rejects.toMatchObject({
+      response: { reason: 'auto-dispatch-on' },
+    });
+    await expect(controller.generateLabel('work-1', user)).rejects.toBeInstanceOf(ConflictException);
+  });
+
+  it.each([new FulfillmentWorkNotFoundError('w'), new BenchParcelNotAtThisBenchError('w')])(
+    'should answer 404 for %p',
+    async (err) => {
+      labels.generateLabel.mockRejectedValue(err);
+      await expect(controller.generateLabel('w', user)).rejects.toBeInstanceOf(NotFoundException);
+    }
+  );
+
+  it('should refuse a request that carries no principal, because a paid label must name who bought it', async () => {
+    await expect(
+      controller.generateLabel('work-1', undefined as unknown as AuthenticatedUser)
+    ).rejects.toThrow('must name the packer');
+    expect(labels.generateLabel).not.toHaveBeenCalled();
   });
 });

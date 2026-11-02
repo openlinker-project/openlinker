@@ -1,4 +1,10 @@
 import {
+  AUTO_DISPATCH_OUTCOME_REASONS,
+  checkAutoDispatchDimensions,
+  classifyAutoDispatchJob,
+  planAutoDispatch,
+  planAutoDispatchParcel,
+  planAutoDispatchTarget,
   resolveAutoDispatchDeliveryIntent,
   findMissingParcelRequirement,
   mergeAutoDispatchParcelOptions,
@@ -372,5 +378,180 @@ describe('resolveAutoDispatchRecipient', () => {
         deliveryIntent: 'pickup_point',
       })
     ).toBeNull();
+  });
+});
+
+describe('the shared auto-dispatch decision (#2729)', () => {
+  const lines: AutoDispatchWorkLine[] = [
+    { productVariantId: 'v1', totalQuantity: 2, cancelledQuantity: 0 },
+  ];
+  const weights = new Map<string, number | null>([['v1', 500]]);
+  const order = {
+    shipping: { methodId: 'm1', methodName: 'DPD Courier' } as OrderShipping,
+    pickupPoint: undefined,
+    shippingAddress: makeAddress(),
+    customerEmail: 'buyer@example.com',
+  };
+  const base = {
+    lines,
+    variantWeightGrams: weights,
+    parcelProfile: null,
+    config: {},
+    order,
+    requirementsFor: (): { requiresDimensions: boolean } | null => null,
+  };
+
+  describe('planAutoDispatch', () => {
+    it('should be ready with the summed weight, the recipient and the delivery shape', () => {
+      const plan = planAutoDispatch(base);
+
+      expect(plan.kind).toBe('ready');
+      if (plan.kind !== 'ready') return;
+      expect(plan.parcel.weightGrams).toBe(1000);
+      expect(plan.deliveryIntent).toBe('address');
+      expect(plan.recipient.email).toBe('buyer@example.com');
+    });
+
+    it('should refuse no-weight when a line has no weight and there is no fallback', () => {
+      expect(planAutoDispatch({ ...base, variantWeightGrams: new Map() })).toEqual({
+        kind: 'refused',
+        reason: 'no-weight',
+      });
+    });
+
+    it('should use the configured fallback weight instead of refusing', () => {
+      const plan = planAutoDispatch({
+        ...base,
+        variantWeightGrams: new Map(),
+        config: { defaultWeightGrams: 250 },
+      });
+
+      expect(plan.kind).toBe('ready');
+      if (plan.kind === 'ready') expect(plan.parcel.weightGrams).toBe(500);
+    });
+
+    it('should refuse no-address when no deliverable recipient exists', () => {
+      expect(
+        planAutoDispatch({ ...base, order: { ...order, shippingAddress: undefined } })
+      ).toEqual({ kind: 'refused', reason: 'no-address' });
+    });
+
+    it('should refuse no-dimensions when the carrier needs a box and none is configured', () => {
+      expect(
+        planAutoDispatch({ ...base, requirementsFor: () => ({ requiresDimensions: true }) })
+      ).toEqual({ kind: 'refused', reason: 'no-dimensions' });
+    });
+
+    it('should be ready when the carrier needs a box and the configured default supplies one', () => {
+      const plan = planAutoDispatch({
+        ...base,
+        config: { lengthMm: 300, widthMm: 200, heightMm: 100 },
+        requirementsFor: () => ({ requiresDimensions: true }),
+      });
+
+      expect(plan.kind).toBe('ready');
+      if (plan.kind === 'ready') {
+        expect(plan.parcel.dimensions).toEqual({ length: 300, width: 200, height: 100 });
+      }
+    });
+
+    it('should decide weight before address, and address before the carrier lookup', () => {
+      const requirementsFor = jest.fn(() => ({ requiresDimensions: true }));
+
+      // No weight AND no address: the weight refusal wins, as in the handler.
+      expect(
+        planAutoDispatch({
+          ...base,
+          variantWeightGrams: new Map(),
+          order: { ...order, shippingAddress: undefined },
+          requirementsFor,
+        })
+      ).toEqual({ kind: 'refused', reason: 'no-weight' });
+      // No address: refused before the carrier is ever asked.
+      planAutoDispatch({
+        ...base,
+        order: { ...order, shippingAddress: undefined },
+        requirementsFor,
+      });
+      expect(requirementsFor).not.toHaveBeenCalled();
+    });
+
+    it('should let a routing rule profile win over the connection default', () => {
+      const parcel = planAutoDispatchParcel({
+        ...base,
+        variantWeightGrams: new Map(),
+        parcelProfile: {
+          parcelTemplate: 'large',
+          lengthMm: null,
+          widthMm: null,
+          heightMm: null,
+          defaultWeightGrams: 100,
+        },
+        config: { defaultWeightGrams: 900, parcelTemplate: 'small' },
+      });
+
+      expect(parcel).toEqual({ weightGrams: 200, template: 'large' });
+    });
+  });
+
+  describe('planAutoDispatchTarget / checkAutoDispatchDimensions', () => {
+    it('should report no-address through the target step on its own', () => {
+      expect(planAutoDispatchTarget({ ...order, customerEmail: '' })).toEqual({
+        kind: 'refused',
+        reason: 'no-address',
+      });
+    });
+
+    it('should not refuse dimensions when the carrier declares no requirement', () => {
+      expect(checkAutoDispatchDimensions({ weightGrams: 1 }, null)).toBeNull();
+      expect(
+        checkAutoDispatchDimensions({ weightGrams: 1 }, { requiresDimensions: false })
+      ).toBeNull();
+    });
+  });
+
+  describe('classifyAutoDispatchJob', () => {
+    it.each(Object.entries(AUTO_DISPATCH_OUTCOME_REASONS))(
+      'should classify the terminal outcomeReason %s as %s, needing input',
+      (outcomeReason, code) => {
+        expect(
+          classifyAutoDispatchJob({ status: 'succeeded', outcome: 'business_failure', outcomeReason })
+        ).toEqual({ code, bucket: 'needs-input' });
+      }
+    );
+
+    it('should not drop a terminal refusal whose reason this build does not know', () => {
+      expect(
+        classifyAutoDispatchJob({
+          status: 'succeeded',
+          outcome: 'business_failure',
+          outcomeReason: 'auto_dispatch_from_the_future',
+        })
+      ).toEqual({ code: 'unknown', bucket: 'needs-input' });
+      expect(classifyAutoDispatchJob({ status: 'succeeded', outcome: 'business_failure' })).toEqual({
+        code: 'unknown',
+        bucket: 'needs-input',
+      });
+    });
+
+    it('should not treat a successful job as a refusal (already-has-label is a success)', () => {
+      expect(classifyAutoDispatchJob({ status: 'succeeded', outcome: 'ok' })).toBeNull();
+      expect(classifyAutoDispatchJob({ status: 'succeeded', outcome: null })).toBeNull();
+    });
+
+    it('should read a failing job still on the ladder as retrying', () => {
+      expect(classifyAutoDispatchJob({ status: 'queued' })).toEqual({
+        code: 'carrier-refused',
+        bucket: 'retrying',
+      });
+      expect(classifyAutoDispatchJob({ status: 'running' })?.bucket).toBe('retrying');
+    });
+
+    it('should read a dead job as needing input, because its retries are spent', () => {
+      expect(classifyAutoDispatchJob({ status: 'dead' })).toEqual({
+        code: 'carrier-refused',
+        bucket: 'needs-input',
+      });
+    });
   });
 });

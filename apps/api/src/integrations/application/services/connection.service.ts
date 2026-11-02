@@ -26,6 +26,8 @@ import type {
   ConnectionReferrer,
 } from '@openlinker/core/identifier-mapping';
 import {
+  AutoDispatchTriggerValues,
+  isAutoDispatchTrigger,
   ConnectionPort,
   CONNECTION_PORT_TOKEN,
   ConnectionNotFoundException,
@@ -557,10 +559,18 @@ export class ConnectionService implements IConnectionService {
       throw new BadRequestException('config.autoDispatch must be an object');
     }
 
-    const { enabled, parcelTemplate, defaultWeightGrams, lengthMm, widthMm, heightMm } =
+    const { enabled, trigger, parcelTemplate, defaultWeightGrams, lengthMm, widthMm, heightMm } =
       autoDispatch as Record<string, unknown>;
     if (enabled !== undefined && typeof enabled !== 'boolean') {
       throw new BadRequestException('config.autoDispatch.enabled must be a boolean');
+    }
+    // Reading is lenient (an unrecognised trigger reads as `on-accept`); writing
+    // is strict, or a typo would persist and silently buy the label at the wrong
+    // moment (#2729, D1).
+    if (trigger !== undefined && trigger !== null && !isAutoDispatchTrigger(trigger)) {
+      throw new BadRequestException(
+        `config.autoDispatch.trigger must be one of: ${AutoDispatchTriggerValues.join(', ')}`
+      );
     }
     if (parcelTemplate !== undefined && typeof parcelTemplate !== 'string') {
       throw new BadRequestException('config.autoDispatch.parcelTemplate must be a string');

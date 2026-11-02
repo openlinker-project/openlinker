@@ -47,7 +47,10 @@
  * @implements {IBenchLabelService}
  */
 import { Inject, Injectable } from '@nestjs/common';
-import { readAutoDispatchConfig } from '@openlinker/core/identifier-mapping';
+import {
+  readAutoDispatchConfig,
+  readAutoDispatchParcelDefaults,
+} from '@openlinker/core/identifier-mapping';
 import type { FulfillmentWorkView } from '@openlinker/core/fulfillment';
 import {
   CapabilityNotSupportedException,
@@ -61,11 +64,16 @@ import {
   type IOrderRecordService,
 } from '@openlinker/core/orders';
 import {
+  FulfillmentWorkDispatchConflictException,
+  OrderNotDispatchableHeldException,
+  OrderNotDispatchablePaymentStatusException,
   SHIPMENT_CANCELLATION_SERVICE_TOKEN,
   SHIPMENT_DISPATCH_SERVICE_TOKEN,
   SHIPMENT_QUERY_SERVICE_TOKEN,
   SHIPMENT_STATUS,
+  UndispatchableResolutionException,
   isShipmentCanceller,
+  planAutoDispatch,
   resolveOrderDispatchTarget,
   type IShipmentCancellationService,
   type IShipmentDispatchService,
@@ -80,11 +88,18 @@ import { SYNC_LOCK_TOKEN, type SyncLockPort } from '@openlinker/core/sync';
 import { Logger } from '@openlinker/shared/logging';
 
 import {
+  AUTO_DISPATCH_PLAN_CONTEXT_LOADER_TOKEN,
+  type IAutoDispatchPlanContextLoader,
+} from '../../../fulfillment/application/services/auto-dispatch-plan-context.loader';
+import {
   BENCH_PARCEL_SERVICE_TOKEN,
   type IBenchParcelService,
 } from '../interfaces/bench-parcel.service.interface';
 import type { IBenchLabelService } from '../interfaces/bench-label.service.interface';
 import type {
+  BenchGenerateLabelInput,
+  BenchGenerateLabelRefusalReason,
+  BenchGenerateLabelResult,
   BenchReplaceLabelInput,
   BenchReplaceLabelParcel,
   BenchReplaceLabelRefusalReason,
@@ -108,6 +123,11 @@ export const BENCH_LABEL_REPLACE_LOCK_TTL_MS = 180_000;
 
 export function benchLabelReplaceLockKey(workId: string): string {
   return `bench:label-replace:work:${workId}`;
+}
+
+/** Its own key: generating (no label yet) and replacing (a label exists) are exclusive states. */
+export function benchLabelGenerateLockKey(workId: string): string {
+  return `bench:label-generate:work:${workId}`;
 }
 
 const CAPABILITY = 'ShippingProviderManager';
@@ -135,8 +155,122 @@ export class BenchLabelService implements IBenchLabelService {
     @Inject(SHIPMENT_DISPATCH_SERVICE_TOKEN) private readonly dispatch: IShipmentDispatchService,
     @Inject(ORDER_RECORD_SERVICE_TOKEN) private readonly orderRecords: IOrderRecordService,
     @Inject(INTEGRATIONS_SERVICE_TOKEN) private readonly integrations: IIntegrationsService,
-    @Inject(SYNC_LOCK_TOKEN) private readonly lock: SyncLockPort
+    @Inject(SYNC_LOCK_TOKEN) private readonly lock: SyncLockPort,
+    @Inject(AUTO_DISPATCH_PLAN_CONTEXT_LOADER_TOKEN)
+    private readonly planContext: IAutoDispatchPlanContextLoader
   ) {}
+
+  async generateLabel(input: BenchGenerateLabelInput): Promise<BenchGenerateLabelResult> {
+    // Scoping first: a work outside this bench answers 404 before anything else.
+    const work = await this.parcels.getWorkForDocuments(input.workId);
+
+    const lockKey = benchLabelGenerateLockKey(work.id);
+    const token = await this.lock.acquire(lockKey, BENCH_LABEL_REPLACE_LOCK_TTL_MS);
+    if (!token) {
+      return { outcome: 'refused', reason: 'generate-in-progress' };
+    }
+    try {
+      return await this.generateLocked(work, input);
+    } finally {
+      try {
+        await this.lock.release(lockKey, token);
+      } catch (releaseError) {
+        this.logger.warn(
+          `Failed to release ${lockKey}: ` +
+            `${releaseError instanceof Error ? releaseError.message : String(releaseError)}`
+        );
+      }
+    }
+  }
+
+  private async generateLocked(
+    work: FulfillmentWorkView,
+    input: BenchGenerateLabelInput
+  ): Promise<BenchGenerateLabelResult> {
+    const refuse = (reason: BenchGenerateLabelRefusalReason): BenchGenerateLabelResult => ({
+      outcome: 'refused',
+      reason,
+    });
+
+    // The holder's own settings: the same connection the automatic path reads.
+    if (!work.assignedConnectionId) return refuse('holder-unresolved');
+    let holderConfig;
+    try {
+      holderConfig = (await this.integrations.getAdapter(work.assignedConnectionId)).connection
+        .config;
+    } catch (error) {
+      this.logger.warn(
+        `bench_label_generate_holder_unresolved workId=${work.id}: ` +
+          `${error instanceof Error ? error.message : String(error)}`
+      );
+      return refuse('holder-unresolved');
+    }
+
+    // With auto-dispatch on, the label is bought for this work by the job; a
+    // manual buy here would race it. The bench route exists for the OFF case.
+    if (readAutoDispatchConfig(holderConfig).enabled) return refuse('auto-dispatch-on');
+
+    // "Buy at most once", the handler's own guard: a shipment that reached the
+    // provider. A row that never got a provider id is not a label.
+    const byWork = await this.shipments.findByFulfillmentWorkIds([work.id], 'outbound');
+    if ((byWork.get(work.id) ?? []).some((shipment) => shipment.providerShipmentId !== null)) {
+      return refuse('already-has-label');
+    }
+
+    const context = await this.planContext.load(work);
+    if (context === null || context.order === null) return refuse('order-unreadable');
+
+    // The decision, once: the same function the worker handler and the settings
+    // preview use. The parcel defaults are read regardless of `enabled`.
+    const plan = planAutoDispatch({
+      lines: work.lines,
+      variantWeightGrams: context.variantWeightGrams,
+      parcelProfile: context.parcelProfile,
+      config: readAutoDispatchParcelDefaults(holderConfig),
+      order: context.order,
+      requirementsFor: context.requirementsFor,
+    });
+    if (plan.kind === 'refused') return refuse(plan.reason);
+
+    const dispatchInput: ShipmentDispatchInput = {
+      sourceConnectionId: context.record.sourceConnectionId,
+      sourceDeliveryMethodId: context.record.sourceDeliveryMethodId,
+      deliveryIntent: plan.deliveryIntent,
+      paczkomatId: plan.paczkomatId,
+      orderId: work.orderId,
+      recipient: plan.recipient,
+      parcel: plan.parcel,
+      fulfillmentWorkId: work.id,
+    };
+
+    try {
+      const result = await this.dispatch.dispatch(dispatchInput);
+      if (result.kind !== 'dispatched') return refuse('no-label-processor');
+      this.logger.log(
+        `bench_label_generated workId=${work.id} shipmentId=${result.shipment.id} ` +
+          `actor=${input.actorUserId}`
+      );
+      return { outcome: 'generated', shipmentId: result.shipment.id };
+    } catch (error) {
+      if (
+        error instanceof OrderNotDispatchablePaymentStatusException ||
+        error instanceof OrderNotDispatchableHeldException
+      ) {
+        return refuse('work-not-eligible');
+      }
+      if (error instanceof UndispatchableResolutionException) return refuse('no-delivery-method');
+      if (error instanceof FulfillmentWorkDispatchConflictException) {
+        return refuse('shipment-claimed-by-sibling-work');
+      }
+      // `dispatch()` persists a `failed` shipment row for a label-generation
+      // error; that row is the trace the office reads. Never silent.
+      this.logger.error(
+        `bench_label_generate_failed workId=${work.id} actor=${input.actorUserId}: ` +
+          `${error instanceof Error ? error.message : String(error)}`
+      );
+      return refuse('carrier-refused');
+    }
+  }
 
   async replaceLabel(input: BenchReplaceLabelInput): Promise<BenchReplaceLabelResult> {
     // Scoping first: a work outside this bench answers 404 before anything else.
