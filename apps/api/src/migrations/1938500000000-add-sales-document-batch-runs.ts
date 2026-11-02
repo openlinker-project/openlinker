@@ -23,8 +23,8 @@
  */
 import type { MigrationInterface, QueryRunner } from 'typeorm';
 
-export class AddSalesDocumentBatchRuns1937500000000 implements MigrationInterface {
-  name = 'AddSalesDocumentBatchRuns1937500000000';
+export class AddSalesDocumentBatchRuns1938500000000 implements MigrationInterface {
+  name = 'AddSalesDocumentBatchRuns1938500000000';
 
   public async up(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(
