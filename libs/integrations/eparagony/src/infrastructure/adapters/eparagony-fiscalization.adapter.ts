@@ -39,11 +39,15 @@ import type {
   FiscalLocateAnswer,
   FiscalLocateCriteria,
   FiscalRegistrationLocator,
+  ReceiptLineNameBudget,
   RegisterTransactionCommand,
   RegisterTransactionResult,
 } from '@openlinker/core/fiscalization';
 
-import { EPARAGONY_REGISTER_DEADLINE_MS } from '../../eparagony.constants';
+import {
+  EPARAGONY_RECEIPT_LINE_NAME_MAX_LENGTH,
+  EPARAGONY_REGISTER_DEADLINE_MS,
+} from '../../eparagony.constants';
 import { EparagonyApiError } from '../../domain/exceptions/eparagony-api.error';
 import { EparagonyNetworkError } from '../../domain/exceptions/eparagony-network.error';
 import {
@@ -97,7 +101,7 @@ if (MAX_STATUS_POLL_TIMEOUT_MS >= EPARAGONY_REGISTER_DEADLINE_MS) {
 }
 
 export class EparagonyFiscalizationAdapter
-  implements FiscalizationPort, FiscalRegistrationLocator
+  implements FiscalizationPort, FiscalRegistrationLocator, ReceiptLineNameBudget
 {
   constructor(
     private readonly connectionId: string,
@@ -105,6 +109,10 @@ export class EparagonyFiscalizationAdapter
     private readonly logger: LoggerPort,
     private readonly config: EparagonyConnectionConfig,
   ) {}
+
+  getReceiptLineNameMaxLength(): number {
+    return EPARAGONY_RECEIPT_LINE_NAME_MAX_LENGTH;
+  }
 
   async registerTransaction(
     cmd: RegisterTransactionCommand,

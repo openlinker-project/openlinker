@@ -10,6 +10,7 @@
  * @see {@link IConnectionService} for the interface
  * @see {@link ConnectionPort} for the core port
  */
+import { validateDeliveryOnDocumentsShape } from '@openlinker/core/sales-documents';
 import {
   BadRequestException,
   ConflictException,
@@ -18,6 +19,7 @@ import {
 } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
 import type { IConnectionService } from '../interfaces/connection.service.interface';
+import { resolveReceiptLineNameLimit } from './resolve-receipt-line-name-limit';
 import type { ConnectionCreateInput } from '../interfaces/connection.service.types';
 import type {
   Connection,
@@ -481,6 +483,33 @@ export class ConnectionService implements IConnectionService {
 
     this.validatePricingRuleConfig(config.pricingRule);
     this.validatePriceSyncModeConfig(config.priceSyncMode);
+  }
+
+  /**
+   * Core-owned shape check for `config.deliveryOnDocuments` (#3905, ADR-082).
+   * The rules live in the pure `validateDeliveryOnDocumentsShape` so the browser
+   * mirror and this write path cannot disagree. The READ side is deliberately
+   * forgiving (a stored value must never break an issuance); strictness belongs
+   * here, where there is an operator to tell. Absent or `null` stays absent.
+   *
+   * Name length is measured against the budget the active fiscalization
+   * adapters declare (#3914): core holds no regime number, so the API asks.
+   * The lookup runs only when the key is present, so an unrelated save pays
+   * nothing for it.
+   */
+  private async validateDeliveryOnDocumentsConfig(config: Record<string, unknown>): Promise<void> {
+    const value = config.deliveryOnDocuments;
+    if (value === undefined || value === null) return;
+    const limit = await resolveReceiptLineNameLimit(this.integrationsService, this.logger);
+    const errors = validateDeliveryOnDocumentsShape(value, limit.maxLength);
+    if (errors.length > 0) {
+      throw new BadRequestException({
+        message: `Invalid config.deliveryOnDocuments: ${errors
+          .map((issue) => `${issue.path} ${issue.message}`)
+          .join('; ')}`,
+        errors,
+      });
+    }
   }
 
   private validatePricingRuleConfig(pricingRule: unknown): void {
@@ -995,6 +1024,7 @@ export class ConnectionService implements IConnectionService {
         this.validateStockAndPricingConfig(rest.config);
         this.validateFulfilmentOwnedByDestinationConfig(rest.config);
         this.validateAutoDispatchConfig(rest.config);
+        await this.validateDeliveryOnDocumentsConfig(rest.config);
         this.validateBuyerEmailsConfig(rest.config, enabledCapabilities, undefined);
         await this.validateStockLocationOverride(rest.config, undefined);
         await this.validateConfigShape(metadata.adapterKey, rest.config);
@@ -1292,6 +1322,7 @@ export class ConnectionService implements IConnectionService {
         this.validateStockAndPricingConfig(patch.config);
         this.validateFulfilmentOwnedByDestinationConfig(patch.config);
         this.validateAutoDispatchConfig(patch.config);
+        await this.validateDeliveryOnDocumentsConfig(patch.config);
         this.validateBuyerEmailsConfig(
           patch.config,
           patch.enabledCapabilities ?? existing.enabledCapabilities,

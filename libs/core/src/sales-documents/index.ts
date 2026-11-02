@@ -98,6 +98,10 @@ export * from './domain/types/sales-document-in-flight.types';
 // nothing so both can value-import it without either owning the other's
 // wording.
 export * from './domain/types/gross-price-eligibility.types';
+// The delivery line on a sales document: per-country name, tax-rate mode and the
+// rate suffix a receipt name carries (#3905, ADR-082). Import-free, here for the
+// same reason the shipping split is.
+export * from './domain/types/delivery-line.types';
 
 // #3550 - manual "send this document to the buyer": the shared vocabulary, the
 // timeline record and the service that writes and reads it.

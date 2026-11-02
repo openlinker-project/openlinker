@@ -151,6 +151,7 @@ describe('FulfillmentStatusSyncService', () => {
       markOmsAttention: jest.fn(),
       getTopProductVariantSales: jest.fn(),
       discoverSalesDocumentMarkets: jest.fn(),
+      getDeliveryCountryFacts: jest.fn(),
       getCurrencyMismatchOrders: jest.fn(),
       getCurrencyMismatchOrdersByConnection: jest.fn(),
       getProductMatchingErrorOrders: jest.fn(),

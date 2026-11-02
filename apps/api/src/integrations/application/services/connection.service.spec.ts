@@ -534,6 +534,81 @@ describe('ConnectionService', () => {
       expect(credentials.create).not.toHaveBeenCalled();
     });
 
+    describe('deliveryOnDocuments config (#3905)', () => {
+      const base = {
+        name: 'Shop',
+        platformType: 'prestashop',
+        credentials: { webserviceApiKey: 'RAW' },
+      };
+
+      it('should refuse a delivery name that already carries a percentage', async () => {
+        await expect(
+          service.create({
+            ...base,
+            config: {
+              baseUrl: 'https://new.com',
+              deliveryOnDocuments: { default: { name: 'Dostawa 23%' } },
+            },
+          })
+        ).rejects.toThrow(BadRequestException);
+        expect(credentials.create).not.toHaveBeenCalled();
+      });
+
+      it('should refuse a fixed rate with no fixedRate', async () => {
+        await expect(
+          service.create({
+            ...base,
+            config: {
+              baseUrl: 'https://new.com',
+              deliveryOnDocuments: { default: { name: 'Dostawa', rate: 'fixed' } },
+            },
+          })
+        ).rejects.toThrow(/fixedRate/);
+      });
+
+      it('should measure the name against the budget a fiscalization adapter declares', async () => {
+        integrationsService.listCapabilityAdapters.mockResolvedValueOnce([
+          {
+            connectionId: 'fiscal-1',
+            connection: mockConnection,
+            adapter: Promise.resolve({
+              registerTransaction: jest.fn(),
+              getReceiptLineNameMaxLength: () => 20,
+            }),
+            metadata: { supportedCapabilities: ['Fiscalization'] },
+          },
+        ] as never);
+        await expect(
+          service.create({
+            ...base,
+            config: {
+              baseUrl: 'https://new.com',
+              // 17 characters: inside the 36 the fallback allows, past the 16
+              // a declared 20 leaves once the ` 23%` suffix is reserved.
+              deliveryOnDocuments: { default: { name: 'Koszt dostawy kur' } },
+            },
+          })
+        ).rejects.toThrow(/at most 16 characters/);
+        expect(credentials.create).not.toHaveBeenCalled();
+      });
+
+      it('should accept a well-formed value', async () => {
+        connectionPort.create.mockResolvedValue(mockConnection);
+        await expect(
+          service.create({
+            ...base,
+            config: {
+              baseUrl: 'https://new.com',
+              deliveryOnDocuments: {
+                default: { name: 'Dostawa' },
+                countries: { pl: { name: 'Koszt dostawy', rateFormat: 'labelled', rateLabel: 'VAT' } },
+              },
+            },
+          })
+        ).resolves.toEqual(mockConnection);
+      });
+    });
+
     it('should reject PrestaShop credentials missing webserviceApiKey', async () => {
       await expect(
         service.create({

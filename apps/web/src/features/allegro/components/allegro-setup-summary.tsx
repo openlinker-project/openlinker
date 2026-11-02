@@ -14,6 +14,11 @@
  * @see {@link AllegroSetupForm} for the form this summary is paired with.
  */
 import type { ReactElement } from 'react';
+import {
+  DEFAULT_DELIVERY_WIZARD_VALUE,
+  DeliveryWizardSummary,
+  type DeliveryLineSuggestion,
+} from '../../delivery-on-documents';
 import { WizardSummaryRow } from '../../../shared/ui/wizard-summary-row';
 import type { AllegroSetupFormValues } from './allegro-setup.schema';
 
@@ -21,11 +26,16 @@ interface AllegroSetupSummaryProps {
   values: AllegroSetupFormValues;
   stepIndex: number;
   selectedCatalogName: string | null;
+  suggestions?: readonly DeliveryLineSuggestion[];
+  /** False when re-authenticating: that flow never touches delivery settings. */
+  showDelivery?: boolean;
 }
 
 export function AllegroSetupSummary({
   selectedCatalogName,
+  showDelivery = true,
   stepIndex,
+  suggestions = [],
   values,
 }: AllegroSetupSummaryProps): ReactElement {
   const environmentLabel =
@@ -65,6 +75,13 @@ export function AllegroSetupSummary({
             <WizardSummaryRow label="Linked to" value={selectedCatalogName ?? '— not linked —'} />
           </dl>
         </section>
+      ) : null}
+
+      {showDelivery && stepIndex >= 3 ? (
+        <DeliveryWizardSummary
+          value={values.deliveryOnDocuments ?? DEFAULT_DELIVERY_WIZARD_VALUE}
+          suggestions={suggestions}
+        />
       ) : null}
     </>
   );

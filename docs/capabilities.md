@@ -203,13 +203,15 @@ the [README Integrations](../README.md#integrations) section.)
 See [ADR-026](./architecture/adrs/026-country-agnostic-invoicing-domain.md) for
 the country-agnostic invoicing design.
 
-### `FiscalizationPort` (fiscalization) — 1
+### `FiscalizationPort` (fiscalization) — 2
 
 | Sub-capability | What it does | Method(s) | Guard |
 |---|---|---|---|
 | `FiscalRegistrationLocator` | Resolve an `in-doubt` outcome by querying the provider for a registration already made under this `(connectionId, idempotencyKey)` pair — never a resubmit. | `locateByQuery` | `isFiscalRegistrationLocator` |
+| `ReceiptLineNameBudget` | Declare how many characters of a receipt line name, rate suffix included, the registering mechanism compares, so core holds no regime number (#3914, ADR-046 shape). | `getReceiptLineNameMaxLength` | `isReceiptLineNameBudget` |
 
-**Adapter coverage:** eparagony.pl implements `FiscalRegistrationLocator`. No
+**Adapter coverage:** eparagony.pl implements `FiscalRegistrationLocator` and
+`ReceiptLineNameBudget` (40 characters). No
 device/peripheral sub-capability exists: `print`/`fiscalize` are booleans inside
 the vendor's document payload, not separate operations, and no known adapter
 exposes fiscal-printer control as a distinct call — see

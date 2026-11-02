@@ -159,6 +159,10 @@ const KNOWN_CONFIG_KNOBS = new Map([
     'libs/core/src/listings/domain/types/price-change-block.types.ts',
     { helper: 'readConnectionCurrency', key: 'config.currency' },
   ],
+  [
+    'libs/core/src/sales-documents/domain/types/delivery-line.types.ts',
+    { helper: 'readDeliveryOnDocuments', key: 'config.deliveryOnDocuments' },
+  ],
 ]);
 
 /**
@@ -382,13 +386,27 @@ const NON_KNOBS = new Map([
 // replace, and that is still true - it is simply not something a review fix may
 // take on. The number is raised by one so the next knob asks again.
 //
+// #3905 (ADR-082): raised from 12 to 13 for the twelfth knob,
+// `config.deliveryOnDocuments` - how the delivery line is named and taxed on
+// receipts and invoices, per buyer country, on the order-source connection.
+// Registered rather than excused, because it is exactly the counted shape. It
+// is per connection because one Allegro connection sells into several
+// countries and the operator names delivery per channel and per carrier; an
+// install-wide setting could not express that. It is also the first knob that
+// is itself a small rules table (a row per country plus a default), which is
+// the shape #1032's shared model would generalise - a useful data point for
+// #2169 rather than a reason to build that model inside this slice. The number
+// is raised by one so the next knob asks again.
+//
 // #3554 raised it to 13 for `config.buyerEmails`. Decision D6 (epic #3510) makes
 // buyer emails an opt-in PER CONNECTION by design - a marketplace may send only
 // transactional emails, a shop also its order confirmation - so an install-wide
 // setting would be the wrong scope, and the automation rules that carry the
 // email text cannot hold the opt-in either (a rule has no connection axis). The
 // #1032 question still stands; it is again raised by one so the next knob asks.
-const KNOB_THRESHOLD = 13;
+//
+// Both landed together, so the threshold is 14: one more for each knob.
+const KNOB_THRESHOLD = 14;
 
 /** Ladder rungs (ADR-048): sub-capabilities that declare master freshness. */
 const KNOWN_RUNGS = new Set(['modified-product-lister.capability.ts']);

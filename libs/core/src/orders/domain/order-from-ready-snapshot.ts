@@ -312,6 +312,9 @@ function readTotals(value: unknown): OrderTotals {
   if (typeof raw.shippingGross === 'number' && Number.isFinite(raw.shippingGross)) {
     totals.shippingGross = raw.shippingGross;
   }
+  if (typeof raw.shippingTaxRate === 'string' && raw.shippingTaxRate.trim() !== '') {
+    totals.shippingTaxRate = raw.shippingTaxRate.trim();
+  }
   if (typeof raw.discountTotal === 'number' && Number.isFinite(raw.discountTotal)) {
     totals.discountTotal = raw.discountTotal;
   }

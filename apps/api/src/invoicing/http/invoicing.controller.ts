@@ -140,8 +140,12 @@ import type { Order, OrderRecord, OrderSummary } from '@openlinker/core/orders';
 import {
   decideLiveOrderIssuance,
   DOCUMENT_EMAIL_DELIVERY_SERVICE_TOKEN,
+  readDeliveryOnDocuments,
+  resolveDeliveryLine,
+  type DeliveryOnDocumentsConfig,
   type IDocumentEmailDeliveryService,
   type LiveOrderIssuanceDecision,
+  type ResolvedDeliveryLine,
 } from '@openlinker/core/sales-documents';
 import {
   CONNECTION_PORT_TOKEN,
@@ -359,6 +363,35 @@ export class InvoicingController {
   }
 
   /**
+   * Resolve the delivery line for an order (#3905, ADR-082): the order-source
+   * connection's per-country settings, then the invoicing connection's legacy
+   * label (#1562), then the neutral default. Resilient like the lookups beside
+   * it - a failed source read degrades to the legacy label, never breaks issuance.
+   */
+  private async resolveDeliveryLineFor(
+    order: Order,
+    sourceConnectionId: string,
+    invoicingConnectionId: string,
+  ): Promise<ResolvedDeliveryLine> {
+    const legacyName = await this.resolveShippingLineName(invoicingConnectionId);
+    let deliveryConfig: DeliveryOnDocumentsConfig | null = null;
+    try {
+      const source = await this.connectionPort.get(sourceConnectionId);
+      deliveryConfig = readDeliveryOnDocuments(source.config);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.logger.debug(
+        `Delivery settings lookup failed for connection ${sourceConnectionId}; using legacy label: ${message}`,
+      );
+    }
+    return resolveDeliveryLine(deliveryConfig, {
+      countryIso2: order.shippingAddress?.country,
+      methodId: order.shipping?.methodId,
+      legacyName,
+    });
+  }
+
+  /**
    * Resolve the order's originating connection `platformType` (#1694) to thread
    * onto the issuance command's `source` numbering axis. Country-agnostic
    * (ADR-026): a neutral opaque string, never a hardcoded marketplace name.
@@ -493,7 +526,11 @@ export class InvoicingController {
     // #1562: thread the connection's operator-supplied shipping-line label into
     // the mapper (ADR-026 neutral - core forwards an opaque string). Blank/absent
     // defers to the mapper's neutral `SHIPPING_LINE_NAME` default.
-    const shippingLineName = await this.resolveShippingLineName(dto.connectionId);
+    const deliveryLine = await this.resolveDeliveryLineFor(
+      order,
+      record.sourceConnectionId,
+      dto.connectionId,
+    );
     // #1694: resolve the order-origin platformType for the per-source numbering axis.
     const source = await this.resolveSourcePlatformType(record.sourceConnectionId);
 
@@ -505,7 +542,7 @@ export class InvoicingController {
         buyerTaxId: this.toTaxIdentifier(dto.buyerTaxId),
         documentType: dto.documentType,
         idempotencyKey,
-        shippingLineName,
+        deliveryLine,
         source,
         // #2245 review: a pre-rollout order is exempt from the write-path
         // tax-rate guard, so the marker has to reach the command on the MANUAL
@@ -660,7 +697,11 @@ export class InvoicingController {
         // starting a fresh attempt (R2/R3, exactly-once dedup).
         idempotencyKey: record.idempotencyKey ?? undefined,
         // #1562: same operator-supplied shipping-line label as the single-issue path.
-        shippingLineName: await this.resolveShippingLineName(record.connectionId),
+        deliveryLine: await this.resolveDeliveryLineFor(
+          order,
+          orderRecord.sourceConnectionId,
+          record.connectionId,
+        ),
         // #1694: same per-source numbering axis as the single-issue path.
         source: await this.resolveSourcePlatformType(orderRecord.sourceConnectionId),
         // #2245 review: same pre-rollout exemption as the single-issue path.
@@ -816,7 +857,11 @@ export class InvoicingController {
         buyerTaxId: null,
         idempotencyKey,
         // #1562: same operator-supplied shipping-line label as the single-issue path.
-        shippingLineName: await this.resolveShippingLineName(connectionId),
+        deliveryLine: await this.resolveDeliveryLineFor(
+          order,
+          record.sourceConnectionId,
+          connectionId,
+        ),
         // #1694: same per-source numbering axis as the single-issue path.
         source: await this.resolveSourcePlatformType(record.sourceConnectionId),
         // #2245 review: same pre-rollout exemption as the single-issue path.
@@ -995,7 +1040,7 @@ export class InvoicingController {
       } else {
         const orderRecord = await this.orders.getOrderRecord(original.orderId);
         originalDocument = orderRecord
-          ? this.buildOriginalDocumentSnapshot({
+          ? await this.buildOriginalDocumentSnapshot({
               orderRecord,
               connectionId: original.connectionId,
               documentType: original.documentType,
@@ -1006,7 +1051,7 @@ export class InvoicingController {
               // path. Best available approximation for this pre-#1297 rebuild
               // (which already carries line-fidelity caveats); the current
               // connection label matches what issuance would render today.
-              shippingLineName: await this.resolveShippingLineName(original.connectionId),
+              // Resolved inside the builder, where the rehydrated order exists.
             })
           : undefined;
         source = orderRecord
@@ -1503,15 +1548,14 @@ export class InvoicingController {
    * sites can't accidentally transpose two same-typed fields (e.g.
    * `documentNumber` / `clearanceReference`, both nullable strings).
    */
-  private buildOriginalDocumentSnapshot(input: {
+  private async buildOriginalDocumentSnapshot(input: {
     orderRecord: OrderRecord;
     connectionId: string;
     documentType: string;
     clearanceReference: string | null;
     documentNumber: string;
     issuedAt: Date;
-    shippingLineName?: string;
-  }): OriginalDocumentSnapshot {
+  }): Promise<OriginalDocumentSnapshot> {
     const {
       orderRecord,
       connectionId,
@@ -1519,7 +1563,6 @@ export class InvoicingController {
       clearanceReference,
       documentNumber,
       issuedAt,
-      shippingLineName,
     } = input;
     const order = this.rehydrateOrder(orderRecord.internalOrderId, orderRecord);
     const issueCmd = toIssueInvoiceCommand({
@@ -1527,7 +1570,11 @@ export class InvoicingController {
       connectionId,
       buyerTaxId: null,
       documentType: documentType.length > 0 ? documentType : undefined,
-      shippingLineName,
+      deliveryLine: await this.resolveDeliveryLineFor(
+        order,
+        orderRecord.sourceConnectionId,
+        connectionId,
+      ),
     });
     return {
       buyer: issueCmd.buyer,
