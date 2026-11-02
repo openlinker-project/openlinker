@@ -49,6 +49,7 @@ function parcel(over: Partial<BenchParcel> = {}): BenchParcel {
     buyerNote: NOTE,
     buyerNoteAcknowledgedAt: null,
     buyerNoteAcknowledgedByUserId: null,
+    hasBuyerNote: false,
     otherParcelBuyerNoteAcknowledgements: [],
     ...over,
   };
@@ -58,10 +59,10 @@ function renderNote(
   p: BenchParcel,
   acknowledge = vi.fn<(workId: string) => Promise<BenchBuyerNoteAcknowledgementResult>>(),
   canAcknowledge = true,
-  textNotStored = false,
+  hasBuyerNote = false,
 ) {
   const api = createMockApiClient({ bench: { acknowledgeBuyerNote: acknowledge } });
-  const utils = renderWithProviders(<BenchBuyerNote parcel={p} canAcknowledge={canAcknowledge} textNotStored={textNotStored} />, {
+  const utils = renderWithProviders(<BenchBuyerNote parcel={p} canAcknowledge={canAcknowledge} hasBuyerNote={hasBuyerNote} />, {
     apiClient: api,
     sessionAdapter: createAuthenticatedSessionAdapter({
       id: 'user_packer',

@@ -124,10 +124,9 @@ export interface BenchParcel {
   readonly buyerNote: string | null;
   /**
    * Whether the order has a buyer note even when its text is not stored (B-12).
-   * Optional so a build ahead of the API still parses; absent falls back to the
-   * worklist row's flag.
+   * Always present: the schema defaults an API that omits it to `false`.
    */
-  readonly hasBuyerNote?: boolean;
+  readonly hasBuyerNote: boolean;
   /** When THIS parcel's note was first acknowledged at the bench, or `null`. */
   readonly buyerNoteAcknowledgedAt: string | null;
   /** Who acknowledged it - a raw OL user id, like `packedByUserId`. */

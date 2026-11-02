@@ -41,10 +41,9 @@ export interface BenchBuyerNoteProps {
   readonly canAcknowledge: boolean;
   /**
    * The order has a note whose text this installation does not store (B-12).
-   * The parcel carries no flag for it, so the caller reads it off the worklist
-   * row. The card then says so and still offers the acknowledgement.
+   * The card then says so and still offers the acknowledgement.
    */
-  readonly textNotStored?: boolean;
+  readonly hasBuyerNote?: boolean;
 }
 
 function NoteIcon(): ReactElement {
@@ -68,7 +67,7 @@ function NoteIcon(): ReactElement {
 export function BenchBuyerNote({
   parcel,
   canAcknowledge,
-  textNotStored = false,
+  hasBuyerNote = false,
 }: BenchBuyerNoteProps): ReactElement | null {
   const { session } = useSession();
   const acknowledge = useBenchBuyerNoteAcknowledgeMutation();
@@ -79,7 +78,7 @@ export function BenchBuyerNote({
   const noText = parcel.buyerNote === null || parcel.buyerNote.trim().length === 0;
   const overflowing = useClampOverflow(textRef, !expanded && !noText, [parcel.buyerNote]);
 
-  if (noText && !textNotStored) return null;
+  if (noText && !hasBuyerNote) return null;
 
   const currentUserId = session.user?.id ?? null;
   const read = parcel.buyerNoteAcknowledgedAt !== null;

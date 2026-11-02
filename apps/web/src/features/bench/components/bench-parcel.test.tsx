@@ -94,6 +94,7 @@ function parcel(over: Partial<BenchParcel> = {}): BenchParcel {
     buyerNote: null,
     buyerNoteAcknowledgedAt: null,
     buyerNoteAcknowledgedByUserId: null,
+    hasBuyerNote: false,
     otherParcelBuyerNoteAcknowledgements: [],
     ...over,
   };
