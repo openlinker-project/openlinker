@@ -14,6 +14,7 @@ Before writing or modifying code, read the relevant doc(s):
 | Topic | File |
 |---|---|
 | System architecture, layers, bounded contexts | `docs/architecture-overview.md` |
+| Full sub-capability inventory (code-synced) | `docs/capabilities.md` |
 | Coding standards, naming, file structure | `docs/engineering-standards.md` |
 | Testing standards and practices | `docs/testing-guide.md` |
 | Code review standards | `docs/code-review-guide.md` |
