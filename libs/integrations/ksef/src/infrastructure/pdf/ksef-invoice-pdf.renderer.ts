@@ -68,6 +68,9 @@ export interface ParsedInvoice {
   rateTotals: ParsedRateTotal[];
 }
 
+// The Bitstream Vera licence requires its notice to travel with every copy of
+// the fonts, so `fonts/LICENSE-DejaVu.txt` sits beside them and the build
+// copies the whole directory into `dist`.
 const FONT_DIR = join(__dirname, 'fonts');
 const REGULAR_FONT = join(FONT_DIR, 'DejaVuSans.ttf');
 const BOLD_FONT = join(FONT_DIR, 'DejaVuSans-Bold.ttf');
