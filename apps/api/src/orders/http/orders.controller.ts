@@ -95,6 +95,7 @@ import {
   IOrderHoldService,
   IOrderProvisioningResumeService,
   IOrderRoutingRetryService,
+  type OrderRoutingRetryRefusal,
   ORDER_TEST_FIXTURE_SERVICE_TOKEN,
   IOrderTestFixtureService,
   TestFixturesDisabledException,
@@ -366,6 +367,17 @@ export async function enrichCrossContextFilters(
 
   return enriched;
 }
+
+/**
+ * The 409 `error` code for each routing-retry refusal (#3558). Upper-snake, the
+ * shape `ORDER_ALREADY_ON_HOLD` and `NO_BUYER_NOTE` already use on this
+ * controller, so a client reads one error shape across `/orders`.
+ */
+const ROUTING_RETRY_REFUSAL_ERROR_CODES: Record<OrderRoutingRetryRefusal, string> = {
+  'not-held': 'ROUTING_RETRY_NOT_HELD',
+  'not-retryable': 'ROUTING_RETRY_NOT_RETRYABLE',
+  'no-router': 'ROUTING_RETRY_NO_ROUTER',
+};
 
 @ApiBearerAuth()
 @ApiTags('orders')
@@ -989,8 +1001,9 @@ export class OrdersController {
   @ApiResponse({
     status: 409,
     description:
-      'Not retryable: the order is not held (`not-held`), is held for a reason a retry cannot ' +
-      'change (`not-retryable`), or no single router is selected or wired for the selected connection (`no-router`)',
+      'Not retryable, with `error` naming why: ROUTING_RETRY_NOT_HELD - the order is not held; ' +
+      'ROUTING_RETRY_NOT_RETRYABLE - it is held for a reason a retry cannot change; ' +
+      'ROUTING_RETRY_NO_ROUTER - no single router is selected, or none is wired for the selected connection',
   })
   @ApiResponse({ status: 503, description: 'The job could not be enqueued' })
   @ApiResponse({ status: 403, description: 'Insufficient permissions' })
@@ -1004,11 +1017,12 @@ export class OrdersController {
       case 'order-not-found':
         throw new NotFoundException(`Order not found: ${internalOrderId}`);
       case 'refused':
-        // The reason is a machine-readable CODE: the three states have different
-        // remedies, and a status code alone cannot tell an operator which one.
+        // A machine-readable CODE: the three states have different remedies, and
+        // a status code alone cannot tell an operator which one.
         throw new ConflictException({
+          statusCode: HttpStatus.CONFLICT,
+          error: ROUTING_RETRY_REFUSAL_ERROR_CODES[result.reason],
           message: `Routing cannot be retried for order ${internalOrderId}`,
-          code: result.reason,
         });
       case 'enqueue-failed':
         throw new ServiceUnavailableException('Could not queue the routing retry');

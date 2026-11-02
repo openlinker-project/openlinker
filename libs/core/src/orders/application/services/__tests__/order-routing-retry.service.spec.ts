@@ -100,7 +100,9 @@ describe('OrderRoutingRetryService', () => {
     });
 
     it('should refuse an order that is not held', async () => {
-      orderRecords.getOrderRecord.mockResolvedValue({ fulfillmentBlock: null } as unknown as OrderRecord);
+      orderRecords.getOrderRecord.mockResolvedValue({
+        fulfillmentBlock: null,
+      } as unknown as OrderRecord);
 
       expect(await service.retryRouting('ol_order_1')).toEqual({
         status: 'refused',
@@ -156,7 +158,7 @@ describe('OrderRoutingRetryService', () => {
   });
 
   describe('rerouteHeldOrdersForVariant', () => {
-    it('should enqueue one route job per held order, keyed to the UTC hour', async () => {
+    it('should enqueue one route job per held order, keyed to its 10-minute window', async () => {
       orderRecords.listOrderIdsHeldForVariant.mockResolvedValue(['ol_order_1', 'ol_order_2']);
 
       const result = await service.rerouteHeldOrdersForVariant({ variantId: 'variant-1' });
@@ -170,19 +172,41 @@ describe('OrderRoutingRetryService', () => {
       const keys = jobEnqueue.enqueueJob.mock.calls.map(
         (call: unknown[]) => (call[0] as { idempotencyKey: string }).idempotencyKey
       );
-      expect(keys[0]).toMatch(/^fulfillment:work:route:stock:ol_order_1:\d{4}-\d{2}-\d{2}T\d{2}$/);
+      expect(keys[0]).toMatch(
+        /^fulfillment:work:route:stock:ol_order_1:\d{4}-\d{2}-\d{2}T\d{2}:\d0$/
+      );
       expect(jobEnqueue.enqueueJob).toHaveBeenCalledWith(
         expect.objectContaining({ jobType: 'fulfillment.work.route', connectionId: ROUTER })
       );
     });
 
-    it('should use the same key for the same order within one hour', () => {
-      const a = buildStockRerouteJobKey('ol_order_1', new Date('2026-10-27T10:05:00Z'));
-      const b = buildStockRerouteJobKey('ol_order_1', new Date('2026-10-27T10:55:00Z'));
-      const next = buildStockRerouteJobKey('ol_order_1', new Date('2026-10-27T11:00:00Z'));
+    it('should use the same key for the same order within one 10-minute window', () => {
+      const a = buildStockRerouteJobKey('ol_order_1', new Date('2026-10-27T10:01:00Z'));
+      const b = buildStockRerouteJobKey('ol_order_1', new Date('2026-10-27T10:09:59Z'));
+      const next = buildStockRerouteJobKey('ol_order_1', new Date('2026-10-27T10:10:00Z'));
 
       expect(a).toBe(b);
+      expect(a).toBe('fulfillment:work:route:stock:ol_order_1:2026-10-27T10:00');
       expect(next).not.toBe(a);
+    });
+
+    it('should give a restock 30 minutes after a decrease its own attempt', () => {
+      const decrease = buildStockRerouteJobKey('ol_order_1', new Date('2026-10-27T10:01:00Z'));
+      const restock = buildStockRerouteJobKey('ol_order_1', new Date('2026-10-27T10:31:00Z'));
+
+      expect(restock).not.toBe(decrease);
+    });
+
+    it('should not count a deduplicated key as enqueued', async () => {
+      orderRecords.listOrderIdsHeldForVariant.mockResolvedValue(['ol_order_1', 'ol_order_2']);
+      jobEnqueue.enqueueJob
+        .mockResolvedValueOnce({ jobId: 'job-1', isExisting: true })
+        .mockResolvedValueOnce({ jobId: 'job-2', isExisting: false });
+
+      expect(await service.rerouteHeldOrdersForVariant({ variantId: 'variant-1' })).toEqual({
+        candidates: 2,
+        enqueued: 1,
+      });
     });
 
     it('should do nothing when no held order waits on the variant', async () => {

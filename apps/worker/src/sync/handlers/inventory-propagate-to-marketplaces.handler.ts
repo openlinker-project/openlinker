@@ -179,17 +179,6 @@ export class InventoryPropagateToMarketplacesHandler implements SyncJobHandler {
         `Resolved publish quantity for product ${payload.productId}: ${promisableQuantity}`
       );
 
-      // #3558: orders held because a line could not be fulfilled are re-routed
-      // now rather than at the sweep's next tick. Best-effort and bounded (a page
-      // of orders, one attempt per order per hour) - the service never throws, so
-      // this cannot fail a stock write-back.
-      if (payload.variantId) {
-        await this.orderRoutingRetry.rerouteHeldOrdersForVariant({
-          variantId: payload.variantId,
-          observedAt: payload.inventoryUpdatedAt,
-        });
-      }
-
       // Stale-variant guard (#1689): a variant just zeroed by the stale-offer-
       // pause flow must not be re-raised by a concurrent inventory propagate
       // racing it. Checked only when the payload carries a variantId — a
@@ -307,6 +296,18 @@ export class InventoryPropagateToMarketplacesHandler implements SyncJobHandler {
       this.logger.log(
         `Enqueued ${offerMappings.length} offer + ${enqueuedShopCount} shop-product quantity update job(s) for product ${payload.productId}`
       );
+
+      // #3558: orders held because a line could not be fulfilled are re-routed
+      // now rather than at the sweep's next tick. Runs AFTER the channel fan-out
+      // so the stock write-back never waits on it. Best-effort and bounded (a
+      // page of orders, one attempt per order per short window) - the service
+      // never throws, so this cannot fail a stock write-back.
+      if (payload.variantId) {
+        await this.orderRoutingRetry.rerouteHeldOrdersForVariant({
+          variantId: payload.variantId,
+          observedAt: payload.inventoryUpdatedAt,
+        });
+      }
 
       return { outcome: 'ok' };
     } catch (error) {

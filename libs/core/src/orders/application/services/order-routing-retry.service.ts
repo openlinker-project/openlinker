@@ -34,13 +34,9 @@ import {
 } from '@openlinker/core/fulfillment';
 import {
   selectPrimaryFulfillmentRouter,
-  type AuthorityClaimantInput,
+  toRouterSelectionClaimants,
 } from '@openlinker/core/fulfillment-authority';
-import {
-  CONNECTION_PORT_TOKEN,
-  type Connection,
-  type ConnectionPort,
-} from '@openlinker/core/identifier-mapping';
+import { CONNECTION_PORT_TOKEN, type ConnectionPort } from '@openlinker/core/identifier-mapping';
 import { JobEnqueuePort, JOB_ENQUEUE_TOKEN } from '@openlinker/core/sync';
 import type {
   IOrderRoutingRetryService,
@@ -54,9 +50,23 @@ import { ORDER_RECORD_SERVICE_TOKEN } from '../../orders.tokens';
 /** Held orders re-driven per stock change: bounds the burst one stock write can cause. */
 export const STOCK_REROUTE_PAGE_LIMIT = 50;
 
-/** One stock-triggered attempt per order per UTC hour (see the interface, property 4). */
-export const buildStockRerouteJobKey = (orderId: string, now: Date): string =>
-  `fulfillment:work:route:stock:${orderId}:${now.toISOString().slice(0, 13)}`;
+/**
+ * Width of the stock-trigger dedupe window (see the interface, property 4).
+ * Ten minutes, not an hour: a stock DECREASE fires the trigger too, and an hour
+ * window let it consume the attempt that a restock arriving minutes later then
+ * needed, leaving an order older than the sweep's fast window to wait up to a
+ * day. Ten minutes still bounds the `routing_decisions` rows a hot SKU can mint
+ * to six per order per hour.
+ */
+export const STOCK_REROUTE_WINDOW_MS = 10 * 60 * 1000;
+
+/** One stock-triggered attempt per order per {@link STOCK_REROUTE_WINDOW_MS} window. */
+export const buildStockRerouteJobKey = (orderId: string, now: Date): string => {
+  const windowStart = new Date(
+    Math.floor(now.getTime() / STOCK_REROUTE_WINDOW_MS) * STOCK_REROUTE_WINDOW_MS
+  );
+  return `fulfillment:work:route:stock:${orderId}:${windowStart.toISOString().slice(0, 16)}`;
+};
 
 /** A fresh key per operator click (see the interface, property 3). */
 export const buildRetryRerouteJobKey = (orderId: string, nowMs: number): string =>
@@ -144,13 +154,15 @@ export class OrderRoutingRetryService implements IOrderRoutingRetryService {
       let enqueued = 0;
       for (const orderId of orderIds) {
         try {
-          await this.jobEnqueue.enqueueJob({
+          const { isExisting } = await this.jobEnqueue.enqueueJob({
             jobType: 'fulfillment.work.route',
             connectionId: routerConnectionId,
             payload: { schemaVersion: 1, orderId },
             idempotencyKey: buildStockRerouteJobKey(orderId, now),
           });
-          enqueued += 1;
+          // A deduplicated key is an attempt already made in this window, not
+          // a new one (#3558 review).
+          if (!isExisting) enqueued += 1;
         } catch (error) {
           this.logger.warn(
             `Stock-triggered re-route enqueue failed: order=${orderId} ` +
@@ -177,7 +189,7 @@ export class OrderRoutingRetryService implements IOrderRoutingRetryService {
   /** The selected router's connection id, or `null` when none / ambiguous. */
   private async selectRouterConnectionId(): Promise<string | null> {
     const connections = await this.connections.list();
-    const selection = selectPrimaryFulfillmentRouter(this.toClaimants(connections));
+    const selection = selectPrimaryFulfillmentRouter(toRouterSelectionClaimants(connections));
     return selection.holder;
   }
 
@@ -195,15 +207,5 @@ export class OrderRoutingRetryService implements IOrderRoutingRetryService {
       return false;
     }
     return true;
-  }
-
-  private toClaimants(connections: readonly Connection[]): AuthorityClaimantInput[] {
-    return connections.map((connection) => ({
-      connectionId: connection.id,
-      isActive: connection.status === 'active',
-      supportedCapabilities: [],
-      enabledCapabilities: connection.enabledCapabilities,
-      config: connection.config,
-    }));
   }
 }

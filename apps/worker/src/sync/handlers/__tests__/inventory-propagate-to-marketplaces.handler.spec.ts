@@ -7,7 +7,10 @@
  * @module apps/worker/src/sync/handlers/__tests__
  */
 import { InventoryPropagateToMarketplacesHandler } from '../inventory-propagate-to-marketplaces.handler';
-import type { IIdentifierMappingService, ExternalIdMapping } from '@openlinker/core/identifier-mapping';
+import type {
+  IIdentifierMappingService,
+  ExternalIdMapping,
+} from '@openlinker/core/identifier-mapping';
 import type { IInventoryService, IAvailabilityService } from '@openlinker/core/inventory';
 import type { IIntegrationsService } from '@openlinker/core/integrations';
 import type { JobEnqueuePort } from '@openlinker/core/sync';
@@ -162,6 +165,28 @@ describe('InventoryPropagateToMarketplacesHandler', () => {
           variantId: 'variant-id',
           observedAt: '2026-10-27T10:00:00.000Z',
         });
+      });
+
+      it('should re-route only after the channel fan-out was enqueued', async () => {
+        mockMappings({
+          Offer: [
+            {
+              entityType: 'Offer',
+              platformType: 'allegro',
+              connectionId: 'connection-id',
+              externalId: 'offer-id',
+            },
+          ],
+        });
+        jobEnqueue.enqueueJob.mockResolvedValue({ jobId: 'enqueued-job-id', isExisting: false });
+
+        await handler.execute(createJob({ productId: 'product-id', variantId: 'variant-id' }));
+
+        expect(jobEnqueue.enqueueJob).toHaveBeenCalledTimes(1);
+        expect(orderRoutingRetry.rerouteHeldOrdersForVariant).toHaveBeenCalledTimes(1);
+        expect(jobEnqueue.enqueueJob.mock.invocationCallOrder[0]).toBeLessThan(
+          orderRoutingRetry.rerouteHeldOrdersForVariant.mock.invocationCallOrder[0]
+        );
       });
 
       it('should not re-route anything for a product-level payload with no variant', async () => {
@@ -745,7 +770,9 @@ describe('InventoryPropagateToMarketplacesHandler', () => {
         ([request]) => (request as { idempotencyKey: string }).idempotencyKey
       );
       expect(new Set(keys).size).toBe(2);
-      expect(keys).toContain('inventory:wc-connection:product-id:variant-id:25:2026-01-01T12:00:00.000Z');
+      expect(keys).toContain(
+        'inventory:wc-connection:product-id:variant-id:25:2026-01-01T12:00:00.000Z'
+      );
       expect(keys).toContain(
         'inventory:wc-connection:product-id:variant-id:25:2026-01-01T12:00:00.000Z:shop:123'
       );

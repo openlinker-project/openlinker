@@ -93,6 +93,7 @@ import {
 import {
   isFulfillmentRouterUnroutable,
   selectPrimaryFulfillmentRouter,
+  toRouterSelectionClaimants,
   type AuthorityAttentionOutcome,
   type AuthorityClaimantInput,
 } from '@openlinker/core/fulfillment-authority';
@@ -1455,13 +1456,7 @@ export class OrderIngestionService implements IOrderIngestionService {
    * shop?", so that check costs no extra statement.
    */
   private toRoutingClaimants(connections: readonly Connection[]): AuthorityClaimantInput[] {
-    return connections.map((connection) => ({
-      connectionId: connection.id,
-      isActive: connection.status === 'active',
-      supportedCapabilities: [],
-      enabledCapabilities: connection.enabledCapabilities,
-      config: connection.config,
-    }));
+    return toRouterSelectionClaimants(connections);
   }
 
   /**

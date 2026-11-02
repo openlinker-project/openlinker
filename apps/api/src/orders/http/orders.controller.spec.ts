@@ -2317,17 +2317,18 @@ describe('OrdersController', () => {
       );
     });
 
-    it.each(['not-held', 'not-retryable', 'no-router'])(
-      'should answer 409 carrying the machine-readable code %s',
-      async (reason) => {
-        routingRetry.retryRouting.mockResolvedValue({ status: 'refused', reason });
+    it.each([
+      ['not-held', 'ROUTING_RETRY_NOT_HELD'],
+      ['not-retryable', 'ROUTING_RETRY_NOT_RETRYABLE'],
+      ['no-router', 'ROUTING_RETRY_NO_ROUTER'],
+    ])('should answer 409 with the error code for %s', async (reason, error) => {
+      routingRetry.retryRouting.mockResolvedValue({ status: 'refused', reason });
 
-        await expect(controller.retryRouting('ol_order_001')).rejects.toMatchObject({
-          response: expect.objectContaining({ code: reason }),
-          status: 409,
-        });
-      }
-    );
+      await expect(controller.retryRouting('ol_order_001')).rejects.toMatchObject({
+        response: expect.objectContaining({ statusCode: 409, error }),
+        status: 409,
+      });
+    });
 
     it('should answer 503 when the job could not be queued', async () => {
       routingRetry.retryRouting.mockResolvedValue({ status: 'enqueue-failed' });
