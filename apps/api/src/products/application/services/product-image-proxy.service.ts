@@ -53,7 +53,7 @@ import { Inject, Injectable } from '@nestjs/common';
 import { PRODUCTS_SERVICE_TOKEN, type IProductsService } from '@openlinker/core/products';
 import { Logger } from '@openlinker/shared/logging';
 import { isProductImageUrlAllowed } from './product-image-url-safety';
-import { resolveVariantImageList } from '../../http/product-image-path';
+import { resolveVariantImageList } from './variant-image-list';
 
 /** Long enough for a shop under load, short enough not to hold a worker. */
 const FETCH_TIMEOUT_MS = 8_000;

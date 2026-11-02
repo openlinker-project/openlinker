@@ -745,9 +745,13 @@ export class OrderLineItemRepository implements OrderLineItemRepositoryPort {
     reportingCurrency: string,
     includeBackfilledPreRollout = false
   ): Promise<{ rows: MarginProductRow[]; total: number }> {
+    const { inRevenue } = this.buildMarginSqlFragments(includeBackfilledPreRollout);
+    // A product with no line in net revenue has nothing to rank (zero revenue,
+    // empty margin), so it is left out of both the page and the total.
     const qb = this.createMarginQuery(reportingCurrency, includeBackfilledPreRollout)
       .addSelect('li."productId"', 'product_id')
-      .groupBy('li."productId"');
+      .groupBy('li."productId"')
+      .having(`COUNT(*) FILTER (WHERE COALESCE((${inRevenue}), false)) > 0`);
 
     if (filters.sortBy === 'marginPct') {
       qb.orderBy('margin_pct', 'DESC', 'NULLS LAST');
@@ -760,7 +764,11 @@ export class OrderLineItemRepository implements OrderLineItemRepositoryPort {
     const totalQb = this.repository
       .createQueryBuilder('li')
       .innerJoin(OrderRecordOrmEntity, 'rec', 'rec."internalOrderId" = li."orderRecordId"')
-      .select('COUNT(DISTINCT li."productId")', 'total');
+      .select(
+        `COUNT(DISTINCT li."productId") FILTER (WHERE COALESCE((${inRevenue}), false))`,
+        'total'
+      )
+      .setParameter('reportingCurrency', reportingCurrency);
     this.applyTopProductsScope(totalQb, filters);
 
     const [rows, totalRow] = await Promise.all([
