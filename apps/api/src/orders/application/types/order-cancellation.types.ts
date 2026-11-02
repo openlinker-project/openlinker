@@ -90,3 +90,14 @@ export interface ConfirmOrderChangeResult {
   readonly invoiceStatus: string;
   readonly documentNumber: string | null;
 }
+
+/**
+ * Idempotency key of the credit a confirmed cancel-correction proposal issues.
+ * Derived from the change id, never wall-clock, so a retried confirm re-sends the
+ * same key and the provider sees one correction however many clicks - and so the
+ * supersession check can recognise this proposal's OWN document as not a
+ * third party's.
+ */
+export function cancelCorrectionIdempotencyKey(changeId: string): string {
+  return `cancel-correction:${changeId}`;
+}

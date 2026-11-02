@@ -709,6 +709,52 @@ describe('OrderCancellationService (#3540)', () => {
       expect(invoices.issueCorrection).not.toHaveBeenCalled();
     });
 
+    it('should not treat the correction this proposal itself issued as superseding it (crash-retry)', async () => {
+      // The first confirm issued FK/1 under this proposal's key, then died before
+      // the confirm landed; the retry must replay, not withdraw the proposal.
+      invoices.listInvoicesForOrders.mockResolvedValue([
+        invoice({
+          id: 'inv-2',
+          providerInvoiceNumber: 'FK/1',
+          idempotencyKey: 'cancel-correction:change-2',
+          createdAt: new Date('2026-09-05T00:00:00.000Z'),
+        }),
+        invoice(),
+      ]);
+
+      const result = await service.confirmChange(confirmInput);
+
+      expect(changes.abandon).not.toHaveBeenCalled();
+      expect(invoices.issueCorrection).toHaveBeenCalledWith(
+        expect.objectContaining({ idempotencyKey: 'cancel-correction:change-2' })
+      );
+      expect(result).toMatchObject({ status: 'confirmed', documentNumber: 'FK/1' });
+    });
+
+    it('should report confirmed when a peer confirmed the same proposal first', async () => {
+      changes.confirm.mockResolvedValue(false);
+      changes.findById
+        .mockResolvedValueOnce(correctionChange())
+        .mockResolvedValueOnce(correctionChange({ status: 'confirmed' }));
+
+      const result = await service.confirmChange(confirmInput);
+
+      expect(result).toMatchObject({ status: 'confirmed', documentNumber: 'FK/1' });
+    });
+
+    it('should refuse with CHANGE_NOT_OPEN, naming the issued document, when the row closed meanwhile', async () => {
+      changes.confirm.mockResolvedValue(false);
+      changes.findById
+        .mockResolvedValueOnce(correctionChange())
+        .mockResolvedValueOnce(correctionChange({ status: 'expired' }));
+
+      const error = await service.confirmChange(confirmInput).catch((e: unknown) => e);
+
+      expect((error as OrderCancellationRefusedError).code).toBe('CHANGE_NOT_OPEN');
+      expect((error as Error).message).toContain('FK/1');
+      expect(changes.claimApplied).not.toHaveBeenCalled();
+    });
+
     it('should issue the correction under a key derived from the change id, then confirm', async () => {
       const result = await service.confirmChange(confirmInput);
 

@@ -114,13 +114,14 @@ import {
   OrderCancellationRefusedError,
 } from '../errors/order-cancellation.errors';
 import type { IOrderCancellationService } from '../interfaces/order-cancellation.service.interface';
-import type {
-  CancelOrderInput,
-  CancelOrderResult,
-  CancelParticipantEffect,
-  CancelParticipantOutcome,
-  ConfirmOrderChangeInput,
-  ConfirmOrderChangeResult,
+import {
+  cancelCorrectionIdempotencyKey,
+  type CancelOrderInput,
+  type CancelOrderResult,
+  type CancelParticipantEffect,
+  type CancelParticipantOutcome,
+  type ConfirmOrderChangeInput,
+  type ConfirmOrderChangeResult,
 } from '../types/order-cancellation.types';
 
 /**
@@ -617,10 +618,19 @@ export class OrderCancellationService implements IOrderCancellationService {
     // correction issued since - by hand from the invoice panel, by a return or by
     // a discount - already changed it, and crediting every line again would credit
     // the same goods twice on a fiscal document (B-21).
+    //
+    // This proposal's OWN correction is not a supersession: a retry after the
+    // correction was issued but the confirm did not land (a crash, a lost write),
+    // or a second click that runs after the first committed, finds it here.
+    // Counting it would withdraw the proposal and tell the operator that someone
+    // else corrected the invoice, when their own click did; skipping it lets
+    // `issueCorrection` replay the same-key result below.
+    const correctionKey = cancelCorrectionIdempotencyKey(change.id);
     const records = await this.invoices.listInvoicesForOrders([input.internalOrderId]);
     const superseding = records.find(
       (record) =>
         record.id !== invoice.id &&
+        record.idempotencyKey !== correctionKey &&
         record.status === 'issued' &&
         record.createdAt.getTime() > invoice.createdAt.getTime()
     );
@@ -646,9 +656,7 @@ export class OrderCancellationService implements IOrderCancellationService {
           originalLineNumber: line.originalLineNumber,
           newQuantity: line.newQuantity,
         })),
-        // Derived from the change id, never wall-clock: a retried confirm re-sends
-        // the SAME key, so the provider sees one correction however many clicks.
-        idempotencyKey: `cancel-correction:${change.id}`,
+        idempotencyKey: correctionKey,
         originalDocument: buildOriginalDocumentFromIssuedRecord(invoice, invoice.issuedLineSnapshot),
       });
     } catch (error) {
@@ -670,8 +678,7 @@ export class OrderCancellationService implements IOrderCancellationService {
       );
     }
 
-    await this.changes.confirm(change.id, input.actorUserId);
-    await this.changes.claimApplied(change.id);
+    await this.settleConfirmedCorrection(change, input, issued);
 
     return {
       changeId: change.id,
@@ -681,6 +688,45 @@ export class OrderCancellationService implements IOrderCancellationService {
       invoiceStatus: issued.status,
       documentNumber: issued.providerInvoiceNumber,
     };
+  }
+
+  /**
+   * Record the proposal as confirmed now that its correction is issued, and act on
+   * what the guarded writes answer rather than assuming they landed.
+   *
+   * Losing `confirm` to a PEER confirming the same proposal is success: the
+   * correction is keyed on the change id, so both clicks name one document.
+   * Losing it to anything else (the row was abandoned or expired meanwhile) is
+   * not, and reporting `confirmed` there would describe a row that says
+   * otherwise. The document already exists either way, so the refusal names it.
+   */
+  private async settleConfirmedCorrection(
+    change: OrderChange,
+    input: ConfirmOrderChangeInput,
+    issued: InvoiceRecord
+  ): Promise<void> {
+    const confirmed = await this.changes.confirm(change.id, input.actorUserId);
+    if (!confirmed) {
+      const current = await this.changes.findById(change.id);
+      if (current?.status !== 'confirmed') {
+        this.logger.warn(
+          `order_cancel_correction_unconfirmed order=${input.internalOrderId} change=${change.id} status=${current?.status ?? 'missing'} invoice=${issued.id}`
+        );
+        throw new OrderCancellationRefusedError(
+          'CHANGE_NOT_OPEN',
+          `The correction was issued (${
+            issued.providerInvoiceNumber ?? issued.id
+          }), but this proposal was closed while it was being issued, so it is not recorded as confirmed. Review that document rather than issuing another credit.`
+        );
+      }
+    }
+    // A false claim means a peer already marked it applied - the state this call
+    // wanted - so it is reported, not raised.
+    if (!(await this.changes.claimApplied(change.id))) {
+      this.logger.debug(
+        `Correction proposal ${change.id} on order ${input.internalOrderId} was already marked applied by a peer`
+      );
+    }
   }
 
   private readCorrectionPayload(change: OrderChange): OrderCancelCorrectionPayload {
