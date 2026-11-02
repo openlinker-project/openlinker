@@ -35,6 +35,7 @@ import {
   isOrderChangeKind,
   isOrderChangeStatus,
   OPEN_ORDER_CHANGE_STATUSES,
+  OrderCorrectionChangeKindValues,
   type CreateOrderChangeInput,
   type OrderChangeKind,
   type OrderChangeStatus,
@@ -66,12 +67,16 @@ export class OrderChangeRepository implements OrderChangeRepositoryPort {
   }
 
   async findOpenByOrder(internalOrderId: string, openSince: Date): Promise<OrderChange[]> {
+    const open = In([...OPEN_ORDER_CHANGE_STATUSES]);
+    // A correction proposal never goes stale (`OrderChangeService.isStale`): it
+    // waits on the operator, not on a channel. Applying `openSince` to it here
+    // would hide an open correction from this read while the operator list still
+    // shows it open - two answers to one question.
     const entities = await this.repository.find({
-      where: {
-        internalOrderId,
-        status: In([...OPEN_ORDER_CHANGE_STATUSES]),
-        requestedAt: MoreThan(openSince),
-      },
+      where: [
+        { internalOrderId, status: open, requestedAt: MoreThan(openSince) },
+        { internalOrderId, status: open, kind: In([...OrderCorrectionChangeKindValues]) },
+      ],
       order: { createdAt: 'ASC', id: 'ASC' },
     });
     return entities.map((entity) => this.toDomain(entity));
@@ -105,7 +110,10 @@ export class OrderChangeRepository implements OrderChangeRepositoryPort {
       .where('oc."internalOrderId" IN (:...ids)', { ids: [...internalOrderIds] })
       .andWhere('oc.status IN (:...statuses)', { statuses: [...OPEN_ORDER_CHANGE_STATUSES] })
       .andWhere('oc.kind IN (:...kinds)', { kinds: [...kinds] })
-      .andWhere('oc."requestedAt" > :openSince', { openSince })
+      .andWhere('(oc."requestedAt" > :openSince OR oc.kind IN (:...neverStaleKinds))', {
+        openSince,
+        neverStaleKinds: [...OrderCorrectionChangeKindValues],
+      })
       .getRawMany<{ internalOrderId: string }>();
     return new Set(rows.map((row) => row.internalOrderId));
   }

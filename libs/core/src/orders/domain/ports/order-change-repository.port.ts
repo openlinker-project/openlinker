@@ -85,7 +85,9 @@ export interface OrderChangeRepositoryPort {
    * Every OPEN proposal against one order, whatever its target (#3540).
    *
    * Only rows requested AFTER `openSince` count: expiry is lazy, so a row whose
-   * TTL has elapsed but which nothing has expired yet is NOT open.
+   * TTL has elapsed but which nothing has expired yet is NOT open. Correction
+   * kinds (`OrderCorrectionChangeKindValues`) are exempt, matching the service's
+   * staleness rule: they wait on the operator, so they carry no TTL.
    *
    * Answers "is anything in flight on this order?" — which `findOpenByTarget`
    * cannot, since it needs the target already in hand.
@@ -95,7 +97,8 @@ export interface OrderChangeRepositoryPort {
   /**
    * The subset of `internalOrderIds` holding at least one OPEN proposal of one of
    * `kinds` (#3540). One query for a whole list page, never a per-row read; feeds
-   * the derived `amending` lifecycle phase.
+   * the derived `amending` lifecycle phase. Same `openSince` rule, with the same
+   * correction-kind exemption, as `findOpenByOrder`.
    */
   findOrderIdsWithOpenChanges(
     internalOrderIds: readonly string[],
