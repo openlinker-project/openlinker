@@ -346,6 +346,80 @@ describe('AutoIssueTriggerService', () => {
     });
   });
 
+  // #3582: each kind reads its own trigger model, with the legacy key as the
+  // fallback. Both map entries are set on single-kind connections, so a gate
+  // that read the wrong kind's entry would fail these, not pass by accident.
+  describe('kind-scoped trigger model (#3582)', () => {
+    const both = { invoice: 'batched', 'fiscal-receipt': 'auto-on-paid' };
+
+    it('registers a receipt at once while invoices on the same config are batched', async () => {
+      connectionPort.list.mockResolvedValue([
+        makeFiscalConnection(undefined, {
+          config: { salesDocument: { documentKind: 'fiscal-receipt', triggerModels: both } },
+        }),
+      ]);
+
+      await service.onOrderTransition(makeOrder({ paymentStatus: 'paid' }), 'src-1');
+
+      expect(syncJobs.schedule).toHaveBeenCalledTimes(1);
+      expect(syncJobs.schedule.mock.calls[0][0].jobType).toBe('fiscalization.register');
+    });
+
+    it('holds an invoice for the batch while receipts on the same config issue at once', async () => {
+      connectionPort.list.mockResolvedValue([
+        makeConnection(undefined, {
+          config: { salesDocument: { documentKind: 'invoice', triggerModels: both } },
+        }),
+      ]);
+
+      await service.onOrderTransition(makeOrder({ paymentStatus: 'paid' }), 'src-1');
+
+      expect(syncJobs.schedule).not.toHaveBeenCalled();
+      expect(warnSpy.mock.calls.some(([m]) => m.includes('BatchedTriggerNotImplementedError'))).toBe(
+        true,
+      );
+    });
+
+    it('lets the kind-scoped value override the legacy key for that kind only', async () => {
+      connectionPort.list.mockResolvedValue([
+        makeConnection(undefined, {
+          config: {
+            invoicing: { triggerModel: 'manual' },
+            salesDocument: { documentKind: 'invoice', triggerModels: { invoice: 'auto-on-paid' } },
+          },
+        }),
+      ]);
+
+      await service.onOrderTransition(makeOrder({ paymentStatus: 'paid' }), 'src-1');
+
+      expect(syncJobs.schedule).toHaveBeenCalledTimes(1);
+      expect(syncJobs.schedule.mock.calls[0][0].jobType).toBe('invoicing.issue');
+    });
+
+    it('falls back to the legacy key when the kind-scoped value is unrecognised', async () => {
+      connectionPort.list.mockResolvedValue([
+        makeConnection(undefined, {
+          config: {
+            invoicing: { triggerModel: 'auto-on-paid' },
+            salesDocument: { documentKind: 'invoice', triggerModels: { invoice: 'nonsense' } },
+          },
+        }),
+      ]);
+
+      await service.onOrderTransition(makeOrder({ paymentStatus: 'paid' }), 'src-1');
+
+      expect(syncJobs.schedule).toHaveBeenCalledTimes(1);
+    });
+
+    it('keeps a legacy-only config issuing the receipt kind exactly as before the split', async () => {
+      connectionPort.list.mockResolvedValue([makeFiscalConnection('auto-on-paid')]);
+
+      await service.onOrderTransition(makeOrder({ paymentStatus: 'paid' }), 'src-1');
+
+      expect(syncJobs.schedule.mock.calls[0][0].jobType).toBe('fiscalization.register');
+    });
+  });
+
   describe('cross-capability connection discovery (#2156)', () => {
     it('excludes connections without Invoicing or Fiscalization capability', async () => {
       connectionPort.list.mockResolvedValue([

@@ -21,10 +21,32 @@ describe('mergeSalesDocumentConfig', () => {
     expect(result.invoicing).toEqual({ shippingLineName: 'Shipping', isPrimary: true });
   });
 
-  it('should set isPrimary and triggerModel under invoicing', () => {
-    const result = mergeSalesDocumentConfig({}, { isPrimary: true, triggerModel: 'auto-on-paid' });
+  it('should set isPrimary under invoicing and the trigger model under its kind', () => {
+    const result = mergeSalesDocumentConfig(
+      {},
+      { isPrimary: true, triggerModel: { kind: 'invoice', value: 'auto-on-paid' } },
+    );
 
-    expect(result.invoicing).toEqual({ isPrimary: true, triggerModel: 'auto-on-paid' });
+    expect(result.invoicing).toEqual({ isPrimary: true });
+    expect(result.salesDocument).toEqual({ triggerModels: { invoice: 'auto-on-paid' } });
+  });
+
+  // #3582: one kind's write leaves the other kind's entry, the documentKind and
+  // the legacy key (still the fallback for an unset kind) alone.
+  it('should write one kind without touching the other kind or the legacy key', () => {
+    const result = mergeSalesDocumentConfig(
+      {
+        invoicing: { isPrimary: true, triggerModel: 'manual' },
+        salesDocument: { documentKind: 'both', triggerModels: { invoice: 'batched' } },
+      },
+      { triggerModel: { kind: 'fiscal-receipt', value: 'auto-on-paid' } },
+    );
+
+    expect(result.invoicing).toEqual({ isPrimary: true, triggerModel: 'manual' });
+    expect(result.salesDocument).toEqual({
+      documentKind: 'both',
+      triggerModels: { invoice: 'batched', 'fiscal-receipt': 'auto-on-paid' },
+    });
   });
 
   it('should write a non-empty documentKind under salesDocument', () => {

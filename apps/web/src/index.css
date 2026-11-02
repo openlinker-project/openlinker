@@ -5460,6 +5460,14 @@ a.delivery-rider-banner__button:focus-visible {
   gap: var(--space-5);
 }
 
+/* ── Per-kind trigger control (#3582) ── a connection issuing both kinds
+   stacks a labelled trigger select per kind in one table cell. */
+.sales-documents-panel__trigger {
+  display: grid;
+  gap: var(--space-1);
+  margin-bottom: var(--space-2);
+}
+
 /* #3657 — the archive confirmation stacks a consequence list, the typed-name
    field and an error alert; same grid+gap shape as the dialog bodies above. */
 .archive-connection-dialog__body {

@@ -101,8 +101,7 @@ describe('SubiektSetupForm', () => {
             // and reports nothing: no document kind means the connection is
             // not a routing candidate at all, and the trigger model defaults
             // to `manual` even when it is.
-            salesDocument: { documentKind: 'invoice' },
-            invoicing: { triggerModel: 'manual' },
+            salesDocument: { documentKind: 'invoice', triggerModels: { invoice: 'manual' } },
           },
         }),
       );
@@ -115,9 +114,7 @@ describe('SubiektSetupForm', () => {
     expect(payload).not.toHaveProperty('enabledCapabilities');
     // `isPrimary` is a CROSS-connection tiebreaker the settings panel owns; a
     // wizard writing it would claim a precedence it cannot see.
-    expect((payload.config as { invoicing: Record<string, unknown> }).invoicing).not.toHaveProperty(
-      'isPrimary',
-    );
+    expect(payload.config).not.toHaveProperty('invoicing.isPrimary');
     expect(await findToastTitle('Connection created')).toBeInTheDocument();
   });
 
@@ -147,8 +144,7 @@ describe('SubiektSetupForm', () => {
           config: {
             bridgeBaseUrl: 'https://bridge.local:5000',
             timeoutMs: 30000,
-            salesDocument: { documentKind: 'invoice' },
-            invoicing: { triggerModel: 'manual' },
+            salesDocument: { documentKind: 'invoice', triggerModels: { invoice: 'manual' } },
           },
           credentials: { bridgeToken: 'shared-secret-token' },
         }),
@@ -187,8 +183,7 @@ describe('SubiektSetupForm', () => {
       expect(create).toHaveBeenCalledWith(
         expect.objectContaining({
           config: expect.objectContaining({
-            salesDocument: { documentKind: 'invoice' },
-            invoicing: { triggerModel: 'auto-on-paid' },
+            salesDocument: { documentKind: 'invoice', triggerModels: { invoice: 'auto-on-paid' } },
           }),
         }),
       );

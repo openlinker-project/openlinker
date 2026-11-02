@@ -19,7 +19,7 @@ export type {
 } from './api/sales-documents.types';
 export { SALES_DOCUMENT_KIND_VALUES, getSalesDocumentIssuesOptions } from './api/sales-documents.types';
 
-export { deriveSalesDocumentRows } from './lib/derive-sales-document-rows';
+export { deriveSalesDocumentRows, issuedDocumentKinds } from './lib/derive-sales-document-rows';
 export { detectSalesDocumentConflict } from './lib/detect-sales-document-conflict';
 export type { SalesDocumentConflictKind } from './lib/detect-sales-document-conflict';
 

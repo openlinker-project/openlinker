@@ -51,15 +51,12 @@
  *     adapter-level discovery method yet (`FiscalizationPort` carries no
  *     `getSupportedDocumentTypes()` equivalent), so the structural check is
  *     the whole story for that kind today — documented, not silently skipped.
- *  4. Reads the winning connection's `config.invoicing.triggerModel`
- *     (`parseTriggerModel`) — reused verbatim for BOTH document kinds. The key
- *     predates the two-kind split and is historically named after invoicing
- *     only; ADR-041 decision 4 fixes the shape of `isPrimary` /
- *     `salesDocument.documentKind` but says nothing about renaming
- *     `triggerModel`, so this service treats it as "this connection's
- *     document-issuance trigger model" regardless of which kind it issues.
- *     Introducing a kind-scoped trigger-model key is a separate, out-of-scope
- *     config-shape decision.
+ *  4. Reads the winning connection's trigger model FOR THE RESOLVED KIND
+ *     (#3582, `resolveTriggerModelForKind`): `config.salesDocument.triggerModels[kind]`,
+ *     falling back to the legacy kind-agnostic `config.invoicing.triggerModel`,
+ *     then `manual`. One connection can therefore batch invoices and register
+ *     receipts at once, while an install that never set a kind-scoped value
+ *     resolves the same model for both kinds, exactly as before the split.
  *  5. Evaluates the transition against that trigger model (level-evaluated,
  *     D3, via `evaluateGate` — separating "not yet" from "not without a
  *     human", #2100): `auto-on-paid` / `auto-on-shipped` `proceed` when their
@@ -208,7 +205,7 @@ import type {
 } from '../../domain/types/invoice-trigger.types';
 import {
   BLOCK_REASON_BY_TRIGGER_MODEL,
-  parseTriggerModel,
+  resolveTriggerModelForKind,
 } from '../../domain/types/invoice-trigger.types';
 import { normalizeShippingLineName } from '../../domain/types/shipping-line-label.types';
 import { toIssueInvoiceCommand } from '../mappers/order-to-issue-invoice-command.mapper';
@@ -987,8 +984,14 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
     // swallows too, but defense in depth here keeps an invoicing fault from
     // surfacing as an order-ingestion failure).
     try {
-      const triggerModel = parseTriggerModel(connection.config.invoicing?.triggerModel);
-      this.warnOnceIfManualWinnerDisablesInstall(triggerModel, connection.id, eligibleCount);
+      // #3582: the model for THIS kind, falling back to the legacy key.
+      const triggerModel = resolveTriggerModelForKind(connection.config, 'invoice').model;
+      this.warnOnceIfManualWinnerDisablesInstall(
+        triggerModel,
+        connection.id,
+        eligibleCount,
+        'invoice',
+      );
 
       // #2248 (ADR-063 § 6): a line with no tax rate is checked BEFORE the
       // trigger-model gate, and deliberately so. On a `manual` connection both
@@ -1150,11 +1153,15 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
     buyerTaxId?: string | null,
   ): Promise<SalesDocumentBlockOutcome> {
     try {
-      // Reused verbatim from `config.invoicing.triggerModel` — see the
-      // file-level docstring point 4 for why this is deliberate, not an
-      // oversight.
-      const triggerModel = parseTriggerModel(connection.config.invoicing?.triggerModel);
-      this.warnOnceIfManualWinnerDisablesInstall(triggerModel, connection.id, eligibleCount);
+      // #3582: the receipt's own model, so a connection may batch invoices and
+      // still register receipts at once - see file-level docstring point 4.
+      const triggerModel = resolveTriggerModelForKind(connection.config, 'fiscal-receipt').model;
+      this.warnOnceIfManualWinnerDisablesInstall(
+        triggerModel,
+        connection.id,
+        eligibleCount,
+        'fiscal-receipt',
+      );
 
       // The same tax-rate gate `dispatchInvoice` runs, in the same position
       // (#2252). A receipt is not an invoice, but the reason an operator needs
@@ -1300,17 +1307,21 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
     triggerModel: InvoiceTriggerModel,
     connectionId: string,
     eligibleCount: number,
+    documentKind: SalesDocumentKind,
   ): void {
     if (triggerModel !== 'manual' || eligibleCount < 2) {
       return;
     }
-    if (this.manualWinnerWarned.has(connectionId)) {
+    // Keyed per kind (#3582): a 'both' connection may be manual for one kind only.
+    const warnKey = `${connectionId}:${documentKind}`;
+    if (this.manualWinnerWarned.has(warnKey)) {
       return;
     }
-    this.manualWinnerWarned.add(connectionId);
+    this.manualWinnerWarned.add(warnKey);
     this.logger.warn(
-      `Winning sales-document connection ${connectionId} has triggerModel=manual, so NO ` +
-        `connection auto-issues on this install (${eligibleCount} candidates). Routing resolves ` +
+      `Winning sales-document connection ${connectionId} has triggerModel=manual for ` +
+        `'${documentKind}', so NO connection auto-issues that kind on this install ` +
+        `(${eligibleCount} candidates). Routing resolves ` +
         `the winner before the trigger model is read — a sibling candidate set to auto-on-paid is ` +
         `deliberately not consulted. Set the primary on the connection that should auto-issue, or ` +
         `leave this one the winner if manual issuing is intended.`,

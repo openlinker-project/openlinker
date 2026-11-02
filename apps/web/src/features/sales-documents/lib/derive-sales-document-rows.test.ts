@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import type { Connection } from '../../connections';
-import { deriveSalesDocumentRows, isActiveRoutable } from './derive-sales-document-rows';
+import {
+  deriveSalesDocumentRows,
+  isActiveRoutable,
+  issuedDocumentKinds,
+} from './derive-sales-document-rows';
 
 function makeConnection(overrides: Partial<Connection> = {}): Connection {
   return {
@@ -80,18 +84,47 @@ describe('deriveSalesDocumentRows', () => {
     expect(stringRow.isPrimary).toBe(true);
   });
 
-  it('should default triggerModel to manual when absent', () => {
+  it('should default both kinds to manual when no trigger model is set', () => {
     const rows = deriveSalesDocumentRows([makeConnection()]);
 
-    expect(rows[0].triggerModel).toBe('manual');
+    expect(rows[0].triggerModels).toEqual({ invoice: 'manual', 'fiscal-receipt': 'manual' });
   });
 
-  it('should read an explicit triggerModel verbatim', () => {
+  it('should apply a legacy triggerModel to both kinds', () => {
     const rows = deriveSalesDocumentRows([
       makeConnection({ config: { invoicing: { triggerModel: 'auto-on-paid' } } }),
     ]);
 
-    expect(rows[0].triggerModel).toBe('auto-on-paid');
+    expect(rows[0].triggerModels).toEqual({
+      invoice: 'auto-on-paid',
+      'fiscal-receipt': 'auto-on-paid',
+    });
+  });
+
+  // #3582: the row shows the EFFECTIVE value per kind, the one the gate enforces.
+  it('should let a kind-scoped value override the legacy one for that kind only', () => {
+    const rows = deriveSalesDocumentRows([
+      makeConnection({
+        config: {
+          invoicing: { triggerModel: 'auto-on-paid' },
+          salesDocument: { triggerModels: { invoice: 'batched' } },
+        },
+      }),
+    ]);
+
+    expect(rows[0].triggerModels).toEqual({
+      invoice: 'batched',
+      'fiscal-receipt': 'auto-on-paid',
+    });
+  });
+});
+
+describe('issuedDocumentKinds', () => {
+  it('should map each documentKind to the concrete kinds it issues', () => {
+    expect(issuedDocumentKinds('invoice')).toEqual(['invoice']);
+    expect(issuedDocumentKinds('fiscal-receipt')).toEqual(['fiscal-receipt']);
+    expect(issuedDocumentKinds('both')).toEqual(['invoice', 'fiscal-receipt']);
+    expect(issuedDocumentKinds(null)).toEqual([]);
   });
 });
 
