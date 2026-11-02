@@ -38,11 +38,24 @@ const LITERAL_RULE = 'i18next/no-literal-string';
 const SYNTAX_RULE = 'no-restricted-syntax';
 const failures = [];
 const fail = (message) => failures.push(message);
+const globs = (value) => (Array.isArray(value) ? value : value ? [value] : []);
 
 const override = config.overrides.find((o) => (o.plugins ?? []).includes('i18next'));
 if (!override) {
   console.error('✗ check-i18n-lint-rule: no override in .eslintrc.js enables the i18next plugin.');
   process.exit(1);
+}
+
+// The folders the rule covers today. Widening the scope is a deliberate act:
+// edit this list in the same PR that adds the folder to the override's `files`,
+// so a glob that grows or shrinks by accident fails here instead of passing.
+const EXPECTED_SCOPE = ['apps/web/src/shared/ui/**/*.tsx'];
+const actualScope = globs(override.files);
+if (JSON.stringify([...actualScope].sort()) !== JSON.stringify([...EXPECTED_SCOPE].sort())) {
+  fail(
+    `the override's files are ${JSON.stringify(actualScope)} but EXPECTED_SCOPE is ` +
+      `${JSON.stringify(EXPECTED_SCOPE)}; update both together when a folder is migrated`
+  );
 }
 
 function walk(dir, out = []) {
@@ -57,7 +70,6 @@ function walk(dir, out = []) {
 const webFiles = walk(join(ROOT, 'apps', 'web', 'src'));
 
 // 1. Every `files` glob must match something, and `excludedFiles` must too.
-const globs = (value) => (Array.isArray(value) ? value : value ? [value] : []);
 for (const key of ['files', 'excludedFiles']) {
   for (const glob of globs(override[key])) {
     const matcher = new Minimatch(glob, { matchBase: !glob.includes('/') });
