@@ -217,6 +217,7 @@ function harness(options: {
 
   const users = {
     recordBenchActivity: jest.fn().mockResolvedValue(undefined),
+    getDisplayNames: jest.fn(),
   } as unknown as IUserManagementService;
 
   const notes = {

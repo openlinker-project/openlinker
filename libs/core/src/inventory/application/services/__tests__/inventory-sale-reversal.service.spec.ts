@@ -286,11 +286,17 @@ describe('InventorySaleReversalService', () => {
     await service.reverseForOrder('ol_order_1');
 
     expect(inventoryService.setInventory).toHaveBeenCalledTimes(1);
-    const [item, sourceConnectionId] = inventoryService.setInventory.mock.calls[0] as [
+    const [item, sourceConnectionId, movement] = inventoryService.setInventory.mock.calls[0] as [
       InventoryItem,
       string,
+      unknown,
     ];
     expect(sourceConnectionId).toBe('conn-shop');
+    expect(movement).toEqual({
+      reason: 'cancellation_restore',
+      sourceKind: 'order',
+      sourceRef: 'ol_order_1',
+    });
     expect(item).toMatchObject({
       id: 'inv-1',
       productId: 'ol_product_1',

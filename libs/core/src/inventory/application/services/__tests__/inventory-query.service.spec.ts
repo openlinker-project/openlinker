@@ -15,7 +15,9 @@ import type { IProductsService, Product } from '@openlinker/core/products';
 import type { ConnectionPort } from '@openlinker/core/identifier-mapping';
 import { ConnectionNotFoundException } from '@openlinker/core/identifier-mapping';
 import type { IAvailabilityService } from '../availability.service.interface';
+import type { PromisableQuantity } from '../../../domain/types/availability.types';
 import type { ILocationService } from '../location.service.interface';
+import type { ReservationRepositoryPort } from '../../../domain/ports/reservation-repository.port';
 import type { ReservationLedgerReaderPort } from '../../../domain/ports/reservation-ledger-reader.port';
 import type { ISyncCursorsService } from '@openlinker/core/sync';
 
@@ -34,7 +36,8 @@ describe('InventoryQueryService', () => {
   let locationService: jest.Mocked<LocationServiceMock>;
   let connectionPort: jest.Mocked<ConnectionPortMock>;
   let cursors: jest.Mocked<SyncCursorsServiceMock>;
-  let reservationLedger: { sumReservedByLocation: jest.Mock };
+  let reservations: { listHeldByVariantIds: jest.Mock };
+  let reservationLedger: { sumReservedByLocation: jest.Mock; sumReservedByVariantIds: jest.Mock };
 
   const itemA = new InventoryItem(
     'inv-a',
@@ -90,6 +93,7 @@ describe('InventoryQueryService', () => {
       findMany: jest.fn(),
       findAvailabilityByVariantIds: jest.fn(),
       findBinCodesByVariantIds: jest.fn(),
+      findPositionsByVariantIds: jest.fn(),
       findLivePositionsByProductIds: jest.fn(),
       findLiveOwnerPositions: jest.fn(),
       findStockAggregatesByProductIds: jest.fn(),
@@ -129,7 +133,11 @@ describe('InventoryQueryService', () => {
     locationService = { getLocation: jest.fn().mockResolvedValue(null) };
     connectionPort = { get: jest.fn().mockRejectedValue(new ConnectionNotFoundException('n/a')) };
     cursors = { getCursor: jest.fn().mockResolvedValue(null) };
-    reservationLedger = { sumReservedByLocation: jest.fn().mockResolvedValue([]) };
+    reservations = { listHeldByVariantIds: jest.fn().mockResolvedValue([]) };
+    reservationLedger = {
+      sumReservedByLocation: jest.fn().mockResolvedValue([]),
+      sumReservedByVariantIds: jest.fn().mockResolvedValue(new Map()),
+    };
 
     service = new InventoryQueryService(
       inventoryRepository,
@@ -139,6 +147,7 @@ describe('InventoryQueryService', () => {
       connectionPort as unknown as ConnectionPort,
       cursors as unknown as ISyncCursorsService,
       reservationLedger as unknown as ReservationLedgerReaderPort,
+      reservations as unknown as ReservationRepositoryPort,
     );
   });
 
@@ -635,6 +644,219 @@ describe('InventoryQueryService', () => {
       reservationLedger.sumReservedByLocation.mockRejectedValue(new Error('db down'));
 
       await expect(service.listPublishedReservedByLocation(['v1'])).rejects.toThrow('db down');
+    });
+  });
+  describe('getStockViewByVariantIds', () => {
+    const NOW = new Date('2026-10-26T12:00:00Z');
+    const HOUR = 3_600_000;
+    const position = (
+      id: string,
+      variantId: string,
+      available: number,
+      reserved: number,
+      updatedAt: Date,
+      overrides: { isStale?: boolean; locationId?: string | null; source?: string | null } = {}
+    ): InventoryItem =>
+      new InventoryItem(
+        id,
+        'prod-1',
+        variantId,
+        available,
+        reserved,
+        overrides.locationId ?? null,
+        updatedAt,
+        overrides.isStale ?? false,
+        overrides.source === undefined ? 'conn-master' : overrides.source
+      );
+    const atp = (
+      id: string,
+      quantity: number | null,
+      provenance: 'computed' | 'unknown'
+    ): PromisableQuantity => ({
+      productVariantId: id,
+      quantity,
+      provenance,
+      observedAt: null,
+      stalenessMs: null,
+      olHeldNotReflected: null,
+    });
+
+    beforeEach(() => {
+      reservationLedger.sumReservedByVariantIds.mockImplementation(
+        ({ atpEffect }: { atpEffect: string }) =>
+          Promise.resolve(
+            atpEffect === 'published' ? new Map([['var-a', 4]]) : new Map([['var-a', 2]])
+          )
+      );
+      availabilityService.getPromisableQuantities.mockResolvedValue([
+        atp('var-a', 46, 'computed'),
+        atp('var-b', 0, 'computed'),
+      ]);
+    });
+
+    it('should split holds by atpEffect and total only live positions', async () => {
+      inventoryRepository.findPositionsByVariantIds.mockResolvedValue([
+        position('p1', 'var-a', 50, 5, new Date('2026-10-26T11:00:00Z')),
+        position('p2', 'var-a', 7, 1, new Date('2026-10-26T10:00:00Z'), { locationId: 'loc-2' }),
+      ]);
+
+      const [a] = await service.getStockViewByVariantIds({
+        variantIds: ['var-a', 'var-b'],
+        now: NOW,
+        staleSyncThresholdMs: 6 * HOUR,
+      });
+
+      expect(a.masterAvailable).toBe(57);
+      expect(a.masterReserved).toBe(6);
+      expect(a.availableToPromise).toBe(46);
+      expect(a.heldCounted).toBe(4);
+      expect(a.heldRecordedOnly).toBe(2);
+      expect(a.livePositionCount).toBe(2);
+      expect(a.provenance).toBe('computed');
+      expect(a.stalenessMs).toBe(HOUR);
+      expect(a.isStaleSync).toBe(false);
+    });
+
+    it('should report a variant with no positions as a known zero', async () => {
+      inventoryRepository.findPositionsByVariantIds.mockResolvedValue([]);
+
+      const [, b] = await service.getStockViewByVariantIds({
+        variantIds: ['var-a', 'var-b'],
+        now: NOW,
+        staleSyncThresholdMs: 6 * HOUR,
+      });
+
+      expect(b).toMatchObject({
+        masterAvailable: 0,
+        availableToPromise: 0,
+        provenance: 'computed',
+        heldCounted: 0,
+        heldRecordedOnly: 0,
+        livePositionCount: 0,
+        observedAt: null,
+        stalenessMs: null,
+        isStaleSync: false,
+      });
+    });
+
+    it('should list a stale position flagged but exclude it from totals and the count', async () => {
+      inventoryRepository.findPositionsByVariantIds.mockResolvedValue([
+        position('p1', 'var-a', 50, 5, new Date('2026-10-26T11:00:00Z')),
+        position('p2', 'var-a', 99, 9, new Date('2026-10-25T00:00:00Z'), { isStale: true }),
+      ]);
+
+      const [a] = await service.getStockViewByVariantIds({
+        variantIds: ['var-a'],
+        now: NOW,
+        staleSyncThresholdMs: 6 * HOUR,
+      });
+
+      expect(a.masterAvailable).toBe(50);
+      expect(a.livePositionCount).toBe(1);
+      expect(a.positions).toHaveLength(2);
+      expect(a.positions.find((p) => p.isStale)?.availableQuantity).toBe(99);
+    });
+
+    it('should flag the sync as stale only when the newest observation is older than the threshold', async () => {
+      inventoryRepository.findPositionsByVariantIds.mockResolvedValue([
+        position('p1', 'var-a', 50, 0, new Date('2026-10-26T05:00:00Z')),
+      ]);
+
+      const [a] = await service.getStockViewByVariantIds({
+        variantIds: ['var-a'],
+        now: NOW,
+        staleSyncThresholdMs: 6 * HOUR,
+      });
+
+      expect(a.stalenessMs).toBe(7 * HOUR);
+      expect(a.isStaleSync).toBe(true);
+    });
+
+    it('should report the whole batch unknown, never zero, when the ledger cannot be read', async () => {
+      inventoryRepository.findPositionsByVariantIds.mockResolvedValue([
+        position('p1', 'var-a', 50, 5, new Date('2026-10-26T11:00:00Z')),
+      ]);
+      reservationLedger.sumReservedByVariantIds.mockRejectedValue(new Error('ledger down'));
+
+      const views = await service.getStockViewByVariantIds({
+        variantIds: ['var-a', 'var-b'],
+        now: NOW,
+        staleSyncThresholdMs: 6 * HOUR,
+      });
+
+      for (const view of views) {
+        expect(view.provenance).toBe('unknown');
+        expect(view.availableToPromise).toBeNull();
+        expect(view.heldCounted).toBeNull();
+        expect(view.heldRecordedOnly).toBeNull();
+        expect(view.olHeldNotReflected).toBeNull();
+      }
+      // The master's own figures are still facts and stay readable.
+      expect(views[0].masterAvailable).toBe(50);
+    });
+
+    it('should report the whole batch unknown when the availability seam answers unknown', async () => {
+      inventoryRepository.findPositionsByVariantIds.mockResolvedValue([]);
+      availabilityService.getPromisableQuantities.mockResolvedValue([
+        atp('var-a', null, 'unknown'),
+        atp('var-b', null, 'unknown'),
+      ]);
+
+      const views = await service.getStockViewByVariantIds({
+        variantIds: ['var-a', 'var-b'],
+        now: NOW,
+        staleSyncThresholdMs: 6 * HOUR,
+      });
+
+      expect(views.map((v) => v.availableToPromise)).toEqual([null, null]);
+      expect(views.map((v) => v.heldCounted)).toEqual([null, null]);
+    });
+
+    it('should attach the live holds per variant and keep the figures when the hold read fails', async () => {
+      inventoryRepository.findPositionsByVariantIds.mockResolvedValue([]);
+      reservations.listHeldByVariantIds.mockResolvedValue([
+        {
+          productVariantId: 'var-a',
+          orderRecordId: 'ord-1',
+          quantity: 4,
+          atpEffect: 'published',
+          expiresAt: new Date('2026-11-01T00:00:00Z'),
+          createdAt: new Date('2026-10-25T00:00:00Z'),
+        },
+      ]);
+
+      const [a, b] = await service.getStockViewByVariantIds({
+        variantIds: ['var-a', 'var-b'],
+        now: NOW,
+        staleSyncThresholdMs: 6 * HOUR,
+      });
+      expect(a.holds).toEqual([expect.objectContaining({ orderRecordId: 'ord-1', quantity: 4 })]);
+      expect(b.holds).toEqual([]);
+
+      reservations.listHeldByVariantIds.mockRejectedValue(new Error('boom'));
+      const [c] = await service.getStockViewByVariantIds({
+        variantIds: ['var-a'],
+        now: NOW,
+        staleSyncThresholdMs: 6 * HOUR,
+      });
+      // Holds are unreadable (null, not []), the numbers beside them are not.
+      expect(c.holds).toBeNull();
+      expect(c.availableToPromise).toBe(46);
+    });
+
+    it('should refuse more than 200 variant ids', async () => {
+      const ids = Array.from({ length: 201 }, (_, i) => `v-${String(i)}`);
+
+      await expect(
+        service.getStockViewByVariantIds({ variantIds: ids, staleSyncThresholdMs: HOUR })
+      ).rejects.toThrow('at most 200');
+    });
+
+    it('should return an empty list for empty input without any read', async () => {
+      await expect(
+        service.getStockViewByVariantIds({ variantIds: [], staleSyncThresholdMs: HOUR })
+      ).resolves.toEqual([]);
+      expect(inventoryRepository.findPositionsByVariantIds).not.toHaveBeenCalled();
     });
   });
 });

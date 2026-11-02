@@ -52,7 +52,6 @@ function renderTable(variants: ProductVariant[], sourceName?: string): ReturnTyp
   return renderWithProviders(
     <VariantStockTable
       variants={variants}
-      stockByVariant={new Map()}
       currency="PLN"
       connections={[]}
       canCreateOffers={false}
@@ -92,7 +91,7 @@ describe('VariantStockTable photos', () => {
     const row = screen.getByTestId('variant-row-kub-350-sza');
     expect(row.querySelector('.product-thumbnail--dimmed')).not.toBeNull();
 
-    await userEvent.click(screen.getByRole('button', { name: /toggle listings for KUB-350-SZA/i }));
+    await userEvent.click(screen.getByRole('button', { name: /toggle details for KUB-350-SZA/i }));
     expect(screen.getByText('From product')).toBeInTheDocument();
     expect(screen.getByTestId('variant-photo-source')).toHaveTextContent(/product photos are used/i);
     expect(screen.getByTestId('variant-photo-strip-kub-350-sza')).toBeInTheDocument();
@@ -110,7 +109,7 @@ describe('VariantStockTable photos', () => {
       [variant({ imageUrls: ['/p/0'], imagesFromProduct: true })],
       'Sklep Górski'
     );
-    await userEvent.click(screen.getByRole('button', { name: /toggle listings for KUB-350-GRA/i }));
+    await userEvent.click(screen.getByRole('button', { name: /toggle details for KUB-350-GRA/i }));
     expect(screen.getByTestId('variant-photo-source')).toHaveTextContent(
       'no photos of its own in Sklep Górski'
     );

@@ -50,6 +50,13 @@ export const BASE_NAV_GROUPS: readonly NavRegistryGroup[] = [
         requiresRole: ['admin', 'operator', 'viewer'],
       },
       { to: '/products', label: 'Products' },
+      // Read-only history (#3568); the read is `@Roles('admin', 'operator', 'viewer')`,
+      // so a `packer` would 403 on the first request.
+      {
+        to: '/inventory/movements',
+        label: 'Stock movements',
+        requiresRole: ['admin', 'operator', 'viewer'],
+      },
       // Role-gated (#3221): `GET /customers` is
       // `@Roles('admin', 'operator', 'viewer')` — same 403 for `packer`.
       {

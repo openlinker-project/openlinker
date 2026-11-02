@@ -1,0 +1,394 @@
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#faf9f5;color:#141413}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<div style="margin:0;padding:10px 16px;background:#fff7e0;border-bottom:1px solid #e3c776;font:13px/1.45 -apple-system,BlinkMacSystemFont,sans-serif;color:#5a4400" data-mk-note="changed-after-implementation"><b>Changed after implementation, 2026-10-29:</b> Reserved replaces Promised everywhere: the Reserved only chip, the Reserved status badge and the "Reserved a -> b" line. A new position (applied, no earlier count) reads "new -> N"; a question mark is for in-doubt rows only. On the product page the history section's summary reads Reserved and Stock source, and the variants table's "Stock history" link points this section at the variant it was clicked on.</div>
+<title>Stock movement history</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="../../../../apps/web/src/index.css">
+<link rel="stylesheet" href="ol-kit.css">
+<script src="ol-kit.js" defer></script>
+<style>
+  /* Page-specific only — everything else is real ol.css. */
+
+  .mk-context-banner {
+    display: flex; gap: var(--space-3); align-items: flex-start;
+    padding: var(--space-3) var(--space-4); margin-bottom: var(--space-4);
+    background: var(--bg-subtle); border: 1px dashed var(--border-default); border-radius: 8px;
+  }
+  .mk-context-banner__icon { color: var(--text-muted); flex: none; margin-top: 2px; }
+  .mk-context-banner p { margin: 0; color: var(--text-secondary); font-size: 0.875rem; }
+  .mk-context-banner strong { color: var(--text-primary); }
+
+  .mk-toolbar { flex-wrap: wrap; row-gap: var(--space-2); }
+  .mk-field { display: inline-flex; flex-direction: column; gap: 2px; font-size: 0.75rem; color: var(--text-muted); }
+  .mk-field .mk-pin { align-self: flex-start; }
+  .mk-field input[type="date"] { min-width: 9.5rem; }
+  .mk-search { min-width: 15rem; flex: 1 1 15rem; }
+
+  .mk-chiprow { margin: var(--space-3) 0; }
+  .mk-summary-line { margin: 0 0 var(--space-3); color: var(--text-secondary); font-size: 0.875rem; }
+
+  .mk-table-scroll { max-height: none; }
+  .mk-movements-table th, .mk-movements-table td { vertical-align: top; }
+  .mk-movements-table td:nth-child(1), .mk-movements-table th:nth-child(1) { white-space: nowrap; }
+  .mk-arrow { color: var(--text-muted); padding: 0 2px; }
+  .mk-unknown { color: var(--text-muted); font-style: italic; }
+  .mk-delta--pos { color: var(--status-success-fg); }
+  .mk-delta--neg { color: var(--status-error-fg); }
+  .mk-delta--void { color: var(--text-muted); text-decoration: line-through; text-decoration-color: var(--border-strong); }
+  .mk-source-kind { font-size: 0.75rem; margin-bottom: 1px; }
+  .mk-reason { font-size: 0.75rem; margin-top: 3px; max-width: 15rem; }
+  .mk-chip--muted { border-style: dashed !important; opacity: 0.85; }
+  .mk-promised-badge { margin-left: 4px; }
+  .mk-promise-line { font-size: 0.8125rem; color: var(--text-secondary); }
+
+  .mk-row--refused { box-shadow: inset 3px 0 0 var(--status-error-border); }
+  .mk-row--indoubt { box-shadow: inset 3px 0 0 var(--status-warning-border); }
+  .mk-row--promised { background: var(--bg-subtle); }
+
+  .mk-kv-strip { display: flex; flex-wrap: wrap; gap: var(--space-5); margin: 0 0 var(--space-4); padding: 0; }
+  .mk-kv-strip > div { display: flex; flex-direction: column; gap: 2px; }
+  .mk-kv-strip dt { margin: 0; font-size: 0.75rem; color: var(--text-muted); }
+  .mk-kv-strip dd { margin: 0; font-size: 1rem; }
+
+  .mk-panel-actions { display: flex; justify-content: flex-end; margin-top: var(--space-3); }
+
+  @media (max-width: 400px) {
+    .mk-field input[type="date"] { min-width: 7.5rem; }
+    .mk-search { min-width: 0; }
+  }
+</style>
+
+<div data-ol-page data-active="Products" data-crumb-group="Operations" data-crumb="Stock movements">
+  <section class="page-section">
+    <div class="page-header page-header--split">
+      <div class="page-header__content">
+        <p class="eyebrow">Products</p>
+        <h2 class="page-title">Stock movement history</h2>
+        <p class="page-description">Every applied, refused, or unconfirmed change to a variant's stock — plus the reservations that only promise it.<span class="mk-pin">1</span></p>
+      </div>
+    </div>
+
+    <!-- ============ STATE: variant history (product detail) ============ -->
+    <div data-mk-state="variant-history" data-mk-label="Historia wariantu">
+      <div class="mk-context-banner">
+        <span class="mk-context-banner__icon" aria-hidden="true">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><circle cx="8" cy="8" r="6.3"/><line x1="8" y1="5" x2="8" y2="8.6"/><circle cx="8" cy="11" r="0.5" fill="currentColor" stroke="none"/></svg>
+        </span>
+        <p><strong>New section on the Product detail page.</strong> Sits below "Variants &amp; stock", scoped to the variant selected there — not a separate route.<span class="mk-pin">2</span></p>
+      </div>
+
+      <div class="panel" data-testid="stock-history">
+        <div class="panel__header">
+          <div>
+            <p class="eyebrow" style="margin-bottom:2px">Kubek ceramiczny — Kubki i filiżanki</p>
+            <h3 style="margin:0">Stock history</h3>
+          </div>
+          <select class="control control--select" aria-label="Choose variant" style="min-width:16rem" data-testid="stock-history-variant">
+            <option>Kubek ceramiczny 350 ml, biały — KUB-350-BIA</option>
+            <option>Kubek ceramiczny 350 ml, granatowy — KUB-350-GRA</option>
+          </select>
+        </div>
+
+        <dl class="mk-kv-strip" data-testid="stock-history-summary">
+          <div><dt>Available now</dt><dd class="mono-text tabular">39</dd></div>
+          <div><dt>Promised (held)</dt><dd class="mono-text tabular">3</dd></div>
+          <div><dt>Last change</dt><dd class="mono-text">26 Sep, 08:41</dd></div>
+          <div><dt>Master connection</dt><dd>Sklep Górski (PrestaShop)</dd></div>
+        </dl>
+
+        <div class="data-table__container mk-table-scroll" tabindex="0" role="region" aria-label="Stock history for KUB-350-BIA (scrollable)">
+          <table class="data-table mk-movements-table" data-testid="stock-movements-table">
+            <caption class="sr-only">Stock history for KUB-350-BIA</caption>
+            <thead><tr>
+              <th>Time</th><th>Type</th><th>Δ</th><th>Before → after</th><th>Source</th>
+              <th class="data-table__cell--hide-below-768">Master connection</th><th>Status</th>
+            </tr></thead>
+            <tbody id="mk-tbody-variant"></tbody>
+          </table>
+        </div>
+        <div class="mk-panel-actions">
+          <button type="button" class="button button--ghost button--sm" id="mk-view-all-btn" data-testid="stock-history-view-all">View all stock movements for this SKU</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============ STATE: global list ============ -->
+    <div data-mk-state="global-list" data-mk-label="Lista globalna" hidden>
+      <div class="toolbar mk-toolbar"><div class="toolbar__group">
+        <input type="search" class="control mk-search" placeholder="Search SKU or variant name" aria-label="Search SKU or variant name" data-testid="stock-movements-search">
+        <label class="mk-field">Type<span class="mk-pin">3</span>
+          <select class="control control--select" aria-label="Filter by type" data-testid="stock-movements-filter-type">
+            <option>All types</option><option>Sale (OpenLinker order)</option><option>Cancellation restore</option>
+            <option>Return restock</option><option>Manual correction</option><option>Sync change detected</option><option>Reservation</option>
+          </select>
+        </label>
+        <label class="mk-field">Master connection<span class="mk-pin">5</span>
+          <select class="control control--select" aria-label="Filter by master connection" data-testid="stock-movements-filter-master">
+            <option>All connections</option><option>Sklep Górski (PrestaShop)</option><option>Warsztat Ceramiki (WooCommerce)</option>
+          </select>
+        </label>
+        <label class="mk-field">From<input type="date" class="control" aria-label="Date from" data-testid="stock-movements-filter-from" value="2026-09-01"></label>
+        <label class="mk-field">To<input type="date" class="control" aria-label="Date to" data-testid="stock-movements-filter-to" value="2026-09-26"></label>
+      </div></div>
+
+      <div class="toolbar page-summary mk-chiprow"><div class="toolbar__group">
+        <button type="button" class="chip chip--active" data-testid="stock-movements-chip-all">All</button>
+        <button type="button" class="chip chip--warning" data-testid="stock-movements-chip-attention">Needs attention</button>
+        <button type="button" class="chip chip--review" data-testid="stock-movements-chip-promised">Promised only</button>
+      </div></div>
+
+      <p class="mk-summary-line" data-testid="stock-movements-count">16 results</p>
+
+      <div class="data-table__container mk-table-scroll" tabindex="0" role="region" aria-label="Stock movements (scrollable)">
+        <table class="data-table mk-movements-table" data-testid="stock-movements-table">
+          <caption class="sr-only">Stock movements</caption>
+          <thead><tr>
+            <th>Time</th><th>SKU / variant</th><th>Type<span class="mk-pin">4</span></th><th>Δ / before → after<span class="mk-pin">6</span></th>
+            <th class="data-table__cell--hide-below-768">Source</th>
+            <th class="data-table__cell--hide-below-768">Master connection</th>
+            <th>Status<span class="mk-pin">7</span></th>
+          </tr></thead>
+          <tbody id="mk-tbody-global"></tbody>
+        </table>
+      </div>
+      <nav aria-label="Pagination" class="pagination">
+        <span class="muted-text" aria-live="polite">Showing 1–16 of <span class="tabular">16</span></span>
+      </nav>
+    </div>
+
+    <!-- ============ STATE: filtered ============ -->
+    <div data-mk-state="filtered" data-mk-label="Przefiltrowana" hidden>
+      <div class="toolbar mk-toolbar"><div class="toolbar__group">
+        <input type="search" class="control mk-search" placeholder="Search SKU or variant name" aria-label="Search SKU or variant name" data-testid="stock-movements-search">
+        <label class="mk-field">Type
+          <select class="control control--select" aria-label="Filter by type" data-testid="stock-movements-filter-type">
+            <option>All types</option><option selected>Return restock</option><option>Sale (OpenLinker order)</option>
+            <option>Cancellation restore</option><option>Manual correction</option><option>Sync change detected</option><option>Reservation</option>
+          </select>
+        </label>
+        <label class="mk-field">Master connection
+          <select class="control control--select" aria-label="Filter by master connection" data-testid="stock-movements-filter-master">
+            <option>All connections</option><option>Sklep Górski (PrestaShop)</option><option>Warsztat Ceramiki (WooCommerce)</option>
+          </select>
+        </label>
+        <label class="mk-field">From<input type="date" class="control" aria-label="Date from" data-testid="stock-movements-filter-from" value="2026-09-19"></label>
+        <label class="mk-field">To<input type="date" class="control" aria-label="Date to" data-testid="stock-movements-filter-to" value="2026-09-26"></label>
+      </div></div>
+
+      <p class="mk-summary-line" data-testid="stock-movements-count">2 results for <strong>Return restock</strong>, last 7 days</p>
+
+      <div class="data-table__container mk-table-scroll" tabindex="0" role="region" aria-label="Stock movements, filtered (scrollable)">
+        <table class="data-table mk-movements-table" data-testid="stock-movements-table">
+          <caption class="sr-only">Stock movements filtered by Return restock</caption>
+          <thead><tr>
+            <th>Time</th><th>SKU / variant</th><th>Type</th><th>Δ / before → after</th>
+            <th class="data-table__cell--hide-below-768">Source</th>
+            <th class="data-table__cell--hide-below-768">Master connection</th>
+            <th>Status</th>
+          </tr></thead>
+          <tbody id="mk-tbody-filtered"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- ============ STATE: empty ============ -->
+    <div data-mk-state="empty" data-mk-label="Pusta" hidden>
+      <div class="toolbar mk-toolbar"><div class="toolbar__group">
+        <input type="search" class="control mk-search" placeholder="Search SKU or variant name" aria-label="Search SKU or variant name" data-testid="stock-movements-search" value="FIL-90-CZA">
+        <label class="mk-field">Type
+          <select class="control control--select" aria-label="Filter by type" data-testid="stock-movements-filter-type">
+            <option>All types</option><option selected>Manual correction</option><option>Sale (OpenLinker order)</option>
+            <option>Cancellation restore</option><option>Return restock</option><option>Sync change detected</option><option>Reservation</option>
+          </select>
+        </label>
+        <label class="mk-field">Master connection
+          <select class="control control--select" aria-label="Filter by master connection" data-testid="stock-movements-filter-master">
+            <option>All connections</option><option>Sklep Górski (PrestaShop)</option><option selected>Warsztat Ceramiki (WooCommerce)</option>
+          </select>
+        </label>
+        <label class="mk-field">From<input type="date" class="control" aria-label="Date from" data-testid="stock-movements-filter-from" value="2026-08-01"></label>
+        <label class="mk-field">To<input type="date" class="control" aria-label="Date to" data-testid="stock-movements-filter-to" value="2026-08-07"></label>
+      </div></div>
+
+      <div class="empty-state" data-testid="stock-movements-empty">
+        <h2>No stock movements match these filters</h2>
+        <p>FIL-90-CZA had no manual corrections on Warsztat Ceramiki between 1 and 7 Aug 2026. Try widening the date range or clearing a filter.</p>
+        <button type="button" class="button button--secondary" data-testid="stock-movements-clear-filters">Clear filters</button>
+      </div>
+    </div>
+
+    <!-- ============ STATE: refused / in doubt highlighted ============ -->
+    <div data-mk-state="attention" data-mk-label="Wymaga uwagi" hidden>
+      <div class="toolbar mk-toolbar"><div class="toolbar__group">
+        <input type="search" class="control mk-search" placeholder="Search SKU or variant name" aria-label="Search SKU or variant name" data-testid="stock-movements-search">
+        <label class="mk-field">Type
+          <select class="control control--select" aria-label="Filter by type" data-testid="stock-movements-filter-type"><option>All types</option></select>
+        </label>
+        <label class="mk-field">Master connection
+          <select class="control control--select" aria-label="Filter by master connection" data-testid="stock-movements-filter-master"><option>All connections</option></select>
+        </label>
+      </div></div>
+
+      <div class="toolbar page-summary mk-chiprow"><div class="toolbar__group">
+        <button type="button" class="chip" data-testid="stock-movements-chip-all">All</button>
+        <button type="button" class="chip chip--warning chip--active" data-testid="stock-movements-chip-attention">Needs attention</button>
+        <button type="button" class="chip chip--review" data-testid="stock-movements-chip-promised">Promised only</button>
+      </div></div>
+
+      <div class="alert alert--warning" role="alert" style="margin-bottom:var(--space-4)" data-testid="stock-movements-attention-alert">
+        <div class="alert__content">
+          <strong class="alert__title">2 movements need a look</strong>
+          <div class="alert__description">1 return restock was refused by the master and 1 manual correction is unconfirmed. The totals above may not reflect either yet.</div>
+        </div>
+      </div>
+
+      <div class="data-table__container mk-table-scroll" tabindex="0" role="region" aria-label="Stock movements needing attention (scrollable)">
+        <table class="data-table mk-movements-table" data-testid="stock-movements-table">
+          <caption class="sr-only">Stock movements needing attention</caption>
+          <thead><tr>
+            <th>Time</th><th>SKU / variant</th><th>Type</th><th>Δ / before → after</th>
+            <th class="data-table__cell--hide-below-768">Source</th>
+            <th class="data-table__cell--hide-below-768">Master connection</th>
+            <th>Status</th>
+          </tr></thead>
+          <tbody id="mk-tbody-attention"></tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+</div>
+
+<aside class="mk-notes" aria-label="Adnotacje">
+  <h3>Adnotacje</h3>
+  <p class="muted-text" style="font-size:.8125rem;margin-top:-.5rem">Dane przykładowe (SKU, zamówienia, zwroty, osoby) — wyłącznie do celów tego makiety.</p>
+  <ol>
+    <li><span class="mk-pin">1</span> Dziś nie istnieje jeden rejestr ruchów magazynowych. Są trzy oddzielne źródła: rezerwacje (<code>reservations</code>, tylko "obiecane"), zdarzenia zwrotu (<code>return_line_events</code>, append-only, tylko dla zwrotów) i surowe nadpisania przy <code>MasterInventorySyncService</code> (bez historii). Ten ekran zakłada nową tabelę audytu (np. <code>stock_movements</code>), zapisywaną w każdym z tych miejsc — to nowa zdolność, nie istniejący widok.</li>
+    <li><span class="mk-pin">2</span> Sekcja żyje na stronie produktu (<code>product-detail-page.tsx</code>), pod istniejącą tabelą "Variants &amp; stock" — nie jest osobną trasą. Ten plik pokazuje ją jako fragment, żeby nie udawać całej strony produktu.</li>
+    <li><span class="mk-pin">3</span> <b>Rozstrzygnięte (G-1, 2026-10-26):</b> wiersz "Sale" powstaje, gdy OpenLinker sam obniża stan w masterze dla zamówienia z routingu (<code>inventory.saleDecrement</code>, #3453, OMS włączony), z referencją zamówienia. Zużycie rezerwacji przy wysyłce nie jest ruchem stanu - widać je jako wiersz "Reservation" (Consumed). Przy wyłączonym OMS sklep sam obniża stan i sprzedaż widać jako "Sync change detected". Dzięki temu historia sumuje się do stanu. Pierwotna notatka: Zamknięty słownik <code>InventoryAdjustmentReasonValues</code> ma dziś tylko <code>return_restock</code> i <code>manual_correction</code> (#2368). Nie ma <code>sale</code>/<code>order_dispatch</code> ani <code>cancellation_restore</code> — dodanie ich jest addytywne, ale jeszcze nie istnieje. Stanowisko pakowania (§28, ADR-071) nie wywołuje dziś <code>adjustInventory</code> przy oznaczeniu paczki jako spakowanej — więc wiersz "Sale" na tym ekranie to założenie, nie fakt.</li>
+    <li><span class="mk-pin">4</span> "Reservation" jest oznaczona plakietką "Promised" i osobnym tonem chipa (review) celowo — rezerwacja nigdy nie zmienia <code>availableQuantity</code> (tylko <code>olReservedQuantity</code>/ATP, ADR-061), więc nie powinna wyglądać jak realny ruch magazynowy.</li>
+    <li><span class="mk-pin">5</span> Kolumna/filtr "Master connection" odpowiada realnemu <code>inventory_items.sourceConnectionId</code> (#2317/#2320) — dziś prawie zawsze jeden connection na SKU (strażnik rywalizujących roszczeń, #1904), więc w praktyce ta kolumna rzadko się różni w obrębie jednego produktu.</li>
+    <li><span class="mk-pin">6</span> Dla odrzuconych ("Refused") delta jest przekreślona, a "po" pokazuje "Not applied" — nic się nie zmieniło. Dla "In doubt" "po" pokazuje "?" — OpenLinker naprawdę nie wie, czy zapis dotarł (połączenie padło w trakcie, #2370). To rozróżnienie jest zamierzone, nie kosmetyczne.</li>
+    <li><span class="mk-pin">7</span> Realne, zamknięte powody odmowy (#2369) istnieją dziś tylko dla przywracania zwrotu: brak/kilku kandydatów na InventoryMaster, produkt nieznaleziony, adapter nierozwiązany. Dla "Manual correction" i hipotetycznej "Sale" taki słownik jeszcze nie istnieje — trzeba by go dopisać analogicznie.</li>
+    <li><b>Przycisk "Export" usunięty z makiety (2026-10-26)</b>: AC #3568 mówi, że nie powstaje, dopóki nie ma formatu eksportu. Pierwotnie: przycisk "Export" był tu tylko wizualnie — nie ma jeszcze zdefiniowanego formatu/endpointu eksportu dla tego widoku.</li>
+    <li><b>Rozstrzygnięte:</b> (a) patrz G-1 powyżej; (b) endpoint korekty to #3566; (c) retencja 365 dni w Operational Settings (D40). Pierwotne pytania: (a) Czy "Sale" ma być zapisywana explicite w momencie pakowania, czy wnioskowana z różnicy przy kolejnej synchronizacji (a jeśli tak — jak pewnie przypisać ją do zamówienia)? (b) Czy potrzebny jest nowy endpoint do ręcznej korekty (<code>manual_correction</code> istnieje w domenie, ale nie ma dla niego UI ani kontrolera)? (c) Ile historii przechowywać — <code>sync_jobs</code> nie ma dziś żadnej retencji, więc ten sam problem dotyczyłby nowej tabeli.</li>
+  </ol>
+</aside>
+
+<script>
+(function(){
+  var M = [
+    {t:'26 Sep, 08:41', sku:'KUB-350-BIA', name:'Kubek ceramiczny 350 ml, biały', type:'sale', d:-3, b:42, a:39, sk:'Order', sr:'ALG-25011', mc:'Sklep Górski (PrestaShop)', st:'applied'},
+    {t:'26 Sep, 08:15', sku:'KUB-350-BIA', name:'Kubek ceramiczny 350 ml, biały', type:'reservation', pf:0, pt:3, sk:'Order', sr:'ALG-25011', mc:'Sklep Górski (PrestaShop)', st:'held'},
+    {t:'26 Sep, 07:52', sku:'TAL-27-GRA', name:'Talerz obiadowy 27 cm, grafitowy', type:'sync', d:-5, b:61, a:56, sk:'Master sync', sr:'Scheduled pull · 07:52', mc:'Sklep Górski (PrestaShop)', st:'applied'},
+    {t:'25 Sep, 22:03', sku:'DZB-12-BLE', name:'Dzbanek 1,2 l, błękitny', type:'manual', d:4, b:11, a:15, sk:'Operator', sr:'Anna Wiśniewska', mc:'Sklep Górski (PrestaShop)', st:'applied'},
+    {t:'25 Sep, 19:47', sku:'FIL-90-CZA', name:'Filiżanka espresso 90 ml, czarna', type:'return_restock', d:2, b:10, a:12, sk:'Return', sr:'ERL-Z-1187', mc:'Warsztat Ceramiki (WooCommerce)', st:'applied'},
+    {t:'25 Sep, 18:30', sku:'KUB-350-BIA', name:'Kubek ceramiczny 350 ml, biały', type:'cancel_restore', d:1, b:38, a:39, sk:'Order', sr:'ALG-24817', mc:'Sklep Górski (PrestaShop)', st:'applied'},
+    {t:'25 Sep, 17:12', sku:'TAL-27-GRA', name:'Talerz obiadowy 27 cm, grafitowy', type:'return_restock', d:1, b:56, sk:'Return', sr:'ALG-Z-2042', mc:'Sklep Górski (PrestaShop)', st:'refused',
+      reason:'Sklep Górski needs reauthorization — the connection could not be resolved.'},
+    {t:'25 Sep, 15:58', sku:'DZB-12-BLE', name:'Dzbanek 1,2 l, błękitny', type:'reservation', pf:2, pt:0, sk:'Order', sr:'ALG-24500 (cancelled)', mc:'Sklep Górski (PrestaShop)', st:'released'},
+    {t:'25 Sep, 14:20', sku:'FIL-90-CZA', name:'Filiżanka espresso 90 ml, czarna', type:'manual', d:-2, b:12, sk:'Operator', sr:'Marek Nowak', mc:'Warsztat Ceramiki (WooCommerce)', st:'in_doubt',
+      reason:'Warsztat Ceramiki dropped the connection mid-write — the new count was never confirmed.'},
+    {t:'25 Sep, 11:05', sku:'TAL-27-GRA', name:'Talerz obiadowy 27 cm, grafitowy', type:'reservation', pf:2, pt:0, sk:'Order', sr:'ALG-24200', mc:'Sklep Górski (PrestaShop)', st:'consumed'},
+    {t:'25 Sep, 09:40', sku:'DZB-12-BLE', name:'Dzbanek 1,2 l, błękitny', type:'sale', d:-1, b:9, a:8, sk:'Order', sr:'ALG-23980', mc:'Sklep Górski (PrestaShop)', st:'applied'},
+    {t:'24 Sep, 20:12', sku:'KUB-350-BIA', name:'Kubek ceramiczny 350 ml, biały', type:'return_restock', d:3, b:36, a:39, sk:'Return', sr:'ERL-Z-0980', mc:'Sklep Górski (PrestaShop)', st:'applied'},
+    {t:'24 Sep, 16:03', sku:'FIL-90-CZA', name:'Filiżanka espresso 90 ml, czarna', type:'cancel_restore', d:1, b:9, a:10, sk:'Order', sr:'ERL-30456', mc:'Warsztat Ceramiki (WooCommerce)', st:'applied'},
+    {t:'24 Sep, 09:18', sku:'TAL-27-GRA', name:'Talerz obiadowy 27 cm, grafitowy', type:'sale', d:-2, b:58, a:56, sk:'Order', sr:'ALG-24988', mc:'Sklep Górski (PrestaShop)', st:'applied'},
+    {t:'24 Sep, 07:30', sku:'KUB-350-BIA', name:'Kubek ceramiczny 350 ml, biały', type:'sync', d:-1, b:37, a:36, sk:'Master sync', sr:'Scheduled pull · 07:30', mc:'Sklep Górski (PrestaShop)', st:'applied'},
+    {t:'23 Sep, 13:44', sku:'KUB-350-BIA', name:'Kubek ceramiczny 350 ml, biały', type:'manual', d:2, b:34, a:36, sk:'Operator', sr:'Anna Wiśniewska', mc:'Sklep Górski (PrestaShop)', st:'applied'}
+  ];
+
+  var TYPE = {
+    sale: ['chip', 'Sale'],
+    cancel_restore: ['chip chip--info', 'Cancellation restore'],
+    return_restock: ['chip chip--success', 'Return restock'],
+    manual: ['chip chip--warning', 'Manual correction'],
+    sync: ['chip mk-chip--muted', 'Sync change detected'],
+    reservation: ['chip chip--review', 'Reservation']
+  };
+  var STATUS = {
+    applied: ['status-badge--success', 'Applied'],
+    refused: ['status-badge--error', 'Refused'],
+    in_doubt: ['status-badge--warning', 'In doubt'],
+    held: ['status-badge--info', 'Held'],
+    released: ['status-badge--neutral', 'Released'],
+    consumed: ['status-badge--success', 'Consumed']
+  };
+
+  function esc(s){ return String(s); }
+
+  function deltaCell(m){
+    if (m.type === 'reservation') return '<span class="muted-text">—</span>';
+    var sign = m.d > 0 ? '+' : '';
+    var cls = m.d > 0 ? 'mk-delta--pos' : (m.d < 0 ? 'mk-delta--neg' : '');
+    if (m.st === 'refused') cls = 'mk-delta--void';
+    return '<span class="mono-text tabular ' + cls + '" data-testid="stock-movement-delta">' + sign + m.d + '</span>';
+  }
+
+  function beforeAfterCell(m){
+    if (m.type === 'reservation') {
+      return '<div class="muted-text" style="font-size:.8125rem">Stock unchanged</div>' +
+        '<div class="mono-text tabular mk-promise-line">Promised ' + m.pf + ' → ' + m.pt + '</div>';
+    }
+    var after;
+    if (m.st === 'refused') after = '<span class="muted-text" data-testid="stock-movement-after">Not applied</span>';
+    else if (m.st === 'in_doubt') after = '<span class="mk-unknown" data-testid="stock-movement-after">?</span>';
+    else after = '<span class="mono-text tabular" data-testid="stock-movement-after">' + m.a + '</span>';
+    return '<span class="mono-text tabular">' + m.b + '</span><span class="mk-arrow" aria-hidden="true"> &rarr; </span>' + after;
+  }
+
+  function typeCell(m){
+    var t = TYPE[m.type];
+    var html = '<span class="' + t[0] + '">' + t[1] + '</span>';
+    if (m.type === 'reservation') html += ' <span class="status-badge status-badge--info status-badge--compact mk-promised-badge" data-testid="stock-movement-promised"><span class="status-badge__dot" aria-hidden="true"></span><span>Promised</span></span>';
+    return html;
+  }
+
+  function statusCell(m){
+    var s = STATUS[m.st];
+    var html = '<span class="status-badge ' + s[0] + ' status-badge--compact"><span class="status-badge__dot" aria-hidden="true"></span><span>' + s[1] + '</span></span>';
+    if (m.reason) html += '<div class="muted-text mk-reason" data-testid="stock-movement-reason">' + m.reason + '</div>';
+    return html;
+  }
+
+  function sourceCell(m){
+    return '<div class="muted-text mk-source-kind">' + m.sk + '</div><div class="mono-text">' + m.sr + '</div>';
+  }
+
+  function rowHtml(m, hideSku){
+    var cls = 'mk-row';
+    if (m.st === 'refused') cls += ' mk-row--refused';
+    if (m.st === 'in_doubt') cls += ' mk-row--indoubt';
+    if (m.type === 'reservation') cls += ' mk-row--promised';
+    var skuTd = hideSku ? '' : '<td><div>' + m.name + '</div><div class="mono-text" style="font-size:.8125rem;color:var(--text-muted)">' + m.sku + '</div></td>';
+    return '<tr class="' + cls + '" data-testid="stock-movement-row" data-movement-type="' + m.type + '" data-movement-status="' + m.st + '">' +
+      '<td><span class="mono-text tabular">' + m.t + '</span></td>' +
+      skuTd +
+      '<td>' + typeCell(m) + '</td>' +
+      '<td>' + deltaCell(m) + ' ' + beforeAfterCell(m) + '</td>' +
+      '<td class="data-table__cell--hide-below-768">' + sourceCell(m) + '</td>' +
+      '<td class="data-table__cell--hide-below-768">' + m.mc + '</td>' +
+      '<td>' + statusCell(m) + '</td>' +
+      '</tr>';
+  }
+
+  function fill(id, rows, hideSku){
+    var el = document.getElementById(id);
+    if (!el) return;
+    el.innerHTML = rows.map(function (m) { return rowHtml(m, hideSku); }).join('');
+  }
+
+  fill('mk-tbody-global', M, false);
+  fill('mk-tbody-variant', M.filter(function (m) { return m.sku === 'KUB-350-BIA'; }), true);
+  fill('mk-tbody-filtered', M.filter(function (m) { return m.type === 'return_restock'; }), false);
+  fill('mk-tbody-attention', M.filter(function (m) { return m.st === 'refused' || m.st === 'in_doubt'; }), false);
+
+  var viewAllBtn = document.getElementById('mk-view-all-btn');
+  if (viewAllBtn) {
+    viewAllBtn.addEventListener('click', function () {
+      var target = document.querySelector('.mk-bar__states button[data-s="global-list"]');
+      if (target) target.click();
+    });
+  }
+})();
+</script>
+
+</body></html>
