@@ -31,7 +31,15 @@ import type {
 } from '../adapters/product-master/woocommerce-product.types';
 
 const EAN_KEYS = ['_ean', 'ean', '_gtin', 'gtin', '_barcode', 'barcode'] as const;
-const GTIN_KEYS = ['_gtin', 'gtin', '_ean', 'ean', '_wc_gtin', 'hwp_product_gtin', '_barcode'] as const;
+const GTIN_KEYS = [
+  '_gtin',
+  'gtin',
+  '_ean',
+  'ean',
+  '_wc_gtin',
+  'hwp_product_gtin',
+  '_barcode',
+] as const;
 
 export class WooCommerceProductMapper implements IWooCommerceProductMapper {
   constructor(private readonly options: WooCommerceProductMapperOptions) {}
@@ -54,7 +62,17 @@ export class WooCommerceProductMapper implements IWooCommerceProductMapper {
     };
   }
 
-  mapVariation(v: WooCommerceProductVariation, productId: string): Omit<ProductVariant, 'id'> {
+  /**
+   * `parentImages` are the parent product's picture URLs. WooCommerce answers a
+   * variation without a picture of its own with the PARENT's image, so a
+   * variation image whose src is one of those is not the variation's own and is
+   * dropped (own images absent means the product gallery applies).
+   */
+  mapVariation(
+    v: WooCommerceProductVariation,
+    productId: string,
+    parentImages?: readonly string[] | null
+  ): Omit<ProductVariant, 'id'> {
     const attrs = v.attributes ?? [];
     const attributeRecord: Record<string, string> = {};
     for (const a of attrs) {
@@ -62,9 +80,15 @@ export class WooCommerceProductMapper implements IWooCommerceProductMapper {
     }
 
     const metaData = v.meta_data ?? [];
+    const ownImage = v.image?.src;
+    const ownImages =
+      typeof ownImage === 'string' && ownImage.length > 0 && !(parentImages ?? []).includes(ownImage)
+        ? [ownImage]
+        : undefined;
 
     return {
       productId,
+      ...(ownImages ? { images: ownImages } : {}),
       sku: v.sku || null,
       price: this.parsePrice(v.regular_price || v.price) ?? undefined,
       weight: this.parseOptionalNumber(v.weight),

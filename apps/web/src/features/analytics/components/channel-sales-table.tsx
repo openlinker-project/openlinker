@@ -109,6 +109,7 @@ import {
   type ChannelExclusionMap,
 } from '../lib/channel-exclusion-map.lib';
 import { AnalyticsExclusionNote } from './analytics-exclusion-note';
+import { ExportCsvButton } from './export-csv-button';
 import { RecalculatingValue } from './recalculating-value';
 
 const PERCENT_FORMAT_OPTIONS: Intl.NumberFormatOptions = {
@@ -523,6 +524,23 @@ export function ChannelSalesTable({
 
   return (
     <>
+      <div className="analytics-export-row">
+        <ExportCsvButton
+          testId="export-csv-sales-channel"
+          reportLabel="Sales by channel"
+          request={{
+            report: 'sales-channel',
+            filters: {
+              from: filters.from,
+              to: filters.to,
+              sourceConnectionId: filters.sourceConnectionId,
+            },
+            basis: netGrossBasis,
+          }}
+          displayCurrency={filters.displayCurrency}
+          reportingCurrency={headline?.currency ?? null}
+        />
+      </div>
       <DataTable
         caption="Sales by channel"
         rows={rows}

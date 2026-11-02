@@ -87,6 +87,12 @@ const PACKER_REACHABLE_ANY_ROLE_ROUTES: readonly string[] = [
   // in a different encoding, so it is strictly narrower than the route it
   // accompanies rather than a new disclosure.
   'ProductsController.getProductImage',
+  // The variant-level picture (G11 / #3586): the same photo the product route
+  // streams, narrowed to one variant's own or inherited image. A packer holds a
+  // specific variant and the bench shows that variant, so the product-level
+  // picture alone could show the wrong colour. Same justification, same shape,
+  // no cost or price in the bytes.
+  'ProductsController.getVariantImage',
   'VariantsController.searchVariants',
 
   // The `/count` siblings of the three LIST reads above (#2943). Each answers ONE

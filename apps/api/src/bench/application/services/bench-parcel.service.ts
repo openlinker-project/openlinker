@@ -107,7 +107,10 @@ import type {
   BenchUndoResultView,
   BenchVerificationResultView,
 } from '../types/bench-parcel.types';
-import { productImageProxyPath } from '../../../products/http/product-image-path';
+import {
+  productImageProxyPath,
+  variantImageProxyPath,
+} from '../../../products/http/product-image-path';
 import { BenchExecutorResolver } from './bench-executor.resolver';
 
 /** Raised when the work is not a parcel this bench may see at all. */
@@ -539,9 +542,7 @@ export class BenchParcelService implements IBenchParcelService {
     return { outcome: 'completed', reason: null, parcel: await this.project(fresh, state) };
   }
 
-  async undoCompletion(
-    input: BenchUndoCompletionInput
-  ): Promise<BenchUndoCompletionResultView> {
+  async undoCompletion(input: BenchUndoCompletionInput): Promise<BenchUndoCompletionResultView> {
     const work = await this.loadBenchWork(input.workId);
 
     // The SAME lock `completeParcel` checks, checked the same way and first.
@@ -876,7 +877,8 @@ export class BenchParcelService implements IBenchParcelService {
     state: ParcelVerificationState
   ): Promise<BenchParcelLineView[]> {
     const variantIds = [...new Set(work.lines.map((line) => line.productVariantId))];
-    const variants = variantIds.length === 0 ? [] : await this.products.getVariantsByIds(variantIds);
+    const variants =
+      variantIds.length === 0 ? [] : await this.products.getVariantsByIds(variantIds);
     const productIds = [...new Set(variants.map((variant) => variant.productId))];
     const [products, binCodes] = await Promise.all([
       productIds.length === 0 ? Promise.resolve([]) : this.products.getProductsByIds(productIds),
@@ -906,14 +908,17 @@ export class BenchParcelService implements IBenchParcelService {
         gtin: variant?.gtin ?? null,
         requiredQuantity: counts?.requiredQuantity ?? 0,
         verifiedQuantity: counts?.verifiedQuantity ?? 0,
-        // #3410 (epic #3401) — the parent PRODUCT's image; ProductVariant
-        // carries none of its own.
+        // #3410 (epic #3401) — the variant's OWN picture when the master gave
+        // it one (#3586), else the parent PRODUCT's.
         //
         // The PROXY path, never the stored url (pack-bench completion follow-up): what the
         // catalogue sync wrote is the address the BACKEND used to reach the
         // shop, which on a compose deployment the browser cannot resolve at
         // all. See `products/application/services/product-image-proxy.service.ts`.
-        imageUrl: productImageProxyPath(product),
+        imageUrl:
+          variant !== undefined && (variant.images?.length ?? 0) > 0
+            ? variantImageProxyPath(variant, 0)
+            : productImageProxyPath(product),
         attributes: variant?.attributes ?? null,
         binCode: binCodes.get(line.productVariantId) ?? null,
         weightGrams: variant?.weightGrams ?? null,

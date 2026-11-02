@@ -66,6 +66,9 @@ async function bootstrap(): Promise<void> {
   app.enableCors({
     origin: allowedOrigins,
     credentials: true,
+    // The CSV exports name their file in Content-Disposition; a cross-origin
+    // browser client can only read it when it is exposed.
+    exposedHeaders: ['Content-Disposition'],
   });
 
   // Global validation pipe

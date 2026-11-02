@@ -21,7 +21,11 @@
  * @module apps/web/src/features/analytics/lib
  */
 import type { StatusBadgeTone } from '../../../shared/ui';
-import type { CoverageCategory, CoverageCategoryRow } from '../api/analytics-coverage.types';
+import type {
+  CoverageCategory,
+  CoverageCategoryRow,
+  CoverageCountUnit,
+} from '../api/analytics-coverage.types';
 import type { ProductMatchingRecordStatus } from '../api/analytics-matching-coverage.types';
 
 export interface DataCoverageRowCopy {
@@ -34,13 +38,14 @@ export interface DataCoverageRowCopy {
   modalDescription: string;
 }
 
-function orderWord(count: number): string {
+function orderWord(count: number, unit: CoverageCountUnit = 'orders'): string {
+  if (unit === 'lines') return count === 1 ? 'line' : 'lines';
   return count === 1 ? 'order' : 'orders';
 }
 
 export function deriveCoverageRowCopy(row: CoverageCategoryRow): DataCoverageRowCopy {
   const n = row.affectedCount;
-  const word = orderWord(n);
+  const word = orderWord(n, row.countUnit);
 
   switch (row.category) {
     case 'currency':
@@ -93,6 +98,16 @@ export function deriveCoverageRowCopy(row: CoverageCategoryRow): DataCoverageRow
         modalTitle: `${n} ${word} with a product-matching error`,
         modalDescription: 'The product was removed at the source, or matching failed — open the order to match it manually.',
       };
+    case 'no-cost':
+      return {
+        headline: `${n} ${word} are not in margin`,
+        sub: 'Margin counts only lines with a usable cost: a missing cost, a cost entered after the sale, an unmatched product or a different currency leaves a line out.',
+        tone: 'info',
+        badgeLabel: 'Info',
+        actionLabel: 'See in margin',
+        modalTitle: `${n} ${word} are not in margin`,
+        modalDescription: 'Margin leaves these lines out because the cost is missing, was entered after the sale, the product is unmatched, or the cost currency differs from the order.',
+      };
     default: {
       const exhaustive: never = row.category;
       throw new Error(`Unhandled coverage category: ${String(exhaustive)}`);
@@ -100,7 +115,7 @@ export function deriveCoverageRowCopy(row: CoverageCategoryRow): DataCoverageRow
   }
 }
 
-export const DATA_COVERAGE_CHECK_COUNT = 5;
+export const DATA_COVERAGE_CHECK_COUNT = 6;
 
 /**
  * Whether the Data Coverage panel currently has something an operator needs
@@ -140,4 +155,5 @@ export const COVERAGE_CATEGORY_ORDER: CoverageCategory[] = [
   'tax-b',
   'tax-c',
   'product-matching',
+  'no-cost',
 ];

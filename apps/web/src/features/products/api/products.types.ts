@@ -41,6 +41,14 @@ export interface ProductVariant {
    */
   defaultImages?: string[] | null;
   /**
+   * API proxy paths (`/products/variants/:id/images/:i`) over the RESOLVED
+   * pictures: the variant's own, else the product's. Needs the bearer token,
+   * so render through `VariantThumbnail`. Absent from an older API.
+   */
+  imageUrls?: string[];
+  /** True when `imageUrls` is the product's gallery because the variant has none of its own. */
+  imagesFromProduct?: boolean;
+  /**
    * The variant's OWN tax-rate override (#2255). `null` means NO OVERRIDE - the
    * product's rate applies - never "no rate". Only a master that keys tax per
    * variant sets it, so on PrestaShop every variant is null and the product's
@@ -217,8 +225,122 @@ export interface ProductVariantSummary {
   ean: string | null;
   /** Display label assembled from variant attributes (e.g. "Red / 42"). */
   name?: string;
+  imageUrls?: string[];
+  imagesFromProduct?: boolean;
   /** Whether this variant was deleted at the master (#1599). */
   isStale: boolean;
   /** Timestamp of the most recent stale-marking; null while the variant is live. */
   staleAt: string | null;
+}
+
+/**
+ * One variant's net unit cost (#3588). Cost is deliberately NOT on
+ * {@link ProductVariant}: the regular variant read is open to every role, the
+ * cost read is not. `netUnitCost` is a decimal string (never a number) and
+ * `null` means "not recorded", which is a different statement from `"0.0000"`.
+ */
+export interface VariantCost {
+  variantId: string;
+  sku?: string | null;
+  netUnitCost: string | null;
+  costCurrency: string | null;
+  costUpdatedAt: string | null;
+  costUpdatedByUserId: string | null;
+}
+
+/** Both set records a cost; both null clears it. */
+export interface VariantCostInput {
+  netUnitCost: string | null;
+  currency: string | null;
+}
+
+/** Gap reasons shared with the margin read (mirrors `MarginGapReasonValues`). */
+export type CostGapReason =
+  | 'no-cost'
+  | 'cost-entered-after-sale'
+  | 'no-variant'
+  | 'currency-mismatch';
+
+/** Mirrors `CostCoverageResponseDto` (#3588). Percent fields are 0..100, not ratios. */
+export interface CostCoverage {
+  days: number;
+  from: string;
+  to: string;
+  currency: string;
+  soldVariantCount: number;
+  soldVariantsWithoutCost: number;
+  netSales: number;
+  netSalesWithoutCost: number;
+  /** Percent 0..100, `null` without net sales. */
+  coveragePct: number | null;
+  notInMarginNetSales: number;
+  gapByReason: { reason: CostGapReason; lineCount: number; netAmount: number }[];
+  top3: {
+    variantId: string;
+    productId: string;
+    name: string | null;
+    sku: string | null;
+    attributes: Record<string, string> | null;
+    netSales: number;
+  }[];
+  /** Percent 0..100 of `netSalesWithoutCost`. */
+  top3SharePct: number | null;
+  productOnlyNetSales: number;
+}
+
+/** Mirrors `CostSummaryResponseDto`. */
+export interface CostSummary {
+  variantsWithoutCost: number;
+  productsWithoutCost: number;
+  variantsWithCost: number;
+}
+
+export const COST_WORKLIST_TAB_VALUES = ['sold', 'all', 'has-cost'] as const;
+export type CostWorklistTab = (typeof COST_WORKLIST_TAB_VALUES)[number];
+
+export interface CostWorklistFilters {
+  tab: CostWorklistTab;
+  q?: string;
+  /** Source connection id of the sales. */
+  channel?: string;
+}
+
+export interface CostWorklistPagination {
+  limit: number;
+  offset: number;
+}
+
+export interface CostWorklistRow {
+  variantId: string;
+  productId: string;
+  productName: string;
+  sku: string | null;
+  attributes: Record<string, string> | null;
+  netUnitCost: string | null;
+  costCurrency: string | null;
+  costUpdatedAt: string | null;
+  netSales30d: number;
+  units30d: number;
+  soldOn: { connectionId: string; platformType: string | null; name: string | null }[];
+}
+
+/** The page WITHOUT its total (`?withTotal=false`); the API omits `total`, never zeroes it. */
+export interface CostWorklistPage {
+  currency: string;
+  items: CostWorklistRow[];
+  limit: number;
+  offset: number;
+}
+
+export interface BulkFillVariantCostInput {
+  variantIds: string[];
+  netUnitCost: string;
+  currency: string;
+}
+
+/** Variant ids, by outcome. */
+export interface BulkFillVariantCostResult {
+  filled: string[];
+  skippedAlreadySet: string[];
+  notFound: string[];
 }
