@@ -54,6 +54,8 @@ import { readdirSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { ANY_ROLE_KEY } from './decorators/any-role.decorator';
 import { ROLES_KEY } from './decorators/roles.decorator';
+import { toParcelResponseDto } from '../bench/http/dto/bench-parcel.mapper';
+import type { BenchParcelView } from '../bench/application/types/bench-parcel.types';
 
 const SRC_ROOT = resolve(__dirname, '..');
 
@@ -174,6 +176,11 @@ const PACKER_GRANTED_ROUTES: readonly string[] = [
   // parcel. The line that matters is unchanged - a packer still cannot reach
   // an address, a contact detail, or any order they are not packing.
   //
+  // #3538 (D12) adds one more deliberate disclosure: the buyer's checkout NOTE,
+  // read only, verbatim, plus who read it at the bench (a user id and an
+  // instant, no PII). The exact set of note fields is pinned by the
+  // 'discloses exactly the buyer-note fields' test below.
+  //
   // ADR-062 is NOT the authority for this list and must not be cited as one:
   // its subject is what crosses to a PLUGIN (`RoutingInput`, `HostServices`,
   // the router port), and it says nothing about what OpenLinker's own HTTP
@@ -226,6 +233,14 @@ const PACKER_GRANTED_ROUTES: readonly string[] = [
   // scan already enforces; attributed to the verified token's own user, same
   // as verifyUnit.
   'BenchParcelController.completeParcel',
+  // #3538 (D12). Records which packer read the buyer's checkout note for ONE
+  // parcel, and when. Scoped exactly as getParcel scopes it, plus the ADR-074
+  // lock a scan enforces; attributed to the verified token's own user. It
+  // writes two display columns on the work row and gates nothing - scanning
+  // never waits on it and it is not a parcel close (ADR-071). The note TEXT the
+  // packer reads reaches them through `getParcel`'s projection, a deliberate
+  // new disclosure recorded there rather than here.
+  'BenchParcelController.acknowledgeBuyerNote',
   // #3415. The way back from that completion, and the reason it needs one: the
   // only other route back was `reopenParcel` above, which UNPACKS the box, so a
   // packer who tapped the wrong row had to re-scan a parcel that was packed
@@ -393,5 +408,31 @@ describe('Packer exclusion (#2413)', () => {
     const live = new Set(anyRoleRoutes);
     const stale = PACKER_REACHABLE_ANY_ROLE_ROUTES.filter((id) => !live.has(id));
     expect(stale).toEqual([]);
+  });
+
+  it('discloses exactly the buyer-note fields a packer may see on a parcel (#3538)', () => {
+    // The note text is the one new free-text buyer field the bench projection
+    // carries, so the exact key set is asserted here, beside the route
+    // allow-list, as well as in the service spec: widening it (an order-level
+    // note id, a note author, an edit history) must be a decision made here.
+    const view = {
+      lines: [],
+      otherParcelBuyerNoteAcknowledgements: [],
+      packerNotes: [],
+    } as unknown as BenchParcelView;
+    const dto = toParcelResponseDto(view);
+
+    const noteKeys = Object.keys(dto)
+      .filter((key) => /buyerNote/i.test(key))
+      .sort();
+    expect(noteKeys).toEqual(
+      [
+        'buyerNote',
+        'buyerNoteAcknowledgedAt',
+        'buyerNoteAcknowledgedByUserId',
+        'hasBuyerNote',
+        'otherParcelBuyerNoteAcknowledgements',
+      ].sort()
+    );
   });
 });

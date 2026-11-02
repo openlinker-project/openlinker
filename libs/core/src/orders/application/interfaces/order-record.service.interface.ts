@@ -389,6 +389,14 @@ export interface IOrderRecordService {
   markPacked(internalOrderId: string, packedByUserId: string): Promise<OrderRecord>;
 
   /**
+   * Mark this order's buyer note read (#3538). Fill-once and idempotent, like
+   * {@link markPacked}: a repeat returns the record with the FIRST reader's
+   * instant and actor untouched. Throws `OrderRecordNotFoundException` for an
+   * unknown order.
+   */
+  markBuyerNoteRead(internalOrderId: string, readByUserId: string): Promise<OrderRecord>;
+
+  /**
    * Clear this order's packed fact (#2287), nulling both columns together.
    * Clearing an already-unpacked order is a no-op that returns the record
    * unchanged; an unknown order throws `OrderRecordNotFoundException`.

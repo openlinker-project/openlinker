@@ -20,6 +20,7 @@ import {
   ORDER_TEST_FIXTURE_SERVICE_TOKEN,
   OrderRecord,
   OrderRecordNotFoundException,
+  NoBuyerNoteException,
   OrderDestinationNotFoundException,
   OrderDestinationNotRetryableException,
   MissingSourceExternalIdException,
@@ -108,7 +109,12 @@ describe('OrdersController', () => {
     return Object.assign(Object.create(OrderRecord.prototype) as OrderRecord, mockOrder, overrides);
   }
 
+  const fulfillmentWorkQuery = {
+    listBuyerNoteAcknowledgements: jest.fn().mockResolvedValue([]),
+  };
+
   beforeEach(async () => {
+    fulfillmentWorkQuery.listBuyerNoteAcknowledgements.mockResolvedValue([]);
     const mockRepository: jest.Mocked<OrderRecordRepositoryPort> = {
       findById: jest.fn(),
       findByIds: jest.fn(),
@@ -141,6 +147,8 @@ describe('OrdersController', () => {
       listDistinctNativeCurrencies: jest.fn(),
       countStampedByReportingCurrency: jest.fn(),
       markPacked: jest.fn(),
+      markBuyerNoteRead: jest.fn(),
+      countEarlierOrdersForCustomer: jest.fn(),
       clearPacked: jest.fn(),
       recordAmendment: jest.fn(),
       getDailyOrderAggregates: jest.fn(),
@@ -162,6 +170,7 @@ describe('OrdersController', () => {
 
     const mockOrderRecordService = {
       markPacked: jest.fn(),
+      markBuyerNoteRead: jest.fn(),
       clearPacked: jest.fn(),
       recordAmendment: jest.fn(),
     } as unknown as jest.Mocked<IOrderRecordService>;
@@ -301,7 +310,10 @@ describe('OrdersController', () => {
         },
         {
           provide: FULFILLMENT_WORK_QUERY_SERVICE_TOKEN,
-          useValue: { summarizeWorkForOrders: jest.fn().mockResolvedValue(new Map()) },
+          useValue: {
+            summarizeWorkForOrders: jest.fn().mockResolvedValue(new Map()),
+            ...fulfillmentWorkQuery,
+          },
         },
         {
           provide: RETURNS_SERVICE_TOKEN,
@@ -1742,6 +1754,187 @@ describe('OrdersController', () => {
       // above is what a bare `IS NOT NULL` on the raw column would
       // misidentify as this one.
       expect(result.buyerTaxId).toBeUndefined();
+    });
+  });
+
+  describe('buyer note on the DTO (#3538)', () => {
+    const actor = { id: 'user-op-001', email: 'op@example.com', role: 'operator' } as unknown as Parameters<
+      typeof controller.markBuyerNoteRead
+    >[1];
+
+    it('keeps the note text off every LIST row but carries the flag and the scalars', async () => {
+      repository.findMany.mockResolvedValue({
+        items: [
+          orderRecordWith({
+            buyerNote: 'No receipt in the box',
+            hasBuyerNote: true,
+            shippingCountry: 'PL',
+            billingCountry: 'DE',
+            buyerOrderCount: 2,
+          }),
+        ],
+        total: 1,
+      });
+
+      const result = await controller.listOrders({ limit: 20, offset: 0 });
+
+      expect(result.items[0]).not.toHaveProperty('buyerNote');
+      expect(result.items[0]).not.toHaveProperty('buyerNoteAcknowledgements');
+      expect(result.items[0]).toMatchObject({
+        hasBuyerNote: true,
+        shippingCountry: 'PL',
+        billingCountry: 'DE',
+        buyerOrderCount: 2,
+      });
+    });
+
+    it('carries a state and a one-line preview on every list row, and keeps the full text off it', async () => {
+      const long = `\n  ${'x'.repeat(200)}\nsecond line`;
+      repository.findMany.mockResolvedValue({
+        items: [
+          orderRecordWith({ buyerNote: long, hasBuyerNote: true }),
+          orderRecordWith({ buyerNote: '', hasBuyerNote: false }),
+          orderRecordWith({ buyerNote: null, hasBuyerNote: false }),
+          orderRecordWith({ buyerNote: null, hasBuyerNote: true }),
+        ],
+        total: 4,
+      });
+
+      const { items } = await controller.listOrders({ limit: 20, offset: 0 });
+
+      expect(items.map((i) => i.buyerNoteState)).toEqual(['present', 'none', 'unknown', 'present']);
+      expect(items[0].buyerNotePreview).toBe('x'.repeat(120));
+      expect(items[1].buyerNotePreview).toBeNull();
+      expect(items[2].buyerNotePreview).toBeNull();
+      // Flagged but text not stored (hash-only mode): present, nothing to preview.
+      expect(items[3].buyerNotePreview).toBeNull();
+      expect(items[0]).not.toHaveProperty('buyerNote');
+    });
+
+    it('projects the three note states on the detail read', async () => {
+      repository.findById.mockResolvedValue(orderRecordWith({ buyerNote: 'Leave at the door' }));
+      expect((await controller.getOrder('ol_order_001')).buyerNote).toBe('Leave at the door');
+
+      repository.findById.mockResolvedValue(orderRecordWith({ buyerNote: '' }));
+      expect((await controller.getOrder('ol_order_001')).buyerNote).toBeNull();
+
+      repository.findById.mockResolvedValue(orderRecordWith({ buyerNote: null }));
+      expect((await controller.getOrder('ol_order_001')).buyerNote).toBeUndefined();
+    });
+
+    it('projects when the note text changed, and null when it never did (N-22)', async () => {
+      repository.findById.mockResolvedValue(
+        orderRecordWith({ buyerNoteChangedAt: new Date('2026-10-02T10:00:00Z') })
+      );
+      expect((await controller.getOrder('ol_order_001')).buyerNoteChangedAt).toBe('2026-10-02T10:00:00.000Z');
+
+      repository.findById.mockResolvedValue(orderRecordWith({ buyerNoteChangedAt: null }));
+      expect((await controller.getOrder('ol_order_001')).buyerNoteChangedAt).toBeNull();
+    });
+
+    it('projects the read marker and the per-parcel acknowledgements on the detail read', async () => {
+      repository.findById.mockResolvedValue(
+        orderRecordWith({
+          buyerNoteReadAt: new Date('2026-10-01T08:00:00Z'),
+          buyerNoteReadByUserId: 'user-1',
+        })
+      );
+      fulfillmentWorkQuery.listBuyerNoteAcknowledgements.mockResolvedValue([
+        {
+          workId: 'work-1',
+          acknowledgedAt: new Date('2026-10-01T09:00:00Z'),
+          acknowledgedByUserId: 'packer-1',
+        },
+      ]);
+
+      const result = await controller.getOrder('ol_order_001');
+
+      expect(result.buyerNoteReadAt).toBe('2026-10-01T08:00:00.000Z');
+      expect(result.buyerNoteReadByUserId).toBe('user-1');
+      expect(result.buyerNoteAcknowledgements).toEqual([
+        { workId: 'work-1', acknowledgedAt: '2026-10-01T09:00:00.000Z', acknowledgedByUserId: 'packer-1' },
+      ]);
+    });
+
+    it('should carry the read marker on list rows when listing orders (B-3)', async () => {
+      repository.findMany.mockResolvedValue({
+        items: [orderRecordWith({ hasBuyerNote: true, buyerNoteReadAt: new Date('2026-10-01T08:00:00Z') })],
+        total: 1,
+      });
+
+      const result = await controller.listOrders({ limit: 20, offset: 0 });
+
+      expect(result.items[0].buyerNoteReadAt).toBe('2026-10-01T08:00:00.000Z');
+    });
+
+    it('marks the note read as the acting user and projects the marker', async () => {
+      orderRecordService.markBuyerNoteRead.mockResolvedValue(
+        orderRecordWith({
+          buyerNoteReadAt: new Date('2026-10-01T08:00:00Z'),
+          buyerNoteReadByUserId: 'user-op-001',
+        })
+      );
+
+      const result = await controller.markBuyerNoteRead('ol_order_001', actor);
+
+      expect(orderRecordService.markBuyerNoteRead).toHaveBeenCalledWith('ol_order_001', 'user-op-001');
+      expect(result.buyerNoteReadAt).toBe('2026-10-01T08:00:00.000Z');
+      expect(result.buyerNoteReadByUserId).toBe('user-op-001');
+    });
+
+    it('answers 404 when marking the note of an unknown order', async () => {
+      orderRecordService.markBuyerNoteRead.mockRejectedValue(
+        new OrderRecordNotFoundException('missing')
+      );
+
+      await expect(controller.markBuyerNoteRead('missing', actor)).rejects.toBeInstanceOf(
+        NotFoundException
+      );
+    });
+
+    it('returns the marker the service set on the mark-read response (B-9)', async () => {
+      orderRecordService.markBuyerNoteRead.mockResolvedValue(
+        orderRecordWith({
+          hasBuyerNote: true,
+          buyerNoteReadAt: new Date('2026-10-02T08:00:00Z'),
+          buyerNoteReadByUserId: 'user-op-001',
+        })
+      );
+
+      const result = await controller.markBuyerNoteRead('ol_order_001', actor);
+
+      expect(result.buyerNoteReadAt).toBe('2026-10-02T08:00:00.000Z');
+      expect(result.buyerNoteReadByUserId).toBe('user-op-001');
+    });
+
+    it('answers 409 NO_BUYER_NOTE when the order has no note to mark read (B-8)', async () => {
+      orderRecordService.markBuyerNoteRead.mockRejectedValue(
+        new NoBuyerNoteException('ol_order_001')
+      );
+
+      await expect(controller.markBuyerNoteRead('ol_order_001', actor)).rejects.toMatchObject({
+        response: { error: 'NO_BUYER_NOTE' },
+      });
+    });
+
+    it('still serves the order detail when the acknowledgements cannot load (B-10)', async () => {
+      repository.findById.mockResolvedValue(orderRecordWith({ hasBuyerNote: true }));
+      fulfillmentWorkQuery.listBuyerNoteAcknowledgements.mockRejectedValue(new Error('db down'));
+
+      const result = await controller.getOrder('ol_order_001');
+
+      expect(result.buyerNoteAcknowledgements).toBeNull();
+    });
+
+    it('passes ?hasBuyerNote through to the repository filters', async () => {
+      repository.findMany.mockResolvedValue({ items: [], total: 0 });
+
+      await controller.listOrders({ limit: 20, offset: 0, hasBuyerNote: true });
+
+      expect(repository.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ hasBuyerNote: true }),
+        expect.anything()
+      );
     });
   });
 
