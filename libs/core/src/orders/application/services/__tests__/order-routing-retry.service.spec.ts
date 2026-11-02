@@ -7,6 +7,7 @@
  * runs inside the inventory propagation path.
  */
 import type { Connection, ConnectionPort } from '@openlinker/core/identifier-mapping';
+import type { FulfillmentRouterResolverPort } from '@openlinker/core/fulfillment';
 import type { JobEnqueuePort } from '@openlinker/core/sync';
 import type { OrderRecord } from '../../../domain/entities/order-record.entity';
 import type { IOrderRecordService } from '../../interfaces/order-record.service.interface';
@@ -38,16 +39,19 @@ describe('OrderRoutingRetryService', () => {
   let orderRecords: { getOrderRecord: jest.Mock; listOrderIdsHeldForVariant: jest.Mock };
   let connections: { list: jest.Mock };
   let jobEnqueue: { enqueueJob: jest.Mock };
+  let routerResolver: { resolve: jest.Mock };
   let service: OrderRoutingRetryService;
 
   beforeEach(() => {
     orderRecords = { getOrderRecord: jest.fn(), listOrderIdsHeldForVariant: jest.fn() };
     connections = { list: jest.fn().mockResolvedValue([routerConnection()]) };
     jobEnqueue = { enqueueJob: jest.fn().mockResolvedValue({ jobId: 'job-1', isExisting: false }) };
+    routerResolver = { resolve: jest.fn().mockResolvedValue({}) };
     service = new OrderRoutingRetryService(
       orderRecords as unknown as IOrderRecordService,
       connections as unknown as ConnectionPort,
-      jobEnqueue as unknown as JobEnqueuePort
+      jobEnqueue as unknown as JobEnqueuePort,
+      routerResolver as unknown as FulfillmentRouterResolverPort
     );
   });
 
@@ -128,6 +132,18 @@ describe('OrderRoutingRetryService', () => {
       });
     });
 
+    it('should refuse when the selected connection has no router wired', async () => {
+      orderRecords.getOrderRecord.mockResolvedValue(heldOrder('routing-refused'));
+      routerResolver.resolve.mockResolvedValue(null);
+
+      expect(await service.retryRouting('ol_order_1')).toEqual({
+        status: 'refused',
+        reason: 'no-router',
+      });
+      expect(routerResolver.resolve).toHaveBeenCalledWith(ROUTER);
+      expect(jobEnqueue.enqueueJob).not.toHaveBeenCalled();
+    });
+
     it('should report a failed enqueue as a code, not the error message', async () => {
       orderRecords.getOrderRecord.mockResolvedValue(heldOrder('routing-refused'));
       jobEnqueue.enqueueJob.mockRejectedValue(new Error('redis://user:secret@host down'));
@@ -176,13 +192,24 @@ describe('OrderRoutingRetryService', () => {
         candidates: 0,
         enqueued: 0,
       });
-      expect(connections.list).not.toHaveBeenCalled();
+      expect(routerResolver.resolve).not.toHaveBeenCalled();
       expect(jobEnqueue.enqueueJob).not.toHaveBeenCalled();
     });
 
-    it('should leave held orders held when no router is selected', async () => {
-      orderRecords.listOrderIdsHeldForVariant.mockResolvedValue(['ol_order_1']);
+    it('should not read held orders at all when no router is selected', async () => {
       connections.list.mockResolvedValue([]);
+
+      expect(await service.rerouteHeldOrdersForVariant({ variantId: 'variant-1' })).toEqual({
+        candidates: 0,
+        enqueued: 0,
+      });
+      expect(orderRecords.listOrderIdsHeldForVariant).not.toHaveBeenCalled();
+      expect(jobEnqueue.enqueueJob).not.toHaveBeenCalled();
+    });
+
+    it('should leave held orders held when the selected connection has no router wired', async () => {
+      orderRecords.listOrderIdsHeldForVariant.mockResolvedValue(['ol_order_1']);
+      routerResolver.resolve.mockResolvedValue(null);
 
       expect(await service.rerouteHeldOrdersForVariant({ variantId: 'variant-1' })).toEqual({
         candidates: 1,

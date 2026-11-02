@@ -11,12 +11,27 @@
  * reduced to a claimant and handed to the pure `selectPrimaryFulfillmentRouter`,
  * so the retry, the sweep and the route job itself pick the same router.
  *
+ * A selected claimant is not enough on its own: the route job returns `ok`
+ * without writing anything when no router is WIRED for that connection (an A2
+ * claim on a non-OMS connection, or the OMS switched off). So both paths also ask
+ * `FulfillmentRouterResolverPort`, as #2731's reaper hand-off does, and refuse or
+ * skip rather than enqueue a job that silently does nothing (#3558 review).
+ *
+ * The stock path runs on every `inventory.propagateToMarketplaces`, so it orders
+ * its checks by cost: the router selection (one `connections.list()`, `null` on
+ * every install without OMS routing) before the held-order read, and the
+ * resolver only once there is something to route.
+ *
  * @module libs/core/src/orders/application/services
  * @implements {IOrderRoutingRetryService}
  */
 import { Inject, Injectable } from '@nestjs/common';
 import { Logger } from '@openlinker/shared/logging';
-import { REROUTABLE_FULFILLMENT_BLOCK_REASONS } from '@openlinker/core/fulfillment';
+import {
+  FULFILLMENT_ROUTER_RESOLVER_TOKEN,
+  REROUTABLE_FULFILLMENT_BLOCK_REASONS,
+  type FulfillmentRouterResolverPort,
+} from '@openlinker/core/fulfillment';
 import {
   selectPrimaryFulfillmentRouter,
   type AuthorityClaimantInput,
@@ -57,7 +72,9 @@ export class OrderRoutingRetryService implements IOrderRoutingRetryService {
     @Inject(CONNECTION_PORT_TOKEN)
     private readonly connections: ConnectionPort,
     @Inject(JOB_ENQUEUE_TOKEN)
-    private readonly jobEnqueue: JobEnqueuePort
+    private readonly jobEnqueue: JobEnqueuePort,
+    @Inject(FULFILLMENT_ROUTER_RESOLVER_TOKEN)
+    private readonly routerResolver: FulfillmentRouterResolverPort
   ) {}
 
   async retryRouting(internalOrderId: string): Promise<OrderRoutingRetryResult> {
@@ -72,6 +89,9 @@ export class OrderRoutingRetryService implements IOrderRoutingRetryService {
 
     const routerConnectionId = await this.selectRouterConnectionId();
     if (routerConnectionId === null) return { status: 'refused', reason: 'no-router' };
+    if (!(await this.isRouterWired(routerConnectionId))) {
+      return { status: 'refused', reason: 'no-router' };
+    }
 
     try {
       const { jobId } = await this.jobEnqueue.enqueueJob({
@@ -102,6 +122,11 @@ export class OrderRoutingRetryService implements IOrderRoutingRetryService {
   ): Promise<RerouteHeldOrdersResult> {
     const none: RerouteHeldOrdersResult = { candidates: 0, enqueued: 0 };
     try {
+      // Router first: on an install with no OMS routing this answers `null`
+      // and the stock write pays no held-order read at all.
+      const routerConnectionId = await this.selectRouterConnectionId();
+      if (routerConnectionId === null) return none;
+
       const orderIds = await this.orderRecords.listOrderIdsHeldForVariant(
         REROUTABLE_FULFILLMENT_BLOCK_REASONS,
         input.variantId,
@@ -109,8 +134,7 @@ export class OrderRoutingRetryService implements IOrderRoutingRetryService {
       );
       if (orderIds.length === 0) return none;
 
-      const routerConnectionId = await this.selectRouterConnectionId();
-      if (routerConnectionId === null) {
+      if (!(await this.isRouterWired(routerConnectionId))) {
         // Held orders wait: releasing them to the product masters is not a stock
         // change's decision (the same rule the sweep follows).
         return { candidates: orderIds.length, enqueued: 0 };
@@ -155,6 +179,22 @@ export class OrderRoutingRetryService implements IOrderRoutingRetryService {
     const connections = await this.connections.list();
     const selection = selectPrimaryFulfillmentRouter(this.toClaimants(connections));
     return selection.holder;
+  }
+
+  /**
+   * Whether a router is wired for the selected connection. The route job would
+   * otherwise return `ok` and write nothing, so the operator's retry would look
+   * accepted while the order stays held.
+   */
+  private async isRouterWired(routerConnectionId: string): Promise<boolean> {
+    const router = await this.routerResolver.resolve(routerConnectionId);
+    if (router === null) {
+      this.logger.warn(
+        `Not re-routing: connection ${routerConnectionId} claims routing but no router is wired for it`
+      );
+      return false;
+    }
+    return true;
   }
 
   private toClaimants(connections: readonly Connection[]): AuthorityClaimantInput[] {

@@ -915,7 +915,7 @@ export class OrdersController {
     status: 409,
     description:
       'Not retryable: the order is not held (`not-held`), is held for a reason a retry cannot ' +
-      'change (`not-retryable`), or no single router is selected (`no-router`)',
+      'change (`not-retryable`), or no single router is selected or wired for the selected connection (`no-router`)',
   })
   @ApiResponse({ status: 503, description: 'The job could not be enqueued' })
   @ApiResponse({ status: 403, description: 'Insufficient permissions' })

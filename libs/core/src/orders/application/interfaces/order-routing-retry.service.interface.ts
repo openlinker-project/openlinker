@@ -39,7 +39,10 @@ export const OrderRoutingRetryRefusalValues = [
    * re-ingestion supplies one) or one of the self-resolving guards.
    */
   'not-retryable',
-  /** No single router is selected, so nothing could route the order. */
+  /**
+   * No single router is selected, or the selected connection has no router
+   * wired (the route job would return without writing anything).
+   */
   'no-router',
 ] as const;
 

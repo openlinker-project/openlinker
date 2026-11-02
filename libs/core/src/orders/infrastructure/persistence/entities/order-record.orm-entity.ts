@@ -61,6 +61,14 @@ export interface SyncAttemptJson {
 @Index('IDX_order_records_destinationRoutingBlockReason', ['destinationRoutingBlockReason'], {
   where: '"destinationRoutingBlockReason" IS NOT NULL',
 })
+// #3558: `listOrderIdsHeldForVariant` runs on every stock-change propagation,
+// so its held-order predicate needs an index. Partial on `IS NOT NULL` for the
+// same reason as the index above: it cannot go stale as the reason union grows,
+// and it is tiny, since held orders are rare. Declared here AND in the
+// migration, because the integration harness builds schema by `synchronize`.
+@Index('IDX_order_records_fulfillmentBlockReason', ['fulfillmentBlockReason'], {
+  where: '"fulfillmentBlockReason" IS NOT NULL',
+})
 export class OrderRecordOrmEntity {
   @PrimaryColumn({ type: 'text' })
   internalOrderId!: string;
@@ -547,10 +555,11 @@ export class OrderRecordOrmEntity {
    * and then rolled back reads as "nothing recognised" rather than widening the
    * union at runtime.
    *
-   * **No index, deliberately.** #3485's `fulfillment.work.rerouteSweep` filters
-   * on it, keyset-paged by `internalOrderId`; at v1 volumes (a handful of held
-   * orders) the primary key serves that page. A partial index on the reroutable
-   * reasons is the follow-up if held-order counts grow.
+   * **Indexed since #3558**, partial on `IS NOT NULL`
+   * (`IDX_order_records_fulfillmentBlockReason`). #3485's reroute sweep could
+   * live without one, keyset-paged by `internalOrderId`, but #3558 reads held
+   * orders on every stock-change propagation, the hottest write path there is,
+   * and a sequential scan there is the #2943 cost.
    */
   @Column({ type: 'text', nullable: true })
   fulfillmentBlockReason!: string | null;
