@@ -26,6 +26,8 @@ import {
 } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useMediaQuery } from './use-media-query';
+import { useMessages } from '../i18n/use-messages';
+import { interpolate } from '../i18n/interpolate';
 
 export type DataTableHideBreakpoint = 480 | 768 | 1024;
 
@@ -332,6 +334,7 @@ export function DataTable<Row>({
   stickyLeftColumns = 0,
   virtualize = false,
 }: DataTableProps<Row>): ReactElement {
+  const copy = useMessages('ui').dataTable;
   const navigate = useNavigate();
   const scrollRef = useRef<HTMLDivElement>(null);
   const tableRef = useRef<HTMLTableElement>(null);
@@ -541,8 +544,8 @@ export function DataTable<Row>({
 
   const emptyNode = emptyState ?? (
     <div className="empty-state">
-      <h2>No records to display</h2>
-      <p>There is no data available for this table yet.</p>
+      <h2>{copy.emptyTitle}</h2>
+      <p>{copy.emptyMessage}</p>
     </div>
   );
 
@@ -622,7 +625,7 @@ export function DataTable<Row>({
               aria-controls={detailId}
               aria-label={
                 expandable.toggleLabel?.(row, expanded) ??
-                (expanded ? 'Collapse row details' : 'Expand row details')
+                (expanded ? copy.collapseRow : copy.expandRow)
               }
               onClick={(event) => {
                 event.stopPropagation();
@@ -710,7 +713,7 @@ export function DataTable<Row>({
                   .join(' ')}
                 style={expanderSticky.style}
               >
-                <span className="sr-only">Expand row</span>
+                <span className="sr-only">{copy.expandRowShort}</span>
               </th>
             ) : null}
             {headerGroup.headers.map((header, headerIndex) => {
@@ -824,8 +827,8 @@ export function DataTable<Row>({
       aria-label={
         plainScrollable
           ? typeof caption === 'string'
-            ? `${caption} (scrollable)`
-            : 'Scrollable table'
+            ? interpolate(copy.scrollableNamed, { caption })
+            : copy.scrollable
           : undefined
       }
     >
@@ -838,7 +841,11 @@ export function DataTable<Row>({
             style={{ height: containerHeight }}
             tabIndex={0}
             role="region"
-            aria-label={typeof caption === 'string' ? `${caption} (scrollable)` : 'Scrollable table'}
+            aria-label={
+              typeof caption === 'string'
+                ? interpolate(copy.scrollableNamed, { caption })
+                : copy.scrollable
+            }
           >
             {renderTable()}
           </div>
@@ -918,6 +925,7 @@ function DataTableCard<Row>({
   href,
   onClick,
 }: DataTableCardProps<Row>): ReactElement {
+  const copy = useMessages('ui').dataTable;
   const [detailOpen, setDetailOpen] = useState(false);
   const detailId = useId();
   const detail = cardView.detail;
@@ -972,7 +980,7 @@ function DataTableCard<Row>({
           <span className="data-table__card-disclosure-chev" aria-hidden="true">
             {detailOpen ? '⌄' : '›'}
           </span>
-          {detailOpen ? 'Hide details' : 'View full details'}
+          {detailOpen ? copy.hideDetails : copy.viewDetails}
         </button>
       ) : null}
       {showDetail && detail ? (

@@ -44,3 +44,19 @@ export function useActiveLocale(): SupportedLocale {
   const ctx = useContext(LocaleContext);
   return ctx?.locale ?? getLocale();
 }
+
+/**
+ * `useLocale` for components that must also render outside a provider (the
+ * language switch inside layouts some tests mount bare): `null` instead of a
+ * throw.
+ */
+export function useOptionalLocale(): UseLocaleResult | null {
+  const ctx = useContext(LocaleContext);
+  if (ctx === null) return null;
+  return {
+    locale: ctx.locale,
+    setLocale: ctx.setLocale,
+    locales: LocaleCodeValues,
+    bcp47: getBcp47Locale(ctx.locale),
+  };
+}
