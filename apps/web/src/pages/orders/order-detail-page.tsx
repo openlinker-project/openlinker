@@ -82,7 +82,7 @@ import {
   fulfillmentQueryKeys,
   useOrderFulfillmentTasksQuery,
 } from '../../features/fulfillment';
-import { invoicingQueryKeys } from '../../features/invoicing';
+import { invoicingQueryKeys, minorUnitExponentFor } from '../../features/invoicing';
 import { shipmentsQueryKeys } from '../../features/shipments';
 import { OrderConfirmRefundAction } from '../../features/orders/components/order-confirm-refund-action';
 import { useOrderChangesQuery } from '../../features/orders/hooks/use-order-changes-query';
@@ -292,7 +292,7 @@ export function OrderDetailPage(): ReactElement {
   const orderRefunds = orderRefundsQuery.data ?? [];
   // A refund is not confirmable until the cancel is: an open request leaves the
   // order amending and the money not yet owed (C-2).
-  const hasCancelRequest = orderChanges.some(
+  const hasConfirmedCancel = orderChanges.some(
     (change) => change.kind === 'order.cancel_request' && change.status === 'confirmed',
   );
   const cancelTotalLabel = snapshot.totals
@@ -478,8 +478,12 @@ export function OrderDetailPage(): ReactElement {
         <OrderConfirmRefundAction
           internalOrderId={order.internalOrderId}
           currency={snapshot.totals?.currency ?? null}
-          orderTotal={snapshot.totals ? snapshot.totals.total.toFixed(2) : null}
-          visible={snapshot.status === 'cancelled' || hasCancelRequest}
+          orderTotal={
+            snapshot.totals
+              ? snapshot.totals.total.toFixed(minorUnitExponentFor(snapshot.totals.currency))
+              : null
+          }
+          visible={snapshot.status === 'cancelled' || hasConfirmedCancel}
         />
         <OrderCancelAction
           // Remount per order so an open dialog never carries over to a cached next order.
