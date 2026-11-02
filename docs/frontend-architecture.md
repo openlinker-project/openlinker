@@ -624,7 +624,7 @@ Placement:
 - **New copy goes in one file per feature folder**, sectioned by component: `features/<name>/lib/<name>.copy.ts`. Pages read their feature's copy file.
 - **A file of its own** when a component's copy passes about 40 keys, or would push the feature file past about 400 lines (for example `bulk-edit-modal.copy.ts` beside `bulk-edit-modal.tsx`).
 - **Existing per-component copy files keep their place and their name** (for example the 14 files in `features/returns/lib/` and the 4 in `features/bench/lib/`). They are reshaped in place to `{ en, pl }`; nobody merges them into one file and nobody renames a `-copy.ts` file to `.copy.ts`.
-- **Shared files**: `shared/ui/ui.copy.ts` for primitives, `shared/format/format.copy.ts` for the formatters, `app/app.copy.ts` for the shell. `shared/ui/filter.copy.ts` (a plain English `FILTER_COPY`) is not migrated yet.
+- **Shared files**: `shared/ui/ui.copy.ts` for primitives, `shared/format/format.copy.ts` for the formatters. The shell (`app/`) has no copy file yet: its strings are not extracted, so it is part of the interface that is still English-only. `shared/ui/filter.copy.ts` (a plain English `FILTER_COPY`) is not migrated yet.
 - **Plugins** ship their own copy in `plugins/<name>/<name>.copy.ts`, read with the same `useCopy`; there is no separate plugin catalogue.
 - New files use the `.copy.ts` suffix. `scripts/check-ui-vocabulary.mjs` scans every `.copy.ts` / `-copy.ts` file under `apps/web/src/features/*` and every file under `apps/web/src` that calls `defineCopy`, which covers `shared/`, `app/` and `plugins/` copy too. `scripts/check-copy-locales.mjs` additionally checks placeholders, length budgets and em dashes in every copy file. The vocabulary check reads English only: the Polish counterparts of the banned words are listed in [i18n-glossary.md](./i18n-glossary.md) for review.
 
@@ -643,7 +643,7 @@ An object whose keys are exactly `one` and `other` is read as a plural, so never
 | `renderRich(text, parts)` | React nodes | a link or bold word inside a translated sentence |
 | `getLocale()` | the active locale outside React | the API client's `Accept-Language` header |
 | `useActiveLocale()` / `getBcp47Locale()` | the active locale / its BCP-47 tag, without requiring a provider | read-only consumers such as shared primitives and formatters |
-| `fit(text, budget)` | the text, checked against a length budget | copy that must fit a fixed-width control; `check-copy-locales` reads the budgets |
+| `fit(maxLength, text)` | the text, checked against a length budget | copy that must fit a fixed-width control; `check-copy-locales` reads the budgets |
 | `LocaleKeyed` | wrapper | remounts the routed tree on a language change so module-level text refreshes; mounted in `app-providers.tsx` |
 | `useNumberFormat()` | a `NumberFormat` | legacy shim like `t()`; new code uses `useFormat()` |
 | `LanguageSwitch` (in `shared/ui`) | component | the switch in the sidebar footer and on signed-out pages |
