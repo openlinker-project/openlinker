@@ -44,6 +44,7 @@ import { ReservationNotHeldError } from '../../../domain/exceptions/reservation-
 import { ReservationPositionUnavailableError } from '../../../domain/exceptions/reservation-position-unavailable.error';
 import { publishedReservedSum } from '../sql/published-reserved-sum';
 import type {
+  HeldReservationForVariant,
   ExtendReservationExpiryInput,
   ReleaseReservationInput,
   ReservationClaimInput,
@@ -247,6 +248,55 @@ export class ReservationRepository implements ReservationRepositoryPort {
       }),
     );
     return entities.map((entity) => this.toDomainFromEntity(entity));
+  }
+
+  async listHeldByVariantIds(
+    variantIds: readonly string[],
+    perVariantLimit: number
+  ): Promise<readonly HeldReservationForVariant[]> {
+    if (variantIds.length === 0) return [];
+
+    // A window function, because "newest N per variant" cannot be a plain
+    // LIMIT. Every value is a bound parameter; table names are literals.
+    const rows = await this.translate(() =>
+      this.repository.query(
+        `SELECT t."productVariantId", t."orderRecordId", t."quantity", t."atpEffect",
+                t."expiresAt", t."createdAt"
+           FROM (
+             SELECT inv."productVariantId" AS "productVariantId",
+                    r."orderRecordId", r."quantity", r."atpEffect", r."expiresAt", r."createdAt",
+                    ROW_NUMBER() OVER (
+                      PARTITION BY inv."productVariantId"
+                      ORDER BY r."createdAt" DESC, r."id" ASC
+                    ) AS rn
+               FROM "reservations" r
+               JOIN "inventory_items" inv ON inv."id" = r."inventoryItemId"
+              WHERE r."status" = 'held'
+                AND inv."isStale" = false
+                AND inv."productVariantId" = ANY($1)
+           ) t
+          WHERE t.rn <= $2
+          ORDER BY t."productVariantId", t."createdAt" DESC`,
+        [[...variantIds], perVariantLimit]
+      ) as Promise<
+        {
+          productVariantId: string;
+          orderRecordId: string;
+          quantity: number | string;
+          atpEffect: HeldReservationForVariant['atpEffect'];
+          expiresAt: Date | string;
+          createdAt: Date | string;
+        }[]
+      >
+    );
+    return rows.map((row) => ({
+      productVariantId: row.productVariantId,
+      orderRecordId: row.orderRecordId,
+      quantity: Number(row.quantity),
+      atpEffect: row.atpEffect,
+      expiresAt: new Date(row.expiresAt),
+      createdAt: new Date(row.createdAt),
+    }));
   }
 
   async listByOrderRecordId(orderRecordId: string): Promise<readonly Reservation[]> {

@@ -58,6 +58,10 @@
  *    mockup's `detail-mapping` modal needs a real page. Read-only — this
  *    category has no remediation action, see the controller's own header.
  *
+ * 10. **`/analytics/margin*`** (`MarginAnalyticsController`, #3588) - gross margin
+ *    on net revenue; the product/variant tables are enriched with catalogue
+ *    names by `MarginAnalyticsApiService`.
+ *
  * The concerns share nothing except the URL prefix. If a future
  * `/analytics` route (#1986 route shell, KPI strip, etc.) needs its own
  * module, that is the point to split this into a dedicated module (e.g.
@@ -87,6 +91,7 @@ import { PosthogSettingsController } from './http/posthog-settings.controller';
 import { NeedsAttentionController } from './http/needs-attention.controller';
 import { SalesAnalyticsController } from './http/sales-analytics.controller';
 import { TopProductsController } from './http/top-products.controller';
+import { MarginAnalyticsController } from './http/margin-analytics.controller';
 import { AnalyticsSettingsController } from './http/analytics-settings.controller';
 import { AnalyticsCoverageController } from './http/analytics-coverage.controller';
 import { AnalyticsRemediationController } from './http/analytics-remediation.controller';
@@ -96,6 +101,8 @@ import { NeedsAttentionService } from './application/services/needs-attention.se
 import { NEEDS_ATTENTION_SERVICE_TOKEN } from './application/services/needs-attention.service.interface';
 import { TopProductsService } from './application/services/top-products.service';
 import { TOP_PRODUCTS_SERVICE_TOKEN } from './application/services/top-products.service.interface';
+import { MarginAnalyticsApiService } from './application/services/margin-analytics-api.service';
+import { MARGIN_ANALYTICS_API_SERVICE_TOKEN } from './application/services/margin-analytics-api.service.interface';
 
 @Module({
   imports: [
@@ -114,6 +121,7 @@ import { TOP_PRODUCTS_SERVICE_TOKEN } from './application/services/top-products.
     NeedsAttentionController,
     SalesAnalyticsController,
     TopProductsController,
+    MarginAnalyticsController,
     AnalyticsSettingsController,
     AnalyticsCoverageController,
     AnalyticsRemediationController,
@@ -130,6 +138,11 @@ import { TOP_PRODUCTS_SERVICE_TOKEN } from './application/services/top-products.
     {
       provide: TOP_PRODUCTS_SERVICE_TOKEN,
       useExisting: TopProductsService,
+    },
+    MarginAnalyticsApiService,
+    {
+      provide: MARGIN_ANALYTICS_API_SERVICE_TOKEN,
+      useExisting: MarginAnalyticsApiService,
     },
   ],
 })

@@ -43,6 +43,21 @@ function renderDetail(order: OrderRecord): ReturnType<typeof render> {
 describe('OrderRowDetail', () => {
   afterEach(cleanup);
 
+  it('says quietly that the channel could not tell about a note when the state is unknown (#3539)', () => {
+    renderDetail({ ...baseOrder, hasBuyerNote: false, buyerNoteState: 'unknown' });
+
+    expect(screen.getByTestId('order-row-buyer-note-unknown')).toHaveTextContent(
+      'The channel did not say whether the buyer left a note.',
+    );
+  });
+
+  it('renders no buyer note field when the source said there was none (#3539)', () => {
+    renderDetail({ ...baseOrder, hasBuyerNote: false, buyerNoteState: 'none' });
+
+    expect(screen.queryByTestId('order-row-buyer-note-unknown')).not.toBeInTheDocument();
+    expect(screen.queryByText('Buyer note')).not.toBeInTheDocument();
+  });
+
   it('renders "-" for every empty long-form field when the snapshot has no data', () => {
     renderDetail(baseOrder);
 

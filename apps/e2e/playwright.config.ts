@@ -63,6 +63,9 @@
  *                      published to the destination. The first three are
  *                      unreachable under jsdom AND happy-dom. Self-configuring;
  *                      `retries: 0` — the publish case creates a real offer.
+ *   - `g11`          - G11 product and analytics suite (#3591): variant pictures,
+ *                      cost price, margin, cost work list, CSV export. Mutating;
+ *                      reads its stand from `E2E_G11_SETUP`. `retries: 0`.
  *   - `wizard-blockers` - category-blocker states in the same wizard (#2240):
  *                      which cause is reported, where the fix lives, and what
  *                      the confirmation says about variants that will not be
@@ -289,6 +292,17 @@ export default defineConfig({
       use: { ...devices['Desktop Chrome'], storageState: STORAGE_STATE },
     },
     {
+      // OMS MVP order screens (G03 #3536, G05 #3546): mockup baselines plus
+      // golden paths. MUTATING - the G05 specs seed orders in Postgres and
+      // cancel or edit a located order - so `retries: 0`: a retry would act
+      // on an order the first attempt already changed.
+      name: 'oms-mvp',
+      testMatch: /oms-mvp\/.*\.spec\.ts/,
+      retries: 0,
+      dependencies: ['setup'],
+      use: { ...devices['Desktop Chrome'], storageState: STORAGE_STATE },
+    },
+    {
       // Order-ingestion behaviour asserted against a real source (#2277 — the
       // per-order currency). MUTATING: each spec synthesizes PrestaShop orders
       // through the webservice (customer, address, cart, order), so `retries: 0`
@@ -384,6 +398,20 @@ export default defineConfig({
       retries: 0,
       dependencies: ['setup'],
       use: { ...devices['Desktop Chrome'], storageState: STORAGE_STATE },
+    },
+    {
+      // G11 product and analytics (#3591): variant pictures, cost price,
+      // margin, work list, CSV export. MUTATING: sets and clears variant costs,
+      // creates PrestaShop/WooCommerce orders and writes two seeds straight to
+      // Postgres (see `src/support/g11/db.ts`). Reads its stand from the setup
+      // file at `E2E_G11_SETUP`, logs in per role itself, so it needs neither
+      // the `setup` project nor a shared storage state. `retries: 0`: a retry
+      // would create a second order and move every delta the scenarios assert.
+      // Runs alone with `--project=g11` or `--grep @g11`.
+      name: 'g11',
+      testMatch: /oms-mvp\/g11\/.*\.spec\.ts/,
+      retries: 0,
+      use: { ...devices['Desktop Chrome'], viewport: { width: 1440, height: 900 } },
     },
     {
       // Pack bench + Assign Packing Work (#3342/#3343) — mockup parity for

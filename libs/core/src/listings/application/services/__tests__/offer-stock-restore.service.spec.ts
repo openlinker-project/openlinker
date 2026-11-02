@@ -64,7 +64,7 @@ function availability(rows: Array<[string, number]>): VariantAvailability[] {
   return rows.map(([productVariantId, totalAvailable]) => ({
     productVariantId,
     totalAvailable,
-    locationCount: 1,
+    locationCount: 1, positionCount: 1,
     stockUpdatedAt: STAMP,
     // Wave-1b: empty ledger, so ATP mirrors master stock (#2323).
     availableToPromise: totalAvailable,
@@ -256,7 +256,7 @@ describe('OfferStockRestoreService', () => {
       {
         productVariantId: VARIANT_A,
         totalAvailable: 12,
-        locationCount: 1,
+        locationCount: 1, positionCount: 1,
         availableToPromise: null,
       },
     ]);
@@ -638,7 +638,7 @@ describe('OfferStockRestoreService', () => {
         total: 1,
       });
       inventoryQuery.getAvailabilityByVariantIds.mockResolvedValue([
-        { productVariantId: VARIANT_A, totalAvailable: 0, locationCount: 0, availableToPromise: 0 },
+        { productVariantId: VARIANT_A, totalAvailable: 0, locationCount: 0, positionCount: 0, availableToPromise: 0 },
       ]);
 
       await service.restoreStockForCancelledOrder(CONNECTION_ID, ORDER_ID);
@@ -666,7 +666,7 @@ describe('OfferStockRestoreService', () => {
           {
             productVariantId: VARIANT_A,
             totalAvailable: 4,
-            locationCount: 1,
+            locationCount: 1, positionCount: 1,
             stockUpdatedAt: new Date('2026-10-26T11:00:00.000Z'),
             availableToPromise: 4,
           },

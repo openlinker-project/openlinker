@@ -157,6 +157,17 @@ export interface InventoryRepositoryPort {
   ): Promise<readonly VariantStockRow[]>;
 
   /**
+   * Every position row for the given variants, STALE ones included (#3621).
+   *
+   * The stock view's drill-down: unlike every other read on this port it does
+   * not filter `isStale`, because the operator is shown a stale position
+   * flagged as such rather than silently missing. Totals must therefore be
+   * computed by the caller over the live subset. Parameterised, one statement
+   * per call; empty input returns `[]` without a storage round trip.
+   */
+  findPositionsByVariantIds(variantIds: readonly string[]): Promise<readonly InventoryItem[]>;
+
+  /**
    * Bin/shelf codes per variant (#3402/#3410, mockup-parity epic #3401), for
    * DISPLAY at the pack bench — never a publishing or availability read.
    *

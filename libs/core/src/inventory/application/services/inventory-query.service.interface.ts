@@ -23,6 +23,7 @@ import type {
   InventoryOwnerResolution,
 } from '../../domain/types/inventory-owner.types';
 import type { LocatedReservedSum } from '../../domain/ports/reservation-ledger-reader.port';
+import type { GetStockViewInput, VariantStockView } from '../../domain/types/stock-view.types';
 import type { PaginatedInventoryView } from '../types/inventory-view.types';
 
 export interface IInventoryQueryService {
@@ -56,6 +57,25 @@ export interface IInventoryQueryService {
   getAvailabilityByVariantIds(
     variantIds: readonly string[]
   ): Promise<readonly VariantAvailability[]>;
+
+  /**
+   * The stock view (#3621): one entry per requested variant, in input order -
+   * master totals over live positions, the global-scope available-to-promise
+   * with its provenance, the advisory-hold split (`heldCounted` /
+   * `heldRecordedOnly`), the live position count, every position (stale ones
+   * flagged) and a stale-sync flag against `staleSyncThresholdMs`.
+   *
+   * **Never invents a number.** If the availability or the ledger read cannot
+   * answer, the WHOLE batch is `provenance: 'unknown'` with ATP and both held
+   * figures `null` (a partial answer would mix variants computed against a
+   * ledger term with ones computed against nothing). A variant with no
+   * positions is a known `0` with provenance `'computed'`. The raw
+   * `olReservedQuantity` counter is never returned: it sums both stamps, so
+   * the figures here come from the ledger scoped by `atpEffect`.
+   *
+   * @throws Error when more than `MAX_STOCK_VIEW_VARIANT_IDS` ids are passed
+   */
+  getStockViewByVariantIds(input: GetStockViewInput): Promise<readonly VariantStockView[]>;
 
   /**
    * Presence-preserving counterpart of {@link getAvailabilityByVariantIds}

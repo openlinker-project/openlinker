@@ -7,7 +7,8 @@
  * hard-coded pattern list).
  *
  * Covers EAN-class fields, the `Stan` (condition) default, brand (Marka),
- * and producer code (Kod producenta). Each rule only fires on
+ * producer code (Kod producenta), and - for the bulk editor's per-variant
+ * scope - a parameter named after a variant attribute (#3851). Each rule only fires on
  * high-confidence matches — wrong auto-fills are worse than no auto-fill
  * (silently broken listings, hard to debug).
  *
@@ -235,6 +236,81 @@ function prefillOne(
   }
 
   return undefined;
+}
+
+/**
+ * Prefill from a variant's distinguishing attributes (#3851).
+ *
+ * A master that models variants as attribute bags (Shoper's `{ "Kolor":
+ * "czerwony" }`) already carries the value an operator would otherwise pick by
+ * hand for every sibling. A category parameter is filled when:
+ *
+ *   - its name equals an attribute key (case-insensitive, trimmed) - exactly
+ *     one key, or several that agree on the value; and
+ *   - for a dictionary: the attribute value equals exactly ONE entry's value
+ *     (case-insensitive, trimmed) -> that entry, in the form value shape the
+ *     field stores (an id, an id array for multi-choice, the entry's text for a
+ *     custom-values field);
+ *   - for a free-text `string` parameter: the trimmed value, verbatim.
+ *
+ * Everything else stays empty, same as the rules above: no substring or fuzzy
+ * match (`granatowy` never becomes `niebieski`), no numeric or ranged parameter
+ * (an attribute bag is text, and a unit mismatch would pass silently), and the
+ * EAN slot is never touched - it has its own single source (`injectEanParameter`).
+ *
+ * Returns only the parameters it could fill; the caller decides which of those
+ * it may write (never over an operator's value, never at a shared base).
+ */
+export function prefillFromVariantAttributes(
+  parameters: readonly CategoryParameter[],
+  attributes: Readonly<Record<string, string>> | null | undefined,
+): CategoryParameterFormValues {
+  const out: CategoryParameterFormValues = {};
+  if (!attributes) return out;
+  const valuesByName = new Map<string, Set<string>>();
+  for (const [key, raw] of Object.entries(attributes)) {
+    if (typeof raw !== 'string') continue;
+    const value = raw.trim();
+    if (value === '') continue;
+    const name = key.trim().toLowerCase();
+    const seen = valuesByName.get(name) ?? new Set<string>();
+    seen.add(value);
+    valuesByName.set(name, seen);
+  }
+
+  for (const param of parameters) {
+    if (isEanParameterName(param.name)) continue;
+    const candidates = valuesByName.get(param.name.trim().toLowerCase());
+    // Two keys that differ only in case/whitespace and disagree on the value
+    // cannot be resolved without guessing.
+    if (!candidates || candidates.size !== 1) continue;
+    const [value] = candidates;
+
+    if (param.type === 'dictionary') {
+      const target = value.toLowerCase();
+      const matches = (param.dictionary ?? []).filter(
+        (entry) => entry.value.toLowerCase().trim() === target,
+      );
+      if (matches.length !== 1) continue;
+      const [entry] = matches;
+      if (param.restrictions.multipleChoices) {
+        out[param.id] = [entry.id];
+      } else if (param.restrictions.customValuesEnabled) {
+        // A custom-values field stores TEXT and resolves it to an entry at submit
+        // (`categoryParametersToOfferParameters`); the entry's own spelling keeps
+        // that resolution exact.
+        out[param.id] = entry.value;
+      } else {
+        out[param.id] = entry.id;
+      }
+      continue;
+    }
+
+    if (param.type === 'string') {
+      out[param.id] = value;
+    }
+  }
+  return out;
 }
 
 /**

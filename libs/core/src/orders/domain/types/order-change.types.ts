@@ -65,9 +65,65 @@ export const OrderChangeKindValues = [
   'return.decline',
   'return.authorize',
   'return.invoice_correction',
+  'order.cancel_request',
+  'order.cancel_correction',
 ] as const;
 
 export type OrderChangeKind = (typeof OrderChangeKindValues)[number];
+
+/**
+ * The kinds that are an operator ASKING A CHANNEL to change the order (#3540):
+ * a request that stays open until the channel answers (or the TTL expires).
+ *
+ * Only these drive the derived `amending` lifecycle phase. A `return.*` change is
+ * about a return, and a correction proposal (below) is a proposal the OPERATOR
+ * confirms, not a change awaiting a channel - counting either would show a
+ * "change pending" state for something nobody is waiting on. (Named "request"
+ * because `OrderAmendmentChangeKind` already means the ingestion line-diff
+ * observation, see the file header.)
+ */
+export const OrderAmendmentRequestKindValues = [
+  'order.cancel_request',
+] as const satisfies readonly OrderChangeKind[];
+
+export type OrderAmendmentRequestKind = (typeof OrderAmendmentRequestKindValues)[number];
+
+/** Pure coercion. Edit in the same commit as {@link OrderAmendmentRequestKindValues}. */
+export function isOrderAmendmentRequestKind(value: unknown): value is OrderAmendmentRequestKind {
+  return (
+    typeof value === 'string' &&
+    (OrderAmendmentRequestKindValues as readonly string[]).includes(value)
+  );
+}
+
+/**
+ * The kinds that are an operator-confirmable CORRECTION proposal (#3540):
+ * `order.cancel_correction` (targetRef `correction:cancel:{order}:{invoice}`) is
+ * the credit a cancelled, invoiced order leaves behind. The confirm endpoint
+ * switches over this list; none of them is an amendment awaiting a channel.
+ */
+export const OrderCorrectionChangeKindValues = [
+  'order.cancel_correction',
+] as const satisfies readonly OrderChangeKind[];
+
+export type OrderCorrectionChangeKind = (typeof OrderCorrectionChangeKindValues)[number];
+
+export function isOrderCorrectionChangeKind(value: unknown): value is OrderCorrectionChangeKind {
+  return (
+    typeof value === 'string' &&
+    (OrderCorrectionChangeKindValues as readonly string[]).includes(value)
+  );
+}
+
+/** `targetRef` of the cancel request: one open cancel per order. */
+export function cancelRequestTargetRef(internalOrderId: string): string {
+  return `cancel:${internalOrderId}`;
+}
+
+/** `targetRef` of the credit proposal a cancel leaves against one issued invoice. */
+export function cancelCorrectionTargetRef(internalOrderId: string, invoiceRecordId: string): string {
+  return `correction:cancel:${internalOrderId}:${invoiceRecordId}`;
+}
 
 /**
  * Where the proposal got to.

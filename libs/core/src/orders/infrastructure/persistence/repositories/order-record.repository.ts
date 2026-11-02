@@ -29,6 +29,7 @@ import type {
 } from '../../../domain/ports/order-record-repository.port';
 import { OrderRecord } from '../../../domain/entities/order-record.entity';
 import type { OrderLineItemDraft } from '../../../domain/order-analytics-projection';
+import { carryForwardLineCosts } from '../../../domain/order-line-cost-snapshot';
 import type { OrderSyncStatus, SyncAttempt } from '../../../domain/types/order-sync.types';
 import {
   isFulfillmentRoutingSkipReason,
@@ -50,6 +51,11 @@ import type {
   OrderLifecyclePhaseSummary,
   SalesDocumentMatchedRuleWrite,
 } from '../../../domain/types/order-record.types';
+import { resolveOrderChangeOpenTtlMs } from '../../../domain/types/order-change-ttl.types';
+import {
+  OPEN_ORDER_CHANGE_STATUSES,
+  OrderAmendmentRequestKindValues,
+} from '../../../domain/types/order-change.types';
 import type { SlaState, OrderSlaSummary } from '../../../domain/types/order-sla.types';
 import type { OrderLifecyclePhase } from '@openlinker/core/order-lifecycle';
 import { isHoldReason, OrderLifecyclePhaseValues } from '@openlinker/core/order-lifecycle';
@@ -136,6 +142,7 @@ const NET_EXCLUDED_CANDIDATE_PAGE_SIZE = 500;
 const EMPTY_COLUMN_DEFAULTS: Record<string, (() => unknown) | undefined> = {
   syncStatus: () => [],
   syncAttempts: () => [],
+  hasBuyerNote: () => false,
 };
 
 /**
@@ -507,6 +514,18 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
       // `docs/engineering-standards.md § When A Paginated Total Is Expensive`
       // and needs no second-stage treatment.
       qb.andWhere(filters.packed ? 'rec."packedAt" IS NOT NULL' : 'rec."packedAt" IS NULL');
+    }
+
+    if (filters.hasBuyerNote !== undefined) {
+      // #3538 - denormalized boolean, indexed, so the list total never expands
+      // the snapshot JSONB. `true` also requires `recordStatus = 'ready'` (N-20):
+      // an order that went back to `awaiting_mapping` keeps the flag but is not
+      // one an operator can work on. `false` is deliberately unchanged.
+      qb.andWhere(
+        filters.hasBuyerNote
+          ? `rec."hasBuyerNote" = true AND rec."recordStatus" = 'ready'`
+          : 'rec."hasBuyerNote" = false'
+      );
     }
 
     if (filters.search !== undefined) {
@@ -2254,9 +2273,13 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
     //    `ready` there and `held` here. Unreachable while `OrderHoldService` is
     //    the only writer, and the reconcile clears such a value.
     held: `rec."activeHoldReason" IS NOT NULL`,
-    // 7. An OL-authored intention in flight; no persisted source until Wave 2
-    //    widens `order_changes.kind`.
-    amending: 'FALSE',
+    // 7. An OL-authored intention in flight (#3540): an OPEN `order_changes` row
+    //    of an order-amending kind. `return.*` kinds are about a return, not the
+    //    order, so they are excluded by prefix. The status list and the prefix
+    //    are the same facts as `OPEN_ORDER_CHANGE_STATUSES` and
+    //    `OrderAmendmentRequestKindValues`, rendered from them rather than
+    //    restated.
+    amending: `EXISTS (SELECT 1 FROM order_changes oc WHERE oc."internalOrderId" = rec."internalOrderId" AND oc."status" IN (${OPEN_ORDER_CHANGE_STATUSES.map((s) => `'${s}'`).join(', ')}) AND oc."kind" IN (${OrderAmendmentRequestKindValues.map((k) => `'${k}'`).join(', ')}) AND oc."requestedAt" > now() - (CAST(:openChangeTtlMs AS bigint) * interval '1 millisecond'))`,
     // 8. OL's own ingest incompleteness.
     blocked: `rec."recordStatus" IN ('awaiting_mapping','source_deleted')`,
     // 9. Residual — always matches, which is what makes the `CASE` total.
@@ -2343,6 +2366,7 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
   ): void {
     qb.andWhere(`${OrderRecordRepository.LIFECYCLE_PHASE_EXPR} = :lifecyclePhase`, {
       lifecyclePhase,
+      openChangeTtlMs: resolveOrderChangeOpenTtlMs(),
     });
   }
 
@@ -2386,6 +2410,9 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
       );
     }
 
+    // The `amending` arm's TTL bound (#3540): an open change older than the TTL is
+    // not open, matching `OrderChangeRepository.findOrderIdsWithOpenChanges`.
+    qb.setParameter('openChangeTtlMs', resolveOrderChangeOpenTtlMs());
     OrderRecordRepository.applySummaryScope(qb, filters);
 
     const raw = await qb.getRawOne<Record<string, string>>();
@@ -2788,6 +2815,51 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
       { packedAt, packedByUserId, updatedAt: new Date() }
     );
     return (result.affected ?? 0) > 0;
+  }
+
+  /**
+   * Mark this order's buyer note read (#3538). Fill-once, in the
+   * {@link markPacked} shape: `buyerNoteReadAt: IsNull()` in the WHERE makes the
+   * first mark win and a replay affect zero rows, and both columns move in one
+   * statement so the instant and the actor are never split across two callers.
+   */
+  async markBuyerNoteRead(
+    internalOrderId: string,
+    readAt: Date,
+    readByUserId: string
+  ): Promise<boolean> {
+    const result = await this.repository.update(
+      { internalOrderId, buyerNoteReadAt: IsNull() },
+      { buyerNoteReadAt: readAt, buyerNoteReadByUserId: readByUserId }
+    );
+    return (result.affected ?? 0) > 0;
+  }
+
+  /**
+   * Count the OTHER orders a customer placed before `before` (#3538, D7). Feeds
+   * the derived `buyerOrderCount`; excludes the order being ingested so a
+   * re-ingestion yields the same number.
+   */
+  async countEarlierOrdersForCustomer(
+    customerId: string,
+    excludeInternalOrderId: string,
+    before: Date
+  ): Promise<number> {
+    return this.repository
+      .createQueryBuilder('rec')
+      .where('rec.customerId = :customerId', { customerId })
+      .andWhere('rec.internalOrderId != :excludeInternalOrderId', { excludeInternalOrderId })
+      // N-31: a cancelled order is not an earlier purchase; equal instants
+      // tie-break on the internal id so exactly one of two same-instant orders
+      // counts the other.
+      .andWhere('rec."cancelledAt" IS NULL')
+      .andWhere(
+        `(COALESCE(rec."placedAt", rec."createdAt") < :before
+          OR (COALESCE(rec."placedAt", rec."createdAt") = :before
+              AND rec."internalOrderId" < :excludeInternalOrderId))`,
+        { before, excludeInternalOrderId }
+      )
+      .getCount();
   }
 
   /**
@@ -3223,6 +3295,55 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
       // Ready-path only, so an `awaiting_mapping` re-ingestion cannot null a
       // value a previous ready-path write settled.
       add('paymentMethod', entity.paymentMethod ?? null);
+      // #3538, ready-path only for the same reason as `paymentMethod`. The text
+      // is already PII-gated by the caller (null under hash-only mode) while
+      // `hasBuyerNote` is always written. `buyerNoteReadAt` /
+      // `buyerNoteReadByUserId` are deliberately NOT here: sole writer
+      // `markBuyerNoteRead`, so a re-ingestion cannot un-read a note.
+      //
+      // B-5: an UNKNOWN incoming note (column NULL and no note flag - the source
+      // could not read the field) must keep what is stored, otherwise a poll
+      // that failed to read the note wipes a stored note, its flag and its
+      // filter membership. An asserted-none ('') or a text still overwrites.
+      const incomingNoteUnknown = `(EXCLUDED."buyerNote" IS NULL AND EXCLUDED."hasBuyerNote" = false)`;
+      add('buyerNote', entity.buyerNote ?? null, {
+        update: `"buyerNote" = CASE WHEN ${incomingNoteUnknown}
+           THEN "order_records"."buyerNote" ELSE EXCLUDED."buyerNote" END`,
+      });
+      add('hasBuyerNote', entity.hasBuyerNote ?? false, {
+        update: `"hasBuyerNote" = CASE WHEN ${incomingNoteUnknown}
+           THEN "order_records"."hasBuyerNote" ELSE EXCLUDED."hasBuyerNote" END`,
+      });
+      // N-22: a DIFFERENT note text is a note the operator has not read. The
+      // read marker is still not part of the write set (`markBuyerNoteRead` is
+      // its sole setter); only this reset clause touches it, and only when a
+      // real text replaces a different stored one, or when the source positively
+      // reports NO note (N-23: the note is cleared, so a read marker on it would
+      // outlive what it acknowledged). Bench acknowledgements live
+      // on the fulfilment work and are untouched.
+      for (const column of ['buyerNoteReadAt', 'buyerNoteReadByUserId']) {
+        updateAssignments.push(`"${column}" = CASE
+           WHEN EXCLUDED."buyerNote" = ''
+             THEN NULL
+           WHEN EXCLUDED."buyerNote" IS NOT NULL AND EXCLUDED."buyerNote" <> ''
+             AND EXCLUDED."buyerNote" IS DISTINCT FROM "order_records"."buyerNote"
+             THEN NULL ELSE "order_records"."${column}" END`);
+      }
+      // N-22: bench acknowledgements are not reset by a changed text, so the
+      // instant of the change is kept for the Activity timeline. Only a text
+      // replacing a different NON-EMPTY stored one counts: a note first
+      // arriving (or an unknown incoming read, B-5) is not a change, and the
+      // value is never written from the entity.
+      add('buyerNoteChangedAt', null, {
+        update: `"buyerNoteChangedAt" = CASE
+           WHEN EXCLUDED."buyerNote" IS NOT NULL
+             AND "order_records"."buyerNote" IS NOT NULL AND "order_records"."buyerNote" <> ''
+             AND EXCLUDED."buyerNote" IS DISTINCT FROM "order_records"."buyerNote"
+             THEN now() ELSE "order_records"."buyerNoteChangedAt" END`,
+      });
+      add('shippingCountry', entity.shippingCountry ?? null);
+      add('billingCountry', entity.billingCountry ?? null);
+      add('buyerOrderCount', entity.buyerOrderCount ?? null);
     }
 
     const sql = `INSERT INTO "order_records" (
@@ -3330,6 +3451,13 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
     // `awaiting_mapping` re-ingestion, which would write `null` over a value a
     // previous ready-path ingestion had settled.
     entity.paymentMethod = orderRecord.paymentMethod;
+    // #3538 - the buyer-note columns and the derived country / order-count
+    // scalars, stamped here and not in the shared `toOrm` for the same reason.
+    entity.buyerNote = orderRecord.buyerNote;
+    entity.hasBuyerNote = orderRecord.hasBuyerNote;
+    entity.shippingCountry = orderRecord.shippingCountry;
+    entity.billingCountry = orderRecord.billingCountry;
+    entity.buyerOrderCount = orderRecord.buyerOrderCount;
     const { sql, params, writeSet } = this.buildFrozenAttributionUpsert(entity, true);
     const savedRecord = await this.dataSource.transaction(async (manager: EntityManager) => {
       // Same statement as `upsert`, one parameter apart (#2282): a full-object
@@ -3340,11 +3468,28 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
         throw new OrderRecordNotFoundException(orderRecord.internalOrderId);
       }
       const saved = this.fromRawRow(rows[0] as Record<string, unknown>, writeSet);
+      // #3588 (D27): the cost snapshot must survive this delete-then-reinsert.
+      // Read the prior rows AFTER the upsert above (its row lock serialises
+      // concurrent re-ingestion of this order) and BEFORE the delete.
+      const priorRows = await manager.find(OrderLineItemOrmEntity, {
+        where: { orderRecordId: orderRecord.internalOrderId },
+      });
+      const carried = carryForwardLineCosts(
+        priorRows.map((row) => ({
+          lineNumber: row.lineNumber,
+          productId: row.productId,
+          variantId: row.variantId,
+          costState: row.costState,
+          unitCostNet: row.unitCostNet,
+          unitCostCurrency: row.unitCostCurrency,
+        })),
+        lineItems
+      );
       await manager.delete(OrderLineItemOrmEntity, { orderRecordId: orderRecord.internalOrderId });
-      if (lineItems.length > 0) {
+      if (carried.length > 0) {
         await manager.save(
           OrderLineItemOrmEntity,
-          lineItems.map((item) => this.lineItemToOrm(orderRecord.internalOrderId, item))
+          carried.map((item) => this.lineItemToOrm(orderRecord.internalOrderId, item))
         );
       }
       return saved;
@@ -3558,7 +3703,15 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
       isDestinationRoutingBlockReason(entity.destinationRoutingBlockReason)
         ? entity.destinationRoutingBlockReason
         : null,
-      entity.destinationRoutingBlockDetail ?? null
+      entity.destinationRoutingBlockDetail ?? null,
+      entity.buyerNote ?? null,
+      entity.hasBuyerNote ?? false,
+      entity.buyerNoteReadAt ?? null,
+      entity.buyerNoteReadByUserId ?? null,
+      entity.shippingCountry ?? null,
+      entity.billingCountry ?? null,
+      entity.buyerOrderCount ?? null,
+      entity.buyerNoteChangedAt ?? null
     );
   }
 
@@ -3637,6 +3790,12 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
    *   null a peer's reason on every re-poll and leave the order reading `ready`
    *   while a hold is open. **It is excluded from `upsert()`'s raw column tuple
    *   too** - the `toOrm` exclusion alone is only half the job there.
+   * - `buyerNoteChangedAt` (N-22) - written only by the upsert's CASE clause.
+   * - `buyerNoteReadAt` / `buyerNoteReadByUserId` (#3538) - sole writer
+   *   {@link markBuyerNoteRead} (guarded fill-once). Ingestion carries no read
+   *   knowledge, so round-tripping them would un-read the note on every re-poll.
+   *   The other buyer-note columns (`buyerNote`, `hasBuyerNote`, the two
+   *   countries, `buyerOrderCount`) are ready-path-only like `paymentMethod`.
    * - `lastAmendedAt` / `lastAmendmentChanges` (#2283) - sole writer
    *   {@link recordAmendment}. The sharpest case of the shared reason: the write
    *   is triggered BY an ingestion, from a diff taken against the snapshot this
@@ -3729,6 +3888,10 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
     entity.taxRate = item.taxRate;
     entity.taxSource = item.taxSource;
     entity.taxRateReadAt = item.taxRateReadAt;
+    // #3588 - the snapshot, already reconciled with any prior row.
+    entity.costState = item.cost.costState;
+    entity.unitCostNet = item.cost.unitCostNet;
+    entity.unitCostCurrency = item.cost.unitCostCurrency;
     return entity;
   }
 }

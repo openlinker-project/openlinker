@@ -159,6 +159,19 @@ export interface BenchWorkView {
    * field is what makes the decision reversible on the reading side alone.
    */
   readonly completedAt: string | null;
+  /**
+   * Whether the order has a buyer note (#3538, D12). A boolean ONLY: the rail
+   * says "Buyer note" and the text itself is read through the parcel view, so
+   * the list stays as narrow as before. Under `OL_STORE_PII=false` the text is
+   * not stored but this is still true, which is the same reading the parcel
+   * acknowledge route uses.
+   */
+  readonly hasBuyerNote: boolean;
+  /**
+   * When THIS parcel's buyer note was first acknowledged at the bench, or
+   * `null` (#3538). Lets the rail say "read" without opening the box.
+   */
+  readonly buyerNoteAcknowledgedAt: string | null;
 }
 
 /**

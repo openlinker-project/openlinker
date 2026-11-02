@@ -7,10 +7,15 @@
  * @module apps/api/src/orders
  */
 import { Module } from '@nestjs/common';
-import { OrdersModule as CoreOrdersModule } from '@openlinker/core/orders';
+import {
+  OrderChangesModule as CoreOrderChangesModule,
+  OrdersModule as CoreOrdersModule,
+} from '@openlinker/core/orders';
+import { FiscalizationModule as CoreFiscalizationModule } from '@openlinker/core/fiscalization';
+import { FulfillmentModule as CoreFulfillmentModule } from '@openlinker/core/fulfillment';
+import { AnalyticsModule as CoreAnalyticsModule } from '@openlinker/core/analytics';
 import { InvoicingModule as CoreInvoicingModule } from '@openlinker/core/invoicing';
 import { MappingsModule as CoreMappingsModule } from '@openlinker/core/mappings';
-import { FulfillmentModule as CoreFulfillmentModule } from '@openlinker/core/fulfillment';
 import { InventoryModule as CoreInventoryModule } from '@openlinker/core/inventory';
 import { ShippingModule as CoreShippingModule } from '@openlinker/core/shipping';
 import { ReturnsModule as CoreReturnsModule } from '@openlinker/core/returns';
@@ -22,11 +27,14 @@ import { RefundsController } from './http/refunds.controller';
 import { SalesDocumentsController } from './http/sales-documents.controller';
 import { OrderColumnPresetsController } from './http/order-column-presets.controller';
 import { OrderNotesController } from './http/order-notes.controller';
+import { OrderLineCostsController } from './http/order-line-costs.controller';
 import { OrderTagsController } from './http/order-tags.controller';
 import { OrderTagAssignmentsController } from './http/order-tag-assignments.controller';
 import { OrderExportsController } from './http/order-exports.controller';
 import { SourceFulfillmentStatusService } from './application/services/source-fulfillment-status.service';
 import { SOURCE_FULFILLMENT_STATUS_SERVICE_TOKEN } from './application/interfaces/source-fulfillment-status.service.interface';
+import { OrderCancellationService } from './application/services/order-cancellation.service';
+import { ORDER_CANCELLATION_SERVICE_TOKEN } from './application/interfaces/order-cancellation.service.interface';
 
 @Module({
   // CoreMappingsModule (#1791) provides FULFILLMENT_ROUTING_SERVICE_TOKEN —
@@ -49,15 +57,22 @@ import { SOURCE_FULFILLMENT_STATUS_SERVICE_TOKEN } from './application/interface
   // CoreIntegrationsModule + CoreIdentifierMappingModule (#3365) supply the two
   // seams `SourceFulfillmentStatusService` composes: resolving the order's own
   // source adapter, and resolving the source-native order id to ask about.
+  //
+  // #3540 - the operator cancel composes `orders`, `shipping`, `invoicing`,
+  // `fiscalization` and `fulfillment`. It is composed HERE because `shipping`
+  // already imports `orders`, so core's own orders module cannot import it back.
+  // CoreOrderChangesModule is the ADR-044 leaf module that provides
+  // ORDER_CHANGE_SERVICE_TOKEN.
   imports: [
     CoreOrdersModule,
+    CoreOrderChangesModule,
+    CoreFiscalizationModule,
+    CoreFulfillmentModule,
+    // #3588: ANALYTICS_DISPLAY_SETTINGS_SERVICE_TOKEN - the net-sales era setting the line-cost read honours.
+    CoreAnalyticsModule,
     CoreInvoicingModule,
     CoreMappingsModule,
     CoreInventoryModule,
-    // CoreFulfillmentModule (#3482) provides FULFILLMENT_WORK_QUERY_SERVICE_TOKEN —
-    // the list row's packing stage for an order OpenLinker handles itself. Composed
-    // here, in the interface layer, like the shortfall and open-return projections.
-    CoreFulfillmentModule,
     CoreShippingModule,
     CoreReturnsModule,
     // CoreSyncModule (#3534) provides JOB_ENQUEUE_TOKEN — the export
@@ -82,6 +97,7 @@ import { SOURCE_FULFILLMENT_STATUS_SERVICE_TOKEN } from './application/interface
     RefundsController,
     SalesDocumentsController,
     OrderNotesController,
+    OrderLineCostsController,
     OrderTagsController,
     OrderTagAssignmentsController,
   ],
@@ -90,6 +106,8 @@ import { SOURCE_FULFILLMENT_STATUS_SERVICE_TOKEN } from './application/interface
   // `integrations` adapter, and doing that inside core would add an
   // `orders -> integrations` runtime edge for one read surface.
   providers: [
+    OrderCancellationService,
+    { provide: ORDER_CANCELLATION_SERVICE_TOKEN, useExisting: OrderCancellationService },
     SourceFulfillmentStatusService,
     {
       provide: SOURCE_FULFILLMENT_STATUS_SERVICE_TOKEN,

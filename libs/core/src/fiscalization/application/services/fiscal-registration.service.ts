@@ -63,6 +63,7 @@ import { OrderAlreadyHasInvoiceException } from '../../domain/exceptions/order-a
 import { FiscalRegistrationContendedException } from '../../domain/exceptions/fiscal-registration-contended.exception';
 import { FiscalReconcileCheckFailedException } from '../../domain/exceptions/fiscal-reconcile-check-failed.exception';
 import { FISCAL_REGISTRATION_RECORD_REPOSITORY_TOKEN } from '../../fiscalization.tokens';
+import { readFiscalProviderFailureDetails } from '../../domain/types/fiscal-provider-failure-details.types';
 import {
   fiscalRegistrationIdempotencyKey,
   type FiscalRegistrationRequestAccepted,
@@ -623,6 +624,7 @@ export class FiscalRegistrationService implements IFiscalRegistrationService {
       failureMode: null,
       failureReason: null,
       errorMessage: null,
+      providerFailureDetails: null,
       leaseExpiresAt: null,
     };
     const resolved = await this.repo.updateOutcome(recordId, patch);
@@ -823,6 +825,9 @@ export class FiscalRegistrationService implements IFiscalRegistrationService {
         failureMode,
         failureReason: this.deriveFailureReason(error, failureMode),
         errorMessage: this.sanitizeError(error),
+        // The identifiers an operator quotes to the provider's support (#3843).
+        // Read for BOTH modes: an in-doubt answer can still name the attempt.
+        providerFailureDetails: readFiscalProviderFailureDetails(error),
         // The attempt is over either way; release the lease. The ROW is what
         // carries the in-doubt evidence forward - it is never deleted.
         leaseExpiresAt: null,
@@ -853,6 +858,7 @@ export class FiscalRegistrationService implements IFiscalRegistrationService {
       failureMode: null,
       failureReason: null,
       errorMessage: null,
+      providerFailureDetails: null,
       leaseExpiresAt: null,
     };
     return this.repo.updateOutcome(recordId, patch);

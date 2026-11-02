@@ -142,6 +142,12 @@ test.describe('bulk wizard category blockers (#2240)', () => {
     await captureState(page, testInfo, 'cause-no-catalog-match', true);
   });
 
+  test('a variant whose stock was never synced reads "stock not synced"', async ({ page }) => {
+    await openReview(page, { ...READY_CONNECTION, unsyncedVariantIds: ['ol_variant_2240a'] });
+
+    await expect(chips(page, 'stock not synced')).toHaveCount(1);
+  });
+
   test('a variant with no barcode reads "no barcode" and is told where to add one', async ({
     page,
   }, testInfo) => {
@@ -482,9 +488,7 @@ test.describe('bulk wizard category blockers (#2240)', () => {
     await captureState(page, testInfo, 'batch-seller-details-missing', true);
   });
 
-  test('an incomplete safety-information type locks the submit too', async ({
-    page,
-  }, testInfo) => {
+  test('an incomplete safety-information type locks the submit too', async ({ page }, testInfo) => {
     // The mirror used to accept any object under `safetyInformation`, so a
     // connection carrying a description and no `type` read green and had every
     // offer rejected - the drift a mirror falls into (#2240 review).
@@ -514,7 +518,9 @@ test.describe('bulk wizard category blockers (#2240)', () => {
     await captureState(page, testInfo, 'batch-seller-details-complete', true);
   });
 
-  test('a partially filled ship-from location still locks the submit', async ({ page }, testInfo) => {
+  test('a partially filled ship-from location still locks the submit', async ({
+    page,
+  }, testInfo) => {
     // The adapter's gate wants all four location fields, so three of four is a
     // rejection at create time, not something to soften here.
     await openReview(page, {
@@ -681,9 +687,7 @@ test.describe('bulk wizard category blockers (#2240)', () => {
     const submit = await stubBulkOfferSubmit(page);
 
     await openEditorFromChip(page, 'invalid barcode');
-    await page
-      .getByRole('checkbox', { name: /I confirm this EAN is correct/i })
-      .check();
+    await page.getByRole('checkbox', { name: /I confirm this EAN is correct/i }).check();
     await captureState(page, testInfo, 'invalid-barcode-override-checked');
     await page.getByRole('dialog').getByRole('button', { name: 'Save all' }).click();
     await expect(page.getByRole('dialog')).toHaveCount(0);

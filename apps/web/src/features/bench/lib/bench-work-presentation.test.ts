@@ -35,6 +35,8 @@ function work(over: Partial<BenchWork> = {}): BenchWork {
     assignmentState: 'unassigned',
     claimable: true,
     completedAt: null,
+    hasBuyerNote: false,
+    buyerNoteAcknowledgedAt: null,
     ...over,
   };
 }

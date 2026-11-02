@@ -752,6 +752,29 @@ export interface OrderRecordRepositoryPort {
   ): Promise<boolean>;
 
   /**
+   * Mark this order's buyer note read (#3538) - writes `buyerNoteReadAt` +
+   * `buyerNoteReadByUserId` and nothing else, guarded on `buyerNoteReadAt IS
+   * NULL` so the FIRST mark wins and a replay is a no-op. `true` when this call
+   * wrote, `false` for an already-read order or an absent row (never throws;
+   * the caller re-reads to tell them apart, as with {@link markPacked}).
+   */
+  markBuyerNoteRead(
+    internalOrderId: string,
+    readAt: Date,
+    readByUserId: string
+  ): Promise<boolean>;
+
+  /**
+   * Count the OTHER orders `customerId` placed before `before` (#3538, D7),
+   * excluding `excludeInternalOrderId`. Backs the derived `buyerOrderCount`.
+   */
+  countEarlierOrdersForCustomer(
+    customerId: string,
+    excludeInternalOrderId: string,
+    before: Date
+  ): Promise<number>;
+
+  /**
    * Clear this order's packed fact (#2287) — nulls `packedAt` +
    * `packedByUserId` together, guarded on `packedAt IS NOT NULL` so unmarking
    * an already-unpacked order affects no row and does not bump `updatedAt`.

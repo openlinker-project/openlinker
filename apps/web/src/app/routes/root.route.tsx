@@ -28,6 +28,7 @@ import { customersRoute } from './customers.route';
 import { devUiRoute } from './dev-ui.route';
 import { insightsRoute } from './insights.route';
 import { inventoryLocationsRoute } from './inventory-locations.route';
+import { inventoryMovementsRoute } from './inventory-movements.route';
 import { orderTagsSettingsRoute } from './order-tags-settings.route';
 import { listingsRoute } from './listings.route';
 import { aiProviderSettingsRoute } from './ai-provider-settings.route';
@@ -73,6 +74,7 @@ export function buildCoreChildren(omsRoutingUiEnabled: boolean): RouteObject[] {
     productsRoute,
     cursorsRoute,
     duplicatePositionsRoute,
+    inventoryMovementsRoute,
     customersRoute,
     listingsRoute,
     shipmentsRoute,

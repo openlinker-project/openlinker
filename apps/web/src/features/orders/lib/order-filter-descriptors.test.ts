@@ -45,6 +45,7 @@ describe('ORDER_FILTER_DESCRIPTORS', () => {
         'due',
         'fulfillmentState',
         'health',
+        'hasBuyerNote',
         'hold',
         'invoicing',
         'openReturn',
@@ -90,6 +91,7 @@ describe('ORDER_FILTER_DESCRIPTORS', () => {
       attention: 'attention=true',
       taxRateConflict: 'taxRate=conflict',
       openReturn: 'openReturn=true',
+      hasBuyerNote: 'hasBuyerNote=true',
       tag: 'tag=tag-vip',
       untagged: 'untagged=true',
     };
@@ -131,7 +133,7 @@ describe('toOrderQueryFilters', () => {
   });
 
   it('should send present-only toggles as true or omit them when off', () => {
-    const on = toOrderQueryFilters(parse('invoicing=blocked&routing=blocked&waiting=true&packBench=true&taxRate=conflict&attention=true&openReturn=true'), {
+    const on = toOrderQueryFilters(parse('invoicing=blocked&routing=blocked&waiting=true&packBench=true&taxRate=conflict&attention=true&openReturn=true&hasBuyerNote=true'), {
       dueBefore: undefined,
       search: '',
     });
@@ -143,6 +145,7 @@ describe('toOrderQueryFilters', () => {
       taxRateConflict: true,
       attention: true,
       openReturn: true,
+      hasBuyerNote: true,
     });
     const off = toOrderQueryFilters(parse(''), { dueBefore: undefined, search: '' });
     expect(off.salesDocumentBlocked).toBeUndefined();

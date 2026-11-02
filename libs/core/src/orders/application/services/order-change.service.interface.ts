@@ -35,6 +35,17 @@ export interface OpenOrderChangeResult {
   expiredStale: boolean;
 }
 
+/** One row of {@link IOrderChangeService.listOperatorChangesByOrder}. */
+export interface OrderChangeListItem {
+  change: OrderChange;
+  /**
+   * Whether the proposal is STILL open: a `requested` row past the TTL reads
+   * `expired` in effect (expiry is lazy), and a reader that trusted `status`
+   * alone would show a change nobody will answer as pending for ever.
+   */
+  open: boolean;
+}
+
 export interface IOrderChangeService {
   /**
    * Open a proposal, or return the one already holding
@@ -75,8 +86,13 @@ export interface IOrderChangeService {
    * timeout out of it. Releasing the target's slot immediately is the point:
    * without it a typo would hold the slot for a full TTL and block the
    * corrected retry.
+   *
+   * The optional `reason` is OpenLinker's own machine code for why it gave up
+   * (e.g. `label-not-voidable`), stored in `declinedReason` so a surface can tell
+   * an abandoned request from one that merely timed out. It is never the
+   * authority's words; the status stays `expired`.
    */
-  abandon(id: string): Promise<boolean>;
+  abandon(id: string, reason?: string): Promise<boolean>;
 
   /**
    * Claim the right to APPLY a confirmed change.
@@ -85,6 +101,26 @@ export interface IOrderChangeService {
    * double-confirm, and never one of the claim-then-release shipping claims.
    */
   claimApplied(id: string): Promise<boolean>;
+
+  /** Every open proposal against one order (#3540). */
+  findOpenByOrder(internalOrderId: string): Promise<OrderChange[]>;
+
+  /**
+   * Which of these orders hold an open proposal that AMENDS THE ORDER ITSELF
+   * (an `order.*` kind, never a `return.*` one) — the `hasOpenAmendment` input of
+   * the derived lifecycle phase (#3540). One query for a whole page.
+   */
+  findOrderIdsWithOpenAmendment(internalOrderIds: readonly string[]): Promise<Set<string>>;
+
+  /**
+   * Every `order.*` proposal against one order (cancel requests and the credit
+   * proposals they leave), newest first (#3540). `return.*` kinds are excluded:
+   * they belong to the returns surface.
+   */
+  listOperatorChangesByOrder(internalOrderId: string): Promise<OrderChangeListItem[]>;
+
+  /** One proposal by id, any status (#3540). */
+  findById(id: string): Promise<OrderChange | null>;
 
   /** The most recent proposal of one kind against one target, open or terminal. */
   findLatestByTarget(

@@ -55,6 +55,10 @@ describe('OrderChangeService', () => {
     repository = {
       findOpenByTarget: jest.fn(),
       findLatestByTarget: jest.fn(),
+      findOpenByOrder: jest.fn(),
+      findOrderIdsWithOpenChanges: jest.fn(),
+      findById: jest.fn(),
+      listByOrder: jest.fn(),
       insertRequested: jest.fn(),
       confirm: jest.fn(),
       decline: jest.fn(),
@@ -192,5 +196,131 @@ describe('OrderChangeService', () => {
 
     expect(repository.expire).toHaveBeenCalledWith('change-1', expect.any(Date));
     expect(repository.decline).not.toHaveBeenCalled();
+  });
+
+  it('should record an abandon reason as declinedReason on the expired row (abandon reason)', async () => {
+    repository.expire.mockResolvedValue(true);
+
+    await service.abandon('change-1', 'label-not-voidable');
+
+    expect(repository.expire).toHaveBeenCalledWith('change-1', expect.any(Date), 'label-not-voidable');
+  });
+
+  describe('findOrderIdsWithOpenAmendment (#3540)', () => {
+    it('should ask the repository for amendment REQUESTS only, never return.* kinds or correction proposals', async () => {
+      repository.findOrderIdsWithOpenChanges.mockResolvedValue(new Set(['order-a']));
+
+      const result = await service.findOrderIdsWithOpenAmendment(['order-a', 'order-b']);
+
+      expect(result).toEqual(new Set(['order-a']));
+      expect(repository.findOrderIdsWithOpenChanges).toHaveBeenCalledWith(
+        ['order-a', 'order-b'],
+        ['order.cancel_request'],
+        expect.any(Date)
+      );
+    });
+  });
+
+  describe('findOpenByOrder (#3540)', () => {
+    it('should pass through to the repository', async () => {
+      repository.findOpenByOrder.mockResolvedValue([buildChange({})]);
+
+      const result = await service.findOpenByOrder(ORDER_ID);
+
+      expect(result).toHaveLength(1);
+      expect(repository.findOpenByOrder).toHaveBeenCalledWith(ORDER_ID, expect.any(Date));
+    });
+
+    it('should bound openness by the SAME clamped TTL the lazy expiry uses', async () => {
+      process.env.OL_ORDER_CHANGE_OPEN_TTL_MS = '3600000';
+      repository.findOpenByOrder.mockResolvedValue([]);
+      const before = Date.now();
+
+      await service.findOpenByOrder(ORDER_ID);
+
+      const openSince = repository.findOpenByOrder.mock.calls[0][1];
+      expect(openSince.getTime()).toBeGreaterThanOrEqual(before - 3_600_000);
+      expect(openSince.getTime()).toBeLessThanOrEqual(Date.now() - 3_600_000);
+    });
+
+    it('should clamp an absurd TTL rather than treat everything as open for ever', async () => {
+      process.env.OL_ORDER_CHANGE_OPEN_TTL_MS = '999999999999';
+      repository.findOpenByOrder.mockResolvedValue([]);
+
+      await service.findOpenByOrder(ORDER_ID);
+
+      const openSince = repository.findOpenByOrder.mock.calls[0][1];
+      expect(Date.now() - openSince.getTime()).toBeLessThanOrEqual(24 * 60 * 60 * 1000 + 1000);
+    });
+  });
+
+  describe('listOperatorChangesByOrder (#3540)', () => {
+    it('should ask for order.* kinds only, never return.* ones', async () => {
+      repository.listByOrder.mockResolvedValue([]);
+
+      await service.listOperatorChangesByOrder(ORDER_ID);
+
+      expect(repository.listByOrder).toHaveBeenCalledWith(ORDER_ID, [
+        'order.cancel_request',
+        'order.cancel_correction',
+      ]);
+    });
+
+    it('should report a fresh requested row open and a stale one not open', async () => {
+      const stale = buildChange({ id: 'old', requestedAt: new Date(Date.now() - 48 * 3_600_000) });
+      const fresh = buildChange({ id: 'new', requestedAt: new Date() });
+      repository.listByOrder.mockResolvedValue([fresh, stale]);
+
+      const result = await service.listOperatorChangesByOrder(ORDER_ID);
+
+      expect(result.map((item) => [item.change.id, item.open])).toEqual([
+        ['new', true],
+        ['old', false],
+      ]);
+    });
+
+    it('should keep an old correction proposal open until confirmed or abandoned (B-17)', async () => {
+      const old = new Date(Date.now() - 48 * 3_600_000);
+      const correction = new OrderChange(
+        'corr', ORDER_ID, 'order.cancel_correction', 'correction:cancel:o:i', 'requested',
+        null, 'user-1', old, null, null, null, null, old, old
+      );
+      repository.listByOrder.mockResolvedValue([correction]);
+
+      const [item] = await service.listOperatorChangesByOrder(ORDER_ID);
+
+      expect(item.open).toBe(true);
+    });
+
+    it('should reuse an old open correction proposal instead of expiring it (B-17)', async () => {
+      const old = new Date(Date.now() - 48 * 3_600_000);
+      const correction = new OrderChange(
+        'corr', ORDER_ID, 'order.cancel_correction', 'correction:cancel:o:i', 'requested',
+        null, 'user-1', old, null, null, null, null, old, old
+      );
+      repository.findOpenByTarget.mockResolvedValue(correction);
+
+      const result = await service.openOrReuse({
+        internalOrderId: ORDER_ID,
+        kind: 'order.cancel_correction',
+        targetRef: 'correction:cancel:o:i',
+        payload: null,
+        requestedBy: 'user-1',
+        requestedAt: new Date(),
+      });
+
+      expect(result.opened).toBe(false);
+      expect(repository.expire).not.toHaveBeenCalled();
+    });
+
+    it('should never report a terminal row open', async () => {
+      repository.listByOrder.mockResolvedValue([
+        buildChange({ status: 'confirmed', requestedAt: new Date() }),
+      ]);
+
+      const [item] = await service.listOperatorChangesByOrder(ORDER_ID);
+
+      expect(item.open).toBe(false);
+    });
   });
 });

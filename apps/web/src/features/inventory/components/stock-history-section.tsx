@@ -1,0 +1,219 @@
+/**
+ * StockHistorySection (#3568, M7 state `variant-history`)
+ *
+ * The product-detail "Stock history" section: scoped to one variant chosen in a
+ * select, with a summary strip, the movement table and a link to the global
+ * page pre-filtered to the SKU. Read-only for every role that can see the page.
+ *
+ * "Available now" is the sum of the variant's inventory rows; "Reserved" is the
+ * sum of its held reservations (a reservation never lowers the stock). "Last
+ * change" is the newest movement (any status, never a reservation) from its own query.
+ *
+ * The variant can be chosen from outside (`selectedVariantId`): the variants
+ * table's "Stock history" link points this section at the row it was clicked on.
+ *
+ * @module apps/web/src/features/inventory/components
+ */
+import { useState, type ReactElement } from 'react';
+import { Link } from 'react-router-dom';
+import { ApiError } from '../../../shared/api/api-error';
+import { usePermission } from '../../../shared/auth/use-permission';
+import { Select } from '../../../shared/ui/select';
+import { ErrorState, LoadingState } from '../../../shared/ui/feedback-state';
+import { Button } from '../../../shared/ui/button';
+import { TimeDisplay } from '../../../shared/ui/time-display';
+import { useInventoryQuery } from '../hooks/use-inventory-query';
+import { useInventoryMovementsQuery } from '../hooks/use-inventory-movements-query';
+import { useConnectionNames } from '../hooks/use-connection-names';
+import { presentMovementStatus } from '../lib/stock-movement-copy';
+import { StockMovementsTable } from './stock-movements-table';
+
+export interface StockHistoryVariant {
+  id: string;
+  sku: string | null;
+  attributes: Record<string, string> | null;
+}
+
+export interface StockHistorySectionProps {
+  productId: string;
+  productName?: string | null;
+  variants: readonly StockHistoryVariant[];
+  /** Variant chosen from outside the section; the select still works and reports through the callback. */
+  selectedVariantId?: string | null;
+  onSelectedVariantChange?: (variantId: string) => void;
+}
+
+const HISTORY_PAGE_SIZE = 10;
+const PROMISED_SCAN_LIMIT = 100;
+
+function variantLabel(variant: StockHistoryVariant): string {
+  const attributes = Object.values(variant.attributes ?? {}).join(', ');
+  const parts = [attributes, variant.sku].filter((part): part is string => !!part);
+  return parts.length > 0 ? parts.join(' — ') : variant.id;
+}
+
+export function StockHistorySection({
+  productId,
+  productName,
+  variants,
+  selectedVariantId = null,
+  onSelectedVariantChange,
+}: StockHistorySectionProps): ReactElement | null {
+  const [localSelectedId, setLocalSelectedId] = useState<string | null>(null);
+  const selectedId = selectedVariantId ?? localSelectedId;
+  const variant = variants.find((v) => v.id === selectedId) ?? variants[0];
+  const variantId = variant?.id;
+  const connectionNames = useConnectionNames();
+  // The history reads are inventory:read; a role without it is told so rather
+  // than shown a raw 403.
+  const canRead = usePermission('inventory:read');
+
+  const filters = { productId, productVariantId: variantId };
+  const rows = useInventoryMovementsQuery(
+    filters,
+    { limit: HISTORY_PAGE_SIZE, offset: 0 },
+    { enabled: variantId !== undefined && canRead },
+  );
+  // Dedicated read, so "Last change" never depends on what the 10-row table
+  // page happens to hold.
+  const latest = useInventoryMovementsQuery(
+    { ...filters, kind: 'movements' },
+    { limit: 1, offset: 0 },
+    { enabled: variantId !== undefined && canRead },
+  );
+  const promised = useInventoryMovementsQuery(
+    { ...filters, kind: 'promised' },
+    { limit: PROMISED_SCAN_LIMIT, offset: 0 },
+    { enabled: variantId !== undefined && canRead },
+  );
+  const stock = useInventoryQuery(
+    { productId, productVariantId: variantId, excludeStale: true },
+    { limit: 100 },
+  );
+
+  if (variant === undefined) return null;
+
+  const forbidden = rows.error instanceof ApiError && rows.error.isForbidden();
+  if (!canRead || forbidden) {
+    return (
+      <div className="panel" id="stock-history" data-testid="stock-history">
+        <div className="panel__header">
+          <h3 style={{ margin: 0 }}>Stock history</h3>
+        </div>
+        <p className="muted-text" data-testid="stock-history-restricted">
+          Stock history is visible to admins, operators and viewers. Ask an administrator if you need it.
+        </p>
+      </div>
+    );
+  }
+
+  const items = rows.data?.items ?? [];
+  const lastChange = latest.data?.items[0] ?? null;
+  const masterId = items.find((row) => row.sourceConnectionId !== null)?.sourceConnectionId ?? null;
+  const availableNow = stock.data
+    ? stock.data.items.reduce((sum, item) => sum + item.availableQuantity, 0)
+    : null;
+  const promisedHeld = promised.data
+    ? promised.data.items
+        .filter((row) => row.status === 'held')
+        .reduce((sum, row) => sum + row.quantityDelta, 0)
+    : null;
+
+  const viewAllHref = `/inventory/movements?productVariantId=${encodeURIComponent(variant.id)}`;
+
+  return (
+    <div className="panel" id="stock-history" data-testid="stock-history">
+      <div className="panel__header">
+        <div>
+          {productName ? (
+            <p className="eyebrow" style={{ marginBottom: 2 }}>
+              {productName}
+            </p>
+          ) : null}
+          <h3 style={{ margin: 0 }}>Stock history</h3>
+        </div>
+        <Select
+          aria-label="Choose variant"
+          data-testid="stock-history-variant"
+          value={variant.id}
+          onChange={(event) => {
+            setLocalSelectedId(event.target.value);
+            onSelectedVariantChange?.(event.target.value);
+          }}
+        >
+          {variants.map((v) => (
+            <option key={v.id} value={v.id}>
+              {variantLabel(v)}
+            </option>
+          ))}
+        </Select>
+      </div>
+
+      <dl className="stock-history__summary" data-testid="stock-history-summary">
+        <div>
+          <dt>Available now</dt>
+          <dd className="mono-text tabular">{availableNow ?? '—'}</dd>
+        </div>
+        <div>
+          <dt>Reserved</dt>
+          <dd className="mono-text tabular">{promisedHeld ?? '—'}</dd>
+        </div>
+        <div>
+          <dt>Last change</dt>
+          <dd className="mono-text">
+            {lastChange ? <TimeDisplay iso={lastChange.occurredAt} /> : '—'}
+            {lastChange && lastChange.status !== 'applied' ? (
+              <span className="muted-text" data-testid="stock-history-last-change-status">
+                {' '}
+                ({presentMovementStatus(lastChange.status).label})
+              </span>
+            ) : null}
+          </dd>
+        </div>
+        <div>
+          <dt>Stock source</dt>
+          <dd>{masterId ? (connectionNames.get(masterId) ?? masterId) : '—'}</dd>
+        </div>
+      </dl>
+
+      {rows.isLoading ? (
+        <LoadingState liveRegion="off" title="Loading stock history" message="Fetching movements…" />
+      ) : rows.error ? (
+        <ErrorState
+          title="Unable to load stock history"
+          message={rows.error.message}
+          action={
+            <Button
+              onClick={() => {
+                void rows.refetch();
+              }}
+            >
+              Retry
+            </Button>
+          }
+        />
+      ) : items.length === 0 ? (
+        <p className="muted-text" data-testid="stock-history-empty">
+          No stock movements recorded for this variant yet.
+        </p>
+      ) : (
+        <StockMovementsTable
+          rows={items}
+          connectionNames={connectionNames}
+          layout="variant"
+          caption={`Stock history for ${variant.sku ?? variant.id}`}
+        />
+      )}
+
+      <div className="stock-history__actions">
+        <Link
+          className="button button--ghost button--sm"
+          to={viewAllHref}
+          data-testid="stock-history-view-all"
+        >
+          View all stock movements for this SKU
+        </Link>
+      </div>
+    </div>
+  );
+}

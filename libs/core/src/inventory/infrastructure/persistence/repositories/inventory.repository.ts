@@ -22,7 +22,7 @@
 import { Injectable } from '@nestjs/common';
 import { Logger } from '@openlinker/shared/logging';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Brackets, QueryFailedError, Repository } from 'typeorm';
+import { Brackets, In, QueryFailedError, Repository } from 'typeorm';
 import { randomUUID } from 'crypto';
 import { InventoryItemOrmEntity } from '../entities/inventory-item.orm-entity';
 import type { InventoryRepositoryPort } from '../../../domain/ports/inventory-repository.port';
@@ -329,6 +329,7 @@ export class InventoryRepository implements InventoryRepositoryPort {
       .select('inv.productVariantId', 'productVariantId')
       .addSelect('COALESCE(SUM(inv.availableQuantity), 0)', 'totalAvailable')
       .addSelect('COUNT(DISTINCT inv.locationId)', 'locationCount')
+      .addSelect('COUNT(inv.id)', 'positionCount')
       .addSelect('MAX(inv.updatedAt)', 'stockUpdatedAt')
       .where('inv.productVariantId IN (:...variantIds)', { variantIds: [...variantIds] })
       // Exclude soft-deleted rows so offer flows never act on dead stock (#1478).
@@ -338,6 +339,7 @@ export class InventoryRepository implements InventoryRepositoryPort {
         productVariantId: string;
         totalAvailable: string;
         locationCount: string;
+        positionCount: string;
         stockUpdatedAt: Date | string;
       }>();
 
@@ -350,6 +352,7 @@ export class InventoryRepository implements InventoryRepositoryPort {
       productVariantId: row.productVariantId,
       totalAvailable: Number(row.totalAvailable),
       locationCount: Number(row.locationCount),
+      positionCount: Number(row.positionCount),
       stockUpdatedAt:
         row.stockUpdatedAt instanceof Date ? row.stockUpdatedAt : new Date(row.stockUpdatedAt),
     }));
@@ -469,6 +472,18 @@ export class InventoryRepository implements InventoryRepositoryPort {
       totalReserved: Number(row.totalReserved),
       stockUpdatedAt: row.stockUpdatedAt instanceof Date ? row.stockUpdatedAt : new Date(row.stockUpdatedAt),
     }));
+  }
+
+  async findPositionsByVariantIds(
+    variantIds: readonly string[]
+  ): Promise<readonly InventoryItem[]> {
+    if (variantIds.length === 0) return [];
+
+    const entities = await this.repository.find({
+      where: { productVariantId: In([...variantIds]) },
+      order: { updatedAt: 'DESC', id: 'ASC' },
+    });
+    return entities.map((entity) => this.toDomain(entity));
   }
 
   async findBinCodesByVariantIds(

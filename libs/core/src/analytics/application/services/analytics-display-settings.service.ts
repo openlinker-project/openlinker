@@ -45,6 +45,7 @@ export class AnalyticsDisplaySettingsService implements IAnalyticsDisplaySetting
         rateBasis: 'current',
         includeBackfilledTaxRatesInNetSales: false,
         netGrossBasis: 'gross',
+        trackMargin: true,
         updatedAt: null,
         updatedByUserId: null,
       };
@@ -55,6 +56,7 @@ export class AnalyticsDisplaySettingsService implements IAnalyticsDisplaySetting
       rateBasis: row.rateBasis,
       includeBackfilledTaxRatesInNetSales: row.includeBackfilledTaxRatesInNetSales,
       netGrossBasis: row.netGrossBasis,
+      trackMargin: row.trackMargin,
       updatedAt: row.updatedAt,
       updatedByUserId: row.updatedByUserId,
     };
@@ -67,6 +69,7 @@ export class AnalyticsDisplaySettingsService implements IAnalyticsDisplaySetting
       rateBasis: input.rateBasis,
       includeBackfilledTaxRatesInNetSales: input.includeBackfilledTaxRatesInNetSales,
       netGrossBasis: input.netGrossBasis,
+      trackMargin: input.trackMargin,
       actor: actorUserId ?? 'system',
     });
   }
