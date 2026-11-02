@@ -19,9 +19,16 @@ export class InventoryAvailabilityItemDto {
   totalAvailable!: number;
 
   @ApiProperty({
-    description: 'Distinct location count contributing to the sum (0 when no inventory rows)',
+    description:
+      'Distinct non-null locations contributing to the sum. A pooled position (no location, normal for most masters) counts 0, so 0 does NOT mean "no inventory rows"; use positionCount for that.',
   })
   locationCount!: number;
+
+  @ApiProperty({
+    description:
+      'Number of live inventory positions (rows) for the variant, pooled ones included. 0 means the variant has no position, i.e. its stock was never synced.',
+  })
+  positionCount!: number;
 
   @ApiProperty({
     type: Number,

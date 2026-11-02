@@ -197,3 +197,35 @@ stating, because it looks like a bug from the outside: the value of individual l
 out of an order that still shipped is reported **nowhere** — it drops out of GMV under the
 partially-cancelled rule above, and it does not enter Cancellations Value. Reporting it needs a
 separate figure, not a widening of this one.
+
+### Margin
+
+*Added with #3588 (epic #3516, D27). Margin is NOT one of the figures the customer agreed in the list above; it is the first product-decision-backed addition and is defined here so the API, the Analytics page and the mockup quote one definition.*
+
+**Definition:** gross margin on net (VAT-exclusive) revenue, for the order lines of orders placed in the period (excluding cancelled orders) whose cost is known. It deliberately says nothing about the lines whose cost is not known – those are reported as gaps, never as zero cost.
+
+**Figures** (every amount in the system reporting currency; a percentage is `null`, not `0`, when its denominator is 0):
+
+- `netRevenue` – the existing Net Sales line population and arithmetic (stamped in the current reporting currency, non-zero order total, net-eligible per ADR-063 incl. the #2469 opt-in). It is the same number as the top-products NET revenue for the same range. **No returns are subtracted from it** (G11-E): unlike Net Sales above, the returns term is not part of this figure.
+- `coveredNetRevenue` – `netRevenue` of the *covered* lines only.
+- `costOfGoods` – `SUM(unit cost net × quantity × fx)` over covered lines, where `fx = reportingTotalAmount ÷ totalAmount` of the order (the same multiplier revenue uses, so revenue and cost are in one currency).
+- `grossMargin` – `coveredNetRevenue − costOfGoods`.
+- `marginPct` – `grossMargin ÷ coveredNetRevenue × 100%`.
+- `costCoveragePct` – `coveredNetRevenue ÷ netRevenue × 100%`.
+
+**Covered line:** a line in `netRevenue` whose cost snapshot is `recorded` **and** whose cost currency equals the order's native currency (G11-C). The cost is the snapshot taken when the order was first ingested (D27), so editing a variant's cost later never moves an earlier margin. At snapshot time an order placed *before* the variant's cost was entered is stored as not recorded even on first ingestion (G11-G).
+
+**Gaps:** every `netRevenue` line that is not covered has exactly one reason, so `coveredNetRevenue + SUM(gaps.netAmount) = netRevenue` always holds:
+
+| Reason | Meaning |
+|---|---|
+| `no-variant` | the line never resolved to a variant, so no cost can be attached |
+| `currency-mismatch` | a cost was recorded, in a currency other than the order's native currency (G11-C) |
+| `cost-entered-after-sale` | no snapshot, but the variant has a cost now (it was entered after the sale; it is not applied retroactively) |
+| `no-cost` | no snapshot and the variant has no cost (or the variant is gone) |
+
+**Excluded from margin altogether:** cancelled orders (as everywhere), and lines outside `netRevenue` (unstamped, other reporting-currency era, zero-total, tax rate not resolvable). Those are surfaced as `excludedLineCount` and by the existing Data Coverage categories, not as margin gaps.
+
+**Data Coverage:** the `no-cost` category counts the **lines** that are gaps of any reason (G11-D) – every other category counts orders, so each coverage row carries `countUnit: 'orders' | 'lines'`.
+
+**Source:** `order_line_items` (cost snapshot columns), joined to `order_records` for the stamp and the order's native currency. `product_variants` is read only to tell `cost-entered-after-sale` from `no-cost`.

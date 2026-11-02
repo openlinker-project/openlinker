@@ -49,6 +49,20 @@ When a lesson hardens into a rule, **graduate it** to the canonical doc and leav
 
 ---
 
+## `order_line_items` is delete-then-reinsert: a value that must survive re-ingestion has to be carried forward inside the transaction
+
+**Context**: the per-line net cost snapshot (#3588, D27) is frozen at the first `ready` ingestion so a later cost edit never moves an earlier margin.
+
+**Problem**: `OrderRecordRepository.upsertWithLineItems` replaces an order's line rows wholesale on every re-ingestion. A column written only from the incoming draft is therefore recomputed every time, so a snapshot of "what the cost was then" silently becomes "what the cost is now" on the next poll. The line position is not a stable identity either (reorder, add, remove).
+
+**Rule**: any line-level fact that must outlive re-ingestion is read from the prior rows INSIDE the write transaction, after the `order_records` upsert (its row lock serialises concurrent re-ingestion) and before the delete, and carried across by `productId|variantId`, lowest prior lineNumber first, reused exactly as stored. A prior "not recorded" is never upgraded and a prior value is never replaced. Never swallow a failed lookup that feeds the snapshot: it would freeze "not recorded" for good.
+
+**Applies to**: `order-record.repository.ts upsertWithLineItems`, `order-line-cost-snapshot.ts`, any future denormalised column on `order_line_items`.
+
+**Source**: #3588 (epic #3516)
+
+---
+
 ## An Allegro offer that reads INACTIVE with no errors may still be processing - the reason lives on the create operation
 
 **Context**: an inline-product `POST /sale/product-offers` with `publication.status: ACTIVE` is
@@ -199,6 +213,56 @@ any status read-back paired with an outbound relay.
 **Source**: Shoper integration live test, 2026-10-26.
 
 ---
+
+## Never let an adapter's caught error read as the channel saying no
+
+**Context**: the operator order cancel (#3540) relays the cancel to the
+originating channel. The relay catches whatever the adapter throws and reports
+`outcome: 'rejected'`, the same value a genuine channel refusal carries (C-28,
+B-16).
+
+**Problem**: a timeout, a 5xx or a dropped connection is not a refusal. The
+channel never answered, and may have applied the write before the connection
+died. Treating it as `rejected` made the cancel flow abandon the change row, so a
+later retry looked like a fresh request against a cancel the channel had
+possibly already taken. Transient and definitive failures were indistinguishable
+at the one place that had to tell them apart.
+
+**Rule**: a layer that swallows an error into a result type must keep the fact
+that it was an error. Add an explicit flag (`adapterThrew`) rather than a new
+outcome value that existing callers would mishandle, document that absent means
+"the adapter answered", and make the caller that must tell "declined" from "we do
+not know" branch on it. Leave the change open on the unknown case, never discard
+it.
+
+**Applies to**: `OrderLifecycleRelayService`, `OrderCancellationService`, and any
+adapter-result mapper that converts a throw into a business outcome.
+
+**Source**: #3540
+
+## Take the lock before the READ of a read-then-write money guard
+
+**Context**: the refund ceiling (#3289) compares a refund against
+`order total - already refunded` and then writes a `RefundRecord`. The returns
+confirm flow read the ceiling context, moved the money state and wrote the
+record in three steps; the first version locked only the final write.
+
+**Problem**: a lock around the write alone does not serialize the guard. Two
+concurrent refunds both read the same "already refunded" sum before either
+writes, both pass the ceiling, and the order is refunded twice over. The guard
+looked correct in every sequential spec and the double-refund appeared only
+under concurrency.
+
+**Rule**: when a guard reads state and a later write changes that same state,
+the per-order lock must be held from before the read until after the write
+(`runUnderOrderRefundLock`, with `orderLockHeld` passed down so the inner write
+does not re-acquire a non-re-entrant lock). Add an overlapping-call spec; a
+sequential one passes against no lock at all.
+
+**Applies to**: `OrderRefundService`, `ReturnRefundService`,
+`return-writes.controller.ts` confirm flow, and any future money ceiling.
+
+**Source**: #3289
 
 ## Never route a one-field change through a full-upsert port
 

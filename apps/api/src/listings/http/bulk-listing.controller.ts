@@ -54,6 +54,7 @@ import {
   IBulkListingSubmitService,
   InvalidEanException,
   InvalidOverrideKeyException,
+  MasterStockNotSyncedException,
   NoFailedChildrenToRetryException,
 } from '@openlinker/core/listings';
 import type {
@@ -188,6 +189,7 @@ export class BulkListingController {
       if (
         error instanceof EmptyBulkSubmissionException ||
         error instanceof AllVariantsAlreadyListedException ||
+        error instanceof MasterStockNotSyncedException ||
         error instanceof InvalidEanException ||
         error instanceof DuplicateBatchEanException ||
         error instanceof CurrencyMismatchException ||

@@ -44,6 +44,21 @@ export class ProductVariantResponseDto {
   })
   images!: string[] | null;
 
+  @ApiProperty({
+    type: [String],
+    description:
+      'Proxy paths (relative to the API) of the pictures this variant is shown with: its own, ' +
+      "or the product's when it has none. Empty when neither has any. Never a shop url.",
+  })
+  imageUrls!: string[];
+
+  @ApiProperty({
+    description:
+      "true when the variant has no pictures of its own and imageUrls are the product's; " +
+      'false when it has its own, or when there are none at all.',
+  })
+  imagesFromProduct!: boolean;
+
   @ApiPropertyOptional({
     nullable: true,
     type: [String],
@@ -80,7 +95,6 @@ export class ProductVariantResponseDto {
   })
   taxRateUnknownReason?: string | null;
 
-
   @ApiProperty({ description: 'Creation timestamp (ISO 8601)' })
   createdAt!: string;
 
@@ -99,6 +113,9 @@ export class ProductVariantResponseDto {
   })
   staleAt!: string | null;
 
-  @ApiPropertyOptional({ type: [ExternalIdMappingDto], description: 'External platform identifiers' })
+  @ApiPropertyOptional({
+    type: [ExternalIdMappingDto],
+    description: 'External platform identifiers',
+  })
   externalIds?: ExternalIdMappingDto[];
 }

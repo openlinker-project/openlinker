@@ -731,6 +731,8 @@ describe('ErliOrderSourceAdapter', () => {
         const result = await wiredAdapter.write({ type: 'cancelled', externalOrderId: ORDER_ID });
 
         expect(result.outcome).toBe('applied');
+        expect(result.scope).toBe('stock-only');
+        expect(client.patch).not.toHaveBeenCalled();
         expect(inventoryQuery.getAvailabilityByVariantIds).toHaveBeenCalledWith([OFFER_ID]);
         expect(offerManager.restoreStockOnCancellation).toHaveBeenCalledWith([
           { externalOfferId: OFFER_ID, quantity: 5 },

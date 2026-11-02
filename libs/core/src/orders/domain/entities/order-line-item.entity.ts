@@ -9,6 +9,8 @@
  *
  * @module domain/entities
  */
+import type { LineCostState } from '../order-line-cost-snapshot';
+
 export class OrderLineItem {
   constructor(
     public readonly id: string,
@@ -38,6 +40,14 @@ export class OrderLineItem {
     /** `shop` | `channel` | `null`. Three facts a single null rate cannot separate. */
     public readonly taxSource: string | null = null,
     /** When that system was last read. Shown, never enforced. */
-    public readonly taxRateReadAt: Date | null = null
+    public readonly taxRateReadAt: Date | null = null,
+    /**
+     * Net unit cost snapshot (#3588, D27), a decimal string; `null` when
+     * `costState` is `'not-recorded'`. Appended last for the same positional
+     * reason as the tax fields.
+     */
+    public readonly unitCostNet: string | null = null,
+    public readonly unitCostCurrency: string | null = null,
+    public readonly costState: LineCostState = 'not-recorded'
   ) {}
 }

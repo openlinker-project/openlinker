@@ -20,6 +20,7 @@
  */
 import { useMemo, useRef, useState } from 'react';
 import type { ReactElement } from 'react';
+import { Link } from 'react-router-dom';
 import { DataTable, type DataTableColumn } from '../../../shared/ui/data-table';
 import { EmptyState } from '../../../shared/ui/feedback-state';
 import { OrderLineItemIdentity } from './order-line-item-identity';
@@ -29,6 +30,8 @@ import { AbsentValue } from '../../../shared/ui/absent-value';
 import { Button } from '../../../shared/ui/button';
 import { StatusBadge } from '../../../shared/ui/status-badge';
 import type { ParsedOrderItem, ParsedOrderTotals } from '../api/order-snapshot.schema';
+import type { OrderLineCost } from '../api/orders.types';
+import { useOrderLineCosts, type OrderLineCostsState } from '../hooks/use-order-line-costs';
 
 interface OrderLineItemsPanelProps {
   items: ParsedOrderItem[];
@@ -37,10 +40,20 @@ interface OrderLineItemsPanelProps {
    * by `OrderTotalsPanel`.
    */
   totals?: ParsedOrderTotals;
+  /**
+   * Enables the "Cost at order time" and "Margin" columns (#3588). Absent means
+   * no cost read at all, so a caller without an order id renders as before.
+   */
+  internalOrderId?: string;
 }
 
-export function OrderLineItemsPanel({ items, totals }: OrderLineItemsPanelProps): ReactElement {
+export function OrderLineItemsPanel({
+  items,
+  totals,
+  internalOrderId,
+}: OrderLineItemsPanelProps): ReactElement {
   const currency = totals?.currency;
+  const costs = useOrderLineCosts(internalOrderId);
   // Borrowed from the bulk review step rather than invented: a 200-line order
   // gets an alert naming the offending lines and then leaves the operator to
   // find them. Same two controls, same behaviour.
@@ -103,6 +116,7 @@ export function OrderLineItemsPanel({ items, totals }: OrderLineItemsPanelProps)
         <span className="mono-text">{formatAmount(item.price * item.quantity, currency)}</span>
       ),
     },
+    ...(costs.enabled ? buildCostColumns(items, costs) : []),
   ];
 
   if (items.length === 0) {
@@ -131,12 +145,23 @@ export function OrderLineItemsPanel({ items, totals }: OrderLineItemsPanelProps)
           </Button>
         </div>
       ) : null}
-      <DataTable
-        caption="Order line items"
-        columns={columns}
-        rows={rows}
-        rowKey={(item) => item.id}
-      />
+      <div data-testid={costs.enabled ? 'order-items-cost-table' : undefined}>
+        <DataTable
+          caption="Order line items"
+          columns={columns}
+          rows={rows}
+          rowKey={(item) => item.id}
+          rowAttributes={
+            costs.enabled
+              ? (item): Record<string, string> =>
+                  costForItem(items, costs, item)?.gapReason === 'no-cost'
+                    ? { 'data-testid': 'order-line-no-cost' }
+                    : {}
+              : undefined
+          }
+        />
+      </div>
+      {costs.enabled && costs.status === 'loaded' ? <CostFootnote lines={costs.lines} /> : null}
     </div>
   );
 }
@@ -207,4 +232,114 @@ function provenanceCaption(item: ParsedOrderItem): ReactElement | string {
   if (!Number.isFinite(readAt.getTime())) return from;
   const days = Math.floor((Date.now() - readAt.getTime()) / 86_400_000);
   return days >= 1 ? `${from} \u00b7 read ${String(days)} d ago` : `${from} \u00b7 read today`;
+}
+
+/**
+ * The cost row of an item. Lines are written in `items[]` order, so the item's
+ * position is its `lineNumber`; a product id that disagrees means the two lists
+ * drifted (e.g. a dropped malformed item) and the line is treated as unknown
+ * rather than showing another line's cost.
+ */
+function costForItem(
+  items: ParsedOrderItem[],
+  costs: OrderLineCostsState,
+  item: ParsedOrderItem,
+): OrderLineCost | null {
+  if (costs.status !== 'loaded') return null;
+  const index = items.indexOf(item);
+  const line = costs.lines.find((candidate) => candidate.lineNumber === index);
+  if (!line) return null;
+  if (item.productId && line.productId !== item.productId) return null;
+  return line;
+}
+
+function buildCostColumns(
+  items: ParsedOrderItem[],
+  costs: OrderLineCostsState,
+): DataTableColumn<ParsedOrderItem>[] {
+  return [
+    {
+      id: 'costAtOrderTime',
+      header: 'Cost at order time',
+      align: 'right',
+      hideBelow: 768,
+      cell: (item) => <CostCell line={costForItem(items, costs, item)} />,
+    },
+    {
+      id: 'lineMargin',
+      header: 'Margin',
+      align: 'right',
+      cell: (item) => <MarginCell line={costForItem(items, costs, item)} currency={costs.currency} />,
+    },
+  ];
+}
+
+function CostCell({ line }: { line: OrderLineCost | null }): ReactElement {
+  if (!line) return <AbsentValue label="cost not available" />;
+  if (line.costOfGoods !== null) {
+    return <span className="mono-text">{formatAmount(line.costOfGoods, line.unitCostCurrency ?? undefined)}</span>;
+  }
+  if (line.gapReason === 'currency-mismatch' && line.unitCostNet !== null) {
+    return (
+      <span
+        className="mono-text"
+        title="The cost is in a different currency than the order, so it is not used in margin."
+      >
+        {formatAmount(Number(line.unitCostNet) * line.quantity, line.unitCostCurrency ?? undefined)}
+      </span>
+    );
+  }
+  if (line.gapReason === 'no-variant') {
+    return <AbsentValue label="no variant" />;
+  }
+  if (line.gapReason === 'cost-entered-after-sale') {
+    return (
+      <span title="Ordered before the cost was entered">
+        <StatusBadge tone="neutral" compact>
+          Not recorded
+        </StatusBadge>
+      </span>
+    );
+  }
+  return (
+    <StatusBadge tone="warning" withDot compact>
+      Not recorded
+    </StatusBadge>
+  );
+}
+
+function MarginCell({
+  line,
+  currency,
+}: {
+  line: OrderLineCost | null;
+  currency: string | null;
+}): ReactElement {
+  if (!line) return <AbsentValue label="margin not available" />;
+  if (line.margin !== null) {
+    return <span className="mono-text">{formatAmount(line.margin, currency ?? undefined)}</span>;
+  }
+  return <span className="text-muted">Not in margin</span>;
+}
+
+function CostFootnote({ lines }: { lines: OrderLineCost[] }): ReactElement {
+  const missing = new Set(
+    lines
+      .filter((line) => line.gapReason === 'no-cost' && line.variantId !== null)
+      .map((line) => line.variantId),
+  ).size;
+  return (
+    <p className="data-table__footnote" data-testid="order-line-cost-note">
+      Cost is taken from the product when the order arrives and never changes afterwards. Adding a
+      cost now will not change this order; it counts from the next one.
+      {missing > 0 ? (
+        <>
+          {' '}
+          <Link to="/products/cost-prices" data-testid="order-line-add-cost">
+            Add cost for {missing} {missing === 1 ? 'variant' : 'variants'}
+          </Link>
+        </>
+      ) : null}
+    </p>
+  );
 }

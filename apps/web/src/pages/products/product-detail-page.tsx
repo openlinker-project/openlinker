@@ -216,6 +216,9 @@ export function ProductDetailPage(): ReactElement {
   const availableDescription = `across ${distinctLocationCount} location${distinctLocationCount === 1 ? '' : 's'}`;
 
   const isSingleVariant = variants.length === 1;
+  const sourceConnectionId = product.externalIds?.[0]?.connectionId;
+  const sourceName =
+    (connectionsQuery.data ?? []).find((c) => c.id === sourceConnectionId)?.name ?? null;
 
   const totalListings = variants.reduce(
     (sum, variant) => sum + (listingsCounts[variant.id] ?? 0),
@@ -387,7 +390,7 @@ export function ProductDetailPage(): ReactElement {
             </div>
           </div>
 
-          <section className="detail-section">
+          <section className="detail-section" data-testid="variant-table-section">
             <div className="detail-section__title-row">
               <h3 className="detail-section__title">
                 {isSingleVariant
@@ -446,6 +449,8 @@ export function ProductDetailPage(): ReactElement {
                     connections={offerCreatorConnections}
                     onListingsCount={handleListingsCount}
                     stock={stockModel}
+                    sourceName={sourceName}
+                    currency={product.currency}
                   />
                 ) : (
                   <VariantStockTable
@@ -458,6 +463,7 @@ export function ProductDetailPage(): ReactElement {
                     onCreateOffers={handleCreateOffers}
                     onListingsCount={handleListingsCount}
                     stock={stockModel}
+                    sourceName={sourceName}
                   />
                 )}
               </>

@@ -20,6 +20,7 @@ import { OrderFxReadService } from './application/services/order-fx-read.service
 import { OrderDestinationRetryService } from './application/services/order-destination-retry.service';
 import { OrderProvisioningResumeService } from './application/services/order-provisioning-resume.service';
 import { FulfillmentDispatchRelayService } from './application/services/fulfillment-dispatch-relay.service';
+import { OrderCancellationEffectsService } from './application/services/order-cancellation-effects.service';
 import { OrderLifecycleRelayService } from './application/services/order-lifecycle-relay.service';
 import { OrderRecordRepository } from './infrastructure/persistence/repositories/order-record.repository';
 import { OrderLineItemRepository } from './infrastructure/persistence/repositories/order-line-item.repository';
@@ -47,6 +48,9 @@ import { OrderExportService } from './application/services/order-export.service'
 import { OrderSearchTextReindexService } from './application/services/order-search-text-reindex.service';
 import { TaxRateBackfillService } from './application/services/tax-rate-backfill.service';
 import { OrderTestFixtureService } from './application/services/order-test-fixture.service';
+import { MarginAnalyticsService } from './application/services/margin-analytics.service';
+import { CostCoverageService } from './application/services/cost-coverage.service';
+import { OrderLineCostService } from './application/services/order-line-cost.service';
 import { TaxCoverageDetectionService } from './application/services/tax-coverage-detection.service';
 import { DisplayCurrencyConversionService } from './application/services/display-currency-conversion.service';
 import {
@@ -60,6 +64,7 @@ import {
   ORDER_PROVISIONING_RESUME_SERVICE_TOKEN,
   ORDER_ITEM_REF_RESOLVER_SERVICE_TOKEN,
   ORDER_LIFECYCLE_RELAY_SERVICE_TOKEN,
+  ORDER_CANCELLATION_EFFECTS_SERVICE_TOKEN,
   ORDER_REFUND_RECORD_REPOSITORY_TOKEN,
   ORDER_REFUND_SERVICE_TOKEN,
   ORDER_FX_READ_SERVICE_TOKEN,
@@ -68,6 +73,9 @@ import {
   ORDER_TEST_FIXTURE_SERVICE_TOKEN,
   FULFILLMENT_DISPATCH_RELAY_SERVICE_TOKEN,
   SALES_DOCUMENT_VIEW_SERVICE_TOKEN,
+  MARGIN_ANALYTICS_SERVICE_TOKEN,
+  COST_COVERAGE_SERVICE_TOKEN,
+  ORDER_LINE_COST_SERVICE_TOKEN,
   TAX_COVERAGE_DETECTION_SERVICE_TOKEN,
   DISPLAY_CURRENCY_CONVERSION_SERVICE_TOKEN,
   ORDER_CANCELLATION_SIGNAL_REPOSITORY_TOKEN,
@@ -82,6 +90,7 @@ import {
   ORDER_SEARCH_TEXT_REINDEX_SERVICE_TOKEN,
 } from './orders.tokens';
 import { OrderHoldsModule } from './order-holds.module';
+import { OrderChangesModule } from './order-changes.module';
 import { IntegrationsModule } from '@openlinker/core/integrations';
 import { IdentifierMappingModule } from '@openlinker/core/identifier-mapping';
 import { SyncModule } from '@openlinker/core/sync';
@@ -154,6 +163,8 @@ export { ORDER_SYNC_SERVICE_TOKEN } from './orders.tokens';
     // The edge is directional: importing the leaf here does not give the leaf
     // any of these dependencies.
     OrderHoldsModule,
+    // Leaf (#3540): an inbound cancel confirms an operator's open cancel request.
+    OrderChangesModule,
     // One-way edge to a ZERO-SIBLING-EDGE LEAF (#2401): FulfillmentDispatchRelayService
     // injects FULFILLMENT_RELAY_GATE_SERVICE_TOKEN to take the work's at-most-once
     // dispatch-relay claim. `fulfillment` imports NO sibling core context at all
@@ -176,6 +187,7 @@ export { ORDER_SYNC_SERVICE_TOKEN } from './orders.tokens';
     OrderDestinationRetryService,
     OrderProvisioningResumeService,
     OrderLifecycleRelayService,
+    OrderCancellationEffectsService,
     FulfillmentDispatchRelayService,
     OrderRecordRepository,
     OrderFxReadService,
@@ -185,6 +197,9 @@ export { ORDER_SYNC_SERVICE_TOKEN } from './orders.tokens';
     TaxRateBackfillService,
     OrderTestFixtureService,
     TaxCoverageDetectionService,
+    MarginAnalyticsService,
+    CostCoverageService,
+    OrderLineCostService,
     DisplayCurrencyConversionService,
     OrderCancellationSignalRepository,
     OrderColumnPresetRepository,
@@ -242,6 +257,10 @@ export { ORDER_SYNC_SERVICE_TOKEN } from './orders.tokens';
       useExisting: OrderLifecycleRelayService,
     },
     {
+      provide: ORDER_CANCELLATION_EFFECTS_SERVICE_TOKEN,
+      useExisting: OrderCancellationEffectsService,
+    },
+    {
       provide: FULFILLMENT_DISPATCH_RELAY_SERVICE_TOKEN,
       useExisting: FulfillmentDispatchRelayService,
     },
@@ -280,6 +299,18 @@ export { ORDER_SYNC_SERVICE_TOKEN } from './orders.tokens';
     {
       provide: TAX_COVERAGE_DETECTION_SERVICE_TOKEN,
       useExisting: TaxCoverageDetectionService,
+    },
+    {
+      provide: MARGIN_ANALYTICS_SERVICE_TOKEN,
+      useExisting: MarginAnalyticsService,
+    },
+    {
+      provide: COST_COVERAGE_SERVICE_TOKEN,
+      useExisting: CostCoverageService,
+    },
+    {
+      provide: ORDER_LINE_COST_SERVICE_TOKEN,
+      useExisting: OrderLineCostService,
     },
     {
       provide: DISPLAY_CURRENCY_CONVERSION_SERVICE_TOKEN,
@@ -336,6 +367,7 @@ export { ORDER_SYNC_SERVICE_TOKEN } from './orders.tokens';
     ORDER_DESTINATION_RETRY_SERVICE_TOKEN,
     ORDER_PROVISIONING_RESUME_SERVICE_TOKEN,
     ORDER_LIFECYCLE_RELAY_SERVICE_TOKEN,
+    ORDER_CANCELLATION_EFFECTS_SERVICE_TOKEN,
     FULFILLMENT_DISPATCH_RELAY_SERVICE_TOKEN,
     ORDER_REFUND_SERVICE_TOKEN,
     ORDER_FX_READ_SERVICE_TOKEN,
@@ -357,6 +389,11 @@ export { ORDER_SYNC_SERVICE_TOKEN } from './orders.tokens';
     // Exported so the `/analytics/coverage` endpoint (#2466) can inject the
     // tax A/B/C detector seam (#2465).
     TAX_COVERAGE_DETECTION_SERVICE_TOKEN,
+    // Exported so `/analytics/margin*` and the no-cost coverage row can inject the margin reads (#3588).
+    MARGIN_ANALYTICS_SERVICE_TOKEN,
+    // Exported so `/products/cost-coverage` and the cost work list can inject the cost reads (#3588).
+    COST_COVERAGE_SERVICE_TOKEN,
+    ORDER_LINE_COST_SERVICE_TOKEN,
     // Exported so the `/analytics` display-currency read surface (a later
     // phase of #2452) can inject this seam (#2458, ADR-064).
     DISPLAY_CURRENCY_CONVERSION_SERVICE_TOKEN,

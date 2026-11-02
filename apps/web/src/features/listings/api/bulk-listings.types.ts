@@ -91,6 +91,13 @@ export interface BulkSharedConfig {
 
 export interface BulkPerProductOverride {
   stock?: number;
+  /**
+   * `stock` was resolved from master inventory by the wizard, not typed by the
+   * operator (#3851). The server re-checks a single-variant offer carrying it
+   * and leaves it out of the batch when OpenLinker has no stock position for
+   * the variant, rather than listing at the submitted figure.
+   */
+  stockFromMaster?: boolean;
   publishImmediately?: boolean;
   price?: { amount: number; currency: string };
   overrides?: BulkOfferOverrides;

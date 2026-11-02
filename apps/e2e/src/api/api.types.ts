@@ -199,6 +199,12 @@ export interface InventoryAvailability {
   totalAvailable: number;
   locationCount: number;
   /**
+   * Live inventory rows for the variant, pooled ones included. `0` means stock
+   * was never synced; `locationCount` cannot say that because a pooled position
+   * counts 0.
+   */
+  positionCount: number;
+  /**
    * What OpenLinker is willing to PROMISE (#2321): stock net of outstanding
    * holds, clamped at zero. `null` means OpenLinker does not know, which a
    * caller must never read as `0` - an absent number written as zero is how a
@@ -414,12 +420,7 @@ export interface InvoiceRecord {
   status: 'pending' | 'issuing' | 'issued' | 'failed';
   providerInvoiceId: string | null;
   providerInvoiceNumber: string | null;
-  regulatoryStatus:
-    | 'not-applicable'
-    | 'submitted'
-    | 'cleared'
-    | 'accepted'
-    | 'rejected';
+  regulatoryStatus: 'not-applicable' | 'submitted' | 'cleared' | 'accepted' | 'rejected';
   clearanceReference: string | null;
   issuedAt: string | null;
   createdAt: string;
@@ -963,7 +964,7 @@ export interface DescriptionFormatView {
 // completeness of `CoverageCategory` but have no seed path in this suite —
 // see the follow-up issue referenced from `tests/analytics/mockup-parity.spec.ts`.
 
-export type CoverageCategory = 'currency' | 'tax-a' | 'tax-b' | 'tax-c' | 'product-matching';
+export type CoverageCategory = 'currency' | 'tax-a' | 'tax-b' | 'tax-c' | 'product-matching' | 'no-cost';
 export type CoverageResolutionStatus = 'open' | 'in-progress' | 'resolved' | 'failed';
 
 /** GET /analytics/settings response. */

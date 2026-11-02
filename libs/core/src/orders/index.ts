@@ -47,10 +47,12 @@ export type {
   OrderLifecycleEventType,
   OrderWritebackOutcome,
   OrderWritebackResult,
+  OrderWritebackScope,
 } from './domain/types/order-lifecycle-event.types';
 export {
   OrderLifecycleEventTypeValues,
   OrderWritebackOutcomeValues,
+  OrderWritebackScopeValues,
 } from './domain/types/order-lifecycle-event.types';
 
 // Return source reader (#2329 / ADR-060): the returns half of OrderSource.
@@ -110,6 +112,19 @@ export {
 } from './domain/types/order.types';
 export { OrderPickupPointTypeValues } from './domain/types/order.types';
 export type { BuyerTaxId } from './domain/types/buyer-tax-id.types';
+export type { BuyerNote, BuyerNoteListState } from './domain/types/buyer-note.types';
+export {
+  readSourceBuyerNote,
+  decodeHtmlNoteText,
+  hasBuyerNoteText,
+  encodeBuyerNoteColumn,
+  decodeBuyerNoteColumn,
+  normaliseCountryColumn,
+  classifyBuyerNoteForList,
+  buildBuyerNotePreview,
+  BuyerNoteListStateValues,
+  BUYER_NOTE_PREVIEW_MAX_CHARACTERS,
+} from './domain/types/buyer-note.types';
 export {
   readBuyerTaxId,
   buyerHasTaxId,
@@ -270,6 +285,25 @@ export {
 } from './domain/types/refund-record.types';
 export { RefundExecutedByValues } from './domain/types/refund-record.types';
 
+// The order's refund ceiling (#3289) — one pure predicate, read by both the
+// returns pre-flight and the RefundRecord write.
+export {
+  evaluateRefundCeiling,
+  assertRefundAmountPrecision,
+  describeRefundCeilingVerdict,
+  REFUND_CEILING_EXCEEDED_CODE,
+  REFUND_CEILING_ACKNOWLEDGED_LOG_TOKEN,
+  REFUND_CEILING_UNKNOWN_LOG_TOKEN,
+  RefundCeilingUnknownReasonValues,
+} from './domain/types/refund-ceiling.types';
+export type {
+  RefundCeilingContext,
+  RefundCeilingOrderFacts,
+  RefundCeilingVerdict,
+  RefundCeilingUnknownReason,
+  EvaluateRefundCeilingInput,
+} from './domain/types/refund-ceiling.types';
+
 // Refund EXECUTION (#2371, ADR-056) — the command/result a `RefundExecutor`
 // speaks. Declared here rather than in `returns` because the vocabulary is
 // orders' own and a refund is not inherently about a return.
@@ -370,6 +404,50 @@ export type {
   TaxRateBackfillPageInput,
   TaxRateBackfillPageResult,
 } from './application/services/tax-rate-backfill.service.interface';
+export type { IMarginAnalyticsService } from './application/services/margin-analytics.service.interface';
+export {
+  MarginBucketValues,
+  MarginSortByValues,
+} from './domain/types/order-margin-analytics.types';
+export type {
+  MarginAnalytics,
+  MarginBucket,
+  MarginChannel,
+  MarginFigures,
+  MarginGapSum,
+  MarginProductFilters,
+  MarginProductsResult,
+  MarginProductVariantsResult,
+  MarginProductView,
+  MarginSortBy,
+  MarginTrendPoint,
+  MarginVariantView,
+} from './domain/types/order-margin-analytics.types';
+export type { IOrderLineCostService } from './application/services/order-line-cost.service.interface';
+export type {
+  OrderLineCostView,
+  OrderLineCostsResult,
+} from './domain/types/order-line-cost.types';
+export type { ICostCoverageService } from './application/services/cost-coverage.service.interface';
+export {
+  COST_COVERAGE_DEFAULT_DAYS,
+  COST_COVERAGE_MAX_DAYS,
+  COST_COVERAGE_MIN_DAYS,
+  COST_WORKLIST_SALES_WINDOW_DAYS,
+  CostWorklistTabValues,
+} from './domain/types/cost-coverage.types';
+export type {
+  CostCoverageResult,
+  CostCoverageTopVariant,
+  CostSummary,
+  CostWorklistCountFilters,
+  CostWorklistFilters,
+  CostWorklistResult,
+  CostWorklistRow,
+  CostWorklistTab,
+} from './domain/types/cost-coverage.types';
+export { MarginGapReasonValues } from './domain/order-line-cost-snapshot';
+export type { MarginGapReason } from './domain/order-line-cost-snapshot';
 export type { ITaxCoverageDetectionService } from './application/services/tax-coverage-detection.service.interface';
 export type { IOrderTestFixtureService } from './application/interfaces/order-test-fixture.service.interface';
 export type { IDisplayCurrencyConversionService } from './application/interfaces/display-currency-conversion.service.interface';
@@ -439,6 +517,10 @@ export type {
   OrderSearchTextReindexRunResult,
 } from './domain/types/order-search-text-reindex.types';
 export * from './orders.tokens';
+export type {
+  OrderLabelVoiderPort,
+  OrderLabelVoidOutcome,
+} from './domain/ports/order-label-voider.port';
 
 // Domain entities
 export { OrderRecord } from './domain/entities/order-record.entity';
@@ -451,6 +533,7 @@ export {
 
 // Domain exceptions
 export { OrderRecordNotFoundException } from './domain/exceptions/order-record-not-found.exception';
+export { NoBuyerNoteException } from './domain/exceptions/no-buyer-note.exception';
 export { MissingOrderItemMappingError } from './domain/exceptions/missing-order-item-mapping.error';
 export { OrderDestinationNotFoundException } from './domain/exceptions/order-destination-not-found.exception';
 export { OrderDestinationNotRetryableException } from './domain/exceptions/order-destination-not-retryable.exception';
@@ -459,6 +542,12 @@ export { OrderCreateContendedException } from './domain/exceptions/order-create-
 export { OrderSnapshotUnavailableError } from './domain/exceptions/order-snapshot-unavailable.error';
 export { DuplicateRefundRecordException } from './domain/exceptions/duplicate-refund-record.exception';
 export { RefundCurrencyMismatchException } from './domain/exceptions/refund-currency-mismatch.exception';
+export { decideRefundCeiling } from './domain/domain-services/refund-ceiling.domain-service';
+export type { RefundCeilingDisposition } from './domain/domain-services/refund-ceiling.domain-service';
+export { RefundAmountPrecisionException } from './domain/exceptions/refund-amount-precision.exception';
+export { RefundRecordContendedException } from './domain/exceptions/refund-record-contended.exception';
+export { RefundLockUnavailableException } from './domain/exceptions/refund-lock-unavailable.exception';
+export { RefundCeilingExceededException } from './domain/exceptions/refund-ceiling-exceeded.exception';
 export { OrderChangeVocabularyError } from './domain/exceptions/order-change-vocabulary.error';
 export { TaxCoveragePageCeilingExceededError } from './domain/exceptions/tax-coverage-page-ceiling-exceeded.error';
 
@@ -495,8 +584,39 @@ export {
   isOrderChangeKind,
   isOrderChangeStatus,
   isOpenOrderChangeStatus,
+  OrderAmendmentRequestKindValues,
+  isOrderAmendmentRequestKind,
+  OrderCorrectionChangeKindValues,
+  isOrderCorrectionChangeKind,
+  cancelRequestTargetRef,
+  cancelCorrectionTargetRef,
 } from './domain/types/order-change.types';
+// #3540 — why an operator cancels an order.
+export {
+  OrderCancelReasonValues,
+  isOrderCancelReason,
+  orderCancelReasonRequiresNote,
+  OPERATOR_ORDER_ORIGIN_ID,
+  orderStockRestoreDedupeKey,
+  CANCEL_ABANDONED_LABEL_NOT_VOIDABLE,
+  ORDER_CANCELLED_HOLD_RELEASE_NOTE,
+  OrderCancelCorrectionUnavailableReasonValues,
+} from './domain/types/order-cancel.types';
 export type {
+  OrderCancelReason,
+  OrderCancelCorrectionPayload,
+  OrderCancelCorrectionProposal,
+  OrderCancelCorrectionProposalLine,
+  OrderCancelCorrectionUnavailableReason,
+} from './domain/types/order-cancel.types';
+export type {
+  IOrderCancellationEffectsService,
+  ApplyOrderCancellationEffectsInput,
+  OrderCancellationEffectsResult,
+} from './application/interfaces/order-cancellation-effects.service.interface';
+export type {
+  OrderAmendmentRequestKind,
+  OrderCorrectionChangeKind,
   OrderChangeKind,
   OrderChangeStatus,
   CreateOrderChangeInput,
@@ -510,6 +630,7 @@ export { OrderChange } from './domain/entities/order-change.entity';
 export { OrderHold } from './domain/entities/order-hold.entity';
 export type {
   OrderHoldPlacedBy,
+  OrderHoldReleasedBy,
   PlaceOrderHoldInput,
   ReleaseOrderHoldInput,
 } from './domain/types/order-hold.types';
@@ -538,6 +659,7 @@ export type {
 export type {
   IOrderChangeService,
   OpenOrderChangeResult,
+  OrderChangeListItem,
 } from './application/services/order-change.service.interface';
 
 // The automation facts projection (#2363). Exported because it has two callers

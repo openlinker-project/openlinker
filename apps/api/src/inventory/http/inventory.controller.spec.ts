@@ -182,7 +182,7 @@ describe('InventoryController', () => {
 
     it('should keep the legacy fields and add provenance, freshness and the held split', async () => {
       queryService.getAvailabilityByVariantIds.mockResolvedValue([
-        { productVariantId: 'var-a', totalAvailable: 5, locationCount: 1, availableToPromise: 3 },
+        { productVariantId: 'var-a', totalAvailable: 5, locationCount: 1, positionCount: 1, availableToPromise: 3 },
       ]);
       stockView.getVariantStockViews.mockResolvedValue([stockViewRow()]);
 
@@ -196,6 +196,7 @@ describe('InventoryController', () => {
             productVariantId: 'var-a',
             totalAvailable: 5,
             locationCount: 1,
+            positionCount: 1,
             availableToPromise: 3,
             provenance: 'computed',
             observedAt: '2026-10-26T10:00:00.000Z',

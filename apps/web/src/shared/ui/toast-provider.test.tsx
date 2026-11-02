@@ -93,4 +93,27 @@ describe('ToastProvider', () => {
       expect(screen.queryByText('Set to Automatic', { selector: '.toast__title' })).not.toBeInTheDocument();
     });
   });
+
+  it('puts the supplied testId on the toast root as data-testid', async () => {
+    function TestIdHarness(): ReactElement {
+      const { showToast } = useToast();
+      return (
+        <button
+          type="button"
+          onClick={() => showToast({ description: 'Saved', testId: 'export-status' })}
+        >
+          trigger
+        </button>
+      );
+    }
+    render(
+      <ToastProvider>
+        <TestIdHarness />
+      </ToastProvider>,
+    );
+
+    await userEvent.click(screen.getByRole('button', { name: 'trigger' }));
+
+    expect(await screen.findByTestId('export-status')).toHaveTextContent('Saved');
+  });
 });

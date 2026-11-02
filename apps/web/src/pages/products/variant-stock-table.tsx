@@ -33,11 +33,13 @@ import {
 import type { StockViewChannel } from '../../features/inventory';
 import type { ProductVariant, TaxRateUnknownReason } from '../../features/products/api/products.types';
 import { formatTaxRate } from '../../shared/format/format-tax-rate';
+import { VariantCostCell, VariantCostSection } from './variant-cost';
 import { TimeDisplay } from '../../shared/ui/time-display';
 import { StatusBadge, type StatusBadgeTone } from '../../shared/ui/status-badge';
 import { useMediaQuery } from '../../shared/ui/use-media-query';
 import { usePlatforms } from '../../shared/plugins';
 import { findPlatformDisplayName, resolvePlatformLabel } from '../../features/mappings';
+import { VariantThumbnail } from '../../features/products';
 
 interface VariantStockTableProps {
   variants: ProductVariant[];
@@ -65,6 +67,8 @@ interface VariantStockTableProps {
   onListingsCount: (variantId: string, count: number) => void;
   /** Per-variant stock figures; without it the Stock column is empty. */
   stock?: ProductStockModel | null;
+  /** Display name of the product's source connection, for the photo-source line. */
+  sourceName?: string | null;
 }
 
 const MOBILE_QUERY = '(max-width: 639.98px)';
@@ -89,6 +93,7 @@ export function VariantStockTable(props: VariantStockTableProps): ReactElement {
             onCreateOffers={props.onCreateOffers}
             onListingsCount={props.onListingsCount}
             stock={props.stock ?? null}
+            sourceName={props.sourceName ?? null}
           />
         ))}
       </div>
@@ -102,10 +107,12 @@ export function VariantStockTable(props: VariantStockTableProps): ReactElement {
         <thead>
           <tr>
             <th aria-hidden="true"></th>
+            <th>Photo</th>
             <th>Variant</th>
             <th>Tax rate</th>
             <th>Stock</th>
             <th>Listings</th>
+            <th>Cost (net)</th>
             <th className="data-table__cell--right">Price</th>
           </tr>
         </thead>
@@ -122,6 +129,7 @@ export function VariantStockTable(props: VariantStockTableProps): ReactElement {
               onCreateOffers={props.onCreateOffers}
               onListingsCount={props.onListingsCount}
               stock={props.stock ?? null}
+              sourceName={props.sourceName ?? null}
             />
           ))}
         </tbody>
@@ -156,6 +164,77 @@ function statusTone(status: string): StatusBadgeTone {
   if (normalised === 'ACTIVE' || normalised === 'BIDDING') return 'success';
   if (normalised === 'ENDED' || normalised === 'INACTIVE') return 'warning';
   return 'neutral';
+}
+
+function variantSlug(variant: ProductVariant): string {
+  return (variant.sku ?? variant.id).toLowerCase();
+}
+
+/**
+ * The variant's resolved pictures (#3587): its own, else the product's. The API
+ * resolves the list; `imagesFromProduct` says which it was, so a borrowed
+ * picture is dimmed and labelled instead of passing as the variant's own.
+ */
+function VariantPhotoCell({ variant }: { variant: ProductVariant }): ReactElement {
+  return (
+    <VariantThumbnail
+      src={variant.imageUrls?.[0]}
+      name={variantHeadline(variant)}
+      size="sm"
+      dimmed={variant.imagesFromProduct === true}
+    />
+  );
+}
+
+function VariantPhotosSection({
+  variant,
+  sourceName,
+}: {
+  variant: ProductVariant;
+  sourceName?: string | null;
+}): ReactElement | null {
+  const urls = variant.imageUrls ?? [];
+  const fromProduct = variant.imagesFromProduct === true;
+  const slug = variantSlug(variant);
+  return (
+    <div className="variant-drawer__photos">
+      <div className="variant-drawer__label">Photos</div>
+      <div className="variant-photo-source">
+        <StatusBadge tone={fromProduct || urls.length === 0 ? 'neutral' : 'success'} withDot compact>
+          {urls.length === 0
+            ? 'No photos'
+            : fromProduct
+              ? 'From product'
+              : `Variant photos (${urls.length})`}
+        </StatusBadge>
+        <span className="variant-drawer__meta-muted" data-testid="variant-photo-source">
+          {urls.length === 0
+            ? 'Neither this variant nor the product has a photo.'
+            : fromProduct
+              ? sourceName
+                ? `This variant has no photos of its own in ${sourceName}, so the product photos are used.`
+                : 'This variant has no photos of its own, so the product photos are used.'
+              : sourceName
+                ? `From ${sourceName}`
+                : 'Photos synced from the master for this variant.'}
+        </span>
+      </div>
+      {urls.length > 0 ? (
+        <div className="variant-photo-strip" data-testid={`variant-photo-strip-${slug}`}>
+          {urls.map((url, index) => (
+            <VariantThumbnail
+              key={url}
+              src={url}
+              name={variantHeadline(variant)}
+              size="lg"
+              dimmed={fromProduct}
+              testId={`variant-photo-${slug}-${index}`}
+            />
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
 }
 
 function variantHasAttributes(variant: ProductVariant): boolean {
@@ -414,8 +493,12 @@ function VariantDetailBody({
   open,
   taxRate,
   stock,
+  sourceName,
+  currency,
 }: {
   variant: ProductVariant;
+  sourceName?: string | null;
+  currency?: string | null;
   connections: readonly Connection[];
   listings: OfferMapping[];
   total: number;
@@ -437,6 +520,10 @@ function VariantDetailBody({
           ))}
         </div>
       ) : null}
+
+      <VariantPhotosSection variant={variant} sourceName={sourceName} />
+
+      <VariantCostSection variant={variant} productCurrency={currency ?? null} sourceName={sourceName} />
 
       {stockRow && stock ? <StockNarrative row={stockRow} stock={stock} /> : null}
       {stockRow && stock && showsChannelFigures && stock.channelsStatus !== 'ok' ? (
@@ -504,8 +591,12 @@ export function VariantDetailPanel({
   connections,
   onListingsCount,
   stock = null,
+  sourceName,
+  currency,
 }: {
   variant: ProductVariant;
+  sourceName?: string | null;
+  currency?: string | null;
   productTaxRate: string | null;
   productTaxRateUnknownReason?: TaxRateUnknownReason | null;
   connections: readonly Connection[];
@@ -524,6 +615,8 @@ export function VariantDetailPanel({
           <StockCell row={stockRow} />
         </div>
       ) : null}
+      <div className="variant-drawer__label">Cost (net)</div>
+      <VariantCostCell variant={variant} />
       <VariantDetailBody
         stock={stock}
         variant={variant}
@@ -533,6 +626,8 @@ export function VariantDetailPanel({
         isLoading={isLoading}
         isError={isError}
         open
+        sourceName={sourceName}
+        currency={currency ?? null}
         taxRate={{
           productTaxRate,
           productTaxRateUnknownReason: productTaxRateUnknownReason ?? null,
@@ -695,8 +790,10 @@ function VariantStockRow({
   onCreateOffers,
   onListingsCount,
   stock,
+  sourceName,
 }: {
   variant: ProductVariant;
+  sourceName?: string | null;
   productTaxRate: string | null;
   productTaxRateUnknownReason?: TaxRateUnknownReason | null;
   currency: string | null;
@@ -714,10 +811,7 @@ function VariantStockRow({
 
   return (
     <>
-      <tr
-        className={isOpen ? 'is-open' : undefined}
-        data-testid={stockRow ? `stock-variant-row-${stockRow.key}` : undefined}
-      >
+      <tr className={isOpen ? 'is-open' : undefined} data-testid={`variant-row-${variantSlug(variant)}`}>
         <td className="variant-stock-table__expand-cell">
           <button
             type="button"
@@ -733,6 +827,9 @@ function VariantStockRow({
           </button>
         </td>
         <td>
+          <VariantPhotoCell variant={variant} />
+        </td>
+        <td>
           <div className="variant-stock-table__name">
             <span className="variant-stock-table__sku mono-text">{variantHeadline(variant)}</span>
             {meta ? <span className="variant-stock-table__meta">{meta}</span> : null}
@@ -745,7 +842,10 @@ function VariantStockRow({
             productTaxRateUnknownReason={productTaxRateUnknownReason}
           />
         </td>
-        <td>{stockRow ? <StockCell row={stockRow} /> : <span className="text-muted">—</span>}</td>
+        {/* The stock cell carries the stock test id: the row's own id is the variant's (#3587). */}
+        <td data-testid={stockRow ? `stock-variant-row-${stockRow.key}` : undefined}>
+          {stockRow ? <StockCell row={stockRow} /> : <span className="text-muted">—</span>}
+        </td>
         <td>
           <VariantCoverage
             listings={listings}
@@ -754,12 +854,15 @@ function VariantStockRow({
             onCreateOffers={onCreateOffers}
           />
         </td>
+        <td>
+          <VariantCostCell variant={variant} />
+        </td>
         <td className="data-table__cell--right variant-stock-table__price">
           {formatPrice(variant.price, currency)}
         </td>
       </tr>
       <tr className={`variant-stock-table__expand-row${isOpen ? ' is-open' : ''}`}>
-        <td colSpan={6}>
+        <td colSpan={8}>
           <div className="variant-stock-table__expand-content">
             <div className="variant-stock-table__expand-content-inner">
               <div className="variant-drawer">
@@ -772,6 +875,8 @@ function VariantStockRow({
                   isError={isError}
                   open={isOpen}
                   stock={stock}
+                  sourceName={sourceName}
+                  currency={currency}
                 />
               </div>
             </div>
@@ -793,8 +898,10 @@ function VariantStockCard({
   onCreateOffers,
   onListingsCount,
   stock,
+  sourceName,
 }: {
   variant: ProductVariant;
+  sourceName?: string | null;
   currency: string | null;
   taxRate: InheritedTaxRate;
   connections: readonly Connection[];
@@ -810,7 +917,10 @@ function VariantStockCard({
   const meta = variantMetaLine(variant);
 
   return (
-    <div className="variant-card" data-testid={stockRow ? `stock-variant-row-${stockRow.key}` : undefined}>
+    <div
+      className="variant-card"
+      data-testid={stockRow ? `stock-variant-row-${stockRow.key}` : `variant-row-${variantSlug(variant)}`}
+    >
       <button
         type="button"
         className="variant-card__header"
@@ -819,6 +929,7 @@ function VariantStockCard({
         data-testid={stockRow ? `stock-variant-toggle-${stockRow.key}` : undefined}
         onClick={() => setOpen((prev) => !prev)}
       >
+        <VariantPhotoCell variant={variant} />
         <span className="variant-stock-table__name">
           <span className="variant-stock-table__sku mono-text">{variantHeadline(variant)}</span>
           {meta ? <span className="variant-stock-table__meta">{meta}</span> : null}
@@ -843,6 +954,12 @@ function VariantStockCard({
               <span className="variant-card__cell-label">Price</span>
               <span className="variant-card__cell-value">{formatPrice(variant.price, currency)}</span>
             </span>
+            <span className="variant-card__cell">
+              <span className="variant-card__cell-label">Cost (net)</span>
+              <span className="variant-card__cell-value">
+                <VariantCostCell variant={variant} />
+              </span>
+            </span>
             <span className="variant-card__cell variant-card__cell--full">
               <span className="variant-card__cell-label">Listings</span>
               <VariantCoverage
@@ -864,6 +981,8 @@ function VariantStockCard({
               open={isOpen}
               taxRate={taxRate}
               stock={stock}
+              sourceName={sourceName}
+              currency={currency}
             />
           </div>
         </div>

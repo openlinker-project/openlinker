@@ -130,6 +130,7 @@ export function toVariantAvailabilityRow(
     productVariantId: variantId,
     totalAvailable: sumLive(testCase.rows),
     locationCount: new Set(live.map((r) => r.locationId)).size,
+    positionCount: live.length,
     stockUpdatedAt,
   };
 }

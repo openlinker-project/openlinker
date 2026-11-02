@@ -304,6 +304,102 @@ export class OrderRecordResponseDto {
   })
   packedByUserId!: string | null;
 
+  @ApiProperty({
+    description:
+      'Whether the source reported a non-empty buyer note (#3538). On the SHARED projection (list and detail): ' +
+      'a denormalised boolean, so the list can badge and filter without the note text. Carries no content, so it is ' +
+      'written even under `OL_STORE_PII=false`. false covers both "no note" and "unknown"; the detail read ' +
+      '`buyerNote` tells them apart where the text is stored.',
+  })
+  hasBuyerNote!: boolean;
+
+  @ApiProperty({
+    enum: ['present', 'none', 'unknown'],
+    description:
+      'What the list can say about the buyer note without its text (#3538). `present` = `hasBuyerNote`; ' +
+      '`none` = the source asserted the buyer left no note; `unknown` = the source could not say. Under ' +
+      '`OL_STORE_PII=false` no note text is stored, so a row with no note cannot tell none from unknown and ' +
+      'reads `unknown`. On the SHARED projection (list and detail).',
+  })
+  buyerNoteState!: 'present' | 'none' | 'unknown';
+
+  @ApiProperty({
+    nullable: true,
+    type: String,
+    description:
+      'First non-empty line of the buyer note, trimmed and cut to 120 characters (#3538), with no ellipsis ' +
+      'added - the client truncates visually. null when the text is not stored or there is no note. The list ' +
+      'already shows buyer identity, so a one-line preview is not a new disclosure class. Never returned by MCP.',
+  })
+  buyerNotePreview!: string | null;
+
+  @ApiPropertyOptional({
+    nullable: true,
+    description:
+      'ISO 3166-1 alpha-2 country of the shipping address (#3538, D7). null = unknown (no address); never a default. ' +
+      'Country is not personal data and survives `OL_STORE_PII=false`.',
+  })
+  shippingCountry!: string | null;
+
+  @ApiPropertyOptional({
+    nullable: true,
+    description: 'Billing-address counterpart of `shippingCountry` (#3538, D7). null = unknown.',
+  })
+  billingCountry!: string | null;
+
+  @ApiPropertyOptional({
+    nullable: true,
+    description:
+      'How many OTHER, earlier orders the same resolved customer identity has in OpenLinker (#3538, D7). ' +
+      'Computed by OpenLinker at ingestion, never read from a channel. null = unknown (the order has no resolved customer).',
+  })
+  buyerOrderCount!: number | null;
+
+  @ApiPropertyOptional({
+    nullable: true,
+    type: String,
+    description:
+      'The buyer\'s checkout note to the seller (#3538). THREE states: a string is the note verbatim; null means the ' +
+      'source asserted the buyer left none; the key is ABSENT when the source could not say - and also when the deployment ' +
+      'runs with `OL_STORE_PII=false`, which stores no note text (see `hasBuyerNote`, which is still written). ' +
+      'DETAIL READ ONLY - GET /orders/:id sets it; the paged list never does. Free text may carry a phone number or ' +
+      'a parcel locker, so it follows the buyer-tax-id data-minimisation rule. Never returned by MCP `get_order`.',
+  })
+  buyerNote?: string | null;
+
+  @ApiPropertyOptional({
+    nullable: true,
+    description:
+      'When an operator first marked the buyer note read (ISO 8601, #3538). null = unread. DETAIL READ ONLY; ' +
+      'fill-once, so a second reader never moves it.',
+  })
+  buyerNoteReadAt?: string | null;
+
+  @ApiPropertyOptional({
+    nullable: true,
+    description: 'OL user id of whoever first marked the note read (#3538). Moves with `buyerNoteReadAt`.',
+  })
+  buyerNoteReadByUserId?: string | null;
+
+  @ApiPropertyOptional({
+    nullable: true,
+    description:
+      'When the buyer note text last changed while a different text was stored (ISO 8601, N-22). null = never ' +
+      'changed. A changed text resets the read marker but NOT bench acknowledgements, so a surface compares this ' +
+      'with `buyerNoteAcknowledgements[].acknowledgedAt` to say the note changed after it was read. DETAIL READ ONLY.',
+  })
+  buyerNoteChangedAt?: string | null;
+
+  @ApiPropertyOptional({
+    type: () => [BuyerNoteAcknowledgementDto],
+    nullable: true,
+    description:
+      'Per-parcel acknowledgements of the buyer note at the pack bench (#3538, D12), oldest first - one entry per ' +
+      'FulfillmentWork that was acknowledged. Feeds the order Activity timeline ("Buyer note read at the bench"). ' +
+      'DETAIL READ ONLY; an unacknowledged parcel is simply absent. `null` means the acknowledgements could not be loaded (distinct from `[]`, loaded and none).',
+  })
+  buyerNoteAcknowledgements?: BuyerNoteAcknowledgementDto[] | null;
+
   @ApiPropertyOptional({
     nullable: true,
     description:
@@ -479,4 +575,16 @@ export class OrderRecordResponseDto {
       'resolves, and an order with NO document at all is present with `document: null`, never absent.',
   })
   salesDocument?: SalesDocumentViewResponseDto;
+}
+
+/** One parcel's bench acknowledgement of the buyer note (#3538). */
+export class BuyerNoteAcknowledgementDto {
+  @ApiProperty({ description: 'The FulfillmentWork (parcel) that was acknowledged.' })
+  workId!: string;
+
+  @ApiProperty({ description: 'When the parcel was acknowledged (ISO 8601).' })
+  acknowledgedAt!: string;
+
+  @ApiPropertyOptional({ nullable: true, description: 'OL user id of the packer, or null.' })
+  acknowledgedByUserId!: string | null;
 }

@@ -19,6 +19,7 @@ export class AnalyticsDisplaySettings {
     public readonly rateBasis: RateBasis,
     public readonly includeBackfilledTaxRatesInNetSales: boolean,
     public readonly netGrossBasis: NetGrossBasis,
+    public readonly trackMargin: boolean,
     public readonly updatedAt: Date,
     public readonly updatedByUserId: string | null
   ) {}

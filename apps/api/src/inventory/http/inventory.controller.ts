@@ -121,6 +121,7 @@ export class InventoryController {
           productVariantId: i.productVariantId,
           totalAvailable: i.totalAvailable,
           locationCount: i.locationCount,
+          positionCount: i.positionCount,
           availableToPromise: view?.availableToPromise ?? null,
           provenance: view?.provenance ?? 'unknown',
           observedAt: view?.observedAt?.toISOString() ?? null,
