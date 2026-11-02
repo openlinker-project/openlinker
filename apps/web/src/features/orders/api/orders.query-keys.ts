@@ -33,10 +33,10 @@ export const ordersQueryKeys = {
   refunds: (internalOrderId: string) => ['orders', 'refunds', internalOrderId] as const,
   /** Cost at order time per line (#3588). */
   lineCosts: (internalOrderId: string) => ['orders', 'line-costs', internalOrderId] as const,
-  /** An order's notes (#3531). */
   /** Document-email attempts for the Activity timeline (#3551). */
   documentEmails: (internalOrderId: string) =>
     ['orders', 'document-emails', internalOrderId] as const,
+  /** An order's notes (#3531). */
   notes: (internalOrderId: string) => ['orders', 'notes', internalOrderId] as const,
   /** The workspace tag vocabulary (#3532). */
   tags: () => ['orders', 'tags'] as const,
