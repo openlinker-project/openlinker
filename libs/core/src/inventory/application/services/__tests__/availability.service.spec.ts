@@ -131,7 +131,7 @@ describe('AvailabilityService', () => {
     it('should request the published stamp explicitly when computing ATP', async () => {
       const ledger = new FakeReservationLedger([]);
       withRows([
-        { productVariantId: 'v1', totalAvailable: 10, locationCount: 1, stockUpdatedAt: OBSERVED_AT },
+        { productVariantId: 'v1', totalAvailable: 10, locationCount: 1, positionCount: 1, stockUpdatedAt: OBSERVED_AT },
       ]);
 
       const service = await build(ledger);
@@ -151,7 +151,7 @@ describe('AvailabilityService', () => {
         { variantId: 'v1', quantity: 100, atpEffect: 'diagnostic' },
       ]);
       withRows([
-        { productVariantId: 'v1', totalAvailable: 10, locationCount: 1, stockUpdatedAt: OBSERVED_AT },
+        { productVariantId: 'v1', totalAvailable: 10, locationCount: 1, positionCount: 1, stockUpdatedAt: OBSERVED_AT },
       ]);
 
       const service = await build(ledger);
@@ -172,7 +172,7 @@ describe('AvailabilityService', () => {
         { variantId: 'v1', quantity: 50, atpEffect: 'published' },
       ]);
       withRows([
-        { productVariantId: 'v1', totalAvailable: 10, locationCount: 1, stockUpdatedAt: OBSERVED_AT },
+        { productVariantId: 'v1', totalAvailable: 10, locationCount: 1, positionCount: 1, stockUpdatedAt: OBSERVED_AT },
       ]);
 
       const service = await build(ledger);
@@ -189,7 +189,7 @@ describe('AvailabilityService', () => {
     it('should be byte-identical to the un-reserved quantity while the ledger is empty', async () => {
       withConfig({ stockSafetyBuffer: 3 });
       withRows([
-        { productVariantId: 'v1', totalAvailable: 10, locationCount: 2, stockUpdatedAt: OBSERVED_AT },
+        { productVariantId: 'v1', totalAvailable: 10, locationCount: 2, positionCount: 2, stockUpdatedAt: OBSERVED_AT },
       ]);
 
       const service = await build(new EmptyReservationLedgerReader());
@@ -226,8 +226,8 @@ describe('AvailabilityService', () => {
 
     it('should report unknown BATCH-WIDE when the ledger read throws', async () => {
       withRows([
-        { productVariantId: 'v1', totalAvailable: 10, locationCount: 1, stockUpdatedAt: OBSERVED_AT },
-        { productVariantId: 'v2', totalAvailable: 5, locationCount: 1, stockUpdatedAt: OBSERVED_AT },
+        { productVariantId: 'v1', totalAvailable: 10, locationCount: 1, positionCount: 1, stockUpdatedAt: OBSERVED_AT },
+        { productVariantId: 'v2', totalAvailable: 5, locationCount: 1, positionCount: 1, stockUpdatedAt: OBSERVED_AT },
       ]);
 
       const service = await build(new ThrowingReservationLedger());
@@ -247,7 +247,7 @@ describe('AvailabilityService', () => {
 
     it('should never produce authority provenance in this wave', async () => {
       withRows([
-        { productVariantId: 'v1', totalAvailable: 10, locationCount: 1, stockUpdatedAt: OBSERVED_AT },
+        { productVariantId: 'v1', totalAvailable: 10, locationCount: 1, positionCount: 1, stockUpdatedAt: OBSERVED_AT },
       ]);
 
       const service = await build(new EmptyReservationLedgerReader());
@@ -264,7 +264,7 @@ describe('AvailabilityService', () => {
   describe('observation time', () => {
     it('should report stalenessMs against the injected clock', async () => {
       withRows([
-        { productVariantId: 'v1', totalAvailable: 1, locationCount: 1, stockUpdatedAt: OBSERVED_AT },
+        { productVariantId: 'v1', totalAvailable: 1, locationCount: 1, positionCount: 1, stockUpdatedAt: OBSERVED_AT },
       ]);
 
       const service = await build(new EmptyReservationLedgerReader());
@@ -283,7 +283,7 @@ describe('AvailabilityService', () => {
     it('should apply the connection buffer for a channel scope', async () => {
       withConfig({ stockSafetyBuffer: 4 });
       withRows([
-        { productVariantId: 'v1', totalAvailable: 10, locationCount: 1, stockUpdatedAt: OBSERVED_AT },
+        { productVariantId: 'v1', totalAvailable: 10, locationCount: 1, positionCount: 1, stockUpdatedAt: OBSERVED_AT },
       ]);
 
       const service = await build(new EmptyReservationLedgerReader());
@@ -305,7 +305,7 @@ describe('AvailabilityService', () => {
     it('should report unknown batch-wide (not throw) when the channel control read fails', async () => {
       connectionPort.get.mockRejectedValue(new Error('connection store unavailable'));
       withRows([
-        { productVariantId: 'v1', totalAvailable: 10, locationCount: 1, stockUpdatedAt: OBSERVED_AT },
+        { productVariantId: 'v1', totalAvailable: 10, locationCount: 1, positionCount: 1, stockUpdatedAt: OBSERVED_AT },
       ]);
 
       const service = await build(new EmptyReservationLedgerReader());
@@ -334,7 +334,7 @@ describe('AvailabilityService', () => {
 
     it('should apply no buffer for a global scope and never read a connection', async () => {
       withRows([
-        { productVariantId: 'v1', totalAvailable: 10, locationCount: 1, stockUpdatedAt: OBSERVED_AT },
+        { productVariantId: 'v1', totalAvailable: 10, locationCount: 1, positionCount: 1, stockUpdatedAt: OBSERVED_AT },
       ]);
 
       const service = await build(new EmptyReservationLedgerReader());
@@ -380,7 +380,7 @@ describe('AvailabilityService', () => {
 
     it('should zero-fill and preserve input order', async () => {
       withRows([
-        { productVariantId: 'v2', totalAvailable: 5, locationCount: 1, stockUpdatedAt: OBSERVED_AT },
+        { productVariantId: 'v2', totalAvailable: 5, locationCount: 1, positionCount: 1, stockUpdatedAt: OBSERVED_AT },
       ]);
 
       const service = await build(new EmptyReservationLedgerReader());

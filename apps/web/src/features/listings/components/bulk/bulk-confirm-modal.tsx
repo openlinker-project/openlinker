@@ -102,6 +102,10 @@ export function BulkConfirmModal({
     alreadyListedCount > 0 ? `${alreadyListedCount} already on ${connectionName}` : '',
     excludedCount > 0 ? `${excludedCount} switched off` : '',
   ].filter((part) => part !== '');
+  // Nothing would be created (#3851). Asking "List 0 of N?" and leaving the
+  // button live let the operator submit an empty batch that returned them to the
+  // wizard with no explanation, so the dialog states why instead and refuses.
+  const nothingToCreate = offerCount === 0;
 
   // Re-sync the local toggle when the parent's shared config changes (e.g.
   // operator went back to Step 1, flipped publishImmediately, returned).
@@ -114,24 +118,38 @@ export function BulkConfirmModal({
     <Dialog open={open} onOpenChange={isSubmitting ? undefined : onOpenChange}>
       <DialogContent>
         <DialogTitle>
-          {selectedCount > offerCount
-            ? `List ${offerCount} of ${selectedCount} selected variants on ${connectionName}?`
-            : `Create ${countNoun(offerCount, `${marketplaceName} offer`)} on ${connectionName}?`}
+          {nothingToCreate
+            ? `No offers to create on ${connectionName}`
+            : selectedCount > offerCount
+              ? `List ${offerCount} of ${selectedCount} selected variants on ${connectionName}?`
+              : `Create ${countNoun(offerCount, `${marketplaceName} offer`)} on ${connectionName}?`}
         </DialogTitle>
-        <DialogDescription>
-          You're about to create <strong>{countNoun(offerCount, 'offer')}</strong> on{' '}
-          <strong>{connectionName}</strong> ({marketplaceName}) across{' '}
-          <strong>{countNoun(productCount, 'product')}</strong>.{' '}
-          {/* Each reason is named separately (#2240): "excluded" is the operator's
-              own choice, "blocked" is work they can still recover, and "already
-              listed" is the backend skipping a duplicate. Rolling them into one
-              number told the operator nothing about which one applied. */}
-          {skipped.length > 0 ? <>Not listed: {joinReasons(skipped)}. </> : null}
-          Each offer is a separate job; you can follow per-product progress on the
-          next page.
-        </DialogDescription>
+        {nothingToCreate ? (
+          <DialogDescription>
+            {skipped.length === 0
+              ? 'No variants are selected.'
+              : selectedCount === 1
+                ? `The selected variant cannot be listed: ${joinReasons(skipped)}.`
+                : `None of the ${selectedCount} selected variants can be listed: ${joinReasons(skipped)}.`}{' '}
+            Go back to Review to fix or switch on the variants you want to list.
+          </DialogDescription>
+        ) : (
+          <DialogDescription>
+            You're about to create <strong>{countNoun(offerCount, 'offer')}</strong> on{' '}
+            <strong>{connectionName}</strong> ({marketplaceName}) across{' '}
+            <strong>{countNoun(productCount, 'product')}</strong>.{' '}
+            {/* Each reason is named separately (#2240): "excluded" is the operator's
+                own choice, "blocked" is work they can still recover, and "already
+                listed" is the backend skipping a duplicate. Rolling them into one
+                number told the operator nothing about which one applied. */}
+            {skipped.length > 0 ? <>Not listed: {joinReasons(skipped)}. </> : null}
+            Each offer is a separate job; you can follow per-product progress on the
+            next page.
+          </DialogDescription>
+        )}
 
         <div style={{ marginTop: 'var(--space-4)', display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
+          {nothingToCreate ? null : (
           <label style={{ display: 'flex', alignItems: 'flex-start', gap: 'var(--space-2)' }}>
             <input
               type="checkbox"
@@ -157,6 +175,7 @@ export function BulkConfirmModal({
               </small>
             </span>
           </label>
+          )}
 
           {mixedPublishWarning ? (
             <Alert tone="warning">
@@ -168,7 +187,7 @@ export function BulkConfirmModal({
 
           {errorMessage !== null ? (
             <Alert tone="error">{errorMessage}</Alert>
-          ) : (
+          ) : nothingToCreate ? null : (
             <Alert tone="info">
               <strong>Idempotency protected.</strong> If you accidentally double-submit,
               OpenLinker returns the existing batch rather than creating a duplicate.
@@ -197,7 +216,7 @@ export function BulkConfirmModal({
             <Button
               tone="primary"
               onClick={() => { onConfirm(publish); }}
-              disabled={isSubmitting || demoReadOnly}
+              disabled={isSubmitting || demoReadOnly || nothingToCreate}
             >
               {isSubmitting ? 'Creating…' : 'Create offers'}
             </Button>

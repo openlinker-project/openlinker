@@ -296,7 +296,14 @@ export interface PaginatedInventoryItems {
 export interface VariantStockRow {
   productVariantId: string;
   totalAvailable: number;
+  /** Distinct NON-NULL locations. A pooled position (locationId NULL) counts 0, so 0 does NOT mean "no rows". */
   locationCount: number;
+  /**
+   * Number of live (non-stale) inventory rows for the variant, pooled ones
+   * included (#3851). `positionCount === 0` is what means "no position / stock
+   * never synced"; `locationCount` cannot say that.
+   */
+  positionCount: number;
   /**
    * `MAX(updatedAt)` across the variant's live positions (#2321) — when the
    * stock facts behind `totalAvailable` were last written.

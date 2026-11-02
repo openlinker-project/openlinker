@@ -112,7 +112,7 @@ describe('StockAtRiskReadService', () => {
       {
         productVariantId: input.variantId,
         totalAvailable: input.masterStock,
-        locationCount: 1,
+        locationCount: 1, positionCount: 1,
         availableToPromise: input.availableToPromise,
       },
     ]);
