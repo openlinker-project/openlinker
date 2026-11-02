@@ -85,7 +85,7 @@ export { StockHistorySection, type StockHistoryVariant } from './components/stoc
 // mounts behind.
 export { StockAlerts, type StockAlertsProps } from './components/stock-alerts';
 export { StockCell } from './components/stock-cell';
-export { StockActions, StockMetaCells, StockNarrative } from './components/stock-variant-detail';
+export { StockActions, StockMetaCells, StockNarrative, VariantIdValue } from './components/stock-variant-detail';
 export {
   buildStockRows,
   deriveRowStatus,

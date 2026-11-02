@@ -23,10 +23,10 @@ import { useListingMarketplaceOfferQuery } from '../../features/listings/hooks/u
 import { useCategoryPathQuery } from '../../features/listings/hooks/use-category-path-query';
 import type { OfferMapping } from '../../features/listings/api/listings.types';
 import {
-  StockActions,
   StockCell,
   StockMetaCells,
   StockNarrative,
+  VariantIdValue,
   type ProductStockModel,
   type StockRowModel,
 } from '../../features/inventory';
@@ -345,16 +345,17 @@ function VariantMetaGrid({
           </span>
         </div>
       ) : null}
-      <div className="variant-drawer__meta-cell">
-        <span className="variant-drawer__meta-label">Variant ID</span>
-        <span className="variant-drawer__meta-value variant-drawer__meta-value--wrap mono-text">
-          {variant.id}
-        </span>
-      </div>
+      {stockRow ? <StockMetaCells row={stockRow} /> : null}
       <div className="variant-drawer__meta-cell">
         <span className="variant-drawer__meta-label">EAN / GTIN</span>
         <span className="variant-drawer__meta-value mono-text">
           {variant.ean ?? variant.gtin ?? '—'}
+        </span>
+      </div>
+      <div className="variant-drawer__meta-cell">
+        <span className="variant-drawer__meta-label">Variant ID</span>
+        <span className="variant-drawer__meta-value">
+          <VariantIdValue id={variant.id} />
         </span>
       </div>
       {taxRate ? (
@@ -367,7 +368,6 @@ function VariantMetaGrid({
           />
         </div>
       ) : null}
-      {stockRow ? <StockMetaCells row={stockRow} /> : null}
     </div>
   );
 }
@@ -379,7 +379,7 @@ function ListingsSummary({
 }: {
   listings: OfferMapping[];
   connections: readonly Connection[];
-}): ReactElement {
+}): ReactElement | null {
   const platforms = usePlatforms();
   const platformLabel = (platformType: string): string =>
     resolvePlatformLabel(platforms, platformType);
@@ -389,17 +389,12 @@ function ListingsSummary({
     new Set(gapConnections.map((c) => platformLabel(c.platformType))),
   );
 
+  if (gapConnections.length === 0) return null;
   return (
     <div className="listings-summary">
-      <span>{listings.length} listed</span>
-      {gapConnections.length > 0 ? (
-        <>
-          <span className="lmeta__sep" aria-hidden="true">·</span>
-          <span>{gapConnections.length} gap</span>
-          <span className="lmeta__sep" aria-hidden="true">·</span>
-          <span>{gapChannels.join(', ')}</span>
-        </>
-      ) : null}
+      <span>{gapConnections.length} gap</span>
+      <span className="lmeta__sep" aria-hidden="true">·</span>
+      <span>{gapChannels.join(', ')}</span>
     </div>
   );
 }
@@ -443,24 +438,16 @@ function VariantDetailBody({
         </div>
       ) : null}
 
-      <VariantMetaGrid variant={variant} taxRate={taxRate} stockRow={stockRow} />
-
-      {stockRow && stock ? (
-        <>
-          <StockNarrative row={stockRow} />
-          {showsChannelFigures && stock.channelsStatus !== 'ok' ? (
-            <p
-              className="variant-listing-card__note"
-              data-testid={`stock-channels-partial-${stockRow.key}`}
-            >
-              {stock.channelsStatus === 'partial'
-                ? 'Some marketplace figures couldn\u2019t be loaded right now. What OpenLinker sends is still correct.'
-                : 'Marketplace figures couldn\u2019t be loaded right now. What OpenLinker sends is still correct.'}
-            </p>
-          ) : null}
-          <StockActions row={stockRow} stock={stock} />
-        </>
+      {stockRow && stock ? <StockNarrative row={stockRow} stock={stock} /> : null}
+      {stockRow && stock && showsChannelFigures && stock.channelsStatus !== 'ok' ? (
+        <p className="variant-listing-card__note" data-testid={`stock-channels-partial-${stockRow.key}`}>
+          {stock.channelsStatus === 'partial'
+            ? 'Some marketplace figures couldn\u2019t be loaded right now. What OpenLinker sends is still correct.'
+            : 'Marketplace figures couldn\u2019t be loaded right now. What OpenLinker sends is still correct.'}
+        </p>
       ) : null}
+
+      <VariantMetaGrid variant={variant} taxRate={taxRate} stockRow={stockRow} />
 
       <div className="variant-drawer__listings">
         <div className="variant-drawer__label">Listings{total > 0 ? ` (${total})` : ''}</div>

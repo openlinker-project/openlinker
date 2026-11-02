@@ -896,16 +896,16 @@ describe('ProductDetailPage', () => {
     await user.click(await screen.findByTestId('stock-variant-toggle-SKU-001-M'));
 
     expect(screen.getByTestId('stock-formula-SKU-001-M')).toHaveTextContent(
-      '8 in PrestaShop − 5 reserved for 4 orders = 3 to sell',
+      '8 in PrestaShop − 5 reserved = 3 to sell',
     );
     expect(screen.getByTestId('stock-provenance-SKU-001-M')).toHaveTextContent('PrestaShop');
-    expect(screen.getByTestId('stock-provenance-SKU-001-M')).toHaveTextContent('worked out by OpenLinker');
+    expect(screen.getByTestId('stock-provenance-SKU-001-M')).not.toHaveTextContent('worked out by OpenLinker');
     expect(screen.getByTestId('stock-recorded-SKU-001-M')).toHaveTextContent(
       "2 more are reserved for orders OpenLinker doesn't fulfil. They don't lower what you can sell.",
     );
     expect(screen.queryByTestId('stock-holds-SKU-001-M')).not.toBeInTheDocument();
 
-    await user.click(screen.getByRole('button', { name: 'Show the 4 orders' }));
+    await user.click(screen.getByTestId('stock-holds-toggle-SKU-001-M'));
     expect(screen.getByTestId('stock-holds-SKU-001-M')).toBeInTheDocument();
     expect(screen.getByTestId('stock-hold-#10482')).toHaveTextContent('2 reserved');
     expect(screen.getByRole('link', { name: 'Order #10482' })).toHaveAttribute('href', '/orders/o1');

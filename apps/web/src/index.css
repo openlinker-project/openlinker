@@ -19780,17 +19780,110 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
   font-variant-numeric: tabular-nums;
 }
 
-.variant-drawer__holds {
-  list-style: none;
-  margin: var(--space-2) 0 0;
-  padding: 0;
+.stock-eq {
   display: grid;
+  gap: var(--space-2);
+  margin-bottom: var(--space-4);
+}
+
+.stock-eq__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-3) var(--space-5);
+}
+
+.stock-eq__line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-1) var(--space-3);
+  min-width: 0;
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+}
+
+.stock-eq__num {
+  font-family: var(--font-mono);
+  font-size: 1.125rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-primary);
+}
+
+.stock-eq__op {
+  color: var(--text-muted);
+}
+
+.stock-eq .stock-eq__reserved,
+.stock-eq .stock-eq__reserved:hover,
+.stock-eq .stock-eq__reserved:active {
+  display: inline-flex;
+  align-items: baseline;
   gap: var(--space-1);
-  max-width: 28rem;
+  height: auto;
+  padding: 0;
+  font: inherit;
+  font-weight: inherit;
+  color: var(--text-secondary);
+  background: none;
+  border: 0;
+  border-bottom: 1px dashed var(--border-default);
+  border-radius: 0;
+  box-shadow: none;
+  cursor: pointer;
+}
+
+.stock-eq .stock-eq__reserved:hover {
+  color: var(--text-primary);
+  border-bottom-color: var(--text-muted);
+}
+
+.stock-eq .stock-eq__reserved:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
+  border-radius: var(--radius-xs);
+}
+
+.stock-eq__chevron {
+  align-self: center;
+  width: 0.75rem;
+  height: 0.75rem;
+  color: var(--text-muted);
+  transition: transform var(--duration-fast) var(--ease-out);
+}
+
+.stock-eq__reserved[aria-expanded='true'] .stock-eq__chevron {
+  transform: rotate(180deg);
+}
+
+.stock-eq__short,
+.stock-eq__note {
+  margin: 0;
+  font-size: 0.8125rem;
+  line-height: 1.5;
+  color: var(--text-muted);
+}
+
+.stock-eq__note b {
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+}
+
+.stock-eq__holds {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-width: 36rem;
   font-size: 0.8125rem;
 }
 
-.variant-drawer__holds li {
+.stock-eq__holds[hidden] {
+  display: none;
+}
+
+.stock-eq__holds li {
   display: flex;
   justify-content: space-between;
   gap: var(--space-3);
@@ -19798,9 +19891,44 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
   border-top: 1px solid var(--border-subtle);
 }
 
-.variant-drawer__links--stock {
-  margin-top: var(--space-3);
-  align-items: center;
+.stock-eq__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: var(--space-3);
+}
+
+.stock-eq__adjust {
+  display: grid;
+  gap: var(--space-1);
+  justify-items: start;
+  max-width: 18rem;
+}
+
+.stock-eq__hint {
+  font-size: 0.75rem;
+  line-height: 1.4;
+  color: var(--text-muted);
+}
+
+.stock-eq__actions .variant-drawer__link {
+  align-self: center;
+}
+
+/* On a phone the orders list belongs right under the equation it explains; the actions follow it. */
+@media (max-width: 767.98px) {
+  .stock-eq {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .stock-eq__head {
+    display: contents;
+  }
+
+  .stock-eq__head > .stock-eq__actions {
+    order: 1;
+  }
 }
 
 .variant-stock-table__listings-cell {

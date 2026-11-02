@@ -9,9 +9,10 @@
  *
  * @module apps/web/src/features/inventory/components
  */
-import { useState, type ReactElement, type ReactNode } from 'react';
+import { useId, useState, type ReactElement, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { Button } from '../../../shared/ui/button';
+import { CopyableId } from '../../../shared/ui/copyable-id';
 import { StatusBadge } from '../../../shared/ui/status-badge';
 import { TimeDisplay } from '../../../shared/ui/time-display';
 import type { StockViewVariant } from '../api/inventory.types';
@@ -22,32 +23,36 @@ import {
 } from '../lib/stock-row';
 import { formatStaleness, holdLabel, publishedHolds, recordedOnlyHolds } from '../lib/stock-view';
 
-function pluralize(count: number, one: string, many: string): string {
-  return `${count} ${count === 1 ? one : many}`;
-}
-
 function sourceLabel(row: StockRowModel): string {
   return row.masterName === UNNAMED_MASTER ? '—' : row.masterName;
 }
 
-function howWeKnow(stock: StockViewVariant): string {
+/** Only the cases that are NOT the default computed-by-OpenLinker one need saying. */
+function howWeKnow(stock: StockViewVariant, source: string): string | null {
   if (stock.provenance === 'unknown') return 'not known';
-  if (stock.provenance === 'authority') return 'reported by an external system';
-  return 'worked out by OpenLinker';
+  if (stock.provenance === 'authority') return source === '—' ? 'as reported by an external system' : `as reported by ${source}`;
+  return null;
 }
 
-/** Cells appended to the variant's attribute / ID / EAN grid. */
+function shortOrderRef(label: string): string {
+  return label.length > 12 ? `${label.slice(0, 8)}…` : label;
+}
+
+/** Stock source, location and last-synced cells, placed first in the variant's details grid. */
 export function StockMetaCells({ row }: { row: StockRowModel }): ReactElement | null {
   const { stock, key } = row;
   if (row.state === 'loading' || row.state === 'restricted' || stock === null) return null;
   const live = stock.positions.filter((position) => !position.isStale);
   const locationNames = [...new Set(live.map((p) => p.locationName).filter((n): n is string => !!n))];
+  const source = sourceLabel(row);
+  const provenance = howWeKnow(stock, source);
   return (
     <>
       <div className="variant-drawer__meta-cell" data-testid={`stock-provenance-${key}`}>
         <span className="variant-drawer__meta-label">Stock source</span>
         <span className="variant-drawer__meta-value variant-drawer__meta-value--wrap">
-          {sourceLabel(row)} <span className="variant-drawer__meta-muted">· {howWeKnow(stock)}</span>
+          {source}
+          {provenance ? <span className="variant-drawer__meta-muted"> · {provenance}</span> : null}
         </span>
       </div>
       <div className="variant-drawer__meta-cell">
@@ -62,7 +67,7 @@ export function StockMetaCells({ row }: { row: StockRowModel }): ReactElement | 
       </div>
       <div className="variant-drawer__meta-cell">
         <span className="variant-drawer__meta-label">Last synced</span>
-        <span className="variant-drawer__meta-value">
+        <span className="variant-drawer__meta-value variant-drawer__meta-value--wrap">
           {stock.observedAt ? (
             <>
               <TimeDisplay className="mono-text" iso={stock.observedAt} />{' '}
@@ -75,126 +80,170 @@ export function StockMetaCells({ row }: { row: StockRowModel }): ReactElement | 
           )}
         </span>
       </div>
-      {row.state === 'ok' && row.masterReserved > 0 ? (
-        <div className="variant-drawer__meta-cell">
-          <span className="variant-drawer__meta-label">Reserved in {sourceLabel(row)}</span>
-          <span className="variant-drawer__meta-value mono-text tabular">
-            {row.masterReserved}
-            <span className="variant-drawer__meta-muted">
-              {' '}
-              already taken out of the {row.masterAvailable}
-            </span>
-          </span>
-        </div>
-      ) : null}
     </>
   );
 }
 
-function Formula({ row }: { row: StockRowModel }): ReactElement | null {
-  const { stock, key } = row;
-  if (stock === null) return null;
-  const name = sourceLabel(row) === '—' ? 'the master' : row.masterName;
-  const testId = `stock-formula-${key}`;
-
-  if (row.state === 'unknown') {
-    return (
-      <p className="variant-drawer__note" data-testid={testId}>
-        <b>{stock.masterAvailable}</b> in {name}. OpenLinker can&apos;t work out the reserved count right now, so it
-        isn&apos;t sending stock to your channels.
-      </p>
-    );
-  }
-  if (row.state === 'staled') {
-    return (
-      <p className="variant-drawer__note" data-testid={testId}>
-        {name} stopped reporting <b>{key}</b>
-        {stock.positions[0] ? (
-          <>
-            {' '}
-            on <TimeDisplay iso={stock.positions[0].updatedAt} />
-          </>
-        ) : null}
-        . It is no longer counted, so you can sell <b>0</b> and its listings are paused. If the variant was deleted
-        on purpose, nothing else is needed.
-      </p>
-    );
-  }
-  if (row.multiSource) {
-    const bySource = new Map<string, number>();
-    for (const position of stock.positions) {
-      if (position.isStale) continue;
-      const label = position.sourceConnectionName ?? 'another connection';
-      bySource.set(label, (bySource.get(label) ?? 0) + position.availableQuantity);
-    }
-    return (
-      <p className="variant-drawer__note" data-testid={testId}>
-        <b>{stock.masterAvailable}</b> = {[...bySource].map(([label, qty]) => `${qty} in ${label}`).join(' + ')}. New
-        orders for this variant don&apos;t reserve stock until one shop owns it.
-      </p>
-    );
-  }
-  const reserved = stock.heldCounted ?? 0;
-  const orders = publishedHolds(stock.holds).length;
-  const toSell = stock.availableToPromise ?? 0;
-  const shortBy = Math.max(0, reserved - stock.masterAvailable);
+/** Variant id, shortened, with the copy affordance the rest of the app uses. */
+export function VariantIdValue({ id }: { id: string }): ReactElement {
   return (
-    <p className="variant-drawer__note" data-testid={testId}>
-      <b>{stock.masterAvailable}</b> in {name}
-      {reserved > 0 ? (
-        <>
-          {' − '}
-          <b>{reserved}</b> reserved{stock.holds !== null ? ` for ${pluralize(orders, 'order', 'orders')}` : ''}
-        </>
-      ) : null}{' '}
-      = <b>{toSell}</b> to sell
-      {shortBy > 0 ? `. ${shortBy} of the reserved units aren't in stock.` : '.'}
+    <CopyableId
+      id={id}
+      label={id.length > 22 ? `${id.slice(0, 14)}…` : id}
+      copyLabel="Copy variant ID"
+      copiedLabel="Copied variant ID"
+    />
+  );
+}
+
+function Note({ testId, children }: { testId: string; children: ReactNode }): ReactElement {
+  return (
+    <p className="stock-eq__note" data-testid={testId}>
+      {children}
     </p>
   );
 }
 
-function Holds({ row }: { row: StockRowModel }): ReactElement | null {
+function Equation({ row, stock }: { row: StockRowModel; stock: ProductStockModel | null }): ReactElement | null {
   const [open, setOpen] = useState(false);
-  const { stock, key } = row;
-  if (stock === null || row.state !== 'ok' || row.multiSource) return null;
-  const counted = publishedHolds(stock.holds);
-  const recordedOnly = recordedOnlyHolds(stock.holds);
-  const recordedUnits = stock.heldRecordedOnly ?? recordedOnly.reduce((sum, hold) => sum + hold.quantity, 0);
-  const reserved = stock.heldCounted ?? 0;
-  return (
-    <>
-      {reserved > 0 && stock.holds === null ? (
-        <p className="variant-drawer__note">The orders reserving stock couldn&apos;t be listed.</p>
-      ) : null}
-      {counted.length > 0 ? (
-        <>
-          <Button
-            tone="ghost"
-            aria-expanded={open}
-            data-testid={`stock-holds-toggle-${key}`}
-            onClick={() => setOpen((prev) => !prev)}
+  const listId = useId();
+  const { stock: view, key } = row;
+  if (view === null) return null;
+  const name = sourceLabel(row) === '—' ? 'the master' : row.masterName;
+  const testId = `stock-formula-${key}`;
+  const actions = stock ? <StockActions row={row} stock={stock} /> : null;
+
+  let body: ReactElement;
+  if (row.state === 'unknown') {
+    body = (
+      <Note testId={testId}>
+        <b>{view.masterAvailable}</b> in {name}. OpenLinker can&apos;t work out the reserved count right now, so it
+        isn&apos;t sending stock to your channels.
+      </Note>
+    );
+  } else if (row.state === 'staled') {
+    body = (
+      <Note testId={testId}>
+        {name} stopped reporting <b>{key}</b>
+        {view.positions[0] ? (
+          <>
+            {' '}
+            on <TimeDisplay iso={view.positions[0].updatedAt} />
+          </>
+        ) : null}
+        . It is no longer counted, so you can sell <b>0</b> and its listings are paused. If the variant was deleted
+        on purpose, nothing else is needed.
+      </Note>
+    );
+  } else if (row.multiSource) {
+    const bySource = new Map<string, number>();
+    for (const position of view.positions) {
+      if (position.isStale) continue;
+      const label = position.sourceConnectionName ?? 'another connection';
+      bySource.set(label, (bySource.get(label) ?? 0) + position.availableQuantity);
+    }
+    body = (
+      <Note testId={testId}>
+        <b>{view.masterAvailable}</b> = {[...bySource].map(([label, qty]) => `${qty} in ${label}`).join(' + ')}. New
+        orders for this variant don&apos;t reserve stock until one shop owns it.
+      </Note>
+    );
+  } else {
+    const reserved = view.heldCounted ?? 0;
+    const counted = publishedHolds(view.holds);
+    const toSell = view.availableToPromise ?? 0;
+    const shortBy = Math.max(0, reserved - view.masterAvailable);
+    const listable = counted.length > 0;
+    body = (
+      <div className="stock-eq__line" data-testid={testId}>
+        <span className="stock-eq__term">
+          <b className="stock-eq__num">{view.masterAvailable}</b> in {name}
+        </span>{' '}
+        {reserved > 0 ? (
+          <>
+            <span className="stock-eq__op">−</span>{' '}
+            {listable ? (
+              <button
+                type="button"
+                className="stock-eq__reserved"
+                aria-expanded={open}
+                aria-controls={listId}
+                data-testid={`stock-holds-toggle-${key}`}
+                onClick={() => setOpen((prev) => !prev)}
+              >
+                <b className="stock-eq__num">{reserved}</b> reserved
+                <svg className="stock-eq__chevron" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <path d="M3 4.5l3 3 3-3" />
+                </svg>
+              </button>
+            ) : (
+              <span className="stock-eq__term">
+                <b className="stock-eq__num">{reserved}</b> reserved
+              </span>
+            )}{' '}
+          </>
+        ) : null}
+        <span className="stock-eq__op">=</span>{' '}
+        <span className="stock-eq__term">
+          <b className="stock-eq__num">{toSell}</b> to sell
+        </span>
+        {shortBy > 0 ? (
+          <span className="stock-eq__short">{shortBy} of the reserved units aren&apos;t in stock.</span>
+        ) : null}
+      </div>
+    );
+    const recordedOnly = recordedOnlyHolds(view.holds);
+    const recordedUnits = view.heldRecordedOnly ?? recordedOnly.reduce((sum, hold) => sum + hold.quantity, 0);
+    return (
+      <div className="stock-eq">
+        <div className="stock-eq__head">
+          {body}
+          {actions}
+        </div>
+        {reserved > 0 && view.holds === null ? (
+          <p className="stock-eq__note">The orders reserving stock couldn&apos;t be listed.</p>
+        ) : null}
+        {listable ? (
+          <ul
+            id={listId}
+            hidden={!open}
+            className="stock-eq__holds"
+            data-testid={open ? `stock-holds-${key}` : undefined}
           >
-            {open ? 'Hide' : 'Show'} the {pluralize(counted.length, 'order', 'orders')}
-          </Button>
-          {open ? (
-            <ul className="variant-drawer__holds" data-testid={`stock-holds-${key}`}>
-              {counted.map((hold) => (
-                <li key={hold.orderRecordId} data-testid={`stock-hold-${holdLabel(hold)}`}>
-                  <Link to={`/orders/${encodeURIComponent(hold.orderRecordId)}`}>Order {holdLabel(hold)}</Link>
+            {counted.map((hold) => {
+              const label = holdLabel(hold);
+              return (
+                <li key={hold.orderRecordId} data-testid={`stock-hold-${label}`}>
+                  <Link
+                    to={`/orders/${encodeURIComponent(hold.orderRecordId)}`}
+                    className="mono-text"
+                    title={label}
+                    aria-label={`Order ${label}`}
+                  >
+                    {shortOrderRef(label)}
+                  </Link>
                   <span className="mono-text tabular">{hold.quantity} reserved</span>
                 </li>
-              ))}
-            </ul>
-          ) : null}
-        </>
-      ) : null}
-      {recordedUnits > 0 ? (
-        <p className="variant-drawer__note" data-testid={`stock-recorded-${key}`}>
-          {recordedUnits} more {recordedUnits === 1 ? 'is' : 'are'} reserved for orders OpenLinker doesn&apos;t
-          fulfil. They don&apos;t lower what you can sell.
-        </p>
-      ) : null}
-    </>
+              );
+            })}
+          </ul>
+        ) : null}
+        {recordedUnits > 0 ? (
+          <p className="stock-eq__note" data-testid={`stock-recorded-${key}`}>
+            {recordedUnits} more {recordedUnits === 1 ? 'is' : 'are'} reserved for orders OpenLinker doesn&apos;t
+            fulfil. They don&apos;t lower what you can sell.
+          </p>
+        ) : null}
+      </div>
+    );
+  }
+  return (
+    <div className="stock-eq">
+      <div className="stock-eq__head">
+        {body}
+        {actions}
+      </div>
+    </div>
   );
 }
 
@@ -242,13 +291,18 @@ function Positions({ row }: { row: StockRowModel }): ReactElement | null {
   );
 }
 
-/** The sum, the reserving orders and the positions. */
-export function StockNarrative({ row }: { row: StockRowModel }): ReactElement | null {
+/** The equation strip (with its actions at the right end), the reserving orders and the positions. */
+export function StockNarrative({
+  row,
+  stock = null,
+}: {
+  row: StockRowModel;
+  stock?: ProductStockModel | null;
+}): ReactElement | null {
   if (row.state === 'loading' || row.state === 'restricted' || row.stock === null) return null;
   return (
     <>
-      <Formula row={row} />
-      <Holds row={row} />
+      <Equation row={row} stock={stock} />
       <Positions row={row} />
     </>
   );
@@ -267,7 +321,8 @@ export function StockActions({
   const hintId = `stock-adjust-hint-${key}`;
   const hint: ReactNode = row.adjustHint;
   return (
-    <div className="variant-drawer__links variant-drawer__links--stock">
+    <div className="stock-eq__actions">
+      <div className="stock-eq__adjust">
       <Button
         tone="secondary"
         disabled={disabled}
@@ -278,10 +333,11 @@ export function StockActions({
         Adjust stock
       </Button>
       {hint ? (
-        <span id={hintId} className="variant-drawer__meta-muted" data-testid={hintId}>
+        <span id={hintId} className="stock-eq__hint" data-testid={hintId}>
           {hint}
         </span>
       ) : null}
+      </div>
       {stock.onShowHistory ? (
         <a
           className="variant-drawer__link"
