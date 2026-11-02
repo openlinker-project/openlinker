@@ -293,3 +293,24 @@ export interface UpdateFulfillmentWorkAssignmentRequest {
   selfServeEligible?: boolean;
   expectedVersion?: number;
 }
+
+/**
+ * An order's latest routing decision (#2731, read by #3557).
+ *
+ * `state` and `abandonReason` are typed `string`, not mirrored unions - the
+ * same rule as the three vocabularies above: nothing in this app may decide
+ * from them beyond the two literals `routing-decision-state.ts` compares.
+ * `ttlMs` is the server's time limit; the frontend never restates it.
+ */
+export interface RoutingDecisionStatus {
+  decisionId: string;
+  state: string;
+  routerConnectionId: string;
+  createdAt: string;
+  ageMs: number;
+  ttlMs: number;
+  /** Set only for a `live` decision already past its limit. */
+  strandedSince: string | null;
+  abandonReason: string | null;
+  terminalisedAt: string | null;
+}
