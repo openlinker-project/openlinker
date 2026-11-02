@@ -121,6 +121,7 @@ describe('ShipmentController', () => {
       getOutboundByOrderId: jest.fn(),
       findByFulfillmentWorkIds: jest.fn(),
       hasConsumedReservations: jest.fn(),
+      getLatestOutboundTrackingNumber: jest.fn(),
     };
     dispatch = { dispatch: jest.fn() };
     bulkDispatch = { dispatchBulk: jest.fn(), generateProtocol: jest.fn() };

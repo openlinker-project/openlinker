@@ -6,6 +6,7 @@ import {
   formatMergeAmount,
   formatMergeDate,
   renderAutomationTemplate,
+  templateUsesMergeField,
 } from '../render-automation-template';
 
 describe('renderAutomationTemplate', () => {
@@ -15,6 +16,8 @@ describe('renderAutomationTemplate', () => {
       orderTotal: '99 PLN',
       orderPlacedAt: '2026-09-01',
       orderDispatchBy: '2026-09-03',
+      buyerName: 'Jan Kowalski',
+      shipmentTracking: 'TRK123',
       holdReason: 'awaiting_payment',
       ruleName: 'Notify ops',
     };
@@ -22,17 +25,22 @@ describe('renderAutomationTemplate', () => {
 
     const rendered = renderAutomationTemplate(template, context);
 
-    expect(rendered).toBe('REF-1 99 PLN 2026-09-01 2026-09-03 awaiting_payment Notify ops');
+    expect(rendered).toBe(
+      'REF-1 99 PLN 2026-09-01 2026-09-03 Jan Kowalski TRK123 awaiting_payment Notify ops',
+    );
     expect(rendered).not.toContain('{');
   });
 
   it('should render an UNRESOLVABLE spec field verbatim rather than a false fallback', () => {
-    // `{order.source}` / `{buyer.name}` / `{shipment.tracking}` have no source in
-    // this build. Rendering them verbatim reads as "not supported"; rendering
-    // `unknown` would read as a fact about the buyer or the parcel.
-    expect(
-      renderAutomationTemplate('{order.source} {buyer.name} {shipment.tracking}', {}),
-    ).toBe('{order.source} {buyer.name} {shipment.tracking}');
+    // `{order.source}` has no source in this build. Rendering it verbatim reads
+    // as "not supported"; rendering `unknown` would read as a fact.
+    expect(renderAutomationTemplate('{order.source}', {})).toBe('{order.source}');
+  });
+
+  it("should render the buyer.name and shipment.tracking fallbacks when both are absent (#3553)", () => {
+    expect(renderAutomationTemplate('Hi {buyer.name}, tracking: {shipment.tracking}', {})).toBe(
+      'Hi customer, tracking: not yet',
+    );
   });
 
   it('should render an unrecognised placeholder VERBATIM rather than blanking it', () => {
@@ -114,5 +122,27 @@ describe('merge-field value formatting', () => {
       expect(formatMergeAmount(undefined, 'PLN')).toBeUndefined();
       expect(formatMergeAmount(42, undefined)).toBe('42');
     });
+  });
+});
+
+describe('templateUsesMergeField (#3553)', () => {
+  it('should find a field written with or without inner spaces', () => {
+    expect(templateUsesMergeField('Tracking: {shipment.tracking}', 'shipment.tracking')).toBe(true);
+    expect(templateUsesMergeField('Tracking: { shipment.tracking }', 'shipment.tracking')).toBe(
+      true,
+    );
+  });
+
+  it('should not find a field the template does not reference', () => {
+    expect(templateUsesMergeField('Hi {buyer.name}', 'shipment.tracking')).toBe(false);
+    expect(templateUsesMergeField('shipment.tracking without braces', 'shipment.tracking')).toBe(
+      false,
+    );
+  });
+
+  it('should answer the same on repeated calls', () => {
+    const template = 'Tracking: {shipment.tracking}';
+    expect(templateUsesMergeField(template, 'shipment.tracking')).toBe(true);
+    expect(templateUsesMergeField(template, 'shipment.tracking')).toBe(true);
   });
 });
