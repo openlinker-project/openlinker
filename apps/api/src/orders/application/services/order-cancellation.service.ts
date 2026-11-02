@@ -681,7 +681,12 @@ export class OrderCancellationService implements IOrderCancellationService {
       );
     }
 
-    if (spec.refuseWhenSuperseded === true && !own) {
+    // A retry after this proposal's own correction was issued replays that credit;
+    // a cancellation since then must not refuse what was already done.
+    const ownIssued = records.some(
+      (record) => record.idempotencyKey === correctionKey && record.status === 'issued'
+    );
+    if (spec.refuseWhenSuperseded === true && !ownIssued) {
       await this.assertNotSuperseded(change, invoice, input.internalOrderId, correctionKey);
     }
 
