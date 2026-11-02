@@ -1,5 +1,5 @@
 /**
- * Delivery-Line Suggestion Response DTOs (#3907, ADR-079 decision 8)
+ * Delivery-Line Suggestion Response DTOs (#3907, ADR-082 decision 8)
  *
  * Wire shape of the curated delivery-line suggestions. Class names are unique
  * across the API because Swagger keys schemas by class name.

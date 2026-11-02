@@ -1,5 +1,5 @@
 /**
- * Delivery-Line Suggestions Controller (#3907, ADR-079 decision 8)
+ * Delivery-Line Suggestions Controller (#3907, ADR-082 decision 8)
  *
  * Read-only access to the curated per-country delivery-line suggestions that
  * live as data beside the starter-template catalogue. It writes nothing: the

@@ -726,7 +726,7 @@ export function SalesDocumentPanel({ order }: SalesDocumentPanelProps): ReactEle
   // uncomputable, so the whole preview collapses to a single waiting row rather
   // than showing a split OL cannot stand behind.
   // #3909 - the delivery line's wording comes from the ORDER-SOURCE connection's
-  // config (ADR-079). An unreadable config (non-admin sessions do not receive
+  // config (ADR-082). An unreadable config (non-admin sessions do not receive
   // it) resolves to the default "Shipping" line, which is what core does too.
   const sourceConfig = allConnections.find((c) => c.id === order.sourceConnectionId)?.config;
   const deliveryLine = resolveDeliveryLine(readDeliveryOnDocuments(sourceConfig), {

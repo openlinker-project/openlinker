@@ -515,7 +515,7 @@ describe('toRegisterTransactionCommand', () => {
       expect(cmd.buyerTaxId).toBe('not-a-real-looking-value-at-all');
     });
   });
-  describe('delivery line (#3905, ADR-079)', () => {
+  describe('delivery line (#3905, ADR-082)', () => {
     const basket = (shipping: number, total: number): Partial<Order> => ({
       items: [
         { id: 'a', productId: 'p1', quantity: 1, price: 100, taxRate: '23', name: 'A' },

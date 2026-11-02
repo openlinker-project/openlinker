@@ -486,7 +486,7 @@ export class ConnectionService implements IConnectionService {
   }
 
   /**
-   * Core-owned shape check for `config.deliveryOnDocuments` (#3905, ADR-079).
+   * Core-owned shape check for `config.deliveryOnDocuments` (#3905, ADR-082).
    * The rules live in the pure `validateDeliveryOnDocumentsShape` so the browser
    * mirror and this write path cannot disagree. The READ side is deliberately
    * forgiving (a stored value must never break an issuance); strictness belongs

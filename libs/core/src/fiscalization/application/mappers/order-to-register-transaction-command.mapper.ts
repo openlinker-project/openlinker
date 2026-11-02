@@ -56,12 +56,12 @@ export interface OrderToRegisterTransactionCommandInput {
   idempotencyKey: string;
   /**
    * Legacy single name for the shipping line (`config.invoicing.shippingLineName`).
-   * Used only when no {@link deliveryLine} is supplied (ADR-079 decision 5).
+   * Used only when no {@link deliveryLine} is supplied (ADR-082 decision 5).
    */
   shippingLineName?: string;
   /**
    * The delivery line resolved from the order-source connection's
-   * `deliveryOnDocuments` (#3905, ADR-079). Absent resolves to the legacy name
+   * `deliveryOnDocuments` (#3905, ADR-082). Absent resolves to the legacy name
    * (or `Shipping`) in `goods` mode - the pre-#3905 behaviour plus the rate
    * suffix a receipt name always carries.
    */
@@ -291,9 +291,9 @@ function toFiscalLine(item: OrderItem, orderId: string): FiscalTransactionLine {
  * price means for a later correction).
  *
  * A receipt registers what was paid, so it never carries a zero delivery line
- * (ADR-079 decision 7) - `freeDelivery` is an invoice-only setting.
+ * (ADR-082 decision 7) - `freeDelivery` is an invoice-only setting.
  *
- * Every delivery line NAMES its rate (ADR-079 decision 4). A fiscal device
+ * Every delivery line NAMES its rate (ADR-082 decision 4). A fiscal device
  * binds a name to one rate and refuses it for good once the rate goes up after
  * it went down, so one name at two rates on a mixed basket gets the whole
  * registration rejected; a name that changes with the rate cannot.

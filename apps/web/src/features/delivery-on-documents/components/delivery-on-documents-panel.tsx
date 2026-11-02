@@ -1,5 +1,5 @@
 /**
- * DeliveryOnDocumentsPanel (#3908, ADR-079)
+ * DeliveryOnDocumentsPanel (#3908, ADR-082)
  *
  * The "Delivery on documents" tab of the connection mappings page: how
  * delivery appears on receipts and invoices, per buyer country. Edits

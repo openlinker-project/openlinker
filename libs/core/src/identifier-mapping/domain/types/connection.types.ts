@@ -214,7 +214,7 @@ export interface ConnectionConfig {
   };
   /**
    * How the delivery line reads on sales documents, per buyer country (#3905,
-   * ADR-079). Set on the ORDER-SOURCE connection: it knows the delivery
+   * ADR-082). Set on the ORDER-SOURCE connection: it knows the delivery
    * methods and the markets. Shape and rules live in `delivery-line.types.ts`
    * (`@openlinker/core/sales-documents`), read via `readDeliveryOnDocuments`;
    * typed `unknown` here because that leaf is import-free and this one must

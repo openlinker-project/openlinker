@@ -1,5 +1,5 @@
 /**
- * Delivery on documents - setup wizard model (#3911, ADR-079)
+ * Delivery on documents - setup wizard model (#3911, ADR-082)
  *
  * The "Sales documents" step of the Allegro and Erli wizards asks one question
  * with two answers. This module turns the answer into the config that is saved

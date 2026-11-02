@@ -1,5 +1,5 @@
 /**
- * Delivery Line (#3905, ADR-079)
+ * Delivery Line (#3905, ADR-082)
  *
  * What the delivery line on a sales document is called, which tax rate it
  * carries and whether it is shown at all. Settings live on the ORDER-SOURCE
@@ -15,7 +15,7 @@
  * JSONB is read defensively, malformed entries are dropped and nothing throws.
  *
  * @module libs/core/src/sales-documents/domain/types
- * @see docs/architecture/adrs/079-delivery-line-on-sales-documents.md
+ * @see docs/architecture/adrs/082-delivery-line-on-sales-documents.md
  */
 
 /** Config key on the order-source `Connection.config`. */
@@ -31,7 +31,7 @@ export const DELIVERY_ON_DOCUMENTS_CONFIG_KEY = 'deliveryOnDocuments';
 export const DeliveryLineRateModeValues = ['goods', 'fixed', 'spread'] as const;
 export type DeliveryLineRateMode = (typeof DeliveryLineRateModeValues)[number];
 
-/** Whether a free delivery prints a zero line (invoices only, ADR-079 decision 7). */
+/** Whether a free delivery prints a zero line (invoices only, ADR-082 decision 7). */
 export const DeliveryLineFreeModeValues = ['omit', 'show'] as const;
 export type DeliveryLineFreeMode = (typeof DeliveryLineFreeModeValues)[number];
 
@@ -298,7 +298,7 @@ export interface DeliveryLineResolutionInput {
 }
 
 /**
- * Resolve the delivery line for one order (ADR-079 decision 5).
+ * Resolve the delivery line for one order (ADR-082 decision 5).
  *
  * Row: the buyer's country row, else `default`. Name: that row's
  * `methodNames[methodId]`, else its `name`; with no row at all, the legacy
@@ -542,7 +542,7 @@ export interface DeliverySpreadLine {
 }
 
 /**
- * Fold a delivery amount into product lines (ADR-079 decision 6, `spread`).
+ * Fold a delivery amount into product lines (ADR-082 decision 6, `spread`).
  *
  * Works in integer minor units so the result sums EXACTLY to the delivery
  * amount. Each line's share is proportional to its gross; a line can only be

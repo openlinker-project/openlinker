@@ -1,5 +1,5 @@
 /**
- * "Sales documents" step of the connection wizards (#3912, #3911, ADR-079)
+ * "Sales documents" step of the connection wizards (#3912, #3911, ADR-082)
  *
  * Allegro: both choices render and the recommended one previews a mini
  * receipt; "Set it up myself" reveals the table; the OAuth start request

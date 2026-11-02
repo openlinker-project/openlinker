@@ -1,4 +1,4 @@
-# ADR-079: The delivery line on sales documents is configured per buyer country, and a receipt names its VAT rate
+# ADR-082: The delivery line on sales documents is configured per buyer country, and a receipt names its VAT rate
 
 - **Status**: Proposed
 - **Date**: 2026-10-30

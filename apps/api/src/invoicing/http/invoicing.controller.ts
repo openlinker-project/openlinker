@@ -363,7 +363,7 @@ export class InvoicingController {
   }
 
   /**
-   * Resolve the delivery line for an order (#3905, ADR-079): the order-source
+   * Resolve the delivery line for an order (#3905, ADR-082): the order-source
    * connection's per-country settings, then the invoicing connection's legacy
    * label (#1562), then the neutral default. Resilient like the lookups beside
    * it - a failed source read degrades to the legacy label, never breaks issuance.

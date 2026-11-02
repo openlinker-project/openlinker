@@ -62,13 +62,13 @@ export interface OrderToIssueInvoiceCommandInput {
   source?: string;
   /**
    * Legacy single name for the shipping line (`config.invoicing.shippingLineName`,
-   * #1517). Used only when no {@link deliveryLine} is supplied; ADR-079
+   * #1517). Used only when no {@link deliveryLine} is supplied; ADR-082
    * decision 5 puts it after the order-source connection's own settings.
    */
   shippingLineName?: string;
   /**
    * The delivery line resolved from the order-source connection's
-   * `deliveryOnDocuments` (#3905, ADR-079). An invoice never carries the rate
+   * `deliveryOnDocuments` (#3905, ADR-082). An invoice never carries the rate
    * suffix a receipt name does; this supplies the invoice wording, the rate
    * mode and the free-delivery choice. Absent resolves to the legacy name (or
    * `Shipping`) in `goods` mode, which is the pre-#3905 behaviour.
@@ -400,12 +400,12 @@ function toInvoiceLine(item: OrderItem, orderId: string): InvoiceLine {
  * ONE line at that rate - the ordinary case. A mixed-rate basket yields N lines
  * whose amounts sum exactly to the shipping the buyer paid, split in proportion
  * to what was bought at each rate. The line carries the invoice wording with no
- * rate suffix: on an invoice the rate is its own column (ADR-079 decision 4).
+ * rate suffix: on an invoice the rate is its own column (ADR-082 decision 4).
  *
  * Non-positive or non-finite shipping yields no line - no phantom line - unless
  * the operator chose `freeDelivery: 'show'`, which prints a zero line at the
  * basket's dominant rate (or the fixed one) so the document says delivery was
- * free rather than silent about it (ADR-079 decision 7).
+ * free rather than silent about it (ADR-082 decision 7).
  *
  * When the split is uncomputable - some line has no rate - a single line with
  * an EMPTY rate is returned rather than nothing. Dropping the shipping would

@@ -1,5 +1,5 @@
 /**
- * Delivery line - unit tests (#3905, ADR-079)
+ * Delivery line - unit tests (#3905, ADR-082)
  *
  * @module libs/core/src/sales-documents/domain/types
  */

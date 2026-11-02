@@ -87,7 +87,7 @@ export class AllegroOAuthConnectDto {
   @ApiPropertyOptional({
     description:
       'How delivery appears on receipts and invoices, seeded into the new connection config ' +
-      'as `deliveryOnDocuments` (#3911, ADR-079). Validated when the connection is created. ' +
+      'as `deliveryOnDocuments` (#3911, ADR-082). Validated when the connection is created. ' +
       'Ignored when re-authenticating an existing connection.',
     type: 'object',
     additionalProperties: true,

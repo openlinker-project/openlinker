@@ -1,5 +1,5 @@
 /**
- * Receipt line-name budget resolution (#3914, ADR-079)
+ * Receipt line-name budget resolution (#3914, ADR-082)
  *
  * Asks every active fiscalization connection how many characters of a line
  * name its registering mechanism compares (`ReceiptLineNameBudget`, the ADR-046

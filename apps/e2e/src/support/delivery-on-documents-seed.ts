@@ -1,5 +1,5 @@
 /**
- * Delivery-on-documents seed (#3912, ADR-079)
+ * Delivery-on-documents seed (#3912, ADR-082)
  *
  * `tests/delivery-on-documents/` needs an Allegro-like ORDER SOURCE connection
  * paired with a catalogue shop (the Mappings page only reaches its `ready`

@@ -1,5 +1,5 @@
 /**
- * Delivery-Line Suggestion Catalogue (#3907, ADR-079 decision 8)
+ * Delivery-Line Suggestion Catalogue (#3907, ADR-082 decision 8)
  *
  * Country-keyed curated suggestions for how a sales document's delivery line
  * is named and rated: a default label, alternative labels, which rate mode is
@@ -17,7 +17,7 @@
  * nothing, and the operator chooses what to save.
  *
  * @module apps/api/src/sales-documents/data
- * @see docs/architecture/adrs/079-delivery-line-on-sales-documents.md
+ * @see docs/architecture/adrs/082-delivery-line-on-sales-documents.md
  */
 
 export type DeliveryLineRateMode = 'goods' | 'fixed';

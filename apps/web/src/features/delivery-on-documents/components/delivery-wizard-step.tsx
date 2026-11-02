@@ -1,5 +1,5 @@
 /**
- * Delivery on documents - wizard step (#3911, ADR-079)
+ * Delivery on documents - wizard step (#3911, ADR-082)
  *
  * The "Sales documents" step of the Allegro and Erli setup wizards: one
  * question, two answers. "Use the suggested settings" shows the receipt it

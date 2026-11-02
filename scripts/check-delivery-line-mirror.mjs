@@ -3,7 +3,7 @@
  * check-delivery-line-mirror.mjs
  *
  * Lint-time invariant for the hand-maintained frontend mirror of the delivery
- * line resolver (#3905, ADR-079).
+ * line resolver (#3905, ADR-082).
  *
  * Rule. The declarations named below in
  *   libs/core/src/sales-documents/domain/types/delivery-line.types.ts   (backend, authoritative)
@@ -82,7 +82,7 @@ const MIRRORED_CONSTANTS = [
   'SUFFIX_RESERVE',
 ];
 
-const DOCS_REF = 'docs/architecture/adrs/079-delivery-line-on-sales-documents.md';
+const DOCS_REF = 'docs/architecture/adrs/082-delivery-line-on-sales-documents.md';
 
 // --------------------------------------------------------------------------
 // Pure helpers. Exported so `--self-check` can exercise them directly.

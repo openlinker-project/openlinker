@@ -12,7 +12,7 @@
  * connections. `enabledCapabilities` is intentionally omitted from the payload
  * so the API defaults it to the adapter manifest's supported set (#984/#993
  * ship `OfferManager` / `OrderSource`). The wizard's "Sales documents" step adds
- * `config.deliveryOnDocuments` (#3911, ADR-079).
+ * `config.deliveryOnDocuments` (#3911, ADR-082).
  *
  * @module features/connections/components
  */

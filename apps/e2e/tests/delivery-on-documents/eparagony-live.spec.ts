@@ -1,5 +1,5 @@
 /**
- * Delivery line on a LIVE eparagony sandbox receipt (#3912, ADR-079)
+ * Delivery line on a LIVE eparagony sandbox receipt (#3912, ADR-082)
  *
  * A fiscal printer binds a line name to one VAT rate and refuses it for good
  * once the rate goes down and then up, so the delivery name must change with

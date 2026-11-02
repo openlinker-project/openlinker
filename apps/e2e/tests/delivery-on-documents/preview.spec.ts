@@ -1,5 +1,5 @@
 /**
- * Order-detail sales-document preview of the delivery line (#3912, ADR-079)
+ * Order-detail sales-document preview of the delivery line (#3912, ADR-082)
  *
  * The seeded mixed Polish basket (60.00 @ 23% + 40.00 @ 5%, shipping 15.00)
  * must preview its shipping as two rate-named receipt lines whose amounts

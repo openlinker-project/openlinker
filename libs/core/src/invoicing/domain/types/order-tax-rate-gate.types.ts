@@ -136,7 +136,7 @@ export function findOrderTaxRateGap(
   const missing = findMissingTaxRate(lines);
   if (missing) return missing;
 
-  // A `fixed` or `spread` delivery (ADR-079 decision 6) never asks the basket
+  // A `fixed` or `spread` delivery (ADR-082 decision 6) never asks the basket
   // which rate the shipping sits at, so the split cannot be the reason to hold
   // the document. The item rates above are still checked.
   if (options.skipShippingSplit === true) return null;

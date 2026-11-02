@@ -791,7 +791,7 @@ describe('toIssueInvoiceCommand', () => {
   );
 });
 
-describe('toIssueInvoiceCommand delivery line (#3905, ADR-079)', () => {
+describe('toIssueInvoiceCommand delivery line (#3905, ADR-082)', () => {
   const delivery = (over: Partial<ResolvedDeliveryLine> = {}): ResolvedDeliveryLine => ({
     name: 'Koszt dostawy',
     invoiceName: 'Dostawa',

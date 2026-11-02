@@ -1,5 +1,5 @@
 /**
- * Delivery line - frontend mirror (#3905, ADR-079)
+ * Delivery line - frontend mirror (#3905, ADR-082)
  *
  * Hand-maintained copy of the pure resolver in
  * `libs/core/src/sales-documents/domain/types/delivery-line.types.ts`. The
@@ -28,7 +28,7 @@ export const DELIVERY_ON_DOCUMENTS_CONFIG_KEY = 'deliveryOnDocuments';
 export const DeliveryLineRateModeValues = ['goods', 'fixed', 'spread'] as const;
 export type DeliveryLineRateMode = (typeof DeliveryLineRateModeValues)[number];
 
-/** Whether a free delivery prints a zero line (invoices only, ADR-079 decision 7). */
+/** Whether a free delivery prints a zero line (invoices only, ADR-082 decision 7). */
 export const DeliveryLineFreeModeValues = ['omit', 'show'] as const;
 export type DeliveryLineFreeMode = (typeof DeliveryLineFreeModeValues)[number];
 
@@ -259,7 +259,7 @@ export interface DeliveryLineResolutionInput {
 }
 
 /**
- * Resolve the delivery line for one order (ADR-079 decision 5).
+ * Resolve the delivery line for one order (ADR-082 decision 5).
  *
  * Row: the buyer's country row, else `default`. Name: that row's
  * `methodNames[methodId]`, else its `name`; with no row at all, the legacy

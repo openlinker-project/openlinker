@@ -158,7 +158,7 @@ describe('toCreateReceiptRequest — payment.paymentName (#3268 review)', () => 
   });
 });
 
-describe('toCreateReceiptRequest - one name at two VAT rates (#3906, ADR-079 decision 9)', () => {
+describe('toCreateReceiptRequest - one name at two VAT rates (#3906, ADR-082 decision 9)', () => {
   function build(
     lines: Array<{ name: string; taxRate: string }>,
   ): ReturnType<typeof toCreateReceiptRequest> {

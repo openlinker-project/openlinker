@@ -386,7 +386,7 @@ const NON_KNOBS = new Map([
 // replace, and that is still true - it is simply not something a review fix may
 // take on. The number is raised by one so the next knob asks again.
 //
-// #3905 (ADR-079): raised from 12 to 13 for the twelfth knob,
+// #3905 (ADR-082): raised from 12 to 13 for the twelfth knob,
 // `config.deliveryOnDocuments` - how the delivery line is named and taxed on
 // receipts and invoices, per buyer country, on the order-source connection.
 // Registered rather than excused, because it is exactly the counted shape. It

@@ -1,5 +1,5 @@
 /**
- * Delivery on documents - API wire types (#3908, ADR-079)
+ * Delivery on documents - API wire types (#3908, ADR-082)
  *
  * Mirrors the response DTOs of the two read endpoints from #3907:
  * `GET /sales-documents/delivery-line/suggestions` and

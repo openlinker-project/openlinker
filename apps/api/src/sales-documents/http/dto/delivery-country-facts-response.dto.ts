@@ -1,5 +1,5 @@
 /**
- * Delivery Country Facts Response DTOs (#3907, ADR-079 decision 8)
+ * Delivery Country Facts Response DTOs (#3907, ADR-082 decision 8)
  *
  * Wire shape of what one connection's recent orders say about each delivery
  * country. Carries no buyer data: the example is labels, amounts and rates.

@@ -1,5 +1,5 @@
 /**
- * Delivery Country Facts Types (#3907, ADR-079 decision 8)
+ * Delivery Country Facts Types (#3907, ADR-082 decision 8)
  *
  * What one source connection's recent orders say about each delivery country:
  * how many, which VAT rates its lines carried, which currency, and one

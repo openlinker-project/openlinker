@@ -1,5 +1,5 @@
 /**
- * Visual parity with the committed mockup (#3912, ADR-079)
+ * Visual parity with the committed mockup (#3912, ADR-082)
  *
  * Five states x two viewports x two themes. For each: the live UI is measured
  * (no horizontal overflow, no clipped text, WCAG text contrast) and

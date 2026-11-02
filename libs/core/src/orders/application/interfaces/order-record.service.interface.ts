@@ -202,7 +202,7 @@ export interface IOrderRecordService {
 
   /**
    * What one source connection's orders since `since` say about each delivery
-   * country (#3907, ADR-079 decision 8): counts, VAT rates seen, currency and
+   * country (#3907, ADR-082 decision 8): counts, VAT rates seen, currency and
    * an anonymous example order. Read-only, carries no buyer data, capped at 20
    * countries, most orders first.
    */

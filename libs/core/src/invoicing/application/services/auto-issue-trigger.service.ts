@@ -1653,7 +1653,7 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
   }
 
   /**
-   * Resolve the delivery line for this order (#3905, ADR-079): the source
+   * Resolve the delivery line for this order (#3905, ADR-082): the source
    * connection's per-country settings, then the invoicing connection's legacy
    * name, then the neutral default.
    */

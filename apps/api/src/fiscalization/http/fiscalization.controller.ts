@@ -128,7 +128,7 @@ export class FiscalizationController {
   ) {}
 
   /**
-   * Resolve the delivery line for an order (#3905, ADR-079): the order-source
+   * Resolve the delivery line for an order (#3905, ADR-082): the order-source
    * connection's per-country settings, then the fiscal connection's legacy
    * label, then the neutral default. A failed lookup degrades to the legacy
    * label and never blocks the registration.
@@ -215,7 +215,7 @@ export class FiscalizationController {
         order,
         connectionId: dto.connectionId,
         idempotencyKey: fiscalRegistrationIdempotencyKey(dto.connectionId, dto.orderId),
-        // #3905, ADR-079: the same resolved delivery line the auto path uses.
+        // #3905, ADR-082: the same resolved delivery line the auto path uses.
         // Without it a manual registration always said `Shipping`, whatever
         // the operator had configured.
         deliveryLine: await this.resolveDeliveryLineFor(

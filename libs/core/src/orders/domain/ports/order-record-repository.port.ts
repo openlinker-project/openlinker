@@ -125,7 +125,7 @@ export interface OrderRecordRepositoryPort {
 
   /**
    * Per-delivery-country facts for ONE source connection over a window (#3907,
-   * ADR-079 decision 8): order count, line VAT rates seen, most frequent
+   * ADR-082 decision 8): order count, line VAT rates seen, most frequent
    * currency, and the latest `ready` order as an anonymous example.
    *
    * Reads the same delivery-country expression routing evaluates on, scoped by
