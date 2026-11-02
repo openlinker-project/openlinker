@@ -429,6 +429,10 @@ export type {
   SalesDocumentBatchRunItemResult,
   SalesDocumentBatchItemOutcome,
   SalesDocumentBatchQueueEntry,
+  SalesDocumentBatchQueueFilter,
+  CreateSalesDocumentBatchRunInput,
+  FinishSalesDocumentBatchRunInput,
+  AppendSalesDocumentBatchRunItemInput,
 } from './domain/types/sales-document-batch-run.types';
 export type {
   SalesDocumentListAmount,
