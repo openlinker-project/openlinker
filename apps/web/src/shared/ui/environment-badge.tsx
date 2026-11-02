@@ -11,6 +11,8 @@ type EnvironmentTone = 'info' | 'neutral' | 'review' | 'success' | 'warning';
 export interface EnvironmentMeta {
   label: string;
   shortLabel: string;
+  /** Full word for screen readers when the visible label is abbreviated. */
+  accessibleLabel?: string;
   tone: EnvironmentTone;
 }
 
@@ -34,8 +36,9 @@ export function getEnvironmentMeta(appEnv: string): EnvironmentMeta {
     case 'local':
     case 'test':
       return {
-        label: copy.development,
+        label: copy.developmentShort,
         shortLabel: copy.developmentShort,
+        accessibleLabel: copy.development,
         tone: 'info',
       };
     case 'stage':
@@ -97,9 +100,10 @@ export function EnvironmentBadge({
     .filter(Boolean)
     .join(' ');
   const label = compact ? environment.shortLabel : environment.label;
+  const spokenName = environment.accessibleLabel ?? environment.label;
   const ariaLabel = version
-    ? interpolate(copy.ariaLabelVersion, { env: environment.label, version })
-    : interpolate(copy.ariaLabel, { env: environment.label });
+    ? interpolate(copy.ariaLabelVersion, { env: spokenName, version })
+    : interpolate(copy.ariaLabel, { env: spokenName });
 
   return (
     <span className={classes} aria-label={ariaLabel}>
