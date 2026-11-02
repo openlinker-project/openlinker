@@ -157,7 +157,7 @@ describe('RoutingDecisionPanel', () => {
     setup({
       decision: decision({ state: 'abandoned', abandonReason: 'stranded-past-ttl' }),
       blockReason: 'routing-failed',
-      retry: vi.fn().mockRejectedValue(new ApiError('internal', 409, { code: 'not-held' })),
+      retry: vi.fn().mockRejectedValue(new ApiError('internal', 409, { error: 'ROUTING_RETRY_NOT_HELD' })),
     });
 
     await userEvent.click(await screen.findByTestId('routing-decision-retry'));

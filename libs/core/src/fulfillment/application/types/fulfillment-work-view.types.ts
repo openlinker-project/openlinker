@@ -147,6 +147,10 @@ export interface FulfillmentWorkView {
    * resolving a name is the consumer's, and this view holds no PII.
    */
   readonly completedByUserId: string | null;
+  /** When this parcel's buyer note was first acknowledged (#3538), or `null`. */
+  readonly buyerNoteAcknowledgedAt: Date | null;
+  /** Who acknowledged it - a USER ID, like `completedByUserId`. */
+  readonly buyerNoteAcknowledgedByUserId: string | null;
   /**
    * When the dispatch fact for this parcel was settled with its sales channel
    * (#3096, G02-3), or `null` while it is not.

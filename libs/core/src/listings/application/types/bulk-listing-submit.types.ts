@@ -52,6 +52,16 @@ export interface BulkSharedConfig {
  */
 export interface PerProductOverride {
   stock?: number;
+  /**
+   * `stock` was resolved from master inventory by the client, not chosen by the
+   * operator (#3851). Read on a single-variant job only: the server re-checks
+   * master availability for it and leaves the offer out of the batch when
+   * OpenLinker holds no inventory position for the variant or cannot resolve
+   * its availability, instead of publishing the client's figure - which for an
+   * unsynced variant is a 0-stock draft nobody asked for. Absent means the
+   * stock is the operator's own and is published as given.
+   */
+  stockFromMaster?: boolean;
   publishImmediately?: boolean;
   price?: { amount: number; currency: string };
   overrides?: CreateOfferOverrides;
@@ -141,6 +151,14 @@ export interface ExpandedVariantJob {
    * for multi-variant expansion jobs.
    */
   useMasterStock: boolean;
+  /**
+   * A single-variant job whose submitted stock the client resolved from master
+   * inventory (`PerProductOverride.stockFromMaster`, #3851). The submitted
+   * figure is still the one published; the flag only makes the job refuse an
+   * unknown master stock - no position or unresolved availability - the way
+   * `useMasterStock` jobs refuse an unresolved one.
+   */
+  stockFromMaster?: boolean;
   /**
    * Strip the FE-resolved `productCardId` so this variant self-links to its
    * own catalog product by its own barcode. Set for expanded siblings (the

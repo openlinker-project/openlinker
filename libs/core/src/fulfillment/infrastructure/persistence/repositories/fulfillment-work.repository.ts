@@ -32,6 +32,7 @@
  * | `fulfilledQuantity` / `cancelledQuantity` | `recordLineProgress` (#2400) | a create carries zeros and would erase real progress |
  * | `updatedAt` | every applied transition | written IMPLICITLY by TypeORM's `@UpdateDateColumn` injection, and explicitly by `recordLineProgress`. Named here because it has a real downstream consumer — `IDX_fulfillment_works_request_status` and ADR-054's timeout sweep both read it — and a column whose writer is a framework default is exactly the one a writer table must not omit |
  * | `invoicePrintedAt` | `markInvoicePrinted` (pack-bench completion) | fill-in-when-NULL, `WHERE "invoicePrintedAt" IS NULL`; DOES NOT bump `version` — a display-only fact, the `fulfilledQuantity` reading above |
+ * | `buyerNoteAcknowledgedAt` / `buyerNoteAcknowledgedByUserId` | `acknowledgeBuyerNote` (pack-bench buyer-note acknowledgement, #3538) | fill-in-when-NULL on `buyerNoteAcknowledgedAt`, both columns in ONE statement; DOES NOT bump `version` - display-only like `invoicePrintedAt` |
  * | `labelPrintedAt` | `markLabelPrinted` (pack-bench completion) | same shape as `invoicePrintedAt`, called from a SIBLING context (`shipping`, off `Shipment.fulfillmentWorkId`) rather than from this one |
  * | `completedAt` / `completedByUserId` | `claimCompletion` (pack-bench completion), `undoCompletion` (#3340 follow-up), `reopenParcel` (#3340 follow-up) | `claimCompletion` is one pair, one statement, at-most-once — guarded `"completedAt" IS NULL AND "parcelClosedAt" IS NOT NULL` (the `claimParcelClose` idiom). `undoCompletion` is its mirror, guarded `"completedAt" IS NOT NULL` — the undo an operator's mis-tap needs without `reopenParcel`'s destructive re-verification. `reopenParcel` is a THIRD, NAMED writer: reopening the box always clears a stale completion in the SAME statement, because a parcel cannot be both reopened and completed and a second write here is exactly the crash window that stranded a completed-then-reopened parcel in no list at all. All three bump `version`: the terminal legality-gated act on this surface |
  *
@@ -274,6 +275,8 @@ export class FulfillmentWorkRepository implements FulfillmentWorkRepositoryPort 
     // `null` here would fabricate history for a parcel nobody has touched yet.
     header.invoicePrintedAt = null;
     header.labelPrintedAt = null;
+    header.buyerNoteAcknowledgedAt = null;
+    header.buyerNoteAcknowledgedByUserId = null;
     header.completedAt = null;
     header.completedByUserId = null;
 
@@ -931,6 +934,18 @@ export class FulfillmentWorkRepository implements FulfillmentWorkRepositoryPort 
     );
   }
 
+  async acknowledgeBuyerNote(workId: string, at: Date, byUserId: string): Promise<boolean> {
+    // Fill-in-when-NULL, both columns in one statement so the instant and the
+    // actor are one fact (a second packer never overwrites the first). No
+    // `version` bump - see the ORM column's own docblock.
+    return this.applyGuardedUpdate('acknowledgeBuyerNote', (qb) =>
+      qb
+        .set({ buyerNoteAcknowledgedAt: at, buyerNoteAcknowledgedByUserId: byUserId })
+        .where('"id" = :id', { id: workId })
+        .andWhere('"buyerNoteAcknowledgedAt" IS NULL')
+    );
+  }
+
   async markLabelPrinted(workId: string, at: Date): Promise<boolean> {
     // Same shape as `markInvoicePrinted`. The caller lives in a SIBLING
     // context (`shipping`, off `Shipment.fulfillmentWorkId`) — this method
@@ -1580,6 +1595,8 @@ export class FulfillmentWorkRepository implements FulfillmentWorkRepositoryPort 
       packedByService: header.packedByService,
       invoicePrintedAt: header.invoicePrintedAt,
       labelPrintedAt: header.labelPrintedAt,
+      buyerNoteAcknowledgedAt: header.buyerNoteAcknowledgedAt,
+      buyerNoteAcknowledgedByUserId: header.buyerNoteAcknowledgedByUserId,
       completedAt: header.completedAt,
       completedByUserId: header.completedByUserId,
       lines: lines.map((line) => this.toLineDomain(line)),

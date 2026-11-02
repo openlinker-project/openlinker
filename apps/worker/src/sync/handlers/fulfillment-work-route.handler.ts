@@ -79,6 +79,7 @@ import {
 import {
   isFulfillmentRouterUnroutable,
   selectPrimaryFulfillmentRouter,
+  toRouterSelectionClaimants,
   type AuthorityAttentionOutcome,
   type AuthorityClaimantInput,
 } from '@openlinker/core/fulfillment-authority';
@@ -377,13 +378,7 @@ export class FulfillmentWorkRouteHandler implements SyncJobHandler {
    */
   private async loadClaimants(): Promise<AuthorityClaimantInput[]> {
     const connections = await this.connections.list();
-    return connections.map((connection) => ({
-      connectionId: connection.id,
-      isActive: connection.status === 'active',
-      supportedCapabilities: [],
-      enabledCapabilities: connection.enabledCapabilities,
-      config: connection.config,
-    }));
+    return toRouterSelectionClaimants(connections);
   }
 
   /**

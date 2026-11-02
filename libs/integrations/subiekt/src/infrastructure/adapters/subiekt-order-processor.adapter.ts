@@ -478,6 +478,8 @@ export class SubiektOrderProcessorAdapter
           return { outcome: 'applied' };
         }
 
+        // The cancel reason stays in OpenLinker (#3540): the ZK status write has no
+        // reason field, so `event.reason` is not sent.
         case 'cancelled': {
           await this.updateFulfillment({
             externalOrderId: event.externalOrderId,

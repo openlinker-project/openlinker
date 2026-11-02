@@ -125,6 +125,7 @@ describe('ShipmentDispatchNotificationService', () => {
       listOrderIdsByFulfillmentBlockReasons: jest.fn(),
       listOrderIdsHeldForVariant: jest.fn(),
       markPacked: jest.fn(),
+      markBuyerNoteRead: jest.fn(),
       clearPacked: jest.fn(),
       recordAmendment: jest.fn(),
       getEarliestOrderDateByConnection: jest.fn(),

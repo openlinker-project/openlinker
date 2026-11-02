@@ -13,7 +13,19 @@ import type {
   InventoryAvailabilityResponse,
   DuplicatePositionsReport,
   ProvenanceBackfillStatus,
+  StockView,
 } from './inventory.types';
+import type {
+  InventoryMovementFilters,
+  InventoryMovementPagination,
+  InventoryMovementsPage,
+} from './inventory-movements.types';
+import type {
+  CorrectionTarget,
+  CorrectStockInput,
+  CorrectStockResult,
+} from './inventory-correction.types';
+import type { PaginatedTotal } from '../../../shared/api/paginated-total.types';
 import { normalizeCountryIso2 } from './inventory-locations.types';
 import type {
   CreateInventoryLocationInput,
@@ -33,6 +45,12 @@ export interface InventoryApi {
    * list exceeds the server-side cap (200 IDs per request).
    */
   availability: (productVariantIds: readonly string[]) => Promise<InventoryAvailabilityResponse>;
+  /**
+   * `GET /inventory/stock-view?productId=` (#3621 / #3569) - the M25 read model:
+   * available to promise with provenance, the held split, positions, holds and
+   * per-channel figures for every variant of one product, in one call.
+   */
+  stockView: (productId: string) => Promise<StockView>;
   /**
    * Active inventory locations (#2407). Only `total` is read — `limit: 1`
    * bounds the payload while `total` answers the question, so a hundred
@@ -86,6 +104,20 @@ export interface InventoryApi {
    * trusting it — so callers should not poll this aggressively.
    */
   getProvenanceBackfillStatus: () => Promise<ProvenanceBackfillStatus>;
+  /**
+   * Stock movement history page (#3568). Always requested WITHOUT its total
+   * (`withTotal=false`): the total is a second stage via `countMovements`.
+   */
+  listMovements: (
+    filters?: InventoryMovementFilters,
+    pagination?: InventoryMovementPagination,
+  ) => Promise<InventoryMovementsPage>;
+  /** GET /inventory/movements/count - the total behind `listMovements` (#3568). */
+  countMovements: (filters?: InventoryMovementFilters, init?: RequestInit) => Promise<PaginatedTotal>;
+  /** GET /inventory/:variantId/correction-target - which master a correction would write to (#3567). */
+  getCorrectionTarget: (productVariantId: string) => Promise<CorrectionTarget>;
+  /** POST /inventory/:variantId/adjust - a manual stock correction (#3567). */
+  correctStock: (productVariantId: string, input: CorrectStockInput) => Promise<CorrectStockResult>;
 }
 
 interface ApiRequest {
@@ -123,10 +155,36 @@ function buildLocationsQuery(
   return qs.length > 0 ? `?${qs}` : '';
 }
 
+function buildMovementsQuery(
+  filters?: InventoryMovementFilters,
+  pagination?: InventoryMovementPagination,
+  options?: { withTotal?: false },
+): string {
+  const params = new URLSearchParams();
+  if (filters?.productId) params.set('productId', filters.productId);
+  if (filters?.productVariantId) params.set('productVariantId', filters.productVariantId);
+  if (filters?.reasons && filters.reasons.length > 0) params.set('reasons', filters.reasons.join(','));
+  if (filters?.sourceConnectionId) params.set('sourceConnectionId', filters.sourceConnectionId);
+  if (filters?.from) params.set('from', filters.from);
+  if (filters?.to) params.set('to', filters.to);
+  if (filters?.needsAttention) params.set('needsAttention', 'true');
+  if (filters?.kind && filters.kind !== 'all') params.set('kind', filters.kind);
+  if (filters?.search) params.set('search', filters.search);
+  if (pagination?.limit !== undefined) params.set('limit', String(pagination.limit));
+  if (pagination?.offset !== undefined) params.set('offset', String(pagination.offset));
+  if (options?.withTotal === false) params.set('withTotal', 'false');
+  const qs = params.toString();
+  return qs.length > 0 ? `?${qs}` : '';
+}
+
 export function createInventoryApi(request: ApiRequest): InventoryApi {
   return {
     list(filters, pagination): Promise<PaginatedInventory> {
       return request<PaginatedInventory>(`/inventory${buildQuery(filters, pagination)}`);
+    },
+    stockView(productId): Promise<StockView> {
+      const params = new URLSearchParams({ productId });
+      return request<StockView>(`/inventory/stock-view?${params.toString()}`);
     },
     availability(productVariantIds): Promise<InventoryAvailabilityResponse> {
       const params = new URLSearchParams({ productVariantIds: productVariantIds.join(',') });
@@ -171,6 +229,26 @@ export function createInventoryApi(request: ApiRequest): InventoryApi {
     },
     getProvenanceBackfillStatus(): Promise<ProvenanceBackfillStatus> {
       return request<ProvenanceBackfillStatus>('/inventory/provenance-backfill-status');
+    },
+    listMovements(filters, pagination): Promise<InventoryMovementsPage> {
+      return request<InventoryMovementsPage>(
+        `/inventory/movements${buildMovementsQuery(filters, pagination, { withTotal: false })}`,
+      );
+    },
+    countMovements(filters, init): Promise<PaginatedTotal> {
+      // No pagination: the answer depends on the filters alone.
+      return request<PaginatedTotal>(`/inventory/movements/count${buildMovementsQuery(filters)}`, init);
+    },
+    getCorrectionTarget(productVariantId): Promise<CorrectionTarget> {
+      return request<CorrectionTarget>(
+        `/inventory/${encodeURIComponent(productVariantId)}/correction-target`,
+      );
+    },
+    correctStock(productVariantId, input): Promise<CorrectStockResult> {
+      return request<CorrectStockResult>(`/inventory/${encodeURIComponent(productVariantId)}/adjust`, {
+        method: 'POST',
+        body: JSON.stringify(input),
+      });
     },
   };
 }

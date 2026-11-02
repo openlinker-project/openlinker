@@ -24,6 +24,15 @@ import {
   createAiProviderSettingsApi,
   type AiProviderSettingsApi,
 } from '../../features/ai-provider-settings/api/ai-provider-settings.api';
+import { parseContentDispositionFilename } from '../../shared/api/content-disposition';
+import {
+  createMarginAnalyticsApi,
+  type MarginAnalyticsApi,
+} from '../../features/analytics/api/margin-analytics.api';
+import {
+  createAnalyticsExportApi,
+  type AnalyticsExportApi,
+} from '../../features/analytics/api/analytics-export.api';
 import { createAnalyticsApi, type AnalyticsApi } from '../../features/analytics/api/sales-analytics.api';
 import {
   createAnalyticsCoverageApi,
@@ -172,6 +181,19 @@ export type ApiRequest = <T>(path: string, init?: RequestInit) => Promise<T>;
 export type ApiBlobRequest = (path: string, init?: RequestInit) => Promise<Blob>;
 
 /**
+ * A downloaded file together with the name the server chose for it
+ * (`Content-Disposition`, exposed to the browser by the API's CORS config).
+ * `filename` is `null` when the response named none.
+ */
+export interface ApiFileResponse {
+  blob: Blob;
+  filename: string | null;
+}
+
+/** {@link ApiBlobRequest} that also reports the server-chosen filename (CSV exports, #3590). */
+export type ApiFileRequest = (path: string, init?: RequestInit) => Promise<ApiFileResponse>;
+
+/**
  * Streaming variant of {@link ApiRequest}. Same auth-header injection,
  * 401-refresh and `ApiError` normalisation as `request`, but it hands the
  * caller the undrained `ReadableStream` body instead of parsing it - the shape
@@ -224,7 +246,9 @@ export interface CoreApiClient {
     AnalyticsCoverageApi &
     AnalyticsRemediationApi &
     AnalyticsTaxCoverageApi &
-    AnalyticsMatchingCoverageApi;
+    AnalyticsMatchingCoverageApi &
+    MarginAnalyticsApi &
+    AnalyticsExportApi;
   analyticsSettings: AnalyticsSettingsApi;
   analyticsTrust: AnalyticsTrustApi;
   auth: AuthApi;
@@ -251,6 +275,7 @@ export interface CoreApiClient {
   mappings: MappingsApi;
   request: ApiRequest;
   requestBlob: ApiBlobRequest;
+  requestFile: ApiFileRequest;
   requestStream: ApiStreamRequest;
   returns: ReturnsApi;
   salesDocumentList: SalesDocumentListApi;
@@ -412,6 +437,17 @@ export function createApiClient({
     return response.blob();
   };
 
+  const requestFile: ApiFileRequest = async (
+    path: string,
+    init: RequestInit = {},
+  ): Promise<ApiFileResponse> => {
+    const response = await execute(path, init);
+    return {
+      blob: await response.blob(),
+      filename: parseContentDispositionFilename(response.headers.get('Content-Disposition')),
+    };
+  };
+
   const requestStream: ApiStreamRequest = async (
     path: string,
     init: RequestInit = {},
@@ -464,6 +500,8 @@ export function createApiClient({
       ...createAnalyticsRemediationApi(request),
       ...createAnalyticsTaxCoverageApi(request),
       ...createAnalyticsMatchingCoverageApi(request),
+      ...createMarginAnalyticsApi(request),
+      ...createAnalyticsExportApi(requestFile),
     },
     analyticsSettings: createAnalyticsSettingsApi(request),
     analyticsTrust: createAnalyticsTrustApi(request),
@@ -490,6 +528,7 @@ export function createApiClient({
     promptTemplates: createPromptTemplatesApi(request),
     request,
     requestBlob,
+    requestFile,
     requestStream,
     salesDocumentList: createSalesDocumentListApi(request),
     salesDocumentRules: createSalesDocumentRulesApi(request),

@@ -17,6 +17,7 @@
  */
 import {
   parseBenchActivityEntries,
+  parseBenchBuyerNoteAcknowledgementResult,
   parseBenchClaimNextResult,
   parseBenchClaimResult,
   parseBenchCompleteResult,
@@ -36,6 +37,7 @@ import {
 } from './bench-parcel.schema';
 import type {
   BenchActivityEntry,
+  BenchBuyerNoteAcknowledgementResult,
   BenchClaimNextResult,
   BenchClaimResult,
   BenchCompleteResult,
@@ -152,6 +154,12 @@ export interface BenchApi {
   undoLastScan: (workId: string) => Promise<BenchUndoResult>;
   /** Announce presence on this parcel, and learn whether someone else already has (#3406). */
   pingPresence: (workId: string) => Promise<BenchPresence>;
+  /**
+   * Record that the signed-in packer read THIS parcel's buyer note (#3539, D12).
+   * Fill-once and idempotent per parcel; gates nothing, and is not a parcel
+   * close. A refusal is a 200 with `outcome: 'refused'`.
+   */
+  acknowledgeBuyerNote: (workId: string) => Promise<BenchBuyerNoteAcknowledgementResult>;
   /** "Claim this parcel" — self-assign the CALLER, never anyone else (#3412). */
   claimParcel: (workId: string) => Promise<BenchClaimResult>;
   /** "Take next task" — server-picked from the same sorted, filtered worklist (#3412). */
@@ -269,6 +277,11 @@ export function createBenchApi(request: ApiRequest, requestBlob: ApiBlobRequest)
     async pingPresence(workId): Promise<BenchPresence> {
       return parseBenchPresence(
         await request<unknown>(`${work(workId)}/presence`, { method: 'POST' })
+      );
+    },
+    async acknowledgeBuyerNote(workId): Promise<BenchBuyerNoteAcknowledgementResult> {
+      return parseBenchBuyerNoteAcknowledgementResult(
+        await request<unknown>(`${work(workId)}/buyer-note/acknowledge`, { method: 'POST' })
       );
     },
     async claimParcel(workId): Promise<BenchClaimResult> {

@@ -72,14 +72,14 @@ describe('canRetryRouting', () => {
 
 describe('describeRetryRoutingError', () => {
   it('should name the refusal from the 409 code, never the server message', () => {
-    const error = new ApiError('boom secret', 409, { code: 'not-held' });
+    const error = new ApiError('boom secret', 409, { error: 'ROUTING_RETRY_NOT_HELD' });
     const text = describeRetryRoutingError(error);
     expect(text).toContain('not waiting on routing');
     expect(text).not.toContain('secret');
   });
 
   it('should fall back for an unknown 409 code', () => {
-    expect(describeRetryRoutingError(new ApiError('x', 409, { code: 'new' }))).toContain(
+    expect(describeRetryRoutingError(new ApiError('x', 409, { error: 'NEW_CODE' }))).toContain(
       'cannot be retried'
     );
   });

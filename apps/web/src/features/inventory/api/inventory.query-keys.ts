@@ -1,4 +1,8 @@
 import type { InventoryFilters, InventoryPagination } from './inventory.types';
+import type {
+  InventoryMovementFilters,
+  InventoryMovementPagination,
+} from './inventory-movements.types';
 import type { InventoryLocationFilters, InventoryLocationListPagination } from './inventory-locations.types';
 
 export const inventoryQueryKeys = {
@@ -6,6 +10,15 @@ export const inventoryQueryKeys = {
   list: (filters?: InventoryFilters, pagination?: InventoryPagination) =>
     ['inventory', 'list', filters ?? {}, pagination ?? {}] as const,
   detail: (id: string) => ['inventory', 'detail', id] as const,
+  // #3569 - one product's stock view; a sibling of `list`, not a child, so the
+  // locations/list invalidations do not drop it.
+  stockView: (productId: string) => ['inventory', 'stock-view', productId] as const,
+  // #3567 - prefixes a correction settles against: every product's stock view
+  // and every inventory list read, without naming a product.
+  stockViewAll: () => ['inventory', 'stock-view'] as const,
+  listAll: () => ['inventory', 'list'] as const,
+  correctionTarget: (productVariantId: string) =>
+    ['inventory', 'correction-target', productVariantId] as const,
   // #2407 — install-wide, so no connection axis: the active-location count is
   // a property of the deployment, not of the connection whose page renders it.
   activeLocations: () => ['inventory', 'locations', 'active'] as const,
@@ -33,4 +46,11 @@ export const inventoryQueryKeys = {
     ['inventory', 'duplicate-positions', maxGroups ?? null] as const,
   // #3240 — install-wide live read, same axis-free shape as duplicatePositions.
   provenanceBackfillStatus: () => ['inventory', 'provenance-backfill-status'] as const,
+  // #3568 - rows and the count are keyed apart so a count is cached per filter
+  // set and never shared across pages.
+  movementsAll: () => ['inventory', 'movements'] as const,
+  movements: (filters?: InventoryMovementFilters, pagination?: InventoryMovementPagination) =>
+    ['inventory', 'movements', 'rows', filters ?? {}, pagination ?? {}] as const,
+  movementsCount: (filters?: InventoryMovementFilters) =>
+    ['inventory', 'movements', 'count', filters ?? {}] as const,
 };

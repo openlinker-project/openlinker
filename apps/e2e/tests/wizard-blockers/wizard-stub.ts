@@ -88,6 +88,8 @@ export interface StubOptions {
    * card-less variant under a picked category trips `missing parameters`.
    */
   requiredProductParameters?: readonly string[];
+  /** Variants whose stock was never synced: `positionCount: 0`, zero stock. */
+  unsyncedVariantIds?: readonly string[];
 }
 
 const json = (route: Route, body: unknown): Promise<void> =>
@@ -259,7 +261,23 @@ export async function stubWizardApi(page: Page, opts: StubOptions = {}): Promise
       .split(',')
       .filter((s) => s.length > 0);
     return json(route, {
-      items: ids.map((id) => ({ productVariantId: id, totalAvailable: 8, locationCount: 1 })),
+      items: ids.map((id) =>
+        opts.unsyncedVariantIds?.includes(id)
+          ? {
+              productVariantId: id,
+              totalAvailable: 0,
+              locationCount: 0,
+              positionCount: 0,
+              availableToPromise: 0,
+            }
+          : {
+              productVariantId: id,
+              totalAvailable: 8,
+              locationCount: 1,
+              positionCount: 1,
+              availableToPromise: 8,
+            }
+      ),
     });
   });
 }

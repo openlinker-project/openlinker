@@ -168,6 +168,7 @@ export { BulkListingBatchNotFoundException } from './domain/exceptions/bulk-list
 export { DuplicateBulkBatchIdempotencyKeyError } from './domain/exceptions/duplicate-bulk-batch-idempotency-key.error';
 export { EmptyBulkSubmissionException } from './domain/exceptions/empty-bulk-submission.exception';
 export { AllVariantsAlreadyListedException } from './domain/exceptions/all-variants-already-listed.exception';
+export { MasterStockNotSyncedException } from './domain/exceptions/master-stock-not-synced.exception';
 export { InvalidEanException } from './domain/exceptions/invalid-ean.exception';
 export { DuplicateBatchEanException } from './domain/exceptions/duplicate-batch-ean.exception';
 export { CurrencyMismatchException } from './domain/exceptions/currency-mismatch.exception';
@@ -461,6 +462,10 @@ export type {
   OfferStatusSyncOptions,
 } from './application/services/offer-status-sync.service.interface';
 export type { IOfferStatusReadService } from './application/services/offer-status-read.service.interface';
+export type {
+  IOfferCommercialReadService,
+  ChannelObservedQuantity,
+} from './application/services/offer-commercial-read.service.interface';
 export type { IOfferQuantityAckReconcileService } from './application/services/offer-quantity-ack-reconcile.service.interface';
 export type { IOfferStockRestoreService } from './application/interfaces/offer-stock-restore.service.interface';
 export type {

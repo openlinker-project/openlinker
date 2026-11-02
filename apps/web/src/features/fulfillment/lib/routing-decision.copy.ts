@@ -34,17 +34,21 @@ export const ROUTING_DECISION_COPY = {
   readFailed: 'Could not load the routing status of this order.',
 } as const;
 
+/**
+ * Keyed by the 409's `error` code, the `{ statusCode, error, message }` shape the
+ * `/orders` controller uses for every conflict (`ORDER_ALREADY_ON_HOLD`, #2341).
+ */
 const RETRY_ERROR_BY_CODE: Record<string, string> = {
-  'not-held': 'This order is not waiting on routing any more, so there is nothing to retry.',
-  'not-retryable':
+  ROUTING_RETRY_NOT_HELD: 'This order is not waiting on routing any more, so there is nothing to retry.',
+  ROUTING_RETRY_NOT_RETRYABLE:
     'Routing cannot be retried for this order yet. Its current wait ends on its own or needs a change to the order.',
-  'no-router': 'No connection is set to decide where orders are packed, so routing cannot run.',
+  ROUTING_RETRY_NO_ROUTER: 'No connection is set to decide where orders are packed, so routing cannot run.',
 };
 
 function readCode(error: ApiError): string | null {
   const details: unknown = error.details;
-  if (typeof details !== 'object' || details === null || !('code' in details)) return null;
-  const code: unknown = (details as { code: unknown }).code;
+  if (typeof details !== 'object' || details === null || !('error' in details)) return null;
+  const code: unknown = (details as { error: unknown }).error;
   return typeof code === 'string' ? code : null;
 }
 

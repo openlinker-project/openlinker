@@ -6,8 +6,9 @@
  *
  * @module apps/api/src/orders/http/dto
  */
-import { ApiProperty } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { RefundReason, RefundReasonValues } from '@openlinker/core/orders';
+import { RefundCeilingVerdictDto } from './refund-ceiling-verdict.dto';
 
 export class RefundRecordResponseDto {
   @ApiProperty()
@@ -33,4 +34,12 @@ export class RefundRecordResponseDto {
 
   @ApiProperty()
   createdAt!: Date;
+
+  @ApiPropertyOptional({
+    type: () => RefundCeilingVerdictDto,
+    description:
+      'The ceiling verdict this record was written under (#3289). `status: unknown` means the ceiling could not ' +
+      'be checked and the refund proceeded unchecked; `reason` says why. Present on the write response only.',
+  })
+  refundCeiling?: RefundCeilingVerdictDto;
 }

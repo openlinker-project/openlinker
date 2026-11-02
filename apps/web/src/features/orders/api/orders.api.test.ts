@@ -127,6 +127,41 @@ describe('orders api — packed writes (#2288)', () => {
   });
 });
 
+describe('orders api — buyer note (#3539)', () => {
+  function recordingApiWithInit(): {
+    api: ReturnType<typeof createOrdersApi>;
+    calls: { path: string; init?: RequestInit }[];
+  } {
+    const calls: { path: string; init?: RequestInit }[] = [];
+    const request = vi.fn(async (path: string, init?: RequestInit) => {
+      calls.push({ path, init });
+      return {} as never;
+    });
+    return { api: createOrdersApi(request, vi.fn(async () => new Blob())), calls };
+  }
+
+  it('POSTs to the buyer-note read marker and encodes the order id', async () => {
+    const { api, calls } = recordingApiWithInit();
+
+    await api.markBuyerNoteRead('ol/order 1');
+
+    expect(calls[0].path).toBe('/orders/ol%2Forder%201/buyer-note/read');
+    expect(calls[0].init?.method).toBe('POST');
+  });
+
+  it('serializes the hasBuyerNote filter, including false', async () => {
+    const { api, paths } = recordingApi();
+
+    await api.list({ hasBuyerNote: true }, { limit: 20, offset: 0 });
+    await api.list({ hasBuyerNote: false }, { limit: 20, offset: 0 });
+    await api.list({}, { limit: 20, offset: 0 });
+
+    expect(paths[0]).toContain('hasBuyerNote=true');
+    expect(paths[1]).toContain('hasBuyerNote=false');
+    expect(paths[2]).not.toContain('hasBuyerNote');
+  });
+});
+
 describe('orders api — lifecycle phase (#2310)', () => {
   it('serializes the phase filter', async () => {
     const { api, paths } = recordingApi();

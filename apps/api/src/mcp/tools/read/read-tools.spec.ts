@@ -210,7 +210,7 @@ describe('get_availability tool', () => {
       ),
     getAvailabilityByVariantIds: (ids: readonly string[]) =>
       Promise.resolve(
-        ids.map((productVariantId) => ({ productVariantId, totalAvailable: 3, locationCount: 1 }))
+        ids.map((productVariantId) => ({ productVariantId, totalAvailable: 3, locationCount: 1, positionCount: 1 }))
       ),
   } as unknown as IInventoryQueryService;
 
@@ -239,7 +239,9 @@ describe('get_availability tool', () => {
     );
 
     expect(payloadOf(result)).toEqual({
-      variants: [{ variantId: 'ol_variant_1', totalAvailable: 3, locationCount: 1 }],
+      variants: [
+        { variantId: 'ol_variant_1', totalAvailable: 3, locationCount: 1, positionCount: 1 },
+      ],
     });
   });
 

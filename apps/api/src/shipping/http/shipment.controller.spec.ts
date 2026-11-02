@@ -118,6 +118,7 @@ describe('ShipmentController', () => {
       list: jest.fn(),
       getById: jest.fn(),
       getActiveByOrderId: jest.fn(),
+      getOutboundByOrderId: jest.fn(),
       findByFulfillmentWorkIds: jest.fn(),
       hasConsumedReservations: jest.fn(),
     };
@@ -147,6 +148,7 @@ describe('ShipmentController', () => {
       listOrderIdsByFulfillmentBlockReasons: jest.fn(),
       listOrderIdsHeldForVariant: jest.fn(),
       markPacked: jest.fn(),
+      markBuyerNoteRead: jest.fn(),
       clearPacked: jest.fn(),
       recordAmendment: jest.fn(),
       getEarliestOrderDateByConnection: jest.fn(),

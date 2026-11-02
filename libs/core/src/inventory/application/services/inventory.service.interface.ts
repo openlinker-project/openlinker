@@ -8,6 +8,7 @@
  * @see {@link InventoryService} for the implementation
  */
 import type { InventoryItem } from '../../domain/entities/inventory-item.entity';
+import type { InventoryMovementContext } from '../../domain/types/inventory-movement.types';
 import type { PruneStaleVariantsResult, ProvenanceScope } from '../../domain/types/inventory.types';
 
 /**
@@ -28,9 +29,17 @@ export interface IInventoryService {
    *   Carried onto the marketplace-propagation job so the runner's per-scope
    *   lane accounting can isolate one master's burst from another's (#2609).
    *   Omitted, propagation falls back to a synthetic install-wide scope.
+   * @param movement - why the stock changes (#3565). Omitted, the ledger row (written
+   *   only when `availableQuantity` changed or the position is new) reads
+   *   `master_sync`. `{ attachToMovementId }` completes an already-claimed row
+   *   instead of inserting one. Ledger failures are logged and never fail the write.
    * @returns Upserted inventory item domain entity
    */
-  setInventory(item: InventoryItem, sourceConnectionId?: string): Promise<InventoryItem>;
+  setInventory(
+    item: InventoryItem,
+    sourceConnectionId?: string,
+    movement?: InventoryMovementContext
+  ): Promise<InventoryItem>;
 
   /**
    * Get inventory (optional but recommended)

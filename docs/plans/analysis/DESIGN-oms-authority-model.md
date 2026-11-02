@@ -706,8 +706,16 @@ confirmation, never a new amendment.
 **The cancellation window is closed by downstream documents, not by a clock** (deterministic,
 clock-skew-proof): (1) dispatched/delivered shipment — hard; (2) fiscal registration (ADR-042) —
 hard; (3) `InvoiceRecord.blocksIssuanceElsewhere` (the #2047 getter, reused so the two can't
-drift; `in-doubt` also closes) — hard; (4) accepted fulfillment work — **soft** (cancel requires a
-hold on the work + explicit acknowledgement; picking may have started). The gate governs
+drift) — **amended by #3540 (D37)**: an *issued* invoice no longer closes the window. The cancel
+proceeds and, once applied, opens an `order.cancel_correction` change carrying a full credit
+proposal (every issued line to quantity zero) that the operator confirms through
+`POST /orders/:id/changes/:changeId/confirm`; a correction sent to a tax authority cannot be
+withdrawn, so OL proposes and never issues it unprompted. An invoice that blocks but is not
+`issued` (pending or `in-doubt`) still closes the window (`INVOICE_NOT_SETTLED`), since there is
+nothing settled to correct. A **fiscal receipt** still hard-closes it (ADR-042: OL cannot correct
+a receipt); (4) accepted fulfillment work — **soft** (cancel requires explicit acknowledgement;
+picking may have started — shipped as `acknowledgeAcceptedWork`, which cancels the work with reason
+`order_cancelled` underneath the holder rather than holding it first). The gate governs
 **operator-initiated** cancellation only; a source-reported cancel is an observation, never gated,
 written through the existing first-write-wins `COALESCE`. The `WHERE cancelledAt IS NULL`
 provisioning predicate (ANALYSIS-1032 §0 item 1) is a **precondition of this design and ships

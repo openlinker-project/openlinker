@@ -73,6 +73,12 @@ export class OperationalSettingsRepository implements OperationalSettingsReposit
     if (input.syncJobDeadRetentionDays !== undefined) {
       payload.syncJobDeadRetentionDays = input.syncJobDeadRetentionDays;
     }
+    if (input.inventoryMovementRetentionDays !== undefined) {
+      payload.inventoryMovementRetentionDays = input.inventoryMovementRetentionDays;
+    }
+    if (input.stockStaleSyncThresholdHours !== undefined) {
+      payload.stockStaleSyncThresholdHours = input.stockStaleSyncThresholdHours;
+    }
     if (input.deletionAuditCadence !== undefined) {
       payload.deletionAuditCadence = input.deletionAuditCadence;
     }
@@ -100,6 +106,8 @@ export class OperationalSettingsRepository implements OperationalSettingsReposit
       entity.deletionAuditBudget,
       entity.syncJobRetentionDays,
       entity.syncJobDeadRetentionDays,
+      entity.inventoryMovementRetentionDays,
+      entity.stockStaleSyncThresholdHours,
       entity.deletionAuditCadence,
       entity.updatedAt,
       entity.updatedBy

@@ -59,6 +59,11 @@ const PAYMENT_LABEL: Record<PaymentStatus, string> = {
   refunded: 'Refunded',
 };
 
+/** C-23: OL cancelled the order but the channel snapshot has not caught up. */
+export function isChannelStatusStale(phase: string | null | undefined, channelStatus: string): boolean {
+  return phase === 'cancelled' && channelStatus.toLowerCase() !== 'cancelled';
+}
+
 export function OrderDetailHeader({ order, snapshot, tags }: OrderDetailHeaderProps): ReactElement {
   const rollup = rollupSyncStatus(order.syncStatus);
   const healthLevel = deriveHealthLevel(rollup);
@@ -81,7 +86,10 @@ export function OrderDetailHeader({ order, snapshot, tags }: OrderDetailHeaderPr
         {/* #2310 — beside the health badge, never instead of it (ADR-059).
             Header badges are full-size, so no `compact` here. */}
         <OrderPhaseOrWaitingBadge order={order} />
-        {snapshot.status ? (
+        {/* C-23: the channel snapshot keeps saying `processing` until a re-poll,
+            so beside a Cancelled phase badge it reads as a second, contradicting
+            status. The summary row carries it, labelled as the channel's own. */}
+        {snapshot.status && !isChannelStatusStale(order.lifecyclePhase, snapshot.status) ? (
           <StatusBadge tone="neutral" withDot>
             {snapshot.status}
           </StatusBadge>

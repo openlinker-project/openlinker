@@ -94,6 +94,8 @@ export interface OrderListFilterState {
   /** `true` packed only, `false` not packed yet, `undefined` any. */
   packed?: boolean;
   openReturn: boolean;
+  /** `?hasBuyerNote=true` - only orders whose source reported a note (#3539). */
+  hasBuyerNote: boolean;
   tag?: string;
   untagged: boolean;
   /** The URL value (updates every keystroke); the query uses a debounced copy. */
@@ -307,6 +309,14 @@ export const ORDER_FILTER_DESCRIPTORS: Record<NarrowingOrderFilterKey, OrderFilt
     isActive: (s) => s.openReturn,
     chip: (s) => single('openReturn', COPY.chipReturn, s.openReturn ? COPY.chipOpen : null),
   },
+  hasBuyerNote: {
+    param: 'hasBuyerNote',
+    group: 'exceptions',
+    analyticsName: 'has_buyer_note',
+    isActive: (s) => s.hasBuyerNote,
+    chip: (s) =>
+      single('hasBuyerNote', COPY.chipBuyerNote, s.hasBuyerNote ? COPY.chipBuyerNoteValue : null),
+  },
   // `tag` and `untagged` are mutually exclusive by convention; removing either
   // chip clears BOTH params in one write so a stale pair can never survive.
   tag: {
@@ -382,6 +392,7 @@ export function parseOrderListFilterState(params: URLSearchParams): OrderListFil
     omsAttention: params.get('attention') === 'true',
     packed: rawPacked === 'true' ? true : rawPacked === 'false' ? false : undefined,
     openReturn: params.get('openReturn') === 'true',
+    hasBuyerNote: params.get('hasBuyerNote') === 'true',
     tag: params.get('tag') || undefined,
     untagged: params.get('untagged') === 'true',
     search: params.get('search') ?? '',
@@ -402,6 +413,7 @@ export const ORDER_TOGGLE_FILTER_VALUES = {
   taxRateConflict: 'conflict',
   attention: 'true',
   openReturn: 'true',
+  hasBuyerNote: 'true',
 } as const satisfies Partial<Record<NarrowingOrderFilterKey, string>>;
 
 export type OrderToggleFilterKey = keyof typeof ORDER_TOGGLE_FILTER_VALUES;
@@ -432,6 +444,7 @@ export function toOrderQueryFilters(
     packed: state.packed,
     search: derived.search || undefined,
     openReturn: state.openReturn ? true : undefined,
+    hasBuyerNote: state.hasBuyerNote ? true : undefined,
     tag: state.tag,
     untagged: state.untagged ? true : undefined,
   };

@@ -23,9 +23,14 @@
  * 3. **The retry key is fresh per click.** The first key of any family is
  *    permanent in `sync_jobs.idempotencyKey`, so a second operator click under a
  *    stable key would silently dedup against the first.
- * 4. **The stock trigger is bounded by a per-hour key**, because every route
- *    attempt mints a durable `routing_decisions` row that nothing prunes. An
- *    order stuck on a hot SKU would otherwise mint one per stock write.
+ * 4. **The stock trigger is bounded by a per-order key over a 10-minute
+ *    window**, because every route attempt mints a durable `routing_decisions`
+ *    row that nothing prunes; an order stuck on a hot SKU would otherwise mint
+ *    one per stock write. The window is short on purpose: a stock DECREASE
+ *    fires the trigger too, and a long window let it use up the attempt a
+ *    restock minutes later needed. A stock change inside an already-used window
+ *    is not lost for good: the next change after the window, or the sweep,
+ *    re-routes the order.
  *
  * @module libs/core/src/orders/application/interfaces
  */
@@ -59,7 +64,8 @@ export interface RerouteHeldOrdersForVariantInput {
   variantId: string;
   /**
    * The inventory row's write stamp, when the job carried one. Used only to
-   * name the attempt in logs; the dedupe key is the UTC hour, never the stamp.
+   * name the attempt in logs; the dedupe key is the 10-minute window, never the
+   * stamp.
    */
   observedAt?: string | null;
 }

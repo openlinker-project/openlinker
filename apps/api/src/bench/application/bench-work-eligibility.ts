@@ -102,6 +102,11 @@ export function deriveBenchWorkState(input: BenchEligibilityInput): BenchWorkSta
   return 'packable';
 }
 
+/** True when the shared derivation says the work was cancelled; keeps callers off the literal. */
+export function isCancelledBenchState(state: BenchWorkState): boolean {
+  return state === 'cancelled';
+}
+
 /** The refusal predicate. `packable` is the only state a parcel may be opened in. */
 export function isPackableBenchState(state: BenchWorkState): boolean {
   return state === 'packable';

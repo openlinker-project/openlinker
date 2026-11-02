@@ -26,8 +26,8 @@
  */
 import type { MigrationInterface, QueryRunner } from 'typeorm';
 
-export class AddOrderRecordFulfillmentBlockReasonIndex1937440000000 implements MigrationInterface {
-  name = 'AddOrderRecordFulfillmentBlockReasonIndex1937440000000';
+export class AddOrderRecordFulfillmentBlockReasonIndex1938320000000 implements MigrationInterface {
+  name = 'AddOrderRecordFulfillmentBlockReasonIndex1938320000000';
 
   public async up(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(
