@@ -168,16 +168,31 @@ export function formatMergeAmount(
 }
 
 /**
- * Substitute the nine known fields; leave every other `{...}` exactly as typed.
- *
+ * One `{...}` token. Shared by the renderer and {@link templateUsesMergeField}
+ * so "would this field be rendered" and "is this field used" cannot disagree.
  * The pattern deliberately matches only `{` + non-brace run + `}` so a stray
  * unclosed brace is left alone rather than swallowing the rest of the body.
  */
+const TOKEN_PATTERN = /\{([^{}]*)\}/g;
+
+/**
+ * Does the template reference this merge field? Lets a caller skip a read whose
+ * only purpose is a field the operator never typed (#3553 review: the tracking
+ * lookup ran for every email, on a deadline sweep once per fired rule).
+ */
+export function templateUsesMergeField(template: string, field: AutomationMergeField): boolean {
+  for (const match of template.matchAll(TOKEN_PATTERN)) {
+    if (match[1].trim() === field) return true;
+  }
+  return false;
+}
+
+/** Substitute the nine known fields; leave every other `{...}` exactly as typed. */
 export function renderAutomationTemplate(
   template: string,
   context: AutomationTemplateContext,
 ): string {
-  return template.replace(/\{([^{}]*)\}/g, (whole, rawToken: string) => {
+  return template.replace(TOKEN_PATTERN, (whole, rawToken: string) => {
     const token = rawToken.trim();
     if (!isMergeField(token)) {
       return whole;

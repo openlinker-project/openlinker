@@ -31,6 +31,7 @@ import {
   formatMergeAmount,
   formatMergeDate,
   renderAutomationTemplate,
+  templateUsesMergeField,
 } from '../../../domain/domain-services/render-automation-template';
 import { availabilityForAction } from '../../../domain/types/automation-action-availability.types';
 import type {
@@ -122,7 +123,12 @@ export class SendEmailExecutorService implements AutomationActionExecutorPort {
     // `{order.source}` is deliberately absent from the resolvable set — see
     // `AUTOMATION_MERGE_FIELDS`. An operator who types it gets it back verbatim,
     // which reads as "not supported" rather than as a fact about their order.
-    const shipmentTracking = await this.readTrackingNumber(input);
+    // Read only when the operator typed the field: on a deadline sweep firing
+    // many rules a shipment query per email would otherwise buy nothing.
+    const usesTracking =
+      templateUsesMergeField(subject, 'shipment.tracking') ||
+      templateUsesMergeField(body, 'shipment.tracking');
+    const shipmentTracking = usesTracking ? await this.readTrackingNumber(input) : undefined;
     const context = {
       orderReference: input.facts.subjectId,
       orderTotal: formatMergeAmount(input.facts.totalGross, input.facts.currency),

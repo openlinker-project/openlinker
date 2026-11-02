@@ -6,6 +6,7 @@ import {
   formatMergeAmount,
   formatMergeDate,
   renderAutomationTemplate,
+  templateUsesMergeField,
 } from '../render-automation-template';
 
 describe('renderAutomationTemplate', () => {
@@ -121,5 +122,27 @@ describe('merge-field value formatting', () => {
       expect(formatMergeAmount(undefined, 'PLN')).toBeUndefined();
       expect(formatMergeAmount(42, undefined)).toBe('42');
     });
+  });
+});
+
+describe('templateUsesMergeField (#3553)', () => {
+  it('should find a field written with or without inner spaces', () => {
+    expect(templateUsesMergeField('Tracking: {shipment.tracking}', 'shipment.tracking')).toBe(true);
+    expect(templateUsesMergeField('Tracking: { shipment.tracking }', 'shipment.tracking')).toBe(
+      true,
+    );
+  });
+
+  it('should not find a field the template does not reference', () => {
+    expect(templateUsesMergeField('Hi {buyer.name}', 'shipment.tracking')).toBe(false);
+    expect(templateUsesMergeField('shipment.tracking without braces', 'shipment.tracking')).toBe(
+      false,
+    );
+  });
+
+  it('should answer the same on repeated calls', () => {
+    const template = 'Tracking: {shipment.tracking}';
+    expect(templateUsesMergeField(template, 'shipment.tracking')).toBe(true);
+    expect(templateUsesMergeField(template, 'shipment.tracking')).toBe(true);
   });
 });

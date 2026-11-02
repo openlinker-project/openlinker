@@ -320,6 +320,26 @@ describe('SendEmailExecutorService', () => {
     expect(result.status).toBe('done');
   });
 
+  it('should not read the tracking number when no template uses it (#3553)', async () => {
+    const mailer = { sendEmail: jest.fn().mockResolvedValue(undefined) };
+    const shipments = { getLatestOutboundTrackingNumber: jest.fn().mockResolvedValue('TRK123') };
+    const executor = new SendEmailExecutorService(
+      stubResolver({ MAILER_TOKEN: mailer, SHIPMENT_QUERY_SERVICE_TOKEN: shipments }),
+    );
+
+    const result = await executor.execute(
+      input({
+        action: 'send-email',
+        recipient: { kind: 'address', address: 'ops@example.com' },
+        subject: 'Order {order.reference}',
+        body: 'Hello {buyer.name}',
+      }),
+    );
+
+    expect(result.status).toBe('done');
+    expect(shipments.getLatestOutboundTrackingNumber).not.toHaveBeenCalled();
+  });
+
   it('should fail (not throw) when the mailer throws', async () => {
     const mailer = { sendEmail: jest.fn().mockRejectedValue(new Error('smtp down')) };
     const executor = new SendEmailExecutorService(stubResolver({ MAILER_TOKEN: mailer }));
