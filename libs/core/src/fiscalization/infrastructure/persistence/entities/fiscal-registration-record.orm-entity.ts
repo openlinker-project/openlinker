@@ -33,6 +33,7 @@ import type {
   FiscalArtefact,
   FiscalRegistrationFailureMode,
 } from '../../../domain/types/fiscalization.types';
+import type { FiscalProviderFailureDetails } from '../../../domain/types/fiscal-provider-failure-details.types';
 
 @Entity('fiscal_registration_records')
 @Index('IDX_fiscal_registration_records_order_connection', ['orderId', 'connectionId'])
@@ -106,6 +107,13 @@ export class FiscalRegistrationRecordOrmEntity {
   /** INTERNAL-ONLY bounded diagnostic; never returned to an API caller. */
   @Column({ type: 'text', nullable: true })
   errorMessage!: string | null;
+
+  /**
+   * PII-free identifiers of the provider's refusal (#3843); safe to expose,
+   * unlike `errorMessage`. Nullable with no default and no backfill.
+   */
+  @Column({ type: 'jsonb', nullable: true })
+  providerFailureDetails!: FiscalProviderFailureDetails | null;
 
   /**
    * Expiry of the in-flight claim; `null` unless this row holds the slot. Backs

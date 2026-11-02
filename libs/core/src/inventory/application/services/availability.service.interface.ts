@@ -23,6 +23,7 @@ import type {
   AvailabilityProvenance,
   AvailabilityScope,
   PromisableQuantity,
+  PublishControls,
 } from '../../domain/types/availability.types';
 
 export interface GetPromisableQuantitiesInput {
@@ -159,4 +160,14 @@ export interface IAvailabilityService {
    * silent `0` would tell the operator no cushion is configured.
    */
   getAppliedReserve(scope: AvailabilityScope): Promise<number>;
+
+  /**
+   * The publish Controls a scope applies, for DISPLAY (#3621): the stock
+   * safety buffer and the zero threshold, exactly as `applyPublishControls`
+   * resolves them. Read-only - the arithmetic stays here, so a rule summary
+   * shown to an operator cannot drift from what is actually published. `global`
+   * answers `{buffer: 0, zeroThreshold: 0}`. May throw on a connection read
+   * failure; a display caller degrades that to "unknown".
+   */
+  getAppliedControls(scope: AvailabilityScope): Promise<PublishControls>;
 }

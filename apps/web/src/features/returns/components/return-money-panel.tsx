@@ -34,9 +34,10 @@ import { KeyValueList } from '../../../shared/ui/key-value-list';
 import { ReadOnlyLock } from '../../../shared/ui/read-only-lock';
 import { useToast } from '../../../shared/ui/toast-provider';
 import { RefundConfirmationForm, describeRefundReason } from '../../orders';
-import { RETURN_MONEY_COPY } from '../lib/return-money.copy';
+import { RETURN_MONEY_COPY, RETURN_REFUND_CEILING_COPY } from '../lib/return-money.copy';
 import { RETURN_RECEIVE_COPY } from '../lib/return-custody.copy';
-import { describeRefundError } from '../lib/refund-error';
+import { describeRefundError, readRefundCeilingExceeded } from '../lib/refund-error';
+import type { RefundCeilingExceededDetails } from '../lib/refund-error';
 import { useConfirmReturnRefundMutation } from '../hooks/use-return-custody-mutations';
 import type { ReturnDetail } from '../api/returns.types';
 
@@ -50,6 +51,8 @@ export function ReturnMoneyPanel({ detail, writeAccess }: ReturnMoneyPanelProps)
   const confirmRefund = useConfirmReturnRefundMutation(detail.id);
   const [open, setOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [ceiling, setCeiling] = useState<RefundCeilingExceededDetails | null>(null);
+  const [acknowledged, setAcknowledged] = useState(false);
 
   const isOrphan = detail.bucket === 'orphan';
 
@@ -90,14 +93,22 @@ export function ReturnMoneyPanel({ detail, writeAccess }: ReturnMoneyPanelProps)
               onCancel={() => {
                 setOpen(false);
                 setError(null);
+                setCeiling(null);
+                setAcknowledged(false);
               }}
               onSubmit={(input) => {
                 setError(null);
                 confirmRefund.mutate(
-                  { ...input, currency: detail.orderCurrency ?? '' },
+                  {
+                    ...input,
+                    currency: detail.orderCurrency ?? '',
+                    ...(acknowledged ? { acknowledgeAboveCeiling: true } : {}),
+                  },
                   {
                     onSuccess: (result) => {
                       setOpen(false);
+                      setCeiling(null);
+                      setAcknowledged(false);
                       // Two different facts, reported as two.
                       showToast(
                         result.refundRecordWritten
@@ -105,8 +116,12 @@ export function ReturnMoneyPanel({ detail, writeAccess }: ReturnMoneyPanelProps)
                           : { tone: 'warning', description: RETURN_MONEY_COPY.recordNotWritten }
                       );
                     },
-                    onError: (mutationError) =>
-                      setError(describeRefundError(mutationError)),
+                    onError: (mutationError) => {
+                      const exceeded = readRefundCeilingExceeded(mutationError);
+                      setCeiling(exceeded);
+                      // The callout replaces the generic line; it names the figures.
+                      setError(exceeded === null ? describeRefundError(mutationError) : null);
+                    },
                   }
                 );
               }}
@@ -117,6 +132,20 @@ export function ReturnMoneyPanel({ detail, writeAccess }: ReturnMoneyPanelProps)
               {RETURN_MONEY_COPY.action}
             </Button>
           )}
+          {open && ceiling !== null ? (
+            <Alert tone="warning" title={RETURN_REFUND_CEILING_COPY.title}>
+              <p>{RETURN_REFUND_CEILING_COPY.figures(ceiling)}</p>
+              <label>
+                <input
+                  checked={acknowledged}
+                  onChange={(event) => setAcknowledged(event.target.checked)}
+                  type="checkbox"
+                />{' '}
+                {RETURN_REFUND_CEILING_COPY.acknowledge}
+              </label>
+              <p className="text-muted">{RETURN_REFUND_CEILING_COPY.acknowledgeHint}</p>
+            </Alert>
+          ) : null}
         </ReadOnlyLock>
       ) : null}
     </section>

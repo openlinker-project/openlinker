@@ -1,0 +1,507 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Variant images, cost and margin</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="../../../../apps/web/src/index.css">
+<link rel="stylesheet" href="ol-kit.css">
+<script src="ol-kit.js" defer></script>
+<style>
+  /* Page-specific only - everything else is real ol.css. Product "photos" are
+     drawn from theme tokens so the stand-ins follow light/dark like the app. */
+  .mk-context-banner { display:flex; gap:var(--space-3); align-items:flex-start; padding:var(--space-3) var(--space-4); margin-bottom:var(--space-4); background:var(--bg-surface-muted); border:1px dashed var(--border-default); border-radius:var(--radius-md); }
+  .mk-context-banner p { margin:0; color:var(--text-secondary); font-size:.875rem; }
+  .mk-context-banner strong { color:var(--text-primary); }
+  .mk-context-banner pre { margin:var(--space-2) 0 0; font-family:var(--font-mono); font-size:.75rem; white-space:pre; overflow-x:auto; max-width:100%; color:var(--text-primary); }
+
+  /* photo stand-ins */
+  .mk-photo { position:relative; display:inline-grid; place-items:center; width:3.25rem; aspect-ratio:1/1; max-width:100%; border:1px solid var(--border-subtle); border-radius:var(--radius-sm); background:var(--bg-surface-muted); color:var(--bg-surface); overflow:hidden; flex:none; }
+  .mk-photo svg { width:70%; height:70%; stroke:var(--border-strong); stroke-width:1.2; }
+  .mk-photo--sm { width:2rem; }
+  .mk-photo--lg { width:5.5rem; }
+  .mk-photo--white { color:var(--bg-surface); }
+  .mk-photo--navy { color:var(--status-info-strong); }
+  .mk-photo--graphite { color:var(--text-secondary); }
+  .mk-photo--inherited { opacity:.72; }
+  .mk-photo__tag { position:absolute; left:2px; bottom:2px; font-size:.625rem; line-height:1; padding:2px 3px; border-radius:var(--radius-xs); background:var(--bg-surface-elevated); color:var(--text-secondary); border:1px solid var(--border-subtle); }
+  .mk-photo[aria-current="true"] { outline:2px solid var(--accent-focus); outline-offset:1px; }
+
+  .mk-strip { display:flex; flex-wrap:wrap; gap:var(--space-2); align-items:center; }
+  .mk-strip-block { display:grid; gap:var(--space-2); }
+  .mk-strip-block__head { display:flex; flex-wrap:wrap; align-items:center; gap:var(--space-2); font-size:.8125rem; color:var(--text-secondary); }
+  .mk-drawer-grid { white-space:normal; display:grid; grid-template-columns:minmax(0,1.2fr) minmax(0,1fr); gap:var(--space-5); padding:var(--space-4); }
+  @media (max-width:760px){ .mk-drawer-grid { grid-template-columns:1fr; } }
+  .mk-drawer-section h4 { margin:0 0 var(--space-2); font-size:.8125rem; font-weight:600; color:var(--text-secondary); letter-spacing:var(--tracking-wide); text-transform:uppercase; }
+  .mk-hint { margin:0; font-size:.8125rem; color:var(--text-muted); }
+
+  .mk-cost-form { display:grid; gap:var(--space-3); max-width:24rem; }
+  .mk-cost-row { display:flex; gap:var(--space-2); align-items:stretch; flex-wrap:wrap; }
+  .mk-cost-row .field__price-input { flex:1 1 9rem; }
+  .mk-cost-row select { flex:0 0 6rem; }
+  .mk-cost-actions { display:flex; flex-wrap:wrap; gap:var(--space-2); }
+  .mk-provenance { display:flex; flex-wrap:wrap; gap:var(--space-1) var(--space-2); align-items:center; font-size:.8125rem; color:var(--text-secondary); }
+  .mk-cost-value { font-family:var(--font-mono); font-variant-numeric:tabular-nums; font-size:1rem; color:var(--text-primary); }
+  .mk-missing { color:var(--status-warning-fg); font-size:.8125rem; }
+
+  .mk-bench-preview { display:flex; gap:var(--space-3); align-items:center; padding:var(--space-2) var(--space-3); border:1px solid var(--border-subtle); border-radius:var(--radius-md); background:var(--bg-surface); font-size:.8125rem; }
+  .mk-bench-preview b { display:block; font-weight:600; color:var(--text-primary); }
+  .mk-bench-preview span { color:var(--text-muted); font-family:var(--font-mono); }
+
+  /* analytics */
+  .mk-panel-actions { display:flex; flex-wrap:wrap; gap:var(--space-2); align-items:center; }
+  .mk-basis { display:flex; flex-wrap:wrap; gap:var(--space-2); align-items:center; font-size:.8125rem; color:var(--text-secondary); margin:0; }
+  .mk-trend { width:100%; max-width:100%; overflow-x:auto; }
+  .mk-trend svg { display:block; width:100%; max-width:600px; min-width:360px; height:auto; }
+  .mk-trend text { fill:var(--text-muted); font-family:var(--font-sans); font-size:11px; }
+  .mk-trend .mk-trend__value { fill:var(--text-primary); font-family:var(--font-mono); font-size:11px; }
+  .mk-trend .mk-trend__grid { stroke:var(--border-subtle); stroke-width:1; }
+  .mk-trend .mk-trend__bar { fill:var(--viz-cat-1); }
+  .mk-trend .mk-trend__bar--partial { fill:var(--viz-cat-muted); }
+  .mk-coverage { display:grid; gap:var(--space-2); }
+  .mk-coverage__detail { border:1px solid var(--border-subtle); border-radius:var(--radius-md); background:var(--bg-surface); }
+  .mk-num { text-align:right; font-family:var(--font-mono); font-variant-numeric:tabular-nums; white-space:nowrap; }
+  .mk-gap-cell { color:var(--text-muted); font-style:italic; white-space:nowrap; }
+  .mk-total-row td { font-weight:600; border-top:1px solid var(--border-default); }
+  .mk-empty-list { display:grid; gap:var(--space-2); margin:0; padding:0; list-style:none; }
+  .mk-empty-list li { display:flex; flex-wrap:wrap; justify-content:space-between; gap:var(--space-2); align-items:center; padding:var(--space-2) var(--space-3); border:1px solid var(--border-subtle); border-radius:var(--radius-md); background:var(--bg-surface); }
+  .mk-empty-list .mono-text { font-size:.8125rem; color:var(--text-muted); }
+  .mk-export-status { display:flex; align-items:center; gap:var(--space-2); font-size:.8125rem; color:var(--text-secondary); }
+  .mk-toast-region { position:static; width:auto; margin-top:var(--space-4); }
+  .mk-toast-region .toast { max-width:30rem; margin-left:auto; }
+  .mk-filename { font-family:var(--font-mono); font-size:.75rem; word-break:break-all; }
+
+  @media (max-width:480px){
+    .mk-photo--lg { width:4.25rem; }
+    .analytics-toolbar .control { min-width:0; }
+  }
+</style>
+</head>
+<body>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
+  <symbol id="mk-mug" viewBox="0 0 48 48">
+    <path d="M9 11h24v24a5 5 0 0 1-5 5H14a5 5 0 0 1-5-5z" fill="currentColor"/>
+    <path d="M33 16h4a6 6 0 0 1 0 12h-4" fill="none"/>
+    <ellipse cx="21" cy="11" rx="12" ry="2.4" fill="currentColor"/>
+  </symbol>
+  <symbol id="mk-mug-set" viewBox="0 0 48 48">
+    <path d="M4 20h13v14a3 3 0 0 1-3 3H7a3 3 0 0 1-3-3z" fill="currentColor"/>
+    <path d="M18 14h13v20a3 3 0 0 1-3 3h-7a3 3 0 0 1-3-3z" fill="currentColor"/>
+    <path d="M32 20h13v14a3 3 0 0 1-3 3h-7a3 3 0 0 1-3-3z" fill="currentColor"/>
+  </symbol>
+</svg>
+
+<div data-ol-page data-active="Products" data-crumb-group="Operations" data-crumb="Kubek ceramiczny 350 ml">
+
+  <!-- ================= STATE 1: variant images ================= -->
+  <section data-mk-state="variant-images" data-mk-label="Zdjęcia wariantów" data-mk-nav="Products" data-mk-crumb="Kubek ceramiczny 350 ml" data-testid="variant-images-state">
+    <div data-mk-slot="product-head"></div>
+
+    <section class="detail-section" data-testid="variant-table-section">
+      <div class="detail-section__title-row">
+        <h3 class="detail-section__title">Variants &amp; stock (4)<span class="mk-pin">1</span></h3>
+        <span class="sync-freshness"><span class="sync-freshness__dot" aria-hidden="true"></span>Stock synced 28 Sep, 09:52</span>
+      </div>
+      <div class="data-table__container variant-stock-table__container" tabindex="0" role="region" aria-label="Product variants (scrollable)">
+        <table class="data-table variant-stock-table">
+          <caption class="sr-only">Product variants, photos, stock, cost and price</caption>
+          <thead><tr><th aria-hidden="true"></th><th>Photo</th><th>Variant</th><th>Stock</th><th>Cost (net)<span class="mk-pin">4</span></th><th class="data-table__cell--hide-below-768">Listings</th><th class="data-table__cell--right">Price</th></tr></thead>
+          <tbody data-mk-variant-rows="images"></tbody>
+        </table>
+      </div>
+    </section>
+  </section>
+
+  <!-- ================= STATE 2: cost edit ================= -->
+  <section data-mk-state="cost-edit" data-mk-label="Koszt wariantu: edycja" data-mk-nav="Products" data-mk-crumb="Kubek ceramiczny 350 ml" data-testid="variant-cost-edit-state" hidden>
+    <div data-mk-slot="product-head"></div>
+    <section class="detail-section">
+      <div class="detail-section__title-row">
+        <h3 class="detail-section__title">Variants &amp; stock (4)</h3>
+        <span class="sync-freshness"><span class="sync-freshness__dot" aria-hidden="true"></span>Stock synced 28 Sep, 09:52</span>
+      </div>
+      <div class="data-table__container variant-stock-table__container" tabindex="0" role="region" aria-label="Product variants (scrollable)">
+        <table class="data-table variant-stock-table">
+          <caption class="sr-only">Product variants with the cost editor open</caption>
+          <thead><tr><th aria-hidden="true"></th><th>Photo</th><th>Variant</th><th>Stock</th><th>Cost (net)</th><th class="data-table__cell--hide-below-768">Listings</th><th class="data-table__cell--right">Price</th></tr></thead>
+          <tbody data-mk-variant-rows="cost-edit"></tbody>
+        </table>
+      </div>
+    </section>
+  </section>
+
+  <!-- ================= STATE 3: margin on /analytics ================= -->
+  <section data-mk-state="margin" data-mk-label="Marża w analityce" data-mk-nav="Analytics" data-mk-crumb="Analytics" data-testid="margin-state" hidden>
+    <div data-mk-slot="analytics-head" data-range="30d"></div>
+    <div class="mk-context-banner"><p><strong>Existing sections stay where they are.</strong> The Revenue strip, "Sales by channel" and "Top products" render above this panel unchanged; each of them gains its own <strong>Export CSV</strong> button in its header. Only the new Margin panel is drawn in full here.<span class="mk-pin">6</span></p></div>
+    <div data-mk-slot="margin-panel" data-variant="populated"></div>
+  </section>
+
+  <!-- ================= STATE 4: missing cost (empty) ================= -->
+  <section data-mk-state="missing-cost" data-mk-label="Brak kosztów" data-mk-nav="Analytics" data-mk-crumb="Analytics" data-testid="margin-missing-cost-state" hidden>
+    <div data-mk-slot="analytics-head" data-range="30d"></div>
+    <article class="panel panel--dense" data-testid="margin-panel">
+      <div class="panel__header">
+        <div><p class="eyebrow">Profitability</p><h3 class="section-title">Margin</h3></div>
+        <div class="mk-panel-actions"><button type="button" class="button button--secondary button--sm" disabled data-testid="export-csv-margin-channel" title="Nothing to export: no line in this range has a cost">Export CSV</button></div>
+      </div>
+      <div class="empty-state" data-testid="margin-missing-cost-empty">
+        <h2>No margin yet: no variant has a cost price</h2>
+        <p>Margin needs the net cost you paid for each variant. OpenLinker never guesses it and never treats a missing cost as zero. Enter costs on the product page; orders placed after that count toward margin.<span class="mk-pin">7</span></p>
+      </div>
+      <div>
+        <p class="mk-basis" style="margin-bottom:var(--space-2)"><strong style="color:var(--text-primary)">Best sellers without a cost</strong> · by net revenue, 29 Aug – 27 Sep</p>
+        <ul class="mk-empty-list" data-testid="margin-missing-cost-list">
+          <li><span><span class="mk-strip"><span class="mk-photo mk-photo--sm mk-photo--navy" aria-hidden="true"><svg><use href="#mk-mug"/></svg></span>Kubek ceramiczny 350 ml, granatowy</span></span><span class="mono-text">KUB-350-GRA · PLN 8,534.40</span><a href="#" class="button button--ghost button--sm" data-testid="margin-add-cost-link-kub-350-gra">Add cost</a></li>
+          <li><span>Talerz obiadowy 27 cm, grafitowy</span><span class="mono-text">TAL-27-GRA · PLN 7,804.80</span><a href="#" class="button button--ghost button--sm" data-testid="margin-add-cost-link-tal-27-gra">Add cost</a></li>
+          <li><span>Filiżanka espresso 90 ml, czarna</span><span class="mono-text">FIL-90-CZA · PLN 5,853.60</span><a href="#" class="button button--ghost button--sm" data-testid="margin-add-cost-link-fil-90-cza">Add cost</a></li>
+          <li><span>Dzbanek 1,2 l, błękitny</span><span class="mono-text">DZB-12-BLE · PLN 4,317.03</span><a href="#" class="button button--ghost button--sm" data-testid="margin-add-cost-link-dzb-12-ble">Add cost</a></li>
+        </ul>
+        <p class="data-table__footnote">38 variants sold in this range, none with a cost recorded.</p>
+      </div>
+    </article>
+  </section>
+
+  <!-- ================= STATE 5: export preparing ================= -->
+  <section data-mk-state="export-preparing" data-mk-label="Eksport: przygotowanie" data-mk-nav="Analytics" data-mk-crumb="Analytics" data-testid="export-preparing-state" hidden>
+    <div data-mk-slot="analytics-head" data-range="30d"></div>
+    <div data-mk-slot="margin-panel" data-variant="preparing"></div>
+  </section>
+
+  <!-- ================= STATE 6: export ready ================= -->
+  <section data-mk-state="export-ready" data-mk-label="Eksport: gotowy" data-mk-nav="Analytics" data-mk-crumb="Analytics" data-testid="export-ready-state" hidden>
+    <div data-mk-slot="analytics-head" data-range="30d"></div>
+    <div data-mk-slot="margin-panel" data-variant="ready"></div>
+    <div class="mk-context-banner" style="margin-top:var(--space-4)">
+      <div><p><strong>What the downloaded file contains</strong> (mockup annotation, not app UI). Same rows and totals as the table, same filters; the first two lines state the range, currency and VAT basis.<span class="mk-pin">9</span></p>
+<pre data-testid="export-csv-sample"># OpenLinker margin by channel; range 2026-08-29..2026-09-27 (order date); currency PLN; basis net (VAT-exclusive); cancelled orders excluded; generated 2026-09-28T10:14:07Z
+# Lines without a cost are excluded from cost and margin: 214 lines, PLN 9890.00 net revenue
+channel,connection,net_revenue,covered_net_revenue,cost_of_goods,gross_margin,margin_pct,cost_coverage_pct
+Allegro,Sklep Górski,48210.00,44130.00,26040.00,18090.00,41.0,91.5
+Erli,Sklep Górski,9840.00,9210.00,5710.20,3499.80,38.0,93.6
+PrestaShop,Sklep Górski,21460.00,17810.00,9617.40,8192.60,46.0,83.0
+WooCommerce,Warsztat Ceramiki,6120.00,4590.00,2616.30,1973.70,43.0,75.0
+Total,,85630.00,75740.00,43983.90,31756.10,41.9,88.4</pre></div>
+    </div>
+    <div class="toast-region mk-toast-region" aria-live="polite">
+      <div class="toast toast--success" role="status" data-testid="export-status">
+        <div class="toast__content">
+          <p class="toast__title">CSV downloaded</p>
+          <p class="toast__description"><span class="mk-filename">openlinker_margin-by-channel_2026-08-29_2026-09-27_PLN_net.csv</span> · 5 rows, matches the table.</p>
+        </div>
+        <button type="button" class="toast__dismiss" aria-label="Dismiss" data-testid="export-dismiss">×</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= STATE 7: export failed ================= -->
+  <section data-mk-state="export-failed" data-mk-label="Eksport: odrzucony" data-mk-nav="Analytics" data-mk-crumb="Analytics" data-testid="export-failed-state" hidden>
+    <div data-mk-slot="analytics-head" data-range="2y"></div>
+    <div data-mk-slot="margin-panel" data-variant="failed"></div>
+  </section>
+
+  <!-- ================= STATE 8: viewer ================= -->
+  <section data-mk-state="viewer" data-mk-label="Tylko podgląd (viewer)" data-mk-nav="Products" data-mk-crumb="Kubek ceramiczny 350 ml" data-testid="variant-viewer-state" hidden>
+    <div data-mk-slot="product-head"></div>
+    <section class="detail-section">
+      <div class="detail-section__title-row">
+        <h3 class="detail-section__title">Variants &amp; stock (4)</h3>
+        <span class="sync-freshness"><span class="sync-freshness__dot" aria-hidden="true"></span>Stock synced 28 Sep, 09:52</span>
+      </div>
+      <div class="data-table__container variant-stock-table__container" tabindex="0" role="region" aria-label="Product variants (scrollable)">
+        <table class="data-table variant-stock-table">
+          <caption class="sr-only">Product variants, read-only</caption>
+          <thead><tr><th aria-hidden="true"></th><th>Photo</th><th>Variant</th><th>Stock</th><th>Cost (net)</th><th class="data-table__cell--hide-below-768">Listings</th><th class="data-table__cell--right">Price</th></tr></thead>
+          <tbody data-mk-variant-rows="viewer"></tbody>
+        </table>
+      </div>
+    </section>
+  </section>
+</div>
+
+<aside class="mk-notes" aria-label="Adnotacje">
+  <h3>Adnotacje</h3>
+  <p class="muted-text" style="font-size:.8125rem;margin-top:-.5rem">Dane przykładowe (produkty, kanały, kwoty, osoby) wyłącznie na potrzeby makiety. Kwoty w tabelach się sumują.</p>
+  <ol>
+    <li><span class="mk-pin">1</span> Ekran to istniejąca zakładka "Overview" strony produktu (<code>apps/web/src/pages/products/product-detail-page.tsx</code>), sekcja "Variants &amp; stock" renderowana przez <code>variant-stock-table.tsx</code>. Nie ma osobnej zakładki "Variants" - dochodzą tylko kolumny Photo i Cost (net) oraz dwie sekcje w rozwijanym wierszu. Makieta realizuje D21 (brakujące makiety) i decyzje produktowe epiki G11 z <code>issues/G11.json</code>.</li>
+    <li><span class="mk-pin">2</span> Zdjęcia wariantu przychodzą z mastera (kombinacja PrestaShop lub wariacja WooCommerce) - OpenLinker ich nie wgrywa ani nie edytuje (poza zakresem G11-01). Wariant bez własnych zdjęć pokazuje zdjęcia produktu z plakietką "From product"; nigdy pusty kafel ani zepsuty obrazek. Kolejność rozstrzygania: własne zdjęcia wariantu, potem zdjęcia produktu, potem inicjał (placeholder <code>product-gallery__placeholder</code>). Ta sama lista trafia na stanowisko pakowania, do pickera wariantów i do kreatora ofert (G11-02) - podgląd "Pack bench line" to pokazuje.</li>
+    <li><span class="mk-pin">3</span> Obrazy idą przez proxy OpenLinkera, jak dziś <code>GET /products/:productId/images/:index</code> (<code>apps/api/src/products/http/products.controller.ts</code>, reguły SSRF z § 28). G11-01 potrzebuje odpowiednika dla wariantu (np. <code>/products/variants/:variantId/images/:index</code>) z tymi samymi regułami - adres z synchronizacji jest często nieosiągalny z przeglądarki (<code>apps/web/src/features/bench/components/bench-thumb.tsx</code>).</li>
+    <li><span class="mk-pin">4</span> Koszt jest polem OpenLinkera: netto za sztukę, w walucie (domyślnie waluta produktu). Wpisuje go operator; synchronizacja mastera nigdy go nie nadpisuje ani nie czyści. Wzorzec już istnieje: wymiary fizyczne z #3403 mają osobny zapis <code>recordPhysicalDimensions</code>, a upsert synchronizacji celowo pomija te kolumny (<code>libs/core/src/products/infrastructure/persistence/repositories/product-variant.repository.ts</code>, komentarz w <code>toOrmEntity</code>). Koszt ma iść tą samą drogą. "Not recorded" to stan, nie zero: jawne 0,00 jest dozwolone (np. gratis) i liczy się do marży.</li>
+    <li><span class="mk-pin">5</span> Decyzja makiety dla G11-03 (PR ma ją potwierdzić): marża używa kosztu obowiązującego w chwili złożenia zamówienia, zapisanego na linii zamówienia przy ingestii. Zmiana kosztu nie przepisuje historii, więc tekst pod polem mówi "orders placed from now on". Zamówienia sprzed wpisania kosztu trafiają do luki pokrycia z osobnym powodem "Ordered before the cost was entered". Czyszczenie kosztu też działa tylko w przód.</li>
+    <li><span class="mk-pin">6</span> Nowy panel "Margin" na <code>/analytics</code> (<code>apps/web/src/pages/analytics/analytics-page.tsx</code>) pod istniejącymi sekcjami. Reguły jak dla przychodu: data zamówienia, anulowane wykluczone, waluta raportowa ze stempla ADR-040. Marża zawsze liczona od przychodu netto (koszt jest netto), także gdy przełącznik VAT stoi na Gross - panel mówi to wprost. Linie bez stawki VAT nie mają przychodu netto i są już raportowane w istniejącym panelu Data Coverage, więc tu ich nie dublujemy.</li>
+    <li><span class="mk-pin">7</span> Luka pokrycia jest zawsze widoczna: marża i marża % liczone są tylko z linii z kosztem, a reszta idzie do chipa "not in margin" z powodami i listą wariantów. To precedens analytics-trust / data-coverage. Stan "missing-cost" to pusty stan panelu na instalacji, na której nikt jeszcze nie wpisał żadnego kosztu (np. zaraz po wdrożeniu G11-03), więc tam także warianty kubka nie mają kosztu: zamiast KPI pokazuje najlepiej sprzedające się warianty bez kosztu z linkiem do produktu.</li>
+    <li><span class="mk-pin">8</span> "Export CSV" jest w nagłówku każdej powierzchni raportu (Sales by channel, Top products, Margin by channel, Margin by product) i używa filtrów widocznych na ekranie (zakres, waluta wyświetlania, podstawa VAT). Przebieg: przycisk zmienia się w "Preparing CSV…" (żądanie w toku), potem toast z nazwą pliku. Nazwa pliku zawiera zakres, walutę i podstawę; pierwsze wiersze pliku też. Viewer może eksportować - trasy <code>/analytics/sales</code> i <code>/analytics/top-products</code> mają dziś <code>@Roles('admin', 'operator', 'viewer')</code>, a eksport to odczyt.</li>
+    <li><span class="mk-pin">9</span> CSV ma być generowany tym samym kodem zapytania co JSON na ekranie (G11-04), więc wiersze i sumy są identyczne. Limit: jeden plik obejmuje najwyżej 366 dni; większy zakres serwer odrzuca kodem i powodem, a UI pokazuje ten powód (stan "export-failed") zamiast zepsutego pobrania. Tabela na ekranie dla tego zakresu dalej działa.</li>
+    <li><span class="mk-pin">10</span> Viewer widzi koszt i marżę tylko do odczytu (marża i tak ujawnia koszt, a <code>/analytics</code> jest dla viewera otwarte). Edycja kosztu wymaga <code>products:write</code> (decyzja G11-B: tylko admin; operator i viewer widzą koszt tylko do odczytu). Przycisk "Edit cost" jest pokazany wyłączony z powodem, zgodnie z zasadą "not known yet" / write access z <code>docs/frontend-architecture.md</code>.</li>
+    <li><b>Luki backendu</b> (sprawdzone grepem):
+      (a) <code>ProductVariant</code> nie ma pola zdjęć ani kosztu (<code>libs/core/src/products/domain/entities/product-variant.entity.ts</code>); zdjęcia ma tylko <code>Product.images</code> (<code>product.entity.ts</code>). W całym repo nie ma <code>costPrice</code>/<code>purchasePrice</code> - jedyne trafienie to <code>wholesale_price: 0</code> w fixture PrestaShop (<code>apps/api/test/integration/helpers/prestashop-fixture.helper.ts</code>).
+      (b) WooCommerce deklaruje <code>image</code> na wariacji (<code>libs/integrations/woocommerce/src/infrastructure/adapters/product-master/woocommerce-product.types.ts</code>), ale nic go nie mapuje; mapper wariantu PrestaShop (<code>libs/integrations/prestashop/src/infrastructure/mappers/prestashop-variant.mapper.ts</code>) nie czyta zdjęć kombinacji.
+      (c) Brak trasy zapisu dla wariantu: kontroler produktów ma tylko <code>@Get</code>, a <code>recordPhysicalDimensions</code> nie ma wywołania HTTP. Potrzebny np. <code>PATCH /products/variants/:variantId/cost</code> z <code>@Roles('admin')</code>.
+      (d) <code>order_line_items</code> nie ma kolumny kosztu (<code>libs/core/src/orders/infrastructure/persistence/entities/order-line-item.orm-entity.ts</code>: quantity, unitPrice, taxRate...), więc snapshot kosztu z uwagi 5 wymaga migracji. Słowa "margin" nie ma w <code>libs/core/src/orders</code> ani <code>apps/api/src/analytics</code>.
+      (e) Brak eksportu CSV: w <code>apps/api</code> nie ma <code>text/csv</code>; w <code>apps/web</code> jest tylko lokalny helper <code>apps/web/src/features/inventory/lib/duplicate-positions-csv.ts</code>.
+      (f) Kategorie pokrycia to dziś <code>currency</code>, <code>tax-a/b/c</code>, <code>product-matching</code> (<code>apps/web/src/features/analytics/api/analytics-coverage.types.ts</code>) - brak kosztu to nowa kategoria (np. <code>cost</code>) albo osobny odczyt panelu marży.</li>
+  </ol>
+</aside>
+
+<script>
+(function(){
+  /* ---------- sample data ---------- */
+  var PRODUCT_PHOTOS = [
+    { cls:'mk-photo--white', sym:'mk-mug', label:'Front, white' },
+    { cls:'mk-photo--white', sym:'mk-mug-set', label:'Set of three' }
+  ];
+  var VARIANTS = [
+    { sku:'KUB-350-BIA', name:'biały', stock:39, res:3, listings:3, cost:'22.80', costBy:'Anna Wiśniewska', costAt:'24 Sep 2026, 14:02', prev:'21.90',
+      photos:[{cls:'mk-photo--white', sym:'mk-mug', label:'Front'},{cls:'mk-photo--white', sym:'mk-mug-set', label:'Set'}] },
+    { sku:'KUB-350-GRA', name:'granatowy', stock:24, res:1, listings:3, cost:'22.80', costBy:'Anna Wiśniewska', costAt:'24 Sep 2026, 14:03', prev:null,
+      photos:[{cls:'mk-photo--navy', sym:'mk-mug', label:'Front'},{cls:'mk-photo--navy', sym:'mk-mug-set', label:'Set'},{cls:'mk-photo--navy', sym:'mk-mug', label:'Detail'}] },
+    { sku:'KUB-350-GRF', name:'grafitowy', stock:12, res:0, listings:2, cost:'22.80', costBy:'Marek Nowak', costAt:'25 Sep 2026, 09:40', prev:null,
+      photos:[{cls:'mk-photo--graphite', sym:'mk-mug', label:'Front'}] },
+    { sku:'KUB-350-SZA', name:'szałwiowy', stock:18, res:0, listings:2, cost:null,
+      photos:[] }
+  ];
+
+  function photoTile(p, size, extra){
+    return '<span class="mk-photo ' + (size||'') + ' ' + p.cls + (extra ? ' ' + extra : '') + '" role="img" aria-label="' + p.label + '"><svg><use href="#' + p.sym + '"/></svg>' + '</span>';
+  }
+  function resolved(v){ return v.photos.length ? v.photos : PRODUCT_PHOTOS; }
+  function slug(s){ return s.toLowerCase(); }
+
+  function photoCell(v){
+    var own = v.photos.length > 0;
+    var p = resolved(v)[0];
+    return photoTile(p, 'mk-photo--sm', own ? '' : 'mk-photo--inherited');
+  }
+  function costCell(v, mode){
+    var id = 'data-testid="variant-cost-cell-' + slug(v.sku) + '"';
+    if (v.cost === null && mode === 'cost-edit') return '<span ' + id + ' class="mk-missing">Editing…</span>';
+    if (v.cost === null) return '<span ' + id + ' class="status-badge status-badge--warning status-badge--compact"><span class="status-badge__dot" aria-hidden="true"></span><span>Not recorded</span></span>';
+    return '<span ' + id + ' class="mono-text tabular">PLN ' + v.cost + '</span>';
+  }
+
+  function photosSection(v){
+    var own = v.photos.length > 0;
+    var tiles = resolved(v).map(function(p, i){ return photoTile(p, 'mk-photo--lg', own ? '' : 'mk-photo--inherited').replace('</span>', (own ? '' : '<span class="mk-photo__tag">Product</span>') + '</span>').replace('class="mk-photo', (i === 0 ? 'aria-current="true" ' : '') + 'class="mk-photo'); }).join('');
+    var head = own
+      ? '<span class="status-badge status-badge--success status-badge--compact"><span class="status-badge__dot" aria-hidden="true"></span><span>Variant photos (' + v.photos.length + ')</span></span><span data-testid="variant-photo-source">From Sklep Górski (PrestaShop) combination ' + v.sku + '</span>'
+      : '<span class="status-badge status-badge--neutral status-badge--compact"><span class="status-badge__dot" aria-hidden="true"></span><span>From product</span></span><span data-testid="variant-photo-source">This variant has no photos of its own in Sklep Górski (PrestaShop), so the product photos are used.</span>';
+    var first = resolved(v)[0];
+    return '<div class="mk-drawer-section mk-strip-block">' +
+      '<h4>Photos<span class="mk-pin">2</span></h4>' +
+      '<div class="mk-strip-block__head">' + head + '</div>' +
+      '<div class="mk-strip" data-testid="variant-photo-strip-' + slug(v.sku) + '">' + tiles + '</div>' +
+      '<p class="mk-hint">Photos come from the product master. Change them in PrestaShop; the next sync brings them here.<span class="mk-pin">3</span></p>' +
+      '<div class="mk-bench-preview" data-testid="variant-photo-bench-preview">' + photoTile(first, '', own ? '' : 'mk-photo--inherited') +
+        '<div><b>Kubek ceramiczny 350 ml, ' + v.name + '</b><span>' + v.sku + ' · × 2</span><br><span style="font-family:var(--font-sans)">How the pack bench line and the variant picker show it</span></div></div>' +
+    '</div>';
+  }
+
+  function costSection(v, mode){
+    var s = slug(v.sku);
+    var prov = function(){
+      return '<div class="mk-provenance" data-testid="variant-cost-provenance-' + s + '"><span class="status-badge status-badge--info status-badge--compact"><span class="status-badge__dot" aria-hidden="true"></span><span>Entered in OpenLinker</span></span><span>by ' + v.costBy + ' · ' + v.costAt + '</span>' +
+        (v.prev ? '<span>· was PLN ' + v.prev + '</span>' : '') + '</div>' +
+        '<p class="mk-hint">The PrestaShop sync never changes or clears this value.</p>';
+    };
+    var body;
+    if (mode === 'viewer') {
+      body = v.cost === null
+        ? '<p class="mk-missing" style="margin:0">No cost recorded. Orders for this variant are left out of margin.</p>'
+        : '<div class="mk-cost-value" data-testid="variant-cost-value-' + s + '">PLN ' + v.cost + ' <span class="text-muted" style="font-family:var(--font-sans);font-size:.8125rem">net per unit</span></div>' + prov();
+      body += '<div class="mk-cost-actions"><button type="button" class="button button--secondary button--sm" disabled aria-describedby="mk-ro-' + s + '" data-testid="variant-cost-edit-' + s + '">Edit cost</button></div>' +
+        '<p class="mk-hint" id="mk-ro-' + s + '" data-testid="variant-cost-readonly-reason">Only an admin can change cost prices.<span class="mk-pin">10</span></p>';
+    } else if (mode === 'cost-edit' && v.cost === null) {
+      body = '<form class="mk-cost-form" data-testid="variant-cost-form-' + s + '" novalidate>' +
+        '<div class="form-field">' +
+          '<label class="form-field__label" for="mk-cost-input">Cost price, net per unit</label>' +
+          '<div class="mk-cost-row">' +
+            '<div class="field__price-input" id="mk-cost-box"><input id="mk-cost-input" inputmode="decimal" autocomplete="off" value="19.60" aria-describedby="mk-cost-desc mk-cost-error" data-testid="variant-cost-input"><span class="field__currency">net</span></div>' +
+            '<select class="control control--select" id="mk-cost-currency" aria-label="Cost currency" data-testid="variant-cost-currency"><option selected>PLN</option><option>EUR</option><option>CZK</option></select>' +
+          '</div>' +
+          '<p class="form-field__description" id="mk-cost-desc">What you pay for one unit, excluding VAT. Used for margin on orders placed from now on; earlier orders keep no cost.<span class="mk-pin">5</span></p>' +
+          '<p class="form-field__error" id="mk-cost-error" role="alert" data-testid="variant-cost-error" hidden>Enter a cost of 0 or more, with up to 2 decimals. Leave the field empty if you do not know it yet.</p>' +
+        '</div>' +
+        '<div class="mk-cost-actions"><button type="submit" class="button button--primary button--sm" data-testid="variant-cost-save">Save cost</button><button type="button" class="button button--ghost button--sm" data-testid="variant-cost-cancel">Cancel</button></div>' +
+        '<p class="mk-hint">Stored in OpenLinker only. The PrestaShop sync never changes it.</p>' +
+      '</form>';
+    } else if (v.cost === null) {
+      body = '<p class="mk-missing" style="margin:0">No cost recorded. Orders for this variant are left out of margin and counted as a coverage gap on Analytics.</p>' +
+        '<div class="mk-cost-actions"><button type="button" class="button button--secondary button--sm" data-testid="variant-cost-add-' + s + '">Add cost</button></div>';
+    } else {
+      body = '<div class="mk-cost-value" data-testid="variant-cost-value-' + s + '">PLN ' + v.cost + ' <span class="text-muted" style="font-family:var(--font-sans);font-size:.8125rem">net per unit</span></div>' + prov() +
+        '<div class="mk-cost-actions"><button type="button" class="button button--secondary button--sm" data-testid="variant-cost-edit-' + s + '">Edit cost</button><button type="button" class="button button--ghost button--sm" data-testid="variant-cost-clear-' + s + '">Clear cost</button></div>';
+    }
+    return '<div class="mk-drawer-section mk-cost-form"><h4>Cost price<span class="mk-pin">4</span></h4>' + body + '</div>';
+  }
+
+  function variantRows(mode){
+    var openSet = mode === 'images' ? ['KUB-350-GRA','KUB-350-SZA'] : mode === 'cost-edit' ? ['KUB-350-BIA','KUB-350-SZA'] : ['KUB-350-BIA'];
+    return VARIANTS.map(function(v){
+      var s = slug(v.sku), open = openSet.indexOf(v.sku) >= 0;
+      var row = '<tr class="' + (open ? 'is-open' : '') + '" data-testid="variant-row-' + s + '">' +
+        '<td class="variant-stock-table__expand-cell"><button type="button" class="variant-stock-table__expand-btn" aria-expanded="' + open + '" aria-label="' + (open ? 'Collapse' : 'Expand') + ' ' + v.sku + '" data-testid="variant-expand-' + s + '"><svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M4 2.5 7.5 6 4 9.5"/></svg></button></td>' +
+        '<td>' + photoCell(v) + '</td>' +
+        '<td><div class="variant-stock-table__name"><span class="variant-stock-table__sku mono-text">' + v.sku + '</span><span class="variant-stock-table__meta">Kolor: ' + v.name + '</span></div></td>' +
+        '<td><span class="variant-stock-table__stock"><span class="mono-text tabular">' + v.stock + '</span><span class="variant-stock-table__stock-reserved">/ res ' + v.res + '</span></span></td>' +
+        '<td>' + costCell(v, mode) + '</td>' +
+        '<td class="data-table__cell--hide-below-768"><span class="coverage-pill coverage-pill--full" data-channel="allegro">Allegro</span> <span class="coverage-pill coverage-pill--full" data-channel="erli">Erli</span>' + (v.listings > 2 ? ' <span class="coverage-pill coverage-pill--full" data-channel="woocommerce">Woo</span>' : '') + '</td>' +
+        '<td class="data-table__cell--right variant-stock-table__price mono-text tabular">PLN 49.99</td></tr>';
+      var exp = '<tr class="variant-stock-table__expand-row' + (open ? ' is-open' : '') + '"><td colspan="7"><div class="variant-stock-table__expand-content"><div class="variant-stock-table__expand-content-inner">' +
+        '<div class="mk-drawer-grid">' + photosSection(v) + costSection(v, mode) + '</div></div></div></td></tr>';
+      return row + exp;
+    }).join('');
+  }
+
+  document.querySelectorAll('[data-mk-variant-rows]').forEach(function(tb){ tb.innerHTML = variantRows(tb.getAttribute('data-mk-variant-rows')); });
+
+  /* ---------- product head (hero + at a glance) ---------- */
+  var PRODUCT_HEAD =
+    '<section class="page-section"><div class="page-header page-header--split"><div class="page-header__content"><p class="eyebrow">Products</p><h2 class="page-title">Kubek ceramiczny 350 ml</h2></div></div></section>' +
+    '<div class="tabs"><div class="tabs__list" role="tablist" aria-label="Product views"><button type="button" role="tab" class="tabs__trigger" data-state="active" aria-selected="true" data-testid="product-tab-overview">Overview</button><button type="button" role="tab" class="tabs__trigger" data-state="inactive" aria-selected="false" data-testid="product-tab-content">Content</button></div></div>' +
+    '<section class="product-detail-hero" aria-label="Product summary" style="margin-top:var(--space-4)">' +
+      '<div class="product-gallery" role="group" aria-label="Product photos"><span class="mk-photo mk-photo--white" style="width:100%" role="img" aria-label="Kubek ceramiczny 350 ml, product photo"><svg><use href="#mk-mug"/></svg></span>' +
+      '<div class="product-gallery__thumbs"><span class="mk-photo mk-photo--sm mk-photo--white" aria-hidden="true"><svg><use href="#mk-mug"/></svg></span><span class="mk-photo mk-photo--sm mk-photo--white" aria-hidden="true"><svg><use href="#mk-mug-set"/></svg></span></div></div>' +
+      '<div class="product-detail-hero__body"><div class="product-detail-hero__badges"><span class="status-badge status-badge--success status-badge--compact"><span class="status-badge__dot" aria-hidden="true"></span><span>In stock</span></span><span class="status-badge status-badge--neutral status-badge--compact"><span>4 variants</span></span><span class="status-badge status-badge--info status-badge--compact"><span>10 listings</span></span></div>' +
+      '<h3 class="product-detail-hero__title">Kubek ceramiczny 350 ml</h3><code class="product-detail-hero__id mono-text">ol_product_3f1c9a02b7d44e1f9c21a6d8e0b5c7f4</code>' +
+      '<div class="product-detail-hero__facts"><span class="product-detail-hero__fact"><span class="product-detail-hero__fact-label">SKU</span><span class="mono-text">KUB-350</span></span><span class="product-detail-hero__fact"><span class="product-detail-hero__fact-label">Source</span>Sklep Górski (PrestaShop)</span><span class="product-detail-hero__fact"><span class="product-detail-hero__fact-label">Catalog updated</span><span class="mono-text tabular">28 Sep, 09:52</span></span></div></div>' +
+    '</section>';
+  document.querySelectorAll('[data-mk-slot="product-head"]').forEach(function(el){ el.innerHTML = PRODUCT_HEAD; });
+
+  /* ---------- analytics head ---------- */
+  function analyticsHead(range){
+    var two = range === '2y';
+    var opt = function(label, val){ var active = (val === range) || (two && val === 'custom');
+      return '<button type="button" role="radio" aria-checked="' + active + '" class="segmented-control__option' + (active ? ' segmented-control__option--active' : '') + '" data-testid="analytics-date-preset-' + val + '">' + label + '</button>'; };
+    return '<section class="page-section"><div class="page-header page-header--split"><div class="page-header__content"><p class="eyebrow">Operations</p><h2 class="page-title">Analytics</h2><p class="page-description">Sales across connected channels, with clear data coverage.</p></div>' +
+      '<div class="page-header__actions"><button type="button" class="button button--secondary" data-testid="analytics-settings">Analytics settings</button></div></div></section>' +
+      '<div class="toolbar analytics-toolbar"><div class="toolbar__group">' +
+        '<div class="segmented-control" role="radiogroup" aria-label="Date range">' + opt('7d','7d') + opt('30d','30d') + opt('90d','90d') + opt('Custom','custom') + '</div>' +
+        '<label class="analytics-toolbar__field"><span class="analytics-toolbar__label">From</span><input type="date" class="control" aria-label="Order date from" value="' + (two ? '2024-09-29' : '2026-08-29') + '" data-testid="analytics-date-from"></label>' +
+        '<label class="analytics-toolbar__field"><span class="analytics-toolbar__label">To</span><input type="date" class="control" aria-label="Order date to" value="2026-09-27" data-testid="analytics-date-to"></label>' +
+        '<button type="button" class="button button--secondary" data-testid="analytics-apply">Apply</button>' +
+        '<span class="chip chip--info">Order date</span>' +
+      '</div><div class="toolbar__group"><div class="analytics-toolbar__trailing-stack">' +
+        '<select class="control control--select" aria-label="Display currency" data-testid="analytics-display-currency"><option>PLN (reporting)</option><option>EUR</option></select>' +
+        '<div class="segmented-control" role="radiogroup" aria-label="VAT basis" data-testid="analytics-vat-basis"><button type="button" role="radio" aria-checked="false" class="segmented-control__option">Gross</button><button type="button" role="radio" aria-checked="true" class="segmented-control__option segmented-control__option--active">Net</button></div>' +
+      '</div></div></div>';
+  }
+  document.querySelectorAll('[data-mk-slot="analytics-head"]').forEach(function(el){ el.innerHTML = analyticsHead(el.getAttribute('data-range')); });
+
+  /* ---------- margin panel ---------- */
+  var CH = [
+    ['allegro','Allegro','Sklep Górski','48,210.00','26,040.00','18,090.00','41.0%','91.5%'],
+    ['erli','Erli','Sklep Górski','9,840.00','5,710.20','3,499.80','38.0%','93.6%'],
+    ['prestashop','PrestaShop','Sklep Górski','21,460.00','9,617.40','8,192.60','46.0%','83.0%'],
+    ['woocommerce','WooCommerce','Warsztat Ceramiki','6,120.00','2,616.30','1,973.70','43.0%','75.0%']
+  ];
+  var PR = [
+    ['Kubek ceramiczny 350 ml','KUB-350','24,871.68','12,312.00','9,633.60','43.9%','88%'],
+    ['Talerz obiadowy 27 cm','TAL-27','15,609.60','8,976.00','6,633.60','42.5%','100%'],
+    ['Dzbanek 1,2 l','DZB-12','8,634.06','5,262.80','3,371.26','39.0%','100%'],
+    ['Miska na sałatkę 24 cm','MIS-24','5,463.36','3,206.40','2,256.96','41.3%','100%'],
+    ['Filiżanka espresso 90 ml','FIL-90','5,853.60',null,null,null,'0%']
+  ];
+
+  function exportButton(id, variant){
+    if (variant === 'preparing' && id === 'export-csv-margin-channel')
+      return '<button type="button" class="button button--secondary button--sm" disabled aria-busy="true" data-testid="' + id + '"><span class="button__spinner" aria-hidden="true"></span>Preparing CSV…</button>';
+    return '<button type="button" class="button button--secondary button--sm" data-testid="' + id + '">Export CSV</button>';
+  }
+
+  function trendSvg(){
+    var B = [['29 Aug–4 Sep',7120.40,'41.2%'],['5–11 Sep',7480.90,'41.6%'],['12–18 Sep',7905.30,'42.9%'],['19–25 Sep',7010.50,'41.8%'],['26–27 Sep',2239.00,'42.1%']];
+    var s = '<svg viewBox="0 0 560 196" role="img" aria-labelledby="mk-trend-t"><title id="mk-trend-t">Gross margin per week: 7,120 / 7,481 / 7,905 / 7,011 PLN, and 2,239 PLN for the 2-day partial week</title>';
+    [[150,'0'],[90,'4k'],[30,'8k']].forEach(function(g){ s += '<line class="mk-trend__grid" x1="40" x2="552" y1="' + g[0] + '" y2="' + g[0] + '"/><text x="32" y="' + (g[0]+4) + '" text-anchor="end">' + g[1] + '</text>'; });
+    B.forEach(function(b, i){
+      var h = b[1] / 8000 * 120, x = 64 + i * 100, y = 150 - h;
+      s += '<rect class="mk-trend__bar' + (i === 4 ? ' mk-trend__bar--partial' : '') + '" x="' + x + '" y="' + y.toFixed(1) + '" width="56" height="' + h.toFixed(1) + '" rx="2"/>';
+      s += '<text class="mk-trend__value" x="' + (x+28) + '" y="' + (y-6).toFixed(1) + '" text-anchor="middle">' + b[2] + '</text>';
+      s += '<text x="' + (x+28) + '" y="168" text-anchor="middle">' + b[0] + '</text>';
+      if (i === 4) s += '<text x="' + (x+28) + '" y="183" text-anchor="middle">2 days</text>';
+    });
+    return s + '</svg>';
+  }
+
+  function marginPanel(variant){
+    var failed = variant === 'failed';
+    var kpi = function(label, value, metric, q, id){ return '<div class="kpi-card" data-testid="' + id + '"><div class="kpi-card__label"><span class="kpi-card__label-text">' + label + '</span></div><div class="kpi-card__headline"><div class="kpi-card__value mono-text tabular">' + value + '</div><div class="kpi-card__metric">' + metric + '</div></div>' + (q ? '<div class="kpi-card__qualifiers"><div class="kpi-card__qualifier"><span class="kpi-card__qualifier-label">' + q[0] + '</span><span class="kpi-card__qualifier-value">' + q[1] + '</span></div></div>' : '') + '</div>'; };
+    var alertFailed = failed ? '<div class="alert alert--error" role="alert" data-testid="export-status"><div class="alert__content"><strong class="alert__title">Export refused: range too large</strong><div class="alert__description">One CSV covers at most 366 days. This range covers 730 days (29 Sep 2024 – 27 Sep 2026). Narrow the range, or export one year at a time. The table on screen is not affected.<span class="mk-pin">9</span></div></div><div class="alert__actions"><button type="button" class="button button--secondary button--sm" data-testid="export-change-range">Change range</button><button type="button" class="button button--ghost button--sm" data-testid="export-retry">Try again</button></div></div>' : '';
+    var statusPreparing = variant === 'preparing' ? '<p class="mk-export-status" role="status" data-testid="export-status"><span class="button__spinner" aria-hidden="true"></span>Preparing "Margin by channel" · 29 Aug – 27 Sep 2026 · PLN · net. The download starts when it is ready; you can keep working.<span class="mk-pin">8</span></p>' : '';
+
+    var chRows = CH.map(function(c){ return '<tr data-testid="margin-channel-row-' + c[0] + '"><td><span class="channel-pill" data-channel="' + c[0] + '">' + c[1] + '</span> <span class="text-muted" style="font-size:.8125rem">' + c[2] + '</span></td><td class="mk-num">' + c[3] + '</td><td class="mk-num">' + c[4] + '</td><td class="mk-num">' + c[5] + '</td><td class="mk-num">' + c[6] + '</td><td class="mk-num data-table__cell--hide-below-768">' + c[7] + '</td></tr>'; }).join('');
+    var twoYearTotals = ['1,004,882.40','496,268.21','378,984.36','43.3%','87.1%'];
+    var tot = failed ? twoYearTotals : ['85,630.00','43,983.90','31,756.10','41.9%','88.4%'];
+    var totalRow = '<tr class="mk-total-row"><td>Total</td><td class="mk-num">' + tot[0] + '</td><td class="mk-num">' + tot[1] + '</td><td class="mk-num">' + tot[2] + '</td><td class="mk-num">' + tot[3] + '</td><td class="mk-num data-table__cell--hide-below-768">' + tot[4] + '</td></tr>';
+    var prRows = PR.map(function(p){ var sku = slug(p[1]);
+      if (!p[3]) return '<tr data-testid="margin-product-row-' + sku + '"><td><div>' + p[0] + '</div><div class="mono-text" style="font-size:.8125rem;color:var(--text-muted)">' + p[1] + '</div></td><td class="mk-num">' + p[2] + '</td><td class="mk-gap-cell" colspan="3"><span class="status-badge status-badge--warning status-badge--compact"><span class="status-badge__dot" aria-hidden="true"></span><span>No cost recorded</span></span> <a href="#" data-testid="margin-add-cost-link-' + sku + '">Add cost</a></td><td class="mk-num data-table__cell--hide-below-768">' + p[6] + '</td></tr>';
+      return '<tr data-testid="margin-product-row-' + sku + '"><td><div>' + p[0] + '</div><div class="mono-text" style="font-size:.8125rem;color:var(--text-muted)">' + p[1] + '</div></td><td class="mk-num">' + p[2] + '</td><td class="mk-num">' + p[3] + '</td><td class="mk-num">' + p[4] + '</td><td class="mk-num">' + p[5] + '</td><td class="mk-num data-table__cell--hide-below-768">' + p[6] + '</td></tr>'; }).join('');
+
+    var kpis = failed
+      ? kpi('Net revenue', 'PLN 1,004,882.40', 'All non-cancelled lines, VAT-exclusive', null, 'margin-kpi-net-revenue') + kpi('Cost of goods', 'PLN 496,268.21', 'Lines with a cost', ['Covered revenue','87.1%'], 'margin-kpi-cost') + kpi('Gross margin', 'PLN 378,984.36', 'Covered revenue − cost', null, 'margin-kpi-margin') + kpi('Margin %', '43.3%', 'Of covered revenue', null, 'margin-kpi-margin-pct')
+      : kpi('Net revenue', 'PLN 85,630.00', 'All non-cancelled lines, VAT-exclusive', null, 'margin-kpi-net-revenue') + kpi('Cost of goods', 'PLN 43,983.90', 'Lines with a cost', ['Covered revenue','88.4%'], 'margin-kpi-cost') + kpi('Gross margin', 'PLN 31,756.10', 'Covered revenue − cost', ['vs previous 30 days','+1.4 pp'], 'margin-kpi-margin') + kpi('Margin %', '41.9%', 'Of covered revenue', null, 'margin-kpi-margin-pct');
+
+    var coverage = failed ? '' :
+      '<div class="mk-coverage" data-testid="margin-coverage-note"><div><button type="button" class="chip chip--warning excl-note" aria-expanded="' + (variant === 'populated') + '" aria-controls="mk-cov-' + variant + '" data-testid="margin-coverage-toggle">214 of 1,846 lines have no cost · PLN 9,890.00 not in margin</button><span class="mk-pin">7</span></div>' +
+      '<div class="mk-coverage__detail data-table__container" id="mk-cov-' + variant + '" data-testid="margin-coverage-details"' + (variant === 'populated' ? '' : ' hidden') + '><table class="data-table"><caption class="sr-only">Why lines are left out of margin</caption><thead><tr><th>Reason</th><th class="mk-num">Lines</th><th class="mk-num">Net revenue</th><th>What to do</th></tr></thead><tbody>' +
+        '<tr><td>No cost recorded for the variant</td><td class="mk-num">176</td><td class="mk-num">7,750.00</td><td><a href="#" data-testid="margin-coverage-show-variants">Show 9 variants</a></td></tr>' +
+        '<tr><td>Ordered before the cost was entered<span class="mk-pin">5</span></td><td class="mk-num">38</td><td class="mk-num">2,140.00</td><td class="text-muted">Nothing; new orders are covered. e.g. ALG-25731, ERL-30512</td></tr>' +
+      '</tbody></table></div></div>';
+
+    return '<article class="panel panel--dense" data-testid="margin-panel">' +
+      '<div class="panel__header"><div><p class="eyebrow">Profitability</p><h3 class="section-title">Margin</h3></div><div class="mk-panel-actions">' + exportButton('export-csv-margin-channel', variant) + '</div></div>' +
+      '<p class="mk-basis"><span class="chip chip--info">Net revenue · VAT-exclusive</span>Margin always uses net revenue because costs are entered net. Cancelled orders excluded. Amounts in PLN, the reporting currency.<span class="mk-pin">6</span></p>' +
+      statusPreparing + alertFailed +
+      '<section class="status-strip" aria-label="Margin figures">' + kpis + '</section>' +
+      coverage +
+      (failed ? '' : '<div><p class="mk-basis" style="margin-bottom:var(--space-2)"><strong style="color:var(--text-primary)">Gross margin by week</strong> · label is margin %</p><div class="mk-trend" data-testid="margin-trend">' + trendSvg() + '</div></div>') +
+      '<div><div class="panel__header" style="margin-bottom:var(--space-2)"><h4 class="section-title" style="font-size:1rem">Margin by channel</h4></div>' +
+        '<div class="data-table__container" tabindex="0" role="region" aria-label="Margin by channel (scrollable)"><table class="data-table" data-testid="margin-by-channel-table"><caption class="sr-only">Margin by channel</caption><thead><tr><th>Channel</th><th class="mk-num">Net revenue</th><th class="mk-num">Cost of goods</th><th class="mk-num">Gross margin</th><th class="mk-num">Margin %</th><th class="mk-num data-table__cell--hide-below-768">Cost coverage</th></tr></thead><tbody>' + (failed ? '<tr><td colspan="6" class="text-muted">Per-channel rows for 29 Sep 2024 – 27 Sep 2026, as on screen</td></tr>' : chRows) + totalRow + '</tbody></table></div>' +
+        '<p class="data-table__footnote">Gross margin and margin % are over lines with a cost only. Cost coverage is the share of net revenue those lines carry.</p></div>' +
+      (failed ? '' : '<div><div class="panel__header" style="margin-bottom:var(--space-2)"><h4 class="section-title" style="font-size:1rem">Margin by product</h4><div class="mk-panel-actions">' + exportButton('export-csv-margin-product', variant) + '</div></div>' +
+        '<div class="data-table__container" tabindex="0" role="region" aria-label="Margin by product (scrollable)"><table class="data-table" data-testid="margin-by-product-table"><caption class="sr-only">Top products by net revenue with margin</caption><thead><tr><th>Product</th><th class="mk-num">Net revenue</th><th class="mk-num">Cost of goods</th><th class="mk-num">Gross margin</th><th class="mk-num">Margin %</th><th class="mk-num data-table__cell--hide-below-768">Cost coverage</th></tr></thead><tbody>' + prRows + '</tbody></table></div>' +
+        '<p class="data-table__footnote">Top 5 by net revenue. Kubek ceramiczny: the szałwiowy variant has no cost, so 12% of its revenue is left out.</p></div>') +
+    '</article>';
+  }
+  document.querySelectorAll('[data-mk-slot="margin-panel"]').forEach(function(el){ el.innerHTML = marginPanel(el.getAttribute('data-variant')); });
+
+  /* ---------- interactions ---------- */
+  document.addEventListener('click', function(e){
+    var btn = e.target.closest('.variant-stock-table__expand-btn');
+    if (btn) {
+      var tr = btn.closest('tr'), exp = tr.nextElementSibling, open = btn.getAttribute('aria-expanded') !== 'true';
+      btn.setAttribute('aria-expanded', open); tr.classList.toggle('is-open', open); exp.classList.toggle('is-open', open);
+      return;
+    }
+    var tog = e.target.closest('[data-testid="margin-coverage-toggle"]');
+    if (tog) {
+      var d = document.getElementById(tog.getAttribute('aria-controls')); var o = tog.getAttribute('aria-expanded') !== 'true';
+      tog.setAttribute('aria-expanded', o); d.hidden = !o; return;
+    }
+    if (e.target.closest('[data-testid="export-dismiss"]')) { e.target.closest('.toast').hidden = true; }
+    if (e.target.closest('a[href="#"]')) e.preventDefault();
+  });
+  document.addEventListener('input', function(e){
+    if (e.target.id !== 'mk-cost-input') return;
+    var v = e.target.value.trim().replace(',', '.');
+    var bad = v !== '' && !/^\d+(\.\d{1,2})?$/.test(v);
+    var box = e.target.closest('.field__price-input'), err = e.target.closest('.form-field').querySelector('.form-field__error');
+    box.classList.toggle('has-error', bad); err.hidden = !bad; e.target.setAttribute('aria-invalid', bad ? 'true' : 'false');
+  });
+  document.addEventListener('submit', function(e){ e.preventDefault(); });
+
+  /* ---------- keep the shell nav/crumb in step with the visible state ---------- */
+  function syncShell(){
+    var s = document.querySelector('[data-mk-state]:not([hidden])'); if (!s) return;
+    var nav = s.getAttribute('data-mk-nav'), crumb = s.getAttribute('data-mk-crumb');
+    document.querySelectorAll('.shell-nav__link').forEach(function(a){ a.classList.toggle('shell-nav__link--active', a.querySelector('.shell-nav__link-label').textContent === nav); });
+    var c = document.querySelector('.shell-crumbs__current'); if (c) c.textContent = crumb;
+    var chip = document.querySelector('.shell-user-chip__name'); if (chip) chip.textContent = s.getAttribute('data-mk-state') === 'viewer' ? 'viewer' : 'admin';
+  }
+  function hook(){ syncShell(); var bar = document.querySelector('.mk-bar__states'); if (bar) bar.addEventListener('click', function(){ setTimeout(syncShell, 0); }); }
+  if (document.readyState === 'complete') hook(); else window.addEventListener('load', hook);
+})();
+</script>
+</body>
+</html>

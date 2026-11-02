@@ -19,6 +19,14 @@
  * @module apps/api/src/products/http
  */
 
+import {
+  resolveVariantImageList,
+  type VariantImageSource,
+} from '../application/services/variant-image-list';
+
+export { resolveVariantImageList };
+export type { VariantImageSource };
+
 /** The shape every caller has to hand: whatever it read for the product. */
 export interface ProductImageSource {
   readonly id: string;
@@ -40,4 +48,21 @@ export function productImageProxyPath(
   const url = product.images?.[index];
   if (url === undefined || url === null || url === '') return null;
   return `/products/${encodeURIComponent(product.id)}/images/${String(index)}`;
+}
+
+/** The path of one picture in a variant's RESOLVED list (see `resolveVariantImageList`). */
+export function variantImageProxyPath(variant: { readonly id: string }, index: number): string {
+  return `/products/variants/${encodeURIComponent(variant.id)}/images/${String(index)}`;
+}
+
+/** Proxy paths for every picture in the variant's resolved list. */
+export function variantImageProxyPaths(
+  variant: VariantImageSource,
+  productImages: readonly string[] | null | undefined
+): { readonly imageUrls: string[]; readonly imagesFromProduct: boolean } {
+  const { urls, fromProduct } = resolveVariantImageList(variant, productImages);
+  return {
+    imageUrls: urls.map((_, i) => variantImageProxyPath(variant, i)),
+    imagesFromProduct: fromProduct,
+  };
 }

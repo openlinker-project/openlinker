@@ -51,7 +51,14 @@ import type {
   TaxRateJournalEntry,
 } from '@openlinker/core/products';
 import { IdentifierMappingPort } from '@openlinker/core/identifier-mapping';
-import { IInventoryQueryService, INVENTORY_QUERY_SERVICE_TOKEN } from '@openlinker/core/inventory';
+import {
+  AVAILABILITY_SERVICE_TOKEN,
+  IAvailabilityService,
+  IInventoryQueryService,
+  INVENTORY_QUERY_SERVICE_TOKEN,
+  MAX_STOCK_VIEW_VARIANT_IDS,
+  type PromisableQuantity,
+} from '@openlinker/core/inventory';
 import {
   IOfferMappingsService,
   OFFER_MAPPINGS_SERVICE_TOKEN,
@@ -61,6 +68,7 @@ import {
 import type { ProductListingsCoverage } from '@openlinker/core/listings';
 import { Logger } from '@openlinker/shared/logging';
 import { ProductImageProxyService } from '../application/services/product-image-proxy.service';
+import { variantImageProxyPaths } from './product-image-path';
 import { ListProductsQueryDto } from './dto/list-products-query.dto';
 import { CountProductsQueryDto } from './dto/count-products-query.dto';
 import { CountProductVariantsQueryDto } from './dto/count-product-variants-query.dto';
@@ -79,6 +87,11 @@ import { AnyRole } from '../../auth/decorators/any-role.decorator';
 
 const MAX_VARIANTS_IN_DETAIL = 100;
 
+interface ProductAtp {
+  availableToPromise: number | null;
+  provenance: 'computed' | 'authority' | 'unknown';
+}
+
 // Cap on the number of connection ids accepted through the `unlistedOn` CSV
 // (#1720) - the realistic marketplace-connection count is single digits.
 const MAX_UNLISTED_ON_CONNECTION_IDS = 20;
@@ -89,6 +102,38 @@ const MAX_UNLISTED_ON_CONNECTION_IDS = 20;
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /**
+ * The image galleries of the products a page of variants belongs to, in ONE
+ * read. Skipped entirely when every variant carries pictures of its own - the
+ * product's are then never consulted.
+ */
+async function loadProductImages(
+  productsService: IProductsService,
+  variants: readonly ProductVariant[]
+): Promise<Map<string, readonly string[] | null>> {
+  const ids = [
+    ...new Set(variants.filter((v) => (v.images?.length ?? 0) === 0).map((v) => v.productId)),
+  ];
+  if (ids.length === 0) return new Map();
+  const products = await productsService.getProductsByIds(ids);
+  return new Map(products.map((p) => [p.id, p.images]));
+}
+
+/** Headers for an image streamed through the proxy routes. */
+function sendImage(response: Response, image: { bytes: Buffer; contentType: string }): void {
+  response.setHeader('Content-Type', image.contentType);
+  response.setHeader('Content-Length', String(image.bytes.byteLength));
+  // Private: the route is behind auth, so a shared cache must not keep it.
+  // An hour is long enough to spare the shop a request per table render and
+  // short enough that a replaced photo appears without a hard refresh.
+  response.setHeader('Cache-Control', 'private, max-age=3600');
+  // Belt-and-braces beside the service's own raster allow-list: stops a
+  // mislabelled body being sniffed into HTML by a browser that ignores the
+  // declared Content-Type.
+  response.setHeader('X-Content-Type-Options', 'nosniff');
+  response.end(image.bytes);
+}
+
+/**
  * Shared variant-to-DTO mapper.
  *
  * Timestamps are optional on the ProductVariant interface because adapters
@@ -97,7 +142,10 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
  * guaranteed present — non-null assertion crashes loudly if the invariant ever
  * breaks, which is preferable to silently emitting a 1970 epoch date.
  */
-function variantToDto(variant: ProductVariant): ProductVariantResponseDto {
+function variantToDto(
+  variant: ProductVariant,
+  productImages: readonly string[] | null | undefined
+): ProductVariantResponseDto {
   return {
     id: variant.id,
     productId: variant.productId,
@@ -110,6 +158,10 @@ function variantToDto(variant: ProductVariant): ProductVariantResponseDto {
     // nullable shape.
     price: variant.price ?? null,
     images: variant.images ?? null,
+    // Proxy paths over the RESOLVED list (own images, else the product's), so
+    // a browser never needs a shop url and the index it holds is the index the
+    // variant image route resolves.
+    ...variantImageProxyPaths(variant, productImages),
     // #2255 — the variant's own OVERRIDE, and only that. An absent override
     // means the product's rate applies, which the table renders as "inherited"
     // rather than as a gap; conflating the two would send the operator to fix
@@ -179,6 +231,10 @@ export class ProductsController {
     private readonly identifierMapping: IdentifierMappingPort,
     @Inject(INVENTORY_QUERY_SERVICE_TOKEN)
     private readonly inventoryQuery: IInventoryQueryService,
+    // #3621 - the list's available-to-promise column reads the availability
+    // seam, never the buffer helpers (no-direct-buffer-read.spec.ts).
+    @Inject(AVAILABILITY_SERVICE_TOKEN)
+    private readonly availability: IAvailabilityService,
     @Inject(OFFER_MAPPINGS_SERVICE_TOKEN)
     private readonly offerMappings: IOfferMappingsService,
     @Inject(SHOP_PRODUCT_MAPPINGS_SERVICE_TOKEN)
@@ -252,6 +308,7 @@ export class ProductsController {
         variantCounts,
         staleVariantCounts,
         externalIdLists,
+        atpByProduct,
       ] = await Promise.all([
         this.inventoryQuery.getProductStockAggregates(ids),
         this.offerMappings.countListedVariantsByProducts(ids),
@@ -266,6 +323,8 @@ export class ProductsController {
         Promise.all(
           ids.map((id) => this.identifierMapping.getExternalIds(CORE_ENTITY_TYPE.Product, id))
         ),
+        // #3621 - ONE batched read for the whole page, never per product.
+        this.resolveProductAtp(ids),
       ]);
 
       const aggregateByProduct = new Map(aggregates.map((a) => [a.productId, a]));
@@ -281,6 +340,9 @@ export class ProductsController {
         // Products with no inventory rows have no aggregate row - zero-fill
         // for display (no stock = 0 available / 0 reserved, never written).
         dto.totalAvailable = aggregate?.totalAvailable ?? 0;
+        const atp = atpByProduct.get(dto.id) ?? { availableToPromise: null, provenance: 'unknown' as const };
+        dto.availableToPromise = atp.availableToPromise;
+        dto.atpProvenance = atp.provenance;
         dto.totalReserved = aggregate?.totalReserved ?? 0;
         dto.stockUpdatedAt = aggregate?.stockUpdatedAt
           ? aggregate.stockUpdatedAt.toISOString()
@@ -298,6 +360,73 @@ export class ProductsController {
       limit,
       offset,
     };
+  }
+
+  /**
+   * Product-level available-to-promise for one page (#3621): the sum of its
+   * variants' global-scope ATP, from one variants read and one availability
+   * read for the whole page.
+   *
+   * **`null` is never a zero.** One unknown variant makes the product unknown
+   * (a sum over a partly-unknown set would assert a figure OpenLinker cannot
+   * stand behind), and so does a product with no variants (its stock is not
+   * variant-keyed, so this read cannot speak for it). A failed read degrades
+   * the whole page to unknown rather than failing the product list.
+   */
+  private async resolveProductAtp(
+    productIds: readonly string[]
+  ): Promise<Map<string, ProductAtp>> {
+    const result = new Map<string, ProductAtp>();
+    const unknown: ProductAtp = { availableToPromise: null, provenance: 'unknown' };
+    try {
+      const variants = await this.productsService.getVariantsByProductIds(productIds);
+      const variantIds = variants.map((v) => v.id);
+      // Chunked at the same 200-id cap the stock view and the availability
+      // endpoint use, run sequentially: a page of 100 products can carry far
+      // more variants than that, and one unbounded IN-list is what the cap
+      // exists to prevent. Any failed chunk degrades the WHOLE page (below).
+      const promisable: PromisableQuantity[] = [];
+      for (let i = 0; i < variantIds.length; i += MAX_STOCK_VIEW_VARIANT_IDS) {
+        promisable.push(
+          ...(await this.availability.getPromisableQuantities({
+            variantIds: variantIds.slice(i, i + MAX_STOCK_VIEW_VARIANT_IDS),
+            scope: { kind: 'global' },
+          }))
+        );
+      }
+      const atpByVariant = new Map(promisable.map((p) => [p.productVariantId, p]));
+      const variantsByProduct = new Map<string, ProductVariant[]>();
+      for (const variant of variants) {
+        const list = variantsByProduct.get(variant.productId) ?? [];
+        list.push(variant);
+        variantsByProduct.set(variant.productId, list);
+      }
+
+      for (const productId of productIds) {
+        const productVariants = variantsByProduct.get(productId) ?? [];
+        const answers = productVariants.map((v) => atpByVariant.get(v.id));
+        if (
+          productVariants.length === 0 ||
+          answers.some((a) => a === undefined || a.quantity === null)
+        ) {
+          result.set(productId, unknown);
+          continue;
+        }
+        const total = answers.reduce((sum, a) => sum + (a?.quantity ?? 0), 0);
+        const allAuthority = answers.every((a) => a?.provenance === 'authority');
+        result.set(productId, {
+          availableToPromise: total,
+          provenance: allAuthority ? 'authority' : 'computed',
+        });
+      }
+    } catch (error) {
+      this.logger.error(
+        `product_list_atp_read_failed products=${String(productIds.length)} - reporting unknown for the page`,
+        (error as Error).stack
+      );
+      return new Map(productIds.map((id) => [id, unknown]));
+    }
+    return result;
   }
 
   @AnyRole()
@@ -400,7 +529,45 @@ export class ProductsController {
     if (!variant) {
       throw new NotFoundException(`Variant not found: ${variantId}`);
     }
-    return this.toVariantSummaryDto(variant);
+    const productImages = await loadProductImages(this.productsService, [variant]);
+    return this.toVariantSummaryDto(variant, productImages.get(variant.productId));
+  }
+
+  /**
+   * One picture of a variant's resolved list (its own, else the product's).
+   * Declared next to `variants/:variantId` and BEFORE `:productId/images/:index`:
+   * `variants/<id>/images/<n>` has the same shape as that route with
+   * productId = 'variants', so order decides which handler gets it.
+   */
+  @AnyRole()
+  @Get('variants/:variantId/images/:index')
+  @ApiOperation({
+    summary: "Get one of a variant's images",
+    description:
+      "Streams the picture at `index` of the variant's resolved list (its own images, or " +
+      "the product's when it has none) from the shop, through OpenLinker. Only an index is " +
+      'accepted, never a url.',
+  })
+  @ApiParam({ name: 'variantId', description: 'Internal variant ID (e.g. ol_variant_...)' })
+  @ApiParam({ name: 'index', description: 'Zero-based index into the resolved image list' })
+  @ApiResponse({ status: 200, description: 'The image bytes' })
+  @ApiResponse({ status: 404, description: 'No such variant, image, or the shop did not answer' })
+  async getVariantImage(
+    @Param('variantId') variantId: string,
+    @Param('index') index: string,
+    @Res() response: Response
+  ): Promise<void> {
+    const parsed = Number(index);
+    if (!Number.isInteger(parsed) || parsed < 0) {
+      throw new NotFoundException(`No image ${index} for variant ${variantId}`);
+    }
+
+    const result = await this.productImages.getVariantImage(variantId, parsed);
+    if (result.kind === 'failure') {
+      throw new NotFoundException(`No image ${index} for variant ${variantId}`);
+    }
+
+    sendImage(response, result.image);
   }
 
   @AnyRole()
@@ -445,7 +612,7 @@ export class ProductsController {
         : variants;
 
     const variantDtos = variants.map((v, i) => {
-      const dto = this.toVariantDto(v);
+      const dto = this.toVariantDto(v, product.images);
       dto.externalIds = variantExternalIdResults[i].map((e) => this.toExternalIdDto(e));
       // Resolved here so the browser shows the list the offer builder will
       // publish without holding a copy of the rule (#591: no core import).
@@ -501,17 +668,7 @@ export class ProductsController {
       throw new NotFoundException(`No image ${index} for product ${productId}`);
     }
 
-    response.setHeader('Content-Type', result.image.contentType);
-    response.setHeader('Content-Length', String(result.image.bytes.byteLength));
-    // Private: the route is behind auth, so a shared cache must not keep it.
-    // An hour is long enough to spare the shop a request per table render and
-    // short enough that a replaced photo appears without a hard refresh.
-    response.setHeader('Cache-Control', 'private, max-age=3600');
-    // Belt-and-braces beside the service's own raster allow-list: stops a
-    // mislabelled body being sniffed into HTML by a browser that ignores the
-    // declared Content-Type.
-    response.setHeader('X-Content-Type-Options', 'nosniff');
-    response.end(result.image.bytes);
+    sendImage(response, result.image);
   }
 
   @AnyRole()
@@ -542,16 +699,22 @@ export class ProductsController {
         toProductVariantFilters(query, productId),
         { limit, offset }
       );
-      return { items: rows.map((v) => this.toVariantDto(v)), limit, offset };
+      const rowImages = await loadProductImages(this.productsService, rows);
+      return {
+        items: rows.map((v) => this.toVariantDto(v, rowImages.get(v.productId))),
+        limit,
+        offset,
+      };
     }
 
     const { items, total } = await this.productsService.listVariants(
       toProductVariantFilters(query, productId),
       { limit, offset }
     );
+    const itemImages = await loadProductImages(this.productsService, items);
 
     return {
-      items: items.map((v) => this.toVariantDto(v)),
+      items: items.map((v) => this.toVariantDto(v, itemImages.get(v.productId))),
       total,
       limit,
       offset,
@@ -657,8 +820,11 @@ export class ProductsController {
     };
   }
 
-  private toVariantDto(variant: ProductVariant): ProductVariantResponseDto {
-    return variantToDto(variant);
+  private toVariantDto(
+    variant: ProductVariant,
+    productImages: readonly string[] | null | undefined
+  ): ProductVariantResponseDto {
+    return variantToDto(variant, productImages);
   }
 
   /**
@@ -670,7 +836,10 @@ export class ProductsController {
    * variant came off the wire (JSONB column reads, future projections,
    * etc.) — `Object.values` would otherwise rely on insertion order.
    */
-  private toVariantSummaryDto(variant: ProductVariant): ProductVariantSummaryResponseDto {
+  private toVariantSummaryDto(
+    variant: ProductVariant,
+    productImages: readonly string[] | null | undefined
+  ): ProductVariantSummaryResponseDto {
     const attributeValues = Object.entries(variant.attributes ?? {})
       .sort(([a], [b]) => a.localeCompare(b))
       .map(([, v]) => (typeof v === 'string' ? v.trim() : ''))
@@ -681,6 +850,7 @@ export class ProductsController {
       sku: variant.sku,
       ean: variant.ean ?? null,
       name: attributeValues.length > 0 ? attributeValues.join(' / ') : undefined,
+      ...variantImageProxyPaths(variant, productImages),
       isStale: variant.isStale ?? false,
       staleAt: variant.staleAt?.toISOString() ?? null,
     };
@@ -743,16 +913,22 @@ export class VariantsController {
         limit,
         offset,
       });
-      return { items: rows.map((v) => this.toVariantDto(v)), limit, offset };
+      const rowImages = await loadProductImages(this.productsService, rows);
+      return {
+        items: rows.map((v) => this.toVariantDto(v, rowImages.get(v.productId))),
+        limit,
+        offset,
+      };
     }
 
     const { items, total } = await this.productsService.listVariants(
       toProductVariantFilters(query),
       { limit, offset }
     );
+    const itemImages = await loadProductImages(this.productsService, items);
 
     return {
-      items: items.map((v) => this.toVariantDto(v)),
+      items: items.map((v) => this.toVariantDto(v, itemImages.get(v.productId))),
       total,
       limit,
       offset,
@@ -775,7 +951,10 @@ export class VariantsController {
     return { total };
   }
 
-  private toVariantDto(variant: ProductVariant): ProductVariantResponseDto {
-    return variantToDto(variant);
+  private toVariantDto(
+    variant: ProductVariant,
+    productImages: readonly string[] | null | undefined
+  ): ProductVariantResponseDto {
+    return variantToDto(variant, productImages);
   }
 }

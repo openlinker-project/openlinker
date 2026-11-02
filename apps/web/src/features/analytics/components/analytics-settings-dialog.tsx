@@ -242,6 +242,33 @@ export function AnalyticsSettingsDialog({
     );
   }
 
+  // Immediate write, like the two toggles above. The other writers in this
+  // file omit `trackMargin`, which the API reads as "keep the stored value".
+  function handleTrackMarginChange(next: boolean): void {
+    if (!settingsQuery.data) {
+      return;
+    }
+    updateSettings.mutate(
+      {
+        displayCurrency:
+          settingsQuery.data.displayCurrencySource === 'setting'
+            ? settingsQuery.data.displayCurrency
+            : null,
+        rateBasis: settingsQuery.data.rateBasis,
+        includeBackfilledTaxRatesInNetSales: settingsQuery.data.includeBackfilledTaxRatesInNetSales,
+        netGrossBasis: settingsQuery.data.netGrossBasis,
+        trackMargin: next,
+      },
+      {
+        onError: (error) => {
+          showToast({ tone: 'error', description: error.message });
+        },
+      }
+    );
+  }
+
+  const trackMargin = settingsQuery.data?.trackMargin !== false;
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent aria-label="Analytics settings">
@@ -349,6 +376,42 @@ export function AnalyticsSettingsDialog({
               </fieldset>
             </ReadOnlyLock>
           )}
+        </section>
+
+        <section
+          className="analytics-settings-dialog__section"
+          data-testid="settings-margin-tracking"
+        >
+          <h3 className="analytics-settings-dialog__section-title">Margin</h3>
+          <ReadOnlyLock active={write.demoReadOnly} message={DEMO_READ_ONLY_ACTION_MESSAGE}>
+            <label className="analytics-settings-dialog__toggle">
+              <input
+                type="checkbox"
+                data-testid="settings-margin-tracking-toggle"
+                checked={trackMargin}
+                disabled={
+                  !settingsQuery.data || updateSettings.isPending || !write.canWrite
+                }
+                onChange={(event) => handleTrackMarginChange(event.target.checked)}
+              />
+              <span>
+                <strong>Track margin and remind about missing cost prices</strong>
+                <span className="analytics-settings-dialog__toggle-desc">
+                  Off: the Margin panel, the cost reminders on Products, Analytics and Operations
+                  overview, and the &ldquo;No cost price&rdquo; chip are hidden. Cost prices you
+                  already entered stay saved and keep being copied onto new orders, so turning
+                  this back on shows margin straight away.
+                </span>
+              </span>
+            </label>
+          </ReadOnlyLock>
+          {!write.canWrite && !write.demoReadOnly ? (
+            <Alert tone="info">
+              {trackMargin
+                ? 'Margin is on for everyone on this account. Only an admin can change this.'
+                : 'Margin is off for everyone on this account. Only an admin can change this.'}
+            </Alert>
+          ) : null}
         </section>
 
         <section className="analytics-settings-dialog__section">

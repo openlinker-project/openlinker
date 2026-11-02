@@ -42,6 +42,49 @@ import type {
  */
 const TOTAL_STOCK_EXPR = 'COALESCE(stock.total, 0)';
 
+/**
+ * Product-level available to promise for the `atp` join below (#3621, G-5).
+ * Variant-less products join to NULL; the filters additionally require a
+ * variant to exist, so they never read as a known zero.
+ */
+const PRODUCT_ATP_EXPR = 'COALESCE(atp.total, 0)';
+
+/**
+ * Per-product available to promise, the number the list badge shows for a
+ * computed answer (`computeAtp`, global scope, no buffer, no zero threshold):
+ * per VARIANT `GREATEST(0, Σ available[live positions] - Σ published holds)`,
+ * summed over the product's variants.
+ *
+ * The published-hold sub-select restates `publishedReservedSum`
+ * (`libs/core/src/inventory/infrastructure/persistence/sql/published-reserved-sum.ts`,
+ * the canonical definition): that fragment is not on the inventory barrel and
+ * a deep import would breach the cross-context contract, so this is a
+ * read-model copy in the ADR-036 style, string table names only. If the
+ * canonical rule changes (`status = 'held' AND "atpEffect" = 'published'`),
+ * change this with it; `paginated-total-split.int-spec.ts` pins the numbers.
+ * Rows with no variant id are not part of any variant's answer, matching
+ * `findAvailabilityByVariantIds`.
+ */
+export const PRODUCT_ATP_SUBQUERY = `
+  SELECT v."productId" AS "productId", SUM(GREATEST(0, v."available" - v."held")) AS "total"
+    FROM (
+      SELECT ii."productId" AS "productId",
+             ii."productVariantId" AS "productVariantId",
+             SUM(ii."availableQuantity") AS "available",
+             SUM(COALESCE((SELECT SUM("r_pub"."quantity")
+                             FROM "reservations" "r_pub"
+                            WHERE "r_pub"."inventoryItemId" = ii."id"
+                              AND "r_pub"."status" = 'held'
+                              AND "r_pub"."atpEffect" = 'published'), 0)) AS "held"
+        FROM "inventory_items" ii
+       WHERE ii."isStale" = false AND ii."productVariantId" IS NOT NULL
+       GROUP BY ii."productId", ii."productVariantId"
+    ) v
+   GROUP BY v."productId"`;
+
+const HAS_VARIANT_EXPR =
+  'EXISTS (SELECT 1 FROM "product_variants" "pv_atp" WHERE "pv_atp"."productId" = product.id)';
+
 @Injectable()
 export class ProductRepository implements ProductRepositoryPort {
   constructor(
@@ -112,7 +155,7 @@ export class ProductRepository implements ProductRepositoryPort {
     // inventory context's ORM entity here is forbidden, and the join keeps
     // the cross-context import contract intact. Columns are camelCase in
     // Postgres and must be double-quoted in raw fragments.
-    const needsStockJoin = filters.stock !== undefined || sort?.field === 'stock';
+    const needsStockJoin = filters.stock === 'oversold';
     if (needsStockJoin) {
       qb.leftJoin(
         (sub) =>
@@ -129,12 +172,23 @@ export class ProductRepository implements ProductRepositoryPort {
       );
     }
 
-    if (filters.stock === 'out') {
-      qb.andWhere(`${TOTAL_STOCK_EXPR} = 0`);
-    } else if (filters.stock === 'low') {
-      qb.andWhere(`${TOTAL_STOCK_EXPR} > 0 AND ${TOTAL_STOCK_EXPR} <= :lowStockThreshold`, {
-        lowStockThreshold: LOW_STOCK_THRESHOLD,
-      });
+    // `out` / `low` filter on available to promise so they agree with the badge
+    // (#3621, G-5); `oversold` stays on master stock because ATP is clamped at 0
+    // and can never be negative.
+    const needsAtpJoin =
+      filters.stock === 'out' || filters.stock === 'low' || sort?.field === 'stock';
+    if (needsAtpJoin) {
+      qb.leftJoin(`(${PRODUCT_ATP_SUBQUERY})`, 'atp', 'atp."productId" = product.id');
+    }
+    if (filters.stock === 'out' || filters.stock === 'low') {
+      if (filters.stock === 'out') {
+        qb.andWhere(`${HAS_VARIANT_EXPR} AND ${PRODUCT_ATP_EXPR} = 0`);
+      } else {
+        qb.andWhere(
+          `${HAS_VARIANT_EXPR} AND ${PRODUCT_ATP_EXPR} > 0 AND ${PRODUCT_ATP_EXPR} <= :lowStockThreshold`,
+          { lowStockThreshold: LOW_STOCK_THRESHOLD },
+        );
+      }
     } else if (filters.stock === 'oversold') {
       qb.andWhere(`${TOTAL_STOCK_EXPR} < 0`);
     }
@@ -283,9 +337,9 @@ export class ProductRepository implements ProductRepositoryPort {
         qb.orderBy('product.updatedAt', dir);
         break;
       case 'stock':
-        // Joined via the grouped inventory_items subquery above; no-stock
-        // products sort as 0.
-        qb.orderBy(TOTAL_STOCK_EXPR, dir);
+        // The same available-to-promise figure the list cell shows (the `atp`
+        // join above), not the master total; no-stock products sort as 0.
+        qb.orderBy(PRODUCT_ATP_EXPR, dir);
         break;
       case 'createdAt':
         qb.orderBy('product.createdAt', dir);

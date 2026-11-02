@@ -31,6 +31,9 @@ export class AnalyticsDisplaySettingsOrmEntity {
   @Column({ type: 'text', name: 'net_gross_basis', default: 'gross' })
   netGrossBasis!: string;
 
+  @Column({ type: 'boolean', name: 'track_margin', default: true })
+  trackMargin!: boolean;
+
   @UpdateDateColumn({ type: 'timestamptz', name: 'updated_at' })
   updatedAt!: Date;
 

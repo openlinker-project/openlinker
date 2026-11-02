@@ -1,6 +1,7 @@
 /**
  * Sales Analytics Controller — Unit Tests (#1987, display-currency #2459)
  */
+import type { IConnectionService } from '../../integrations/application/interfaces/connection.service.interface';
 import { BadRequestException } from '@nestjs/common';
 import { MIXED_NATIVE_CURRENCIES_LABEL } from '@openlinker/core/orders';
 import type {
@@ -101,7 +102,8 @@ describe('SalesAnalyticsController', () => {
     new SalesAnalyticsController(
       orderRecordService as unknown as IOrderRecordService,
       displayCurrencyConversionService,
-      displaySettings as unknown as IAnalyticsDisplaySettingsService
+      displaySettings as unknown as IAnalyticsDisplaySettingsService,
+      { list: jest.fn().mockResolvedValue([]) } as unknown as IConnectionService
     );
 
   it('maps the query params to filters and projects the domain result into the response DTO', async () => {

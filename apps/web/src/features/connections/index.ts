@@ -111,3 +111,8 @@ export {
   isPricingDestination,
   PRICING_DESTINATION_CAPABILITIES,
 } from './lib/pricing-destination';
+
+// #3567 - the stock correction dialog previews what each channel will publish
+// with the same browser-side mirror of the publish policy the connection form
+// uses, rather than keeping a second copy of the arithmetic.
+export { applyStockSafetyBuffer } from './lib/stock-and-pricing-preview';

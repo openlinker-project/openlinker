@@ -31,7 +31,11 @@ import {
 const TERMINAL = ['FINISHED', 'FINISHED_APT', 'REJECTED', 'COMMISSION_REFUNDED'];
 const CURSOR_KEY = 'allegro.customerReturns.scanOffset';
 
-function observation(id: string, rawStatus: string, createdAt = '2026-08-01T09:00:00.000Z') {
+// Relative to now, not a fixed date: the sweep only reads returns opened inside
+// its lookback window (90 days), so a fixed date silently ages out of it.
+const ONE_DAY_AGO = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+
+function observation(id: string, rawStatus: string, createdAt = ONE_DAY_AGO) {
   return {
     externalReturnId: id,
     externalOrderId: null,

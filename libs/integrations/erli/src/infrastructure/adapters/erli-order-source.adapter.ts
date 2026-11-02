@@ -538,6 +538,8 @@ export class ErliOrderSourceAdapter
         };
       }
 
+      // The cancel reason stays in OpenLinker (#3540): Erli has no confirmed cancel
+      // call, only the stock restore below, so `event.reason` has no field to ride.
       case 'cancelled': {
         if (!this.offerManager || !this.inventoryQuery) {
           return {
@@ -552,7 +554,19 @@ export class ErliOrderSourceAdapter
             this.offerManager,
             this.inventoryQuery,
           );
-          return { outcome: 'applied' };
+          // `stock-only`, not `channel` (#3540): Erli's order-status enum lists
+          // `cancelled`, but its write is unconfirmed (the same #992 provisional
+          // state that gates the `sent` push above) and no cancel endpoint is
+          // documented anywhere in this package or ADR-025. Calling an
+          // unconfirmed endpoint against a live buyer order is the wrong risk to
+          // take, so OL does the part it can verify - restoring stock - and says
+          // so, letting an operator-facing surface avoid claiming that Erli was
+          // told. Revisit when #992 confirms the status write.
+          return {
+            outcome: 'applied',
+            scope: 'stock-only',
+            detail: 'Stock restored; Erli has no confirmed cancel call, so the order stays open there.',
+          };
         } catch (error) {
           const detail = error instanceof Error ? error.message : String(error);
           this.logger.warn(

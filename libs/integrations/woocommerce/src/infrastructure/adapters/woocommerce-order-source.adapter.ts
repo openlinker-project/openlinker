@@ -22,6 +22,8 @@ import type {
   PaymentStatus,
 } from '@openlinker/core/orders';
 import {
+  readSourceBuyerNote,
+  decodeHtmlNoteText,
   readSourceBuyerTaxId,
   PAYMENT_METHOD,
   PAYMENT_STATUS,
@@ -201,6 +203,11 @@ export class WooCommerceOrderSourceAdapter implements OrderSourcePort {
       // How the buyer pays (#3294): only WooCommerce core's own gateway ids
       // are evidence; every plugin slug is `unknown`.
       paymentMethod: deriveWooCommercePaymentMethod(order),
+      // Checkout note (#3538): core reports `''` for none (asserted none), and
+      // a payload without the key is unknown, never "no note".
+      ...(order.customer_note === undefined
+        ? {}
+        : { buyerNote: readSourceBuyerNote(decodeHtmlNoteText(order.customer_note)) ?? null }),
       customerExternalId: order.customer_id > 0 ? String(order.customer_id) : undefined,
       customerEmail: order.billing.email || undefined,
       items: order.line_items.map(mapLineItem),

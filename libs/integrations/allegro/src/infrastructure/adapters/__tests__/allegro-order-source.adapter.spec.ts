@@ -363,10 +363,28 @@ describe('AllegroOrderSourceAdapter', () => {
 
     it('cancelled: sets the Allegro fulfillment status to CANCELLED and returns applied', async () => {
       const result = await adapter.write({ type: 'cancelled', externalOrderId: 'cf-1' });
-      expect(httpClient.put).toHaveBeenCalledWith('/order/checkout-forms/cf-1/fulfillment', {
-        status: 'CANCELLED',
-      });
+      expect(httpClient.put).toHaveBeenCalledWith(
+        '/order/checkout-forms/cf-1/fulfillment',
+        { status: 'CANCELLED' },
+        { maxRetries: 0 }
+      );
       expect(result).toEqual({ outcome: 'applied' });
+    });
+
+    it.each([
+      ['a 5xx', new AllegroApiException('Allegro API server error (500)', 500)],
+      ['a timeout', new AllegroApiException('Request timeout after 30000ms', undefined)],
+    ])('cancelled: flags %s as transient so the relay treats it as no answer (C-28)', async (_n, err) => {
+      httpClient.put.mockRejectedValueOnce(err);
+      const result = await adapter.write({ type: 'cancelled', externalOrderId: 'cf-1' });
+      expect(result.outcome).toBe('rejected');
+      expect(result.transient).toBe(true);
+    });
+
+    it('cancelled: a 4xx refusal is not transient (C-28)', async () => {
+      httpClient.put.mockRejectedValueOnce(new AllegroApiException('not allowed', 422));
+      const result = await adapter.write({ type: 'cancelled', externalOrderId: 'cf-1' });
+      expect(result.transient).toBeUndefined();
     });
 
     it('cancelled: returns rejected on a 4xx (e.g. forbidden transition)', async () => {
@@ -615,6 +633,38 @@ describe('AllegroOrderSourceAdapter', () => {
       // #3294 - the neutral method beside it, consistent with the status.
       expect(incoming.paymentMethod).toBe('online');
     });
+
+    it.each([
+      ['a text', '  Please leave at the door  ', 'Please leave at the door'],
+      ['an absent field', undefined, null],
+      ['a blank field', '   ', null],
+    ])(
+      'should report the buyer note from messageToSeller: %s (#3538)',
+      async (_label, messageToSeller, expected) => {
+        const checkoutForm: AllegroCheckoutForm = {
+          id: 'checkout-note',
+          status: 'READY_FOR_PROCESSING',
+          updatedAt: '2024-01-02T00:00:00Z',
+          buyer: { id: 'b9', email: 'b9@example.com', login: 'b9' },
+          lineItems: [
+            {
+              id: 'l1',
+              offer: { id: 'o1', name: 'O1' },
+              quantity: 1,
+              price: { amount: '10.00', currency: 'PLN' },
+            },
+          ],
+          summary: { totalToPay: { amount: '10.00', currency: 'PLN' } },
+          payment: { type: 'ONLINE', finishedAt: '2024-01-02T00:00:00Z' },
+          ...(messageToSeller === undefined ? {} : { messageToSeller }),
+        };
+        httpClient.get.mockResolvedValueOnce({ data: checkoutForm, status: 200, headers: {} });
+
+        const incoming = await adapter.getOrder({ externalOrderId: 'checkout-note' });
+
+        expect(incoming.buyerNote).toBe(expected);
+      }
+    );
 
     it('should report an unmapped payment type as unknown, never a guess (#3294)', async () => {
       const checkoutForm: AllegroCheckoutForm = {

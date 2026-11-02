@@ -127,8 +127,13 @@ const lazyRoutes = collectLazyRoutes([
  * manager — is one more authenticated lazy route, from 72 to 73.
  *
  * #3702 adds the guided Shoper setup route (`connections/new/shoper`), from 73 to 74.
+ *
+ * #3568 (G08): `/inventory/movements` - the stock movement history - is one
+ * more authenticated lazy route, from 74 to 75.
+ *
+ * #3586 (G11, epic #3516) adds the missing-cost work list `/products/cost-prices`, from 75 to 76.
  */
-const EXPECTED_LAZY_ROUTE_COUNT = 74;
+const EXPECTED_LAZY_ROUTE_COUNT = 76;
 
 describe('route lazy contract', () => {
   it(`the registered route tree contains exactly ${EXPECTED_LAZY_ROUTE_COUNT} lazy routes`, () => {

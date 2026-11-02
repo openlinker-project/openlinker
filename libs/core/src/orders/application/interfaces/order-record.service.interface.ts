@@ -7,6 +7,7 @@
  *
  * @module libs/core/src/orders/application/interfaces
  */
+import type { LineCostCandidate } from '../../domain/order-line-cost-snapshot';
 import type { Order } from '../../domain/types/order.types';
 import type { OrderRecord, OrderSyncStatus } from '../../domain/entities/order-record.entity';
 import type { IncomingOrder } from '../../domain/types/incoming-order.types';
@@ -63,13 +64,16 @@ export interface IOrderRecordService {
    * @param sourceExternalUrl - Optional deep link to the order in the source
    *   platform's UI (#1713), built by the source adapter; persisted onto the
    *   snapshot as `sourceExternalUrl`.
+   * @param lineCostCandidates - Eligible variant costs by variantId (#3588), used only
+   *   for the `order_line_items` cost snapshot; never written to the order snapshot.
    * @returns Persisted order record
    */
   persistOrder(
     order: Order,
     sourceConnectionId: string,
     sourceEventId: string | null,
-    sourceExternalUrl?: string | null
+    sourceExternalUrl?: string | null,
+    lineCostCandidates?: ReadonlyMap<string, LineCostCandidate>
   ): Promise<OrderRecord>;
 
   /**
@@ -397,6 +401,14 @@ export interface IOrderRecordService {
    * the event-driven writers carry.
    */
   markPacked(internalOrderId: string, packedByUserId: string): Promise<OrderRecord>;
+
+  /**
+   * Mark this order's buyer note read (#3538). Fill-once and idempotent, like
+   * {@link markPacked}: a repeat returns the record with the FIRST reader's
+   * instant and actor untouched. Throws `OrderRecordNotFoundException` for an
+   * unknown order.
+   */
+  markBuyerNoteRead(internalOrderId: string, readByUserId: string): Promise<OrderRecord>;
 
   /**
    * Clear this order's packed fact (#2287), nulling both columns together.

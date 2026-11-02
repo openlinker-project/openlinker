@@ -75,3 +75,44 @@ describe('FulfillmentWorkQueryService.listBlockingRejectionConnectionIds', () =>
     await expect(service.listBlockingRejectionConnectionIds('ol_order_1')).resolves.toEqual(['conn-a']);
   });
 });
+
+describe('FulfillmentWorkQueryService.listBuyerNoteAcknowledgements (#3538)', () => {
+  let repository: { findByOrderId: jest.Mock };
+  let service: FulfillmentWorkQueryService;
+
+  const acknowledged = (
+    id: string,
+    at: string | null,
+    by: string | null
+  ): {
+    id: string;
+    buyerNoteAcknowledgedAt: Date | null;
+    buyerNoteAcknowledgedByUserId: string | null;
+  } => ({
+    id,
+    buyerNoteAcknowledgedAt: at === null ? null : new Date(at),
+    buyerNoteAcknowledgedByUserId: by,
+  });
+
+  beforeEach(() => {
+    repository = { findByOrderId: jest.fn().mockResolvedValue([]) };
+    service = new FulfillmentWorkQueryService(repository as unknown as FulfillmentWorkRepositoryPort);
+  });
+
+  it('should report only the acknowledged parcels, oldest first', async () => {
+    repository.findByOrderId.mockResolvedValue([
+      acknowledged('work-2', '2026-10-02T10:00:00Z', 'user-b'),
+      acknowledged('work-3', null, null),
+      acknowledged('work-1', '2026-10-01T10:00:00Z', 'user-a'),
+    ]);
+
+    await expect(service.listBuyerNoteAcknowledgements('ol_order_1')).resolves.toEqual([
+      { workId: 'work-1', acknowledgedAt: new Date('2026-10-01T10:00:00Z'), acknowledgedByUserId: 'user-a' },
+      { workId: 'work-2', acknowledgedAt: new Date('2026-10-02T10:00:00Z'), acknowledgedByUserId: 'user-b' },
+    ]);
+  });
+
+  it('should report an empty list for an order with no work', async () => {
+    await expect(service.listBuyerNoteAcknowledgements('ol_order_1')).resolves.toEqual([]);
+  });
+});
