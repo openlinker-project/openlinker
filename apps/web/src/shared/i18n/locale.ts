@@ -17,5 +17,6 @@ import type { LocaleCode } from './i18n.types';
  */
 export function getBcp47Locale(locale: LocaleCode): string {
   if (locale === 'en') return 'en-US';
+  if (locale === 'pl') return 'pl-PL';
   return locale;
 }

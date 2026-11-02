@@ -1427,7 +1427,7 @@ export function renderWithProviders(
   window.history.pushState({}, 'Test', route);
 
   const withProviders = (children: ReactNode): ReactElement => (
-    <LocaleProvider>
+    <LocaleProvider locale="en">
       <PluginRegistryProvider plugins={plugins}>
         <SessionProvider adapter={sessionAdapter}>
           <ToastProvider>

@@ -89,6 +89,9 @@ export default defineConfig(({ mode }) => {
     },
     test: {
       environment: 'happy-dom',
+      // An unpinned provider in a test opens in English even after #3890 makes
+      // Polish the default, and whatever a developer's own `.env` says.
+      env: { VITE_DEFAULT_UI_LOCALE: 'en' },
       // Self-hosted CI runner (added 2026-04 via 444244f) is materially slower
       // than ubuntu-latest; RTL tests with multiple async state transitions
       // (wizards, dialogs + API calls, nested queries) can exceed the 5000ms
