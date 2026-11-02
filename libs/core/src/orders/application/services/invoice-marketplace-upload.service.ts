@@ -13,10 +13,17 @@
  * guards). `OrdersModule` already imports `InvoicingModule`, so the dependency
  * runs the permitted way, through `IInvoiceService` and `IInvoiceAttachmentService`.
  *
- * Order of work is deliberate. The attachment is resolved BEFORE the attempt is
+ * Order of work is deliberate. First the source is asked whether it can take a
+ * billing document at all: the job is enqueued for every issued document
+ * whatever the order's source, and a source with neither an uploader nor a
+ * linker settles `unsupported` straight away - before the document is
+ * downloaded from the provider and before any wait for clearance, so a shop
+ * order never costs a provider read or walks a retry ladder for an upload that
+ * could never happen. Then the attachment is resolved BEFORE the attempt is
  * claimed, so a document that is merely not ready yet answers `waiting` without
- * touching the row - polling for a KSeF number must not burn attempts or read as
- * a failure. Only then is the attempt claimed, which is the at-most-once point.
+ * touching the row - polling for the authority's clearance must not burn
+ * attempts or read as a failure. Only then is the attempt claimed, which is the
+ * at-most-once point.
  *
  * Real bytes go through the uploader. A document the provider only offers as a
  * link goes through the linker instead, when the marketplace has one and the
@@ -140,6 +147,23 @@ export class InvoiceMarketplaceUploadService implements IInvoiceMarketplaceUploa
       return { kind: 'skipped', reason: 'already-settled' };
     }
 
+    // An unresolved adapter is transient and says nothing about capabilities,
+    // so it does not settle `unsupported`; it is recorded once the attempt is
+    // claimed, below.
+    const adapter = await this.resolveAdapter(order.sourceConnectionId);
+    if (
+      adapter !== 'unresolved' &&
+      !isOrderBillingDocumentUploader(adapter) &&
+      !isOrderBillingDocumentLinker(adapter)
+    ) {
+      const claimedUnsupported = await this.uploads.claimAttempt(
+        invoiceId,
+        order.sourceConnectionId
+      );
+      if (claimedUnsupported === null) return { kind: 'skipped', reason: 'already-settled' };
+      return this.settle(claimedUnsupported, { status: 'unsupported' });
+    }
+
     const attachment = await this.attachments.resolveAttachment(invoiceId);
     if (attachment !== null && attachment.state === 'waiting') return { kind: 'waiting' };
 
@@ -168,7 +192,6 @@ export class InvoiceMarketplaceUploadService implements IInvoiceMarketplaceUploa
       return this.settle(claimed, { status: 'failed', lastFailureCode: 'order-unmapped' });
     }
 
-    const adapter = await this.resolveAdapter(order.sourceConnectionId);
     if (adapter === 'unresolved') {
       return this.settle(claimed, { status: 'failed', lastFailureCode: 'adapter-unresolved' });
     }

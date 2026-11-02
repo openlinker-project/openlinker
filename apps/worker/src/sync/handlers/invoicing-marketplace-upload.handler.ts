@@ -9,8 +9,15 @@
  *
  * | Result | Outcome |
  * |---|---|
- * | uploaded, unsupported, no-file, or nothing to do | `ok` - durable on the row |
- * | not attachable yet (a KSeF invoice still without its number) | **throws** (retryable) - the job polls through the retry ladder without burning an attempt on the row |
+ * | uploaded, unsupported, no-file, or nothing to do | `ok` - durable on the row (a source that takes no billing document settles `unsupported` before any wait) |
+ * | not attachable yet (a document still awaiting the authority's clearance) | **throws** (retryable) - the job polls through the retry ladder without burning an attempt on the row |
+ *
+ * A document that clears after the ladder runs out leaves this job `dead`. That
+ * is expected, not a lost upload: the regulatory-status reconcile sweep enqueues
+ * a fresh `invoice-upload:{id}:cleared` job when the record clears, and that job
+ * is what sends the document. An operator reading a dead
+ * `invoicing.marketplaceUpload` row for a document that later cleared should
+ * look for its `:cleared` sibling before retrying by hand.
  * | failed `transient` / `adapter-unresolved` / `order-unmapped` | **throws** (retryable) - a retry can change each |
  * | failed `rejected` | `business_failure` - the marketplace refused the file; retrying cannot change it |
  * | malformed payload | `business_failure` |

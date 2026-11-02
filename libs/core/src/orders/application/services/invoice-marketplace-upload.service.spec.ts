@@ -61,7 +61,10 @@ describe('InvoiceMarketplaceUploadService', () => {
         providerInvoiceNumber: null,
       }),
     };
-    attachments = { resolveAttachment: jest.fn().mockResolvedValue(pdf) };
+    attachments = {
+      resolveAttachment: jest.fn().mockResolvedValue(pdf),
+      describeAttachment: jest.fn(),
+    };
     orders = { getOrderRecord: jest.fn().mockResolvedValue({ sourceConnectionId: CONNECTION }) };
     mapping = {
       getExternalIds: jest
@@ -131,15 +134,60 @@ describe('InvoiceMarketplaceUploadService', () => {
     'should record no-file, and upload nothing, when the document is %s',
     async (_label, attachment) => {
       attachments.resolveAttachment.mockResolvedValue(attachment);
+      const uploader = { uploadBillingDocument: jest.fn() };
+      integrations.getCapabilityAdapter.mockResolvedValue(uploader);
 
       expect(await service.upload('inv-1')).toEqual({
         kind: 'settled',
         status: 'no-file',
         failureCode: null,
       });
-      expect(integrations.getCapabilityAdapter).not.toHaveBeenCalled();
+      expect(uploader.uploadBillingDocument).not.toHaveBeenCalled();
     }
   );
+
+  describe('a source that can take no billing document', () => {
+    beforeEach(() => {
+      integrations.getCapabilityAdapter.mockResolvedValue({ getOrder: jest.fn() });
+    });
+
+    it('should settle unsupported without reading the document from the provider', async () => {
+      expect(await service.upload('inv-1')).toEqual({
+        kind: 'settled',
+        status: 'unsupported',
+        failureCode: null,
+      });
+      expect(attachments.resolveAttachment).not.toHaveBeenCalled();
+      expect(mapping.getExternalIds).not.toHaveBeenCalled();
+    });
+
+    it('should settle unsupported instead of waiting while the document is not cleared', async () => {
+      attachments.resolveAttachment.mockResolvedValue({ state: 'waiting' });
+
+      expect(await service.upload('inv-1')).toMatchObject({
+        kind: 'settled',
+        status: 'unsupported',
+      });
+    });
+
+    it('should not overwrite a row another attempt holds', async () => {
+      uploads.claimAttempt.mockResolvedValue(null);
+
+      expect(await service.upload('inv-1')).toEqual({
+        kind: 'skipped',
+        reason: 'already-settled',
+      });
+      expect(uploads.recordOutcome).not.toHaveBeenCalled();
+    });
+  });
+
+  it('should still wait for clearance when the source adapter cannot be built right now', async () => {
+    integrations.getCapabilityAdapter.mockRejectedValue(new Error('connection disabled'));
+    attachments.resolveAttachment.mockResolvedValue({ state: 'waiting' });
+
+    expect(await service.upload('inv-1')).toEqual({ kind: 'waiting' });
+    expect(uploads.claimAttempt).not.toHaveBeenCalled();
+  });
 
   describe('a document only offered as a link', () => {
     const link = { state: 'link' as const, url: 'https://ksef.example.pl/verify/abc' };

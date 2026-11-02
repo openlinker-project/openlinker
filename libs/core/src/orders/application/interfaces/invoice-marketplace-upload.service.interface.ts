@@ -16,11 +16,13 @@ import type {
  * What one `upload` call concluded. A discriminated union rather than a status
  * alone, because the callers need three different reactions:
  *
- * - `settled` - an attempt ran and the row records its outcome. `failed` is the
+ * - `settled` - an attempt ran and the row records its outcome. A source that
+ *   can take no billing document settles `unsupported` before the document is
+ *   read or its clearance awaited. `failed` is the
  *   only status whose `failureCode` is set, and the code decides whether a retry
  *   can help (`transient` and `adapter-unresolved` can, `rejected` cannot).
- * - `waiting` - the document is not attachable YET (a KSeF invoice without its
- *   number). Nothing was claimed or persisted, so waiting never inflates the
+ * - `waiting` - the document is not attachable YET (a document awaiting the
+ *   authority's clearance). Nothing was claimed or persisted, so waiting never inflates the
  *   attempt count or reads as a failure.
  * - `skipped` - there was nothing to do: an unknown invoice or order, or a row
  *   that is already terminal.
@@ -62,7 +64,7 @@ export interface IInvoiceMarketplaceUploadService {
    */
   enqueueUpload(
     invoiceId: string,
-    options?: { retry?: boolean; cleared?: boolean },
+    options?: { retry?: boolean; cleared?: boolean }
   ): Promise<'enqueued' | 'skipped' | 'failed'>;
 
   /** The upload rows of an invoice, for the status read and the order timeline. */

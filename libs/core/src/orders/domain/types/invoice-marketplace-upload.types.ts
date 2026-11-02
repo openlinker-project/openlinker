@@ -20,8 +20,9 @@
  *                   a platform that cannot show a state declines it, which is
  *                   never an error and never retried.
  * - `no-file`     - the document has no file to upload (only a link, or nothing
- *                   attachable). Not terminal: a KSeF invoice that clears later
- *                   gains a PDF, so a retry may find one.
+ *                   attachable). Not terminal: a document awaiting the
+ *                   authority's clearance may gain a PDF once it clears, so a
+ *                   retry may find one.
  */
 export const InvoiceMarketplaceUploadStatusValues = [
   'pending',
