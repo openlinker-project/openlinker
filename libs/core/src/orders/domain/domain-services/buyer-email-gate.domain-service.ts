@@ -4,6 +4,12 @@
  * Pure decision: may this buyer email be sent? (#3554, D6). Every refusal is a
  * closed reason so the order timeline can say why nothing was sent.
  *
+ * The channel rule is checked FIRST. "A marketplace does not send this email"
+ * is a fact no setting can change - the connection write refuses to enable it -
+ * so when it holds it is the true reason, whatever the switches say. Checked
+ * after them, every marketplace order told the operator to enable an email they
+ * cannot enable.
+ *
  * @module libs/core/src/orders/domain/domain-services
  */
 import {
@@ -40,6 +46,12 @@ export type BuyerEmailGateDecision =
   | { decision: 'suppressed'; reason: BuyerEmailSuppressionReason };
 
 export function decideBuyerEmail(input: BuyerEmailGateInput): BuyerEmailGateDecision {
+  if (
+    input.channelKind === 'marketplace' &&
+    !(MarketplaceBuyerEmailTemplateValues as readonly string[]).includes(input.templateKey)
+  ) {
+    return { decision: 'suppressed', reason: 'template-not-allowed-on-channel' };
+  }
   const config = readBuyerEmailsConfig(input.connectionConfig);
   if (!config.enabled) {
     return { decision: 'suppressed', reason: 'emails-off-for-connection' };
@@ -47,12 +59,6 @@ export function decideBuyerEmail(input: BuyerEmailGateInput): BuyerEmailGateDeci
   const template = config.templates[input.templateKey];
   if (!template?.enabled) {
     return { decision: 'suppressed', reason: 'template-not-enabled' };
-  }
-  if (
-    input.channelKind === 'marketplace' &&
-    !(MarketplaceBuyerEmailTemplateValues as readonly string[]).includes(input.templateKey)
-  ) {
-    return { decision: 'suppressed', reason: 'template-not-allowed-on-channel' };
   }
   if (!input.buyerAddress || input.buyerAddress.trim() === '') {
     return { decision: 'suppressed', reason: 'no-buyer-address' };

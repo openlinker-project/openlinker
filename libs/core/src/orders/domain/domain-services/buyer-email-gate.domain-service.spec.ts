@@ -43,6 +43,36 @@ describe('decideBuyerEmail', () => {
     ).toMatchObject({ reason: 'template-not-allowed-on-channel' });
   });
 
+  it('should name the channel, not the switch, for order-confirmed on a marketplace that never enabled it', () => {
+    // The UI does not offer it and the connection write refuses it, so
+    // "not enabled" would send the operator after a setting that cannot exist.
+    expect(
+      decideBuyerEmail({
+        ...base,
+        templateKey: 'order-confirmed',
+        channelKind: 'marketplace',
+        connectionConfig: on({ shipped: { enabled: true } }),
+      })
+    ).toMatchObject({ reason: 'template-not-allowed-on-channel' });
+  });
+
+  it('should name the channel even while the marketplace connection has buyer emails off', () => {
+    expect(
+      decideBuyerEmail({
+        ...base,
+        templateKey: 'order-confirmed',
+        channelKind: 'marketplace',
+        connectionConfig: {},
+      })
+    ).toMatchObject({ reason: 'template-not-allowed-on-channel' });
+  });
+
+  it('should still apply the switches to a template a marketplace may send', () => {
+    expect(
+      decideBuyerEmail({ ...base, channelKind: 'marketplace', connectionConfig: {} })
+    ).toMatchObject({ reason: 'emails-off-for-connection' });
+  });
+
   it('should suppress when the buyer has no address', () => {
     expect(
       decideBuyerEmail({
