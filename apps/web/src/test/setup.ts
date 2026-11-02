@@ -2,6 +2,7 @@ import '@testing-library/jest-dom/vitest';
 import { cleanup } from '@testing-library/react';
 import { afterEach } from 'vitest';
 import { setActiveLocale } from '../shared/i18n/active-locale';
+import { loadMessages } from '../shared/i18n/messages';
 
 // Auto-unmount rendered components after every test. Without this, components
 // leak across tests within a file and their `useEffect` cleanups never run —
@@ -18,6 +19,11 @@ afterEach(() => {
   setActiveLocale('en');
   document.documentElement.lang = '';
 });
+
+// main.tsx loads the opening language before the first paint; tests mount
+// providers directly, so every language is loaded once up front and a switch
+// in a test applies in the same render, as it does after the app has started.
+await loadMessages('pl');
 
 // happy-dom (and jsdom) do not fully implement HTMLDialogElement.showModal / .close
 // with proper focus management. These stubs mirror the browser behaviours that our
