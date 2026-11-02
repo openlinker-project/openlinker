@@ -50,7 +50,7 @@ const STATUS_COPY: Record<InvoiceMarketplaceUploadStatus, MarketplaceUploadCopy>
     label: 'No file to send',
     tone: 'neutral',
     explanation:
-      'This document has no PDF OpenLinker can send - only a link, or nothing yet. It is tried again when a file appears.',
+      'This document has no PDF OpenLinker can send - only a link, or nothing yet. Trying again checks whether a file has appeared since.',
     retryable: true,
   },
 };

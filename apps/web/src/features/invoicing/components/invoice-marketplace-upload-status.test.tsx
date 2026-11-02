@@ -64,6 +64,17 @@ describe('InvoiceMarketplaceUploadStatus', () => {
     expect(apiClient.invoicing.retryMarketplaceUpload).toHaveBeenCalledWith('inv-1');
   });
 
+  it('should offer one retry for the whole invoice however many rows can be retried', async () => {
+    const apiClient = api([entry(), entry({ targetConnectionId: 'conn-2' })]);
+    renderWithProviders(<InvoiceMarketplaceUploadStatus invoiceId="inv-1" />, {
+      apiClient,
+      sessionAdapter: createAuthenticatedSessionAdapter(),
+    });
+
+    expect(await screen.findAllByText('Not delivered to marketplace')).toHaveLength(2);
+    expect(screen.getAllByRole('button', { name: 'Try again' })).toHaveLength(1);
+  });
+
   it('should not offer a retry to a non-admin', async () => {
     renderWithProviders(<InvoiceMarketplaceUploadStatus invoiceId="inv-1" />, {
       apiClient: api([entry()]),
