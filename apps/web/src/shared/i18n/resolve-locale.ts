@@ -1,7 +1,7 @@
 /**
  * Locale resolution
  *
- * Decides which language the app opens in (ADR-079 decision 3): a `?lang=`
+ * Decides which language the app opens in (ADR-081 decision 3): a `?lang=`
  * override (saved), then the operator's stored choice, then the deployment
  * default `VITE_DEFAULT_UI_LOCALE`, then `FALLBACK_LOCALE` (the same value an
  * unset variable gives). The browser language is

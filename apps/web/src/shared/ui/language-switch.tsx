@@ -1,7 +1,7 @@
 /**
  * LanguageSwitch
  *
- * The operator's language picker (ADR-079): a pill showing the current flag
+ * The operator's language picker (ADR-081): a pill showing the current flag
  * that opens a list of every language with its flag, code and native name.
  * The trigger is flag-only by design; on hover or focus the language's native
  * name slides out beside the flag (and the trigger's accessible name always

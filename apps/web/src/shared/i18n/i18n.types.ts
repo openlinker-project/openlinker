@@ -2,7 +2,7 @@
  * i18n Types
  *
  * Type contract for the locale + translation seam. The app ships Polish and
- * English (ADR-079) and everything speaks `SupportedLocale`. `LocaleCode` is
+ * English (ADR-081) and everything speaks `SupportedLocale`. `LocaleCode` is
  * kept as an alias for existing imports; it no longer admits other codes, so
  * a plugin that pinned `<LocaleProvider locale="de">` now gets a type error
  * instead of a silent switch to English.
@@ -31,7 +31,7 @@ export const SOURCE_LOCALE: SupportedLocale = 'en';
  * Used when neither the operator nor the deployment named a supported
  * language. An unset, blank or unsupported `VITE_DEFAULT_UI_LOCALE` all land
  * here, so a mistyped value never silently picks the other language
- * (ADR-079 decision 3). #3890 changes it to Polish.
+ * (ADR-081 decision 3). #3890 changes it to Polish.
  */
 export const FALLBACK_LOCALE: SupportedLocale = 'en';
 

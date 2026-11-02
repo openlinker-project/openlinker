@@ -46,7 +46,7 @@ interface TestFixtures {
 export const test = base.extend<TestFixtures, WorkerFixtures>({
   // Specs locate elements by English text. Pin the interface language so they
   // keep passing whatever VITE_DEFAULT_UI_LOCALE the stack was built with
-  // (#3859, ADR-079). A spec that needs Polish navigates with `?lang=pl`,
+  // (#3859, ADR-081). A spec that needs Polish navigates with `?lang=pl`,
   // which saves Polish; the pin only fills an empty slot, so a reload or an
   // internal link after that stays in Polish.
   page: async ({ page }, use) => {

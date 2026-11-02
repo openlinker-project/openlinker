@@ -582,7 +582,7 @@ Rules:
 
 ## Internationalization (i18n)
 
-*See [ADR-079](./architecture/adrs/079-frontend-owned-ui-translation.md) for the decision rationale.*
+*See [ADR-081](./architecture/adrs/081-frontend-owned-ui-translation.md) for the decision rationale.*
 
 > This section describes the target state of the #3855-#3859 stack. The hooks, the provider, the `locale` prop and `VITE_DEFAULT_UI_LOCALE` exist from #3856; the formatters from #3857; the language switch and translated primitives from #3858; the lint and copy checks from #3859. Merge the stack as one unit.
 
@@ -592,7 +592,7 @@ The app ships English and Polish. English is the default today; #3890 makes Poli
 
 ### Copy files
 
-User-facing text lives in JSON (ADR-079). The application core keeps one file per language, `apps/web/src/locales/en.json` and `pl.json`; their top-level keys are **namespaces**, named after the feature folder:
+User-facing text lives in JSON (ADR-081). The application core keeps one file per language, `apps/web/src/locales/en.json` and `pl.json`; their top-level keys are **namespaces**, named after the feature folder:
 
 ```jsonc
 // apps/web/src/locales/en.json
@@ -736,7 +736,7 @@ Unit tests and Playwright run in English. `src/test/setup.ts` resets the active 
 
 ### Adding another language
 
-Every translation lives in a namespace: the top-level keys of `apps/web/src/locales/<lang>.json`, plus one `plugins/<id>/locales/<lang>.json` per plugin that has copy. `scripts/check-locales.mjs` finds them the same way. The engine is deliberately written for exactly the two shipped languages (ADR-079), so a new language is first a small engine change, then the translations. The steps below use French (`fr`) as the worked example.
+Every translation lives in a namespace: the top-level keys of `apps/web/src/locales/<lang>.json`, plus one `plugins/<id>/locales/<lang>.json` per plugin that has copy. `scripts/check-locales.mjs` finds them the same way. The engine is deliberately written for exactly the two shipped languages (ADR-081), so a new language is first a small engine change, then the translations. The steps below use French (`fr`) as the worked example.
 
 **Part A - the engine (once, in this order)**
 
@@ -749,7 +749,7 @@ Every translation lives in a namespace: the top-level keys of `apps/web/src/loca
 7. `apps/web/src/shared/ui/language-switch.tsx`: add the language's native name ("Français") to `LANGUAGE_DETAILS`, with `beta: true` until its translation is complete; `LANGUAGE_OPTIONS` is derived from `LocaleCodeValues`, and the `Record` makes a missing entry a compile error. Add its flag SVG to the `switch` in `apps/web/src/shared/ui/language-flag.tsx`.
 8. `scripts/check-locales.mjs`: add the code to `LANGUAGES` (this is also what makes the report list it) and teach the placeholder comparison its plural categories (`PLURAL_KEYS`, `englishCounterpart`). Extend the `--self-check` cases to cover them.
 9. `docs/i18n-glossary.md`: add a column (or a sibling table) with the language's term for every row, and its writing rules (formality, imperative or not).
-10. ADR-079: record the decision to add the language, one line in a new amendment section.
+10. ADR-081: record the decision to add the language, one line in a new amendment section.
 
 **Part B - the translations**
 

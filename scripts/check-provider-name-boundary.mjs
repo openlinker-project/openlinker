@@ -12,7 +12,7 @@
  * word) from operator-facing copy in `apps/web/src/**` outside
  * `apps/web/src/plugins/`. In a Polish translation file
  * (`apps/web/src/locales/pl.json`) only `paragon` and `kasa` are allowed
- * (ADR-079): there they are the ordinary Polish words for receipt and cash
+ * (ADR-081): there they are the ordinary Polish words for receipt and cash
  * register. `eparagony` and `ksef` stay
  * banned in Polish too, since Polish copy is just as operator-facing.
  *

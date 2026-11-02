@@ -1,7 +1,7 @@
 /**
  * Date formatting
  *
- * Absolute dates and times in the app's language (ADR-079), rather than the
+ * Absolute dates and times in the app's language (ADR-081), rather than the
  * browser's, so the page reads in one language.
  *
  * `Intl.DateTimeFormat#format` throws a RangeError on an invalid date, where

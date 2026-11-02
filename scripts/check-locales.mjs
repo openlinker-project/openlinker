@@ -2,7 +2,7 @@
 /**
  * check-locales
  *
- * Guards the translation files of the admin app (ADR-079, #3859). A namespace
+ * Guards the translation files of the admin app (ADR-081, #3859). A namespace
  * has one home and one file per language:
  *
  *   core:    apps/web/src/locales/<lang>.json, one namespace per top-level key,

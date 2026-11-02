@@ -1,7 +1,7 @@
 /**
  * Messages
  *
- * The translation registry (ADR-079). The application core keeps its copy in
+ * The translation registry (ADR-081). The application core keeps its copy in
  * one JSON file per language - `locales/en.json`, `locales/pl.json` - whose
  * top-level keys are namespaces (`ui`, `format`, `orders` ...). A plugin
  * brings its own namespace in its own folder through `definePluginMessages`.

@@ -2,7 +2,7 @@
  * Formatting locale
  *
  * The BCP 47 tag the shared formatters use when a caller passes none: the
- * app's active language (ADR-079), not the browser's. Read at call time; a
+ * app's active language (ADR-081), not the browser's. Read at call time; a
  * switch reaches every caller because `LocaleKeyed` remounts the routed tree
  * when the language changes (a memoised row would otherwise keep the old one).
  *

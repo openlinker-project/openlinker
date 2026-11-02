@@ -977,7 +977,7 @@ module.exports = {
       },
     },
     {
-      // No hardcoded user-facing text (ADR-079, #3859). Every word an operator
+      // No hardcoded user-facing text (ADR-081, #3859). Every word an operator
       // reads comes from a `*.copy.ts` file in English and Polish. Enabled per
       // folder as each one is migrated (#3868-#3885); add the folder here in
       // the same PR that moves its copy.

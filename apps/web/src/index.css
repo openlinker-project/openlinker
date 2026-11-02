@@ -32079,7 +32079,7 @@ legend.analytics-settings-dialog__label {
   flex: 1 1 18rem;
 }
 
-/* Language switch (#3858, ADR-079). Flag pill + popover listing every
+/* Language switch (#3858, ADR-081). Flag pill + popover listing every
    language with flag, code and native name. Opens upward in the sidebar
    footer, downward in the signed-out corner. */
 .language-switch {

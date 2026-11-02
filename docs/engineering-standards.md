@@ -1278,7 +1278,7 @@ async createProduct(@Body() dto: CreateProductDto): Promise<ProductResponse> {
 
 ### User-facing copy (frontend)
 
-*See [ADR-079](./architecture/adrs/079-frontend-owned-ui-translation.md) and [frontend-architecture.md § Internationalization](./frontend-architecture.md#internationalization-i18n).*
+*See [ADR-081](./architecture/adrs/081-frontend-owned-ui-translation.md) and [frontend-architecture.md § Internationalization](./frontend-architecture.md#internationalization-i18n).*
 
 Every word an operator reads in `apps/web` comes from a translation file, in English and Polish.
 

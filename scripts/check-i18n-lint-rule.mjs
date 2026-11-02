@@ -2,7 +2,7 @@
 /**
  * check-i18n-lint-rule
  *
- * Proves the no-hardcoded-text rules (ADR-079, #3859) are in force where they
+ * Proves the no-hardcoded-text rules (ADR-081, #3859) are in force where they
  * are meant to be, not just that their options are well formed. Three things
  * can switch the rule off while `pnpm lint` stays green, and each is checked:
  *

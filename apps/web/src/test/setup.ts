@@ -5,7 +5,7 @@ import { setActiveLocale } from '../shared/i18n/active-locale';
 import { loadMessages } from '../shared/i18n/messages';
 import { LOCALE_STORAGE_KEY } from '../shared/i18n/resolve-locale';
 
-// Tests locate elements by English text (#3859, ADR-079). Start every test in
+// Tests locate elements by English text (#3859, ADR-081). Start every test in
 // English with no stored choice, whatever the deployment default becomes.
 beforeEach(() => {
   setActiveLocale('en');

@@ -1,4 +1,4 @@
-# ADR-079: Frontend-owned UI translation in JSON namespaces
+# ADR-081: Frontend-owned UI translation in JSON namespaces
 
 - **Status**: Accepted
 - **Date**: 2026-10-29

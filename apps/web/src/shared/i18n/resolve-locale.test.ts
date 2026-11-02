@@ -1,7 +1,7 @@
 /**
  * Locale resolution - unit tests
  *
- * Covers the ADR-079 resolution order: ?lang= override, stored choice,
+ * Covers the ADR-081 resolution order: ?lang= override, stored choice,
  * deployment default, Polish fallback.
  *
  * @module shared/i18n

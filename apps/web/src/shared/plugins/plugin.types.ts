@@ -866,7 +866,7 @@ export interface OpenLinkerPlugin {
   platform?: PlatformContribution;
   /**
    * The plugin's own translation namespace, from `definePluginMessages`
-   * (ADR-079). Referencing it here keeps the namespace registered at module
+   * (ADR-081). Referencing it here keeps the namespace registered at module
    * load, before the host loads the operator's language.
    */
   messages?: { readonly namespace: string };

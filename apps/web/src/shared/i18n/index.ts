@@ -1,7 +1,7 @@
 /**
  * shared/i18n - public barrel
  *
- * The only import path for translation and locale helpers (ADR-079). Core
+ * The only import path for translation and locale helpers (ADR-081). Core
  * copy lives in `locales/<lang>.json` and is read with `useMessages`; a
  * plugin brings its own namespace through `definePluginMessages`. The legacy
  * `useTranslation` / `t(key, fallback)` seam (#612) stays for its existing
