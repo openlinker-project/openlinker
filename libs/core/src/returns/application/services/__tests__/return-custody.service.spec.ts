@@ -253,6 +253,7 @@ describe('ReturnCustodyService', () => {
         products as never,
         lock as never,
         inventory as never,
+        inventoryService as never,
         { emit } as never
       );
 
@@ -274,6 +275,7 @@ describe('ReturnCustodyService', () => {
         products as never,
         lock as never,
         inventory as never,
+        inventoryService as never,
         { emit: jest.fn(() => Promise.reject(new Error('down'))) } as never
       );
 
