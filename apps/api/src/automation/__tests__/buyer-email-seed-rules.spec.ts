@@ -5,15 +5,15 @@ import {
   type AutomationAction,
   type AutomationTrigger,
 } from '@openlinker/core/automation';
+import * as seedMigrationModule from '../../migrations/1937480000000-seed-buyer-email-automation-rules';
 import { SeedBuyerEmailAutomationRules1937480000000 as SeedMigration } from '../../migrations/1937480000000-seed-buyer-email-automation-rules';
 
 const BUYER_EMAIL_SEED_RULES = SeedMigration.seedRules;
 const seedDefinitionHash = SeedMigration.definitionHash;
 
 describe('SeedBuyerEmailAutomationRules (#3554)', () => {
-  it('should export nothing but the migration class, which TypeORM would run', async () => {
-    const exported = await import('../../migrations/1937480000000-seed-buyer-email-automation-rules');
-    expect(Object.keys(exported)).toEqual(['SeedBuyerEmailAutomationRules1937480000000']);
+  it('should export nothing but the migration class, which TypeORM would run', () => {
+    expect(Object.keys(seedMigrationModule)).toEqual(['SeedBuyerEmailAutomationRules1937480000000']);
   });
 
   it('should seed one rule per buyer-email template', () => {

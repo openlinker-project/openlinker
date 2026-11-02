@@ -182,6 +182,7 @@ describe('OrdersController', () => {
       stampPreRolloutEraForTesting: jest.fn(),
       findSearchTextReindexPage: jest.fn(),
       rewriteSearchText: jest.fn(),
+      claimShippedNotification: jest.fn(),
     };
 
     const mockOrderRecordService = {
