@@ -5,9 +5,10 @@
  */
 import { OrderChange } from '../../../domain/entities/order-change.entity';
 import type { OrderChangeRepositoryPort } from '../../../domain/ports/order-change-repository.port';
-import type {
-  CreateOrderChangeInput,
-  OrderChangeStatus,
+import {
+  OrderChangeKindValues,
+  type CreateOrderChangeInput,
+  type OrderChangeStatus,
 } from '../../../domain/types/order-change.types';
 import { OrderChangeService } from '../order-change.service';
 
@@ -57,6 +58,7 @@ describe('OrderChangeService', () => {
       findLatestByTarget: jest.fn(),
       findOpenByOrder: jest.fn(),
       findOrderIdsWithOpenChanges: jest.fn(),
+      findByOrderAndKinds: jest.fn(),
       findById: jest.fn(),
       listByOrder: jest.fn(),
       insertRequested: jest.fn(),
@@ -260,10 +262,10 @@ describe('OrderChangeService', () => {
 
       await service.listOperatorChangesByOrder(ORDER_ID);
 
-      expect(repository.listByOrder).toHaveBeenCalledWith(ORDER_ID, [
-        'order.cancel_request',
-        'order.cancel_correction',
-      ]);
+      const kinds = repository.listByOrder.mock.calls[0][1] as readonly string[];
+      expect(kinds).toEqual(OrderChangeKindValues.filter((kind) => kind.startsWith('order.')));
+      expect(kinds.length).toBeGreaterThan(0);
+      expect(kinds.some((kind) => kind.startsWith('return.'))).toBe(false);
     });
 
     it('should report a fresh requested row open and a stale one not open', async () => {

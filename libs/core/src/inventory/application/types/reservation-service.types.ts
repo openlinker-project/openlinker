@@ -155,3 +155,25 @@ export interface CloseForOrderResult {
   /** Rows that failed for any other reason. Genuinely wrong. */
   readonly failed: number;
 }
+
+/** One line's new, lower held quantity (#3542). `0` releases the hold. */
+export interface NarrowOrderLineInput {
+  readonly orderLineId: string;
+  readonly quantity: number;
+}
+
+export interface NarrowForOrderInput {
+  readonly orderRecordId: string;
+  readonly lines: readonly NarrowOrderLineInput[];
+}
+
+export interface NarrowForOrderResult {
+  /** Holds moved to a lower, still positive quantity. */
+  readonly narrowed: number;
+  /** Holds released because the line was lowered to zero. */
+  readonly released: number;
+  /** Lines with no live hold to lower, or already at or below the target. */
+  readonly untouched: number;
+  /** Rows the ledger refused; the next ingestion re-reserves from the order and repairs them. */
+  readonly failed: number;
+}

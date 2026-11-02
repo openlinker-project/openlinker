@@ -122,6 +122,15 @@ export interface IOrderChangeService {
   /** One proposal by id, any status (#3540). */
   findById(id: string): Promise<OrderChange | null>;
 
+  /**
+   * Every change of one of `kinds` on an order, any status, oldest first (#3542).
+   * The history behind an order's "Changed in OpenLinker only" entries.
+   */
+  findByOrderAndKinds(
+    internalOrderId: string,
+    kinds: readonly OrderChangeKind[]
+  ): Promise<OrderChange[]>;
+
   /** The most recent proposal of one kind against one target, open or terminal. */
   findLatestByTarget(
     internalOrderId: string,
