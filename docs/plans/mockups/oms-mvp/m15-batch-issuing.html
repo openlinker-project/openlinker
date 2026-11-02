@@ -31,7 +31,7 @@
     </div>
 
     <!-- ============ SETTINGS ============ -->
-    <div data-mk-state="settings" data-mk-label="Ustawienia">
+    <div data-testid="batch-issuing-screen" data-mk-state="settings" data-mk-label="Ustawienia">
       <div class="tabs"><div class="tabs__list" role="tablist">
         <button type="button" class="tabs__trigger" role="tab" aria-selected="true" data-state="active">Schedule</button>
         <button type="button" class="tabs__trigger" role="tab" aria-selected="false">Next batch <span class="mk-pin">7</span></button>
@@ -115,7 +115,7 @@
     </div>
 
     <!-- ============ QUEUE (populated) ============ -->
-    <div data-mk-state="queue" data-mk-label="Kolejka" hidden>
+    <div data-testid="batch-issuing-screen" data-mk-state="queue" data-mk-label="Kolejka" hidden>
       <div class="tabs"><div class="tabs__list" role="tablist">
         <button type="button" class="tabs__trigger" role="tab" aria-selected="false">Schedule</button>
         <button type="button" class="tabs__trigger" role="tab" aria-selected="true" data-state="active">Next batch</button>
@@ -128,23 +128,23 @@
         <button type="button" class="chip chip--neutral" data-filter="receipt">Fiscal receipt · 4</button>
         <button type="button" class="chip chip--warning" data-filter="blocked">Blocked · 2 <span class="mk-pin">5</span></button>
       </div>
-        <button type="button" class="button button--primary" id="bt-run-now" style="margin-left:auto">Run now <span class="mk-pin">6</span></button>
+        <button type="button" class="button button--primary" id="bt-run-now" data-testid="batch-run-now" style="margin-left:auto">Run now <span class="mk-pin">6</span></button>
       </div>
 
       <div class="data-table__container">
-        <table class="data-table" data-batch-table>
+        <table class="data-table" data-batch-table data-testid="batch-queue-table">
           <thead><tr><th>Order</th><th>Source</th><th>Buyer</th><th>Placed</th><th class="data-table__cell--right">Total</th><th>Will issue</th></tr></thead>
           <tbody>
-            <tr data-kind="invoice"><td class="mono-text">ALG-24917</td><td><span class="entity-label"><span class="entity-label__name">Allegro</span></span></td><td>Anna Kowalska</td><td>24 Sep, 21:40</td><td class="data-table__cell--right">249.00 PLN</td><td><span class="status-badge status-badge--info status-badge--compact">Invoice</span></td></tr>
-            <tr data-kind="receipt"><td class="mono-text">ERL-1042</td><td><span class="entity-label"><span class="entity-label__name">Erli</span></span></td><td>Jan Nowak</td><td>24 Sep, 22:05</td><td class="data-table__cell--right">89.90 PLN</td><td><span class="status-badge status-badge--neutral status-badge--compact">Fiscal receipt</span></td></tr>
-            <tr data-kind="receipt"><td class="mono-text">PS-3387</td><td><span class="entity-label"><span class="entity-label__name">PrestaShop · sklep-ceramika.pl</span></span></td><td>Piotr Wiśniewski</td><td>25 Sep, 08:12</td><td class="data-table__cell--right">156.50 PLN</td><td><span class="status-badge status-badge--neutral status-badge--compact">Fiscal receipt</span></td></tr>
-            <tr data-kind="invoice"><td class="mono-text">WC-1204</td><td><span class="entity-label"><span class="entity-label__name">WooCommerce · dom-i-ogrod.pl</span></span></td><td>Katarzyna Zielińska</td><td>25 Sep, 10:47</td><td class="data-table__cell--right">412.00 PLN</td><td><span class="status-badge status-badge--info status-badge--compact">Invoice</span></td></tr>
-            <tr data-kind="blocked"><td class="mono-text">ALG-24933</td><td><span class="entity-label"><span class="entity-label__name">Allegro</span></span></td><td>Marek Dąbrowski</td><td>25 Sep, 13:03</td><td class="data-table__cell--right">76.00 PLN</td><td><span class="status-badge status-badge--warning status-badge--compact">Blocked</span><span class="muted-text bt-reason">Already has a document on another connection (Allegro · KSeF)</span></td></tr>
-            <tr data-kind="receipt"><td class="mono-text">ERL-1055</td><td><span class="entity-label"><span class="entity-label__name">Erli</span></span></td><td>Magdalena Wójcik</td><td>25 Sep, 15:21</td><td class="data-table__cell--right">199.99 PLN</td><td><span class="status-badge status-badge--neutral status-badge--compact">Fiscal receipt</span></td></tr>
-            <tr data-kind="blocked"><td class="mono-text">PS-3391</td><td><span class="entity-label"><span class="entity-label__name">PrestaShop · sklep-ceramika.pl</span></span></td><td>Tomasz Lewandowski</td><td>26 Sep, 09:02</td><td class="data-table__cell--right">320.00 PLN</td><td><span class="status-badge status-badge--warning status-badge--compact">Blocked</span><span class="muted-text bt-reason">No sales-document rule for the delivery country (DE)</span></td></tr>
-            <tr data-kind="invoice"><td class="mono-text">WC-1209</td><td><span class="entity-label"><span class="entity-label__name">WooCommerce · dom-i-ogrod.pl</span></span></td><td>Agnieszka Kamińska</td><td>26 Sep, 11:38</td><td class="data-table__cell--right">65.00 PLN</td><td><span class="status-badge status-badge--info status-badge--compact">Invoice</span></td></tr>
-            <tr data-kind="receipt"><td class="mono-text">ALG-24950</td><td><span class="entity-label"><span class="entity-label__name">Allegro</span></span></td><td>Anna Kowalska</td><td>26 Sep, 12:55</td><td class="data-table__cell--right">129.00 PLN</td><td><span class="status-badge status-badge--neutral status-badge--compact">Fiscal receipt</span></td></tr>
-            <tr data-kind="invoice"><td class="mono-text">WC-1215</td><td><span class="entity-label"><span class="entity-label__name">WooCommerce · dom-i-ogrod.pl</span></span></td><td>Marek Dąbrowski</td><td>26 Sep, 13:10</td><td class="data-table__cell--right">210.00 PLN</td><td><span class="status-badge status-badge--info status-badge--compact">Invoice</span></td></tr>
+            <tr data-kind="invoice" data-testid="batch-queue-row" data-row-kind="queued"><td class="mono-text">ALG-24917</td><td><span class="entity-label"><span class="entity-label__name">Allegro</span></span></td><td>Anna Kowalska</td><td>24 Sep, 21:40</td><td class="data-table__cell--right">249.00 PLN</td><td><span class="status-badge status-badge--info status-badge--compact">Invoice</span></td></tr>
+            <tr data-kind="receipt" data-testid="batch-queue-row" data-row-kind="queued"><td class="mono-text">ERL-1042</td><td><span class="entity-label"><span class="entity-label__name">Erli</span></span></td><td>Jan Nowak</td><td>24 Sep, 22:05</td><td class="data-table__cell--right">89.90 PLN</td><td><span class="status-badge status-badge--neutral status-badge--compact">Fiscal receipt</span></td></tr>
+            <tr data-kind="receipt" data-testid="batch-queue-row" data-row-kind="queued"><td class="mono-text">PS-3387</td><td><span class="entity-label"><span class="entity-label__name">PrestaShop · sklep-ceramika.pl</span></span></td><td>Piotr Wiśniewski</td><td>25 Sep, 08:12</td><td class="data-table__cell--right">156.50 PLN</td><td><span class="status-badge status-badge--neutral status-badge--compact">Fiscal receipt</span></td></tr>
+            <tr data-kind="invoice" data-testid="batch-queue-row" data-row-kind="queued"><td class="mono-text">WC-1204</td><td><span class="entity-label"><span class="entity-label__name">WooCommerce · dom-i-ogrod.pl</span></span></td><td>Katarzyna Zielińska</td><td>25 Sep, 10:47</td><td class="data-table__cell--right">412.00 PLN</td><td><span class="status-badge status-badge--info status-badge--compact">Invoice</span></td></tr>
+            <tr data-kind="blocked" data-testid="batch-queue-row" data-row-kind="blocked"><td class="mono-text">ALG-24933</td><td><span class="entity-label"><span class="entity-label__name">Allegro</span></span></td><td>Marek Dąbrowski</td><td>25 Sep, 13:03</td><td class="data-table__cell--right">76.00 PLN</td><td><span class="status-badge status-badge--warning status-badge--compact">Blocked</span><span class="muted-text bt-reason">Already has a document on another connection (Allegro · KSeF)</span></td></tr>
+            <tr data-kind="receipt" data-testid="batch-queue-row" data-row-kind="queued"><td class="mono-text">ERL-1055</td><td><span class="entity-label"><span class="entity-label__name">Erli</span></span></td><td>Magdalena Wójcik</td><td>25 Sep, 15:21</td><td class="data-table__cell--right">199.99 PLN</td><td><span class="status-badge status-badge--neutral status-badge--compact">Fiscal receipt</span></td></tr>
+            <tr data-kind="blocked" data-testid="batch-queue-row" data-row-kind="blocked"><td class="mono-text">PS-3391</td><td><span class="entity-label"><span class="entity-label__name">PrestaShop · sklep-ceramika.pl</span></span></td><td>Tomasz Lewandowski</td><td>26 Sep, 09:02</td><td class="data-table__cell--right">320.00 PLN</td><td><span class="status-badge status-badge--warning status-badge--compact">Blocked</span><span class="muted-text bt-reason">No sales-document rule for the delivery country (DE)</span></td></tr>
+            <tr data-kind="invoice" data-testid="batch-queue-row" data-row-kind="queued"><td class="mono-text">WC-1209</td><td><span class="entity-label"><span class="entity-label__name">WooCommerce · dom-i-ogrod.pl</span></span></td><td>Agnieszka Kamińska</td><td>26 Sep, 11:38</td><td class="data-table__cell--right">65.00 PLN</td><td><span class="status-badge status-badge--info status-badge--compact">Invoice</span></td></tr>
+            <tr data-kind="receipt" data-testid="batch-queue-row" data-row-kind="queued"><td class="mono-text">ALG-24950</td><td><span class="entity-label"><span class="entity-label__name">Allegro</span></span></td><td>Anna Kowalska</td><td>26 Sep, 12:55</td><td class="data-table__cell--right">129.00 PLN</td><td><span class="status-badge status-badge--neutral status-badge--compact">Fiscal receipt</span></td></tr>
+            <tr data-kind="invoice" data-testid="batch-queue-row" data-row-kind="queued"><td class="mono-text">WC-1215</td><td><span class="entity-label"><span class="entity-label__name">WooCommerce · dom-i-ogrod.pl</span></span></td><td>Marek Dąbrowski</td><td>26 Sep, 13:10</td><td class="data-table__cell--right">210.00 PLN</td><td><span class="status-badge status-badge--info status-badge--compact">Invoice</span></td></tr>
           </tbody>
         </table>
       </div>
@@ -152,19 +152,19 @@
     </div>
 
     <!-- ============ RUNNING ============ -->
-    <div data-mk-state="running" data-mk-label="W trakcie" hidden>
+    <div data-testid="batch-issuing-screen" data-mk-state="running" data-mk-label="W trakcie" hidden>
       <div class="tabs"><div class="tabs__list" role="tablist">
         <button type="button" class="tabs__trigger" role="tab" aria-selected="false">Schedule</button>
         <button type="button" class="tabs__trigger" role="tab" aria-selected="true" data-state="active">Next batch</button>
         <button type="button" class="tabs__trigger" role="tab" aria-selected="false">Run history</button>
       </div></div>
 
-      <div class="panel">
+      <div class="panel" data-testid="batch-run-progress">
         <div class="panel__header"><h3><span class="status-badge status-badge--info status-badge--pulse"><span class="status-badge__dot" aria-hidden="true"></span>Running</span> Run started 18:00:04</h3><span class="panel__meta">elapsed 00:00:38</span></div>
         <p class="muted-text">Processed 5 of 10 orders, one at a time. Each order is issued under its own lock, so two connections can never issue a document for the same order. <span class="mk-pin">8</span></p>
         <div class="bt-track"><div class="bt-fill" style="width:60%"></div></div>
         <div class="bt-inline" style="margin-top:var(--space-3)">
-          <button type="button" class="button button--primary" disabled><span class="button__spinner" aria-hidden="true"></span>Run in progress…</button>
+          <button type="button" class="button button--primary" data-testid="batch-run-now" disabled><span class="button__spinner" aria-hidden="true"></span>Run in progress…</button>
           <span class="muted-text">Run now is unavailable until this run finishes.</span>
         </div>
       </div>
@@ -173,23 +173,23 @@
         <table class="data-table">
           <thead><tr><th>Order</th><th>Buyer</th><th class="data-table__cell--right">Total</th><th>Will issue</th><th>Status</th></tr></thead>
           <tbody>
-            <tr><td class="mono-text">ALG-24917</td><td>Anna Kowalska</td><td class="data-table__cell--right">249.00 PLN</td><td><span class="status-badge status-badge--info status-badge--compact">Invoice</span></td><td><span class="status-badge status-badge--success status-badge--compact">Done</span></td></tr>
-            <tr><td class="mono-text">ERL-1042</td><td>Jan Nowak</td><td class="data-table__cell--right">89.90 PLN</td><td><span class="status-badge status-badge--neutral status-badge--compact">Fiscal receipt</span></td><td><span class="status-badge status-badge--success status-badge--compact">Done</span></td></tr>
-            <tr><td class="mono-text">PS-3387</td><td>Piotr Wiśniewski</td><td class="data-table__cell--right">156.50 PLN</td><td><span class="status-badge status-badge--neutral status-badge--compact">Fiscal receipt</span></td><td><span class="status-badge status-badge--success status-badge--compact">Done</span></td></tr>
-            <tr><td class="mono-text">WC-1204</td><td>Katarzyna Zielińska</td><td class="data-table__cell--right">412.00 PLN</td><td><span class="status-badge status-badge--info status-badge--compact">Invoice</span></td><td><span class="status-badge status-badge--success status-badge--compact">Done</span></td></tr>
-            <tr><td class="mono-text">ALG-24933</td><td>Marek Dąbrowski</td><td class="data-table__cell--right">76.00 PLN</td><td><span class="status-badge status-badge--warning status-badge--compact">Blocked</span></td><td><span class="status-badge status-badge--success status-badge--compact">Done</span></td></tr>
-            <tr><td class="mono-text">ERL-1055</td><td>Magdalena Wójcik</td><td class="data-table__cell--right">199.99 PLN</td><td><span class="status-badge status-badge--neutral status-badge--compact">Fiscal receipt</span></td><td><span class="status-badge status-badge--info status-badge--compact status-badge--pulse"><span class="status-badge__dot" aria-hidden="true"></span>Processing</span></td></tr>
-            <tr><td class="mono-text">PS-3391</td><td>Tomasz Lewandowski</td><td class="data-table__cell--right">320.00 PLN</td><td><span class="status-badge status-badge--warning status-badge--compact">Blocked</span></td><td><span class="muted-text">Queued</span></td></tr>
-            <tr><td class="mono-text">WC-1209</td><td>Agnieszka Kamińska</td><td class="data-table__cell--right">65.00 PLN</td><td><span class="status-badge status-badge--info status-badge--compact">Invoice</span></td><td><span class="muted-text">Queued</span></td></tr>
-            <tr><td class="mono-text">ALG-24950</td><td>Anna Kowalska</td><td class="data-table__cell--right">129.00 PLN</td><td><span class="status-badge status-badge--neutral status-badge--compact">Fiscal receipt</span></td><td><span class="muted-text">Queued</span></td></tr>
-            <tr><td class="mono-text">WC-1215</td><td>Marek Dąbrowski</td><td class="data-table__cell--right">210.00 PLN</td><td><span class="status-badge status-badge--info status-badge--compact">Invoice</span></td><td><span class="muted-text">Queued</span></td></tr>
+            <tr data-testid="batch-run-item"><td class="mono-text">ALG-24917</td><td>Anna Kowalska</td><td class="data-table__cell--right">249.00 PLN</td><td><span class="status-badge status-badge--info status-badge--compact">Invoice</span></td><td><span class="status-badge status-badge--success status-badge--compact">Done</span></td></tr>
+            <tr data-testid="batch-run-item"><td class="mono-text">ERL-1042</td><td>Jan Nowak</td><td class="data-table__cell--right">89.90 PLN</td><td><span class="status-badge status-badge--neutral status-badge--compact">Fiscal receipt</span></td><td><span class="status-badge status-badge--success status-badge--compact">Done</span></td></tr>
+            <tr data-testid="batch-run-item"><td class="mono-text">PS-3387</td><td>Piotr Wiśniewski</td><td class="data-table__cell--right">156.50 PLN</td><td><span class="status-badge status-badge--neutral status-badge--compact">Fiscal receipt</span></td><td><span class="status-badge status-badge--success status-badge--compact">Done</span></td></tr>
+            <tr data-testid="batch-run-item"><td class="mono-text">WC-1204</td><td>Katarzyna Zielińska</td><td class="data-table__cell--right">412.00 PLN</td><td><span class="status-badge status-badge--info status-badge--compact">Invoice</span></td><td><span class="status-badge status-badge--success status-badge--compact">Done</span></td></tr>
+            <tr data-testid="batch-run-item"><td class="mono-text">ALG-24933</td><td>Marek Dąbrowski</td><td class="data-table__cell--right">76.00 PLN</td><td><span class="status-badge status-badge--warning status-badge--compact">Blocked</span></td><td><span class="status-badge status-badge--success status-badge--compact">Done</span></td></tr>
+            <tr data-testid="batch-run-item"><td class="mono-text">ERL-1055</td><td>Magdalena Wójcik</td><td class="data-table__cell--right">199.99 PLN</td><td><span class="status-badge status-badge--neutral status-badge--compact">Fiscal receipt</span></td><td><span class="status-badge status-badge--info status-badge--compact status-badge--pulse"><span class="status-badge__dot" aria-hidden="true"></span>Processing</span></td></tr>
+            <tr data-testid="batch-queue-row"><td class="mono-text">PS-3391</td><td>Tomasz Lewandowski</td><td class="data-table__cell--right">320.00 PLN</td><td><span class="status-badge status-badge--warning status-badge--compact">Blocked</span></td><td><span class="muted-text">Queued</span></td></tr>
+            <tr data-testid="batch-queue-row"><td class="mono-text">WC-1209</td><td>Agnieszka Kamińska</td><td class="data-table__cell--right">65.00 PLN</td><td><span class="status-badge status-badge--info status-badge--compact">Invoice</span></td><td><span class="muted-text">Queued</span></td></tr>
+            <tr data-testid="batch-queue-row"><td class="mono-text">ALG-24950</td><td>Anna Kowalska</td><td class="data-table__cell--right">129.00 PLN</td><td><span class="status-badge status-badge--neutral status-badge--compact">Fiscal receipt</span></td><td><span class="muted-text">Queued</span></td></tr>
+            <tr data-testid="batch-queue-row"><td class="mono-text">WC-1215</td><td>Marek Dąbrowski</td><td class="data-table__cell--right">210.00 PLN</td><td><span class="status-badge status-badge--info status-badge--compact">Invoice</span></td><td><span class="muted-text">Queued</span></td></tr>
           </tbody>
         </table>
       </div>
     </div>
 
     <!-- ============ FINISHED (mixed outcomes) ============ -->
-    <div data-mk-state="finished" data-mk-label="Zakończony" hidden>
+    <div data-testid="batch-issuing-screen" data-mk-state="finished" data-mk-label="Zakończony" hidden>
       <div class="tabs"><div class="tabs__list" role="tablist">
         <button type="button" class="tabs__trigger" role="tab" aria-selected="false">Schedule</button>
         <button type="button" class="tabs__trigger" role="tab" aria-selected="false">Next batch</button>
@@ -197,7 +197,7 @@
       </div></div>
 
       <div class="data-table__container">
-        <table class="data-table">
+        <table class="data-table" data-testid="batch-run-history-table">
           <thead><tr><th>Started</th><th>Duration</th><th class="data-table__cell--right">Orders</th><th>Result</th><th>Status</th></tr></thead>
           <tbody>
             <tr class="bt-runrow--current"><td>26 Sep 2026, 18:00</td><td class="mono-text">00:01:24</td><td class="data-table__cell--right">10</td><td>8 sent to issue · 2 blocked</td><td><span class="status-badge status-badge--warning status-badge--compact">Completed with issues</span></td></tr>
@@ -209,7 +209,7 @@
         </table>
       </div>
 
-      <div class="panel">
+      <div class="panel" data-testid="batch-run-details">
         <div class="panel__header"><h3>26 Sep 2026, 18:00 — details</h3><span class="panel__meta">10 orders · 00:01:24</span></div>
         <div class="bt-metrics">
           <div class="metric-card metric-card--success"><span class="metric-card__label">Issued</span><span class="metric-card__value">6</span></div>
@@ -220,16 +220,16 @@
           <table class="data-table">
             <thead><tr><th>Order</th><th>Buyer</th><th>Outcome</th><th>Detail</th></tr></thead>
             <tbody>
-              <tr><td class="mono-text">ALG-24917</td><td>Anna Kowalska</td><td><span class="status-badge status-badge--success status-badge--compact">Issued</span></td><td class="mono-text">FV/512/09/2026 · KSeF accepted</td></tr>
-              <tr><td class="mono-text">ERL-1042</td><td>Jan Nowak</td><td><span class="status-badge status-badge--success status-badge--compact">Issued</span></td><td class="mono-text">PAR/9081</td></tr>
-              <tr><td class="mono-text">PS-3387</td><td>Piotr Wiśniewski</td><td><span class="status-badge status-badge--success status-badge--compact">Issued</span></td><td class="mono-text">PAR/9082</td></tr>
-              <tr><td class="mono-text">WC-1204</td><td>Katarzyna Zielińska</td><td><span class="status-badge status-badge--success status-badge--compact">Issued</span></td><td class="mono-text">FV/513/09/2026 · KSeF accepted</td></tr>
-              <tr><td class="mono-text">ALG-24933</td><td>Marek Dąbrowski</td><td><span class="status-badge status-badge--warning status-badge--compact">Blocked</span></td><td>Already has a document on another connection (Allegro · KSeF)</td></tr>
-              <tr><td class="mono-text">ERL-1055</td><td>Magdalena Wójcik</td><td><span class="status-badge status-badge--success status-badge--compact">Issued</span></td><td class="mono-text">PAR/9083</td></tr>
-              <tr><td class="mono-text">PS-3391</td><td>Tomasz Lewandowski</td><td><span class="status-badge status-badge--warning status-badge--compact">Blocked</span></td><td>No sales-document rule for the delivery country (DE)</td></tr>
-              <tr><td class="mono-text">WC-1209</td><td>Agnieszka Kamińska</td><td><span class="status-badge status-badge--success status-badge--compact">Issued</span></td><td class="mono-text">FV/514/09/2026 · pending KSeF</td></tr>
-              <tr><td class="mono-text">ALG-24950</td><td>Anna Kowalska</td><td><span class="status-badge status-badge--review status-badge--compact">In doubt</span></td><td>eparagony.pl timed out after submission — OpenLinker doesn't know if the document was created. It will re-check automatically; retrying now cannot create a duplicate.</td></tr>
-              <tr><td class="mono-text">WC-1215</td><td>Marek Dąbrowski</td><td><span class="status-badge status-badge--error status-badge--compact">Failed</span></td><td>Missing tax rate on line 2 — needs a manual fix on the order before this connection can issue it.</td></tr>
+              <tr data-testid="batch-run-item"><td class="mono-text">ALG-24917</td><td>Anna Kowalska</td><td><span class="status-badge status-badge--success status-badge--compact">Issued</span></td><td class="mono-text">FV/512/09/2026 · KSeF accepted</td></tr>
+              <tr data-testid="batch-run-item"><td class="mono-text">ERL-1042</td><td>Jan Nowak</td><td><span class="status-badge status-badge--success status-badge--compact">Issued</span></td><td class="mono-text">PAR/9081</td></tr>
+              <tr data-testid="batch-run-item"><td class="mono-text">PS-3387</td><td>Piotr Wiśniewski</td><td><span class="status-badge status-badge--success status-badge--compact">Issued</span></td><td class="mono-text">PAR/9082</td></tr>
+              <tr data-testid="batch-run-item"><td class="mono-text">WC-1204</td><td>Katarzyna Zielińska</td><td><span class="status-badge status-badge--success status-badge--compact">Issued</span></td><td class="mono-text">FV/513/09/2026 · KSeF accepted</td></tr>
+              <tr data-testid="batch-run-item"><td class="mono-text">ALG-24933</td><td>Marek Dąbrowski</td><td><span class="status-badge status-badge--warning status-badge--compact">Blocked</span></td><td>Already has a document on another connection (Allegro · KSeF)</td></tr>
+              <tr data-testid="batch-run-item"><td class="mono-text">ERL-1055</td><td>Magdalena Wójcik</td><td><span class="status-badge status-badge--success status-badge--compact">Issued</span></td><td class="mono-text">PAR/9083</td></tr>
+              <tr data-testid="batch-run-item"><td class="mono-text">PS-3391</td><td>Tomasz Lewandowski</td><td><span class="status-badge status-badge--warning status-badge--compact">Blocked</span></td><td>No sales-document rule for the delivery country (DE)</td></tr>
+              <tr data-testid="batch-run-item"><td class="mono-text">WC-1209</td><td>Agnieszka Kamińska</td><td><span class="status-badge status-badge--success status-badge--compact">Issued</span></td><td class="mono-text">FV/514/09/2026 · pending KSeF</td></tr>
+              <tr data-testid="batch-run-item"><td class="mono-text">ALG-24950</td><td>Anna Kowalska</td><td><span class="status-badge status-badge--review status-badge--compact">In doubt</span></td><td>eparagony.pl timed out after submission — OpenLinker doesn't know if the document was created. It will re-check automatically; retrying now cannot create a duplicate.</td></tr>
+              <tr data-testid="batch-run-item"><td class="mono-text">WC-1215</td><td>Marek Dąbrowski</td><td><span class="status-badge status-badge--error status-badge--compact">Failed</span></td><td>Missing tax rate on line 2 — needs a manual fix on the order before this connection can issue it.</td></tr>
             </tbody>
           </table>
         </div>
@@ -237,7 +237,7 @@
     </div>
 
     <!-- ============ EMPTY QUEUE ============ -->
-    <div data-mk-state="empty" data-mk-label="Pusta kolejka" hidden>
+    <div data-testid="batch-issuing-screen" data-mk-state="empty" data-mk-label="Pusta kolejka" hidden>
       <div class="tabs"><div class="tabs__list" role="tablist">
         <button type="button" class="tabs__trigger" role="tab" aria-selected="false">Schedule</button>
         <button type="button" class="tabs__trigger" role="tab" aria-selected="true" data-state="active">Next batch</button>
@@ -245,7 +245,7 @@
       </div></div>
 
       <div class="toolbar page-summary"><div class="toolbar__group">
-        <button type="button" class="button button--primary" disabled title="Nothing to run">Run now</button>
+        <button type="button" class="button button--primary" data-testid="batch-run-now" disabled title="Nothing to run">Run now</button>
       </div></div>
 
       <div class="empty-state">
@@ -255,8 +255,8 @@
     </div>
 
     <!-- ============ PROVIDER UNAVAILABLE ============ -->
-    <div data-mk-state="unavailable" data-mk-label="Dostawca niedostępny" hidden>
-      <div class="alert alert--error" role="alert"><div class="alert__content"><strong class="alert__title">eparagony.pl needs reconnecting <span class="mk-pin">12</span></strong><div class="alert__description">Its last request failed authentication. Scheduled runs will fail to start until it is reconnected; nothing is retried automatically for an authentication failure. The queue stays as it is.</div><div class="alert__actions"><button type="button" class="button button--secondary button--sm">Go to connection</button></div></div></div>
+    <div data-testid="batch-issuing-screen" data-mk-state="unavailable" data-mk-label="Dostawca niedostępny" hidden>
+      <div class="alert alert--error" role="alert" data-testid="batch-unavailable-alert"><div class="alert__content"><strong class="alert__title">eparagony.pl needs reconnecting <span class="mk-pin">12</span></strong><div class="alert__description">Its last request failed authentication. Scheduled runs will fail to start until it is reconnected; nothing is retried automatically for an authentication failure. The queue stays as it is.</div><div class="alert__actions"><button type="button" class="button button--secondary button--sm">Go to connection</button></div></div></div>
 
       <div class="tabs"><div class="tabs__list" role="tablist">
         <button type="button" class="tabs__trigger" role="tab" aria-selected="false">Schedule</button>
@@ -266,17 +266,17 @@
 
       <div class="toolbar page-summary"><div class="toolbar__group">
         <span class="muted-text">10 orders queued, untouched since the last successful run.</span>
-        <button type="button" class="button button--primary" disabled title="Fix the connection first" style="margin-left:auto">Run now</button>
+        <button type="button" class="button button--primary" data-testid="batch-run-now" disabled title="Fix the connection first" style="margin-left:auto">Run now</button>
       </div></div>
 
       <div class="data-table__container">
-        <table class="data-table">
+        <table class="data-table" data-testid="batch-queue-table">
           <thead><tr><th>Order</th><th>Buyer</th><th class="data-table__cell--right">Total</th><th>Will issue</th></tr></thead>
           <tbody>
-            <tr><td class="mono-text">ALG-24917</td><td>Anna Kowalska</td><td class="data-table__cell--right">249.00 PLN</td><td><span class="status-badge status-badge--info status-badge--compact">Invoice</span></td></tr>
-            <tr><td class="mono-text">ERL-1042</td><td>Jan Nowak</td><td class="data-table__cell--right">89.90 PLN</td><td><span class="status-badge status-badge--neutral status-badge--compact">Fiscal receipt</span></td></tr>
-            <tr><td class="mono-text">PS-3387</td><td>Piotr Wiśniewski</td><td class="data-table__cell--right">156.50 PLN</td><td><span class="status-badge status-badge--neutral status-badge--compact">Fiscal receipt</span></td></tr>
-            <tr><td class="mono-text">WC-1204</td><td>Katarzyna Zielińska</td><td class="data-table__cell--right">412.00 PLN</td><td><span class="status-badge status-badge--info status-badge--compact">Invoice</span></td></tr>
+            <tr data-testid="batch-queue-row" data-row-kind="queued"><td class="mono-text">ALG-24917</td><td>Anna Kowalska</td><td class="data-table__cell--right">249.00 PLN</td><td><span class="status-badge status-badge--info status-badge--compact">Invoice</span></td></tr>
+            <tr data-testid="batch-queue-row" data-row-kind="queued"><td class="mono-text">ERL-1042</td><td>Jan Nowak</td><td class="data-table__cell--right">89.90 PLN</td><td><span class="status-badge status-badge--neutral status-badge--compact">Fiscal receipt</span></td></tr>
+            <tr data-testid="batch-queue-row" data-row-kind="queued"><td class="mono-text">PS-3387</td><td>Piotr Wiśniewski</td><td class="data-table__cell--right">156.50 PLN</td><td><span class="status-badge status-badge--neutral status-badge--compact">Fiscal receipt</span></td></tr>
+            <tr data-testid="batch-queue-row" data-row-kind="queued"><td class="mono-text">WC-1204</td><td>Katarzyna Zielińska</td><td class="data-table__cell--right">412.00 PLN</td><td><span class="status-badge status-badge--info status-badge--compact">Invoice</span></td></tr>
           </tbody>
         </table>
       </div>

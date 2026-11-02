@@ -52,7 +52,7 @@ export function BatchRunHistoryTab({
   return (
     <div className="batch-history">
       <div className="data-table__container">
-        <table className="data-table">
+        <table className="data-table" data-testid="batch-run-history-table">
           <caption className="sr-only">Batch runs, newest first</caption>
           <thead>
             <tr>
@@ -136,7 +136,11 @@ function BatchRunDetails({
   const duration = formatRunDuration(run);
 
   return (
-    <section className="panel batch-history__details" aria-label="Run details">
+    <section
+      className="panel batch-history__details"
+      aria-label="Run details"
+      data-testid="batch-run-details"
+    >
       <div className="panel__header">
         <h3>{title}</h3>
         <span className="panel__meta">
@@ -177,7 +181,12 @@ function BatchRunDetails({
                 {items.map((item) => {
                   const outcome = describeItemOutcome(item);
                   return (
-                    <tr key={item.orderId}>
+                    <tr
+                      key={item.orderId}
+                      data-testid="batch-run-item"
+                      data-order-id={item.orderId}
+                      data-outcome={item.outcome}
+                    >
                       <td className="mono-text">{item.orderNumber ?? item.orderId}</td>
                       <td>{item.buyerName ?? '—'}</td>
                       <td>

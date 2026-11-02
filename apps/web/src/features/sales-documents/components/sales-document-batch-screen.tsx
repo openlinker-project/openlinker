@@ -34,6 +34,8 @@ import {
 import { useSalesDocumentBatchQueueQuery } from '../hooks/use-sales-document-batch-queue-query';
 import { useSalesDocumentBatchRunQuery } from '../hooks/use-sales-document-batch-run-query';
 import { useSalesDocumentBatchRunsQuery } from '../hooks/use-sales-document-batch-runs-query';
+import { buildBatchQueueRows } from '../lib/batch-queue-rows';
+import { resolveBatchScreenState, type BatchScreenTab } from '../lib/batch-screen-state';
 import { describeRunResult, describeRunStatus, formatTimeUntil } from '../lib/describe-batch-run';
 import { BatchQueueTab } from './batch-queue-tab';
 import { BatchRunHistoryTab } from './batch-run-history-tab';
@@ -86,6 +88,7 @@ export function SalesDocumentBatchScreen({
     refetchInterval: poll,
   });
   const now = useTickingNow(running !== null);
+  const [tab, setTab] = useState<BatchScreenTab>('schedule');
 
   const sourceNames = useMemo(
     () => new Map((connections.data ?? []).map((item) => [item.id, item.name])),
@@ -120,11 +123,20 @@ export function SalesDocumentBatchScreen({
   const unavailable = batchUnavailableReason(provider);
   const queueTotal = sumQueueCounts(overview.data.queueCounts);
   const queueCount = queueTotal > 0 ? <span className="tabs__count">{queueTotal}</span> : null;
+  const queueIsEmpty =
+    buildBatchQueueRows(queue.data ?? [], running === null ? lastRunDetail.data?.items ?? [] : [])
+      .length === 0;
+  const mkState = resolveBatchScreenState({
+    tab,
+    unavailable: unavailable !== null,
+    running: running !== null,
+    queueIsEmpty,
+  });
 
   return (
-    <div className="batch-screen">
+    <div className="batch-screen" data-testid="batch-issuing-screen" data-mk-state={mkState}>
       {unavailable !== null ? <UnavailableAlert connection={provider} /> : null}
-      <Tabs defaultValue="schedule">
+      <Tabs value={tab} onValueChange={(value) => setTab(value as BatchScreenTab)}>
         <TabsList aria-label="Batch issuing">
           <TabsTrigger value="schedule">Schedule</TabsTrigger>
           <TabsTrigger value="queue">Next batch {queueCount}</TabsTrigger>
@@ -191,6 +203,7 @@ function UnavailableAlert({ connection }: { connection: Connection }): ReactElem
   return (
     <Alert
       tone="error"
+      data-testid="batch-unavailable-alert"
       title={
         needsReauth ? `${connection.name} needs reconnecting` : `${connection.name} is not active`
       }

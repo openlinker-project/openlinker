@@ -89,6 +89,7 @@ export function BatchQueueTab(props: BatchQueueTabProps): ReactElement {
 
   const runButton = (
     <Button
+      data-testid="batch-run-now"
       onClick={() => startRun.mutate()}
       disabled={
         !props.canRun ||
@@ -140,7 +141,7 @@ export function BatchQueueTab(props: BatchQueueTabProps): ReactElement {
       ) : (
         <>
           <div className="data-table__container">
-            <table className="data-table">
+            <table className="data-table" data-testid="batch-queue-table">
               <caption className="sr-only">Orders in the next batch</caption>
               <thead>
                 <tr>
@@ -193,7 +194,7 @@ function QueueRow({
   const entry = row.entry;
   const item = row.kind === 'blocked' ? row.item : undefined;
   return (
-    <tr>
+    <tr data-testid="batch-queue-row" data-order-id={row.orderId} data-row-kind={row.kind}>
       <td className="mono-text">{orderLabel(row.orderId, entry, item)}</td>
       <td>{entry ? sourceName(entry.sourceConnectionId) : '—'}</td>
       <td>{entry?.buyerName ?? item?.buyerName ?? '—'}</td>
@@ -236,7 +237,7 @@ function RunningView({
 
   return (
     <div className="batch-queue">
-      <div className="panel" aria-live="polite">
+      <div className="panel" aria-live="polite" data-testid="batch-run-progress">
         <div className="panel__header">
           <h3>
             <StatusBadge tone="info" pulse>
@@ -260,7 +261,12 @@ function RunningView({
         >
           <div className="batch-progress__fill" style={{ width: `${percent}%` }} />
         </div>
-        <p className="muted-text">Run now is unavailable until this run finishes.</p>
+        <div className="batch-schedule-form__actions">
+          <Button data-testid="batch-run-now" disabled>
+            Run in progress…
+          </Button>
+          <span className="muted-text">Run now is unavailable until this run finishes.</span>
+        </div>
       </div>
 
       <div className="data-table__container">
@@ -278,7 +284,12 @@ function RunningView({
             {runningItems.map((item) => {
               const outcome = describeItemOutcome(item);
               return (
-                <tr key={item.orderId}>
+                <tr
+                  key={item.orderId}
+                  data-testid="batch-run-item"
+                  data-order-id={item.orderId}
+                  data-outcome={item.outcome}
+                >
                   <td className="mono-text">{item.orderNumber ?? item.orderId}</td>
                   <td>{item.buyerName ?? '—'}</td>
                   <td>
@@ -291,7 +302,12 @@ function RunningView({
               );
             })}
             {waiting.map((entry) => (
-              <tr key={entry.orderId}>
+              <tr
+                key={entry.orderId}
+                data-testid="batch-queue-row"
+                data-order-id={entry.orderId}
+                data-row-kind="queued"
+              >
                 <td className="mono-text">{entry.orderNumber ?? entry.orderId}</td>
                 <td>{entry.buyerName ?? '—'}</td>
                 <td>
