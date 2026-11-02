@@ -20,6 +20,7 @@ import { LoadingState, EmptyState } from '../../shared/ui/feedback-state';
 import { StatusBadge } from '../../shared/ui/status-badge';
 import { useToast } from '../../shared/ui/toast-provider';
 import { useIsAdmin } from '../../shared/auth/use-permission';
+import { useSession } from '../../shared/auth/use-session';
 import {
   useConnectionsQuery,
   useUpdateConnectionMutation,
@@ -144,6 +145,9 @@ function ConnectionSettings({ connection }: { connection: Connection }): ReactEl
 }
 
 export function BuyerEmailsPage(): ReactElement {
+  // Before the session is read `useIsAdmin` is false for everyone, so the
+  // admin-only notice waits for it: "not known yet" is not "denied".
+  const { isReady } = useSession();
   const isAdmin = useIsAdmin();
   const [searchParams, setSearchParams] = useSearchParams();
   const connectionsQuery = useConnectionsQuery();
@@ -158,9 +162,9 @@ export function BuyerEmailsPage(): ReactElement {
       title={COPY.title}
       description={COPY.description}
     >
-      {!isAdmin ? (
+      {isReady && !isAdmin ? (
         <Alert tone="info">Only an administrator can change buyer emails.</Alert>
-      ) : connectionsQuery.isLoading ? (
+      ) : !isReady || connectionsQuery.isLoading ? (
         <div data-mk-state="list-loading" data-testid="buyer-emails-loading">
           <LoadingState liveRegion="off" title={COPY.title} message="Loading connections…" />
         </div>

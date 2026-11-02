@@ -21,6 +21,7 @@ import { Textarea } from '../../shared/ui/textarea';
 import { LoadingState } from '../../shared/ui/feedback-state';
 import { useToast } from '../../shared/ui/toast-provider';
 import { useIsAdmin } from '../../shared/auth/use-permission';
+import { useSession } from '../../shared/auth/use-session';
 import { useConnectionQuery, type Connection } from '../../features/connections';
 import type { AutomationRule } from '../../features/automation';
 import {
@@ -248,6 +249,8 @@ function EditorForm({
 }
 
 export function BuyerEmailEditorPage(): ReactElement {
+  // Same rule as the list page: the admin-only notice waits for the session.
+  const { isReady } = useSession();
   const isAdmin = useIsAdmin();
   const { connectionId = '', template = '' } = useParams();
   const connectionQuery = useConnectionQuery(connectionId, { enabled: connectionId !== '' });
@@ -260,11 +263,11 @@ export function BuyerEmailEditorPage(): ReactElement {
   };
 
   let content: ReactElement;
-  if (!isAdmin) {
+  if (isReady && !isAdmin) {
     content = <Alert tone="info">Only an administrator can change buyer emails.</Alert>;
   } else if (!known) {
     content = <Alert tone="error">{BUYER_EMAILS_COPY.page.loadError}</Alert>;
-  } else if (connectionQuery.isLoading || rules.isLoading) {
+  } else if (!isReady || connectionQuery.isLoading || rules.isLoading) {
     content = <LoadingState liveRegion="off" title={title} message="Loading…" />;
   } else if (connectionQuery.isError || !connectionQuery.data) {
     content = <Alert tone="error">{BUYER_EMAILS_COPY.page.loadError}</Alert>;
