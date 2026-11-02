@@ -2,9 +2,9 @@ import { cleanup, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it } from 'vitest';
 
 import { AccessDeniedState, ErrorState } from './feedback-state';
-import { uiCopy } from './ui.copy';
+import { messagesIn } from '../i18n/messages';
 
-const ACCESS_DENIED_DEFAULT_COPY = uiCopy.en.accessDenied;
+const ACCESS_DENIED_DEFAULT_COPY = messagesIn('ui', 'en').accessDenied;
 
 afterEach(cleanup);
 

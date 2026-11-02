@@ -29,11 +29,10 @@
 import { forwardRef, type ComponentPropsWithoutRef } from 'react';
 import { Button } from './button';
 import { formatPaginatedTotal, type PaginatedTotalState } from '../hooks/use-paginated-total';
-import { useCopy } from '../i18n/use-copy';
+import { useMessages } from '../i18n/use-messages';
 import { interpolate } from '../i18n/interpolate';
 import { renderRich } from '../i18n/render-rich';
 import { useFormat } from '../i18n/use-format';
-import { uiCopy } from './ui.copy';
 
 export interface ListPaginationProps extends ComponentPropsWithoutRef<'nav'> {
   /** Zero-based index of the first row on this page. */
@@ -153,7 +152,7 @@ export const ListPagination = forwardRef<HTMLElement, ListPaginationProps>(funct
     total !== null && rowsArePlaceholder ? Math.min(offset + rowCount, total) : offset + rowCount;
 
   const totalUnavailable = totalState === 'unavailable';
-  const copy = useCopy(uiCopy).pagination;
+  const copy = useMessages('ui').pagination;
   const { number } = useFormat();
 
   const totalNode =

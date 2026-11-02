@@ -150,4 +150,3 @@ export { LanguageSwitch } from './language-switch';
 export type { LanguageSwitchProps } from './language-switch';
 export { LanguageFlag } from './language-flag';
 export { MotionProvider } from './motion-provider';
-export { uiCopy } from './ui.copy';

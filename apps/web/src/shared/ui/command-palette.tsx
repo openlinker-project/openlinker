@@ -14,8 +14,7 @@
 import { Command } from 'cmdk';
 import { forwardRef, type ComponentPropsWithoutRef, type ReactElement } from 'react';
 import { Dialog, DialogContent } from './dialog';
-import { useCopy } from '../i18n/use-copy';
-import { uiCopy } from './ui.copy';
+import { useMessages } from '../i18n/use-messages';
 
 export interface PaletteItem {
   id: string;
@@ -49,7 +48,7 @@ export function CommandPalette({
   loading = false,
   placeholder,
 }: CommandPaletteProps): ReactElement {
-  const copy = useCopy(uiCopy).commandPalette;
+  const copy = useMessages('ui').commandPalette;
   const hasItems = groups.some((g) => g.items.length > 0);
 
   return (
@@ -129,7 +128,7 @@ type CommandPaletteTriggerProps = ComponentPropsWithoutRef<'button'> & {
 
 export const CommandPaletteTrigger = forwardRef<HTMLButtonElement, CommandPaletteTriggerProps>(
   function CommandPaletteTrigger({ onClick, className = '', ...props }, ref) {
-    const copy = useCopy(uiCopy).commandPalette;
+    const copy = useMessages('ui').commandPalette;
     const classes = ['shell-topbar__search', className].filter(Boolean).join(' ');
     return (
       <button

@@ -36,9 +36,8 @@
 import { forwardRef, useState, type ReactElement } from 'react';
 import { Button } from './button';
 import { LoadingState, ErrorState, EmptyState } from './feedback-state';
-import { useCopy } from '../i18n/use-copy';
+import { useMessages } from '../i18n/use-messages';
 import { interpolate } from '../i18n/interpolate';
-import { uiCopy } from './ui.copy';
 
 /**
  * Minimal node shape the primitive needs. Structurally compatible with
@@ -145,8 +144,8 @@ export const CategoryTreeBrowser = forwardRef<HTMLDivElement, CategoryTreeBrowse
     },
     ref,
   ): ReactElement {
-    const copy = useCopy(uiCopy).categoryTree;
-    const common = useCopy(uiCopy).common;
+    const copy = useMessages('ui').categoryTree;
+    const common = useMessages('ui').common;
     const [breadcrumb, setBreadcrumb] = useState<CategoryTreeCrumb[]>([]);
 
     const isInvalid = Boolean(invalid) || Boolean(ariaInvalid);

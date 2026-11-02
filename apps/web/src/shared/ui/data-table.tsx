@@ -26,9 +26,8 @@ import {
 } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useMediaQuery } from './use-media-query';
-import { useCopy } from '../i18n/use-copy';
+import { useMessages } from '../i18n/use-messages';
 import { interpolate } from '../i18n/interpolate';
-import { uiCopy } from './ui.copy';
 
 export type DataTableHideBreakpoint = 480 | 768 | 1024;
 
@@ -335,7 +334,7 @@ export function DataTable<Row>({
   stickyLeftColumns = 0,
   virtualize = false,
 }: DataTableProps<Row>): ReactElement {
-  const copy = useCopy(uiCopy).dataTable;
+  const copy = useMessages('ui').dataTable;
   const navigate = useNavigate();
   const scrollRef = useRef<HTMLDivElement>(null);
   const tableRef = useRef<HTMLTableElement>(null);
@@ -926,7 +925,7 @@ function DataTableCard<Row>({
   href,
   onClick,
 }: DataTableCardProps<Row>): ReactElement {
-  const copy = useCopy(uiCopy).dataTable;
+  const copy = useMessages('ui').dataTable;
   const [detailOpen, setDetailOpen] = useState(false);
   const detailId = useId();
   const detail = cardView.detail;

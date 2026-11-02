@@ -7,9 +7,8 @@ import {
   type ComponentPropsWithoutRef,
 } from 'react';
 import { Link } from 'react-router-dom';
-import { useCopy } from '../i18n/use-copy';
+import { useMessages } from '../i18n/use-messages';
 import { interpolate } from '../i18n/interpolate';
-import { uiCopy } from './ui.copy';
 
 interface EntityLabelProps extends Omit<ComponentPropsWithoutRef<'span'>, 'id'> {
   id: string;
@@ -67,7 +66,7 @@ export const EntityLabel = forwardRef<HTMLSpanElement, EntityLabelProps>(functio
   },
   ref,
 ) {
-  const common = useCopy(uiCopy).common;
+  const common = useMessages('ui').common;
   const [copied, setCopied] = useState(false);
   // Track the "Copied" badge timer so we can cancel it on unmount — otherwise
   // the 1.5 s setState fires after the JSDOM env is torn down in unit tests

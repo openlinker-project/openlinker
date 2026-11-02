@@ -30,9 +30,8 @@ import type { ReactElement } from 'react';
 import { AbsentValue } from './absent-value';
 import { TimeDisplay } from './time-display';
 import type { DocumentKind } from './document-kind-glyph';
-import { useCopy } from '../i18n/use-copy';
+import { useMessages } from '../i18n/use-messages';
 import { interpolate } from '../i18n/interpolate';
-import { uiCopy } from './ui.copy';
 
 /**
  * Where one step stands.
@@ -68,7 +67,7 @@ export function DocumentLifecycle({
   label,
   className = '',
 }: DocumentLifecycleProps): ReactElement | null {
-  const copy = useCopy(uiCopy).documentLifecycle;
+  const copy = useMessages('ui').documentLifecycle;
   // Announced beside each step, so its state never rests on colour.
   const stateWord: Record<DocumentLifecycleStepState, string> = {
     todo: copy.todo,

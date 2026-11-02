@@ -25,8 +25,7 @@
 import type { ReactElement } from 'react';
 import type { DataTableHideBreakpoint } from './data-table';
 import { useMediaQuery } from './use-media-query';
-import { useCopy } from '../i18n/use-copy';
-import { uiCopy } from './ui.copy';
+import { useMessages } from '../i18n/use-messages';
 
 /**
  * Narrow shape the skeleton cares about: `hideBelow` drives which cells are
@@ -91,7 +90,7 @@ export function DataTableSkeleton({
   rowAction = false,
   label,
 }: DataTableSkeletonProps): ReactElement {
-  const common = useCopy(uiCopy).common;
+  const common = useMessages('ui').common;
   const loadingLabel = label ?? common.loading;
   const normalized = normalizeColumns(columns);
   const isMobile = useMediaQuery('(max-width: 767.98px)');

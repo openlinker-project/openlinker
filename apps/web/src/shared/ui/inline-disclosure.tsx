@@ -12,8 +12,7 @@
  * @module shared/ui
  */
 import type { ReactElement, ReactNode } from 'react';
-import { useCopy } from '../i18n/use-copy';
-import { uiCopy } from './ui.copy';
+import { useMessages } from '../i18n/use-messages';
 
 export interface InlineDisclosureProps {
   label: string;
@@ -32,7 +31,7 @@ export function InlineDisclosure({
   defaultOpen = false,
   className,
 }: InlineDisclosureProps): ReactElement {
-  const copy = useCopy(uiCopy).inlineDisclosure;
+  const copy = useMessages('ui').inlineDisclosure;
   return (
     <details className={['inline-disclosure', className].filter(Boolean).join(' ')} open={defaultOpen}>
       <summary className="inline-disclosure__summary">

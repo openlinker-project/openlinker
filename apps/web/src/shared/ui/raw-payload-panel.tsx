@@ -7,8 +7,7 @@ import {
   type ComponentPropsWithoutRef,
   type ReactNode,
 } from 'react';
-import { useCopy } from '../i18n/use-copy';
-import { uiCopy } from './ui.copy';
+import { useMessages } from '../i18n/use-messages';
 
 interface RawPayloadPanelProps extends Omit<ComponentPropsWithoutRef<'section'>, 'title'> {
   defaultOpen?: boolean;
@@ -22,8 +21,8 @@ export const RawPayloadPanel = forwardRef<HTMLElement, RawPayloadPanelProps>(
     { defaultOpen = false, description, payload, title, className = '', ...props },
     ref,
   ) {
-    const copy = useCopy(uiCopy).rawPayload;
-    const common = useCopy(uiCopy).common;
+    const copy = useMessages('ui').rawPayload;
+    const common = useMessages('ui').common;
     const [open, setOpen] = useState(defaultOpen);
     const [copied, setCopied] = useState(false);
     const bodyId = useId();

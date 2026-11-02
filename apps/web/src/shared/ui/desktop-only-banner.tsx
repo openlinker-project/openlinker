@@ -7,8 +7,7 @@
  * guide.
  */
 import type { ReactElement, ReactNode } from 'react';
-import { useCopy } from '../i18n/use-copy';
-import { uiCopy } from './ui.copy';
+import { useMessages } from '../i18n/use-messages';
 
 interface DesktopOnlyBannerProps {
   title?: string;
@@ -21,7 +20,7 @@ export function DesktopOnlyBanner({
   children,
   className,
 }: DesktopOnlyBannerProps): ReactElement {
-  const copy = useCopy(uiCopy).desktopOnly;
+  const copy = useMessages('ui').desktopOnly;
   const classes = ['desktop-only-banner', className].filter(Boolean).join(' ');
   return (
     <div className={classes} role="note">

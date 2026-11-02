@@ -18,9 +18,8 @@ import {
   type ComponentPropsWithoutRef,
   type ReactElement,
 } from 'react';
-import { useCopy } from '../i18n/use-copy';
+import { useMessages } from '../i18n/use-messages';
 import { interpolate } from '../i18n/interpolate';
-import { uiCopy } from './ui.copy';
 
 interface CopyableIdProps extends Omit<ComponentPropsWithoutRef<'span'>, 'children'> {
   /** The full identifier to copy to the clipboard. */
@@ -41,7 +40,7 @@ export const CopyableId = forwardRef<HTMLSpanElement, CopyableIdProps>(function 
   { id, label, copyLabel, copiedLabel, className = '', ...props },
   ref,
 ): ReactElement {
-  const common = useCopy(uiCopy).common;
+  const common = useMessages('ui').common;
   const [copied, setCopied] = useState(false);
   const resetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 

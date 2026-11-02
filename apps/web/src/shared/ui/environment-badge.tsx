@@ -2,10 +2,9 @@ import type { ReactElement } from 'react';
 import { env } from '../config/env';
 import { APP_VERSION } from '../config/app-version';
 import { getLocale } from '../i18n/active-locale';
-import { resolveCopy } from '../i18n/define-copy';
-import { useCopy } from '../i18n/use-copy';
+import { useMessages } from '../i18n/use-messages';
 import { interpolate } from '../i18n/interpolate';
-import { uiCopy } from './ui.copy';
+import { messagesIn } from '../i18n/messages';
 
 type EnvironmentTone = 'info' | 'neutral' | 'review' | 'success' | 'warning';
 
@@ -26,7 +25,7 @@ function toReadableLabel(value: string): string {
 export function getEnvironmentMeta(appEnv: string): EnvironmentMeta {
   // Names are identical in both languages (see `ui.copy.ts`), so the active
   // language is read only to satisfy the copy lookup.
-  const copy = resolveCopy(uiCopy, getLocale()).environment.names;
+  const copy = messagesIn('ui', getLocale()).environment.names;
   const normalized = appEnv.trim().toLowerCase();
 
   switch (normalized) {
@@ -87,7 +86,7 @@ export function EnvironmentBadge({
   version = APP_VERSION,
   className = '',
 }: EnvironmentBadgeProps): ReactElement {
-  const copy = useCopy(uiCopy).environment;
+  const copy = useMessages('ui').environment;
   const environment = getEnvironmentMeta(appEnv);
   const classes = [
     'context-chip',

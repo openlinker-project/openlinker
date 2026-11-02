@@ -23,8 +23,8 @@
  * @module shared/ui
  */
 import type { ReactElement } from 'react';
-import { useCopy } from '../i18n/use-copy';
-import { uiCopy } from './ui.copy';
+import { useMessages } from '../i18n/use-messages';
+import { messagesIn } from '../i18n/messages';
 
 /**
  * The two sales-document kinds, mirroring `SalesDocumentKind`
@@ -38,16 +38,16 @@ export type DocumentKind = 'invoice' | 'fiscal-receipt';
  * components resolve the active language through `useDocumentKindLabels`.
  */
 export const DOCUMENT_KIND_LABEL: Record<DocumentKind, string> = {
-  invoice: uiCopy.en.documentKind.invoice,
-  'fiscal-receipt': uiCopy.en.documentKind.fiscalReceipt,
+  invoice: messagesIn('ui', 'en').documentKind.invoice,
+  'fiscal-receipt': messagesIn('ui', 'en').documentKind.fiscalReceipt,
 };
 
 /** What the struck circle means. Not "unknown": routing reached no decision. */
-export const NO_DOCUMENT_LABEL = uiCopy.en.documentKind.none;
+export const NO_DOCUMENT_LABEL = messagesIn('ui', 'en').documentKind.none;
 
 /** Kind names in the active language, and the no-decision label. */
 export function useDocumentKindLabels(): { kind: Record<DocumentKind, string>; none: string } {
-  const copy = useCopy(uiCopy).documentKind;
+  const copy = useMessages('ui').documentKind;
   return {
     kind: { invoice: copy.invoice, 'fiscal-receipt': copy.fiscalReceipt },
     none: copy.none,

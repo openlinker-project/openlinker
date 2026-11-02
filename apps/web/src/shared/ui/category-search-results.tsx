@@ -29,10 +29,9 @@
 import { forwardRef } from 'react';
 import { Button } from './button';
 import { LoadingState, ErrorState, EmptyState } from './feedback-state';
-import { useCopy } from '../i18n/use-copy';
+import { useMessages } from '../i18n/use-messages';
 import { interpolate } from '../i18n/interpolate';
 import { usePlural } from '../i18n/use-plural';
-import { uiCopy } from './ui.copy';
 
 /**
  * Minimal hit shape. Structurally compatible with `CategorySearchHit` from
@@ -111,8 +110,8 @@ export const CategorySearchResults = forwardRef<HTMLUListElement, CategorySearch
     },
     ref
   ) {
-    const copy = useCopy(uiCopy).categorySearch;
-    const common = useCopy(uiCopy).common;
+    const copy = useMessages('ui').categorySearch;
+    const common = useMessages('ui').common;
     const plural = usePlural();
     if (isLoading) {
       return (

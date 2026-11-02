@@ -7,10 +7,9 @@ import {
   type DragEvent,
   type ReactElement,
 } from 'react';
-import { useCopy } from '../i18n/use-copy';
+import { useMessages } from '../i18n/use-messages';
 import { interpolate } from '../i18n/interpolate';
 import { useFormat } from '../i18n/use-format';
-import { uiCopy } from './ui.copy';
 
 export interface FileUploadProps {
   /**
@@ -76,7 +75,7 @@ export const FileUpload = forwardRef<HTMLInputElement, FileUploadProps>(function
 ): ReactElement {
   const inputId = useId();
   const inputRef = useRef<HTMLInputElement | null>(null);
-  const copy = useCopy(uiCopy).fileUpload;
+  const copy = useMessages('ui').fileUpload;
   const { number } = useFormat();
   const formatBytes = useCallback(
     (bytes: number): string => formatByteSize(bytes, number),

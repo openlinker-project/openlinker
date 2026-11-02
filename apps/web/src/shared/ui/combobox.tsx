@@ -29,11 +29,10 @@ import {
   type ReactElement,
 } from 'react';
 import { Popover, PopoverContent, PopoverTrigger } from './popover';
-import { useCopy } from '../i18n/use-copy';
+import { useMessages } from '../i18n/use-messages';
 import { interpolate } from '../i18n/interpolate';
 import { usePlural } from '../i18n/use-plural';
 import { useFormat } from '../i18n/use-format';
-import { uiCopy } from './ui.copy';
 
 export interface ComboboxOption {
   /** Stable id; what `value.ids` references for dictionary mode. */
@@ -110,7 +109,7 @@ export const Combobox = forwardRef<HTMLButtonElement, ComboboxProps>(function Co
   const counterId = `${triggerId}-counter`;
   const searchId = `${triggerId}-search`;
 
-  const copy = useCopy(uiCopy).combobox;
+  const copy = useMessages('ui').combobox;
   const plural = usePlural();
   const fmt = useFormat();
   const [open, setOpen] = useState(false);
@@ -548,7 +547,7 @@ function CustomMatchRow({
   onCommit,
   style,
 }: CustomMatchRowProps): ReactElement {
-  const copy = useCopy(uiCopy).combobox;
+  const copy = useMessages('ui').combobox;
   const classes = [
     'combobox__option',
     'combobox__option--custom',
@@ -598,7 +597,7 @@ interface ChipPillProps {
 }
 
 function ChipPill({ label, onRemove }: ChipPillProps): ReactElement {
-  const copy = useCopy(uiCopy).combobox;
+  const copy = useMessages('ui').combobox;
   return (
     <span className="combobox__chip" data-chip>
       <span className="combobox__chip-label">{label}</span>

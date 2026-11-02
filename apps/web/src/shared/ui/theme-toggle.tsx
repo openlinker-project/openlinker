@@ -17,8 +17,7 @@
 import { useMemo, useRef, type KeyboardEvent, type ReactElement } from 'react';
 import { useTheme } from '../theme/use-theme';
 import { ThemeValues, type Theme } from '../theme/theme.types';
-import { useCopy } from '../i18n/use-copy';
-import { uiCopy } from './ui.copy';
+import { useMessages } from '../i18n/use-messages';
 
 interface ThemeOption {
   value: Theme;
@@ -47,7 +46,7 @@ export function ThemeToggle({
   className = '',
   label,
 }: ThemeToggleProps): ReactElement {
-  const copy = useCopy(uiCopy).theme;
+  const copy = useMessages('ui').theme;
   const { theme, setTheme } = useTheme();
   const optionRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const classes = ['theme-toggle', className].filter(Boolean).join(' ');

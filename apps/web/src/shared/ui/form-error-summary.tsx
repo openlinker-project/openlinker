@@ -1,7 +1,6 @@
 import type { ReactElement } from 'react';
 import { Alert } from './alert';
-import { useCopy } from '../i18n/use-copy';
-import { uiCopy } from './ui.copy';
+import { useMessages } from '../i18n/use-messages';
 
 interface FormErrorSummaryProps {
   errors: string[];
@@ -12,7 +11,7 @@ export function FormErrorSummary({
   errors,
   title,
 }: FormErrorSummaryProps): ReactElement | null {
-  const copy = useCopy(uiCopy).formErrorSummary;
+  const copy = useMessages('ui').formErrorSummary;
   if (errors.length === 0) {
     return null;
   }

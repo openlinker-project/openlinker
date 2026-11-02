@@ -16,9 +16,8 @@
  * address a step by number.
  */
 import type { ReactElement, ReactNode } from 'react';
-import { useCopy } from '../i18n/use-copy';
+import { useMessages } from '../i18n/use-messages';
 import { interpolate } from '../i18n/interpolate';
-import { uiCopy } from './ui.copy';
 
 export interface SetupStepperProps {
   steps: readonly string[];
@@ -56,7 +55,7 @@ export function SetupStepper({
   stepMeta,
 }: SetupStepperProps): ReactElement {
   const reached = maxReachedStep ?? currentStep;
-  const copy = useCopy(uiCopy).setupStepper;
+  const copy = useMessages('ui').setupStepper;
 
   return (
     <nav

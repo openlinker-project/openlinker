@@ -8,8 +8,7 @@
  * `compact` (tighter rows for dense ops tables).
  */
 import { useCallback, useEffect, useState, type ReactElement } from 'react';
-import { useCopy } from '../i18n/use-copy';
-import { uiCopy } from './ui.copy';
+import { useMessages } from '../i18n/use-messages';
 
 export type Density = 'cozy' | 'compact';
 
@@ -46,7 +45,7 @@ export function useDensity(): [Density, (next: Density) => void] {
 }
 
 export function DensityToggle(): ReactElement {
-  const copy = useCopy(uiCopy).density;
+  const copy = useMessages('ui').density;
   const [density, setDensity] = useDensity();
   return (
     <div className="density-toggle" role="group" aria-label={copy.group}>

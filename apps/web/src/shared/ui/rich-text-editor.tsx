@@ -34,11 +34,10 @@ import {
   type RichTextProfile,
 } from './rich-text-profiles';
 import type { DescriptionFormat } from './rich-text.types';
-import { useCopy } from '../i18n/use-copy';
+import { useMessages } from '../i18n/use-messages';
 import { interpolate } from '../i18n/interpolate';
 import { useFormat } from '../i18n/use-format';
 import { usePlural } from '../i18n/use-plural';
-import { uiCopy } from './ui.copy';
 
 export interface RichTextEditorProps {
   /**
@@ -216,7 +215,7 @@ export function RichTextEditor({
   id,
   className = '',
 }: RichTextEditorProps): ReactElement {
-  const copy = useCopy(uiCopy).richText;
+  const copy = useMessages('ui').richText;
   const { number } = useFormat();
   const plural = usePlural();
   const placeholderText = placeholder ?? copy.placeholder;

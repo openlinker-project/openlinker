@@ -38,9 +38,8 @@ import {
   type ReactElement,
 } from 'react';
 import { interpolate } from '../i18n/interpolate';
-import { useCopy } from '../i18n/use-copy';
+import { useMessages } from '../i18n/use-messages';
 import { Input } from './input';
-import { uiCopy } from './ui.copy';
 
 export interface RangeNumberMarker {
   readonly value: number;
@@ -104,7 +103,7 @@ export const RangeNumberInput = forwardRef<HTMLInputElement, RangeNumberInputPro
     }: RangeNumberInputProps,
     ref
   ): ReactElement {
-    const copy = useCopy(uiCopy).rangeNumber;
+    const copy = useMessages('ui').rangeNumber;
     const generatedId = useId();
     const sliderId = id ?? `${generatedId}-slider`;
     const textErrorId = `${generatedId}-text-error`;

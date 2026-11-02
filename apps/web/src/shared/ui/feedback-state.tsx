@@ -1,6 +1,5 @@
 import type { ReactElement, ReactNode } from 'react';
-import { useCopy } from '../i18n/use-copy';
-import { uiCopy } from './ui.copy';
+import { useMessages } from '../i18n/use-messages';
 
 type AriaLive = 'assertive' | 'off' | 'polite';
 
@@ -29,7 +28,7 @@ export function LoadingState({
   message,
   title,
 }: LoadingStateProps): ReactElement {
-  const copy = useCopy(uiCopy).feedback;
+  const copy = useMessages('ui').feedback;
   return (
     <div className="state-card state-card--loading" role="status" aria-live={liveRegion}>
       <div className="state-card__header">
@@ -77,7 +76,7 @@ export function AccessDeniedState({
   title,
 }: AccessDeniedStateProps): ReactElement {
   // Generic on purpose: `shared` may not know which screen it is rendered on.
-  const copy = useCopy(uiCopy).accessDenied;
+  const copy = useMessages('ui').accessDenied;
   return (
     <div className="state-card state-card--denied" role="status" aria-live="off">
       <div className="state-card__header">
@@ -91,7 +90,7 @@ export function AccessDeniedState({
 }
 
 export function ErrorState({ action, eyebrow, message, title }: BaseStateProps): ReactElement {
-  const copy = useCopy(uiCopy).feedback;
+  const copy = useMessages('ui').feedback;
   return (
     <div className="state-card state-card--error" role="alert">
       <div className="state-card__header">

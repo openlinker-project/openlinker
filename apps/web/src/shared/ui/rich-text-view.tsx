@@ -32,8 +32,7 @@
  */
 import DOMPurify from 'dompurify';
 import { forwardRef, useMemo, type ComponentPropsWithoutRef } from 'react';
-import { useCopy } from '../i18n/use-copy';
-import { uiCopy } from './ui.copy';
+import { useMessages } from '../i18n/use-messages';
 
 /**
  * Tags a rendered description may contain. Wider than any single destination's
@@ -75,7 +74,7 @@ export const RichTextView = forwardRef<HTMLDivElement, RichTextViewProps>(functi
   { html, emptyLabel, className = '', ...rest },
   ref,
 ) {
-  const copy = useCopy(uiCopy).richTextView;
+  const copy = useMessages('ui').richTextView;
   const clean = useMemo(() => {
     if (html === null || html === undefined || html.trim() === '') return '';
     return DOMPurify.sanitize(html, {

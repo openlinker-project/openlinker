@@ -26,12 +26,11 @@ import {
   type ReactElement,
 } from 'react';
 import { createPortal } from 'react-dom';
-import { useCopy } from '../i18n/use-copy';
+import { useMessages } from '../i18n/use-messages';
 import { interpolate } from '../i18n/interpolate';
 import { LocaleCodeValues, type SupportedLocale } from '../i18n/i18n.types';
 import { useOptionalLocale } from '../i18n/use-locale';
 import { LanguageFlag, type LanguageFlagCode } from './language-flag';
-import { uiCopy } from './ui.copy';
 
 interface LanguageOption {
   code: LanguageFlagCode;
@@ -130,7 +129,7 @@ export function LanguageSwitch({
 }: LanguageSwitchProps): ReactElement | null {
   const localeContext = useOptionalLocale();
   const locale = localeContext?.locale ?? 'en';
-  const copy = useCopy(uiCopy).languageSwitch;
+  const copy = useMessages('ui').languageSwitch;
   const [open, setOpen] = useState(false);
   const [betaHint, setBetaHint] = useState(false);
   const betaHintId = useId();

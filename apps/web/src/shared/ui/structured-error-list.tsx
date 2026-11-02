@@ -26,9 +26,8 @@
  */
 import { useCallback, useState, type ReactElement } from 'react';
 import type { StructuredError, StructuredErrorTranslation } from '../types/structured-error.types';
-import { useCopy } from '../i18n/use-copy';
+import { useMessages } from '../i18n/use-messages';
 import { interpolate } from '../i18n/interpolate';
-import { uiCopy } from './ui.copy';
 
 // Re-exported so existing consumers (`import type { StructuredError } from
 // '.../shared/ui/structured-error-list'`) keep working. Canonical source
@@ -46,7 +45,7 @@ export function StructuredErrorList({
   translate,
   className = '',
 }: StructuredErrorListProps): ReactElement | null {
-  const copy = useCopy(uiCopy).structuredErrors;
+  const copy = useMessages('ui').structuredErrors;
   if (!errors || errors.length === 0) {
     return null;
   }
@@ -72,7 +71,7 @@ interface StructuredErrorRowProps {
 }
 
 function StructuredErrorRow({ error, translate }: StructuredErrorRowProps): ReactElement {
-  const copy = useCopy(uiCopy).structuredErrors;
+  const copy = useMessages('ui').structuredErrors;
   const translation = translate?.(error) ?? null;
   const primaryMessage = translation?.message ?? error.message;
 
@@ -111,7 +110,7 @@ function StructuredErrorRow({ error, translate }: StructuredErrorRowProps): Reac
  */
 function FieldBreadcrumb({ path }: { path: string }): ReactElement {
   const segments = path.split('.').filter((s) => s.length > 0);
-  const copy = useCopy(uiCopy).structuredErrors;
+  const copy = useMessages('ui').structuredErrors;
   const [copied, setCopied] = useState(false);
 
   const handleCopy = useCallback(() => {
