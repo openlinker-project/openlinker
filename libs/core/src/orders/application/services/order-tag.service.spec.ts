@@ -29,6 +29,7 @@ describe('OrderTagService', () => {
       assign: jest.fn(),
       unassign: jest.fn(),
       bulkAssign: jest.fn(),
+      bulkUnassign: jest.fn(),
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -91,7 +92,13 @@ describe('OrderTagService', () => {
 
     it('should delegate to the repository and pass the result through', async () => {
       repository.findById.mockResolvedValue(vipTag);
-      repository.bulkAssign.mockResolvedValue({ tagId: 'tag-1', added: 2, alreadyTagged: 1 });
+      repository.bulkAssign.mockResolvedValue({
+        tagId: 'tag-1',
+        added: 2,
+        alreadyTagged: 1,
+        addedOrderIds: ['ol_order_1', 'ol_order_2'],
+        alreadyTaggedOrderIds: ['ol_order_3'],
+      });
 
       const result = await service.bulkAssign(
         'tag-1',
@@ -104,7 +111,13 @@ describe('OrderTagService', () => {
         ['ol_order_1', 'ol_order_2', 'ol_order_3'],
         'user-1',
       );
-      expect(result).toEqual({ tagId: 'tag-1', added: 2, alreadyTagged: 1 });
+      expect(result).toEqual({
+        tagId: 'tag-1',
+        added: 2,
+        alreadyTagged: 1,
+        addedOrderIds: ['ol_order_1', 'ol_order_2'],
+        alreadyTaggedOrderIds: ['ol_order_3'],
+      });
     });
   });
 
@@ -114,6 +127,31 @@ describe('OrderTagService', () => {
 
       await expect(service.delete('missing')).rejects.toThrow(OrderTagNotFoundError);
       expect(repository.delete).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('bulkUnassign (#3545)', () => {
+    it('should throw OrderTagNotFoundError before delegating for an unknown tag', async () => {
+      repository.findById.mockResolvedValue(null);
+
+      await expect(service.bulkUnassign('missing', ['ol_order_1'])).rejects.toThrow(
+        OrderTagNotFoundError,
+      );
+      expect(repository.bulkUnassign).not.toHaveBeenCalled();
+    });
+
+    it('should delegate to the repository and pass the result through', async () => {
+      repository.findById.mockResolvedValue(vipTag);
+      const result = {
+        tagId: 'tag-1',
+        removedOrderIds: ['ol_order_1'],
+        notTaggedOrderIds: ['ol_order_2'],
+      };
+      repository.bulkUnassign.mockResolvedValue(result);
+
+      await expect(service.bulkUnassign('tag-1', ['ol_order_1', 'ol_order_2'])).resolves.toEqual(
+        result,
+      );
     });
   });
 });
