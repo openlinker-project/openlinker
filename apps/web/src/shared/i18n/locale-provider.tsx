@@ -5,7 +5,7 @@
  * the language `resolveInitialLocale` picks and lets the operator switch;
  * a `locale` prop pins the starting language (tests pin English). Switching
  * updates `<html lang>` and the language the API client sends, and re-renders
- * copy without a reload; it is saved for the next visit only when the provider
+ * copy without a reload once the language's translation files have loaded; it is saved for the next visit only when the provider
  * is not pinned, so a pinned harness never overwrites the operator's choice.
  *
  * @module shared/i18n
@@ -23,6 +23,7 @@ import {
 import { env } from '../config/env';
 import { setActiveLocale } from './active-locale';
 import { getBcp47Locale } from './locale';
+import { isMessagesLoaded, loadMessages } from './messages';
 import { resolveInitialLocale, storeLocale } from './resolve-locale';
 import {
   isSupportedLocale,
@@ -88,11 +89,33 @@ export function LocaleProvider({
     document.documentElement.lang = getBcp47Locale(locale);
   }, [locale]);
 
+  // A language the app did not preload (a pinned prop, a provider mounted
+  // without main.tsx) renders its base language until its files arrive, then
+  // re-renders once. Never blank, never a raw key.
+  const [, setMessagesReady] = useState(0);
+  useEffect(() => {
+    if (isMessagesLoaded(locale)) return;
+    let current = true;
+    void loadMessages(locale).then(() => {
+      if (current) setMessagesReady((n) => n + 1);
+    });
+    return () => {
+      current = false;
+    };
+  }, [locale]);
+
   const setLocale = useCallback(
     (next: SupportedLocale) => {
-      if (!isPinned) storeLocale(next);
-      setActiveLocale(next);
-      setLocaleState(next);
+      const apply = (): void => {
+        if (!isPinned) storeLocale(next);
+        setActiveLocale(next);
+        setLocaleState(next);
+      };
+      // Load first, then switch: the screen keeps the current language until
+      // the new one is ready. A failed load still switches; every key then
+      // falls back to the base language.
+      if (isMessagesLoaded(next)) apply();
+      else void loadMessages(next).then(apply, apply);
     },
     [isPinned],
   );

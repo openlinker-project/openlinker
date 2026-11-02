@@ -1,10 +1,12 @@
 /**
  * shared/i18n - public barrel
  *
- * The only import path for translation and locale helpers (ADR-079). Copy
- * files are declared with `defineCopy` and read with `useCopy`; the legacy
- * `useTranslation` / `t(key, fallback)` seam (#612) stays for its existing
- * call sites and gets no new callers.
+ * The only import path for translation and locale helpers (ADR-079). Core
+ * copy lives in `locales/<lang>.json` and is read with `useMessages`;
+ * a plugin brings its own namespace through `definePluginMessages`.
+ * `defineCopy` / `useCopy` remain only until the existing copy files move
+ * to JSON in this stack, and the legacy `useTranslation` / `t(key, fallback)`
+ * seam (#612) stays for its existing call sites and gets no new callers.
  *
  * @module shared/i18n
  */
@@ -12,6 +14,11 @@ export { LocaleProvider } from './locale-provider';
 export { useLocale } from './use-locale';
 export type { UseLocaleResult } from './use-locale';
 export { useCopy } from './use-copy';
+export { useMessages, getMessages } from './use-messages';
+export { loadMessages, isMessagesLoaded } from './messages';
+export type { Messages, Namespace, MessagesLoader } from './messages';
+export { definePluginMessages } from './define-plugin-messages';
+export type { PluginMessages, PluginMessagesOptions } from './define-plugin-messages';
 export { defineCopy, resolveCopy } from './define-copy';
 export { interpolate } from './interpolate';
 export type { InterpolationParams } from './interpolate';

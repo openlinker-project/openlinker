@@ -10,31 +10,10 @@
  */
 import type { CopyTree, LocaleCopy, ResolvedCopy } from './copy.types';
 import type { SupportedLocale } from './i18n.types';
+import { mergeOverEnglish } from './merge';
 
 export function defineCopy<const T extends CopyTree>(copy: LocaleCopy<T>): LocaleCopy<T> {
   return copy;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null;
-}
-
-function merge(source: unknown, override: unknown): unknown {
-  if (typeof source === 'string') {
-    // An empty Polish string is a gap, not a translation: never show a blank.
-    return typeof override === 'string' && override !== '' ? override : source;
-  }
-  if (!isRecord(source)) return source;
-  const result: Record<string, unknown> = {};
-  const patch = isRecord(override) ? override : {};
-  for (const key of Object.keys(source)) {
-    result[key] = merge(source[key], patch[key]);
-  }
-  // Polish-only plural categories (few, many) have no English counterpart.
-  for (const key of Object.keys(patch)) {
-    if (!(key in result) && typeof patch[key] === 'string') result[key] = patch[key];
-  }
-  return result;
 }
 
 const cache = new WeakMap<object, Map<SupportedLocale, unknown>>();
@@ -50,7 +29,7 @@ export function resolveCopy<T extends CopyTree>(
   }
   let resolved = perLocale.get(locale);
   if (resolved === undefined) {
-    resolved = locale === 'en' ? copy.en : merge(copy.en, copy.pl);
+    resolved = locale === 'en' ? copy.en : mergeOverEnglish(copy.en, copy.pl);
     perLocale.set(locale, resolved);
   }
   return resolved as ResolvedCopy<T>;
