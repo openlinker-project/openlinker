@@ -39,7 +39,7 @@ describe('renderAutomationTemplate', () => {
 
   it("should render the buyer.name and shipment.tracking fallbacks when both are absent (#3553)", () => {
     expect(renderAutomationTemplate('Hi {buyer.name}, tracking: {shipment.tracking}', {})).toBe(
-      'Hi customer, tracking: not yet',
+      'Hi customer, tracking: not available',
     );
   });
 

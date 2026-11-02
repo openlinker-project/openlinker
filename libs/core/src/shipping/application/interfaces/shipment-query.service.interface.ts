@@ -72,7 +72,7 @@ export interface IShipmentQueryService {
    * The tracking number of the order's newest OUTBOUND shipment that carries one
    * (#3553), or `null` when no shipment exists or none has a number yet. Feeds
    * the `{shipment.tracking}` automation merge field, which renders its own
-   * "not yet" fallback for `null`.
+   * "not available" fallback for `null`.
    *
    * Outbound only, for the reason given on {@link findByFulfillmentWorkIds}: a
    * return label shares the table and must never answer "where is my parcel".

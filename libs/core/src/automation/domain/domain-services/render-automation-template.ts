@@ -25,8 +25,8 @@
 
 /**
  * The values the fields render from. Every one is optional: the caller
- * assembles what it can, and an absent value renders the spec's stated fallback
- * rather than an empty string — *"not yet"* reads as a fact, `""` reads as a bug.
+ * assembles what it can, and an absent value renders a stated fallback rather
+ * than an empty string — *"not available"* reads as a fact, `""` reads as a bug.
  */
 export interface AutomationTemplateContext {
   readonly orderReference?: string;
@@ -79,14 +79,23 @@ export const AUTOMATION_MERGE_FIELDS = [
 
 export type AutomationMergeField = (typeof AUTOMATION_MERGE_FIELDS)[number];
 
-/** Per-field fallback copy, verbatim from §5.3b where the spec states one. */
+/**
+ * Per-field fallback copy, verbatim from §5.3b where the spec states one.
+ *
+ * `shipment.tracking` deliberately departs from §5.3b's *"not yet"* (#3554):
+ * every email is sent once, so "Tracking number: not yet" promises a number
+ * the buyer will never be sent. The shipped email now waits for the number and
+ * only falls back when the carrier never issued one, which is exactly when
+ * "not yet" is false. "not available" states what is true at send time and
+ * promises nothing.
+ */
 const FALLBACKS: Record<AutomationMergeField, string> = {
   'order.reference': 'unknown',
   'order.total': 'unknown',
   'order.placedAt': 'unknown',
   'order.dispatchBy': 'no deadline',
   'buyer.name': 'customer',
-  'shipment.tracking': 'not yet',
+  'shipment.tracking': 'not available',
   'hold.reason': 'no hold',
   'rule.name': 'unknown',
 };

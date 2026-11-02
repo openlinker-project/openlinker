@@ -75,8 +75,10 @@ The record never shows the buyer's address, only what happened.
 - **Shipped** waits for the tracking number, so the email can include it.
   Some carriers (InPost) issue the number a few minutes after the label, so the
   email goes out then. If a carrier never issues one, the email is sent 30
-  minutes after dispatch without it, and at the latest when the parcel is
-  delivered.
+  minutes after the carrier takes the parcel, without a number ("Tracking
+  number: not available"), and at the latest when the parcel is delivered. A
+  label that is bought but never handed to the carrier does not count as
+  shipped, so no email is sent for it.
 - `{order.reference}` is the order number the buyer knows from the shop or the
   marketplace, the same one the order page shows as "Order #".
 - "Return received" rules cannot be limited by the order's country or total:

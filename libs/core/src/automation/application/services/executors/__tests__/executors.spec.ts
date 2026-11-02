@@ -302,7 +302,7 @@ describe('SendEmailExecutorService', () => {
     );
 
     expect(sent[0]).toEqual(
-      expect.objectContaining({ subject: 'Hi customer', text: 'Tracking: not yet' }),
+      expect.objectContaining({ subject: 'Hi customer', text: 'Tracking: not available' }),
     );
   });
 

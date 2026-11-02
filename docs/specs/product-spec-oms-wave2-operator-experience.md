@@ -712,7 +712,7 @@ the operator can see and fix.
 | `{order.placedAt}` | the order date, in the operator's locale |
 | `{order.dispatchBy}` | the marketplace dispatch deadline, or *"no deadline"* |
 | `{buyer.name}` | the buyer's name as the source reported it |
-| `{shipment.tracking}` | the tracking number, or *"not yet"* |
+| `{shipment.tracking}` | the tracking number, or *"not available"* (was *"not yet"*; changed by #3554 because every email is sent once, so "not yet" promised a number that never follows) |
 | `{hold.reason}` | the current hold's reason, or *"no hold"* |
 | `{rule.name}` | the automation's own name |
 

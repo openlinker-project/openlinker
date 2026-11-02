@@ -20,7 +20,7 @@ export const BUYER_EMAIL_TEMPLATE_COPY: Record<
     label: 'Shipped',
     description:
       "Sent once the order's parcels are with the carrier and the tracking number is known, " +
-      'or 30 minutes after dispatch if none arrives.',
+      'or 30 minutes after the carrier takes the parcel if none arrives.',
   },
   'document-issued': {
     label: 'Invoice or receipt issued',

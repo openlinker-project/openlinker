@@ -303,11 +303,11 @@ export class SendEmailExecutorService implements AutomationActionExecutorPort {
   /**
    * Best-effort tracking read for `{shipment.tracking}` (#3553). Resolved through
    * the delegate seam, so `automation` takes no `shipping` sibling edge. A
-   * missing binding or a failed read renders the field's "not yet" fallback: a
+   * missing binding or a failed read renders the field's "not available" fallback: a
    * parcel with no number yet is a normal state, and a read fault must not fail
    * an email whose other fields are fine.
    *
-   * Known trade-off: on a failed read the buyer reads "not yet" even if a
+   * Known trade-off: on a failed read the buyer reads "not available" even if a
    * number exists. Accepted over blocking the send; the warning below is the
    * operator's trace.
    */
