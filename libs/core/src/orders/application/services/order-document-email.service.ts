@@ -34,6 +34,7 @@ import {
   DOCUMENT_EMAIL_DELIVERY_SERVICE_TOKEN,
   IDocumentEmailDeliveryService,
   normaliseDocumentEmailRecipient,
+  scrubEmailAddresses,
 } from '@openlinker/core/sales-documents';
 import type {
   DocumentEmailFailureReason,
@@ -46,7 +47,6 @@ import {
   composeInvoiceEmail,
   composeReceiptEmail,
   invoiceAttachmentFilename,
-  scrubEmailAddresses,
   type OrderDocumentEmailRefusal,
 } from '../../domain/types/order-document-email.types';
 import type {

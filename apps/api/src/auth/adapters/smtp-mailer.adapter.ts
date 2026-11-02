@@ -19,7 +19,9 @@
 import { Injectable, Logger } from '@nestjs/common';
 import type { ConfigService } from '@nestjs/config';
 import type { Transporter } from 'nodemailer';
+import { scrubEmailAddresses } from '@openlinker/core/sales-documents';
 import type { EmailMessage, MailerPort } from '@openlinker/core/users';
+import { redactRecipient } from './mail-log-redaction';
 
 export interface SmtpTransport {
   sendMail(options: {
@@ -58,7 +60,11 @@ export class SmtpMailerAdapter implements MailerPort {
         : {}),
     });
     this.logger.log(
-      `[mail] sent to=${message.to} subject=${JSON.stringify(message.subject)}` +
+      // The recipient is a buyer on a document email (#3550): the log keeps its
+      // domain only, matching what an `OL_STORE_PII=false` deployment persists.
+      `[mail] sent to=${redactRecipient(message.to)} subject=${JSON.stringify(
+        scrubEmailAddresses(message.subject),
+      )}` +
         (message.attachments?.length ? ` attachments=${String(message.attachments.length)}` : ''),
     );
   }

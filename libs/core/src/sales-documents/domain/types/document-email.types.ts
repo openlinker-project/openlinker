@@ -62,3 +62,15 @@ export function normaliseDocumentEmailRecipient(raw: string | null | undefined):
     ? value
     : null;
 }
+
+/**
+ * Replace email-shaped substrings so an error from a provider, the mailer or the
+ * database can be logged without embedding a buyer's address ("500: buyer
+ * bob@secret.pl"). Best-effort log hygiene, not RFC 5322 validation - the same
+ * posture as the invoice controller's own scrub. Lives here rather than in
+ * `orders` so the delivery record and the mailer adapters can use the one
+ * definition too: this context imports no sibling.
+ */
+export function scrubEmailAddresses(text: string): string {
+  return text.replace(/[\w.+-]+@[\w-]+\.[\w.-]+/g, '[redacted-email]');
+}

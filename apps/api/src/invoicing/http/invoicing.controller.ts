@@ -1183,7 +1183,10 @@ export class InvoicingController {
       'document attached (or linked). `sentVia` says which. The recipient defaults to the ' +
       "buyer's address on the order and can be edited; an edited address is always sent by " +
       "OpenLinker's mailer. A manual send is never refused because the connection's automatic " +
-      'buyer emails are off. A refusal carries a readable `message` and a machine `code`.',
+      'buyer emails are off. A refusal carries a readable `message` and a machine `code`. ' +
+      'At-least-once: there is no idempotency key, so a retried request (a double submit, a ' +
+      'client retry after a timeout) sends the document again. Do not drive this route from ' +
+      'an automation that expects at-most-once.',
   })
   @ApiResponse({ status: 200, description: 'Handed to the sender', type: SendInvoiceEmailResponseDto })
   @ApiResponse({ status: 400, description: 'No recipient, or the recipient is not an email address' })

@@ -124,13 +124,3 @@ export function invoiceAttachmentFilename(documentNumber: string | null): string
   const safe = (documentNumber ?? '').replace(/[^A-Za-z0-9._-]+/g, '-').replace(/^-+|-+$/g, '');
   return safe.length > 0 ? `invoice-${safe}.pdf` : 'invoice.pdf';
 }
-
-/**
- * Replace email-shaped substrings so an error from a provider or the mailer can
- * be logged without embedding a buyer's address ("inFakt 500: buyer
- * bob@secret.pl"). Best-effort log hygiene, not RFC 5322 validation - the same
- * posture as the invoice controller's own scrub.
- */
-export function scrubEmailAddresses(text: string): string {
-  return text.replace(/[\w.+-]+@[\w-]+\.[\w.-]+/g, '[redacted-email]');
-}

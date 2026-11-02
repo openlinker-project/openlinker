@@ -1,3 +1,4 @@
+import { Logger } from '@openlinker/shared/logging';
 import type { DocumentEmailDeliveryRepositoryPort } from '../../domain/ports/document-email-delivery-repository.port';
 import { DocumentEmailDeliveryService } from './document-email-delivery.service';
 
@@ -49,6 +50,20 @@ describe('DocumentEmailDeliveryService', () => {
     repository.record.mockRejectedValue(new Error('db down'));
 
     await expect(service.record(input)).resolves.toBeNull();
+  });
+
+  it('should not log the recipient when a failed write echoes it in the error', async () => {
+    const errorSpy = jest.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
+    repository.record.mockRejectedValue(
+      new Error('insert failed: parameters (ol_order_1, buyer@example.com)')
+    );
+
+    await service.record(input);
+
+    const logged = errorSpy.mock.calls.map((call) => JSON.stringify(call)).join('\n');
+    expect(logged).toContain('[redacted-email]');
+    expect(logged).not.toContain('buyer@example.com');
+    errorSpy.mockRestore();
   });
 
   it('should list an order newest first with a bounded page', async () => {

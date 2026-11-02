@@ -13,6 +13,7 @@ import {
   type RecordDocumentEmailDeliveryInput,
 } from '../../domain/ports/document-email-delivery-repository.port';
 import { DOCUMENT_EMAIL_DELIVERY_REPOSITORY_TOKEN } from '../../sales-documents.tokens';
+import { scrubEmailAddresses } from '../../domain/types/document-email.types';
 import type { IDocumentEmailDeliveryService } from '../interfaces/document-email-delivery.service.interface';
 
 /** The timeline shows recent sends; an order is not emailed hundreds of times. */
@@ -34,10 +35,14 @@ export class DocumentEmailDeliveryService implements IDocumentEmailDeliveryServi
         recipient: getEnvBoolean('OL_STORE_PII', true) ? input.recipient : null,
       });
     } catch (error) {
+      // A driver error from the INSERT can echo its parameters, the recipient
+      // among them; the message is scrubbed and the stack, which repeats it,
+      // is not logged.
       this.logger.error(
         `Could not record a document email delivery: order=${input.internalOrderId} ` +
-          `document=${input.documentId}: ${error instanceof Error ? error.message : String(error)}`,
-        error instanceof Error ? error.stack : undefined
+          `document=${input.documentId}: ${scrubEmailAddresses(
+            error instanceof Error ? error.message : String(error)
+          )}`
       );
       return null;
     }

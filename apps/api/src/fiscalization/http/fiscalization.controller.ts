@@ -348,7 +348,10 @@ export class FiscalizationController {
       'the link to the legal e-receipt at the vendor, and says in terms that the summary is not ' +
       'the receipt. A registration that is not registered yet, or has no e-receipt link, is ' +
       'refused. The recipient defaults to the buyer\'s address on the order and can be edited. ' +
-      'A refusal carries a readable `message` and a machine `code`.',
+      'A refusal carries a readable `message` and a machine `code`. ' +
+      'At-least-once: there is no idempotency key, so a retried request (a double submit, a ' +
+      'client retry after a timeout) sends the document again. Do not drive this route from ' +
+      'an automation that expects at-most-once.',
   })
   @ApiResponse({ status: 200, type: SendInvoiceEmailResponseDto })
   @ApiResponse({ status: 400, description: 'No recipient, or the recipient is not an email address' })

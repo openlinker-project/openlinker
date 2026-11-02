@@ -107,6 +107,7 @@ export {
   DocumentEmailSentViaValues,
   isDocumentEmailFailureReason,
   normaliseDocumentEmailRecipient,
+  scrubEmailAddresses,
 } from './domain/types/document-email.types';
 export type {
   DocumentEmailFailureReason,
