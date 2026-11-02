@@ -5,12 +5,12 @@
  */
 import { fireEvent, render, screen } from '@testing-library/react';
 import { createElement, type ReactElement } from 'react';
-import { afterEach, describe, expect, it } from 'vitest';
-import { defineCopy } from './define-copy';
+import { afterEach, beforeAll, describe, expect, it } from 'vitest';
+import { definePluginMessages } from './define-plugin-messages';
+import { loadMessages } from './messages';
 import { LocaleProvider } from './locale-provider';
 import { pseudoLocalize } from './pseudo';
 import { clearPseudoRequested, readPseudoRequested } from './resolve-locale';
-import { useCopy } from './use-copy';
 import { useLocale } from './use-locale';
 
 afterEach(() => {
@@ -51,11 +51,17 @@ describe('readPseudoRequested', () => {
   });
 });
 
-const probeCopy = defineCopy({ en: { title: 'Orders' }, pl: { title: 'Zamówienia' } });
+const probe = definePluginMessages('test-pseudo-probe', {
+  messages: { title: 'Orders' },
+  loaders: { pl: () => Promise.resolve({ title: 'Zamówienia' }) },
+});
+
+// Registered after the test setup loaded Polish, so load it for this probe too.
+beforeAll(() => loadMessages('pl'));
 
 function Probe(): ReactElement {
   const { setLocale } = useLocale();
-  const copy = useCopy(probeCopy);
+  const copy = probe.useMessages();
   return createElement(
     'div',
     null,

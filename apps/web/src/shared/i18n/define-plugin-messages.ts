@@ -16,7 +16,12 @@
 import { useContext } from 'react';
 import { LocaleContext } from './locale-provider';
 import { getLocale } from './active-locale';
-import { namespaceFor, registerNamespace, type MessagesLoader } from './messages';
+import {
+  namespaceFor,
+  pseudoNamespaceFor,
+  registerNamespace,
+  type MessagesLoader,
+} from './messages';
 import { SOURCE_LOCALE, type SupportedLocale } from './i18n.types';
 import type { CopyTree, ResolvedCopy } from './copy.types';
 
@@ -46,7 +51,9 @@ export function definePluginMessages<const T extends CopyTree>(
   return {
     namespace,
     useMessages: function usePluginMessages(): ResolvedCopy<T> {
-      return read(useContext(LocaleContext)?.locale ?? getLocale());
+      const ctx = useContext(LocaleContext);
+      if (ctx?.pseudo) return pseudoNamespaceFor(namespace) as ResolvedCopy<T>;
+      return read(ctx?.locale ?? getLocale());
     },
     getMessages: () => read(getLocale()),
   };

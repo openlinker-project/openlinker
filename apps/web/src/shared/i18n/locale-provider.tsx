@@ -9,7 +9,7 @@
  * is not pinned, so a pinned harness never overwrites the operator's choice.
  *
  * @module shared/i18n
- * @see {@link useLocale} and {@link useCopy} for consumers
+ * @see {@link useLocale} and {@link useMessages} for consumers
  */
 import {
   createContext,

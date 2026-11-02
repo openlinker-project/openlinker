@@ -18,6 +18,7 @@
  */
 import en from '../../locales/en.json';
 import { mergeOverEnglish } from './merge';
+import { pseudoTree } from './pseudo';
 import { SOURCE_LOCALE, type SupportedLocale } from './i18n.types';
 import type { ResolvedCopy } from './copy.types';
 
@@ -69,7 +70,7 @@ export function registerNamespace(namespace: string, entry: NamespaceEntry): voi
     throw new Error(`i18n namespace "${namespace}" is already registered`);
   }
   registry.set(namespace, entry);
-  if (import.meta.env.DEV && loadedLocales.size > 0) {
+  if (import.meta.env.DEV && import.meta.env.MODE !== 'test' && loadedLocales.size > 0) {
     console.warn(
       `i18n namespace "${namespace}" was registered after messages loaded; register it at module load so its translations load with the rest.`,
     );
@@ -94,8 +95,18 @@ export async function loadMessages(locale: SupportedLocale): Promise<void> {
   loadedLocales.add(locale);
 }
 
+/**
+ * True when every registered namespace that has a translation for the
+ * language holds it, so switching to it shows no base-language gaps that a
+ * load would fill.
+ */
 export function isMessagesLoaded(locale: SupportedLocale): boolean {
-  return locale === SOURCE_LOCALE || loadedLocales.has(locale);
+  for (const [namespace, entry] of registry) {
+    if (locale !== entry.baseLocale && entry.loaders[locale] && !loaded.has(cacheKey(locale, namespace))) {
+      return false;
+    }
+  }
+  return true;
 }
 
 /**
@@ -119,6 +130,23 @@ export function messagesIn<N extends Namespace>(
   locale: SupportedLocale,
 ): ResolvedCopy<Messages[N]> {
   return namespaceFor(locale, namespace) as ResolvedCopy<Messages[N]>;
+}
+
+const pseudo = new Map<string, unknown>();
+
+/**
+ * One namespace in the development-only pseudo-language (`?lang=xx`): its
+ * base language, every string accented and lengthened. Cached per namespace.
+ */
+export function pseudoNamespaceFor(namespace: string): unknown {
+  let tree = pseudo.get(namespace);
+  if (tree === undefined) {
+    const entry = registry.get(namespace);
+    if (entry === undefined) throw new Error(`i18n namespace "${namespace}" is not registered`);
+    tree = pseudoTree(entry.base);
+    pseudo.set(namespace, tree);
+  }
+  return tree;
 }
 
 export function registeredNamespaces(): readonly string[] {

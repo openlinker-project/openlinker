@@ -9,8 +9,6 @@
  *
  * @module shared/i18n
  */
-import type { CopyTree, LocaleCopy, ResolvedCopy } from './copy.types';
-
 export const PSEUDO_LOCALE_CODE = 'xx';
 
 const ACCENTED: Readonly<Record<string, string>> = {
@@ -29,19 +27,9 @@ export function pseudoLocalize(text: string): string {
   return `[${accented} ${padding}]`;
 }
 
-function mapTree(value: unknown): unknown {
+/** Every string of a namespace, pseudo-localized; the shape is unchanged. */
+export function pseudoTree(value: unknown): unknown {
   if (typeof value === 'string') return pseudoLocalize(value);
   if (typeof value !== 'object' || value === null) return value;
-  return Object.fromEntries(Object.entries(value).map(([key, inner]) => [key, mapTree(inner)]));
-}
-
-const cache = new WeakMap<object, unknown>();
-
-export function resolvePseudoCopy<T extends CopyTree>(copy: LocaleCopy<T>): ResolvedCopy<T> {
-  let resolved = cache.get(copy);
-  if (resolved === undefined) {
-    resolved = mapTree(copy.en);
-    cache.set(copy, resolved);
-  }
-  return resolved as ResolvedCopy<T>;
+  return Object.fromEntries(Object.entries(value).map(([key, inner]) => [key, pseudoTree(inner)]));
 }

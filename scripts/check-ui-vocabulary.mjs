@@ -24,12 +24,10 @@
  *   RULE B — SCAN. No banned term appears in operator-facing copy under ANY
  *     feature slice (`apps/web/src/features/*`, discovered at run time, #2737):
  *     JSX text and user-facing JSX attribute values in `.tsx`, and every string
- *     literal in a `*.copy.ts`. It also covers every other non-test file under
- *     `apps/web/src` that calls `defineCopy(` (`shared/ui/ui.copy.ts`,
- *     `shared/format/format.copy.ts`, `app/`, `plugins/`), found by content and
- *     not by file name, with its own floor. In a `defineCopy` file only the
- *     English branch is read: the banned words are English, and the Polish half
- *     would only add false positives.
+ *     literal in a `*.copy.ts`. It also covers every English translation file
+ *     (`apps/web/src/locales/en.json` and `apps/web/src/plugins/<id>/locales/en.json`),
+ *     with its own floor. Only English files are read: the banned words are
+ *     English, and the other languages would only add false positives.
  *
  * ---------------------------------------------------------------------------
  * WHAT THIS GATE DOES **NOT** CATCH. Read this before trusting it — an
@@ -37,11 +35,11 @@
  * they believe a script already did.
  *
  *   1. Under `apps/web/src/features/*` every `.tsx` and copy module is read;
- *      outside it only `defineCopy` files are (no JSX in `pages/`, `shared/ui/`
- *      or `plugins/`), so operator text written straight into a component
- *      there escapes. Every feature slice IS covered, by discovery rather than
+ *      outside it only the English translation files are (no JSX in `pages/`,
+ *      `shared/ui/` or `plugins/`), so operator text written straight into a
+ *      component there escapes. Every feature slice IS covered, by discovery rather than
  *      by a list: a slice added later is scanned the moment its folder exists,
- *      with no edit here (#2737). The Polish branch of a `defineCopy` call is
+ *      with no edit here (#2737). Translation files other than English are
  *      not read at all.
  *   2. Only literal strings. A term assembled at runtime (`${noun} authority`,
  *      a concatenation, a value from a lookup keyed elsewhere) is invisible.
@@ -160,15 +158,17 @@ const SCAN_ROOT_PARENT = join('apps', 'web', 'src', 'features');
 const MIN_SCANNED_SLICES = 15;
 
 /**
- * The floor for `defineCopy` files found OUTSIDE the feature slices. Two exist
- * today (`shared/ui/ui.copy.ts`, `shared/format/format.copy.ts`); finding fewer
- * means the content search broke, which is how this check once read none of
- * the real copy files while printing a green tick.
+ * The floor for English translation files. The core file always exists;
+ * finding none means the path broke, which is how this check once read none
+ * of the real copy while printing a green tick.
  */
-const MIN_SHARED_COPY_FILES = 2;
+const MIN_ENGLISH_LOCALE_FILES = 1;
 
-/** Everything under here is searched for `defineCopy(` calls. */
-const SHARED_SCAN_ROOT = join('apps', 'web', 'src');
+/** The core English translation file. */
+const CORE_ENGLISH_LOCALE = join('apps', 'web', 'src', 'locales', 'en.json');
+
+/** Plugins keep their translations in `<plugin>/locales/en.json`. */
+const PLUGINS_ROOT = join('apps', 'web', 'src', 'plugins');
 
 /**
  * Whole feature slices exempt from the scan, by slug with a reason. Empty, and
@@ -434,41 +434,18 @@ export function extractCopyStrings(source) {
 }
 
 /**
- * The source with every `pl:` branch of every `defineCopy({ en, pl })` call
- * blanked (newlines kept, so line numbers stay true). The banned words are
- * English; scanning the Polish half would only invite false positives.
+ * Every string VALUE of a JSON translation file, with its 1-based line. Keys
+ * are identifiers, never shown, so they are not read.
  */
-export function englishBranchOnly(source) {
-  if (!source.includes('defineCopy(')) return source;
-  const sf = ts.createSourceFile('copy.ts', source, ts.ScriptTarget.Latest, true);
-  const ranges = [];
-  const visit = (node) => {
-    if (
-      ts.isCallExpression(node) &&
-      ts.isIdentifier(node.expression) &&
-      node.expression.text === 'defineCopy' &&
-      node.arguments.length === 1 &&
-      ts.isObjectLiteralExpression(node.arguments[0])
-    ) {
-      for (const prop of node.arguments[0].properties) {
-        if (ts.isPropertyAssignment(prop) && ts.isIdentifier(prop.name) && prop.name.text === 'pl') {
-          ranges.push([prop.getStart(sf), prop.getEnd()]);
-        }
-      }
-    }
-    ts.forEachChild(node, visit);
-  };
-  visit(sf);
-  let out = source;
-  for (const [from, to] of ranges.reverse()) {
-    out = out.slice(0, from) + out.slice(from, to).replace(/[^\n]/g, ' ') + out.slice(to);
+export function extractJsonStrings(source) {
+  const out = [];
+  const re = /:\s*"((?:[^"\\\n]|\\.)*)"/g;
+  let m;
+  while ((m = re.exec(source)) !== null) {
+    const text = JSON.parse(`"${m[1]}"`);
+    if (text.trim()) out.push({ text, line: source.slice(0, m.index).split('\n').length });
   }
   return out;
-}
-
-/** Does this source call `defineCopy(` outside a comment? */
-export function callsDefineCopy(source) {
-  return /\bdefineCopy\s*\(/.test(stripComments(source));
 }
 
 /**
@@ -741,7 +718,7 @@ async function main() {
       scannedFiles += 1;
       const source = await readFile(file, 'utf8');
       const strings = isCopyModule(rel)
-        ? extractCopyStrings(englishBranchOnly(source))
+        ? extractCopyStrings(source)
         : extractTsxStrings(source);
       const findings = findBannedTerms(strings, BANNED_TERMS);
       if (findings.length === 0) continue;
@@ -756,18 +733,16 @@ async function main() {
     }
   }
 
-  // `defineCopy` files outside the feature slices (shared/ui, shared/format,
-  // app, plugins), found by content: their file names follow no rule.
-  const featuresAbs = join(repoRoot, SCAN_ROOT_PARENT) + sep;
-  const sharedCopy = [];
-  for (const file of await walk(join(repoRoot, SHARED_SCAN_ROOT))) {
-    if (!/\.tsx?$/.test(file) || /\.(test|spec)\.tsx?$/.test(file) || file.startsWith(featuresAbs)) continue;
-    const source = await readFile(file, 'utf8');
-    if (!callsDefineCopy(source)) continue;
-    sharedCopy.push(relative(repoRoot, file));
-    const findings = findBannedTerms(extractCopyStrings(englishBranchOnly(source)), BANNED_TERMS);
+  // English translation files: the core file and one per plugin.
+  const englishLocales = [];
+  if (await exists(join(repoRoot, CORE_ENGLISH_LOCALE))) englishLocales.push(CORE_ENGLISH_LOCALE);
+  for (const plugin of await readdir(join(repoRoot, PLUGINS_ROOT))) {
+    const file = join(PLUGINS_ROOT, plugin, 'locales', 'en.json');
+    if (await exists(join(repoRoot, file))) englishLocales.push(file);
+  }
+  for (const rel of englishLocales) {
+    const findings = findBannedTerms(extractJsonStrings(await readFile(join(repoRoot, rel), 'utf8')), BANNED_TERMS);
     if (findings.length === 0) continue;
-    const rel = relative(repoRoot, file);
     failures.push({
       rule: 'no banned § 2.1 term may appear in operator-facing copy',
       locations: [`${rel}  (${findings.length} finding(s))`],
@@ -777,13 +752,13 @@ async function main() {
       ),
     });
   }
-  if (sharedCopy.length < MIN_SHARED_COPY_FILES) {
+  if (englishLocales.length < MIN_ENGLISH_LOCALE_FILES) {
     failures.push({
-      rule: 'the scan must reach the shared defineCopy files',
-      locations: [`${SHARED_SCAN_ROOT}  (content search for defineCopy)`],
+      rule: 'the scan must reach the English translation files',
+      locations: [CORE_ENGLISH_LOCALE],
       issues: [
-        `only ${sharedCopy.length} defineCopy file(s) found outside the feature slices, below the ` +
-          `floor of ${MIN_SHARED_COPY_FILES} - the content search or the path broke`,
+        `only ${englishLocales.length} English translation file(s) found, below the ` +
+          `floor of ${MIN_ENGLISH_LOCALE_FILES} - the path broke`,
       ],
     });
   }
@@ -821,7 +796,7 @@ async function main() {
       `✓ check-ui-vocabulary: ${BANNED_TERMS.length} banned term(s) identical in the script and ` +
         `the fenced table in ${SPEC_FILE}; ${scannedFiles} file(s) scanned across ` +
         `${liveRoots.length - slicesWithoutCopy.length} of ${liveRoots.length} feature slice(s), ` +
-        `plus ${sharedCopy.length} shared defineCopy file(s).`,
+        `plus ${englishLocales.length} English translation file(s).`,
     );
     if (slicesWithoutCopy.length > 0) {
       console.log(`  slices with no operator copy to scan: ${slicesWithoutCopy.join(', ')}`);
@@ -1122,33 +1097,23 @@ function selfCheck() {
     MIN_SCANNED_SLICES > 8 && MIN_SCANNED_SLICES < 34,
     true,
   );
-  // Shared defineCopy files: a banned word in the English branch of a real-shaped
-  // file must be found, the same word in Polish must not, and the content test
-  // must recognise the call and ignore a comment that merely names it.
-  const sharedCopySource = [
-    'export const uiCopy = defineCopy({',
-    '  en: {',
-    "    retry: 'Retry this phase via the gateway authority',",
-    '  },',
-    '  pl: {',
-    "    retry: 'Ponów (phase, gateway, holder)',",
-    '  },',
-    '});',
+  // English translation files: a banned word in a string value must be found
+  // on its line; the same word as a key is an identifier and must not be.
+  const jsonSource = [
+    '{',
+    '  "ui": {',
+    '    "retry": "Retry this phase via the gateway authority",',
+    '    "phase": "Retry"',
+    '  }',
+    '}',
   ].join('\n');
-  const sharedHits = findBannedTerms(extractCopyStrings(englishBranchOnly(sharedCopySource)), BANNED_TERMS);
   expect(
-    'a banned word in a real-shaped defineCopy file fails the run',
-    sharedHits.map((h) => `${h.line}:${h.term}`).sort().join(','),
+    'a banned word in an English translation value fails the run',
+    findBannedTerms(extractJsonStrings(jsonSource), BANNED_TERMS).map((h) => `${h.line}:${h.term}`).sort().join(','),
     '3:Gateway,3:authority,3:phase',
   );
-  expect(
-    'the Polish branch is not read',
-    findBannedTerms(extractCopyStrings(englishBranchOnly(sharedCopySource.replace('Retry this phase via the gateway authority', 'Retry'))), BANNED_TERMS).length,
-    0,
-  );
-  expect('a defineCopy call is recognised by content', callsDefineCopy(sharedCopySource), true);
-  expect('a comment naming defineCopy is not a call', callsDefineCopy('// see defineCopy(en, pl)\nexport const a = 1;'), false);
-  expect('the shared floor is two files', MIN_SHARED_COPY_FILES, 2);
+  expect('an escaped quote is read as text', extractJsonStrings('{ "a": "say \\"hi\\"" }')[0]?.text, 'say "hi"');
+  expect('the English locale floor is one file', MIN_ENGLISH_LOCALE_FILES, 1);
   expect('the scan parent is the features directory', SCAN_ROOT_PARENT, join('apps', 'web', 'src', 'features'));
 
   if (failures.length > 0) {

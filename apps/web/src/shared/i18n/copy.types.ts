@@ -1,8 +1,8 @@
 /**
  * Copy Types
  *
- * Shapes for the typed per-feature copy files (ADR-079). English is the
- * source shape; Polish mirrors it key for key, with plural entries carrying
+ * Shapes of the translation namespaces (ADR-079). English is the source
+ * shape; Polish mirrors it key for key, with plural entries carrying
  * the Polish one/few/many/other forms. `PolishCopy` is deep-partial until the
  * lock-in step (#3891) so features can be extracted in English first.
  *
@@ -73,8 +73,3 @@ export type ResolvedCopy<T> = T extends string
   : IsPlural<T> extends true
     ? PluralForms
     : { readonly [K in keyof T]: ResolvedCopy<T[K]> };
-
-export interface LocaleCopy<T extends CopyTree> {
-  readonly en: T;
-  readonly pl: PolishCopy<T>;
-}
