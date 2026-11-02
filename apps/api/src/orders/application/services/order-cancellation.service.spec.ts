@@ -966,6 +966,26 @@ describe('OrderCancellationService (#3540)', () => {
       expect(invoices.issueCorrection).not.toHaveBeenCalled();
     });
 
+    it('should confirm a retried discount correction with its own issued credit, not supersede it', async () => {
+      changes.findById.mockResolvedValue(correctionChange());
+      invoices.getInvoiceById.mockResolvedValue(invoice());
+      invoices.listInvoicesForOrders.mockResolvedValue([
+        invoice(),
+        invoice({
+          id: 'inv-own',
+          idempotencyKey: 'discount-correction:change-3',
+          createdAt: new Date('2026-09-05T00:00:00.000Z'),
+        }),
+      ]);
+      orderRecords.getOrderRecord.mockResolvedValue(order({ cancelledAt: new Date() }));
+
+      const result = await service.confirmChange(confirmInput);
+
+      expect(invoices.issueCorrection).not.toHaveBeenCalled();
+      expect(changes.decline).not.toHaveBeenCalled();
+      expect(result).toMatchObject({ status: 'confirmed', invoiceRecordId: 'inv-own' });
+    });
+
     it('should issue the discount correction with price deltas under its own key prefix', async () => {
       changes.findById.mockResolvedValue(correctionChange());
       invoices.getInvoiceById.mockResolvedValue(invoice());
