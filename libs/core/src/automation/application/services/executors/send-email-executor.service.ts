@@ -4,14 +4,12 @@
  * *"Send an email"*. Delegates to the shipped `MailerPort` and adds nothing but
  * the merge-field rendering §5.3b specifies.
  *
- * **`MAILER_TOKEN` is bound only in `apps/api` today**, and automation fires
- * from the WORKER (the T4 deadline sweep, and T5 from its write site). So in the
- * worker this step reports a `failed` result naming the missing binding rather
- * than crashing the job or skipping quietly — an operator must be able to tell
- * "this deployment cannot send email" from "the email bounced". Binding a mailer
- * worker-side means relocating `DbBackedMailerAdapter` out of `apps/api/src/auth/`
- * to a host-shared home, which is an app-composition change rather than a line
- * in this slice.
+ * **`MAILER_TOKEN` is bound in both hosts since #3552** (`MailerTransportModule`),
+ * so a worker-side firing (the T4 deadline sweep) sends like an api-side one. A
+ * process that still resolves no mailer is a misconfigured host: the step then
+ * reports a `failed` result rather than crashing the job or skipping quietly, so
+ * an operator can tell "this deployment cannot send email" from "the email
+ * bounced".
  *
  * **An absent buyer address is `failed`, never `nothing-to-do`.** Under
  * `OL_STORE_PII=false` the snapshot carries no `customerEmail`, so a rule

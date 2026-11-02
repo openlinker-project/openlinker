@@ -9,9 +9,10 @@
  * emails included (#3550), so the log never carries a mailbox: the recipient is
  * reduced to its domain and any address inside the subject or body is scrubbed.
  *
- * @module apps/api/src/auth/adapters
+ * @module libs/core/src/mailer/infrastructure/adapters
  */
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
+import { Logger } from '@openlinker/shared/logging';
 import { scrubEmailAddresses } from '@openlinker/core/sales-documents';
 import type { EmailMessage, MailerPort } from '@openlinker/core/users';
 import { redactRecipient } from './mail-log-redaction';

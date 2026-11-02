@@ -8,7 +8,7 @@
  * tell a delivery problem at one provider apart from a general one - and drops
  * the mailbox.
  *
- * @module apps/api/src/auth/adapters
+ * @module libs/core/src/mailer/infrastructure/adapters
  */
 
 export function redactRecipient(address: string): string {

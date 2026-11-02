@@ -12,14 +12,13 @@
  * SMTP round-trip. Read-through buys instant cross-process visibility of an
  * admin settings change with no TTL window and no invalidator port.
  *
- * @module apps/api/src/auth/adapters
+ * @module libs/core/src/mailer/infrastructure/adapters
  */
-import { Inject, Injectable, Logger } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
+import { Logger } from '@openlinker/shared/logging';
 import { createTransport } from 'nodemailer';
-import {
-  MAILER_SETTINGS_SERVICE_TOKEN,
-  type IMailerSettingsService,
-} from '@openlinker/core/mailer';
+import { IMailerSettingsService } from '../../application/services/mailer-settings.service.interface';
+import { MAILER_SETTINGS_SERVICE_TOKEN } from '../../mailer.tokens';
 import type { EmailMessage, MailerPort } from '@openlinker/core/users';
 import { ConsoleMailerAdapter } from './console-mailer.adapter';
 import { SmtpMailerAdapter, type SmtpTransport } from './smtp-mailer.adapter';
