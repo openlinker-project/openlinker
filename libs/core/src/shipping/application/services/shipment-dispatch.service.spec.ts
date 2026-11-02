@@ -245,8 +245,11 @@ describe('ShipmentDispatchService', () => {
       getCurrencyMismatchOrders: jest.fn(),
       getCurrencyMismatchOrdersByConnection: jest.fn(),
       getProductMatchingErrorOrders: jest.fn(),
+      notifyOrderReceived: jest.fn(),
+      notifyDocumentIssued: jest.fn(),
+      notifyShippedIfPending: jest.fn(),
     };
-    const fulfillmentProjection = { recompute: jest.fn() };
+    const fulfillmentProjection = { recompute: jest.fn(), announceShippedWithoutTracking: jest.fn() };
     // Unheld by default (#2339): as with the lock below, every pre-existing test
     // asserts the dispatch path itself, so the hold gate must not change their
     // behaviour.

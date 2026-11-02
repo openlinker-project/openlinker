@@ -1,6 +1,20 @@
 import '@testing-library/jest-dom/vitest';
 import { cleanup } from '@testing-library/react';
-import { afterEach } from 'vitest';
+import { afterEach, beforeEach } from 'vitest';
+import { setActiveLocale } from '../shared/i18n/active-locale';
+import { loadMessages } from '../shared/i18n/messages';
+import { LOCALE_STORAGE_KEY } from '../shared/i18n/resolve-locale';
+
+// Tests locate elements by English text (#3859, ADR-081). Start every test in
+// English with no stored choice, whatever the deployment default becomes.
+beforeEach(() => {
+  setActiveLocale('en');
+  try {
+    window.localStorage.removeItem(LOCALE_STORAGE_KEY);
+  } catch {
+    // Storage unavailable: nothing was stored either.
+  }
+});
 
 // Auto-unmount rendered components after every test. Without this, components
 // leak across tests within a file and their `useEffect` cleanups never run —
@@ -12,7 +26,16 @@ import { afterEach } from 'vitest';
 // don't use globals, so we register it explicitly here.
 afterEach(() => {
   cleanup();
+  // A LocaleProvider writes the module-level active locale and <html lang>;
+  // reset both so one test's language never leaks into the next.
+  setActiveLocale('en');
+  document.documentElement.lang = '';
 });
+
+// main.tsx loads the opening language before the first paint; tests mount
+// providers directly, so every language is loaded once up front and a switch
+// in a test applies in the same render, as it does after the app has started.
+await loadMessages('pl');
 
 // happy-dom (and jsdom) do not fully implement HTMLDialogElement.showModal / .close
 // with proper focus management. These stubs mirror the browser behaviours that our

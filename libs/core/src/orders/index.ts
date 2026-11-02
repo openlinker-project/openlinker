@@ -55,6 +55,25 @@ export {
   OrderWritebackScopeValues,
 } from './domain/types/order-lifecycle-event.types';
 
+// Billing-document uploader (#3549): attaches an issued sales document to the
+// marketplace order it came from. Advertised-without-dispatch, like its sibling
+// above - narrow the dispatched OrderSource adapter with the guard.
+export type { OrderBillingDocumentUploader } from './domain/ports/capabilities/order-billing-document-uploader.capability';
+export { isOrderBillingDocumentUploader } from './domain/ports/capabilities/order-billing-document-uploader.capability';
+// Its link sibling: a marketplace that shows the buyer a link to the document.
+export type { OrderBillingDocumentLinker } from './domain/ports/capabilities/order-billing-document-linker.capability';
+export { isOrderBillingDocumentLinker } from './domain/ports/capabilities/order-billing-document-linker.capability';
+export type {
+  AttachBillingDocumentLinkInput,
+  BillingDocumentUploadOutcome,
+  UploadBillingDocumentInput,
+  UploadBillingDocumentResult,
+} from './domain/types/order-billing-document.types';
+export {
+  BillingDocumentUploadOutcomeValues,
+  isShareableBillingDocumentUrl,
+} from './domain/types/order-billing-document.types';
+
 // Return source reader (#2329 / ADR-060): the returns half of OrderSource.
 // Advertised-without-dispatch — narrow the dispatched OrderSource adapter with
 // the guard; never getCapabilityAdapter('ReturnSourceReader').
@@ -150,6 +169,15 @@ export {
   isPaymentMethod,
 } from './domain/types/payment-method.types';
 export type { PaymentMethod } from './domain/types/payment-method.types';
+export {
+  decideBuyerEmail,
+  BUYER_EMAIL_SUPPRESSION_MESSAGE,
+} from './domain/domain-services/buyer-email-gate.domain-service';
+export type {
+  BuyerEmailChannelKind,
+  BuyerEmailGateInput,
+  BuyerEmailGateDecision,
+} from './domain/domain-services/buyer-email-gate.domain-service';
 export {
   PaymentFactsViolationValues,
   checkPaymentFactsConsistency,
@@ -353,6 +381,19 @@ export { IOrderRecordService } from './application/interfaces/order-record.servi
 export { OrderRecordService } from './application/services/order-record.service';
 export { ISalesDocumentViewService } from './application/interfaces/sales-document-view.service.interface';
 export { SalesDocumentViewService } from './application/services/sales-document-view.service';
+// #3550 - manual "send this sales document to the buyer".
+export type {
+  IOrderDocumentEmailService,
+  OrderDocumentEmailResult,
+  SendInvoiceEmailInput,
+  SendReceiptEmailInput,
+} from './application/interfaces/order-document-email.service.interface';
+export {
+  ORDER_DOCUMENT_EMAIL_REFUSAL_MESSAGE,
+  OrderDocumentEmailRefusalValues,
+  type OrderDocumentEmailLocale,
+  type OrderDocumentEmailRefusal,
+} from './domain/types/order-document-email.types';
 export type {
   SalesDocumentListAmount,
   SalesDocumentListCursor,
@@ -392,6 +433,22 @@ export type {
 } from './application/interfaces/order-routing-retry.service.interface';
 export { OrderRoutingRetryRefusalValues } from './application/interfaces/order-routing-retry.service.interface';
 export { ProvisioningResumeSkipReasonValues } from './application/interfaces/order-provisioning-resume.service.interface';
+// Issued document -> marketplace order upload (#3549).
+export type {
+  IInvoiceMarketplaceUploadService,
+  InvoiceMarketplaceUploadResult,
+} from './application/interfaces/invoice-marketplace-upload.service.interface';
+export type {
+  InvoiceMarketplaceUpload,
+  InvoiceMarketplaceUploadFailureCode,
+  InvoiceMarketplaceUploadStatus,
+  RecordInvoiceMarketplaceUploadOutcome,
+} from './domain/types/invoice-marketplace-upload.types';
+export {
+  InvoiceMarketplaceUploadFailureCodeValues,
+  InvoiceMarketplaceUploadStatusValues,
+  UPLOAD_CLAIM_LEASE_MS,
+} from './domain/types/invoice-marketplace-upload.types';
 export type {
   IOrderLifecycleRelayService,
   OrderLifecycleRelayInput,
@@ -698,3 +755,18 @@ export type { IOrderHoldProjectionReconcileService } from './application/interfa
 export type { HoldProjectionReconcileResult } from './domain/types/order-hold-projection.types';
 export { OrderHoldsModule } from './order-holds.module';
 export * from './domain/types/order-discount-split.types';
+
+// Automatic buyer emails, opt-in per connection (#3554).
+export { BuyerEmailDelivery } from './domain/entities/buyer-email-delivery.entity';
+export {
+  BuyerEmailOutcomeValues,
+  BuyerEmailSuppressionReasonValues,
+  isBuyerEmailOutcome,
+  type BuyerEmailOutcome,
+  type BuyerEmailSuppressionReason,
+} from './domain/types/buyer-email-delivery.types';
+export type {
+  IBuyerEmailNotificationService,
+  SendBuyerEmailInput,
+  SendBuyerEmailResult,
+} from './application/interfaces/buyer-email-notification.service.interface';

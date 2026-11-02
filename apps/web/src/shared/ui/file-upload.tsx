@@ -7,6 +7,9 @@ import {
   type DragEvent,
   type ReactElement,
 } from 'react';
+import { useMessages } from '../i18n/use-messages';
+import { interpolate } from '../i18n/interpolate';
+import { useFormat } from '../i18n/use-format';
 
 export interface FileUploadProps {
   /**
@@ -72,6 +75,12 @@ export const FileUpload = forwardRef<HTMLInputElement, FileUploadProps>(function
 ): ReactElement {
   const inputId = useId();
   const inputRef = useRef<HTMLInputElement | null>(null);
+  const copy = useMessages('ui').fileUpload;
+  const { number } = useFormat();
+  const formatBytes = useCallback(
+    (bytes: number): string => formatByteSize(bytes, number),
+    [number],
+  );
   const [isDragOver, setIsDragOver] = useState(false);
 
   const setRefs = useCallback(
@@ -90,19 +99,19 @@ export const FileUpload = forwardRef<HTMLInputElement, FileUploadProps>(function
     async (file: File): Promise<void> => {
       if (file.size > maxBytes) {
         onError?.(
-          `File is too large (${formatBytes(file.size)}). Maximum allowed: ${formatBytes(maxBytes)}.`,
+          interpolate(copy.tooLarge, { size: formatBytes(file.size), max: formatBytes(maxBytes) }),
         );
         return;
       }
       // The `accept` attribute on the input handles MIME-type filtering at
       // pick time, but drag-and-drop bypasses that — re-check here.
       if (accept && !mimeMatchesAccept(file.type, accept)) {
-        onError?.(`File type "${file.type}" is not accepted. Allowed: ${accept}.`);
+        onError?.(interpolate(copy.wrongType, { type: file.type, accept }));
         return;
       }
       await onFileSelected(file);
     },
-    [accept, maxBytes, onError, onFileSelected],
+    [accept, maxBytes, onError, onFileSelected, copy, formatBytes],
   );
 
   const onChange = useCallback(
@@ -177,10 +186,10 @@ export const FileUpload = forwardRef<HTMLInputElement, FileUploadProps>(function
           aria-busy / aria-disabled, and announcing on every drag-over
           would spam screen-reader users. */}
       <span className="file-upload__label">
-        {resolveLabel({ busy, isDragOver, label })}
+        {resolveLabel({ busy, isDragOver, label, copy })}
       </span>
       <span className="file-upload__hint">
-        {hint ?? `Accepted: ${accept}. Max ${formatBytes(maxBytes)}.`}
+        {hint ?? interpolate(copy.hint, { accept, max: formatBytes(maxBytes) })}
       </span>
     </label>
   );
@@ -190,21 +199,27 @@ function resolveLabel({
   busy,
   isDragOver,
   label,
+  copy,
 }: {
   busy: boolean;
   isDragOver: boolean;
   label: string | undefined;
+  copy: { readonly uploading: string; readonly release: string; readonly drop: string };
 }): string {
-  if (busy) return 'Uploading…';
-  if (isDragOver) return 'Release to upload';
+  if (busy) return copy.uploading;
+  if (isDragOver) return copy.release;
   if (label) return label;
-  return 'Drop a file here, or click to choose';
+  return copy.drop;
 }
 
-function formatBytes(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+function formatByteSize(
+  bytes: number,
+  number: (value: number, options?: Intl.NumberFormatOptions) => string,
+): string {
+  const oneDecimal = { minimumFractionDigits: 1, maximumFractionDigits: 1 };
+  if (bytes < 1024) return `${number(bytes)} B`;
+  if (bytes < 1024 * 1024) return `${number(bytes / 1024, oneDecimal)} KB`;
+  return `${number(bytes / (1024 * 1024), oneDecimal)} MB`;
 }
 
 /**

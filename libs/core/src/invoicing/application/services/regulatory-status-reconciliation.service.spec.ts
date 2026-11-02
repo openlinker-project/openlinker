@@ -136,7 +136,14 @@ describe('RegulatoryStatusReconciliationService', () => {
 
       expect(repo.findIssuedNonTerminal).not.toHaveBeenCalled();
       expect(repo.updateOutcome).not.toHaveBeenCalled();
-      expect(result).toEqual({ scanned: 0, updated: 0, skippedTerminal: 0, readErrors: 0, total: 0 });
+      expect(result).toEqual({
+        scanned: 0,
+        updated: 0,
+        skippedTerminal: 0,
+        readErrors: 0,
+        total: 0,
+        clearedInvoiceIds: [],
+      });
     });
   });
 
@@ -155,6 +162,8 @@ describe('RegulatoryStatusReconciliationService', () => {
         clearanceReference: 'KSEF-123',
       });
       expect(result.updated).toBe(1);
+      // #3549: reported so the worker can attach the now-ready document.
+      expect(result.clearedInvoiceIds).toEqual([record.id]);
     });
 
     it('writes a non-terminal record terminal when the authoritative read returns rejected (8a)', async () => {
@@ -164,9 +173,11 @@ describe('RegulatoryStatusReconciliationService', () => {
       );
       repo.findIssuedNonTerminal.mockResolvedValue({ items: [record], total: 1 });
 
-      await service.reconcile(CONNECTION_ID, { limit: 50 });
+      const result = await service.reconcile(CONNECTION_ID, { limit: 50 });
 
       expect(repo.updateOutcome).toHaveBeenCalledWith(record.id, { regulatoryStatus: 'rejected' });
+      // A rejected document never has an attachment, so it is not reported.
+      expect(result.clearedInvoiceIds).toEqual([]);
     });
 
     it('persists the clearanceDetail from a rejected read (#1582)', async () => {

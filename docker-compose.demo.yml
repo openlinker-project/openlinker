@@ -154,6 +154,9 @@ services:
         # 'true' (plus VITE_OG_SITE_URL) lets search engines index this
         # instance (#3709); unset keeps the default `noindex`.
         VITE_OL_SEO_INDEXABLE: '${VITE_OL_SEO_INDEXABLE:-}'
+        # Language a session opens in when the operator has not picked one
+        # (#3856): pl or en. Same build-time caveat: needs `--build`.
+        VITE_DEFAULT_UI_LOCALE: '${VITE_DEFAULT_UI_LOCALE:-en}'
     container_name: ${COMPOSE_PROJECT_NAME:-openlinker}-web
     ports:
       # 8080 = PrestaShop, 8081 = phpMyAdmin, 8082 = WooCommerce

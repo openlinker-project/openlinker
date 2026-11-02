@@ -32,6 +32,12 @@ import {
   FULFILMENT_OWNED_BY_DESTINATION_CONFIG_KEY,
   isPresentButInvalidFulfilmentOwnedByDestination,
   ConnectionInUseException,
+  BUYER_EMAILS_CONFIG_KEY,
+  buyerEmailChannelKindOf,
+  MarketplaceBuyerEmailTemplateValues,
+  isBuyerEmailTemplate,
+  isSingleEmailAddress,
+  readBuyerEmailsConfig,
 } from '@openlinker/core/identifier-mapping';
 import type {
   AdapterMetadata,
@@ -187,6 +193,67 @@ export class ConnectionService implements IConnectionService {
           "Create one first — the connection's routing readiness panel offers a default, " +
           'or POST /inventory/locations.',
       });
+    }
+  }
+
+  /**
+   * #3554 - validate `config.buyerEmails`. Shape and sender addresses are checked
+   * on every write; the channel rule (a marketplace may not enable
+   * `order-confirmed`) only on the TRANSITION against the persisted config, so
+   * an unrelated patch is not refused for a state this guard once let through.
+   * The channel comes from `buyerEmailChannelKindOf`, the same rule the send
+   * gate applies, so the two cannot disagree about a connection.
+   */
+  private validateBuyerEmailsConfig(
+    config: Record<string, unknown>,
+    capabilities: readonly string[],
+    persistedConfig: Record<string, unknown> | undefined
+  ): void {
+    const raw = config[BUYER_EMAILS_CONFIG_KEY];
+    if (raw === undefined || raw === null) {
+      return;
+    }
+    const fail = (message: string): never => {
+      throw new BadRequestException(`config.${BUYER_EMAILS_CONFIG_KEY}: ${message}`);
+    };
+    if (typeof raw !== 'object' || Array.isArray(raw)) {
+      return fail('must be an object');
+    }
+    const body = raw as Record<string, unknown>;
+    if (typeof body.enabled !== 'boolean') {
+      return fail('enabled must be true or false');
+    }
+    const templates = body.templates ?? {};
+    if (typeof templates !== 'object' || templates === null || Array.isArray(templates)) {
+      return fail('templates must be an object');
+    }
+    const previous = readBuyerEmailsConfig(persistedConfig);
+    const isMarketplace = buyerEmailChannelKindOf(capabilities) === 'marketplace';
+    for (const [key, value] of Object.entries(templates)) {
+      if (!isBuyerEmailTemplate(key)) {
+        return fail(`unknown template "${key}"`);
+      }
+      if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+        return fail(`template "${key}" must be an object`);
+      }
+      const template = value as Record<string, unknown>;
+      for (const field of ['fromAddress', 'replyTo'] as const) {
+        const address = template[field];
+        if (address !== undefined && address !== null && !isSingleEmailAddress(address)) {
+          return fail(`${field} of "${key}" must be a single email address`);
+        }
+      }
+      const newlyEnabled = template.enabled === true && previous.templates[key]?.enabled !== true;
+      if (
+        newlyEnabled &&
+        isMarketplace &&
+        !(MarketplaceBuyerEmailTemplateValues as readonly string[]).includes(key)
+      ) {
+        return fail(
+          `"${key}" is sent by a shop; a marketplace connection can enable only ` +
+            `${MarketplaceBuyerEmailTemplateValues.join(', ')}. Enable it on the shop connection instead.`
+        );
+      }
     }
   }
 
@@ -928,6 +995,7 @@ export class ConnectionService implements IConnectionService {
         this.validateStockAndPricingConfig(rest.config);
         this.validateFulfilmentOwnedByDestinationConfig(rest.config);
         this.validateAutoDispatchConfig(rest.config);
+        this.validateBuyerEmailsConfig(rest.config, enabledCapabilities, undefined);
         await this.validateStockLocationOverride(rest.config, undefined);
         await this.validateConfigShape(metadata.adapterKey, rest.config);
         // #2407 — above the credential-persistence block below, which requires
@@ -1224,6 +1292,11 @@ export class ConnectionService implements IConnectionService {
         this.validateStockAndPricingConfig(patch.config);
         this.validateFulfilmentOwnedByDestinationConfig(patch.config);
         this.validateAutoDispatchConfig(patch.config);
+        this.validateBuyerEmailsConfig(
+          patch.config,
+          patch.enabledCapabilities ?? existing.enabledCapabilities,
+          existing.config
+        );
         await this.validateStockLocationOverride(patch.config, existing.config);
         await this.validateConfigShape(metadata.adapterKey, patch.config, existing.config);
         // #2407 — inside this branch, which is correct ONLY because

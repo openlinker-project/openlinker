@@ -204,11 +204,44 @@ export interface IOrderRecordService {
    * cross-context surface the shipping context calls after a shipment-status
    * change (`shipping → orders`, via this service — never the repository port).
    * Best-effort/idempotent; a missing order row is a no-op.
+   *
+   * A shipped state fires `order.shipped` (#3554), once per order, claimed on
+   * `shippedNotifiedAt`. The announcement WAITS for the carrier's tracking
+   * number: pass `trackingKnown: false` while no live outbound shipment has one
+   * yet (a carrier such as InPost mints it minutes after dispatch), and the
+   * trigger is left for {@link notifyShippedIfPending}. `delivered` announces
+   * regardless, since the parcel has arrived. Omitting `options` announces
+   * immediately, which is the pre-wait behaviour.
    */
   updateFulfillmentState(
     internalOrderId: string,
-    fulfillmentState: FulfillmentRollupState
+    fulfillmentState: FulfillmentRollupState,
+    options?: { trackingKnown?: boolean }
   ): Promise<void>;
+
+  /**
+   * Fire `order.shipped` if the order is shipped and has not announced it yet
+   * (#3554). For the shipping context to call once the wait is over: the
+   * tracking number arrived, or it never did and the grace period ran out.
+   * Best-effort: never throws, and a second call is a no-op.
+   */
+  notifyShippedIfPending(internalOrderId: string): Promise<void>;
+
+  /**
+   * Fire the `order.received` automation trigger (#3554, D8) for an order
+   * persisted for the first time. Best-effort: never throws. The fact's instant
+   * is the order's own `placedAt` (falling back to `createdAt`), so the rule
+   * retroactivity floor keeps an imported back catalogue from firing;
+   * `receivedAt` is only the evaluation clock.
+   */
+  notifyOrderReceived(record: OrderRecord, receivedAt: Date): Promise<void>;
+
+  /**
+   * Fire the `order.document_issued` automation trigger (#3554) once the
+   * order's originating invoice or fiscal receipt is issued. Best-effort:
+   * never throws; a missing order is a no-op.
+   */
+  notifyDocumentIssued(internalOrderId: string, issuedAt: Date): Promise<void>;
 
   /**
    * Record why item resolution failed at ingestion (#1689), honestly

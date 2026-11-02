@@ -30,7 +30,11 @@ import {
   OrderAlreadyRegisteredException,
 } from '@openlinker/core/fiscalization';
 import type { IFiscalRegistrationService } from '@openlinker/core/fiscalization';
-import { ORDER_RECORD_SERVICE_TOKEN, OrderRecord } from '@openlinker/core/orders';
+import {
+  ORDER_DOCUMENT_EMAIL_SERVICE_TOKEN,
+  ORDER_RECORD_SERVICE_TOKEN,
+  OrderRecord,
+} from '@openlinker/core/orders';
 import type { IOrderRecordService } from '@openlinker/core/orders';
 import 'reflect-metadata';
 
@@ -114,6 +118,7 @@ describe('FiscalizationController', () => {
   let controller: FiscalizationController;
   let service: jest.Mocked<IFiscalRegistrationService>;
   let orders: jest.Mocked<Pick<IOrderRecordService, 'getOrderRecord' | 'markSalesDocumentBlock'>>;
+  let documentEmails: { sendReceiptEmail: jest.Mock };
 
   beforeEach(async () => {
     service = {
@@ -140,11 +145,14 @@ describe('FiscalizationController', () => {
       markSalesDocumentBlock: jest.fn().mockResolvedValue(undefined),
     };
 
+    documentEmails = { sendReceiptEmail: jest.fn() };
+
     const moduleRef = await Test.createTestingModule({
       controllers: [FiscalizationController],
       providers: [
         { provide: FISCAL_REGISTRATION_SERVICE_TOKEN, useValue: service },
         { provide: ORDER_RECORD_SERVICE_TOKEN, useValue: orders },
+        { provide: ORDER_DOCUMENT_EMAIL_SERVICE_TOKEN, useValue: documentEmails },
       ],
     }).compile();
 
@@ -589,6 +597,58 @@ describe('FiscalizationController', () => {
       await expect(
         controller.reconcile('11111111-1111-1111-1111-111111111111'),
       ).rejects.toBeInstanceOf(NotFoundException);
+    });
+  });
+
+  describe('POST /fiscal-registrations/:id/send-email (#3550)', () => {
+    const REGISTRATION_ID = '11111111-1111-4111-8111-111111111111';
+    const actor = { id: 'user_1', username: 'admin', role: 'admin' } as never;
+
+    it('should be admin-only', () => {
+      expect(
+        Reflect.getMetadata(ROLES_KEY, FiscalizationController.prototype.sendReceiptEmail),
+      ).toEqual(['admin']);
+    });
+
+    it('should delegate with the operator and report who sent it', async () => {
+      documentEmails.sendReceiptEmail.mockResolvedValue({
+        status: 'sent',
+        sentVia: 'openlinker',
+        recipient: 'buyer@example.com',
+      });
+
+      const result = await controller.sendReceiptEmail(
+        REGISTRATION_ID,
+        { recipient: 'buyer@example.com', locale: 'pl' },
+        actor,
+      );
+
+      expect(documentEmails.sendReceiptEmail).toHaveBeenCalledWith({
+        registrationId: REGISTRATION_ID,
+        recipient: 'buyer@example.com',
+        locale: 'pl',
+        actorUserId: 'user_1',
+      });
+      expect(result).toEqual({
+        delivered: true,
+        recipient: 'buyer@example.com',
+        sentVia: 'openlinker',
+      });
+    });
+
+    it('should answer a refusal with its status, message and code', async () => {
+      documentEmails.sendReceiptEmail.mockResolvedValue({
+        status: 'refused',
+        reason: 'document-not-ready',
+        message: 'Not ready.',
+      });
+
+      const rejection = controller.sendReceiptEmail(REGISTRATION_ID, {}, actor);
+
+      await expect(rejection).rejects.toBeInstanceOf(ConflictException);
+      await expect(rejection).rejects.toMatchObject({
+        response: { message: 'Not ready.', code: 'document-not-ready' },
+      });
     });
   });
 

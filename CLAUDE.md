@@ -20,6 +20,7 @@ Before writing or modifying code, read the relevant doc(s):
 | Database migration workflow | `docs/migrations.md` |
 | Frontend technical architecture and state rules | `docs/frontend-architecture.md` |
 | Frontend visual and interaction style | `docs/frontend-ui-style-guide.md` |
+| UI translation, copy files, Polish glossary | `docs/frontend-architecture.md` § Internationalization, `docs/i18n-glossary.md` |
 | Implementation plan process | `docs/implementation-plan-generator-guide.md` |
 | Recurring gotchas / regression ledger | `docs/lessons.md` |
 | Analytics metric definitions and formulas | `docs/specs/metrics-analytics-dashboard.md` |
@@ -111,6 +112,18 @@ See `docs/engineering-standards.md` for the full list. Key patterns:
 - No force-push to `main`
 - No skipping hooks with `--no-verify`
 - No `// eslint-disable` without a specific reason in the same comment
+
+### User-facing copy (frontend)
+
+The helpers below live in `apps/web/src/shared/i18n/` from #3856 on.
+
+- Never write user-visible text inline in TSX, a toast, a validation message or a constant. Add it to the feature's namespace in **both** `apps/web/src/locales/en.json` and `pl.json` in the same edit (a plugin: its own `plugins/<id>/locales/`), keys sorted (`pnpm i18n:sort`), and read it with `useMessages('<namespace>')`.
+- Write the Polish yourself, using `docs/i18n-glossary.md`. Never copy English into `pl` as a placeholder.
+- A key in a tight spot (button, nav item, chip, table header) gets a character budget in `locales/limits.json` that `check-locales` enforces in both languages.
+- Counts use `usePlural` (`one/few/many/other` for Polish); numbers, money and dates use `useFormat`.
+- Interpolate `{name}`; use `renderRich` for a link or bold word inside a sentence; one sentence per key.
+- Plain hyphen, never an em dash. Copy speaks to operators, never names classes, env vars or capabilities.
+- Delete a key the moment nothing reads it.
 
 ### Security baselines
 

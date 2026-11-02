@@ -59,6 +59,7 @@ import {
   BadRequestException,
   ConflictException,
   NotFoundException,
+  ServiceUnavailableException,
   NotImplementedException,
   Res,
   UnprocessableEntityException,
@@ -77,7 +78,9 @@ import {
 } from '@openlinker/core/integrations';
 import {
   INVOICE_SERVICE_TOKEN,
+  INVOICE_ATTACHMENT_SERVICE_TOKEN,
   IInvoiceService,
+  type IInvoiceAttachmentService,
   toIssueInvoiceCommand,
   InvalidBuyerProfileError,
   InvalidInvoiceLineError,
@@ -91,13 +94,13 @@ import {
   MissingNumberingSeriesException,
   RegulatoryDocumentKindValues,
   UnsupportedRegulatoryDocumentKindError,
+  RegulatoryDocumentNotReadyError,
   isRegulatoryDocumentReader,
   isRegulatoryVerificationLinkReader,
   isRegulatoryResubmitter,
   BuyerProfile,
   isBankAccountsReader,
   isBankAccountDefaultSetter,
-  isInvoiceEmailSender,
   isPaymentMarker,
   PAYMENT_STATUS_REFRESH_SERVICE_TOKEN,
   IPaymentStatusRefreshService,
@@ -121,7 +124,11 @@ import type {
 import {
   decodeBuyerTaxIdColumn,
   ORDER_RECORD_SERVICE_TOKEN,
+  ORDER_DOCUMENT_EMAIL_SERVICE_TOKEN,
   ORDER_REFUND_SERVICE_TOKEN,
+  INVOICE_MARKETPLACE_UPLOAD_SERVICE_TOKEN,
+  type IInvoiceMarketplaceUploadService,
+  IOrderDocumentEmailService,
   IOrderRecordService,
   IOrderRefundService,
   toLiveOrderIssuanceFacts,
@@ -130,7 +137,12 @@ import {
   buildOrderSummary,
 } from '@openlinker/core/orders';
 import type { Order, OrderRecord, OrderSummary } from '@openlinker/core/orders';
-import { decideLiveOrderIssuance, type LiveOrderIssuanceDecision } from '@openlinker/core/sales-documents';
+import {
+  decideLiveOrderIssuance,
+  DOCUMENT_EMAIL_DELIVERY_SERVICE_TOKEN,
+  type IDocumentEmailDeliveryService,
+  type LiveOrderIssuanceDecision,
+} from '@openlinker/core/sales-documents';
 import {
   CONNECTION_PORT_TOKEN,
   ConnectionPort,
@@ -141,6 +153,8 @@ import { IssueCorrectionRequestDto } from './dto/issue-correction-request.dto';
 import { GetInvoiceForOrderQueryDto } from './dto/get-invoice-for-order-query.dto';
 import { ListInvoicesQueryDto } from './dto/list-invoices-query.dto';
 import { InvoiceRecordResponseDto } from './dto/invoice-record-response.dto';
+import { InvoiceAttachmentResponseDto } from './dto/invoice-attachment-response.dto';
+import { InvoiceMarketplaceUploadResponseDto } from './dto/invoice-marketplace-upload-response.dto';
 import { OrderSummaryProjectionDto } from '../../orders/http/dto/order-summary-projection.dto';
 import { IssuedDocumentContentDto } from './dto/issued-document-content.dto';
 import { PaginatedInvoicesResponseDto } from './dto/paginated-invoices-response.dto';
@@ -154,6 +168,8 @@ import { BankAccountResponseDto } from './dto/bank-account-response.dto';
 import { SendInvoiceEmailRequestDto } from './dto/send-invoice-email-request.dto';
 import { SendInvoiceEmailResponseDto } from './dto/send-invoice-email-response.dto';
 import { MarkInvoicePaidRequestDto } from './dto/mark-invoice-paid-request.dto';
+import { toDocumentEmailException } from '../../common/http/document-email-refusal';
+import { DocumentEmailDeliveryResponseDto } from './dto/document-email-delivery-response.dto';
 import { Roles } from '../../auth/decorators/roles.decorator';
 
 /** MIME → download-filename extension; the UPO is labelled by its real content type. */
@@ -215,6 +231,14 @@ export class InvoicingController {
     private readonly connectionPort: ConnectionPort,
     @Inject(ORDER_REFUND_SERVICE_TOKEN)
     private readonly refunds: IOrderRefundService,
+    @Inject(INVOICE_ATTACHMENT_SERVICE_TOKEN)
+    private readonly attachments: IInvoiceAttachmentService,
+    @Inject(INVOICE_MARKETPLACE_UPLOAD_SERVICE_TOKEN)
+    private readonly marketplaceUploads: IInvoiceMarketplaceUploadService,
+    @Inject(ORDER_DOCUMENT_EMAIL_SERVICE_TOKEN)
+    private readonly documentEmails: IOrderDocumentEmailService,
+    @Inject(DOCUMENT_EMAIL_DELIVERY_SERVICE_TOKEN)
+    private readonly documentEmailDeliveries: IDocumentEmailDeliveryService,
   ) {}
 
   @Roles('admin', 'operator', 'viewer')
@@ -507,6 +531,10 @@ export class InvoicingController {
       throw this.toHttpException(error);
     }
     await this.clearSalesDocumentBlock(dto.orderId);
+    if (issued.status === 'issued') {
+      // #3549: best-effort and never throws - the document is already committed.
+      await this.marketplaceUploads.enqueueUpload(issued.id);
+    }
     return this.toDto(issued);
   }
 
@@ -1148,49 +1176,57 @@ export class InvoicingController {
   @Post('invoices/:invoiceId/send-email')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
-    summary: 'Email an issued invoice to the buyer (#1353)',
+    summary: 'Email an issued invoice to the buyer (#1353, #3550)',
     description:
-      'Triggers the connection\'s Invoicing provider to render + email the issued document to ' +
-      'the buyer (e.g. inFakt\'s deliver_via_email). OpenLinker only triggers the send — the ' +
-      'provider composes and delivers the message to the buyer\'s stored email (no recipient ' +
-      'override). Optional neutral locale (pl/en) and send-copy flag. 501 when the resolved ' +
-      'adapter does not implement InvoiceEmailSender.',
+      "Works for every provider. A connection with its own email capability (inFakt) sends it " +
+      "itself while the address is unchanged; otherwise OpenLinker's mailer sends it with the " +
+      'document attached (or linked). `sentVia` says which. The recipient defaults to the ' +
+      "buyer's address on the order and can be edited; an edited address is always sent by " +
+      "OpenLinker's mailer. A manual send is never refused because the connection's automatic " +
+      'buyer emails are off. A refusal carries a readable `message` and a machine `code`. ' +
+      'At-least-once: there is no idempotency key, so a retried request (a double submit, a ' +
+      'client retry after a timeout) sends the document again. Do not drive this route from ' +
+      'an automation that expects at-most-once.',
   })
-  @ApiResponse({ status: 200, description: 'Delivery triggered', type: SendInvoiceEmailResponseDto })
+  @ApiResponse({ status: 200, description: 'Handed to the sender', type: SendInvoiceEmailResponseDto })
+  @ApiResponse({ status: 400, description: 'No recipient, or the recipient is not an email address' })
   @ApiResponse({ status: 404, description: 'Invoice not found' })
-  @ApiResponse({ status: 422, description: 'Invoice not fully issued (no provider invoice id)' })
-  @ApiResponse({ status: 501, description: 'Adapter does not implement InvoiceEmailSender' })
-  @ApiResponse({ status: 502, description: 'Invoicing provider unavailable or call failed' })
+  @ApiResponse({ status: 409, description: 'The document is not ready yet (not cleared)' })
+  @ApiResponse({ status: 422, description: 'Not fully issued, or no document to attach' })
+  @ApiResponse({ status: 502, description: 'The provider or the mailer failed' })
+  @ApiResponse({ status: 503, description: 'Email sending is not configured on this server' })
   async sendInvoiceEmail(
     @Param('invoiceId', invoiceIdPipe()) invoiceId: string,
     @Body() dto: SendInvoiceEmailRequestDto,
+    @CurrentUser() user: AuthenticatedUser,
   ): Promise<SendInvoiceEmailResponseDto> {
-    const record = await this.invoiceService.getInvoiceById(invoiceId);
-    if (!record) {
-      throw new NotFoundException(`Invoice not found: ${invoiceId}`);
+    const result = await this.documentEmails.sendInvoiceEmail({
+      invoiceId,
+      recipient: dto.recipient,
+      locale: dto.locale,
+      sendCopy: dto.sendCopy,
+      actorUserId: user.id,
+    });
+    if (result.status === 'refused') {
+      throw toDocumentEmailException(result);
     }
-    if (!record.providerInvoiceId) {
-      throw new UnprocessableEntityException(
-        `Invoice ${invoiceId} has no provider invoice id — it may not be fully issued yet`,
-      );
-    }
+    return { delivered: true, recipient: result.recipient, sentVia: result.sentVia };
+  }
 
-    const adapter = await this.resolveInvoicingAdapter(record.connectionId);
-    if (!isInvoiceEmailSender(adapter)) {
-      throw new NotImplementedException(
-        `Adapter for invoice ${invoiceId} does not implement InvoiceEmailSender`,
-      );
-    }
-    try {
-      const result = await adapter.sendByEmail({
-        externalInvoiceId: record.providerInvoiceId,
-        locale: dto.locale,
-        sendCopy: dto.sendCopy,
-      });
-      return { delivered: result.delivered, recipient: result.recipient };
-    } catch (error) {
-      throw this.toProviderBadGateway(error, 'sendByEmail', invoiceId);
-    }
+  @Roles('admin', 'operator', 'viewer')
+  @Get('orders/:orderId/document-emails')
+  @ApiOperation({
+    summary: "An order's document email attempts (#3550)",
+    description:
+      'Newest first: each manual attempt to email an invoice or a receipt to the buyer, sent or ' +
+      'failed, for the order timeline. Carries no recipient address.',
+  })
+  @ApiResponse({ status: 200, type: [DocumentEmailDeliveryResponseDto] })
+  async listDocumentEmails(
+    @Param('orderId') orderId: string,
+  ): Promise<DocumentEmailDeliveryResponseDto[]> {
+    const rows = await this.documentEmailDeliveries.listForOrder(orderId);
+    return rows.map((row) => DocumentEmailDeliveryResponseDto.from(row));
   }
 
   @Roles('admin')
@@ -1455,6 +1491,8 @@ export class InvoicingController {
   }
 
   /**
+    snapshot: IssuedLineSnapshot,
+      ...(snapshot.additionalParties?.length ? { additionalParties: snapshot.additionalParties } : {}),
    * FALLBACK (pre-#1297) reconstruction: rebuild the original document's
    * buyer/currency/lines from the order's CURRENT snapshot for records issued
    * before `issuedLineSnapshot` existed — mirrors `retryOne`'s keyless-re-issue
@@ -1752,6 +1790,74 @@ export class InvoicingController {
   }
 
   @Roles('admin', 'operator', 'viewer')
+  @Get('invoices/:invoiceId/attachment')
+  @ApiOperation({
+    summary: 'What can be attached for this issued document (#3548)',
+    description:
+      'One answer for every provider: real PDF bytes (`pdf`, streamed by `downloadPath`), a public ' +
+      'link (`link`), `waiting` while the document is not cleared yet or the provider did not ' +
+      'answer, or `none` when it is cleared and still has nothing attachable. Never a 5xx for a ' +
+      'missing document: `waiting` and `none` are answers, not failures. Never downloads the ' +
+      'document: a `pdf` is reported from what the provider declares it can render, so the ' +
+      '`downloadPath` route may still answer 409 if the provider is not ready when it is called.',
+  })
+  @ApiResponse({ status: 200, type: InvoiceAttachmentResponseDto })
+  @ApiResponse({ status: 404, description: 'Invoice not found' })
+  async getAttachment(
+    @Param('invoiceId', invoiceIdPipe()) invoiceId: string,
+  ): Promise<InvoiceAttachmentResponseDto> {
+    const attachment = await this.attachments.describeAttachment(invoiceId);
+    if (attachment === null) {
+      throw new NotFoundException(`Invoice not found: ${invoiceId}`);
+    }
+    return InvoiceAttachmentResponseDto.fromDomain(invoiceId, attachment);
+  }
+
+  @Roles('admin', 'operator', 'viewer')
+  @Get('invoices/:invoiceId/marketplace-upload')
+  @ApiOperation({
+    summary: 'Whether the document reached the marketplace order (#3549)',
+    description:
+      'One entry per marketplace connection the document was offered to; an empty list means no ' +
+      'upload was attempted yet. Codes only - no provider message is ever returned.',
+  })
+  @ApiResponse({ status: 200, type: InvoiceMarketplaceUploadResponseDto })
+  @ApiResponse({ status: 404, description: 'Invoice not found' })
+  async getMarketplaceUpload(
+    @Param('invoiceId', invoiceIdPipe()) invoiceId: string,
+  ): Promise<InvoiceMarketplaceUploadResponseDto> {
+    const invoice = await this.invoiceService.getInvoiceById(invoiceId);
+    if (invoice === null) throw new NotFoundException(`Invoice not found: ${invoiceId}`);
+    return InvoiceMarketplaceUploadResponseDto.fromDomain(
+      invoiceId,
+      await this.marketplaceUploads.getStatus(invoiceId),
+    );
+  }
+
+  @Roles('admin')
+  @Post('invoices/:invoiceId/marketplace-upload/retry')
+  @HttpCode(202)
+  @ApiOperation({
+    summary: 'Queue another attempt to attach the document to the marketplace order (#3549)',
+    description:
+      'Queues a new upload job. Rows that already uploaded or that the marketplace cannot take ' +
+      'are left alone by the job itself, so retrying is always safe.',
+  })
+  @ApiResponse({ status: 202, description: 'Upload queued' })
+  @ApiResponse({ status: 404, description: 'Invoice not found' })
+  @ApiResponse({ status: 503, description: 'Could not queue the job' })
+  async retryMarketplaceUpload(
+    @Param('invoiceId', invoiceIdPipe()) invoiceId: string,
+  ): Promise<{ queued: true }> {
+    const result = await this.marketplaceUploads.enqueueUpload(invoiceId, { retry: true });
+    if (result === 'skipped') throw new NotFoundException(`Invoice not found: ${invoiceId}`);
+    if (result === 'failed') {
+      throw new ServiceUnavailableException('Could not queue the marketplace upload');
+    }
+    return { queued: true };
+  }
+
+  @Roles('admin', 'operator', 'viewer')
   @Get('invoices/:invoiceId/verification-link')
   @ApiOperation({
     summary: "The tax authority's public verification link for an invoice",
@@ -1890,6 +1996,11 @@ export class InvoicingController {
       if (error instanceof UnsupportedRegulatoryDocumentKindError) {
         throw new ConflictException(
           `Invoice ${invoiceId} provider cannot produce a '${kind}' document`,
+        );
+      }
+      if (error instanceof RegulatoryDocumentNotReadyError) {
+        throw new ConflictException(
+          `Invoice ${invoiceId} '${kind}' document is not available until the invoice is cleared`,
         );
       }
       throw error;

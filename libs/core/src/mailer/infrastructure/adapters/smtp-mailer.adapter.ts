@@ -14,20 +14,25 @@
  *   MAIL_SMTP_PASSWORD  - SMTP password (optional)
  *   MAIL_FROM           - default From address (default "no-reply@openlinker.local")
  *
- * @module apps/api/src/auth/adapters
+ * @module libs/core/src/mailer/infrastructure/adapters
  */
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
+import { Logger } from '@openlinker/shared/logging';
 import type { ConfigService } from '@nestjs/config';
 import type { Transporter } from 'nodemailer';
+import { scrubEmailAddresses } from '@openlinker/core/sales-documents';
 import type { EmailMessage, MailerPort } from '@openlinker/core/users';
+import { redactRecipient } from './mail-log-redaction';
 
 export interface SmtpTransport {
   sendMail(options: {
     from: string;
+    replyTo?: string;
     to: string;
     subject: string;
     text: string;
     html?: string;
+    attachments?: { filename: string; content: Uint8Array; contentType: string }[];
   }): Promise<unknown>;
 }
 
@@ -45,13 +50,26 @@ export class SmtpMailerAdapter implements MailerPort {
 
   async sendEmail(message: EmailMessage): Promise<void> {
     await this.transport.sendMail({
-      from: this.from,
+      from: message.from ?? this.from,
+      ...(message.replyTo ? { replyTo: message.replyTo } : {}),
       to: message.to,
       subject: message.subject,
       text: message.text,
       html: message.html,
+      // Only set when there is something to attach, so a plain message reaches
+      // the transport exactly as it did before attachments existed.
+      ...(message.attachments && message.attachments.length > 0
+        ? { attachments: message.attachments.map((a) => ({ ...a })) }
+        : {}),
     });
-    this.logger.log(`[mail] sent to=${message.to} subject=${JSON.stringify(message.subject)}`);
+    this.logger.log(
+      // The recipient is a buyer on a document email (#3550): the log keeps its
+      // domain only, matching what an `OL_STORE_PII=false` deployment persists.
+      `[mail] sent to=${redactRecipient(message.to)} subject=${JSON.stringify(
+        scrubEmailAddresses(message.subject),
+      )}` +
+        (message.attachments?.length ? ` attachments=${String(message.attachments.length)}` : ''),
+    );
   }
 
   static fromConfig(configService: ConfigService, transporter: Transporter): SmtpMailerAdapter {

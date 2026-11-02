@@ -139,6 +139,9 @@ describe('ShipmentDispatchNotificationService', () => {
       getCurrencyMismatchOrders: jest.fn(),
       getCurrencyMismatchOrdersByConnection: jest.fn(),
       getProductMatchingErrorOrders: jest.fn(),
+      notifyOrderReceived: jest.fn(),
+      notifyDocumentIssued: jest.fn(),
+      notifyShippedIfPending: jest.fn(),
     };
 
     integrations = {

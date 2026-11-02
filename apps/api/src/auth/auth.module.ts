@@ -20,8 +20,8 @@ import { APP_GUARD } from '@nestjs/core';
 import { JwtModule } from '@nestjs/jwt';
 import { PassportModule } from '@nestjs/passport';
 import { ConfigModule, ConfigService } from '@nestjs/config';
-import { MAILER_TOKEN, PASSWORD_RESET_NOTIFIER_TOKEN, UsersModule } from '@openlinker/core/users';
-import { MailerModule as CoreMailerModule } from '@openlinker/core/mailer';
+import { PASSWORD_RESET_NOTIFIER_TOKEN, UsersModule } from '@openlinker/core/users';
+import { MailerModule as CoreMailerModule, MailerTransportModule } from '@openlinker/core/mailer';
 import { SyncModule as CoreSyncModule } from '@openlinker/core/sync';
 import { JwtStrategy } from './strategies/jwt.strategy';
 import { AuthService } from './auth.service';
@@ -35,7 +35,6 @@ import { RolesGuard } from './guards/roles.guard';
 import { PasswordResetService } from './password-reset.service';
 import { PASSWORD_RESET_SERVICE_TOKEN } from './password-reset.service.interface';
 import { MailerPasswordResetNotifierAdapter } from './adapters/mailer-password-reset-notifier.adapter';
-import { MAILER_PROVIDER } from './adapters/mailer.provider';
 import { RefreshTokenService } from './refresh-token.service';
 import { REFRESH_TOKEN_SERVICE_TOKEN } from './refresh-token.tokens';
 import { RegistrationService } from './registration.service';
@@ -54,6 +53,8 @@ import { UsersApiModule } from '../users/users.module';
     // For MAILER_SETTINGS_SERVICE_TOKEN, consumed by DbBackedMailerAdapter
     // (#1643) to resolve the DB-backed transport at send time.
     CoreMailerModule,
+    // MAILER_TOKEN, shared with the worker (#3552).
+    MailerTransportModule,
     // For SYNC_LOCK_TOKEN — DemoAccountCleanupService's per-tick singleton
     // lock across api replicas (#2279).
     CoreSyncModule,
@@ -80,7 +81,6 @@ import { UsersApiModule } from '../users/users.module';
     JwtStrategy,
     PasswordResetService,
     { provide: PASSWORD_RESET_SERVICE_TOKEN, useExisting: PasswordResetService },
-    MAILER_PROVIDER,
     MailerPasswordResetNotifierAdapter,
     { provide: PASSWORD_RESET_NOTIFIER_TOKEN, useExisting: MailerPasswordResetNotifierAdapter },
     RefreshTokenService,
@@ -107,6 +107,6 @@ import { UsersApiModule } from '../users/users.module';
   // modules that import AuthModule (e.g. AppModule for AppController,
   // #1619) can inject JwtService to verify a bearer token without
   // enforcing auth on a @Public() route.
-  exports: [AuthService, MAILER_TOKEN, JwtModule],
+  exports: [AuthService, MailerTransportModule, JwtModule],
 })
 export class AuthModule {}

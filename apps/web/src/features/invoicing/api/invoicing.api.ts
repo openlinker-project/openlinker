@@ -19,6 +19,7 @@ import type {
   BulkIssueInvoicesResult,
   InvoiceFilters,
   InvoicePagination,
+  InvoiceMarketplaceUploadState,
   InvoiceRecord,
   IssuedDocumentContent,
   IssueCorrectionInput,
@@ -101,6 +102,10 @@ export interface InvoicingApi {
    * `url` is null when the provider offers none or the invoice is not cleared.
    */
   getVerificationLink: (invoiceId: string) => Promise<{ url: string | null }>;
+  /** Where attaching the document to its marketplace order stands (#3549). */
+  getMarketplaceUpload: (invoiceId: string) => Promise<InvoiceMarketplaceUploadState>;
+  /** Queue another upload attempt (admin only, #3549). */
+  retryMarketplaceUpload: (invoiceId: string) => Promise<{ queued: true }>;
 }
 
 interface ApiRequest {
@@ -147,6 +152,17 @@ export function createInvoicingApi(request: ApiRequest, requestBlob: ApiBlobRequ
     getContent(invoiceId): Promise<IssuedDocumentContent> {
       return request<IssuedDocumentContent>(
         `/invoices/${encodeURIComponent(invoiceId)}/content`,
+      );
+    },
+    getMarketplaceUpload(invoiceId): Promise<InvoiceMarketplaceUploadState> {
+      return request<InvoiceMarketplaceUploadState>(
+        `/invoices/${encodeURIComponent(invoiceId)}/marketplace-upload`,
+      );
+    },
+    retryMarketplaceUpload(invoiceId): Promise<{ queued: true }> {
+      return request<{ queued: true }>(
+        `/invoices/${encodeURIComponent(invoiceId)}/marketplace-upload/retry`,
+        { method: 'POST' },
       );
     },
     getVerificationLink(invoiceId): Promise<{ url: string | null }> {
