@@ -15,7 +15,7 @@ export { useLocale } from './use-locale';
 export type { UseLocaleResult } from './use-locale';
 export { useCopy } from './use-copy';
 export { useMessages, getMessages } from './use-messages';
-export { loadMessages, isMessagesLoaded } from './messages';
+export { loadMessages, isMessagesLoaded, messagesIn } from './messages';
 export type { Messages, Namespace, MessagesLoader } from './messages';
 export { definePluginMessages } from './define-plugin-messages';
 export type { PluginMessages, PluginMessagesOptions } from './define-plugin-messages';

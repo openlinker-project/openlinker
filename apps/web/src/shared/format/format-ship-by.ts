@@ -10,11 +10,10 @@
  * @module shared/format
  */
 import { getLocale } from '../i18n/active-locale';
-import { resolveCopy } from '../i18n/define-copy';
+import { messagesIn } from '../i18n/messages';
 import { interpolate } from '../i18n/interpolate';
 import { formatPlural } from '../i18n/plural';
 import type { SupportedLocale } from '../i18n/i18n.types';
-import { formatCopy } from './format.copy';
 
 /** Urgency buckets for the ship-by deadline. `soon` is the warning threshold. */
 export const ShipByLevelValues = ['ok', 'soon', 'overdue'] as const;
@@ -32,7 +31,7 @@ const MINUTE_MS = 60_000;
 
 /** Largest-unit magnitude of a non-negative duration: "2d" / "5h" / "12m". */
 function humanizeDuration(ms: number, locale: SupportedLocale): string {
-  const units = resolveCopy(formatCopy, locale).compactDuration;
+  const units = messagesIn('format', locale).compactDuration;
   const totalMinutes = Math.floor(ms / MINUTE_MS);
   const days = Math.floor(totalMinutes / (60 * 24));
   if (days >= 1) return formatPlural(days, units.days, locale);
@@ -53,7 +52,7 @@ export function formatShipBy(
   const dueMs = new Date(dueAtIso).getTime();
   if (Number.isNaN(dueMs)) return null;
 
-  const copy = resolveCopy(formatCopy, locale).shipBy;
+  const copy = messagesIn('format', locale).shipBy;
   const diff = dueMs - now.getTime();
   if (diff <= 0) {
     return {

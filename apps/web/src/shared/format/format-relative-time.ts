@@ -9,11 +9,10 @@
  * @module shared/format
  */
 import { getLocale } from '../i18n/active-locale';
-import { resolveCopy } from '../i18n/define-copy';
+import { messagesIn } from '../i18n/messages';
 import { interpolate } from '../i18n/interpolate';
 import { formatPlural } from '../i18n/plural';
 import type { SupportedLocale } from '../i18n/i18n.types';
-import { formatCopy } from './format.copy';
 
 export function formatRelativeTime(
   iso: string,
@@ -21,7 +20,7 @@ export function formatRelativeTime(
   locale?: SupportedLocale,
 ): string {
   const active = locale ?? getLocale();
-  const copy = resolveCopy(formatCopy, active).relative;
+  const copy = messagesIn('format', active).relative;
   const seconds = Math.floor((now - new Date(iso).getTime()) / 1000);
   if (seconds < 60) return copy.justNow;
   const minutes = Math.floor(seconds / 60);

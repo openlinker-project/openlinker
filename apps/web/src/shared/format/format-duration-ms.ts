@@ -16,10 +16,9 @@
  * @module apps/web/src/shared/format
  */
 import { getLocale } from '../i18n/active-locale';
-import { resolveCopy } from '../i18n/define-copy';
+import { messagesIn } from '../i18n/messages';
 import { interpolate } from '../i18n/interpolate';
 import type { SupportedLocale } from '../i18n/i18n.types';
-import { formatCopy } from './format.copy';
 import { numberFormat } from '../i18n/intl-cache';
 import { formattingLocale } from './format-locale';
 
@@ -30,7 +29,7 @@ export function formatDurationMs(
   if (ms === null || ms === undefined || !Number.isFinite(ms) || ms < 0) {
     return null;
   }
-  const units = resolveCopy(formatCopy, locale).duration;
+  const units = messagesIn('format', locale).duration;
   if (ms < 1000) {
     return interpolate(units.milliseconds, { n: Math.round(ms) });
   }
