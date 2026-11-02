@@ -164,6 +164,15 @@ export class AllegroHttpClient implements IAllegroHttpClient {
     return this.request<T>('POST', path, body, options, { requestContentType: contentType });
   }
 
+  async putBinary<T = unknown>(
+    path: string,
+    contentType: string,
+    body: Uint8Array,
+    options?: Omit<AllegroHttpRequestOptions, 'method' | 'body'>
+  ): Promise<AllegroHttpResponse<T>> {
+    return this.request<T>('PUT', path, body, options, { requestContentType: contentType });
+  }
+
   async postMultipart<T = unknown>(
     path: string,
     parts: AllegroMultipartPart[],

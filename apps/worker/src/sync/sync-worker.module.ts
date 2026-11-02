@@ -17,6 +17,7 @@ import { IdentifierMappingModule } from '@openlinker/core/identifier-mapping';
 import { ProductsModule } from '@openlinker/core/products';
 import { InventoryModule } from '@openlinker/core/inventory';
 import { AutomationModule } from '@openlinker/core/automation';
+import { MailerTransportModule } from '@openlinker/core/mailer';
 import { OperationalSettingsModule } from '@openlinker/core/operational-settings';
 import { OrdersModule } from '@openlinker/core/orders';
 import { ReturnsModule } from '@openlinker/core/returns';
@@ -83,6 +84,7 @@ import { AutomationTriggerDeadlineSweepHandler } from './handlers/automation-tri
 import { ShopProductStatusSyncHandler } from './handlers/shop-product-status-sync.handler';
 import { DestinationTaxonomySyncHandler } from './handlers/destination-taxonomy-sync.handler';
 import { InvoicingIssueHandler } from './handlers/invoicing-issue.handler';
+import { InvoicingMarketplaceUploadHandler } from './handlers/invoicing-marketplace-upload.handler';
 import { FiscalizationRegisterHandler } from './handlers/fiscalization-register.handler';
 import { RegulatoryStatusReconcileHandler } from './handlers/regulatory-status-reconcile.handler';
 import { OfflineResubmitHandler } from './handlers/offline-resubmit.handler';
@@ -130,6 +132,9 @@ import { HandlerRegistrationService } from './handlers/handler-registration.serv
     // for `automation.trigger.deadlineSweep`. OrdersModule imports AutomationModule too (for T5's
     // write-site emission) but does not re-export it, and Nest imports are not transitive.
     AutomationModule,
+    // The send-email automation step resolves MAILER_TOKEN lazily by token; without this
+    // binding every worker-side firing (the deadline sweeps) ended `failed` (#3552).
+    MailerTransportModule,
     CoreAnalyticsModule, // #2468 — exposes ANALYTICS_REMEDIATION_RUN_SERVICE_TOKEN for the analytics.currency.recalculate handler
     CurrencyModule, // #2468 — exposes REPORTING_CURRENCY_SETTINGS_SERVICE_TOKEN; OrdersModule imports it but does not re-export the token
   ],
@@ -191,6 +196,7 @@ import { HandlerRegistrationService } from './handlers/handler-registration.serv
     ShopProductStatusSyncHandler,
     DestinationTaxonomySyncHandler,
     InvoicingIssueHandler,
+    InvoicingMarketplaceUploadHandler,
     FiscalizationRegisterHandler,
     RegulatoryStatusReconcileHandler,
     OfflineResubmitHandler,

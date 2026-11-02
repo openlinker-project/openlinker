@@ -29,6 +29,7 @@ import type {
   CreateOrderNoteRequest,
   UpdateOrderNoteRequest,
   OrderNoteTimelineEntry,
+  OrderDocumentEmailEntry,
   OrderTag,
   OrderTagColorValue,
   BulkAssignOrderTagResult,
@@ -128,6 +129,8 @@ export interface OrdersApi {
   listLineCosts: (internalOrderId: string) => Promise<OrderLineCostsResult>;
   /** An order's notes, oldest first (#3531). */
   listNotes: (internalOrderId: string) => Promise<OrderNote[]>;
+  /** Every attempt to email a document of this order to the buyer (#3551). */
+  listDocumentEmails: (internalOrderId: string) => Promise<OrderDocumentEmailEntry[]>;
   /** The notes' authored acts for the Activity timeline (#3531), parsed. */
   listNoteTimeline: (internalOrderId: string) => Promise<OrderNoteTimelineEntry[]>;
   createNote: (internalOrderId: string, body: CreateOrderNoteRequest) => Promise<OrderNote>;
@@ -390,6 +393,11 @@ export function createOrdersApi(request: ApiRequest, requestBlob: ApiBlobRequest
     },
     listNotes(internalOrderId): Promise<OrderNote[]> {
       return request<OrderNote[]>(`/orders/${encodeURIComponent(internalOrderId)}/notes`);
+    },
+    listDocumentEmails(internalOrderId): Promise<OrderDocumentEmailEntry[]> {
+      return request<OrderDocumentEmailEntry[]>(
+        `/orders/${encodeURIComponent(internalOrderId)}/document-emails`,
+      );
     },
     async listNoteTimeline(internalOrderId): Promise<OrderNoteTimelineEntry[]> {
       const raw = await request<unknown>(

@@ -10,6 +10,8 @@ import {
   type ReactElement,
 } from 'react';
 import type { AlertTone } from './alert';
+import { useMessages } from '../i18n/use-messages';
+import { interpolate } from '../i18n/interpolate';
 
 export interface ToastAction {
   label: string;
@@ -54,6 +56,7 @@ const IS_TEST_ENV = import.meta.env.MODE === 'test';
 const TEST_ENV_DURATION_MS = 2_147_483_647;
 
 export function ToastProvider({ children }: PropsWithChildren): ReactElement {
+  const copy = useMessages('ui').toast;
   const [toasts, setToasts] = useState<Toast[]>([]);
   const nextIdRef = useRef(0);
 
@@ -113,10 +116,10 @@ export function ToastProvider({ children }: PropsWithChildren): ReactElement {
               </RadixToast.Action>
             ) : null}
             <RadixToast.Close
-              aria-label={`Dismiss ${toast.title ?? 'notification'}`}
+              aria-label={interpolate(copy.dismissNamed, { title: toast.title ?? copy.notification })}
               className="toast__dismiss"
             >
-              Dismiss
+              {copy.dismiss}
             </RadixToast.Close>
           </RadixToast.Root>
         ))}

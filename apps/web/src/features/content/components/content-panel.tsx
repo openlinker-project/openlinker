@@ -12,6 +12,7 @@
  * @module apps/web/src/features/content/components
  */
 import { useEffect, useState, type ReactElement, type ReactNode } from 'react';
+import { useFormat } from '../../../shared/i18n';
 import { Alert } from '../../../shared/ui/alert';
 import {
   StructuredErrorList,
@@ -89,6 +90,7 @@ export function ContentPanel({
   onDiscard,
   onPublish,
 }: ContentPanelProps): ReactElement {
+  const { number: formatNumber } = useFormat();
   const hasStructuredErrors = errors !== null && errors !== undefined && errors.length > 0;
   const initialValue = computeEffectiveValue(draftValue, baseValue);
   const [value, setValue] = useState(initialValue);
@@ -107,6 +109,7 @@ export function ContentPanel({
   // exact class of failure ADR-046 exists to remove. Measured in UTF-8 bytes,
   // like the backend cap, and only when the destination declared one.
   const destinationCap = format?.maxBytes ?? null;
+  const destinationCapLabel = destinationCap === null ? '' : formatNumber(destinationCap);
   const overDestinationCap = exceedsDescriptionCap(value, format);
   const canSave = !readOnly && !busy && isDirty && !overLimit && !overDestinationCap;
   const canDiscard = !readOnly && !busy && hasDraft;
@@ -135,7 +138,7 @@ export function ContentPanel({
       {disabledReason && <Alert tone="info">{disabledReason}</Alert>}
       {overDestinationCap && (
         <Alert tone="warning">
-          This description is longer than the destination accepts ({destinationCap?.toLocaleString()}{' '}
+          This description is longer than the destination accepts ({destinationCapLabel}{' '}
           bytes). Shorten it before saving — the platform would reject the publish.
         </Alert>
       )}
@@ -180,7 +183,7 @@ export function ContentPanel({
       {overLimit && (
         <div className="content-panel__meta">
           <span className="text-danger">
-            Over the {MAX_VALUE_LENGTH.toLocaleString()}-character storage limit
+            Over the {formatNumber(MAX_VALUE_LENGTH)}-character storage limit
           </span>
         </div>
       )}

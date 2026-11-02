@@ -498,6 +498,7 @@ export function createMockApiClient(
       // #1909 — empty list default: the normal never-registered state, never a
       // 404 (OpenLinker never asserts an order requires a receipt).
       listForOrder: vi.fn().mockResolvedValue([]),
+      sendEmail: vi.fn().mockResolvedValue({ delivered: true, recipient: null, sentVia: 'openlinker' }),
       register: vi.fn().mockResolvedValue({
         orderId: 'ord_1',
         connectionId: 'conn_fiscal',
@@ -603,6 +604,9 @@ export function createMockApiClient(
       resendToAuthority: vi.fn().mockResolvedValue(null),
       // DEF-02 / DEF-03: no verification link unless a test supplies one.
       getVerificationLink: vi.fn().mockResolvedValue({ url: null }),
+      // #3549: no upload attempts unless a test supplies some.
+      getMarketplaceUpload: vi.fn().mockResolvedValue({ invoiceId: '', uploads: [] }),
+      retryMarketplaceUpload: vi.fn().mockResolvedValue({ queued: true }),
       ...overrides.invoicing,
     } as ApiClient['invoicing'],
     operationalSettings: {
@@ -714,6 +718,7 @@ export function createMockApiClient(
       }),
       getById: vi.fn().mockResolvedValue(null),
       listLineCosts: vi.fn().mockResolvedValue({ currency: null, lines: [] }),
+      listDocumentEmails: vi.fn().mockResolvedValue([]),
       retryDestination: vi.fn().mockResolvedValue({
         internalOrderId: '',
         destinationConnectionId: '',
@@ -1427,7 +1432,7 @@ export function renderWithProviders(
   window.history.pushState({}, 'Test', route);
 
   const withProviders = (children: ReactNode): ReactElement => (
-    <LocaleProvider>
+    <LocaleProvider locale="en">
       <PluginRegistryProvider plugins={plugins}>
         <SessionProvider adapter={sessionAdapter}>
           <ToastProvider>

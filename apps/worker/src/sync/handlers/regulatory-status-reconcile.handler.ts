@@ -31,6 +31,10 @@ import {
   IRegulatoryStatusReconciliationService,
   REGULATORY_STATUS_RECONCILIATION_SERVICE_TOKEN,
 } from '@openlinker/core/invoicing';
+import {
+  INVOICE_MARKETPLACE_UPLOAD_SERVICE_TOKEN,
+  type IInvoiceMarketplaceUploadService,
+} from '@openlinker/core/orders';
 import { Logger } from '@openlinker/shared/logging';
 
 type SyncJob = SyncJobEntity;
@@ -46,6 +50,8 @@ export class RegulatoryStatusReconcileHandler implements SyncJobHandler {
   constructor(
     @Inject(REGULATORY_STATUS_RECONCILIATION_SERVICE_TOKEN)
     private readonly reconciliationService: IRegulatoryStatusReconciliationService,
+    @Inject(INVOICE_MARKETPLACE_UPLOAD_SERVICE_TOKEN)
+    private readonly marketplaceUploads: IInvoiceMarketplaceUploadService,
   ) {}
 
   async execute(job: SyncJob): Promise<SyncJobHandlerResult> {
@@ -61,8 +67,17 @@ export class RegulatoryStatusReconcileHandler implements SyncJobHandler {
       });
 
       this.logger.log(
-        `invoicing.regulatoryStatus.reconcile completed (connection=${job.connectionId}): scanned=${result.scanned}, updated=${result.updated}, skippedTerminal=${result.skippedTerminal}, readErrors=${result.readErrors}, total=${result.total}`,
+        `invoicing.regulatoryStatus.reconcile completed (connection=${job.connectionId}): scanned=${result.scanned}, updated=${result.updated}, skippedTerminal=${result.skippedTerminal}, readErrors=${result.readErrors}, total=${result.total}, cleared=${result.clearedInvoiceIds.length}`,
       );
+
+      // #3549: a document that just cleared can now be attached to its
+      // marketplace order. The first upload job waits for clearance only through
+      // its retry ladder, which ends, so this is what still sends a document
+      // the authority cleared later. `enqueueUpload` never throws, and the
+      // statuses above are already written, so this cannot undo the sweep.
+      for (const invoiceId of result.clearedInvoiceIds) {
+        await this.marketplaceUploads.enqueueUpload(invoiceId, { cleared: true });
+      }
 
       return { outcome: 'ok' };
     } catch (error) {

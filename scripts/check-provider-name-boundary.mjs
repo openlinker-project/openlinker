@@ -10,13 +10,18 @@
  *
  * Bans `eparagony`, `ksef`, `paragon` and `kasa` (case-insensitive, whole
  * word) from operator-facing copy in `apps/web/src/**` outside
- * `apps/web/src/plugins/`.
+ * `apps/web/src/plugins/`. In a Polish translation file
+ * (`apps/web/src/locales/pl.json`) only `paragon` and `kasa` are allowed
+ * (ADR-081): there they are the ordinary Polish words for receipt and cash
+ * register. `eparagony` and `ksef` stay
+ * banned in Polish too, since Polish copy is just as operator-facing.
  *
  * ---------------------------------------------------------------------------
  * SCOPE - operator-facing copy only, the scope `check-ui-vocabulary.mjs`
  * already defines and for its stated reason: JSX text, user-facing JSX
- * attribute values in `.tsx`, and every string literal in a `*-copy.ts` /
- * `*.copy.ts` module. Identifiers, comments, imports and non-user-facing props
+ * attribute values in `.tsx`, every string literal in a `*-copy.ts` /
+ * `*.copy.ts` module, and every string value of a translation file
+ * (`locales/<lang>.json`). Identifiers, comments, imports and non-user-facing props
  * are deliberately unscanned: several shared components mention KSeF in
  * docblocks explaining why the component is neutral
  * (`features/orders/lib/sales-document-cell-state.ts` documents "Authority
@@ -61,6 +66,9 @@ const PLUGINS_DIR = join('apps', 'web', 'src', 'plugins');
 
 /** Closed list. Case-insensitive, whole word. */
 export const BANNED_PROVIDER_TERMS = ['eparagony', 'ksef', 'paragon', 'kasa'];
+
+/** Terms that are ordinary Polish words, and so allowed inside a `pl` branch. */
+export const POLISH_ORDINARY_WORDS = ['paragon', 'kasa'];
 
 /** Files permitted to contain a banned term, by file with a reason. Keep empty. */
 const EXEMPTIONS = new Map();
@@ -204,7 +212,7 @@ function isCopyModule(path) {
 }
 
 export function isScannable(path) {
-  return !isTestFile(path) && (path.endsWith('.tsx') || isCopyModule(path));
+  return !isTestFile(path) && (path.endsWith('.tsx') || isCopyModule(path) || TRANSLATION_FILE.test(path));
 }
 
 /** Is `relPath` (repo-relative) inside the plugins folder, where names are allowed? */
@@ -212,11 +220,38 @@ export function isInsidePlugins(relPath) {
   return relPath === PLUGINS_DIR || relPath.startsWith(PLUGINS_DIR + sep);
 }
 
+/** A translation file: `.../locales/<lang>.json`. Group 1 is the language. */
+const TRANSLATION_FILE = /(?:^|[\\/])locales[\\/]([a-z]{2})\.json$/;
+
+/** Every string VALUE of a JSON translation file, with its 1-based line. */
+export function extractJsonStrings(source) {
+  const out = [];
+  const re = /:\s*"((?:[^"\\\n]|\\.)*)"/g;
+  let m;
+  while ((m = re.exec(source)) !== null) {
+    const text = JSON.parse(`"${m[1]}"`).replace(/\s+/g, ' ').trim();
+    if (!text || !/[A-Za-z]/.test(text)) continue;
+    out.push({ text, line: source.slice(0, m.index).split('\n').length });
+  }
+  return out;
+}
+
 export function findViolations(path, source) {
-  const strings = isCopyModule(path) ? extractCopyStrings(source) : extractTsxStrings(source);
+  const translation = path.match(TRANSLATION_FILE);
+  const strings = translation
+    ? extractJsonStrings(source)
+    : isCopyModule(path)
+      ? extractCopyStrings(source)
+      : extractTsxStrings(source);
+  const inPolish = translation !== null && translation[1] === 'pl';
   const hits = [];
   for (const { text, line } of strings) {
-    const term = matchProviderTerm(text);
+    const term = matchProviderTerm(
+      text,
+      inPolish
+        ? BANNED_PROVIDER_TERMS.filter((banned) => !POLISH_ORDINARY_WORDS.includes(banned))
+        : BANNED_PROVIDER_TERMS
+    );
     if (term) hits.push({ term, line, text });
   }
   return hits;
@@ -314,6 +349,10 @@ function selfCheck() {
   eq('does not match a substring', matchProviderTerm('Parking paragonal'), null);
   eq('neutral copy passes', matchProviderTerm('Authority rejected'), null);
 
+  // Polish translation file allows the ordinary words; English does not.
+  eq('polish copy ignored', findViolations('src/locales/pl.json', '{ "kind": "Paragon fiskalny" }'), []);
+  eq('english copy still scanned', findViolations('src/locales/en.json', '{ "kind": "Paragon issued" }').map((h) => h.term), ['paragon']);
+
   // Extraction scope: JSX text and allow-listed attributes ARE scanned...
   eq(
     'JSX text hit',
@@ -357,6 +396,24 @@ function selfCheck() {
   eq('pages folder is not', isInsidePlugins(join('apps', 'web', 'src', 'pages', 'connections', 'a.tsx')), false);
   eq('a sibling named plugins-x is not the plugins folder', isInsidePlugins(join('apps', 'web', 'src', 'plugins-x', 'a.tsx')), false);
   eq('exemptions stay empty', EXEMPTIONS.size, 0);
+
+  // Polish file: ordinary words pass, provider names do not; keys are not copy.
+  const polishSource = [
+    '{',
+    '  "ui": {',
+    '    "a": "Wystaw paragon przy kasa",',
+    '    "b": "Wyślij do KSeF przez eparagony",',
+    '    "ksef": "Klucz"',
+    '  }',
+    '}',
+  ].join('\n');
+  eq(
+    'polish file allows paragon and kasa but bans ksef and eparagony',
+    findViolations('apps/web/src/locales/pl.json', polishSource).map((h) => [h.line, h.term]),
+    [[4, 'eparagony']]
+  );
+  eq('a translation file is scanned', isScannable('apps/web/src/locales/en.json'), true);
+  eq('another JSON file is not', isScannable('apps/web/src/config/x.json'), false);
 
   if (failures.length > 0) {
     console.error('✗ check-provider-name-boundary --self-check failed:\n');

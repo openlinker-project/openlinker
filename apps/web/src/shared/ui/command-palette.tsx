@@ -14,6 +14,7 @@
 import { Command } from 'cmdk';
 import { forwardRef, type ComponentPropsWithoutRef, type ReactElement } from 'react';
 import { Dialog, DialogContent } from './dialog';
+import { useMessages } from '../i18n/use-messages';
 
 export interface PaletteItem {
   id: string;
@@ -45,15 +46,16 @@ export function CommandPalette({
   onQueryChange,
   groups,
   loading = false,
-  placeholder = 'Search…',
+  placeholder,
 }: CommandPaletteProps): ReactElement {
+  const copy = useMessages('ui').commandPalette;
   const hasItems = groups.some((g) => g.items.length > 0);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
         className="command-palette"
-        aria-label="Command palette"
+        aria-label={copy.label}
         // cmdk's Command provides its own focus management — suppress the
         // Radix default auto-focus so the input receives focus instead.
         onOpenAutoFocus={(e) => e.preventDefault()}
@@ -65,22 +67,22 @@ export function CommandPalette({
             </span>
             <Command.Input
               className="command-palette__input"
-              placeholder={placeholder}
+              placeholder={placeholder ?? copy.placeholder}
               value={query}
               onValueChange={onQueryChange}
               autoFocus
             />
           </div>
 
-          <Command.List className="command-palette__list" aria-label="Command results">
+          <Command.List className="command-palette__list" aria-label={copy.results}>
             {loading ? (
               <Command.Loading>
-                <div className="command-palette__state">Searching…</div>
+                <div className="command-palette__state">{copy.searching}</div>
               </Command.Loading>
             ) : !hasItems ? (
               <Command.Empty>
                 <div className="command-palette__state">
-                  {query.length > 0 ? 'No results found.' : 'Start typing to search.'}
+                  {query.length > 0 ? copy.noResults : copy.startTyping}
                 </div>
               </Command.Empty>
             ) : (
@@ -126,6 +128,7 @@ type CommandPaletteTriggerProps = ComponentPropsWithoutRef<'button'> & {
 
 export const CommandPaletteTrigger = forwardRef<HTMLButtonElement, CommandPaletteTriggerProps>(
   function CommandPaletteTrigger({ onClick, className = '', ...props }, ref) {
+    const copy = useMessages('ui').commandPalette;
     const classes = ['shell-topbar__search', className].filter(Boolean).join(' ');
     return (
       <button
@@ -133,15 +136,15 @@ export const CommandPaletteTrigger = forwardRef<HTMLButtonElement, CommandPalett
         type="button"
         className={classes}
         onClick={onClick}
-        aria-label="Open command palette (⌘K)"
-        title="Open command palette (⌘K)"
+        aria-label={copy.open}
+        title={copy.open}
         {...props}
       >
         <span className="shell-topbar__search-icon" aria-hidden="true">
           ⌕
         </span>
         <span className="shell-topbar__search-placeholder">
-          Search orders, products, connections…
+          {copy.trigger}
         </span>
         <kbd className="shell-topbar__search-kbd" aria-hidden="true">
           ⌘K

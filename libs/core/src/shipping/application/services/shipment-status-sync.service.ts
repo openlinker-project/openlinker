@@ -82,6 +82,7 @@ import {
   TerminalShipmentStatusValues,
 } from '../../domain/types/shipment-status.types';
 import type { UpdateShipmentInput } from '../../domain/types/shipment.types';
+import { isTrackingWaitOver } from '../../domain/shipped-announcement';
 import {
   ORDER_FULFILLMENT_PROJECTION_SERVICE_TOKEN,
   SHIPMENT_REPOSITORY_TOKEN,
@@ -184,9 +185,15 @@ export class ShipmentStatusSyncService implements IShipmentStatusSyncService {
           await this.shipments.update(shipment.id, patch);
           updated += 1;
           // A terminal-status change moves the order rollup (#1108) — reproject.
-          if (patch.status) {
+          // So does a tracking number arriving: a shipped order waits for it
+          // before announcing `order.shipped` (#3554).
+          if (patch.status || patch.trackingNumber) {
             await this.fulfillmentProjection.recompute(shipment.orderId);
           }
+        } else if (isTrackingWaitOver(shipment, new Date())) {
+          // The number never came; announce without it rather than never. A
+          // cheap no-op once the order has announced.
+          await this.fulfillmentProjection.announceShippedWithoutTracking(shipment.orderId);
         }
         if (didPush) {
           propagated += 1;
@@ -303,7 +310,8 @@ export class ShipmentStatusSyncService implements IShipmentStatusSyncService {
     const { patch } = await this.buildPatchAndMaybePush(shipment, snapshot);
     if (Object.keys(patch).length > 0) {
       await this.shipments.update(shipment.id, patch);
-      if (patch.status) {
+      // A new tracking number reprojects too (#3554): see `sync`.
+      if (patch.status || patch.trackingNumber) {
         await this.fulfillmentProjection.recompute(shipment.orderId);
       }
     }

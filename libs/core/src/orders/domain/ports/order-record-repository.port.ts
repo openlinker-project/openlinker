@@ -513,11 +513,24 @@ export interface OrderRecordRepositoryPort {
    * throws) so it can't fail the shipment operation.
    *
    * Sole writer of the column - {@link upsert} deliberately omits it (#2101).
+   *
+   * Answers `true` only for the ONE write that moved the order from a
+   * not-shipped state into `dispatched` / `delivered` (#3554), so the
+   * `order.shipped` automation trigger fires once per transition however many
+   * shipment recomputes race. The guard is a conditional UPDATE, never a read.
    */
   updateFulfillmentState(
     internalOrderId: string,
     fulfillmentState: FulfillmentRollupState
-  ): Promise<void>;
+  ): Promise<boolean>;
+
+  /**
+   * Claim the one-time `order.shipped` announcement (#3554). A single guarded
+   * UPDATE on `shippedNotifiedAt IS NULL` AND a shipped `fulfillmentState`, so
+   * of any number of racing callers exactly one gets `true`, and an order that
+   * is not shipped (or no longer exists) gets `false`.
+   */
+  claimShippedNotification(internalOrderId: string): Promise<boolean>;
 
   /**
    * Push the honest item-resolution-failure state onto the order record

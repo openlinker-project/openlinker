@@ -65,7 +65,7 @@ describe('HandlerRegistrationService (ADR-050 lane partition, #2278)', () => {
     expect(() => registry.assertFullLaneCoverage()).not.toThrow();
   });
 
-  it('should partition the 66 job types 19/35/5/7 per ADR-050 decision 1', () => {
+  it('should partition the 67 job types 19/36/5/7 per ADR-050 decision 1', () => {
     // 17: four of the SIX fulfilment job types are `realtime` by
     // cost-of-starvation. The other two, #2712's
     // `fulfillment.work.timeoutSweep` and #2728's
@@ -154,10 +154,10 @@ describe('HandlerRegistrationService (ADR-050 lane partition, #2278)', () => {
     // with its destination-side twin `marketplace.fulfillment.statusSync`: a
     // paced scan over parcels that have already shipped, each candidate a
     // marketplace readback. #2731's `fulfillment.routing.reapSweep` is the
-    // thirty-sixth, the fourth fulfilment sweep in `bulk` for the reaper's
+    // thirty-seventh, the fourth fulfilment sweep in `bulk` for the reaper's
     // reason: its candidates have waited past the routing-decision TTL by
     // construction, and the re-route it triggers runs in a `realtime` child.
-    expect(registry.getJobTypesByLane('bulk')).toHaveLength(36);
+    expect(registry.getJobTypesByLane('bulk')).toHaveLength(37);
     expect(registry.getJobTypesByLane('fiscal')).toHaveLength(5);
     expect(registry.getJobTypesByLane('fan-out')).toHaveLength(7);
   });

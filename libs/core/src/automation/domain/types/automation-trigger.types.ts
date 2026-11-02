@@ -33,6 +33,12 @@
  * - `return.received`                 — T6, returned goods arrive.
  * - `return.disposed`                 — T7, a return is restocked or scrapped.
  * - `inventory.reservation_shortfall` — T8, more promised than held.
+ * - `order.received`                  — T9, an order is ingested for the first
+ *                                       time (#3554, decision D8 of epic #3517).
+ * - `order.shipped`                   — T10, an order's parcels move into a
+ *                                       shipped state (#3554).
+ * - `order.document_issued`           — T11, the order's originating invoice or
+ *                                       fiscal receipt is issued (#3554).
  */
 export const AutomationTriggerValues = [
   'order.hold.placed',
@@ -43,6 +49,9 @@ export const AutomationTriggerValues = [
   'return.received',
   'return.disposed',
   'inventory.reservation_shortfall',
+  'order.received',
+  'order.shipped',
+  'order.document_issued',
 ] as const;
 
 export type AutomationTrigger = (typeof AutomationTriggerValues)[number];
@@ -75,8 +84,8 @@ export type AutomationTriggerFiringMode = (typeof AutomationTriggerFiringModeVal
  * The mode of each trigger, verbatim from spec §5.2.
  *
  * **This map is what tells #2360 which triggers must consult
- * `automation_trigger_firings`.** Exactly two are `deadline-sweep`; the other
- * six are caused by a write and need no firing record, because the write
+ * `automation_trigger_firings`.** Exactly two are `deadline-sweep`; the
+ * others are caused by a write and need no firing record, because the write
  * happens once.
  */
 export const AUTOMATION_TRIGGER_FIRING_MODE = {
@@ -88,6 +97,9 @@ export const AUTOMATION_TRIGGER_FIRING_MODE = {
   'return.received': 'edge',
   'return.disposed': 'edge',
   'inventory.reservation_shortfall': 'edge',
+  'order.received': 'edge',
+  'order.shipped': 'edge',
+  'order.document_issued': 'edge',
 } as const satisfies Record<AutomationTrigger, AutomationTriggerFiringMode>;
 
 /** Whether this trigger fires from a clock crossing a timestamp rather than from a write. */

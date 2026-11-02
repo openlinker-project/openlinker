@@ -20,6 +20,7 @@ import { Navigate, Outlet, useSearchParams } from 'react-router-dom';
 import { useSession } from '../../shared/auth/use-session';
 import { LoadingState } from '../../shared/ui/feedback-state';
 import { resolveNextPath } from '../../shared/lib/resolve-next-path';
+import { LanguageSwitch } from '../../shared/ui/language-switch';
 
 export function ConsentLayout(): ReactElement {
   const { isReady, session, adapter, refreshSession } = useSession();
@@ -59,6 +60,9 @@ export function ConsentLayout(): ReactElement {
 
   return (
     <div className="guest-layout">
+      <div className="guest-layout__language">
+        <LanguageSwitch placement="down" />
+      </div>
       <div className="guest-card">
         <div className="guest-brand">
           <strong className="guest-brand__title">OpenLinker</strong>
