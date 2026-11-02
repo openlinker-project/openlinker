@@ -213,7 +213,7 @@ describe('InventoryController', () => {
 
     it('should report an unknown promise as null with null held figures, never 0', async () => {
       queryService.getAvailabilityByVariantIds.mockResolvedValue([
-        { productVariantId: 'var-a', totalAvailable: 5, locationCount: 1, availableToPromise: null },
+        { productVariantId: 'var-a', totalAvailable: 5, locationCount: 1, positionCount: 1, availableToPromise: null },
       ]);
       stockView.getVariantStockViews.mockResolvedValue([
         stockViewRow({
@@ -236,7 +236,7 @@ describe('InventoryController', () => {
 
     it('should fall back to unknown, not zero, when the stock view has no row for a variant', async () => {
       queryService.getAvailabilityByVariantIds.mockResolvedValue([
-        { productVariantId: 'var-a', totalAvailable: 0, locationCount: 0, availableToPromise: 0 },
+        { productVariantId: 'var-a', totalAvailable: 0, locationCount: 0, positionCount: 0, availableToPromise: 0 },
       ]);
       stockView.getVariantStockViews.mockResolvedValue([]);
 
