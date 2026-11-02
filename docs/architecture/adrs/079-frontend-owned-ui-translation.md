@@ -1,4 +1,4 @@
-# ADR-079: Frontend-owned UI translation with typed per-feature copy files
+# ADR-079: Frontend-owned UI translation in JSON namespaces
 
 - **Status**: Accepted
 - **Date**: 2026-10-29
@@ -17,12 +17,23 @@ forms. The API answers errors mostly with English sentences.
 
 ## Decision
 
-1. **Copy lives in typed `*.copy.ts` files, English and Polish side by side**:
-   `export const ordersCopy = defineCopy({ en: {...}, pl: {...} });` - English
-   infers the shape and Polish is type-checked against it.
-   One file per feature folder; a file of its own only for a very large
-   component; one shared file for `shared/ui`. Components read it through
-   `useCopy(ordersCopy)` from `shared/i18n`, the only import path.
+1. **Copy lives in one JSON file per language, divided into namespaces.**
+   The application core keeps all of its copy in `apps/web/src/locales/en.json`
+   and `pl.json`; their top-level keys are namespaces named after the feature
+   folder (`ui`, `format`, `orders` ...). A plugin keeps its own namespace in
+   its own folder, `plugins/<id>/locales/<lang>.json`, and registers it with
+   `definePluginMessages`, so a plugin built outside this repository can ship
+   translations without touching the core file. Each namespace has exactly
+   one home and the registry refuses a second registration of the same name,
+   so nothing is looked up across files; the only fallback is within a
+   namespace, from the active language to its base language. English is the
+   base: it holds every key, it gives the TypeScript types (`useMessages('orders')`
+   is typed from `en.json`, a plugin's hook from its own `en.json`), and
+   `locales/pl.check.ts` makes `tsc` reject a Polish shape English lacks.
+   English ships in the main bundle; every other language is a dynamic import
+   loaded before the first paint and before a language switch. Components read
+   copy through `useMessages` from `shared/i18n`, the only import path.
+   Character budgets for tight spots live in `limits.json` beside the copy.
 2. **Polish plurals and formatting go through `Intl`**: `usePlural` on
    `Intl.PluralRules`, `useFormat` for numbers, money, dates and relative time.
    No plural or date is built by string concatenation.
@@ -47,11 +58,20 @@ forms. The API answers errors mostly with English sentences.
   but its plural syntax uses numeric ranges, which cannot express Polish "few"
   (22 vs 12); it adds a build plugin, a watcher and a generated folder, and most
   of its code comes from one maintainer. Rejected.
-- **i18next with per-feature JSON namespaces**: mature and correct on plurals,
-  but each language sits in a separate file, so an agent or developer edits two
-  files and TypeScript checks only that keys exist, not that Polish does.
-  Rejected; the copy-file shape stays close to i18next's suffix style, so moving
-  later is a mechanical export.
+- **Typed `*.copy.ts` files with both languages side by side**
+  (`defineCopy({ en, pl })`, the first version of this decision): one file to
+  edit and a strict type check, but every language ships in the main bundle,
+  translator tools cannot read TypeScript without an export script, and a
+  plugin's copy is indistinguishable from core copy. Replaced by decision 1
+  before any feature copy was migrated.
+- **One JSON file per feature namespace for the core too**
+  (`locales/en/orders.json`): no two extraction PRs touch the same file, but it
+  adds a registry line per feature and about forty file pairs for the same
+  content. The core stays one file per language; sorted keys and one block per
+  namespace keep parallel edits apart, and plugins get files of their own.
+- **i18next**: mature and correct on plurals, but its `count_one` / `count_few`
+  suffix keys and its runtime are more than this app needs; the JSON layout
+  here is close enough that moving later is a mechanical change.
 - **A locale URL prefix** (`/pl/orders`): built for search engines and public
   pages. This is an app behind a login; it would touch every route and would
   open a colleague's link in the sender's language. Rejected.
@@ -59,21 +79,23 @@ forms. The API answers errors mostly with English sentences.
 ## Consequences
 
 **Pros:**
-- One file holds both languages, so a missing Polish string is a type error once
-  the type is strict (the lock-in step, #3890; until then a missing key falls back to English), and an agent sees what to translate.
-- Extends an existing convention and check script; no new i18n runtime library (the language switch uses Motion, a general animation library).
+- Copy is plain JSON, which translator tools (Crowdin, Weblate, Lokalise) read as it is, and a missing Polish string becomes a type error once the type is strict (the lock-in step, #3890; until then a missing key falls back to English).
+- Polish is downloaded only by a session that uses it.
+- Plugins carry their own translations, the same model as Backstage's per-plugin translation refs.
+- No new i18n runtime library (the language switch uses Motion, a general animation library).
 - Tests stay English by pinning the locale in the Vitest setup file and `env`, with the shared render helper as a second pin.
 
 **Cons / trade-offs:**
-- About 1,400 lines of our own code (about 950 of runtime in `shared/i18n/`, about 470 of check scripts).
-- Every language ships in the main bundle until per-locale splitting is added.
-- Export to translator tools needs a script.
+- About 1,400 lines of our own code (runtime in `shared/i18n/`, check scripts).
+- Text sits away from the component that shows it.
+- Parallel extraction PRs edit the same core file; sorted keys (`pnpm i18n:sort`, enforced in CI) and one block per namespace keep conflicts to neighbouring lines.
+- A plugin's Polish is checked by `scripts/check-locales.mjs`, not by `tsc`.
 
 **Migration path:**
 - `t(key, fallback)` stays as a compatibility shim and gets no new callers; it is
   removed once the extraction issues have moved its call sites.
-- Extraction runs per feature folder; each PR switches the no-literal-text lint
-  rule on for its folders.
+- Extraction runs per feature folder into that feature's namespace; each PR
+  switches the no-literal-text lint rule on for its folders.
 
 ## References
 
