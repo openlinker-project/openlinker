@@ -12,6 +12,8 @@ import {
 import { SYNC_LOCK_TOKEN } from '@openlinker/core/sync';
 import { RefundRecordContendedException } from '../../domain/exceptions/refund-record-contended.exception';
 import { RefundCeilingExceededException } from '../../domain/exceptions/refund-ceiling-exceeded.exception';
+import { DuplicateRefundRecordException } from '../../domain/exceptions/duplicate-refund-record.exception';
+import { ORDER_REFUND_LOCK_TTL_MS } from './order-refund-lock';
 import type { IOrderRecordService } from '../interfaces/order-record.service.interface';
 import { OrderRefundService } from './order-refund.service';
 
@@ -221,6 +223,62 @@ describe('OrderRefundService', () => {
       await service.recordRefund({ ...input, amount: '10.00' });
 
       expect(lock.acquire).toHaveBeenCalledWith('order:refund:ol_order_abc123', expect.any(Number));
+      expect(lock.release).toHaveBeenCalledWith('order:refund:ol_order_abc123', 'tok');
+    });
+
+    it('should take the order lock with the default TTL when no longer TTL is asked for', async () => {
+      await service.runUnderOrderRefundLock('ol_order_abc123', () => Promise.resolve('done'));
+
+      expect(lock.acquire).toHaveBeenCalledWith(
+        'order:refund:ol_order_abc123',
+        ORDER_REFUND_LOCK_TTL_MS
+      );
+    });
+
+    it('should hold the order lock for the longer TTL a caller spanning an executor call asks for', async () => {
+      await service.runUnderOrderRefundLock('ol_order_abc123', () => Promise.resolve('done'), {
+        lockTtlMs: ORDER_REFUND_LOCK_TTL_MS * 4,
+      });
+
+      expect(lock.acquire).toHaveBeenCalledWith(
+        'order:refund:ol_order_abc123',
+        ORDER_REFUND_LOCK_TTL_MS * 4
+      );
+    });
+
+    it('should never shorten the order lock below its default TTL', async () => {
+      await service.runUnderOrderRefundLock('ol_order_abc123', () => Promise.resolve('done'), {
+        lockTtlMs: 1_000,
+      });
+
+      expect(lock.acquire).toHaveBeenCalledWith(
+        'order:refund:ol_order_abc123',
+        ORDER_REFUND_LOCK_TTL_MS
+      );
+    });
+
+    it('should answer a retried, already-recorded refund as a duplicate rather than a ceiling refusal', async () => {
+      refundRepository.findByOrderId.mockResolvedValue([
+        new RefundRecord(
+          'r-existing',
+          'ol_order_abc123',
+          '50.00',
+          'PLN',
+          'withdrawal',
+          null,
+          new Date('2026-01-15T10:00:00Z'),
+          new Date('2026-01-15T10:00:00Z'),
+          new Date('2026-01-15T10:00:00Z'),
+          'refund-key-1',
+        ),
+      ]);
+
+      // 50.00 already refunded + this 60.00 would exceed the 100 total: without
+      // the key lookup first, the retry would read as refund_ceiling_exceeded.
+      await expect(
+        service.recordRefund({ ...input, idempotencyKey: 'refund-key-1' })
+      ).rejects.toBeInstanceOf(DuplicateRefundRecordException);
+      expect(refundRepository.create).not.toHaveBeenCalled();
       expect(lock.release).toHaveBeenCalledWith('order:refund:ol_order_abc123', 'tok');
     });
 

@@ -10,11 +10,26 @@
  */
 
 /**
- * Lock TTL (ms). It only needs to cover ceiling read -> `create`, a few DB
- * round-trips; the lock is single-shot with no heartbeat, since once the row
- * exists a peer's own read sees it.
+ * Default lock TTL (ms), sized for `recordRefund`'s own span: ceiling read ->
+ * `create`, a few DB round-trips. The lock is single-shot with no heartbeat,
+ * so a caller that holds it across anything slower - the returns confirm flow
+ * holds it across the refund executor's outbound call - must pass a TTL that
+ * covers that call (`RunUnderOrderRefundLockOptions.lockTtlMs`). Otherwise the
+ * lock can expire mid-flight and a second refund of the same order reads a sum
+ * that does not yet include the first.
  */
 export const ORDER_REFUND_LOCK_TTL_MS = 30_000;
+
+/**
+ * The TTL actually requested: never shorter than the default, so a caller can
+ * only lengthen the lock, never shorten it below what `recordRefund` needs.
+ */
+export function resolveOrderRefundLockTtlMs(requestedTtlMs?: number): number {
+  if (requestedTtlMs === undefined || !Number.isFinite(requestedTtlMs)) {
+    return ORDER_REFUND_LOCK_TTL_MS;
+  }
+  return Math.max(ORDER_REFUND_LOCK_TTL_MS, requestedTtlMs);
+}
 
 /**
  * How long a refund waits to take the lock (ms) before answering "unavailable".

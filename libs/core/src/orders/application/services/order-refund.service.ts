@@ -21,6 +21,7 @@ import { decideRefundCeiling } from '../../domain/domain-services/refund-ceiling
 import { RefundRecordContendedException } from '../../domain/exceptions/refund-record-contended.exception';
 import { RefundLockUnavailableException } from '../../domain/exceptions/refund-lock-unavailable.exception';
 import { RefundCurrencyMismatchException } from '../../domain/exceptions/refund-currency-mismatch.exception';
+import { DuplicateRefundRecordException } from '../../domain/exceptions/duplicate-refund-record.exception';
 import { RefundRecordRepositoryPort } from '../../domain/ports/refund-record-repository.port';
 import {
   assertRefundAmountPrecision,
@@ -35,11 +36,12 @@ import { IOrderRecordService } from '../interfaces/order-record.service.interfac
 import type {
   IOrderRefundService,
   RecordRefundOptions,
+  RunUnderOrderRefundLockOptions,
 } from '../interfaces/order-refund.service.interface';
 import {
   ORDER_REFUND_LOCK_ACQUIRE_TIMEOUT_MS,
-  ORDER_REFUND_LOCK_TTL_MS,
   orderRefundLockKey,
+  resolveOrderRefundLockTtlMs,
 } from './order-refund-lock';
 import {
   ORDER_RECORD_SERVICE_TOKEN,
@@ -80,13 +82,18 @@ export class OrderRefundService implements IOrderRefundService {
 
   async runUnderOrderRefundLock<T>(
     internalOrderId: string,
-    work: () => Promise<T>
+    work: () => Promise<T>,
+    options?: RunUnderOrderRefundLockOptions
   ): Promise<T> {
     // The ceiling is a read-then-write, so it is serialized per order (#3289,
     // the #2047 invoice-issue-lock reasoning): unlocked, two concurrent writes
     // both read the old refunded sum and both pass.
     const lockKey = orderRefundLockKey(internalOrderId);
-    const token = await this.acquireOrderRefundLock(lockKey, internalOrderId);
+    const token = await this.acquireOrderRefundLock(
+      lockKey,
+      internalOrderId,
+      resolveOrderRefundLockTtlMs(options?.lockTtlMs)
+    );
     if (token === null) {
       throw new RefundRecordContendedException(internalOrderId);
     }
@@ -104,11 +111,12 @@ export class OrderRefundService implements IOrderRefundService {
    */
   private async acquireOrderRefundLock(
     lockKey: string,
-    internalOrderId: string
+    internalOrderId: string,
+    ttlMs: number
   ): Promise<SyncLockToken | null> {
     let timedOut = false;
     let timer: ReturnType<typeof setTimeout> | undefined;
-    const acquiring = this.lock.acquire(lockKey, ORDER_REFUND_LOCK_TTL_MS);
+    const acquiring = this.lock.acquire(lockKey, ttlMs);
     const timeout = new Promise<never>((_, reject) => {
       timer = setTimeout(() => {
         timedOut = true;
@@ -144,6 +152,16 @@ export class OrderRefundService implements IOrderRefundService {
         existingCurrency,
         input.currency
       );
+    }
+
+    // A retry of a refund that is already recorded is answered as the duplicate
+    // it is, BEFORE the ceiling: its own amount is already inside "already
+    // refunded", so evaluating the ceiling first would answer 409
+    // refund_ceiling_exceeded and invite the operator to re-submit with
+    // acknowledgeAboveCeiling for money that was never asked for twice.
+    const idempotencyKey = input.idempotencyKey;
+    if (idempotencyKey && existing.some((refund) => refund.idempotencyKey === idempotencyKey)) {
+      throw new DuplicateRefundRecordException(input.internalOrderId, idempotencyKey);
     }
 
     await this.enforceRefundCeiling(input, onCeilingVerdict);

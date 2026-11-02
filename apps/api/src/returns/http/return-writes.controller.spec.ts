@@ -21,7 +21,11 @@ import {
   RefundCeilingExceededException,
   RefundRecordContendedException,
 } from '@openlinker/core/orders';
-import { ReturnLineNotFoundError, ReturnNotFoundError } from '@openlinker/core/returns';
+import {
+  RETURN_REFUND_LOCK_TTL_MS,
+  ReturnLineNotFoundError,
+  ReturnNotFoundError,
+} from '@openlinker/core/returns';
 import { ReturnWritesController } from './return-writes.controller';
 
 const USER: AuthenticatedUser = { id: 'user-7' } as AuthenticatedUser;
@@ -374,7 +378,8 @@ describe('ReturnWritesController', () => {
 
       expect(orderRefunds.runUnderOrderRefundLock).toHaveBeenCalledWith(
         'ol_order_1',
-        expect.any(Function)
+        expect.any(Function),
+        { lockTtlMs: RETURN_REFUND_LOCK_TTL_MS }
       );
       expect(orderRefunds.recordRefund).toHaveBeenCalledWith(expect.anything(), {
         orderLockHeld: true,

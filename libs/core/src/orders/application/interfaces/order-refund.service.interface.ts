@@ -28,6 +28,16 @@ export interface RecordRefundOptions {
   onCeilingVerdict?: (verdict: RefundCeilingVerdict) => void;
 }
 
+export interface RunUnderOrderRefundLockOptions {
+  /**
+   * How long the lock must survive (ms) when `work` spans more than a DB write -
+   * the returns confirm flow holds it across the refund executor call. Never
+   * shortens the lock below its default; the lock has no heartbeat, so a TTL
+   * shorter than `work` lets a second refund of the order through mid-flight.
+   */
+  lockTtlMs?: number;
+}
+
 export interface IOrderRefundService {
   recordRefund(input: CreateRefundRecordInput, options?: RecordRefundOptions): Promise<RefundRecord>;
 
@@ -38,7 +48,11 @@ export interface IOrderRefundService {
    * makes "two concurrent refunds of one order cannot both pass" true.
    * Throws `RefundRecordContendedException` when the lock is taken.
    */
-  runUnderOrderRefundLock<T>(internalOrderId: string, work: () => Promise<T>): Promise<T>;
+  runUnderOrderRefundLock<T>(
+    internalOrderId: string,
+    work: () => Promise<T>,
+    options?: RunUnderOrderRefundLockOptions
+  ): Promise<T>;
   getRefundsForOrder(internalOrderId: string): Promise<RefundRecord[]>;
 
   /**

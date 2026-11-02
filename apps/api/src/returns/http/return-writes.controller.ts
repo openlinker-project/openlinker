@@ -71,6 +71,7 @@ import {
   RETURN_AUTHORIZE_SERVICE_TOKEN,
   RETURN_CORRECTION_PROPOSAL_SERVICE_TOKEN,
   RETURN_CUSTODY_SERVICE_TOKEN,
+  RETURN_REFUND_LOCK_TTL_MS,
   RETURN_REFUND_SERVICE_TOKEN,
   RETURNS_SERVICE_TOKEN,
   ReturnLineNotFoundError,
@@ -434,7 +435,12 @@ export class ReturnWritesController {
       if (orderId === null) {
         return await run(false);
       }
-      return await this.orderRefunds.runUnderOrderRefundLock(orderId, () => run(true));
+      // The order lock spans the refund executor's outbound call, so it gets the
+      // per-return lock's TTL - the one sized for that call - not the default
+      // sized for a DB write.
+      return await this.orderRefunds.runUnderOrderRefundLock(orderId, () => run(true), {
+        lockTtlMs: RETURN_REFUND_LOCK_TTL_MS,
+      });
     } catch (error) {
       if (error instanceof RefundRecordContendedException) {
         throw new ConflictException({
