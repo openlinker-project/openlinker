@@ -121,6 +121,7 @@ describe('ShipmentController', () => {
       getOutboundByOrderId: jest.fn(),
       findByFulfillmentWorkIds: jest.fn(),
       hasConsumedReservations: jest.fn(),
+      getLatestOutboundTrackingNumber: jest.fn(),
     };
     dispatch = { dispatch: jest.fn() };
     bulkDispatch = { dispatchBulk: jest.fn(), generateProtocol: jest.fn() };
@@ -161,6 +162,9 @@ describe('ShipmentController', () => {
       getCurrencyMismatchOrders: jest.fn(),
       getCurrencyMismatchOrdersByConnection: jest.fn(),
       getProductMatchingErrorOrders: jest.fn(),
+      notifyOrderReceived: jest.fn(),
+      notifyDocumentIssued: jest.fn(),
+      notifyShippedIfPending: jest.fn(),
     };
     controller = new ShipmentController(
       query,

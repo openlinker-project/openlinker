@@ -864,6 +864,12 @@ export interface OpenLinkerPlugin {
   build?: BuildContribution;
   /** Platform-side contributions. Resolved at render time via context. */
   platform?: PlatformContribution;
+  /**
+   * The plugin's own translation namespace, from `definePluginMessages`
+   * (ADR-081). Referencing it here keeps the namespace registered at module
+   * load, before the host loads the operator's language.
+   */
+  messages?: { readonly namespace: string };
 }
 
 /**

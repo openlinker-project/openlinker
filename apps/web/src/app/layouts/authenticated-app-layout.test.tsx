@@ -104,7 +104,7 @@ function renderLayout(
 
   render(
     <ThemeProvider>
-      <LocaleProvider>
+      <LocaleProvider locale="en">
         <SessionProvider adapter={adapter}>
           <ToastProvider>
             <ApiClientProvider client={options?.apiClient ?? createMockApiClient()}>

@@ -7,6 +7,8 @@ import {
   type ComponentPropsWithoutRef,
 } from 'react';
 import { Link } from 'react-router-dom';
+import { useMessages } from '../i18n/use-messages';
+import { interpolate } from '../i18n/interpolate';
 
 interface EntityLabelProps extends Omit<ComponentPropsWithoutRef<'span'>, 'id'> {
   id: string;
@@ -64,6 +66,7 @@ export const EntityLabel = forwardRef<HTMLSpanElement, EntityLabelProps>(functio
   },
   ref,
 ) {
+  const common = useMessages('ui').common;
   const [copied, setCopied] = useState(false);
   // Track the "Copied" badge timer so we can cancel it on unmount — otherwise
   // the 1.5 s setState fires after the JSDOM env is torn down in unit tests
@@ -93,7 +96,9 @@ export const EntityLabel = forwardRef<HTMLSpanElement, EntityLabelProps>(functio
   }, [id]);
 
   const classes = ['entity-label', className].filter(Boolean).join(' ');
-  const copyButtonLabel = copied ? (copiedLabel ?? `Copied ${id}`) : (copyLabel ?? `Copy ${id}`);
+  const copyButtonLabel = copied
+    ? (copiedLabel ?? interpolate(common.copiedId, { id }))
+    : (copyLabel ?? interpolate(common.copyId, { id }));
   const resolvedName = name ?? null;
   // `?? undefined` rather than `?? id`: both consumers sit inside the
   // `resolvedName ?` branch below, so the third rung is unreachable — it exists
@@ -122,7 +127,7 @@ export const EntityLabel = forwardRef<HTMLSpanElement, EntityLabelProps>(functio
     )
   ) : (
     <span className="entity-label__name entity-label__name--unknown" title={id}>
-      Unknown
+      {common.unknown}
     </span>
   );
 
@@ -150,7 +155,7 @@ export const EntityLabel = forwardRef<HTMLSpanElement, EntityLabelProps>(functio
           // reader announces it twice; the id adds information instead.
           title={id}
         >
-          {copied ? 'Copied' : 'Copy'}
+          {copied ? common.copied : common.copy}
         </button>
       ) : null}
     </span>

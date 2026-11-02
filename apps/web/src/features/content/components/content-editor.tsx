@@ -10,6 +10,7 @@
  * @module apps/web/src/features/content/components
  */
 import { useCallback, useMemo, useState, type ReactElement } from 'react';
+import { useFormat } from '../../../shared/i18n';
 import { MASTER_DESCRIPTION_FORMAT } from '../../../shared/ui';
 import { ChannelContentPanel } from './channel-content-panel';
 import { useSearchParams } from 'react-router-dom';
@@ -65,6 +66,7 @@ function formatMutationError(err: unknown): string | null {
 }
 
 export function ContentEditor({ productId }: ContentEditorProps): ReactElement {
+  const { number: formatNumber } = useFormat();
   const query = useContentQuery(productId);
   const saveMutation = useSaveContentDraftMutation();
   const discardMutation = useDiscardContentDraftMutation();
@@ -290,7 +292,7 @@ export function ContentEditor({ productId }: ContentEditorProps): ReactElement {
                 title={channel.connectionName}
                 subtitle={
                   <>
-                    {channel.platformType} · {channel.linkedOfferCount.toLocaleString()} linked
+                    {channel.platformType} · {formatNumber(channel.linkedOfferCount)} linked
                     offer{channel.linkedOfferCount === 1 ? '' : 's'}
                   </>
                 }

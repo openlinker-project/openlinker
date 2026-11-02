@@ -172,23 +172,16 @@ describe('SendEmailExecutorService', () => {
   });
 
   it('should fail naming the missing binding when no mailer is wired into this process', async () => {
-    // The worker has no MAILER_TOKEN today; the operator must be able to tell
-    // that apart from a bounced email.
-    //
-    // Asserted against the DECLARED reason rather than a literal (#2363): the
-    // same sentence is what `/automations/vocabulary` reports for A4's `partial`
-    // availability, so a composer that warned about this and a run log that
-    // explains it cannot drift. Pinning a copy here would be a second source and
-    // would fail the moment the operator-facing wording improved.
-    const declared = availabilityForAction('send-email');
+    // Both hosts bind a mailer since #3552, so an unresolved one is a
+    // misconfigured host rather than a standing limitation: the operator must
+    // still be able to tell it apart from a bounced email.
     const executor = new SendEmailExecutorService(stubResolver({}));
     const result = await executor.execute(input(EMAIL_TO_ADDRESS));
     expect(result.status).toBe('failed');
-    expect(declared.availability).toBe('partial');
-    expect(result.detail).toBe(declared.reason);
-    // Named as "not built here" rather than "it broke" — the distinction the
-    // step's `unavailableReason` field exists for.
-    expect(result.unavailableReason).toBe(declared.reason);
+    expect(availabilityForAction('send-email').availability).toBe('available');
+    expect(result.detail).toBe(
+      'No email sender is configured in this process, so no email was sent.',
+    );
   });
 
   it('should send to the buyer address from the order snapshot', async () => {
@@ -238,6 +231,245 @@ describe('SendEmailExecutorService', () => {
     const result = await executor.execute(input(EMAIL_TO_ADDRESS));
 
     expect(result.status).toBe('done');
+  });
+
+  it('should render the buyer name and the newest tracking number (#3553)', async () => {
+    const sent: Array<{ subject: string; text: string }> = [];
+    const mailer = {
+      sendEmail: jest.fn((message: { subject: string; text: string }) => {
+        sent.push(message);
+        return Promise.resolve();
+      }),
+    };
+    const orders = {
+      getOrderRecord: jest.fn().mockResolvedValue({
+        buyerName: 'Jan Kowalski',
+        placedAt: null,
+        dispatchByAt: null,
+      }),
+    };
+    const shipments = { getLatestOutboundTrackingNumber: jest.fn().mockResolvedValue('TRK123') };
+    const executor = new SendEmailExecutorService(
+      stubResolver({
+        MAILER_TOKEN: mailer,
+        ORDER_RECORD_SERVICE_TOKEN: orders,
+        SHIPMENT_QUERY_SERVICE_TOKEN: shipments,
+      }),
+    );
+
+    const result = await executor.execute(
+      input({
+        action: 'send-email',
+        recipient: { kind: 'address', address: 'ops@example.com' },
+        subject: 'Hi {buyer.name}',
+        body: 'Tracking: {shipment.tracking}',
+      }),
+    );
+
+    expect(result.status).toBe('done');
+    expect(sent[0]).toEqual(
+      expect.objectContaining({ subject: 'Hi Jan Kowalski', text: 'Tracking: TRK123' }),
+    );
+  });
+
+  it('should render the fallbacks when the name is not stored and no shipment exists (#3553)', async () => {
+    const sent: Array<{ subject: string; text: string }> = [];
+    const mailer = {
+      sendEmail: jest.fn((message: { subject: string; text: string }) => {
+        sent.push(message);
+        return Promise.resolve();
+      }),
+    };
+    const orders = {
+      getOrderRecord: jest.fn().mockResolvedValue({ placedAt: null, dispatchByAt: null }),
+    };
+    const shipments = { getLatestOutboundTrackingNumber: jest.fn().mockResolvedValue(null) };
+    const executor = new SendEmailExecutorService(
+      stubResolver({
+        MAILER_TOKEN: mailer,
+        ORDER_RECORD_SERVICE_TOKEN: orders,
+        SHIPMENT_QUERY_SERVICE_TOKEN: shipments,
+      }),
+    );
+
+    await executor.execute(
+      input({
+        action: 'send-email',
+        recipient: { kind: 'address', address: 'ops@example.com' },
+        subject: 'Hi {buyer.name}',
+        body: 'Tracking: {shipment.tracking}',
+      }),
+    );
+
+    expect(sent[0]).toEqual(
+      expect.objectContaining({ subject: 'Hi customer', text: 'Tracking: not yet' }),
+    );
+  });
+
+  it('should still send, with the tracking fallback, when the shipment read fails (#3553)', async () => {
+    const mailer = { sendEmail: jest.fn().mockResolvedValue(undefined) };
+    const shipments = {
+      getLatestOutboundTrackingNumber: jest.fn().mockRejectedValue(new Error('db down')),
+    };
+    const executor = new SendEmailExecutorService(
+      stubResolver({ MAILER_TOKEN: mailer, SHIPMENT_QUERY_SERVICE_TOKEN: shipments }),
+    );
+
+    const result = await executor.execute(input(EMAIL_TO_ADDRESS));
+
+    expect(result.status).toBe('done');
+  });
+
+  it('should not read the tracking number when no template uses it (#3553)', async () => {
+    const mailer = { sendEmail: jest.fn().mockResolvedValue(undefined) };
+    const shipments = { getLatestOutboundTrackingNumber: jest.fn().mockResolvedValue('TRK123') };
+    const executor = new SendEmailExecutorService(
+      stubResolver({ MAILER_TOKEN: mailer, SHIPMENT_QUERY_SERVICE_TOKEN: shipments }),
+    );
+
+    const result = await executor.execute(
+      input({
+        action: 'send-email',
+        recipient: { kind: 'address', address: 'ops@example.com' },
+        subject: 'Order {order.reference}',
+        body: 'Hello {buyer.name}',
+      }),
+    );
+
+    expect(result.status).toBe('done');
+    expect(shipments.getLatestOutboundTrackingNumber).not.toHaveBeenCalled();
+  });
+
+  describe('buyer-email templates (#3554)', () => {
+    const SHIPPED_TO_BUYER: AutomationAction = {
+      action: 'send-email',
+      recipient: { kind: 'buyer' },
+      subject: 'Your order {order.reference} shipped',
+      body: 'Tracking: {shipment.tracking}',
+      buyerEmailTemplate: 'shipped',
+    };
+    const ORDER = {
+      internalOrderId: 'ol_order_1',
+      sourceConnectionId: 'conn-allegro',
+      buyerEmail: 'abc+123@allegromail.pl',
+      placedAt: null,
+      dispatchByAt: null,
+    };
+
+    it('should route the send through the connection opt-in with the order connection', async () => {
+      const mailer = { sendEmail: jest.fn() };
+      const notifications = { send: jest.fn().mockResolvedValue({ status: 'sent', deliveryId: 'd-1' }) };
+      const executor = new SendEmailExecutorService(
+        stubResolver({
+          MAILER_TOKEN: mailer,
+          ORDER_RECORD_SERVICE_TOKEN: { getOrderRecord: jest.fn().mockResolvedValue(ORDER) },
+          BUYER_EMAIL_NOTIFICATION_SERVICE_TOKEN: notifications,
+        }),
+      );
+
+      const result = await executor.execute(input(SHIPPED_TO_BUYER));
+
+      expect(result.status).toBe('done');
+      expect(mailer.sendEmail).not.toHaveBeenCalled();
+      expect(notifications.send).toHaveBeenCalledWith(
+        expect.objectContaining({
+          internalOrderId: 'ol_order_1',
+          connectionId: 'conn-allegro',
+          templateKey: 'shipped',
+          recipient: 'abc+123@allegromail.pl',
+          subject: 'Your order ol_order_1 shipped',
+        }),
+      );
+    });
+
+    it("should put the channel's order number in {order.reference}, not the internal id", async () => {
+      const notifications = { send: jest.fn().mockResolvedValue({ status: 'sent', deliveryId: 'd-1' }) };
+      const executor = new SendEmailExecutorService(
+        stubResolver({
+          MAILER_TOKEN: { sendEmail: jest.fn() },
+          ORDER_RECORD_SERVICE_TOKEN: {
+            getOrderRecord: jest
+              .fn()
+              .mockResolvedValue({ ...ORDER, orderNumber: '461f8380-d6ae-11f1-a205-6d39a3fe2163' }),
+          },
+          BUYER_EMAIL_NOTIFICATION_SERVICE_TOKEN: notifications,
+        }),
+      );
+
+      await executor.execute(input(SHIPPED_TO_BUYER));
+
+      expect(notifications.send).toHaveBeenCalledWith(
+        expect.objectContaining({
+          subject: 'Your order 461f8380-d6ae-11f1-a205-6d39a3fe2163 shipped',
+        }),
+      );
+    });
+
+    it('should report nothing-to-do with the reason when the connection has not opted in', async () => {
+      const notifications = {
+        send: jest.fn().mockResolvedValue({
+          status: 'suppressed',
+          reason: 'emails-off-for-connection',
+          message: "Buyer emails are off for this order's connection.",
+        }),
+      };
+      const executor = new SendEmailExecutorService(
+        stubResolver({
+          MAILER_TOKEN: { sendEmail: jest.fn() },
+          ORDER_RECORD_SERVICE_TOKEN: { getOrderRecord: jest.fn().mockResolvedValue(ORDER) },
+          BUYER_EMAIL_NOTIFICATION_SERVICE_TOKEN: notifications,
+        }),
+      );
+
+      const result = await executor.execute(input(SHIPPED_TO_BUYER));
+
+      expect(result.status).toBe('nothing-to-do');
+      expect(result.detail).toContain('Buyer emails are off');
+    });
+
+    it('should resolve the order of a return subject before sending', async () => {
+      const notifications = { send: jest.fn().mockResolvedValue({ status: 'sent', deliveryId: null }) };
+      const getOrderRecord = jest.fn().mockResolvedValue(ORDER);
+      const executor = new SendEmailExecutorService(
+        stubResolver({
+          MAILER_TOKEN: { sendEmail: jest.fn() },
+          ORDER_RECORD_SERVICE_TOKEN: { getOrderRecord },
+          RETURNS_SERVICE_TOKEN: {
+            getReturn: jest.fn().mockResolvedValue({ internalOrderId: 'ol_order_1' }),
+          },
+          BUYER_EMAIL_NOTIFICATION_SERVICE_TOKEN: notifications,
+        }),
+      );
+
+      const result = await executor.execute(
+        input(
+          { ...SHIPPED_TO_BUYER, buyerEmailTemplate: 'return-received' } as AutomationAction,
+          { subjectKind: 'return', subjectId: 'ol_return_1' },
+        ),
+      );
+
+      expect(result.status).toBe('done');
+      expect(getOrderRecord).toHaveBeenCalledWith('ol_order_1');
+      expect(notifications.send).toHaveBeenCalledWith(
+        expect.objectContaining({ internalOrderId: 'ol_order_1', templateKey: 'return-received' }),
+      );
+    });
+
+    it('should fail when the return is an orphan with no order', async () => {
+      const executor = new SendEmailExecutorService(
+        stubResolver({
+          MAILER_TOKEN: { sendEmail: jest.fn() },
+          RETURNS_SERVICE_TOKEN: { getReturn: jest.fn().mockResolvedValue({ internalOrderId: null }) },
+          BUYER_EMAIL_NOTIFICATION_SERVICE_TOKEN: { send: jest.fn() },
+        }),
+      );
+
+      const result = await executor.execute(
+        input(SHIPPED_TO_BUYER, { subjectKind: 'return', subjectId: 'ol_return_1' }),
+      );
+
+      expect(result.status).toBe('failed');
+    });
   });
 
   it('should fail (not throw) when the mailer throws', async () => {

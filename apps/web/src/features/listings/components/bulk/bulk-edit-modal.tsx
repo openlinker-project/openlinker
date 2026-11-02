@@ -80,6 +80,7 @@ import {
 } from '../../../../shared/ui';
 import type { DescriptionFormat, StatusBadgeTone } from '../../../../shared/ui';
 import { useDescriptionFormatQuery } from '../../hooks/use-description-format-query';
+import { useFormat } from '../../../../shared/i18n';
 import { Tooltip, TooltipContent, TooltipTrigger } from '../../../../shared/ui/tooltip';
 import { useToast } from '../../../../shared/ui/toast-provider';
 import { ReadOnlyLock } from '../../../../shared/ui/read-only-lock';
@@ -594,6 +595,7 @@ function BulkEditModalForm({
   onSave,
   onClose,
 }: BulkEditModalFormProps): ReactElement {
+  const { number: formatNumber } = useFormat();
   const connectionId = connection.id;
   // ADR-046: one read for the whole modal. Every description field below derives
   // its toolbar and schema from this, so a control the destination would discard
@@ -1001,7 +1003,7 @@ function BulkEditModalForm({
       showToast({
         tone: 'error',
         title: 'Description too long for this destination',
-        description: `Shorten it to ${descriptionFormat.maxBytes.toLocaleString()} bytes or fewer - ${platformName} rejects a longer one.`,
+        description: `Shorten it to ${formatNumber(descriptionFormat.maxBytes)} bytes or fewer - ${platformName} rejects a longer one.`,
       });
       return;
     }
@@ -3429,6 +3431,7 @@ function BulkShopEditModalForm({
   onSave,
   onClose,
 }: BulkShopEditModalFormProps): ReactElement {
+  const { number: formatNumber } = useFormat();
   const connectionId = connection.id;
   const { showToast } = useToast();
   const isMultiVariant = row.variants.length > 1;
@@ -3606,7 +3609,7 @@ function BulkShopEditModalForm({
       showToast({
         tone: 'error',
         title: 'Description too long for this destination',
-        description: `Shorten it to ${descriptionFormat.maxBytes.toLocaleString()} bytes or fewer - the shop rejects a longer one.`,
+        description: `Shorten it to ${formatNumber(descriptionFormat.maxBytes)} bytes or fewer - the shop rejects a longer one.`,
       });
       return;
     }

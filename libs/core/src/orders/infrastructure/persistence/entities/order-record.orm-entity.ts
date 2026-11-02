@@ -162,6 +162,18 @@ export class OrderRecordOrmEntity {
   fulfillmentState!: string | null;
 
   /**
+   * Instant the `order.shipped` trigger fired for this order (#3554). `null` =
+   * not yet. The at-most-once claim for that trigger, written ONLY by
+   * `OrderRecordRepository.claimShippedNotification` and never by the ingestion
+   * upsert. It is a column rather than the `fulfillmentState` transition
+   * because the trigger may wait for the carrier's tracking number after the
+   * order has already turned shipped (InPost mints it minutes later, #1947), so
+   * "entered shipped" and "announced shipped" are two different moments.
+   */
+  @Column({ type: 'timestamptz', nullable: true })
+  shippedNotifiedAt!: Date | null;
+
+  /**
    * Neutral `SalesDocumentGateBlockReason` naming why no fiscal document was
    * issued (#2100, ADR-041 decision 11). `null` = nothing blocking. Indexed
    * because it IS a filter axis (the orders list ships an "Invoicing blocked"

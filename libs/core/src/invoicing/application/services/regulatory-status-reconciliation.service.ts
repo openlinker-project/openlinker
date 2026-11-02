@@ -88,6 +88,7 @@ export class RegulatoryStatusReconciliationService
       skippedTerminal: 0,
       readErrors: 0,
       total: 0,
+      clearedInvoiceIds: [],
     };
 
     // Resolve the per-connection Invoicing adapter. The reader is a runtime
@@ -170,6 +171,15 @@ export class RegulatoryStatusReconciliationService
 
         await this.repo.updateOutcome(record.id, patch);
         result.updated += 1;
+        // The loop only reads non-terminal records, so a terminal patch here is a
+        // transition. `rejected` is terminal too but never has a document.
+        if (
+          patch.regulatoryStatus !== undefined &&
+          patch.regulatoryStatus !== 'rejected' &&
+          isTerminalRegulatoryStatus(patch.regulatoryStatus)
+        ) {
+          result.clearedInvoiceIds.push(record.id);
+        }
       }
 
       // A short (or empty) page means the frontier is drained — stop. A full

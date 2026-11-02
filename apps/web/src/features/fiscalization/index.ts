@@ -27,6 +27,8 @@ export type {
   FiscalReconcileOutcome,
   ReconcileFiscalRegistrationResult,
   RegisterFiscalTransactionInput,
+  SendReceiptEmailInput,
+  SendReceiptEmailResult,
 } from './api/fiscalization.types';
 export { FiscalReceiptStatusBadge } from './components/fiscal-receipt-status-badge';
 export type { FiscalReceiptDisplayStatus } from './components/fiscal-receipt-status-badge';
@@ -36,6 +38,7 @@ export { useOrderFiscalRegistrationsQuery } from './hooks/use-order-fiscal-regis
 export { useFiscalRegistrationQuery } from './hooks/use-fiscal-registration-query';
 export { useFiscalRegistrationProgressQuery } from './hooks/use-fiscal-registration-progress-query';
 export { useRegisterFiscalReceiptMutation } from './hooks/use-register-fiscal-receipt-mutation';
+export { useSendReceiptEmailMutation } from './hooks/use-send-receipt-email-mutation';
 export { useReconcileFiscalRegistrationMutation } from './hooks/use-reconcile-fiscal-registration-mutation';
 export {
   selectFiscalizationCandidates,
