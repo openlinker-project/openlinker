@@ -75,6 +75,8 @@ import {
   ALLEGRO_OTHER_CARRIER_ID,
 } from '../../domain/types/allegro-order-fulfillment.types';
 import { AllegroApiException } from '../../domain/exceptions/allegro-api.exception';
+import { AllegroNetworkException } from '../../domain/exceptions/allegro-network.exception';
+import { AllegroRateLimitException } from '../../domain/exceptions/allegro-rate-limit.exception';
 import { AllegroOrderDispatchRejectedException } from '../../domain/exceptions/allegro-order-dispatch-rejected.exception';
 import { deriveAllegroPaymentStatus, isAllegroCheckoutSettled } from './allegro-payment-status';
 import {
@@ -158,6 +160,11 @@ export class AllegroOrderSourceAdapter
    * `needs-sandbox-probe`. No refund is issued — OL is never the money book of
    * record (ADR-027).
    *
+   * **The cancel reason stays in OpenLinker (#3540).** `cancelled.reason` is NOT
+   * sent: the verified `PUT .../fulfillment` body carries a status only, and this
+   * tree knows of no reason field on it. Inventing one would be a guess at a wire
+   * contract; the operator's reason is recorded on the `order.cancel_request`.
+   *
    * `delivered` and `in-progress` (#3526) are DECLINED (`unsupported`), rather
    * than guessed at. The only verified members of the fulfillment-status enum
    * `putFulfillment` writes are `SENT` and `CANCELLED` — a seller-settable
@@ -174,7 +181,11 @@ export class AllegroOrderSourceAdapter
           return { outcome: 'applied' };
         }
         case 'cancelled': {
-          await this.putFulfillment(event.externalOrderId, ALLEGRO_FULFILLMENT_STATUS_CANCELLED);
+          // No retry ladder: the operator is waiting on this call, and a timeout
+          // is reported as pending rather than retried for minutes (C-28).
+          await this.putFulfillment(event.externalOrderId, ALLEGRO_FULFILLMENT_STATUS_CANCELLED, {
+            maxRetries: 0,
+          });
           return { outcome: 'applied' };
         }
         case 'delivered':
@@ -203,7 +214,11 @@ export class AllegroOrderSourceAdapter
         `OrderStatusWriteback '${event.type}' rejected for Allegro order ` +
           `${event.externalOrderId}: ${detail} (connection: ${this.connectionId})`,
       );
-      return { outcome: 'rejected', detail };
+      return {
+        outcome: 'rejected',
+        detail,
+        ...(isTransportFailure(error) ? { transient: true } : {}),
+      };
     }
   }
 
@@ -269,8 +284,17 @@ export class AllegroOrderSourceAdapter
    * own their own success/failure semantics (idempotent-409 for SENT, surface for
    * CANCELLED), so this helper stays a thin one-liner with no error handling.
    */
-  private async putFulfillment(externalOrderId: string, status: string): Promise<void> {
-    await this.httpClient.put(`/order/checkout-forms/${externalOrderId}/fulfillment`, { status });
+  private async putFulfillment(
+    externalOrderId: string,
+    status: string,
+    options?: { maxRetries?: number }
+  ): Promise<void> {
+    const path = `/order/checkout-forms/${externalOrderId}/fulfillment`;
+    if (options === undefined) {
+      await this.httpClient.put(path, { status });
+      return;
+    }
+    await this.httpClient.put(path, { status }, options);
   }
 
   /**
@@ -1386,6 +1410,20 @@ export class AllegroOrderSourceAdapter
     }
     return result;
   }
+}
+
+/**
+ * A failure where Allegro never gave an answer (timeout, reset, 5xx, throttle):
+ * the write may or may not have landed, so it is not a refusal.
+ */
+function isTransportFailure(error: unknown): boolean {
+  if (error instanceof AllegroNetworkException || error instanceof AllegroRateLimitException) {
+    return true;
+  }
+  return (
+    error instanceof AllegroApiException &&
+    (error.statusCode === undefined || error.statusCode >= 500)
+  );
 }
 
 function mapAllegroEventType(type: string): OrderFeedEventType {

@@ -475,6 +475,9 @@ export class WooCommerceOrderProcessorAdapter
    *   event carried a tracking number, which WC core cannot store: `unsupported`
    *   instead, so the #1947 late-waybill relay marker is not burned on a
    *   waybill the shop never actually received.
+   * - **The cancel reason stays in OpenLinker (#3540)**: the status PUT carries no
+   *   reason, and this adapter makes no order-notes call. `cancelled.reason` is
+   *   ignored here by design rather than by omission.
    * - `cancelled`  → refuse (`rejected`) if WC has already reached a terminal
    *   fulfilled state (`completed` / `refunded`) — the shop is authoritative for
    *   its own live state, so we surface the conflict rather than force a

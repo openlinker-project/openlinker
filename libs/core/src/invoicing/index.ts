@@ -10,6 +10,7 @@
  */
 export * from './domain/types/invoicing.types';
 export * from './domain/domain-services/invoice-failure-classification.domain-service';
+export { buildOriginalDocumentFromIssuedRecord } from './domain/domain-services/invoice-original-document.domain-service';
 export * from './domain/types/invoice-numbering.types';
 export * from './domain/types/numbering-audit.types';
 export {

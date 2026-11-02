@@ -47,10 +47,12 @@ export type {
   OrderLifecycleEventType,
   OrderWritebackOutcome,
   OrderWritebackResult,
+  OrderWritebackScope,
 } from './domain/types/order-lifecycle-event.types';
 export {
   OrderLifecycleEventTypeValues,
   OrderWritebackOutcomeValues,
+  OrderWritebackScopeValues,
 } from './domain/types/order-lifecycle-event.types';
 
 // Return source reader (#2329 / ADR-060): the returns half of OrderSource.
@@ -471,6 +473,10 @@ export type {
   OrderSearchTextReindexRunResult,
 } from './domain/types/order-search-text-reindex.types';
 export * from './orders.tokens';
+export type {
+  OrderLabelVoiderPort,
+  OrderLabelVoidOutcome,
+} from './domain/ports/order-label-voider.port';
 
 // Domain entities
 export { OrderRecord } from './domain/entities/order-record.entity';
@@ -534,8 +540,39 @@ export {
   isOrderChangeKind,
   isOrderChangeStatus,
   isOpenOrderChangeStatus,
+  OrderAmendmentRequestKindValues,
+  isOrderAmendmentRequestKind,
+  OrderCorrectionChangeKindValues,
+  isOrderCorrectionChangeKind,
+  cancelRequestTargetRef,
+  cancelCorrectionTargetRef,
 } from './domain/types/order-change.types';
+// #3540 — why an operator cancels an order.
+export {
+  OrderCancelReasonValues,
+  isOrderCancelReason,
+  orderCancelReasonRequiresNote,
+  OPERATOR_ORDER_ORIGIN_ID,
+  orderStockRestoreDedupeKey,
+  CANCEL_ABANDONED_LABEL_NOT_VOIDABLE,
+  ORDER_CANCELLED_HOLD_RELEASE_NOTE,
+  OrderCancelCorrectionUnavailableReasonValues,
+} from './domain/types/order-cancel.types';
 export type {
+  OrderCancelReason,
+  OrderCancelCorrectionPayload,
+  OrderCancelCorrectionProposal,
+  OrderCancelCorrectionProposalLine,
+  OrderCancelCorrectionUnavailableReason,
+} from './domain/types/order-cancel.types';
+export type {
+  IOrderCancellationEffectsService,
+  ApplyOrderCancellationEffectsInput,
+  OrderCancellationEffectsResult,
+} from './application/interfaces/order-cancellation-effects.service.interface';
+export type {
+  OrderAmendmentRequestKind,
+  OrderCorrectionChangeKind,
   OrderChangeKind,
   OrderChangeStatus,
   CreateOrderChangeInput,
@@ -549,6 +586,7 @@ export { OrderChange } from './domain/entities/order-change.entity';
 export { OrderHold } from './domain/entities/order-hold.entity';
 export type {
   OrderHoldPlacedBy,
+  OrderHoldReleasedBy,
   PlaceOrderHoldInput,
   ReleaseOrderHoldInput,
 } from './domain/types/order-hold.types';
@@ -577,6 +615,7 @@ export type {
 export type {
   IOrderChangeService,
   OpenOrderChangeResult,
+  OrderChangeListItem,
 } from './application/services/order-change.service.interface';
 
 // The automation facts projection (#2363). Exported because it has two callers

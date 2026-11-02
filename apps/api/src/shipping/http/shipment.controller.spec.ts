@@ -118,6 +118,7 @@ describe('ShipmentController', () => {
       list: jest.fn(),
       getById: jest.fn(),
       getActiveByOrderId: jest.fn(),
+      getOutboundByOrderId: jest.fn(),
       findByFulfillmentWorkIds: jest.fn(),
       hasConsumedReservations: jest.fn(),
     };
