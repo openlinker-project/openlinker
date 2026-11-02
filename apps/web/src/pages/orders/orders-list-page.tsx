@@ -64,6 +64,7 @@ import { usePackersQuery } from '../../features/users';
 import { HANDLED_IN_OPENLINKER_COPY } from '../../features/orders/lib/handled-in-openlinker.copy';
 import { OrderHoldBadge } from '../../features/orders/components/order-hold-badge';
 import { OrderDestinationRoutingBadge } from '../../features/orders/components/order-destination-routing-badge';
+import { OrderEditedBadge } from '../../features/orders/components/order-edited-badge';
 import { useRetryOrderDestinationMutation } from '../../features/orders/hooks/use-retry-order-destination-mutation';
 import { ReadOnlyLock } from '../../shared/ui/read-only-lock';
 import { useWriteAccess } from '../../shared/auth/use-permission';
@@ -800,6 +801,12 @@ export function OrdersListPage(): ReactElement {
                   cause. Status group, beside health, for the placement reason
                   above; shared verbatim with the mobile card. */}
               <OrderDestinationRoutingBadge reason={order.destinationRoutingBlockReason} compact />
+              {/* #3544 - an operator edited this order here; the channel keeps the original. */}
+              <OrderEditedBadge
+                edited={order.editedInOpenLinker}
+                needsAttention={order.editsNeedAttention}
+                compact
+              />
               {/* #2356 — an inert state is an EXCEPTION, and rule 2 of the style
                   guide's order-row signal placement puts exceptions in the
                   Status group beside failure reasons. It is another badge
@@ -1735,6 +1742,11 @@ export function OrdersListPage(): ReactElement {
                     <OrderHoldBadge reason={order.activeHoldReason} compact />
                     <OrderDestinationRoutingBadge
                       reason={order.destinationRoutingBlockReason}
+                      compact
+                    />
+                    <OrderEditedBadge
+                      edited={order.editedInOpenLinker}
+                      needsAttention={order.editsNeedAttention}
                       compact
                     />
                     <OmsAttentionBadges entries={order.omsAttention ?? []} compact />

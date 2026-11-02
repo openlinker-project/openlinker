@@ -93,7 +93,7 @@ export function buildOrderCancelTimelineEvents(input: OrderCancelTimelineInput):
           tone: 'warning',
         });
       }
-    } else {
+    } else if (change.kind === 'order.cancel_correction') {
       const proposal = change.payload.correction;
       const number = proposal?.documentNumber ? ` for ${proposal.documentNumber}` : '';
       events.push({

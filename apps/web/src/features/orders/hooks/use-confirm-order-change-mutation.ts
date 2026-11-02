@@ -13,10 +13,13 @@ import { useMutation, useQueryClient, type UseMutationResult } from '@tanstack/r
 import { useApiClient } from '../../../app/api/api-client-provider';
 import { ordersQueryKeys } from '../api/orders.query-keys';
 import type { ConfirmOrderChangeResult } from '../api/order-cancel.types';
+import type { ConfirmOrderChangeRequest } from '../api/order-edit.types';
 
 export interface ConfirmOrderChangeInput {
   internalOrderId: string;
   changeId: string;
+  /** A discount's refund intent only: record it although it passes the refund ceiling. */
+  body?: ConfirmOrderChangeRequest;
 }
 
 export function useConfirmOrderChangeMutation(): UseMutationResult<
@@ -28,8 +31,10 @@ export function useConfirmOrderChangeMutation(): UseMutationResult<
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: ({ internalOrderId, changeId }) =>
-      apiClient.orders.confirmOrderChange(internalOrderId, changeId),
+    mutationFn: ({ internalOrderId, changeId, body }) =>
+      body
+        ? apiClient.orders.confirmOrderChange(internalOrderId, changeId, body)
+        : apiClient.orders.confirmOrderChange(internalOrderId, changeId),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ordersQueryKeys.all });
     },

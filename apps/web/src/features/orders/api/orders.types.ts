@@ -13,6 +13,7 @@
 import type { OrderLifecyclePhaseValue } from '../lib/order-lifecycle-phase.types';
 import type { HoldReason, ProvisioningResume } from '../lib/order-hold.types';
 import type { PaymentMethod } from './order-snapshot.schema';
+import type { OrderEditsView } from './order-edit.types';
 
 // Re-exported so a consumer of the orders transport types can name a hold's
 // reason and the release outcome without also reaching into `lib/`.
@@ -510,6 +511,20 @@ export interface OrderRecord {
    * for a `'ready'` record. Optional for graceful degradation on older payloads.
    */
   mappingFailureReason?: string | null;
+  /**
+   * True when an operator edited this order in OpenLinker (#3542, D9). The
+   * snapshot is then the order AS EDITED; the channel keeps its original. On
+   * every list row. Optional for graceful degradation on older payloads.
+   */
+  editedInOpenLinker?: boolean;
+  /** An edit refers to a line the channel no longer reports; see `edits.unmatchedLineEdits`. */
+  editsNeedAttention?: boolean;
+  /**
+   * The order beside the channel's own record of it (#3542): every edited figure
+   * given twice, plus the edit history. DETAIL read only; `null` on an unedited
+   * order. Never read it off a list row, where it is always absent.
+   */
+  edits?: OrderEditsView | null;
   /**
    * Buyer tax id as the source asserted it (#2599/#3180) — THREE states on
    * the wire, not two:

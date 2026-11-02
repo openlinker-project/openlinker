@@ -109,15 +109,27 @@ export const ORDER_CANCEL_ERROR_CODES = [
 ] as const;
 export type OrderCancelErrorCode = (typeof ORDER_CANCEL_ERROR_CODES)[number];
 
-/** The backend's machine code off an error body, or null for anything else. */
-export function readOrderCancelErrorCode(error: unknown): OrderCancelErrorCode | null {
+/**
+ * The backend's machine code off an error body, restricted to `codes`, or null.
+ * One reader for every order write (cancel, confirm, edit): each states its own
+ * closed list, the body shape (`error` carries the code) is the same.
+ */
+export function readErrorCodeFrom<T extends string>(
+  error: unknown,
+  codes: readonly T[],
+): T | null {
   if (!(error instanceof ApiError)) return null;
   const details = error.details;
   if (typeof details !== 'object' || details === null) return null;
   const code = (details as { error?: unknown }).error;
-  return typeof code === 'string' && (ORDER_CANCEL_ERROR_CODES as readonly string[]).includes(code)
-    ? (code as OrderCancelErrorCode)
+  return typeof code === 'string' && (codes as readonly string[]).includes(code)
+    ? (code as T)
     : null;
+}
+
+/** The backend's machine code off an error body, or null for anything else. */
+export function readOrderCancelErrorCode(error: unknown): OrderCancelErrorCode | null {
+  return readErrorCodeFrom(error, ORDER_CANCEL_ERROR_CODES);
 }
 
 /** The server's own sentence, or the fallback when the error carries none. */
@@ -221,7 +233,7 @@ export const CONFIRM_CORRECTION_ERROR_TITLES: Partial<Record<OrderCancelErrorCod
   CORRECTION_IN_PROGRESS: 'The correction is already being issued',
   CORRECTION_NEEDS_RECONCILIATION: 'The correction needs checking at the provider',
   CORRECTION_FAILED: 'The invoicing provider rejected the correction',
-  CORRECTION_SUPERSEDED: 'The invoice was already corrected',
+  CORRECTION_SUPERSEDED: 'The invoice was already corrected, or the order was cancelled',
 };
 
 /** The figures a `refund_ceiling_exceeded` 409 carries. */
@@ -251,6 +263,18 @@ export function readRefundCeilingFigures(error: unknown): RefundCeilingFigures |
     requested: text(body.requested),
     currency: typeof body.currency === 'string' ? body.currency : '',
   };
+}
+
+/**
+ * What can still be refunded: the server's `ceiling` is the order's TOTAL, not
+ * what is left, so the remainder is the total minus what was already refunded
+ * (E-42). Falls back to the total when either figure is not a plain decimal.
+ */
+export function remainingRefundable(ceiling: string, alreadyRefunded: string): string {
+  const total = Number(ceiling);
+  const refunded = Number(alreadyRefunded);
+  if (!Number.isFinite(total) || !Number.isFinite(refunded)) return ceiling;
+  return Math.max(0, Math.round(total * 100) / 100 - Math.round(refunded * 100) / 100).toFixed(2);
 }
 
 /** Why a change row was abandoned by OpenLinker (the backend's `declinedReason`). */

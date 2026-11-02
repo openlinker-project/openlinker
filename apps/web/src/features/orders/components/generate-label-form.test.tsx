@@ -707,6 +707,50 @@ describe('GenerateLabelForm — AC-3 pickup-point retry hint (#839)', () => {
     ).toBeInTheDocument();
   });
 
+  it('should say the operator removed the pickup point instead of waiting for Allegro (E-59)', async () => {
+    const order = makeOrderWithoutPickupPoint({
+      sourceConnectionId: 'conn-allegro-1',
+      createdAt: new Date().toISOString(),
+      edits: {
+        editedAt: '2026-10-27T01:04:12.062Z',
+        deliveryMethod: {
+          original: { id: 'allegro-one-box', name: 'Allegro One Box' },
+          current: { id: 'allegro-one-box', name: 'Allegro One Box' },
+        },
+      } as OrderRecord['edits'],
+    });
+
+    const apiClient = createMockApiClient({
+      connections: {
+        list: vi.fn().mockResolvedValue([
+          {
+            id: 'conn-allegro-1',
+            platformType: 'allegro',
+            name: 'Allegro Main',
+            status: 'active',
+            config: {},
+            credentialsBacked: true,
+            enabledCapabilities: [],
+            supportedCapabilities: ['OrderSource'],
+            createdAt: '2026-01-01T00:00:00.000Z',
+            updatedAt: '2026-01-01T00:00:00.000Z',
+          },
+        ]),
+      },
+    });
+
+    renderWithProviders(
+      <GenerateLabelForm order={order} onSuccess={vi.fn()} onCancel={vi.fn()} />,
+      { apiClient },
+    );
+
+    expect(await screen.findByText(/Pickup point removed in OpenLinker/i)).toBeInTheDocument();
+    expect(screen.queryByText(/Pickup point not yet available/i)).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: /Retry pickup-point lookup/i }),
+    ).not.toBeInTheDocument();
+  });
+
   // PrestaShop omits the `pickupPointResolvesAsync` trait, so `usePlatform`
   // resolves it falsy and the hint stays hidden — pins the trait path (#893),
   // not the old literal `platformType === 'allegro'` compare.
