@@ -82,3 +82,9 @@ The record never shows the buyer's address, only what happened.
 - If the email sender itself is down, nothing is recorded on the order; the
   failed step appears in the automation's run history instead, where you can
   retry it.
+- If OpenLinker stops at the exact moment it is handing an email to the email
+  sender (a restart, a crash), that email stays without an outcome on the order
+  and is **not** sent again automatically. OpenLinker cannot tell whether it
+  went out, and sending it a second time is the worse mistake. If the buyer
+  says it never arrived, contact them directly (an invoice or receipt can also
+  be emailed again by hand from the order).

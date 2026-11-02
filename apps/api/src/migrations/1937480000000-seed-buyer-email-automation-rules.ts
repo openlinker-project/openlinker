@@ -16,6 +16,13 @@
  * `ON CONFLICT DO NOTHING` on the duplicate guard's unique index keeps a re-run
  * harmless; `down()` removes exactly these ids.
  *
+ * The file exports ONLY the migration class. TypeORM loads every exported
+ * function from a file the migrations glob matches and runs it as a migration,
+ * so an exported helper is constructed with no argument and aborts
+ * `migration:run`. The rules and the hash are reached by the pin spec through
+ * the class's statics instead; a separate module under `migrations/` would not
+ * help, because the production glob is `migrations/**`.
+ *
  * Generated: 2026-10-29 (synthetic sequential prefix per docs/migrations.md #1013).
  * @module apps/api/src/migrations
  */
@@ -41,7 +48,7 @@ const buyerEmail = (
   buyerEmailTemplate: template,
 });
 
-export const BUYER_EMAIL_SEED_RULES: readonly SeedRule[] = [
+const BUYER_EMAIL_SEED_RULES: readonly SeedRule[] = [
   {
     id: '6c1f3a52-3554-4a00-8000-000000000001',
     name: 'Buyer email: order confirmed',
@@ -102,7 +109,7 @@ function withSortedKeys(value: unknown): unknown {
 }
 
 /** Copy of `computeAutomationDefinitionHash` for a rule with no conditions and an empty config. */
-export function seedDefinitionHash(rule: SeedRule): string {
+function seedDefinitionHash(rule: SeedRule): string {
   const canonical = JSON.stringify({
     trigger: rule.trigger,
     triggerConfig: withSortedKeys({}),
@@ -114,6 +121,10 @@ export function seedDefinitionHash(rule: SeedRule): string {
 
 export class SeedBuyerEmailAutomationRules1937480000000 implements MigrationInterface {
   name = 'SeedBuyerEmailAutomationRules1937480000000';
+
+  /** For the pin spec only; see the file header for why these are not exports. */
+  static readonly seedRules: readonly SeedRule[] = BUYER_EMAIL_SEED_RULES;
+  static readonly definitionHash = seedDefinitionHash;
 
   public async up(queryRunner: QueryRunner): Promise<void> {
     for (const rule of BUYER_EMAIL_SEED_RULES) {
