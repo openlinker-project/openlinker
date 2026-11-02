@@ -19,3 +19,8 @@ export { OrderLineItemOrmEntity } from './infrastructure/persistence/entities/or
 // Consumer: apps/api/test/integration/orders/order-early-cancellation-signal.int-spec.ts (#2069) —
 // asserts the signal row is written and consumed against the real table.
 export { OrderCancellationSignalOrmEntity } from './infrastructure/persistence/entities/order-cancellation-signal.orm-entity';
+// Consumer: apps/api/test/integration/sales-documents/sales-document-batch-run.int-spec.ts (#3583).
+export {
+  SalesDocumentBatchRunOrmEntity,
+  SalesDocumentBatchRunItemOrmEntity,
+} from './infrastructure/persistence/entities/sales-document-batch-run.orm-entity';

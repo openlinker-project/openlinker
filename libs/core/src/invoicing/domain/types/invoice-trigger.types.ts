@@ -14,8 +14,9 @@
  * - `auto-on-paid`   — enqueue issuance when the order is paid.
  * - `auto-on-shipped`— enqueue issuance when the order is shipped (honored only
  *   where the source adapter emits `'shipped'` inbound — see D6).
- * - `batched`        — DEFERRED to a future issue; rejected cleanly (never
- *   silently ignored) by the trigger service.
+ * - `batched`        — (#3583) qualifies when paid, like `auto-on-paid`, but
+ *   waits in its connection's batch queue and is issued by a scheduled or
+ *   operator-started batch run.
  *
  * @module libs/core/src/invoicing/domain/types
  */
@@ -44,6 +45,32 @@ export function parseTriggerModel(value: unknown): InvoiceTriggerModel {
   )
     ? (value as InvoiceTriggerModel)
     : 'manual';
+}
+
+/**
+ * The batch run a gate evaluation belongs to (#3583): the connection running
+ * and the kinds it issues. Only a `batched` order routed to THIS connection and
+ * one of THESE kinds proceeds; every other order is evaluated as usual.
+ */
+export interface AutoIssueBatchRunScope {
+  connectionId: string;
+  documentKinds: readonly SalesDocumentKind[];
+}
+
+export interface AutoIssueOptions {
+  batchRun?: AutoIssueBatchRunScope;
+}
+
+export function isInBatchRun(
+  batchRun: AutoIssueBatchRunScope | undefined,
+  connectionId: string,
+  documentKind: SalesDocumentKind,
+): boolean {
+  return (
+    batchRun !== undefined &&
+    batchRun.connectionId === connectionId &&
+    batchRun.documentKinds.includes(documentKind)
+  );
 }
 
 /** Which rung of the precedence produced a resolved trigger model (#3582). */

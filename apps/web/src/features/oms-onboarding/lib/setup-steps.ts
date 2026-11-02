@@ -105,7 +105,8 @@ export function describeSetupStep(
 // error here, so it cannot silently read as "issued by hand".
 const IS_AUTOMATIC_TRIGGER: Record<InvoiceTriggerModel, boolean> = {
   manual: false,
-  batched: false,
+  // #3583: a batch run issues the order without anyone asking.
+  batched: true,
   'auto-on-paid': true,
   'auto-on-shipped': true,
 };

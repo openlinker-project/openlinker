@@ -96,9 +96,13 @@ describe('hasAutomaticDocumentIssuing', () => {
     ).toBe(true);
   });
 
-  it('should be false while the trigger is manual or batched', () => {
+  it('should be false while the trigger is manual', () => {
     expect(hasAutomaticDocumentIssuing([row({ triggerModels: models('manual') })])).toBe(false);
-    expect(hasAutomaticDocumentIssuing([row({ triggerModels: models('batched') })])).toBe(false);
+  });
+
+  // #3583: a scheduled batch run issues without anyone asking.
+  it('should count a batched trigger as automatic', () => {
+    expect(hasAutomaticDocumentIssuing([row({ triggerModels: models('batched') })])).toBe(true);
   });
 
   // #3582: only the kinds the row issues count.
@@ -119,7 +123,7 @@ describe('hasAutomaticDocumentIssuing', () => {
   it('should count a both-kinds row when either kind is automatic', () => {
     expect(
       hasAutomaticDocumentIssuing([
-        row({ documentKind: 'both', triggerModels: models('batched', 'auto-on-paid') }),
+        row({ documentKind: 'both', triggerModels: models('manual', 'auto-on-paid') }),
       ]),
     ).toBe(true);
   });

@@ -399,6 +399,37 @@ export {
   type OrderDocumentEmailLocale,
   type OrderDocumentEmailRefusal,
 } from './domain/types/order-document-email.types';
+// Batch issuing (#3583).
+export type {
+  ISalesDocumentBatchService,
+  ExecuteSalesDocumentBatchRunInput,
+  ExecuteSalesDocumentBatchRunResult,
+  SalesDocumentBatchRunDetail,
+  SalesDocumentBatchRunItemView,
+} from './application/interfaces/sales-document-batch.service.interface';
+export {
+  SalesDocumentBatchRun,
+  SalesDocumentBatchRunItem,
+} from './domain/entities/sales-document-batch-run.entity';
+export {
+  SalesDocumentBatchRunTriggerValues,
+  SalesDocumentBatchRunStatusValues,
+  SalesDocumentBatchRunFailureReasonValues,
+  SalesDocumentBatchRunItemResultValues,
+  SalesDocumentBatchItemOutcomeValues,
+  deriveBatchItemOutcome,
+  isBatchQueueB2b,
+  buildScheduledBatchRunKey,
+  buildManualBatchRunKey,
+} from './domain/types/sales-document-batch-run.types';
+export type {
+  SalesDocumentBatchRunTrigger,
+  SalesDocumentBatchRunStatus,
+  SalesDocumentBatchRunFailureReason,
+  SalesDocumentBatchRunItemResult,
+  SalesDocumentBatchItemOutcome,
+  SalesDocumentBatchQueueEntry,
+} from './domain/types/sales-document-batch-run.types';
 export type {
   SalesDocumentListAmount,
   SalesDocumentListCursor,

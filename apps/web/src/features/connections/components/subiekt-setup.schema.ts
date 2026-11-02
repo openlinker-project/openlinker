@@ -148,9 +148,9 @@ export function buildSubiektSetupSchema(identity: SubiektProductIdentity) {
         ])
         .optional(),
       bridgeToken: z.string().trim().optional(),
-      // Only the two usable values: `batched` throws
-      // `BatchedTriggerNotImplementedError`, and `auto-on-shipped` is
-      // meaningless for a connection that issues the document rather than
+      // Only the two values a first setup needs: `batched` (#3583) also needs a
+      // schedule, which is set on the batch issuing screen, and `auto-on-shipped`
+      // is meaningless for a connection that issues the document rather than
       // shipping the parcel.
       triggerModel: z.enum(['manual', 'auto-on-paid']),
     })

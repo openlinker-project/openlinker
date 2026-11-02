@@ -25,9 +25,12 @@ export {
   InvoiceTriggerModelValues,
   parseTriggerModel,
   resolveTriggerModelForKind,
+  isInBatchRun,
   TriggerModelSourceValues,
 } from './domain/types/invoice-trigger.types';
 export type {
+  AutoIssueBatchRunScope,
+  AutoIssueOptions,
   InvoiceTriggerModel,
   ResolvedTriggerModel,
   TriggerModelSource,
@@ -93,7 +96,6 @@ export * from './domain/exceptions/invalid-numbering-pattern.exception';
 export * from './domain/exceptions/invoice-numbering-series-not-found.exception';
 export * from './domain/exceptions/numbering-gap-note-reason-required.exception';
 export * from './domain/exceptions/source-document-immutable.error';
-export { BatchedTriggerNotImplementedError } from './domain/exceptions/batched-trigger-not-implemented.error';
 export { InvalidBuyerProfileError } from './application/mappers/errors/invalid-buyer-profile.error';
 export { InvalidInvoiceLineError } from './application/mappers/errors/invalid-invoice-line.error';
 export { UnsupportedPriceTreatmentError } from './application/mappers/errors/unsupported-price-treatment.error';
