@@ -218,16 +218,25 @@ export class SalesDocumentBatchService implements ISalesDocumentBatchService {
     if (run === null) return null;
     const items = await this.runs.listItems(runId);
     const enqueuedIds = items.filter((item) => item.result === 'enqueued').map((item) => item.orderId);
-    const views: Map<string, SalesDocumentView> =
+    const [views, labels] = await Promise.all([
       enqueuedIds.length === 0
-        ? new Map<string, SalesDocumentView>()
-        : await this.salesDocumentViews.getForOrders(enqueuedIds);
+        ? Promise.resolve(new Map<string, SalesDocumentView>())
+        : this.salesDocumentViews.getForOrders(enqueuedIds),
+      this.runs.findOrderLabels(items.map((item) => item.orderId)),
+    ]);
     return {
       run,
-      items: items.map((item) => ({
-        item,
-        outcome: deriveBatchItemOutcome(item.result, views.get(item.orderId)?.document ?? null),
-      })),
+      items: items.map((item) => {
+        const document = views.get(item.orderId)?.document ?? null;
+        const label = labels.get(item.orderId);
+        return {
+          item,
+          outcome: deriveBatchItemOutcome(item.result, document),
+          orderNumber: label?.orderNumber ?? null,
+          buyerName: label?.buyerName ?? null,
+          documentNumber: document?.identity.documentNumber ?? null,
+        };
+      }),
     };
   }
 

@@ -41,6 +41,12 @@ export type ExecuteSalesDocumentBatchRunResult =
 export interface SalesDocumentBatchRunItemView {
   item: SalesDocumentBatchRunItem;
   outcome: SalesDocumentBatchItemOutcome;
+  /** Source order number; `null` when absent. */
+  orderNumber: string | null;
+  /** Buyer name; `null` when absent or not stored (PII off). */
+  buyerName: string | null;
+  /** The number the issued document bears; `null` until one is assigned. */
+  documentNumber: string | null;
 }
 
 export interface SalesDocumentBatchRunDetail {

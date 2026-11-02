@@ -174,6 +174,8 @@ export class SalesDocumentBatchController {
         totalAmount: entry.totalAmount,
         currency: entry.currency,
         isB2b: entry.isB2b,
+        orderNumber: entry.orderNumber,
+        buyerName: entry.buyerName,
       })),
       nextCursor: entries.length === limit ? entries[entries.length - 1].orderId : null,
     };
@@ -210,12 +212,15 @@ export class SalesDocumentBatchController {
     }
     return {
       run: toRunDto(detail.run),
-      items: detail.items.map(({ item, outcome }) => ({
+      items: detail.items.map(({ item, outcome, orderNumber, buyerName, documentNumber }) => ({
         orderId: item.orderId,
         documentKind: item.documentKind,
         result: item.result,
         outcome,
         blockReason: item.blockReason,
+        orderNumber,
+        buyerName,
+        documentNumber,
       })),
     };
   }

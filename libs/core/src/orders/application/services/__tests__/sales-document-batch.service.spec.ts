@@ -53,6 +53,8 @@ const entry = (orderId: string): SalesDocumentBatchQueueEntry => ({
   totalAmount: 10,
   currency: 'PLN',
   isB2b: false,
+  orderNumber: null,
+  buyerName: null,
 });
 
 describe('SalesDocumentBatchService', () => {
@@ -74,6 +76,7 @@ describe('SalesDocumentBatchService', () => {
       listItems: jest.fn().mockResolvedValue([]),
       listQueue: jest.fn().mockResolvedValue([]),
       countQueue: jest.fn(),
+      findOrderLabels: jest.fn().mockResolvedValue(new Map()),
     };
     connections = {
       get: jest.fn().mockResolvedValue({ id: CONNECTION, status: 'active' } as Connection),
@@ -273,11 +276,69 @@ describe('SalesDocumentBatchService', () => {
       },
     ]);
     views.getForOrders.mockResolvedValue(
-      new Map([['order-1', { document: { status: 'failed', failureMode: 'in-doubt' } }]]),
+      new Map([
+        [
+          'order-1',
+          {
+            document: {
+              status: 'failed',
+              failureMode: 'in-doubt',
+              identity: { documentNumber: null },
+            },
+          },
+        ],
+      ]),
     );
 
     const detail = await service.getRun('run-1');
 
     expect(detail?.items[0].outcome).toBe('in-doubt');
+  });
+
+  it('should name each item by its order number, buyer and document number', async () => {
+    runs.listItems.mockResolvedValue([
+      {
+        id: 'i1',
+        runId: 'run-1',
+        orderId: 'order-1',
+        documentKind: 'invoice',
+        result: 'enqueued',
+        blockReason: null,
+        idempotencyKey: 'k',
+        createdAt: new Date(),
+      },
+      {
+        id: 'i2',
+        runId: 'run-1',
+        orderId: 'order-2',
+        documentKind: 'invoice',
+        result: 'blocked',
+        blockReason: 'missing-tax-rate',
+        idempotencyKey: null,
+        createdAt: new Date(),
+      },
+    ]);
+    views.getForOrders.mockResolvedValue(
+      new Map([
+        ['order-1', { document: { status: 'issued', identity: { documentNumber: 'FV/1/2026' } } }],
+      ]),
+    );
+    runs.findOrderLabels.mockResolvedValue(
+      new Map([['order-1', { orderNumber: 'ALG-1', buyerName: 'Anna Kowalska' }]]),
+    );
+
+    const detail = await service.getRun('run-1');
+
+    expect(runs.findOrderLabels).toHaveBeenCalledWith(['order-1', 'order-2']);
+    expect(detail?.items[0]).toMatchObject({
+      orderNumber: 'ALG-1',
+      buyerName: 'Anna Kowalska',
+      documentNumber: 'FV/1/2026',
+    });
+    expect(detail?.items[1]).toMatchObject({
+      orderNumber: null,
+      buyerName: null,
+      documentNumber: null,
+    });
   });
 });

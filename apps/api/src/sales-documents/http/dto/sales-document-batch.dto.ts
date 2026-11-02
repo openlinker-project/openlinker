@@ -85,6 +85,13 @@ export class SalesDocumentBatchQueueEntryDto {
   @ApiPropertyOptional({ nullable: true }) currency!: string | null;
   @ApiProperty({ description: 'Buyer has a tax id; a month-end run issues these only (D42).' })
   isB2b!: boolean;
+  @ApiPropertyOptional({ nullable: true, description: 'Source order number.' })
+  orderNumber!: string | null;
+  @ApiPropertyOptional({
+    nullable: true,
+    description: 'Buyer name; null when absent or personal data is not stored.',
+  })
+  buyerName!: string | null;
 }
 
 export class SalesDocumentBatchQueueDto {
@@ -114,6 +121,18 @@ export class SalesDocumentBatchRunItemDto {
   })
   outcome!: string;
   @ApiPropertyOptional({ nullable: true }) blockReason!: string | null;
+  @ApiPropertyOptional({ nullable: true, description: 'Source order number.' })
+  orderNumber!: string | null;
+  @ApiPropertyOptional({
+    nullable: true,
+    description: 'Buyer name; null when absent or personal data is not stored.',
+  })
+  buyerName!: string | null;
+  @ApiPropertyOptional({
+    nullable: true,
+    description: 'The number the issued document bears; null until one is assigned.',
+  })
+  documentNumber!: string | null;
 }
 
 export class SalesDocumentBatchRunDetailDto {

@@ -8,6 +8,7 @@
  *
  * @module libs/core/src/orders/domain/ports
  */
+import type { OrderLabel } from '../order-label';
 import type {
   SalesDocumentBatchRun,
   SalesDocumentBatchRunItem,
@@ -54,4 +55,7 @@ export interface SalesDocumentBatchRunRepositoryPort {
 
   /** Queued orders per document kind. */
   countQueue(connectionId: string): Promise<Record<string, number>>;
+
+  /** Order number and buyer per order, for a run's rows. Unknown ids are absent. */
+  findOrderLabels(orderIds: readonly string[]): Promise<Map<string, OrderLabel>>;
 }

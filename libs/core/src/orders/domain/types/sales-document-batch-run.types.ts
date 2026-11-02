@@ -128,6 +128,10 @@ export interface SalesDocumentBatchQueueEntry {
   currency: string | null;
   /** Buyer has a tax id (D42: the month-end run issues these only). */
   isB2b: boolean;
+  /** Source order number; `null` when the source sent none. */
+  orderNumber: string | null;
+  /** Billing (else shipping) name; `null` when absent or not stored (PII off). */
+  buyerName: string | null;
 }
 
 export interface SalesDocumentBatchQueueFilter {

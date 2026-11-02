@@ -100,4 +100,19 @@ export interface SalesDocumentConfigPatch {
   isPrimary?: boolean;
   /** One kind's trigger model, written to `salesDocument.triggerModels[kind]` (#3582). */
   triggerModel?: { kind: ConcreteDocumentKind; value: string };
+  /**
+   * One kind's batch schedule, written to `salesDocument.batchSchedules[kind]`
+   * (#3584); `null` removes it.
+   */
+  batchSchedule?: { kind: ConcreteDocumentKind; value: BatchScheduleConfig | null };
+}
+
+/** The stored shape `readBatchSchedule` reads (#3583). */
+export interface BatchScheduleConfig {
+  frequency: 'daily' | 'every-n-hours' | 'month-end';
+  time?: string;
+  everyHours?: number;
+  timeZone: string;
+  /** ISO instant; no slot before it runs, so a new schedule never fires a past slot. */
+  effectiveFrom: string;
 }

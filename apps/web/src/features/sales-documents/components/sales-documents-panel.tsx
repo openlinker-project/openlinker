@@ -21,6 +21,7 @@
  * @module apps/web/src/features/sales-documents/components
  */
 import { useState, type ChangeEvent, type ReactElement } from 'react';
+import { Link } from 'react-router-dom';
 import { Alert } from '../../../shared/ui/alert';
 import { ErrorState, LoadingState } from '../../../shared/ui/feedback-state';
 import { Button } from '../../../shared/ui/button';
@@ -36,6 +37,7 @@ import { useSalesDocumentRows } from '../hooks/use-sales-document-rows';
 import { useUpdateSalesDocumentMutation } from '../hooks/use-update-sales-document-mutation';
 import { detectSalesDocumentConflict } from '../lib/detect-sales-document-conflict';
 import { issuedDocumentKinds } from '../lib/derive-sales-document-rows';
+import { batchScreenPath } from '../lib/batch-screen-path';
 import {
   getSalesDocumentIssuesOptions,
   type ConcreteDocumentKind,
@@ -307,6 +309,17 @@ export function SalesDocumentsPanel(): ReactElement {
                       : triggerKinds.map((kind) =>
                           renderTriggerSelect(row, kind, triggerDisabled, triggerKinds.length > 1),
                         )}
+                    {triggerKinds.some((kind) => row.triggerModels[kind] === 'batched') ? (
+                      // M15 note 1: the batch screen is reached from the row whose
+                      // "When it issues" is Batch, and only from there.
+                      <Link
+                        className="sales-documents-panel__configure"
+                        to={batchScreenPath(row.connectionId)}
+                        aria-label={`Configure batch issuing for ${row.name}`}
+                      >
+                        Configure
+                      </Link>
+                    ) : null}
                   </td>
                 </tr>
               );

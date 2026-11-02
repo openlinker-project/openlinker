@@ -24,8 +24,8 @@
  *
  * @module libs/core/src/orders/domain
  */
-import { REDACTED_PLACEHOLDER } from './order-address-redaction';
 import type { OrderRecord } from './entities/order-record.entity';
+import { readAddressName, readSnapshotString } from './order-label';
 
 export const ORDER_EXPORT_COLUMN_IDS = [
   'internalOrderId',
@@ -80,23 +80,6 @@ export const ORDER_EXPORT_COLUMN_LABELS: Record<OrderExportColumnId, string> = {
 
 /** A cell value — kept to the primitives every writer (CSV/XLSX) can render directly. */
 export type OrderExportCellValue = string | number | boolean | null;
-
-function readSnapshotString(snapshot: Record<string, unknown>, key: string): string | null {
-  const value = snapshot[key];
-  if (typeof value !== 'string' || value.length === 0) return null;
-  return value === REDACTED_PLACEHOLDER ? null : value;
-}
-
-function readAddressName(snapshot: Record<string, unknown>, key: 'billingAddress' | 'shippingAddress'): string | null {
-  const raw = snapshot[key];
-  if (typeof raw !== 'object' || raw === null) return null;
-  const address = raw as Record<string, unknown>;
-  const first = typeof address.firstName === 'string' ? address.firstName : '';
-  const last = typeof address.lastName === 'string' ? address.lastName : '';
-  const name = `${first} ${last}`.trim();
-  if (name.length === 0 || name === `${REDACTED_PLACEHOLDER} ${REDACTED_PLACEHOLDER}`) return null;
-  return name;
-}
 
 function readAddressCountry(snapshot: Record<string, unknown>, key: 'billingAddress' | 'shippingAddress'): string | null {
   const raw = snapshot[key];

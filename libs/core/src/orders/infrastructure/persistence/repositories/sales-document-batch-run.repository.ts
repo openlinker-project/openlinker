@@ -24,6 +24,7 @@ import {
   SalesDocumentBatchRun,
   SalesDocumentBatchRunItem,
 } from '../../../domain/entities/sales-document-batch-run.entity';
+import { readOrderLabel, type OrderLabel } from '../../../domain/order-label';
 import type { SalesDocumentBatchRunRepositoryPort } from '../../../domain/ports/sales-document-batch-run-repository.port';
 import {
   isBatchQueueB2b,
@@ -192,6 +193,7 @@ export class SalesDocumentBatchRunRepository implements SalesDocumentBatchRunRep
         'rec.totalAmount',
         'rec.currency',
         'rec.buyerTaxId',
+        'rec.orderSnapshot',
       ])
       .where('rec.salesDocumentBlockReason = :reason', { reason: BATCHED_REASON })
       .andWhere('rec.salesDocumentBlockConnectionId = :connectionId', {
@@ -223,7 +225,18 @@ export class SalesDocumentBatchRunRepository implements SalesDocumentBatchRunRep
       totalAmount: row.totalAmount === null ? null : Number(row.totalAmount),
       currency: row.currency,
       isB2b: isBatchQueueB2b(row.buyerTaxId),
+      ...readOrderLabel(row.orderSnapshot),
     }));
+  }
+
+  async findOrderLabels(orderIds: readonly string[]): Promise<Map<string, OrderLabel>> {
+    if (orderIds.length === 0) return new Map();
+    const rows = await this.orders
+      .createQueryBuilder('rec')
+      .select(['rec.internalOrderId', 'rec.orderSnapshot'])
+      .where('rec.internalOrderId IN (:...ids)', { ids: [...orderIds] })
+      .getMany();
+    return new Map(rows.map((row) => [row.internalOrderId, readOrderLabel(row.orderSnapshot)]));
   }
 
   async countQueue(connectionId: string): Promise<Record<string, number>> {

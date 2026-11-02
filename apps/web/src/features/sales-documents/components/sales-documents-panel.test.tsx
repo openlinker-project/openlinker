@@ -275,6 +275,31 @@ describe('SalesDocumentsPanel', () => {
     expect(screen.getByText('Not a routing candidate')).toBeInTheDocument();
   });
 
+  it('should link to the batch screen only from a row that issues in batches (#3584)', async () => {
+    const batched: Connection = {
+      ...EPARAGONY,
+      config: {
+        salesDocument: { documentKind: 'fiscal-receipt', triggerModels: { 'fiscal-receipt': 'batched' } },
+      },
+    };
+    const apiClient = createMockApiClient({
+      connections: { list: vi.fn().mockResolvedValue([INFAKT, batched]) },
+    });
+
+    renderWithProviders(<SalesDocumentsPanel />, {
+      apiClient,
+      sessionAdapter: createAuthenticatedSessionAdapter(),
+    });
+
+    const link = await screen.findByRole('link', {
+      name: 'Configure batch issuing for eparagony.pl',
+    });
+    expect(link).toHaveAttribute('href', '/settings/sales-documents/batches/conn_eparagony');
+    expect(
+      screen.queryByRole('link', { name: 'Configure batch issuing for inFakt' }),
+    ).not.toBeInTheDocument();
+  });
+
   it('should state where the primary rule applies, above the table', async () => {
     const apiClient = createMockApiClient({
       connections: { list: vi.fn().mockResolvedValue([INFAKT, EPARAGONY]) },

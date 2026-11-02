@@ -61,3 +61,7 @@ export type {
   SalesDocumentListItem,
   SalesDocumentListPagination,
 } from './api/sales-document-list.types';
+
+// #3584 — batch issuing screen (mockup M15) and the one spelling of its URL.
+export { SalesDocumentBatchScreen } from './components/sales-document-batch-screen';
+export { BATCH_SCREEN_ROUTE_PATH, batchScreenPath } from './lib/batch-screen-path';

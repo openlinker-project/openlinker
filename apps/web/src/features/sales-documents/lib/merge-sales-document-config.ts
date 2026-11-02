@@ -46,6 +46,18 @@ export function mergeSalesDocumentConfig(
     }
   }
 
+  if (patch.batchSchedule !== undefined) {
+    const schedules = isRecord(salesDocument.batchSchedules)
+      ? { ...salesDocument.batchSchedules }
+      : {};
+    if (patch.batchSchedule.value === null) {
+      delete schedules[patch.batchSchedule.kind];
+    } else {
+      schedules[patch.batchSchedule.kind] = patch.batchSchedule.value;
+    }
+    salesDocument.batchSchedules = schedules;
+  }
+
   const merged = { ...existingConfig, invoicing, salesDocument };
   // #3582: a trigger model is written per kind; the legacy
   // `invoicing.triggerModel` stays as the fallback for any other kind.
