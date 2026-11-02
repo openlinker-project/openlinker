@@ -638,7 +638,7 @@ export class OrderIngestionService implements IOrderIngestionService {
     // #3588 (D27): the cost snapshot candidates. NOT wrapped in a catch - a
     // swallowed failure would freeze every line `not-recorded` for good (the
     // snapshot is never upgraded), so the job retry is the right fallback.
-    const lineCostCandidates = await this.resolveLineCostCandidates(order);
+    const lineCostCandidates = await this.resolveLineCostCandidates(channelOrder);
 
     // The persisted record is captured for its `shippingAddressHash` (#2395),
     // which the #2396 routing projection needs and which the `order` object does
