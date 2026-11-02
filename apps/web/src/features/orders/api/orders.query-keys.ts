@@ -27,6 +27,10 @@ export const ordersQueryKeys = {
   lifecycleSummary: (filters?: OrderHealthSummaryFilters) =>
     ['orders', 'lifecycle-summary', filters ?? {}] as const,
   detail: (internalOrderId: string) => ['orders', 'detail', internalOrderId] as const,
+  /** An order's operator changes: cancel requests and credit proposals (#3541). */
+  changes: (internalOrderId: string) => ['orders', 'changes', internalOrderId] as const,
+  /** Refunds the operator confirmed against one order (#3541). */
+  refunds: (internalOrderId: string) => ['orders', 'refunds', internalOrderId] as const,
   /** An order's notes (#3531). */
   notes: (internalOrderId: string) => ['orders', 'notes', internalOrderId] as const,
   /** The workspace tag vocabulary (#3532). */
