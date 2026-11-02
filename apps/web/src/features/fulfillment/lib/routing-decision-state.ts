@@ -32,9 +32,17 @@ export function resolveRoutingDecisionState(
   return null;
 }
 
-/** The held states `POST /orders/:id/retry-routing` accepts (the sweep's set). */
-const RETRYABLE_BLOCK_REASONS: readonly string[] = ['routing-refused', 'routing-failed'];
+/**
+ * The held states `POST /orders/:id/retry-routing` accepts (the sweep's set).
+ * A copy of core's `REROUTABLE_FULFILLMENT_BLOCK_REASONS` (the browser cannot
+ * import `@openlinker/core`, #591), held identical by
+ * `scripts/check-fulfillment-reason-mirror.mjs`.
+ */
+export const REROUTABLE_FULFILLMENT_BLOCK_REASONS = ['routing-refused', 'routing-failed'] as const;
 
 export function canRetryRouting(orderBlockReason: string | null | undefined): boolean {
-  return typeof orderBlockReason === 'string' && RETRYABLE_BLOCK_REASONS.includes(orderBlockReason);
+  return (
+    typeof orderBlockReason === 'string' &&
+    (REROUTABLE_FULFILLMENT_BLOCK_REASONS as readonly string[]).includes(orderBlockReason)
+  );
 }

@@ -7,7 +7,10 @@
  *   - `stuck`    - the router never gave a final answer and the time limit has
  *                  passed; the reaper has not run yet. Says OpenLinker is WAITING
  *                  for the router's own answer, with how long and the limit.
- *   - `resolved` - the reaper closed the stuck attempt and routed again. Offers
+ *   - `resolved` - the reaper closed the stuck attempt. The body says routing is
+ *                  running again, or - when the order is held `routing-failed`,
+ *                  the reaper's fallback when no re-route could start - that it
+ *                  could not start again; never "routed again" either way. Offers
  *                  "Retry routing" (only while the order is held in a state the
  *                  endpoint accepts) and reports its outcome.
  *   - `healthy`  - routed automatically.
@@ -146,7 +149,11 @@ export function RoutingDecisionPanel({
         ) : undefined
       }
     >
-      <p>{ROUTING_DECISION_COPY.resolved.body}</p>
+      <p>
+        {orderBlockReason === 'routing-failed'
+          ? ROUTING_DECISION_COPY.resolved.bodyNotRestarted
+          : ROUTING_DECISION_COPY.resolved.body}
+      </p>
       {retry.error ? (
         <p role="alert" data-testid="routing-decision-retry-error">
           {describeRetryRoutingError(retry.error)}

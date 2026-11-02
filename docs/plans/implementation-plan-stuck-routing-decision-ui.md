@@ -71,7 +71,7 @@ nothing, never a "no decision" claim), a decision (the state above).
   (`formatDurationMs(ageMs)`), the limit (`formatDurationMs(ttlMs)`), the router name, and one sentence that
   OpenLinker stops waiting and chooses again on its own. NO button.
 - `healthy`: neutral line "Routed automatically". NO button.
-- `resolved`: info Alert "OpenLinker stopped waiting for <router> and chose again" + (when `canRetryRouting` and the
+- `resolved`: info Alert "OpenLinker stopped waiting" (body: "is routing this order again", or "could not start routing again" when the order is held `routing-failed`, the reaper's fallback) + (when `canRetryRouting` and the
   user may write) a `Retry routing` button. The outcome is reported: enqueued -> success note ("Routing was
   started again. The order updates when it finishes"), 409 -> the reason in plain words
   (not held / not retryable / no router), 503 -> a retryable error, 404 -> order gone. Error copy is mapped from

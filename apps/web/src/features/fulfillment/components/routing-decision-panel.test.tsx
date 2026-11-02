@@ -129,6 +129,30 @@ describe('RoutingDecisionPanel', () => {
     await waitFor(() => expect(retryRouting).toHaveBeenCalledWith(ORDER_ID));
   });
 
+  it('should say routing is running again, never that it already routed, after a reap', async () => {
+    setup({
+      decision: decision({ state: 'abandoned', abandonReason: 'stranded-past-ttl' }),
+      blockReason: null,
+    });
+
+    await screen.findByTestId('routing-decision-panel');
+    expect(screen.getByText(/is routing this order again/i)).toBeInTheDocument();
+    expect(screen.queryByText(/could not start routing again/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/routed this order again/i)).not.toBeInTheDocument();
+  });
+
+  it('should say routing could not start again when the reaper fell back to routing-failed', async () => {
+    setup({
+      decision: decision({ state: 'abandoned', abandonReason: 'stranded-past-ttl' }),
+      blockReason: 'routing-failed',
+    });
+
+    await screen.findByTestId('routing-decision-panel');
+    expect(screen.getByText(/could not start routing again/i)).toBeInTheDocument();
+    expect(screen.queryByText(/is routing this order again/i)).not.toBeInTheDocument();
+    expect(await screen.findByTestId('routing-decision-retry')).toBeInTheDocument();
+  });
+
   it('should report a refused retry in words, from the 409 code', async () => {
     setup({
       decision: decision({ state: 'abandoned', abandonReason: 'stranded-past-ttl' }),

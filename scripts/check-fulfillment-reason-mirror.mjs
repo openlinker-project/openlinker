@@ -12,6 +12,11 @@
  *   libs/core/src/orders/domain/types/fulfillment-routing-eligibility.types.ts (authoritative)
  * each mirrored under the same name in
  *   apps/web/src/features/orders/api/orders.types.ts
+ * Pair 3 - `REROUTABLE_FULFILLMENT_BLOCK_REASONS` (#3557)
+ *   libs/core/src/fulfillment/domain/types/fulfillment-block-reason.types.ts   (authoritative)
+ *   apps/web/src/features/fulfillment/lib/routing-decision-state.ts           (mirror)
+ *   The set the retry endpoint accepts. Drift is silent: a widened backend set
+ *   hides the "Retry routing" button, a narrowed one offers a retry that 409s.
  * MUST contain the same literals in the same order. The browser bundle does not
  * depend on `@openlinker/core` (#591), so these are copies, and a copy drifts
  * silently: a reason renamed in core makes the "Waiting: ..." badge fall back to
@@ -51,6 +56,11 @@ const PAIRS = [
   {
     backendFile: join('libs', 'core', 'src', 'orders', 'domain', 'types', 'fulfillment-routing-eligibility.types.ts'),
     declaration: 'FulfillmentRoutingSkipReasonValues',
+  },
+  {
+    backendFile: join('libs', 'core', 'src', 'fulfillment', 'domain', 'types', 'fulfillment-block-reason.types.ts'),
+    declaration: 'REROUTABLE_FULFILLMENT_BLOCK_REASONS',
+    frontendFile: join('apps', 'web', 'src', 'features', 'fulfillment', 'lib', 'routing-decision-state.ts'),
   },
 ];
 
@@ -260,10 +270,15 @@ async function main() {
 
   for (const pair of PAIRS) {
     const backendSrc = await readFile(join(repoRoot, pair.backendFile), 'utf8');
+    const pairFrontendFile = pair.frontendFile ?? FRONTEND_FILE;
+    const pairFrontendSrc =
+      pair.frontendFile === undefined
+        ? frontendSrc
+        : await readFile(join(repoRoot, pair.frontendFile), 'utf8');
     const backend = parseReasonValues(backendSrc, pair.declaration);
-    const frontend = parseReasonValues(frontendSrc, pair.declaration);
+    const frontend = parseReasonValues(pairFrontendSrc, pair.declaration);
     // An EMPTY parse is fatal: `diffReasonValues([], [])` is vacuously ok (#2673).
-    for (const [parsed, file] of [[backend, pair.backendFile], [frontend, FRONTEND_FILE]]) {
+    for (const [parsed, file] of [[backend, pair.backendFile], [frontend, pairFrontendFile]]) {
       if (!parsed) fatal.push(`${file}: could not find \`export const ${pair.declaration} = [\``);
       else if (parsed.values.length === 0) {
         fatal.push(`${file}:${parsed.line}: \`${pair.declaration}\` parsed as EMPTY - refusing to compare`);
@@ -272,7 +287,7 @@ async function main() {
     if (!backend || !frontend || backend.values.length === 0 || frontend.values.length === 0) continue;
     const result = diffReasonValues(backend.values, frontend.values);
     if (!result.ok) {
-      drift.push(`${pair.backendFile}:${backend.line} vs ${FRONTEND_FILE}:${frontend.line}`);
+      drift.push(`${pair.backendFile}:${backend.line} vs ${pairFrontendFile}:${frontend.line}`);
       drift.push(...result.issues.map((issue) => `  ${issue}`));
     }
     if (pair.declaration === BLOCK_DECLARATION) blockValues = backend.values;
@@ -298,7 +313,7 @@ async function main() {
   }
 
   console.log(
-    '✓ check-fulfillment-reason-mirror: block and skip reasons identical across core and the frontend mirror; waiting copy keys are block reasons',
+    '✓ check-fulfillment-reason-mirror: block, skip and reroutable reasons identical across core and the frontend mirrors; waiting copy keys are block reasons',
   );
 }
 

@@ -15,8 +15,13 @@ export const ROUTING_DECISION_COPY = {
     body: 'OpenLinker asked where to pack this order and has not got a final answer yet. It is waiting for that answer rather than guessing, so it cannot ship the order twice. After the time limit it stops waiting and chooses again on its own.',
   },
   resolved: {
-    title: 'OpenLinker stopped waiting and chose again',
-    body: 'The answer did not arrive in time, so OpenLinker closed the earlier attempt and routed this order again. Nothing was packed or sent in the meantime.',
+    title: 'OpenLinker stopped waiting',
+    // The reaper starts routing again only when it can hand off to a route job.
+    // When it could not, it holds the order as `routing-failed` instead, so the
+    // body must not claim a re-route that never started (#3557 review).
+    body: 'The answer did not arrive in time, so OpenLinker closed the earlier attempt and is routing this order again. Nothing was packed or sent in the meantime.',
+    bodyNotRestarted:
+      'The answer did not arrive in time, so OpenLinker closed the earlier attempt, but could not start routing again. It tries again on its own later. Nothing was packed or sent in the meantime.',
   },
   healthy: {
     title: 'Routed automatically',
