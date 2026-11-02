@@ -430,6 +430,9 @@ export class FiscalizationController {
       artefacts: record.artefacts,
       failureMode: record.failureMode,
       failureReason: record.failureReason,
+      // The web UI hides these behind orders:write, but that is presentation,
+      // not authorization: every role that can read the record receives them,
+      // so only PII-free codes and non-secret tokens may ever live here.
       // Copied field by field so a key added to the core type later cannot
       // reach a response without being named here first.
       providerFailureDetails: record.providerFailureDetails

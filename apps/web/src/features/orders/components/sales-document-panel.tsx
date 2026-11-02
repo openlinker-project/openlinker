@@ -1311,7 +1311,7 @@ export function SalesDocumentPanel({ order }: SalesDocumentPanelProps): ReactEle
                   <Alert tone="error">
                     {t(
                       'fiscalReceipt.rejected.readOnly',
-                      'The fiscal device did not register this sale, and nothing was created. An admin can see the details and register it again.',
+                      'The provider refused this sale and nothing was registered. A user with order write access can see the details and register it again.',
                     )}
                   </Alert>
                 }

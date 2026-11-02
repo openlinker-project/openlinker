@@ -1360,7 +1360,7 @@ describe('SalesDocumentPanel - provider failure details (#3843)', () => {
       }),
     );
 
-    expect(await screen.findByText(/An admin can see the details/)).toBeInTheDocument();
+    expect(await screen.findByText(/A user with order write access can see the details/)).toBeInTheDocument();
     expect(screen.queryByTestId('fiscal-failure-details')).toBeNull();
     expect(screen.queryByText('83')).toBeNull();
     expect(screen.queryByRole('button', { name: 'Register receipt' })).toBeNull();

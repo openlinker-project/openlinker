@@ -29,6 +29,9 @@ export interface FiscalProviderFailureDetails {
   /**
    * An operator-facing explanation the ADAPTER composed from fixed text, for a
    * provider answer it recognised exactly. Never the provider's own wording.
+   * Core only trims and bounds it and cannot tell the two apart, so the rule
+   * binds every adapter: vendor text can echo product names or buyer data back,
+   * and this field is persisted and rendered verbatim.
    */
   hint: string | null;
 }
