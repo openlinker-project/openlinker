@@ -8,6 +8,7 @@
  * @module apps/worker/src/sync/handlers
  */
 import type { IRegulatoryStatusReconciliationService } from '@openlinker/core/invoicing';
+import type { IInvoiceMarketplaceUploadService } from '@openlinker/core/orders';
 import { SyncJobExecutionError } from '@openlinker/core/sync';
 import type { SyncJob } from '@openlinker/core/sync';
 import { RegulatoryStatusReconcileHandler } from './regulatory-status-reconcile.handler';
@@ -28,17 +29,29 @@ function makeJob(payload: unknown): SyncJob {
   } as SyncJob;
 }
 
-const ZEROED = { scanned: 0, updated: 0, skippedTerminal: 0, readErrors: 0, total: 0 };
+const ZEROED = {
+  scanned: 0,
+  updated: 0,
+  skippedTerminal: 0,
+  readErrors: 0,
+  total: 0,
+  clearedInvoiceIds: [] as string[],
+};
 
 describe('RegulatoryStatusReconcileHandler', () => {
   let reconciliationService: jest.Mocked<IRegulatoryStatusReconciliationService>;
+  let marketplaceUploads: { enqueueUpload: jest.Mock };
   let handler: RegulatoryStatusReconcileHandler;
 
   beforeEach(() => {
     reconciliationService = {
       reconcile: jest.fn().mockResolvedValue(ZEROED),
     };
-    handler = new RegulatoryStatusReconcileHandler(reconciliationService);
+    marketplaceUploads = { enqueueUpload: jest.fn().mockResolvedValue('enqueued') };
+    handler = new RegulatoryStatusReconcileHandler(
+      reconciliationService,
+      marketplaceUploads as unknown as IInvoiceMarketplaceUploadService,
+    );
   });
 
   describe('getPayload', () => {
@@ -68,6 +81,38 @@ describe('RegulatoryStatusReconcileHandler', () => {
     it('passes through a valid in-range limit unchanged', async () => {
       await handler.execute(makeJob({ schemaVersion: 1, limit: 250 }));
       expect(reconciliationService.reconcile).toHaveBeenCalledWith('conn-1', { limit: 250 });
+    });
+  });
+
+  describe('marketplace upload on clearance (#3549)', () => {
+    it('enqueues the upload for every document the sweep cleared', async () => {
+      reconciliationService.reconcile.mockResolvedValue({
+        ...ZEROED,
+        updated: 2,
+        clearedInvoiceIds: ['inv-a', 'inv-b'],
+      });
+
+      await expect(handler.execute(makeJob({ schemaVersion: 1 }))).resolves.toEqual({
+        outcome: 'ok',
+      });
+
+      expect(marketplaceUploads.enqueueUpload).toHaveBeenCalledWith('inv-a', { cleared: true });
+      expect(marketplaceUploads.enqueueUpload).toHaveBeenCalledWith('inv-b', { cleared: true });
+    });
+
+    it('enqueues nothing when nothing cleared', async () => {
+      await handler.execute(makeJob({ schemaVersion: 1 }));
+
+      expect(marketplaceUploads.enqueueUpload).not.toHaveBeenCalled();
+    });
+
+    it('still succeeds when the enqueue reports a failure', async () => {
+      reconciliationService.reconcile.mockResolvedValue({ ...ZEROED, clearedInvoiceIds: ['inv-a'] });
+      marketplaceUploads.enqueueUpload.mockResolvedValue('failed');
+
+      await expect(handler.execute(makeJob({ schemaVersion: 1 }))).resolves.toEqual({
+        outcome: 'ok',
+      });
     });
   });
 

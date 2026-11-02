@@ -43,6 +43,7 @@ import type { IOrderRecordService } from '@openlinker/core/orders';
 import {
   ORDER_RECORD_SERVICE_TOKEN,
   ORDER_REFUND_SERVICE_TOKEN,
+  INVOICE_MARKETPLACE_UPLOAD_SERVICE_TOKEN,
   OrderRecord,
   OrderSnapshotUnavailableError,
 } from '@openlinker/core/orders';
@@ -347,6 +348,10 @@ describe('InvoicingController', () => {
         { provide: PAYMENT_STATUS_REFRESH_SERVICE_TOKEN, useValue: paymentStatusRefreshService },
         { provide: CONNECTION_PORT_TOKEN, useValue: connectionPort },
         { provide: INVOICE_ATTACHMENT_SERVICE_TOKEN, useValue: attachments },
+        {
+          provide: INVOICE_MARKETPLACE_UPLOAD_SERVICE_TOKEN,
+          useValue: { enqueueUpload: jest.fn().mockResolvedValue('enqueued'), getStatus: jest.fn().mockResolvedValue([]) },
+        },
       ],
     }).compile();
 
