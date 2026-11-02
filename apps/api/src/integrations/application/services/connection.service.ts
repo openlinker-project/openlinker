@@ -19,6 +19,7 @@ import {
 } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
 import type { IConnectionService } from '../interfaces/connection.service.interface';
+import { resolveReceiptLineNameLimit } from './resolve-receipt-line-name-limit';
 import type { ConnectionCreateInput } from '../interfaces/connection.service.types';
 import type {
   Connection,
@@ -423,11 +424,17 @@ export class ConnectionService implements IConnectionService {
    * mirror and this write path cannot disagree. The READ side is deliberately
    * forgiving (a stored value must never break an issuance); strictness belongs
    * here, where there is an operator to tell. Absent or `null` stays absent.
+   *
+   * Name length is measured against the budget the active fiscalization
+   * adapters declare (#3914): core holds no regime number, so the API asks.
+   * The lookup runs only when the key is present, so an unrelated save pays
+   * nothing for it.
    */
-  private validateDeliveryOnDocumentsConfig(config: Record<string, unknown>): void {
+  private async validateDeliveryOnDocumentsConfig(config: Record<string, unknown>): Promise<void> {
     const value = config.deliveryOnDocuments;
     if (value === undefined || value === null) return;
-    const errors = validateDeliveryOnDocumentsShape(value);
+    const limit = await resolveReceiptLineNameLimit(this.integrationsService, this.logger);
+    const errors = validateDeliveryOnDocumentsShape(value, limit.maxLength);
     if (errors.length > 0) {
       throw new BadRequestException({
         message: `Invalid config.deliveryOnDocuments: ${errors
@@ -950,7 +957,7 @@ export class ConnectionService implements IConnectionService {
         this.validateStockAndPricingConfig(rest.config);
         this.validateFulfilmentOwnedByDestinationConfig(rest.config);
         this.validateAutoDispatchConfig(rest.config);
-        this.validateDeliveryOnDocumentsConfig(rest.config);
+        await this.validateDeliveryOnDocumentsConfig(rest.config);
         await this.validateStockLocationOverride(rest.config, undefined);
         await this.validateConfigShape(metadata.adapterKey, rest.config);
         // #2407 — above the credential-persistence block below, which requires
@@ -1247,7 +1254,7 @@ export class ConnectionService implements IConnectionService {
         this.validateStockAndPricingConfig(patch.config);
         this.validateFulfilmentOwnedByDestinationConfig(patch.config);
         this.validateAutoDispatchConfig(patch.config);
-        this.validateDeliveryOnDocumentsConfig(patch.config);
+        await this.validateDeliveryOnDocumentsConfig(patch.config);
         await this.validateStockLocationOverride(patch.config, existing.config);
         await this.validateConfigShape(metadata.adapterKey, patch.config, existing.config);
         // #2407 — inside this branch, which is correct ONLY because

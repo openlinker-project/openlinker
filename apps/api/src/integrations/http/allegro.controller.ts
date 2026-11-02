@@ -40,6 +40,7 @@ import {
   ApiBody,
 } from '@nestjs/swagger';
 import { validateDeliveryOnDocumentsShape } from '@openlinker/core/sales-documents';
+import { resolveReceiptLineNameLimit } from '../application/services/resolve-receipt-line-name-limit';
 import { Public } from '../../auth/decorators/public.decorator';
 import {
   IOAuthConnectionService,
@@ -125,7 +126,8 @@ export class AllegroController {
     // Fail now, not after the operator has authorised on Allegro: the same
     // check runs again in ConnectionService.create at callback time (#3905).
     if (dto.deliveryOnDocuments && !dto.connectionId) {
-      const issues = validateDeliveryOnDocumentsShape(dto.deliveryOnDocuments);
+      const limit = await resolveReceiptLineNameLimit(this.integrationsService, this.logger);
+      const issues = validateDeliveryOnDocumentsShape(dto.deliveryOnDocuments, limit.maxLength);
       if (issues.length > 0) {
         throw new BadRequestException({
           message: `Invalid deliveryOnDocuments: ${issues

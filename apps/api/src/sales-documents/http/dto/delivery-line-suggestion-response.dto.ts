@@ -48,7 +48,27 @@ export class DeliveryLineSuggestionDto {
   disclaimer!: string;
 }
 
+export class ReceiptLineNameLimitDto {
+  @ApiProperty({
+    example: 40,
+    description:
+      'Characters of a receipt line name, rate suffix included, the connected fiscalization ' +
+      'adapters compare (the shortest when several declare one).',
+  })
+  maxLength!: number;
+
+  @ApiProperty({
+    description:
+      'False when no connected fiscalization adapter declared a budget and a conservative ' +
+      'default applies.',
+  })
+  declared!: boolean;
+}
+
 export class DeliveryLineSuggestionsResponseDto {
   @ApiProperty({ type: [DeliveryLineSuggestionDto] })
   suggestions!: DeliveryLineSuggestionDto[];
+
+  @ApiProperty({ type: ReceiptLineNameLimitDto })
+  receiptLineName!: ReceiptLineNameLimitDto;
 }

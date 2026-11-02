@@ -78,7 +78,7 @@ const MIRRORED_CONSTANTS = [
   'DeliveryLineFreeModeValues',
   'DeliveryLineRateFormatValues',
   'DEFAULT_DELIVERY_LINE_NAME',
-  'MAX_RECEIPT_LINE_NAME',
+  'FALLBACK_RECEIPT_LINE_NAME_LENGTH',
   'SUFFIX_RESERVE',
 ];
 

@@ -26,8 +26,17 @@ export interface DeliveryLineSuggestion {
   disclaimer: string;
 }
 
+/** The receipt line-name budget the connected fiscalization adapters declare. */
+export interface ReceiptLineNameLimit {
+  maxLength: number;
+  /** `false` when no adapter declared one and the conservative default applies. */
+  declared: boolean;
+}
+
 export interface DeliveryLineSuggestionsResponse {
   suggestions: DeliveryLineSuggestion[];
+  /** Optional on the wire so an older API (or a stub) degrades to the fallback. */
+  receiptLineName?: ReceiptLineNameLimit;
 }
 
 export interface DeliveryCountryExampleLine {

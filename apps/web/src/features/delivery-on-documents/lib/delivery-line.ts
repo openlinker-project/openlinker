@@ -80,10 +80,19 @@ export interface ResolvedDeliveryLine {
 export const DEFAULT_DELIVERY_LINE_NAME = 'Shipping';
 
 /**
- * The most characters a fiscal device compares in a line name (Dz.U. 2024
- * poz. 1654). The limit applies to the name WITH its rate suffix.
+ * The budget used when no connected fiscalization adapter declares one. The
+ * real budget is declared by the adapters (the ADR-046 shape) and reaches the
+ * editor on the suggestions response (`receiptLineName`); this mirrors core's
+ * fallback for the moment before that answer arrives.
+ *
+ * A conservative default, not a regime fact: it equals the shortest budget any
+ * adapter in this repository declares, so a name accepted under it is accepted
+ * by every one of them. An adapter with a shorter budget declares it, and the
+ * shorter number wins. Kept as a fallback rather than "no limit" because the
+ * name is authored before any fiscalization connection may exist, and a name
+ * that later turns out too long fails on a paid order, not in the editor.
  */
-export const MAX_RECEIPT_LINE_NAME = 40;
+export const FALLBACK_RECEIPT_LINE_NAME_LENGTH = 40;
 
 /**
  * Characters the rate suffix takes for an ordinary two-digit whole rate
@@ -99,13 +108,17 @@ const SUFFIX_RESERVE: Record<DeliveryLineRateFormat, number> = {
   labelled: 4,
 };
 
-/** The longest name an operator may author for a given suffix format (36 / 34, less the label). */
+/**
+ * The longest name an operator may author for a given suffix format: the
+ * receipt budget less the suffix and, for `labelled`, the label and a space.
+ */
 export function maxDeliveryLineNameLength(
   format: DeliveryLineRateFormat,
   rateLabel?: string | null,
+  receiptLineNameLength: number = FALLBACK_RECEIPT_LINE_NAME_LENGTH,
 ): number {
   const label = format === 'labelled' && typeof rateLabel === 'string' ? rateLabel.trim() : '';
-  return MAX_RECEIPT_LINE_NAME - SUFFIX_RESERVE[format] - (label === '' ? 0 : label.length + 1);
+  return receiptLineNameLength - SUFFIX_RESERVE[format] - (label === '' ? 0 : label.length + 1);
 }
 
 /**

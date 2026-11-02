@@ -1,5 +1,8 @@
 import type { LoggerPort } from '@openlinker/shared/logging';
-import type { RegisterTransactionCommand } from '@openlinker/core/fiscalization';
+import {
+  isReceiptLineNameBudget,
+  type RegisterTransactionCommand,
+} from '@openlinker/core/fiscalization';
 
 import { EparagonyApiError } from '../../../domain/exceptions/eparagony-api.error';
 import { EparagonyConfigException } from '../../../domain/exceptions/eparagony-config.exception';
@@ -101,6 +104,14 @@ function makeAdapter(
 }
 
 describe('EparagonyFiscalizationAdapter', () => {
+  describe('receipt line-name budget', () => {
+    it('should declare the 40 characters the device compares when core asks', () => {
+      const adapter = makeAdapter(makeClient([]));
+      expect(isReceiptLineNameBudget(adapter)).toBe(true);
+      expect(adapter.getReceiptLineNameMaxLength()).toBe(40);
+    });
+  });
+
   describe('registerTransaction - happy path', () => {
     it('should register the sale and map the neutral identity set when the document is confirmed', async () => {
       const client = makeClient([CONFIRMED]);

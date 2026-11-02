@@ -61,6 +61,10 @@ describe('delivery-line-ui', () => {
     expect(checkName('Dostawa 23%', 'plain').error).toMatch(/VAT rate/);
     expect(checkName('x'.repeat(40), 'plain').error).toMatch(/at most 36/);
     expect(checkName('  Dostawa ', 'plain')).toEqual({ name: 'Dostawa', error: null });
+    // A budget the server reports from a connected fiscalization adapter wins
+    // over the fallback.
+    expect(checkName('x'.repeat(27), 'plain', 30).error).toMatch(/at most 26/);
+    expect(checkName('x'.repeat(26), 'plain', 30).error).toBeNull();
   });
 
   it('should split delivery by value and keep the total exact', () => {

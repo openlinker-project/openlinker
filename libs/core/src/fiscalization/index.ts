@@ -20,6 +20,8 @@ export * from './domain/entities/fiscal-registration-record.entity';
 export * from './domain/ports/fiscalization.port';
 // Re-exports both `FiscalRegistrationLocator` and `isFiscalRegistrationLocator`.
 export * from './domain/ports/capabilities/fiscal-registration-locator.capability';
+// The line-name budget an adapter declares, so core holds no regime number (#3914).
+export * from './domain/ports/capabilities/receipt-line-name-budget.capability';
 export * from './domain/ports/fiscal-registration-record-repository.port';
 export * from './domain/exceptions/duplicate-fiscal-registration-record.exception';
 export * from './domain/exceptions/fiscal-registration-record-not-found.exception';

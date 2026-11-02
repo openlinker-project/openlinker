@@ -4,15 +4,43 @@
  * @module apps/api/src/sales-documents/http
  */
 import { NotFoundException } from '@nestjs/common';
+import type { IIntegrationsService } from '@openlinker/core/integrations';
 import { DeliveryLineSuggestionsController } from './delivery-line-suggestions.controller';
 
 describe('DeliveryLineSuggestionsController', () => {
-  const controller = new DeliveryLineSuggestionsController();
+  const listCapabilityAdapters = jest.fn();
+  const controller = new DeliveryLineSuggestionsController({
+    listCapabilityAdapters,
+  } as unknown as IIntegrationsService);
 
-  it('should list the curated suggestions when asked', () => {
-    const { suggestions } = controller.listSuggestions();
+  beforeEach(() => {
+    listCapabilityAdapters.mockReset();
+    listCapabilityAdapters.mockResolvedValue([]);
+  });
+
+  it('should list the curated suggestions when asked', async () => {
+    const { suggestions } = await controller.listSuggestions();
     expect(suggestions.map((s) => s.country)).toEqual(['PL']);
     expect(suggestions[0].nameSuggestions).toContain('Paczkomat InPost');
+  });
+
+  it('should report the fallback budget as undeclared when no fiscalization adapter declares one', async () => {
+    const { receiptLineName } = await controller.listSuggestions();
+    expect(receiptLineName).toEqual({ maxLength: 40, declared: false });
+  });
+
+  it('should report the budget a connected fiscalization adapter declares', async () => {
+    listCapabilityAdapters.mockResolvedValue([
+      {
+        connectionId: 'fiscal-1',
+        adapter: Promise.resolve({
+          registerTransaction: jest.fn(),
+          getReceiptLineNameMaxLength: () => 32,
+        }),
+      },
+    ]);
+    const { receiptLineName } = await controller.listSuggestions();
+    expect(receiptLineName).toEqual({ maxLength: 32, declared: true });
   });
 
   it('should return one suggestion when the country is known', () => {

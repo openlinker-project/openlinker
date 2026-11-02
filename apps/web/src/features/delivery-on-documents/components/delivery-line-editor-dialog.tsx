@@ -43,6 +43,7 @@ import {
   type DeliveryFormSettings,
   type DeliveryRule,
 } from '../lib/delivery-line-ui';
+import { useDeliveryLineSuggestionsQuery } from '../hooks/use-delivery-on-documents-queries';
 import { DocumentsPreview } from './delivery-documents-preview';
 import { HeadWithTip, TIP_LINE, TIP_RATE } from './delivery-rules-table';
 
@@ -74,7 +75,11 @@ function NameInput({
   const all = options.includes(value) ? options : [value, ...options];
   const [own, setOwn] = useState(false);
   const [draft, setDraft] = useState('');
-  const check = checkName(draft, format);
+  // The budget is the connected fiscalization adapters' declaration, served
+  // with the suggestions (already cached by every surface that opens this
+  // dialog); until it arrives the shared fallback applies.
+  const receiptLineNameLength = useDeliveryLineSuggestionsQuery().data?.receiptLineName?.maxLength;
+  const check = checkName(draft, format, receiptLineNameLength);
   return (
     <div className="dd-name">
       <Select
@@ -122,7 +127,7 @@ function NameInput({
             >
               {draft && check.error
                 ? check.error
-                : `${check.name.length} of ${maxName(format)} characters`}
+                : `${check.name.length} of ${maxName(format, receiptLineNameLength)} characters`}
             </p>
             <Button
               tone="secondary"

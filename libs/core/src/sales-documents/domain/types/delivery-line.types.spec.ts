@@ -4,6 +4,8 @@
  * @module libs/core/src/sales-documents/domain/types
  */
 import {
+  combineReceiptLineNameLimits,
+  FALLBACK_RECEIPT_LINE_NAME_LENGTH,
   formatReceiptLineName,
   maxDeliveryLineNameLength,
   readDeliveryOnDocuments,
@@ -52,11 +54,38 @@ describe('formatReceiptLineName', () => {
 });
 
 describe('maxDeliveryLineNameLength', () => {
-  it('should leave room for the suffix within 40 characters', () => {
+  it('should leave room for the suffix within the fallback budget when none is given', () => {
+    expect(FALLBACK_RECEIPT_LINE_NAME_LENGTH).toBe(40);
     expect(maxDeliveryLineNameLength('plain')).toBe(36);
     expect(maxDeliveryLineNameLength('brackets')).toBe(34);
     expect(maxDeliveryLineNameLength('labelled', 'TAX')).toBe(32);
     expect(maxDeliveryLineNameLength('labelled')).toBe(36);
+  });
+
+  it('should leave room for the suffix within a declared budget when one is given', () => {
+    expect(maxDeliveryLineNameLength('plain', undefined, 30)).toBe(26);
+    expect(maxDeliveryLineNameLength('labelled', 'TAX', 30)).toBe(22);
+  });
+});
+
+describe('combineReceiptLineNameLimits', () => {
+  it('should report the fallback as undeclared when no adapter declares a budget', () => {
+    expect(combineReceiptLineNameLimits([])).toEqual({
+      maxLength: FALLBACK_RECEIPT_LINE_NAME_LENGTH,
+      declared: false,
+    });
+  });
+
+  it('should take the shortest budget when several adapters declare one', () => {
+    expect(combineReceiptLineNameLimits([40, 32, 48])).toEqual({ maxLength: 32, declared: true });
+  });
+
+  it('should ignore a declaration that is not a positive whole number', () => {
+    expect(combineReceiptLineNameLimits([0, -5, 12.5, Number.NaN, '20', null])).toEqual({
+      maxLength: FALLBACK_RECEIPT_LINE_NAME_LENGTH,
+      declared: false,
+    });
+    expect(combineReceiptLineNameLimits([0, 44])).toEqual({ maxLength: 44, declared: true });
   });
 });
 
@@ -178,6 +207,13 @@ describe('validateDeliveryOnDocumentsShape', () => {
         ?.message,
     ).toMatch(/at most 32/);
     expect(validateDeliveryOnDocumentsShape({ default: { name: 'x'.repeat(36) } })).toEqual([]);
+  });
+
+  it('should measure the name against a declared budget when the caller passes one', () => {
+    expect(validateDeliveryOnDocumentsShape({ default: { name: 'x'.repeat(27) } }, 30)[0]?.message).toBe(
+      'must be at most 26 characters so the name plus its rate fits 30',
+    );
+    expect(validateDeliveryOnDocumentsShape({ default: { name: 'x'.repeat(26) } }, 30)).toEqual([]);
   });
 
   it('should require a numeric fixedRate between 0 and 100 for fixed', () => {

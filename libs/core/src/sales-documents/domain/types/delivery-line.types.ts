@@ -83,10 +83,34 @@ export interface ResolvedDeliveryLine {
 export const DEFAULT_DELIVERY_LINE_NAME = 'Shipping';
 
 /**
- * The most characters a fiscal device compares in a line name (Dz.U. 2024
- * poz. 1654). The limit applies to the name WITH its rate suffix.
+ * How many characters of a receipt line name - rate suffix included - the
+ * registering mechanism behind a fiscalization connection compares.
+ *
+ * Declared BY the adapter (the ADR-046 shape), never known by core: the number
+ * is a property of a regime and its devices, so core only reads what an
+ * adapter states and combines the answers with {@link combineReceiptLineNameLimits}.
  */
-export const MAX_RECEIPT_LINE_NAME = 40;
+export interface ReceiptLineNameLimit {
+  maxLength: number;
+  /**
+   * `false` when no connected adapter declared a budget and
+   * {@link FALLBACK_RECEIPT_LINE_NAME_LENGTH} applies, so a surface can say
+   * the number is a default rather than a fact about the operator's setup.
+   */
+  declared: boolean;
+}
+
+/**
+ * The budget used when no connected fiscalization adapter declares one.
+ *
+ * A conservative default, not a regime fact: it equals the shortest budget any
+ * adapter in this repository declares, so a name accepted under it is accepted
+ * by every one of them. An adapter with a shorter budget declares it, and the
+ * shorter number wins. Kept as a fallback rather than "no limit" because the
+ * name is authored before any fiscalization connection may exist, and a name
+ * that later turns out too long fails on a paid order, not in the editor.
+ */
+export const FALLBACK_RECEIPT_LINE_NAME_LENGTH = 40;
 
 /**
  * Characters the rate suffix takes for an ordinary two-digit whole rate
@@ -102,13 +126,38 @@ const SUFFIX_RESERVE: Record<DeliveryLineRateFormat, number> = {
   labelled: 4,
 };
 
-/** The longest name an operator may author for a given suffix format (36 / 34, less the label). */
+/**
+ * The longest name an operator may author for a given suffix format: the
+ * receipt budget less the suffix and, for `labelled`, the label and a space.
+ */
 export function maxDeliveryLineNameLength(
   format: DeliveryLineRateFormat,
   rateLabel?: string | null,
+  receiptLineNameLength: number = FALLBACK_RECEIPT_LINE_NAME_LENGTH,
 ): number {
   const label = format === 'labelled' && typeof rateLabel === 'string' ? rateLabel.trim() : '';
-  return MAX_RECEIPT_LINE_NAME - SUFFIX_RESERVE[format] - (label === '' ? 0 : label.length + 1);
+  return receiptLineNameLength - SUFFIX_RESERVE[format] - (label === '' ? 0 : label.length + 1);
+}
+
+/**
+ * Combine the budgets the connected fiscalization adapters declare into the
+ * one an editor enforces.
+ *
+ * The SHORTEST wins: a delivery name is authored once on the order-source
+ * connection and may be registered through any fiscalization connection, so
+ * it must fit all of them. A declaration that is not a positive whole number is
+ * ignored rather than trusted - an adapter bug must not shrink every name to
+ * nothing. Nothing usable declared means the fallback, reported as undeclared.
+ */
+export function combineReceiptLineNameLimits(declared: readonly unknown[]): ReceiptLineNameLimit {
+  const usable = declared.filter(
+    (value): value is number =>
+      typeof value === 'number' && Number.isInteger(value) && value > 0,
+  );
+  if (usable.length === 0) {
+    return { maxLength: FALLBACK_RECEIPT_LINE_NAME_LENGTH, declared: false };
+  }
+  return { maxLength: Math.min(...usable), declared: true };
 }
 
 /**
@@ -302,17 +351,18 @@ function validateNameLength(
   format: DeliveryLineRateFormat,
   path: string,
   issues: DeliveryConfigIssue[],
+  receiptLineNameLength: number,
   rateLabel?: string | null,
 ): void {
   if (name.trim() === '') {
     issues.push({ path, message: 'must not be blank' });
     return;
   }
-  const max = maxDeliveryLineNameLength(format, rateLabel);
+  const max = maxDeliveryLineNameLength(format, rateLabel, receiptLineNameLength);
   if (name.trim().length > max) {
     issues.push({
       path,
-      message: `must be at most ${max} characters so the name plus its rate fits ${MAX_RECEIPT_LINE_NAME}`,
+      message: `must be at most ${max} characters so the name plus its rate fits ${receiptLineNameLength}`,
     });
   }
   if (/\d\s*%/.test(name)) {
@@ -324,7 +374,12 @@ function validateNameLength(
   }
 }
 
-function validateSettings(value: unknown, path: string, issues: DeliveryConfigIssue[]): void {
+function validateSettings(
+  value: unknown,
+  path: string,
+  issues: DeliveryConfigIssue[],
+  receiptLineNameLength: number,
+): void {
   if (!isRecord(value)) {
     issues.push({ path, message: 'must be an object' });
     return;
@@ -356,7 +411,14 @@ function validateSettings(value: unknown, path: string, issues: DeliveryConfigIs
   if (typeof value.name !== 'string') {
     issues.push({ path: `${path}.name`, message: 'is required and must be a string' });
   } else {
-    validateNameLength(value.name, format, `${path}.name`, issues, rateLabel);
+    validateNameLength(
+      value.name,
+      format,
+      `${path}.name`,
+      issues,
+      receiptLineNameLength,
+      rateLabel,
+    );
   }
 
   let rate: DeliveryLineRateMode = 'goods';
@@ -405,7 +467,14 @@ function validateSettings(value: unknown, path: string, issues: DeliveryConfigIs
         if (typeof methodName !== 'string') {
           issues.push({ path: methodPath, message: 'must be a string' });
         } else {
-          validateNameLength(methodName, format, methodPath, issues, rateLabel);
+          validateNameLength(
+            methodName,
+            format,
+            methodPath,
+            issues,
+            receiptLineNameLength,
+            rateLabel,
+          );
         }
       }
     }
@@ -418,8 +487,15 @@ function validateSettings(value: unknown, path: string, issues: DeliveryConfigIs
  * The reader above is deliberately forgiving (a stored value must never break
  * an issuance), so strictness lives here, where there is an operator to tell.
  * Returns every problem at once rather than the first.
+ *
+ * `receiptLineNameLength` is the budget the connected fiscalization adapters
+ * declare (see {@link combineReceiptLineNameLimits}); a caller with no adapter
+ * to ask gets the conservative fallback.
  */
-export function validateDeliveryOnDocumentsShape(value: unknown): DeliveryConfigIssue[] {
+export function validateDeliveryOnDocumentsShape(
+  value: unknown,
+  receiptLineNameLength: number = FALLBACK_RECEIPT_LINE_NAME_LENGTH,
+): DeliveryConfigIssue[] {
   const issues: DeliveryConfigIssue[] = [];
   const root = DELIVERY_ON_DOCUMENTS_CONFIG_KEY;
   if (!isRecord(value)) {
@@ -427,7 +503,7 @@ export function validateDeliveryOnDocumentsShape(value: unknown): DeliveryConfig
   }
 
   if (value.default !== undefined) {
-    validateSettings(value.default, `${root}.default`, issues);
+    validateSettings(value.default, `${root}.default`, issues, receiptLineNameLength);
   }
 
   if (value.countries !== undefined) {
@@ -452,7 +528,7 @@ export function validateDeliveryOnDocumentsShape(value: unknown): DeliveryConfig
           continue;
         }
         seen.add(country);
-        validateSettings(row, `${root}.countries.${country}`, issues);
+        validateSettings(row, `${root}.countries.${country}`, issues, receiptLineNameLength);
       }
     }
   }

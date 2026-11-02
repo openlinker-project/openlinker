@@ -5,11 +5,26 @@
  * live as data beside the starter-template catalogue. It writes nothing: the
  * editor offers these and the operator decides what to save.
  *
+ * The list also carries the receipt line-name budget the connected
+ * fiscalization adapters declare (#3914), because every editor surface already
+ * loads this response and the browser must not hold the number itself.
+ *
  * @module apps/api/src/sales-documents/http
  */
-import { Controller, Get, HttpCode, HttpStatus, NotFoundException, Param } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  HttpCode,
+  HttpStatus,
+  Inject,
+  NotFoundException,
+  Param,
+} from '@nestjs/common';
+import { IIntegrationsService, INTEGRATIONS_SERVICE_TOKEN } from '@openlinker/core/integrations';
+import { Logger } from '@openlinker/shared/logging';
 import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { Roles } from '../../auth/decorators/roles.decorator';
+import { resolveReceiptLineNameLimit } from '../../integrations/application/services/resolve-receipt-line-name-limit';
 import {
   getDeliveryLineSuggestion,
   listDeliveryLineSuggestions,
@@ -38,6 +53,13 @@ function toDto(suggestion: DeliveryLineSuggestion): DeliveryLineSuggestionDto {
 @ApiTags('sales-documents')
 @Controller('sales-documents/delivery-line/suggestions')
 export class DeliveryLineSuggestionsController {
+  private readonly logger = new Logger(DeliveryLineSuggestionsController.name);
+
+  constructor(
+    @Inject(INTEGRATIONS_SERVICE_TOKEN)
+    private readonly integrationsService: IIntegrationsService,
+  ) {}
+
   @Get()
   @Roles('admin', 'operator', 'viewer')
   @HttpCode(HttpStatus.OK)
@@ -49,8 +71,12 @@ export class DeliveryLineSuggestionsController {
   })
   @ApiResponse({ status: 200, type: DeliveryLineSuggestionsResponseDto })
   @ApiResponse({ status: 403, description: 'Insufficient permissions' })
-  listSuggestions(): DeliveryLineSuggestionsResponseDto {
-    return { suggestions: listDeliveryLineSuggestions().map(toDto) };
+  async listSuggestions(): Promise<DeliveryLineSuggestionsResponseDto> {
+    const receiptLineName = await resolveReceiptLineNameLimit(
+      this.integrationsService,
+      this.logger,
+    );
+    return { suggestions: listDeliveryLineSuggestions().map(toDto), receiptLineName };
   }
 
   @Get(':country')

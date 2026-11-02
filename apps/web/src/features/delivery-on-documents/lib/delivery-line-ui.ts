@@ -18,6 +18,7 @@ import type {
 } from '../api/delivery-on-documents.types';
 import {
   DEFAULT_DELIVERY_LINE_NAME,
+  FALLBACK_RECEIPT_LINE_NAME_LENGTH,
   formatReceiptLineName,
   maxDeliveryLineNameLength,
   type DeliveryLineRateFormat,
@@ -176,19 +177,28 @@ export function receiptName(settings: DeliveryFormSettings, rate: string): strin
   );
 }
 
-export const maxName = (format: DeliveryLineRateFormat): number =>
-  maxDeliveryLineNameLength(format, labelFor(format));
+/**
+ * `receiptLineNameLength` is the budget the server reports from the connected
+ * fiscalization adapters; the default is the shared conservative fallback for
+ * the moment before that answer arrives.
+ */
+export const maxName = (
+  format: DeliveryLineRateFormat,
+  receiptLineNameLength: number = FALLBACK_RECEIPT_LINE_NAME_LENGTH,
+): number => maxDeliveryLineNameLength(format, labelFor(format), receiptLineNameLength);
 
 export function checkName(
   raw: string,
   format: DeliveryLineRateFormat,
+  receiptLineNameLength: number = FALLBACK_RECEIPT_LINE_NAME_LENGTH,
 ): { name: string; error: string | null } {
   const name = raw.replace(/\s+/g, ' ').trim();
   if (!name) return { name, error: 'Enter a name.' };
-  if (name.length > maxName(format)) {
+  const max = maxName(format, receiptLineNameLength);
+  if (name.length > max) {
     return {
       name,
-      error: `Use at most ${maxName(format)} characters, so the VAT rate still fits in what fiscal printers read.`,
+      error: `Use at most ${max} characters, so the VAT rate still fits in what fiscal printers read.`,
     };
   }
   if (/\d+([.,]\d+)?\s*%/.test(name)) {

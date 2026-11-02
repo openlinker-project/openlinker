@@ -24,7 +24,10 @@ import type {
   RegisterTransactionResult,
 } from '@openlinker/core/fiscalization';
 
-import { EPARAGONY_PROVIDER_TYPE } from '../../eparagony.constants';
+import {
+  EPARAGONY_PROVIDER_TYPE,
+  EPARAGONY_RECEIPT_LINE_NAME_MAX_LENGTH,
+} from '../../eparagony.constants';
 import { EparagonyConfigException } from '../../domain/exceptions/eparagony-config.exception';
 import { toMinorUnits, toQuantityString } from '../../domain/policies/money.policy';
 import {
@@ -187,7 +190,11 @@ export function toCreateReceiptRequest(
  * deliberately NOT folded - the device treats them as distinct characters.
  */
 export function toPrinterNameKey(name: string): string {
-  return name.trim().replace(/\s+/g, ' ').toLowerCase().slice(0, 40);
+  return name
+    .trim()
+    .replace(/\s+/g, ' ')
+    .toLowerCase()
+    .slice(0, EPARAGONY_RECEIPT_LINE_NAME_MAX_LENGTH);
 }
 
 /**

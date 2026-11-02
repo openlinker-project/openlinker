@@ -566,6 +566,32 @@ describe('ConnectionService', () => {
         ).rejects.toThrow(/fixedRate/);
       });
 
+      it('should measure the name against the budget a fiscalization adapter declares', async () => {
+        integrationsService.listCapabilityAdapters.mockResolvedValueOnce([
+          {
+            connectionId: 'fiscal-1',
+            connection: mockConnection,
+            adapter: Promise.resolve({
+              registerTransaction: jest.fn(),
+              getReceiptLineNameMaxLength: () => 20,
+            }),
+            metadata: { supportedCapabilities: ['Fiscalization'] },
+          },
+        ] as never);
+        await expect(
+          service.create({
+            ...base,
+            config: {
+              baseUrl: 'https://new.com',
+              // 17 characters: inside the 36 the fallback allows, past the 16
+              // a declared 20 leaves once the ` 23%` suffix is reserved.
+              deliveryOnDocuments: { default: { name: 'Koszt dostawy kur' } },
+            },
+          })
+        ).rejects.toThrow(/at most 16 characters/);
+        expect(credentials.create).not.toHaveBeenCalled();
+      });
+
       it('should accept a well-formed value', async () => {
         connectionPort.create.mockResolvedValue(mockConnection);
         await expect(
