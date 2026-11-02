@@ -1280,13 +1280,13 @@ async createProduct(@Body() dto: CreateProductDto): Promise<ProductResponse> {
 
 *See [ADR-079](./architecture/adrs/079-frontend-owned-ui-translation.md) and [frontend-architecture.md § Internationalization](./frontend-architecture.md#internationalization-i18n).*
 
-Every word an operator reads in `apps/web` comes from a typed copy file, in English and Polish.
+Every word an operator reads in `apps/web` comes from a translation file, in English and Polish.
 
-- **File**: new files are `*.copy.ts` (dot, not hyphen), exporting copy objects only - no logic, no components. New copy goes in one file per feature folder at `features/<name>/lib/<name>.copy.ts`; `shared/ui/ui.copy.ts`; `shared/format/format.copy.ts`; `app/app.copy.ts`; `plugins/<name>/<name>.copy.ts`. A component gets a file of its own past about 40 keys. Existing per-component files (including `-copy.ts` names) keep their place and name and are reshaped to `{ en, pl }`.
-- **Shape**: `export const <name>Copy = defineCopy({ en: {...}, pl: {...} });`. Nest keys by component, then by element: `header.title`, `filters.status.label`.
+- **File**: core copy goes in `apps/web/src/locales/en.json` and `pl.json`, under a top-level namespace named after the feature folder (`orders`, `returns`; `ui` for the shared primitives, `format` for the formatters). A plugin keeps its namespace in `plugins/<id>/locales/<lang>.json` and registers it with `definePluginMessages`. Existing English-only `*.copy.ts` / `-copy.ts` modules move into their feature's namespace in the extraction PRs.
+- **Shape**: nest keys by component, then by element: `orders.header.title`, `orders.filters.status.label`. Keys are sorted at every level (`pnpm i18n:sort`); a namespace reads only itself and `ui.common`.
 - **Keys**: `camelCase`, named for meaning, not for the English text (`emptyState.title`, not `noOrdersFound`). One key for a repeated sentence; one sentence per key, never fragments joined at runtime.
 - **Params**: `{name}` placeholders; the same placeholders in every language.
-- **Tight spots**: write a key that sits in a button, nav item, chip or header as `fit(n, 'text')`; `check-copy-locales` fails when either language exceeds `n` characters.
+- **Tight spots**: give a key that sits in a button, nav item, chip or header a character budget in `locales/limits.json` (`"orders:header.createShipment": 18`); `check-locales` fails when either language exceeds it.
 - **Plurals**: `{ one, other }` in English, `{ one, few, many, other }` in Polish, rendered with `usePlural`; the count is `{n}`. An object with exactly the keys `one` and `other` is a plural, so never name a section that way.
 - **Numbers, money, dates**: `useFormat`. Never `toLocaleString()` without the active locale, `toFixed()` for display, or a hard-coded `'en-US'`.
 - **Style**: sentence case, plain hyphen (no em dash), British English, operator vocabulary, Polish terms from [i18n-glossary.md](./i18n-glossary.md).
@@ -1294,7 +1294,7 @@ Every word an operator reads in `apps/web` comes from a typed copy file, in Engl
 
 ✅ **Good**:
 ```tsx
-const copy = useCopy(ordersCopy).header;
+const copy = useMessages('orders').header;
 const plural = usePlural();
 return <PageHeader title={copy.title}>{plural(count, copy.needsAttention)}</PageHeader>;
 ```

@@ -592,43 +592,71 @@ The app ships English and Polish. English is the default today; #3890 makes Poli
 
 ### Copy files
 
-User-facing text lives in typed `*.copy.ts` files with both languages side by side:
+User-facing text lives in JSON (ADR-079). The application core keeps one file per language, `apps/web/src/locales/en.json` and `pl.json`; their top-level keys are **namespaces**, named after the feature folder:
 
-```ts
-// features/orders/lib/orders.copy.ts
-import { defineCopy } from '../../../shared/i18n';
-
-export const ordersCopy = defineCopy({
-  en: {
-    header: {
-      title: 'Orders',
-      needsAttention: { one: '{n} order needs attention', other: '{n} orders need attention' },
-    },
+```jsonc
+// apps/web/src/locales/en.json
+{
+  "orders": {
+    "header": {
+      "needsAttention": { "one": "{n} order needs attention", "other": "{n} orders need attention" },
+      "title": "Orders"
+    }
   },
-  pl: {
-    header: {
-      title: 'Zamówienia',
-      needsAttention: {
-        one: '{n} zamówienie wymaga uwagi',
-        few: '{n} zamówienia wymagają uwagi',
-        many: '{n} zamówień wymaga uwagi',
-        other: '{n} zamówienia wymaga uwagi',
+  "ui": { "common": { "retry": "Retry" } }
+}
+```
+
+```jsonc
+// apps/web/src/locales/pl.json
+{
+  "orders": {
+    "header": {
+      "needsAttention": {
+        "few": "{n} zamówienia wymagają uwagi",
+        "many": "{n} zamówień wymaga uwagi",
+        "one": "{n} zamówienie wymaga uwagi",
+        "other": "{n} zamówienia wymaga uwagi"
       },
-    },
-  },
-});
+      "title": "Zamówienia"
+    }
+  }
+}
+```
+
+A component reads one namespace, typed from `en.json`:
+
+```tsx
+const copy = useMessages('orders');
+<h1>{copy.header.title}</h1>
 ```
 
 Placement:
 
-- **New copy goes in one file per feature folder**, sectioned by component: `features/<name>/lib/<name>.copy.ts`. Pages read their feature's copy file.
-- **A file of its own** when a component's copy passes about 40 keys, or would push the feature file past about 400 lines (for example `bulk-edit-modal.copy.ts` beside `bulk-edit-modal.tsx`).
-- **Existing per-component copy files keep their place and their name** (for example the 14 files in `features/returns/lib/` and the 4 in `features/bench/lib/`). They are reshaped in place to `{ en, pl }`; nobody merges them into one file and nobody renames a `-copy.ts` file to `.copy.ts`.
-- **Shared files**: `shared/ui/ui.copy.ts` for primitives, `shared/format/format.copy.ts` for the formatters. The shell (`app/`) has no copy file yet: its strings are not extracted, so it is part of the interface that is still English-only. `shared/ui/filter.copy.ts` (a plain English `FILTER_COPY`) is not migrated yet.
-- **Plugins** ship their own copy in `plugins/<name>/<name>.copy.ts`, read with the same `useCopy`; there is no separate plugin catalogue.
-- New files use the `.copy.ts` suffix. `scripts/check-ui-vocabulary.mjs` scans every `.copy.ts` / `-copy.ts` file under `apps/web/src/features/*` and every file under `apps/web/src` that calls `defineCopy`, which covers `shared/`, `app/` and `plugins/` copy too. `scripts/check-copy-locales.mjs` additionally checks placeholders, length budgets and em dashes in every copy file. The vocabulary check reads English only: the Polish counterparts of the banned words are listed in [i18n-glossary.md](./i18n-glossary.md) for review.
+- **One namespace per feature folder**, sectioned by component: `orders.header.title`, `orders.filters.status.label`. Pages read their feature's namespace.
+- **Shared namespaces**: `ui` for the shared primitives (`ui.common` holds the few words every feature may use), `format` for the formatters. The shell (`app/`) has no namespace yet: its strings are not extracted, so it is part of the interface that is still English-only.
+- **No reaching into another namespace.** "Cancel" in orders and "Cancel" in returns are two keys; only `ui.common` is shared. Removing a feature removes one block.
+- **Plugins** keep their own namespace in their own folder, `plugins/<id>/locales/en.json` and `pl.json`, named after the plugin id, and register it with `definePluginMessages`, which returns the plugin's typed hook. Reference the result from the plugin's `messages` slot in `definePlugin` so the namespace is registered at module load, before the first language load:
 
-`defineCopy` infers the shape from `en` and checks `pl` against it: Polish can never carry a key English lacks, and types plural entries per language (`one`/`other` for English, `one`/`few`/`many`/`other` for Polish). Until the lock-in step a missing Polish key falls back to English for that key only.
+  ```ts
+  // plugins/allegro/messages.ts
+  import { definePluginMessages } from '../../shared/i18n';
+  import en from './locales/en.json';
+
+  export const allegroMessages = definePluginMessages('allegro', {
+    messages: en,
+    loaders: { pl: () => import('./locales/pl.json').then((m) => m.default) },
+  });
+  export const useAllegroMessages = allegroMessages.useMessages;
+  ```
+
+- **Keys are sorted** at every level. `pnpm i18n:sort` sorts every file in place and `scripts/check-locales.mjs` fails on an unsorted one, so parallel PRs add keys in different places instead of all at the end of a namespace.
+- **Character budgets** for keys in tight spots live in `locales/limits.json` as `"<namespace>:<key.path>": <max>` (a plugin: its own `locales/limits.json` as `"<key.path>": <max>`).
+- Copy not migrated yet still sits in English-only `*.copy.ts` / `-copy.ts` modules in the feature folders; each extraction PR moves its feature's modules into the namespace. `scripts/check-ui-vocabulary.mjs` scans those modules and every English translation file. The vocabulary check reads English only: the Polish counterparts of the banned words are listed in [i18n-glossary.md](./i18n-glossary.md) for review.
+
+Each namespace has exactly one home. The registry refuses a second registration of the same name, so a plugin can never replace a core namespace, and nothing is looked up across files: the only fallback is within a namespace, from the active language to English for that key only. An empty string counts as a gap. `locales/pl.check.ts` makes `tsc` reject a Polish shape English lacks (a key English does not have, a string where English has a section, a plural without its Polish forms); a plugin's Polish is checked by `scripts/check-locales.mjs` instead.
+
+English ships in the main bundle. Every other language is a dynamic import: `main.tsx` loads the opening language before the first paint, and `setLocale` loads a new language before it switches, so the screen never shows a blank or a raw key.
 
 An object whose keys are exactly `one` and `other` is read as a plural, so never name a section that way. Plural forms put the count in `{n}`; every language keeps that token.
 
@@ -637,18 +665,20 @@ An object whose keys are exactly `one` and `other` is read as a plural, so never
 | Export | Returns | Used for |
 |---|---|---|
 | `useLocale()` | `locale`, `setLocale`, `locales`, `bcp47` | the language switch, `<html lang>`, anything that needs the language |
-| `useCopy(featureCopy)` | the copy object for the active language, English fallback per key | every component that renders text |
+| `useMessages(namespace)` | one core namespace for the active language, typed from `en.json`, English fallback per key | every component that renders text |
+| `getMessages(namespace)` / `messagesIn(namespace, locale)` | the same outside React, for the active / a given language | zod schemas, formatters, module-level label maps |
+| `definePluginMessages(id, options)` | `{ useMessages, getMessages }` typed from the plugin's own file | a plugin's own namespace |
+| `loadMessages(locale)` | a promise that resolves once every namespace has the language | `main.tsx`; the provider calls it on a switch |
 | `usePlural()` | `plural(n, forms)` on `Intl.PluralRules` | counts |
 | `useFormat()` | `number`, `percent`, `money`, `date`, `time`, `dateTime`, `relativeTime`, `duration`, `list`, `country` | every number, amount and date shown to an operator |
 | `renderRich(text, parts, params?)` | React nodes | a link or bold word inside a translated sentence; pass `{name}` values as `params` so a tag inside server text stays text |
 | `getLocale()` | the active locale outside React | the API client's `Accept-Language` header |
 | `useActiveLocale()` / `getBcp47Locale()` | the active locale / its BCP-47 tag, without requiring a provider | read-only consumers such as shared primitives and formatters |
-| `fit(maxLength, text)` | the text, checked against a length budget | copy that must fit a fixed-width control; `check-copy-locales` reads the budgets |
 | `LocaleKeyed` | wrapper | remounts the routed tree on a language change so module-level text refreshes; mounted in `app-providers.tsx` |
 | `useNumberFormat()` | a `NumberFormat` | legacy shim like `t()`; new code uses `useFormat()` |
 | `LanguageSwitch` (in `shared/ui`) | component | the switch in the sidebar footer and on signed-out pages |
 
-The switch itself is `LanguageSwitch` in `shared/ui` (it animates with Motion, so the headless-library policy puts it there), mounted in the sidebar footer and in the signed-out layouts. Shared primitives read their default labels from `shared/ui/ui.copy.ts`; outside a `LocaleProvider` the read-only hooks fall back to English instead of throwing.
+The switch itself is `LanguageSwitch` in `shared/ui` (it animates with Motion, so the headless-library policy puts it there), mounted in the sidebar footer and in the signed-out layouts. Shared primitives read their default labels from the `ui` namespace; outside a `LocaleProvider` the read-only hooks fall back to English instead of throwing.
 
 Plugin authors pin a language with `SupportedLocale` and never build a `LocaleContextValue` by hand. Interpolation uses `{name}` placeholders. A plural or a date is never built by string concatenation.
 
@@ -690,45 +720,45 @@ Unit tests and Playwright run in English. `src/test/setup.ts` resets the active 
 
 ### Guardrails
 
-- **`scripts/check-copy-locales.mjs`** (in `pnpm check:invariants`) reads every non-test file under `apps/web/src` that calls `defineCopy`, whatever the file is named. It fails on a Polish placeholder set that differs from English, a `fit(n, text)` budget exceeded in any language, or an em dash, and it warns when Polish is more than 1.6x and 15+ characters longer than English, or when a key's name appears in no other file (a heuristic for an unused key, so a warning only).
-  - It reads inline object literals, strings, `{name}` templates and `fit(<number>, <text>)`, looking through `as const`, `satisfies` and parentheses. Anything else - a language or a leaf held in a variable, a spread, a computed key, `${}` in a template, a non-literal budget, a call with no English text - is an **error**, so a file it cannot read never passes as clean. It also fails when it finds fewer copy files than it expects.
-  - `node scripts/check-copy-locales.mjs --self-check` runs first in `check:invariants` and proves every rule above fires on a fixture, including the leaf counts it reads.
+- **`scripts/check-locales.mjs`** (in `pnpm check:invariants`) finds every namespace - the top-level keys of `locales/<lang>.json` and every `plugins/<id>/locales/<lang>.json` - and checks each translation against English. It fails on a key English lacks (Polish-only plural `few` / `many` excepted), a placeholder set that differs from English (`few` / `many` compare against `other`), a budget from `limits.json` exceeded in any language, a budget naming a key English does not have, an em dash, an unsorted file, a value that is not a string or an object, a translation file without its English file, or a language not in `LANGUAGES`. It warns when Polish is more than 1.6x and 15+ characters longer than English, or when a key's name appears in no source file (a heuristic for an unused key, so a warning only). It fails when it finds fewer core namespaces than it expects, so a scan that finds nothing never reads as clean.
+  - `node scripts/check-locales.mjs --self-check` runs first in `check:invariants` and proves every rule above fires on a fixture.
   - It also checks that the e2e fixture pins the same `localStorage` key the app reads.
-  - **Coverage report (not a gate):** `node scripts/check-copy-locales.mjs --report` prints, for every `defineCopy` file, how many English keys each other language has translated, most missing first, then a `TOTAL` line per language; add `--missing` to list the missing key paths. A plural counts as one key (translated when its `other` form is non-empty), Polish-only `few` / `many` are never extra keys, and an empty string counts as missing. It always exits 0 and is not part of `check:invariants`. A new language shows up in it with no extra code.
-- **`scripts/check-ui-vocabulary.mjs`** reads every `.copy.ts` / `-copy.ts` file under `features/*` and every file under `apps/web/src` that calls `defineCopy` (found by content, with a floor), English branch only. Its banned words are English; the Polish counterparts live in the glossary for review.
-- **`fit(n, text)`** marks a key that sits in a tight spot (button, nav item, chip, table header) with a character budget.
+  - **Sorting:** `pnpm i18n:sort` (`--fix`) rewrites every unsorted file in place.
+  - **Coverage report (not a gate):** `pnpm i18n:report` (`--report`) prints, for every namespace, how many English keys each other language has translated, most missing first, then a `TOTAL` line per language; add `--missing` to list the missing key paths. A plural counts as one key (translated when its `other` form is non-empty), Polish-only `few` / `many` are never extra keys, and an empty string counts as missing. It always exits 0.
+- **`scripts/check-ui-vocabulary.mjs`** reads every `.copy.ts` / `-copy.ts` file under `features/*` and every English translation file (`locales/en.json` and `plugins/<id>/locales/en.json`, with a floor). Its banned words are English; the Polish counterparts live in the glossary for review.
+- **Budgets**: a key that sits in a tight spot (button, nav item, chip, table header) gets a character budget in `limits.json`.
 - **No hardcoded text**: `i18next/no-literal-string` in `.eslintrc.js` fails on JSX text outside copy files, and three `no-restricted-syntax` selectors cover the shapes it skips in JSX children: `{'text'}`, a ternary label and a template literal. It is switched on folder by folder as each folder is migrated; add the folder to the override's `files` list in the same PR. Covered today: `shared/ui/**/*.tsx` only. `scripts/check-i18n-lint-rule.mjs` pins that list (`EXPECTED_SCOPE`), so widening it means editing the script in the same PR.
   - **Known gap:** text in an attribute (`aria-label`, `title`, `placeholder`) or in a variable outside JSX is not caught; review covers it until the extraction PRs move it. A `jsx-only` mode was tried and rejected for now because it also flags every `tone="ghost"`-style prop (53 hits in `shared/ui` alone).
-  - **Escape hatch:** a brand name, unit or mixed-case code that trips the rule either goes in the copy file with identical `en` and `pl` values, or gets `// eslint-disable-next-line i18next/no-literal-string -- <reason>` (`eslint-comments/require-description` already demands the reason).
+  - **Escape hatch:** a brand name, unit or mixed-case code that trips the rule either goes in the namespace with identical `en` and `pl` values, or gets `// eslint-disable-next-line i18next/no-literal-string -- <reason>` (`eslint-comments/require-description` already demands the reason).
   - `scripts/check-i18n-lint-rule.mjs` resolves the real config for a real `shared/ui` file and fails if the rule is off there or on for tests and copy files, if any `files` glob matches nothing, or if the sentence, `{'text'}`, ternary and template fixtures stop being reported. A typo in `files`, an empty glob or a later override can each silence the rule while `pnpm lint` stays green.
 - **Pseudo-language**: in a development build, `?lang=xx` renders English accented, bracketed and about 40% longer, and marks `<html data-pseudo-locale="true">`. It lasts for the browser session until a real language is picked. Plain English on that screen is a string that was never extracted; a broken layout is one that Polish will break too.
 - **Overflow pass**: `pnpm --filter @openlinker/e2e exec playwright test --project=setup --project=i18n` opens the daily screens in English, then in `pl` and `xx`, and fails when a button, header, badge or chip that fits in English no longer fits its text. It first proves it can catch a deliberately overflowing button. Run it against a local stack before merging a translation batch.
 
 ### Adding another language
 
-Every translation lives in a `defineCopy({ en, pl })` call. The reliable way to list them is `grep -rl "defineCopy(" apps/web/src --include=*.ts --include=*.tsx | grep -v '\.test\.'`, not a file-name search: existing per-component copy files keep their `-copy.ts` names, and a `*copy.ts` file may not be converted yet. `scripts/check-copy-locales.mjs` finds files the same way. The engine is deliberately written for exactly the two shipped languages (ADR-079), so a new language is first a small engine change, then the translations. The steps below use French (`fr`) as the worked example.
+Every translation lives in a namespace: the top-level keys of `apps/web/src/locales/<lang>.json`, plus one `plugins/<id>/locales/<lang>.json` per plugin that has copy. `scripts/check-locales.mjs` finds them the same way. The engine is deliberately written for exactly the two shipped languages (ADR-079), so a new language is first a small engine change, then the translations. The steps below use French (`fr`) as the worked example.
 
 **Part A - the engine (once, in this order)**
 
 1. `apps/web/src/shared/i18n/i18n.types.ts`: add the code to `LocaleCodeValues`. Its order is the order the switch lists languages in, and `SupportedLocale` follows from it, so the compiler now points at every place that still has to learn the language.
-2. `apps/web/src/shared/i18n/copy.types.ts`: add the language's field to `LocaleCopy`, optional and deep-partial the way `PolishCopy` is until the lock-in step (#3891), so features can be translated one at a time. Give it a plural type that matches its CLDR plural categories (French: `one`, `many`, `other`; look the language up in the [CLDR plural rules chart](https://www.unicode.org/cldr/charts/latest/supplemental/language_plural_rules.html)) and extend `PluralForms` if a category is new. Keep the `IsPlural` convention in mind: an object whose keys are exactly `one` and `other` is read as a plural, so never name a section that way.
-3. `apps/web/src/shared/i18n/define-copy.ts`: make `resolveCopy` merge the new field over English the way it merges `pl`, so a missing key falls back to English for that key only and an empty string counts as a gap.
-4. `apps/web/src/shared/i18n/locale.ts`: map the code to its BCP 47 tag in `getBcp47Locale` (for example `fr` to `fr-FR`). The formatters, `Accept-Language` and `<html lang>` all read it.
-5. `apps/web/src/shared/i18n/zod-locale.ts`: choose `z.locales.fr()` for the new code in `applyZodLocale`, so Zod's default messages follow the language.
-6. `apps/web/src/shared/format/format.copy.ts`: add the language's units and relative-time words. The shared formatters read this file, and the other languages' fields there are the template.
+2. `apps/web/src/shared/i18n/copy.types.ts`: add a shape type for the language, deep-partial the way `PolishCopy` is until the lock-in step (#3891), with a plural type that matches its CLDR plural categories (French: `one`, `many`, `other`; look the language up in the [CLDR plural rules chart](https://www.unicode.org/cldr/charts/latest/supplemental/language_plural_rules.html)), and extend `PluralForms` if a category is new. Keep the `IsPlural` convention in mind: an object whose keys are exactly `one` and `other` is read as a plural, so never name a section that way.
+3. `apps/web/src/locales/fr.json` with `{}`, and `apps/web/src/locales/fr.check.ts` beside `pl.check.ts`, so `tsc` checks its shape.
+4. `apps/web/src/shared/i18n/messages.ts`: give every core namespace a loader for the language (the `pl` loader is the template). A plugin adds its own loader to its `definePluginMessages` call.
+5. `apps/web/src/shared/i18n/locale.ts`: map the code to its BCP 47 tag in `getBcp47Locale` (for example `fr` to `fr-FR`). The formatters, `Accept-Language` and `<html lang>` all read it.
+6. `apps/web/src/shared/i18n/zod-locale.ts`: choose `z.locales.fr()` for the new code in `applyZodLocale`, so Zod's default messages follow the language.
 7. `apps/web/src/shared/ui/language-switch.tsx`: add the language's native name ("Français") to `LANGUAGE_DETAILS`, with `beta: true` until its translation is complete; `LANGUAGE_OPTIONS` is derived from `LocaleCodeValues`, and the `Record` makes a missing entry a compile error. Add its flag SVG to the `switch` in `apps/web/src/shared/ui/language-flag.tsx`.
-8. `scripts/check-copy-locales.mjs`: add the code to `LANGUAGES` (this is also what makes `--report` list it) and teach the placeholder and plural comparison its plural categories (`PLURAL_KEYS`, `englishKeyFor`). Extend the `--self-check` cases to cover them.
+8. `scripts/check-locales.mjs`: add the code to `LANGUAGES` (this is also what makes the report list it) and teach the placeholder comparison its plural categories (`PLURAL_KEYS`, `englishCounterpart`). Extend the `--self-check` cases to cover them.
 9. `docs/i18n-glossary.md`: add a column (or a sibling table) with the language's term for every row, and its writing rules (formality, imperative or not).
 10. ADR-079: record the decision to add the language, one line in a new amendment section.
 
 **Part B - the translations**
 
-11. Run the grep from the intro to get the file list. Translate each file's English into the new field using the glossary. English stays the fallback per key while the field is optional, so this can land feature by feature.
-12. When every file is complete, make the field required in `copy.types.ts` (the lock-in step, as #3891 does for Polish): `pnpm --filter @openlinker/web exec tsc -b` then lists every file and key still missing, which is the exact, compiler-enforced checklist. Then remove `beta: true` from the switch (as #3901 does for Polish).
+11. Translate namespace by namespace into `fr.json` (start with `format`, which holds the formatters' units and relative-time words) and into each plugin's `fr.json`, using the glossary. English stays the fallback per key, so this can land feature by feature.
+12. When every namespace is complete, make the shape required (the lock-in step, as #3891 does for Polish): `pnpm --filter @openlinker/web exec tsc -b` then lists every key still missing in the core file, and `pnpm i18n:report --missing` lists the plugins' gaps. Then remove `beta: true` from the switch (as #3901 does for Polish).
 
-Tests keep running in English (pinned in `src/test/setup.ts` and the Vitest config), so add only targeted tests for the new language, for example its plural forms and the `locale.ts` mapping.
+Tests keep running in English (pinned in `src/test/setup.ts` and the Vitest config), so add only targeted tests for the new language, for example its plural forms and the `locale.ts` mapping. `src/test/setup.ts` loads every language once before the tests run; add the new code there.
 
-To see where each language stands, run `node scripts/check-copy-locales.mjs --report` (add `--missing` to list the missing key paths): it prints, per copy file, how many English keys the language has translated, most missing first, plus a `TOTAL` line, and it picks the new language up as soon as step 8 is done. Until the field is required, that report and the optional-then-required type are the progress signal.
+To see where each language stands, run `pnpm i18n:report` (add `--missing` to list the missing key paths): it prints, per namespace, how many English keys the language has translated, most missing first, plus a `TOTAL` line, and it picks the new language up as soon as step 8 is done.
 
 ## Components And Pages
 
@@ -917,7 +947,7 @@ A plugin author writes one file per plugin (`plugins/<name>/index.ts`) containin
 
 Literal-equality dispatch on `platformType` (`connection.platformType === 'allegro'`) is forbidden outside `plugins/<platformType>/` — use `usePlatform()`, `usePlatforms()`, or capability checks (`supportedCapabilities.includes('OfferManager')`) instead. The ESLint rule `no-restricted-syntax` enforces this. The same rule bans re-introduction of the old `WebPlugin` / `PlatformPlugin` / `IN_TREE_PLUGINS` identifiers (#702).
 
-Provider **names** are held to the same boundary (#3272): `scripts/check-provider-name-boundary.mjs` (under `pnpm check:invariants`) fails the build when `eparagony`, `ksef`, `paragon` or `kasa` appears in operator-facing copy (JSX text, user-facing JSX attribute values and `*-copy.ts` / `*.copy.ts` strings) anywhere in `apps/web/src` outside `plugins/`. Identifiers, comments and imports are deliberately unscanned, so a shared component may still explain in a docblock why it is neutral. Its exemption table is empty and must stay empty: an unavoidable hit means the surface is in the wrong folder (or the copy should be provider-neutral). Provider setup screens therefore live under `plugins/<name>/components/`. Hooks that call the API client stay in the feature that owns the neutral endpoint (e.g. `features/invoicing`) with a provider-neutral name, because plugins may not import `useApiClient` (see the plugin `no-restricted-imports` rule).
+Provider **names** are held to the same boundary (#3272): `scripts/check-provider-name-boundary.mjs` (under `pnpm check:invariants`) fails the build when `eparagony`, `ksef`, `paragon` or `kasa` appears in operator-facing copy (JSX text, user-facing JSX attribute values `*-copy.ts` / `*.copy.ts` strings and translation file values) anywhere in `apps/web/src` outside `plugins/`; in `locales/pl.json` the ordinary Polish words `paragon` and `kasa` are allowed. Identifiers, comments and imports are deliberately unscanned, so a shared component may still explain in a docblock why it is neutral. Its exemption table is empty and must stay empty: an unavoidable hit means the surface is in the wrong folder (or the copy should be provider-neutral). Provider setup screens therefore live under `plugins/<name>/components/`. Hooks that call the API client stay in the feature that owns the neutral endpoint (e.g. `features/invoicing`) with a provider-neutral name, because plugins may not import `useApiClient` (see the plugin `no-restricted-imports` rule).
 
 ### `BuildContribution` slot reference
 
