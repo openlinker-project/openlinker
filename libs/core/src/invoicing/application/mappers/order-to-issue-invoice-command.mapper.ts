@@ -133,13 +133,13 @@ export function toIssueInvoiceCommand(
     isPublicSectorEntity: buyerIsPublicSectorEntity,
     isTaxGroupMember: buyerIsTaxGroupMember,
   });
-  const lines = order.items.map((item) => toInvoiceLine(item, order.id));
+  const productLines = order.items.map((item) => toInvoiceLine(item, order.id));
 
   // Buyer-paid shipping is part of the invoice total (invoice gross must equal
   // order total, #1517). Emit it as a normal gross line so the provider adapter
   // resolves its tax rate the same way it does for product lines; core never
   // names a tax rate. Skipped when shipping is 0 (no phantom line).
-  lines.push(...applyDelivery(lines, order, deliveryLine));
+  const lines = applyDelivery(productLines, order, deliveryLine);
 
   assertLinesSumToTotal(lines, order.totals, order.id);
 
@@ -383,9 +383,18 @@ function toInvoiceLine(item: OrderItem, orderId: string): InvoiceLine {
 }
 
 /**
- * Apply the delivery to the invoice: returns the delivery lines to append, and
- * in `spread` mode raises the product lines in place instead and returns none
- * (#1517, #2248, #3905).
+ * Apply the delivery to the invoice: returns the complete line list - the
+ * product lines followed by the delivery lines, or in `spread` mode new copies
+ * of the product lines carrying the raised price and no delivery line (#1517,
+ * #2248, #3905). The input lines are never mutated, so a caller's product
+ * lines keep the price the source reported.
+ *
+ * In `spread` mode the raised unit price IS the document's statement of what
+ * was paid for those goods: the issuance snapshot (#1297) records it, and a
+ * return correction (#2374 / #3312) credits a returned unit at that raised
+ * price, i.e. with its share of the delivery. That follows the document as
+ * issued, which is the only thing a correction may diff against; an operator
+ * who must not refund delivery with the goods keeps `goods` or `fixed`.
  *
  * Shipping inherits the basket's tax treatment, so a single-rate basket yields
  * ONE line at that rate - the ordinary case. A mixed-rate basket yields N lines
@@ -408,10 +417,46 @@ function toInvoiceLine(item: OrderItem, orderId: string): InvoiceLine {
  * return against this line is #3290's, not this matcher's, concern.
  */
 function applyDelivery(
-  lines: InvoiceLine[],
+  productLines: readonly InvoiceLine[],
   order: Order,
   delivery: ResolvedDeliveryLine
 ): InvoiceLine[] {
+  const spread = spreadIntoProductLines(productLines, order, delivery);
+  if (spread !== null) return spread;
+  return [...productLines, ...deliveryLinesFor(order, delivery)];
+}
+
+/**
+ * `spread` mode: new product lines carrying their share of the delivery, or
+ * `null` when the mode is not `spread`, there is no paid delivery, or the
+ * amount cannot be folded in exactly (no quantity-1 line to take the
+ * remainder) - the caller then emits a separate delivery line rather than
+ * inventing a price.
+ */
+function spreadIntoProductLines(
+  productLines: readonly InvoiceLine[],
+  order: Order,
+  delivery: ResolvedDeliveryLine
+): InvoiceLine[] | null {
+  if (delivery.rate !== 'spread') return null;
+  const { shipping, exponent } = shippingSplitInputs(order);
+  if (!Number.isFinite(shipping) || shipping <= 0) return null;
+  const increases = spreadDeliveryAcrossLines(shipping, productLines, exponent);
+  if (increases === null) {
+    logger.warn(
+      `Order ${order.id}: delivery cannot be spread across product lines; ` +
+        'falling back to a separate delivery line'
+    );
+    return null;
+  }
+  return productLines.map((line, index) => ({
+    ...line,
+    unitPriceGross: line.unitPriceGross + increases[index],
+  }));
+}
+
+/** The delivery lines to append after the product lines. */
+function deliveryLinesFor(order: Order, delivery: ResolvedDeliveryLine): InvoiceLine[] {
   const { lines: splitLines, shipping, exponent } = shippingSplitInputs(order);
   const label = delivery.invoiceName;
 
@@ -426,20 +471,6 @@ function applyDelivery(
 
   if (delivery.rate === 'fixed' && delivery.fixedRate !== undefined) {
     return [{ name: label, quantity: 1, unitPriceGross: shipping, taxRate: delivery.fixedRate }];
-  }
-
-  if (delivery.rate === 'spread') {
-    const increases = spreadDeliveryAcrossLines(shipping, lines, exponent);
-    if (increases !== null) {
-      lines.forEach((line, index) => {
-        line.unitPriceGross = line.unitPriceGross + increases[index];
-      });
-      return [];
-    }
-    logger.warn(
-      `Order ${order.id}: delivery cannot be spread across product lines; ` +
-        'falling back to a separate delivery line'
-    );
   }
 
   const parts = splitShippingAcrossRates(shipping, splitLines, exponent);
@@ -459,7 +490,13 @@ function applyDelivery(
   }));
 }
 
-/** The rate carrying the most gross in the basket, or `undefined` when none is known. */
+/**
+ * The rate carrying the most gross in the basket, or `undefined` when none is
+ * known. It only labels a ZERO delivery line, so the choice moves no amount;
+ * what matters is that one basket always prints one rate. A tie therefore goes
+ * to the numerically LOWER rate (see {@link compareRateCodes}), never to Map
+ * insertion order, which would follow the order the items happen to arrive in.
+ */
 function dominantRate(
   splitLines: readonly { taxRate: string | null; gross: number }[]
 ): string | undefined {
@@ -471,10 +508,32 @@ function dominantRate(
   let best: string | undefined;
   let bestGross = -1;
   for (const [rate, gross] of byRate) {
-    if (gross > bestGross || (gross === bestGross && best !== undefined && rate < best)) {
+    if (
+      gross > bestGross ||
+      (gross === bestGross && best !== undefined && compareRateCodes(rate, best) < 0)
+    ) {
       best = rate;
       bestGross = gross;
     }
   }
   return best;
+}
+
+/**
+ * A total order over rate codes for the tie-break above. Numeric codes compare
+ * as numbers (`'8'` before `'23'`, which a string compare gets backwards);
+ * non-numeric codes (`zw`, `np`) come after every numeric one; anything still
+ * equal (`'23'` and `'23.00'`) falls back to the string, so the order is total.
+ */
+function compareRateCodes(a: string, b: string): number {
+  const numeric = /^\d+(\.\d+)?$/;
+  const aIsNumber = numeric.test(a);
+  const bIsNumber = numeric.test(b);
+  if (aIsNumber && bIsNumber) {
+    const difference = Number(a) - Number(b);
+    if (difference !== 0) return difference;
+  } else if (aIsNumber !== bIsNumber) {
+    return aIsNumber ? -1 : 1;
+  }
+  return a < b ? -1 : a > b ? 1 : 0;
 }

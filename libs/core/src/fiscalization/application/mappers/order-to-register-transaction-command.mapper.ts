@@ -125,9 +125,9 @@ export function toRegisterTransactionCommand(
     throw new UnsupportedFiscalPriceTreatmentError(refusal);
   }
 
-  const lines = order.items.map((item) => toFiscalLine(item, order.id));
+  const productLines = order.items.map((item) => toFiscalLine(item, order.id));
 
-  lines.push(...applyDelivery(lines, order, deliveryLine));
+  const lines = applyDelivery(productLines, order, deliveryLine);
 
   assertLinesSumToTotal(lines, order.totals, order.id);
 
@@ -284,8 +284,11 @@ function toFiscalLine(item: OrderItem, orderId: string): FiscalTransactionLine {
 }
 
 /**
- * Apply the delivery to the receipt: returns the delivery lines to append, and
- * in `spread` mode raises the product lines in place instead and returns none.
+ * Apply the delivery to the receipt: returns the complete line list - the
+ * product lines followed by the delivery lines, or in `spread` mode new copies
+ * of the product lines carrying the raised price and no delivery line. The
+ * input lines are never mutated (see the invoicing twin for what the raised
+ * price means for a later correction).
  *
  * A receipt registers what was paid, so it never carries a zero delivery line
  * (ADR-079 decision 7) - `freeDelivery` is an invoice-only setting.
@@ -302,7 +305,46 @@ function toFiscalLine(item: OrderItem, orderId: string): FiscalTransactionLine {
  * shipping instead would understate the receipt total.
  */
 function applyDelivery(
-  lines: FiscalTransactionLine[],
+  productLines: readonly FiscalTransactionLine[],
+  order: Order,
+  delivery: ResolvedDeliveryLine
+): FiscalTransactionLine[] {
+  const spread = spreadIntoProductLines(productLines, order, delivery);
+  if (spread !== null) return spread;
+  return [...productLines, ...deliveryLinesFor(order, delivery)];
+}
+
+/**
+ * `spread` mode: new product lines carrying their share of the delivery, or
+ * `null` when the mode is not `spread`, there is no paid delivery, or the
+ * amount cannot be folded in exactly (no quantity-1 line to take the
+ * remainder) - the caller then emits a separate delivery line rather than
+ * inventing a price.
+ */
+function spreadIntoProductLines(
+  productLines: readonly FiscalTransactionLine[],
+  order: Order,
+  delivery: ResolvedDeliveryLine
+): FiscalTransactionLine[] | null {
+  if (delivery.rate !== 'spread') return null;
+  const { shipping, exponent } = shippingSplitInputs(order);
+  if (!Number.isFinite(shipping) || shipping <= 0) return null;
+  const increases = spreadDeliveryAcrossLines(shipping, productLines, exponent);
+  if (increases === null) {
+    logger.warn(
+      `Order ${order.id}: delivery cannot be spread across product lines; ` +
+        'falling back to a separate delivery line'
+    );
+    return null;
+  }
+  return productLines.map((line, index) => ({
+    ...line,
+    unitPriceGross: line.unitPriceGross + increases[index],
+  }));
+}
+
+/** The delivery lines to append after the product lines. */
+function deliveryLinesFor(
   order: Order,
   delivery: ResolvedDeliveryLine
 ): FiscalTransactionLine[] {
@@ -326,22 +368,6 @@ function applyDelivery(
         sku: null,
       },
     ];
-  }
-
-  if (delivery.rate === 'spread') {
-    const increases = spreadDeliveryAcrossLines(shipping, lines, exponent);
-    if (increases !== null) {
-      lines.forEach((line, index) => {
-        line.unitPriceGross = line.unitPriceGross + increases[index];
-      });
-      return [];
-    }
-    // The amount cannot be folded in exactly (no quantity-1 line to take the
-    // remainder), so fall back rather than invent a price.
-    logger.warn(
-      `Order ${order.id}: delivery cannot be spread across product lines; ` +
-        'falling back to a separate delivery line'
-    );
   }
 
   const parts = splitShippingAcrossRates(shipping, splitLines, exponent);

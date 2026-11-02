@@ -844,6 +844,35 @@ describe('toIssueInvoiceCommand delivery line (#3905, ADR-079)', () => {
     expect(cmd.lines.reduce((sum, l) => sum + l.quantity * l.unitPriceGross, 0)).toBeCloseTo(165, 2);
   });
 
+  it('should raise copies of the product lines in spread mode, never the order it was given', () => {
+    const order = mixed(15, 165);
+    for (const item of order.items) Object.freeze(item);
+    Object.freeze(order.items);
+    const cmd = toIssueInvoiceCommand({
+      order,
+      connectionId: 'c',
+      deliveryLine: delivery({ rate: 'spread' }),
+    });
+    // 15 split by gross 100 : 50 -> 10 and 5, each on a quantity-1 line.
+    expect(cmd.lines.map((l) => l.unitPriceGross)).toEqual([110, 55]);
+    expect(order.items.map((item) => item.price)).toEqual([100, 50]);
+  });
+
+  it('should leave the product lines at their own price when the spread falls back', () => {
+    const cmd = toIssueInvoiceCommand({
+      order: makeOrder({
+        items: [makeItem({ id: 'a', productId: 'p1', quantity: 3, price: 10, taxRate: '23' })],
+        totals: { subtotal: 30, tax: 0, shipping: 0.1, total: 30.1, currency: 'PLN' },
+      }),
+      connectionId: 'c',
+      deliveryLine: delivery({ rate: 'spread' }),
+    });
+    expect(cmd.lines.map((l) => [l.name, l.unitPriceGross])).toEqual([
+      ['Widget', 10],
+      ['Dostawa', 0.1],
+    ]);
+  });
+
   it('should print a zero line at the dominant rate when free delivery is shown', () => {
     const cmd = toIssueInvoiceCommand({
       order: mixed(0, 150),
@@ -851,6 +880,27 @@ describe('toIssueInvoiceCommand delivery line (#3905, ADR-079)', () => {
       deliveryLine: delivery({ freeDelivery: 'show' }),
     });
     expect(cmd.lines[2]).toEqual({ name: 'Dostawa', quantity: 1, unitPriceGross: 0, taxRate: '23' });
+  });
+
+  it('should break a dominant-rate tie towards the numerically lower rate', () => {
+    // A string compare would pick '23' ('2' < '8'); the rule is numeric, and
+    // the item order must not decide it either.
+    const tied = (first: string, second: string): Order =>
+      makeOrder({
+        items: [
+          makeItem({ id: 'a', productId: 'p1', price: 50, taxRate: first }),
+          makeItem({ id: 'b', productId: 'p2', price: 50, taxRate: second }),
+        ],
+        totals: { subtotal: 100, tax: 0, shipping: 0, total: 100, currency: 'PLN' },
+      });
+    for (const order of [tied('23', '8'), tied('8', '23')]) {
+      const cmd = toIssueInvoiceCommand({
+        order,
+        connectionId: 'c',
+        deliveryLine: delivery({ freeDelivery: 'show' }),
+      });
+      expect(cmd.lines[2]?.taxRate).toBe('8');
+    }
   });
 
   it('should print the zero line at the fixed rate in fixed mode', () => {

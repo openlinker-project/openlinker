@@ -605,6 +605,21 @@ describe('toRegisterTransactionCommand', () => {
       expect(sum).toBeCloseTo(165, 2);
     });
 
+    it('should raise copies of the product lines in spread mode, never the order it was given', () => {
+      const given = order(basket(15, 165));
+      for (const item of given.items) Object.freeze(item);
+      Object.freeze(given.items);
+      const cmd = toRegisterTransactionCommand({
+        order: given,
+        connectionId: 'c',
+        idempotencyKey: 'k',
+        deliveryLine: delivery({ rate: 'spread' }),
+      });
+      // 15 split by gross 100 : 50 -> 10 and 5, each on a quantity-1 line.
+      expect(cmd.lines.map((l) => l.unitPriceGross)).toEqual([110, 55]);
+      expect(given.items.map((item) => item.price)).toEqual([100, 50]);
+    });
+
     it('should fall back to a delivery line when the spread cannot be exact', () => {
       const cmd = toRegisterTransactionCommand({
         order: order({
@@ -617,6 +632,8 @@ describe('toRegisterTransactionCommand', () => {
       });
       expect(cmd.lines).toHaveLength(2);
       expect(cmd.lines[1]?.name).toBe('Koszt dostawy 23%');
+      // The product line keeps its own price: nothing was folded into it.
+      expect(cmd.lines[0]?.unitPriceGross).toBe(10);
     });
 
     it('should never emit a zero delivery line on a receipt, even with free delivery shown', () => {
