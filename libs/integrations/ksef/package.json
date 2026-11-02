@@ -22,7 +22,7 @@
     "dist"
   ],
   "scripts": {
-    "build": "tsc -b",
+    "build": "tsc -b && node -e \"require('fs').cpSync('src/infrastructure/pdf/fonts','dist/infrastructure/pdf/fonts',{recursive:true})\"",
     "test": "jest --config ./jest.config.mjs",
     "test:watch": "jest --watch --config ./jest.config.mjs",
     "test:cov": "jest --coverage --config ./jest.config.mjs",
@@ -33,7 +33,9 @@
     "@openlinker/core": "workspace:*",
     "@openlinker/plugin-sdk": "workspace:*",
     "@openlinker/shared": "workspace:*",
-    "fast-xml-parser": "^5.3.3"
+    "fast-xml-parser": "^5.3.3",
+    "pdfkit": "^0.20.2",
+    "qrcode-generator": "^1.5.2"
   },
   "peerDependencies": {
     "@nestjs/common": "^10.0.0"
@@ -46,6 +48,7 @@
     "@babel/preset-env": "^7.29.7",
     "@types/jest": "29.5.12",
     "@types/node": "20.11.30",
+    "@types/pdfkit": "^0.17.7",
     "@typescript-eslint/eslint-plugin": "7.3.1",
     "@typescript-eslint/parser": "7.3.1",
     "babel-jest": "^29.7.0",
