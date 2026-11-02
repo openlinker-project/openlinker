@@ -18,7 +18,7 @@ import { Controller, Get, Inject, NotFoundException, Param } from '@nestjs/commo
 import { ConfigService } from '@nestjs/config';
 import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import {
-  resolveRoutingDecisionTtlMs,
+  resolveRoutingDecisionTtl,
   ROUTING_DECISION_REAPER_SERVICE_TOKEN,
   type IRoutingDecisionReaperService,
 } from '@openlinker/core/fulfillment';
@@ -44,26 +44,29 @@ export class RoutingDecisionController {
       'Read-only. Reports the state, the router it waits on, its age and the time limit after ' +
       'which the reaper closes a decision stuck `live`. Nothing here acts on the decision. ' +
       'The time limit is read from this API process (`OL_ROUTING_DECISION_TTL_MS`); the reaper runs ' +
-      'in the worker and uses the worker\'s value, so the two agree only when both carry the same setting.',
+      'in the worker and uses the worker\'s value, so the two agree only when both carry the same setting. ' +
+      '`ttlSource` and `ttlWorkerMayDiffer` say so in the payload.',
   })
   @ApiResponse({ status: 200, type: RoutingDecisionStatusResponseDto })
   @ApiResponse({ status: 404, description: 'The order has no routing decision.' })
   async getRoutingDecision(
     @Param('internalOrderId') internalOrderId: string
   ): Promise<RoutingDecisionStatusResponseDto> {
+    // The same resolution path the reaper uses, so the reported limit is the
+    // enforced one when both processes carry the same env value. The source is
+    // reported because nothing here can confirm that they do (#2660 shape).
+    const ttl = resolveRoutingDecisionTtl(
+      this.configService.get<string>('OL_ROUTING_DECISION_TTL_MS')
+    );
     const view = await this.reaper.getStatusForOrder({
       orderId: internalOrderId,
-      // The same resolution path the reaper uses, so the reported limit is the
-      // enforced one — provided both processes carry the same env value.
-      ttlMs: resolveRoutingDecisionTtlMs(
-        this.configService.get<string>('OL_ROUTING_DECISION_TTL_MS')
-      ),
+      ttlMs: ttl.ttlMs,
       now: new Date(),
     });
 
     if (view === null) {
       throw new NotFoundException(`No routing decision for order ${internalOrderId}`);
     }
-    return RoutingDecisionStatusResponseDto.fromView(view);
+    return RoutingDecisionStatusResponseDto.fromView(view, ttl.source);
   }
 }

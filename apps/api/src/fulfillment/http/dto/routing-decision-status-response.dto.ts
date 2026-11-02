@@ -12,7 +12,9 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
   RoutingDecisionAbandonReasonValues,
   RoutingDecisionStateValues,
+  RoutingDecisionTtlSourceValues,
   type RoutingDecisionAbandonReason,
+  type RoutingDecisionTtlSource,
   type RoutingDecisionState,
   type RoutingDecisionStatusView,
 } from '@openlinker/core/fulfillment';
@@ -33,10 +35,26 @@ export class RoutingDecisionStatusResponseDto {
 
   @ApiProperty({
     description:
-      'How long a decision may stay `live` before the reaper closes it, in ms. The same ' +
-      'value the reaper uses (`OL_ROUTING_DECISION_TTL_MS`), so a client never restates it.',
+      'How long a decision may stay `live` before the reaper closes it, in ms, resolved by ' +
+      'this API process (`OL_ROUTING_DECISION_TTL_MS`) through the same rule the reaper uses, ' +
+      'so a client never restates it. See `ttlWorkerMayDiffer`.',
   })
   ttlMs!: number;
+
+  @ApiProperty({
+    enum: RoutingDecisionTtlSourceValues,
+    description:
+      'Where this API process got `ttlMs`: its own environment, or the code default.',
+  })
+  ttlSource!: RoutingDecisionTtlSource;
+
+  @ApiProperty({
+    description:
+      'True while the time limit is a per-process env value: the reaper runs in the worker ' +
+      'and enforces the worker\'s value, which this API process cannot see. A client showing ' +
+      '`strandedSince` should say the limit may differ.',
+  })
+  ttlWorkerMayDiffer!: boolean;
 
   @ApiPropertyOptional({
     nullable: true,
@@ -52,7 +70,10 @@ export class RoutingDecisionStatusResponseDto {
   @ApiPropertyOptional({ nullable: true })
   terminalisedAt!: Date | null;
 
-  static fromView(view: RoutingDecisionStatusView): RoutingDecisionStatusResponseDto {
+  static fromView(
+    view: RoutingDecisionStatusView,
+    ttlSource: RoutingDecisionTtlSource
+  ): RoutingDecisionStatusResponseDto {
     const dto = new RoutingDecisionStatusResponseDto();
     dto.decisionId = view.decisionId;
     dto.state = view.state;
@@ -60,6 +81,10 @@ export class RoutingDecisionStatusResponseDto {
     dto.createdAt = view.createdAt;
     dto.ageMs = view.ageMs;
     dto.ttlMs = view.ttlMs;
+    dto.ttlSource = ttlSource;
+    // Always true until the TTL moves to a shared store (Operational Settings),
+    // which is the only rung both processes read.
+    dto.ttlWorkerMayDiffer = true;
     dto.strandedSince = view.strandedSince;
     dto.abandonReason = view.abandonReason;
     dto.terminalisedAt = view.terminalisedAt;

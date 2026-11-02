@@ -42,6 +42,24 @@ describe('RoutingDecisionController (#2731)', () => {
     });
   });
 
+  it('should report the default rung and that the worker value may differ when unset', async () => {
+    const dto = await controller.getRoutingDecision('ol_order_1');
+
+    expect(dto.ttlSource).toBe('default');
+    expect(dto.ttlWorkerMayDiffer).toBe(true);
+  });
+
+  it('should report the env rung when this process carries the setting', async () => {
+    configService.get.mockImplementation((key: string) =>
+      key === 'OL_ROUTING_DECISION_TTL_MS' ? String(2 * 60 * 60 * 1000) : undefined
+    );
+
+    const dto = await controller.getRoutingDecision('ol_order_1');
+
+    expect(dto.ttlSource).toBe('env');
+    expect(dto.ttlWorkerMayDiffer).toBe(true);
+  });
+
   it('should ask with the resolved TTL so the reported limit is the enforced one', async () => {
     configService.get.mockImplementation((key: string) =>
       key === 'OL_ROUTING_DECISION_TTL_MS' ? String(2 * 60 * 60 * 1000) : undefined

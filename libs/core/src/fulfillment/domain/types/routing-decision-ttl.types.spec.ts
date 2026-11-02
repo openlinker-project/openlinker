@@ -4,6 +4,7 @@ import {
 import {
   describeRoutingDecisionTtl,
   isRoutingDecisionStranded,
+  resolveRoutingDecisionTtl,
   resolveRoutingDecisionTtlMs,
   ROUTING_DECISION_TTL_DEFAULT_MS,
   ROUTING_DECISION_TTL_MAX_MS,
@@ -45,6 +46,30 @@ describe('resolveRoutingDecisionTtlMs (#2731)', () => {
     // The budget is half the lock TTL, so the lock TTL's maximum is a safe
     // (stricter) bound to assert against.
     expect(ROUTING_DECISION_TTL_MIN_MS).toBeGreaterThan(FULFILLMENT_ROUTE_LOCK_TTL_MAX_MS);
+  });
+});
+
+describe('resolveRoutingDecisionTtl (#2731 review)', () => {
+  it('should report the default rung when the value is unset', () => {
+    expect(resolveRoutingDecisionTtl(undefined)).toEqual({
+      ttlMs: ROUTING_DECISION_TTL_DEFAULT_MS,
+      source: 'default',
+    });
+  });
+
+  it('should report the default rung when the value is malformed', () => {
+    expect(resolveRoutingDecisionTtl('abc').source).toBe('default');
+  });
+
+  it('should report the env rung for a valid value, even when clamped', () => {
+    expect(resolveRoutingDecisionTtl(String(2 * 60 * 60 * 1000))).toEqual({
+      ttlMs: 2 * 60 * 60 * 1000,
+      source: 'env',
+    });
+    expect(resolveRoutingDecisionTtl(String(60_000))).toEqual({
+      ttlMs: ROUTING_DECISION_TTL_MIN_MS,
+      source: 'env',
+    });
   });
 });
 

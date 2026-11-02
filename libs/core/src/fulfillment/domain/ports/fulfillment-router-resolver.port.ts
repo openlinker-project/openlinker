@@ -48,6 +48,31 @@
  * Wave-5 kill."* An implementation returning `null` is that install, and it is
  * pinned by characterisation tests in `order-ingestion.service.spec.ts`.
  *
+ * ## Precondition before resolving a router that commits on its OWN side (#2731)
+ *
+ * Today the only implementation returns `OlFulfillmentRouter`, which runs
+ * in-process: a timed-out `route()` answer is discarded and nothing is committed
+ * outside `RoutingCommitService`. An out-of-tree router that commits vendor-side
+ * breaks an assumption the routing-decision reaper relies on, and must not be
+ * returned from this port until the gap below is closed.
+ *
+ * An in-doubt `fulfillment.work.route` job retries on the runner's ladder
+ * (backoff up to 6 h), and every retry RESUMES the same decision under the same
+ * key (`deriveRouteIdempotencyKey(decision.id)`), which is what lets a vendor
+ * dedup it. The reaper abandons a decision once it is older than
+ * `OL_ROUTING_DECISION_TTL_MS` (default 1 h, counted from `createdAt`). After
+ * that, the retry and the reaper's own re-route mint a FRESH decision with a
+ * FRESH key, so a router that committed after its timeout receives a second
+ * request it cannot dedup: two shipments.
+ *
+ * Close it with one of these before admitting such a router:
+ * - make the reaper skip a decision whose order still has a non-terminal
+ *   `fulfillment.work.route` job, or
+ * - raise the TTL floor above the retry ladder's whole horizon.
+ *
+ * The routing lock does not cover this: it serialises calls, it does not keep a
+ * decision alive between a failed attempt and its delayed retry.
+ *
  * @module libs/core/src/fulfillment/domain/ports
  * @see docs/architecture/adrs/054-fulfillment-work-unit-of-assignment.md
  */

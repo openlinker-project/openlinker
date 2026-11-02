@@ -34,6 +34,18 @@
  * `RoutingCommitService`. The floor matters for an out-of-tree router that
  * commits on its own side, which the port gives OL no way to ask about (D4).
  *
+ * Such a router is NOT safe under this TTL yet: a reap can abandon a decision
+ * whose in-doubt route job would otherwise retry under the original key, hours
+ * later on the retry ladder. The precondition is recorded on
+ * `FulfillmentRouterResolverPort`, where the next router author will look.
+ *
+ * ## The value is per process
+ *
+ * `OL_ROUTING_DECISION_TTL_MS` is read from the environment of whichever process
+ * resolves it. The reaper runs in the worker; the read endpoint runs in the api.
+ * So the api reports where its own value came from (`resolveRoutingDecisionTtl`)
+ * and says the worker's may differ, the `workerMayDiffer` shape of #2660.
+ *
  * ## The `*.types.ts` pure-rule exception applies
  *
  * Pure, no I/O, no clock of their own, and they are the rule for the TTL beside
@@ -67,11 +79,33 @@ export const ROUTING_DECISION_TTL_MAX_MS = 7 * 24 * 60 * 60 * 1000;
  * must not wedge the sweep.
  */
 export function resolveRoutingDecisionTtlMs(raw: string | undefined): number {
+  return resolveRoutingDecisionTtl(raw).ttlMs;
+}
+
+/** Where a resolved TTL came from: the process environment, or the code default. */
+export const RoutingDecisionTtlSourceValues = ['env', 'default'] as const;
+export type RoutingDecisionTtlSource = (typeof RoutingDecisionTtlSourceValues)[number];
+
+export interface ResolvedRoutingDecisionTtl {
+  ttlMs: number;
+  source: RoutingDecisionTtlSource;
+}
+
+/**
+ * The same resolution as `resolveRoutingDecisionTtlMs`, plus the rung that
+ * produced the value. A malformed value reports `default`, because the default
+ * is what is enforced; a clamped value reports `env`, because the setting
+ * still decided it.
+ */
+export function resolveRoutingDecisionTtl(raw: string | undefined): ResolvedRoutingDecisionTtl {
   const parsed = Number(raw);
   if (raw === undefined || raw === '' || !Number.isFinite(parsed) || parsed <= 0) {
-    return ROUTING_DECISION_TTL_DEFAULT_MS;
+    return { ttlMs: ROUTING_DECISION_TTL_DEFAULT_MS, source: 'default' };
   }
-  return Math.min(Math.max(parsed, ROUTING_DECISION_TTL_MIN_MS), ROUTING_DECISION_TTL_MAX_MS);
+  return {
+    ttlMs: Math.min(Math.max(parsed, ROUTING_DECISION_TTL_MIN_MS), ROUTING_DECISION_TTL_MAX_MS),
+    source: 'env',
+  };
 }
 
 /**
