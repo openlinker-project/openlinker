@@ -1425,7 +1425,10 @@ export class OrdersController {
       packedAt: order.packedAt ? order.packedAt.toISOString() : null,
       packedByUserId: order.packedByUserId,
       // Buyer-note list facts (#3538) and the D7 country / repeat-buyer scalars.
-      // The note TEXT is deliberately not here - `getOrder` sets it.
+      // The FULL note text is detail-only (`getOrder` sets it). Every list row
+      // still carries a truncated preview of that same text, so widening who may
+      // read the list widens who may read the start of the buyer's note: decide
+      // a list audience as if it were the note's audience.
       hasBuyerNote: order.hasBuyerNote,
       buyerNoteState: classifyBuyerNoteForList(order.hasBuyerNote, order.buyerNoteState),
       buyerNotePreview: buildBuyerNotePreview(order.buyerNoteState),
