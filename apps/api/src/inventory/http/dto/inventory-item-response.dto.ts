@@ -30,6 +30,19 @@ export class InventoryItemResponseDto {
   @ApiProperty({ description: 'Last update timestamp (ISO 8601)' })
   updatedAt!: string;
 
+  @ApiPropertyOptional({
+    nullable: true,
+    description:
+      'Connection whose sync owns this position (#3621). null or `legacy` means provenance has not been backfilled yet.',
+  })
+  sourceConnectionId!: string | null;
+
+  @ApiProperty({
+    description:
+      'The master no longer reports this position (#3621); it is excluded from every total but kept so it can be shown as stale.',
+  })
+  isStale!: boolean;
+
   @ApiPropertyOptional({ nullable: true, description: 'Product name from the master catalog (null if product not found)' })
   productName!: string | null;
 

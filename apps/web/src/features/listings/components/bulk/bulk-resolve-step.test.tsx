@@ -21,6 +21,7 @@ import {
   shouldRetryTransient,
   type BulkResolveCompletion,
   type BulkResolveOutcome,
+  type BulkResolveVariantOutcome,
 } from './bulk-resolve-step';
 import type { BulkVariantRow, BulkWizardRow } from './bulk-wizard.types';
 import type { Product, ProductVariant } from '../../../products';
@@ -154,7 +155,13 @@ function done(
 
 function mockClient(
   resolveCategoriesStream: ResolveStreamFn,
-  availability: Array<{ productVariantId: string; totalAvailable: number; locationCount: number }> = [],
+  availability: Array<{
+    productVariantId: string;
+    totalAvailable: number;
+    locationCount: number;
+    positionCount: number;
+    availableToPromise?: number | null;
+  }> = [],
 ): ReturnType<typeof createMockApiClient> {
   return createMockApiClient({
     listings: { resolveCategoriesStream: vi.fn(resolveCategoriesStream) },
@@ -230,6 +237,101 @@ describe('BulkResolveStep', () => {
     terminal.open();
     await waitFor(() => {
       expect(onComplete).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe('master stock (#3851)', () => {
+    function outcomeFor(
+      onComplete: ReturnType<typeof vi.fn<OnComplete>>,
+      variantId: string,
+    ): BulkResolveVariantOutcome | undefined {
+      const outcomes = onComplete.mock.calls[0][0];
+      return outcomes.flatMap((o) => o.variants).find((v) => v.variantId === variantId);
+    }
+
+    it('should read a variant with no inventory position as unknown stock, not 0', async () => {
+      const onComplete = vi.fn<OnComplete>();
+      // The endpoint zero-fills a variant the stock sync has not reached yet.
+      const apiClient = mockClient(() => scriptedStream([result('v1', 'matched'), done()]), [
+        { productVariantId: 'v1', totalAvailable: 0, locationCount: 0, positionCount: 0, availableToPromise: 0 },
+      ]);
+
+      renderStep(apiClient, onComplete, [makeRow('prod_1', [variantRow('v1')])]);
+      await waitFor(() => {
+        expect(onComplete).toHaveBeenCalledTimes(1);
+      });
+
+      const outcome = outcomeFor(onComplete, 'v1');
+      expect(outcome?.masterStock).toBeNull();
+      expect(outcome?.blockers).toContain('stock-unknown');
+      expect(outcome?.blockers).not.toContain('no-master-stock');
+    });
+
+    it('should treat a pooled position (no location) as known stock', async () => {
+      const onComplete = vi.fn<OnComplete>();
+      const apiClient = mockClient(() => scriptedStream([result('v1', 'matched'), done()]), [
+        { productVariantId: 'v1', totalAvailable: 11, locationCount: 0, positionCount: 1, availableToPromise: 11 },
+      ]);
+
+      renderStep(apiClient, onComplete, [makeRow('prod_1', [variantRow('v1')])]);
+      await waitFor(() => {
+        expect(onComplete).toHaveBeenCalledTimes(1);
+      });
+
+      const outcome = outcomeFor(onComplete, 'v1');
+      expect(outcome?.masterStock).toBe(11);
+      expect(outcome?.blockers).not.toContain('stock-unknown');
+    });
+
+    it('should read an unresolved available-to-promise as unknown stock', async () => {
+      const onComplete = vi.fn<OnComplete>();
+      const apiClient = mockClient(() => scriptedStream([result('v1', 'matched'), done()]), [
+        { productVariantId: 'v1', totalAvailable: 4, locationCount: 1, positionCount: 1, availableToPromise: null },
+      ]);
+
+      renderStep(apiClient, onComplete, [makeRow('prod_1', [variantRow('v1')])]);
+      await waitFor(() => {
+        expect(onComplete).toHaveBeenCalledTimes(1);
+      });
+
+      expect(outcomeFor(onComplete, 'v1')?.blockers).toContain('stock-unknown');
+    });
+
+    it('should keep a known zero as no-master-stock', async () => {
+      const onComplete = vi.fn<OnComplete>();
+      const apiClient = mockClient(() => scriptedStream([result('v1', 'matched'), done()]), [
+        { productVariantId: 'v1', totalAvailable: 0, locationCount: 1, positionCount: 1, availableToPromise: 0 },
+      ]);
+
+      renderStep(apiClient, onComplete, [makeRow('prod_1', [variantRow('v1')])]);
+      await waitFor(() => {
+        expect(onComplete).toHaveBeenCalledTimes(1);
+      });
+
+      const outcome = outcomeFor(onComplete, 'v1');
+      expect(outcome?.masterStock).toBe(0);
+      expect(outcome?.blockers).toContain('no-master-stock');
+      expect(outcome?.blockers).not.toContain('stock-unknown');
+    });
+
+    it('should block a multi-variant sibling with unknown stock but list a known zero', async () => {
+      const onComplete = vi.fn<OnComplete>();
+      const apiClient = mockClient(
+        () => scriptedStream([result('v1', 'matched'), result('v2', 'matched'), done()]),
+        [
+          { productVariantId: 'v1', totalAvailable: 0, locationCount: 1, positionCount: 1, availableToPromise: 0 },
+          { productVariantId: 'v2', totalAvailable: 0, locationCount: 0, positionCount: 0, availableToPromise: 0 },
+        ],
+      );
+
+      renderStep(apiClient, onComplete);
+      await waitFor(() => {
+        expect(onComplete).toHaveBeenCalledTimes(1);
+      });
+
+      expect(outcomeFor(onComplete, 'v1')?.blockers).not.toContain('no-master-stock');
+      expect(outcomeFor(onComplete, 'v1')?.blockers).not.toContain('stock-unknown');
+      expect(outcomeFor(onComplete, 'v2')?.blockers).toContain('stock-unknown');
     });
   });
 
@@ -450,8 +552,8 @@ describe('BulkResolveStep', () => {
     const apiClient = mockClient(
       () => scriptedStream([result('v1', 'matched'), result('v2', 'no-match'), done()]),
       [
-        { productVariantId: 'v1', totalAvailable: 5, locationCount: 1 },
-        { productVariantId: 'v2', totalAvailable: 9, locationCount: 1 },
+        { productVariantId: 'v1', totalAvailable: 5, locationCount: 1, positionCount: 1 },
+        { productVariantId: 'v2', totalAvailable: 9, locationCount: 1, positionCount: 1 },
       ],
     );
 
@@ -475,8 +577,8 @@ describe('BulkResolveStep', () => {
           done({ catalogueLookupPerformed: false }),
         ]),
       [
-        { productVariantId: 'v1', totalAvailable: 5, locationCount: 1 },
-        { productVariantId: 'v2', totalAvailable: 9, locationCount: 1 },
+        { productVariantId: 'v1', totalAvailable: 5, locationCount: 1, positionCount: 1 },
+        { productVariantId: 'v2', totalAvailable: 9, locationCount: 1, positionCount: 1 },
       ],
     );
 

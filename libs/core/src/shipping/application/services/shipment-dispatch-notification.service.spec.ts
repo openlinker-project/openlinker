@@ -123,7 +123,9 @@ describe('ShipmentDispatchNotificationService', () => {
       markDestinationRoutingBlock: jest.fn(),
       markFulfillmentRoutingSkip: jest.fn(),
       listOrderIdsByFulfillmentBlockReasons: jest.fn(),
+      listOrderIdsHeldForVariant: jest.fn(),
       markPacked: jest.fn(),
+      markBuyerNoteRead: jest.fn(),
       clearPacked: jest.fn(),
       recordAmendment: jest.fn(),
       getEarliestOrderDateByConnection: jest.fn(),
@@ -138,6 +140,9 @@ describe('ShipmentDispatchNotificationService', () => {
       getCurrencyMismatchOrders: jest.fn(),
       getCurrencyMismatchOrdersByConnection: jest.fn(),
       getProductMatchingErrorOrders: jest.fn(),
+      notifyOrderReceived: jest.fn(),
+      notifyDocumentIssued: jest.fn(),
+      notifyShippedIfPending: jest.fn(),
     };
 
     integrations = {

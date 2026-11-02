@@ -93,8 +93,9 @@ describe('FulfillmentStatusSyncService', () => {
     listBlockingRejectionConnectionIds: jest.Mock;
     findWorkById: jest.Mock;
     summarizeWorkForOrders: jest.Mock;
+    listBuyerNoteAcknowledgements: jest.Mock;
   };
-  let projection: { recompute: jest.Mock };
+  let projection: { recompute: jest.Mock; announceShippedWithoutTracking: jest.Mock };
   let service: FulfillmentStatusSyncService;
 
   beforeEach(() => {
@@ -137,7 +138,9 @@ describe('FulfillmentStatusSyncService', () => {
       markDestinationRoutingBlock: jest.fn(),
       markFulfillmentRoutingSkip: jest.fn(),
       listOrderIdsByFulfillmentBlockReasons: jest.fn(),
+      listOrderIdsHeldForVariant: jest.fn(),
       markPacked: jest.fn(),
+      markBuyerNoteRead: jest.fn(),
       clearPacked: jest.fn(),
       recordAmendment: jest.fn(),
       getEarliestOrderDateByConnection: jest.fn(),
@@ -152,6 +155,9 @@ describe('FulfillmentStatusSyncService', () => {
       getCurrencyMismatchOrders: jest.fn(),
       getCurrencyMismatchOrdersByConnection: jest.fn(),
       getProductMatchingErrorOrders: jest.fn(),
+      notifyOrderReceived: jest.fn(),
+      notifyDocumentIssued: jest.fn(),
+      notifyShippedIfPending: jest.fn(),
     };
 
     routing = {
@@ -182,8 +188,9 @@ describe('FulfillmentStatusSyncService', () => {
       listBlockingRejectionConnectionIds: jest.fn().mockResolvedValue([]),
       findWorkById: jest.fn().mockResolvedValue(null),
       summarizeWorkForOrders: jest.fn().mockResolvedValue(new Map()),
+      listBuyerNoteAcknowledgements: jest.fn().mockResolvedValue([]),
     };
-    projection = { recompute: jest.fn() };
+    projection = { recompute: jest.fn(), announceShippedWithoutTracking: jest.fn() };
     service = new FulfillmentStatusSyncService(
       shipments,
       orderRecords,

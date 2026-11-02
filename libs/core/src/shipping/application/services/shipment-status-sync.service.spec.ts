@@ -87,6 +87,7 @@ describe('ShipmentStatusSyncService', () => {
   let integrations: jest.Mocked<IIntegrationsService>;
   let relay: jest.Mocked<IOrderLifecycleRelayService>;
   let getTracking: jest.Mock;
+  let projection: { recompute: jest.Mock; announceShippedWithoutTracking: jest.Mock };
   let service: ShipmentStatusSyncService;
 
   beforeEach(() => {
@@ -134,8 +135,48 @@ describe('ShipmentStatusSyncService', () => {
       metadata: { platformType: 'inpost' },
     });
 
-    service = new ShipmentStatusSyncService(shipments, integrations, relay, {
-      recompute: jest.fn(),
+    projection = { recompute: jest.fn(), announceShippedWithoutTracking: jest.fn() };
+    service = new ShipmentStatusSyncService(shipments, integrations, relay, projection);
+  });
+
+  describe('shipped announcement waits for the tracking number (#3554)', () => {
+    it('should reproject when only the tracking number arrives, so a waiting order announces', async () => {
+      const s = makeShipment({ status: 'dispatched', trackingNumber: null });
+      shipments.findMany.mockResolvedValue({ items: [s], total: 1 });
+      getTracking.mockResolvedValue(snapshot({ status: 'dispatched', trackingNumber: 'NEW789' }));
+
+      await service.sync(CARRIER, { limit: 50 });
+
+      expect(projection.recompute).toHaveBeenCalledWith(s.orderId);
+    });
+
+    it('should announce without a number once the shipment has waited past the grace period', async () => {
+      const s = makeShipment({
+        status: 'dispatched',
+        trackingNumber: null,
+        dispatchedAt: new Date(Date.now() - 31 * 60 * 1000),
+      });
+      shipments.findMany.mockResolvedValue({ items: [s], total: 1 });
+      getTracking.mockResolvedValue(snapshot({ status: 'dispatched' }));
+
+      await service.sync(CARRIER, { limit: 50 });
+
+      expect(projection.announceShippedWithoutTracking).toHaveBeenCalledWith(s.orderId);
+    });
+
+    it('should keep waiting while the shipment is still inside the grace period', async () => {
+      const s = makeShipment({
+        status: 'dispatched',
+        trackingNumber: null,
+        dispatchedAt: new Date(Date.now() - 5 * 60 * 1000),
+      });
+      shipments.findMany.mockResolvedValue({ items: [s], total: 1 });
+      getTracking.mockResolvedValue(snapshot({ status: 'dispatched' }));
+
+      await service.sync(CARRIER, { limit: 50 });
+
+      expect(projection.announceShippedWithoutTracking).not.toHaveBeenCalled();
+      expect(projection.recompute).not.toHaveBeenCalled();
     });
   });
 

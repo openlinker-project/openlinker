@@ -9,6 +9,7 @@ import {
   autoPrefillParameters,
   collectUnmatchedBrandHints,
   prefillFromCatalogProduct,
+  prefillFromVariantAttributes,
 } from './auto-prefill-parameters';
 
 function param(overrides: Partial<CategoryParameter>): CategoryParameter {
@@ -424,5 +425,93 @@ describe('prefillFromCatalogProduct', () => {
 
     expect(values.p1).toBeUndefined();
     expect(prefilledIds.size).toBe(0);
+  });
+});
+
+describe('prefillFromVariantAttributes (#3851)', () => {
+  const kolor = (overrides: Partial<CategoryParameter> = {}): CategoryParameter =>
+    param({
+      id: 'kolor',
+      name: 'Kolor',
+      type: 'dictionary',
+      dictionary: [
+        { id: 'k_czerwony', value: 'czerwony' },
+        { id: 'k_niebieski', value: 'niebieski' },
+      ],
+      ...overrides,
+    });
+
+  it('should fill a dictionary parameter when the attribute value matches one entry exactly', () => {
+    expect(prefillFromVariantAttributes([kolor()], { Kolor: 'czerwony' })).toEqual({
+      kolor: 'k_czerwony',
+    });
+  });
+
+  it('should match the name and the value case-insensitively and trimmed', () => {
+    expect(prefillFromVariantAttributes([kolor()], { ' kolor ': ' CZERWONY ' })).toEqual({
+      kolor: 'k_czerwony',
+    });
+  });
+
+  it('should leave the field empty when no dictionary entry matches exactly', () => {
+    expect(prefillFromVariantAttributes([kolor()], { Kolor: 'granatowy' })).toEqual({});
+  });
+
+  it('should not fuzzy-match a value that only contains an entry', () => {
+    expect(prefillFromVariantAttributes([kolor()], { Kolor: 'czerwony mat' })).toEqual({});
+  });
+
+  it('should leave the field empty when the value matches more than one entry', () => {
+    const ambiguous = kolor({
+      dictionary: [
+        { id: 'a', value: 'czerwony' },
+        { id: 'b', value: 'Czerwony' },
+      ],
+    });
+    expect(prefillFromVariantAttributes([ambiguous], { Kolor: 'czerwony' })).toEqual({});
+  });
+
+  it('should wrap the entry id for a multi-choice parameter', () => {
+    const multi = kolor({ restrictions: { multipleChoices: true } });
+    expect(prefillFromVariantAttributes([multi], { Kolor: 'niebieski' })).toEqual({
+      kolor: ['k_niebieski'],
+    });
+  });
+
+  it('should store the entry text for a custom-values dictionary', () => {
+    const custom = kolor({ restrictions: { customValuesEnabled: true } });
+    expect(prefillFromVariantAttributes([custom], { Kolor: 'CZERWONY' })).toEqual({
+      kolor: 'czerwony',
+    });
+    // No exact entry: still empty, never sent as a custom value.
+    expect(prefillFromVariantAttributes([custom], { Kolor: 'granatowy' })).toEqual({});
+  });
+
+  it('should copy the value verbatim into a free-text parameter', () => {
+    const material = param({ id: 'mat', name: 'Materiał', type: 'string' });
+    expect(prefillFromVariantAttributes([material], { materiał: ' Bawełna 100% ' })).toEqual({
+      mat: 'Bawełna 100%',
+    });
+  });
+
+  it('should not fill a numeric parameter', () => {
+    const size = param({ id: 'r', name: 'Rozmiar', type: 'integer' });
+    expect(prefillFromVariantAttributes([size], { Rozmiar: '42' })).toEqual({});
+  });
+
+  it('should never fill the EAN slot', () => {
+    const ean = param({ id: 'ean', name: 'EAN (GTIN)', type: 'string' });
+    expect(prefillFromVariantAttributes([ean], { 'EAN (GTIN)': '5901234123457' })).toEqual({});
+  });
+
+  it('should skip a name whose keys disagree on the value', () => {
+    expect(
+      prefillFromVariantAttributes([kolor()], { Kolor: 'czerwony', kolor: 'niebieski' }),
+    ).toEqual({});
+  });
+
+  it('should return nothing without attributes', () => {
+    expect(prefillFromVariantAttributes([kolor()], null)).toEqual({});
+    expect(prefillFromVariantAttributes([kolor()], { Kolor: '   ' })).toEqual({});
   });
 });

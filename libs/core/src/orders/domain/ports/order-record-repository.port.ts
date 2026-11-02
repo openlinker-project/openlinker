@@ -526,11 +526,24 @@ export interface OrderRecordRepositoryPort {
    * throws) so it can't fail the shipment operation.
    *
    * Sole writer of the column - {@link upsert} deliberately omits it (#2101).
+   *
+   * Answers `true` only for the ONE write that moved the order from a
+   * not-shipped state into `dispatched` / `delivered` (#3554), so the
+   * `order.shipped` automation trigger fires once per transition however many
+   * shipment recomputes race. The guard is a conditional UPDATE, never a read.
    */
   updateFulfillmentState(
     internalOrderId: string,
     fulfillmentState: FulfillmentRollupState
-  ): Promise<void>;
+  ): Promise<boolean>;
+
+  /**
+   * Claim the one-time `order.shipped` announcement (#3554). A single guarded
+   * UPDATE on `shippedNotifiedAt IS NULL` AND a shipped `fulfillmentState`, so
+   * of any number of racing callers exactly one gets `true`, and an order that
+   * is not shipped (or no longer exists) gets `false`.
+   */
+  claimShippedNotification(internalOrderId: string): Promise<boolean>;
 
   /**
    * Push the honest item-resolution-failure state onto the order record
@@ -645,6 +658,23 @@ export interface OrderRecordRepositoryPort {
     reasons: readonly FulfillmentBlockReason[],
     page: { readonly afterOrderId: string | null; readonly limit: number }
   ): Promise<HeldOrderRef[]>;
+
+  /**
+   * #3558 — ids of orders held with one of `reasons` whose line items include
+   * `variantId`, ascending by `internalOrderId`, at most `limit`.
+   *
+   * Answers "which held orders is THIS stock change about" for the stock-change
+   * re-route. Served by `order_line_items.orderRecordId` (indexed) after a filter
+   * on the variant, never by a scan of the snapshot jsonb. Only `ready` records
+   * have line items (`awaiting_mapping` snapshots reference external ids), which
+   * is the right set: an order that cannot name its variants is not waiting on
+   * one.
+   */
+  listOrderIdsHeldForVariant(
+    reasons: readonly FulfillmentBlockReason[],
+    variantId: string,
+    limit: number
+  ): Promise<string[]>;
 
   /**
    * #3455 — record why the ingestion intercept deliberately did NOT route the
@@ -763,6 +793,29 @@ export interface OrderRecordRepositoryPort {
     packedAt: Date,
     packedByUserId: string
   ): Promise<boolean>;
+
+  /**
+   * Mark this order's buyer note read (#3538) - writes `buyerNoteReadAt` +
+   * `buyerNoteReadByUserId` and nothing else, guarded on `buyerNoteReadAt IS
+   * NULL` so the FIRST mark wins and a replay is a no-op. `true` when this call
+   * wrote, `false` for an already-read order or an absent row (never throws;
+   * the caller re-reads to tell them apart, as with {@link markPacked}).
+   */
+  markBuyerNoteRead(
+    internalOrderId: string,
+    readAt: Date,
+    readByUserId: string
+  ): Promise<boolean>;
+
+  /**
+   * Count the OTHER orders `customerId` placed before `before` (#3538, D7),
+   * excluding `excludeInternalOrderId`. Backs the derived `buyerOrderCount`.
+   */
+  countEarlierOrdersForCustomer(
+    customerId: string,
+    excludeInternalOrderId: string,
+    before: Date
+  ): Promise<number>;
 
   /**
    * Clear this order's packed fact (#2287) — nulls `packedAt` +

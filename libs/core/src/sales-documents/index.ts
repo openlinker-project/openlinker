@@ -102,3 +102,29 @@ export * from './domain/types/gross-price-eligibility.types';
 // rate suffix a receipt name carries (#3905, ADR-079). Import-free, here for the
 // same reason the shipping split is.
 export * from './domain/types/delivery-line.types';
+
+// #3550 - manual "send this document to the buyer": the shared vocabulary, the
+// timeline record and the service that writes and reads it.
+export {
+  DocumentEmailFailureReasonValues,
+  DocumentEmailOutcomeValues,
+  DocumentEmailSentViaValues,
+  isDocumentEmailFailureReason,
+  normaliseDocumentEmailRecipient,
+  scrubEmailAddresses,
+} from './domain/types/document-email.types';
+export type {
+  DocumentEmailFailureReason,
+  DocumentEmailOutcome,
+  DocumentEmailSentVia,
+} from './domain/types/document-email.types';
+export { DocumentEmailDelivery } from './domain/entities/document-email-delivery.entity';
+export type { RecordDocumentEmailDeliveryInput } from './domain/ports/document-email-delivery-repository.port';
+export type { IDocumentEmailDeliveryService } from './application/interfaces/document-email-delivery.service.interface';
+
+// "An originating sales document was issued" (#3554).
+export type {
+  SalesDocumentIssuedEvent,
+  SalesDocumentIssuedListenerPort,
+} from './domain/ports/sales-document-issued-listener.port';
+export { notifySalesDocumentIssued } from './application/services/notify-sales-document-issued';

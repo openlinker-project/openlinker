@@ -147,7 +147,7 @@ describe('SourceFulfillmentStatusSyncService', () => {
       orderRecords as unknown as IOrderRecordService,
       identifierMapping as unknown as IIdentifierMappingService,
       integrations as unknown as IIntegrationsService,
-      { recompute },
+      { recompute, announceShippedWithoutTracking: jest.fn() },
       relay,
     );
   });

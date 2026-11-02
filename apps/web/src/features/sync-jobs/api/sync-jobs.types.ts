@@ -103,6 +103,7 @@ export const JOB_TYPE_VALUES = [
   'fulfillment.work.route', // Internal job — commits where one order is fulfilled from (#2395).
   'fulfillment.work.timeoutSweep', // Internal job — reaps fulfilment work a holder never answered (#2712).
   'fulfillment.work.relaySweep', // Internal job — re-drives a missed dispatch relay (#2728).
+  'fulfillment.routing.reapSweep', // Internal job — closes a routing decision stuck past its time limit and routes again (#2731).
   'master.product.syncAll',
   'master.product.syncDelta', // Internal job — not user-triggerable; listed here so an operator can filter the incremental pass (#2220).
   'master.product.reconcile', // Internal job — not user-triggerable; listed here so an operator can filter the deletion-reconciliation pass (#2222).
@@ -118,6 +119,7 @@ export const JOB_TYPE_VALUES = [
   'shop.product.statusSync', // Internal job — steady-state shop product-status reconcile (#1845).
   'shipping.pickupPoint.refreshFrequent', // Internal job — pickup-point directory refresh.
   'invoicing.issue', // Internal job — issues one invoice (#1120).
+  'invoicing.marketplaceUpload', // Internal job — attaches an issued invoice to its marketplace order (#3549).
   'invoicing.regulatoryStatus.reconcile', // Internal job — KSeF regulatory-status sweep (#1121).
   'invoicing.paymentStatus.refreshByExternalId', // Internal job — payment-status refresh from a provider webhook (#1354).
   'invoicing.offlineSubmission.resubmit', // Internal job — degraded-mode offline resubmission sweep (#1702).

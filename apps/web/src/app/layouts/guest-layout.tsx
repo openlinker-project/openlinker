@@ -7,6 +7,7 @@ import { resolveNextPath } from '../../shared/lib/resolve-next-path';
 import { LoadingState } from '../../shared/ui/feedback-state';
 import { useSystemConfigQuery } from '../../features/system';
 import { captureMarketingLanding } from '../../features/demo';
+import { LanguageSwitch } from '../../shared/ui/language-switch';
 
 const MARKETING_CAPTURE_PATHS = ['/login', '/register'];
 
@@ -62,6 +63,9 @@ export function GuestLayout(): ReactElement {
 
   return (
     <div className="guest-layout">
+      <div className="guest-layout__language">
+        <LanguageSwitch placement="down" />
+      </div>
       <div className="guest-card">
         <div className="guest-brand">
           <strong className="guest-brand__title">OpenLinker</strong>

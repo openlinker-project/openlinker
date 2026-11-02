@@ -22,6 +22,7 @@ function makeRecord(over: Partial<FiscalRegistrationRecord> = {}): FiscalRegistr
     artefacts: null,
     failureMode: null,
     failureReason: null,
+    providerFailureDetails: null,
     createdAt: '2026-08-14T00:00:00.000Z',
     updatedAt: '2026-08-14T00:00:00.000Z',
     ...over,

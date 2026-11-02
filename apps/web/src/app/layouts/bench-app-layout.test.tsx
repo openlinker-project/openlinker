@@ -58,7 +58,7 @@ function renderBench(adapter: SessionAdapter): ReturnType<typeof render> {
 
   return render(
     <ThemeProvider>
-      <LocaleProvider>
+      <LocaleProvider locale="en">
         <SessionProvider adapter={adapter}>
           <ToastProvider>
             <ApiClientProvider client={createMockApiClient()}>

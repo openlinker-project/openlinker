@@ -8,9 +8,16 @@
  *
  * @module libs/core/src/orders/infrastructure/persistence/entities
  */
-import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, Index, Unique } from 'typeorm';
+import { Check, Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, Index, Unique } from 'typeorm';
 
 @Entity('order_line_items')
+// #3588: same names as the migration so the synchronize-built test schema
+// enforces the snapshot invariants too.
+@Check('CHK_order_line_items_cost_state', `"costState" IN ('recorded','not-recorded')`)
+@Check(
+  'CHK_order_line_items_cost_state_matches_columns',
+  `("costState" = 'recorded') = ("unitCostNet" IS NOT NULL AND "unitCostCurrency" IS NOT NULL)`
+)
 @Unique(['orderRecordId', 'lineNumber'])
 // Composite, matching the #1987/#1988 access patterns rather than one
 // single-column index per column (review finding: five single-column
@@ -21,6 +28,7 @@ import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, Index, Unique
 // actually needs them.
 @Index(['sourceConnectionId', 'placedAt'])
 @Index(['productId', 'placedAt'])
+@Index('IDX_order_line_items_variantId_placedAt', ['variantId', 'placedAt'])
 export class OrderLineItemOrmEntity {
   @PrimaryGeneratedColumn('uuid')
   id!: string;
@@ -81,6 +89,20 @@ export class OrderLineItemOrmEntity {
 
   @Column({ type: 'timestamptz', nullable: true })
   taxRateReadAt!: Date | null;
+
+  /**
+   * Net (VAT-exclusive) unit cost frozen at the first `ready` ingestion
+   * (#3588, D27); a decimal string. Written only by `upsertWithLineItems`,
+   * which carries the prior value across its delete-then-reinsert.
+   */
+  @Column({ type: 'decimal', precision: 12, scale: 4, nullable: true })
+  unitCostNet!: string | null;
+
+  @Column({ type: 'varchar', length: 3, nullable: true })
+  unitCostCurrency!: string | null;
+
+  @Column({ type: 'varchar', length: 16, default: 'not-recorded' })
+  costState!: 'recorded' | 'not-recorded';
 
   @CreateDateColumn()
   createdAt!: Date;

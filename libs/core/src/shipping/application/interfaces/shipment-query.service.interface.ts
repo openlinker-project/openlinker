@@ -33,6 +33,16 @@ export interface IShipmentQueryService {
   getActiveByOrderId(orderId: string): Promise<Shipment | null>;
 
   /**
+   * EVERY outbound shipment of an order, terminal ones included (#3540).
+   *
+   * Distinct from {@link getActiveByOrderId}, which returns only the latest
+   * non-terminal row: an operator cancel must void each outstanding label and a
+   * split order can carry several. Outbound only (#2373) - a return label is not
+   * something the buyer's order cancellation voids.
+   */
+  getOutboundByOrderId(orderId: string): Promise<readonly Shipment[]>;
+
+  /**
    * Outbound shipments for a page of `FulfillmentWork` ids, keyed by work id
    * (#2418) — the first read of the `shipments.fulfillmentWorkId` link #2402
    * persisted. Three pack-bench answers come off it: whether a parcel has
@@ -57,6 +67,19 @@ export interface IShipmentQueryService {
     workIds: readonly string[],
     direction: ShipmentDirection,
   ): Promise<Map<string, Shipment[]>>;
+
+  /**
+   * The tracking number of the order's newest OUTBOUND shipment that carries one
+   * (#3553), or `null` when no shipment exists or none has a number yet. Feeds
+   * the `{shipment.tracking}` automation merge field, which renders its own
+   * "not yet" fallback for `null`.
+   *
+   * Outbound only, for the reason given on {@link findByFulfillmentWorkIds}: a
+   * return label shares the table and must never answer "where is my parcel".
+   * A `cancelled` or `failed` shipment is skipped, since its number names a
+   * parcel that never left; a `delivered` one still answers.
+   */
+  getLatestOutboundTrackingNumber(orderId: string): Promise<string | null>;
 
   /**
    * Did this order's goods already leave the building — i.e. has any of its

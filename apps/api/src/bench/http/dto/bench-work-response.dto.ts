@@ -105,6 +105,20 @@ export class BenchWorkResponseDto {
       'such a row out of its own rendering of "to pack".',
   })
   completedAt!: string | null;
+
+  @ApiProperty({
+    description:
+      'Whether the order has a buyer note (#3538, D12). A boolean only - the text is read through ' +
+      'the parcel view. Still true when the deployment stores no note text.',
+  })
+  hasBuyerNote!: boolean;
+
+  @ApiProperty({
+    nullable: true,
+    description:
+      "When THIS parcel's buyer note was first acknowledged at the bench, or null. Per parcel.",
+  })
+  buyerNoteAcknowledgedAt!: string | null;
 }
 
 export class BenchRoutingReadinessResponseDto {

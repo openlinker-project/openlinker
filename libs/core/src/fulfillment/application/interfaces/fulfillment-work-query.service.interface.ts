@@ -26,7 +26,10 @@
  *
  * @module libs/core/src/fulfillment/application/interfaces
  */
-import type { FulfillmentWork } from '../../domain/types/fulfillment-work.types';
+import type {
+  FulfillmentBuyerNoteAcknowledgement,
+  FulfillmentWork,
+} from '../../domain/types/fulfillment-work.types';
 import type { FulfillmentWorkLinkResolution } from '../../domain/types/fulfillment-work-link.types';
 import type { OrderWorkSummary } from '../../domain/types/order-work-summary.types';
 
@@ -73,4 +76,13 @@ export interface IFulfillmentWorkQueryService {
   summarizeWorkForOrders(
     orderIds: readonly string[]
   ): Promise<ReadonlyMap<string, OrderWorkSummary>>;
+
+  /**
+   * The parcels of this order whose buyer note was acknowledged at the bench
+   * (#3538), oldest first. Feeds the order Activity timeline ("Buyer note read
+   * at the bench"); an order with no work, or none acknowledged, answers `[]`.
+   */
+  listBuyerNoteAcknowledgements(
+    orderId: string
+  ): Promise<readonly FulfillmentBuyerNoteAcknowledgement[]>;
 }

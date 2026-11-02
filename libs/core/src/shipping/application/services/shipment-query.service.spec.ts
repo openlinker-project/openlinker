@@ -78,6 +78,18 @@ describe('ShipmentQueryService', () => {
     service = new ShipmentQueryService(repository);
   });
 
+  describe('getOutboundByOrderId (#3540)', () => {
+    it('should read every outbound shipment of the order, terminal ones included', async () => {
+      const shipments = [makeShipment({ id: 's1' }), makeShipment({ id: 's2', status: 'cancelled' })];
+      repository.findByOrderId.mockResolvedValue(shipments);
+
+      const result = await service.getOutboundByOrderId('ol_order_1');
+
+      expect(result).toBe(shipments);
+      expect(repository.findByOrderId).toHaveBeenCalledWith('ol_order_1', 'outbound');
+    });
+  });
+
   describe('findByFulfillmentWorkIds', () => {
     it('should ask the repository once for the whole page, never per work', async () => {
       // The `getEarliestOrderDateByConnection` (#2083) N+1 precedent: batched
@@ -163,6 +175,61 @@ describe('ShipmentQueryService', () => {
       // The cohort is stated explicitly (#2373) — the panel shows the order's
       // outbound shipment, never a return label.
       expect(repository.findActiveByOrderId).toHaveBeenCalledWith('ol_order_1', 'outbound');
+    });
+  });
+
+  describe('getLatestOutboundTrackingNumber (#3553)', () => {
+    it('should be null when the order has no shipment', async () => {
+      repository.findByOrderId.mockResolvedValue([]);
+
+      await expect(service.getLatestOutboundTrackingNumber('ol_order_1')).resolves.toBeNull();
+    });
+
+    it('should be null when no shipment has a tracking number yet', async () => {
+      repository.findByOrderId.mockResolvedValue([{ trackingNumber: null } as Shipment]);
+
+      await expect(service.getLatestOutboundTrackingNumber('ol_order_1')).resolves.toBeNull();
+    });
+
+    it('should return the newest tracking number and ask for outbound only', async () => {
+      repository.findByOrderId.mockResolvedValue([
+        { trackingNumber: 'OLD', createdAt: new Date('2026-05-01T00:00:00Z') } as Shipment,
+        { trackingNumber: 'NEW', createdAt: new Date('2026-05-02T00:00:00Z') } as Shipment,
+        { trackingNumber: null, createdAt: new Date('2026-05-03T00:00:00Z') } as Shipment,
+      ]);
+
+      await expect(service.getLatestOutboundTrackingNumber('ol_order_1')).resolves.toBe('NEW');
+      expect(repository.findByOrderId).toHaveBeenCalledWith('ol_order_1', 'outbound');
+    });
+
+    it('should skip a newer cancelled or failed label and keep a delivered one', async () => {
+      repository.findByOrderId.mockResolvedValue([
+        makeShipment({
+          status: 'delivered',
+          trackingNumber: 'REAL',
+          createdAt: new Date('2026-05-01T00:00:00Z'),
+        }),
+        makeShipment({
+          status: 'failed',
+          trackingNumber: 'FAILED',
+          createdAt: new Date('2026-05-02T00:00:00Z'),
+        }),
+        makeShipment({
+          status: 'cancelled',
+          trackingNumber: 'CANCELLED',
+          createdAt: new Date('2026-05-03T00:00:00Z'),
+        }),
+      ]);
+
+      await expect(service.getLatestOutboundTrackingNumber('ol_order_1')).resolves.toBe('REAL');
+    });
+
+    it('should be null when the only numbered label was cancelled', async () => {
+      repository.findByOrderId.mockResolvedValue([
+        makeShipment({ status: 'cancelled', trackingNumber: 'CANCELLED' }),
+      ]);
+
+      await expect(service.getLatestOutboundTrackingNumber('ol_order_1')).resolves.toBeNull();
     });
   });
 

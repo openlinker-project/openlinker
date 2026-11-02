@@ -15,6 +15,7 @@ import type {
   PaginatedOrders,
   OrderRecord,
   RetryOrderDestinationResult,
+  RetryOrderRoutingResult,
   OrderHealthSummary,
   OrderHealthSummaryFilters,
   OrderSlaSummary,
@@ -23,10 +24,12 @@ import type {
   PlaceOrderHoldResult,
   ReleaseOrderHoldRequest,
   ReleaseOrderHoldResult,
+  OrderLineCostsResult,
   OrderNote,
   CreateOrderNoteRequest,
   UpdateOrderNoteRequest,
   OrderNoteTimelineEntry,
+  OrderDocumentEmailEntry,
   OrderTag,
   OrderTagColorValue,
   BulkAssignOrderTagResult,
@@ -34,6 +37,13 @@ import type {
   OrderExportRun,
   CreateOrderExportRequest,
 } from './orders.types';
+import type {
+  CancelOrderRequest,
+  CancelOrderResult,
+  ConfirmOrderChangeResult,
+  OrderChangeView,
+} from './order-cancel.types';
+import type { OrderRefundRecord, RecordOrderRefundRequest } from './order-refund.types';
 
 export interface OrdersApi {
   list: (filters?: OrderFilters, pagination?: OrderPagination) => Promise<PaginatedOrders>;
@@ -60,6 +70,11 @@ export interface OrdersApi {
     destinationConnectionId: string,
   ) => Promise<RetryOrderDestinationResult>;
   /**
+   * Route a held order again (#3558). Answers 202 with the enqueued job; the
+   * outcome shows on the order itself. 409 carries a `code` naming why not.
+   */
+  retryRouting: (internalOrderId: string) => Promise<RetryOrderRoutingResult>;
+  /**
    * Mark the order packed (#2287). Returns the updated record, and returns 200
    * on an idempotent replay too — marking an already-packed order keeps the
    * FIRST actor and instant rather than restamping them.
@@ -68,6 +83,12 @@ export interface OrdersApi {
   /** Clear the packed mark (#2287). Clearing an unpacked order is a no-op 200. */
   unmarkPacked: (internalOrderId: string) => Promise<OrderRecord>;
   /**
+   * Mark the order's buyer note read (#3539). Fill-once and idempotent: a
+   * repeat returns the EXISTING marker, so the first reader is never
+   * overwritten. A display fact - it gates nothing.
+   */
+  markBuyerNoteRead: (internalOrderId: string) => Promise<OrderRecord>;
+  /**
    * Place a hold (#2341). Admin-only server-side; a second hold on an order
    * that already has one answers 409 `ORDER_ALREADY_ON_HOLD`.
    */
@@ -75,6 +96,25 @@ export interface OrdersApi {
     internalOrderId: string,
     body: PlaceOrderHoldRequest,
   ) => Promise<PlaceOrderHoldResult>;
+  /**
+   * Cancel an order at the operator's request (#3540/#3541). HTTP 200 resolves
+   * `cancelled`, HTTP 202 resolves `pending`; a refusal is an `ApiError` whose
+   * body `error` carries the machine code.
+   */
+  cancelOrder: (internalOrderId: string, body: CancelOrderRequest) => Promise<CancelOrderResult>;
+  /** Confirm the credit proposal a cancelled, invoiced order left behind. */
+  confirmOrderChange: (
+    internalOrderId: string,
+    changeId: string,
+  ) => Promise<ConfirmOrderChangeResult>;
+  /** The order's operator changes, newest first: cancel requests and their credit proposals. */
+  listOrderChanges: (internalOrderId: string) => Promise<OrderChangeView[]>;
+  /** Record that the operator refunded the buyer. 409 `refund_ceiling_exceeded` carries the figures. */
+  recordRefund: (
+    internalOrderId: string,
+    body: RecordOrderRefundRequest,
+  ) => Promise<OrderRefundRecord>;
+  listRefunds: (internalOrderId: string) => Promise<OrderRefundRecord[]>;
   /**
    * Release a hold (#2341). Admin-only. Answers 409 `HOLD_ALREADY_RELEASED` on
    * a replay and 400 when a note is required and missing; the success body
@@ -85,8 +125,12 @@ export interface OrdersApi {
     holdId: string,
     body: ReleaseOrderHoldRequest,
   ) => Promise<ReleaseOrderHoldResult>;
+  /** Cost at order time and margin per line (#3588); admin/operator/viewer only. */
+  listLineCosts: (internalOrderId: string) => Promise<OrderLineCostsResult>;
   /** An order's notes, oldest first (#3531). */
   listNotes: (internalOrderId: string) => Promise<OrderNote[]>;
+  /** Every attempt to email a document of this order to the buyer (#3551). */
+  listDocumentEmails: (internalOrderId: string) => Promise<OrderDocumentEmailEntry[]>;
   /** The notes' authored acts for the Activity timeline (#3531), parsed. */
   listNoteTimeline: (internalOrderId: string) => Promise<OrderNoteTimelineEntry[]>;
   createNote: (internalOrderId: string, body: CreateOrderNoteRequest) => Promise<OrderNote>;
@@ -211,6 +255,10 @@ function buildQuery(
   if (filters?.openReturn !== undefined) {
     params.set('openReturn', String(filters.openReturn));
   }
+  // #3539 — boolean, same `!== undefined` guard as its neighbours.
+  if (filters?.hasBuyerNote !== undefined) {
+    params.set('hasBuyerNote', String(filters.hasBuyerNote));
+  }
   // #3532 — `tag` and `untagged` are mutually exclusive by convention.
   if (filters?.tag) params.set('tag', filters.tag);
   if (filters?.untagged !== undefined) {
@@ -280,10 +328,22 @@ export function createOrdersApi(request: ApiRequest, requestBlob: ApiBlobRequest
         { method: 'POST' },
       );
     },
+    retryRouting(internalOrderId): Promise<RetryOrderRoutingResult> {
+      return request<RetryOrderRoutingResult>(
+        `/orders/${encodeURIComponent(internalOrderId)}/retry-routing`,
+        { method: 'POST' },
+      );
+    },
     markPacked(internalOrderId): Promise<OrderRecord> {
       return request<OrderRecord>(`/orders/${encodeURIComponent(internalOrderId)}/packed`, {
         method: 'POST',
       });
+    },
+    markBuyerNoteRead(internalOrderId): Promise<OrderRecord> {
+      return request<OrderRecord>(
+        `/orders/${encodeURIComponent(internalOrderId)}/buyer-note/read`,
+        { method: 'POST' },
+      );
     },
     unmarkPacked(internalOrderId): Promise<OrderRecord> {
       return request<OrderRecord>(`/orders/${encodeURIComponent(internalOrderId)}/packed`, {
@@ -296,14 +356,48 @@ export function createOrdersApi(request: ApiRequest, requestBlob: ApiBlobRequest
         { method: 'POST', body: JSON.stringify(body) },
       );
     },
+    cancelOrder(internalOrderId, body): Promise<CancelOrderResult> {
+      return request<CancelOrderResult>(
+        `/orders/${encodeURIComponent(internalOrderId)}/cancel`,
+        { method: 'POST', body: JSON.stringify(body) },
+      );
+    },
+    confirmOrderChange(internalOrderId, changeId): Promise<ConfirmOrderChangeResult> {
+      return request<ConfirmOrderChangeResult>(
+        `/orders/${encodeURIComponent(internalOrderId)}/changes/${encodeURIComponent(changeId)}/confirm`,
+        { method: 'POST' },
+      );
+    },
+    listOrderChanges(internalOrderId): Promise<OrderChangeView[]> {
+      return request<OrderChangeView[]>(`/orders/${encodeURIComponent(internalOrderId)}/changes`);
+    },
+    recordRefund(internalOrderId, body): Promise<OrderRefundRecord> {
+      return request<OrderRefundRecord>(`/orders/${encodeURIComponent(internalOrderId)}/refunds`, {
+        method: 'POST',
+        body: JSON.stringify(body),
+      });
+    },
+    listRefunds(internalOrderId): Promise<OrderRefundRecord[]> {
+      return request<OrderRefundRecord[]>(`/orders/${encodeURIComponent(internalOrderId)}/refunds`);
+    },
     releaseHold(internalOrderId, holdId, body): Promise<ReleaseOrderHoldResult> {
       return request<ReleaseOrderHoldResult>(
         `/orders/${encodeURIComponent(internalOrderId)}/holds/${encodeURIComponent(holdId)}/release`,
         { method: 'POST', body: JSON.stringify(body) },
       );
     },
+    listLineCosts(internalOrderId): Promise<OrderLineCostsResult> {
+      return request<OrderLineCostsResult>(
+        `/orders/${encodeURIComponent(internalOrderId)}/line-costs`,
+      );
+    },
     listNotes(internalOrderId): Promise<OrderNote[]> {
       return request<OrderNote[]>(`/orders/${encodeURIComponent(internalOrderId)}/notes`);
+    },
+    listDocumentEmails(internalOrderId): Promise<OrderDocumentEmailEntry[]> {
+      return request<OrderDocumentEmailEntry[]>(
+        `/orders/${encodeURIComponent(internalOrderId)}/document-emails`,
+      );
     },
     async listNoteTimeline(internalOrderId): Promise<OrderNoteTimelineEntry[]> {
       const raw = await request<unknown>(

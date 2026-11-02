@@ -79,6 +79,11 @@ function parcel(over: Partial<BenchParcel> = {}): BenchParcel {
     completedAt: null,
     lines: [line()],
     packerNotes: [],
+    buyerNote: null,
+    buyerNoteAcknowledgedAt: null,
+    buyerNoteAcknowledgedByUserId: null,
+    hasBuyerNote: false,
+    otherParcelBuyerNoteAcknowledgements: [],
     ...over,
   };
 }

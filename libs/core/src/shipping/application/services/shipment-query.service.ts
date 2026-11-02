@@ -47,6 +47,10 @@ export class ShipmentQueryService implements IShipmentQueryService {
     return this.shipments.findActiveByOrderId(orderId, 'outbound');
   }
 
+  async getOutboundByOrderId(orderId: string): Promise<readonly Shipment[]> {
+    return this.shipments.findByOrderId(orderId, 'outbound');
+  }
+
   /**
    * The contract — batching, the absent-vs-empty convention and why `direction`
    * is required — is documented once on
@@ -68,6 +72,23 @@ export class ShipmentQueryService implements IShipmentQueryService {
       else bucket.push(shipment);
     }
     return byWork;
+  }
+
+  /** The contract is documented once on {@link IShipmentQueryService.getLatestOutboundTrackingNumber}. */
+  async getLatestOutboundTrackingNumber(orderId: string): Promise<string | null> {
+    const shipments = await this.shipments.findByOrderId(orderId, 'outbound');
+    // A cancelled or failed label's number points at a parcel that never left;
+    // `delivered` stays in, because that number is real.
+    const withTracking = shipments
+      .filter(
+        (shipment) =>
+          shipment.status !== 'cancelled' &&
+          shipment.status !== 'failed' &&
+          typeof shipment.trackingNumber === 'string' &&
+          shipment.trackingNumber.length > 0,
+      )
+      .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+    return withTracking[0]?.trackingNumber ?? null;
   }
 
   /**

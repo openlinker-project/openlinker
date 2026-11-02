@@ -28,6 +28,12 @@ export interface AllegroHttpRequestOptions {
    * genuine creates.
    */
   idempotent?: boolean;
+  /**
+   * Overrides the client's retry budget for this call. For a request an
+   * operator is waiting on: the default ladder (4 attempts x the request
+   * timeout) would hold the HTTP request open for minutes.
+   */
+  maxRetries?: number;
 }
 
 /**
@@ -125,6 +131,20 @@ export interface IAllegroHttpClient {
    * @returns Response data
    */
   postBinary<T = unknown>(
+    path: string,
+    contentType: string,
+    body: Uint8Array,
+    options?: Omit<AllegroHttpRequestOptions, 'method' | 'body'>,
+  ): Promise<AllegroHttpResponse<T>>;
+
+  /**
+   * Make PUT request with a raw binary body.
+   *
+   * The PUT counterpart of `postBinary`, for endpoints that take file bytes at a
+   * resource the caller already created (an order's billing document, #3549).
+   * Same auth header, retry and token-refresh machinery.
+   */
+  putBinary<T = unknown>(
     path: string,
     contentType: string,
     body: Uint8Array,

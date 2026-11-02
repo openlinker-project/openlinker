@@ -29,6 +29,7 @@ import { useOmsRoutingState } from '../features/fulfillment-authority';
 import type { NavGroup } from './nav-registry.types';
 import { useNavCounts, type NavCounts } from './hooks/use-nav-counts';
 import { Button } from '../shared/ui/button';
+import { LanguageSwitch } from '../shared/ui/language-switch';
 import { EnvironmentBadge } from '../shared/ui/environment-badge';
 import {
   DropdownMenu,
@@ -56,9 +57,8 @@ interface SidebarNavProps {
 
 function SidebarNav({ ariaLabel, counts, groups, onNavigate }: SidebarNavProps): ReactElement {
   // i18n seam (#612): nav-item counts follow the active locale instead of
-  // being pinned to en-US. v1 maps `'en'` → BCP 47 `'en-US'`, so today this
-  // is a behavioural no-op; future locales pick up the right grouping
-  // separators automatically.
+  // being pinned to en-US. `'en'` maps to BCP 47 `'en-GB'` and `'pl'` to
+  // `'pl-PL'`, so each language gets its own grouping separators.
   const numberFormatter = useNumberFormat();
   const formatCount = (value: number | null): string | null =>
     value === null ? null : numberFormatter.format(value);
@@ -111,7 +111,9 @@ function SidebarNav({ ariaLabel, counts, groups, onNavigate }: SidebarNavProps):
                           isActive ? 'shell-nav__link shell-nav__link--active' : 'shell-nav__link'
                         }
                       >
-                        <span className="shell-nav__link-label">{item.label}</span>
+                        <span className="shell-nav__link-label" title={item.label}>
+                          {item.label}
+                        </span>
                         {countText !== null ? (
                           <span className="shell-nav__link-count mono-text">{countText}</span>
                         ) : null}
@@ -158,6 +160,7 @@ function WorkspaceFooter({ onLogout, username, location, demoMode }: WorkspaceFo
     <div className="shell-workspace">
       <div className="shell-workspace__header">
         <strong className="shell-workspace__name">Default organization</strong>
+        <LanguageSwitch placement="up" />
       </div>
       {demoMode ? (
         <a

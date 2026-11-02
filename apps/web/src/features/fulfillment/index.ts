@@ -25,6 +25,8 @@
  */
 export { OrderFulfillmentTasksPanel } from './components/order-fulfillment-tasks-panel';
 export type { OrderFulfillmentTasksPanelProps } from './components/order-fulfillment-tasks-panel';
+export { RoutingDecisionPanel } from './components/routing-decision-panel';
+export type { RoutingDecisionPanelProps } from './components/routing-decision-panel';
 
 // #3098 — the two sections the routed detail page mounts, plus #3291's
 // holder panel folded into the body. Exported so `pages/fulfillment` can
@@ -52,6 +54,8 @@ export {
   type FulfillmentAssignmentChange,
   type FulfillmentAssignmentRunner,
 } from './hooks/use-fulfillment-assignment-runner';
+// Exported so the order page can invalidate tasks after an order cancel (#3541).
+export { fulfillmentQueryKeys } from './api/fulfillment.query-keys';
 export { useHasMultipleLocations } from './hooks/use-has-multiple-locations';
 
 // The action set and its dialog — shared by the fulfilment screen and the
@@ -69,6 +73,7 @@ export {
 } from './hooks/use-fulfillment-tasks-query';
 // #3097 — one task by id, for the detail page. Its key sits under the
 // `['fulfillment', ...]` prefix, so the action mutation below refreshes it.
+export { useOrderFulfillmentTasksQuery } from './hooks/use-order-fulfillment-tasks-query';
 export { useFulfillmentWorkQuery } from './hooks/use-fulfillment-work-query';
 export { useFulfillmentTaskActionMutation } from './hooks/use-fulfillment-task-action-mutation';
 // #3257 — the one place a fulfilment action becomes a request. Every surface

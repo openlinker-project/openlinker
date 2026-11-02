@@ -55,12 +55,22 @@ export interface AnalyticsDisplaySettingsInput {
   includeBackfilledTaxRatesInNetSales: boolean;
   /** Default basis a view opens in when no `?netGrossBasis=` URL override is present. Default `'gross'`. */
   netGrossBasis: NetGrossBasis;
+  /**
+   * Whether the UI shows margin and the missing-cost reminders (#3588, G11-F).
+   * Display-only: the per-line cost snapshot is written at ingestion regardless.
+   * Optional on write - absent keeps the stored value (default `true` on a
+   * fresh row) - so a PUT from a client that predates the field cannot flip it.
+   */
+  trackMargin?: boolean;
 }
 
 /**
  * Read view returned by `GET /analytics/settings` (#2462).
  */
-export interface AnalyticsDisplaySettingsView extends AnalyticsDisplaySettingsInput {
+export interface AnalyticsDisplaySettingsView
+  extends Omit<AnalyticsDisplaySettingsInput, 'trackMargin'> {
+  /** Always resolved: the stored value, or `true` when no row exists. */
+  trackMargin: boolean;
   /** `null` when no operator has ever saved a row yet (the defaults above apply). */
   updatedAt: Date | null;
   updatedByUserId: string | null;

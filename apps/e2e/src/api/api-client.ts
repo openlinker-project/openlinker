@@ -16,6 +16,9 @@
 import { ApiError } from './api-error';
 import type {
   SourceFulfillmentView,
+  AutomationRuleView,
+  AutomationRuleWriteInput,
+  BuyerEmailDeliveryView,
   AnalyticsCoverageView,
   AnalyticsRangeQuery,
   AnalyticsRemediationRun,
@@ -60,6 +63,7 @@ import type {
   ListListingsQuery,
   ListOrdersQuery,
   ListProductsQuery,
+  ListStockMovementsQuery,
   ListUsersQuery,
   LoginResponse,
   MarkInvoicePaidInput,
@@ -68,6 +72,12 @@ import type {
   OfferCreationStatus,
   OfferMapping,
   OrderHealthSummary,
+  StockCorrectionInput,
+  StockCorrectionOutcome,
+  StockCorrectionResult,
+  StockCorrectionConflict,
+  StockCorrectionTarget,
+  StockMovement,
   OrderRecord,
   Paginated,
   Product,
@@ -464,6 +474,25 @@ export class ApiClient {
       this.request<{ works: unknown[] }>('/bench/work'),
   };
 
+  // ── Automations + buyer emails (#3554) ──────────────────────────────────
+  automations = {
+    /** `GET /automations/:id` — one rule, its full definition included. */
+    getById: (ruleId: string): Promise<AutomationRuleView> =>
+      this.request<AutomationRuleView>(`/automations/${ruleId}`),
+    /** `PUT /automations/:id` — a full replace; used to arm or disarm a rule. */
+    replace: (ruleId: string, body: AutomationRuleWriteInput): Promise<AutomationRuleView> =>
+      this.request<AutomationRuleView>(`/automations/${ruleId}`, {
+        method: 'PUT',
+        body: JSON.stringify(body),
+      }),
+  };
+
+  buyerEmails = {
+    /** `GET /orders/:id/buyer-emails` — the order's automatic buyer emails, newest first. */
+    forOrder: (internalOrderId: string): Promise<BuyerEmailDeliveryView[]> =>
+      this.request<BuyerEmailDeliveryView[]>(`/orders/${internalOrderId}/buyer-emails`),
+  };
+
   // ── AI provider settings (admin only) ─────────────────────────────────────
   aiProviderSettings = {
     /** Admin-only read; the E2E specs assert only on the resolved/failed status. */
@@ -542,6 +571,39 @@ export class ApiClient {
       this.request<InventoryAvailabilityResponse>(
         `/inventory/availability${buildQuery({ productVariantIds: variantIds.join(',') })}`,
       ).then((response) => response.items),
+    correctionTarget: (variantId: string): Promise<StockCorrectionTarget> =>
+      this.request<StockCorrectionTarget>(`/inventory/${variantId}/correction-target`),
+    /**
+     * Correct one variant's stock in its product master. A refusal decided
+     * BEFORE the master (409: insufficient-stock, confirmation-required, ...)
+     * is returned as a `conflict` rather than thrown, because specs assert on
+     * those bodies; every other failure still throws `ApiError`.
+     */
+    correct: async (
+      variantId: string,
+      input: StockCorrectionInput,
+    ): Promise<StockCorrectionOutcome> => {
+      try {
+        const result = await this.request<StockCorrectionResult>(
+          `/inventory/${variantId}/adjust`,
+          { method: 'POST', body: JSON.stringify(input) },
+        );
+        return { kind: 'result', result };
+      } catch (error) {
+        if (error instanceof ApiError && error.status === 409) {
+          return { kind: 'conflict', conflict: error.body as StockCorrectionConflict };
+        }
+        throw error;
+      }
+    },
+    movements: (query?: ListStockMovementsQuery): Promise<Paginated<StockMovement>> =>
+      this.request<Paginated<StockMovement>>(
+        `/inventory/movements${buildQuery({
+          productVariantId: query?.productVariantId,
+          kind: query?.kind,
+          limit: query?.limit,
+        })}`,
+      ),
   };
 
   // ── Listings (offers) ───────────────────────────────────────────────────

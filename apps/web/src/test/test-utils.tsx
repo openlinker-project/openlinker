@@ -1,7 +1,7 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, screen, type RenderOptions, type RenderResult } from '@testing-library/react';
-import type { ReactElement } from 'react';
-import { MemoryRouter } from 'react-router-dom';
+import { createContext, useContext, type ReactElement, type ReactNode } from 'react';
+import { MemoryRouter, RouterProvider, createMemoryRouter } from 'react-router-dom';
 import { vi } from 'vitest';
 import type { ApiClient, CoreApiClient, PluginApiNamespaces } from '../app/api/api-client';
 import { ApiClientProvider } from '../app/api/api-client-provider';
@@ -31,6 +31,18 @@ interface RenderWithProvidersOptions extends Omit<RenderOptions, 'wrapper'> {
    * that need to assert registry-absent behavior or inject a fixture plugin.
    */
   plugins?: readonly OpenLinkerPlugin[];
+  /**
+   * Mount under `createMemoryRouter` + `RouterProvider` instead of a plain
+   * `MemoryRouter`. Needed by anything that calls a data-router-only hook
+   * (`useBlocker`, `useNavigation`, ...), e.g. the bulk wizard's leave guard.
+   */
+  dataRouter?: boolean;
+}
+
+const DataRouterChildrenContext = createContext<ReactNode>(null);
+
+function DataRouterChildrenSlot(): ReactElement {
+  return <>{useContext(DataRouterChildrenContext)}</>;
 }
 
 export const sampleConnection: Connection = {
@@ -174,6 +186,7 @@ export function createMockApiClient(
   const core: CoreApiClient = {
     request: overrides.request ?? vi.fn(),
     requestBlob: overrides.requestBlob ?? vi.fn(),
+    requestFile: overrides.requestFile ?? vi.fn(),
     requestStream: overrides.requestStream ?? vi.fn(),
     adapters: {
       list: vi.fn().mockResolvedValue([]),
@@ -256,6 +269,26 @@ export function createMockApiClient(
         unresolvedProductCount: 0,
         coverageGapAvailable: true,
       }),
+      getMargin: vi.fn().mockResolvedValue({
+        currency: 'PLN',
+        bucket: 'week',
+        headline: {
+          netRevenue: 0,
+          coveredNetRevenue: 0,
+          costOfGoods: 0,
+          grossMargin: 0,
+          marginPct: null,
+          costCoveragePct: null,
+          gaps: [],
+        },
+        trend: [],
+        channels: [],
+        excludedLineCount: 0,
+      }),
+      getMarginProducts: vi
+        .fn()
+        .mockResolvedValue({ currency: 'PLN', items: [], total: 0, unresolvedProductCount: 0 }),
+      exportCsv: vi.fn(),
       getCoverage: vi.fn().mockResolvedValue({
         categories: [
           { category: 'currency', status: 'open', affectedCount: 0, sampleOrderIds: [] },
@@ -320,6 +353,7 @@ export function createMockApiClient(
         rateBasis: 'current',
         includeBackfilledTaxRatesInNetSales: false,
         netGrossBasis: 'gross',
+        trackMargin: true,
         updatedAt: null,
         updatedByUserId: null,
       }),
@@ -464,6 +498,7 @@ export function createMockApiClient(
       // #1909 — empty list default: the normal never-registered state, never a
       // 404 (OpenLinker never asserts an order requires a receipt).
       listForOrder: vi.fn().mockResolvedValue([]),
+      sendEmail: vi.fn().mockResolvedValue({ delivered: true, recipient: null, sentVia: 'openlinker' }),
       register: vi.fn().mockResolvedValue({
         orderId: 'ord_1',
         connectionId: 'conn_fiscal',
@@ -507,8 +542,22 @@ export function createMockApiClient(
       // are defaulted together or a test would set one and silently keep the
       // other's stale answer.
       listLocations: vi.fn().mockResolvedValue({ items: [], total: 0, page: 1, limit: 100 }),
+      // #3568. An install with no movements; the count is only requested for a full page.
+      listMovements: vi.fn().mockResolvedValue({ items: [], limit: 20, offset: 0 }),
+      countMovements: vi.fn().mockResolvedValue({ total: 0 }),
       listActiveLocations: vi.fn().mockResolvedValue({ items: [], total: 0, page: 1, limit: 1 }),
       bootstrapLocations: vi.fn().mockResolvedValue({ created: [], existingCodes: [] }),
+      // #3569 - the honest default is a stock view that names no variants, so a
+      // page test that never opts in sees the "unknown" state, not invented stock.
+      stockView: vi.fn().mockResolvedValue({
+        productId: '',
+        productName: '',
+        productSku: null,
+        staleSyncThreshold: { hours: 6, ms: 21_600_000, source: 'default' },
+        channelsStatus: 'ok',
+        variants: [],
+        generatedAt: '2026-01-15T10:00:00.000Z',
+      }),
       ...overrides.inventory,
     } as ApiClient['inventory'],
     invoicing: {
@@ -555,6 +604,9 @@ export function createMockApiClient(
       resendToAuthority: vi.fn().mockResolvedValue(null),
       // DEF-02 / DEF-03: no verification link unless a test supplies one.
       getVerificationLink: vi.fn().mockResolvedValue({ url: null }),
+      // #3549: no upload attempts unless a test supplies some.
+      getMarketplaceUpload: vi.fn().mockResolvedValue({ invoiceId: '', uploads: [] }),
+      retryMarketplaceUpload: vi.fn().mockResolvedValue({ queued: true }),
       ...overrides.invoicing,
     } as ApiClient['invoicing'],
     operationalSettings: {
@@ -665,6 +717,8 @@ export function createMockApiClient(
         ready: 0,
       }),
       getById: vi.fn().mockResolvedValue(null),
+      listLineCosts: vi.fn().mockResolvedValue({ currency: null, lines: [] }),
+      listDocumentEmails: vi.fn().mockResolvedValue([]),
       retryDestination: vi.fn().mockResolvedValue({
         internalOrderId: '',
         destinationConnectionId: '',
@@ -847,6 +901,33 @@ export function createMockApiClient(
       // enrichment renders the bare ID without an error in tests that don't
       // care about the SKU/EAN tags.
       getVariant: vi.fn().mockRejectedValue(new ApiError('Variant not found', 404, null)),
+      // #3588 - no recorded costs unless a test says otherwise.
+      getVariantCosts: vi.fn().mockResolvedValue([]),
+      setVariantCost: vi.fn(),
+      // Nothing sold without a cost unless a test says otherwise, so no
+      // reminder renders by accident.
+      getCostCoverage: vi.fn().mockResolvedValue({
+        days: 30,
+        from: '2026-09-01T00:00:00.000Z',
+        to: '2026-10-01T00:00:00.000Z',
+        currency: 'PLN',
+        soldVariantCount: 0,
+        soldVariantsWithoutCost: 0,
+        netSales: 0,
+        netSalesWithoutCost: 0,
+        coveragePct: null,
+        notInMarginNetSales: 0,
+        gapByReason: [],
+        top3: [],
+        top3SharePct: null,
+        productOnlyNetSales: 0,
+      }),
+      getCostSummary: vi
+        .fn()
+        .mockResolvedValue({ variantsWithoutCost: 0, productsWithoutCost: 0, variantsWithCost: 0 }),
+      getCostWorklist: vi.fn().mockResolvedValue({ currency: 'PLN', items: [], limit: 20, offset: 0 }),
+      countCostWorklist: vi.fn().mockResolvedValue({ total: 0 }),
+      bulkFillVariantCost: vi.fn(),
       ...overrides.products,
     }) as ApiClient['products'],
     promptTemplates: {
@@ -1000,6 +1081,9 @@ export function createMockApiClient(
       pingPresence: vi
         .fn<BenchApi['pingPresence']>()
         .mockRejectedValue(new Error('bench.pingPresence not stubbed')),
+      acknowledgeBuyerNote: vi
+        .fn<BenchApi['acknowledgeBuyerNote']>()
+        .mockRejectedValue(new Error('bench.acknowledgeBuyerNote not stubbed')),
       claimParcel: vi
         .fn<BenchApi['claimParcel']>()
         .mockRejectedValue(new Error('bench.claimParcel not stubbed')),
@@ -1329,8 +1413,16 @@ export function renderWithProviders(
     route = '/',
     sessionAdapter = createNoopSessionAdapter(),
     plugins = inTreePlugins,
+    dataRouter = false,
     ...renderOptions
   } = options;
+  // One router per render so a rerender keeps navigation state; the children
+  // reach it through context rather than through a route element captured once.
+  const router = dataRouter
+    ? createMemoryRouter([{ path: '*', element: <DataRouterChildrenSlot /> }], {
+        initialEntries: [route],
+      })
+    : null;
   const queryClient = new QueryClient({
     defaultOptions: {
       queries: {
@@ -1346,24 +1438,31 @@ export function renderWithProviders(
 
   window.history.pushState({}, 'Test', route);
 
+  const withProviders = (children: ReactNode): ReactElement => (
+    <LocaleProvider locale="en">
+      <PluginRegistryProvider plugins={plugins}>
+        <SessionProvider adapter={sessionAdapter}>
+          <ToastProvider>
+            <TooltipProvider>
+              <ApiClientProvider client={apiClient}>
+                <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+              </ApiClientProvider>
+            </TooltipProvider>
+          </ToastProvider>
+        </SessionProvider>
+      </PluginRegistryProvider>
+    </LocaleProvider>
+  );
+
   return render(ui, {
-    wrapper: ({ children }) => (
-      <MemoryRouter initialEntries={[route]}>
-        <LocaleProvider>
-          <PluginRegistryProvider plugins={plugins}>
-            <SessionProvider adapter={sessionAdapter}>
-              <ToastProvider>
-                <TooltipProvider>
-                  <ApiClientProvider client={apiClient}>
-                    <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
-                  </ApiClientProvider>
-                </TooltipProvider>
-              </ToastProvider>
-            </SessionProvider>
-          </PluginRegistryProvider>
-        </LocaleProvider>
-      </MemoryRouter>
-    ),
+    wrapper: ({ children }) =>
+      router ? (
+        <DataRouterChildrenContext.Provider value={withProviders(children)}>
+          <RouterProvider router={router} />
+        </DataRouterChildrenContext.Provider>
+      ) : (
+        <MemoryRouter initialEntries={[route]}>{withProviders(children)}</MemoryRouter>
+      ),
     ...renderOptions,
   });
 }

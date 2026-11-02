@@ -150,12 +150,14 @@ export type {
   InvoicingIssueBuyerV1,
 } from './domain/types/invoicing-job-payloads.types';
 export type { RegulatoryStatusReconcilePayloadV1 } from './domain/types/invoicing-job-payloads.types';
+export type { InvoicingMarketplaceUploadPayloadV1 } from './domain/types/invoicing-job-payloads.types';
 export type { FulfillmentWorkDispatchPayloadV1 } from './domain/types/fulfillment-job-payloads.types';
 export type { FulfillmentWorkAutoDispatchPayloadV1 } from './domain/types/fulfillment-job-payloads.types';
 export type { FulfillmentWorkRoutePayloadV1 } from './domain/types/fulfillment-job-payloads.types';
 export type { FulfillmentWorkTimeoutSweepPayloadV1 } from './domain/types/fulfillment-job-payloads.types';
 export type { FulfillmentWorkRelaySweepPayloadV1 } from './domain/types/fulfillment-job-payloads.types';
 export type { FulfillmentWorkRerouteSweepPayloadV1 } from './domain/types/fulfillment-job-payloads.types';
+export type { FulfillmentRoutingReapSweepPayloadV1 } from './domain/types/fulfillment-job-payloads.types';
 export type { InventorySaleDecrementReconcileSweepPayloadV1 } from './domain/types/fulfillment-job-payloads.types';
 export type { OfflineResubmitPayloadV1 } from './domain/types/invoicing-job-payloads.types';
 export type { PendingRecoverySweepPayloadV1 } from './domain/types/invoicing-job-payloads.types';

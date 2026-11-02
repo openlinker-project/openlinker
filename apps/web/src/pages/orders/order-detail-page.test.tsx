@@ -71,6 +71,31 @@ describe('OrderDetailPage', () => {
     expect(links.length).toBeGreaterThan(0);
   });
 
+  it('should not offer Confirm refund while the cancel request is still pending (C-2)', async () => {
+    const api = createMockApiClient({
+      orders: {
+        getById: vi.fn().mockResolvedValue(sampleOrder),
+        listOrderChanges: vi.fn().mockResolvedValue([
+          {
+            id: 'change_1',
+            kind: 'order.cancel_request',
+            status: 'requested',
+            open: true,
+            requestedAt: '2026-04-20T10:00:00.000Z',
+            confirmedAt: null,
+            declinedReason: null,
+            payload: { cancelRequest: { reason: 'buyer-request', note: null }, correction: null },
+          },
+        ]),
+      },
+    });
+
+    renderDetail(api);
+
+    await screen.findByTestId('order-cancel-pending');
+    expect(screen.queryByTestId('order-confirm-refund-button')).not.toBeInTheDocument();
+  });
+
   it('renders the order snapshot inside RawPayloadPanel (collapsed, expandable)', async () => {
     const api = createMockApiClient({
       orders: { getById: vi.fn().mockResolvedValue(sampleOrder) },
@@ -876,5 +901,78 @@ describe('OrderDetailPage - packing affordance for a destination that packs itse
 
     await screen.findByText('ol_order_abc123');
     await waitFor(() => expect(screen.queryByText('Packing')).not.toBeInTheDocument());
+  });
+});
+
+describe('OrderDetailPage — buyer note (#3539)', () => {
+  afterEach(cleanup);
+
+  it('should place the buyer note on the page and add the bench reading to the Activity timeline', async () => {
+    const getById = vi.fn().mockResolvedValue({
+      ...sampleOrder,
+      hasBuyerNote: true,
+      buyerNote: 'Proszę nie wkładać paragonu do paczki.',
+      buyerNoteReadAt: null,
+      buyerNoteAcknowledgements: [
+        { workId: 'w1', acknowledgedAt: '2026-04-20T12:00:00.000Z', acknowledgedByUserId: 'u7' },
+      ],
+    });
+    renderDetail(createMockApiClient({ orders: { getById } }));
+
+    expect(await screen.findByTestId('order-buyer-note-text')).toHaveTextContent(
+      'Proszę nie wkładać paragonu do paczki.',
+    );
+    expect(await screen.findByText('Buyer note read at the bench')).toBeInTheDocument();
+  });
+
+  it('should render no buyer note surface at all when the order has none', async () => {
+    const getById = vi.fn().mockResolvedValue({ ...sampleOrder, hasBuyerNote: false, buyerNote: null });
+    renderDetail(createMockApiClient({ orders: { getById } }));
+
+    await screen.findByText('Order detail');
+    await waitFor(() => {
+      expect(getById).toHaveBeenCalled();
+    });
+    expect(screen.queryByTestId('order-buyer-note')).not.toBeInTheDocument();
+    expect(screen.queryByText('Buyer note read at the bench')).not.toBeInTheDocument();
+  });
+  describe('cancelled in OpenLinker, channel still processing (C-23)', () => {
+    function cancelledOrder(channelStatus: string): OrderRecord {
+      return {
+        ...sampleOrder,
+        lifecyclePhase: 'cancelled',
+        orderSnapshot: {
+          orderNumber: 'A-1024',
+          status: channelStatus,
+          items: [{ id: 'it1', productId: 'ol_product_1', quantity: 1, price: 10, sku: 'SKU-1', name: 'Camera' }],
+          totals: { subtotal: 10, tax: 0, shipping: 0, total: 10, currency: 'PLN' },
+        },
+      } as OrderRecord;
+    }
+
+    it('should not show the channel status as a header badge or as the plain Status row (C-23)', async () => {
+      const api = createMockApiClient({
+        orders: { getById: vi.fn().mockResolvedValue(cancelledOrder('processing')) },
+      });
+      renderDetail(api);
+      const container = document.body;
+
+      await screen.findByText('Cancelled');
+      expect(container.querySelector('.order-header__top')?.textContent).not.toMatch(/processing/i);
+      expect(screen.queryByText('Status')).toBeNull();
+      const label = await screen.findByText(`Status at ${sampleConnection.name}`);
+      expect(label).toBeInTheDocument();
+      expect(screen.getByText('processing')).toBeInTheDocument();
+    });
+
+    it('should keep the plain Status row when the channel also says cancelled (C-23)', async () => {
+      const api = createMockApiClient({
+        orders: { getById: vi.fn().mockResolvedValue(cancelledOrder('cancelled')) },
+      });
+      renderDetail(api);
+
+      await screen.findByText('Status');
+      expect(screen.queryByText(/^Status at /)).toBeNull();
+    });
   });
 });

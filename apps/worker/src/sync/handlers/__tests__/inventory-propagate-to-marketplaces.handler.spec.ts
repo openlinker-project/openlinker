@@ -7,7 +7,10 @@
  * @module apps/worker/src/sync/handlers/__tests__
  */
 import { InventoryPropagateToMarketplacesHandler } from '../inventory-propagate-to-marketplaces.handler';
-import type { IIdentifierMappingService, ExternalIdMapping } from '@openlinker/core/identifier-mapping';
+import type {
+  IIdentifierMappingService,
+  ExternalIdMapping,
+} from '@openlinker/core/identifier-mapping';
 import type { IInventoryService, IAvailabilityService } from '@openlinker/core/inventory';
 import type { IIntegrationsService } from '@openlinker/core/integrations';
 import type { JobEnqueuePort } from '@openlinker/core/sync';
@@ -15,6 +18,7 @@ import type { SyncJobEntity as SyncJob } from '@openlinker/core/sync';
 import { InventoryItemEntity } from '@openlinker/core/inventory';
 import { SyncJobExecutionError } from '@openlinker/core/sync';
 import type { IProductsService } from '@openlinker/core/products';
+import type { IOrderRoutingRetryService } from '@openlinker/core/orders';
 
 /**
  * Build a lazy `listCapabilityAdapters` entry for the ShopProduct fan-out
@@ -37,6 +41,10 @@ describe('InventoryPropagateToMarketplacesHandler', () => {
   let integrationsService: jest.Mocked<IIntegrationsService>;
   let productsService: jest.Mocked<Pick<IProductsService, 'getVariant'>>;
   let availabilityService: jest.Mocked<IAvailabilityService>;
+  let orderRoutingRetry: {
+    rerouteHeldOrdersForVariant: jest.Mock;
+    retryRouting: jest.Mock;
+  };
 
   /**
    * #2324 — the variant-keyed path now reads the AGGREGATE through the
@@ -105,13 +113,19 @@ describe('InventoryPropagateToMarketplacesHandler', () => {
     } as unknown as jest.Mocked<IAvailabilityService>;
     mockAvailability(100);
 
+    orderRoutingRetry = {
+      rerouteHeldOrdersForVariant: jest.fn().mockResolvedValue({ candidates: 0, enqueued: 0 }),
+      retryRouting: jest.fn(),
+    };
+
     handler = new InventoryPropagateToMarketplacesHandler(
       identifierMapping,
       inventoryService,
       jobEnqueue,
       integrationsService,
       productsService as unknown as IProductsService,
-      availabilityService
+      availabilityService,
+      orderRoutingRetry as unknown as IOrderRoutingRetryService
     );
   });
 
@@ -135,6 +149,72 @@ describe('InventoryPropagateToMarketplacesHandler', () => {
       lastError: null,
       createdAt: new Date(),
       updatedAt: new Date(),
+    });
+
+    describe('re-routing held orders on a stock change (#3558)', () => {
+      it('should ask the routing retry service about the variant whose stock changed', async () => {
+        await handler.execute(
+          createJob({
+            productId: 'product-id',
+            variantId: 'variant-id',
+            inventoryUpdatedAt: '2026-10-27T10:00:00.000Z',
+          })
+        );
+
+        expect(orderRoutingRetry.rerouteHeldOrdersForVariant).toHaveBeenCalledWith({
+          variantId: 'variant-id',
+          observedAt: '2026-10-27T10:00:00.000Z',
+        });
+      });
+
+      it('should re-route only after the channel fan-out was enqueued', async () => {
+        mockMappings({
+          Offer: [
+            {
+              entityType: 'Offer',
+              platformType: 'allegro',
+              connectionId: 'connection-id',
+              externalId: 'offer-id',
+            },
+          ],
+        });
+        jobEnqueue.enqueueJob.mockResolvedValue({ jobId: 'enqueued-job-id', isExisting: false });
+
+        await handler.execute(createJob({ productId: 'product-id', variantId: 'variant-id' }));
+
+        expect(jobEnqueue.enqueueJob).toHaveBeenCalledTimes(1);
+        expect(orderRoutingRetry.rerouteHeldOrdersForVariant).toHaveBeenCalledTimes(1);
+        expect(jobEnqueue.enqueueJob.mock.invocationCallOrder[0]).toBeLessThan(
+          orderRoutingRetry.rerouteHeldOrdersForVariant.mock.invocationCallOrder[0]
+        );
+      });
+
+      it('should not re-route anything for a product-level payload with no variant', async () => {
+        inventoryService.getInventory.mockResolvedValue(
+          new InventoryItemEntity('inventory-id', 'product-id', null, 5, 0, null, new Date())
+        );
+
+        await handler.execute(createJob({ productId: 'product-id' }));
+
+        expect(orderRoutingRetry.rerouteHeldOrdersForVariant).not.toHaveBeenCalled();
+      });
+
+      it('should not re-route when the available-to-promise could not be resolved', async () => {
+        availabilityService.getPromisableQuantities.mockResolvedValue([
+          {
+            variantId: 'variant-id',
+            quantity: null,
+            provenance: 'unknown',
+            observedAt: null,
+            olHeldNotReflected: null,
+          } as never,
+        ]);
+
+        await expect(
+          handler.execute(createJob({ productId: 'product-id', variantId: 'variant-id' }))
+        ).rejects.toBeInstanceOf(SyncJobExecutionError);
+        expect(orderRoutingRetry.rerouteHeldOrdersForVariant).not.toHaveBeenCalled();
+      });
     });
 
     it('should propagate inventory to Allegro offers', async () => {
@@ -690,7 +770,9 @@ describe('InventoryPropagateToMarketplacesHandler', () => {
         ([request]) => (request as { idempotencyKey: string }).idempotencyKey
       );
       expect(new Set(keys).size).toBe(2);
-      expect(keys).toContain('inventory:wc-connection:product-id:variant-id:25:2026-01-01T12:00:00.000Z');
+      expect(keys).toContain(
+        'inventory:wc-connection:product-id:variant-id:25:2026-01-01T12:00:00.000Z'
+      );
       expect(keys).toContain(
         'inventory:wc-connection:product-id:variant-id:25:2026-01-01T12:00:00.000Z:shop:123'
       );

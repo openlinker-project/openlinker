@@ -12,10 +12,12 @@ import { Injectable, Inject } from '@nestjs/common';
 import type { Order, OrderDispatchWindow } from '../../domain/types/order.types';
 import type { DeliveryCountryFact } from '../../domain/types/delivery-country-facts.types';
 import { checkPaymentFactsConsistency } from '../../domain/types/payment-facts-consistency.types';
+import { encodeBuyerTaxIdColumn, readBuyerTaxId } from '../../domain/types/buyer-tax-id.types';
 import {
-  encodeBuyerTaxIdColumn,
-  readBuyerTaxId,
-} from '../../domain/types/buyer-tax-id.types';
+  encodeBuyerNoteColumn,
+  hasBuyerNoteText,
+  normaliseCountryColumn,
+} from '../../domain/types/buyer-note.types';
 import type { HeldOrderRef } from '../../domain/ports/order-record-repository.port';
 import { OrderRecordRepositoryPort } from '../../domain/ports/order-record-repository.port';
 import { OrderLineItemRepositoryPort } from '../../domain/ports/order-line-item-repository.port';
@@ -25,6 +27,7 @@ import type { OrderSyncStatus, SyncAttempt } from '../../domain/types/order-sync
 import type { IOrderRecordService } from '../interfaces/order-record.service.interface';
 import type { IncomingOrder } from '../../domain/types/incoming-order.types';
 import { OrderRecordNotFoundException } from '../../domain/exceptions/order-record-not-found.exception';
+import { NoBuyerNoteException } from '../../domain/exceptions/no-buyer-note.exception';
 import type {
   FailedSyncValueSummary,
   OrderHealthSummaryFilters,
@@ -69,6 +72,7 @@ import {
   ORDER_CANCELLATION_SIGNAL_REPOSITORY_TOKEN,
 } from '../../orders.tokens';
 import { deriveOrderAnalyticsScalars, deriveOrderLineItems } from '../../domain/order-analytics-projection';
+import type { LineCostCandidate } from '../../domain/order-line-cost-snapshot';
 import { buildOrderAutomationFacts } from '../../domain/order-automation-facts-projection';
 import { buildSalesAndChannelAnalytics } from '../../domain/order-sales-aggregation';
 import { buildTopProducts } from '../../domain/top-products-aggregation';
@@ -129,6 +133,31 @@ export class OrderRecordService implements IOrderRecordService {
     this.paymentFactsWarnedOrderIds.add(orderId);
   }
 
+  private async countBuyerOrders(order: Order, now: Date): Promise<number | null> {
+    if (!order.customerId) {
+      return null;
+    }
+    try {
+      // B-7: the order's OWN stable instant. `placedAt ?? now` made a source
+      // without `placedAt` (WooCommerce) count every later order and grow on
+      // each re-import. First-seen time (the stored record's `createdAt`) never
+      // moves; `now` is only right for an order never seen before.
+      const existing = order.placedAt ? null : await this.repository.findById(order.id);
+      const instant = order.placedAt ?? existing?.createdAt ?? now;
+      return await this.repository.countEarlierOrdersForCustomer(
+        order.customerId,
+        order.id,
+        instant
+      );
+    } catch (error) {
+      this.logger.warn(
+        `Could not count earlier orders for customer ${order.customerId} on order ${order.id}; ` +
+          `buyerOrderCount stays unknown: ${(error as Error).message}`
+      );
+      return null;
+    }
+  }
+
   /**
    * Persist order record with PII-aware snapshot
    *
@@ -144,7 +173,8 @@ export class OrderRecordService implements IOrderRecordService {
     order: Order,
     sourceConnectionId: string,
     sourceEventId: string | null = null,
-    sourceExternalUrl: string | null = null
+    sourceExternalUrl: string | null = null,
+    lineCostCandidates: ReadonlyMap<string, LineCostCandidate> = new Map()
   ): Promise<OrderRecord> {
     const piiConfig = getPiiConfig();
     const now = new Date();
@@ -323,6 +353,25 @@ export class OrderRecordService implements IOrderRecordService {
     // introduces no new failure mode on this path.
     const shippingAddressHash = this.deriveShippingAddressHash(order);
 
+    // Buyer note (#3538). The text is free input that bypasses the address
+    // redaction, so it follows the buyer-tax-id rule: stored only when
+    // `storePii`, and read back as "not asserted" otherwise. `hasBuyerNote`
+    // carries no content and is written in both modes, so every surface can say
+    // a note exists without keeping it.
+    const buyerNote = piiConfig.storePii ? encodeBuyerNoteColumn(order.buyerNote) : null;
+    const hasBuyerNote = hasBuyerNoteText(order.buyerNote);
+
+    // Country is not PII and survives redaction (D7); an absent address is
+    // unknown, never a default.
+    const shippingCountry = normaliseCountryColumn(order.shippingAddress?.country);
+    const billingCountry = normaliseCountryColumn(order.billingAddress?.country);
+
+    // How many other, earlier orders this resolved customer has (D7). Computed
+    // here from OpenLinker's own records, never read from a channel; unknown
+    // when the order resolved to no customer. A failed read must not lose the
+    // order, so it degrades to unknown.
+    const buyerOrderCount = await this.countBuyerOrders(order, now);
+
     const orderRecord = new OrderRecord(
       order.id,
       order.customerId || null,
@@ -383,13 +432,24 @@ export class OrderRecordService implements IOrderRecordService {
       // source said nothing - and read back as `'unknown'` in that case. The
       // source is authoritative, so a later ready re-ingestion from a source
       // that omits the field also writes `null` over an earlier value.
-      order.paymentMethod ?? null
+      order.paymentMethod ?? null,
+      // destinationRoutingBlockReason / Detail: owned by their own writer.
+      null,
+      null,
+      buyerNote,
+      hasBuyerNote,
+      // buyerNoteReadAt / buyerNoteReadByUserId: sole writer markBuyerNoteRead.
+      null,
+      null,
+      shippingCountry,
+      billingCountry,
+      buyerOrderCount
     );
 
     // #1985: persist the order record AND its order_line_items rows in one
     // transaction — replaces the prior line-item set for this order so a
     // re-ingested order with a changed item list never leaves stale rows.
-    const lineItems = deriveOrderLineItems(order, sourceConnectionId);
+    const lineItems = deriveOrderLineItems(order, sourceConnectionId, lineCostCandidates);
     const saved = await this.repository.upsertWithLineItems(orderRecord, lineItems);
     // #2282 (ADR-057): the write path freezes source attribution, so a
     // divergence between what we asked to persist and what came back means a
@@ -726,9 +786,50 @@ export class OrderRecordService implements IOrderRecordService {
 
   async updateFulfillmentState(
     internalOrderId: string,
-    fulfillmentState: FulfillmentRollupState
+    fulfillmentState: FulfillmentRollupState,
+    options?: { trackingKnown?: boolean }
   ): Promise<void> {
     await this.repository.updateFulfillmentState(internalOrderId, fulfillmentState);
+    if (fulfillmentState !== 'dispatched' && fulfillmentState !== 'delivered') return;
+    // A buyer told "your order shipped" with no tracking number gets no second
+    // email once the number arrives, so a dispatched order waits for it. A
+    // delivered parcel has nothing left to wait for.
+    if (fulfillmentState === 'dispatched' && options?.trackingKnown === false) return;
+    await this.notifyShippedIfPending(internalOrderId);
+  }
+
+  async notifyShippedIfPending(internalOrderId: string): Promise<void> {
+    try {
+      if (!(await this.repository.claimShippedNotification(internalOrderId))) return;
+      const record = await this.repository.findById(internalOrderId);
+      if (record) {
+        await this.emitOrderTrigger('order.shipped', record, new Date());
+      }
+    } catch (error) {
+      this.logger.warn(
+        `Could not announce order.shipped for ${internalOrderId}: ${(error as Error).message}`
+      );
+    }
+  }
+
+  async notifyOrderReceived(record: OrderRecord, receivedAt: Date): Promise<void> {
+    // The fact is the BUYER placing the order, not OpenLinker reading it: the
+    // retroactivity floor compares this instant with the rule's creation, so a
+    // first sync of a shop's back catalogue must not read as fresh orders and
+    // email every past buyer (#3554 review).
+    await this.emitOrderTrigger(
+      'order.received',
+      record,
+      record.placedAt ?? record.createdAt,
+      receivedAt
+    );
+  }
+
+  async notifyDocumentIssued(internalOrderId: string, issuedAt: Date): Promise<void> {
+    const record = await this.repository.findById(internalOrderId);
+    if (record) {
+      await this.emitOrderTrigger('order.document_issued', record, issuedAt);
+    }
   }
 
   async markItemResolutionFailure(
@@ -1007,6 +1108,15 @@ export class OrderRecordService implements IOrderRecordService {
     await this.repository.updateFulfillmentBlock(internalOrderId, block);
   }
 
+  /** #3558 — thin read for the stock-change re-route. */
+  async listOrderIdsHeldForVariant(
+    reasons: readonly FulfillmentBlockReason[],
+    variantId: string,
+    limit: number
+  ): Promise<string[]> {
+    return this.repository.listOrderIdsHeldForVariant(reasons, variantId, limit);
+  }
+
   /** #3485 — thin read for the reroute sweep. */
   async listOrderIdsByFulfillmentBlockReasons(
     reasons: readonly FulfillmentBlockReason[],
@@ -1089,6 +1199,31 @@ export class OrderRecordService implements IOrderRecordService {
   }
 
   /**
+   * Mark this order's buyer note read (#3538). The instant is stamped here, not
+   * taken from the caller. The guarded write reports `false` for an already-read
+   * order and for an absent row alike, so the re-read tells them apart: the
+   * record is returned untouched for the first, `OrderRecordNotFoundException`
+   * thrown for the second.
+   */
+  async markBuyerNoteRead(internalOrderId: string, readByUserId: string): Promise<OrderRecord> {
+    const current = await this.repository.findById(internalOrderId);
+    if (!current) {
+      throw new OrderRecordNotFoundException(internalOrderId);
+    }
+    // B-8: there is nothing to read; refuse rather than stamping a marker on an
+    // order that carries no note.
+    if (!current.hasBuyerNote) {
+      throw new NoBuyerNoteException(internalOrderId);
+    }
+    await this.repository.markBuyerNoteRead(internalOrderId, new Date(), readByUserId);
+    const record = await this.repository.findById(internalOrderId);
+    if (!record) {
+      throw new OrderRecordNotFoundException(internalOrderId);
+    }
+    return record;
+  }
+
+  /**
    * Fire T5 `order.packed`, best-effort (#2360).
    *
    * **Never able to fail the pack.** The operator physically packed a box; an
@@ -1103,6 +1238,32 @@ export class OrderRecordService implements IOrderRecordService {
     input: { windowEnd: Date; now: Date; limit: number; offset: number }
   ): Promise<OrderRecord[]> {
     return this.repository.findDispatchDeadlineCandidates(connectionId, input);
+  }
+
+  /**
+   * Fire an order-subject edge trigger, best-effort (#3554: T9-T11, the T5
+   * shape). The write that caused the fact has already committed, so a failed
+   * emission is logged and swallowed rather than failing ingestion, a shipment
+   * projection or a document issue - the safe direction, as for `order.packed`.
+   */
+  private async emitOrderTrigger(
+    trigger: 'order.received' | 'order.shipped' | 'order.document_issued',
+    record: OrderRecord,
+    occurredAt: Date,
+    now: Date = occurredAt
+  ): Promise<void> {
+    try {
+      await this.automationEmission.emit({
+        trigger,
+        facts: buildOrderAutomationFacts(record, occurredAt),
+        now,
+      });
+    } catch (error) {
+      this.logger.warn(
+        `Automation emission failed for ${trigger} on ${record.internalOrderId}: ` +
+          `${(error as Error).message}`
+      );
+    }
   }
 
   private async emitPackedTrigger(record: OrderRecord, packedAt: Date): Promise<void> {

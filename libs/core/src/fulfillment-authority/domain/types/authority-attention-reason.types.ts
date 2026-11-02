@@ -68,7 +68,8 @@ import type { FulfillmentAuthorityBlock } from './fulfillment-authority-outcome.
 
 /**
  * The eight inert states of spec §4.2, in the order that section tables them,
- * followed by #3453's `stock-decrement-blocked`, which is not a §4.2 row.
+ * followed by #3453's `stock-decrement-blocked` and #2731's `routing-stuck`,
+ * neither of which is a §4.2 row.
  *
  * One member per line, no computed keys and no spread: the repo's mirror scripts
  * read these arrays TEXTUALLY, and #2357's `check-attention-reason-mirror.mjs`
@@ -98,6 +99,13 @@ export const AuthorityAttentionReasonValues = [
    * it exists because, with the OMS on, OpenLinker is the one lowering that stock.
    */
   'stock-decrement-blocked',
+  /**
+   * RT-S (#2731) — a routing decision sat `live` past its TTL after the router
+   * call went in doubt, so the reaper closed it and routing restarted. Not a
+   * §4.2 row: §4.2 predates the reaper. Written by the `routing` producer, so
+   * the re-route's own outcome replaces or clears it.
+   */
+  'routing-stuck',
 ] as const;
 
 export type AuthorityAttentionReason = (typeof AuthorityAttentionReasonValues)[number];
@@ -165,7 +173,7 @@ export type AuthorityAttentionOrigin = (typeof AuthorityAttentionOriginValues)[n
 export const AuthorityAttentionProducerValues = [
   /** The reservation ledger (RS-S). */
   'reservations',
-  /** Sourcing / routing (UF-L). */
+  /** Sourcing / routing (UF-L, and RT-S since #2731). */
   'routing',
   /** The fulfillment execution handshake (A3-X). */
   'acceptance',
@@ -303,6 +311,17 @@ export const AUTHORITY_ATTENTION_REASON_DESCRIPTORS: Readonly<
     equivalentAuthorityKind: null,
     counted: true,
   }),
+  // #2731 — outside spec §4.2 (which predates the reaper), hence an
+  // issue-numbered row label rather than a spec one.
+  'routing-stuck': Object.freeze({
+    specRow: 'RT-S',
+    badge: 'stopped',
+    surfaces: Object.freeze(['order'] as const),
+    origin: 'persisted',
+    producer: 'routing',
+    equivalentAuthorityKind: null,
+    counted: true,
+  }),
 });
 
 /**
@@ -339,21 +358,25 @@ export const AuthorityAttentionCountedReasonValues: readonly AuthorityAttentionR
  * level-trigger key: clearing means *clear my entry*, so an entry filed under the
  * wrong producer is cleared by the wrong "nothing to report".
  *
- * The mapping is 1:1 today. A producer that legitimately gains a second state widens
- * its value to a union here — one edit, in the place the spec already cross-checks
- * against {@link AUTHORITY_ATTENTION_REASON_DESCRIPTORS} in both directions.
+ * Each producer maps to the LIST of states it may persist. `routing` carries two
+ * since #2731: `line-unfulfillable` from a refused plan and `routing-stuck` from
+ * the reaper. Both live under ONE producer on purpose — the re-route the reaper
+ * triggers writes the same producer's entry, so a routed order clears a stale
+ * `routing-stuck` with no second writer to coordinate. The spec cross-checks
+ * this map against {@link AUTHORITY_ATTENTION_REASON_DESCRIPTORS} in both
+ * directions.
  */
 export const AUTHORITY_ATTENTION_PRODUCER_REASONS = Object.freeze({
-  reservations: 'reservation-shortfall',
-  routing: 'line-unfulfillable',
-  acceptance: 'fulfillment-unaccepted',
-  'returns-restock': 'restock-blocked',
-  'sale-decrement': 'stock-decrement-blocked',
-} as const satisfies Record<AuthorityAttentionProducer, AuthorityAttentionReason>);
+  reservations: ['reservation-shortfall'],
+  routing: ['line-unfulfillable', 'routing-stuck'],
+  acceptance: ['fulfillment-unaccepted'],
+  'returns-restock': ['restock-blocked'],
+  'sale-decrement': ['stock-decrement-blocked'],
+} as const satisfies Record<AuthorityAttentionProducer, readonly AuthorityAttentionReason[]>);
 
 /** The state(s) `P` may persist. */
 export type AuthorityAttentionReasonFor<P extends AuthorityAttentionProducer> =
-  (typeof AUTHORITY_ATTENTION_PRODUCER_REASONS)[P];
+  (typeof AUTHORITY_ATTENTION_PRODUCER_REASONS)[P][number];
 
 /**
  * Every state with a writer — the complement of the derived four.

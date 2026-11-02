@@ -16,6 +16,7 @@
  * @module libs/core/src/fiscalization/application/services
  * @implements {IFiscalRegistrationService}
  */
+import { ModuleRef } from '@nestjs/core';
 import { Inject, Injectable } from '@nestjs/common';
 import { Logger } from '@openlinker/shared/logging';
 import {
@@ -56,13 +57,14 @@ import { FiscalRegistrationNotInDoubtException } from '../../domain/exceptions/f
 import { FiscalRegistrationRecordNotFoundException } from '../../domain/exceptions/fiscal-registration-record-not-found.exception';
 import { MissingIdempotencyKeyException } from '../../domain/exceptions/missing-idempotency-key.exception';
 import { MissingFiscalTaxRateException } from '../../domain/exceptions/missing-tax-rate.exception';
-import { isTaxRateEnforced } from '@openlinker/core/sales-documents';
+import { isTaxRateEnforced, notifySalesDocumentIssued } from '@openlinker/core/sales-documents';
 import type { SalesDocumentInFlight } from '@openlinker/core/sales-documents';
 import { OrderAlreadyRegisteredException } from '../../domain/exceptions/order-already-registered.exception';
 import { OrderAlreadyHasInvoiceException } from '../../domain/exceptions/order-already-has-invoice.exception';
 import { FiscalRegistrationContendedException } from '../../domain/exceptions/fiscal-registration-contended.exception';
 import { FiscalReconcileCheckFailedException } from '../../domain/exceptions/fiscal-reconcile-check-failed.exception';
 import { FISCAL_REGISTRATION_RECORD_REPOSITORY_TOKEN } from '../../fiscalization.tokens';
+import { readFiscalProviderFailureDetails } from '../../domain/types/fiscal-provider-failure-details.types';
 import {
   fiscalRegistrationIdempotencyKey,
   type FiscalRegistrationRequestAccepted,
@@ -200,6 +202,9 @@ export class FiscalRegistrationService implements IFiscalRegistrationService {
     private readonly invoiceService: IInvoiceService,
     @Inject(SYNC_JOBS_SERVICE_TOKEN)
     private readonly syncJobs: ISyncJobsService,
+    // #3554: resolves the sales-document-issued listener lazily. Optional in
+    // the type only so a hand-built instance (a spec) needs no container.
+    private readonly moduleRef?: ModuleRef,
   ) {}
 
   /**
@@ -623,9 +628,11 @@ export class FiscalRegistrationService implements IFiscalRegistrationService {
       failureMode: null,
       failureReason: null,
       errorMessage: null,
+      providerFailureDetails: null,
       leaseExpiresAt: null,
     };
     const resolved = await this.repo.updateOutcome(recordId, patch);
+    await this.reportRegistered(resolved);
     return { outcome: 'resolved', record: resolved };
   }
 
@@ -823,6 +830,9 @@ export class FiscalRegistrationService implements IFiscalRegistrationService {
         failureMode,
         failureReason: this.deriveFailureReason(error, failureMode),
         errorMessage: this.sanitizeError(error),
+        // The identifiers an operator quotes to the provider's support (#3843).
+        // Read for BOTH modes: an in-doubt answer can still name the attempt.
+        providerFailureDetails: readFiscalProviderFailureDetails(error),
         // The attempt is over either way; release the lease. The ROW is what
         // carries the in-doubt evidence forward - it is never deleted.
         leaseExpiresAt: null,
@@ -853,9 +863,25 @@ export class FiscalRegistrationService implements IFiscalRegistrationService {
       failureMode: null,
       failureReason: null,
       errorMessage: null,
+      providerFailureDetails: null,
       leaseExpiresAt: null,
     };
-    return this.repo.updateOutcome(recordId, patch);
+    const updated = await this.repo.updateOutcome(recordId, patch);
+    await this.reportRegistered(updated);
+    return updated;
+  }
+
+  /** #3554: a registered receipt is the order's originating document - `order.document_issued`. */
+  private async reportRegistered(record: { orderId: string; registeredAt: Date | null }): Promise<void> {
+    await notifySalesDocumentIssued(
+      this.moduleRef,
+      {
+        internalOrderId: record.orderId,
+        documentKind: 'fiscal-receipt',
+        issuedAt: record.registeredAt ?? new Date(),
+      },
+      this.logger
+    );
   }
 
   /**

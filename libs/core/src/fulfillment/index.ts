@@ -155,6 +155,12 @@ export * from './domain/types/fulfillment-work-link.types';
 export * from './domain/types/order-work-summary.types';
 export type { IFulfillmentWorkQueryService } from './application/interfaces/fulfillment-work-query.service.interface';
 
+export type {
+  IFulfillmentOrderCancellationService,
+  OrderCancellationWorkSummary,
+  OrderWorkCancellationResult,
+} from './application/interfaces/fulfillment-order-cancellation.service.interface';
+
 export { RoutingDecision } from './domain/entities/routing-decision.entity';
 export { RoutingDecisionAlreadyLiveError } from './domain/exceptions/routing-decision-already-live.error';
 export { RoutingDecisionNoLongerLiveError } from './domain/exceptions/routing-decision-no-longer-live.error';
@@ -217,6 +223,13 @@ export type { IFulfillmentVerificationService } from './application/interfaces/f
 export * from './domain/types/fulfillment-dispatch-timeout.types';
 export type { IFulfillmentDispatchTimeoutService } from './application/interfaces/fulfillment-dispatch-timeout.service.interface';
 export * from './application/types/fulfillment-dispatch-timeout-sweep.types';
+
+// The stranded-routing-decision reaper (#2731). The SERVICE INTERFACE, its I/O
+// and the pure TTL rules cross the barrel; the decision repository port's
+// reads stay behind the service.
+export * from './domain/types/routing-decision-ttl.types';
+export type { IRoutingDecisionReaperService } from './application/interfaces/routing-decision-reaper.service.interface';
+export * from './application/types/routing-decision-reaper.types';
 
 // The dispatch-relay reconcile pass (#2728). The pure rules, the read seam and
 // its I/O shapes; the re-drive itself is `orders`' `relayDispatch` and is

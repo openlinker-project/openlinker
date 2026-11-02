@@ -14,7 +14,10 @@ import { Logger } from '@openlinker/shared/logging';
 
 import { FULFILLMENT_WORK_REPOSITORY_TOKEN } from '../../fulfillment.tokens';
 import { FulfillmentWorkRepositoryPort } from '../../domain/ports/fulfillment-work-repository.port';
-import type { FulfillmentWork } from '../../domain/types/fulfillment-work.types';
+import type {
+  FulfillmentBuyerNoteAcknowledgement,
+  FulfillmentWork,
+} from '../../domain/types/fulfillment-work.types';
 import type { FulfillmentWorkLinkResolution } from '../../domain/types/fulfillment-work-link.types';
 import {
   summarizeOrderWork,
@@ -73,6 +76,25 @@ export class FulfillmentWorkQueryService implements IFulfillmentWorkQueryService
       if (summary) summaries.set(orderId, summary);
     }
     return summaries;
+  }
+
+  async listBuyerNoteAcknowledgements(
+    orderId: string
+  ): Promise<readonly FulfillmentBuyerNoteAcknowledgement[]> {
+    const works = await this.works.findByOrderId(orderId);
+    return works
+      .flatMap((work) =>
+        work.buyerNoteAcknowledgedAt === null
+          ? []
+          : [
+              {
+                workId: work.id,
+                acknowledgedAt: work.buyerNoteAcknowledgedAt,
+                acknowledgedByUserId: work.buyerNoteAcknowledgedByUserId,
+              },
+            ]
+      )
+      .sort((a, b) => a.acknowledgedAt.getTime() - b.acknowledgedAt.getTime());
   }
 
   async resolveLinkForOrder(orderId: string): Promise<FulfillmentWorkLinkResolution> {

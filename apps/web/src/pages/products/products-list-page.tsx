@@ -61,6 +61,7 @@ import {
   useProductsQuery,
 } from '../../features/products/hooks/use-products-query';
 import { useProductsTotal } from '../../features/products/hooks/use-products-total';
+import { formatAmount } from '../../shared/format/format-amount';
 import { formatPaginatedTotal } from '../../shared/hooks/use-paginated-total';
 import { ListPagination } from '../../shared/ui/list-pagination';
 import type {
@@ -89,7 +90,11 @@ import {
   STOCK_STATUS_BADGE_TONE,
   STOCK_STATUS_LABEL,
 } from '../../features/products';
+import { deriveAtpStatus } from '../../features/inventory';
 import { deriveProductStaleness } from '../../features/products/lib/product-staleness';
+import { CostCoverageBanner } from '../../features/products/components/cost-coverage-banner';
+import { useCostSummaryQuery } from '../../features/products/hooks/use-cost-coverage-query';
+import { useTrackMargin } from '../../features/analytics';
 import { ListingsCoveragePills } from './listings-coverage-pills';
 import { ProductRowDetail } from './product-row-detail';
 import { OfferProductPickerModal } from '../../features/listings/components/offer-product-picker-modal';
@@ -114,7 +119,7 @@ function formatPrice(price: number | null, currency: string | null): ReactNode {
     return <span className="text-muted">-</span>;
   }
   if (currency) {
-    return new Intl.NumberFormat(undefined, { style: 'currency', currency }).format(price);
+    return formatAmount(price, currency);
   }
   return (
     <span className="text-muted" title="Currency unknown">
@@ -204,6 +209,11 @@ export function ProductsListPage(): ReactElement {
   // the operator their catalogue.
   const omsAttention = useOmsAttentionQuery();
   const availabilityUnknown = omsAttention.forReason('availability-unknown');
+
+  // #3588 - margin reminders. Off means hidden, never degraded: cost snapshots
+  // keep being written, only the views and nudges go quiet.
+  const trackMargin = useTrackMargin();
+  const costSummary = useCostSummaryQuery({ enabled: trackMargin });
 
   const rawTaxRateState = searchParams.get('taxRateState');
   const taxRateState =
@@ -721,6 +731,39 @@ export function ProductsListPage(): ReactElement {
   );
 
   const renderStockCell = useCallback((product: Product): ReactNode => {
+    // #3569 - available to promise leads when the list carries it. `null` is
+    // "OpenLinker does not know", so it is never drawn as 0 or as Out of stock.
+    if (product.availableToPromise !== undefined) {
+      const atpStatus = deriveAtpStatus(product.availableToPromise);
+      return (
+        <span className="products-cell-stack" data-testid={`stock-list-cell-${product.sku ?? product.id}`}>
+          {product.availableToPromise === null ? (
+            <span className="av-unknown" title="OpenLinker doesn't know. Not zero.">
+              Not known
+            </span>
+          ) : (
+            <span>
+              <span className="products-stock-value mono tabular">{product.availableToPromise}</span>{' '}
+              <span className="text-muted" style={{ fontSize: '0.75rem' }}>
+                to sell
+              </span>
+            </span>
+          )}
+          {atpStatus === 'unknown' ? (
+            <StatusBadge tone="neutral" withDot compact>
+              Not known
+            </StatusBadge>
+          ) : (
+            <StatusBadge tone={STOCK_STATUS_BADGE_TONE[atpStatus]} withDot compact>
+              {STOCK_STATUS_LABEL[atpStatus]}
+            </StatusBadge>
+          )}
+          {product.totalAvailable !== undefined ? (
+            <span className="text-muted products-cell-sub tabular">master {product.totalAvailable}</span>
+          ) : null}
+        </span>
+      );
+    }
     if (product.totalAvailable === undefined) {
       return <span className="text-muted">-</span>;
     }
@@ -798,7 +841,11 @@ export function ProductsListPage(): ReactElement {
               <ProductThumbnail src={product.images?.[0]} name={product.name} />
               <span className="products-cell-stack">
                 <span className="ds-row" style={{ gap: 'var(--space-2)', alignItems: 'center' }}>
-                  <Link to={product.id} className="product-row__name product-row__name--link">
+                  <Link
+                    to={product.id}
+                    className="product-row__name product-row__name--link"
+                    data-testid={`stock-list-open-${product.sku ?? product.id}`}
+                  >
                     {product.name}
                   </Link>
                   {(product.variantCount ?? 0) > 1 ? (
@@ -969,6 +1016,15 @@ export function ProductsListPage(): ReactElement {
       eyebrow="Operations"
       title="Products"
       description="Catalog cockpit — search, stock health, and per-channel listings coverage. Select up to 100 products to bulk-create offers."
+      actions={
+        <Link
+          className="button button--secondary"
+          to="/products/cost-prices"
+          data-testid="products-open-cost-prices"
+        >
+          Cost prices
+        </Link>
+      }
     >
       {/* KPI tiles double as filters (orders-segments mechanic). */}
       <div className="ds-grid ds-grid--4 products-segments">
@@ -1071,6 +1127,9 @@ export function ProductsListPage(): ReactElement {
         ) : null}
       </div>
 
+      {/* #3588 - missing cost prices. Warning, per-session dismissal, gated on trackMargin. */}
+      {trackMargin ? <CostCoverageBanner /> : null}
+
       {/* #2255 — the sync suggestion. Four states, not one: idle, running,
           no-shop-connected, and dismissed. Dismissal is per SESSION, because a
           permanent one removes the only route to the remedy with no way back.
@@ -1130,6 +1189,7 @@ export function ProductsListPage(): ReactElement {
       <div className="toolbar products-toolbar">
         <Input
           aria-label="Search products by name or SKU"
+          data-testid="stock-list-search"
           placeholder="Search by name or SKU…"
           value={searchInput}
           onChange={(e) => {
@@ -1196,6 +1256,7 @@ export function ProductsListPage(): ReactElement {
           {STOCK_CHIPS.map((chip) => (
             <Chip
               key={chip.value}
+              data-testid={`stock-list-chip-${chip.value}`}
               tone={chip.value === 'low' ? 'warning' : 'error'}
               active={stock === chip.value}
               onClick={() => {
@@ -1222,6 +1283,19 @@ export function ProductsListPage(): ReactElement {
           <Chip tone="error" active={hideFullyStale} onClick={toggleHideStale}>
             Hide deleted at source
           </Chip>
+          {trackMargin && (costSummary.data?.variantsWithoutCost ?? 0) > 0 ? (
+            // The list API has no "variant without a cost" filter, so the chip
+            // opens the work list's "All without cost" tab instead of
+            // narrowing this table.
+            <Link
+              className="chip"
+              to="/products/cost-prices?tab=all"
+              data-testid="products-filter-no-cost"
+            >
+              No cost price{' '}
+              <span className="chip__count">{costSummary.data?.variantsWithoutCost}</span>
+            </Link>
+          ) : null}
           {/* A known total needs no page, so a pure re-sort - which leaves the
               count key untouched - keeps the number on screen instead of
               unmounting the span for a round trip (#2957 review, S2). */}
@@ -1390,6 +1464,8 @@ export function ProductsListPage(): ReactElement {
           <DataTable
             caption="Products"
             className="products-table"
+            tableTestId="stock-list-table"
+            rowAttributes={(product) => ({ 'data-testid': `stock-list-row-${product.sku ?? product.id}` })}
             columns={columns}
             rows={items}
             rowKey={(product) => product.id}
@@ -1456,6 +1532,10 @@ export function ProductsListPage(): ReactElement {
                 `${expanded ? 'Collapse' : 'Expand'} variant stock for ${product.name}`,
             }}
             cardView={{
+              // The same hooks the desktop table carries, so a stock check reads
+              // a card exactly as it reads a row.
+              listTestId: 'stock-list-cards',
+              attributes: (product) => ({ 'data-testid': `stock-list-row-${product.sku ?? product.id}` }),
               select: (product) => renderSelectCheckbox(product),
               title: (product) => (
                 <span className="product-row">
@@ -1487,7 +1567,22 @@ export function ProductsListPage(): ReactElement {
                       {formatPrice(product.price, product.currency)}
                     </span>
                   ) : null}
-                  {product.totalAvailable !== undefined ? (
+                  {product.availableToPromise !== undefined ? (
+                    <StatusBadge
+                      tone={
+                        deriveAtpStatus(product.availableToPromise) === 'unknown'
+                          ? 'neutral'
+                          : STOCK_STATUS_BADGE_TONE[deriveStockStatus(product.availableToPromise as number)]
+                      }
+                      withDot
+                      compact
+                      data-testid={`stock-list-cell-${product.sku ?? product.id}`}
+                    >
+                      {product.availableToPromise === null
+                        ? 'Not known'
+                        : `${product.availableToPromise} to sell · ${STOCK_STATUS_LABEL[deriveStockStatus(product.availableToPromise)]}`}
+                    </StatusBadge>
+                  ) : product.totalAvailable !== undefined ? (
                     <StatusBadge
                       tone={STOCK_STATUS_BADGE_TONE[deriveStockStatus(product.totalAvailable)]}
                       withDot

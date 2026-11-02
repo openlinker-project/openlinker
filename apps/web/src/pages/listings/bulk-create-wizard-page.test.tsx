@@ -13,7 +13,7 @@ function renderPage(
       <Route path="/listings/bulk-create/wizard" element={<BulkCreateWizardPage />} />
       <Route path="/products" element={<div>PRODUCTS_SENTINEL</div>} />
     </Routes>,
-    { apiClient, route },
+    { apiClient, route, dataRouter: true },
   );
 }
 

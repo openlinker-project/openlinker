@@ -61,6 +61,14 @@ export interface SyncAttemptJson {
 @Index('IDX_order_records_destinationRoutingBlockReason', ['destinationRoutingBlockReason'], {
   where: '"destinationRoutingBlockReason" IS NOT NULL',
 })
+// #3558: `listOrderIdsHeldForVariant` runs on every stock-change propagation,
+// so its held-order predicate needs an index. Partial on `IS NOT NULL` for the
+// same reason as the index above: it cannot go stale as the reason union grows,
+// and it is tiny, since held orders are rare. Declared here AND in the
+// migration, because the integration harness builds schema by `synchronize`.
+@Index('IDX_order_records_fulfillmentBlockReason', ['fulfillmentBlockReason'], {
+  where: '"fulfillmentBlockReason" IS NOT NULL',
+})
 export class OrderRecordOrmEntity {
   @PrimaryColumn({ type: 'text' })
   internalOrderId!: string;
@@ -160,6 +168,18 @@ export class OrderRecordOrmEntity {
   @Column({ type: 'varchar', nullable: true })
   @Index()
   fulfillmentState!: string | null;
+
+  /**
+   * Instant the `order.shipped` trigger fired for this order (#3554). `null` =
+   * not yet. The at-most-once claim for that trigger, written ONLY by
+   * `OrderRecordRepository.claimShippedNotification` and never by the ingestion
+   * upsert. It is a column rather than the `fulfillmentState` transition
+   * because the trigger may wait for the carrier's tracking number after the
+   * order has already turned shipped (InPost mints it minutes later, #1947), so
+   * "entered shipped" and "announced shipped" are two different moments.
+   */
+  @Column({ type: 'timestamptz', nullable: true })
+  shippedNotifiedAt!: Date | null;
 
   /**
    * Neutral `SalesDocumentGateBlockReason` naming why no fiscal document was
@@ -341,6 +361,67 @@ export class OrderRecordOrmEntity {
    */
   @Column({ type: 'varchar', length: 32, nullable: true })
   paymentMethod!: string | null;
+
+  /**
+   * The buyer's checkout note (#3538), three states in one column like
+   * `buyerTaxId`: `NULL` = not asserted or not stored, `''` = asserted none,
+   * otherwise the text. Round-trip through `encodeBuyerNoteColumn` /
+   * `decodeBuyerNoteColumn`.
+   *
+   * PII-gated at persistence: free text may carry a phone number or a parcel
+   * locker and bypasses the address redaction, so under `OL_STORE_PII=false` the
+   * text is not stored. Written only on the `'ready'` path
+   * (`upsertWithLineItems`), like `paymentMethod` above.
+   */
+  @Column({ type: 'text', nullable: true })
+  buyerNote!: string | null;
+
+  /**
+   * Whether a non-empty buyer note was reported (#3538). Indexed for the
+   * `?hasBuyerNote=` list filter. NOT PII-gated - it carries no content - so it
+   * is written even when {@link buyerNote} is not stored. Ready-path only, so an `awaiting_mapping` order with a note is invisible to `?hasBuyerNote=true` until it becomes ready.
+   */
+  @Index('IDX_order_records_hasBuyerNote')
+  @Column({ type: 'boolean', default: false })
+  hasBuyerNote!: boolean;
+
+  /**
+   * When an operator first marked the buyer note read (#3538). Sole writer
+   * `markBuyerNoteRead` (fill-once, guarded on `IS NULL`); excluded from the
+   * upsert so a re-ingestion cannot un-read a note.
+   */
+  @Column({ type: 'timestamptz', nullable: true })
+  buyerNoteReadAt!: Date | null;
+
+  /** Who marked it read; moves with `buyerNoteReadAt` in one statement. */
+  @Column({ type: 'varchar', nullable: true })
+  buyerNoteReadByUserId!: string | null;
+
+  /**
+   * When a real note text replaced a different stored one (N-22). Set only by
+   * the ingestion upsert's CASE clause; excluded from `toOrm`.
+   */
+  @Column({ type: 'timestamptz', nullable: true })
+  buyerNoteChangedAt!: Date | null;
+
+  /**
+   * Shipping / billing address country (#3538, D7), ISO-3166 alpha-2, `NULL`
+   * when the address is absent. Country is not PII and survives redaction.
+   * Ready-path only.
+   */
+  @Column({ type: 'varchar', length: 2, nullable: true })
+  shippingCountry!: string | null;
+
+  @Column({ type: 'varchar', length: 2, nullable: true })
+  billingCountry!: string | null;
+
+  /**
+   * Number of other earlier orders of the same resolved customer (#3538, D7),
+   * computed at ingestion; `NULL` when the order has no resolved customer.
+   * Ready-path only.
+   */
+  @Column({ type: 'integer', nullable: true })
+  buyerOrderCount!: number | null;
 
   /**
    * Per-order reporting-currency snapshot (#2124, ADR-040) — six columns
@@ -547,10 +628,11 @@ export class OrderRecordOrmEntity {
    * and then rolled back reads as "nothing recognised" rather than widening the
    * union at runtime.
    *
-   * **No index, deliberately.** #3485's `fulfillment.work.rerouteSweep` filters
-   * on it, keyset-paged by `internalOrderId`; at v1 volumes (a handful of held
-   * orders) the primary key serves that page. A partial index on the reroutable
-   * reasons is the follow-up if held-order counts grow.
+   * **Indexed since #3558**, partial on `IS NOT NULL`
+   * (`IDX_order_records_fulfillmentBlockReason`). #3485's reroute sweep could
+   * live without one, keyset-paged by `internalOrderId`, but #3558 reads held
+   * orders on every stock-change propagation, the hottest write path there is,
+   * and a sequential scan there is the #2943 cost.
    */
   @Column({ type: 'text', nullable: true })
   fulfillmentBlockReason!: string | null;

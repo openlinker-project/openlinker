@@ -10,7 +10,7 @@
  * @implements {OrderSourcePort}
  */
 
-import { PAYMENT_STATUS, readSourceBuyerTaxId } from '@openlinker/core/orders';
+import { PAYMENT_STATUS, readSourceBuyerNote, readSourceBuyerTaxId } from '@openlinker/core/orders';
 import type {
   OrderSourcePort,
   SourceOptionsReader,
@@ -21,6 +21,11 @@ import type {
   MappingOption,
   ReturnSourceReader,
   ReturnDecliner,
+  OrderBillingDocumentUploader,
+  OrderBillingDocumentLinker,
+  AttachBillingDocumentLinkInput,
+  UploadBillingDocumentInput,
+  UploadBillingDocumentResult,
 } from '@openlinker/core/orders';
 import type {
   IncomingReturn,
@@ -75,6 +80,8 @@ import {
   ALLEGRO_OTHER_CARRIER_ID,
 } from '../../domain/types/allegro-order-fulfillment.types';
 import { AllegroApiException } from '../../domain/exceptions/allegro-api.exception';
+import { AllegroNetworkException } from '../../domain/exceptions/allegro-network.exception';
+import { AllegroRateLimitException } from '../../domain/exceptions/allegro-rate-limit.exception';
 import { AllegroOrderDispatchRejectedException } from '../../domain/exceptions/allegro-order-dispatch-rejected.exception';
 import { deriveAllegroPaymentStatus, isAllegroCheckoutSettled } from './allegro-payment-status';
 import {
@@ -90,6 +97,10 @@ import type {
 } from '../../domain/types/allegro-customer-return.types';
 import { toIncomingReturn, toReturnFeedItem } from './allegro-customer-return.mapper';
 import { toNeutralTaxRate } from './allegro-tax-rate.mapper';
+import {
+  attachBillingDocumentLinkToAllegro,
+  uploadBillingDocumentToAllegro,
+} from '../util/upload-billing-document-to-allegro';
 
 type OrderFeedItem = OrderFeedOutput['items'][number];
 
@@ -124,7 +135,9 @@ export class AllegroOrderSourceAdapter
     OrderStatusWriteback,
     OrderFulfillmentReadback,
     ReturnSourceReader,
-    ReturnDecliner
+    ReturnDecliner,
+    OrderBillingDocumentUploader,
+    OrderBillingDocumentLinker
 {
   private readonly logger = new Logger(AllegroOrderSourceAdapter.name);
 
@@ -158,6 +171,11 @@ export class AllegroOrderSourceAdapter
    * `needs-sandbox-probe`. No refund is issued — OL is never the money book of
    * record (ADR-027).
    *
+   * **The cancel reason stays in OpenLinker (#3540).** `cancelled.reason` is NOT
+   * sent: the verified `PUT .../fulfillment` body carries a status only, and this
+   * tree knows of no reason field on it. Inventing one would be a guess at a wire
+   * contract; the operator's reason is recorded on the `order.cancel_request`.
+   *
    * `delivered` and `in-progress` (#3526) are DECLINED (`unsupported`), rather
    * than guessed at. The only verified members of the fulfillment-status enum
    * `putFulfillment` writes are `SENT` and `CANCELLED` — a seller-settable
@@ -174,7 +192,11 @@ export class AllegroOrderSourceAdapter
           return { outcome: 'applied' };
         }
         case 'cancelled': {
-          await this.putFulfillment(event.externalOrderId, ALLEGRO_FULFILLMENT_STATUS_CANCELLED);
+          // No retry ladder: the operator is waiting on this call, and a timeout
+          // is reported as pending rather than retried for minutes (C-28).
+          await this.putFulfillment(event.externalOrderId, ALLEGRO_FULFILLMENT_STATUS_CANCELLED, {
+            maxRetries: 0,
+          });
           return { outcome: 'applied' };
         }
         case 'delivered':
@@ -201,9 +223,13 @@ export class AllegroOrderSourceAdapter
       const detail = error instanceof Error ? error.message : String(error);
       this.logger.warn(
         `OrderStatusWriteback '${event.type}' rejected for Allegro order ` +
-          `${event.externalOrderId}: ${detail} (connection: ${this.connectionId})`,
+          `${event.externalOrderId}: ${detail} (connection: ${this.connectionId})`
       );
-      return { outcome: 'rejected', detail };
+      return {
+        outcome: 'rejected',
+        detail,
+        ...(isTransportFailure(error) ? { transient: true } : {}),
+      };
     }
   }
 
@@ -218,7 +244,7 @@ export class AllegroOrderSourceAdapter
   private async markSent(
     externalOrderId: string,
     trackingNumber?: string,
-    carrier?: DispatchCarrierHint,
+    carrier?: DispatchCarrierHint
   ): Promise<void> {
     // 1. Mark sent. Treat a 409 (stale optimistic-lock revision / already-sent)
     //    as success for idempotency. `needs-sandbox-probe`: exact 409 semantics.
@@ -227,7 +253,7 @@ export class AllegroOrderSourceAdapter
     } catch (error) {
       if (this.isAlreadySentOrStale(error)) {
         this.logger.debug(
-          `Allegro order ${externalOrderId} fulfillment already sent / stale revision — treating as success (connection: ${this.connectionId})`,
+          `Allegro order ${externalOrderId} fulfillment already sent / stale revision — treating as success (connection: ${this.connectionId})`
         );
       } else {
         throw this.toRejected(error, `mark Allegro order ${externalOrderId} sent`);
@@ -238,10 +264,11 @@ export class AllegroOrderSourceAdapter
     if (trackingNumber) {
       const { carrierId, carrierName } = this.resolveCarrier(carrier);
       try {
-        await this.httpClient.post(
-          `/order/checkout-forms/${externalOrderId}/shipments`,
-          { carrierId, waybill: trackingNumber, ...(carrierName ? { carrierName } : {}) },
-        );
+        await this.httpClient.post(`/order/checkout-forms/${externalOrderId}/shipments`, {
+          carrierId,
+          waybill: trackingNumber,
+          ...(carrierName ? { carrierName } : {}),
+        });
       } catch (error) {
         // A 409 here means this waybill is already attached — e.g. a retry after
         // a partial success where the fulfillment PUT landed but this POST's
@@ -254,7 +281,7 @@ export class AllegroOrderSourceAdapter
         // the `Shipment.waybillRelayedAt` claim, so this branch should be rare.
         if (this.isWaybillAlreadyAttached(error)) {
           this.logger.debug(
-            `Allegro order ${externalOrderId} already carries this waybill — treating as success (connection: ${this.connectionId})`,
+            `Allegro order ${externalOrderId} already carries this waybill — treating as success (connection: ${this.connectionId})`
           );
         } else {
           throw this.toRejected(error, `attach waybill to Allegro order ${externalOrderId}`);
@@ -269,8 +296,17 @@ export class AllegroOrderSourceAdapter
    * own their own success/failure semantics (idempotent-409 for SENT, surface for
    * CANCELLED), so this helper stays a thin one-liner with no error handling.
    */
-  private async putFulfillment(externalOrderId: string, status: string): Promise<void> {
-    await this.httpClient.put(`/order/checkout-forms/${externalOrderId}/fulfillment`, { status });
+  private async putFulfillment(
+    externalOrderId: string,
+    status: string,
+    options?: { maxRetries?: number }
+  ): Promise<void> {
+    const path = `/order/checkout-forms/${externalOrderId}/fulfillment`;
+    if (options === undefined) {
+      await this.httpClient.put(path, { status });
+      return;
+    }
+    await this.httpClient.put(path, { status }, options);
   }
 
   /**
@@ -304,9 +340,7 @@ export class AllegroOrderSourceAdapter
    * The caller is a read surface. A momentarily unreachable marketplace must
    * reach an operator as "we could not ask", not as a 500 they cannot act on.
    */
-  async readFulfillment(input: {
-    externalOrderId: string;
-  }): Promise<SourceFulfillmentReadback> {
+  async readFulfillment(input: { externalOrderId: string }): Promise<SourceFulfillmentReadback> {
     const checkoutFormId = input.externalOrderId;
     try {
       const response = await this.httpClient.get<AllegroCheckoutForm>(
@@ -343,7 +377,7 @@ export class AllegroOrderSourceAdapter
    * rendered on an operator's screen is worse than an absent one.
    */
   private async readWaybills(
-    checkoutFormId: string,
+    checkoutFormId: string
   ): Promise<SourceFulfillmentReadback['waybills']> {
     try {
       const response = await this.httpClient.get<AllegroOrderShipmentsResponse>(
@@ -351,8 +385,9 @@ export class AllegroOrderSourceAdapter
       );
       const shipments = response.data.shipments ?? [];
       return shipments
-        .filter((s): s is AllegroOrderShipment & { waybill: string } =>
-          typeof s.waybill === 'string' && s.waybill.trim() !== ''
+        .filter(
+          (s): s is AllegroOrderShipment & { waybill: string } =>
+            typeof s.waybill === 'string' && s.waybill.trim() !== ''
         )
         .map((s) => ({
           waybill: s.waybill,
@@ -391,7 +426,10 @@ export class AllegroOrderSourceAdapter
   }
 
   /** Map the neutral carrier hint → Allegro's fixed carrier vocab (OTHER+name fallback). */
-  private resolveCarrier(carrier?: DispatchCarrierHint): { carrierId: string; carrierName?: string } {
+  private resolveCarrier(carrier?: DispatchCarrierHint): {
+    carrierId: string;
+    carrierName?: string;
+  } {
     const platformType = carrier?.platformType;
     const known = platformType ? ALLEGRO_CARRIER_BY_PLATFORM_TYPE[platformType] : undefined;
     if (known) {
@@ -650,6 +688,18 @@ export class AllegroOrderSourceAdapter
    */
   readonly declineReasonCodes: readonly string[] = ALLEGRO_RETURN_REJECTION_CODES;
 
+  /** OrderBillingDocumentUploader (#3549): attach an issued document to the order. */
+  uploadBillingDocument(input: UploadBillingDocumentInput): Promise<UploadBillingDocumentResult> {
+    return uploadBillingDocumentToAllegro(this.httpClient, input);
+  }
+
+  /** OrderBillingDocumentLinker (#3549): attach a link to a document only offered as a url. */
+  attachBillingDocumentLink(
+    input: AttachBillingDocumentLinkInput
+  ): Promise<UploadBillingDocumentResult> {
+    return attachBillingDocumentLinkToAllegro(this.httpClient, input);
+  }
+
   /**
    * Ask Allegro to reject a customer return's refund.
    *
@@ -736,10 +786,7 @@ export class AllegroOrderSourceAdapter
    * check — and the cap TRUNCATES rather than refusing, because a long operator
    * comment is not a reason to abandon a decline the operator meant.
    */
-  private resolveRejectionReason(
-    command: ReturnDeclineCommand,
-    code: string
-  ): string | null {
+  private resolveRejectionReason(command: ReturnDeclineCommand, code: string): string | null {
     const comment = command.comment?.trim() ?? '';
 
     if (comment.length === 0) {
@@ -988,16 +1035,20 @@ export class AllegroOrderSourceAdapter
         deliverySmart: checkoutForm.delivery?.smart,
         // #3636: only a positive `ALLEGRO` is asserted; `SELLER` or an absent
         // provider leave the fact unset rather than claiming the seller ships.
-        ...(checkoutForm.fulfillment?.provider?.id === 'ALLEGRO' && { fulfilledBySource: true as const }),
+        ...(checkoutForm.fulfillment?.provider?.id === 'ALLEGRO' && {
+          fulfilledBySource: true as const,
+        }),
         paymentStatus,
         // How the buyer pays (#3294), from the same `payment.type` the status
         // is derived from - mapped only where unambiguous, otherwise `unknown`.
         paymentMethod: deriveAllegroPaymentMethod(checkoutForm.payment),
+        // The buyer's checkout message (#3538). Allegro always returns the full
+        // checkout form, so an absent or blank `messageToSeller` is a positive
+        // "the buyer left none" (`null`), not an unread field.
+        buyerNote: readSourceBuyerNote(checkoutForm.messageToSeller) ?? null,
         // Allegro's own payment type (#3474) - the key of the operator's
         // payment mapping. Opaque to core; omitted when Allegro sent none.
-        ...(checkoutForm.payment.type
-          ? { sourcePaymentMethod: checkoutForm.payment.type }
-          : {}),
+        ...(checkoutForm.payment.type ? { sourcePaymentMethod: checkoutForm.payment.type } : {}),
         codToCollect,
         dispatchTime: this.resolveDispatchTime(checkoutForm),
         placedAt,
@@ -1382,6 +1433,20 @@ export class AllegroOrderSourceAdapter
     }
     return result;
   }
+}
+
+/**
+ * A failure where Allegro never gave an answer (timeout, reset, 5xx, throttle):
+ * the write may or may not have landed, so it is not a refusal.
+ */
+function isTransportFailure(error: unknown): boolean {
+  if (error instanceof AllegroNetworkException || error instanceof AllegroRateLimitException) {
+    return true;
+  }
+  return (
+    error instanceof AllegroApiException &&
+    (error.statusCode === undefined || error.statusCode >= 500)
+  );
 }
 
 function mapAllegroEventType(type: string): OrderFeedEventType {

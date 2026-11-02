@@ -103,7 +103,12 @@ import type {
   UpsertCustomerCommand,
   UpsertCustomerResult,
 } from '@openlinker/core/invoicing';
-import { InvoiceRecord, UnsupportedRegulatoryDocumentKindError } from '@openlinker/core/invoicing';
+import {
+  InvoiceRecord,
+  RegulatoryDocumentNotReadyError,
+  UnsupportedRegulatoryDocumentKindError,
+} from '@openlinker/core/invoicing';
+import { renderKsefInvoicePdf } from '../pdf/ksef-invoice-pdf.renderer';
 import type { IKsefHttpClient } from '../http/ksef-http-client.interface';
 import { resolveKsefQrBaseUrl } from '../http/ksef-hosts';
 import type { KsefEnvironment } from '../../domain/types/ksef-connection.types';
@@ -1270,11 +1275,13 @@ export class KsefInvoicingAdapter
    * bytes, never a KSeF/UPO wire detail.
    */
   /**
-   * KSeF produces the UPO only: it has no server-side rendering, so `rendered`
-   * is declared unsupported and a surface never offers it (#3648).
+   * KSeF itself produces the UPO only, but OpenLinker renders its own PDF of the
+   * FA(3) it submitted (#3620, D30), so `rendered` is offered too. Whether a
+   * given record is READY for it is a separate question: before the KSeF number
+   * is assigned the read reports `RegulatoryDocumentNotReadyError`.
    */
   supportedRegulatoryDocumentKinds(): readonly RegulatoryDocumentKind[] {
-    return ['confirmation'];
+    return ['confirmation', 'rendered'];
   }
 
   /**
@@ -1296,7 +1303,10 @@ export class KsefInvoicingAdapter
     const issueDate = /<P_1>(\d{4})-(\d{2})-(\d{2})<\/P_1>/.exec(xml.toString('utf8'));
     if (issueDate === null) return Promise.resolve(null);
 
-    const hash = createHash('sha256').update(xml).digest('base64url');
+    // The hash persisted at issue (#3620) is the one taken from the bytes that
+    // were sent; only a row issued before that column existed falls back to
+    // hashing its stored bytes, which yields the same value.
+    const hash = record.sourceDocumentHash ?? createHash('sha256').update(xml).digest('base64url');
     const [, year, month, day] = issueDate;
     const nip = encodeURIComponent(this.seller.nip);
     return Promise.resolve({
@@ -1309,9 +1319,12 @@ export class KsefInvoicingAdapter
     kind: RegulatoryDocumentKind = 'confirmation',
   ): Promise<RegulatoryDocument> {
     // `source` is the persisted FA(3) XML served by the core service from the
-    // record snapshot, never via this adapter. `rendered` (server-side HTML/PDF
-    // visualization) is not a KSeF API capability — integrators render the FA(3)
-    // XML client-side via the official XSLT. Both are soft 409s, not failures.
+    // record snapshot, never via this adapter - a soft 409 here, not a failure.
+    // `rendered` is not a KSeF API capability: OpenLinker renders it itself from
+    // the XML it submitted (#3620).
+    if (kind === 'rendered') {
+      return this.renderInvoicePdf(record);
+    }
     if (kind !== 'confirmation') {
       throw new UnsupportedRegulatoryDocumentKindError(kind);
     }
@@ -1328,6 +1341,37 @@ export class KsefInvoicingAdapter
       content: response.data,
       contentType: response.contentType.length > 0 ? response.contentType : DEFAULT_UPO_CONTENT_TYPE,
     };
+  }
+
+  /**
+   * The PDF visualisation of the submitted FA(3) (#3620). Only a CLEARED invoice
+   * has one: the KSeF number is the QR's caption and the legal element it exists
+   * to carry, so before it is assigned this refuses rather than render a document
+   * with an empty place where that element belongs. Everything it draws comes from
+   * the persisted XML bytes and the persisted hash - never from re-serialised
+   * content - so the same invoice always renders to the same bytes.
+   */
+  private async renderInvoicePdf(record: InvoiceRecordType): Promise<RegulatoryDocument> {
+    const ksefNumber = record.clearanceReference;
+    if (
+      record.regulatoryStatus !== 'accepted' ||
+      record.sourceDocument === null ||
+      ksefNumber === null ||
+      !KSEF_NUMBER_PATTERN.test(ksefNumber)
+    ) {
+      throw new RegulatoryDocumentNotReadyError('rendered');
+    }
+    const link = await this.getVerificationLink(record);
+    if (link === null) {
+      throw new RegulatoryDocumentNotReadyError('rendered');
+    }
+    const xml = Buffer.from(record.sourceDocument.contentBase64, 'base64').toString('utf8');
+    const content = await renderKsefInvoicePdf({
+      xml,
+      ksefNumber,
+      verificationUrl: link.url,
+    });
+    return { content, contentType: 'application/pdf' };
   }
 
   /**

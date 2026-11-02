@@ -231,6 +231,13 @@ export class InvoiceRecordOrmEntity {
   sourceDocument!: StoredDocument | null;
 
   /**
+   * Base64URL SHA-256 of the `sourceDocument` bytes (#3620), written with it at
+   * issue time. `null` for rows issued before the column existed.
+   */
+  @Column({ type: 'text', nullable: true })
+  sourceDocumentHash!: string | null;
+
+  /**
    * Neutral issuance-time line snapshot (#1297) — `{ buyer, currency, lines }`
    * as issued, so a later correction diffs its deltas against the issued lines
    * rather than the order's current state. `null` for pre-migration rows.

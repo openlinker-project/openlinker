@@ -164,6 +164,15 @@ export class AllegroHttpClient implements IAllegroHttpClient {
     return this.request<T>('POST', path, body, options, { requestContentType: contentType });
   }
 
+  async putBinary<T = unknown>(
+    path: string,
+    contentType: string,
+    body: Uint8Array,
+    options?: Omit<AllegroHttpRequestOptions, 'method' | 'body'>
+  ): Promise<AllegroHttpResponse<T>> {
+    return this.request<T>('PUT', path, body, options, { requestContentType: contentType });
+  }
+
   async postMultipart<T = unknown>(
     path: string,
     parts: AllegroMultipartPart[],
@@ -215,8 +224,9 @@ export class AllegroHttpClient implements IAllegroHttpClient {
   ): Promise<AllegroHttpResponse<T>> {
     let lastError: Error | null = null;
     let delay = this.retryConfig.initialDelayMs;
+    const maxRetries = options?.maxRetries ?? this.retryConfig.maxRetries;
 
-    for (let attempt = 0; attempt <= this.retryConfig.maxRetries; attempt++) {
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
       try {
         return await this.executeRequest<T>(method, path, body, options, mode);
       } catch (error: unknown) {
@@ -235,10 +245,10 @@ export class AllegroHttpClient implements IAllegroHttpClient {
 
         // Handle rate limit (429) - respect Retry-After header
         if (error instanceof AllegroRateLimitException) {
-          if (attempt < this.retryConfig.maxRetries) {
+          if (attempt < maxRetries) {
             const retryAfter = error.retryAfter || delay;
             this.logger.warn(
-              `Rate limit exceeded (attempt ${attempt + 1}/${this.retryConfig.maxRetries + 1}), retrying after ${retryAfter}ms`
+              `Rate limit exceeded (attempt ${attempt + 1}/${maxRetries + 1}), retrying after ${retryAfter}ms`
             );
             await this.sleep(retryAfter);
             delay = Math.min(
@@ -294,9 +304,9 @@ export class AllegroHttpClient implements IAllegroHttpClient {
         }
 
         // Retry on server errors (5xx) or network errors
-        if (attempt < this.retryConfig.maxRetries) {
+        if (attempt < maxRetries) {
           this.logger.warn(
-            `Request failed (attempt ${attempt + 1}/${this.retryConfig.maxRetries + 1}), retrying in ${delay}ms: ${lastError.message}`
+            `Request failed (attempt ${attempt + 1}/${maxRetries + 1}), retrying in ${delay}ms: ${lastError.message}`
           );
           await this.sleep(delay);
           delay = Math.min(delay * this.retryConfig.backoffMultiplier, this.retryConfig.maxDelayMs);

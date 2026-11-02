@@ -244,6 +244,12 @@ export const JobTypeValues = [
   // Invoicing (core-owned policy; executed by worker — OL #1120)
   'invoicing.issue',
 
+  // Attaches an issued invoice's document to the marketplace order it was issued
+  // for (#3549). Best-effort and never part of issuance, so it is its own job.
+  // `connectionId` is the order's SOURCE connection (the marketplace), never the
+  // invoicing connection - that is the scope whose rate limit the call spends.
+  'invoicing.marketplaceUpload',
+
   // Fiscalization (core-owned policy; executed by worker — #2156, ADR-041 decision 7)
   'fiscalization.register',
 
@@ -305,6 +311,13 @@ export const JobTypeValues = [
   // stock arrives. Global scope under the nil-UUID system connection id, like
   // its timeout- and relay-sweep siblings.
   'fulfillment.work.rerouteSweep',
+
+  // The stranded-routing-decision reaper (#2731). Closes a routing decision left
+  // `live` after an in-doubt `route()` once it is past the routing-decision TTL,
+  // then re-enters routing for its order by enqueueing `fulfillment.work.route`
+  // under the decision's own router. Global scope under the nil-UUID system
+  // connection id, like the other fulfilment sweeps.
+  'fulfillment.routing.reapSweep',
   // The lost-enqueue backstop for `inventory.saleDecrement` (#3629, epic #3460).
   // Both producers swallow an enqueue failure by design (the routing intercept is
   // fail-open), and the decrement job has no cron, so a lost enqueue leaves the

@@ -71,7 +71,9 @@ import type {
   RegisterTransactionCommand,
 } from '@openlinker/core/fiscalization';
 import {
+  IOrderDocumentEmailService,
   IOrderRecordService,
+  ORDER_DOCUMENT_EMAIL_SERVICE_TOKEN,
   ORDER_RECORD_SERVICE_TOKEN,
   OrderSnapshotUnavailableError,
   orderFromReadySnapshot,
@@ -85,6 +87,11 @@ import { FiscalRegistrationResponseDto } from './dto/fiscal-registration-respons
 import { ReconcileFiscalRegistrationResponseDto } from './dto/reconcile-fiscal-registration-response.dto';
 import { RegisterFiscalTransactionRequestDto } from './dto/register-fiscal-transaction-request.dto';
 import { Roles } from '../../auth/decorators/roles.decorator';
+import { CurrentUser } from '../../auth/decorators/current-user.decorator';
+import { AuthenticatedUser } from '../../auth/auth.types';
+import { toDocumentEmailException } from '../../common/http/document-email-refusal';
+import { SendInvoiceEmailResponseDto } from '../../invoicing/http/dto/send-invoice-email-response.dto';
+import { SendReceiptEmailRequestDto } from './dto/send-receipt-email-request.dto';
 
 /**
  * The exactly-once key for this surface.
@@ -116,6 +123,8 @@ export class FiscalizationController {
     private readonly orders: IOrderRecordService,
     @Inject(CONNECTION_PORT_TOKEN)
     private readonly connectionPort: ConnectionPort,
+    @Inject(ORDER_DOCUMENT_EMAIL_SERVICE_TOKEN)
+    private readonly documentEmails: IOrderDocumentEmailService,
   ) {}
 
   /**
@@ -383,6 +392,45 @@ export class FiscalizationController {
     }
   }
 
+  @Roles('admin')
+  @Post('fiscal-registrations/:id/send-email')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Email a registered receipt to the buyer (#3550)',
+    description:
+      "Sent by OpenLinker's mailer. The message is OpenLinker's own SUMMARY of the receipt plus " +
+      'the link to the legal e-receipt at the vendor, and says in terms that the summary is not ' +
+      'the receipt. A registration that is not registered yet, or has no e-receipt link, is ' +
+      'refused. The recipient defaults to the buyer\'s address on the order and can be edited. ' +
+      'A refusal carries a readable `message` and a machine `code`. ' +
+      'At-least-once: there is no idempotency key, so a retried request (a double submit, a ' +
+      'client retry after a timeout) sends the document again. Do not drive this route from ' +
+      'an automation that expects at-most-once.',
+  })
+  @ApiResponse({ status: 200, type: SendInvoiceEmailResponseDto })
+  @ApiResponse({ status: 400, description: 'No recipient, or the recipient is not an email address' })
+  @ApiResponse({ status: 404, description: 'Registration record not found' })
+  @ApiResponse({ status: 409, description: 'The registration is not registered yet' })
+  @ApiResponse({ status: 422, description: 'Registration failed, or there is no e-receipt link' })
+  @ApiResponse({ status: 502, description: 'The mailer failed' })
+  @ApiResponse({ status: 503, description: 'Email sending is not configured on this server' })
+  async sendReceiptEmail(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: SendReceiptEmailRequestDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ): Promise<SendInvoiceEmailResponseDto> {
+    const result = await this.documentEmails.sendReceiptEmail({
+      registrationId: id,
+      recipient: dto.recipient,
+      locale: dto.locale,
+      actorUserId: user.id,
+    });
+    if (result.status === 'refused') {
+      throw toDocumentEmailException(result);
+    }
+    return { delivered: true, recipient: result.recipient, sentVia: result.sentVia };
+  }
+
   /**
    * Rehydrate the typed `Order` from the persisted snapshot. A snapshot that
    * cannot be rehydrated is a 422 with a generic message - never an echo of the
@@ -484,6 +532,19 @@ export class FiscalizationController {
       artefacts: record.artefacts,
       failureMode: record.failureMode,
       failureReason: record.failureReason,
+      // The web UI hides these behind orders:write, but that is presentation,
+      // not authorization: every role that can read the record receives them,
+      // so only PII-free codes and non-secret tokens may ever live here.
+      // Copied field by field so a key added to the core type later cannot
+      // reach a response without being named here first.
+      providerFailureDetails: record.providerFailureDetails
+        ? {
+            errorCode: record.providerFailureDetails.errorCode,
+            deviceErrorCode: record.providerFailureDetails.deviceErrorCode,
+            documentId: record.providerFailureDetails.documentId,
+            hint: record.providerFailureDetails.hint,
+          }
+        : null,
       inFlight: record.isLeaseLive(now),
       createdAt: record.createdAt.toISOString(),
       updatedAt: record.updatedAt.toISOString(),

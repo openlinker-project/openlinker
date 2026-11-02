@@ -1418,6 +1418,11 @@ export interface InvoiceOutcomePatch {
    */
   sourceDocument?: StoredDocument | null;
   /**
+   * Base64URL SHA-256 of {@link sourceDocument}'s bytes (#3620). Set in the same
+   * patch as `sourceDocument`, so it inherits that column's write-once guard.
+   */
+  sourceDocumentHash?: string | null;
+  /**
    * Issuance-time line snapshot (#1297). Set once on a successful `issued`
    * outcome — from the issue command for `issueInvoice`, or the post-correction
    * ("after") lines for `issueCorrection`. NOT write-once at the persistence

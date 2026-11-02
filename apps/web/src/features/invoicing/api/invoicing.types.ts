@@ -290,12 +290,16 @@ export type InvoiceEmailLocale = (typeof InvoiceEmailLocaleValues)[number];
 export interface SendInvoiceEmailInput {
   locale?: InvoiceEmailLocale;
   sendCopy?: boolean;
+  /** Edited address (#3550). Absent means the order's own buyer address. */
+  recipient?: string;
 }
 
 /** `POST /invoices/:invoiceId/send-email` response (#1353). */
 export interface SendInvoiceEmailResult {
   delivered: boolean;
   recipient: string | null;
+  /** Who delivered it (#3550): the provider itself or OpenLinker's mailer. */
+  sentVia?: 'provider' | 'openlinker';
 }
 
 /** `POST /invoices/bulk-issue` request body (#1355). Fans out over the single
@@ -412,4 +416,37 @@ export interface IssuedDocumentContent {
    * treat these lines as non-authoritative when this is false.
    */
   linesIndexedByCorrection: boolean;
+}
+
+// ── Marketplace document upload (#3549) ──────────────────────────────────
+
+/**
+ * Mirrors `InvoiceMarketplaceUploadStatusValues` in core. The browser cannot
+ * import `@openlinker/core` (#591); an unrecognised value renders as a neutral
+ * unknown rather than being assumed to be one of these.
+ */
+export type InvoiceMarketplaceUploadStatus =
+  | 'pending'
+  | 'uploaded'
+  | 'failed'
+  | 'unsupported'
+  | 'no-file';
+
+export type InvoiceMarketplaceUploadFailureCode =
+  | 'rejected'
+  | 'transient'
+  | 'adapter-unresolved'
+  | 'order-unmapped';
+
+export interface InvoiceMarketplaceUploadEntry {
+  targetConnectionId: string;
+  status: InvoiceMarketplaceUploadStatus;
+  lastFailureCode: InvoiceMarketplaceUploadFailureCode | null;
+  attempts: number;
+  uploadedAt: string | null;
+}
+
+export interface InvoiceMarketplaceUploadState {
+  invoiceId: string;
+  uploads: InvoiceMarketplaceUploadEntry[];
 }

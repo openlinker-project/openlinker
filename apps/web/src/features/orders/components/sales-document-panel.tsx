@@ -77,12 +77,14 @@ import { captureDemoEvent } from '../../demo';
 import { useTranslation } from '../../../shared/i18n';
 import { useToast } from '../../../shared/ui/toast-provider';
 import { Alert } from '../../../shared/ui/alert';
+import { AccessGate } from '../../../shared/ui/access-gate';
 import { Button } from '../../../shared/ui/button';
 import { Select } from '../../../shared/ui/select';
 import { KeyValueList, type KeyValueItem } from '../../../shared/ui/key-value-list';
 import { ApiError } from '../../../shared/api/api-error';
 import { usePlatform } from '../../../shared/plugins';
 import { ReadOnlyLock } from '../../../shared/ui/read-only-lock';
+import { SendDocumentEmail } from './send-document-email';
 import { useWriteAccess, useIsAdmin } from '../../../shared/auth/use-permission';
 import { DEMO_READ_ONLY_ACTION_MESSAGE } from '../../../shared/config/demo-mode';
 import { formatAmount } from '../../../shared/format/format-amount';
@@ -118,6 +120,7 @@ import {
   DocumentTypeSelect,
   DOCUMENT_TYPE_LABEL_FALLBACK,
   InvoicePdfLink,
+  InvoiceMarketplaceUploadStatus,
   resolveSalesDocumentBlockCopy,
   resolveMissingTaxRateScope,
   splitShippingAcrossRates,
@@ -138,6 +141,8 @@ import {
   deriveFiscalReceiptDisplayStatus,
   canRetryFiscalReceipt,
   resolveFiscalFailureCopy,
+  FiscalFailureDetails,
+  CopyFiscalFailureDetailsButton,
   FiscalArtefactList,
   type FiscalRegistrationRecord,
 } from '../../fiscalization';
@@ -884,6 +889,25 @@ export function SalesDocumentPanel({ order }: SalesDocumentPanelProps): ReactEle
             <div className="sales-document-panel__body">
               <DocumentLifecycle kind="invoice" steps={resolveInvoiceLifecycleSteps(invoice, t)} />
               <KeyValueList items={buildInvoiceFieldItems(invoice, showRegulatoryBadge, t)} />
+              {/* #3549 - did the document reach the marketplace order? */}
+              <InvoiceMarketplaceUploadStatus invoiceId={invoice.id} />
+              {/* #3551 - one neutral email control for every provider. */}
+              <SendDocumentEmail
+                kind="invoice"
+                documentId={invoice.id}
+                internalOrderId={order.internalOrderId}
+                notReadyReason={
+                  // The mailer refuses a document the authority has not settled, so
+                  // the card says why instead of offering a send that is refused.
+                  invoice.regulatoryStatus === 'submitted' ||
+                  invoice.regulatoryStatus === 'pending-submission'
+                    ? t(
+                        'salesDocument.email.notCleared',
+                        'Available once the tax authority confirms the invoice.',
+                      )
+                    : null
+                }
+              />
               {InvoiceDetailSection && invoicingConnection ? (
                 <InvoiceDetailSection invoice={invoice} connection={invoicingConnection} />
               ) : null}
@@ -1305,6 +1329,18 @@ export function SalesDocumentPanel({ order }: SalesDocumentPanelProps): ReactEle
                   "Why this document?" connection lock (unlike the invoice
                   slot's InvoiceConnectionLock), so this is the receipt's only
                   routing-rationale disclosure. */}
+              {/* #3551 - the mail carries OpenLinker's own summary, not the legal receipt. */}
+              <p className="sales-document-panel__notice" data-testid="receipt-email-summary-note">
+                {t(
+                  'fiscalReceipt.email.summaryNote',
+                  "The email carries OpenLinker's summary and a link to the legal e-receipt at the provider.",
+                )}
+              </p>
+              <SendDocumentEmail
+                kind="fiscal-receipt"
+                documentId={fiscalRecord.id}
+                internalOrderId={order.internalOrderId}
+              />
               {whyKindDisclosure}
               {/* #2559 — a registered receipt is final. OpenLinker never issues
                   a fiscal correction, so this state must not imply one is
@@ -1320,33 +1356,67 @@ export function SalesDocumentPanel({ order }: SalesDocumentPanelProps): ReactEle
 
           {fiscalSettled && fiscalDisplayStatus === 'rejected' && fiscalRecord ? (
             <>
-              <Alert tone="error">
-                {resolveFiscalFailureCopy(fiscalRecord, t)}{' '}
-                {t(
-                  'fiscalReceipt.rejected.retrySafe',
-                  'Nothing was created, so registering again is safe.',
-                )}
-              </Alert>
-              <div className="sales-document-panel__actions">
-                <Button
-                  tone="secondary"
-                  disabled={registerMutation.isPending || !canRetryFiscalReceipt(fiscalRecord)}
-                  onClick={() => handleRegister(fiscalRecord.connectionId)}
+              {/* #3843: the cause and the provider's identifiers are for someone
+                  who acts on the order; a read-only role gets the fact alone. */}
+              <AccessGate
+                require="orders:write"
+                fallback={
+                  <Alert tone="error">
+                    {t(
+                      'fiscalReceipt.rejected.readOnly',
+                      'The provider refused this sale and nothing was registered. A user with order write access can see the details and register it again.',
+                    )}
+                  </Alert>
+                }
+              >
+                <Alert
+                  tone="error"
+                  action={<CopyFiscalFailureDetailsButton details={fiscalRecord.providerFailureDetails} />}
                 >
-                  {t('fiscalReceipt.action.retry', 'Register receipt')}
-                </Button>
-              </div>
+                  <p>
+                    {resolveFiscalFailureCopy(fiscalRecord, t)}{' '}
+                    {t(
+                      'fiscalReceipt.rejected.retrySafe',
+                      'Nothing was created, so registering again is safe.',
+                    )}
+                  </p>
+                  <FiscalFailureDetails details={fiscalRecord.providerFailureDetails} />
+                </Alert>
+              </AccessGate>
+              {/* Registering is admin-only on the API, so another role is never
+                  shown a control that would answer 403; demo mode keeps it
+                  visible but disabled, like every other write here. */}
+              {isAdmin || demoMode ? (
+                <div className="sales-document-panel__actions">
+                  <Button
+                    tone="secondary"
+                    disabled={
+                      fiscalDemoReadOnly ||
+                      registerMutation.isPending ||
+                      !canRetryFiscalReceipt(fiscalRecord)
+                    }
+                    onClick={() => handleRegister(fiscalRecord.connectionId)}
+                  >
+                    {t('fiscalReceipt.action.retry', 'Register receipt')}
+                  </Button>
+                </div>
+              ) : null}
             </>
           ) : null}
 
           {fiscalSettled && fiscalDisplayStatus === 'in-doubt' && fiscalRecord ? (
             <>
               <Alert tone="warning" title={t('fiscalReceipt.inDoubt.title', 'This sale may already be registered')}>
-                {resolveFiscalFailureCopy(fiscalRecord, t)}{' '}
-                {t(
-                  'fiscalReceipt.inDoubt.noRetry',
-                  'Registering again could produce a second fiscal receipt, so OpenLinker will not do that on its own.',
-                )}
+                <p>
+                  {resolveFiscalFailureCopy(fiscalRecord, t)}{' '}
+                  {t(
+                    'fiscalReceipt.inDoubt.noRetry',
+                    'Registering again could produce a second fiscal receipt, so OpenLinker will not do that on its own.',
+                  )}
+                </p>
+                <AccessGate require="orders:write">
+                  <FiscalFailureDetails details={fiscalRecord.providerFailureDetails} />
+                </AccessGate>
               </Alert>
               <div className="sales-document-panel__actions">
                 <Button tone="secondary" disabled={reconcileMutation.isPending} onClick={handleReconcile}>

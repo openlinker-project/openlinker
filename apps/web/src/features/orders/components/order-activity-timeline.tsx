@@ -23,7 +23,7 @@ import {
   type OrderAmendmentChange,
   type OrderHold,
 } from '../api/orders.types';
-import { holdReasonLabel } from '../lib/order-hold.types';
+import { holdReasonLabel, isReleasedByOrderCancel } from '../lib/order-hold.types';
 import type { StatusBadgeTone } from '../../../shared/ui/status-badge';
 import {
   AUTOMATION_FAILURE_COPY,
@@ -157,6 +157,16 @@ interface OrderActivityTimelineProps {
    * every existing caller compiles untouched and renders no automation events.
    */
   automationRuns?: readonly AutomationRun[];
+  /**
+   * Rows appended AFTER the merged history, undated ones included (#3541).
+   *
+   * For a feature whose newest facts are current-state rather than dated - the
+   * order cancel's "Refund not confirmed yet" has no instant to sort on and
+   * must not be given one. `extraEvents` cannot carry it: that prop is dated by
+   * type so the merge has a defensible position for every row. Optional; absent
+   * leaves the rendered order identical to before the prop existed.
+   */
+  trailingEvents?: TimelineEvent[];
 }
 
 const STATUS_PAST_TENSE: Record<OrderSyncStatusValue, string> = {
@@ -257,6 +267,7 @@ function describePlacer(hold: OrderHold): string | undefined {
 
 /** Who released it. See {@link describePlacer} — same rule, same reason. */
 function describeReleaser(hold: OrderHold): string | undefined {
+  if (isReleasedByOrderCancel(hold)) return 'OpenLinker (order cancelled)';
   return hold.releasedByUserId ? 'operator' : undefined;
 }
 
@@ -625,6 +636,7 @@ export function OrderActivityTimeline({
   extraEvents,
   holds,
   automationRuns,
+  trailingEvents,
 }: OrderActivityTimelineProps): ReactElement {
   const authored = useMemo(
     () =>
@@ -669,8 +681,8 @@ export function OrderActivityTimeline({
   );
 
   const events = useMemo(
-    () => mergeTimelineEvents(authored, extraEvents ?? []),
-    [authored, extraEvents],
+    () => [...mergeTimelineEvents(authored, extraEvents ?? []), ...(trailingEvents ?? [])],
+    [authored, extraEvents, trailingEvents],
   );
 
   if (events.length === 0) {
