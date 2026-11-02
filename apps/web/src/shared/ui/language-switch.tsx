@@ -347,10 +347,10 @@ export function LanguageSwitch({
               </div>
               {/* The Beta option's description for screen readers. Kept outside the
                 rows: a row's grid would otherwise give it a cell of its own. */}
-            <span id={betaHintId} className="sr-only">
-              {copy.betaHint}
-            </span>
-            <motion.ul
+              <span id={betaHintId} className="sr-only">
+                {copy.betaHint}
+              </span>
+              <motion.ul
                 ref={listRef}
                 id={listId}
                 className="language-switch__list"
@@ -372,7 +372,7 @@ export function LanguageSwitch({
                       role="option"
                       lang={option.code}
                       aria-selected={selected}
-                    aria-describedby={option.beta ? betaHintId : undefined}
+                      aria-describedby={option.beta ? betaHintId : undefined}
                       className={['language-switch__option', index === focus ? 'is-focus' : '']
                         .filter(Boolean)
                         .join(' ')}
