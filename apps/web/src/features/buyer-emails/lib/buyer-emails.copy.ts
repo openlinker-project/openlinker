@@ -18,7 +18,9 @@ export const BUYER_EMAIL_TEMPLATE_COPY: Record<
   },
   shipped: {
     label: 'Shipped',
-    description: "Sent when the order's parcels are handed to the carrier.",
+    description:
+      "Sent once the order's parcels are with the carrier and the tracking number is known, " +
+      'or 30 minutes after dispatch if none arrives.',
   },
   'document-issued': {
     label: 'Invoice or receipt issued',
