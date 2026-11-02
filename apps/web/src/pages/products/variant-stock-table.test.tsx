@@ -52,7 +52,6 @@ function renderTable(variants: ProductVariant[], sourceName?: string): ReturnTyp
   return renderWithProviders(
     <VariantStockTable
       variants={variants}
-      stockByVariant={new Map()}
       currency="PLN"
       connections={[]}
       canCreateOffers={false}
