@@ -10,6 +10,7 @@
 import { useContext } from 'react';
 import { LocaleContext } from './locale-provider';
 import { getBcp47Locale } from './locale';
+import { getLocale } from './active-locale';
 import { LocaleCodeValues, type SupportedLocale } from './i18n.types';
 
 export interface UseLocaleResult {
@@ -30,4 +31,16 @@ export function useLocale(): UseLocaleResult {
     locales: LocaleCodeValues,
     bcp47: getBcp47Locale(ctx.locale),
   };
+}
+
+/**
+ * The active language for read-only consumers (copy, formatting, plurals).
+ * Outside a provider it falls back to the language the last provider rendered
+ * (English by default, and reset to English between tests) instead of
+ * throwing. It does not re-render on a switch, so it is for primitives
+ * rendered on their own, as many tests do, not for the app.
+ */
+export function useActiveLocale(): SupportedLocale {
+  const ctx = useContext(LocaleContext);
+  return ctx?.locale ?? getLocale();
 }

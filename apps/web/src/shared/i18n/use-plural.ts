@@ -10,12 +10,12 @@ import { useCallback } from 'react';
 import type { PluralForms } from './copy.types';
 import type { InterpolationParams } from './interpolate';
 import { formatPlural } from './plural';
-import { useLocale } from './use-locale';
+import { useActiveLocale } from './use-locale';
 
 export type PluralFn = (count: number, forms: PluralForms, params?: InterpolationParams) => string;
 
 export function usePlural(): PluralFn {
-  const { locale } = useLocale();
+  const locale = useActiveLocale();
   return useCallback(
     (count: number, forms: PluralForms, params?: InterpolationParams) =>
       formatPlural(count, forms, locale, params),

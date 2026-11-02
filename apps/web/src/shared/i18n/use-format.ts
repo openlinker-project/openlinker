@@ -15,7 +15,7 @@ import { formatDurationMs } from '../format/format-duration-ms';
 import { formatRelativeTime } from '../format/format-relative-time';
 import { getBcp47Locale } from './locale';
 import { listFormat, numberFormat } from './intl-cache';
-import { useLocale } from './use-locale';
+import { useActiveLocale } from './use-locale';
 
 export interface Formatters {
   readonly number: (value: number, options?: Intl.NumberFormatOptions) => string;
@@ -31,7 +31,7 @@ export interface Formatters {
 }
 
 export function useFormat(): Formatters {
-  const { locale } = useLocale();
+  const locale = useActiveLocale();
   return useMemo<Formatters>(() => {
     const tag = getBcp47Locale(locale);
     return {
