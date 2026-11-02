@@ -676,6 +676,37 @@ describe('InventoryCorrectionService', () => {
       expect(h.adapter.adjustInventory).not.toHaveBeenCalled();
     });
 
+    it('should take the position lock before reading the master in set mode', async () => {
+      const h = build();
+      const calls: string[] = [];
+      h.syncLock.acquire.mockImplementation(() => {
+        calls.push('acquire');
+        return Promise.resolve('token');
+      });
+      h.adapter.listInventory.mockImplementation(() => {
+        calls.push('read');
+        return Promise.resolve([
+          { id: 'x', productId: PRODUCT_ID, variantId: VARIANT_ID, quantity: 10, reserved: 1, available: 10 },
+        ]);
+      });
+      await h.service.correctStock({ ...baseInput, mode: 'set', quantity: 4 });
+      expect(calls.slice(0, 2)).toEqual(['acquire', 'read']);
+    });
+
+    it('should hold the position lock while recording a refusal for a product gone at read', async () => {
+      const h = build();
+      h.adapter.listInventory.mockRejectedValue(new MasterProductNotFoundError(PRODUCT_ID, OWNER));
+      await h.service.correctStock({ ...baseInput, mode: 'set', quantity: 4 });
+      expect(h.syncLock.acquire).toHaveBeenCalledTimes(1);
+      expect(h.syncLock.release).toHaveBeenCalledTimes(1);
+      expect(h.syncLock.acquire.mock.invocationCallOrder[0]).toBeLessThan(
+        h.movements.insertPending.mock.invocationCallOrder[0]
+      );
+      expect(h.syncLock.release.mock.invocationCallOrder[0]).toBeGreaterThan(
+        h.movements.insertPending.mock.invocationCallOrder[0]
+      );
+    });
+
     it('should settle in_doubt on any other throw and never call the adapter again', async () => {
       const h = build();
       h.adapter.adjustInventory.mockRejectedValue(new Error('socket hang up'));

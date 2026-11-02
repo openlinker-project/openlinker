@@ -170,54 +170,9 @@ export class InventoryCorrectionService implements IInventoryCorrectionService {
 
     const adapter = await this.buildAdapter(target.owner);
 
-    let currentForThreshold = target.currentQuantity;
-    let delta = input.quantity;
-    // The pre-write master read: the mirror can be stale, so every judgement that
-    // depends on how much the master holds (set's delta, the removal guard) uses
-    // the master itself. A positive delta needs no read.
-    let preWriteMasterQuantity = target.currentQuantity;
-    if (input.mode === 'set' || input.quantity < 0) {
-      const masterQuantity = await this.readMasterQuantity(adapter, target);
-      if (masterQuantity instanceof MasterProductGoneAtRead) {
-        // Same end state as the write path gives a master-deleted product: a
-        // recorded, refused correction. Retrying can never help.
-        const requested =
-          input.mode === 'set' ? input.quantity - target.currentQuantity : input.quantity;
-        return this.refuseGoneAtRead(
-          requested === 0 ? input.quantity : requested,
-          masterQuantity.detail,
-          target,
-          master,
-          input,
-          idempotencyKey,
-          note
-        );
-      }
-      preWriteMasterQuantity = masterQuantity;
-      currentForThreshold = masterQuantity;
-      if (input.mode === 'set') delta = input.quantity - masterQuantity;
-    }
-    if (delta === 0) {
-      throw new InventoryCorrectionRefusedError(
-        'no-change',
-        'The stock already equals the wanted quantity; nothing to change'
-      );
-    }
-    if (input.mode === 'delta' && currentForThreshold + delta < 0) {
-      // Refused before any master write, judged against the master's own stock:
-      // a removal larger than it can never be the operator's intent. A change
-      // landing between this read and the write may still be clamped; the
-      // ledger then records the real before/after.
-      throw new InventoryCorrectionRefusedError(
-        'insufficient-stock',
-        `Cannot remove ${String(-delta)} units: only ${String(currentForThreshold)} in stock`,
-        currentForThreshold
-      );
-    }
-    if (requiresLargeChangeConfirmation(delta, currentForThreshold) && input.confirmLargeChange !== true) {
-      throw new CorrectionConfirmationRequiredError(delta, currentForThreshold);
-    }
-
+    // Taken before the master read: a set's delta is derived from that read, so a
+    // sale decrement landing between read and acquire would make "set to N" land
+    // on N-1 and still be recorded as applied.
     const lockKey = saleDecrementPositionLockKey(
       target.owner,
       target.productId,
@@ -229,6 +184,54 @@ export class InventoryCorrectionService implements IInventoryCorrectionService {
     }
 
     try {
+      let currentForThreshold = target.currentQuantity;
+      let delta = input.quantity;
+      // The pre-write master read: the mirror can be stale, so every judgement that
+      // depends on how much the master holds (set's delta, the removal guard) uses
+      // the master itself. A positive delta needs no read.
+      let preWriteMasterQuantity = target.currentQuantity;
+      if (input.mode === 'set' || input.quantity < 0) {
+        const masterQuantity = await this.readMasterQuantity(adapter, target);
+        if (masterQuantity instanceof MasterProductGoneAtRead) {
+          // Same end state as the write path gives a master-deleted product: a
+          // recorded, refused correction. Retrying can never help.
+          const requested =
+            input.mode === 'set' ? input.quantity - target.currentQuantity : input.quantity;
+          return await this.refuseGoneAtRead(
+            requested === 0 ? input.quantity : requested,
+            masterQuantity.detail,
+            target,
+            master,
+            input,
+            idempotencyKey,
+            note
+          );
+        }
+        preWriteMasterQuantity = masterQuantity;
+        currentForThreshold = masterQuantity;
+        if (input.mode === 'set') delta = input.quantity - masterQuantity;
+      }
+      if (delta === 0) {
+        throw new InventoryCorrectionRefusedError(
+          'no-change',
+          'The stock already equals the wanted quantity; nothing to change'
+        );
+      }
+      if (input.mode === 'delta' && currentForThreshold + delta < 0) {
+        // Refused before any master write, judged against the master's own stock:
+        // a removal larger than it can never be the operator's intent. A change
+        // landing between this read and the write may still be clamped; the
+        // ledger then records the real before/after.
+        throw new InventoryCorrectionRefusedError(
+          'insufficient-stock',
+          `Cannot remove ${String(-delta)} units: only ${String(currentForThreshold)} in stock`,
+          currentForThreshold
+        );
+      }
+      if (requiresLargeChangeConfirmation(delta, currentForThreshold) && input.confirmLargeChange !== true) {
+        throw new CorrectionConfirmationRequiredError(delta, currentForThreshold);
+      }
+
       const claimed = await this.movements.insertPending({
         productId: target.productId,
         productVariantId: target.productVariantId,
