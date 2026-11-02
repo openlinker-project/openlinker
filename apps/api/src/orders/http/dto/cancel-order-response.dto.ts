@@ -75,7 +75,14 @@ export class ConfirmOrderChangeResponseDto {
   @ApiProperty() changeId!: string;
   @ApiProperty() kind!: string;
   @ApiProperty({ enum: ['confirmed'] }) status!: 'confirmed';
-  @ApiProperty() invoiceRecordId!: string;
-  @ApiProperty() invoiceStatus!: string;
+  @ApiProperty({ nullable: true, type: String, description: 'The issued correction; null for a refund confirmation.' })
+  invoiceRecordId!: string | null;
+  @ApiProperty({ nullable: true, type: String }) invoiceStatus!: string | null;
   @ApiProperty({ nullable: true, type: String }) documentNumber!: string | null;
+  @ApiProperty({
+    nullable: true,
+    type: String,
+    description: '`order.discount_refund`: the refund record the confirmation wrote; null otherwise.',
+  })
+  refundRecordId!: string | null;
 }

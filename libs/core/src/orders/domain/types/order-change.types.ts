@@ -70,6 +70,9 @@ export const OrderChangeKindValues = [
   'order.address_change',
   'order.line_quantity_change',
   'order.delivery_method_change',
+  'order.discount_change',
+  'order.discount_refund',
+  'order.discount_correction',
 ] as const;
 
 export type OrderChangeKind = (typeof OrderChangeKindValues)[number];
@@ -107,6 +110,13 @@ export function isOrderAmendmentRequestKind(value: unknown): value is OrderAmend
  */
 export const OrderCorrectionChangeKindValues = [
   'order.cancel_correction',
+  // #3543: the two operator-confirmable consequences of a discount on a PAID
+  // order. `order.discount_refund` is "the seller refunded the difference on the
+  // channel" (OpenLinker executes no refund, ADR-056); `order.discount_correction`
+  // corrects the issued document to the discounted prices. Neither waits on a
+  // channel, so neither is an amendment REQUEST and neither is `amending`.
+  'order.discount_refund',
+  'order.discount_correction',
 ] as const satisfies readonly OrderChangeKind[];
 
 export type OrderCorrectionChangeKind = (typeof OrderCorrectionChangeKindValues)[number];
@@ -134,6 +144,7 @@ export const OrderOperatorEditKindValues = [
   'order.address_change',
   'order.line_quantity_change',
   'order.delivery_method_change',
+  'order.discount_change',
 ] as const satisfies readonly OrderChangeKind[];
 
 export type OrderOperatorEditKind = (typeof OrderOperatorEditKindValues)[number];
@@ -161,6 +172,25 @@ export function lineQuantityEditTargetRef(internalOrderId: string): string {
 
 export function deliveryMethodEditTargetRef(internalOrderId: string): string {
   return `edit:delivery:${internalOrderId}`;
+}
+
+/** One discount per order: a second one REPLACES the first, so the ref is per order (#3543). */
+export function discountEditTargetRef(internalOrderId: string): string {
+  return `edit:discount:${internalOrderId}`;
+}
+
+/**
+ * `targetRef` of the refund intent a discount leaves on a paid order. Keyed on the
+ * discount EDIT's change id so a replacing discount opens a fresh intent beside the
+ * (abandoned) old one instead of colliding with it in the shared slot (#3543).
+ */
+export function discountRefundTargetRef(internalOrderId: string, discountChangeId: string): string {
+  return `refund:discount:${internalOrderId}:${discountChangeId}`;
+}
+
+/** `targetRef` of the correction a discount proposes against one issued invoice (#3543). */
+export function discountCorrectionTargetRef(internalOrderId: string, invoiceRecordId: string): string {
+  return `correction:discount:${internalOrderId}:${invoiceRecordId}`;
 }
 
 /** `targetRef` of the cancel request: one open cancel per order. */

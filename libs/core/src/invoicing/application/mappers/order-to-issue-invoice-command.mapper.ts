@@ -29,6 +29,7 @@ import {
   resolveDeliveryLine,
   shippingSplitInputs,
   spreadDeliveryAcrossLines,
+  reconcileDiscountRounding,
   splitShippingAcrossRates,
   type ResolvedDeliveryLine,
 } from '@openlinker/core/sales-documents';
@@ -141,14 +142,16 @@ export function toIssueInvoiceCommand(
   // names a tax rate. Skipped when shipping is 0 (no phantom line).
   const lines = applyDelivery(productLines, order, deliveryLine);
 
-  assertLinesSumToTotal(lines, order.totals, order.id);
+  const reconciledLines = reconcileDiscountRounding(lines, order.items.length, order.totals);
+
+  assertLinesSumToTotal(reconciledLines, order.totals, order.id);
 
   const command: IssueInvoiceCommand = {
     connectionId,
     orderId: order.id,
     buyer,
     currency: order.totals.currency,
-    lines,
+    lines: reconciledLines,
   };
 
   // saleDate comes ONLY from the marketplace placement timestamp. When

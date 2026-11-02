@@ -34,7 +34,7 @@ function invoice(overrides: Record<string, unknown> = {}): unknown {
 describe('OrderCancellationEffectsService (#3540)', () => {
   let fulfillment: { cancelAllForOrder: jest.Mock };
   let holds: { getOpenHold: jest.Mock; release: jest.Mock };
-  let changes: { openOrReuse: jest.Mock };
+  let changes: { openOrReuse: jest.Mock; findOpenByOrder: jest.Mock; abandon: jest.Mock };
   let invoices: { getLatestIssuedInvoiceForOrder: jest.Mock };
   let moduleRef: { get: jest.Mock };
   let voider: { voidLabelsForOrder: jest.Mock };
@@ -49,6 +49,8 @@ describe('OrderCancellationEffectsService (#3540)', () => {
       openOrReuse: jest
         .fn()
         .mockResolvedValue({ change: { id: 'change-2' }, opened: true, expiredStale: false }),
+      findOpenByOrder: jest.fn().mockResolvedValue([]),
+      abandon: jest.fn().mockResolvedValue(true),
     };
     invoices = { getLatestIssuedInvoiceForOrder: jest.fn().mockResolvedValue(null) };
     voider = { voidLabelsForOrder: jest.fn().mockResolvedValue([]) };
@@ -75,6 +77,46 @@ describe('OrderCancellationEffectsService (#3540)', () => {
     const result = await service.applyEffects(input);
 
     expect(result.cancelledWorkIds).toEqual([]);
+  });
+
+  describe('open discount proposals (B-31)', () => {
+    it('should abandon open discount refund and correction proposals and leave other kinds', async () => {
+      changes.findOpenByOrder.mockResolvedValue([
+        { id: 'refund-1', kind: 'order.discount_refund' },
+        { id: 'corr-1', kind: 'order.discount_correction' },
+        { id: 'cancel-1', kind: 'order.cancel_request' },
+      ]);
+
+      await service.applyEffects(input);
+
+      expect(changes.findOpenByOrder).toHaveBeenCalledWith(ORDER_ID);
+      expect(changes.abandon).toHaveBeenCalledTimes(2);
+      expect(changes.abandon).toHaveBeenCalledWith('refund-1', 'order-cancelled');
+      expect(changes.abandon).toHaveBeenCalledWith('corr-1', 'order-cancelled');
+    });
+
+    it('should keep abandoning and still propose the credit when one abandon throws', async () => {
+      changes.findOpenByOrder.mockResolvedValue([
+        { id: 'refund-1', kind: 'order.discount_refund' },
+        { id: 'corr-1', kind: 'order.discount_correction' },
+      ]);
+      changes.abandon.mockRejectedValueOnce(new Error('db'));
+      invoices.getLatestIssuedInvoiceForOrder.mockResolvedValue(invoice());
+
+      const result = await service.applyEffects(input);
+
+      expect(changes.abandon).toHaveBeenCalledWith('corr-1', 'order-cancelled');
+      expect(result.correctionProposal?.changeId).toBe('change-2');
+    });
+
+    it('should carry on when listing open proposals fails', async () => {
+      changes.findOpenByOrder.mockRejectedValue(new Error('db'));
+
+      const result = await service.applyEffects(input);
+
+      expect(changes.abandon).not.toHaveBeenCalled();
+      expect(result.cancelledWorkIds).toEqual(['w1']);
+    });
   });
 
   describe('holds', () => {

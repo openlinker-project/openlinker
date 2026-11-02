@@ -31,6 +31,7 @@ import {
   describeDiscountCause,
   quantityScaledReconciliationEpsilon,
   type ResolvedDeliveryLine,
+  reconcileDiscountRounding,
 } from '@openlinker/core/sales-documents';
 import { Logger } from '@openlinker/shared/logging';
 
@@ -129,14 +130,17 @@ export function toRegisterTransactionCommand(
 
   const lines = applyDelivery(productLines, order, deliveryLine);
 
-  assertLinesSumToTotal(lines, order.totals, order.id);
+  // E-45: a discounted multi-unit line must not drift a minor unit from the total.
+  const reconciledLines = reconcileDiscountRounding(lines, order.items.length, order.totals);
+
+  assertLinesSumToTotal(reconciledLines, order.totals, order.id);
 
   const command: RegisterTransactionCommand = {
     connectionId,
     orderId: order.id,
     idempotencyKey,
     currency: order.totals.currency,
-    lines,
+    lines: reconciledLines,
     totalGross: order.totals.total,
   };
 

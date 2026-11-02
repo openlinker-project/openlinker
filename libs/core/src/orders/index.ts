@@ -665,6 +665,9 @@ export {
   addressEditTargetRef,
   lineQuantityEditTargetRef,
   deliveryMethodEditTargetRef,
+  discountEditTargetRef,
+  discountRefundTargetRef,
+  discountCorrectionTargetRef,
 } from './domain/types/order-change.types';
 // #3542 — the operator-edit overlay and its pure merge.
 export {
@@ -687,6 +690,23 @@ export type {
   LineEditTreatments,
   UnmatchedLineEdit,
 } from './domain/types/order-edits.types';
+// #3543 — the order-level discount money event and its pure split.
+export {
+  readOrderDiscountEdit,
+  effectiveDiscountAmount,
+  planOrderDiscount,
+  goodsGrossValue,
+  lineGrossTotal,
+  discountedUnitPriceGross,
+  isDecimalAmountText,
+  decimalPlaces,
+} from './domain/types/order-discount.types';
+export type {
+  OrderDiscountEdit,
+  OrderDiscountLine,
+  PlannedOrderDiscount,
+  DiscountableLine,
+} from './domain/types/order-discount.types';
 // #3540 — why an operator cancels an order.
 export {
   OrderCancelReasonValues,

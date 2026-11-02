@@ -16,9 +16,12 @@ import {
   IsBoolean,
   IsInt,
   IsNotEmpty,
+  IsNumber,
   IsOptional,
   IsString,
   Length,
+  Matches,
+  Max,
   Min,
   MaxLength,
   ValidateNested,
@@ -99,4 +102,38 @@ export class EditOrderDeliveryMethodRequestDto extends DryRunDto {
   @ValidateNested()
   @Type(() => EditOrderPickupPointDto)
   pickupPoint?: EditOrderPickupPointDto;
+}
+
+export class EditOrderDiscountRequestDto extends DryRunDto {
+  @ApiPropertyOptional({
+    description:
+      'The discount as a plain decimal in the ORDER currency, at its minor unit (`"12.50"`). Exactly one of ' +
+      '`amount` / `percent`. `"0"` removes the discount; a second discount replaces the first, it never stacks.',
+    example: '12.50',
+  })
+  @IsOptional()
+  @IsString()
+  @Matches(/^\d+(\.\d+)?$/, { message: 'amount must be a plain decimal number such as 12.50' })
+  amount?: string;
+
+  @ApiPropertyOptional({
+    minimum: 0,
+    maximum: 100,
+    description:
+      'The discount as a percent of the goods value. Resolved to an amount at the currency minor unit when saved.',
+  })
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  @Max(100)
+  percent?: number;
+
+  @ApiPropertyOptional({
+    description:
+      'On a paid order the discount opens a refund intent; set this to let one that would take the order ' +
+      'past its refund ceiling through. Without it the request is refused with `refund_ceiling_exceeded`.',
+  })
+  @IsOptional()
+  @IsBoolean()
+  acknowledgeAboveCeiling?: boolean;
 }

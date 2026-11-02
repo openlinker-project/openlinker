@@ -8,6 +8,7 @@ import type { OrderRecord } from '@openlinker/core/orders';
 import type {
   EditOrderAddressInput,
   EditOrderDeliveryMethodInput,
+  EditOrderDiscountInput,
   EditOrderLinesInput,
   OrderEditResult,
   OrderEditsView,
@@ -33,6 +34,17 @@ export interface IOrderEditService {
 
   /** Change the delivery method (and pickup point). */
   editDeliveryMethod(input: EditOrderDeliveryMethodInput): Promise<OrderEditResult>;
+
+  /**
+   * Grant (or replace, or remove) an order-level discount (#3543, D10). A money
+   * event: it never rewrites the channel's prices. Unpaid / COD it lowers the
+   * amount to collect; paid it opens a refund intent for the difference
+   * (`order.discount_refund`, bounded by the #3289 ceiling); an issued invoice
+   * gets a correction proposal (`order.discount_correction`). Throws
+   * `RefundCeilingExceededException` (409 `refund_ceiling_exceeded`) for an
+   * unacknowledged excess and `OrderEditRefusedError` for everything else.
+   */
+  editDiscount(input: EditOrderDiscountInput): Promise<OrderEditResult>;
 
   /**
    * The order beside the channel's own record of it, or `null` when nobody has

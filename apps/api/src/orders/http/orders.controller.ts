@@ -98,6 +98,9 @@ import {
   type OrderRoutingRetryRefusal,
   ORDER_TEST_FIXTURE_SERVICE_TOKEN,
   IOrderTestFixtureService,
+  RefundCeilingExceededException,
+  RefundRecordContendedException,
+  RefundLockUnavailableException,
   TestFixturesDisabledException,
   classifyBuyerNoteForList,
   buildBuyerNotePreview} from '@openlinker/core/orders';
@@ -181,7 +184,8 @@ import type {
   ConfirmOrderChangeResult,
 } from '../application/types/order-cancellation.types';
 import { OrderChangeResponseDto } from './dto/order-change-response.dto';
-import { CancelOrderRequestDto } from './dto/cancel-order-request.dto';
+import { readDiscountCorrectionLines } from '../application/services/order-edits-view';
+import { CancelOrderRequestDto, ConfirmOrderChangeRequestDto } from './dto/cancel-order-request.dto';
 import type {
   CancelCorrectionProposalLineDto} from './dto/cancel-order-response.dto';
 import {
@@ -1469,10 +1473,14 @@ export class OrdersController {
   @ApiOperation({
     summary: 'Confirm a proposed order change',
     description:
-      'Confirms a change the operator has reviewed. Today the only confirmable kind is the credit ' +
-      'proposal a cancelled, invoiced order leaves behind: confirming issues the correcting invoice ' +
+      'Confirms a change the operator has reviewed. Three kinds are confirmable: the credit proposal a ' +
+      'cancelled, invoiced order leaves behind (`order.cancel_correction`) and the correction of an issued ' +
+      'invoice for a discount (`order.discount_correction`) - confirming issues the correcting invoice ' +
       '(an action that cannot be withdrawn once sent to a tax authority) under an idempotency key derived ' +
-      'from the change id. A provider failure leaves the proposal open so it can be retried.',
+      'from the change id, and a provider failure leaves the proposal open so it can be retried - and the ' +
+      'refund intent a discount on a paid order opens (`order.discount_refund`): confirming means the seller ' +
+      'refunded the buyer on the channel and records the refund (OpenLinker executes none), refused above ' +
+      'the order\'s refund ceiling unless the body sets `acknowledgeAboveCeiling`.',
   })
   @ApiResponse({ status: 200, description: 'Change confirmed', type: ConfirmOrderChangeResponseDto })
   @ApiResponse({ status: 403, description: 'Insufficient permissions' })
@@ -1481,12 +1489,14 @@ export class OrdersController {
     status: 409,
     description:
       'CHANGE_ALREADY_CONFIRMED | CHANGE_EXPIRED | CHANGE_NOT_OPEN | CHANGE_KIND_NOT_CONFIRMABLE | ' +
-      'CORRECTION_IN_PROGRESS | CORRECTION_NEEDS_RECONCILIATION',
+      'CORRECTION_IN_PROGRESS | CORRECTION_NEEDS_RECONCILIATION | CORRECTION_SUPERSEDED | ' +
+      'refund_ceiling_exceeded (`code`, with ceiling / alreadyRefunded / requested / currency)',
   })
   @ApiResponse({ status: 422, description: 'The invoicing provider rejected the correction' })
   async confirmChange(
     @Param('internalOrderId') internalOrderId: string,
     @Param('changeId', ParseUUIDPipe) changeId: string,
+    @Body() dto: ConfirmOrderChangeRequestDto,
     @CurrentUser() user: AuthenticatedUser
   ): Promise<ConfirmOrderChangeResponseDto> {
     try {
@@ -1494,6 +1504,7 @@ export class OrdersController {
         internalOrderId,
         changeId,
         actorUserId: user.id,
+        acknowledgeAboveCeiling: dto?.acknowledgeAboveCeiling === true,
       });
       return result;
     } catch (error) {
@@ -1656,6 +1667,37 @@ export class OrdersController {
    * operator which one they are in.
    */
   private toCancellationHttpException(error: unknown): unknown {
+    if (error instanceof RefundCeilingExceededException) {
+      return new ConflictException({
+        statusCode: HttpStatus.CONFLICT,
+        error: 'Conflict',
+        code: error.code,
+        message: error.message,
+        ceiling: error.ceiling,
+        alreadyRefunded: error.alreadyRefunded,
+        requested: error.requested,
+        currency: error.currency,
+      });
+    }
+    if (error instanceof RefundRecordContendedException) {
+      // Same body the refunds controller sends, which is the code the frontend
+      // already reads; two parallel confirms of one refund must not end in a 500 (E-31).
+      return new ConflictException({
+        statusCode: HttpStatus.CONFLICT,
+        error: 'Conflict',
+        code: error.code,
+        message: error.message,
+      });
+    }
+    if (error instanceof RefundLockUnavailableException) {
+      // Nothing was recorded and nothing will be recorded later (R-16): retryable.
+      return new ServiceUnavailableException({
+        statusCode: HttpStatus.SERVICE_UNAVAILABLE,
+        error: 'Service Unavailable',
+        code: error.code,
+        message: error.message,
+      });
+    }
     if (error instanceof OrderCancellationRefusedError) {
       return new ConflictException({
         statusCode: HttpStatus.CONFLICT,
@@ -1687,6 +1729,8 @@ export class OrdersController {
     const raw = change.payload ?? {};
     const isCancel = change.kind === 'order.cancel_request';
     const isCorrection = change.kind === 'order.cancel_correction';
+    const isDiscountCorrection = change.kind === 'order.discount_correction';
+    const isDiscountRefund = change.kind === 'order.discount_refund';
     const rawLines = Array.isArray(raw['lines']) ? (raw['lines'] as unknown[]) : [];
     return {
       id: change.id,
@@ -1714,6 +1758,23 @@ export class OrdersController {
                   typeof raw['documentNumber'] === 'string' ? raw['documentNumber'] : null,
                 currency: typeof raw['currency'] === 'string' ? raw['currency'] : '',
                 lines: rawLines as CancelCorrectionProposalLineDto[],
+              }
+            : null,
+        discountCorrection:
+          isDiscountCorrection && typeof raw['invoiceRecordId'] === 'string'
+            ? {
+                invoiceRecordId: raw['invoiceRecordId'],
+                documentNumber:
+                  typeof raw['documentNumber'] === 'string' ? raw['documentNumber'] : null,
+                currency: typeof raw['currency'] === 'string' ? raw['currency'] : '',
+                lines: readDiscountCorrectionLines(raw['lines']) ?? [],
+              }
+            : null,
+        discountRefund:
+          isDiscountRefund && typeof raw['amount'] === 'string'
+            ? {
+                amount: raw['amount'],
+                currency: typeof raw['currency'] === 'string' ? raw['currency'] : '',
               }
             : null,
       },
