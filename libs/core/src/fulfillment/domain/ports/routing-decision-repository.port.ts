@@ -88,6 +88,12 @@ export type TerminaliseRoutingDecisionInput = {
   [S in TerminalRoutingDecisionState]: TerminaliseArm<S>;
 }[TerminalRoutingDecisionState];
 
+export interface ListStrandedLiveDecisionsInput {
+  /** Only decisions created before this instant are returned. */
+  readonly createdBefore: Date;
+  readonly limit: number;
+}
+
 export interface RoutingDecisionRepositoryPort {
   /**
    * Persist the intent to route this order, or refuse because one is live.
@@ -119,4 +125,19 @@ export interface RoutingDecisionRepositoryPort {
   findLiveByOrderId(orderId: string): Promise<RoutingDecision | null>;
 
   findById(decisionId: string): Promise<RoutingDecision | null>;
+
+  /**
+   * #2731: `live` decisions created before the cutoff, oldest first.
+   *
+   * Frontier-shaped: the reaper terminalises what it reads, so a reaped row
+   * leaves the set and the next call starts from what is left. No offset — an
+   * offset over a shrinking set steps over rows (`bounded-sweep.ts`).
+   */
+  listStrandedLive(input: ListStrandedLiveDecisionsInput): Promise<RoutingDecision[]>;
+
+  /**
+   * #2731: the most recent decision for an order, whatever its state, or `null`
+   * when the order was never routed. Backs the read-only routing-decision view.
+   */
+  findLatestByOrderId(orderId: string): Promise<RoutingDecision | null>;
 }

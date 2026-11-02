@@ -103,6 +103,7 @@ export const JOB_TYPE_VALUES = [
   'fulfillment.work.route', // Internal job — commits where one order is fulfilled from (#2395).
   'fulfillment.work.timeoutSweep', // Internal job — reaps fulfilment work a holder never answered (#2712).
   'fulfillment.work.relaySweep', // Internal job — re-drives a missed dispatch relay (#2728).
+  'fulfillment.routing.reapSweep', // Internal job — closes a routing decision stuck past its time limit and routes again (#2731).
   'master.product.syncAll',
   'master.product.syncDelta', // Internal job — not user-triggerable; listed here so an operator can filter the incremental pass (#2220).
   'master.product.reconcile', // Internal job — not user-triggerable; listed here so an operator can filter the deletion-reconciliation pass (#2222).

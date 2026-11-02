@@ -344,6 +344,9 @@ describe('SchedulerService', () => {
         // #3485 — same global scope: re-drives work held because the router
         // could not place it, so it names no platform either.
         'fulfillment-reroute-sweep',
+        // #2731 — same global scope: reaps routing decisions stranded past
+        // their TTL, which carry no platform either.
+        'fulfillment-routing-reap-sweep',
         'fulfillment-timeout-sweep',
         // Also core-owned and platform-free, and the most so of any task here:
         // it has neither a platform nor a capability, because its subject is a

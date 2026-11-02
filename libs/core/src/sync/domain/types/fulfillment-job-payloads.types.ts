@@ -194,6 +194,20 @@ export interface FulfillmentWorkRerouteSweepPayloadV1 {
 }
 
 /**
+ * `fulfillment.routing.reapSweep` (#2731).
+ *
+ * A scheduler tick carries only `schemaVersion`; `pageLimit` lets an operator
+ * widen ONE run. No cursor: the pass is frontier-as-query (a reaped decision
+ * leaves the `live` set). The TTL is not on the payload either — it is resolved
+ * once per run through `resolveRoutingDecisionTtlMs`, the single path that also
+ * feeds the detail the operator reads (#2229).
+ */
+export interface FulfillmentRoutingReapSweepPayloadV1 {
+  readonly schemaVersion: 1;
+  readonly pageLimit?: number;
+}
+
+/**
  * `inventory.saleDecrement.reconcileSweep` (#3629).
  *
  * A scheduler tick carries only `schemaVersion`; `pageLimit` lets an operator

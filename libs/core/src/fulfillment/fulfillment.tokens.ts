@@ -108,6 +108,13 @@ export const FULFILLMENT_RELAY_RECONCILE_SERVICE_TOKEN = Symbol(
   'IFulfillmentRelayReconcileService'
 );
 
+/**
+ * The #2731 stranded-routing-decision reaper. Consumed by the WORKER's
+ * `fulfillment.routing.reapSweep` handler and by the read-only routing-decision
+ * endpoint in `apps/api`; neither reaches the decision repository port.
+ */
+export const ROUTING_DECISION_REAPER_SERVICE_TOKEN = Symbol('IRoutingDecisionReaperService');
+
 /** Operator order cancel (#3540). `FulfillmentOrderCancellationService` binds here. */
 export const FULFILLMENT_ORDER_CANCELLATION_SERVICE_TOKEN = Symbol(
   'IFulfillmentOrderCancellationService'
