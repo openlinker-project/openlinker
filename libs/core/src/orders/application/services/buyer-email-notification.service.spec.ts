@@ -1,5 +1,9 @@
 import type { ModuleRef } from '@nestjs/core';
-import type { Connection, ConnectionPort } from '@openlinker/core/identifier-mapping';
+import {
+  ConnectionNotFoundException,
+  type Connection,
+  type ConnectionPort,
+} from '@openlinker/core/identifier-mapping';
 import type { MailerPort } from '@openlinker/core/users';
 import type { BuyerEmailDeliveryRepositoryPort } from '../../domain/ports/buyer-email-delivery-repository.port';
 import { BuyerEmailDelivery } from '../../domain/entities/buyer-email-delivery.entity';
@@ -196,6 +200,21 @@ describe('BuyerEmailNotificationService.sendTest (#3555)', () => {
     );
     expect(repository.claimSend).not.toHaveBeenCalled();
     expect(repository.recordSuppression).not.toHaveBeenCalled();
+  });
+
+  it('should answer connection-not-found only when the connection is missing', async () => {
+    connections.get.mockRejectedValue(new ConnectionNotFoundException('conn-1'));
+
+    const result = await service.sendTest(testInput);
+
+    expect(result).toMatchObject({ status: 'refused', reason: 'connection-not-found' });
+  });
+
+  it('should let any other connection read failure propagate', async () => {
+    connections.get.mockRejectedValue(new Error('connection terminated'));
+
+    await expect(service.sendTest(testInput)).rejects.toThrow('connection terminated');
+    expect(mailer.sendEmail).not.toHaveBeenCalled();
   });
 
   it('should refuse an address that is not a single email', async () => {

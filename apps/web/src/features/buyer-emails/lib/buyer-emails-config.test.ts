@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { AutomationRule } from '../../automation';
 import {
+  BUYER_EMAIL_MERGE_FIELDS,
   channelKindOf,
   findTemplateRule,
   isSingleEmailAddress,
@@ -102,5 +103,18 @@ describe('buyer emails config helpers (#3555)', () => {
 
   it('should fill known variables in the preview and leave unknown ones', () => {
     expect(renderPreview('Order {order.reference} {foo}')).toBe('Order SHOP-4821 {foo}');
+  });
+
+  it('should offer only buyer-facing merge fields, each with a preview sample', () => {
+    expect(BUYER_EMAIL_MERGE_FIELDS).toEqual([
+      'order.reference',
+      'order.total',
+      'order.placedAt',
+      'buyer.name',
+      'shipment.tracking',
+    ]);
+    for (const field of BUYER_EMAIL_MERGE_FIELDS) {
+      expect(renderPreview(`{${field}}`)).not.toBe(`{${field}}`);
+    }
   });
 });

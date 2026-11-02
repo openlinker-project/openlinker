@@ -71,9 +71,29 @@ const SHIPPED_RULE: AutomationRule = {
 
 const session = createAuthenticatedSessionAdapter(ADMIN);
 
+const OPERATOR: SessionUser = {
+  ...ADMIN,
+  id: 'user_2',
+  username: 'operator',
+  role: 'operator',
+  permissions: ['orders:read', 'orders:write', 'connections:read'],
+};
+
 afterEach(cleanup);
 
 describe('BuyerEmailsPage (#3555)', () => {
+  it('should state the page is admin-only for a session without connections:write', async () => {
+    renderWithProviders(<BuyerEmailsPage />, {
+      apiClient: createMockApiClient({ connections: { list: vi.fn().mockResolvedValue([SHOP]) } }),
+      sessionAdapter: createAuthenticatedSessionAdapter(OPERATOR),
+    });
+
+    expect(
+      await screen.findByText('Only an administrator can change buyer emails.'),
+    ).toBeInTheDocument();
+    expect(screen.queryByTestId('buyer-emails-list')).not.toBeInTheDocument();
+  });
+
   it('should be off by default and say the channel already notifies its buyers (list)', async () => {
     renderWithProviders(<BuyerEmailsPage />, {
       apiClient: createMockApiClient({ connections: { list: vi.fn().mockResolvedValue([SHOP]) } }),

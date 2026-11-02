@@ -27,6 +27,7 @@ import { Logger } from '@openlinker/shared/logging';
 import { getEnvBoolean } from '@openlinker/shared/config';
 import {
   CONNECTION_PORT_TOKEN,
+  ConnectionNotFoundException,
   buyerEmailChannelKindOf,
   isSingleEmailAddress,
   readBuyerEmailTemplateSender,
@@ -148,7 +149,10 @@ export class BuyerEmailNotificationService implements IBuyerEmailNotificationSer
     let connection: Connection;
     try {
       connection = await this.connections.get(input.connectionId);
-    } catch {
+    } catch (error) {
+      // Only a missing connection is a refusal; anything else (a database
+      // fault) propagates and answers 500 instead of passing for a 404.
+      if (!(error instanceof ConnectionNotFoundException)) throw error;
       return {
         status: 'refused',
         reason: 'connection-not-found',

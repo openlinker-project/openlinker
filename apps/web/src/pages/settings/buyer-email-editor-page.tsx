@@ -18,10 +18,9 @@ import { Button } from '../../shared/ui/button';
 import { FormField } from '../../shared/ui/form-field';
 import { Input } from '../../shared/ui/input';
 import { Textarea } from '../../shared/ui/textarea';
-import { LoadingState } from '../../shared/ui/feedback-state';
+import { AccessDeniedState, LoadingState } from '../../shared/ui/feedback-state';
+import { AccessGate } from '../../shared/ui/access-gate';
 import { useToast } from '../../shared/ui/toast-provider';
-import { useIsAdmin } from '../../shared/auth/use-permission';
-import { useSession } from '../../shared/auth/use-session';
 import { useConnectionQuery, type Connection } from '../../features/connections';
 import type { AutomationRule } from '../../features/automation';
 import {
@@ -249,9 +248,6 @@ function EditorForm({
 }
 
 export function BuyerEmailEditorPage(): ReactElement {
-  // Same rule as the list page: the admin-only notice waits for the session.
-  const { isReady } = useSession();
-  const isAdmin = useIsAdmin();
   const { connectionId = '', template = '' } = useParams();
   const connectionQuery = useConnectionQuery(connectionId, { enabled: connectionId !== '' });
   const rules = useBuyerEmailRules();
@@ -263,12 +259,10 @@ export function BuyerEmailEditorPage(): ReactElement {
   };
 
   let content: ReactElement;
-  if (isReady && !isAdmin) {
-    content = <Alert tone="info">Only an administrator can change buyer emails.</Alert>;
-  } else if (!known) {
+  if (!known) {
     content = <Alert tone="error">{BUYER_EMAILS_COPY.page.loadError}</Alert>;
-  } else if (!isReady || connectionQuery.isLoading || rules.isLoading) {
-    content = <LoadingState liveRegion="off" title={title} message="Loading…" />;
+  } else if (connectionQuery.isLoading || rules.isLoading) {
+    content = <LoadingState liveRegion="off" title={title} message={COPY.loading} />;
   } else if (connectionQuery.isError || !connectionQuery.data) {
     content = <Alert tone="error">{BUYER_EMAILS_COPY.page.loadError}</Alert>;
   } else if (!isTemplateAllowed(template, channelKindOf(connectionQuery.data.enabledCapabilities))) {
@@ -286,7 +280,13 @@ export function BuyerEmailEditorPage(): ReactElement {
 
   return (
     <PageLayout backTo={backTo} eyebrow={connectionQuery.data?.name ?? 'Settings'} title={title}>
-      {content}
+      {/* Same gate as the list page: only an administrator holds `connections:write`. */}
+      <AccessGate
+        require="connections:write"
+        fallback={<AccessDeniedState message={BUYER_EMAILS_COPY.page.adminOnly} />}
+      >
+        {content}
+      </AccessGate>
     </PageLayout>
   );
 }

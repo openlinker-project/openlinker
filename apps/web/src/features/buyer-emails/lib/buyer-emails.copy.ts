@@ -61,9 +61,12 @@ export const BUYER_EMAILS_COPY = {
     edit: 'Edit',
     saved: 'Buyer emails updated.',
     loadError: 'Could not load the connection.',
+    adminOnly: 'Only an administrator can change buyer emails.',
+    loadingConnections: 'Loading connections…',
   },
   editor: {
     back: 'Buyer emails',
+    loading: 'Loading…',
     enabledLabel: 'Send this email',
     fromLabel: 'Sender address',
     fromHint: 'Optional. Leave empty to use the sender from the mail settings.',

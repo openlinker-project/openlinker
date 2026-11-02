@@ -192,15 +192,15 @@ export function createMockApiClient(
       list: vi.fn().mockResolvedValue([]),
       ...overrides.adapters,
     } as ApiClient['adapters'],
-    // #2364. `getSummary` / `listByTrigger` default to the SHAPE the parse
-    // layer returns (`{items, droppedCount}`), not a bare array — a mock that
-    // returned `[]` would let a component read `.items` as undefined and pass,
-    // while the real client never can.
     buyerEmails: {
       listForOrder: vi.fn().mockResolvedValue([]),
       sendTest: vi.fn().mockResolvedValue(undefined),
       ...overrides.buyerEmails,
     },
+    // #2364. `getSummary` / `listByTrigger` default to the SHAPE the parse
+    // layer returns (`{items, droppedCount}`), not a bare array — a mock that
+    // returned `[]` would let a component read `.items` as undefined and pass,
+    // while the real client never can.
     automations: {
       getVocabulary: vi.fn().mockResolvedValue({
         triggers: [],

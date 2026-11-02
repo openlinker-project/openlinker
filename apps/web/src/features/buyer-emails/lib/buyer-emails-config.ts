@@ -9,10 +9,11 @@
  *
  * @module apps/web/src/features/buyer-emails/lib
  */
-import type {
-  AutomationRule,
-  AutomationRuleWriteInput,
-  AutomationTrigger,
+import {
+  AUTOMATION_MERGE_FIELDS,
+  type AutomationRule,
+  type AutomationRuleWriteInput,
+  type AutomationTrigger,
 } from '../../automation';
 import {
   BUYER_EMAIL_TEMPLATE_VALUES,
@@ -147,23 +148,40 @@ export function withRuleWording(
   };
 }
 
-/** The merge fields the editor offers, all resolvable by the automation renderer. */
-export const BUYER_EMAIL_MERGE_FIELDS = [
-  'order.reference',
-  'order.total',
-  'order.placedAt',
-  'buyer.name',
-  'shipment.tracking',
-] as const;
+/** A field token as the automation composer declares it, e.g. `{order.total}`. */
+type AutomationMergeFieldToken = (typeof AUTOMATION_MERGE_FIELDS)[number]['token'];
 
-/** The editor's preview: each field replaced with a sample value. */
+/**
+ * Fields that describe OpenLinker's own work rather than the buyer's order, so a
+ * buyer email does not offer them: a dispatch deadline, a hold reason and a
+ * rule name are operator vocabulary.
+ */
+const OPERATOR_ONLY_MERGE_FIELDS: ReadonlySet<AutomationMergeFieldToken> = new Set([
+  '{order.dispatchBy}',
+  '{hold.reason}',
+  '{rule.name}',
+]);
+
+/**
+ * The merge fields the editor offers, without braces. Derived from the
+ * automation composer's list - the one `check-automation-merge-field-mirror`
+ * pins to what the backend renders - so the editor cannot offer a field the
+ * renderer would send to a buyer verbatim.
+ */
+export const BUYER_EMAIL_MERGE_FIELDS: readonly string[] = AUTOMATION_MERGE_FIELDS.filter(
+  (field) => !OPERATOR_ONLY_MERGE_FIELDS.has(field.token),
+).map((field) => field.token.slice(1, -1));
+
+/** Sample values for the editor's preview, one per offered field. */
+const PREVIEW_SAMPLES: Readonly<Record<string, string>> = {
+  'order.reference': 'SHOP-4821',
+  'order.total': '249.00 PLN',
+  'order.placedAt': '2026-10-29',
+  'buyer.name': 'Anna Kowalska',
+  'shipment.tracking': '0000123456789',
+};
+
+/** The editor's preview: each offered field replaced with a sample value. */
 export function renderPreview(text: string): string {
-  const samples: Record<string, string> = {
-    'order.reference': 'SHOP-4821',
-    'order.total': '249.00 PLN',
-    'order.placedAt': '2026-10-29',
-    'buyer.name': 'Anna Kowalska',
-    'shipment.tracking': '0000123456789',
-  };
-  return text.replace(/\{([a-zA-Z.]+)\}/g, (match, field: string) => samples[field] ?? match);
+  return text.replace(/\{([a-zA-Z.]+)\}/g, (match, field: string) => PREVIEW_SAMPLES[field] ?? match);
 }

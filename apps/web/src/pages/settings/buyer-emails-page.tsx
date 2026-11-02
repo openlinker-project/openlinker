@@ -6,7 +6,8 @@
  * (D6) - the page says so, and that the channel already notifies its buyers.
  * A marketplace connection is offered only the transactional templates, with a
  * sentence saying why "Order confirmed" is missing. Admin only, like every
- * write behind it.
+ * write behind it: gated on `connections:write`, which only an administrator
+ * holds, through `AccessGate` so the session-hydration window is handled once.
  *
  * @module apps/web/src/pages/settings
  */
@@ -16,11 +17,10 @@ import { PageLayout } from '../../shared/ui/page-layout';
 import { Alert } from '../../shared/ui/alert';
 import { FormField } from '../../shared/ui/form-field';
 import { Select } from '../../shared/ui/select';
-import { LoadingState, EmptyState } from '../../shared/ui/feedback-state';
+import { AccessDeniedState, EmptyState, LoadingState } from '../../shared/ui/feedback-state';
+import { AccessGate } from '../../shared/ui/access-gate';
 import { StatusBadge } from '../../shared/ui/status-badge';
 import { useToast } from '../../shared/ui/toast-provider';
-import { useIsAdmin } from '../../shared/auth/use-permission';
-import { useSession } from '../../shared/auth/use-session';
 import {
   useConnectionsQuery,
   useUpdateConnectionMutation,
@@ -145,10 +145,6 @@ function ConnectionSettings({ connection }: { connection: Connection }): ReactEl
 }
 
 export function BuyerEmailsPage(): ReactElement {
-  // Before the session is read `useIsAdmin` is false for everyone, so the
-  // admin-only notice waits for it: "not known yet" is not "denied".
-  const { isReady } = useSession();
-  const isAdmin = useIsAdmin();
   const [searchParams, setSearchParams] = useSearchParams();
   const connectionsQuery = useConnectionsQuery();
   const connections = (connectionsQuery.data ?? []).filter(takesOrders);
@@ -162,34 +158,34 @@ export function BuyerEmailsPage(): ReactElement {
       title={COPY.title}
       description={COPY.description}
     >
-      {isReady && !isAdmin ? (
-        <Alert tone="info">Only an administrator can change buyer emails.</Alert>
-      ) : !isReady || connectionsQuery.isLoading ? (
-        <div data-mk-state="list-loading" data-testid="buyer-emails-loading">
-          <LoadingState liveRegion="off" title={COPY.title} message="Loading connections…" />
-        </div>
-      ) : connectionsQuery.isError ? (
-        <Alert tone="error">{COPY.loadError}</Alert>
-      ) : connections.length === 0 ? (
-        <EmptyState liveRegion="off" title={COPY.title} message={COPY.noConnections} />
-      ) : (
-        <>
-          <FormField label={COPY.connectionLabel} name="buyer-emails-connection">
-            <Select
-              value={selectedId}
-              onChange={(event) => setSearchParams({ connection: event.target.value })}
-              data-testid="buyer-emails-connection-select"
-            >
-              {connections.map((connection) => (
-                <option key={connection.id} value={connection.id}>
-                  {connection.name}
-                </option>
-              ))}
-            </Select>
-          </FormField>
-          {selected ? <ConnectionSettings key={selected.id} connection={selected} /> : null}
-        </>
-      )}
+      <AccessGate require="connections:write" fallback={<AccessDeniedState message={COPY.adminOnly} />}>
+        {connectionsQuery.isLoading ? (
+          <div data-mk-state="list-loading" data-testid="buyer-emails-loading">
+            <LoadingState liveRegion="off" title={COPY.title} message={COPY.loadingConnections} />
+          </div>
+        ) : connectionsQuery.isError ? (
+          <Alert tone="error">{COPY.loadError}</Alert>
+        ) : connections.length === 0 ? (
+          <EmptyState liveRegion="off" title={COPY.title} message={COPY.noConnections} />
+        ) : (
+          <>
+            <FormField label={COPY.connectionLabel} name="buyer-emails-connection">
+              <Select
+                value={selectedId}
+                onChange={(event) => setSearchParams({ connection: event.target.value })}
+                data-testid="buyer-emails-connection-select"
+              >
+                {connections.map((connection) => (
+                  <option key={connection.id} value={connection.id}>
+                    {connection.name}
+                  </option>
+                ))}
+              </Select>
+            </FormField>
+            {selected ? <ConnectionSettings key={selected.id} connection={selected} /> : null}
+          </>
+        )}
+      </AccessGate>
     </PageLayout>
   );
 }
