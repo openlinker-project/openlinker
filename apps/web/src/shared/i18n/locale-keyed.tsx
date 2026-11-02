@@ -11,7 +11,7 @@
  * an unsaved form is discarded. There is no generic "dirty" signal to guard
  * on, and a remount is what makes every cached string refresh; keeping the
  * switch itself and its focus alive across it is the switch's job.
-  *
+ *
  * @module shared/i18n
  */
 import { Fragment, type PropsWithChildren, type ReactElement } from 'react';

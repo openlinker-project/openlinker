@@ -56,9 +56,8 @@ interface SidebarNavProps {
 
 function SidebarNav({ ariaLabel, counts, groups, onNavigate }: SidebarNavProps): ReactElement {
   // i18n seam (#612): nav-item counts follow the active locale instead of
-  // being pinned to en-US. v1 maps `'en'` → BCP 47 `'en-US'`, so today this
-  // is a behavioural no-op; future locales pick up the right grouping
-  // separators automatically.
+  // being pinned to en-US. `'en'` maps to BCP 47 `'en-GB'` and `'pl'` to
+  // `'pl-PL'`, so each language gets its own grouping separators.
   const numberFormatter = useNumberFormat();
   const formatCount = (value: number | null): string | null =>
     value === null ? null : numberFormatter.format(value);
