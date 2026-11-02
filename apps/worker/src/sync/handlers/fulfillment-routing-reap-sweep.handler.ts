@@ -70,6 +70,7 @@ import {
 } from '@openlinker/core/fulfillment';
 import {
   selectPrimaryFulfillmentRouter,
+  toRouterSelectionClaimants,
   type AuthorityClaimantInput,
 } from '@openlinker/core/fulfillment-authority';
 import { CONNECTION_PORT_TOKEN, type ConnectionPort } from '@openlinker/core/identifier-mapping';
@@ -169,8 +170,7 @@ export class FulfillmentRoutingReapSweepHandler implements SyncJobHandler {
 
       // Asked once per run, and only when something was reaped: the answer is
       // deployment-wide, not per order.
-      const rerouteHolder =
-        result.intents.length > 0 ? await this.resolveRerouteHolder() : null;
+      const rerouteHolder = result.intents.length > 0 ? await this.resolveRerouteHolder() : null;
 
       let rerouted = 0;
       let fallbackHeld = 0;
@@ -256,13 +256,7 @@ export class FulfillmentRoutingReapSweepHandler implements SyncJobHandler {
   /** The same claimant projection `FulfillmentWorkRouteHandler` selects from. */
   private async loadClaimants(): Promise<AuthorityClaimantInput[]> {
     const connections = await this.connections.list();
-    return connections.map((connection) => ({
-      connectionId: connection.id,
-      isActive: connection.status === 'active',
-      supportedCapabilities: [],
-      enabledCapabilities: connection.enabledCapabilities,
-      config: connection.config,
-    }));
+    return toRouterSelectionClaimants(connections);
   }
 
   /**

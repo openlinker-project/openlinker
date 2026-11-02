@@ -49,6 +49,7 @@ import {
   HttpCode,
   HttpStatus,
   NotFoundException,
+  ServiceUnavailableException,
   BadRequestException,
   ConflictException,
   ForbiddenException,
@@ -83,6 +84,7 @@ import {
   IOrderDestinationRetryService,
   ORDER_HOLD_SERVICE_TOKEN,
   ORDER_PROVISIONING_RESUME_SERVICE_TOKEN,
+  ORDER_ROUTING_RETRY_SERVICE_TOKEN,
   OrderAlreadyOnHoldError,
   OrderHoldContendedError,
   OrderHoldNotFoundError,
@@ -92,6 +94,8 @@ import {
   deriveSlaState,
   IOrderHoldService,
   IOrderProvisioningResumeService,
+  IOrderRoutingRetryService,
+  type OrderRoutingRetryRefusal,
   ORDER_TEST_FIXTURE_SERVICE_TOKEN,
   IOrderTestFixtureService,
   TestFixturesDisabledException,
@@ -201,6 +205,7 @@ import type { OrderSyncStatusResponseDto } from './dto/order-sync-status-respons
 import type { SyncAttemptResponseDto } from './dto/sync-attempt-response.dto';
 import { PaginatedOrdersResponseDto } from './dto/paginated-orders-response.dto';
 import { RetryOrderDestinationResponseDto } from './dto/retry-order-destination-response.dto';
+import { RetryOrderRoutingResponseDto } from './dto/retry-order-routing-response.dto';
 import { PlaceOrderHoldRequestDto } from './dto/place-order-hold-request.dto';
 import { MarkPreRolloutEraResponseDto } from './dto/mark-pre-rollout-era-response.dto';
 import { ReleaseOrderHoldRequestDto } from './dto/release-order-hold-request.dto';
@@ -363,6 +368,17 @@ export async function enrichCrossContextFilters(
   return enriched;
 }
 
+/**
+ * The 409 `error` code for each routing-retry refusal (#3558). Upper-snake, the
+ * shape `ORDER_ALREADY_ON_HOLD` and `NO_BUYER_NOTE` already use on this
+ * controller, so a client reads one error shape across `/orders`.
+ */
+const ROUTING_RETRY_REFUSAL_ERROR_CODES: Record<OrderRoutingRetryRefusal, string> = {
+  'not-held': 'ROUTING_RETRY_NOT_HELD',
+  'not-retryable': 'ROUTING_RETRY_NOT_RETRYABLE',
+  'no-router': 'ROUTING_RETRY_NO_ROUTER',
+};
+
 @ApiBearerAuth()
 @ApiTags('orders')
 @Controller('orders')
@@ -400,6 +416,8 @@ export class OrdersController {
     private readonly holdService: IOrderHoldService,
     @Inject(ORDER_PROVISIONING_RESUME_SERVICE_TOKEN)
     private readonly provisioningResume: IOrderProvisioningResumeService,
+    @Inject(ORDER_ROUTING_RETRY_SERVICE_TOKEN)
+    private readonly routingRetry: IOrderRoutingRetryService,
     @Inject(SALES_DOCUMENT_VIEW_SERVICE_TOKEN)
     private readonly salesDocumentView: ISalesDocumentViewService,
     // #2855 — test-fixture-only writes, never called against real order data.
@@ -958,6 +976,56 @@ export class OrdersController {
         throw new InternalServerErrorException(error.message);
       }
       throw error;
+    }
+  }
+
+  @Roles('admin', 'operator')
+  @Post(':internalOrderId/retry-routing')
+  @HttpCode(HttpStatus.ACCEPTED)
+  @ApiOperation({
+    summary: 'Retry routing for an order OpenLinker is holding (#3558)',
+    description:
+      'Enqueues a fresh `fulfillment.work.route` for an order held as `routing-refused` or ' +
+      '`routing-failed`. The job re-reads the stored snapshot and routes it through the same ' +
+      'exactly-once commit as the automatic re-route, so it never creates a second live decision; ' +
+      'the outcome lands on the order (the "Waiting: ..." badge clears, or its detail changes). ' +
+      'A missing shipping address and the self-resolving guards are not retryable here: they ' +
+      'resolve on a re-ingestion or on their own.',
+  })
+  @ApiResponse({
+    status: 202,
+    description: 'Retry accepted; route job enqueued',
+    type: RetryOrderRoutingResponseDto,
+  })
+  @ApiResponse({ status: 404, description: 'Order not found' })
+  @ApiResponse({
+    status: 409,
+    description:
+      'Not retryable, with `error` naming why: ROUTING_RETRY_NOT_HELD - the order is not held; ' +
+      'ROUTING_RETRY_NOT_RETRYABLE - it is held for a reason a retry cannot change; ' +
+      'ROUTING_RETRY_NO_ROUTER - no single router is selected, or none is wired for the selected connection',
+  })
+  @ApiResponse({ status: 503, description: 'The job could not be enqueued' })
+  @ApiResponse({ status: 403, description: 'Insufficient permissions' })
+  async retryRouting(
+    @Param('internalOrderId') internalOrderId: string
+  ): Promise<RetryOrderRoutingResponseDto> {
+    const result = await this.routingRetry.retryRouting(internalOrderId);
+    switch (result.status) {
+      case 'enqueued':
+        return { internalOrderId, jobId: result.jobId };
+      case 'order-not-found':
+        throw new NotFoundException(`Order not found: ${internalOrderId}`);
+      case 'refused':
+        // A machine-readable CODE: the three states have different remedies, and
+        // a status code alone cannot tell an operator which one.
+        throw new ConflictException({
+          statusCode: HttpStatus.CONFLICT,
+          error: ROUTING_RETRY_REFUSAL_ERROR_CODES[result.reason],
+          message: `Routing cannot be retried for order ${internalOrderId}`,
+        });
+      case 'enqueue-failed':
+        throw new ServiceUnavailableException('Could not queue the routing retry');
     }
   }
 

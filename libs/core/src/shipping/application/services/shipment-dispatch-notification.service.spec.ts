@@ -123,6 +123,7 @@ describe('ShipmentDispatchNotificationService', () => {
       markDestinationRoutingBlock: jest.fn(),
       markFulfillmentRoutingSkip: jest.fn(),
       listOrderIdsByFulfillmentBlockReasons: jest.fn(),
+      listOrderIdsHeldForVariant: jest.fn(),
       markPacked: jest.fn(),
       markBuyerNoteRead: jest.fn(),
       clearPacked: jest.fn(),

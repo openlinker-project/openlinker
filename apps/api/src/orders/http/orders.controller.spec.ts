@@ -27,6 +27,7 @@ import {
   MissingSourceExternalIdException,
   ORDER_HOLD_SERVICE_TOKEN,
   ORDER_PROVISIONING_RESUME_SERVICE_TOKEN,
+  ORDER_ROUTING_RETRY_SERVICE_TOKEN,
   OrderAlreadyOnHoldError,
   HoldAlreadyReleasedError,
   HoldReleaseNoteRequiredError,
@@ -88,6 +89,7 @@ describe('OrdersController', () => {
   let deliveryRider: jest.Mocked<IDeliveryRiderService>;
   let holdService: jest.Mocked<IOrderHoldService>;
   let provisioningResume: jest.Mocked<IOrderProvisioningResumeService>;
+  let routingRetry: { retryRouting: jest.Mock; rerouteHeldOrdersForVariant: jest.Mock };
   let salesDocumentView: jest.Mocked<ISalesDocumentViewService>;
   let testFixtureService: jest.Mocked<IOrderTestFixtureService>;
   let fulfillmentWork: jest.Mocked<IFulfillmentWorkQueryService>;
@@ -153,6 +155,7 @@ describe('OrdersController', () => {
       updateFulfillmentBlock: jest.fn(),
       updateDestinationRoutingBlock: jest.fn(),
       listOrderIdsByFulfillmentBlockReasons: jest.fn(),
+      listOrderIdsHeldForVariant: jest.fn(),
       updateFulfillmentRoutingSkipReason: jest.fn(),
       updateOmsAttention: jest.fn(),
       countOrdersWithOmsAttention: jest.fn(),
@@ -248,6 +251,7 @@ describe('OrdersController', () => {
       listHolds: jest.fn().mockResolvedValue([]),
     } as unknown as jest.Mocked<IOrderHoldService>;
 
+    const mockRoutingRetry = { retryRouting: jest.fn(), rerouteHeldOrdersForVariant: jest.fn() };
     const mockProvisioningResume = {
       resume: jest
         .fn()
@@ -297,6 +301,10 @@ describe('OrdersController', () => {
         {
           provide: ORDER_PROVISIONING_RESUME_SERVICE_TOKEN,
           useValue: mockProvisioningResume,
+        },
+        {
+          provide: ORDER_ROUTING_RETRY_SERVICE_TOKEN,
+          useValue: mockRoutingRetry,
         },
         {
           provide: DELIVERY_RIDER_SERVICE_TOKEN,
@@ -367,6 +375,7 @@ describe('OrdersController', () => {
     deliveryRider = module.get(DELIVERY_RIDER_SERVICE_TOKEN);
     holdService = module.get(ORDER_HOLD_SERVICE_TOKEN);
     provisioningResume = module.get(ORDER_PROVISIONING_RESUME_SERVICE_TOKEN);
+    routingRetry = module.get(ORDER_ROUTING_RETRY_SERVICE_TOKEN);
     salesDocumentView = module.get(SALES_DOCUMENT_VIEW_SERVICE_TOKEN);
     testFixtureService = module.get(ORDER_TEST_FIXTURE_SERVICE_TOKEN);
     fulfillmentWork = module.get(FULFILLMENT_WORK_QUERY_SERVICE_TOKEN);
@@ -2287,6 +2296,45 @@ describe('OrdersController', () => {
       testFixtureService.markPreRolloutEraForTesting.mockRejectedValue(new Error('boom'));
 
       await expect(controller.markPreRolloutEra('ol_order_001', USER)).rejects.toThrow('boom');
+    });
+  });
+
+  describe('retryRouting (#3558)', () => {
+    it('should return the enqueued job id', async () => {
+      routingRetry.retryRouting.mockResolvedValue({ status: 'enqueued', jobId: 'job-1' });
+
+      await expect(controller.retryRouting('ol_order_001')).resolves.toEqual({
+        internalOrderId: 'ol_order_001',
+        jobId: 'job-1',
+      });
+      expect(routingRetry.retryRouting).toHaveBeenCalledWith('ol_order_001');
+    });
+
+    it('should answer 404 for an unknown order', async () => {
+      routingRetry.retryRouting.mockResolvedValue({ status: 'order-not-found' });
+
+      await expect(controller.retryRouting('ol_order_001')).rejects.toBeInstanceOf(
+        NotFoundException
+      );
+    });
+
+    it.each([
+      ['not-held', 'ROUTING_RETRY_NOT_HELD'],
+      ['not-retryable', 'ROUTING_RETRY_NOT_RETRYABLE'],
+      ['no-router', 'ROUTING_RETRY_NO_ROUTER'],
+    ])('should answer 409 with the error code for %s', async (reason, error) => {
+      routingRetry.retryRouting.mockResolvedValue({ status: 'refused', reason });
+
+      await expect(controller.retryRouting('ol_order_001')).rejects.toMatchObject({
+        response: expect.objectContaining({ statusCode: 409, error }),
+        status: 409,
+      });
+    });
+
+    it('should answer 503 when the job could not be queued', async () => {
+      routingRetry.retryRouting.mockResolvedValue({ status: 'enqueue-failed' });
+
+      await expect(controller.retryRouting('ol_order_001')).rejects.toMatchObject({ status: 503 });
     });
   });
 });
