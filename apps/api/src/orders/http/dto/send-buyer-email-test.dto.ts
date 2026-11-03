@@ -29,6 +29,7 @@ export class SendBuyerEmailTestDto {
 
   @ApiProperty()
   @IsString()
+  @IsNotEmpty()
   @MaxLength(998)
   subject!: string;
 

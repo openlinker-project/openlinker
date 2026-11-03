@@ -4,7 +4,9 @@
  * The seeded automation rule behind each template, one query per trigger
  * (`GET /automations` requires a trigger). A template whose rule cannot be
  * found reads `null`: the editor then saves the switch and sender and says the
- * wording cannot be edited, rather than inventing a rule.
+ * wording cannot be edited, rather than inventing a rule. A FAILED read also
+ * leaves `rules` at `null`, so a caller must check `isError` first - absence
+ * and failure are different statements to an operator.
  *
  * @module apps/web/src/features/buyer-emails/hooks
  */
@@ -17,6 +19,8 @@ import { BUYER_EMAIL_TEMPLATE_TRIGGER, findTemplateRule } from '../lib/buyer-ema
 export interface BuyerEmailRules {
   isLoading: boolean;
   isError: boolean;
+  /** Re-runs every rule query; offered as the retry when the read failed. */
+  refetch: () => void;
   rules: Record<BuyerEmailTemplate, AutomationRule | null>;
 }
 
@@ -40,6 +44,9 @@ export function useBuyerEmailRules(): BuyerEmailRules {
   return {
     isLoading: results.some((result) => result.isLoading),
     isError: results.some((result) => result.isError),
+    refetch: (): void => {
+      results.forEach((result) => void result.refetch());
+    },
     rules,
   };
 }

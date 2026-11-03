@@ -41,8 +41,9 @@ the sender belong to one connection. A marketplace connection does not list
 ### Sending a test
 
 In the editor, type your own address under **Send a test** and click **Send
-test email**. It sends the subject and message exactly as typed, with this
-connection's sender, through the same mail transport real emails use. A test
+test email**. It sends what the preview shows - the subject and message with
+sample values in place of the variables - with this connection's sender,
+through the same mail transport real emails use. A test
 is not recorded on any order, and it works even before the email is switched
 on.
 

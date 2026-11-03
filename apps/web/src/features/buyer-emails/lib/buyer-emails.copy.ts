@@ -83,13 +83,20 @@ export const BUYER_EMAILS_COPY = {
     testSend: 'Send test email',
     testSent: (to: string) => `Test email sent to ${to}.`,
     testSentDetail:
-      'It used the subject and message as typed here, and the sender of this connection. Real emails use the same mail transport.',
+      'It matches the preview: the subject and message with sample values in place of the variables, and the sender of this connection. Real emails use the same mail transport.',
     save: 'Save changes',
     cancel: 'Cancel',
     invalidAddress: 'Enter one email address.',
     noRule:
       'The ready-made rule for this email is missing, so its wording cannot be edited here. The switch and sender still save.',
     notAllowed: 'This email is not offered on a marketplace connection.',
+    rulesLoadErrorTitle: 'Could not load this email',
+    rulesLoadError:
+      'The wording of this email could not be loaded. Nothing has changed in your settings - try again.',
+    retry: 'Try again',
+    saveSettingsFailed: (reason: string) => `Nothing was saved. ${reason}`,
+    saveWordingFailed: (reason: string) =>
+      `The switch and sender were saved, but the subject and message were not. ${reason}`,
   },
   order: {
     title: 'Buyer emails',

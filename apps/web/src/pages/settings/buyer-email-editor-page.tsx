@@ -4,9 +4,9 @@
  * One template on one connection: the switch, sender and reply-to (this
  * connection only) and the subject and message (shared by every connection,
  * which the page says). Variables insert into the message; the preview fills
- * them with sample values; "Send test email" sends the text as typed to the
- * operator's own address through the real mail transport, and is never
- * recorded on an order.
+ * them with sample values; "Send test email" sends exactly that preview - the
+ * same sample values, never raw `{field}` tokens - to the operator's own
+ * address through the real mail transport, and is never recorded on an order.
  *
  * @module apps/web/src/pages/settings
  */
@@ -18,7 +18,7 @@ import { Button } from '../../shared/ui/button';
 import { FormField } from '../../shared/ui/form-field';
 import { Input } from '../../shared/ui/input';
 import { Textarea } from '../../shared/ui/textarea';
-import { AccessDeniedState, LoadingState } from '../../shared/ui/feedback-state';
+import { AccessDeniedState, ErrorState, LoadingState } from '../../shared/ui/feedback-state';
 import { AccessGate } from '../../shared/ui/access-gate';
 import { useToast } from '../../shared/ui/toast-provider';
 import { useConnectionQuery, type Connection } from '../../features/connections';
@@ -91,7 +91,6 @@ function EditorForm({
     save.mutate(
       {
         connectionId: connection.id,
-        connectionConfig: connection.config,
         template,
         settings: { enabled, fromAddress, replyTo },
         rule,
@@ -112,7 +111,15 @@ function EditorForm({
     if (!isSingleEmailAddress(to)) return;
     setSentTo(null);
     sendTest.mutate(
-      { connectionId: connection.id, templateKey: template, to, subject, body },
+      {
+        connectionId: connection.id,
+        templateKey: template,
+        to,
+        // The test is what the preview shows: an operator checking a template
+        // must not receive literal `{order.reference}` tokens a buyer never sees.
+        subject: renderPreview(subject),
+        body: renderPreview(body),
+      },
       {
         onSuccess: () => setSentTo(to),
         onError: (error) => showToast({ description: error.message, tone: 'error' }),
@@ -230,7 +237,7 @@ function EditorForm({
           <Button
             type="button"
             tone="secondary"
-            disabled={sendTest.isPending || !isSingleEmailAddress(testTo.trim()) || body.trim() === ''}
+            disabled={sendTest.isPending || !isSingleEmailAddress(testTo.trim()) || subject.trim() === '' || body.trim() === ''}
             onClick={handleSendTest}
             data-testid="buyer-email-test-send"
           >
@@ -265,6 +272,20 @@ export function BuyerEmailEditorPage(): ReactElement {
     content = <LoadingState liveRegion="off" title={title} message={COPY.loading} />;
   } else if (connectionQuery.isError || !connectionQuery.data) {
     content = <Alert tone="error">{BUYER_EMAILS_COPY.page.loadError}</Alert>;
+  } else if (rules.isError) {
+    // Checked before the editor renders: a failed read leaves every rule
+    // `null`, and the editor would then claim the rule is missing.
+    content = (
+      <ErrorState
+        title={COPY.rulesLoadErrorTitle}
+        message={COPY.rulesLoadError}
+        action={
+          <Button tone="secondary" onClick={rules.refetch} data-testid="buyer-email-rules-retry">
+            {COPY.retry}
+          </Button>
+        }
+      />
+    );
   } else if (!isTemplateAllowed(template, channelKindOf(connectionQuery.data.enabledCapabilities))) {
     content = <Alert tone="info">{COPY.notAllowed}</Alert>;
   } else {

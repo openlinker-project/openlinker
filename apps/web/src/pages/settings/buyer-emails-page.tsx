@@ -21,18 +21,14 @@ import { AccessDeniedState, EmptyState, LoadingState } from '../../shared/ui/fee
 import { AccessGate } from '../../shared/ui/access-gate';
 import { StatusBadge } from '../../shared/ui/status-badge';
 import { useToast } from '../../shared/ui/toast-provider';
-import {
-  useConnectionsQuery,
-  useUpdateConnectionMutation,
-  type Connection,
-} from '../../features/connections';
+import { useConnectionsQuery, type Connection } from '../../features/connections';
 import {
   BUYER_EMAILS_COPY,
   BUYER_EMAIL_TEMPLATE_COPY,
   channelKindOf,
   readBuyerEmailsSettings,
   templatesFor,
-  withBuyerEmailsSettings,
+  useSetBuyerEmailsEnabledMutation,
 } from '../../features/buyer-emails';
 
 const COPY = BUYER_EMAILS_COPY.page;
@@ -44,17 +40,14 @@ function takesOrders(connection: Connection): boolean {
 
 function ConnectionSettings({ connection }: { connection: Connection }): ReactElement {
   const { showToast } = useToast();
-  const update = useUpdateConnectionMutation();
+  const update = useSetBuyerEmailsEnabledMutation();
   const switchId = useId();
   const settings = readBuyerEmailsSettings(connection.config);
   const kind = channelKindOf(connection.enabledCapabilities);
 
   function toggleMaster(enabled: boolean): void {
     update.mutate(
-      {
-        connectionId: connection.id,
-        input: { config: withBuyerEmailsSettings(connection.config, { ...settings, enabled }) },
-      },
+      { connectionId: connection.id, enabled },
       {
         onSuccess: () => showToast({ description: COPY.saved, tone: 'success' }),
         onError: (error) => showToast({ description: error.message, tone: 'error' }),

@@ -32789,6 +32789,7 @@ legend.analytics-settings-dialog__label {
   display: block;
   color: var(--text-muted);
   font-size: 0.75rem;
+}
 
 /* ── Buyer emails (#3555, mockup M21) ─────────────────────────────────────── */
 .buyer-email-list {

@@ -127,7 +127,11 @@ describe('BuyerEmailsPage (#3555)', () => {
     const update = vi.fn().mockResolvedValue(SHOP);
     renderWithProviders(<BuyerEmailsPage />, {
       apiClient: createMockApiClient({
-        connections: { list: vi.fn().mockResolvedValue([SHOP]), update },
+        connections: {
+          list: vi.fn().mockResolvedValue([SHOP]),
+          getById: vi.fn().mockResolvedValue(SHOP),
+          update,
+        },
       }),
       sessionAdapter: session,
     });
@@ -141,7 +145,7 @@ describe('BuyerEmailsPage (#3555)', () => {
     );
   });
 
-  it('should show the loading state while connections load (list-loading)', () => {
+  it('should show the loading state while connections load (list-loading)', async () => {
     renderWithProviders(<BuyerEmailsPage />, {
       apiClient: createMockApiClient({
         connections: { list: vi.fn().mockReturnValue(new Promise(() => undefined)) },
@@ -149,7 +153,11 @@ describe('BuyerEmailsPage (#3555)', () => {
       sessionAdapter: session,
     });
 
-    expect(screen.getByTestId('buyer-emails-loading')).toHaveAttribute('data-mk-state', 'list-loading');
+    // AccessGate renders nothing until the session hydrates, so wait for it.
+    expect(await screen.findByTestId('buyer-emails-loading')).toHaveAttribute(
+      'data-mk-state',
+      'list-loading',
+    );
   });
 });
 
@@ -209,6 +217,34 @@ describe('BuyerEmailEditorPage (#3555)', () => {
     expect(write.actions[0]).toMatchObject({ subject: 'On its way', buyerEmailTemplate: 'shipped' });
   });
 
+  it('should report a failed rules read as a load error with a retry, not as a missing rule', async () => {
+    renderEditor({
+      connections: { getById: vi.fn().mockResolvedValue(SHOP) },
+      automations: { listByTrigger: vi.fn().mockRejectedValue(new Error('500')) },
+    });
+
+    expect(await screen.findByText('Could not load this email')).toBeInTheDocument();
+    expect(screen.getByTestId('buyer-email-rules-retry')).toBeInTheDocument();
+    expect(screen.queryByTestId('buyer-email-editor')).not.toBeInTheDocument();
+    expect(screen.queryByText(/ready-made rule for this email is missing/)).not.toBeInTheDocument();
+  });
+
+  it('should say the sender was saved but the wording was not when only the rule write fails', async () => {
+    renderEditor({
+      connections: { getById: vi.fn().mockResolvedValue(SHOP), update: vi.fn().mockResolvedValue(SHOP) },
+      automations: { ...automations, replace: vi.fn().mockRejectedValue(new Error('Server error')) },
+    });
+
+    await screen.findByTestId('buyer-email-editor');
+    await userEvent.click(screen.getByTestId('buyer-email-save'));
+
+    expect(
+      await screen.findByText(
+        'The switch and sender were saved, but the subject and message were not. Server error',
+      ),
+    ).toBeInTheDocument();
+  });
+
   it('should send a test to the typed address and show it was sent (editor-sent)', async () => {
     const sendTest = vi.fn().mockResolvedValue(undefined);
     renderEditor({
@@ -228,7 +264,8 @@ describe('BuyerEmailEditorPage (#3555)', () => {
       connectionId: 'conn-shop',
       templateKey: 'shipped',
       to: 'me@shop.pl',
-      subject: 'Shipped {order.reference}',
+      // The test matches the preview: variables carry sample values.
+      subject: 'Shipped SHOP-4821',
       body: 'Hello',
     });
   });

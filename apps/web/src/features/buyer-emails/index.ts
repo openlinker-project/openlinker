@@ -22,5 +22,6 @@ export { useSendBuyerEmailTestMutation } from './hooks/use-send-buyer-email-test
 export { useBuyerEmailRules } from './hooks/use-buyer-email-rules';
 export { useSaveBuyerEmailTemplateMutation } from './hooks/use-save-buyer-email-template-mutation';
 export type { SaveBuyerEmailTemplateInput } from './hooks/use-save-buyer-email-template-mutation';
+export { useSetBuyerEmailsEnabledMutation } from './hooks/use-set-buyer-emails-enabled-mutation';
 export { OrderBuyerEmailsPanel } from './components/order-buyer-emails-panel';
 export { BuyerEmailsTile } from './components/buyer-emails-tile';
