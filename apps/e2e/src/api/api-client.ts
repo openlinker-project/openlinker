@@ -16,6 +16,7 @@
 import { ApiError } from './api-error';
 import type {
   SourceFulfillmentView,
+  FulfillmentWorkPage,
   AutomationRuleView,
   AutomationRuleWriteInput,
   BuyerEmailDeliveryView,
@@ -473,6 +474,13 @@ export class ApiClient {
      */
     listWork: (): Promise<{ works: unknown[] }> =>
       this.request<{ works: unknown[] }>('/bench/work'),
+  };
+
+  // ── Fulfilment works (#3458) ────────────────────────────────────────────
+  fulfillment = {
+    /** `GET /fulfillment/works?orderId=` - the work objects routing made for one order. */
+    listWorksForOrder: (orderId: string): Promise<FulfillmentWorkPage> =>
+      this.request<FulfillmentWorkPage>(`/fulfillment/works${buildQuery({ orderId, limit: 50 })}`),
   };
 
   // ── Automations + buyer emails (#3554) ──────────────────────────────────
