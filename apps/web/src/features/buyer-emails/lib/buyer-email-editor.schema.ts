@@ -4,8 +4,8 @@
  * The editor's draft: the per-connection switch and sender, and the shared
  * subject and message. Mirrors what `PATCH /connections/:id` and
  * `PUT /automations/:id` refuse, so a value the API would reject is caught
- * before the request; the server stays the source of truth and its field
- * errors are mapped back by {@link buyerEmailFieldOfServerMessage}.
+ * before the request; the server stays the source of truth, and a refusal it
+ * still returns is shown as the save's own error.
  *
  * The wording is only validated when it is editable: a template whose seeded
  * rule is missing renders its subject and message disabled, and a disabled
@@ -14,7 +14,6 @@
  * @module apps/web/src/features/buyer-emails/lib
  */
 import { z } from 'zod';
-import type { BuyerEmailTemplate } from '../api/buyer-emails.types';
 import { isSingleEmailAddress } from './buyer-emails-config';
 import { BUYER_EMAILS_COPY } from './buyer-emails.copy';
 
@@ -62,22 +61,3 @@ export const buyerEmailTestFormSchema = z.object({
 });
 
 export type BuyerEmailTestFormValues = z.input<typeof buyerEmailTestFormSchema>;
-
-/** The editor fields a server refusal can name. */
-export type BuyerEmailServerField = 'fromAddress' | 'replyTo';
-
-/**
- * Which editor field a `PATCH /connections/:id` refusal is about, if any.
- * `ConnectionService.validateBuyerEmailsConfig` names the field and template in
- * its message (`config.buyerEmails: fromAddress of "shipped" must be ...`); a
- * message about another template or no field maps to nothing and is shown as
- * the save's own error instead.
- */
-export function buyerEmailFieldOfServerMessage(
-  message: string,
-  template: BuyerEmailTemplate,
-): BuyerEmailServerField | null {
-  const match = /\b(fromAddress|replyTo) of "([^"]+)"/.exec(message);
-  if (!match || match[2] !== template) return null;
-  return match[1] === 'fromAddress' ? 'fromAddress' : 'replyTo';
-}

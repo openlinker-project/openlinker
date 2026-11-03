@@ -9,9 +9,12 @@
  * address through the real mail transport, and is never recorded on an order.
  *
  * The draft lives in React Hook Form with a Zod schema (frontend-architecture
- * § Form State); a sender the server refuses is shown under its field. A
- * template whose seeded rule is missing cannot be switched on: with no rule
- * nothing fires, so an "on" switch would promise an email that never goes out.
+ * § Form State). The test send uses the draft wording but the SAVED sender
+ * (the server never takes a `from` from the browser), so it is blocked while
+ * the sender or reply-to has unsaved edits - otherwise the operator would test
+ * an address that is not the one on screen. A template whose seeded rule is
+ * missing cannot be switched on: with no rule nothing fires, so an "on" switch
+ * would promise an email that never goes out.
  *
  * @module apps/web/src/pages/settings
  */
@@ -98,7 +101,8 @@ function EditorForm({
 
   const subject = useWatch({ control: form.control, name: 'subject' }) ?? '';
   const body = useWatch({ control: form.control, name: 'body' }) ?? '';
-  const { errors } = form.formState;
+  const { errors, dirtyFields } = form.formState;
+  const senderUnsaved = dirtyFields.fromAddress === true || dirtyFields.replyTo === true;
   const bodyField = form.register('body');
 
   function insertVariable(field: string): void {
@@ -131,14 +135,7 @@ function EditorForm({
           showToast({ description: BUYER_EMAILS_COPY.page.saved, tone: 'success' });
           void navigate(listUrl);
         },
-        onError: (error) => {
-          // A refused sender goes under its field; anything else is the save's own error.
-          if (error.field) {
-            form.setError(error.field, { message: error.serverMessage });
-            return;
-          }
-          showToast({ description: error.message, tone: 'error' });
-        },
+        onError: (error) => showToast({ description: error.message, tone: 'error' }),
       },
     );
   });
@@ -231,6 +228,7 @@ function EditorForm({
             }}
             rows={8}
             disabled={!wordingEditable}
+            invalid={Boolean(errors.body)}
             data-testid="buyer-email-body"
           />
         </FormField>
@@ -289,11 +287,18 @@ function EditorForm({
           <Button
             type="submit"
             tone="secondary"
-            disabled={sendTest.isPending || subject.trim() === '' || body.trim() === ''}
+            disabled={
+              sendTest.isPending || senderUnsaved || subject.trim() === '' || body.trim() === ''
+            }
             data-testid="buyer-email-test-send"
           >
             {COPY.testSend}
           </Button>
+          {senderUnsaved ? (
+            <p className="muted-text" data-testid="buyer-email-test-sender-unsaved">
+              {COPY.testSenderUnsaved}
+            </p>
+          ) : null}
           {sentTo ? (
             <Alert tone="success" title={COPY.testSent(sentTo)} data-testid="buyer-email-test-sent">
               {COPY.testSentDetail}
@@ -352,7 +357,7 @@ export function BuyerEmailEditorPage(): ReactElement {
   }
 
   return (
-    <PageLayout backTo={backTo} eyebrow={connectionQuery.data?.name ?? 'Settings'} title={title}>
+    <PageLayout backTo={backTo} eyebrow={connectionQuery.data?.name ?? COPY.eyebrow} title={title}>
       {/* Same gate as the list page: only an administrator holds `connections:write`. */}
       <AccessGate
         require="connections:write"

@@ -10,6 +10,7 @@ import {
   BadRequestException,
   HttpException,
   HttpStatus,
+  InternalServerErrorException,
   NotFoundException,
   ServiceUnavailableException,
 } from '@nestjs/common';
@@ -81,5 +82,11 @@ describe('BuyerEmailsController', () => {
     sendTest.mockResolvedValue({ status: 'failed', message: 'could not send' });
 
     await expect(controller.sendTest(DTO, USER)).rejects.toBeInstanceOf(ServiceUnavailableException);
+  });
+
+  it('should answer 500, never sent, when the service reports a refusal reason it does not map', async () => {
+    sendTest.mockResolvedValue({ status: 'refused', reason: 'something-new', message: 'no' });
+
+    await expect(controller.sendTest(DTO, USER)).rejects.toBeInstanceOf(InternalServerErrorException);
   });
 });

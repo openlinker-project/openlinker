@@ -7,7 +7,8 @@
  *
  * Mirrors `BUYER_EMAIL_TEST_RATE_LIMITED_ERROR_CODE` in
  * `apps/api/src/orders/http/buyer-emails.controller.ts` verbatim - the
- * browser bundle cannot import backend code (#591).
+ * browser bundle cannot import backend code (#591); `scripts/check-buyer-email-mirror.mjs`
+ * fails the build if the two drift.
  *
  * @module apps/web/src/features/buyer-emails/lib
  */

@@ -306,7 +306,7 @@ describe('BuyerEmailEditorPage (#3555)', () => {
     });
   });
 
-  it('should put a sender the server refuses under its field, not only in a toast', async () => {
+  it('should show a sender the server refuses as the save error', async () => {
     const update = vi.fn().mockRejectedValue(
       new ApiError(
         'config.buyerEmails: fromAddress of "shipped" must be a single email address',
@@ -325,10 +325,33 @@ describe('BuyerEmailEditorPage (#3555)', () => {
 
     expect(
       await screen.findByText(
-        'config.buyerEmails: fromAddress of "shipped" must be a single email address',
+        'Nothing was saved. config.buyerEmails: fromAddress of "shipped" must be a single email address',
       ),
     ).toBeInTheDocument();
-    expect(screen.getByTestId('buyer-email-from')).toHaveAttribute('aria-invalid', 'true');
+  });
+
+  it('should block the test send while the sender has unsaved edits, since the test uses the saved sender', async () => {
+    const sendTest = vi.fn().mockResolvedValue(undefined);
+    renderEditor({
+      connections: { getById: vi.fn().mockResolvedValue(SHOP) },
+      automations,
+      buyerEmails: { sendTest },
+    });
+
+    await screen.findByTestId('buyer-email-editor');
+    expect(screen.getByTestId('buyer-email-test-send')).toBeEnabled();
+
+    await userEvent.type(screen.getByTestId('buyer-email-from'), 'new@shop.pl');
+
+    expect(screen.getByTestId('buyer-email-test-send')).toBeDisabled();
+    expect(screen.getByTestId('buyer-email-test-sender-unsaved')).toHaveTextContent(
+      'Save your sender and reply-to changes first',
+    );
+
+    await userEvent.clear(screen.getByTestId('buyer-email-from'));
+
+    expect(screen.getByTestId('buyer-email-test-send')).toBeEnabled();
+    expect(screen.queryByTestId('buyer-email-test-sender-unsaved')).toBeNull();
   });
 
   it('should not save an empty subject', async () => {

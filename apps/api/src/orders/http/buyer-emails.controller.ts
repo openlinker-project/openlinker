@@ -22,6 +22,7 @@ import {
   HttpException,
   HttpStatus,
   Inject,
+  InternalServerErrorException,
   NotFoundException,
   Post,
   ServiceUnavailableException,
@@ -43,7 +44,8 @@ import {
  * The 429 `error` code for a rate-limited test send. Upper-snake, the shape
  * `ORDER_ALREADY_ON_HOLD` uses, so the editor maps the code to its own copy
  * rather than showing the server's sentence. Mirrored verbatim in
- * `apps/web/src/features/buyer-emails/lib/buyer-email-test-error.ts`.
+ * `apps/web/src/features/buyer-emails/lib/buyer-email-test-error.ts`, held
+ * identical by `scripts/check-buyer-email-mirror.mjs`.
  */
 export const BUYER_EMAIL_TEST_RATE_LIMITED_ERROR_CODE = 'BUYER_EMAIL_TEST_RATE_LIMITED';
 
@@ -95,6 +97,14 @@ export class BuyerEmailsController {
           );
         case 'invalid-address':
           throw new BadRequestException(result.message);
+        default: {
+          // A reason this controller does not map must never fall through to
+          // `sent`: the email was refused, so answering 200 would be a lie.
+          const unmapped: never = result.reason;
+          throw new InternalServerErrorException(
+            `Unmapped buyer email test refusal: ${String(unmapped)}`
+          );
+        }
       }
     }
     if (result.status === 'failed') {

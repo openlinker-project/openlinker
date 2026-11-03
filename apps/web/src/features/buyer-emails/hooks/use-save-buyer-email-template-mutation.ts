@@ -32,34 +32,20 @@ import { useApiClient } from '../../../app/api/api-client-provider';
 import type { BuyerEmailTemplate, BuyerEmailTemplateSettings } from '../api/buyer-emails.types';
 import { BUYER_EMAILS_COPY } from '../lib/buyer-emails.copy';
 import {
-  buyerEmailFieldOfServerMessage,
-  type BuyerEmailServerField,
-} from '../lib/buyer-email-editor.schema';
-import {
   readBuyerEmailsSettings,
   withBuyerEmailsSettings,
   withRuleWording,
   withTemplateSettings,
 } from '../lib/buyer-emails-config';
 
-/** Which of the save's two writes failed, and the editor field a refusal names. */
+/** Which of the save's two writes failed, so the message can say what was kept. */
 export class BuyerEmailSaveError extends Error {
   readonly stage: 'settings' | 'wording';
-  /** The server's own sentence, for showing under {@link field}. */
-  readonly serverMessage: string;
-  readonly field: BuyerEmailServerField | null;
 
-  constructor(
-    message: string,
-    stage: 'settings' | 'wording',
-    serverMessage: string,
-    field: BuyerEmailServerField | null,
-  ) {
+  constructor(message: string, stage: 'settings' | 'wording') {
     super(message);
     this.name = 'BuyerEmailSaveError';
     this.stage = stage;
-    this.serverMessage = serverMessage;
-    this.field = field;
   }
 }
 
@@ -91,12 +77,9 @@ export function useSaveBuyerEmailTemplateMutation(): UseMutationResult<
           ),
         });
       } catch (error) {
-        const reason = messageOf(error);
         throw new BuyerEmailSaveError(
-          BUYER_EMAILS_COPY.editor.saveSettingsFailed(reason),
+          BUYER_EMAILS_COPY.editor.saveSettingsFailed(messageOf(error)),
           'settings',
-          reason,
-          buyerEmailFieldOfServerMessage(reason, input.template),
         );
       }
       if (input.rule) {
@@ -110,12 +93,9 @@ export function useSaveBuyerEmailTemplateMutation(): UseMutationResult<
             )
           );
         } catch (error) {
-          const reason = messageOf(error);
           throw new BuyerEmailSaveError(
-            BUYER_EMAILS_COPY.editor.saveWordingFailed(reason),
+            BUYER_EMAILS_COPY.editor.saveWordingFailed(messageOf(error)),
             'wording',
-            reason,
-            null,
           );
         }
       }

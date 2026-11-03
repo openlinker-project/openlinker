@@ -11,16 +11,22 @@
  * (#591):
  *   apps/web/src/features/buyer-emails/api/buyer-emails.types.ts   (template lists)
  *   apps/web/src/features/buyer-emails/lib/buyer-emails-config.ts  (channel rule, address check)
+ * plus the test send's 429 code, declared by
+ *   apps/api/src/orders/http/buyer-emails.controller.ts
+ * and restated in
+ *   apps/web/src/features/buyer-emails/lib/buyer-email-test-error.ts
  *
  * A drift is silent: a template added in core is never offered, a changed
  * channel rule makes the settings page offer a template the server gate then
  * suppresses, and a different address check lets the form accept a sender the
- * server drops. Four rules, all parsed TEXTUALLY (no TypeScript import) so this
- * stays a zero-dependency `check:invariants` step:
+ * server drops, and a renamed 429 code makes the editor show the server's
+ * sentence instead of its own. Five rules, all parsed TEXTUALLY (no TypeScript
+ * import) so this stays a zero-dependency `check:invariants` step:
  *   1. the template list - value + order equality;
  *   2. the marketplace template list - value + order equality;
  *   3. the channel rule - the same capability tests, negations and branch order;
- *   4. the single-address regex - literal equality.
+ *   4. the single-address regex - literal equality;
+ *   5. the rate-limited test-send error code - literal equality.
  *
  * Run with `--self-check` to exercise the parsers + differ on synthetic inputs,
  * including deliberately drifted fixtures.
@@ -36,6 +42,8 @@ const CORE_FILE = join(
 );
 const FE_TYPES_FILE = join('apps', 'web', 'src', 'features', 'buyer-emails', 'api', 'buyer-emails.types.ts');
 const FE_CONFIG_FILE = join('apps', 'web', 'src', 'features', 'buyer-emails', 'lib', 'buyer-emails-config.ts');
+const API_CONTROLLER_FILE = join('apps', 'api', 'src', 'orders', 'http', 'buyer-emails.controller.ts');
+const FE_TEST_ERROR_FILE = join('apps', 'web', 'src', 'features', 'buyer-emails', 'lib', 'buyer-email-test-error.ts');
 
 const PAIRS = [
   { core: 'BuyerEmailTemplateValues', frontend: 'BUYER_EMAIL_TEMPLATE_VALUES' },
@@ -43,6 +51,7 @@ const PAIRS = [
 ];
 const CHANNEL_FUNCTIONS = { core: 'buyerEmailChannelKindOf', frontend: 'channelKindOf' };
 const ADDRESS_FUNCTION = 'isSingleEmailAddress';
+const RATE_LIMITED_CODE = 'BUYER_EMAIL_TEST_RATE_LIMITED_ERROR_CODE';
 
 function stripComments(source) {
   return source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:'"\\])\/\/[^\n]*/g, '$1');
@@ -86,6 +95,12 @@ export function parseAddressRegex(source) {
   return match === null ? null : match[1];
 }
 
+/** The string literal of `export const <name> = '...'`, or null. */
+export function parseStringConstant(source, name) {
+  const match = new RegExp(`export const ${name}\\b[^=]*=\\s*'([^']+)'`).exec(stripComments(source));
+  return match === null ? null : match[1];
+}
+
 export function diffValues(label, core, frontend) {
   if (core === null) return [`core declares no ${label}`];
   if (frontend === null) return [`frontend declares no mirror of ${label}`];
@@ -99,7 +114,7 @@ export function diffScalar(label, core, frontend) {
   return core === frontend ? [] : [`${label} drifted: core \`${core}\` vs frontend \`${frontend}\``];
 }
 
-export function check({ core, feTypes, feConfig }) {
+export function check({ core, feTypes, feConfig, apiController, feTestError }) {
   return [
     ...PAIRS.flatMap((pair) =>
       diffValues(pair.core, parseValues(core, pair.core), parseValues(feTypes, pair.frontend)),
@@ -110,6 +125,11 @@ export function check({ core, feTypes, feConfig }) {
       parseChannelRule(feConfig, CHANNEL_FUNCTIONS.frontend),
     ),
     ...diffScalar('the single-address check', parseAddressRegex(core), parseAddressRegex(feConfig)),
+    ...diffScalar(
+      'the rate-limited test-send code',
+      parseStringConstant(apiController, RATE_LIMITED_CODE),
+      parseStringConstant(feTestError, RATE_LIMITED_CODE),
+    ),
   ];
 }
 
@@ -121,6 +141,8 @@ function selfCheck() {
   const address = (re) =>
     `export function ${ADDRESS_FUNCTION}(value: string): boolean {\n  return ${re}.test(value);\n}\n`;
   const RE = '/^[^\\s@]+@[^\\s@]+$/';
+  const code = (value) => `export const ${RATE_LIMITED_CODE} = '${value}';\n`;
+  const API = code('X_LIMITED');
 
   const core = (opts = {}) =>
     list('BuyerEmailTemplateValues', opts.templates ?? ['a', 'b']) +
@@ -142,10 +164,12 @@ function selfCheck() {
     ['channel rule branches swapped', core(), feTypes(), feConfig({ first: 'shop', second: 'marketplace' }), 1],
     ['address regex loosened', core(), feTypes(), feConfig({ re: '/^.+@.+$/' }), 1],
     ['frontend list missing', core(), list('BUYER_EMAIL_TEMPLATE_VALUES', ['a', 'b']), feConfig(), 1],
+    ['rate-limited code renamed', core(), feTypes(), feConfig(), 1, code('Y_LIMITED')],
+    ['rate-limited code missing in frontend', core(), feTypes(), feConfig(), 1, ''],
   ];
   let failed = 0;
-  for (const [label, c, t, f, expected] of cases) {
-    const got = check({ core: c, feTypes: t, feConfig: f }).length;
+  for (const [label, c, t, f, expected, feTestError = API] of cases) {
+    const got = check({ core: c, feTypes: t, feConfig: f, apiController: API, feTestError }).length;
     if (got !== expected) {
       console.error(`self-check FAILED: ${label} (expected ${expected} violation(s), got ${got})`);
       failed++;
@@ -157,13 +181,18 @@ function selfCheck() {
 
 async function main() {
   if (process.argv.includes('--self-check')) return selfCheck();
-  const [core, feTypes, feConfig] = await Promise.all(
-    [CORE_FILE, FE_TYPES_FILE, FE_CONFIG_FILE].map((f) => readFile(join(repoRoot, f), 'utf8')),
+  const [core, feTypes, feConfig, apiController, feTestError] = await Promise.all(
+    [CORE_FILE, FE_TYPES_FILE, FE_CONFIG_FILE, API_CONTROLLER_FILE, FE_TEST_ERROR_FILE].map((f) =>
+      readFile(join(repoRoot, f), 'utf8'),
+    ),
   );
-  const violations = check({ core, feTypes, feConfig });
+  const violations = check({ core, feTypes, feConfig, apiController, feTestError });
   if (violations.length > 0) {
     for (const v of violations) console.error(`check-buyer-email-mirror: ${v}`);
-    console.error(`Fix: make ${FE_TYPES_FILE} and ${FE_CONFIG_FILE} match ${CORE_FILE}.`);
+    console.error(
+      `Fix: make ${FE_TYPES_FILE} and ${FE_CONFIG_FILE} match ${CORE_FILE}, ` +
+        `and ${FE_TEST_ERROR_FILE} match ${API_CONTROLLER_FILE}.`,
+    );
     process.exit(1);
   }
   console.log('check-buyer-email-mirror: ok');

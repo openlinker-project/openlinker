@@ -31,10 +31,8 @@ export {
 } from './hooks/use-save-buyer-email-template-mutation';
 export {
   buildBuyerEmailEditorSchema,
-  buyerEmailFieldOfServerMessage,
   buyerEmailTestFormSchema,
   type BuyerEmailEditorFormValues,
-  type BuyerEmailServerField,
   type BuyerEmailTestFormValues,
 } from './lib/buyer-email-editor.schema';
 export { useSetBuyerEmailsEnabledMutation } from './hooks/use-set-buyer-emails-enabled-mutation';

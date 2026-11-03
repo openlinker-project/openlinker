@@ -42,8 +42,10 @@ the sender belong to one connection. A marketplace connection does not list
 
 In the editor, type your own address under **Send a test** and click **Send
 test email**. It sends what the preview shows - the subject and message with
-sample values in place of the variables - with this connection's sender,
-through the same mail transport real emails use. A test
+sample values in place of the variables - from this connection's saved sender,
+through the same mail transport real emails use. If you have changed the
+sender or reply-to, save first: the test button waits until those changes are
+saved, so you never test an address other than the one on screen. A test
 is not recorded on any order, and it works even before the email is switched
 on.
 

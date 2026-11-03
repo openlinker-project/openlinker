@@ -66,6 +66,7 @@ export const BUYER_EMAILS_COPY = {
     loadingConnections: 'Loading connections…',
   },
   editor: {
+    eyebrow: 'Settings',
     back: 'Buyer emails',
     loading: 'Loading…',
     enabledLabel: 'Send this email',
@@ -85,7 +86,9 @@ export const BUYER_EMAILS_COPY = {
     testSent: (to: string) => `Test email sent to ${to}.`,
     testRateLimited: 'Too many test emails in a short time. Wait a few minutes and try again.',
     testSentDetail:
-      'It matches the preview: the subject and message with sample values in place of the variables, and the sender of this connection. Real emails use the same mail transport.',
+      'It matches the preview: the subject and message with sample values in place of the variables, from the saved sender of this connection. Real emails use the same mail transport.',
+    testSenderUnsaved:
+      'The test is sent from the saved sender. Save your sender and reply-to changes first to test them.',
     save: 'Save changes',
     cancel: 'Cancel',
     invalidAddress: 'Enter one email address.',
