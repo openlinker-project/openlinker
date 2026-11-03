@@ -108,4 +108,33 @@ describe('API error code (integration)', () => {
       code: 'HTTP_413',
     });
   });
+
+  describe('validation failures (#3861)', () => {
+    it("should name each failed field with its constraint and keep Nest's messages", async () => {
+      const http = harness.getHttp();
+      const token = await loginAsAdmin(http, harness.getDataSource());
+
+      const res = await http
+        .post('/v1/connections')
+        .set('Authorization', `Bearer ${token}`)
+        .send({ name: '', unexpected: true })
+        .expect(400);
+
+      const body = res.body as {
+        code?: string;
+        error?: string;
+        message?: unknown;
+        fields?: { path: string; code: string }[];
+      };
+      expect(body.code).toBe('VALIDATION_FAILED');
+      expect(body.error).toBe('Bad Request');
+      expect(Array.isArray(body.message)).toBe(true);
+      expect(body.fields).toEqual(
+        expect.arrayContaining([
+          { path: 'name', code: 'isNotEmpty' },
+          { path: 'unexpected', code: 'whitelistValidation' },
+        ])
+      );
+    });
+  });
 });

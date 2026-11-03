@@ -17,6 +17,8 @@
 export const ApiErrorCodeValues = [
   /** An error the API did not anticipate; the body never carries its message. */
   'INTERNAL_ERROR',
+  /** The request body failed validation; `fields` lists what failed and why (#3861). */
+  'VALIDATION_FAILED',
 ] as const;
 
 export type KnownApiErrorCode = (typeof ApiErrorCodeValues)[number];

@@ -20,7 +20,7 @@ describe('flattenValidationErrors', () => {
     ];
 
     expect(flattenValidationErrors(errors)).toEqual([
-      { path: 'baseUrl', message: 'baseUrl must be a URL' },
+      { path: 'baseUrl', message: 'baseUrl must be a URL', code: 'isUrl' },
     ]);
   });
 
@@ -36,8 +36,8 @@ describe('flattenValidationErrors', () => {
     ];
 
     expect(flattenValidationErrors(errors)).toEqual([
-      { path: 'apiKey', message: 'apiKey must be a string' },
-      { path: 'apiKey', message: 'apiKey must not be empty' },
+      { path: 'apiKey', message: 'apiKey must be a string', code: 'isString' },
+      { path: 'apiKey', message: 'apiKey must not be empty', code: 'isNotEmpty' },
     ]);
   });
 
@@ -63,6 +63,7 @@ describe('flattenValidationErrors', () => {
       {
         path: 'sellerDefaults.location.postcode',
         message: 'postcode must match ^\\d{2}-\\d{3}$',
+        code: 'matches',
       },
     ]);
   });
@@ -77,8 +78,8 @@ describe('flattenValidationErrors', () => {
     ];
 
     expect(flattenValidationErrors(errors)).toEqual([
-      { path: 'config', message: 'config must be an object' },
-      { path: 'config.apiKey', message: 'apiKey must be a string' },
+      { path: 'config', message: 'config must be an object', code: 'isObject' },
+      { path: 'config.apiKey', message: 'apiKey must be a string', code: 'isString' },
     ]);
   });
 });
