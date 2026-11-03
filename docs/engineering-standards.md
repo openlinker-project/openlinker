@@ -1162,6 +1162,7 @@ Every error the API sends carries a stable `code` next to its English `message` 
 
 - The catch-all `ApiErrorCodeFilter` fills `code` for any error that has none: a legacy upper-snake-case `error` value, else `HTTP_<status>`. A domain filter wraps its body in `withApiErrorCode(body, status)`.
 - When an operator should be told WHY a request was refused, throw `CodedHttpException(status, code, message, params?)` (`apps/api/src/common/errors`) and add the code to `ApiErrorCodeValues`. A code is a contract: never rename it or change its meaning. `params` are values for the copy, never sentences.
+- A request body that fails DTO validation answers `code: 'VALIDATION_FAILED'` with one `fields` entry per failed constraint: dotted `path` (`items.0.quantity`), `code` = the class-validator constraint key, `params` = its primitive arguments (`{ min: 1 }`). Register the pipe through `createValidationPipe()` (`apps/api/src/common/validation`), the one producer `main.ts` and the integration harness share; a plugin's config shape errors carry the same `fields`.
 - `ApiErrorCodeFilter` must stay first in `buildGlobalExceptionFilters`: Nest checks global filters in reverse order and its empty `@Catch()` matches everything.
 
 ### Nullability
