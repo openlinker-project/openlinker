@@ -68,7 +68,7 @@ import { OrderEditedBadge } from '../../features/orders/components/order-edited-
 import { useRetryOrderDestinationMutation } from '../../features/orders/hooks/use-retry-order-destination-mutation';
 import { ReadOnlyLock } from '../../shared/ui/read-only-lock';
 import { useIsAdmin, useWriteAccess } from '../../shared/auth/use-permission';
-import { DEMO_READ_ONLY_ACTION_MESSAGE } from '../../shared/config/demo-mode';
+import { demoReadOnlyActionMessage } from '../../shared/config/demo-mode';
 import { useDemoMode, useStoresPersonalData } from '../../features/system';
 import { captureDemoEvent } from '../../features/demo';
 import { parseOrderSnapshot } from '../../features/orders/api/order-snapshot.schema';
@@ -693,7 +693,7 @@ export function OrdersListPage(): ReactElement {
                 </span>
               ) : null}
               {canRetry && failed ? (
-                <ReadOnlyLock active={retryWrite.demoReadOnly} message={DEMO_READ_ONLY_ACTION_MESSAGE}>
+                <ReadOnlyLock active={retryWrite.demoReadOnly} message={demoReadOnlyActionMessage()}>
                   <Button
                     tone="ghost"
                     className="button--sm orders-row-retry"
@@ -1161,7 +1161,7 @@ export function OrdersListPage(): ReactElement {
       actions={
         <div className="button-group">
           {exportAccess.canWrite || exportAccess.demoReadOnly ? (
-            <ReadOnlyLock active={exportAccess.demoReadOnly} message={DEMO_READ_ONLY_ACTION_MESSAGE}>
+            <ReadOnlyLock active={exportAccess.demoReadOnly} message={demoReadOnlyActionMessage()}>
               <Button
                 tone="secondary"
                 className="button--sm"
@@ -1442,15 +1442,15 @@ export function OrdersListPage(): ReactElement {
                       Clear
                     </Button>
                     {bulkVisible ? (
-                      <ReadOnlyLock active={bulkLocked} message={DEMO_READ_ONLY_ACTION_MESSAGE}>
+                      <ReadOnlyLock active={bulkLocked} message={demoReadOnlyActionMessage()}>
                         <BulkTagPopover
                           selectedOrders={selectedOrders}
-                          disabledReason={bulkLocked ? DEMO_READ_ONLY_ACTION_MESSAGE : selectionBlockReason}
+                          disabledReason={bulkLocked ? demoReadOnlyActionMessage() : selectionBlockReason}
                         />
                       </ReadOnlyLock>
                     ) : null}
                     {bulkVisible ? (
-                      <ReadOnlyLock active={bulkLocked} message={DEMO_READ_ONLY_ACTION_MESSAGE}>
+                      <ReadOnlyLock active={bulkLocked} message={demoReadOnlyActionMessage()}>
                         <Button
                           tone="secondary"
                           data-testid="orders-bulk-read"
@@ -1470,7 +1470,7 @@ export function OrdersListPage(): ReactElement {
                       </ReadOnlyLock>
                     ) : null}
                     {bulkVisible && (isAdmin || bulkLocked) ? (
-                      <ReadOnlyLock active={bulkLocked} message={DEMO_READ_ONLY_ACTION_MESSAGE}>
+                      <ReadOnlyLock active={bulkLocked} message={demoReadOnlyActionMessage()}>
                         <Button
                           tone="danger"
                           data-testid="orders-bulk-cancel"
@@ -1833,7 +1833,7 @@ export function OrdersListPage(): ReactElement {
                     retryWrite.visible ? (
                       <ReadOnlyLock
                         active={retryWrite.demoReadOnly}
-                        message={DEMO_READ_ONLY_ACTION_MESSAGE}
+                        message={demoReadOnlyActionMessage()}
                       >
                         <Button
                           tone="ghost"

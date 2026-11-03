@@ -634,7 +634,8 @@ const copy = useMessages('orders');
 Placement:
 
 - **One namespace per feature folder**, sectioned by component: `orders.header.title`, `orders.filters.status.label`. Pages read their feature's namespace.
-- **Shared namespaces**: `ui` for the shared primitives (`ui.common` holds the few words every feature may use), `format` for the formatters. The shell (`app/`) has no namespace yet: its strings are not extracted, so it is part of the interface that is still English-only.
+- **Shared namespaces**: `ui` for the shared primitives and the rest of `shared/` (`ui.common` holds the few words every feature may use), `format` for the formatters, `app` for the shell (`app/`: sidebar, topbar, layouts, command palette, breadcrumbs). `app.sections` and `app.pages` name the app's sections and pages once; the sidebar and the breadcrumbs both read them.
+- **Text held in module-level data** (a nav registry, a route `handle`, a constant passed around as a tooltip) stores a **key** or is a **function**, never the string: a module is evaluated once, so a string would stay in the language it first loaded in. `BASE_NAV_GROUPS` stores `section` / `page` keys and a route crumb `{ group, page }`, resolved at render; `demoReadOnlyActionMessage()` reads its namespace when called. A plugin crumb with no core page passes `title` until its own extraction issue.
 - **No reaching into another namespace.** "Cancel" in orders and "Cancel" in returns are two keys; only `ui.common` is shared. Removing a feature removes one block.
 - **Plugins** keep their own namespace in their own folder, `plugins/<id>/locales/en.json` and `pl.json`, named after the plugin id, and register it with `definePluginMessages`, which returns the plugin's typed hook. Reference the result from the plugin's `messages` slot in `definePlugin` so the namespace is registered at module load, before the first language load:
 

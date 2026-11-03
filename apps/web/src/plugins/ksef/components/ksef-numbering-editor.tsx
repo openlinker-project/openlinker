@@ -24,7 +24,7 @@ import {
   type ResetPolicy,
 } from '../../../features/invoicing';
 import { ApiError } from '../../../shared/api/api-error';
-import { DEMO_READ_ONLY_ACTION_MESSAGE } from '../../../shared/config/demo-mode';
+import { demoReadOnlyActionMessage } from '../../../shared/config/demo-mode';
 import { Alert } from '../../../shared/ui/alert';
 import { Button } from '../../../shared/ui/button';
 import { FormErrorSummary } from '../../../shared/ui/form-error-summary';
@@ -354,7 +354,7 @@ export function KsefNumberingEditor({
           </Button>
           <ReadOnlyLock
             active={readOnly}
-            message={DEMO_READ_ONLY_ACTION_MESSAGE}
+            message={demoReadOnlyActionMessage()}
             onLockedClick={() =>
               captureDemoEvent('demo_ksef_series_save_attempted', { mode: isEdit ? 'edit' : 'create' })
             }

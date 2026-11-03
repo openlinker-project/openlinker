@@ -46,7 +46,7 @@
 import { useEffect, useMemo, useRef, useState, type ReactElement } from 'react';
 
 import { useWriteAccess } from '../../../shared/auth/use-permission';
-import { DEMO_READ_ONLY_ACTION_MESSAGE } from '../../../shared/config/demo-mode';
+import { demoReadOnlyActionMessage } from '../../../shared/config/demo-mode';
 import { Alert } from '../../../shared/ui/alert';
 import { Button } from '../../../shared/ui/button';
 import { ErrorState, LoadingState } from '../../../shared/ui/feedback-state';
@@ -477,7 +477,7 @@ export function BenchWorkList({
 
       {claimRefusal === null ? null : <Alert tone="warning">{claimRefusal}</Alert>}
 
-      {write.demoReadOnly ? <Alert tone="info">{DEMO_READ_ONLY_ACTION_MESSAGE}</Alert> : null}
+      {write.demoReadOnly ? <Alert tone="info">{demoReadOnlyActionMessage()}</Alert> : null}
 
       {works.length === 0 && unlabelled.length === 0 ? (
         <BenchWorkEmpty routingReady={routingReady} />

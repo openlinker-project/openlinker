@@ -11,7 +11,7 @@ import { useEffect, useState, type ReactElement } from 'react';
 import { Alert, Button } from '../../../../shared/ui';
 import { Tooltip, TooltipContent, TooltipTrigger } from '../../../../shared/ui/tooltip';
 import { ReadOnlyLock } from '../../../../shared/ui/read-only-lock';
-import { DEMO_READ_ONLY_ACTION_MESSAGE } from '../../../../shared/config/demo-mode';
+import { demoReadOnlyActionMessage } from '../../../../shared/config/demo-mode';
 import { captureDemoEvent } from '../../../demo';
 import {
   Dialog,
@@ -205,7 +205,7 @@ export function BulkConfirmModal({
           </Button>
           <ReadOnlyLock
             active={demoReadOnly}
-            message={DEMO_READ_ONLY_ACTION_MESSAGE}
+            message={demoReadOnlyActionMessage()}
             onLockedClick={() =>
               captureDemoEvent('demo_offer_create_attempted', {
                 platform: marketplaceName,

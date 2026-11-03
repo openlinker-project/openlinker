@@ -18,7 +18,7 @@ import { useState, type ReactElement } from 'react';
 import { Button } from '../../../shared/ui/button';
 import { ReadOnlyLock } from '../../../shared/ui/read-only-lock';
 import { useWriteAccess } from '../../../shared/auth/use-permission';
-import { DEMO_READ_ONLY_ACTION_MESSAGE } from '../../../shared/config/demo-mode';
+import { demoReadOnlyActionMessage } from '../../../shared/config/demo-mode';
 import { useDemoMode } from '../../system';
 import { ConfirmOrderRefundDialog } from './confirm-order-refund-dialog';
 
@@ -42,7 +42,7 @@ export function OrderConfirmRefundAction({
 
   return (
     <>
-      <ReadOnlyLock active={write.demoReadOnly} message={DEMO_READ_ONLY_ACTION_MESSAGE}>
+      <ReadOnlyLock active={write.demoReadOnly} message={demoReadOnlyActionMessage()}>
         <Button
           tone="primary"
           disabled={write.demoReadOnly}

@@ -8,7 +8,7 @@ import type { RouteCrumbHandle } from '../../app/nav-registry.types';
 
 export const shoperSetupRoute: RouteObject = {
   path: 'connections/new/shoper',
-  handle: { crumb: { group: 'Platform', title: 'Connect Shoper' } } satisfies RouteCrumbHandle,
+  handle: { crumb: { group: 'platform', title: 'Connect Shoper' } } satisfies RouteCrumbHandle,
   lazy: async () => {
     const { ShoperSetupPage } = await import('../../pages/connections/shoper-setup-page');
     return { Component: ShoperSetupPage };

@@ -26,7 +26,7 @@ import { Button } from '../../shared/ui/button';
 import { ErrorState, LoadingState } from '../../shared/ui/feedback-state';
 import { useDemoMode } from '../../features/system/hooks/use-demo-mode';
 import { useWriteAccess } from '../../shared/auth/use-permission';
-import { NAV_DEMO_RESTRICTED_MESSAGE } from '../../shared/config/demo-mode';
+import { navDemoRestrictedMessage } from '../../shared/config/demo-mode';
 import {
   AUTOMATION_ERROR_COPY,
   AUTOMATION_INDEX_COPY,
@@ -150,7 +150,7 @@ export function AutomationTriggerPage(): ReactElement {
             rules={rulesQuery.data?.items ?? []}
             canWrite={write.canWrite}
             readOnlyLocked={write.demoReadOnly}
-            readOnlyMessage={NAV_DEMO_RESTRICTED_MESSAGE}
+            readOnlyMessage={navDemoRestrictedMessage()}
             onSetActive={handleSetActive}
             pendingRuleId={setActive.isPending ? (setActive.variables?.rule.id ?? null) : null}
             writeError={setActive.error?.message ?? null}

@@ -15,7 +15,7 @@ import { Alert } from '../../../shared/ui/alert';
 import { useToast } from '../../../shared/ui/toast-provider';
 import { ReadOnlyLock } from '../../../shared/ui/read-only-lock';
 import { useWriteAccess } from '../../../shared/auth/use-permission';
-import { DEMO_READ_ONLY_ACTION_MESSAGE } from '../../../shared/config/demo-mode';
+import { demoReadOnlyActionMessage } from '../../../shared/config/demo-mode';
 import { useDemoMode } from '../../system';
 import { captureDemoEvent } from '../../demo';
 
@@ -125,7 +125,7 @@ export function ConnectionActionsPanel({ connection, settingsLink }: ConnectionA
             </div>
             <ReadOnlyLock
               active={write.demoReadOnly}
-              message={DEMO_READ_ONLY_ACTION_MESSAGE}
+              message={demoReadOnlyActionMessage()}
               onLockedClick={() =>
                 captureDemoEvent('demo_connection_test_attempted', { platform: connection.platformType })
               }
@@ -196,7 +196,7 @@ export function ConnectionActionsPanel({ connection, settingsLink }: ConnectionA
               <strong>Disable connection</strong>
               <p className="muted-text">Stop all sync activity for this connection. This can be reversed by re-enabling.</p>
             </div>
-            <ReadOnlyLock active={write.demoReadOnly} message={DEMO_READ_ONLY_ACTION_MESSAGE}>
+            <ReadOnlyLock active={write.demoReadOnly} message={demoReadOnlyActionMessage()}>
               <Button
                 tone="danger"
                 onClick={() => setIsDisableDialogOpen(true)}

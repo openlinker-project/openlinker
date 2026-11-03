@@ -27,7 +27,7 @@ import { Input } from '../../../shared/ui/input';
 import { Textarea } from '../../../shared/ui/textarea';
 import { ApiError } from '../../../shared/api/api-error';
 import { ReadOnlyLock } from '../../../shared/ui/read-only-lock';
-import { DEMO_READ_ONLY_ACTION_MESSAGE } from '../../../shared/config/demo-mode';
+import { demoReadOnlyActionMessage } from '../../../shared/config/demo-mode';
 import { useWriteAccess } from '../../../shared/auth/use-permission';
 import { useDemoMode } from '../../system';
 import { captureDemoEvent } from '../../demo';
@@ -139,7 +139,7 @@ export function SuggestionDialog({
     return (
       <ReadOnlyLock
         active
-        message={DEMO_READ_ONLY_ACTION_MESSAGE}
+        message={demoReadOnlyActionMessage()}
         onLockedClick={() => captureDemoEvent('demo_ai_suggest_attempted', { channel: channelLabel })}
       >
         <Button type="button" tone="ghost" disabled>

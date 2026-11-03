@@ -8,10 +8,12 @@ import { LoadingState } from '../../shared/ui/feedback-state';
 import { useSystemConfigQuery } from '../../features/system';
 import { captureMarketingLanding } from '../../features/demo';
 import { LanguageSwitch } from '../../shared/ui/language-switch';
+import { useMessages } from '../../shared/i18n';
 
 const MARKETING_CAPTURE_PATHS = ['/login', '/register'];
 
 export function GuestLayout(): ReactElement {
+  const copy = useMessages('app');
   const { isReady, session } = useSession();
   const systemConfigQuery = useSystemConfigQuery();
   const location = useLocation();
@@ -43,7 +45,7 @@ export function GuestLayout(): ReactElement {
   if (!isReady) {
     return (
       <div className="guest-layout">
-        <LoadingState title="Loading" message="Checking session state..." />
+        <LoadingState title={copy.loading.loading} message={copy.loading.checkingSession} />
       </div>
     );
   }
@@ -68,8 +70,8 @@ export function GuestLayout(): ReactElement {
       </div>
       <div className="guest-card">
         <div className="guest-brand">
-          <strong className="guest-brand__title">OpenLinker</strong>
-          <span className="guest-brand__subtitle">Commerce operations platform</span>
+          <strong className="guest-brand__title">{copy.brand.name}</strong>
+          <span className="guest-brand__subtitle">{copy.brand.tagline}</span>
         </div>
         <Outlet />
       </div>

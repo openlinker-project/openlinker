@@ -54,7 +54,7 @@ import { useApiClient } from '../../../app/api/api-client-provider';
 import { ApiError } from '../../../shared/api/api-error';
 import { useWriteAccess } from '../../../shared/auth/use-permission';
 import { useSession } from '../../../shared/auth/use-session';
-import { DEMO_READ_ONLY_ACTION_MESSAGE } from '../../../shared/config/demo-mode';
+import { demoReadOnlyActionMessage } from '../../../shared/config/demo-mode';
 import { usePlatform } from '../../../shared/plugins';
 import { Alert } from '../../../shared/ui/alert';
 import { Button } from '../../../shared/ui/button';
@@ -394,7 +394,7 @@ export function BenchDocumentsPanel({
               {benchParcelCopy.documents.printLabelAction}
             </Button>
             {label.shipmentId !== null && write.visible ? (
-              <ReadOnlyLock active={write.demoReadOnly} message={DEMO_READ_ONLY_ACTION_MESSAGE}>
+              <ReadOnlyLock active={write.demoReadOnly} message={demoReadOnlyActionMessage()}>
                 <Button
                   tone="secondary"
                   className="bench-documents__touch"

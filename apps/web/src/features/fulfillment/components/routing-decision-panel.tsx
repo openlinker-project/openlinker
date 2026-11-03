@@ -35,7 +35,7 @@ import { Button } from '../../../shared/ui/button';
 import { ReadOnlyLock } from '../../../shared/ui/read-only-lock';
 import { useToast } from '../../../shared/ui/toast-provider';
 import { useWriteAccess } from '../../../shared/auth/use-permission';
-import { DEMO_READ_ONLY_ACTION_MESSAGE } from '../../../shared/config/demo-mode';
+import { demoReadOnlyActionMessage } from '../../../shared/config/demo-mode';
 import { formatDurationMs } from '../../../shared/format/format-duration-ms';
 import { useConnectionQuery } from '../../connections';
 import { useDemoMode } from '../../system';
@@ -133,7 +133,7 @@ export function RoutingDecisionPanel({
       title={ROUTING_DECISION_COPY.resolved.title}
       action={
         offerRetry ? (
-          <ReadOnlyLock active={write.demoReadOnly} message={DEMO_READ_ONLY_ACTION_MESSAGE}>
+          <ReadOnlyLock active={write.demoReadOnly} message={demoReadOnlyActionMessage()}>
             <Button
               tone="secondary"
               className="button--sm"

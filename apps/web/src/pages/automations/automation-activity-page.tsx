@@ -27,7 +27,7 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { PageLayout } from '../../shared/ui/page-layout';
 import { useWriteAccess } from '../../shared/auth/use-permission';
 import { useDemoMode } from '../../features/system/hooks/use-demo-mode';
-import { NAV_DEMO_RESTRICTED_MESSAGE } from '../../shared/config/demo-mode';
+import { navDemoRestrictedMessage } from '../../shared/config/demo-mode';
 import { Button } from '../../shared/ui/button';
 import { Chip } from '../../shared/ui/chip';
 import { Alert } from '../../shared/ui/alert';
@@ -298,7 +298,7 @@ export function AutomationActivityPage(): ReactElement {
           <AutomationActivityTable
           canWrite={write.canWrite}
           readOnlyLocked={write.demoReadOnly}
-          readOnlyMessage={NAV_DEMO_RESTRICTED_MESSAGE} runs={runs} emptyState={emptyState} />
+          readOnlyMessage={navDemoRestrictedMessage()} runs={runs} emptyState={emptyState} />
 
           {/* Next/prev only: the envelope carries `hasMore`, deliberately no `total`. */}
           <div className="automation-activity__pager">

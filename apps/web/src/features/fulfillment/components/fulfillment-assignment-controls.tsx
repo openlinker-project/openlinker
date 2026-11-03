@@ -32,7 +32,7 @@
  */
 import type { ReactElement } from 'react';
 
-import { DEMO_READ_ONLY_ACTION_MESSAGE } from '../../../shared/config/demo-mode';
+import { demoReadOnlyActionMessage } from '../../../shared/config/demo-mode';
 import { Button } from '../../../shared/ui/button';
 import {
   DropdownMenu,
@@ -88,7 +88,7 @@ export function FulfillmentAssignmentControls({
   const destinations = packers.filter((packer) => packer.id !== task.assignedToUserId);
 
   const menu = (
-    <ReadOnlyLock active={readOnly} message={DEMO_READ_ONLY_ACTION_MESSAGE}>
+    <ReadOnlyLock active={readOnly} message={demoReadOnlyActionMessage()}>
       <DropdownMenu>
         <DropdownMenuTrigger asChild disabled={disabled}>
           <Button

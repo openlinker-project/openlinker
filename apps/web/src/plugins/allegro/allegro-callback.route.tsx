@@ -8,7 +8,7 @@ import type { RouteCrumbHandle } from '../../app/nav-registry.types';
 
 export const allegroCallbackRoute: RouteObject = {
   path: 'integrations/allegro/connect/callback',
-  handle: { crumb: { group: 'Platform', title: 'Allegro callback' } } satisfies RouteCrumbHandle,
+  handle: { crumb: { group: 'platform', title: 'Allegro callback' } } satisfies RouteCrumbHandle,
   lazy: async () => {
     const { AllegroConnectCallbackPage } = await import(
       '../../pages/integrations/allegro-connect-callback-page'

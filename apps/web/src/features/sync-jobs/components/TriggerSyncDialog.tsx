@@ -24,7 +24,7 @@ import { Input } from '../../../shared/ui/input';
 import { Select } from '../../../shared/ui/select';
 import { useToast } from '../../../shared/ui/toast-provider';
 import { ReadOnlyLock } from '../../../shared/ui/read-only-lock';
-import { DEMO_READ_ONLY_ACTION_MESSAGE } from '../../../shared/config/demo-mode';
+import { demoReadOnlyActionMessage } from '../../../shared/config/demo-mode';
 import type { PayloadField, TriggerableJob, TriggerSyncDialogProps } from './trigger-sync-dialog.types';
 
 const ALL_TRIGGERABLE_JOBS: TriggerableJob[] = [
@@ -326,7 +326,7 @@ export function TriggerSyncDialog({
           <Button tone="secondary" onClick={() => onOpenChange(false)} disabled={enqueueSyncJob.isPending}>
             Cancel
           </Button>
-          <ReadOnlyLock active={submitDisabled} message={DEMO_READ_ONLY_ACTION_MESSAGE}>
+          <ReadOnlyLock active={submitDisabled} message={demoReadOnlyActionMessage()}>
             <Button
               tone="primary"
               onClick={() => void handleSubmit()}

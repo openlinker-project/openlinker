@@ -50,7 +50,7 @@ import {
   useInventoryLocationsForRulesQuery,
 } from '../../features/oms';
 import { useDemoMode } from '../../features/system';
-import { DEMO_READ_ONLY_ACTION_MESSAGE } from '../../shared/config/demo-mode';
+import { demoReadOnlyActionMessage } from '../../shared/config/demo-mode';
 import { useIsAdmin, useWriteAccess } from '../../shared/auth/use-permission';
 import { Alert } from '../../shared/ui/alert';
 import { Button } from '../../shared/ui/button';
@@ -165,7 +165,7 @@ export function SourcingRulesPage(): ReactElement {
                 disabled={!canBootstrap || bootstrap.isPending}
                 title={
                   write.demoReadOnly
-                    ? DEMO_READ_ONLY_ACTION_MESSAGE
+                    ? demoReadOnlyActionMessage()
                     : !isAdmin
                       ? COPY.createLocationAdminOnly
                       : undefined

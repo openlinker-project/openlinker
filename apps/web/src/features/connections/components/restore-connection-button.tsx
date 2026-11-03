@@ -20,7 +20,7 @@ import { Button } from '../../../shared/ui/button';
 import { useToast } from '../../../shared/ui/toast-provider';
 import { ReadOnlyLock } from '../../../shared/ui/read-only-lock';
 import { useWriteAccess } from '../../../shared/auth/use-permission';
-import { DEMO_READ_ONLY_ACTION_MESSAGE } from '../../../shared/config/demo-mode';
+import { demoReadOnlyActionMessage } from '../../../shared/config/demo-mode';
 import { useDemoMode } from '../../system';
 
 interface RestoreConnectionButtonProps {
@@ -55,7 +55,7 @@ export function RestoreConnectionButton({
   }
 
   return (
-    <ReadOnlyLock active={write.demoReadOnly} message={DEMO_READ_ONLY_ACTION_MESSAGE}>
+    <ReadOnlyLock active={write.demoReadOnly} message={demoReadOnlyActionMessage()}>
       <Button
         onClick={() => {
           void handleRestore();

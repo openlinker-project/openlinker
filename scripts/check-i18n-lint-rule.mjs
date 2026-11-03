@@ -49,7 +49,14 @@ if (!override) {
 // The folders the rule covers today. Widening the scope is a deliberate act:
 // edit this list in the same PR that adds the folder to the override's `files`,
 // so a glob that grows or shrinks by accident fails here instead of passing.
-const EXPECTED_SCOPE = ['apps/web/src/shared/ui/**/*.tsx'];
+const EXPECTED_SCOPE = [
+  'apps/web/src/app/**/*.tsx',
+  'apps/web/src/shared/auth/**/*.tsx',
+  'apps/web/src/shared/i18n/**/*.tsx',
+  'apps/web/src/shared/plugins/**/*.tsx',
+  'apps/web/src/shared/theme/**/*.tsx',
+  'apps/web/src/shared/ui/**/*.tsx',
+];
 const actualScope = globs(override.files);
 if (JSON.stringify([...actualScope].sort()) !== JSON.stringify([...EXPECTED_SCOPE].sort())) {
   fail(

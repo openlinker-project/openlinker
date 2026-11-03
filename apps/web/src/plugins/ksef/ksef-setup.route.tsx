@@ -8,7 +8,7 @@ import type { RouteCrumbHandle } from '../../app/nav-registry.types';
 
 export const ksefSetupRoute: RouteObject = {
   path: 'connections/new/ksef',
-  handle: { crumb: { group: 'Platform', title: 'Connect KSeF' } } satisfies RouteCrumbHandle,
+  handle: { crumb: { group: 'platform', title: 'Connect KSeF' } } satisfies RouteCrumbHandle,
   lazy: async () => {
     const { KsefSetupPage } = await import('./components/ksef-setup-page');
     return { Component: KsefSetupPage };

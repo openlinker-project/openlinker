@@ -17,7 +17,7 @@ import type { ReactElement } from 'react';
 import { Link } from 'react-router-dom';
 import { ReadOnlyLock } from '../../../shared/ui/read-only-lock';
 import { useWriteAccess } from '../../../shared/auth/use-permission';
-import { DEMO_READ_ONLY_ACTION_MESSAGE } from '../../../shared/config/demo-mode';
+import { demoReadOnlyActionMessage } from '../../../shared/config/demo-mode';
 
 function buildPublishHref(productId: string, connectionId: string): string {
   const params = new URLSearchParams({ productIds: productId, connectionId });
@@ -50,7 +50,7 @@ export function ChannelPublishAction({
 
   if (write.demoReadOnly) {
     return (
-      <ReadOnlyLock active message={DEMO_READ_ONLY_ACTION_MESSAGE}>
+      <ReadOnlyLock active message={demoReadOnlyActionMessage()}>
         <button
           type="button"
           className="chip chip--warning cell-not-listed__chip"

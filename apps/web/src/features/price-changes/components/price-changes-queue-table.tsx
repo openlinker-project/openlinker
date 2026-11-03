@@ -65,7 +65,7 @@ import { ProductThumbnail } from '../../../shared/ui/product-thumbnail';
 import { Tooltip, TooltipContent, TooltipTrigger } from '../../../shared/ui/tooltip';
 import { ReadOnlyLock } from '../../../shared/ui/read-only-lock';
 import { useWriteAccess, type WriteAccess } from '../../../shared/auth/use-permission';
-import { DEMO_READ_ONLY_ACTION_MESSAGE } from '../../../shared/config/demo-mode';
+import { demoReadOnlyActionMessage } from '../../../shared/config/demo-mode';
 import { formatAmount } from '../../../shared/format/format-amount';
 import { useConnectionsQuery } from '../../connections';
 import { useDemoMode } from '../../system';
@@ -875,7 +875,7 @@ export function PriceChangesQueueTable(): ReactElement {
                 itemNoun="price change"
                 actions={
                   <>
-                    <ReadOnlyLock active={write.demoReadOnly} message={DEMO_READ_ONLY_ACTION_MESSAGE}>
+                    <ReadOnlyLock active={write.demoReadOnly} message={demoReadOnlyActionMessage()}>
                       <Button
                         tone="secondary"
                         disabled={write.demoReadOnly}
@@ -884,7 +884,7 @@ export function PriceChangesQueueTable(): ReactElement {
                         Keep prices
                       </Button>
                     </ReadOnlyLock>
-                    <ReadOnlyLock active={write.demoReadOnly} message={DEMO_READ_ONLY_ACTION_MESSAGE}>
+                    <ReadOnlyLock active={write.demoReadOnly} message={demoReadOnlyActionMessage()}>
                       <Button disabled={write.demoReadOnly} onClick={() => setBulkDialogOpen(true)}>
                         Accept selected
                       </Button>
@@ -1119,7 +1119,7 @@ function ActionCell({
       <span className="status-note" data-testid="row-ignored">
         Kept the old price{' '}
         {write.visible ? (
-          <ReadOnlyLock active={write.demoReadOnly} message={DEMO_READ_ONLY_ACTION_MESSAGE}>
+          <ReadOnlyLock active={write.demoReadOnly} message={demoReadOnlyActionMessage()}>
             <button
               type="button"
               className="undo"
@@ -1141,7 +1141,7 @@ function ActionCell({
           This price changed again while you were deciding — refresh to see the latest.
         </span>
         {write.visible ? (
-          <ReadOnlyLock active={write.demoReadOnly} message={DEMO_READ_ONLY_ACTION_MESSAGE}>
+          <ReadOnlyLock active={write.demoReadOnly} message={demoReadOnlyActionMessage()}>
             <Button
               tone="secondary"
               className="button--xs"
@@ -1161,7 +1161,7 @@ function ActionCell({
   }
   return (
     <div className="row-actions">
-      <ReadOnlyLock active={write.demoReadOnly} message={DEMO_READ_ONLY_ACTION_MESSAGE}>
+      <ReadOnlyLock active={write.demoReadOnly} message={demoReadOnlyActionMessage()}>
         <Button
           tone="secondary"
           className="button--xs"
@@ -1172,7 +1172,7 @@ function ActionCell({
           Keep price
         </Button>
       </ReadOnlyLock>
-      <ReadOnlyLock active={write.demoReadOnly} message={DEMO_READ_ONLY_ACTION_MESSAGE}>
+      <ReadOnlyLock active={write.demoReadOnly} message={demoReadOnlyActionMessage()}>
         <Button
           tone="secondary"
           className="button--xs"
@@ -1183,7 +1183,7 @@ function ActionCell({
           Edit
         </Button>
       </ReadOnlyLock>
-      <ReadOnlyLock active={write.demoReadOnly} message={DEMO_READ_ONLY_ACTION_MESSAGE}>
+      <ReadOnlyLock active={write.demoReadOnly} message={demoReadOnlyActionMessage()}>
         <Button
           className="button--xs"
           data-testid="row-accept"

@@ -32,7 +32,7 @@ import { Textarea } from '../../../shared/ui/textarea';
 import { useToast } from '../../../shared/ui/toast-provider';
 import { ReadOnlyLock } from '../../../shared/ui/read-only-lock';
 import { useWriteAccess } from '../../../shared/auth/use-permission';
-import { DEMO_READ_ONLY_ACTION_MESSAGE } from '../../../shared/config/demo-mode';
+import { demoReadOnlyActionMessage } from '../../../shared/config/demo-mode';
 import { useDemoMode } from '../../system';
 import {
   usePlatform,
@@ -1046,7 +1046,7 @@ export function EditConnectionForm({ connection }: EditConnectionFormProps): Rea
       ) : null}
 
       <div className="form-actions">
-        <ReadOnlyLock active={write.demoReadOnly} message={DEMO_READ_ONLY_ACTION_MESSAGE}>
+        <ReadOnlyLock active={write.demoReadOnly} message={demoReadOnlyActionMessage()}>
           <Button type="submit" disabled={updateConnection.isPending || write.demoReadOnly}>
             {updateConnection.isPending ? 'Saving...' : 'Save changes'}
           </Button>
