@@ -78,6 +78,16 @@ describe('BuyerEmailsController', () => {
     await expect(controller.sendTest(DTO, USER)).rejects.toBeInstanceOf(BadRequestException);
   });
 
+  it('should answer 400 for a template the marketplace connection does not send', async () => {
+    sendTest.mockResolvedValue({
+      status: 'refused',
+      reason: 'template-not-allowed',
+      message: 'not on a marketplace',
+    });
+
+    await expect(controller.sendTest(DTO, USER)).rejects.toBeInstanceOf(BadRequestException);
+  });
+
   it('should answer 503 when the send failed', async () => {
     sendTest.mockResolvedValue({ status: 'failed', message: 'could not send' });
 

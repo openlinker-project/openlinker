@@ -35,6 +35,7 @@ import { getEnvBoolean } from '@openlinker/shared/config';
 import {
   CONNECTION_PORT_TOKEN,
   ConnectionNotFoundException,
+  MarketplaceBuyerEmailTemplateValues,
   buyerEmailChannelKindOf,
   isSingleEmailAddress,
   readBuyerEmailTemplateSender,
@@ -178,6 +179,18 @@ export class BuyerEmailNotificationService implements IBuyerEmailNotificationSer
         status: 'refused',
         reason: 'connection-not-found',
         message: 'The connection could not be found.',
+      };
+    }
+    // The same channel rule the real send applies: a marketplace never sends
+    // the shop's own "order confirmed", so it is not testable there either.
+    if (
+      buyerEmailChannelKindOf(connection.enabledCapabilities) === 'marketplace' &&
+      !(MarketplaceBuyerEmailTemplateValues as readonly string[]).includes(input.templateKey)
+    ) {
+      return {
+        status: 'refused',
+        reason: 'template-not-allowed',
+        message: 'This email is not sent on a marketplace connection.',
       };
     }
     // Not `readBuyerEmailsConfig`: that reads an opted-out connection as having

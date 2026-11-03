@@ -222,6 +222,15 @@ describe('BuyerEmailNotificationService.sendTest (#3555)', () => {
     expect(mailer.sendEmail).not.toHaveBeenCalled();
   });
 
+  it('should refuse order-confirmed on a marketplace connection, without sending', async () => {
+    connections.get.mockResolvedValue(connection({}, ['OfferManager', 'OrderSource']));
+
+    const result = await service.sendTest({ ...testInput, templateKey: 'order-confirmed' });
+
+    expect(result).toMatchObject({ status: 'refused', reason: 'template-not-allowed' });
+    expect(mailer.sendEmail).not.toHaveBeenCalled();
+  });
+
   it('should refuse an address that is not a single email', async () => {
     const result = await service.sendTest({ ...testInput, to: 'a@b.pl, c@d.pl' });
 

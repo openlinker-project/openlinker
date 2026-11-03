@@ -13,9 +13,9 @@
  * rolled back - the sender is saved and the wording is not, and the message
  * says exactly that rather than reading as one failed save.
  *
- * A failure is a {@link BuyerEmailSaveError} naming which write failed and, for
- * a refused sender, which field - so the editor can put the server's sentence
- * under that field instead of only in a toast.
+ * A failure is a {@link BuyerEmailSaveError} naming which of the two writes
+ * failed; the editor shows its message as the save error. A `wording` failure
+ * means the sender WAS saved, which the editor needs to know.
  *
  * `PATCH /connections/:id` replaces `config` wholesale, so the config is
  * RE-READ immediately before the write rather than taken from the page's

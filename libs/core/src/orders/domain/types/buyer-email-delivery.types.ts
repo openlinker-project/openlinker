@@ -55,6 +55,7 @@ export const BUYER_EMAIL_TEST_SEND_WINDOW_SECONDS = 600;
 export const BuyerEmailTestRefusalReasonValues = [
   'invalid-address',
   'connection-not-found',
+  'template-not-allowed',
   'rate-limited',
 ] as const;
 export type BuyerEmailTestRefusalReason = (typeof BuyerEmailTestRefusalReasonValues)[number];

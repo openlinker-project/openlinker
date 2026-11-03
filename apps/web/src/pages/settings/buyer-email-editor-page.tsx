@@ -5,8 +5,9 @@
  * connection only) and the subject and message (shared by every connection,
  * which the page says). Variables insert into the message; the preview fills
  * them with sample values; "Send test email" sends exactly that preview - the
- * same sample values, never raw `{field}` tokens - to the operator's own
- * address through the real mail transport, and is never recorded on an order.
+ * same sample values, never raw `{field}` tokens - to the address the operator
+ * types (their own by default) through the real mail transport, and is never
+ * recorded on an order.
  *
  * The draft lives in React Hook Form with a Zod schema (frontend-architecture
  * § Form State). The test send uses the draft wording but the SAVED sender
@@ -135,7 +136,16 @@ function EditorForm({
           showToast({ description: BUYER_EMAILS_COPY.page.saved, tone: 'success' });
           void navigate(listUrl);
         },
-        onError: (error) => showToast({ description: error.message, tone: 'error' }),
+        onError: (error) => {
+          // The connection write went through before the wording failed, so
+          // the sender on screen IS the saved one: stop treating it as unsaved,
+          // or the test send stays blocked behind a "save first" that is false.
+          if (error.stage === 'wording') {
+            form.resetField('fromAddress', { defaultValue: values.fromAddress });
+            form.resetField('replyTo', { defaultValue: values.replyTo });
+          }
+          showToast({ description: error.message, tone: 'error' });
+        },
       },
     );
   });

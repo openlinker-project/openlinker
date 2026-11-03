@@ -63,7 +63,10 @@ export class BuyerEmailsController {
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Send a buyer-email template to a test address (#3555)' })
   @ApiResponse({ status: 200, type: SendBuyerEmailTestResponseDto })
-  @ApiResponse({ status: 400, description: 'Not a single email address' })
+  @ApiResponse({
+    status: 400,
+    description: 'Not a single email address, or a template a marketplace connection does not send',
+  })
   @ApiResponse({ status: 404, description: 'Connection not found' })
   @ApiResponse({
     status: 429,
@@ -96,6 +99,7 @@ export class BuyerEmailsController {
             HttpStatus.TOO_MANY_REQUESTS
           );
         case 'invalid-address':
+        case 'template-not-allowed':
           throw new BadRequestException(result.message);
         default: {
           // A reason this controller does not map must never fall through to

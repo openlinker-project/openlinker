@@ -354,6 +354,25 @@ describe('BuyerEmailEditorPage (#3555)', () => {
     expect(screen.queryByTestId('buyer-email-test-sender-unsaved')).toBeNull();
   });
 
+  it('should unblock the test send once a save stored the sender, even if the wording failed', async () => {
+    renderEditor({
+      connections: { getById: vi.fn().mockResolvedValue(SHOP), update: vi.fn().mockResolvedValue(SHOP) },
+      automations: { ...automations, replace: vi.fn().mockRejectedValue(new Error('Server error')) },
+      buyerEmails: { sendTest: vi.fn().mockResolvedValue(undefined) },
+    });
+
+    await screen.findByTestId('buyer-email-editor');
+    await userEvent.type(screen.getByTestId('buyer-email-from'), 'new@shop.pl');
+    expect(screen.getByTestId('buyer-email-test-send')).toBeDisabled();
+
+    await userEvent.click(screen.getByTestId('buyer-email-save'));
+    await screen.findByText(/the subject and message were not/);
+
+    expect(screen.getByTestId('buyer-email-from')).toHaveValue('new@shop.pl');
+    expect(screen.getByTestId('buyer-email-test-send')).toBeEnabled();
+    expect(screen.queryByTestId('buyer-email-test-sender-unsaved')).toBeNull();
+  });
+
   it('should not save an empty subject', async () => {
     const update = vi.fn().mockResolvedValue(SHOP);
     renderEditor({
