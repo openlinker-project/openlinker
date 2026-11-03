@@ -280,7 +280,7 @@ run; otherwise assert the two new columns directly and record why. Under **B2/B3
 | `none` (no claimant) | **Yes** | `undefined` | ADR-054's degenerate pass-through. The only live path today. |
 | `ambiguous` (any unroutable reason) | **Yes** | `undefined` | Issue body: *"`ambiguous` → persist reason, today's path"*. Two routers means neither routes; the order must still mirror or it silently stops shipping. |
 | `router-not-wired` | **Yes** | `undefined` | The handler's own words: *"follows today's path unchanged"*. Withholding here would strand every order on an install that config-declares A2 before #2408 ships. |
-| `routed` | **No — HELD** | — | Work objects exist; a hold that still mirrors is not a hold. |
+| `routed` | **No — HELD** | — | OMS owns the order; stock decrement instead of mirror. Work objects exist and the order's system of record is OpenLinker, so no commercial mirror is created and the product master only has its stock lowered (#3453, #3483). *(The original reason, "a hold that still mirrors is not a hold", described the code correctly but for the wrong cause: it would have made a hold the only thing keeping a mirror away, whereas a routed order is never mirrored at all.)* |
 | `in-doubt` | **No — HELD** | — | The router may have committed. Mirroring risks a double shipment. Decision stays `live` for resumption under the identical key (#2395). |
 | `skipped: already-routed` | **No — HELD** | — | Work already exists from a prior pass. |
 | `skipped: already-live-elsewhere` | **No — HELD** | — | Another decision holds the order. |
