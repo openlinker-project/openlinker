@@ -36,7 +36,7 @@ import { RichTextView } from '../../../../shared/ui';
 
 import { Alert, Button, CheckboxCell, Input, ProductThumbnail } from '../../../../shared/ui';
 import { ReadOnlyLock } from '../../../../shared/ui/read-only-lock';
-import { DEMO_READ_ONLY_ACTION_MESSAGE } from '../../../../shared/config/demo-mode';
+import { demoReadOnlyActionMessage } from '../../../../shared/config/demo-mode';
 import { useInventoryAvailabilityBatchQuery } from '../../../inventory';
 import { publishDestinationKind } from '../../lib/publish-destinations';
 import { checkShopLineSellability } from '../../lib/required-to-sell';
@@ -646,7 +646,7 @@ export function BulkShopReviewStep({
           ← Back
         </Button>
         <div className="bulk-wizard__footer-spacer" />
-        <ReadOnlyLock active={demoReadOnly} message={DEMO_READ_ONLY_ACTION_MESSAGE}>
+        <ReadOnlyLock active={demoReadOnly} message={demoReadOnlyActionMessage()}>
           <Button tone="primary" disabled={!canPublish} onClick={handlePublish}>
             {publishLabel}
           </Button>

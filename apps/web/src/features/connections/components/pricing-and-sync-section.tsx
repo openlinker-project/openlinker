@@ -67,7 +67,7 @@ import { LoadingState, ErrorState } from '../../../shared/ui/feedback-state';
 import { ReadOnlyLock } from '../../../shared/ui/read-only-lock';
 import { ConfirmDialog } from '../../../shared/ui/confirm-dialog';
 import { useWriteAccess } from '../../../shared/auth/use-permission';
-import { DEMO_READ_ONLY_ACTION_MESSAGE } from '../../../shared/config/demo-mode';
+import { demoReadOnlyActionMessage } from '../../../shared/config/demo-mode';
 import { useDemoMode } from '../../system';
 import {
   useConnectionPricingSyncQuery,
@@ -723,7 +723,7 @@ export function PricingAndSyncSection({
             >
               {saveBlockedReason ?? "You've changed something and haven't saved it yet."}
             </span>
-            <ReadOnlyLock active={write.demoReadOnly} message={DEMO_READ_ONLY_ACTION_MESSAGE}>
+            <ReadOnlyLock active={write.demoReadOnly} message={demoReadOnlyActionMessage()}>
               <div className="pricing-sync__unsaved-bar-actions">
                 <Button
                   tone="secondary"

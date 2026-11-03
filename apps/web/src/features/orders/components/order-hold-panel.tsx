@@ -25,7 +25,7 @@ import { ReadOnlyLock } from '../../../shared/ui/read-only-lock';
 import { StatusBadge } from '../../../shared/ui/status-badge';
 import { TimeDisplay } from '../../../shared/ui/time-display';
 import { useIsAdmin, useWriteAccess } from '../../../shared/auth/use-permission';
-import { DEMO_READ_ONLY_ACTION_MESSAGE } from '../../../shared/config/demo-mode';
+import { demoReadOnlyActionMessage } from '../../../shared/config/demo-mode';
 import { useDemoMode } from '../../system';
 import type { OrderHold, ProvisioningResume } from '../api/orders.types';
 import { holdReasonLabel, isReleasedByOrderCancel } from '../lib/order-hold.types';
@@ -121,7 +121,7 @@ export function OrderHoldPanel({
         )}
 
         {canAct ? (
-          <ReadOnlyLock active={write.demoReadOnly} message={DEMO_READ_ONLY_ACTION_MESSAGE}>
+          <ReadOnlyLock active={write.demoReadOnly} message={demoReadOnlyActionMessage()}>
             <Button
               tone={activeHold ? 'primary' : 'secondary'}
               className="button--sm"

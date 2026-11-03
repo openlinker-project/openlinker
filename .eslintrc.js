@@ -981,7 +981,14 @@ module.exports = {
       // reads comes from a `*.copy.ts` file in English and Polish. Enabled per
       // folder as each one is migrated (#3868-#3885); add the folder here in
       // the same PR that moves its copy.
-      files: ['apps/web/src/shared/ui/**/*.tsx'],
+      files: [
+        'apps/web/src/app/**/*.tsx',
+        'apps/web/src/shared/auth/**/*.tsx',
+        'apps/web/src/shared/i18n/**/*.tsx',
+        'apps/web/src/shared/plugins/**/*.tsx',
+        'apps/web/src/shared/theme/**/*.tsx',
+        'apps/web/src/shared/ui/**/*.tsx',
+      ],
       excludedFiles: ['**/*.test.tsx', '**/*.copy.ts'],
       plugins: ['i18next'],
       rules: {
@@ -1002,7 +1009,7 @@ module.exports = {
                 /^\p{Emoji}+$/u,
                 '⌘K',
                 // \u2014 is the em dash glyph used as an empty-value marker.
-                '[•↗×⌕ⓘ…\u2014–→←›▼↑↓↵·✓⧉✕🔒+]+',
+                '[•↗×⌕ⓘ…\u2014–→←›▼↑↓↵·✓⧉✕🔒☰+]+',
                 'esc',
               ],
             },

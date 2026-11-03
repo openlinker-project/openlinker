@@ -27,7 +27,7 @@ import { ReadOnlyLock } from '../../../shared/ui/read-only-lock';
 import { TimeDisplay } from '../../../shared/ui/time-display';
 import { useToast } from '../../../shared/ui/toast-provider';
 import { useWriteAccess } from '../../../shared/auth/use-permission';
-import { DEMO_READ_ONLY_ACTION_MESSAGE } from '../../../shared/config/demo-mode';
+import { demoReadOnlyActionMessage } from '../../../shared/config/demo-mode';
 import { useDemoMode } from '../../system';
 import { useMarkPackedMutation } from '../hooks/use-mark-packed-mutation';
 
@@ -99,7 +99,7 @@ export function OrderPackedControl({
           <span className="text-muted">Not packed yet.</span>
         )}
         {packWrite.visible ? (
-          <ReadOnlyLock active={packWrite.demoReadOnly} message={DEMO_READ_ONLY_ACTION_MESSAGE}>
+          <ReadOnlyLock active={packWrite.demoReadOnly} message={demoReadOnlyActionMessage()}>
             <Button
               tone={packed ? 'ghost' : 'primary'}
               className="button--sm"

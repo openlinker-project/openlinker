@@ -23,7 +23,7 @@ import { useForm } from 'react-hook-form';
 import { Alert, Button, FormField, Input } from '../../../../shared/ui';
 import { Tooltip, TooltipContent, TooltipTrigger } from '../../../../shared/ui/tooltip';
 import { ReadOnlyLock } from '../../../../shared/ui/read-only-lock';
-import { DEMO_READ_ONLY_ACTION_MESSAGE } from '../../../../shared/config/demo-mode';
+import { demoReadOnlyActionMessage } from '../../../../shared/config/demo-mode';
 import { useWriteAccess } from '../../../../shared/auth/use-permission';
 import { useDemoMode } from '../../../system';
 import { useConnectionsQuery } from '../../../connections';
@@ -422,7 +422,7 @@ export function BulkConfigStep({
         // never actually have this take effect even if it slipped through.
         <ReadOnlyLock
           active={generateDescriptionAccess.demoReadOnly}
-          message={DEMO_READ_ONLY_ACTION_MESSAGE}
+          message={demoReadOnlyActionMessage()}
         >
           <label
             style={{ display: 'flex', alignItems: 'flex-start', gap: 'var(--space-2)' }}
@@ -448,7 +448,7 @@ export function BulkConfigStep({
               </strong>
               <small style={{ display: 'block', color: 'var(--text-muted)' }}>
                 {generateDescriptionAccess.demoReadOnly
-                  ? DEMO_READ_ONLY_ACTION_MESSAGE
+                  ? demoReadOnlyActionMessage()
                   : 'Worker uses ContentSuggestionService per row. Per-row toggle in the edit modal overrides this.'}
               </small>
             </span>

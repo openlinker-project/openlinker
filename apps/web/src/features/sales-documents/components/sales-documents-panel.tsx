@@ -27,7 +27,7 @@ import { StatusBadge, type StatusBadgeTone } from '../../../shared/ui/status-bad
 import type { ConnectionStatus } from '../../connections';
 import { ReadOnlyLock } from '../../../shared/ui/read-only-lock';
 import { useWriteAccess } from '../../../shared/auth/use-permission';
-import { DEMO_READ_ONLY_ACTION_MESSAGE } from '../../../shared/config/demo-mode';
+import { demoReadOnlyActionMessage } from '../../../shared/config/demo-mode';
 import { useDemoMode } from '../../system';
 import { INVOICE_TRIGGER_MODEL_VALUES, INVOICE_TRIGGER_MODEL_LABELS } from '../../connections';
 import { useSalesDocumentRows } from '../hooks/use-sales-document-rows';
@@ -205,7 +205,7 @@ export function SalesDocumentsPanel(): ReactElement {
                     </StatusBadge>
                   </td>
                   <td>
-                    <ReadOnlyLock active={write.demoReadOnly} message={DEMO_READ_ONLY_ACTION_MESSAGE}>
+                    <ReadOnlyLock active={write.demoReadOnly} message={demoReadOnlyActionMessage()}>
                       <Select
                         aria-label={`Document ${row.name} issues`}
                         value={row.documentKind ?? ''}
@@ -224,7 +224,7 @@ export function SalesDocumentsPanel(): ReactElement {
                     ) : null}
                   </td>
                   <td>
-                    <ReadOnlyLock active={write.demoReadOnly} message={DEMO_READ_ONLY_ACTION_MESSAGE}>
+                    <ReadOnlyLock active={write.demoReadOnly} message={demoReadOnlyActionMessage()}>
                       <label className="data-table__radio">
                         <input
                           type="radio"
@@ -239,7 +239,7 @@ export function SalesDocumentsPanel(): ReactElement {
                     </ReadOnlyLock>
                   </td>
                   <td>
-                    <ReadOnlyLock active={write.demoReadOnly} message={DEMO_READ_ONLY_ACTION_MESSAGE}>
+                    <ReadOnlyLock active={write.demoReadOnly} message={demoReadOnlyActionMessage()}>
                       <Select
                         aria-label={`When ${row.name} issues`}
                         value={row.triggerModel}

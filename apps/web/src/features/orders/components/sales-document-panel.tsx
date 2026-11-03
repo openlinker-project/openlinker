@@ -86,7 +86,7 @@ import { usePlatform } from '../../../shared/plugins';
 import { ReadOnlyLock } from '../../../shared/ui/read-only-lock';
 import { SendDocumentEmail } from './send-document-email';
 import { useWriteAccess, useIsAdmin } from '../../../shared/auth/use-permission';
-import { DEMO_READ_ONLY_ACTION_MESSAGE } from '../../../shared/config/demo-mode';
+import { demoReadOnlyActionMessage } from '../../../shared/config/demo-mode';
 import { formatAmount } from '../../../shared/format/format-amount';
 import { formatTaxRate } from '../../../shared/format/format-tax-rate';
 import { useDemoMode } from '../../system';
@@ -920,7 +920,7 @@ export function SalesDocumentPanel({ order }: SalesDocumentPanelProps): ReactEle
                   tone="error"
                   title={t('invoice.clearance.rejectedTitle', 'The authority rejected this transmission')}
                   action={
-                    <ReadOnlyLock active={invoiceWrite.demoReadOnly} message={DEMO_READ_ONLY_ACTION_MESSAGE}>
+                    <ReadOnlyLock active={invoiceWrite.demoReadOnly} message={demoReadOnlyActionMessage()}>
                       <Button
                         tone="secondary"
                         className="button--sm"
@@ -1108,7 +1108,7 @@ export function SalesDocumentPanel({ order }: SalesDocumentPanelProps): ReactEle
                     </Button>
                   ) : null}
                   <span className="spacer" />
-                  <ReadOnlyLock active={invoiceWrite.demoReadOnly} message={DEMO_READ_ONLY_ACTION_MESSAGE}>
+                  <ReadOnlyLock active={invoiceWrite.demoReadOnly} message={demoReadOnlyActionMessage()}>
                     <Button
                       tone="secondary"
                       onClick={handleIssue}
@@ -1150,7 +1150,7 @@ export function SalesDocumentPanel({ order }: SalesDocumentPanelProps): ReactEle
                     <Button tone="secondary" className="button--sm" onClick={() => setSwitchTargetId(null)}>
                       {t('invoice.failed.switchCancel', 'Cancel')}
                     </Button>
-                    <ReadOnlyLock active={invoiceWrite.demoReadOnly} message={DEMO_READ_ONLY_ACTION_MESSAGE}>
+                    <ReadOnlyLock active={invoiceWrite.demoReadOnly} message={demoReadOnlyActionMessage()}>
                       <Button
                         tone="primary"
                         className="button--sm"
@@ -1641,7 +1641,7 @@ export function SalesDocumentPanel({ order }: SalesDocumentPanelProps): ReactEle
                   ) : null}
                   <ReadOnlyLock
                     active={invoiceWrite.demoReadOnly}
-                    message={DEMO_READ_ONLY_ACTION_MESSAGE}
+                    message={demoReadOnlyActionMessage()}
                     onLockedClick={() => captureDemoEvent('demo_invoice_issue_attempted', {})}
                   >
                     <Button
@@ -1705,7 +1705,7 @@ export function SalesDocumentPanel({ order }: SalesDocumentPanelProps): ReactEle
                       treatment rather than a control that would 403. */}
                   <ReadOnlyLock
                     active={fiscalDemoReadOnly}
-                    message={DEMO_READ_ONLY_ACTION_MESSAGE}
+                    message={demoReadOnlyActionMessage()}
                     onLockedClick={() => captureDemoEvent('demo_fiscal_register_attempted', {})}
                   >
                     <Button

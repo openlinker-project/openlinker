@@ -6,7 +6,7 @@ import {
 import { useOmsRoutingState } from '../../fulfillment-authority';
 import { useWriteAccess, useIsAdmin } from '../../../shared/auth/use-permission';
 import { useDemoMode } from '../../system';
-import { DEMO_READ_ONLY_ACTION_MESSAGE } from '../../../shared/config/demo-mode';
+import { demoReadOnlyActionMessage } from '../../../shared/config/demo-mode';
 import { LoadingState, ErrorState } from '../../../shared/ui/feedback-state';
 import { StatusBadge, type StatusBadgeTone } from '../../../shared/ui/status-badge';
 
@@ -184,7 +184,7 @@ export function RouterReadinessPanel(): ReactElement {
             disabled={!canAct || bootstrap.isPending}
             title={
               write.demoReadOnly
-                ? DEMO_READ_ONLY_ACTION_MESSAGE
+                ? demoReadOnlyActionMessage()
                 : // The route is admin-only while `inventory:write` is also an
                   // operator permission, so this button can be disabled for a
                   // session that genuinely holds the permission. Say which.

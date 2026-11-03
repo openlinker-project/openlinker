@@ -28,7 +28,7 @@ import { ReadOnlyLock } from '../../../shared/ui/read-only-lock';
 import { useToast } from '../../../shared/ui/toast-provider';
 import { useIsAdmin, useWriteAccess } from '../../../shared/auth/use-permission';
 import { useSession } from '../../../shared/auth/use-session';
-import { DEMO_READ_ONLY_ACTION_MESSAGE } from '../../../shared/config/demo-mode';
+import { demoReadOnlyActionMessage } from '../../../shared/config/demo-mode';
 import { useDemoMode } from '../../system';
 import type { OrderNote } from '../api/orders.types';
 import { useOrderNotesQuery } from '../hooks/use-order-notes-query';
@@ -322,7 +322,7 @@ export function OrderNotesPanel({ internalOrderId, channelNames = [] }: OrderNot
           <span>{COPY.composer.pinToTop}</span>
         </label>
         <span className="order-notes__counter">{COPY.composer.counter(newBody.length)}</span>
-        <ReadOnlyLock active={write.demoReadOnly} message={DEMO_READ_ONLY_ACTION_MESSAGE}>
+        <ReadOnlyLock active={write.demoReadOnly} message={demoReadOnlyActionMessage()}>
           <Button
             type="submit"
             className="button--sm"

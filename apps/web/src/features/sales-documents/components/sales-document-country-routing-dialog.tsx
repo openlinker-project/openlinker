@@ -67,7 +67,7 @@ import { ConfirmDialog } from '../../../shared/ui/confirm-dialog';
 import { TimeDisplay } from '../../../shared/ui/time-display';
 import { ReadOnlyLock } from '../../../shared/ui/read-only-lock';
 import { useWriteAccess } from '../../../shared/auth/use-permission';
-import { DEMO_READ_ONLY_ACTION_MESSAGE } from '../../../shared/config/demo-mode';
+import { demoReadOnlyActionMessage } from '../../../shared/config/demo-mode';
 import { useDemoMode } from '../../system';
 import { useSalesDocumentRulesQuery } from '../hooks/use-sales-document-rules-query';
 import { useSalesDocumentCountryDefaultsQuery } from '../hooks/use-sales-document-country-defaults-query';
@@ -318,7 +318,7 @@ export function SalesDocumentCountryRoutingDialog({
                 tone="success"
                 title="No sales document, by design"
                 action={
-                  <ReadOnlyLock active={write.demoReadOnly} message={DEMO_READ_ONLY_ACTION_MESSAGE}>
+                  <ReadOnlyLock active={write.demoReadOnly} message={demoReadOnlyActionMessage()}>
                     <Button
                       tone="secondary"
                       className="button--sm"
@@ -364,7 +364,7 @@ export function SalesDocumentCountryRoutingDialog({
                   OpenLinker. It does not touch anything at the provider — no invoice or receipt
                   already issued is affected.
                 </p>
-                <ReadOnlyLock active={write.demoReadOnly} message={DEMO_READ_ONLY_ACTION_MESSAGE}>
+                <ReadOnlyLock active={write.demoReadOnly} message={demoReadOnlyActionMessage()}>
                   <Button
                     tone="danger"
                     disabled={!write.canWrite || isSummaryLoading || hasNothingToReset || isResetting}

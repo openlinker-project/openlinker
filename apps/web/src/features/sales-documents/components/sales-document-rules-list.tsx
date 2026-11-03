@@ -15,7 +15,7 @@ import { Button } from '../../../shared/ui/button';
 import { LoadingState, ErrorState } from '../../../shared/ui/feedback-state';
 import { ReadOnlyLock } from '../../../shared/ui/read-only-lock';
 import { useWriteAccess } from '../../../shared/auth/use-permission';
-import { DEMO_READ_ONLY_ACTION_MESSAGE } from '../../../shared/config/demo-mode';
+import { demoReadOnlyActionMessage } from '../../../shared/config/demo-mode';
 import { useDemoMode } from '../../system';
 import { useSalesDocumentRulesQuery } from '../hooks/use-sales-document-rules-query';
 import { useDeleteSalesDocumentRuleMutation } from '../hooks/use-delete-sales-document-rule-mutation';
@@ -110,7 +110,7 @@ export function SalesDocumentRulesList({ country }: SalesDocumentRulesListProps)
         <p className="eyebrow" style={{ marginBottom: 2 }}>
           Rules for {country === '*' ? '★ Rest of world' : country}
         </p>
-        <ReadOnlyLock active={write.demoReadOnly} message={DEMO_READ_ONLY_ACTION_MESSAGE}>
+        <ReadOnlyLock active={write.demoReadOnly} message={demoReadOnlyActionMessage()}>
           <Button
             className="button--sm"
             data-testid="rules-add"
@@ -191,7 +191,7 @@ export function SalesDocumentRulesList({ country }: SalesDocumentRulesListProps)
               <span className="rule-card__dates">
                 {rule.effectiveTo ? `ends ${rule.effectiveTo}` : 'no end date'}
               </span>
-              <ReadOnlyLock active={write.demoReadOnly} message={DEMO_READ_ONLY_ACTION_MESSAGE}>
+              <ReadOnlyLock active={write.demoReadOnly} message={demoReadOnlyActionMessage()}>
                 <Button
                   tone="secondary"
                   className="button--sm"

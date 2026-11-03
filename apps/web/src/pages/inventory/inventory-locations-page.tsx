@@ -27,7 +27,7 @@ import { EmptyValue } from '../../shared/ui/empty-value';
 import { ReadOnlyLock } from '../../shared/ui/read-only-lock';
 import { useToast } from '../../shared/ui/toast-provider';
 import { useWriteAccess } from '../../shared/auth/use-permission';
-import { DEMO_READ_ONLY_ACTION_MESSAGE } from '../../shared/config/demo-mode';
+import { demoReadOnlyActionMessage } from '../../shared/config/demo-mode';
 import { useDemoMode } from '../../features/system';
 import { usePlatforms } from '../../shared/plugins';
 import { resolvePlatformLabel, resolvePlatformShortLabel } from '../../features/mappings';
@@ -322,7 +322,7 @@ export function InventoryLocationsPage(): ReactElement {
         cell: (location) =>
           write.visible ? (
             <div className="table-actions">
-              <ReadOnlyLock active={write.demoReadOnly} message={DEMO_READ_ONLY_ACTION_MESSAGE}>
+              <ReadOnlyLock active={write.demoReadOnly} message={demoReadOnlyActionMessage()}>
                 <Button
                   className="button--sm"
                   tone="secondary"
@@ -333,7 +333,7 @@ export function InventoryLocationsPage(): ReactElement {
                 </Button>
               </ReadOnlyLock>
               {location.status === 'active' ? (
-                <ReadOnlyLock active={write.demoReadOnly} message={DEMO_READ_ONLY_ACTION_MESSAGE}>
+                <ReadOnlyLock active={write.demoReadOnly} message={demoReadOnlyActionMessage()}>
                   <Button
                     className="button--sm loc-status-action"
                     tone="secondary"
@@ -344,7 +344,7 @@ export function InventoryLocationsPage(): ReactElement {
                   </Button>
                 </ReadOnlyLock>
               ) : (
-                <ReadOnlyLock active={write.demoReadOnly} message={DEMO_READ_ONLY_ACTION_MESSAGE}>
+                <ReadOnlyLock active={write.demoReadOnly} message={demoReadOnlyActionMessage()}>
                   <Button
                     className="button--sm loc-status-action"
                     tone="secondary"
@@ -355,7 +355,7 @@ export function InventoryLocationsPage(): ReactElement {
                   </Button>
                 </ReadOnlyLock>
               )}
-              <ReadOnlyLock active={write.demoReadOnly} message={DEMO_READ_ONLY_ACTION_MESSAGE}>
+              <ReadOnlyLock active={write.demoReadOnly} message={demoReadOnlyActionMessage()}>
                 <Button
                   className="button--sm"
                   tone="danger"
@@ -388,7 +388,7 @@ export function InventoryLocationsPage(): ReactElement {
       description="The warehouses, stores and third-party sites OpenLinker can source stock from. A location isn't authority over stock — it's the place sourcing rules pick between. Delete is refused while any stock still points here; retire it instead."
       actions={
         write.visible ? (
-          <ReadOnlyLock active={write.demoReadOnly} message={DEMO_READ_ONLY_ACTION_MESSAGE}>
+          <ReadOnlyLock active={write.demoReadOnly} message={demoReadOnlyActionMessage()}>
             <Button disabled={write.demoReadOnly} onClick={() => setDialogTarget({ mode: 'create' })}>
               + Add location
             </Button>
@@ -458,7 +458,7 @@ export function InventoryLocationsPage(): ReactElement {
               <Button onClick={clearFilters}>Clear filters</Button>
             ) : write.visible ? (
               <div className="table-actions">
-                <ReadOnlyLock active={write.demoReadOnly} message={DEMO_READ_ONLY_ACTION_MESSAGE}>
+                <ReadOnlyLock active={write.demoReadOnly} message={demoReadOnlyActionMessage()}>
                   <Button
                     disabled={write.demoReadOnly || bootstrapMutation.isPending}
                     onClick={() => void handleBootstrap()}
@@ -466,7 +466,7 @@ export function InventoryLocationsPage(): ReactElement {
                     Create first location
                   </Button>
                 </ReadOnlyLock>
-                <ReadOnlyLock active={write.demoReadOnly} message={DEMO_READ_ONLY_ACTION_MESSAGE}>
+                <ReadOnlyLock active={write.demoReadOnly} message={demoReadOnlyActionMessage()}>
                   <Button
                     tone="secondary"
                     disabled={write.demoReadOnly}

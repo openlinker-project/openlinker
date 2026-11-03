@@ -84,7 +84,7 @@ import { useFormat } from '../../../../shared/i18n';
 import { Tooltip, TooltipContent, TooltipTrigger } from '../../../../shared/ui/tooltip';
 import { useToast } from '../../../../shared/ui/toast-provider';
 import { ReadOnlyLock } from '../../../../shared/ui/read-only-lock';
-import { DEMO_READ_ONLY_ACTION_MESSAGE } from '../../../../shared/config/demo-mode';
+import { demoReadOnlyActionMessage } from '../../../../shared/config/demo-mode';
 import {
   Dialog,
   DialogContent,
@@ -1463,7 +1463,7 @@ function BulkEditModalForm({
         <Button tone="ghost" type="button" onClick={onRequestClose}>
           Cancel
         </Button>
-        <ReadOnlyLock active={demoReadOnly} message={DEMO_READ_ONLY_ACTION_MESSAGE}>
+        <ReadOnlyLock active={demoReadOnly} message={demoReadOnlyActionMessage()}>
           <Button
             tone="primary"
             type="button"
@@ -3846,7 +3846,7 @@ function BulkShopEditModalForm({
         <Button tone="ghost" type="button" onClick={onRequestClose}>
           Cancel
         </Button>
-        <ReadOnlyLock active={demoReadOnly} message={DEMO_READ_ONLY_ACTION_MESSAGE}>
+        <ReadOnlyLock active={demoReadOnly} message={demoReadOnlyActionMessage()}>
           <Button tone="primary" type="button" disabled={demoReadOnly} onClick={handleSaveAll}>
             Save all
           </Button>

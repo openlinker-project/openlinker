@@ -16,7 +16,7 @@
 import type { ReactElement } from 'react';
 import { Link } from 'react-router-dom';
 
-import { DEMO_READ_ONLY_ACTION_MESSAGE } from '../../../shared/config/demo-mode';
+import { demoReadOnlyActionMessage } from '../../../shared/config/demo-mode';
 import { Alert } from '../../../shared/ui/alert';
 import { Button } from '../../../shared/ui/button';
 import type { Connection } from '../../connections';
@@ -134,7 +134,7 @@ export function StepProductMaster(props: StepProductMasterProps): ReactElement {
             tone="primary"
             data-testid="btn-confirm-product-master"
             disabled={disabled}
-            title={props.demoReadOnly ? DEMO_READ_ONLY_ACTION_MESSAGE : !props.canWrite ? COPY.adminOnly : undefined}
+            title={props.demoReadOnly ? demoReadOnlyActionMessage() : !props.canWrite ? COPY.adminOnly : undefined}
             onClick={props.onConfirm}
           >
             {props.confirming ? COPY.step1.confirming : COPY.step1.confirm}

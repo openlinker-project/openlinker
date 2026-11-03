@@ -25,7 +25,7 @@ import { Select } from '../../shared/ui/select';
 import { useToast } from '../../shared/ui/toast-provider';
 import { useSession } from '../../shared/auth/use-session';
 import { useWriteAccess } from '../../shared/auth/use-permission';
-import { DEMO_READ_ONLY_ACTION_MESSAGE } from '../../shared/config/demo-mode';
+import { demoReadOnlyActionMessage } from '../../shared/config/demo-mode';
 import { useDemoMode } from '../../features/system';
 import { useUsersQuery } from '../../features/users/hooks/use-users-query';
 import { useApproveUserMutation } from '../../features/users/hooks/use-approve-user-mutation';
@@ -325,7 +325,7 @@ export function UsersPage({ defaultTab = 'all' }: UsersPageProps): ReactElement 
             <span className="cell-meta mono-text">{row.packStationLabel}</span>
           )}
           {packStationWrite.visible ? (
-            <ReadOnlyLock active={packStationWrite.demoReadOnly} message={DEMO_READ_ONLY_ACTION_MESSAGE}>
+            <ReadOnlyLock active={packStationWrite.demoReadOnly} message={demoReadOnlyActionMessage()}>
               <Button
                 tone="ghost"
                 className="button--sm"

@@ -64,7 +64,7 @@ import { Select } from '../../../shared/ui/select';
 import { useToast } from '../../../shared/ui/toast-provider';
 import { ReadOnlyLock } from '../../../shared/ui/read-only-lock';
 import { useWriteAccess } from '../../../shared/auth/use-permission';
-import { DEMO_READ_ONLY_ACTION_MESSAGE } from '../../../shared/config/demo-mode';
+import { demoReadOnlyActionMessage } from '../../../shared/config/demo-mode';
 import { useDemoMode } from '../../system';
 import { useAnalyticsSettingsQuery } from '../hooks/use-analytics-settings-query';
 import { useUpdateAnalyticsSettingsMutation } from '../hooks/use-update-analytics-settings-mutation';
@@ -340,7 +340,7 @@ export function AnalyticsSettingsDialog({
             via the toolbar toggle.
           </p>
           {write.visible && (
-            <ReadOnlyLock active={write.demoReadOnly} message={DEMO_READ_ONLY_ACTION_MESSAGE}>
+            <ReadOnlyLock active={write.demoReadOnly} message={demoReadOnlyActionMessage()}>
               <fieldset className="analytics-settings-dialog__field">
                 <legend className="sr-only">Default VAT basis</legend>
                 <label className="analytics-settings-dialog__rate-basis-option">
@@ -383,7 +383,7 @@ export function AnalyticsSettingsDialog({
           data-testid="settings-margin-tracking"
         >
           <h3 className="analytics-settings-dialog__section-title">Margin</h3>
-          <ReadOnlyLock active={write.demoReadOnly} message={DEMO_READ_ONLY_ACTION_MESSAGE}>
+          <ReadOnlyLock active={write.demoReadOnly} message={demoReadOnlyActionMessage()}>
             <label className="analytics-settings-dialog__toggle">
               <input
                 type="checkbox"
@@ -436,7 +436,7 @@ export function AnalyticsSettingsDialog({
                 recalculated
               </span>
               {write.visible && (
-                <ReadOnlyLock active={write.demoReadOnly} message={DEMO_READ_ONLY_ACTION_MESSAGE}>
+                <ReadOnlyLock active={write.demoReadOnly} message={demoReadOnlyActionMessage()}>
                   <Button
                     type="button"
                     className="button--sm"
@@ -460,7 +460,7 @@ export function AnalyticsSettingsDialog({
         <section className="analytics-settings-dialog__section">
           <h3 className="analytics-settings-dialog__section-title">Tax rates</h3>
           {write.visible && (
-            <ReadOnlyLock active={write.demoReadOnly} message={DEMO_READ_ONLY_ACTION_MESSAGE}>
+            <ReadOnlyLock active={write.demoReadOnly} message={demoReadOnlyActionMessage()}>
               <label className="analytics-settings-dialog__toggle">
                 <input
                   type="checkbox"

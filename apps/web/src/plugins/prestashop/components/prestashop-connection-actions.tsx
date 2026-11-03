@@ -11,7 +11,7 @@
 import type { ReactElement } from 'react';
 import { Button } from '../../../shared/ui/button';
 import { ReadOnlyLock } from '../../../shared/ui/read-only-lock';
-import { DEMO_READ_ONLY_ACTION_MESSAGE } from '../../../shared/config/demo-mode';
+import { demoReadOnlyActionMessage } from '../../../shared/config/demo-mode';
 import { useToast } from '../../../shared/ui/toast-provider';
 import { useConfigureWebhooksMutation } from '../../../features/connections';
 import type { Connection } from '../../../features/connections';
@@ -75,7 +75,7 @@ export function PrestashopConnectionActions({
           {webhooksConfigured ? ' Currently configured ✓' : ''}
         </p>
       </div>
-      <ReadOnlyLock active={readOnly} message={DEMO_READ_ONLY_ACTION_MESSAGE}>
+      <ReadOnlyLock active={readOnly} message={demoReadOnlyActionMessage()}>
         <Button
           tone={webhooksConfigured ? 'secondary' : 'primary'}
           disabled={configureWebhooks.isPending || readOnly}

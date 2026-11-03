@@ -8,7 +8,7 @@ import type { RouteCrumbHandle } from '../../app/nav-registry.types';
 
 export const eparagonySetupRoute: RouteObject = {
   path: 'connections/new/eparagony',
-  handle: { crumb: { group: 'Platform', title: 'Connect eparagony.pl' } } satisfies RouteCrumbHandle,
+  handle: { crumb: { group: 'platform', title: 'Connect eparagony.pl' } } satisfies RouteCrumbHandle,
   lazy: async () => {
     const { EparagonySetupPage } = await import('./components/eparagony-setup-page');
     return { Component: EparagonySetupPage };

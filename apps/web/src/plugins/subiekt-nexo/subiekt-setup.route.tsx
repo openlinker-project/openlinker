@@ -13,7 +13,7 @@ import { SUBIEKT_NEXO_IDENTITY } from '../../features/connections';
 
 export const subiektNexoSetupRoute: RouteObject = {
   path: 'connections/new/subiekt-nexo',
-  handle: { crumb: { group: 'Platform', title: 'Connect Subiekt nexo' } } satisfies RouteCrumbHandle,
+  handle: { crumb: { group: 'platform', title: 'Connect Subiekt nexo' } } satisfies RouteCrumbHandle,
   lazy: async () => {
     const { SubiektSetupPage } = await import('../../pages/connections/subiekt-setup-page');
     return {

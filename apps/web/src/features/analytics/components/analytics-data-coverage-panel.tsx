@@ -32,7 +32,7 @@ import { Alert, Button, ErrorState, LoadingState, StatusBadge, TimeDisplay } fro
 import { useToast } from '../../../shared/ui/toast-provider';
 import { ReadOnlyLock } from '../../../shared/ui/read-only-lock';
 import { useWriteAccess } from '../../../shared/auth/use-permission';
-import { DEMO_READ_ONLY_ACTION_MESSAGE } from '../../../shared/config/demo-mode';
+import { demoReadOnlyActionMessage } from '../../../shared/config/demo-mode';
 import { ApiError } from '../../../shared/api/api-error';
 import { useDemoMode } from '../../system';
 import { useConnectionsQuery } from '../../connections';
@@ -337,7 +337,7 @@ export function AnalyticsDataCoveragePanel({
           title="Recalculation didn't start"
           action={
             write.visible ? (
-              <ReadOnlyLock active={write.demoReadOnly} message={DEMO_READ_ONLY_ACTION_MESSAGE}>
+              <ReadOnlyLock active={write.demoReadOnly} message={demoReadOnlyActionMessage()}>
                 <Button
                   type="button"
                   disabled={cancelStuckRun.isPending || write.demoReadOnly}
@@ -400,7 +400,7 @@ export function AnalyticsDataCoveragePanel({
         )}
         footerAction={
           write.visible ? (
-            <ReadOnlyLock active={write.demoReadOnly} message={DEMO_READ_ONLY_ACTION_MESSAGE}>
+            <ReadOnlyLock active={write.demoReadOnly} message={demoReadOnlyActionMessage()}>
               <Button
                 type="button"
                 disabled={recalculate.isPending || write.demoReadOnly}
@@ -448,7 +448,7 @@ export function AnalyticsDataCoveragePanel({
                 Turn on this setting ›
               </Button>
             ) : openCategory === 'tax-c' && write.visible ? (
-              <ReadOnlyLock active={write.demoReadOnly} message={DEMO_READ_ONLY_ACTION_MESSAGE}>
+              <ReadOnlyLock active={write.demoReadOnly} message={demoReadOnlyActionMessage()}>
                 <Button
                   type="button"
                   disabled={

@@ -11,7 +11,7 @@ import type { RouteCrumbHandle } from '../../app/nav-registry.types';
 
 export const ksefNumberingRoute: RouteObject = {
   path: 'connections/:connectionId/numbering',
-  handle: { crumb: { group: 'Platform', title: 'Invoice numbering' } } satisfies RouteCrumbHandle,
+  handle: { crumb: { group: 'platform', title: 'Invoice numbering' } } satisfies RouteCrumbHandle,
   lazy: async () => {
     const { KsefNumberingPage } = await import('./components/ksef-numbering-page');
     return { Component: KsefNumberingPage };

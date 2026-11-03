@@ -31,7 +31,7 @@ import {
 } from '../../../shared/ui/dialog';
 import { ReadOnlyLock } from '../../../shared/ui/read-only-lock';
 import { useIsAdmin, useWriteAccess } from '../../../shared/auth/use-permission';
-import { DEMO_READ_ONLY_ACTION_MESSAGE } from '../../../shared/config/demo-mode';
+import { demoReadOnlyActionMessage } from '../../../shared/config/demo-mode';
 import { useDemoMode } from '../../system';
 import { useToast } from '../../../shared/ui/toast-provider';
 import type {
@@ -194,7 +194,7 @@ export function OrderCorrectionProposalDialog({
             </Button>
           </DialogClose>
           {retryable && (canConfirm || write.demoReadOnly) ? (
-            <ReadOnlyLock active={write.demoReadOnly} message={DEMO_READ_ONLY_ACTION_MESSAGE}>
+            <ReadOnlyLock active={write.demoReadOnly} message={demoReadOnlyActionMessage()}>
             <Button
               type="button"
               tone="primary"

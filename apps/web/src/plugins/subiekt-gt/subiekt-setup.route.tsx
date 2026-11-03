@@ -13,7 +13,7 @@ import { SUBIEKT_GT_IDENTITY } from '../../features/connections';
 
 export const subiektSetupRoute: RouteObject = {
   path: 'connections/new/subiekt-gt',
-  handle: { crumb: { group: 'Platform', title: 'Connect Subiekt GT' } } satisfies RouteCrumbHandle,
+  handle: { crumb: { group: 'platform', title: 'Connect Subiekt GT' } } satisfies RouteCrumbHandle,
   lazy: async () => {
     const { SubiektSetupPage } = await import('../../pages/connections/subiekt-setup-page');
     return {

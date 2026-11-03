@@ -28,7 +28,7 @@ import { Textarea } from '../../../shared/ui/textarea';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogTitle } from '../../../shared/ui/dialog';
 import { ReadOnlyLock } from '../../../shared/ui/read-only-lock';
 import { useToast } from '../../../shared/ui/toast-provider';
-import { DEMO_READ_ONLY_ACTION_MESSAGE } from '../../../shared/config/demo-mode';
+import { demoReadOnlyActionMessage } from '../../../shared/config/demo-mode';
 import { SEQ_STATUS_LABELS, SEQ_STATUS_TONES } from './ksef-numbering.lib';
 import { KsefOswiadczenieDocument } from './ksef-oswiadczenie-document';
 import { readKsefSellerProfile, type KsefOswiadczenieContent } from '../lib/ksef-oswiadczenie';
@@ -196,7 +196,7 @@ export function KsefNumberingAuditTab({
                       </td>
                       <td className="numbering-table__actions">
                         {entry.isGap && !entry.note ? (
-                          <ReadOnlyLock active={readOnly} message={DEMO_READ_ONLY_ACTION_MESSAGE}>
+                          <ReadOnlyLock active={readOnly} message={demoReadOnlyActionMessage()}>
                             <Button
                               tone="secondary"
                               onClick={() => setGapTarget(entry)}

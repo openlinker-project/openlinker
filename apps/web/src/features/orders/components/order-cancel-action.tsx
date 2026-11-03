@@ -21,7 +21,7 @@ import { useState, type ReactElement } from 'react';
 import { Button } from '../../../shared/ui/button';
 import { ReadOnlyLock } from '../../../shared/ui/read-only-lock';
 import { useIsAdmin, useWriteAccess } from '../../../shared/auth/use-permission';
-import { DEMO_READ_ONLY_ACTION_MESSAGE } from '../../../shared/config/demo-mode';
+import { demoReadOnlyActionMessage } from '../../../shared/config/demo-mode';
 import { useDemoMode } from '../../system';
 import type { CancelOrderResult, OrderCancelReason } from '../api/order-cancel.types';
 import { CancelOrderDialog } from './cancel-order-dialog';
@@ -57,7 +57,7 @@ export function OrderCancelAction({
 
   return (
     <>
-      <ReadOnlyLock active={write.demoReadOnly} message={DEMO_READ_ONLY_ACTION_MESSAGE}>
+      <ReadOnlyLock active={write.demoReadOnly} message={demoReadOnlyActionMessage()}>
         <Button
           tone="secondary"
           disabled={write.demoReadOnly || amending}
