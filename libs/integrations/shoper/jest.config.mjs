@@ -47,7 +47,7 @@ export default {
   // CI stability (#976): without a cap jest spawns ~(cores-1) workers per
   // package, and this package runs beside others under --workspace-concurrency.
   // Takes the shared unit-tier count (no measuredCiDefault) rather than
-  // jest.ci-stability.mjs, whose 8 was measured for prestashop/allegro only.
+  // jest.ci-stability.mjs, whose 6 is set for prestashop/allegro only.
   maxWorkers: resolveUnitTestWorkers(),
   workerIdleMemoryLimit: '512MB',
 };
