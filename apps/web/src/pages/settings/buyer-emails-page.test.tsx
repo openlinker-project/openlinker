@@ -216,6 +216,7 @@ const automations = {
       envelopeUnreadable: false,
     }),
   ),
+  get: vi.fn().mockResolvedValue(SHIPPED_RULE),
 };
 
 describe('BuyerEmailEditorPage (#3555)', () => {
@@ -248,6 +249,36 @@ describe('BuyerEmailEditorPage (#3555)', () => {
     expect(ruleId).toBe('rule-shipped');
     expect(write.isActive).toBe(true);
     expect(write.actions[0]).toMatchObject({ subject: 'On its way', buyerEmailTemplate: 'shipped' });
+  });
+
+  it('should build the rule write from a fresh read, never from the copy the editor loaded', async () => {
+    // Loaded active; since then someone switched it off in the automation
+    // composer and added a condition. A save of a disabled template must keep both.
+    const loaded: AutomationRule = { ...SHIPPED_RULE, isActive: true };
+    const fresh: AutomationRule = {
+      ...SHIPPED_RULE,
+      isActive: false,
+      conditions: [{ field: 'orderTotalGross', operator: 'gte', amount: '100', currency: 'PLN' }],
+    };
+    const replace = vi.fn().mockResolvedValue(fresh);
+    renderEditor({
+      connections: { getById: vi.fn().mockResolvedValue(SHOP), update: vi.fn().mockResolvedValue(SHOP) },
+      automations: {
+        listByTrigger: vi.fn().mockResolvedValue({ items: [loaded], droppedCount: 0, envelopeUnreadable: false }),
+        get: vi.fn().mockResolvedValue(fresh),
+        replace,
+      },
+    });
+
+    await screen.findByTestId('buyer-email-editor');
+    await userEvent.clear(screen.getByTestId('buyer-email-subject'));
+    await userEvent.type(screen.getByTestId('buyer-email-subject'), 'On its way');
+    await userEvent.click(screen.getByTestId('buyer-email-save'));
+
+    await waitFor(() => expect(replace).toHaveBeenCalled());
+    const [, write] = replace.mock.calls[0] as [string, { isActive: boolean; conditions: unknown[] }];
+    expect(write.isActive).toBe(false);
+    expect(write.conditions).toEqual(fresh.conditions);
   });
 
   it('should report a failed rules read as a load error with a retry, not as a missing rule', async () => {

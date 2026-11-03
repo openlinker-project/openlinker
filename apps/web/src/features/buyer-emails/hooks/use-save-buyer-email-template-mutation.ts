@@ -20,7 +20,9 @@
  * `PATCH /connections/:id` replaces `config` wholesale, so the config is
  * RE-READ immediately before the write rather than taken from the page's
  * cache: a cached copy would silently undo any other key changed since the
- * page loaded (the #2016 shallow-spread hazard). A write racing inside the
+ * page loaded (the #2016 shallow-spread hazard). The rule is re-read the same
+ * way, because `PUT /automations/:id` also replaces the whole definition and
+ * the automation composer edits the same rule. A write racing inside the
  * remaining read-to-write gap is still last-write-wins.
  *
  * @module apps/web/src/features/buyer-emails/hooks
@@ -84,13 +86,14 @@ export function useSaveBuyerEmailTemplateMutation(): UseMutationResult<
       }
       if (input.rule) {
         try {
+          // Re-read for the same reason as the config above: `PUT` replaces the
+          // whole rule, so building it from the copy the editor loaded would undo
+          // any edit made in the automation composer since - including switching
+          // the rule off, which a stale `isActive` would silently reverse.
+          const fresh = await apiClient.automations.get(input.rule.id);
           await apiClient.automations.replace(
-            input.rule.id,
-            withRuleWording(
-              input.rule,
-              input.wording,
-              input.rule.isActive || input.settings.enabled
-            )
+            fresh.id,
+            withRuleWording(fresh, input.wording, fresh.isActive || input.settings.enabled)
           );
         } catch (error) {
           throw new BuyerEmailSaveError(
