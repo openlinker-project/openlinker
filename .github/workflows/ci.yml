@@ -80,7 +80,7 @@ jobs:
     name: Lint
     timeout-minutes: 30
     # runs-on: ubuntu-latest
-    runs-on: self-hosted
+    runs-on: integration-tests-runner
     needs: changes
     # Skip while draft, and skip when only docs/compose changed. Always run on
     # push (post-merge to main) where there's no PR draft context.
@@ -129,7 +129,7 @@ jobs:
     name: Type Check
     timeout-minutes: 30
     # runs-on: ubuntu-latest
-    runs-on: self-hosted
+    runs-on: integration-tests-runner
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v2
@@ -160,7 +160,7 @@ jobs:
     name: Test
     timeout-minutes: 30
     # runs-on: ubuntu-latest
-    runs-on: self-hosted
+    runs-on: integration-tests-runner
     needs: changes
     if: ${{ github.event_name == 'push' || (github.event.pull_request.draft == false && needs.changes.outputs.code == 'true') }}
     steps:
@@ -221,7 +221,7 @@ jobs:
   test-web:
     name: Test (web)
     timeout-minutes: 30
-    runs-on: self-hosted
+    runs-on: integration-tests-runner
     needs: changes
     if: ${{ github.event_name == 'push' || (github.event.pull_request.draft == false && needs.changes.outputs.code == 'true') }}
     steps:
@@ -246,7 +246,7 @@ jobs:
     # moves the failure here: 40 (api) + 15 (worker) + ~3 setup = 58.
     timeout-minutes: 65
     # runs-on: ubuntu-latest
-    runs-on: self-hosted
+    runs-on: integration-tests-runner
     # `needs: changes` only for the cheap path-gate output — NOT an artifact
     # dependency on `test`. This job re-installs deps + rebuilds libs itself;
     # gating on `test` previously serialized the two longest jobs (unit ~6min,
@@ -500,7 +500,7 @@ jobs:
     # run this job at all, silently. A pilot-readiness gate that can be
     # skipped by editing exactly the files it exists to verify is not a gate.
     timeout-minutes: 20
-    runs-on: self-hosted
+    runs-on: integration-tests-runner
     # One container name PER RUN, never a shared literal: every self-hosted
     # runner talks to the same Docker daemon, so with a fixed name a second
     # PR's opening `docker rm -f` (or its closing clean-up) removed the first
@@ -694,8 +694,8 @@ jobs:
   build:
     name: Build
     timeout-minutes: 30
-#    runs-on: ubuntu-latest
-    runs-on: self-hosted
+    #    runs-on: ubuntu-latest
+    runs-on: integration-tests-runner
     needs: changes
     if: ${{ github.event_name == 'push' || (github.event.pull_request.draft == false && needs.changes.outputs.code == 'true') }}
     steps:
