@@ -683,16 +683,18 @@ export class OrderCancellationService implements IOrderCancellationService {
 
     // A retry after this proposal's own correction was issued replays that credit;
     // a cancellation since then must not refuse what was already done.
-    const ownIssued = records.some(
+    const ownIssued = records.find(
       (record) => record.idempotencyKey === correctionKey && record.status === 'issued'
     );
-    if (spec.refuseWhenSuperseded === true && !ownIssued) {
+    if (spec.refuseWhenSuperseded === true && ownIssued === undefined) {
       await this.assertNotSuperseded(change, invoice, input.internalOrderId, correctionKey);
     }
 
+    // The credit already exists, so it is the answer: asking the provider again
+    // would lean on its idempotency for a document OpenLinker already holds.
     let issued: InvoiceRecord;
     try {
-      issued = await this.invoices.issueCorrection({
+      issued = ownIssued ?? await this.invoices.issueCorrection({
         connectionId: invoice.connectionId,
         orderId: invoice.orderId,
         originalProviderInvoiceId: invoice.providerInvoiceId,

@@ -45,12 +45,12 @@ describe('bench buyer note parsing (#3539)', () => {
     expect(parcel.otherParcelBuyerNoteAcknowledgements[0].acknowledgedByUserId).toBeNull();
   });
 
-  it('should carry hasBuyerNote when the text is not stored, and leave it absent for an older API (B-12)', () => {
+  it('should carry hasBuyerNote when the text is not stored, and read an older API as no note (B-12)', () => {
     const notStored = parseBenchParcel({ ...BASE_PARCEL, buyerNote: null, hasBuyerNote: true });
 
     expect(notStored.buyerNote).toBeNull();
     expect(notStored.hasBuyerNote).toBe(true);
-    expect(parseBenchParcel(BASE_PARCEL).hasBuyerNote).toBeUndefined();
+    expect(parseBenchParcel(BASE_PARCEL).hasBuyerNote).toBe(false);
   });
 
   it('should read an acknowledge result with its outcome, reason and parcel', () => {
