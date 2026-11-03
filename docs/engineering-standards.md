@@ -1156,6 +1156,14 @@ export class IdentifierMappingService {
 }
 ```
 
+**Error codes on HTTP responses (#3860):**
+
+Every error the API sends carries a stable `code` next to its English `message` (`ApiErrorEnvelope` in `@openlinker/shared/errors`). The frontend picks its copy by `code` (ADR-081); `message` is for developers and logs.
+
+- The catch-all `ApiErrorCodeFilter` fills `code` for any error that has none: a legacy upper-snake-case `error` value, else `HTTP_<status>`. A domain filter wraps its body in `withApiErrorCode(body, status)`.
+- When an operator should be told WHY a request was refused, throw `CodedHttpException(status, code, message, params?)` (`apps/api/src/common/errors`) and add the code to `ApiErrorCodeValues`. A code is a contract: never rename it or change its meaning. `params` are values for the copy, never sentences.
+- `ApiErrorCodeFilter` must stay first in `buildGlobalExceptionFilters`: Nest checks global filters in reverse order and its empty `@Catch()` matches everything.
+
 ### Nullability
 
 **Use strict null checks** and handle null/undefined explicitly.

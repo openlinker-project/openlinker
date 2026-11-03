@@ -29,6 +29,7 @@
 import type { ArgumentsHost, ExceptionFilter } from '@nestjs/common';
 import { Catch, HttpStatus } from '@nestjs/common';
 import type { Response } from 'express';
+import { withApiErrorCode } from '@openlinker/shared/errors';
 import {
   CorrectionConfirmationRequiredError,
   CorrectionContendedError,
@@ -55,13 +56,18 @@ export class InventoryCorrectionExceptionFilter implements ExceptionFilter {
   catch(exception: InventoryCorrectionException, host: ArgumentsHost): void {
     const response = host.switchToHttp().getResponse<Response>();
     const { statusCode, code, extra } = this.describe(exception);
-    response.status(statusCode).json({
-      statusCode,
-      error: exception.name,
-      ...(code !== undefined && { code }),
-      message: exception.message,
-      ...extra,
-    });
+    response.status(statusCode).json(
+      withApiErrorCode(
+        {
+          statusCode,
+          error: exception.name,
+          ...(code !== undefined && { code }),
+          message: exception.message,
+          ...extra,
+        },
+        statusCode
+      )
+    );
   }
 
   private describe(exception: InventoryCorrectionException): {
@@ -90,11 +96,15 @@ export class InventoryCorrectionExceptionFilter implements ExceptionFilter {
     if (exception instanceof CorrectionContendedError) {
       return { statusCode: HttpStatus.CONFLICT, code: 'contended', extra: {} };
     }
-    const malformed = exception.reason === 'note-required' || exception.reason === 'invalid-quantity';
+    const malformed =
+      exception.reason === 'note-required' || exception.reason === 'invalid-quantity';
     return {
       statusCode: malformed ? HttpStatus.BAD_REQUEST : HttpStatus.CONFLICT,
       code: exception.reason,
-      extra: exception.currentQuantity === undefined ? {} : { currentQuantity: exception.currentQuantity },
+      extra:
+        exception.currentQuantity === undefined
+          ? {}
+          : { currentQuantity: exception.currentQuantity },
     };
   }
 }

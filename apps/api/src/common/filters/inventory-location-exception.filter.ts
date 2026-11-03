@@ -32,6 +32,7 @@
 import type { ArgumentsHost, ExceptionFilter } from '@nestjs/common';
 import { Catch, HttpStatus } from '@nestjs/common';
 import type { Response } from 'express';
+import { withApiErrorCode } from '@openlinker/shared/errors';
 import {
   DuplicateLocationCodeError,
   LocationInUseError,
@@ -55,11 +56,16 @@ export class InventoryLocationExceptionFilter implements ExceptionFilter {
   catch(exception: InventoryLocationException, host: ArgumentsHost): void {
     const response = host.switchToHttp().getResponse<Response>();
     const statusCode = this.resolveStatus(exception);
-    response.status(statusCode).json({
-      statusCode,
-      error: exception.name,
-      message: exception.message,
-    });
+    response.status(statusCode).json(
+      withApiErrorCode(
+        {
+          statusCode,
+          error: exception.name,
+          message: exception.message,
+        },
+        statusCode
+      )
+    );
   }
 
   private resolveStatus(exception: InventoryLocationException): HttpStatus {

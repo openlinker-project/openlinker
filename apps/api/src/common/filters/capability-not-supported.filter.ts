@@ -14,16 +14,22 @@
 import type { ArgumentsHost, ExceptionFilter } from '@nestjs/common';
 import { Catch, HttpStatus } from '@nestjs/common';
 import type { Response } from 'express';
+import { withApiErrorCode } from '@openlinker/shared/errors';
 import { CapabilityNotSupportedException } from '@openlinker/core/integrations';
 
 @Catch(CapabilityNotSupportedException)
 export class CapabilityNotSupportedFilter implements ExceptionFilter {
   catch(exception: CapabilityNotSupportedException, host: ArgumentsHost): void {
     const response = host.switchToHttp().getResponse<Response>();
-    response.status(HttpStatus.BAD_REQUEST).json({
-      statusCode: HttpStatus.BAD_REQUEST,
-      error: exception.name,
-      message: exception.message,
-    });
+    response.status(HttpStatus.BAD_REQUEST).json(
+      withApiErrorCode(
+        {
+          statusCode: HttpStatus.BAD_REQUEST,
+          error: exception.name,
+          message: exception.message,
+        },
+        HttpStatus.BAD_REQUEST
+      )
+    );
   }
 }

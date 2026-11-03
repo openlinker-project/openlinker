@@ -25,7 +25,9 @@ describe('InventoryCorrectionExceptionFilter', () => {
     const { host, status, json } = createHost();
     filter.catch(new InventoryCorrectionVariantNotFoundError('v1'), host);
     expect(status).toHaveBeenCalledWith(HttpStatus.NOT_FOUND);
-    expect(json).toHaveBeenCalledWith(expect.not.objectContaining({ code: expect.anything() as unknown }));
+    expect(json).toHaveBeenCalledWith(
+      expect.not.objectContaining({ code: expect.anything() as unknown })
+    );
   });
 
   it('should return 409 with the target reason as code', () => {
