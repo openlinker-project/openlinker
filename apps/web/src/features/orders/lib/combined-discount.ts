@@ -7,6 +7,7 @@
  * to the OpenLinker amount alone.
  */
 import { formatAmount } from '../../../shared/format/format-amount';
+import { getMessages, interpolate } from '../../../shared/i18n';
 
 export interface CombinedDiscountInput {
   currency: string;
@@ -26,11 +27,15 @@ export function describeCombinedDiscount(
   const own = openLinkerAmount !== null && openLinkerAmount > 0 ? openLinkerAmount : null;
   const combined = totals.combinedDiscountTotal ?? (channel ?? 0) + (own ?? 0);
   if (channel === null && own === null) return null;
+  const copy = getMessages('orders').combinedDiscount;
   const money = (n: number): string => formatAmount(n, totals.currency);
+  if (channel === null && own !== null) return interpolate(copy.ownOnly, { amount: money(own) });
   const parts: string[] = [];
-  if (channel !== null) parts.push(`${money(channel)} at ${channelName ?? 'the channel'}`);
-  if (own !== null) parts.push(`${money(own)} in OpenLinker`);
-  return parts.length === 1 && own !== null && channel === null
-    ? `Discount: ${money(own)} in OpenLinker`
-    : `Discount: ${parts.join(' + ')} = ${money(combined)}`;
+  if (channel !== null) {
+    parts.push(
+      interpolate(copy.channelPart, { amount: money(channel), channel: channelName ?? copy.channelFallback }),
+    );
+  }
+  if (own !== null) parts.push(interpolate(copy.ownPart, { amount: money(own) }));
+  return interpolate(copy.combined, { parts: parts.join(' + '), total: money(combined) });
 }

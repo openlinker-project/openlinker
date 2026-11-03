@@ -785,7 +785,7 @@ describe('OrderDetailPage — buyer tax id in the Summary block (#3180)', () => 
     renderDetail(api);
 
     await screen.findByText('ol_order_abc123');
-    expect(screen.getByTestId('order-buyer-tax-id-none')).toHaveTextContent('None — asserted');
+    expect(screen.getByTestId('order-buyer-tax-id-none')).toHaveTextContent('None - asserted');
     expect(screen.queryByTestId('order-buyer-tax-id')).not.toBeInTheDocument();
   });
 

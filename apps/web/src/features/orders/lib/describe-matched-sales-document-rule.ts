@@ -2,7 +2,7 @@
  * Describe a matched sales-document rule (#3186)
  *
  * Composes the "Why this kind?" disclosure's sentence from the raw rule data
- * the backend projects onto `SalesDocumentView.matchedRule` — country,
+ * the backend projects onto `SalesDocumentView.matchedRule` - country,
  * conditions, document kind, connection id. Country-agnostic by construction:
  * `rule.country` is echoed back verbatim (whatever the operator configured),
  * never a hardcoded regulator/region literal, matching the same discipline
@@ -11,12 +11,14 @@
  *
  * @module apps/web/src/features/orders/lib
  */
+import { interpolate, type Messages, type ResolvedCopy } from '../../../shared/i18n';
 import type {
   SalesDocumentMatchedRuleCondition,
   SalesDocumentMatchedRuleView,
 } from '../api/orders.types';
 
-type Translate = (key: string, fallback: string) => string;
+/** The disclosure's words, from the `orders` namespace. */
+export type MatchedRuleCopy = ResolvedCopy<Messages['orders']>['matchedSalesDocumentRule'];
 
 /** Whether the matched rule's conditions include `buyerHasTaxId` (#3186 AC). */
 export function matchedRuleReadsBuyerTaxId(
@@ -25,7 +27,7 @@ export function matchedRuleReadsBuyerTaxId(
   return rule.conditions.some((condition) => condition.field === 'buyerHasTaxId');
 }
 
-function describeCondition(condition: SalesDocumentMatchedRuleCondition, t: Translate): string {
+function describeCondition(condition: SalesDocumentMatchedRuleCondition, copy: MatchedRuleCopy): string {
   // Captured before the narrowing below so the fallback can still echo it. This
   // union is a HAND-WRITTEN mirror of `SalesDocumentConditionFieldValues` in
   // `libs/core` - the browser bundle does not depend on `@openlinker/core`
@@ -39,15 +41,10 @@ function describeCondition(condition: SalesDocumentMatchedRuleCondition, t: Tran
   const field: string = condition.field;
 
   if (condition.field === 'buyerHasTaxId') {
-    return condition.boolValue
-      ? t('salesDocument.matchedRule.hasTaxId', 'has a tax ID')
-      : t('salesDocument.matchedRule.noTaxId', 'has no tax ID');
+    return condition.boolValue ? copy.hasTaxId : copy.noTaxId;
   }
   if (condition.field === 'orderCountry') {
-    return t('salesDocument.matchedRule.shipsTo', 'ships to {{country}}').replace(
-      '{{country}}',
-      condition.stringValue ?? '?',
-    );
+    return interpolate(copy.shipsTo, { country: condition.stringValue ?? '?' });
   }
   if (condition.field === 'orderTotalGross') {
     // #3189 put the amount and currency ON the condition, so the sentence names
@@ -57,16 +54,14 @@ function describeCondition(condition: SalesDocumentMatchedRuleCondition, t: Tran
     // that was never asserted.
     const amount = condition.amount;
     if (amount === undefined) {
-      return condition.op === 'gte'
-        ? t('salesDocument.matchedRule.totalAtLeast', 'total at or above the configured threshold')
-        : t('salesDocument.matchedRule.totalUnder', 'total under the configured threshold');
+      return condition.op === 'gte' ? copy.totalAtLeast : copy.totalUnder;
     }
-    const figure = condition.currency ? `${amount} ${condition.currency}` : amount;
-    return (
-      condition.op === 'gte'
-        ? t('salesDocument.matchedRule.totalAtLeastAmount', 'total at or above {{amount}}')
-        : t('salesDocument.matchedRule.totalUnderAmount', 'total under {{amount}}')
-    ).replace('{{amount}}', figure);
+    const figure = condition.currency
+      ? interpolate(copy.amountWithCurrency, { amount, currency: condition.currency })
+      : amount;
+    return interpolate(condition.op === 'gte' ? copy.totalAtLeastAmount : copy.totalUnderAmount, {
+      amount: figure,
+    });
   }
 
   // Tested explicitly rather than left as the fall-through arm (#3186 review):
@@ -78,36 +73,28 @@ function describeCondition(condition: SalesDocumentMatchedRuleCondition, t: Tran
   return field;
 }
 
-/** Plain-language label for an open-world document kind (mirrors the panel's own `salesDocument.kind.*` keys). */
-function describeDocumentKind(kind: string, t: Translate): string {
-  if (kind === 'invoice') return t('salesDocument.kind.invoice', 'invoice');
-  if (kind === 'fiscal-receipt') return t('salesDocument.kind.receipt', 'fiscal receipt');
+/** Plain-language label for an open-world document kind. */
+function describeDocumentKind(kind: string, copy: MatchedRuleCopy): string {
+  if (kind === 'invoice') return copy.kind.invoice;
+  if (kind === 'fiscal-receipt') return copy.kind.receipt;
   return kind;
 }
 
 /**
  * "Matched the {market} rule ({conditions}), which registers a {kind} through
- * {connection}." — the sentence the "Why this kind?" disclosure renders,
+ * {connection}." - the sentence the "Why this kind?" disclosure renders,
  * verbatim, in `data-testid="sales-document-matched-rule"`.
  */
 export function describeMatchedSalesDocumentRule(
   rule: SalesDocumentMatchedRuleView,
   connectionName: string,
-  t: Translate,
+  copy: MatchedRuleCopy,
 ): string {
-  const market =
-    rule.country === '*'
-      ? t('salesDocument.matchedRule.restOfWorld', 'Rest of world')
-      : rule.country;
-  const conditions = rule.conditions.map((condition) => describeCondition(condition, t)).join(' · ');
-  const kind = describeDocumentKind(rule.documentKind, t);
+  const market = rule.country === '*' ? copy.restOfWorld : rule.country;
+  const conditions = rule.conditions
+    .map((condition) => describeCondition(condition, copy))
+    .join(' · ');
+  const kind = describeDocumentKind(rule.documentKind, copy);
 
-  return t(
-    'salesDocument.matchedRule.sentence',
-    'Matched the {{market}} rule {{conditions}}, which registers a {{kind}} through {{connection}}.',
-  )
-    .replace('{{market}}', market)
-    .replace('{{conditions}}', conditions)
-    .replace('{{kind}}', kind)
-    .replace('{{connection}}', connectionName);
+  return interpolate(copy.sentence, { market, conditions, kind, connection: connectionName });
 }

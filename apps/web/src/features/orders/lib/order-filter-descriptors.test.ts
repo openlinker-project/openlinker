@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
+import { getMessages } from '../../../shared/i18n';
 import type { OrderTag } from '../api/orders.types';
 import {
   NARROWING_ORDER_FILTER_KEYS,
@@ -27,6 +28,7 @@ const ctx: OrderFilterChipContext = {
   connectionName: (id) => (id === 'conn-1' ? 'Allegro – Sklep główny' : undefined),
   tagById: (id) => (id === VIP.id ? VIP : undefined),
   formatDay: (ymd) => ymd,
+  copy: getMessages('orders'),
 };
 
 const parse = (qs: string) => parseOrderListFilterState(new URLSearchParams(qs));

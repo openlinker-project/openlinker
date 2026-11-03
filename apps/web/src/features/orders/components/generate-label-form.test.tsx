@@ -74,7 +74,7 @@ describe('GenerateLabelForm — pre-flight gate (tech-review BLOCKING fix)', () 
     );
 
     expect(
-      await screen.findByText(/Missing recipient data — cannot generate label:/i),
+      await screen.findByText(/Missing recipient data - cannot generate label:/i),
     ).toBeInTheDocument();
     expect(screen.getByText(/Buyer email is missing/i)).toBeInTheDocument();
 

@@ -19,6 +19,8 @@
  */
 import { z } from 'zod';
 
+import { getMessages, interpolate, type Messages, type ResolvedCopy } from '../../../shared/i18n';
+
 import type { ParsedOrderSnapshot } from '../api/order-snapshot.schema';
 import type {
   EditOrderAddressRequest,
@@ -135,6 +137,9 @@ function sameDiscountAmount(a: string, b: string): boolean {
 }
 
 /** Which sections differ from what the form opened with. A blank discount is "untouched". */
+/** The `orders.orderEditDialog.validation` copy, in the language the form renders in. */
+export type OrderEditValidationCopy = ResolvedCopy<Messages['orders']>['orderEditDialog']['validation'];
+
 export function detectChangedSections(
   values: OrderEditFormValues,
   initial: OrderEditInitialValues,
@@ -172,11 +177,13 @@ export function detectChangedSections(
  * The form schema for one order. `initial` and `lineMax` make it a factory: a
  * section is only validated when the operator changed it, so a record with no
  * stored address (a deployment that stores no buyer PII) does not block an
- * unrelated quantity edit.
+ * unrelated quantity edit. `copy` defaults to the active language when the
+ * schema is built, never at module load.
  */
 export function buildOrderEditSchema(
   initial: OrderEditInitialValues,
   lineMax: Readonly<Record<string, number>>,
+  copy: OrderEditValidationCopy = getMessages('orders').orderEditDialog.validation,
 ) {
   return z
     .object({
@@ -205,9 +212,9 @@ export function buildOrderEditSchema(
 
       if (changed.has('address')) {
         for (const [key, label] of [
-          ['address1', 'Enter the street and number'],
-          ['city', 'Enter the city'],
-          ['postalCode', 'Enter the postcode'],
+          ['address1', copy.address1],
+          ['city', copy.city],
+          ['postalCode', copy.postalCode],
         ] as const) {
           if (trim(values[key]) === '') ctx.addIssue({ code: 'custom', path: [key], message: label });
         }
@@ -215,7 +222,7 @@ export function buildOrderEditSchema(
           ctx.addIssue({
             code: 'custom',
             path: ['country'],
-            message: 'Use a two-letter country code, e.g. PL',
+            message: copy.country,
           });
         }
       }
@@ -224,14 +231,14 @@ export function buildOrderEditSchema(
         ctx.addIssue({
           code: 'custom',
           path: ['methodId'],
-          message: 'Enter the delivery method id',
+          message: copy.methodId,
         });
       }
       if (trim(values.pickupName) !== '' && trim(values.pickupId) === '') {
         ctx.addIssue({
           code: 'custom',
           path: ['pickupId'],
-          message: 'A pickup point needs its code',
+          message: copy.pickupId,
         });
       }
 
@@ -246,13 +253,13 @@ export function buildOrderEditSchema(
             ctx.addIssue({
               code: 'custom',
               path: ['lines', index, 'quantity'],
-              message: 'Enter a whole number, 0 or more',
+              message: copy.quantityWhole,
             });
           } else if (quantity > max) {
             ctx.addIssue({
               code: 'custom',
               path: ['lines', index, 'quantity'],
-              message: `Can only go down: at most ${max}`,
+              message: interpolate(copy.quantityMax, { max }),
             });
           }
         });
@@ -260,7 +267,7 @@ export function buildOrderEditSchema(
           ctx.addIssue({
             code: 'custom',
             path: ['lines'],
-            message: 'An order needs at least one item. To remove everything, cancel the order.',
+            message: copy.linesEmpty,
           });
         }
       }
@@ -272,7 +279,7 @@ export function buildOrderEditSchema(
             ctx.addIssue({
               code: 'custom',
               path: ['discountValue'],
-              message: 'Enter a plain amount such as 12.50, or 0 to remove the discount',
+              message: copy.discountAmount,
             });
           }
         } else {
@@ -281,7 +288,7 @@ export function buildOrderEditSchema(
             ctx.addIssue({
               code: 'custom',
               path: ['discountValue'],
-              message: 'Enter a percent from 0 to 100',
+              message: copy.discountPercent,
             });
           }
         }

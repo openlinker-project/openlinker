@@ -24,7 +24,7 @@
  * @module apps/web/src/features/orders/components
  */
 import { zodResolver } from '@hookform/resolvers/zod';
-import { useEffect, type ReactElement } from 'react';
+import { useEffect, useMemo, type ReactElement } from 'react';
 import { useForm } from 'react-hook-form';
 
 import { Alert } from '../../../shared/ui/alert';
@@ -42,18 +42,19 @@ import { Select } from '../../../shared/ui/select';
 import { StatusBadge } from '../../../shared/ui/status-badge';
 import { Textarea } from '../../../shared/ui/textarea';
 import type { CancelOrderResult, OrderCancelReason } from '../api/order-cancel.types';
+import { interpolate, useMessages, usePlural } from '../../../shared/i18n';
 import { useCancelOrderMutation } from '../hooks/use-cancel-order-mutation';
 import {
   classifyOrderCancelError,
-  ORDER_CANCEL_INLINE_TITLES,
   ORDER_CANCEL_NOTE_MAX_LENGTH,
-  ORDER_CANCEL_REASON_LABELS,
   OrderCancelReasonValues,
+  orderCancelInlineTitle,
+  orderCancelReasonLabel,
   readOrderCancelErrorCode,
   readServerReason,
 } from '../lib/order-cancel';
 import {
-  cancelOrderSchema,
+  createCancelOrderSchema,
   type CancelOrderFormValues,
   type CancelOrderSubmission,
 } from './cancel-order-dialog.schema';
@@ -95,10 +96,13 @@ export function CancelOrderDialog({
   onResult,
   onGoToShipment,
 }: CancelOrderDialogProps): ReactElement {
+  const copy = useMessages('orders').cancelOrderDialog;
+  const plural = usePlural();
+  const schema = useMemo(() => createCancelOrderSchema(copy.validation), [copy.validation]);
   const mutation = useCancelOrderMutation();
   const form = useForm<CancelOrderFormValues, undefined, CancelOrderSubmission>({
     defaultValues: { reason: REASON_DEFAULT, note: '', acknowledgeAcceptedWork: false },
-    resolver: zodResolver(cancelOrderSchema),
+    resolver: zodResolver(schema),
   });
 
   const { reset: resetForm } = form;
@@ -111,7 +115,7 @@ export function CancelOrderDialog({
   }, [open, resetForm, resetMutation]);
 
   const title = orderNumber ?? internalOrderId;
-  const channel = sourceName ?? 'the sales channel';
+  const channel = sourceName ?? copy.channelFallback;
   const refusal = mutation.isError ? classifyOrderCancelError(mutation.error) : null;
   const pending = mutation.data?.status === 'pending';
   const needsAck = acceptedWork || refusal === 'needs-ack';
@@ -156,22 +160,22 @@ export function CancelOrderDialog({
       <Dialog open={open} onOpenChange={onOpenChange}>
         <DialogContent className="order-hold-dialog" data-testid="order-cancel-dialog">
           <div>
-            <DialogTitle>{`Cancelling order ${title}`}</DialogTitle>
+            <DialogTitle>{interpolate(copy.progress.title, { order: title })}</DialogTitle>
             <DialogDescription>
-              {`Waiting for ${channel} to confirm. You can close this window; the cancellation carries on and shows up in Activity.`}
+              {interpolate(copy.progress.description, { channel })}
             </DialogDescription>
             <ol
               className="order-activity"
-              aria-label="Cancellation progress"
+              aria-label={copy.progress.label}
               data-testid="order-cancel-progress"
             >
               <li className="order-activity__item">
                 <span className="order-activity__dot order-activity__dot--warning" aria-hidden="true" />
                 <div className="order-activity__body">
-                  <p className="order-activity__title">{`Ask ${channel} to cancel`}</p>
+                  <p className="order-activity__title">{interpolate(copy.progress.askChannel, { channel })}</p>
                   <p className="order-activity__description">
                     <StatusBadge tone="warning" compact withDot>
-                      {`Waiting for ${channel}`}
+                      {interpolate(copy.progress.waiting, { channel })}
                     </StatusBadge>
                   </p>
                 </div>
@@ -179,40 +183,38 @@ export function CancelOrderDialog({
               <li className="order-activity__item">
                 <span className="order-activity__dot order-activity__dot--default" aria-hidden="true" />
                 <div className="order-activity__body">
-                  <p className="order-activity__title">Cancel the order in connected shops</p>
-                  <p className="order-activity__description">Starts after the channel confirms.</p>
+                  <p className="order-activity__title">{copy.progress.connectedShops}</p>
+                  <p className="order-activity__description">{copy.progress.afterConfirm}</p>
                 </div>
               </li>
               <li className="order-activity__item">
                 <span className="order-activity__dot order-activity__dot--default" aria-hidden="true" />
                 <div className="order-activity__body">
-                  <p className="order-activity__title">Release reserved units</p>
-                  <p className="order-activity__description">Starts after the channel confirms.</p>
+                  <p className="order-activity__title">{copy.progress.releaseUnits}</p>
+                  <p className="order-activity__description">{copy.progress.afterConfirm}</p>
                 </div>
               </li>
               {invoiced ? (
                 <li className="order-activity__item">
                   <span className="order-activity__dot order-activity__dot--default" aria-hidden="true" />
                   <div className="order-activity__body">
-                    <p className="order-activity__title">Draft correction invoice</p>
-                    <p className="order-activity__description">Ready for you to review.</p>
+                    <p className="order-activity__title">{copy.progress.draftCorrection}</p>
+                    <p className="order-activity__description">{copy.progress.draftCorrectionHint}</p>
                   </div>
                 </li>
               ) : null}
               <li className="order-activity__item">
                 <span className="order-activity__dot order-activity__dot--default" aria-hidden="true" />
                 <div className="order-activity__body">
-                  <p className="order-activity__title">Refund the buyer</p>
-                  <p className="order-activity__description">
-                    Your action. OpenLinker does not move money.
-                  </p>
+                  <p className="order-activity__title">{copy.progress.refund}</p>
+                  <p className="order-activity__description">{copy.progress.refundHint}</p>
                 </div>
               </li>
             </ol>
             <DialogFooter>
               <DialogClose asChild>
                 <Button type="button" tone="secondary" data-testid="order-cancel-progress-close">
-                  Close
+                  {copy.progress.close}
                 </Button>
               </DialogClose>
             </DialogFooter>
@@ -228,25 +230,19 @@ export function CancelOrderDialog({
       <Dialog open={open} onOpenChange={onOpenChange}>
         <DialogContent className="order-hold-dialog" data-testid="order-cancel-dialog">
           <div>
-            <DialogTitle>Cancel the shipment first</DialogTitle>
+            <DialogTitle>{copy.label.title}</DialogTitle>
             <DialogDescription data-testid="order-cancel-label-refusal">
-              {readServerReason(
-                mutation.error,
-                'A shipping label exists for this order, so OpenLinker will not cancel it yet.',
-              )}
+              {readServerReason(mutation.error, copy.label.fallback)}
             </DialogDescription>
-            <Alert tone="info" title="What to do">
+            <Alert tone="info" title={copy.label.whatToDo}>
               <ol className="order-cancel-list">
-                <li>Cancel the shipment. This voids its label with the carrier.</li>
-                <li>Cancel the order again.</li>
+                <li>{copy.label.stepCancelShipment}</li>
+                <li>{copy.label.stepCancelAgain}</li>
               </ol>
             </Alert>
-            <p className="muted-text">
-              If the parcel is already with the courier, the label cannot be voided. See the parcel
-              instead of cancelling.
-            </p>
+            <p className="muted-text">{copy.label.note}</p>
             <DialogFooter>
-              {keepButton('Keep order')}
+              {keepButton(copy.keepOrder)}
               <Button
                 type="button"
                 tone="primary"
@@ -256,7 +252,7 @@ export function CancelOrderDialog({
                   onGoToShipment?.();
                 }}
               >
-                Go to shipment
+                {copy.label.goToShipment}
               </Button>
             </DialogFooter>
           </div>
@@ -271,24 +267,21 @@ export function CancelOrderDialog({
       <Dialog open={open} onOpenChange={onOpenChange}>
         <DialogContent className="order-hold-dialog" data-testid="order-cancel-dialog">
           <div>
-            <DialogTitle>This order can not be cancelled</DialogTitle>
+            <DialogTitle>{copy.shipped.title}</DialogTitle>
             <Alert
               tone="error"
-              title="The parcel is on its way"
+              title={copy.shipped.alertTitle}
               data-testid="order-cancel-shipped-refusal"
             >
-              {readServerReason(mutation.error, 'This order has already shipped.')}
+              {readServerReason(mutation.error, copy.shipped.fallback)}
             </Alert>
-            <p className="dialog-section__head">What you can do instead</p>
+            <p className="dialog-section__head">{copy.shipped.insteadTitle}</p>
             <ol className="order-cancel-list">
-              <li>
-                Ask the buyer to refuse the parcel, or to send it back after delivery. The return
-                shows up on this order once the buyer opens it.
-              </li>
-              <li>Once the goods are back, refund the buyer and confirm the refund here.</li>
-              <li>The invoice stays as issued. The return proposes the correction invoice.</li>
+              <li>{copy.shipped.stepReturn}</li>
+              <li>{copy.shipped.stepRefund}</li>
+              <li>{copy.shipped.stepInvoice}</li>
             </ol>
-            <DialogFooter>{keepButton('Close')}</DialogFooter>
+            <DialogFooter>{keepButton(copy.shipped.close)}</DialogFooter>
           </div>
         </DialogContent>
       </Dialog>
@@ -301,9 +294,9 @@ export function CancelOrderDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="order-hold-dialog" data-testid="order-cancel-dialog">
-        <DialogTitle>{`Cancel order ${title}?`}</DialogTitle>
+        <DialogTitle>{interpolate(copy.confirm.title, { order: title })}</DialogTitle>
         <DialogDescription>
-          {`OpenLinker asks ${channel} to cancel it. Once ${channel} confirms, the rest happens on its own, except the refund, which you make yourself.`}
+          {interpolate(copy.confirm.description, { channel })}
         </DialogDescription>
 
         {mutation.isError && refusal !== null ? (
@@ -311,13 +304,13 @@ export function CancelOrderDialog({
             tone={refusal === 'needs-ack' ? 'warning' : 'error'}
             title={
               refusal === 'needs-ack'
-                ? 'This order is on the pack bench'
-                : (inlineCode ? ORDER_CANCEL_INLINE_TITLES[inlineCode] : undefined) ??
-                  'Could not cancel this order'
+                ? copy.ack.title
+                : (inlineCode ? orderCancelInlineTitle(inlineCode) : undefined) ??
+                  copy.confirm.errorTitle
             }
             data-testid="order-cancel-error"
           >
-            {readServerReason(mutation.error, 'Could not cancel this order.')}
+            {readServerReason(mutation.error, copy.confirm.errorFallback)}
           </Alert>
         ) : null}
 
@@ -330,14 +323,14 @@ export function CancelOrderDialog({
         >
           <FormField
             name="reason"
-            label="Reason"
+            label={copy.reason}
             error={form.formState.errors.reason?.message}
-            description={`For your team. ${channel} receives the reason code only, never your note.`}
+            description={interpolate(copy.reasonHint, { channel })}
           >
             <Select {...form.register('reason')} data-testid="order-cancel-reason">
               {OrderCancelReasonValues.map((value) => (
                 <option key={value} value={value}>
-                  {ORDER_CANCEL_REASON_LABELS[value]}
+                  {orderCancelReasonLabel(value)}
                 </option>
               ))}
             </Select>
@@ -345,9 +338,9 @@ export function CancelOrderDialog({
 
           <FormField
             name="note"
-            label={reasonValue === 'other' ? 'Note' : 'Note (optional)'}
+            label={reasonValue === 'other' ? copy.note : copy.noteOptional}
             error={form.formState.errors.note?.message}
-            description="Anything the next person needs to know. Never buyer details."
+            description={copy.noteHint}
           >
             <Textarea
               rows={2}
@@ -358,93 +351,90 @@ export function CancelOrderDialog({
           </FormField>
 
           <div>
-            <p className="dialog-section__head">What happens</p>
+            <p className="dialog-section__head">{copy.impact.title}</p>
             <ul className="order-cancel-impact" data-testid="order-cancel-impact">
               <li className="order-cancel-impact__row" data-testid="order-cancel-impact-channel">
                 <span className="order-cancel-impact__head">
-                  <span className="order-cancel-impact__what">{sourceName ?? 'Sales channel'}</span>
+                  <span className="order-cancel-impact__what">{sourceName ?? copy.impact.channelFallback}</span>
                   <StatusBadge tone="info" compact>
-                    Sent
+                    {copy.impact.channelStatus}
                   </StatusBadge>
                 </span>
                 <span className="order-cancel-impact__how">
-                  {`The order is marked as cancelled on ${channel}. If a channel has no cancel call, OpenLinker restores the stock only and tells you afterwards.`}
+                  {interpolate(copy.impact.channelBody, { channel })}
                 </span>
               </li>
               <li className="order-cancel-impact__row" data-testid="order-cancel-impact-stock">
                 <span className="order-cancel-impact__head">
                   <span className="order-cancel-impact__what">
-                    Stock
+                    {copy.impact.stock}
                     {unitCount !== null ? (
-                      <span className="order-cancel-impact__sub">{`${unitCount} unit${unitCount === 1 ? '' : 's'}`}</span>
+                      <span className="order-cancel-impact__sub">{plural(unitCount, copy.impact.units)}</span>
                     ) : null}
                   </span>
                   <StatusBadge tone="info" compact>
-                    Automatic
+                    {copy.impact.stockStatus}
                   </StatusBadge>
                 </span>
                 <span className="order-cancel-impact__how">
-                  Reserved units are released, open fulfilment work is cancelled and a shipping label
-                  that was bought is voided where the carrier allows it.
+                  {copy.impact.stockBody}
                 </span>
               </li>
               {invoiced ? (
                 <li className="order-cancel-impact__row" data-testid="order-cancel-impact-invoice">
                   <span className="order-cancel-impact__head">
-                    <span className="order-cancel-impact__what">Invoice</span>
+                    <span className="order-cancel-impact__what">{copy.impact.invoice}</span>
                     <StatusBadge tone="warning" compact>
-                      You review
+                      {copy.impact.invoiceStatus}
                     </StatusBadge>
                   </span>
                   <span className="order-cancel-impact__how">
-                    An issued invoice can not be withdrawn. OpenLinker opens a correction proposal for
-                    you to review and confirm.
+                    {copy.impact.invoiceBody}
                   </span>
                 </li>
               ) : null}
               <li className="order-cancel-impact__row" data-testid="order-cancel-impact-money">
                 <span className="order-cancel-impact__head">
                   <span className="order-cancel-impact__what">
-                    Money
+                    {copy.impact.money}
                     {totalLabel ? (
                       <span className="order-cancel-impact__sub mono-text">{totalLabel}</span>
                     ) : null}
                   </span>
                   <StatusBadge tone="warning" compact>
-                    Your action
+                    {copy.impact.moneyStatus}
                   </StatusBadge>
                 </span>
                 <span className="order-cancel-impact__how">
-                  {`Not refunded by OpenLinker. Refund the buyer in ${channel} yourself. The payment keeps reading Paid until a refund is confirmed.`}
+                  {interpolate(copy.impact.moneyBody, { channel })}
                 </span>
               </li>
             </ul>
           </div>
 
           {needsAck ? (
-            <Alert tone="warning" title="This order is on the pack bench" data-testid="order-cancel-ack-alert">
-              Someone claimed this order at the pack bench and may already be picking it. Cancelling
-              takes it off the bench.
+            <Alert tone="warning" title={copy.ack.title} data-testid="order-cancel-ack-alert">
+              {copy.ack.body}
               <label className="order-cancel-check">
                 <input
                   type="checkbox"
                   data-testid="order-cancel-ack"
                   {...form.register('acknowledgeAcceptedWork')}
                 />
-                <span>I have told the packer to stop</span>
+                <span>{copy.ack.label}</span>
               </label>
             </Alert>
           ) : null}
 
           <DialogFooter>
-            {keepButton('Keep order')}
+            {keepButton(copy.keepOrder)}
             <Button
               type="submit"
               tone="danger"
               disabled={!canSubmit}
               data-testid="order-cancel-submit"
             >
-              {mutation.isPending ? 'Cancelling…' : 'Cancel order'}
+              {mutation.isPending ? copy.cancelling : copy.submit}
             </Button>
           </DialogFooter>
         </form>

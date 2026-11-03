@@ -15,7 +15,8 @@ import { describe, expect, it } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { StockAtRiskBadge } from './stock-at-risk-badge';
 import { StockAtRiskCallout } from './stock-at-risk-callout';
-import { stockAtRiskTitle } from '../lib/stock-at-risk-copy';
+import { formatPlural, getMessages } from '../../../shared/i18n';
+import { stockAtRiskTitle, type StockAtRiskText } from '../lib/stock-at-risk';
 import type { OrderReservationShortfall } from '../api/orders.types';
 
 function shortfall(over: Partial<OrderReservationShortfall> = {}): OrderReservationShortfall {
@@ -141,7 +142,12 @@ describe('StockAtRiskCallout', () => {
 
   it('should share one title with the badge (AC1 byte-identity)', () => {
     const list = [shortfall()];
-    const expected = stockAtRiskTitle(list);
+    const text: StockAtRiskText = {
+      copy: getMessages('orders').stockAtRisk,
+      plural: (count, forms, params) => formatPlural(count, forms, 'en', params),
+      number: (value) => String(value),
+    };
+    const expected = stockAtRiskTitle(list, text);
 
     const badge = render(<StockAtRiskBadge shortfalls={list} />);
     expect(badge.container.textContent).toContain(expected as string);

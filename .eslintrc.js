@@ -983,6 +983,8 @@ module.exports = {
       // the same PR that moves its copy.
       files: [
         'apps/web/src/app/**/*.tsx',
+        'apps/web/src/features/orders/**/*.tsx',
+        'apps/web/src/pages/orders/**/*.tsx',
         'apps/web/src/features/auth/**/*.tsx',
         'apps/web/src/features/demo/**/*.tsx',
         'apps/web/src/features/users/**/*.tsx',
@@ -1014,7 +1016,7 @@ module.exports = {
                 /^\p{Emoji}+$/u,
                 '⌘K',
                 // \u2014 is the em dash glyph used as an empty-value marker.
-                '[•↗×⌕ⓘ…\u2014–→←›▼↑↓↵·✓⧉✕🔒☰+]+',
+                '[•↗×⌕ⓘ…\u2014–→←›▼↑↓↵·✓⧉✕🔒☰▸▾⤓+]+',
                 'esc',
               ],
             },

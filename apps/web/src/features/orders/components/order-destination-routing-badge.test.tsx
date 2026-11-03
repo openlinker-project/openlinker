@@ -8,11 +8,11 @@ import { cleanup, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it } from 'vitest';
 
 import { DestinationRoutingBlockReasonValues } from '../api/orders.types';
-import {
-  DESTINATION_ROUTING_ATTENTION_REASONS,
-  DESTINATION_ROUTING_REASON_COPY,
-} from '../lib/destination-routing-copy';
+import { getMessages } from '../../../shared/i18n';
+import { DESTINATION_ROUTING_ATTENTION_REASONS } from '../lib/destination-routing';
 import { OrderDestinationRoutingBadge } from './order-destination-routing-badge';
+
+const DESTINATION_ROUTING_REASON_COPY = getMessages('orders').destinationRouting.reasons;
 
 afterEach(cleanup);
 

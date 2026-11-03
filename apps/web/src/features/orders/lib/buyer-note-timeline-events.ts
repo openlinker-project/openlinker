@@ -11,23 +11,31 @@
  */
 import type { DatedTimelineEvent } from '../components/order-activity-timeline';
 import type { BuyerNoteAcknowledgement } from '../api/orders.types';
-import { BUYER_NOTE_COPY as COPY } from './buyer-note.copy';
+import { getMessages, interpolate, type Messages, type ResolvedCopy } from '../../../shared/i18n';
 import { describeNoteActor } from './buyer-note-presentation';
+
+type TimelineCopy = ResolvedCopy<Messages['orders']>['buyerNote']['timeline'];
+
+function describeReader(who: string | null, copy: TimelineCopy): string {
+  return who === null ? copy.descriptionUnknown : interpolate(copy.description, { who });
+}
 
 export function mapBuyerNoteAcknowledgementsToEvents(
   acknowledgements: readonly BuyerNoteAcknowledgement[] | null | undefined,
   currentUserId: string | null,
 ): DatedTimelineEvent[] {
+  const COPY = getMessages('orders').buyerNote.timeline;
   return (acknowledgements ?? [])
     .filter((ack) => ack.acknowledgedAt.length > 0)
     .map(
       (ack): DatedTimelineEvent => ({
         id: `buyer-note-ack:${ack.workId}`,
         timestamp: ack.acknowledgedAt,
-        title: COPY.timelineTitle,
-        by: COPY.timelineBy,
-        description: COPY.timelineDescription(
+        title: COPY.title,
+        by: COPY.by,
+        description: describeReader(
           describeNoteActor(ack.acknowledgedByUserId, currentUserId),
+          COPY,
         ),
         tone: 'success',
       }),
@@ -53,6 +61,7 @@ export function mapBuyerNoteChangeToEvents(
     return !Number.isNaN(read) && read < changed;
   });
   if (!readEarlier) return [];
+  const COPY = getMessages('orders').buyerNote.timeline;
   return [
     {
       id: 'buyer-note-changed-after-read',

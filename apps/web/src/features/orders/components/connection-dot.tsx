@@ -15,6 +15,8 @@
  */
 import type { CSSProperties, ReactElement } from 'react';
 
+import { useMessages } from '../../../shared/i18n';
+
 interface ConnectionDotProps {
   /** Full connection name (tooltip + a11y text). `null` → generic glyph. */
   name: string | null;
@@ -65,8 +67,9 @@ export function ConnectionDot({
   variant = 'shop',
   size,
 }: ConnectionDotProps): ReactElement {
+  const copy = useMessages('orders').connectionDot;
   const isGeneric = name === null;
-  const fullName = name ?? (variant === 'carrier' ? 'a carrier' : 'the destination shop');
+  const fullName = name ?? (variant === 'carrier' ? copy.genericCarrier : copy.genericShop);
   const initial = computeInitial(name, platformType, variant);
   // Generic dots ignore the hash (muted grey via the modifier class); named/known
   // dots carry a stable hue seeded on platformType (falling back to the name).

@@ -1,19 +1,15 @@
 /**
- * Stock-at-risk copy (#2350, story I6)
+ * Stock-at-risk text (#2350, story I6)
  *
  * **The single source for the shortfall sentence**, shared by the order-row
- * badge, the order-detail callout and — when it lands — `W2-19`'s attention
+ * badge, the order-detail callout and - when it lands - `W2-19`'s attention
  * table. AC1 requires the badge title be byte-identical to the attention-table
- * title, and the only way to guarantee that is for a second copy of the string
- * to be impossible to write without deleting an import.
- *
- * `W2-20`'s general copy module does not exist on this branch, so this file IS
- * the source of truth this slice creates. When #2357 lands it should **absorb
- * this file**, not grow its own copy of the sentence.
+ * title, and the only way to guarantee that is for every surface to build it
+ * here, from the `orders.stockAtRisk` copy.
  *
  * ## Two rules a contributor must not undo
  *
- * 1. **An empty list renders NOTHING — never a reassurance.** Both the detail
+ * 1. **An empty list renders NOTHING - never a reassurance.** Both the detail
  *    loader and the list's batched read catch to empty on failure, so absence
  *    and failure are indistinguishable. "This order is fine" would therefore be
  *    a claim the data cannot support, and #2349 exists precisely so a shortfall
@@ -22,10 +18,22 @@
  *    who cannot see WHICH item is short cannot act; a blank is worse than an
  *    internal id they can paste into a search.
  *
+ * The builders take the copy and the formatters as an argument so they stay
+ * pure; `useStockAtRiskText` binds them to the active language.
+ *
  * @module apps/web/src/features/orders/lib
  */
+import type { Messages, PluralFn, ResolvedCopy } from '../../../shared/i18n';
+import { interpolate } from '../../../shared/i18n';
 import type { OrderReservationShortfall } from '../api/orders.types';
 import type { StatusBadgeTone } from '../../../shared/ui/status-badge';
+
+/** The copy and formatters the builders read, in one language. */
+export interface StockAtRiskText {
+  copy: ResolvedCopy<Messages['orders']>['stockAtRisk'];
+  plural: PluralFn;
+  number: (value: number) => string;
+}
 
 /** What to call the short item: its sku, else its variant id, never a blank. */
 export function shortfallItemLabel(shortfall: OrderReservationShortfall): string {
@@ -36,36 +44,42 @@ export function shortfallItemLabel(shortfall: OrderReservationShortfall): string
  * THE title. Every surface renders this exact string.
  *
  * One episode names the item, because that is the actionable fact. Several
- * summarise, because a row cannot carry N skus without becoming unreadable —
+ * summarise, because a row cannot carry N skus without becoming unreadable -
  * the detail callout lists them all underneath.
  */
-export function stockAtRiskTitle(shortfalls: readonly OrderReservationShortfall[]): string | null {
+export function stockAtRiskTitle(
+  shortfalls: readonly OrderReservationShortfall[],
+  text: StockAtRiskText
+): string | null {
   if (shortfalls.length === 0) return null;
   if (shortfalls.length === 1) {
     const only = shortfalls[0];
-    return `Short ${String(only.shortQuantity)} × ${shortfallItemLabel(only)}`;
+    return interpolate(text.copy.titleOne, {
+      quantity: text.number(only.shortQuantity),
+      item: shortfallItemLabel(only),
+    });
   }
-  return `Short stock on ${String(shortfalls.length)} items`;
+  return text.plural(shortfalls.length, text.copy.titleSeveral);
 }
-
-/** The spec's body copy. One sentence, stated once. */
-export const STOCK_AT_RISK_BODY =
-  'The stock master dropped below what this order was promised. Nothing was ' +
-  'silently reduced — this order is the one at risk.';
 
 /**
  * The row badge, or `null` when there is nothing to report.
  *
- * `warning`, not `error`: the order is at risk, not broken — nothing has failed
+ * `warning`, not `error`: the order is at risk, not broken - nothing has failed
  * and nothing was lost. Reserving `error` for actual failures is what keeps a
  * red row meaning outstanding work.
  */
 export function stockAtRiskBadge(
-  shortfalls: readonly OrderReservationShortfall[] | undefined
+  shortfalls: readonly OrderReservationShortfall[] | undefined,
+  text: StockAtRiskText
 ): { label: string; tone: StatusBadgeTone; title: string } | null {
-  const label = stockAtRiskTitle(shortfalls ?? []);
+  const label = stockAtRiskTitle(shortfalls ?? [], text);
   if (label === null) return null;
-  return { label, tone: 'warning', title: `${label}. ${STOCK_AT_RISK_BODY}` };
+  return {
+    label,
+    tone: 'warning',
+    title: interpolate(text.copy.badgeTitle, { title: label, body: text.copy.body }),
+  };
 }
 
 /**
@@ -75,18 +89,21 @@ export function stockAtRiskBadge(
  * summary would hide the item they need.
  */
 export function stockAtRiskCallout(
-  shortfalls: readonly OrderReservationShortfall[] | undefined
+  shortfalls: readonly OrderReservationShortfall[] | undefined,
+  text: StockAtRiskText
 ): { title: string; body: string; lines: string[] } | null {
   const list = shortfalls ?? [];
-  const title = stockAtRiskTitle(list);
+  const title = stockAtRiskTitle(list, text);
   if (title === null) return null;
   return {
     title,
-    body: STOCK_AT_RISK_BODY,
-    lines: list.map(
-      (shortfall) =>
-        `${shortfallItemLabel(shortfall)} — short ${String(shortfall.shortQuantity)} of ` +
-        `${String(shortfall.positionShortfall)} across all orders`
+    body: text.copy.body,
+    lines: list.map((shortfall) =>
+      interpolate(text.copy.line, {
+        item: shortfallItemLabel(shortfall),
+        short: text.number(shortfall.shortQuantity),
+        total: text.number(shortfall.positionShortfall),
+      })
     ),
   };
 }
