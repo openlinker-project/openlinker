@@ -983,6 +983,11 @@ module.exports = {
       // the same PR that moves its copy.
       files: [
         'apps/web/src/app/**/*.tsx',
+        'apps/web/src/features/auth/**/*.tsx',
+        'apps/web/src/features/demo/**/*.tsx',
+        'apps/web/src/features/users/**/*.tsx',
+        'apps/web/src/pages/auth/**/*.tsx',
+        'apps/web/src/pages/users/**/*.tsx',
         'apps/web/src/shared/auth/**/*.tsx',
         'apps/web/src/shared/i18n/**/*.tsx',
         'apps/web/src/shared/plugins/**/*.tsx',

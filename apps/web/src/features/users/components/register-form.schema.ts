@@ -1,25 +1,35 @@
 import { z } from 'zod';
+import { interpolate, type Messages, type ResolvedCopy } from '../../../shared/i18n';
 
-export const registerFormSchema = z
-  .object({
-    username: z.string().min(1, 'Username is required'),
-    email: z.string().email('Enter a valid email address'),
-    password: z.string().min(8, 'Password must be at least 8 characters'),
-    confirmPassword: z.string().min(1, 'Please confirm your password'),
-    // No consent field (#1938): session recording is a condition of the free
-    // demo, disclosed at registration and accepted by creating the account —
-    // not a choice the visitor makes on this form. The submit handler derives
-    // the acceptance flag from demo mode instead.
-  })
-  .superRefine(({ password, confirmPassword }, ctx) => {
-    if (confirmPassword && password !== confirmPassword) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: 'Passwords do not match',
-        path: ['confirmPassword'],
-      });
-    }
-  });
+/** The `users.validation` copy, in the language the form renders in. */
+export type UsersValidationCopy = ResolvedCopy<Messages['users']>['validation'];
 
-export type RegisterFormValues = z.input<typeof registerFormSchema>;
-export type RegisterFormSubmission = z.output<typeof registerFormSchema>;
+const PASSWORD_MIN_LENGTH = 8;
+
+/**
+ * A factory rather than a module-level schema: the messages are read when the
+ * form builds its resolver, so they follow the active language.
+ */
+export function createRegisterFormSchema(copy: UsersValidationCopy) {
+  return z
+    .object({
+      username: z.string().min(1, copy.username),
+      email: z.string().email(copy.email),
+      password: z
+        .string()
+        .min(PASSWORD_MIN_LENGTH, interpolate(copy.passwordMin, { min: PASSWORD_MIN_LENGTH })),
+      confirmPassword: z.string().min(1, copy.confirmPassword),
+    })
+    .superRefine(({ password, confirmPassword }, ctx) => {
+      if (confirmPassword && password !== confirmPassword) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: copy.passwordsDiffer,
+          path: ['confirmPassword'],
+        });
+      }
+    });
+}
+
+export type RegisterFormValues = z.input<ReturnType<typeof createRegisterFormSchema>>;
+export type RegisterFormSubmission = z.output<ReturnType<typeof createRegisterFormSchema>>;

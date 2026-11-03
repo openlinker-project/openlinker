@@ -6,9 +6,9 @@ describe('DemoEventCatalog', () => {
     expect(Object.keys(DemoEventCatalog).length).toBeGreaterThan(0);
   });
 
-  it('should give every entry a non-empty description and group', () => {
+  // Descriptions are copy in `demo.events` (see use-demo-event-descriptions.test.ts).
+  it('should give every entry a non-empty group', () => {
     for (const entry of Object.values(DemoEventCatalog)) {
-      expect(entry.description.length).toBeGreaterThan(0);
       expect(entry.group.length).toBeGreaterThan(0);
     }
   });

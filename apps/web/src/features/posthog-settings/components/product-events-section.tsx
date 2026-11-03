@@ -11,7 +11,7 @@
  */
 import type { ReactElement } from 'react';
 import type { UseFormReturn } from 'react-hook-form';
-import { DemoEventCatalog, type DemoEventGroup } from '../../demo';
+import { DemoEventCatalog, useDemoEventDescriptions, type DemoEventGroup } from '../../demo';
 import { Alert } from '../../../shared/ui/alert';
 import { deriveEventGroups } from '../lib/derive-event-groups';
 import type { PosthogSettingsFormValues } from './posthog-settings-form.schema';
@@ -25,6 +25,7 @@ interface ProductEventsSectionProps {
 const EVENT_GROUPS = deriveEventGroups(DemoEventCatalog);
 
 export function ProductEventsSection({ form, disabled }: ProductEventsSectionProps): ReactElement {
+  const descriptions = useDemoEventDescriptions();
   const enabledEventGroups = form.watch('enabledEventGroups');
 
   const toggleGroup = (group: DemoEventGroup, checked: boolean): void => {
@@ -78,7 +79,7 @@ export function ProductEventsSection({ form, disabled }: ProductEventsSectionPro
             <span className="mono-text posthog-settings-event-catalog__name">{name}</span>
             <span className="context-chip context-chip--neutral">{entry.group}</span>
             <p className="muted-text posthog-settings-event-catalog__description">
-              {entry.description}
+              {descriptions[name as keyof typeof DemoEventCatalog]}
             </p>
             <span className="mono-text posthog-settings-event-catalog__props">
               props: {Object.keys(entry.props).join(', ') || '(none)'}
