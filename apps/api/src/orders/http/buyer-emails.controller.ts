@@ -39,6 +39,14 @@ import {
   SendBuyerEmailTestResponseDto,
 } from './dto/send-buyer-email-test.dto';
 
+/**
+ * The 429 `error` code for a rate-limited test send. Upper-snake, the shape
+ * `ORDER_ALREADY_ON_HOLD` uses, so the editor maps the code to its own copy
+ * rather than showing the server's sentence. Mirrored verbatim in
+ * `apps/web/src/features/buyer-emails/lib/buyer-email-test-error.ts`.
+ */
+export const BUYER_EMAIL_TEST_RATE_LIMITED_ERROR_CODE = 'BUYER_EMAIL_TEST_RATE_LIMITED';
+
 @ApiBearerAuth()
 @ApiTags('orders')
 @Controller('buyer-emails')
@@ -55,7 +63,10 @@ export class BuyerEmailsController {
   @ApiResponse({ status: 200, type: SendBuyerEmailTestResponseDto })
   @ApiResponse({ status: 400, description: 'Not a single email address' })
   @ApiResponse({ status: 404, description: 'Connection not found' })
-  @ApiResponse({ status: 429, description: 'Too many test emails from this user; try again later' })
+  @ApiResponse({
+    status: 429,
+    description: 'Too many test emails from this user; `error` is BUYER_EMAIL_TEST_RATE_LIMITED',
+  })
   @ApiResponse({ status: 503, description: 'The email could not be sent' })
   async sendTest(
     @Body() dto: SendBuyerEmailTestDto,
@@ -74,7 +85,14 @@ export class BuyerEmailsController {
         case 'connection-not-found':
           throw new NotFoundException(result.message);
         case 'rate-limited':
-          throw new HttpException(result.message, HttpStatus.TOO_MANY_REQUESTS);
+          throw new HttpException(
+            {
+              statusCode: HttpStatus.TOO_MANY_REQUESTS,
+              error: BUYER_EMAIL_TEST_RATE_LIMITED_ERROR_CODE,
+              message: result.message,
+            },
+            HttpStatus.TOO_MANY_REQUESTS
+          );
         case 'invalid-address':
           throw new BadRequestException(result.message);
       }

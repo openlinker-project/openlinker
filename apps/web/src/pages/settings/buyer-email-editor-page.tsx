@@ -39,6 +39,7 @@ import {
   buyerEmailTestFormSchema,
   channelKindOf,
   isBuyerEmailTemplate,
+  isBuyerEmailTestRateLimitedError,
   isTemplateAllowed,
   readBuyerEmailsSettings,
   readRuleWording,
@@ -157,7 +158,11 @@ function EditorForm({
       },
       {
         onSuccess: () => setSentTo(address),
-        onError: (error) => showToast({ description: error.message, tone: 'error' }),
+        onError: (error) =>
+          showToast({
+            description: isBuyerEmailTestRateLimitedError(error) ? COPY.testRateLimited : error.message,
+            tone: 'error',
+          }),
       },
     );
   });

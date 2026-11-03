@@ -16,6 +16,10 @@ export type {
 } from './api/buyer-emails.types';
 export * from './lib/buyer-emails-config';
 export { BUYER_EMAILS_COPY, BUYER_EMAIL_TEMPLATE_COPY, templateLabel } from './lib/buyer-emails.copy';
+export {
+  BUYER_EMAIL_TEST_RATE_LIMITED_ERROR_CODE,
+  isBuyerEmailTestRateLimitedError,
+} from './lib/buyer-email-test-error';
 export { mapBuyerEmailsToEvents } from './lib/buyer-email-timeline-events';
 export { useOrderBuyerEmailsQuery } from './hooks/use-order-buyer-emails-query';
 export { useSendBuyerEmailTestMutation } from './hooks/use-send-buyer-email-test-mutation';

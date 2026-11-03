@@ -15,7 +15,10 @@ import {
 } from '@nestjs/common';
 import type { IBuyerEmailNotificationService } from '@openlinker/core/orders';
 import type { AuthenticatedUser } from '../../auth/auth.types';
-import { BuyerEmailsController } from './buyer-emails.controller';
+import {
+  BUYER_EMAIL_TEST_RATE_LIMITED_ERROR_CODE,
+  BuyerEmailsController,
+} from './buyer-emails.controller';
 import type { SendBuyerEmailTestDto } from './dto/send-buyer-email-test.dto';
 
 const DTO: SendBuyerEmailTestDto = {
@@ -55,12 +58,17 @@ describe('BuyerEmailsController', () => {
     await expect(controller.sendTest(DTO, USER)).rejects.toBeInstanceOf(NotFoundException);
   });
 
-  it('should answer 429 when the service reports the actor is rate-limited', async () => {
+  it('should answer 429 with a machine code when the service reports the actor is rate-limited', async () => {
     sendTest.mockResolvedValue({ status: 'refused', reason: 'rate-limited', message: 'slow down' });
 
-    const refusal = controller.sendTest(DTO, USER);
-    await expect(refusal).rejects.toBeInstanceOf(HttpException);
-    await expect(refusal).rejects.toMatchObject({ status: HttpStatus.TOO_MANY_REQUESTS });
+    const error: unknown = await controller.sendTest(DTO, USER).catch((caught: unknown) => caught);
+    expect(error).toBeInstanceOf(HttpException);
+    expect((error as HttpException).getStatus()).toBe(HttpStatus.TOO_MANY_REQUESTS);
+    expect((error as HttpException).getResponse()).toEqual({
+      statusCode: HttpStatus.TOO_MANY_REQUESTS,
+      error: BUYER_EMAIL_TEST_RATE_LIMITED_ERROR_CODE,
+      message: 'slow down',
+    });
   });
 
   it('should answer 400 for an address that is not a single email', async () => {

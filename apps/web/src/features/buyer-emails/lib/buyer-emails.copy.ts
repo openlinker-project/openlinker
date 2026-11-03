@@ -83,6 +83,7 @@ export const BUYER_EMAILS_COPY = {
     testToLabel: 'Send to',
     testSend: 'Send test email',
     testSent: (to: string) => `Test email sent to ${to}.`,
+    testRateLimited: 'Too many test emails in a short time. Wait a few minutes and try again.',
     testSentDetail:
       'It matches the preview: the subject and message with sample values in place of the variables, and the sender of this connection. Real emails use the same mail transport.',
     save: 'Save changes',

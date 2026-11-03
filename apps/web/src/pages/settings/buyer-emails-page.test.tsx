@@ -374,4 +374,28 @@ describe('BuyerEmailEditorPage (#3555)', () => {
     );
     expect(replace).not.toHaveBeenCalled();
   });
+
+  it('should explain a rate-limited test send from its code, not the server sentence', async () => {
+    const sendTest = vi.fn().mockRejectedValue(
+      new ApiError('server wording', 429, {
+        statusCode: 429,
+        error: 'BUYER_EMAIL_TEST_RATE_LIMITED',
+        message: 'server wording',
+      }),
+    );
+    renderEditor({
+      connections: { getById: vi.fn().mockResolvedValue(SHOP) },
+      automations,
+      buyerEmails: { sendTest },
+    });
+
+    await screen.findByTestId('buyer-email-editor');
+    await userEvent.click(screen.getByTestId('buyer-email-test-send'));
+
+    expect(
+      await screen.findByText('Too many test emails in a short time. Wait a few minutes and try again.'),
+    ).toBeInTheDocument();
+    expect(screen.queryByText('server wording')).toBeNull();
+    expect(screen.queryByTestId('buyer-email-test-sent')).toBeNull();
+  });
 });
