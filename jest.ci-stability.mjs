@@ -53,18 +53,16 @@ const { resolveUnitTestWorkers } = createRequire(import.meta.url)('./jest.unit-w
  * along with a measured one, which is the exact mistake `docs/lessons.md`
  * records from the '512MB' episode.
  *
- * Lowered from 8 to 6 (#3918). Once the 2026-11-02 merges left every package
- * green, prestashop and allegro started running beside inpost (which has no
- * cap of its own) and the container OOM-killed jest workers in two runs in a
- * row: SIGKILL in a different suite each time, with every assertion that ran
- * passing. 8 shipped green only while earlier packages failed fast enough to
- * keep these two from overlapping.
+ * Briefly lowered to 6 during #3918, then put back: the OOM kills in that
+ * run came from fifteen OTHER packages that set no worker cap at all (jest
+ * counts the host's cores inside the container). With those capped at the
+ * shared count, these two can keep their measured 8.
  *
  * It is passed as an argument rather than written as a bare number so the
  * departure is visible to anyone reading the resolver, and so the local rule,
  * the override env var and the ceiling still come from one place.
  */
-const PRESTASHOP_ALLEGRO_CI_WORKERS = 6;
+const PRESTASHOP_ALLEGRO_CI_WORKERS = 8;
 
 export const ciStabilityConfig = {
   maxWorkers: resolveUnitTestWorkers(PRESTASHOP_ALLEGRO_CI_WORKERS),

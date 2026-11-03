@@ -870,7 +870,7 @@ Tests:       339 passed, 339 total          ← zero test failures
    | prestashop (890 tests) | 297.6 s | **198.1 s** |
    | allegro (706 tests) | 151.4 s | **81.7 s** |
 
-   `jest.ci-stability.mjs` passes `6` for just those two (8 until #3918, which OOM-killed jest workers once the two ran beside inpost), alongside `workerIdleMemoryLimit: '512MB'`. `apps/web` is a third declared departure (`WEB_CI_WORKERS = 8` in `vite.config.ts`), but it no longer competes for the same 8-CPU budget at all — it runs as its own CI job (see point 4), so its worker count answers a different question than the shared default does.
+   `jest.ci-stability.mjs` passes `8` for just those two, alongside `workerIdleMemoryLimit: '512MB'`. `apps/web` is a third declared departure (`WEB_CI_WORKERS = 8` in `vite.config.ts`), but it no longer competes for the same 8-CPU budget at all — it runs as its own CI job (see point 4), so its worker count answers a different question than the shared default does.
 
    `libs/core`, `apps/api` and `apps/worker` keep the shared `2` and add `workerIdleMemoryLimit: '3GB'` instead of `512MB` — sized above these packages' real ~2.8 GB working set rather than below it, after an earlier `512MB` attempt on these three cost `libs/core` a 15x slowdown by recycling a worker after almost every file (see `docs/lessons.md`, "Do not bundle an unmeasured safety knob with a measured change"). Measured with nothing else changed: 91 s / 92 s with the 3 GB ceiling against 100 s / 106 s without it.
 
