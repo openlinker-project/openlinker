@@ -406,7 +406,12 @@ export type {
   ExecuteSalesDocumentBatchRunResult,
   SalesDocumentBatchRunDetail,
   SalesDocumentBatchRunItemView,
+  RequeueUntargetedBatchedResult,
+  SalesDocumentBatchOverview,
+  SalesDocumentBatchKindOverview,
+  RequestSalesDocumentBatchRunResult,
 } from './application/interfaces/sales-document-batch.service.interface';
+export { batchedDocumentKinds, documentKindsIssuedBy } from './domain/batched-document-kinds';
 export {
   SalesDocumentBatchRun,
   SalesDocumentBatchRunItem,
@@ -415,6 +420,7 @@ export {
   SalesDocumentBatchRunTriggerValues,
   SalesDocumentBatchRunStatusValues,
   SalesDocumentBatchRunFailureReasonValues,
+  SalesDocumentBatchRunRefusalValues,
   SalesDocumentBatchRunItemResultValues,
   SalesDocumentBatchItemOutcomeValues,
   deriveBatchItemOutcome,
@@ -426,6 +432,7 @@ export type {
   SalesDocumentBatchRunTrigger,
   SalesDocumentBatchRunStatus,
   SalesDocumentBatchRunFailureReason,
+  SalesDocumentBatchRunRefusal,
   SalesDocumentBatchRunItemResult,
   SalesDocumentBatchItemOutcome,
   SalesDocumentBatchQueueEntry,

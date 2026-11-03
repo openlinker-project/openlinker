@@ -48,6 +48,7 @@ interface BatchRunRepositoryView {
   listItems(runId: string): Promise<SalesDocumentBatchRunItem[]>;
   listQueue(filter: SalesDocumentBatchQueueFilter): Promise<SalesDocumentBatchQueueEntry[]>;
   countQueue(connectionId: string): Promise<Record<string, number>>;
+  listUntargetedBatched(page: { afterOrderId?: string; limit: number }): Promise<string[]>;
 }
 
 const CONNECTION_ID = '33333333-3333-4333-8333-333333333333';
@@ -200,6 +201,50 @@ describe('Sales-document batch runs (#3583)', () => {
         invoice: 2,
         'fiscal-receipt': 1,
       });
+    });
+  });
+
+  describe('untargeted batched blocks (written before the target columns)', () => {
+    const blockWithoutTarget = async (internalOrderId: string): Promise<void> => {
+      await createTestOrderRecord(harness.getDataSource(), { internalOrderId, buyerTaxId: null });
+      await orderRecords().markSalesDocumentBlock(
+        internalOrderId,
+        { reason: 'trigger-model-batched' },
+        { action: 'set', matchedRuleId: null }
+      );
+    };
+
+    it('should list only batched blocks with no target, keyset-paged by order id', async () => {
+      await blockWithoutTarget('ol_order_u1');
+      await blockWithoutTarget('ol_order_u2');
+      await blockWithoutTarget('ol_order_u3');
+      await queueOrder('ol_order_targeted');
+
+      const first = await repository().listUntargetedBatched({ limit: 2 });
+      const rest = await repository().listUntargetedBatched({
+        afterOrderId: first[first.length - 1],
+        limit: 2,
+      });
+
+      expect(first).toEqual(['ol_order_u1', 'ol_order_u2']);
+      expect(rest).toEqual(['ol_order_u3']);
+    });
+
+    it('should stop listing an order once it is re-queued with a target', async () => {
+      await blockWithoutTarget('ol_order_requeued');
+
+      await orderRecords().markSalesDocumentBlock(
+        'ol_order_requeued',
+        { reason: 'trigger-model-batched', connectionId: CONNECTION_ID, documentKind: 'invoice' },
+        { action: 'set', matchedRuleId: null }
+      );
+
+      expect(await repository().listUntargetedBatched({ limit: 50 })).toEqual([]);
+      expect(
+        (await repository().listQueue({ connectionId: CONNECTION_ID, limit: 50 })).map(
+          (entry) => entry.orderId
+        )
+      ).toEqual(['ol_order_requeued']);
     });
   });
 

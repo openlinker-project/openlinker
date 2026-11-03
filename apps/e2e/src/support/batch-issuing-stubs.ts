@@ -118,7 +118,7 @@ const FINISHED_ITEMS = [
   item('ol_order_g10_9', 'ALG-24900', { documentNumber: 'FV/512/09/2026' }),
   item('ol_order_g10_8', 'ALG-24933', {
     result: 'already-documented',
-    outcome: 'skipped',
+    outcome: 'blocked',
     buyerName: 'Marek Dąbrowski',
   }),
   item('ol_order_g10_7', 'ALG-24950', { outcome: 'in-doubt' }),

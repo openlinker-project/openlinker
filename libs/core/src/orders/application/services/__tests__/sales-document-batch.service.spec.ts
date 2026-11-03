@@ -8,6 +8,7 @@
 import type { Connection, ConnectionPort } from '@openlinker/core/identifier-mapping';
 import { ConnectionNotFoundException } from '@openlinker/core/identifier-mapping';
 import type { IAutoIssueTriggerService } from '@openlinker/core/invoicing';
+import type { JobEnqueuePort } from '@openlinker/core/sync';
 import { SalesDocumentBatchRun } from '../../../domain/entities/sales-document-batch-run.entity';
 import type { OrderRecord } from '../../../domain/entities/order-record.entity';
 import type { SalesDocumentBatchRunRepositoryPort } from '../../../domain/ports/sales-document-batch-run-repository.port';
@@ -63,6 +64,7 @@ describe('SalesDocumentBatchService', () => {
   let trigger: { onOrderTransition: jest.Mock };
   let orderRecords: { getOrderRecord: jest.Mock; markSalesDocumentBlock: jest.Mock };
   let views: { getForOrders: jest.Mock };
+  let jobEnqueue: { enqueueJob: jest.Mock };
   let service: SalesDocumentBatchService;
 
   beforeEach(() => {
@@ -77,6 +79,7 @@ describe('SalesDocumentBatchService', () => {
       listQueue: jest.fn().mockResolvedValue([]),
       countQueue: jest.fn(),
       findOrderLabels: jest.fn().mockResolvedValue(new Map()),
+      listUntargetedBatched: jest.fn().mockResolvedValue([]),
     };
     connections = {
       get: jest.fn().mockResolvedValue({ id: CONNECTION, status: 'active' } as Connection),
@@ -94,12 +97,14 @@ describe('SalesDocumentBatchService', () => {
       markSalesDocumentBlock: jest.fn().mockResolvedValue(undefined),
     };
     views = { getForOrders: jest.fn().mockResolvedValue(new Map()) };
+    jobEnqueue = { enqueueJob: jest.fn().mockResolvedValue({ jobId: 'job-1', isExisting: false }) };
     service = new SalesDocumentBatchService(
       runs,
       connections as unknown as ConnectionPort,
       trigger as unknown as IAutoIssueTriggerService,
       orderRecords as unknown as IOrderRecordService,
       views as unknown as ISalesDocumentViewService,
+      jobEnqueue as unknown as JobEnqueuePort,
     );
   });
 
@@ -339,6 +344,139 @@ describe('SalesDocumentBatchService', () => {
       orderNumber: null,
       buyerName: null,
       documentNumber: null,
+    });
+  });
+
+  describe('requestRun ("Run now")', () => {
+    const batchedInvoices = {
+      salesDocument: {
+        documentKind: 'both',
+        triggerModels: { invoice: 'batched', 'fiscal-receipt': 'auto-on-paid' },
+      },
+    };
+
+    it('should enqueue the run job for the kinds the connection batches and the whole queue', async () => {
+      connections.get.mockResolvedValue({
+        id: CONNECTION,
+        status: 'active',
+        config: batchedInvoices,
+      } as unknown as Connection);
+
+      const result = await service.requestRun({ connectionId: CONNECTION, startedByUserId: 'u-1' });
+
+      expect(result).toEqual({ status: 'enqueued', jobId: 'job-1', documentKinds: ['invoice'] });
+      expect(jobEnqueue.enqueueJob).toHaveBeenCalledWith(
+        expect.objectContaining({
+          jobType: 'salesDocument.batch.run',
+          connectionId: CONNECTION,
+          payload: {
+            schemaVersion: 1,
+            trigger: 'manual',
+            documentKinds: ['invoice'],
+            segment: 'all',
+            startedByUserId: 'u-1',
+          },
+          idempotencyKey: expect.stringMatching(`^salesDocument:batch:${CONNECTION}:manual:`),
+        }),
+      );
+    });
+
+    it.each([
+      ['not-batched', { config: {}, status: 'active' }, null],
+      ['connection-needs-reauth', { config: batchedInvoices, status: 'needs_reauth' }, null],
+      ['connection-not-active', { config: batchedInvoices, status: 'disabled' }, null],
+      ['run-in-progress', { config: batchedInvoices, status: 'active' }, run()],
+    ])('should refuse with %s and enqueue nothing', async (reason, conn, running) => {
+      connections.get.mockResolvedValue({ id: CONNECTION, ...conn } as unknown as Connection);
+      runs.findRunning.mockResolvedValue(running);
+
+      const result = await service.requestRun({ connectionId: CONNECTION, startedByUserId: 'u-1' });
+
+      expect(result).toEqual({ status: 'refused', reason });
+      expect(jobEnqueue.enqueueJob).not.toHaveBeenCalled();
+    });
+
+    it('should refuse a connection that no longer exists', async () => {
+      connections.get.mockRejectedValue(new ConnectionNotFoundException(CONNECTION));
+
+      await expect(
+        service.requestRun({ connectionId: CONNECTION, startedByUserId: 'u-1' }),
+      ).resolves.toEqual({ status: 'refused', reason: 'connection-not-found' });
+    });
+  });
+
+  describe('getOverview', () => {
+    it('should report each kind with its schedule, next slot, queue counts and running run', async () => {
+      connections.get.mockResolvedValue({
+        id: CONNECTION,
+        status: 'active',
+        config: {
+          salesDocument: {
+            documentKind: 'invoice',
+            triggerModels: { invoice: 'batched' },
+            batchSchedules: { invoice: { frequency: 'daily', time: '18:00' } },
+          },
+        },
+      } as unknown as Connection);
+      runs.countQueue.mockResolvedValue({ invoice: 3 });
+
+      const overview = await service.getOverview(CONNECTION, new Date('2026-01-15T12:00:00Z'));
+
+      const invoice = overview?.kinds.find((kind) => kind.documentKind === 'invoice');
+      expect(invoice?.batched).toBe(true);
+      expect(invoice?.schedule?.timeZone).toBe('Europe/Warsaw');
+      expect(invoice?.nextSlots).toEqual([
+        { segment: 'all', slotAt: new Date('2026-01-15T17:00:00Z') },
+      ]);
+      expect(overview?.queueCounts).toEqual({ invoice: 3 });
+      expect(overview?.runningRun).toBeNull();
+    });
+
+    it('should answer null for a connection that does not exist', async () => {
+      connections.get.mockRejectedValue(new ConnectionNotFoundException(CONNECTION));
+
+      await expect(service.getOverview(CONNECTION, new Date())).resolves.toBeNull();
+    });
+  });
+
+  describe('requeueUntargetedBatched', () => {
+    it('should re-evaluate each untargeted order outside any run and persist the new block', async () => {
+      runs.listUntargetedBatched.mockResolvedValueOnce(['order-a', 'order-b']).mockResolvedValue([]);
+      trigger.onOrderTransition.mockResolvedValue({
+        kind: 'blocked',
+        block: {
+          reason: 'trigger-model-batched',
+          connectionId: CONNECTION,
+          documentKind: 'invoice',
+        },
+      });
+
+      const result = await service.requeueUntargetedBatched();
+
+      expect(result).toEqual({ evaluated: 2, indeterminate: 0 });
+      expect(trigger.onOrderTransition).toHaveBeenCalledTimes(2);
+      // Outside a run: no `batchRun` option, so the gate re-queues rather than issues.
+      expect(trigger.onOrderTransition.mock.calls[0]).toHaveLength(5);
+      expect(orderRecords.markSalesDocumentBlock).toHaveBeenCalledWith(
+        'order-a',
+        { reason: 'trigger-model-batched', connectionId: CONNECTION, documentKind: 'invoice' },
+        { action: 'set', matchedRuleId: null },
+      );
+    });
+
+    it('should leave an order it cannot decide as it was, and page past it', async () => {
+      runs.listUntargetedBatched
+        .mockResolvedValueOnce(['order-broken', 'order-c'])
+        .mockResolvedValue([]);
+      trigger.onOrderTransition.mockResolvedValue({ kind: 'none' });
+
+      const result = await service.requeueUntargetedBatched();
+
+      expect(result).toEqual({ evaluated: 2, indeterminate: 1 });
+      expect(runs.listUntargetedBatched).toHaveBeenLastCalledWith(
+        expect.objectContaining({ afterOrderId: 'order-c' }),
+      );
+      expect(orderRecords.markSalesDocumentBlock).toHaveBeenCalledTimes(1);
     });
   });
 });

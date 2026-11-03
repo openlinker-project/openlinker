@@ -132,6 +132,34 @@ export function resolveTriggerModelForKind(
 }
 
 /**
+ * Why `config.salesDocument.triggerModels` cannot be stored, or `null` when it
+ * can. The write-side twin of `resolveTriggerModelForKind`: the reader falls
+ * through an unrecognised value to the legacy key, so a typo would silently
+ * leave a kind on a model the operator did not choose. The connection form
+ * refuses it, but the raw config editor, curl and MCP do not go through the
+ * form (#2610), so the server refuses it too. An absent or `null` key is fine.
+ */
+export function describeInvalidTriggerModels(config: unknown): string | null {
+  const record = isRecord(config) ? config : {};
+  const salesDocument = record.salesDocument;
+  if (salesDocument === undefined || salesDocument === null) return null;
+  if (!isRecord(salesDocument)) return 'config.salesDocument must be an object';
+  const byKind = salesDocument.triggerModels;
+  if (byKind === undefined || byKind === null) return null;
+  if (!isRecord(byKind)) return 'config.salesDocument.triggerModels must be an object';
+  for (const [kind, value] of Object.entries(byKind)) {
+    if (value === null) continue;
+    if (!isInvoiceTriggerModel(value)) {
+      return (
+        `config.salesDocument.triggerModels.${kind} must be one of: ` +
+        InvoiceTriggerModelValues.join(', ')
+      );
+    }
+  }
+  return null;
+}
+
+/**
  * Outcome of evaluating a trigger model against ONE order transition (#2100).
  *
  * The three arms exist because "did not enqueue" is not one state, and #2100's

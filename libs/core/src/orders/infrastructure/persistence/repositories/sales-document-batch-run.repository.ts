@@ -229,6 +229,22 @@ export class SalesDocumentBatchRunRepository implements SalesDocumentBatchRunRep
     }));
   }
 
+  async listUntargetedBatched(page: {
+    afterOrderId?: string;
+    limit: number;
+  }): Promise<string[]> {
+    const query = this.orders
+      .createQueryBuilder('rec')
+      .select(['rec.internalOrderId'])
+      .where('rec.salesDocumentBlockReason = :reason', { reason: BATCHED_REASON })
+      .andWhere('rec.salesDocumentBlockConnectionId IS NULL');
+    if (page.afterOrderId !== undefined) {
+      query.andWhere('rec.internalOrderId > :after', { after: page.afterOrderId });
+    }
+    const rows = await query.orderBy('rec.internalOrderId', 'ASC').take(page.limit).getMany();
+    return rows.map((row) => row.internalOrderId);
+  }
+
   async findOrderLabels(orderIds: readonly string[]): Promise<Map<string, OrderLabel>> {
     if (orderIds.length === 0) return new Map();
     const rows = await this.orders

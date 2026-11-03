@@ -1,12 +1,14 @@
 /**
  * SalesDocumentBatchController - unit tests (#3583)
  *
+ * The controller is a thin HTTP layer: the overview and the "Run now" policy
+ * live in `ISalesDocumentBatchService` (and are tested there). These cases pin
+ * the roles, the DTO mapping and the refusal -> status code mapping.
+ *
  * @module apps/api/src/sales-documents/http
  */
 import { ConflictException, NotFoundException } from '@nestjs/common';
-import type { Connection, ConnectionPort } from '@openlinker/core/identifier-mapping';
 import type { ISalesDocumentBatchService } from '@openlinker/core/orders';
-import type { JobEnqueuePort } from '@openlinker/core/sync';
 import { ROLES_KEY } from '../../auth/decorators/roles.decorator';
 import type { AuthenticatedUser } from '../../auth/auth.types';
 import { SalesDocumentBatchController } from './sales-document-batch.controller';
@@ -14,41 +16,22 @@ import { SalesDocumentBatchController } from './sales-document-batch.controller'
 const CONNECTION_ID = '11111111-1111-4111-8111-111111111111';
 const user = { id: 'user-1', username: 'op', role: 'operator' } as AuthenticatedUser;
 
-const connection = (
-  config: Record<string, unknown>,
-  status: Connection['status'] = 'active',
-): Connection => ({ id: CONNECTION_ID, status, config }) as unknown as Connection;
-
-const batchedInvoices = {
-  salesDocument: {
-    documentKind: 'invoice',
-    triggerModels: { invoice: 'batched' },
-    batchSchedules: { invoice: { frequency: 'daily', time: '18:00' } },
-  },
-};
-
 describe('SalesDocumentBatchController', () => {
   let batches: {
-    countQueue: jest.Mock;
-    findRunning: jest.Mock;
+    getOverview: jest.Mock;
+    requestRun: jest.Mock;
     getRun: jest.Mock;
   };
-  let connections: { get: jest.Mock };
-  let jobEnqueue: { enqueueJob: jest.Mock };
   let controller: SalesDocumentBatchController;
 
   beforeEach(() => {
     batches = {
-      countQueue: jest.fn().mockResolvedValue({ invoice: 3 }),
-      findRunning: jest.fn().mockResolvedValue(null),
+      getOverview: jest.fn(),
+      requestRun: jest.fn(),
       getRun: jest.fn(),
     };
-    connections = { get: jest.fn().mockResolvedValue(connection(batchedInvoices)) };
-    jobEnqueue = { enqueueJob: jest.fn().mockResolvedValue({ jobId: 'job-1', isExisting: false }) };
     controller = new SalesDocumentBatchController(
       batches as unknown as ISalesDocumentBatchService,
-      connections as unknown as ConnectionPort,
-      jobEnqueue as unknown as JobEnqueuePort,
     );
   });
 
@@ -60,49 +43,93 @@ describe('SalesDocumentBatchController', () => {
     expect(roles('getRun')).toEqual(['admin', 'operator', 'viewer']);
   });
 
-  it('should report each kind with its schedule and next slot', async () => {
+  it('should map the overview to its DTO', async () => {
+    batches.getOverview.mockResolvedValue({
+      connectionId: CONNECTION_ID,
+      kinds: [
+        {
+          documentKind: 'invoice',
+          batched: true,
+          schedule: {
+            frequency: 'daily',
+            time: '18:00',
+            everyHours: 24,
+            timeZone: 'Europe/Warsaw',
+            effectiveFrom: new Date(0),
+          },
+          nextSlots: [{ segment: 'all', slotAt: new Date('2026-01-15T17:00:00Z') }],
+        },
+        { documentKind: 'fiscal-receipt', batched: false, schedule: null, nextSlots: [] },
+      ],
+      queueCounts: { invoice: 3 },
+      runningRun: null,
+    });
+
     const overview = await controller.getOverview(CONNECTION_ID);
 
-    const invoice = overview.schedules.find((s) => s.documentKind === 'invoice');
-    expect(invoice).toMatchObject({ batched: true, frequency: 'daily', timeZone: 'Europe/Warsaw' });
-    expect(invoice?.nextSlots).toHaveLength(1);
+    expect(overview.schedules).toEqual([
+      {
+        documentKind: 'invoice',
+        batched: true,
+        frequency: 'daily',
+        time: '18:00',
+        everyHours: 24,
+        timeZone: 'Europe/Warsaw',
+        nextSlots: [{ segment: 'all', slotAt: '2026-01-15T17:00:00.000Z' }],
+      },
+      {
+        documentKind: 'fiscal-receipt',
+        batched: false,
+        frequency: null,
+        time: null,
+        everyHours: null,
+        timeZone: null,
+        nextSlots: [],
+      },
+    ]);
     expect(overview.queueCounts).toEqual({ invoice: 3 });
   });
 
-  it('should enqueue the run job with every batched kind and the whole queue', async () => {
-    const result = await controller.startRun(CONNECTION_ID, user);
+  it('should answer 404 for the overview of a connection that does not exist', async () => {
+    batches.getOverview.mockResolvedValue(null);
 
-    expect(result).toEqual({ jobId: 'job-1' });
-    expect(jobEnqueue.enqueueJob).toHaveBeenCalledWith(
-      expect.objectContaining({
-        jobType: 'salesDocument.batch.run',
-        connectionId: CONNECTION_ID,
-        payload: {
-          schemaVersion: 1,
-          trigger: 'manual',
-          documentKinds: ['invoice'],
-          segment: 'all',
-          startedByUserId: 'user-1',
-        },
-        idempotencyKey: expect.stringMatching(`^salesDocument:batch:${CONNECTION_ID}:manual:`),
-      }),
-    );
+    await expect(controller.getOverview(CONNECTION_ID)).rejects.toBeInstanceOf(NotFoundException);
+  });
+
+  it('should start a run for the current user and return the job id', async () => {
+    batches.requestRun.mockResolvedValue({
+      status: 'enqueued',
+      jobId: 'job-1',
+      documentKinds: ['invoice'],
+    });
+
+    await expect(controller.startRun(CONNECTION_ID, user)).resolves.toEqual({ jobId: 'job-1' });
+    expect(batches.requestRun).toHaveBeenCalledWith({
+      connectionId: CONNECTION_ID,
+      startedByUserId: 'user-1',
+    });
   });
 
   it.each([
-    ['CONNECTION_NOT_BATCHED', connection({}), null],
-    ['CONNECTION_NEEDS_REAUTH', connection(batchedInvoices, 'needs_reauth'), null],
-    ['CONNECTION_NOT_ACTIVE', connection(batchedInvoices, 'disabled'), null],
-    ['BATCH_RUN_IN_PROGRESS', connection(batchedInvoices), { id: 'run-0' }],
-  ])('should refuse with %s and enqueue nothing', async (code, conn, running) => {
-    connections.get.mockResolvedValue(conn);
-    batches.findRunning.mockResolvedValue(running);
+    ['not-batched', 'CONNECTION_NOT_BATCHED'],
+    ['connection-needs-reauth', 'CONNECTION_NEEDS_REAUTH'],
+    ['connection-not-active', 'CONNECTION_NOT_ACTIVE'],
+    ['run-in-progress', 'BATCH_RUN_IN_PROGRESS'],
+  ])('should answer 409 %s with code %s', async (reason, code) => {
+    batches.requestRun.mockResolvedValue({ status: 'refused', reason });
 
     const attempt = controller.startRun(CONNECTION_ID, user);
 
     await expect(attempt).rejects.toBeInstanceOf(ConflictException);
     await expect(attempt).rejects.toMatchObject({ response: { code } });
-    expect(jobEnqueue.enqueueJob).not.toHaveBeenCalled();
+  });
+
+  it('should answer 404 when starting a run on a connection that does not exist', async () => {
+    batches.requestRun.mockResolvedValue({ status: 'refused', reason: 'connection-not-found' });
+
+    await expect(controller.startRun(CONNECTION_ID, user)).rejects.toBeInstanceOf(
+      NotFoundException,
+    );
   });
 
   it("should answer 404 for another connection's run", async () => {

@@ -4,6 +4,7 @@
  * @module libs/core/src/invoicing/domain/types
  */
 import {
+  describeInvalidTriggerModels,
   parseTriggerModel,
   InvoiceTriggerModelValues,
   resolveTriggerModelForKind,
@@ -87,5 +88,31 @@ describe('parseTriggerModel', () => {
 
   it('exposes the four trigger-model values', () => {
     expect(InvoiceTriggerModelValues).toHaveLength(4);
+  });
+});
+
+describe('describeInvalidTriggerModels', () => {
+  it.each([
+    ['no salesDocument key', {}],
+    ['no triggerModels', { salesDocument: { documentKind: 'invoice' } }],
+    ['a cleared kind', { salesDocument: { triggerModels: { invoice: null } } }],
+    [
+      'recognised models',
+      { salesDocument: { triggerModels: { invoice: 'batched', 'fiscal-receipt': 'auto-on-paid' } } },
+    ],
+  ])('should accept %s', (_label, config) => {
+    expect(describeInvalidTriggerModels(config)).toBeNull();
+  });
+
+  it('should refuse an unrecognised model, naming the kind', () => {
+    expect(
+      describeInvalidTriggerModels({ salesDocument: { triggerModels: { invoice: 'batch' } } }),
+    ).toContain('triggerModels.invoice');
+  });
+
+  it('should refuse a non-object map', () => {
+    expect(
+      describeInvalidTriggerModels({ salesDocument: { triggerModels: 'batched' } }),
+    ).toContain('must be an object');
   });
 });

@@ -101,7 +101,7 @@ const finishedDetail: BatchRunDetail = {
       orderId: 'o-2',
       documentKind: 'invoice',
       result: 'already-documented',
-      outcome: 'skipped',
+      outcome: 'blocked',
       blockReason: null,
       orderNumber: 'ALG-24933',
       buyerName: 'Marek Dąbrowski',
@@ -187,6 +187,8 @@ describe('SalesDocumentBatchScreen', () => {
 
     await waitFor(() => expect(startRun).toHaveBeenCalledWith('conn-ep'));
     expect(await screen.findByText(/The run has been queued/)).toBeInTheDocument();
+    // Until the run shows up, a second click must not queue a second run.
+    expect(screen.getByRole('button', { name: 'Starting…' })).toBeDisabled();
   });
 
   it('running: shows progress and the orders still queued', async () => {

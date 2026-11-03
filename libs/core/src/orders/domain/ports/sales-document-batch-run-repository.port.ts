@@ -53,6 +53,15 @@ export interface SalesDocumentBatchRunRepositoryPort {
   /** Orders waiting in a connection's batch queue, keyset-paged by order id. */
   listQueue(filter: SalesDocumentBatchQueueFilter): Promise<SalesDocumentBatchQueueEntry[]>;
 
+  /**
+   * Orders carrying a `trigger-model-batched` block with NO target connection,
+   * keyset-paged by order id. Such a block was written before the target
+   * columns existed (migration `1938500000000`), so it sits in no connection's
+   * queue - and the batched reason is no longer an attention reason either.
+   * The tick re-evaluates them so each lands in a queue (or leaves the state).
+   */
+  listUntargetedBatched(page: { afterOrderId?: string; limit: number }): Promise<string[]>;
+
   /** Queued orders per document kind. */
   countQueue(connectionId: string): Promise<Record<string, number>>;
 

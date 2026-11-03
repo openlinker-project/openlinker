@@ -25,6 +25,7 @@ export {
   InvoiceTriggerModelValues,
   parseTriggerModel,
   resolveTriggerModelForKind,
+  describeInvalidTriggerModels,
   isInBatchRun,
   TriggerModelSourceValues,
 } from './domain/types/invoice-trigger.types';

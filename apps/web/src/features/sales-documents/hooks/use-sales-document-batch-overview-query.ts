@@ -15,13 +15,16 @@ import type { BatchOverview } from '../api/sales-document-batch.types';
 export const BATCH_RUNNING_POLL_MS = 5000;
 
 export function useSalesDocumentBatchOverviewQuery(
-  connectionId: string
+  connectionId: string,
+  options?: { pollWhileWaiting?: boolean }
 ): UseQueryResult<BatchOverview> {
+  const pollWhileWaiting = options?.pollWhileWaiting ?? false;
   const apiClient = useApiClient();
   return useQuery({
     queryKey: salesDocumentBatchQueryKeys.overview(connectionId),
     queryFn: () => apiClient.salesDocumentBatch.getOverview(connectionId),
     enabled: connectionId.length > 0,
-    refetchInterval: (query) => (query.state.data?.runningRun ? BATCH_RUNNING_POLL_MS : false),
+    refetchInterval: (query) =>
+      query.state.data?.runningRun || pollWhileWaiting ? BATCH_RUNNING_POLL_MS : false,
   });
 }

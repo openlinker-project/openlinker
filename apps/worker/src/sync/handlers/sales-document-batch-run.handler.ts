@@ -11,8 +11,11 @@
  * - `failed-to-start` (connection missing, not active, needs reconnecting) is a
  *   terminal `business_failure`: retrying cannot change the connection's
  *   status, and the run row already says why;
- * - `already-running` THROWS, so the job goes back on the retry ladder and runs
- *   after the current run ends. Returning `ok` would consume the slot's
+ * - `already-running` THROWS `ContendedWriteError`, so the runner defers the
+ *   job WITHOUT consuming a retry attempt (#2613/#2617) and it runs after the
+ *   current run ends. Another run holding the connection is contention, not a
+ *   failure - spending the retry ladder on it could dead-letter a scheduled
+ *   slot behind a long month-end run. Returning `ok` would consume the slot's
  *   idempotency key and the slot would never run.
  *
  * `bulk` lane: cron-paced orchestration of local reads and enqueues. The
@@ -37,7 +40,7 @@ import type {
   SyncJobHandlerResult,
   SyncJob as SyncJobEntity,
 } from '@openlinker/core/sync';
-import { SyncJobExecutionError } from '@openlinker/core/sync';
+import { ContendedWriteError } from '@openlinker/core/sync';
 import { Logger } from '@openlinker/shared/logging';
 
 type SyncJob = SyncJobEntity;
@@ -70,12 +73,10 @@ export class SalesDocumentBatchRunHandler implements SyncJobHandler {
     });
 
     if (result.status === 'already-running') {
-      throw new SyncJobExecutionError(
+      throw new ContendedWriteError(
         `salesDocument.batch.run: connection ${job.connectionId} already has run ` +
-          `${result.runningRunId ?? 'unknown'} in progress; retrying later`,
-        job.id,
-        job.jobType,
-        job.connectionId,
+          `${result.runningRunId ?? 'unknown'} in progress; deferring`,
+        `salesDocument.batch:${job.connectionId}`,
       );
     }
 

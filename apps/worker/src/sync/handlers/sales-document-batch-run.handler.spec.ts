@@ -2,7 +2,7 @@
  * SalesDocumentBatchRunHandler tests (#3583)
  */
 import type { ISalesDocumentBatchService } from '@openlinker/core/orders';
-import { SyncJobExecutionError, type SyncJob } from '@openlinker/core/sync';
+import { ContendedWriteError, type SyncJob } from '@openlinker/core/sync';
 import { SalesDocumentBatchRunHandler } from './sales-document-batch-run.handler';
 
 const job = (payload: Record<string, unknown>): SyncJob =>
@@ -52,10 +52,10 @@ describe('SalesDocumentBatchRunHandler', () => {
     });
   });
 
-  it('should throw so the slot is retried, not consumed, while another run is in progress', async () => {
+  it('should defer the job penalty-free, not consume the slot, while another run is in progress', async () => {
     batches.executeRun.mockResolvedValue({ status: 'already-running', runningRunId: 'run-0' });
 
-    await expect(handler.execute(job(validPayload))).rejects.toBeInstanceOf(SyncJobExecutionError);
+    await expect(handler.execute(job(validPayload))).rejects.toBeInstanceOf(ContendedWriteError);
   });
 
   it('should refuse an unreadable payload without running anything', async () => {

@@ -55,6 +55,15 @@ interface BatchQueueTabProps {
   /** Why the run cannot be started, or `null` when it can. */
   runDisabledReason: string | null;
   canRun: boolean;
+  /**
+   * A "Run now" was accepted and its run has not shown up yet. The job is
+   * enqueued but not yet claimed, so the overview still reports no running
+   * run; the button stays disabled meanwhile, or a second click would queue a
+   * second run behind the first.
+   */
+  awaitingRun: boolean;
+  /** Called once a "Run now" request is accepted. */
+  onRunRequested: () => void;
   now: Date;
 }
 
@@ -90,23 +99,24 @@ export function BatchQueueTab(props: BatchQueueTabProps): ReactElement {
   const runButton = (
     <Button
       data-testid="batch-run-now"
-      onClick={() => startRun.mutate()}
+      onClick={() => startRun.mutate(undefined, { onSuccess: props.onRunRequested })}
       disabled={
         !props.canRun ||
         props.runDisabledReason !== null ||
         queue.length === 0 ||
-        startRun.isPending
+        startRun.isPending ||
+        props.awaitingRun
       }
       title={props.runDisabledReason ?? (queue.length === 0 ? 'Nothing to run' : undefined)}
     >
-      {startRun.isPending ? 'Starting…' : 'Run now'}
+      {startRun.isPending || props.awaitingRun ? 'Starting…' : 'Run now'}
     </Button>
   );
 
   return (
     <div className="batch-queue">
       {startRun.error ? <Alert tone="error">{describeRunNowError(startRun.error)}</Alert> : null}
-      {startRun.isSuccess ? (
+      {props.awaitingRun ? (
         <Alert tone="info">The run has been queued and starts in a moment.</Alert>
       ) : null}
       <div className="toolbar page-summary batch-queue__toolbar">

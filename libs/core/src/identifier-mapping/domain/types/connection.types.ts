@@ -182,10 +182,17 @@ export interface ConnectionConfig {
    * `invoicing.triggerModel`, then to `manual`; the rule lives in one place,
    * `resolveTriggerModelForKind` (`@openlinker/core/invoicing`). Values are
    * typed `string` for the same decoupling reason as the legacy key.
+   *
+   * `batchSchedules` (#3583) carries, per kind, WHEN a batched kind's queue is
+   * run (daily / every N hours / month end, with its time zone). Read by
+   * `readBatchSchedule` and validated on write by `describeInvalidBatchSchedules`
+   * (`@openlinker/core/sales-documents`); typed loosely here for the same
+   * decoupling reason.
    */
   salesDocument?: {
     documentKind?: string;
     triggerModels?: Record<string, string>;
+    batchSchedules?: Record<string, unknown>;
   };
   /**
    * Operator-declared location for this connection's currently-unlocated

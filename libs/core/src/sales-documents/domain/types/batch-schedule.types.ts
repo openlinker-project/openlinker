@@ -131,6 +131,58 @@ export function readBatchSchedule(config: unknown, kind: SalesDocumentKind): Bat
   };
 }
 
+/**
+ * Why `config.salesDocument.batchSchedules` cannot be stored, or `null` when it
+ * can. The write-side twin of `readBatchSchedule`, which degrades a bad time,
+ * interval or zone to its default silently: a typo there changes WHEN fiscal
+ * documents go out with nothing reported. The schedule form refuses such
+ * values, but the raw config editor, curl and MCP do not go through the form
+ * (#2610), so the server refuses them too. An absent or `null` key - and a
+ * `null` per-kind entry (a cleared schedule) - is fine.
+ */
+export function describeInvalidBatchSchedules(config: unknown): string | null {
+  const record = isRecord(config) ? config : {};
+  const salesDocument = record.salesDocument;
+  if (salesDocument === undefined || salesDocument === null) return null;
+  if (!isRecord(salesDocument)) return 'config.salesDocument must be an object';
+  const schedules = salesDocument.batchSchedules;
+  if (schedules === undefined || schedules === null) return null;
+  if (!isRecord(schedules)) return 'config.salesDocument.batchSchedules must be an object';
+
+  for (const [kind, raw] of Object.entries(schedules)) {
+    if (raw === null) continue;
+    const path = `config.salesDocument.batchSchedules.${kind}`;
+    if (!isRecord(raw)) return `${path} must be an object`;
+    if (!isBatchFrequency(raw.frequency)) {
+      return `${path}.frequency must be one of: ${BatchFrequencyValues.join(', ')}`;
+    }
+    if (raw.frequency === 'daily' && !(typeof raw.time === 'string' && TIME_PATTERN.test(raw.time))) {
+      return `${path}.time must be a 24-hour HH:MM time`;
+    }
+    if (
+      raw.frequency === 'every-n-hours' &&
+      !(
+        typeof raw.everyHours === 'number' &&
+        Number.isInteger(raw.everyHours) &&
+        raw.everyHours >= 1 &&
+        raw.everyHours <= 24
+      )
+    ) {
+      return `${path}.everyHours must be a whole number from 1 to 24`;
+    }
+    if (raw.timeZone !== undefined && !isValidTimeZone(raw.timeZone)) {
+      return `${path}.timeZone must be an IANA time zone such as ${DEFAULT_BATCH_TIME_ZONE}`;
+    }
+    if (
+      raw.effectiveFrom !== undefined &&
+      (typeof raw.effectiveFrom !== 'string' || Number.isNaN(new Date(raw.effectiveFrom).getTime()))
+    ) {
+      return `${path}.effectiveFrom must be an ISO date-time`;
+    }
+  }
+  return null;
+}
+
 interface CivilDate {
   year: number;
   month: number; // 1-12
@@ -298,25 +350,62 @@ export function findDueBatchSlots(schedule: BatchSchedule, now: Date): DueBatchS
   return candidates.filter((slot) => slot.slotAt.getTime() >= schedule.effectiveFrom.getTime());
 }
 
+/** The first daily slot at `time` strictly after `now`. */
+function nextDailySlot(now: Date, time: string, timeZone: string): Date {
+  const today = toCivil(now, timeZone);
+  const { hour, minute } = parseTime(time);
+  for (let offset = 0; offset <= 2; offset += 1) {
+    const candidate = civilToInstant({ ...addDays(today, offset), hour, minute }, timeZone);
+    if (candidate.getTime() > now.getTime()) return candidate;
+  }
+  return civilToInstant({ ...addDays(today, 3), hour, minute }, timeZone);
+}
+
+/** The first `every-n-hours` slot (from 00:00 each day) strictly after `now`. */
+function nextIntervalSlot(now: Date, everyHours: number, timeZone: string): Date {
+  const today = toCivil(now, timeZone);
+  for (let offset = 0; offset <= 2; offset += 1) {
+    const day = addDays(today, offset);
+    for (let hour = 0; hour <= 23; hour += everyHours) {
+      const candidate = civilToInstant({ ...day, hour, minute: 0 }, timeZone);
+      if (candidate.getTime() > now.getTime()) return candidate;
+    }
+  }
+  return civilToInstant({ ...addDays(today, 3), hour: 0, minute: 0 }, timeZone);
+}
+
+/** The first month-end slot (last calendar day, 23:00) strictly after `now`. */
+function nextMonthEndSlot(now: Date, timeZone: string): Date {
+  const today = toCivil(now, timeZone);
+  const { hour, minute } = parseTime(MONTH_END_BATCH_TIME);
+  const thisMonthEnd = civilToInstant(
+    { ...lastDayOfMonth(today.year, today.month), hour, minute },
+    timeZone,
+  );
+  if (thisMonthEnd.getTime() > now.getTime()) return thisMonthEnd;
+  return civilToInstant({ ...lastDayOfMonth(today.year, today.month + 1), hour, minute }, timeZone);
+}
+
 /**
  * The next slot after `now` for each segment - what a screen shows as
- * "Next run". Found by stepping `now` forward until the most recent slot moves,
- * so it can never disagree with `findDueBatchSlots` about where slots fall.
+ * "Next run". Computed directly from the calendar with the same civil-time
+ * helpers `findDueBatchSlots` uses, so the two agree on where slots fall (the
+ * spec pins that against the due-slot rule). It used to step `now` forward in
+ * 5-minute increments, which cost ~0.5 s of CPU per call for a month-end
+ * schedule on the overview read the batch screen polls.
  */
 export function findNextBatchSlots(schedule: BatchSchedule, now: Date): DueBatchSlot[] {
-  const unbounded: BatchSchedule = { ...schedule, effectiveFrom: new Date(0) };
-  const current = findDueBatchSlots(unbounded, now);
-  const stepMs = 5 * 60 * 1000;
-  const horizonMs = 32 * 24 * 60 * 60 * 1000;
-  return current.map((slot) => {
-    for (let t = now.getTime() + stepMs; t <= now.getTime() + horizonMs; t += stepMs) {
-      const next = findDueBatchSlots(unbounded, new Date(t)).find(
-        (candidate) => candidate.segment === slot.segment,
-      );
-      if (next !== undefined && next.slotAt.getTime() > now.getTime()) {
-        return next;
-      }
-    }
-    return slot;
-  });
+  switch (schedule.frequency) {
+    case 'daily':
+      return [{ slotAt: nextDailySlot(now, schedule.time, schedule.timeZone), segment: 'all' }];
+    case 'every-n-hours':
+      return [
+        { slotAt: nextIntervalSlot(now, schedule.everyHours, schedule.timeZone), segment: 'all' },
+      ];
+    case 'month-end':
+      return [
+        { slotAt: nextMonthEndSlot(now, schedule.timeZone), segment: 'b2b' },
+        { slotAt: nextDailySlot(now, MONTH_END_BATCH_TIME, schedule.timeZone), segment: 'b2c' },
+      ];
+  }
 }

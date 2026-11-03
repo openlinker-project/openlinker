@@ -60,6 +60,16 @@ export const SalesDocumentBatchRunFailureReasonValues = [
 export type SalesDocumentBatchRunFailureReason =
   (typeof SalesDocumentBatchRunFailureReasonValues)[number];
 
+/** Why "Run now" was refused, before any job was enqueued. */
+export const SalesDocumentBatchRunRefusalValues = [
+  'connection-not-found',
+  'not-batched',
+  'connection-needs-reauth',
+  'connection-not-active',
+  'run-in-progress',
+] as const;
+export type SalesDocumentBatchRunRefusal = (typeof SalesDocumentBatchRunRefusalValues)[number];
+
 /**
  * What the run did with one order.
  *

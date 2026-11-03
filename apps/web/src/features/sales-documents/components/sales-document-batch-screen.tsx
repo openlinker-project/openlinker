@@ -41,6 +41,9 @@ import { BatchQueueTab } from './batch-queue-tab';
 import { BatchRunHistoryTab } from './batch-run-history-tab';
 import { BatchScheduleForm } from './batch-schedule-form';
 
+/** How long the screen waits for a requested run to appear before giving the button back. */
+const AWAIT_RUN_TIMEOUT_MS = 2 * 60 * 1000;
+
 interface SalesDocumentBatchScreenProps {
   connectionId: string;
 }
@@ -76,9 +79,14 @@ export function SalesDocumentBatchScreen({
   const demoMode = useDemoMode();
   const write = useWriteAccess('connections:write', demoMode);
   const connection = useConnectionQuery(connectionId);
-  const overview = useSalesDocumentBatchOverviewQuery(connectionId);
+  // When a "Run now" was accepted and its run has not appeared yet (#3584
+  // review): poll so the screen picks the run up, and keep the button disabled.
+  const [awaitingRunSince, setAwaitingRunSince] = useState<number | null>(null);
+  const overview = useSalesDocumentBatchOverviewQuery(connectionId, {
+    pollWhileWaiting: awaitingRunSince !== null,
+  });
   const running = overview.data?.runningRun ?? null;
-  const poll = running === null ? false : BATCH_RUNNING_POLL_MS;
+  const poll = running === null && awaitingRunSince === null ? false : BATCH_RUNNING_POLL_MS;
   const queue = useSalesDocumentBatchQueueQuery(connectionId, { refetchInterval: poll });
   const runs = useSalesDocumentBatchRunsQuery(connectionId, { refetchInterval: poll });
   const connections = useConnectionsQuery();
@@ -88,6 +96,22 @@ export function SalesDocumentBatchScreen({
     refetchInterval: poll,
   });
   const now = useTickingNow(running !== null);
+
+  const latestStartedAt = runs.data?.runs[0]?.startedAt ?? null;
+  useEffect(() => {
+    if (awaitingRunSince === null) return undefined;
+    const started =
+      running !== null ||
+      (latestStartedAt !== null && Date.parse(latestStartedAt) >= awaitingRunSince);
+    if (started) {
+      setAwaitingRunSince(null);
+      return undefined;
+    }
+    // A run that never appears (the worker is down) must not lock the button
+    // for good; the operator gets it back and can look at the jobs page.
+    const id = window.setTimeout(() => setAwaitingRunSince(null), AWAIT_RUN_TIMEOUT_MS);
+    return () => window.clearTimeout(id);
+  }, [awaitingRunSince, running, latestStartedAt]);
   const [tab, setTab] = useState<BatchScreenTab>('schedule');
 
   const sourceNames = useMemo(
@@ -172,6 +196,8 @@ export function SalesDocumentBatchScreen({
               sourceName={(id) => sourceNames.get(id) ?? 'Unknown source'}
               runDisabledReason={unavailable}
               canRun={write.canWrite}
+              awaitingRun={awaitingRunSince !== null}
+              onRunRequested={() => setAwaitingRunSince(Date.now())}
               now={now}
             />
           )}

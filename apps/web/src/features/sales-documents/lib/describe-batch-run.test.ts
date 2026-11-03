@@ -111,7 +111,7 @@ describe('item outcome and detail', () => {
 
   it('should say an order already documented elsewhere was not issued again', () => {
     expect(
-      describeItemDetail(item({ result: 'already-documented', outcome: 'skipped' }), 'x')
+      describeItemDetail(item({ result: 'already-documented', outcome: 'blocked' }), 'x')
     ).toBe('Already has a document on another connection.');
   });
 });

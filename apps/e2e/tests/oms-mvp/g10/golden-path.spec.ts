@@ -125,7 +125,7 @@ test.describe('G10 golden path - batched invoices, immediate receipts (#3585)', 
     await expect(screen.runItem(G10_ORDER_IDS.b2b)).toBeVisible();
     await expect(screen.runItem(G10_ORDER_IDS.documented)).toHaveAttribute(
       'data-outcome',
-      'skipped'
+      'blocked'
     );
   });
 

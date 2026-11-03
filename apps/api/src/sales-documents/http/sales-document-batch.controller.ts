@@ -4,10 +4,12 @@
  * The batch-issuing surface behind mockup M15: a connection's schedules and next
  * slots, its queue, its run history with per-order outcomes, and "Run now".
  *
- * Schedules are edited through the connection's config like the trigger model
- * (#3582); this controller only READS them, resolved by the same pure rules the
- * worker's tick uses (`readBatchSchedule` / `findNextBatchSlots`), so the next
- * slot shown is the slot that will run.
+ * A thin HTTP layer over `ISalesDocumentBatchService`: the overview (schedules
+ * resolved by the same pure rules the worker's tick uses, so the next slot
+ * shown is the slot that will run) and the "Run now" policy (which kinds a
+ * manual run covers, and when it is refused) both live in that service, so the
+ * run, the tick and this surface share one rule. Schedules are edited through
+ * the connection's config like the trigger model (#3582).
  *
  * "Run now" enqueues the SAME `salesDocument.batch.run` job a scheduled slot
  * does, under a one-off key, so the operator's run and the scheduled run issue
@@ -21,7 +23,6 @@
  *
  * @module apps/api/src/sales-documents/http
  */
-import { randomUUID } from 'crypto';
 import {
   ConflictException,
   Controller,
@@ -37,28 +38,11 @@ import {
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import {
-  CONNECTION_PORT_TOKEN,
-  ConnectionNotFoundException,
-  type Connection,
-  type ConnectionPort,
-} from '@openlinker/core/identifier-mapping';
-import { resolveTriggerModelForKind } from '@openlinker/core/invoicing';
-import {
   SALES_DOCUMENT_BATCH_SERVICE_TOKEN,
-  buildManualBatchRunKey,
   type ISalesDocumentBatchService,
   type SalesDocumentBatchRun,
+  type SalesDocumentBatchRunRefusal,
 } from '@openlinker/core/orders';
-import {
-  findNextBatchSlots,
-  readBatchSchedule,
-  type SalesDocumentKind,
-} from '@openlinker/core/sales-documents';
-import {
-  JOB_ENQUEUE_TOKEN,
-  type JobEnqueuePort,
-  type SalesDocumentBatchRunPayloadV1,
-} from '@openlinker/core/sync';
 import { Roles } from '../../auth/decorators/roles.decorator';
 import { CurrentUser } from '../../auth/decorators/current-user.decorator';
 import { AuthenticatedUser } from '../../auth/auth.types';
@@ -71,9 +55,34 @@ import {
   SalesDocumentBatchRunListQueryDto,
   StartSalesDocumentBatchRunResponseDto,
 } from './dto/sales-document-batch.dto';
-import type { BatchScheduleDto, SalesDocumentBatchRunDto } from './dto/sales-document-batch.dto';
+import type { SalesDocumentBatchRunDto } from './dto/sales-document-batch.dto';
 
-const BATCH_KINDS: readonly SalesDocumentKind[] = ['invoice', 'fiscal-receipt'];
+/**
+ * Stable 409 codes for a refused "Run now". A missing connection is a 404 and
+ * is handled apart. The record is total over the refusal union, so a new
+ * refusal is a compile error here rather than an unmapped 500.
+ */
+const RUN_REFUSAL_RESPONSE: Record<
+  Exclude<SalesDocumentBatchRunRefusal, 'connection-not-found'>,
+  { code: string; message: string }
+> = {
+  'not-batched': {
+    code: 'CONNECTION_NOT_BATCHED',
+    message: 'This connection does not issue any document in batches.',
+  },
+  'connection-needs-reauth': {
+    code: 'CONNECTION_NEEDS_REAUTH',
+    message: 'Reconnect this connection before running a batch.',
+  },
+  'connection-not-active': {
+    code: 'CONNECTION_NOT_ACTIVE',
+    message: 'This connection is not active.',
+  },
+  'run-in-progress': {
+    code: 'BATCH_RUN_IN_PROGRESS',
+    message: 'A batch run is already in progress for this connection.',
+  },
+};
 
 function toRunDto(run: SalesDocumentBatchRun): SalesDocumentBatchRunDto {
   return {
@@ -93,12 +102,6 @@ function toRunDto(run: SalesDocumentBatchRun): SalesDocumentBatchRunDto {
   };
 }
 
-function batchedKinds(connection: Connection): SalesDocumentKind[] {
-  return BATCH_KINDS.filter(
-    (kind) => resolveTriggerModelForKind(connection.config, kind).model === 'batched',
-  );
-}
-
 @ApiBearerAuth()
 @ApiTags('sales-documents')
 @Controller('sales-documents/batches')
@@ -106,10 +109,6 @@ export class SalesDocumentBatchController {
   constructor(
     @Inject(SALES_DOCUMENT_BATCH_SERVICE_TOKEN)
     private readonly batches: ISalesDocumentBatchService,
-    @Inject(CONNECTION_PORT_TOKEN)
-    private readonly connections: ConnectionPort,
-    @Inject(JOB_ENQUEUE_TOKEN)
-    private readonly jobEnqueue: JobEnqueuePort,
   ) {}
 
   @Get(':connectionId')
@@ -119,35 +118,26 @@ export class SalesDocumentBatchController {
   async getOverview(
     @Param('connectionId', ParseUUIDPipe) connectionId: string,
   ): Promise<SalesDocumentBatchOverviewDto> {
-    const connection = await this.getConnection(connectionId);
-    const now = new Date();
-    const schedules: BatchScheduleDto[] = BATCH_KINDS.map((kind) => {
-      const schedule = readBatchSchedule(connection.config, kind);
-      return {
-        documentKind: kind,
-        batched: resolveTriggerModelForKind(connection.config, kind).model === 'batched',
+    const overview = await this.batches.getOverview(connectionId, new Date());
+    if (overview === null) {
+      throw new NotFoundException('Connection not found');
+    }
+    return {
+      connectionId,
+      schedules: overview.kinds.map(({ documentKind, batched, schedule, nextSlots }) => ({
+        documentKind,
+        batched,
         frequency: schedule?.frequency ?? null,
         time: schedule?.time ?? null,
         everyHours: schedule?.everyHours ?? null,
         timeZone: schedule?.timeZone ?? null,
-        nextSlots:
-          schedule === null
-            ? []
-            : findNextBatchSlots(schedule, now).map((slot) => ({
-                segment: slot.segment,
-                slotAt: slot.slotAt.toISOString(),
-              })),
-      };
-    });
-    const [queueCounts, running] = await Promise.all([
-      this.batches.countQueue(connectionId),
-      this.batches.findRunning(connectionId),
-    ]);
-    return {
-      connectionId,
-      schedules,
-      queueCounts,
-      runningRun: running === null ? null : toRunDto(running),
+        nextSlots: nextSlots.map((slot) => ({
+          segment: slot.segment,
+          slotAt: slot.slotAt.toISOString(),
+        })),
+      })),
+      queueCounts: overview.queueCounts,
+      runningRun: overview.runningRun === null ? null : toRunDto(overview.runningRun),
     };
   }
 
@@ -241,57 +231,13 @@ export class SalesDocumentBatchController {
     @Param('connectionId', ParseUUIDPipe) connectionId: string,
     @CurrentUser() user: AuthenticatedUser,
   ): Promise<StartSalesDocumentBatchRunResponseDto> {
-    const connection = await this.getConnection(connectionId);
-    const kinds = batchedKinds(connection);
-    if (kinds.length === 0) {
-      throw new ConflictException({
-        code: 'CONNECTION_NOT_BATCHED',
-        message: 'This connection does not issue any document in batches.',
-      });
+    const result = await this.batches.requestRun({ connectionId, startedByUserId: user.id });
+    if (result.status === 'enqueued') {
+      return { jobId: result.jobId };
     }
-    if (connection.status === 'needs_reauth') {
-      throw new ConflictException({
-        code: 'CONNECTION_NEEDS_REAUTH',
-        message: 'Reconnect this connection before running a batch.',
-      });
+    if (result.reason === 'connection-not-found') {
+      throw new NotFoundException('Connection not found');
     }
-    if (connection.status !== 'active') {
-      throw new ConflictException({
-        code: 'CONNECTION_NOT_ACTIVE',
-        message: 'This connection is not active.',
-      });
-    }
-    if ((await this.batches.findRunning(connectionId)) !== null) {
-      throw new ConflictException({
-        code: 'BATCH_RUN_IN_PROGRESS',
-        message: 'A batch run is already in progress for this connection.',
-      });
-    }
-
-    const payload: SalesDocumentBatchRunPayloadV1 = {
-      schemaVersion: 1,
-      trigger: 'manual',
-      documentKinds: kinds,
-      segment: 'all',
-      startedByUserId: user.id,
-    };
-    const result = await this.jobEnqueue.enqueueJob({
-      jobType: 'salesDocument.batch.run',
-      connectionId,
-      payload: payload as unknown as Record<string, unknown>,
-      idempotencyKey: buildManualBatchRunKey(connectionId, randomUUID()),
-    });
-    return { jobId: result.jobId };
-  }
-
-  private async getConnection(connectionId: string): Promise<Connection> {
-    try {
-      return await this.connections.get(connectionId);
-    } catch (error) {
-      if (error instanceof ConnectionNotFoundException) {
-        throw new NotFoundException('Connection not found');
-      }
-      throw error;
-    }
+    throw new ConflictException(RUN_REFUSAL_RESPONSE[result.reason]);
   }
 }
