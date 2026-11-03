@@ -425,7 +425,7 @@ export const AUTOMATION_MERGE_FIELDS = [
     token: '{buyer.name}',
     renders: "the buyer's name as the source reported it, or \"customer\" when it is not stored",
   },
-  { token: '{shipment.tracking}', renders: 'the tracking number, or "not available"' },
+  { token: '{shipment.tracking}', renders: 'the tracking number, or "not yet" ("not available" in a buyer email)' },
   { token: '{hold.reason}', renders: "the current hold's reason, or \"no hold\"" },
   { token: '{rule.name}', renders: "the automation's own name" },
 ] as const;

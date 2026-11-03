@@ -33,6 +33,7 @@ import type { IShipmentQueryService } from '@openlinker/core/shipping';
 import type { MailerPort } from '@openlinker/core/users';
 
 import {
+  BUYER_EMAIL_FALLBACK_OVERRIDES,
   formatMergeAmount,
   formatMergeDate,
   renderAutomationTemplate,
@@ -211,8 +212,8 @@ export class SendEmailExecutorService implements AutomationActionExecutorPort {
       // The firing's own subject: the return for T6, the order otherwise.
       subjectRef: input.facts.subjectId,
       recipient: record.buyerEmail,
-      subject: renderAutomationTemplate(input.action.subject, context),
-      text: renderAutomationTemplate(input.action.body, context),
+      subject: renderAutomationTemplate(input.action.subject, context, BUYER_EMAIL_FALLBACK_OVERRIDES),
+      text: renderAutomationTemplate(input.action.body, context, BUYER_EMAIL_FALLBACK_OVERRIDES),
     });
     return this.toStepResult(step, result);
   }
@@ -303,11 +304,11 @@ export class SendEmailExecutorService implements AutomationActionExecutorPort {
   /**
    * Best-effort tracking read for `{shipment.tracking}` (#3553). Resolved through
    * the delegate seam, so `automation` takes no `shipping` sibling edge. A
-   * missing binding or a failed read renders the field's "not available" fallback: a
+   * missing binding or a failed read renders the field's fallback ("not yet", or "not available" in a buyer email): a
    * parcel with no number yet is a normal state, and a read fault must not fail
    * an email whose other fields are fine.
    *
-   * Known trade-off: on a failed read the buyer reads "not available" even if a
+   * Known trade-off: on a failed read the recipient reads the fallback even if a
    * number exists. Accepted over blocking the send; the warning below is the
    * operator's trace.
    */

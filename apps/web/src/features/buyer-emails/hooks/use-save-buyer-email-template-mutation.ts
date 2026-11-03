@@ -13,6 +13,10 @@
  * rolled back - the sender is saved and the wording is not, and the message
  * says exactly that rather than reading as one failed save.
  *
+ * A failure is a {@link BuyerEmailSaveError} naming which write failed and, for
+ * a refused sender, which field - so the editor can put the server's sentence
+ * under that field instead of only in a toast.
+ *
  * `PATCH /connections/:id` replaces `config` wholesale, so the config is
  * RE-READ immediately before the write rather than taken from the page's
  * cache: a cached copy would silently undo any other key changed since the
@@ -28,11 +32,36 @@ import { useApiClient } from '../../../app/api/api-client-provider';
 import type { BuyerEmailTemplate, BuyerEmailTemplateSettings } from '../api/buyer-emails.types';
 import { BUYER_EMAILS_COPY } from '../lib/buyer-emails.copy';
 import {
+  buyerEmailFieldOfServerMessage,
+  type BuyerEmailServerField,
+} from '../lib/buyer-email-editor.schema';
+import {
   readBuyerEmailsSettings,
   withBuyerEmailsSettings,
   withRuleWording,
   withTemplateSettings,
 } from '../lib/buyer-emails-config';
+
+/** Which of the save's two writes failed, and the editor field a refusal names. */
+export class BuyerEmailSaveError extends Error {
+  readonly stage: 'settings' | 'wording';
+  /** The server's own sentence, for showing under {@link field}. */
+  readonly serverMessage: string;
+  readonly field: BuyerEmailServerField | null;
+
+  constructor(
+    message: string,
+    stage: 'settings' | 'wording',
+    serverMessage: string,
+    field: BuyerEmailServerField | null,
+  ) {
+    super(message);
+    this.name = 'BuyerEmailSaveError';
+    this.stage = stage;
+    this.serverMessage = serverMessage;
+    this.field = field;
+  }
+}
 
 export interface SaveBuyerEmailTemplateInput {
   connectionId: string;
@@ -44,7 +73,7 @@ export interface SaveBuyerEmailTemplateInput {
 
 export function useSaveBuyerEmailTemplateMutation(): UseMutationResult<
   void,
-  Error,
+  BuyerEmailSaveError,
   SaveBuyerEmailTemplateInput
 > {
   const apiClient = useApiClient();
@@ -62,7 +91,13 @@ export function useSaveBuyerEmailTemplateMutation(): UseMutationResult<
           ),
         });
       } catch (error) {
-        throw new Error(BUYER_EMAILS_COPY.editor.saveSettingsFailed(messageOf(error)));
+        const reason = messageOf(error);
+        throw new BuyerEmailSaveError(
+          BUYER_EMAILS_COPY.editor.saveSettingsFailed(reason),
+          'settings',
+          reason,
+          buyerEmailFieldOfServerMessage(reason, input.template),
+        );
       }
       if (input.rule) {
         try {
@@ -75,7 +110,13 @@ export function useSaveBuyerEmailTemplateMutation(): UseMutationResult<
             )
           );
         } catch (error) {
-          throw new Error(BUYER_EMAILS_COPY.editor.saveWordingFailed(messageOf(error)));
+          const reason = messageOf(error);
+          throw new BuyerEmailSaveError(
+            BUYER_EMAILS_COPY.editor.saveWordingFailed(reason),
+            'wording',
+            reason,
+            null,
+          );
         }
       }
     },

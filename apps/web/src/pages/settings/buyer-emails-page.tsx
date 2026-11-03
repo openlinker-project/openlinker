@@ -28,7 +28,9 @@ import {
   channelKindOf,
   readBuyerEmailsSettings,
   templatesFor,
+  useBuyerEmailRules,
   useSetBuyerEmailsEnabledMutation,
+  type BuyerEmailTemplate,
 } from '../../features/buyer-emails';
 
 const COPY = BUYER_EMAILS_COPY.page;
@@ -38,7 +40,14 @@ function takesOrders(connection: Connection): boolean {
   return connection.status !== 'archived' && connection.enabledCapabilities.includes('OrderSource');
 }
 
-function ConnectionSettings({ connection }: { connection: Connection }): ReactElement {
+function ConnectionSettings({
+  connection,
+  isRuleMissing,
+}: {
+  connection: Connection;
+  /** True only once the rules are read and this template has none; never on a failed read. */
+  isRuleMissing: (template: BuyerEmailTemplate) => boolean;
+}): ReactElement {
   const { showToast } = useToast();
   const update = useSetBuyerEmailsEnabledMutation();
   const switchId = useId();
@@ -105,7 +114,9 @@ function ConnectionSettings({ connection }: { connection: Connection }): ReactEl
                     <p className="muted-text">{BUYER_EMAIL_TEMPLATE_COPY[template].description}</p>
                   </td>
                   <td>
-                    {on && settings.enabled ? (
+                    {isRuleMissing(template) ? (
+                      <StatusBadge tone="warning">{COPY.statusNoRule}</StatusBadge>
+                    ) : on && settings.enabled ? (
                       <StatusBadge tone="success">{COPY.statusOn}</StatusBadge>
                     ) : (
                       <StatusBadge tone="neutral">
@@ -140,6 +151,10 @@ function ConnectionSettings({ connection }: { connection: Connection }): ReactEl
 export function BuyerEmailsPage(): ReactElement {
   const [searchParams, setSearchParams] = useSearchParams();
   const connectionsQuery = useConnectionsQuery();
+  // A template with no seeded rule never sends, so the list must not call it "On".
+  const rules = useBuyerEmailRules();
+  const isRuleMissing = (template: BuyerEmailTemplate): boolean =>
+    !rules.isLoading && !rules.isError && rules.rules[template] === null;
   const connections = (connectionsQuery.data ?? []).filter(takesOrders);
   const selectedId = searchParams.get('connection') ?? connections[0]?.id ?? '';
   const selected = connections.find((connection) => connection.id === selectedId) ?? null;
@@ -175,7 +190,7 @@ export function BuyerEmailsPage(): ReactElement {
                 ))}
               </Select>
             </FormField>
-            {selected ? <ConnectionSettings key={selected.id} connection={selected} /> : null}
+            {selected ? <ConnectionSettings key={selected.id} connection={selected} isRuleMissing={isRuleMissing} /> : null}
           </>
         )}
       </AccessGate>

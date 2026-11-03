@@ -13,6 +13,7 @@ import {
   withRuleWording,
   withTemplateSettings,
 } from './buyer-emails-config';
+import { buyerEmailFieldOfServerMessage } from './buyer-email-editor.schema';
 
 function rule(template: string, isActive = false): AutomationRule {
   return {
@@ -116,5 +117,12 @@ describe('buyer emails config helpers (#3555)', () => {
     for (const field of BUYER_EMAIL_MERGE_FIELDS) {
       expect(renderPreview(`{${field}}`)).not.toBe(`{${field}}`);
     }
+  });
+
+  it('should map a server refusal to the field and template it names, and nothing else', () => {
+    const message = 'config.buyerEmails: replyTo of "shipped" must be a single email address';
+    expect(buyerEmailFieldOfServerMessage(message, 'shipped')).toBe('replyTo');
+    expect(buyerEmailFieldOfServerMessage(message, 'return-received')).toBeNull();
+    expect(buyerEmailFieldOfServerMessage('config.buyerEmails: must be an object', 'shipped')).toBeNull();
   });
 });

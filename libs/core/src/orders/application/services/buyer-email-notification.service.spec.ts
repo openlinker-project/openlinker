@@ -5,8 +5,10 @@ import {
   type ConnectionPort,
 } from '@openlinker/core/identifier-mapping';
 import type { MailerPort } from '@openlinker/core/users';
+import { InMemoryCacheAdapter } from '@openlinker/shared/cache/testing';
 import type { BuyerEmailDeliveryRepositoryPort } from '../../domain/ports/buyer-email-delivery-repository.port';
 import { BuyerEmailDelivery } from '../../domain/entities/buyer-email-delivery.entity';
+import { BUYER_EMAIL_TEST_SEND_LIMIT } from '../../domain/types/buyer-email-delivery.types';
 import { BuyerEmailNotificationService } from './buyer-email-notification.service';
 
 const connection = (config: Record<string, unknown>, enabledCapabilities: string[]): Connection =>
@@ -69,7 +71,8 @@ describe('BuyerEmailNotificationService', () => {
     service = new BuyerEmailNotificationService(
       repository,
       connections as unknown as ConnectionPort,
-      moduleRef
+      moduleRef,
+      new InMemoryCacheAdapter()
     );
   });
 
@@ -151,6 +154,7 @@ describe('BuyerEmailNotificationService', () => {
 
 describe('BuyerEmailNotificationService.sendTest (#3555)', () => {
   const testInput = {
+    actorUserId: 'user-1',
     connectionId: 'conn-1',
     templateKey: 'shipped' as const,
     to: 'me@shop.pl',
@@ -175,7 +179,8 @@ describe('BuyerEmailNotificationService.sendTest (#3555)', () => {
     service = new BuyerEmailNotificationService(
       repository,
       connections as unknown as ConnectionPort,
-      { get: jest.fn(() => mailer) } as unknown as ModuleRef
+      { get: jest.fn(() => mailer) } as unknown as ModuleRef,
+      new InMemoryCacheAdapter()
     );
   });
 
@@ -232,5 +237,29 @@ describe('BuyerEmailNotificationService.sendTest (#3555)', () => {
 
     expect(result.status).toBe('failed');
     expect(JSON.stringify(result)).not.toContain('10.0.0.5');
+  });
+
+  it('should refuse with rate-limited once an actor exceeds the test-send limit, without sending', async () => {
+    connections.get.mockResolvedValue(connection({}, ['ProductMaster']));
+    for (let i = 0; i < BUYER_EMAIL_TEST_SEND_LIMIT; i += 1) {
+      await service.sendTest(testInput);
+    }
+    mailer.sendEmail.mockClear();
+
+    const result = await service.sendTest(testInput);
+
+    expect(result).toMatchObject({ status: 'refused', reason: 'rate-limited' });
+    expect(mailer.sendEmail).not.toHaveBeenCalled();
+  });
+
+  it('should count the test-send limit per actor', async () => {
+    connections.get.mockResolvedValue(connection({}, ['ProductMaster']));
+    for (let i = 0; i < BUYER_EMAIL_TEST_SEND_LIMIT; i += 1) {
+      await service.sendTest(testInput);
+    }
+
+    await expect(service.sendTest({ ...testInput, actorUserId: 'user-2' })).resolves.toEqual({
+      status: 'sent',
+    });
   });
 });

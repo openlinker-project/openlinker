@@ -25,8 +25,8 @@
 
 /**
  * The values the fields render from. Every one is optional: the caller
- * assembles what it can, and an absent value renders a stated fallback rather
- * than an empty string — *"not available"* reads as a fact, `""` reads as a bug.
+ * assembles what it can, and an absent value renders the spec's stated fallback
+ * rather than an empty string — *"not yet"* reads as a fact, `""` reads as a bug.
  */
 export interface AutomationTemplateContext {
   readonly orderReference?: string;
@@ -79,25 +79,36 @@ export const AUTOMATION_MERGE_FIELDS = [
 
 export type AutomationMergeField = (typeof AUTOMATION_MERGE_FIELDS)[number];
 
-/**
- * Per-field fallback copy, verbatim from §5.3b where the spec states one.
- *
- * `shipment.tracking` deliberately departs from §5.3b's *"not yet"* (#3554):
- * every email is sent once, so "Tracking number: not yet" promises a number
- * the buyer will never be sent. The shipped email now waits for the number and
- * only falls back when the carrier never issued one, which is exactly when
- * "not yet" is false. "not available" states what is true at send time and
- * promises nothing.
- */
+/** Per-field fallback copy, verbatim from §5.3b where the spec states one. */
 const FALLBACKS: Record<AutomationMergeField, string> = {
   'order.reference': 'unknown',
   'order.total': 'unknown',
   'order.placedAt': 'unknown',
   'order.dispatchBy': 'no deadline',
   'buyer.name': 'customer',
-  'shipment.tracking': 'not available',
+  'shipment.tracking': 'not yet',
   'hold.reason': 'no hold',
   'rule.name': 'unknown',
+};
+
+/** Per-call replacements for {@link FALLBACKS}. */
+export type AutomationFallbackOverrides = Readonly<Partial<Record<AutomationMergeField, string>>>;
+
+/**
+ * The fallbacks a BUYER email renders with (#3554 / #3555), departing from
+ * §5.3b for `shipment.tracking` only.
+ *
+ * A buyer email is sent once, and the shipped email waits for the number, so it
+ * falls back only when the carrier never issued one - exactly when "not yet" is
+ * false and promises a number the buyer is never sent. "not available" states
+ * what is true at send time.
+ *
+ * Scoped to the buyer-email path on purpose: an operator rule on, say,
+ * `order.received` renders the field BEFORE any parcel exists, where "not yet"
+ * is the true statement, so the spec's fallback stays the default.
+ */
+export const BUYER_EMAIL_FALLBACK_OVERRIDES: AutomationFallbackOverrides = {
+  'shipment.tracking': 'not available',
 };
 
 function valueOf(
@@ -200,6 +211,7 @@ export function templateUsesMergeField(template: string, field: AutomationMergeF
 export function renderAutomationTemplate(
   template: string,
   context: AutomationTemplateContext,
+  fallbacks: AutomationFallbackOverrides = {},
 ): string {
   return template.replace(TOKEN_PATTERN, (whole, rawToken: string) => {
     const token = rawToken.trim();
@@ -207,6 +219,6 @@ export function renderAutomationTemplate(
       return whole;
     }
     const value = valueOf(token, context);
-    return value !== undefined && value !== '' ? value : FALLBACKS[token];
+    return value !== undefined && value !== '' ? value : (fallbacks[token] ?? FALLBACKS[token]);
   });
 }

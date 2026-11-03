@@ -57,6 +57,7 @@ export const BUYER_EMAILS_COPY = {
     statusOn: 'On',
     statusOff: 'Off',
     statusInactiveBecauseMaster: 'Off (emails are off for this connection)',
+    statusNoRule: 'Not available (ready-made rule missing)',
     defaultSender: 'Mail settings default',
     edit: 'Edit',
     saved: 'Buyer emails updated.',
@@ -87,8 +88,10 @@ export const BUYER_EMAILS_COPY = {
     save: 'Save changes',
     cancel: 'Cancel',
     invalidAddress: 'Enter one email address.',
+    subjectRequired: 'Enter a subject.',
+    bodyRequired: 'Enter a message.',
     noRule:
-      'The ready-made rule for this email is missing, so its wording cannot be edited here. The switch and sender still save.',
+      'The ready-made rule for this email is missing, so it cannot be switched on and its wording cannot be edited here. The sender and reply-to still save.',
     notAllowed: 'This email is not offered on a marketplace connection.',
     rulesLoadErrorTitle: 'Could not load this email',
     rulesLoadError:

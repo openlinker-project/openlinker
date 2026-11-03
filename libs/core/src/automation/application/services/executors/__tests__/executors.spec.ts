@@ -302,7 +302,7 @@ describe('SendEmailExecutorService', () => {
     );
 
     expect(sent[0]).toEqual(
-      expect.objectContaining({ subject: 'Hi customer', text: 'Tracking: not available' }),
+      expect.objectContaining({ subject: 'Hi customer', text: 'Tracking: not yet' }),
     );
   });
 
@@ -379,6 +379,23 @@ describe('SendEmailExecutorService', () => {
           recipient: 'abc+123@allegromail.pl',
           subject: 'Your order ol_order_1 shipped',
         }),
+      );
+    });
+
+    it('should render a missing tracking number as "not available" in a buyer email (#3555)', async () => {
+      const notifications = { send: jest.fn().mockResolvedValue({ status: 'sent', deliveryId: 'd-1' }) };
+      const executor = new SendEmailExecutorService(
+        stubResolver({
+          MAILER_TOKEN: { sendEmail: jest.fn() },
+          ORDER_RECORD_SERVICE_TOKEN: { getOrderRecord: jest.fn().mockResolvedValue(ORDER) },
+          BUYER_EMAIL_NOTIFICATION_SERVICE_TOKEN: notifications,
+        }),
+      );
+
+      await executor.execute(input(SHIPPED_TO_BUYER));
+
+      expect(notifications.send).toHaveBeenCalledWith(
+        expect.objectContaining({ text: 'Tracking: not available' }),
       );
     });
 

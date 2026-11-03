@@ -8,6 +8,7 @@
  * rule (activating it); a test send reaches `editor-sent`.
  */
 import { cleanup, screen, waitFor, within } from '@testing-library/react';
+import { ApiError } from '../../shared/api/api-error';
 import userEvent from '@testing-library/user-event';
 import { Route, Routes } from 'react-router-dom';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -145,6 +146,38 @@ describe('BuyerEmailsPage (#3555)', () => {
     );
   });
 
+  it('should show a template whose seeded rule is missing as not available, never as on', async () => {
+    const withShippedOn: Connection = {
+      ...SHOP,
+      config: { buyerEmails: { enabled: true, templates: { shipped: { enabled: true } } } },
+    };
+    renderWithProviders(<BuyerEmailsPage />, {
+      apiClient: createMockApiClient({
+        connections: { list: vi.fn().mockResolvedValue([withShippedOn]) },
+        automations: {
+          listByTrigger: vi.fn((trigger: string) =>
+            Promise.resolve({
+              items: trigger === 'order.shipped' ? [] : [SHIPPED_RULE],
+              droppedCount: 0,
+              envelopeUnreadable: false,
+            }),
+          ),
+        },
+      }),
+      sessionAdapter: session,
+    });
+
+    await screen.findByTestId('buyer-emails-list');
+    const shipped = screen
+      .getAllByTestId('buyer-email-template-row')
+      .find((row) => row.getAttribute('data-template') === 'shipped');
+    if (!shipped) throw new Error('no shipped row');
+    await waitFor(() =>
+      expect(within(shipped).getByText('Not available (ready-made rule missing)')).toBeInTheDocument(),
+    );
+    expect(within(shipped).queryByText('On')).toBeNull();
+  });
+
   it('should show the loading state while connections load (list-loading)', async () => {
     renderWithProviders(<BuyerEmailsPage />, {
       apiClient: createMockApiClient({
@@ -254,6 +287,9 @@ describe('BuyerEmailEditorPage (#3555)', () => {
     });
 
     await screen.findByTestId('buyer-email-editor');
+    // Prefilled with the operator's own address; replace it with another one.
+    expect(screen.getByTestId('buyer-email-test-to')).toHaveValue('admin@example.com');
+    await userEvent.clear(screen.getByTestId('buyer-email-test-to'));
     await userEvent.type(screen.getByTestId('buyer-email-test-to'), 'me@shop.pl');
     await userEvent.click(screen.getByTestId('buyer-email-test-send'));
 
@@ -268,5 +304,74 @@ describe('BuyerEmailEditorPage (#3555)', () => {
       subject: 'Shipped SHOP-4821',
       body: 'Hello',
     });
+  });
+
+  it('should put a sender the server refuses under its field, not only in a toast', async () => {
+    const update = vi.fn().mockRejectedValue(
+      new ApiError(
+        'config.buyerEmails: fromAddress of "shipped" must be a single email address',
+        400,
+        null,
+      ),
+    );
+    renderEditor({
+      connections: { getById: vi.fn().mockResolvedValue(SHOP), update },
+      automations,
+    });
+
+    await screen.findByTestId('buyer-email-editor');
+    await userEvent.type(screen.getByTestId('buyer-email-from'), 'shop@x.pl');
+    await userEvent.click(screen.getByTestId('buyer-email-save'));
+
+    expect(
+      await screen.findByText(
+        'config.buyerEmails: fromAddress of "shipped" must be a single email address',
+      ),
+    ).toBeInTheDocument();
+    expect(screen.getByTestId('buyer-email-from')).toHaveAttribute('aria-invalid', 'true');
+  });
+
+  it('should not save an empty subject', async () => {
+    const update = vi.fn().mockResolvedValue(SHOP);
+    renderEditor({
+      connections: { getById: vi.fn().mockResolvedValue(SHOP), update },
+      automations,
+    });
+
+    await screen.findByTestId('buyer-email-editor');
+    await userEvent.clear(screen.getByTestId('buyer-email-subject'));
+    await userEvent.click(screen.getByTestId('buyer-email-save'));
+
+    expect(await screen.findByText('Enter a subject.')).toBeInTheDocument();
+    expect(update).not.toHaveBeenCalled();
+  });
+
+  it('should not let a template without its seeded rule be switched on, and still save the sender', async () => {
+    const update = vi.fn().mockResolvedValue(SHOP);
+    const replace = vi.fn();
+    renderEditor({
+      connections: { getById: vi.fn().mockResolvedValue(SHOP), update },
+      automations: {
+        listByTrigger: vi.fn().mockResolvedValue({ items: [], droppedCount: 0, envelopeUnreadable: false }),
+        replace,
+      },
+    });
+
+    await screen.findByTestId('buyer-email-editor');
+    expect(screen.getByTestId('buyer-email-template-enabled')).toBeDisabled();
+    expect(screen.getByText(/cannot be switched on/)).toBeInTheDocument();
+
+    await userEvent.type(screen.getByTestId('buyer-email-reply-to'), 'help@shop.pl');
+    await userEvent.click(screen.getByTestId('buyer-email-save'));
+
+    await waitFor(() =>
+      expect(update).toHaveBeenCalledWith('conn-shop', {
+        config: {
+          baseUrl: 'x',
+          buyerEmails: { enabled: false, templates: { shipped: { enabled: false, replyTo: 'help@shop.pl' } } },
+        },
+      }),
+    );
+    expect(replace).not.toHaveBeenCalled();
   });
 });

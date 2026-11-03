@@ -3,6 +3,7 @@
  */
 import {
   AUTOMATION_MERGE_FIELDS,
+  BUYER_EMAIL_FALLBACK_OVERRIDES,
   formatMergeAmount,
   formatMergeDate,
   renderAutomationTemplate,
@@ -39,8 +40,20 @@ describe('renderAutomationTemplate', () => {
 
   it("should render the buyer.name and shipment.tracking fallbacks when both are absent (#3553)", () => {
     expect(renderAutomationTemplate('Hi {buyer.name}, tracking: {shipment.tracking}', {})).toBe(
-      'Hi customer, tracking: not available',
+      'Hi customer, tracking: not yet',
     );
+  });
+
+  it('should render "not available" for a missing tracking number with the buyer-email fallbacks (#3555)', () => {
+    expect(
+      renderAutomationTemplate('tracking: {shipment.tracking}, {buyer.name}', {}, BUYER_EMAIL_FALLBACK_OVERRIDES),
+    ).toBe('tracking: not available, customer');
+  });
+
+  it('should prefer a real value over an overridden fallback', () => {
+    expect(
+      renderAutomationTemplate('{shipment.tracking}', { shipmentTracking: 'TRK1' }, BUYER_EMAIL_FALLBACK_OVERRIDES),
+    ).toBe('TRK1');
   });
 
   it('should render an unrecognised placeholder VERBATIM rather than blanking it', () => {

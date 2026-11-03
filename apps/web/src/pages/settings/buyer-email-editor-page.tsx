@@ -8,10 +8,17 @@
  * same sample values, never raw `{field}` tokens - to the operator's own
  * address through the real mail transport, and is never recorded on an order.
  *
+ * The draft lives in React Hook Form with a Zod schema (frontend-architecture
+ * § Form State); a sender the server refuses is shown under its field. A
+ * template whose seeded rule is missing cannot be switched on: with no rule
+ * nothing fires, so an "on" switch would promise an email that never goes out.
+ *
  * @module apps/web/src/pages/settings
  */
-import { useId, useRef, useState, type FormEvent, type ReactElement } from 'react';
+import { useId, useMemo, useRef, useState, type ReactElement } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
+import { useForm, useWatch } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
 import { PageLayout } from '../../shared/ui/page-layout';
 import { Alert } from '../../shared/ui/alert';
 import { Button } from '../../shared/ui/button';
@@ -21,15 +28,17 @@ import { Textarea } from '../../shared/ui/textarea';
 import { AccessDeniedState, ErrorState, LoadingState } from '../../shared/ui/feedback-state';
 import { AccessGate } from '../../shared/ui/access-gate';
 import { useToast } from '../../shared/ui/toast-provider';
+import { useSession } from '../../shared/auth/use-session';
 import { useConnectionQuery, type Connection } from '../../features/connections';
 import type { AutomationRule } from '../../features/automation';
 import {
   BUYER_EMAILS_COPY,
   BUYER_EMAIL_MERGE_FIELDS,
   BUYER_EMAIL_TEMPLATE_COPY,
+  buildBuyerEmailEditorSchema,
+  buyerEmailTestFormSchema,
   channelKindOf,
   isBuyerEmailTemplate,
-  isSingleEmailAddress,
   isTemplateAllowed,
   readBuyerEmailsSettings,
   readRuleWording,
@@ -37,14 +46,12 @@ import {
   useBuyerEmailRules,
   useSaveBuyerEmailTemplateMutation,
   useSendBuyerEmailTestMutation,
+  type BuyerEmailEditorFormValues,
   type BuyerEmailTemplate,
+  type BuyerEmailTestFormValues,
 } from '../../features/buyer-emails';
 
 const COPY = BUYER_EMAILS_COPY.editor;
-
-function addressError(value: string): string | undefined {
-  return value.trim() === '' || isSingleEmailAddress(value.trim()) ? undefined : COPY.invalidAddress;
-}
 
 function EditorForm({
   connection,
@@ -57,75 +64,103 @@ function EditorForm({
 }): ReactElement {
   const navigate = useNavigate();
   const { showToast } = useToast();
+  const { session } = useSession();
   const save = useSaveBuyerEmailTemplateMutation();
   const sendTest = useSendBuyerEmailTestMutation();
   const enabledId = useId();
-  const bodyRef = useRef<HTMLTextAreaElement>(null);
+  const bodyRef = useRef<HTMLTextAreaElement | null>(null);
   const listUrl = `/settings/buyer-emails?connection=${encodeURIComponent(connection.id)}`;
+  const wordingEditable = rule !== null;
 
   const current = readBuyerEmailsSettings(connection.config).templates[template];
   const wording = rule ? readRuleWording(rule) : { subject: '', body: '' };
-  const [enabled, setEnabled] = useState(current?.enabled === true);
-  const [fromAddress, setFromAddress] = useState(current?.fromAddress ?? '');
-  const [replyTo, setReplyTo] = useState(current?.replyTo ?? '');
-  const [subject, setSubject] = useState(wording.subject);
-  const [body, setBody] = useState(wording.body);
-  const [testTo, setTestTo] = useState('');
+  const schema = useMemo(() => buildBuyerEmailEditorSchema({ wordingEditable }), [wordingEditable]);
+  const form = useForm<BuyerEmailEditorFormValues>({
+    defaultValues: {
+      // A template with no rule cannot send, so it is never shown as switched on.
+      enabled: wordingEditable && current?.enabled === true,
+      fromAddress: current?.fromAddress ?? '',
+      replyTo: current?.replyTo ?? '',
+      subject: wording.subject,
+      body: wording.body,
+    },
+    resolver: zodResolver(schema),
+    mode: 'onChange',
+  });
+  // The test send defaults to the operator's own address: the test is for them.
+  const testForm = useForm<BuyerEmailTestFormValues>({
+    defaultValues: { to: session.user?.email ?? '' },
+    resolver: zodResolver(buyerEmailTestFormSchema),
+    mode: 'onChange',
+  });
   const [sentTo, setSentTo] = useState<string | null>(null);
 
-  const fromError = addressError(fromAddress);
-  const replyToError = addressError(replyTo);
-  const testToError = testTo.trim() === '' ? undefined : addressError(testTo);
+  const subject = useWatch({ control: form.control, name: 'subject' }) ?? '';
+  const body = useWatch({ control: form.control, name: 'body' }) ?? '';
+  const { errors } = form.formState;
+  const bodyField = form.register('body');
 
   function insertVariable(field: string): void {
     const token = `{${field}}`;
     const element = bodyRef.current;
-    const start = element?.selectionStart ?? body.length;
-    const end = element?.selectionEnd ?? body.length;
-    setBody(body.slice(0, start) + token + body.slice(end));
+    const value = form.getValues('body') ?? '';
+    const start = element?.selectionStart ?? value.length;
+    const end = element?.selectionEnd ?? value.length;
+    form.setValue('body', value.slice(0, start) + token + value.slice(end), {
+      shouldDirty: true,
+      shouldValidate: true,
+    });
   }
 
-  function handleSave(event: FormEvent): void {
-    event.preventDefault();
-    if (fromError || replyToError) return;
+  const onSave = form.handleSubmit((values) => {
     save.mutate(
       {
         connectionId: connection.id,
         template,
-        settings: { enabled, fromAddress, replyTo },
+        settings: {
+          enabled: wordingEditable && values.enabled === true,
+          fromAddress: values.fromAddress,
+          replyTo: values.replyTo,
+        },
         rule,
-        wording: { subject, body },
+        wording: { subject: values.subject ?? '', body: values.body ?? '' },
       },
       {
         onSuccess: () => {
           showToast({ description: BUYER_EMAILS_COPY.page.saved, tone: 'success' });
           void navigate(listUrl);
         },
-        onError: (error) => showToast({ description: error.message, tone: 'error' }),
+        onError: (error) => {
+          // A refused sender goes under its field; anything else is the save's own error.
+          if (error.field) {
+            form.setError(error.field, { message: error.serverMessage });
+            return;
+          }
+          showToast({ description: error.message, tone: 'error' });
+        },
       },
     );
-  }
+  });
 
-  function handleSendTest(): void {
-    const to = testTo.trim();
-    if (!isSingleEmailAddress(to)) return;
+  const onSendTest = testForm.handleSubmit(({ to }) => {
+    const address = to.trim();
     setSentTo(null);
     sendTest.mutate(
       {
         connectionId: connection.id,
         templateKey: template,
-        to,
+        to: address,
         // The test is what the preview shows: an operator checking a template
         // must not receive literal `{order.reference}` tokens a buyer never sees.
         subject: renderPreview(subject),
         body: renderPreview(body),
       },
       {
-        onSuccess: () => setSentTo(to),
+        onSuccess: () => setSentTo(address),
         onError: (error) => showToast({ description: error.message, tone: 'error' }),
       },
     );
-  }
+  });
 
   return (
     <div
@@ -133,33 +168,38 @@ function EditorForm({
       data-mk-state={sentTo ? 'editor-sent' : 'editor'}
       data-testid="buyer-email-editor"
     >
-      <form className="buyer-email-editor__form panel panel--dense" onSubmit={handleSave}>
+      <form className="buyer-email-editor__form panel panel--dense" onSubmit={(event) => void onSave(event)} noValidate>
         <p className="muted-text">{BUYER_EMAIL_TEMPLATE_COPY[template].description}</p>
 
         <label className="buyer-emails-switch" htmlFor={enabledId}>
           <input
             id={enabledId}
             type="checkbox"
-            checked={enabled}
-            onChange={(event) => setEnabled(event.target.checked)}
+            disabled={!wordingEditable}
+            {...form.register('enabled')}
             data-testid="buyer-email-template-enabled"
           />
           <span>{COPY.enabledLabel}</span>
         </label>
 
-        <FormField label={COPY.fromLabel} name="fromAddress" description={COPY.fromHint} error={fromError}>
+        <FormField
+          label={COPY.fromLabel}
+          name="fromAddress"
+          description={COPY.fromHint}
+          error={errors.fromAddress?.message}
+        >
           <Input
             type="email"
-            value={fromAddress}
-            onChange={(event) => setFromAddress(event.target.value)}
+            {...form.register('fromAddress')}
+            invalid={Boolean(errors.fromAddress)}
             data-testid="buyer-email-from"
           />
         </FormField>
-        <FormField label={COPY.replyToLabel} name="replyTo" error={replyToError}>
+        <FormField label={COPY.replyToLabel} name="replyTo" error={errors.replyTo?.message}>
           <Input
             type="email"
-            value={replyTo}
-            onChange={(event) => setReplyTo(event.target.value)}
+            {...form.register('replyTo')}
+            invalid={Boolean(errors.replyTo)}
             data-testid="buyer-email-reply-to"
           />
         </FormField>
@@ -167,23 +207,25 @@ function EditorForm({
         <Alert tone="info" density="compact">
           {COPY.sharedWording}
         </Alert>
-        {rule ? null : <Alert tone="warning">{COPY.noRule}</Alert>}
+        {wordingEditable ? null : <Alert tone="warning">{COPY.noRule}</Alert>}
 
-        <FormField label={COPY.subjectLabel} name="subject">
+        <FormField label={COPY.subjectLabel} name="subject" error={errors.subject?.message}>
           <Input
-            value={subject}
-            disabled={!rule}
-            onChange={(event) => setSubject(event.target.value)}
+            {...form.register('subject')}
+            disabled={!wordingEditable}
+            invalid={Boolean(errors.subject)}
             data-testid="buyer-email-subject"
           />
         </FormField>
-        <FormField label={COPY.bodyLabel} name="body">
+        <FormField label={COPY.bodyLabel} name="body" error={errors.body?.message}>
           <Textarea
-            ref={bodyRef}
+            {...bodyField}
+            ref={(element) => {
+              bodyField.ref(element);
+              bodyRef.current = element;
+            }}
             rows={8}
-            value={body}
-            disabled={!rule}
-            onChange={(event) => setBody(event.target.value)}
+            disabled={!wordingEditable}
             data-testid="buyer-email-body"
           />
         </FormField>
@@ -198,7 +240,7 @@ function EditorForm({
                 type="button"
                 tone="secondary"
                 className="button--sm"
-                disabled={!rule}
+                disabled={!wordingEditable}
                 onClick={() => insertVariable(field)}
               >
                 {`{${field}}`}
@@ -208,7 +250,7 @@ function EditorForm({
         </div>
 
         <div className="buyer-email-editor__actions">
-          <Button type="submit" disabled={save.isPending || Boolean(fromError || replyToError)} data-testid="buyer-email-save">
+          <Button type="submit" disabled={save.isPending} data-testid="buyer-email-save">
             {COPY.save}
           </Button>
           <Button type="button" tone="secondary" onClick={() => void navigate(listUrl)}>
@@ -224,21 +266,25 @@ function EditorForm({
           <p className="buyer-email-editor__preview">{renderPreview(body)}</p>
         </section>
 
-        <section className="panel panel--dense" data-testid="buyer-email-test">
+        <form
+          className="panel panel--dense"
+          data-testid="buyer-email-test"
+          onSubmit={(event) => void onSendTest(event)}
+          noValidate
+        >
           <p className="eyebrow">{COPY.testTitle}</p>
-          <FormField label={COPY.testToLabel} name="testTo" error={testToError}>
+          <FormField label={COPY.testToLabel} name="testTo" error={testForm.formState.errors.to?.message}>
             <Input
               type="email"
-              value={testTo}
-              onChange={(event) => setTestTo(event.target.value)}
+              {...testForm.register('to')}
+              invalid={Boolean(testForm.formState.errors.to)}
               data-testid="buyer-email-test-to"
             />
           </FormField>
           <Button
-            type="button"
+            type="submit"
             tone="secondary"
-            disabled={sendTest.isPending || !isSingleEmailAddress(testTo.trim()) || subject.trim() === '' || body.trim() === ''}
-            onClick={handleSendTest}
+            disabled={sendTest.isPending || subject.trim() === '' || body.trim() === ''}
             data-testid="buyer-email-test-send"
           >
             {COPY.testSend}
@@ -248,7 +294,7 @@ function EditorForm({
               {COPY.testSentDetail}
             </Alert>
           ) : null}
-        </section>
+        </form>
       </aside>
     </div>
   );
@@ -257,8 +303,9 @@ function EditorForm({
 export function BuyerEmailEditorPage(): ReactElement {
   const { connectionId = '', template = '' } = useParams();
   const connectionQuery = useConnectionQuery(connectionId, { enabled: connectionId !== '' });
-  const rules = useBuyerEmailRules();
   const known = isBuyerEmailTemplate(template);
+  // Only this template's rule: the editor reads one, the list reads all four.
+  const rules = useBuyerEmailRules(known ? template : undefined);
   const title = known ? BUYER_EMAIL_TEMPLATE_COPY[template].label : BUYER_EMAILS_COPY.page.title;
   const backTo = {
     to: `/settings/buyer-emails?connection=${encodeURIComponent(connectionId)}`,

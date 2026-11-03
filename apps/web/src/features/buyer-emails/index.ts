@@ -21,7 +21,18 @@ export { useOrderBuyerEmailsQuery } from './hooks/use-order-buyer-emails-query';
 export { useSendBuyerEmailTestMutation } from './hooks/use-send-buyer-email-test-mutation';
 export { useBuyerEmailRules } from './hooks/use-buyer-email-rules';
 export { useSaveBuyerEmailTemplateMutation } from './hooks/use-save-buyer-email-template-mutation';
-export type { SaveBuyerEmailTemplateInput } from './hooks/use-save-buyer-email-template-mutation';
+export {
+  BuyerEmailSaveError,
+  type SaveBuyerEmailTemplateInput,
+} from './hooks/use-save-buyer-email-template-mutation';
+export {
+  buildBuyerEmailEditorSchema,
+  buyerEmailFieldOfServerMessage,
+  buyerEmailTestFormSchema,
+  type BuyerEmailEditorFormValues,
+  type BuyerEmailServerField,
+  type BuyerEmailTestFormValues,
+} from './lib/buyer-email-editor.schema';
 export { useSetBuyerEmailsEnabledMutation } from './hooks/use-set-buyer-emails-enabled-mutation';
 export { OrderBuyerEmailsPanel } from './components/order-buyer-emails-panel';
 export { BuyerEmailsTile } from './components/buyer-emails-tile';

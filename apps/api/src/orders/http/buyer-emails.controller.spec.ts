@@ -1,15 +1,21 @@
 /**
  * Buyer Emails Controller tests (#3555)
  *
- * The test send's error mapping and its per-user rate limit.
+ * How the test send's answer maps onto HTTP. The limit itself is the
+ * service's and is pinned in its own spec.
  *
  * @module apps/api/src/orders/http
  */
-import { HttpException, HttpStatus, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  HttpException,
+  HttpStatus,
+  NotFoundException,
+  ServiceUnavailableException,
+} from '@nestjs/common';
 import type { IBuyerEmailNotificationService } from '@openlinker/core/orders';
-import { InMemoryCacheAdapter } from '@openlinker/shared/cache/testing';
 import type { AuthenticatedUser } from '../../auth/auth.types';
-import { BUYER_EMAIL_TEST_SEND_LIMIT, BuyerEmailsController } from './buyer-emails.controller';
+import { BuyerEmailsController } from './buyer-emails.controller';
 import type { SendBuyerEmailTestDto } from './dto/send-buyer-email-test.dto';
 
 const DTO: SendBuyerEmailTestDto = {
@@ -20,9 +26,7 @@ const DTO: SendBuyerEmailTestDto = {
   body: 'Hello',
 };
 
-function user(id: string): AuthenticatedUser {
-  return { id, username: id, role: 'admin' } as AuthenticatedUser;
-}
+const USER = { id: 'u-1', username: 'u-1', role: 'admin' } as AuthenticatedUser;
 
 describe('BuyerEmailsController', () => {
   let sendTest: jest.Mock;
@@ -30,13 +34,13 @@ describe('BuyerEmailsController', () => {
 
   beforeEach(() => {
     sendTest = jest.fn().mockResolvedValue({ status: 'sent' });
-    const service = { sendTest } as unknown as IBuyerEmailNotificationService;
-    controller = new BuyerEmailsController(service, new InMemoryCacheAdapter());
+    controller = new BuyerEmailsController({ sendTest } as unknown as IBuyerEmailNotificationService);
   });
 
-  it('should send the given text to the trimmed address', async () => {
-    await expect(controller.sendTest(DTO, user('u-1'))).resolves.toEqual({ status: 'sent' });
+  it('should send the given text to the trimmed address on behalf of the signed-in user', async () => {
+    await expect(controller.sendTest(DTO, USER)).resolves.toEqual({ status: 'sent' });
     expect(sendTest).toHaveBeenCalledWith({
+      actorUserId: 'u-1',
       connectionId: DTO.connectionId,
       templateKey: 'shipped',
       to: 'me@shop.pl',
@@ -46,32 +50,28 @@ describe('BuyerEmailsController', () => {
   });
 
   it('should answer 404 when the connection is not found', async () => {
-    sendTest.mockResolvedValue({
-      status: 'refused',
-      reason: 'connection-not-found',
-      message: 'gone',
-    });
+    sendTest.mockResolvedValue({ status: 'refused', reason: 'connection-not-found', message: 'gone' });
 
-    await expect(controller.sendTest(DTO, user('u-1'))).rejects.toBeInstanceOf(NotFoundException);
+    await expect(controller.sendTest(DTO, USER)).rejects.toBeInstanceOf(NotFoundException);
   });
 
-  it('should answer 429 once a user exceeds the test-send limit, without sending', async () => {
-    for (let i = 0; i < BUYER_EMAIL_TEST_SEND_LIMIT; i += 1) {
-      await controller.sendTest(DTO, user('u-1'));
-    }
-    sendTest.mockClear();
+  it('should answer 429 when the service reports the actor is rate-limited', async () => {
+    sendTest.mockResolvedValue({ status: 'refused', reason: 'rate-limited', message: 'slow down' });
 
-    const refusal = controller.sendTest(DTO, user('u-1'));
+    const refusal = controller.sendTest(DTO, USER);
     await expect(refusal).rejects.toBeInstanceOf(HttpException);
     await expect(refusal).rejects.toMatchObject({ status: HttpStatus.TOO_MANY_REQUESTS });
-    expect(sendTest).not.toHaveBeenCalled();
   });
 
-  it('should count the limit per user', async () => {
-    for (let i = 0; i < BUYER_EMAIL_TEST_SEND_LIMIT; i += 1) {
-      await controller.sendTest(DTO, user('u-1'));
-    }
+  it('should answer 400 for an address that is not a single email', async () => {
+    sendTest.mockResolvedValue({ status: 'refused', reason: 'invalid-address', message: 'one address' });
 
-    await expect(controller.sendTest(DTO, user('u-2'))).resolves.toEqual({ status: 'sent' });
+    await expect(controller.sendTest(DTO, USER)).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it('should answer 503 when the send failed', async () => {
+    sendTest.mockResolvedValue({ status: 'failed', message: 'could not send' });
+
+    await expect(controller.sendTest(DTO, USER)).rejects.toBeInstanceOf(ServiceUnavailableException);
   });
 });
