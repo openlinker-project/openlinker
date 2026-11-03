@@ -692,6 +692,12 @@ async function startMysql(
     .withNetworkAliases(MYSQL_NETWORK_ALIAS)
     .withLabels(ciRunIdLabels())
     .withLogConsumer(makeLogConsumer(logBuffer))
+    // Native AIO off: InnoDB takes kernel AIO contexts from a host-wide pool
+    // (`fs.aio-max-nr`) shared by every MySQL on the self-hosted runner. When it
+    // runs out, mysqld aborts with "io_setup() failed with EAGAIN" and the test
+    // only sees "container is not running" (#3918). These are throwaway test
+    // databases, so the slower simulated AIO costs nothing that matters.
+    .withCommand(['--innodb-use-native-aio=0'])
     // Cold-cache CI: MySQL 8.4 image is ~700MB, pull + boot can hit 3-4 min.
     // 240s gives enough headroom without masking real container failures.
     .withStartupTimeout(240_000)

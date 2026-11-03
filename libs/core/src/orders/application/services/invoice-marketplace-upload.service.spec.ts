@@ -340,11 +340,13 @@ describe('InvoiceMarketplaceUploadService', () => {
     });
   });
 
-  it('should skip a row that is already terminal, without calling the marketplace', async () => {
+  it('should skip when another attempt holds the row, without uploading anything', async () => {
+    const uploader = { uploadBillingDocument: jest.fn() };
+    integrations.getCapabilityAdapter.mockResolvedValue(uploader);
     uploads.claimAttempt.mockResolvedValue(null);
 
     expect(await service.upload('inv-1')).toEqual({ kind: 'skipped', reason: 'already-settled' });
-    expect(integrations.getCapabilityAdapter).not.toHaveBeenCalled();
+    expect(uploader.uploadBillingDocument).not.toHaveBeenCalled();
   });
 
   it('should not overwrite a row another attempt settled first', async () => {
