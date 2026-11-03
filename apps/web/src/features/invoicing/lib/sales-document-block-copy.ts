@@ -240,15 +240,17 @@ export function resolveSalesDocumentBlockCopy(
   }
 
   if (reason === 'trigger-model-batched') {
+    // #3583: queued for the connection's next batch run - a workflow, not a
+    // fault, so quiet like manual.
     return {
-      tone: 'warning',
+      tone: 'info',
       title: t(
         'salesDocument.panel.blockBatchedTitle',
-        `Not ${v.pastParticiplePhrase}: batched ${v.activityNoun} is not available yet.`,
+        `Waiting for the next batch.`,
       ),
       body: t(
         'salesDocument.panel.blockBatchedBody',
-        `OpenLinker cannot group this order into a batch, so it issued nothing. ${capitalize(v.actionVerb)} it by hand, or switch the connection to issue on payment.`,
+        `This connection issues in batches, so the next batch run will issue this order. ${capitalize(v.actionVerb)} it now if it should not wait.`,
       ),
       detail,
       offerSetPrimary: false,

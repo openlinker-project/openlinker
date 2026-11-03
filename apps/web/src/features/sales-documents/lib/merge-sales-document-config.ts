@@ -19,6 +19,7 @@
  *
  * @module apps/web/src/features/sales-documents/lib
  */
+import { writeTriggerModelForKind } from '../../connections';
 import type { SalesDocumentConfigPatch } from '../api/sales-documents.types';
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -37,9 +38,6 @@ export function mergeSalesDocumentConfig(
   if (patch.isPrimary !== undefined) {
     invoicing.isPrimary = patch.isPrimary;
   }
-  if (patch.triggerModel !== undefined) {
-    invoicing.triggerModel = patch.triggerModel;
-  }
   if (patch.documentKind !== undefined) {
     if (patch.documentKind === '') {
       delete salesDocument.documentKind;
@@ -48,5 +46,22 @@ export function mergeSalesDocumentConfig(
     }
   }
 
-  return { ...existingConfig, invoicing, salesDocument };
+  if (patch.batchSchedule !== undefined) {
+    const schedules = isRecord(salesDocument.batchSchedules)
+      ? { ...salesDocument.batchSchedules }
+      : {};
+    if (patch.batchSchedule.value === null) {
+      delete schedules[patch.batchSchedule.kind];
+    } else {
+      schedules[patch.batchSchedule.kind] = patch.batchSchedule.value;
+    }
+    salesDocument.batchSchedules = schedules;
+  }
+
+  const merged = { ...existingConfig, invoicing, salesDocument };
+  // #3582: a trigger model is written per kind; the legacy
+  // `invoicing.triggerModel` stays as the fallback for any other kind.
+  return patch.triggerModel === undefined
+    ? merged
+    : writeTriggerModelForKind(merged, patch.triggerModel.kind, patch.triggerModel.value);
 }

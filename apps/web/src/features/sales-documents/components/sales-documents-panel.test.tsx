@@ -99,6 +99,60 @@ describe('SalesDocumentsPanel', () => {
     expect(screen.getByRole('combobox', { name: /When eparagony\.pl issues/i })).toBeDisabled();
   });
 
+  // #3582: a connection issuing both kinds gets one trigger per kind, and
+  // changing one writes only that kind's entry.
+  it('should render a trigger per kind for a both-kinds row and write only the changed kind', async () => {
+    const dual: Connection = {
+      ...sampleConnection,
+      id: 'conn_dual',
+      name: 'Dual',
+      platformType: 'eparagony',
+      enabledCapabilities: ['Invoicing', 'Fiscalization'],
+      supportedCapabilities: ['Invoicing', 'Fiscalization'],
+      config: {
+        invoicing: { isPrimary: true, triggerModel: 'auto-on-paid' },
+        salesDocument: { documentKind: 'both', triggerModels: { invoice: 'batched' } },
+      },
+    };
+    const update = vi.fn().mockResolvedValue(dual);
+    const apiClient = createMockApiClient({
+      connections: {
+        list: vi.fn().mockResolvedValue([dual]),
+        getById: vi.fn().mockResolvedValue(dual),
+        update,
+      },
+    });
+
+    renderWithProviders(<SalesDocumentsPanel />, {
+      apiClient,
+      sessionAdapter: createAuthenticatedSessionAdapter(),
+    });
+
+    await screen.findByText('Dual');
+    const invoices = screen.getByRole('combobox', { name: 'When Dual issues invoices' });
+    const receipts = screen.getByRole('combobox', { name: 'When Dual issues receipts' });
+    // Effective values: the kind-scoped invoice entry, and the legacy key for receipts.
+    expect(invoices).toHaveValue('batched');
+    expect(receipts).toHaveValue('auto-on-paid');
+
+    await userEvent.selectOptions(receipts, 'manual');
+
+    await waitFor(() => {
+      expect(update).toHaveBeenCalledWith(
+        'conn_dual',
+        expect.objectContaining({
+          config: expect.objectContaining({
+            invoicing: { isPrimary: true, triggerModel: 'auto-on-paid' },
+            salesDocument: {
+              documentKind: 'both',
+              triggerModels: { invoice: 'batched', 'fiscal-receipt': 'manual' },
+            },
+          }),
+        }),
+      );
+    });
+  });
+
   it('should clear the previous primary when a new row is picked as primary', async () => {
     const byId = connectionsById(INFAKT, EPARAGONY);
     const getById = vi.fn(async (connectionId: string) => byId[connectionId]);
@@ -219,6 +273,31 @@ describe('SalesDocumentsPanel', () => {
 
     await screen.findByText('eparagony.pl');
     expect(screen.getByText('Not a routing candidate')).toBeInTheDocument();
+  });
+
+  it('should link to the batch screen only from a row that issues in batches (#3584)', async () => {
+    const batched: Connection = {
+      ...EPARAGONY,
+      config: {
+        salesDocument: { documentKind: 'fiscal-receipt', triggerModels: { 'fiscal-receipt': 'batched' } },
+      },
+    };
+    const apiClient = createMockApiClient({
+      connections: { list: vi.fn().mockResolvedValue([INFAKT, batched]) },
+    });
+
+    renderWithProviders(<SalesDocumentsPanel />, {
+      apiClient,
+      sessionAdapter: createAuthenticatedSessionAdapter(),
+    });
+
+    const link = await screen.findByRole('link', {
+      name: 'Configure batch issuing for eparagony.pl',
+    });
+    expect(link).toHaveAttribute('href', '/settings/sales-documents/batches/conn_eparagony');
+    expect(
+      screen.queryByRole('link', { name: 'Configure batch issuing for inFakt' }),
+    ).not.toBeInTheDocument();
   });
 
   it('should state where the primary rule applies, above the table', async () => {

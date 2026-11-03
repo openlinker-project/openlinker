@@ -1,0 +1,350 @@
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#faf9f5;color:#141413}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<title>Batch issuing</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="../../../../apps/web/src/index.css">
+<link rel="stylesheet" href="ol-kit.css">
+<script src="ol-kit.js" defer></script>
+<style>
+  /* Page-specific only. Everything else is real ol.css. */
+  .bt-freq-field[hidden] { display: none; }
+  .bt-form { display: grid; gap: var(--space-3); max-width: 34rem; }
+  .bt-forms { display: grid; gap: var(--space-5); }
+  .bt-inline { display: flex; align-items: center; gap: var(--space-3); flex-wrap: wrap; }
+  .bt-saved { color: var(--status-success-strong); font-size: 0.8125rem; }
+  .bt-reason { display: block; margin-top: 2px; }
+  .bt-track { height: 8px; border-radius: var(--radius-pill); background: var(--bg-surface-muted); border: 1px solid var(--border-subtle); overflow: hidden; margin-top: var(--space-2); }
+  .bt-fill { height: 100%; border-radius: var(--radius-pill); background: var(--status-info); transition: width 0.3s var(--ease-out); }
+  @media (prefers-reduced-motion: reduce) { .bt-fill { transition: none; } }
+  .bt-metrics { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: var(--space-3); margin: var(--space-3) 0; }
+  @media (max-width: 599.98px) { .bt-metrics { grid-template-columns: 1fr; } }
+  .bt-runrow--current td { background: var(--bg-surface-muted); }
+</style>
+
+<div data-ol-page data-active="Sales documents" data-crumb-group="Settings" data-crumb="Sales documents">
+  <section class="page-section">
+    <div class="page-header page-header--split">
+      <div class="page-header__content">
+        <p class="eyebrow">Settings · Sales documents</p>
+        <h2 class="page-title">Batch issuing <span class="mk-pin">1</span>: eparagony.pl</h2>
+        <p class="page-description">Groups this connection's invoices and receipts into scheduled runs instead of issuing each one the moment its order qualifies.</p>
+      </div>
+    </div>
+
+    <!-- ============ SETTINGS ============ -->
+    <div data-testid="batch-issuing-screen" data-mk-state="settings" data-mk-label="Ustawienia">
+      <div class="tabs"><div class="tabs__list" role="tablist">
+        <button type="button" class="tabs__trigger" role="tab" aria-selected="true" data-state="active">Schedule</button>
+        <button type="button" class="tabs__trigger" role="tab" aria-selected="false">Next batch <span class="mk-pin">7</span></button>
+        <button type="button" class="tabs__trigger" role="tab" aria-selected="false">Run history</button>
+      </div></div>
+
+      <div class="alert alert--info" role="status"><div class="alert__content"><strong class="alert__title">Batch issuing is on</strong><div class="alert__description">Orders wait in the queue below and are issued together on the schedule you set here. OpenLinker still decides invoice vs. fiscal receipt per order using the routing rules on this page — batching only changes <em>when</em> a document is created, never <em>which kind</em>. <span class="mk-pin">2</span></div></div></div>
+
+      <div class="panel">
+        <div class="panel__header"><h3>Last and next run</h3></div>
+        <dl class="key-value-list">
+          <dt class="key-value-list__label">Next run</dt><dd class="key-value-list__value">Today, 18:00 (in 3 h 12 min) · 10 queued</dd>
+          <dt class="key-value-list__label">Last run</dt><dd class="key-value-list__value">25 Sep 2026, 18:00 · 7 sent to issue · <span class="status-badge status-badge--success status-badge--compact">Completed</span></dd>
+        </dl>
+      </div>
+
+      <div class="panel">
+        <div class="panel__header"><h3>Schedule <span class="mk-pin">3</span></h3></div>
+        <p class="muted-text">Each document this connection batches has its own schedule, so receipts can go out daily while invoices wait for month end.</p>
+        <div class="bt-forms">
+          <div class="bt-form">
+            <h4 style="margin:0">Invoices</h4>
+            <label class="form-field"><span class="form-field__label">Frequency</span>
+              <select class="control" data-bt-freq>
+                <option value="daily">Daily, at a fixed time</option>
+                <option value="hourly">Every N hours</option>
+                <option value="monthend" selected>Month end (business customers only)</option>
+              </select>
+            </label>
+            <div class="bt-freq-field" data-freq="daily" hidden>
+              <label class="form-field"><span class="form-field__label">Time</span>
+                <input class="control" type="time" value="18:00" style="max-width:10rem"></label>
+            </div>
+            <div class="bt-freq-field" data-freq="hourly" hidden>
+              <label class="form-field"><span class="form-field__label">Every</span>
+                <input class="control" type="number" min="1" max="24" value="4" style="max-width:8rem">
+                <span class="form-field__description">Hours between runs, starting at 00:00.</span></label>
+            </div>
+            <div class="bt-freq-field" data-freq="monthend">
+              <div class="alert alert--info" role="status"><div class="alert__content"><strong class="alert__title">Business customers on the last day, everyone else daily <span class="mk-pin">4</span></strong><div class="alert__description">Runs on the last calendar day of the month at 23:00 and issues orders whose buyer has a company tax ID. Orders without one on this connection go out every day at 23:00, so no order is left unissued.</div></div></div>
+            </div>
+            <label class="form-field"><span class="form-field__label">Time zone</span>
+              <input class="control" value="Europe/Warsaw" style="max-width:16rem">
+              <span class="form-field__description">The times above are read in this zone.</span></label>
+            <div class="bt-inline">
+              <button type="button" class="button button--primary" data-bt-save>Save invoices schedule</button>
+              <span class="bt-saved" hidden>✓ Saved</span>
+            </div>
+          </div>
+          <div class="bt-form">
+            <h4 style="margin:0">Fiscal receipts</h4>
+            <label class="form-field"><span class="form-field__label">Frequency</span>
+              <select class="control" data-bt-freq>
+                <option value="daily" selected>Daily, at a fixed time</option>
+                <option value="hourly">Every N hours</option>
+                <option value="monthend">Month end (business customers only)</option>
+              </select>
+            </label>
+            <div class="bt-freq-field" data-freq="daily">
+              <label class="form-field"><span class="form-field__label">Time</span>
+                <input class="control" type="time" value="18:00" style="max-width:10rem"></label>
+            </div>
+            <div class="bt-freq-field" data-freq="hourly" hidden>
+              <label class="form-field"><span class="form-field__label">Every</span>
+                <input class="control" type="number" min="1" max="24" value="4" style="max-width:8rem">
+                <span class="form-field__description">Hours between runs, starting at 00:00.</span></label>
+            </div>
+            <div class="bt-freq-field" data-freq="monthend" hidden>
+              <div class="alert alert--info" role="status"><div class="alert__content"><strong class="alert__title">Business customers on the last day, everyone else daily</strong><div class="alert__description">Runs on the last calendar day of the month at 23:00 and issues orders whose buyer has a company tax ID. Orders without one on this connection go out every day at 23:00, so no order is left unissued.</div></div></div>
+            </div>
+            <label class="form-field"><span class="form-field__label">Time zone</span>
+              <input class="control" value="Europe/Warsaw" style="max-width:16rem">
+              <span class="form-field__description">The times above are read in this zone.</span></label>
+            <div class="bt-inline">
+              <button type="button" class="button button--primary" data-bt-save>Save fiscal receipts schedule</button>
+              <span class="bt-saved" hidden>✓ Saved</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============ QUEUE (populated) ============ -->
+    <div data-testid="batch-issuing-screen" data-mk-state="queue" data-mk-label="Kolejka" hidden>
+      <div class="tabs"><div class="tabs__list" role="tablist">
+        <button type="button" class="tabs__trigger" role="tab" aria-selected="false">Schedule</button>
+        <button type="button" class="tabs__trigger" role="tab" aria-selected="true" data-state="active">Next batch</button>
+        <button type="button" class="tabs__trigger" role="tab" aria-selected="false">Run history</button>
+      </div></div>
+
+      <div class="toolbar page-summary"><div class="toolbar__group" data-chipgroup>
+        <button type="button" class="chip chip--neutral chip--active" data-filter="all">All · 10</button>
+        <button type="button" class="chip chip--info" data-filter="invoice">Invoice · 4</button>
+        <button type="button" class="chip chip--neutral" data-filter="receipt">Fiscal receipt · 4</button>
+        <button type="button" class="chip chip--warning" data-filter="blocked">Blocked · 2 <span class="mk-pin">5</span></button>
+      </div>
+        <button type="button" class="button button--primary" id="bt-run-now" data-testid="batch-run-now" style="margin-left:auto">Run now <span class="mk-pin">6</span></button>
+      </div>
+
+      <div class="data-table__container">
+        <table class="data-table" data-batch-table data-testid="batch-queue-table">
+          <thead><tr><th>Order</th><th>Source</th><th>Buyer</th><th>Placed</th><th class="data-table__cell--right">Total</th><th>Will issue</th></tr></thead>
+          <tbody>
+            <tr data-kind="invoice" data-testid="batch-queue-row" data-row-kind="queued"><td class="mono-text">ALG-24917</td><td><span class="entity-label"><span class="entity-label__name">Allegro</span></span></td><td>Anna Kowalska</td><td>24 Sep, 21:40</td><td class="data-table__cell--right">249.00 PLN</td><td><span class="status-badge status-badge--info status-badge--compact">Invoice</span></td></tr>
+            <tr data-kind="receipt" data-testid="batch-queue-row" data-row-kind="queued"><td class="mono-text">ERL-1042</td><td><span class="entity-label"><span class="entity-label__name">Erli</span></span></td><td>Jan Nowak</td><td>24 Sep, 22:05</td><td class="data-table__cell--right">89.90 PLN</td><td><span class="status-badge status-badge--neutral status-badge--compact">Fiscal receipt</span></td></tr>
+            <tr data-kind="receipt" data-testid="batch-queue-row" data-row-kind="queued"><td class="mono-text">PS-3387</td><td><span class="entity-label"><span class="entity-label__name">PrestaShop · sklep-ceramika.pl</span></span></td><td>Piotr Wiśniewski</td><td>25 Sep, 08:12</td><td class="data-table__cell--right">156.50 PLN</td><td><span class="status-badge status-badge--neutral status-badge--compact">Fiscal receipt</span></td></tr>
+            <tr data-kind="invoice" data-testid="batch-queue-row" data-row-kind="queued"><td class="mono-text">WC-1204</td><td><span class="entity-label"><span class="entity-label__name">WooCommerce · dom-i-ogrod.pl</span></span></td><td>Katarzyna Zielińska</td><td>25 Sep, 10:47</td><td class="data-table__cell--right">412.00 PLN</td><td><span class="status-badge status-badge--info status-badge--compact">Invoice</span></td></tr>
+            <tr data-kind="blocked" data-testid="batch-queue-row" data-row-kind="blocked"><td class="mono-text">ALG-24933</td><td><span class="entity-label"><span class="entity-label__name">Allegro</span></span></td><td>Marek Dąbrowski</td><td>25 Sep, 13:03</td><td class="data-table__cell--right">76.00 PLN</td><td><span class="status-badge status-badge--warning status-badge--compact">Blocked</span><span class="muted-text bt-reason">Already has a document on another connection (Allegro · KSeF)</span></td></tr>
+            <tr data-kind="receipt" data-testid="batch-queue-row" data-row-kind="queued"><td class="mono-text">ERL-1055</td><td><span class="entity-label"><span class="entity-label__name">Erli</span></span></td><td>Magdalena Wójcik</td><td>25 Sep, 15:21</td><td class="data-table__cell--right">199.99 PLN</td><td><span class="status-badge status-badge--neutral status-badge--compact">Fiscal receipt</span></td></tr>
+            <tr data-kind="blocked" data-testid="batch-queue-row" data-row-kind="blocked"><td class="mono-text">PS-3391</td><td><span class="entity-label"><span class="entity-label__name">PrestaShop · sklep-ceramika.pl</span></span></td><td>Tomasz Lewandowski</td><td>26 Sep, 09:02</td><td class="data-table__cell--right">320.00 PLN</td><td><span class="status-badge status-badge--warning status-badge--compact">Blocked</span><span class="muted-text bt-reason">No sales-document rule for the delivery country (DE)</span></td></tr>
+            <tr data-kind="invoice" data-testid="batch-queue-row" data-row-kind="queued"><td class="mono-text">WC-1209</td><td><span class="entity-label"><span class="entity-label__name">WooCommerce · dom-i-ogrod.pl</span></span></td><td>Agnieszka Kamińska</td><td>26 Sep, 11:38</td><td class="data-table__cell--right">65.00 PLN</td><td><span class="status-badge status-badge--info status-badge--compact">Invoice</span></td></tr>
+            <tr data-kind="receipt" data-testid="batch-queue-row" data-row-kind="queued"><td class="mono-text">ALG-24950</td><td><span class="entity-label"><span class="entity-label__name">Allegro</span></span></td><td>Anna Kowalska</td><td>26 Sep, 12:55</td><td class="data-table__cell--right">129.00 PLN</td><td><span class="status-badge status-badge--neutral status-badge--compact">Fiscal receipt</span></td></tr>
+            <tr data-kind="invoice" data-testid="batch-queue-row" data-row-kind="queued"><td class="mono-text">WC-1215</td><td><span class="entity-label"><span class="entity-label__name">WooCommerce · dom-i-ogrod.pl</span></span></td><td>Marek Dąbrowski</td><td>26 Sep, 13:10</td><td class="data-table__cell--right">210.00 PLN</td><td><span class="status-badge status-badge--info status-badge--compact">Invoice</span></td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="muted-text" style="margin-top:var(--space-2)">A batch never creates a second document for an order that already has one. Those show up here as Blocked instead of silently dropping out of the queue.</p>
+    </div>
+
+    <!-- ============ RUNNING ============ -->
+    <div data-testid="batch-issuing-screen" data-mk-state="running" data-mk-label="W trakcie" hidden>
+      <div class="tabs"><div class="tabs__list" role="tablist">
+        <button type="button" class="tabs__trigger" role="tab" aria-selected="false">Schedule</button>
+        <button type="button" class="tabs__trigger" role="tab" aria-selected="true" data-state="active">Next batch</button>
+        <button type="button" class="tabs__trigger" role="tab" aria-selected="false">Run history</button>
+      </div></div>
+
+      <div class="panel" data-testid="batch-run-progress">
+        <div class="panel__header"><h3><span class="status-badge status-badge--info status-badge--pulse"><span class="status-badge__dot" aria-hidden="true"></span>Running</span> Run started 18:00:04</h3><span class="panel__meta">elapsed 00:00:38</span></div>
+        <p class="muted-text">Processed 5 of 10 orders, one at a time. Each order is issued under its own lock, so two connections can never issue a document for the same order. <span class="mk-pin">8</span></p>
+        <div class="bt-track"><div class="bt-fill" style="width:60%"></div></div>
+        <div class="bt-inline" style="margin-top:var(--space-3)">
+          <button type="button" class="button button--primary" data-testid="batch-run-now" disabled><span class="button__spinner" aria-hidden="true"></span>Run in progress…</button>
+          <span class="muted-text">Run now is unavailable until this run finishes.</span>
+        </div>
+      </div>
+
+      <div class="data-table__container">
+        <table class="data-table">
+          <thead><tr><th>Order</th><th>Buyer</th><th class="data-table__cell--right">Total</th><th>Will issue</th><th>Status</th></tr></thead>
+          <tbody>
+            <tr data-testid="batch-run-item"><td class="mono-text">ALG-24917</td><td>Anna Kowalska</td><td class="data-table__cell--right">249.00 PLN</td><td><span class="status-badge status-badge--info status-badge--compact">Invoice</span></td><td><span class="status-badge status-badge--success status-badge--compact">Done</span></td></tr>
+            <tr data-testid="batch-run-item"><td class="mono-text">ERL-1042</td><td>Jan Nowak</td><td class="data-table__cell--right">89.90 PLN</td><td><span class="status-badge status-badge--neutral status-badge--compact">Fiscal receipt</span></td><td><span class="status-badge status-badge--success status-badge--compact">Done</span></td></tr>
+            <tr data-testid="batch-run-item"><td class="mono-text">PS-3387</td><td>Piotr Wiśniewski</td><td class="data-table__cell--right">156.50 PLN</td><td><span class="status-badge status-badge--neutral status-badge--compact">Fiscal receipt</span></td><td><span class="status-badge status-badge--success status-badge--compact">Done</span></td></tr>
+            <tr data-testid="batch-run-item"><td class="mono-text">WC-1204</td><td>Katarzyna Zielińska</td><td class="data-table__cell--right">412.00 PLN</td><td><span class="status-badge status-badge--info status-badge--compact">Invoice</span></td><td><span class="status-badge status-badge--success status-badge--compact">Done</span></td></tr>
+            <tr data-testid="batch-run-item"><td class="mono-text">ALG-24933</td><td>Marek Dąbrowski</td><td class="data-table__cell--right">76.00 PLN</td><td><span class="status-badge status-badge--warning status-badge--compact">Blocked</span></td><td><span class="status-badge status-badge--success status-badge--compact">Done</span></td></tr>
+            <tr data-testid="batch-run-item"><td class="mono-text">ERL-1055</td><td>Magdalena Wójcik</td><td class="data-table__cell--right">199.99 PLN</td><td><span class="status-badge status-badge--neutral status-badge--compact">Fiscal receipt</span></td><td><span class="status-badge status-badge--info status-badge--compact status-badge--pulse"><span class="status-badge__dot" aria-hidden="true"></span>Processing</span></td></tr>
+            <tr data-testid="batch-queue-row"><td class="mono-text">PS-3391</td><td>Tomasz Lewandowski</td><td class="data-table__cell--right">320.00 PLN</td><td><span class="status-badge status-badge--warning status-badge--compact">Blocked</span></td><td><span class="muted-text">Queued</span></td></tr>
+            <tr data-testid="batch-queue-row"><td class="mono-text">WC-1209</td><td>Agnieszka Kamińska</td><td class="data-table__cell--right">65.00 PLN</td><td><span class="status-badge status-badge--info status-badge--compact">Invoice</span></td><td><span class="muted-text">Queued</span></td></tr>
+            <tr data-testid="batch-queue-row"><td class="mono-text">ALG-24950</td><td>Anna Kowalska</td><td class="data-table__cell--right">129.00 PLN</td><td><span class="status-badge status-badge--neutral status-badge--compact">Fiscal receipt</span></td><td><span class="muted-text">Queued</span></td></tr>
+            <tr data-testid="batch-queue-row"><td class="mono-text">WC-1215</td><td>Marek Dąbrowski</td><td class="data-table__cell--right">210.00 PLN</td><td><span class="status-badge status-badge--info status-badge--compact">Invoice</span></td><td><span class="muted-text">Queued</span></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- ============ FINISHED (mixed outcomes) ============ -->
+    <div data-testid="batch-issuing-screen" data-mk-state="finished" data-mk-label="Zakończony" hidden>
+      <div class="tabs"><div class="tabs__list" role="tablist">
+        <button type="button" class="tabs__trigger" role="tab" aria-selected="false">Schedule</button>
+        <button type="button" class="tabs__trigger" role="tab" aria-selected="false">Next batch</button>
+        <button type="button" class="tabs__trigger" role="tab" aria-selected="true" data-state="active">Run history</button>
+      </div></div>
+
+      <div class="data-table__container">
+        <table class="data-table" data-testid="batch-run-history-table">
+          <thead><tr><th>Started</th><th>Duration</th><th class="data-table__cell--right">Orders</th><th>Result</th><th>Status</th></tr></thead>
+          <tbody>
+            <tr class="bt-runrow--current"><td>26 Sep 2026, 18:00</td><td class="mono-text">00:01:24</td><td class="data-table__cell--right">10</td><td>8 sent to issue · 2 blocked</td><td><span class="status-badge status-badge--warning status-badge--compact">Completed with issues</span></td></tr>
+            <tr><td>25 Sep 2026, 18:00</td><td class="mono-text">00:00:54</td><td class="data-table__cell--right">7</td><td>7 sent to issue</td><td><span class="status-badge status-badge--success status-badge--compact">Completed</span></td></tr>
+            <tr><td>24 Sep 2026, 18:00</td><td class="mono-text">00:00:41</td><td class="data-table__cell--right">5</td><td>4 sent to issue · 1 blocked</td><td><span class="status-badge status-badge--success status-badge--compact">Completed</span></td></tr>
+            <tr><td>23 Sep 2026, 18:00</td><td class="mono-text">00:00:02</td><td class="data-table__cell--right">0</td><td>nothing eligible <span class="mk-pin">9</span></td><td><span class="status-badge status-badge--neutral status-badge--compact">Nothing to issue</span></td></tr>
+            <tr><td>22 Sep 2026, 18:00</td><td class="mono-text">—</td><td class="data-table__cell--right">6</td><td>connection unavailable</td><td><span class="status-badge status-badge--error status-badge--compact">Failed to start</span></td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="panel" data-testid="batch-run-details">
+        <div class="panel__header"><h3>26 Sep 2026, 18:00 — details</h3><span class="panel__meta">10 orders · 00:01:24</span></div>
+        <div class="bt-metrics">
+          <div class="metric-card metric-card--success"><span class="metric-card__label">Issued</span><span class="metric-card__value">6</span></div>
+          <div class="metric-card metric-card--warning"><span class="metric-card__label">Blocked</span><span class="metric-card__value">2</span></div>
+          <div class="metric-card metric-card--error"><span class="metric-card__label">Needs attention <span class="mk-pin">10</span></span><span class="metric-card__value">2</span></div>
+        </div>
+        <div class="data-table__container">
+          <table class="data-table">
+            <thead><tr><th>Order</th><th>Buyer</th><th>Outcome</th><th>Detail</th></tr></thead>
+            <tbody>
+              <tr data-testid="batch-run-item"><td class="mono-text">ALG-24917</td><td>Anna Kowalska</td><td><span class="status-badge status-badge--success status-badge--compact">Issued</span></td><td class="mono-text">FV/512/09/2026 · KSeF accepted</td></tr>
+              <tr data-testid="batch-run-item"><td class="mono-text">ERL-1042</td><td>Jan Nowak</td><td><span class="status-badge status-badge--success status-badge--compact">Issued</span></td><td class="mono-text">PAR/9081</td></tr>
+              <tr data-testid="batch-run-item"><td class="mono-text">PS-3387</td><td>Piotr Wiśniewski</td><td><span class="status-badge status-badge--success status-badge--compact">Issued</span></td><td class="mono-text">PAR/9082</td></tr>
+              <tr data-testid="batch-run-item"><td class="mono-text">WC-1204</td><td>Katarzyna Zielińska</td><td><span class="status-badge status-badge--success status-badge--compact">Issued</span></td><td class="mono-text">FV/513/09/2026 · KSeF accepted</td></tr>
+              <tr data-testid="batch-run-item"><td class="mono-text">ALG-24933</td><td>Marek Dąbrowski</td><td><span class="status-badge status-badge--warning status-badge--compact">Blocked</span></td><td>Already has a document on another connection (Allegro · KSeF)</td></tr>
+              <tr data-testid="batch-run-item"><td class="mono-text">ERL-1055</td><td>Magdalena Wójcik</td><td><span class="status-badge status-badge--success status-badge--compact">Issued</span></td><td class="mono-text">PAR/9083</td></tr>
+              <tr data-testid="batch-run-item"><td class="mono-text">PS-3391</td><td>Tomasz Lewandowski</td><td><span class="status-badge status-badge--warning status-badge--compact">Blocked</span></td><td>No sales-document rule for the delivery country (DE)</td></tr>
+              <tr data-testid="batch-run-item"><td class="mono-text">WC-1209</td><td>Agnieszka Kamińska</td><td><span class="status-badge status-badge--success status-badge--compact">Issued</span></td><td class="mono-text">FV/514/09/2026 · pending KSeF</td></tr>
+              <tr data-testid="batch-run-item"><td class="mono-text">ALG-24950</td><td>Anna Kowalska</td><td><span class="status-badge status-badge--review status-badge--compact">In doubt</span></td><td>eparagony.pl timed out after submission — OpenLinker doesn't know if the document was created. It will re-check automatically; retrying now cannot create a duplicate.</td></tr>
+              <tr data-testid="batch-run-item"><td class="mono-text">WC-1215</td><td>Marek Dąbrowski</td><td><span class="status-badge status-badge--error status-badge--compact">Failed</span></td><td>Missing tax rate on line 2 — needs a manual fix on the order before this connection can issue it.</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============ EMPTY QUEUE ============ -->
+    <div data-testid="batch-issuing-screen" data-mk-state="empty" data-mk-label="Pusta kolejka" hidden>
+      <div class="tabs"><div class="tabs__list" role="tablist">
+        <button type="button" class="tabs__trigger" role="tab" aria-selected="false">Schedule</button>
+        <button type="button" class="tabs__trigger" role="tab" aria-selected="true" data-state="active">Next batch</button>
+        <button type="button" class="tabs__trigger" role="tab" aria-selected="false">Run history</button>
+      </div></div>
+
+      <div class="toolbar page-summary"><div class="toolbar__group">
+        <button type="button" class="button button--primary" data-testid="batch-run-now" disabled title="Nothing to run">Run now</button>
+      </div></div>
+
+      <div class="empty-state">
+        <h3>Nothing waiting for the next batch</h3>
+        <p class="muted-text">Orders appear here once they qualify (paid, or shipped, depending on the market) and this connection is their resolved sales-document connection. <span class="mk-pin">11</span></p>
+      </div>
+    </div>
+
+    <!-- ============ PROVIDER UNAVAILABLE ============ -->
+    <div data-testid="batch-issuing-screen" data-mk-state="unavailable" data-mk-label="Dostawca niedostępny" hidden>
+      <div class="alert alert--error" role="alert" data-testid="batch-unavailable-alert"><div class="alert__content"><strong class="alert__title">eparagony.pl needs reconnecting <span class="mk-pin">12</span></strong><div class="alert__description">Its last request failed authentication. Scheduled runs will fail to start until it is reconnected; nothing is retried automatically for an authentication failure. The queue stays as it is.</div><div class="alert__actions"><button type="button" class="button button--secondary button--sm">Go to connection</button></div></div></div>
+
+      <div class="tabs"><div class="tabs__list" role="tablist">
+        <button type="button" class="tabs__trigger" role="tab" aria-selected="false">Schedule</button>
+        <button type="button" class="tabs__trigger" role="tab" aria-selected="true" data-state="active">Next batch</button>
+        <button type="button" class="tabs__trigger" role="tab" aria-selected="false">Run history</button>
+      </div></div>
+
+      <div class="toolbar page-summary"><div class="toolbar__group">
+        <span class="muted-text">10 orders queued, untouched since the last successful run.</span>
+        <button type="button" class="button button--primary" data-testid="batch-run-now" disabled title="Fix the connection first" style="margin-left:auto">Run now</button>
+      </div></div>
+
+      <div class="data-table__container">
+        <table class="data-table" data-testid="batch-queue-table">
+          <thead><tr><th>Order</th><th>Buyer</th><th class="data-table__cell--right">Total</th><th>Will issue</th></tr></thead>
+          <tbody>
+            <tr data-testid="batch-queue-row" data-row-kind="queued"><td class="mono-text">ALG-24917</td><td>Anna Kowalska</td><td class="data-table__cell--right">249.00 PLN</td><td><span class="status-badge status-badge--info status-badge--compact">Invoice</span></td></tr>
+            <tr data-testid="batch-queue-row" data-row-kind="queued"><td class="mono-text">ERL-1042</td><td>Jan Nowak</td><td class="data-table__cell--right">89.90 PLN</td><td><span class="status-badge status-badge--neutral status-badge--compact">Fiscal receipt</span></td></tr>
+            <tr data-testid="batch-queue-row" data-row-kind="queued"><td class="mono-text">PS-3387</td><td>Piotr Wiśniewski</td><td class="data-table__cell--right">156.50 PLN</td><td><span class="status-badge status-badge--neutral status-badge--compact">Fiscal receipt</span></td></tr>
+            <tr data-testid="batch-queue-row" data-row-kind="queued"><td class="mono-text">WC-1204</td><td>Katarzyna Zielińska</td><td class="data-table__cell--right">412.00 PLN</td><td><span class="status-badge status-badge--info status-badge--compact">Invoice</span></td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="muted-text" style="margin-top:var(--space-2)">Showing 4 of 10; the rest are unchanged since the Kolejka state.</p>
+    </div>
+
+  </section>
+</div>
+
+<aside class="mk-notes" aria-label="Adnotacje">
+  <h3>Adnotacje</h3>
+  <ol>
+    <li><span class="mk-pin">1</span> Ekran pod <code>/settings/sales-documents/batches/:connectionId</code>. Wejście przez link „Configure” w wierszu tabeli „Connected providers” (<code>SalesDocumentsPanel</code>), widoczny tylko gdy któryś rodzaj dokumentu na tym połączeniu ma „When it issues” = Batch (#3584).</li>
+    <li><span class="mk-pin">2</span> Tryb wystawiania jest per rodzaj dokumentu: <code>config.salesDocument.triggerModels[kind]</code>, z fallbackiem do <code>config.invoicing.triggerModel</code> (#3582). Zamówienie czekające na paczkę ma trwały blok <code>trigger-model-batched</code> z docelowym połączeniem i rodzajem dokumentu. To jest kolejka (#3583).</li>
+    <li><span class="mk-pin">3</span> Osobny harmonogram dla faktur i paragonów: <code>config.salesDocument.batchSchedules[kind]</code> = <code>{ frequency, time?, everyHours?, timeZone, effectiveFrom }</code>. Strefa czasowa jest zapisana w harmonogramie (domyślnie Europe/Warsaw), więc worker i API liczą ten sam slot. <code>effectiveFrom</code> to chwila zapisu, więc nowy harmonogram nie odpala slotu z przeszłości.</li>
+    <li><span class="mk-pin">4</span> D42: „Month end” wystawia ostatniego dnia miesiąca o 23:00 tylko B2B (zamówienia z NIP-em kupującego). B2C na tym połączeniu idzie codziennie o 23:00, więc nic nie zostaje bez dokumentu.</li>
+    <li><span class="mk-pin">5</span> „Blocked” to zamówienia, których ostatni zakończony przebieg nie wysłał do wystawienia: blokada bramki, dokument już jest na innym połączeniu (jedno zamówienie = jeden dokument źródłowy, #2047), routing już tu nie kieruje albo nie dało się ich sprawdzić.</li>
+    <li><span class="mk-pin">6</span> „Run now” zleca ten sam job <code>salesDocument.batch.run</code> co slot z harmonogramu, dla całej kolejki (B2B i B2C). Odmowy mają kody <code>CONNECTION_NOT_BATCHED</code>, <code>CONNECTION_NEEDS_REAUTH</code>, <code>CONNECTION_NOT_ACTIVE</code>, <code>BATCH_RUN_IN_PROGRESS</code>.</li>
+    <li><span class="mk-pin">7</span> Filtrowanie chipami (All/Invoice/Fiscal receipt/Blocked) działa lokalnie w przeglądarce, tak jak w tabeli zamówień.</li>
+    <li><span class="mk-pin">8</span> Przebieg obsługuje zamówienia po kolei, każde pod własną blokadą wystawiania (<code>invoice:issue:{orderId}</code>). Postęp = zamówienia zapisane w przebiegu / (zapisane + wciąż w kolejce). Widok odświeża się co 5 s.</li>
+    <li><span class="mk-pin">9</span> „Nothing to issue” to zdrowy, pusty przebieg, odróżniony od „Failed to start”.</li>
+    <li><span class="mk-pin">10</span> Wynik per zamówienie jest czytany z dokumentów zamówienia w chwili odczytu (ADR-065), nie zapisany w przebiegu. „In doubt”: dostawca nie odpowiedział na czas, ponowienie nie zdubluje dokumentu. „Failed”: trwała odmowa dostawcy.</li>
+    <li><span class="mk-pin">11</span> Zamówienie trafia do kolejki dopiero, gdy warunek wystawienia jest spełniony (opłacone), a to połączenie jest jego rozstrzygniętym połączeniem dokumentów sprzedaży.</li>
+    <li><span class="mk-pin">12</span> Połączenie <code>needs_reauth</code> (ADR-008) albo nieaktywne: alert, „Run now” wyłączone, kolejka nadal widoczna. Przebieg z harmonogramu kończy się jako „Failed to start” i nie rusza kolejki.</li>
+  </ol>
+</aside>
+
+<script>
+(function () {
+  // Frequency sub-fields and save confirmation, per schedule form.
+  document.querySelectorAll('.bt-form').forEach(function (form) {
+    var freq = form.querySelector('[data-bt-freq]');
+    if (freq) {
+      freq.addEventListener('change', function () {
+        form.querySelectorAll('.bt-freq-field').forEach(function (el) {
+          el.hidden = el.getAttribute('data-freq') !== freq.value;
+        });
+      });
+    }
+    var save = form.querySelector('[data-bt-save]');
+    var msg = form.querySelector('.bt-saved');
+    if (save && msg) save.addEventListener('click', function () { msg.hidden = false; });
+  });
+
+  // Chip row filters, scoped to the batch table in the same state.
+  document.addEventListener('click', function (e) {
+    var chip = e.target.closest('[data-filter]');
+    if (chip) {
+      var group = chip.closest('[data-chipgroup]');
+      Array.prototype.forEach.call(group.querySelectorAll('[data-filter]'), function (b) {
+        b.classList.toggle('chip--active', b === chip);
+      });
+      var val = chip.getAttribute('data-filter');
+      var table = chip.closest('[data-mk-state]').querySelector('[data-batch-table] tbody');
+      if (table) {
+        Array.prototype.forEach.call(table.querySelectorAll('tr'), function (tr) {
+          tr.hidden = val !== 'all' && tr.getAttribute('data-kind') !== val;
+        });
+      }
+      return;
+    }
+    // "Run now" jumps to the running state via the mockup bar's own switcher.
+    if (e.target.closest && e.target.closest('#bt-run-now')) {
+      var btn = document.querySelector('.mk-bar__states button[data-s="running"]');
+      if (btn) { btn.click(); window.scrollTo(0, 0); }
+    }
+  });
+})();
+</script>
+
+</body></html>

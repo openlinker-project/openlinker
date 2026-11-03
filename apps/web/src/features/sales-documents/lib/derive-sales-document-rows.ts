@@ -10,8 +10,13 @@
  *
  * @module apps/web/src/features/sales-documents/lib
  */
-import type { Connection } from '../../connections';
-import type { SalesDocumentCapability, SalesDocumentKind, SalesDocumentRow } from '../api/sales-documents.types';
+import { resolveTriggerModelForKind, type Connection } from '../../connections';
+import type {
+  ConcreteDocumentKind,
+  SalesDocumentCapability,
+  SalesDocumentKind,
+  SalesDocumentRow,
+} from '../api/sales-documents.types';
 import { SALES_DOCUMENT_KIND_VALUES } from '../api/sales-documents.types';
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -44,6 +49,17 @@ export function isActiveRoutable(row: Pick<SalesDocumentRow, 'status' | 'documen
 }
 
 /**
+ * The concrete kinds a row issues (#3582): `'both'` issues each kind per
+ * order, so it carries a trigger model for each; "Nothing" issues none.
+ */
+export function issuedDocumentKinds(
+  documentKind: SalesDocumentKind | null,
+): ConcreteDocumentKind[] {
+  if (documentKind === 'both') return ['invoice', 'fiscal-receipt'];
+  return documentKind === null ? [] : [documentKind];
+}
+
+/**
  * Every connection with `Invoicing` or `Fiscalization` enabled, reduced to
  * the routing facts the table edits. A connection with neither capability
  * (or disabled entirely — capability enablement is a separate axis from
@@ -66,10 +82,10 @@ export function deriveSalesDocumentRows(connections: readonly Connection[]): Sal
 
     const isPrimary = invoicing.isPrimary === true || invoicing.isPrimary === 'true';
 
-    const rawTrigger = invoicing.triggerModel;
-    const triggerModel = typeof rawTrigger === 'string' && rawTrigger.trim().length > 0
-      ? rawTrigger
-      : 'manual';
+    const triggerModels: Record<ConcreteDocumentKind, string> = {
+      invoice: resolveTriggerModelForKind(connection.config, 'invoice').model,
+      'fiscal-receipt': resolveTriggerModelForKind(connection.config, 'fiscal-receipt').model,
+    };
 
     rows.push({
       connectionId: connection.id,
@@ -79,7 +95,7 @@ export function deriveSalesDocumentRows(connections: readonly Connection[]): Sal
       capability,
       documentKind,
       isPrimary,
-      triggerModel,
+      triggerModels,
     });
   }
 

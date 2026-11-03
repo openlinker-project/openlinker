@@ -81,18 +81,51 @@ describe('hasAutomaticDocumentIssuing', () => {
     capability: 'Invoicing',
     documentKind: 'invoice',
     isPrimary: true,
-    triggerModel: 'auto-on-paid',
+    triggerModels: { invoice: 'auto-on-paid', 'fiscal-receipt': 'manual' },
     ...overrides,
+  });
+  const models = (invoice: string, receipt = 'manual'): SalesDocumentRow['triggerModels'] => ({
+    invoice,
+    'fiscal-receipt': receipt,
   });
 
   it('should be true for an active primary connection with an automatic trigger', () => {
     expect(hasAutomaticDocumentIssuing([row({})])).toBe(true);
-    expect(hasAutomaticDocumentIssuing([row({ triggerModel: 'auto-on-shipped' })])).toBe(true);
+    expect(
+      hasAutomaticDocumentIssuing([row({ triggerModels: models('auto-on-shipped') })]),
+    ).toBe(true);
   });
 
-  it('should be false while the trigger is manual or batched', () => {
-    expect(hasAutomaticDocumentIssuing([row({ triggerModel: 'manual' })])).toBe(false);
-    expect(hasAutomaticDocumentIssuing([row({ triggerModel: 'batched' })])).toBe(false);
+  it('should be false while the trigger is manual', () => {
+    expect(hasAutomaticDocumentIssuing([row({ triggerModels: models('manual') })])).toBe(false);
+  });
+
+  // #3583: a scheduled batch run issues without anyone asking.
+  it('should count a batched trigger as automatic', () => {
+    expect(hasAutomaticDocumentIssuing([row({ triggerModels: models('batched') })])).toBe(true);
+  });
+
+  // #3582: only the kinds the row issues count.
+  it('should read the trigger of the kind the row issues, not the other kind', () => {
+    expect(
+      hasAutomaticDocumentIssuing([row({ triggerModels: models('manual', 'auto-on-paid') })]),
+    ).toBe(false);
+    expect(
+      hasAutomaticDocumentIssuing([
+        row({
+          documentKind: 'fiscal-receipt',
+          triggerModels: models('manual', 'auto-on-paid'),
+        }),
+      ]),
+    ).toBe(true);
+  });
+
+  it('should count a both-kinds row when either kind is automatic', () => {
+    expect(
+      hasAutomaticDocumentIssuing([
+        row({ documentKind: 'both', triggerModels: models('manual', 'auto-on-paid') }),
+      ]),
+    ).toBe(true);
   });
 
   it('should be false when no connection goes first, issues nothing, or is not active', () => {

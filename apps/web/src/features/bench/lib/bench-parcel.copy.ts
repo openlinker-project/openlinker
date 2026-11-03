@@ -645,6 +645,11 @@ export const benchParcelCopy = {
         title: 'Nobody is told automatically.',
         body: 'This shop only makes an invoice when someone asks for one. Send the box; if this order needs an invoice, tell the office.',
       },
+      /** `trigger-model-batched` (#3583): queued for the next batch run. */
+      waitingForBatch: {
+        title: 'The document comes with the next batch.',
+        body: 'This shop issues its documents in batches and this order is in the queue. Send the box; nobody needs to be told.',
+      },
       /** No recorded reason, or one this build cannot place. No list holds it. */
       nobodyTold: {
         title: 'Nobody has been told.',

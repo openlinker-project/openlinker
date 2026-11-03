@@ -30,3 +30,8 @@ export const PAYMENT_STATUS = {
   Awaiting: 'awaiting',
   Refunded: 'refunded',
 } as const satisfies Record<'Paid' | 'Cod' | 'Awaiting' | 'Refunded', PaymentStatus>;
+
+/** Narrow an untyped value (a persisted snapshot field) to a known status. */
+export function isPaymentStatus(value: unknown): value is PaymentStatus {
+  return typeof value === 'string' && (PaymentStatusValues as readonly string[]).includes(value);
+}

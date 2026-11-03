@@ -88,6 +88,7 @@ const AUDIENCE_COPY: Record<
 > = {
   'on-office-list': benchParcelCopy.documents.audience.onOfficeList,
   'issued-on-request': benchParcelCopy.documents.audience.issuedOnRequest,
+  'waiting-for-batch': benchParcelCopy.documents.audience.waitingForBatch,
   'nobody-told': benchParcelCopy.documents.audience.nobodyTold,
 };
 

@@ -1321,3 +1321,32 @@ export interface BuyerEmailDeliveryView {
   suppressionMessage: string | null;
   createdAt: string;
 }
+
+/** `GET /sales-documents/batches/:connectionId` (#3583). Only what specs read. */
+export interface SalesDocumentBatchOverview {
+  connectionId: string;
+  queueCounts: Record<string, number>;
+  runningRun: SalesDocumentBatchRun | null;
+}
+
+export interface SalesDocumentBatchRun {
+  id: string;
+  status: string;
+  trigger: string;
+  eligibleCount: number;
+  enqueuedCount: number;
+  blockedCount: number;
+  startedAt: string;
+  finishedAt: string | null;
+}
+
+export interface SalesDocumentBatchRunDetail {
+  run: SalesDocumentBatchRun;
+  items: Array<{
+    orderId: string;
+    documentKind: string | null;
+    result: string;
+    outcome: string;
+    blockReason: string | null;
+  }>;
+}

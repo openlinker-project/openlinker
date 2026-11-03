@@ -69,6 +69,15 @@ export interface SyncAttemptJson {
 @Index('IDX_order_records_fulfillmentBlockReason', ['fulfillmentBlockReason'], {
   where: '"fulfillmentBlockReason" IS NOT NULL',
 })
+// Batch issuing queue (#3583): the orders waiting for one connection's next
+// batch run, keyset-paged by order id. Partial on the one reason that means
+// "queued", so it holds only queued orders. Declared here AND in the migration
+// for the `synchronize`-built integration schema.
+@Index(
+  'IDX_order_records_sales_document_batch_queue',
+  ['salesDocumentBlockConnectionId', 'internalOrderId'],
+  { where: `"salesDocumentBlockReason" = 'trigger-model-batched'` },
+)
 export class OrderRecordOrmEntity {
   @PrimaryColumn({ type: 'text' })
   internalOrderId!: string;
@@ -211,6 +220,21 @@ export class OrderRecordOrmEntity {
    */
   @Column({ type: 'text', nullable: true })
   salesDocumentBlockDetail!: string | null;
+
+  /**
+   * The connection and document kind the block above is ABOUT (#3583), when
+   * routing named one. Set today only for `trigger-model-batched`, where the
+   * pair is the order's place in that connection's batch queue
+   * (`IDX_order_records_sales_document_batch_queue`). Written exclusively by
+   * `updateSalesDocumentBlock`, in the same statement as the reason, so the
+   * queue can never name a connection the reason has already left; never by
+   * the ingestion upsert (excluded from `toOrm` like its siblings).
+   */
+  @Column({ type: 'text', nullable: true })
+  salesDocumentBlockConnectionId!: string | null;
+
+  @Column({ type: 'text', nullable: true })
+  salesDocumentBlockDocumentKind!: string | null;
 
   /**
    * The `sales_document_rules` row that decided this order's document kind

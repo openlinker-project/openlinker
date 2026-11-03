@@ -227,16 +227,16 @@ export const SALES_DOCUMENT_GATE_REASON_COPY = {
     keepsAction: true,
   },
   /**
-   * Batched issuing is NOT implemented - `AutoIssueTriggerService` raises
-   * `BatchedTriggerNotImplementedError` and records this reason - so the copy
-   * must never promise a run that will collect the order. It keeps the manual
-   * action because that is the only way this order gets a document at all.
+   * #3583: the order is paid and waiting in its connection's batch queue; the
+   * next scheduled run (or "Run now") issues it. A configured workflow, not a
+   * fault, so neutral like manual, and the manual action stays for an order
+   * that should not wait.
    */
   'trigger-model-batched': {
-    short: 'Batched',
+    short: 'Waiting for batch',
     detail:
-      'This connection is set to issue in batches, and batched issuing is not available yet, so nothing was issued. Issue it by hand, or switch the connection to issue on payment.',
-    tone: 'warning',
+      'This connection issues in batches. The order is waiting in its queue and the next batch run will issue it.',
+    tone: 'neutral',
     keepsAction: true,
   },
 } satisfies Record<SalesDocumentGateBlockReasonValue, SalesDocumentGateReasonCopy>;

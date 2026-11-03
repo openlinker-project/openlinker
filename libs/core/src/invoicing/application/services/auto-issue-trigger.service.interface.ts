@@ -25,6 +25,7 @@
  */
 import type { Order } from '@openlinker/core/orders';
 import type { SalesDocumentBlockOutcome } from '@openlinker/core/sales-documents';
+import type { AutoIssueOptions } from '../../domain/types/invoice-trigger.types';
 
 export interface IAutoIssueTriggerService {
   /**
@@ -74,6 +75,10 @@ export interface IAutoIssueTriggerService {
    *   Callers MUST honour `none` as a write of `null` — that is the level-triggered
    *   clear, and without it a reason persisted once would outlive the
    *   misconfiguration that caused it.
+   *
+   * @param options.batchRun - (#3583) Set ONLY by a batch run: a `batched` order
+   *   routed to that connection and one of its kinds proceeds through the
+   *   ordinary enqueue instead of being queued again. Absent everywhere else.
    */
   onOrderTransition(
     order: Order,
@@ -81,5 +86,6 @@ export interface IAutoIssueTriggerService {
     sourceEventId?: string,
     taxRateEra?: string | null,
     buyerTaxId?: string | null,
+    options?: AutoIssueOptions,
   ): Promise<SalesDocumentBlockOutcome>;
 }

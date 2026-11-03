@@ -75,6 +75,23 @@ describe('orderFromReadySnapshot', () => {
     });
   });
 
+  describe('payment status (#3583)', () => {
+    it('should carry a recognised paymentStatus, which a batch run gates on', () => {
+      expect(
+        orderFromReadySnapshot(makeRecord({ ...READY_SNAPSHOT, paymentStatus: 'paid' }))
+          .paymentStatus,
+      ).toBe('paid');
+    });
+
+    it('should leave it absent when the snapshot has none or an unrecognised value', () => {
+      expect(orderFromReadySnapshot(makeRecord(READY_SNAPSHOT)).paymentStatus).toBeUndefined();
+      expect(
+        orderFromReadySnapshot(makeRecord({ ...READY_SNAPSHOT, paymentStatus: 'maybe' }))
+          .paymentStatus,
+      ).toBeUndefined();
+    });
+  });
+
   it('round-trips a ready snapshot, rehydrating ISO date strings to Date', () => {
     const order = orderFromReadySnapshot(makeRecord(READY_SNAPSHOT));
 
