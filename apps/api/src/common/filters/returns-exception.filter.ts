@@ -82,6 +82,7 @@
 import type { ArgumentsHost, ExceptionFilter } from '@nestjs/common';
 import { Catch, HttpStatus } from '@nestjs/common';
 import type { Response } from 'express';
+import { withApiErrorCode } from '@openlinker/shared/errors';
 import {
   ReturnAuthorizeRefusedError,
   ReturnCustodyContendedError,
@@ -139,36 +140,36 @@ export class ReturnsExceptionFilter implements ExceptionFilter {
     const response = host.switchToHttp().getResponse<Response>();
     const statusCode = this.resolveStatus(exception);
 
-    response.status(statusCode).json({
-      statusCode,
-      error: exception.name,
-      message: exception.message,
-      // The blocked trigger, on the ONE exception that carries it (#2336).
-      //
-      // This docblock has always said a structured rendering must read the
-      // `trigger` FIELD rather than parse the message — the two drift the first
-      // time the wording changes. Until now the field never crossed the HTTP
-      // boundary, so that instruction described a contract no consumer could
-      // honour and left message-parsing as the only option. Additive: no status
-      // changes, nothing is removed, and the other two exceptions have no such
-      // field so the key is simply absent for them.
-      ...(exception instanceof ReturnNotAttributedError
-        ? { trigger: exception.trigger }
-        : {}),
-      // The actionable code (#2376). Emitted as a FIELD for every refusal that
-      // carries a closed reason union, so a client branches on the vocabulary
-      // rather than parsing a message that will be reworded.
-      ...(this.resolveReason(exception) === null
-        ? {}
-        : { reason: this.resolveReason(exception) }),
-    });
+    response.status(statusCode).json(
+      withApiErrorCode(
+        {
+          statusCode,
+          error: exception.name,
+          message: exception.message,
+          // The blocked trigger, on the ONE exception that carries it (#2336).
+          //
+          // This docblock has always said a structured rendering must read the
+          // `trigger` FIELD rather than parse the message — the two drift the first
+          // time the wording changes. Until now the field never crossed the HTTP
+          // boundary, so that instruction described a contract no consumer could
+          // honour and left message-parsing as the only option. Additive: no status
+          // changes, nothing is removed, and the other two exceptions have no such
+          // field so the key is simply absent for them.
+          ...(exception instanceof ReturnNotAttributedError ? { trigger: exception.trigger } : {}),
+          // The actionable code (#2376). Emitted as a FIELD for every refusal that
+          // carries a closed reason union, so a client branches on the vocabulary
+          // rather than parsing a message that will be reworded.
+          ...(this.resolveReason(exception) === null
+            ? {}
+            : { reason: this.resolveReason(exception) }),
+        },
+        statusCode
+      )
+    );
   }
 
   private resolveStatus(exception: ReturnRefusal): number {
-    if (
-      exception instanceof ReturnNotFoundError ||
-      exception instanceof ReturnLineNotFoundError
-    ) {
+    if (exception instanceof ReturnNotFoundError || exception instanceof ReturnLineNotFoundError) {
       return HttpStatus.NOT_FOUND;
     }
 
@@ -176,9 +177,7 @@ export class ReturnsExceptionFilter implements ExceptionFilter {
     // operator supplied an order id OL never minted — so it is the one reason on
     // this error that is not a state conflict. See the header.
     if (exception instanceof ReturnMatchRefusedError) {
-      return exception.reason === 'unknown-order'
-        ? HttpStatus.BAD_REQUEST
-        : HttpStatus.CONFLICT;
+      return exception.reason === 'unknown-order' ? HttpStatus.BAD_REQUEST : HttpStatus.CONFLICT;
     }
 
     // E-14: the payload is well formed, but the ORDER's state (an OpenLinker edit

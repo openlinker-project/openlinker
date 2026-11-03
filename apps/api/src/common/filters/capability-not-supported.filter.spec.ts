@@ -30,6 +30,7 @@ describe('CapabilityNotSupportedFilter', () => {
     expect(status).toHaveBeenCalledWith(HttpStatus.BAD_REQUEST);
     expect(json).toHaveBeenCalledWith({
       statusCode: HttpStatus.BAD_REQUEST,
+      code: 'HTTP_400',
       error: 'CapabilityNotSupportedException',
       message: expect.stringContaining('does not support capability: OfferManager'),
     });
@@ -48,6 +49,7 @@ describe('CapabilityNotSupportedFilter', () => {
     expect(status).toHaveBeenCalledWith(HttpStatus.BAD_REQUEST);
     expect(json).toHaveBeenCalledWith({
       statusCode: HttpStatus.BAD_REQUEST,
+      code: 'HTTP_400',
       error: 'CapabilityNotEnabledException',
       message: expect.stringContaining('disabled'),
     });
