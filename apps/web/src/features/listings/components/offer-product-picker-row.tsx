@@ -15,7 +15,7 @@ import { Alert } from '../../../shared/ui/alert';
 import { Button } from '../../../shared/ui/button';
 import { CheckboxCell } from '../../../shared/ui/checkbox-cell';
 import { ProductThumbnail } from '../../../shared/ui/product-thumbnail';
-import { useProductQuery } from '../../products';
+import { useProductQuery, VariantThumbnail } from '../../products';
 import type { Product, ProductVariant } from '../../products';
 import {
   firstImage,
@@ -175,10 +175,11 @@ export function OfferProductPickerRow({
                       disabled={capBlocked}
                       onChange={() => onToggleVariant(variant.id, loadedVariantIds)}
                     />
-                    <ProductThumbnail
+                    <VariantThumbnail
                       name={variantShortLabel(variant)}
-                      src={null}
+                      src={variant.imageUrls?.[0]}
                       size="sm"
+                      dimmed={variant.imagesFromProduct === true}
                     />
                     <span className="offer-product-picker__vname">
                       <b>{variantLabel(detailQuery.data ?? product, variant)}</b>

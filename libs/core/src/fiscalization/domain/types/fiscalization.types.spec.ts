@@ -16,6 +16,7 @@ import {
   FiscalRegistrationFailureModeValues,
   FiscalRegistrationStatusValues,
   readFiscalLocateAnswer,
+  selectHandoverArtefact,
   summarizeFiscalArtefacts,
 } from './fiscalization.types';
 import type { FiscalArtefact } from './fiscalization.types';
@@ -184,6 +185,55 @@ describe('fiscalization.types', () => {
         status: 'held',
         detail: FISCAL_LOCATE_DETAIL_UNREADABLE,
       });
+    });
+  });
+
+  describe('selectHandoverArtefact (#3646)', () => {
+    const artefact = (overrides: Partial<FiscalArtefact> = {}): FiscalArtefact => ({
+      medium: 'document',
+      disposition: 'print',
+      content: 'payload',
+      contentType: 'application/pdf',
+      label: 'Receipt',
+      ...overrides,
+    });
+
+    it('should prefer a document over a link whatever order the adapter listed them in', () => {
+      const link = artefact({ medium: 'link', content: 'https://example.test/r/1' });
+      const document = artefact();
+
+      expect(selectHandoverArtefact([link, document])).toBe(document);
+    });
+
+    it('should fall back to a link when there is no document', () => {
+      const link = artefact({ medium: 'link', content: 'https://example.test/r/1' });
+
+      expect(selectHandoverArtefact([artefact({ medium: 'code' }), link])).toBe(link);
+    });
+
+    it('should hand over nothing when only mediums OpenLinker cannot render exist', () => {
+      expect(
+        selectHandoverArtefact([
+          artefact({ medium: 'markup' }),
+          artefact({ medium: 'code' }),
+          artefact({ medium: 'text' }),
+        ]),
+      ).toBeNull();
+    });
+
+    it('should hand over nothing for an empty or absent list', () => {
+      expect(selectHandoverArtefact([])).toBeNull();
+      expect(selectHandoverArtefact(null)).toBeNull();
+      expect(selectHandoverArtefact(undefined)).toBeNull();
+    });
+
+    it('should pick the same medium from a summary as from the full artefact', () => {
+      const artefacts = [artefact({ medium: 'link' }), artefact({ medium: 'document' })];
+      const summaries = summarizeFiscalArtefacts(artefacts);
+
+      expect(selectHandoverArtefact(summaries)?.medium).toBe(
+        selectHandoverArtefact(artefacts)?.medium,
+      );
     });
   });
 

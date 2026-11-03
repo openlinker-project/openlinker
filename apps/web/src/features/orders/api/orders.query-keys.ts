@@ -27,6 +27,27 @@ export const ordersQueryKeys = {
   lifecycleSummary: (filters?: OrderHealthSummaryFilters) =>
     ['orders', 'lifecycle-summary', filters ?? {}] as const,
   detail: (internalOrderId: string) => ['orders', 'detail', internalOrderId] as const,
+  /** An order's operator changes: cancel requests and credit proposals (#3541). */
+  changes: (internalOrderId: string) => ['orders', 'changes', internalOrderId] as const,
+  /** Refunds the operator confirmed against one order (#3541). */
+  refunds: (internalOrderId: string) => ['orders', 'refunds', internalOrderId] as const,
+  /** Cost at order time per line (#3588). */
+  lineCosts: (internalOrderId: string) => ['orders', 'line-costs', internalOrderId] as const,
+  /** Document-email attempts for the Activity timeline (#3551). */
+  documentEmails: (internalOrderId: string) =>
+    ['orders', 'document-emails', internalOrderId] as const,
+  /** An order's notes (#3531). */
+  notes: (internalOrderId: string) => ['orders', 'notes', internalOrderId] as const,
+  /** The workspace tag vocabulary (#3532). */
+  tags: () => ['orders', 'tags'] as const,
+  /** Tag ids assigned to one order (#3532). */
+  orderTags: (internalOrderId: string) => ['orders', 'order-tags', internalOrderId] as const,
+  /** The caller's saved column presets (#3530). */
+  columnPresets: () => ['orders', 'column-presets'] as const,
+  /** The workspace-default column preset (#3530, D32). */
+  workspaceDefaultColumnPreset: () => ['orders', 'column-presets', 'workspace-default'] as const,
+  /** One export run's status (#3534). */
+  exportRun: (runId: string) => ['orders', 'export', runId] as const,
 };
 
 /**

@@ -26,7 +26,12 @@
  *
  * @module libs/core/src/fulfillment/application/interfaces
  */
+import type {
+  FulfillmentBuyerNoteAcknowledgement,
+  FulfillmentWork,
+} from '../../domain/types/fulfillment-work.types';
 import type { FulfillmentWorkLinkResolution } from '../../domain/types/fulfillment-work-link.types';
+import type { OrderWorkSummary } from '../../domain/types/order-work-summary.types';
 
 export interface IFulfillmentWorkQueryService {
   /**
@@ -50,4 +55,34 @@ export interface IFulfillmentWorkQueryService {
    * holder rather than a place.
    */
   listBlockingRejectionConnectionIds(orderId: string): Promise<readonly string[]>;
+
+  /**
+   * One work object with its lines, or `null` when no such work exists (#3453).
+   *
+   * The sale decrement's read: a routed work's lines are what OpenLinker lowers
+   * in each line's owning product master. A read by id only — the worklist read
+   * model with its computed `supportedActions` stays #2406's.
+   */
+  findWorkById(workId: string): Promise<FulfillmentWork | null>;
+
+  /**
+   * The packing stage of every order in `orderIds` that has live work (#3482) —
+   * one batched read for a whole `/orders` page, the `getLatestInvoicesForOrders`
+   * (#1713) shape.
+   *
+   * An order absent from the map has no live work. That is "no work", never a
+   * positive claim that the order was not routed (see `OrderWorkSummary`).
+   */
+  summarizeWorkForOrders(
+    orderIds: readonly string[]
+  ): Promise<ReadonlyMap<string, OrderWorkSummary>>;
+
+  /**
+   * The parcels of this order whose buyer note was acknowledged at the bench
+   * (#3538), oldest first. Feeds the order Activity timeline ("Buyer note read
+   * at the bench"); an order with no work, or none acknowledged, answers `[]`.
+   */
+  listBuyerNoteAcknowledgements(
+    orderId: string
+  ): Promise<readonly FulfillmentBuyerNoteAcknowledgement[]>;
 }

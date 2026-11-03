@@ -78,9 +78,13 @@ export type OrderRecordStatus = (typeof OrderRecordStatusValues)[number];
  *                            its master, #1689)
  *   2. `awaiting_mapping`  — `recordStatus = 'awaiting_mapping'` (can't sync yet)
  *   3. `needs_attention`   — not awaiting_mapping/source_deleted AND any destination `failed`
- *   4. `synced`            — not awaiting_mapping/source_deleted, no failed, AND any `synced`
+ *   4. `synced`            — not awaiting_mapping/source_deleted, no failed, AND
+ *                            (any `synced`, OR - #3482 - OpenLinker handles the
+ *                            order itself (a live pack-bench work) and it has
+ *                            shipped: `fulfillmentState` dispatched / delivered)
  *   5. `awaiting_dispatch` — the residual: everything else (no failed, no
- *                            synced: empty `syncStatus[]` / pending / syncing)
+ *                            synced: empty `syncStatus[]` / pending / syncing,
+ *                            and a handled order still on the bench)
  *
  * Buckets 3–5 gate on `NOT awaiting_mapping AND NOT source_deleted` (not
  * `recordStatus = 'ready'`) so the five remain a complete partition for ANY
@@ -124,6 +128,32 @@ export interface OrderHealthSummary {
    * failure behind an invoicing one.
    */
   salesDocumentBlocked: number;
+
+  /**
+   * #2703 / #2704 - orders whose routing decision narrowed the destination
+   * fan-out in a way that needs attention. ORTHOGONAL to the five health
+   * buckets and NOT part of the partition, exactly like `salesDocumentBlocked`
+   * above: such an order is also counted in one of them, so this number must
+   * never be added to their sum.
+   *
+   * Counts the ATTENTION-WORTHY subset only - a deliberate
+   * `'routed-to-no-destination'` decision is rendered as a neutral per-order
+   * badge and never aggregated here.
+   */
+  destinationRoutingBlocked: number;
+  /**
+   * #3482 - orders OpenLinker holds because of a fact about the order or the
+   * stock (`WaitingFulfillmentBlockReasonValues`: out of stock, no address,
+   * routing error). ORTHOGONAL to the health partition, like its neighbours.
+   */
+  waitingInOpenLinker: number;
+  /** When the oldest of those orders started waiting, or `null` when none waits. */
+  waitingInOpenLinkerOldestAt: Date | null;
+  /**
+   * #3482 - orders with a live pack-bench work whose box is not shut yet
+   * (To pack or Packing). ORTHOGONAL to the health partition.
+   */
+  onPackBench: number;
   /**
    * Orders where the shop and the channel named DIFFERENT tax rates (#2254).
    *
@@ -318,6 +348,32 @@ export interface OrderRecordFilters {
    */
   salesDocumentBlocked?: boolean;
   /**
+   * #2703 / #2704 - orders whose destination fan-out a routing decision narrowed
+   * in a way that needs attention. An INDEPENDENT axis, ANDed with `health`
+   * rather than folded into it: such an order is usually also `needs_attention`
+   * (its sync failed), so folding would hide one behind the other.
+   *
+   * `true` keeps only orders carrying an attention-worthy reason, `false` only
+   * the rest, omitted does not filter. Attention-worthy EXCLUDES
+   * `'routed-to-no-destination'` - a working router deciding an order goes
+   * nowhere is a decision rather than a fault - so `true` does not return those
+   * and `false` does. Same subset the `destinationRoutingBlocked` count reports,
+   * so the chip's number and its rows always agree.
+   */
+  destinationRoutingBlocked?: boolean;
+  /**
+   * #3482 - orders OpenLinker holds as waiting (the same subset the
+   * `waitingInOpenLinker` count reports). `true` keeps them, `false` the rest,
+   * omitted does not filter. ANDed with every other axis, never folded into
+   * `health`.
+   */
+  waitingInOpenLinker?: boolean;
+  /**
+   * #3482 - orders with a live pack-bench work whose box is not shut yet (the
+   * `onPackBench` count). Not `packed` (#2997), which reads `packedAt`.
+   */
+  onPackBench?: boolean;
+  /**
    * Derived lifecycle-phase filter (#2309, ADR-059). Translated to a SQL
    * predicate by `OrderRecordRepository.applyLifecyclePhaseFilter`, which tests
    * the ONE `CASE` expression the phase count also tests — so the chip's number
@@ -374,6 +430,76 @@ export interface OrderRecordFilters {
    * ANDed with every other axis, like its neighbours.
    */
   activeHoldReason?: HoldReason;
+  /**
+   * "Is it packed" filter (#2997, #2072's missing acceptance criterion).
+   * `true` -> `packedAt IS NOT NULL`, `false` -> `packedAt IS NULL`, absent ->
+   * no arm. ANDed with `health`, never folded into it — `OrderHealthValues` is
+   * a documented partition summing to the KPI cards, and packed is orthogonal
+   * (an order is routinely packed AND `needs_attention`), the same rule
+   * `salesDocumentBlocked` and `taxRateConflict` already follow.
+   */
+  packed?: boolean;
+  /**
+   * "Has a buyer note" filter (#3538). `true` -> `hasBuyerNote = true` AND
+   * `recordStatus = 'ready'` (N-20), `false` -> `hasBuyerNote = false`, absent -> no arm. A plain indexed boolean test
+   * over a denormalized column; ANDed with every other axis.
+   */
+  hasBuyerNote?: boolean;
+  /**
+   * Free-text search (#3527). Matches order number, buyer name, buyer email
+   * and any line SKU via the denormalized, diacritic-folded `searchText`
+   * column (GIN trigram index). `undefined` means "don't filter"; a query
+   * that normalizes to nothing (blank, or stripped entirely by diacritic
+   * folding) is treated the same way rather than as "match nothing".
+   */
+  search?: string;
+  /**
+   * Internal order ids to ADDITIONALLY match when `search` is set (#3528).
+   * ORed with `search`'s `searchText LIKE` predicate — never ANDed, and never
+   * applied when `search` itself is absent, since there is then nothing to
+   * widen. Populated by the caller (the orders interface layer) from a
+   * tracking-number lookup against the shipping context, which `orders` may
+   * not import directly — see `docs/architecture-overview.md § Cross-context
+   * dependencies in core` ("shipping" already depends on "orders").
+   */
+  searchTrackingOrderIds?: string[];
+  /**
+   * "Has an open return" filter (#2998). `true` restricts to orders whose
+   * internal id appears in `openReturnOrderIds`; `false` excludes them;
+   * `undefined` means "don't filter". `openReturnOrderIds` is the id list the
+   * caller (the orders interface layer) resolved from `IReturnsService.
+   * listOpenReturnOrderIds()` BEFORE this filter runs — `orders` may not
+   * import `returns`, mirroring the tracking-number composition above. An
+   * EMPTY array is a legitimate "no orders currently have one", not "don't
+   * filter" — the caller supplies it whenever `hasOpenReturn` is set.
+   *
+   * ANDed with `health` like every other axis on this filter object, never a
+   * sixth `OrderHealthValues` member — the #2100 trap.
+   */
+  hasOpenReturn?: boolean;
+  openReturnOrderIds?: string[];
+  /**
+   * Tag filter (#3532, D34). `tagId` restricts to orders carrying that one
+   * tag; `untagged: true` restricts to orders carrying NONE (the "No tags"
+   * picker option). The two are mutually exclusive by convention — a caller
+   * sends one or the other, never both. `order_tags`/`order_tag_assignments`
+   * live in THIS context, so this is a plain same-context SQL join, unlike
+   * the tracking-number / open-return axes above.
+   */
+  tagId?: string;
+  untagged?: boolean;
+  /**
+   * Order-placement date range (#3534, D35) — filters `placedAt`, the
+   * buyer's true order time, as OPPOSED to `createdFrom`/`createdTo` which
+   * filter `createdAt` (when OpenLinker received the order). Added for the
+   * export feature, whose default date field is `placedAt` while the list's
+   * own filter stays `createdAt` (unchanged, D35's own "backend gaps" note:
+   * "the list filters by createdAt... while accounting wants placedAt").
+   * An order with no `placedAt` (a source that reports none) never matches
+   * either bound.
+   */
+  placedFrom?: Date;
+  placedTo?: Date;
   /**
    * Result ordering (#927/#944/#1108). Maps to a SQL `ORDER BY` by
    * `OrderRecordRepository.applySort`. `dispatchBy` (ship-by deadline, NULLs

@@ -1,0 +1,7 @@
+# OpenLinker Admin (#3709). Crawling stays allowed on purpose: indexing is
+# controlled by the <meta name="robots"> tag in index.html, which is noindex
+# unless the build opts in (VITE_OL_SEO_INDEXABLE). A Disallow here would stop
+# crawlers from ever reading that tag, so a URL linked from elsewhere could
+# still be listed (URL-only) instead of being dropped.
+User-agent: *
+Allow: /

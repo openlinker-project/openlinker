@@ -105,6 +105,38 @@ describe('ConnectionRepository', () => {
       expect(ormRepository.createQueryBuilder).toHaveBeenCalledWith('connection');
     });
 
+    it('should exclude archived connections when no status filter is given (#3657)', async () => {
+      const queryBuilder = {
+        andWhere: jest.fn().mockReturnThis(),
+        getMany: jest.fn().mockResolvedValue([]),
+      } as unknown as SelectQueryBuilder<ConnectionOrmEntity>;
+      ormRepository.createQueryBuilder.mockReturnValue(queryBuilder);
+
+      await repository.list({ platformType: 'prestashop' });
+
+      expect(queryBuilder.andWhere).toHaveBeenCalledWith('connection.status <> :archived', {
+        archived: 'archived',
+      });
+    });
+
+    it('should list only archived connections when asked for them explicitly (#3657)', async () => {
+      const queryBuilder = {
+        andWhere: jest.fn().mockReturnThis(),
+        getMany: jest.fn().mockResolvedValue([]),
+      } as unknown as SelectQueryBuilder<ConnectionOrmEntity>;
+      ormRepository.createQueryBuilder.mockReturnValue(queryBuilder);
+
+      await repository.list({ status: 'archived' });
+
+      expect(queryBuilder.andWhere).toHaveBeenCalledWith('connection.status = :status', {
+        status: 'archived',
+      });
+      expect(queryBuilder.andWhere).not.toHaveBeenCalledWith(
+        'connection.status <> :archived',
+        expect.anything()
+      );
+    });
+
     it('should filter by platformType', async () => {
       const queryBuilder = {
         andWhere: jest.fn().mockReturnThis(),

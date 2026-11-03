@@ -151,12 +151,11 @@ test.describe('sales documents: order-detail panel (#2563 M10)', () => {
     // branch never fires. Both facts are real and worth knowing separately:
     // the cross-kind block below, and that a live `fiscalProgress` read
     // always beats the "nothing is known" body.
-    await expect(
-      slot.getByText('This order already has a document'),
-    ).toBeVisible();
-    await expect(
-      slot.getByText('This order already has a fiscal receipt.', { exact: false }),
-    ).toBeVisible();
+    // #3766 - the cross-kind block no longer renders its own "This order
+    // already has a document" warning; it shows as the absence of any invoice
+    // action in the filled receipt slot.
+    await expect(slot.getByTestId('one-document-guard')).toHaveCount(0);
+    await expect(slot.getByRole('button', { name: 'Issue invoice' })).toHaveCount(0);
     // Nothing to click while a registration is genuinely in flight — the
     // exactly-once guarantee (ADR-042) means a second attempt can only be a
     // 409, so the UI offers no button here at all.

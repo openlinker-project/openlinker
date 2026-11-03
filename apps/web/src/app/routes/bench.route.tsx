@@ -18,18 +18,19 @@
  * So it sits in `standaloneRoutes`, beside `/consent` — no `AppShell`, no
  * sidebar, and no authenticated-layout gate. The bench renders its own
  * sign-in, so an anonymous session is a state it handles rather than a state it
- * must be rescued from. A full-screen terminal wants no application chrome
- * anyway.
+ * must be rescued from. It DOES carry the application's topbar, through
+ * `BenchAppLayout`, which never redirects on its own.
  *
- * It carries a crumb because the shell's crumb contract is cheap to satisfy and
- * the surface may later be reachable from one; nothing renders it today.
+ * The crumb below is what that topbar renders.
  *
  * ## There IS a nav entry now, and it points one way only
  *
  * `Pack bench` sits in the Operations group (#3108), gated
  * `requiresRole: ['admin', 'operator', 'packer']` — the same three roles every
  * `@Roles(...)` on the bench controllers admits. A packer no longer has to be
- * handed a URL.
+ * handed a URL, and does not need the entry either: since #3096 the guest and
+ * app layouts send every bench-only session here, so a packer who types any
+ * app address lands on the bench.
  *
  * What has NOT changed is the direction: the entry points AT the bench and the
  * bench still links nowhere. The sidebar is not rendered here (this route is
@@ -51,6 +52,7 @@
  *
  * @module app/routes
  */
+import type { ReactElement } from 'react';
 import type { RouteObject } from 'react-router-dom';
 import type { RouteCrumbHandle } from '../nav-registry.types';
 
@@ -62,7 +64,18 @@ export const benchRoute: RouteObject = {
   path: '/bench',
   handle: benchCrumb,
   lazy: async () => {
-    const { BenchPage } = await import('../../pages/bench/bench-page');
-    return { Component: BenchPage };
+    const [{ BenchPage }, { BenchAppLayout }] = await Promise.all([
+      import('../../pages/bench/bench-page'),
+      import('../layouts/bench-app-layout'),
+    ]);
+    // The app's own topbar, no sidebar - see `bench-app-layout.tsx`.
+    function BenchRouteComponent(): ReactElement {
+      return (
+        <BenchAppLayout>
+          <BenchPage />
+        </BenchAppLayout>
+      );
+    }
+    return { Component: BenchRouteComponent };
   },
 };

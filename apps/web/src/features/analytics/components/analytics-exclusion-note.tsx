@@ -29,7 +29,7 @@
  */
 import type { ReactElement } from 'react';
 import { Chip } from '../../../shared/ui/chip';
-import { deriveCoverageRowCopy } from '../lib/data-coverage-copy.lib';
+import { deriveCoverageRowCopy } from '../lib/data-coverage.copy';
 import type { CoverageCategory } from '../api/analytics-coverage.types';
 
 interface AnalyticsExclusionNoteProps {

@@ -33,6 +33,7 @@ export const subiektNexoPlugin: OpenLinkerPlugin = definePlugin({
   },
   platform: {
     displayName: 'Subiekt nexo (Sfera bridge)',
+    shortLabel: 'Subiekt nexo',
     setupCard: {
       title: 'Subiekt nexo',
       description:

@@ -10,13 +10,12 @@
  * @module plugins/infakt/components
  */
 import { useState, type ReactElement } from 'react';
+import { useWebhookStatusQuery, type Connection } from '../../../features/connections';
 import {
   InfaktWebhookConfigDialog,
-  infaktWebhookActivationLabel,
-  infaktWebhookSignatureLabel,
-  useWebhookStatusQuery,
-  type Connection,
-} from '../../../features/connections';
+  activationLabel as infaktWebhookActivationLabel,
+  signatureLabel as infaktWebhookSignatureLabel,
+} from './infakt-webhook-config';
 import { Button } from '../../../shared/ui/button';
 import { StatusBadge } from '../../../shared/ui/status-badge';
 

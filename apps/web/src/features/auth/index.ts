@@ -17,6 +17,7 @@
 export { createAuthApi } from './api/auth.api';
 export type { AuthApi } from './api/auth.api';
 export type {
+  ChangePasswordRequest,
   ConfirmEmailRequest,
   ForgotPasswordRequest,
   LoginRequest,
@@ -28,6 +29,7 @@ export type {
   UpdateAnalyticsConsentRequest,
 } from './api/auth.types';
 
+export { useChangePasswordMutation } from './hooks/use-change-password-mutation';
 export { useConfirmEmail } from './hooks/use-confirm-email';
 export type { ConfirmEmailState } from './hooks/use-confirm-email';
 export { useForgotPassword } from './hooks/use-forgot-password';
@@ -35,6 +37,7 @@ export { useLogin } from './hooks/use-login';
 export { useResetPassword } from './hooks/use-reset-password';
 export { useUpdateAnalyticsConsentMutation } from './hooks/use-update-analytics-consent-mutation';
 
+export { ChangePasswordForm } from './components/ChangePasswordForm';
 export { ConfirmEmailStatus } from './components/ConfirmEmailStatus';
 export { ForgotPasswordForm } from './components/ForgotPasswordForm';
 export { LoginForm } from './components/LoginForm';

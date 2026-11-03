@@ -16,6 +16,9 @@ import type {
   ProductListSort,
   PaginatedProducts,
   PaginatedProductVariants,
+  VariantPhysicalDimensionsFill,
+  VariantCost,
+  VariantCostFillResult,
 } from '../../domain/types/product.types';
 import type { StoredTaxRate } from '../../domain/types/tax-rate.types';
 import type {
@@ -47,6 +50,40 @@ export interface IProductsService {
    * @param variants - Array of product variant domain entities
    */
   upsertVariants(productId: string, variants: ProductVariant[]): Promise<void>;
+
+  /**
+   * Fill variants' physical data (weight/dimensions) only where the stored
+   * column is still empty (#3650). Never overwrites an existing value, so a
+   * master re-sync cannot undo an operator-typed one. Neutral units: grams and
+   * millimetres, already converted by the adapter. All given variants are
+   * written in one statement; returns how many actually had a column filled.
+   */
+  fillVariantsPhysicalDimensionsIfAbsent(
+    fills: readonly VariantPhysicalDimensionsFill[]
+  ): Promise<number>;
+
+  /**
+   * Record or clear (`null`) a variant's operator-authored net unit cost
+   * (#3588, D27). The pair (amount, currency) is validated here as well as at
+   * HTTP. Throws `ProductVariantNotFoundError` for an unknown id and
+   * `InvalidVariantCostError` for a malformed pair.
+   */
+  recordVariantCost(
+    variantId: string,
+    cost: VariantCost | null,
+    actorUserId: string
+  ): Promise<void>;
+
+  /**
+   * Bulk fill-when-NULL of one cost across many variants (#3588): never
+   * overwrites an existing cost.
+   */
+  fillVariantCostsIfAbsent(
+    variantIds: readonly string[],
+    netUnitCost: string,
+    currency: string,
+    actorUserId: string
+  ): Promise<VariantCostFillResult>;
 
   /**
    * Record what a ProductMaster said about a product's tax rate (#2054).
@@ -235,4 +272,11 @@ export interface IProductsService {
    * on the next successful upsert of a reappearing variant.
    */
   markVariantsStaleExcept(productId: string, keepVariantIds: readonly string[]): Promise<string[]>;
+
+  /**
+   * End the ADR-077 tax-basis correction window for these variants. The master
+   * sync calls it only after the corrected price was reported (or found
+   * unchanged), so a failed report leaves the variant pending.
+   */
+  clearPriceBasisPending(variantIds: readonly string[]): Promise<void>;
 }

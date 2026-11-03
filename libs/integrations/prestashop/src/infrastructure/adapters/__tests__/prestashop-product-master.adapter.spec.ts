@@ -29,6 +29,68 @@ import type {
 import type { IPrestashopWebserviceClient } from '../../http/prestashop-webservice.client.interface';
 import type { IdentifierMappingPort } from '@openlinker/core/identifier-mapping';
 import type { PrestashopTaxRateResolver } from '../../provisioners/prestashop-tax-rate.resolver';
+import type { PrestashopSalesCountryResolver } from '../../provisioners/prestashop-sales-country.resolver';
+import type { PrestashopSalesCountry } from '../../provisioners/prestashop-sales-country.types';
+import type {
+  PrestashopTaxRateResolution,
+  PrestashopTaxRateUnknownReason,
+  PrestashopTaxRuleMatch,
+} from '../../provisioners/prestashop-tax-rate.types';
+import { Logger } from '@openlinker/shared/logging';
+
+type SalesCountryResolverMock = jest.Mocked<Pick<PrestashopSalesCountryResolver, 'resolve'>>;
+type GrossTaxRateResolverMock = jest.Mocked<
+  Pick<PrestashopTaxRateResolver, 'resolveProductTaxRate'>
+>;
+
+/** Poland as the connection's sales country (ADR-077). */
+const SALES_COUNTRY_PL: PrestashopSalesCountry = {
+  countryId: 14,
+  iso2: 'PL',
+  source: 'setting',
+  taxesEnabled: true,
+};
+
+/**
+ * The gross price field asked for on a product read: `product_attribute=0`
+ * prices the bare product, without the default combination's impact.
+ */
+const PRODUCT_GROSS_FIELDS = [
+  { name: 'ol_gross', countryId: 14, useTax: true, productAttribute: 0 },
+];
+
+/** A combination row prices itself, so no `product_attribute` is sent. */
+const COMBINATION_GROSS_FIELDS = [{ name: 'ol_gross', countryId: 14, useTax: true }];
+
+/**
+ * A product row as PrestaShop answers it with the gross price field asked for:
+ * 100.00 net in a 23% group, 123.00 for a Polish buyer.
+ */
+function grossProductRow(overrides: Partial<PrestashopProduct> = {}): PrestashopProduct {
+  return {
+    ...samplePrestashopProduct,
+    id: '42',
+    price: '100.000000',
+    ol_gross: '123.000000',
+    ...overrides,
+  };
+}
+
+function makeSalesCountryResolver(
+  country: PrestashopSalesCountry | null = SALES_COUNTRY_PL
+): SalesCountryResolverMock {
+  const resolver: SalesCountryResolverMock = { resolve: jest.fn() };
+  resolver.resolve.mockResolvedValue(country);
+  return resolver;
+}
+
+function makeGrossTaxRateResolver(
+  resolution: PrestashopTaxRateResolution = { kind: 'resolved', rate: 0.23, matchedBy: 'country' }
+): GrossTaxRateResolverMock {
+  const resolver: GrossTaxRateResolverMock = { resolveProductTaxRate: jest.fn() };
+  resolver.resolveProductTaxRate.mockResolvedValue(resolution);
+  return resolver;
+}
 
 describe('PrestashopProductMasterAdapter', () => {
   let adapter: PrestashopProductMasterAdapter;
@@ -50,6 +112,30 @@ describe('PrestashopProductMasterAdapter', () => {
       connection
     );
   });
+
+  /**
+   * An adapter wired the way the factory wires it for gross prices (ADR-077).
+   * Both resolvers are positional and explicit so a test can leave either one
+   * out on purpose.
+   */
+  function createGrossAdapter(
+    salesCountryResolver: SalesCountryResolverMock | undefined,
+    taxRateResolver: GrossTaxRateResolverMock | undefined,
+    connectionUnderTest: ReturnType<typeof createTestConnection> = connection
+  ): PrestashopProductMasterAdapter {
+    return new PrestashopProductMasterAdapter(
+      mockHttpClient,
+      mockIdentifierMapping,
+      productMapper,
+      connectionUnderTest,
+      undefined,
+      undefined,
+      undefined,
+      taxRateResolver as unknown as PrestashopTaxRateResolver | undefined,
+      undefined,
+      salesCountryResolver as unknown as PrestashopSalesCountryResolver | undefined
+    );
+  }
 
   describe('getProduct', () => {
     it('should fetch and map a product successfully', async () => {
@@ -260,6 +346,376 @@ describe('PrestashopProductMasterAdapter', () => {
     });
   });
 
+  /**
+   * ADR-077: a catalogue price is the GROSS amount a buyer pays in the
+   * connection's sales country. PrestaShop's own computed price is taken only
+   * when it agrees with `net x (1 + rate)` for a rate the shop's rules name for
+   * that country; anything else reports no price - never the net field.
+   */
+  describe('gross catalogue price gate (ADR-077)', () => {
+    const internalId = 'internal-product-123';
+    const externalId = '42';
+    let warnSpy: jest.SpyInstance<void, Parameters<Logger['warn']>>;
+
+    beforeEach(() => {
+      mockIdentifierMapping.getExternalIds = jest
+        .fn()
+        .mockResolvedValue([{ connectionId: connection.id, externalId, entityType: 'Product' }]);
+      warnSpy = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+    });
+
+    afterEach(() => {
+      warnSpy.mockRestore();
+    });
+
+    function grossUnavailableWarnings(): string[] {
+      return warnSpy.mock.calls
+        .map((call) => String(call[0]))
+        .filter((message) => message.includes('prestashop_gross_price_unavailable'));
+    }
+
+    it("should report the shop's own gross price when the rule for the sales country agrees with net x (1 + rate)", async () => {
+      const row = grossProductRow();
+      mockHttpClient.getResource = jest.fn().mockResolvedValue(row);
+      const salesCountryResolver = makeSalesCountryResolver();
+      const taxRateResolver = makeGrossTaxRateResolver();
+      const adapterUnderTest = createGrossAdapter(salesCountryResolver, taxRateResolver);
+
+      const result = await adapterUnderTest.getProduct(internalId);
+
+      expect(result.price).toBe(123);
+      // The gross price rides on the one product read - no extra request.
+      expect(mockHttpClient.getResource).toHaveBeenCalledTimes(1);
+      expect(mockHttpClient.getResource).toHaveBeenCalledWith('products', externalId, {
+        priceFields: PRODUCT_GROSS_FIELDS,
+      });
+      expect(salesCountryResolver.resolve).toHaveBeenCalledWith(
+        connection.id,
+        undefined,
+        mockHttpClient
+      );
+      // The rate is asked for the sales country, with the product already read.
+      expect(taxRateResolver.resolveProductTaxRate).toHaveBeenCalledWith(
+        externalId,
+        undefined,
+        connection.id,
+        mockHttpClient,
+        row,
+        { countryId: 14 }
+      );
+      expect(grossUnavailableWarnings()).toEqual([]);
+    });
+
+    it.each([
+      ['a sub-cent figure', '24.587700'],
+      ['a half-cent figure, rounded half-up', '24.585000'],
+    ])(
+      'should report %s as the cent amount when it agrees with net x (1 + rate)',
+      async (_label, gross) => {
+        // 19.99 net at 23% is 24.5877, i.e. 24.59 to the cent.
+        mockHttpClient.getResource = jest
+          .fn()
+          .mockResolvedValue(grossProductRow({ price: '19.990000', ol_gross: gross }));
+        const adapterUnderTest = createGrossAdapter(
+          makeSalesCountryResolver(),
+          makeGrossTaxRateResolver()
+        );
+
+        const result = await adapterUnderTest.getProduct(internalId);
+
+        expect(result.price).toBe(24.59);
+        expect(grossUnavailableWarnings()).toEqual([]);
+      }
+    );
+
+    it('should accept the gross price when a catch-all rule names a rate the shop does charge', async () => {
+      mockHttpClient.getResource = jest.fn().mockResolvedValue(grossProductRow());
+      const adapterUnderTest = createGrossAdapter(
+        makeSalesCountryResolver(),
+        makeGrossTaxRateResolver({ kind: 'resolved', rate: 0.23, matchedBy: 'catch-all' })
+      );
+
+      const result = await adapterUnderTest.getProduct(internalId);
+
+      expect(result.price).toBe(123);
+    });
+
+    it("should report no price when the only rule is another country's and the shop charges the sales country net (US-default shop)", async () => {
+      // A stock docker install defaults to the US. The product's group has a
+      // single Polish 23% rule, which the resolver can only offer as
+      // `only-rule` - but PrestaShop prices the US buyer without it, so its
+      // gross equals the net. Publishing that figure as gross is the defect.
+      const usDefault: PrestashopSalesCountry = {
+        countryId: 21,
+        iso2: 'US',
+        source: 'shop-default',
+        taxesEnabled: true,
+      };
+      mockHttpClient.getResource = jest
+        .fn()
+        .mockResolvedValue(grossProductRow({ ol_gross: '100.000000' }));
+      const taxRateResolver = makeGrossTaxRateResolver({
+        kind: 'resolved',
+        rate: 0.23,
+        matchedBy: 'only-rule',
+      });
+      const adapterUnderTest = createGrossAdapter(
+        makeSalesCountryResolver(usDefault),
+        taxRateResolver
+      );
+
+      const result = await adapterUnderTest.getProduct(internalId);
+
+      expect(result.price).toBeNull();
+      expect(taxRateResolver.resolveProductTaxRate).toHaveBeenCalledWith(
+        externalId,
+        undefined,
+        connection.id,
+        mockHttpClient,
+        expect.anything(),
+        { countryId: 21 }
+      );
+      const warnings = grossUnavailableWarnings();
+      expect(warnings).toHaveLength(1);
+      expect(warnings[0]).toContain('in US (shop default country)');
+      expect(warnings[0]).toContain('(only-rule rule) would be 123');
+    });
+
+    it.each([
+      ['a different rate', '108.000000'],
+      ['two cents off', '123.020000'],
+    ])(
+      "should report no price when the shop's gross is %s from net x (1 + rate)",
+      async (_label, gross) => {
+        mockHttpClient.getResource = jest
+          .fn()
+          .mockResolvedValue(grossProductRow({ ol_gross: gross }));
+        const adapterUnderTest = createGrossAdapter(
+          makeSalesCountryResolver(),
+          makeGrossTaxRateResolver()
+        );
+
+        const result = await adapterUnderTest.getProduct(internalId);
+
+        expect(result.price).toBeNull();
+        expect(grossUnavailableWarnings()).toEqual([expect.stringContaining('would be 123')]);
+      }
+    );
+
+    it("should accept the shop's gross when it is exactly one cent from net x (1 + rate)", async () => {
+      // 123.01 - 123.00 is not exactly 0.01 in floating point; the check
+      // compares whole cents so the documented tolerance really holds.
+      mockHttpClient.getResource = jest
+        .fn()
+        .mockResolvedValue(grossProductRow({ ol_gross: '123.010000' }));
+      const adapterUnderTest = createGrossAdapter(
+        makeSalesCountryResolver(),
+        makeGrossTaxRateResolver()
+      );
+
+      const result = await adapterUnderTest.getProduct(internalId);
+
+      expect(result.price).toBe(123.01);
+      expect(grossUnavailableWarnings()).toEqual([]);
+    });
+
+    it('should take the gross price as it stands, without asking for a rate, when the shop has taxes switched off', async () => {
+      // `PS_TAX = 0`: the shop charges the net price to everyone.
+      mockHttpClient.getResource = jest
+        .fn()
+        .mockResolvedValue(grossProductRow({ ol_gross: '100.000000' }));
+      const taxRateResolver = makeGrossTaxRateResolver();
+      const adapterUnderTest = createGrossAdapter(
+        makeSalesCountryResolver({ ...SALES_COUNTRY_PL, taxesEnabled: false }),
+        taxRateResolver
+      );
+
+      const result = await adapterUnderTest.getProduct(internalId);
+
+      expect(result.price).toBe(100);
+      expect(taxRateResolver.resolveProductTaxRate).not.toHaveBeenCalled();
+      expect(grossUnavailableWarnings()).toEqual([]);
+    });
+
+    it("should round the shop's figure half-up to the cent when it carries more decimals", async () => {
+      mockHttpClient.getResource = jest
+        .fn()
+        .mockResolvedValue(grossProductRow({ price: '8.125000', ol_gross: '8.125000' }));
+      const adapterUnderTest = createGrossAdapter(
+        makeSalesCountryResolver({ ...SALES_COUNTRY_PL, taxesEnabled: false }),
+        makeGrossTaxRateResolver()
+      );
+
+      const result = await adapterUnderTest.getProduct(internalId);
+
+      expect(result.price).toBe(8.13);
+    });
+
+    it('should report no price, never the net one, when the connection has no sales country', async () => {
+      mockHttpClient.getResource = jest.fn().mockResolvedValue(grossProductRow());
+      const taxRateResolver = makeGrossTaxRateResolver();
+      const adapterUnderTest = createGrossAdapter(makeSalesCountryResolver(null), taxRateResolver);
+
+      const result = await adapterUnderTest.getProduct(internalId);
+
+      expect(result.price).toBeNull();
+      // Without a country PrestaShop answers 0.000000, so no price field is asked for.
+      expect(mockHttpClient.getResource).toHaveBeenCalledWith('products', externalId);
+      expect(taxRateResolver.resolveProductTaxRate).not.toHaveBeenCalled();
+      expect(grossUnavailableWarnings()).toEqual([
+        expect.stringContaining('the connection has no sales country'),
+      ]);
+    });
+
+    it('should report no price, never the net one, when no sales-country resolver is wired', async () => {
+      mockHttpClient.getResource = jest.fn().mockResolvedValue(grossProductRow());
+
+      const result = await adapter.getProduct(internalId);
+
+      expect(result.price).toBeNull();
+      expect(grossUnavailableWarnings()).toHaveLength(1);
+    });
+
+    it('should report no price when PrestaShop returned no computed gross for the product', async () => {
+      mockHttpClient.getResource = jest
+        .fn()
+        .mockResolvedValue({ ...samplePrestashopProduct, id: '42', price: '100.000000' });
+      const taxRateResolver = makeGrossTaxRateResolver();
+      const adapterUnderTest = createGrossAdapter(makeSalesCountryResolver(), taxRateResolver);
+
+      const result = await adapterUnderTest.getProduct(internalId);
+
+      expect(result.price).toBeNull();
+      expect(taxRateResolver.resolveProductTaxRate).not.toHaveBeenCalled();
+      expect(grossUnavailableWarnings()).toEqual([
+        expect.stringContaining('PrestaShop returned no computed price for product 42'),
+      ]);
+    });
+
+    it.each<PrestashopTaxRateUnknownReason>(['configuration', 'ambiguous'])(
+      'should report no price when the tax rate for the sales country is unknown (%s)',
+      async (reason) => {
+        mockHttpClient.getResource = jest.fn().mockResolvedValue(grossProductRow());
+        const adapterUnderTest = createGrossAdapter(
+          makeSalesCountryResolver(),
+          makeGrossTaxRateResolver({
+            kind: 'unknown',
+            reason,
+            evidence: 'tax rules group 1 has no rule for PL',
+          })
+        );
+
+        const result = await adapterUnderTest.getProduct(internalId);
+
+        expect(result.price).toBeNull();
+        expect(grossUnavailableWarnings()).toEqual([
+          expect.stringContaining('no tax rate for PL: tax rules group 1 has no rule for PL'),
+        ]);
+      }
+    );
+
+    it('should throw a retryable PrestashopApiException when the tax rate could not be read', async () => {
+      mockHttpClient.getResource = jest.fn().mockResolvedValue(grossProductRow());
+      const adapterUnderTest = createGrossAdapter(
+        makeSalesCountryResolver(),
+        makeGrossTaxRateResolver({
+          kind: 'unknown',
+          reason: 'transport',
+          evidence: 'GET tax_rule_groups/1 returned 503',
+          statusCode: 503,
+        })
+      );
+
+      const error = await adapterUnderTest.getProduct(internalId).then(
+        () => null,
+        (e: unknown) => e
+      );
+
+      // A failed read says nothing about the shop's configuration, so it must
+      // not be recorded as "no price" over a transient error.
+      expect(error).toBeInstanceOf(PrestashopApiException);
+      expect(error).not.toBeInstanceOf(MasterProductNotFoundError);
+      expect((error as PrestashopApiException).statusCode).toBe(503);
+      expect(grossUnavailableWarnings()).toEqual([]);
+    });
+
+    it('should report no price when no tax-rate resolver is wired', async () => {
+      mockHttpClient.getResource = jest.fn().mockResolvedValue(grossProductRow());
+      const adapterUnderTest = createGrossAdapter(makeSalesCountryResolver(), undefined);
+
+      const result = await adapterUnderTest.getProduct(internalId);
+
+      expect(result.price).toBeNull();
+      expect(grossUnavailableWarnings()).toEqual([
+        expect.stringContaining('no tax-rate resolver is wired'),
+      ]);
+    });
+
+    it('should log the missing gross price once per product however many reads report it', async () => {
+      mockHttpClient.getResource = jest.fn().mockResolvedValue(grossProductRow());
+      mockHttpClient.listResources = jest.fn().mockResolvedValue([]);
+      const adapterUnderTest = createGrossAdapter(
+        makeSalesCountryResolver(null),
+        makeGrossTaxRateResolver()
+      );
+
+      await adapterUnderTest.getProduct(internalId);
+      await adapterUnderTest.getProduct(internalId);
+      // A simple product's synthetic variant goes through the same gate.
+      await adapterUnderTest.getProductVariants(internalId);
+
+      expect(grossUnavailableWarnings()).toHaveLength(1);
+    });
+
+    it.each([
+      ['the configured code', 'PL', 'PL'],
+      ['no code for a blank setting', '  ', undefined],
+    ])(
+      'should ask the sales-country resolver for %s when the connection sets salesCountryIso2',
+      async (_label, configured, expected) => {
+        const configuredConnection = createTestConnection({
+          config: { ...connection.config, salesCountryIso2: configured },
+        });
+        mockHttpClient.getResource = jest.fn().mockResolvedValue(grossProductRow());
+        const salesCountryResolver = makeSalesCountryResolver();
+        const adapterUnderTest = createGrossAdapter(
+          salesCountryResolver,
+          makeGrossTaxRateResolver(),
+          configuredConnection
+        );
+
+        await adapterUnderTest.getProduct(internalId);
+
+        expect(salesCountryResolver.resolve).toHaveBeenCalledWith(
+          configuredConnection.id,
+          expected,
+          mockHttpClient
+        );
+      }
+    );
+
+    it('should ask for the sales country again after a failed read instead of pinning the error', async () => {
+      mockHttpClient.getResource = jest.fn().mockResolvedValue(grossProductRow());
+      const salesCountryResolver = makeSalesCountryResolver();
+      salesCountryResolver.resolve.mockRejectedValueOnce(
+        new PrestashopApiException('GET configurations returned 503', 503)
+      );
+      const adapterUnderTest = createGrossAdapter(
+        salesCountryResolver,
+        makeGrossTaxRateResolver()
+      );
+
+      await expect(adapterUnderTest.getProduct(internalId)).rejects.toBeInstanceOf(
+        PrestashopApiException
+      );
+      await expect(adapterUnderTest.getProduct(internalId)).resolves.toMatchObject({
+        price: 123,
+      });
+
+      expect(salesCountryResolver.resolve).toHaveBeenCalledTimes(2);
+    });
+  });
+
   describe('getProducts', () => {
     it('should fetch and map multiple products', async () => {
       // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- test mock: narrowing dynamic spy / fixture / response shape
@@ -351,6 +807,42 @@ describe('PrestashopProductMasterAdapter', () => {
 
       expect(result).toHaveLength(1);
       expect(result[0].id).toBe('internal-1');
+    });
+
+    it('should ask for the gross price on the same list read and report it per product (ADR-077)', async () => {
+      const products: PrestashopProduct[] = [
+        grossProductRow({ id: '1' }),
+        grossProductRow({ id: '2', price: '10.000000', ol_gross: '12.300000' }),
+      ];
+      mockHttpClient.listResources = jest.fn().mockResolvedValue(products);
+      mockIdentifierMapping.batchGetOrCreateInternalIds = jest.fn().mockResolvedValue(
+        new Map([
+          ['1:test-connection-id', 'internal-1'],
+          ['2:test-connection-id', 'internal-2'],
+        ])
+      );
+      const taxRateResolver = makeGrossTaxRateResolver();
+      const adapterUnderTest = createGrossAdapter(makeSalesCountryResolver(), taxRateResolver);
+
+      const result = await adapterUnderTest.getProducts();
+
+      expect(mockHttpClient.listResources).toHaveBeenCalledTimes(1);
+      expect(mockHttpClient.listResources).toHaveBeenCalledWith(
+        'products',
+        { sort: ['id_ASC'], priceFields: PRODUCT_GROSS_FIELDS },
+        undefined,
+        undefined
+      );
+      expect(mockHttpClient.getResource).not.toHaveBeenCalled();
+      expect(result.map((p) => p.price)).toEqual([123, 12.3]);
+      expect(taxRateResolver.resolveProductTaxRate).toHaveBeenCalledWith(
+        '2',
+        undefined,
+        connection.id,
+        mockHttpClient,
+        products[1],
+        { countryId: 14 }
+      );
     });
   });
 
@@ -536,17 +1028,28 @@ describe('PrestashopProductMasterAdapter', () => {
       );
     });
 
-    it('resolves a combination price as base + impact (impact 0 when unset) (#1096)', async () => {
+    it("should report each combination's own gross price, checked against base + impact (impact 0 when unset) (#1096, ADR-077)", async () => {
       const productId = 'internal-product-123';
-      // Base product price is 19.99 (fixture). PrestaShop combination `price` is
-      // an IMPACT, so absolute = 19.99 + impact; an unset impact yields the base.
+      // Base net is 19.99 (fixture). A combination's `price` is an IMPACT, so
+      // the net PrestaShop's gross is checked against is 19.99 + impact. The
+      // price reported is the combination's OWN gross field, which PrestaShop
+      // computes as the full price - never the product's gross plus the impact.
       mockIdentifierMapping.getExternalIds = jest
         .fn()
         .mockResolvedValue([{ connectionId: connection.id, externalId: '42', entityType: 'Product' }]);
-      mockHttpClient.getResource = jest.fn().mockResolvedValue(samplePrestashopProduct);
+      mockHttpClient.getResource = jest
+        .fn()
+        .mockResolvedValue({ ...samplePrestashopProduct, ol_gross: '24.590000' });
       const combinations: PrestashopCombination[] = [
-        { id: '101', id_product: '42', reference: 'IMP-5', price: '5.00', quantity: '10' },
-        { id: '102', id_product: '42', reference: 'NO-IMP', quantity: '20' },
+        {
+          id: '101',
+          id_product: '42',
+          reference: 'IMP-5',
+          price: '5.00',
+          quantity: '10',
+          ol_gross: '30.740000',
+        },
+        { id: '102', id_product: '42', reference: 'NO-IMP', quantity: '20', ol_gross: '24.590000' },
       ];
       mockHttpClient.listResources = jest.fn().mockResolvedValue(combinations);
       mockIdentifierMapping.batchGetOrCreateInternalIds = jest.fn().mockResolvedValue(
@@ -555,35 +1058,92 @@ describe('PrestashopProductMasterAdapter', () => {
           ['102:test-connection-id', 'internal-variant-2'],
         ])
       );
+      const adapterUnderTest = createGrossAdapter(
+        makeSalesCountryResolver(),
+        makeGrossTaxRateResolver()
+      );
 
-      const result = await adapter.getProductVariants(productId);
+      const result = await adapterUnderTest.getProductVariants(productId);
 
-      expect(result[0].price).toBe(24.99); // 19.99 + 5.00
-      expect(result[1].price).toBe(19.99); // 19.99 + 0 (impact unset)
+      // 24.99 net at 23%; the product's gross plus the impact would be 29.59.
+      expect(result[0].price).toBe(30.74);
+      // 19.99 net at 23% (impact unset).
+      expect(result[1].price).toBe(24.59);
+      // The combinations read asks for the gross on every row, without pinning
+      // a combination - each row prices itself.
+      expect(mockHttpClient.listResources).toHaveBeenCalledWith(
+        'combinations',
+        { custom: { id_product: '42' }, priceFields: COMBINATION_GROSS_FIELDS, sort: ['id_ASC'] },
+        100,
+        0
+      );
     });
 
-    it('treats a non-positive absolute combination price as no-master-price (#1099 self-review)', async () => {
+    it("should leave a combination unpriced, never inheriting the product's gross or its own impact, when PrestaShop computed no gross for it", async () => {
       const productId = 'internal-product-123';
-      // Base 19.99; a negative impact larger than the base would yield a negative
-      // absolute price — invalid, so the variant must surface no price at all
-      // (the `no-master-price` blocker) rather than publishing a negative price.
       mockIdentifierMapping.getExternalIds = jest
         .fn()
         .mockResolvedValue([{ connectionId: connection.id, externalId: '42', entityType: 'Product' }]);
-      mockHttpClient.getResource = jest.fn().mockResolvedValue(samplePrestashopProduct);
+      mockHttpClient.getResource = jest
+        .fn()
+        .mockResolvedValue({ ...samplePrestashopProduct, ol_gross: '24.590000' });
       const combinations: PrestashopCombination[] = [
-        { id: '101', id_product: '42', reference: 'NEG', price: '-25.00', quantity: '10' },
+        { id: '101', id_product: '42', reference: 'NO-GROSS', price: '5.00', quantity: '10' },
       ];
       mockHttpClient.listResources = jest.fn().mockResolvedValue(combinations);
       mockIdentifierMapping.batchGetOrCreateInternalIds = jest
         .fn()
         .mockResolvedValue(new Map([['101:test-connection-id', 'internal-variant-1']]));
+      const adapterUnderTest = createGrossAdapter(
+        makeSalesCountryResolver(),
+        makeGrossTaxRateResolver()
+      );
 
-      const result = await adapter.getProductVariants(productId);
+      const result = await adapterUnderTest.getProductVariants(productId);
 
       expect(result).toHaveLength(1);
-      expect(result[0].price).toBeUndefined();
+      expect(result[0]).not.toHaveProperty('price');
     });
+
+    it.each([
+      ['exceeds the base', '-25.00'],
+      ['equals the base', '-19.99'],
+    ])(
+      'should treat a combination as no-master-price when its negative impact %s (#1099 self-review)',
+      async (_label, impact) => {
+        const productId = 'internal-product-123';
+        // Base 19.99; a negative impact as large as the base folds to a net of
+        // zero or less - invalid, so the variant must surface no price at all
+        // (the `no-master-price` blocker) rather than publishing one. The gross
+        // gate is never consulted for it.
+        mockIdentifierMapping.getExternalIds = jest
+          .fn()
+          .mockResolvedValue([{ connectionId: connection.id, externalId: '42', entityType: 'Product' }]);
+        mockHttpClient.getResource = jest.fn().mockResolvedValue(samplePrestashopProduct);
+        const combinations: PrestashopCombination[] = [
+          {
+            id: '101',
+            id_product: '42',
+            reference: 'NEG',
+            price: impact,
+            quantity: '10',
+            ol_gross: '0.000000',
+          },
+        ];
+        mockHttpClient.listResources = jest.fn().mockResolvedValue(combinations);
+        mockIdentifierMapping.batchGetOrCreateInternalIds = jest
+          .fn()
+          .mockResolvedValue(new Map([['101:test-connection-id', 'internal-variant-1']]));
+        const taxRateResolver = makeGrossTaxRateResolver();
+        const adapterUnderTest = createGrossAdapter(makeSalesCountryResolver(), taxRateResolver);
+
+        const result = await adapterUnderTest.getProductVariants(productId);
+
+        expect(result).toHaveLength(1);
+        expect(result[0].price).toBeUndefined();
+        expect(taxRateResolver.resolveProductTaxRate).not.toHaveBeenCalled();
+      }
+    );
 
     it('does not fallback to product barcode when multiple combinations exist', async () => {
       const productId = 'internal-product-123';
@@ -647,17 +1207,27 @@ describe('PrestashopProductMasterAdapter', () => {
         },
       ]);
 
-      mockHttpClient.getResource = jest.fn().mockResolvedValue(samplePrestashopProduct);
+      mockHttpClient.getResource = jest
+        .fn()
+        .mockResolvedValue({ ...samplePrestashopProduct, ol_gross: '24.590000' });
       mockHttpClient.listResources = jest.fn().mockResolvedValue([]);
+      const adapterUnderTest = createGrossAdapter(
+        makeSalesCountryResolver(),
+        makeGrossTaxRateResolver()
+      );
 
       // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- test mock: narrowing dynamic spy / fixture / response shape
-      const result = await adapter.getProductVariants(productId);
+      const result = await adapterUnderTest.getProductVariants(productId);
 
       expect(result).toHaveLength(1);
       expect(result[0].sku).toBe(samplePrestashopProduct.reference);
-      // Synthetic variant inherits master price from the parent product so
-      // simple products carry a usable price for the bulk wizard (#792).
-      expect(result[0].price).toBe(19.99);
+      // Synthetic variant inherits the parent product's GROSS price so simple
+      // products carry a usable price for the bulk wizard (#792, ADR-077):
+      // 19.99 net at 23%.
+      expect(result[0].price).toBe(24.59);
+      expect(mockHttpClient.getResource).toHaveBeenCalledWith('products', externalProductId, {
+        priceFields: PRODUCT_GROSS_FIELDS,
+      });
       expect(mockIdentifierMapping.getOrCreateInternalId).toHaveBeenCalledWith(
         'ProductVariant',
         `product:${externalProductId}`,
@@ -696,16 +1266,25 @@ describe('PrestashopProductMasterAdapter', () => {
           },
         ]);
 
-        mockHttpClient.getResource = jest
-          .fn()
-          .mockResolvedValue({ ...samplePrestashopProduct, price: priceValue });
+        // PrestaShop's gross is there, but with no net to check it against the
+        // gate cannot vouch for the rate it carries (ADR-077).
+        mockHttpClient.getResource = jest.fn().mockResolvedValue({
+          ...samplePrestashopProduct,
+          price: priceValue,
+          ol_gross: '24.590000',
+        });
         mockHttpClient.listResources = jest.fn().mockResolvedValue([]);
+        const adapterUnderTest = createGrossAdapter(
+          makeSalesCountryResolver(),
+          makeGrossTaxRateResolver()
+        );
 
-        const result = await adapter.getProductVariants(productId);
+        const result = await adapterUnderTest.getProductVariants(productId);
 
         expect(result).toHaveLength(1);
         // Surfaces as `no-master-price` blocker downstream in #792.
         expect(result[0].price).toBeUndefined();
+        expect(result[0]).not.toHaveProperty('price');
       }
     );
 
@@ -964,7 +1543,7 @@ describe('PrestashopProductMasterAdapter', () => {
       seedMapping();
       mockHttpClient.getResource = jest.fn().mockResolvedValue(samplePrestashopProduct);
       const taxRateResolver = makeTaxRateResolver();
-      taxRateResolver.resolveProductTaxRate.mockResolvedValue({ kind: 'resolved', rate: 0.23 });
+      taxRateResolver.resolveProductTaxRate.mockResolvedValue({ kind: 'resolved', rate: 0.23, matchedBy: 'catch-all' });
       const adapterWithResolver = new PrestashopProductMasterAdapter(
         mockHttpClient,
         mockIdentifierMapping,
@@ -993,7 +1572,7 @@ describe('PrestashopProductMasterAdapter', () => {
     it('should keep a genuinely untaxed product as a resolved zero, not unknown', async () => {
       seedMapping();
       const taxRateResolver = makeTaxRateResolver();
-      taxRateResolver.resolveProductTaxRate.mockResolvedValue({ kind: 'resolved', rate: 0 });
+      taxRateResolver.resolveProductTaxRate.mockResolvedValue({ kind: 'resolved', rate: 0, matchedBy: 'no-tax-group' });
       const adapterWithResolver = new PrestashopProductMasterAdapter(
         mockHttpClient,
         mockIdentifierMapping,
@@ -1114,6 +1693,77 @@ describe('PrestashopProductMasterAdapter', () => {
       ).rejects.toBeInstanceOf(MasterProductNotFoundError);
       expect(taxRateResolver.resolveProductTaxRate).not.toHaveBeenCalled();
     });
+
+    it('should report the sales country with the rate when a rule for exactly that country matched (ADR-077)', async () => {
+      seedMapping();
+      const row = grossProductRow();
+      mockHttpClient.getResource = jest.fn().mockResolvedValue(row);
+      const taxRateResolver = makeGrossTaxRateResolver({
+        kind: 'resolved',
+        rate: 0.23,
+        matchedBy: 'country',
+      });
+      const adapterUnderTest = createGrossAdapter(makeSalesCountryResolver(), taxRateResolver);
+
+      await expect(
+        adapterUnderTest.readProductTaxRate({ productId: internalId })
+      ).resolves.toEqual({ kind: 'resolved', code: '23', countryIso2: 'PL' });
+      // Same country as the gross catalogue price, so one resolver answer serves both.
+      expect(taxRateResolver.resolveProductTaxRate).toHaveBeenCalledWith(
+        externalId,
+        undefined,
+        connection.id,
+        mockHttpClient,
+        row,
+        { countryId: 14 }
+      );
+    });
+
+    it.each<[PrestashopTaxRuleMatch, number, string]>([
+      ['catch-all', 0.23, '23'],
+      ['only-rule', 0.23, '23'],
+      ['no-tax-group', 0, '0'],
+    ])(
+      'should report no country with the rate when a %s match, not a rule for the sales country, named it (ADR-077)',
+      async (matchedBy, rate, code) => {
+        seedMapping();
+        mockHttpClient.getResource = jest.fn().mockResolvedValue(grossProductRow());
+        const adapterUnderTest = createGrossAdapter(
+          makeSalesCountryResolver(),
+          makeGrossTaxRateResolver({ kind: 'resolved', rate, matchedBy })
+        );
+
+        // A channel keying tax on the country must never be told a rate belongs
+        // to a country the shop has no rule for.
+        await expect(
+          adapterUnderTest.readProductTaxRate({ productId: internalId })
+        ).resolves.toEqual({ kind: 'resolved', code, countryIso2: null });
+      }
+    );
+
+    it('should ask the resolver without a country option when the connection has no sales country (ADR-063 § 7)', async () => {
+      seedMapping();
+      mockHttpClient.getResource = jest.fn().mockResolvedValue(samplePrestashopProduct);
+      const taxRateResolver = makeGrossTaxRateResolver({
+        kind: 'resolved',
+        rate: 0.23,
+        matchedBy: 'catch-all',
+      });
+      const adapterUnderTest = createGrossAdapter(makeSalesCountryResolver(null), taxRateResolver);
+
+      await expect(
+        adapterUnderTest.readProductTaxRate({ productId: internalId })
+      ).resolves.toEqual({ kind: 'resolved', code: '23', countryIso2: null });
+      // Five arguments, not six: the resolver falls through to the catch-all rule.
+      expect(taxRateResolver.resolveProductTaxRate.mock.calls[0]).toHaveLength(5);
+      expect(taxRateResolver.resolveProductTaxRate).toHaveBeenCalledWith(
+        externalId,
+        undefined,
+        connection.id,
+        mockHttpClient,
+        samplePrestashopProduct
+      );
+    });
   });
   /**
    * The catalogue sweep read `GET /api/products/{id}` three times per SKU:
@@ -1142,7 +1792,9 @@ describe('PrestashopProductMasterAdapter', () => {
       mockHttpClient.getResource = jest.fn().mockResolvedValue(samplePrestashopProduct);
       mockHttpClient.listResources = jest.fn().mockResolvedValue([]);
       const taxRateResolver = {
-        resolveProductTaxRate: jest.fn().mockResolvedValue({ kind: 'resolved', rate: 0.23 }),
+        resolveProductTaxRate: jest
+          .fn()
+          .mockResolvedValue({ kind: 'resolved', rate: 0.23, matchedBy: 'catch-all' }),
       };
       const adapterUnderTest = new PrestashopProductMasterAdapter(
         mockHttpClient,
@@ -1167,6 +1819,38 @@ describe('PrestashopProductMasterAdapter', () => {
         connection.id,
         mockHttpClient,
         samplePrestashopProduct
+      );
+    });
+
+    it('should fetch the product once, with the gross price riding on that same read, when a sales country is set (ADR-077)', async () => {
+      seedMapping();
+      mockIdentifierMapping.getOrCreateInternalId = jest.fn().mockResolvedValue('internal-variant');
+      const row = grossProductRow();
+      mockHttpClient.getResource = jest.fn().mockResolvedValue(row);
+      mockHttpClient.listResources = jest.fn().mockResolvedValue([]);
+      const salesCountryResolver = makeSalesCountryResolver();
+      const taxRateResolver = makeGrossTaxRateResolver();
+      const adapterUnderTest = createGrossAdapter(salesCountryResolver, taxRateResolver);
+
+      const product = await adapterUnderTest.getProduct(internalId);
+      const variants = await adapterUnderTest.getProductVariants(internalId);
+      await adapterUnderTest.readProductTaxRate({ productId: internalId });
+
+      expect(productFetchCount()).toBe(1);
+      expect(mockHttpClient.getResource).toHaveBeenCalledWith('products', externalId, {
+        priceFields: PRODUCT_GROSS_FIELDS,
+      });
+      // The sales country is resolved once per adapter instance.
+      expect(salesCountryResolver.resolve).toHaveBeenCalledTimes(1);
+      expect(product.price).toBe(123);
+      expect(variants[0].price).toBe(123);
+      expect(taxRateResolver.resolveProductTaxRate).toHaveBeenLastCalledWith(
+        externalId,
+        undefined,
+        connection.id,
+        mockHttpClient,
+        row,
+        { countryId: 14 }
       );
     });
 
@@ -1231,7 +1915,9 @@ describe('PrestashopProductMasterAdapter', () => {
         if (firstCall) {
           firstCall = false;
           // A throw before any promise exists, e.g. a client that rejects the
-          // request shape. It never reaches the cache write.
+          // request shape. The read runs inside the memo's async wrapper (it
+          // first resolves the sales country, ADR-077), so the throw surfaces as
+          // a rejection and is evicted like one.
           throw new PrestashopApiException('boom', 400);
         }
         return Promise.resolve(samplePrestashopProduct);

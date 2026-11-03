@@ -1,0 +1,1863 @@
+import type { Connection, IdentifierMappingPort } from '@openlinker/core/identifier-mapping';
+import { Logger } from '@openlinker/shared/logging';
+
+import { ShoperNetworkError } from '../../../../domain/exceptions/shoper-network.error';
+import { ShoperNotMappedException } from '../../../../domain/exceptions/shoper-not-mapped.exception';
+import { ShoperNotSupportedException } from '../../../../domain/exceptions/shoper-not-supported.exception';
+import {
+  LIVE_OPTION_COLOUR,
+  LIVE_OPTION_VALUES,
+  LIVE_VARIANT_STOCKS,
+  MAP_CONTEXT,
+  SHOP_HOST,
+  buildImage,
+  buildProduct,
+  buildStock,
+  envelope,
+} from '../../../__tests__/shoper-test-data';
+import type { ShoperProductImage } from '../../../../domain/types/shoper-api.types';
+import { ShoperProductReader } from '../../../readers/shoper-product.reader';
+import type { ShoperHttpClient } from '../../../http/shoper-http-client';
+import type { ShoperShopContextProvider } from '../../../shop-context/shoper-shop-context.provider';
+import { ShoperOptionTableProvider } from '../../../shop-context/shoper-option-table.provider';
+import type { ShoperTaxTableProvider } from '../../../shop-context/shoper-tax-table.provider';
+import {
+  MasterProductNotFoundError,
+  isBulkProductReader,
+  isModifiedProductLister,
+  isProductTaxRateReader,
+} from '@openlinker/core/products';
+import { ShoperApiError } from '../../../../domain/exceptions/shoper-api.error';
+import type { ShoperMapContext } from '../../../mappers/shoper-product.mapper';
+import { ShoperProductMasterAdapter } from '../shoper-product-master.adapter';
+
+const CONNECTION_ID = 'conn-1';
+
+interface Harness {
+  adapter: ShoperProductMasterAdapter;
+  get: jest.Mock;
+  mapping: {
+    getExternalIds: jest.Mock;
+    batchGetOrCreateInternalIds: jest.Mock;
+  };
+  taxTable: { get: jest.Mock };
+}
+
+/**
+ * The live-captured stocks of product 127, re-pointed at this spec's product 93: the
+ * adapter drops rows of another product, and the mapping above resolves 93.
+ */
+const LIVE_STOCKS_OF_PRODUCT_93 = LIVE_VARIANT_STOCKS.map((s) => ({ ...s, product_id: '93' }));
+
+/** The live trial shop's /taxes table. */
+const TAX_TABLE = new Map(
+  [
+    ['1', '23', '23%'],
+    ['2', '8', '8%'],
+    ['3', '0', '0%'],
+    ['4', '0', 'zw.'],
+    ['5', '0', 'np.'],
+    ['6', '5', '5%'],
+    ['9', '7', 'stawka specjalna'],
+    // Hand-edited / corrupted rows: the label and the value contradict each other.
+    ['10', '8', '23%'],
+    ['11', '23', 'zw.'],
+  ].map(([tax_id, value, name]) => [tax_id, { tax_id, value, name }]),
+);
+
+/**
+ * A plain context is served as-is; a `{ get }` provider is used verbatim so a
+ * test can control WHEN (or whether) the context read settles.
+ */
+function setup(
+  context: ShoperMapContext | { get: () => Promise<ShoperMapContext> } = MAP_CONTEXT,
+): Harness {
+  const shopContext =
+    'get' in context && typeof context.get === 'function'
+      ? context
+      : { get: () => Promise.resolve(context as ShoperMapContext) };
+  const get = jest.fn();
+  const taxTable = { get: jest.fn().mockResolvedValue(TAX_TABLE) };
+  const mapping = {
+    getExternalIds: jest.fn().mockResolvedValue([
+      { externalId: '93', connectionId: CONNECTION_ID, platformType: 'shoper', entityType: 'Product' },
+    ]),
+    // Internal id = "ol_" + external id, keyed the way the real service keys its map.
+    batchGetOrCreateInternalIds: jest.fn(
+      (requests: Array<{ externalId: string; connectionId: string }>) =>
+        Promise.resolve(
+          new Map(requests.map((r) => [`${r.externalId}:${r.connectionId}`, `ol_${r.externalId}`])),
+        ),
+    ),
+  };
+  const adapter = new ShoperProductMasterAdapter(
+    { get } as unknown as ShoperHttpClient,
+    mapping as unknown as IdentifierMappingPort,
+    shopContext as unknown as ShoperShopContextProvider,
+    taxTable as unknown as ShoperTaxTableProvider,
+    new ShoperOptionTableProvider({ get } as unknown as ShoperHttpClient),
+    { id: CONNECTION_ID } as Connection,
+    new ShoperProductReader({ get } as unknown as ShoperHttpClient, CONNECTION_ID),
+  );
+  return { adapter, get, mapping, taxTable };
+}
+
+/**
+ * Serves `routes` and rejects anything else. `/product-images` defaults to an
+ * empty gallery so a spec about something else need not stub it; the product's
+ * `main_image` then stays its only image (the mapper's floor).
+ */
+function respond(get: jest.Mock, routes: Record<string, unknown>): void {
+  const served: Record<string, unknown> = { '/product-images': envelope([]), ...routes };
+  get.mockImplementation((path: string) => {
+    if (!(path in served)) {
+      return Promise.reject(new Error(`unexpected GET ${path}`));
+    }
+    return Promise.resolve({ status: 200, data: served[path] });
+  });
+}
+
+/**
+ * A fake shop of `total` products that behaves like the live one where it
+ * matters: pages by index and SILENTLY shrinks a `limit` above 50 to 10.
+ */
+function fakeShop(total: number, get: jest.Mock): void {
+  get.mockImplementation((_path: string, query: { page: number; limit: number }) => {
+    const effective = query.limit > 50 ? 10 : query.limit;
+    const all = Array.from({ length: total }, (_, i) => ({ product_id: String(i + 1) }));
+    const start = (query.page - 1) * effective;
+    return Promise.resolve({
+      status: 200,
+      data: envelope(all.slice(start, start + effective), {
+        count: total,
+        pages: Math.max(1, Math.ceil(total / effective)),
+        page: query.page,
+      }),
+    });
+  });
+}
+
+function idsFrom(first: number, last: number): string[] {
+  return Array.from({ length: last - first + 1 }, (_, i) => String(first + i));
+}
+
+function pagesRequested(get: jest.Mock): number[] {
+  return get.mock.calls.map(([, query]) => (query as { page: number }).page);
+}
+
+describe('ShoperProductMasterAdapter', () => {
+  describe('listExternalIds', () => {
+    it('should return Shoper product ids, ascending, from page 1 by default', async () => {
+      const { adapter, get } = setup();
+      respond(get, { '/products': envelope([{ product_id: '93' }, { product_id: '94' }]) });
+
+      await expect(adapter.listExternalIds()).resolves.toEqual(['93', '94']);
+
+      expect(get).toHaveBeenCalledWith('/products', {
+        order: 'product_id ASC',
+        limit: 50,
+        page: 1,
+      });
+    });
+
+    it('should serve a 100-row window (the sweep default) from two pages of 50', async () => {
+      const { adapter, get } = setup();
+      fakeShop(400, get);
+
+      const ids = await adapter.listExternalIds({ limit: 100, offset: 0 });
+
+      expect(ids).toEqual(idsFrom(1, 100));
+      expect(pagesRequested(get)).toEqual([1, 2]);
+    });
+
+    it('should serve a window at an offset that is not a multiple of anything', async () => {
+      const { adapter, get } = setup();
+      fakeShop(400, get);
+
+      const ids = await adapter.listExternalIds({ limit: 100, offset: 130 });
+
+      expect(ids).toEqual(idsFrom(131, 230));
+      expect(pagesRequested(get)).toEqual([3, 4, 5]);
+    });
+
+    it('should serve the largest sweep window (500) in ten requests', async () => {
+      const { adapter, get } = setup();
+      fakeShop(2000, get);
+
+      const ids = await adapter.listExternalIds({ limit: 500, offset: 500 });
+
+      expect(ids).toEqual(idsFrom(501, 1000));
+      expect(get).toHaveBeenCalledTimes(10);
+    });
+
+    it('should never ask Shoper for a page above its ceiling of 50, which it would silently shrink', async () => {
+      const { adapter, get } = setup();
+      fakeShop(400, get);
+
+      await adapter.listExternalIds({ limit: 500, offset: 0 });
+      await adapter.listExternalIds({ limit: 7, offset: 3 });
+
+      const limits = get.mock.calls.map(([, query]) => (query as { limit: number }).limit);
+      expect(Math.max(...limits)).toBe(50);
+    });
+
+    it('should keep a cursor intact when the sweep page size changes mid-cycle (100 -> 30)', async () => {
+      const { adapter, get } = setup();
+      fakeShop(400, get);
+
+      const cycle = [
+        ...(await adapter.listExternalIds({ limit: 100, offset: 0 })),
+        ...(await adapter.listExternalIds({ limit: 30, offset: 100 })),
+        ...(await adapter.listExternalIds({ limit: 30, offset: 130 })),
+        ...(await adapter.listExternalIds({ limit: 270, offset: 160 })),
+      ];
+
+      // 100 + 30 + 30 + a 270 window that runs past the end of a 400-row shop:
+      // every row exactly once, in order, none skipped at the seams.
+      expect(cycle).toEqual(idsFrom(1, 400));
+    });
+
+    it('should stop on the shop’s own last page, not on a short page of its own making', async () => {
+      const { adapter, get } = setup();
+      fakeShop(36, get);
+
+      const ids = await adapter.listExternalIds({ limit: 100, offset: 0 });
+
+      expect(ids).toEqual(idsFrom(1, 36));
+      expect(get).toHaveBeenCalledTimes(1);
+    });
+
+    it('should return an empty window past the end instead of looping', async () => {
+      const { adapter, get } = setup();
+      fakeShop(36, get);
+
+      await expect(adapter.listExternalIds({ limit: 100, offset: 500 })).resolves.toEqual([]);
+    });
+
+    it.each([
+      ['a window above the sanity bound', { limit: 1001, offset: 0 }],
+      ['a zero window', { limit: 0, offset: 0 }],
+      ['a negative offset', { limit: 10, offset: -1 }],
+      ['a fractional offset', { limit: 10, offset: 1.5 }],
+    ])('should reject %s without calling Shoper', async (_label, window) => {
+      const { adapter, get } = setup();
+
+      await expect(adapter.listExternalIds(window)).rejects.toThrow(RangeError);
+      expect(get).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('getProduct', () => {
+    const image = (gfx: string, extra: Record<string, string> = {}): ShoperProductImage => ({
+      gfx_id: gfx,
+      product_id: '93',
+      unic_name: gfx,
+      extension: 'jpg',
+      main: '0',
+      order: '0',
+      ...extra,
+    });
+
+    it('should return the whole gallery, main image first, then in the shop gallery order', async () => {
+      const { adapter, get } = setup();
+      respond(get, {
+        '/products/93': buildProduct(),
+        '/product-images': envelope([
+          image('302', { order: '2' }),
+          image('301', { order: '1' }),
+          image('300', { main: '1', order: '5' }),
+          image('303', { hidden: '1' }),
+          image('999', { product_id: '94' }),
+        ]),
+      });
+
+      const product = await adapter.getProduct('ol_product_1');
+
+      expect(product.images).toEqual([
+        `https://${SHOP_HOST}/userdata/public/gfx/300.jpg`,
+        `https://${SHOP_HOST}/userdata/public/gfx/301.jpg`,
+        `https://${SHOP_HOST}/userdata/public/gfx/302.jpg`,
+      ]);
+      const calls = get.mock.calls as Array<[string, Record<string, unknown>]>;
+      const imageCall = calls.find(([path]) => path === '/product-images');
+      expect(imageCall?.[1]).toEqual(expect.objectContaining({ filters: '{"product_id":93}' }));
+    });
+
+    it('should report the main category path, reading only the names of its nodes', async () => {
+      const { adapter, get } = setup();
+      respond(get, {
+        '/products/93': buildProduct({ category_id: '38', categories: [38] }),
+        '/categories-tree': [{ id: 2, children: [{ id: 38, children: [] }] }, { id: 5, children: [] }],
+        '/categories': envelope([
+          { category_id: '2', translations: { pl_PL: { name: 'Dom i kuchnia' } } },
+          { category_id: '38', translations: { pl_PL: { name: 'Ceramika' } } },
+        ]),
+      });
+
+      const product = await adapter.getProduct('ol_product_1');
+
+      expect(product.categoryBreadcrumb).toEqual([
+        { id: '2', name: 'Dom i kuchnia' },
+        { id: '38', name: 'Ceramika' },
+      ]);
+      // The names come from the same memoised directory the placement path reads.
+      expect(get.mock.calls.filter(([path]) => path === '/categories-tree')).toHaveLength(1);
+    });
+
+    it('should read the category tree once for several products on one adapter', async () => {
+      const { adapter, get } = setup();
+      respond(get, {
+        '/products/93': buildProduct({ category_id: '38', categories: [38] }),
+        '/categories-tree': [{ id: 2, children: [{ id: 38, children: [] }] }],
+        '/categories': envelope([
+          { category_id: '2', translations: { pl_PL: { name: 'Dom i kuchnia' } } },
+          { category_id: '38', translations: { pl_PL: { name: 'Ceramika' } } },
+        ]),
+      });
+
+      const first = await adapter.getProduct('ol_product_1');
+      const second = await adapter.getProduct('ol_product_1');
+
+      expect(first.categoryBreadcrumb).toHaveLength(2);
+      expect(second.categoryBreadcrumb).toHaveLength(2);
+      const treeReads = get.mock.calls.filter(([path]) => path === '/categories-tree');
+      expect(treeReads).toHaveLength(1);
+    });
+
+    it('should report an unreadable tree as a failed read, not as a category missing from it', async () => {
+      const warn = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+      const { adapter, get } = setup();
+      const routes: Record<string, unknown> = {
+        '/products/93': buildProduct({ category_id: '38', categories: [38] }),
+        '/categories-tree': { oops: true },
+        '/categories': envelope([
+          { category_id: '2', translations: { pl_PL: { name: 'Dom i kuchnia' } } },
+          { category_id: '38', translations: { pl_PL: { name: 'Ceramika' } } },
+        ]),
+      };
+      respond(get, routes);
+
+      const product = await adapter.getProduct('ol_product_1');
+
+      expect(product).not.toHaveProperty('categoryBreadcrumb');
+      const messages = warn.mock.calls.map(([message]) => String(message));
+      expect(
+        messages.some((m) => m.includes('category path of product 93 could not be read'))
+      ).toBe(true);
+      expect(messages.some((m) => m.includes('is not in the category tree'))).toBe(false);
+
+      // The failed read is not kept: the next product reads the tree again.
+      routes['/categories-tree'] = [{ id: 2, children: [{ id: 38, children: [] }] }];
+      respond(get, routes);
+      const retried = await adapter.getProduct('ol_product_1');
+
+      expect(retried.categoryBreadcrumb).toEqual([
+        { id: '2', name: 'Dom i kuchnia' },
+        { id: '38', name: 'Ceramika' },
+      ]);
+      warn.mockRestore();
+    });
+
+    it('should report no path when a node on it has no name, rather than a path with a gap', async () => {
+      const { adapter, get } = setup();
+      respond(get, {
+        '/products/93': buildProduct({ category_id: '38', categories: [38] }),
+        '/categories-tree': [{ id: 2, children: [{ id: 38, children: [] }] }],
+        '/categories': envelope([
+          { category_id: '2', translations: { pl_PL: { name: '' } } },
+          { category_id: '38', translations: { pl_PL: { name: 'Ceramika' } } },
+        ]),
+      });
+
+      const product = await adapter.getProduct('ol_product_1');
+
+      expect(product).not.toHaveProperty('categoryBreadcrumb');
+    });
+
+    it('should report no path for a category the tree does not place', async () => {
+      const { adapter, get } = setup();
+      respond(get, {
+        '/products/93': buildProduct({ category_id: '38', categories: [38] }),
+        '/categories-tree': [{ id: 2, children: [] }],
+        '/categories': envelope([
+          { category_id: '2', translations: { pl_PL: { name: 'Dom i kuchnia' } } },
+          { category_id: '38', translations: { pl_PL: { name: 'Ceramika' } } },
+        ]),
+      });
+
+      const product = await adapter.getProduct('ol_product_1');
+
+      expect(product).not.toHaveProperty('categoryBreadcrumb');
+    });
+
+    it('should anchor the path on the first assigned category when Shoper names no primary one', async () => {
+      const { adapter, get } = setup();
+      respond(get, {
+        '/products/93': buildProduct({ category_id: null, categories: [38, 5] }),
+        '/categories-tree': [{ id: 2, children: [{ id: 38, children: [] }] }, { id: 5, children: [] }],
+        '/categories': envelope([
+          { category_id: '2', translations: { pl_PL: { name: 'Dom i kuchnia' } } },
+          { category_id: '38', translations: { pl_PL: { name: 'Ceramika' } } },
+          { category_id: '5', translations: { pl_PL: { name: 'Ogród' } } },
+        ]),
+      });
+
+      const product = await adapter.getProduct('ol_product_1');
+
+      expect(product.categoryBreadcrumb).toEqual([
+        { id: '2', name: 'Dom i kuchnia' },
+        { id: '38', name: 'Ceramika' },
+      ]);
+    });
+
+    it('should still return the product, without a path, when the categories cannot be read', async () => {
+      const { adapter, get } = setup();
+      respond(get, { '/products/93': buildProduct() });
+
+      const product = await adapter.getProduct('ol_product_1');
+
+      expect(product.id).toBe('ol_product_1');
+      expect(product).not.toHaveProperty('categoryBreadcrumb');
+    });
+
+    it('should keep the main image when the gallery is empty', async () => {
+      const { adapter, get } = setup();
+      respond(get, { '/products/93': buildProduct(), '/product-images': envelope([]) });
+
+      const product = await adapter.getProduct('ol_product_1');
+
+      expect(product.images).toEqual([`https://${SHOP_HOST}/userdata/public/gfx/207.png`]);
+    });
+
+    it('should resolve the Shoper id from the mapping and return the product under its internal id', async () => {
+      const { adapter, get, mapping } = setup();
+      respond(get, { '/products/93': buildProduct() });
+
+      const product = await adapter.getProduct('ol_product_1');
+
+      expect(mapping.getExternalIds).toHaveBeenCalledWith('Product', 'ol_product_1');
+      expect(product).toMatchObject({
+        id: 'ol_product_1',
+        name: 'Ceramiczny zestaw naczyń Sandstone Freckless',
+        sku: '3505-4890F',
+        price: 1484.28,
+        currency: 'PLN',
+      });
+    });
+
+    it('should raise a platform-native mapping error, not the neutral not-found, when there is no mapping here', async () => {
+      const { adapter, get, mapping } = setup();
+      mapping.getExternalIds.mockResolvedValue([
+        { externalId: '93', connectionId: 'another-connection' },
+      ]);
+
+      await expect(adapter.getProduct('ol_product_1')).rejects.toBeInstanceOf(
+        ShoperNotMappedException,
+      );
+      expect(get).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('gallery (/product-images)', () => {
+    const gfx = (id: string): string => `https://sklep729770.shoparena.pl/userdata/public/gfx/${id}.jpg`;
+    const GALLERY_93 = [
+      buildImage({ product_id: '93', gfx_id: '314', unic_name: '314', order: '3' }),
+      buildImage({ product_id: '93', gfx_id: '312', unic_name: '312', order: '1', main: 1 }),
+      buildImage({ product_id: '93', gfx_id: '313', unic_name: '313', order: '2' }),
+    ];
+
+    it('should report the whole gallery, main image first, read with one product-filtered request', async () => {
+      const { adapter, get } = setup();
+      respond(get, {
+        '/products/93': buildProduct({ main_image: { unic_name: '312', extension: 'jpg' } }),
+        '/product-images': envelope(GALLERY_93),
+      });
+
+      const product = await adapter.getProduct('ol_product_1');
+
+      expect(product.images).toEqual([gfx('312'), gfx('313'), gfx('314')]);
+      expect(get).toHaveBeenCalledWith(
+        '/product-images',
+        expect.objectContaining({ filters: JSON.stringify({ product_id: 93 }), order: 'gfx_id ASC' }),
+      );
+      expect(get.mock.calls.filter(([path]) => path === '/product-images')).toHaveLength(1);
+    });
+
+    it('should not read the gallery of a product with no main image, which has no image at all', async () => {
+      const { adapter, get } = setup();
+      respond(get, { '/products/93': buildProduct({ main_image: null }) });
+
+      const product = await adapter.getProduct('ol_product_1');
+
+      expect(product.images).toBeNull();
+      expect(get.mock.calls.map((call: unknown[]) => String(call[0]))).not.toContain('/product-images');
+    });
+
+    it('should drop an image of another product if Shoper ignores the filter', async () => {
+      const { adapter, get } = setup();
+      respond(get, {
+        '/products/93': buildProduct({ main_image: { unic_name: '312', extension: 'jpg' } }),
+        '/product-images': envelope([
+          ...GALLERY_93,
+          buildImage({ product_id: '94', gfx_id: '400', unic_name: '400', order: '0', main: 1 }),
+        ]),
+      });
+
+      const product = await adapter.getProduct('ol_product_1');
+
+      expect(product.images).toEqual([gfx('312'), gfx('313'), gfx('314')]);
+    });
+
+    it('should propagate a failed gallery read instead of syncing the main image alone', async () => {
+      const { adapter, get } = setup();
+      get.mockImplementation((path: string) =>
+        path === '/products/93'
+          ? Promise.resolve({ status: 200, data: buildProduct() })
+          : Promise.reject(new ShoperNetworkError('connection reset')),
+      );
+
+      await expect(adapter.getProduct('ol_product_1')).rejects.toThrow('connection reset');
+    });
+
+    it('should read a page of products and their galleries in one gallery request', async () => {
+      const { adapter, get } = setup();
+      respond(get, {
+        '/products': envelope([
+          buildProduct({ product_id: '93', main_image: { unic_name: '312', extension: 'jpg' } }),
+          buildProduct({ product_id: '94', main_image: { unic_name: '500', extension: 'jpg' } }),
+          buildProduct({ product_id: '95', main_image: null }),
+        ]),
+        '/product-images': envelope([
+          ...GALLERY_93,
+          buildImage({ product_id: '94', gfx_id: '500', unic_name: '500', main: 1 }),
+        ]),
+      });
+
+      const products = await adapter.getProducts({ limit: 3 });
+
+      expect(products.map((p) => p.images)).toEqual([
+        [gfx('312'), gfx('313'), gfx('314')],
+        [gfx('500')],
+        null,
+      ]);
+      const galleryCalls = (get.mock.calls as Array<[string, unknown]>).filter(
+        ([path]) => path === '/product-images',
+      );
+      expect(galleryCalls).toHaveLength(1);
+      expect(galleryCalls[0][1]).toEqual(
+        expect.objectContaining({ filters: JSON.stringify({ product_id: { in: [93, 94] } }) }),
+      );
+    });
+  });
+
+  describe('gpsr', () => {
+    const SAFETY = { gpsr_producer_id: '3', gpsr_responsible_id: null, gpsr_importer_id: null, gpsr_certificates: [] };
+    const PRODUCERS = envelope([{ gpsr_producer_id: '3', name: 'Acme Sp. z o.o.' }]);
+
+    it('should attach the resolved GPSR data when the product references a producer', async () => {
+      const { adapter, get } = setup();
+      respond(get, {
+        '/products/93': buildProduct({ safety_information: SAFETY }),
+        '/product-safety-producers': PRODUCERS,
+      });
+
+      const product = await adapter.getProduct('ol_product_1');
+
+      expect(product.gpsr).toEqual({ producer: { name: 'Acme Sp. z o.o.' } });
+    });
+
+    it('should report null and read no registry when every reference is empty', async () => {
+      const { adapter, get } = setup();
+      respond(get, {
+        '/products/93': buildProduct({
+          safety_information: { ...SAFETY, gpsr_producer_id: null },
+        }),
+      });
+
+      const product = await adapter.getProduct('ol_product_1');
+
+      expect(product.gpsr).toBeNull();
+      expect(
+        get.mock.calls
+          .map((call: unknown[]) => String(call[0]))
+          .filter((path) => !path.startsWith('/categories')),
+      ).toEqual(['/products/93', '/product-images']);
+    });
+
+    it('should leave gpsr off the product, not fail it, when the registry read fails', async () => {
+      const { adapter, get } = setup();
+      respond(get, { '/products/93': buildProduct({ safety_information: SAFETY }) });
+
+      const product = await adapter.getProduct('ol_product_1');
+
+      expect(product).not.toHaveProperty('gpsr');
+      expect(product.name).toBe('Ceramiczny zestaw naczyń Sandstone Freckless');
+    });
+
+    it('should read the producer registry once for a page of products sharing a producer', async () => {
+      const { adapter, get } = setup();
+      respond(get, {
+        '/products': envelope([
+          buildProduct({ product_id: '93', safety_information: SAFETY }),
+          buildProduct({ product_id: '94', safety_information: SAFETY }),
+        ]),
+        '/product-safety-producers': PRODUCERS,
+      });
+
+      const products = await adapter.getProducts({ limit: 2 });
+
+      expect(products.map((p) => p.gpsr?.producer?.name)).toEqual(['Acme Sp. z o.o.', 'Acme Sp. z o.o.']);
+      expect(get.mock.calls.filter((call: unknown[]) => call[0] === '/product-safety-producers')).toHaveLength(1);
+    });
+  });
+
+  describe('deletion at the master (getProduct)', () => {
+    function failWith(get: jest.Mock, error: Error): void {
+      get.mockRejectedValue(error);
+    }
+
+    it('should start the shop context read before the product read answers', async () => {
+      let releaseProduct: () => void = () => undefined;
+      const contextGet = jest.fn(() => Promise.resolve(MAP_CONTEXT));
+      const { adapter, get } = setup({ get: contextGet });
+      get.mockImplementation((path: string) => {
+        if (path === '/products/93') {
+          return new Promise((resolve) => {
+            releaseProduct = (): void => resolve({ status: 200, data: buildProduct() });
+          });
+        }
+        return Promise.resolve({ status: 200, data: envelope([]) });
+      });
+
+      const read = adapter.getProduct('ol_product_1');
+      await new Promise((resolve) => setImmediate(resolve));
+
+      expect(contextGet).toHaveBeenCalledTimes(1);
+      releaseProduct();
+      await expect(read).resolves.toMatchObject({ id: 'ol_product_1' });
+    });
+
+    it('should report the deletion, not a shop context failure, when both reads fail', async () => {
+      const { adapter, get } = setup({
+        get: () => Promise.reject(new ShoperNetworkError('ECONNRESET')),
+      });
+      failWith(get, new ShoperApiError(404, 'invalid_request', 'Resource not found'));
+
+      const error = await adapter.getProduct('ol_product_1').catch((e: unknown) => e);
+
+      expect(error).toBeInstanceOf(MasterProductNotFoundError);
+    });
+
+    it('should translate Shoper’s structured 404 into the neutral MasterProductNotFoundError', async () => {
+      const { adapter, get } = setup();
+      const cause = new ShoperApiError(404, 'invalid_request', 'Resource not found');
+      failWith(get, cause);
+
+      const error = await adapter.getProduct('ol_product_1').catch((e: unknown) => e);
+
+      expect(error).toBeInstanceOf(MasterProductNotFoundError);
+      expect(error).toMatchObject({ productId: 'ol_product_1', connectionId: CONNECTION_ID, cause });
+    });
+
+    it.each([
+      ['a bare 404 from a wrong or moved host', new ShoperApiError(404)],
+      ['a 401', new ShoperApiError(401, 'unauthorized_client')],
+      ['a 403', new ShoperApiError(403, 'insufficient_scope')],
+      ['a 429', new ShoperApiError(429)],
+      ['a 500', new ShoperApiError(500, 'server_error')],
+      ['a network failure', new ShoperNetworkError('ECONNREFUSED')],
+    ])('should NOT read %s as a deletion', async (_label, failure) => {
+      const { adapter, get } = setup();
+      failWith(get, failure);
+
+      const error = await adapter.getProduct('ol_product_1').catch((e: unknown) => e);
+
+      expect(error).toBe(failure);
+      expect(error).not.toBeInstanceOf(MasterProductNotFoundError);
+    });
+
+    describe('through every method that reads the product', () => {
+      type Read = (adapter: ShoperProductMasterAdapter) => Promise<unknown>;
+      const reads: Array<[string, Read]> = [
+        ['getProduct', (a): Promise<unknown> => a.getProduct('ol_product_1')],
+        ['getProductCategories', (a): Promise<unknown> => a.getProductCategories('ol_product_1')],
+        [
+          'readProductTaxRate',
+          (a): Promise<unknown> => a.readProductTaxRate({ productId: 'ol_product_1' }),
+        ],
+      ];
+
+      it.each(reads)(
+        'should report a deleted product as the neutral error from %s, wherever core reaches it first',
+        async (_name, read) => {
+          const { adapter, get } = setup();
+          failWith(get, new ShoperApiError(404, 'invalid_request', 'Resource not found'));
+
+          const error = await read(adapter).catch((e: unknown) => e);
+
+          expect(error).toBeInstanceOf(MasterProductNotFoundError);
+          expect(error).toMatchObject({ productId: 'ol_product_1', connectionId: CONNECTION_ID });
+        },
+      );
+
+      it.each(reads)(
+        'should NOT read a bare 404 as a deletion from %s',
+        async (_name, read) => {
+          const { adapter, get } = setup();
+          const bare = new ShoperApiError(404);
+          failWith(get, bare);
+
+          const error = await read(adapter).catch((e: unknown) => e);
+
+          expect(error).toBe(bare);
+        },
+      );
+
+    });
+
+    it('should not treat a missing mapping as a deletion', async () => {
+      const { adapter, mapping } = setup();
+      mapping.getExternalIds.mockResolvedValue([]);
+
+      const error = await adapter.getProduct('ol_product_1').catch((e: unknown) => e);
+
+      expect(error).toBeInstanceOf(ShoperNotMappedException);
+      expect(error).not.toBeInstanceOf(MasterProductNotFoundError);
+    });
+
+    it('should treat a product that resolves but has no stock rows as an inferred absence, not a deletion', async () => {
+      const { adapter, get } = setup();
+      respond(get, { '/product-stocks': envelope([]) });
+
+      await expect(adapter.getProductVariants('ol_product_1')).resolves.toEqual([]);
+    });
+  });
+
+  describe('catalogue enumeration for the sweeps', () => {
+    /** A fake shop of `total` products that honours page/limit like the live one. */
+    function shopOf(total: number, get: jest.Mock): void {
+      get.mockImplementation((_path: string, query: { page: number; limit: number }) => {
+        const all = Array.from({ length: total }, (_, i) => ({ product_id: String(i + 1) }));
+        const start = (query.page - 1) * query.limit;
+        return Promise.resolve({
+          status: 200,
+          data: envelope(all.slice(start, start + query.limit), {
+            count: total,
+            pages: Math.max(1, Math.ceil(total / query.limit)),
+            page: query.page,
+          }),
+        });
+      });
+    }
+
+    async function walk(adapter: ShoperProductMasterAdapter, limit: number): Promise<string[]> {
+      const seen: string[] = [];
+      for (let offset = 0; ; offset += limit) {
+        const page = await adapter.listExternalIds({ limit, offset });
+        seen.push(...page);
+        if (page.length < limit) return seen;
+      }
+    }
+
+    it.each([
+      [36, 20],
+      [40, 20],
+      [1, 50],
+      [120, 50],
+    ])('should enumerate a %i-product catalogue at page size %i with no gaps or duplicates', async (total, limit) => {
+      const { adapter, get } = setup();
+      shopOf(total, get);
+
+      const seen = await walk(adapter, limit);
+
+      expect(seen).toHaveLength(total);
+      expect(new Set(seen).size).toBe(total);
+      expect(seen).toEqual(Array.from({ length: total }, (_, i) => String(i + 1)));
+    });
+
+    it('should return an empty page past the end, so a cycle ends instead of looping', async () => {
+      const { adapter, get } = setup();
+      shopOf(36, get);
+
+      await expect(adapter.listExternalIds({ limit: 20, offset: 100 })).resolves.toEqual([]);
+    });
+
+    it('should offer the modified-since rung, narrowed by its guard (never advertised)', () => {
+      const { adapter } = setup();
+
+      expect(isModifiedProductLister(adapter)).toBe(true);
+    });
+  });
+
+  describe('listExternalIdsModifiedSince', () => {
+    const WARSAW = { ...MAP_CONTEXT, timezone: 'Europe/Warsaw' };
+
+    function filtersOf(get: jest.Mock, call = 0): unknown {
+      const query = (get.mock.calls as unknown[][])[call]?.[1] as { filters: string };
+      return JSON.parse(query.filters);
+    }
+
+    it('should filter on edit_date in the shop’s own time, ordered by product id', async () => {
+      const { adapter, get } = setup(WARSAW);
+      respond(get, { '/products': envelope([{ product_id: '93' }, { product_id: '127' }]) });
+
+      const ids = await adapter.listExternalIdsModifiedSince({
+        // 08:15:30.900 UTC is 10:15:30 in Warsaw in summer (UTC+2); the fraction is dropped.
+        since: new Date('2026-07-10T08:15:30.900Z'),
+        limit: 50,
+        offset: 0,
+      });
+
+      expect(ids).toEqual(['93', '127']);
+      expect(get).toHaveBeenCalledWith('/products', {
+        order: 'product_id ASC',
+        filters: JSON.stringify({ edit_date: { '>=': '2026-07-10 10:15:30' } }),
+        limit: 50,
+        page: 1,
+      });
+    });
+
+    it('should use the winter offset in winter (UTC+1)', async () => {
+      const { adapter, get } = setup(WARSAW);
+      respond(get, { '/products': envelope([]) });
+
+      await adapter.listExternalIdsModifiedSince({
+        since: new Date('2026-01-15T23:30:00Z'),
+        limit: 50,
+        offset: 0,
+      });
+
+      expect(filtersOf(get)).toEqual({ edit_date: { '>=': '2026-01-16 00:30:00' } });
+    });
+
+    it('should move the bound back an hour when the clock turns back within the next hour', async () => {
+      const { adapter, get } = setup(WARSAW);
+      respond(get, { '/products': envelope([]) });
+
+      // 2026-10-25 00:30 UTC is 02:30 CEST; at 01:00 UTC the clock goes back to
+      // 02:00 CET, so a change at 01:10 UTC reads 02:10 - earlier than the 02:30 a
+      // naive bound would use. The bound must cover it.
+      await adapter.listExternalIdsModifiedSince({
+        since: new Date('2026-10-25T00:30:00Z'),
+        limit: 50,
+        offset: 0,
+      });
+
+      expect(filtersOf(get)).toEqual({ edit_date: { '>=': '2026-10-25 01:30:00' } });
+    });
+
+    it('should widen the bound by 14 h when the shop names no time zone, never reading it as UTC', async () => {
+      const { adapter, get } = setup(MAP_CONTEXT);
+      respond(get, { '/products': envelope([]) });
+
+      await adapter.listExternalIdsModifiedSince({
+        since: new Date('2026-07-10T20:00:00Z'),
+        limit: 50,
+        offset: 0,
+      });
+
+      expect(filtersOf(get)).toEqual({ edit_date: { '>=': '2026-07-10 06:00:00' } });
+    });
+
+    it('should widen the bound the same way for a zone the runtime does not know', async () => {
+      const { adapter, get } = setup({ ...MAP_CONTEXT, timezone: 'Mars/Olympus_Mons' });
+      respond(get, { '/products': envelope([]) });
+
+      await adapter.listExternalIdsModifiedSince({
+        since: new Date('2026-07-10T20:00:00Z'),
+        limit: 50,
+        offset: 0,
+      });
+
+      expect(filtersOf(get)).toEqual({ edit_date: { '>=': '2026-07-10 06:00:00' } });
+    });
+
+    it('should serve any window from pages of 50, so a sweep cursor stays exact', async () => {
+      const { adapter, get } = setup(WARSAW);
+      fakeShop(400, get);
+
+      const since = new Date('2026-07-10T08:00:00Z');
+      const cycle = [
+        ...(await adapter.listExternalIdsModifiedSince({ since, limit: 100, offset: 0 })),
+        ...(await adapter.listExternalIdsModifiedSince({ since, limit: 100, offset: 100 })),
+      ];
+
+      expect(cycle).toEqual(idsFrom(1, 200));
+      expect(pagesRequested(get)).toEqual([1, 2, 3, 4]);
+      const limits = get.mock.calls.map(([, query]) => (query as { limit: number }).limit);
+      expect(Math.max(...limits)).toBe(50);
+    });
+
+    it('should return an empty page past the end instead of looping', async () => {
+      const { adapter, get } = setup(WARSAW);
+      fakeShop(30, get);
+
+      await expect(
+        adapter.listExternalIdsModifiedSince({
+          since: new Date('2026-07-10T08:00:00Z'),
+          limit: 100,
+          offset: 100,
+        }),
+      ).resolves.toEqual([]);
+    });
+  });
+
+  describe('getProducts', () => {
+    it('should map a page of products to internal ids with one batched mapping call', async () => {
+      const { adapter, get, mapping } = setup();
+      respond(get, {
+        '/products': envelope([
+          buildProduct({ product_id: '93' }),
+          buildProduct({ product_id: '94', code: 'B' }),
+        ]),
+      });
+
+      const products = await adapter.getProducts({ limit: 2 });
+
+      expect(products.map((p) => p.id)).toEqual(['ol_93', 'ol_94']);
+      expect(mapping.batchGetOrCreateInternalIds).toHaveBeenCalledTimes(1);
+    });
+
+    it('should skip a product the mapping service returned no id for', async () => {
+      const { adapter, get, mapping } = setup();
+      respond(get, { '/products': envelope([buildProduct({ product_id: '93' })]) });
+      mapping.batchGetOrCreateInternalIds.mockResolvedValue(new Map());
+
+      await expect(adapter.getProducts()).resolves.toEqual([]);
+    });
+
+    it('should fetch a requested id set with a single JSON "in" filter', async () => {
+      const { adapter, get } = setup();
+      respond(get, { '/products': envelope([buildProduct()]) });
+
+      await adapter.getProducts({ externalIds: ['93', '94'] });
+
+      const [, request] = get.mock.calls[0] as [string, { filters: string }];
+      expect(JSON.parse(request.filters)).toEqual({ product_id: { in: [93, 94] } });
+    });
+
+    it('should serve a window larger than one Shoper page from several pages', async () => {
+      const { adapter, get } = setup();
+      get.mockImplementation((path: string, query: { page: number; limit: number }) =>
+        Promise.resolve({
+          status: 200,
+          data:
+            path === '/product-images'
+              ? envelope([])
+              : envelope(
+                  Array.from({ length: 50 }, (_, i) =>
+                    buildProduct({ product_id: String((query.page - 1) * 50 + i + 1) }),
+                  ),
+                  { count: 200, pages: 4, page: query.page },
+                ),
+        }),
+      );
+
+      const products = await adapter.getProducts({ limit: 80, offset: 10 });
+
+      expect(products).toHaveLength(80);
+      expect(products[0].id).toBe('ol_11');
+      expect(products[79].id).toBe('ol_90');
+    });
+
+    it('should skip a non-numeric id instead of sending NaN in the filter', async () => {
+      const { adapter, get } = setup();
+      respond(get, { '/products': envelope([buildProduct()]) });
+
+      await adapter.getProducts({ externalIds: ['93', 'abc', '9 3', ''] });
+
+      const [, request] = get.mock.calls[0] as [string, { filters: string }];
+      expect(JSON.parse(request.filters)).toEqual({ product_id: { in: [93] } });
+    });
+
+    it('should not call Shoper at all when no requested id is numeric', async () => {
+      const { adapter, get } = setup();
+
+      await expect(adapter.getProducts({ externalIds: ['abc'] })).resolves.toEqual([]);
+      expect(get).not.toHaveBeenCalled();
+    });
+
+    it('should leave an id Shoper did not return out of the result, not report it as deleted', async () => {
+      const { adapter, get } = setup();
+      respond(get, { '/products': envelope([buildProduct({ product_id: '93' })]) });
+
+      const products = await adapter.getProducts({ externalIds: ['93', '999'] });
+
+      expect(products.map((p) => p.id)).toEqual(['ol_93']);
+    });
+
+    it('should chunk a requested id set larger than one page', async () => {
+      const { adapter, get } = setup();
+      respond(get, { '/products': envelope([]) });
+      const ids = Array.from({ length: 120 }, (_, i) => String(i + 1));
+
+      await adapter.getProducts({ externalIds: ids });
+
+      expect(get).toHaveBeenCalledTimes(3);
+    });
+
+    it('should turn a text query into a name LIKE filter', async () => {
+      const { adapter, get } = setup();
+      respond(get, { '/products': envelope([]) });
+
+      await adapter.searchProducts('zestaw');
+
+      const [, request] = get.mock.calls[0] as [string, { filters: string }];
+      expect(JSON.parse(request.filters)).toEqual({ 'translations.name': { like: '%zestaw%' } });
+    });
+
+    it.each([
+      ['categoryIds', { categoryIds: ['38'] }],
+      ['status', { status: 'active' }],
+    ])('should refuse the unsupported filter %s instead of ignoring it', async (_name, filters) => {
+      const { adapter, get } = setup();
+
+      await expect(adapter.getProducts(filters)).rejects.toBeInstanceOf(ShoperNotSupportedException);
+      expect(get).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('getProductVariants', () => {
+    it('should return one variant per product-stocks row, keyed by stock_id', async () => {
+      const { adapter, get, mapping } = setup();
+      respond(get, {
+        '/product-stocks': envelope([
+          buildStock({ stock_id: '300', code: 'S' }),
+          buildStock({ stock_id: '301', code: 'M' }),
+        ]),
+      });
+
+      const variants = await adapter.getProductVariants('ol_product_1');
+
+      expect(variants.map((v) => [v.id, v.sku, v.productId])).toEqual([
+        ['ol_300', 'S', 'ol_product_1'],
+        ['ol_301', 'M', 'ol_product_1'],
+      ]);
+      expect(get).toHaveBeenCalledWith(
+        '/product-stocks',
+        expect.objectContaining({ 'filters[product_id]': '93' }),
+      );
+      expect(mapping.batchGetOrCreateInternalIds).toHaveBeenCalledWith([
+        expect.objectContaining({ entityType: 'ProductVariant', externalId: '300' }),
+        expect.objectContaining({ entityType: 'ProductVariant', externalId: '301' }),
+      ]);
+    });
+
+    it('should drop stock rows of another product if Shoper stops honouring the product filter', async () => {
+      const { adapter, get } = setup();
+      respond(get, {
+        '/product-stocks': envelope([
+          buildStock({ stock_id: '181', product_id: '93' }),
+          buildStock({ stock_id: '182', product_id: '94' }),
+          buildStock({ stock_id: '183', product_id: '95' }),
+        ]),
+      });
+
+      const variants = await adapter.getProductVariants('ol_product_1');
+
+      expect(variants.map((v) => v.id)).toEqual(['ol_181']);
+      expect(variants.every((v) => v.productId === 'ol_product_1')).toBe(true);
+    });
+
+    it('should map the live multi-variant product options to attributes, leaving its base stock out', async () => {
+      const { adapter, get, mapping } = setup();
+      respond(get, {
+        '/product-stocks': envelope(LIVE_STOCKS_OF_PRODUCT_93),
+        '/options/10': LIVE_OPTION_COLOUR,
+        '/option-values': envelope(LIVE_OPTION_VALUES),
+      });
+
+      const variants = await adapter.getProductVariants('ol_product_1');
+
+      // Base stock 215 is the template the buyer cannot order once the product
+      // has variants: it gets no variant, and no id is minted for it.
+      expect(variants.map((v) => [v.id, v.attributes])).toEqual([
+        ['ol_217', { Kolor: 'biszkoptowy' }],
+        ['ol_218', { Kolor: 'Shoper blue' }],
+      ]);
+      expect(mapping.batchGetOrCreateInternalIds).toHaveBeenCalledWith([
+        expect.objectContaining({ externalId: '217' }),
+        expect.objectContaining({ externalId: '218' }),
+      ]);
+      // One option is read once for both siblings that use it.
+      expect(get.mock.calls.filter(([path]) => path === '/options/10')).toHaveLength(1);
+    });
+
+    it('should price a variant that keeps the base price at the base price, not at "0.00"', async () => {
+      const { adapter, get } = setup();
+      respond(get, {
+        '/product-stocks': envelope([
+          { ...LIVE_STOCKS_OF_PRODUCT_93[0], price: '79.00', price_type: '0' },
+          { ...LIVE_STOCKS_OF_PRODUCT_93[1], price: '0.00', price_type: '0' },
+          { ...LIVE_STOCKS_OF_PRODUCT_93[2], price: '5.00', price_type: '2' },
+        ]),
+        '/options/10': LIVE_OPTION_COLOUR,
+        '/option-values': envelope(LIVE_OPTION_VALUES),
+      });
+
+      const variants = await adapter.getProductVariants('ol_product_1');
+
+      expect(variants.map((v) => [v.id, v.price])).toEqual([
+        ['ol_217', 79],
+        ['ol_218', 84],
+      ]);
+    });
+
+    it('should sync a variant with null attributes, not fail, when its option cannot be read', async () => {
+      const { adapter, get } = setup();
+      get.mockImplementation((path: string) => {
+        if (path === '/product-stocks') {
+          return Promise.resolve({ status: 200, data: envelope([LIVE_STOCKS_OF_PRODUCT_93[1]]) });
+        }
+        if (path === '/options/10') return Promise.reject(new ShoperApiError(404, 'invalid_request'));
+        return Promise.reject(new Error(`unexpected GET ${path}`));
+      });
+
+      const variants = await adapter.getProductVariants('ol_product_1');
+
+      expect(variants).toHaveLength(1);
+      expect(variants[0].attributes).toBeNull();
+    });
+
+    it('should propagate a transport failure on an option read instead of wiping attributes', async () => {
+      const { adapter, get } = setup();
+      get.mockImplementation((path: string) => {
+        if (path === '/product-stocks') {
+          return Promise.resolve({ status: 200, data: envelope([LIVE_STOCKS_OF_PRODUCT_93[1]]) });
+        }
+        return Promise.reject(new ShoperNetworkError('connection reset'));
+      });
+
+      await expect(adapter.getProductVariants('ol_product_1')).rejects.toThrow('connection reset');
+    });
+
+    it('should keep the base stock as the variant of a product with no variant stocks', async () => {
+      const { adapter, get } = setup();
+      respond(get, {
+        '/product-stocks': envelope([buildStock({ stock_id: '271', extended: '0', options: [] })]),
+      });
+
+      const variants = await adapter.getProductVariants('ol_product_1');
+
+      expect(variants.map((v) => [v.id, v.attributes])).toEqual([['ol_271', null]]);
+    });
+
+    it('should not mint a synthetic variant for a simple product', async () => {
+      const { adapter, get } = setup();
+      respond(get, { '/product-stocks': envelope([buildStock()]) });
+
+      const variants = await adapter.getProductVariants('ol_product_1');
+
+      expect(variants).toHaveLength(1);
+      expect(variants[0].id).toBe('ol_181');
+    });
+
+    it('should read every page when a product has more variants than one page holds', async () => {
+      const { adapter, get } = setup();
+      get
+        .mockResolvedValueOnce({
+          status: 200,
+          data: envelope([buildStock({ stock_id: '1' })], { count: 2, pages: 2, page: 1 }),
+        })
+        .mockResolvedValueOnce({
+          status: 200,
+          data: envelope([buildStock({ stock_id: '2' })], { count: 2, pages: 2, page: 2 }),
+        });
+
+      const variants = await adapter.getProductVariants('ol_product_1');
+
+      expect(variants.map((v) => v.id)).toEqual(['ol_1', 'ol_2']);
+      expect(get).toHaveBeenCalledTimes(2);
+    });
+
+    it('should return no variants for a product with no stock rows', async () => {
+      const { adapter, get, mapping } = setup();
+      respond(get, { '/product-stocks': envelope([]) });
+
+      await expect(adapter.getProductVariants('ol_product_1')).resolves.toEqual([]);
+      expect(mapping.batchGetOrCreateInternalIds).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('variant images (stock gfx_id)', () => {
+    const gfx = (id: string): string => `https://sklep729770.shoparena.pl/userdata/public/gfx/${id}.jpg`;
+    /** Product 161 as read live (26 Oct 2026), re-pointed at this spec's product 93. */
+    const GALLERY = [
+      buildImage({ product_id: '93', gfx_id: '312', unic_name: '312', order: '1', main: 1 }),
+      buildImage({ product_id: '93', gfx_id: '313', unic_name: '313', order: '2' }),
+      buildImage({ product_id: '93', gfx_id: '314', unic_name: '314', order: '3' }),
+      buildImage({ product_id: '93', gfx_id: '315', unic_name: '315', order: '4' }),
+    ];
+    const STOCKS = [
+      buildStock({ stock_id: '264', extended: '0', options: [], gfx_id: null }),
+      buildStock({ stock_id: '265', extended: '1', options: [], gfx_id: '314' }),
+      buildStock({ stock_id: '266', extended: '1', options: [], gfx_id: '315' }),
+      buildStock({ stock_id: '267', extended: '1', options: [], gfx_id: null }),
+      buildStock({ stock_id: '268', extended: '1', options: [], gfx_id: '314' }),
+    ];
+
+    it('should give each variant the picture its stock points at, and null when it names none', async () => {
+      const { adapter, get } = setup();
+      respond(get, { '/product-stocks': envelope(STOCKS), '/product-images': envelope(GALLERY) });
+
+      const variants = await adapter.getProductVariants('ol_product_1');
+
+      expect(variants.map((v) => [v.id, v.images])).toEqual([
+        ['ol_265', [gfx('314')]],
+        ['ol_266', [gfx('315')]],
+        ['ol_267', null],
+        ['ol_268', [gfx('314')]],
+      ]);
+    });
+
+    it('should read the gallery once for getProduct and getProductVariants together', async () => {
+      const { adapter, get } = setup();
+      respond(get, {
+        '/products/93': buildProduct({ main_image: { unic_name: '312', extension: 'jpg' } }),
+        '/product-stocks': envelope(STOCKS),
+        '/product-images': envelope(GALLERY),
+      });
+
+      const product = await adapter.getProduct('ol_product_1');
+      await adapter.getProductVariants('ol_product_1');
+
+      expect(product.images).toEqual([gfx('312'), gfx('313'), gfx('314'), gfx('315')]);
+      expect(get.mock.calls.filter(([path]) => path === '/product-images')).toHaveLength(1);
+    });
+
+    it('should resolve a variant picture that is hidden from the product gallery', async () => {
+      const { adapter, get } = setup();
+      respond(get, {
+        '/product-stocks': envelope([STOCKS[2]]),
+        '/product-images': envelope([
+          GALLERY[0],
+          buildImage({ product_id: '93', gfx_id: '315', unic_name: '315', order: '4', hidden: '1' }),
+        ]),
+      });
+
+      const [variant] = await adapter.getProductVariants('ol_product_1');
+
+      expect(variant.images).toEqual([gfx('315')]);
+    });
+
+    it('should report null, never a guess, for a gfx_id the gallery does not hold', async () => {
+      const { adapter, get } = setup();
+      respond(get, {
+        '/product-stocks': envelope([buildStock({ stock_id: '265', gfx_id: '999' })]),
+        '/product-images': envelope(GALLERY),
+      });
+
+      const [variant] = await adapter.getProductVariants('ol_product_1');
+
+      expect(variant.images).toBeNull();
+    });
+
+    it('should not read the gallery when no stock names a picture', async () => {
+      const { adapter, get } = setup();
+      respond(get, { '/product-stocks': envelope([buildStock({ gfx_id: null })]) });
+
+      const [variant] = await adapter.getProductVariants('ol_product_1');
+
+      expect(variant.images).toBeNull();
+      expect(get.mock.calls.map((call: unknown[]) => String(call[0]))).toEqual(['/product-stocks']);
+    });
+  });
+
+  describe('readProductTaxRate', () => {
+    it('should be discoverable through the core guard', () => {
+      expect(isProductTaxRateReader(setup().adapter)).toBe(true);
+    });
+
+    it.each([
+      ['1', '23'],
+      ['2', '8'],
+      ['6', '5'],
+      ['3', '0'],
+      ['4', 'zw'],
+      ['5', 'np'],
+    ])('should resolve tax_id %p to code %p', async (taxId, code) => {
+      const { adapter, get } = setup();
+      respond(get, { '/products/93': buildProduct({ tax_id: taxId }) });
+
+      await expect(adapter.readProductTaxRate({ productId: 'ol_product_1' })).resolves.toEqual({
+        kind: 'resolved',
+        code,
+        countryIso2: null,
+      });
+    });
+
+    it.each([[null], [''], ['0']])(
+      'should report a product with tax_id %p as not configured, never a fallback rate',
+      async (taxId) => {
+        const { adapter, get, taxTable } = setup();
+        respond(get, { '/products/93': buildProduct({ tax_id: taxId }) });
+
+        await expect(adapter.readProductTaxRate({ productId: 'ol_product_1' })).resolves.toMatchObject({
+          kind: 'unknown',
+          reason: 'not-configured',
+        });
+        expect(taxTable.get).not.toHaveBeenCalled();
+      },
+    );
+
+    it('should report a tax_id missing from the table as unreadable', async () => {
+      const { adapter, get } = setup();
+      respond(get, { '/products/93': buildProduct({ tax_id: '42' }) });
+
+      await expect(adapter.readProductTaxRate({ productId: 'ol_product_1' })).resolves.toMatchObject({
+        kind: 'unknown',
+        reason: 'unreadable',
+      });
+    });
+
+    it('should report an unrecognised rate name as unreadable, naming it', async () => {
+      const { adapter, get } = setup();
+      respond(get, { '/products/93': buildProduct({ tax_id: '9' }) });
+
+      const result = await adapter.readProductTaxRate({ productId: 'ol_product_1' });
+
+      expect(result).toMatchObject({ kind: 'unknown', reason: 'unreadable' });
+      expect(result.kind === 'unknown' && result.detail).toContain('stawka specjalna');
+    });
+
+    it.each([
+      ['10', '23%', 'carries value 8'],
+      ['11', 'zw.', 'carries value 23'],
+    ])(
+      'should refuse tax_id %p ("%s") whose name contradicts its value, rather than feed a fiscal document',
+      async (taxId, name, detail) => {
+        const { adapter, get } = setup();
+        respond(get, { '/products/93': buildProduct({ tax_id: taxId }) });
+
+        const result = await adapter.readProductTaxRate({ productId: 'ol_product_1' });
+
+        expect(result).toMatchObject({ kind: 'unknown', reason: 'unreadable' });
+        expect(result.kind === 'unknown' && result.detail).toContain(detail);
+        expect(result.kind === 'unknown' && result.detail).toContain(name);
+      },
+    );
+
+    it('should let a transport failure propagate instead of turning it into an answer', async () => {
+      const { adapter, get, taxTable } = setup();
+      respond(get, { '/products/93': buildProduct() });
+      taxTable.get.mockRejectedValue(new Error('taxes 500'));
+
+      await expect(adapter.readProductTaxRate({ productId: 'ol_product_1' })).rejects.toThrow(
+        'taxes 500',
+      );
+    });
+
+    it('should share the product read with getProduct and getProductCategories', async () => {
+      const { adapter, get } = setup();
+      respond(get, {
+        '/products/93': buildProduct({ categories: [] }),
+        '/categories-tree': [],
+        '/categories': envelope([]),
+      });
+
+      await adapter.getProduct('ol_product_1');
+      await adapter.getProductCategories('ol_product_1');
+      await adapter.readProductTaxRate({ productId: 'ol_product_1' });
+
+      expect(get.mock.calls.filter(([path]) => path === '/products/93')).toHaveLength(1);
+    });
+
+    it('should read the product, not the variant, since tax lives on the product', async () => {
+      const { adapter, get } = setup();
+      respond(get, { '/products/93': buildProduct() });
+
+      await adapter.readProductTaxRate({ productId: 'ol_product_1', variantId: 'ol_variant_1' });
+
+      expect(adapter.readsTaxRatePerVariant()).toBe(false);
+      expect(get).toHaveBeenCalledTimes(1);
+      expect(get).toHaveBeenCalledWith('/products/93');
+    });
+  });
+
+  describe('categories', () => {
+    const tree = [{ id: 45, children: [{ id: 38, children: [] }, { id: 39, children: [] }] }];
+    const list = envelope([
+      { category_id: '45', translations: { pl_PL: { name: 'Kolekcje', active: '1' } } },
+      { category_id: '38', translations: { pl_PL: { name: 'Zestawy', active: '1' } } },
+      { category_id: '39', translations: { pl_PL: { name: 'Talerze', active: '0' } } },
+    ]);
+
+    it('should return the directory joined from the tree and the paged list', async () => {
+      const { adapter, get } = setup();
+      respond(get, { '/categories-tree': tree, '/categories': list });
+
+      await expect(adapter.getCategories()).resolves.toEqual([
+        { id: '45', name: 'Kolekcje', depth: 0, active: true },
+        { id: '38', name: 'Zestawy', parentId: '45', depth: 1, active: true },
+        { id: '39', name: 'Talerze', parentId: '45', depth: 1, active: false },
+      ]);
+      expect(get).toHaveBeenCalledWith(
+        '/categories',
+        expect.objectContaining({ order: 'category_id ASC', limit: 50, page: 1 }),
+      );
+    });
+
+    it('should read every page of the category list', async () => {
+      const { adapter, get } = setup();
+      get.mockImplementation((path: string, query?: { page?: number }) => {
+        if (path === '/categories-tree') return Promise.resolve({ status: 200, data: [] });
+        const page = query?.page ?? 1;
+        return Promise.resolve({
+          status: 200,
+          data: envelope(
+            [{ category_id: String(page), translations: { pl_PL: { name: `C${page}` } } }],
+            { pages: 2, page },
+          ),
+        });
+      });
+
+      const categories = await adapter.getCategories();
+
+      expect(categories.map((c) => c.id)).toEqual(['1', '2']);
+    });
+
+    it('should build the directory ONCE per adapter instance, however many products ask', async () => {
+      const { adapter, get } = setup();
+      respond(get, {
+        '/products/93': buildProduct({ categories: [38] }),
+        '/categories-tree': tree,
+        '/categories': list,
+      });
+
+      await adapter.getProductCategories('ol_product_1');
+      await adapter.getProductCategories('ol_product_1');
+      await adapter.getCategories();
+      await adapter.getCategories();
+
+      const calls = get.mock.calls.map(([path]) => path as string);
+      expect(calls.filter((p) => p === '/categories-tree')).toHaveLength(1);
+      expect(calls.filter((p) => p === '/categories')).toHaveLength(1);
+    });
+
+    it('should share the directory between concurrent callers', async () => {
+      const { adapter, get } = setup();
+      respond(get, { '/categories-tree': tree, '/categories': list });
+
+      await Promise.all([adapter.getCategories(), adapter.getCategories(), adapter.getCategories()]);
+
+      expect(get.mock.calls.filter(([path]) => path === '/categories-tree')).toHaveLength(1);
+    });
+
+    it('should hand each caller its own array, so one cannot corrupt the shared directory', async () => {
+      const { adapter, get } = setup();
+      respond(get, { '/categories-tree': tree, '/categories': list });
+
+      const first = await adapter.getCategories();
+      first.length = 0;
+
+      await expect(adapter.getCategories()).resolves.toHaveLength(3);
+    });
+
+    it('should not keep a failed directory build: the next call retries', async () => {
+      const { adapter, get } = setup();
+      get.mockRejectedValueOnce(new Error('tree 500'));
+      get.mockImplementation((path: string) =>
+        Promise.resolve({ status: 200, data: path === '/categories-tree' ? tree : list }),
+      );
+
+      await expect(adapter.getCategories()).rejects.toThrow();
+      await expect(adapter.getCategories()).resolves.toHaveLength(3);
+    });
+
+    it.each([
+      ['an object', {}],
+      ['a string', 'oops'],
+      ['null', null],
+    ])('should throw on an unreadable category tree (%s) instead of returning unplaced roots', async (_l, bad) => {
+      const { adapter, get } = setup();
+      respond(get, { '/categories-tree': bad, '/categories': list });
+
+      await expect(adapter.getCategories()).rejects.toBeInstanceOf(ShoperNetworkError);
+    });
+
+    it('should accept a legitimately empty tree', async () => {
+      const { adapter, get } = setup();
+      respond(get, { '/categories-tree': [], '/categories': list });
+
+      const categories = await adapter.getCategories();
+
+      expect(categories.every((c) => c.parentId === undefined && c.depth === undefined)).toBe(true);
+    });
+
+    it('should read the product ONCE when getProduct and getProductCategories both ask', async () => {
+      const { adapter, get } = setup();
+      respond(get, {
+        '/products/93': buildProduct({ categories: [38] }),
+        '/categories-tree': tree,
+        '/categories': list,
+      });
+
+      await adapter.getProduct('ol_product_1');
+      await adapter.getProductCategories('ol_product_1');
+
+      expect(get.mock.calls.filter(([path]) => path === '/products/93')).toHaveLength(1);
+    });
+
+    it('should not keep a failed product read: the next call retries', async () => {
+      const { adapter, get } = setup();
+      get.mockRejectedValueOnce(new Error('product 500'));
+      respond(get, { '/products/93': buildProduct({ category_id: null, categories: [] }) });
+
+      await expect(adapter.getProductCategories('ol_product_1')).rejects.toThrow('product 500');
+      await expect(adapter.getProductCategories('ol_product_1')).resolves.toEqual([]);
+    });
+
+    // The builder provisions exactly this list as one root-to-leaf path, so the
+    // leaf alone made it create "Zestawy" again at the root.
+    it('should return the primary category with every ancestor, root first', async () => {
+      const { adapter, get } = setup();
+      respond(get, {
+        '/products/93': buildProduct({ category_id: '38', categories: [38] }),
+        '/categories-tree': tree,
+        '/categories': list,
+      });
+
+      await expect(adapter.getProductCategories('ol_product_1')).resolves.toEqual([
+        { id: '45', name: 'Kolekcje', depth: 0, active: true },
+        { id: '38', name: 'Zestawy', parentId: '45', depth: 1, active: true },
+      ]);
+    });
+
+    it('should walk a deeper tree all the way to the root', async () => {
+      const { adapter, get } = setup();
+      respond(get, {
+        '/products/93': buildProduct({ category_id: '51', categories: [51] }),
+        '/categories-tree': [{ id: 45, children: [{ id: 38, children: [{ id: 51, children: [] }] }] }],
+        '/categories': envelope([
+          { category_id: '45', translations: { pl_PL: { name: 'Kolekcje' } } },
+          { category_id: '38', translations: { pl_PL: { name: 'Zestawy' } } },
+          { category_id: '51', translations: { pl_PL: { name: 'Obiadowe' } } },
+        ]),
+      });
+
+      const path = await adapter.getProductCategories('ol_product_1');
+
+      expect(path.map((c) => [c.id, c.parentId, c.depth])).toEqual([
+        ['45', undefined, 0],
+        ['38', '45', 1],
+        ['51', '38', 2],
+      ]);
+    });
+
+    it('should return a root primary category alone', async () => {
+      const { adapter, get } = setup();
+      respond(get, {
+        '/products/93': buildProduct({ category_id: '45', categories: [45] }),
+        '/categories-tree': tree,
+        '/categories': list,
+      });
+
+      await expect(adapter.getProductCategories('ol_product_1')).resolves.toEqual([
+        expect.objectContaining({ id: '45', depth: 0 }),
+      ]);
+    });
+
+    // Single-branch, like PrestaShop's id_category_default: a second branch
+    // would be stitched into the one path the builder provisions.
+    it('should follow only the primary category, leaving the other assigned ones out', async () => {
+      const { adapter, get } = setup();
+      respond(get, {
+        '/products/93': buildProduct({ category_id: '38', categories: [39, 38] }),
+        '/categories-tree': tree,
+        '/categories': list,
+      });
+
+      const path = await adapter.getProductCategories('ol_product_1');
+
+      expect(path.map((c) => c.name)).toEqual(['Kolekcje', 'Zestawy']);
+    });
+
+    it('should anchor on the sole assigned category when Shoper names no primary one', async () => {
+      const { adapter, get } = setup();
+      respond(get, {
+        '/products/93': buildProduct({ category_id: null, categories: [39] }),
+        '/categories-tree': tree,
+        '/categories': list,
+      });
+
+      const path = await adapter.getProductCategories('ol_product_1');
+
+      expect(path.map((c) => c.id)).toEqual(['45', '39']);
+    });
+
+    it('should not pick between several assigned categories when none is primary', async () => {
+      const { adapter, get } = setup();
+      respond(get, { '/products/93': buildProduct({ category_id: '0', categories: [38, 39] }) });
+
+      await expect(adapter.getProductCategories('ol_product_1')).resolves.toEqual([]);
+      expect(get).toHaveBeenCalledTimes(1);
+    });
+
+    // A truncated path is exactly what lands a category at the wrong level.
+    it('should return [] rather than a truncated path when an ancestor is missing from the directory', async () => {
+      const { adapter, get } = setup();
+      respond(get, {
+        '/products/93': buildProduct({ category_id: '38', categories: [38] }),
+        '/categories-tree': tree,
+        '/categories': envelope([
+          { category_id: '38', translations: { pl_PL: { name: 'Zestawy' } } },
+        ]),
+      });
+
+      await expect(adapter.getProductCategories('ol_product_1')).resolves.toEqual([]);
+    });
+
+    it('should return [] when the primary category is absent from the directory', async () => {
+      const { adapter, get } = setup();
+      respond(get, {
+        '/products/93': buildProduct({ category_id: '777', categories: [777] }),
+        '/categories-tree': tree,
+        '/categories': list,
+      });
+
+      await expect(adapter.getProductCategories('ol_product_1')).resolves.toEqual([]);
+    });
+
+    it('should return [] when the tree does not place the primary category', async () => {
+      const { adapter, get } = setup();
+      respond(get, {
+        '/products/93': buildProduct({ category_id: '38', categories: [38] }),
+        '/categories-tree': [],
+        '/categories': list,
+      });
+
+      await expect(adapter.getProductCategories('ol_product_1')).resolves.toEqual([]);
+    });
+
+    it('should return [] for a product with no categories without reading the directory', async () => {
+      const { adapter, get } = setup();
+      respond(get, { '/products/93': buildProduct({ category_id: null, categories: [] }) });
+
+      await expect(adapter.getProductCategories('ol_product_1')).resolves.toEqual([]);
+      expect(get).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe('methods outside this milestone', () => {
+    type Call = (adapter: ShoperProductMasterAdapter) => Promise<unknown>;
+    const cases: Array<[string, Call]> = [
+      ['createProduct', (a): Promise<unknown> => a.createProduct({ name: 'n', sku: 's', price: 1 })],
+      ['updateProduct', (a): Promise<unknown> => a.updateProduct('p', {})],
+      ['deleteProduct', (a): Promise<unknown> => a.deleteProduct('p')],
+      ['upsertProductVariant', (a): Promise<unknown> => a.upsertProductVariant('p', { sku: 's' })],
+      ['assignCategories', (a): Promise<unknown> => a.assignCategories('p', [])],
+    ];
+
+    it.each(cases)('should reject %s as not supported', async (name, call) => {
+      const { adapter } = setup();
+
+      const error = await call(adapter).catch((e: unknown) => e);
+
+      expect(error).toBeInstanceOf(ShoperNotSupportedException);
+      expect((error as ShoperNotSupportedException).operation).toBe(name);
+    });
+  });
+
+  describe('prefetchProducts (BulkProductReader)', () => {
+    const NOT_FOUND = new ShoperApiError(404, 'invalid_request', 'Resource not found');
+
+    interface ShopQuery {
+      filters?: string;
+      page?: number;
+      limit?: number;
+      'filters[product_id]'?: string;
+    }
+
+    interface InFilter {
+      product_id: { in: number[] };
+    }
+
+    function stockOf(id: string): ReturnType<typeof buildStock> {
+      return buildStock({ product_id: id, stock_id: `${id}0` });
+    }
+
+    function imageOf(id: string): ShoperProductImage {
+      return buildImage({ product_id: id, gfx_id: `${id}1`, unic_name: `${id}1` });
+    }
+
+    /** A shop holding `existing` products, one stock row each, answering both filter forms. */
+    function bulkShop(get: jest.Mock, existing: readonly string[]): void {
+      const has = new Set(existing);
+      get.mockImplementation((path: string, query: ShopQuery = {}) => {
+        const inIds = (): string[] =>
+          (JSON.parse(query.filters ?? '{}') as { product_id: { in: number[] } }).product_id.in.map(
+            String,
+          );
+        if (path === '/products' && query.filters !== undefined) {
+          const list = inIds()
+            .filter((id) => has.has(id))
+            .map((id) => buildProduct({ product_id: id, stock: stockOf(id) }));
+          return Promise.resolve({ status: 200, data: envelope(list) });
+        }
+        if (path === '/product-stocks' && query.filters !== undefined) {
+          const rows = inIds().filter((id) => has.has(id)).map(stockOf);
+          const page = query.page ?? 1;
+          const list = rows.slice((page - 1) * 50, page * 50);
+          const pages = Math.max(1, Math.ceil(rows.length / 50));
+          return Promise.resolve({ status: 200, data: envelope(list, { pages, page }) });
+        }
+        if (path === '/categories-tree') {
+          return Promise.resolve({ status: 200, data: [] });
+        }
+        if (path === '/categories') {
+          return Promise.resolve({ status: 200, data: envelope([]) });
+        }
+        if (path === '/product-stocks') {
+          const id = String(query['filters[product_id]']);
+          return Promise.resolve({ status: 200, data: envelope(has.has(id) ? [stockOf(id)] : []) });
+        }
+        if (path === '/product-images') {
+          const filter = JSON.parse(query.filters ?? '{}') as {
+            product_id: number | { in: number[] };
+          };
+          const ids =
+            typeof filter.product_id === 'number' ? [String(filter.product_id)] : inIds();
+          const rows = ids.filter((id) => has.has(id)).map(imageOf);
+          const page = query.page ?? 1;
+          const pages = Math.max(1, Math.ceil(rows.length / 50));
+          return Promise.resolve({
+            status: 200,
+            data: envelope(rows.slice((page - 1) * 50, page * 50), { pages, page }),
+          });
+        }
+        const single = /^\/products\/(\d+)$/.exec(path);
+        if (single !== null) {
+          const id = single[1];
+          return has.has(id)
+            ? Promise.resolve({
+                status: 200,
+                data: buildProduct({ product_id: id, stock: stockOf(id) }),
+              })
+            : Promise.reject(NOT_FOUND);
+        }
+        return Promise.reject(new Error(`unexpected GET ${path}`));
+      });
+    }
+
+    /** Resolves `ol_<n>` to Shoper id `<n>`, as the real mapping would. */
+    function mapEveryId(mapping: Harness['mapping']): void {
+      mapping.getExternalIds.mockImplementation((_type: string, productId: string) =>
+        Promise.resolve([
+          {
+            externalId: productId.replace(/^ol_/, ''),
+            connectionId: CONNECTION_ID,
+            platformType: 'shoper',
+            entityType: 'Product',
+          },
+        ]),
+      );
+    }
+
+    function callsTo(get: jest.Mock, path: string): number {
+      return (get.mock.calls as Array<[string]>).filter(([p]) => p === path).length;
+    }
+
+    it('should be offered through its guard, never through the manifest', () => {
+      expect(isBulkProductReader(setup().adapter)).toBe(true);
+    });
+
+    it('should read 120 products in ceil(120/50) = 3 product reads, then none per product', async () => {
+      const { adapter, get, mapping } = setup();
+      mapEveryId(mapping);
+      const ids = idsFrom(1, 120);
+      bulkShop(get, ids);
+
+      await adapter.prefetchProducts(ids);
+
+      expect(callsTo(get, '/products')).toBe(3);
+      const productFilters = (get.mock.calls as Array<[string, ShopQuery]>)
+        .filter(([p]) => p === '/products')
+        .map(([, q]) => (JSON.parse(String(q.filters)) as InFilter).product_id.in);
+      expect(productFilters.map((chunk) => chunk.length)).toEqual([50, 50, 20]);
+      // One stock row and one image per product, so each chunk fits one page.
+      expect(callsTo(get, '/product-stocks')).toBe(3);
+      expect(callsTo(get, '/product-images')).toBe(3);
+
+      get.mockClear();
+      for (const id of ids) {
+        await adapter.getProduct(`ol_${id}`);
+        await adapter.getProductVariants(`ol_${id}`);
+        await adapter.readProductTaxRate({ productId: `ol_${id}` });
+      }
+      expect(get).not.toHaveBeenCalled();
+    });
+
+    it('should leave a product the shop did not return unwarmed, so its own read reports the deletion', async () => {
+      const { adapter, get, mapping } = setup();
+      mapEveryId(mapping);
+      bulkShop(get, ['1', '2']);
+
+      await adapter.prefetchProducts(['1', '2', '3']);
+      get.mockClear();
+
+      await expect(adapter.getProduct('ol_3')).rejects.toBeInstanceOf(MasterProductNotFoundError);
+      expect(get).toHaveBeenCalledWith('/products/3');
+      await expect(adapter.getProduct('ol_1')).resolves.toMatchObject({ id: 'ol_1' });
+      expect(get).toHaveBeenCalledTimes(1);
+    });
+
+    it('should not ask for stocks when the shop returned none of the products', async () => {
+      const { adapter, get } = setup();
+      bulkShop(get, []);
+
+      await adapter.prefetchProducts(['7', '8']);
+
+      expect(callsTo(get, '/product-stocks')).toBe(0);
+    });
+
+    it('should swallow a failed prefetch and fall back to per-product reads', async () => {
+      const { adapter, get, mapping } = setup();
+      mapEveryId(mapping);
+      get.mockRejectedValueOnce(new ShoperNetworkError('ECONNRESET'));
+
+      await expect(adapter.prefetchProducts(['1'])).resolves.toBeUndefined();
+
+      bulkShop(get, ['1']);
+      get.mockClear();
+      await adapter.getProduct('ol_1');
+      expect(get).toHaveBeenCalledWith('/products/1');
+    });
+
+    it('should seed nothing when the shop ignored the filter and answered with other products', async () => {
+      const { adapter, get, mapping } = setup();
+      mapEveryId(mapping);
+      get.mockImplementationOnce(() =>
+        Promise.resolve({
+          status: 200,
+          data: envelope([buildProduct({ product_id: '1' }), buildProduct({ product_id: '999' })]),
+        }),
+      );
+
+      await expect(adapter.prefetchProducts(['1'])).resolves.toBeUndefined();
+
+      bulkShop(get, ['1']);
+      get.mockClear();
+      await adapter.getProduct('ol_1');
+      expect(get).toHaveBeenCalledWith('/products/1');
+    });
+
+    it('should never send an id that cannot be a Shoper id', async () => {
+      const { adapter, get } = setup();
+      bulkShop(get, ['1']);
+
+      await adapter.prefetchProducts(['1', 'abc', '1']);
+
+      const calls = get.mock.calls as Array<[string, ShopQuery]>;
+      const [, query] = calls.find(([p]) => p === '/products') ?? [];
+      expect(JSON.parse(String(query?.filters))).toEqual({ product_id: { in: [1] } });
+    });
+
+    it('should make no request for an empty batch', async () => {
+      const { adapter, get } = setup();
+
+      await adapter.prefetchProducts([]);
+
+      expect(get).not.toHaveBeenCalled();
+    });
+  });
+});

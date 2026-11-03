@@ -58,6 +58,9 @@ export const ksefAdapterManifest: AdapterMetadata = {
   // Future major API versions (v3+) ship as separate plugins with their own
   // adapterKey and isDefault flag.
   isDefault: true,
+  // DEF-02: the environment decides which MF portal a QR code points at, so
+  // every role must see it - it is not a secret.
+  publicConfigKeys: ['env'],
   // No `defaultRateLimit` yet (#1810 Phase 5). Unlike every other adopter, KSeF
   // is a platform where one WOULD be justified — MF publishes API limits and the
   // client already models 429 + `Retry-After` — but the figure must be cited

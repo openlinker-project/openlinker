@@ -51,21 +51,33 @@ export interface PrestashopCarrier {
  * `GET /order_states` row. `name` may be a flat string (single-lang PS
  * config) or the multi-lang shape (`{ language: [{ '#text': … }] }`).
  *
- * The three boolean discriminator columns (`delivered`, `shipped`, `paid`)
- * are PS's own canonical "what does this state mean" flags — PrestaShop
- * uses them internally to decide whether to render a tracking link, send
- * a shipped-email, etc. The branch-1 fulfillment-status mapper (#834)
- * reads them as the primary discriminator instead of name-matching the
- * `name` field (which is brittle under multi-language configs and
- * operator-renamed states). PS Webservice returns them as `'0'`/`'1'`
- * string values.
+ * `shipped` and `paid` are PS's own canonical "what does this state mean"
+ * flags — PrestaShop uses them internally to decide whether to render a
+ * tracking link, send a shipped-email, etc. — so they are read as the primary
+ * discriminator instead of name-matching the `name` field (which is brittle
+ * under multi-language configs and operator-renamed states). PS Webservice
+ * returns them as `'0'`/`'1'` string values.
+ *
+ * There is NO "delivered" flag (#3506, G02-7). The `ps_order_state` columns
+ * on PrestaShop 9.0.2 are `send_email, module_name, invoice, color, logable,
+ * shipped, unremovable, delivery, hidden, paid, pdf_delivery, pdf_invoice,
+ * deleted`; an earlier version of this type declared a `delivered` field that
+ * no shop ever returns, so "delivered" was never derived and a default shop
+ * could not be moved into its own "Delivered" state.
  */
 export interface PrestashopOrderState {
   id: string;
   name: PrestashopLanguageField;
   deleted: string | number;
-  /** `'1'` ⇔ the state means "the customer has the package" (#834). */
-  delivered?: string | number;
+  /**
+   * `'1'` ⇔ a delivery slip is available for an order in this state — it does
+   * **NOT** mean "delivered". A clean PrestaShop 9 install sets it on
+   * "Processing in progress" (3), "Shipped" (4) AND "Delivered" (5), and 4 and
+   * 5 carry identical flags, so no flag combination distinguishes delivery;
+   * `deriveOrderState` reads the label instead. Typed for completeness and so
+   * nobody re-adds a `delivered` field believing the WebService omits one.
+   */
+  delivery?: string | number;
   /** `'1'` ⇔ the state means "handed off to carrier" (#834). */
   shipped?: string | number;
   /**

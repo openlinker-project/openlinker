@@ -23,6 +23,7 @@ interface HostStub {
   configRegistry: { register: jest.Mock };
   credentialsRegistry: { register: jest.Mock };
   authFailureRegistry: { register: jest.Mock };
+  retryClassifierRegistry: { register: jest.Mock };
   schedulerRegistry: { register: jest.Mock };
   translatorRegistry: { register: jest.Mock };
   decoderRegistry: { register: jest.Mock };
@@ -33,6 +34,7 @@ function makeHostStub(): HostStub {
   const configRegistry = { register: jest.fn() };
   const credentialsRegistry = { register: jest.fn() };
   const authFailureRegistry = { register: jest.fn() };
+  const retryClassifierRegistry = { register: jest.fn() };
   const schedulerRegistry = { register: jest.fn() };
   const translatorRegistry = { register: jest.fn() };
   const decoderRegistry = { register: jest.fn() };
@@ -42,7 +44,7 @@ function makeHostStub(): HostStub {
     connectionConfigShapeValidatorRegistry: configRegistry,
     connectionCredentialsShapeValidatorRegistry: credentialsRegistry,
     emailNormalizerRegistry: { register: jest.fn() },
-    retryClassifierRegistry: { register: jest.fn() },
+    retryClassifierRegistry,
     authFailureClassifierRegistry: authFailureRegistry,
     schedulerTaskRegistry: schedulerRegistry,
     webhookProvisioningRegistry: { register: jest.fn() },
@@ -72,6 +74,7 @@ function makeHostStub(): HostStub {
     configRegistry,
     credentialsRegistry,
     authFailureRegistry,
+    retryClassifierRegistry,
     schedulerRegistry,
     translatorRegistry,
     decoderRegistry,
@@ -167,6 +170,15 @@ describe('createWooCommercePlugin → register(host)', () => {
     expect(credentialsRegistry.register).toHaveBeenCalledWith(
       'woocommerce.restapi.v3',
       expect.objectContaining({ validate: expect.any(Function) }),
+    );
+  });
+
+  it('should register a retry classifier at the plugin adapterKey (#3469)', () => {
+    const { host, retryClassifierRegistry } = makeHostStub();
+    createWooCommercePlugin().register!(host);
+    expect(retryClassifierRegistry.register).toHaveBeenCalledWith(
+      'woocommerce.restapi.v3',
+      expect.objectContaining({ isNonRetryable: expect.any(Function) }),
     );
   });
 });

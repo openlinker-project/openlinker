@@ -21,6 +21,7 @@
  * @module plugins/inpost/components
  */
 import { useMemo, useState, type ReactElement } from 'react';
+import { publicApiBaseUrl } from '../../../shared/config/public-api-base-url';
 import { Alert } from '../../../shared/ui/alert';
 import { Button } from '../../../shared/ui/button';
 import { CopyableId } from '../../../shared/ui/copyable-id';
@@ -37,16 +38,16 @@ interface InpostWebhookRunbookProps {
 /**
  * Resolve the public OpenLinker API base URL that serves inbound webhooks.
  * Prefers the operator-configured `openlinkerCallbackBaseUrl` (set in the InPost
- * structured-config section); falls back to `window.location.origin` only when
- * unset — correct for shared-origin deployments behind one reverse proxy, wrong
- * for split-origin dev/demo where the FE and API run on different hosts (#1473).
+ * structured-config section); falls back to the API address the web app itself
+ * calls, which is the API host on a split-origin deployment too, where the
+ * page's own origin would point at the web app (#1473).
  */
 function resolveApiBaseUrl(config: Connection['config']): string {
   const configured = config.openlinkerCallbackBaseUrl;
   if (typeof configured === 'string' && configured.trim().length > 0) {
     return configured.trim().replace(/\/+$/, '');
   }
-  return window.location.origin;
+  return publicApiBaseUrl();
 }
 
 export function InpostWebhookRunbook({ connection }: InpostWebhookRunbookProps): ReactElement {

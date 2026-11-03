@@ -1,5 +1,5 @@
 /**
- * RateLimitSection tests (#1810, #2016, #2229)
+ * RateLimitSection tests (#1810, #2016, #2229, shared bucket ADR-038 § Amendment)
  *
  * @module features/connections/components
  */
@@ -21,10 +21,15 @@ import type {
  * render needs the query provider. No ceiling by default — most connections
  * declare none, and that is the branch the pre-existing specs exercise.
  */
-function render(ui: ReactElement, resolveConcurrency?: ResolveConcurrencyCeiling): void {
+function render(
+  ui: ReactElement,
+  resolveConcurrency?: ResolveConcurrencyCeiling,
+  sharedBucket?: boolean
+): void {
   const status: RateLimitStatus = {
     enabled: false,
     ...(resolveConcurrency ? { resolveConcurrency } : {}),
+    ...(sharedBucket === undefined ? {} : { sharedBucket }),
   };
   const apiClient = createMockApiClient({
     connections: { getRateLimitStatus: vi.fn().mockResolvedValue(status) },
@@ -262,5 +267,38 @@ describe('RateLimitSection', () => {
     await screen.findByText(/applies no per-minute or concurrency cap of its own/i);
     expect(screen.queryByText(/requests in flight/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/at every batch size/i)).not.toBeInTheDocument();
+  });
+
+  describe('shared bucket', () => {
+    const ceiling: ResolveConcurrencyCeiling = {
+      maxInFlight: 9,
+      source: 'adapter-default',
+      adapterDefault: 9,
+    };
+
+    it('should say the limit is shared when the server reports a shared bucket', async () => {
+      render(<Harness initialRateLimit={{ requestsPerMinute: '60' }} />, undefined, true);
+
+      await waitFor(() => {
+        expect(
+          screen.getByText(/shared with other connections to the same shop/i)
+        ).toBeInTheDocument();
+      });
+      // The "replaces the default entirely" claim is false on a shared bucket.
+      expect(screen.getByText(/can only lower the shared limit/i)).toBeInTheDocument();
+      expect(screen.queryByText(/replaces the adapter default entirely/i)).not.toBeInTheDocument();
+    });
+
+    it('should not claim a shared limit when the server reports none', async () => {
+      render(<Harness initialRateLimit={{ requestsPerMinute: '60' }} />, ceiling, false);
+
+      // Settle on the ceiling line, which only renders once the status read
+      // resolved, so this asserts "never rendered" rather than "not yet".
+      await screen.findByText(/9 requests in flight/i);
+      expect(
+        screen.queryByText(/shared with other connections to the same shop/i)
+      ).not.toBeInTheDocument();
+      expect(screen.getByText(/replaces the adapter default entirely/i)).toBeInTheDocument();
+    });
   });
 });

@@ -15,6 +15,9 @@ import { useSyncJobsQuery } from '../../features/sync-jobs/hooks/use-sync-jobs-q
 import { useFailedJobGroupsQuery } from '../../features/sync-jobs/hooks/use-failed-job-groups-query';
 import { useRetryGroupedSyncJobsMutation } from '../../features/sync-jobs/hooks/use-retry-grouped-sync-jobs-mutation';
 import { usePlatforms, type Platform } from '../../shared/plugins';
+import { useCostCoverageQuery } from '../../features/products/hooks/use-cost-coverage-query';
+import { useTrackMargin } from '../../features/analytics';
+import { formatAmount } from '../../shared/format/format-amount';
 import { resolvePlatformLabel } from '../../features/mappings';
 import type {
   DevStackHealth,
@@ -443,6 +446,13 @@ export function InsightsPage(): ReactElement {
     []
   );
 
+  // #3588 - data to fill in. Not an incident: nothing is blocked, margin is just
+  // missing a number. Rendered only when there is something to fill in.
+  const trackMargin = useTrackMargin();
+  const costCoverageQuery = useCostCoverageQuery({ enabled: trackMargin });
+  const costGap = trackMargin ? costCoverageQuery.data : undefined;
+  const hasCostGap = costGap !== undefined && costGap.soldVariantsWithoutCost > 0;
+
   return (
     <PageLayout
       eyebrow="Overview"
@@ -508,6 +518,47 @@ export function InsightsPage(): ReactElement {
           />
         )}
       </section>
+
+      {hasCostGap ? (
+        <article className="panel panel--dense" data-testid="insights-setup-gaps">
+          <div className="panel__header">
+            <div>
+              <p className="eyebrow">Setup</p>
+              <h3 className="section-title">Data to fill in</h3>
+            </div>
+            <span className="panel__meta">Not errors. Nothing is blocked.</span>
+          </div>
+          <ul className="insights-gaps">
+            <li data-testid="insights-gap-cost-price">
+              <StatusBadge tone="warning" withDot compact>
+                Margin
+              </StatusBadge>
+              <div className="insights-gaps__body">
+                <b>
+                  {costGap.soldVariantsWithoutCost}{' '}
+                  {costGap.soldVariantsWithoutCost === 1 ? 'variant' : 'variants'} you sold in the
+                  last {costGap.days} days {costGap.soldVariantsWithoutCost === 1 ? 'has' : 'have'}{' '}
+                  no cost price
+                </b>
+                <span className="text-muted">
+                  {formatAmount(costGap.netSalesWithoutCost, costGap.currency)} of net sales left
+                  out of margin.
+                  {costGap.top3SharePct !== null && costGap.soldVariantsWithoutCost > 3
+                    ? ` 3 of them make up ${String(Math.round(costGap.top3SharePct))}% of that.`
+                    : ''}
+                </span>
+              </div>
+              <Link
+                className="button button--secondary button--sm"
+                to="/products/cost-prices"
+                data-testid="insights-gap-cost-price-open"
+              >
+                Add cost prices
+              </Link>
+            </li>
+          </ul>
+        </article>
+      ) : null}
 
       {/* ── What's broken right now (primary triage surface) ──────── */}
       <article className="panel panel--dense insights-incidents">

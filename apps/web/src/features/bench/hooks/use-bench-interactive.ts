@@ -28,7 +28,7 @@ import { createContext, useContext } from 'react';
 
 /**
  * `true` while the bench is open to the signed-in packer; `false` while the
- * idle lock or the handover prompt covers it.
+ * idle lock covers it.
  */
 export const BenchInteractiveContext = createContext<boolean>(true);
 

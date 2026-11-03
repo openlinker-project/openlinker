@@ -58,6 +58,23 @@ describe('orderFromReadySnapshot', () => {
     expect(OrderSnapshotUnavailableError).toBeInstanceOf(Function);
   });
 
+  describe('payment method (#3294)', () => {
+    it('should carry a recognised paymentMethod from the snapshot onto the order', () => {
+      const order = orderFromReadySnapshot(
+        makeRecord({ ...READY_SNAPSHOT, paymentMethod: 'bank_transfer' }),
+      );
+      expect(order.paymentMethod).toBe('bank_transfer');
+    });
+
+    it('should leave it absent when the snapshot has none or an unrecognised value', () => {
+      expect(orderFromReadySnapshot(makeRecord(READY_SNAPSHOT)).paymentMethod).toBeUndefined();
+      expect(
+        orderFromReadySnapshot(makeRecord({ ...READY_SNAPSHOT, paymentMethod: 'barter' }))
+          .paymentMethod,
+      ).toBeUndefined();
+    });
+  });
+
   it('round-trips a ready snapshot, rehydrating ISO date strings to Date', () => {
     const order = orderFromReadySnapshot(makeRecord(READY_SNAPSHOT));
 

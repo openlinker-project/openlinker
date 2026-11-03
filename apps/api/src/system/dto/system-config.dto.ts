@@ -14,6 +14,13 @@ export class SystemConfigDto {
   @ApiProperty({ description: 'True when OL_DEMO_MODE=true is set in the environment.' })
   demoMode!: boolean;
 
+  @ApiProperty({
+    description:
+      'True when the install stores buyer personal data (OL_STORE_PII, default true). When false, ' +
+      'order search indexes only order numbers and SKUs, so the UI must not offer buyer name/email search.',
+  })
+  storesPersonalData!: boolean;
+
   @ApiPropertyOptional({
     type: DemoIntegrationsDto,
     description:

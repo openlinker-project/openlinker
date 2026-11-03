@@ -30,6 +30,7 @@ import {
 } from 'typeorm';
 import type {
   PriceChangeBlockReason,
+  PriceChangeCause,
   PriceChangeResolution,
 } from '../../../domain/types/price-change-episode.types';
 
@@ -115,6 +116,12 @@ export class PriceChangeEpisodeOrmEntity {
 
   @Column({ type: 'varchar', length: 32, nullable: true })
   resolution!: PriceChangeResolution | null;
+
+  // Why the episode exists beyond an ordinary price move (ADR-077). Written at
+  // insert and kept by every refresh (`COALESCE` in `upsertOpen`), so a wave
+  // episode stays withheld from automatic apply for its whole life.
+  @Column({ type: 'varchar', length: 32, nullable: true })
+  cause!: PriceChangeCause | null;
 
   @Column({ type: 'text', nullable: true })
   resolvedByUserId!: string | null;

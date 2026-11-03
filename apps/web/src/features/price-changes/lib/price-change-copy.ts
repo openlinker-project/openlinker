@@ -27,7 +27,10 @@ export type DeltaTone = 'up' | 'down' | 'flat' | 'steep';
  * back to, so this is a no-op for every rule the backend actually sends
  * with concrete values (every non-passthrough rule, per that docblock).
  */
-export function toRuleSummary(rule: PricingRule): PriceChangeRuleSummary {
+export function toRuleSummary(rule: PricingRule | null): PriceChangeRuleSummary {
+  // No rule configured means the master price passes through unchanged, which
+  // reads the same as a passthrough rule for display purposes.
+  if (rule === null) return { type: 'passthrough', percent: 0, rounding: 'none' };
   return { type: rule.type, percent: rule.percent ?? 0, rounding: rule.rounding ?? 'none' };
 }
 

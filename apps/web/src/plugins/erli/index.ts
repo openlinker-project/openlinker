@@ -19,6 +19,7 @@
 import { lazy } from 'react';
 
 import { erliBulkConfigIsComplete, erliOfferValidation } from '../../features/listings';
+import { publicApiBaseUrl } from '../../shared/config/public-api-base-url';
 import type { OpenLinkerPlugin } from '../../shared/plugins';
 import { definePlugin } from '../define-plugin';
 import { ErliConnectionActions } from './components/erli-connection-actions';
@@ -51,8 +52,7 @@ export const erliPlugin: OpenLinkerPlugin = definePlugin({
       to: '/connections/new/erli',
       badge: 'API key',
     },
-    getCallbackUrlDefault: () =>
-      typeof window !== 'undefined' ? window.location.origin : undefined,
+    getCallbackUrlDefault: publicApiBaseUrl,
     StructuredConfigSection: ErliStructuredSection,
     CredentialsPanel: ErliCredentialsPanel,
     ConnectionActions: ErliConnectionActions,

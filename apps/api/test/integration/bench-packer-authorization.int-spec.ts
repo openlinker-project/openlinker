@@ -76,7 +76,7 @@ describe('Bench packer authorization (A5, #2413)', () => {
     //
     // EXACT, never `toContain`: this spec is what stops a permission the
     // narrowest role in the product should not hold from being added quietly.
-    expect(res.body.permissions).toEqual(['bench:write']);
+    expect(res.body.permissions).toEqual(['bench:write', 'bench:read']);
   });
 
   it('refuses a packer the customer list (A5)', async () => {

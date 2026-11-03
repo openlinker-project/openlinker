@@ -49,6 +49,8 @@ const work = (over: Partial<FulfillmentWork> = {}): FulfillmentWork => ({
   packedByService: null,
   invoicePrintedAt: null,
   labelPrintedAt: null,
+  buyerNoteAcknowledgedAt: null,
+  buyerNoteAcknowledgedByUserId: null,
   completedAt: null,
   completedByUserId: null,
   lines: [line()],
@@ -73,6 +75,7 @@ interface Harness {
       | 'voidVerificationById'
       | 'markInvoicePrinted'
       | 'markLabelPrinted'
+      | 'acknowledgeBuyerNote'
       | 'claimCompletion'
       | 'undoCompletion'
     >
@@ -91,6 +94,8 @@ function harness(options: {
   /** pack-bench completion */
   invoicePrinted?: boolean;
   labelPrinted?: boolean;
+  /** #3538 */
+  acknowledged?: boolean;
   completed?: boolean;
   /** #3340 follow-up */
   undone?: boolean;
@@ -114,6 +119,7 @@ function harness(options: {
     voidVerificationById: jest.fn().mockResolvedValue(options.voided ?? true),
     markInvoicePrinted: jest.fn().mockResolvedValue(options.invoicePrinted ?? true),
     markLabelPrinted: jest.fn().mockResolvedValue(options.labelPrinted ?? true),
+    acknowledgeBuyerNote: jest.fn().mockResolvedValue(options.acknowledged ?? true),
     claimCompletion: jest.fn().mockResolvedValue(options.completed ?? true),
     undoCompletion: jest.fn().mockResolvedValue(options.undone ?? true),
   } as unknown as Harness['repo'];
@@ -531,6 +537,24 @@ describe('FulfillmentVerificationService (#2418)', () => {
 
       await expect(service.markLabelPrinted('work-1', at)).resolves.toBe(true);
       expect(repo.markLabelPrinted).toHaveBeenCalledWith('work-1', at);
+    });
+  });
+
+  describe('acknowledgeBuyerNote (#3538)', () => {
+    it('passes the instant and the actor through for a first acknowledgement', async () => {
+      const { service, repo } = harness({ acknowledged: true });
+      const at = new Date();
+
+      await expect(service.acknowledgeBuyerNote('work-1', at, 'user-1')).resolves.toBe(true);
+      expect(repo.acknowledgeBuyerNote).toHaveBeenCalledWith('work-1', at, 'user-1');
+    });
+
+    it('passes through `false` for a repeat, without throwing', async () => {
+      const { service } = harness({ acknowledged: false });
+
+      await expect(service.acknowledgeBuyerNote('work-1', new Date(), 'user-2')).resolves.toBe(
+        false
+      );
     });
   });
 

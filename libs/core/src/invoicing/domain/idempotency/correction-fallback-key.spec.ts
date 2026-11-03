@@ -1,4 +1,6 @@
+import { createHash } from 'node:crypto';
 import { deriveCorrectionFallbackKey } from './correction-fallback-key';
+import { BuyerProfile } from '../entities/buyer-profile.entity';
 import type { CorrectionLine } from '../types/invoicing.types';
 
 describe('deriveCorrectionFallbackKey', () => {
@@ -78,5 +80,50 @@ describe('deriveCorrectionFallbackKey', () => {
       documentType: '',
     });
     expect(withUndefined).toBe(withEmptyString);
+  });
+  describe('buyer override (DEF-10)', () => {
+    const buyer = (city: string): BuyerProfile =>
+      new BuyerProfile(
+        'Klient Sp. z o.o.',
+        { scheme: 'pl-nip', value: '1189981779' },
+        { line1: 'ul. Kupiecka 2', line2: null, city, postalCode: '30-001', countryIso2: 'PL' },
+        'company',
+      );
+
+    it('keeps the pre-existing digest for a correction without an override', () => {
+      const legacy = createHash('sha256')
+        .update(
+          [
+            'openlinker:invoicing:correction-fallback:v1',
+            'conn-1',
+            'order-1',
+            'PROV-123',
+            'corrected',
+            'price adjustment',
+            '1::90',
+          ].join('\0'),
+        )
+        .digest('hex');
+
+      expect(deriveCorrectionFallbackKey(baseCmd)).toBe(`correction-fallback:${legacy}`);
+    });
+
+    it('differs when only the buyer override differs', () => {
+      expect(deriveCorrectionFallbackKey({ ...baseCmd, buyerOverride: buyer('Kraków') })).not.toBe(
+        deriveCorrectionFallbackKey({ ...baseCmd, buyerOverride: buyer('Gdańsk') }),
+      );
+    });
+
+    it('differs between an override and none', () => {
+      expect(deriveCorrectionFallbackKey({ ...baseCmd, buyerOverride: buyer('Kraków') })).not.toBe(
+        deriveCorrectionFallbackKey(baseCmd),
+      );
+    });
+
+    it('is the same for two equal overrides built separately', () => {
+      expect(deriveCorrectionFallbackKey({ ...baseCmd, buyerOverride: buyer('Kraków') })).toBe(
+        deriveCorrectionFallbackKey({ ...baseCmd, buyerOverride: buyer('Kraków') }),
+      );
+    });
   });
 });

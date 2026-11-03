@@ -40,9 +40,13 @@ import { INVOICE_SERVICE_TOKEN, IInvoiceService } from '@openlinker/core/invoici
 import type { InvoiceRecord, InvoiceRecordFilters, InvoiceStatus } from '@openlinker/core/invoicing';
 import {
   FISCAL_REGISTRATION_SERVICE_TOKEN,
+  FiscalRegistrationRecordNotFoundException,
   IFiscalRegistrationService,
+  selectHandoverArtefact,
+  summarizeFiscalArtefacts,
 } from '@openlinker/core/fiscalization';
 import type {
+  FiscalArtefact,
   FiscalRegistrationListFilters,
   FiscalRegistrationRecord,
   FiscalRegistrationStatus,
@@ -50,6 +54,8 @@ import type {
 import {
   ISalesDocumentRulesService,
   SALES_DOCUMENT_RULES_SERVICE_TOKEN,
+  decideLiveOrderIssuance,
+  deriveAfterIssueAttention,
   chooseSalesDocumentDecision,
   expandSalesDocumentRoutingCandidates,
   readSalesDocumentRouting,
@@ -70,7 +76,9 @@ import type {
 import type { ISalesDocumentViewService } from '../interfaces/sales-document-view.service.interface';
 import type { OrderRecord } from '../../domain/entities/order-record.entity';
 import { OrderRecordRepositoryPort } from '../../domain/ports/order-record-repository.port';
-import { ORDER_RECORD_REPOSITORY_TOKEN } from '../../orders.tokens';
+import { ORDER_RECORD_REPOSITORY_TOKEN, ORDER_REFUND_SERVICE_TOKEN } from '../../orders.tokens';
+import { IOrderRefundService } from '../interfaces/order-refund.service.interface';
+import { toLiveOrderIssuanceFacts } from '../../domain/live-order-issuance-facts';
 import { PriceTaxTreatmentValues } from '../../domain/types/order.types';
 import { buyerHasTaxId } from '../../domain/types/buyer-tax-id.types';
 import type {
@@ -115,6 +123,8 @@ export class SalesDocumentViewService implements ISalesDocumentViewService {
     private readonly connections: ConnectionPort,
     @Inject(SALES_DOCUMENT_RULES_SERVICE_TOKEN)
     private readonly salesDocumentRules: ISalesDocumentRulesService,
+    @Inject(ORDER_REFUND_SERVICE_TOKEN)
+    private readonly refunds: IOrderRefundService,
   ) {}
 
   async getForOrders(orderIds: readonly string[]): Promise<Map<string, SalesDocumentView>> {
@@ -261,10 +271,11 @@ export class SalesDocumentViewService implements ISalesDocumentViewService {
       return new Map();
     }
 
-    const [records, invoiceRecords, fiscalRecords] = await Promise.all([
+    const [records, invoiceRecords, fiscalRecords, refundSummaries] = await Promise.all([
       this.orderRecords.findByIds(uniqueIds),
       this.invoices.listInvoicesForOrders(uniqueIds),
       this.fiscalRegistrations.getByOrderIds(uniqueIds),
+      this.refunds.getRefundSummariesForOrders(uniqueIds),
     ]);
 
     const rankedByOrderId = groupRankedRecords(invoiceRecords, fiscalRecords);
@@ -309,6 +320,14 @@ export class SalesDocumentViewService implements ISalesDocumentViewService {
           !includeMatchedRule || record.salesDocumentMatchedRuleId === null
             ? null
             : (matchedRulesById.get(record.salesDocumentMatchedRuleId) ?? null),
+        // DEF-26: the same live-order gate the issue paths ask, applied to an
+        // order that already has a document.
+        afterIssueAttention: deriveAfterIssueAttention(
+          decideLiveOrderIssuance(
+            toLiveOrderIssuanceFacts(record, refundSummaries.get(record.internalOrderId) ?? null),
+          ),
+          winner?.blocksFurtherIssuance === true,
+        ),
       });
     }
     return views;
@@ -340,6 +359,28 @@ export class SalesDocumentViewService implements ISalesDocumentViewService {
 
   async getForOrder(orderId: string): Promise<SalesDocumentView | null> {
     return (await this.buildViews([orderId], true)).get(orderId) ?? null;
+  }
+
+  async getReceiptHandoverArtefact(orderId: string): Promise<FiscalArtefact | null> {
+    // The SAME winner the projection names, so a surface that offered "open the
+    // receipt" off `getForOrders` is served that receipt and not another one.
+    const view = (await this.buildViews([orderId], false)).get(orderId);
+    const document = view?.document ?? null;
+    if (document === null || document.kind !== 'fiscal-receipt' || document.status !== 'registered') {
+      return null;
+    }
+    let record: FiscalRegistrationRecord;
+    try {
+      record = await this.fiscalRegistrations.getById(document.identity.recordId);
+    } catch (error) {
+      // A record gone between the projection read and this one is a receipt
+      // that no longer exists - the route's advertised 404, not a 500.
+      if (error instanceof FiscalRegistrationRecordNotFoundException) {
+        return null;
+      }
+      throw error;
+    }
+    return selectHandoverArtefact(record.artefacts);
   }
 
   /**
@@ -578,6 +619,9 @@ function toRankedInvoice(record: InvoiceRecord): RankedRecord {
 }
 
 function toRankedFiscal(record: FiscalRegistrationRecord): RankedRecord {
+  // The count is read off the summaries so the two are one fact: a future
+  // filter on the summaries cannot leave the count describing a different list.
+  const artefacts = summarizeFiscalArtefacts(record.artefacts);
   return {
     orderId: record.orderId,
     connectionId: record.connectionId,
@@ -591,7 +635,8 @@ function toRankedFiscal(record: FiscalRegistrationRecord): RankedRecord {
       failureReason: record.failureReason,
       // `0` on a registered row is a SUCCESS - a pure reporting regime returns
       // identifiers and no artefact at all.
-      artefactCount: record.artefacts?.length ?? 0,
+      artefactCount: artefacts?.length ?? 0,
+      artefacts,
       identity: toIdentity({
         recordId: record.id,
         connectionId: record.connectionId,

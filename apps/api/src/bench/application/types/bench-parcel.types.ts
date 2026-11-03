@@ -50,7 +50,14 @@ import {
 } from '@openlinker/core/fulfillment';
 import type { HoldReason } from '@openlinker/core/order-lifecycle';
 import type {
+  FiscalArtefactSummary,
+  FiscalRegistrationFailureMode,
+  FiscalRegistrationStatus,
+} from '@openlinker/core/fiscalization';
+import type { InvoiceFailureMode, InvoiceStatus } from '@openlinker/core/invoicing';
+import type {
   SalesDocumentGateBlockReason,
+  SalesDocumentKind,
   SalesDocumentUnresolvedReason,
 } from '@openlinker/core/sales-documents';
 
@@ -188,6 +195,62 @@ export interface BenchParcelView {
    */
   readonly completedAt: string | null;
   readonly lines: readonly BenchParcelLineView[];
+  /**
+   * Internal notes flagged "Show to packer" (D12, #3531) — read only, in
+   * creation order. Never a note's raw `showToPacker: false` sibling, and
+   * never a tag: decision D12 limits the packer projection to exactly this
+   * field plus the buyer note (#3509, not yet shipped). An empty array means
+   * no flagged note exists for this order, which is the ordinary case.
+   */
+  readonly packerNotes: readonly BenchPackerNoteView[];
+  /**
+   * The buyer's checkout note, verbatim (#3538, D12) - READ ONLY, and a
+   * deliberate new disclosure to the packer role: packers act on "no receipt in
+   * the box" style instructions. `null` for every state with no text to show:
+   * the buyer left none, the source could not say, or the deployment runs with
+   * `OL_STORE_PII=false` and stores no note text. The bench does not tell those
+   * apart - a packer can only act on words they can read.
+   *
+   * It is the ORDER's note, so it shows on every parcel of a split order.
+   */
+  readonly buyerNote: string | null;
+  /**
+   * Whether the order has a buyer note at all, independent of whether its text
+   * is stored (B-12). Not PII: it lets the bench say a note exists when
+   * `OL_STORE_PII=false` leaves `buyerNote` null, and still offer the reading.
+   */
+  readonly hasBuyerNote: boolean;
+  /**
+   * When THIS parcel's buyer note was first acknowledged at the bench, or
+   * `null` (#3538). Per parcel: a split order's second parcel is acknowledged
+   * separately. Never blocks scanning and is not a parcel close (ADR-071).
+   */
+  readonly buyerNoteAcknowledgedAt: string | null;
+  /** Who acknowledged it - a raw user id, like `packedByUserId`. */
+  readonly buyerNoteAcknowledgedByUserId: string | null;
+  /**
+   * The acknowledgements of the order's OTHER parcels (#3538), for the `multi`
+   * state: a packer opening parcel 2 can see parcel 1's note was already read.
+   * Only acknowledged siblings appear; this parcel is never in the list.
+   */
+  readonly otherParcelBuyerNoteAcknowledgements: readonly BenchSiblingBuyerNoteAcknowledgementView[];
+}
+
+/** One sibling parcel's buyer-note acknowledgement (#3538). */
+export interface BenchSiblingBuyerNoteAcknowledgementView {
+  readonly workId: string;
+  /** 1-based, in the same order `parcelIndex` uses. */
+  readonly parcelIndex: number;
+  readonly acknowledgedAt: string;
+  readonly acknowledgedByUserId: string | null;
+}
+
+/** One note flagged "Show to packer" (D12) — text, author, time, nothing else. */
+export interface BenchPackerNoteView {
+  readonly id: string;
+  readonly body: string;
+  readonly authorUsername: string;
+  readonly createdAt: string;
 }
 
 /**
@@ -257,10 +320,31 @@ export interface BenchUndoResultView {
  * packer cannot fix; refusing to pack piles boxes at a bench while somebody
  * hunts for an admin, and the order still needs shipping.
  */
+/**
+ * What the bench can do with an issued invoice (#3648): print a rendering of it,
+ * point at the authority's public link, or neither. Internal to the read.
+ */
+export interface InvoicePrintability {
+  readonly printable: boolean;
+  readonly verificationUrl: string | null;
+}
+
 export type BenchInvoiceView =
   | {
       /** Issued AND the provider can produce something printable. */
       readonly state: 'ready';
+      readonly invoiceId: string;
+      readonly documentNumber: string | null;
+      readonly issuedAt: string | null;
+    }
+  | {
+      /**
+       * Issued, nothing to render, but the authority gives the document a public
+       * link to open and print from (#3648 - KSeF's KOD I). A distinct state, not
+       * `ready`: the press route has no bytes to stream for it.
+       */
+      readonly state: 'link';
+      readonly verificationUrl: string;
       readonly invoiceId: string;
       readonly documentNumber: string | null;
       readonly issuedAt: string | null;
@@ -354,10 +438,91 @@ export type BenchLabelView =
  * so.
  */
 
+/**
+ * The order's sales document, whichever kind it is, on the status axis that
+ * belongs to that kind (#3646).
+ *
+ * Read from the per-order sales-document projection (ADR-065), so the bench,
+ * the `/orders` row and the order panel name the SAME document. Every status is
+ * carried, not only the finished ones: a document still being made, or one that
+ * failed, is a different fact from "no document", and reporting it as missing
+ * told the packer something false.
+ */
+export type BenchSalesDocumentView =
+  | {
+      readonly kind: 'invoice';
+      readonly recordId: string;
+      readonly connectionId: string;
+      readonly status: InvoiceStatus;
+      /**
+       * `null` unless `failed`. An ABSENT mode on a failed row means the same as
+       * `in-doubt`: OpenLinker does not know whether a document exists.
+       */
+      readonly failureMode: InvoiceFailureMode | null;
+      readonly documentNumber: string | null;
+      readonly completedAt: string | null;
+      /**
+       * Issued AND the provider can render something to put in the box - the
+       * same test the invoice print route applies, so "print" is never offered
+       * and then refused.
+       */
+      readonly printable: boolean;
+      /**
+       * The authority's public verification link when the provider cannot render
+       * but can link (#3648); `null` otherwise. Neutral URL - never built here.
+       */
+      readonly verificationUrl: string | null;
+    }
+  | {
+      readonly kind: 'fiscal-receipt';
+      readonly recordId: string;
+      readonly connectionId: string;
+      /**
+       * The registering connection's `platformType`, so the frontend can pick a
+       * per-integration presentation. A packer cannot read `GET /connections`.
+       * `null` when the connection could not be resolved (disabled or gone) -
+       * the surface then falls back to its neutral default.
+       */
+      readonly platformType: string | null;
+      readonly status: FiscalRegistrationStatus;
+      readonly failureMode: FiscalRegistrationFailureMode | null;
+      /** The number the receipt bears; `null` until one is assigned. */
+      readonly documentReference: string | null;
+      readonly completedAt: string | null;
+      /**
+       * Payload-free summaries (ADR-042 #2523). `null` = nothing produced yet;
+       * `[]` = registered and produced nothing. Never evidence of delivery.
+       */
+      readonly artefacts: readonly FiscalArtefactSummary[] | null;
+    };
+
+/**
+ * Why the order has no sales document, present ONLY when it has none (#3646).
+ *
+ * The persisted block reason is left over from before a document existed as
+ * soon as one does, so it is reported here and nowhere else - never beside a
+ * document it would contradict.
+ */
+export interface BenchNoSalesDocumentView {
+  /** The kind routing resolved for the order; `null` when routing has not decided. */
+  readonly documentKind: SalesDocumentKind | null;
+  readonly blockReason: SalesDocumentGateBlockReason | null;
+  readonly unresolvedReason: SalesDocumentUnresolvedReason | null;
+}
+
 /** What goes INSIDE the box, and what goes ON it. */
 export interface BenchDocumentsView {
   readonly workId: string;
+  /**
+   * @deprecated since #3646 - invoice-only, and reports every non-issued state as
+   * `missing`. Kept unchanged so a frontend built before `document` still
+   * renders; read {@link document} / {@link noDocument} instead.
+   */
   readonly invoice: BenchInvoiceView;
+  /** The order's sales document, or `null` when it has none of any kind. */
+  readonly document: BenchSalesDocumentView | null;
+  /** Present exactly when {@link document} is `null`. */
+  readonly noDocument: BenchNoSalesDocumentView | null;
   readonly label: BenchLabelView;
 }
 
@@ -424,6 +589,33 @@ export const BenchClaimRefusalValues = [
   'claimed-by-someone-else',
 ] as const;
 export type BenchClaimRefusal = (typeof BenchClaimRefusalValues)[number];
+
+/**
+ * Why acknowledging the buyer note was refused (#3538). `'not-claimable-by-viewer'`
+ * is the same ADR-074 lock every other bench write checks; `'no-buyer-note'`
+ * means there is nothing on this order to acknowledge.
+ */
+export const BenchBuyerNoteAcknowledgementRefusalValues = [
+  'not-claimable-by-viewer',
+  'no-buyer-note',
+  /**
+   * The parcel's work was cancelled (N-41): nobody packs it, so signing off its
+   * note would record a read for a box that will never ship. A CLOSED work is
+   * still allowed - a packer may acknowledge after finishing.
+   */
+  'work-cancelled',
+] as const;
+
+export type BenchBuyerNoteAcknowledgementRefusal =
+  (typeof BenchBuyerNoteAcknowledgementRefusalValues)[number];
+
+/** What acknowledging one parcel's buyer note answers (#3538). */
+export interface BenchBuyerNoteAcknowledgementResultView {
+  /** `already-acknowledged` is an ordinary replay, never an error. */
+  readonly outcome: 'acknowledged' | 'already-acknowledged' | 'refused';
+  readonly reason: BenchBuyerNoteAcknowledgementRefusal | null;
+  readonly parcel: BenchParcelView;
+}
 
 /** What claiming ONE chosen parcel answers (#3412). */
 export interface BenchClaimResultView {

@@ -111,13 +111,20 @@ describe('computeResolvedStock', () => {
     });
   });
 
-  it('blocks no-master-stock under use-master when master is 0 or null', () => {
+  it('blocks no-master-stock under use-master when the master reports 0', () => {
     expect(computeResolvedStock({ mode: 'use-master' }, 0, NO_OVERRIDE).blocker).toBe(
       'no-master-stock'
     );
-    expect(computeResolvedStock({ mode: 'use-master' }, null, NO_OVERRIDE).blocker).toBe(
-      'no-master-stock'
-    );
+  });
+
+  // #3851: an unknown stock used to share `no-master-stock` with a known 0, and
+  // the 0 the editor pre-filled for it then listed with no blocker at all.
+  it('blocks stock-unknown under use-master when OpenLinker has no stock', () => {
+    expect(computeResolvedStock({ mode: 'use-master' }, null, NO_OVERRIDE)).toEqual({
+      value: null,
+      source: 'master',
+      blocker: 'stock-unknown',
+    });
   });
 
   it('caps to min(master, N) under cap', () => {
@@ -129,9 +136,9 @@ describe('computeResolvedStock', () => {
     expect(computeResolvedStock({ mode: 'cap', value: 5 }, 3, NO_OVERRIDE).value).toBe(3);
   });
 
-  it('blocks cap when master is null or the capped value is 0', () => {
+  it('blocks cap when master is unknown or the capped value is 0', () => {
     expect(computeResolvedStock({ mode: 'cap', value: 5 }, null, NO_OVERRIDE).blocker).toBe(
-      'no-master-stock'
+      'stock-unknown'
     );
     expect(computeResolvedStock({ mode: 'cap', value: 5 }, 0, NO_OVERRIDE).blocker).toBe(
       'no-master-stock'
@@ -324,7 +331,7 @@ describe('computeBlockers', () => {
         masterStock: null,
       })
     );
-    expect(result).toEqual([NEEDS_PARAMS, 'no-master-price', 'no-master-stock']);
+    expect(result).toEqual([NEEDS_PARAMS, 'no-master-price', 'stock-unknown']);
   });
 
   // #1962 - the host feeds the submit title through to the platform validator,
@@ -352,12 +359,14 @@ describe('computeBlockers', () => {
 
 // ── Per-variant helpers (#1741) ──────────────────────────────────────────────
 import {
+  defaultImagesForVariant,
   distinguishingLabel,
   duplicateEanVariantIds,
   effectiveVariantEan,
   imageCountForVariant,
   isValidGtin,
   recomputeVariantBlockers,
+  siblingStockBlockers,
   titleForRow,
   titleForVariant,
   toGtin14,
@@ -459,6 +468,30 @@ describe('imageCountForVariant', () => {
     });
     expect(imageCountForVariant(makeWizardRow([withOverride]), withOverride)).toBe(0);
   });
+
+  it("counts the variant's resolved default images when it has no override", () => {
+    const red = makeVariant('red', {});
+    red.variant = { ...red.variant, defaultImages: ['314.jpg', 'a.jpg', 'b.jpg'] };
+    expect(imageCountForVariant(makeWizardRow([red]), red)).toBe(3);
+  });
+});
+
+describe('defaultImagesForVariant', () => {
+  it('reads the API-resolved default list', () => {
+    const red = makeVariant('red');
+    red.variant = { ...red.variant, defaultImages: ['314.jpg', ' ', '312.jpg'] };
+    expect(defaultImagesForVariant(red, ['312.jpg', '314.jpg'])).toEqual(['314.jpg', '312.jpg']);
+  });
+
+  it.each([
+    ['is absent (older API)', undefined],
+    ['is null', null],
+    ['is empty', []],
+  ])('falls back to the product images when the resolved list %s', (_label, defaultImages) => {
+    const v = makeVariant('v');
+    v.variant = { ...v.variant, defaultImages };
+    expect(defaultImagesForVariant(v, ['312.jpg', '313.jpg'])).toEqual(['312.jpg', '313.jpg']);
+  });
 });
 
 // #1962 - the title a submit would carry, so a platform length rule can measure
@@ -520,6 +553,24 @@ describe('recomputeVariantBlockers', () => {
       false,
       true
     );
+    expect(blockers).not.toContain('no-master-stock');
+  });
+
+  it('blocks a multi-variant sibling whose stock OpenLinker does not have (#3851)', () => {
+    const variant = makeVariant('ol_variant_1', { masterStock: null });
+    const row = makeWizardRow([variant, makeVariant('ol_variant_2')]);
+    // Flat policy on purpose: no policy reaches a sibling's offer, which always
+    // lists at its master stock, so an unknown one blocks regardless.
+    const blockers = recomputeVariantBlockers(
+      row,
+      variant,
+      { ...CONFIG, stockPolicy: { mode: 'flat', value: 5 } },
+      new Map(),
+      undefined,
+      false,
+      true
+    );
+    expect(blockers).toContain('stock-unknown');
     expect(blockers).not.toContain('no-master-stock');
   });
 
@@ -816,5 +867,23 @@ describe('computeBlockers - unknown resolve outcome (#2240)', () => {
     expect(recomputeVariantBlockers(row, variant, CONFIG, new Map())).toEqual([
       'unknown-category-result',
     ]);
+  });
+});
+
+describe('siblingStockBlockers (#3851)', () => {
+  it('should drop a known zero, which lists the sibling out of stock', () => {
+    expect(siblingStockBlockers(['no-master-stock', 'no-ean'], 0)).toEqual(['no-ean']);
+  });
+
+  it('should block a sibling whose stock is unknown', () => {
+    expect(siblingStockBlockers(['no-ean'], null)).toEqual(['no-ean', 'stock-unknown']);
+  });
+
+  it('should not duplicate an existing stock-unknown blocker', () => {
+    expect(siblingStockBlockers(['stock-unknown'], null)).toEqual(['stock-unknown']);
+  });
+
+  it('should leave a sibling with a known stock alone', () => {
+    expect(siblingStockBlockers([], 4)).toEqual([]);
   });
 });

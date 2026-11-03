@@ -57,6 +57,7 @@ import type {
 } from '../../../domain/types/return-sweep.types';
 import type { ReturnReattributionCandidate } from '../../../domain/types/return-reattribution.types';
 import type {
+  OpenReturnOrderSummary,
   ReturnBucketCounts,
   ReturnListFilter,
   ReturnStageCounts,
@@ -841,6 +842,75 @@ export class ReturnRepository implements ReturnRepositoryPort {
     ) as Record<ReturnSegment, number>;
 
     return { total: Number(row?.total ?? 0), bySegment };
+  }
+
+  /**
+   * All internal order ids currently carrying an `all_open` return (#2998).
+   *
+   * The SAME `SEGMENT_PREDICATES.all_open` fragment `countReturnsBySegment`
+   * counts on — reused rather than redefined, per `OpenReturnOrderSummary`'s
+   * own docblock. `internalOrderId IS NOT NULL` is part of the query rather
+   * than a caller filter, so an orphan return can never contribute an order id
+   * nobody asked about.
+   */
+  async findOpenReturnOrderIds(): Promise<string[]> {
+    const query = ReturnRepository.joinCountersOnce(this.returns.createQueryBuilder('r'))
+      .select('DISTINCT r."internalOrderId"', 'internalOrderId')
+      .where('r."internalOrderId" IS NOT NULL')
+      .andWhere(ReturnRepository.SEGMENT_PREDICATES.all_open);
+
+    const rows = await query.getRawMany<{ internalOrderId: string }>();
+    return rows.map((row) => row.internalOrderId);
+  }
+
+  /**
+   * Per-order open-return summary for a page of order ids (#2998) — the
+   * `/orders` badge. ONE query for the whole page, never a per-row lookup
+   * (the `getLatestInvoicesForOrders` / #2350 shortfall precedent).
+   *
+   * `openCount` and `latestStage` are both derived in application code from
+   * one ordered result set (`internalOrderId ASC, createdAt DESC`) rather than
+   * with a SQL window function — the query stays a plain `SELECT`, and the
+   * grouping is a handful of rows per order at most.
+   */
+  async findOpenReturnSummariesForOrders(
+    internalOrderIds: readonly string[]
+  ): Promise<Map<string, OpenReturnOrderSummary>> {
+    if (internalOrderIds.length === 0) {
+      return new Map();
+    }
+
+    const query = ReturnRepository.joinCountersOnce(this.returns.createQueryBuilder('r'))
+      .select('r."internalOrderId"', 'internalOrderId')
+      .addSelect(ReturnRepository.RETURN_STAGE_EXPR, 'stage')
+      .where('r."internalOrderId" IN (:...internalOrderIds)', {
+        internalOrderIds: [...internalOrderIds],
+      })
+      .andWhere(ReturnRepository.SEGMENT_PREDICATES.all_open)
+      .orderBy('r."internalOrderId"', 'ASC')
+      .addOrderBy('r."createdAt"', 'DESC');
+
+    const rows = await query.getRawMany<{ internalOrderId: string; stage: string }>();
+
+    const summaries = new Map<string, OpenReturnOrderSummary>();
+    for (const row of rows) {
+      const existing = summaries.get(row.internalOrderId);
+      if (existing) {
+        summaries.set(row.internalOrderId, {
+          openCount: existing.openCount + 1,
+          // Rows are ordered `createdAt DESC` within each order id, so the
+          // FIRST row seen for an id already carries its most-recently-opened
+          // stage — never overwrite it with a later (older) row's stage.
+          latestStage: existing.latestStage,
+        });
+      } else {
+        summaries.set(row.internalOrderId, {
+          openCount: 1,
+          latestStage: row.stage as ReturnStage,
+        });
+      }
+    }
+    return summaries;
   }
 
   /**

@@ -50,6 +50,7 @@ import {
   type FulfillmentRequestResult,
 } from '../../domain/types/fulfillment-execution.types';
 import type { FulfillmentRequestStatus } from '../../domain/types/fulfillment-request-status.types';
+import { isTerminalFulfillmentWorkStatus } from '../../domain/types/fulfillment-supported-actions.types';
 import type { FulfillmentWork } from '../../domain/types/fulfillment-work.types';
 import { FULFILLMENT_WORK_REPOSITORY_TOKEN } from '../../fulfillment.tokens';
 import type {
@@ -71,6 +72,20 @@ const CLAIMABLE_FROM: readonly FulfillmentRequestStatus[] = ['unsubmitted', 'rej
 
 const NO_OP: FulfillmentHandshakeResult = {
   outcome: 'no-op',
+  idempotencyKey: null,
+  assignmentAttempt: null,
+  rejectionReason: null,
+  blocking: null,
+};
+
+/**
+ * #2738 — the EXECUTION axis has moved past the point where a cancellation
+ * means anything, so the request never reaches the executor at all. A named,
+ * typed outcome rather than `NO_OP`: see `FulfillmentHandshakeOutcomeValues`'s
+ * own docblock for why the two facts must stay distinguishable.
+ */
+const NOT_CANCELLABLE: FulfillmentHandshakeResult = {
+  outcome: 'not-cancellable',
   idempotencyKey: null,
   assignmentAttempt: null,
   rejectionReason: null,
@@ -148,6 +163,30 @@ export class FulfillmentHandshakeService implements IFulfillmentHandshakeService
     // before a holder took it, and asking anyway would invent a negotiation the
     // holder never entered.
     if (connectionId === null || work.requestStatus !== 'accepted') return NO_OP;
+
+    // #2738: the guard above reads only the NEGOTIATION axis. `requestStatus`
+    // stays `accepted` for the work's whole life once a holder takes it —
+    // completion moves the EXECUTION axis instead (ADR-054's whole reason for
+    // having two) — so a cancellation against work whose EXECUTION axis has
+    // already reached a TERMINAL status would otherwise still reach the
+    // executor and, for a holder with no independent will to refuse with
+    // (the OL-OMS executor), come back `accepted`.
+    //
+    // "Past the cancellable point" is implemented as exactly
+    // `isTerminalFulfillmentWorkStatus` — `closed` (packed and handed off) /
+    // `cancelled` / `incomplete` — and nothing wider. The issue's own title
+    // says "already-picked", but `in_progress` (a pick genuinely in flight,
+    // or even fully picked-and-packed-but-not-yet-closed) is DELIBERATELY
+    // NOT terminal and stays cancellable here: `deriveSupportedActions`
+    // already offers `request_cancellation` on exactly `!terminal &&
+    // requestStatus === 'accepted'`, so narrowing this guard to match that
+    // rule (rather than the issue's looser phrase) is what keeps the two
+    // answers from disagreeing about what "still cancellable" means.
+    //
+    // The guard belongs HERE, before the port is crossed at all, rather than
+    // trusting every present and future executor to refuse correctly on its
+    // own.
+    if (isTerminalFulfillmentWorkStatus(work.status)) return NOT_CANCELLABLE;
 
     const claimed = await this.repository.transitionRequestStatus({
       workId: work.id,

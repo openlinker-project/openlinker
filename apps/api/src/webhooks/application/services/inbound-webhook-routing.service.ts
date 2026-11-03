@@ -10,6 +10,13 @@
  * Deterministic faults classify as `unroutable` (durable `deadlettered` rows,
  * replacing the Redis DLQ); anything else rethrows so the source retries.
  *
+ * Fan-out: a translator may return several canonical events for one delivery
+ * (see `WebhookEventTranslatorPort`). Each is resolved through the unchanged
+ * policy, and every resolvable one becomes a job in the same gate transaction.
+ * The extra jobs' idempotency keys are derived HERE rather than in the policy,
+ * so the policy (and its `route()` caller) stays a one-event-one-job function
+ * and every single-event plugin produces byte-identical keys.
+ *
  * @module apps/api/src/webhooks/application/services
  * @implements {IInboundWebhookRoutingService}
  */
@@ -26,7 +33,13 @@ import {
   ConnectionNotFoundException,
   ConnectionDisabledException,
 } from '@openlinker/core/identifier-mapping';
-import { INBOUND_ROUTING_POLICY_TOKEN, IInboundRoutingPolicyService } from '@openlinker/core/sync';
+import type { CanonicalInboundEvent } from '@openlinker/core/integrations';
+import {
+  buildInboundJobIdempotencyKey,
+  INBOUND_ROUTING_POLICY_TOKEN,
+  IInboundRoutingPolicyService,
+} from '@openlinker/core/sync';
+import type { SyncJobRequest } from '@openlinker/core/sync';
 import { WebhookRoutingUnavailableException } from '../errors/webhook-routing-unavailable.exception';
 import type { IInboundWebhookRoutingService } from '../interfaces/inbound-webhook-routing.service.interface';
 import type { InboundWebhookRoutingOutcome } from '../types/inbound-webhook-routing.types';
@@ -90,9 +103,9 @@ export class InboundWebhookRoutingService implements IInboundWebhookRoutingServi
     // uncaught it became a permanent 5xx with no durable record anywhere,
     // which is ADR-049's poison-entry gap relocated onto the request path.
     // Dead-lettering it instead makes the event visible and answers 202.
-    let canonical;
+    let translated: CanonicalInboundEvent | readonly CanonicalInboundEvent[] | null;
     try {
-      canonical = translator.translate(event);
+      translated = translator.translate(event);
     } catch (translateError) {
       return {
         kind: 'unroutable',
@@ -101,29 +114,108 @@ export class InboundWebhookRoutingService implements IInboundWebhookRoutingServi
         }`,
       };
     }
-    if (!canonical) {
+    const canonicals = this.toCanonicalList(translated);
+    if (canonicals.length === 0) {
       return {
         kind: 'unroutable',
         reason: `undecodable: objectType=${event.objectType}, eventType=${event.eventType}`,
       };
     }
 
-    const resolution = this.routingPolicy.resolve(
-      canonical,
-      connection,
-      metadata.supportedCapabilities,
-      event.eventId
-    );
-    if (resolution.status === 'ungated') {
-      return {
-        kind: 'unroutable',
-        reason: `ungated: ${canonical.domain} requires ${resolution.requiredCapability}`,
-      };
+    const jobs: SyncJobRequest[] = [];
+    // job type -> the domain whose event claimed it, so a dropped duplicate can
+    // name the event it lost to.
+    const routedJobTypes = new Map<string, string>();
+    const ungated: string[] = [];
+    canonicals.forEach((canonical, index) => {
+      const resolution = this.routingPolicy.resolve(
+        canonical,
+        connection,
+        metadata.supportedCapabilities,
+        event.eventId
+      );
+      if (resolution.status === 'ungated') {
+        ungated.push(`${canonical.domain} requires ${resolution.requiredCapability}`);
+        return;
+      }
+      // The job type is the discriminator of every non-primary key, so two
+      // events routing to the same job type would fold onto one key anyway.
+      // Keeping the first makes that explicit instead of leaving it to the
+      // unique index to decide inside the transaction. Logged at `warn`, not
+      // `debug`: no shipped translator emits two events for one job type, so
+      // reaching this branch means a translator is fanning out wrongly and
+      // silently losing an event, which should surface without debug logging.
+      const claimedBy = routedJobTypes.get(resolution.job.jobType);
+      if (claimedBy !== undefined) {
+        this.logger.warn(
+          `Inbound event ${event.eventId} (connection ${connection.id}, adapter ${metadata.adapterKey}): translated event #${index} (${canonical.domain}) dropped - it routes to ${resolution.job.jobType}, already claimed by the ${claimedBy} event. A translator should emit at most one event per job type.`
+        );
+        return;
+      }
+      routedJobTypes.set(resolution.job.jobType, canonical.domain);
+      // The key follows the event's POSITION in the translator's list, not its
+      // position among the jobs that happened to resolve. If it followed the
+      // resolved order, a primary event ungated on the first delivery would
+      // hand its base key to a secondary job; once the operator enabled the
+      // capability, the redelivered primary would then collide with that
+      // secondary job on the unique index and never be created. Positional
+      // keys keep each event's key stable whatever the gate says.
+      jobs.push(
+        index === 0
+          ? resolution.job
+          : {
+              ...resolution.job,
+              idempotencyKey: buildInboundJobIdempotencyKey(
+                connection.platformType,
+                connection.id,
+                event.eventId,
+                resolution.job.jobType
+              ),
+            }
+      );
+    });
+
+    const [primary, ...rest] = jobs;
+    if (primary === undefined) {
+      return { kind: 'unroutable', reason: `ungated: ${ungated.join('; ')}` };
+    }
+    if (ungated.length > 0) {
+      // Partial routing is still routing: the resolvable changes go ahead and
+      // the gated ones are logged, never silently dropped. Dead-lettering the
+      // whole delivery instead would hold back work the connection IS allowed
+      // to do because of a capability it chose to switch off.
+      this.logger.warn(
+        `Inbound event ${event.eventId} (connection ${connection.id}) partially routed; ungated: ${ungated.join('; ')}`
+      );
     }
 
     this.logger.debug(
-      `Resolved inbound ${canonical.domain} event ${event.eventId} → ${resolution.job.jobType}`
+      `Resolved inbound event ${event.eventId} → ${jobs.map((job) => job.jobType).join(', ')}`
     );
-    return { kind: 'routed', job: resolution.job };
+    return { kind: 'routed', jobs: [primary, ...rest] };
   }
+
+  /**
+   * Normalise the translator's answer to a list. `null` and `[]` both mean
+   * "undecodable"; a single event is the one-element list every pre-fan-out
+   * plugin still returns.
+   */
+  private toCanonicalList(
+    translated: CanonicalInboundEvent | readonly CanonicalInboundEvent[] | null
+  ): readonly CanonicalInboundEvent[] {
+    if (translated === null) {
+      return [];
+    }
+    return isCanonicalList(translated) ? translated : [translated];
+  }
+}
+
+/**
+ * `Array.isArray` does not narrow a `readonly` array out of a union in
+ * TypeScript's lib typings, so the check is wrapped in a real type guard.
+ */
+function isCanonicalList(
+  translated: CanonicalInboundEvent | readonly CanonicalInboundEvent[]
+): translated is readonly CanonicalInboundEvent[] {
+  return Array.isArray(translated);
 }

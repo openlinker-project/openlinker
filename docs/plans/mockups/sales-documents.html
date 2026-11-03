@@ -430,7 +430,7 @@ footer.closing b{color:var(--text-primary);}
       <tr>
         <td>Settings page<br><span class="mono" style="color:var(--text-muted)">/settings/sales-documents</span></td>
         <td class="mono">Sales documents</td>
-        <td class="mono"><b>Document routing</b></td>
+        <td class="mono"><b>Sales documents routing</b></td>
         <td>Route path stays; only the on-screen title changes to describe what it configures.</td>
       </tr>
     </table>
@@ -490,7 +490,7 @@ footer.closing b{color:var(--text-primary);}
         </div>
         <span class="mockshell-headaction">
           <svg width="13" height="13" viewBox="0 0 16 16"><path d="M8 1v2M8 13v2M3.5 3.5l1.4 1.4M11.1 11.1l1.4 1.4M1 8h2M13 8h2M3.5 12.5l1.4-1.4M11.1 4.9l1.4-1.4" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/><circle cx="8" cy="8" r="2.6" fill="none" stroke="currentColor" stroke-width="1.3"/></svg>
-          Document routing
+          Manage routing
         </span>
       </div>
 
@@ -798,7 +798,7 @@ footer.closing b{color:var(--text-primary);}
         invoice-only action against a receipt row.</li>
       <li><b>Subtitle</b> drops the hardcoded "(KSeF)" and adds one sentence stating the kind is the
         operator's own routing decision, not OpenLinker's (§08, legal finding).</li>
-      <li><b>Top-right link, "Document routing"</b> — one click to the settings page from §2, in the
+      <li><b>Top-right link, "Manage routing"</b> (admin only, #3656) — one click to the settings page from §2, in the
         <code>PageLayout</code> <code>actions</code> slot exactly like <code>/connections</code>'s
         "New connection" link. This is the list's own configuration screen, so it belongs on the list.</li>
       <li><b>Accessible name construction, reused not reinvented</b> <span class="badge-new">REVISED</span>
@@ -1056,7 +1056,7 @@ footer.closing b{color:var(--text-primary);}
           subtitle line (§08, legal finding).</li>
         <li>Detail route split by kind, reusing the extracted panel component, with the correction/edit
           action allowlisted per kind — a receipt never gets one (§5).</li>
-        <li>Top-right "Document routing" link. <code>/orders</code>' own popover is never touched by any
+        <li>Top-right "Manage routing" link (admin only). <code>/orders</code>' own popover is never touched by any
           of this — it's a separate instance of the same shared component (§04).</li>
       </ul>
     </div>

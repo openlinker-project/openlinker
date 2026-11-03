@@ -7,8 +7,10 @@
  * self-heals the job), `ON CONFLICT DO NOTHING` + in-transaction SELECT for
  * the idempotency-key dedup (never the catch-based dedup, which would abort
  * the surrounding transaction), and `isNew` derived from the delivery insert's
- * RETURNING row count. The real-Postgres behaviour is covered by
- * `apps/api/test/integration/webhook-ingestion.int-spec.ts`.
+ * RETURNING row count. A fanned-out delivery inserts every job before the
+ * delivery row, which records only the primary. The real-Postgres behaviour is
+ * covered by `apps/api/test/integration/webhook-ingestion.int-spec.ts` and
+ * `webhook-job-gate-fan-out.int-spec.ts`.
  *
  * @module apps/api/src/webhooks/infrastructure/persistence
  */
@@ -60,9 +62,9 @@ describe('WebhookJobGateRepository', () => {
       .mockResolvedValueOnce([{ id: 'job-uuid-1' }]) // sync_jobs insert
       .mockResolvedValueOnce([{ id: 'delivery-uuid-1' }]); // webhook_deliveries insert
 
-    const result = await repository.insertDeliveryWithJob(delivery, job);
+    const result = await repository.insertDeliveryWithJobs(delivery, [job]);
 
-    expect(result).toEqual({ isNew: true, jobId: 'job-uuid-1' });
+    expect(result).toEqual({ isNew: true, jobId: 'job-uuid-1', jobIds: ['job-uuid-1'] });
     const [jobSql, jobParams] = managerQuery.mock.calls[0] as [string, unknown[]];
     expect(jobSql).toContain('INSERT INTO sync_jobs');
     expect(jobSql).toContain('ON CONFLICT ("idempotencyKey") DO NOTHING');
@@ -79,9 +81,13 @@ describe('WebhookJobGateRepository', () => {
       .mockResolvedValueOnce([{ id: 'job-uuid-existing' }]) // SELECT by idempotencyKey
       .mockResolvedValueOnce([{ id: 'delivery-uuid-1' }]);
 
-    const result = await repository.insertDeliveryWithJob(delivery, job);
+    const result = await repository.insertDeliveryWithJobs(delivery, [job]);
 
-    expect(result).toEqual({ isNew: true, jobId: 'job-uuid-existing' });
+    expect(result).toEqual({
+      isNew: true,
+      jobId: 'job-uuid-existing',
+      jobIds: ['job-uuid-existing'],
+    });
     const [selectSql] = managerQuery.mock.calls[1] as [string, unknown[]];
     expect(selectSql).toContain('SELECT id FROM sync_jobs');
   });
@@ -92,9 +98,9 @@ describe('WebhookJobGateRepository', () => {
       .mockResolvedValueOnce([]) // delivery insert conflicted → replay
       .mockResolvedValueOnce([]); // repair UPDATE matched nothing (not dead-lettered)
 
-    const result = await repository.insertDeliveryWithJob(delivery, job);
+    const result = await repository.insertDeliveryWithJobs(delivery, [job]);
 
-    expect(result).toEqual({ isNew: false, jobId: 'job-uuid-1' });
+    expect(result).toEqual({ isNew: false, jobId: 'job-uuid-1', jobIds: ['job-uuid-1'] });
   });
 
   it('repairs a dead-lettered row once a redelivery routes, so it cannot contradict a job that ran', async () => {
@@ -108,9 +114,9 @@ describe('WebhookJobGateRepository', () => {
       .mockResolvedValueOnce([])
       .mockResolvedValueOnce([{ id: 'delivery-uuid-1' }]); // repair matched
 
-    const result = await repository.insertDeliveryWithJob(delivery, job);
+    const result = await repository.insertDeliveryWithJobs(delivery, [job]);
 
-    expect(result).toEqual({ isNew: false, jobId: 'job-uuid-1' });
+    expect(result).toEqual({ isNew: false, jobId: 'job-uuid-1', jobIds: ['job-uuid-1'] });
     const [sql, params] = managerQuery.mock.calls[2] as [string, unknown[]];
     expect(sql).toContain('UPDATE webhook_deliveries');
     expect(sql).toContain(`"status" = 'deadlettered'`);
@@ -120,24 +126,74 @@ describe('WebhookJobGateRepository', () => {
   it('does not attempt a repair on a replay that produced no job', async () => {
     managerQuery.mockResolvedValueOnce([]); // delivery insert conflicted, no job
 
-    const result = await repository.insertDeliveryWithJob({ ...delivery, status: 'received' }, null);
+    const result = await repository.insertDeliveryWithJobs({ ...delivery, status: 'received' }, []);
 
-    expect(result).toEqual({ isNew: false, jobId: null });
+    expect(result).toEqual({ isNew: false, jobId: null, jobIds: [] });
     expect(managerQuery).toHaveBeenCalledTimes(1);
   });
 
   it('inserts only the delivery row (no job statement) for a jobless outcome', async () => {
     managerQuery.mockResolvedValueOnce([{ id: 'delivery-uuid-1' }]);
 
-    const result = await repository.insertDeliveryWithJob(
-      { ...delivery, status: 'received' },
-      null
-    );
+    const result = await repository.insertDeliveryWithJobs({ ...delivery, status: 'received' }, []);
 
-    expect(result).toEqual({ isNew: true, jobId: null });
+    expect(result).toEqual({ isNew: true, jobId: null, jobIds: [] });
     expect(managerQuery).toHaveBeenCalledTimes(1);
     const [sql] = managerQuery.mock.calls[0] as [string, unknown[]];
     expect(sql).toContain('INSERT INTO webhook_deliveries');
+  });
+
+  it('should insert every job before the delivery row and record the primary when given several', async () => {
+    const secondJob: SyncJobRequest = {
+      jobType: 'master.inventory.syncByExternalId',
+      connectionId,
+      payload: { schemaVersion: 1, externalId: '12345', objectType: 'Inventory' },
+      idempotencyKey: `prestashop:${connectionId}:e1:master.inventory.syncByExternalId`,
+    };
+    managerQuery
+      .mockResolvedValueOnce([{ id: 'job-uuid-1' }])
+      .mockResolvedValueOnce([{ id: 'job-uuid-2' }])
+      .mockResolvedValueOnce([{ id: 'delivery-uuid-1' }]);
+
+    const result = await repository.insertDeliveryWithJobs(delivery, [job, secondJob]);
+
+    expect(result).toEqual({
+      isNew: true,
+      jobId: 'job-uuid-1',
+      jobIds: ['job-uuid-1', 'job-uuid-2'],
+    });
+    const [, secondParams] = managerQuery.mock.calls[1] as [string, unknown[]];
+    expect(secondParams).toContain(secondJob.idempotencyKey);
+    const [deliverySql, deliveryParams] = managerQuery.mock.calls[2] as [string, unknown[]];
+    expect(deliverySql).toContain('INSERT INTO webhook_deliveries');
+    expect(deliveryParams).toContain('job-uuid-1');
+    expect(deliveryParams).toContain('master.product.syncByExternalId');
+    expect(deliveryParams).not.toContain('job-uuid-2');
+  });
+
+  it('should repair a dead-lettered row to the PRIMARY job when a fanned-out redelivery routes', async () => {
+    const secondJob: SyncJobRequest = {
+      ...job,
+      jobType: 'master.inventory.syncByExternalId',
+      idempotencyKey: `prestashop:${connectionId}:e1:master.inventory.syncByExternalId`,
+    };
+    managerQuery
+      .mockResolvedValueOnce([{ id: 'job-uuid-1' }])
+      .mockResolvedValueOnce([{ id: 'job-uuid-2' }])
+      .mockResolvedValueOnce([]) // delivery insert conflicted
+      .mockResolvedValueOnce([{ id: 'delivery-uuid-1' }]); // repair matched
+
+    const result = await repository.insertDeliveryWithJobs(delivery, [job, secondJob]);
+
+    expect(result).toEqual({
+      isNew: false,
+      jobId: 'job-uuid-1',
+      jobIds: ['job-uuid-1', 'job-uuid-2'],
+    });
+    const [sql, params] = managerQuery.mock.calls[3] as [string, unknown[]];
+    expect(sql).toContain('UPDATE webhook_deliveries');
+    expect(params[0]).toBe('job-uuid-1');
+    expect(params[1]).toBe('master.product.syncByExternalId');
   });
 
   it('surfaces the unreachable conflict-then-no-row case instead of inventing a job id', async () => {
@@ -145,7 +201,7 @@ describe('WebhookJobGateRepository', () => {
       .mockResolvedValueOnce([]) // insert conflicted
       .mockResolvedValueOnce([]); // and the SELECT found nothing
 
-    await expect(repository.insertDeliveryWithJob(delivery, job)).rejects.toThrow(
+    await expect(repository.insertDeliveryWithJobs(delivery, [job])).rejects.toThrow(
       /no row was found/
     );
   });

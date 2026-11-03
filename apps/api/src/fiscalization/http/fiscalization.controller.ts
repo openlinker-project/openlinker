@@ -61,18 +61,25 @@ import {
   UnsupportedFiscalPriceTreatmentError,
   toRegisterTransactionCommand,
 } from '@openlinker/core/fiscalization';
+import { normalizeShippingLineName } from '@openlinker/core/invoicing';
+import { CONNECTION_PORT_TOKEN, ConnectionPort } from '@openlinker/core/identifier-mapping';
+import { readDeliveryOnDocuments, resolveDeliveryLine } from '@openlinker/core/sales-documents';
+import type { DeliveryOnDocumentsConfig, ResolvedDeliveryLine } from '@openlinker/core/sales-documents';
 import type {
   FiscalRegistrationRecord,
   FiscalRegistrationRequestAccepted,
   RegisterTransactionCommand,
 } from '@openlinker/core/fiscalization';
 import {
+  IOrderDocumentEmailService,
   IOrderRecordService,
+  ORDER_DOCUMENT_EMAIL_SERVICE_TOKEN,
   ORDER_RECORD_SERVICE_TOKEN,
   OrderSnapshotUnavailableError,
   orderFromReadySnapshot,
 } from '@openlinker/core/orders';
 import type { Order, OrderRecord } from '@openlinker/core/orders';
+import { Logger } from '@openlinker/shared/logging';
 
 import { AcceptedFiscalRegistrationResponseDto } from './dto/accepted-fiscal-registration-response.dto';
 import { FiscalRegistrationProgressResponseDto } from './dto/fiscal-registration-progress-response.dto';
@@ -80,6 +87,11 @@ import { FiscalRegistrationResponseDto } from './dto/fiscal-registration-respons
 import { ReconcileFiscalRegistrationResponseDto } from './dto/reconcile-fiscal-registration-response.dto';
 import { RegisterFiscalTransactionRequestDto } from './dto/register-fiscal-transaction-request.dto';
 import { Roles } from '../../auth/decorators/roles.decorator';
+import { CurrentUser } from '../../auth/decorators/current-user.decorator';
+import { AuthenticatedUser } from '../../auth/auth.types';
+import { toDocumentEmailException } from '../../common/http/document-email-refusal';
+import { SendInvoiceEmailResponseDto } from '../../invoicing/http/dto/send-invoice-email-response.dto';
+import { SendReceiptEmailRequestDto } from './dto/send-receipt-email-request.dto';
 
 /**
  * The exactly-once key for this surface.
@@ -102,12 +114,58 @@ import { Roles } from '../../auth/decorators/roles.decorator';
 @ApiBearerAuth()
 @Controller()
 export class FiscalizationController {
+  private readonly logger = new Logger(FiscalizationController.name);
+
   constructor(
     @Inject(FISCAL_REGISTRATION_SERVICE_TOKEN)
     private readonly fiscalRegistrations: IFiscalRegistrationService,
     @Inject(ORDER_RECORD_SERVICE_TOKEN)
     private readonly orders: IOrderRecordService,
+    @Inject(CONNECTION_PORT_TOKEN)
+    private readonly connectionPort: ConnectionPort,
+    @Inject(ORDER_DOCUMENT_EMAIL_SERVICE_TOKEN)
+    private readonly documentEmails: IOrderDocumentEmailService,
   ) {}
+
+  /**
+   * Resolve the delivery line for an order (#3905, ADR-082): the order-source
+   * connection's per-country settings, then the fiscal connection's legacy
+   * label, then the neutral default. A failed lookup degrades to the legacy
+   * label and never blocks the registration.
+   */
+  private async resolveDeliveryLineFor(
+    order: Order,
+    sourceConnectionId: string,
+    fiscalConnectionId: string,
+  ): Promise<ResolvedDeliveryLine> {
+    let legacyName: string | undefined;
+    let deliveryConfig: DeliveryOnDocumentsConfig | null = null;
+    try {
+      const fiscal = await this.connectionPort.get(fiscalConnectionId);
+      legacyName = normalizeShippingLineName(fiscal.config.invoicing?.shippingLineName);
+    } catch (error) {
+      this.logger.debug(
+        `Shipping-line label lookup failed for connection ${fiscalConnectionId}: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+    }
+    try {
+      const source = await this.connectionPort.get(sourceConnectionId);
+      deliveryConfig = readDeliveryOnDocuments(source.config);
+    } catch (error) {
+      this.logger.debug(
+        `Delivery settings lookup failed for connection ${sourceConnectionId}: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+    }
+    return resolveDeliveryLine(deliveryConfig, {
+      countryIso2: order.shippingAddress?.country,
+      methodId: order.shipping?.methodId,
+      legacyName,
+    });
+  }
 
   @Roles('admin')
   @Post('fiscal-registrations')
@@ -157,6 +215,14 @@ export class FiscalizationController {
         order,
         connectionId: dto.connectionId,
         idempotencyKey: fiscalRegistrationIdempotencyKey(dto.connectionId, dto.orderId),
+        // #3905, ADR-082: the same resolved delivery line the auto path uses.
+        // Without it a manual registration always said `Shipping`, whatever
+        // the operator had configured.
+        deliveryLine: await this.resolveDeliveryLineFor(
+          order,
+          record.sourceConnectionId,
+          dto.connectionId,
+        ),
         // #2260 review: a manual registration of a pre-rollout order must reach
         // the same verdict the manual invoice path does, so the marker travels
         // with the command rather than being re-derived (or lost) downstream.
@@ -179,7 +245,35 @@ export class FiscalizationController {
     } catch (error) {
       throw this.toHttpException(error);
     }
+    await this.clearSalesDocumentBlock(dto.orderId);
     return accepted;
+  }
+
+  /**
+   * Clear the order's persisted "why no document" reason once an operator has
+   * asked for the receipt by hand (#3646), mirroring
+   * `InvoicingController.clearSalesDocumentBlock`.
+   *
+   * Without it `trigger-model-manual` stayed on the order after the receipt
+   * existed, and every surface that reads the reason - the `/orders` row, the
+   * order panel, the pack bench - told the operator no document was made. The
+   * auto-issue gate already declines to write it back for an order holding a
+   * blocking receipt, so a clear here stays cleared.
+   *
+   * Clears the block ONLY (`preserve` the matched rule), for the reason the
+   * invoicing sibling gives. Best-effort: the registration has already been
+   * accepted, so a failure to clear must not turn a 202 into an error.
+   */
+  private async clearSalesDocumentBlock(orderId: string): Promise<void> {
+    try {
+      await this.orders.markSalesDocumentBlock(orderId, null, { action: 'preserve' });
+    } catch (error) {
+      const errorName = error instanceof Error ? error.name : 'UnknownError';
+      this.logger.warn(
+        `Failed to clear the sales-document block after requesting a fiscal registration ` +
+          `(swallowed): error=${errorName} orderId=${orderId}`,
+      );
+    }
   }
 
   @Roles('admin', 'operator', 'viewer')
@@ -298,6 +392,45 @@ export class FiscalizationController {
     }
   }
 
+  @Roles('admin')
+  @Post('fiscal-registrations/:id/send-email')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Email a registered receipt to the buyer (#3550)',
+    description:
+      "Sent by OpenLinker's mailer. The message is OpenLinker's own SUMMARY of the receipt plus " +
+      'the link to the legal e-receipt at the vendor, and says in terms that the summary is not ' +
+      'the receipt. A registration that is not registered yet, or has no e-receipt link, is ' +
+      'refused. The recipient defaults to the buyer\'s address on the order and can be edited. ' +
+      'A refusal carries a readable `message` and a machine `code`. ' +
+      'At-least-once: there is no idempotency key, so a retried request (a double submit, a ' +
+      'client retry after a timeout) sends the document again. Do not drive this route from ' +
+      'an automation that expects at-most-once.',
+  })
+  @ApiResponse({ status: 200, type: SendInvoiceEmailResponseDto })
+  @ApiResponse({ status: 400, description: 'No recipient, or the recipient is not an email address' })
+  @ApiResponse({ status: 404, description: 'Registration record not found' })
+  @ApiResponse({ status: 409, description: 'The registration is not registered yet' })
+  @ApiResponse({ status: 422, description: 'Registration failed, or there is no e-receipt link' })
+  @ApiResponse({ status: 502, description: 'The mailer failed' })
+  @ApiResponse({ status: 503, description: 'Email sending is not configured on this server' })
+  async sendReceiptEmail(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: SendReceiptEmailRequestDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ): Promise<SendInvoiceEmailResponseDto> {
+    const result = await this.documentEmails.sendReceiptEmail({
+      registrationId: id,
+      recipient: dto.recipient,
+      locale: dto.locale,
+      actorUserId: user.id,
+    });
+    if (result.status === 'refused') {
+      throw toDocumentEmailException(result);
+    }
+    return { delivered: true, recipient: result.recipient, sentVia: result.sentVia };
+  }
+
   /**
    * Rehydrate the typed `Order` from the persisted snapshot. A snapshot that
    * cannot be rehydrated is a 422 with a generic message - never an echo of the
@@ -399,6 +532,19 @@ export class FiscalizationController {
       artefacts: record.artefacts,
       failureMode: record.failureMode,
       failureReason: record.failureReason,
+      // The web UI hides these behind orders:write, but that is presentation,
+      // not authorization: every role that can read the record receives them,
+      // so only PII-free codes and non-secret tokens may ever live here.
+      // Copied field by field so a key added to the core type later cannot
+      // reach a response without being named here first.
+      providerFailureDetails: record.providerFailureDetails
+        ? {
+            errorCode: record.providerFailureDetails.errorCode,
+            deviceErrorCode: record.providerFailureDetails.deviceErrorCode,
+            documentId: record.providerFailureDetails.documentId,
+            hint: record.providerFailureDetails.hint,
+          }
+        : null,
       inFlight: record.isLeaseLive(now),
       createdAt: record.createdAt.toISOString(),
       updatedAt: record.updatedAt.toISOString(),

@@ -8,6 +8,7 @@ import type { ConnectionPort, IIdentifierMappingService } from '@openlinker/core
 import type { JobEnqueuePort } from '@openlinker/core/sync';
 import { PriceChangeDetectionService } from '../price-change-detection.service';
 import { PriceChangeEpisode } from '../../../domain/entities/price-change-episode.entity';
+import type { PriceChangeCause } from '../../../domain/types/price-change-episode.types';
 import type { PriceChangeEpisodeRepositoryPort } from '../../../domain/ports/price-change-episode-repository.port';
 import type { IDestinationCurrencyResolutionService } from '../destination-currency-resolution.service.interface';
 
@@ -51,6 +52,8 @@ function buildEpisode(overrides: Partial<PriceChangeEpisode> = {}): PriceChangeE
     resolvedByUserId: null,
     createdAt: new Date(),
     updatedAt: new Date(),
+    claimedAt: null,
+    cause: null,
     ...overrides,
   };
   return new PriceChangeEpisode(
@@ -72,7 +75,11 @@ function buildEpisode(overrides: Partial<PriceChangeEpisode> = {}): PriceChangeE
     base.resolution,
     base.resolvedByUserId,
     base.createdAt,
-    base.updatedAt
+    base.updatedAt,
+    base.claimedAt,
+    // ADR-077: carried through so the default `upsertOpen` mock below hands
+    // back the cause it was written with, exactly like the repository does.
+    base.cause
   );
 }
 
@@ -532,5 +539,163 @@ describe('PriceChangeDetectionService', () => {
     expect(episodes.upsertOpen).toHaveBeenCalledWith(
       expect.objectContaining({ sourceOldAmount: null, sourceNewAmount: 430.5 })
     );
+  });
+  describe('tax-basis correction (ADR-077)', () => {
+    const automaticPln = (): Connection =>
+      buildConnection({
+        currency: 'PLN',
+        priceSyncMode: { default: 'automatic', sourceOverrides: {} },
+      });
+
+    it('should write the observation cause onto the episode when the change is a tax-basis correction', async () => {
+      connections.get.mockResolvedValue(buildConnection({ currency: 'PLN' }));
+
+      await service.onMasterPriceChanged({
+        productVariantId: VARIANT_ID,
+        sourceConnectionId: SRC_ID,
+        sourceOldAmount: 100,
+        sourceNewAmount: 123,
+        sourceCurrency: 'PLN',
+        cause: 'tax-basis-correction',
+      });
+
+      expect(episodes.upsertOpen).toHaveBeenCalledWith(
+        expect.objectContaining({
+          sourceOldAmount: 100,
+          sourceNewAmount: 123,
+          blockReason: null,
+          cause: 'tax-basis-correction',
+        })
+      );
+    });
+
+    it('should write a null cause when the observation is an ordinary price move', async () => {
+      connections.get.mockResolvedValue(buildConnection({ currency: 'PLN' }));
+
+      await service.onMasterPriceChanged({
+        productVariantId: VARIANT_ID,
+        sourceConnectionId: SRC_ID,
+        sourceOldAmount: 350,
+        sourceNewAmount: 327,
+        sourceCurrency: 'PLN',
+      });
+
+      expect(episodes.upsertOpen).toHaveBeenCalledWith(expect.objectContaining({ cause: null }));
+    });
+
+    it('should open the episode for review but never auto-apply it when a correction lands on an automatic pair with no block reason', async () => {
+      connections.get.mockResolvedValue(automaticPln());
+
+      await service.onMasterPriceChanged({
+        productVariantId: VARIANT_ID,
+        sourceConnectionId: SRC_ID,
+        sourceOldAmount: 100,
+        sourceNewAmount: 123,
+        sourceCurrency: 'PLN',
+        cause: 'tax-basis-correction',
+      });
+
+      // Still opened, unblocked: an operator can accept it in the queue.
+      expect(episodes.upsertOpen).toHaveBeenCalledTimes(1);
+      expect(episodes.upsertOpen).toHaveBeenCalledWith(
+        expect.objectContaining({ blockReason: null, cause: 'tax-basis-correction' })
+      );
+      expect(jobEnqueue.enqueueJob).not.toHaveBeenCalled();
+    });
+
+    it('should not auto-apply a genuinely refreshed correction episode when the re-detection carries no cause', async () => {
+      // The STORED cause decides, not the observation's: the episode was opened
+      // as a correction and is still open, and a later ordinary move refreshes
+      // it. The repository keeps the cause (COALESCE), so the returned episode
+      // still carries it.
+      connections.get.mockResolvedValue(automaticPln());
+      episodes.findOpenByKey.mockResolvedValue(
+        buildEpisode({ id: 'ep-corr-1', refreshedAt: null, cause: 'tax-basis-correction' })
+      );
+      const refreshedAt = new Date('2026-10-12T12:00:00.000Z');
+      episodes.upsertOpen.mockResolvedValueOnce({
+        episode: buildEpisode({ id: 'ep-corr-1', refreshedAt, cause: 'tax-basis-correction' }),
+        wasRefresh: true,
+      });
+
+      await service.onMasterPriceChanged({
+        productVariantId: VARIANT_ID,
+        sourceConnectionId: SRC_ID,
+        sourceOldAmount: 123,
+        sourceNewAmount: 130,
+        sourceCurrency: 'PLN',
+      });
+
+      expect(episodes.upsertOpen).toHaveBeenCalledWith(expect.objectContaining({ cause: null }));
+      expect(jobEnqueue.enqueueJob).not.toHaveBeenCalled();
+    });
+
+    it('should hold for review an episode whose stored cause is one this build does not know', async () => {
+      // Fail-safe direction: only an episode with NO cause may auto-apply, so a
+      // cause added later is held until someone decides otherwise.
+      connections.get.mockResolvedValue(automaticPln());
+      episodes.upsertOpen.mockResolvedValueOnce({
+        episode: buildEpisode({
+          id: 'ep-future-1',
+          cause: 'some-future-cause' as unknown as PriceChangeCause,
+        }),
+        wasRefresh: false,
+      });
+
+      await service.onMasterPriceChanged({
+        productVariantId: VARIANT_ID,
+        sourceConnectionId: SRC_ID,
+        sourceOldAmount: 100,
+        sourceNewAmount: 110,
+        sourceCurrency: 'PLN',
+      });
+
+      expect(jobEnqueue.enqueueJob).not.toHaveBeenCalled();
+    });
+
+    it('should still auto-apply an ordinary price move on an automatic pair', async () => {
+      connections.get.mockResolvedValue(automaticPln());
+      episodes.upsertOpen.mockResolvedValueOnce({
+        episode: buildEpisode({ id: 'ep-ordinary-1', cause: null }),
+        wasRefresh: false,
+      });
+      jobEnqueue.enqueueJob.mockResolvedValueOnce({ jobId: 'job-ordinary-1', isExisting: false });
+
+      await service.onMasterPriceChanged({
+        productVariantId: VARIANT_ID,
+        sourceConnectionId: SRC_ID,
+        sourceOldAmount: 350,
+        sourceNewAmount: 327,
+        sourceCurrency: 'PLN',
+      });
+
+      expect(jobEnqueue.enqueueJob).toHaveBeenCalledTimes(1);
+      expect(jobEnqueue.enqueueJob).toHaveBeenCalledWith(
+        expect.objectContaining({ idempotencyKey: 'pricing:episode:ep-ordinary-1:auto' })
+      );
+    });
+
+    it('should keep a blocked correction blocked and not enqueue it', async () => {
+      connections.get.mockResolvedValue(
+        buildConnection({
+          currency: 'EUR',
+          priceSyncMode: { default: 'automatic', sourceOverrides: {} },
+        })
+      );
+
+      await service.onMasterPriceChanged({
+        productVariantId: VARIANT_ID,
+        sourceConnectionId: SRC_ID,
+        sourceOldAmount: 100,
+        sourceNewAmount: 123,
+        sourceCurrency: 'PLN',
+        cause: 'tax-basis-correction',
+      });
+
+      expect(episodes.upsertOpen).toHaveBeenCalledWith(
+        expect.objectContaining({ blockReason: 'currency-mismatch', cause: 'tax-basis-correction' })
+      );
+      expect(jobEnqueue.enqueueJob).not.toHaveBeenCalled();
+    });
   });
 });

@@ -7,6 +7,7 @@
  *
  * @module apps/worker/src/sync/handlers/__tests__
  */
+import type { IOrderRecordService, IOrderRefundService, OrderRecord } from '@openlinker/core/orders';
 import type { IPostSaleInventoryRefreshService } from '@openlinker/core/inventory';
 import { FiscalizationRegisterHandler, MAX_FISCAL_LINES } from '../fiscalization-register.handler';
 import {
@@ -58,6 +59,8 @@ function makeJob(payload: unknown): SyncJobEntity {
 describe('FiscalizationRegisterHandler', () => {
   let fiscalRegistrations: jest.Mocked<IFiscalRegistrationService>;
   let handler: FiscalizationRegisterHandler;
+  let orderRecords: jest.Mocked<IOrderRecordService>;
+  let orderRefunds: jest.Mocked<IOrderRefundService>;
   let postSaleInventoryRefresh: jest.Mocked<IPostSaleInventoryRefreshService>;
   let warnSpy: jest.SpyInstance<void, [message: string]>;
 
@@ -81,7 +84,18 @@ describe('FiscalizationRegisterHandler', () => {
     postSaleInventoryRefresh = {
       enqueue: jest.fn().mockResolvedValue(undefined),
     } as unknown as jest.Mocked<IPostSaleInventoryRefreshService>;
-    handler = new FiscalizationRegisterHandler(fiscalRegistrations, postSaleInventoryRefresh);
+    orderRecords = {
+      getOrderRecord: jest.fn().mockResolvedValue(null),
+    } as unknown as jest.Mocked<IOrderRecordService>;
+    orderRefunds = {
+      getRefundSummariesForOrders: jest.fn().mockResolvedValue(new Map()),
+    } as unknown as jest.Mocked<IOrderRefundService>;
+    handler = new FiscalizationRegisterHandler(
+      fiscalRegistrations,
+      postSaleInventoryRefresh,
+      orderRecords,
+      orderRefunds,
+    );
     warnSpy = jest
       .spyOn(
         (handler as unknown as { logger: { warn: (m: string) => void } }).logger,
@@ -375,5 +389,26 @@ describe('FiscalizationRegisterHandler', () => {
 
   it('is defined', () => {
     expect(FiscalizationRegisterHandler).toBeDefined();
+  });
+
+  describe('live order gate (DEF-26)', () => {
+    it('does not register a receipt for a cancelled order', async () => {
+      orderRecords.getOrderRecord.mockResolvedValue({
+        status: 'processing',
+        isCancelled: true,
+        totalAmount: 100,
+      } as unknown as OrderRecord);
+
+      const result = await handler.execute(makeJob(makePayload()));
+
+      expect(result).toEqual({ outcome: 'business_failure' });
+      expect(fiscalRegistrations.register).not.toHaveBeenCalled();
+    });
+
+    it('registers as usual when the order record is absent', async () => {
+      await handler.execute(makeJob(makePayload()));
+
+      expect(fiscalRegistrations.register).toHaveBeenCalledTimes(1);
+    });
   });
 });

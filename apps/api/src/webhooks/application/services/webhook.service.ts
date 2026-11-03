@@ -82,7 +82,8 @@ export class WebhookService implements IWebhookService {
     provider: string,
     connectionId: string,
     rawBody: Buffer,
-    headers: Record<string, string>
+    headers: Record<string, string>,
+    query?: Readonly<Record<string, string>>
   ): Promise<Record<string, unknown> | void> {
     // Resolve the provider's decoder (ADR-021); fall back to the host's
     // OL-HMAC + WebhookRequestDto default for OL-module providers.
@@ -109,7 +110,9 @@ export class WebhookService implements IWebhookService {
     // is inserted (a `status='rejected'` row would block legitimate retries via
     // the unique constraint, #711).
     const secret = await this.authService.getSecret(provider, connectionId);
-    const verifyResult = decoder.verify({ rawBody, headers, secret });
+    // `query` is only ever handed to `verify`: it can hold the URL credential, so it
+    // is deliberately kept out of every log line and out of the delivery row.
+    const verifyResult = decoder.verify({ rawBody, headers, secret, ...(query === undefined ? {} : { query }) });
     if (!verifyResult.ok) {
       this.logger.warn(
         `Invalid webhook signature: provider=${provider}, connectionId=${connectionId}`
@@ -209,9 +212,9 @@ export class WebhookService implements IWebhookService {
             : 'deadlettered',
       dlqReason: routing.kind === 'unroutable' ? routing.reason.slice(0, 500) : null,
     };
-    const gateResult = await this.jobGate.insertDeliveryWithJob(
+    const gateResult = await this.jobGate.insertDeliveryWithJobs(
       delivery,
-      routing.kind === 'routed' ? routing.job : null
+      routing.kind === 'routed' ? routing.jobs : []
     );
 
     if (!gateResult.isNew) {
@@ -230,7 +233,9 @@ export class WebhookService implements IWebhookService {
 
     if (routing.kind === 'routed') {
       this.logger.log(
-        `Webhook routed at ingress: provider=${provider}, connectionId=${connectionId}, eventId=${correlationId} → ${routing.job.jobType} (job ${gateResult.jobId ?? 'unknown'})`
+        `Webhook routed at ingress: provider=${provider}, connectionId=${connectionId}, eventId=${correlationId} → ${routing.jobs
+          .map((job, index) => `${job.jobType} (job ${gateResult.jobIds[index] ?? 'unknown'})`)
+          .join(', ')}`
       );
     } else if (routing.kind === 'unroutable') {
       this.logger.warn(

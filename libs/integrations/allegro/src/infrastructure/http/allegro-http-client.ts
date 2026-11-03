@@ -23,6 +23,7 @@ import type {
 } from './allegro-http-client.interface';
 import type { AllegroConnectionTokenState } from './allegro-connection-token-state';
 import { AllegroApiException } from '../../domain/exceptions/allegro-api.exception';
+import { AllegroAmbiguousWriteException } from '../../domain/exceptions/allegro-ambiguous-write.exception';
 import { AllegroAuthenticationException } from '../../domain/exceptions/allegro-authentication.exception';
 import { AllegroNetworkException } from '../../domain/exceptions/allegro-network.exception';
 import { AllegroRateLimitException } from '../../domain/exceptions/allegro-rate-limit.exception';
@@ -163,6 +164,15 @@ export class AllegroHttpClient implements IAllegroHttpClient {
     return this.request<T>('POST', path, body, options, { requestContentType: contentType });
   }
 
+  async putBinary<T = unknown>(
+    path: string,
+    contentType: string,
+    body: Uint8Array,
+    options?: Omit<AllegroHttpRequestOptions, 'method' | 'body'>
+  ): Promise<AllegroHttpResponse<T>> {
+    return this.request<T>('PUT', path, body, options, { requestContentType: contentType });
+  }
+
   async postMultipart<T = unknown>(
     path: string,
     parts: AllegroMultipartPart[],
@@ -214,8 +224,9 @@ export class AllegroHttpClient implements IAllegroHttpClient {
   ): Promise<AllegroHttpResponse<T>> {
     let lastError: Error | null = null;
     let delay = this.retryConfig.initialDelayMs;
+    const maxRetries = options?.maxRetries ?? this.retryConfig.maxRetries;
 
-    for (let attempt = 0; attempt <= this.retryConfig.maxRetries; attempt++) {
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
       try {
         return await this.executeRequest<T>(method, path, body, options, mode);
       } catch (error: unknown) {
@@ -234,10 +245,10 @@ export class AllegroHttpClient implements IAllegroHttpClient {
 
         // Handle rate limit (429) - respect Retry-After header
         if (error instanceof AllegroRateLimitException) {
-          if (attempt < this.retryConfig.maxRetries) {
+          if (attempt < maxRetries) {
             const retryAfter = error.retryAfter || delay;
             this.logger.warn(
-              `Rate limit exceeded (attempt ${attempt + 1}/${this.retryConfig.maxRetries + 1}), retrying after ${retryAfter}ms`
+              `Rate limit exceeded (attempt ${attempt + 1}/${maxRetries + 1}), retrying after ${retryAfter}ms`
             );
             await this.sleep(retryAfter);
             delay = Math.min(
@@ -260,12 +271,42 @@ export class AllegroHttpClient implements IAllegroHttpClient {
           ) {
             throw error; // Don't retry client errors (except 429)
           }
+
+          // The remaining AllegroApiException shapes are all AMBIGUOUS —
+          // an ambiguous 5xx, a network/timeout error (statusCode
+          // undefined), or a malformed body after a 2xx — any of which may
+          // have already committed server-side. Auto-retrying one on a
+          // non-idempotent call (an unmarked POST/PATCH — e.g.
+          // `POST /sale/product-offers`) mints a duplicate; the caller must
+          // opt in via `idempotent: true` (#3469). 429 is handled above and
+          // is unaffected — Allegro did not process that request at all.
+          //
+          // Raised as AllegroAmbiguousWriteException, not the bare error
+          // (#3469 IMPORTANT-1 review): gating the retry HERE stops this
+          // client from re-sending the request, but the failure still
+          // propagates out of whatever job called it, and SyncJobRunner
+          // retries a job-level failure by default. A plain
+          // AllegroApiException reads as an ordinary retryable transport
+          // failure to AllegroRetryClassifierAdapter, so the runner would
+          // re-run the whole job and the same non-idempotent POST would go
+          // out again — the duplicate this exists to stop, one layer up.
+          if (!isRetryableAttempt(method, options)) {
+            throw new AllegroAmbiguousWriteException(
+              error.message,
+              method,
+              path,
+              error.statusCode,
+              error.responseBody,
+              error.url,
+              error.allegroErrors,
+            );
+          }
         }
 
         // Retry on server errors (5xx) or network errors
-        if (attempt < this.retryConfig.maxRetries) {
+        if (attempt < maxRetries) {
           this.logger.warn(
-            `Request failed (attempt ${attempt + 1}/${this.retryConfig.maxRetries + 1}), retrying in ${delay}ms: ${lastError.message}`
+            `Request failed (attempt ${attempt + 1}/${maxRetries + 1}), retrying in ${delay}ms: ${lastError.message}`
           );
           await this.sleep(delay);
           delay = Math.min(delay * this.retryConfig.backoffMultiplier, this.retryConfig.maxDelayMs);
@@ -600,6 +641,20 @@ export class AllegroHttpClient implements IAllegroHttpClient {
  * (e.g. a UUID) to avoid colliding with anything that could appear in
  * the bytes payload.
  */
+/**
+ * Whether an ambiguous failure (network/timeout, ambiguous 5xx, malformed
+ * body after a 2xx) is safe to auto-retry for this call. `GET`/`PUT`/`DELETE`
+ * are idempotent by HTTP semantics; `POST`/`PATCH` need an explicit
+ * `options.idempotent` opt-in (#3469 — DPD/KSeF precedent). `429` is handled
+ * separately and is always retryable.
+ */
+function isRetryableAttempt(
+  method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE',
+  options?: Pick<AllegroHttpRequestOptions, 'idempotent'>
+): boolean {
+  return method === 'GET' || method === 'PUT' || method === 'DELETE' || options?.idempotent === true;
+}
+
 function buildMultipartBody(parts: AllegroMultipartPart[], boundary: string): Uint8Array {
   const CRLF = '\r\n';
   const chunks: Uint8Array[] = [];

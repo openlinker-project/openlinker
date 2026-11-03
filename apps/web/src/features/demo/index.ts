@@ -3,7 +3,7 @@ export {
   captureMarketingLanding,
   isMarketingLandingTrackable,
 } from './lib/capture-marketing-landing';
-export { ConsentGate, resolveNextPath } from './components/consent-gate';
+export { ConsentGate } from './components/consent-gate';
 export { SessionRecordingBullets } from './components/session-recording-bullets';
 export { MarketingTrackingFootnote } from './components/marketing-tracking-footnote';
 export { DemoEventCatalog } from './lib/demo-events';

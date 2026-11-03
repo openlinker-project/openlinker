@@ -18,11 +18,11 @@ import { PrestashopRetryClassifierAdapter } from '../prestashop-retry-classifier
 
 /** A shop that renamed and renumbered everything, which real shops do. */
 const CUSTOM_STATES: ReadonlyArray<Record<string, unknown>> = [
-  { id: '20', name: 'New order', deleted: '0', paid: '0', shipped: '0', delivered: '0' },
-  { id: '21', name: 'Paid, picking', deleted: '0', paid: '1', shipped: '0', delivered: '0' },
-  { id: '22', name: 'Handed to courier', deleted: '0', paid: '1', shipped: '1', delivered: '0' },
-  { id: '23', name: 'Signed for', deleted: '0', paid: '1', shipped: '1', delivered: '1' },
-  { id: '24', name: 'Anulowane', deleted: '0', paid: '0', shipped: '0', delivered: '0' },
+  { id: '20', name: 'New order', deleted: '0', paid: '0', shipped: '0', delivery: '0' },
+  { id: '21', name: 'Paid, picking', deleted: '0', paid: '1', shipped: '0', delivery: '0' },
+  { id: '22', name: 'Handed to courier', deleted: '0', paid: '1', shipped: '1', delivery: '0' },
+  { id: '23', name: 'Delivered to customer', deleted: '0', paid: '1', shipped: '1', delivery: '1' },
+  { id: '24', name: 'Anulowane', deleted: '0', paid: '0', shipped: '0', delivery: '0' },
 ];
 
 function serveStates(
@@ -53,7 +53,7 @@ describe('PrestashopOrderProcessorManagerAdapter - order-state mapping (#2607)',
         { value: '20', label: 'New order', derivedValue: 'pending' },
         { value: '21', label: 'Paid, picking', derivedValue: 'processing' },
         { value: '22', label: 'Handed to courier', derivedValue: 'shipped' },
-        { value: '23', label: 'Signed for', derivedValue: 'delivered' },
+        { value: '23', label: 'Delivered to customer', derivedValue: 'delivered' },
         { value: '24', label: 'Anulowane', derivedValue: 'cancelled' },
       ]);
     });

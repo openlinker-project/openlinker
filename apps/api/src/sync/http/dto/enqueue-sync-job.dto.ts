@@ -29,10 +29,18 @@ export class EnqueueSyncJobDto {
   jobType!: string;
 
   @ApiProperty({
-    description: 'Connection identifier (UUID)',
+    description:
+      'Connection identifier (UUID). A deployment-wide job such as ' +
+      '`fulfillment.work.relaySweep` takes the nil UUID ' +
+      '`00000000-0000-0000-0000-000000000000`, exactly as the scheduler enqueues it.',
     example: '123e4567-e89b-12d3-a456-426614174000',
   })
-  @IsUUID('4', { message: 'connectionId must be a valid UUID' })
+  // `'all'`, not `'4'` (#3506, G02-4): system-scoped jobs run under the nil UUID
+  // `SYSTEM_CONNECTION_ID` (worker scheduler), which no v4 pattern accepts. A
+  // hand-made v4-shaped stand-in enqueues the job under a DIFFERENT scope id,
+  // and the handler's per-run lock is keyed on that id — so a manual run and the
+  // cron would stop excluding each other.
+  @IsUUID('all', { message: 'connectionId must be a valid UUID' })
   connectionId!: string;
 
   @ApiProperty({

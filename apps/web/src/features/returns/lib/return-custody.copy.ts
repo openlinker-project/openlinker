@@ -98,6 +98,12 @@ export const RETURN_RESTOCK_TARGET_COPY = {
     'No connection owns your stock, so restocking cannot add units anywhere. Scrapping still works.',
   'adapter-unresolved':
     "OpenLinker can't reach the system that owns your stock right now, so it can't say where these units would land.",
+  'no-position':
+    'OpenLinker holds no stock for this product in any connected product master, so it cannot tell where these units would land.',
+  'unattributed-owner':
+    'The stock for this product has no known owner yet — run a stock sync from the product master, then restock.',
+  'ambiguous-owner':
+    '{n} product masters hold stock for this product, so OpenLinker will not guess which one to put the units back into.',
 } as const;
 
 export const RETURN_NOT_RETURNED_COPY = {

@@ -70,6 +70,7 @@ import type {
   IssuedDocumentSeller,
   RegulatoryClearanceResult,
 } from '@openlinker/core/invoicing';
+import { CONNECTION_SETUP_FAILURE_CAUSE } from '@openlinker/core/invoicing';
 
 import { EparagonyConfigException } from '../../domain/exceptions/eparagony-config.exception';
 import { toMinorUnits, toQuantityString } from '../../domain/policies/money.policy';
@@ -258,7 +259,8 @@ interface PricedInvoiceLine {
  *
  * @throws {EparagonyConfigException} when the sale cannot be expressed as an
  * invoice at all: a currency that would need an exchange rate, a connection with
- * no seller tax number, an unresolvable rate, or a non-registrable amount.
+ * no seller tax number, no allocated document number (#3500), an unresolvable
+ * rate, or a non-registrable amount.
  */
 export function composeInvoiceDocument(input: CreateInvoiceRequestInput): ComposedInvoiceDocument {
   const { command, config, documentToken, transactionToken } = input;
@@ -287,6 +289,8 @@ export function composeInvoiceDocument(input: CreateInvoiceRequestInput): Compos
       // classify a missing CONNECTION field as `buyer-tax-id-invalid`, sending
       // the operator to correct the buyer's data instead.
       'This connection has no seller tax number set, which every invoice requires. Set it on the connection and re-issue.',
+      undefined,
+      CONNECTION_SETUP_FAILURE_CAUSE,
     );
   }
 
@@ -341,14 +345,26 @@ export function composeInvoiceDocument(input: CreateInvoiceRequestInput): Compos
     metadata.merchantAddress = merchantAddress;
   }
 
-  // Present only when OpenLinker allocated the number. This adapter is not a
-  // `DocumentNumberConsumer`, so core does not set it today and the vendor
-  // generates the legal number itself - the field is honoured so that turning
-  // numbering on later needs no change here.
+  // REQUIRED, and refused pre-call rather than silently omitted (#3500 review):
+  // the vendor does not generate the legal number itself - `POST /documents`
+  // rejects a request with no `invoiceNumber` with an opaque `errorCode: 99`.
+  // `EparagonyInvoicingAdapter` is unconditionally a `DocumentNumberConsumer`,
+  // so core always allocates one from the connection's numbering series and
+  // sets `command.documentNumber` before reaching this mapper. A caller that
+  // bypasses core and constructs the command directly with none is refused
+  // HERE, the same treatment every other required-and-absent field in this
+  // mapper gets (`merchantTIN` above), rather than being let through to
+  // compose a document the vendor is known to reject.
   const documentNumber = readNonEmpty(command.documentNumber);
-  if (documentNumber !== null) {
-    metadata.invoiceNumber = documentNumber;
+  if (documentNumber === null) {
+    throw new EparagonyConfigException(
+      `eparagony.pl cannot invoice order ${command.orderId}: no document number was supplied, ` +
+        `and this adapter never leaves the number for the vendor to generate`,
+      'OpenLinker could not allocate a document number for this connection. Check the ' +
+        'connection’s numbering series and re-issue.',
+    );
   }
+  metadata.invoiceNumber = documentNumber;
 
   const invoiceDate = toRegimeCalendarDate(command.issuedAt);
   if (invoiceDate !== null) {
@@ -396,9 +412,10 @@ export function composeInvoiceDocument(input: CreateInvoiceRequestInput): Compos
  * rate, a connection missing the seller identity a correction requires
  * (`merchantTIN` AND `merchantName` AND a complete `merchantAddress` - all
  * three, unlike a plain invoice where the latter two are optional), an original
- * with no usable legal number or issue date, an unresolvable rate, a
- * non-invoiceable amount, or a correction line naming a position the original
- * document does not have.
+ * with no usable legal number or issue date, no allocated document number for
+ * the correction itself (#3500), an unresolvable rate, a non-invoiceable
+ * amount, or a correction line naming a position the original document does
+ * not have.
  */
 export function composeCorrectiveInvoiceDocument(
   input: CreateCorrectiveInvoiceRequestInput,
@@ -436,6 +453,8 @@ export function composeCorrectiveInvoiceDocument(
       // `TAX_ID_REJECTION_MARKERS` would classify a missing CONNECTION field as a
       // problem with the BUYER's data.
       'This connection has no seller tax number set, which every correction requires. Set it on the connection and re-issue.',
+      undefined,
+      CONNECTION_SETUP_FAILURE_CAUSE,
     );
   }
 
@@ -450,6 +469,8 @@ export function composeCorrectiveInvoiceDocument(
       `eparagony.pl cannot correct order ${orderId}: the connection declares no seller name, ` +
         `which every correction requires. Set it on the connection and re-issue`,
       'This connection has no seller name set, which every correction requires. Set it on the connection and re-issue.',
+      undefined,
+      CONNECTION_SETUP_FAILURE_CAUSE,
     );
   }
   // Read through the SAME completeness check the issue path uses, so a
@@ -462,6 +483,8 @@ export function composeCorrectiveInvoiceDocument(
       `eparagony.pl cannot correct order ${orderId}: the connection declares no complete seller ` +
         `address, which every correction requires. Set it on the connection and re-issue`,
       'This connection has no complete seller address set, which every correction requires. Set it on the connection and re-issue.',
+      undefined,
+      CONNECTION_SETUP_FAILURE_CAUSE,
     );
   }
 
@@ -543,13 +566,22 @@ export function composeCorrectiveInvoiceDocument(
     metadata.consumerTIN = consumerTIN;
   }
 
-  // The CORRECTION's own number when OpenLinker allocated one - never the
-  // original's, which lives only on `correctedMetadata`. This adapter is not a
-  // `DocumentNumberConsumer`, so today the vendor generates it.
+  // The CORRECTION's own number, allocated by core (#3500) - never the
+  // original's, which lives only on `correctedMetadata`. Refused pre-call the
+  // same way the plain issue path refuses it (#3500 review): the vendor
+  // rejects a document with no `invoiceNumber`, it does not generate one
+  // itself, so a caller reaching this mapper with none is refused here rather
+  // than let through to compose a document the vendor is known to reject.
   const documentNumber = readNonEmpty(command.documentNumber);
-  if (documentNumber !== null) {
-    metadata.invoiceNumber = documentNumber;
+  if (documentNumber === null) {
+    throw new EparagonyConfigException(
+      `eparagony.pl cannot correct order ${orderId}: no document number was supplied for the ` +
+        `correction, and this adapter never leaves the number for the vendor to generate`,
+      'OpenLinker could not allocate a document number for this connection. Check the ' +
+        'connection’s numbering series and re-issue.',
+    );
   }
+  metadata.invoiceNumber = documentNumber;
 
   const invoiceDate = toRegimeCalendarDate(command.issuedAt);
   if (invoiceDate !== null) {

@@ -1,0 +1,3008 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- #3766 - before/after mockup for the order-detail Sales document panel. States are addressable by data-state: invoice-issued, invoice-in-doubt, invoice-pending, receipt-registered. Live copy: https://claude.ai/artifact/RkBveyrpsQT7isZ5FcG6BP -->
+</head><body>
+<title>Sales Document Panel</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+/* ── Extracted verbatim from apps/web/src/index.css ── */
+
+
+:root {
+  /* ── Typography ───────────────────────────────────────────────────── */
+  --font-sans: 'IBM Plex Sans', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
+    'Segoe UI', sans-serif;
+  --font-mono: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+    'Liberation Mono', monospace;
+
+  /* ── Surfaces ──────────────────────────────────────────────────────
+   * Warm-neutral OKLCH ramp (#775). Canvas is the page background;
+   * surface is the elevated card; shell sits between for sidebars and
+   * sticky bars. `bg-strong` is a deeper neutral for inset hovers and
+   * pressed states. `bg-surface-muted` / `bg-surface-hover` are kept
+   * as aliases for the FE-002 vocabulary that the rest of the CSS
+   * already uses.
+   */
+  --bg-canvas: oklch(99% 0.003 80);
+  --bg-shell: oklch(97.5% 0.004 80);
+  --bg-surface: #ffffff;
+  --bg-surface-elevated: oklch(99% 0.003 80);
+  --bg-muted: oklch(96% 0.005 80);
+  --bg-surface-muted: oklch(96% 0.005 80);
+  --bg-surface-hover: oklch(93% 0.006 80);
+  --bg-strong: oklch(93% 0.006 80);
+
+  /* ── Borders ──────────────────────────────────────────────────────── */
+  --border-subtle: oklch(93.5% 0.006 80);
+  --border-default: oklch(88% 0.008 80);
+  --border-strong: oklch(78% 0.010 80);
+  --border-focus: oklch(68% 0.18 50);
+
+  /* ── Text ─────────────────────────────────────────────────────────── */
+  --text-primary: oklch(20% 0.012 80);
+  --text-secondary: oklch(38% 0.010 80);
+  --text-muted: oklch(52% 0.008 80);
+  --text-disabled: oklch(70% 0.005 80);
+  --text-on-primary: oklch(18% 0.012 50); /* text on accent button */
+  --text-inverse: oklch(96% 0.005 80);
+  --text-link: oklch(50% 0.14 250);
+
+  /* ── Accent ───────────────────────────────────────────────────────
+   * Signal-orange brand accent (#775). Reverses the monochrome stance
+   * of #371 — the prior monochrome accent flattened the cockpit. The
+   * accent is used sparingly: primary buttons, active-tab underline,
+   * KPI top-rule, pulsing live dot, focus rings. Status hues remain
+   * reserved for status meaning.
+   *
+   * `--accent-primary` is the brand colour; `--text-on-primary` above
+   * is the legible text colour to pair with it on primary buttons.
+   */
+  --accent-primary: oklch(68% 0.18 50);
+  --accent-primary-hover: oklch(62% 0.19 50);
+  --accent-primary-active: oklch(56% 0.20 50);
+  --accent-primary-soft: oklch(96% 0.04 60);
+  --accent-primary-soft-strong: oklch(40% 0.16 50);
+  --accent-primary-border: oklch(85% 0.10 55);
+  --accent-focus: oklch(68% 0.18 50);
+  --accent-ring: oklch(68% 0.18 50 / 0.30);
+
+  /* ── Status: success ──────────────────────────────────────────────── */
+  --status-success: oklch(54% 0.14 150);
+  --status-success-soft: oklch(96% 0.04 150);
+  --status-success-border: oklch(85% 0.08 150);
+  --status-success-fg: oklch(36% 0.12 150);
+  --status-success-strong: oklch(36% 0.12 150);
+
+  /* ── Status: warning ──────────────────────────────────────────────── */
+  --status-warning: oklch(72% 0.16 85);
+  --status-warning-soft: oklch(96% 0.05 85);
+  --status-warning-border: oklch(85% 0.10 85);
+  --status-warning-fg: oklch(42% 0.12 80);
+  --status-warning-strong: oklch(42% 0.12 80);
+
+  /* ── Status: error ────────────────────────────────────────────────── */
+  --status-error: oklch(58% 0.20 25);
+  --status-error-soft: oklch(96% 0.04 25);
+  --status-error-border: oklch(85% 0.10 25);
+  --status-error-fg: oklch(42% 0.16 25);
+  --status-error-strong: oklch(42% 0.16 25);
+
+  /* ── Status: info ─────────────────────────────────────────────────── */
+  --status-info: oklch(56% 0.14 245);
+  --status-info-soft: oklch(96% 0.03 245);
+  --status-info-border: oklch(85% 0.08 245);
+  --status-info-fg: oklch(40% 0.12 245);
+  --status-info-strong: oklch(40% 0.12 245);
+
+  /* ── Viz: categorical series (#1739) ──────────────────────────────────
+   * Small categorical palette for proportion visuals (routing-split bar).
+   * NOT status hues — a series colour distinguishes entities (carriers,
+   * connections), never encodes health. `--viz-cat-muted` is the neutral
+   * "default / unassigned" bucket. */
+  --viz-cat-1: oklch(75% 0.13 85);
+  --viz-cat-2: oklch(60% 0.15 20);
+  --viz-cat-3: oklch(58% 0.12 245);
+  --viz-cat-4: oklch(60% 0.13 150);
+  --viz-cat-muted: oklch(82% 0.008 80);
+
+  /* ── Channel brand hues (#1752) ──────────────────────────────────────
+   * Per-marketplace dot/pill identity colours, previously copy-pasted as raw
+   * oklch literals across the orders, coverage, channel-pill, product-detail,
+   * and variant-drawer rulesets. Brand identity, NOT status — a channel hue
+   * distinguishes the platform, never encodes health. Single definition
+   * (identical in light/dark), mirroring the viz categorical set. */
+  --channel-allegro: oklch(70% 0.18 35);
+  --channel-prestashop: oklch(60% 0.18 250);
+  --channel-erli: oklch(66% 0.17 320);
+  --channel-woocommerce: oklch(64% 0.16 150);
+  --channel-amazon: oklch(72% 0.16 75);
+  --channel-shopify: oklch(64% 0.16 150);
+
+  /* ── Status: review / manual ──────────────────────────────────────── */
+  --status-review: oklch(58% 0.16 290);
+  --status-review-soft: oklch(96% 0.04 290);
+  --status-review-border: oklch(85% 0.08 290);
+  --status-review-fg: oklch(42% 0.14 290);
+  --status-review-strong: oklch(42% 0.14 290);
+
+  /* ── Status: conflict ─────────────────────────────────────────────── */
+  --status-conflict: oklch(64% 0.16 45);
+  --status-conflict-soft: oklch(96% 0.05 45);
+  --status-conflict-border: oklch(85% 0.10 45);
+  --status-conflict-strong: oklch(40% 0.14 45);
+
+  /* ── Status: disabled ─────────────────────────────────────────────── */
+  --status-disabled: oklch(55% 0.008 80);
+  --status-disabled-soft: oklch(95% 0.005 80);
+  --status-disabled-border: oklch(85% 0.008 80);
+  --status-disabled-fg: oklch(38% 0.010 80);
+  --status-disabled-strong: oklch(38% 0.010 80);
+
+  /* ── Elevation ────────────────────────────────────────────────────── */
+  --shadow-soft: 0 1px 2px rgb(15 18 26 / 0.04), 0 6px 16px rgb(15 18 26 / 0.06);
+  --shadow-soft-hover: 0 2px 4px rgb(15 18 26 / 0.04), 0 12px 28px rgb(15 18 26 / 0.10);
+  --shadow-overlay: 0 24px 48px rgb(15 18 26 / 0.16), 0 8px 16px rgb(15 18 26 / 0.08);
+  --overlay-scrim: rgb(15 18 26 / 0.55);
+
+  --shadow-xs: 0 1px 2px rgb(15 18 26 / 0.04);
+  --shadow-sm: 0 1px 2px rgb(15 18 26 / 0.04), 0 1px 3px rgb(15 18 26 / 0.06);
+  --shadow-md: 0 2px 4px rgb(15 18 26 / 0.04), 0 6px 16px rgb(15 18 26 / 0.08);
+  --shadow-lg: 0 6px 12px rgb(15 18 26 / 0.06), 0 16px 32px rgb(15 18 26 / 0.10);
+  --shadow-focus: 0 0 0 3px var(--accent-ring);
+  --shadow-inset-top: inset 0 1px 0 rgb(255 255 255 / 0.6);
+
+  /* Primary button hover — accent-driven (#775). Kept as a named token
+     because existing CSS references it. The cascade through
+     `--accent-primary-hover` would also work, but the explicit token
+     makes the contract auditable in `tokens.ts`. */
+  --button-primary-bg-hover: oklch(62% 0.19 50);
+
+  /* ── Spacing scale (strict 4px grid) ─────────────────────────────── */
+  /* ── Layout heights (#2227) ────────────────────────────────────────
+   * The two pinned strips at the top of the shell, named once instead of
+   * repeated as a literal `52px` in `.shell-topbar` and `.demo-banner`. Height,
+   * not padding, so the value stays true: the banner carries a matching
+   * `min-height`.
+   */
+  --shell-topbar-height: 52px;
+  --demo-banner-height: 48px;
+
+  --space-1: 0.25rem; /* 4px */
+  --space-2: 0.5rem; /* 8px */
+  --space-3: 0.75rem; /* 12px */
+  --space-4: 1rem; /* 16px */
+  --space-5: 1.5rem; /* 24px */
+  --space-6: 2rem; /* 32px */
+  --space-7: 3rem; /* 48px */
+  --space-8: 4rem; /* 64px */
+
+  /* ── Radius scale ─────────────────────────────────────────────────── */
+  --radius-xs: 4px;
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 10px;
+  --radius-xl: 14px;
+  --radius-pill: 9999px;
+
+  /* ── Motion ───────────────────────────────────────────────────────── */
+  --duration-fast: 120ms;
+  --duration-normal: 180ms;
+  --duration-slow: 280ms;
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-standard: cubic-bezier(0.4, 0, 0.2, 1);
+  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+
+  /* ── Tracking (letter-spacing) ────────────────────────────────────── */
+  --tracking-tight: -0.012em;
+  --tracking-normal: 0;
+  --tracking-wide: 0.02em;
+  --tracking-caps: 0.08em;
+
+  color-scheme: light;
+  font-family: var(--font-sans);
+  line-height: 1.5;
+  font-weight: 400;
+  color: var(--text-primary);
+  background: var(--bg-canvas);
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  font-feature-settings: 'cv11', 'ss01';
+}
+html[data-theme='dark'] {
+  color-scheme: dark;
+
+  /* Primary button hover — accent-driven (#775). */
+  --button-primary-bg-hover: oklch(78% 0.18 50);
+
+  /* Surfaces — cool graphite ramp (#775). Hue 270 carries a faint
+     cool cast that keeps the dark palette from looking dead-neutral.
+     Elevation step sizes match the previous graphite ramp so existing
+     components carry over. */
+  --bg-canvas: oklch(14% 0.005 270);
+  --bg-shell: oklch(16% 0.006 270);
+  --bg-surface: oklch(19% 0.007 270);
+  --bg-surface-elevated: oklch(22% 0.008 270);
+  --bg-muted: oklch(24% 0.009 270);
+  --bg-surface-muted: oklch(24% 0.009 270);
+  --bg-surface-hover: oklch(28% 0.010 270);
+  --bg-strong: oklch(28% 0.010 270);
+
+  /* Borders */
+  --border-subtle: oklch(24% 0.010 270);
+  --border-default: oklch(30% 0.012 270);
+  --border-strong: oklch(42% 0.014 270);
+  --border-focus: oklch(72% 0.18 50);
+
+  /* Text */
+  --text-primary: oklch(96% 0.006 270);
+  --text-secondary: oklch(78% 0.010 270);
+  --text-muted: oklch(60% 0.012 270);
+  --text-disabled: oklch(42% 0.012 270);
+  --text-on-primary: oklch(16% 0.012 50); /* text on accent button — same black bias as light */
+  --text-inverse: oklch(20% 0.012 80);
+  --text-link: oklch(76% 0.14 245);
+
+  /* Accent — see :root for the rationale (#775). */
+  --accent-primary: oklch(72% 0.18 50);
+  --accent-primary-hover: oklch(78% 0.18 50);
+  --accent-primary-active: oklch(84% 0.16 50);
+  --accent-primary-soft: oklch(28% 0.08 50);
+  --accent-primary-soft-strong: oklch(86% 0.14 60);
+  --accent-primary-border: oklch(40% 0.14 55);
+  --accent-focus: oklch(72% 0.18 50);
+  --accent-ring: oklch(72% 0.18 50 / 0.40);
+
+  /* Status — success */
+  --status-success: oklch(68% 0.16 150);
+  --status-success-soft: oklch(26% 0.06 150);
+  --status-success-border: oklch(36% 0.10 150);
+  --status-success-fg: oklch(86% 0.14 150);
+  --status-success-strong: oklch(86% 0.14 150);
+
+  /* Status — warning */
+  --status-warning: oklch(78% 0.16 85);
+  --status-warning-soft: oklch(28% 0.07 85);
+  --status-warning-border: oklch(38% 0.10 85);
+  --status-warning-fg: oklch(88% 0.14 85);
+  --status-warning-strong: oklch(88% 0.14 85);
+
+  /* Status — error */
+  --status-error: oklch(70% 0.18 25);
+  --status-error-soft: oklch(28% 0.10 25);
+  --status-error-border: oklch(40% 0.14 25);
+  --status-error-fg: oklch(86% 0.14 25);
+  --status-error-strong: oklch(86% 0.14 25);
+
+  /* Status — info */
+  --status-info: oklch(72% 0.14 245);
+  --status-info-soft: oklch(26% 0.06 245);
+  --status-info-border: oklch(36% 0.10 245);
+  --status-info-fg: oklch(86% 0.12 245);
+  --status-info-strong: oklch(86% 0.12 245);
+
+  /* Viz — categorical series (#1739) */
+  --viz-cat-1: oklch(70% 0.12 85);
+  --viz-cat-2: oklch(62% 0.14 20);
+  --viz-cat-3: oklch(62% 0.11 245);
+  --viz-cat-4: oklch(62% 0.12 150);
+  --viz-cat-muted: oklch(42% 0.008 80);
+
+  /* Status — review */
+  --status-review: oklch(74% 0.14 290);
+  --status-review-soft: oklch(28% 0.06 290);
+  --status-review-border: oklch(38% 0.10 290);
+  --status-review-fg: oklch(88% 0.12 290);
+  --status-review-strong: oklch(88% 0.12 290);
+
+  /* Status — conflict */
+  --status-conflict: oklch(72% 0.16 45);
+  --status-conflict-soft: oklch(28% 0.08 45);
+  --status-conflict-border: oklch(40% 0.12 45);
+  --status-conflict-strong: oklch(88% 0.14 45);
+
+  /* Status — disabled */
+  --status-disabled: oklch(65% 0.010 270);
+  --status-disabled-soft: oklch(24% 0.010 270);
+  --status-disabled-border: oklch(34% 0.012 270);
+  --status-disabled-fg: oklch(82% 0.010 270);
+  --status-disabled-strong: oklch(82% 0.010 270);
+
+  /* Elevation */
+  --shadow-soft: 0 1px 2px rgb(0 0 0 / 0.40), 0 8px 24px rgb(0 0 0 / 0.40);
+  --shadow-soft-hover: 0 2px 4px rgb(0 0 0 / 0.42), 0 12px 32px rgb(0 0 0 / 0.42);
+  --shadow-overlay: 0 24px 48px rgb(0 0 0 / 0.60), 0 8px 16px rgb(0 0 0 / 0.40);
+  --shadow-xs: 0 1px 2px rgb(0 0 0 / 0.40);
+  --shadow-sm: 0 1px 2px rgb(0 0 0 / 0.40), 0 1px 3px rgb(0 0 0 / 0.32);
+  --shadow-md: 0 2px 4px rgb(0 0 0 / 0.40), 0 6px 16px rgb(0 0 0 / 0.36);
+  --shadow-lg: 0 6px 12px rgb(0 0 0 / 0.42), 0 16px 32px rgb(0 0 0 / 0.40);
+  --shadow-focus: 0 0 0 3px var(--accent-ring);
+  --shadow-inset-top: inset 0 1px 0 rgb(255 255 255 / 0.04);
+  --overlay-scrim: rgb(0 0 0 / 0.72);
+}
+body {
+  margin: 0;
+  min-width: 320px;
+  min-height: 100vh;
+  background: var(--bg-canvas);
+}
+button,
+.button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  border: 1px solid var(--accent-primary-border);
+  border-radius: var(--radius-md);
+  padding: 0 var(--space-4);
+  height: 2rem;
+  background: var(--accent-primary);
+  color: var(--text-on-primary);
+  font-family: inherit;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  letter-spacing: var(--tracking-normal);
+  cursor: pointer;
+  text-decoration: none;
+  user-select: none;
+  white-space: nowrap;
+  box-shadow: var(--shadow-xs), var(--shadow-inset-top);
+  transition:
+    background var(--duration-fast) var(--ease-out),
+    border-color var(--duration-fast) var(--ease-out),
+    color var(--duration-fast) var(--ease-out),
+    box-shadow var(--duration-fast) var(--ease-out);
+}
+button:hover,
+.button:hover {
+  background: var(--button-primary-bg-hover);
+  border-color: var(--button-primary-bg-hover);
+  color: var(--text-on-primary);
+}
+button:active,
+.button:active {
+  background: var(--accent-primary-active);
+  border-color: var(--accent-primary-active);
+}
+button:focus-visible,
+.button:focus-visible,
+.nav-link:focus-visible,
+input:focus-visible,
+textarea:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
+}
+button:focus-visible,
+.button:focus-visible,
+.control:focus-visible,
+.nav-link:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
+}
+.button--secondary {
+  border-color: var(--border-default);
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  box-shadow: var(--shadow-xs), var(--shadow-inset-top);
+}
+.button--secondary:hover {
+  background: var(--bg-surface-muted);
+  border-color: var(--border-strong);
+  color: var(--text-primary);
+}
+.button--secondary:active {
+  background: var(--bg-surface-hover);
+}
+.button--danger {
+  border-color: color-mix(in oklab, var(--status-error) 80%, black);
+  background: var(--status-error);
+  color: #ffffff;
+  box-shadow: var(--shadow-xs), var(--shadow-inset-top);
+}
+.button--danger:hover {
+  background: color-mix(in oklab, var(--status-error) 90%, black);
+  border-color: color-mix(in oklab, var(--status-error) 70%, black);
+  color: #ffffff;
+}
+.button--ghost {
+  border-color: transparent;
+  background: transparent;
+  color: var(--text-secondary);
+  box-shadow: none;
+}
+.button--ghost:hover {
+  background: var(--bg-surface-muted);
+  border-color: transparent;
+  color: var(--text-primary);
+}
+button:disabled,
+.button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+  box-shadow: none;
+}
+.button__spinner {
+  display: inline-block;
+  width: 0.8em;
+  height: 0.8em;
+  margin-right: var(--space-2);
+  border: 2px solid currentColor;
+  border-top-color: transparent;
+  border-radius: var(--radius-pill);
+  opacity: 0.85;
+  animation: button-spinner-rotate var(--duration-slow) linear infinite;
+  vertical-align: -0.125em;
+}
+@media (prefers-reduced-motion: reduce) {
+  .button__spinner {
+    animation: none;
+    /* Half-ring still reads as "not a solid dot" without motion. */
+    border-top-color: currentColor;
+    opacity: 0.4;
+  }
+}
+.button--xs {
+  height: 1.5rem;
+  padding: 0 var(--space-2);
+  font-size: 0.6875rem;
+  border-radius: var(--radius-sm);
+  gap: var(--space-1);
+}
+.button--sm {
+  height: 1.75rem;
+  padding: 0 var(--space-3);
+  font-size: 0.75rem;
+}
+.button--md {
+  /* default — matches base .button */
+}
+.button--lg {
+  height: 2.375rem;
+  padding: 0 var(--space-5);
+  font-size: 0.875rem;
+}
+.button--icon {
+  padding: 0;
+  width: 2rem;
+}
+.button--icon.button--xs { width: 1.5rem; }
+.button--icon.button--sm { width: 1.75rem; }
+.button--icon.button--lg { width: 2.375rem; }
+.button__shortcut {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.125rem;
+  padding: 1px 5px;
+  margin-left: var(--space-2);
+  font-family: var(--font-mono);
+  font-size: 0.625rem;
+  line-height: 1;
+  letter-spacing: var(--tracking-wide);
+  border-radius: var(--radius-xs);
+  background: rgb(255 255 255 / 0.20);
+  color: inherit;
+  opacity: 0.85;
+}
+.button--secondary .button__shortcut,
+.button--ghost .button__shortcut {
+  background: var(--bg-surface-muted);
+  color: var(--text-muted);
+}
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+@media (min-width: 768px) {
+  :root {
+    --demo-banner-height: 32px;
+  }
+}
+.page-description,
+.panel-copy,
+.muted-text {
+  margin: 0;
+  color: var(--text-secondary);
+}
+.alert {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg);
+  padding: 0.875rem 1rem 0.875rem 1.125rem;
+  background: var(--bg-surface);
+  box-shadow: inset 3px 0 0 var(--border-default);
+}
+.alert--info {
+  border-color: var(--status-info-border);
+  background: var(--status-info-soft);
+  box-shadow: inset 3px 0 0 var(--status-info);
+}
+.alert--success {
+  border-color: var(--status-success-border);
+  background: var(--status-success-soft);
+  box-shadow: inset 3px 0 0 var(--status-success);
+}
+.alert--warning {
+  border-color: var(--status-warning-border);
+  background: var(--status-warning-soft);
+  box-shadow: inset 3px 0 0 var(--status-warning);
+}
+.alert--conflict {
+  border-color: var(--status-conflict-border);
+  background: var(--status-conflict-soft);
+  box-shadow: inset 3px 0 0 var(--status-conflict);
+}
+.alert--error {
+  border-color: var(--status-error-border);
+  background: var(--status-error-soft);
+  box-shadow: inset 3px 0 0 var(--status-error);
+}
+.alert__content {
+  display: grid;
+  gap: 0.35rem;
+}
+.alert__title,
+.toast__title {
+  color: var(--text-primary);
+}
+.alert__description,
+.toast__description {
+  color: var(--text-secondary);
+}
+.alert__description p,
+.toast__description {
+  margin: 0;
+}
+.alert__actions {
+  flex-shrink: 0;
+}
+.alert__count {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  color: inherit;
+}
+@media (max-width: 767.98px) {
+  .alert {
+    flex-direction: column;
+    align-items: stretch;
+  }
+}
+@media (max-width: 767.98px) {
+
+  .alert__actions {
+    display: flex;
+  }
+}
+.mono-text,
+.mono {
+  font-family: var(--font-mono);
+  letter-spacing: -0.01em;
+  /* Long space-free tokens (redirect URIs, IDs) must wrap, not overflow — without
+     this they escape cards with `overflow: visible` and collide with neighbouring
+     layout (e.g. the Allegro setup callout's redirect URI overlapping the wizard
+     summary card). `anywhere` only breaks when needed and feeds min-content sizing
+     so grid/flex tracks behave. The `.data-table td .mono-text` variant keeps its
+     own max-width + ellipsis. */
+  overflow-wrap: anywhere;
+}
+.data-table td .mono-text {
+  display: inline-block;
+  max-width: 20ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.dialog {
+  width: min(100%, 28rem);
+  gap: 1rem;
+  border: 1px solid var(--border-default);
+  border-radius: 0.75rem;
+  padding: 1.25rem;
+  background: var(--bg-surface);
+  box-shadow: var(--shadow-soft);
+}
+.dialog[open] {
+  display: grid;
+}
+.dialog__header,
+.dialog__actions,
+.toast__content {
+  display: grid;
+  gap: 0.75rem;
+}
+.dialog__title {
+  margin: 0;
+  color: var(--text-primary);
+}
+.dialog__body {
+  color: var(--text-secondary);
+}
+.dialog__body p {
+  margin: 0;
+}
+.dialog__actions {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.dialog__subtitle {
+  margin: 0;
+}
+@media (max-width: 900px) {
+
+  .alert,
+  .toast {
+    flex-direction: column;
+  }
+}
+@media (max-width: 900px) {
+
+  .dialog__actions {
+    grid-template-columns: 1fr;
+  }
+}
+.confirm-email .alert {
+  width: 100%;
+  text-align: left;
+}
+.confirm-email__actions .button {
+  width: 100%;
+}
+@media (hover: none) and (pointer: coarse) {
+  button,
+  .button,
+  .nav-link {
+    min-height: 44px;
+    min-width: 44px;
+  }
+}
+.key-value-list {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0;
+  margin: 0;
+  padding: 0;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+@media (min-width: 768px) {
+  .key-value-list {
+    grid-template-columns: minmax(160px, max-content) 1fr;
+  }
+}
+.key-value-list__label,
+.key-value-list__value {
+  padding: var(--space-3) var(--space-4);
+  border-top: 1px solid var(--border-subtle);
+  margin: 0;
+}
+.key-value-list__label {
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  font-weight: 500;
+  color: var(--text-muted);
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+  background: var(--bg-shell);
+}
+.key-value-list__value {
+  color: var(--text-primary);
+  font-size: 0.8125rem;
+  word-break: break-word;
+}
+.key-value-list__label,
+.key-value-list__value {
+  min-width: 0;
+}
+.key-value-list__value > * {
+  max-width: 100%;
+}
+.key-value-list__value--mono {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+}
+.key-value-list__label:first-of-type,
+.key-value-list > :nth-child(-n + 2) {
+  border-top: 0;
+}
+.dialog__overlay {
+  position: fixed;
+  inset: 0;
+  background: var(--overlay-scrim);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  animation: dialog-fade-in var(--duration-fast) var(--ease-out);
+  z-index: 40;
+}
+.dialog__content {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: min(520px, 92vw);
+  max-height: min(90vh, 720px);
+  overflow-x: hidden;
+  overflow-y: auto;
+  background: var(--bg-surface-elevated);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-overlay);
+  padding: var(--space-5) var(--space-6);
+  z-index: 50;
+  animation: dialog-fade-in var(--duration-fast) var(--ease-out);
+}
+.dialog__overlay--elevated { z-index: 100; }
+.dialog__content--elevated { z-index: 101; }
+.dialog__title {
+  margin: 0 0 var(--space-1);
+  font-size: 1.0625rem;
+  font-weight: 600;
+  letter-spacing: var(--tracking-tight);
+  color: var(--text-primary);
+}
+.dialog__description {
+  margin: 0 0 var(--space-4);
+  font-size: 0.8125rem;
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+.dialog__footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-2);
+  margin: var(--space-5) calc(var(--space-6) * -1) calc(var(--space-5) * -1);
+  padding: var(--space-4) var(--space-6);
+  background: var(--bg-shell);
+  border-top: 1px solid var(--border-subtle);
+  border-radius: 0 0 var(--radius-xl) var(--radius-xl);
+}
+.command-palette.dialog__content {
+  top: 72px;
+  bottom: auto;
+  transform: none;
+  left: 50%;
+  translate: -50% 0;
+  width: min(640px, calc(100vw - var(--space-8)));
+  max-width: none;
+  padding: 0;
+  overflow: hidden;
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-overlay);
+}
+@media (max-width: 767.98px) {
+  .insights-incidents__actions .button,
+  .insights-incidents__actions a.button {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+}
+.offer-product-picker.dialog__content {
+  width: min(1080px, 96vw);
+  max-width: none;
+  /* Fixed height so the modal stays stable as selections/variants are added -
+     the product list and the rail scroll internally instead of growing the
+     modal (phone overrides to a 100dvh full-screen sheet below). */
+  height: min(760px, 88vh);
+  max-height: 88vh;
+  padding: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-surface);
+}
+.offer-product-picker__rail-actions > .button,
+.offer-product-picker__rail-actions > .offer-product-picker__continue-wrap {
+  flex: 1 1 auto;
+}
+.offer-product-picker__continue-wrap > .button {
+  width: 100%;
+}
+.offer-product-picker__continue-wrap > .button:disabled {
+  pointer-events: none;
+}
+@media (max-width: 1023px) {
+  .offer-product-picker.dialog__content {
+    width: min(720px, 96vw);
+  }
+}
+@media (max-width: 600px) {
+  .offer-product-picker.dialog__content {
+    width: 100vw;
+    max-width: 100vw;
+    height: 100dvh;
+    max-height: 100dvh;
+    top: 0;
+    left: 0;
+    transform: none;
+    border: 0;
+    border-radius: 0;
+  }
+}
+.detail-section {
+  display: grid;
+  gap: 0.75rem;
+}
+.detail-section__title {
+  margin: 0;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.detail-section__muted {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 0.875rem;
+}
+.ai-provider-table .text-muted {
+  color: var(--text-muted);
+}
+.ai-provider-table__actions .button.button--sm {
+  height: 28px;
+  padding: 0 0.625rem;
+  font-size: 0.8125rem;
+}
+@media (max-width: 480px) {
+
+  .dialog__footer {
+    /* On the smallest viewports the rounded-bottom footer's negative
+       margin can clip oddly. Keep the actions stacked but flush. */
+    flex-direction: column-reverse;
+    align-items: stretch;
+  }
+}
+@media (max-width: 480px) {
+
+  .dialog__footer .button {
+    width: 100%;
+  }
+}
+.bulk-destbar__panel .key-value-list {
+  width: 100%;
+}
+.bulk-review__toolbar > .button { white-space: nowrap; flex-shrink: 0; }
+@media (max-width: 767px) {
+  .shipment-action-buttons > .button {
+    width: 100%;
+    min-height: 44px;
+  }
+}
+@media (max-width: 767px) {
+  .generate-label-form__actions > .button {
+    width: 100%;
+    min-height: 44px;
+  }
+}
+.dialog__content--publish {
+  width: min(680px, 94vw);
+  max-height: min(90vh, 800px);
+}
+.sales-document-panel__skeleton,
+.invoice-detail__skeleton {
+  border-radius: var(--radius-sm);
+  background: linear-gradient(
+    100deg,
+    var(--bg-surface-muted) 0%,
+    var(--bg-surface-hover) 50%,
+    var(--bg-surface-muted) 100%
+  );
+  background-size: 200% 100%;
+  animation: invoice-skeleton-shimmer 1.4s ease-in-out infinite;
+}
+.sales-document-panel__skeleton {
+  height: 14px;
+}
+.sales-document-panel__skeleton--headline {
+  height: 38px;
+  margin-bottom: var(--space-3);
+}
+@media (prefers-reduced-motion: reduce) {
+  .sales-document-panel__skeleton,
+  .invoice-detail__skeleton {
+    animation: none;
+    background: var(--bg-surface-muted);
+  }
+}
+.invoice-panel__kv {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  column-gap: var(--space-4);
+  row-gap: var(--space-1);
+  margin: 0;
+  font-size: 0.875rem;
+}
+.invoice-panel__kv dt {
+  color: var(--text-muted);
+  font-weight: 500;
+  white-space: nowrap;
+}
+.invoice-panel__kv dd {
+  margin: 0;
+  color: var(--text-primary);
+  word-break: break-word;
+}
+.invoice-detail-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-3) 0;
+}
+.invoice-detail-section__title {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  font-weight: 500;
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+.invoice-detail-section__kv {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  column-gap: var(--space-4);
+  row-gap: var(--space-1);
+  margin: 0;
+  font-size: 0.875rem;
+}
+.invoice-detail-section__kv dt {
+  color: var(--text-muted);
+  font-weight: 500;
+  white-space: nowrap;
+}
+.invoice-detail-section__kv dd {
+  margin: 0;
+  color: var(--text-primary);
+  word-break: break-word;
+}
+.invoice-panel__inline-alert {
+  display: flex;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-sm);
+  font-size: 0.875rem;
+  line-height: 1.5;
+  background: var(--bg-surface-muted);
+}
+.invoice-panel__inline-alert--error {
+  background: var(--status-error-soft);
+  color: var(--status-error-fg);
+}
+.invoice-panel__inline-alert--warning {
+  background: var(--status-warning-soft);
+  color: var(--status-warning-fg);
+}
+.invoice-panel__inline-alert-bar {
+  flex-shrink: 0;
+  width: 3px;
+  border-radius: 2px;
+  background: currentColor;
+  align-self: stretch;
+}
+.sales-document-panel {
+  gap: var(--space-3);
+  padding: var(--space-4);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-xs);
+}
+.sales-document-panel__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+.sales-document-panel__header-badges {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+.sales-document-panel__actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+  border-top: 1px solid var(--border-subtle);
+  padding-top: var(--space-3);
+}
+.sales-document-panel__actions .spacer {
+  flex: 1;
+}
+.sales-document-panel__actions--issue {
+  flex-wrap: wrap;
+}
+.sales-document-panel__doc-type {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.sales-document-panel__actions--issue .button {
+  flex: 0 0 auto;
+}
+@media (max-width: 480px) {
+  .sales-document-panel__doc-type {
+    flex-basis: 100%;
+  }
+}
+@media (max-width: 480px) {
+  .sales-document-panel__actions--issue .button {
+    flex: 1 1 auto;
+  }
+}
+.sales-document-panel__connection {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+.sales-document-panel__connection-label {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+.sales-document-panel__body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+.sales-document-panel__notice {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 0.8125rem;
+}
+.doc-slot {
+  display: grid;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius-md);
+  background: var(--bg-shell);
+}
+.doc-slot--filled {
+  border-style: solid;
+  border-color: var(--border-subtle);
+  background: var(--bg-surface);
+}
+.doc-slot__head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+.doc-slot__kind {
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+.doc-slot__name {
+  font-size: 0.9375rem;
+  font-weight: 600;
+}
+.artefact-list {
+  display: grid;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.artefact-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--bg-surface-muted);
+}
+.artefact-row__medium {
+  font-family: var(--font-mono);
+  font-size: 0.625rem;
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+  color: var(--text-muted);
+  min-width: 5.25rem;
+  flex: 0 0 auto;
+}
+.artefact-row__body {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+.artefact-row__title {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.artefact-row__action {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+.invoice-connection-lock {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  column-gap: var(--space-3);
+  row-gap: var(--space-1);
+  align-items: center;
+  padding: var(--space-3) var(--space-3) var(--space-3) var(--space-4);
+  background: var(--bg-surface-muted);
+  border: 1px solid var(--border-subtle);
+  border-left: 3px solid var(--status-success);
+  border-radius: var(--radius-md);
+}
+.invoice-connection-lock--pending {
+  border-left-color: var(--status-warning);
+}
+.invoice-connection-lock--stale {
+  border-left-color: var(--border-strong);
+}
+.invoice-connection-lock__glyph {
+  font-size: 0.9375rem;
+  line-height: 1;
+  color: var(--status-success-fg);
+}
+.invoice-connection-lock--pending .invoice-connection-lock__glyph {
+  color: var(--status-warning-fg);
+}
+.invoice-connection-lock--stale .invoice-connection-lock__glyph {
+  color: var(--text-muted);
+}
+.invoice-connection-lock__eyebrow {
+  grid-column: 2;
+  font-family: var(--font-mono);
+  font-size: 0.625rem;
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+.invoice-connection-lock__value {
+  grid-column: 2;
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.invoice-connection-lock__tag {
+  font-size: 0.625rem;
+  font-weight: 500;
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+  color: var(--text-muted);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-pill);
+  padding: 1px 7px;
+}
+.invoice-connection-lock__hint {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+.invoice-connection-lock__why {
+  grid-column: 2;
+}
+.invoice-connection-lock__why > summary {
+  font-size: 0.75rem;
+}
+.invoice-connection-lock__why .invoice-connection-lock__hint {
+  display: block;
+  margin-top: var(--space-1);
+}
+.reg-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-subtle);
+  border-left: 3px solid var(--border-subtle);
+  background: var(--bg-surface-muted);
+}
+.reg-card--info {
+  border-left-color: var(--status-info);
+  background: var(--status-info-soft);
+}
+.reg-card--success {
+  border-left-color: var(--status-success);
+  background: var(--status-success-soft);
+}
+.reg-card--error {
+  border-left-color: var(--status-error);
+  background: var(--status-error-soft);
+}
+.reg-card__header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.reg-card__progress {
+  height: 3px;
+  border-radius: 2px;
+  background: linear-gradient(
+    100deg,
+    var(--status-info-soft) 0%,
+    var(--status-info) 50%,
+    var(--status-info-soft) 100%
+  );
+  background-size: 200% 100%;
+  animation: invoice-skeleton-shimmer 1.4s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .reg-card__progress {
+    animation: none;
+    background: var(--status-info);
+  }
+}
+.reg-card__summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+.reg-card__note {
+  font-size: 0.75rem;
+  margin: 0;
+}
+.sales-document-panel__correction {
+  margin-top: var(--space-3);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--border-subtle);
+}
+.sales-document-panel__correction summary {
+  cursor: pointer;
+  font-size: 0.8125rem;
+  color: var(--text-link);
+  width: fit-content;
+}
+.sales-document-panel__correction .panel-copy {
+  margin: var(--space-2) 0;
+}
+.sales-document-panel__scope-note {
+  width: 100%;
+  font-size: 0.75rem;
+}
+.sales-document-panel__routing-disclosure summary {
+  cursor: pointer;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  margin-bottom: var(--space-2);
+}
+.sales-document-panel__override-cards {
+  display: grid;
+  gap: var(--space-3);
+}
+.sales-document-panel__override-card {
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  background: var(--bg-surface);
+  padding: var(--space-4);
+  display: grid;
+  gap: var(--space-3);
+}
+.sales-document-panel__override-card-title {
+  margin: 0;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.sales-document-panel__override-card-fields {
+  display: grid;
+  gap: var(--space-3);
+}
+.sales-document-panel__override-card-action {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+.sales-document-panel__override-card-hint {
+  font-size: 0.82rem;
+}
+.sales-document-panel__override-card-scope {
+  margin: 0;
+  font-size: 0.78rem;
+}
+.sales-document-panel__routing-block {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin-bottom: var(--space-3);
+}
+.sales-document-panel__routing-block-title {
+  font-size: 0.9375rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin: 0;
+}
+.dialog__content--wide {
+  width: min(920px, 94vw);
+  max-height: min(92vh, 880px);
+}
+.demo-consent__actions > .button {
+  flex: 1 1 auto;
+}
+.detail-section__title-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+.listings-panel .listings-subtable td.mono-text {
+  display: table-cell;
+  max-width: none;
+  overflow: visible;
+  text-overflow: clip;
+  white-space: normal;
+}
+.detail-section__edit-link {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--accent-primary-soft-strong);
+  text-decoration: none;
+  white-space: nowrap;
+}
+.detail-section__edit-link:hover {
+  text-decoration: underline;
+}
+.listings-toolbar > .button {
+  margin-left: auto;
+}
+@media (max-width: 767.98px) {
+  .sales-document-market-row__action .button {
+    width: 100%;
+  }
+}
+.orphan-returns-worklist__row .mono-text {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+@media (max-width: 767px) {
+  .orphan-returns-worklist__row .button {
+    min-height: 44px;
+  }
+}
+.returns-decline > .alert,
+.returns-decline > p {
+  justify-self: stretch;
+}
+@media (max-width: 767px) {
+  .order-hold-panel .button,
+  .order-hold-dialog .dialog__footer .button {
+    min-height: 44px;
+  }
+}
+@media (max-width: 640px) {
+
+  .automation-rules__state .button {
+    flex: 1 1 100%;
+    min-height: 44px;
+  }
+}
+@media (max-width: 640px) {
+
+  .automation-suggestion__actions .button {
+    flex: 1 1 100%;
+    min-height: 44px;
+  }
+}
+@media (max-width: 767px) {
+
+  .automation-composer__footer .button,
+  .automation-composer__row .button,
+  .automation-composer__action-head .button {
+    min-height: 44px;
+    width: 100%;
+  }
+}
+@media (max-width: 767px) {
+  .automation-dry-run__controls .button {
+    min-height: 44px;
+    width: 100%;
+  }
+}
+@media (max-width: 767px) {
+
+  .automation-activity__filters .button,
+  .automation-activity__pager .button {
+    min-height: 44px;
+    width: 100%;
+  }
+}
+.assign-packing-work-lane > .text-muted {
+  padding: var(--space-4);
+  margin: 0;
+  font-size: 0.8125rem;
+}
+.assign-packing-work-card__menu .fulfilment-task__actions .button {
+  display: block;
+  width: 100%;
+  text-align: left;
+}
+.document-glyph {
+  flex: none;
+  color: inherit;
+}
+.document-headline {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+.document-headline__main {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: 1.0625rem;
+  font-weight: 600;
+  letter-spacing: var(--tracking-tight);
+  color: var(--text-primary);
+}
+.document-headline__main .document-glyph {
+  width: 20px;
+  height: 20px;
+}
+.document-headline__word {
+  min-width: 0;
+}
+.document-headline__sep {
+  color: var(--text-muted);
+  font-weight: 400;
+}
+.document-headline__main--idle {
+  color: var(--text-muted);
+}
+.document-headline__main--warning {
+  color: var(--status-warning-fg);
+}
+.document-headline__main--error {
+  color: var(--status-error-fg);
+}
+.document-headline__main--done .document-glyph,
+.document-headline__main--progress .document-glyph {
+  color: var(--text-muted);
+}
+.document-headline__tick {
+  flex: none;
+  color: var(--status-success);
+}
+.document-headline__live {
+  flex: none;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--status-info);
+  animation: document-headline-pulse 1.6s var(--ease-out) infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .document-headline__live {
+    animation: none;
+  }
+}
+.document-headline__sub {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  overflow-wrap: anywhere;
+}
+.document-lifecycle {
+  display: flex;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.document-lifecycle__step {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding-top: 20px;
+  text-align: center;
+}
+.document-lifecycle__step::before {
+  content: '';
+  position: absolute;
+  z-index: 0;
+  top: 6px;
+  left: -50%;
+  width: 100%;
+  height: 2px;
+  background: var(--border-subtle);
+}
+.document-lifecycle__step:first-child::before {
+  content: none;
+}
+.document-lifecycle__step--done::before {
+  background: var(--status-success-border);
+}
+.document-lifecycle__marker {
+  position: absolute;
+  z-index: 1;
+  top: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 2px solid var(--border-strong);
+  background: var(--bg-surface);
+  color: var(--text-inverse);
+}
+.document-lifecycle__step--done .document-lifecycle__marker {
+  border-color: var(--status-success);
+  background: var(--status-success);
+}
+.document-lifecycle__step--error .document-lifecycle__marker {
+  border-color: var(--status-error);
+  background: var(--status-error);
+}
+.document-lifecycle__step--active .document-lifecycle__marker {
+  border-color: var(--status-info);
+  animation: document-lifecycle-pulse 1.6s var(--ease-out) infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .document-lifecycle__step--active .document-lifecycle__marker {
+    animation: none;
+  }
+}
+.document-lifecycle__label {
+  text-align: center;
+  font-size: 0.75rem;
+  font-weight: 500;
+}
+.document-lifecycle__step--todo .document-lifecycle__label {
+  color: var(--text-muted);
+}
+.document-lifecycle__time {
+  text-align: center;
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  color: var(--text-muted);
+}
+.bench-rail__take-next .button {
+  width: 100%;
+  min-height: 2.75rem;
+}
+.bench-work-row__actions .button {
+  padding-inline: var(--space-2);
+  font-size: 0.7rem;
+}
+.bench-work-row__actions .button {
+  min-height: 2.75rem;
+  min-width: 2.75rem;
+}
+.bench-hero__scan .button {
+  min-height: 2.75rem;
+  min-width: 2.75rem;
+}
+.bench-dock--phone .bench-dock__type .button {
+  width: 100%;
+}
+.bench-dock__controls .button {
+  min-height: 48px;
+}
+.bench-parcel .button,
+.bench-parcel-line .button,
+.bench-parcel__footer .button {
+  min-height: 44px;
+  min-width: 44px;
+}
+.bench-parcel-line__actions .button {
+  min-height: 44px;
+  min-width: 44px;
+  font-size: 1rem;
+  padding-inline: var(--space-4);
+}
+.bench-parcel__completion .button {
+  min-height: 44px;
+  min-width: 44px;
+}
+.bench-parcel__completion-print-actions .button {
+  min-height: 44px;
+  min-width: 44px;
+}
+.dialog__footer--split {
+  justify-content: space-between;
+}
+.dialog__footer-group {
+  display: inline-flex;
+  gap: var(--space-2);
+}
+@media (max-width: 480px) {
+  .dialog__footer-group {
+    flex-direction: column-reverse;
+  }
+}
+@keyframes dialog-fade-in {
+  from { opacity: 0; transform: translate(-50%, -48%); }
+  to   { opacity: 1; transform: translate(-50%, -50%); }
+}
+@media (prefers-color-scheme: dark) {
+html:not([data-theme='light']) {
+  color-scheme: dark;
+
+  /* Primary button hover — accent-driven (#775). */
+  --button-primary-bg-hover: oklch(78% 0.18 50);
+
+  /* Surfaces — cool graphite ramp (#775). Hue 270 carries a faint
+     cool cast that keeps the dark palette from looking dead-neutral.
+     Elevation step sizes match the previous graphite ramp so existing
+     components carry over. */
+  --bg-canvas: oklch(14% 0.005 270);
+  --bg-shell: oklch(16% 0.006 270);
+  --bg-surface: oklch(19% 0.007 270);
+  --bg-surface-elevated: oklch(22% 0.008 270);
+  --bg-muted: oklch(24% 0.009 270);
+  --bg-surface-muted: oklch(24% 0.009 270);
+  --bg-surface-hover: oklch(28% 0.010 270);
+  --bg-strong: oklch(28% 0.010 270);
+
+  /* Borders */
+  --border-subtle: oklch(24% 0.010 270);
+  --border-default: oklch(30% 0.012 270);
+  --border-strong: oklch(42% 0.014 270);
+  --border-focus: oklch(72% 0.18 50);
+
+  /* Text */
+  --text-primary: oklch(96% 0.006 270);
+  --text-secondary: oklch(78% 0.010 270);
+  --text-muted: oklch(60% 0.012 270);
+  --text-disabled: oklch(42% 0.012 270);
+  --text-on-primary: oklch(16% 0.012 50); /* text on accent button — same black bias as light */
+  --text-inverse: oklch(20% 0.012 80);
+  --text-link: oklch(76% 0.14 245);
+
+  /* Accent — see :root for the rationale (#775). */
+  --accent-primary: oklch(72% 0.18 50);
+  --accent-primary-hover: oklch(78% 0.18 50);
+  --accent-primary-active: oklch(84% 0.16 50);
+  --accent-primary-soft: oklch(28% 0.08 50);
+  --accent-primary-soft-strong: oklch(86% 0.14 60);
+  --accent-primary-border: oklch(40% 0.14 55);
+  --accent-focus: oklch(72% 0.18 50);
+  --accent-ring: oklch(72% 0.18 50 / 0.40);
+
+  /* Status — success */
+  --status-success: oklch(68% 0.16 150);
+  --status-success-soft: oklch(26% 0.06 150);
+  --status-success-border: oklch(36% 0.10 150);
+  --status-success-fg: oklch(86% 0.14 150);
+  --status-success-strong: oklch(86% 0.14 150);
+
+  /* Status — warning */
+  --status-warning: oklch(78% 0.16 85);
+  --status-warning-soft: oklch(28% 0.07 85);
+  --status-warning-border: oklch(38% 0.10 85);
+  --status-warning-fg: oklch(88% 0.14 85);
+  --status-warning-strong: oklch(88% 0.14 85);
+
+  /* Status — error */
+  --status-error: oklch(70% 0.18 25);
+  --status-error-soft: oklch(28% 0.10 25);
+  --status-error-border: oklch(40% 0.14 25);
+  --status-error-fg: oklch(86% 0.14 25);
+  --status-error-strong: oklch(86% 0.14 25);
+
+  /* Status — info */
+  --status-info: oklch(72% 0.14 245);
+  --status-info-soft: oklch(26% 0.06 245);
+  --status-info-border: oklch(36% 0.10 245);
+  --status-info-fg: oklch(86% 0.12 245);
+  --status-info-strong: oklch(86% 0.12 245);
+
+  /* Viz — categorical series (#1739) */
+  --viz-cat-1: oklch(70% 0.12 85);
+  --viz-cat-2: oklch(62% 0.14 20);
+  --viz-cat-3: oklch(62% 0.11 245);
+  --viz-cat-4: oklch(62% 0.12 150);
+  --viz-cat-muted: oklch(42% 0.008 80);
+
+  /* Status — review */
+  --status-review: oklch(74% 0.14 290);
+  --status-review-soft: oklch(28% 0.06 290);
+  --status-review-border: oklch(38% 0.10 290);
+  --status-review-fg: oklch(88% 0.12 290);
+  --status-review-strong: oklch(88% 0.12 290);
+
+  /* Status — conflict */
+  --status-conflict: oklch(72% 0.16 45);
+  --status-conflict-soft: oklch(28% 0.08 45);
+  --status-conflict-border: oklch(40% 0.12 45);
+  --status-conflict-strong: oklch(88% 0.14 45);
+
+  /* Status — disabled */
+  --status-disabled: oklch(65% 0.010 270);
+  --status-disabled-soft: oklch(24% 0.010 270);
+  --status-disabled-border: oklch(34% 0.012 270);
+  --status-disabled-fg: oklch(82% 0.010 270);
+  --status-disabled-strong: oklch(82% 0.010 270);
+
+  /* Elevation */
+  --shadow-soft: 0 1px 2px rgb(0 0 0 / 0.40), 0 8px 24px rgb(0 0 0 / 0.40);
+  --shadow-soft-hover: 0 2px 4px rgb(0 0 0 / 0.42), 0 12px 32px rgb(0 0 0 / 0.42);
+  --shadow-overlay: 0 24px 48px rgb(0 0 0 / 0.60), 0 8px 16px rgb(0 0 0 / 0.40);
+  --shadow-xs: 0 1px 2px rgb(0 0 0 / 0.40);
+  --shadow-sm: 0 1px 2px rgb(0 0 0 / 0.40), 0 1px 3px rgb(0 0 0 / 0.32);
+  --shadow-md: 0 2px 4px rgb(0 0 0 / 0.40), 0 6px 16px rgb(0 0 0 / 0.36);
+  --shadow-lg: 0 6px 12px rgb(0 0 0 / 0.42), 0 16px 32px rgb(0 0 0 / 0.40);
+  --shadow-focus: 0 0 0 3px var(--accent-ring);
+  --shadow-inset-top: inset 0 1px 0 rgb(255 255 255 / 0.04);
+  --overlay-scrim: rgb(0 0 0 / 0.72);
+}
+}/* ── Proposed: invoice unconfirmed notice ── */
+/* ── Invoice unconfirmed notice ── */
+/* Quiet surface: the warning lives in the stripe, glyph and numbers only. */
+.alert.invoice-unconfirmed {
+  display: block;
+  padding: var(--space-4) var(--space-4) var(--space-3) calc(var(--space-4) + 3px);
+  background: var(--bg-surface-muted);
+  border-color: var(--border-subtle);
+}
+.invoice-unconfirmed__body {
+  display: grid;
+  gap: var(--space-3);
+  min-width: 0;
+}
+.invoice-unconfirmed__head {
+  display: grid;
+  grid-template-columns: 16px minmax(0, 1fr) auto;
+  align-items: start;
+  column-gap: var(--space-2);
+  row-gap: var(--space-1);
+}
+@media (max-width: 560px) {
+  .invoice-unconfirmed__head {
+    grid-template-columns: 16px minmax(0, 1fr);
+  }
+  .invoice-unconfirmed__time {
+    grid-column: 2;
+  }
+}
+.invoice-unconfirmed__glyph {
+  margin-top: 0.1875rem;
+  color: var(--status-warning-fg);
+}
+.invoice-unconfirmed__title {
+  min-width: 0;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.invoice-unconfirmed__time {
+  padding-top: 0.1875rem;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+.invoice-unconfirmed__cause {
+  margin: 0;
+  font-size: 0.875rem;
+  line-height: 1.5;
+  color: var(--text-secondary);
+}
+.invoice-unconfirmed__steps {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--bg-surface);
+}
+.invoice-unconfirmed__step {
+  display: grid;
+  grid-template-columns: 1.375rem minmax(0, 1fr) auto;
+  align-items: center;
+  column-gap: var(--space-3);
+  row-gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  font-size: 0.875rem;
+  line-height: 1.45;
+  color: var(--text-primary);
+}
+.invoice-unconfirmed__step + .invoice-unconfirmed__step {
+  border-top: 1px solid var(--border-subtle);
+}
+.invoice-unconfirmed__n {
+  display: grid;
+  place-items: center;
+  width: 1.375rem;
+  height: 1.375rem;
+  border: 1px solid var(--status-warning-border);
+  border-radius: var(--radius-pill);
+  color: var(--status-warning-fg);
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.invoice-unconfirmed__text {
+  min-width: 0;
+}
+.invoice-unconfirmed__action {
+  white-space: nowrap;
+}
+@media (max-width: 560px) {
+  .invoice-unconfirmed__step {
+    grid-template-columns: 1.375rem minmax(0, 1fr);
+  }
+  .invoice-unconfirmed__action {
+    grid-column: 2;
+    justify-self: start;
+  }
+}
+.invoice-unconfirmed__foot {
+  display: grid;
+  gap: var(--space-1);
+}
+.invoice-unconfirmed__paused {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  margin: 0;
+  font-size: 0.75rem;
+  line-height: 1.5;
+  color: var(--text-muted);
+}
+.invoice-unconfirmed__lock {
+  flex-shrink: 0;
+  margin-top: 0.125rem;
+}
+.invoice-unconfirmed__details > summary {
+  width: fit-content;
+  cursor: pointer;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+.invoice-unconfirmed__details > summary:hover {
+  color: var(--text-secondary);
+}
+.invoice-unconfirmed__response {
+  margin: var(--space-2) 0 0;
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-sm);
+  background: var(--bg-surface);
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  overflow-wrap: anywhere;
+}
+
+
+/* ── Artifact chrome only (not part of the proposal) ── */
+html, body { font-family: var(--font-sans); color: var(--text-primary); }
+body { padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); padding-block: var(--space-6); }
+.page { max-width: 1240px; margin: 0 auto; display: grid; gap: var(--space-5); }
+.page__head { display: grid; gap: var(--space-2); }
+.page__title { margin: 0; font-size: 1.375rem; font-weight: 600; letter-spacing: var(--tracking-tight); text-wrap: balance; }
+.page__lead { margin: 0; color: var(--text-secondary); max-width: 68ch; line-height: 1.55; }
+.page__lead code { font-size: 0.8125rem; }
+.toolbar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-3); }
+.tabs { display: flex; flex-wrap: wrap; gap: var(--space-1); padding: var(--space-1); border: 1px solid var(--border-subtle); border-radius: var(--radius-md); background: var(--bg-shell); }
+.tab { appearance: none; border: 0; background: transparent; color: var(--text-secondary); font: inherit; font-size: 0.8125rem; font-weight: 500; padding: var(--space-2) var(--space-3); border-radius: var(--radius-sm); cursor: pointer; }
+.tab:hover { color: var(--text-primary); background: var(--bg-surface-hover); }
+.tab--active { background: var(--bg-surface); color: var(--text-primary); box-shadow: inset 0 -2px 0 var(--accent-primary); }
+.tab:focus-visible, .marks-toggle input:focus-visible { outline: none; box-shadow: var(--shadow-focus); }
+.marks-toggle { display: inline-flex; align-items: center; gap: var(--space-2); font-size: 0.8125rem; color: var(--text-secondary); cursor: pointer; }
+.compare { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-5); align-items: start; }
+@media (max-width: 1080px) { .compare { grid-template-columns: minmax(0, 1fr); } }
+.compare__col { display: grid; gap: var(--space-3); min-width: 0; }
+.compare__label { margin: 0; font-family: var(--font-mono); font-size: 0.6875rem; letter-spacing: var(--tracking-caps); text-transform: uppercase; color: var(--text-muted); font-weight: 500; }
+.compare__label--after { color: var(--accent-primary); }
+.frame { padding: var(--space-5); border: 1px solid var(--border-subtle); border-radius: var(--radius-lg); background: var(--bg-surface-elevated, var(--bg-surface)); min-width: 0; }
+.changes { margin: 0; padding-left: 1.1rem; display: grid; gap: var(--space-2); color: var(--text-secondary); font-size: 0.8125rem; line-height: 1.5; max-width: 68ch; }
+.diff-mark { position: relative; border-radius: var(--radius-md); outline-offset: 4px; }
+.diff-mark--removed { outline: 2px dashed var(--status-error); opacity: 0.85; }
+.diff-mark--moved { outline: 2px dashed var(--status-info); }
+.diff-mark__tag { position: absolute; top: -10px; right: 8px; z-index: 1; font-family: var(--font-mono); font-size: 0.625rem; letter-spacing: var(--tracking-wide); text-transform: uppercase; padding: 1px 6px; border-radius: var(--radius-xs); color: var(--text-on-primary); }
+.diff-mark--removed .diff-mark__tag { background: var(--status-error); }
+.diff-mark--moved .diff-mark__tag { background: var(--status-info); }
+.code-section { display: grid; gap: var(--space-3); }
+.patch { border: 1px solid var(--border-subtle); border-radius: var(--radius-lg); background: var(--bg-shell); overflow: hidden; }
+.patch__bar { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); padding: var(--space-2) var(--space-3); border-bottom: 1px solid var(--border-subtle); background: var(--bg-surface); }
+.patch__name { font-size: 0.75rem; color: var(--text-muted); }
+.patch__code { margin: 0; padding: var(--space-4); overflow-x: auto; font-family: var(--font-mono); font-size: 0.75rem; line-height: 1.6; color: var(--text-primary); white-space: pre; }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
+/* ── Proposal-only rules, scoped to the AFTER column ── */
+.frame--after .invoice-connection-lock__hint { grid-column: 2; }
+.stack-tight { display: grid; gap: var(--space-3); }
+</style>
+<div id="root"></div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.3.1/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.3.1/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.24.7/babel.min.js"></script>
+<script type="text/babel" data-presets="react">
+const { useState } = React;
+
+/* ── Real primitives, ported verbatim from apps/web/src/shared/ui ── */
+
+function DocumentKindGlyph({ kind }) {
+  return (
+    <svg className="document-glyph" viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
+      {kind === 'invoice' ? (
+        <>
+          <path d="M3.5 1.5h6l3 3v10h-9z" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round" />
+          <path d="M9.5 1.5v3h3" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round" />
+          <path d="M5.5 8h5M5.5 10.5h5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
+        </>
+      ) : (
+        <>
+          <path d="M3.5 1.5h9v13l-1.5-1-1.5 1-1.5-1-1.5 1-1.5-1-1.5 1z" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round" />
+          <path d="M6 5.5h4M6 8.5h4" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
+        </>
+      )}
+    </svg>
+  );
+}
+
+function DocumentHeadline({ kind, state, tone, identity }) {
+  return (
+    <div className="document-headline">
+      <span className={`document-headline__main document-headline__main--${tone}`}>
+        <DocumentKindGlyph kind={kind} />
+        <span className="document-headline__word">
+          {kind === 'invoice' ? 'Invoice' : 'Fiscal receipt'}
+          <span className="document-headline__sep" aria-hidden="true">{' · '}</span>
+          {state}
+        </span>
+        {tone === 'done' ? (
+          <svg className="document-headline__tick" viewBox="0 0 12 12" width="14" height="14" aria-hidden="true">
+            <path d="M2.5 6.4 4.7 8.6 9.5 3.8" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        ) : null}
+      </span>
+      {identity ? <p className="document-headline__sub">{identity}</p> : null}
+    </div>
+  );
+}
+
+function DocumentLifecycle({ steps }) {
+  return (
+    <ol className="document-lifecycle" aria-label="Document lifecycle">
+      {steps.map((step) => (
+        <li key={step.id} className={`document-lifecycle__step document-lifecycle__step--${step.state}`}>
+          <span className="document-lifecycle__marker" aria-hidden="true">
+            {step.state === 'done' ? (
+              <svg viewBox="0 0 10 10" width="10" height="10">
+                <path d="M2 5.2 4 7.2 8 2.8" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            ) : null}
+          </span>
+          <span className="document-lifecycle__label">{step.label}</span>
+          <span className="document-lifecycle__time">{step.at}</span>
+        </li>
+      ))}
+    </ol>
+  );
+}
+
+function KeyValueList({ items }) {
+  return (
+    <dl className="key-value-list">
+      {items.map((item) => (
+        <React.Fragment key={item.id}>
+          <dt className="key-value-list__label">{item.label}</dt>
+          <dd className={item.mono ? 'key-value-list__value key-value-list__value--mono mono-text' : 'key-value-list__value'}>
+            {item.value}
+          </dd>
+        </React.Fragment>
+      ))}
+    </dl>
+  );
+}
+
+function Alert({ tone = 'info', title, children }) {
+  return (
+    <div className={`alert alert--${tone}`} role={tone === 'error' ? 'alert' : 'status'}>
+      <div className="alert__content">
+        {title ? <strong className="alert__title">{title}</strong> : null}
+        <div className="alert__description">{children}</div>
+      </div>
+    </div>
+  );
+}
+
+function Button({ children, className = '' }) {
+  return (
+    <button type="button" className={['button', 'button--secondary', className].filter(Boolean).join(' ')}>
+      {children}
+    </button>
+  );
+}
+
+/* ── InvoiceConnectionLock: BEFORE (current) ── */
+
+const LOCK_COPY = {
+  issued: {
+    eyebrow: 'Issued by',
+    hint: 'This order is invoiced here. Every further action on it - correction, resend, email, mark paid - goes to this connection.',
+  },
+  'in-doubt': {
+    eyebrow: 'Still assigned to',
+    hint: 'No provider change and no one-click retry while the outcome is unknown.',
+  },
+  pending: {
+    eyebrow: 'Issuing on',
+    hint: 'Already committed to this connection. The document number appears here when the provider responds.',
+  },
+};
+
+const LOCK_TONE = { issued: '', 'in-doubt': 'invoice-connection-lock--stale', pending: 'invoice-connection-lock--pending' };
+
+function InvoiceConnectionLockBefore({ status, connectionName, tag }) {
+  const copy = LOCK_COPY[status];
+  const isSettled = status === 'issued';
+  return (
+    <div className={['invoice-connection-lock', LOCK_TONE[status]].filter(Boolean).join(' ')}>
+      <span className="invoice-connection-lock__glyph" aria-hidden="true">🔒</span>
+      <span className="invoice-connection-lock__eyebrow">{copy.eyebrow}</span>
+      <span className="invoice-connection-lock__value">
+        {connectionName}
+        <span className="invoice-connection-lock__tag mono-text">{tag}</span>
+      </span>
+      {isSettled ? (
+        <details className="sales-document-panel__routing-disclosure invoice-connection-lock__why">
+          <summary>Why this document?</summary>
+          <span className="invoice-connection-lock__hint">{copy.hint}</span>
+        </details>
+      ) : (
+        <span className="invoice-connection-lock__hint">{copy.hint}</span>
+      )}
+    </div>
+  );
+}
+
+/* ── InvoiceConnectionLock: AFTER (proposed) ──
+   Settled + live connection -> no box at all, only the disclosure.
+   Every other state keeps the box, and the call site moves it to the
+   bottom of the slot. */
+
+function InvoiceConnectionLockAfter({ status, connectionName, tag, isStale = false }) {
+  const copy = LOCK_COPY[status];
+  if (status === 'issued' && !isStale) {
+    return (
+      <details className="sales-document-panel__routing-disclosure" data-testid="invoice-why-this-document">
+        <summary>Why this document?</summary>
+        <p className="panel-copy">
+          Issued by {connectionName}. Every further action on it - correction, resend, email, mark paid - goes to
+          this connection. One sale gets one document, so a receipt cannot be added on top of this invoice.
+        </p>
+      </details>
+    );
+  }
+  return <InvoiceConnectionLockBefore status={status} connectionName={connectionName} tag={tag} />;
+}
+
+/* ── Provider extras (eparagony plugin slot) ── */
+
+function EparagonyProviderDocument() {
+  return (
+    <section className="invoice-detail-section reg-card">
+      <h4 className="invoice-detail-section__title">Provider document</h4>
+      <div className="reg-card__summary">
+        <span>Invoice visualisation</span>
+        <a href="#open" className="link" onClick={(e) => e.preventDefault()}>Open</a>
+      </div>
+      <p className="text-muted reg-card__note">An HTML view published by the provider, not a PDF.</p>
+    </section>
+  );
+}
+
+function CorrectionDisclosure() {
+  return (
+    <details className="sales-document-panel__correction">
+      <summary>Issue correction</summary>
+      <p className="panel-copy">
+        A correction is a new document linked to this one - not a replacement, and not an edit to what was already
+        issued.
+      </p>
+      <Button>Issue correction</Button>
+    </details>
+  );
+}
+
+/* ── Diff marker (artifact chrome only) ── */
+
+function Mark({ kind, label, show, children }) {
+  if (!show) return children;
+  return (
+    <div className={`diff-mark diff-mark--${kind}`}>
+      <span className="diff-mark__tag">{label}</span>
+      {children}
+    </div>
+  );
+}
+
+/* ── Scenario data ── */
+
+const CONNECTION = { name: 'e-paragony Sandbox', tag: 'eparagony' };
+
+const INVOICE_FIELDS = [
+  {
+    id: 'number',
+    label: 'Number',
+    value: (
+      <a className="invoice-pdf-link" href="#pdf" onClick={(e) => e.preventDefault()}>
+        <span className="mono-text">FV/21/10/2026</span>
+      </a>
+    ),
+  },
+  { id: 'document', label: 'Document', value: 'Invoice (faktura)' },
+  { id: 'issued', label: 'Issued', value: <span className="mono-text">Oct 16, 2026, 11:41 AM</span> },
+];
+
+const ONE_DOC_GUARD_INVOICE = (
+  <Alert tone="warning" title="This order already has a document">
+    This order already has an invoice from {CONNECTION.name}. Invoice or receipt - never both for one sale. Void
+    the invoice first if a receipt is what this order actually needs.
+  </Alert>
+);
+
+function PanelShell({ kind, headline, children }) {
+  return (
+    <section className="detail-section sales-document-panel">
+      <header className="sales-document-panel__header">
+        <h3 className="detail-section__title">Sales document</h3>
+        <DocumentHeadline kind={kind} {...headline} />
+      </header>
+      <div className="doc-slot doc-slot--filled">
+        <div className="doc-slot__head">
+          <span className="doc-slot__kind">{kind === 'invoice' ? 'invoice' : 'fiscal receipt'}</span>
+        </div>
+        {children}
+      </div>
+    </section>
+  );
+}
+
+/* Invoice, issued (the screenshot) */
+
+function InvoiceIssued({ variant, show }) {
+  const headline = { state: 'Issued', tone: 'done', identity: `FV/21/10/2026 · ${CONNECTION.name}` };
+  const body = (
+    <>
+      <DocumentLifecycle steps={[{ id: 'issued', label: 'Issued', state: 'done', at: 'Oct 16, 2026, 11:41 AM' }]} />
+      <KeyValueList items={INVOICE_FIELDS} />
+      <EparagonyProviderDocument />
+    </>
+  );
+
+  if (variant === 'before') {
+    return (
+      <PanelShell kind="invoice" headline={headline}>
+        <Mark kind="removed" label="Usuwamy box" show={show}>
+          <InvoiceConnectionLockBefore status="issued" connectionName={CONNECTION.name} tag={CONNECTION.tag} />
+        </Mark>
+        <div className="sales-document-panel__body">
+          {body}
+          <CorrectionDisclosure />
+        </div>
+        <Mark kind="removed" label="Usuwamy" show={show}>
+          {ONE_DOC_GUARD_INVOICE}
+        </Mark>
+      </PanelShell>
+    );
+  }
+
+  return (
+    <PanelShell kind="invoice" headline={headline}>
+      <div className="sales-document-panel__body">
+        {body}
+        <CorrectionDisclosure />
+      </div>
+      <Mark kind="moved" label="Na dole, sam disclosure" show={show}>
+        <InvoiceConnectionLockAfter status="issued" connectionName={CONNECTION.name} tag={CONNECTION.tag} />
+      </Mark>
+    </PanelShell>
+  );
+}
+
+/* Invoice, in-doubt */
+
+function InvoiceInDoubt({ variant, show }) {
+  const headline = { state: 'Unconfirmed', tone: 'warning', identity: CONNECTION.name };
+  const inDoubt = (
+    <>
+      <div className="invoice-panel__inline-alert invoice-panel__inline-alert--warning">
+        <span className="invoice-panel__inline-alert-bar" />
+        <div>
+          <strong>We could not confirm whether this invoice was issued.</strong> The request to the provider timed
+          out, so a document may already exist there. Check the provider before re-issuing - a blind retry could
+          create a duplicate. Do not move it to another provider until you know - that is how one sale ends up with
+          two invoices.
+        </div>
+      </div>
+      <div className="sales-document-panel__actions">
+        <span className="spacer" />
+        <Button>Check provider</Button>
+        <Button>Mark resolved</Button>
+      </div>
+    </>
+  );
+
+  if (variant === 'before') {
+    return (
+      <PanelShell kind="invoice" headline={headline}>
+        <Mark kind="removed" label="Wchłania notyfikacja" show={show}>
+          <InvoiceConnectionLockBefore status="in-doubt" connectionName={CONNECTION.name} tag={CONNECTION.tag} />
+        </Mark>
+        <Mark kind="removed" label="Wchłania notyfikacja" show={show}>
+          <div className="stack-tight">{inDoubt}</div>
+        </Mark>
+        <Mark kind="removed" label="Usuwamy" show={show}>
+          {ONE_DOC_GUARD_INVOICE}
+        </Mark>
+      </PanelShell>
+    );
+  }
+
+  return (
+    <PanelShell kind="invoice" headline={headline}>
+      <Mark kind="moved" label="Jedna notyfikacja" show={show}>
+        <InvoiceUnconfirmedNotice
+          connectionName={CONNECTION.name}
+          failureCode="transport-timeout"
+          attemptedAt="Oct 16, 2026, 11:41 AM"
+          providerResponse="POST /documents: no response after 30000 ms"
+        />
+      </Mark>
+    </PanelShell>
+  );
+}
+
+/* ── InvoiceUnconfirmedNotice (proposed, AFTER) ──
+   One notification for the in-doubt state. It carries everything the old
+   lock box + inline alert + loose action row said: what happened, what to do
+   (a real two-step sequence), what is paused and why, and the two actions. */
+
+const IN_DOUBT_CAUSE = {
+  'transport-timeout': '{{connection}} did not answer in time.',
+};
+
+function WarningGlyph() {
+  return (
+    <svg className="invoice-unconfirmed__glyph" viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
+      <path d="M8 2.2 14.3 13.3H1.7z" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round" />
+      <path d="M8 6.6v3.1" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+      <circle cx="8" cy="11.4" r="0.8" fill="currentColor" />
+    </svg>
+  );
+}
+
+function LockGlyph() {
+  return (
+    <svg className="invoice-unconfirmed__lock" viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
+      <rect x="3.2" y="7" width="9.6" height="7" rx="1.6" fill="none" stroke="currentColor" strokeWidth="1.3" />
+      <path d="M5.4 7V5a2.6 2.6 0 0 1 5.2 0v2" fill="none" stroke="currentColor" strokeWidth="1.3" />
+    </svg>
+  );
+}
+
+/* ── ConfirmDialog, ported from shared/ui/confirm-dialog.tsx (Radix portal
+   replaced by an inline fixed layer; same classes, same markup). ── */
+function ConfirmDialog({ open, onOpenChange, title, description, confirmLabel, cancelLabel, onConfirm }) {
+  const cancelRef = React.useRef(null);
+  React.useEffect(() => {
+    if (!open) return undefined;
+    cancelRef.current?.focus();
+    const onKey = (e) => { if (e.key === 'Escape') onOpenChange(false); };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [open, onOpenChange]);
+  if (!open) return null;
+  return (
+    <>
+      <div className="dialog__overlay" onClick={() => onOpenChange(false)} />
+      <div className="dialog__content" role="dialog" aria-modal="true" aria-labelledby="confirm-title" aria-describedby="confirm-desc">
+        <h2 className="dialog__title" id="confirm-title">{title}</h2>
+        <p className="dialog__description" id="confirm-desc">{description}</p>
+        <div className="dialog__footer">
+          <button ref={cancelRef} type="button" className="button button--secondary" onClick={() => onOpenChange(false)}>
+            {cancelLabel}
+          </button>
+          <button type="button" className="button button--primary" onClick={onConfirm}>
+            {confirmLabel}
+          </button>
+        </div>
+      </div>
+    </>
+  );
+}
+
+function InvoiceUnconfirmedNotice({ connectionName, failureCode, attemptedAt, providerResponse }) {
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [resolved, setResolved] = useState(false);
+  const cause = (IN_DOUBT_CAUSE[failureCode] ?? '{{connection}} did not confirm the result.').replace(
+    '{{connection}}',
+    connectionName,
+  );
+  return (
+    <div className="alert alert--warning invoice-unconfirmed" role="status">
+      <div className="invoice-unconfirmed__body">
+        <div className="invoice-unconfirmed__head">
+          <WarningGlyph />
+          <strong className="invoice-unconfirmed__title">We can't tell if this invoice was issued</strong>
+          {attemptedAt ? (
+            <time className="invoice-unconfirmed__time mono-text">{attemptedAt}</time>
+          ) : null}
+        </div>
+        <p className="invoice-unconfirmed__cause">
+          {cause} The invoice may exist there, or it may not.
+        </p>
+
+        <ol className="invoice-unconfirmed__steps" aria-label="To finish this order">
+          <li className="invoice-unconfirmed__step">
+            <span className="invoice-unconfirmed__n" aria-hidden="true">1</span>
+            <span className="invoice-unconfirmed__text">
+              Look for this order's invoice in <strong>{connectionName}</strong>.
+            </span>
+            <Button className="button--sm invoice-unconfirmed__action">Check provider</Button>
+          </li>
+          <li className="invoice-unconfirmed__step">
+            <span className="invoice-unconfirmed__n" aria-hidden="true">2</span>
+            <span className="invoice-unconfirmed__text">Mark it resolved once you know.</span>
+            <button
+              type="button"
+              className="button button--secondary button--sm invoice-unconfirmed__action"
+              onClick={() => setConfirmOpen(true)}
+            >
+              {resolved ? 'Marked (demo)' : 'Mark resolved'}
+            </button>
+          </li>
+        </ol>
+
+        <div className="invoice-unconfirmed__foot">
+          <p className="invoice-unconfirmed__paused">
+            <LockGlyph />
+            <span>Retry and switching provider stay off until then, so this sale can't get two invoices.</span>
+          </p>
+          {providerResponse ? (
+            <details className="invoice-unconfirmed__details">
+              <summary>Provider response</summary>
+              <p className="invoice-unconfirmed__response mono-text">{providerResponse}</p>
+            </details>
+          ) : null}
+        </div>
+      </div>
+      <ConfirmDialog
+        open={confirmOpen}
+        onOpenChange={setConfirmOpen}
+        title="Mark this invoice as resolved?"
+        description={`Do this only after you've checked ${connectionName}. OpenLinker can't check it for you.`}
+        cancelLabel="Not yet"
+        confirmLabel="Mark resolved"
+        onConfirm={() => { setResolved(true); setConfirmOpen(false); }}
+      />
+    </div>
+  );
+}
+
+/* Invoice, pending - shows the lock box layout fix */
+
+function InvoicePending({ variant, show }) {
+  const headline = { state: 'Issuing', tone: 'progress', identity: CONNECTION.name };
+  const waiting = (
+    <>
+      <div className="sales-document-panel__skeleton" style={{ width: '60%' }} aria-hidden="true" />
+      <p className="sales-document-panel__notice">
+        Issuing in progress. This refreshes automatically when the provider responds.
+      </p>
+    </>
+  );
+  const lock = <InvoiceConnectionLockBefore status="pending" connectionName={CONNECTION.name} tag={CONNECTION.tag} />;
+
+  if (variant === 'before') {
+    return (
+      <PanelShell kind="invoice" headline={headline}>
+        <Mark kind="removed" label="Rozjechany grid" show={show}>{lock}</Mark>
+        {waiting}
+        <Mark kind="removed" label="Usuwamy" show={show}>{ONE_DOC_GUARD_INVOICE}</Mark>
+      </PanelShell>
+    );
+  }
+  return (
+    <PanelShell kind="invoice" headline={headline}>
+      {waiting}
+      <Mark kind="moved" label="Na dole, grid naprawiony" show={show}>{lock}</Mark>
+    </PanelShell>
+  );
+}
+
+/* Fiscal receipt, registered */
+
+function ReceiptRegistered({ variant, show }) {
+  const headline = { state: 'Registered', tone: 'done', identity: `PAR/2026/10/0042 · ${CONNECTION.name}` };
+  const body = (
+    <div className="sales-document-panel__body">
+      <KeyValueList
+        items={[
+          { id: 'ref', label: 'Receipt no.', value: 'PAR/2026/10/0042', mono: true },
+          { id: 'sig', label: 'Signing identity', value: 'BDE 12345678', mono: true },
+          { id: 'at', label: 'Registered', value: <span className="mono-text">Oct 16, 2026, 11:41 AM</span> },
+        ]}
+      />
+      <ul className="artefact-list">
+        <li className="artefact-row">
+          <span className="artefact-row__medium">link</span>
+          <span className="artefact-row__body">
+            <span className="artefact-row__title">e-receipt for the buyer</span>
+          </span>
+          <span className="artefact-row__action">
+            <a href="#open" className="button button--secondary button--sm" onClick={(e) => e.preventDefault()}>
+              Open
+            </a>
+          </span>
+        </li>
+      </ul>
+      <p className="sales-document-panel__notice">This registration is final and cannot be corrected here.</p>
+    </div>
+  );
+
+  return (
+    <PanelShell kind="fiscal-receipt" headline={headline}>
+      {body}
+      {variant === 'before' ? (
+        <Mark kind="removed" label="Usuwamy" show={show}>
+          <Alert tone="warning" title="This order already has a document">
+            This order already has a fiscal receipt. Invoice or receipt - never both for one sale.
+          </Alert>
+        </Mark>
+      ) : null}
+    </PanelShell>
+  );
+}
+
+/* ── Page ── */
+
+const SCENARIOS = [
+  {
+    id: 'invoice-issued',
+    label: 'Faktura - wystawiona',
+    render: InvoiceIssued,
+    changes: [
+      'Box "Issued by" znika. Nazwa połączenia jest już w nagłówku po prawej.',
+      '"Why this document?" zostaje, ale jako zwykły disclosure na samym dole slotu.',
+      'Żółty box "This order already has a document" znika. Zasada "jeden dokument" trafia do disclosure.',
+    ],
+  },
+  {
+    id: 'invoice-in-doubt',
+    label: 'Faktura - niepotwierdzona',
+    render: InvoiceInDoubt,
+    changes: [
+      'Trzy osobne elementy (box, ostrzeżenie, luźne przyciski) stają się jedną notyfikacją.',
+      'Najpierw co się stało, potem 2 kroki co zrobić. To prawdziwa sekwencja, więc ma numery.',
+      'Informacja z boxa ("bez retry i zmiany providera") jest w stopce, razem z powodem.',
+      'Surowa odpowiedź providera (failureReason) schowana pod "Provider response".',
+      '"Mark resolved" otwiera modal potwierdzenia. Fokus startuje na "Not yet", więc przypadkowy Enter niczego nie zatwierdza.',
+      'Żółty box "already has a document" znika. Tu "Void the invoice first" było mylące.',
+    ],
+  },
+  {
+    id: 'invoice-pending',
+    label: 'Faktura - w toku',
+    render: InvoicePending,
+    changes: [
+      'Box naprawiony: hint dostaje grid-column: 2, więc nazwa połączenia nie łamie się już na litery.',
+      'Box zjeżdża na dół slotu, pod status oczekiwania.',
+      'Ta sama poprawka działa w stanach "odrzucona" i "odłączone połączenie".',
+    ],
+  },
+  {
+    id: 'receipt-registered',
+    label: 'Paragon - zarejestrowany',
+    render: ReceiptRegistered,
+    changes: [
+      'Paragon nigdy nie miał boxa "Issued by", więc tu nic się nie przesuwa.',
+      'Żółty box "This order already has a document" znika.',
+    ],
+  },
+];
+
+const CODE = `// ── 1. invoice-connection-lock.tsx ────────────────────────────────
+// Settled + live connection: no box, only the disclosure.
+// Replace the final \`return (...)\` with:
+
+  if (isSettled) {
+    return (
+      <details
+        className="sales-document-panel__routing-disclosure"
+        data-testid="invoice-why-this-document"
+      >
+        <summary>{t('salesDocument.panel.whyThisDocument', 'Why this document?')}</summary>
+        <p className="panel-copy">{hint}</p>
+      </details>
+    );
+  }
+
+  return (
+    <div className={['invoice-connection-lock', resolveTone(status, isStale)].filter(Boolean).join(' ')}>
+      <span className="invoice-connection-lock__glyph" aria-hidden="true">{glyph}</span>
+      <span className="invoice-connection-lock__eyebrow">{resolveEyebrow(status, t)}</span>
+      <span className="invoice-connection-lock__value">
+        {connectionName}
+        <span className="invoice-connection-lock__tag mono-text">{tag}</span>
+      </span>
+      <span className="invoice-connection-lock__hint">{hint}</span>
+    </div>
+  );
+
+// resolveHint(): the 'issued' fallback now names the connection and
+// carries the one-document rule the deleted alert used to state.
+  return t(
+    'invoice.lock.hintIssued',
+    'Issued by {{connection}}. Every further action on it - correction, resend, email, mark paid - goes to this connection. One sale gets one document, so a receipt cannot be added on top of this invoice.',
+  ).replace('{{connection}}', connectionName);
+// (pass connectionName into resolveHint)
+
+
+// ── 2. sales-document-panel.tsx ───────────────────────────────────
+// a) DELETE the <InvoiceConnectionLock .../> block right after the
+//    duplicate-connections alert (top of the invoice slot).
+// b) DELETE both one-document guards and their two consts:
+//      const registerBlockedByInvoice = ...
+//      const issueBlockedByReceipt = ...
+//      {registerBlockedByInvoice ? (<Alert ... data-testid="one-document-guard">...) : null}
+//      {issueBlockedByReceipt ? (<Alert ... data-testid="one-document-guard">...) : null}
+// c) ADD as the LAST child of the invoice .doc-slot (where the first
+//    guard used to be):
+
+          {invoiceSettled && invoice && lock ? (
+            <InvoiceConnectionLock
+              status={invoiceDisplayStatus}
+              connectionName={lock.connection?.name ?? lock.connectionId}
+              tag={lock.isStale ? t('invoice.lock.tagDisconnected', 'disconnected') : (lock.connection?.platformType ?? '')}
+              isStale={lock.isStale}
+            />
+          ) : null}
+
+// d) In-doubt: the lock box is NOT rendered for this state any more -
+//    the notice below carries its message. Guard the lock call site:
+//      {invoiceSettled && invoice && lock && invoiceDisplayStatus !== 'in-doubt' ? (...) : null}
+//    and REPLACE the whole in-doubt block (inline-alert div + actions div):
+
+          {invoiceSettled && invoiceDisplayStatus === 'in-doubt' && invoice ? (
+            <InvoiceUnconfirmedNotice
+              connectionName={lock?.connection?.name ?? lock?.connectionId ?? ''}
+              failureCode={invoice.failureCode}
+              attemptedAt={invoice.updatedAt}
+              providerResponse={invoice.failureReason}
+              onCheckProvider={handleCheckProvider}   // the two existing toast handlers,
+              onMarkResolved={handleMarkResolved}     // lifted out of the inline arrows
+            />
+          ) : null}
+
+
+// ── 3. index.css: lock box layout fix ─────────────────────────────
+// The bare hint (every non-issued state) had no grid-column, so it was
+// auto-placed into column 1 (\`auto\`), which grew to the hint's full
+// width and squeezed the connection name to one letter per line.
+
+.invoice-connection-lock__hint {
+  grid-column: 2;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+
+// ── 4. NEW features/invoicing/components/invoice-unconfirmed-notice.tsx
+/**
+ * Invoice Unconfirmed Notice
+ *
+ * The whole in-doubt state in one notification: what happened, the two
+ * steps that finish it (each with its own action beside it), and what stays
+ * paused and why. Replaces the connection-lock box + inline alert + loose
+ * action row, which said the same thing three times in three shapes.
+ *
+ * Deliberately QUIET: it is the only content of the slot, so a full
+ * warning-soft fill would turn the whole panel into one brown slab while the
+ * headline already says "Unconfirmed" in warning colour. Warning tone lives
+ * in the stripe, the glyph and the step numbers only.
+ *
+ * Renders the \`.alert\` markup directly (same classes, same role) instead of
+ * the \`Alert\` primitive, because it needs its own header row - \`Alert\`'s
+ * \`title\` is a bare <strong> with no room for the attempt time.
+ *
+ * @module apps/web/src/features/invoicing/components
+ */
+import { useState, type ReactElement } from 'react';
+
+import { useTranslation } from '../../../shared/i18n';
+import { Button } from '../../../shared/ui/button';
+import { ConfirmDialog } from '../../../shared/ui/confirm-dialog';
+import { TimeDisplay } from '../../../shared/ui/time-display';
+import type { FailureCode } from '../api/invoicing.types';
+
+export interface InvoiceUnconfirmedNoticeProps {
+  connectionName: string;
+  failureCode: FailureCode | null;
+  /** The record's last write - when OpenLinker last heard anything. */
+  attemptedAt: string | null;
+  /** PII-free sanitized provider text, shown verbatim behind a disclosure. */
+  providerResponse: string | null;
+  onCheckProvider: () => void;
+  onMarkResolved: () => void;
+}
+
+export function InvoiceUnconfirmedNotice({
+  connectionName,
+  failureCode,
+  attemptedAt,
+  providerResponse,
+  onCheckProvider,
+  onMarkResolved,
+}: InvoiceUnconfirmedNoticeProps): ReactElement {
+  const { t } = useTranslation();
+  // "Mark resolved" asserts something OpenLinker cannot verify, so a stray
+  // click must not be enough: it opens a confirm with focus on "Not yet".
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  // Only a timeout can honestly say "did not answer in time".
+  const cause = (
+    failureCode === 'transport-timeout'
+      ? t('invoice.inDoubt.causeTimeout', '{{connection}} did not answer in time.')
+      : t('invoice.inDoubt.causeUnknown', '{{connection}} did not confirm the result.')
+  ).replace('{{connection}}', connectionName);
+
+  return (
+    <div className="alert alert--warning invoice-unconfirmed" role="status" data-testid="invoice-unconfirmed">
+      <div className="invoice-unconfirmed__body">
+        <div className="invoice-unconfirmed__head">
+          <svg className="invoice-unconfirmed__glyph" viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
+            <path d="M8 2.2 14.3 13.3H1.7z" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round" />
+            <path d="M8 6.6v3.1" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+            <circle cx="8" cy="11.4" r="0.8" fill="currentColor" />
+          </svg>
+          <strong className="invoice-unconfirmed__title">
+            {t('invoice.inDoubt.title', "We can't tell if this invoice was issued")}
+          </strong>
+          {attemptedAt ? (
+            <TimeDisplay iso={attemptedAt} format="datetime" className="invoice-unconfirmed__time mono-text" />
+          ) : null}
+        </div>
+        <p className="invoice-unconfirmed__cause">
+          {cause} {t('invoice.inDoubt.maybe', 'The invoice may exist there, or it may not.')}
+        </p>
+
+        <ol className="invoice-unconfirmed__steps" aria-label={t('invoice.inDoubt.stepsLabel', 'To finish this order')}>
+          <li className="invoice-unconfirmed__step">
+            <span className="invoice-unconfirmed__n" aria-hidden="true">1</span>
+            <span className="invoice-unconfirmed__text">
+              {t('invoice.inDoubt.step1', "Look for this order's invoice in")} <strong>{connectionName}</strong>.
+            </span>
+            <Button tone="secondary" className="button--sm invoice-unconfirmed__action" onClick={onCheckProvider}>
+              {t('invoice.inDoubt.check', 'Check provider')}
+            </Button>
+          </li>
+          <li className="invoice-unconfirmed__step">
+            <span className="invoice-unconfirmed__n" aria-hidden="true">2</span>
+            <span className="invoice-unconfirmed__text">
+              {t('invoice.inDoubt.step2', 'Mark it resolved once you know.')}
+            </span>
+            <Button tone="secondary" className="button--sm invoice-unconfirmed__action" onClick={() => setConfirmOpen(true)}>
+              {t('invoice.inDoubt.resolve', 'Mark resolved')}
+            </Button>
+          </li>
+        </ol>
+
+        <div className="invoice-unconfirmed__foot">
+          <p className="invoice-unconfirmed__paused">
+            <svg className="invoice-unconfirmed__lock" viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
+              <rect x="3.2" y="7" width="9.6" height="7" rx="1.6" fill="none" stroke="currentColor" strokeWidth="1.3" />
+              <path d="M5.4 7V5a2.6 2.6 0 0 1 5.2 0v2" fill="none" stroke="currentColor" strokeWidth="1.3" />
+            </svg>
+            <span>
+              {t(
+                'invoice.inDoubt.paused',
+                "Retry and switching provider stay off until then, so this sale can't get two invoices.",
+              )}
+            </span>
+          </p>
+          {providerResponse ? (
+            <details className="invoice-unconfirmed__details">
+              <summary>{t('invoice.inDoubt.providerResponse', 'Provider response')}</summary>
+              <p className="invoice-unconfirmed__response mono-text">{providerResponse}</p>
+            </details>
+          ) : null}
+        </div>
+      </div>
+      <ConfirmDialog
+        open={confirmOpen}
+        onOpenChange={setConfirmOpen}
+        initialFocus="cancel"
+        title={t('invoice.inDoubt.confirmTitle', 'Mark this invoice as resolved?')}
+        description={t(
+          'invoice.inDoubt.confirmBody',
+          "Do this only after you've checked {{connection}}. OpenLinker can't check it for you.",
+        ).replace('{{connection}}', connectionName)}
+        cancelLabel={t('invoice.inDoubt.confirmCancel', 'Not yet')}
+        confirmLabel={t('invoice.inDoubt.resolve', 'Mark resolved')}
+        onConfirm={() => {
+          setConfirmOpen(false);
+          onMarkResolved();
+        }}
+      />
+    </div>
+  );
+}
+// + export it from features/invoicing/index.ts
+
+
+// ── 5. index.css: notice styles ───────────────────────────────────
+/* ── Invoice unconfirmed notice ── */
+/* Quiet surface: the warning lives in the stripe, glyph and numbers only. */
+.alert.invoice-unconfirmed {
+  display: block;
+  padding: var(--space-4) var(--space-4) var(--space-3) calc(var(--space-4) + 3px);
+  background: var(--bg-surface-muted);
+  border-color: var(--border-subtle);
+}
+.invoice-unconfirmed__body {
+  display: grid;
+  gap: var(--space-3);
+  min-width: 0;
+}
+.invoice-unconfirmed__head {
+  display: grid;
+  grid-template-columns: 16px minmax(0, 1fr) auto;
+  align-items: start;
+  column-gap: var(--space-2);
+  row-gap: var(--space-1);
+}
+@media (max-width: 560px) {
+  .invoice-unconfirmed__head {
+    grid-template-columns: 16px minmax(0, 1fr);
+  }
+  .invoice-unconfirmed__time {
+    grid-column: 2;
+  }
+}
+.invoice-unconfirmed__glyph {
+  margin-top: 0.1875rem;
+  color: var(--status-warning-fg);
+}
+.invoice-unconfirmed__title {
+  min-width: 0;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.invoice-unconfirmed__time {
+  padding-top: 0.1875rem;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+.invoice-unconfirmed__cause {
+  margin: 0;
+  font-size: 0.875rem;
+  line-height: 1.5;
+  color: var(--text-secondary);
+}
+.invoice-unconfirmed__steps {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--bg-surface);
+}
+.invoice-unconfirmed__step {
+  display: grid;
+  grid-template-columns: 1.375rem minmax(0, 1fr) auto;
+  align-items: center;
+  column-gap: var(--space-3);
+  row-gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  font-size: 0.875rem;
+  line-height: 1.45;
+  color: var(--text-primary);
+}
+.invoice-unconfirmed__step + .invoice-unconfirmed__step {
+  border-top: 1px solid var(--border-subtle);
+}
+.invoice-unconfirmed__n {
+  display: grid;
+  place-items: center;
+  width: 1.375rem;
+  height: 1.375rem;
+  border: 1px solid var(--status-warning-border);
+  border-radius: var(--radius-pill);
+  color: var(--status-warning-fg);
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.invoice-unconfirmed__text {
+  min-width: 0;
+}
+.invoice-unconfirmed__action {
+  white-space: nowrap;
+}
+@media (max-width: 560px) {
+  .invoice-unconfirmed__step {
+    grid-template-columns: 1.375rem minmax(0, 1fr);
+  }
+  .invoice-unconfirmed__action {
+    grid-column: 2;
+    justify-self: start;
+  }
+}
+.invoice-unconfirmed__foot {
+  display: grid;
+  gap: var(--space-1);
+}
+.invoice-unconfirmed__paused {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  margin: 0;
+  font-size: 0.75rem;
+  line-height: 1.5;
+  color: var(--text-muted);
+}
+.invoice-unconfirmed__lock {
+  flex-shrink: 0;
+  margin-top: 0.125rem;
+}
+.invoice-unconfirmed__details > summary {
+  width: fit-content;
+  cursor: pointer;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+.invoice-unconfirmed__details > summary:hover {
+  color: var(--text-secondary);
+}
+.invoice-unconfirmed__response {
+  margin: var(--space-2) 0 0;
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-sm);
+  background: var(--bg-surface);
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  overflow-wrap: anywhere;
+}
+
+
+// ── 6. tests ───────────────────────────────────────────────────────
+// - every assertion on data-testid="one-document-guard" goes
+// - issued-invoice tests: query "Why this document?" instead of "Issued by"
+// - in-doubt tests: query data-testid="invoice-unconfirmed"; assert there is
+//   NO "Still assigned to" lock; "Check provider" calls its handler;
+//   "Mark resolved" opens the confirm (focus on "Not yet"), "Not yet" calls
+//   nothing, and only the dialog's "Mark resolved" calls onMarkResolved
+// - lock box: pending/failed/stale still render it, now last in the slot
+`;
+
+function CodeBlock() {
+  const [copied, setCopied] = useState(false);
+  const copy = () => {
+    const done = () => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1600);
+    };
+    try {
+      navigator.clipboard.writeText(CODE).then(done, () => selectCode());
+    } catch (e) {
+      selectCode();
+    }
+  };
+  const selectCode = () => {
+    const el = document.getElementById('patch-code');
+    const range = document.createRange();
+    range.selectNodeContents(el);
+    const sel = window.getSelection();
+    sel.removeAllRanges();
+    sel.addRange(range);
+  };
+  return (
+    <div className="patch">
+      <div className="patch__bar">
+        <span className="patch__name mono-text">patch notes · 2 files + tests</span>
+        <button type="button" className="button button--secondary button--sm" onClick={copy}>
+          {copied ? 'Copied' : 'Copy code'}
+        </button>
+      </div>
+      <pre className="patch__code" id="patch-code">{CODE}</pre>
+    </div>
+  );
+}
+
+function App() {
+  const [scenarioId, setScenarioId] = useState('invoice-issued');
+  const [showMarks, setShowMarks] = useState(true);
+  const scenario = SCENARIOS.find((s) => s.id === scenarioId);
+  const Render = scenario.render;
+
+  return (
+    <main className="page">
+      <header className="page__head">
+        <h1 className="page__title">Sales document panel</h1>
+        <p className="page__lead">
+          Przed i po dla dwóch boxów: "Issued by" i "This order already has a document". Prawdziwy CSS z{' '}
+          <code className="mono-text">apps/web/src/index.css</code>, markup przepisany z komponentów.
+        </p>
+      </header>
+
+      <div className="toolbar">
+        <div className="tabs" role="tablist" aria-label="Stan dokumentu">
+          {SCENARIOS.map((s) => (
+            <button
+              key={s.id}
+              type="button"
+              role="tab"
+              id={`tab-${s.id}`}
+              aria-selected={s.id === scenarioId}
+              className={['tab', s.id === scenarioId ? 'tab--active' : ''].filter(Boolean).join(' ')}
+              onClick={() => setScenarioId(s.id)}
+            >
+              {s.label}
+            </button>
+          ))}
+        </div>
+        <label className="marks-toggle" htmlFor="show-marks">
+          <input id="show-marks" type="checkbox" checked={showMarks} onChange={(e) => setShowMarks(e.target.checked)} />
+          Pokaż zmiany
+        </label>
+      </div>
+
+      <div className="compare" data-state={scenario.id}>
+        <section className="compare__col">
+          <h2 className="compare__label">Przed</h2>
+          <div className="frame">
+            <Render variant="before" show={showMarks} />
+          </div>
+        </section>
+        <section className="compare__col">
+          <h2 className="compare__label compare__label--after">Po</h2>
+          <div className="frame frame--after">
+            <Render variant="after" show={showMarks} />
+          </div>
+          <ul className="changes">
+            {scenario.changes.map((c) => (
+              <li key={c}>{c}</li>
+            ))}
+          </ul>
+        </section>
+      </div>
+
+      <section className="code-section">
+        <h2 className="compare__label">Kod do wklejenia</h2>
+        <CodeBlock />
+      </section>
+    </main>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+</script>
+</body></html>

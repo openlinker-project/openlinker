@@ -515,3 +515,34 @@ export interface MarketplaceFulfillmentStatusSyncPayloadV1 {
    */
   updatedSinceDays?: number;
 }
+
+/**
+ * marketplace.sourceFulfillment.statusSync (ADR-012 amendment)
+ *
+ * Source-side fulfilment read-back. The handler pages the OL Order Records
+ * ingested FROM this source connection, asks the source through the
+ * `OrderFulfillmentReadback` capability whether the order was shipped there,
+ * and records a waybill OL does not already know as a source-observed branch-1
+ * `Shipment` row, relaying it to the order's destinations. Same rolling
+ * scan-offset shape as `MarketplaceFulfillmentStatusSyncPayloadV1`, under its
+ * OWN cursor key so a connection that is both a source and a destination never
+ * shares one offset between the two scans.
+ *
+ * Cursor key default (when omitted) is `sourceFulfillmentStatus.scanOffset`.
+ */
+export interface MarketplaceSourceFulfillmentStatusSyncPayloadV1 {
+  schemaVersion: 1;
+  /** Page size: number of OrderRecords to scan per run. */
+  limit: number;
+  /**
+   * Connection-cursor key under which the rolling numeric scan offset is
+   * persisted. Omitted -> the handler falls back to
+   * `sourceFulfillmentStatus.scanOffset`.
+   */
+  cursorKey?: string;
+  /**
+   * Iteration-window bound (days). Defaults to `DEFAULT_UPDATED_SINCE_DAYS`
+   * (30) inside the service when omitted.
+   */
+  updatedSinceDays?: number;
+}

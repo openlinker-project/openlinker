@@ -16,6 +16,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactElement } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Alert, Button, ConfirmDialog, PageLayout, SetupStepper } from '../../../../shared/ui';
+import type { StatusBadgeTone } from '../../../../shared/ui';
 import { useToast } from '../../../../shared/ui/toast-provider';
 import {
   usePlatforms,
@@ -53,6 +54,9 @@ import {
 } from './bulk-shop-review-step';
 import { ShopPublishTracker } from '../shop-publish-tracker';
 import { BulkConfirmModal } from './bulk-confirm-modal';
+import { BulkWizardLeaveGuard } from './bulk-wizard-leave-guard';
+import { NEUTRAL_BLOCKER_CHIPS, gatingBlockers, type ChipDescriptor } from './bulk-blockers';
+import { describeBulkSubmitOutcome } from './bulk-submit-summary';
 import {
   computeResolvedPrice,
   computeResolvedStock,
@@ -134,6 +138,15 @@ export function BulkWizard({
   const connectionsQuery = useConnectionsQuery();
 
   const idempotencyKeyRef = useRef<string>(crypto.randomUUID());
+  // Synchronous in-flight latch for the marketplace submit. `mutation.isPending`
+  // cannot do this job: it disables the confirm button only after a re-render,
+  // and a double click delivers its second click before that render, so both
+  // clicks reached `handleSubmit`, each minted its own key, and the backend got
+  // two distinct submissions (two batches, two offers per variant).
+  const submitInFlightRef = useRef(false);
+  // Flipped by a successful marketplace submit just before it navigates to the
+  // batch page, so the leave guard lets that navigation through (#3851).
+  const leaveGuardReleasedRef = useRef(false);
 
   const demoMode = useDemoMode();
   const write = useWriteAccess('listings:write', demoMode);
@@ -142,6 +155,10 @@ export function BulkWizard({
   const [config, setConfig] = useState<BulkWizardConfig | null>(null);
   const [rows, setRows] = useState<BulkWizardRow[]>(() => seedRows(products, preSelectedVariantIds));
   const [confirmOpen, setConfirmOpen] = useState(false);
+  // Whether the operator changed anything the wizard would lose on leaving
+  // (#3851). Set by the three row-editing callbacks rather than diffed against
+  // the seed: a resolve alone is recomputable and must not trap the operator.
+  const [hasEdits, setHasEdits] = useState(false);
   // Live-selected connection id (before config is committed) so the stepper +
   // flow can branch by destination capability from the start (#1829). Seeded
   // from the picker/URL preselect; updated by the Config step's selector.
@@ -263,6 +280,21 @@ export function BulkWizard({
     return validateBatch({ connectionConfig: batchConnection.config });
   }, [batchPlatform, batchConnection]);
   const platformBlockerChips = batchPlatform?.offerValidation?.blockers ?? [];
+  // Same merge the Review step builds (#1741 review #11's "never drift" rule) -
+  // readiness here must agree with the banner's readiness, or a row the banner
+  // calls ready gets excluded at submit for an advisory-only chip (#2243/#3492).
+  const blockerChips = useMemo<Record<string, ChipDescriptor>>(() => {
+    const merged: Record<string, ChipDescriptor> = { ...NEUTRAL_BLOCKER_CHIPS };
+    for (const chip of platformBlockerChips) {
+      merged[chip.id] = {
+        tone: chip.tone as StatusBadgeTone,
+        label: chip.label,
+        fixable: true,
+        advisory: chip.advisory === true,
+      };
+    }
+    return merged;
+  }, [platformBlockerChips]);
 
   const destinationBrowsesCategories =
     (batchConnection?.supportedCapabilities.includes('CategoryBrowser') ?? false) ||
@@ -391,6 +423,7 @@ export function BulkWizard({
   const setVariantIncluded = useCallback(
     (productId: string, variantId: string, included: boolean) => {
       if (!config) return;
+      setHasEdits(true);
       setRows((prev) => reblockRows(prev, config, requiredByCategory, platformValidate, destinationResolvesCategoryAtSubmit, preflightContext, (row) =>
         row.productId !== productId
           ? row
@@ -409,6 +442,7 @@ export function BulkWizard({
   const setProductIncluded = useCallback(
     (productId: string, included: boolean) => {
       if (!config) return;
+      setHasEdits(true);
       setRows((prev) => reblockRows(prev, config, requiredByCategory, platformValidate, destinationResolvesCategoryAtSubmit, preflightContext, (row) =>
         row.productId !== productId
           ? row
@@ -429,6 +463,7 @@ export function BulkWizard({
       editFormValues: Record<string, unknown>,
     ) => {
       if (!config) return;
+      setHasEdits(true);
       setRows((prev) => reblockRows(prev, config, requiredByCategory, platformValidate, destinationResolvesCategoryAtSubmit, preflightContext, (row) => {
         if (row.productId !== productId) return row;
         // A simple product has no per-variant scope: its offer-level fields
@@ -459,12 +494,13 @@ export function BulkWizard({
   const handleSubmit = useCallback(
     async (publishImmediately: boolean) => {
       if (!config) return;
+      if (submitInFlightRef.current) return;
 
-      // Fresh idempotency key per confirm-click (#1741 review). A retry after a
-      // partial/failed submit must be a distinct request, otherwise the batch
-      // dedup gate would return the earlier partial batch instead of re-running.
-      // The confirm button is disabled while a submit is in flight, so this can
-      // never split a single deliberate click into two batches.
+      // Fresh idempotency key per deliberate confirm-click (#1741 review). A
+      // retry after a partial/failed submit must be a distinct request,
+      // otherwise the batch dedup gate would return the earlier partial batch
+      // instead of re-running. A second click while a submit is in flight never
+      // gets here (the latch above), so one double click cannot mint two keys.
       idempotencyKeyRef.current = crypto.randomUUID();
 
       // productIds = one primary/seed variant id per product that has >=1
@@ -478,7 +514,7 @@ export function BulkWizard({
       for (const row of rows) {
         if (row.variants.length === 0) continue;
         const includedReady = row.variants.filter(
-          (v) => v.included && v.blockers.length === 0,
+          (v) => v.included && gatingBlockers(v.blockers, blockerChips).length === 0,
         );
         // The product's shared-base policy (if diverged) wins over the batch.
         const rowPricingPolicy = effectivePricingPolicy(row.override, config.pricingPolicy);
@@ -488,17 +524,27 @@ export function BulkWizard({
             excludedVariantIds.push(v.variantId);
             continue;
           }
-          if (v.blockers.length > 0) {
+          if (gatingBlockers(v.blockers, blockerChips).length > 0) {
             // A blocked-but-included sibling must be EXCLUDED, not merely
             // skipped (#1934/F13). Skipping alone leaves it in neither map, and
             // the backend then re-expands it as a sibling with no per-variant
             // override at all - so it reaches the builder with no price and
             // fails the very gate the wizard blocked it for. `canApprove` is a
             // `disabled` attribute, not a guard, so this is the only real fence.
+            // Gated on `gatingBlockers`, not the raw array, so an advisory-only
+            // chip (e.g. `allegro:ean-unverified`) never excludes a row the
+            // Review banner already counted as ready (readiness/submit drift,
+            // #3492).
             excludedVariantIds.push(v.variantId);
             continue;
           }
-          perVariantOverrides[v.variantId] = buildVariantOverride(v, config, rowPricingPolicy, rowStockPolicy);
+          perVariantOverrides[v.variantId] = buildVariantOverride(
+            v,
+            config,
+            rowPricingPolicy,
+            rowStockPolicy,
+            row.variants.length === 1,
+          );
         }
         if (includedReady.length === 0) continue;
         const primaryId = (row.primaryVariant ?? row.variants[0].variant).id;
@@ -560,25 +606,24 @@ export function BulkWizard({
         excludedVariantIds,
       };
 
+      submitInFlightRef.current = true;
       try {
         const result = await mutation.mutateAsync({
           idempotencyKey: idempotencyKeyRef.current,
           request,
         });
         const selectedCount = Object.keys(perVariantOverrides).length;
-        const skipped = result.skippedAlreadyListedCount;
-        const queuedCount = selectedCount - skipped;
         showToast({
           tone: 'success',
           title: 'Batch submitted',
-          description:
-            skipped > 0
-              ? `${queuedCount.toLocaleString()} offers queued for creation (${skipped.toLocaleString()} already listed, skipped).`
-              : `${queuedCount.toLocaleString()} offers queued for creation.`,
+          description: describeBulkSubmitOutcome(selectedCount, result),
         });
+        leaveGuardReleasedRef.current = true;
         void navigate(`/listings/bulk-batches/${result.batchId}`);
       } catch {
         // Surfaced via mutation.error in the modal.
+      } finally {
+        submitInFlightRef.current = false;
       }
     },
     [config, rows, mutation, navigate, showToast, canGenerateDescription],
@@ -616,7 +661,7 @@ export function BulkWizard({
     [config, shopMutation, showToast, canGenerateDescription],
   );
 
-  const counts = useMemo(() => countBatch(rows), [rows]);
+  const counts = useMemo(() => countBatch(rows, blockerChips), [rows, blockerChips]);
   // `'marketplace'` stays the fallback for "no destination chosen yet"; once a
   // connection IS chosen its label comes from the registry like everywhere else,
   // so an unregistered platform reads as its raw type rather than the generic
@@ -663,7 +708,7 @@ export function BulkWizard({
       for (const variant of row.variants) {
         if (
           variant.included &&
-          variant.blockers.length === 0 &&
+          gatingBlockers(variant.blockers, blockerChips).length === 0 &&
           alreadyListedSet.has(variant.variantId)
         ) {
           n += 1;
@@ -671,7 +716,7 @@ export function BulkWizard({
       }
     }
     return n;
-  }, [rows, alreadyListedSet, isShop]);
+  }, [rows, alreadyListedSet, isShop, blockerChips]);
 
   const dupGuardKind = isShop ? 'shop' : 'marketplace';
   const dupGuardDestinationName = activeConnection?.name ?? marketplaceName;
@@ -739,6 +784,10 @@ export function BulkWizard({
       }
     >
       <div className="bulk-wizard">
+        <BulkWizardLeaveGuard
+          active={hasEdits && shopBatchId === null}
+          released={leaveGuardReleasedRef}
+        />
         {/* #2227: every step but Config, which IS the destination form. Also
             not once a shop batch has submitted - `step` still reads 'review'
             there while the body is the publish tracker, and offering
@@ -987,6 +1036,7 @@ function toWireOverride(override: BulkPerProductOverride): BulkPerProductOverrid
   // reintroduce this class of whole-request rejection.
   const wire: BulkPerProductOverride = {};
   if (override.stock !== undefined) wire.stock = override.stock;
+  if (override.stockFromMaster === true) wire.stockFromMaster = true;
   if (override.publishImmediately !== undefined) {
     wire.publishImmediately = override.publishImmediately;
   }
@@ -1000,12 +1050,23 @@ function buildVariantOverride(
   config: BulkWizardConfig,
   pricingPolicy: PricingPolicy,
   stockPolicy: StockPolicy,
+  isSingleVariant: boolean,
 ): BulkPerProductOverride {
   const price = computeResolvedPrice(pricingPolicy, variant.masterPrice, variant.override);
   const stock = computeResolvedStock(stockPolicy, variant.masterStock, variant.override);
+  // A single-variant offer lists at the `stock` sent here, so the server cannot
+  // tell a figure the wizard read from master from one the operator typed.
+  // Saying which lets it refuse the first when the variant has no stock
+  // position (#3851) - the defence behind the Review step's `stock-unknown`
+  // blocker. Multi-variant siblings always list at master stock server-side.
+  const stockFromMaster =
+    isSingleVariant &&
+    variant.override.stock === undefined &&
+    (stockPolicy.mode === 'use-master' || stockPolicy.mode === 'cap');
   return toWireOverride({
     ...variant.override,
     stock: stock.value ?? undefined,
+    ...(stockFromMaster ? { stockFromMaster: true } : {}),
     price:
       variant.override.price ??
       (price.value !== null ? { amount: price.value, currency: config.currency } : undefined),
@@ -1031,7 +1092,7 @@ interface BatchCounts {
   mixedPublish: boolean;
 }
 
-function countBatch(rows: BulkWizardRow[]): BatchCounts {
+function countBatch(rows: BulkWizardRow[], chips: Record<string, ChipDescriptor>): BatchCounts {
   let totalVariants = 0;
   let includedReady = 0;
   let includedNeedsAttention = 0;
@@ -1055,7 +1116,7 @@ function countBatch(rows: BulkWizardRow[]): BatchCounts {
         continue;
       }
       hasIncluded = true;
-      if (v.blockers.length === 0) includedReady += 1;
+      if (gatingBlockers(v.blockers, chips).length === 0) includedReady += 1;
       else includedNeedsAttention += 1;
       const publish = v.override.publishImmediately;
       if (publish === false) sawDraft = true;
@@ -1152,7 +1213,10 @@ function seedVariantRow(
 }
 
 function seedRow(product: Product, preSelectedVariantIds?: ReadonlySet<string>): BulkWizardRow {
-  const variants = product.variants ?? [];
+  // A variant deleted at the master (#1599 `isStale`) is never listed - the
+  // submit drops it too - so seeding it would count it, block the batch on it
+  // and show it in the editor as a variant the operator cannot list.
+  const variants = (product.variants ?? []).filter((v) => !v.isStale);
   // A product is "variant-scoped" only when the picker checked SOME of its
   // variants (#1754). Whole-product picks (and the /products entry point) leave
   // the set empty for this product, so every variant seeds included.

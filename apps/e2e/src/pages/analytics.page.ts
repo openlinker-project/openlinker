@@ -22,7 +22,7 @@ export type CoverageCategory = 'currency' | 'tax-a' | 'tax-b' | 'tax-c' | 'produ
 /**
  * A substring of `deriveCoverageRowCopy(row).headline` that is constant
  * regardless of the row's affected count — mirrors
- * `apps/web/src/features/analytics/lib/data-coverage-copy.lib.ts`. Kept as a
+ * `apps/web/src/features/analytics/lib/data-coverage.copy.ts`. Kept as a
  * literal copy (not imported — the e2e package does not depend on
  * `apps/web`) rather than a full-sentence match, since the count varies.
  */

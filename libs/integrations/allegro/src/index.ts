@@ -47,6 +47,7 @@ export {
 // Exceptions
 export { AllegroConfigException } from './domain/exceptions/allegro-config.exception';
 export { AllegroApiException } from './domain/exceptions/allegro-api.exception';
+export { AllegroAmbiguousWriteException } from './domain/exceptions/allegro-ambiguous-write.exception';
 export { AllegroAuthenticationException } from './domain/exceptions/allegro-authentication.exception';
 export { AllegroRateLimitException } from './domain/exceptions/allegro-rate-limit.exception';
 export { AllegroNetworkException } from './domain/exceptions/allegro-network.exception';

@@ -26,6 +26,8 @@ import {
 } from '../api/order-snapshot.schema';
 import { invoiceBadge } from '../lib/order-row';
 import type { OrderRecord } from '../api/orders.types';
+import { OrderRowBuyerNote } from './order-row-buyer-note';
+import { BUYER_NOTE_COPY } from '../lib/buyer-note.copy';
 
 interface OrderRowDetailProps {
   order: OrderRecord;
@@ -129,6 +131,21 @@ export function OrderRowDetail({
           </a>
         ) : null}
       </div>
+
+      {/* #3539 - the whole note, loaded on expansion; nothing without one. */}
+      {order.hasBuyerNote === true ? (
+        <OrderRowBuyerNote internalOrderId={order.internalOrderId} />
+      ) : null}
+      {/* Quiet, and only where the source could not say: not a warning, since
+          most sources simply do not report an absent note. */}
+      {order.hasBuyerNote !== true && order.buyerNoteState === 'unknown' ? (
+        <div className="orders-detail__field orders-detail__field--wide">
+          <dt className="orders-detail__label">{BUYER_NOTE_COPY.rowFieldLabel}</dt>
+          <dd className="orders-detail__value text-muted" data-testid="order-row-buyer-note-unknown">
+            {BUYER_NOTE_COPY.listUnknownHint}
+          </dd>
+        </div>
+      ) : null}
 
       <Field label="Order reference">
         {parsed.orderNumber ? <span className="mono">{parsed.orderNumber}</span> : EMPTY}

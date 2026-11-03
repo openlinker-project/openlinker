@@ -59,6 +59,7 @@ export const NEUTRAL_BLOCKER_CHIPS: Record<string, ChipDescriptor> = {
   },
   'no-master-price': { tone: 'error', label: 'no master price', fixable: true, field: 'price' },
   'no-master-stock': { tone: 'error', label: 'no master stock', fixable: true },
+  'stock-unknown': { tone: 'error', label: 'stock not synced', fixable: true },
   'currency-mismatch': { tone: 'warning', label: 'currency mismatch', fixable: true },
   'already-listed': { tone: 'neutral', label: 'already listed', fixable: false },
   // The category schema could not be fetched, so no bound could be checked
@@ -122,6 +123,25 @@ export function isCategoryBlocker(blocker: string): boolean {
     blocker === 'invalid-barcode' ||
     blocker === 'unknown-category-result'
   );
+}
+
+/**
+ * Whether the editor's `category not set` consequence chip applies (#3851).
+ *
+ * The cause half comes from the resolve-time blockers - a cause other than
+ * `invalid-barcode` is only emitted where the destination does not resolve the
+ * category at submit, so it is what makes the consequence true at all. The
+ * category half must be LIVE: `liveCategoryId` is the category the editor would
+ * submit right now (the same variant -> product -> resolved chain the submit
+ * uses, #2240). Reading only the blockers kept the chip on screen after the
+ * operator picked a category, asserting a problem that no longer existed.
+ */
+export function categoryNotSetApplies(
+  blockers: readonly string[],
+  liveCategoryId: string | null,
+): boolean {
+  if (liveCategoryId !== null && liveCategoryId.trim() !== '') return false;
+  return blockers.some((b) => isCategoryBlocker(b) && b !== 'invalid-barcode');
 }
 
 /**

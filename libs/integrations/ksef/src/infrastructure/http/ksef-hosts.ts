@@ -22,6 +22,29 @@ const KSEF_BASE_URLS: Record<KsefEnvironment, string> = {
 };
 
 /**
+ * Hosts the public verification link (KOD I) lives on - a different host family
+ * from the API (`qr[-env].ksef.mf.gov.pl`), per MF's `kody-qr` documentation.
+ */
+const KSEF_QR_BASE_URLS: Record<KsefEnvironment, string> = {
+  test: 'https://qr-test.ksef.mf.gov.pl',
+  demo: 'https://qr-demo.ksef.mf.gov.pl',
+  prod: 'https://qr.ksef.mf.gov.pl',
+};
+
+/**
+ * Resolve the verification-link (KOD I) base URL for an environment.
+ *
+ * @throws KsefConfigException for an unrecognised environment.
+ */
+export function resolveKsefQrBaseUrl(env: KsefEnvironment): string {
+  const baseUrl = KSEF_QR_BASE_URLS[env];
+  if (!baseUrl) {
+    throw new KsefConfigException(`Unrecognised KSeF environment: ${String(env)}`);
+  }
+  return baseUrl;
+}
+
+/**
  * Resolve the KSeF base URL for an environment.
  *
  * @throws KsefConfigException for an unrecognised environment (a config error

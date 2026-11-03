@@ -135,6 +135,15 @@ export interface PublishProductVariantGroup {
    * the adapter creates it as part of this call.
    */
   externalParentProductId?: string | null;
+  /**
+   * The images THIS sibling's own variation shows, resolved by
+   * `resolveVariantDefaultImages` (its own pictures first, then the product
+   * gallery minus its siblings' pictures). `content.imageUrls` stays the
+   * parent's whole gallery. Absent when the operator overrode the images - the
+   * override then applies to the variation as before - and an adapter that
+   * shows one picture per variation takes the first.
+   */
+  imageUrls?: string[];
 }
 
 /**
@@ -162,7 +171,11 @@ export interface PublishProductCommand {
    * `CategoryProvisioner`.
    */
   destinationCategoryIds: string[];
-  /** Product price. Currency should match the shop/connection locale. */
+  /**
+   * Product price, GROSS (what the buyer pays; ADR-077). A shop that stores net
+   * prices converts in its own publisher with its own rate - see `taxRate`.
+   * Currency should match the shop/connection locale.
+   */
   price: { amount: number; currency: string };
   /** Stock quantity, as a product/variant field on the shop. */
   stock: number;
@@ -219,6 +232,19 @@ export interface PublishProductCommand {
   /** Optional idempotency key for deduplication at the adapter / job layer. */
   idempotencyKey?: string;
   /**
+   * The catalogue's tax rate for this variant, as the neutral percent-as-string
+   * code (ADR-063) - `'23'`, `'8'`, `'0'`, `'zw'`, ... Mirrors
+   * `CreateOfferCommand.taxRate`.
+   *
+   * `price` is gross (ADR-077). A shop that stores net prices needs the rate to
+   * write its own net field and pick a matching tax setting; a shop that stores
+   * gross ignores it. Absent means the catalogue holds no rate for the variant -
+   * a net-priced shop then refuses rather than guess one.
+   */
+  taxRate?: string;
+  /** ISO 3166-1 alpha-2 the rate was resolved against (provenance only). */
+  taxRateCountry?: string;
+  /**
    * Un-modeled platform-specific shop knobs the adapter interprets directly
    * (tax class, shipping class, product type, …). **NOT** category parameters —
    * those travel on `parameters` as the neutral `OfferParameter` channel (#1072).
@@ -255,4 +281,14 @@ export interface PublishProductResult {
    * variant's own `externalProductId`.
    */
   externalParentProductId?: string;
+  /**
+   * The shop's own VARIANT-grain id for this variant, reported only when it is a
+   * different id from `externalProductId` (Shoper: the product's `stock_id`).
+   * An order line on such a shop carries this id rather than the product id, so
+   * without it a product OpenLinker published could never be matched back when
+   * it is sold. The execution service persists it as a `ShopProductVariant`
+   * mapping. Omitted when the shop has no separate variant id, or when the
+   * adapter could not read it - a missing value never fails the publish.
+   */
+  externalVariantId?: string;
 }

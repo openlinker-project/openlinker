@@ -29,6 +29,8 @@ import { useToast } from '../../../shared/ui/toast-provider';
 
 interface ConnectionCapabilitiesPanelProps {
   connection: Connection;
+  /** Shows the roles without letting them be toggled (a connection managed from its own settings page). */
+  readOnly?: boolean;
 }
 
 const CORE_CAPABILITY_SET = new Set<string>(CORE_CAPABILITY_VALUES);
@@ -87,6 +89,7 @@ function salesDocumentNoun(
 
 export function ConnectionCapabilitiesPanel({
   connection,
+  readOnly = false,
 }: ConnectionCapabilitiesPanelProps): ReactElement {
   const updateMutation = useUpdateConnectionMutation();
   const { showToast } = useToast();
@@ -230,7 +233,9 @@ export function ConnectionCapabilitiesPanel({
                     type="checkbox"
                     data-testid={capabilityToggleTestId(capability)}
                     checked={isChecked}
-                    disabled={isBlocked || pending === capability || updateMutation.isPending}
+                    disabled={
+                      readOnly || isBlocked || pending === capability || updateMutation.isPending
+                    }
                     onChange={(e) => void handleToggle(capability, e.target.checked)}
                   />
                   <span className="capability-list__name mono-text">{capability}</span>
@@ -260,7 +265,7 @@ export function ConnectionCapabilitiesPanel({
           This connection becomes <em>eligible</em> to issue{' '}
           {salesDocumentNoun(supportsInvoicing, supportsFiscalization)}. Which orders
           actually get one is decided under{' '}
-          <Link to="/settings/sales-documents">Document routing</Link>, per country.
+          <Link to="/settings/sales-documents">Sales documents routing</Link>, per country.
         </Alert>
       ) : null}
 

@@ -5,6 +5,7 @@ import {
   createAuthenticatedSessionAdapter,
   createMockApiClient,
   renderWithProviders,
+  findToastTitle,
 } from '../../test/test-utils';
 import { ApiError } from '../../shared/api/api-error';
 import { InventoryLocationsPage } from './inventory-locations-page';
@@ -129,7 +130,7 @@ describe('InventoryLocationsPage', () => {
 
     await userEvent.click(await screen.findByRole('button', { name: 'Create first location' }));
 
-    expect(await screen.findByText('Could not create the location')).toBeInTheDocument();
+    expect(await findToastTitle('Could not create the location')).toBeInTheDocument();
     // The server's own reason, not a flattened "try again" - the reachable
     // failures here are distinguishable and actionable.
     expect(screen.getByText('Insufficient permissions')).toBeInTheDocument();

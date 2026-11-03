@@ -12,17 +12,21 @@ import { ConfigService } from '@nestjs/config';
 import type { RedisClientType } from 'redis';
 import { createClient } from 'redis';
 import { SyncModule } from '@openlinker/core/sync';
+import { EventsModule } from '@openlinker/core/events';
 import { MasterDeletionToJobHandler } from './master-deletion-to-job.handler';
 import { MASTER_DELETION_REDIS_CLIENT_BLOCKING_TOKEN } from './events.tokens';
 
 @Module({
-  imports: [SyncModule],
+  // #2301, D48 — EventsModule exposes STREAM_DEAD_LETTERS_SERVICE_TOKEN for
+  // this handler's poison-entry terminal write.
+  imports: [SyncModule, EventsModule],
   providers: [
     MasterDeletionToJobHandler,
     {
-      // Dedicated client for the blocking xReadGroup loop — must not share
-      // with the worker's shared 'REDIS_CLIENT' (JobIntakeConsumer already
-      // blocks on it; two XREADGROUP loops cannot share one connection).
+      // Dedicated client for the blocking xReadGroup loop - must not share
+      // the worker's 'REDIS_CLIENT': a blocking read holds the connection and
+      // every other command on it (the rate limiter, locks, cache) would wait
+      // behind it. JobIntakeConsumer has its own client for the same reason.
       provide: MASTER_DELETION_REDIS_CLIENT_BLOCKING_TOKEN,
       useFactory: async (configService: ConfigService): Promise<RedisClientType> => {
         const client = createClient({

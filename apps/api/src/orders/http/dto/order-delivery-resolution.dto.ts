@@ -11,6 +11,7 @@
  * @module apps/api/src/orders/http/dto
  */
 import { ApiProperty } from '@nestjs/swagger';
+import { ParcelProfileResponseDto } from '../../../mappings/http/dto/routing-rule-response.dto';
 import {
   FulfillmentProcessorKind,
   FulfillmentProcessorKindValues,
@@ -52,4 +53,13 @@ export class OrderDeliveryResolutionDto {
       'never presents a dead route as a live carrier. Always true for the default fallback.',
   })
   processorAvailable!: boolean;
+
+  @ApiProperty({
+    type: ParcelProfileResponseDto,
+    nullable: true,
+    description:
+      'The matched rule\'s parcel profile (#3651) for prefilling the label form; null for the ' +
+      'default fallback and for a rule saved without one.',
+  })
+  parcelProfile!: ParcelProfileResponseDto | null;
 }

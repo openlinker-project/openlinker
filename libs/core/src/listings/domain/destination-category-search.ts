@@ -36,6 +36,10 @@
  * its `ł` forever, so an operator typing `artykuly` would get nothing — in a
  * Polish taxonomy that is one of the most common words there is. The others are
  * included so the same trap doesn't reappear for a non-Polish destination.
+ *
+ * Mirrored in `libs/core/src/orders/domain/order-search-text.ts` (`orders` does
+ * not depend on `listings`); `scripts/check-non-decomposing-letters-mirror.mjs`
+ * keeps the two identical, so edit both together.
  */
 const NON_DECOMPOSING_LETTERS: ReadonlyArray<readonly [RegExp, string]> = [
   [/ł/g, 'l'],

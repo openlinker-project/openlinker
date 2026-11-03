@@ -53,6 +53,8 @@ function toStatusTone(status: ConnectionStatus): StatusBadgeTone {
       return 'error';
     case 'needs_reauth':
       return 'warning';
+    case 'archived':
+      return 'neutral';
   }
 }
 

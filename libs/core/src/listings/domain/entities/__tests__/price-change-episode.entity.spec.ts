@@ -20,6 +20,7 @@
  */
 import { PRICE_CHANGE_DERIVED_FILTER_FIXTURES } from '../../../testing/price-change-derived-filter.fixtures';
 import { PriceChangeEpisode } from '../price-change-episode.entity';
+import type { PriceChangeCause } from '../../types/price-change-episode.types';
 
 function buildEpisode(
   computedOldAmount: number | null,
@@ -48,7 +49,52 @@ function buildEpisode(
   );
 }
 
+function buildEpisodeWithCause(cause: PriceChangeCause | null): PriceChangeEpisode {
+  return new PriceChangeEpisode(
+    'ep-1',
+    'ol_variant_1',
+    'dest-1',
+    'src-1',
+    'PLN',
+    100,
+    123,
+    100,
+    123,
+    null,
+    null,
+    null,
+    new Date(),
+    null,
+    null,
+    null,
+    null,
+    new Date(),
+    new Date(),
+    null,
+    cause
+  );
+}
+
 describe('PriceChangeEpisode', () => {
+  describe('cause (ADR-077)', () => {
+    it('should default to null when the constructor is given no cause', () => {
+      expect(buildEpisode(100, 123).cause).toBeNull();
+    });
+
+    it('should carry the tax-basis-correction cause when one is given', () => {
+      expect(buildEpisodeWithCause('tax-basis-correction').cause).toBe('tax-basis-correction');
+    });
+
+    it('should stay open and unblocked when the episode is a tax-basis correction', () => {
+      // A correction only withholds the automatic apply; an operator can still
+      // accept it, so it must not read as blocked.
+      const episode = buildEpisodeWithCause('tax-basis-correction');
+
+      expect(episode.isOpen()).toBe(true);
+      expect(episode.isBlocked()).toBe(false);
+    });
+  });
+
   describe('deltaPct', () => {
     it('returns null (unknown direction) when computedOldAmount is null — a brand-new mapping', () => {
       expect(buildEpisode(null, 430.5).deltaPct()).toBeNull();

@@ -12,6 +12,7 @@
  *
  * @module libs/integrations/eparagony/src/domain/exceptions
  */
+import type { CONNECTION_SETUP_FAILURE_CAUSE } from '@openlinker/core/invoicing';
 import type { EparagonyFailureMode } from './eparagony-api.error';
 
 export class EparagonyConfigException extends Error {
@@ -31,9 +32,24 @@ export class EparagonyConfigException extends Error {
      * invoice refusal that carries a remedy must repeat it in `message` (which
      * IS persisted, as `invoice_records.errorMessage`). The note above
      * `composeInvoiceDocument` in `eparagony-invoice.mapper.ts` records the fix.
+     *
+     * The one exception (#3772): a refusal that sets `failureCause` below has
+     * this text persisted verbatim as the invoice's `failureReason` and shown
+     * to the operator, so such a reason must name the missing setting and say
+     * nothing taken from the order or the buyer.
      */
     readonly reason: string,
-    readonly connectionId?: string
+    readonly connectionId?: string,
+    /**
+     * Set ONLY when the refusal is about the connection's own configuration -
+     * a setting the operator fills in on the connection, never the sale's data
+     * (#3772). Core then classifies the failure as
+     * `connection-setup-incomplete` and shows `reason` with a link to the
+     * connection's settings, instead of reporting a provider rejection about
+     * the order. A currency, an amount or a missing line is NOT a connection
+     * setting and must leave this unset.
+     */
+    readonly failureCause?: typeof CONNECTION_SETUP_FAILURE_CAUSE
   ) {
     super(message);
     this.name = 'EparagonyConfigException';

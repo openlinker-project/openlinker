@@ -28,6 +28,17 @@ describe('buildFulfillmentDispatchDedupeKey', () => {
   it('should be stable across calls so a retry re-derives the same key', () => {
     expect(buildFulfillmentDispatchDedupeKey('w-1')).toBe(buildFulfillmentDispatchDedupeKey('w-1'));
   });
+
+  // #3476 — the bare key is globally unique with no TTL, so a re-dispatch under
+  // it would be swallowed by the dead original job.
+  it('should give a re-dispatch a key distinct from the first dispatch when a generation is passed', () => {
+    const first = buildFulfillmentDispatchDedupeKey('w-1');
+    const redrive = buildFulfillmentDispatchDedupeKey('w-1', '42');
+
+    expect(redrive).toBe('fulfillment:dispatch:w-1:redrive:42');
+    expect(redrive).not.toBe(first);
+    expect(buildFulfillmentDispatchDedupeKey('w-1', '43')).not.toBe(redrive);
+  });
 });
 
 describe('deriveFulfillmentDispatchEnqueueIntents', () => {

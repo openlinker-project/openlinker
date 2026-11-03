@@ -37,6 +37,18 @@ export class BulkOfferCreateResponseDto {
       'Count of expanded jobs dropped because OpenLinker could not resolve the variant availability (#2323) — a TRANSIENT exclusion, worth re-submitting. Zero when nothing was skipped.',
   })
   skippedAvailabilityUnknownCount!: number;
+
+  @ApiProperty({
+    description:
+      'Count of expanded jobs dropped because the effective EAN failed the GS1 check digit and the operator did not confirm it as correct (#3492). Zero when nothing was skipped.',
+  })
+  skippedInvalidEanCount!: number;
+
+  @ApiProperty({
+    description:
+      'True when the request carried an `x-idempotency-key` that already named a batch on this connection: `batchId` is that earlier batch and this request created and enqueued nothing, so `jobIds` is empty and the skipped counts are zero (they describe work this request did). Read the batch by `batchId` for its real state.',
+  })
+  deduplicated!: boolean;
 }
 
 export class BulkBatchRecordSummaryDto {

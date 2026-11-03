@@ -37,6 +37,12 @@ const orderItemSchema = z.object({
   variantId: z.string().nullish(),
   quantity: z.number(),
   price: z.number(),
+  /**
+   * Tax-inclusive unit price, present when the source priced the line net
+   * (`price` is then the net figure). The shipping-split weight uses it so the
+   * preview divides delivery by the same gross the document does (#3909).
+   */
+  unitPriceGross: z.number().nullish(),
   sku: z.string().nullish(),
   name: z.string().nullish(),
   imageUrl: z.string().nullish(),
@@ -80,8 +86,12 @@ const orderTotalsSchema = z.object({
   subtotal: z.number(),
   tax: z.number(),
   shipping: z.number(),
+  /** Tax-inclusive shipping, when the source priced shipping net (#3909). */
+  shippingGross: z.number().nullish(),
   total: z.number(),
   currency: z.string(),
+  /** Whole-order discount the channel applied (absent = not reported). Optional so older snapshots still parse (E-44). */
+  discountTotal: z.number().nullish(),
   /** Whether `total` is tax-inclusive (gross) or tax-exclusive (net). Optional —
    *  absent for sources that don't report it. */
   // `.nullish()`, not `.optional()` (#939): core documents `null` as "the source
@@ -219,6 +229,20 @@ export interface ParseWarning {
 export const PaymentStatusValues = ['paid', 'cod', 'awaiting', 'refunded'] as const;
 export type PaymentStatus = (typeof PaymentStatusValues)[number];
 
+/**
+ * Payment method (#3294) - hand-mirrored from the backend `PaymentMethod` union
+ * (`libs/core/src/orders/domain/types/payment-method.types.ts`); the web app
+ * cannot import `@openlinker/core` (#591). How the buyer pays, independent of
+ * the payment status above. `unknown` is a first-class value, not an absence.
+ */
+export const PaymentMethodValues = [
+  'online',
+  'bank_transfer',
+  'cash_on_delivery',
+  'unknown',
+] as const;
+export type PaymentMethod = (typeof PaymentMethodValues)[number];
+
 export interface ParsedOrderSnapshot {
   id?: string;
   orderNumber?: string;
@@ -262,6 +286,12 @@ export interface ParsedOrderSnapshot {
   pickupPoint?: ParsedOrderPickupPoint;
   /** Source-reported payment status (#928); absent when the source didn't report it. */
   paymentStatus?: PaymentStatus;
+  /**
+   * How the buyer pays (#3294); absent for an order ingested before the field
+   * existed or when the source reported nothing. An absent value and an
+   * explicit `'unknown'` must be rendered identically.
+   */
+  paymentMethod?: PaymentMethod;
   /** Invoice projection (#1713); absent when the order has no invoice record. */
   invoice?: ParsedOrderInvoice;
   /**
@@ -295,6 +325,25 @@ function readPaymentStatus(value: unknown, warnings: ParseWarning[]): PaymentSta
   warnings.push({
     field: 'paymentStatus',
     message: `unrecognised payment status: ${String(value)}`,
+  });
+  return undefined;
+}
+
+/**
+ * Read the optional payment method (#3294) with the same degrade-to-absent rule
+ * as {@link readPaymentStatus}: an unrecognised value is a warning, never a
+ * crash and never a guess.
+ */
+function readPaymentMethod(value: unknown, warnings: ParseWarning[]): PaymentMethod | undefined {
+  if (value === undefined || value === null) {
+    return undefined;
+  }
+  if (typeof value === 'string' && (PaymentMethodValues as readonly string[]).includes(value)) {
+    return value as PaymentMethod;
+  }
+  warnings.push({
+    field: 'paymentMethod',
+    message: `unrecognised payment method: ${String(value)}`,
   });
   return undefined;
 }
@@ -467,6 +516,7 @@ export function parseOrderSnapshot(snapshot: Record<string, unknown>): ParsedOrd
     shipping,
     pickupPoint,
     paymentStatus: readPaymentStatus(snapshot.paymentStatus, warnings),
+    paymentMethod: readPaymentMethod(snapshot.paymentMethod, warnings),
     invoice,
     codToCollect,
     parseWarnings: warnings,

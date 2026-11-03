@@ -84,6 +84,7 @@ describe('SalesDocumentView', () => {
         failureMode: null,
         failureReason: null,
         artefactCount: 0,
+        artefacts: [],
         identity: { ...identity, recordId: 'fis-1', providerType: 'fiscal-provider' },
       };
 
@@ -120,6 +121,7 @@ describe('SalesDocumentView', () => {
           failureMode: null,
           failureReason: null,
           artefactCount: 0,
+          artefacts: null,
           identity: { ...identity, recordId: 'fis-2', completedAt: null },
         },
       ];
@@ -143,6 +145,7 @@ describe('SalesDocumentView', () => {
         blockDetail: null,
         otherRecords: [],
         matchedRule: null,
+        afterIssueAttention: null,
       };
 
       expect(view.documentKind).toBeNull();
@@ -160,6 +163,7 @@ describe('SalesDocumentView', () => {
         blockDetail: null,
         otherRecords: [],
         matchedRule: null,
+        afterIssueAttention: null,
       };
 
       expect(view.documentKind).toBe('fiscal-receipt');
@@ -194,6 +198,7 @@ describe('SalesDocumentView', () => {
           },
         ],
         matchedRule: null,
+        afterIssueAttention: null,
       };
 
       expect(view.otherRecords).toHaveLength(1);

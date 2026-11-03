@@ -27,6 +27,12 @@
  * the remedy is usually in it. `closesTheForm` is what encodes that, and a
  * conflict is its one exception.
  *
+ * The two toast sentences are composed from `fulfillment-task.copy.ts`
+ * (`fulfillmentActionAppliedToast` / `fulfillmentActionFailedFallback`,
+ * #3096/#3257) rather than built inline: a `.ts` file's own template literal
+ * is invisible to `check-ui-vocabulary.mjs`, which reads only `.tsx` JSX text
+ * and every literal in a `*.copy.ts`.
+ *
  * ## `pendingForm` lives here too
  *
  * Not because it is complicated, but because its error field is scoped to the
@@ -55,7 +61,8 @@ import {
 // importing it from there would point a hook at a component that will import
 // this hook back.
 import {
-  fulfillmentActionLabel,
+  fulfillmentActionAppliedToast,
+  fulfillmentActionFailedFallback,
   type FulfillmentTaskActionMode,
 } from '../lib/fulfillment-task.copy';
 import { useFulfillmentTaskActionMutation } from './use-fulfillment-task-action-mutation';
@@ -129,7 +136,7 @@ export function useFulfillmentTaskActionRunner(
       },
       {
         onSuccess: () => {
-          showToast({ tone: 'success', description: `${fulfillmentActionLabel(action)} applied.` });
+          showToast({ tone: 'success', description: fulfillmentActionAppliedToast(action) });
           onDone?.();
         },
         onError: (error) => {
@@ -142,7 +149,7 @@ export function useFulfillmentTaskActionRunner(
               tone: conflict?.retryable === true ? 'warning' : 'error',
               description: describeFulfillmentActionError(
                 error,
-                `Could not ${fulfillmentActionLabel(action).toLowerCase()} this fulfilment task.`
+                fulfillmentActionFailedFallback(action)
               ),
             });
           }

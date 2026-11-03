@@ -16,6 +16,8 @@
  *
  * @module api
  */
+import { execFile } from 'node:child_process';
+
 
 export interface WooCommerceCategoryView {
   id: number;
@@ -313,6 +315,48 @@ export class WooCommerceRestClient {
     return null;
   }
 
+  /**
+   * The store settings that decide whether a stored price is what a buyer pays
+   * (ADR-077): taxes switched off, or prices entered with tax, means it is.
+   */
+  async getStorePriceBasis(): Promise<{
+    taxesEnabled: boolean;
+    pricesIncludeTax: boolean;
+    storeCountry: string | null;
+  }> {
+    const general = asArray(await this.get('/wp-json/wc/v3/settings/general'));
+    const valueOf = (rows: unknown[], id: string): string | null =>
+      asStringOrNull(pick(asRecord(rows.find((row) => pick(asRecord(row), 'id') === id)), 'value'));
+    const taxesEnabled = valueOf(general, 'woocommerce_calc_taxes') === 'yes';
+    const storeCountry = valueOf(general, 'woocommerce_default_country')?.split(':')[0] || null;
+    if (!taxesEnabled) {
+      return { taxesEnabled, pricesIncludeTax: false, storeCountry };
+    }
+    const tax = asArray(await this.get('/wp-json/wc/v3/settings/tax'));
+    return {
+      taxesEnabled,
+      pricesIncludeTax: valueOf(tax, 'woocommerce_prices_include_tax') === 'yes',
+      storeCountry,
+    };
+  }
+
+  /**
+   * The standard-class rate (percent) the store applies in `country`, or `null`
+   * when it has no single matching row. Country rows win over the wildcard.
+   */
+  async getStandardTaxRatePercent(country: string): Promise<number | null> {
+    const rows = asArray(await this.get('/wp-json/wc/v3/taxes?class=standard&per_page=100'));
+    const rateOf = (code: string): number | null => {
+      const matches = rows.filter(
+        (row) => String(pick(asRecord(row), 'country') ?? '').toUpperCase() === code,
+      );
+      if (matches.length !== 1) return null;
+      const rate = Number.parseFloat(String(pick(asRecord(matches[0]), 'rate') ?? ''));
+      return Number.isFinite(rate) ? rate : null;
+    };
+    return rateOf(country.toUpperCase()) ?? rateOf('');
+  }
+
   private async get(path: string): Promise<unknown> {
     return this.request('GET', path);
   }
@@ -339,7 +383,7 @@ export class WooCommerceRestClient {
     const timeout = setTimeout(() => controller.abort(), this.requestTimeoutMs);
     let response: Response;
     try {
-      response = await fetch(url, {
+      response = await wooFetch(url, {
         method,
         headers: {
           Accept: 'application/json',
@@ -384,4 +428,32 @@ function asNumberOrNull(value: unknown): number | null {
   if (value === null || value === undefined || value === '') return null;
   const n = Number(value);
   return Number.isFinite(n) ? n : null;
+}
+
+/**
+ * A stand whose WooCommerce site url is a Docker-internal name (`https://wc-tls`) cannot be
+ * reached from the host, so `OL_WC_DOCKER_EXEC=<container>` runs the request with node inside a
+ * container that can (the API's, which also trusts the stand's CA).
+ */
+async function wooFetch(url: string, init: RequestInit): Promise<Response> {
+  const container = process.env.OL_WC_DOCKER_EXEC?.trim();
+  if (!container) return fetch(url, init);
+  const script =
+    "let b='';process.stdin.on('data',d=>b+=d).on('end',async()=>{const i=JSON.parse(b);" +
+    "const r=await fetch(i.url,{method:i.method,headers:i.headers,body:i.body});" +
+    "process.stdout.write(JSON.stringify({status:r.status,text:await r.text()}));});";
+  const payload = JSON.stringify({
+    url,
+    method: init.method ?? 'GET',
+    headers: init.headers ?? {},
+    body: typeof init.body === 'string' ? init.body : undefined,
+  });
+  const out = await new Promise<string>((resolve, reject) => {
+    const child = execFile('docker', ['exec', '-i', container, 'node', '-e', script], { maxBuffer: 32 * 1024 * 1024 }, (error, stdout) =>
+      error ? reject(error) : resolve(stdout),
+    );
+    child.stdin?.end(payload);
+  });
+  const parsed = JSON.parse(out) as { status: number; text: string };
+  return new Response(parsed.text, { status: parsed.status });
 }

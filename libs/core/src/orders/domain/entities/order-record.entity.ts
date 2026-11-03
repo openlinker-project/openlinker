@@ -12,18 +12,32 @@ import type { OrderRecordStatus } from '../types/order-record.types';
 import type { OrderSyncStatus, SyncAttempt } from '../types/order-sync.types';
 import { PaymentStatusValues } from '../types/payment-status.types';
 import type { PaymentStatus } from '../types/payment-status.types';
+import type { PaymentMethod } from '../types/payment-method.types';
 import type { CodToCollect } from '../types/cod-to-collect.types';
+import {
+  findUnmatchedLineEdits,
+  type OrderEdits,
+  type UnmatchedLineEdit,
+} from '../types/order-edits.types';
 import { decodeBuyerTaxIdColumn } from '../types/buyer-tax-id.types';
+import { decodeBuyerNoteColumn } from '../types/buyer-note.types';
+import type { BuyerNote } from '../types/buyer-note.types';
 import type { BuyerTaxId } from '../types/buyer-tax-id.types';
 import type { FulfillmentRollupState } from '../types/order-fulfillment.types';
 import type { OrderDispatchWindow, OrderItem, PriceTaxTreatment } from '../types/order.types';
 import type { OrderAmendmentChange } from '../order-amendment-diff';
+import { REDACTED_PLACEHOLDER } from '../order-address-redaction';
+import type { DestinationRoutingBlockReason } from '../types/destination-routing-block.types';
+import type { FulfillmentRoutingSkipReason } from '../types/fulfillment-routing-eligibility.types';
 import type { AuthorityAttentionEntry } from '@openlinker/core/fulfillment-authority';
+import type { FulfillmentBlock } from '@openlinker/core/fulfillment';
 import type {
   SalesDocumentGateBlockReason,
   SalesDocumentUnresolvedReason,
   TaxRateEra,
 } from '@openlinker/core/sales-documents';
+import { OrderStatusValues } from '../types/order.types';
+import type { OrderStatus } from '../types/order.types';
 
 export type { OrderSyncStatus, SyncAttempt } from '../types/order-sync.types';
 
@@ -400,8 +414,188 @@ export class OrderRecord {
      * positional constructor, so a field inserted mid-list would silently
      * shift every argument after it at each construction site.
      */
-    public readonly salesDocumentMatchedRuleId: string | null = null
+    public readonly salesDocumentMatchedRuleId: string | null = null,
+    /**
+     * Why OpenLinker deliberately did not route this order to the pack bench
+     * while the OMS is on (#3455; also #3487 / #3488), or `null` when it was
+     * routed, has not been decided, or the OMS is off. Not a hold - a skipped
+     * order follows today's path - which is what separates it from the
+     * `fulfillmentBlock*` columns.
+     *
+     * Level-triggered by the ingestion intercept and NOT round-tripped through
+     * `toOrm`, for the `salesDocumentBlockReason` reason: `persistOrder` runs
+     * before the intercept on every ingestion. Appended LAST: positional
+     * constructor.
+     */
+    public readonly fulfillmentRoutingSkipReason: FulfillmentRoutingSkipReason | null = null,
+    /**
+     * Why fulfilment routing HOLDS this order with no work object explaining it
+     * (#2396), or `null`. #3485 made it readable: with the OMS on, a refused,
+     * address-less or failed route waits in OpenLinker, and the operator needs
+     * to see why. Read from `fulfillmentBlockReason` / `fulfillmentBlockDetail`;
+     * an unrecognised reason reads as `null`.
+     *
+     * NOT round-tripped through `toOrm` — sole writer `updateFulfillmentBlock`,
+     * for the `salesDocumentBlockReason` reason. Appended LAST: positional
+     * constructor.
+     */
+    public readonly fulfillmentBlock: FulfillmentBlock | null = null,
+    /**
+     * How the buyer pays (#3294), denormalized from the ingested order so a
+     * query never expands JSONB. `null` means the source reported nothing - the
+     * state of every row that predates the column, which is deliberately not
+     * back-filled (ADR-039's precedent for a field that predates its own
+     * migration). Read through {@link paymentMethodOrUnknown}, never bare: a
+     * `null` and an explicit `'unknown'` mean the same thing to every consumer.
+     *
+     * Written only on the `'ready'` path (`upsertWithLineItems`), like the
+     * analytics scalars. Appended LAST: positional constructor.
+     */
+    public readonly paymentMethod: PaymentMethod | null = null,
+    /**
+     * How a fulfilment routing decision narrowed this order's destination
+     * fan-out (#2703 / #2704), or `null` when it narrowed nothing — which is
+     * every order on every install today, since no production caller populates
+     * `OrderSyncRequest.destinationConnectionIds` yet.
+     *
+     * Appended at the tail for the reason every field above it was: this is a
+     * positional constructor, so a field inserted mid-list would silently shift
+     * every caller's argument by one, `toDomain`'s own call included.
+     *
+     * Written only by `updateDestinationRoutingBlock` and coerced on read, so an
+     * unrecognised value reads as `null` rather than widening the union.
+     */
+    public readonly destinationRoutingBlockReason: DestinationRoutingBlockReason | null = null,
+    /**
+     * PII-free elaboration of the reason above — connection ids and counts only.
+     * Moves as one group with `destinationRoutingBlockReason`.
+     */
+    public readonly destinationRoutingBlockDetail: string | null = null,
+    /**
+     * The buyer's checkout note (#3538), encoded like `buyerTaxId`: `NULL` =
+     * not asserted OR not stored, `''` = the source asserted none, otherwise the
+     * text. Read through {@link buyerNoteState}, never bare.
+     *
+     * PII-gated at persistence: under `OL_STORE_PII=false` the text is not
+     * stored (the column stays `NULL`) while {@link hasBuyerNote} is still
+     * written. Written only on the `'ready'` path. Appended LAST: positional
+     * constructor.
+     */
+    public readonly buyerNote: string | null = null,
+    /**
+     * Whether the source reported a non-empty buyer note, denormalized for the
+     * list filter and badge. NOT PII-gated: it carries no content. `false`
+     * covers both "no note" and "unknown"; {@link buyerNoteState} tells them
+     * apart when the text is stored.
+     */
+    public readonly hasBuyerNote: boolean = false,
+    /**
+     * When an operator first marked the note read (#3538). Sole writer
+     * `markBuyerNoteRead`; never round-tripped through the upsert.
+     */
+    public readonly buyerNoteReadAt: Date | null = null,
+    /** Who marked it read; moves with {@link buyerNoteReadAt} in one statement. */
+    public readonly buyerNoteReadByUserId: string | null = null,
+    /**
+     * ISO-3166 alpha-2 country of the shipping address (#3538, D7), `null` when
+     * the order has no (or an unparsable) shipping address - unknown, never a
+     * default. Country is not PII and survives address redaction.
+     */
+    public readonly shippingCountry: string | null = null,
+    /** Billing-address counterpart of {@link shippingCountry}. */
+    public readonly billingCountry: string | null = null,
+    /**
+     * How many OTHER, earlier orders the same resolved customer identity has in
+     * OpenLinker (#3538, D7). Computed OL-side at ingestion, never read from a
+     * channel; `null` (unknown) when the order has no resolved customer.
+     */
+    public readonly buyerOrderCount: number | null = null,
+    /**
+     * When the buyer note's text last CHANGED while a different text was
+     * already stored (N-22). `null` = never changed (the first arrival of a
+     * note is not a change). Lets the order Activity say a note was edited
+     * after it was read at the bench; bench acknowledgements are not reset, so
+     * nothing else tells the operator the text moved under them. Written only
+     * by the ingestion upsert's CASE; never round-tripped from the entity.
+     */
+    public readonly buyerNoteChangedAt: Date | null = null,
+    /**
+     * The channel's own snapshot (#3542), when {@link orderSnapshot} is the
+     * EFFECTIVE view (overlay merged in). `null` means the two are the same
+     * object - an order with no edits, and every record `persistOrder` builds.
+     * Read through {@link channelSnapshot}, never bare. Appended LAST:
+     * positional constructor.
+     */
+    private readonly channelSnapshotRaw: Record<string, unknown> | null = null,
+    /**
+     * What an operator changed after import (#3542), already merged into
+     * {@link orderSnapshot}. Sole writer `applyOrderEdit`; excluded from every
+     * ingestion statement so a re-poll cannot erase it. Appended LAST.
+     */
+    public readonly orderEdits: OrderEdits | null = null
   ) {}
+
+  /**
+   * The buyer note in its three domain states, decoded from the column's
+   * encoding. Pure derivation of an already-loaded field (ADR-011). Under
+   * hash-only mode the text is not stored, so this reads `undefined` even when
+   * {@link hasBuyerNote} is `true`.
+   */
+  get buyerNoteState(): BuyerNote {
+    return decodeBuyerNoteColumn(this.buyerNote);
+  }
+
+  /**
+   * The snapshot exactly as the channel reported it (#3542). The persisted
+   * column is always this; {@link orderSnapshot} is this with the operator's
+   * edits merged over it. Use it for what the channel charged or changed
+   * (source-amendment diff, FX stamp, analytics) and for anything WRITTEN back
+   * to the column - a read-modify-write through the effective view would
+   * persist an edit into the channel original.
+   */
+  get channelSnapshot(): Record<string, unknown> {
+    return this.channelSnapshotRaw ?? this.orderSnapshot;
+  }
+
+  /**
+   * Line edits whose line id the channel no longer reports (renamed or dropped
+   * by a re-ingestion). Kept in the overlay, never silently dropped.
+   */
+  get unmatchedLineEdits(): UnmatchedLineEdit[] {
+    return findUnmatchedLineEdits(this.channelSnapshot, this.orderEdits);
+  }
+
+  /** An edit that no longer applies and needs the operator's eye (list badge). */
+  get editsNeedAttention(): boolean {
+    return this.unmatchedLineEdits.length > 0;
+  }
+
+  /** Whether an operator has edited this order in OpenLinker (#3542). */
+  get isEditedInOpenLinker(): boolean {
+    const edits = this.orderEdits;
+    if (edits === null) return false;
+    // A discount that was removed leaves a zero overlay behind (the history
+    // still lists it); on its own that is not "edited".
+    return (
+      edits.address !== undefined ||
+      edits.deliveryMethod !== undefined ||
+      (edits.lines !== undefined && Object.keys(edits.lines).length > 0) ||
+      (edits.discount !== undefined && Number(edits.discount.amount) > 0)
+    );
+  }
+
+  /**
+   * The payment method with the unreported case folded into `'unknown'`
+   * (#3294). Pure derivation of an already-loaded field (ADR-011).
+   *
+   * The only intended read of {@link paymentMethod}: it keeps "the source did
+   * not say" and "the adapter could not map it" from ever being told apart by a
+   * caller, because no caller may act differently on the difference - and
+   * neither may pre-fill a COD amount or choose an invoice payment form.
+   */
+  get paymentMethodOrUnknown(): PaymentMethod {
+    return this.paymentMethod ?? 'unknown';
+  }
 
   /**
    * The buyer tax id in its three domain states, decoded from the column's
@@ -449,6 +643,42 @@ export class OrderRecord {
   get buyerEmail(): string | undefined {
     const value = this.orderSnapshot.customerEmail;
     return typeof value === 'string' && value.length > 0 ? value : undefined;
+  }
+
+  /**
+   * The order's number in the channel it came from (#3554) - Allegro's
+   * checkout-form id, a PrestaShop reference, a WooCommerce order number - the
+   * same value the order page shows as "Order #". This, not the internal
+   * `ol_order_*` id, is what a buyer or an operator can look the order up by.
+   * `undefined` when the source reported none (Erli sets no order number).
+   * Pure derivation of the already-loaded snapshot (ADR-011).
+   */
+  get orderNumber(): string | undefined {
+    const value = this.orderSnapshot.orderNumber;
+    return typeof value === 'string' && value.trim().length > 0 ? value.trim() : undefined;
+  }
+
+  /**
+   * The buyer's name as the source reported it (#3553), billing address first,
+   * then shipping. Pure derivation of the already-loaded snapshot (ADR-011).
+   *
+   * `undefined` under `OL_STORE_PII=false`: the snapshot's addresses are then
+   * redacted to a placeholder and carry no name, which this getter treats as
+   * ABSENT rather than returning the placeholder. A caller must render its own
+   * fallback, never an empty string or the redaction marker.
+   */
+  get buyerName(): string | undefined {
+    for (const key of ['billingAddress', 'shippingAddress'] as const) {
+      const raw = this.orderSnapshot[key];
+      if (typeof raw !== 'object' || raw === null) continue;
+      const address = raw as Record<string, unknown>;
+      const first = typeof address.firstName === 'string' ? address.firstName.trim() : '';
+      const last = typeof address.lastName === 'string' ? address.lastName.trim() : '';
+      const name = `${first} ${last}`.trim();
+      if (name.length === 0 || name.includes(REDACTED_PLACEHOLDER)) continue;
+      return name;
+    }
+    return undefined;
   }
 
   /**
@@ -565,7 +795,9 @@ export class OrderRecord {
    * convert.
    */
   get nativeTotals(): { amount: number; currency: string } | undefined {
-    const value = this.orderSnapshot.totals;
+    // The CHANNEL's figure on purpose (#3542): the FX stamp states what the
+    // buyer was charged, and an operator edit does not change that.
+    const value = this.channelSnapshot.totals;
     if (typeof value !== 'object' || value === null) {
       return undefined;
     }
@@ -617,5 +849,21 @@ export class OrderRecord {
         Number.isFinite(price)
       );
     });
+  }
+
+  /**
+   * Typed, fail-safe read of the order's neutral lifecycle status (#1596) from
+   * the snapshot. Pure derivation of an already-loaded field (ADR-011): no I/O,
+   * no mutation. Mirrors {@link paymentStatus} — lets the #1596 auto-issuance
+   * race gate re-check the order's LIVE status against a typed contract rather
+   * than the snapshot's internal JSON layout. Returns `undefined` when the
+   * source didn't populate status or the stored value isn't a recognised
+   * `OrderStatus`.
+   */
+  get status(): OrderStatus | undefined {
+    const value = this.orderSnapshot.status;
+    return typeof value === 'string' && (OrderStatusValues as readonly string[]).includes(value)
+      ? (value as OrderStatus)
+      : undefined;
   }
 }

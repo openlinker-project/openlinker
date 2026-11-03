@@ -61,6 +61,20 @@ export interface IMappingConfigService {
     allegroDeliveryMethodId: string
   ): Promise<string | null>;
 
+  /**
+   * Resolve the configured destination payment method for a source payment
+   * type (#3474), e.g. Allegro `CASH_ON_DELIVERY` -> a PrestaShop module name.
+   *
+   * `connectionId` is the **source** connection - the same scoping as
+   * `resolveCarrierMapping`, since the Payments tab stores its rows under it.
+   * Returns null when no mapping is configured; the destination adapter then
+   * falls back to its own default.
+   */
+  resolvePaymentMapping(
+    connectionId: string,
+    sourcePaymentMethod: string
+  ): Promise<string | null>;
+
   getOrderStateMappings(connectionId: string): Promise<OrderStateMapping[]>;
   upsertOrderStateMappings(
     connectionId: string,

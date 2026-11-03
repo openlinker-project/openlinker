@@ -4,7 +4,7 @@
  * Authority assignment is **config, not a table, in v1** (DESIGN §3 adjudication
  * 3): an operator's claim lives in `Connection.config.<configKey>` jsonb — no
  * schema, no migration — and is read here through the same untrusted-value
- * coercion precedent as `parseIsPrimaryInvoicing` (#2047) and
+ * coercion precedent as `readSalesDocumentRouting` (#2161) and
  * `readStockSafetyBuffer` (#1844).
  *
  * **This coercer covers authority assignment only — flags and scopes.** It is
@@ -41,7 +41,7 @@ export interface AuthorityConfigClaim {
  * granted an authority would hand physical control to a party on the strength of
  * a typo; one that withholds it falls back to the authority's default holder,
  * which for every ADR-052 row is today's shipped behaviour. Same asymmetry
- * `parseIsPrimaryInvoicing` encodes: an unissued invoice is recoverable, two
+ * `readSalesDocumentRouting` encodes for `isPrimary`: an unissued invoice is recoverable, two
  * issued ones are not.
  */
 const UNHELD: AuthorityConfigClaim = Object.freeze({

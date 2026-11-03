@@ -27,6 +27,8 @@ import {
   type GenerateLabelResult,
   type LabelDocument,
   type LabelDocumentReader,
+  type ParcelRequirements,
+  type ParcelRequirementsReader,
   type ShipmentCanceller,
   type ShippingMethod,
   type ShippingProviderManagerPort,
@@ -74,7 +76,11 @@ const LABEL_PATH = '/shipment-management/label';
 const LABEL_PAGE_SIZE = 'A6';
 
 export class AllegroDeliveryShippingAdapter
-  implements ShippingProviderManagerPort, ShipmentCanceller, LabelDocumentReader
+  implements
+    ShippingProviderManagerPort,
+    ShipmentCanceller,
+    LabelDocumentReader,
+    ParcelRequirementsReader
 {
   private readonly logger = new Logger(AllegroDeliveryShippingAdapter.name);
   private readonly pollConfig: AllegroShipmentPollConfig;
@@ -91,6 +97,15 @@ export class AllegroDeliveryShippingAdapter
 
   getSupportedMethods(): readonly ShippingMethod[] {
     return SUPPORTED_METHODS;
+  }
+
+  /**
+   * Allegro has no size-template concept, so `buildCreateShipmentInput` requires
+   * explicit dimensions for every method it supports (#3651); declaring it lets
+   * auto-dispatch refuse before the call.
+   */
+  getParcelRequirements(_method: ShippingMethod): ParcelRequirements {
+    return { requiresDimensions: true };
   }
 
   async generateLabel(cmd: GenerateLabelCommand): Promise<GenerateLabelResult> {

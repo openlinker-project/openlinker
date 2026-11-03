@@ -32,6 +32,7 @@
  * | `fulfilledQuantity` / `cancelledQuantity` | `recordLineProgress` (#2400) | a create carries zeros and would erase real progress |
  * | `updatedAt` | every applied transition | written IMPLICITLY by TypeORM's `@UpdateDateColumn` injection, and explicitly by `recordLineProgress`. Named here because it has a real downstream consumer — `IDX_fulfillment_works_request_status` and ADR-054's timeout sweep both read it — and a column whose writer is a framework default is exactly the one a writer table must not omit |
  * | `invoicePrintedAt` | `markInvoicePrinted` (pack-bench completion) | fill-in-when-NULL, `WHERE "invoicePrintedAt" IS NULL`; DOES NOT bump `version` — a display-only fact, the `fulfilledQuantity` reading above |
+ * | `buyerNoteAcknowledgedAt` / `buyerNoteAcknowledgedByUserId` | `acknowledgeBuyerNote` (pack-bench buyer-note acknowledgement, #3538) | fill-in-when-NULL on `buyerNoteAcknowledgedAt`, both columns in ONE statement; DOES NOT bump `version` - display-only like `invoicePrintedAt` |
  * | `labelPrintedAt` | `markLabelPrinted` (pack-bench completion) | same shape as `invoicePrintedAt`, called from a SIBLING context (`shipping`, off `Shipment.fulfillmentWorkId`) rather than from this one |
  * | `completedAt` / `completedByUserId` | `claimCompletion` (pack-bench completion), `undoCompletion` (#3340 follow-up), `reopenParcel` (#3340 follow-up) | `claimCompletion` is one pair, one statement, at-most-once — guarded `"completedAt" IS NULL AND "parcelClosedAt" IS NOT NULL` (the `claimParcelClose` idiom). `undoCompletion` is its mirror, guarded `"completedAt" IS NOT NULL` — the undo an operator's mis-tap needs without `reopenParcel`'s destructive re-verification. `reopenParcel` is a THIRD, NAMED writer: reopening the box always clears a stale completion in the SAME statement, because a parcel cannot be both reopened and completed and a second write here is exactly the crash window that stranded a completed-then-reopened parcel in no list at all. All three bump `version`: the terminal legality-gated act on this surface |
  *
@@ -88,7 +89,10 @@ import type {
   FulfillmentWorkTransaction,
   LatestActiveParcelVerification,
   ListUnrelayedShippedDispatchesInput,
+  ListWorksMissingSaleDecrementJobRepoInput,
   UnrelayedShippedDispatch,
+  ListStalledUnsubmittedWorksInput,
+  WorkMissingSaleDecrementJob,
   ListTimedOutDispatchesInput,
   ParcelVerifiedCount,
   PlaceFulfillmentHoldInput,
@@ -99,6 +103,7 @@ import type {
   ReleaseFulfillmentHoldInput,
   ReopenParcelWriteInput,
   SetFulfillmentWorkExpeditedInput,
+  StalledUnsubmittedFulfillmentWork,
   TimedOutFulfillmentDispatch,
   TransitionFulfillmentRequestStatusInput,
   TransitionFulfillmentWorkStatusInput,
@@ -112,12 +117,14 @@ import {
   isFulfillmentRequestStatus,
   type FulfillmentRequestStatus,
 } from '../../../domain/types/fulfillment-request-status.types';
+import { SALE_DECREMENT_JOB_DEDUPE_PREFIX } from '../../../domain/types/fulfillment-sale-decrement-enqueue.types';
 import { TERMINAL_FULFILLMENT_WORK_STATUSES } from '../../../domain/types/fulfillment-supported-actions.types';
 import {
   isFulfillmentWorkStatus,
   type FulfillmentWorkStatus,
 } from '../../../domain/types/fulfillment-work-status.types';
 import type { FulfillmentWorkRejection } from '../../../domain/types/fulfillment-work-rejection.types';
+import type { FulfillmentWorkProgress } from '../../../domain/types/order-work-summary.types';
 import type { ParcelVerificationEvent } from '../../../domain/types/fulfillment-verification.types';
 import {
   clampWorklistLimit,
@@ -268,6 +275,8 @@ export class FulfillmentWorkRepository implements FulfillmentWorkRepositoryPort 
     // `null` here would fabricate history for a parcel nobody has touched yet.
     header.invoicePrintedAt = null;
     header.labelPrintedAt = null;
+    header.buyerNoteAcknowledgedAt = null;
+    header.buyerNoteAcknowledgedByUserId = null;
     header.completedAt = null;
     header.completedByUserId = null;
 
@@ -340,6 +349,50 @@ export class FulfillmentWorkRepository implements FulfillmentWorkRepositoryPort 
       return this.toDomain(header, lines);
     } catch (error) {
       throw new FulfillmentPersistenceError('findById', error);
+    }
+  }
+
+  async findProgressByOrderIds(
+    orderIds: readonly string[]
+  ): Promise<ReadonlyArray<FulfillmentWorkProgress & { readonly orderId: string }>> {
+    if (orderIds.length === 0) return [];
+    try {
+      // `orderId` leads `IDX_fulfillment_works_grouping`, which serves this
+      // `IN (...)`. Header columns only - no lines are hydrated, which is the point of a list-page read - plus one
+      // EXISTS per work on the verification ledger (a same-context entity, so it
+      // is joined through its ORM entity rather than a raw table name).
+      const liveScan = this.verifications
+        .createQueryBuilder('v')
+        .select('1')
+        .where('v.fulfillmentWorkId = fw.id')
+        .andWhere('v.voidedAt IS NULL')
+        .getQuery();
+      const rows = await this.works
+        .createQueryBuilder('fw')
+        .select('fw.orderId', 'orderId')
+        .addSelect('fw.status', 'status')
+        .addSelect('fw.parcelClosedAt', 'parcelClosedAt')
+        .addSelect('fw.assignedToUserId', 'assignedToUserId')
+        .addSelect(`EXISTS (${liveScan})`, 'hasVerification')
+        .where('fw.orderId IN (:...orderIds)', { orderIds: [...orderIds] })
+        .getRawMany<{
+          orderId: string;
+          status: string;
+          parcelClosedAt: Date | string | null;
+          assignedToUserId: string | null;
+          hasVerification: boolean;
+        }>();
+      return rows.map((row) => ({
+        orderId: row.orderId,
+        // Cast at the boundary, like every other status read in this file: the
+        // column is plain `text` and the union is enforced in TypeScript.
+        status: row.status as FulfillmentWorkStatus,
+        parcelClosedAt: row.parcelClosedAt === null ? null : new Date(row.parcelClosedAt),
+        assignedToUserId: row.assignedToUserId,
+        hasVerification: row.hasVerification === true,
+      }));
+    } catch (error) {
+      throw new FulfillmentPersistenceError('findProgressByOrderIds', error);
     }
   }
 
@@ -679,6 +732,46 @@ export class FulfillmentWorkRepository implements FulfillmentWorkRepositoryPort 
     }
   }
 
+  async listStalledUnsubmittedWorks(
+    input: ListStalledUnsubmittedWorksInput
+  ): Promise<StalledUnsubmittedFulfillmentWork[]> {
+    try {
+      const qb = this.works
+        .createQueryBuilder('work')
+        .select(['work.id', 'work.orderId', 'work.assignedConnectionId', 'work.updatedAt'])
+        .where('work.requestStatus = :unsubmitted', {
+          unsubmitted: 'unsubmitted' satisfies FulfillmentRequestStatus,
+        })
+        .andWhere('work.status NOT IN (:...terminal)', {
+          terminal: [...TERMINAL_FULFILLMENT_WORK_STATUSES],
+        })
+        .andWhere('work.assignedConnectionId IS NOT NULL')
+        .andWhere('work.updatedAt < :idleBefore', { idleBefore: input.idleBefore });
+
+      if (input.afterWorkId !== null) {
+        qb.andWhere('work.id > :afterWorkId', { afterWorkId: input.afterWorkId });
+      }
+
+      const rows = await qb.orderBy('work.id', 'ASC').take(input.limit).getMany();
+
+      // The predicate already excludes NULL; the narrowing is for the type.
+      return rows.flatMap((row) =>
+        row.assignedConnectionId === null
+          ? []
+          : [
+              {
+                workId: row.id,
+                orderId: row.orderId,
+                assignedConnectionId: row.assignedConnectionId,
+                idleSince: row.updatedAt,
+              },
+            ]
+      );
+    } catch (error) {
+      throw new FulfillmentPersistenceError('listStalledUnsubmittedWorks', error);
+    }
+  }
+
   async listUnrelayedShippedDispatches(
     input: ListUnrelayedShippedDispatchesInput
   ): Promise<UnrelayedShippedDispatch[]> {
@@ -742,6 +835,43 @@ export class FulfillmentWorkRepository implements FulfillmentWorkRepositoryPort 
     }
   }
 
+  async listWorksMissingSaleDecrementJob(
+    input: ListWorksMissingSaleDecrementJobRepoInput
+  ): Promise<WorkMissingSaleDecrementJob[]> {
+    try {
+      // Read-model reporting join (ADR-036): `order_records` and `sync_jobs` are
+      // other contexts' tables, joined by name, read-only, every value bound. It
+      // depends on `sync_jobs."idempotencyKey"` being globally unique and on the
+      // producers' key prefix, taken from `SALE_DECREMENT_JOB_DEDUPE_PREFIX` so the
+      // two cannot drift. It is a PREDICATE
+      // (a frontier), not display enrichment, which is what ADR-036 admits.
+      const rows = (await this.works.query(
+        `SELECT w."id" AS "workId", w."orderId" AS "orderId", o."sourceConnectionId" AS "sourceConnectionId"
+           FROM "fulfillment_works" w
+           JOIN "order_records" o
+             ON o."internalOrderId" = w."orderId"
+            AND o."cancelledAt" IS NULL
+          WHERE w."createdAt" < $1
+            AND w."createdAt" >= $4
+            AND w."status" <> 'cancelled'
+            AND NOT EXISTS (
+              SELECT 1 FROM "sync_jobs" j
+               WHERE j."idempotencyKey" = $2 || w."id"
+            )
+          ORDER BY w."createdAt" ASC, w."id" ASC
+          LIMIT $3`,
+        [input.createdBefore, SALE_DECREMENT_JOB_DEDUPE_PREFIX, input.limit, input.createdAfter]
+      )) as { workId: string; orderId: string; sourceConnectionId: string }[];
+      return rows.map((row) => ({
+        workId: row.workId,
+        orderId: row.orderId,
+        orderSourceConnectionId: row.sourceConnectionId,
+      }));
+    } catch (error) {
+      throw new FulfillmentPersistenceError('listWorksMissingSaleDecrementJob', error);
+    }
+  }
+
   async listBlockingRejections(workId: string): Promise<FulfillmentWorkRejection[]> {
     try {
       const rows = await this.rejections.find({
@@ -801,6 +931,18 @@ export class FulfillmentWorkRepository implements FulfillmentWorkRepositoryPort 
         .set({ invoicePrintedAt: at })
         .where('"id" = :id', { id: workId })
         .andWhere('"invoicePrintedAt" IS NULL')
+    );
+  }
+
+  async acknowledgeBuyerNote(workId: string, at: Date, byUserId: string): Promise<boolean> {
+    // Fill-in-when-NULL, both columns in one statement so the instant and the
+    // actor are one fact (a second packer never overwrites the first). No
+    // `version` bump - see the ORM column's own docblock.
+    return this.applyGuardedUpdate('acknowledgeBuyerNote', (qb) =>
+      qb
+        .set({ buyerNoteAcknowledgedAt: at, buyerNoteAcknowledgedByUserId: byUserId })
+        .where('"id" = :id', { id: workId })
+        .andWhere('"buyerNoteAcknowledgedAt" IS NULL')
     );
   }
 
@@ -1453,6 +1595,8 @@ export class FulfillmentWorkRepository implements FulfillmentWorkRepositoryPort 
       packedByService: header.packedByService,
       invoicePrintedAt: header.invoicePrintedAt,
       labelPrintedAt: header.labelPrintedAt,
+      buyerNoteAcknowledgedAt: header.buyerNoteAcknowledgedAt,
+      buyerNoteAcknowledgedByUserId: header.buyerNoteAcknowledgedByUserId,
       completedAt: header.completedAt,
       completedByUserId: header.completedByUserId,
       lines: lines.map((line) => this.toLineDomain(line)),

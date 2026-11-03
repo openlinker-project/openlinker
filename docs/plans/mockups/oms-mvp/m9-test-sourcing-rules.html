@@ -1,0 +1,414 @@
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#faf9f5;color:#141413}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<title>Test sourcing rules</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="../../../../apps/web/src/index.css">
+<link rel="stylesheet" href="ol-kit.css">
+<script src="ol-kit.js" defer></script>
+<style>
+  /* Page-specific only — everything else is real ol.css tokens/classes. */
+  .mk-tabbar { margin-bottom: var(--space-4); }
+  .mk-src-panel + .mk-src-panel { margin-top: var(--space-3); }
+  .mk-hint { color: var(--text-muted); font-size: 0.8125rem; margin: var(--space-2) 0 0; }
+
+  .mk-order-list { list-style: none; margin: var(--space-3) 0 0; padding: 0; display: grid; gap: var(--space-2); }
+  .mk-order-row {
+    width: 100%; text-align: left; display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2) var(--space-4);
+    padding: var(--space-3) var(--space-4); border: 1px solid var(--border-default); border-radius: var(--radius-md);
+    background: var(--bg-surface); cursor: pointer; font: inherit; color: inherit;
+  }
+  .mk-order-row:hover { background: var(--bg-surface-hover); }
+  .mk-order-row[aria-selected="true"] { border-color: var(--accent-primary); background: var(--accent-primary-soft); }
+  .mk-order-row__main { display: flex; flex-direction: column; gap: 2px; min-width: 9rem; }
+  .mk-order-row__meta { display: flex; flex-wrap: wrap; gap: var(--space-3); color: var(--text-muted); font-size: 0.8125rem; margin-left: auto; }
+
+  .mk-basket-row { display: flex; flex-wrap: wrap; gap: var(--space-2); align-items: flex-end; margin-bottom: var(--space-2); }
+  .mk-basket-row .form-field { flex: 1 1 10rem; min-width: 8rem; margin: 0; }
+  .mk-basket-row .form-field--qty { flex: 0 0 5rem; min-width: 5rem; }
+  .mk-shipto-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--space-3); margin-top: var(--space-3); }
+  @media (max-width: 640px) { .mk-shipto-grid { grid-template-columns: 1fr; } }
+
+  .mk-summary-bar { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-3); margin-bottom: var(--space-4); }
+  .mk-summary-bar__actions { margin-left: auto; display: flex; gap: var(--space-2); }
+
+  .mk-ruleset { list-style: none; margin: var(--space-2) 0 0; padding: 0; display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
+  .mk-ruleset li { display: flex; align-items: center; gap: var(--space-2); }
+  .mk-ruleset li:not(:last-child)::after { content: "→"; color: var(--text-muted); }
+  .mk-ruleset .chip--new { border-color: var(--status-warning-strong); box-shadow: 0 0 0 1px var(--status-warning-strong) inset; }
+
+  .mk-metrics { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--space-3); margin: var(--space-4) 0; }
+  @media (max-width: 640px) { .mk-metrics { grid-template-columns: 1fr; } }
+
+  .mk-result-line { border: 1px solid var(--border-default); border-radius: var(--radius-md); padding: var(--space-3) var(--space-4); margin-bottom: var(--space-3); background: var(--bg-surface); }
+  .mk-result-line__head { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--space-2); margin-bottom: var(--space-2); }
+  .mk-result-line__row { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); padding: var(--space-2) 0; }
+  .mk-result-line__row + .mk-result-line__row { border-top: 1px dashed var(--border-subtle); }
+  .mk-result-line__row p { flex-basis: 100%; margin: 2px 0 0; color: var(--text-muted); font-size: 0.8125rem; }
+
+  .mk-trace { list-style: none; margin: var(--space-2) 0 0; padding: 0 0 0 var(--space-3); border-left: 2px solid var(--border-subtle); display: grid; gap: var(--space-3); }
+  .mk-trace__step { position: relative; padding-left: var(--space-2); }
+  .mk-trace__step::before { content: ""; position: absolute; left: calc(-1 * var(--space-3) - 5px); top: 4px; width: 8px; height: 8px; border-radius: 50%; background: var(--border-default); }
+  .mk-trace__body p { margin: 2px 0; font-size: 0.8125rem; }
+  .mk-trace__body p:first-child { color: var(--text-primary); font-size: 0.875rem; margin-bottom: 2px; }
+  .mk-trace__removed { color: var(--text-muted); }
+  .mk-elim { text-decoration: line-through; opacity: 0.65; }
+
+  .mk-compare-grid { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-4); margin: var(--space-4) 0; }
+  @media (max-width: 640px) { .mk-compare-grid { grid-template-columns: 1fr; } }
+  .mk-compare-col { border: 1px solid var(--border-default); border-radius: var(--radius-md); padding: var(--space-4); }
+  .mk-compare-col--draft { border-color: var(--status-warning-strong); }
+  .mk-compare-col h4 { margin: 0 0 var(--space-2); font-size: 0.9375rem; }
+  .mk-compare-line { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); padding: var(--space-2) 0; border-top: 1px dashed var(--border-subtle); }
+  .mk-compare-line:first-of-type { border-top: none; }
+  .mk-compare-arrow { color: var(--text-muted); }
+
+  .mk-reason-toggle { margin-top: var(--space-2); }
+</style>
+
+<div data-ol-page data-active="Settings" data-crumb-group="Platform" data-crumb="Sourcing rules">
+  <section class="page-section">
+    <div class="page-header page-header--split">
+      <div class="page-header__content">
+        <p class="eyebrow">Settings</p>
+        <h2 class="page-title">Sourcing rules</h2>
+        <p class="page-description">Decide which location fills each order line, and in what order your rules are tried.</p>
+      </div>
+      <div class="page-header__actions"><div class="toolbar__group">
+        <button type="button" class="button button--secondary">Add rule</button>
+      </div></div>
+    </div>
+
+    <!-- ============ Existing feature, shown only for context ============ -->
+    <div class="panel" style="margin-bottom: var(--space-5);">
+      <div class="panel__header"><h3>Rules</h3><span class="panel__meta">3 active · tried top to bottom</span></div>
+      <div class="data-table__container">
+        <table class="data-table">
+          <thead><tr><th>Order</th><th>Kind</th><th>Rule</th><th>Detail</th></tr></thead>
+          <tbody>
+            <tr><td class="tabular">1</td><td><span class="chip">Filter</span></td><td>Has stock <span class="mono-text text-muted">in-stock</span></td><td class="text-muted">Removes a location with no stock for the line</td></tr>
+            <tr><td class="tabular">2</td><td><span class="chip">Filter</span></td><td>Located in the destination country <span class="mono-text text-muted">country-served</span></td><td class="text-muted">Removes a location outside the buyer's country</td></tr>
+            <tr><td class="tabular">3</td><td><span class="chip">Filter</span></td><td>Not blocked by a previous rejection <span class="mono-text text-muted">not-blocked-by-reject</span></td><td class="text-muted">Removes a fulfiller that already rejected this order</td></tr>
+            <tr><td class="tabular">4</td><td><span class="chip chip--info">Sort</span></td><td>Closest to buyer <span class="mono-text text-muted">nearest</span></td><td class="text-muted">Ranks by postcode match, then country</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- ============ New: the dry-run test panel ============ -->
+    <div class="panel">
+      <div class="panel__header"><h3>Test on an order</h3><span class="panel__meta">Dry run — nothing is committed</span></div>
+      <div style="padding: var(--space-4);">
+
+        <div class="alert alert--info" role="status" style="margin-bottom: var(--space-4);">
+          <div class="alert__content">
+            <strong class="alert__title">This changes nothing</strong>
+            <div class="alert__description">Running a test reads your rules and current stock. It never creates fulfilment work, assigns a location, reserves stock, or contacts a carrier. <span class="mk-pin">1</span></div>
+          </div>
+        </div>
+
+        <!-- ============ EMPTY ============ -->
+        <div data-mk-state="empty" data-mk-label="Pusty">
+          <div class="segmented-control mk-tabbar" role="radiogroup" aria-label="Choose what to test">
+            <button type="button" class="segmented-control__option segmented-control__option--active" onclick="mkTab(this,'e-order','e-basket')">Pick a recent order</button>
+            <button type="button" class="segmented-control__option" onclick="mkTab(this,'e-basket','e-order')">Build a basket <span class="mk-pin">2</span></button>
+          </div>
+          <div id="e-order" class="mk-src-panel">
+            <label class="form-field"><span class="form-field__label">Search orders</span><input class="control" type="text" placeholder="Order number, buyer or SKU…"></label>
+            <p class="mk-hint">Looks across every connection, last 30 days. <span class="mk-pin">11</span></p>
+          </div>
+          <div id="e-basket" class="mk-src-panel" hidden>
+            <div class="mk-basket-row">
+              <label class="form-field"><span class="form-field__label">SKU</span><input class="control" type="text" placeholder="e.g. CER-BOWL-20"></label>
+              <label class="form-field form-field--qty"><span class="form-field__label">Qty</span><input class="control" type="number" min="1" value="1"></label>
+              <button type="button" class="button button--ghost button--sm" disabled>Remove</button>
+            </div>
+            <button type="button" class="button button--ghost button--sm">+ Add line</button>
+            <div class="mk-shipto-grid">
+              <label class="form-field"><span class="form-field__label">Country</span><select class="control"><option>Poland</option><option>Germany</option><option>Czechia</option></select></label>
+              <label class="form-field"><span class="form-field__label">Postcode</span><input class="control" type="text" placeholder="e.g. 61-000"></label>
+              <label class="form-field"><span class="form-field__label">Delivery method</span><select class="control"><option>No preference</option><option>Kurier</option><option>Paczkomat InPost</option><option>Odbiór osobisty</option></select></label>
+            </div>
+          </div>
+          <div class="state-card empty-state" role="status" aria-live="polite" style="margin-top: var(--space-4);">
+            <div class="state-card__header"><h2 class="state-card__title">Pick an order or build a basket to test your rules</h2></div>
+            <p class="state-card__message">The result shows exactly where your rules would send each line — no changes are made.</p>
+          </div>
+          <div class="toolbar" style="margin-top: var(--space-3); justify-content: flex-end;">
+            <button type="button" class="button button--primary" disabled>Run test</button>
+          </div>
+        </div>
+
+        <!-- ============ PICKING ============ -->
+        <div data-mk-state="picking" data-mk-label="Wybór zamówienia" hidden>
+          <div class="segmented-control mk-tabbar" role="radiogroup" aria-label="Choose what to test">
+            <button type="button" class="segmented-control__option segmented-control__option--active">Pick a recent order</button>
+            <button type="button" class="segmented-control__option">Build a basket</button>
+          </div>
+          <label class="form-field"><span class="form-field__label">Search orders</span><input class="control" type="text" value="ALG"></label>
+          <ul class="mk-order-list" role="listbox" aria-label="Matching orders">
+            <li><button type="button" class="mk-order-row" aria-selected="true">
+              <span class="mk-order-row__main"><span class="entity-label"><span class="entity-label__name mono-text">ALG-24817</span></span><span class="chip chip--info" style="margin-top:2px;">Allegro · ceramika_nowak</span></span>
+              <span class="mk-order-row__meta"><span>A. Kowalska <span class="mk-pin">12</span></span><span>3 lines</span><span class="tabular">248,90 PLN</span><span>Poznań 61-000</span><span>Placed 25 Sep 2026</span></span>
+            </button></li>
+            <li><button type="button" class="mk-order-row">
+              <span class="mk-order-row__main"><span class="entity-label"><span class="entity-label__name mono-text">ALG-24310</span></span><span class="chip chip--info" style="margin-top:2px;">Allegro · ceramika_nowak</span></span>
+              <span class="mk-order-row__meta"><span>P. Wróbel</span><span>1 line</span><span class="tabular">62,00 PLN</span><span>Łódź 90-001</span><span>Placed 22 Sep 2026</span></span>
+            </button></li>
+          </ul>
+          <div class="toolbar" style="margin-top: var(--space-3); justify-content: flex-end;">
+            <button type="button" class="button button--primary">Run test</button>
+          </div>
+        </div>
+
+        <!-- ============ ROUTABLE ============ -->
+        <div data-mk-state="routable" data-mk-label="Wszystko przydzielone" hidden>
+          <div class="mk-summary-bar">
+            <span class="entity-label"><span class="entity-label__name mono-text">ALG-24817</span></span>
+            <span class="chip chip--info">Allegro · ceramika_nowak</span>
+            <div class="mk-summary-bar__actions">
+              <button type="button" class="button button--ghost button--sm">Change order</button>
+              <button type="button" class="button button--secondary button--sm">Run again</button>
+            </div>
+          </div>
+
+          <div class="panel" style="margin-bottom: var(--space-4);">
+            <div class="panel__header"><h4 style="margin:0;">What your rules see</h4><span class="panel__meta">No buyer PII <span class="mk-pin">3</span></span></div>
+            <dl class="key-value-list" style="padding: var(--space-3) var(--space-4);">
+              <dt class="key-value-list__label">Ship to</dt><dd class="key-value-list__value">Poland, 61-000</dd>
+              <dt class="key-value-list__label">Requested delivery</dt><dd class="key-value-list__value">Kurier</dd>
+              <dt class="key-value-list__label">Lines</dt><dd class="key-value-list__value">3, 7 units total</dd>
+            </dl>
+          </div>
+
+          <p class="mk-hint" style="margin-bottom: var(--space-2);">Ruleset applied, in order <span class="mk-pin">4</span>:</p>
+          <ol class="mk-ruleset">
+            <li><span class="chip">Has stock</span></li>
+            <li><span class="chip">Located in destination country</span></li>
+            <li><span class="chip">Not blocked by rejection</span></li>
+            <li><span class="chip chip--info">Closest to buyer</span></li>
+          </ol>
+
+          <div class="mk-metrics">
+            <div class="metric-card metric-card--success"><span class="metric-card__label">Lines routable</span><span class="metric-card__value">3 / 3</span></div>
+            <div class="metric-card metric-card--info"><span class="metric-card__label">Locations used</span><span class="metric-card__value">2</span></div>
+            <div class="metric-card"><span class="metric-card__label">Rules applied</span><span class="metric-card__value">4</span></div>
+          </div>
+
+          <div class="alert alert--info" style="margin-bottom: var(--space-4);"><div class="alert__content"><strong class="alert__title">This order ships from 2 locations</strong><div class="alert__description">One line only has stock at a different warehouse than the other two. <span class="mk-pin">6</span></div></div></div>
+
+          <div class="mk-result-line">
+            <div class="mk-result-line__head"><span class="mono-text">CER-BOWL-20</span><span>Miska ceramiczna 20 cm</span><span class="text-muted">· 2 requested</span></div>
+            <div class="mk-result-line__row"><span class="tabular">2</span> pc → <span class="chip chip--success">Warehouse Poznań</span>
+              <button type="button" class="button button--ghost button--sm mk-reason-toggle" onclick="mkTrace(this)">Show reasoning</button><span class="mk-pin">5</span>
+            </div>
+            <ol class="mk-trace" hidden>
+              <li class="mk-trace__step"><div class="mk-trace__body"><p><span class="chip" style="margin-right:6px;">Filter</span>Has stock <span class="mono-text text-muted">in-stock</span></p><p class="mk-trace__removed">Removed: none — both warehouses have stock</p></div></li>
+              <li class="mk-trace__step"><div class="mk-trace__body"><p><span class="chip" style="margin-right:6px;">Filter</span>Located in destination country <span class="mono-text text-muted">country-served</span></p><p class="mk-trace__removed">Removed: none</p></div></li>
+              <li class="mk-trace__step"><div class="mk-trace__body"><p><span class="chip chip--info" style="margin-right:6px;">Sort</span>Closest to buyer <span class="mono-text text-muted">nearest</span></p><p class="mk-trace__removed">Warehouse Poznań's postcode shares the "61" prefix with the buyer's — ranked first.</p></div></li>
+            </ol>
+          </div>
+
+          <div class="mk-result-line">
+            <div class="mk-result-line__head"><span class="mono-text">CER-JUG-1L</span><span>Dzbanek gliniany 1 l</span><span class="text-muted">· 1 requested</span></div>
+            <div class="mk-result-line__row"><span class="tabular">1</span> pc → <span class="chip chip--success">Warehouse Poznań</span>
+              <button type="button" class="button button--ghost button--sm mk-reason-toggle" onclick="mkTrace(this)">Show reasoning</button>
+            </div>
+            <ol class="mk-trace" hidden>
+              <li class="mk-trace__step"><div class="mk-trace__body"><p><span class="chip" style="margin-right:6px;">Filter</span>Has stock <span class="mono-text text-muted">in-stock</span></p><p class="mk-trace__removed">Removed: none</p></div></li>
+              <li class="mk-trace__step"><div class="mk-trace__body"><p><span class="chip chip--info" style="margin-right:6px;">Sort</span>Closest to buyer <span class="mono-text text-muted">nearest</span></p><p class="mk-trace__removed">Same ranking as the line above.</p></div></li>
+            </ol>
+          </div>
+
+          <div class="mk-result-line">
+            <div class="mk-result-line__head"><span class="mono-text">CER-COAST-LN</span><span>Podkładka pod kubek, lniana</span><span class="text-muted">· 4 requested</span></div>
+            <div class="mk-result-line__row"><span class="tabular">4</span> pc → <span class="chip chip--success">Warehouse Wrocław</span>
+              <button type="button" class="button button--ghost button--sm mk-reason-toggle" onclick="mkTrace(this)">Show reasoning</button>
+            </div>
+            <ol class="mk-trace" hidden>
+              <li class="mk-trace__step"><div class="mk-trace__body"><p><span class="chip" style="margin-right:6px;">Filter</span>Has stock <span class="mono-text text-muted">in-stock</span></p><p class="mk-trace__removed">Removed: <span class="chip mk-elim">Warehouse Poznań</span> — no stock for this SKU</p></div></li>
+              <li class="mk-trace__step"><div class="mk-trace__body"><p><span class="chip chip--info" style="margin-right:6px;">Sort</span>Closest to buyer <span class="mono-text text-muted">nearest</span></p><p class="mk-trace__removed">Only one candidate remained — ranking had nothing to decide.</p></div></li>
+            </ol>
+          </div>
+        </div>
+
+        <!-- ============ UNFULFILLABLE ============ -->
+        <div data-mk-state="unfulfillable" data-mk-label="Pozycja niemożliwa do realizacji" hidden>
+          <div class="mk-summary-bar">
+            <span class="entity-label"><span class="entity-label__name mono-text">PS-55231</span></span>
+            <span class="chip chip--info">PrestaShop · sklep-korpo.pl</span>
+            <div class="mk-summary-bar__actions">
+              <button type="button" class="button button--ghost button--sm">Change order</button>
+              <button type="button" class="button button--secondary button--sm">Run again</button>
+            </div>
+          </div>
+
+          <div class="panel" style="margin-bottom: var(--space-4);">
+            <div class="panel__header"><h4 style="margin:0;">What your rules see</h4><span class="panel__meta">No buyer PII</span></div>
+            <dl class="key-value-list" style="padding: var(--space-3) var(--space-4);">
+              <dt class="key-value-list__label">Ship to</dt><dd class="key-value-list__value">Poland, 30-001</dd>
+              <dt class="key-value-list__label">Requested delivery</dt><dd class="key-value-list__value">No preference</dd>
+              <dt class="key-value-list__label">Lines</dt><dd class="key-value-list__value">2, 5 units total</dd>
+            </dl>
+          </div>
+
+          <div class="mk-metrics">
+            <div class="metric-card metric-card--warning"><span class="metric-card__label">Lines fully routable</span><span class="metric-card__value">1 / 2</span></div>
+            <div class="metric-card metric-card--error"><span class="metric-card__label">Units unfulfillable</span><span class="metric-card__value">3</span></div>
+            <div class="metric-card metric-card--info"><span class="metric-card__label">Locations used</span><span class="metric-card__value">2</span></div>
+          </div>
+
+          <div class="alert alert--warning" style="margin-bottom: var(--space-4);"><div class="alert__content"><strong class="alert__title">1 line can't be fully sourced from your active locations</strong><div class="alert__description">A test never refunds or returns anything — this is only what would happen if this order were routed for real. <span class="mk-pin">8</span></div></div></div>
+
+          <div class="mk-result-line">
+            <div class="mk-result-line__head"><span class="mono-text">RAT-CHAIR-01</span><span>Fotel bujany rattanowy</span><span class="text-muted">· 1 requested</span></div>
+            <div class="mk-result-line__row"><span class="tabular">1</span> pc → <span class="chip chip--success">Warehouse Wrocław</span>
+              <button type="button" class="button button--ghost button--sm mk-reason-toggle" onclick="mkTrace(this)">Show reasoning</button>
+            </div>
+            <ol class="mk-trace" hidden>
+              <li class="mk-trace__step"><div class="mk-trace__body"><p><span class="chip" style="margin-right:6px;">Filter</span>Has stock <span class="mono-text text-muted">in-stock</span></p><p class="mk-trace__removed">Removed: <span class="chip mk-elim">Warehouse Poznań</span> — no stock</p></div></li>
+              <li class="mk-trace__step"><div class="mk-trace__body"><p><span class="chip chip--info" style="margin-right:6px;">Sort</span>Closest to buyer <span class="mono-text text-muted">nearest</span></p><p class="mk-trace__removed">Only one candidate remained.</p></div></li>
+            </ol>
+          </div>
+
+          <div class="mk-result-line">
+            <div class="mk-result-line__head"><span class="mono-text">CER-POT-XL</span><span>Doniczka ceramiczna XL</span><span class="text-muted">· 4 requested <span class="mk-pin">7</span></span></div>
+            <div class="mk-result-line__row"><span class="tabular">1</span> pc → <span class="chip chip--success">Warehouse Poznań</span>
+              <button type="button" class="button button--ghost button--sm mk-reason-toggle" onclick="mkTrace(this)">Show reasoning</button>
+            </div>
+            <ol class="mk-trace" hidden>
+              <li class="mk-trace__step"><div class="mk-trace__body"><p><span class="chip" style="margin-right:6px;">Filter</span>Has stock <span class="mono-text text-muted">in-stock</span></p><p class="mk-trace__removed">Removed: <span class="chip mk-elim">Warehouse Wrocław</span> — no stock</p></div></li>
+              <li class="mk-trace__step"><div class="mk-trace__body"><p><span class="chip chip--info" style="margin-right:6px;">Sort</span>Closest to buyer <span class="mono-text text-muted">nearest</span></p><p class="mk-trace__removed">Only one candidate remained.</p></div></li>
+            </ol>
+            <div class="mk-result-line__row">
+              <span class="tabular">3</span> pc → <span class="status-badge status-badge--error"><span class="status-badge__dot" aria-hidden="true"></span>Unfulfillable</span>
+              <span class="chip chip--warning">Would become: Refund</span>
+              <button type="button" class="button button--ghost button--sm mk-reason-toggle" onclick="mkTrace(this)">Show reasoning</button>
+              <p>No active location has stock for these units. <span class="mono-text">reason: no-stock-in-network</span></p>
+            </div>
+            <ol class="mk-trace" hidden>
+              <li class="mk-trace__step"><div class="mk-trace__body"><p><span class="chip" style="margin-right:6px;">Filter</span>Has stock <span class="mono-text text-muted">in-stock</span></p><p class="mk-trace__removed">Removed: <span class="chip mk-elim">Warehouse Poznań</span> (its 1 unit already went to the units above), <span class="chip mk-elim">Warehouse Wrocław</span> (no stock)</p></div></li>
+              <li class="mk-trace__step"><div class="mk-trace__body"><p class="mk-trace__removed">No candidates were left to sort.</p></div></li>
+            </ol>
+          </div>
+        </div>
+
+        <!-- ============ COMPARE (draft vs saved) ============ -->
+        <div data-mk-state="compare" data-mk-label="Szkic vs zapisane reguły" hidden>
+          <div class="mk-summary-bar">
+            <span class="entity-label"><span class="entity-label__name mono-text">ALG-24817</span></span>
+            <span class="chip chip--info">Allegro · ceramika_nowak</span>
+            <span class="status-badge status-badge--warning"><span class="status-badge__dot" aria-hidden="true"></span>Comparing an unsaved rule order</span>
+          </div>
+          <div class="alert alert--warning" style="margin-bottom: var(--space-2);"><div class="alert__content"><strong class="alert__title">Your unsaved change hasn't been saved</strong><div class="alert__description">This compares your live rules against the reorder you haven't saved yet. Neither run creates anything. <span class="mk-pin">9</span></div></div></div>
+
+          <div class="mk-compare-grid">
+            <div class="mk-compare-col">
+              <h4>Saved rules <span class="status-badge status-badge--success status-badge--compact">Live</span></h4>
+              <ol class="mk-ruleset" style="margin-bottom: var(--space-3);">
+                <li><span class="chip">Has stock</span></li>
+                <li><span class="chip">In destination country</span></li>
+                <li><span class="chip">Not rejected</span></li>
+                <li><span class="chip chip--info">Closest to buyer</span></li>
+              </ol>
+            </div>
+            <div class="mk-compare-col mk-compare-col--draft">
+              <h4>Your unsaved changes <span class="status-badge status-badge--warning status-badge--compact">Draft</span></h4>
+              <ol class="mk-ruleset" style="margin-bottom: var(--space-3);">
+                <li><span class="chip">Has stock</span></li>
+                <li><span class="chip">In destination country</span></li>
+                <li><span class="chip">Not rejected</span></li>
+                <li><span class="chip chip--new">Priority: Wrocław first</span></li>
+                <li><span class="chip chip--info">Closest to buyer</span></li>
+              </ol>
+            </div>
+          </div>
+
+          <div class="panel">
+            <div class="panel__header"><h4 style="margin:0;">What would change, per line</h4></div>
+            <div style="padding: var(--space-3) var(--space-4);">
+              <div class="mk-compare-line">
+                <span class="mono-text">CER-BOWL-20</span><span>Miska ceramiczna 20 cm</span>
+                <span class="chip">Warehouse Poznań</span><span class="mk-compare-arrow">→</span><span class="chip chip--warning">Warehouse Wrocław</span>
+                <span class="status-badge status-badge--warning status-badge--compact">Would change</span>
+              </div>
+              <div class="mk-compare-line">
+                <span class="mono-text">CER-JUG-1L</span><span>Dzbanek gliniany 1 l</span>
+                <span class="chip">Warehouse Poznań</span><span class="mk-compare-arrow">→</span><span class="chip chip--warning">Warehouse Wrocław</span>
+                <span class="status-badge status-badge--warning status-badge--compact">Would change</span>
+              </div>
+              <div class="mk-compare-line">
+                <span class="mono-text">CER-COAST-LN</span><span>Podkładka pod kubek, lniana</span>
+                <span class="chip chip--success">Warehouse Wrocław</span>
+                <span class="status-badge status-badge--neutral status-badge--compact">No change</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="toolbar" style="margin-top: var(--space-4); justify-content: flex-end;">
+            <button type="button" class="button button--ghost button--sm">Discard draft</button>
+            <button type="button" class="button button--primary button--sm">Save this order</button>
+          </div>
+        </div>
+
+        <!-- ============ ERROR ============ -->
+        <div data-mk-state="error" data-mk-label="Błąd" hidden>
+          <div class="mk-summary-bar">
+            <span class="entity-label"><span class="entity-label__name mono-text">ALG-24817</span></span>
+            <span class="chip chip--info">Allegro · ceramika_nowak</span>
+            <div class="mk-summary-bar__actions">
+              <button type="button" class="button button--ghost button--sm">Change order</button>
+            </div>
+          </div>
+          <div class="alert alert--error" role="alert">
+            <div class="alert__content">
+              <strong class="alert__title">Couldn't finish this test</strong>
+              <div class="alert__description">OpenLinker couldn't read live stock for one or more locations. Nothing was changed. <span class="mono-text text-muted">stock-read-timeout · 8.2s</span> <span class="mk-pin">10</span></div>
+            </div>
+          </div>
+          <div class="toolbar" style="margin-top: var(--space-3); justify-content: flex-end;">
+            <button type="button" class="button button--primary">Try again</button>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </section>
+</div>
+
+<aside class="mk-notes" aria-label="Adnotacje">
+  <h3>Adnotacje</h3>
+  <ol>
+    <li><span class="mk-pin">1</span> Panel wykorzystuje <span class="mono-text">FulfillmentRouterPort.evaluate()</span> (#2954) — nie <span class="mono-text">route()</span>: ten sam silnik (<span class="mono-text">evaluateRouting</span>), ale bez <span class="mono-text">decisionId</span>/<span class="mono-text">idempotencyKey</span>, więc strukturalnie nie da się niczego z tego wywołania zapisać. Dlatego wynik testu i realne routowanie muszą dać identyczny wynik.</li>
+    <li><span class="mk-pin">2</span> „Build a basket" pozwala przetestować hipotetyczne zamówienie (inny kraj, inny SKU) bez czekania na prawdziwe zamówienie — przydatne przy dodawaniu nowego magazynu lub rynku.</li>
+    <li><span class="mk-pin">3</span> Zgodnie z ADR-062 (granice zaufania) <span class="mono-text">RoutingInput</span> nigdy nie niesie imienia, e-maila, telefonu ani adresu kupującego — tylko kraj/kod pocztowy dostawy, linie i metodę dostawy. Ten panel pokazuje dokładnie ten zestaw, żeby operator widział, na czym reguły faktycznie działają.</li>
+    <li><span class="mk-pin">4</span> Kolejność reguł pochodzi z panelu „Rules" powyżej (edycja przez przeciąganie + <span class="mono-text">PUT /order</span>, #2953) — tu jest tylko podgląd tego, co zostało zastosowane.</li>
+    <li><span class="mk-pin">5</span> Ślad decyzji mapuje 1:1 <span class="mono-text">RoutingExplanationStep</span>: filtr pokazuje, co odpadło (<span class="mono-text">eliminated</span>), sort pokazuje uzasadnienie rankingu (<span class="mono-text">detail</span>/<span class="mono-text">score</span>). Nazwy reguł (<span class="mono-text">in-stock</span>, <span class="mono-text">nearest</span>...) są nieprzezroczyste dla rdzenia (routing-vocabulary.types.ts) — to słownik silnika OpenLinker, inny dostawca miałby własny.</li>
+    <li><span class="mk-pin">6</span> Podział zamówienia na kilka lokalizacji to poprawny, oczekiwany wynik (linia po linii, ADR-054) — nie błąd.</li>
+    <li><span class="mk-pin">7</span> To pokazuje, że jedna linia zamówienia może częściowo się routować, a częściowo nie (<span class="mono-text">assigned + unfulfillable + held === quantity</span> z routing.types.ts) — 1 szt. trafia do magazynu, 3 szt. zostają niemożliwe do zrealizowania.</li>
+    <li><span class="mk-pin">8</span> <span class="mono-text">RoutingUnfulfillableLine.reason</span> jest nieprzezroczystym stringiem właściciela silnika — otwarte pytanie: czy FE powinien mieć słownik tłumaczeń kodów przyczyn, czy renderować je tak jak tu, wprost? <span class="mono-text">resolution</span> to zamknięty zbiór 'refund' | 'return' — nigdy częściowe anulowanie (OpenLinker nie potrafi rozdzielić zamówienia handlowego, ADR-054).</li>
+    <li><span class="mk-pin">9</span> LUKA W BACKENDZIE: <span class="mono-text">evaluate()</span> czyta wyłącznie zapisany zestaw reguł przez <span class="mono-text">RoutingRuleSourcePort.listActiveRules</span> — nie istnieje dziś sposób przekazania niezapisanej kolejności do tej metody. Ten stan jest więc projekcją docelową: albo trzeba rozszerzyć port o opcjonalny „override" reguł, albo powielić czystą funkcję <span class="mono-text">evaluateRouting</span> po stronie przeglądarki (ryzyko rozjazdu, którego repo unika gdzie indziej przez skrypty `check:invariants`).</li>
+    <li><span class="mk-pin">10</span> Port nie deklaruje jeszcze taksonomii błędów per metoda (dokumentacja portu odsyła to do „W4-1/W4-2" hardeningu) — treść błędu tutaj jest tylko wiarygodnym przykładem, nie realnym kodem.</li>
+    <li><span class="mk-pin">11</span> Zakładam ponowne użycie istniejącego wyszukiwania zamówień (<span class="mono-text">GET /orders?search=</span>) — brak dedykowanego endpointu „ostatnie zamówienia do testu".</li>
+    <li><span class="mk-pin">12</span> Imię i nazwisko kupującego na liście wyboru jest zamaskowane (initial + nazwisko) analogicznie do maskowania na Assign Packing Work board — nawyk ostrożności, mimo że ta strona nie jest stanowiskiem bez własnego principala.</li>
+    <li>Dane przykładowe (zamówienia Allegro/Erli/PrestaShop/WooCommerce, PLN, InPost/DPD, magazyny Poznań/Wrocław) są fikcyjne, wyłącznie do demonstracji.</li>
+    <li>Założenie: bramki strony (#2953/#2407 — musi istnieć połączenie OMS OpenLinker i co najmniej jedna aktywna lokalizacja) już przeszły — panel testowy zakłada, że sekcja „Rules" w ogóle się renderuje.</li>
+  </ol>
+</aside>
+
+<script>
+  function mkTab(activeBtn, showId, hideId) {
+    var group = activeBtn.parentElement;
+    Array.prototype.forEach.call(group.querySelectorAll('.segmented-control__option'), function (b) {
+      b.classList.remove('segmented-control__option--active');
+    });
+    activeBtn.classList.add('segmented-control__option--active');
+    document.getElementById(showId).hidden = false;
+    document.getElementById(hideId).hidden = true;
+  }
+  function mkTrace(btn) {
+    var trace = btn.parentElement.nextElementSibling;
+    trace.hidden = !trace.hidden;
+    btn.textContent = trace.hidden ? btn.textContent.replace('Hide', 'Show') : btn.textContent.replace('Show', 'Hide');
+  }
+</script>
+
+</body></html>

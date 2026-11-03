@@ -30,6 +30,7 @@ import {
 } from '../../sales-documents';
 import type { BenchDocuments, BenchParcel, BenchParcelLine } from '../api/bench-parcel.types';
 import { benchParcelCopy } from './bench-parcel.copy';
+import { describeBenchDocumentCard } from './bench-sales-document';
 
 /** How far one line has got. Never says HOW its units were confirmed. */
 export type BenchLineState = 'verified' | 'in-progress' | 'not-started';
@@ -277,8 +278,13 @@ export function completionPrintGaps(
   documents: BenchDocuments | undefined
 ): BenchCompletionPrintGaps {
   return {
+    // The card's own decision (#3647), so the confirm names an unprinted
+    // invoice exactly when the panel offers "Print invoice". A receipt has no
+    // print stamp, so it is never reported here as unprinted.
     invoiceUnprinted:
-      documents?.invoice.state === 'ready' && parcel.invoicePrintedAt === null,
+      documents !== undefined &&
+      describeBenchDocumentCard(documents).kind === 'invoice-ready' &&
+      parcel.invoicePrintedAt === null,
     labelUnprinted: documents?.label.state === 'ready' && parcel.labelPrintedAt === null,
   };
 }

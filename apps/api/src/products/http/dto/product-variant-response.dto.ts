@@ -31,9 +31,44 @@ export class ProductVariantResponseDto {
   @ApiPropertyOptional({
     nullable: true,
     description:
-      'Master variant price. Nullable when not yet synced or unavailable from the master source.',
+      'Master variant price, gross (what a buyer pays, excluding promotions). Nullable when not yet synced or when the master could not state a gross figure.',
   })
   price!: number | null;
+
+  @ApiPropertyOptional({
+    nullable: true,
+    type: [String],
+    description:
+      'Pictures the master dedicates to THIS variant (absolute URLs, in the master order). ' +
+      'null means no picture of its own - the product gallery applies - never "no images".',
+  })
+  images!: string[] | null;
+
+  @ApiProperty({
+    type: [String],
+    description:
+      'Proxy paths (relative to the API) of the pictures this variant is shown with: its own, ' +
+      "or the product's when it has none. Empty when neither has any. Never a shop url.",
+  })
+  imageUrls!: string[];
+
+  @ApiProperty({
+    description:
+      "true when the variant has no pictures of its own and imageUrls are the product's; " +
+      'false when it has its own, or when there are none at all.',
+  })
+  imagesFromProduct!: boolean;
+
+  @ApiPropertyOptional({
+    nullable: true,
+    type: [String],
+    description:
+      'The images an offer for this variant is listed with when nobody overrides them: its own ' +
+      'pictures first, then the product gallery without the pictures dedicated to its siblings. ' +
+      'Resolved server-side by the same rule the offer builder applies. Product detail only.',
+  })
+  defaultImages?: string[] | null;
+
   @ApiPropertyOptional({
     nullable: true,
     description:
@@ -60,7 +95,6 @@ export class ProductVariantResponseDto {
   })
   taxRateUnknownReason?: string | null;
 
-
   @ApiProperty({ description: 'Creation timestamp (ISO 8601)' })
   createdAt!: string;
 
@@ -79,6 +113,9 @@ export class ProductVariantResponseDto {
   })
   staleAt!: string | null;
 
-  @ApiPropertyOptional({ type: [ExternalIdMappingDto], description: 'External platform identifiers' })
+  @ApiPropertyOptional({
+    type: [ExternalIdMappingDto],
+    description: 'External platform identifiers',
+  })
   externalIds?: ExternalIdMappingDto[];
 }

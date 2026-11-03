@@ -29,7 +29,8 @@ describe('anyConnectionAutomatic', () => {
             {
               sourceConnectionId: 'src-1',
               sourceLabel: 'Supplier',
-              isCustomOverride: true,
+              modeOverridden: true,
+              ruleOverridden: false,
               effective: { mode: 'automatic', rule: { type: 'passthrough', percent: 0, rounding: 'none' } },
               openEpisodeCount: 0,
             },

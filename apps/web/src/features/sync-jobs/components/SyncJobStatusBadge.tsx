@@ -44,6 +44,7 @@ const OUTCOME_REASON_LABEL: Record<JobOutcomeReason, string> = {
   auto_dispatch_payload_invalid: 'malformed job',
   auto_dispatch_not_enabled: 'auto-label off',
   auto_dispatch_no_weight: 'no weight',
+  auto_dispatch_no_dimensions: 'no dimensions',
   auto_dispatch_no_address: 'no address',
   auto_dispatch_no_delivery_method: 'no delivery method',
   auto_dispatch_work_not_eligible: 'order not ready',

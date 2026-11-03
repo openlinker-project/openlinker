@@ -1795,6 +1795,39 @@ describe('InfaktInvoicingAdapter', () => {
       });
     });
 
+    it('should pay cash for a cash-on-delivery order whatever the connection default is (#3294)', async () => {
+      const configured = new InfaktInvoicingAdapter('conn-1', http, logger, {
+        defaultPaymentMethod: 'transfer',
+      });
+      seedIssueFixtures();
+      await configured.issueInvoice({ ...invoiceCmd, paymentMethod: 'cash_on_delivery' });
+
+      const invoiceCall = http.calls.find((c) => c.method === 'POST' && c.path === 'invoices.json');
+      expect(invoiceCall?.body).toMatchObject({
+        invoice: expect.objectContaining({ payment_method: 'cash' }),
+      });
+    });
+
+    it('should pay by transfer for a bank-transfer order only when a bank account is configured (#3294)', async () => {
+      const withAccount = new InfaktInvoicingAdapter('conn-1', http, logger, {
+        bankAccount: { id: '1', accountNumber: '61 1140 2004 0000 3002 0135 5387', bankName: 'mBank' },
+      });
+      seedIssueFixtures();
+      await withAccount.issueInvoice({ ...invoiceCmd, paymentMethod: 'bank_transfer' });
+      let call = http.calls.find((c) => c.method === 'POST' && c.path === 'invoices.json');
+      expect(call?.body).toMatchObject({
+        invoice: expect.objectContaining({ payment_method: 'transfer' }),
+      });
+
+      http.calls.length = 0;
+      seedIssueFixtures();
+      await adapter.issueInvoice({ ...invoiceCmd, paymentMethod: 'bank_transfer' });
+      call = http.calls.find((c) => c.method === 'POST' && c.path === 'invoices.json');
+      expect(call?.body).toMatchObject({
+        invoice: expect.objectContaining({ payment_method: 'cash' }),
+      });
+    });
+
     it('should default to cash on issueCorrection when the connection has no defaultPaymentMethod configured', async () => {
       seedCorrectionFixtures();
       await adapter.issueCorrection(correctionCmd);

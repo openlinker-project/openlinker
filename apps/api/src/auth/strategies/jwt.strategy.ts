@@ -35,6 +35,9 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       // A token issued before the claim existed (#1938) reads as no consent —
       // AnalyticsConsentGuard then fails closed and the frontend re-mints.
       analyticsConsent: payload.analyticsConsent ?? false,
+      // #3456 — absent on tokens minted before the claim existed, and no
+      // account needing it existed then either, so `false` is exact.
+      mustChangePassword: payload.mustChangePassword ?? false,
     };
   }
 }

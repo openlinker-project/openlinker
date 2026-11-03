@@ -21,7 +21,13 @@ import { manualCheckpoint } from '../../../src/support/manual-checkpoint';
 import { assertMarketplaceParameterRoundTrip, assertProductFieldParity, offerToParityView } from '../../../src/support/parity';
 import { state } from './flow-state';
 import { fullFlowSegment } from './segment';
-import { requireProduct, skipWhenResuming, resolvePrimaryMapping, createBulkOffers } from './helpers';
+import {
+  requireProduct,
+  skipWhenResuming,
+  resolvePrimaryMapping,
+  createBulkOffers,
+  expectedBuyerPrice,
+} from './helpers';
 
 fullFlowSegment(() => {
   test('S3 — Allegro offers: create + field/amount parity via OL read', async ({ api, world, pages, poll, env }) => {
@@ -37,9 +43,12 @@ fullFlowSegment(() => {
     state.channelBaseline.set('allegro', offer.availableQuantity);
 
     // Field parity: price, currency, category id, available quantity via OL's adapter read.
+    // The price is anchored on what PrestaShop charges a buyer (S1), not on
+    // OpenLinker's copy - an Allegro price is gross, and a net copy passed
+    // through unchanged would otherwise match itself (#3737).
     assertProductFieldParity({
-      label: 'OL↔Allegro offer',
-      expected: { price: state.product!.price ?? undefined, currency: state.product!.currency ?? 'PLN' },
+      label: 'PS buyer price↔Allegro offer',
+      expected: { price: expectedBuyerPrice(testInfo), currency: state.product!.currency ?? 'PLN' },
       actual: offerToParityView(offer),
       // `required: ['price']` - `assertProductFieldParity` skips any field the
       // EXPECTED side does not carry, so a null `state.product.price` silently

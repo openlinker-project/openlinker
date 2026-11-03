@@ -8,6 +8,7 @@
  * @module libs/core/src/products/infrastructure/persistence/entities
  */
 import {
+  Check,
   Entity,
   PrimaryColumn,
   Column,
@@ -19,6 +20,10 @@ import {
 import { ProductOrmEntity } from './product.orm-entity';
 
 @Entity('product_variants')
+// #3588: same names as the migration, so the synchronize-built test schema
+// enforces the cost pair and the non-negative rule too.
+@Check('CHK_product_variants_cost_pair', '("netUnitCost" IS NULL) = ("costCurrency" IS NULL)')
+@Check('CHK_product_variants_cost_non_negative', '"netUnitCost" IS NULL OR "netUnitCost" >= 0')
 export class ProductVariantOrmEntity {
   @PrimaryColumn({ type: 'text' })
   id!: string;
@@ -45,6 +50,12 @@ export class ProductVariantOrmEntity {
   @Column({ type: 'decimal', precision: 10, scale: 2, nullable: true })
   price!: number | null;
 
+  // Pictures the master dedicates to this variant (absolute URLs, in order).
+  // Sync-derived like `attributes`, so the master-sync upsert owns it; null
+  // means "no picture of its own", never "no images".
+  @Column({ type: 'jsonb', nullable: true })
+  images!: string[] | null;
+
   // Soft-mark for a variant that no longer appears in the master's
   // getProductVariants response, or whose product 404s at the master
   // (#1599 — the products-context counterpart of inventory_items.isStale,
@@ -58,6 +69,12 @@ export class ProductVariantOrmEntity {
   // silent tz coercion — the #1296 correction applied to invoice_records (#1599).
   @Column({ type: 'timestamptz', nullable: true })
   staleAt!: Date | null;
+
+  // ADR-077: true while the variant's stored price may still be the NET figure
+  // a pre-ADR-077 master adapter reported. Set only by the migration that
+  // introduced it; cleared by the first upsert that carries a price.
+  @Column({ type: 'boolean', default: false })
+  priceBasisPending!: boolean;
 
   /**
    * Per-variant tax-rate OVERRIDE (#2054, ADR-063). Set only by a master that
@@ -112,10 +129,26 @@ export class ProductVariantOrmEntity {
   @Column({ type: 'int', nullable: true })
   heightMm!: number | null;
 
+  /**
+   * Operator-authored net unit cost (#3588, D27). numeric surfaces as a string.
+   * Pair CHECK + non-negative CHECK live in the migration
+   * (`CHK_product_variants_cost_pair` / `..._cost_non_negative`).
+   */
+  @Column({ type: 'numeric', precision: 12, scale: 4, nullable: true })
+  netUnitCost!: string | null;
+
+  @Column({ type: 'varchar', length: 3, nullable: true })
+  costCurrency!: string | null;
+
+  @Column({ type: 'timestamptz', nullable: true })
+  costUpdatedAt!: Date | null;
+
+  @Column({ type: 'text', nullable: true })
+  costUpdatedByUserId!: string | null;
+
   @CreateDateColumn()
   createdAt!: Date;
 
   @UpdateDateColumn()
   updatedAt!: Date;
 }
-

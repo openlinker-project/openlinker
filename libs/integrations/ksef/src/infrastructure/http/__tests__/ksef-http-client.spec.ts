@@ -11,7 +11,9 @@ import { KsefHttpClient, type KsefTokenLifecycle } from '../ksef-http-client';
 import type { KsefAuthenticationToken } from '../ksef-http-client.types';
 import { KsefAuthenticationException } from '../../../domain/exceptions/ksef-authentication.exception';
 import { KsefApiException } from '../../../domain/exceptions/ksef-api.exception';
+import { KsefPermissionDeniedException } from '../../../domain/exceptions/ksef-permission-denied.exception';
 import { KsefNetworkException } from '../../../domain/exceptions/ksef-network.exception';
+import type { KsefRateLimiter } from '../ksef-rate-limiter';
 
 function token(expiresInMs = 3_600_000, accessToken = 'access-token'): KsefAuthenticationToken {
   return {
@@ -216,13 +218,18 @@ describe('KsefHttpClient', () => {
       expect(fetchMock).toHaveBeenCalledTimes(1);
     });
 
-    it('should fail fast on a 403 as a non-retryable KsefApiException without refreshing', async () => {
+    it('should fail fast on a 403 as a non-retryable KsefPermissionDeniedException without refreshing', async () => {
       // 403 is an authorization decision, not an expired token — refreshing
-      // can never change the outcome, so the client must not refresh+retry.
+      // can never change the outcome, so the client must not refresh+retry. It is
+      // surfaced DISTINCTLY as a permission-denied (least-privilege) signal while
+      // remaining a KsefApiException subclass (retry classification unchanged).
       fetchMock.mockResolvedValue(jsonResponse(403, { error: 'forbidden' }));
       const client = new KsefHttpClient('conn-1', baseUrl, lifecycle, fetchMock);
 
-      await expect(client.get('/sessions/online')).rejects.toBeInstanceOf(KsefApiException);
+      const error = await client.get('/sessions/online').catch((e: unknown) => e);
+      expect(error).toBeInstanceOf(KsefPermissionDeniedException);
+      expect(error).toBeInstanceOf(KsefApiException);
+      expect((error as KsefPermissionDeniedException).statusCode).toBe(403);
       expect(lifecycle.refresh).not.toHaveBeenCalled();
       expect(fetchMock).toHaveBeenCalledTimes(1);
     });
@@ -365,6 +372,91 @@ describe('KsefHttpClient', () => {
       const client = new KsefHttpClient('conn-1', baseUrl, lifecycle, fetchMock);
 
       await expect(client.get('/sessions/online')).rejects.toBeInstanceOf(KsefApiException);
+    });
+  });
+
+  describe('proactive rate-limit pacing (#1594)', () => {
+    function stubLimiter(): { limiter: KsefRateLimiter; acquire: jest.Mock } {
+      const acquire = jest.fn().mockResolvedValue(undefined);
+      return { limiter: { acquire } as unknown as KsefRateLimiter, acquire };
+    }
+
+    it('acquires a session-open permit before POST /sessions/online', async () => {
+      fetchMock.mockResolvedValue(jsonResponse(200, { referenceNumber: 'r' }));
+      const { limiter, acquire } = stubLimiter();
+      const client = new KsefHttpClient('conn-1', baseUrl, lifecycle, fetchMock, undefined, {
+        rateLimiter: limiter,
+        bucketKey: 'nip-123',
+      });
+
+      await client.post('/sessions/online', { x: 1 });
+
+      expect(acquire).toHaveBeenCalledWith('nip-123', 'session-open');
+    });
+
+    it('classifies the invoice-submit and session-close endpoints', async () => {
+      // Fresh Response per call — a Response body can only be read once.
+      fetchMock.mockImplementation(() =>
+        Promise.resolve(jsonResponse(200, { referenceNumber: 'r' })),
+      );
+      const { limiter, acquire } = stubLimiter();
+      const client = new KsefHttpClient('conn-1', baseUrl, lifecycle, fetchMock, undefined, {
+        rateLimiter: limiter,
+        bucketKey: 'nip-123',
+      });
+
+      await client.post('/sessions/online/session-ref-1/invoices', { x: 1 });
+      await client.post('/sessions/online/session-ref-1/close', undefined, { idempotent: true });
+
+      expect(acquire).toHaveBeenNthCalledWith(1, 'nip-123', 'invoice-submit');
+      expect(acquire).toHaveBeenNthCalledWith(2, 'nip-123', 'session-close');
+    });
+
+    it('does not pace reads or non-session writes', async () => {
+      fetchMock.mockImplementation(() => Promise.resolve(jsonResponse(200, { ok: true })));
+      const { limiter, acquire } = stubLimiter();
+      const client = new KsefHttpClient('conn-1', baseUrl, lifecycle, fetchMock, undefined, {
+        rateLimiter: limiter,
+        bucketKey: 'nip-123',
+      });
+
+      await client.get('/sessions/session-ref-1'); // status read
+      await client.post('/auth/challenge', undefined, { idempotent: true, skipAuth: true });
+
+      expect(acquire).not.toHaveBeenCalled();
+    });
+
+    it('falls back to the connection id as the bucket key when none is supplied', async () => {
+      fetchMock.mockResolvedValue(jsonResponse(200, { referenceNumber: 'r' }));
+      const { limiter, acquire } = stubLimiter();
+      const client = new KsefHttpClient('conn-99', baseUrl, lifecycle, fetchMock, undefined, {
+        rateLimiter: limiter,
+      });
+
+      await client.post('/sessions/online', { x: 1 });
+
+      expect(acquire).toHaveBeenCalledWith('conn-99', 'session-open');
+    });
+
+    it('takes no second token for a call whose round was reserved up front (DEF-04)', async () => {
+      fetchMock.mockResolvedValue(jsonResponse(200, { referenceNumber: 'r' }));
+      const acquire = jest.fn().mockResolvedValue(undefined);
+      const reserve = jest.fn().mockResolvedValue(undefined);
+      const limiter = { acquire, reserve } as unknown as KsefRateLimiter;
+      const client = new KsefHttpClient('conn-1', baseUrl, lifecycle, fetchMock, undefined, {
+        rateLimiter: limiter,
+        bucketKey: 'test:1189981779',
+      });
+
+      await client.reserveSessionRound();
+      await client.post('/sessions/online', { x: 1 }, { rateLimitPrepaid: true });
+
+      expect(reserve).toHaveBeenCalledWith('test:1189981779', [
+        'session-open',
+        'invoice-submit',
+        'session-close',
+      ]);
+      expect(acquire).not.toHaveBeenCalled();
     });
   });
 });

@@ -36,6 +36,10 @@ export const OPERATIONAL_SETTING_KEYS = [
   'inventorySweepBudget',
   'sweepPageSize',
   'deletionAuditBudget',
+  'syncJobRetentionDays',
+  'syncJobDeadRetentionDays',
+  'inventoryMovementRetentionDays',
+  'stockStaleSyncThresholdHours',
 ] as const;
 
 export type OperationalSettingKey = (typeof OPERATIONAL_SETTING_KEYS)[number];
@@ -99,6 +103,18 @@ export interface OperationalSettingsView {
   inventorySweepBudget: ResolvedNumberSetting;
   sweepPageSize: ResolvedNumberSetting;
   deletionAuditBudget: ResolvedNumberSetting;
+  /** Days a completed sync job is kept before the retention prune deletes it (#2946, D16). */
+  syncJobRetentionDays: ResolvedNumberSetting;
+  /** Days a permanently-failed sync job is kept (#2946, D16). */
+  syncJobDeadRetentionDays: ResolvedNumberSetting;
+  /**
+   * Days a stock movement (inventory history row) is kept (#3565). Optional on the
+   * way in, like every field a later issue added: an API that predates it renders
+   * a page without the section rather than a thrown render.
+   */
+  inventoryMovementRetentionDays?: ResolvedNumberSetting;
+  /** Hours a stock observation may age before the stock view flags it stale (#3621). */
+  stockStaleSyncThresholdHours: ResolvedNumberSetting;
   deletionAuditCadence: ResolvedCadenceSetting;
   /**
    * How often each sweep runs. Read-only — there is no input for either.
@@ -136,6 +152,10 @@ export interface UpdateOperationalSettingsInput {
   inventorySweepBudget?: number | null;
   sweepPageSize?: number | null;
   deletionAuditBudget?: number | null;
+  syncJobRetentionDays?: number | null;
+  syncJobDeadRetentionDays?: number | null;
+  inventoryMovementRetentionDays?: number | null;
+  stockStaleSyncThresholdHours?: number | null;
   deletionAuditCadence?: string | null;
   /**
    * Permission to exceed a RECOMMENDED ceiling on this request.

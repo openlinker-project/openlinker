@@ -47,7 +47,7 @@ import { Button } from '../../../shared/ui/button';
 import { StatusBadge } from '../../../shared/ui/status-badge';
 import type { BenchParcelLine } from '../api/bench-parcel.types';
 import { isEditableTarget } from '../lib/scanner-gesture';
-import { narrowAttributes } from '../lib/bench-parcel-attributes';
+import { narrowAttributes } from '../../../shared/lib/variant-attributes';
 import { benchParcelCopy } from '../lib/bench-parcel.copy';
 import { BenchCopyButton } from './bench-copy-button';
 import { BenchThumb } from './bench-thumb';
@@ -57,7 +57,7 @@ export interface BenchParcelHeroProps {
   readonly line: BenchParcelLine;
   /**
    * The attribute keys that differ across this parcel's lines. See
-   * `bench-parcel-attributes.ts` — the hero narrows to the same subset the
+   * `shared/lib/variant-attributes.ts` — the hero narrows to the same subset the
    * table does, so one item does not read two different ways on one screen.
    */
   readonly distinguishingAttributes: ReadonlySet<string>;

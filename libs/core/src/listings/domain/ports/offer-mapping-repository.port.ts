@@ -128,11 +128,28 @@ export interface OfferMappingRepositoryPort {
    * Returns a `Map<internalId, count>`. Keys with zero mappings are omitted.
    * Intended for bulk "how many offers does each variant have" queries that
    * would otherwise fan out to one `findMany` per variant.
+   *
+   * Counts only offers that are, or could become, live: an `ended` offer is
+   * left out (#1934/F2), and so is an `inactive` offer whose creation the
+   * marketplace refused (E2E-25, see `findDeadFailedCreationOfferIds`). Both
+   * the bulk-submit duplicate guard and the FE "already on {destination}"
+   * chip read this count.
    */
   countByConnectionAndVariants(
     connectionId: string,
     internalIds: ReadonlyArray<string>
   ): Promise<Map<string, number>>;
+
+  /**
+   * External offer ids of a variant's Offer mappings on a connection whose
+   * creation the marketplace REFUSED and which are not live (E2E-25) - exactly
+   * the mappings `countByConnectionAndVariants` leaves out of its count.
+   *
+   * Such an offer can never sell, so once a replacement offer exists for the
+   * variant its mapping is only a target that stock and price writes would
+   * keep hitting. Order is unspecified; empty when there are none.
+   */
+  findDeadFailedCreationOfferIds(connectionId: string, internalId: string): Promise<string[]>;
 
   /**
    * Count DISTINCT listed variants per (product, connection) for the given

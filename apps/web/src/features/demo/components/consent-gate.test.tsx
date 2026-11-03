@@ -4,7 +4,7 @@ import { Route, Routes } from 'react-router-dom';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { ApiClient } from '../../../app/api/api-client';
 import { renderWithProviders, createMockApiClient } from '../../../test/test-utils';
-import { ConsentGate, resolveNextPath } from './consent-gate';
+import { ConsentGate } from './consent-gate';
 
 function renderGate(search: string, apiClient: ApiClient = createMockApiClient({})): void {
   renderWithProviders(
@@ -17,21 +17,6 @@ function renderGate(search: string, apiClient: ApiClient = createMockApiClient({
     { apiClient, route: `/consent${search}` },
   );
 }
-
-describe('resolveNextPath', () => {
-  it.each([
-    [null, '/'],
-    ['', '/'],
-    ['/orders', '/orders'],
-    ['/orders?status=failed', '/orders?status=failed'],
-    // An absolute or protocol-relative target would turn the gate into an open
-    // redirect, so both fall back to the app root.
-    ['https://evil.example/steal', '/'],
-    ['//evil.example/steal', '/'],
-  ])('should resolve %s to %s', (raw, expected) => {
-    expect(resolveNextPath(raw)).toBe(expected);
-  });
-});
 
 describe('ConsentGate', () => {
   afterEach(cleanup);

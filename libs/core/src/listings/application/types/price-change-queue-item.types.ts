@@ -16,6 +16,7 @@
  */
 import type {
   PriceChangeBlockReason,
+  PriceChangeCause,
   PriceChangeResolution,
 } from '../../domain/types/price-change-episode.types';
 import type { PricingRule } from '@openlinker/core/identifier-mapping';
@@ -77,6 +78,11 @@ export interface PriceChangeQueueItem {
   ruleSummary: PriceChangeQueueItemRuleSummary;
 
   blockReason: PriceChangeBlockReason | null;
+  /**
+   * Why this episode exists beyond an ordinary price move - `'tax-basis-correction'`
+   * for the ADR-077 net-to-gross wave, which is never auto-applied. `null` otherwise.
+   */
+  cause: PriceChangeCause | null;
   /** `true` when a re-detection landed after this episode was opened. */
   needsRefresh: boolean;
   /** The version token the accept/edit staleness guard compares against. */

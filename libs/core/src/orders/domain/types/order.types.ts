@@ -11,6 +11,7 @@
 import type { PickupPointType } from '@openlinker/core/shipping';
 import type { TaxRateSource } from '@openlinker/core/products';
 
+import type { PaymentMethod } from './payment-method.types';
 import type { PaymentStatus } from './payment-status.types';
 import type { CodToCollect } from './cod-to-collect.types';
 
@@ -123,8 +124,25 @@ export interface Order {
    * predating the Smart! program.
    */
   deliverySmart?: boolean;
+  /**
+   * The source says it ships this order itself (#3636), carried through from
+   * `IncomingOrder`. Absent means "not asserted", never "the seller ships".
+   */
+  fulfilledBySource?: true;
   /** Source-reported payment status (#928); absent when the source did not report it. */
   paymentStatus?: PaymentStatus;
+  /** How the buyer pays (#3294); see `IncomingOrder.paymentMethod`. Absent = not reported. */
+  paymentMethod?: PaymentMethod;
+  /**
+   * Carried through from `IncomingOrder`. The buyer's checkout message to the seller (#3538). Three states, like
+   * `buyerTaxId` (#2599): a string is the note verbatim, `null` means the
+   * source asserted the buyer left none, absent means the adapter could not
+   * read the field - never "no note". Coerce a raw source value with
+   * `readSourceBuyerNote`. Free text, so it is PII-gated at persistence.
+   */
+  buyerNote?: string | null;
+  /** Source's own opaque payment-method id (#3474); see `IncomingOrder.sourcePaymentMethod`. */
+  sourcePaymentMethod?: string;
   /**
    * Marketplace-sourced cash-on-delivery collect amount (#1435). Present only
    * for a cash-on-delivery order whose source exposes the collectable amount
@@ -413,6 +431,15 @@ export interface OrderTotals {
    * tax and carries no shipping figure of its own.
    */
   shippingGross?: number;
+
+  /**
+   * The VAT rate the SOURCE charged on delivery, as a percent-as-string code
+   * (`'23'`, `'8'`, `'0'`; ADR-063 vocabulary). Absent means the source did not
+   * report exactly one rate - never `0`. Carried, never computed (ADR-063): it
+   * only lets a document state the delivery rate when the basket's items carry
+   * none, and an operator `fixed` delivery rate always wins over it.
+   */
+  shippingTaxRate?: string;
 
   /**
    * A whole-order discount the SOURCE applied and did NOT put on any line,

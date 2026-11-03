@@ -20,7 +20,14 @@ import { manualCheckpoint } from '../../../src/support/manual-checkpoint';
 import { assertProductFieldParity, offerToParityView } from '../../../src/support/parity';
 import { state } from './flow-state';
 import { fullFlowSegment } from './segment';
-import { requireProduct, skipWhenResuming, readLiveOfferOrNull, resolvePrimaryMapping, createBulkOffers } from './helpers';
+import {
+  requireProduct,
+  skipWhenResuming,
+  readLiveOfferOrNull,
+  resolvePrimaryMapping,
+  createBulkOffers,
+  expectedBuyerPrice,
+} from './helpers';
 
 fullFlowSegment(() => {
   test('S4 — Erli offers: create + mapping-level assertions (no OfferReader)', async ({ api, world, pages, poll, env }) => {
@@ -56,9 +63,10 @@ fullFlowSegment(() => {
     const offer = await readLiveOfferOrNull(api, mapping.id);
     if (offer) {
       state.channelBaseline.set('erli', offer.availableQuantity);
+      // Anchored on the PrestaShop-computed buyer price from S1, as in S3.
       assertProductFieldParity({
-        label: 'OL↔Erli offer',
-        expected: { price: state.product!.price ?? undefined, currency: state.product!.currency ?? 'PLN' },
+        label: 'PS buyer price↔Erli offer',
+        expected: { price: expectedBuyerPrice(testInfo), currency: state.product!.currency ?? 'PLN' },
         actual: offerToParityView(offer),
       // `required: ['price']` - `assertProductFieldParity` skips any field the
       // EXPECTED side does not carry, so a null `state.product.price` silently
@@ -85,7 +93,7 @@ fullFlowSegment(() => {
       ],
       values: {
         offerId: mapping.externalId,
-        expectedPrice: `${state.product!.price ?? '(master)'} ${state.product!.currency ?? 'PLN'}`,
+        expectedPrice: `${expectedBuyerPrice(testInfo) ?? '(master)'} ${state.product!.currency ?? 'PLN'} (VAT included)`,
         expectedAvailability: masterAvailability ?? '(unknown)',
       },
     });

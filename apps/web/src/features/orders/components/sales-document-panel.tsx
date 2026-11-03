@@ -37,26 +37,16 @@
  *      (`resolveSalesDocumentBlockCopy` — see that module for the kind-aware
  *      copy rules: the persisted reason is document-kind-agnostic, so this
  *      panel derives `kind` locally from its own candidate pool).
- *   3 / 4. Blocked-by-other-kind — the primary action for the OTHER document
- *      kind is disabled with an explanatory `alert--warning`, distinct in tone
- *      from state 2: this is a WRITE-PATH refusal (ADR-041 §3b — the document
- *      already exists on another connection), never a routing decision. It is
- *      derived PROACTIVELY from the two queries this panel already runs
- *      (`invoice.blocksIssuanceElsewhere` / `fiscalRecord.blocksFurtherRegistration`,
- *      mirrored client-side as `!canRetryInvoice` / `!canRetryFiscalReceipt` —
- *      see the inline comment at their computation), NOT by parsing a 409 from
- *      `OrderAlreadyHasFiscalReceiptException` / `OrderAlreadyHasInvoiceException`
- *      (#2157). Proactive prevention beats reactive error-parsing here: it also
- *      matches the existing `InvoiceConnectionLock` philosophy ("no Select, so
- *      the panel can no longer be talked into issuing a SECOND document") and
- *      sidesteps a real asymmetry — `invoicing.controller.ts` maps its 409 to a
- *      structured `{ error: 'OrderAlreadyHasFiscalReceiptException', ... }`
- *      body, but `fiscalization.controller.ts` maps its mirror-image 409 to a
- *      PLAIN `ConflictException(message)` (Nest's generic `error: 'Conflict'`
- *      shape), so message-text sniffing would be the only way to reach the
- *      same discriminator from that side. Both mutations still handle a
- *      defensive 409 (below) in case the proactive read races a concurrent
- *      write from elsewhere.
+ *   3 / 4. Blocked-by-other-kind — no longer rendered as a state of its own
+ *      (#3766). A filled slot offers no action for the OTHER document kind, so
+ *      the "This order already has a document" warning explained a refusal of
+ *      a control the operator could not reach, on every issued document whose
+ *      connection also carried the other kind. The one-document rule is still
+ *      enforced server-side (ADR-041 §3b, #2047 / #2157); the filled slots are
+ *      mutually exclusive, so neither ever renders an action for the other
+ *      kind, and the settled invoice's "Why this document?" disclosure states
+ *      the rule. Both mutations still handle a defensive 409 (below) in case
+ *      a concurrent write from elsewhere races the read.
  *
  * KNOWN GAP — corrections are not rendered as a linked follow-up row: a
  * correction is stored as its own separate `InvoiceRecord` row (verified:
@@ -78,16 +68,23 @@ import { Link } from 'react-router-dom';
 import { Dialog, DialogContent, DialogTitle } from '../../../shared/ui/dialog';
 
 import { useConnectionsQuery } from '../../connections';
+import {
+  formatReceiptLineName,
+  readDeliveryOnDocuments,
+  resolveDeliveryLine,
+} from '../../delivery-on-documents/lib/delivery-line';
 import { captureDemoEvent } from '../../demo';
 import { useTranslation } from '../../../shared/i18n';
 import { useToast } from '../../../shared/ui/toast-provider';
 import { Alert } from '../../../shared/ui/alert';
+import { AccessGate } from '../../../shared/ui/access-gate';
 import { Button } from '../../../shared/ui/button';
 import { Select } from '../../../shared/ui/select';
 import { KeyValueList, type KeyValueItem } from '../../../shared/ui/key-value-list';
 import { ApiError } from '../../../shared/api/api-error';
 import { usePlatform } from '../../../shared/plugins';
 import { ReadOnlyLock } from '../../../shared/ui/read-only-lock';
+import { SendDocumentEmail } from './send-document-email';
 import { useWriteAccess, useIsAdmin } from '../../../shared/auth/use-permission';
 import { DEMO_READ_ONLY_ACTION_MESSAGE } from '../../../shared/config/demo-mode';
 import { formatAmount } from '../../../shared/format/format-amount';
@@ -99,12 +96,16 @@ import { DocumentLifecycle } from '../../../shared/ui/document-lifecycle';
 import { resolveSalesDocumentReasonCopy } from '../../sales-documents';
 import { resolveInvoiceHeadline, resolveFiscalHeadline } from '../lib/sales-document-headline';
 import { describeMatchedSalesDocumentRule } from '../lib/describe-matched-sales-document-rule';
+import { resolveAfterIssueAttentionCopy } from '../lib/after-issue-attention-copy';
 
 import {
   useOrderInvoiceQuery,
   useIssueInvoiceMutation,
+  useWarningAcknowledgement,
   resolveIssueErrorMessage,
   isMissingNumberingSeriesError,
+  readConnectionSettingErrorCode,
+  isConnectionSettingFailureCode,
   deriveInvoiceDisplayStatus,
   canRetryInvoice,
   resolveFailureCopy,
@@ -114,16 +115,18 @@ import {
   selectInvoicingCandidates,
   selectReauthInvoicingConnections,
   InvoiceConnectionLock,
+  InvoiceUnconfirmedNotice,
   RegulatoryStatusBadge,
   DocumentTypeSelect,
   DOCUMENT_TYPE_LABEL_FALLBACK,
   InvoicePdfLink,
+  InvoiceMarketplaceUploadStatus,
   resolveSalesDocumentBlockCopy,
   resolveMissingTaxRateScope,
   splitShippingAcrossRates,
   minorUnitExponentFor,
   resolveInvoiceLifecycleSteps,
-  useResendToKsefMutation,
+  useResendToAuthorityMutation,
   type InvoiceRecord,
   type SalesDocumentBlockCopyKind,
   type RateLessLine,
@@ -138,10 +141,14 @@ import {
   deriveFiscalReceiptDisplayStatus,
   canRetryFiscalReceipt,
   resolveFiscalFailureCopy,
+  FiscalFailureDetails,
+  CopyFiscalFailureDetailsButton,
   FiscalArtefactList,
   type FiscalRegistrationRecord,
 } from '../../fiscalization';
 
+import type { IssueInvoiceOptions } from '../../invoicing';
+import type { ResolvedDeliveryLine } from '../../delivery-on-documents/lib/delivery-line';
 import type { OrderRecord } from '../api/orders.types';
 import { parseOrderSnapshot } from '../api/order-snapshot.schema';
 import type { ParsedOrderItem, ParsedOrderTotals } from '../api/order-snapshot.schema';
@@ -269,11 +276,14 @@ export function SalesDocumentPanel({ order }: SalesDocumentPanelProps): ReactEle
   const [switchTargetId, setSwitchTargetId] = useState<string | null>(null);
   const [correctionOpen, setCorrectionOpen] = useState(false);
   const [missingNumbering, setMissingNumbering] = useState(false);
+  // DEF-20: what the operator states about this sale when issuing by hand.
+  const [issueOptions, setIssueOptions] = useState<IssueInvoiceOptions>({});
 
   const invoiceWrite = useWriteAccess('invoices:write', demoMode);
   const invoiceQuery = useOrderInvoiceQuery(order.internalOrderId);
   const issueMutation = useIssueInvoiceMutation();
-  const resendMutation = useResendToKsefMutation();
+  const issueAcknowledgement = useWarningAcknowledgement(issueMutation.isPending);
+  const resendMutation = useResendToAuthorityMutation();
 
   // ── Fiscalization data + actions ──────────────────────────────────────
   const [pickedFiscalConnectionId, setPickedFiscalConnectionId] = useState<string | null>(null);
@@ -297,6 +307,10 @@ export function SalesDocumentPanel({ order }: SalesDocumentPanelProps): ReactEle
   // document) AND "one did, but has since been deleted" — the disclosure is
   // simply absent either way, never rendered with a stale/guessed explanation.
   const matchedRule = order.salesDocument?.matchedRule ?? null;
+  const afterIssueAttention = resolveAfterIssueAttentionCopy(
+    order.salesDocument?.afterIssueAttention,
+    t,
+  );
   const matchedRuleConnectionName =
     matchedRule !== null
       ? (allConnections.find((c) => c.id === matchedRule.connectionId)?.name ?? matchedRule.connectionId)
@@ -390,15 +404,6 @@ export function SalesDocumentPanel({ order }: SalesDocumentPanelProps): ReactEle
     return null;
   }
 
-  // ── Derived: does the existing record on the OTHER kind's behalf forbid
-  // starting a NEW originating document here? Mirrors the backend's pure
-  // getters (`InvoiceRecord.blocksIssuanceElsewhere` /
-  // `FiscalRegistrationRecord.blocksFurtherRegistration`, #2157): both reduce
-  // to "a record exists and is not a safely-retryable rejected failure" —
-  // exactly `record !== null && !canRetry*(record)`. ──
-  const invoiceBlocks = invoice !== null && !canRetryInvoice(invoice);
-  const fiscalBlocks = fiscalRecord !== null && !canRetryFiscalReceipt(fiscalRecord);
-
   const showInvoiceSlot = invoice !== null;
   // Outstanding work opens the slot even with no record. Without that, an order
   // reopened in the window right after the operator asked would fall through to
@@ -427,6 +432,7 @@ export function SalesDocumentPanel({ order }: SalesDocumentPanelProps): ReactEle
   const platform = usePlatform(invoicingConnection?.platformType);
   const InvoiceDetailSection = platform?.invoiceDetailSection ?? null;
   const InvoiceCorrectionFlow = platform?.invoiceCorrectionFlow ?? null;
+  const InvoiceIssueOptions = platform?.invoiceIssueOptions ?? null;
 
   const showConnectionPicker = !invoice && invoicingConnections.length > 1;
   const requiresConnectionPick = showConnectionPicker && issuableConnection === null;
@@ -446,12 +452,26 @@ export function SalesDocumentPanel({ order }: SalesDocumentPanelProps): ReactEle
 
   const invoiceDisplayStatus = deriveInvoiceDisplayStatus(invoice);
   const invoiceSettled = !invoiceQuery.isError && !invoiceQuery.isLoading;
+  // Computed once so the failure alert can tell whether the stored reason is
+  // already its headline (the connection-setting codes) and not repeat it.
+  const invoiceFailureHeadline = invoice ? resolveFailureCopy(invoice, t) : null;
 
   const issueOn = (connection: { id: string }): void => {
+    issueAcknowledgement.reset();
+    submitIssue(connection, []);
+  };
+
+  const submitIssue = (connection: { id: string }, acknowledgeWarnings: string[]): void => {
     setMissingNumbering(false);
     announce(t('invoice.announce.issuing', 'Issuing the invoice.'));
     issueMutation.mutate(
-      { connectionId: connection.id, orderId: order.internalOrderId, documentType },
+      {
+        connectionId: connection.id,
+        orderId: order.internalOrderId,
+        documentType,
+        ...issueOptions,
+        ...(acknowledgeWarnings.length > 0 ? { acknowledgeWarnings } : {}),
+      },
       {
         onSuccess: () => {
           setSwitchTargetId(null);
@@ -463,11 +483,38 @@ export function SalesDocumentPanel({ order }: SalesDocumentPanelProps): ReactEle
           });
         },
         onError: (error) => {
+          // DEF-26 and friends: a refusal the operator may overrule opens a
+          // confirm dialog instead of a toast.
+          if (issueAcknowledgement.offer(error, (codes) => submitIssue(connection, codes))) {
+            announce(t('invoice.announce.needsConfirmation', 'The invoice needs your confirmation.'));
+            return;
+          }
           if (isMissingNumberingSeriesError(error)) {
             announce(
               t('invoice.announce.numberingMissing', 'Numbering is not configured.'),
             );
             setMissingNumbering(true);
+            return;
+          }
+          // A failed attempt is a stored record (#3772): re-read it on EVERY
+          // error, so the panel shows what happened in place. Without this
+          // the panel kept offering "Issue invoice" until a page reload.
+          void invoiceQuery.refetch();
+          const connectionSettingCode = readConnectionSettingErrorCode(error);
+          if (connectionSettingCode !== null) {
+            // Answered in place, like missing numbering: the refetched record
+            // renders an alert that names the setting and links to the
+            // connection. A toast on top would say it twice. The announcement
+            // follows the code the same way the Alert title does - a setting
+            // the provider refused is not a missing one.
+            announce(
+              connectionSettingCode === 'connection-setting-rejected'
+                ? t(
+                    'invoice.announce.connectionSettingRejected',
+                    'The provider refused a setting on this connection.',
+                  )
+                : t('invoice.announce.connectionSetupIncomplete', 'The connection is missing a setting.'),
+            );
             return;
           }
           announce(t('invoice.announce.issueFailed', 'The invoice could not be issued.'));
@@ -478,12 +525,11 @@ export function SalesDocumentPanel({ order }: SalesDocumentPanelProps): ReactEle
           });
           // A 409 means the server refused: the order is already
           // issuing/issued here, or already invoiced/registered ELSEWHERE
-          // (#2047 / #2157). Re-read both queries so the panel shows the real
-          // record instead of the stale empty state — the proactive gate
+          // (#2047 / #2157). Re-read the receipt too, so the panel shows the
+          // real record instead of the stale empty state - the proactive gate
           // above should already prevent this attempt, but a concurrent write
           // from elsewhere can still race it.
           if (error instanceof ApiError && error.status === 409) {
-            void invoiceQuery.refetch();
             void fiscalQuery.refetch();
           }
         },
@@ -608,11 +654,6 @@ export function SalesDocumentPanel({ order }: SalesDocumentPanelProps): ReactEle
     );
   };
 
-  // ── Cross-kind block copy (states 3 / 4 — a WRITE-PATH refusal, distinct
-  // from the routing/gate-block reason below) ──
-  const registerBlockedByInvoice = showInvoiceSlot && invoiceBlocks && fiscalCandidates.length > 0;
-  const issueBlockedByReceipt = showFiscalSlot && fiscalBlocks && invoicingConnections.length > 0;
-
   // ── Empty-state routing/gate-block reason (state 2) ──
   //
   // The persisted block reason is document-kind-AGNOSTIC (#2156 resolves across
@@ -684,7 +725,21 @@ export function SalesDocumentPanel({ order }: SalesDocumentPanelProps): ReactEle
   // document before it exists; one unknown line rate makes the proportion
   // uncomputable, so the whole preview collapses to a single waiting row rather
   // than showing a split OL cannot stand behind.
-  const shippingSplitPreview = renderShippingSplitPreview(snapshotItems, parsedSnapshot.totals, t);
+  // #3909 - the delivery line's wording comes from the ORDER-SOURCE connection's
+  // config (ADR-082). An unreadable config (non-admin sessions do not receive
+  // it) resolves to the default "Shipping" line, which is what core does too.
+  const sourceConfig = allConnections.find((c) => c.id === order.sourceConnectionId)?.config;
+  const deliveryLine = resolveDeliveryLine(readDeliveryOnDocuments(sourceConfig), {
+    countryIso2: parsedSnapshot.shippingAddress?.country ?? null,
+    methodId: parsedSnapshot.shipping?.methodId ?? null,
+  });
+  const shippingSplitPreview = renderShippingSplitPreview(
+    snapshotItems,
+    parsedSnapshot.totals,
+    deliveryLine,
+    order.salesDocument?.documentKind === 'fiscal-receipt',
+    t,
+  );
   // #2260 review - which subject the block is about. Read once, so the copy, the
   // refusal beside the button and the receipt-side alert cannot disagree.
   const missingRateScope = missingRateReason ? resolveMissingTaxRateScope(rateLessLines) : null;
@@ -764,6 +819,14 @@ export function SalesDocumentPanel({ order }: SalesDocumentPanelProps): ReactEle
         </Alert>
       ) : null}
 
+      {/* DEF-26 - the sale changed after its document was made. A pointer,
+          not a verdict: whether a correction is due is the operator's call. */}
+      {afterIssueAttention ? (
+        <Alert tone="warning" data-testid="sales-document-after-issue-attention">
+          <strong>{afterIssueAttention.short}.</strong> {afterIssueAttention.detail}
+        </Alert>
+      ) : null}
+
       {/* ══════════════════════ FILLED: invoice ══════════════════════ */}
       {showInvoiceSlot ? (
         <div className="doc-slot doc-slot--filled">
@@ -804,15 +867,6 @@ export function SalesDocumentPanel({ order }: SalesDocumentPanelProps): ReactEle
             </Alert>
           ) : null}
 
-          {invoiceSettled && invoice && lock ? (
-            <InvoiceConnectionLock
-              status={invoiceDisplayStatus}
-              connectionName={lock.connection?.name ?? lock.connectionId}
-              tag={lock.isStale ? t('invoice.lock.tagDisconnected', 'disconnected') : (lock.connection?.platformType ?? '')}
-              isStale={lock.isStale}
-            />
-          ) : null}
-
           {invoiceSettled && invoiceDisplayStatus === 'issuing' ? (
             <p className="sales-document-panel__notice">
               {t(
@@ -835,11 +889,25 @@ export function SalesDocumentPanel({ order }: SalesDocumentPanelProps): ReactEle
             <div className="sales-document-panel__body">
               <DocumentLifecycle kind="invoice" steps={resolveInvoiceLifecycleSteps(invoice, t)} />
               <KeyValueList items={buildInvoiceFieldItems(invoice, showRegulatoryBadge, t)} />
-              {/* #3186 — "Why this kind?", beside the shipped "Why this
-                  document?" (InvoiceConnectionLock, above). Absent when no
-                  rule engine match decided this order's kind (including a
-                  manually issued document). */}
-              {whyKindDisclosure}
+              {/* #3549 - did the document reach the marketplace order? */}
+              <InvoiceMarketplaceUploadStatus invoiceId={invoice.id} />
+              {/* #3551 - one neutral email control for every provider. */}
+              <SendDocumentEmail
+                kind="invoice"
+                documentId={invoice.id}
+                internalOrderId={order.internalOrderId}
+                notReadyReason={
+                  // The mailer refuses a document the authority has not settled, so
+                  // the card says why instead of offering a send that is refused.
+                  invoice.regulatoryStatus === 'submitted' ||
+                  invoice.regulatoryStatus === 'pending-submission'
+                    ? t(
+                        'salesDocument.email.notCleared',
+                        'Available once the tax authority confirms the invoice.',
+                      )
+                    : null
+                }
+              />
               {InvoiceDetailSection && invoicingConnection ? (
                 <InvoiceDetailSection invoice={invoice} connection={invoicingConnection} />
               ) : null}
@@ -979,16 +1047,60 @@ export function SalesDocumentPanel({ order }: SalesDocumentPanelProps): ReactEle
 
           {invoiceSettled && invoiceDisplayStatus === 'failed' && invoice ? (
             <>
-              <div className="invoice-panel__inline-alert invoice-panel__inline-alert--error">
-                <span className="invoice-panel__inline-alert-bar" />
-                <span>
-                  <strong>{resolveFailureCopy(invoice, t)}</strong>
-                </span>
-              </div>
+              {/* #3772 - a refusal about the connection's own settings is
+                  not the provider's verdict on the order: name the setting
+                  and take the operator to the connection that holds it. The
+                  link sits under the text rather than in the Alert's action
+                  slot, which squeezes the sentence in a panel this narrow. */}
+              {isConnectionSettingFailureCode(invoice.failureCode) ? (
+                <Alert
+                  tone="warning"
+                  title={(invoice.failureCode === 'connection-setting-rejected'
+                    ? t('invoice.settingRejected.title', '{connection} refused a setting on this connection')
+                    : t('invoice.setupIncomplete.title', '{connection} is not set up to issue invoices')
+                  ).replace('{connection}', invoicingConnection?.name ?? t('invoice.setupIncomplete.thisConnection', 'This connection'))}
+                  data-testid="invoice-setup-incomplete"
+                >
+                  <p className="panel-copy">{resolveFailureCopy(invoice, t)}</p>
+                  <p className="panel-copy">
+                    <Link
+                      className="button button--primary button--sm"
+                      to={`/connections/${invoice.connectionId}/edit`}
+                    >
+                      {t('invoice.setupIncomplete.openSettings', 'Open connection settings')}
+                    </Link>
+                  </p>
+                </Alert>
+              ) : (
+                <div className="invoice-panel__inline-alert invoice-panel__inline-alert--error">
+                  <span className="invoice-panel__inline-alert-bar" />
+                  <span>
+                    <strong>{invoiceFailureHeadline}</strong>
+                    {/* The stored reason is PII-free by construction and, when
+                        the adapter vouched for it, carries the provider's own
+                        code - the one fact that tells an operator WHICH
+                        refusal this was. Same label as the in-doubt notice.
+                        Skipped when the headline already IS the reason, so
+                        the sentence is never shown twice whichever branch a
+                        code reaches. */}
+                    {invoice.failureReason && invoice.failureReason !== invoiceFailureHeadline ? (
+                      <span className="invoice-panel__inline-alert-detail text-muted" data-testid="invoice-failure-reason">
+                        {' '}
+                        {t('invoice.inDoubt.providerResponse', 'Provider response')}: {invoice.failureReason}
+                      </span>
+                    ) : null}
+                  </span>
+                </div>
+              )}
               {canRetryInvoice(invoice) && invoiceWrite.visible ? (
                 <div className="sales-document-panel__actions">
                   <span className="text-muted" style={{ fontSize: '11.5px' }}>
-                    {t('invoice.failed.retryHint', 'Rejected — nothing was issued, so it is safe to retry once the cause is fixed.')}
+                    {invoice.failureCode === 'connection-setup-incomplete'
+                      ? t(
+                          'invoice.setupIncomplete.retryHint',
+                          'Nothing was sent to the provider, so nothing was issued. Retry once the connection is saved.',
+                        )
+                      : t('invoice.failed.retryHint', 'Rejected — nothing was issued, so it is safe to retry once the cause is fixed.')}
                   </span>
                   {switchCandidates.length > 0 && switchTargetId === null ? (
                     <Button tone="secondary" className="button--sm" onClick={() => setSwitchTargetId(switchCandidates[0].id)}>
@@ -1054,66 +1166,46 @@ export function SalesDocumentPanel({ order }: SalesDocumentPanelProps): ReactEle
             </>
           ) : null}
 
+          {/* #3766 — the whole in-doubt state is ONE notice: it carries what the
+              lock box, the inline alert and the loose action row each said, so
+              the lock box below is not rendered for this status. */}
           {invoiceSettled && invoiceDisplayStatus === 'in-doubt' && invoice ? (
-            <>
-              <div className="invoice-panel__inline-alert invoice-panel__inline-alert--warning">
-                <span className="invoice-panel__inline-alert-bar" />
-                <div>
-                  <strong>{t('invoice.inDoubt.title', 'We could not confirm whether this invoice was issued.')}</strong>{' '}
-                  {resolveFailureCopy(invoice, t)}{' '}
-                  {t(
-                    'invoice.inDoubt.noSwitch',
-                    'Do not move it to another provider until you know - that is how one sale ends up with two invoices.',
-                  )}
-                </div>
-              </div>
-              <div className="sales-document-panel__actions">
-                <span className="spacer" />
-                <Button
-                  tone="secondary"
-                  onClick={() =>
-                    showToast({
-                      tone: 'info',
-                      title: t('invoice.inDoubt.checkTitle', 'Check provider'),
-                      description: t(
-                        'invoice.inDoubt.checkBody',
-                        'Open the provider portal and verify whether an invoice exists for this order.',
-                      ),
-                    })
-                  }
-                >
-                  {t('invoice.inDoubt.check', 'Check provider')}
-                </Button>
-                <Button
-                  tone="secondary"
-                  onClick={() =>
-                    showToast({
-                      tone: 'info',
-                      title: t('invoice.inDoubt.resolvedTitle', 'Marked resolved'),
-                      description: t('invoice.inDoubt.resolvedBody', 'Mark-resolved is a Wave B feature — no backend endpoint yet.'),
-                    })
-                  }
-                >
-                  {t('invoice.inDoubt.resolve', 'Mark resolved')}
-                </Button>
-              </div>
-            </>
+            <InvoiceUnconfirmedNotice
+              connectionName={lock?.connection?.name ?? lock?.connectionId ?? ''}
+              failureCode={invoice.failureCode}
+              attemptedAt={invoice.updatedAt}
+              providerResponse={invoice.failureReason}
+              onCheckProvider={() =>
+                showToast({
+                  tone: 'info',
+                  title: t('invoice.inDoubt.checkTitle', 'Check provider'),
+                  description: t(
+                    'invoice.inDoubt.checkBody',
+                    'Open the provider portal and verify whether an invoice exists for this order.',
+                  ),
+                })
+              }
+            />
           ) : null}
 
-          {/* #2561 — this order already has a document; the override does not
-              reach here, so this is a plain fact with no dead action beside
-              it, never a disabled control. */}
-          {registerBlockedByInvoice ? (
-            <Alert
-              tone="warning"
-              data-testid="one-document-guard"
-              title={t('salesDocument.blocked.receiptTitle', 'This order already has a document')}
-            >
-              {t(
-                'salesDocument.blocked.receiptBody',
-                'This order already has an invoice from {{connection}}. Invoice or receipt — never both for one sale. Void the invoice first if a receipt is what this order actually needs.',
-              ).replace('{{connection}}', lock?.connection?.name ?? lock?.connectionId ?? '')}
-            </Alert>
+          {/* #3186 — "Why this kind?", kept beside "Why this document?" so both
+              routing rationales sit together at the bottom of the slot. Absent
+              when no rule engine match decided this order's kind (including a
+              manually issued document). */}
+          {invoiceSettled && invoiceDisplayStatus === 'issued' && invoice ? whyKindDisclosure : null}
+
+          {/* #3766 — the connection lock is always the LAST element of the
+              slot: for a settled document it is only the "Why this document?"
+              disclosure (the headline already names the connection), and in
+              every other state it is operational context that follows the
+              status it explains. */}
+          {invoiceSettled && invoice && lock && invoiceDisplayStatus !== 'in-doubt' ? (
+            <InvoiceConnectionLock
+              status={invoiceDisplayStatus}
+              connectionName={lock.connection?.name ?? lock.connectionId}
+              tag={lock.isStale ? t('invoice.lock.tagDisconnected', 'disconnected') : (lock.connection?.platformType ?? '')}
+              isStale={lock.isStale}
+            />
           ) : null}
         </div>
       ) : null}
@@ -1237,6 +1329,18 @@ export function SalesDocumentPanel({ order }: SalesDocumentPanelProps): ReactEle
                   "Why this document?" connection lock (unlike the invoice
                   slot's InvoiceConnectionLock), so this is the receipt's only
                   routing-rationale disclosure. */}
+              {/* #3551 - the mail carries OpenLinker's own summary, not the legal receipt. */}
+              <p className="sales-document-panel__notice" data-testid="receipt-email-summary-note">
+                {t(
+                  'fiscalReceipt.email.summaryNote',
+                  "The email carries OpenLinker's summary and a link to the legal e-receipt at the provider.",
+                )}
+              </p>
+              <SendDocumentEmail
+                kind="fiscal-receipt"
+                documentId={fiscalRecord.id}
+                internalOrderId={order.internalOrderId}
+              />
               {whyKindDisclosure}
               {/* #2559 — a registered receipt is final. OpenLinker never issues
                   a fiscal correction, so this state must not imply one is
@@ -1252,33 +1356,67 @@ export function SalesDocumentPanel({ order }: SalesDocumentPanelProps): ReactEle
 
           {fiscalSettled && fiscalDisplayStatus === 'rejected' && fiscalRecord ? (
             <>
-              <Alert tone="error">
-                {resolveFiscalFailureCopy(fiscalRecord, t)}{' '}
-                {t(
-                  'fiscalReceipt.rejected.retrySafe',
-                  'Nothing was created, so registering again is safe.',
-                )}
-              </Alert>
-              <div className="sales-document-panel__actions">
-                <Button
-                  tone="secondary"
-                  disabled={registerMutation.isPending || !canRetryFiscalReceipt(fiscalRecord)}
-                  onClick={() => handleRegister(fiscalRecord.connectionId)}
+              {/* #3843: the cause and the provider's identifiers are for someone
+                  who acts on the order; a read-only role gets the fact alone. */}
+              <AccessGate
+                require="orders:write"
+                fallback={
+                  <Alert tone="error">
+                    {t(
+                      'fiscalReceipt.rejected.readOnly',
+                      'The provider refused this sale and nothing was registered. A user with order write access can see the details and register it again.',
+                    )}
+                  </Alert>
+                }
+              >
+                <Alert
+                  tone="error"
+                  action={<CopyFiscalFailureDetailsButton details={fiscalRecord.providerFailureDetails} />}
                 >
-                  {t('fiscalReceipt.action.retry', 'Register receipt')}
-                </Button>
-              </div>
+                  <p>
+                    {resolveFiscalFailureCopy(fiscalRecord, t)}{' '}
+                    {t(
+                      'fiscalReceipt.rejected.retrySafe',
+                      'Nothing was created, so registering again is safe.',
+                    )}
+                  </p>
+                  <FiscalFailureDetails details={fiscalRecord.providerFailureDetails} />
+                </Alert>
+              </AccessGate>
+              {/* Registering is admin-only on the API, so another role is never
+                  shown a control that would answer 403; demo mode keeps it
+                  visible but disabled, like every other write here. */}
+              {isAdmin || demoMode ? (
+                <div className="sales-document-panel__actions">
+                  <Button
+                    tone="secondary"
+                    disabled={
+                      fiscalDemoReadOnly ||
+                      registerMutation.isPending ||
+                      !canRetryFiscalReceipt(fiscalRecord)
+                    }
+                    onClick={() => handleRegister(fiscalRecord.connectionId)}
+                  >
+                    {t('fiscalReceipt.action.retry', 'Register receipt')}
+                  </Button>
+                </div>
+              ) : null}
             </>
           ) : null}
 
           {fiscalSettled && fiscalDisplayStatus === 'in-doubt' && fiscalRecord ? (
             <>
               <Alert tone="warning" title={t('fiscalReceipt.inDoubt.title', 'This sale may already be registered')}>
-                {resolveFiscalFailureCopy(fiscalRecord, t)}{' '}
-                {t(
-                  'fiscalReceipt.inDoubt.noRetry',
-                  'Registering again could produce a second fiscal receipt, so OpenLinker will not do that on its own.',
-                )}
+                <p>
+                  {resolveFiscalFailureCopy(fiscalRecord, t)}{' '}
+                  {t(
+                    'fiscalReceipt.inDoubt.noRetry',
+                    'Registering again could produce a second fiscal receipt, so OpenLinker will not do that on its own.',
+                  )}
+                </p>
+                <AccessGate require="orders:write">
+                  <FiscalFailureDetails details={fiscalRecord.providerFailureDetails} />
+                </AccessGate>
               </Alert>
               <div className="sales-document-panel__actions">
                 <Button tone="secondary" disabled={reconcileMutation.isPending} onClick={handleReconcile}>
@@ -1288,20 +1426,6 @@ export function SalesDocumentPanel({ order }: SalesDocumentPanelProps): ReactEle
             </>
           ) : null}
 
-          {/* #2561 — same rule as the invoice slot above: a plain fact, no
-              dead action beside it. */}
-          {issueBlockedByReceipt ? (
-            <Alert
-              tone="warning"
-              data-testid="one-document-guard"
-              title={t('salesDocument.blocked.invoiceTitle', 'This order already has a document')}
-            >
-              {t(
-                'salesDocument.blocked.invoiceBody',
-                'This order already has a fiscal receipt. Invoice or receipt — never both for one sale.',
-              )}
-            </Alert>
-          ) : null}
         </div>
       ) : null}
 
@@ -1502,6 +1626,19 @@ export function SalesDocumentPanel({ order }: SalesDocumentPanelProps): ReactEle
                     disabled={issueMutation.isPending || invoiceWrite.demoReadOnly}
                     className="sales-document-panel__doc-type"
                   />
+                  {InvoiceIssueOptions && invoicingConnection ? (
+                    <InvoiceIssueOptions
+                      connection={invoicingConnection}
+                      lines={snapshotItems.map((item) => ({
+                        id: item.id,
+                        name: item.name ?? null,
+                        quantity: item.quantity,
+                      }))}
+                      value={issueOptions}
+                      onChange={setIssueOptions}
+                      disabled={issueMutation.isPending || invoiceWrite.demoReadOnly}
+                    />
+                  ) : null}
                   <ReadOnlyLock
                     active={invoiceWrite.demoReadOnly}
                     message={DEMO_READ_ONLY_ACTION_MESSAGE}
@@ -1590,6 +1727,7 @@ export function SalesDocumentPanel({ order }: SalesDocumentPanelProps): ReactEle
           ) : null}
         </div>
       ) : null}
+      {issueAcknowledgement.dialog}
     </section>
   );
 }
@@ -1627,10 +1765,43 @@ function collectRateLessLines(items: readonly ParsedOrderItem[]): RateLessLine[]
 function renderShippingSplitPreview(
   items: readonly ParsedOrderItem[],
   totals: ParsedOrderTotals | undefined,
+  deliveryLine: ResolvedDeliveryLine,
+  isReceipt: boolean,
   t: (key: string, fallback: string) => string,
 ): ReactElement | null {
-  const shipping = totals?.shipping ?? 0;
+  // Core splits the GROSS shipping by GROSS line weight; a net-priced source
+  // carries the gross figures beside the net ones (#3909).
+  const shipping = totals?.shippingGross ?? totals?.shipping ?? 0;
   if (!Number.isFinite(shipping) || shipping <= 0 || items.length === 0) return null;
+
+  // Fixed mode is one line at the operator's rate and spread mode has no
+  // delivery line at all, so neither splits across the basket.
+  if (deliveryLine.rate === 'fixed' && deliveryLine.fixedRate !== undefined) {
+    const baseName = isReceipt ? deliveryLine.name : deliveryLine.invoiceName;
+    const name = isReceipt
+      ? formatReceiptLineName(
+          baseName,
+          deliveryLine.fixedRate,
+          deliveryLine.rateFormat,
+          deliveryLine.rateLabel,
+        )
+      : baseName;
+    return (
+      <p className="panel-copy">
+        {`${name}: ${formatAmount(shipping, totals?.currency)} at ${formatTaxRate(deliveryLine.fixedRate)}`}
+      </p>
+    );
+  }
+  if (deliveryLine.rate === 'spread') {
+    return (
+      <p className="panel-copy">
+        {t(
+          'invoice.panel.shippingSpread',
+          'Shipping is folded into the product lines; the document carries no separate delivery line.',
+        )}
+      </p>
+    );
+  }
 
   const anyUnknown = items.some((item) => !item.taxRate);
   if (anyUnknown) {
@@ -1651,7 +1822,7 @@ function renderShippingSplitPreview(
     shipping,
     items.map((item) => ({
       taxRate: item.taxRate ?? null,
-      gross: item.price * item.quantity,
+      gross: (item.unitPriceGross ?? item.price) * item.quantity,
     })),
     minorUnitExponentFor(totals?.currency),
   );
@@ -1660,12 +1831,21 @@ function renderShippingSplitPreview(
   // preview a split that does not exist.
   if (parts === null || parts.length <= 1) return null;
 
+  // Receipt lines carry the rate in the name (a printer binds a name to one
+  // rate); an invoice line never does.
+  const baseName = isReceipt ? deliveryLine.name : deliveryLine.invoiceName;
+  const lineName = (taxRate: string): string =>
+    isReceipt
+      ? formatReceiptLineName(baseName, taxRate, deliveryLine.rateFormat, deliveryLine.rateLabel)
+      : baseName;
+
   return (
     <p className="panel-copy">
       {t('invoice.panel.shippingSplit', 'Shipping is split across the rates in this basket:')}{' '}
       {parts
         .map(
-          (part) => `${formatAmount(part.amount, totals?.currency)} at ${formatTaxRate(part.taxRate)}`,
+          (part) =>
+            `${lineName(part.taxRate)}: ${formatAmount(part.amount, totals?.currency)} at ${formatTaxRate(part.taxRate)}`,
         )
         .join(', ')}
       .

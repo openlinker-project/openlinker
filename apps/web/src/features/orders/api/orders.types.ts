@@ -12,6 +12,8 @@
 // transitively naming a component module.
 import type { OrderLifecyclePhaseValue } from '../lib/order-lifecycle-phase.types';
 import type { HoldReason, ProvisioningResume } from '../lib/order-hold.types';
+import type { PaymentMethod } from './order-snapshot.schema';
+import type { OrderEditsView } from './order-edit.types';
 
 // Re-exported so a consumer of the orders transport types can name a hold's
 // reason and the release outcome without also reaching into `lib/`.
@@ -150,9 +152,32 @@ export const SalesDocumentUnresolvedReasonValues = [
   'threshold-currency-mismatch',
   // #3365 — capable connections exist but none declares a document kind.
   'no-connection-declares-document-kind',
+  // A rule names a connection that is disabled, gone, or can no longer issue.
+  'routed-connection-unavailable',
 ] as const;
 export type SalesDocumentUnresolvedReasonValue =
   (typeof SalesDocumentUnresolvedReasonValues)[number];
+
+// How a fulfilment routing decision narrowed an order's destination fan-out
+// (#2703/#2704). Hand-mirrored from `DestinationRoutingBlockReasonValues` in
+// `@openlinker/core/orders` per the FE-001 contract strategy (the browser bundle
+// cannot import core).
+//
+// ENFORCED, not merely commented: `scripts/check-destination-routing-reason-mirror.mjs`
+// fails `pnpm check:invariants` on any drift in either direction, VALUE AND ORDER.
+//
+// `'routed-to-no-destination'` is a working router making a DECISION and is
+// rendered neutrally; the other three name a destination the router asked for
+// that OpenLinker could not reach. Only those three are counted — see
+// `DESTINATION_ROUTING_ATTENTION_REASONS` in `../lib/destination-routing-copy`.
+export const DestinationRoutingBlockReasonValues = [
+  'routed-to-no-destination',
+  'routed-destinations-unavailable',
+  'routed-destinations-partially-unavailable',
+  'routed-to-source-only',
+] as const;
+export type DestinationRoutingBlockReasonValue =
+  (typeof DestinationRoutingBlockReasonValues)[number];
 
 // ── Sales-document view (#2516/#2552, ADR-065) ──────────────────────────────
 // Hand-mirrored from `SalesDocumentView` (`@openlinker/core/sales-documents`)
@@ -291,7 +316,21 @@ export interface SalesDocumentView {
    * from it — a row must never read `null` here as "no rule decided this".
    */
   readonly matchedRule: SalesDocumentMatchedRuleView | null;
+  /**
+   * DEF-26: the sale changed after its document was made, so it may need a
+   * correction. Derived by the backend on every read, never stored. Optional
+   * so a payload from an older API reads as "nothing to flag".
+   */
+  readonly afterIssueAttention?: SalesDocumentAfterIssueAttention | null;
 }
+
+/** Mirror of the backend's `SalesDocumentAfterIssueAttentionValues` (DEF-26). */
+export const SalesDocumentAfterIssueAttentionValues = [
+  'order-cancelled-after-issue',
+  'order-fully-refunded-after-issue',
+  'order-partially-refunded-after-issue',
+] as const;
+export type SalesDocumentAfterIssueAttention = (typeof SalesDocumentAfterIssueAttentionValues)[number];
 
 // ── Mapping-aware delivery (epic #1776) ─────────────────────────────────────
 // Hand-mirrored from the BE order response DTOs (`OrderDeliveryResolutionDto`
@@ -403,6 +442,16 @@ export interface OrderReservationShortfall {
   openedAt: string;
 }
 
+export const BuyerNoteListStateValues = ['present', 'none', 'unknown'] as const;
+export type BuyerNoteListStateValue = (typeof BuyerNoteListStateValues)[number];
+
+/** One parcel's bench acknowledgement of the buyer note (#3538). */
+export interface BuyerNoteAcknowledgement {
+  workId: string;
+  acknowledgedAt: string;
+  acknowledgedByUserId: string | null;
+}
+
 export interface OrderRecord {
   internalOrderId: string;
   customerId: string | null;
@@ -463,6 +512,20 @@ export interface OrderRecord {
    */
   mappingFailureReason?: string | null;
   /**
+   * True when an operator edited this order in OpenLinker (#3542, D9). The
+   * snapshot is then the order AS EDITED; the channel keeps its original. On
+   * every list row. Optional for graceful degradation on older payloads.
+   */
+  editedInOpenLinker?: boolean;
+  /** An edit refers to a line the channel no longer reports; see `edits.unmatchedLineEdits`. */
+  editsNeedAttention?: boolean;
+  /**
+   * The order beside the channel's own record of it (#3542): every edited figure
+   * given twice, plus the edit history. DETAIL read only; `null` on an unedited
+   * order. Never read it off a list row, where it is always absent.
+   */
+  edits?: OrderEditsView | null;
+  /**
    * Buyer tax id as the source asserted it (#2599/#3180) — THREE states on
    * the wire, not two:
    *
@@ -502,6 +565,35 @@ export interface OrderRecord {
   /** PII-free elaboration of the block reason (ids and counts only). */
   salesDocumentBlockDetail?: string | null;
   /**
+   * How a fulfilment routing decision narrowed this order's destination fan-out
+   * (#2703/#2704), or `null` when it narrowed nothing — which is every order
+   * until a router is wired. Independent of `health` and of
+   * `salesDocumentBlockReason`; an order routinely carries none, one or both.
+   */
+  destinationRoutingBlockReason?: DestinationRoutingBlockReasonValue | null;
+  /** PII-free elaboration of the routing reason (connection ids and counts only). */
+  destinationRoutingBlockDetail?: string | null;
+  /**
+   * Why OpenLinker holds this order itself instead of mirroring it (#3485),
+   * read from the persisted column - never derived in the browser (#2100).
+   * `null`/absent when nothing holds it. The vocabulary is the backend's; a
+   * value this build does not know renders nothing rather than a guess.
+   */
+  fulfillmentBlockReason?: FulfillmentBlockReasonValue | null;
+  /** PII-free elaboration of `fulfillmentBlockReason`, rendered verbatim or not at all. */
+  fulfillmentBlockDetail?: string | null;
+  /**
+   * Why the ingestion intercept deliberately did not route this order (#3455,
+   * #3487, #3488). Not a hold: such an order follows today's path.
+   */
+  fulfillmentRoutingSkipReason?: FulfillmentRoutingSkipReasonValue | null;
+  /**
+   * The packing position of an order OpenLinker handles itself (#3482). ABSENT
+   * means no live work was found - never a positive "not routed" claim - and it
+   * is a separate field, never a member of the health partition.
+   */
+  handledInOpenLinker?: OrderHandledInOpenLinker;
+  /**
    * Instant OpenLinker last observed the SOURCE amend this order after it was
    * already ingested (#2283) — a line removed, added or re-quantified, or the
    * shipping address edited. `null`/absent = never observed amended. An internal
@@ -528,6 +620,50 @@ export interface OrderRecord {
    * `packedAt`, so it is non-null exactly when `packedAt` is.
    */
   packedByUserId?: string | null;
+  /**
+   * Whether the source reported a non-empty buyer note (#3538/#3539). On the
+   * list AND the detail: a denormalised boolean that carries no text, so the row
+   * can show an indicator and the filter can narrow without the note itself.
+   * `false` covers both "no note" and "unknown". Optional for graceful
+   * degradation on a pre-#3538 payload.
+   */
+  hasBuyerNote?: boolean;
+  /**
+   * What the LIST can say about the note without reading it (#3538/#3539):
+   * `present`, `none` (the source asserted the buyer left nothing) or
+   * `unknown` (the source could not say - which is also what a note-less row
+   * reads under `OL_STORE_PII=false`). Optional for graceful degradation.
+   */
+  buyerNoteState?: BuyerNoteListStateValue;
+  /**
+   * First non-empty line of the note, at most 120 characters, no ellipsis
+   * added - the browser truncates. `null` when no text is stored.
+   */
+  buyerNotePreview?: string | null;
+  /**
+   * The buyer's checkout note, DETAIL READ ONLY, in THREE states that must
+   * never be collapsed: a string is the note verbatim; `null` means the source
+   * asserted the buyer left none; the key ABSENT means unknown (and also "text
+   * not stored" under `OL_STORE_PII=false`, where `hasBuyerNote` is still
+   * true). Read it through `readBuyerNote`, never with a bare truthiness test.
+   */
+  buyerNote?: string | null;
+  /** When an operator first marked the note read (#3538). `null` = unread. On list and detail rows. */
+  buyerNoteReadAt?: string | null;
+  /** OL user id of whoever first marked it read. Moves with `buyerNoteReadAt`. */
+  buyerNoteReadByUserId?: string | null;
+  /**
+   * When the note text last changed while a different text was stored (N-22).
+   * `null` = never changed. Detail only. Compare with the acknowledgements: a
+   * change does not reset a bench read, so the timeline says it happened.
+   */
+  buyerNoteChangedAt?: string | null;
+  /**
+   * Per-parcel acknowledgements at the pack bench (#3538, D12), oldest first.
+   * Detail only; an unacknowledged parcel is simply absent. `null` means the
+   * server could not load them (not "none yet").
+   */
+  buyerNoteAcknowledgements?: BuyerNoteAcknowledgement[] | null;
   /**
    * The derived lifecycle phase (#2305/#2309) — "what is this order waiting on".
    * Derived server-side on every read; the FE never re-derives it. A SECOND
@@ -598,6 +734,86 @@ export interface OrderRecord {
   activeHold?: OrderHold | null;
   /** Every hold this order has ever carried, open and released (#2341). Detail only. */
   holdHistory?: OrderHold[] | null;
+  /**
+   * The Status-group "open return" badge (#2998). Absent means no OPEN
+   * return was found for this order — never a positive "no returns" claim,
+   * since the batched read is best-effort and degrades to absent on failure.
+   */
+  openReturn?: OrderOpenReturn;
+  /**
+   * Tag ids assigned to this order (#3532, D34). Absent means "not
+   * projected on this read"; an empty array is a positive "no tags".
+   */
+  tagIds?: string[];
+  /**
+   * How the buyer pays (#3294). The API always sends a value, with `unknown`
+   * for an unreported or unmappable one; optional here so a response from an
+   * older API still type-checks. Treat absent and `unknown` identically.
+   */
+  paymentMethod?: PaymentMethod;
+}
+
+/**
+ * Why OpenLinker holds an order itself instead of mirroring it (#3485). Mirrors
+ * core `FulfillmentBlockReasonValues`; `check-fulfillment-reason-mirror.mjs`
+ * keeps the two identical, in value and order (#591: no core import here).
+ */
+export const FulfillmentBlockReasonValues = [
+  'routing-in-doubt',
+  'routing-contended',
+  'routing-already-live-elsewhere',
+  'routing-refused',
+  'routing-no-shipping-address',
+  'routing-failed',
+] as const;
+export type FulfillmentBlockReasonValue = (typeof FulfillmentBlockReasonValues)[number];
+
+/**
+ * Why the ingestion intercept deliberately did not route an order (#3455,
+ * #3487, #3488, #3636). Mirrors core `FulfillmentRoutingSkipReasonValues`, held
+ * equal by `check-fulfillment-reason-mirror.mjs`.
+ */
+export const FulfillmentRoutingSkipReasonValues = [
+  'own-shop-order',
+  'shipped-by-other-system',
+  'mirrored-before-routing',
+  'source-fulfilled',
+] as const;
+export type FulfillmentRoutingSkipReasonValue = (typeof FulfillmentRoutingSkipReasonValues)[number];
+
+/** Where an order OpenLinker handles itself has got in packing (#3482), in time order. */
+export const OrderWorkStageValues = ['to-pack', 'packing', 'packed'] as const;
+export type OrderWorkStageValue = (typeof OrderWorkStageValues)[number];
+
+/**
+ * The held reasons an operator reads as "waiting in OpenLinker" (#3482). Mirror of
+ * core `WaitingFulfillmentBlockReasonValues`, held equal by
+ * `scripts/check-handled-in-openlinker-mirror.mjs`. One member per line.
+ */
+export const WaitingFulfillmentBlockReasonValues = [
+  'routing-refused',
+  'routing-no-shipping-address',
+  'routing-failed',
+] as const satisfies readonly FulfillmentBlockReasonValue[];
+export type WaitingFulfillmentBlockReasonValue = (typeof WaitingFulfillmentBlockReasonValues)[number];
+
+export interface OrderHandledInOpenLinker {
+  /** A split order reports its EARLIEST stage across works. */
+  stage: OrderWorkStageValue;
+  workCount: number;
+  /**
+   * `single`: every live work agrees on its packer (`assignedToUserId`, or `null`
+   * for Unassigned). `mixed`: a split order with different packers. Optional for
+   * a response from part 1 of #3482.
+   */
+  assignment?: 'single' | 'mixed';
+  assignedToUserId?: string | null;
+}
+
+/** The open-return badge payload (#2998) — count plus a stage hint. */
+export interface OrderOpenReturn {
+  count: number;
+  stage: string;
 }
 
 /** One inert state as an order row carries it (#2352). */
@@ -734,6 +950,23 @@ export interface OrderHealthSummary {
    */
   salesDocumentBlocked?: number;
   /**
+   * Orders whose routing decision narrowed the destination fan-out in an
+   * ATTENTION-WORTHY way (#2703/#2704). Orthogonal to the five health buckets
+   * and never part of their sum, exactly like `salesDocumentBlocked`. Excludes
+   * the neutral `'routed-to-no-destination'` decision.
+   */
+  destinationRoutingBlocked?: number;
+  /**
+   * #3482 - orders OpenLinker holds as waiting (out of stock, no address, a
+   * routing error). Orthogonal to the health buckets, never part of their sum.
+   * Optional for an older API.
+   */
+  waitingInOpenLinker?: number;
+  /** When the oldest waiting order started waiting (ISO 8601), or `null` / absent. */
+  waitingInOpenLinkerOldestAt?: string | null;
+  /** #3482 - orders with a live pack-bench work whose box is not shut (To pack / Packing). */
+  onPackBench?: number;
+  /**
    * Orders where the shop and the channel named DIFFERENT tax rates (#2254).
    * Its OWN count, never inside `salesDocumentBlocked` — a conflict does not
    * stop the invoice, so an order can be in conflict and perfectly healthy.
@@ -791,6 +1024,15 @@ export interface OrderFilters {
    */
   salesDocumentBlocked?: boolean;
   /**
+   * #2703/#2704 — its own axis, ANDed with `health` and the others server-side.
+   * `true` keeps only orders carrying an attention-worthy routing narrowing.
+   */
+  destinationRoutingBlocked?: boolean;
+  /** #3482 - its own axis: `true` keeps only orders OpenLinker holds as waiting. */
+  waitingInOpenLinker?: boolean;
+  /** #3482 - its own axis: `true` keeps only orders with work on the pack bench. */
+  onPackBench?: boolean;
+  /**
    * Cancellation filter (#2306): `false` excludes cancelled orders, `true` keeps
    * only them, omitted does not filter. The dispatch-risk page passes `false` so
    * its rows match the counts `slaSummary` returns under the same scope.
@@ -828,6 +1070,33 @@ export interface OrderFilters {
    * filter on the page.
    */
   holdReason?: HoldReason;
+  /**
+   * "Is it packed" filter (#2997). ANDed with `health`, not a sixth bucket —
+   * an order is routinely packed AND `needs_attention`.
+   */
+  packed?: boolean;
+  /**
+   * Free-text search (#3527/#3528): order number, buyer name, buyer email,
+   * any line SKU, or a shipment tracking number. Debounced client-side
+   * before landing here (`?search=`).
+   */
+  search?: string;
+  /**
+   * "Has an open return" filter (#2998). "Open" is the `/returns` list's own
+   * `all_open` segment predicate, reused server-side rather than redefined
+   * here.
+   */
+  openReturn?: boolean;
+  /**
+   * "With buyer note" filter (#3539), `?hasBuyerNote=`. Server-side: the API
+   * maps it to the indexed `hasBuyerNote` column, so it narrows the whole
+   * result set and not just the loaded page.
+   */
+  hasBuyerNote?: boolean;
+  /** One tag id (#3532, D34), `?tag=`. Mutually exclusive with `untagged`. */
+  tag?: string;
+  /** "No tags" filter (#3532), `?untagged=`. Mutually exclusive with `tag`. */
+  untagged?: boolean;
 }
 
 /**
@@ -873,6 +1142,12 @@ export interface PaginatedOrders {
   offset: number;
 }
 
+/** `POST /orders/:id/retry-routing` (#3558): the route job is only enqueued. */
+export interface RetryOrderRoutingResult {
+  internalOrderId: string;
+  jobId: string;
+}
+
 export interface RetryOrderDestinationResult {
   internalOrderId: string;
   destinationConnectionId: string;
@@ -900,4 +1175,287 @@ export interface OrderLifecyclePhaseSummary {
   amending: number;
   blocked: number;
   ready: number;
+}
+
+/**
+ * One line of an order's cost-at-order-time read (#3588, D27). Mirrors
+ * `apps/api/src/orders/http/dto/order-line-costs-response.dto.ts`. Amounts are
+ * in the ORDER currency; `0` cost is real, `null` means not recorded.
+ */
+export type OrderLineGapReason =
+  | 'no-cost'
+  | 'cost-entered-after-sale'
+  | 'no-variant'
+  | 'currency-mismatch';
+
+export interface OrderLineCost {
+  lineNumber: number;
+  productId: string;
+  variantId: string | null;
+  sku: string | null;
+  quantity: number;
+  netAmount: number | null;
+  costState: 'recorded' | 'not-recorded';
+  unitCostNet: string | null;
+  unitCostCurrency: string | null;
+  costOfGoods: number | null;
+  margin: number | null;
+  gapReason: OrderLineGapReason | null;
+  netEligible: boolean;
+}
+
+export interface OrderLineCostsResult {
+  currency: string | null;
+  lines: OrderLineCost[];
+}
+
+/**
+ * An internal order note (#3531). `editedAt` is the "edited" marker (D33);
+ * `showToPacker` is decision D12's pack-bench visibility flag.
+ */
+export interface OrderNote {
+  id: string;
+  internalOrderId: string;
+  authorUserId: string;
+  /** Frozen at creation (#2282) — never a live lookup, so it survives a deleted author account. */
+  authorUsername: string;
+  body: string;
+  showToPacker: boolean;
+  editedAt: string | null;
+  /** null = not pinned. At most one note per order carries a value. */
+  pinnedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateOrderNoteRequest {
+  body: string;
+  showToPacker?: boolean;
+}
+
+export interface UpdateOrderNoteRequest {
+  body?: string;
+  showToPacker?: boolean;
+}
+
+/**
+ * One `GET /orders/:id/notes/timeline` entry (#3531) — an authored note act
+ * for the order's Activity timeline. `kind` is read as a plain string (see
+ * `order-note-timeline.schema.ts`): a kind this build predates still renders.
+ * `body` is the text as of that act; `null` for a deletion and a flag change.
+ */
+export interface OrderNoteTimelineEntry {
+  noteId: string;
+  kind: string;
+  occurredAt: string;
+  actorUsername: string;
+  body: string | null;
+  /** The packer flag as a result of the act; `null` when the act did not set it. */
+  showToPacker: boolean | null;
+}
+
+/**
+ * The closed `--tag-*` colour vocabulary (#3532/#3533). Mirrors
+ * `OrderTagColorValues` in `@openlinker/core/orders` — the FE-001 contract
+ * strategy (`apps/web` cannot import `@openlinker/core`, #591).
+ */
+export const OrderTagColorValues = [
+  'grey',
+  'blue',
+  'teal',
+  'green',
+  'amber',
+  'orange',
+  'pink',
+  'violet',
+] as const;
+export type OrderTagColorValue = (typeof OrderTagColorValues)[number];
+
+/** One order tag (#3532, D34). */
+export interface OrderTag {
+  id: string;
+  name: string;
+  color: OrderTagColorValue;
+  orderCount: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+import type { BulkOrderTagRowResult } from './order-bulk-actions.types';
+
+/** `POST /order-tags/:tagId/bulk-assign` result (#3532). */
+export interface BulkAssignOrderTagResult {
+  tagId: string;
+  /** Orders that gained the tag by this call. */
+  added: number;
+  /** Orders that already carried it. */
+  alreadyTagged: number;
+  /** Orders whose row failed (#3545); 0 on a clean run. */
+  failed?: number;
+  /** Per-order outcome, in request order. Absent on a pre-#3545 payload. */
+  results?: BulkOrderTagRowResult[];
+}
+
+/**
+ * The export's own closed column vocabulary (#3534). Mirrors
+ * `ORDER_EXPORT_COLUMN_IDS`/`ORDER_EXPORT_COLUMN_LABELS` in
+ * `@openlinker/core/orders` (the FE-001 contract strategy, #591) — a column
+ * preset's `columns` array is free-form on the wire (#3530's own docblock),
+ * but a preset built from THIS list is guaranteed to survive
+ * `narrowOrderExportColumns` on the export job intact.
+ */
+export const ORDER_EXPORT_COLUMN_IDS = [
+  'internalOrderId',
+  'orderNumber',
+  'sourceConnectionId',
+  'customerName',
+  'customerEmail',
+  'country',
+  'placedAt',
+  'createdAt',
+  'recordStatus',
+  'currency',
+  'totalAmount',
+  'itemCount',
+  'skus',
+  'packed',
+  'fulfillmentState',
+] as const;
+export type OrderExportColumnIdValue = (typeof ORDER_EXPORT_COLUMN_IDS)[number];
+
+export const ORDER_EXPORT_COLUMN_LABELS: Record<OrderExportColumnIdValue, string> = {
+  internalOrderId: 'Order ID',
+  orderNumber: 'Order #',
+  sourceConnectionId: 'Source connection',
+  customerName: 'Buyer name',
+  customerEmail: 'Buyer email',
+  country: 'Country',
+  placedAt: 'Placed',
+  createdAt: 'Received',
+  recordStatus: 'Record status',
+  currency: 'Currency',
+  totalAmount: 'Total',
+  itemCount: 'Items',
+  skus: 'SKUs',
+  packed: 'Packed',
+  fulfillmentState: 'Fulfillment',
+};
+
+/**
+ * Mirrors core's `ORDER_EXPORT_DEFAULT_COLUMNS` — what the export job writes
+ * when a request names no columns. The dialog starts from THIS set so what it
+ * shows ticked is what the file would contain anyway (#3507 U1).
+ * Guarded, with the two lists around it, by
+ * `scripts/check-order-export-columns-mirror.mjs`.
+ */
+export const ORDER_EXPORT_DEFAULT_COLUMNS: readonly OrderExportColumnIdValue[] = [
+  'orderNumber',
+  'customerName',
+  'placedAt',
+  'currency',
+  'totalAmount',
+  'itemCount',
+  'recordStatus',
+];
+
+/**
+ * Mirrors core's `ORDER_EXPORT_PII_COLUMNS` — the columns the job blanks under
+ * `OL_STORE_PII=false`, and the ones the dialog's personal-data warning keys on.
+ * `country` is deliberately absent: redaction keeps it.
+ */
+export const ORDER_EXPORT_PII_COLUMNS: readonly OrderExportColumnIdValue[] = [
+  'customerName',
+  'customerEmail',
+];
+
+/**
+ * The `/orders` LIST's own toggleable-column vocabulary (#3530 recovery
+ * pass) — structurally distinct from `ORDER_EXPORT_COLUMN_IDS`
+ * (spreadsheet-shaped scalars) because the list's columns are composite
+ * (`customer` renders a name AND a city; `money` renders four stacked
+ * figures). Deliberately DISJOINT id strings from the export vocabulary, so
+ * one saved `OrderColumnPreset.columns` array can hold both sets at once —
+ * each surface's `OrderColumnPresetManager` narrows to the ids it
+ * recognises and ignores the rest (`order-column-preset-manager.tsx`'s own
+ * docblock).
+ *
+ * `select` (the bulk-action checkbox) and `order` (row identity) are NOT
+ * here — they are structural, not optional, and always render first.
+ */
+export const ORDER_LIST_COLUMN_IDS = ['customer', 'channel', 'status', 'shipment', 'money'] as const;
+export type OrderListColumnIdValue = (typeof ORDER_LIST_COLUMN_IDS)[number];
+
+export const ORDER_LIST_COLUMN_LABELS: Record<OrderListColumnIdValue, string> = {
+  customer: 'Customer',
+  channel: 'Channel',
+  status: 'Status',
+  shipment: 'Shipment',
+  money: 'Money',
+};
+
+/**
+ * A personal, named, ordered column set (#3530, D32). `userId: null` marks
+ * the single workspace default the read API resolves separately — it never
+ * appears inside a user's own array.
+ */
+export interface OrderColumnPreset {
+  id: string;
+  userId: string | null;
+  name: string;
+  columns: string[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** The orders export run vocabulary (#3534, D35). Mirrors `@openlinker/core/orders`. */
+export const OrderExportFormatValues = ['csv', 'xlsx'] as const;
+export type OrderExportFormatValue = (typeof OrderExportFormatValues)[number];
+
+export const OrderExportScopeValues = ['filtered', 'selected'] as const;
+export type OrderExportScopeValue = (typeof OrderExportScopeValues)[number];
+
+export const OrderExportStatusValues = ['pending', 'ready', 'failed'] as const;
+export type OrderExportStatusValue = (typeof OrderExportStatusValues)[number];
+
+/** Above this row count, the export runs in the background (D47). */
+export const ORDER_EXPORT_BACKGROUND_THRESHOLD = 5000;
+
+export interface OrderExportRun {
+  id: string;
+  status: OrderExportStatusValue;
+  format: OrderExportFormatValue;
+  scope: OrderExportScopeValue;
+  rowCount: number | null;
+  containsPii: boolean | null;
+  errorMessage: string | null;
+  expiresAt: string;
+  createdAt: string;
+}
+
+export interface CreateOrderExportRequest {
+  format?: OrderExportFormatValue;
+  scope?: OrderExportScopeValue;
+  selectedOrderIds?: string[];
+  columns?: string[];
+  placedFrom?: string;
+  placedTo?: string;
+  // The rest of the current /orders filters + sort, merged in verbatim by
+  // the caller (`buildExportFilterParams`) so the export always matches
+  // "current view" without restating every field here.
+  [key: string]: unknown;
+}
+
+/**
+ * One attempt to email a sales document to the buyer (#3550/#3551), from
+ * `GET /orders/:orderId/document-emails`. Carries no recipient by design.
+ */
+export interface OrderDocumentEmailEntry {
+  id: string;
+  documentKind: string;
+  documentId: string;
+  sentVia: 'provider' | 'openlinker' | null;
+  outcome: 'sent' | 'failed';
+  failureReason: string | null;
+  failureMessage: string | null;
+  createdAt: string;
 }

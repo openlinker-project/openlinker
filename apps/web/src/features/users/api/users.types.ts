@@ -78,3 +78,27 @@ export const PACK_STATION_LABEL_MAX_LENGTH = 120;
 export interface UpdatePackStationLabelInput {
   packStationLabel: string | null;
 }
+
+/**
+ * `POST /users` request body (#3456). `email` is optional because a packer
+ * frequently has no work email; the API treats an absent one as "none".
+ */
+export interface CreateUserRequest {
+  displayName: string;
+  username: string;
+  email?: string;
+  role: UserRole;
+}
+
+/**
+ * `POST /users` response (#3456). `temporaryPassword` exists ONLY in this
+ * response - no later read can return it - so a caller hands it to the person
+ * once and keeps it nowhere longer-lived than component state.
+ */
+export interface CreateUserResponse {
+  id: string;
+  temporaryPassword: string;
+}
+
+/** The two fields a 409 from `POST /users` can name (never the value). */
+export type CreateUserConflictField = 'username' | 'email';

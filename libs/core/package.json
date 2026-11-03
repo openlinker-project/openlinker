@@ -114,6 +114,11 @@
       "require": "./dist/returns/index.js",
       "default": "./dist/returns/index.js"
     },
+    "./orders/testing": {
+      "types": "./dist/orders/testing/index.d.ts",
+      "require": "./dist/orders/testing/index.js",
+      "default": "./dist/orders/testing/index.js"
+    },
     "./returns/testing": {
       "types": "./dist/returns/testing/index.d.ts",
       "require": "./dist/returns/testing/index.js",
@@ -153,6 +158,11 @@
       "types": "./dist/events/index.d.ts",
       "require": "./dist/events/index.js",
       "default": "./dist/events/index.js"
+    },
+    "./events/orm-entities": {
+      "types": "./dist/events/orm-entities.d.ts",
+      "require": "./dist/events/orm-entities.js",
+      "default": "./dist/events/orm-entities.js"
     },
     "./events/testing": {
       "types": "./dist/events/testing/index.d.ts",
@@ -283,7 +293,8 @@
   },
   "dependencies": {
     "@openlinker/shared": "workspace:*",
-    "cron": "3.1.3"
+    "cron": "3.1.3",
+    "nodemailer": "6.9.14"
   },
   "peerDependencies": {
     "@nestjs/common": "^10.0.0",
@@ -303,6 +314,7 @@
     "@babel/core": "^7.28.5",
     "@babel/preset-env": "^7.29.7",
     "@types/jest": "29.5.12",
+    "@types/nodemailer": "6.4.15",
     "@types/node": "20.11.30",
     "@typescript-eslint/eslint-plugin": "7.3.1",
     "@typescript-eslint/parser": "7.3.1",

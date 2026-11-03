@@ -83,6 +83,7 @@ import { StatusBadge } from '../../../shared/ui/status-badge';
 import { formatAbsoluteTime } from '../../../shared/format/format-date';
 import { formatAmount } from '../../../shared/format/format-amount';
 import type { BenchParcel, BenchParcelLine } from '../api/bench-parcel.types';
+import { usePermission } from '../../../shared/auth/use-permission';
 import { useBenchInteractive } from '../hooks/use-bench-interactive';
 import { useBenchParcelQuery } from '../hooks/use-bench-parcel-query';
 import { useBenchLayout } from '../hooks/use-bench-layout';
@@ -103,7 +104,7 @@ import {
   isParcelClosed,
   parcelTotals,
 } from '../lib/bench-parcel-presentation';
-import { distinguishingAttributeKeys } from '../lib/bench-parcel-attributes';
+import { distinguishingAttributeKeys } from '../../../shared/lib/variant-attributes';
 import { benchParcelCopy } from '../lib/bench-parcel.copy';
 import {
   isBenchAudioMuted,
@@ -118,6 +119,8 @@ import { BenchActivityPanel } from './bench-activity-panel';
 import { BenchCompletionPanel } from './bench-completion-panel';
 import { BenchCopyButton } from './bench-copy-button';
 import { BenchDocumentsPanel } from './bench-documents';
+import { BenchBuyerNote } from './bench-buyer-note';
+import { BenchOfficeNotes } from './bench-office-notes';
 import { BenchParcelHero } from './bench-parcel-hero';
 import { BenchParcelLineRow } from './bench-parcel-line';
 import { BenchScanDock } from './bench-scan-dock';
@@ -172,8 +175,19 @@ export function BenchParcelView({
   const reachability = sharedReachability ?? ownReachability;
   // A3. Off while the idle lock covers the bench — see the hook's docblock for
   // why a locked terminal must not keep announcing the packer who walked away.
-  const presence = useBenchPresenceQuery(workId, { enabled: useBenchInteractive() });
-  // A3. False while the idle lock or the handover prompt covers the bench.
+  // #3734. A session without `bench:write` (a viewer) is looking, not packing:
+  // no scan surface, no completion, no reopen - and above all no presence ping,
+  // which would advertise the viewer to a packer as someone standing at the box.
+  //
+  // The bench deliberately HIDES its write surfaces from a viewer rather than
+  // rendering them locked (`useWriteAccess` + `ReadOnlyLock`, which is what the
+  // frontend rules assign to write affordances): a disabled scan dock at a
+  // packing station is noise, and the demo-mode "show it, locked" policy exists
+  // to advertise capabilities, not to dress a preview as a working station. Do
+  // not "fix" it in either direction without revisiting that.
+  const canWrite = usePermission('bench:write');
+  const presence = useBenchPresenceQuery(workId, { enabled: useBenchInteractive() && canWrite });
+  // A3. False while the idle lock covers the bench.
   const interactive = useBenchInteractive();
 
   const [notice, setNotice] = useState<ScanNotice | null>(null);
@@ -301,8 +315,7 @@ export function BenchParcelView({
     playScanSound(sound);
   };
 
-  const lineName = (line: BenchParcelLine): string =>
-    line.name ?? benchParcelCopy.lines.unnamed;
+  const lineName = (line: BenchParcelLine): string => line.name ?? benchParcelCopy.lines.unnamed;
 
   const adjustInFlight = (workLineId: string, by: number): void => {
     setInFlight((current) => {
@@ -470,7 +483,7 @@ export function BenchParcelView({
     // And off while the bench is LOCKED (A3) — the cached parcel outlives the
     // session, so without this a scan at an unattended terminal is attributed
     // to whoever walked away. See `use-bench-interactive.ts`.
-    enabled: interactive && parcel !== undefined && !closed && !refused,
+    enabled: interactive && canWrite && parcel !== undefined && !closed && !refused,
     onScan: (gesture) => {
       processScannedValue(gesture.value, gesture.gestureId);
     },
@@ -517,7 +530,7 @@ export function BenchParcelView({
    * browser default to suppress anyway.
    */
   useEffect(() => {
-    if (!interactive || closed || refused) return;
+    if (!interactive || !canWrite || closed || refused) return;
 
     const handleKeyDown = (event: KeyboardEvent): void => {
       if (event.metaKey || event.ctrlKey || event.altKey) return;
@@ -558,7 +571,7 @@ export function BenchParcelView({
     // with an empty dep list and is therefore stable across renders, the
     // same reason `settle` needs no entry either. Re-running per parcel
     // change would thrash the listener on every poll tick.
-  }, [interactive, closed, refused]);
+  }, [interactive, canWrite, closed, refused]);
 
   if (parcel === undefined && query.isPending) {
     return (
@@ -623,23 +636,22 @@ export function BenchParcelView({
       ? undefined
       : parcel.lines.find((line) => line.workLineId === pickedLineId);
   // A picked line that is now satisfied hands back to the derived one.
-  const heroLine = picked !== undefined && benchLineState(picked) !== 'verified' ? picked : nextLine;
+  const heroLine =
+    picked !== undefined && benchLineState(picked) !== 'verified' ? picked : nextLine;
   /**
    * A COPY, sorted — never a mutation of `parcel.lines`, which is the query
    * cache's own array. A line with no bin sorts last rather than first, so
    * turning the control on never buries the items that do have one.
    */
   const orderedLines = groupByBin
-    ? [...parcel.lines].sort((a, b) =>
-        (a.binCode ?? '\uffff').localeCompare(b.binCode ?? '\uffff')
-      )
+    ? [...parcel.lines].sort((a, b) => (a.binCode ?? '\uffff').localeCompare(b.binCode ?? '\uffff'))
     : parcel.lines;
   const progressPercent =
     totals.required === 0 ? 100 : Math.round((totals.verified / totals.required) * 100);
   /**
    * Computed once for the whole box, never per row: which attribute actually
    * tells these items apart is a fact about the box's contents. See
-   * `bench-parcel-attributes.ts` for why the full set is the wrong thing to
+   * `shared/lib/variant-attributes.ts` for why the full set is the wrong thing to
    * print — the demo catalogue sends three attributes identical on every line.
    */
   const distinguishingAttributes = distinguishingAttributeKeys(parcel.lines);
@@ -660,6 +672,11 @@ export function BenchParcelView({
       data-testid="bench-parcel"
       data-work-id={parcel.workId}
     >
+      {canWrite ? null : (
+        <Alert tone="info" title={benchParcelCopy.preview.title} data-testid="bench-preview">
+          {benchParcelCopy.preview.body}
+        </Alert>
+      )}
       <header className="bench-parcel__header">
         <div className="bench-parcel__identity">
           <span className="bench-parcel__field-label">{benchParcelCopy.header.orderLabel}</span>
@@ -703,7 +720,9 @@ export function BenchParcelView({
         )}
         {parcel.dispatchByAt === null ? null : (
           <div className="bench-parcel__identity">
-            <span className="bench-parcel__field-label">{benchParcelCopy.header.dispatchByLabel}</span>
+            <span className="bench-parcel__field-label">
+              {benchParcelCopy.header.dispatchByLabel}
+            </span>
             {/* The CLOCK TIME, as the mockup shows it — a packer reads this
                 against the clock on the wall — AND how long is left, which
                 used to live only in a `title`. This is a touch kiosk with no
@@ -731,27 +750,27 @@ export function BenchParcelView({
         {/* Grouped so the pill and the exit wrap TOGETHER — split across two
             rows, "Back to the list" sat alone under the fields. */}
         <div className="bench-parcel__header-trailing">
-        {/* #3418 — the order-head's own status pill. `pulse` only on the
+          {/* #3418 — the order-head's own status pill. `pulse` only on the
             genuinely in-progress state, matching the mockup's own
             `status-badge--pulse`; a held/cancelled/packed box is a settled
             fact, not something happening right now. */}
-        {parcel.refusal === 'held' ? (
-          <StatusBadge tone="error" withDot>
-            {benchParcelCopy.header.statusHeld}
-          </StatusBadge>
-        ) : parcel.refusal === 'cancelled' ? (
-          <StatusBadge tone="neutral" withDot>
-            {benchParcelCopy.header.statusCancelled}
-          </StatusBadge>
-        ) : closed ? (
-          <StatusBadge tone="success" withDot>
-            {benchParcelCopy.header.statusPacked}
-          </StatusBadge>
-        ) : (
-          <StatusBadge tone="warning" pulse>
-            {benchParcelCopy.header.statusInProgress}
-          </StatusBadge>
-        )}
+          {parcel.refusal === 'held' ? (
+            <StatusBadge tone="error" withDot>
+              {benchParcelCopy.header.statusHeld}
+            </StatusBadge>
+          ) : parcel.refusal === 'cancelled' ? (
+            <StatusBadge tone="neutral" withDot>
+              {benchParcelCopy.header.statusCancelled}
+            </StatusBadge>
+          ) : closed ? (
+            <StatusBadge tone="success" withDot>
+              {benchParcelCopy.header.statusPacked}
+            </StatusBadge>
+          ) : (
+            <StatusBadge tone="warning" pulse>
+              {benchParcelCopy.header.statusInProgress}
+            </StatusBadge>
+          )}
           <Button tone="ghost" onClick={onClose}>
             {benchParcelCopy.header.backAction}
           </Button>
@@ -772,11 +791,22 @@ export function BenchParcelView({
         </Alert>
       )}
 
+      <BenchOfficeNotes notes={parcel.packerNotes} />
+
+      {/* #3539 (D12, mockup M2) - the buyer's own message, above the hero card.
+          Read only; "I have read the note" records the reading for THIS parcel
+          and never gates a scan or closes the box. */}
+      <BenchBuyerNote
+        parcel={parcel}
+        canAcknowledge={canWrite}
+        hasBuyerNote={parcel.hasBuyerNote}
+      />
+
       {/* The mockup's hero card (#3401): the ONE line this box is waiting for
           next, with the visible scan field. Derived, never stored — see
           `BenchParcelHero`'s own docblock. Absent once every line is in,
           because there is no next item to put in front of the packer. */}
-      {heroLine === undefined || layout !== 'desktop' ? null : (
+      {heroLine === undefined || layout !== 'desktop' || !canWrite ? null : (
         <BenchParcelHero
           line={heroLine}
           distinguishingAttributes={distinguishingAttributes}
@@ -820,7 +850,11 @@ export function BenchParcelView({
       </div>
 
       {undoNotice === null ? null : (
-        <p className="bench-parcel__undo-notice" role="status" data-testid="bench-parcel-undo-notice">
+        <p
+          className="bench-parcel__undo-notice"
+          role="status"
+          data-testid="bench-parcel-undo-notice"
+        >
           {undoNotice}
         </p>
       )}
@@ -828,12 +862,7 @@ export function BenchParcelView({
       {/* H2's running answer to "did that count?". POLITE, and carrying only
           acceptance and in-flight — every refusal below is already inside a
           `role="alert"`, and repeating it here would say each one twice. */}
-      <p
-        className="sr-only"
-        role="status"
-        aria-live="polite"
-        data-testid="bench-parcel-announcer"
-      >
+      <p className="sr-only" role="status" aria-live="polite" data-testid="bench-parcel-announcer">
         {announcement}
       </p>
 
@@ -947,37 +976,41 @@ export function BenchParcelView({
               genuine write with a genuine control, distinct from the
               no-commit rule above, which is about the box's CONTENTS having
               nothing to press rather than about this later question. */}
-          <BenchCompletionPanel workId={workId} parcel={parcel} />
+          {canWrite ? <BenchCompletionPanel workId={workId} parcel={parcel} /> : null}
 
           {reopenNotice === null ? null : <Alert tone="warning">{reopenNotice}</Alert>}
 
           {/* E6. The only correction path this surface has, because auto-close
               removed the pause a mistake would have been caught in. */}
-          <Button
-            tone="secondary"
-            disabled={reopen.isPending}
-            onClick={() => {
-              setReopenNotice(null);
-              reopen.mutate(
-                { workId, expectedVersion: parcel.version },
-                {
-                  onSuccess: (result) => {
-                    setReopenNotice(
-                      result.outcome === 'refused'
-                        ? describeReopenRefusal(result.reason)
-                        : benchParcelCopy.closed.reopenedNotice
-                    );
-                  },
-                  onError: () => {
-                    setReopenNotice(benchParcelCopy.closed.reopenFailed);
-                  },
-                }
-              );
-            }}
-          >
-            {benchParcelCopy.closed.reopenAction}
-          </Button>
-          <p className="bench-parcel__reopen-hint">{benchParcelCopy.closed.reopenHint}</p>
+          {canWrite ? (
+            <Button
+              tone="secondary"
+              disabled={reopen.isPending}
+              onClick={() => {
+                setReopenNotice(null);
+                reopen.mutate(
+                  { workId, expectedVersion: parcel.version },
+                  {
+                    onSuccess: (result) => {
+                      setReopenNotice(
+                        result.outcome === 'refused'
+                          ? describeReopenRefusal(result.reason)
+                          : benchParcelCopy.closed.reopenedNotice
+                      );
+                    },
+                    onError: () => {
+                      setReopenNotice(benchParcelCopy.closed.reopenFailed);
+                    },
+                  }
+                );
+              }}
+            >
+              {benchParcelCopy.closed.reopenAction}
+            </Button>
+          ) : null}
+          {canWrite ? (
+            <p className="bench-parcel__reopen-hint">{benchParcelCopy.closed.reopenHint}</p>
+          ) : null}
         </div>
       ) : (
         <div className="bench-parcel__lines-wrap">
@@ -1020,25 +1053,25 @@ export function BenchParcelView({
             <span />
           </div>
           <ul className="bench-parcel__lines">
-          {orderedLines.map((line) => (
-            <BenchParcelLineRow
-              key={line.workLineId}
-              line={line}
-              distinguishingAttributes={distinguishingAttributes}
-              hasBins={hasBins}
-              open={!refused}
-              pendingCount={inFlight[line.workLineId] ?? 0}
-              unreachable={reachability.unreachable}
-              // E4 sends exactly what a scan sends, through the SAME mint. The
-              // id therefore has the identical shape, and the request the
-              // identical body — D20 by construction rather than by discipline.
-              onConfirm={(target) => {
-                sequence.current += 1;
-                const gesture = beginGesture(target.workLineId, Date.now());
-                submit(target, gesture.gestureId, sequence.current);
-              }}
-            />
-          ))}
+            {orderedLines.map((line) => (
+              <BenchParcelLineRow
+                key={line.workLineId}
+                line={line}
+                distinguishingAttributes={distinguishingAttributes}
+                hasBins={hasBins}
+                open={!refused && canWrite}
+                pendingCount={inFlight[line.workLineId] ?? 0}
+                unreachable={reachability.unreachable}
+                // E4 sends exactly what a scan sends, through the SAME mint. The
+                // id therefore has the identical shape, and the request the
+                // identical body — D20 by construction rather than by discipline.
+                onConfirm={(target) => {
+                  sequence.current += 1;
+                  const gesture = beginGesture(target.workLineId, Date.now());
+                  submit(target, gesture.gestureId, sequence.current);
+                }}
+              />
+            ))}
           </ul>
         </div>
       )}
@@ -1049,15 +1082,17 @@ export function BenchParcelView({
           both doc cards beside the open parcel, because a packer prints the
           invoice while they pack rather than after. The panel already states
           per document whether it is ready, so an open box is never told a
-          label exists that does not. */}
-      <BenchDocumentsPanel workId={workId} unitsPacked={totals.verified} />
+          label exists that does not — nor told an open box is closed. */}
+      {canWrite ? (
+        <BenchDocumentsPanel workId={workId} unitsPacked={totals.verified} closed={closed} />
+      ) : null}
 
       {/* #3411 (epic #3401). Rendered on every state — activity happened
           throughout packing, not only once the box is open. */}
       <BenchActivityPanel workId={workId} />
 
       {/* E5's promise. Rendered while verifying, where the missing button is. */}
-      {closed ? null : (
+      {closed || !canWrite ? null : (
         <footer className="bench-parcel__footer">
           <span>{benchParcelCopy.footer.noCommit}</span>
           <span className="bench-parcel__footer-right">
@@ -1094,14 +1129,14 @@ export function BenchParcelView({
           rather than joining it: two scan fields would be two things the
           scanner listener and `Esc` could focus, and two counts a packer
           could read differently. */}
-      {layout === 'desktop' ? null : (
+      {layout === 'desktop' || !canWrite ? null : (
         <BenchScanDock
           layout={layout}
           lines={parcel.lines}
           activeLine={heroLine}
           open={!closed && !refused}
           unreachable={reachability.unreachable}
-          pendingCount={heroLine === undefined ? 0 : (inFlight[heroLine.workLineId] ?? 0)}
+          pendingCount={heroLine === undefined ? 0 : inFlight[heroLine.workLineId] ?? 0}
           onSelectLine={(line) => {
             setPickedLineId(line.workLineId);
           }}

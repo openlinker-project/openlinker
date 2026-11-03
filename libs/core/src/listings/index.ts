@@ -143,6 +143,7 @@ export { OfferCreationRecord } from './domain/entities/offer-creation-record.ent
 export {
   OfferCreationStatusValues,
   OFFER_CREATION_STATUS,
+  OFFER_PRODUCT_REMOVED_WITHOUT_REASON_ERROR_CODE,
 } from './domain/types/offer-creation-record.types';
 export type {
   OfferCreationStatus,
@@ -164,8 +165,10 @@ export type {
 } from './domain/types/bulk-listing-batch.types';
 export type { BulkListingBatchRepositoryPort } from './domain/ports/bulk-listing-batch-repository.port';
 export { BulkListingBatchNotFoundException } from './domain/exceptions/bulk-listing-batch-not-found.exception';
+export { DuplicateBulkBatchIdempotencyKeyError } from './domain/exceptions/duplicate-bulk-batch-idempotency-key.error';
 export { EmptyBulkSubmissionException } from './domain/exceptions/empty-bulk-submission.exception';
 export { AllVariantsAlreadyListedException } from './domain/exceptions/all-variants-already-listed.exception';
+export { MasterStockNotSyncedException } from './domain/exceptions/master-stock-not-synced.exception';
 export { InvalidEanException } from './domain/exceptions/invalid-ean.exception';
 export { DuplicateBatchEanException } from './domain/exceptions/duplicate-batch-ean.exception';
 export { CurrencyMismatchException } from './domain/exceptions/currency-mismatch.exception';
@@ -459,6 +462,10 @@ export type {
   OfferStatusSyncOptions,
 } from './application/services/offer-status-sync.service.interface';
 export type { IOfferStatusReadService } from './application/services/offer-status-read.service.interface';
+export type {
+  IOfferCommercialReadService,
+  ChannelObservedQuantity,
+} from './application/services/offer-commercial-read.service.interface';
 export type { IOfferQuantityAckReconcileService } from './application/services/offer-quantity-ack-reconcile.service.interface';
 export type { IOfferStockRestoreService } from './application/interfaces/offer-stock-restore.service.interface';
 export type {
@@ -467,6 +474,8 @@ export type {
 } from './application/types/offer-stock-restore.types';
 export { OfferStockRestoreOutcomeValues } from './application/types/offer-stock-restore.types';
 export { OfferStockRestoreReleaseIncompleteError } from './domain/exceptions/offer-stock-restore-release-incomplete.error';
+export { OfferStockRestoreReversalIncompleteError } from './domain/exceptions/offer-stock-restore-reversal-incomplete.error';
+export { OfferStockRestoreWriteIncompleteError } from './domain/exceptions/offer-stock-restore-write-incomplete.error';
 export type { IStaleOfferPauseService } from './application/interfaces/stale-offer-pause.service.interface';
 export type { StaleOfferPauseResult } from './domain/types/stale-offer-pause.types';
 export { OfferPollNotSupportedException } from './domain/exceptions/offer-poll-not-supported.exception';
@@ -524,6 +533,15 @@ export type { ShopAttribute, ShopAttributeTerm } from './domain/types/shop-attri
 export type { ShopAttributeReader } from './domain/ports/capabilities/shop-attribute-reader.capability';
 export { isShopAttributeReader } from './domain/ports/capabilities/shop-attribute-reader.capability';
 export type { IShopAttributeReadService } from './application/interfaces/shop-attribute-read.service.interface';
+// Price-only shop write (#3505, G01-10): change an already-published product's
+// price without re-sending stock / name / description. Narrowed from the
+// `ProductPublisher` adapter via `isShopProductPriceUpdater`.
+export type { ShopProductPriceUpdater } from './domain/ports/capabilities/shop-product-price-updater.capability';
+export { isShopProductPriceUpdater } from './domain/ports/capabilities/shop-product-price-updater.capability';
+export type {
+  ShopProductPriceAmount,
+  UpdateShopProductPriceCommand,
+} from './domain/types/shop-product-price-update.types';
 // Taxonomy-borrowing sub-capability (#1045): a `borrows` destination (ERLI)
 // names the owner taxonomy whose category/parameter ids it reuses verbatim.
 export type { TaxonomyBorrower } from './domain/ports/capabilities/taxonomy-borrower.capability';

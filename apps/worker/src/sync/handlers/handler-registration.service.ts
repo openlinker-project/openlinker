@@ -20,6 +20,7 @@ import { MarketplaceReturnsStatusSyncHandler } from './marketplace-returns-statu
 import { ReturnsOrphanReconcileHandler } from './returns-orphan-reconcile.handler';
 import { OrdersTaxRateBackfillHandler } from './orders-tax-rate-backfill.handler';
 import { AnalyticsCurrencyRecalculateHandler } from './analytics-currency-recalculate.handler';
+import { OrdersExportHandler } from './orders-export.handler';
 import { MarketplaceOfferQuantityUpdateHandler } from './marketplace-offer-quantity-update.handler';
 import { MarketplaceOfferQuantityReconcileHandler } from './marketplace-offer-quantity-reconcile.handler';
 import { MarketplaceOfferFieldUpdateHandler } from './marketplace-offer-field-update.handler';
@@ -58,6 +59,7 @@ import { AutomationTriggerDeadlineSweepHandler } from './automation-trigger-dead
 import { ShopProductStatusSyncHandler } from './shop-product-status-sync.handler';
 import { DestinationTaxonomySyncHandler } from './destination-taxonomy-sync.handler';
 import { InvoicingIssueHandler } from './invoicing-issue.handler';
+import { InvoicingMarketplaceUploadHandler } from './invoicing-marketplace-upload.handler';
 import { FiscalizationRegisterHandler } from './fiscalization-register.handler';
 import { RegulatoryStatusReconcileHandler } from './regulatory-status-reconcile.handler';
 import { OfflineResubmitHandler } from './offline-resubmit.handler';
@@ -67,7 +69,12 @@ import { FulfillmentWorkDispatchHandler } from './fulfillment-work-dispatch.hand
 import { FulfillmentWorkAutoDispatchHandler } from './fulfillment-work-auto-dispatch.handler';
 import { FulfillmentWorkRouteHandler } from './fulfillment-work-route.handler';
 import { FulfillmentWorkRelaySweepHandler } from './fulfillment-work-relay-sweep.handler';
+import { FulfillmentWorkRerouteSweepHandler } from './fulfillment-work-reroute-sweep.handler';
+import { MarketplaceSourceFulfillmentStatusSyncHandler } from './marketplace-source-fulfillment-status-sync.handler';
 import { FulfillmentWorkTimeoutSweepHandler } from './fulfillment-work-timeout-sweep.handler';
+import { FulfillmentRoutingReapSweepHandler } from './fulfillment-routing-reap-sweep.handler';
+import { InventorySaleDecrementHandler } from './inventory-sale-decrement.handler';
+import { InventorySaleDecrementReconcileSweepHandler } from './inventory-sale-decrement-reconcile-sweep.handler';
 
 @Injectable()
 export class HandlerRegistrationService implements OnModuleInit {
@@ -89,6 +96,7 @@ export class HandlerRegistrationService implements OnModuleInit {
     private readonly returnsOrphanReconcileHandler: ReturnsOrphanReconcileHandler,
     private readonly ordersTaxRateBackfillHandler: OrdersTaxRateBackfillHandler,
     private readonly analyticsCurrencyRecalculateHandler: AnalyticsCurrencyRecalculateHandler,
+    private readonly ordersExportHandler: OrdersExportHandler,
     private readonly marketplaceOfferQuantityUpdateHandler: MarketplaceOfferQuantityUpdateHandler,
     private readonly marketplaceOfferQuantityReconcileHandler: MarketplaceOfferQuantityReconcileHandler,
     private readonly marketplaceOfferFieldUpdateHandler: MarketplaceOfferFieldUpdateHandler,
@@ -122,6 +130,7 @@ export class HandlerRegistrationService implements OnModuleInit {
     private readonly shopProductStatusSyncHandler: ShopProductStatusSyncHandler,
     private readonly destinationTaxonomySyncHandler: DestinationTaxonomySyncHandler,
     private readonly invoicingIssueHandler: InvoicingIssueHandler,
+    private readonly invoicingMarketplaceUploadHandler: InvoicingMarketplaceUploadHandler,
     private readonly fiscalizationRegisterHandler: FiscalizationRegisterHandler,
     private readonly regulatoryStatusReconcileHandler: RegulatoryStatusReconcileHandler,
     private readonly offlineResubmitHandler: OfflineResubmitHandler,
@@ -131,7 +140,14 @@ export class HandlerRegistrationService implements OnModuleInit {
     private readonly fulfillmentWorkAutoDispatchHandler: FulfillmentWorkAutoDispatchHandler,
     private readonly fulfillmentWorkRouteHandler: FulfillmentWorkRouteHandler,
     private readonly fulfillmentWorkTimeoutSweepHandler: FulfillmentWorkTimeoutSweepHandler,
-    private readonly fulfillmentWorkRelaySweepHandler: FulfillmentWorkRelaySweepHandler
+    private readonly fulfillmentWorkRelaySweepHandler: FulfillmentWorkRelaySweepHandler,
+    private readonly inventorySaleDecrementHandler: InventorySaleDecrementHandler,
+    private readonly fulfillmentWorkRerouteSweepHandler: FulfillmentWorkRerouteSweepHandler,
+    private readonly inventorySaleDecrementReconcileSweepHandler: InventorySaleDecrementReconcileSweepHandler,
+    // Appended LAST so the positional construction in the registration spec
+    // keeps every earlier handler in its slot.
+    private readonly marketplaceSourceFulfillmentStatusSyncHandler: MarketplaceSourceFulfillmentStatusSyncHandler,
+    private readonly fulfillmentRoutingReapSweepHandler: FulfillmentRoutingReapSweepHandler
   ) {}
 
   onModuleInit(): void {
@@ -154,14 +170,18 @@ export class HandlerRegistrationService implements OnModuleInit {
     // alone: it raised the `fan-out` lane's caps instead of moving a job out of
     // it. `fulfillment.work.timeoutSweep` joined `bulk` (#2712) and
     // `fulfillment.work.relaySweep` beside it (#2728) — both cron-paced
-    // reconcilers over work that is already stalled by definition.
-    // `fulfillment.work.autoDispatch` is the newest `realtime` member (#3340,
-    // closing #2729) — a NEW job type, not a reclassified one, joining its
-    // `fulfillment.work.dispatch` producer for the identical cost-of-starvation
-    // reason. The tripwire in `handler-registration.service.spec.ts` is the
-    // authority on these counts — this comment had drifted from it before
-    // #2330, and again before #2728, which is why it is restated here rather
-    // than only appended to.
+    // reconcilers over work that is already stalled by definition — and
+    // `fulfillment.work.rerouteSweep` (#3485) is a third, over orders held
+    // because routing could not place them, and `fulfillment.routing.reapSweep`
+    // (#2731) a fourth, over routing decisions stranded past their TTL.
+    // `fulfillment.work.autoDispatch` (#3340, closing #2729) and
+    // `marketplace.sourceFulfillment.statusSync` joined `bulk` beside its
+    // destination-side twin (ADR-012 amendment).
+    // `inventory.saleDecrement` (#3453) are the newest `realtime` members —
+    // both NEW job types. The tripwire in `handler-registration.service.spec.ts`
+    // is the authority on these counts — this comment had drifted from it
+    // before #2330, and again before #2728, which is why it is restated here
+    // rather than only appended to.
 
     // Register generic marketplace handlers (Option B)
     this.handlerRegistry.register(
@@ -318,6 +338,15 @@ export class HandlerRegistrationService implements OnModuleInit {
     this.handlerRegistry.register(
       'marketplace.fulfillment.statusSync',
       this.marketplaceFulfillmentStatusSyncHandler,
+      'bulk'
+    );
+    // The source-side twin of the read-back above (ADR-012 amendment), laned
+    // the same and for the same reason: a paced scan whose subject is a parcel
+    // that has already shipped, so one tick of delay costs nobody a request,
+    // while every candidate costs a marketplace readback.
+    this.handlerRegistry.register(
+      'marketplace.sourceFulfillment.statusSync',
+      this.marketplaceSourceFulfillmentStatusSyncHandler,
       'bulk'
     );
     // `realtime`, on ADR-050's cost-of-starvation rule: a buyer is waiting to
@@ -522,6 +551,14 @@ export class HandlerRegistrationService implements OnModuleInit {
 
     // Register invoicing issue handler (OL #1120 — auto-issue trigger)
     this.handlerRegistry.register('invoicing.issue', this.invoicingIssueHandler, 'fiscal');
+    // Marketplace document upload (#3549): a follow-up to a committed document that
+    // nobody waits on, and the call spends the MARKETPLACE's rate limit, so it must
+    // never hold a `fiscal` or `realtime` slot.
+    this.handlerRegistry.register(
+      'invoicing.marketplaceUpload',
+      this.invoicingMarketplaceUploadHandler,
+      'bulk'
+    );
     // Register fiscalization register handler (#2156 — auto-issue cross-capability
     // gate). Post-ADR-050 registration; `fiscal` by the cost-of-starvation rule
     // (deadline-bearing, at-most-once) — the ADR's lane table is amended in #2278.
@@ -637,6 +674,57 @@ export class HandlerRegistrationService implements OnModuleInit {
       'bulk'
     );
 
+    // Routed-order sale decrement (#3453).
+    //
+    // 'realtime', by ADR-050's cost-of-starvation rule. Until this job runs, the
+    // product master and every other marketplace still show the sold units as in
+    // stock, so every minute of delay is a window in which the last unit can sell
+    // twice. That is the class of `inventory.propagateToMarketplaces`'s urgency,
+    // but this job makes ONE bounded write per line rather than emitting a wave,
+    // so `fan-out` is the wrong profile; and it must not queue behind a
+    // catalogue sweep in `bulk`. #2594's split-by-trigger has nothing to
+    // separate: one trigger (a routing commit), one cost.
+    this.handlerRegistry.register(
+      'inventory.saleDecrement',
+      this.inventorySaleDecrementHandler,
+      'realtime'
+    );
+
+    // Reroute sweep for orders held because routing could not place them (#3485).
+    //
+    // 'bulk', like its timeout- and relay-sweep siblings: a cron-paced catch-up
+    // over orders that have ALREADY been waiting (for stock, typically), so a
+    // lane slot's delay adds minutes to a condition measured in hours. The heavy
+    // part — the route itself — runs in the `fulfillment.work.route` children it
+    // enqueues, on 'realtime', where routing always runs.
+    this.handlerRegistry.register(
+      'fulfillment.work.rerouteSweep',
+      this.fulfillmentWorkRerouteSweepHandler,
+      'bulk'
+    );
+
+    // Stranded-routing-decision reaper (#2731). 'bulk', for the timeout sweep's
+    // reason: every candidate has by construction waited past the TTL, so a lane
+    // slot's delay adds minutes to a condition measured in an hour or more, and
+    // the pass makes no platform call. The re-route itself runs in the
+    // `fulfillment.work.route` child it enqueues, on 'realtime'.
+    this.handlerRegistry.register(
+      'fulfillment.routing.reapSweep',
+      this.fulfillmentRoutingReapSweepHandler,
+      'bulk'
+    );
+
+    // The lost-enqueue backstop for the decrement above (#3629). 'bulk', where its
+    // subject is 'realtime': the decrement is a sale a buyer is racing, whereas
+    // every candidate here has by construction gone at least the grace window
+    // without a job, so a lane slot's delay adds minutes to a condition that
+    // otherwise never ends. One local insert per candidate, no platform call.
+    this.handlerRegistry.register(
+      'inventory.saleDecrement.reconcileSweep',
+      this.inventorySaleDecrementReconcileSweepHandler,
+      'bulk'
+    );
+
     // Data Coverage currency-restatement driver (#2468). 'bulk' lane: an
     // operator-triggered batch repair that must never delay a queued
     // 'realtime' order sync or a 'fiscal' document — the same reasoning that
@@ -646,6 +734,12 @@ export class HandlerRegistrationService implements OnModuleInit {
       this.analyticsCurrencyRecalculateHandler,
       'bulk'
     );
+
+    // Orders CSV/XLSX export (#3534, D35). 'bulk': a background export the
+    // requesting operator is waiting on, but a query-then-write job rather
+    // than a buyer-facing write — the same reasoning as the currency
+    // restatement driver directly above, never 'realtime'.
+    this.handlerRegistry.register('orders.export', this.ordersExportHandler, 'bulk');
 
     // Boot gate (ADR-050 D1 / ADR-051 D6): every JobTypeValues member must be
     // in the lane partition, or lane-aware claiming would strand its queued

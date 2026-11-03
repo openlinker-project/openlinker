@@ -103,6 +103,26 @@ describe('resolveSalesDocumentBlockCopy — invoice kind (default, #2100 wording
     expect(copy?.title).toMatch(/no rules configured for this country/i);
   });
 
+  it('renders dedicated copy for a routed connection that cannot issue, carrying the detail that names it', () => {
+    const copy = resolveSalesDocumentBlockCopy(
+      order({
+        salesDocumentBlockReason: 'unresolved-routing',
+        salesDocumentUnresolvedReason: 'routed-connection-unavailable',
+        salesDocumentBlockDetail:
+          "Rule rule-1 routes this order's invoice to connection conn-1, which is disabled",
+      }),
+      false,
+      t,
+    );
+    expect(copy).toMatchObject({
+      tone: 'error',
+      offerSetPrimary: false,
+      detail: "Rule rule-1 routes this order's invoice to connection conn-1, which is disabled",
+    });
+    expect(copy?.title).toMatch(/routed connection cannot issue it/i);
+    expect(copy?.body).toMatch(/turn that connection back on, or point the rule at another connection/i);
+  });
+
   it('renders dedicated copy for threshold-currency-mismatch, and never implies a conversion (#2170)', () => {
     const copy = resolveSalesDocumentBlockCopy(
       order({

@@ -14,7 +14,7 @@
  * @module apps/web/src/features/mappings/lib
  */
 
-export const SUPPORTED_SOURCE_PLATFORMS = ['allegro', 'erli'] as const;
+export const SUPPORTED_SOURCE_PLATFORMS = ['allegro', 'erli', 'shoper'] as const;
 
 export function isSupportedSourcePlatform(platformType: string | undefined): boolean {
   if (!platformType) return false;

@@ -9,6 +9,12 @@
  *    records read end-to-end through the controller → service → repo →
  *    Postgres.
  *  - `GET /listings/bulk-create/:batchId` — 404 for unknown batch id.
+ *  - `x-idempotency-key`: the partial unique index refuses a second batch
+ *    under the same `(connectionId, key)` when two creates race, and two
+ *    concurrent POSTs replaying a known key both return that batch and
+ *    create nothing.
+ *  - E2E-21 reclassification: the advancement gate flip and the two-counter
+ *    move commit together or not at all, against real Postgres.
  *
  * The full happy-path POST is intentionally not exercised end-to-end:
  * the bulk service requires a connection whose adapter supports the
@@ -24,7 +30,16 @@
  *
  * @module apps/api/test/integration
  */
+import { randomUUID } from 'node:crypto';
+
 import { DataSource } from 'typeorm';
+
+import {
+  BULK_LISTING_BATCH_REPOSITORY_TOKEN,
+  BulkListingBatchNotFoundException,
+  DuplicateBulkBatchIdempotencyKeyError,
+} from '@openlinker/core/listings';
+import type { CreateBulkListingBatchInput } from '@openlinker/core/listings';
 
 import {
   getTestHarness,
@@ -35,6 +50,24 @@ import {
 import { loginAsAdmin } from './helpers/test-auth.helper';
 
 const CONN_A = '11111111-1111-4111-8111-111111111111';
+const CONN_B = '22222222-2222-4222-8222-222222222222';
+
+/**
+ * The one repository method these cases drive, typed structurally: a
+ * `*RepositoryPort` may not be imported across the context boundary, even
+ * from a test.
+ */
+interface BatchCreator {
+  create(input: CreateBulkListingBatchInput): Promise<{ id: string }>;
+}
+
+/** Same structural-typing reason as `BatchCreator`. */
+interface BatchReclassifier {
+  reclassifySucceededChildAsFailed(
+    batchId: string,
+    offerCreationRecordId: string
+  ): Promise<{ succeededCount: number; failedCount: number } | null>;
+}
 const UNKNOWN_BATCH_ID = '88888888-8888-4888-8888-888888888888';
 
 async function seedBatch(
@@ -48,12 +81,13 @@ async function seedBatch(
     succeededCount: number;
     failedCount: number;
     sharedConfig: Record<string, unknown>;
+    idempotencyKey: string | null;
   }> = {}
 ): Promise<string> {
   const result = (await dataSource.query(
     `INSERT INTO bulk_offer_creation_batches
-       ("connectionId", "initiatedBy", "status", "totalCount", "succeededCount", "failedCount", "sharedConfig")
-     VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb)
+       ("connectionId", "initiatedBy", "status", "totalCount", "succeededCount", "failedCount", "sharedConfig", "idempotencyKey")
+     VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8)
      RETURNING id`,
     [
       overrides.connectionId ?? CONN_A,
@@ -63,6 +97,7 @@ async function seedBatch(
       overrides.succeededCount ?? 1,
       overrides.failedCount ?? 0,
       JSON.stringify(overrides.sharedConfig ?? {}),
+      overrides.idempotencyKey ?? null,
     ]
   )) as Array<{ id: string }>;
   return result[0].id;
@@ -318,6 +353,234 @@ describe('Listings Bulk Offer-Creation API Integration', () => {
       const http = harness.getHttp();
 
       await http.get(`/v1/listings/bulk-create/${UNKNOWN_BATCH_ID}`).expect(401);
+    });
+  });
+
+  describe('x-idempotency-key', () => {
+    // Counts are scoped by key / connection rather than table-wide: the
+    // table carries no FK, so it sits outside the CASCADE closure the harness
+    // truncates and rows seeded by earlier cases in this file survive.
+    const countBatches = async (
+      dataSource: DataSource,
+      where: { connectionId: string; idempotencyKey?: string }
+    ): Promise<number> => {
+      const rows = (await dataSource.query(
+        `SELECT COUNT(*)::int AS n FROM bulk_offer_creation_batches
+          WHERE "connectionId" = $1 AND ($2::text IS NULL OR "idempotencyKey" = $2)`,
+        [where.connectionId, where.idempotencyKey ?? null]
+      )) as Array<{ n: number }>;
+      return rows[0].n;
+    };
+
+    it('should persist exactly one batch when two creates race on the same key', async () => {
+      const dataSource = harness.getDataSource();
+      const repository = harness.getApp().get<BatchCreator>(BULK_LISTING_BATCH_REPOSITORY_TOKEN);
+      const input = {
+        connectionId: CONN_A,
+        initiatedBy: 'user-admin',
+        totalCount: 1,
+        sharedConfig: {},
+        idempotencyKey: 'race-key',
+      };
+
+      const outcomes = await Promise.allSettled([
+        repository.create(input),
+        repository.create(input),
+      ]);
+
+      const fulfilled = outcomes.filter((o) => o.status === 'fulfilled');
+      const rejected = outcomes.filter((o): o is PromiseRejectedResult => o.status === 'rejected');
+      expect(fulfilled).toHaveLength(1);
+      expect(rejected).toHaveLength(1);
+      expect(rejected[0].reason).toBeInstanceOf(DuplicateBulkBatchIdempotencyKeyError);
+      expect(
+        await countBatches(dataSource, { connectionId: CONN_A, idempotencyKey: 'race-key' })
+      ).toBe(1);
+    });
+
+    it('should still allow any number of keyless batches on one connection', async () => {
+      const dataSource = harness.getDataSource();
+      const repository = harness.getApp().get<BatchCreator>(BULK_LISTING_BATCH_REPOSITORY_TOKEN);
+      const input = {
+        connectionId: CONN_B,
+        initiatedBy: 'user-admin',
+        totalCount: 1,
+        sharedConfig: {},
+      };
+      const before = await countBatches(dataSource, { connectionId: CONN_B });
+
+      await repository.create(input);
+      await repository.create(input);
+
+      expect(await countBatches(dataSource, { connectionId: CONN_B })).toBe(before + 2);
+    });
+
+    it('should return the existing batch to two concurrent replays and create nothing', async () => {
+      const http = harness.getHttp();
+      const dataSource = harness.getDataSource();
+      const token = await loginAsAdmin(http, dataSource);
+      // No connection is seeded: a replay must answer before the adapter is
+      // resolved, which is what lets it run here at all.
+      const batchId = await seedBatch(dataSource, { idempotencyKey: 'replay-key' });
+      const submit = () =>
+        http
+          .post('/v1/listings/bulk-create')
+          .set('Authorization', `Bearer ${token}`)
+          .set('x-idempotency-key', 'replay-key')
+          .send({
+            connectionId: CONN_A,
+            productIds: ['ol_variant_a'],
+            sharedConfig: { stock: 5, publishImmediately: false },
+          });
+
+      const [first, second] = await Promise.all([submit(), submit()]);
+
+      for (const response of [first, second]) {
+        expect(response.status).toBe(202);
+        expect(response.body).toEqual({
+          batchId,
+          jobIds: [],
+          skippedAlreadyListedCount: 0,
+          skippedAvailabilityUnknownCount: 0,
+          skippedInvalidEanCount: 0,
+          deduplicated: true,
+        });
+      }
+      expect(
+        await countBatches(dataSource, { connectionId: CONN_A, idempotencyKey: 'replay-key' })
+      ).toBe(1);
+    });
+  });
+
+  describe('reclassifySucceededChildAsFailed (E2E-21)', () => {
+    // Advancement rows carry no FK and sit outside the harness's CASCADE
+    // closure, so each case keys its own rows by fresh ids rather than relying
+    // on a clean table.
+    const seedAdvancement = async (
+      dataSource: DataSource,
+      bulkBatchId: string,
+      offerCreationRecordId: string,
+      outcome: 'succeeded' | 'failed' | null
+    ): Promise<void> => {
+      await dataSource.query(
+        `INSERT INTO bulk_batch_advancements ("bulkBatchId", "offerCreationRecordId", "outcome")
+         VALUES ($1, $2, $3)`,
+        [bulkBatchId, offerCreationRecordId, outcome]
+      );
+    };
+    const readOutcome = async (
+      dataSource: DataSource,
+      bulkBatchId: string,
+      offerCreationRecordId: string
+    ): Promise<string | null> => {
+      const rows = (await dataSource.query(
+        `SELECT "outcome" FROM bulk_batch_advancements
+          WHERE "bulkBatchId" = $1 AND "offerCreationRecordId" = $2`,
+        [bulkBatchId, offerCreationRecordId]
+      )) as Array<{ outcome: string | null }>;
+      return rows[0]?.outcome ?? null;
+    };
+    const readCounters = async (
+      dataSource: DataSource,
+      batchId: string
+    ): Promise<{ succeededCount: number; failedCount: number }> => {
+      const rows = (await dataSource.query(
+        `SELECT "succeededCount", "failedCount" FROM bulk_offer_creation_batches WHERE id = $1`,
+        [batchId]
+      )) as Array<{ succeededCount: number; failedCount: number }>;
+      return rows[0];
+    };
+
+    it('should flip the gate and move both counters together', async () => {
+      const dataSource = harness.getDataSource();
+      const repository = harness
+        .getApp()
+        .get<BatchReclassifier>(BULK_LISTING_BATCH_REPOSITORY_TOKEN);
+      const batchId = await seedBatch(dataSource, {
+        status: 'completed',
+        totalCount: 2,
+        succeededCount: 2,
+        failedCount: 0,
+      });
+      const recordId = randomUUID();
+      await seedAdvancement(dataSource, batchId, recordId, 'succeeded');
+
+      const result = await repository.reclassifySucceededChildAsFailed(batchId, recordId);
+
+      expect(result).toMatchObject({ succeededCount: 1, failedCount: 1 });
+      expect(await readCounters(dataSource, batchId)).toEqual({
+        succeededCount: 1,
+        failedCount: 1,
+      });
+      expect(await readOutcome(dataSource, batchId, recordId)).toBe('failed');
+    });
+
+    it('should leave the counters alone on a replay', async () => {
+      const dataSource = harness.getDataSource();
+      const repository = harness
+        .getApp()
+        .get<BatchReclassifier>(BULK_LISTING_BATCH_REPOSITORY_TOKEN);
+      const batchId = await seedBatch(dataSource, {
+        totalCount: 2,
+        succeededCount: 2,
+        failedCount: 0,
+      });
+      const recordId = randomUUID();
+      await seedAdvancement(dataSource, batchId, recordId, 'succeeded');
+
+      await repository.reclassifySucceededChildAsFailed(batchId, recordId);
+      const replay = await repository.reclassifySucceededChildAsFailed(batchId, recordId);
+
+      expect(replay).toBeNull();
+      expect(await readCounters(dataSource, batchId)).toEqual({
+        succeededCount: 1,
+        failedCount: 1,
+      });
+    });
+
+    it('should move exactly once when two reclassifications race', async () => {
+      const dataSource = harness.getDataSource();
+      const repository = harness
+        .getApp()
+        .get<BatchReclassifier>(BULK_LISTING_BATCH_REPOSITORY_TOKEN);
+      const batchId = await seedBatch(dataSource, {
+        totalCount: 2,
+        succeededCount: 2,
+        failedCount: 0,
+      });
+      const recordId = randomUUID();
+      await seedAdvancement(dataSource, batchId, recordId, 'succeeded');
+
+      const outcomes = await Promise.all([
+        repository.reclassifySucceededChildAsFailed(batchId, recordId),
+        repository.reclassifySucceededChildAsFailed(batchId, recordId),
+      ]);
+
+      expect(outcomes.filter((o) => o !== null)).toHaveLength(1);
+      expect(await readCounters(dataSource, batchId)).toEqual({
+        succeededCount: 1,
+        failedCount: 1,
+      });
+    });
+
+    it('should roll the gate flip back when the counter move cannot land', async () => {
+      // A gate row whose batch is gone stands in for a crash between the two
+      // writes: the counter move fails, and the flip must not survive it, or
+      // every later replay would find the row already `failed` and the batch
+      // would stay one short for ever.
+      const dataSource = harness.getDataSource();
+      const repository = harness
+        .getApp()
+        .get<BatchReclassifier>(BULK_LISTING_BATCH_REPOSITORY_TOKEN);
+      const missingBatchId = randomUUID();
+      const recordId = randomUUID();
+      await seedAdvancement(dataSource, missingBatchId, recordId, 'succeeded');
+
+      await expect(
+        repository.reclassifySucceededChildAsFailed(missingBatchId, recordId)
+      ).rejects.toBeInstanceOf(BulkListingBatchNotFoundException);
+
+      expect(await readOutcome(dataSource, missingBatchId, recordId)).toBe('succeeded');
     });
   });
 });

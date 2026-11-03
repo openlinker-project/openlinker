@@ -24,10 +24,12 @@ import { NavLink, useLocation, useMatches } from 'react-router-dom';
 import { useSession } from '../shared/auth/use-session';
 import { useNumberFormat } from '../shared/i18n';
 import { resolveCrumbFromMatches } from './breadcrumbs';
-import { buildNavGroups, navRoleOf } from './nav-registry';
+import { buildNavGroups, navRoleOf, sessionNeedsOmsRouting } from './nav-registry';
+import { useOmsRoutingState } from '../features/fulfillment-authority';
 import type { NavGroup } from './nav-registry.types';
 import { useNavCounts, type NavCounts } from './hooks/use-nav-counts';
 import { Button } from '../shared/ui/button';
+import { LanguageSwitch } from '../shared/ui/language-switch';
 import { EnvironmentBadge } from '../shared/ui/environment-badge';
 import {
   DropdownMenu,
@@ -55,9 +57,8 @@ interface SidebarNavProps {
 
 function SidebarNav({ ariaLabel, counts, groups, onNavigate }: SidebarNavProps): ReactElement {
   // i18n seam (#612): nav-item counts follow the active locale instead of
-  // being pinned to en-US. v1 maps `'en'` → BCP 47 `'en-US'`, so today this
-  // is a behavioural no-op; future locales pick up the right grouping
-  // separators automatically.
+  // being pinned to en-US. `'en'` maps to BCP 47 `'en-GB'` and `'pl'` to
+  // `'pl-PL'`, so each language gets its own grouping separators.
   const numberFormatter = useNumberFormat();
   const formatCount = (value: number | null): string | null =>
     value === null ? null : numberFormatter.format(value);
@@ -110,7 +111,9 @@ function SidebarNav({ ariaLabel, counts, groups, onNavigate }: SidebarNavProps):
                           isActive ? 'shell-nav__link shell-nav__link--active' : 'shell-nav__link'
                         }
                       >
-                        <span className="shell-nav__link-label">{item.label}</span>
+                        <span className="shell-nav__link-label" title={item.label}>
+                          {item.label}
+                        </span>
                         {countText !== null ? (
                           <span className="shell-nav__link-count mono-text">{countText}</span>
                         ) : null}
@@ -157,6 +160,7 @@ function WorkspaceFooter({ onLogout, username, location, demoMode }: WorkspaceFo
     <div className="shell-workspace">
       <div className="shell-workspace__header">
         <strong className="shell-workspace__name">Default organization</strong>
+        <LanguageSwitch placement="up" />
       </div>
       {demoMode ? (
         <a
@@ -233,6 +237,85 @@ function UserChip({ email, onLogout, username }: UserChipProps): ReactElement {
   );
 }
 
+export interface ShellTopbarProps {
+  /**
+   * Opens the mobile navigation drawer. Omitted by a layout with no sidebar
+   * (the pack bench, #3401 follow-up) - a menu button that opens nothing is a
+   * control shaped like one that is not.
+   */
+  readonly onOpenMenu?: () => void;
+  /**
+   * Renders the brand mark at the start of the bar. Only a layout with no
+   * sidebar needs it: everywhere else the sidebar carries the logo.
+   */
+  readonly showBrand?: boolean;
+  /**
+   * Renders the command-palette trigger. A layout that does not mount a
+   * `CommandPaletteProvider` must pass `false`, since the trigger reads that
+   * context.
+   */
+  readonly showSearch?: boolean;
+  readonly onLogout: () => void;
+}
+
+/**
+ * The application's one topbar. Exported so a layout that deliberately has no
+ * sidebar (`BenchAppLayout`) renders the SAME bar rather than a look-alike that
+ * drifts. Must sit inside a `CommandPaletteProvider` unless `showSearch` is
+ * `false`.
+ */
+export function ShellTopbar({
+  onOpenMenu,
+  showBrand = false,
+  showSearch = true,
+  onLogout,
+}: ShellTopbarProps): ReactElement {
+  const { session } = useSession();
+  const username = session.user?.username;
+  const email = session.user?.email ?? null;
+  const crumbs = resolveCrumbFromMatches(useMatches());
+
+  return (
+    <header className="shell-topbar">
+      {onOpenMenu ? (
+        <button
+          type="button"
+          onClick={onOpenMenu}
+          aria-label="Open menu"
+          className="shell-topbar__hamburger"
+        >
+          <span aria-hidden="true">☰</span>
+        </button>
+      ) : null}
+
+      {showBrand ? <SidebarBrand /> : null}
+
+      <nav aria-label="Breadcrumb" className="shell-crumbs">
+        <span className="shell-crumbs__group">{crumbs.group}</span>
+        {crumbs.title ? (
+          <>
+            <span className="shell-crumbs__sep" aria-hidden="true">
+              /
+            </span>
+            <span className="shell-crumbs__current">{crumbs.title}</span>
+          </>
+        ) : null}
+      </nav>
+
+      {showSearch ? <TopbarSearchTrigger /> : null}
+
+      <div className="shell-topbar__spacer" />
+
+      <Button tone="ghost" className="shell-topbar__alerts">
+        Alerts <span aria-hidden="true">0</span>
+        <span className="sr-only">(0 new)</span>
+      </Button>
+
+      {username ? <UserChip username={username} email={email} onLogout={onLogout} /> : null}
+    </header>
+  );
+}
+
 export function AppShell({ children }: PropsWithChildren): ReactElement {
   const { isReady, session, clearSession } = useSession();
   const { showToast } = useToast();
@@ -247,7 +330,6 @@ export function AppShell({ children }: PropsWithChildren): ReactElement {
   // shell itself — we only call it to drive its useEffect.
   useDensity();
   const username = session.user?.username;
-  const email = session.user?.email ?? null;
   const counts = useNavCounts();
   // The session's own role string, and the ONLY place this file reads it.
   //
@@ -277,11 +359,13 @@ export function AppShell({ children }: PropsWithChildren): ReactElement {
   // Permission-gated nav items (#2358 review I5) need the session's permission
   // list, not just the admin flag — `/automations` is admin + operator.
   const permissions = session.user?.permissions;
+  // `requiresOms` entries (#3505) follow the routing state; the read is only
+  // issued for a session that could see one of them.
+  const omsRouting = useOmsRoutingState({ enabled: sessionNeedsOmsRouting(permissions, role) });
   const groups = useMemo(
-    () => buildNavGroups({ isAdmin, demoMode, permissions, role }),
-    [isAdmin, demoMode, permissions, role],
+    () => buildNavGroups({ isAdmin, demoMode, permissions, role, omsRouting }),
+    [isAdmin, demoMode, permissions, role, omsRouting],
   );
-  const matches = useMatches();
 
   const closeDrawer = useCallback((): void => {
     drawerRef.current?.close();
@@ -321,8 +405,6 @@ export function AppShell({ children }: PropsWithChildren): ReactElement {
     hasInitializedAnalyticsRef.current = true;
     void initDemoIntegrations(systemConfigQuery.data, true);
   }, [systemConfigQuery.isSuccess, systemConfigQuery.data, isReady, session]);
-
-  const crumbs = resolveCrumbFromMatches(matches);
 
   return (
     <CommandPaletteProvider>
@@ -367,41 +449,7 @@ export function AppShell({ children }: PropsWithChildren): ReactElement {
       </dialog>
 
       <div className="shell-main">
-        <header className="shell-topbar">
-          <button
-            type="button"
-            onClick={openDrawer}
-            aria-label="Open menu"
-            className="shell-topbar__hamburger"
-          >
-            <span aria-hidden="true">☰</span>
-          </button>
-
-          <nav aria-label="Breadcrumb" className="shell-crumbs">
-            <span className="shell-crumbs__group">{crumbs.group}</span>
-            {crumbs.title ? (
-              <>
-                <span className="shell-crumbs__sep" aria-hidden="true">
-                  /
-                </span>
-                <span className="shell-crumbs__current">{crumbs.title}</span>
-              </>
-            ) : null}
-          </nav>
-
-          <TopbarSearchTrigger />
-
-          <div className="shell-topbar__spacer" />
-
-          <Button tone="ghost" className="shell-topbar__alerts">
-            Alerts <span aria-hidden="true">0</span>
-            <span className="sr-only">(0 new)</span>
-          </Button>
-
-          {username ? (
-            <UserChip username={username} email={email} onLogout={handleLogout} />
-          ) : null}
-        </header>
+        <ShellTopbar onOpenMenu={openDrawer} onLogout={handleLogout} />
 
         {demoMode && isViewerOnly ? <DemoBanner /> : null}
 

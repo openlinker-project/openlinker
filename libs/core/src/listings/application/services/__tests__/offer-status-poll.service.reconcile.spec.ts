@@ -7,6 +7,7 @@ import type { ConfigService } from '@nestjs/config';
 import type { IIntegrationsService } from '@openlinker/core/integrations';
 import type { ISyncJobsService } from '@openlinker/core/sync';
 import type { OfferCreationRecordRepositoryPort } from '../../../domain/ports/offer-creation-record-repository.port';
+import type { IBulkListingProgressService } from '../bulk-listing-progress.service.interface';
 import { OfferStatusPollService } from '../offer-status-poll.service';
 import type { IOfferStatusSyncService } from '../offer-status-sync.service.interface';
 
@@ -50,6 +51,7 @@ describe('OfferStatusPollService — snapshot reconcile scheduling (#1760)', () 
       records as unknown as OfferCreationRecordRepositoryPort,
       syncJobs as unknown as ISyncJobsService,
       statusSync as unknown as IOfferStatusSyncService,
+      { reclassifyChildAsFailed: jest.fn() } as unknown as IBulkListingProgressService,
       config
     );
   });

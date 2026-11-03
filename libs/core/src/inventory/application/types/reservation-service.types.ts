@@ -121,6 +121,15 @@ export interface CloseForOrderInput {
    * `'released'` — the order was cancelled and gives its promise back (#2348).
    */
   readonly terminalStatus: 'consumed' | 'released';
+  /**
+   * Close only these order lines (#3480). Omitted means every held line of the
+   * order, exactly as before.
+   *
+   * The routed-order sale decrement (#3453) confirms per LINE, and a line whose
+   * decrement failed must keep its hold so stock stays reduced while the retry
+   * runs — closing the whole order would give those units back too early.
+   */
+  readonly orderLineIds?: readonly string[];
 }
 
 /**
@@ -144,5 +153,27 @@ export interface CloseForOrderResult {
   /** Rows that had already left `held` — expected, benign. */
   readonly alreadyTerminal: number;
   /** Rows that failed for any other reason. Genuinely wrong. */
+  readonly failed: number;
+}
+
+/** One line's new, lower held quantity (#3542). `0` releases the hold. */
+export interface NarrowOrderLineInput {
+  readonly orderLineId: string;
+  readonly quantity: number;
+}
+
+export interface NarrowForOrderInput {
+  readonly orderRecordId: string;
+  readonly lines: readonly NarrowOrderLineInput[];
+}
+
+export interface NarrowForOrderResult {
+  /** Holds moved to a lower, still positive quantity. */
+  readonly narrowed: number;
+  /** Holds released because the line was lowered to zero. */
+  readonly released: number;
+  /** Lines with no live hold to lower, or already at or below the target. */
+  readonly untouched: number;
+  /** Rows the ledger refused; the next ingestion re-reserves from the order and repairs them. */
   readonly failed: number;
 }

@@ -63,6 +63,7 @@ describe('MarketplaceOfferCreateHandler', () => {
   beforeEach(() => {
     offerCreation = {
       executeCreation: jest.fn(),
+      abandonCreation: jest.fn(),
     } as unknown as jest.Mocked<IOfferCreationExecutionService>;
 
     contentSuggestion = {
@@ -487,6 +488,77 @@ describe('MarketplaceOfferCreateHandler', () => {
     it('throws SyncJobExecutionError when generateDescription is missing', async () => {
       const job = createJob(baseV2({ generateDescription: undefined }));
       await expect(handler.execute(job)).rejects.toBeInstanceOf(SyncJobExecutionError);
+    });
+  });
+
+  // ---------- onDead (#3505, G01-2) ----------
+
+  describe('onDead', () => {
+    const DEAD = { message: 'ambiguous write', nonRetryable: true };
+    const v2Payload = {
+      schemaVersion: 2,
+      internalVariantId: VARIANT_ID,
+      stock: 1,
+      publishImmediately: false,
+      offerCreationRecordId: RECORD_ID,
+      bulkBatchId: BATCH_ID,
+      generateDescription: false,
+    };
+
+    it('should abandon the pending record when a single-offer job dies', async () => {
+      offerCreation.abandonCreation.mockResolvedValue(buildRecord({ status: 'failed' }));
+
+      await handler.onDead(
+        createJob({
+          schemaVersion: 1,
+          internalVariantId: VARIANT_ID,
+          stock: 1,
+          publishImmediately: false,
+          offerCreationRecordId: RECORD_ID,
+        }),
+        DEAD
+      );
+
+      expect(offerCreation.abandonCreation).toHaveBeenCalledWith(RECORD_ID, 'ambiguous write');
+      expect(bulkProgress.advanceBatchStatus).not.toHaveBeenCalled();
+    });
+
+    it('should count a bulk child as failed when its record was moved out of pending', async () => {
+      offerCreation.abandonCreation.mockResolvedValue(buildRecord({ status: 'failed' }));
+
+      await handler.onDead(createJob(v2Payload), DEAD);
+
+      expect(bulkProgress.advanceBatchStatus).toHaveBeenCalledWith(BATCH_ID, RECORD_ID, 'failed');
+    });
+
+    it('should not advance the batch when the record was no longer pending', async () => {
+      offerCreation.abandonCreation.mockResolvedValue(null);
+
+      await handler.onDead(createJob(v2Payload), DEAD);
+
+      expect(offerCreation.abandonCreation).toHaveBeenCalledWith(RECORD_ID, 'ambiguous write');
+      expect(bulkProgress.advanceBatchStatus).not.toHaveBeenCalled();
+    });
+
+    it('should do nothing when a legacy single-offer payload carries no record id', async () => {
+      await handler.onDead(
+        createJob({
+          schemaVersion: 1,
+          internalVariantId: VARIANT_ID,
+          stock: 1,
+          publishImmediately: false,
+        }),
+        DEAD
+      );
+
+      expect(offerCreation.abandonCreation).not.toHaveBeenCalled();
+    });
+
+    it('should do nothing when the payload cannot be parsed', async () => {
+      await handler.onDead(createJob(undefined), DEAD);
+
+      expect(offerCreation.abandonCreation).not.toHaveBeenCalled();
+      expect(bulkProgress.advanceBatchStatus).not.toHaveBeenCalled();
     });
   });
 });

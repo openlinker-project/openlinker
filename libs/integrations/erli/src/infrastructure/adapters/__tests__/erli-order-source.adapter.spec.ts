@@ -678,6 +678,17 @@ describe('ErliOrderSourceAdapter', () => {
       expect(client.post).not.toHaveBeenCalled();
     });
 
+    it.each(['delivered', 'in-progress'] as const)(
+      '%s: declines — Erli order-status enum has no such member (#3526)',
+      async (type) => {
+        const result = await adapter.write({ type, externalOrderId: ORDER_ID });
+
+        expect(result.outcome).toBe('unsupported');
+        expect(client.patch).not.toHaveBeenCalled();
+        expect(client.post).not.toHaveBeenCalled();
+      }
+    );
+
     // #1198: `cancelled` now triggers stock-restore instead of unconditional
     // `unsupported`. The nested describe below covers the full test matrix.
     describe('cancelled — stock-restore (#1198)', () => {
@@ -720,6 +731,8 @@ describe('ErliOrderSourceAdapter', () => {
         const result = await wiredAdapter.write({ type: 'cancelled', externalOrderId: ORDER_ID });
 
         expect(result.outcome).toBe('applied');
+        expect(result.scope).toBe('stock-only');
+        expect(client.patch).not.toHaveBeenCalled();
         expect(inventoryQuery.getAvailabilityByVariantIds).toHaveBeenCalledWith([OFFER_ID]);
         expect(offerManager.restoreStockOnCancellation).toHaveBeenCalledWith([
           { externalOfferId: OFFER_ID, quantity: 5 },

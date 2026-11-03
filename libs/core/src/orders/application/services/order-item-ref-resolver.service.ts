@@ -21,6 +21,25 @@
  * precedence right: a shop that really is a ProductMaster has the sweep's own
  * identity for the row, and that answer beats a publish record.
  *
+ * ## The `ShopProductVariant` fallback
+ *
+ * Some shops key an order line by their own VARIANT id rather than the product
+ * id (Shoper: `stock_id`). A `variant` ref from such a shop never matches the
+ * `ShopProduct` record, whose external id is the product id, so the publish
+ * also records the variant-grain id under `ShopProductVariant`. It is a
+ * separate entity type because the two ids are separate id spaces on the shop
+ * and can be the same number.
+ *
+ * That collision is also why the `variant` branch asks `ShopProductVariant`
+ * BEFORE `ShopProduct`. A `variant` ref carries a variant-grain id, so on a shop
+ * that has the variant-grain record it is the record the ref means; asking
+ * `ShopProduct` first would let a Shoper `stock_id` 256 match the publish
+ * record of an unrelated product whose `product_id` happens to be 256 too, and
+ * the line would resolve, confidently, to the wrong variant. Only the Shoper
+ * publisher writes `ShopProductVariant`, so a shop whose variant ref IS its
+ * shop product id (WooCommerce variations) finds nothing there and still
+ * resolves through `ShopProduct` exactly as before.
+ *
  * `ShopProduct` deliberately holds two kinds of internal id in one entityType -
  * a variant's own shop product id maps to a VARIANT, while a grouped parent's
  * maps to a PRODUCT (they never collide because the two id families are
@@ -131,14 +150,22 @@ export class OrderItemRefResolverService implements IOrderItemRefResolverService
           connectionId
         );
         if (!internalVariantId) {
-          const published = await this.resolveViaShopProduct(connectionId, productRef);
+          // Variant-grain record first: the two shop id spaces can share a
+          // number, and a variant ref means the variant one (see the module
+          // docblock).
+          const published =
+            (await this.resolveViaShopProduct(
+              connectionId,
+              productRef,
+              CORE_ENTITY_TYPE.ShopProductVariant
+            )) ?? (await this.resolveViaShopProduct(connectionId, productRef));
           if (published) {
             return published;
           }
           throw new MissingOrderItemMappingError(
             connectionId,
             productRef,
-            'identifier_mappings:ProductVariant,ShopProduct'
+            'identifier_mappings:ProductVariant,ShopProductVariant,ShopProduct'
           );
         }
         const variant = await this.productsService.getVariant(internalVariantId);
@@ -192,10 +219,11 @@ export class OrderItemRefResolverService implements IOrderItemRefResolverService
    */
   private async resolveViaShopProduct(
     connectionId: string,
-    productRef: IncomingOrderItemRef
+    productRef: IncomingOrderItemRef,
+    entityType: string = CORE_ENTITY_TYPE.ShopProduct
   ): Promise<ResolvedOrderItemProduct | null> {
     const internalId = await this.identifierMapping.getInternalId(
-      CORE_ENTITY_TYPE.ShopProduct,
+      entityType,
       productRef.externalId,
       connectionId
     );
@@ -221,7 +249,7 @@ export class OrderItemRefResolverService implements IOrderItemRefResolverService
     throw new MissingOrderItemMappingError(
       connectionId,
       productRef,
-      'identifier_mappings:ShopProduct:target-missing'
+      `identifier_mappings:${entityType}:target-missing`
     );
   }
 }

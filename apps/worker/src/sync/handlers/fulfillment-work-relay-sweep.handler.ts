@@ -58,11 +58,24 @@
  * ## Composition, not injection
  *
  * The read is core's (`IFulfillmentRelayReconcileService`) and the re-drive is
- * `orders`' (`IFulfillmentDispatchRelayService`). `libs/core/src/fulfillment` is a
- * registered zero-sibling-edge leaf and may not inject the second, so this handler
+ * `shipping`'s shipment-first router (`IFulfillmentWorkDispatchRouterService`,
+ * which composes `orders`' work-grain relay). `libs/core/src/fulfillment` is a
+ * registered zero-sibling-edge leaf and may not inject either, so this handler
  * composes them — ADR-053's report-don't-perform discipline, the #2400 / #2712
  * shape. The evidence the split is right is that #2728 adds zero entries to
  * `check-no-injection-contracts.mjs`'s or `barrel-purity.spec.ts`'s allow-sets.
+ *
+ * ## Shipment-first, like the first attempt (#3506, G02-4)
+ *
+ * The re-drive goes through the SAME router the parcel-closure notifier uses.
+ * Before, the sweep called the work-grain relay directly: a close whose
+ * shipment-grain notify the source rejected left the work on this frontier, and
+ * the sweep then "recovered" it with a tracking-less `dispatched` — the channel
+ * said "sent", the slot was burnt, the shipment stayed `generated`, and the
+ * buyer never got a tracking number. Now a work with one linked `generated`
+ * shipment is retried THROUGH the shipment (`via-shipment` → counted relayed),
+ * and a shipment-grain failure is counted `released`: the slot stays open, so
+ * the work stays here for the next tick and, past the stuck bound, escalates.
  *
  * ## Finding the stuck works by hand
  *
@@ -94,9 +107,9 @@ import {
   type UnrelayedDispatchCandidate,
 } from '@openlinker/core/fulfillment';
 import {
-  FULFILLMENT_DISPATCH_RELAY_SERVICE_TOKEN,
-  type IFulfillmentDispatchRelayService,
-} from '@openlinker/core/orders';
+  FULFILLMENT_WORK_DISPATCH_ROUTER_SERVICE_TOKEN,
+  type IFulfillmentWorkDispatchRouterService,
+} from '@openlinker/core/shipping';
 import type {
   FulfillmentWorkRelaySweepPayloadV1,
   SyncJobHandler,
@@ -150,8 +163,8 @@ export class FulfillmentWorkRelaySweepHandler implements SyncJobHandler {
   constructor(
     @Inject(FULFILLMENT_RELAY_RECONCILE_SERVICE_TOKEN)
     private readonly reconcile: IFulfillmentRelayReconcileService,
-    @Inject(FULFILLMENT_DISPATCH_RELAY_SERVICE_TOKEN)
-    private readonly relay: IFulfillmentDispatchRelayService,
+    @Inject(FULFILLMENT_WORK_DISPATCH_ROUTER_SERVICE_TOKEN)
+    private readonly router: IFulfillmentWorkDispatchRouterService,
     @Inject(SYNC_LOCK_TOKEN)
     private readonly syncLock: SyncLockPort,
     private readonly configService: ConfigService
@@ -244,12 +257,15 @@ export class FulfillmentWorkRelaySweepHandler implements SyncJobHandler {
   }
 
   /**
-   * Re-drive ONE candidate through the unchanged `relayDispatch`.
+   * Re-drive ONE candidate through the shipment-first router.
    *
-   * That method takes `claimDispatchRelay`, which is the serialisation point
-   * between this sweep and any concurrent progress-driven trigger — the
-   * `waybillRelayedAt` idiom (#1947). **Nothing here claims for itself**: a second
-   * writer of that column would defeat the guarantee the claim exists to provide.
+   * Both of the router's paths take the work's one conditional slot claim —
+   * `claimDispatchRelay` inside `relayDispatch`, or the same claim through
+   * `markRelayedExternally` after a shipment-grain notify lands — which is the
+   * serialisation point between this sweep and any concurrent progress-driven
+   * trigger, the `waybillRelayedAt` idiom (#1947). **Nothing here claims for
+   * itself**: a second writer of that column would defeat the guarantee the claim
+   * exists to provide.
    *
    * A `relayed` outcome does not assert a participant was reached — that status
    * reports the CLAIM decision, and three non-delivering paths land on it, all of
@@ -274,8 +290,26 @@ export class FulfillmentWorkRelaySweepHandler implements SyncJobHandler {
     }
 
     try {
-      const outcome = await this.relay.relayDispatch(candidate.intent);
+      const outcome = await this.router.routeDispatch(candidate.intent.workId);
 
+      if (outcome.status === 'via-shipment') {
+        this.logger.log(
+          `Dispatch relay for work ${candidate.intent.workId} recovered through shipment ` +
+            `${outcome.shipmentId}; the channel received the waybill`
+        );
+        return 'relayed';
+      }
+      if (outcome.status === 'shipment-failed') {
+        // Deliberately NOT a fallback to the tracking-less work-grain relay —
+        // that fallback is G02-4. The slot is still open, so the work stays on
+        // the frontier and the next tick retries through the shipment again.
+        this.logger.warn(
+          `Shipment-grain dispatch notify for work ${candidate.intent.workId} (shipment ` +
+            `${outcome.shipmentId}) failed again (${outcome.reason}); it stays on the frontier ` +
+            'for the next tick'
+        );
+        return 'released';
+      }
       if (outcome.status === 'released') {
         this.logger.warn(
           `Dispatch relay for work ${candidate.intent.workId} failed transiently again ` +
@@ -293,8 +327,8 @@ export class FulfillmentWorkRelaySweepHandler implements SyncJobHandler {
       }
       return outcome.status === 'already-relayed' ? 'already-relayed' : 'relayed';
     } catch (error) {
-      // `relayDispatch` catches its own relay failures, so reaching here means the
-      // claim read itself threw. Counted rather than propagated: one unreadable
+      // The router catches shipment-grain failures and `relayDispatch` catches its
+      // own relay failures, so reaching here means the claim read itself threw. Counted rather than propagated: one unreadable
       // work must not abort a page whose other candidates are re-drivable.
       this.logger.error(
         `Failed to re-drive the dispatch relay for work ${candidate.intent.workId}: ${

@@ -19,22 +19,11 @@
 import type { ReactElement } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useSession } from '../../../shared/auth/use-session';
+import { resolveNextPath } from '../../../shared/lib/resolve-next-path';
 import { Alert } from '../../../shared/ui/alert';
 import { Button } from '../../../shared/ui/button';
 import { useUpdateAnalyticsConsentMutation } from '../../auth';
 import { SessionRecordingBullets } from './session-recording-bullets';
-
-/**
- * Only a same-origin absolute path is honoured, so a crafted
- * `?next=https://evil.example` cannot turn the consent page into an open
- * redirect. A protocol-relative `//host` is rejected for the same reason.
- */
-export function resolveNextPath(raw: string | null): string {
-  if (!raw || !raw.startsWith('/') || raw.startsWith('//')) {
-    return '/';
-  }
-  return raw;
-}
 
 export function ConsentGate(): ReactElement {
   const [searchParams] = useSearchParams();

@@ -465,6 +465,11 @@ export class FulfillmentWorklistService implements IFulfillmentWorklistService {
       labelPrintedAt: work.labelPrintedAt,
       completedAt: work.completedAt,
       completedByUserId: work.completedByUserId,
+      buyerNoteAcknowledgedAt: work.buyerNoteAcknowledgedAt,
+      buyerNoteAcknowledgedByUserId: work.buyerNoteAcknowledgedByUserId,
+      // #3096 — the relay column's one operator fact, under its own name. See
+      // the view's docblock for why `dispatchRelayedAt` itself stays off.
+      channelNotifiedAt: work.dispatchRelayedAt,
       createdAt: work.createdAt,
       updatedAt: work.updatedAt,
       lines: work.lines.map((line) => ({

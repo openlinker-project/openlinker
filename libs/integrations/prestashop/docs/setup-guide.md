@@ -106,6 +106,7 @@ out, so you can decide whether the default is fine for your store.
 | Setting | Default when unset | What it does, and what leaving it out costs |
 |---|---|---|
 | `currency` (also in the guided form) | OpenLinker asks the shop | ISO 4217 code stamped on synced products. Unset, OpenLinker reads the shop's default currency instead: one request for the shop setting, one for the currency row. Those two requests are made once per worker process per connection and the answer is then kept for 24 hours, so on a healthy shop the cost is negligible. The bad case is a shop with **no** default currency configured: a failed lookup is only kept for 60 seconds, so the pair repeats roughly once a minute while sync runs, and products still get no currency at all. Setting the field skips the lookup completely. |
+| `salesCountryIso2` | the shop's own default country | Two-letter country code (`PL`, `DE`, …) of the buyers this catalogue is priced for. OpenLinker reports every product price **with VAT** - what a buyer pays - and VAT depends on the buyer's country, so it asks PrestaShop for the price in this country. Leave it out and OpenLinker uses the shop's default country (**International → Locations → Countries**). That default is often wrong: a fresh PrestaShop install defaults to the **United States**, where your Polish tax rules do not apply. When the chosen country has no tax rule for a product, OpenLinker reports **no price** for it rather than a price without VAT, and the bulk offer wizard blocks the row. **Test connection** shows which country it is using. Also used when OpenLinker publishes a product **to** this shop: it picks the tax group whose rule for this country has the product's VAT rate. |
 | `preferredLanguageId` | `1` | Which PrestaShop language OpenLinker reads product names and descriptions in. Wrong value on a multi-language shop means products arrive with empty or wrong-language names. `langId` is the old name for the same thing and still works, but use `preferredLanguageId`. |
 | `pageSize` | `100` | How many records OpenLinker asks for per list request. Lower means more requests for the same catalogue. Higher means fewer, larger responses, and a slow or memory-limited shop may time out. Leave it at `100` unless you have measured something better on your own shop. The maximum the connection accepts is `1000`; a higher value fails to save. |
 | `timeoutMs` | `30000` | How long OpenLinker waits for one shop request, in milliseconds. Raise it if your shop is slow under load and jobs fail on timeouts rather than on errors. The maximum is `120000`; a higher value fails to save. |
@@ -122,6 +123,7 @@ already wrote, and add the ones you want:
 {
   "baseUrl": "https://shop.example.com",
   "currency": "PLN",
+  "salesCountryIso2": "PL",
   "preferredLanguageId": 2,
   "guestCustomerGroupId": 2
 }
@@ -470,7 +472,11 @@ in PrestaShop and watch it show up in OL.
 
    ![PrestaShop product edit — Stocks tab with quantity fields](./assets/09-product-stocks-tab.png)
 
-4. On the **Pricing** tab, set a retail price
+4. On the **Pricing** tab, set a retail price and a **Tax rule** (for
+   example a 23% VAT group). OpenLinker reads the price **with VAT** for your
+   sales country (see `salesCountryIso2` in
+   [Advanced connection settings](#advanced-connection-settings)), so a
+   product with no tax rule for that country arrives with no price
 
    ![PrestaShop product edit — Pricing tab with retail price fields](./assets/10-product-pricing-tab.png)
 
@@ -503,6 +509,8 @@ and **Stock** resources (§1).
 | Orders fail with "no shipping methods available" | OpenLinker's cart-build step for that order didn't complete before order creation, so no shipping-cost sidecar row exists for the cart | Check the worker logs for the failed order's `marketplace.order.sync` job; the OL Dynamic carrier fails closed rather than silently charging zero |
 | Carrier picked is unexpected / wrong shipping charge on some orders | No explicit shipping-method mapping and no fallback carrier set, and the OL module isn't installed | Install the OL Dynamic Carrier module (§5), or set an explicit fallback carrier (§2) |
 | Order created without expected customer-group discounts/restrictions | `guestCustomerGroupId` unset, so OpenLinker uses PrestaShop group `2` | Set `guestCustomerGroupId` in the connection's **Config JSON** to your shop's actual guest group - see [Advanced connection settings](#advanced-connection-settings) |
+| Products sync in with no price, and the worker log says `prestashop_gross_price_unavailable` | OpenLinker could not get a price **with VAT** for the sales country. Usually the shop's default country is the United States (a fresh install's default) or another country your tax rules do not cover. Less often: the product's tax group is inactive, or the product carries an ecotax | Set `salesCountryIso2` on the connection (see [Advanced connection settings](#advanced-connection-settings)) to the country you sell to, then trigger **Sync all products**. **Test connection** confirms the country in use |
+| A product publish to this shop fails with `TAX_GROUP_UNRESOLVED` or `TAX_RATE_MISSING` | OpenLinker writes the price **without VAT** plus a tax group, and needs exactly one active tax group whose rule for the sales country has the product's rate | Create (or reactivate) one tax group with that rate for your sales country, or set `id_tax_rules_group` on the publish. Make sure the product has a VAT rate in OpenLinker |
 | Products sync in but show no currency | `currency` unset on the connection **and** the shop reports no default currency. OpenLinker also retries that failed lookup every 60 seconds, which is two wasted requests each time | Set `currency` on the connection (see [Advanced connection settings](#advanced-connection-settings)), which skips the lookup entirely. Failing that, set the default currency in PrestaShop under **Shop Parameters → General** |
 | A full catalogue sweep takes many hours | One of OpenLinker's own concurrency caps, not the shop. Per-product sweep jobs run in the `bulk` lane, so `OL_LANE_BULK_SCOPE_CAP` (default `8`) is how many run at once per connection per worker process. On versions before that change the knob was `OL_LANE_REALTIME_SCOPE_CAP`, default `2` | Read [Throughput](#throughput-what-actually-limits-sync-speed) first, and check which lane your version puts these jobs in. Raising the connection's rate limit on its own will not help |
 | Module install fails with "This functionality has been disabled" | PrestaShop is still in demo mode, or a leftover `/install` folder exists | Disable demo mode and remove the `/install` directory, then retry |

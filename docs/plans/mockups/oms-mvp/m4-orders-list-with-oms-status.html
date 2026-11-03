@@ -1,0 +1,505 @@
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#faf9f5;color:#141413}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<title>Orders list with OMS status</title>
+<!--
+  M4 - Orders list with OMS status (#3482). Committed from the design Artifact
+  https://claude.ai/artifact/FERNsQ7fag41xVyV3B4FHw with two changes required by #3482:
+  - annotation 2 and the sixth health bucket "In OpenLinker" are removed (decision D22:
+    health buckets are a partition and are never extended);
+  - an order handled in OpenLinker is "Awaiting dispatch" while it is on the pack bench and
+    "Synced" once it has shipped, which is the rule the implementation ships.
+  Styles: the app's own index.css plus the shared mockup chrome (ol-kit.css / ol-kit.js).
+  States: default, search, noresults, packed, waiting, mobile.
+-->
+
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="../../../../apps/web/src/index.css">
+<link rel="stylesheet" href="ol-kit.css">
+<script src="ol-kit.js" defer></script>
+<style>
+  /* Page-specific only. Everything else is the app's own index.css (linked above). */
+
+  /* Search is the first, widest control of the orders toolbar (the products
+     toolbar puts its search input first the same way). */
+  .orders-toolbar .mk-orders-search { flex: 0 0 auto; width: 100%; max-width: 40rem; min-width: 0; }
+  .mk-dest { white-space: nowrap; }
+
+  /* The packing position reuses the Packed tick anatomy (#2288) — a workflow
+     position is a tick, not a badge. Only the mark colour varies per step. */
+  .mk-pack--todo .orders-packed-tick__mark { color: var(--text-muted); }
+  .mk-pack--doing .orders-packed-tick__mark { color: var(--status-info-fg); }
+  .mk-pack__who { color: var(--text-secondary); }
+
+  /* A waiting reason is attention, not failure: same line as the red
+     failure reason, warning-toned. The routing-error reason keeps the red. */
+  .orders-status-reason.mk-reason--warning { color: var(--status-warning-strong); }
+
+  /* Search hit — tokens only, readable in both themes. */
+  mark.mk-hit { background: var(--accent-primary-soft); color: var(--text-primary); box-shadow: inset 0 -2px 0 var(--accent-primary-border); border-radius: 2px; padding: 0 1px; }
+  .mk-match { color: var(--text-secondary); }
+
+  /* Phone frame for the card-view state (DataTable renders cards ≤ 767.98 px). */
+  .mk-phone {
+    max-width: 390px; margin: 0 auto; padding: var(--space-3);
+    border: 1px solid var(--border-default); border-radius: 22px;
+    background: var(--bg-canvas);
+  }
+  .mk-phone__stack { display: flex; flex-direction: column; gap: var(--space-3); }
+  .mk-phone .control { width: 100%; }
+  .mk-phone-caption { text-align: center; margin: 0 0 var(--space-3); color: var(--text-muted); font-size: 0.75rem; }
+  .mk-count { margin-left: auto; font-size: 0.75rem; }
+  @media (max-width: 767.98px) { .mk-phone { border: 0; padding: 0; border-radius: 0; max-width: none; } .mk-phone-caption { display: none; } }
+</style>
+
+<div data-ol-page data-active="Orders" data-crumb-group="Operations" data-crumb="Orders">
+  <section class="page-section">
+    <div class="page-header page-header--split">
+      <div class="page-header__content">
+        <p class="eyebrow">Synced 10:02</p>
+        <h2 class="page-title">Orders</h2>
+      </div>
+      <div class="page-header__actions">
+        <button type="button" class="button button--ghost button--sm">Refresh <span class="button__shortcut">R</span></button>
+      </div>
+    </div>
+
+    <!-- ============ DEFAULT ============ -->
+    <div data-mk-state="default" data-mk-label="Domyślny">
+      <div data-mk-segments data-active-seg="all" data-pins="1"></div>
+      <div data-mk-toolbar data-search="" data-packed="" data-fulfillment="" data-pins="1"></div>
+      <div data-mk-chips data-count="1,284 results" data-pins="1"></div>
+      <div data-mk-phases></div>
+      <div data-mk-list="default" data-pins="1" data-expanded="r2"></div>
+      <nav aria-label="Pagination" class="pagination">
+        <span class="text-muted" aria-live="polite">Showing 1–10 of <span class="tabular">1,284</span></span>
+        <div class="pagination__actions"><button type="button" class="button button--primary" disabled>Previous</button><button type="button" class="button button--primary">Next</button></div>
+      </nav>
+    </div>
+
+    <!-- ============ SEARCH RESULTS ============ -->
+    <div data-mk-state="search" data-mk-label="Wyniki wyszukiwania" hidden>
+      <div data-mk-segments data-active-seg="all"></div>
+      <div data-mk-toolbar data-search="kowalska" data-packed="" data-fulfillment=""></div>
+      <div data-mk-chips data-count="3 results"></div>
+      <div data-mk-phases></div>
+      <div data-mk-list="search" data-search-pins="1"></div>
+      <nav aria-label="Pagination" class="pagination">
+        <span class="text-muted" aria-live="polite">Showing 1–3 of <span class="tabular">3</span></span>
+        <div class="pagination__actions"><button type="button" class="button button--primary" disabled>Previous</button><button type="button" class="button button--primary" disabled>Next</button></div>
+      </nav>
+    </div>
+
+    <!-- ============ NO RESULTS ============ -->
+    <div data-mk-state="noresults" data-mk-label="Brak wyników" hidden>
+      <div data-mk-segments data-active-seg="all"></div>
+      <div data-mk-toolbar data-search="6203 4452 9981 0071" data-packed="" data-fulfillment=""></div>
+      <div data-mk-chips data-count="0 results"></div>
+      <div data-mk-phases></div>
+      <div class="state-card empty-state" role="status" aria-live="polite">
+        <div class="state-card__header"><h2 class="state-card__title">No orders match “6203 4452 9981 0071”</h2></div>
+        <p class="state-card__message">Search looks at order numbers, buyer names, emails, SKUs and tracking numbers. A tracking number is only searchable once a label exists for the order.</p>
+        <div class="state-card__actions"><button type="button" class="button button--primary" data-mk-go="default">Clear search</button><span class="mk-pin">13</span></div>
+      </div>
+    </div>
+
+    <!-- ============ FILTERED BY PACKED ============ -->
+    <div data-mk-state="packed" data-mk-label="Filtr: Packed" hidden>
+      <div data-mk-segments data-active-seg="all"></div>
+      <div data-mk-toolbar data-search="" data-packed="packed" data-fulfillment="not-shipped" data-packed-pin="1"></div>
+      <div data-mk-chips data-count="5 results"></div>
+      <div data-mk-phases></div>
+      <div data-mk-list="packed"></div>
+      <nav aria-label="Pagination" class="pagination">
+        <span class="text-muted" aria-live="polite">Showing 1–5 of <span class="tabular">5</span></span>
+        <div class="pagination__actions"><button type="button" class="button button--primary" disabled>Previous</button><button type="button" class="button button--primary" disabled>Next</button></div>
+      </nav>
+    </div>
+
+    <!-- ============ WAITING IN OPENLINKER ============ -->
+    <div data-mk-state="waiting" data-mk-label="Czeka w OpenLinkerze" hidden>
+      <div data-mk-segments data-active-seg="all"></div>
+      <div data-mk-toolbar data-search="" data-packed="" data-fulfillment=""></div>
+      <div data-mk-chips data-count="3 results" data-active-chip="waiting"></div>
+      <div data-mk-phases></div>
+      <div data-mk-list="waiting" data-waiting-pins="1"></div>
+      <nav aria-label="Pagination" class="pagination">
+        <span class="text-muted" aria-live="polite">Showing 1–3 of <span class="tabular">3</span></span>
+        <div class="pagination__actions"><button type="button" class="button button--primary" disabled>Previous</button><button type="button" class="button button--primary" disabled>Next</button></div>
+      </nav>
+    </div>
+
+    <!-- ============ MOBILE CARD VIEW ============ -->
+    <div data-mk-state="mobile" data-mk-label="Widok kart (mobile)" hidden>
+      <p class="mk-phone-caption">390 px — DataTable switches to cards below 768 px</p>
+      <div class="mk-phone">
+        <div class="mk-phone__stack">
+          <input type="search" class="control" aria-label="Search orders" placeholder="Search by order number, buyer, email, SKU or tracking number…">
+          <div class="ds-row" style="gap: var(--space-2); flex-wrap: wrap; align-items: center;">
+            <button type="button" class="chip chip--warning" aria-pressed="false" data-mk-go="waiting">Waiting in OpenLinker 3 · oldest 5 h</button>
+            <button type="button" class="chip chip--neutral" aria-pressed="false">On pack bench 14</button>
+            <button type="button" class="chip chip--neutral" aria-pressed="false">Open return 4</button>
+          </div>
+          <div class="data-table__container data-table__container--with-cards">
+            <ul class="data-table__cards" data-mk-cards="mobile" data-mobile-pins="1"></ul>
+          </div>
+          <nav aria-label="Pagination" class="pagination">
+            <span class="text-muted">Showing 1–4 of <span class="tabular">1,284</span></span>
+            <div class="pagination__actions"><button type="button" class="button button--primary" disabled>Previous</button><button type="button" class="button button--primary">Next</button></div>
+          </nav>
+        </div>
+      </div>
+    </div>
+  </section>
+</div>
+
+<aside class="mk-notes" aria-label="Adnotacje">
+  <h3>Adnotacje — lista zamówień z OMS</h3>
+  <ol>
+    <li>Wszystkie dane (zamówienia, kupujący, kwoty, przewoźnicy) są przykładowe. Rozszerzamy prawdziwe <code>/orders</code>: te same karty, filtry, chipy, kolumny i widok kart. Sklep: Allegro obsługiwane przez OpenLinkera (OMS włączony dla tego kanału), Erli nadal wysyłane do PrestaShop.</li>
+    <li><span class="mk-pin">1</span> Nowa wyszukiwarka: numer zamówienia, kupujący, e-mail, SKU, numer przesyłki; <code>?search=</code>, debounce 300 ms jak /customers i /products; AND z pozostałymi filtrami. <b>Luki backendu:</b> <code>ListOrdersQueryDto</code> nie ma dziś parametru wyszukiwania. SKU, nazwisko i e-mail są tylko w JSONB <code>orderSnapshot</code> (tabela <code>order_line_items</code> nie ma kolumny sku) — <code>ILIKE</code> po JSONB to drogi COUNT: potrzebna kolumna <code>searchText</code> + indeks trigramowy (precedens <code>DestinationCategory.searchText</code>, z usuwaniem polskich znaków), licznik jako drugi etap (<code>useOrdersTotal</code> już to umie). Numer przesyłki jest w <code>shipments</code> (kontekst shipping, który już zależy od orders) — potrzebny read-model/denormalizacja, nie join z orders. Przy <code>OL_STORE_PII=false</code> imię i nazwisko nie są zapisywane: szukanie po osobie nie zadziała, e-mail najwyżej dokładnym dopasowaniem po hashu — placeholder musi wtedy mówić prawdę.</li>
+    <li><span class="mk-pin">3</span> Kolumna Channel: „Allegro → OpenLinker” zamiast pustego celu. Lista nie ma dziś pola „obsługiwane w OpenLinkerze”: praca pakowania (<code>fulfillment_works</code>) jest tylko za <code>IFulfillmentWorkQueryService</code>. Potrzebny batched read po id zamówień ze strony (precedens <code>getLatestInvoicesForOrders</code>), a dla filtra/karty po stronie serwera — kolumna na <code>order_records</code> zapisywana przy commicie routingu.</li>
+    <li><span class="mk-pin">4</span> Etap pakowania w kolumnie Shipment, w kolejności czasu (reguła 1): ○ To pack (Unassigned / przypisany pakowacz) → ◐ Packing (paczka na stole) → ✓ Packed (istniejący znacznik; <code>packedAt</code> ustawia stół przy zamknięciu paczki, #2890) → Dispatched / Delivered. To pozycja w procesie, więc znacznik, nie pigułka (reguła 2). Mapowanie pracy: <code>open/scheduled</code> → To pack, <code>in_progress</code> → Packing, <code>closed</code> → Packed. Dla pracy na stole lista nie pokazuje „Generate label” — etykietę drukuje stół; do potwierdzenia.</li>
+    <li><span class="mk-pin">5</span> Czeka w OpenLinkerze (#3485) — wyjątek, więc odznaka w grupie Status + powód pod spodem: „Waiting: stock”, „Waiting: address”, „Waiting: routing” (≤ 17 znaków). Powód czytany z zapisanego stanu, nigdy wyliczany w przeglądarce (#2100). <b>Rekomendacja:</b> #3485 zapisuje to jako blokadę zamówienia z istniejącymi powodami <code>stock-shortfall</code> / <code>address-invalid</code> + nowy <code>routing-failed</code> — filtr „Any hold reason”, faza „On hold” i zwolnienie → ponowny routing (#2341) już są. Wtedy ta odznaka zastępuje pigułkę fazy (żeby nie było „On hold” + „Waiting” obok siebie). Chip „Waiting in OpenLinker” liczy dokładnie te wiersze. <b>Pytanie:</b> brak towaru to też <code>line-unfulfillable</code>, liczony w chipie „OpenLinker stopped” — jedno zamówienie pod dwiema nazwami.</li>
+    <li><span class="mk-pin">6</span> Chip „On pack bench 14”: zamówienia z pracą To pack / Packing. Pakowacz ma to samo na /bench, kierownik na /fulfillment — tu to tylko filtr listy, bez akcji (lista pokazuje, szczegół działa).</li>
+    <li><span class="mk-pin">7</span> Filtr „Packed” po stronie serwera (#2997): Select z obiema odpowiedziami („Packed” / „Not packed yet”) = <code>packedAt IS NOT NULL / IS NULL</code> na istniejącym indeksie; AND z resztą (stan „Filtr: Packed” = Packed + Not shipped = paczki czekające na kuriera). Obejmuje też zamówienia oznaczone ręcznie na szczególe, nie tylko z OMS. Karty KPI nie są nim zawężane (ich zakres to źródło + daty, jak dziś).</li>
+    <li><span class="mk-pin">8</span> „Return open” (#2998): neutralna odznaka w grupie Status (zwrot to rutyna — etapy na /returns też są neutralne), podpowiedź z etapem. Filtr: chip „Open return 4”. „Otwarty” = jedna definicja po stronie serwera — proponuję segment <code>all_open</code> z /returns. Jedno zapytanie na stronę; zwrot-sierota nie oznacza żadnego zamówienia; nieudany odczyt = brak odznaki, nigdy „brak zwrotów”.</li>
+    <li><span class="mk-pin">9</span> #2703: dwa różne „brak celu”. (b) „Routed nowhere” — routing świadomie nie wybrał sklepu: neutralnie, bez licznika (kopia z otwartego PR #3014). (a) nic nie skonfigurowano (Erli – outlet) — jak dziś „Awaiting dispatch” bez powodu. Bez #3014 oba wiersze wyglądają identycznie.</li>
+    <li><span class="mk-pin">10</span> [Wyniki wyszukiwania] Trafienie podświetlone; gdy pasuje pole, którego nie ma w wierszu (e-mail, SKU, numer przesyłki), linia „Matched …” mówi, dlaczego wiersz tu jest. Wymaga, by API zwracało <code>matchedOn</code> — dziś nie istnieje.</li>
+    <li><span class="mk-pin">11</span> [Czeka] „Retry routing” — jak istniejący „Retry” dla nieudanej synchronizacji (jedyny bezpośredni zapis z listy). Endpointu nie ma — do dodania z #3485. Brak towaru i brak adresu nie mają przycisku: ponawiają się same przy synchronizacji stanów / aktualizacji zamówienia z kanału.</li>
+    <li><span class="mk-pin">12</span> [Mobile] Fakt „Packing” zastępuje „Packed”; dla czekających dochodzi szeroki fakt „Waiting on” z powodem (karta nie ma linii powodu). Przy ≤ 767 px każdy stan tego mockupu sam przełącza tabelę na karty.</li>
+    <li><span class="mk-pin">13</span> [Brak wyników] Osobna gałąź pustego stanu z cytatem zapytania; „Clear search” czyści tylko wyszukiwanie, inne filtry zostają. Tekst uczciwie mówi, że numer przesyłki istnieje dopiero po utworzeniu etykiety.</li>
+  </ol>
+</aside>
+
+<script>
+(function(){
+  /* ---------- tiny helpers ---------- */
+  function esc(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+  function pin(n){ return n ? '<span class="mk-pin">'+n+'</span>' : ''; }
+  function badge(tone, label, extra){
+    return '<span class="status-badge status-badge--'+tone+' status-badge--compact'+(extra?' '+extra:'')+'"><span class="status-badge__dot" aria-hidden="true"></span><span>'+label+'</span></span>';
+  }
+  function hinted(inner, hint){ return '<span class="order-hold-badge" title="'+esc(hint)+'">'+inner+'<span class="sr-only"> — '+esc(hint)+'</span></span>'; }
+  function connDot(name){ return '<span class="conn-dot" title="'+esc(name)+'"><svg class="conn-dot__glyph" viewBox="0 0 14 14" aria-hidden="true" focusable="false"><text x="7" y="7" text-anchor="middle" dominant-baseline="central">'+name[0]+'</text></svg></span>'; }
+  function delivery(d){
+    if(!d) return '';
+    var tone = {awaiting:'info', labelled:'success', shop:'neutral'}[d.kind];
+    var label = {awaiting:'Awaiting label', labelled:'Labelled', shop:'Not via OpenLinker'}[d.kind];
+    return '<span class="status-badge status-badge--'+tone+' status-badge--compact delivery-outcome-chip"><span>'+(d.owner?connDot(d.owner):'')+label+'</span></span>';
+  }
+  var GLYPH = {
+    invoice:'<path d="M3.5 1.5h6l3 3v10h-9z" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/><path d="M9.5 1.5v3h3" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/><path d="M5.5 8h5M5.5 10.5h5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>',
+    receipt:'<path d="M3.5 1.5h9v13l-1.5-1-1.5 1-1.5-1-1.5 1-1.5-1-1.5 1z" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/><path d="M6 5.5h4M6 8.5h4" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>',
+    none:'<circle cx="8" cy="8" r="6.2" fill="none" stroke="currentColor" stroke-width="1.3"/><path d="M4.4 11.6 11.6 4.4" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>'
+  };
+  var TICK = '<svg class="sales-doc__tick" viewBox="0 0 12 12" width="12" height="12" aria-hidden="true"><path d="M2.5 6.4 4.7 8.6 9.5 3.8" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+  function doc(d){
+    var tone = d.tone, kindLabel = d.kind==='invoice'?'Invoice':d.kind==='receipt'?'Fiscal receipt':'No document';
+    return '<button type="button" class="sales-doc-trigger" aria-label="'+esc(kindLabel+': '+d.word)+'"><span class="sales-doc sales-doc--'+tone+'"><svg class="document-glyph sales-doc__glyph" viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">'+GLYPH[d.kind]+'</svg><span class="sales-doc__word">'+d.word+'</span>'+(tone==='done'?TICK:'')+'</span></button>';
+  }
+  var PAY = {paid:['success','Paid'], cod:['review','COD']};
+  var CH = {allegro:'Allegro', erli:'Erli', woocommerce:'WooCommerce', prestashop:'PrestaShop'};
+
+  /* ---------- packing position (the new tick sequence) ---------- */
+  function packTick(p){
+    if(!p) return '';
+    if(p.step==='todo') return '<span class="orders-packed-tick mk-pack--todo" aria-label="To pack, '+esc(p.who)+'"><span class="orders-packed-tick__mark" aria-hidden="true">○</span> <span class="orders-packed-tick__label">To pack</span> <span class="orders-cell-sub mk-pack__who" aria-hidden="true">'+p.who+'</span></span>';
+    if(p.step==='doing') return '<span class="orders-packed-tick mk-pack--doing" aria-label="Packing, '+esc(p.who)+'"><span class="orders-packed-tick__mark" aria-hidden="true">◐</span> <span class="orders-packed-tick__label">Packing</span> <span class="orders-cell-sub mk-pack__who" aria-hidden="true">'+p.who+'</span></span>';
+    return '<span class="orders-packed-tick" title="Packed '+esc(p.at)+'" aria-label="Packed '+esc(p.at)+'"><span class="orders-packed-tick__mark" aria-hidden="true">✓</span> <span class="orders-packed-tick__label">Packed</span> <time class="text-muted orders-cell-sub" aria-hidden="true">'+p.ago+'</time></span>';
+  }
+  function packFact(p){ return p ? packTick(p) : '—'; }
+
+  /* ---------- example data ---------- */
+  var R = {
+    r1:{ id:'ol_order_9c1f4e2a7b', num:'e41b7c02…004d17', full:'e41b7c02-6a1d-11f0-a7c3-2f91be004d17', item:'Kurtka puchowa Nord, L', lines:2,
+      buyer:'Magdalena Lewandowska', city:'Łódź', src:'allegro', dest:'OpenLinker', health:['info','Awaiting dispatch'],
+      waiting:{label:'Waiting: stock', tone:'warning', reason:'Out of stock: Kurtka Nord L', hint:'No warehouse has stock for this line. OpenLinker routes the order again when stock arrives.'},
+      ful:['neutral','Not shipped'], sla:['error','Overdue','Overdue 1h 40m'], del:{kind:'awaiting', owner:'InPost'}, carrier:'Allegro Paczkomaty InPost',
+      total:'PLN 598.00', pay:'paid', doc:{kind:'invoice', word:'Not issued', tone:'idle'}, created:'Sep 24, 2026, 6:52 PM', rel:'15h ago' },
+    r2:{ id:'ol_order_2ab7d91c04', num:'7c1e2a90…4e21b0', full:'7c1e2a90-6b40-11f0-8f12-a4d8c34e21b0', item:'Buty trekkingowe Tatra, 42', lines:1,
+      buyer:'Anna Kowalska', city:'Kraków', email:'a.kowalska@gmail.com', src:'allegro', dest:'OpenLinker', health:['info','Awaiting dispatch'], phase:['neutral','Ready'],
+      pack:{step:'todo', who:'Unassigned'}, ful:['neutral','Not shipped'], sla:['warning','At risk','2h 15m left'], del:{kind:'awaiting', owner:'InPost'}, carrier:'Allegro Paczkomaty InPost',
+      total:'PLN 349.99', pay:'paid', doc:{kind:'receipt', word:'Registered', tone:'done'}, created:'Sep 25, 2026, 7:41 AM', rel:'2h ago',
+      location:'Magazyn Poznań', street:'ul. Długa 14/3, 31-147 Kraków, PL' },
+    r3:{ id:'ol_order_c4e0a8f312', num:'c90d44e8…71ce58', full:'c90d44e8-6b52-11f0-b1aa-03ff9d71ce58', item:'Plecak miejski Urban 25 l', lines:3,
+      buyer:'Piotr Wiśniewski', city:'Gdańsk', src:'allegro', dest:'OpenLinker', health:['info','Awaiting dispatch'], phase:['neutral','Ready'],
+      pack:{step:'doing', who:'Kasia Wróbel'}, ful:['neutral','Not shipped'], sla:['warning','At risk','3h 05m left'], del:{kind:'awaiting', owner:'DPD'}, carrier:'Allegro Kurier DPD',
+      total:'PLN 427.50', pay:'paid', doc:{kind:'invoice', word:'Issued', tone:'done'}, created:'Sep 25, 2026, 6:18 AM', rel:'4h ago' },
+    r4:{ id:'ol_order_7d2a5c11e9f', num:'ol_order_7d2a…9f', full:'ol_order_7d2a5c11e9f', item:'Kubek termiczny Steel 450 ml', lines:2,
+      buyer:'Jan Zieliński', city:'Lublin', src:'erli', dest:'PrestaShop', health:['success','Synced'], phase:['neutral','Ready'],
+      cta:true, sla:['success','On track','21h 10m left', true], del:{kind:'awaiting', owner:'InPost'}, carrier:'InPost Paczkomat',
+      total:'PLN 89.90', pay:'paid', doc:{kind:'invoice', word:'Issued', tone:'done'}, created:'Sep 25, 2026, 8:03 AM', rel:'2h ago' },
+    r5:{ id:'ol_order_1f93b0d7aa', num:'1af3c7b5…cd90f3', full:'1af3c7b5-6b0e-11f0-9e6b-77ab12cd90f3', item:'Termos Arctic 1 l', lines:1,
+      buyer:'Katarzyna Wójcik', city:'Poznań', src:'allegro', dest:'OpenLinker', health:['info','Awaiting dispatch'], phase:['neutral','Ready'],
+      pack:{step:'done', ago:'25m ago', at:'Sep 25, 2026, 9:37 AM'}, ful:['neutral','Not shipped'], sla:['success','On track','5h 40m left'], del:{kind:'labelled', owner:'InPost'}, carrier:'Allegro Paczkomaty InPost',
+      total:'PLN 139.00', pay:'paid', doc:{kind:'receipt', word:'Registered', tone:'done'}, created:'Sep 25, 2026, 5:55 AM', rel:'4h ago' },
+    r6:{ id:'ol_order_b81e0f5d23', num:'18342', full:'18342', item:'Kawa ziarnista Brazylia 1 kg', lines:3,
+      buyer:'Michał Szymański', city:'Katowice', src:'woocommerce', dest:null, health:['info','Awaiting dispatch'], phase:['neutral','Ready'],
+      routedNowhere:true, ful:['neutral','Not shipped'], del:{kind:'shop'}, carrier:'Kurier DPD',
+      total:'PLN 212.40', pay:'paid', doc:{kind:'invoice', word:'Not issued', tone:'idle'}, created:'Sep 25, 2026, 7:12 AM', rel:'3h ago' },
+    r7:{ id:'ol_order_e03c77a1b5', num:'ol_order_e03c…b5', full:'ol_order_e03c77a1b5', item:'Etui skórzane Classic', lines:1,
+      buyer:'Ewa Kaczmarek', city:'Szczecin', src:'erli', srcName:'Erli – outlet', dest:null, health:['info','Awaiting dispatch'], phase:['neutral','Ready'],
+      ful:['neutral','Not shipped'], sla:['success','On track','1d 2h left', true], del:{kind:'shop'}, carrier:'Paczkomat InPost',
+      total:'PLN 45.00', pay:'cod', doc:{kind:'none', word:'No document', tone:'idle'}, created:'Sep 25, 2026, 9:20 AM', rel:'40m ago' },
+    r8:{ id:'ol_order_5e8b0d11c6', num:'5e8b0d11…aa4c62', full:'5e8b0d11-6a77-11f0-8c3d-91e0b7aa4c62', item:'Rękawice narciarskie Alpina, M', lines:1,
+      buyer:'Tomasz Kamiński', city:'Wrocław', src:'allegro', dest:'OpenLinker', health:['success','Synced'], phase:['info','With carrier'],
+      pack:{step:'done', ago:'1d ago', at:'Sep 24, 2026, 11:06 AM'}, ful:['info','Dispatched'], del:{kind:'labelled', owner:'InPost'}, carrier:'Allegro Paczkomaty InPost', shipped:true,
+      total:'PLN 119.00', pay:'paid', doc:{kind:'invoice', word:'Issued', tone:'done'}, created:'Sep 23, 2026, 8:44 PM', rel:'1d ago' },
+    r9:{ id:'ol_order_0b77e3c9f4', num:'0b77e3c9…f7a310', full:'0b77e3c9-68f2-11f0-a2b4-5cd1e8f7a310', item:'Kurtka softshell Wind, S', lines:1,
+      buyer:'Agnieszka Dąbrowska', city:'Warszawa', src:'allegro', dest:'OpenLinker', health:['success','Synced'], phase:['success','Delivered'],
+      ret:{hint:'Return opened Sep 24 · Awaiting parcel'}, pack:{step:'done', ago:'6d ago', at:'Sep 19, 2026, 2:12 PM'}, ful:['success','Delivered'], del:{kind:'labelled', owner:'DPD'}, carrier:'Allegro Kurier DPD', shipped:true,
+      total:'PLN 259.00', pay:'paid', doc:{kind:'receipt', word:'Registered', tone:'done'}, created:'Sep 18, 2026, 9:31 PM', rel:'6d ago' },
+    r10:{ id:'ol_order_4c2f88e0d1', num:'9f02ab6e…31bd07', full:'9f02ab6e-6155-11f0-bb04-e2d4a931bd07', item:'Śpiwór Everest -10°C', lines:1,
+      buyer:'Paweł Mazur', city:'Rzeszów', src:'allegro', dest:'PrestaShop', health:['success','Synced'], phase:['success','Delivered'],
+      pack:{step:'done', ago:'12d ago', at:'Sep 13, 2026, 10:02 AM'}, ful:['success','Delivered'], del:{kind:'shop'}, carrier:'Allegro One Box', shipped:true,
+      total:'PLN 74.99', pay:'paid', doc:{kind:'invoice', word:'Issued', tone:'done'}, created:'Sep 12, 2026, 6:40 PM', rel:'13d ago' },
+
+    /* search: "kowalska" */
+    s2:{ id:'ol_order_88d1e04a2c', num:'3d9c5f02…a17e44', full:'3d9c5f02-5f10-11f0-a901-c4b2e6a17e44', item:'Skarpety merino, 3-pak', lines:1,
+      buyer:'Anna Kowalska', city:'Kraków', src:'allegro', dest:'OpenLinker', health:['success','Synced'], phase:['success','Delivered'],
+      pack:{step:'done', ago:'14d ago', at:'Sep 11, 2026, 1:15 PM'}, ful:['success','Delivered'], del:{kind:'labelled', owner:'InPost'}, carrier:'Allegro Paczkomaty InPost', shipped:true,
+      total:'PLN 64.90', pay:'paid', doc:{kind:'receipt', word:'Registered', tone:'done'}, created:'Sep 10, 2026, 8:02 PM', rel:'15d ago' },
+    s3:{ id:'ol_order_61ab9c0e73', num:'ol_order_61ab…73', full:'ol_order_61ab9c0e73', item:'Czajnik elektryczny Retro', lines:1,
+      buyer:'Marta Nowak', city:'Toruń', match:'email <span class="mono">marta.<mark class="mk-hit">kowalska</mark>@onet.pl</span>', src:'erli', dest:'PrestaShop', health:['success','Synced'], phase:['info','With carrier'],
+      ful:['info','Dispatched'], del:{kind:'shop'}, carrier:'DPD Pickup', shipped:true,
+      total:'PLN 159.00', pay:'paid', doc:{kind:'invoice', word:'Issued', tone:'done'}, created:'Sep 22, 2026, 3:27 PM', rel:'3d ago' },
+
+    /* packed + not shipped */
+    p2:{ id:'ol_order_a70c3e9b18', num:'b27d0e4f…0c9a15', full:'b27d0e4f-6b1c-11f0-9112-6fe31a0c9a15', item:'Czapka merino Beanie', lines:2,
+      buyer:'Joanna Wieczorek', city:'Bydgoszcz', src:'allegro', dest:'OpenLinker', health:['info','Awaiting dispatch'], phase:['neutral','Ready'],
+      pack:{step:'done', ago:'1h ago', at:'Sep 25, 2026, 8:58 AM'}, ful:['neutral','Not shipped'], sla:['success','On track','6h 20m left'], del:{kind:'labelled', owner:'InPost'}, carrier:'Allegro Paczkomaty InPost',
+      total:'PLN 98.00', pay:'paid', doc:{kind:'receipt', word:'Registered', tone:'done'}, created:'Sep 24, 2026, 10:14 PM', rel:'12h ago' },
+    p3:{ id:'ol_order_d19f2b7e60', num:'e8a1c630…5b0d92', full:'e8a1c630-6aee-11f0-8d2e-18c7f45b0d92', item:'Latarka czołowa Beam 400', lines:1,
+      buyer:'Krzysztof Jankowski', city:'Kielce', src:'allegro', dest:'OpenLinker', health:['info','Awaiting dispatch'], phase:['neutral','Ready'],
+      pack:{step:'done', ago:'2h ago', at:'Sep 25, 2026, 7:49 AM'}, ful:['neutral','Not shipped'], sla:['warning','At risk','2h 50m left'], del:{kind:'awaiting', owner:'DPD'}, carrier:'Allegro Kurier DPD',
+      total:'PLN 149.00', pay:'paid', doc:{kind:'invoice', word:'Issued', tone:'done'}, created:'Sep 24, 2026, 7:30 PM', rel:'14h ago' },
+    p4:{ id:'ol_order_30ce5a1f97', num:'ol_order_30ce…97', full:'ol_order_30ce5a1f97', item:'Butelka filtrująca Aqua', lines:1,
+      buyer:'Adam Wojciechowski', city:'Opole', src:'erli', dest:'PrestaShop', health:['success','Synced'], phase:['neutral','Ready'],
+      pack:{step:'done', ago:'3h ago', at:'Sep 25, 2026, 6:55 AM'}, ful:['neutral','Not shipped'], sla:['success','On track','18h 05m left', true], del:{kind:'shop'}, carrier:'InPost Paczkomat',
+      total:'PLN 69.00', pay:'paid', doc:{kind:'invoice', word:'Issued', tone:'done'}, created:'Sep 24, 2026, 4:48 PM', rel:'17h ago' },
+
+    /* waiting */
+    w2:{ id:'ol_order_f4b20c8e1d', num:'a6e3f901…29c4d8', full:'a6e3f901-6b3a-11f0-97c0-0da8e129c4d8', item:'Lampka biurkowa LED Nova', lines:1,
+      buyer:'k3m9xq2p1a+a81f2d@allegromail.pl', city:null, src:'allegro', dest:'OpenLinker', health:['info','Awaiting dispatch'],
+      waiting:{label:'Waiting: address', tone:'warning', reason:'Allegro sent no delivery address', hint:'The order cannot be routed without a delivery address. OpenLinker routes it again when Allegro sends one.'},
+      ful:['neutral','Not shipped'], sla:['warning','At risk','4h 30m left'], del:{kind:'awaiting', owner:'InPost'}, carrier:'Allegro Paczkomaty InPost',
+      total:'PLN 179.00', pay:'paid', doc:{kind:'invoice', word:'Not issued', tone:'idle'}, created:'Sep 25, 2026, 8:26 AM', rel:'1h ago' },
+    w3:{ id:'ol_order_27e9a6b40c', num:'4b8f2c77…e03a61', full:'4b8f2c77-6b44-11f0-8a3f-7c10b5e03a61', item:'Namiot 2-osobowy Trail', lines:1,
+      buyer:'Łukasz Grabowski', city:'Olsztyn', src:'allegro', dest:'OpenLinker', health:['info','Awaiting dispatch'], retryRouting:true,
+      waiting:{label:'Waiting: routing', tone:'error', reason:'Routing didn’t finish', hint:'OpenLinker could not confirm where this order ships from, so it is not sending it anywhere yet.'},
+      ful:['neutral','Not shipped'], sla:['warning','At risk','3h 10m left'], del:{kind:'awaiting', owner:'DPD'}, carrier:'Allegro Kurier DPD',
+      total:'PLN 689.00', pay:'paid', doc:{kind:'invoice', word:'Not issued', tone:'idle'}, created:'Sep 25, 2026, 7:02 AM', rel:'3h ago' }
+  };
+  var LISTS = {
+    default:['r1','r2','r3','r4','r5','r6','r7','r8','r9','r10'],
+    search:['r2','s2','s3'],
+    packed:['r5','p2','p3','p4','r8x'],
+    waiting:['r1','w2','w3'],
+    mobile:['r1','r2','r5','r9']
+  };
+  /* A manually-marked PrestaShop-routed order, packed but not yet dispatched. */
+  R.r8x = { id:'ol_order_c0de71a4b8', num:'ol_order_c0de…b8', full:'ol_order_c0de71a4b8', item:'Hamak podróżny Lite', lines:1,
+      buyer:'Barbara Krawczyk', city:'Gliwice', src:'erli', dest:'PrestaShop', health:['success','Synced'], phase:['neutral','Ready'],
+      pack:{step:'done', ago:'4h ago', at:'Sep 25, 2026, 5:58 AM'}, ful:['neutral','Not shipped'], sla:['success','On track','1d 1h left', true], del:{kind:'shop'}, carrier:'DPD Pickup',
+      total:'PLN 119.99', pay:'paid', doc:{kind:'invoice', word:'Issued', tone:'done'}, created:'Sep 24, 2026, 2:10 PM', rel:'20h ago' };
+
+  /* ---------- cell renderers (mirror orders-list-page.tsx) ---------- */
+  function identity(r){
+    var first = r.item.replace(/[^A-Za-zĄĆĘŁŃÓŚŹŻąćęłńóśźż]/,'')[0] || '?';
+    var more = r.lines > 1 ? '<span class="orders-more-count" title="'+(r.lines-1)+' more line item'+(r.lines>2?'s':'')+' ('+r.lines+' in this order)">+'+(r.lines-1)+'</span>' : '';
+    return '<span class="order-cell"><span class="product-thumbnail product-thumbnail--sm" aria-hidden="true"><span aria-hidden="true">'+first.toUpperCase()+'</span></span>'+
+      '<span class="order-cell__body"><span class="entity-label"><a href="#" class="entity-label__name entity-label__name--link" title="'+esc(r.full)+'">'+esc(r.num)+'</a>'+
+      '<button type="button" class="entity-label__copy" aria-label="Copy internal order ID for order '+esc(r.full)+'" title="'+esc(r.id)+'">Copy</button></span>'+
+      '<span class="orders-items-line"><span class="text-muted orders-cell-sub orders-items-preview" title="'+esc(r.item)+'">'+esc(r.item)+'</span>'+more+'</span></span></span>';
+  }
+  function channelPill(r){ return '<span class="channel-pill" data-channel="'+r.src+'">'+CH[r.src]+'</span>'; }
+  function destLine(r, p){ return r.dest ? '<span class="text-muted orders-cell-sub mk-dest">→ '+r.dest+(p||'')+'</span>' : ''; }
+  function customer(r, opts){
+    var name = esc(r.buyer);
+    if(opts.search && /Kowalska/.test(r.buyer)) name = name.replace('Kowalska','<mark class="mk-hit">Kowalska</mark>');
+    var sub = r.city ? '<span class="text-muted orders-cell-sub">'+r.city+'</span>' : '';
+    var match = r.match ? '<span class="orders-cell-sub mk-match">Matched '+r.match+(opts.search?pin(10):'')+'</span>' : '';
+    return '<span class="orders-cell-stack"><span'+(r.city?'':' class="mono orders-cell-sub"')+'>'+name+'</span>'+sub+match+'</span>';
+  }
+  function statusStack(r, opts){
+    var P = opts.pins, out = [];
+    out.push(badge(r.health[0], r.health[1]));
+    if(r.waiting){
+      out.push(hinted(badge(r.waiting.tone, r.waiting.label), r.waiting.hint) + ((P && r===R.r1) || (opts.waitPins && r===R.r1) ? pin(5) : ''));
+    } else if(r.phase){
+      out.push(badge(r.phase[0], r.phase[1]));
+    }
+    if(r.routedNowhere) out.push(hinted(badge('neutral','Routed nowhere'), 'Fulfilment routing decided this order needs no destination shop. This is a routing decision, not a failure — nothing is waiting on you.') + (P ? pin(9) : ''));
+    if(r.ret) out.push(hinted(badge('neutral','Return open'), r.ret.hint) + (P ? pin(8) : ''));
+    if(r.waiting) out.push('<span class="orders-status-reason'+(r.waiting.tone==='warning'?' mk-reason--warning':'')+'" title="'+esc(r.waiting.reason)+'">'+esc(r.waiting.reason)+'</span>');
+    return '<span class="orders-cell-stack">'+out.join('')+'</span>';
+  }
+  function shipStack(r, opts){
+    var out = [];
+    if(r.pack) out.push(packTick(r.pack) + (opts.pins && r===R.r2 ? pin(4) : ''));
+    if(!r.cta && r.ful) out.push(badge(r.ful[0], r.ful[1]));
+    if(r.sla) out.push('<span class="orders-shipby-row">'+badge(r.sla[0], r.sla[1])+'<span class="text-muted orders-cell-sub mono tabular">'+(r.sla[3]?'<span class="text-muted" aria-label="Estimated" title="OpenLinker estimate - not a marketplace-confirmed deadline">est. </span>':'')+r.sla[2]+'</span></span>');
+    out.push(delivery(r.del));
+    if(r.cta) out.push('<a class="orders-row-cta" href="#"><span class="orders-row-cta__plus" aria-hidden="true">+</span> Generate label</a>');
+    if(r.carrier) out.push('<span class="text-muted orders-cell-sub orders-carrier" title="'+esc(r.carrier)+'">'+esc(r.carrier)+'</span>');
+    return '<span class="orders-cell-stack">'+out.join('')+'</span>';
+  }
+  function money(r){
+    var p = PAY[r.pay];
+    return '<span class="orders-cell-stack orders-cell-stack--end"><span class="mono tabular orders-money-total">'+r.total+'</span>'+badge(p[0],p[1])+doc(r.doc)+
+      '<span class="text-muted orders-cell-sub mono tabular"><time>'+r.created+'</time></span></span>';
+  }
+  function orderCell(r, opts){
+    var retry = r.retryRouting ? '<button type="button" class="button button--ghost button--sm orders-row-retry">Retry routing</button>'+(opts.waitPins?pin(11):'') : '';
+    return '<span class="orders-cell-stack">'+identity(r)+'<span class="orders-order-channel">'+channelPill(r)+destLine(r)+'</span>'+retry+'</span>';
+  }
+  function detailRow(r){
+    function f(l,v,wide){ return '<div class="orders-detail__field'+(wide?' orders-detail__field--wide':'')+'"><dt class="orders-detail__label">'+l+'</dt><dd class="orders-detail__value">'+v+'</dd></div>'; }
+    var dest = r.dest==='OpenLinker' ? 'OpenLinker — packed at '+(r.location||'Magazyn Poznań') : (r.dest || '—');
+    var packing = r.pack ? (r.pack.step==='todo' ? 'To pack · '+r.pack.who : r.pack.step==='doing' ? 'Packing · '+r.pack.who : 'Packed '+r.pack.at) : (r.waiting ? 'Not on a pack bench — '+r.waiting.reason : '—');
+    return '<tr class="data-table__detail-row" data-mk-detail="'+r.key+'"'+(r.expanded?'':' hidden')+'><td class="data-table__detail-cell" colspan="8"><div class="data-table__detail"><dl class="orders-detail">'+
+      '<div class="orders-detail__links"><a class="orders-ext-link orders-ext-link--internal" href="#">Order details <span aria-hidden="true" class="orders-ext-link__arrow">→</span></a><a class="orders-ext-link" data-channel="'+r.src+'" href="#">View on '+CH[r.src]+' <span aria-hidden="true" class="orders-ext-link__arrow">↗</span></a></div>'+
+      f('Order reference','<span class="mono">'+esc(r.full)+'</span>')+f('Internal ID','<span class="mono">'+r.id+'</span>')+f('Placed', r.created)+
+      f('Destination', dest)+f('Packing', packing)+f('Ship-by', r.sla ? r.sla[2] : '—')+
+      f('Items ('+r.lines+')','<div class="orders-detail__items-list"><div class="orders-line-item"><span class="orders-line-item__qty mono tabular">1×</span><span class="orders-line-item__name">'+esc(r.item)+'<span class="orders-line-item__sku mono">TB-TATRA-42</span></span><span class="orders-line-item__price mono tabular">'+r.total+'</span></div></div>', true)+
+      f('Shipping address','<span class="orders-detail__address"><span>'+esc(r.buyer)+'</span><span>'+(r.street||'—')+'</span></span>')+
+      '</dl></div></td></tr>';
+  }
+  function row(key, opts){
+    var r = R[key]; r.key = key; r.expanded = opts.expanded === key;
+    var sel = r.shipped ? '<input type="checkbox" disabled aria-label="'+r.id+' is already shipped" title="Already shipped">' : '<input type="checkbox" aria-label="Select '+r.id+'">';
+    var ch = channelPill(r) + (r.dest ? destLine(r, opts.pins && r===R.r2 ? pin(3) : '') : '');
+    return '<tr><td class="data-table__expand-cell"><button type="button" class="data-table__expand-toggle" aria-expanded="'+r.expanded+'" data-mk-toggle="'+key+'" aria-label="'+(r.expanded?'Collapse':'Expand')+' details for order '+r.id+'"><span class="data-table__expand-icon" aria-hidden="true">'+(r.expanded?'▾':'▸')+'</span></button></td>'+
+      '<td>'+sel+'</td><td>'+orderCell(r,opts)+'</td><td>'+customer(r,opts)+'</td>'+
+      '<td class="data-table__cell--hide-below-1024"><span class="orders-cell-stack">'+ch+'</span></td>'+
+      '<td>'+statusStack(r,opts)+'</td><td>'+shipStack(r,opts)+'</td><td class="data-table__cell--right">'+money(r)+'</td></tr>' + detailRow(r);
+  }
+  function sortBtn(label, active, dir){
+    return '<button type="button" class="orders-sortbtn'+(active?' orders-sortbtn--active':'')+'" aria-pressed="'+(active?'true':'false')+'" aria-label="'+label+(active?', sorted ascending':', sort')+'">'+label+'<span class="orders-sortbtn__ind" aria-hidden="true">'+(active?'▲':'↕')+'</span></button>';
+  }
+  function table(keys, opts){
+    return '<div class="data-table__container data-table__container--with-cards orders-table" tabindex="0" role="region" aria-label="Orders (scrollable)"><table class="data-table"><caption class="sr-only">Orders</caption><thead><tr>'+
+      '<th scope="col" class="data-table__expand-cell"><span class="sr-only">Expand row</span></th>'+
+      '<th scope="col"><input type="checkbox" aria-label="Select all visible orders"></th>'+
+      '<th scope="col">Order</th><th scope="col"><span class="orders-sortstack">'+sortBtn('Customer')+'</span></th>'+
+      '<th scope="col" class="data-table__cell--hide-below-1024">Channel</th>'+
+      '<th scope="col"><span class="orders-sortstack">'+sortBtn('Status')+'</span></th>'+
+      '<th scope="col"><span class="orders-sortstack orders-sortstack--left">'+sortBtn('Shipment')+sortBtn('Ship-by', true)+'</span></th>'+
+      '<th scope="col" class="data-table__cell--right"><span class="orders-sortstack orders-sortstack--right">'+sortBtn('Total')+sortBtn('Payment')+sortBtn('Created')+'</span></th>'+
+      '</tr></thead><tbody>'+keys.map(function(k){ return row(k, opts); }).join('')+'</tbody></table></div>';
+  }
+
+  /* ---------- mobile card (DataTableCard + cardView from the page) ---------- */
+  function card(key, opts){
+    var r = R[key], p = PAY[r.pay];
+    var meta = [badge(r.health[0], r.health[1])];
+    if(r.waiting) meta.push(hinted(badge(r.waiting.tone, r.waiting.label), r.waiting.hint)); else if(r.phase) meta.push(badge(r.phase[0], r.phase[1]));
+    if(r.routedNowhere) meta.push(badge('neutral','Routed nowhere'));
+    if(r.ret) meta.push(hinted(badge('neutral','Return open'), r.ret.hint));
+    if(r.ful) meta.push(badge(r.ful[0], r.ful[1]));
+    if(r.sla) meta.push(badge(r.sla[0], r.sla[1]));
+    var facts = [
+      ['Total','<span class="mono tabular">'+r.total+'</span>'],
+      ['Payment', badge(p[0],p[1])],
+      ['Stock','—'],
+      ['Document', doc(r.doc)],
+      ['Customer', esc(r.buyer)],
+      ['Packing', packFact(r.pack) + (opts.mobilePins && key==='r2' ? pin(12) : '')]
+    ].map(function(f){ return '<div><dt>'+f[0]+'</dt><dd>'+f[1]+'</dd></div>'; }).join('');
+    if(r.waiting) facts += '<div class="orders-card-facts__wide"><dt>Waiting on</dt><dd><span class="orders-status-reason'+(r.waiting.tone==='warning'?' mk-reason--warning':'')+'" style="max-width:none;white-space:normal">'+esc(r.waiting.reason)+'</span></dd></div>';
+    facts += '<div class="orders-card-facts__wide"><dt>Shipment</dt><dd><span class="orders-cell-stack">'+(r.ful?badge(r.ful[0],r.ful[1]):'')+delivery(r.del)+'<span class="text-muted orders-cell-sub">'+esc(r.carrier)+'</span></span></dd></div>';
+    var sel = r.shipped ? '<input type="checkbox" disabled aria-label="'+r.id+' is already shipped" title="Already shipped">' : '<input type="checkbox" aria-label="Select '+r.id+'">';
+    return '<li class="data-table__card"><div class="data-table__card-head"><div class="data-table__card-select">'+sel+'</div>'+
+      '<div class="data-table__card-main"><strong class="data-table__card-title">'+identity(r)+'</strong><span class="data-table__card-subtitle"><span class="orders-card-sub">'+channelPill(r)+destLine(r)+'<time>'+r.rel+'</time></span></span></div>'+
+      '<div class="data-table__card-meta"><span class="data-table__badge-row">'+meta.join('')+'</span></div></div>'+
+      '<div class="data-table__card-summary"><div class="orders-card-summary"><dl class="orders-card-facts">'+facts+'</dl></div></div>'+
+      '<button type="button" class="data-table__card-disclosure" aria-expanded="false"><span class="data-table__card-disclosure-chev" aria-hidden="true">›</span>View full details</button></li>';
+  }
+
+  /* ---------- page furniture ---------- */
+  var SEGS = [['all','All orders','1,284','neutral'],['sd','Source deleted','2','error'],['na','Needs attention','5','error'],['am','Awaiting mapping','3','warning'],['ad','Awaiting dispatch','101','info'],['sy','Synced','1,173','success']];
+  var ICON = {warning:'<span class="metric-card__icon" aria-hidden="true"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M8 1.5 L14.5 13 H1.5 Z"/><line x1="8" y1="6" x2="8" y2="9.5"/><circle cx="8" cy="11.5" r="0.6" fill="currentColor" stroke="none"/></svg></span>',
+              error:'<span class="metric-card__icon" aria-hidden="true"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="8" r="6.5"/><line x1="8" y1="4.5" x2="8" y2="8.5"/><circle cx="8" cy="11" r="0.6" fill="currentColor" stroke="none"/></svg></span>'};
+  function segments(el){
+    var active = el.getAttribute('data-active-seg'), pins = el.hasAttribute('data-pins');
+    el.outerHTML = '<div class="ds-grid ds-grid--5 orders-segments">'+SEGS.map(function(s){
+      var on = s[0]===active;
+      return '<button type="button" class="card-button-reset orders-segment'+(on?' orders-segment--active':'')+'" aria-pressed="'+on+'"><div class="metric-card metric-card--'+s[3]+'"><span class="metric-card__label">'+(ICON[s[3]]||'')+s[1]+'</span><span class="metric-card__value">'+s[2]+'</span></div></button>';
+    }).join('')+'</div>';
+  }
+  function select(label, opts, value, extra){
+    return '<select class="control control--select" aria-label="'+label+'"'+(extra||'')+'>'+opts.map(function(o){ return '<option value="'+o[0]+'"'+(o[0]===value?' selected':'')+'>'+o[1]+'</option>'; }).join('')+'</select>';
+  }
+  function toolbar(el){
+    var q = el.getAttribute('data-search'), packed = el.getAttribute('data-packed'), ful = el.getAttribute('data-fulfillment'), pins = el.hasAttribute('data-pins'), packPin = el.hasAttribute('data-packed-pin');
+    el.outerHTML = '<div class="toolbar orders-toolbar">'+
+      '<input type="search" class="control mk-orders-search" aria-label="Search orders" placeholder="Search by order number, buyer, email, SKU or tracking number…" value="'+esc(q)+'" data-mk-search>'+(pins?pin(1):'')+
+      '<div class="toolbar__group">'+
+        select('Filter by source',[['','All sources'],['a','Allegro – Sklep Górski'],['e','Erli'],['o','Erli – outlet'],['w','WooCommerce – kawa']],'')+
+        '<label class="orders-toolbar__field"><span class="orders-toolbar__label">From</span><input type="date" class="control" aria-label="Created from"></label>'+
+        '<label class="orders-toolbar__field"><span class="orders-toolbar__label">To</span><input type="date" class="control" aria-label="Created to"></label>'+
+        select('Filter by ship-by SLA',[['','Any SLA'],['overdue','Overdue'],['at_risk','At risk'],['on_track','On track']],'')+
+        select('Filter by fulfillment',[['','Any fulfillment'],['not-shipped','Not shipped'],['dispatched','Dispatched'],['delivered','Delivered'],['failed','Dispatch failed']],ful)+
+        select('Filter by packing',[['','Any packing'],['packed','Packed'],['not-packed','Not packed yet']],packed,' data-mk-packed')+((pins||packPin)?pin(7):'')+
+        select('Filter by hold reason',[['','Any hold reason'],['payment-review','Payment review'],['fraud-review','Fraud review'],['operator','Held by operator'],['stock-shortfall','Stock shortfall'],['address-invalid','Address invalid'],['awaiting-amendment','Awaiting change'],['awaiting-customer-confirmation','Awaiting buyer'],['external','Held by channel']],'')+
+      '</div></div>';
+  }
+  function chips(el){
+    var active = el.getAttribute('data-active-chip'), pins = el.hasAttribute('data-pins'), count = el.getAttribute('data-count');
+    function chip(key, tone, label, go){ var on = key===active; return '<button type="button" class="chip chip--'+tone+(on?' chip--active':'')+'" aria-pressed="'+on+'"'+(go?' data-mk-go="'+(on?'default':go)+'"':'')+'>'+label+'</button>'; }
+    el.outerHTML = '<div class="ds-row" style="gap: var(--space-2); flex-wrap: wrap; align-items: center;">'+
+      chip('breach','warning','Ship-by ≤ 24h / overdue')+
+      chip('waiting','warning','Waiting in OpenLinker 3 · oldest 5 h','waiting')+(pins?pin(5):'')+
+      chip('bench','neutral','On pack bench 14')+(pins?pin(6):'')+
+      chip('return','neutral','Open return 4')+(pins?pin(8):'')+
+      '<span class="ds-row" style="gap: var(--space-2); align-items: center;">'+badge('error','4 overdue')+badge('warning','11 at risk')+'<a class="nav-link" href="#">Review dispatch risk</a></span>'+
+      '<span class="text-muted mono tabular mk-count">'+count+'</span></div>';
+  }
+  function phases(el){
+    var P = [['neutral','Cancelled 17'],['success','Delivered 918'],['info','With carrier 212'],['warning','On hold 3'],['error','Blocked 1'],['neutral','Ready 133']];
+    el.outerHTML = '<div class="ds-row orders-phase-chips" style="gap: var(--space-2); flex-wrap: wrap; align-items: center;" role="group" aria-label="Filter by lifecycle phase">'+
+      P.map(function(p){ return '<button type="button" class="chip chip--'+p[0]+'" aria-pressed="false">'+p[1]+'</button>'; }).join('')+'</div>';
+  }
+
+  /* ---------- mount ---------- */
+  document.querySelectorAll('[data-mk-segments]').forEach(segments);
+  document.querySelectorAll('[data-mk-toolbar]').forEach(toolbar);
+  document.querySelectorAll('[data-mk-chips]').forEach(chips);
+  document.querySelectorAll('[data-mk-phases]').forEach(phases);
+  document.querySelectorAll('[data-mk-list]').forEach(function(el){
+    var name = el.getAttribute('data-mk-list');
+    var opts = { pins: el.hasAttribute('data-pins'), search: name==='search', waitPins: el.hasAttribute('data-waiting-pins'), expanded: el.getAttribute('data-expanded') };
+    el.innerHTML = '<div class="mk-desktop">'+table(LISTS[name], opts)+'</div>'+
+      '<div class="mk-cards" hidden><div class="data-table__container data-table__container--with-cards"><ul class="data-table__cards">'+LISTS[name].map(function(k){ return card(k, {}); }).join('')+'</ul></div></div>';
+  });
+  document.querySelectorAll('[data-mk-cards]').forEach(function(el){
+    el.innerHTML = LISTS[el.getAttribute('data-mk-cards')].map(function(k){ return card(k, {mobilePins: el.hasAttribute('data-mobile-pins')}); }).join('');
+  });
+
+  /* DataTable renders cards at ≤ 767.98 px — mirror that for every state. */
+  var mq = window.matchMedia('(max-width: 767.98px)');
+  function applyMq(){ document.querySelectorAll('[data-mk-list]').forEach(function(el){ el.querySelector('.mk-desktop').hidden = mq.matches; el.querySelector('.mk-cards').hidden = !mq.matches; }); }
+  applyMq(); if(mq.addEventListener) mq.addEventListener('change', applyMq); else mq.addListener(applyMq);
+
+  /* ---------- light interactions ---------- */
+  function go(state){ var b = document.querySelector('.mk-bar__states button[data-s="'+state+'"]'); if(b) b.click(); }
+  document.addEventListener('click', function(e){
+    var t = e.target.closest('[data-mk-toggle]');
+    if(t){ var k = t.getAttribute('data-mk-toggle'), open = t.getAttribute('aria-expanded') !== 'true';
+      t.closest('tbody').querySelectorAll('[data-mk-detail="'+k+'"]').forEach(function(d){ d.hidden = !open; });
+      t.setAttribute('aria-expanded', open); t.querySelector('.data-table__expand-icon').textContent = open ? '▾' : '▸'; return; }
+    var g = e.target.closest('[data-mk-go]'); if(g){ go(g.getAttribute('data-mk-go')); return; }
+    var d = e.target.closest('.data-table__card-disclosure'); if(d){ var o = d.getAttribute('aria-expanded') !== 'true'; d.setAttribute('aria-expanded', o); d.innerHTML = '<span class="data-table__card-disclosure-chev" aria-hidden="true">'+(o?'⌄':'›')+'</span>'+(o?'Hide details':'View full details'); }
+  });
+  document.addEventListener('change', function(e){
+    if(e.target.matches('[data-mk-packed]')) go(e.target.value === 'packed' ? 'packed' : 'default');
+  });
+  document.addEventListener('keydown', function(e){
+    if(e.key === 'Enter' && e.target.matches('[data-mk-search]')){
+      var v = e.target.value.trim().toLowerCase();
+      go(!v ? 'default' : v.indexOf('kowalsk') !== -1 ? 'search' : 'noresults');
+    }
+  });
+})();
+</script>
+
+</body></html>

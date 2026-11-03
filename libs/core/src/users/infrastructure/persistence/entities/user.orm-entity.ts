@@ -58,6 +58,22 @@ export class UserOrmEntity {
   @Column({ name: 'last_active_at', type: 'timestamptz', nullable: true })
   lastActiveAt!: Date | null;
 
+  /**
+   * The person's name as an admin typed it at account creation (#3456), e.g.
+   * "Anna Kowalska". `null` for every account created another way; surfaces
+   * fall back to `username`, which stays the login.
+   */
+  @Column({ name: 'display_name', type: 'varchar', nullable: true })
+  displayName!: string | null;
+
+  /**
+   * Set when an admin creates the account with a one-time password (#3456);
+   * cleared by the user's own password change in the same statement that
+   * writes the new hash. `PasswordChangeRequiredGuard` enforces it.
+   */
+  @Column({ name: 'must_change_password', type: 'boolean', default: false })
+  mustChangePassword!: boolean;
+
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt!: Date;
 

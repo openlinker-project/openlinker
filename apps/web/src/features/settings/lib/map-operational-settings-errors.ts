@@ -24,6 +24,10 @@ const FIELDS: readonly OperationalSettingField[] = [
   'inventorySweepBudget',
   'sweepPageSize',
   'deletionAuditBudget',
+  'syncJobRetentionDays',
+  'syncJobDeadRetentionDays',
+  'inventoryMovementRetentionDays',
+  'stockStaleSyncThresholdHours',
   'deletionAuditCadence',
 ];
 

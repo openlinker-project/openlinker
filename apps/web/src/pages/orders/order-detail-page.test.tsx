@@ -12,6 +12,7 @@ import {
 import { OrderDetailPage } from './order-detail-page';
 import type { OrderRecord } from '../../features/orders/api/orders.types';
 import type { Connection } from '../../features/connections';
+import type { AuthorityAnswerRow, AuthorityStatus } from '../../features/fulfillment-authority';
 
 const sampleOrder: OrderRecord = {
   internalOrderId: 'ol_order_abc123',
@@ -68,6 +69,31 @@ describe('OrderDetailPage', () => {
 
     const links = await screen.findAllByRole('link', { name: sampleConnection.name });
     expect(links.length).toBeGreaterThan(0);
+  });
+
+  it('should not offer Confirm refund while the cancel request is still pending (C-2)', async () => {
+    const api = createMockApiClient({
+      orders: {
+        getById: vi.fn().mockResolvedValue(sampleOrder),
+        listOrderChanges: vi.fn().mockResolvedValue([
+          {
+            id: 'change_1',
+            kind: 'order.cancel_request',
+            status: 'requested',
+            open: true,
+            requestedAt: '2026-04-20T10:00:00.000Z',
+            confirmedAt: null,
+            declinedReason: null,
+            payload: { cancelRequest: { reason: 'buyer-request', note: null }, correction: null },
+          },
+        ]),
+      },
+    });
+
+    renderDetail(api);
+
+    await screen.findByTestId('order-cancel-pending');
+    expect(screen.queryByTestId('order-confirm-refund-button')).not.toBeInTheDocument();
   });
 
   it('renders the order snapshot inside RawPayloadPanel (collapsed, expandable)', async () => {
@@ -778,5 +804,175 @@ describe('OrderDetailPage — buyer tax id in the Summary block (#3180)', () => 
     );
     expect(screen.queryByTestId('order-buyer-tax-id')).not.toBeInTheDocument();
     expect(screen.queryByTestId('order-buyer-tax-id-none')).not.toBeInTheDocument();
+  });
+
+  // #3505 — the fulfilment-tasks section is OMS chrome: with routing off an
+  // order with no tasks gets no section at all.
+  describe('fulfilment tasks section and routing state', () => {
+    afterEach(cleanup);
+
+    function authorityStatus(sourcingState: 'default' | 'resolved'): AuthorityStatus {
+      return {
+        rows: [
+          {
+            question: 'sourcing',
+            state: sourcingState,
+            answer: { kind: 'nobody-to-route' } as AuthorityAnswerRow['answer'],
+            why: { kind: 'default', code: 'a2-single-origin-nothing-to-choose' },
+            source: sourcingState === 'default' ? 'default' : 'operator-config',
+            inactiveClaimantConnectionIds: [],
+          },
+        ],
+        attention: { counted: [], routine: [], affectedOrderCount: 0 },
+        presets: [],
+        applied: null,
+      };
+    }
+
+    function renderWithRouting(
+      sourcingState: 'default' | 'resolved',
+      listByOrder: ReturnType<typeof vi.fn>,
+    ): void {
+      const api = createMockApiClient({
+        orders: { getById: vi.fn().mockResolvedValue(sampleOrder) },
+        fulfillmentAuthority: {
+          getStatus: vi.fn().mockResolvedValue(authorityStatus(sourcingState)),
+        } as never,
+        fulfillment: { listByOrder } as never,
+      });
+      renderDetail(api);
+    }
+
+    it('should render no fulfilment tasks section when routing is off and the order has no tasks', async () => {
+      const listByOrder = vi
+        .fn()
+        .mockResolvedValue({ works: [], total: 0, limit: 50, offset: 0 });
+      renderWithRouting('default', listByOrder);
+
+      await screen.findByText('ol_order_abc123');
+      await waitFor(() => {
+        expect(listByOrder).toHaveBeenCalled();
+      });
+      expect(screen.queryAllByRole('heading', { name: 'Fulfilment tasks' })).toHaveLength(0);
+    });
+
+    it('should render the empty fulfilment tasks section when routing is on and the order has no tasks', async () => {
+      const listByOrder = vi
+        .fn()
+        .mockResolvedValue({ works: [], total: 0, limit: 50, offset: 0 });
+      renderWithRouting('resolved', listByOrder);
+
+      // Exactly one: the panel and `OrderReturnsPanel` once shared a React key,
+      // which duplicated this section as soon as it could render nothing.
+      expect(await screen.findByRole('heading', { name: 'Fulfilment tasks' })).toBeInTheDocument();
+      expect(await screen.findByText(/No fulfilment tasks/)).toBeInTheDocument();
+    });
+  });
+});
+
+describe('OrderDetailPage - packing affordance for a destination that packs itself (#2118)', () => {
+  afterEach(cleanup);
+
+  it('shows the Mark packed control when no destination declares it packs for itself', async () => {
+    const api = createMockApiClient({
+      orders: { getById: vi.fn().mockResolvedValue(sampleOrder) },
+      connections: { list: vi.fn().mockResolvedValue([sampleConnection]) },
+    });
+
+    renderDetail(api);
+
+    await screen.findByText('ol_order_abc123');
+    expect(await screen.findByText('Packing')).toBeInTheDocument();
+  });
+
+  it('hides the Mark packed control when the order went to a destination that packs itself', async () => {
+    const api = createMockApiClient({
+      orders: { getById: vi.fn().mockResolvedValue(sampleOrder) },
+      connections: {
+        list: vi
+          .fn()
+          .mockResolvedValue([
+            { ...sampleConnection, config: { fulfilmentOwnedByDestination: true } },
+          ]),
+      },
+    });
+
+    renderDetail(api);
+
+    await screen.findByText('ol_order_abc123');
+    await waitFor(() => expect(screen.queryByText('Packing')).not.toBeInTheDocument());
+  });
+});
+
+describe('OrderDetailPage — buyer note (#3539)', () => {
+  afterEach(cleanup);
+
+  it('should place the buyer note on the page and add the bench reading to the Activity timeline', async () => {
+    const getById = vi.fn().mockResolvedValue({
+      ...sampleOrder,
+      hasBuyerNote: true,
+      buyerNote: 'Proszę nie wkładać paragonu do paczki.',
+      buyerNoteReadAt: null,
+      buyerNoteAcknowledgements: [
+        { workId: 'w1', acknowledgedAt: '2026-04-20T12:00:00.000Z', acknowledgedByUserId: 'u7' },
+      ],
+    });
+    renderDetail(createMockApiClient({ orders: { getById } }));
+
+    expect(await screen.findByTestId('order-buyer-note-text')).toHaveTextContent(
+      'Proszę nie wkładać paragonu do paczki.',
+    );
+    expect(await screen.findByText('Buyer note read at the bench')).toBeInTheDocument();
+  });
+
+  it('should render no buyer note surface at all when the order has none', async () => {
+    const getById = vi.fn().mockResolvedValue({ ...sampleOrder, hasBuyerNote: false, buyerNote: null });
+    renderDetail(createMockApiClient({ orders: { getById } }));
+
+    await screen.findByText('Order detail');
+    await waitFor(() => {
+      expect(getById).toHaveBeenCalled();
+    });
+    expect(screen.queryByTestId('order-buyer-note')).not.toBeInTheDocument();
+    expect(screen.queryByText('Buyer note read at the bench')).not.toBeInTheDocument();
+  });
+  describe('cancelled in OpenLinker, channel still processing (C-23)', () => {
+    function cancelledOrder(channelStatus: string): OrderRecord {
+      return {
+        ...sampleOrder,
+        lifecyclePhase: 'cancelled',
+        orderSnapshot: {
+          orderNumber: 'A-1024',
+          status: channelStatus,
+          items: [{ id: 'it1', productId: 'ol_product_1', quantity: 1, price: 10, sku: 'SKU-1', name: 'Camera' }],
+          totals: { subtotal: 10, tax: 0, shipping: 0, total: 10, currency: 'PLN' },
+        },
+      } as OrderRecord;
+    }
+
+    it('should not show the channel status as a header badge or as the plain Status row (C-23)', async () => {
+      const api = createMockApiClient({
+        orders: { getById: vi.fn().mockResolvedValue(cancelledOrder('processing')) },
+      });
+      renderDetail(api);
+      const container = document.body;
+
+      await screen.findByText('Cancelled');
+      expect(container.querySelector('.order-header__top')?.textContent).not.toMatch(/processing/i);
+      expect(screen.queryByText('Status')).toBeNull();
+      const label = await screen.findByText(`Status at ${sampleConnection.name}`);
+      expect(label).toBeInTheDocument();
+      expect(screen.getByText('processing')).toBeInTheDocument();
+    });
+
+    it('should keep the plain Status row when the channel also says cancelled (C-23)', async () => {
+      const api = createMockApiClient({
+        orders: { getById: vi.fn().mockResolvedValue(cancelledOrder('cancelled')) },
+      });
+      renderDetail(api);
+
+      await screen.findByText('Status');
+      expect(screen.queryByText(/^Status at /)).toBeNull();
+    });
   });
 });

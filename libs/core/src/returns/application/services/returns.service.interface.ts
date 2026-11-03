@@ -17,6 +17,7 @@ import type { ReturnRecord } from '../../domain/entities/return-record.entity';
 import type { IncomingReturn } from '../../domain/types/incoming-return.types';
 import type { ReturnDownstreamTrigger } from '../../domain/types/return-trigger.types';
 import type {
+  OpenReturnOrderSummary,
   ReturnBucketCounts,
   ReturnDeclineAvailability,
   ReturnIngestionAvailability,
@@ -72,6 +73,14 @@ export interface RecordReturnLineInput {
   note: string | null;
 }
 
+/** The order's lines as the caller knows them (E-14). */
+export interface RecordReturnOrderLines {
+  /** Channel lines an OpenLinker edit lowered to quantity 0. */
+  removedByEdit: ReadonlyArray<{ sku: string | null; name: string | null }>;
+  /** Lines still live after edits; a shared identity keeps a return acceptable. */
+  live: ReadonlyArray<{ sku: string | null; name: string | null }>;
+}
+
 /**
  * What an operator supplies to open a return in OpenLinker (#2372).
  *
@@ -89,6 +98,12 @@ export interface RecordReturnInput {
   internalOrderId: string;
   sourceConnectionId: string;
   lines: RecordReturnLineInput[];
+  /**
+   * The order's lines, supplied by the caller (E-14): `returns` takes no orders
+   * service, so the interface layer that already holds the order composes this.
+   * Absent means "not checked", never "nothing removed".
+   */
+  orderLines?: RecordReturnOrderLines;
   /** The operator. Nullable so a future non-interactive writer is expressible. */
   actorUserId: string | null;
 }
@@ -274,6 +289,24 @@ export interface IReturnsService {
    * already selected.
    */
   countReturnsBySegment(filter: ReturnListFilter): Promise<ReturnSegmentCounts>;
+
+  /**
+   * All internal order ids currently carrying an `all_open` return (#2998) —
+   * backs the `/orders?openReturn=` server-side filter. See
+   * `OpenReturnOrderSummary` for why "open" is the returns list's own
+   * `all_open` segment predicate, reused rather than redefined.
+   */
+  listOpenReturnOrderIds(): Promise<string[]>;
+
+  /**
+   * Per-order open-return summary for a PAGE of order ids (#2998) — the
+   * `/orders` Status-group badge. ONE query for the whole page, never a
+   * per-row lookup (the `getLatestInvoicesForOrders` precedent). An order
+   * absent from the map has no open return.
+   */
+  getOpenReturnSummariesForOrders(
+    internalOrderIds: readonly string[]
+  ): Promise<Map<string, OpenReturnOrderSummary>>;
 
   /**
    * Can anything in this deployment ingest returns at all? (#2334, for #2335.)

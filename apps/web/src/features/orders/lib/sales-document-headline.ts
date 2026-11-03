@@ -57,6 +57,12 @@ export function resolveInvoiceHeadline(
   }
 
   if (invoice.status === 'failed') {
+    // "Rejected" names an actor that said no. When the adapter refused before
+    // contacting the provider, because the connection is missing a setting,
+    // nobody rejected anything - the document simply was not issued (#3772).
+    if (invoice.failureCode === 'connection-setup-incomplete') {
+      return { state: t('salesDocument.headline.notIssued', 'Not issued'), tone: 'error', identity };
+    }
     return invoice.failureMode === 'rejected'
       ? { state: t('salesDocument.headline.rejected', 'Rejected'), tone: 'error', identity }
       : { state: t('salesDocument.headline.unconfirmed', 'Unconfirmed'), tone: 'warning', identity };

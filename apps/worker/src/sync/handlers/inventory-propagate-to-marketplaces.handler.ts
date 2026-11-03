@@ -31,6 +31,10 @@ import {
 } from '@openlinker/core/inventory';
 import { IIntegrationsService, INTEGRATIONS_SERVICE_TOKEN } from '@openlinker/core/integrations';
 import { IProductsService, PRODUCTS_SERVICE_TOKEN } from '@openlinker/core/products';
+import {
+  IOrderRoutingRetryService,
+  ORDER_ROUTING_RETRY_SERVICE_TOKEN,
+} from '@openlinker/core/orders';
 
 type SyncJob = SyncJobEntity;
 import { Logger } from '@openlinker/shared/logging';
@@ -72,7 +76,9 @@ export class InventoryPropagateToMarketplacesHandler implements SyncJobHandler {
     @Inject(PRODUCTS_SERVICE_TOKEN)
     private readonly productsService: IProductsService,
     @Inject(AVAILABILITY_SERVICE_TOKEN)
-    private readonly availabilityService: IAvailabilityService
+    private readonly availabilityService: IAvailabilityService,
+    @Inject(ORDER_ROUTING_RETRY_SERVICE_TOKEN)
+    private readonly orderRoutingRetry: IOrderRoutingRetryService
   ) {}
 
   async execute(job: SyncJob): Promise<SyncJobHandlerResult> {
@@ -290,6 +296,18 @@ export class InventoryPropagateToMarketplacesHandler implements SyncJobHandler {
       this.logger.log(
         `Enqueued ${offerMappings.length} offer + ${enqueuedShopCount} shop-product quantity update job(s) for product ${payload.productId}`
       );
+
+      // #3558: orders held because a line could not be fulfilled are re-routed
+      // now rather than at the sweep's next tick. Runs AFTER the channel fan-out
+      // so the stock write-back never waits on it. Best-effort and bounded (a
+      // page of orders, one attempt per order per short window) - the service
+      // never throws, so this cannot fail a stock write-back.
+      if (payload.variantId) {
+        await this.orderRoutingRetry.rerouteHeldOrdersForVariant({
+          variantId: payload.variantId,
+          observedAt: payload.inventoryUpdatedAt,
+        });
+      }
 
       return { outcome: 'ok' };
     } catch (error) {

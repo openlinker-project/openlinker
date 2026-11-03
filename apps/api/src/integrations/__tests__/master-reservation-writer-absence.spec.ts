@@ -55,6 +55,7 @@ import { infaktAdapterManifest } from '@openlinker/integrations-infakt';
 import { inpostAdapterManifest } from '@openlinker/integrations-inpost';
 import { ksefAdapterManifest } from '@openlinker/integrations-ksef';
 import { prestashopAdapterManifest } from '@openlinker/integrations-prestashop';
+import { shoperAdapterManifest } from '@openlinker/integrations-shoper';
 import { subiektAdapterManifest } from '@openlinker/integrations-subiekt';
 import { woocommerceAdapterManifest } from '@openlinker/integrations-woocommerce';
 
@@ -70,6 +71,7 @@ const MANIFESTS: ReadonlyArray<readonly [string, AdapterMetadata]> = [
   ['inpost', inpostAdapterManifest],
   ['ksef', ksefAdapterManifest],
   ['prestashop', prestashopAdapterManifest],
+  ['shoper', shoperAdapterManifest],
   ['subiekt-gt', subiektAdapterManifest],
   ['woocommerce', woocommerceAdapterManifest],
 ];

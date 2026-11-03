@@ -5,8 +5,14 @@
  */
 import type { InvoiceRecord } from '../../entities/invoice-record.entity';
 import type { InvoicingPort } from '../invoicing.port';
-import type { RegulatoryDocument } from './regulatory-document-reader.capability';
-import { isRegulatoryDocumentReader } from './regulatory-document-reader.capability';
+import type {
+  RegulatoryDocument,
+  RegulatoryDocumentReader,
+} from './regulatory-document-reader.capability';
+import {
+  isRegulatoryDocumentReader,
+  supportsRegulatoryDocumentKind,
+} from './regulatory-document-reader.capability';
 
 const record = {} as InvoiceRecord;
 
@@ -43,5 +49,33 @@ describe('isRegulatoryDocumentReader', () => {
     // No `kind` argument — the optional param defaults to `confirmation` at the implementation.
     await expect(adapter.getRegulatoryDocument(record)).resolves.toBe(document);
     expect(getRegulatoryDocument).toHaveBeenCalledWith(record);
+  });
+});
+
+describe('supportsRegulatoryDocumentKind (#3648)', () => {
+  const withHint = (
+    kinds: readonly ('confirmation' | 'rendered' | 'source')[],
+  ): InvoicingPort & RegulatoryDocumentReader =>
+    ({
+      ...baseInvoicingPort,
+      getRegulatoryDocument: jest.fn(),
+      supportedRegulatoryDocumentKinds: () => kinds,
+    }) as InvoicingPort & RegulatoryDocumentReader;
+
+  it('should assume every kind when the adapter declares no hint', () => {
+    const legacy = { ...baseInvoicingPort, getRegulatoryDocument: jest.fn() } as InvoicingPort &
+      RegulatoryDocumentReader;
+
+    expect(supportsRegulatoryDocumentKind(legacy, 'rendered')).toBe(true);
+  });
+
+  it('should refuse a kind the adapter does not list', () => {
+    expect(supportsRegulatoryDocumentKind(withHint(['confirmation']), 'rendered')).toBe(false);
+  });
+
+  it('should accept a kind the adapter lists', () => {
+    expect(supportsRegulatoryDocumentKind(withHint(['confirmation', 'rendered']), 'rendered')).toBe(
+      true,
+    );
   });
 });

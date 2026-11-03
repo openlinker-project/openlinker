@@ -27,8 +27,16 @@
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>%OG_TITLE_PREFIX%OpenLinker Admin</title>
-    <meta name="description" content="%OG_TITLE_PREFIX%E-commerce orchestration platform" />
+    <title>%OG_TITLE_PREFIX%%PAGE_TITLE%</title>
+    <meta name="description" content="%OG_TITLE_PREFIX%%PAGE_DESCRIPTION%" />
+    <!--
+      Search indexing (#3709). The admin SPA is a private operator tool, so the
+      robots tag is `noindex` on every build unless VITE_OL_SEO_INDEXABLE=true
+      AND VITE_OG_SITE_URL are set — which only the public demo does; that build
+      also gets a canonical plus the demo title/description above.
+    -->
+    %ROBOTS_TAG%
+    %CANONICAL_TAG%
     <!--
       Open Graph / Twitter Card (#2174). Every percent-delimited token below is
       resolved by the `og-meta` plugin in src/build-time/og-meta.ts — deliberately NOT by
@@ -44,15 +52,15 @@
     <meta property="og:type" content="website" />
     <meta property="og:site_name" content="OpenLinker" />
     %OG_URL_TAG%
-    <meta property="og:title" content="%OG_TITLE_PREFIX%OpenLinker Admin" />
-    <meta property="og:description" content="%OG_TITLE_PREFIX%E-commerce orchestration platform" />
+    <meta property="og:title" content="%OG_TITLE_PREFIX%%PAGE_TITLE%" />
+    <meta property="og:description" content="%OG_TITLE_PREFIX%%PAGE_DESCRIPTION%" />
     <meta property="og:image" content="%OG_IMAGE_URL%" />
     <meta property="og:image:width" content="1200" />
     <meta property="og:image:height" content="630" />
     <meta property="og:image:alt" content="%OG_TITLE_PREFIX%OpenLinker" />
     <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:title" content="%OG_TITLE_PREFIX%OpenLinker Admin" />
-    <meta name="twitter:description" content="%OG_TITLE_PREFIX%E-commerce orchestration platform" />
+    <meta name="twitter:title" content="%OG_TITLE_PREFIX%%PAGE_TITLE%" />
+    <meta name="twitter:description" content="%OG_TITLE_PREFIX%%PAGE_DESCRIPTION%" />
     <meta name="twitter:image" content="%OG_IMAGE_URL%" />
     <meta name="twitter:image:alt" content="%OG_TITLE_PREFIX%OpenLinker" />
     <script>

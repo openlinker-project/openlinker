@@ -15,7 +15,10 @@
  * @module libs/core/src/mappings/domain/entities
  */
 
-import type { FulfillmentProcessorKind } from '../types/fulfillment-routing.types';
+import type {
+  FulfillmentParcelProfile,
+  FulfillmentProcessorKind,
+} from '../types/fulfillment-routing.types';
 
 export class FulfillmentRoutingRule {
   constructor(
@@ -26,5 +29,7 @@ export class FulfillmentRoutingRule {
     public readonly processorConnectionId: string,
     public readonly createdAt: Date,
     public readonly updatedAt: Date,
+    /** Optional parcel shape for auto-dispatch / label prefill (#3651). */
+    public readonly parcelProfile: FulfillmentParcelProfile | null = null,
   ) {}
 }

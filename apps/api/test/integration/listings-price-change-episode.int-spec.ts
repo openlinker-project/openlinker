@@ -746,4 +746,137 @@ describe('Price Change Episode Repository Integration', () => {
     await expect(repository.releaseClaim(episode.id)).resolves.toBeUndefined();
     await expect(repository.releaseClaim(UNKNOWN_EPISODE_ID)).resolves.toBeUndefined();
   });
+
+  // ADR-077 - `cause` marks the one-off net-to-gross catalogue correction. It
+  // is written at insert and COALESCEd on every refresh, so it is sticky for the
+  // life of the episode: a later ordinary re-detection cannot clear it and so
+  // cannot re-enable the automatic apply.
+  describe('cause (ADR-077)', () => {
+    it('should persist and read back a tax-basis-correction cause on first detection', async () => {
+      const { episode } = await repository.upsertOpen({
+        ...baseInput,
+        sourceOldAmount: 100,
+        sourceNewAmount: 123,
+        computedOldAmount: 100,
+        computedNewAmount: 123,
+        cause: 'tax-basis-correction',
+      });
+
+      expect(episode.cause).toBe('tax-basis-correction');
+      const read = await repository.findOpenByKey(VARIANT_ID, DEST_CONNECTION_ID, SRC_CONNECTION_ID);
+      expect(read?.cause).toBe('tax-basis-correction');
+    });
+
+    it('should store a null cause when the input omits it', async () => {
+      const { episode } = await repository.upsertOpen({
+        ...baseInput,
+        sourceOldAmount: 350,
+        sourceNewAmount: 327,
+        computedOldAmount: 427,
+        computedNewAmount: 399,
+      });
+
+      expect(episode.cause).toBeNull();
+      const read = await repository.findById(episode.id);
+      expect(read?.cause).toBeNull();
+    });
+
+    it('should keep the cause when a later re-detection carries none', async () => {
+      const first = await repository.upsertOpen({
+        ...baseInput,
+        sourceOldAmount: 100,
+        sourceNewAmount: 123,
+        computedOldAmount: 100,
+        computedNewAmount: 123,
+        cause: 'tax-basis-correction',
+      });
+
+      // An ordinary move on the same still-open key: no cause in the input.
+      const second = await repository.upsertOpen({
+        ...baseInput,
+        detectedAt: new Date('2026-09-10T11:00:00.000Z'),
+        sourceOldAmount: 123,
+        sourceNewAmount: 130,
+        computedOldAmount: 123,
+        computedNewAmount: 130,
+      });
+
+      expect(second.episode.id).toBe(first.episode.id);
+      expect(second.wasRefresh).toBe(true);
+      expect(second.episode.sourceNewAmount).toBe(130);
+      expect(second.episode.cause).toBe('tax-basis-correction');
+
+      // An explicit null is treated the same as an absent cause.
+      const third = await repository.upsertOpen({
+        ...baseInput,
+        detectedAt: new Date('2026-09-10T12:00:00.000Z'),
+        sourceOldAmount: 130,
+        sourceNewAmount: 135,
+        computedOldAmount: 130,
+        computedNewAmount: 135,
+        cause: null,
+      });
+      expect(third.episode.id).toBe(first.episode.id);
+      expect(third.episode.cause).toBe('tax-basis-correction');
+
+      const read = await repository.findById(first.episode.id);
+      expect(read?.cause).toBe('tax-basis-correction');
+    });
+
+    it('should mark an already-open ordinary episode as a correction when a re-detection carries the cause', async () => {
+      const first = await repository.upsertOpen({
+        ...baseInput,
+        sourceOldAmount: 100,
+        sourceNewAmount: 110,
+        computedOldAmount: 100,
+        computedNewAmount: 110,
+      });
+      expect(first.episode.cause).toBeNull();
+
+      const second = await repository.upsertOpen({
+        ...baseInput,
+        detectedAt: new Date('2026-09-10T11:00:00.000Z'),
+        sourceOldAmount: 110,
+        sourceNewAmount: 135.3,
+        computedOldAmount: 110,
+        computedNewAmount: 135.3,
+        cause: 'tax-basis-correction',
+      });
+
+      expect(second.episode.id).toBe(first.episode.id);
+      expect(second.episode.cause).toBe('tax-basis-correction');
+    });
+
+    it('should not carry the cause over to a new episode after the correction is resolved', async () => {
+      const first = await repository.upsertOpen({
+        ...baseInput,
+        sourceOldAmount: 100,
+        sourceNewAmount: 123,
+        computedOldAmount: 100,
+        computedNewAmount: 123,
+        cause: 'tax-basis-correction',
+      });
+      await repository.resolve(
+        first.episode.id,
+        'accepted',
+        'user-1',
+        null,
+        new Date('2026-09-10T12:00:00.000Z')
+      );
+
+      const next = await repository.upsertOpen({
+        ...baseInput,
+        detectedAt: new Date('2026-09-11T10:00:00.000Z'),
+        sourceOldAmount: 123,
+        sourceNewAmount: 130,
+        computedOldAmount: 123,
+        computedNewAmount: 130,
+      });
+
+      expect(next.episode.id).not.toBe(first.episode.id);
+      expect(next.episode.cause).toBeNull();
+      const resolved = await repository.findById(first.episode.id);
+      expect(resolved?.cause).toBe('tax-basis-correction');
+    });
+  });
 });

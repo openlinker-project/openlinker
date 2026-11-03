@@ -12,6 +12,7 @@
  *
  * @module apps/api/src/fiscalization/http
  */
+import { CONNECTION_PORT_TOKEN } from '@openlinker/core/identifier-mapping';
 import { Test } from '@nestjs/testing';
 import {
   BadGatewayException,
@@ -30,7 +31,11 @@ import {
   OrderAlreadyRegisteredException,
 } from '@openlinker/core/fiscalization';
 import type { IFiscalRegistrationService } from '@openlinker/core/fiscalization';
-import { ORDER_RECORD_SERVICE_TOKEN, OrderRecord } from '@openlinker/core/orders';
+import {
+  ORDER_DOCUMENT_EMAIL_SERVICE_TOKEN,
+  ORDER_RECORD_SERVICE_TOKEN,
+  OrderRecord,
+} from '@openlinker/core/orders';
 import type { IOrderRecordService } from '@openlinker/core/orders';
 import 'reflect-metadata';
 
@@ -113,7 +118,8 @@ function registrationRecord(
 describe('FiscalizationController', () => {
   let controller: FiscalizationController;
   let service: jest.Mocked<IFiscalRegistrationService>;
-  let orders: jest.Mocked<Pick<IOrderRecordService, 'getOrderRecord'>>;
+  let orders: jest.Mocked<Pick<IOrderRecordService, 'getOrderRecord' | 'markSalesDocumentBlock'>>;
+  let documentEmails: { sendReceiptEmail: jest.Mock };
 
   beforeEach(async () => {
     service = {
@@ -135,13 +141,23 @@ describe('FiscalizationController', () => {
       getInFlightRegistration: jest.fn().mockResolvedValue(null),
       listRegistrationsKeyset: jest.fn().mockResolvedValue({ items: [], nextCursor: null }),
     };
-    orders = { getOrderRecord: jest.fn() };
+    orders = {
+      getOrderRecord: jest.fn(),
+      markSalesDocumentBlock: jest.fn().mockResolvedValue(undefined),
+    };
+
+    documentEmails = { sendReceiptEmail: jest.fn() };
 
     const moduleRef = await Test.createTestingModule({
       controllers: [FiscalizationController],
       providers: [
         { provide: FISCAL_REGISTRATION_SERVICE_TOKEN, useValue: service },
         { provide: ORDER_RECORD_SERVICE_TOKEN, useValue: orders },
+        {
+          provide: CONNECTION_PORT_TOKEN,
+          useValue: { get: jest.fn().mockResolvedValue({ config: {} }) },
+        },
+        { provide: ORDER_DOCUMENT_EMAIL_SERVICE_TOKEN, useValue: documentEmails },
       ],
     }).compile();
 
@@ -225,6 +241,45 @@ describe('FiscalizationController', () => {
       await expect(
         controller.register({ connectionId: CONNECTION_ID, orderId: ORDER_ID }),
       ).rejects.toBeInstanceOf(ConflictException);
+    });
+
+    it('should clear the persisted block reason once the registration is accepted (#3646)', async () => {
+      // Without this, `trigger-model-manual` outlived the receipt it described
+      // and every surface kept saying no document was made.
+      orders.getOrderRecord.mockResolvedValue(orderRecord());
+
+      await controller.register({ connectionId: CONNECTION_ID, orderId: ORDER_ID });
+
+      expect(orders.markSalesDocumentBlock).toHaveBeenCalledWith(ORDER_ID, null, {
+        action: 'preserve',
+      });
+    });
+
+    it('should still accept the registration when clearing the block fails (#3646)', async () => {
+      orders.getOrderRecord.mockResolvedValue(orderRecord());
+      orders.markSalesDocumentBlock.mockRejectedValue(new Error('db down'));
+
+      await expect(
+        controller.register({ connectionId: CONNECTION_ID, orderId: ORDER_ID }),
+      ).resolves.toBeDefined();
+    });
+
+    it('should leave the block alone when the registration is refused (#3646)', async () => {
+      orders.getOrderRecord.mockResolvedValue(orderRecord());
+      service.requestRegistration.mockRejectedValue(
+        new OrderAlreadyRegisteredException(
+          ORDER_ID,
+          'conn-other',
+          CONNECTION_ID,
+          'registered',
+          'rec-first',
+        ),
+      );
+
+      await expect(
+        controller.register({ connectionId: CONNECTION_ID, orderId: ORDER_ID }),
+      ).rejects.toBeInstanceOf(ConflictException);
+      expect(orders.markSalesDocumentBlock).not.toHaveBeenCalled();
     });
 
     it('should compose the sale lines server-side from the order snapshot', async () => {
@@ -547,6 +602,58 @@ describe('FiscalizationController', () => {
       await expect(
         controller.reconcile('11111111-1111-1111-1111-111111111111'),
       ).rejects.toBeInstanceOf(NotFoundException);
+    });
+  });
+
+  describe('POST /fiscal-registrations/:id/send-email (#3550)', () => {
+    const REGISTRATION_ID = '11111111-1111-4111-8111-111111111111';
+    const actor = { id: 'user_1', username: 'admin', role: 'admin' } as never;
+
+    it('should be admin-only', () => {
+      expect(
+        Reflect.getMetadata(ROLES_KEY, FiscalizationController.prototype.sendReceiptEmail),
+      ).toEqual(['admin']);
+    });
+
+    it('should delegate with the operator and report who sent it', async () => {
+      documentEmails.sendReceiptEmail.mockResolvedValue({
+        status: 'sent',
+        sentVia: 'openlinker',
+        recipient: 'buyer@example.com',
+      });
+
+      const result = await controller.sendReceiptEmail(
+        REGISTRATION_ID,
+        { recipient: 'buyer@example.com', locale: 'pl' },
+        actor,
+      );
+
+      expect(documentEmails.sendReceiptEmail).toHaveBeenCalledWith({
+        registrationId: REGISTRATION_ID,
+        recipient: 'buyer@example.com',
+        locale: 'pl',
+        actorUserId: 'user_1',
+      });
+      expect(result).toEqual({
+        delivered: true,
+        recipient: 'buyer@example.com',
+        sentVia: 'openlinker',
+      });
+    });
+
+    it('should answer a refusal with its status, message and code', async () => {
+      documentEmails.sendReceiptEmail.mockResolvedValue({
+        status: 'refused',
+        reason: 'document-not-ready',
+        message: 'Not ready.',
+      });
+
+      const rejection = controller.sendReceiptEmail(REGISTRATION_ID, {}, actor);
+
+      await expect(rejection).rejects.toBeInstanceOf(ConflictException);
+      await expect(rejection).rejects.toMatchObject({
+        response: { message: 'Not ready.', code: 'document-not-ready' },
+      });
     });
   });
 

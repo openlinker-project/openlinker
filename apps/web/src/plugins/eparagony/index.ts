@@ -55,7 +55,7 @@ export const eparagonyPlugin: OpenLinkerPlugin = definePlugin({
     displayName: 'eparagony.pl',
     setupCard: {
       title: 'eparagony.pl',
-      description: 'Register Polish fiscal e-receipts against your own fiscal printer.',
+      description: 'Issue Polish fiscal e-receipts on your own printer, invoices, or both.',
       to: '/connections/new/eparagony',
       badge: 'Fiscalization',
     },

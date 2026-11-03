@@ -62,10 +62,14 @@ export class IntegrationsService implements IIntegrationsService {
     // Resolve connection
     const connection = await this.connectionPort.get(connectionId);
 
-    // Validate connection is not disabled
-    if (connection.status === 'disabled') {
-      this.logger.warn(`Attempted to resolve adapter for disabled connection: ${connectionId}`);
-      throw new ConnectionDisabledException(connectionId);
+    // Validate connection is not disabled. An archived connection (#3657) is
+    // refused the same way: its credential is gone, and a stray job or history
+    // link naming it must fail loudly rather than build an adapter.
+    if (connection.status === 'disabled' || connection.status === 'archived') {
+      this.logger.warn(
+        `Attempted to resolve adapter for ${connection.status} connection: ${connectionId}`
+      );
+      throw new ConnectionDisabledException(connectionId, connection.status);
     }
 
     // Determine adapterKey

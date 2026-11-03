@@ -80,7 +80,10 @@ export class OrderLifecycleRelayService implements IOrderLifecycleRelayService {
     if (input.authoredByConnectionId) {
       excluded.add(input.authoredByConnectionId);
     }
-    const targets = externalIds.filter((e) => !excluded.has(e.connectionId));
+    const only = input.onlyConnectionIds ? new Set(input.onlyConnectionIds) : null;
+    const targets = externalIds.filter(
+      (e) => !excluded.has(e.connectionId) && (only === null || only.has(e.connectionId))
+    );
 
     if (targets.length === 0) {
       this.logger.debug(
@@ -154,6 +157,10 @@ export class OrderLifecycleRelayService implements IOrderLifecycleRelayService {
           };
         case 'cancelled':
           return { type: 'cancelled', externalOrderId, reason: relayEvent.reason };
+        case 'delivered':
+          return { type: 'delivered', externalOrderId, deliveredAt: relayEvent.deliveredAt };
+        case 'in-progress':
+          return { type: 'in-progress', externalOrderId };
         default:
           return assertNever(relayEvent, 'OrderLifecycleRelayInput.event');
       }
@@ -171,7 +178,25 @@ export class OrderLifecycleRelayService implements IOrderLifecycleRelayService {
             `${input.internalOrderId}${result.detail ? ` — ${result.detail}` : ''}`
         );
       }
-      return { connectionId, outcome: result.outcome, detail: result.detail };
+      return {
+        connectionId,
+        outcome: result.outcome,
+        detail: result.detail,
+        ...(result.outcome === 'rejected' && result.transient ? { adapterThrew: true } : {}),
+        ...(result.scope ? { scope: result.scope } : {}),
+        // #3526: an adapter's own `default:` decline for an event kind it does
+        // not support (e.g. a bare `unsupported` from an in-tree adapter's own
+        // switch) is STRUCTURALLY the same fact as having no capability at
+        // all — nothing to retry, waiting will not help. `OrderWritebackResult`
+        // carries no reason field of its own (that vocabulary is the relay's,
+        // not the adapter's), so this is the one place that can supply it.
+        // Reported as `no-capability` so a caller reads "this platform cannot
+        // show this state" identically whether the connection lacks the
+        // capability entirely or merely declines this one event kind — the
+        // product decision this epic states plainly: "a platform that cannot
+        // show a state declines it as no-capability; that is never an error."
+        ...(result.outcome === 'unsupported' ? { unsupportedReason: 'no-capability' as const } : {}),
+      };
     } catch (error) {
       const detail = this.message(error);
       this.logger.warn(
@@ -179,7 +204,7 @@ export class OrderLifecycleRelayService implements IOrderLifecycleRelayService {
           `${input.internalOrderId}: ${detail}`,
         error instanceof Error ? error.stack : undefined
       );
-      return { connectionId, outcome: 'rejected', detail };
+      return { connectionId, outcome: 'rejected', detail, adapterThrew: true };
     }
   }
 

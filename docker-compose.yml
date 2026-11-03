@@ -47,6 +47,42 @@ services:
       timeout: 5s
       retries: 5
 
+  # Automated nightly backup (#3618, D36). A pilot install with real orders
+  # cannot rely on an operator remembering to run a manual `pg_dump` — see
+  # docs/operations/backup-and-restore.md for the runbook this service backs.
+  # Same `postgres:17-alpine` image as the `postgres` service above (so
+  # `pg_dump`'s major version always matches the server it's dumping,
+  # avoiding the cross-version dump-format warnings a mismatched client
+  # produces) but running as a scheduler, never serving traffic.
+  #
+  # Reads DB credentials from the SAME environment the `api`/`migrate`
+  # services already read (POSTGRES_PASSWORD) — never a committed file. The
+  # scripts are bind-mounted read-only rather than baked into a custom image,
+  # so no extra image build/publish step is needed for this service to exist.
+  backup:
+    image: postgres:17-alpine
+    container_name: ${COMPOSE_PROJECT_NAME:-openlinker}-backup
+    entrypoint: ['/bin/bash', '/scripts/backup-scheduler.sh']
+    environment:
+      PGHOST: postgres
+      PGPORT: 5432
+      PGUSER: postgres
+      PGPASSWORD: '${POSTGRES_PASSWORD:-postgres}'
+      PGDATABASE: openlinker
+      # HH:MM, UTC. Configurable per D36 / #3618's acceptance criteria.
+      OL_BACKUP_TIME: '${OL_BACKUP_TIME:-03:00}'
+      OL_BACKUP_DIR: /backups
+      OL_BACKUP_DAILY_RETENTION: '${OL_BACKUP_DAILY_RETENTION:-7}'
+      OL_BACKUP_WEEKLY_RETENTION: '${OL_BACKUP_WEEKLY_RETENTION:-4}'
+      OL_BACKUP_WEEKLY_DAY: '${OL_BACKUP_WEEKLY_DAY:-7}'
+    volumes:
+      - postgres-backups:/backups
+      - ./scripts/backup:/scripts:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
   redis:
     # 8.4 is the version the container standard pins; the `-alpine` variant is
     # ours, to stay consistent with every other slim base in this file
@@ -345,6 +381,7 @@ services:
 
 volumes:
   postgres-data:
+  postgres-backups:
   redis-data:
   mysql-data:
   prestashop-data:

@@ -19,11 +19,21 @@
  * @see apps/web/src/shared/plugins/plugin.types.ts — the OpenLinkerPlugin contract (#702)
  */
 import { withApiVersion } from '../../shared/config/api-version';
+import { getBcp47Locale, getLocale } from '../../shared/i18n';
 import { createAdaptersApi, type AdaptersApi } from '../../features/adapters/api/adapters.api';
 import {
   createAiProviderSettingsApi,
   type AiProviderSettingsApi,
 } from '../../features/ai-provider-settings/api/ai-provider-settings.api';
+import { parseContentDispositionFilename } from '../../shared/api/content-disposition';
+import {
+  createMarginAnalyticsApi,
+  type MarginAnalyticsApi,
+} from '../../features/analytics/api/margin-analytics.api';
+import {
+  createAnalyticsExportApi,
+  type AnalyticsExportApi,
+} from '../../features/analytics/api/analytics-export.api';
 import { createAnalyticsApi, type AnalyticsApi } from '../../features/analytics/api/sales-analytics.api';
 import {
   createAnalyticsCoverageApi,
@@ -100,9 +110,17 @@ import {
   type SalesDocumentRulesApi,
 } from '../../features/sales-documents/api/sales-document-rules.api';
 import {
+  createDeliveryOnDocumentsApi,
+  type DeliveryOnDocumentsApi,
+} from '../../features/delivery-on-documents/api/delivery-on-documents.api';
+import {
   createSourcingRulesApi,
   type SourcingRulesApi,
 } from '../../features/oms/api/sourcing-rules.api';
+import {
+  createRoutingDryRunApi,
+  type RoutingDryRunApi,
+} from '../../features/oms/api/routing-dry-run.api';
 import {
   createFulfillmentAuthorityApi,
   type FulfillmentAuthorityApi,
@@ -121,6 +139,7 @@ import {
 } from '../../features/posthog-settings/api/posthog-settings.api';
 import { createProductsApi, type ProductsApi } from '../../features/products/api/products.api';
 import { createAutomationsApi, type AutomationsApi } from '../../features/automation';
+import { createBuyerEmailsApi, type BuyerEmailsApi } from '../../features/buyer-emails/api/buyer-emails.api';
 import { createReturnsApi, type ReturnsApi } from '../../features/returns';
 import { createShipmentsApi, type ShipmentsApi } from '../../features/shipments/api/shipments.api';
 import {
@@ -128,6 +147,10 @@ import {
   type PromptTemplatesApi,
 } from '../../features/prompt-templates/api/prompt-templates.api';
 import { createSyncJobsApi, type SyncJobsApi } from '../../features/sync-jobs/api/sync.api';
+import {
+  createStreamDeadLettersApi,
+  type StreamDeadLettersApi,
+} from '../../features/sync-jobs/api/stream-dead-letters.api';
 import { createMappingsApi, type MappingsApi } from '../../features/mappings/api/mappings.api';
 import {
   createWebhookDeliveriesApi,
@@ -162,6 +185,19 @@ export type ApiRequest = <T>(path: string, init?: RequestInit) => Promise<T>;
  * still normalize to `ApiError`.
  */
 export type ApiBlobRequest = (path: string, init?: RequestInit) => Promise<Blob>;
+
+/**
+ * A downloaded file together with the name the server chose for it
+ * (`Content-Disposition`, exposed to the browser by the API's CORS config).
+ * `filename` is `null` when the response named none.
+ */
+export interface ApiFileResponse {
+  blob: Blob;
+  filename: string | null;
+}
+
+/** {@link ApiBlobRequest} that also reports the server-chosen filename (CSV exports, #3590). */
+export type ApiFileRequest = (path: string, init?: RequestInit) => Promise<ApiFileResponse>;
 
 /**
  * Streaming variant of {@link ApiRequest}. Same auth-header injection,
@@ -216,7 +252,9 @@ export interface CoreApiClient {
     AnalyticsCoverageApi &
     AnalyticsRemediationApi &
     AnalyticsTaxCoverageApi &
-    AnalyticsMatchingCoverageApi;
+    AnalyticsMatchingCoverageApi &
+    MarginAnalyticsApi &
+    AnalyticsExportApi;
   analyticsSettings: AnalyticsSettingsApi;
   analyticsTrust: AnalyticsTrustApi;
   auth: AuthApi;
@@ -234,6 +272,7 @@ export interface CoreApiClient {
   pricingSync: PricingSyncApi;
   mailerSettings: MailerSettingsApi;
   automations: AutomationsApi;
+  buyerEmails: BuyerEmailsApi;
   mcpTokens: McpTokensApi;
   operationalSettings: OperationalSettingsApi;
   orders: OrdersApi;
@@ -243,16 +282,20 @@ export interface CoreApiClient {
   mappings: MappingsApi;
   request: ApiRequest;
   requestBlob: ApiBlobRequest;
+  requestFile: ApiFileRequest;
   requestStream: ApiStreamRequest;
   returns: ReturnsApi;
   salesDocumentList: SalesDocumentListApi;
   salesDocumentRules: SalesDocumentRulesApi;
+  deliveryOnDocuments: DeliveryOnDocumentsApi;
   sourcingRules: SourcingRulesApi;
+  routingDryRun: RoutingDryRunApi;
   fulfillmentAuthority: FulfillmentAuthorityApi;
   fulfillment: FulfillmentApi;
   bench: BenchApi;
   shipments: ShipmentsApi;
   syncJobs: SyncJobsApi;
+  streamDeadLetters: StreamDeadLettersApi;
   system: SystemApi;
   users: UsersApi;
   webhookDeliveries: WebhookDeliveriesApi;
@@ -302,6 +345,11 @@ export function createApiClient({
     }
     if (accessToken !== null) {
       headers.set('Authorization', `Bearer ${accessToken}`);
+    }
+    // The API ignores it today; it lets server-side features (e-mails, PDFs)
+    // follow the operator's language later without a frontend change.
+    if (!headers.has('Accept-Language')) {
+      headers.set('Accept-Language', getBcp47Locale(getLocale()));
     }
     return headers;
   }
@@ -402,6 +450,17 @@ export function createApiClient({
     return response.blob();
   };
 
+  const requestFile: ApiFileRequest = async (
+    path: string,
+    init: RequestInit = {},
+  ): Promise<ApiFileResponse> => {
+    const response = await execute(path, init);
+    return {
+      blob: await response.blob(),
+      filename: parseContentDispositionFilename(response.headers.get('Content-Disposition')),
+    };
+  };
+
   const requestStream: ApiStreamRequest = async (
     path: string,
     init: RequestInit = {},
@@ -454,6 +513,8 @@ export function createApiClient({
       ...createAnalyticsRemediationApi(request),
       ...createAnalyticsTaxCoverageApi(request),
       ...createAnalyticsMatchingCoverageApi(request),
+      ...createMarginAnalyticsApi(request),
+      ...createAnalyticsExportApi(requestFile),
     },
     analyticsSettings: createAnalyticsSettingsApi(request),
     analyticsTrust: createAnalyticsTrustApi(request),
@@ -474,23 +535,28 @@ export function createApiClient({
     mcpTokens: createMcpTokensApi(request),
     mappings: createMappingsApi(request),
     operationalSettings: createOperationalSettingsApi(request),
-    orders: createOrdersApi(request),
+    orders: createOrdersApi(request, requestBlob),
     posthogSettings: createPosthogSettingsApi(request),
     products: createProductsApi(request),
     promptTemplates: createPromptTemplatesApi(request),
     request,
     requestBlob,
+    requestFile,
     requestStream,
     salesDocumentList: createSalesDocumentListApi(request),
     salesDocumentRules: createSalesDocumentRulesApi(request),
+    deliveryOnDocuments: createDeliveryOnDocumentsApi(request),
     sourcingRules: createSourcingRulesApi(request),
+    routingDryRun: createRoutingDryRunApi(request),
     automations: createAutomationsApi(request),
+    buyerEmails: createBuyerEmailsApi(request),
     fulfillmentAuthority: createFulfillmentAuthorityApi(request),
     fulfillment: createFulfillmentApi(request),
     bench: createBenchApi(request, requestBlob),
     returns: createReturnsApi(request),
     shipments: createShipmentsApi(request, requestBlob),
     syncJobs: createSyncJobsApi(request),
+    streamDeadLetters: createStreamDeadLettersApi(request),
     system: createSystemApi(request),
     users: createUsersApi(request),
     webhookDeliveries: createWebhookDeliveriesApi(request),

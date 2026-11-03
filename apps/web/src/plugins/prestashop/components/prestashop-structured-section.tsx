@@ -82,7 +82,7 @@ export function PrestashopStructuredSection({
         label="OL callback URL"
         name="openlinkerCallbackBaseUrl"
         error={form.formState.errors.openlinkerCallbackBaseUrl?.message}
-        description="OpenLinker's URL from PrestaShop's perspective — used by the PS module to POST webhooks back to OL. Pre-filled from your browser; override for Docker dev (e.g. http://host.docker.internal:3000) or unusual deploys. Required to use the 'Configure webhooks' action."
+        description="OpenLinker's URL from PrestaShop's perspective — used by the PS module to POST webhooks back to OL. Pre-filled with the API address this app uses; override for Docker dev (e.g. http://host.docker.internal:3000) or unusual deploys. Required to use the 'Configure webhooks' action."
       >
         <Input
           value={form.watch('openlinkerCallbackBaseUrl') ?? ''}

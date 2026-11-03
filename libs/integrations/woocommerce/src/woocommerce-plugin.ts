@@ -17,6 +17,7 @@ import { dispatchCapability, type AdapterPlugin, type HostServices } from '@open
 import type { AdapterMetadata } from '@openlinker/core/integrations';
 import type { Connection } from '@openlinker/core/identifier-mapping';
 import type { CustomerProjectionRepositoryPort } from '@openlinker/core/customers';
+import type { IMappingConfigService } from '@openlinker/core/mappings';
 import type { WooCommerceCustomerProvisioner } from './infrastructure/provisioners/woocommerce-customer-provisioner';
 import type { WooCommerceAddressProvisioner } from './infrastructure/provisioners/woocommerce-address-provisioner';
 import { WooCommerceConnectionTesterAdapter } from './infrastructure/adapters/woocommerce-connection-tester.adapter';
@@ -34,6 +35,7 @@ import { WooCommerceOrderSourceAdapter } from './infrastructure/adapters/woocomm
 import { WooCommerceProductPublisherAdapter } from './infrastructure/adapters/product-publisher/woocommerce-product-publisher.adapter';
 import { WooCommerceOfferManagerAdapter } from './infrastructure/adapters/offer-manager/woocommerce-offer-manager.adapter';
 import { WooCommerceAuthFailureClassifierAdapter } from './infrastructure/adapters/woocommerce-auth-failure-classifier.adapter';
+import { WooCommerceRetryClassifierAdapter } from './infrastructure/adapters/woocommerce-retry-classifier.adapter';
 import { WooCommerceWebhookEventTranslatorAdapter } from './infrastructure/adapters/woocommerce-webhook-event-translator.adapter';
 import { WooCommerceInboundWebhookDecoderAdapter } from './infrastructure/adapters/woocommerce-inbound-webhook-decoder.adapter';
 import { buildWooCommerceSchedulerTasks } from './infrastructure/scheduler/woocommerce-scheduler-tasks';
@@ -119,6 +121,13 @@ export interface CreateWooCommercePluginDeps {
   readonly customerProvisioner: WooCommerceCustomerProvisioner;
   readonly addressProvisioner: WooCommerceAddressProvisioner;
   readonly customerProjectionRepository: CustomerProjectionRepositoryPort;
+  /**
+   * Resolves an operator-configured carrier mapping for `createOrder`'s
+   * shipping line (#3471). Optional so the static / unit-test path
+   * (`createWooCommercePlugin()`) keeps working; when absent, carrier
+   * resolution falls back to the pre-#3471 hardcoded `flat_rate` default.
+   */
+  readonly mappingConfigService?: IMappingConfigService;
 }
 
 export function createWooCommercePlugin(deps?: CreateWooCommercePluginDeps): AdapterPlugin {
@@ -141,6 +150,10 @@ export function createWooCommercePlugin(deps?: CreateWooCommercePluginDeps): Ada
       host.authFailureClassifierRegistry.register(
         woocommerceAdapterManifest.adapterKey,
         new WooCommerceAuthFailureClassifierAdapter(),
+      );
+      host.retryClassifierRegistry.register(
+        woocommerceAdapterManifest.adapterKey,
+        new WooCommerceRetryClassifierAdapter(),
       );
       // Inbound webhook decoder (ADR-021 / #1563), provider-keyed by
       // platformType: authenticates the base64 HMAC-SHA256 `X-WC-Webhook-Signature`
@@ -225,6 +238,7 @@ export function createWooCommercePlugin(deps?: CreateWooCommercePluginDeps): Ada
                   deps.customerProvisioner,
                   deps.addressProvisioner,
                   deps.customerProjectionRepository,
+                  deps.mappingConfigService,
                 );
               },
               OrderSource: () => new WooCommerceOrderSourceAdapter(httpClient, connection),

@@ -19,6 +19,7 @@ import type {
   BulkIssueInvoicesResult,
   InvoiceFilters,
   InvoicePagination,
+  InvoiceMarketplaceUploadState,
   InvoiceRecord,
   IssuedDocumentContent,
   IssueCorrectionInput,
@@ -60,7 +61,7 @@ export interface InvoicingApi {
    * to `regulatoryStatus === 'rejected'` (409 otherwise) and to adapters that
    * implement the neutral RegulatoryResubmitter capability (501 otherwise).
    */
-  resendToKsef: (invoiceId: string) => Promise<InvoiceRecord>;
+  resendToAuthority: (invoiceId: string) => Promise<InvoiceRecord>;
   /**
    * `POST /invoices/:invoiceId/send-email` (#1353) — trigger the provider to
    * render + email the issued invoice to the buyer. 501 when the connection's
@@ -95,6 +96,16 @@ export interface InvoicingApi {
    * error.
    */
   getContent: (invoiceId: string) => Promise<IssuedDocumentContent>;
+  /**
+   * The authority's public verification link for a cleared invoice (KSeF:
+   * KOD I), built by the provider adapter from the exact submitted document.
+   * `url` is null when the provider offers none or the invoice is not cleared.
+   */
+  getVerificationLink: (invoiceId: string) => Promise<{ url: string | null }>;
+  /** Where attaching the document to its marketplace order stands (#3549). */
+  getMarketplaceUpload: (invoiceId: string) => Promise<InvoiceMarketplaceUploadState>;
+  /** Queue another upload attempt (admin only, #3549). */
+  retryMarketplaceUpload: (invoiceId: string) => Promise<{ queued: true }>;
 }
 
 interface ApiRequest {
@@ -143,6 +154,22 @@ export function createInvoicingApi(request: ApiRequest, requestBlob: ApiBlobRequ
         `/invoices/${encodeURIComponent(invoiceId)}/content`,
       );
     },
+    getMarketplaceUpload(invoiceId): Promise<InvoiceMarketplaceUploadState> {
+      return request<InvoiceMarketplaceUploadState>(
+        `/invoices/${encodeURIComponent(invoiceId)}/marketplace-upload`,
+      );
+    },
+    retryMarketplaceUpload(invoiceId): Promise<{ queued: true }> {
+      return request<{ queued: true }>(
+        `/invoices/${encodeURIComponent(invoiceId)}/marketplace-upload/retry`,
+        { method: 'POST' },
+      );
+    },
+    getVerificationLink(invoiceId): Promise<{ url: string | null }> {
+      return request<{ url: string | null }>(
+        `/invoices/${encodeURIComponent(invoiceId)}/verification-link`,
+      );
+    },
     list(filters, pagination): Promise<PaginatedInvoices> {
       return request<PaginatedInvoices>(`/invoices${buildQuery(filters, pagination)}`);
     },
@@ -174,7 +201,7 @@ export function createInvoicingApi(request: ApiRequest, requestBlob: ApiBlobRequ
         body: JSON.stringify(input),
       });
     },
-    resendToKsef(invoiceId): Promise<InvoiceRecord> {
+    resendToAuthority(invoiceId): Promise<InvoiceRecord> {
       return request<InvoiceRecord>(`/invoices/${encodeURIComponent(invoiceId)}/resend-to-ksef`, {
         method: 'POST',
         headers: JSON_HEADERS,

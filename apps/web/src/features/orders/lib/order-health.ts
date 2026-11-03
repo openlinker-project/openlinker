@@ -18,12 +18,16 @@ import {
   isFulfillmentRollupState,
   isSlaState,
   type OrderRecord,
+  type OrderHandledInOpenLinker,
   type OrderHealthValue,
   type OrderSyncStatus,
   type SlaStateValue,
   type FulfillmentRollupStateValue,
 } from '../api/orders.types';
 import type { StatusBadgeTone } from '../../../shared/ui/status-badge';
+import { resolveDestinationRoutingCopy } from './destination-routing-copy';
+import { isHandledInOpenLinker } from './handled-in-openlinker';
+import { HANDLED_IN_OPENLINKER_COPY } from './handled-in-openlinker.copy';
 
 // ── List-row health classification (#929) ──────────────────────────────────
 // CANONICAL PRECEDENCE (highest wins) — single FE source of truth and the twin
@@ -93,6 +97,17 @@ export function deriveOrderHealth(order: OrderRecord): OrderHealthView {
     return { key: 'synced', ...ORDER_HEALTH_META.synced };
   }
 
+  // #3482 - an order OpenLinker handles itself has no destination rows, so it used
+  // to stay `awaiting_dispatch` for ever, even after delivery. While it is on the
+  // bench it IS awaiting dispatch; once it has shipped it is `synced`. Twin of
+  // `OrderRecordRepository.IS_SYNCED_HEALTH` - change both.
+  if (
+    isHandledInOpenLinker(order) &&
+    (order.fulfillmentState === 'dispatched' || order.fulfillmentState === 'delivered')
+  ) {
+    return { key: 'synced', ...ORDER_HEALTH_META.synced };
+  }
+
   return { key: 'awaiting_dispatch', ...ORDER_HEALTH_META.awaiting_dispatch };
 }
 
@@ -147,7 +162,11 @@ export function deriveHealthLevel(rollup: SyncRollup): OrderHealthLevel {
   return 'healthy';
 }
 
-export function healthLabel(level: OrderHealthLevel): string {
+export function healthLabel(
+  level: OrderHealthLevel,
+  /** An order OpenLinker handles itself has no destination rows by design (#3482). */
+  handled?: OrderHandledInOpenLinker
+): string {
   switch (level) {
     case 'attention':
       return 'Needs attention';
@@ -156,13 +175,40 @@ export function healthLabel(level: OrderHealthLevel): string {
     case 'healthy':
       return 'Synced';
     case 'unknown':
-      return 'No destinations';
+      return isHandledInOpenLinker({ handledInOpenLinker: handled })
+        ? HANDLED_IN_OPENLINKER_COPY.syncLabel
+        : 'No destinations';
   }
 }
 
-/** "1 of 1 failed" / "2 of 3 synced" — the headline for the Sync health cell. */
-export function syncCellLabel(rollup: SyncRollup): string {
-  if (rollup.total === 0) return 'No destinations';
+/**
+ * "1 of 1 failed" / "2 of 3 synced" — the headline for the Sync health cell.
+ *
+ * `destinationRoutingBlockReason` (#2703) is OPTIONAL and only ever consulted on
+ * the empty rollup. That is the whole fix: an empty `syncStatus[]` used to mean
+ * "No destinations" whether nothing was configured or a working router had
+ * decided this order needs none, and an operator could not tell a router making
+ * a decision from a configuration that was never set up — which is precisely the
+ * distinction routing exists to make.
+ *
+ * The reason is READ from the persisted column the backend wrote, never inferred
+ * from the rollup (#2100's rule). An unrecognised value falls through to the
+ * original wording rather than rendering a confident wrong sentence.
+ */
+export function syncCellLabel(
+  rollup: SyncRollup,
+  destinationRoutingBlockReason?: string | null,
+  handled?: OrderHandledInOpenLinker
+): string {
+  if (rollup.total === 0) {
+    // Precedence (#3482): handled in OpenLinker (it has live pack-bench work) ->
+    // a router that chose nobody (#2703) -> nothing configured. An order the
+    // router sent nowhere has no work, so the first arm never shadows the second.
+    if (isHandledInOpenLinker({ handledInOpenLinker: handled })) {
+      return HANDLED_IN_OPENLINKER_COPY.syncLabel;
+    }
+    return resolveDestinationRoutingCopy(destinationRoutingBlockReason)?.label ?? 'No destinations';
+  }
   if (rollup.failed > 0) return `${rollup.failed} of ${rollup.total} failed`;
   if (rollup.skipped > 0)
     return `${rollup.synced} of ${rollup.total} synced (${rollup.skipped} skipped)`;

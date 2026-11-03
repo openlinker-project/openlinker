@@ -33,6 +33,7 @@ import {
   type Shipment,
 } from '../../shipments';
 
+import { useRoutingRulesForConnections } from '../../mappings';
 import type { OrderRecord } from '../api/orders.types';
 import {
   buildDispatchItem,
@@ -42,6 +43,7 @@ import {
   DISPATCH_INELIGIBILITY_HINT,
   type DispatchEligibility,
 } from '../lib/dispatch-input';
+import { mergeParcelWithRoutedPrefill, parcelPrefillForMethod } from '../lib/routed-parcel-profile';
 import { parcelSchema, type ParcelSubmission } from './bulk-dispatch-dialog.schema';
 
 interface BulkDispatchDialogProps {
@@ -122,7 +124,30 @@ export function BulkDispatchDialog({
   const [results, setResults] = useState<PerOrderDispatchResult[]>([]);
   const [rowErrors, setRowErrors] = useState<Record<string, string>>({});
 
-  const rowParcel = (orderId: string): ParcelFields => overrides[orderId] ?? profile;
+  // Per-order default parcel from the routing rule its delivery method matches
+  // (#3652). Precedence per row: explicit row override > the dialog-wide default
+  // box (field by field, where filled) > the routed profile.
+  const sourceIds = useMemo(
+    () => Array.from(new Set(eligible.map((e) => e.order.sourceConnectionId))),
+    [eligible],
+  );
+  const rulesBySource = useRoutingRulesForConnections(sourceIds, { enabled: open });
+  const routedByOrder = useMemo(() => {
+    const map = new Map<string, ReturnType<typeof parcelPrefillForMethod>>();
+    for (const e of eligible) {
+      map.set(
+        e.order.internalOrderId,
+        parcelPrefillForMethod(
+          rulesBySource.get(e.order.sourceConnectionId),
+          e.snapshot.shipping?.methodId,
+        ),
+      );
+    }
+    return map;
+  }, [eligible, rulesBySource]);
+
+  const rowParcel = (orderId: string): ParcelFields =>
+    overrides[orderId] ?? mergeParcelWithRoutedPrefill(profile, routedByOrder.get(orderId) ?? null);
 
   function applyProfileToAll(): void {
     dispatchOverride({ type: 'applyAll', ids: eligible.map((e) => e.order.internalOrderId), parcel: profile });
@@ -159,7 +184,10 @@ export function BulkDispatchDialog({
           order: entry.order,
           snapshot: entry.snapshot,
           shippingMethod: entry.shippingMethod,
-          parcel,
+          parcel:
+            entry.shippingMethod === 'paczkomat' && routedByOrder.get(id)?.template
+              ? { ...parcel, template: routedByOrder.get(id)?.template }
+              : parcel,
           paczkomatId: entry.paczkomatId,
         }),
       });

@@ -28,8 +28,21 @@ export type PlatformType = string;
  * surface a precise "re-authentication required" affordance, and — like every
  * non-`active` status — the scheduler's `status: 'active'` filter stops
  * enqueuing jobs against it. A successful re-auth flips it back to `active`.
+ *
+ * `archived` is the soft delete (#3657): reachable only from `disabled`, and
+ * only through `ConnectionService.archive`, which also removes the stored
+ * credential. The row stays so identifier mappings, category mappings and
+ * history keep their `connectionId` namespace and name. An archived connection
+ * is excluded from `ConnectionPort.list()` unless a caller asks for
+ * `status: 'archived'` explicitly, and it can be restored to `disabled`.
  */
-export const ConnectionStatusValues = ['active', 'disabled', 'error', 'needs_reauth'] as const;
+export const ConnectionStatusValues = [
+  'active',
+  'disabled',
+  'error',
+  'needs_reauth',
+  'archived',
+] as const;
 
 /**
  * Connection status type
@@ -71,7 +84,7 @@ export interface ConnectionConfig {
      * (#2047). One sale is one invoice, so when several connections have
      * `Invoicing` enabled the auto-issue trigger honours exactly the primary and
      * issues NOTHING when the primary is ambiguous (unset, or set on more than
-     * one). Read via `parseIsPrimaryInvoicing`; a missing value is `false`, which
+     * one). Read via `readSalesDocumentRouting`; a missing value is `false`, which
      * keeps a single-connection install behaving exactly as before.
      */
     isPrimary?: boolean;
@@ -199,6 +212,16 @@ export interface ConnectionConfig {
     parcelTemplate?: string;
     defaultWeightGrams?: number;
   };
+  /**
+   * How the delivery line reads on sales documents, per buyer country (#3905,
+   * ADR-082). Set on the ORDER-SOURCE connection: it knows the delivery
+   * methods and the markets. Shape and rules live in `delivery-line.types.ts`
+   * (`@openlinker/core/sales-documents`), read via `readDeliveryOnDocuments`;
+   * typed `unknown` here because that leaf is import-free and this one must
+   * not depend on it. Without it a connection behaves as before, plus the rate
+   * suffix a receipt name always carries.
+   */
+  deliveryOnDocuments?: unknown;
   [key: string]: unknown;
 }
 
@@ -253,6 +276,13 @@ export interface ConnectionUpdate {
    */
   adapterKey?: string;
   enabledCapabilities?: string[];
+  /**
+   * Written only by `ConnectionService` (archive clears it to `''`, credential
+   * re-entry after a restore sets a fresh `db:` ref). Deliberately absent from
+   * the HTTP update DTO: the ref points at an encrypted row and must never be
+   * chosen by a caller.
+   */
+  credentialsRef?: string;
 }
 
 /**
@@ -262,5 +292,26 @@ export interface ConnectionUpdate {
  */
 export interface ConnectionFilters {
   platformType?: PlatformType;
+  /**
+   * Exact match. When absent, archived connections are EXCLUDED (#3657) - every
+   * other status is returned. `status: 'archived'` is the only way to list them.
+   */
   status?: ConnectionStatus;
+}
+
+/**
+ * Why a connection cannot be archived while something still points at it
+ * (#3657 review). One value today; the union leaves room for the next
+ * referrer that gains a refusal without changing the 409 body's shape.
+ *
+ * - `master-catalog-referenced` — another non-archived connection names it as
+ *   `config.masterCatalogConnectionId`.
+ */
+export const ConnectionInUseReasonValues = ['master-catalog-referenced'] as const;
+export type ConnectionInUseReason = (typeof ConnectionInUseReasonValues)[number];
+
+/** A connection that still references the one being archived. */
+export interface ConnectionReferrer {
+  id: string;
+  name: string;
 }

@@ -16,11 +16,21 @@
  * @module libs/core/src/products/domain/entities
  */
 
+import type { ProductGpsr } from '../types/product-gpsr.types';
 import type { TaxRateUnknownReason } from '../types/tax-rate.types';
 export interface Product {
   id: string;
   name: string;
   sku: string | null;
+  /**
+   * GROSS catalogue price: what a buyer pays in the master connection's sales
+   * country, in `currency`, excluding promotions (ADR-077). A master whose
+   * platform stores net converts inside its own adapter, with its own rate and
+   * rounding; core never applies a rate. `null` means the master could not state
+   * a gross figure - never a net one standing in for it, because every consumer
+   * (marketplace offers, shop publishers, price-change detection) reads it as
+   * gross.
+   */
   price: number | null;
   description: string | null;
   images: string[] | null;
@@ -42,9 +52,10 @@ export interface Product {
    * Master-derived full category path (root→leaf), each node carrying the
    * source-shop category id + name (#1096, F3). A richer companion to the bare
    * `categories` ids: a destination that accepts shop-native taxonomy (Erli
-   * `source:"shop"`) emits this as a breadcrumb. Absent/unset ⇒ the master could
-   * not resolve a path (falls back to the bare-id `categories`). Not persisted on
-   * the products table.
+   * `source:"shop"`) emits this as a breadcrumb, and the product page shows it.
+   * Absent/unset ⇒ the master could not resolve a path (falls back to the
+   * bare-id `categories`). Persisted on the `products.categoryBreadcrumb` jsonb
+   * column.
    */
   categoryBreadcrumb?: { id: string; name: string }[];
   /**
@@ -74,4 +85,16 @@ export interface Product {
    * `not-configured` (a real answer the shop gave).
    */
   taxRateUnknownReason?: TaxRateUnknownReason | null;
+  /**
+   * What the master stated about the product under the EU General Product
+   * Safety Regulation (producer, responsible person, importer, safety
+   * information) - by value, never by a platform id. Persisted on the
+   * `products.gpsr` jsonb column.
+   *
+   * Three states, kept apart by the repository: `undefined` means the master
+   * did not report GPSR on this read (it does not model it, or its reference
+   * read failed) and leaves the stored value untouched; `null` means it reported
+   * that the product carries none; an object is what it stated.
+   */
+  gpsr?: ProductGpsr | null;
 }

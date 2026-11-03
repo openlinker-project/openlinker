@@ -7,6 +7,8 @@
  *
  * @module libs/core/src/orders/application/interfaces
  */
+import type { LineCostCandidate } from '../../domain/order-line-cost-snapshot';
+import type { ApplyOrderEditInput } from '../../domain/types/order-edits.types';
 import type { Order } from '../../domain/types/order.types';
 import type { OrderRecord, OrderSyncStatus } from '../../domain/entities/order-record.entity';
 import type { IncomingOrder } from '../../domain/types/incoming-order.types';
@@ -20,7 +22,10 @@ import type {
   SalesDocumentMatchedRuleWrite,
 } from '../../domain/types/order-record.types';
 import type { FulfillmentRollupState } from '../../domain/types/order-fulfillment.types';
-import type { FulfillmentBlock } from '@openlinker/core/fulfillment';
+import type { FulfillmentBlock, FulfillmentBlockReason } from '@openlinker/core/fulfillment';
+import type { DestinationRoutingBlock } from '../../domain/types/destination-routing-block.types';
+import type { FulfillmentRoutingSkipReason } from '../../domain/types/fulfillment-routing-eligibility.types';
+import type { HeldOrderRef } from '../../domain/ports/order-record-repository.port';
 import type {
   AuthorityAttentionOutcome,
   AuthorityAttentionProducer,
@@ -30,6 +35,7 @@ import type {
   SalesDocumentMarketDiscovery,
 } from '@openlinker/core/sales-documents';
 import type { OrderAmendmentChange } from '../../domain/order-amendment-diff';
+import type { DeliveryCountryFact } from '../../domain/types/delivery-country-facts.types';
 import type {
   SalesAnalyticsFilters,
   SalesAndChannelAnalytics,
@@ -60,13 +66,16 @@ export interface IOrderRecordService {
    * @param sourceExternalUrl - Optional deep link to the order in the source
    *   platform's UI (#1713), built by the source adapter; persisted onto the
    *   snapshot as `sourceExternalUrl`.
+   * @param lineCostCandidates - Eligible variant costs by variantId (#3588), used only
+   *   for the `order_line_items` cost snapshot; never written to the order snapshot.
    * @returns Persisted order record
    */
   persistOrder(
     order: Order,
     sourceConnectionId: string,
     sourceEventId: string | null,
-    sourceExternalUrl?: string | null
+    sourceExternalUrl?: string | null,
+    lineCostCandidates?: ReadonlyMap<string, LineCostCandidate>
   ): Promise<OrderRecord>;
 
   /**
@@ -193,15 +202,56 @@ export interface IOrderRecordService {
   discoverSalesDocumentMarkets(now?: Date): Promise<SalesDocumentMarketDiscovery>;
 
   /**
+   * What one source connection's orders since `since` say about each delivery
+   * country (#3907, ADR-082 decision 8): counts, VAT rates seen, currency and
+   * an anonymous example order. Read-only, carries no buyer data, capped at 20
+   * countries, most orders first.
+   */
+  getDeliveryCountryFacts(sourceConnectionId: string, since: Date): Promise<DeliveryCountryFact[]>;
+
+  /**
    * Push a per-order fulfillment rollup (#1108) onto the order record. The
    * cross-context surface the shipping context calls after a shipment-status
    * change (`shipping → orders`, via this service — never the repository port).
    * Best-effort/idempotent; a missing order row is a no-op.
+   *
+   * A shipped state fires `order.shipped` (#3554), once per order, claimed on
+   * `shippedNotifiedAt`. The announcement WAITS for the carrier's tracking
+   * number: pass `trackingKnown: false` while no live outbound shipment has one
+   * yet (a carrier such as InPost mints it minutes after dispatch), and the
+   * trigger is left for {@link notifyShippedIfPending}. `delivered` announces
+   * regardless, since the parcel has arrived. Omitting `options` announces
+   * immediately, which is the pre-wait behaviour.
    */
   updateFulfillmentState(
     internalOrderId: string,
-    fulfillmentState: FulfillmentRollupState
+    fulfillmentState: FulfillmentRollupState,
+    options?: { trackingKnown?: boolean }
   ): Promise<void>;
+
+  /**
+   * Fire `order.shipped` if the order is shipped and has not announced it yet
+   * (#3554). For the shipping context to call once the wait is over: the
+   * tracking number arrived, or it never did and the grace period ran out.
+   * Best-effort: never throws, and a second call is a no-op.
+   */
+  notifyShippedIfPending(internalOrderId: string): Promise<void>;
+
+  /**
+   * Fire the `order.received` automation trigger (#3554, D8) for an order
+   * persisted for the first time. Best-effort: never throws. The fact's instant
+   * is the order's own `placedAt` (falling back to `createdAt`), so the rule
+   * retroactivity floor keeps an imported back catalogue from firing;
+   * `receivedAt` is only the evaluation clock.
+   */
+  notifyOrderReceived(record: OrderRecord, receivedAt: Date): Promise<void>;
+
+  /**
+   * Fire the `order.document_issued` automation trigger (#3554) once the
+   * order's originating invoice or fiscal receipt is issued. Best-effort:
+   * never throws; a missing order is a no-op.
+   */
+  notifyDocumentIssued(internalOrderId: string, issuedAt: Date): Promise<void>;
 
   /**
    * Record why item resolution failed at ingestion (#1689), honestly
@@ -308,6 +358,50 @@ export interface IOrderRecordService {
   ): Promise<void>;
 
   /**
+   * Persist how a routing decision narrowed this order's destination fan-out
+   * (#2703 / #2704), or clear it with `null`.
+   *
+   * Level-triggered like {@link markFulfillmentBlock}: `OrderSyncService`
+   * re-decides on every run and writes the answer INCLUDING `null`, which is
+   * what clears a stale reason once the routing configuration is fixed.
+   */
+  markDestinationRoutingBlock(
+    internalOrderId: string,
+    block: DestinationRoutingBlock | null
+  ): Promise<void>;
+
+  /**
+   * #3485 — one keyset page of order ids held with one of `reasons`, for
+   * `fulfillment.work.rerouteSweep`. See the repository port for why the page is
+   * keyed on `internalOrderId`.
+   */
+  listOrderIdsByFulfillmentBlockReasons(
+    reasons: readonly FulfillmentBlockReason[],
+    page: { readonly afterOrderId: string | null; readonly limit: number }
+  ): Promise<HeldOrderRef[]>;
+
+  /**
+   * #3558 — ids of orders held with one of `reasons` whose line items include
+   * `variantId`, for the stock-change re-route. See the repository port.
+   */
+  listOrderIdsHeldForVariant(
+    reasons: readonly FulfillmentBlockReason[],
+    variantId: string,
+    limit: number
+  ): Promise<string[]>;
+
+  /**
+   * #3455 — record why the fulfilment intercept deliberately did not route this
+   * order while the OMS is on (`own-shop-order`, `shipped-by-other-system`,
+   * `mirrored-before-routing`), or clear it with `null`. The write half of
+   * "intercept decides, caller persists"; level-triggered.
+   */
+  markFulfillmentRoutingSkip(
+    internalOrderId: string,
+    reason: FulfillmentRoutingSkipReason | null
+  ): Promise<void>;
+
+  /**
    * Set — or clear — ONE producer's OMS inert state on this order (#2352,
    * first production writer #2712).
    *
@@ -352,11 +446,29 @@ export interface IOrderRecordService {
   markPacked(internalOrderId: string, packedByUserId: string): Promise<OrderRecord>;
 
   /**
+   * Mark this order's buyer note read (#3538). Fill-once and idempotent, like
+   * {@link markPacked}: a repeat returns the record with the FIRST reader's
+   * instant and actor untouched. Throws `OrderRecordNotFoundException` for an
+   * unknown order.
+   */
+  markBuyerNoteRead(internalOrderId: string, readByUserId: string): Promise<OrderRecord>;
+
+  /**
    * Clear this order's packed fact (#2287), nulling both columns together.
    * Clearing an already-unpacked order is a no-op that returns the record
    * unchanged; an unknown order throws `OrderRecordNotFoundException`.
    */
   clearPacked(internalOrderId: string): Promise<OrderRecord>;
+
+  /**
+   * Merge one operator edit into the order's overlay (#3542). The overlay
+   * survives every re-ingestion; `orderSnapshot` stays the channel original and
+   * `OrderRecord.orderSnapshot` is the merged, effective view.
+   *
+   * Returns the record after the write, or `null` when nothing was written (no
+   * such order, not `ready`, or a stale `expectedRev`).
+   */
+  applyOrderEdit(input: ApplyOrderEditInput): Promise<OrderRecord | null>;
 
   /**
    * Record that the source amended this order after it was already ingested

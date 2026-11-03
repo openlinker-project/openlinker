@@ -14,12 +14,18 @@ import { OrderIngestionService } from './application/services/order-ingestion.se
 import { OrderItemRefResolverService } from './application/services/order-item-ref-resolver.service';
 import { OrderRecordService } from './application/services/order-record.service';
 import { SalesDocumentViewService } from './application/services/sales-document-view.service';
+import { OrderDocumentEmailService } from './application/services/order-document-email.service';
 import { OrderFxStampService } from './application/services/order-fx-stamp.service';
 import { OrderFxRestatementService } from './application/services/order-fx-restatement.service';
 import { OrderFxReadService } from './application/services/order-fx-read.service';
 import { OrderDestinationRetryService } from './application/services/order-destination-retry.service';
 import { OrderProvisioningResumeService } from './application/services/order-provisioning-resume.service';
+import { OrderRoutingRetryService } from './application/services/order-routing-retry.service';
+import { InvoiceMarketplaceUploadService } from './application/services/invoice-marketplace-upload.service';
+import { InvoiceMarketplaceUploadOrmEntity } from './infrastructure/persistence/entities/invoice-marketplace-upload.orm-entity';
+import { InvoiceMarketplaceUploadRepository } from './infrastructure/persistence/repositories/invoice-marketplace-upload.repository';
 import { FulfillmentDispatchRelayService } from './application/services/fulfillment-dispatch-relay.service';
+import { OrderCancellationEffectsService } from './application/services/order-cancellation-effects.service';
 import { OrderLifecycleRelayService } from './application/services/order-lifecycle-relay.service';
 import { OrderRecordRepository } from './infrastructure/persistence/repositories/order-record.repository';
 import { OrderLineItemRepository } from './infrastructure/persistence/repositories/order-line-item.repository';
@@ -30,8 +36,29 @@ import { RefundRecordOrmEntity } from './infrastructure/persistence/entities/ref
 import { OrderLineItemOrmEntity } from './infrastructure/persistence/entities/order-line-item.orm-entity';
 import { OrderCancellationSignalRepository } from './infrastructure/persistence/repositories/order-cancellation-signal.repository';
 import { OrderCancellationSignalOrmEntity } from './infrastructure/persistence/entities/order-cancellation-signal.orm-entity';
+import { OrderColumnPresetRepository } from './infrastructure/persistence/repositories/order-column-preset.repository';
+import { OrderColumnPresetOrmEntity } from './infrastructure/persistence/entities/order-column-preset.orm-entity';
+import { OrderColumnPresetService } from './application/services/order-column-preset.service';
+import { OrderNoteRepository } from './infrastructure/persistence/repositories/order-note.repository';
+import { OrderNoteOrmEntity } from './infrastructure/persistence/entities/order-note.orm-entity';
+import { BuyerEmailDeliveryOrmEntity } from './infrastructure/persistence/entities/buyer-email-delivery.orm-entity';
+import { BuyerEmailDeliveryRepository } from './infrastructure/persistence/repositories/buyer-email-delivery.repository';
+import { BuyerEmailNotificationService } from './application/services/buyer-email-notification.service';
+import { OrderNoteRevisionOrmEntity } from './infrastructure/persistence/entities/order-note-revision.orm-entity';
+import { OrderNoteService } from './application/services/order-note.service';
+import { OrderTagRepository } from './infrastructure/persistence/repositories/order-tag.repository';
+import { OrderTagOrmEntity } from './infrastructure/persistence/entities/order-tag.orm-entity';
+import { OrderTagAssignmentOrmEntity } from './infrastructure/persistence/entities/order-tag-assignment.orm-entity';
+import { OrderTagService } from './application/services/order-tag.service';
+import { OrderExportRepository } from './infrastructure/persistence/repositories/order-export-run.repository';
+import { OrderExportRunOrmEntity } from './infrastructure/persistence/entities/order-export-run.orm-entity';
+import { OrderExportService } from './application/services/order-export.service';
+import { OrderSearchTextReindexService } from './application/services/order-search-text-reindex.service';
 import { TaxRateBackfillService } from './application/services/tax-rate-backfill.service';
 import { OrderTestFixtureService } from './application/services/order-test-fixture.service';
+import { MarginAnalyticsService } from './application/services/margin-analytics.service';
+import { CostCoverageService } from './application/services/cost-coverage.service';
+import { OrderLineCostService } from './application/services/order-line-cost.service';
 import { TaxCoverageDetectionService } from './application/services/tax-coverage-detection.service';
 import { DisplayCurrencyConversionService } from './application/services/display-currency-conversion.service';
 import {
@@ -43,8 +70,12 @@ import {
   ORDER_FX_STAMP_SERVICE_TOKEN,
   ORDER_DESTINATION_RETRY_SERVICE_TOKEN,
   ORDER_PROVISIONING_RESUME_SERVICE_TOKEN,
+  ORDER_ROUTING_RETRY_SERVICE_TOKEN,
+  INVOICE_MARKETPLACE_UPLOAD_REPOSITORY_TOKEN,
+  INVOICE_MARKETPLACE_UPLOAD_SERVICE_TOKEN,
   ORDER_ITEM_REF_RESOLVER_SERVICE_TOKEN,
   ORDER_LIFECYCLE_RELAY_SERVICE_TOKEN,
+  ORDER_CANCELLATION_EFFECTS_SERVICE_TOKEN,
   ORDER_REFUND_RECORD_REPOSITORY_TOKEN,
   ORDER_REFUND_SERVICE_TOKEN,
   ORDER_FX_READ_SERVICE_TOKEN,
@@ -53,11 +84,27 @@ import {
   ORDER_TEST_FIXTURE_SERVICE_TOKEN,
   FULFILLMENT_DISPATCH_RELAY_SERVICE_TOKEN,
   SALES_DOCUMENT_VIEW_SERVICE_TOKEN,
+  MARGIN_ANALYTICS_SERVICE_TOKEN,
+  COST_COVERAGE_SERVICE_TOKEN,
+  ORDER_LINE_COST_SERVICE_TOKEN,
+  ORDER_DOCUMENT_EMAIL_SERVICE_TOKEN,
+  BUYER_EMAIL_DELIVERY_REPOSITORY_TOKEN,
+  BUYER_EMAIL_NOTIFICATION_SERVICE_TOKEN,
   TAX_COVERAGE_DETECTION_SERVICE_TOKEN,
   DISPLAY_CURRENCY_CONVERSION_SERVICE_TOKEN,
   ORDER_CANCELLATION_SIGNAL_REPOSITORY_TOKEN,
+  ORDER_COLUMN_PRESET_REPOSITORY_TOKEN,
+  ORDER_COLUMN_PRESET_SERVICE_TOKEN,
+  ORDER_NOTE_REPOSITORY_TOKEN,
+  ORDER_NOTE_SERVICE_TOKEN,
+  ORDER_TAG_REPOSITORY_TOKEN,
+  ORDER_TAG_SERVICE_TOKEN,
+  ORDER_EXPORT_REPOSITORY_TOKEN,
+  ORDER_EXPORT_SERVICE_TOKEN,
+  ORDER_SEARCH_TEXT_REINDEX_SERVICE_TOKEN,
 } from './orders.tokens';
 import { OrderHoldsModule } from './order-holds.module';
+import { OrderChangesModule } from './order-changes.module';
 import { IntegrationsModule } from '@openlinker/core/integrations';
 import { IdentifierMappingModule } from '@openlinker/core/identifier-mapping';
 import { SyncModule } from '@openlinker/core/sync';
@@ -80,7 +127,11 @@ import { FiscalizationModule } from '@openlinker/core/fiscalization';
 // #2516: the projection resolves the prospective document kind through
 // `ISalesDocumentRulesService`. `sales-documents` is a sink with zero outbound
 // edges to sibling core contexts, so importing it cannot close a cycle.
-import { SalesDocumentsModule } from '@openlinker/core/sales-documents';
+import {
+  SalesDocumentsModule,
+  SALES_DOCUMENT_ISSUED_LISTENER_TOKEN,
+} from '@openlinker/core/sales-documents';
+import { SalesDocumentIssuedAutomationListener } from './application/services/sales-document-issued-automation.listener';
 
 // Re-export tokens for convenience
 export { ORDER_SYNC_SERVICE_TOKEN } from './orders.tokens';
@@ -93,6 +144,14 @@ export { ORDER_SYNC_SERVICE_TOKEN } from './orders.tokens';
       RefundRecordOrmEntity,
       OrderLineItemOrmEntity,
       OrderCancellationSignalOrmEntity,
+      OrderColumnPresetOrmEntity,
+      OrderNoteOrmEntity,
+      BuyerEmailDeliveryOrmEntity,
+      OrderNoteRevisionOrmEntity,
+      OrderTagOrmEntity,
+      OrderTagAssignmentOrmEntity,
+      OrderExportRunOrmEntity,
+      InvoiceMarketplaceUploadOrmEntity,
     ]),
     IntegrationsModule, // Required for INTEGRATIONS_SERVICE_TOKEN and ADAPTER_FACTORY_RESOLVER_TOKEN
     IdentifierMappingModule, // Required for IDENTIFIER_MAPPING_SERVICE_TOKEN
@@ -124,6 +183,8 @@ export { ORDER_SYNC_SERVICE_TOKEN } from './orders.tokens';
     // The edge is directional: importing the leaf here does not give the leaf
     // any of these dependencies.
     OrderHoldsModule,
+    // Leaf (#3540): an inbound cancel confirms an operator's open cancel request.
+    OrderChangesModule,
     // One-way edge to a ZERO-SIBLING-EDGE LEAF (#2401): FulfillmentDispatchRelayService
     // injects FULFILLMENT_RELAY_GATE_SERVICE_TOKEN to take the work's at-most-once
     // dispatch-relay claim. `fulfillment` imports NO sibling core context at all
@@ -141,11 +202,13 @@ export { ORDER_SYNC_SERVICE_TOKEN } from './orders.tokens';
     OrderItemRefResolverService,
     OrderRecordService,
     SalesDocumentViewService,
+    OrderDocumentEmailService,
     OrderFxStampService,
     OrderFxRestatementService,
     OrderDestinationRetryService,
     OrderProvisioningResumeService,
     OrderLifecycleRelayService,
+    OrderCancellationEffectsService,
     FulfillmentDispatchRelayService,
     OrderRecordRepository,
     OrderFxReadService,
@@ -155,8 +218,20 @@ export { ORDER_SYNC_SERVICE_TOKEN } from './orders.tokens';
     TaxRateBackfillService,
     OrderTestFixtureService,
     TaxCoverageDetectionService,
+    MarginAnalyticsService,
+    CostCoverageService,
+    OrderLineCostService,
     DisplayCurrencyConversionService,
     OrderCancellationSignalRepository,
+    OrderColumnPresetRepository,
+    OrderColumnPresetService,
+    OrderNoteRepository,
+    OrderNoteService,
+    OrderTagRepository,
+    OrderTagService,
+    OrderExportRepository,
+    OrderExportService,
+    OrderSearchTextReindexService,
     // Then provide token bindings using useExisting
     {
       provide: ORDER_SYNC_SERVICE_TOKEN,
@@ -194,6 +269,26 @@ export { ORDER_SYNC_SERVICE_TOKEN } from './orders.tokens';
       provide: ORDER_PROVISIONING_RESUME_SERVICE_TOKEN,
       useExisting: OrderProvisioningResumeService,
     },
+    OrderRoutingRetryService,
+    {
+      // #3558 - re-routes a held order; reads the record repository, the
+      // connection list (router selection) and the job queue.
+      provide: ORDER_ROUTING_RETRY_SERVICE_TOKEN,
+      useExisting: OrderRoutingRetryService,
+    },
+    InvoiceMarketplaceUploadRepository,
+    {
+      provide: INVOICE_MARKETPLACE_UPLOAD_REPOSITORY_TOKEN,
+      useExisting: InvoiceMarketplaceUploadRepository,
+    },
+    InvoiceMarketplaceUploadService,
+    {
+      // #3549 - attaches an issued document to the marketplace order. In orders,
+      // not invoicing: it needs the order record, and InvoicingModule must never
+      // import an orders token.
+      provide: INVOICE_MARKETPLACE_UPLOAD_SERVICE_TOKEN,
+      useExisting: InvoiceMarketplaceUploadService,
+    },
     {
       provide: ORDER_ITEM_REF_RESOLVER_SERVICE_TOKEN,
       useExisting: OrderItemRefResolverService,
@@ -201,6 +296,10 @@ export { ORDER_SYNC_SERVICE_TOKEN } from './orders.tokens';
     {
       provide: ORDER_LIFECYCLE_RELAY_SERVICE_TOKEN,
       useExisting: OrderLifecycleRelayService,
+    },
+    {
+      provide: ORDER_CANCELLATION_EFFECTS_SERVICE_TOKEN,
+      useExisting: OrderCancellationEffectsService,
     },
     {
       provide: FULFILLMENT_DISPATCH_RELAY_SERVICE_TOKEN,
@@ -235,6 +334,27 @@ export { ORDER_SYNC_SERVICE_TOKEN } from './orders.tokens';
       useExisting: OrderTestFixtureService,
     },
     {
+      provide: ORDER_DOCUMENT_EMAIL_SERVICE_TOKEN,
+      useExisting: OrderDocumentEmailService,
+    },
+    BuyerEmailDeliveryRepository,
+    {
+      provide: BUYER_EMAIL_DELIVERY_REPOSITORY_TOKEN,
+      useExisting: BuyerEmailDeliveryRepository,
+    },
+    BuyerEmailNotificationService,
+    {
+      provide: BUYER_EMAIL_NOTIFICATION_SERVICE_TOKEN,
+      useExisting: BuyerEmailNotificationService,
+    },
+    // #3554: `invoicing` / `fiscalization` resolve this lazily (ModuleRef,
+    // strict: false) to fire `order.document_issued`; no module edge back.
+    SalesDocumentIssuedAutomationListener,
+    {
+      provide: SALES_DOCUMENT_ISSUED_LISTENER_TOKEN,
+      useExisting: SalesDocumentIssuedAutomationListener,
+    },
+    {
       provide: SALES_DOCUMENT_VIEW_SERVICE_TOKEN,
       useExisting: SalesDocumentViewService,
     },
@@ -243,8 +363,56 @@ export { ORDER_SYNC_SERVICE_TOKEN } from './orders.tokens';
       useExisting: TaxCoverageDetectionService,
     },
     {
+      provide: MARGIN_ANALYTICS_SERVICE_TOKEN,
+      useExisting: MarginAnalyticsService,
+    },
+    {
+      provide: COST_COVERAGE_SERVICE_TOKEN,
+      useExisting: CostCoverageService,
+    },
+    {
+      provide: ORDER_LINE_COST_SERVICE_TOKEN,
+      useExisting: OrderLineCostService,
+    },
+    {
       provide: DISPLAY_CURRENCY_CONVERSION_SERVICE_TOKEN,
       useExisting: DisplayCurrencyConversionService,
+    },
+    {
+      provide: ORDER_COLUMN_PRESET_REPOSITORY_TOKEN,
+      useExisting: OrderColumnPresetRepository,
+    },
+    {
+      provide: ORDER_COLUMN_PRESET_SERVICE_TOKEN,
+      useExisting: OrderColumnPresetService,
+    },
+    {
+      provide: ORDER_NOTE_REPOSITORY_TOKEN,
+      useExisting: OrderNoteRepository,
+    },
+    {
+      provide: ORDER_NOTE_SERVICE_TOKEN,
+      useExisting: OrderNoteService,
+    },
+    {
+      provide: ORDER_TAG_REPOSITORY_TOKEN,
+      useExisting: OrderTagRepository,
+    },
+    {
+      provide: ORDER_TAG_SERVICE_TOKEN,
+      useExisting: OrderTagService,
+    },
+    {
+      provide: ORDER_EXPORT_REPOSITORY_TOKEN,
+      useExisting: OrderExportRepository,
+    },
+    {
+      provide: ORDER_EXPORT_SERVICE_TOKEN,
+      useExisting: OrderExportService,
+    },
+    {
+      provide: ORDER_SEARCH_TEXT_REINDEX_SERVICE_TOKEN,
+      useExisting: OrderSearchTextReindexService,
     },
   ],
   exports: [
@@ -260,7 +428,13 @@ export { ORDER_SYNC_SERVICE_TOKEN } from './orders.tokens';
     ORDER_FX_RESTATEMENT_SERVICE_TOKEN,
     ORDER_DESTINATION_RETRY_SERVICE_TOKEN,
     ORDER_PROVISIONING_RESUME_SERVICE_TOKEN,
+    // Exported for the worker's inventory propagation handler (#3558).
+    ORDER_ROUTING_RETRY_SERVICE_TOKEN,
+    // Exported so the worker's upload handler and the API's status/retry routes
+    // resolve it by token (#3549).
+    INVOICE_MARKETPLACE_UPLOAD_SERVICE_TOKEN,
     ORDER_LIFECYCLE_RELAY_SERVICE_TOKEN,
+    ORDER_CANCELLATION_EFFECTS_SERVICE_TOKEN,
     FULFILLMENT_DISPATCH_RELAY_SERVICE_TOKEN,
     ORDER_REFUND_SERVICE_TOKEN,
     ORDER_FX_READ_SERVICE_TOKEN,
@@ -279,12 +453,34 @@ export { ORDER_SYNC_SERVICE_TOKEN } from './orders.tokens';
     // Exported so the API's orders controller can compose the per-order
     // sales-document projection for the list and the detail panel (#2516).
     SALES_DOCUMENT_VIEW_SERVICE_TOKEN,
+    ORDER_DOCUMENT_EMAIL_SERVICE_TOKEN,
+    // Read by the automation send-email executor and the order timeline (#3554).
+    BUYER_EMAIL_NOTIFICATION_SERVICE_TOKEN,
     // Exported so the `/analytics/coverage` endpoint (#2466) can inject the
     // tax A/B/C detector seam (#2465).
     TAX_COVERAGE_DETECTION_SERVICE_TOKEN,
+    // Exported so `/analytics/margin*` and the no-cost coverage row can inject the margin reads (#3588).
+    MARGIN_ANALYTICS_SERVICE_TOKEN,
+    // Exported so `/products/cost-coverage` and the cost work list can inject the cost reads (#3588).
+    COST_COVERAGE_SERVICE_TOKEN,
+    ORDER_LINE_COST_SERVICE_TOKEN,
     // Exported so the `/analytics` display-currency read surface (a later
     // phase of #2452) can inject this seam (#2458, ADR-064).
     DISPLAY_CURRENCY_CONVERSION_SERVICE_TOKEN,
+    // Exported so the API's orders controller can inject the column-preset
+    // seam (#3530).
+    ORDER_COLUMN_PRESET_SERVICE_TOKEN,
+    // Exported so the API's orders controller AND the bench API module can
+    // inject the note seam (#3531) — the bench reads packer-visible notes.
+    ORDER_NOTE_SERVICE_TOKEN,
+    // Exported so the API's orders controller can inject the tag seam (#3532).
+    ORDER_TAG_SERVICE_TOKEN,
+    // Exported so the API's export controller AND the worker's job handler
+    // can inject the export seam (#3534).
+    ORDER_EXPORT_SERVICE_TOKEN,
+    // Exported so the worker's `maintenance` role can run the PII-mode
+    // `searchText` reindex pass (#3507 G03-14).
+    ORDER_SEARCH_TEXT_REINDEX_SERVICE_TOKEN,
   ],
 })
 export class OrdersModule {}

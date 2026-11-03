@@ -19,6 +19,7 @@ import type {
   PruneStaleVariantsResult,
   ProvenanceScope,
   DuplicatePositionReport,
+  InventoryOwnerPosition,
   InventoryPositionCandidate,
 } from '../types/inventory.types';
 
@@ -156,6 +157,17 @@ export interface InventoryRepositoryPort {
   ): Promise<readonly VariantStockRow[]>;
 
   /**
+   * Every position row for the given variants, STALE ones included (#3621).
+   *
+   * The stock view's drill-down: unlike every other read on this port it does
+   * not filter `isStale`, because the operator is shown a stale position
+   * flagged as such rather than silently missing. Totals must therefore be
+   * computed by the caller over the live subset. Parameterised, one statement
+   * per call; empty input returns `[]` without a storage round trip.
+   */
+  findPositionsByVariantIds(variantIds: readonly string[]): Promise<readonly InventoryItem[]>;
+
+  /**
    * Bin/shelf codes per variant (#3402/#3410, mockup-parity epic #3401), for
    * DISPLAY at the pack bench — never a publishing or availability read.
    *
@@ -200,6 +212,21 @@ export interface InventoryRepositoryPort {
     productIds: readonly string[],
     productVariantIds: readonly string[]
   ): Promise<readonly InventoryPositionCandidate[]>;
+
+  /**
+   * Every LIVE position for the given products, with its owning connection and
+   * quantity (#3453).
+   *
+   * The sale decrement's owner read: which product master's book a routed line's
+   * stock belongs to. Unlike {@link findLivePositionsByProductIds} it returns
+   * `sourceConnectionId` verbatim — including `NULL` and `'legacy'`, which the
+   * caller must refuse on rather than never see — and every variant of the
+   * product rather than a narrowed set, because one routed order's lines are
+   * resolved together and variant-count-per-product is small at order grain.
+   *
+   * `isStale = false` only. Empty `productIds` returns `[]` without a round trip.
+   */
+  findLiveOwnerPositions(productIds: readonly string[]): Promise<readonly InventoryOwnerPosition[]>;
 
   /**
    * Product-level stock aggregates for the given product IDs (#1720).

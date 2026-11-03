@@ -341,11 +341,19 @@ describe('SchedulerService', () => {
         // below: `IDX_fulfillment_works_request_status` carries no connection
         // axis, and a dispatch nobody answered is stalled whoever holds it.
         'fulfillment-relay-sweep',
+        // #3485 — same global scope: re-drives work held because the router
+        // could not place it, so it names no platform either.
+        'fulfillment-reroute-sweep',
+        // #2731 — same global scope: reaps routing decisions stranded past
+        // their TTL, which carry no platform either.
+        'fulfillment-routing-reap-sweep',
         'fulfillment-timeout-sweep',
         // Also core-owned and platform-free, and the most so of any task here:
         // it has neither a platform nor a capability, because its subject is a
         // predicate over one OL table (#2317).
         'inventory-provenance-backfill',
+        // #3629 - global scope and platform-free like the relay sweep above.
+        'inventory-sale-decrement-reconcile-sweep',
         'master-inventory-sync',
         'master-product-delta-sync',
         'master-product-reconcile',

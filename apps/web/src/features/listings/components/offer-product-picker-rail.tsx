@@ -219,12 +219,14 @@ export function OfferProductPickerRail({
             <span className="offer-product-picker__eyebrow" id="publishDestinationLabel">
               Publish to <span className="offer-product-picker__req">*</span>
             </span>
-            <PublishDestinationRail
-              destinations={eligibleDestinations}
-              selectedConnectionId={resolvedConnectionId}
-              onSelect={onSelectConnection}
-              labelledBy="publishDestinationLabel"
-            />
+            <div className="offer-product-picker__rail-conn-list">
+              <PublishDestinationRail
+                destinations={eligibleDestinations}
+                selectedConnectionId={resolvedConnectionId}
+                onSelect={onSelectConnection}
+                labelledBy="publishDestinationLabel"
+              />
+            </div>
           </div>
         )}
 

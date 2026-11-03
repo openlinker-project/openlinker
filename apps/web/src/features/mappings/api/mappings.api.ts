@@ -33,7 +33,9 @@ import type {
   UpsertPaymentMappingsPayload,
   UpsertOrderStateMappingsPayload,
   UpsertCategoryMappingPayload,
+  ParcelProfileFields,
   RoutingRule,
+  RoutingRuleInput,
   CandidateProcessor,
   UpsertRoutingRulesPayload,
   AttributeRule,
@@ -116,6 +118,56 @@ interface ApiRequest {
   <T>(path: string, init?: RequestInit): Promise<T>;
 }
 
+/**
+ * Wire shape of a routing rule (#3651): the backend nests the parcel profile
+ * under `parcelProfile`, while the rest of this feature reads the five fields
+ * flat on the rule. The two converters below are the only place the shapes
+ * meet, so the UI code stays unaware of the nesting.
+ */
+type RoutingRuleWire = Omit<RoutingRule, keyof ParcelProfileFields> & {
+  parcelProfile?: ParcelProfileFields | null;
+};
+
+const PARCEL_PROFILE_KEYS = [
+  'parcelTemplate',
+  'lengthMm',
+  'widthMm',
+  'heightMm',
+  'defaultWeightGrams',
+] as const satisfies readonly (keyof ParcelProfileFields)[];
+
+function fromRoutingRuleWire(rule: RoutingRuleWire): RoutingRule {
+  const { parcelProfile, ...rest } = rule;
+  return {
+    ...rest,
+    parcelTemplate: parcelProfile?.parcelTemplate ?? null,
+    lengthMm: parcelProfile?.lengthMm ?? null,
+    widthMm: parcelProfile?.widthMm ?? null,
+    heightMm: parcelProfile?.heightMm ?? null,
+    defaultWeightGrams: parcelProfile?.defaultWeightGrams ?? null,
+  };
+}
+
+/**
+ * The PUT replaces every rule of the connection, so a rule sent without its
+ * profile would lose it. Every rule therefore carries `parcelProfile`: the
+ * object when any field is set, `null` when none is.
+ */
+function toRoutingRuleInputWire(item: RoutingRuleInput): Record<string, unknown> {
+  const rest: Record<string, unknown> = { ...item };
+  const profile: ParcelProfileFields = {};
+  let hasValue = false;
+  for (const key of PARCEL_PROFILE_KEYS) {
+    const value = item[key];
+    delete rest[key];
+    if (value !== undefined && value !== null) {
+      hasValue = true;
+    }
+    (profile as Record<string, unknown>)[key] = value ?? null;
+  }
+  return { ...rest, parcelProfile: hasValue ? profile : null };
+}
+
 export function createMappingsApi(request: ApiRequest): MappingsApi {
   return {
     getStatusMappings: (connectionId) =>
@@ -154,14 +206,18 @@ export function createMappingsApi(request: ApiRequest): MappingsApi {
         body: JSON.stringify(payload),
       }),
 
-    getRoutingRules: (connectionId) =>
-      request<RoutingRule[]>(`/connections/${connectionId}/routing-rules`),
+    getRoutingRules: async (connectionId) =>
+      (await request<RoutingRuleWire[]>(`/connections/${connectionId}/routing-rules`)).map(
+        fromRoutingRuleWire,
+      ),
 
-    replaceRoutingRules: (connectionId, payload) =>
-      request<RoutingRule[]>(`/connections/${connectionId}/routing-rules`, {
-        method: 'PUT',
-        body: JSON.stringify(payload),
-      }),
+    replaceRoutingRules: async (connectionId, payload) =>
+      (
+        await request<RoutingRuleWire[]>(`/connections/${connectionId}/routing-rules`, {
+          method: 'PUT',
+          body: JSON.stringify({ items: payload.items.map(toRoutingRuleInputWire) }),
+        })
+      ).map(fromRoutingRuleWire),
 
     getRoutingCandidates: (connectionId) =>
       request<CandidateProcessor[]>(`/connections/${connectionId}/routing-rules/candidates`),

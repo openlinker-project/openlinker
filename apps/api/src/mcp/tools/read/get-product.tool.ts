@@ -28,7 +28,7 @@ export function createGetProductTool(productsService: IProductsService): McpTool
     requiredScope: 'mcp:read',
     requiresAdmin: false,
     description:
-      "Read one product from OpenLinker's catalog by its internal id, including its variants (id, sku, barcode, price). Use search_catalog to find a product id first.",
+      "Read one product from OpenLinker's catalog by its internal id, including its variants (id, sku, barcode, price). Prices are gross: what a buyer pays, VAT included, excluding promotions. Use search_catalog to find a product id first.",
     inputSchema,
     handler: async (args: Record<string, unknown>): Promise<CallToolResult> => {
       // NARROWING, not validation: the SDK already validated `args` against

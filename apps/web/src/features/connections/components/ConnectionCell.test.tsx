@@ -230,4 +230,19 @@ describe('ConnectionCell', () => {
     await screen.findByRole('link', { name: 'Erli Demo' });
     expect(screen.getByText('pill')).toBeInTheDocument();
   });
+  it('should render the channel and the name as ONE chip link when a channel is passed', () => {
+    renderWithProviders(
+      <ConnectionCell
+        connectionId={CONNECTION_ID}
+        connection={{ name: 'Erli Demo', status: 'active' }}
+        channel={{ platformType: 'erli', label: 'Erli' }}
+      />,
+    );
+
+    const links = screen.getAllByRole('link');
+    expect(links).toHaveLength(1);
+    expect(links[0]).toHaveClass('connection-chip');
+    expect(links[0]).toHaveTextContent('Erli Demo');
+    expect(links[0]).toHaveAttribute('href', `/connections/${CONNECTION_ID}`);
+  });
 });

@@ -12,6 +12,7 @@ import {
   canRetryInvoice,
   deriveInvoiceDisplayStatus,
   resolveFailureCopy,
+  isConnectionSettingFailureCode,
 } from './derive-invoice-display';
 import type { InvoiceRecord } from '../api/invoicing.types';
 
@@ -141,3 +142,110 @@ describe('resolveFailureCopy', () => {
     expect(copy).toMatch(/confirm whether/i);
   });
 });
+
+describe('resolveFailureCopy - connection missing a setting (#3772)', () => {
+  const t = (_key: string, fallback: string): string => fallback;
+
+  it('should show the stored reason, which names the missing setting', () => {
+    const reason = 'This connection has no seller tax number set, which every invoice requires.';
+    expect(
+      resolveFailureCopy(
+        makeRecord({
+          status: 'failed',
+          failureMode: 'rejected',
+          failureCode: 'connection-setup-incomplete',
+          failureReason: reason,
+        }),
+        t,
+      ),
+    ).toBe(reason);
+  });
+
+  it('should fall back to fixed copy pointing at the connection when no reason was stored', () => {
+    expect(
+      resolveFailureCopy(
+        makeRecord({
+          status: 'failed',
+          failureMode: 'rejected',
+          failureCode: 'connection-setup-incomplete',
+          failureReason: null,
+        }),
+        t,
+      ),
+    ).toContain('Complete the connection’s settings');
+  });
+
+  it('should never show the stored reason for any other code', () => {
+    expect(
+      resolveFailureCopy(
+        makeRecord({
+          status: 'failed',
+          failureMode: 'rejected',
+          failureCode: 'provider-rejected',
+          failureReason: 'The invoicing provider rejected the request.',
+        }),
+        t,
+      ),
+    ).toContain('Check the order’s data');
+  });
+});
+
+describe('resolveFailureCopy - provider refused a connection setting', () => {
+  const t = (_key: string, fallback: string): string => fallback;
+  const reason =
+    'The seller tax number on this connection is not the one registered with your eparagony account. Correct it in the connection settings, then retry (code 41).';
+
+  it('should show the stored reason naming the refused setting', () => {
+    expect(
+      resolveFailureCopy(
+        makeRecord({
+          status: 'failed',
+          failureMode: 'rejected',
+          failureCode: 'connection-setting-rejected',
+          failureReason: reason,
+        }),
+        t,
+      ),
+    ).toBe(reason);
+  });
+
+  it('should fall back to copy pointing at the connection, not the order, when no reason was stored', () => {
+    const copy = resolveFailureCopy(
+      makeRecord({
+        status: 'failed',
+        failureMode: 'rejected',
+        failureCode: 'connection-setting-rejected',
+        failureReason: null,
+      }),
+      t,
+    );
+    expect(copy).toContain('connection’s settings');
+    expect(copy).not.toContain('order’s data');
+  });
+
+  it('should treat both connection codes, and only those, as fixed on the connection', () => {
+    expect(isConnectionSettingFailureCode('connection-setup-incomplete')).toBe(true);
+    expect(isConnectionSettingFailureCode('connection-setting-rejected')).toBe(true);
+    expect(isConnectionSettingFailureCode('provider-rejected')).toBe(false);
+    expect(isConnectionSettingFailureCode(null)).toBe(false);
+  });
+});
+
+describe('resolveFailureCopy - provider answered without settling', () => {
+  const t = (_key: string, fallback: string): string => fallback;
+
+  it('should not describe an answered in-doubt failure as a timeout', () => {
+    const copy = resolveFailureCopy(
+      makeRecord({
+        status: 'failed',
+        failureMode: 'in-doubt',
+        failureCode: 'provider-answer-inconclusive',
+      }),
+      t,
+    );
+    expect(copy).toContain('answered');
+    expect(copy).not.toMatch(/timed out/);
+    expect(copy).toContain('Check the provider before re-issuing');
+  });
+});
+

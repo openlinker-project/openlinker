@@ -27,7 +27,7 @@ import type {
   PrestashopCombination,
 } from '../mappers/prestashop.mapper.interface';
 import type { PrestashopConnectionConfig } from '@openlinker/integrations-prestashop';
-import type { PrestashopSort } from '../http/prestashop-query.builder';
+import type { PrestashopPriceField, PrestashopSort } from '../http/prestashop-query.builder';
 import {
   PrestashopApiException,
   PrestashopNotSupportedException,
@@ -39,6 +39,10 @@ import type { PrestashopFeatureResolver } from '../provisioners/prestashop-featu
 import type { PrestashopCategoryPathResolver } from '../provisioners/prestashop-category-path.resolver';
 import type { OptionValueResolver } from '../../domain/types/prestashop-product-option.types';
 import type { PrestashopTaxRateResolver } from '../provisioners/prestashop-tax-rate.resolver';
+import type { PrestashopShopUnitsResolver } from '../provisioners/prestashop-shop-units.resolver';
+import type { PrestashopSalesCountryResolver } from '../provisioners/prestashop-sales-country.resolver';
+import type { PrestashopSalesCountry } from '../provisioners/prestashop-sales-country.types';
+import { buildPrestashopPhysicalData, type PrestashopShopUnits } from '../mappers/prestashop-physical-data';
 import {
   PRESTASHOP_UNNARROWED_MAX_ROWS,
   readAllPrestashopResourcePages,
@@ -52,9 +56,29 @@ import type {
 } from '@openlinker/core/products';
 
 /**
+ * The virtual field PrestaShop fills with its own gross price for the sales
+ * country (ADR-077). See `PrestashopPriceField`.
+ */
+const GROSS_PRICE_FIELD = 'ol_gross';
+
+/**
+ * Largest difference, in currency units, between PrestaShop's own gross price
+ * and `net x (1 + rate)` that still counts as "the shop charges this rate".
+ * One cent absorbs PrestaShop rounding a 6-decimal net; anything wider means
+ * the shop computed a different rate than the one OpenLinker resolved.
+ */
+const GROSS_PRICE_TOLERANCE = 0.01;
+
+/**
  * PrestaShop Product Master Adapter
  *
  * Read-only adapter for PrestaShop product catalog operations.
+ *
+ * Catalogue prices are reported GROSS (ADR-077): PrestaShop's own computed
+ * price for the connection's sales country, accepted only when it agrees with
+ * the tax rate the shop's rules name for that country. Anything else reports
+ * no price rather than the tax-excluded `price` field, which every consumer
+ * would read as gross.
  */
 export class PrestashopProductMasterAdapter
   implements ProductMasterPort, ProductTaxRateReader, BulkProductReader
@@ -94,6 +118,12 @@ export class PrestashopProductMasterAdapter
    */
   private readonly combinationsCache = new Map<string, PrestashopCombination[]>();
 
+  /** The connection's sales country, resolved once per adapter instance (ADR-077). */
+  private salesCountry: Promise<PrestashopSalesCountry | null> | undefined;
+
+  /** Products whose missing gross price was already logged by this instance. */
+  private readonly grossUnavailableLogged = new Set<string>();
+
   constructor(
     private readonly httpClient: IPrestashopWebserviceClient,
     private readonly identifierMapping: IdentifierMappingPort,
@@ -116,7 +146,15 @@ export class PrestashopProductMasterAdapter
     // this adapter a `ProductTaxRateReader` in practice; absent, the guard
     // still narrows (the method exists) but every read reports `unreadable`,
     // which is the honest answer for a shop whose resolver was never wired.
-    private readonly taxRateResolver?: PrestashopTaxRateResolver
+    private readonly taxRateResolver?: PrestashopTaxRateResolver,
+    // Optional, process-singleton. Reads the shop's weight/dimension units once
+    // per connection so variants can carry grams / millimetres (#3650). Absent,
+    // variants simply carry no physical data.
+    private readonly shopUnitsResolver?: PrestashopShopUnitsResolver,
+    // Optional, process-singleton. Names the country gross catalogue prices are
+    // read for (ADR-077). Absent, no gross price can be read and every product
+    // reports none - never the tax-excluded field in its place.
+    private readonly salesCountryResolver?: PrestashopSalesCountryResolver
   ) {}
 
   /**
@@ -134,14 +172,181 @@ export class PrestashopProductMasterAdapter
     if (cached !== undefined) {
       return cached;
     }
-    const pending = this.httpClient
-      .getResource<PrestashopProduct>('products', externalId)
-      .catch((error: unknown) => {
-        this.productResourceCache.delete(externalId);
-        throw error;
-      });
+    const pending = (async (): Promise<PrestashopProduct> => {
+      // The gross price rides on the same read (ADR-077), so it costs nothing
+      // extra. `product_attribute=0` prices the bare product: without it
+      // PrestaShop folds in the DEFAULT combination's impact.
+      const country = await this.resolveSalesCountry();
+      return country
+        ? this.httpClient.getResource<PrestashopProduct>('products', externalId, {
+            priceFields: this.grossPriceFields(country, 0),
+          })
+        : this.httpClient.getResource<PrestashopProduct>('products', externalId);
+    })().catch((error: unknown) => {
+      this.productResourceCache.delete(externalId);
+      throw error;
+    });
     this.productResourceCache.set(externalId, pending);
     return pending;
+  }
+
+  /**
+   * The connection's sales country (ADR-077), resolved at most once per
+   * adapter instance. `null` when no resolver is wired or the shop cannot name
+   * one; a failed read rejects and is not memoised, so a retry asks again.
+   */
+  private resolveSalesCountry(): Promise<PrestashopSalesCountry | null> {
+    if (!this.salesCountryResolver) {
+      return Promise.resolve(null);
+    }
+    if (this.salesCountry === undefined) {
+      const configured = (this.connection.config as Record<string, unknown> | null | undefined)?.[
+        'salesCountryIso2'
+      ];
+      this.salesCountry = this.salesCountryResolver
+        .resolve(
+          this.connection.id,
+          typeof configured === 'string' && configured.trim().length > 0 ? configured : undefined,
+          this.httpClient
+        )
+        .catch((error: unknown) => {
+          this.salesCountry = undefined;
+          throw error;
+        });
+    }
+    return this.salesCountry;
+  }
+
+  private grossPriceFields(
+    country: PrestashopSalesCountry,
+    productAttribute?: number
+  ): PrestashopPriceField[] {
+    return [
+      {
+        name: GROSS_PRICE_FIELD,
+        countryId: country.countryId,
+        useTax: true,
+        ...(productAttribute !== undefined ? { productAttribute } : {}),
+      },
+    ];
+  }
+
+  /**
+   * The gross catalogue price for one product or combination (ADR-077), or
+   * `undefined` when OpenLinker cannot vouch for one.
+   *
+   * PrestaShop's own computed price is taken only when the shop's tax rules
+   * name a rate for the sales country AND that price equals `net x (1 + rate)`
+   * within a cent. The second check is what catches the cases PrestaShop
+   * prices without the tax OpenLinker resolved: a country with no rule of its
+   * own (a US-default shop with a Polish group), a state-only rule, an inactive
+   * group, ecotax. In every one of them reporting PrestaShop's figure would
+   * publish a net-looking price as gross - the defect ADR-077 exists to end.
+   *
+   * A shop with taxes switched off (`PS_TAX = 0`) charges the net price to
+   * everyone, so its figure is taken as it stands.
+   *
+   * @throws PrestashopApiException when a tax read failed - the sync retries
+   *   rather than recording a missing price over a transient error
+   */
+  private async toGrossCataloguePrice(input: {
+    externalProductId: string;
+    product: PrestashopProduct;
+    netPrice: number | undefined;
+    row: Record<string, unknown>;
+    subject: string;
+  }): Promise<number | undefined> {
+    const country = await this.resolveSalesCountry();
+    if (!country) {
+      return this.grossUnavailable(input.externalProductId, 'the connection has no sales country');
+    }
+    const gross = this.readNumericField(input.row[GROSS_PRICE_FIELD]);
+    if (gross === undefined) {
+      return this.grossUnavailable(
+        input.externalProductId,
+        `PrestaShop returned no computed price for ${input.subject}`
+      );
+    }
+    if (!country.taxesEnabled) {
+      return this.roundMoney(gross);
+    }
+    if (!this.taxRateResolver) {
+      return this.grossUnavailable(input.externalProductId, 'no tax-rate resolver is wired');
+    }
+    const resolution = await this.taxRateResolver.resolveProductTaxRate(
+      input.externalProductId,
+      undefined,
+      this.connection.id,
+      this.httpClient,
+      input.product,
+      { countryId: country.countryId }
+    );
+    if (resolution.kind === 'unknown') {
+      if (resolution.reason === 'transport') {
+        throw new PrestashopApiException(
+          `Could not read the tax rate for product ${input.externalProductId}: ${resolution.evidence}`,
+          resolution.statusCode
+        );
+      }
+      return this.grossUnavailable(
+        input.externalProductId,
+        `no tax rate for ${country.iso2}: ${resolution.evidence}`
+      );
+    }
+    if (input.netPrice === undefined) {
+      return this.grossUnavailable(
+        input.externalProductId,
+        `${input.subject} has no tax-excluded price to check against`
+      );
+    }
+    const shopGross = this.roundMoney(gross);
+    const expected = this.roundMoney(input.netPrice * (1 + resolution.rate));
+    // Compared in whole cents: `24.60 - 24.59` is 0.010000000000001563 in
+    // floating point, which a `> 0.01` test would reject.
+    const gapCents = Math.abs(Math.round(shopGross * 100) - Math.round(expected * 100));
+    if (gapCents > Math.round(GROSS_PRICE_TOLERANCE * 100)) {
+      return this.grossUnavailable(
+        input.externalProductId,
+        `PrestaShop charges ${shopGross} for ${input.subject} in ${country.iso2} ` +
+          `(${country.source === 'setting' ? 'sales country setting' : 'shop default country'}), ` +
+          `but ${input.netPrice} at the resolved ${this.formatPercent(resolution.rate)}% ` +
+          `(${resolution.matchedBy} rule) would be ${expected}`
+      );
+    }
+    return shopGross;
+  }
+
+  /** Log once per product per instance, then report "no price". */
+  private grossUnavailable(externalProductId: string, reason: string): undefined {
+    if (!this.grossUnavailableLogged.has(externalProductId)) {
+      this.grossUnavailableLogged.add(externalProductId);
+      this.logger.warn(
+        `prestashop_gross_price_unavailable - product ${externalProductId} ` +
+          `(connection: ${this.connection.id}) reports no catalogue price: ${reason}. ` +
+          `Set the sales country on the connection, or fix the product's tax rules in the shop.`
+      );
+    }
+    return undefined;
+  }
+
+  private readNumericField(value: unknown): number | undefined {
+    if (typeof value === 'number') {
+      return Number.isFinite(value) ? value : undefined;
+    }
+    if (typeof value === 'string' && value.trim().length > 0) {
+      const n = Number(value);
+      return Number.isFinite(n) ? n : undefined;
+    }
+    return undefined;
+  }
+
+  /** Half-up to the cent; rounding a catalogue price is this adapter's job (ADR-063 § 5). */
+  private roundMoney(value: number): number {
+    return Math.round((value + Number.EPSILON) * 100) / 100;
+  }
+
+  private formatPercent(fraction: number): string {
+    return String(Math.round(fraction * 1_000_000) / 10_000);
   }
 
   /**
@@ -176,10 +381,14 @@ export class PrestashopProductMasterAdapter
    * (`'23'`, #2247). Rounding to four decimal places before scaling keeps
    * `0.23 * 100` from surfacing as `23.000000000000004`.
    *
-   * No delivery country is passed: the master read is deliberately not
-   * parameterised by the buyer's country in this pass (ADR-063 § 7), so the
-   * resolver falls through to the catch-all rule - the same rate the shop shows
-   * on the product page.
+   * The connection's sales country (ADR-077) is passed, so the projected rate
+   * and the gross catalogue price describe the same country and the same
+   * resolver call serves both. The country is reported as `countryIso2` only
+   * when a rule for exactly that country matched: a channel that keys tax on
+   * the country (Allegro's `taxRateCountry`) must never be told a rate belongs
+   * to a country - a US-default shop, say - that the shop has no rule for.
+   * Without a sales country the resolver falls through to the catch-all rule,
+   * as before (ADR-063 § 7).
    */
   async readProductTaxRate(input: ReadProductTaxRateInput): Promise<TaxRateResolution> {
     if (!this.taxRateResolver) {
@@ -205,20 +414,30 @@ export class PrestashopProductMasterAdapter
     // which is what the re-raise below reports, so a swallowed failure here
     // never turns into a silent "no rate" on the catalogue row.
     const preloaded = await this.fetchProductResource(externalId).catch(() => undefined);
+    const country = await this.resolveSalesCountry();
 
-    const resolution = await this.taxRateResolver.resolveProductTaxRate(
-      externalId,
-      undefined,
-      this.connection.id,
-      this.httpClient,
-      preloaded
-    );
+    const resolution = country
+      ? await this.taxRateResolver.resolveProductTaxRate(
+          externalId,
+          undefined,
+          this.connection.id,
+          this.httpClient,
+          preloaded,
+          { countryId: country.countryId }
+        )
+      : await this.taxRateResolver.resolveProductTaxRate(
+          externalId,
+          undefined,
+          this.connection.id,
+          this.httpClient,
+          preloaded
+        );
 
     if (resolution.kind === 'resolved') {
       return {
         kind: 'resolved',
         code: formatRateAsPercentCode(resolution.rate),
-        countryIso2: null,
+        countryIso2: country && resolution.matchedBy === 'country' ? country.iso2 : null,
       };
     }
 
@@ -269,6 +488,13 @@ export class PrestashopProductMasterAdapter
       const langIdValue: number = this.resolveLangId();
 
       const mapped = this.productMapper.mapProduct(prestashopProduct, langIdValue);
+      const price = await this.toGrossCataloguePrice({
+        externalProductId: prestashopId.externalId,
+        product: prestashopProduct,
+        netPrice: this.parseProductPrice(prestashopProduct.price),
+        row: prestashopProduct,
+        subject: `product ${prestashopId.externalId}`,
+      });
 
       // #1096 F2/F3 — enrich with shop-native features and a full category path so
       // a borrows destination (Erli) can emit `source:"shop"` taxonomy. Both are
@@ -283,6 +509,9 @@ export class PrestashopProductMasterAdapter
       // Return with internal ID
       return {
         ...mapped,
+        // Gross for the sales country, or null - never the tax-excluded field
+        // the mapper read (ADR-077).
+        price: price ?? null,
         id: productId,
         ...(features.length > 0 ? { features } : {}),
         ...(categoryBreadcrumb.length > 0 ? { categoryBreadcrumb } : {}),
@@ -449,10 +678,14 @@ export class PrestashopProductMasterAdapter
    * rather than evidence of a dropped filter.
    */
   private async prefetchCombinations(externalIds: readonly string[]): Promise<void> {
+    const country = await this.resolveSalesCountry();
     const combinations = await readAllPrestashopResourcePages<PrestashopCombination>(
       this.httpClient,
       'combinations',
-      { custom: { id_product: externalIds.map(String) } },
+      {
+        custom: { id_product: externalIds.map(String) },
+        ...(country ? { priceFields: this.grossPriceFields(country) } : {}),
+      },
       {
         connectionId: this.connection.id,
         detail: `id_product in ${String(externalIds.length)} product(s)`,
@@ -510,8 +743,13 @@ export class PrestashopProductMasterAdapter
   async getProducts(filters?: ProductFilters): Promise<Product[]> {
     this.logger.debug(`Getting products with filters (connection: ${this.connection.id})`);
 
-    // Build PrestaShop filters
-    const prestashopFilters = this.buildPrestashopFilters(filters);
+    // Build PrestaShop filters. The gross price (ADR-077) rides on the same
+    // read; `product_attribute=0` prices the bare product.
+    const country = await this.resolveSalesCountry();
+    const prestashopFilters = {
+      ...this.buildPrestashopFilters(filters),
+      ...(country ? { priceFields: this.grossPriceFields(country, 0) } : {}),
+    };
 
     // Fetch from PrestaShop
     const prestashopProducts = await this.httpClient.listResources<PrestashopProduct>(
@@ -544,24 +782,36 @@ export class PrestashopProductMasterAdapter
     // Map products with internal IDs
     const langIdValue: number = this.resolveLangId();
 
-    return prestashopProducts
-      .map((prestashopProduct) => {
-        const externalId = String(prestashopProduct.id);
-        const internalId =
-          idMap.get(`${externalId}:${this.connection.id}`) || idMap.get(externalId) || '';
+    // Sequential, not `Promise.all`: each product may need a tax-rule read on a
+    // cold cache, and a page fanned out at once would spend the connection's
+    // rate limit in one burst. Products share a few tax groups, so most reads
+    // after the first are served from the resolver's group cache.
+    const products: Product[] = [];
+    for (const prestashopProduct of prestashopProducts) {
+      const externalId = String(prestashopProduct.id);
+      const internalId =
+        idMap.get(`${externalId}:${this.connection.id}`) || idMap.get(externalId) || '';
 
-        if (!internalId) {
-          this.logger.warn(`No internal ID mapped for external product: ${externalId}`);
-          return null;
-        }
+      if (!internalId) {
+        this.logger.warn(`No internal ID mapped for external product: ${externalId}`);
+        continue;
+      }
 
-        const mapped = this.productMapper.mapProduct(prestashopProduct, langIdValue);
-        return {
-          ...mapped,
-          id: internalId,
-        };
-      })
-      .filter((p): p is Product => p !== null);
+      const mapped = this.productMapper.mapProduct(prestashopProduct, langIdValue);
+      const price = await this.toGrossCataloguePrice({
+        externalProductId: externalId,
+        product: prestashopProduct,
+        netPrice: this.parseProductPrice(prestashopProduct.price),
+        row: prestashopProduct,
+        subject: `product ${externalId}`,
+      });
+      products.push({
+        ...mapped,
+        price: price ?? null,
+        id: internalId,
+      });
+    }
+    return products;
   }
 
   async listExternalIds(filters?: { limit?: number; offset?: number }): Promise<string[]> {
@@ -617,12 +867,16 @@ export class PrestashopProductMasterAdapter
     // them for this page (#2593).
     // Paged: a product with more than a page of combinations reported only the
     // first page, and the missing variants read as not existing (#2608).
+    const country = await this.resolveSalesCountry();
     const combinations =
       this.combinationsCache.get(prestashopProductId.externalId) ??
       (await readAllPrestashopResourcePages<PrestashopCombination>(
         this.httpClient,
         'combinations',
-        { custom: { id_product: prestashopProductId.externalId } },
+        {
+          custom: { id_product: prestashopProductId.externalId },
+          ...(country ? { priceFields: this.grossPriceFields(country) } : {}),
+        },
         {
           connectionId: this.connection.id,
           detail: `id_product=${prestashopProductId.externalId}`,
@@ -647,6 +901,16 @@ export class PrestashopProductMasterAdapter
       const sku = prestashopProduct.reference ?? `product-${prestashopProductId.externalId}`;
       const productEan = this.normalizeEan(prestashopProduct.ean13);
       const productGtin = this.normalizeGtin(prestashopProduct.upc);
+      // Inherit the parent's gross price so the synthetic variant carries a
+      // usable one (simple products are the common case for SMB shops). Absent
+      // surfaces as a `no-master-price` blocker downstream (#792, ADR-077).
+      const syntheticPrice = await this.toGrossCataloguePrice({
+        externalProductId: prestashopProductId.externalId,
+        product: prestashopProduct,
+        netPrice: this.parseProductPrice(prestashopProduct.price),
+        row: prestashopProduct,
+        subject: `product ${prestashopProductId.externalId}`,
+      });
 
       return [
         {
@@ -656,11 +920,8 @@ export class PrestashopProductMasterAdapter
           attributes: null,
           ean: productEan ?? null,
           gtin: productGtin ?? null,
-          // Inherit master price from the parent product so the synthetic
-          // variant carries a usable price (simple products are the common
-          // case for SMB shops). Null/non-numeric → undefined → surfaces as
-          // a `no-master-price` blocker downstream (#792).
-          price: this.parseProductPrice(prestashopProduct.price),
+          ...(syntheticPrice !== undefined ? { price: syntheticPrice } : {}),
+          ...(await this.resolvePhysicalData(prestashopProduct, undefined)),
         },
       ];
     }
@@ -705,58 +966,94 @@ export class PrestashopProductMasterAdapter
     // inheritance for simple products (#792 / #1096).
     const basePrice = this.parseProductPrice(prestashopProduct.price);
 
-    // Map variants with internal IDs
-    return combinations
-      .map((combination) => {
-        const externalId = String(combination.id);
-        const internalId =
-          idMap.get(`${externalId}:${this.connection.id}`) || idMap.get(externalId) || '';
+    const shopUnits = await this.resolveShopUnits();
+    const physicalUnits = (impact: unknown): ReturnType<typeof buildPrestashopPhysicalData> =>
+      buildPrestashopPhysicalData(prestashopProduct, impact, shopUnits);
 
-        if (!internalId) {
-          this.logger.warn(`No internal ID mapped for external variant: ${externalId}`);
-          return null;
-        }
+    // Map variants with internal IDs. Sequential: each combination's gross
+    // price goes through the same tax resolution, which the resolver caches per
+    // product, so only the first one can cost a read.
+    const variants: ProductVariant[] = [];
+    for (const combination of combinations) {
+      const externalId = String(combination.id);
+      const internalId =
+        idMap.get(`${externalId}:${this.connection.id}`) || idMap.get(externalId) || '';
 
-        const mapped = this.productMapper.mapVariant(combination, productId, resolveOptionValue);
-        if (combinations.length === 1) {
-          if (!mapped.ean && productEan) {
-            mapped.ean = productEan;
-          }
-          if (!mapped.gtin && productGtin) {
-            mapped.gtin = productGtin;
-          }
+      if (!internalId) {
+        this.logger.warn(`No internal ID mapped for external variant: ${externalId}`);
+        continue;
+      }
+
+      const mapped = this.productMapper.mapVariant(combination, productId, resolveOptionValue);
+      if (combinations.length === 1) {
+        if (!mapped.ean && productEan) {
+          mapped.ean = productEan;
         }
-        // `mapped.price` carries the parsed combination impact. Fold it onto the
-        // base; fall back to the raw impact only when the product has no base.
-        const foldedPrice =
-          basePrice !== undefined
-            ? Math.round((basePrice + (mapped.price ?? 0)) * 100) / 100
-            : mapped.price;
-        // Floor: a non-positive absolute price (a negative combination impact
-        // exceeding the base) is never a valid master price — treat it as absent
-        // so it surfaces the `no-master-price` blocker downstream instead of
-        // publishing a negative/zero price to the marketplace (PR1099 self-review).
-        let absolutePrice = foldedPrice;
-        if (foldedPrice !== undefined && foldedPrice <= 0) {
-          this.logger.warn(
-            `Combination ${externalId} resolved to a non-positive master price (${foldedPrice}); ` +
-              `treating as no-master-price (connection: ${this.connection.id})`
-          );
-          absolutePrice = undefined;
+        if (!mapped.gtin && productGtin) {
+          mapped.gtin = productGtin;
         }
-        const variant: ProductVariant = { ...mapped, id: internalId };
-        // The resolved absolute price is authoritative. Overwrite the mapper's
-        // raw-impact `price`; when floored to absent, DELETE it so the raw impact
-        // can't leak through (and an absent price stays absent — `price?: number`
-        // under exactOptionalPropertyTypes rejects an explicit `undefined`).
-        if (absolutePrice !== undefined) {
-          variant.price = absolutePrice;
-        } else {
-          delete variant.price;
-        }
-        return variant;
-      })
-      .filter((v): v is ProductVariant => v !== null);
+      }
+      // `mapped.price` carries the parsed combination impact. Fold it onto the
+      // base; fall back to the raw impact only when the product has no base.
+      // This NET absolute price is what PrestaShop's own gross is checked
+      // against below - it is never reported itself (ADR-077).
+      const foldedNet =
+        basePrice !== undefined
+          ? Math.round((basePrice + (mapped.price ?? 0)) * 1_000_000) / 1_000_000
+          : mapped.price;
+      // Floor: a non-positive absolute price (a negative combination impact
+      // exceeding the base) is never a valid master price — treat it as absent
+      // so it surfaces the `no-master-price` blocker downstream instead of
+      // publishing a negative/zero price to the marketplace (PR1099 self-review).
+      let absolutePrice: number | undefined;
+      if (foldedNet !== undefined && foldedNet <= 0) {
+        this.logger.warn(
+          `Combination ${externalId} resolved to a non-positive master price (${foldedNet}); ` +
+            `treating as no-master-price (connection: ${this.connection.id})`
+        );
+      } else {
+        absolutePrice = await this.toGrossCataloguePrice({
+          externalProductId: prestashopProductId.externalId,
+          product: prestashopProduct,
+          netPrice: foldedNet,
+          row: combination,
+          subject: `combination ${externalId}`,
+        });
+      }
+      // The combination `weight` is an impact on the product weight, so the
+      // absolute variant weight is folded here where the product is at hand.
+      const variant: ProductVariant = {
+        ...mapped,
+        ...physicalUnits(combination.weight),
+        id: internalId,
+      };
+      // The resolved gross price is authoritative. Overwrite the mapper's
+      // raw-impact `price`; when absent, DELETE it so the raw impact can't leak
+      // through (and an absent price stays absent — `price?: number` under
+      // exactOptionalPropertyTypes rejects an explicit `undefined`).
+      if (absolutePrice !== undefined) {
+        variant.price = absolutePrice;
+      } else {
+        delete variant.price;
+      }
+      variants.push(variant);
+    }
+    return variants;
+  }
+
+  /** Shop weight/dimension units, or `null` when unresolved or no resolver is wired. */
+  private async resolveShopUnits(): Promise<PrestashopShopUnits | null> {
+    if (!this.shopUnitsResolver) {
+      return null;
+    }
+    return this.shopUnitsResolver.resolveUnits(this.connection.id, this.httpClient);
+  }
+
+  private async resolvePhysicalData(
+    product: PrestashopProduct,
+    combinationImpact: unknown
+  ): Promise<ReturnType<typeof buildPrestashopPhysicalData>> {
+    return buildPrestashopPhysicalData(product, combinationImpact, await this.resolveShopUnits());
   }
 
   /**

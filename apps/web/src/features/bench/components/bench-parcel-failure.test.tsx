@@ -78,6 +78,12 @@ function parcel(over: Partial<BenchParcel> = {}): BenchParcel {
     labelPrintedAt: null,
     completedAt: null,
     lines: [line()],
+    packerNotes: [],
+    buyerNote: null,
+    buyerNoteAcknowledgedAt: null,
+    buyerNoteAcknowledgedByUserId: null,
+    hasBuyerNote: false,
+    otherParcelBuyerNoteAcknowledgements: [],
     ...over,
   };
 }
@@ -87,7 +93,7 @@ const PACKER = {
   username: 'Marta Kowalczyk',
   email: null,
   role: 'packer',
-  permissions: [],
+  permissions: ['bench:write', 'bench:read'],
   analyticsConsent: true,
 } as const;
 
@@ -112,7 +118,7 @@ function mount(data: BenchParcel, bench: Partial<Record<string, unknown>> = {}) 
     apiClient,
     ...renderWithProviders(<BenchParcelView workId="w-1" onClose={vi.fn()} />, {
       apiClient,
-      sessionAdapter: createAuthenticatedSessionAdapter({ ...PACKER, permissions: [] }),
+      sessionAdapter: createAuthenticatedSessionAdapter({ ...PACKER, permissions: ['bench:write', 'bench:read'] }),
     }),
   };
 }

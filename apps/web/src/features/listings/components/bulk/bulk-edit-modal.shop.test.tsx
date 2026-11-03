@@ -270,6 +270,34 @@ describe('BulkEditModal (shop mode)', () => {
     expect(baseOverride.stock).toBe(8);
   });
 
+  it('refuses a non-address image and marks a thumbnail that fails to load', () => {
+    const onSave = vi.fn();
+    renderShopEditor(makeRow([makeVariant('v1')]), onSave);
+
+    const hint = screen.getByText(/Shared image set for every variant/);
+    const field = hint.closest('.bulk-editor__field');
+    if (!(field instanceof HTMLElement)) throw new Error('shop image field not found');
+
+    fireEvent.click(within(field).getByRole('button', { name: 'Add image' }));
+    const input = within(field).getByRole('textbox', { name: 'New image URL' });
+    fireEvent.change(input, { target: { value: 'not a url' } });
+    fireEvent.click(within(field).getByRole('button', { name: 'Add' }));
+    expect(within(field).getByRole('alert')).toHaveTextContent(/This is not a web address/);
+    expect(field.querySelectorAll('img')).toHaveLength(0);
+
+    fireEvent.change(input, { target: { value: 'https://example.com/missing.jpg' } });
+    fireEvent.click(within(field).getByRole('button', { name: 'Add' }));
+    const img = field.querySelector('img');
+    if (!img) throw new Error('thumbnail not added');
+    fireEvent.error(img);
+    expect(within(field).getByText('Not loading')).toBeInTheDocument();
+    expect(within(field).getByText(/1 image could not be loaded/)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Save all' }));
+    expect(onSave).toHaveBeenCalledTimes(1);
+    expect(onSave.mock.calls[0][1].overrides.imageUrls).toEqual(['https://example.com/missing.jpg']);
+  });
+
   it('de-duplicates two adds of the same global attribute id into one parameter (#1830)', () => {
     const onSave = vi.fn();
     renderShopEditor(makeRow([makeVariant('v1')]), onSave);

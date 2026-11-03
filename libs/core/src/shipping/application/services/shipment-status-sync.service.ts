@@ -8,6 +8,10 @@
  * trackingNumber backfill), and (3) relays a newly-arrived waybill to **every**
  * participant of the order — the source marketplace included — through the
  * single role-agnostic `OrderStatusWriteback` lifecycle relay (#1168 / ADR-027).
+ * The same relay fires a `delivered` event on the delivered transition
+ * (#3526), and since #3506 (G02-7) a `delivered` relay that did not land is
+ * RE-DRIVEN on later ticks — see `relayDeliveredToParticipants` and
+ * `redriveOwedDeliveredRelays`.
  *
  * Mirrors `OfferStatusSyncService` (#816): the service returns scan stats; the
  * caller (worker handler) advances the persisted `connection_cursors` offset.
@@ -52,16 +56,20 @@ import {
 } from '@openlinker/core/integrations';
 import {
   type IOrderLifecycleRelayService,
-  type OrderLifecycleRelayResult,
   ORDER_LIFECYCLE_RELAY_SERVICE_TOKEN,
 } from '@openlinker/core/orders';
 
 import type { IShipmentStatusSyncService } from '../interfaces/shipment-status-sync.service.interface';
 import { IOrderFulfillmentProjectionService } from '../interfaces/order-fulfillment-projection.service.interface';
 import { resolveCarrierHint } from './resolve-carrier-hint';
-import type {
-  ShipmentStatusSyncOptions,
-  ShipmentStatusSyncResult,
+import { relayWaybillUnderClaim, type WaybillRelayOutcome } from './waybill-relay';
+import {
+  DELIVERED_RELAY_MAX_AGE_MS,
+  DELIVERED_RELAY_MAX_FAILURES,
+  DELIVERED_RELAY_REDRIVE_LIMIT,
+  DELIVERED_RELAY_RETRY_AFTER_MS,
+  type ShipmentStatusSyncOptions,
+  type ShipmentStatusSyncResult,
 } from '../types/shipment-status-sync.types';
 import type { Shipment } from '../../domain/entities/shipment.entity';
 import { ShipmentRepositoryPort } from '../../domain/ports/shipment-repository.port';
@@ -74,6 +82,7 @@ import {
   TerminalShipmentStatusValues,
 } from '../../domain/types/shipment-status.types';
 import type { UpdateShipmentInput } from '../../domain/types/shipment.types';
+import { isTrackingWaitOver } from '../../domain/shipped-announcement';
 import {
   ORDER_FULFILLMENT_PROJECTION_SERVICE_TOKEN,
   SHIPMENT_REPOSITORY_TOKEN,
@@ -101,6 +110,17 @@ const PUSH_GATE_OPEN_FROM: readonly ShipmentStatus[] = [
   SHIPMENT_STATUS.Dispatched,
   SHIPMENT_STATUS.InTransit,
 ];
+
+/**
+ * What one `delivered` relay attempt achieved (#3506, G02-7).
+ *
+ * - `relayed` — every participant applied it or STRUCTURALLY declined it
+ *   (no capability, a platform with no delivered state): nothing to retry.
+ * - `failed` — a participant rejected it, could not be constructed
+ *   (`adapter-unresolved`, transient by #1947's classification), or the relay
+ *   threw before reaching anyone. Retried on a later tick.
+ */
+type DeliveredRelayOutcome = 'relayed' | 'failed';
 
 @Injectable()
 export class ShipmentStatusSyncService implements IShipmentStatusSyncService {
@@ -165,9 +185,15 @@ export class ShipmentStatusSyncService implements IShipmentStatusSyncService {
           await this.shipments.update(shipment.id, patch);
           updated += 1;
           // A terminal-status change moves the order rollup (#1108) — reproject.
-          if (patch.status) {
+          // So does a tracking number arriving: a shipped order waits for it
+          // before announcing `order.shipped` (#3554).
+          if (patch.status || patch.trackingNumber) {
             await this.fulfillmentProjection.recompute(shipment.orderId);
           }
+        } else if (isTrackingWaitOver(shipment, new Date())) {
+          // The number never came; announce without it rather than never. A
+          // cheap no-op once the order has announced.
+          await this.fulfillmentProjection.announceShippedWithoutTracking(shipment.orderId);
         }
         if (didPush) {
           propagated += 1;
@@ -183,6 +209,8 @@ export class ShipmentStatusSyncService implements IShipmentStatusSyncService {
     const consumed = offset + page.items.length;
     const nextOffset = consumed >= page.total ? 0 : consumed;
 
+    const redrive = await this.redriveOwedDeliveredRelays(connectionId);
+
     return {
       scanned: page.items.length,
       updated,
@@ -190,7 +218,65 @@ export class ShipmentStatusSyncService implements IShipmentStatusSyncService {
       failed,
       total: page.total,
       nextOffset,
+      deliveredRelaysRetried: redrive.retried,
+      deliveredRelaysRecovered: redrive.recovered,
     };
+  }
+
+  /**
+   * Re-drive the `delivered` relay for this connection's delivered shipments
+   * that still owe it (#3506, G02-7) — the bounded second pass after the scan.
+   *
+   * The scan cannot do this itself: `SCAN_STATUSES` excludes `delivered`, so a
+   * shipment whose relay failed on the tick that discovered the transition is
+   * never visited again. This pass reads them back by predicate instead
+   * (frontier-as-query: a stamped row leaves the set, so there is no cursor),
+   * oldest first, bounded three ways:
+   *
+   * - `DELIVERED_RELAY_REDRIVE_LIMIT` rows per call;
+   * - `DELIVERED_RELAY_RETRY_AFTER_MS` since the last failure, which also stops
+   *   this pass re-driving a row the scan above failed on a moment ago;
+   * - `DELIVERED_RELAY_MAX_FAILURES` attempts, and deliveries older than
+   *   `DELIVERED_RELAY_MAX_AGE_MS`, after which the row is given up on and
+   *   says so once in the log.
+   *
+   * A repeat is safe because a `delivered` status write is idempotent on every
+   * shipped `OrderStatusWriteback` adapter (see `relayDeliveredToParticipants`).
+   *
+   * Never throws: this pass is bookkeeping on top of a scan that has already
+   * persisted its own results, and a failed read must not fail that scan.
+   */
+  private async redriveOwedDeliveredRelays(
+    connectionId: string,
+  ): Promise<{ retried: number; recovered: number }> {
+    let owed: readonly Shipment[];
+    const now = Date.now();
+    try {
+      owed = await this.shipments.findDeliveredRelayPending(connectionId, {
+        limit: DELIVERED_RELAY_REDRIVE_LIMIT,
+        maxFailures: DELIVERED_RELAY_MAX_FAILURES,
+        deliveredSince: new Date(now - DELIVERED_RELAY_MAX_AGE_MS),
+        lastFailureBefore: new Date(now - DELIVERED_RELAY_RETRY_AFTER_MS),
+      });
+    } catch (error) {
+      this.logger.warn(
+        `Could not read the delivered shipments still owed a delivered relay (connection ${connectionId}): ${this.message(error)}`,
+      );
+      return { retried: 0, recovered: 0 };
+    }
+
+    let recovered = 0;
+    // Sequential, like the scan: each attempt fans out to every participant.
+    for (const shipment of owed) {
+      const outcome = await this.relayDeliveredToParticipants(
+        shipment,
+        shipment.deliveredAt ?? undefined,
+      );
+      if (outcome === 'relayed') {
+        recovered += 1;
+      }
+    }
+    return { retried: owed.length, recovered };
   }
 
   async syncOneByProviderShipmentId(
@@ -224,7 +310,8 @@ export class ShipmentStatusSyncService implements IShipmentStatusSyncService {
     const { patch } = await this.buildPatchAndMaybePush(shipment, snapshot);
     if (Object.keys(patch).length > 0) {
       await this.shipments.update(shipment.id, patch);
-      if (patch.status) {
+      // A new tracking number reprojects too (#3554): see `sync`.
+      if (patch.status || patch.trackingNumber) {
         await this.fulfillmentProjection.recompute(shipment.orderId);
       }
     }
@@ -245,6 +332,8 @@ export class ShipmentStatusSyncService implements IShipmentStatusSyncService {
     // 1. Status — advance only into TERMINAL states. Forward transitions out
     //    of `generated → dispatched` are #837's job (it pairs source + dest
     //    notify with the transition); #838 must not race that pairing.
+    const isNewTransitionIntoDelivered =
+      snapshot.status !== shipment.status && snapshot.status === SHIPMENT_STATUS.Delivered;
     if (
       snapshot.status !== shipment.status &&
       TerminalShipmentStatusValues.includes(
@@ -261,6 +350,22 @@ export class ShipmentStatusSyncService implements IShipmentStatusSyncService {
       if (snapshot.status === SHIPMENT_STATUS.Failed) {
         patch.failedAt = new Date();
       }
+    }
+
+    // #3526 — relay `delivered` to every participant the moment THIS call
+    // discovers the transition, independent of whatever the waybill logic
+    // below decides (a shipment can be delivered with its waybill already
+    // known, so it must not wait on a null→value tracking backfill that will
+    // never come). See `relayDeliveredToParticipants` for why this needs no
+    // dedicated claim column the way the waybill relay's `waybillRelayedAt`
+    // does.
+    if (isNewTransitionIntoDelivered) {
+      // The SNAPSHOT's instant, never `shipment.deliveredAt` — `shipment` is
+      // the pre-patch row this tick loaded, so that field is still `null`
+      // here; the carrier's own instant is what `patch.deliveredAt` above was
+      // just set from. The outcome is recorded on the row inside the call, so
+      // a failure here is re-driven by `redriveOwedDeliveredRelays` later.
+      await this.relayDeliveredToParticipants(shipment, snapshot.deliveredAt);
     }
 
     // 2a. Carrier-of-record — backfill on null → value transition (#769).
@@ -341,173 +446,134 @@ export class ShipmentStatusSyncService implements IShipmentStatusSyncService {
 
   /**
    * Relay a newly-known waybill to every participant of the order, source
-   * included (#1947), under an at-most-once claim.
+   * included (#1947), under the at-most-once claim on `waybillRelayedAt`.
    *
-   * Claim-then-release, mirroring the webhook dedup gate (which inserts its row
-   * before publishing and deletes it on failure so a retry can re-enter): the
-   * conditional `claimWaybillRelay` is the serialization point between the poll
-   * and the carrier webhook, which both observe the same null→value transition
-   * with no lock between them. Claiming only *after* a successful relay would
-   * leave that race open, and never claiming would let a retry re-drive the
-   * source's non-idempotent waybill POST every tick.
+   * The claim, the failure accounting (#2073) and the give-up bound (#3506)
+   * live in `relayWaybillUnderClaim`, shared with the source-side fulfilment
+   * read-back so both producers of a waybill honour one rule. The carrier hint
+   * is this shipment's own provider connection.
    *
    * @returns `'relayed'` on success, `'failed'` when the source could not be
    *          told (claim released, `trackingNumber` withheld so the next tick
-   *          retries), or `'skipped'` when another caller already holds the claim.
+   *          retries), `'skipped'` when another caller already holds the claim,
+   *          or `'given-up'` when the failure reached WAYBILL_RELAY_MAX_FAILURES
+   *          (claim kept, `trackingNumber` saved, never re-driven).
    */
-  private async relayWaybillToParticipants(
+  private relayWaybillToParticipants(
     shipment: Shipment,
     trackingNumber: string,
-  ): Promise<'relayed' | 'failed' | 'skipped'> {
-    const claimed = await this.shipments.claimWaybillRelay(shipment.id, new Date());
-    if (!claimed) {
-      // Already relayed, or a concurrent trigger won the claim and is relaying
-      // right now. Either way this caller must not write to the source; the
-      // tracking number itself still lands (step 6).
-      this.logger.debug(
-        `Waybill relay skipped for shipment ${shipment.id} — already claimed (#1947).`,
-      );
-      return 'skipped';
-    }
+  ): Promise<WaybillRelayOutcome> {
+    return relayWaybillUnderClaim(
+      {
+        shipments: this.shipments,
+        orderLifecycleRelay: this.orderLifecycleRelay,
+        logger: this.logger,
+      },
+      shipment,
+      trackingNumber,
+      () => resolveCarrierHint(this.integrations, shipment.connectionId, this.logger),
+    );
+  }
 
-    const carrier = await resolveCarrierHint(this.integrations, shipment.connectionId, this.logger);
-
-    let result: OrderLifecycleRelayResult;
+  /**
+   * Relay `delivered` to every participant of the order (#3526), and record
+   * whether it landed (#3506, G02-7).
+   *
+   * No claim/release cycle the way the waybill relay has one: that relay's
+   * far-side call is a NON-IDEMPOTENT create (`POST /shipments`), whereas
+   * setting a platform's own delivered-equivalent status is idempotent on every
+   * shipped `OrderStatusWriteback` adapter (writing a status a participant
+   * already holds is a no-op there). So two callers racing on one shipment (a
+   * poll tick and a carrier webhook both reading the pre-patch row) cost at
+   * most a duplicate no-op write, never a duplicate physical action — and the
+   * same property is what makes re-driving a failed relay safe.
+   *
+   * What it does carry is BOOKKEEPING: `deliveredRelayedAt` is stamped once the
+   * relay reached every participant that could take it, and a failure bumps
+   * `deliveredRelayFailureCount`. Until #3506 a rejection was only logged, and
+   * since `SCAN_STATUSES` excludes `delivered` the row was never visited again —
+   * a PrestaShop destination that rejected the write (G02-7: no resolvable
+   * "delivered" state) stayed "Shipped" until somebody reset the database.
+   *
+   * On the transition path this runs BEFORE the status patch is written, so the
+   * stamp lands first and a relay that succeeds first time never becomes a
+   * re-drive candidate.
+   *
+   * Never throws: neither a relay failure nor a bookkeeping failure may abort
+   * `buildPatchAndMaybePush`, which would discard the whole patch — terminal
+   * status, deliveredAt, carrier backfill included.
+   */
+  private async relayDeliveredToParticipants(
+    shipment: Shipment,
+    deliveredAt: Date | undefined,
+  ): Promise<DeliveredRelayOutcome> {
+    let outcome: DeliveredRelayOutcome;
     try {
-      result = await this.orderLifecycleRelay.relay({
+      const result = await this.orderLifecycleRelay.relay({
         internalOrderId: shipment.orderId,
         originConnectionId: shipment.connectionId,
-        event: { type: 'dispatched', trackingNumber, carrier },
+        event: { type: 'delivered', deliveredAt },
       });
-    } catch (error) {
-      // The relay reports per-target outcomes rather than throwing, but it CAN
-      // throw before its per-target loop (identifier resolution). Catch it here:
-      // letting it propagate would abort `buildPatchAndMaybePush` and discard the
-      // whole patch — terminal status, deliveredAt, carrier backfill included —
-      // and skip the order-rollup reprojection.
-      // The failure is recorded in the SAME statement that releases the claim
-      // (#2073), so this path cannot release without counting. `connectionId`
-      // is null because the throw happens BEFORE the per-target loop — there is
-      // no participant to name, and inventing one would be a false attribution.
-      await this.shipments.releaseWaybillRelay(shipment.id, {
-        reason: 'threw',
-        connectionId: null,
-        failedAt: new Date(),
-      });
-      this.logger.error(
-        `Waybill relay threw for shipment ${shipment.id} (order ${shipment.orderId}): ${this.message(error)}`,
-        error instanceof Error ? error.stack : undefined,
+      // The same transient/structural split as the waybill relay (#1947): a
+      // participant we could not even construct an adapter for is a failure to
+      // retry, a participant with no delivered state is a decline to accept.
+      const transientlyUnreached = result.targets.filter(
+        (t) =>
+          t.outcome === 'rejected' ||
+          (t.outcome === 'unsupported' && t.unsupportedReason === 'adapter-unresolved'),
       );
-      return 'failed';
-    }
-
-    // A target we could not even construct an adapter for is TRANSIENT (#1947):
-    // release the claim so a later tick retries rather than recording a delivery
-    // that never happened. A structural `no-capability` is not a failure — there
-    // is nothing to retry — matching the skip the previous destination-only push
-    // performed for a non-`OrderFulfillmentUpdater` destination.
-    //
-    // NOTE — the claim is released on ANY participant's transient failure, not
-    // just the source's, which means a permanently-broken DESTINATION re-drives
-    // the source's relay on every tick. That is deliberate, and it is the least
-    // bad of three options while notify state is per-shipment rather than
-    // per-participant:
-    //   - releasing only on a source failure would hold the claim while the
-    //     number stays withheld, so the next tick re-detects the diff and then
-    //     skips the relay — a livelock in which the number never persists at all;
-    //   - persisting the number while holding the claim would permanently lose
-    //     destination tracking on one transient blip (the regression that killed
-    //     an earlier draft of this fix);
-    //   - so we keep today's all-or-nothing retry, and bound the blast radius at
-    //     the adapter instead: the Allegro waybill POST now treats a 409 as
-    //     already-attached, so a repeat is a no-op rather than a duplicate row.
-    // Genuinely per-participant retry is #861.
-    // NOBODY WAS TOLD, so the claim must not stand (#3365 audit).
-    //
-    // `OrderLifecycleRelayService` answers `{ targets: [] }` when no participant
-    // resolves - an order whose `Order` identifier mapping is missing, most
-    // commonly. `transientlyUnreached` was then empty, so the code fell through
-    // to `clearWaybillRelayFailures` and reported `'relayed'` with
-    // `waybillRelayedAt` already claimed and never released: the waybill claim
-    // burnt on the first poll tick, the failure counter reading 0, the badge
-    // never rendering, and the claim unable to be re-taken. Ever.
-    //
-    // Released rather than reported as a failure count, because there is no
-    // participant to name: the next tick re-claims and tries again, which is
-    // what should have happened the first time.
-    if (result.targets.length === 0) {
-      await this.shipments.releaseWaybillRelay(shipment.id, {
-        reason: 'adapter-unresolved',
-        connectionId: null,
-        failedAt: new Date(),
-      });
-      this.logger.warn(
-        `waybill_relay_no_participants shipment=${shipment.id} order=${shipment.orderId} — the ` +
-          `relay resolved no participant at all, so nobody was told. The claim is released so ` +
-          `the next poll retries; a persistent case is usually a missing Order identifier ` +
-          `mapping on the source connection.`,
-      );
-      return 'failed';
-    }
-
-    const transientlyUnreached = result.targets.filter(
-      (t) =>
-        t.outcome === 'rejected' ||
-        (t.outcome === 'unsupported' && t.unsupportedReason === 'adapter-unresolved'),
-    );
-
-    if (transientlyUnreached.length > 0) {
-      // #2073. The FIRST failing participant is recorded for display; every one
-      // of them is still logged individually below, so the log keeps full
-      // attribution and the column carries one name for the operator's badge.
-      // Nothing reads that name to decide anything — per-target retry state is
-      // #861 and this deliberately does not become it.
-      //
-      // `detail` is NEVER persisted: it is an adapter's free text and can carry
-      // a host, a port or a credential fragment, it already reaches the log,
-      // and this column reaches a browser — a wider audience (#2341's rule: the
-      // code is returned, the message is logged).
-      const [first] = transientlyUnreached;
-      await this.shipments.releaseWaybillRelay(shipment.id, {
-        reason: first.outcome === 'rejected' ? 'rejected' : 'adapter-unresolved',
-        connectionId: first.connectionId,
-        failedAt: new Date(),
-      });
       for (const target of transientlyUnreached) {
-        // The poll job deliberately stays `succeeded` (the next tick retries).
-        // Since #2073 this log line is no longer the ONLY observable signal —
-        // the shipment now carries a durable consecutive-failure count that the
-        // `/shipments` read surface escalates past a threshold — but it is
-        // still the only place the per-target detail appears, so it stays at
-        // `error` level for triage.
-        this.logger.error(
-          `Waybill relay to ${target.connectionId} failed for shipment ${shipment.id} ` +
+        this.logger.warn(
+          `Delivered relay to ${target.connectionId} failed for shipment ${shipment.id} ` +
             `(${target.outcome}${target.unsupportedReason ? `/${target.unsupportedReason}` : ''})` +
             `${target.detail ? `: ${target.detail}` : ''}`,
         );
       }
-      return 'failed';
+      outcome = transientlyUnreached.length > 0 ? 'failed' : 'relayed';
+    } catch (error) {
+      // The relay reports per-target outcomes rather than throwing, but it CAN
+      // throw before its per-target loop (identifier resolution) — the same
+      // shape `relayWaybillToParticipants` catches.
+      this.logger.warn(
+        `Delivered relay threw for shipment ${shipment.id} (order ${shipment.orderId}): ${this.message(error)}`,
+      );
+      outcome = 'failed';
     }
 
-    // The relay reached every participant, so the failure history is cleared
-    // (#2073) — without this the escalation is an alarm that never goes off.
-    //
-    // BEST-EFFORT, unlike the increment above. The increment is fused to a
-    // release that was already un-caught, so it adds no failure mode; this is a
-    // genuinely new write on a path that has ALREADY succeeded durably, and
-    // failing the relay because its bookkeeping failed would let the recording
-    // of a success destroy the success. A stale count simply escalates one
-    // shipment that has recovered, which the next successful relay clears.
+    await this.recordDeliveredRelayOutcome(shipment.id, outcome);
+    return outcome;
+  }
+
+  /**
+   * Persist a delivered-relay outcome. BEST-EFFORT: a stamp that fails to
+   * write leaves the row owed, which costs one idempotent re-drive; a failure
+   * count that fails to write costs one retry beyond the bound. Neither is
+   * worth failing the poll over.
+   */
+  private async recordDeliveredRelayOutcome(
+    shipmentId: string,
+    outcome: DeliveredRelayOutcome,
+  ): Promise<void> {
+    const at = new Date();
     try {
-      await this.shipments.clearWaybillRelayFailures(shipment.id);
+      if (outcome === 'relayed') {
+        await this.shipments.markDeliveredRelayed(shipmentId, at);
+        return;
+      }
+      const failures = await this.shipments.recordDeliveredRelayFailure(shipmentId, at);
+      if (failures >= DELIVERED_RELAY_MAX_FAILURES) {
+        // Logged once: the row leaves the re-drive frontier at this count.
+        this.logger.error(
+          `delivered_relay_given_up: shipment ${shipmentId} failed its delivered relay ` +
+            `${String(failures)} times and will not be retried; the order's participants may ` +
+            'still show it as shipped',
+        );
+      }
     } catch (error) {
       this.logger.warn(
-        `Failed to clear waybill relay failure history for shipment ${shipment.id} ` +
-          `(non-fatal, the relay itself succeeded): ${this.message(error)}`,
+        `Could not record the delivered-relay outcome (${outcome}) for shipment ${shipmentId}: ${this.message(error)}`,
       );
     }
-
-    return 'relayed';
   }
 
   private message(error: unknown): string {

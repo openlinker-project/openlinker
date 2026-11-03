@@ -43,10 +43,24 @@ export class ConnectionResponseDto {
 
   @ApiProperty({
     description:
-      'Whether credentials are stored in the database (true = editable via PUT /credentials; false = sourced from environment variable)',
+      'Whether credentials are editable via PUT /credentials: true for a database-backed credential, and for a connection whose adapter needs credentials but holds none (a restored archived connection, #3657); false when they are sourced from an environment variable or the adapter takes none. Read `credentialsStored` to tell whether a value is actually present.',
     example: true,
   })
   credentialsBacked!: boolean;
+
+  @ApiProperty({
+    description:
+      'Whether a credential row is currently stored for this connection. false on a restored archived connection until credentials are re-entered (#3657).',
+    example: true,
+  })
+  credentialsStored!: boolean;
+
+  @ApiProperty({
+    description:
+      'Whether the connection may be archived once disabled. false for an adapter that declares it (the OpenLinker OMS), which can only be disabled (#3657).',
+    example: true,
+  })
+  archivable!: boolean;
 
   @ApiPropertyOptional({ description: 'Adapter key', example: 'prestashop.webservice.v1' })
   adapterKey?: string;
@@ -88,13 +102,35 @@ export class ConnectionResponseDto {
   @ApiProperty({ description: 'Last update timestamp' })
   updatedAt!: Date;
 
+  @ApiProperty({
+    description:
+      'The config values the adapter declared safe for every role (DEF-02), e.g. the KSeF ' +
+      'environment. Scalars only; empty when the adapter declares none.',
+    type: 'object',
+    additionalProperties: true,
+  })
+  publicConfig!: Record<string, string | number | boolean>;
+
+  @ApiPropertyOptional({
+    description:
+      'Non-blocking advisory warnings about this connection (#1594), e.g. it shares a ' +
+      'provider-side rate-limit bucket with another active connection on the same seller ' +
+      'tax id. Present only on create/update responses that detected one; never a hard error.',
+    type: [String],
+  })
+  warnings?: string[];
+
   static fromDomain(
     connection: Connection,
     supportedCapabilities: string[],
     variantGrouping: VariantGroupingModel,
     defaultRateLimit: ConnectionRateLimit | null,
     role?: UserRole,
-    isDemoModeEnabled = false
+    isDemoModeEnabled = false,
+    requiresCredentials = true,
+    archivable = true,
+    warnings?: string[],
+    publicConfigKeys: readonly string[] = []
   ): ConnectionResponseDto {
     const dto = new ConnectionResponseDto();
     dto.id = connection.id;
@@ -110,7 +146,15 @@ export class ConnectionResponseDto {
     // real non-admin response (#1124's protection is unchanged).
     const canViewConfig = role === 'admin' || (isDemoModeEnabled && role === 'viewer');
     dto.config = canViewConfig ? connection.config : {};
-    dto.credentialsBacked = connection.credentialsRef.startsWith('db:');
+    dto.publicConfig = pickPublicConfig(connection.config, publicConfigKeys);
+    // #3657 — an empty ref on an adapter that needs credentials is a
+    // credential-less restored connection: PUT /credentials stores a fresh one,
+    // so it is editable. An empty ref on a credential-less adapter (ADR-055) is
+    // not - there is nothing to enter.
+    dto.credentialsStored = connection.credentialsRef.startsWith('db:');
+    dto.credentialsBacked =
+      dto.credentialsStored || (connection.credentialsRef === '' && requiresCredentials);
+    dto.archivable = archivable;
     dto.adapterKey = connection.adapterKey;
     dto.enabledCapabilities = connection.enabledCapabilities;
     dto.supportedCapabilities = supportedCapabilities;
@@ -118,6 +162,24 @@ export class ConnectionResponseDto {
     dto.defaultRateLimit = defaultRateLimit;
     dto.createdAt = connection.createdAt;
     dto.updatedAt = connection.updatedAt;
+    if (warnings && warnings.length > 0) {
+      dto.warnings = warnings;
+    }
     return dto;
   }
+}
+
+/** The declared keys whose values are scalars; anything structured is left out. */
+function pickPublicConfig(
+  config: Record<string, unknown> | undefined,
+  keys: readonly string[],
+): Record<string, string | number | boolean> {
+  const out: Record<string, string | number | boolean> = {};
+  for (const key of keys) {
+    const value = config?.[key];
+    if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
+      out[key] = value;
+    }
+  }
+  return out;
 }

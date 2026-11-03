@@ -775,6 +775,7 @@ export class PriceChangesService implements IPriceChangesService {
         rounding: rule?.rounding ?? 'none',
       },
       blockReason: episode.blockReason,
+      cause: episode.cause,
       needsRefresh: episode.refreshedAt !== null,
       version: this.versionOf(episode),
       manualPriceOverride: episode.manualPriceOverride,

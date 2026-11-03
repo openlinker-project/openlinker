@@ -8,7 +8,11 @@
  */
 import { cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { renderWithProviders, createMockApiClient } from '../../test/test-utils';
+import {
+  renderWithProviders,
+  createMockApiClient,
+  createAuthenticatedSessionAdapter,
+} from '../../test/test-utils';
 import { SalesDocumentsListPage } from './sales-documents-list-page';
 import type { SalesDocumentListApi } from '../../features/sales-documents/api/sales-document-list.api';
 import type {
@@ -148,6 +152,26 @@ describe('SalesDocumentsListPage', () => {
       fireEvent.click(screen.getByRole('button', { name: 'Back' }));
       expect(await screen.findByText('order_1')).toBeInTheDocument();
     });
+  });
+
+  // #3761 - 'both' is a connection-config value, never a document's kind, so
+  // offering it as a filter showed the same list as "All kinds".
+  it('offers only the concrete document kinds in the kind filter', async () => {
+    const list = vi.fn().mockResolvedValue({ items: [makeItem()], nextCursor: null });
+    renderWithProviders(<SalesDocumentsListPage />, { apiClient: mockApi(list), route: '/sales-documents' });
+
+    await screen.findByText('order_1');
+    const options = within(screen.getByLabelText('Filter by kind')).getAllByRole('option');
+    expect(options.map((o) => (o as HTMLOptionElement).value)).toEqual(['', 'invoice', 'fiscal-receipt']);
+  });
+
+  it('treats a stale ?kind=both URL as no kind filter', async () => {
+    const list = vi.fn().mockResolvedValue({ items: [makeItem()], nextCursor: null });
+    renderWithProviders(<SalesDocumentsListPage />, { apiClient: mockApi(list), route: '/sales-documents?kind=both' });
+
+    await screen.findByText('order_1');
+    expect(screen.getByLabelText('Filter by kind')).toHaveValue('');
+    expect(list.mock.lastCall?.[0]?.kind).toBeUndefined();
   });
 
   it('renders rows with order id, kind, and the currency-formatted amount', async () => {
@@ -296,6 +320,43 @@ describe('SalesDocumentsListPage', () => {
 
     const link = await screen.findByRole('link', { name: 'Manage invoices' });
     expect(link).toHaveAttribute('href', '/invoices');
+  });
+
+  // #3656 — the routing configuration is one click away from the list it
+  // configures, but only for the role that can open it.
+  it('links an admin to the sales-documents routing settings page', async () => {
+    const list = vi.fn().mockResolvedValue({ items: [], nextCursor: null });
+    renderWithProviders(<SalesDocumentsListPage />, {
+      apiClient: mockApi(list),
+      route: '/sales-documents',
+      sessionAdapter: createAuthenticatedSessionAdapter(),
+    });
+
+    const link = await screen.findByRole('link', { name: 'Manage routing' });
+    expect(link).toHaveAttribute('href', '/settings/sales-documents');
+  });
+
+  it('does not show the routing link to a non-admin session', async () => {
+    const list = vi.fn().mockResolvedValue({ items: [], nextCursor: null });
+    renderWithProviders(<SalesDocumentsListPage />, {
+      apiClient: mockApi(list),
+      route: '/sales-documents',
+      sessionAdapter: createAuthenticatedSessionAdapter({
+        id: 'user_2',
+        username: 'operator',
+        email: 'operator@example.com',
+        role: 'operator',
+        permissions: [],
+        analyticsConsent: true,
+      }),
+    });
+
+    // The mock session resolves in one microtask, so by the time the list
+    // query has settled the session has too, and the absence below is the
+    // operator's answer rather than the pre-hydration one.
+    await waitFor(() => expect(list).toHaveBeenCalled());
+    expect(await screen.findByRole('link', { name: 'Manage invoices' })).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Manage routing' })).not.toBeInTheDocument();
   });
 
   it('renders the "already on another connection" duplicate-record hint via the status popover', async () => {

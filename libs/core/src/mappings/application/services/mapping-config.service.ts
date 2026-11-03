@@ -115,6 +115,16 @@ export class MappingConfigService implements IMappingConfigService {
     return match?.prestashopCarrierId ?? null;
   }
 
+  async resolvePaymentMapping(
+    connectionId: string,
+    sourcePaymentMethod: string
+  ): Promise<string | null> {
+    // `connectionId` is the SOURCE connection (#3474), like resolveCarrierMapping.
+    const mappings = await this.paymentRepo.findByConnectionId(connectionId);
+    const match = mappings.find((m) => m.allegroPaymentProvider === sourcePaymentMethod);
+    return match?.prestashopPaymentModule ?? null;
+  }
+
   getOrderStateMappings(connectionId: string): Promise<OrderStateMapping[]> {
     return this.orderStateRepo.findByConnectionId(connectionId);
   }

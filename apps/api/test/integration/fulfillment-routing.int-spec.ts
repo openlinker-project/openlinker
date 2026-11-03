@@ -225,6 +225,7 @@ describe('Fulfillment Routing Integration', () => {
         processorConnectionId: inpostId,
         source: 'rule',
         processorAvailable: true,
+        parcelProfile: null,
       });
     });
 
@@ -242,6 +243,7 @@ describe('Fulfillment Routing Integration', () => {
         processorConnectionId: null,
         source: 'default',
         processorAvailable: true,
+        parcelProfile: null,
       });
     });
   });

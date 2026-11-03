@@ -32,6 +32,8 @@ import {
 } from '@openlinker/core/listings';
 
 import { PRESTASHOP_DESCRIPTION_FORMAT } from './prestashop-description-format';
+import type { PrestashopTaxRateResolver } from '../../provisioners/prestashop-tax-rate.resolver';
+import type { PrestashopSalesCountryResolver } from '../../provisioners/prestashop-sales-country.resolver';
 import { PrestashopApiException } from '@openlinker/integrations-prestashop';
 import { findAcrossPrestashopResourcePages } from '../../http/prestashop-paged-read';
 
@@ -96,6 +98,13 @@ export class PrestashopProductPublisherAdapter
     // `globalThis.fetch` after construction — the existing spec's pattern —
     // still observes its own stub.
     private readonly fetchImpl?: FetchLike,
+    // ADR-077: `cmd.price` is gross and PrestaShop's `price` field is net, so
+    // the publisher needs the shop's own rate for the sales country. Optional
+    // only so constructions that never publish (tests of other methods) stay
+    // valid; without them `publishProduct` refuses rather than writing gross
+    // into the net field.
+    private readonly taxRateResolver?: PrestashopTaxRateResolver,
+    private readonly salesCountryResolver?: PrestashopSalesCountryResolver,
   ) {}
 
   async publishProduct(cmd: PublishProductCommand): Promise<PublishProductResult> {
@@ -110,7 +119,8 @@ export class PrestashopProductPublisherAdapter
         ? await this.provisionFeatures(cmd.parameters, languageId)
         : [];
 
-    const body = this.buildProductBody(cmd, languageId, featureAssociations);
+    const pricing = await this.resolveShopPricing(cmd);
+    const body = this.buildProductBody(cmd, languageId, featureAssociations, pricing);
     const isUpsert = cmd.externalProductId != null && cmd.externalProductId !== '';
 
     this.logger.debug(
@@ -216,10 +226,166 @@ export class PrestashopProductPublisherAdapter
     };
   }
 
+  /**
+   * The net price and tax-rule group to write (ADR-077).
+   *
+   * `cmd.price` is what a buyer pays; PrestaShop stores the tax-excluded price
+   * and adds the product's tax group on top. So the net is `gross / (1 + rate)`
+   * at 6 decimals - the precision the order path pins with, enough for
+   * PrestaShop to land back on the exact gross - and the group is written
+   * explicitly, so the rate it adds is the one the net was computed with.
+   *
+   * The group is the operator's `platformParams.id_tax_rules_group` when set
+   * (it must charge the catalogue rate, if one is known), otherwise the active
+   * group whose rule for the sales country charges `cmd.taxRate`. Exemption
+   * codes (`zw`, `np`, `oo`) map to PrestaShop's "No tax" group. A shop with
+   * taxes switched off stores the gross figure as is.
+   *
+   * Every unresolvable case is a terminal refusal (status 0) naming the fix: a
+   * guess here either taxes the buyer twice or not at all. A failed read of
+   * the shop's tax setup is NOT a refusal - it propagates, so the job retries.
+   */
+  private async resolveShopPricing(
+    cmd: PublishProductCommand
+  ): Promise<{ netPrice: string; taxRulesGroupId?: string }> {
+    const gross = cmd.price.amount;
+    if (!this.taxRateResolver || !this.salesCountryResolver) {
+      throw this.refuse(
+        'TAX_SETUP_UNAVAILABLE',
+        'This PrestaShop connection cannot read the shop tax setup, so the price a buyer pays ' +
+          'cannot be turned into the tax-excluded price PrestaShop stores.'
+      );
+    }
+    const configured = this.connection.config?.['salesCountryIso2'];
+    const country = await this.salesCountryResolver.resolve(
+      this.connection.id,
+      typeof configured === 'string' && configured.trim().length > 0 ? configured : undefined,
+      this.client
+    );
+    if (country === null) {
+      throw this.refuse(
+        'SALES_COUNTRY_UNRESOLVED',
+        'No sales country is known for this shop. Set "salesCountryIso2" on the connection ' +
+          '(for example PL) so OpenLinker knows which tax rate the price includes.'
+      );
+    }
+    const operatorGroup = this.readOperatorTaxGroup(cmd);
+    if (!country.taxesEnabled) {
+      return {
+        netPrice: gross.toFixed(6),
+        ...(operatorGroup !== undefined ? { taxRulesGroupId: String(operatorGroup) } : {}),
+      };
+    }
+
+    const catalogueRate = this.parseRateCode(cmd.taxRate);
+    let groupId: number;
+    let rate: number;
+    if (operatorGroup !== undefined) {
+      const resolution = await this.taxRateResolver.resolveTaxRulesGroupRate(
+        operatorGroup,
+        country.countryId,
+        this.connection.id,
+        this.client
+      );
+      if (resolution.kind === 'unknown') {
+        if (resolution.reason === 'transport') {
+          throw new PrestashopApiException(
+            `Could not read tax-rule group ${operatorGroup}: ${resolution.evidence}`,
+            resolution.statusCode
+          );
+        }
+        throw this.refuse(
+          'TAX_GROUP_UNRESOLVED',
+          `Tax-rule group ${operatorGroup} set in platformParams has no usable rate for ` +
+            `${country.iso2}: ${resolution.evidence}.`
+        );
+      }
+      if (catalogueRate !== undefined && Math.abs(resolution.rate - catalogueRate) > 0.000001) {
+        throw this.refuse(
+          'TAX_RATE_CONFLICT',
+          `Tax-rule group ${operatorGroup} charges ${this.percent(resolution.rate)}% in ` +
+            `${country.iso2}, but the catalogue rate for this product is ${cmd.taxRate}%. ` +
+            `Pick a group with the catalogue rate, or fix the rate in the master catalogue.`
+        );
+      }
+      groupId = operatorGroup;
+      rate = resolution.rate;
+    } else if (catalogueRate === 0) {
+      groupId = 0;
+      rate = 0;
+    } else if (catalogueRate !== undefined) {
+      const found = await this.taxRateResolver.findTaxRulesGroupForRate(
+        catalogueRate * 100,
+        country.countryId,
+        this.connection.id,
+        this.client
+      );
+      if (found !== null && typeof found === 'object') {
+        throw new PrestashopApiException(
+          `Could not read the shop's tax-rule groups: ${found.evidence}`,
+          found.statusCode
+        );
+      }
+      if (found === null) {
+        throw this.refuse(
+          'TAX_GROUP_NOT_FOUND',
+          `No active tax-rule group in this shop charges ${cmd.taxRate}% in ${country.iso2}. ` +
+            `Create one, or name a group in platformParams.id_tax_rules_group.`
+        );
+      }
+      groupId = found;
+      rate = catalogueRate;
+    } else {
+      throw this.refuse(
+        'TAX_RATE_MISSING',
+        'The master catalogue holds no tax rate for this product, so the price a buyer pays ' +
+          'cannot be split into PrestaShop\'s tax-excluded price. Sync the product tax rate in ' +
+          'the master, or name a group in platformParams.id_tax_rules_group.'
+      );
+    }
+    return {
+      netPrice: (gross / (1 + rate)).toFixed(6),
+      taxRulesGroupId: String(groupId),
+    };
+  }
+
+  /** `platformParams.id_tax_rules_group` as a non-negative integer, if set. */
+  private readOperatorTaxGroup(cmd: PublishProductCommand): number | undefined {
+    const raw = cmd.platformParams?.['id_tax_rules_group'];
+    if (raw === undefined || raw === null || String(raw).trim() === '') {
+      return undefined;
+    }
+    const n = Number.parseInt(String(raw), 10);
+    return Number.isFinite(n) && n >= 0 ? n : undefined;
+  }
+
+  /**
+   * An ADR-063 rate code as a fraction: `'23'` -> 0.23, exemption codes -> 0,
+   * absent or unreadable -> `undefined`.
+   */
+  private parseRateCode(code: string | undefined): number | undefined {
+    if (code === undefined) return undefined;
+    const trimmed = code.trim().toLowerCase();
+    if (trimmed === 'zw' || trimmed === 'np' || trimmed === 'oo') return 0;
+    const pct = Number.parseFloat(trimmed);
+    return Number.isFinite(pct) && pct >= 0 ? pct / 100 : undefined;
+  }
+
+  private percent(fraction: number): string {
+    return String(Math.round(fraction * 1_000_000) / 10_000);
+  }
+
+  private refuse(code: string, message: string): ProductPublishRejectedException {
+    return new ProductPublishRejectedException(this.connection.adapterKey ?? DEFAULT_ADAPTER_KEY, 0, [
+      { code, message },
+    ]);
+  }
+
   private buildProductBody(
     cmd: PublishProductCommand,
     languageId: string,
-    featureAssociations: PrestashopFeatureAssociation[]
+    featureAssociations: PrestashopFeatureAssociation[],
+    pricing: { netPrice: string; taxRulesGroupId?: string }
   ): PrestashopProductWriteBody {
     const title = cmd.content?.title ?? '';
     const slug = (cmd.content?.seo?.slug ?? this.slugify(title)) || 'product';
@@ -231,7 +397,12 @@ export class PrestashopProductPublisherAdapter
       // Stable idempotency key — see findExistingByReference (#1107). Explicit so
       // it always wins over any un-modeled platformParams.reference.
       reference: cmd.internalVariantId,
-      price: cmd.price.amount.toFixed(2),
+      // Net, computed from the gross catalogue price with the group written
+      // below (ADR-077) - never the gross figure in PrestaShop's net field.
+      price: pricing.netPrice,
+      ...(pricing.taxRulesGroupId !== undefined
+        ? { id_tax_rules_group: pricing.taxRulesGroupId }
+        : {}),
       active: cmd.status === 'published' ? '1' : '0',
       // Fall back to PS Home category (id 2) when no category is provided — '0' is
       // not a valid PS parent and may be rejected. Home is the first visible level

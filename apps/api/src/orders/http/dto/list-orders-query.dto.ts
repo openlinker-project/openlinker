@@ -92,7 +92,7 @@ export class ListOrdersQueryDto extends PaginatedReadQueryDto {
   @ApiPropertyOptional({
     enum: OrderHealthValues,
     description:
-      'Filter by derived health bucket (#929) — partitions the set: source_deleted | awaiting_mapping | needs_attention | synced | awaiting_dispatch',
+      'Filter by derived health bucket (#929) — partitions the set: source_deleted | awaiting_mapping | needs_attention | synced | awaiting_dispatch. An order OpenLinker handles itself (#3482) is `synced` once it has shipped and `awaiting_dispatch` while still on the pack bench.',
   })
   @IsOptional()
   @IsEnum(OrderHealthValues)
@@ -181,6 +181,51 @@ export class ListOrdersQueryDto extends PaginatedReadQueryDto {
   @ApiPropertyOptional({
     type: Boolean,
     description:
+      'Destination-routing filter (#2703/#2704): true keeps only orders whose routing decision ' +
+      'narrowed the destination fan-out in an ATTENTION-WORTHY way, false keeps only the rest, ' +
+      'omitted does not filter. Attention-worthy EXCLUDES "routed-to-no-destination" — a working ' +
+      'router deciding an order goes nowhere is a decision, not a fault — so true does not return ' +
+      'those and false does. Same subset the destinationRoutingBlocked count reports, so the two ' +
+      'always agree. An INDEPENDENT axis that composes with `health`: such an order is usually ' +
+      'also needs_attention, so folding them would hide one behind the other.',
+  })
+  @IsOptional()
+  // Same string-literal mapping + pass-through-to-400 posture as
+  // `salesDocumentBlocked` above; see that comment for why a stray value must not
+  // collapse to `undefined`.
+  @Transform(({ value }): unknown => (value === 'true' ? true : value === 'false' ? false : value))
+  @IsBoolean()
+  destinationRoutingBlocked?: boolean;
+
+  @ApiPropertyOptional({
+    type: Boolean,
+    description:
+      'Waiting-in-OpenLinker filter (#3482): true keeps only orders OpenLinker holds as waiting ' +
+      '(out of stock, no shipping address, routing error - #3485), false keeps only the rest, ' +
+      'omitted does not filter. Same subset the waitingInOpenLinker count reports. An INDEPENDENT ' +
+      'axis that composes with `health`, never a health bucket.',
+  })
+  @IsOptional()
+  // Same string-literal mapping + pass-through-to-400 posture as `salesDocumentBlocked`.
+  @Transform(({ value }): unknown => (value === 'true' ? true : value === 'false' ? false : value))
+  @IsBoolean()
+  waitingInOpenLinker?: boolean;
+
+  @ApiPropertyOptional({
+    type: Boolean,
+    description:
+      'On-pack-bench filter (#3482): true keeps only orders with a live pack-bench work whose box ' +
+      'is not shut yet (To pack or Packing), false keeps only the rest, omitted does not filter. ' +
+      'Same subset the onPackBench count reports. Not `packed` (#2997), which reads packedAt.',
+  })
+  @IsOptional()
+  @Transform(({ value }): unknown => (value === 'true' ? true : value === 'false' ? false : value))
+  @IsBoolean()
+  onPackBench?: boolean;
+
+  @ApiPropertyOptional({
+    type: Boolean,
+    description:
       'Cancellation filter (#1984, exposed on this route by #2306): true keeps only cancelled ' +
       'orders, false excludes them, omitted does not filter. Maps directly to ' +
       '`cancelledAt IS [NOT] NULL` — the repository already honoured this field, it simply had ' +
@@ -256,4 +301,72 @@ export class ListOrdersQueryDto extends PaginatedReadQueryDto {
   @IsInt()
   @Min(0)
   offset?: number = 0;
+
+  @ApiPropertyOptional({
+    type: Boolean,
+    description:
+      '"Is it packed" filter (#2997): true keeps only packed orders, false only ' +
+      'unpacked ones, omitted does not filter. Maps to `packedAt IS [NOT] NULL`. ' +
+      'ANDed with `health`, not a sixth health bucket.',
+  })
+  @IsOptional()
+  @Transform(({ value }): unknown => (value === 'true' ? true : value === 'false' ? false : value))
+  @IsBoolean()
+  packed?: boolean;
+
+  @ApiPropertyOptional({
+    type: Boolean,
+    description:
+      '"Has a buyer note" filter (#3538): true keeps only orders whose source reported a non-empty buyer note ' +
+      'and are ready to work on (record status ready), false only those without one (including those whose note state is unknown), omitted does not filter. ' +
+      'Maps to the indexed `hasBuyerNote` column, so it needs no snapshot expansion and is written even under ' +
+      '`OL_STORE_PII=false`. ANDed with every other axis.',
+  })
+  @IsOptional()
+  @Transform(({ value }): unknown => (value === 'true' ? true : value === 'false' ? false : value))
+  @IsBoolean()
+  hasBuyerNote?: boolean;
+
+  @ApiPropertyOptional({
+    description:
+      'Free-text search (#3527/#3528): order number, buyer name, buyer email, any line SKU, ' +
+      'or a shipment tracking number. Matched against a denormalized, diacritic-folded ' +
+      '`searchText` column via a GIN trigram index; a valid tracking number additionally ' +
+      'widens the match to the order(s) that shipment belongs to. A blank or ' +
+      'diacritic/punctuation-only query behaves as "don\'t filter".',
+  })
+  @IsOptional()
+  @IsString()
+  search?: string;
+
+  @ApiPropertyOptional({
+    type: Boolean,
+    description:
+      '"Has an open return" filter (#2998): true keeps only orders carrying at least one ' +
+      'OPEN return (the `/returns` `all_open` segment predicate, reused verbatim), false ' +
+      'keeps only the rest, omitted does not filter. ANDed with `health`, not a sixth ' +
+      'health bucket — an order is routinely `synced` AND carrying an open return.',
+  })
+  @IsOptional()
+  @Transform(({ value }): unknown => (value === 'true' ? true : value === 'false' ? false : value))
+  @IsBoolean()
+  openReturn?: boolean;
+
+  @ApiPropertyOptional({
+    description:
+      'Tag filter (#3532, D34): restricts to orders carrying this one tag id. Mutually ' +
+      'exclusive with `untagged` by convention.',
+  })
+  @IsOptional()
+  @IsString()
+  tag?: string;
+
+  @ApiPropertyOptional({
+    type: Boolean,
+    description: '"No tags" filter (#3532): restricts to orders carrying NO tag at all.',
+  })
+  @IsOptional()
+  @Transform(({ value }): unknown => (value === 'true' ? true : value === 'false' ? false : value))
+  @IsBoolean()
+  untagged?: boolean;
 }

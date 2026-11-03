@@ -2,7 +2,7 @@ import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import { AnalyticsExclusionNote } from './analytics-exclusion-note';
-import { deriveCoverageRowCopy } from '../lib/data-coverage-copy.lib';
+import { deriveCoverageRowCopy } from '../lib/data-coverage.copy';
 import { COVERAGE_CATEGORY_VALUES, type CoverageCategory } from '../api/analytics-coverage.types';
 
 describe('AnalyticsExclusionNote (#2481)', () => {

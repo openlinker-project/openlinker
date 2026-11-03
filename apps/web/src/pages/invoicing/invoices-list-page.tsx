@@ -277,6 +277,7 @@ export function InvoicesListPage(): ReactElement {
     issued: number;
     skipped: number;
     failed: number;
+    total: number;
   } | null>(null);
   const bulkIssueMutation = useBulkIssueInvoicesMutation();
 
@@ -352,6 +353,7 @@ export function InvoicesListPage(): ReactElement {
     let issued = 0;
     let skipped = 0;
     let failed = 0;
+    let total = 0;
     try {
       for (const [conn, orderIdSet] of orderIdsByConnection) {
         const result = await bulkIssueMutation.mutateAsync({
@@ -361,8 +363,11 @@ export function InvoicesListPage(): ReactElement {
         issued += result.issued;
         skipped += result.skipped;
         failed += result.failed;
+        // DEF-21: the server's own count of what was asked, so a gap between
+        // asked and accounted-for shows rather than hides.
+        total += result.total ?? result.issued + result.skipped + result.failed;
       }
-      setIssueBanner({ issued, skipped, failed });
+      setIssueBanner({ issued, skipped, failed, total });
       setSelected(new Set());
       setIssueDialogOpen(false);
     } catch {
@@ -599,8 +604,12 @@ export function InvoicesListPage(): ReactElement {
       {issueBanner ? (
         <Alert tone="success" className="invoice-list__issue-banner">
           {t('invoice.bulk.issueResult', 'Bulk issue complete.')}{' '}
-          {issueBanner.issued > 0
-            ? t('invoice.bulk.issued', `${issueBanner.issued} issued.`)
+          {t('invoice.bulk.issuedOfTotal', `Issued ${issueBanner.issued} of ${issueBanner.total}.`)}{' '}
+          {issueBanner.issued + issueBanner.skipped + issueBanner.failed !== issueBanner.total
+            ? t(
+                'invoice.bulk.issueUnaccounted',
+                'Some orders were not reported back; refresh the list before retrying.',
+              )
             : null}{' '}
           {issueBanner.skipped > 0
             ? t('invoice.bulk.issueSkipped', `${issueBanner.skipped} skipped (already issued or in progress).`)

@@ -363,7 +363,66 @@ describe('RoutingCommitService', () => {
 
       const outcome = await service.route(input());
 
-      expect(outcome).toMatchObject({ status: 'refused', reason: 'plan-carries-unfulfillable' });
+      expect(outcome).toMatchObject({
+        status: 'refused',
+        reason: 'plan-carries-unfulfillable',
+        unfulfillableReasons: ['oos'],
+      });
+    });
+
+    // #3476 — the hold outcome writes these into the order's block detail, so
+    // they must be distinct and in a stable order across re-routes.
+    it('should report the router reasons sorted', async () => {
+      router.route.mockResolvedValue(
+        resolvedPlan({
+          assignments: [],
+          unfulfillable: [
+            { orderLineId: 'l1', quantity: 1, resolution: 'refund' as const, reason: 'zeta' },
+            { orderLineId: 'l1', quantity: 1, resolution: 'refund' as const, reason: 'alpha' },
+          ],
+        })
+      );
+
+      const outcome = await service.route(input());
+
+      expect(outcome).toMatchObject({ status: 'refused', unfulfillableReasons: ['alpha', 'zeta'] });
+    });
+
+    it('should report a reason once when several lines share it', async () => {
+      router.route.mockResolvedValue(
+        resolvedPlan({
+          assignments: [],
+          unfulfillable: [
+            { orderLineId: 'l1', quantity: 1, resolution: 'refund' as const, reason: 'oos' },
+            { orderLineId: 'l1', quantity: 1, resolution: 'refund' as const, reason: 'oos' },
+          ],
+        })
+      );
+
+      const outcome = await service.route(input());
+
+      expect(outcome).toMatchObject({ status: 'refused', unfulfillableReasons: ['oos'] });
+    });
+
+    it('should report no reasons for a refusal that is not about unfulfillable lines', async () => {
+      router.route.mockResolvedValue(
+        resolvedPlan({
+          assignments: [
+            {
+              orderLineId: 'l1',
+              locationId: 'loc-1',
+              connectionId: 'c1',
+              deliveryMethod: null,
+              quantity: 1,
+            },
+          ],
+          holds: [{ orderLineId: 'l1', quantity: 1, reason: 'awaiting_stock' as never }],
+        })
+      );
+
+      const outcome = await service.route(input());
+
+      expect(outcome).toMatchObject({ status: 'refused', unfulfillableReasons: [] });
     });
 
     it('should report contention rather than a refusal that was never persisted', async () => {

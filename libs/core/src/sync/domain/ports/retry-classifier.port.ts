@@ -34,6 +34,42 @@ export interface RetryDeferral {
   readonly reason: string;
 }
 
+/**
+ * Per-platform retry classification, registered by each plugin through
+ * `host.retryClassifierRegistry.register(adapterKey, classifier)`.
+ *
+ * **Ambiguous non-idempotent writes are a contract, not a plugin choice
+ * (#3469).** The runner retries every job-level failure unless a registered
+ * classifier says otherwise, so an HTTP client that refuses to re-send an
+ * ambiguous write only moves the duplicate one layer up. A plugin whose
+ * client issues a non-idempotent write (POST/PATCH not opted into
+ * `idempotent: true`) MUST:
+ *
+ *   1. raise a distinguishable exception when that write fails ambiguously -
+ *      a `5xx` or a network/timeout error after the request may already have
+ *      been applied. Where the plugin already throws a transport exception
+ *      for that failure, subclass it so existing `instanceof` consumers keep
+ *      their behaviour (InPost, Allegro and PrestaShop do), and
+ *   2. answer `true` for that exception from `isNonRetryable`, checked before
+ *      any broader branch for its parent class.
+ *
+ * Without step 2 the job re-runs and re-sends the write: a second label, a
+ * second order. The in-tree implementations of the rule, one per plugin since
+ * plugins may not import each other (ADR-003): `InpostAmbiguousWriteException`
+ * / `InpostRetryClassifierAdapter`, `AllegroAmbiguousWriteException` /
+ * `AllegroRetryClassifierAdapter`, `WooCommerceAmbiguousWriteException` /
+ * `WooCommerceRetryClassifierAdapter`, `PrestashopAmbiguousWriteException` /
+ * `PrestashopRetryClassifierAdapter`.
+ *
+ * A `429` is NOT ambiguous - the destination refused before processing the
+ * request - so it stays retryable for every write and honours `Retry-After`
+ * (`AllegroRateLimitException` inside the client; `getRetryDeferral` below
+ * at the job level). Keep the ambiguous-write branch narrow: the registry ORs
+ * every classifier's answer, so classifying the generic transport exception
+ * would make every transient failure of that plugin terminal.
+ *
+ * @see docs/plugin-author-guide.md § Ambiguous writes and the job runner
+ */
 export interface RetryClassifierPort {
   /**
    * Returns `true` if the cause is a deterministic, non-retryable failure

@@ -43,7 +43,7 @@ export const TAX_RATE_STRICT_ENV_VAR = 'OL_TAX_RATE_STRICT_ENABLED';
 
 /**
  * Coerce the raw environment value. Pure: it takes the string, never reads the
- * environment itself, mirroring `parseTriggerModel` / `parseIsPrimaryInvoicing`.
+ * environment itself, mirroring `parseTriggerModel` / `readSalesDocumentRouting`.
  *
  * Only the exact string `true` (case-insensitive, trimmed) enables it. Anything
  * else - absent, empty, `1`, `yes`, a typo - reads as OFF, deliberately: the

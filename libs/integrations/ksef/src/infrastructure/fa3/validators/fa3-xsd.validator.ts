@@ -119,7 +119,10 @@ export function validateFa3Xml(xml: RawFa3Xml): void {
         issues.push({ path: `${root}/Fa/${child}`, message: `missing Fa/${child}` });
       }
     }
-    if (!/<FaWiersz[\s/>]/.test(xml)) {
+    // A correction of the buyer alone changes no line and carries none
+    // (`FaWiersz` is `minOccurs=0`, DEF-24); every other document needs one.
+    const isCorrection = /<RodzajFaktury>KOR<\/RodzajFaktury>/.test(xml);
+    if (!isCorrection && !/<FaWiersz[\s/>]/.test(xml)) {
       issues.push({ path: `${root}/Fa/FaWiersz`, message: 'Fa must contain at least one FaWiersz line' });
     }
     // `Fa` child ordering (#1525 review): notably P_6 must sit between P_2 and
@@ -184,6 +187,19 @@ export function validateFa3Xml(xml: RawFa3Xml): void {
     }
   }
 
+  // 4. Content-constraint guard (#1582). `PrzyczynaKorekty` (the KOR correction
+  //    reason) is `minOccurs=0` but `minLength=1` when present, so an empty or
+  //    whitespace-only element is rejected by KSeF at clearance rather than
+  //    locally. Catch both the self-closed form (`<PrzyczynaKorekty/>`) and an
+  //    empty/whitespace text body here, cheaply, at build time. A blank reason
+  //    should be OMITTED entirely (the builder does), never emitted empty.
+  //    The same rule binds the exemption grounds P_19A/B/C (`TZnakowy`, DEF-34),
+  //    and the checks accept any namespace prefix (DEF-38): `<ns:PrzyczynaKorekty/>`
+  //    is the same empty element.
+  for (const localName of ['PrzyczynaKorekty', 'P_19A', 'P_19B', 'P_19C'] as const) {
+    issues.push(...textElementIssues(xml, localName, `${root}/Fa`));
+  }
+
   if (issues.length > 0) {
     throw new Fa3XsdValidationException(issues);
   }
@@ -222,4 +238,33 @@ function pushChildOrderIssues(
       lastName = name;
     }
   }
+}
+
+/** `TZnakowy`: 1..256 characters (code points, after whitespace collapse). */
+const TZNAKOWY_MAX_LENGTH = 256;
+
+/**
+ * Issues for every occurrence of `localName` that is empty, whitespace-only or
+ * longer than `TZnakowy` allows (DEF-25), under any namespace prefix.
+ */
+function textElementIssues(xml: string, localName: string, parentPath: string): Fa3ValidationIssue[] {
+  const path = `${parentPath}/${localName}`;
+  const issues: Fa3ValidationIssue[] = [];
+  const selfClosed = new RegExp(`<(?:[\\w.-]+:)?${localName}(?:\\s[^>]*)?\\/>`);
+  if (selfClosed.test(xml)) {
+    issues.push({ path, message: `${localName} must not be empty when present (minLength=1)` });
+  }
+  const paired = new RegExp(
+    `<((?:[\\w.-]+:)?)${localName}(?:\\s[^>]*)?>([^]*?)<\\/\\1${localName}>`,
+    'g',
+  );
+  for (const match of xml.matchAll(paired)) {
+    const text = match[2].replace(/\s+/g, ' ').trim();
+    if (text.length === 0) {
+      issues.push({ path, message: `${localName} must not be empty when present (minLength=1)` });
+    } else if ([...text].length > TZNAKOWY_MAX_LENGTH) {
+      issues.push({ path, message: `${localName} must be at most ${TZNAKOWY_MAX_LENGTH} characters` });
+    }
+  }
+  return issues;
 }

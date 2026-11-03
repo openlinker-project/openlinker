@@ -47,13 +47,13 @@ describe('readAutoDispatchConfig', () => {
 
   it('should keep a non-empty string parcelTemplate', () => {
     expect(
-      readAutoDispatchConfig({ autoDispatch: { enabled: true, parcelTemplate: 'small' } }),
+      readAutoDispatchConfig({ autoDispatch: { enabled: true, parcelTemplate: 'small' } })
     ).toEqual({ enabled: true, parcelTemplate: 'small' });
   });
 
   it('should drop a blank or non-string parcelTemplate', () => {
     expect(
-      readAutoDispatchConfig({ autoDispatch: { enabled: true, parcelTemplate: '   ' } }),
+      readAutoDispatchConfig({ autoDispatch: { enabled: true, parcelTemplate: '   ' } })
     ).toEqual({ enabled: true });
     expect(readAutoDispatchConfig(cfg({ enabled: true, parcelTemplate: 42 }))).toEqual({
       enabled: true,
@@ -62,7 +62,7 @@ describe('readAutoDispatchConfig', () => {
 
   it('should floor a fractional defaultWeightGrams', () => {
     expect(
-      readAutoDispatchConfig({ autoDispatch: { enabled: true, defaultWeightGrams: 250.9 } }),
+      readAutoDispatchConfig({ autoDispatch: { enabled: true, defaultWeightGrams: 250.9 } })
     ).toEqual({ enabled: true, defaultWeightGrams: 250 });
   });
 
@@ -78,7 +78,19 @@ describe('readAutoDispatchConfig', () => {
     expect(
       readAutoDispatchConfig({
         autoDispatch: { enabled: true, parcelTemplate: 'medium', defaultWeightGrams: 500 },
-      }),
+      })
     ).toEqual({ enabled: true, parcelTemplate: 'medium', defaultWeightGrams: 500 });
+  });
+
+  it('should keep default dimensions only as a complete positive set (#3571)', () => {
+    expect(
+      readAutoDispatchConfig(cfg({ enabled: true, lengthMm: 300, widthMm: 200, heightMm: 100 }))
+    ).toEqual({ enabled: true, lengthMm: 300, widthMm: 200, heightMm: 100 });
+    expect(readAutoDispatchConfig(cfg({ enabled: true, lengthMm: 300, widthMm: 200 }))).toEqual({
+      enabled: true,
+    });
+    expect(
+      readAutoDispatchConfig(cfg({ enabled: true, lengthMm: 300, widthMm: 200, heightMm: 0 }))
+    ).toEqual({ enabled: true });
   });
 });

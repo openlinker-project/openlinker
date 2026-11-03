@@ -8,9 +8,13 @@
  * - **AC2** the `(workId, idempotencyKey)` progress claim is never released.
  *   The structural half is `no-progress-claim-release.spec.ts`; here the
  *   behavioural half asserts a replay is STILL a no-op after a full run.
- * - **AC3** every re-drive goes through `relayDispatch`, which takes
- *   `claimDispatchRelay` — so a concurrent trigger and this sweep cannot both
- *   relay. Asserted by the handler holding no claim seam of its own.
+ * - **AC3** every re-drive goes through the shipment-first router, whose two
+ *   paths both take the work's one conditional slot claim — so a concurrent
+ *   trigger and this sweep cannot both relay. Asserted by the handler holding
+ *   no claim seam of its own.
+ * - **#3506 / G02-4** a work with one linked `generated` shipment is retried
+ *   through that shipment, and a shipment-grain failure keeps the work on the
+ *   frontier instead of degrading to the tracking-less work-grain relay.
  * - **AC4** a work that can never be relayed is observable rather than silently
  *   recycled.
  *
@@ -46,11 +50,12 @@ function page(candidates: ReturnType<typeof candidate>[]) {
 
 describe('FulfillmentWorkRelaySweepHandler (#2728)', () => {
   let reconcile: { listUnrelayedDispatches: jest.Mock };
-  let relay: { relayDispatch: jest.Mock };
+  let router: { routeDispatch: jest.Mock };
   let syncLock: { acquire: jest.Mock; release: jest.Mock };
   let configService: { get: jest.Mock };
   let handler: FulfillmentWorkRelaySweepHandler;
   let errors: string[];
+  let logs: string[];
 
   const job = (payload: Record<string, unknown> | null = { schemaVersion: 1 }): SyncJob =>
     ({
@@ -62,13 +67,13 @@ describe('FulfillmentWorkRelaySweepHandler (#2728)', () => {
 
   beforeEach(() => {
     reconcile = { listUnrelayedDispatches: jest.fn().mockResolvedValue(page([])) };
-    relay = { relayDispatch: jest.fn().mockResolvedValue({ status: 'relayed' }) };
+    router = { routeDispatch: jest.fn().mockResolvedValue({ status: 'relayed' }) };
     syncLock = { acquire: jest.fn().mockResolvedValue('token'), release: jest.fn() };
     configService = { get: jest.fn().mockReturnValue(undefined) };
 
     handler = new FulfillmentWorkRelaySweepHandler(
       reconcile as never,
-      relay as never,
+      router as never,
       syncLock as never,
       configService as never
     );
@@ -78,7 +83,10 @@ describe('FulfillmentWorkRelaySweepHandler (#2728)', () => {
       .spyOn(handler['logger'], 'error')
       .mockImplementation((message: unknown) => void errors.push(String(message)));
     jest.spyOn(handler['logger'], 'warn').mockImplementation(() => undefined);
-    jest.spyOn(handler['logger'], 'log').mockImplementation(() => undefined);
+    logs = [];
+    jest
+      .spyOn(handler['logger'], 'log')
+      .mockImplementation((message: unknown) => void logs.push(String(message)));
   });
 
   afterEach(() => {
@@ -101,24 +109,22 @@ describe('FulfillmentWorkRelaySweepHandler (#2728)', () => {
     await expect(handler.execute(job())).resolves.toEqual({ outcome: 'ok' });
 
     expect(reconcile.listUnrelayedDispatches).not.toHaveBeenCalled();
-    expect(relay.relayDispatch).not.toHaveBeenCalled();
+    expect(router.routeDispatch).not.toHaveBeenCalled();
   });
 
-  it('should re-drive every candidate through relayDispatch (AC1, AC3)', async () => {
+  it('should re-drive every candidate through the shipment-first router (AC1, AC3)', async () => {
     reconcile.listUnrelayedDispatches.mockResolvedValue(
       page([candidate('ol_work_1'), candidate('ol_work_2')])
     );
 
     await expect(handler.execute(job())).resolves.toEqual({ outcome: 'ok' });
 
-    // The intent shape #2400 defined, handed over verbatim — the sweep assembles
-    // no second spelling and, critically, takes no claim of its own: the
-    // at-most-once guarantee is `claimDispatchRelay`'s, inside `relayDispatch`.
-    expect(
-      relay.relayDispatch.mock.calls.map((call: unknown[]): unknown => call[0])
-    ).toEqual([
-      { kind: 'dispatch', workId: 'ol_work_1' },
-      { kind: 'dispatch', workId: 'ol_work_2' },
+    // The work id the frontier reported, handed over verbatim — the sweep takes
+    // no claim of its own: the at-most-once guarantee is the router's, through
+    // `claimDispatchRelay` or `markRelayedExternally` on the same slot.
+    expect(router.routeDispatch.mock.calls.map((call: unknown[]): unknown => call[0])).toEqual([
+      'ol_work_1',
+      'ol_work_2',
     ]);
   });
 
@@ -128,7 +134,7 @@ describe('FulfillmentWorkRelaySweepHandler (#2728)', () => {
     // which is the whole reason the recovery is a sweep rather than a retry.
     const injected = Object.getOwnPropertyNames(handler);
     expect(injected).toEqual(
-      expect.arrayContaining(['reconcile', 'relay', 'syncLock', 'configService'])
+      expect.arrayContaining(['reconcile', 'router', 'syncLock', 'configService'])
     );
     expect(injected).not.toContain('progress');
     expect(injected).not.toContain('claims');
@@ -146,30 +152,73 @@ describe('FulfillmentWorkRelaySweepHandler (#2728)', () => {
     // guarantee is `no-progress-claim-release.spec.ts`, which fails if one is ever
     // added to the port or the repository.
     reconcile.listUnrelayedDispatches.mockResolvedValue(page([candidate('ol_work_1')]));
-    relay.relayDispatch.mockResolvedValue({ status: 'released', reason: 'source rejected' });
+    router.routeDispatch.mockResolvedValue({ status: 'released', reason: 'source rejected' });
 
     await handler.execute(job());
 
     expect(reconcile.listUnrelayedDispatches).toHaveBeenCalledTimes(1);
-    expect(relay.relayDispatch).toHaveBeenCalledTimes(1);
+    expect(router.routeDispatch).toHaveBeenCalledTimes(1);
     // The reconcile seam is READ-ONLY as far as this handler is concerned: it
     // exposes one method, and a release added to it would show up here.
     expect(Object.keys(reconcile)).toEqual(['listUnrelayedDispatches']);
-    expect(Object.keys(relay)).toEqual(['relayDispatch']);
+    expect(Object.keys(router)).toEqual(['routeDispatch']);
+  });
+
+  describe('shipment-first re-drive (#3506, G02-4)', () => {
+    it('should count a via-shipment recovery as relayed when the shipment-grain notify lands', async () => {
+      reconcile.listUnrelayedDispatches.mockResolvedValue(page([candidate('ol_work_1')]));
+      router.routeDispatch.mockResolvedValue({ status: 'via-shipment', shipmentId: 'ol_shipment_1' });
+
+      await expect(handler.execute(job())).resolves.toEqual({ outcome: 'ok' });
+
+      expect(logs.some((line) => line.includes('examined=1, relayed=1, released=0'))).toBe(true);
+      expect(
+        errors.some((line) => line.includes('fulfillment_relay_reconcile_page_all_stalled'))
+      ).toBe(false);
+    });
+
+    it('should count a shipment-grain failure as released when the source rejects it again', async () => {
+      // `released` is the outcome that keeps a candidate on the frontier. A
+      // shipment-failed work has its slot still open, so it is exactly that —
+      // and it must NOT be reported as relayed, which would hide that the buyer
+      // still has no tracking number.
+      reconcile.listUnrelayedDispatches.mockResolvedValue(page([candidate('ol_work_1')]));
+      router.routeDispatch.mockResolvedValue({
+        status: 'shipment-failed',
+        shipmentId: 'ol_shipment_1',
+        reason: 'outcome=notified, source=failed',
+      });
+
+      await expect(handler.execute(job())).resolves.toEqual({ outcome: 'ok' });
+
+      expect(logs.some((line) => line.includes('examined=1, relayed=0, released=1'))).toBe(true);
+      expect(
+        errors.some((line) => line.includes('fulfillment_relay_reconcile_page_all_stalled'))
+      ).toBe(true);
+    });
+
+    it('should hand the router nothing but the work id when it re-drives a candidate', async () => {
+      reconcile.listUnrelayedDispatches.mockResolvedValue(page([candidate('ol_work_1')]));
+
+      await handler.execute(job());
+
+      expect(router.routeDispatch).toHaveBeenCalledWith('ol_work_1');
+      expect(router.routeDispatch).toHaveBeenCalledTimes(1);
+    });
   });
 
   it('should count a released re-drive without failing the job', async () => {
     // A transient failure leaves the work on the frontier for the next tick. That
     // is the pass working, not the job failing.
     reconcile.listUnrelayedDispatches.mockResolvedValue(page([candidate('ol_work_1')]));
-    relay.relayDispatch.mockResolvedValue({ status: 'released', reason: 'boom' });
+    router.routeDispatch.mockResolvedValue({ status: 'released', reason: 'boom' });
 
     await expect(handler.execute(job())).resolves.toEqual({ outcome: 'ok' });
   });
 
   it('should treat a lost claim race as an ordinary outcome, never a failure', async () => {
     reconcile.listUnrelayedDispatches.mockResolvedValue(page([candidate('ol_work_1')]));
-    relay.relayDispatch.mockResolvedValue({ status: 'already-relayed' });
+    router.routeDispatch.mockResolvedValue({ status: 'already-relayed' });
 
     await expect(handler.execute(job())).resolves.toEqual({ outcome: 'ok' });
   });
@@ -185,7 +234,7 @@ describe('FulfillmentWorkRelaySweepHandler (#2728)', () => {
     expect(errors.some((line) => line.includes(STUCK_DETAIL))).toBe(true);
     // Still attempted: `adapter-unresolved` is transient by #1947's own
     // classification and clears on a re-auth.
-    expect(relay.relayDispatch).toHaveBeenCalledTimes(1);
+    expect(router.routeDispatch).toHaveBeenCalledTimes(1);
   });
 
   it('should not escalate a candidate inside the bound', async () => {
@@ -203,7 +252,7 @@ describe('FulfillmentWorkRelaySweepHandler (#2728)', () => {
     reconcile.listUnrelayedDispatches.mockResolvedValue(
       page([candidate('ol_work_1'), candidate('ol_work_2')])
     );
-    relay.relayDispatch.mockResolvedValue({ status: 'released', reason: 'boom' });
+    router.routeDispatch.mockResolvedValue({ status: 'released', reason: 'boom' });
 
     await handler.execute(job());
 
@@ -217,7 +266,7 @@ describe('FulfillmentWorkRelaySweepHandler (#2728)', () => {
     reconcile.listUnrelayedDispatches.mockResolvedValue(
       page([candidate('ol_work_1'), candidate('ol_work_2')])
     );
-    relay.relayDispatch
+    router.routeDispatch
       .mockResolvedValueOnce({ status: 'released', reason: 'boom' })
       .mockResolvedValueOnce({ status: 'already-relayed' });
 
@@ -240,13 +289,13 @@ describe('FulfillmentWorkRelaySweepHandler (#2728)', () => {
     reconcile.listUnrelayedDispatches.mockResolvedValue(
       page([candidate('ol_work_1'), candidate('ol_work_2')])
     );
-    relay.relayDispatch
+    router.routeDispatch
       .mockRejectedValueOnce(new Error('claim read exploded'))
       .mockResolvedValueOnce({ status: 'relayed' });
 
     await expect(handler.execute(job())).resolves.toEqual({ outcome: 'ok' });
 
-    expect(relay.relayDispatch).toHaveBeenCalledTimes(2);
+    expect(router.routeDispatch).toHaveBeenCalledTimes(2);
   });
 
   it('should wrap a failed read in SyncJobExecutionError and release the lock', async () => {

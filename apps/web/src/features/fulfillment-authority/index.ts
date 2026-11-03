@@ -47,6 +47,10 @@ export { WhoDecidesQuestionRow } from './components/who-decides-question-row';
 export { useOmsAttentionQuery } from './hooks/use-oms-attention-query';
 export type { OmsAttentionProjection } from './hooks/use-oms-attention-query';
 export { useWhoDecidesStatusQuery } from './hooks/use-who-decides-status-query';
+export { deriveOmsRoutingState, useOmsRoutingState } from './hooks/use-oms-routing-state';
+export type { UseOmsRoutingStateOptions } from './hooks/use-oms-routing-state';
+export { OmsRoutingStateValues } from './hooks/use-oms-routing-state.types';
+export type { OmsRoutingState } from './hooks/use-oms-routing-state.types';
 export { useApplyPresetMutation } from './hooks/use-apply-preset-mutation';
 export { usePresetPreviewQuery } from './hooks/use-preset-preview-query';
 

@@ -160,6 +160,24 @@ export const ATTENTION_REASON_COPY = {
     body: 'OpenLinker has never seen the order this return belongs to, so nothing is triggered from it — no stock change, no refund, no credit note.',
     action: 'Nothing to do. If the order arrives later, OpenLinker matches it automatically.',
   },
+  // #3453 — with packing on, OpenLinker lowers the stock in your shop for each
+  // sold line. This says that did not happen, or that OpenLinker is not sure.
+  'stock-decrement-blocked': {
+    title: 'Stock for order {ref} was not lowered in your shop',
+    titleFallback: 'Stock for this order was not lowered in your shop',
+    body: "OpenLinker could not lower the stock for this sale in the shop that owns the product, or it is not sure the change went through. Your shop may still show these items as in stock.",
+    action: 'Open the order, then check the stock of its products in your shop and correct it there if needed.',
+  },
+  // #2731 — the reaper closed a decision that waited past its time limit with no
+  // answer. Routing is retried at once when a router is available, otherwise as
+  // soon as one is, so the copy promises a retry and never a restart that may
+  // not have happened. Usually clears on its own.
+  'routing-stuck': {
+    title: 'Choosing where to pack order {ref} got stuck',
+    titleFallback: 'Choosing where to pack this order got stuck',
+    body: 'OpenLinker asked where to pack this order and got no answer in time, so it stopped waiting and will choose again. OpenLinker created no packing work for it in the meantime.',
+    action: 'Usually nothing to do. If this stays or keeps coming back, check the connection that decides where orders are packed.',
+  },
 } satisfies Record<AuthorityAttentionReason, AttentionReasonCopy>;
 
 /** The short row label per badge code. */

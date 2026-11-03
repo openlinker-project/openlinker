@@ -19,7 +19,11 @@ const MASTER = 'conn-master-1';
 const VARIANT = 'ol_variant_aaaa';
 
 describe('ProductPublishBuilderService', () => {
-  let products: { getVariant: jest.Mock; getVariantsByProductId: jest.Mock };
+  let products: {
+    getVariant: jest.Mock;
+    getVariantsByProductId: jest.Mock;
+    getEffectiveTaxRate: jest.Mock;
+  };
   let connectionPort: { get: jest.Mock };
   let integrations: { getCapabilityAdapter: jest.Mock };
   // #2323 — the seam owns the stock safety buffer. These fixtures configure
@@ -47,6 +51,11 @@ describe('ProductPublishBuilderService', () => {
       getVariantsByProductId: jest
         .fn()
         .mockResolvedValue([{ id: VARIANT, productId: 'prod-1', attributes: { Brand: 'Acme' } }]),
+      // ADR-077: the catalogue rate travels on the command. No rate by default,
+      // so the pre-#3737 suites keep building a rate-less command.
+      getEffectiveTaxRate: jest
+        .fn()
+        .mockResolvedValue({ code: null, countryIso2: null, readAt: null }),
     };
     connectionPort = {
       get: jest.fn().mockResolvedValue({ config: { masterCatalogConnectionId: MASTER } }),
@@ -123,6 +132,15 @@ describe('ProductPublishBuilderService', () => {
     // Default mock variant has sku: null ⇒ the key is spread-omitted entirely
     // (not merely set to undefined).
     expect(command).not.toHaveProperty('sku');
+  });
+
+  it('should use the master name when the content title override is blank', async () => {
+    const command = await service.buildPublishProductCommand({
+      ...baseInput,
+      content: { title: '  ' },
+    });
+
+    expect(command.content?.title).toBe('Widget');
   });
 
   it('should pass master stock through unchanged when the connection has no buffer (default 0) (#1844)', async () => {
@@ -352,11 +370,99 @@ describe('ProductPublishBuilderService', () => {
     );
   });
 
+  describe('catalogue tax rate (ADR-077)', () => {
+    const warnSpyOf = (): jest.SpyInstance =>
+      jest.spyOn((service as unknown as { logger: { warn: (message: string) => void } }).logger, 'warn');
+
+    it('should stamp taxRate and taxRateCountry when the catalogue holds a rate for the variant', async () => {
+      products.getEffectiveTaxRate.mockResolvedValue({
+        code: '23',
+        countryIso2: 'PL',
+        readAt: new Date('2026-10-01T00:00:00Z'),
+      });
+
+      const command = await service.buildPublishProductCommand(baseInput);
+
+      // The variant's own product id, never the input's variant id twice.
+      expect(products.getEffectiveTaxRate).toHaveBeenCalledWith('prod-1', VARIANT);
+      expect(command.taxRate).toBe('23');
+      expect(command.taxRateCountry).toBe('PL');
+      // The price itself stays the gross catalogue price - the shop converts.
+      expect(command.price).toEqual({ amount: 12.5, currency: 'PLN' });
+    });
+
+    it('should stamp taxRate without a country when the rate was resolved country-less', async () => {
+      products.getEffectiveTaxRate.mockResolvedValue({
+        code: '8',
+        countryIso2: null,
+        readAt: new Date('2026-10-01T00:00:00Z'),
+      });
+
+      const command = await service.buildPublishProductCommand(baseInput);
+
+      expect(command.taxRate).toBe('8');
+      expect(command).not.toHaveProperty('taxRateCountry');
+    });
+
+    it('should leave taxRate and taxRateCountry absent when the catalogue holds no rate', async () => {
+      const command = await service.buildPublishProductCommand(baseInput);
+
+      expect(command).not.toHaveProperty('taxRate');
+      expect(command).not.toHaveProperty('taxRateCountry');
+    });
+
+    it('should build the command without a rate and warn when the rate read throws', async () => {
+      products.getEffectiveTaxRate.mockRejectedValue(new Error('rate read failed'));
+      const warnSpy = warnSpyOf();
+
+      const command = await service.buildPublishProductCommand(baseInput);
+
+      expect(command).not.toHaveProperty('taxRate');
+      expect(command).not.toHaveProperty('taxRateCountry');
+      expect(command.price).toEqual({ amount: 12.5, currency: 'PLN' });
+      expect(warnSpy).toHaveBeenCalledWith(
+        expect.stringContaining('Could not read the catalogue tax rate')
+      );
+      expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('rate read failed'));
+    });
+  });
+
   describe('variantGroup (#1836)', () => {
     it('should leave variantGroup absent for a single-variant / simple product', async () => {
       const command = await service.buildPublishProductCommand(baseInput);
 
       expect(command.variantGroup).toBeUndefined();
+    });
+
+    it('should leave variantGroup absent when every other sibling was deleted at the master', async () => {
+      products.getVariantsByProductId.mockResolvedValue([
+        { id: VARIANT, productId: 'prod-1', attributes: { Color: 'Red' } },
+        { id: 'ol_variant_bbbb', productId: 'prod-1', attributes: {}, isStale: true },
+      ]);
+
+      const command = await service.buildPublishProductCommand(baseInput);
+
+      expect(command.variantGroup).toBeUndefined();
+    });
+
+    it('should leave a deleted sibling out of the parent options', async () => {
+      products.getVariantsByProductId.mockResolvedValue([
+        { id: VARIANT, productId: 'prod-1', attributes: { Color: 'Red' } },
+        { id: 'ol_variant_bbbb', productId: 'prod-1', attributes: { Color: 'Blue' } },
+        { id: 'ol_variant_cccc', productId: 'prod-1', attributes: { Color: 'Green' }, isStale: true },
+      ]);
+      products.getVariant.mockResolvedValue({
+        id: VARIANT,
+        productId: 'prod-1',
+        attributes: { Color: 'Red' },
+        ean: null,
+        gtin: null,
+        sku: null,
+      });
+
+      const command = await service.buildPublishProductCommand(baseInput);
+
+      expect(command.variantGroup?.groupAttributeValues).toEqual({ Color: ['Red', 'Blue'] });
     });
 
     it('should stamp a variantGroup with the union of sibling attribute values for a multi-variant product', async () => {
@@ -386,6 +492,57 @@ describe('ProductPublishBuilderService', () => {
           Color: ['Red', 'Blue'],
           Size: ['M', 'L'],
         },
+        // No sibling reports a picture of its own, so the variation shows the
+        // product gallery - the behaviour before variant pictures existed.
+        imageUrls: ['http://img'],
+      });
+    });
+
+    describe('variation images', () => {
+      const red = {
+        id: VARIANT,
+        productId: 'prod-1',
+        attributes: { Color: 'Red' },
+        images: ['http://img/red'],
+      };
+      const green = {
+        id: 'ol_variant_green',
+        productId: 'prod-1',
+        attributes: { Color: 'Green' },
+        images: ['http://img/green'],
+      };
+
+      beforeEach(() => {
+        products.getVariantsByProductId.mockResolvedValue([red, green]);
+        products.getVariant.mockResolvedValue({ ...red, ean: null, gtin: null, sku: null });
+        productMaster.getProduct.mockResolvedValue({
+          name: 'Widget',
+          description: 'A widget',
+          images: ['http://img/main', 'http://img/red', 'http://img/green'],
+          price: 12.5,
+          currency: 'PLN',
+        });
+      });
+
+      it('should give the variation its own default images while the parent keeps the whole gallery', async () => {
+        const command = await service.buildPublishProductCommand(baseInput);
+
+        expect(command.variantGroup?.imageUrls).toEqual(['http://img/red', 'http://img/main']);
+        expect(command.content?.imageUrls).toEqual([
+          'http://img/main',
+          'http://img/red',
+          'http://img/green',
+        ]);
+      });
+
+      it('should leave the variation images out when the operator overrode the images', async () => {
+        const command = await service.buildPublishProductCommand({
+          ...baseInput,
+          content: { imageUrls: ['http://img/mine'] },
+        });
+
+        expect(command.variantGroup).not.toHaveProperty('imageUrls');
+        expect(command.content?.imageUrls).toEqual(['http://img/mine']);
       });
     });
 

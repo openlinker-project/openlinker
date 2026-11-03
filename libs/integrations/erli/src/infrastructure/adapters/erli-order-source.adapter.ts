@@ -517,6 +517,12 @@ export class ErliOrderSourceAdapter
    *   either `offerManager` or `inventoryQuery` is absent (pre-wired callers and
    *   tests that don't set up those deps), `applied` on success, `rejected` on any
    *   error (order-fetch failure, inventory-read failure, or stock-write failure).
+   * - `delivered` / `in-progress` (#3526) → DECLINED (`unsupported`).
+   *   `erli-fulfillment.types.ts`'s own `ERLI_OL_TO_ORDER_STATUS` docblock
+   *   already records this: Erli's order-status enum is
+   *   `pending | purchased | cancelled | returned` — no `delivered` member at
+   *   all, and "processing" is already the ordinary `purchased` state with no
+   *   distinct status to push for it.
    *
    * `externalOrderId` is resolved upstream by the relay (this adapter does no
    * identifier mapping). Log hygiene: NEVER log `trackingNumber` / `externalOrderId`
@@ -524,6 +530,16 @@ export class ErliOrderSourceAdapter
    */
   async write(event: OrderLifecycleEvent): Promise<OrderWritebackResult> {
     switch (event.type) {
+      case 'delivered':
+      case 'in-progress': {
+        return {
+          outcome: 'unsupported',
+          detail: `Erli order-status enum has no '${event.type}' member`,
+        };
+      }
+
+      // The cancel reason stays in OpenLinker (#3540): Erli has no confirmed cancel
+      // call, only the stock restore below, so `event.reason` has no field to ride.
       case 'cancelled': {
         if (!this.offerManager || !this.inventoryQuery) {
           return {
@@ -538,7 +554,19 @@ export class ErliOrderSourceAdapter
             this.offerManager,
             this.inventoryQuery,
           );
-          return { outcome: 'applied' };
+          // `stock-only`, not `channel` (#3540): Erli's order-status enum lists
+          // `cancelled`, but its write is unconfirmed (the same #992 provisional
+          // state that gates the `sent` push above) and no cancel endpoint is
+          // documented anywhere in this package or ADR-025. Calling an
+          // unconfirmed endpoint against a live buyer order is the wrong risk to
+          // take, so OL does the part it can verify - restoring stock - and says
+          // so, letting an operator-facing surface avoid claiming that Erli was
+          // told. Revisit when #992 confirms the status write.
+          return {
+            outcome: 'applied',
+            scope: 'stock-only',
+            detail: 'Stock restored; Erli has no confirmed cancel call, so the order stays open there.',
+          };
         } catch (error) {
           const detail = error instanceof Error ? error.message : String(error);
           this.logger.warn(

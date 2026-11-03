@@ -80,6 +80,7 @@ import {
 } from '../../../../shared/ui';
 import type { DescriptionFormat, StatusBadgeTone } from '../../../../shared/ui';
 import { useDescriptionFormatQuery } from '../../hooks/use-description-format-query';
+import { useFormat } from '../../../../shared/i18n';
 import { Tooltip, TooltipContent, TooltipTrigger } from '../../../../shared/ui/tooltip';
 import { useToast } from '../../../../shared/ui/toast-provider';
 import { ReadOnlyLock } from '../../../../shared/ui/read-only-lock';
@@ -102,8 +103,10 @@ import { BulkCategoryChooseModal } from './bulk-category-choose-modal';
 import { ShopCategoryPickerModal } from './shop-category-picker-modal';
 import { ShopAttributePicker } from './shop-attribute-picker';
 import { BulkImageLightbox } from './bulk-image-lightbox';
+import { BulkImageStrip } from './bulk-image-strip';
 import {
   blockerLabel,
+  categoryNotSetApplies,
   isCategoryBlocker,
   isVariantScopeFixable,
   CATEGORY_EFFECT_CHIP,
@@ -120,7 +123,11 @@ import {
   categoryParametersToOfferParameters,
 } from '../category-parameters-to-offer-parameters';
 import { isParameterVisible } from '../category-parameter-visibility';
-import { injectEanParameter, isEanParameterName } from '../auto-prefill-parameters';
+import {
+  injectEanParameter,
+  isEanParameterName,
+  prefillFromVariantAttributes,
+} from '../auto-prefill-parameters';
 import type { CategoryParameter, OfferParameter } from '../../api/listings.types';
 import type { CategoryParameterFormValues, FormParameterValue } from '../category-parameter-form.types';
 import {
@@ -138,6 +145,7 @@ import type {
 } from './bulk-wizard.types';
 import {
   computeResolvedPrice,
+  defaultImagesForVariant,
   distinguishingLabel,
   duplicateEanVariantIds,
   isValidGtin,
@@ -452,6 +460,15 @@ export function BulkEditModal({
  */
 interface VariantEdit {
   ean: string;
+  /**
+   * The exact (trimmed) EAN the operator confirmed with "I confirm this EAN is
+   * correct - submit anyway" (#3492). Keyed to the digits rather than stored as
+   * a boolean, so an acknowledgement never carries onto a different value no
+   * matter which path edits the EAN (the RHF base field, a per-variant input,
+   * or any later paste / bulk-apply / re-seed) - there is nothing to reset.
+   * Read it only through `isEanAcknowledged`.
+   */
+  eanAcknowledgedFor?: string;
   price?: string;
   publishImmediately?: boolean;
   title?: string;
@@ -466,14 +483,70 @@ interface VariantEdit {
   params: Record<string, FormParameterValue>;
 }
 
+/** Whether a form value carries anything - `''`, `[]` and `undefined` all read as empty. */
+function hasFormValue(value: FormParameterValue): boolean {
+  if (value === undefined) return false;
+  if (typeof value === 'string') return value.trim() !== '';
+  if (Array.isArray(value)) return value.length > 0;
+  return value.from.trim() !== '' || value.to.trim() !== '';
+}
+
+/**
+ * The variant edits as the operator left them, for the dirty check (#3851): an
+ * attribute-prefilled value still equal to what was filled is not an edit, and
+ * one the operator cleared is (marked `null`, which no real value can be).
+ */
+function withoutAutoFilledParams(
+  variantEdits: Record<string, VariantEdit>,
+  autoFilled: Record<string, CategoryParameterFormValues>,
+): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const [variantId, edit] of Object.entries(variantEdits)) {
+    const filled = autoFilled[variantId];
+    if (!filled) {
+      out[variantId] = edit;
+      continue;
+    }
+    const params: Record<string, FormParameterValue | null> = {};
+    for (const [paramId, value] of Object.entries(edit.params)) {
+      if (JSON.stringify(value) !== JSON.stringify(filled[paramId])) params[paramId] = value;
+    }
+    for (const paramId of Object.keys(filled)) {
+      if (!(paramId in edit.params)) params[paramId] = null;
+    }
+    out[variantId] = { ...edit, params };
+  }
+  return out;
+}
+
+/** Same URLs in the same order - the published list is ordered, so order matters. */
+function sameImageList(a: readonly string[], b: readonly string[]): boolean {
+  return a.length === b.length && a.every((url, i) => url === b[i]);
+}
+
 function masterBarcodeOf(variant: BulkVariantRow): string {
   return (variant.variant.ean ?? variant.variant.gtin ?? '').trim();
 }
 
+/**
+ * Whether `acknowledgedFor` confirms exactly `ean`, and `ean` actually fails the
+ * GS1 checksum (#3492). The single rule behind both checkboxes and both
+ * save-time emissions: an acknowledgement for other digits does not count, and
+ * a valid EAN never emits a stray `eanOverrideAcknowledged: true`.
+ */
+function isEanAcknowledged(acknowledgedFor: string | undefined, ean: string): boolean {
+  const trimmed = ean.trim();
+  return trimmed !== '' && !isValidGtin(trimmed) && acknowledgedFor === trimmed;
+}
+
 function initVariantEdit(variant: BulkVariantRow): VariantEdit {
   const o = variant.override.overrides ?? {};
+  const ean = (o.ean ?? masterBarcodeOf(variant)).trim();
   return {
-    ean: (o.ean ?? masterBarcodeOf(variant)).trim(),
+    ean,
+    // A persisted acknowledgement was given for the effective EAN it was saved
+    // with - the override when present, else the master barcode - i.e. `ean`.
+    eanAcknowledgedFor: o.eanOverrideAcknowledged === true ? ean : undefined,
     price: variant.override.price !== undefined ? String(variant.override.price.amount) : undefined,
     publishImmediately: variant.override.publishImmediately,
     title: typeof o.title === 'string' ? o.title : undefined,
@@ -522,6 +595,7 @@ function BulkEditModalForm({
   onSave,
   onClose,
 }: BulkEditModalFormProps): ReactElement {
+  const { number: formatNumber } = useFormat();
   const connectionId = connection.id;
   // ADR-046: one read for the whole modal. Every description field below derives
   // its toolbar and schema from this, so a control the destination would discard
@@ -539,6 +613,18 @@ function BulkEditModalForm({
   const masterImages = useMemo(
     () => (row.product?.images ?? []).filter((u): u is string => typeof u === 'string' && u.trim() !== ''),
     [row.product?.images],
+  );
+  // The default set the base panel offers. A single-variant product is edited
+  // as one offer, and the backend lists that offer with the variant's default
+  // (its own picture first), so the panel must show the same list - not the
+  // bare product gallery - or the operator sees a different first image than
+  // the one published.
+  const baseDefaultImages = useMemo(
+    () =>
+      !isMultiVariant && row.variants[0]
+        ? defaultImagesForVariant(row.variants[0], masterImages)
+        : masterImages,
+    [isMultiVariant, row.variants, masterImages],
   );
 
   const [scope, setScope] = useState<string>(
@@ -576,6 +662,17 @@ function BulkEditModalForm({
     for (const v of row.variants) map[v.variantId] = v.included;
     return map;
   });
+  // Per-variant parameter values the editor filled from the variant's own
+  // attributes (#3851), by variant id then parameter id. Kept so the dirty check
+  // can tell a value WE wrote from one the operator typed - otherwise opening
+  // and closing the editor would ask to discard changes nobody made.
+  const [autoFilledParams, setAutoFilledParams] = useState<
+    Record<string, CategoryParameterFormValues>
+  >({});
+  // `variantId:paramId` pairs the prefill already decided on, filled or not. A
+  // pair is decided once: a value the operator cleared or replaced must not
+  // come back when a schema re-resolves.
+  const prefillDecidedRef = useRef<Set<string>>(new Set());
 
   // Product-level platform overrides (#1096) - shared base scope.
   const [platformParams, setPlatformParams] = useState<Record<string, unknown>>(
@@ -725,7 +822,7 @@ function BulkEditModalForm({
   // ── Dirty tracking (vs the on-open snapshot) ──
   const snapshotRef = useRef<string | null>(null);
   const liveState = JSON.stringify({
-    variantEdits,
+    variantEdits: withoutAutoFilledParams(variantEdits, autoFilledParams),
     included,
     platformParams,
     baseValues,
@@ -762,6 +859,62 @@ function BulkEditModalForm({
     });
   }, []);
 
+  // ── Attribute prefill (#3851) ──
+  // A sibling's distinguishing attributes (`Kolor: czerwony`) fill the category
+  // parameter of the same name, as a per-variant override the operator can
+  // reset. Per-variant only: a sibling attribute is by definition not shared,
+  // so the base is never written. Runs once a sibling's schema is known (its
+  // own category's, else the base's), and never over a value already present -
+  // the operator's, or one the shared base carries for every sibling.
+  useEffect(() => {
+    if (!isMultiVariant) return;
+    const baseParams = (baseValues.parameters ?? {}) as CategoryParameterFormValues;
+    const fills: Record<string, CategoryParameterFormValues> = {};
+    for (const variant of row.variants) {
+      const edit = variantEdits[variant.variantId];
+      if (!edit) continue;
+      const schema = variantParamSchema(edit);
+      if (schema === null || schema.length === 0) continue;
+      const perVariantSchema = schema.filter(
+        (p) => !BASE_ONLY_PARAM_NAMES.includes(p.name.trim().toLowerCase()),
+      );
+      const candidates = prefillFromVariantAttributes(
+        perVariantSchema,
+        variant.distinguishingAttributes,
+      );
+      for (const [paramId, value] of Object.entries(candidates)) {
+        const key = `${variant.variantId}:${paramId}`;
+        if (prefillDecidedRef.current.has(key)) continue;
+        prefillDecidedRef.current.add(key);
+        if (hasFormValue(edit.params[paramId]) || hasFormValue(baseParams[paramId])) continue;
+        fills[variant.variantId] = { ...(fills[variant.variantId] ?? {}), [paramId]: value };
+      }
+    }
+    if (Object.keys(fills).length === 0) return;
+    setVariantEdits((prev) => {
+      const next = { ...prev };
+      for (const [variantId, values] of Object.entries(fills)) {
+        const current = next[variantId];
+        if (!current) continue;
+        const params = { ...current.params };
+        // Re-checked against the latest state: the operator may have typed in
+        // the same field between this render and the update.
+        for (const [paramId, value] of Object.entries(values)) {
+          if (!hasFormValue(params[paramId])) params[paramId] = value;
+        }
+        next[variantId] = { ...current, params };
+      }
+      return next;
+    });
+    setAutoFilledParams((prev) => {
+      const next = { ...prev };
+      for (const [variantId, values] of Object.entries(fills)) {
+        next[variantId] = { ...(next[variantId] ?? {}), ...values };
+      }
+      return next;
+    });
+  }, [isMultiVariant, row.variants, variantEdits, variantParamSchema, baseValues.parameters]);
+
   // ── Save ──
   const handleSaveAll = async (): Promise<void> => {
     const baseForm = baseFormRef.current;
@@ -769,6 +922,27 @@ function BulkEditModalForm({
     const valid = await baseForm.trigger();
     if (!valid) {
       setScope(isMultiVariant ? 'base' : 'simple');
+      // A missing category on a browsable destination has no inline field: it is
+      // marked only by the chip's warning triangle, so without this the click is
+      // a silent no-op - the dead-end #1946 removed for a variant category.
+      // Read the field state directly: `formState.errors` through this ref is
+      // only refreshed on the next render, so right after trigger() it is empty.
+      const categoryMissing = canBrowseCategories && !baseForm.getValues('categoryId');
+      showToast({
+        tone: 'error',
+        title: categoryMissing ? "Can't save yet - choose a category" : "Can't save yet - fix the highlighted fields",
+        description: categoryMissing
+          ? `${platformName} needs a category for every offer. Use "set category" at the top of this panel.`
+          : 'Each field that needs a change shows what to fix below it.',
+      });
+      const target = categoryMissing ? 'category' : baseForm.getFieldState('priceAmount').invalid ? 'price' : null;
+      if (target !== null) {
+        requestAnimationFrame(() => {
+          const anchor = document.querySelector(`[data-focus-field="${target}"]`);
+          anchor?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+          anchor?.querySelector<HTMLElement>('input:not([type="hidden"]), select, textarea, button')?.focus({ preventScroll: true });
+        });
+      }
       return;
     }
 
@@ -829,7 +1003,7 @@ function BulkEditModalForm({
       showToast({
         tone: 'error',
         title: 'Description too long for this destination',
-        description: `Shorten it to ${descriptionFormat.maxBytes.toLocaleString()} bytes or fewer - ${platformName} rejects a longer one.`,
+        description: `Shorten it to ${formatNumber(descriptionFormat.maxBytes)} bytes or fewer - ${platformName} rejects a longer one.`,
       });
       return;
     }
@@ -864,17 +1038,31 @@ function BulkEditModalForm({
     // the lone variant's master barcode - a blank or unchanged value inherits.
     const baseEan = values.ean.trim();
     const primaryMasterBarcode = masterBarcodeOf(row.variants[0]);
+    // Simple-product acknowledgement (#3492) - only for a genuine single-variant
+    // product; a multi-variant base carries no offer-EAN of its own (see the
+    // comment above `baseParameters`).
+    const simpleEanAck =
+      !isMultiVariant &&
+      isEanAcknowledged(variantEdits[row.variants[0].variantId]?.eanAcknowledgedFor, baseEan);
     // Per-product policy is emitted only for a multi-variant product and only
     // when it diverges from the batch default (#1741); simple products use their
     // explicit Price/Stock inputs instead.
     const pricingDiverges = isMultiVariant && !pricingPolicyEquals(pricingPolicy, batchPricingPolicy);
     const stockDiverges = isMultiVariant && !stockPolicyEquals(stockPolicy, batchStockPolicy);
+    // Stock is only meaningful for a simple product; master stock is
+    // authoritative (incl. 0) for multi-variant siblings. It is emitted only
+    // when the operator set it - now, or on an earlier save - because the field
+    // is pre-filled from the master (or `0` when OpenLinker has none), and
+    // emitting that untouched pre-fill made it an explicit override: a variant
+    // whose stock was never synced listed at 0 with no blocker, and a batch
+    // stock policy was silently replaced by the master figure (#3851).
+    const stockSetByOperator =
+      !isMultiVariant &&
+      (row.override.stock !== undefined || Number(values.stock) !== Number(initialBase.stock));
     const baseOverride: BulkPerProductOverride = {
       publishImmediately: values.publishImmediately,
       ...(baseAmount !== '' ? { price: { amount: Number(baseAmount.replace(',', '.')), currency } } : {}),
-      // Stock is only meaningful for a simple product; master stock is
-      // authoritative (incl. 0) for multi-variant siblings.
-      ...(!isMultiVariant ? { stock: Number(values.stock) } : {}),
+      ...(stockSetByOperator ? { stock: Number(values.stock) } : {}),
       ...(pricingDiverges ? { pricingPolicy } : {}),
       ...(stockDiverges ? { stockPolicy } : {}),
       overrides: {
@@ -883,6 +1071,7 @@ function BulkEditModalForm({
         ...(values.categoryId ? { categoryId: values.categoryId } : {}),
         ...(values.productCardId ? { productCardId: values.productCardId } : {}),
         ...(baseEan !== '' && baseEan !== primaryMasterBarcode ? { ean: baseEan } : {}),
+        ...(simpleEanAck ? { eanOverrideAcknowledged: true } : {}),
         ...(baseImageUrls !== undefined ? { imageUrls: baseImageUrls } : {}),
         ...(baseParameters.length > 0 ? { parameters: baseParameters } : {}),
         ...(Object.keys(platformParams).length > 0 ? { platformParams } : {}),
@@ -898,7 +1087,12 @@ function BulkEditModalForm({
 
         const eanTrimmed = edit.ean.trim();
         if (eanTrimmed !== '' && eanTrimmed !== masterBarcodeOf(variant)) overrides.ean = eanTrimmed;
-        if (edit.title !== undefined) overrides.title = edit.title;
+        if (isEanAcknowledged(edit.eanAcknowledgedFor, eanTrimmed)) {
+          overrides.eanOverrideAcknowledged = true;
+        }
+        // A cleared title inherits the base, like a cleared price: an offer
+        // cannot be listed without a title.
+        if (edit.title !== undefined && edit.title.trim() !== '') overrides.title = edit.title;
         if (edit.description !== undefined) overrides.description = edit.description;
         if (edit.imageUrls !== undefined) overrides.imageUrls = edit.imageUrls;
         if (edit.categoryId !== undefined) overrides.categoryId = edit.categoryId;
@@ -1168,11 +1362,16 @@ function BulkEditModalForm({
             platformParams={platformParams}
             onPlatformParamsChange={setPlatformParams}
             batchDeliveryPriceList={batchDeliveryPriceList}
-            masterImages={masterImages}
+            masterImages={baseDefaultImages}
             baseImageUrls={baseImageUrls}
             onBaseImageUrlsChange={setBaseImageUrls}
             onZoom={setZoomSrc}
             pricingPolicy={pricingPolicy}
+            inheritedSimplePrice={resolveBasePrice(
+              { ...baseValues, priceAmount: '' },
+              pricingPolicy,
+              row.variants[0]?.masterPrice ?? row.masterPrice,
+            )}
             onPricingPolicyChange={setPricingPolicy}
             stockPolicy={stockPolicy}
             onStockPolicyChange={setStockPolicy}
@@ -1182,6 +1381,10 @@ function BulkEditModalForm({
             initialValues={initialBase}
             simpleIncluded={included[row.variants[0].variantId]}
             onSimpleIncludedChange={(next) => setIncluded((prev) => ({ ...prev, [row.variants[0].variantId]: next }))}
+            eanAcknowledgedFor={variantEdits[row.variants[0].variantId]?.eanAcknowledgedFor}
+            onEanAcknowledgedForChange={(next) =>
+              patchVariant(row.variants[0].variantId, { eanAcknowledgedFor: next })
+            }
             onReady={(form) => {
               baseFormRef.current = form;
             }}
@@ -1208,12 +1411,17 @@ function BulkEditModalForm({
                       included={included[v.variantId]}
                       baseValues={baseValues}
                       basePriceValue={resolveBasePrice(baseValues, pricingPolicy, v.masterPrice)}
-                      masterImages={masterImages}
+                      inheritedImages={baseImageUrls ?? defaultImagesForVariant(v, masterImages)}
+                      inheritsVariantDefault={
+                        baseImageUrls === undefined &&
+                        !sameImageList(defaultImagesForVariant(v, masterImages), masterImages)
+                      }
                       onZoom={setZoomSrc}
                       connection={connection}
                       baseCategoryPathNames={displayPathNames}
                       categoryParameters={renderableCategoryParameters}
                       ownCategoryParameters={ownVariantSchema(v.variantId)}
+                      autoFilledParams={autoFilledParams[v.variantId]}
                       ownCategoryParametersFailed={ownVariantSchemaFailed(v.variantId)}
                       onRetryOwnCategoryParameters={() => retryOwnVariantSchema(v.variantId)}
                       duplicateEan={dupEanIds.has(v.variantId)}
@@ -1386,6 +1594,13 @@ interface BaseScopeFormProps {
    * `fieldset[disabled]`, which does not reach a `contenteditable` (#2200).
    */
   readOnly: boolean;
+  /**
+   * The price a simple product's offer gets when the Price field is left
+   * blank (the batch pricing policy over the master price), formatted, or ''
+   * when nothing resolves. Shown in the field so a blank one reads as that
+   * price rather than as an example value.
+   */
+  inheritedSimplePrice: string;
 
   /**
    * The destination's declared description contract (ADR-046). Resolved once by
@@ -1425,6 +1640,15 @@ interface BaseScopeFormProps {
   initialValues: BulkEditModalValues;
   simpleIncluded: boolean;
   onSimpleIncludedChange: (next: boolean) => void;
+  /**
+   * "I confirm this EAN is correct - submit anyway" for the sole variant of a
+   * simple product (#3492). Stored in `variantEdits` rather than the RHF form
+   * (mirrors `simpleIncluded`'s prop-threading, since this form has no
+   * `connectionId`-scoped state of its own for it). Holds the exact EAN that was
+   * acknowledged, not a boolean - see `VariantEdit.eanAcknowledgedFor`.
+   */
+  eanAcknowledgedFor: string | undefined;
+  onEanAcknowledgedForChange: (next: string | undefined) => void;
   onReady: (form: UseFormReturn<BulkEditModalValues, undefined, BulkEditModalSubmission>) => void;
   onValuesChange: (values: BulkEditModalValues) => void;
 }
@@ -1449,6 +1673,7 @@ function BaseScopeForm({
   onBaseImageUrlsChange,
   onZoom,
   pricingPolicy,
+  inheritedSimplePrice,
   onPricingPolicyChange,
   stockPolicy,
   onStockPolicyChange,
@@ -1458,11 +1683,11 @@ function BaseScopeForm({
   initialValues,
   simpleIncluded,
   onSimpleIncludedChange,
+  eanAcknowledgedFor,
+  onEanAcknowledgedForChange,
   onReady,
   onValuesChange,
 }: BaseScopeFormProps): ReactElement {
-  const [addingImage, setAddingImage] = useState(false);
-  const [newImageUrl, setNewImageUrl] = useState('');
   const effectiveImages = baseImageUrls ?? masterImages;
   const imagesOverridden = baseImageUrls !== undefined;
   const schema = useMemo(() => makeBulkEditModalSchema(canBrowseCategories), [canBrowseCategories]);
@@ -1558,6 +1783,22 @@ function BaseScopeForm({
                 Invalid GTIN checksum - Allegro will reject this EAN.
               </div>
             ) : null}
+            {eanInvalid ? (
+              <div className="bulk-editor__ean-ack">
+                <Alert tone="warning">
+                  <label className="checkbox-row">
+                    <input
+                      type="checkbox"
+                      checked={isEanAcknowledged(eanAcknowledgedFor, watchedEan)}
+                      onChange={(e) =>
+                        onEanAcknowledgedForChange(e.target.checked ? watchedEan.trim() : undefined)
+                      }
+                    />
+                    <span>I confirm this EAN is correct - submit anyway.</span>
+                  </label>
+                </Alert>
+              </div>
+            ) : null}
             <div className="hint" style={{ color: 'var(--text-muted)', fontSize: 12 }}>
               Offer barcode for this product. Pre-filled from the master barcode; clearing it lists
               the offer without a catalog card.
@@ -1630,16 +1871,35 @@ function BaseScopeForm({
             <FormField
               name="bulk-edit-price"
               label="Price"
+              description={
+                inheritedSimplePrice !== ''
+                  ? `Leave blank to list at ${inheritedSimplePrice} ${currency} from the pricing policy.`
+                  : 'No master price - enter the price for this offer.'
+              }
               error={form.formState.errors.priceAmount?.message}
             >
               <Input
                 {...form.register('priceAmount')}
                 className="bulk-editor__input"
-                placeholder="79.00"
+                inputMode="decimal"
+                placeholder={inheritedSimplePrice}
                 aria-invalid={Boolean(form.formState.errors.priceAmount)}
               />
             </FormField>
-            <FormField name="bulk-edit-stock" label="Stock" error={form.formState.errors.stock?.message}>
+            <FormField
+              name="bulk-edit-stock"
+              label="Stock"
+              description={
+                // A simple product's master stock reaches the row only once the
+                // stock sync has a position for it (#3851); until then the
+                // pre-filled 0 is not a stock, and saying so is the only way an
+                // operator can tell the two apart.
+                row.override.stock === undefined && row.masterStock === null
+                  ? 'No stock synced from the master catalog yet. Enter the stock to list this offer now.'
+                  : undefined
+              }
+              error={form.formState.errors.stock?.message}
+            >
               <Input
                 type="number"
                 min={0}
@@ -1751,71 +2011,12 @@ function BaseScopeForm({
               </button>
             ) : null}
           </label>
-          <div className="bulk-editor__img-strip bulk-editor__img-strip--editable" data-focus-field="images">
-            {effectiveImages.map((url, i) => (
-              <span className="bulk-editor__img-thumb" key={`${url}-${i}`}>
-                <ThumbZoomButton url={url} onZoom={onZoom} />
-                <button
-                  type="button"
-                  className="bulk-editor__img-x"
-                  aria-label="Remove image"
-                  onClick={() => {
-                    const base = baseImageUrls ?? masterImages;
-                    onBaseImageUrlsChange(base.filter((_, idx) => idx !== i));
-                  }}
-                >
-                  ×
-                </button>
-              </span>
-            ))}
-            {!addingImage ? (
-              <button
-                type="button"
-                className="bulk-editor__img-add"
-                aria-label="Add image"
-                onClick={() => setAddingImage(true)}
-              >
-                ＋
-              </button>
-            ) : null}
-          </div>
-          {addingImage ? (
-            <div className="bulk-editor__img-add-row">
-              <Input
-                className="bulk-editor__input"
-                value={newImageUrl}
-                onChange={(e) => setNewImageUrl(e.target.value)}
-                placeholder="https://example.com/image.jpg"
-                aria-label="New image URL"
-              />
-              <Button
-                tone="primary"
-                type="button"
-                className="button--sm"
-                onClick={() => {
-                  const url = newImageUrl.trim();
-                  if (url === '') return;
-                  const base = baseImageUrls ?? masterImages;
-                  onBaseImageUrlsChange([...base, url]);
-                  setNewImageUrl('');
-                  setAddingImage(false);
-                }}
-              >
-                Add
-              </Button>
-              <Button
-                tone="ghost"
-                type="button"
-                className="button--sm"
-                onClick={() => {
-                  setNewImageUrl('');
-                  setAddingImage(false);
-                }}
-              >
-                Cancel
-              </Button>
-            </div>
-          ) : null}
+          <BulkImageStrip
+            images={effectiveImages}
+            onImagesChange={onBaseImageUrlsChange}
+            onZoom={onZoom}
+            focusTarget
+          />
           <div className="hint" style={{ color: 'var(--text-muted)', margin: '5px 0 0' }}>
             {effectiveImages.length === 0 ? 'No images yet - add an image URL to include one. ' : ''}
             {mode === 'simple'
@@ -1997,7 +2198,18 @@ interface VariantScopeFormProps {
   baseValues: BulkEditModalValues;
   /** Concrete base price this variant inherits (pre-filled value, #1741). */
   basePriceValue: string;
-  masterImages: string[];
+  /**
+   * The images this variant is published with while it has no image override
+   * of its own: the shared-base set when the operator edited it (that override
+   * reaches every sibling at submit), else the variant's own default list.
+   */
+  inheritedImages: string[];
+  /**
+   * True when `inheritedImages` is this variant's OWN default (its pictures
+   * first, other siblings' left out) rather than the shared set, so the hint
+   * says which one the operator is looking at.
+   */
+  inheritsVariantDefault: boolean;
   /** Drives the per-variant category bar's declared grouping model (#1924). */
   connection: Connection;
   /** Resolved breadcrumb for the shared base's category, already computed once by the parent (#1924) - shown instead of the raw id. Null when unresolved (falls back to the id). */
@@ -2017,6 +2229,12 @@ interface VariantScopeFormProps {
    * bouncing back to this scope with nothing to act on (#1950 review).
    */
   ownCategoryParametersFailed: boolean;
+  /**
+   * Values the editor filled from this variant's attributes (#3851), by
+   * parameter id. A parameter still holding exactly its filled value is
+   * marked as unsaved; once the operator edits it the mark goes.
+   */
+  autoFilledParams?: CategoryParameterFormValues;
   onRetryOwnCategoryParameters: () => void;
   duplicateEan: boolean;
   /** Opens the shared zoom lightbox for an image url (always allowed, #1741). */
@@ -2048,12 +2266,14 @@ function VariantScopeForm({
   included,
   baseValues,
   basePriceValue,
-  masterImages,
+  inheritedImages,
+  inheritsVariantDefault,
   connection,
   baseCategoryPathNames,
   categoryParameters,
   ownCategoryParameters,
   ownCategoryParametersFailed,
+  autoFilledParams,
   onRetryOwnCategoryParameters,
   duplicateEan,
   onZoom,
@@ -2076,10 +2296,8 @@ function VariantScopeForm({
       ? 'Duplicate of another included variant - they would collapse to one Allegro card.'
       : '';
 
-  const effectiveImages = edit.imageUrls ?? masterImages;
+  const effectiveImages = edit.imageUrls ?? inheritedImages;
   const imagesOverridden = edit.imageUrls !== undefined;
-  const [addingImage, setAddingImage] = useState(false);
-  const [newImageUrl, setNewImageUrl] = useState('');
 
   // Grouping-determining params (Marka/Stan) are locked to base by default; the
   // operator can unlock them per variant behind a warning (a per-variant value
@@ -2125,6 +2343,15 @@ function VariantScopeForm({
    * for it - see the banner below.
    */
   const productCategorySet = (baseValues.categoryId ?? '').trim() !== '';
+  // The category this variant would submit under as the editor stands now, in
+  // the submit's own order (#2240): own override, product tier, own match.
+  // Drives the `category not set` chip so it clears the moment a category is
+  // picked, not only after Save recomputes the blockers (#3851).
+  const liveCategoryId =
+    (edit.categoryId ?? '').trim() ||
+    (baseValues.categoryId ?? '').trim() ||
+    variant.resolvedCategoryId ||
+    null;
   // Breadcrumb name instead of the raw id when the base's path is already
   // resolved (#1924) - falls back to the id (or "Not set on base") only
   // while the path hasn't resolved yet.
@@ -2176,6 +2403,28 @@ function VariantScopeForm({
   // combobox, number, or text). `opts.splitBadge` / `opts.onReset` customise the
   // provenance chip + reset for an unlocked base-only grouping param (#1741).
   const renderEditableParamControl = (
+    param: CategoryParameter,
+    opts?: { splitBadge?: boolean; onReset?: () => void },
+  ): ReactElement => {
+    const control = renderEditableParamField(param, opts);
+    // Shown only while the value is still exactly what the prefill wrote: the
+    // fill lives in unsaved editor state, so without the hint it reads like a
+    // saved value and closing the editor would quietly lose it.
+    const filled = autoFilledParams?.[param.id];
+    const stillPrefilled =
+      filled !== undefined && JSON.stringify(edit.params[param.id]) === JSON.stringify(filled);
+    if (!stillPrefilled) return control;
+    return (
+      <Fragment key={param.id}>
+        {control}
+        <div className="hint" style={{ color: 'var(--text-muted)', fontSize: 12 }}>
+          Filled from the variant&apos;s attributes - save to keep it.
+        </div>
+      </Fragment>
+    );
+  };
+
+  const renderEditableParamField = (
     param: CategoryParameter,
     opts?: { splitBadge?: boolean; onReset?: () => void },
   ): ReactElement => {
@@ -2392,7 +2641,7 @@ function VariantScopeForm({
               {blockerLabel(blocker)}
             </StatusBadge>
           ))}
-          {variant.blockers.some((b) => isCategoryBlocker(b) && b !== 'invalid-barcode') ? (
+          {categoryNotSetApplies(variant.blockers, liveCategoryId) ? (
             <StatusBadge tone={CATEGORY_EFFECT_CHIP.tone} withDot>
               {CATEGORY_EFFECT_CHIP.label}
             </StatusBadge>
@@ -2598,6 +2847,7 @@ function VariantScopeForm({
           <InheritableTextField
             label="Title"
             overridden={edit.title !== undefined}
+            blankInheritsBase
             value={edit.title ?? ''}
             baseValue={baseValues.title}
             ariaLabel={`Title for ${label}`}
@@ -2659,6 +2909,22 @@ function VariantScopeForm({
           onChange={(e) => onPatch({ ean: e.target.value })}
         />
         {eanError ? <div className="bulk-editor__ean-err">{eanError}</div> : null}
+        {eanInvalid ? (
+          <div className="bulk-editor__ean-ack">
+            <Alert tone="warning">
+              <label className="checkbox-row">
+                <input
+                  type="checkbox"
+                  checked={isEanAcknowledged(edit.eanAcknowledgedFor, ean)}
+                  onChange={(e) =>
+                    onPatch({ eanAcknowledgedFor: e.target.checked ? ean.trim() : undefined })
+                  }
+                />
+                <span>I confirm this EAN is correct - submit anyway.</span>
+              </label>
+            </Alert>
+          </div>
+        ) : null}
         <div className="hint" style={{ color: 'var(--text-muted)', fontSize: 12 }}>
           Pre-filled from this variant&apos;s master EAN. Edits are checksum + duplicate validated; clearing lists it
           without a catalog card.
@@ -2688,6 +2954,7 @@ function VariantScopeForm({
         <InheritableTextField
           label="Price"
           overridden={edit.price !== undefined}
+          blankInheritsBase
           value={edit.price ?? ''}
           baseValue={basePriceValue}
           ariaLabel={`Price for ${label}`}
@@ -2695,7 +2962,9 @@ function VariantScopeForm({
         />
       </div>
 
-      {/* Images - inherit base set / override among master URLs. */}
+      {/* Images - inherit this variant's default (or the edited shared set) /
+          override. An override is this variant's alone: it never reaches a
+          sibling or the shared base. */}
       <div className="bulk-editor__field">
         <label>
           Images {imagesOverridden ? <ProvBadge kind="override" /> : <ProvBadge kind="inherit" />}
@@ -2705,84 +2974,23 @@ function VariantScopeForm({
               className="bulk-editor__reset"
               onClick={() => onPatch({ imageUrls: undefined })}
             >
-              ↺ reset to base
+              {inheritsVariantDefault ? '↺ reset to default' : '↺ reset to base'}
             </button>
           ) : null}
         </label>
-        <div className="bulk-editor__img-strip bulk-editor__img-strip--editable" data-focus-field="images">
-          {effectiveImages.map((url, i) => (
-            <span
-              key={`${url}-${i}`}
-              className={['bulk-editor__img-thumb', imagesOverridden ? '' : 'bulk-editor__img-thumb--ghost']
-                .filter(Boolean)
-                .join(' ')}
-            >
-              <ThumbZoomButton url={url} onZoom={onZoom} />
-              <button
-                type="button"
-                className="bulk-editor__img-x"
-                aria-label="Remove image"
-                onClick={() => {
-                  const base = edit.imageUrls ?? masterImages;
-                  const next = base.filter((_, idx) => idx !== i);
-                  onPatch({ imageUrls: next });
-                }}
-              >
-                ×
-              </button>
-            </span>
-          ))}
-          {!addingImage ? (
-            <button
-              type="button"
-              className="bulk-editor__img-add"
-              aria-label="Add image"
-              onClick={() => setAddingImage(true)}
-            >
-              ＋
-            </button>
-          ) : null}
-        </div>
-        {addingImage ? (
-          <div className="bulk-editor__img-add-row">
-            <Input
-              className="bulk-editor__input"
-              value={newImageUrl}
-              onChange={(e) => setNewImageUrl(e.target.value)}
-              placeholder="https://example.com/image.jpg"
-              aria-label="New image URL"
-            />
-            <Button
-              tone="primary"
-              type="button"
-              className="button--sm"
-              onClick={() => {
-                const url = newImageUrl.trim();
-                if (url === '') return;
-                onPatch({ imageUrls: [...effectiveImages, url] });
-                setNewImageUrl('');
-                setAddingImage(false);
-              }}
-            >
-              Add
-            </Button>
-            <Button
-              tone="ghost"
-              type="button"
-              className="button--sm"
-              onClick={() => {
-                setNewImageUrl('');
-                setAddingImage(false);
-              }}
-            >
-              Cancel
-            </Button>
-          </div>
-        ) : null}
+        <BulkImageStrip
+          images={effectiveImages}
+          onImagesChange={(next) => onPatch({ imageUrls: next })}
+          onZoom={onZoom}
+          inherited={!imagesOverridden}
+          focusTarget
+        />
         <div className="hint" style={{ color: 'var(--text-muted)', fontSize: 12 }}>
           {imagesOverridden
             ? 'Custom image set for this variant.'
-            : 'Inherits the base images - add or remove to override for this variant.'}
+            : inheritsVariantDefault
+              ? "This variant's default: its own images first, other variants' images left out - add or remove to override for this variant."
+              : 'Inherits the base images - add or remove to override for this variant.'}
         </div>
       </div>
 
@@ -2867,6 +3075,7 @@ function InheritableTextField({
   type,
   provNode,
   onReset,
+  blankInheritsBase,
   onChange,
 }: {
   label: string;
@@ -2880,9 +3089,16 @@ function InheritableTextField({
   provNode?: ReactNode;
   /** Custom reset handler; when set the reset control always shows. */
   onReset?: () => void;
+  /**
+   * Set where saving drops an emptied override (title, price): the field then
+   * shows the value it will fall back to, instead of an empty "override".
+   */
+  blankInheritsBase?: boolean;
   onChange: (next: string | undefined) => void;
 }): ReactElement {
   const displayValue = overridden ? value : baseValue;
+  const blankFallsBack =
+    blankInheritsBase === true && overridden && value.trim() === '' && baseValue !== '';
   const showReset = overridden || Boolean(onReset);
   return (
     <div className="bulk-editor__field">
@@ -2902,41 +3118,18 @@ function InheritableTextField({
         ].join(' ')}
         value={displayValue}
         aria-label={ariaLabel}
+        placeholder={blankFallsBack ? baseValue : undefined}
         onChange={(e) => {
           const typed = e.target.value;
           onChange(typed === baseValue ? undefined : typed);
         }}
       />
+      {blankFallsBack ? (
+        <div className="hint" style={{ color: 'var(--text-muted)', fontSize: 12 }}>
+          Left empty, this variant uses the base value: {baseValue}
+        </div>
+      ) : null}
     </div>
-  );
-}
-
-/**
- * Zoomable thumbnail trigger (#1741). A `role="button"` span (not a native
- * `<button>`) so it stays clickable even inside the demo read-only `fieldset`
- * disabled cascade - zooming is always allowed; only edit actions are gated.
- * `stopPropagation` keeps the click from toggling the surrounding controls.
- */
-function ThumbZoomButton({ url, onZoom }: { url: string; onZoom: (src: string) => void }): ReactElement {
-  return (
-    <span
-      role="button"
-      tabIndex={0}
-      className="bulk-editor__thumb-btn"
-      aria-label="Zoom image"
-      onClick={(e) => {
-        e.stopPropagation();
-        onZoom(url);
-      }}
-      onKeyDown={(e) => {
-        if (e.key === 'Enter' || e.key === ' ') {
-          e.preventDefault();
-          onZoom(url);
-        }
-      }}
-    >
-      <img src={url} alt="" />
-    </span>
   );
 }
 
@@ -3238,6 +3431,7 @@ function BulkShopEditModalForm({
   onSave,
   onClose,
 }: BulkShopEditModalFormProps): ReactElement {
+  const { number: formatNumber } = useFormat();
   const connectionId = connection.id;
   const { showToast } = useToast();
   const isMultiVariant = row.variants.length > 1;
@@ -3415,7 +3609,7 @@ function BulkShopEditModalForm({
       showToast({
         tone: 'error',
         title: 'Description too long for this destination',
-        description: `Shorten it to ${descriptionFormat.maxBytes.toLocaleString()} bytes or fewer - the shop rejects a longer one.`,
+        description: `Shorten it to ${formatNumber(descriptionFormat.maxBytes)} bytes or fewer - the shop rejects a longer one.`,
       });
       return;
     }
@@ -3764,8 +3958,6 @@ function ShopBaseScopeForm({
   simpleIncluded,
   onSimpleIncludedChange,
 }: ShopBaseScopeFormProps): ReactElement {
-  const [addingImage, setAddingImage] = useState(false);
-  const [newImageUrl, setNewImageUrl] = useState('');
   const effectiveImages = baseImageUrls ?? masterImages;
   const imagesOverridden = baseImageUrls !== undefined;
   const classes = ['bulk-editor__form', active ? 'bulk-editor__form--acc-open' : ''].filter(Boolean).join(' ');
@@ -3941,71 +4133,11 @@ function ShopBaseScopeForm({
             </button>
           ) : null}
         </label>
-        <div className="bulk-editor__img-strip bulk-editor__img-strip--editable">
-          {effectiveImages.map((url, i) => (
-            <span className="bulk-editor__img-thumb" key={`${url}-${i}`}>
-              <ThumbZoomButton url={url} onZoom={onZoom} />
-              <button
-                type="button"
-                className="bulk-editor__img-x"
-                aria-label="Remove image"
-                onClick={() => {
-                  const base = baseImageUrls ?? masterImages;
-                  onBaseImageUrlsChange(base.filter((_, idx) => idx !== i));
-                }}
-              >
-                ×
-              </button>
-            </span>
-          ))}
-          {!addingImage ? (
-            <button
-              type="button"
-              className="bulk-editor__img-add"
-              aria-label="Add image"
-              onClick={() => setAddingImage(true)}
-            >
-              ＋
-            </button>
-          ) : null}
-        </div>
-        {addingImage ? (
-          <div className="bulk-editor__img-add-row">
-            <Input
-              className="bulk-editor__input"
-              value={newImageUrl}
-              onChange={(e) => setNewImageUrl(e.target.value)}
-              placeholder="https://example.com/image.jpg"
-              aria-label="New image URL"
-            />
-            <Button
-              tone="primary"
-              type="button"
-              className="button--sm"
-              onClick={() => {
-                const url = newImageUrl.trim();
-                if (url === '') return;
-                const base = baseImageUrls ?? masterImages;
-                onBaseImageUrlsChange([...base, url]);
-                setNewImageUrl('');
-                setAddingImage(false);
-              }}
-            >
-              Add
-            </Button>
-            <Button
-              tone="ghost"
-              type="button"
-              className="button--sm"
-              onClick={() => {
-                setNewImageUrl('');
-                setAddingImage(false);
-              }}
-            >
-              Cancel
-            </Button>
-          </div>
-        ) : null}
+        <BulkImageStrip
+          images={effectiveImages}
+          onImagesChange={onBaseImageUrlsChange}
+          onZoom={onZoom}
+        />
         <div className="hint" style={{ color: 'var(--text-muted)', margin: '5px 0 0' }}>
           {effectiveImages.length === 0 ? 'No images yet - add an image URL to include one. ' : ''}
           Shared image set for every variant. Add or remove to override the master set.
@@ -4210,6 +4342,7 @@ function ShopVariantScopeForm({
         <InheritableTextField
           label="Price"
           overridden={edit.price !== undefined}
+          blankInheritsBase
           value={edit.price ?? ''}
           baseValue={basePriceValue}
           ariaLabel={`Price for ${label}`}

@@ -65,6 +65,7 @@ import { randomUUID } from 'node:crypto';
 import type { LoggerPort } from '@openlinker/shared/logging';
 import type {
   CorrectionIssuer,
+  DocumentNumberConsumer,
   DocumentType,
   GetInvoiceQuery,
   InvoicingPort,
@@ -88,7 +89,6 @@ import {
   deriveTransactionToken,
 } from '../../domain/policies/document-token.policy';
 import {
-  EPARAGONY_ERROR_DOCUMENT_ALREADY_EXISTS,
   EPARAGONY_STATUS_CONFIRMED,
   EPARAGONY_STATUS_ERROR,
   EPARAGONY_STATUS_OFFLINE,
@@ -98,7 +98,6 @@ import {
 } from '../../domain/types/eparagony-api.types';
 import type { EparagonyConnectionConfig } from '../../domain/types/eparagony-config.types';
 import {
-  EPARAGONY_DOCUMENTS_PATH,
   MAX_STATUS_POLL_TIMEOUT_MS,
   STATUS_POLL_BACKOFF_MULTIPLIER,
   STATUS_POLL_INITIAL_DELAY_MS,
@@ -107,6 +106,7 @@ import {
   resolveStatusPollTimeoutMs,
   sleep,
 } from '../http/eparagony-document-status.reader';
+import { createEparagonyDocument } from '../http/eparagony-document-create';
 import type { IEparagonyHttpClient } from '../http/eparagony-http-client.interface';
 import { readDocumentStatus } from './eparagony-document.mapper';
 import {
@@ -186,9 +186,58 @@ if (MAX_STATUS_POLL_TIMEOUT_MS >= EPARAGONY_ISSUE_DEADLINE_MS) {
  */
 const ISSUED_STATUSES: readonly string[] = [EPARAGONY_STATUS_CONFIRMED, EPARAGONY_STATUS_OFFLINE];
 
+/**
+ * IANA timezone the core numbering allocation resolves date variables and the
+ * period-reset bucket in when this connection carries no override (#3500).
+ * eparagony is PL-only in this codebase today, so there is no per-connection
+ * config field for it, and `Europe/Warsaw` is the only value that has ever
+ * applied - the same default `KsefInvoicingAdapter` uses.
+ */
+const DEFAULT_NUMBERING_TIME_ZONE = 'Europe/Warsaw';
+
 export class EparagonyInvoicingAdapter
-  implements InvoicingPort, RegulatoryStatusReader, CorrectionIssuer
+  implements InvoicingPort, RegulatoryStatusReader, CorrectionIssuer, DocumentNumberConsumer
 {
+  /**
+   * Marks eparagony as an OpenLinker-numbered provider (#3500): the vendor's
+   * `POST /documents` REJECTS an invoice with `errorCode: 99` when
+   * `metadata.invoiceNumber` is absent - it does not generate one itself, which
+   * an earlier version of this adapter assumed. With this flag set, the core
+   * `InvoiceService` allocates a number from the connection's numbering series
+   * and passes it as `IssueInvoiceCommand.documentNumber`, which
+   * `composeInvoiceDocument` already honours when present. Read by
+   * `isDocumentNumberConsumer`.
+   */
+  readonly consumesDocumentNumber = true as const;
+
+  /**
+   * IANA timezone (#7) the core numbering allocation resolves date variables
+   * and the period-reset bucket in. Read by the core `InvoiceService`.
+   *
+   * Unnarrowed (not `as const`), unlike {@link consumesDocumentNumber}: this
+   * field states a config VALUE rather than a capability marker, and
+   * `KsefInvoicingAdapter.numberingTimeZone` resolves the equivalent from
+   * `config.invoiceDefaults.numberingTimeZone` per connection. eparagony is
+   * PL-only in this codebase today, so there is no per-connection config
+   * field for it yet - a fixed `Europe/Warsaw` is simply the only value that
+   * has ever applied - but leaving the type unnarrowed keeps the absence of a
+   * config path visible at the declaration, the day one is added.
+   */
+  // `: string` is what keeps it unnarrowed: a `readonly` property does not
+  // widen its initializer, so without it the type would be the literal.
+  readonly numberingTimeZone: string = DEFAULT_NUMBERING_TIME_ZONE;
+
+  // `maxDocumentNumberLength` (#11) is deliberately UNDECLARED, not merely
+  // forgotten: `EparagonyCreateInvoiceMetadata.invoiceNumber` is a bare
+  // `string` on the wire types, with no documented length cap anywhere in the
+  // vendor's material this integration was built against - unlike KSeF's
+  // FA(3) `P_2`, which the schema caps at 256 chars and which
+  // `KsefInvoicingAdapter` therefore declares. Inventing a number here would
+  // let OpenLinker refuse a legal allocated number the vendor would have
+  // accepted, which is worse than relying on the vendor's own `errorCode: 99`
+  // rejection for a genuinely over-long value: "unset" and "no cap" must not
+  // read as the same silence, so this comment makes the omission a decision.
+
   constructor(
     private readonly connectionId: string,
     private readonly http: IEparagonyHttpClient,
@@ -221,7 +270,7 @@ export class EparagonyInvoicingAdapter
     // worst case could outlive both this adapter's own deadline and core's
     // in-flight CAS lease, which is exactly the invariant the module-load
     // assertion below is meant to protect.
-    await this.createDocument(request, documentToken, cmd.orderId, deadline);
+    await this.createDocument(request, cmd.orderId, deadline);
     const status = await this.pollToSettledIssuance(documentToken, deadline, cmd.orderId);
 
     return this.toIssueResult(cmd, status, documentToken, documentLines);
@@ -265,7 +314,7 @@ export class EparagonyInvoicingAdapter
 
     const deadline = Date.now() + EPARAGONY_ISSUE_DEADLINE_MS;
 
-    await this.createDocument(request, documentToken, cmd.orderId, deadline);
+    await this.createDocument(request, cmd.orderId, deadline);
     const status = await this.pollToSettledIssuance(documentToken, deadline, cmd.orderId);
 
     return this.buildIssueResult(
@@ -424,7 +473,6 @@ export class EparagonyInvoicingAdapter
     // document kind (#3193) - both bodies key off the same `documentToken` /
     // `transactionToken` pair, so the HTTP call itself is body-shape-agnostic.
     body: EparagonyCreateInvoiceRequest | EparagonyCreateCorrectiveInvoiceRequest,
-    documentToken: string,
     orderId: string,
     deadline: number,
   ): Promise<void> {
@@ -437,40 +485,16 @@ export class EparagonyInvoicingAdapter
     // timeout) rather than a `setTimeout(0)` that aborts before the request
     // leaves the process.
     const timeoutMs = Math.max(MIN_CREATE_TIMEOUT_MS, deadline - Date.now());
-    try {
-      await this.http.post<unknown>(EPARAGONY_DOCUMENTS_PATH, body, {
-        // `documentToken`, NOT core's raw `idempotencyKey`: the vendor requires
-        // this header to match `/^[0-9A-Za-z_-]+$/` and core's key carries
-        // colons. The token is a deterministic derivation of the same pair,
-        // shaped as a UUID, so it satisfies the character class while keeping
-        // the identical safety property the header exists for.
-        headers: { 'Idempotency-Key': documentToken },
-        // Safe to re-issue on a 5xx/network failure precisely BECAUSE of the
-        // header above: repeating a key with the same body cannot mint a second
-        // document, and therefore cannot issue a second invoice.
-        idempotent: true,
-        timeoutMs,
-      });
-      this.logger.log(
-        `eparagony.pl accepted the document for order ${orderId} as ${documentToken} ` +
-          `[connectionId=${this.connectionId}]`,
-      );
-    } catch (error) {
-      if (
-        error instanceof EparagonyApiError &&
-        error.errorCode === EPARAGONY_ERROR_DOCUMENT_ALREADY_EXISTS
-      ) {
-        // Our token is deterministic, so "already exists" means OUR earlier
-        // attempt landed. Reporting a rejection here would be the wrong-direction
-        // error: the status read below resolves what actually happened.
-        this.logger.warn(
-          `eparagony.pl already holds document ${documentToken} for order ${orderId}; ` +
-            `reading its status instead of re-creating [connectionId=${this.connectionId}]`,
-        );
-        return;
-      }
-      throw error;
-    }
+    // The shared create settles "already exists" and a replayed request key
+    // against the document token; see `eparagony-document-create.ts`.
+    await createEparagonyDocument({
+      http: this.http,
+      logger: this.logger,
+      connectionId: this.connectionId,
+      body,
+      orderId,
+      timeoutMs,
+    });
   }
 
   // -------------------------------------------------------------------------
@@ -539,14 +563,16 @@ export class EparagonyInvoicingAdapter
 
   /**
    * Terminal `ERROR`: the vendor explicitly reports the invoice was not issued.
-   * `rejected` is safe here for the reason it is on the receipt path - OL sends
-   * its own derived token as the vendor's `Idempotency-Key`, so re-crossing the
-   * boundary under the same key cannot issue a second document, which is what
-   * the neutral definition of `rejected` requires.
+   * `rejected` is safe here for the reason it is on the receipt path - every
+   * request for the sale carries the same deterministic `documentToken`, which
+   * the vendor never lets hold a second document, so re-crossing the boundary
+   * cannot issue a second invoice, which is what the neutral definition of
+   * `rejected` requires.
    *
-   * The operational consequence, recorded honestly: because the vendor replays
-   * the same key idempotently, a re-attempt under the same registration key
-   * returns this same failed document. A genuine retry needs a fresh key.
+   * The operational consequence, recorded honestly: because the vendor keeps
+   * the failed document under the token, a re-attempt under the same
+   * registration key meets this same failed document. A genuine retry needs a
+   * fresh key.
    */
   private toTerminalRejection(
     body: EparagonyDocumentStatusResponse,

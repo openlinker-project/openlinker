@@ -24,6 +24,7 @@ import {
 } from '../../sales-documents';
 import type { SalesDocumentReasonTone } from '../../sales-documents';
 import type { SalesDocumentView } from '../api/orders.types';
+import { resolveAfterIssueAttentionCopy } from './after-issue-attention-copy';
 
 export type SalesDocumentCellTone = 'idle' | 'progress' | 'done' | 'warning' | 'error';
 
@@ -129,5 +130,20 @@ export function resolveSalesDocumentCellState(
   // shared with the merged /sales-documents list (#3307) — see
   // `resolveSalesDocumentRecordWord`'s own docblock for why.
   const { word, tone } = resolveSalesDocumentRecordWord(document);
+  // DEF-26: a document made before the sale changed. The change is the most
+  // actionable fact, unless the record itself already reads as an error,
+  // which stays the word (the change rides along in the popover).
+  const attention = resolveAfterIssueAttentionCopy(view.afterIssueAttention);
+  if (attention) {
+    return tone === 'error'
+      ? { kind: view.documentKind, word, tone, reasonDetail: attention.detail, keepsAction: false }
+      : {
+          kind: view.documentKind,
+          word: attention.short,
+          tone: 'warning',
+          reasonDetail: attention.detail,
+          keepsAction: false,
+        };
+  }
   return { kind: view.documentKind, word, tone, reasonDetail: null, keepsAction: false };
 }

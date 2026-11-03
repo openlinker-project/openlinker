@@ -63,6 +63,13 @@
  *                      published to the destination. The first three are
  *                      unreachable under jsdom AND happy-dom. Self-configuring;
  *                      `retries: 0` — the publish case creates a real offer.
+ *   - `delivery-on-documents` - delivery line wording/rate on receipts and invoices
+ *                      (#3912, ADR-082): settings tab, wizards, live eparagony
+ *                      sandbox receipts, preview, visual parity. Own auth bootstrap.
+ *                      `retries: 0` (registers real sandbox receipts).
+ *   - `g11`          - G11 product and analytics suite (#3591): variant pictures,
+ *                      cost price, margin, cost work list, CSV export. Mutating;
+ *                      reads its stand from `E2E_G11_SETUP`. `retries: 0`.
  *   - `wizard-blockers` - category-blocker states in the same wizard (#2240):
  *                      which cause is reported, where the fix lives, and what
  *                      the confirmation says about variants that will not be
@@ -83,6 +90,9 @@ const env = resolveEnv();
 
 /** Shared browser session artifact written by the `setup` project. */
 export const STORAGE_STATE = '.auth/admin.json';
+
+/** Session artifact of the `delivery-on-documents-auth` bootstrap (kept apart from the shared one). */
+export const DELIVERY_STORAGE_STATE = '.auth/delivery-admin.json';
 
 export default defineConfig({
   testDir: './tests',
@@ -214,6 +224,16 @@ export default defineConfig({
       use: { ...devices['Desktop Chrome'], storageState: STORAGE_STATE },
     },
     {
+      // Interface language (#3859): measures that controls still fit their
+      // text in Polish and in the dev-only pseudo-language. Read-only, so
+      // a retry is harmless.
+      name: 'i18n',
+      testMatch: /i18n\/.*\.spec\.ts/,
+      retries: 1,
+      dependencies: ['setup'],
+      use: { ...devices['Desktop Chrome'], storageState: STORAGE_STATE },
+    },
+    {
       // Access-control coverage — independent of golden-path/full-flow. Depends
       // only on `setup` for the admin storageState the UI-reflection spec's
       // admin-session assertions consume; the viewer/guest browser cases build
@@ -235,6 +255,17 @@ export default defineConfig({
       retries: 0,
       dependencies: ['setup'],
       use: { ...devices['Desktop Chrome'], storageState: STORAGE_STATE },
+    },
+    {
+      // KSeF legal completeness (#1578, DEF-01..39). Runs against KSeF TEST on
+      // a cloned stack. `retries: 0`: every scenario issues or corrects a real
+      // document, and a silent retry would issue a second one. `screenshot:
+      // 'on'` plus the named `shot()` captures give a reviewer every state.
+      name: 'ksef-legal',
+      testMatch: /ksef-legal\/.*\.spec\.ts/,
+      retries: 0,
+      dependencies: ['setup'],
+      use: { ...devices['Desktop Chrome'], storageState: STORAGE_STATE, screenshot: 'on' },
     },
     {
       // Invoicing suite (#1573) — inFakt provider run, payment marking (both
@@ -273,6 +304,17 @@ export default defineConfig({
       // the previous attempt half-wrote.
       name: 'sales-documents',
       testMatch: /sales-documents\/.*\.spec\.ts/,
+      retries: 0,
+      dependencies: ['setup'],
+      use: { ...devices['Desktop Chrome'], storageState: STORAGE_STATE },
+    },
+    {
+      // OMS MVP order screens (G03 #3536, G05 #3546): mockup baselines plus
+      // golden paths. MUTATING - the G05 specs seed orders in Postgres and
+      // cancel or edit a located order - so `retries: 0`: a retry would act
+      // on an order the first attempt already changed.
+      name: 'oms-mvp',
+      testMatch: /oms-mvp\/.*\.spec\.ts/,
       retries: 0,
       dependencies: ['setup'],
       use: { ...devices['Desktop Chrome'], storageState: STORAGE_STATE },
@@ -325,6 +367,16 @@ export default defineConfig({
       use: { ...devices['Desktop Chrome'], storageState: STORAGE_STATE },
     },
     {
+      // One price followed from PrestaShop to a live Allegro offer, recorded at
+      // every hop (net vs gross). Creates a PS product and a real sandbox offer,
+      // so `retries: 0`.
+      name: 'pricing',
+      testMatch: /pricing\/.*\.spec\.ts/,
+      retries: 0,
+      dependencies: ['setup'],
+      use: { ...devices['Desktop Chrome'], storageState: STORAGE_STATE },
+    },
+    {
       // Category-blocker states in the bulk publish wizard (#2240). Every OL
       // route the wizard touches is stubbed in-test, so it needs no seeded
       // catalogue and no Allegro connection. `retries: 1` (nothing is mutated).
@@ -365,6 +417,31 @@ export default defineConfig({
       use: { ...devices['Desktop Chrome'], storageState: STORAGE_STATE },
     },
     {
+      // G11 product and analytics (#3591): variant pictures, cost price,
+      // margin, work list, CSV export. MUTATING: sets and clears variant costs,
+      // creates PrestaShop/WooCommerce orders and writes two seeds straight to
+      // Postgres (see `src/support/g11/db.ts`). Reads its stand from the setup
+      // file at `E2E_G11_SETUP`, logs in per role itself, so it needs neither
+      // the `setup` project nor a shared storage state. `retries: 0`: a retry
+      // would create a second order and move every delta the scenarios assert.
+      // Runs alone with `--project=g11` or `--grep @g11`.
+      name: 'g11',
+      testMatch: /oms-mvp\/g11\/.*\.spec\.ts/,
+      retries: 0,
+      use: { ...devices['Desktop Chrome'], viewport: { width: 1440, height: 900 } },
+    },
+    {
+      // G06 sales documents and buyer emails (#3556). Mutating: arms seeded
+      // automation rules, edits a connection's `config.buyerEmails` and buys
+      // labels, restoring what it changed in `finally` - so `retries: 0`, a
+      // retry would re-dispatch. Screenshots land in `screenshots/g06/`.
+      name: 'oms-mvp-g06',
+      testMatch: /oms-mvp\/g06\/.*\.spec\.ts/,
+      retries: 0,
+      dependencies: ['setup'],
+      use: { ...devices['Desktop Chrome'], storageState: STORAGE_STATE },
+    },
+    {
       // Pack bench + Assign Packing Work (#3342/#3343) — mockup parity for
       // both OMS staffing screens. MUTATING: seeds `fulfillment_works` rows
       // directly via Postgres (see `support/bench-seed.ts`'s header for why)
@@ -376,6 +453,29 @@ export default defineConfig({
       retries: 0,
       dependencies: ['setup'],
       use: { ...devices['Desktop Chrome'], storageState: STORAGE_STATE },
+    },
+    {
+      // Own minimal auth bootstrap, NOT the shared `setup` project: that one also
+      // runs the connection-topology preflight, which fails a near-empty stack
+      // ("No active connection enables ProductMaster") - exactly the stack this
+      // project is meant to run on, since it seeds its own connections.
+      name: 'delivery-on-documents-auth',
+      testMatch: /delivery-on-documents\/auth\.bootstrap\.ts/,
+      retries: 1,
+      use: { ...devices['Desktop Chrome'] },
+    },
+    {
+      // Delivery line on sales documents (#3912, ADR-082): the Mappings tab, the
+      // connection wizards, live eparagony receipts and visual parity with the
+      // committed mockup. Seeds its own order-source connection and PL/CZ/HU
+      // orders directly in Postgres (see `support/delivery-on-documents-seed.ts`).
+      // `retries: 0`: the live spec registers real receipts on a fiscal device
+      // sandbox, and a retry would register a second one.
+      name: 'delivery-on-documents',
+      testMatch: /delivery-on-documents\/.*\.spec\.ts/,
+      retries: 0,
+      dependencies: ['delivery-on-documents-auth'],
+      use: { ...devices['Desktop Chrome'], storageState: DELIVERY_STORAGE_STATE },
     },
   ],
 });

@@ -478,12 +478,26 @@ export class SubiektOrderProcessorAdapter
           return { outcome: 'applied' };
         }
 
+        // The cancel reason stays in OpenLinker (#3540): the ZK status write has no
+        // reason field, so `event.reason` is not sent.
         case 'cancelled': {
           await this.updateFulfillment({
             externalOrderId: event.externalOrderId,
             status: 'cancelled',
           });
           return { outcome: 'applied' };
+        }
+
+        // #3526 added both events. Declined until a write is verified against
+        // a real bridge, the Allegro/Erli posture: the remarks label the
+        // bridge would get for them has never been checked by anyone reading
+        // a Subiekt document.
+        case 'delivered':
+        case 'in-progress': {
+          return {
+            outcome: 'unsupported',
+            detail: `Subiekt writeback has no verified '${event.type}' status - needs-bridge-probe`,
+          };
         }
 
         default: {

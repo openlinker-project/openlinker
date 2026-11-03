@@ -173,4 +173,53 @@ describe('resolveSalesDocumentCellState (#2552)', () => {
     );
     expect(state).toMatchObject({ word: 'Unconfirmed', tone: 'warning' });
   });
+
+  describe('after-issue attention (DEF-26)', () => {
+    const issuedInvoice = (regulatoryStatus: 'accepted' | 'rejected') => ({
+      kind: 'invoice' as const,
+      documentType: 'vat',
+      status: 'issued' as const,
+      failureMode: null,
+      failureCode: null,
+      failureReason: null,
+      regulatoryStatus,
+      clearanceReference: null,
+      identity: identity(),
+    });
+
+    it('names the change on an otherwise finished invoice, as a warning', () => {
+      const state = resolveSalesDocumentCellState(
+        baseView({
+          documentKind: 'invoice',
+          document: issuedInvoice('accepted'),
+          afterIssueAttention: 'order-cancelled-after-issue',
+        }),
+      );
+      expect(state).toMatchObject({ word: 'Order cancelled', tone: 'warning' });
+      expect(state.reasonDetail).toMatch(/needs a correction/);
+    });
+
+    it('keeps an error word and carries the change in the detail', () => {
+      const state = resolveSalesDocumentCellState(
+        baseView({
+          documentKind: 'invoice',
+          document: issuedInvoice('rejected'),
+          afterIssueAttention: 'order-partially-refunded-after-issue',
+        }),
+      );
+      expect(state).toMatchObject({ word: 'Authority rejected', tone: 'error' });
+      expect(state.reasonDetail).toMatch(/Part of this order was refunded/);
+    });
+
+    it('ignores a value this build does not know', () => {
+      const state = resolveSalesDocumentCellState(
+        baseView({
+          documentKind: 'invoice',
+          document: issuedInvoice('accepted'),
+          afterIssueAttention: 'something-newer' as never,
+        }),
+      );
+      expect(state).toMatchObject({ word: 'Issued', tone: 'done' });
+    });
+  });
 });

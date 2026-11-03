@@ -110,8 +110,39 @@ describe('ROLE_PERMISSIONS', () => {
      * `scripts/check-bench-write-roles.mjs` - and each is exact so a fifth
      * permission cannot arrive without somebody deciding it should.
      */
-    it('gives `packer` exactly the one permission its bench controls need', () => {
-      expect(ROLE_PERMISSIONS.packer).toEqual(['bench:write']);
+    it('gives `packer` exactly the two permissions its bench controls need (write + read)', () => {
+      expect(ROLE_PERMISSIONS.packer).toEqual(['bench:write', 'bench:read']);
+    });
+
+    /**
+     * The frontend decides which shell a session may use FROM PERMISSIONS
+     * (`apps/web/src/shared/auth/session-surface.ts`, #3096): `bench:write`
+     * without `orders:read` is "bench-only" and is sent to `/bench`. That
+     * predicate is only right while it picks out exactly the packer, and the
+     * frontend cannot see this map at compile time - so the equivalence is
+     * pinned here, where a `ROLE_PERMISSIONS` change that breaks it fails.
+     */
+    it('should make packer the only role holding bench:write without orders:read', () => {
+      const benchOnly = UserRoleValues.filter(
+        (role) =>
+          ROLE_PERMISSIONS[role].includes('bench:write') &&
+          !ROLE_PERMISSIONS[role].includes('orders:read')
+      );
+      expect(benchOnly).toEqual(['packer']);
+    });
+  });
+
+  describe('fulfillment:read (#3736)', () => {
+    it('should be held by admin, operator and viewer, and never by packer', () => {
+      const holders = UserRoleValues.filter((role) =>
+        ROLE_PERMISSIONS[role].includes('fulfillment:read')
+      );
+      expect(holders).toEqual(['admin', 'operator', 'viewer']);
+    });
+
+    it('should not hand viewer any Fulfilment write permission', () => {
+      expect(ROLE_PERMISSIONS.viewer).not.toContain('orders:write');
+      expect(ROLE_PERMISSIONS.viewer).not.toContain('bench:write');
     });
   });
 
@@ -151,6 +182,14 @@ describe('ROLE_PERMISSIONS', () => {
       expect(ROLE_PERMISSIONS.admin).toContain('shipments:write');
       expect(ROLE_PERMISSIONS.operator).toContain('shipments:write');
       expect(ROLE_PERMISSIONS.viewer).not.toContain('shipments:write');
+    });
+  });
+
+  describe('orders:export (D35, #3534/#3535)', () => {
+    it('should be held by admin and operator, but NOT viewer — an export takes buyer data out of the system', () => {
+      expect(ROLE_PERMISSIONS.admin).toContain('orders:export');
+      expect(ROLE_PERMISSIONS.operator).toContain('orders:export');
+      expect(ROLE_PERMISSIONS.viewer).not.toContain('orders:export');
     });
   });
 });

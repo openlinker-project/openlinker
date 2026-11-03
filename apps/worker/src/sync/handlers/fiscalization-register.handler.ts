@@ -66,6 +66,13 @@ import {
 } from '@openlinker/core/fiscalization';
 import type { RegisterTransactionCommand } from '@openlinker/core/fiscalization';
 import { isTaxRateEra } from '@openlinker/core/sales-documents';
+import {
+  IOrderRecordService,
+  IOrderRefundService,
+  ORDER_RECORD_SERVICE_TOKEN,
+  ORDER_REFUND_SERVICE_TOKEN,
+} from '@openlinker/core/orders';
+import { readLiveOrderIssuanceDecision } from './live-order-issuance';
 import { Logger } from '@openlinker/shared/logging';
 
 type SyncJob = SyncJobEntity;
@@ -86,6 +93,10 @@ export class FiscalizationRegisterHandler implements SyncJobHandler {
     private readonly fiscalRegistrations: IFiscalRegistrationService,
     @Inject(POST_SALE_INVENTORY_REFRESH_SERVICE_TOKEN)
     private readonly postSaleInventoryRefresh: IPostSaleInventoryRefreshService,
+    @Inject(ORDER_RECORD_SERVICE_TOKEN)
+    private readonly orderRecords: IOrderRecordService,
+    @Inject(ORDER_REFUND_SERVICE_TOKEN)
+    private readonly orderRefunds: IOrderRefundService,
   ) {}
 
   async execute(job: SyncJob): Promise<SyncJobHandlerResult> {
@@ -97,6 +108,21 @@ export class FiscalizationRegisterHandler implements SyncJobHandler {
     const command = this.toCommand(payload);
 
     try {
+      // DEF-26: a receipt for a cancelled or fully refunded order is not
+      // registered, the same gate `invoicing.issue` applies. A failed read
+      // throws inside this try and so retries rather than registering blind.
+      const decision = await readLiveOrderIssuanceDecision(
+        this.orderRecords,
+        this.orderRefunds,
+        payload.orderId,
+      );
+      if (decision.kind === 'block') {
+        this.logger.warn(
+          `fiscalization.register skipped: ${decision.reason} orderId=${payload.orderId} connectionId=${payload.connectionId}`,
+        );
+        return { outcome: 'business_failure' };
+      }
+
       // `register` never throws on a provider rejection (see file docstring) —
       // a resolved call is always a completed job, whatever the returned
       // record's own `status`/`failureMode` says.

@@ -44,6 +44,8 @@ function work(over: Partial<BenchWork> = {}): BenchWork {
     assignmentState: 'unassigned',
     claimable: true,
     completedAt: null,
+    hasBuyerNote: false,
+    buyerNoteAcknowledgedAt: null,
     ...over,
   };
 }
@@ -121,6 +123,28 @@ describe('BenchWorkList (#2416)', () => {
     expect(row.textContent).toContain('6 units to scan');
   });
 
+  it('should mention the buyer note on the rail row, and say it was read once acknowledged', async () => {
+    mount(
+      payload({
+        works: [
+          work({ workId: 'w-unread', hasBuyerNote: true }),
+          work({
+            workId: 'w-read',
+            hasBuyerNote: true,
+            buyerNoteAcknowledgedAt: '2026-09-04T09:30:00Z',
+          }),
+          work({ workId: 'w-none', hasBuyerNote: false }),
+        ],
+        total: 3,
+      })
+    );
+
+    const notes = await screen.findAllByTestId('bench-work-row-buyer-note');
+    expect(notes).toHaveLength(2);
+    expect(notes[0]).toHaveTextContent(/^Buyer note$/);
+    expect(notes[1]).toHaveTextContent('Buyer note · read');
+  });
+
   it('should never state or imply that stock is picked or ready (story B2)', async () => {
     mount(payload({ works: [work(), work({ workId: 'w-2', state: 'held', holdReason: 'other' })] }));
 
@@ -187,9 +211,10 @@ describe('BenchWorkList (#2416)', () => {
     );
     const notRouted = await screen.findByTestId('bench-work-empty-not-routed');
     expect(notRouted).toBeInTheDocument();
-    // B3: the second one names its remedy. Without this the screen states a
-    // problem a packer can do nothing about.
-    expect(notRouted.textContent?.toLowerCase()).toContain('settings');
+    // B3: the second one names its remedy, and where to find it (the OMS is set
+    // up from Connections). Without this the screen states a problem a packer
+    // can do nothing about.
+    expect(notRouted.textContent?.toLowerCase()).toContain('openlinker oms');
   });
 
   it('should report an unrecognised scan and record NOTHING (story C3)', async () => {

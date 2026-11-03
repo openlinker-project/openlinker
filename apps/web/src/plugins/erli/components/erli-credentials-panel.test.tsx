@@ -288,7 +288,7 @@ describe('ErliCredentialsPanel', () => {
     // Panel stays open (flag write failed, so it never got a chance to reflect the
     // new value anywhere the operator can see) and the fields aren't discarded.
     expect(screen.getByPlaceholderText('Allegro Client ID')).toHaveValue('client-123');
-    expect(screen.queryByText('Credentials saved')).not.toBeInTheDocument();
+    expect(screen.queryByText('Credentials saved', { selector: '.toast__title' })).not.toBeInTheDocument();
   });
 
   describe('reuse an existing Allegro connection (#1387)', () => {

@@ -36,6 +36,7 @@ Never write `session.user?.role === 'admin'` inline — `role` is typed `string`
 ## Naming
 
 - Components: `kebab-case.tsx` (named export stays `PascalCase`, e.g. `kpi-card.tsx` exports `KpiCard`)
+  - Known exception: the PascalCase files in `features/connections/components/` (`ConnectionCell.tsx`, `ConnectionChip.tsx`, `ConnectionEntityLabel.tsx`, `ConnectionFold.tsx`, `EditConnectionForm.tsx`, …) predate this rule and stay PascalCase until a folder-wide rename in its own change. Nothing enforces the rule yet, so do not rename them piecemeal - a new file joining that `Connection*` family matches its siblings; other new files there are kebab-case.
 - Hooks: `use-*.ts` (kebab-case)
 - Route modules: `*.route.tsx`
 - Tests: `*.test.tsx` (colocated with source)

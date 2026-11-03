@@ -18,6 +18,10 @@ import {
 @Entity('sync_jobs')
 @Index(['status', 'nextRunAt'])
 @Index(['lockedAt'])
+// Supports the #2946 retention prune's `WHERE status = $1 AND "updatedAt" < $2
+// ORDER BY "updatedAt" LIMIT $3` - explicitly named so `migration:generate`
+// never proposes a duplicate of the hand-authored migration's index.
+@Index('IDX_sync_jobs_status_updatedAt', ['status', 'updatedAt'])
 @Index(['connectionId', 'createdAt']) // Supports findRecentByConnectionId diagnostics query
 // Supports findLastSucceededByConnectionAndJobType (#1982) — a render-blocking read, once per connection.
 // Explicitly named to match the migration's index name — an unnamed decorator gets a

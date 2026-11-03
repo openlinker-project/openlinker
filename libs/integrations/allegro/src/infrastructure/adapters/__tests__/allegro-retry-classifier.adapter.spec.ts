@@ -15,6 +15,7 @@ import { AllegroRetryClassifierAdapter } from '../allegro-retry-classifier.adapt
 import { AllegroApiException } from '../../../domain/exceptions/allegro-api.exception';
 import { AllegroAuthenticationException } from '../../../domain/exceptions/allegro-authentication.exception';
 import { AllegroNetworkException } from '../../../domain/exceptions/allegro-network.exception';
+import { AllegroAmbiguousWriteException } from '../../../domain/exceptions/allegro-ambiguous-write.exception';
 
 describe('AllegroRetryClassifierAdapter', () => {
   const adapter = new AllegroRetryClassifierAdapter();
@@ -35,6 +36,27 @@ describe('AllegroRetryClassifierAdapter', () => {
         ).toBe(true);
       },
     );
+
+    // #3469 IMPORTANT-1 review — an ambiguous write (5xx or network error on
+    // a non-idempotent POST/PATCH) must be non-retryable at the JOB level
+    // too, or SyncJobRunner re-runs the whole job and re-sends the same
+    // POST, defeating the point of AllegroHttpClient refusing to retry it
+    // internally.
+    it('classifies AllegroAmbiguousWriteException (ambiguous 5xx) as non-retryable', () => {
+      expect(
+        adapter.isNonRetryable(
+          new AllegroAmbiguousWriteException('ambiguous', 'POST', '/sale/product-offers', 500),
+        ),
+      ).toBe(true);
+    });
+
+    it('classifies AllegroAmbiguousWriteException (network error, no statusCode) as non-retryable', () => {
+      expect(
+        adapter.isNonRetryable(
+          new AllegroAmbiguousWriteException('network error', 'POST', '/sale/product-offers'),
+        ),
+      ).toBe(true);
+    });
   });
 
   describe('retryable (returns false)', () => {

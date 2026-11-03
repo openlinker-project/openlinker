@@ -14,12 +14,16 @@ export { McpToken } from './domain/entities/mcp-token.entity';
 export type { UserRepositoryPort } from './domain/ports/user-repository.port';
 export type { PasswordResetTokenRepositoryPort } from './domain/ports/password-reset-token-repository.port';
 export type { PasswordResetNotifierPort } from './domain/ports/password-reset-notifier.port';
-export type { MailerPort, EmailMessage } from './domain/ports/mailer.port';
+export type { MailerPort, EmailMessage, EmailAttachment } from './domain/ports/mailer.port';
 export type { RefreshTokenRepositoryPort } from './domain/ports/refresh-token-repository.port';
 export type { EmailConfirmationTokenRepositoryPort } from './domain/ports/email-confirmation-token-repository.port';
 export { UserNotFoundException } from './domain/exceptions/user-not-found.exception';
-export { UserAlreadyExistsException } from './domain/exceptions/user-already-exists.exception';
+export {
+  UserAlreadyExistsException,
+  type UserIdentifierField,
+} from './domain/exceptions/user-already-exists.exception';
 export { UserNotPendingException } from './domain/exceptions/user-not-pending.exception';
+export { UserNotAwaitingFirstSignInException } from './domain/exceptions/user-not-awaiting-first-sign-in.exception';
 export { UserNotActiveException } from './domain/exceptions/user-not-active.exception';
 export { UserNotDeactivatedException } from './domain/exceptions/user-not-deactivated.exception';
 export { UserNotPendingConfirmationException } from './domain/exceptions/user-not-pending-confirmation.exception';

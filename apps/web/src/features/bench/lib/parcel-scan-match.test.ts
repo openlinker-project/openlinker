@@ -57,6 +57,12 @@ function parcel(lines: readonly BenchParcelLine[]): BenchParcel {
     labelPrintedAt: null,
     completedAt: null,
     lines,
+    packerNotes: [],
+    buyerNote: null,
+    buyerNoteAcknowledgedAt: null,
+    buyerNoteAcknowledgedByUserId: null,
+    hasBuyerNote: false,
+    otherParcelBuyerNoteAcknowledgements: [],
   };
 }
 

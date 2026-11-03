@@ -27,6 +27,9 @@ import { DuplicateBatchEanException } from '../../../domain/exceptions/duplicate
 import { CurrencyMismatchException } from '../../../domain/exceptions/currency-mismatch.exception';
 import { InvalidOverrideKeyException } from '../../../domain/exceptions/invalid-override-key.exception';
 import { ExpandedOfferCeilingExceededException } from '../../../domain/exceptions/expanded-offer-ceiling-exceeded.exception';
+import { DuplicateBulkBatchIdempotencyKeyError } from '../../../domain/exceptions/duplicate-bulk-batch-idempotency-key.error';
+import { MasterStockNotSyncedException } from '../../../domain/exceptions/master-stock-not-synced.exception';
+import { AvailabilityUnknownError } from '../../../domain/exceptions/availability-unknown.error';
 import type { BulkListingBatchRepositoryPort } from '../../../domain/ports/bulk-listing-batch-repository.port';
 import type { OfferCreationRecordRepositoryPort } from '../../../domain/ports/offer-creation-record-repository.port';
 import type { OfferMappingRepositoryPort } from '../../../domain/ports/offer-mapping-repository.port';
@@ -110,6 +113,10 @@ describe('BulkListingSubmitService', () => {
       updateTotalCount: jest.fn().mockImplementation((id: string, totalCount: number) =>
         Promise.resolve(makeBatch({ id, totalCount }))
       ),
+      // Default: no batch holds any key yet.
+      findByIdempotencyKey: jest.fn().mockResolvedValue(null),
+      clearIdempotencyKey: jest.fn().mockResolvedValue(undefined),
+      reclassifySucceededChildAsFailed: jest.fn(),
     };
     offerCreationRecords = {
       create: jest.fn(),
@@ -119,6 +126,7 @@ describe('BulkListingSubmitService', () => {
       updateStatus: jest.fn(),
       updateExternalOfferId: jest.fn(),
       updateExternalIdAndStatus: jest.fn(),
+      markFailedIfPending: jest.fn(),
       findByBulkBatchId: jest.fn().mockResolvedValue([]),
       updateClassificationReport: jest.fn(),
       resetForRetry: jest.fn(),
@@ -204,6 +212,7 @@ describe('BulkListingSubmitService', () => {
         jobIds: ['job-v-a', 'job-v-b', 'job-v-c'],
         skippedAlreadyListedCount: 0,
         skippedAvailabilityUnknownCount: 0,
+        skippedInvalidEanCount: 0,
       });
       expect(bulkBatchRepo.updateStatus).toHaveBeenCalledWith('batch-1', 'running');
     });
@@ -500,9 +509,9 @@ describe('BulkListingSubmitService', () => {
         variant({ id: 'v-c', productId: 'P', ean: '333' }),
       ]);
       inventoryQuery.getAvailabilityByVariantIds.mockResolvedValue([
-        { productVariantId: 'v-a', totalAvailable: 10, locationCount: 1, availableToPromise: 10 },
-        { productVariantId: 'v-b', totalAvailable: 5, locationCount: 1, availableToPromise: 5 },
-        { productVariantId: 'v-c', totalAvailable: 0, locationCount: 0, availableToPromise: 0 },
+        { productVariantId: 'v-a', totalAvailable: 10, locationCount: 1, positionCount: 1, availableToPromise: 10 },
+        { productVariantId: 'v-b', totalAvailable: 5, locationCount: 1, positionCount: 1, availableToPromise: 5 },
+        { productVariantId: 'v-c', totalAvailable: 0, locationCount: 1, positionCount: 1, availableToPromise: 0 },
       ]);
 
       const result = await service.submit({
@@ -537,9 +546,9 @@ describe('BulkListingSubmitService', () => {
         variant({ id: 'v-c', productId: 'P', ean: '333' }),
       ]);
       inventoryQuery.getAvailabilityByVariantIds.mockResolvedValue([
-        { productVariantId: 'v-a', totalAvailable: 1, locationCount: 1, availableToPromise: 1 },
-        { productVariantId: 'v-b', totalAvailable: 1, locationCount: 1, availableToPromise: 1 },
-        { productVariantId: 'v-c', totalAvailable: 1, locationCount: 1, availableToPromise: 1 },
+        { productVariantId: 'v-a', totalAvailable: 1, locationCount: 1, positionCount: 1, availableToPromise: 1 },
+        { productVariantId: 'v-b', totalAvailable: 1, locationCount: 1, positionCount: 1, availableToPromise: 1 },
+        { productVariantId: 'v-c', totalAvailable: 1, locationCount: 1, positionCount: 1, availableToPromise: 1 },
       ]);
 
       await service.submit({
@@ -589,8 +598,8 @@ describe('BulkListingSubmitService', () => {
         variant({ id: 'v-c', productId: 'P', gtin: '333' }),
       ]);
       inventoryQuery.getAvailabilityByVariantIds.mockResolvedValue([
-        { productVariantId: 'v-a', totalAvailable: 4, locationCount: 1, availableToPromise: 4 },
-        { productVariantId: 'v-c', totalAvailable: 2, locationCount: 1, availableToPromise: 2 },
+        { productVariantId: 'v-a', totalAvailable: 4, locationCount: 1, positionCount: 1, availableToPromise: 4 },
+        { productVariantId: 'v-c', totalAvailable: 2, locationCount: 1, positionCount: 1, availableToPromise: 2 },
       ]);
 
       await service.submit({
@@ -616,8 +625,8 @@ describe('BulkListingSubmitService', () => {
         variant({ id: 'v-c', productId: 'P', gtin: '333' }),
       ]);
       inventoryQuery.getAvailabilityByVariantIds.mockResolvedValue([
-        { productVariantId: 'v-a', totalAvailable: 4, locationCount: 1, availableToPromise: 4 },
-        { productVariantId: 'v-c', totalAvailable: 2, locationCount: 1, availableToPromise: 2 },
+        { productVariantId: 'v-a', totalAvailable: 4, locationCount: 1, positionCount: 1, availableToPromise: 4 },
+        { productVariantId: 'v-c', totalAvailable: 2, locationCount: 1, positionCount: 1, availableToPromise: 2 },
       ]);
 
       await service.submit({
@@ -661,9 +670,9 @@ describe('BulkListingSubmitService', () => {
         variant({ id: 'v-c', productId: 'P', ean: '333' }),
       ]);
       inventoryQuery.getAvailabilityByVariantIds.mockResolvedValue([
-        { productVariantId: 'v-b', totalAvailable: 1, locationCount: 1, availableToPromise: 1 },
-        { productVariantId: 'v-c', totalAvailable: 1, locationCount: 1, availableToPromise: 1 },
-        { productVariantId: 'v-a', totalAvailable: 1, locationCount: 1, availableToPromise: 1 },
+        { productVariantId: 'v-b', totalAvailable: 1, locationCount: 1, positionCount: 1, availableToPromise: 1 },
+        { productVariantId: 'v-c', totalAvailable: 1, locationCount: 1, positionCount: 1, availableToPromise: 1 },
+        { productVariantId: 'v-a', totalAvailable: 1, locationCount: 1, positionCount: 1, availableToPromise: 1 },
       ]);
 
       await service.submit({
@@ -685,8 +694,8 @@ describe('BulkListingSubmitService', () => {
         variant({ id: 'v-b', productId: 'P', ean: '222' }),
       ]);
       inventoryQuery.getAvailabilityByVariantIds.mockResolvedValue([
-        { productVariantId: 'v-a', totalAvailable: 3, locationCount: 1, availableToPromise: 3 },
-        { productVariantId: 'v-b', totalAvailable: 3, locationCount: 1, availableToPromise: 3 },
+        { productVariantId: 'v-a', totalAvailable: 3, locationCount: 1, positionCount: 1, availableToPromise: 3 },
+        { productVariantId: 'v-b', totalAvailable: 3, locationCount: 1, positionCount: 1, availableToPromise: 3 },
       ]);
 
       await service.submit({
@@ -724,7 +733,7 @@ describe('BulkListingSubmitService', () => {
       );
       products.getVariantsByProductId.mockResolvedValue(built);
       inventoryQuery.getAvailabilityByVariantIds.mockResolvedValue(
-        availability.map((a) => ({ ...a, locationCount: 1, availableToPromise: a.totalAvailable }))
+        availability.map((a) => ({ ...a, locationCount: 1, positionCount: 1, availableToPromise: a.totalAvailable }))
       );
     };
 
@@ -982,6 +991,97 @@ describe('BulkListingSubmitService', () => {
       expect(enqueueService.enqueueCreation).not.toHaveBeenCalled();
     });
 
+    it('excludes a job with a checksum-invalid EAN but submits the rest of the batch (#3492)', async () => {
+      wireMultiVariant(
+        [
+          { id: 'ol_variant_a', ean: '5901234123457' },
+          { id: 'ol_variant_b', ean: '5901234123458' }, // bad check digit
+          { id: 'ol_variant_c', ean: '5900000000008' },
+        ],
+        [
+          { productVariantId: 'ol_variant_a', totalAvailable: 1 },
+          { productVariantId: 'ol_variant_b', totalAvailable: 1 },
+          { productVariantId: 'ol_variant_c', totalAvailable: 1 },
+        ]
+      );
+
+      const result = await service.submit({
+        connectionId,
+        initiatedBy,
+        productIds: ['ol_variant_a'],
+        sharedConfig: { stock: 1, publishImmediately: false },
+      });
+
+      expect(bulkBatchRepo.create).toHaveBeenCalled();
+      expect(enqueueService.enqueueCreation.mock.calls.map((c) => c[0].internalVariantId)).toEqual([
+        'ol_variant_a',
+        'ol_variant_c',
+      ]);
+      expect(result.skippedInvalidEanCount).toBe(1);
+    });
+
+    it('submits a checksum-invalid EAN unchanged when eanOverrideAcknowledged is true (#3492)', async () => {
+      wireMultiVariant(
+        [
+          { id: 'ol_variant_a', ean: '5901234123457' },
+          { id: 'ol_variant_b', ean: '5901234123458' },
+          { id: 'ol_variant_c', ean: '5900000000008' },
+        ],
+        [
+          { productVariantId: 'ol_variant_a', totalAvailable: 1 },
+          { productVariantId: 'ol_variant_b', totalAvailable: 1 },
+          { productVariantId: 'ol_variant_c', totalAvailable: 1 },
+        ]
+      );
+
+      const result = await service.submit({
+        connectionId,
+        initiatedBy,
+        productIds: ['ol_variant_a'],
+        sharedConfig: { stock: 1, publishImmediately: false },
+        perVariantOverrides: {
+          ol_variant_b: { overrides: { eanOverrideAcknowledged: true } },
+        },
+      });
+
+      expect(enqueueService.enqueueCreation.mock.calls.map((c) => c[0].internalVariantId)).toEqual([
+        'ol_variant_a',
+        'ol_variant_b',
+        'ol_variant_c',
+      ]);
+      expect(result.skippedInvalidEanCount).toBe(0);
+      // Control-plane only - never leaks into what would become CreateOfferCommand.overrides.
+      const bJob = enqueueService.enqueueCreation.mock.calls.find(
+        (c) => c[0].internalVariantId === 'ol_variant_b'
+      );
+      expect(bJob?.[0].overrides?.eanOverrideAcknowledged).toBeUndefined();
+    });
+
+    it('still throws InvalidEanException when the checksum-invalid exclusion empties the whole batch (#3492)', async () => {
+      wireMultiVariant(
+        [
+          { id: 'ol_variant_a', ean: '5901234123458' },
+          { id: 'ol_variant_b', ean: '5901234123458' },
+        ],
+        [
+          { productVariantId: 'ol_variant_a', totalAvailable: 1 },
+          { productVariantId: 'ol_variant_b', totalAvailable: 1 },
+        ]
+      );
+
+      await expect(
+        service.submit({
+          connectionId,
+          initiatedBy,
+          productIds: ['ol_variant_a'],
+          sharedConfig: { stock: 1, publishImmediately: false },
+        })
+      ).rejects.toBeInstanceOf(InvalidEanException);
+
+      expect(bulkBatchRepo.create).not.toHaveBeenCalled();
+      expect(enqueueService.enqueueCreation).not.toHaveBeenCalled();
+    });
+
     it('rejects two included variants that resolve to the same effective EAN', async () => {
       wireMultiVariant(
         [
@@ -1188,6 +1288,267 @@ describe('BulkListingSubmitService', () => {
 
       expect(bulkBatchRepo.create).not.toHaveBeenCalled();
     });
+    describe('sibling with no inventory position (#3851)', () => {
+      const wireFamily = (
+        rows: Array<{ id: string; positionCount: number; atp: number }>
+      ): void => {
+        const built = rows.map((r, i) =>
+          variant({ id: r.id, productId: 'P', ean: String(111 * (i + 1)) })
+        );
+        products.getVariant.mockResolvedValue(built[0]);
+        products.getVariantsByProductId.mockResolvedValue(built);
+        inventoryQuery.getAvailabilityByVariantIds.mockResolvedValue(
+          rows.map((r) => ({
+            productVariantId: r.id,
+            totalAvailable: r.atp,
+            locationCount: r.positionCount,
+            positionCount: r.positionCount,
+            availableToPromise: r.atp,
+          }))
+        );
+      };
+
+      it('should leave out an unpositioned sibling and list the rest', async () => {
+        wireFamily([
+          { id: 'v-a', positionCount: 1, atp: 10 },
+          { id: 'v-b', positionCount: 0, atp: 0 },
+        ]);
+
+        const result = await service.submit({
+          connectionId,
+          initiatedBy,
+          productIds: ['v-a'],
+          sharedConfig: { stock: 7, publishImmediately: false },
+        });
+
+        expect(enqueueService.enqueueCreation).toHaveBeenCalledTimes(1);
+        expect(enqueueService.enqueueCreation.mock.calls[0][0]).toMatchObject({
+          internalVariantId: 'v-a',
+          stock: 10,
+        });
+        expect(result.skippedAvailabilityUnknownCount).toBe(1);
+      });
+
+      it('should still list a positioned sibling reporting 0 at 0', async () => {
+        wireFamily([
+          { id: 'v-a', positionCount: 1, atp: 3 },
+          { id: 'v-b', positionCount: 1, atp: 0 },
+        ]);
+
+        const result = await service.submit({
+          connectionId,
+          initiatedBy,
+          productIds: ['v-a'],
+          sharedConfig: { stock: 7, publishImmediately: false },
+        });
+
+        expect(enqueueService.enqueueCreation).toHaveBeenCalledTimes(2);
+        expect(enqueueService.enqueueCreation.mock.calls[1][0]).toMatchObject({
+          internalVariantId: 'v-b',
+          stock: 0,
+        });
+        expect(result.skippedAvailabilityUnknownCount).toBe(0);
+      });
+
+      it('should name an unsynced stock when every sibling lacks a position', async () => {
+        wireFamily([
+          { id: 'v-a', positionCount: 0, atp: 0 },
+          { id: 'v-b', positionCount: 0, atp: 0 },
+        ]);
+
+        await expect(
+          service.submit({
+            connectionId,
+            initiatedBy,
+            productIds: ['v-a'],
+            sharedConfig: { stock: 7, publishImmediately: false },
+          })
+        ).rejects.toBeInstanceOf(MasterStockNotSyncedException);
+      });
+    });
+  });
+
+  describe('single-variant stock taken from master (#3851)', () => {
+    /** Two simple products, each its own single-variant family. */
+    const wireSimpleProducts = (
+      availability: Array<{
+        productVariantId: string;
+        totalAvailable: number;
+        locationCount: number;
+        positionCount: number;
+        availableToPromise: number | null;
+      }>
+    ): void => {
+      const built = [
+        variant({ id: 'ol_variant_a', productId: 'P-a', ean: '5901234123457' }),
+        variant({ id: 'ol_variant_b', productId: 'P-b', ean: '5901234123464' }),
+      ];
+      products.getVariant.mockImplementation((id: string) =>
+        Promise.resolve(built.find((v) => v.id === id) ?? null)
+      );
+      products.getVariantsByProductId.mockImplementation((productId: string) =>
+        Promise.resolve(built.filter((v) => v.productId === productId))
+      );
+      inventoryQuery.getAvailabilityByVariantIds.mockResolvedValue(availability);
+    };
+
+    it('should leave out a single-variant offer whose master stock has no inventory position', async () => {
+      wireSimpleProducts([
+        { productVariantId: 'ol_variant_a', totalAvailable: 0, locationCount: 0, positionCount: 0, availableToPromise: 0 },
+        { productVariantId: 'ol_variant_b', totalAvailable: 4, locationCount: 1, positionCount: 1, availableToPromise: 4 },
+      ]);
+
+      const result = await service.submit({
+        connectionId,
+        initiatedBy,
+        productIds: ['ol_variant_a', 'ol_variant_b'],
+        sharedConfig: { stock: 1, publishImmediately: true },
+        perVariantOverrides: {
+          ol_variant_a: { stock: 0, stockFromMaster: true },
+          ol_variant_b: { stock: 4, stockFromMaster: true },
+        },
+      });
+
+      expect(enqueueService.enqueueCreation).toHaveBeenCalledTimes(1);
+      expect(enqueueService.enqueueCreation.mock.calls[0][0]).toMatchObject({
+        internalVariantId: 'ol_variant_b',
+        stock: 4,
+      });
+      expect(result.skippedAvailabilityUnknownCount).toBe(1);
+    });
+
+    it('should list a single-variant offer whose master stock sits in a pooled position', async () => {
+      wireSimpleProducts([
+        { productVariantId: 'ol_variant_a', totalAvailable: 11, locationCount: 0, positionCount: 1, availableToPromise: 11 },
+        { productVariantId: 'ol_variant_b', totalAvailable: 4, locationCount: 1, positionCount: 1, availableToPromise: 4 },
+      ]);
+
+      const result = await service.submit({
+        connectionId,
+        initiatedBy,
+        productIds: ['ol_variant_a', 'ol_variant_b'],
+        sharedConfig: { stock: 1, publishImmediately: true },
+        perVariantOverrides: {
+          ol_variant_a: { stock: 11, stockFromMaster: true },
+          ol_variant_b: { stock: 4, stockFromMaster: true },
+        },
+      });
+
+      expect(enqueueService.enqueueCreation).toHaveBeenCalledTimes(2);
+      expect(result.skippedAvailabilityUnknownCount).toBe(0);
+    });
+
+    it('should leave out a single-variant offer whose availability is unresolved', async () => {
+      wireSimpleProducts([
+        { productVariantId: 'ol_variant_a', totalAvailable: 6, locationCount: 1, positionCount: 1, availableToPromise: null },
+        { productVariantId: 'ol_variant_b', totalAvailable: 4, locationCount: 1, positionCount: 1, availableToPromise: 4 },
+      ]);
+
+      const result = await service.submit({
+        connectionId,
+        initiatedBy,
+        productIds: ['ol_variant_a', 'ol_variant_b'],
+        sharedConfig: { stock: 1, publishImmediately: true },
+        perVariantOverrides: {
+          ol_variant_a: { stock: 6, stockFromMaster: true },
+          ol_variant_b: { stock: 4, stockFromMaster: true },
+        },
+      });
+
+      expect(enqueueService.enqueueCreation).toHaveBeenCalledTimes(1);
+      expect(result.skippedAvailabilityUnknownCount).toBe(1);
+    });
+
+    it('should keep a known zero master stock, which lists the offer as a draft', async () => {
+      wireSimpleProducts([
+        { productVariantId: 'ol_variant_a', totalAvailable: 0, locationCount: 1, positionCount: 1, availableToPromise: 0 },
+      ]);
+
+      await service.submit({
+        connectionId,
+        initiatedBy,
+        productIds: ['ol_variant_a'],
+        sharedConfig: { stock: 1, publishImmediately: true },
+        perVariantOverrides: { ol_variant_a: { stock: 0, stockFromMaster: true } },
+      });
+
+      expect(enqueueService.enqueueCreation.mock.calls[0][0]).toMatchObject({
+        internalVariantId: 'ol_variant_a',
+        stock: 0,
+        publishImmediately: false,
+      });
+    });
+
+    it('should list an operator stock without consulting master inventory', async () => {
+      wireSimpleProducts([]);
+
+      await service.submit({
+        connectionId,
+        initiatedBy,
+        productIds: ['ol_variant_a'],
+        sharedConfig: { stock: 1, publishImmediately: true },
+        perVariantOverrides: { ol_variant_a: { stock: 3 } },
+      });
+
+      expect(inventoryQuery.getAvailabilityByVariantIds).not.toHaveBeenCalled();
+      expect(enqueueService.enqueueCreation.mock.calls[0][0]).toMatchObject({
+        internalVariantId: 'ol_variant_a',
+        stock: 3,
+      });
+    });
+
+    it('should name an unsynced stock, not a transient failure, when nothing is left to list', async () => {
+      wireSimpleProducts([
+        { productVariantId: 'ol_variant_a', totalAvailable: 0, locationCount: 0, positionCount: 0, availableToPromise: 0 },
+      ]);
+
+      await expect(
+        service.submit({
+          connectionId,
+          initiatedBy,
+          productIds: ['ol_variant_a'],
+          sharedConfig: { stock: 1, publishImmediately: true },
+          perVariantOverrides: { ol_variant_a: { stock: 0, stockFromMaster: true } },
+        })
+      ).rejects.toBeInstanceOf(MasterStockNotSyncedException);
+      expect(bulkBatchRepo.create).not.toHaveBeenCalled();
+    });
+
+    it('should report a transient read failure, not an unsynced stock, when only some excluded offers lack a position', async () => {
+      wireSimpleProducts([
+        { productVariantId: 'ol_variant_a', totalAvailable: 0, locationCount: 0, positionCount: 0, availableToPromise: 0 },
+        { productVariantId: 'ol_variant_b', totalAvailable: 2, locationCount: 1, positionCount: 1, availableToPromise: null },
+      ]);
+
+      await expect(
+        service.submit({
+          connectionId,
+          initiatedBy,
+          productIds: ['ol_variant_a', 'ol_variant_b'],
+          sharedConfig: { stock: 1, publishImmediately: true },
+          perVariantOverrides: {
+            ol_variant_a: { stock: 0, stockFromMaster: true },
+            ol_variant_b: { stock: 2, stockFromMaster: true },
+          },
+        })
+      ).rejects.toBeInstanceOf(AvailabilityUnknownError);
+    });
+
+    it('should keep reporting a transient read failure when no excluded offer lacks a position', async () => {
+      wireSimpleProducts([
+        { productVariantId: 'ol_variant_a', totalAvailable: 2, locationCount: 1, positionCount: 1, availableToPromise: null },
+      ]);
+
+      await expect(
+        service.submit({
+          connectionId,
+          initiatedBy,
+          productIds: ['ol_variant_a'],
+          sharedConfig: { stock: 1, publishImmediately: true },
+          perVariantOverrides: { ol_variant_a: { stock: 2, stockFromMaster: true } },
+        })
+      ).rejects.toBeInstanceOf(AvailabilityUnknownError);
+    });
   });
 
   describe('grouping strategy + re-list + orphan cleanup (#1741 review)', () => {
@@ -1203,8 +1564,8 @@ describe('BulkListingSubmitService', () => {
         variant({ id: 'v-b', productId: 'P' }), // no barcode — kept for Erli
       ]);
       inventoryQuery.getAvailabilityByVariantIds.mockResolvedValue([
-        { productVariantId: 'v-a', totalAvailable: 1, locationCount: 1, availableToPromise: 1 },
-        { productVariantId: 'v-b', totalAvailable: 1, locationCount: 1, availableToPromise: 1 },
+        { productVariantId: 'v-a', totalAvailable: 1, locationCount: 1, positionCount: 1, availableToPromise: 1 },
+        { productVariantId: 'v-b', totalAvailable: 1, locationCount: 1, positionCount: 1, availableToPromise: 1 },
       ]);
 
       await service.submit({
@@ -1227,7 +1588,7 @@ describe('BulkListingSubmitService', () => {
         variant({ id: 'v-b', productId: 'P', ean: '222' }),
       ]);
       inventoryQuery.getAvailabilityByVariantIds.mockResolvedValue([
-        { productVariantId: 'v-b', totalAvailable: 1, locationCount: 1, availableToPromise: 1 },
+        { productVariantId: 'v-b', totalAvailable: 1, locationCount: 1, positionCount: 1, availableToPromise: 1 },
       ]);
       // v-a already listed → skipped; only v-b enqueues.
       offerMappings.countByConnectionAndVariants.mockResolvedValue(new Map([['v-a', 1]]));
@@ -1314,6 +1675,147 @@ describe('BulkListingSubmitService', () => {
       expect(offerCreationRecords.deleteById).toHaveBeenCalledWith('record-2-orphan');
       expect(offerCreationRecords.deleteById).not.toHaveBeenCalledWith('record-1');
       expect(bulkBatchRepo.updateTotalCount).toHaveBeenCalledWith('batch-1', 1);
+    });
+  });
+
+  describe('submit with an idempotency key', () => {
+    const keyedInput = {
+      connectionId,
+      initiatedBy,
+      productIds: ['v-a', 'v-b'],
+      sharedConfig: { stock: 5, publishImmediately: false },
+      idempotencyKey: 'key-1',
+    };
+
+    it('should persist the key with the batch before enqueueing anything', async () => {
+      const order: string[] = [];
+      bulkBatchRepo.create.mockImplementation(() => {
+        order.push('create');
+        return Promise.resolve(makeBatch());
+      });
+      enqueueService.enqueueCreation.mockImplementation(
+        (input: { internalVariantId: string }) => {
+          order.push('enqueue');
+          return Promise.resolve({
+            jobId: `job-${input.internalVariantId}`,
+            offerCreationRecord: { id: `record-${input.internalVariantId}` } as OfferCreationRecord,
+          });
+        }
+      );
+
+      const result = await service.submit(keyedInput);
+
+      expect(bulkBatchRepo.create).toHaveBeenCalledWith(
+        expect.objectContaining({ connectionId, idempotencyKey: 'key-1' })
+      );
+      expect(order).toEqual(['create', 'enqueue', 'enqueue']);
+      expect(result.deduplicated).toBeUndefined();
+      expect(result.jobIds).toEqual(['job-v-a', 'job-v-b']);
+    });
+
+    it('should return the same batch and enqueue jobs only once when the same key is submitted twice', async () => {
+      const first = await service.submit(keyedInput);
+      // The second call now finds the batch the first one persisted.
+      bulkBatchRepo.findByIdempotencyKey.mockResolvedValue(makeBatch({ id: first.batchId }));
+
+      const second = await service.submit(keyedInput);
+
+      expect(second.batchId).toBe(first.batchId);
+      expect(second).toEqual({
+        batchId: first.batchId,
+        jobIds: [],
+        skippedAlreadyListedCount: 0,
+        skippedAvailabilityUnknownCount: 0,
+        skippedInvalidEanCount: 0,
+        deduplicated: true,
+      });
+      expect(bulkBatchRepo.create).toHaveBeenCalledTimes(1);
+      expect(enqueueService.enqueueCreation).toHaveBeenCalledTimes(2);
+      expect(bulkBatchRepo.findByIdempotencyKey).toHaveBeenCalledWith(connectionId, 'key-1');
+    });
+
+    it('should answer a replay before touching the adapter', async () => {
+      bulkBatchRepo.findByIdempotencyKey.mockResolvedValue(makeBatch({ id: 'batch-earlier' }));
+
+      const result = await service.submit(keyedInput);
+
+      expect(result.batchId).toBe('batch-earlier');
+      expect(integrations.getCapabilityAdapter).not.toHaveBeenCalled();
+      expect(bulkBatchRepo.updateStatus).not.toHaveBeenCalled();
+    });
+
+    it('should return the winning batch and enqueue nothing when it loses the insert race', async () => {
+      // Both racers passed the replay check; this one's insert hit the index.
+      bulkBatchRepo.findByIdempotencyKey
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce(makeBatch({ id: 'batch-winner' }));
+      bulkBatchRepo.create.mockRejectedValue(
+        new DuplicateBulkBatchIdempotencyKeyError(connectionId, 'key-1')
+      );
+
+      const result = await service.submit(keyedInput);
+
+      expect(result).toEqual({
+        batchId: 'batch-winner',
+        jobIds: [],
+        skippedAlreadyListedCount: 0,
+        skippedAvailabilityUnknownCount: 0,
+        skippedInvalidEanCount: 0,
+        deduplicated: true,
+      });
+      expect(enqueueService.enqueueCreation).not.toHaveBeenCalled();
+      expect(bulkBatchRepo.updateStatus).not.toHaveBeenCalled();
+    });
+
+    it('should rethrow the duplicate error when the winner released its key before it could be read', async () => {
+      bulkBatchRepo.findByIdempotencyKey.mockResolvedValue(null);
+      bulkBatchRepo.create.mockRejectedValue(
+        new DuplicateBulkBatchIdempotencyKeyError(connectionId, 'key-1')
+      );
+
+      await expect(service.submit(keyedInput)).rejects.toBeInstanceOf(
+        DuplicateBulkBatchIdempotencyKeyError
+      );
+      expect(enqueueService.enqueueCreation).not.toHaveBeenCalled();
+    });
+
+    it('should release the key when nothing reached the stream so a retry runs for real', async () => {
+      enqueueService.enqueueCreation.mockRejectedValueOnce(new Error('Redis down'));
+
+      await expect(service.submit(keyedInput)).rejects.toThrow('Redis down');
+
+      expect(bulkBatchRepo.updateStatus).toHaveBeenCalledWith('batch-1', 'failed');
+      expect(bulkBatchRepo.clearIdempotencyKey).toHaveBeenCalledWith('batch-1');
+    });
+
+    it('should keep the key when some jobs already reached the stream', async () => {
+      enqueueService.enqueueCreation
+        .mockResolvedValueOnce({
+          jobId: 'job-v-a',
+          offerCreationRecord: { id: 'record-v-a' } as OfferCreationRecord,
+        })
+        .mockRejectedValueOnce(new Error('stream down'));
+
+      await expect(service.submit(keyedInput)).rejects.toThrow('stream down');
+
+      expect(bulkBatchRepo.clearIdempotencyKey).not.toHaveBeenCalled();
+    });
+
+    it('should keep the pre-key behaviour when no key is given', async () => {
+      const unkeyed = {
+        connectionId,
+        initiatedBy,
+        productIds: ['v-a', 'v-b'],
+        sharedConfig: { stock: 5, publishImmediately: false },
+      };
+
+      await service.submit(unkeyed);
+      await service.submit(unkeyed);
+
+      expect(bulkBatchRepo.findByIdempotencyKey).not.toHaveBeenCalled();
+      expect(bulkBatchRepo.create).toHaveBeenCalledTimes(2);
+      expect(bulkBatchRepo.create.mock.calls[0][0]).not.toHaveProperty('idempotencyKey');
+      expect(enqueueService.enqueueCreation).toHaveBeenCalledTimes(4);
     });
   });
 

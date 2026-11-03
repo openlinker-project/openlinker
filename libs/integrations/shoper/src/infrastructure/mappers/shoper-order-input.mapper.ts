@@ -1,0 +1,83 @@
+/**
+ * Shoper Order Input Helpers
+ *
+ * Pure readers for the values `ShoperOrderProcessorAdapter` takes from the
+ * neutral `OrderCreate` and the connection config: the retry marker, the buyer
+ * email, and the `defaults.*` ids. No I/O.
+ *
+ * @module libs/integrations/shoper/src/infrastructure/mappers
+ */
+import type { Connection } from '@openlinker/core/identifier-mapping';
+import type { OrderCreate } from '@openlinker/core/orders';
+
+import { ShoperOrderUnbuildableException } from '../../domain/exceptions/shoper-order-unbuildable.exception';
+import type { ShoperOrderDefaults } from '../../domain/types/shoper-config.types';
+
+/**
+ * Every `config.defaults` key, in one list so the reader and the shape
+ * validator cannot disagree about which ids exist.
+ */
+export const SHOPER_DEFAULT_KEYS = [
+  'shippingId',
+  'paymentId',
+  'statusId',
+  'parcelShippingId',
+  'cancelledStatusId',
+  'inProgressStatusId',
+] as const satisfies ReadonlyArray<keyof ShoperOrderDefaults>;
+
+/** RFC-5322-lite: enough to refuse an obviously unusable value. */
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+/**
+ * Prefix of every `notes_priv` marker OpenLinker writes. The order SOURCE reads it
+ * to recognise an order it created itself, so both sides share this one string.
+ */
+export const ORDER_MARKER_PREFIX = 'OpenLinker order ';
+
+export function orderMarker(internalOrderId: string): string {
+  return `${ORDER_MARKER_PREFIX}${internalOrderId}`;
+}
+
+export function readBuyerEmail(order: OrderCreate): string | undefined {
+  const raw = order.metadata?.buyerEmail;
+  return typeof raw === 'string' && EMAIL_PATTERN.test(raw.trim()) ? raw.trim() : undefined;
+}
+
+export function readDefaults(connection: Connection): ShoperOrderDefaults {
+  const raw = (connection.config ?? {}).defaults;
+  if (typeof raw !== 'object' || raw === null) {
+    return {};
+  }
+  const record = raw as Record<string, unknown>;
+  const defaults: { -readonly [K in keyof ShoperOrderDefaults]: ShoperOrderDefaults[K] } = {};
+  for (const key of SHOPER_DEFAULT_KEYS) {
+    const value = toPositiveInt(record[key]);
+    if (value !== null) {
+      defaults[key] = value;
+    }
+  }
+  return defaults;
+}
+
+export function requireDefault(value: number | undefined, key: string, label: string, connectionId: string): number {
+  if (value === undefined) {
+    throw new ShoperOrderUnbuildableException(
+      connectionId,
+      `no ${label} could be resolved: add a mapping or set connection config "${key}" to the id of a ${label} in the shop`,
+    );
+  }
+  return value;
+}
+
+export function toPositiveInt(value: unknown): number | null {
+  const n = typeof value === 'number' ? value : typeof value === 'string' ? Number(value) : Number.NaN;
+  return Number.isInteger(n) && n > 0 ? n : null;
+}
+
+export function readId(data: unknown): string | null {
+  if (typeof data === 'number' || (typeof data === 'string' && data.trim() !== '')) {
+    return String(data);
+  }
+  return null;
+}

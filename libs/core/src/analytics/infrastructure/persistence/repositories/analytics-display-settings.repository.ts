@@ -58,6 +58,9 @@ export class AnalyticsDisplaySettingsRepository implements AnalyticsDisplaySetti
         rateBasis: input.rateBasis,
         includeBackfilledTaxRatesInNetSales: input.includeBackfilledTaxRatesInNetSales,
         netGrossBasis: input.netGrossBasis,
+        // Absent keeps the stored value: an upsert only writes the columns it is
+        // given, and a fresh insert takes the column default (true).
+        ...(input.trackMargin !== undefined ? { trackMargin: input.trackMargin } : {}),
         updatedByUserId,
         // TypeORM's upsert() only includes explicitly-passed columns in the
         // ON CONFLICT DO UPDATE SET clause — @UpdateDateColumn()'s auto-touch
@@ -93,6 +96,7 @@ export class AnalyticsDisplaySettingsRepository implements AnalyticsDisplaySetti
       entity.rateBasis,
       entity.includeBackfilledTaxRatesInNetSales,
       entity.netGrossBasis,
+      entity.trackMargin,
       entity.updatedAt,
       entity.updatedByUserId
     );

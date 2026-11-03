@@ -90,6 +90,12 @@ function parcel(over: Partial<BenchParcel> = {}): BenchParcel {
     labelPrintedAt: null,
     completedAt: null,
     lines: [line()],
+    packerNotes: [],
+    buyerNote: null,
+    buyerNoteAcknowledgedAt: null,
+    buyerNoteAcknowledgedByUserId: null,
+    hasBuyerNote: false,
+    otherParcelBuyerNoteAcknowledgements: [],
     ...over,
   };
 }
@@ -99,19 +105,21 @@ const PACKER = {
   username: 'Marta Kowalczyk',
   email: null,
   role: 'packer',
-  permissions: [],
+  permissions: ['bench:write', 'bench:read'],
   analyticsConsent: true,
 } as const;
 
 function mount(
   data: BenchParcel,
   bench: Partial<Record<string, unknown>> = {},
-  onClose: () => void = vi.fn()
+  onClose: () => void = vi.fn(),
+  permissions: readonly string[] = ['bench:write', 'bench:read']
 ) {
   const apiClient = createMockApiClient({
     bench: {
       getParcel: vi.fn().mockResolvedValue(data),
       verifyUnit: vi.fn(),
+      pingPresence: vi.fn().mockResolvedValue({ others: [] }),
       reopenParcel: vi.fn(),
       getDocuments: vi.fn().mockResolvedValue({
         workId: data.workId,
@@ -145,7 +153,10 @@ function mount(
     onClose,
     ...renderWithProviders(<BenchParcelView workId="w-1" onClose={onClose} />, {
       apiClient,
-      sessionAdapter: createAuthenticatedSessionAdapter({ ...PACKER, permissions: [] }),
+      sessionAdapter: createAuthenticatedSessionAdapter({
+        ...PACKER,
+        permissions: permissions as never,
+      }),
     }),
   };
 }
@@ -164,6 +175,21 @@ describe('BenchParcelView (#2418)', () => {
     resetGestureLogForTests();
   });
 
+  // #3734 — a session holding `bench:read` and not `bench:write` (a viewer)
+  // may look at a parcel and nothing else.
+  it('should render a preview with no write control and send no presence ping for a viewer', async () => {
+    const { apiClient } = mount(parcel(), {}, vi.fn(), ['bench:read']);
+    await screen.findByTestId('bench-preview');
+
+    // Nothing that could write: no confirm, no scan dock, no print/replace.
+    expect(
+      screen.queryByRole('button', { name: /confirm|print|change size|turn the sound/i })
+    ).toBeNull();
+    expect(screen.queryByTestId('bench-collision')).toBeNull();
+    // The ping is what advertises someone as standing at the box.
+    expect(apiClient.bench.pingPresence).not.toHaveBeenCalled();
+  });
+
   // ── RULE 1 — there is no commit control on an OPEN box (D18/E5) ─────────
   //
   // This fixture is OPEN (`closedAt: null`, the `parcel()` default), which is
@@ -179,6 +205,11 @@ describe('BenchParcelView (#2418)', () => {
   it('should render NO control that could commit or close the box', async () => {
     mount(parcel());
     await screen.findByTestId('bench-parcel');
+    // The documents panel reads separately and arrives later. Wait for it, so
+    // the inventory below is the box as the packer sees it, not whatever had
+    // rendered by the time the parcel did — reading too early hid its two
+    // print controls and made this pass or fail on timing.
+    await screen.findByRole('button', { name: 'Print label' });
 
     // Asserts the PERMITTED set, not a denied word list (#2905 review). A grep
     // for `done|finish|commit` can only refuse the spellings somebody thought
@@ -195,6 +226,8 @@ describe('BenchParcelView (#2418)', () => {
       [
         // The bench's only exit (C2).
         'Back to the list',
+        // Documents panel's label-size control, rendered for a session that may write (#3734).
+        'Change size',
         // Two copy controls (mockup-parity epic #3401): the order reference on
         // the head, and the hero's barcode. They render a glyph, so their
         // `textContent` is that glyph rather than their accessible name — the
@@ -217,8 +250,75 @@ describe('BenchParcelView (#2418)', () => {
         // recent scan on an OPEN parcel, and cannot reach a closed box. A
         // deliberate addition to this allowlist, not an oversight.
         'Undo last scan',
+        // The documents panel's two print controls. Printing makes paper; it
+        // neither commits the contents nor closes the box.
+        'Print invoice',
+        'Print label',
       ].sort()
     );
+  });
+
+  describe('notes from the office (G03-6)', () => {
+    it('should show the flagged notes on the open parcel when packerNotes is non-empty', async () => {
+      mount(
+        parcel({
+          packerNotes: [
+            {
+              id: 'n1',
+              body: 'Put the printed invoice under the flap.',
+              authorUsername: 'marta.nowak',
+              createdAt: '2026-09-29T10:40:00Z',
+            },
+          ],
+        })
+      );
+
+      const block = await screen.findByTestId('bench-office-notes');
+      expect(block.textContent).toContain('Notes from the office (1)');
+      expect(block.textContent).toContain('Put the printed invoice under the flap.');
+      expect(block.textContent).toContain('marta.nowak');
+    });
+
+    it('should render no notes block when packerNotes is empty', async () => {
+      mount(parcel());
+
+      await screen.findByTestId('bench-parcel');
+      expect(screen.queryByTestId('bench-office-notes')).not.toBeInTheDocument();
+    });
+  });
+
+  // G03-6 — the panel used to say "packed … and it is closed" on a box at
+  // "0 of 1", because it keyed on the label state alone. The parcel view is
+  // the one place that knows whether the box is closed, so it must pass it.
+  describe('a missing label on an OPEN box (G03-6)', () => {
+    it('should show the pending label card, not the unlabelled block, while the box is open', async () => {
+      mount(parcel(), {
+        getDocuments: vi.fn().mockResolvedValue({
+          workId: 'w-1',
+          invoice: {
+            state: 'ready',
+            invoiceId: 'inv-1',
+            documentNumber: 'FV/2026/09/0412',
+            issuedAt: '2026-09-01T09:14:00Z',
+            blockReason: null,
+            unresolvedReason: null,
+          },
+          label: {
+            state: 'unavailable',
+            shipmentId: null,
+            carrier: null,
+            trackingNumber: null,
+            providerCode: 'ADDR_INCOMPLETE',
+            carrierMessage: null,
+            carrierMessageRedacted: false,
+            failedAt: '2026-09-04T14:20:00Z',
+          },
+        }),
+      });
+
+      expect(await screen.findByTestId('bench-documents-label-pending')).toBeInTheDocument();
+      expect(screen.queryByTestId('bench-documents-unlabelled')).not.toBeInTheDocument();
+    });
   });
 
   // ── #3406 — someone else has this box open ──────────────────────────────
@@ -314,9 +414,8 @@ describe('BenchParcelView (#2418)', () => {
       expect(screen.getByTestId('bench-parcel-line').textContent).toContain('1 of 2');
     });
     const scannedMarkup = screen.getByTestId('bench-parcel-line').outerHTML;
-    const scannedRequest = (
-      scanned.apiClient.bench.verifyUnit as ReturnType<typeof vi.fn>
-    ).mock.calls[0];
+    const scannedRequest = (scanned.apiClient.bench.verifyUnit as ReturnType<typeof vi.fn>).mock
+      .calls[0];
     scanned.unmount();
 
     resetGestureLogForTests();
@@ -327,9 +426,8 @@ describe('BenchParcelView (#2418)', () => {
       expect(screen.getByTestId('bench-parcel-line').textContent).toContain('1 of 2');
     });
     const confirmedMarkup = screen.getByTestId('bench-parcel-line').outerHTML;
-    const confirmedRequest = (
-      confirmed.apiClient.bench.verifyUnit as ReturnType<typeof vi.fn>
-    ).mock.calls[0];
+    const confirmedRequest = (confirmed.apiClient.bench.verifyUnit as ReturnType<typeof vi.fn>).mock
+      .calls[0];
 
     // Byte-identical markup: no badge, no class, no attribute, no tooltip.
     expect(confirmedMarkup).toBe(scannedMarkup);
@@ -498,7 +596,9 @@ describe('BenchParcelView (#2418)', () => {
     await waitFor(() => {
       expect(screen.getByText(/has just been put on hold/i)).toBeInTheDocument();
     });
-    expect(screen.getByText(/Stop scanning, put the tote back on the trolley/i)).toBeInTheDocument();
+    expect(
+      screen.getByText(/Stop scanning, put the tote back on the trolley/i)
+    ).toBeInTheDocument();
   });
 
   // ── D2 / D3 ─────────────────────────────────────────────────────────────
@@ -649,9 +749,7 @@ describe('BenchParcelView (#2418)', () => {
     it('should offer "Mark as done here" on a closed, not-yet-completed box', async () => {
       mount(parcel({ closedAt: '2026-09-04T14:32:00Z', completedAt: null }));
 
-      expect(
-        await screen.findByRole('button', { name: /mark as done here/i })
-      ).toBeInTheDocument();
+      expect(await screen.findByRole('button', { name: /mark as done here/i })).toBeInTheDocument();
     });
 
     it('should NOT offer "Mark as done here" on an open box', async () => {
@@ -728,7 +826,9 @@ describe('BenchParcelView (#2418)', () => {
       const dialog = await screen.findByRole('dialog');
       expect(within(dialog).getByText(/label.*has not been printed yet/i)).toBeInTheDocument();
       // Never says the invoice is missing when only the label is.
-      expect(within(dialog).queryByText(/invoice.*has not been printed yet/i)).not.toBeInTheDocument();
+      expect(
+        within(dialog).queryByText(/invoice.*has not been printed yet/i)
+      ).not.toBeInTheDocument();
       expect(completeParcel).not.toHaveBeenCalled();
     });
 
@@ -881,19 +981,13 @@ describe('BenchParcelView (#2418)', () => {
       mount(parcel({ closedAt: '2026-09-04T14:32:00Z', completedAt: null }));
       await screen.findByRole('button', { name: /mark as done here/i });
 
-      expect(
-        screen.queryByRole('button', { name: /take this back/i })
-      ).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /take this back/i })).not.toBeInTheDocument();
     });
 
     it('should offer "Take this back" on a completed parcel', async () => {
-      mount(
-        parcel({ closedAt: '2026-09-04T14:32:00Z', completedAt: '2026-09-04T14:40:00Z' })
-      );
+      mount(parcel({ closedAt: '2026-09-04T14:32:00Z', completedAt: '2026-09-04T14:40:00Z' }));
 
-      expect(
-        await screen.findByRole('button', { name: /take this back/i })
-      ).toBeInTheDocument();
+      expect(await screen.findByRole('button', { name: /take this back/i })).toBeInTheDocument();
     });
 
     it('should send the token read WITH the parcel', async () => {
@@ -940,9 +1034,7 @@ describe('BenchParcelView (#2418)', () => {
       // The undo mutation's own `setQueryData` replaces the cache with the
       // fresh, un-completed parcel, so the panel falls back out of the
       // completed branch on the next render.
-      expect(
-        await screen.findByRole('button', { name: /mark as done here/i })
-      ).toBeInTheDocument();
+      expect(await screen.findByRole('button', { name: /mark as done here/i })).toBeInTheDocument();
       expect(screen.queryByRole('button', { name: /take this back/i })).not.toBeInTheDocument();
     });
 
@@ -987,16 +1079,13 @@ describe('BenchParcelView (#2418)', () => {
         reason: 'not-completed',
         parcel: parcel({ closedAt: '2026-09-04T14:32:00Z', completedAt: null }),
       });
-      mount(
-        parcel({ closedAt: '2026-09-04T14:32:00Z', completedAt: '2026-09-04T14:40:00Z' }),
-        { undoCompletion }
-      );
+      mount(parcel({ closedAt: '2026-09-04T14:32:00Z', completedAt: '2026-09-04T14:40:00Z' }), {
+        undoCompletion,
+      });
 
       await user.click(await screen.findByRole('button', { name: /take this back/i }));
 
-      expect(
-        await screen.findByRole('button', { name: /mark as done here/i })
-      ).toBeInTheDocument();
+      expect(await screen.findByRole('button', { name: /mark as done here/i })).toBeInTheDocument();
       expect(screen.queryByRole('button', { name: /take this back/i })).not.toBeInTheDocument();
     });
 
@@ -1014,16 +1103,13 @@ describe('BenchParcelView (#2418)', () => {
         reason: 'not-claimable-by-viewer',
         parcel: parcel({ closedAt: '2026-09-04T14:32:00Z', completedAt: '2026-09-04T14:40:00Z' }),
       });
-      mount(
-        parcel({ closedAt: '2026-09-04T14:32:00Z', completedAt: '2026-09-04T14:40:00Z' }),
-        { undoCompletion }
-      );
+      mount(parcel({ closedAt: '2026-09-04T14:32:00Z', completedAt: '2026-09-04T14:40:00Z' }), {
+        undoCompletion,
+      });
 
       await user.click(await screen.findByRole('button', { name: /take this back/i }));
 
-      expect(
-        await screen.findByText(/assigned to someone else right now/i)
-      ).toBeInTheDocument();
+      expect(await screen.findByText(/assigned to someone else right now/i)).toBeInTheDocument();
       expect(screen.queryByText(/trolley/i)).not.toBeInTheDocument();
     });
 
@@ -1034,16 +1120,13 @@ describe('BenchParcelView (#2418)', () => {
         reason: 'something-newer',
         parcel: parcel({ closedAt: '2026-09-04T14:32:00Z', completedAt: '2026-09-04T14:40:00Z' }),
       });
-      mount(
-        parcel({ closedAt: '2026-09-04T14:32:00Z', completedAt: '2026-09-04T14:40:00Z' }),
-        { undoCompletion }
-      );
+      mount(parcel({ closedAt: '2026-09-04T14:32:00Z', completedAt: '2026-09-04T14:40:00Z' }), {
+        undoCompletion,
+      });
 
       await user.click(await screen.findByRole('button', { name: /take this back/i }));
 
-      expect(
-        await screen.findByText(/this bench cannot say why/i)
-      ).toBeInTheDocument();
+      expect(await screen.findByText(/this bench cannot say why/i)).toBeInTheDocument();
     });
   });
 });

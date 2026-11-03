@@ -16,6 +16,24 @@ export interface AllegroHttpRequestOptions {
   headers?: Record<string, string>;
   body?: string | Record<string, unknown>;
   queryParams?: Record<string, string | number | boolean>;
+  /**
+   * Whether the call is safe to auto-retry on an **ambiguous** failure — a
+   * network/timeout or an ambiguous `5xx` that might have committed
+   * server-side. `GET`/`PUT`/`DELETE` are always treated as idempotent
+   * regardless of this flag; `POST`/`PATCH` need an explicit
+   * `idempotent: true` (#3469 — DPD/KSeF precedent). `429` is retried
+   * regardless of this flag — Allegro did not process the request, so a
+   * retry can't double-create. Not honoured by `postExpectingBinary` /
+   * `postBinary` / `postMultipart`, whose only production call sites are
+   * genuine creates.
+   */
+  idempotent?: boolean;
+  /**
+   * Overrides the client's retry budget for this call. For a request an
+   * operator is waiting on: the default ladder (4 attempts x the request
+   * timeout) would hold the HTTP request open for minutes.
+   */
+  maxRetries?: number;
 }
 
 /**
@@ -113,6 +131,20 @@ export interface IAllegroHttpClient {
    * @returns Response data
    */
   postBinary<T = unknown>(
+    path: string,
+    contentType: string,
+    body: Uint8Array,
+    options?: Omit<AllegroHttpRequestOptions, 'method' | 'body'>,
+  ): Promise<AllegroHttpResponse<T>>;
+
+  /**
+   * Make PUT request with a raw binary body.
+   *
+   * The PUT counterpart of `postBinary`, for endpoints that take file bytes at a
+   * resource the caller already created (an order's billing document, #3549).
+   * Same auth header, retry and token-refresh machinery.
+   */
+  putBinary<T = unknown>(
     path: string,
     contentType: string,
     body: Uint8Array,

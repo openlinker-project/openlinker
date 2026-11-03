@@ -49,6 +49,25 @@ export const PriceChangeBlockReasonValues = [
 ] as const;
 export type PriceChangeBlockReason = (typeof PriceChangeBlockReasonValues)[number];
 
+/**
+ * Why an episode exists, when that is not simply "the master price moved".
+ *
+ * `'tax-basis-correction'` (ADR-077): the one-off wave in which a master that
+ * used to report NET catalogue prices starts reporting gross. Every affected
+ * offer moves by the VAT rate at once, and live prices on a sales channel are a
+ * commercial decision - so such an episode is NEVER auto-applied, even for a
+ * pair in `automatic` mode; the operator approves it in the review queue.
+ * Unlike `blockReason` it does not make the episode unactionable.
+ *
+ * Sticky for the life of the episode: a later re-detection never clears it.
+ */
+export const PriceChangeCauseValues = ['tax-basis-correction'] as const;
+export type PriceChangeCause = (typeof PriceChangeCauseValues)[number];
+
+export function isPriceChangeCause(value: unknown): value is PriceChangeCause {
+  return typeof value === 'string' && (PriceChangeCauseValues as readonly string[]).includes(value);
+}
+
 export function isPriceChangeResolution(value: unknown): value is PriceChangeResolution {
   return (
     typeof value === 'string' &&
@@ -91,6 +110,8 @@ export interface UpsertOpenPriceChangeEpisodeInput {
   computedNewAmount: number;
   blockReason: PriceChangeBlockReason | null;
   detectedAt: Date;
+  /** See {@link PriceChangeCause}. Absent/`null` for an ordinary price move. */
+  cause?: PriceChangeCause | null;
 }
 
 /**

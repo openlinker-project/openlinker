@@ -25,14 +25,31 @@
  * @module libs/integrations/ksef/src/application/factories
  */
 import type { CachePort } from '@openlinker/shared/cache';
+import { Logger } from '@openlinker/shared/logging';
 import type { FetchLike } from '@openlinker/shared/http';
 import type { CredentialsResolverPort } from '@openlinker/core/integrations';
 import type { Connection, IdentifierMappingPort } from '@openlinker/core/identifier-mapping';
+import {
+  ExemptionBasisKindValues,
+  MarginSchemeKindValues,
+  type ExemptionBasisKind,
+  type InvoiceAnnotations,
+  type MarginSchemeKind,
+} from '@openlinker/core/invoicing';
 import { KsefInvoicingAdapter } from '../../infrastructure/adapters/ksef-invoicing.adapter';
+import {
+  isStructurallyPlausiblePlNip,
+  normalizePlNip,
+} from '../../infrastructure/adapters/nip-checksum';
 import { createKsefHttpClient } from '../../infrastructure/http/ksef-http-client.factory';
 import { DEFAULT_FA3_TAX_RATE } from '../../infrastructure/fa3/domain/fa3-tax-rate.mapper';
+import { getSharedKsefRateLimiter } from '../../infrastructure/http/ksef-rate-limiter';
 import { KsefSessionCryptoService } from '../../infrastructure/crypto/ksef-session-crypto.service';
 import { Fa3WithValidationBuilder } from '../../infrastructure/fa3/builders/fa3-with-validation.builder';
+import {
+  NbpExchangeRateClient,
+  createNbpFetch,
+} from '../../infrastructure/fx/nbp-exchange-rate.client';
 import type { Fa3PaymentInput, SellerProfile } from '../../infrastructure/fa3/domain/fa3-xml.types';
 import type { KsefTokenAuthMaterial } from '../../infrastructure/http/auth/ksef-auth-handshake.service';
 import type {
@@ -49,6 +66,8 @@ import type { IKsefAdapterFactory, KsefAdapters } from '../interfaces/ksef-adapt
 export type { KsefAdapters };
 
 export class KsefAdapterFactory implements IKsefAdapterFactory {
+  private readonly logger = new Logger(KsefAdapterFactory.name);
+
   constructor(private readonly cache?: CachePort) {}
 
   async createAdapters(
@@ -66,6 +85,8 @@ export class KsefAdapterFactory implements IKsefAdapterFactory {
     const defaultTaxRate = this.resolveDefaultTaxRate(connection);
     const defaultLineUnit = this.resolveDefaultLineUnit(connection);
     const numberingTimeZone = this.resolveNumberingTimeZone(connection);
+    const allowCrossBorder = this.resolveAllowCrossBorder(connection);
+    const annotationsDefault = resolveAnnotationsDefault(connection);
 
     const { httpClient, publicKeyCache } = createKsefHttpClient({
       connectionId: connection.id,
@@ -73,12 +94,25 @@ export class KsefAdapterFactory implements IKsefAdapterFactory {
       authMaterial,
       cache: this.cache,
       fetchImpl,
+      // #1594: proactive per-hour pacing keyed on the seller NIP (KSeF buckets by
+      // NIP), shared process-wide so sibling connections on the same NIP throttle
+      // against one bucket rather than each other.
+      rateLimiter: getSharedKsefRateLimiter(),
+      // KSeF counts per seller NIP within one environment (test, demo and prod
+      // are separate systems), so the bucket is keyed on both.
+      rateLimitBucketKey: `${env}:${seller.nip}`,
     });
 
     // C5 issuance dependencies: the session-crypto service (shares the same
     // MF public-key cache as the transport) + the FA(3) build/validate pipeline.
     const sessionCrypto = new KsefSessionCryptoService(publicKeyCache);
     const fa3Builder = new Fa3WithValidationBuilder();
+    // NBP exchange-rate resolver (#1581) — used only when a command's currency is
+    // not PLN (art. 106e ust. 11 PLN/VAT conversion). Reads go through this
+    // connection's own transport (#1810), so they share its rate limit.
+    const exchangeRateResolver = new NbpExchangeRateClient({
+      fetchImpl: createNbpFetch(fetchImpl),
+    });
 
     return {
       invoicing: new KsefInvoicingAdapter(
@@ -87,7 +121,16 @@ export class KsefAdapterFactory implements IKsefAdapterFactory {
         sessionCrypto,
         fa3Builder,
         seller,
-        { payment, defaultTaxRate, defaultLineUnit, numberingTimeZone },
+        {
+          payment,
+          defaultTaxRate,
+          defaultLineUnit,
+          numberingTimeZone,
+          environment: env,
+          exchangeRateResolver,
+          allowCrossBorder,
+          ...(annotationsDefault ? { annotationsDefault } : {}),
+        },
       ),
     };
   }
@@ -128,10 +171,19 @@ export class KsefAdapterFactory implements IKsefAdapterFactory {
         connection.id,
       );
     }
-    // Trimmed like resolveContextNip — both consumers (the <ContextNip>
-    // handshake and the FA(3) Podmiot1 block) must see one canonical value.
+    // Normalised like resolveContextNip — both consumers (the <ContextNip>
+    // handshake and the FA(3) Podmiot1 block) and the rate-limit bucket key
+    // must see one canonical value. A stored `526-000-12-46` (DEF-12) would
+    // otherwise reach Podmiot1 verbatim and key a bucket of its own.
+    const nip = normalizePlNip(seller.nip);
+    if (!isStructurallyPlausiblePlNip(nip)) {
+      this.logger.warn(
+        `KSeF connection ${connection.id} has a seller NIP outside the shape KSeF documents; ` +
+          'issuance continues and KSeF decides.',
+      );
+    }
     return {
-      nip: seller.nip.trim(),
+      nip,
       name: seller.name.trim(),
       address: {
         line1: address.line1,
@@ -188,6 +240,17 @@ export class KsefAdapterFactory implements IKsefAdapterFactory {
     const config = connection.config as Partial<KsefConnectionConfig> | undefined;
     const zone = config?.invoiceDefaults?.numberingTimeZone;
     return typeof zone === 'string' && zone.trim().length > 0 ? zone.trim() : undefined;
+  }
+
+  /**
+   * Resolve the interim cross-border escape hatch (#1586) from
+   * `config.allowCrossBorder`. Defaults to `false` (refuse cross-border sales)
+   * for any connection that has not explicitly opted in - only a literal `true`
+   * enables issuance of a sale to a country other than the seller's own.
+   */
+  private resolveAllowCrossBorder(connection: Connection): boolean {
+    const config = connection.config as Partial<KsefConnectionConfig> | undefined;
+    return config?.allowCrossBorder === true;
   }
 
   /**
@@ -284,15 +347,50 @@ export class KsefAdapterFactory implements IKsefAdapterFactory {
 
   private resolveContextNip(connection: Connection): string {
     const config = connection.config as Partial<KsefConnectionConfig> | undefined;
-    const nip = config?.seller?.nip?.trim();
+    const raw = config?.seller?.nip;
+    const nip = typeof raw === 'string' ? normalizePlNip(raw) : '';
     if (!nip) {
       throw new KsefConfigException(
         'KSeF connection has no seller NIP configured (required as the session context identifier)',
         connection.id,
       );
     }
-    // Trimmed — the value lands verbatim in the <ContextNip> XML element, so a
-    // hand-edited config row with stray whitespace must not leak into the handshake.
+    // Normalised — the value lands verbatim in the <ContextNip> XML element, so a
+    // hand-edited config row with stray whitespace or separators must not leak
+    // into the handshake.
     return nip;
   }
+}
+
+/**
+ * Read `config.annotationsDefault` into neutral annotations (DEF-20). Anything
+ * that is not one of the known shapes is dropped rather than guessed - the
+ * config validator refuses such values at save, so this only meets a row
+ * edited around it.
+ */
+function resolveAnnotationsDefault(connection: Connection): InvoiceAnnotations | undefined {
+  const raw = (connection.config as Partial<KsefConnectionConfig> | undefined)?.annotationsDefault;
+  if (!raw || typeof raw !== 'object') {
+    return undefined;
+  }
+  const out: InvoiceAnnotations = {};
+  if (typeof raw.cashAccounting === 'boolean') out.cashAccounting = raw.cashAccounting;
+  if (typeof raw.selfBilling === 'boolean') out.selfBilling = raw.selfBilling;
+  if (typeof raw.marginScheme === 'boolean') out.marginScheme = raw.marginScheme;
+  if (
+    typeof raw.marginKind === 'string' &&
+    (MarginSchemeKindValues as readonly string[]).includes(raw.marginKind)
+  ) {
+    out.marginKind = raw.marginKind as MarginSchemeKind;
+  }
+  const basis = raw.exemptionBasis;
+  if (
+    basis &&
+    typeof basis.text === 'string' &&
+    basis.text.trim().length > 0 &&
+    (ExemptionBasisKindValues as readonly string[]).includes(basis.kind)
+  ) {
+    out.exemptionBasis = { kind: basis.kind as ExemptionBasisKind, text: basis.text.trim() };
+  }
+  return Object.keys(out).length > 0 ? out : undefined;
 }

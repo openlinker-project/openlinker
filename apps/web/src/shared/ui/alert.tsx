@@ -9,10 +9,19 @@ import type { ReactElement, ReactNode } from 'react';
  */
 export type AlertTone = 'conflict' | 'error' | 'info' | 'success' | 'warning';
 
+/**
+ * `compact` is the mockups' in-card banner (`.hold-banner`): a tighter inset,
+ * an 8 px radius, no inset rule, and a 14 px title in the tone's own colour.
+ * For a notice that sits INSIDE a card, where the full alert's chrome would
+ * box a box.
+ */
+export type AlertDensity = 'default' | 'compact';
+
 interface AlertProps {
   action?: ReactNode;
   children: ReactNode;
   className?: string;
+  density?: AlertDensity;
   title?: ReactNode;
   tone?: AlertTone;
   /**
@@ -32,11 +41,19 @@ export function Alert({
   action,
   children,
   className = '',
+  density = 'default',
   title,
   tone = 'info',
   'data-testid': dataTestId,
 }: AlertProps): ReactElement {
-  const classes = ['alert', `alert--${tone}`, className].filter(Boolean).join(' ');
+  const classes = [
+    'alert',
+    `alert--${tone}`,
+    density === 'compact' ? 'alert--compact' : '',
+    className,
+  ]
+    .filter(Boolean)
+    .join(' ');
 
   return (
     <div className={classes} role={tone === 'error' ? 'alert' : 'status'} data-testid={dataTestId}>

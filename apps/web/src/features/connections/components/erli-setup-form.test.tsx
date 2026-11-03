@@ -1,7 +1,8 @@
 /**
  * ErliSetupForm Tests
  *
- * Coverage for the single-step Erli setup wizard. Tests form validation,
+ * Coverage for the three-step Erli setup wizard (credentials, sales documents,
+ * review). Tests form validation,
  * submission via the generic create-connection mutation, and the post-create
  * "Test connection" flow that surfaces a ConnectionTestResult.
  */
@@ -13,6 +14,46 @@ import {
   renderWithProviders,
 } from '../../../test/test-utils';
 import { ErliSetupForm } from './erli-setup-form';
+
+const SHIPPING_DEFAULT = {
+  name: 'Shipping',
+  rate: 'goods',
+  freeDelivery: 'omit',
+  rateFormat: 'plain',
+};
+
+const PL_SUGGESTION = {
+  country: 'PL',
+  defaultName: 'Koszt dostawy',
+  nameSuggestions: ['Koszt dostawy'],
+  rateMode: 'goods' as const,
+  omitFreeDelivery: true,
+  sources: [{ term: 'Source', text: 'Why' }],
+  sourceLabel: 'Source',
+  sourceUrl: 'https://example.com',
+  disclaimer: 'Not legal advice.',
+};
+
+/** Fills the credentials step and walks to the review step. */
+async function fillAndReachReview(
+  overrides: { name?: string; apiKey?: string; environment?: string } = {},
+): Promise<void> {
+  fireEvent.change(screen.getByLabelText('Connection name'), {
+    target: { value: overrides.name ?? 'My Erli Store' },
+  });
+  fireEvent.change(screen.getByLabelText('API key'), {
+    target: { value: overrides.apiKey ?? 'sk_test_123' },
+  });
+  if (overrides.environment) {
+    fireEvent.change(screen.getByLabelText('Environment'), {
+      target: { value: overrides.environment },
+    });
+  }
+  fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+  await screen.findByText('How should delivery appear on receipts and invoices?');
+  fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+  await screen.findByRole('button', { name: 'Connect Erli' });
+}
 
 describe('ErliSetupForm', () => {
   afterEach(cleanup);
@@ -26,7 +67,7 @@ describe('ErliSetupForm', () => {
 
   it('requires connection name to be non-empty', async () => {
     renderWithProviders(<ErliSetupForm />);
-    fireEvent.click(screen.getByRole('button', { name: 'Connect Erli' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Next' }));
 
     await waitFor(() => {
       expect(screen.getAllByText('Connection name is required')[0]).toBeInTheDocument();
@@ -38,7 +79,7 @@ describe('ErliSetupForm', () => {
     fireEvent.change(screen.getByLabelText('Connection name'), {
       target: { value: 'My Erli Store' },
     });
-    fireEvent.click(screen.getByRole('button', { name: 'Connect Erli' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Next' }));
 
     await waitFor(() => {
       expect(screen.getAllByText('API key is required')[0]).toBeInTheDocument();
@@ -56,15 +97,7 @@ describe('ErliSetupForm', () => {
 
     renderWithProviders(<ErliSetupForm />, { apiClient });
 
-    fireEvent.change(screen.getByLabelText('Connection name'), {
-      target: { value: 'My Erli Store' },
-    });
-    fireEvent.change(screen.getByLabelText('API key'), {
-      target: { value: 'sk_test_123' },
-    });
-    fireEvent.change(screen.getByLabelText('Environment'), {
-      target: { value: 'production' },
-    });
+    await fillAndReachReview({ environment: 'production' });
     fireEvent.click(screen.getByRole('button', { name: 'Connect Erli' }));
 
     await waitFor(() => {
@@ -73,7 +106,7 @@ describe('ErliSetupForm', () => {
           name: 'My Erli Store',
           platformType: 'erli',
           adapterKey: 'erli.shopapi.v1',
-          config: { environment: 'production' },
+          config: { environment: 'production', deliveryOnDocuments: { countries: {}, default: SHIPPING_DEFAULT } },
           credentials: { apiKey: 'sk_test_123' },
         }),
       );
@@ -87,21 +120,13 @@ describe('ErliSetupForm', () => {
 
     renderWithProviders(<ErliSetupForm />, { apiClient });
 
-    fireEvent.change(screen.getByLabelText('Connection name'), {
-      target: { value: 'My Erli Store' },
-    });
-    fireEvent.change(screen.getByLabelText('API key'), {
-      target: { value: 'sk_test_123' },
-    });
-    fireEvent.change(screen.getByLabelText('Environment'), {
-      target: { value: 'sandbox' },
-    });
+    await fillAndReachReview({ environment: 'sandbox' });
     fireEvent.click(screen.getByRole('button', { name: 'Connect Erli' }));
 
     await waitFor(() => {
       expect(create).toHaveBeenCalledWith(
         expect.objectContaining({
-          config: { environment: 'sandbox' },
+          config: { environment: 'sandbox', deliveryOnDocuments: { countries: {}, default: SHIPPING_DEFAULT } },
         }),
       );
     });
@@ -116,12 +141,7 @@ describe('ErliSetupForm', () => {
 
     renderWithProviders(<ErliSetupForm />, { apiClient });
 
-    fireEvent.change(screen.getByLabelText('Connection name'), {
-      target: { value: 'My Erli Store' },
-    });
-    fireEvent.change(screen.getByLabelText('API key'), {
-      target: { value: 'sk_test_123' },
-    });
+    await fillAndReachReview();
     fireEvent.click(screen.getByRole('button', { name: 'Connect Erli' }));
 
     // After create, the test affordance replaces the connect button.
@@ -143,12 +163,7 @@ describe('ErliSetupForm', () => {
 
     renderWithProviders(<ErliSetupForm />, { apiClient });
 
-    fireEvent.change(screen.getByLabelText('Connection name'), {
-      target: { value: 'My Erli Store' },
-    });
-    fireEvent.change(screen.getByLabelText('API key'), {
-      target: { value: 'sk_test_123' },
-    });
+    await fillAndReachReview();
     fireEvent.click(screen.getByRole('button', { name: 'Connect Erli' }));
 
     const testButton = await screen.findByRole('button', { name: 'Test connection' });
@@ -168,12 +183,7 @@ describe('ErliSetupForm', () => {
 
     renderWithProviders(<ErliSetupForm />, { apiClient });
 
-    fireEvent.change(screen.getByLabelText('Connection name'), {
-      target: { value: 'My Erli Store' },
-    });
-    fireEvent.change(screen.getByLabelText('API key'), {
-      target: { value: 'sk_test_123' },
-    });
+    await fillAndReachReview();
     fireEvent.click(screen.getByRole('button', { name: 'Connect Erli' }));
 
     const testButton = await screen.findByRole('button', { name: 'Test connection' });
@@ -197,10 +207,7 @@ describe('ErliSetupForm', () => {
 
     renderWithProviders(<ErliSetupForm />, { apiClient });
 
-    fireEvent.change(screen.getByLabelText('Connection name'), {
-      target: { value: 'My Erli Store' },
-    });
-    fireEvent.change(screen.getByLabelText('API key'), { target: { value: 'sk_test_123' } });
+    await fillAndReachReview();
     fireEvent.click(screen.getByRole('button', { name: 'Connect Erli' }));
 
     const testButton = await screen.findByRole('button', { name: 'Test connection' });
@@ -229,17 +236,68 @@ describe('ErliSetupForm', () => {
 
     renderWithProviders(<ErliSetupForm />, { apiClient });
 
-    fireEvent.change(screen.getByLabelText('Connection name'), {
-      target: { value: 'My Erli Store' },
-    });
-    fireEvent.change(screen.getByLabelText('API key'), {
-      target: { value: 'sk_test_123' },
-    });
+    await fillAndReachReview();
     fireEvent.click(screen.getByRole('button', { name: 'Connect Erli' }));
 
     await waitFor(() => {
       const button = screen.getByRole('button', { name: /Connecting|Connect Erli/ });
       expect(button).toBeDisabled();
     });
+  });
+
+  it('sends the suggested delivery config built from the suggestions endpoint', async () => {
+    const create = vi.fn().mockResolvedValue({ id: 'conn-1', name: 'My Erli Store' });
+    const apiClient = createMockApiClient({
+      connections: { create },
+      deliveryOnDocuments: {
+        getSuggestions: vi.fn().mockResolvedValue({ suggestions: [PL_SUGGESTION] }),
+      },
+    });
+
+    renderWithProviders(<ErliSetupForm />, { apiClient });
+    await fillAndReachReview();
+    fireEvent.click(screen.getByRole('button', { name: 'Connect Erli' }));
+
+    await waitFor(() => {
+      expect(create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          config: {
+            environment: 'sandbox',
+            deliveryOnDocuments: {
+              countries: {
+                PL: {
+                  name: 'Koszt dostawy',
+                  rate: 'goods',
+                  freeDelivery: 'omit',
+                  rateFormat: 'plain',
+                },
+              },
+              default: SHIPPING_DEFAULT,
+            },
+          },
+        }),
+      );
+    });
+  });
+
+  it('shows the rules table for "Set it up myself" and lists delivery in the summary', async () => {
+    const apiClient = createMockApiClient({
+      deliveryOnDocuments: {
+        getSuggestions: vi.fn().mockResolvedValue({ suggestions: [PL_SUGGESTION] }),
+      },
+    });
+
+    renderWithProviders(<ErliSetupForm />, { apiClient });
+    fireEvent.change(screen.getByLabelText('Connection name'), { target: { value: 'Erli' } });
+    fireEvent.change(screen.getByLabelText('API key'), { target: { value: 'sk_test_123' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+    await screen.findByText('How should delivery appear on receipts and invoices?');
+
+    fireEvent.click(screen.getByLabelText(/Set it up myself/));
+
+    expect(await screen.findByRole('button', { name: '+ Add a country' })).toBeInTheDocument();
+    expect(screen.getByRole('complementary', { name: 'Setup summary' })).toHaveTextContent(
+      'Delivery on documents',
+    );
   });
 });

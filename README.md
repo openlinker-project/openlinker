@@ -5,7 +5,7 @@
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](./LICENSE)
 [![Status: alpha](https://img.shields.io/badge/status-alpha-orange.svg)](https://github.com/openlinker-project/openlinker/issues/670)
 
-**[openlinker.io](https://openlinker.io)** · [Architecture](https://openlinker.io/en/architecture) · [Integrations](https://openlinker.io/en/integrations) · [vs BaseLinker](https://openlinker.io/en/vs/baselinker)
+**[openlinker.io](https://openlinker.io)** · [Docs](https://docs.openlinker.io) · [Live demo](https://app.demo.openlinker.io) · [Architecture](https://openlinker.io/en/architecture) · [Integrations](https://openlinker.io/en/integrations) · [vs BaseLinker](https://openlinker.io/en/vs/baselinker)
 
 **Sync orders, inventory, and listings between your shop and the marketplaces you sell on. Self-hosted, open-source, pluggable.**
 
@@ -28,6 +28,7 @@ If you sell on your own shop *and* on marketplaces like Allegro, you've already 
 - **Stock stays in sync, both ways.** Sell on Allegro, your shop stock drops. Restock in your shop, Allegro listings update. No per-platform spreadsheet.
 - **Create listings without copy-pasting.** Pick a product, pick a category (or look it up by EAN), get an Allegro offer up with images, parameters, GPSR data, and your saved seller policies — from one wizard. AI can draft the description if you let it.
 - **Run multiple stores from one dashboard.** Each connection has its own encrypted credentials and config. Two PrestaShop stores plus three Allegro accounts? One OpenLinker instance.
+- **Work in English or Polish.** Pick the language from the switch at the bottom of the sidebar or in the corner of the sign-in page; a deployment sets its default with `VITE_DEFAULT_UI_LOCALE` ([details](./docs/frontend-architecture.md#internationalization-i18n)). Polish is in **beta**: some screens may still show English text while the translation is finished. Progress is tracked in the [Interface language milestone](https://github.com/openlinker-project/openlinker/milestone/6).
 - **You own everything.** Self-hosted, Apache 2.0. No subscription, no per-order pricing, no vendor that can shut you off. You host it; that's the trade.
 
 <p align="center">
@@ -44,6 +45,7 @@ If you sell on your own shop *and* on marketplaces like Allegro, you've already 
 |---|---|---|
 | **[PrestaShop](./libs/integrations/prestashop/)** | Shop *(source + destination)* | ✅ Live |
 | **[WooCommerce](./libs/integrations/woocommerce/)** *([guide](./libs/integrations/woocommerce/docs/setup-guide.md))* | Shop *(source + destination + inventory)* | ✅ Live |
+| **[Shoper](./libs/integrations/shoper/)** | Shop *(source + destination + inventory, product publish)* | ✅ Live |
 | **[Allegro](./libs/integrations/allegro/)** *([guide](./libs/integrations/allegro/docs/setup-guide.md))* | Marketplace *(source + offers + shipping)* | ✅ Live |
 | **[Erli](./libs/integrations/erli/)** *([guide](./libs/integrations/erli/docs/setup-guide.md))* | Marketplace *(offers + source)* | ✅ Live |
 | **[AI router](./libs/integrations/ai/)** *(Anthropic, OpenAI)* | Content suggestion | ✅ Live |
@@ -52,7 +54,8 @@ If you sell on your own shop *and* on marketplaces like Allegro, you've already 
 | **[Subiekt GT](./libs/integrations/subiekt/)** *([guide](./libs/integrations/subiekt/docs/setup-guide.md) · [tutorial](./libs/integrations/subiekt/docs/tutorial.md))* | Invoicing · Catalogue · Stock · Order ingestion · Order creation *(via the Sfera GT bridge, COM automation)* | ✅ Live |
 | **[Subiekt nexo](./libs/integrations/subiekt-nexo/)** *([guide](./libs/integrations/subiekt-nexo/docs/setup-guide.md) · [tutorial](./libs/integrations/subiekt-nexo/docs/tutorial.md))* | Invoicing *(via the Sfera bridge — first `InvoicingPort` adapter)* | ✅ Live |
 | **[KSeF](./libs/integrations/ksef/)** *([guide](./libs/integrations/ksef/docs/setup-guide.md) · [tutorial](./libs/integrations/ksef/docs/tutorial.md))* | Invoicing *(Polish national e-invoicing)* | ✅ Live |
-| **[Infakt](./libs/integrations/infakt/)** | Invoicing *(accounting SaaS — issues invoices and relays them to KSeF on the seller's behalf)* | ✅ Live |
+| **[Infakt](./libs/integrations/infakt/)** *([guide](./libs/integrations/infakt/docs/setup-guide.md))* | Invoicing *(accounting SaaS — issues invoices and relays them to KSeF on the seller's behalf)* | ✅ Live |
+| **[eparagony.pl](./libs/integrations/eparagony/)** *([guide](./libs/integrations/eparagony/docs/setup-guide.md))* | Fiscal receipts · Invoicing *(the vendor drives the seller's fiscal printer and relays invoices to KSeF)* | ✅ Live |
 | Shopify · BigCommerce · Magento | Shop | 📋 Planned |
 | eBay · Amazon · OLX · Empik · Bol | Marketplace | 📋 Planned |
 | DHL · FedEx · ORLEN Paczka · GLS | Shipping *(siblings under `ShippingProviderManagerPort`)* | 📋 Planned |
@@ -68,11 +71,12 @@ OpenLinker is built around a small set of capability ports. Each integration imp
 
 | Capability | What it does | Integrations |
 |---|---|---|
-| **Catalog & inventory** | Read products, variants, and stock from a master shop | PrestaShop · WooCommerce |
-| **Orders** | Ingest from any source *(event journal or watermark)*; create + manage them in a destination shop | PrestaShop *(source + destination)* · WooCommerce *(source + destination)* · Allegro *(source)* · Erli *(source)* |
+| **Catalog & inventory** | Read products, variants, and stock from a master shop | PrestaShop · WooCommerce · Shoper |
+| **Orders** | Ingest from any source *(event journal or watermark)*; create + manage them in a destination shop | PrestaShop *(source + destination)* · WooCommerce *(source + destination)* · Shoper *(source + destination)* · Allegro *(source)* · Erli *(source)* |
 | **Offers / listings** | Manage marketplace offers — categories, prices, quantities, seller policies, GPSR data | Allegro · Erli |
 | **Shipping** | Generate labels + handover protocols, fetch tracking *(via `ShippingProviderManagerPort`)* | Allegro · InPost · DPD |
-| **Invoicing** | Issue fiscal documents and, where supported, submit them to a tax authority for clearance *(via `InvoicingPort`)* | Subiekt GT · Subiekt nexo · KSeF · Infakt |
+| **Invoicing** | Issue fiscal documents and, where supported, submit them to a tax authority for clearance *(via `InvoicingPort`)* | Subiekt GT · Subiekt nexo · KSeF · Infakt · eparagony.pl |
+| **Fiscal receipts** | Register a sale as a fiscal receipt through a provider that drives the fiscal device *(via `FiscalizationPort`)* | eparagony.pl |
 | **Content suggestion** | Provider-agnostic AI completions with editable, versioned prompts | AI router *(Anthropic, OpenAI)* |
 | **Auth & ops** | Per-integration connection testers, webhook provisioners, OAuth, retry classifiers, credentials/config validators | All integrations |
 
@@ -129,7 +133,7 @@ How OpenLinker measures against the standard set of multichannel-orchestration f
 | **Orders** | | |
 | Ingest orders from any source *(marketplace or shop)* | ✅ | `OrderSourcePort` |
 | Create + manage orders in destination shop | ✅ | `OrderProcessorManagerPort` |
-| Generate invoices / fiscal documents *(+ tax-authority clearance)* | ✅ | `InvoicingPort` — Subiekt GT, Subiekt nexo, KSeF, Infakt |
+| Generate invoices / fiscal documents *(+ tax-authority clearance)* | ✅ | `InvoicingPort` — Subiekt GT, Subiekt nexo, KSeF, Infakt, eparagony.pl |
 | Accounting export / GL / valuation | — | *Out of scope; integrate accounting separately* |
 | **Inventory & catalog** | | |
 | Read products, variants, attributes | ✅ | `ProductMasterPort` |
@@ -307,7 +311,7 @@ The exact versions the Docker images and Compose files are built/tested against:
 
 | Component | Version |
 |---|---|
-| Node.js | 22 (pinned `node:22.23.1-alpine3.24` in `Dockerfile` / `apps/web/Dockerfile`) |
+| Node.js | 22 (pinned `node:22.23.4-alpine3.24` in `Dockerfile` / `apps/web/Dockerfile`) |
 | pnpm | 10 (pinned `pnpm@10.33.4`, matching `package.json`'s `packageManager` field) |
 | Docker Compose | ≥ 2.24 (required by the demo overlay's `!reset`/`!override` merge keys) |
 | PostgreSQL | 17 (`postgres:17-alpine`) |

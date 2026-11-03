@@ -24,6 +24,10 @@ export interface PrestashopProduct {
   upc?: string;
   price?: string | number;
   weight?: string | number;
+  /** Product-level dimensions in the shop's `PS_DIMENSION_UNIT` (#3650). */
+  width?: string | number;
+  height?: string | number;
+  depth?: string | number;
   active?: string | number;
   /** Default leaf category id, used as the start of the F3 breadcrumb walk (#1096). */
   id_category_default?: string | number;
@@ -75,6 +79,13 @@ export interface PrestashopCombination {
       | {
           product_option_value?: Array<{ id: string | number }> | { id: string | number };
         };
+    // The pictures this combination is linked to (`display=full` carries them,
+    // so reading them costs no request). XML wraps entries in `{ image }`,
+    // JSON collapses to a flat array; an empty node is `''` or `{}`.
+    images?:
+      | Array<{ id: string | number }>
+      | { image?: { id: string | number } | Array<{ id: string | number }> }
+      | string;
   };
   [key: string]: unknown;
 }
@@ -142,6 +153,8 @@ export interface PrestashopOrder {
   total_shipping?: string | number;
   /** Gross shipping as PrestaShop computed it; the counterpart of `unit_price_tax_incl`. */
   total_shipping_tax_incl?: string | number;
+  /** VAT rate the carrier charged, in percent (e.g. `'23.000'`); read, never computed. */
+  carrier_tax_rate?: string | number;
   date_add?: string;
   date_upd?: string;
   associations?: {

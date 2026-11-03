@@ -177,6 +177,7 @@ const INACTIVE_STATUS_COPY: Record<InactiveConnectionStatus, { state: string; re
   disabled: { state: 'is disabled', remedy: 'Enable it' },
   needs_reauth: { state: 'needs reconnecting', remedy: 'Reconnect it' },
   error: { state: 'is in an error state', remedy: 'Fix the connection' },
+  archived: { state: 'is archived', remedy: 'Restore it' },
 };
 
 export function describeSalesDocumentDestinationWarning(

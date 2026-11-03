@@ -39,26 +39,29 @@ import type {
   FiscalLocateAnswer,
   FiscalLocateCriteria,
   FiscalRegistrationLocator,
+  ReceiptLineNameBudget,
   RegisterTransactionCommand,
   RegisterTransactionResult,
 } from '@openlinker/core/fiscalization';
 
-import { EPARAGONY_REGISTER_DEADLINE_MS } from '../../eparagony.constants';
+import {
+  EPARAGONY_RECEIPT_LINE_NAME_MAX_LENGTH,
+  EPARAGONY_REGISTER_DEADLINE_MS,
+} from '../../eparagony.constants';
 import { EparagonyApiError } from '../../domain/exceptions/eparagony-api.error';
 import { EparagonyNetworkError } from '../../domain/exceptions/eparagony-network.error';
 import {
   deriveDocumentToken,
   deriveTransactionToken,
 } from '../../domain/policies/document-token.policy';
+import { readFiscalDeviceError } from '../../domain/policies/fiscal-device-error.policy';
 import {
-  EPARAGONY_ERROR_DOCUMENT_ALREADY_EXISTS,
   EPARAGONY_STATUS_CONFIRMED,
   EPARAGONY_STATUS_ERROR,
   type EparagonyDocumentStatusResponse,
 } from '../../domain/types/eparagony-api.types';
 import type { EparagonyConnectionConfig } from '../../domain/types/eparagony-config.types';
 import {
-  EPARAGONY_DOCUMENTS_PATH,
   MAX_STATUS_POLL_TIMEOUT_MS,
   STATUS_POLL_BACKOFF_MULTIPLIER,
   STATUS_POLL_INITIAL_DELAY_MS,
@@ -67,6 +70,7 @@ import {
   resolveStatusPollTimeoutMs,
   sleep,
 } from '../http/eparagony-document-status.reader';
+import { createEparagonyDocument } from '../http/eparagony-document-create';
 import type { IEparagonyHttpClient } from '../http/eparagony-http-client.interface';
 import {
   readDocumentStatus,
@@ -97,7 +101,7 @@ if (MAX_STATUS_POLL_TIMEOUT_MS >= EPARAGONY_REGISTER_DEADLINE_MS) {
 }
 
 export class EparagonyFiscalizationAdapter
-  implements FiscalizationPort, FiscalRegistrationLocator
+  implements FiscalizationPort, FiscalRegistrationLocator, ReceiptLineNameBudget
 {
   constructor(
     private readonly connectionId: string,
@@ -105,6 +109,10 @@ export class EparagonyFiscalizationAdapter
     private readonly logger: LoggerPort,
     private readonly config: EparagonyConnectionConfig,
   ) {}
+
+  getReceiptLineNameMaxLength(): number {
+    return EPARAGONY_RECEIPT_LINE_NAME_MAX_LENGTH;
+  }
 
   async registerTransaction(
     cmd: RegisterTransactionCommand,
@@ -136,7 +144,7 @@ export class EparagonyFiscalizationAdapter
 
     const deadline = Date.now() + EPARAGONY_REGISTER_DEADLINE_MS;
 
-    await this.createDocument(body, documentToken, cmd.orderId);
+    await this.createDocument(body, cmd.orderId);
 
     const status = await this.pollToTerminalStatus(documentToken, deadline, cmd.orderId);
     return toRegisterTransactionResult(status, documentToken);
@@ -207,47 +215,18 @@ export class EparagonyFiscalizationAdapter
 
   private async createDocument(
     body: ReturnType<typeof toCreateReceiptRequest>,
-    documentToken: string,
     orderId: string,
   ): Promise<void> {
-    try {
-      await this.http.post<unknown>(EPARAGONY_DOCUMENTS_PATH, body, {
-        // `documentToken`, NOT core's raw `idempotencyKey`: the vendor requires
-        // this header to match `/^[0-9A-Za-z_-]+$/` (verified live against the
-        // sandbox), and core's key is `fiscal:{connectionId}:{orderId}` - colons
-        // fail that pattern with a 400 on every single call. `documentToken` is
-        // already a deterministic derivation of the SAME (connectionId,
-        // idempotencyKey) pair, shaped as a UUID, which satisfies the vendor's
-        // character class while keeping the identical safety property this
-        // header exists for.
-        headers: { 'Idempotency-Key': documentToken },
-        // Safe to re-issue on a 5xx/network failure precisely BECAUSE of the
-        // header above: the vendor guarantees that repeating a key with the same
-        // body cannot mint a second document, and therefore cannot mint a second
-        // fiscal registration.
-        idempotent: true,
-      });
-      this.logger.log(
-        `eparagony.pl accepted the document for order ${orderId} as ${documentToken} ` +
-          `[connectionId=${this.connectionId}]`,
-      );
-    } catch (error) {
-      if (
-        error instanceof EparagonyApiError &&
-        error.errorCode === EPARAGONY_ERROR_DOCUMENT_ALREADY_EXISTS
-      ) {
-        // Our token is deterministic, so "already exists" means OUR earlier
-        // attempt landed. Reporting a rejection here would be the wrong-direction
-        // error the whole taxonomy exists to prevent: the status read below
-        // resolves what actually happened.
-        this.logger.warn(
-          `eparagony.pl already holds document ${documentToken} for order ${orderId}; ` +
-            `reading its status instead of re-creating [connectionId=${this.connectionId}]`,
-        );
-        return;
-      }
-      throw error;
-    }
+    // The shared create derives the per-request `Idempotency-Key` from the
+    // token plus the exact body, and settles "already exists" and a replayed
+    // request key against the token; see `eparagony-document-create.ts`.
+    await createEparagonyDocument({
+      http: this.http,
+      logger: this.logger,
+      connectionId: this.connectionId,
+      body,
+      orderId,
+    });
   }
 
   // -------------------------------------------------------------------------
@@ -303,15 +282,16 @@ export class EparagonyFiscalizationAdapter
   /**
    * Terminal `ERROR`: the provider explicitly reports the fiscalization failed,
    * so no fiscal registration exists. `rejected` is safe here for a reason
-   * specific to this vendor - OL sends its own registration key as the vendor's
-   * `Idempotency-Key`, so re-crossing the boundary under the same key cannot
-   * produce a second registration of the sale, which is exactly what the neutral
-   * definition of `rejected` requires.
+   * specific to this vendor - every request for the sale carries the same
+   * deterministic `documentToken`, and the vendor never lets one token hold a
+   * second document, so re-crossing the boundary cannot produce a second
+   * registration of the sale, which is exactly what the neutral definition of
+   * `rejected` requires.
    *
    * Note the operational consequence, recorded honestly: because the vendor
-   * replays the same key idempotently, a re-attempt after the operator fixes the
-   * device returns this same failed document. A genuine retry needs a fresh
-   * registration key, i.e. an operator action.
+   * keeps the failed document under the token, a re-attempt after the operator
+   * fixes the device meets that same failed document. A genuine retry needs a
+   * fresh registration key, i.e. an operator action.
    */
   private toTerminalRejection(
     body: EparagonyDocumentStatusResponse,
@@ -320,10 +300,12 @@ export class EparagonyFiscalizationAdapter
   ): EparagonyApiError {
     const errorCode = typeof body.errorCode === 'number' ? body.errorCode : null;
     // The vendor's `errorDescription` quotes the printer and can echo a product
-    // name, so it is logged but never promoted into the operator-facing reason
-    // core persists on the record.
+    // name, so it is logged but never promoted into anything core persists. What
+    // the operator sees is derived from it by `readFiscalDeviceError`: digits
+    // and OpenLinker's own sentences only (#3843).
     const description =
       typeof body.errorDescription === 'string' ? body.errorDescription : 'no description';
+    const reading = readFiscalDeviceError(errorCode, body.errorDescription);
     this.logger.warn(
       `eparagony.pl reported a terminal error for document ${documentToken} (order ${orderId}, ` +
         `code ${errorCode ?? 'none'}): ${description} [connectionId=${this.connectionId}]`,
@@ -337,8 +319,10 @@ export class EparagonyFiscalizationAdapter
       { errorCode },
       {
         failureMode: 'rejected',
-        reason:
-          'The fiscal device reported an error and did not register the sale. Check the device, then register again under a new key.',
+        reason: reading.reason,
+        documentToken,
+        deviceErrorCode: reading.deviceErrorCode,
+        errorHint: reading.hint,
       },
     );
   }

@@ -13,7 +13,12 @@
  */
 import { fireEvent, screen, waitFor, cleanup } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { renderWithProviders, createMockApiClient } from '../../../../test/test-utils';
+import type { Mock } from 'vitest';
+import {
+  renderWithProviders,
+  createMockApiClient,
+  findToastTitle,
+} from '../../../../test/test-utils';
 import { BulkWizard, mergeResolveOutcomes, seedRows } from './bulk-wizard';
 import type {
   BulkResolveCompletion,
@@ -23,6 +28,12 @@ import type {
 import type { BulkVariantRow, BulkWizardRow } from './bulk-wizard.types';
 import type { Product, ProductVariant } from '../../../products';
 import type { Connection } from '../../../connections';
+import type {
+  BulkOfferCreateRequest,
+  BulkOfferCreateResponse,
+} from '../../api/bulk-listings.types';
+
+type BulkCreateMock = Mock<(request: BulkOfferCreateRequest) => Promise<BulkOfferCreateResponse>>;
 
 const captureDemoEvent = vi.fn();
 vi.mock('../../../demo', () => ({
@@ -214,7 +225,7 @@ describe('BulkWizard — demo instrumentation (#1788)', () => {
         resolveConnectionName={() => 'My Allegro'}
         preselectedConnectionId="conn-1"
       />,
-      { apiClient },
+      { apiClient, dataRouter: true },
     );
 
     await screen.findByRole('option', { name: 'Courier 24h' }, { timeout: 5000 });
@@ -263,7 +274,7 @@ describe('BulkWizard — destination context (#2227)', () => {
         resolveConnectionName={() => 'My Allegro'}
         preselectedConnectionId="conn-1"
       />,
-      { apiClient },
+      { apiClient, dataRouter: true },
     );
 
     // Config IS the destination form: plain heading, no bar repeating the picker.
@@ -324,6 +335,22 @@ describe('seedRows (#1754 pre-selected variants)', () => {
     expect(rows[0].variants.map((v) => v.included)).toEqual([false, true, false]);
     // Primary represents an included variant, not the bare first sibling.
     expect(rows[0].primaryVariant?.id).toBe('v2');
+  });
+
+  it('leaves out a variant deleted at the master', () => {
+    const product = makeProduct('p1', ['base', 'red', 'green']);
+    (product.variants![0] as { isStale: boolean }).isStale = true;
+    const rows = seedRows([product]);
+    expect(rows[0].variants.map((v) => v.variantId)).toEqual(['red', 'green']);
+    expect(rows[0].primaryVariant?.id).toBe('red');
+  });
+
+  it('flags a product whose every variant was deleted at the master', () => {
+    const product = makeProduct('p1', ['only']);
+    (product.variants![0] as { isStale: boolean }).isStale = true;
+    const rows = seedRows([product]);
+    expect(rows[0].variants).toEqual([]);
+    expect(rows[0].blockers).toEqual(['no-variant']);
   });
 
   it('includes every variant of a whole-product pick even when the set scopes a different product', () => {
@@ -413,11 +440,15 @@ describe('BulkWizard — destinationResolvesCategoryAtSubmit (#2211)', () => {
     };
   }
 
-  async function renderAndResolve(capabilities: string[]): Promise<void> {
+  async function renderAndResolve(
+    capabilities: string[],
+    bulkCreate: BulkCreateMock = vi.fn(),
+  ): Promise<void> {
     const apiClient = createMockApiClient({
       connections: { list: vi.fn().mockResolvedValue([connection(capabilities)]) },
       listings: {
         checkPublishedVariants: vi.fn().mockResolvedValue({ publishedVariantIds: [] }),
+        bulkCreate,
       },
     });
 
@@ -427,7 +458,7 @@ describe('BulkWizard — destinationResolvesCategoryAtSubmit (#2211)', () => {
         resolveConnectionName={() => 'Test destination'}
         preselectedConnectionId="conn-1"
       />,
-      { apiClient },
+      { apiClient, dataRouter: true },
     );
 
     const proceed = await screen.findByRole('button', { name: /Proceed/ }, { timeout: 5000 });
@@ -466,6 +497,119 @@ describe('BulkWizard — destinationResolvesCategoryAtSubmit (#2211)', () => {
     expect(resolveStub.received).toContain(false);
     expect(await screen.findByText('All included variants are ready.')).toBeInTheDocument();
   }, 15000);
+
+  it('should send one submission when the confirm button is double-clicked', async () => {
+    resolveStub.outcomes = [unresolvedCategoryOutcome()];
+    resolveStub.completion = { catalogueLookupPerformed: true };
+    // Held open so the second click lands while the first submit is in flight,
+    // which is exactly the window a double click hits.
+    let settle: (value: BulkOfferCreateResponse) => void = () => undefined;
+    const bulkCreate: BulkCreateMock = vi.fn().mockReturnValue(
+      new Promise<BulkOfferCreateResponse>((resolve) => {
+        settle = resolve;
+      }),
+    );
+
+    await renderAndResolve([], bulkCreate);
+    const cta = await screen.findAllByRole('button', { name: 'Create offers (1)' });
+    fireEvent.click(cta[0]);
+    const confirm = await screen.findByRole('button', { name: 'Create offers' });
+
+    fireEvent.click(confirm);
+    fireEvent.click(confirm);
+
+    await waitFor(() => expect(bulkCreate).toHaveBeenCalledTimes(1));
+    settle({
+      batchId: 'batch-1',
+      jobIds: ['job-1'],
+      skippedAlreadyListedCount: 0,
+      skippedAvailabilityUnknownCount: 0,
+      skippedInvalidEanCount: 0,
+    });
+    expect(await findToastTitle('Batch submitted')).toBeInTheDocument();
+    expect(bulkCreate).toHaveBeenCalledTimes(1);
+  }, 15000);
+
+  // #3851: a simple product's stock is the only figure the server publishes, so
+  // the request has to say when the wizard read it from master rather than the
+  // operator typing it - that is what lets the server refuse an unsynced one.
+  it('should mark a single-variant stock read from master on the request', async () => {
+    resolveStub.outcomes = [unresolvedCategoryOutcome()];
+    const bulkCreate: BulkCreateMock = vi.fn().mockResolvedValue({
+      batchId: 'batch-1',
+      jobIds: ['job-1'],
+      skippedAlreadyListedCount: 0,
+      skippedAvailabilityUnknownCount: 0,
+      skippedInvalidEanCount: 0,
+    });
+
+    await renderAndResolve([], bulkCreate);
+    fireEvent.click((await screen.findAllByRole('button', { name: 'Create offers (1)' }))[0]);
+    fireEvent.click(await screen.findByRole('button', { name: 'Create offers' }));
+
+    await waitFor(() => expect(bulkCreate).toHaveBeenCalledTimes(1));
+    const request = bulkCreate.mock.calls[0][0];
+    expect(request.perVariantOverrides?.ol_variant_1).toMatchObject({
+      stock: 5,
+      stockFromMaster: true,
+    });
+  }, 15000);
+
+  describe('leave guard (#3851)', () => {
+    /** The browser-side half of the guard; the in-app half needs a data router (own spec). */
+    function unloadIsHeld(): boolean {
+      const event = new Event('beforeunload', { cancelable: true });
+      window.dispatchEvent(event);
+      return event.defaultPrevented;
+    }
+
+    function okResponse(): BulkOfferCreateResponse {
+      return {
+        batchId: 'batch-1',
+        jobIds: ['job-1'],
+        skippedAlreadyListedCount: 0,
+        skippedAvailabilityUnknownCount: 0,
+        skippedInvalidEanCount: 0,
+      };
+    }
+
+    it('should not hold an unload when the operator only resolved the batch', async () => {
+      resolveStub.outcomes = [unresolvedCategoryOutcome()];
+
+      await renderAndResolve([]);
+      await screen.findAllByRole('button', { name: 'Create offers (1)' });
+
+      expect(unloadIsHeld()).toBe(false);
+    }, 15000);
+
+    it('should hold an unload once the operator edited the batch', async () => {
+      resolveStub.outcomes = [unresolvedCategoryOutcome()];
+
+      await renderAndResolve([]);
+      const include = await screen.findByRole('checkbox', { name: /^Include all .* variants$/ });
+      fireEvent.click(include);
+      fireEvent.click(include);
+
+      await waitFor(() => expect(unloadIsHeld()).toBe(true));
+    }, 15000);
+
+    it('should release the guard once the batch was submitted', async () => {
+      resolveStub.outcomes = [unresolvedCategoryOutcome()];
+      const bulkCreate: BulkCreateMock = vi.fn().mockResolvedValue(okResponse());
+
+      await renderAndResolve([], bulkCreate);
+      const include = await screen.findByRole('checkbox', { name: /^Include all .* variants$/ });
+      fireEvent.click(include);
+      fireEvent.click(include);
+      await waitFor(() => expect(unloadIsHeld()).toBe(true));
+
+      fireEvent.click((await screen.findAllByRole('button', { name: 'Create offers (1)' }))[0]);
+      fireEvent.click(await screen.findByRole('button', { name: 'Create offers' }));
+
+      expect(await findToastTitle('Batch submitted')).toBeInTheDocument();
+      expect(unloadIsHeld()).toBe(false);
+    }, 15000);
+  });
 
   it('keeps the category blocker when a catalogue lookup did run and matched nothing', async () => {
     resolveStub.outcomes = [unresolvedCategoryOutcome()];

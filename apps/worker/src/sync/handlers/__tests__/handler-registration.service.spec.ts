@@ -3,7 +3,7 @@
  *
  * Pins the ADR-050 lane partition (#2278): every `JobTypeValues` member is
  * registered with exactly one lane, the per-lane counts match the ADR's
- * table (18 realtime / 31 bulk / 5 fiscal / 7 fan-out across 61 job types —
+ * table (19 realtime / 36 bulk / 5 fiscal / 7 fan-out across 67 job types -
  * `subiekt.bridge.reachabilitySweep` joined `bulk` with #3358: it re-probes a
  * Subiekt connection's own reachability on a cron, nobody is waiting on any
  * one tick of it, and a late check costs nothing beyond a delayed log line;
@@ -27,11 +27,16 @@
  * the ADR calls out cannot silently churn. `fulfillment.work.autoDispatch`
  * joined `realtime` with #3340 (closing #2729) — a NEW job type beside its
  * `fulfillment.work.dispatch` producer, for the identical
- * cost-of-starvation reason.
+ * cost-of-starvation reason. `inventory.saleDecrement` joined `realtime`
+ * with #3453 (a late decrement is an oversell window), and
+ * `fulfillment.work.rerouteSweep` joined `bulk` with #3485, and `orders.export`
+ * beside it with #3534. `marketplace.sourceFulfillment.statusSync` joined
+ * `bulk` beside its destination-side twin (ADR-012 amendment).
+ * `fulfillment.routing.reapSweep` joined `bulk` with #2731.
  *
  * @module apps/worker/src/sync/handlers
  */
-/* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-unsafe-call -- test constructs the service with 57 interchangeable dummy handlers */
+/* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-unsafe-call -- test constructs the service with 62 interchangeable dummy handlers */
 import type { SyncJobHandler } from '@openlinker/core/sync';
 import { JobTypeValues, SyncJobLaneValues } from '@openlinker/core/sync';
 import { SyncJobHandlerRegistry } from '../sync-job-handler.registry';
@@ -42,13 +47,13 @@ describe('HandlerRegistrationService (ADR-050 lane partition, #2278)', () => {
 
   beforeEach(() => {
     registry = new SyncJobHandlerRegistry();
-    // The constructor takes the registry followed by 57 handler instances.
+    // The constructor takes the registry followed by 62 handler instances.
     // The dummies are DISTINCT objects so that "these two job types share one
     // handler instance" (#2594) is a real assertion rather than a tautology;
     // the partition under test keys on jobType, so they are otherwise
     // interchangeable.
     const handlers = Array.from(
-      { length: 57 },
+      { length: 62 },
       () => ({ execute: jest.fn() }) as unknown as SyncJobHandler
     );
     const service = new (HandlerRegistrationService as any)(registry, ...handlers);
@@ -60,7 +65,7 @@ describe('HandlerRegistrationService (ADR-050 lane partition, #2278)', () => {
     expect(() => registry.assertFullLaneCoverage()).not.toThrow();
   });
 
-  it('should partition the 61 job types 18/31/5/7 per ADR-050 decision 1', () => {
+  it('should partition the 67 job types 19/36/5/7 per ADR-050 decision 1', () => {
     // 17: four of the SIX fulfilment job types are `realtime` by
     // cost-of-starvation. The other two, #2712's
     // `fulfillment.work.timeoutSweep` and #2728's
@@ -95,7 +100,7 @@ describe('HandlerRegistrationService (ADR-050 lane partition, #2278)', () => {
     // is running, so it is the same outbound-half-of-a-sale profile as
     // `fulfillment.work.dispatch` rather than the paced reconcile its
     // `marketplace.shipment.statusSync` neighbour is.
-    expect(registry.getJobTypesByLane('realtime')).toHaveLength(18);
+    expect(registry.getJobTypesByLane('realtime')).toHaveLength(19);
     // 27, and every one of the additions since the lane split shares one
     // profile: background catch-up work that enqueues no children, writes
     // locally, and whose lateness costs nobody a request — so `fan-out` (whose
@@ -136,10 +141,44 @@ describe('HandlerRegistrationService (ADR-050 lane partition, #2278)', () => {
     // is single-unit work that can arrive up to N wide from a bulk-accept
     // wave (#3145/#3148) — the operator-wave shape decision 1 assigns to
     // `bulk`, not the single-item "someone is waiting on this" shape
-    // `realtime` is for.
-    expect(registry.getJobTypesByLane('bulk')).toHaveLength(31);
+    // `realtime` is for. #3485's `fulfillment.work.rerouteSweep` is the
+    // thirty-second, and the third fulfilment sweep in `bulk` for the reaper's
+    // reason: its candidates are orders ALREADY held because routing could not
+    // place them (out of stock, typically), so a tick of delay is immaterial.
+    // The routing itself happens in the `fulfillment.work.route` children it
+    // enqueues, which stay `realtime`. #3534's `orders.export` is the
+    // thirty-third: an operator-requested CSV/XLSX export is a query-then-write
+    // job, not a buyer-facing write, the restatement driver's reasoning.
+    // #3629's inventory sale-decrement reconcile sweep is the thirty-fourth,
+    // and `marketplace.sourceFulfillment.statusSync` the thirty-fifth, laned
+    // with its destination-side twin `marketplace.fulfillment.statusSync`: a
+    // paced scan over parcels that have already shipped, each candidate a
+    // marketplace readback. #2731's `fulfillment.routing.reapSweep` is the
+    // thirty-seventh, the fourth fulfilment sweep in `bulk` for the reaper's
+    // reason: its candidates have waited past the routing-decision TTL by
+    // construction, and the re-route it triggers runs in a `realtime` child.
+    expect(registry.getJobTypesByLane('bulk')).toHaveLength(37);
     expect(registry.getJobTypesByLane('fiscal')).toHaveLength(5);
     expect(registry.getJobTypesByLane('fan-out')).toHaveLength(7);
+  });
+
+  it('should lane the routing reaper bulk and its re-route child realtime (#2731)', () => {
+    expect(registry.getLane('fulfillment.routing.reapSweep')).toBe('bulk');
+    expect(registry.getLane('fulfillment.work.route')).toBe('realtime');
+  });
+
+  it('should lane the sale decrement realtime (#3453)', () => {
+    // Named for the same reason as the routing commit below: until it runs, the
+    // product master and every other channel still sell units already sold.
+    expect(registry.getLane('inventory.saleDecrement')).toBe('realtime');
+  });
+
+  it('should lane the sale-decrement reconcile sweep bulk, its subject realtime (#3629)', () => {
+    // Named rather than left to the count: the decrement job is a sale a buyer is
+    // racing, but every candidate of the backstop has by construction gone at
+    // least the grace window without a job, so it must not hold a realtime slot.
+    expect(registry.getLane('inventory.saleDecrement.reconcileSweep')).toBe('bulk');
+    expect(registry.getLane('inventory.saleDecrement')).toBe('realtime');
   });
 
   it('should lane the routing commit realtime, never bulk (#2395)', () => {
@@ -200,6 +239,9 @@ describe('HandlerRegistrationService (ADR-050 lane partition, #2278)', () => {
     // The buyer-facing path stays realtime.
     expect(registry.getLane('marketplace.order.sync')).toBe('realtime');
     expect(registry.getLane('marketplace.offerQuantity.update')).toBe('realtime');
+    // Both fulfilment read-backs are paced scans, source side as destination side.
+    expect(registry.getLane('marketplace.fulfillment.statusSync')).toBe('bulk');
+    expect(registry.getLane('marketplace.sourceFulfillment.statusSync')).toBe('bulk');
     // Enumerators are fan-out.
     expect(registry.getLane('marketplace.orders.poll')).toBe('fan-out');
     // #2330 returns: the lanes mirror the order path they were modelled on.

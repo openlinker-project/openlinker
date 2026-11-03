@@ -4,7 +4,7 @@
  * #2413 reviewed all 76 `@AnyRole()` routes against the new `packer` role and
  * narrowed 45 of them to `@Roles('admin', 'operator', 'viewer')` — the same
  * audience they had, named explicitly so the fourth role is excluded by
- * construction. The 31 that remain are listed below, one per line.
+ * construction. The 32 that remain are listed below, one per line.
  *
  * ## Why an ALLOW-LIST and not a list of excluded controllers
  *
@@ -54,6 +54,8 @@ import { readdirSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { ANY_ROLE_KEY } from './decorators/any-role.decorator';
 import { ROLES_KEY } from './decorators/roles.decorator';
+import { toParcelResponseDto } from '../bench/http/dto/bench-parcel.mapper';
+import type { BenchParcelView } from '../bench/application/types/bench-parcel.types';
 
 const SRC_ROOT = resolve(__dirname, '..');
 
@@ -67,6 +69,10 @@ const PACKER_REACHABLE_ANY_ROLE_ROUTES: readonly string[] = [
   // signed-in name, visible without opening a menu. Excluding it breaks A4.
   'AuthController.getMe',
   'AuthController.updateAnalyticsConsent',
+  // Replacing the one-time password an admin issued (#3456). The account that
+  // flow creates is typically a packer's, and the session is gated on the
+  // change until it happens, so excluding the role would lock that user out.
+  'AuthController.changePassword',
 
   // Item identity — what a packer scans against.
   'ProductsController.listProducts',
@@ -81,6 +87,12 @@ const PACKER_REACHABLE_ANY_ROLE_ROUTES: readonly string[] = [
   // in a different encoding, so it is strictly narrower than the route it
   // accompanies rather than a new disclosure.
   'ProductsController.getProductImage',
+  // The variant-level picture (G11 / #3586): the same photo the product route
+  // streams, narrowed to one variant's own or inherited image. A packer holds a
+  // specific variant and the bench shows that variant, so the product-level
+  // picture alone could show the wrong colour. Same justification, same shape,
+  // no cost or price in the bytes.
+  'ProductsController.getVariantImage',
   'VariantsController.searchVariants',
 
   // The `/count` siblings of the three LIST reads above (#2943). Each answers ONE
@@ -170,6 +182,11 @@ const PACKER_GRANTED_ROUTES: readonly string[] = [
   // parcel. The line that matters is unchanged - a packer still cannot reach
   // an address, a contact detail, or any order they are not packing.
   //
+  // #3538 (D12) adds one more deliberate disclosure: the buyer's checkout NOTE,
+  // read only, verbatim, plus who read it at the bench (a user id and an
+  // instant, no PII). The exact set of note fields is pinned by the
+  // 'discloses exactly the buyer-note fields' test below.
+  //
   // ADR-062 is NOT the authority for this list and must not be cited as one:
   // its subject is what crosses to a PLUGIN (`RoutingInput`, `HostServices`,
   // the router port), and it says nothing about what OpenLinker's own HTTP
@@ -206,12 +223,30 @@ const PACKER_GRANTED_ROUTES: readonly string[] = [
   // worklist listBenchWork returns; delegates to claimParcel for the actual
   // write and re-check.
   'BenchWorkController.claimNext',
+  // #3654. The ONE packer-reachable label WRITE: replace the label on this box
+  // with a different parcel size. Narrower than the /shipments/* routes it
+  // spares a packer a trip to an admin for: the body is parcel data only (global
+  // ValidationPipe whitelist + forbidNonWhitelisted, so no address or shipment
+  // id), the recipient is derived server-side from the order exactly as
+  // auto-dispatch derives it, and the route is work-scoped with no shipment id,
+  // so another order's shipment is unreachable. Serialised per work. It cannot
+  // issue an invoice or fiscal document (bench-never-issues.spec.ts). The packer
+  // still reaches no /shipments/* write directly (ADR-071: no new principal).
+  'BenchLabelController.replaceLabel',
   // pack-bench completion. Declare a parcel finished and off the bench — the completion act
   // after the last scan (label applied, invoice inside, box on the
   // trolley). Scoped exactly as getParcel scopes it, plus the ADR-074 lock a
   // scan already enforces; attributed to the verified token's own user, same
   // as verifyUnit.
   'BenchParcelController.completeParcel',
+  // #3538 (D12). Records which packer read the buyer's checkout note for ONE
+  // parcel, and when. Scoped exactly as getParcel scopes it, plus the ADR-074
+  // lock a scan enforces; attributed to the verified token's own user. It
+  // writes two display columns on the work row and gates nothing - scanning
+  // never waits on it and it is not a parcel close (ADR-071). The note TEXT the
+  // packer reads reaches them through `getParcel`'s projection, a deliberate
+  // new disclosure recorded there rather than here.
+  'BenchParcelController.acknowledgeBuyerNote',
   // #3415. The way back from that completion, and the reason it needs one: the
   // only other route back was `reopenParcel` above, which UNPACKS the box, so a
   // packer who tapped the wrong row had to re-scan a parcel that was packed
@@ -241,6 +276,12 @@ const PACKER_GRANTED_ROUTES: readonly string[] = [
   // else's paperwork. The asymmetry with `getParcel` is deliberate, not an
   // oversight.
   'BenchDocumentsController.downloadInvoice',
+  // #3646. The receipt sibling of `downloadInvoice`, granted for the same
+  // reason: the customer-facing e-receipt is the paper (or the link) the buyer
+  // is owed for this very box. Reached through the work and its own order only -
+  // no registration id - so it cannot be walked to another order's receipt, and
+  // it reads through the sales-document projection, never a fiscalization route.
+  'BenchDocumentsController.downloadReceipt',
   'BenchDocumentsController.listUnlabelled',
   // #3415. The label, and it is granted for a NARROWER reason than the invoice
   // above: the sheet goes on the outside of the box and `ShipmentResponseDto`
@@ -373,5 +414,31 @@ describe('Packer exclusion (#2413)', () => {
     const live = new Set(anyRoleRoutes);
     const stale = PACKER_REACHABLE_ANY_ROLE_ROUTES.filter((id) => !live.has(id));
     expect(stale).toEqual([]);
+  });
+
+  it('discloses exactly the buyer-note fields a packer may see on a parcel (#3538)', () => {
+    // The note text is the one new free-text buyer field the bench projection
+    // carries, so the exact key set is asserted here, beside the route
+    // allow-list, as well as in the service spec: widening it (an order-level
+    // note id, a note author, an edit history) must be a decision made here.
+    const view = {
+      lines: [],
+      otherParcelBuyerNoteAcknowledgements: [],
+      packerNotes: [],
+    } as unknown as BenchParcelView;
+    const dto = toParcelResponseDto(view);
+
+    const noteKeys = Object.keys(dto)
+      .filter((key) => /buyerNote/i.test(key))
+      .sort();
+    expect(noteKeys).toEqual(
+      [
+        'buyerNote',
+        'buyerNoteAcknowledgedAt',
+        'buyerNoteAcknowledgedByUserId',
+        'hasBuyerNote',
+        'otherParcelBuyerNoteAcknowledgements',
+      ].sort()
+    );
   });
 });

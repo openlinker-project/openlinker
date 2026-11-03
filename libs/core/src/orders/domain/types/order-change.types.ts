@@ -65,9 +65,143 @@ export const OrderChangeKindValues = [
   'return.decline',
   'return.authorize',
   'return.invoice_correction',
+  'order.cancel_request',
+  'order.cancel_correction',
+  'order.address_change',
+  'order.line_quantity_change',
+  'order.delivery_method_change',
+  'order.discount_change',
+  'order.discount_refund',
+  'order.discount_correction',
 ] as const;
 
 export type OrderChangeKind = (typeof OrderChangeKindValues)[number];
+
+/**
+ * The kinds that are an operator ASKING A CHANNEL to change the order (#3540):
+ * a request that stays open until the channel answers (or the TTL expires).
+ *
+ * Only these drive the derived `amending` lifecycle phase. A `return.*` change is
+ * about a return, and a correction proposal (below) is a proposal the OPERATOR
+ * confirms, not a change awaiting a channel - counting either would show a
+ * "change pending" state for something nobody is waiting on. (Named "request"
+ * because `OrderAmendmentChangeKind` already means the ingestion line-diff
+ * observation, see the file header.)
+ */
+export const OrderAmendmentRequestKindValues = [
+  'order.cancel_request',
+] as const satisfies readonly OrderChangeKind[];
+
+export type OrderAmendmentRequestKind = (typeof OrderAmendmentRequestKindValues)[number];
+
+/** Pure coercion. Edit in the same commit as {@link OrderAmendmentRequestKindValues}. */
+export function isOrderAmendmentRequestKind(value: unknown): value is OrderAmendmentRequestKind {
+  return (
+    typeof value === 'string' &&
+    (OrderAmendmentRequestKindValues as readonly string[]).includes(value)
+  );
+}
+
+/**
+ * The kinds that are an operator-confirmable CORRECTION proposal (#3540):
+ * `order.cancel_correction` (targetRef `correction:cancel:{order}:{invoice}`) is
+ * the credit a cancelled, invoiced order leaves behind. The confirm endpoint
+ * switches over this list; none of them is an amendment awaiting a channel.
+ */
+export const OrderCorrectionChangeKindValues = [
+  'order.cancel_correction',
+  // #3543: the two operator-confirmable consequences of a discount on a PAID
+  // order. `order.discount_refund` is "the seller refunded the difference on the
+  // channel" (OpenLinker executes no refund, ADR-056); `order.discount_correction`
+  // corrects the issued document to the discounted prices. Neither waits on a
+  // channel, so neither is an amendment REQUEST and neither is `amending`.
+  'order.discount_refund',
+  'order.discount_correction',
+] as const satisfies readonly OrderChangeKind[];
+
+export type OrderCorrectionChangeKind = (typeof OrderCorrectionChangeKindValues)[number];
+
+export function isOrderCorrectionChangeKind(value: unknown): value is OrderCorrectionChangeKind {
+  return (
+    typeof value === 'string' &&
+    (OrderCorrectionChangeKindValues as readonly string[]).includes(value)
+  );
+}
+
+/**
+ * The kinds that are an operator EDITING an order in OpenLinker (#3542, D9).
+ *
+ * With the OMS on, OpenLinker owns the order, so these are not requests a channel
+ * answers: each row is opened, applied to the overlay and confirmed in one
+ * breath (the `return.authorize` shape - the row is the AUDIT RECORD of the
+ * operator's act). That is the "confirmed at write time" amendment kind.
+ *
+ * Deliberately NOT in {@link OrderAmendmentRequestKindValues}: nothing waits on a
+ * channel, so an edit must never put the order in the derived `amending` phase.
+ * "Edited in OpenLinker" is a separate marker, derived from the overlay.
+ */
+export const OrderOperatorEditKindValues = [
+  'order.address_change',
+  'order.line_quantity_change',
+  'order.delivery_method_change',
+  'order.discount_change',
+] as const satisfies readonly OrderChangeKind[];
+
+export type OrderOperatorEditKind = (typeof OrderOperatorEditKindValues)[number];
+
+/** Pure coercion. Edit in the same commit as {@link OrderOperatorEditKindValues}. */
+export function isOrderOperatorEditKind(value: unknown): value is OrderOperatorEditKind {
+  return (
+    typeof value === 'string' && (OrderOperatorEditKindValues as readonly string[]).includes(value)
+  );
+}
+
+/**
+ * `targetRef`s of the operator edits. Disjoint from `cancel:`, `correction:` and
+ * a bare entity id, because `UQ_order_changes_open_target` is `(order, targetRef)`
+ * and carries no `kind`. One row per request: a lines edit changes several lines
+ * atomically, so its ref is per order, not per line.
+ */
+export function addressEditTargetRef(internalOrderId: string): string {
+  return `edit:address:${internalOrderId}`;
+}
+
+export function lineQuantityEditTargetRef(internalOrderId: string): string {
+  return `edit:lines:${internalOrderId}`;
+}
+
+export function deliveryMethodEditTargetRef(internalOrderId: string): string {
+  return `edit:delivery:${internalOrderId}`;
+}
+
+/** One discount per order: a second one REPLACES the first, so the ref is per order (#3543). */
+export function discountEditTargetRef(internalOrderId: string): string {
+  return `edit:discount:${internalOrderId}`;
+}
+
+/**
+ * `targetRef` of the refund intent a discount leaves on a paid order. Keyed on the
+ * discount EDIT's change id so a replacing discount opens a fresh intent beside the
+ * (abandoned) old one instead of colliding with it in the shared slot (#3543).
+ */
+export function discountRefundTargetRef(internalOrderId: string, discountChangeId: string): string {
+  return `refund:discount:${internalOrderId}:${discountChangeId}`;
+}
+
+/** `targetRef` of the correction a discount proposes against one issued invoice (#3543). */
+export function discountCorrectionTargetRef(internalOrderId: string, invoiceRecordId: string): string {
+  return `correction:discount:${internalOrderId}:${invoiceRecordId}`;
+}
+
+/** `targetRef` of the cancel request: one open cancel per order. */
+export function cancelRequestTargetRef(internalOrderId: string): string {
+  return `cancel:${internalOrderId}`;
+}
+
+/** `targetRef` of the credit proposal a cancel leaves against one issued invoice. */
+export function cancelCorrectionTargetRef(internalOrderId: string, invoiceRecordId: string): string {
+  return `correction:cancel:${internalOrderId}:${invoiceRecordId}`;
+}
 
 /**
  * Where the proposal got to.

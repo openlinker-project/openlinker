@@ -10,7 +10,12 @@
 // is not on that sub-barrel, whose gate admits only dependency-free leaves with
 // a consumer that cannot use the main barrel. This file can — `ReturnDeclineService`
 // already imports the main barrel from the same folder.
-import type { RefundExecutedBy, RefundReason } from '@openlinker/core/orders';
+import type {
+  RefundCeilingContext,
+  RefundCeilingVerdict,
+  RefundExecutedBy,
+  RefundReason,
+} from '@openlinker/core/orders';
 
 import type { ReturnRecord } from '../../domain/entities/return-record.entity';
 import type { ReturnMoneyState } from '../../domain/types/return-line.types';
@@ -24,6 +29,18 @@ export interface TriggerRefundInput {
   note?: string | null;
   /** The operator, where one is acting. */
   actorUserId?: string | null;
+  /**
+   * The order's total and prior refunds, resolved by the caller (#3289):
+   * `returns` takes no module edge to `orders`, so it cannot read them itself.
+   * Absent or `null` means the ceiling is UNKNOWN - the refund proceeds, warn
+   * logged and reported as such in `refundCeiling`, never as a checked pass.
+   */
+  refundCeilingContext?: RefundCeilingContext | null;
+  /**
+   * Deliberately refund past the order's ceiling (#3289). Request-level only:
+   * never persisted, never inferred, repeated on every retry.
+   */
+  acknowledgeAboveCeiling?: boolean;
 }
 
 /**
@@ -78,6 +95,8 @@ export interface TriggerRefundResult {
   refundRecordIntent: ReturnRefundRecordIntent | null;
   /** The source's own words, where it said anything. */
   providerMessage: string | null;
+  /** What the order-level ceiling check concluded (#3289); `unknown` is explicit. */
+  refundCeiling: RefundCeilingVerdict;
 }
 
 export interface RecordRefundObservationInput {
@@ -104,6 +123,9 @@ export interface IReturnRefundService {
    * @throws {ReturnNotFoundError} the id resolves to no row.
    * @throws {ReturnNotAttributedError} the return is an orphan — a refund
    *   against a phantom order moves real money (#2332's ONE seam).
+   * @throws {RefundCeilingExceededException} the refund would take the order's
+   *   cumulative refunds past its total and `acknowledgeAboveCeiling` was not
+   *   set. Raised before the lock, the claim and the executor, so nothing moved.
    * @throws {ReturnRefundContendedError} another attempt holds the lock.
    *   Retryable; nothing was changed and the executor was never reached.
    * @throws {ReturnRefundBlockedError} the money states permit no fresh

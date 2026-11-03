@@ -71,7 +71,7 @@ import {
  * One connection, reduced to what resolution depends on.
  *
  * Structural by necessity (the empty allow-set) and by design — the same reason
- * `AuthorityHolderCandidate` and `InvoicingConnectionCandidate` are.
+ * `AuthorityHolderCandidate` and `SalesDocumentRoutingCandidate` are.
  *
  * **The caller passes EVERY connection, whatever its status.** `analytics-trust`
  * had to opt into `includeAllStatuses` because an active-only filter silently
@@ -652,6 +652,40 @@ export function selectPrimaryFulfillmentRouter(
     candidateConnectionIds: distinct,
     holders: resolved.holders,
   };
+}
+
+/**
+ * The connection fields router selection reads. Structural on purpose: this
+ * leaf may import no sibling context, so it names the shape rather than
+ * `Connection` from `identifier-mapping`, and a `Connection` satisfies it.
+ */
+export interface RouterSelectionConnection {
+  readonly id: string;
+  readonly status: string;
+  readonly enabledCapabilities: readonly string[];
+  readonly config: unknown;
+}
+
+/**
+ * Reduce connections to the claimants {@link selectPrimaryFulfillmentRouter}
+ * selects from (#3558). Every connection, whatever its status: an inactive
+ * claim is reported but never eligible. `supportedCapabilities` is left empty
+ * because A2 is `config-only` and `declaresCapability` short-circuits without
+ * reading it, so resolving adapter metadata per connection would be discarded.
+ *
+ * One body for every caller (ingestion, the route job, the reroute and reap
+ * sweeps, the routing retry), so all of them select the same router.
+ */
+export function toRouterSelectionClaimants(
+  connections: readonly RouterSelectionConnection[]
+): AuthorityClaimantInput[] {
+  return connections.map((connection) => ({
+    connectionId: connection.id,
+    isActive: connection.status === 'active',
+    supportedCapabilities: [],
+    enabledCapabilities: connection.enabledCapabilities,
+    config: connection.config,
+  }));
 }
 
 /** Claimants that claim `kind` but are not active — reported, never eligible. */

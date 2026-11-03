@@ -130,6 +130,31 @@ export type FulfillmentProgressEvent =
   | FulfillmentClosedEvent;
 
 /**
+ * Mint the progress idempotency key for a parcel closure OpenLinker itself
+ * witnessed — the pack bench's automatic close (D18) or the desktop
+ * worklist's manual `close` action (#3525).
+ *
+ * Every OTHER `idempotencyKey` crossing this seam is a THIRD PARTY's own dedup
+ * token, because a webhook or a poll answer can be redelivered by a system OL
+ * does not control. Neither closing path here is that: OpenLinker is both the
+ * reporting "vendor" and the operator surface, and the closing WRITE itself
+ * (`claimParcelClose` / `transitionStatus`) is already the at-most-once event
+ * — so the key is MINTED from that write's own instant rather than received.
+ * That is also what makes a reopen-then-reclose (D19: a genuinely NEW closing
+ * act) mint a genuinely new key instead of colliding with the claim row the
+ * first close already burned.
+ *
+ * Pure; the rule for the type it sits beside (`engineering-standards.md` §
+ * the pure-rule exception to "types only").
+ */
+export function buildFulfillmentParcelClosureIdempotencyKey(
+  workId: string,
+  closedAt: Date
+): string {
+  return `parcel-closed:${workId}:${closedAt.getTime()}`;
+}
+
+/**
  * Something a caller OUTSIDE this context must do as a consequence of recorded
  * progress — reported, never performed.
  *
@@ -139,10 +164,13 @@ export type FulfillmentProgressEvent =
  * and `barrel-purity.spec.ts` independently forbid under this directory — and
  * that prohibition is the design, not an obstacle to route around.
  *
- * **Nothing consumes these yet.** #2401 owns the relay and is the first
- * consumer; it also brings the already-built `claimDispatchRelay` (#2392,
+ * #2401 owns the relay and is the first CONSUMER of this type; it also
+ * brings the already-built `claimDispatchRelay` (#2392,
  * `WHERE "dispatchRelayedAt" IS NULL`) into use and adds its
- * `releaseDispatchRelay` counterpart.
+ * `releaseDispatchRelay` counterpart. Since #3525, `apps/api`'s
+ * `FulfillmentParcelClosureNotifierService` is `record()`'s first production
+ * CALLER — every parcel closed at the bench or through the desktop worklist
+ * produces one of these against a real `dispatch` intent.
  */
 export type FulfillmentRelayIntent =
   | {
@@ -196,10 +224,12 @@ export type FulfillmentProgressOutcome =
    * Closing this needs a transaction spanning the per-line updates, and
    * `FulfillmentWorkRepositoryPort` deliberately offers none today ("the axis
    * transitions open no transaction and accept none"); widening that seam is
-   * **#2395's**. It cannot bite while `record()` has no production caller, which
-   * is precisely why it is written down here rather than left to be rediscovered
-   * — **#2398 is the issue that makes it reachable**, the moment its poller
-   * becomes the first caller.
+   * **#2395's**. It still cannot bite through `record()`'s first production
+   * caller (#3525's `FulfillmentParcelClosureNotifierService`), which sends
+   * only `'shipped'` events — the one kind whose `apply()` arm never calls
+   * `applyLineDeltas` at all — so this remains written down here rather than
+   * discovered live. **#2398 is the issue that makes it reachable**, the
+   * moment its poller sends a `'picked'` or `'short_picked'` event.
    */
   | { readonly status: 'precondition-failed'; readonly reason: string };
 

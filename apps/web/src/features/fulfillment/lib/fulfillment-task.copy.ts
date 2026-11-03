@@ -142,6 +142,37 @@ export function fulfillmentActionHint(action: string): string | null {
 /** Which actions need a form before they can be sent. */
 export const FULFILLMENT_ACTIONS_NEEDING_A_FORM = new Set(['hold', 'release_hold', 'force_cancel']);
 
+/**
+ * The `expeditedAt !== null` badge (#3247).
+ *
+ * Byte-identical to the pack bench's own `benchWorkCopy.row.expeditedBadge`
+ * (`bench-work.copy.ts`) — one vocabulary, two surfaces. A second wording for
+ * the same fact is how an operator comes to believe the two screens describe
+ * different things, so the match is asserted by a test rather than left to
+ * review. `expeditedAt` is display-only: which of `expedite` /
+ * `release_expedite` is offered comes from `supportedActions` alone (see the
+ * field's own docblock in `fulfillment.types.ts`), never from this constant.
+ */
+export const FULFILLMENT_EXPEDITED_BADGE = 'Moved to the front';
+
+/**
+ * The two runtime toast sentences `use-fulfillment-task-action-runner.ts`
+ * reports on success and on a non-conflict failure (#3257).
+ *
+ * They used to be template literals inline in that `.ts` hook — invisible to
+ * `check-ui-vocabulary.mjs`, which scans only `.tsx` JSX text and `*.copy.ts`
+ * literals, neither of which a plain `.ts` file's template string is. Moving
+ * them here is what closes that gap; the hook now composes these two
+ * functions instead of building the sentence itself.
+ */
+export function fulfillmentActionAppliedToast(action: string): string {
+  return `${fulfillmentActionLabel(action)} applied.`;
+}
+
+export function fulfillmentActionFailedFallback(action: string): string {
+  return `Could not ${fulfillmentActionLabel(action).toLowerCase()} this fulfilment task.`;
+}
+
 /** Orchestration-status labels. Display only — nothing branches on these. */
 const STATUS_COPY: Record<string, string> = {
   open: 'Open',
@@ -157,20 +188,56 @@ export function fulfillmentStatusLabel(status: string): string {
   return STATUS_COPY[status] ?? humanise(status);
 }
 
-/** Handshake-status labels. Display only. */
-const REQUEST_STATUS_COPY: Record<string, string> = {
-  unsubmitted: 'Not offered yet',
-  submitted: 'Offered, awaiting reply',
-  accepted: 'Accepted',
-  rejected: 'Refused',
-  cancellation_requested: 'Cancellation requested',
-  cancellation_accepted: 'Cancellation accepted',
-  cancellation_rejected: 'Cancellation refused',
-};
+/**
+ * Where an accepted task lands, named for the operator (#3763).
+ *
+ * OpenLinker's own OMS is the only executor in the tree, and the work it
+ * accepts appears on the pack bench - so that is the place a task is "not on
+ * yet". Every sentence below takes it as a parameter rather than inlining it,
+ * so an external executor later supplies its own name instead of a rewrite.
+ */
+export const OWN_PACK_BENCH_NAME = 'the pack bench';
 
-export function fulfillmentRequestStatusLabel(requestStatus: string): string {
-  return REQUEST_STATUS_COPY[requestStatus] ?? humanise(requestStatus);
-}
+/**
+ * What a task's acceptance state says to an operator (#3763).
+ *
+ * Replaces the old "Handshake" field, whose name meant nothing outside the
+ * code and whose usual value ("Accepted") carried no news. Only the states an
+ * operator must notice get words; `accepted` deliberately has none. Each fact
+ * is said once per level: the badge or headline names it, the note or
+ * sentence explains it, and the warning under "Why it's stuck" gives the
+ * detail and what OpenLinker will not do about it.
+ */
+export const TASK_ACCEPTANCE_COPY = {
+  /** Joined to the status in the card badge, e.g. "Open · Not on the pack bench". */
+  badge: (where: string): string => `Not on ${where}`,
+  /** Card note while acceptance is in flight (normal, usually seconds). */
+  pendingNote: (where: string): string => `On its way to ${where}`,
+  /** Card notes for a task packers cannot see, each followed by a relative time. */
+  stuckNote: 'Not accepted yet · sent',
+  refusedNote: 'Turned down or not answered in time · sent',
+  /** Detail hero sentence while acceptance is in flight. */
+  heroPending: (executor: string | null, where: string): string =>
+    executor
+      ? `Sent to ${executor}. It appears on ${where} once accepted, usually within seconds.`
+      : `Sent for packing. It appears on ${where} once accepted, usually within seconds.`,
+  /** Detail hero sentence for a stuck or refused task. */
+  heroAttention: (where: string): string =>
+    `Packers cannot see this task, because it is not on ${where}.`,
+  stuckTitle: 'Not accepted yet',
+  /** `age` is pre-formatted by `formatCompactDuration`, e.g. "2h". */
+  stuckBody: (age: string, where: string): string =>
+    `This task was sent ${age} ago and has not been accepted, so it is not on ${where}. OpenLinker does not retry this on its own. A failed dispatch job in Jobs & Logs usually explains why.`,
+  refusedTitle: 'Not accepted',
+  refusedBody: (where: string): string =>
+    `This task was turned down, or not answered in time, so it never reached ${where}. OpenLinker does not retry this on its own.`,
+  /** Joined to the status while a cancellation is being negotiated. */
+  cancellation: {
+    cancellation_requested: 'cancellation requested',
+    cancellation_accepted: 'cancellation accepted',
+    cancellation_rejected: 'cancellation refused',
+  } as Readonly<Record<string, string>>,
+};
 
 /**
  * The three actions that need a form before they can be sent.

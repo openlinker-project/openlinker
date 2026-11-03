@@ -14,13 +14,17 @@ export interface PricingRule {
 
 export interface PricingSyncSetting {
   mode: PriceSyncMode;
-  rule: PricingRule;
+  /** `null` = no rule configured; the master price passes through unchanged. */
+  rule: PricingRule | null;
 }
 
 export interface PricingSyncSourceEntry {
   sourceConnectionId: string;
   sourceLabel: string;
-  isCustomOverride: boolean;
+  /** `true` when this source has its OWN sync-mode override. */
+  modeOverridden: boolean;
+  /** `true` when this source has its OWN pricing-rule override. */
+  ruleOverridden: boolean;
   effective: PricingSyncSetting;
   openEpisodeCount: number;
 }
@@ -30,9 +34,20 @@ export interface ConnectionPricingSyncView {
   sources: PricingSyncSourceEntry[];
 }
 
+/**
+ * A per-source override as written. The two axes are independent: `mode`
+ * absent = no mode override; `rule` absent or `null` = no rule override (the
+ * source inherits the default rule). A mode-only override must therefore omit
+ * `rule` rather than copy the default in, which would freeze it (#3729).
+ */
+export interface PricingSyncSourceOverride {
+  mode?: PriceSyncMode;
+  rule?: PricingRule | null;
+}
+
 export interface UpdatePricingSyncInput {
   default: PricingSyncSetting;
-  sourceOverrides: Record<string, PricingSyncSetting>;
+  sourceOverrides: Record<string, PricingSyncSourceOverride>;
 }
 
 /**
@@ -44,6 +59,8 @@ export interface ConnectionAsSourceEntry {
   destinationConnectionId: string;
   destinationLabel: string;
   effectiveMode: PriceSyncMode;
-  effectiveRuleSummary: PricingRule;
-  isCustomOverride: boolean;
+  /** `null` = no rule configured on the destination for this source. */
+  effectiveRuleSummary: PricingRule | null;
+  modeOverridden: boolean;
+  ruleOverridden: boolean;
 }

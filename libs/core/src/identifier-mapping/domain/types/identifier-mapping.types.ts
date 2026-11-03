@@ -29,6 +29,11 @@ export const CoreEntityTypeValues = [
   // product id on a shop connection (the publish create-vs-upsert key, #1042).
   // Distinct from `Product` (master catalog) and `Offer` (marketplace listing).
   'ShopProduct',
+  // The shop's variant-grain id for a published variant, where the shop keeps
+  // one apart from the product id (Shoper `stock_id`). Its own entity type
+  // because stock ids and product ids are separate id spaces that can be the
+  // same number, and the unique index does not include the internal id.
+  'ShopProductVariant',
 ] as const;
 
 /**
@@ -65,6 +70,7 @@ export const CORE_ENTITY_TYPE = {
   Customer: 'Customer',
   Shipment: 'Shipment',
   ShopProduct: 'ShopProduct',
+  ShopProductVariant: 'ShopProductVariant',
 } as const satisfies Record<CoreEntityType, CoreEntityType>;
 
 /**

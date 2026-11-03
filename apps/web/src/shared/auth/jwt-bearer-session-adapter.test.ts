@@ -213,6 +213,9 @@ describe('JwtBearerSessionAdapter', () => {
           // mock omits it, and `null` is the adapter saying the packer has no
           // printer bound - never a label it guessed.
           packStationLabel: null,
+          // #3457. Mock omits it; the adapter fills in `false` (no forced
+          // password change) rather than guessing one is owed.
+          mustChangePassword: false,
         },
       });
     });

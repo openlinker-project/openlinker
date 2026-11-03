@@ -26,11 +26,17 @@
  * it. The two are also different in kind: a live in-flight/queued readout
  * versus a static declared ceiling.
  *
+ * When the status read reports a shared bucket (ADR-038 § Amendment), it says
+ * so in one line: the live counters then include other connections' traffic
+ * and the fields below can only tighten the shop's ceiling, both of which
+ * would otherwise read as a bug.
+ *
  * @module features/connections/components
  */
 import { useState, type ReactElement } from 'react';
 import type { UseFormReturn } from 'react-hook-form';
 import { FormField } from '../../../shared/ui/form-field';
+import { HelpLink } from '../../../shared/ui/help-link';
 import { Input } from '../../../shared/ui/input';
 import { useRateLimitStatusQuery } from '../hooks/use-rate-limit-status-query';
 import type { EditConnectionFormValues } from './edit-connection.schema';
@@ -92,7 +98,11 @@ export function RateLimitSection({
   // three render nothing rather than a placeholder: an unstated ceiling is
   // the pre-#2229 status quo, whereas a wrong or provisional number is a new
   // false claim.
-  const resolveCeiling = useRateLimitStatusQuery(connectionId).data?.resolveConcurrency;
+  const status = useRateLimitStatusQuery(connectionId).data;
+  const resolveCeiling = status?.resolveConcurrency;
+  // Same rule as the ceiling: only the server's positive answer renders the
+  // note, so loading and error states never claim a bucket is shared.
+  const sharedBucket = status?.sharedBucket === true;
 
   const hasStoredValue =
     Boolean(form.getValues('rateLimit.requestsPerMinute')) ||
@@ -132,7 +142,10 @@ export function RateLimitSection({
 
   return (
     <section className="rate-limit-section">
-      <h3 className="rate-limit-section__title">Outbound rate limit</h3>
+      <div className="section-title__with-help">
+        <h3 className="rate-limit-section__title">Outbound rate limit</h3>
+        <HelpLink surfaceKey="connection-rate-limit" />
+      </div>
       <p className="rate-limit-section__help">
         OpenLinker spaces requests evenly rather than sending them in bursts.{' '}
         {defaultRateLimit ? (
@@ -147,6 +160,13 @@ export function RateLimitSection({
           </>
         )}
       </p>
+
+      {sharedBucket ? (
+        <p className="rate-limit-section__help">
+          This limit is shared with other connections to the same shop, so the values below can
+          only tighten it.
+        </p>
+      ) : null}
 
       {resolveCeiling ? (
         <p className="rate-limit-section__help">
@@ -169,8 +189,10 @@ export function RateLimitSection({
       {enabled ? (
         <>
           <p className="rate-limit-section__help">
-            Setting either field below replaces the adapter default entirely — the other field is
-            then genuinely unlimited, not still capped by the default. Enforcement is rolling out
+            {sharedBucket
+              ? 'Each field below can only lower the shared limit; a field you leave empty keeps the shared default.'
+              : 'Setting either field below replaces the adapter default entirely; the other field is then genuinely unlimited, not still capped by the default.'}{' '}
+            Enforcement is rolling out
             sync path by sync path — setting a cap here has no effect until this connection&apos;s
             outbound traffic has been migrated onto it. If you run multiple API/worker replicas
             (<code>OL_WORKER_REPLICAS</code>), each value is divided evenly across them, so the

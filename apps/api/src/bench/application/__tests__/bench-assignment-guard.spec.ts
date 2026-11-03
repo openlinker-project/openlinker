@@ -47,15 +47,17 @@
 import type {
   FulfillmentWorkView,
   IFulfillmentVerificationService,
+  IFulfillmentWorkQueryService,
   IFulfillmentWorklistService,
   ParcelVerificationState,
 } from '@openlinker/core/fulfillment';
 import type { IInventoryQueryService } from '@openlinker/core/inventory';
-import type { IOrderRecordService, OrderRecord } from '@openlinker/core/orders';
+import type { IOrderNoteService, IOrderRecordService, OrderRecord } from '@openlinker/core/orders';
 import type { IProductsService } from '@openlinker/core/products';
 import type { IShipmentQueryService } from '@openlinker/core/shipping';
 
 import type { IUserManagementService } from '../../../users/user-management.service.interface';
+import type { IFulfillmentParcelClosureNotifier } from '../../../fulfillment/application/interfaces/fulfillment-parcel-closure-notifier.service.interface';
 import { BenchExecutorResolver } from '../services/bench-executor.resolver';
 import { BenchParcelService } from '../services/bench-parcel.service';
 
@@ -84,8 +86,11 @@ const lockedWork = (): FulfillmentWorkView =>
     packedByUserId: null,
     invoicePrintedAt: null,
     labelPrintedAt: null,
+    buyerNoteAcknowledgedAt: null,
+    buyerNoteAcknowledgedByUserId: null,
     completedAt: null,
     completedByUserId: null,
+    channelNotifiedAt: null,
     createdAt: new Date('2026-09-01T09:00:00Z'),
     updatedAt: new Date('2026-09-01T09:00:00Z'),
     lines: [
@@ -148,10 +153,12 @@ function harness() {
     voidLastVerification: jest.fn(),
     complete: jest.fn(),
     undoCompletion: jest.fn(),
+    acknowledgeBuyerNote: jest.fn(),
   } as unknown as IFulfillmentVerificationService;
 
   const orders = {
     markPacked: jest.fn().mockResolvedValue({} as OrderRecord),
+    markBuyerNoteRead: jest.fn(),
     findByIds: jest.fn().mockResolvedValue([]),
   } as unknown as IOrderRecordService;
 
@@ -170,7 +177,16 @@ function harness() {
 
   const users = {
     recordBenchActivity: jest.fn().mockResolvedValue(undefined),
+    getDisplayNames: jest.fn(),
   } as unknown as IUserManagementService;
+
+  const notes = {
+    getPackerVisibleForOrders: jest.fn().mockResolvedValue(new Map()),
+  } as unknown as IOrderNoteService;
+
+  const parcelClosureNotifier = {
+    notifyParcelClosed: jest.fn().mockResolvedValue(undefined),
+  } as unknown as IFulfillmentParcelClosureNotifier;
 
   return {
     service: new BenchParcelService(
@@ -181,7 +197,12 @@ function harness() {
       products,
       shipments,
       inventory,
-      users
+      users,
+      notes,
+      parcelClosureNotifier,
+      {
+        listBuyerNoteAcknowledgements: jest.fn().mockResolvedValue([]),
+      } as unknown as IFulfillmentWorkQueryService
     ),
     verification,
     // `claimParcel`'s write target lives here rather than on the verification
@@ -239,6 +260,7 @@ const GUARDED_MUTATIONS = [
   'claimParcel',
   'completeParcel',
   'undoCompletion',
+  'acknowledgeBuyerNote',
 ] as const;
 
 interface GuardedMutationCase {
@@ -323,6 +345,12 @@ const CASES: readonly GuardedMutationCase[] = [
     verificationWriteMethod: 'complete',
     callAsExcludedViewer: (service) =>
       service.completeParcel({ workId: 'work-1', completedByUserId: 'user-1', expectedVersion: 1 }),
+  },
+  {
+    method: 'acknowledgeBuyerNote',
+    expectedReason: 'not-claimable-by-viewer',
+    verificationWriteMethod: 'acknowledgeBuyerNote',
+    callAsExcludedViewer: (service) => service.acknowledgeBuyerNote('work-1', 'user-1'),
   },
   {
     method: 'undoCompletion',

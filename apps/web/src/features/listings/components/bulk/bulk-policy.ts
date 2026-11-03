@@ -44,7 +44,11 @@ export interface ResolvedPrice {
 export interface ResolvedStock {
   value: number | null;
   source: BulkValueSource;
-  blocker: 'no-master-stock' | null;
+  /**
+   * `stock-unknown` when the policy reads master stock and OpenLinker has none
+   * (`masterStock === null`, #3851); `no-master-stock` for a known 0.
+   */
+  blocker: 'no-master-stock' | 'stock-unknown' | null;
 }
 
 /** Half-up rounding to `dp` decimals. Inputs here are non-negative (factor ≥ 0). */
@@ -113,7 +117,7 @@ export function computeResolvedStock(
       return { value: policy.value, source: 'policy', blocker: null };
     case 'cap': {
       if (masterStock === null) {
-        return { value: null, source: 'policy', blocker: 'no-master-stock' };
+        return { value: null, source: 'policy', blocker: 'stock-unknown' };
       }
       // min(master, N); 0-stock can't publish on Allegro, so it blocks too.
       const value = Math.min(masterStock, policy.value);
@@ -121,7 +125,11 @@ export function computeResolvedStock(
     }
     case 'use-master':
     default:
-      if (masterStock === null || masterStock <= 0) {
+      // `null` is "OpenLinker does not know" - never read as 0 (#3851).
+      if (masterStock === null) {
+        return { value: null, source: 'master', blocker: 'stock-unknown' };
+      }
+      if (masterStock <= 0) {
         return { value: masterStock, source: 'master', blocker: 'no-master-stock' };
       }
       return { value: masterStock, source: 'master', blocker: null };
@@ -525,17 +533,41 @@ export function titleForRow(row: BulkWizardRow): string {
 
 // ── Per-variant helpers (#1741) ──────────────────────────────────────────────
 
+function nonBlankUrls(urls: readonly unknown[]): string[] {
+  return urls.filter((u): u is string => typeof u === 'string' && u.trim() !== '');
+}
+
+/**
+ * The images a sibling is published with when it has no image override of its
+ * own: the API-resolved `defaultImages` (its own pictures first, then the
+ * product gallery without the other siblings' pictures), else the product
+ * gallery. The rule lives server-side; the browser only reads its answer, so
+ * what the editor shows cannot drift from what the offer builder publishes.
+ */
+export function defaultImagesForVariant(
+  variant: Pick<BulkVariantRow, 'variant'>,
+  productImages: readonly string[],
+): string[] {
+  const resolved = variant.variant.defaultImages;
+  if (Array.isArray(resolved)) {
+    const urls = nonBlankUrls(resolved);
+    if (urls.length > 0) return urls;
+  }
+  return [...productImages];
+}
+
 /**
  * Effective per-variant image count - the variant's `imageUrls` override when
- * present, else the master product's image set. Feeds the Erli image gate so an
- * operator who removed every image on a variant still trips `erli:missing-image`.
+ * present, else its default images (see {@link defaultImagesForVariant}). Feeds
+ * the Erli image gate so an operator who removed every image on a variant still
+ * trips `erli:missing-image`.
  */
 export function imageCountForVariant(row: BulkWizardRow, variant: BulkVariantRow): number {
   const override = variant.override.overrides?.imageUrls;
   if (Array.isArray(override)) {
-    return override.filter((u) => typeof u === 'string' && u.trim() !== '').length;
+    return nonBlankUrls(override).length;
   }
-  return imageCountForRow(row);
+  return defaultImagesForVariant(variant, nonBlankUrls(row.product?.images ?? [])).length;
 }
 
 /**
@@ -609,6 +641,28 @@ export function toGtin14(code: string): string {
 }
 
 /**
+ * Stock blockers for a multi-variant sibling. Its stock is the master's,
+ * authoritative and read-only (#823/#824, plan §11) whatever the batch policy
+ * says, so a KNOWN 0 (a position reporting 0) lists it out of stock rather than
+ * blocking. A stock OpenLinker does not have at all (#3851, no inventory
+ * position) is different: it is a 0 nobody observed, so it blocks - under every
+ * policy, because none of them reaches a sibling's offer. The backend applies
+ * the same rule (`isUnknownStock` in `BulkListingSubmitService`) and excludes
+ * such a sibling instead of listing it as a 0-stock draft.
+ *
+ * Shared by the Resolve step and `recomputeVariantBlockers` so the two cannot
+ * disagree about a sibling.
+ */
+export function siblingStockBlockers(
+  blockers: readonly BulkRowBlocker[],
+  masterStock: number | null,
+): BulkRowBlocker[] {
+  const kept = blockers.filter((b) => b !== 'no-master-stock');
+  if (masterStock === null && !kept.includes('stock-unknown')) kept.push('stock-unknown');
+  return kept;
+}
+
+/**
  * The product-tier category a row would submit under (#2240): the operator's
  * shared-base override, else the product's own resolved category. Exactly the
  * chain `handleSubmit` uses for `familyCategoryId`, exported so the readiness
@@ -678,10 +732,8 @@ export function recomputeVariantBlockers(
       submitCategoryId !== null && (context.failedCategoryIds ?? []).includes(submitCategoryId),
   });
 
-  // Master stock is authoritative + read-only for multi-variant siblings - a
-  // 0/absent value lists out-of-stock, it does not block (plan §11).
   const filtered = isMultiVariant
-    ? blockers.filter((b) => b !== 'no-master-stock')
+    ? siblingStockBlockers(blockers, variant.masterStock)
     : blockers;
 
   // A supplied-but-invalid barcode is a hard blocker (GS1 gate, plan §10.1 / B5).
@@ -690,7 +742,15 @@ export function recomputeVariantBlockers(
   // gated on the destination - an invalid barcode is invalid everywhere, even
   // where the category is resolved server-side.
   const ean = effectiveVariantEan(variant);
-  if (ean !== null && !isValidGtin(ean) && !filtered.includes('invalid-barcode')) {
+  if (
+    ean !== null &&
+    !isValidGtin(ean) &&
+    !filtered.includes('invalid-barcode') &&
+    // The operator confirmed this checksum failure is a false positive
+    // (#3492) - fall through to whatever computeBlockers already resolved
+    // (still gates on no-match/no-ean if the EAN also has no catalogue card).
+    variant.override.overrides?.eanOverrideAcknowledged !== true
+  ) {
     // The collapse rule lives in `collapseToInvalidBarcode`, shared with the
     // Resolve step, so the two cannot drift.
     return collapseToInvalidBarcode(filtered);

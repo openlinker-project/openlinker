@@ -10,6 +10,7 @@
  * @module libs/core/src/listings/domain/types
  */
 
+import type { ProductGpsr } from '@openlinker/core/products';
 import type { OfferParameter } from './offer-parameter.types';
 import type { OfferPublicationStatus } from './offer-status-read.types';
 import type { OfferValidationScope } from './offer-validation-problem.types';
@@ -97,6 +98,18 @@ export interface CreateOfferOverrides {
    */
   ean?: string;
   /**
+   * Operator confirmation that the EFFECTIVE EAN - the `ean` override above
+   * when present, otherwise the variant's master barcode - is correct despite
+   * failing OpenLinker's own GS1 check-digit validation (#3492). Lets
+   * `BulkListingSubmitService.enforceIdentifierRules` skip the checksum-only
+   * exclusion for this one job and forward the barcode unchanged, so the
+   * destination is the real judge rather than OpenLinker guessing. Never
+   * rescues a length-invalid EAN (rejected earlier, at the DTO boundary) and
+   * is control-plane only - stripped before it can reach a real
+   * `CreateOfferCommand`, since it has no meaning to an adapter.
+   */
+  eanOverrideAcknowledged?: boolean;
+  /**
    * Image URLs in display order. Falls back to variant images. `null` or
    * `undefined` both mean "no override".
    */
@@ -171,7 +184,11 @@ export interface CreateOfferCommand {
   internalVariantId: string;
   /** Target marketplace connection id. */
   connectionId: string;
-  /** Offer price. Currency should match marketplace/connection locale. */
+  /**
+   * Offer price, GROSS (what the buyer pays), as every marketplace adapter writes
+   * it. Sourced from the master's gross catalogue price (ADR-077) unless the
+   * operator supplied one. Currency should match marketplace/connection locale.
+   */
   price: { amount: number; currency: string };
   /** Offered quantity. */
   stock: number;
@@ -272,6 +289,19 @@ export interface CreateOfferCommand {
    * buyer's country; OSS is out of scope (ADR-063 § 7).
    */
   taxRateCountry?: string;
+  /**
+   * What the product's master stated under the EU General Product Safety
+   * Regulation, by value (producer, responsible person, importer, safety
+   * information). Threaded by `OfferBuilderService` from the master product.
+   *
+   * A product-level declaration is more specific than any connection-level
+   * default an adapter holds, so an adapter that can express it SHOULD prefer
+   * it - but it maps the neutral value onto its own registry itself (Allegro
+   * matches the producer by name against the seller's responsible producers)
+   * and MUST NOT create a record on the marketplace to make a match happen.
+   * Absent means the master stated nothing; the adapter keeps its defaults.
+   */
+  gpsr?: ProductGpsr;
 }
 
 /**

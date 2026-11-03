@@ -52,7 +52,10 @@ import { Button } from '../../../shared/ui/button';
 import { ErrorState, LoadingState } from '../../../shared/ui/feedback-state';
 import { useDemoMode } from '../../system';
 import type { BenchWork } from '../api/bench-work.types';
-import { useBenchClaimMutation, useBenchClaimNextMutation } from '../hooks/use-bench-claim-mutation';
+import {
+  useBenchClaimMutation,
+  useBenchClaimNextMutation,
+} from '../hooks/use-bench-claim-mutation';
 import { useBenchExpediteMutation } from '../hooks/use-bench-expedite-mutation';
 import { useBenchInteractive } from '../hooks/use-bench-interactive';
 import { useBenchPackedTodayQuery } from '../hooks/use-bench-activity-query';
@@ -166,7 +169,8 @@ export function BenchWorkList({
    * input at all (A3).
    */
   useEffect(() => {
-    if (!interactive) return;
+    // #3734: a read-only session has nothing to claim, and the route would 403.
+    if (!interactive || !write.canWrite) return;
     const onKey = (event: KeyboardEvent): void => {
       if (event.metaKey || event.ctrlKey || event.altKey) return;
       if (isEditableTarget(event.target)) return;
@@ -176,7 +180,7 @@ export function BenchWorkList({
     };
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
-  }, [interactive]);
+  }, [interactive, write.canWrite]);
 
   useScannerInput({
     enabled: interactive,
@@ -205,9 +209,7 @@ export function BenchWorkList({
   const visibleUnassigned = useMemo(() => searchFilter(unassigned), [unassigned, search]);
   const visibleUnlabelled = useMemo(
     () =>
-      unlabelled.filter((parcel) =>
-        matchesBenchTextSearch(parcel.orderReference, null, search)
-      ),
+      unlabelled.filter((parcel) => matchesBenchTextSearch(parcel.orderReference, null, search)),
     [unlabelled, search]
   );
   const visibleDoNotPack = useMemo(() => searchFilter(doNotPack), [doNotPack, search]);
@@ -469,9 +471,7 @@ export function BenchWorkList({
         </Alert>
       )}
 
-      {expedite.error ? (
-        <Alert tone="warning">{benchWorkCopy.row.expediteFailed}</Alert>
-      ) : null}
+      {expedite.error ? <Alert tone="warning">{benchWorkCopy.row.expediteFailed}</Alert> : null}
 
       {claim.error ? <Alert tone="warning">{benchWorkCopy.tabs.claimFailed}</Alert> : null}
 

@@ -52,6 +52,35 @@ describe('categoryParametersToOfferParameters', () => {
     ]);
   });
 
+  it('drops a single dictionary id that is not in the current dictionary', () => {
+    // A category switch keeps `values[param.id]`; "Stan" keeps its id while the
+    // new category's dictionary has no "Po zwrocie" entry.
+    const meta = [
+      param({ id: '11323', dictionary: [{ id: '11323_1', value: 'Nowy' }] }),
+    ];
+    expect(categoryParametersToOfferParameters({ '11323': '11323_238066' }, meta)).toEqual([]);
+    expect(categoryParametersToOfferParameters({ '11323': '11323_1' }, meta)).toEqual([
+      { id: '11323', valuesIds: ['11323_1'], section: 'offer' },
+    ]);
+  });
+
+  it('keeps only the multi-choice ids that are in the current dictionary', () => {
+    const meta = [
+      param({
+        id: 'p1',
+        restrictions: { multipleChoices: true },
+        dictionary: [
+          { id: 'a', value: 'A' },
+          { id: 'b', value: 'B' },
+        ],
+      }),
+    ];
+    expect(categoryParametersToOfferParameters({ p1: ['a', 'stale', 'b'] }, meta)).toEqual([
+      { id: 'p1', valuesIds: ['a', 'b'], section: 'offer' },
+    ]);
+    expect(categoryParametersToOfferParameters({ p1: ['stale'] }, meta)).toEqual([]);
+  });
+
   it('maps a scalar string to values', () => {
     const meta = [param({ id: 'p1', type: 'string' })];
     expect(categoryParametersToOfferParameters({ p1: 'abc' }, meta)).toEqual([

@@ -39,6 +39,9 @@ export {
   SYSTEM_CONNECTION_ID,
 } from './api/connections.types';
 
+// #3457 — the packing onboarding wizard writes connections through its own
+// orchestrating mutation and invalidates this family afterwards.
+export { connectionsQueryKeys } from './api/connections.query-keys';
 export { useConnectionsQuery } from './hooks/use-connections-query';
 export { useConnectionQuery } from './hooks/use-connection-query';
 export { useCreateConnectionMutation } from './hooks/use-create-connection-mutation';
@@ -48,8 +51,11 @@ export { useRotateWebhookSecretMutation } from './hooks/use-rotate-webhook-secre
 export { useSetWebhookSecretMutation } from './hooks/use-set-webhook-secret-mutation';
 export { useWebhookStatusQuery } from './hooks/use-webhook-status-query';
 export { useRateLimitStatusQuery } from './hooks/use-rate-limit-status-query';
+// #2118 - which connections the operator declared as packing and shipping by themselves.
+export { readFulfilmentOwnedByDestination } from './lib/fulfilment-ownership';
 export { useUpdateConnectionCredentialsMutation } from './hooks/use-update-connection-credentials-mutation';
 export { useUpdateConnectionMutation } from './hooks/use-update-connection-mutation';
+export { useTestConnectionMutation } from './hooks/use-test-connection-mutation';
 export { useBankAccountsQuery } from './hooks/use-bank-accounts-query';
 export { useSetDefaultBankAccountMutation } from './hooks/use-set-default-bank-account-mutation';
 export { usePickBankAccount } from './hooks/use-pick-bank-account';
@@ -87,16 +93,13 @@ export {
 } from './components/subiekt-setup.schema';
 export type { SubiektProductIdentity } from './components/subiekt-setup.schema';
 
-export {
-  InfaktWebhookConfig,
-  InfaktWebhookConfigDialog,
-  activationLabel as infaktWebhookActivationLabel,
-  signatureLabel as infaktWebhookSignatureLabel,
-} from './components/infakt-webhook-config';
-
 export { ConnectionEntityLabel } from './components/ConnectionEntityLabel';
 export { ConnectionCell } from './components/ConnectionCell';
 export { ConnectionFold } from './components/ConnectionFold';
+export { ConnectionChip } from './components/ConnectionChip';
+export type { ConnectionChipChannel, ConnectionChipProps } from './components/ConnectionChip';
+export { readConnectionEnvironment } from './lib/connection-environment';
+export type { ConnectionEnvironment } from './lib/connection-environment';
 export type { ConnectionFoldProps } from './components/ConnectionFold';
 export type { ConnectionCellProps, ConnectionCellFacts } from './components/ConnectionCell';
 export { PrestashopRateLimitReadout } from './components/prestashop-rate-limit-readout';
@@ -108,3 +111,8 @@ export {
   isPricingDestination,
   PRICING_DESTINATION_CAPABILITIES,
 } from './lib/pricing-destination';
+
+// #3567 - the stock correction dialog previews what each channel will publish
+// with the same browser-side mirror of the publish policy the connection form
+// uses, rather than keeping a second copy of the arithmetic.
+export { applyStockSafetyBuffer } from './lib/stock-and-pricing-preview';

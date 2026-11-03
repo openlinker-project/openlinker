@@ -24,7 +24,7 @@
  */
 
 /**
- * The values the nine fields render from. Every one is optional: the caller
+ * The values the fields render from. Every one is optional: the caller
  * assembles what it can, and an absent value renders the spec's stated fallback
  * rather than an empty string — *"not yet"* reads as a fact, `""` reads as a bug.
  */
@@ -33,6 +33,8 @@ export interface AutomationTemplateContext {
   readonly orderTotal?: string;
   readonly orderPlacedAt?: string;
   readonly orderDispatchBy?: string;
+  readonly buyerName?: string;
+  readonly shipmentTracking?: string;
   readonly holdReason?: string;
   readonly ruleName?: string;
 }
@@ -41,33 +43,36 @@ export interface AutomationTemplateContext {
  * The merge fields this build can actually RESOLVE, in §5.3b's own order.
  * Exported so the composer offers exactly this list rather than restating it.
  *
- * **Deliberately six, not the spec's nine.** Three of §5.3b's fields have no
- * resolvable source in this slice, and offering a field that can never render
- * anything but its fallback is a promise the composer makes and the backend
- * cannot keep — the same "declare only what the destination DECLARES" rule the
- * bulk-wizard blocker seam states for its own mirrors. They return when the data
- * does:
+ * **Deliberately eight, not the spec's nine.** One of §5.3b's fields still has
+ * no resolvable source, and offering a field that can never render anything but
+ * its fallback is a promise the composer makes and the backend cannot keep — the
+ * same "declare only what the destination DECLARES" rule the bulk-wizard blocker
+ * seam states for its own mirrors:
  *
  * - **`{order.source}`** — §5.3b defines it as *the channel name* ("Allegro").
  *   Automation holds only a `sourceConnectionId`, and rendering that UUID would
  *   put an unreadable identifier in a buyer-facing email — worse than omitting
  *   the field, because it looks like a value rather than a gap. Needs a
  *   connection-name read.
- * - **`{buyer.name}`** — no name getter on the order snapshot, and it is
- *   PII-gated besides.
- * - **`{shipment.tracking}`** — the shipping context is not reached from here;
- *   A2 (buy the label) is itself unavailable in this slice.
  *
- * An operator who types one of the three still sees it rendered VERBATIM by the
- * rule below, which is the honest outcome: a visible `{buyer.name}` reads as
- * "this is not supported", where the fallback text `unknown` would read as a
- * fact about the buyer.
+ * `{buyer.name}` and `{shipment.tracking}` resolve since #3553. The first reads
+ * the order's own `buyerName` getter, which is `undefined` under
+ * `OL_STORE_PII=false` (the snapshot's addresses are redacted), so it renders
+ * its fallback and never a placeholder or a hash. The second reads the order's
+ * newest outbound shipment that carries a tracking number, resolved through the
+ * delegate seam so `automation` takes no `shipping` sibling edge.
+ *
+ * An operator who types `{order.source}` still sees it rendered VERBATIM by the
+ * rule below, which is the honest outcome: a visible token reads as "this is not
+ * supported", where the fallback text `unknown` would read as a fact.
  */
 export const AUTOMATION_MERGE_FIELDS = [
   'order.reference',
   'order.total',
   'order.placedAt',
   'order.dispatchBy',
+  'buyer.name',
+  'shipment.tracking',
   'hold.reason',
   'rule.name',
 ] as const;
@@ -80,8 +85,30 @@ const FALLBACKS: Record<AutomationMergeField, string> = {
   'order.total': 'unknown',
   'order.placedAt': 'unknown',
   'order.dispatchBy': 'no deadline',
+  'buyer.name': 'customer',
+  'shipment.tracking': 'not yet',
   'hold.reason': 'no hold',
   'rule.name': 'unknown',
+};
+
+/** Per-call replacements for {@link FALLBACKS}. */
+export type AutomationFallbackOverrides = Readonly<Partial<Record<AutomationMergeField, string>>>;
+
+/**
+ * The fallbacks a BUYER email renders with (#3554 / #3555), departing from
+ * §5.3b for `shipment.tracking` only.
+ *
+ * A buyer email is sent once, and the shipped email waits for the number, so it
+ * falls back only when the carrier never issued one - exactly when "not yet" is
+ * false and promises a number the buyer is never sent. "not available" states
+ * what is true at send time.
+ *
+ * Scoped to the buyer-email path on purpose: an operator rule on, say,
+ * `order.received` renders the field BEFORE any parcel exists, where "not yet"
+ * is the true statement, so the spec's fallback stays the default.
+ */
+export const BUYER_EMAIL_FALLBACK_OVERRIDES: AutomationFallbackOverrides = {
+  'shipment.tracking': 'not available',
 };
 
 function valueOf(
@@ -97,6 +124,10 @@ function valueOf(
       return context.orderPlacedAt;
     case 'order.dispatchBy':
       return context.orderDispatchBy;
+    case 'buyer.name':
+      return context.buyerName;
+    case 'shipment.tracking':
+      return context.shipmentTracking;
     case 'hold.reason':
       return context.holdReason;
     case 'rule.name':
@@ -157,21 +188,37 @@ export function formatMergeAmount(
 }
 
 /**
- * Substitute the nine known fields; leave every other `{...}` exactly as typed.
- *
+ * One `{...}` token. Shared by the renderer and {@link templateUsesMergeField}
+ * so "would this field be rendered" and "is this field used" cannot disagree.
  * The pattern deliberately matches only `{` + non-brace run + `}` so a stray
  * unclosed brace is left alone rather than swallowing the rest of the body.
  */
+const TOKEN_PATTERN = /\{([^{}]*)\}/g;
+
+/**
+ * Does the template reference this merge field? Lets a caller skip a read whose
+ * only purpose is a field the operator never typed (#3553 review: the tracking
+ * lookup ran for every email, on a deadline sweep once per fired rule).
+ */
+export function templateUsesMergeField(template: string, field: AutomationMergeField): boolean {
+  for (const match of template.matchAll(TOKEN_PATTERN)) {
+    if (match[1].trim() === field) return true;
+  }
+  return false;
+}
+
+/** Substitute the nine known fields; leave every other `{...}` exactly as typed. */
 export function renderAutomationTemplate(
   template: string,
   context: AutomationTemplateContext,
+  fallbacks: AutomationFallbackOverrides = {},
 ): string {
-  return template.replace(/\{([^{}]*)\}/g, (whole, rawToken: string) => {
+  return template.replace(TOKEN_PATTERN, (whole, rawToken: string) => {
     const token = rawToken.trim();
     if (!isMergeField(token)) {
       return whole;
     }
     const value = valueOf(token, context);
-    return value !== undefined && value !== '' ? value : FALLBACKS[token];
+    return value !== undefined && value !== '' ? value : (fallbacks[token] ?? FALLBACKS[token]);
   });
 }

@@ -17,6 +17,13 @@
 
 /** Base for every FA(3) build/mapping fault — lets callers catch the family. */
 export class Fa3BuildException extends Error {
+  /**
+   * Read STRUCTURALLY by the core `InvoiceService` (#1200, DEF-01): raised
+   * before any KSeF session opens, so no document exists and a re-attempt
+   * after fixing the input is safe.
+   */
+  readonly failureMode = 'rejected' as const;
+
   constructor(message: string) {
     super(message);
     this.name = 'Fa3BuildException';

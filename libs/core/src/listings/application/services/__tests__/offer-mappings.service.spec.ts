@@ -20,6 +20,7 @@ function buildRepoMock(): jest.Mocked<OfferMappingRepositoryPort> {
     findMappingPage: jest.fn(),
     countByLifecycle: jest.fn(),
     countByConnectionAndVariants: jest.fn(),
+    findDeadFailedCreationOfferIds: jest.fn(),
     countListedVariantsByProducts: jest.fn(),
     findStaleMappedVariants: jest.fn(),
     findRecentlyListedVariantIds: jest.fn(),

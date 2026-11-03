@@ -26,6 +26,8 @@ describe('MarketplaceShipmentStatusSyncHandler', () => {
     scanned: 1,
     updated: 1,
     propagated: 0,
+    deliveredRelaysRetried: 0,
+    deliveredRelaysRecovered: 0,
     failed: 0,
     total: 50,
     nextOffset: 10,

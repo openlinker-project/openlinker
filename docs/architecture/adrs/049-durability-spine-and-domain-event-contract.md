@@ -149,12 +149,13 @@ That counter is deliberately **local, not Redis'**. `deliveriesCounter` is incre
 actual delivery (`XREADGROUP` / `XCLAIM`); the drain path is `XPENDING` + `XRANGE`, both pure reads,
 so keying the alarm on it would leave it unreachable on precisely the path where poison
 accumulates. What is deliberately *not* done is
-auto-dead-lettering: two of the three consumers cannot construct their dead-letter payload from a
-raw pending entry (the webhook handler needs a decoded event, job-intake a parsed job request), and
-discarding the entry instead would be unrecoverable loss. *Reversal gate (prose-only):* the first
-poison entry
-observed in production, or the Wave 5 spine (decision 1) removing the PEL from the durable path
-entirely.
+auto-dead-lettering: neither of the two remaining consumers can construct its dead-letter payload
+from a raw pending entry (the master-deletion handler needs a decoded event, job-intake a parsed
+job request), and discarding the entry instead would be unrecoverable loss. *Reversal gate
+(prose-only):* the first poison entry observed in production, or the Wave 5 spine (decision 1)
+removing the PEL from the durable path entirely. **Tracked as #2301 — see the Amendment below: the
+gate has since fired by the second route, a durable terminal state (option 2), rather than by a
+confirmed production observation.**
 
 **Migration path:**
 - #2164 makes PEL entries recoverable (stable identity, startup drain, orphan reclaim).
@@ -217,6 +218,101 @@ This ADR's decisions govern OL's own durability spine. The PrestaShop module run
 
 **Where this does and does not touch the decisions above.** The module is not covered by decision 1 - it is a separate process writing to its own database, and its atomicity guarantee is local (the outbox row commits with the shop-side change). What it inherits is decision 4's shape: identity derived from the business fact, never minted at insert - and #2603 is precisely the story of what happens when the derivation smuggles a clock into it.
 
+
+## Amendment (#2301, D48) — the gate fired by the second route: a durable terminal state, not a confirmed production observation
+
+The reversal gate above names two conditions: the Wave 5 spine (decision 1) removing the PEL from
+the durable path, or the first poison entry observed in production. #2280 fired the first condition
+for the webhook path only (see the #2280 amendment above). Neither condition was met for the two
+remaining consumers (`master-deletion-offer-pause`, `job-intake`) by observation — **production
+log/metrics access this repository's own tooling does not provide was still unavailable when this
+pass (#3508/D48) ran, and remains an open fact rather than a closed one.** What changed is the
+mandate: the operator decided the gap should close on its own merits rather than continuing to wait
+on evidence that could not be gathered, so **option 2 — build the durable terminal state — is now
+the chosen direction**, not a fallback taken for lack of the alarm.
+
+Three things were built, closing the gap for both remaining consumers.
+
+- **The counter moved off the in-memory `Map` this ADR's earlier amendment flagged as
+  unsound evidence.** `RecoveryAttemptTracker` (`libs/shared/src/redis/stream-consumer.ts`) is now
+  backed by Redis: `recordFailure` does `INCR poison:{stream}:{group}:{id}` and refreshes a TTL
+  (`POISON_COUNTER_TTL_SECONDS`, 7 days — well above the ~50-minute worst-case drain horizon
+  `RECLAIM_INTERVAL_MS × MAX_RECOVERY_ATTEMPTS` describes), and `succeeded` issues `DEL` on the same
+  key. A worker restart no longer resets the count, which is precisely the soundness gap the earlier
+  amendment identified: an entry that failed eight times, survived a deploy, and resumed failing in
+  a new process now continues from nine and ten rather than restarting at one in a process that has
+  never seen it before. The one-time alarm (`justCrossedThreshold`, `=== MAX_RECOVERY_ATTEMPTS`) is
+  unchanged in shape; a second predicate, `hasReachedThreshold` (`>= MAX_RECOVERY_ATTEMPTS`), was
+  added alongside it because the terminal write below is retriable and must keep firing past the
+  one-time crossing, not just at it.
+- **Past the threshold, the entry is written to a new durable table, `stream_dead_letters`
+  (migration `1913000000002`), and only then `XACK`ed.** The table lives in the `events` core
+  context — the owner of the publish half of this repo's one Redis-Streams publish/consume pair
+  (`RedisStreamsEventPublisher`), and the natural place to complete it with the consume-side
+  terminal state; neither `sync` (job-intake's payload is job-request-shaped) nor a per-consumer
+  home fits both writers, since the master-deletion handler's payload is domain-event-shaped and the
+  two share no typed structure. `raw_fields` is `jsonb`, stored exactly as `XRANGE`/`XPENDING` hand
+  the entry back — never a typed payload, which is precisely what auto-dead-lettering was rejected
+  for when this table did not exist (see the "Known gap" text above: neither consumer can construct
+  a typed payload from a raw pending entry). The write-then-ack ordering is the same discipline
+  decision 4's dedup guarantee already relies on elsewhere in this ADR: the row commits before the
+  entry leaves the PEL, so a crash between the two leaves the entry pending — Redis redelivers it,
+  the same `(stream, consumer_group, entry_id)` is written again, and the repository's
+  `INSERT ... ON CONFLICT ... DO UPDATE` (never touching `first_seen_at`) makes that re-write
+  idempotent rather than a growing pile of rows. A failed insert is therefore never silent loss: the
+  entry simply stays pending and is retried on the next recovery pass, exactly as an ordinary
+  handler failure is.
+- **The entry is now operator-visible.** A read-only list + count is exposed on Diagnostics > Jobs
+  & Logs (admin/operator/viewer), reusing the existing jobs-diagnostics table pattern. There is no
+  replay action in this pass — a poison entry's raw fields are evidence for a human to read, not
+  (yet) a request this repository knows how to safely re-drive.
+
+**What this amendment does not claim.** It does not claim a poison entry was ever observed in
+production — that remains unknown, for the same tooling-access reason as before. It does not change
+decision 1's long-term direction: removing the job-intake stream hop (i.e. giving `jobs.sync` the
+same transactional-work-row treatment #2280 gave the webhook path) is still recorded as the
+eventual, structural fix, and the `master-deletion` consumer's own event stream is a further
+instance of the same non-webhook-writer gap this ADR's #2280 amendment already named as future work.
+What this amendment does claim is narrower and load-bearing on its own: **the counter is now
+durable, so a future reader investigating this gate has a real answer to reach for rather than a
+process-scoped one that could structurally never surface a genuinely stuck entry** — and past
+`MAX_RECOVERY_ATTEMPTS`, the entry's existence is a row in Postgres rather than a single log line
+that scrolls away.
+
+Two stale references this pass also corrected while reading the code for this investigation: both
+consumer files' "two of the three consumers" comments (a count that predates #2280/#2300 retiring
+the webhook consumer group entirely) and `stream-consumer.ts`'s own module header, which still
+described the webhook path as "retired by #2280; only its one-shot upgrade drain still reads that
+group" — that drain shipped in v0.8.0 and was itself deleted by #2300. Both now state that exactly
+two consumer groups remain (`master-deletion-offer-pause`, `job-intake`) and that the
+`webhook-handler` group has no reader anywhere in the tree.
+
+## Amendment (2026-10-25) - one delivery, several jobs
+
+The #2280 amendment above built the gate as one delivery row plus at most ONE work row. Shoper broke
+that assumption: it sends a single `product.edit` both for a product edit and for a panel stock edit,
+with nothing in the body to tell them apart, so routing it to the product sync alone left a stock
+change waiting for the inventory sweep. The gate now commits a LIST of work rows with the delivery
+row, still in one transaction. What changed and what did not:
+
+- **The fan-out is decided by the plugin, not the core routing table.** `WebhookEventTranslatorPort.translate`
+  may return an ordered array of `CanonicalInboundEvent`s (an empty array means undecodable, like
+  `null`). `InboundRoutingPolicyService` is untouched: it still maps one event to one job, so
+  PrestaShop, WooCommerce and every other single-event plugin produce byte-identical jobs and keys.
+- **Decision 4 is extended, not reopened.** The first event's job keeps the derived
+  `{platformType}:{connectionId}:{sourceEventId}` key - the lookup endpoint and the frontend rebuild
+  exactly that form - and each later job's key is that plus `:{jobType}`. Keys follow the event's
+  POSITION in the translator's list rather than the order in which events happened to pass the
+  capability gate, so an event's key is stable across redeliveries even when the gate changes in
+  between (a primary that was gated on the first delivery must not find its key taken by a sibling on
+  the second). Two events routing to the same job type would share a key, so the second is dropped.
+- **Partial gating routes what it can.** Events that resolve become jobs and gated ones are logged;
+  only a delivery where NOTHING resolves is dead-lettered. When the primary event is the gated one, the
+  delivery row records the first job that did resolve.
+- **Atomicity is unchanged in kind.** Every job is inserted before the delivery row in the same
+  transaction, so a failure on any job rolls back the earlier jobs and the delivery row together, and
+  the source's retry re-enters cleanly. The delivery row's single `downstreamJobId` names the primary;
+  the dead-letter repair targets the primary. A replay dedups every job on its own key.
 
 ## References
 

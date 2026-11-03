@@ -16,6 +16,7 @@ import type {
   OrderPickupPoint,
 } from '../types/order.types';
 import type { OrderStatus } from './order.types';
+import type { PaymentMethod } from './payment-method.types';
 import type { PaymentStatus } from './payment-status.types';
 
 /**
@@ -128,6 +129,22 @@ export interface OrderCreate {
    * than guessing zero and leaving every order looking unpaid.
    */
   paymentStatus?: PaymentStatus;
+
+  /**
+   * How the buyer pays (#3294), carried through so a destination can record the
+   * real method instead of a hardcoded one. Absent means the source did not
+   * report it; `'unknown'` means it could not be mapped with confidence. Either
+   * way the destination keeps its own default - it never infers a method.
+   */
+  paymentMethod?: PaymentMethod;
+
+  /**
+   * The source's own payment-method id (#3474), e.g. Allegro `payment.type`.
+   * Opaque - never interpreted by core. A destination that lets the operator
+   * map source payment types to its own payment methods uses it as the lookup
+   * key, scoped by `source.connectionId`; one that does not ignores it.
+   */
+  sourcePaymentMethod?: string;
 
   /**
    * Optional metadata for the order

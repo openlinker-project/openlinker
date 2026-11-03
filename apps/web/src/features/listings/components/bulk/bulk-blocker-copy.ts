@@ -85,12 +85,23 @@ export function describeBlocker(blocker: string, ctx: BlockerCopyContext): Block
     case 'no-master-price':
       return {
         title: 'This variant has no price in the master catalog.',
-        detail: 'Set a price for it below, or switch it off to skip it.',
+        detail:
+          'Set a price for it below, or switch it off to skip it. If the shop does have a price, its tax setup could not be matched to the connection sales country, so the price a buyer pays is unknown.',
       };
     case 'no-master-stock':
       return {
         title: 'This variant has no stock in the master catalog.',
         detail: 'Set a stock value below, or switch it off to skip it.',
+      };
+    case 'stock-unknown':
+      return {
+        title: 'OpenLinker has no stock for this variant yet.',
+        // A multi-variant sibling always lists at its master stock (#823/#824),
+        // so a hand-set stock is not a remedy there; switching it off is.
+        detail:
+          ctx.variantCount > 1
+            ? 'Its stock has not been synced from the master catalog. Wait for the stock sync, or switch this variant off to list the others.'
+            : 'Its stock has not been synced from the master catalog. Wait for the stock sync, or set the stock by hand below.',
       };
     case 'currency-mismatch':
       return {

@@ -25,7 +25,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { IntegrationsModule } from '@openlinker/core/integrations';
 import { FulfillmentModule } from '@openlinker/core/fulfillment';
 import { MappingsModule } from '@openlinker/core/mappings';
-import { OrdersModule } from '@openlinker/core/orders';
+import { ORDER_LABEL_VOIDER_TOKEN, OrdersModule } from '@openlinker/core/orders';
 import { IdentifierMappingModule } from '@openlinker/core/identifier-mapping';
 import { SyncModule } from '@openlinker/core/sync';
 import { InventoryModule } from '@openlinker/core/inventory';
@@ -41,19 +41,24 @@ import { RedisPickupPointQueryStatsAdapter } from './infrastructure/adapters/red
 import { ShipmentDispatchService } from './application/services/shipment-dispatch.service';
 import { BulkShipmentDispatchService } from './application/services/bulk-shipment-dispatch.service';
 import { ShipmentQueryService } from './application/services/shipment-query.service';
+import { OrderLabelVoiderService } from './application/services/order-label-voider.service';
 import { ShipmentCancellationService } from './application/services/shipment-cancellation.service';
 import { PickupPointLookupService } from './application/services/pickup-point-lookup.service';
 import { PickupPointRefreshService } from './application/services/pickup-point-refresh.service';
 import { ShipmentDispatchNotificationService } from './application/services/shipment-dispatch-notification.service';
 import { ShipmentStatusSyncService } from './application/services/shipment-status-sync.service';
 import { FulfillmentStatusSyncService } from './application/services/fulfillment-status-sync.service';
+import { SourceFulfillmentStatusSyncService } from './application/services/source-fulfillment-status-sync.service';
 import { ShipmentLabelService } from './application/services/shipment-label.service';
 import { OrderFulfillmentProjectionService } from './application/services/order-fulfillment-projection.service';
 import { ShipmentLineService } from './application/services/shipment-line.service';
 import { ShipmentReservationConsumeService } from './application/services/shipment-reservation-consume.service';
+import { FulfillmentWorkDispatchRouterService } from './application/services/fulfillment-work-dispatch-router.service';
 import {
   BULK_SHIPMENT_DISPATCH_SERVICE_TOKEN,
   FULFILLMENT_STATUS_SYNC_SERVICE_TOKEN,
+  FULFILLMENT_WORK_DISPATCH_ROUTER_SERVICE_TOKEN,
+  SOURCE_FULFILLMENT_STATUS_SYNC_SERVICE_TOKEN,
   ORDER_FULFILLMENT_PROJECTION_SERVICE_TOKEN,
   PICKUP_POINT_CACHE_TOKEN,
   PICKUP_POINT_LOOKUP_SERVICE_TOKEN,
@@ -138,6 +143,14 @@ import {
       provide: SHIPMENT_CANCELLATION_SERVICE_TOKEN,
       useExisting: ShipmentCancellationService,
     },
+    // #3540 (4a): the labels half of the observed-cancel cleanup. Bound to an
+    // orders-owned token that `OrderCancellationEffectsService` resolves lazily -
+    // it cannot inject it, because this module imports OrdersModule.
+    OrderLabelVoiderService,
+    {
+      provide: ORDER_LABEL_VOIDER_TOKEN,
+      useExisting: OrderLabelVoiderService,
+    },
     RedisPickupPointCacheAdapter,
     {
       provide: PICKUP_POINT_CACHE_TOKEN,
@@ -182,6 +195,14 @@ import {
       provide: FULFILLMENT_STATUS_SYNC_SERVICE_TOKEN,
       useExisting: FulfillmentStatusSyncService,
     },
+    // Source-side twin of the branch-1 read-back: records a waybill the order's
+    // SOURCE reports when somebody other than OL shipped it there, and relays it
+    // to the order's destinations (ADR-012 amendment).
+    SourceFulfillmentStatusSyncService,
+    {
+      provide: SOURCE_FULFILLMENT_STATUS_SYNC_SERVICE_TOKEN,
+      useExisting: SourceFulfillmentStatusSyncService,
+    },
     // #884 label-document fetch seam: resolves the shipment's provider adapter
     // and narrows the LabelDocumentReader sub-capability. Read-only.
     ShipmentLabelService,
@@ -217,6 +238,15 @@ import {
       provide: SHIPMENT_RESERVATION_CONSUME_SERVICE_TOKEN,
       useExisting: ShipmentReservationConsumeService,
     },
+    // #3506 (G02-4) shipment-first dispatch routing for a fulfilment work,
+    // shared by the API's parcel-closure notifier and the worker's relay
+    // sweep. Composes the work-grain relay (OrdersModule) and the relay gate
+    // (FulfillmentModule) — both already imported above, so no new edge.
+    FulfillmentWorkDispatchRouterService,
+    {
+      provide: FULFILLMENT_WORK_DISPATCH_ROUTER_SERVICE_TOKEN,
+      useExisting: FulfillmentWorkDispatchRouterService,
+    },
   ],
   exports: [
     SHIPMENT_REPOSITORY_TOKEN,
@@ -233,7 +263,9 @@ import {
     SHIPMENT_DISPATCH_NOTIFICATION_SERVICE_TOKEN,
     SHIPMENT_STATUS_SYNC_SERVICE_TOKEN,
     FULFILLMENT_STATUS_SYNC_SERVICE_TOKEN,
+    SOURCE_FULFILLMENT_STATUS_SYNC_SERVICE_TOKEN,
     SHIPMENT_LABEL_SERVICE_TOKEN,
+    FULFILLMENT_WORK_DISPATCH_ROUTER_SERVICE_TOKEN,
   ],
 })
 export class ShippingModule {}

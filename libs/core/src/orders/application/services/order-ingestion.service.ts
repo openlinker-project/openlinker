@@ -24,7 +24,7 @@ import {
   SyncLockPort,
   SYNC_LOCK_TOKEN,
 } from '@openlinker/core/sync';
-import { IIdentifierMappingService, IDENTIFIER_MAPPING_SERVICE_TOKEN, CORE_ENTITY_TYPE, CONNECTION_PORT_TOKEN, type ConnectionPort } from '@openlinker/core/identifier-mapping';
+import { IIdentifierMappingService, IDENTIFIER_MAPPING_SERVICE_TOKEN, CORE_ENTITY_TYPE, CONNECTION_PORT_TOKEN, type Connection, type ConnectionPort } from '@openlinker/core/identifier-mapping';
 import {
   IAutoIssueTriggerService,
   AUTO_ISSUE_TRIGGER_SERVICE_TOKEN,
@@ -46,7 +46,12 @@ import {
   ORDER_RECORD_SERVICE_TOKEN,
   ORDER_ITEM_REF_RESOLVER_SERVICE_TOKEN,
   ORDER_LIFECYCLE_RELAY_SERVICE_TOKEN,
+  ORDER_CHANGE_SERVICE_TOKEN,
+  ORDER_CANCELLATION_EFFECTS_SERVICE_TOKEN,
 } from '../../orders.tokens';
+import { IOrderCancellationEffectsService } from '../interfaces/order-cancellation-effects.service.interface';
+import { IOrderChangeService } from './order-change.service.interface';
+import type { OrderChange } from '../../domain/entities/order-change.entity';
 import { IOrderRecordService } from '../interfaces/order-record.service.interface';
 import { IOrderItemRefResolverService } from '../interfaces/order-item-ref-resolver.service.interface';
 import { IOrderLifecycleRelayService } from '../interfaces/order-lifecycle-relay.service.interface';
@@ -70,37 +75,55 @@ import {
   FULFILLMENT_ROUTING_SERVICE_TOKEN,
   type IFulfillmentRoutingService,
   FULFILLMENT_PROCESSOR_KIND,
+  type FulfillmentRoutingResolution,
 } from '@openlinker/core/mappings';
 import {
   FULFILLMENT_ROUTER_RESOLVER_TOKEN,
   ROUTING_COMMIT_SERVICE_TOKEN,
-  buildRoutingShipTo,
   deriveFulfillmentDispatchEnqueueIntents,
+  deriveRoutingHoldOutcome,
+  deriveSaleDecrementEnqueueIntents,
   findUndispatchableWorkIds,
   type FulfillmentBlock,
+  type FulfillmentRouterPort,
   type FulfillmentRouterResolverPort,
   type IRoutingCommitService,
   type RoutingCommitOutcome,
-  type RoutingInputLine,
-  type RoutingShipTo,
 } from '@openlinker/core/fulfillment';
 import {
   isFulfillmentRouterUnroutable,
   selectPrimaryFulfillmentRouter,
+  toRouterSelectionClaimants,
+  type AuthorityAttentionOutcome,
   type AuthorityClaimantInput,
 } from '@openlinker/core/fulfillment-authority';
 import type { ReservationAtpEffect } from '@openlinker/core/inventory';
 import type { Order } from '../../domain/types/order.types';
+import type { LineCostCandidate } from '../../domain/order-line-cost-snapshot';
 import type { OrderFeedEventType } from '../../domain/types/order-feed.types';
+import { orderStockRestoreDedupeKey } from '../../domain/types/order-cancel.types';
+import { cancelRequestTargetRef } from '../../domain/types/order-change.types';
 import { compareOrderCursors } from '../../domain/types/order-cursor.types';
 import { withheldOnHoldError } from '../../domain/types/order-hold.types';
+import {
+  isOrderFromOwnProductMaster,
+  isOrderMirroredBeforeRouting,
+  isOrderFulfilledBySource,
+  isOrderShippedElsewhere,
+  type FulfillmentRoutingSkipReason,
+} from '../../domain/types/fulfillment-routing-eligibility.types';
 import type { OrderRecord } from '../../domain/entities/order-record.entity';
 import type { SalesDocumentBlockOutcome } from '@openlinker/core/sales-documents';
 import type { OrderRecordStatus } from '../../domain/types/order-record.types';
 import type { ItemResolutionFailureKind } from './order-item-ref-resolver.types';
+import {
+  projectOrderForRouting,
+  type OrderRoutingProjection,
+} from '../../domain/project-order-for-routing';
 import { getEnvBoolean } from '@openlinker/shared/config';
 import { Logger } from '@openlinker/shared/logging';
 import { diffOrderAmendment } from '../../domain/order-amendment-diff';
+import { applyOrderEditsToOrder } from '../../domain/types/order-edits.types';
 import { MissingOrderItemMappingError } from '../../domain/exceptions/missing-order-item-mapping.error';
 
 /**
@@ -114,14 +137,58 @@ import { MissingOrderItemMappingError } from '../../domain/exceptions/missing-or
 interface FulfillmentInterceptOutcome {
   readonly held: boolean;
   readonly block: FulfillmentBlock | null;
+  /**
+   * Whether the intercept deliberately did not route the order (#3455; also
+   * #3487 / #3488). Independent of `held` and `block`: a skipped order is not
+   * held and carries no block. `indeterminate` - the fail-open catch - leaves a
+   * previously persisted reason untouched, the #2100 rule: clearing it on a
+   * transient error would trade a true answer for silence.
+   */
+  readonly skip: FulfillmentRoutingSkipOutcome;
+  /**
+   * The order's `routing` producer entry — UF-L, `line-unfulfillable` (#3485).
+   * Written by `persistFulfillmentOutcome`; `indeterminate` writes nothing, which
+   * is what every arm OUTSIDE an OMS routing attempt reports, so an install that
+   * routes nothing pays no extra statement.
+   */
+  readonly lineAttention: AuthorityAttentionOutcome<'routing'>;
 }
 
-/** The ADR-062 allowlist projection handed to a router. */
-interface RoutingProjection {
-  readonly lines: RoutingInputLine[];
-  readonly shipTo: RoutingShipTo;
-  readonly requestedDeliveryMethod: string | null;
-}
+const LINE_ATTENTION_UNTOUCHED: AuthorityAttentionOutcome<'routing'> = { kind: 'indeterminate' };
+
+type FulfillmentRoutingSkipOutcome =
+  | { readonly kind: 'skipped'; readonly reason: FulfillmentRoutingSkipReason }
+  | { readonly kind: 'none' }
+  | { readonly kind: 'indeterminate' };
+
+const ROUTING_NOT_SKIPPED: FulfillmentRoutingSkipOutcome = { kind: 'none' };
+
+/**
+ * What this order's fulfilment routing will do, resolved ONCE (#3480).
+ *
+ * Resolved before the advisory hold is recorded, so the hold's immutable
+ * `atpEffect` and the intercept that routes the order are decided from the same
+ * answer and cannot disagree — which is also why #3487 / #3455 / #3488's skip
+ * rules are decided here rather than in the intercept: checked later, the hold
+ * of an order that is never routed would be stamped `published`.
+ *
+ * - `route` — exactly one router holds A2 and is wired.
+ * - `skip` — OpenLinker deliberately leaves the order on today's path; the
+ *   reason is persisted (#3455).
+ * - `pass` — nobody claims A2, the claim is ambiguous, or the claimant has no
+ *   router wired. Nothing to explain, so any persisted skip reason is cleared.
+ * - `indeterminate` — the resolution failed. Today's path, and a previously
+ *   persisted skip reason is left untouched (the #2100 rule).
+ */
+type RoutingTarget =
+  | {
+      readonly kind: 'route';
+      readonly holder: string;
+      readonly router: FulfillmentRouterPort;
+    }
+  | { readonly kind: 'skip'; readonly reason: FulfillmentRoutingSkipReason }
+  | { readonly kind: 'pass' }
+  | { readonly kind: 'indeterminate' };
 
 @Injectable()
 export class OrderIngestionService implements IOrderIngestionService {
@@ -199,7 +266,17 @@ export class OrderIngestionService implements IOrderIngestionService {
     // deliberately running router-less, and that misconfiguration is otherwise
     // invisible (the router-less path is a silent, fully-specified pass-through).
     @Inject(FULFILLMENT_ROUTER_RESOLVER_TOKEN)
-    private readonly routerResolver: FulfillmentRouterResolverPort
+    private readonly routerResolver: FulfillmentRouterResolverPort,
+    // #3540: ADR-044 "confirms from observation" - an inbound cancel confirms an
+    // operator's still-open cancel request. Appended last like every dependency
+    // since. Leaf-module edge (`OrderChangesModule`), no cycle.
+    @Inject(ORDER_CHANGE_SERVICE_TOKEN)
+    private readonly orderChanges: IOrderChangeService,
+    // #3540 (B-18): the cleanup a cancelled order owes, run for an OBSERVED
+    // confirmation of an operator cancel request exactly as the operator path
+    // runs it. Same module, no cycle.
+    @Inject(ORDER_CANCELLATION_EFFECTS_SERVICE_TOKEN)
+    private readonly cancellationEffects: IOrderCancellationEffectsService
   ) {}
 
   async ingestOrders(
@@ -436,6 +513,18 @@ export class OrderIngestionService implements IOrderIngestionService {
     const cancelledFromEarlySignal =
       snapshotRecord.cancelledAt != null || existing?.cancelledAt != null;
 
+    // C-4 / C-30: a cancellation that arrives as a plain order update (status
+    // CANCELLED, or a consumed early signal) takes the same seam as the
+    // `cancelled` feed event. `existing` is the pre-persist read, so a null
+    // `cancelledAt` there means this is the first time the cancel is observed.
+    if (
+      (incoming.status === 'cancelled' || cancelledFromEarlySignal) &&
+      existing != null &&
+      existing.cancelledAt == null
+    ) {
+      await this.onSourceCancellationObserved(internalOrderId, connectionId, true);
+    }
+
     // Early-fire cancellation hook (#1146): enqueue the stock-restore job
     // immediately after the raw snapshot is persisted and BEFORE item resolution
     // so the signal is never lost when MissingOrderItemMappingError is thrown at
@@ -457,7 +546,7 @@ export class OrderIngestionService implements IOrderIngestionService {
             internalOrderId,
           },
           options: {
-            dedupeKey: `marketplace:${connectionId}:stockRestore:${internalOrderId}`,
+            dedupeKey: orderStockRestoreDedupeKey(connectionId, internalOrderId),
           },
         });
       } catch (error) {
@@ -540,28 +629,83 @@ export class OrderIngestionService implements IOrderIngestionService {
     }
 
     // Step 5: all items resolved — build unified order and upsert with recordStatus='ready'
-    const order = this.buildUnifiedOrder(
+    const channelOrder = this.buildUnifiedOrder(
       incoming,
       internalOrderId,
       internalCustomerId,
       resolvedItems
     );
+    // #3588 (D27): the cost snapshot candidates. NOT wrapped in a catch - a
+    // swallowed failure would freeze every line `not-recorded` for good (the
+    // snapshot is never upgraded), so the job retry is the right fallback.
+    const lineCostCandidates = await this.resolveLineCostCandidates(channelOrder);
+
     // The persisted record is captured for its `shippingAddressHash` (#2395),
     // which the #2396 routing projection needs and which the `order` object does
     // not carry. Hashing the snapshot instead would be wrong under hash-only
     // mode — see `projectOrderForRouting`.
+    //
+    // #3542: what is PERSISTED is always the channel's own order - the snapshot
+    // is the channel original and the operator's edits live in an overlay column
+    // this statement never names.
     const persisted = await this.orderRecordService.persistOrder(
-      order,
+      channelOrder,
       connectionId,
       sourceEventId ?? null,
-      incoming.externalUrl ?? null
+      incoming.externalUrl ?? null,
+      lineCostCandidates
     );
+    // #3542: everything BELOW works from the live Order, not the snapshot -
+    // reservations, routing, the destination mirror, auto-issue. It must see the
+    // order as the operator edited it, or every poll would re-reserve the
+    // original quantity and re-route by the original delivery method. The
+    // overlay comes from the upsert's own RETURNING, so it is the one that
+    // applied to this very write rather than a read taken a moment earlier.
+    const order = applyOrderEditsToOrder(channelOrder, persisted?.orderEdits ?? null);
+
+    // #3554 / D8: T9 `order.received`, once - only when the pre-persist read
+    // found no record, so a re-poll, a webhook replay or a status update
+    // re-ingesting the same order fires nothing. The ingestion lock (#906)
+    // serialises two first ingestions. Best-effort inside the service.
+    if (!existing) {
+      await this.orderRecordService.notifyOrderReceived(persisted, new Date());
+    }
+
+    // The order's ADR-012 fulfilment routing, resolved at most once and only if
+    // asked for: the reservation's `atpEffect` (#2344) and the #3488 routing
+    // skip both read it, and a second resolve could answer differently if a rule
+    // were edited between the two.
+    const fulfillmentRouting = this.memoizeFulfillmentRouting(order, connectionId);
 
     // #2344: record OL's own advisory holds. Placed after `persistOrder` so the
     // order row exists, and before destination provisioning. `cancelledFromEarlySignal`
     // (#2069) is threaded through so an order already known-cancelled via the
     // signal is never held, even while `order.status` still lags.
-    await this.reserveOrderInventory(order, connectionId, cancelledFromEarlySignal);
+    // #3480: resolved BEFORE the hold, so an order OpenLinker is about to route
+    // is held as `published` from the start. The hold must also stay before the
+    // intercept: the intercept enqueues the sale decrement, and a hold created
+    // after it could land after its own consume and then subtract for its whole
+    // TTL.
+    const routingTarget = await this.resolveRoutingTarget(
+      order.id,
+      connectionId,
+      fulfillmentRouting,
+      // #3455 — read from the PRE-persist `existing`: `persistOrder` never
+      // writes `syncStatus` (#2140), so it is current, and no extra read is spent.
+      isOrderMirroredBeforeRouting(existing?.syncStatus),
+      // #3636 - the source's own statement that it ships the order.
+      isOrderFulfilledBySource(order)
+    );
+    await this.reserveOrderInventory(
+      order,
+      connectionId,
+      fulfillmentRouting,
+      cancelledFromEarlySignal,
+      // #3485: every OMS-routed order now stays in OpenLinker — including one
+      // still waiting for an address — so its units are OpenLinker's to promise.
+      routingTarget.kind === 'route',
+      routingTarget.kind === 'skip' && routingTarget.reason === 'source-fulfilled'
+    );
 
     // Cancellation-observe hook (#1146): on the `→ cancelled` transition, enqueue
     // a marketplace.offer.stockRestore job so the destination marketplace's
@@ -582,7 +726,7 @@ export class OrderIngestionService implements IOrderIngestionService {
             internalOrderId,
           },
           options: {
-            dedupeKey: `marketplace:${connectionId}:stockRestore:${internalOrderId}`,
+            dedupeKey: orderStockRestoreDedupeKey(connectionId, internalOrderId),
           },
         });
       } catch (error) {
@@ -628,7 +772,8 @@ export class OrderIngestionService implements IOrderIngestionService {
     const routing = await this.interceptFulfillmentRouting(
       order,
       connectionId,
-      persisted?.shippingAddressHash ?? null
+      persisted?.shippingAddressHash ?? null,
+      routingTarget
     );
     await this.persistFulfillmentOutcome(order.id, routing);
 
@@ -644,6 +789,16 @@ export class OrderIngestionService implements IOrderIngestionService {
         `Withholding destination mirror for order ${order.id}: fulfilment routing ` +
           `held it (${routing.block?.reason ?? 'routed'})`
       );
+      // #2703 / #2704 — `OrderSyncService` owns the destination-routing block and
+      // writes it on every branch it takes, but it is NEVER CALLED on this one.
+      // Without this clear a routing reason written by an earlier run would stand
+      // beside the fresh `fulfillmentBlockReason` above and assert "the router
+      // sent this nowhere" about an order that is in fact held — two reasons for
+      // one order, one of them stale. Clearing here keeps the two columns mutually
+      // exclusive on the paths that reach the fan-out decision (this one and
+      // `syncOrder`). An ingestion that exits earlier leaves the previous value
+      // until the next run - a bounded display fault, not a correctness one.
+      await this.persistDestinationRoutingCleared(order.id);
     } else {
       results = await this.orderSyncService.syncOrder({
         order,
@@ -829,6 +984,111 @@ export class OrderIngestionService implements IOrderIngestionService {
   }
 
   /**
+   * What this order's fulfilment routing will do (#2396, #3480).
+   *
+   * The selection half of the intercept, split out so it runs ONCE, before the
+   * advisory hold is recorded: the hold's `atpEffect` is insert-only, so it has
+   * to know at creation time whether OpenLinker is about to route the order.
+   *
+   * **The skip rules (#3487 / #3455 / #3488) live HERE, not in the intercept**,
+   * for the same reason: checked only later, the hold of an order that is never
+   * routed would be stamped `published` — a storefront order whose stock the shop
+   * has already lowered, or an order another system ships, would then subtract
+   * the same units twice (#3480).
+   *
+   * Order of the checks, and why:
+   *  1. **No claimant** — the OMS is off, so there is nothing to explain and the
+   *     skip reason is cleared. BEFORE the skip rules: without this gate every
+   *     shop order on an OMS-off install would be recorded as "pack it in your
+   *     shop" (#3455).
+   *  2. **The skip rules** — before the ambiguity warning, so an A2 ambiguity is
+   *     not reported for an order that would never be routed.
+   *  3. **Ambiguity / no router wired** — the pass-through.
+   *
+   * **Never throws**, exactly as the intercept it was extracted from: a failure
+   * answers `indeterminate`, which follows today's path, stamps the hold the way
+   * it was stamped before #3480, and leaves a persisted skip reason untouched.
+   */
+  private async resolveRoutingTarget(
+    orderId: string,
+    orderSourceConnectionId: string,
+    fulfillmentRouting: () => Promise<FulfillmentRoutingResolution | null>,
+    alreadyMirrored: boolean,
+    fulfilledBySource: boolean
+  ): Promise<RoutingTarget> {
+    try {
+      const connections = await this.connections.list();
+      const selection = selectPrimaryFulfillmentRouter(this.toRoutingClaimants(connections));
+
+      if (selection.holder === null && selection.reason === 'no-claimant') {
+        // `no-claimant` is the pass-through and is not worth a log line per order.
+        return { kind: 'pass' };
+      }
+
+      const skipReason = await this.resolveRoutingSkipReason(
+        orderSourceConnectionId,
+        connections,
+        alreadyMirrored,
+        fulfilledBySource,
+        fulfillmentRouting
+      );
+      if (skipReason === 'routing-unknown') {
+        // Fail closed (#3496 review): whether another system ships this order is
+        // unknown, and routing on an unknown could put on the bench a parcel the
+        // marketplace also ships. Skipping is today's path, so nothing is lost;
+        // `indeterminate` also leaves any persisted skip reason untouched rather
+        // than writing a reason that would state something OL does not know.
+        this.logger.warn(
+          `Not routing order ${orderId}: its fulfilment routing could not be read, so ` +
+            `whether another system ships it is unknown; following today's path.`
+        );
+        return { kind: 'indeterminate' };
+      }
+      if (skipReason !== null) {
+        // `log`, not `debug`: the answer to "why is this order not on the pack
+        // bench?", invisible at `debug` on a normal deployment (#3490 / #3496 review).
+        this.logger.log(
+          `Not routing order ${orderId}: ${skipReason}; following today's path.`
+        );
+        return { kind: 'skip', reason: skipReason };
+      }
+
+      if (selection.holder === null) {
+        if (isFulfillmentRouterUnroutable(selection.reason)) {
+          this.logger.warn(
+            `Not routing order ${orderId}: reason=${selection.reason} ` +
+              `candidates=[${selection.candidateConnectionIds.join(',')}]. ` +
+              `Following today's path; the ambiguity is reported by the A2 ` +
+              `authority read model (#2352), not persisted here.`
+          );
+        }
+        return { kind: 'pass' };
+      }
+
+      const router = await this.routerResolver.resolve(selection.holder);
+      if (router === null) {
+        // The degenerate pass-through (ADR-054). Not an error, and not a block:
+        // the order follows today's path unchanged, so there is nothing held to
+        // explain.
+        this.logger.log(
+          `No fulfilment router is wired for connection ${selection.holder}; ` +
+            `order ${orderId} follows today's path unchanged (#2408/#2409).`
+        );
+        return { kind: 'pass' };
+      }
+
+      return { kind: 'route', holder: selection.holder, router };
+    } catch (error) {
+      const errorName = error instanceof Error ? error.name : 'UnknownError';
+      this.logger.warn(
+        `Fulfilment router selection failed (swallowed, following today's path): ` +
+          `error=${errorName} orderId=${orderId}`
+      );
+      return { kind: 'indeterminate' };
+    }
+  }
+
+  /**
    * Decide whether fulfilment routing HOLDS this order (#2396, DESIGN §5.5).
    *
    * Three arms, per the issue:
@@ -840,61 +1100,81 @@ export class OrderIngestionService implements IOrderIngestionService {
    *   `'sourcing-ambiguous'` (A2-A) already reports this at order grain with
    *   `counted: true`, so a second copy would double-count
    *   `Needs attention (N)`. Warn-logged only.
-   * - **`selected`** — exactly one router holds A2. `route()` decides, and a
-   *   routed order is HELD.
+   * - **`selected`** — exactly one router holds A2. `route()` decides, and the
+   *   order is HELD whatever it decides (#3485): routed, refused, no shipping
+   *   address, or an error. With the OMS as the router the order stays in
+   *   OpenLinker (epic #3460); a non-routed outcome carries a named block and is
+   *   re-routable, instead of being created in every product master.
    *
    * Silence-and-pick-one is forbidden on the ambiguous arm for the reason it is
    * forbidden in #2047: an unrouted order is recoverable by hand, two shipments
    * of one order are not.
    *
-   * **Never throws.** A failure anywhere here degrades to the pass-through, because
-   * an infrastructure hiccup in an optional layer must not cost a paid order its
-   * destination mirror.
+   * **Never throws.** A failure once the router is selected HOLDS the order
+   * (`routing-failed`); a failure before that degrades to the pass-through,
+   * because without a selected router OpenLinker cannot tell whether the claim is
+   * on, and holding on an unknown would strand orders on an install with no
+   * router at all.
    */
   private async interceptFulfillmentRouting(
     order: Order,
     connectionId: string,
-    shippingAddressHash: string | null
+    shippingAddressHash: string | null,
+    target: RoutingTarget
   ): Promise<FulfillmentInterceptOutcome> {
     try {
-      const selection = selectPrimaryFulfillmentRouter(await this.loadRoutingClaimants());
-
-      if (selection.holder === null) {
-        if (isFulfillmentRouterUnroutable(selection.reason)) {
-          this.logger.warn(
-            `Not routing order ${order.id}: reason=${selection.reason} ` +
-              `candidates=[${selection.candidateConnectionIds.join(',')}]. ` +
-              `Following today's path; the ambiguity is reported by the A2 ` +
-              `authority read model (#2352), not persisted here.`
-          );
+      switch (target.kind) {
+        case 'skip':
+          return {
+            held: false,
+            block: null,
+            skip: { kind: 'skipped', reason: target.reason },
+            lineAttention: LINE_ATTENTION_UNTOUCHED,
+          };
+        case 'indeterminate':
+          return {
+            held: false,
+            block: null,
+            skip: { kind: 'indeterminate' },
+            lineAttention: LINE_ATTENTION_UNTOUCHED,
+          };
+        case 'pass':
+          // The pass-through — see `resolveRoutingTarget`, which logged why.
+          return {
+            held: false,
+            block: null,
+            skip: ROUTING_NOT_SKIPPED,
+            lineAttention: LINE_ATTENTION_UNTOUCHED,
+          };
+        case 'route':
+          break;
+        default: {
+          const unreachable: never = target;
+          throw new Error(`Unrecognised routing target: ${JSON.stringify(unreachable)}`);
         }
-        // `no-claimant` is the pass-through and is not worth a log line per order.
-        return { held: false, block: null };
       }
-
-      const router = await this.routerResolver.resolve(selection.holder);
-      if (router === null) {
-        // The degenerate pass-through (ADR-054). Not an error, and not a block:
-        // the order follows today's path unchanged, so there is nothing held to
-        // explain.
-        this.logger.log(
-          `No fulfilment router is wired for connection ${selection.holder}; ` +
-            `order ${order.id} follows today's path unchanged (#2408/#2409).`
-        );
-        return { held: false, block: null };
-      }
+      const { holder, router } = target;
 
       const projection = this.projectOrderForRouting(order, shippingAddressHash);
       if (projection === null) {
+        // #3485 — HELD, not mirrored: the OMS is this order's router, so sending
+        // it to the product masters instead would put it in every one of them.
+        // The re-ingestion that brings an address clears the block by itself.
         this.logger.warn(
-          `Order ${order.id} carries no shipping address; fulfilment routing skipped.`
+          `Order ${order.id} carries no shipping address; holding it in OpenLinker ` +
+            `until one arrives.`
         );
-        return { held: false, block: null };
+        return {
+          held: true,
+          block: { reason: 'routing-no-shipping-address', detail: null },
+          skip: ROUTING_NOT_SKIPPED,
+          lineAttention: { kind: 'none' },
+        };
       }
 
       const outcome = await this.routingCommit.route({
         orderId: order.id,
-        routerConnectionId: selection.holder,
+        routerConnectionId: holder,
         lines: projection.lines,
         shipTo: projection.shipTo,
         requestedDeliveryMethod: projection.requestedDeliveryMethod,
@@ -915,20 +1195,87 @@ export class OrderIngestionService implements IOrderIngestionService {
       // `enqueueRoutedDispatchJobs`. Ordering it here keeps `toInterceptOutcome`
       // a pure, synchronous, exhaustive switch.
       await this.enqueueRoutedDispatchJobs(order.id, outcome);
+      // #3453 — a routed order is never created in the product master, so its
+      // stock must be lowered there by OpenLinker. Same never-throws contract.
+      await this.enqueueRoutedSaleDecrementJobs(order.id, connectionId, outcome);
 
-      return this.toInterceptOutcome(order.id, outcome);
+      return { ...this.toInterceptOutcome(order.id, outcome), skip: ROUTING_NOT_SKIPPED };
     } catch (error) {
-      // Fail OPEN, and say so. An optional routing layer that cannot answer must
-      // not strand a paid order: the alternative — holding on an unknown — would
-      // withhold the destination mirror indefinitely on an install that has no
-      // router at all.
       const errorName = error instanceof Error ? error.name : 'UnknownError';
+
+      if (target.kind === 'route') {
+        // #3485 — HELD, not fail-open. The OMS router was already selected, so
+        // the claim is known to be on: following today's path here would create
+        // the order in every product master. The error NAME only reaches the
+        // detail — never the message, which can carry order data. The reroute
+        // sweep retries it.
+        this.logger.warn(
+          `Fulfilment routing failed after the router was selected; holding the order: ` +
+            `error=${errorName} orderId=${order.id} connectionId=${connectionId}`
+        );
+        return {
+          held: true,
+          block: { reason: 'routing-failed', detail: errorName },
+          skip: ROUTING_NOT_SKIPPED,
+          lineAttention: LINE_ATTENTION_UNTOUCHED,
+        };
+      }
+
+      // Fail OPEN, and say so: without a selected router the claim state is
+      // unknown, and holding on an unknown would withhold the destination mirror
+      // on an install that has no router at all.
       this.logger.warn(
         `Fulfilment routing intercept failed (swallowed, following today's path): ` +
           `error=${errorName} orderId=${order.id} connectionId=${connectionId}`
       );
-      return { held: false, block: null };
+      return {
+        held: false,
+        block: null,
+        skip: { kind: 'indeterminate' },
+        lineAttention: LINE_ATTENTION_UNTOUCHED,
+      };
     }
+  }
+
+  /**
+   * Why this order should deliberately NOT be routed, or `null` (#3455).
+   *
+   * Level-triggered per ingestion: an order that was already routed before its
+   * source started asserting `fulfilledBySource` stays routed - nothing here
+   * un-routes existing work.
+   *
+   * First match wins, cheapest first:
+   *  1. `own-shop-order` (#3487) — the source connection is a product master;
+   *     reads the connections already loaded.
+   *  2. `mirrored-before-routing` (#3455) — the product master already has the
+   *     order; a pre-read boolean.
+   *  3. `source-fulfilled` (#3636) — the source asserts it ships the order
+   *     itself; a fact on the order, so it needs no read and outranks a rule.
+   *  4. `shipped-by-other-system` (#3488) — an ADR-012 rule routes the delivery
+   *     method to `omp_fulfilled`; the one arm needing the (memoized, shared)
+   *     routing resolve, so it runs last.
+   *
+   * Returns `'routing-unknown'` when the routing read failed (not a persisted
+   * reason).
+   *
+   * The order also fixes which sentence an operator reads when several apply:
+   * "it is from your shop" is the most useful answer, so it wins.
+   */
+  private async resolveRoutingSkipReason(
+    connectionId: string,
+    connections: readonly Connection[],
+    alreadyMirrored: boolean,
+    fulfilledBySource: boolean,
+    fulfillmentRouting: () => Promise<FulfillmentRoutingResolution | null>
+  ): Promise<FulfillmentRoutingSkipReason | 'routing-unknown' | null> {
+    if (isOrderFromOwnProductMaster(connections, connectionId)) return 'own-shop-order';
+    if (alreadyMirrored) return 'mirrored-before-routing';
+    if (fulfilledBySource) return 'source-fulfilled';
+    const routing = await fulfillmentRouting();
+    // A failed read is not an answer; the caller must not route on it.
+    if (routing === null) return 'routing-unknown';
+    if (isOrderShippedElsewhere(routing)) return 'shipped-by-other-system';
+    return null;
   }
 
   /**
@@ -941,12 +1288,13 @@ export class OrderIngestionService implements IOrderIngestionService {
    *
    * ## This method MUST NOT throw, and that is the whole reason it exists
    *
-   * It is called from inside `interceptFulfillmentRouting`'s fail-open `try`,
-   * whose catch returns `{ held: false }`. An unguarded enqueue failure would
-   * therefore not merely lose the dispatch — it would convert a `routed` outcome
-   * into "not held", and ingestion would then mirror to every destination an
-   * order whose `fulfillment_works` rows are already committed. That is an order
-   * fulfilled twice. The `try` therefore wraps the WHOLE body — not only the
+   * It is called from inside `interceptFulfillmentRouting`'s `try`. Before
+   * #3485 that catch returned `{ held: false }`, so an unguarded enqueue failure
+   * would have mirrored to every destination an order whose `fulfillment_works`
+   * rows are already committed — an order fulfilled twice. Since #3485 the catch
+   * HOLDS the order as `routing-failed` instead, which is safe but still wrong:
+   * it would report a successfully routed order as failed and send it to the
+   * reroute sweep. The `try` therefore wraps the WHOLE body — not only the
    * enqueue — because a docblock stating an absolute has to be true rather than
    * nearly true; a spec asserts it by rejecting the enqueue.
    *
@@ -1019,93 +1367,89 @@ export class OrderIngestionService implements IOrderIngestionService {
   }
 
   /**
+   * Lower the sold stock in each routed line's product master (#3453).
+   *
+   * With the OMS on, a routed order is HELD — no `syncOrder`, so the product
+   * master never receives it and its own order flow never lowers its stock. One
+   * `inventory.saleDecrement` job per routed work closes that; the job owns the
+   * per-line at-most-once claim, the owner resolution and the source-is-owner
+   * skip.
+   *
+   * **MUST NOT throw**, for exactly the reason `enqueueRoutedDispatchJobs` must
+   * not: it runs inside the intercept's `try`, whose catch would report a routed
+   * order as `routing-failed` (#3485). A lost enqueue leaves the master's stock high; the
+   * error log naming the work is the signal, because a retry re-enters
+   * `route()`, answers `already-routed` and reaches no enqueue at all.
+   *
+   * Scoped to the order's SOURCE connection, not the holder: every OMS-packed
+   * work shares one holder, and scoping by it would serialise every decrement in
+   * the installation behind one per-scope cap (#2609).
+   */
+  private async enqueueRoutedSaleDecrementJobs(
+    orderId: string,
+    orderSourceConnectionId: string,
+    outcome: RoutingCommitOutcome
+  ): Promise<void> {
+    try {
+      if (outcome.status !== 'routed') return;
+
+      for (const intent of deriveSaleDecrementEnqueueIntents(
+        outcome.works,
+        orderId,
+        orderSourceConnectionId
+      )) {
+        try {
+          await this.jobQueue.enqueue({
+            type: 'inventory.saleDecrement',
+            connectionId: intent.connectionId,
+            payload: { schemaVersion: 1, workId: intent.workId, orderId: intent.orderId },
+            options: { dedupeKey: intent.dedupeKey },
+          });
+        } catch (error) {
+          this.logger.error(
+            `Failed to enqueue a sale decrement job; the order is routed but the ` +
+              `product master's stock was NOT lowered: orderId=${orderId} workId=${intent.workId}`,
+            error instanceof Error ? error.stack : undefined
+          );
+        }
+      }
+    } catch (error) {
+      this.logger.error(
+        `Failed to enqueue routed sale decrements: orderId=${orderId}`,
+        error instanceof Error ? error.stack : undefined
+      );
+    }
+  }
+
+  /**
    * Map a routing commit outcome onto "is this order held, and why".
    *
-   * The `switch` is exhaustive over `RoutingCommitOutcome['status']` with a
-   * `never` arm, so a new outcome member added by a later issue is a COMPILE
-   * error here rather than a silent fall-through into the pass-through — which
-   * would mirror an order the router may already have committed.
+   * The mapping is `deriveRoutingHoldOutcome` (#3485), shared with the
+   * `fulfillment.work.route` handler so the two routing sites cannot disagree;
+   * this method only adds the operator-facing log lines. The shared rule throws
+   * on an outcome this build does not recognise, and the intercept's catch then
+   * HOLDS the order (`routing-failed`) rather than mirroring one the router may
+   * already have committed.
    */
   private toInterceptOutcome(
     orderId: string,
     outcome: RoutingCommitOutcome
-  ): FulfillmentInterceptOutcome {
-    switch (outcome.status) {
-      case 'routed':
-        // HELD, and nothing to persist: the work object IS the explanation, read
-        // through `IFulfillmentWorkQueryService` (#2402). A reason column here
-        // would be a second answer to a question the work already answers.
-        this.logger.log(
-          `Routed order ${orderId}: decisionId=${outcome.decisionId} ` +
-            `work=[${outcome.works.map((work) => work.workId).join(',')}]`
-        );
-        return { held: true, block: null };
+  ): Omit<FulfillmentInterceptOutcome, 'skip'> {
+    const hold = deriveRoutingHoldOutcome(outcome);
 
-      case 'in-doubt':
-        // HELD. The router may or may not have committed on its side, so the
-        // mirror is withheld rather than risking a destination order for a parcel
-        // a holder is already picking. The decision row stays `live` for
-        // resumption under the identical idempotency key.
-        return {
-          held: true,
-          block: {
-            reason: 'routing-in-doubt',
-            detail: `decision ${outcome.decisionId} left live for resumption (${outcome.cause})`,
-          },
-        };
-
-      case 'contended':
-        // HELD. A peer holds the lock and the router was NOT called, so the
-        // decision belongs to whoever wins it. Mirroring now would race it.
-        return {
-          held: true,
-          block: { reason: 'routing-contended', detail: null },
-        };
-
-      case 'skipped':
-        if (outcome.reason === 'order-cancelled') {
-          // Not held: a cancelled order needs no hold, and today's path already
-          // knows what to do with it.
-          return { held: false, block: null };
-        }
-        // HELD. `already-routed` / `already-live-elsewhere` is the #2047
-        // write-path guard refusing regardless of router identity — some route
-        // already owns this order, and mirroring could double-ship it.
-        return {
-          held: true,
-          block: {
-            reason: 'routing-already-live-elsewhere',
-            detail: `routing refused: ${outcome.reason}`,
-          },
-        };
-
-      case 'refused':
-        // NOT held: the router answered, OpenLinker refused the plan, and the
-        // decision is terminal. No work exists, so the order must keep its
-        // ordinary destination path rather than being stranded. The refusal is
-        // already durable on the `routing_decisions` row, so nothing is
-        // persisted here.
-        this.logger.warn(
-          `Routing plan refused for order ${orderId}: reason=${outcome.reason} ` +
-            `decisionId=${outcome.decisionId}; following today's path.`
-        );
-        return { held: false, block: null };
-
-      default: {
-        // Compile-time: a new `RoutingCommitOutcome` member is an error HERE
-        // rather than a silent fall-through. Runtime: throwing, not returning,
-        // because the returned value would be the unrecognised outcome object
-        // itself — whose `held` is `undefined`, i.e. FALSY, so an outcome this
-        // build does not understand would quietly MIRROR an order the router
-        // may already have committed. The intercept's own catch turns this into
-        // the documented fail-open, which is the same answer but reached
-        // deliberately and logged.
-        const unreachable: never = outcome;
-        throw new Error(
-          `Unrecognised routing commit outcome: ${JSON.stringify(unreachable)}`
-        );
-      }
+    if (outcome.status === 'routed') {
+      this.logger.log(
+        `Routed order ${orderId}: decisionId=${outcome.decisionId} ` +
+          `work=[${outcome.works.map((work) => work.workId).join(',')}]`
+      );
+    } else if (outcome.status === 'refused') {
+      this.logger.warn(
+        `Routing plan refused for order ${orderId}: reason=${outcome.reason} ` +
+          `decisionId=${outcome.decisionId}; holding it in OpenLinker for re-routing.`
+      );
     }
+
+    return hold;
   }
 
   /**
@@ -1127,16 +1471,12 @@ export class OrderIngestionService implements IOrderIngestionService {
    * `updatedAt`. If `connections` ever stops being small, cache HERE — never by
    * skipping the selection, which would decide routing from a stale claimant
    * set.
+   *
+   * The same read also answers #3487's "is this order from the operator's own
+   * shop?", so that check costs no extra statement.
    */
-  private async loadRoutingClaimants(): Promise<AuthorityClaimantInput[]> {
-    const connections = await this.connections.list();
-    return connections.map((connection) => ({
-      connectionId: connection.id,
-      isActive: connection.status === 'active',
-      supportedCapabilities: [],
-      enabledCapabilities: connection.enabledCapabilities,
-      config: connection.config,
-    }));
+  private toRoutingClaimants(connections: readonly Connection[]): AuthorityClaimantInput[] {
+    return toRouterSelectionClaimants(connections);
   }
 
   /**
@@ -1151,39 +1491,16 @@ export class OrderIngestionService implements IOrderIngestionService {
   private projectOrderForRouting(
     order: Order,
     shippingAddressHash: string | null
-  ): RoutingProjection | null {
-    const shippingAddress = order.shippingAddress;
-    if (shippingAddress === undefined) {
-      return null;
-    }
-
-    return {
-      lines: order.items.map((item) => ({
-        orderLineId: item.id,
-        // A work line needs a variant. `variantId` is optional on `OrderItem`, so
-        // fall back to the product id rather than emitting a blank — a work
-        // object pointing at no variant is unpickable stock nothing would report.
-        productVariantId: item.variantId ?? item.productId,
-        quantity: item.quantity,
-      })),
-      // The OPAQUE key `RoutingInput.requestedDeliveryMethod` documents — the
-      // source's own method id, never a neutral vocabulary.
-      requestedDeliveryMethod: order.shipping?.methodId ?? null,
-      shipTo: buildRoutingShipTo(
-        {
-          countryIso2: shippingAddress.country,
-          postalCode: shippingAddress.postalCode,
-          city: shippingAddress.city,
-          addressHash: shippingAddressHash,
-        },
-        {
-          // `getEnvBoolean`, NOT `getPiiConfig()`: the latter throws when
-          // `OL_PII_HASH_SALT` is unset regardless of the flag, which would break
-          // routing on every ordinary deployment that never enabled hash-only mode.
-          storePii: getEnvBoolean('OL_STORE_PII', true),
-        }
-      ),
-    };
+  ): OrderRoutingProjection | null {
+    // The reduction itself is the shared pure rule (#2954); only the PII flag is
+    // read here. `getEnvBoolean`, NOT `getPiiConfig()`: the latter throws when
+    // `OL_PII_HASH_SALT` is unset regardless of the flag, which would break
+    // routing on every ordinary deployment that never enabled hash-only mode.
+    return projectOrderForRouting(
+      order,
+      shippingAddressHash,
+      getEnvBoolean('OL_STORE_PII', true)
+    );
   }
 
   /**
@@ -1211,6 +1528,66 @@ export class OrderIngestionService implements IOrderIngestionService {
       this.logger.warn(
         `Failed to persist the fulfilment block outcome (swallowed): ` +
           `error=${errorName} orderId=${internalOrderId} held=${String(outcome.held)}`
+      );
+    }
+
+    // #3485 — the UF-L entry, again its own write and its own catch, for the
+    // same reason. `indeterminate` (every arm outside an OMS routing attempt)
+    // writes nothing.
+    if (outcome.lineAttention.kind !== 'indeterminate') {
+      try {
+        await this.orderRecordService.markOmsAttention(
+          internalOrderId,
+          'routing',
+          outcome.lineAttention
+        );
+      } catch (error) {
+        const errorName = error instanceof Error ? error.name : 'UnknownError';
+        this.logger.warn(
+          `Failed to persist the routing attention state (swallowed): ` +
+            `error=${errorName} orderId=${internalOrderId}`
+        );
+      }
+    }
+
+    // #3455 — its own write and its own catch: the routing-skip reason is an
+    // operator-facing explanation, so losing it must neither fail ingestion nor
+    // cost the block write above. Re-decided on the next ingestion.
+    if (outcome.skip.kind === 'indeterminate') return;
+    try {
+      await this.orderRecordService.markFulfillmentRoutingSkip(
+        internalOrderId,
+        outcome.skip.kind === 'skipped' ? outcome.skip.reason : null
+      );
+    } catch (error) {
+      const errorName = error instanceof Error ? error.name : 'UnknownError';
+      this.logger.warn(
+        `Failed to persist the fulfilment routing skip reason (swallowed): ` +
+          `error=${errorName} orderId=${internalOrderId}`
+      );
+    }
+  }
+
+  /**
+   * Clear the destination-routing block (#2703 / #2704) on the held branch.
+   *
+   * Best-effort and never able to fail ingestion, exactly like
+   * {@link persistFulfillmentOutcome} beside it: the value is an operator-facing
+   * explanation, and a stale one is a display fault rather than a correctness
+   * one. `OrderSyncService` owns every other write of this column.
+   *
+   * Logged at `error`, like that sibling's own swallow path: a failed CLEAR
+   * leaves a stale routing reason standing beside a fresh `fulfillmentBlockReason`,
+   * the two-reasons-for-one-order state this write exists to prevent.
+   */
+  private async persistDestinationRoutingCleared(internalOrderId: string): Promise<void> {
+    try {
+      await this.orderRecordService.markDestinationRoutingBlock(internalOrderId, null);
+    } catch (error) {
+      const errorName = error instanceof Error ? error.name : 'UnknownError';
+      this.logger.error(
+        `Failed to clear the destination-routing block (swallowed): ` +
+          `error=${errorName} orderId=${internalOrderId}`
       );
     }
   }
@@ -1337,6 +1714,11 @@ export class OrderIngestionService implements IOrderIngestionService {
       return [];
     }
 
+    // Read BEFORE markCancelled (first-write-wins) so "first observation" can be
+    // told apart afterwards; an operator cancel stamps cancelledAt itself, so it
+    // reads as already observed and its own cleanup is not repeated (C-30).
+    const firstObservation = existing != null && existing.cancelledAt == null;
+
     // Durably record the cancellation on the order record itself (#1984) —
     // previously this handler only relayed to destinations and returned,
     // leaving no queryable trace of the cancellation on the order record.
@@ -1355,6 +1737,44 @@ export class OrderIngestionService implements IOrderIngestionService {
           `future re-poll or retry observes the cancellation again`,
         (error as Error).stack
       );
+    }
+
+    // Release the order's holds and restore its stock (E2E-23). The full-resync
+    // path enqueues this on the `-> cancelled` transition, but a cancel that
+    // arrives as a feed event lands HERE and returns without re-reading the
+    // order, so without this the advisory hold stays `held` for good and every
+    // later publish keeps subtracting a unit nobody bought. Same job and dedupe
+    // key as the resync path, so whichever path sees the cancel first wins and
+    // the other is a no-op. The key has no TTL and no cancellation episode in
+    // it, so it also suppresses a SECOND cancellation of the same order (after
+    // an un-cancel at the source): that restore is a silent no-op, and the
+    // offer is corrected only by the next ordinary propagation.
+    try {
+      await this.jobQueue.enqueue({
+        type: 'marketplace.offer.stockRestore',
+        connectionId,
+        payload: { schemaVersion: 1, internalOrderId },
+        options: { dedupeKey: `marketplace:${connectionId}:stockRestore:${internalOrderId}` },
+      });
+    } catch (error) {
+      this.logger.error(
+        `Failed to enqueue stock-restore job for cancelled order [connectionId=${connectionId}, orderId=${internalOrderId}]; its holds stay live and marketplace stock will NOT be auto-restored`,
+        (error as Error).stack
+      );
+    }
+
+    const cancelledByOperator = await this.wasCancelledByOperator(internalOrderId);
+
+    await this.onSourceCancellationObserved(internalOrderId, connectionId, firstObservation);
+
+    if (cancelledByOperator) {
+      // The operator's own cancel already told every participant (and the channel
+      // answered it); this is the channel echoing that cancel back. Relaying it
+      // again would cancel at the destination a second time (C-40).
+      this.logger.debug(
+        `Not relaying the source's echo of the operator cancel of order ${internalOrderId}`
+      );
+      return [];
     }
 
     const result = await this.orderLifecycleRelay.relay({
@@ -1392,6 +1812,131 @@ export class OrderIngestionService implements IOrderIngestionService {
   }
 
   /**
+   * ADR-044 "OL confirms from observation" (#3540): the source reporting the
+   * order cancelled IS the channel's answer to an operator's still-open
+   * `order.cancel_request`, so confirm it. Without this, a cancel whose HTTP
+   * answer never came back (the `pending` path) stays open although the channel
+   * has since cancelled.
+   *
+   * Best-effort and never fails ingestion: the order record is already marked
+   * cancelled, and the row would otherwise just age out through the TTL.
+   */
+  /**
+   * Whether an operator's cancel request for this order was already confirmed BY
+   * the operator (not from observation), i.e. the operator path already relayed.
+   * A read failure answers false: relaying twice is the lesser harm than not at all.
+   */
+  private async wasCancelledByOperator(internalOrderId: string): Promise<boolean> {
+    try {
+      const latest = await this.orderChanges.findLatestByTarget(
+        internalOrderId,
+        cancelRequestTargetRef(internalOrderId),
+        'order.cancel_request'
+      );
+      return (
+        latest !== null &&
+        latest.status === 'confirmed' &&
+        latest.confirmedBy !== null &&
+        !latest.confirmedBy.startsWith('source:')
+      );
+    } catch (error) {
+      this.logger.warn(
+        `Could not read the cancel request of order ${internalOrderId}: ${
+          error instanceof Error ? error.message : String(error)
+        }`
+      );
+      return false;
+    }
+  }
+
+  /**
+   * The ONE seam for a cancellation the source reported, whichever shape it
+   * arrived in (`cancelled` feed event or a plain update with a cancelled
+   * status): confirm an open operator request, and on the first observation run
+   * the shared cleanup (work, holds, credit proposal) exactly once - from the
+   * confirmed request when there is one, otherwise on its own, so a channel-side
+   * cancel with no operator request is cleaned up too (C-30, C-4).
+   *
+   * Stock restore and reservation release are NOT repeated here: the ingestion
+   * stock-restore job already covers them. Labels ARE voided, best-effort, through
+   * the lazily-resolved `OrderLabelVoiderPort` (shipping depends on orders, so
+   * core orders cannot import it without a module cycle); the operator path
+   * voids them itself before cancelling and opts out.
+   */
+  private async onSourceCancellationObserved(
+    internalOrderId: string,
+    connectionId: string,
+    firstObservation: boolean
+  ): Promise<void> {
+    const effectsRan = await this.confirmOpenCancelRequest(internalOrderId, connectionId);
+    if (!firstObservation || effectsRan) return;
+    try {
+      await this.cancellationEffects.applyEffects({
+        internalOrderId,
+        cancelledAt: new Date(),
+        reason: 'other',
+        actorUserId: null,
+      });
+    } catch (error) {
+      this.logger.error(
+        `Observed cancel of order ${internalOrderId}: the cancellation cleanup failed`,
+        error instanceof Error ? error.stack : undefined
+      );
+    }
+  }
+
+  private async confirmOpenCancelRequest(
+    internalOrderId: string,
+    connectionId: string
+  ): Promise<boolean> {
+    let effectsRan = false;
+    try {
+      const open = await this.orderChanges.findOpenByOrder(internalOrderId);
+      for (const change of open) {
+        if (change.kind !== 'order.cancel_request') continue;
+        // A request exists, so its confirm winner (us or a peer) owns the cleanup.
+        effectsRan = true;
+        if (await this.orderChanges.confirm(change.id, `source:${connectionId}`)) {
+          await this.orderChanges.claimApplied(change.id);
+          // The operator path does this cleanup after the source's HTTP answer;
+          // here that answer never came back, so without it the work stays live,
+          // the hold stays held and an invoiced order gets no credit proposal
+          // (B-18). Idempotent, so a racing operator path is harmless. Only the
+          // confirm WINNER runs it: a loser's peer already owns the cleanup.
+          await this.runObservedCancelEffects(internalOrderId, change);
+        }
+      }
+    } catch (error) {
+      this.logger.warn(
+        `Could not confirm the open cancel request for order ${internalOrderId} from the source's cancellation: ${
+          error instanceof Error ? error.message : String(error)
+        }`
+      );
+    }
+    return effectsRan;
+  }
+
+  private async runObservedCancelEffects(
+    internalOrderId: string,
+    change: OrderChange
+  ): Promise<void> {
+    try {
+      const rawReason = change.payload?.['reason'];
+      await this.cancellationEffects.applyEffects({
+        internalOrderId,
+        cancelledAt: new Date(),
+        reason: typeof rawReason === 'string' ? rawReason : 'other',
+        actorUserId: change.requestedBy,
+      });
+    } catch (error) {
+      this.logger.error(
+        `Observed cancel of order ${internalOrderId} confirmed, but the cancellation cleanup failed`,
+        error instanceof Error ? error.stack : undefined
+      );
+    }
+  }
+
+  /**
    * Defensive read of an order record's prior business status from its snapshot
    * (#1146). Returns `undefined` when there is no prior record or the stored
    * value isn't a string — both treated as non-cancelled by the caller. Pure
@@ -1423,7 +1968,10 @@ export class OrderIngestionService implements IOrderIngestionService {
       // unset. Reading it here would put an unrelated configuration failure on
       // the ingestion path — swallowed by the catch below, so the fact would go
       // silently unrecorded. The default matches `getPiiConfig`'s own.
-      const changes = diffOrderAmendment(existing?.orderSnapshot ?? null, incoming, {
+      // The CHANNEL's snapshot on purpose (#3542): the diff answers "did the
+      // SOURCE change this order", and the effective view would report every
+      // operator edit as a source amendment on the next poll.
+      const changes = diffOrderAmendment(existing?.channelSnapshot ?? null, incoming, {
         storePii: getEnvBoolean('OL_STORE_PII', true),
       });
       if (changes.length === 0) {
@@ -1548,6 +2096,46 @@ export class OrderIngestionService implements IOrderIngestionService {
    * an empty string or a zero. It is what holds the document, and the gate
    * child is what reports it.
    */
+  /**
+   * ONE de-duplicated variant lookup per order (#3588, D27). A variant is a
+   * candidate only when it has a cost AND that cost existed when the order was
+   * placed (G11-G: `costUpdatedAt <= placedAt`, falling back to the order's
+   * `createdAt` the way analytics does), so an old order imported later never
+   * receives today's cost. Both instants are floored to the whole second
+   * first: sources such as WooCommerce truncate `placedAt` to the second, so a
+   * cost saved a few hundred ms before the sale must not look "after" it.
+   */
+  private async resolveLineCostCandidates(
+    order: Order
+  ): Promise<Map<string, LineCostCandidate>> {
+    const variantIds = [
+      ...new Set(
+        order.items.map((item) => item.variantId).filter((id): id is string => Boolean(id))
+      ),
+    ];
+    const candidates = new Map<string, LineCostCandidate>();
+    if (variantIds.length === 0) {
+      return candidates;
+    }
+    const placedAtSecond = Math.floor((order.placedAt ?? order.createdAt).getTime() / 1000);
+    const variants = await this.productsService.getVariantsByIds(variantIds);
+    for (const variant of variants) {
+      if (
+        variant.netUnitCost == null ||
+        variant.costCurrency == null ||
+        variant.costUpdatedAt == null ||
+        Math.floor(variant.costUpdatedAt.getTime() / 1000) > placedAtSecond
+      ) {
+        continue;
+      }
+      candidates.set(variant.id, {
+        unitCostNet: variant.netUnitCost,
+        currency: variant.costCurrency,
+      });
+    }
+    return candidates;
+  }
+
   private async resolveLineTaxRate(
     productId: string,
     variantId: string | undefined,
@@ -1627,7 +2215,10 @@ export class OrderIngestionService implements IOrderIngestionService {
   private async reserveOrderInventory(
     order: Order,
     connectionId: string,
-    alreadyCancelled = false
+    fulfillmentRouting: () => Promise<FulfillmentRoutingResolution | null>,
+    alreadyCancelled = false,
+    routedByOms = false,
+    sourceFulfilled = false
   ): Promise<void> {
     try {
       // A kill switch, default ON (#2344 review). The ledger is additive and
@@ -1653,7 +2244,23 @@ export class OrderIngestionService implements IOrderIngestionService {
 
       if (lines.length === 0) return;
 
-      const atpEffect = await this.resolveReservationAtpEffect(order, connectionId);
+      // #3480: an order OpenLinker is about to route stays in OpenLinker — no
+      // destination ever receives it — so its hold must reduce what marketplaces
+      // are told from this moment, whatever the ADR-012 dispatch routing says
+      // (its default `omp_fulfilled` would stamp `diagnostic` and open an
+      // oversell window until the sale decrement lands). The decrement then
+      // consumes the hold, so the units are counted once.
+      //
+      // #3636: an order the SOURCE ships itself is never executed by OpenLinker,
+      // whatever an ADR-012 rule says (a rule is only configuration, the source's
+      // statement is a fact), so its hold is always `diagnostic` - subtracting
+      // stock for a parcel OpenLinker will not pick is the over-subtraction
+      // ADR-061 calls worse than shipping nothing.
+      const atpEffect: ReservationAtpEffect = sourceFulfilled
+        ? 'diagnostic'
+        : routedByOms
+          ? 'published'
+          : this.toReservationAtpEffect(order, await fulfillmentRouting());
 
       let result;
       try {
@@ -1714,34 +2321,54 @@ export class OrderIngestionService implements IOrderIngestionService {
    * publishing 0 after selling 1, for the whole TTL), so the unknown case takes
    * the arm that subtracts from nothing.
    */
-  private async resolveReservationAtpEffect(
+  private toReservationAtpEffect(
     order: Order,
-    connectionId: string
-  ): Promise<ReservationAtpEffect> {
-    try {
-      const resolution = await this.fulfillmentRouting.resolve({
-        sourceConnectionId: connectionId,
-        sourceDeliveryMethodId: order.shipping?.methodId ?? null,
-      });
+    resolution: FulfillmentRoutingResolution | null
+  ): ReservationAtpEffect {
+    // `null` is a failed routing read, already warned about where it failed.
+    if (resolution === null) return 'diagnostic';
 
-      if (resolution.processorKind === FULFILLMENT_PROCESSOR_KIND.OmpFulfilled) {
-        return 'diagnostic';
-      }
-      if (!resolution.processorAvailable) {
-        this.logger.warn(
-          `Fulfillment route for order ${order.id} names an unavailable processor; ` +
-            'recording the reservation as diagnostic rather than claiming OL executes it'
-        );
-        return 'diagnostic';
-      }
-      return 'published';
-    } catch (error) {
+    if (resolution.processorKind === FULFILLMENT_PROCESSOR_KIND.OmpFulfilled) {
+      return 'diagnostic';
+    }
+    if (!resolution.processorAvailable) {
       this.logger.warn(
-        `Could not resolve fulfillment routing for order ${order.id}; ` +
-          `recording the reservation as diagnostic: ${(error as Error).message}`
+        `Fulfillment route for order ${order.id} names an unavailable processor; ` +
+          'recording the reservation as diagnostic rather than claiming OL executes it'
       );
       return 'diagnostic';
     }
+    return 'published';
+  }
+
+  /**
+   * The order's ADR-012 fulfilment routing, resolved lazily and at most once.
+   *
+   * **Never rejects.** A failed read answers `null`, which each reader treats as
+   * "unknown": the reservation takes the `diagnostic` arm and the #3488 routing
+   * skip does not route (fail closed, #3496 review). The failed promise is cached like a successful one, so a
+   * store outage costs one warning per order, not one per reader.
+   */
+  private memoizeFulfillmentRouting(
+    order: Order,
+    connectionId: string
+  ): () => Promise<FulfillmentRoutingResolution | null> {
+    let resolution: Promise<FulfillmentRoutingResolution | null> | undefined;
+    return () => {
+      resolution ??= this.fulfillmentRouting
+        .resolve({
+          sourceConnectionId: connectionId,
+          sourceDeliveryMethodId: order.shipping?.methodId ?? null,
+        })
+        .catch((error: unknown) => {
+          this.logger.warn(
+            `Could not resolve fulfillment routing for order ${order.id}; ` +
+              `treating it as unknown: ${(error as Error).message}`
+          );
+          return null;
+        });
+      return resolution;
+    };
   }
 
   private buildUnifiedOrder(
@@ -1766,7 +2393,11 @@ export class OrderIngestionService implements IOrderIngestionService {
       shipping: incoming.shipping,
       pickupPoint: incoming.pickupPoint,
       deliverySmart: incoming.deliverySmart,
+      fulfilledBySource: incoming.fulfilledBySource,
       paymentStatus: incoming.paymentStatus,
+      paymentMethod: incoming.paymentMethod,
+      buyerNote: incoming.buyerNote,
+      sourcePaymentMethod: incoming.sourcePaymentMethod,
       codToCollect: incoming.codToCollect,
       dispatchTime: incoming.dispatchTime,
       placedAt: incoming.placedAt ? new Date(incoming.placedAt) : undefined,

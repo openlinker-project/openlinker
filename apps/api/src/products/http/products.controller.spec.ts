@@ -8,6 +8,7 @@
 import type { TestingModule } from '@nestjs/testing';
 import { Test } from '@nestjs/testing';
 import { BadRequestException, NotFoundException } from '@nestjs/common';
+import { PATH_METADATA } from '@nestjs/common/constants';
 import { ProductImageProxyService } from '../application/services/product-image-proxy.service';
 import { ProductsController, VariantsController } from './products.controller';
 import { PRODUCTS_SERVICE_TOKEN, TAX_RATE_JOURNAL_SERVICE_TOKEN } from '@openlinker/core/products';
@@ -20,8 +21,12 @@ import type {
 } from '@openlinker/core/products';
 import { IDENTIFIER_MAPPING_SERVICE_TOKEN } from '@openlinker/core/identifier-mapping';
 import type { IdentifierMappingPort } from '@openlinker/core/identifier-mapping';
-import { INVENTORY_QUERY_SERVICE_TOKEN } from '@openlinker/core/inventory';
-import type { IInventoryQueryService } from '@openlinker/core/inventory';
+import { AVAILABILITY_SERVICE_TOKEN, INVENTORY_QUERY_SERVICE_TOKEN } from '@openlinker/core/inventory';
+import type {
+  IAvailabilityService,
+  IInventoryQueryService,
+  PromisableQuantity,
+} from '@openlinker/core/inventory';
 import { OFFER_MAPPINGS_SERVICE_TOKEN } from '@openlinker/core/listings';
 import type { IOfferMappingsService } from '@openlinker/core/listings';
 import { SHOP_PRODUCT_MAPPINGS_SERVICE_TOKEN } from '@openlinker/core/listings';
@@ -51,6 +56,7 @@ function makeVariant(overrides: Partial<ProductVariant> = {}): ProductVariant {
     ean: overrides.ean ?? '1234567890123',
     gtin: overrides.gtin ?? null,
     price: overrides.price,
+    images: overrides.images,
     createdAt: overrides.createdAt ?? new Date('2026-01-01T00:00:00Z'),
     updatedAt: overrides.updatedAt ?? new Date('2026-01-01T00:00:00Z'),
     isStale: overrides.isStale,
@@ -79,8 +85,12 @@ function createMockProductsService(): jest.Mocked<IProductsService> {
     getVariantCountsByProductIds: jest.fn(),
     getStaleVariantCountsByProductIds: jest.fn(),
     markVariantsStaleExcept: jest.fn(),
+    clearPriceBasisPending: jest.fn(),
   recordProductTaxRate: jest.fn(),
   recordVariantTaxRate: jest.fn(),
+  fillVariantsPhysicalDimensionsIfAbsent: jest.fn(),
+  recordVariantCost: jest.fn(),
+  fillVariantCostsIfAbsent: jest.fn(),
   clearVariantTaxRate: jest.fn(),
   getEffectiveTaxRate: jest.fn(),
   getTaxRateCoverage: jest.fn(),
@@ -95,9 +105,22 @@ function createMockInventoryQuery(): jest.Mocked<IInventoryQueryService> {
     findAvailabilityByVariantIds: jest.fn(),
     findBinCodesByVariantIds: jest.fn(),
     getProductStockAggregates: jest.fn(),
+    getStockViewByVariantIds: jest.fn(),
     // Unused here — the mock satisfies the full IInventoryQueryService shape (#2319, #3240).
     getDuplicatePositionReport: jest.fn(),
     getProvenanceBackfillStatus: jest.fn(),
+    resolveStockOwner: jest.fn(),
+    listPublishedReservedByLocation: jest.fn(),
+  };
+}
+
+function createMockAvailability(): jest.Mocked<IAvailabilityService> {
+  return {
+    getPromisableQuantities: jest.fn(),
+    applyPublishControls: jest.fn(),
+    applyPublishControlsBatch: jest.fn(),
+    getAppliedReserve: jest.fn(),
+    getAppliedControls: jest.fn(),
   };
 }
 
@@ -154,6 +177,7 @@ describe('ProductsController', () => {
   let productsService: jest.Mocked<IProductsService>;
   let identifierMapping: jest.Mocked<IdentifierMappingPort>;
   let inventoryQuery: jest.Mocked<IInventoryQueryService>;
+  let availability: jest.Mocked<IAvailabilityService>;
   let offerMappings: jest.Mocked<IOfferMappingsService>;
   let shopProductMappings: jest.Mocked<IShopProductMappingsService>;
   let taxRateJournal: jest.Mocked<ITaxRateJournalService>;
@@ -162,6 +186,7 @@ describe('ProductsController', () => {
     const mockProductsService = createMockProductsService();
     const mockIdentifierMapping = createMockIdentifierMapping();
     const mockInventoryQuery = createMockInventoryQuery();
+    const mockAvailability = createMockAvailability();
     const mockOfferMappings = createMockOfferMappings();
     const mockShopProductMappings = createMockShopProductMappings();
     const mockTaxRateJournal = createMockTaxRateJournal();
@@ -172,6 +197,7 @@ describe('ProductsController', () => {
         { provide: PRODUCTS_SERVICE_TOKEN, useValue: mockProductsService },
         { provide: IDENTIFIER_MAPPING_SERVICE_TOKEN, useValue: mockIdentifierMapping },
         { provide: INVENTORY_QUERY_SERVICE_TOKEN, useValue: mockInventoryQuery },
+        { provide: AVAILABILITY_SERVICE_TOKEN, useValue: mockAvailability },
         { provide: OFFER_MAPPINGS_SERVICE_TOKEN, useValue: mockOfferMappings },
         { provide: SHOP_PRODUCT_MAPPINGS_SERVICE_TOKEN, useValue: mockShopProductMappings },
         { provide: TAX_RATE_JOURNAL_SERVICE_TOKEN, useValue: mockTaxRateJournal },
@@ -179,7 +205,10 @@ describe('ProductsController', () => {
         // absent provider fails the whole module and with it every test in this
         // file - which is how it went unnoticed, since nothing here exercises
         // the image route it was added for.
-        { provide: ProductImageProxyService, useValue: { getImage: jest.fn() } },
+        {
+          provide: ProductImageProxyService,
+          useValue: { getImage: jest.fn(), getVariantImage: jest.fn() },
+        },
       ],
     }).compile();
 
@@ -187,6 +216,7 @@ describe('ProductsController', () => {
     productsService = module.get(PRODUCTS_SERVICE_TOKEN);
     identifierMapping = module.get(IDENTIFIER_MAPPING_SERVICE_TOKEN);
     inventoryQuery = module.get(INVENTORY_QUERY_SERVICE_TOKEN);
+    availability = module.get(AVAILABILITY_SERVICE_TOKEN);
     offerMappings = module.get(OFFER_MAPPINGS_SERVICE_TOKEN);
     shopProductMappings = module.get(SHOP_PRODUCT_MAPPINGS_SERVICE_TOKEN);
     taxRateJournal = module.get(TAX_RATE_JOURNAL_SERVICE_TOKEN);
@@ -202,6 +232,9 @@ describe('ProductsController', () => {
     productsService.getVariantCountsByProductIds.mockResolvedValue(new Map());
     productsService.getStaleVariantCountsByProductIds.mockResolvedValue(new Map());
     identifierMapping.getExternalIds.mockResolvedValue([]);
+    productsService.getVariantsByProductIds.mockResolvedValue([]);
+    availability.getPromisableQuantities.mockResolvedValue([]);
+    productsService.getProductsByIds.mockResolvedValue([]);
   });
 
   describe('listProducts', () => {
@@ -387,6 +420,107 @@ describe('ProductsController', () => {
       ]);
     });
 
+    describe('available-to-promise column (#3621)', () => {
+      const atp = (
+        id: string,
+        quantity: number | null,
+        provenance: 'computed' | 'unknown' = 'computed'
+      ): PromisableQuantity => ({
+        productVariantId: id,
+        quantity,
+        provenance,
+        observedAt: null,
+        stalenessMs: null,
+        olHeldNotReflected: null,
+      });
+
+      it('should sum variant ATP into the product with ONE batched read for the page', async () => {
+        productsService.listProducts.mockResolvedValue({
+          items: [makeProduct(), makeProduct({ id: 'ol_product_2' })],
+          total: 2,
+        });
+        productsService.getVariantsByProductIds.mockResolvedValue([
+          makeVariant({ id: 'v1', productId: 'ol_product_1' }),
+          makeVariant({ id: 'v2', productId: 'ol_product_1' }),
+          makeVariant({ id: 'v3', productId: 'ol_product_2' }),
+        ]);
+        availability.getPromisableQuantities.mockResolvedValue([
+          atp('v1', 4),
+          atp('v2', 0),
+          atp('v3', 9),
+        ]);
+
+        const result = await controller.listProducts({});
+
+        expect(productsService.getVariantsByProductIds).toHaveBeenCalledTimes(1);
+        expect(availability.getPromisableQuantities).toHaveBeenCalledTimes(1);
+        expect(availability.getPromisableQuantities).toHaveBeenCalledWith({
+          variantIds: ['v1', 'v2', 'v3'],
+          scope: { kind: 'global' },
+        });
+        expect(result.items.map((i) => [i.availableToPromise, i.atpProvenance])).toEqual([
+          [4, 'computed'],
+          [9, 'computed'],
+        ]);
+      });
+
+      it('should chunk the availability read at 200 variants per call', async () => {
+        productsService.listProducts.mockResolvedValue({ items: [makeProduct()], total: 1 });
+        const variants = Array.from({ length: 450 }, (_, i) =>
+          makeVariant({ id: `v${String(i)}`, productId: 'ol_product_1' })
+        );
+        productsService.getVariantsByProductIds.mockResolvedValue(variants);
+        availability.getPromisableQuantities.mockImplementation(({ variantIds }) =>
+          Promise.resolve(variantIds.map((id) => atp(id, 1)))
+        );
+
+        const result = await controller.listProducts({});
+
+        expect(availability.getPromisableQuantities.mock.calls.map((c) => c[0].variantIds.length))
+          .toEqual([200, 200, 50]);
+        expect(result.items[0].availableToPromise).toBe(450);
+      });
+
+      it('should report the product unknown, never a partial sum, when any variant is unknown', async () => {
+        productsService.listProducts.mockResolvedValue({ items: [makeProduct()], total: 1 });
+        productsService.getVariantsByProductIds.mockResolvedValue([
+          makeVariant({ id: 'v1' }),
+          makeVariant({ id: 'v2' }),
+        ]);
+        availability.getPromisableQuantities.mockResolvedValue([
+          atp('v1', 5),
+          atp('v2', null, 'unknown'),
+        ]);
+
+        const result = await controller.listProducts({});
+
+        expect(result.items[0].availableToPromise).toBeNull();
+        expect(result.items[0].atpProvenance).toBe('unknown');
+      });
+
+      it('should report a product with no variants as unknown rather than zero', async () => {
+        productsService.listProducts.mockResolvedValue({ items: [makeProduct()], total: 1 });
+
+        const result = await controller.listProducts({});
+
+        expect(result.items[0].availableToPromise).toBeNull();
+        expect(result.items[0].atpProvenance).toBe('unknown');
+      });
+
+      it('should degrade the page to unknown instead of failing the list when the read throws', async () => {
+        productsService.listProducts.mockResolvedValue({ items: [makeProduct()], total: 1 });
+        productsService.getVariantsByProductIds.mockRejectedValue(new Error('db down'));
+
+        const result = await controller.listProducts({});
+
+        expect(result.items).toHaveLength(1);
+        expect(result.items[0].availableToPromise).toBeNull();
+        expect(result.items[0].atpProvenance).toBe('unknown');
+        // The raw master sum is untouched by an ATP failure.
+        expect(result.items[0].totalAvailable).toBe(0);
+      });
+    });
+
     it('should zero-fill enrichment when a product has no aggregates, coverage, or variants (#1720)', async () => {
       productsService.listProducts.mockResolvedValue({ items: [makeProduct()], total: 1 });
 
@@ -515,6 +649,47 @@ describe('ProductsController', () => {
       await expect(controller.getProduct('nonexistent')).rejects.toThrow(NotFoundException);
     });
 
+    it('should expose each variant own images and its resolved default listing images', async () => {
+      const gfx = (n: number): string => `https://shop.example/gfx/${n}.jpg`;
+      productsService.getProduct.mockResolvedValue(
+        makeProduct({ images: [gfx(312), gfx(313), gfx(314), gfx(315)] })
+      );
+      productsService.listVariants.mockResolvedValue({
+        items: [
+          makeVariant({ id: 'red', images: [gfx(314)] }),
+          makeVariant({ id: 'green', images: [gfx(315)] }),
+          makeVariant({ id: 'navy', images: null }),
+        ],
+        total: 3,
+      });
+      identifierMapping.getExternalIds.mockResolvedValue([]);
+
+      const result = await controller.getProduct('ol_product_1');
+
+      expect(result.variants!.map((v) => [v.id, v.images, v.defaultImages])).toEqual([
+        ['red', [gfx(314)], [gfx(314), gfx(312), gfx(313)]],
+        ['green', [gfx(315)], [gfx(315), gfx(312), gfx(313)]],
+        ['navy', null, [gfx(312), gfx(313)]],
+      ]);
+      // Every sibling was on the page, so no second read was needed.
+      expect(productsService.getVariantsByProductId).not.toHaveBeenCalled();
+    });
+
+    it('should resolve default images against every sibling when the detail page is capped', async () => {
+      const gfx = (n: number): string => `https://shop.example/gfx/${n}.jpg`;
+      const navy = makeVariant({ id: 'navy', images: null });
+      const offPage = makeVariant({ id: 'off-page', images: [gfx(2)] });
+      productsService.getProduct.mockResolvedValue(makeProduct({ images: [gfx(1), gfx(2)] }));
+      productsService.listVariants.mockResolvedValue({ items: [navy], total: 101 });
+      productsService.getVariantsByProductId.mockResolvedValue([navy, offPage]);
+      identifierMapping.getExternalIds.mockResolvedValue([]);
+
+      const result = await controller.getProduct('ol_product_1');
+
+      expect(productsService.getVariantsByProductId).toHaveBeenCalledWith('ol_product_1');
+      expect(result.variants![0].defaultImages).toEqual([gfx(1)]);
+    });
+
     it('should load external IDs in parallel', async () => {
       const product = makeProduct();
       const variants = [makeVariant({ id: 'ol_product_v1' }), makeVariant({ id: 'ol_product_v2' })];
@@ -526,6 +701,138 @@ describe('ProductsController', () => {
 
       // 1 call for product + 2 calls for variants = 3 total
       expect(identifierMapping.getExternalIds).toHaveBeenCalledTimes(3);
+    });
+  });
+
+  describe('variant pictures (#3586)', () => {
+    const gfx = (n: number): string => `https://shop.example/gfx/${n}.jpg`;
+
+    it('should point imageUrls at the variant route and mark own images as not from the product', async () => {
+      productsService.getProduct.mockResolvedValue(makeProduct({ images: [gfx(1), gfx(2)] }));
+      productsService.listVariants.mockResolvedValue({
+        items: [makeVariant({ id: 'red', images: [gfx(2)] })],
+        total: 1,
+      });
+
+      const result = await controller.getProduct('ol_product_1');
+
+      expect(result.variants![0].imageUrls).toEqual(['/products/variants/red/images/0']);
+      expect(result.variants![0].imagesFromProduct).toBe(false);
+    });
+
+    it("should fall back to the product's pictures when the variant has none of its own", async () => {
+      productsService.getProduct.mockResolvedValue(makeProduct({ images: [gfx(1), gfx(2)] }));
+      productsService.listVariants.mockResolvedValue({
+        items: [makeVariant({ id: 'navy', images: null })],
+        total: 1,
+      });
+
+      const result = await controller.getProduct('ol_product_1');
+
+      expect(result.variants![0].imageUrls).toEqual([
+        '/products/variants/navy/images/0',
+        '/products/variants/navy/images/1',
+      ]);
+      expect(result.variants![0].imagesFromProduct).toBe(true);
+    });
+
+    it('should report an empty list and imagesFromProduct=false when neither has pictures', async () => {
+      productsService.getProduct.mockResolvedValue(makeProduct({ images: null }));
+      productsService.listVariants.mockResolvedValue({
+        items: [makeVariant({ id: 'bare', images: null })],
+        total: 1,
+      });
+
+      const result = await controller.getProduct('ol_product_1');
+
+      expect(result.variants![0].imageUrls).toEqual([]);
+      expect(result.variants![0].imagesFromProduct).toBe(false);
+    });
+
+    it('should read the parent products of a variant page in ONE batched call', async () => {
+      productsService.listVariants.mockResolvedValue({
+        items: [
+          makeVariant({ id: 'a', productId: 'p1' }),
+          makeVariant({ id: 'b', productId: 'p1' }),
+          makeVariant({ id: 'c', productId: 'p2', images: [gfx(9)] }),
+        ],
+        total: 3,
+      });
+      productsService.getProductsByIds.mockResolvedValue([
+        makeProduct({ id: 'p1', images: [gfx(1)] }),
+      ]);
+
+      const result = await controller.listVariantsByProduct('p1', { limit: 20, offset: 0 });
+
+      expect(productsService.getProductsByIds).toHaveBeenCalledTimes(1);
+      expect(productsService.getProductsByIds).toHaveBeenCalledWith(['p1']);
+      expect(result.items.map((v) => v.imagesFromProduct)).toEqual([true, true, false]);
+    });
+
+    it('should not read products at all when every variant has its own pictures', async () => {
+      productsService.listVariants.mockResolvedValue({
+        items: [makeVariant({ images: [gfx(1)] })],
+        total: 1,
+      });
+
+      await controller.listVariantsByProduct('ol_product_1', { limit: 20, offset: 0 });
+
+      expect(productsService.getProductsByIds).not.toHaveBeenCalled();
+    });
+
+    it('should declare the variant image route before the routes that would capture it', () => {
+      const proto = ProductsController.prototype as unknown as Record<string, unknown>;
+      const order = Object.getOwnPropertyNames(proto);
+      const pathOf = (name: string): unknown => Reflect.getMetadata(PATH_METADATA, proto[name] as object);
+
+      expect(pathOf('getVariantImage')).toBe('variants/:variantId/images/:index');
+      expect(order.indexOf('getVariantImage')).toBeLessThan(order.indexOf('getProductImage'));
+      expect(order.indexOf('getVariantImage')).toBeLessThan(order.indexOf('getProduct'));
+      expect(order.indexOf('getVariantSummary')).toBeLessThan(order.indexOf('getProduct'));
+    });
+  });
+
+  describe('getVariantImage (#3586)', () => {
+    let images: { getVariantImage: jest.Mock };
+    const res = {
+      setHeader: jest.fn(),
+      end: jest.fn(),
+    };
+
+    beforeEach(() => {
+      images = (controller as unknown as { productImages: { getVariantImage: jest.Mock } })
+        .productImages;
+      res.setHeader.mockClear();
+      res.end.mockClear();
+    });
+
+    it('should stream the bytes with the same headers as the product route', async () => {
+      images.getVariantImage.mockResolvedValue({
+        kind: 'image',
+        image: { bytes: Buffer.from('abc'), contentType: 'image/jpeg' },
+      });
+
+      await controller.getVariantImage('v1', '0', res as never);
+
+      expect(images.getVariantImage).toHaveBeenCalledWith('v1', 0);
+      expect(res.setHeader).toHaveBeenCalledWith('Content-Type', 'image/jpeg');
+      expect(res.setHeader).toHaveBeenCalledWith('Cache-Control', 'private, max-age=3600');
+      expect(res.setHeader).toHaveBeenCalledWith('X-Content-Type-Options', 'nosniff');
+      expect(res.end).toHaveBeenCalled();
+    });
+
+    it('should answer 404 for a failure and for a malformed index', async () => {
+      images.getVariantImage.mockResolvedValue({ kind: 'failure', reason: 'not-found' });
+
+      await expect(controller.getVariantImage('v1', '5', res as never)).rejects.toThrow(
+        NotFoundException
+      );
+      await expect(controller.getVariantImage('v1', '-1', res as never)).rejects.toThrow(
+        NotFoundException
+      );
+      await expect(controller.getVariantImage('v1', 'x', res as never)).rejects.toThrow(
+        NotFoundException
+      );
     });
   });
 
@@ -568,6 +875,8 @@ describe('ProductsController', () => {
         sku: 'SKU-RED-42',
         ean: '5901234123457',
         name: 'Red / 42',
+        imageUrls: [],
+        imagesFromProduct: false,
         isStale: false,
         staleAt: null,
       });
@@ -804,6 +1113,7 @@ describe('VariantsController', () => {
     productsService = module.get(PRODUCTS_SERVICE_TOKEN);
 
     jest.clearAllMocks();
+    productsService.getProductsByIds.mockResolvedValue([]);
   });
 
   describe('searchVariants', () => {

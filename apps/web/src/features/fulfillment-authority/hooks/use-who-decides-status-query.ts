@@ -5,7 +5,8 @@
  *
  * The read is authorised for a read-only role (#2353), so this hook is called
  * unconditionally — it is the write control that `useWriteAccess` gates, never
- * the page.
+ * the page. `enabled: false` exists only for a caller whose SESSION could not
+ * use the answer (#3505: the shell of a role holding no routing-gated entry).
  *
  * @module apps/web/src/features/fulfillment-authority/hooks
  */
@@ -14,11 +15,18 @@ import { whoDecidesQueryKeys } from '../api/who-decides.query-keys';
 import type { AuthorityStatus } from '../api/who-decides.types';
 import { useApiClient } from '../../../app/api/api-client-provider';
 
-export function useWhoDecidesStatusQuery(): UseQueryResult<AuthorityStatus | null> {
+export interface UseWhoDecidesStatusQueryOptions {
+  readonly enabled?: boolean;
+}
+
+export function useWhoDecidesStatusQuery(
+  options: UseWhoDecidesStatusQueryOptions = {},
+): UseQueryResult<AuthorityStatus | null> {
   const apiClient = useApiClient();
 
   return useQuery({
     queryKey: whoDecidesQueryKeys.status(),
     queryFn: () => apiClient.fulfillmentAuthority.getStatus(),
+    enabled: options.enabled ?? true,
   });
 }

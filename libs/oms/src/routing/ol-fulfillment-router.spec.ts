@@ -13,6 +13,7 @@ import { checkRoutingPlanConservesQuantities, type RoutingInput } from '@openlin
 import { runFulfillmentRouterContract } from '@openlinker/core/fulfillment/testing';
 
 import type { createOlFulfillmentRouter} from './ol-fulfillment-router';
+import { HOLDER_CANNOT_EXECUTE_REASON } from './evaluate-routing';
 import { OlFulfillmentRouter } from './ol-fulfillment-router';
 import type { RoutingRule } from './routing-rule.types';
 
@@ -30,6 +31,8 @@ interface FakeStock {
   availableQuantity: number;
   /** The inventory row's own identity. Defaults to `(location, variant)`. */
   id?: string;
+  /** #3481 — a row the repository marks stale; the fake honours `excludeStale`. */
+  isStale?: boolean;
 }
 
 function buildRouter(options: {
@@ -39,6 +42,16 @@ function buildRouter(options: {
   blocked?: readonly string[];
   /** When true, every variant asked about is abundantly stocked at every location. */
   abundant?: boolean;
+  /** Records every inventory filter the router asked with (#3481). */
+  inventoryFilters?: Array<Record<string, unknown>>;
+  /** #3476 — whether the OMS connection has `FulfillmentExecutor` enabled. */
+  holderCanExecute?: boolean;
+  /** #3475 — published holds per (location, variant) the ledger would report. */
+  reserved?: ReadonlyArray<{ locationId: string; productVariantId: string; reserved: number }>;
+  /** #3475 — records every call made to the ledger read. */
+  reservedCalls?: Array<{ variantIds: readonly string[]; excludeOrderRecordId?: string }>;
+  /** #3475 — make the ledger read fail. */
+  reservedFails?: boolean;
 }): OlFulfillmentRouter {
   const locations = options.locations ?? [{ id: 'loc-a', countryIso2: 'PL', postcode: '00-001' }];
 
@@ -51,7 +64,8 @@ function buildRouter(options: {
   } as unknown as Parameters<typeof createOlFulfillmentRouter>[0]['locations'];
 
   const inventory = {
-    listInventoryItems: async (filters: { productVariantId?: string }) => {
+    listInventoryItems: async (filters: { productVariantId?: string; excludeStale?: boolean }) => {
+      options.inventoryFilters?.push({ ...filters });
       const variantId = filters.productVariantId ?? '';
       const rows = options.abundant
         ? locations.map((location) => ({
@@ -64,6 +78,8 @@ function buildRouter(options: {
           }))
         : (options.stock ?? [])
             .filter((entry) => entry.productVariantId === variantId)
+            // Mirrors the repository: `excludeStale` drops stale rows, absent keeps them.
+            .filter((entry) => !(filters.excludeStale === true && entry.isStale === true))
             .map((entry) => ({
               item: {
                 id: entry.id ?? `inv-${entry.locationId}-${variantId}`,
@@ -74,6 +90,16 @@ function buildRouter(options: {
             }));
       return await Promise.resolve({ items: rows, total: rows.length });
     },
+    listPublishedReservedByLocation: async (
+      variantIds: readonly string[],
+      readOptions?: { excludeOrderRecordId?: string }
+    ) => {
+      options.reservedCalls?.push({ variantIds, ...readOptions });
+      if (options.reservedFails === true) {
+        throw new Error('ledger unavailable');
+      }
+      return await Promise.resolve(options.reserved ?? []);
+    },
   } as unknown as Parameters<typeof createOlFulfillmentRouter>[0]['inventory'];
 
   const works = {
@@ -82,6 +108,7 @@ function buildRouter(options: {
 
   return new OlFulfillmentRouter({
     connectionId: CONNECTION_ID,
+    holderCanExecute: options.holderCanExecute ?? true,
     rules,
     locations: locationService,
     inventory,
@@ -115,6 +142,57 @@ const input = (overrides: Partial<RoutingInput> = {}): RoutingInput => ({
 runFulfillmentRouterContract(() => buildRouter({ abundant: true }), { subject: 'OlFulfillmentRouter' });
 
 describe('OlFulfillmentRouter', () => {
+  // #3476 — a holder whose connection cannot execute must never be assigned:
+  // the dispatch job would dead-letter and leave the work `unsubmitted` for ever.
+  describe('when the holder cannot execute', () => {
+    it('should assign nothing and report every line unfulfillable with a named reason', async () => {
+      const router = buildRouter({ abundant: true, holderCanExecute: false });
+
+      const plan = await router.route(input(), { idempotencyKey: 'route:d1' });
+
+      expect(plan.status).toBe('resolved');
+      if (plan.status !== 'resolved') return;
+      expect(plan.assignments).toEqual([]);
+      expect(plan.unfulfillable).toEqual([
+        {
+          orderLineId: 'line-1',
+          quantity: 2,
+          resolution: 'refund',
+          reason: HOLDER_CANNOT_EXECUTE_REASON,
+        },
+      ]);
+    });
+
+    it('should name the holder guard in the explanation, ahead of any operator rule', async () => {
+      const router = buildRouter({
+        abundant: true,
+        holderCanExecute: false,
+        rules: [filter('in-stock')],
+      });
+
+      const evaluation = await router.evaluate(input());
+
+      expect(evaluation.explanation[0]).toEqual({
+        rule: {
+          ruleId: 'openlinker:holder-can-execute',
+          name: 'holder-can-execute',
+          displayLabel: 'Holder can execute',
+        },
+        eliminated: ['loc-a'],
+        score: null,
+        detail: HOLDER_CANNOT_EXECUTE_REASON,
+      });
+    });
+
+    it('should leave the explanation empty for an empty ruleset when the holder can execute', async () => {
+      const router = buildRouter({ abundant: true, holderCanExecute: true });
+
+      const evaluation = await router.evaluate(input());
+
+      expect(evaluation.explanation).toEqual([]);
+    });
+  });
+
   describe('the shared pipeline', () => {
     it('should explain evaluate() and route() identically for the same input', async () => {
       const router = buildRouter({ abundant: true, rules: [filter('in-stock'), sort('most-complete')] });
@@ -250,6 +328,143 @@ describe('OlFulfillmentRouter', () => {
       const plan = await router.route(input(), { idempotencyKey: 'route:d11' });
       if (plan.status !== 'resolved') throw new Error('expected resolved');
       expect(plan.explanation[0]?.detail).toContain('ranked nothing');
+    });
+  });
+
+  // #3481 — stale rows hold units that no longer exist (a located row left
+  // behind after `stockLocationOverride` is cleared, #2322/#3206, or a product
+  // deleted at the master, #1689). Every other availability read excludes them.
+  describe('stale inventory rows (#3481)', () => {
+    it('should ask the inventory read for live rows only', async () => {
+      const inventoryFilters: Array<Record<string, unknown>> = [];
+      const router = buildRouter({ rules: [filter('in-stock')], stock: [], inventoryFilters });
+
+      await router.route(input(), { idempotencyKey: 'route:stale-1' });
+
+      expect(inventoryFilters).toEqual([
+        { productVariantId: 'ol_variant_1', excludeStale: true },
+      ]);
+    });
+
+    it('should not count a stale row as routable stock', async () => {
+      const router = buildRouter({
+        rules: [filter('in-stock')],
+        stock: [
+          { locationId: 'loc-a', productVariantId: 'ol_variant_1', availableQuantity: 5, isStale: true },
+        ],
+      });
+
+      const plan = await router.route(input(), { idempotencyKey: 'route:stale-2' });
+
+      if (plan.status !== 'resolved') throw new Error('expected resolved');
+      expect(plan.assignments).toEqual([]);
+      expect(plan.unfulfillable).toEqual([
+        expect.objectContaining({ orderLineId: 'line-1', quantity: 2 }),
+      ]);
+    });
+
+    it('should route to the location holding live stock, not the one holding only stale stock', async () => {
+      const router = buildRouter({
+        rules: [filter('in-stock')],
+        locations: [
+          { id: 'loc-a', countryIso2: 'PL', postcode: '00-001' },
+          { id: 'loc-b', countryIso2: 'PL', postcode: '00-001' },
+        ],
+        stock: [
+          { locationId: 'loc-a', productVariantId: 'ol_variant_1', availableQuantity: 5, isStale: true },
+          { locationId: 'loc-b', productVariantId: 'ol_variant_1', availableQuantity: 2 },
+        ],
+      });
+
+      const plan = await router.route(input(), { idempotencyKey: 'route:stale-3' });
+
+      if (plan.status !== 'resolved') throw new Error('expected resolved');
+      expect(plan.unfulfillable).toEqual([]);
+      expect(plan.assignments.map((assignment) => assignment.locationId)).toEqual(['loc-b']);
+    });
+  });
+
+  describe('promised stock (#3475)', () => {
+    const stockOf = (availableQuantity: number): FakeStock[] => [
+      { locationId: 'loc-a', productVariantId: 'ol_variant_1', availableQuantity },
+    ];
+
+    it('should not route units that published holds have already claimed', async () => {
+      const router = buildRouter({
+        rules: [filter('in-stock')],
+        stock: stockOf(3),
+        reserved: [{ locationId: 'loc-a', productVariantId: 'ol_variant_1', reserved: 2 }],
+      });
+
+      const plan = await router.route(input(), { idempotencyKey: 'route:promised-1' });
+
+      // 3 on the shelf, 2 promised: 1 free, and the line wants 2.
+      if (plan.status !== 'resolved') throw new Error('expected resolved');
+      expect(plan.assignments).toEqual([
+        expect.objectContaining({ orderLineId: 'line-1', locationId: 'loc-a', quantity: 1 }),
+      ]);
+      expect(plan.unfulfillable).toEqual([
+        expect.objectContaining({ orderLineId: 'line-1', quantity: 1 }),
+      ]);
+    });
+
+    it('should route to the location whose stock is not promised', async () => {
+      const router = buildRouter({
+        rules: [filter('in-stock')],
+        locations: [
+          { id: 'loc-a', countryIso2: 'PL', postcode: '00-001' },
+          { id: 'loc-b', countryIso2: 'PL', postcode: '00-001' },
+        ],
+        stock: [
+          { locationId: 'loc-a', productVariantId: 'ol_variant_1', availableQuantity: 2 },
+          { locationId: 'loc-b', productVariantId: 'ol_variant_1', availableQuantity: 2 },
+        ],
+        reserved: [{ locationId: 'loc-a', productVariantId: 'ol_variant_1', reserved: 2 }],
+      });
+
+      const plan = await router.route(input(), { idempotencyKey: 'route:promised-2' });
+
+      if (plan.status !== 'resolved') throw new Error('expected resolved');
+      expect(plan.unfulfillable).toEqual([]);
+      expect(plan.assignments.map((assignment) => assignment.locationId)).toEqual(['loc-b']);
+    });
+
+    it('should floor a location at zero when holds exceed its mirrored stock', async () => {
+      const router = buildRouter({
+        rules: [filter('in-stock')],
+        stock: stockOf(1),
+        reserved: [{ locationId: 'loc-a', productVariantId: 'ol_variant_1', reserved: 5 }],
+      });
+
+      const plan = await router.route(input(), { idempotencyKey: 'route:promised-3' });
+
+      if (plan.status !== 'resolved') throw new Error('expected resolved');
+      expect(plan.assignments).toEqual([]);
+    });
+
+    it('should leave the order itself out of what it counts as promised', async () => {
+      const reservedCalls: Array<{ variantIds: readonly string[]; excludeOrderRecordId?: string }> = [];
+      const router = buildRouter({ rules: [filter('in-stock')], stock: stockOf(2), reservedCalls });
+
+      await router.route(input(), { idempotencyKey: 'route:promised-4' });
+
+      // Its own hold is written before routing runs (#3480).
+      expect(reservedCalls).toEqual([
+        { variantIds: ['ol_variant_1'], excludeOrderRecordId: input().orderId },
+      ]);
+    });
+
+    it('should fail rather than route on raw stock when the ledger cannot be read', async () => {
+      const router = buildRouter({
+        rules: [filter('in-stock')],
+        stock: stockOf(5),
+        reservedFails: true,
+      });
+
+      await expect(router.route(input(), { idempotencyKey: 'route:promised-5' })).rejects.toThrow(
+        'ledger unavailable'
+      );
+      await expect(router.evaluate(input())).rejects.toThrow('ledger unavailable');
     });
   });
 
@@ -529,6 +744,72 @@ describe('OlFulfillmentRouter', () => {
       if (plan.status !== 'resolved') throw new Error('expected resolved');
       expect(plan.explanation).toEqual([]);
       expect(checkRoutingPlanConservesQuantities(request, plan)).toBe(true);
+    });
+  });
+
+  // #2954 - the dry run's draft ruleset. `route()` has no rule parameter, so
+  // none of these can ever reach a committing call.
+  describe('evaluateAgainstDraft (draft ruleset)', () => {
+    const stockAt = (locationId: string, availableQuantity: number) => ({
+      locationId,
+      productVariantId: 'ol_variant_1',
+      availableQuantity,
+    });
+    const twoLocations: FakeLocation[] = [
+      { id: 'loc-a', countryIso2: 'PL', postcode: '00-001' },
+      { id: 'loc-b', countryIso2: 'PL', postcode: '00-002' },
+    ];
+
+    it('should evaluate the saved rules and the draft side by side', async () => {
+      const router = buildRouter({
+        locations: twoLocations,
+        stock: [stockAt('loc-a', 5), stockAt('loc-b', 5)],
+        rules: [sort('priority', ['loc-a'])],
+      });
+
+      const { saved, draft } = await router.evaluateAgainstDraft(input(), [sort('priority', ['loc-b'])]);
+
+      expect(saved.candidates[0]?.locationId).toBe('loc-a');
+      expect(draft.candidates[0]?.locationId).toBe('loc-b');
+    });
+
+    it('should read the facts ONCE, so a stock change cannot masquerade as a rule change', async () => {
+      const inventoryFilters: Array<Record<string, unknown>> = [];
+      const router = buildRouter({
+        locations: twoLocations,
+        stock: [stockAt('loc-a', 5), stockAt('loc-b', 5)],
+        rules: [sort('priority', ['loc-a'])],
+        inventoryFilters,
+      });
+
+      // The SAME draft as the saved ruleset: any difference could only come from a second read.
+      const { saved, draft } = await router.evaluateAgainstDraft(input(), [sort('priority', ['loc-a'])]);
+
+      expect(inventoryFilters).toHaveLength(1);
+      expect(draft.candidates).toEqual(saved.candidates);
+    });
+
+    it('should leave evaluate() on the saved ruleset unchanged afterwards', async () => {
+      const router = buildRouter({
+        locations: twoLocations,
+        stock: [stockAt('loc-a', 5), stockAt('loc-b', 5)],
+        rules: [sort('priority', ['loc-a'])],
+      });
+
+      await router.evaluateAgainstDraft(input(), [sort('priority', ['loc-b'])]);
+      const saved = await router.evaluate(input());
+
+      expect(saved.candidates[0]?.locationId).toBe('loc-a');
+    });
+
+    it('should carry no committing identifier in either result', async () => {
+      const router = buildRouter({ abundant: true });
+
+      const { saved, draft } = await router.evaluateAgainstDraft(input(), []);
+
+      for (const evaluation of [saved, draft]) {
+        expect(Object.keys(evaluation).sort()).toEqual(['candidates', 'explanation', 'unfulfillable']);
+      }
     });
   });
 });

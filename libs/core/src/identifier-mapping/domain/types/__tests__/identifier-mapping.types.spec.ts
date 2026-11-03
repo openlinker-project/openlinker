@@ -20,7 +20,8 @@ describe('identifier-mapping.types', () => {
       // the same values at §"Internal Identifier Format". `Shipment`
       // joined in #763 (foundation slice for the InPost shipping epic);
       // `ShopProduct` joined in #1042 (variant→destination-product key for
-      // the shop-publish vertical).
+      // the shop-publish vertical); `ShopProductVariant` joined for the
+      // shop's own variant-grain id (Shoper `stock_id`).
       expect([...CoreEntityTypeValues]).toEqual([
         'Product',
         'ProductVariant',
@@ -31,6 +32,7 @@ describe('identifier-mapping.types', () => {
         'Customer',
         'Shipment',
         'ShopProduct',
+        'ShopProductVariant',
       ]);
     });
   });

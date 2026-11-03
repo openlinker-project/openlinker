@@ -1,5 +1,11 @@
 import { z } from 'zod';
 import type { StartAllegroOAuthInput } from '../api/allegro.api';
+import {
+  DEFAULT_DELIVERY_WIZARD_VALUE,
+  wizardConfig,
+  type DeliveryLineSuggestion,
+  type DeliveryWizardValue,
+} from '../../delivery-on-documents';
 
 const UUID_REGEX =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -21,6 +27,9 @@ export const allegroSetupSchema = z.object({
       'Invalid connection ID',
     )
     .transform((value) => (value && value.length > 0 ? value : undefined)),
+  // The answer to the "Sales documents" step. Structured state rather than a
+  // registered input, so it is set through `setValue` (#3911).
+  deliveryOnDocuments: z.custom<DeliveryWizardValue>().optional(),
 });
 
 export type AllegroSetupFormValues = z.input<typeof allegroSetupSchema>;
@@ -32,12 +41,14 @@ export const ALLEGRO_SETUP_DEFAULT_VALUES: AllegroSetupFormValues = {
   clientId: '',
   clientSecret: '',
   masterCatalogConnectionId: '',
+  deliveryOnDocuments: DEFAULT_DELIVERY_WIZARD_VALUE,
 };
 
 export function toStartOAuthInput(
   values: AllegroSetupFormSubmission,
   redirectUri: string,
   reauthConnectionId?: string,
+  suggestions: readonly DeliveryLineSuggestion[] = [],
 ): StartAllegroOAuthInput {
   return {
     clientId: values.clientId,
@@ -49,5 +60,14 @@ export function toStartOAuthInput(
       ? { masterCatalogConnectionId: values.masterCatalogConnectionId }
       : {}),
     ...(reauthConnectionId ? { connectionId: reauthConnectionId } : {}),
+    // A reauth only rotates credentials; it must not carry config (#3911).
+    ...(reauthConnectionId
+      ? {}
+      : {
+          deliveryOnDocuments: wizardConfig(
+            values.deliveryOnDocuments ?? DEFAULT_DELIVERY_WIZARD_VALUE,
+            suggestions,
+          ),
+        }),
   };
 }

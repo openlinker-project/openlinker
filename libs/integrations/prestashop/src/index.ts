@@ -40,6 +40,7 @@ export { PrestashopConfigException } from './domain/exceptions/prestashop-config
 export { PrestashopAuthenticationException } from './domain/exceptions/prestashop-authentication.exception';
 export { PrestashopResourceNotFoundException } from './domain/exceptions/prestashop-resource-not-found.exception';
 export { PrestashopApiException } from './domain/exceptions/prestashop-api.exception';
+export { PrestashopAmbiguousWriteException } from './domain/exceptions/prestashop-ambiguous-write.exception';
 export { PrestashopNotSupportedException } from './domain/exceptions/prestashop-not-supported.exception';
 export { PrestashopParseException } from './domain/exceptions/prestashop-parse.exception';
 export { PrestashopCountryNotFoundException } from './domain/exceptions/prestashop-country-not-found.exception';

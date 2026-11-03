@@ -18,6 +18,12 @@ import type {
   DuplicatePositionReport,
   ProvenanceBackfillStatus,
 } from '../../domain/types/inventory.types';
+import type {
+  InventoryOwnerQuery,
+  InventoryOwnerResolution,
+} from '../../domain/types/inventory-owner.types';
+import type { LocatedReservedSum } from '../../domain/ports/reservation-ledger-reader.port';
+import type { GetStockViewInput, VariantStockView } from '../../domain/types/stock-view.types';
 import type { PaginatedInventoryView } from '../types/inventory-view.types';
 
 export interface IInventoryQueryService {
@@ -51,6 +57,25 @@ export interface IInventoryQueryService {
   getAvailabilityByVariantIds(
     variantIds: readonly string[]
   ): Promise<readonly VariantAvailability[]>;
+
+  /**
+   * The stock view (#3621): one entry per requested variant, in input order -
+   * master totals over live positions, the global-scope available-to-promise
+   * with its provenance, the advisory-hold split (`heldCounted` /
+   * `heldRecordedOnly`), the live position count, every position (stale ones
+   * flagged) and a stale-sync flag against `staleSyncThresholdMs`.
+   *
+   * **Never invents a number.** If the availability or the ledger read cannot
+   * answer, the WHOLE batch is `provenance: 'unknown'` with ATP and both held
+   * figures `null` (a partial answer would mix variants computed against a
+   * ledger term with ones computed against nothing). A variant with no
+   * positions is a known `0` with provenance `'computed'`. The raw
+   * `olReservedQuantity` counter is never returned: it sums both stamps, so
+   * the figures here come from the ledger scoped by `atpEffect`.
+   *
+   * @throws Error when more than `MAX_STOCK_VIEW_VARIANT_IDS` ids are passed
+   */
+  getStockViewByVariantIds(input: GetStockViewInput): Promise<readonly VariantStockView[]>;
 
   /**
    * Presence-preserving counterpart of {@link getAvailabilityByVariantIds}
@@ -129,4 +154,47 @@ export interface IInventoryQueryService {
    * completion stamp.
    */
   getProvenanceBackfillStatus(): Promise<ProvenanceBackfillStatus>;
+
+  /**
+   * Which connection owns the live stock for one product (and variant) — the
+   * provenance read behind a per-line write to "the" product master (#3486).
+   *
+   * The cross-context seam for {@link resolveInventoryPositionOwner}: a sibling
+   * context (the returns restock) may not read the inventory repository port, so
+   * it asks here and gets the same answer the sale decrement (#3453) acts on.
+   * Reads live (`isStale = false`) positions only; never throws for a modelled
+   * condition — no position, unknown provenance and several owners are all
+   * `blocked` results the caller names to the operator.
+   *
+   * **Single-product by design (#3498 review)** — one query per call, unlike
+   * the sale decrement's own `findLiveOwnerPositions`, which batches across a
+   * work's lines. The returns write path is per line (`disposeLine`) so this
+   * costs no N+1 there; a future caller that loops over several lines of one
+   * return or work should reach for a batched sibling of this method rather
+   * than call it once per line (the `getEarliestOrderDateByConnection`, #2083,
+   * lesson).
+   */
+  resolveStockOwner(query: InventoryOwnerQuery): Promise<InventoryOwnerResolution>;
+
+  /**
+   * Units OpenLinker has already PROMISED, per `(location, variant)` (#3475):
+   * the live, non-stale sum of `held` reservations stamped `atpEffect =
+   * 'published'` (ADR-061 decision 1) - the same definition `IAvailabilityService`
+   * subtracts, partitioned by location because the fulfilment router chooses
+   * between locations rather than publishing one number.
+   *
+   * Only `published` holds count: a `diagnostic` hold is recorded for visibility
+   * and by definition restricts nothing. Only LOCATED positions appear. Entries
+   * exist only for non-zero pairs; an absent pair means nothing is promised.
+   *
+   * `excludeOrderRecordId` leaves out one order's own holds - the router passes the
+   * order it is placing, whose hold exists before routing runs (#3480).
+   *
+   * Throws when the ledger cannot be read. A caller that must not over-allocate
+   * has to treat that as "unknown", never as zero.
+   */
+  listPublishedReservedByLocation(
+    variantIds: readonly string[],
+    options?: { readonly excludeOrderRecordId?: string }
+  ): Promise<readonly LocatedReservedSum[]>;
 }

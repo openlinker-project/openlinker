@@ -51,4 +51,124 @@ describe('IssueCorrectionRequestDto', () => {
     const nested = errors.flatMap((e) => e.children ?? []);
     expect(JSON.stringify([errors, nested])).toContain('hasCorrectionDelta');
   });
+
+  describe('reason (#1582, DEF-25, DEF-32)', () => {
+    const lines = [{ originalLineNumber: 1, newQuantity: 2 }];
+
+    it('should accept a correction without a reason - the form recommends one, the operator decides', async () => {
+      const errors = await validate(plainToInstance(IssueCorrectionRequestDto, { lines }));
+
+      expect(errors).toHaveLength(0);
+    });
+
+    it('should reduce a whitespace-only reason to empty, which the controller then omits', async () => {
+      const dto = plainToInstance(IssueCorrectionRequestDto, { reason: '   ', lines });
+
+      expect(await validate(dto)).toHaveLength(0);
+      expect(dto.reason).toBe('');
+    });
+
+    it('should collapse inner whitespace runs', async () => {
+      const dto = plainToInstance(IssueCorrectionRequestDto, { reason: 'wrong\n\n  NIP', lines });
+
+      await validate(dto);
+      expect(dto.reason).toBe('wrong NIP');
+    });
+
+    it('should reject a reason longer than 256 characters', async () => {
+      const dto = plainToInstance(IssueCorrectionRequestDto, { reason: 'ż'.repeat(257), lines });
+
+      const errors = await validate(dto);
+
+      expect(errors.find((e) => e.property === 'reason')?.constraints).toHaveProperty('maxCodePoints');
+    });
+
+    it('should accept exactly 256 characters with diacritics', async () => {
+      const dto = plainToInstance(IssueCorrectionRequestDto, { reason: 'ż'.repeat(256), lines });
+
+      expect(await validate(dto)).toHaveLength(0);
+    });
+
+    it('should trim the reason before it reaches the command', async () => {
+      const dto = plainToInstance(IssueCorrectionRequestDto, {
+        reason: '  wrong NIP  ',
+        lines: [{ originalLineNumber: 1, newQuantity: 2 }],
+      });
+
+      const errors = await validate(dto);
+
+      expect(errors).toHaveLength(0);
+      expect(dto.reason).toBe('wrong NIP');
+    });
+  });
+
+  describe('buyerOverride (#1582)', () => {
+    const validBuyer = {
+      name: 'Acme Sp. z o.o.',
+      taxId: { scheme: 'pl-nip', value: '5252248481' },
+      address: {
+        line1: 'ul. Testowa 1',
+        line2: null,
+        city: 'Warszawa',
+        postalCode: '00-001',
+        countryIso2: 'PL',
+      },
+      type: 'company',
+    };
+
+    it('should accept a buyer-only correction with no lines (DEF-24)', async () => {
+      const dto = plainToInstance(IssueCorrectionRequestDto, {
+        reason: 'wrong address',
+        lines: [],
+        buyerOverride: validBuyer,
+      });
+
+      expect(await validate(dto)).toHaveLength(0);
+    });
+
+    it('should reject an empty correction without a buyer override', async () => {
+      const dto = plainToInstance(IssueCorrectionRequestDto, { reason: 'nothing', lines: [] });
+
+      const errors = await validate(dto);
+
+      expect(errors.find((e) => e.property === 'lines')?.constraints).toHaveProperty('linesOrBuyerOverride');
+    });
+
+    it('should accept a well-formed buyer override', async () => {
+      const dto = plainToInstance(IssueCorrectionRequestDto, {
+        reason: 'wrong NIP',
+        lines: [{ originalLineNumber: 1, newQuantity: 1 }],
+        buyerOverride: validBuyer,
+      });
+
+      const errors = await validate(dto);
+
+      expect(errors).toHaveLength(0);
+    });
+
+    it('should reject a buyer override with an invalid buyer type', async () => {
+      const dto = plainToInstance(IssueCorrectionRequestDto, {
+        reason: 'wrong NIP',
+        lines: [{ originalLineNumber: 1, newQuantity: 1 }],
+        buyerOverride: { ...validBuyer, type: 'not-a-type' },
+      });
+
+      const errors = await validate(dto);
+
+      expect(errors.some((e) => e.property === 'buyerOverride')).toBe(true);
+    });
+
+    it('should reject a buyer override missing the address', async () => {
+      const noAddress = { name: validBuyer.name, taxId: validBuyer.taxId, type: validBuyer.type };
+      const dto = plainToInstance(IssueCorrectionRequestDto, {
+        reason: 'wrong NIP',
+        lines: [{ originalLineNumber: 1, newQuantity: 1 }],
+        buyerOverride: noAddress,
+      });
+
+      const errors = await validate(dto);
+
+      expect(errors.some((e) => e.property === 'buyerOverride')).toBe(true);
+    });
+  });
 });

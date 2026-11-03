@@ -47,6 +47,13 @@ export interface InvoicingIssueBuyerV1 {
    * the key.
    */
   email?: string | null;
+  /**
+   * Fiscal buyer classification (#1580, DEF-08). Optional additive fields: the
+   * BuyerProfile carries them, and a field dropped in this flatten is a field
+   * the issued document silently loses.
+   */
+  isPublicSectorEntity?: boolean;
+  isTaxGroupMember?: boolean;
 }
 
 /**
@@ -72,6 +79,11 @@ export interface InvoicingIssuePayloadV1 {
    * `schemaVersion` bump (a v1 consumer that ignores it stays correct).
    */
   saleDate?: string;
+  /**
+   * ISO-8601 instant behind `saleDate` (DEF-33), so the adapter can take the
+   * calendar day in its own zone. Optional additive field, like `saleDate`.
+   */
+  saleInstant?: string;
   /** ISO-4217 currency. */
   currency: string;
   /** Plain invoice lines (numbers, no class). */
@@ -164,4 +176,17 @@ export interface PaymentStatusRefreshByExternalIdPayloadV1 {
   schemaVersion: 1;
   /** Provider-native invoice id (matches `InvoiceRecord.providerInvoiceId`). */
   externalInvoiceId: string;
+}
+
+/**
+ * Payload for `invoicing.marketplaceUpload` (#3549). A REFERENCE only: the job
+ * re-reads the invoice and its attachable document at run time, because a KSeF
+ * invoice may not have its number (and therefore its PDF) when the job is
+ * enqueued, and a document snapshotted into the payload would be stale or absent.
+ * The marketplace connection comes from `job.connectionId`.
+ */
+export interface InvoicingMarketplaceUploadPayloadV1 {
+  schemaVersion: 1;
+  /** `InvoiceRecord.id` of the document to attach. */
+  invoiceId: string;
 }

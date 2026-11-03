@@ -7,18 +7,24 @@
  * @module apps/worker/src/sync
  */
 import { Module } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import type { RedisClientType } from 'redis';
+import { createClient } from 'redis';
 import { SyncModule } from '@openlinker/core/sync';
+import { EventsModule } from '@openlinker/core/events';
 import { IntegrationsModule } from '@openlinker/core/integrations';
 import { IdentifierMappingModule } from '@openlinker/core/identifier-mapping';
 import { ProductsModule } from '@openlinker/core/products';
 import { InventoryModule } from '@openlinker/core/inventory';
 import { AutomationModule } from '@openlinker/core/automation';
+import { MailerTransportModule } from '@openlinker/core/mailer';
 import { OperationalSettingsModule } from '@openlinker/core/operational-settings';
 import { OrdersModule } from '@openlinker/core/orders';
 import { ReturnsModule } from '@openlinker/core/returns';
 import { AnalyticsModule as CoreAnalyticsModule } from '@openlinker/core/analytics';
 import { CurrencyModule } from '@openlinker/core/currency';
 import { ListingsModule } from '@openlinker/core/listings/services';
+import { MappingsModule } from '@openlinker/core/mappings';
 import { ShippingModule } from '@openlinker/core/shipping';
 import { FulfillmentModule } from '@openlinker/core/fulfillment';
 import { InvoicingModule } from '@openlinker/core/invoicing';
@@ -26,6 +32,7 @@ import { FiscalizationModule } from '@openlinker/core/fiscalization';
 import { WorkerContentModule } from '../content/worker-content.module';
 import { PriceChangeObserverBindingModule } from './price-change-observer-binding.module';
 import { JobIntakeConsumer } from './job-intake.consumer';
+import { JOB_INTAKE_REDIS_CLIENT_BLOCKING_TOKEN } from './sync-worker.tokens';
 import { SyncJobRunner } from './sync-job.runner';
 import { SyncJobHandlerRegistry } from './handlers/sync-job-handler.registry';
 import { InventoryPropagateToMarketplacesHandler } from './handlers/inventory-propagate-to-marketplaces.handler';
@@ -77,6 +84,7 @@ import { AutomationTriggerDeadlineSweepHandler } from './handlers/automation-tri
 import { ShopProductStatusSyncHandler } from './handlers/shop-product-status-sync.handler';
 import { DestinationTaxonomySyncHandler } from './handlers/destination-taxonomy-sync.handler';
 import { InvoicingIssueHandler } from './handlers/invoicing-issue.handler';
+import { InvoicingMarketplaceUploadHandler } from './handlers/invoicing-marketplace-upload.handler';
 import { FiscalizationRegisterHandler } from './handlers/fiscalization-register.handler';
 import { RegulatoryStatusReconcileHandler } from './handlers/regulatory-status-reconcile.handler';
 import { OfflineResubmitHandler } from './handlers/offline-resubmit.handler';
@@ -85,14 +93,21 @@ import { FulfillmentWorkDispatchHandler } from './handlers/fulfillment-work-disp
 import { FulfillmentWorkAutoDispatchHandler } from './handlers/fulfillment-work-auto-dispatch.handler';
 import { FulfillmentWorkRouteHandler } from './handlers/fulfillment-work-route.handler';
 import { FulfillmentWorkRelaySweepHandler } from './handlers/fulfillment-work-relay-sweep.handler';
+import { InventorySaleDecrementHandler } from './handlers/inventory-sale-decrement.handler';
+import { FulfillmentWorkRerouteSweepHandler } from './handlers/fulfillment-work-reroute-sweep.handler';
+import { InventorySaleDecrementReconcileSweepHandler } from './handlers/inventory-sale-decrement-reconcile-sweep.handler';
+import { MarketplaceSourceFulfillmentStatusSyncHandler } from './handlers/marketplace-source-fulfillment-status-sync.handler';
 import { FulfillmentWorkTimeoutSweepHandler } from './handlers/fulfillment-work-timeout-sweep.handler';
+import { FulfillmentRoutingReapSweepHandler } from './handlers/fulfillment-routing-reap-sweep.handler';
 import { PaymentStatusRefreshHandler } from './handlers/payment-status-refresh.handler';
 import { AnalyticsCurrencyRecalculateHandler } from './handlers/analytics-currency-recalculate.handler';
+import { OrdersExportHandler } from './handlers/orders-export.handler';
 import { HandlerRegistrationService } from './handlers/handler-registration.service';
 
 @Module({
   imports: [
     SyncModule, // Import SyncModule to access SYNC_JOB_REPOSITORY_TOKEN
+    EventsModule, // #2301, D48 — exposes STREAM_DEAD_LETTERS_SERVICE_TOKEN for JobIntakeConsumer's poison-entry terminal write
     IntegrationsModule, // Import IntegrationsModule to access INTEGRATIONS_SERVICE_TOKEN
     IdentifierMappingModule, // Import IdentifierMappingModule to access IDENTIFIER_MAPPING_SERVICE_TOKEN
     ProductsModule, // Import ProductsModule to access PRODUCTS_SERVICE_TOKEN
@@ -105,6 +120,7 @@ import { HandlerRegistrationService } from './handlers/handler-registration.serv
     // @Optional() injection resolves under this role.
     PriceChangeObserverBindingModule,
     ReturnsModule, // #2330 — exposes RETURN_INGESTION_SERVICE_TOKEN + RETURN_STATUS_SYNC_SERVICE_TOKEN
+    MappingsModule, // #3651 — exposes FULFILLMENT_ROUTING_SERVICE_TOKEN for the auto-dispatch handler's parcel profile
     ShippingModule, // Import ShippingModule to access SHIPMENT_STATUS_SYNC_SERVICE_TOKEN (#838)
     // #2399 — exposes FULFILLMENT_HANDSHAKE_SERVICE_TOKEN. A leaf module: it
     // imports no sibling context, so this edge adds no cycle risk.
@@ -116,6 +132,9 @@ import { HandlerRegistrationService } from './handlers/handler-registration.serv
     // for `automation.trigger.deadlineSweep`. OrdersModule imports AutomationModule too (for T5's
     // write-site emission) but does not re-export it, and Nest imports are not transitive.
     AutomationModule,
+    // The send-email automation step resolves MAILER_TOKEN lazily by token; without this
+    // binding every worker-side firing (the deadline sweeps) ended `failed` (#3552).
+    MailerTransportModule,
     CoreAnalyticsModule, // #2468 — exposes ANALYTICS_REMEDIATION_RUN_SERVICE_TOKEN for the analytics.currency.recalculate handler
     CurrencyModule, // #2468 — exposes REPORTING_CURRENCY_SETTINGS_SERVICE_TOKEN; OrdersModule imports it but does not re-export the token
   ],
@@ -130,6 +149,7 @@ import { HandlerRegistrationService } from './handlers/handler-registration.serv
     MarketplaceOrderFxStampSweepHandler,
     OrdersTaxRateBackfillHandler,
     AnalyticsCurrencyRecalculateHandler,
+    OrdersExportHandler,
     MarketplaceOfferQuantityUpdateHandler,
     MarketplaceOfferQuantityReconcileHandler,
     MarketplaceOfferFieldUpdateHandler,
@@ -154,6 +174,7 @@ import { HandlerRegistrationService } from './handlers/handler-registration.serv
     MarketplaceShipmentSyncByExternalIdHandler,
     ShippingShipmentNotifyDispatchedHandler,
     MarketplaceFulfillmentStatusSyncHandler,
+    MarketplaceSourceFulfillmentStatusSyncHandler,
     FulfillmentWorkStatusSyncHandler,
     MasterProductSyncHandler,
     MasterProductSyncBatchHandler,
@@ -175,6 +196,7 @@ import { HandlerRegistrationService } from './handlers/handler-registration.serv
     ShopProductStatusSyncHandler,
     DestinationTaxonomySyncHandler,
     InvoicingIssueHandler,
+    InvoicingMarketplaceUploadHandler,
     FiscalizationRegisterHandler,
     RegulatoryStatusReconcileHandler,
     OfflineResubmitHandler,
@@ -184,8 +206,39 @@ import { HandlerRegistrationService } from './handlers/handler-registration.serv
     FulfillmentWorkAutoDispatchHandler,
     FulfillmentWorkRouteHandler,
     FulfillmentWorkTimeoutSweepHandler,
+    FulfillmentRoutingReapSweepHandler,
     FulfillmentWorkRelaySweepHandler,
+    InventorySaleDecrementHandler,
+    FulfillmentWorkRerouteSweepHandler,
+    InventorySaleDecrementReconcileSweepHandler,
     HandlerRegistrationService,
+    {
+      // Dedicated client for JobIntakeConsumer's blocking XREADGROUP loop. On
+      // the shared 'REDIS_CLIENT' the read held the connection for up to 5 s at
+      // a time, so the cross-process rate limiter (and every lock and cache
+      // call) queued behind it, timed out after 1 s and degraded to
+      // per-process limiting. Closed by the consumer's onModuleDestroy.
+      provide: JOB_INTAKE_REDIS_CLIENT_BLOCKING_TOKEN,
+      useFactory: async (configService: ConfigService): Promise<RedisClientType> => {
+        const client = createClient({
+          socket: {
+            host: configService.get<string>('REDIS_HOST', 'localhost'),
+            port: configService.get<number>('REDIS_PORT', 6379),
+          },
+          password: configService.get<string>('REDIS_PASSWORD'),
+          database: configService.get<number>('REDIS_DB', 0),
+        });
+        try {
+          await client.connect();
+        } catch (error) {
+          throw new Error(
+            `SyncWorkerModule: Failed to connect JOB_INTAKE_REDIS_CLIENT_BLOCKING: ${error instanceof Error ? error.message : String(error)}`
+          );
+        }
+        return client as RedisClientType;
+      },
+      inject: [ConfigService],
+    },
   ],
 })
 export class SyncWorkerModule {}

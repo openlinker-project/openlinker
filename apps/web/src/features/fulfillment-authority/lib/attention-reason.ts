@@ -32,8 +32,8 @@
 import type { StatusBadgeTone } from '../../../shared/ui/status-badge';
 
 /**
- * The eight inert states of spec §4.2, in the order that section tables them —
- * which is also the render order. Consumers iterate THIS array, never
+ * The eight inert states of spec §4.2, in the order that section tables them,
+ * then #3453's `stock-decrement-blocked` and #2731's `routing-stuck` — which is also the render order. Consumers iterate THIS array, never
  * `Object.keys` of a map keyed by it.
  *
  * One member per line, no computed keys and no spread: the mirror script reads
@@ -53,6 +53,8 @@ export const AuthorityAttentionReasonValues = [
   'returns-disposition-ambiguous',
   'restock-blocked',
   'return-unmatched',
+  'stock-decrement-blocked',
+  'routing-stuck',
 ] as const;
 
 export type AuthorityAttentionReason = (typeof AuthorityAttentionReasonValues)[number];
@@ -89,6 +91,8 @@ export const ATTENTION_REASON_MIRROR = {
   'returns-disposition-ambiguous': { badge: 'stopped', counted: true },
   'restock-blocked': { badge: 'blocked', counted: true },
   'return-unmatched': { badge: 'not-matched', counted: true },
+  'stock-decrement-blocked': { badge: 'blocked', counted: true },
+  'routing-stuck': { badge: 'stopped', counted: true },
 } satisfies Record<AuthorityAttentionReason, AuthorityAttentionMirrorEntry>;
 
 /**

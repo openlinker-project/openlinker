@@ -9,7 +9,7 @@
  *
  * Distinct file and export name from `sales-documents.route.tsx`, which is
  * the UNRELATED `/settings/sales-documents` document-routing CONFIGURATION
- * page (titled "Document routing" as of this same change, precisely to stop
+ * page (titled "Document routing" by this change, "Sales documents routing" since #3656, precisely to stop
  * the two pages sharing one name) — the two must never collide.
  *
  * @module app/routes

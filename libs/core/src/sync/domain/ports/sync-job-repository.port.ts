@@ -22,6 +22,7 @@ import type {
   SyncJobGroupsResult,
   BulkRetryResult,
   PenaltyFreeRequeuePatch,
+  SyncJobRetentionStatus,
 } from '../types/sync-job.types';
 
 /**
@@ -229,6 +230,43 @@ export interface SyncJobRepositoryPort {
    * @returns Number of jobs requeued
    */
   requeueStuckJobs(lockTimeoutMinutes: number): Promise<number>;
+
+  /**
+   * Delete ONE BATCH of terminal `sync_jobs` rows older than `olderThan`
+   * (#2946).
+   *
+   * `status` is `SyncJobRetentionStatus` — `'succeeded' | 'dead'` — a
+   * positive two-value whitelist rather than an exclusion list (the
+   * ADR-049/#2604 outbox-retention shape): `queued`/`running` rows are
+   * unreachable through this method's TYPE, not merely by convention, so a
+   * future `JobStatus` member cannot silently fall through into a prune.
+   *
+   * `olderThan` compares against `updatedAt` — the last write to the row,
+   * which for a terminal row is the transition into `status` itself
+   * (`markSucceeded`/`markDead`). Deletes the OLDEST `batchSize` matching
+   * rows per call, ordered by `updatedAt`, via `DELETE ... WHERE id IN
+   * (SELECT id ... ORDER BY "updatedAt" LIMIT batchSize)` — Postgres has no
+   * `DELETE ... LIMIT`. The caller (the `maintenance`-role retention sweep)
+   * owns looping this across batches and across both statuses; this method
+   * is deliberately single-purpose, matching `requeueStuckJobs`.
+   *
+   * `idempotencyKey` is unique and TTL-less (architecture-overview.md §
+   * Sync Manager), so deleting a row destroys the durable memory that made a
+   * REPLAYED enqueue of that same key a no-op — the retention window is an
+   * operator decision (Operational Settings), never a default this method
+   * second-guesses.
+   *
+   * @param status - Which terminal status to prune. Never `'queued'` or `'running'`.
+   * @param olderThan - Rows with `updatedAt` strictly before this instant are eligible.
+   * @param batchSize - Maximum rows this call may delete.
+   * @returns Number of rows actually deleted (may be less than `batchSize`,
+   *   including 0 when nothing is eligible).
+   */
+  pruneTerminalJobs(
+    status: SyncJobRetentionStatus,
+    olderThan: Date,
+    batchSize: number
+  ): Promise<number>;
 
   /**
    * Requeue a dead job for retry

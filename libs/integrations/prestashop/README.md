@@ -35,6 +35,15 @@ Two pointers for special cases this package doesn't demonstrate:
 | `ProductPublisher`        | [`infrastructure/adapters/product-publisher/prestashop-product-publisher.adapter.ts`](./src/infrastructure/adapters/product-publisher/prestashop-product-publisher.adapter.ts)             |
 | `CategoryProvisioner`     | [`infrastructure/adapters/product-publisher/prestashop-product-publisher.adapter.ts`](./src/infrastructure/adapters/product-publisher/prestashop-product-publisher.adapter.ts)             |
 
+The order processor also declares `OrderCreateStockEffect`. PrestaShop lowers stock as `validateOrder`
+creates an order, for every state except `PS_OS_CANCELED` and `PS_OS_ERROR` (`OrderDetail::updateProductQuantityInStock`);
+`PS_STOCK_MANAGEMENT` does not gate that decrement, so there is no shop setting to read. The answer is therefore
+about the order the adapter just created: it reads the order's first `order_histories` row (the state
+`validateOrder` actually used, which is `PS_OS_ERROR` when the amount paid did not match a logable state) and
+compares it with those two configuration keys. A pack line or a legacy `depends_on_stock = 1` row answers `false`,
+as does any read failure, and an adapter that created no order (core also asks after a skipped create) answers
+`false` too - the order's holds then stay until dispatch, an under-sell and never an oversell.
+
 Plus the registered side services:
 
 - Connection tester — [`prestashop-connection-tester.adapter.ts`](./src/infrastructure/adapters/prestashop-connection-tester.adapter.ts)

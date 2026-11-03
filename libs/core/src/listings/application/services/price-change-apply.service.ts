@@ -59,6 +59,7 @@ import {
   ContendedWriteError,
 } from '@openlinker/core/sync';
 import { minorUnitExponentFor } from '@openlinker/core/sales-documents';
+import { IProductsService, PRODUCTS_SERVICE_TOKEN } from '@openlinker/core/products';
 // `OfferManagerPort` / `OfferFieldUpdater` / `isOfferFieldUpdater` /
 // `UpdateOfferFieldsReport` are this SAME context's own published contract
 // (#3161 re-review, SUGGESTION) — a same-context cross-layer relative import
@@ -71,6 +72,13 @@ import {
   type OfferFieldUpdater,
 } from '../../domain/ports/capabilities/offer-field-updater.capability';
 import type { UpdateOfferFieldsReport } from '../../domain/types/offer-fields-update.types';
+import type { ShopProductManagerPort } from '../../domain/ports/shop-product-manager.port';
+import {
+  isShopProductPriceUpdater,
+  type ShopProductPriceUpdater,
+} from '../../domain/ports/capabilities/shop-product-price-updater.capability';
+import { ProductPublishTargetNotFoundException } from '../../domain/exceptions/product-publish-target-not-found.exception';
+import { ProductPublishRejectedException } from '../../domain/exceptions/product-publish-rejected.exception';
 import { AvailabilityUnknownError } from '../../domain/exceptions/availability-unknown.error';
 import type { PriceChangeEpisode } from '../../domain/entities/price-change-episode.entity';
 // Not `import type` (#3161 review / eslint `consistent-type-imports`): each of
@@ -136,7 +144,10 @@ export class PriceChangeApplyService implements IPriceChangeApplyService {
     @Inject(SYNC_LOCK_TOKEN)
     private readonly syncLock: SyncLockPort,
     @Inject(SYNC_CURSORS_SERVICE_TOKEN)
-    private readonly syncCursors: ISyncCursorsService
+    private readonly syncCursors: ISyncCursorsService,
+    // #3505 — resolves a grouped publish's parent for the price-only write.
+    @Inject(PRODUCTS_SERVICE_TOKEN)
+    private readonly productsService: IProductsService
   ) {}
 
   async applyPriceChange(input: PriceChangeApplyInput): Promise<PriceChangeApplyResult> {
@@ -308,16 +319,26 @@ export class PriceChangeApplyService implements IPriceChangeApplyService {
       // The adapter supporting/enabling `OfferManager` does not by itself
       // guarantee it implements the `OfferFieldUpdater` sub-capability
       // (WooCommerce's `OfferManager` adapter implements ONLY
-      // `updateOfferQuantity`, no field updates at all) — a structural,
-      // permanent mismatch, never retryable.
-      if (!isOfferFieldUpdater(adapter)) {
-        throw new PriceChangeApplyPermanentError(
-          `Adapter for connection ${input.destinationConnectionId} supports OfferManager but ` +
-            `not the OfferFieldUpdater sub-capability (no updateOfferFields)`
-        );
+      // `updateOfferQuantity`, no field updates at all). That used to be a
+      // permanent throw here, but a connection may ALSO have `ProductPublisher`
+      // enabled (#3524) — WooCommerce's manifest advertises both, and nothing
+      // stops an operator enabling them together (the only documented
+      // exclusivity is with `InventoryMaster`). Fall through to the
+      // `ProductPublisher` branch instead of throwing immediately; only
+      // refuse permanently once NEITHER path can apply the price.
+      if (isOfferFieldUpdater(adapter)) {
+        await this.publishToMarketplace(adapter, input);
+        return;
       }
-      await this.publishToMarketplace(adapter, input);
-      return;
+      if (hasProductPublisher) {
+        await this.publishToShop(input);
+        return;
+      }
+      throw new PriceChangeApplyPermanentError(
+        `Adapter for connection ${input.destinationConnectionId} supports OfferManager but ` +
+          `not the OfferFieldUpdater sub-capability (no updateOfferFields), and ProductPublisher ` +
+          `is not enabled on this connection either`
+      );
     }
 
     if (hasProductPublisher) {
@@ -438,9 +459,9 @@ export class PriceChangeApplyService implements IPriceChangeApplyService {
     // channel-specific content with the master description. Reuse whatever
     // the last successful publish for this (variant, connection) actually
     // sent, so a price-only apply stays a price-only write in practice.
-    // `ShopProductManagerPort` has no partial-field-update primitive, so
-    // "send everything, but send the SAME everything" is the closest this
-    // capability can get without a port change (out of scope here).
+    // For an adapter WITHOUT the `ShopProductPriceUpdater` sub-capability
+    // (#3505) "send everything, but send the SAME everything" is the closest
+    // the base port can get; one that has it skips all of this below.
     const previous = await this.listingRecords.findLatestByVariantAndConnection(
       input.productVariantId,
       input.destinationConnectionId
@@ -457,11 +478,10 @@ export class PriceChangeApplyService implements IPriceChangeApplyService {
     // ShopProduct target could land an older quantity last (the exact
     // oversell ADR-067 exists to prevent). `publishToShopGuarded` below closes
     // that race for real (lock + freshness-guarded refusal, #3161 second
-    // re-review) rather than merely logging it. `ShopProductManagerPort` has
-    // no partial-update primitive that would let this write carry price
-    // WITHOUT also carrying stock (`ExecutePublishProductInput.stock` is
-    // required) — that remains a genuine port-level gap, tracked separately
-    // rather than invented around here.
+    // re-review) rather than merely logging it. The base port cannot carry
+    // price WITHOUT stock (`ExecutePublishProductInput.stock` is required);
+    // the optional `ShopProductPriceUpdater` sub-capability (#3505) closes
+    // that gap for the adapters that implement it.
     //
     // What IS reachable without a port change: `InventorySyncService`'s shop
     // write-back branch keys its lock/cursor by the `ShopProduct` EXTERNAL
@@ -497,7 +517,82 @@ export class PriceChangeApplyService implements IPriceChangeApplyService {
       );
     }
 
+    // #3505 (G01-10) — the full publish below re-sends stock (and switches
+    // stock management on) plus title/description, so on WooCommerce a price
+    // change overwrote the shop's stock and content. An adapter that can write
+    // the price alone takes that path: no stock is written, so neither the
+    // ADR-067 lock nor the observation cursor is involved.
+    const adapter = await this.integrationsService.getCapabilityAdapter<ShopProductManagerPort>(
+      input.destinationConnectionId,
+      'ProductPublisher'
+    );
+    if (isShopProductPriceUpdater(adapter)) {
+      await this.publishShopPriceOnly(adapter, input, externalOfferId);
+      return;
+    }
+
     await this.publishToShopGuarded(input, snapshot, externalOfferId);
+  }
+
+  private async publishShopPriceOnly(
+    adapter: ShopProductManagerPort & ShopProductPriceUpdater,
+    input: PriceChangeApplyInput,
+    externalProductId: string
+  ): Promise<void> {
+    const externalParentProductId = await this.resolveShopParentExternalId(input);
+    const applyKeyPart = input.episodeId
+      ? `episode:${input.episodeId}`
+      : `amount:${input.amount}:${input.currency}`;
+    try {
+      await adapter.updateShopProductPrice({
+        externalProductId,
+        ...(externalParentProductId !== null ? { externalParentProductId } : {}),
+        price: {
+          amount: input.amount.toFixed(minorUnitExponentFor(input.currency)),
+          currency: input.currency,
+        },
+        idempotencyKey: `pricing:apply:${input.productVariantId}:${input.destinationConnectionId}:${externalProductId}:${applyKeyPart}`,
+      });
+    } catch (error) {
+      // Both are deterministic for this (product, price): the product is gone
+      // shop-side, or the shop refused the write. Retrying the identical call
+      // cannot change either, so they end as `business_failure` (ADR-007).
+      // A deleted product is NOT re-created here — a price change must never
+      // mint a listing (the round-3 rule `publishToShop` enforces above).
+      if (
+        error instanceof ProductPublishTargetNotFoundException ||
+        error instanceof ProductPublishRejectedException
+      ) {
+        throw new PriceChangeApplyPermanentError(
+          `Shop price update for variant=${input.productVariantId} on connection=` +
+            `${input.destinationConnectionId} (product ${externalProductId}) failed: ${error.message}`
+        );
+      }
+      throw error;
+    }
+  }
+
+  /**
+   * The parent of a grouped (multi-variant) publish, or `null` for a
+   * standalone product. Same detection as `ShopStatusSyncService.readStatus`:
+   * the variant's product has siblings AND a `ShopProduct` mapping keyed on
+   * the product id exists — that mapping is the shared variable parent
+   * `ProductPublishExecutionService` writes for a grouped publish (#1836).
+   */
+  private async resolveShopParentExternalId(input: PriceChangeApplyInput): Promise<string | null> {
+    const variant = await this.productsService.getVariant(input.productVariantId);
+    if (!variant) {
+      return null;
+    }
+    const siblings = await this.productsService.getVariantsByProductId(variant.productId);
+    if (siblings.length <= 1) {
+      return null;
+    }
+    const mappings = await this.identifierMapping.getExternalIds(
+      CORE_ENTITY_TYPE.ShopProduct,
+      variant.productId
+    );
+    return mappings.find((m) => m.connectionId === input.destinationConnectionId)?.externalId ?? null;
   }
 
   private async publishToShopGuarded(

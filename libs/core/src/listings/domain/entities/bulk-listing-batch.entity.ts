@@ -28,5 +28,12 @@ export class BulkListingBatch {
     public readonly sharedConfig: Record<string, unknown>,
     public readonly createdAt: Date,
     public readonly updatedAt: Date,
+    /**
+     * Client idempotency key the batch was submitted under, or null when the
+     * submit carried none (or the key was released after a submit that
+     * enqueued nothing). Trailing and defaulted so the many positional
+     * constructions that predate it keep compiling.
+     */
+    public readonly idempotencyKey: string | null = null,
   ) {}
 }

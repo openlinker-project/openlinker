@@ -166,6 +166,23 @@ export class InvoiceRecord {
      */
     public readonly warehouseReleaseOutcome: WarehouseReleaseOutcome | null = null,
     public readonly warehouseReleaseNumber: string | null = null,
+    /**
+     * Opaque operator-facing clearance diagnostic (#1582) - the authority's
+     * rejection description/details captured by the `RegulatoryStatusReader`
+     * read, so the detail page can explain WHY a document was rejected. Neutral
+     * (ADR-026): a free-text blob, never interpreted in core. `null` until a
+     * read surfaces one (typically only on `rejected`).
+     */
+    public readonly clearanceDetail: string | null = null,
+    /**
+     * Base64URL SHA-256 of the exact {@link sourceDocument} bytes stored at issue
+     * time (#3620). Computed once, from the same buffer that was persisted, and
+     * written together with `sourceDocument` (write-once), so a verification link
+     * built from it can only describe the document that was sent - never a
+     * re-serialisation of it. `null` on rows issued before this column existed;
+     * a reader falls back to hashing `sourceDocument` for those.
+     */
+    public readonly sourceDocumentHash: string | null = null,
   ) {}
 
   /**

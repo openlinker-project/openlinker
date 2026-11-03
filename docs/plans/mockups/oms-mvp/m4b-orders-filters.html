@@ -1,0 +1,169 @@
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>body{margin:0;padding:0;background:var(--bg-canvas);color:var(--text-primary)}[hidden]{display:none!important}</style></head><body>
+<title>Orders filters</title>
+<!--
+  M4b — orders list search + filters (#3507, ui-rework 02 §2, approved 2026-10-01).
+
+  Replaces the eight-control toolbar + three chip rows of M4 with:
+    1. one row: search · "Filters (n)" · result count;
+    2. active filter chips `{label: value} ×` + "Clear all" (only when narrowed);
+    3. one quick-filter row "NEEDS A LOOK … | STAGE …";
+    4. "Filters" opens an accordion panel with four groups (desktop) or a bottom
+       sheet with <details> sections (phone).
+  No Apply button: every control writes the URL immediately; the URL contract is
+  M4's, unchanged (packed also takes `false`).
+
+  Built ONLY from classes that exist in apps/web/src/index.css — the shared
+  filter primitives (`.filter-*`, `.active-filters`, `.quick-filters`,
+  `.dialog__content--sheet`, `.sheet__*`, `.button--bare`) and the orders block
+  (`.orders-filterbar*`, `.orders-segments--6`). The local <style> below is
+  mockup chrome only (the phone frame).
+
+  States (hash): #collapsed (default) · #expanded · #sheet
+-->
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="../../../../apps/web/src/index.css">
+<link rel="stylesheet" href="ol-kit.css">
+<script src="ol-kit.js" defer></script>
+<style>
+  /* Mockup chrome only: a phone frame so the sheet state renders in place. */
+  .mk-phone { max-width: 390px; margin: 0 auto; position: relative; min-height: 780px; border: 1px solid var(--border-default); border-radius: 22px; overflow: hidden; background: var(--bg-canvas); }
+  .mk-phone .dialog__overlay, .mk-phone .dialog__content--sheet { position: absolute; }
+  @media (max-width: 767.98px) { .mk-phone { border: 0; border-radius: 0; max-width: none; } }
+</style>
+<div data-ol-page data-active="Orders" data-crumb-group="Operations" data-crumb="Orders">
+<section class="page-section">
+  <div class="page-header page-header--split">
+    <div class="page-header__content"><p class="eyebrow">Synced 14:12</p><h2 class="page-title">Orders</h2></div>
+    <div class="page-header__actions"><div class="button-group">
+      <button type="button" class="button button--secondary button--sm">Export</button>
+      <button type="button" class="button button--ghost button--sm">Columns</button>
+      <button type="button" class="button button--ghost button--sm">Refresh <span class="button__shortcut">R</span></button>
+    </div></div>
+  </div>
+
+  <div class="ds-grid orders-segments orders-segments--6">
+    <button type="button" class="card-button-reset orders-segment orders-segment--active" aria-pressed="true"><div class="metric-card"><span class="metric-card__label">All orders</span><span class="metric-card__value">390</span></div></button>
+    <button type="button" class="card-button-reset orders-segment" aria-pressed="false"><div class="metric-card metric-card--error"><span class="metric-card__label">Source deleted</span><span class="metric-card__value">28</span></div></button>
+    <button type="button" class="card-button-reset orders-segment" aria-pressed="false"><div class="metric-card metric-card--error"><span class="metric-card__label">Needs attention</span><span class="metric-card__value">178</span></div></button>
+    <button type="button" class="card-button-reset orders-segment" aria-pressed="false"><div class="metric-card metric-card--warning"><span class="metric-card__label">Awaiting mapping</span><span class="metric-card__value">133</span></div></button>
+    <button type="button" class="card-button-reset orders-segment" aria-pressed="false"><div class="metric-card metric-card--info"><span class="metric-card__label">Awaiting dispatch</span><span class="metric-card__value">32</span></div></button>
+    <button type="button" class="card-button-reset orders-segment" aria-pressed="false"><div class="metric-card metric-card--success"><span class="metric-card__label">Synced</span><span class="metric-card__value">19</span></div></button>
+  </div>
+
+  <!-- ===== COLLAPSED (default) ===== -->
+  <div data-mk-state="collapsed" data-mk-label="Collapsed + active chips">
+    <div class="orders-filterbar">
+      <div class="orders-filterbar__search"><span class="orders-filterbar__search-glyph" aria-hidden="true">⌕</span><input type="search" class="control" aria-label="Search orders" placeholder="Search by order number, buyer, email, SKU or tracking number…"><span class="button__shortcut orders-filterbar__kbd" aria-hidden="true">/</span></div>
+      <button type="button" class="button button--secondary button--sm filter-toggle" aria-expanded="false" aria-controls="fp">Filters <span class="filter-toggle__count"><span aria-hidden="true">3</span><span class="sr-only">3 active</span></span><span class="filter-toggle__chev" aria-hidden="true">▼</span></button>
+      <span class="text-muted mono tabular orders-filterbar__count" aria-live="polite">69 results</span>
+    </div>
+    <div class="active-filters" role="group" aria-label="Active filters">
+      <span class="filter-chip"><span class="filter-chip__label">Source</span><span class="filter-chip__value">Allegro – Sklep główny</span><button type="button" class="button--bare button--bare-sm" aria-label="Remove filter Source: Allegro – Sklep główny"><span aria-hidden="true">×</span></button></span>
+      <span class="filter-chip"><span class="filter-chip__label">Fulfillment</span><span class="filter-chip__value">Not shipped</span><button type="button" class="button--bare button--bare-sm" aria-label="Remove filter Fulfillment: Not shipped"><span aria-hidden="true">×</span></button></span>
+      <span class="filter-chip"><span class="filter-chip__label">Tag</span><span class="filter-chip__value"><span class="order-tag order-tag--sm" data-tag-color="violet"><span class="order-tag__dot"></span><span class="order-tag__label">VIP</span></span></span><button type="button" class="button--bare button--bare-sm" aria-label="Remove filter Tag: VIP"><span aria-hidden="true">×</span></button></span>
+      <button type="button" class="button button--ghost button--xs active-filters__clear">Clear all</button>
+    </div>
+    <div class="quick-filters" role="group" aria-label="Quick filters">
+      <span class="quick-filters__label">Needs a look</span>
+      <button type="button" class="chip chip--warning" aria-pressed="false">Ship-by ≤ 24h</button>
+      <button type="button" class="chip chip--error" aria-pressed="false">Sales docs blocked <span class="chip__count">30 · oldest 28 d</span></button>
+      <button type="button" class="chip chip--neutral" aria-pressed="false">Rate conflict <span class="chip__count">1</span></button>
+      <button type="button" class="chip chip--neutral" aria-pressed="false">Open return</button>
+      <span class="quick-filters__sep" aria-hidden="true"></span>
+      <span class="quick-filters__label">Stage</span>
+      <button type="button" class="chip chip--neutral" aria-pressed="false">Ready <span class="chip__count">183</span></button>
+      <button type="button" class="chip chip--error" aria-pressed="false">Blocked <span class="chip__count">157</span></button>
+      <button type="button" class="chip chip--info" aria-pressed="false">With carrier <span class="chip__count">37</span></button>
+      <button type="button" class="chip chip--error" aria-pressed="false">Dispatch failed <span class="chip__count">6</span></button>
+      <button type="button" class="chip chip--neutral" aria-pressed="false">Cancelled <span class="chip__count">6</span></button>
+      <span class="quick-filters__end"><span class="status-badge status-badge--error status-badge--compact"><span class="status-badge__dot" aria-hidden="true"></span><span>90 overdue</span></span><a class="nav-link" href="#">Review dispatch risk</a></span>
+    </div>
+    <div class="data-table__container"><table class="data-table orders-table"><thead><tr><th style="width:36px"></th><th>Order</th><th>Customer</th><th>Channel</th><th>Status</th><th>Shipment</th><th class="data-table__cell--right">Total</th></tr></thead>
+      <tbody><tr><td><input type="checkbox" aria-label="Select"></td><td><span class="order-cell"><span class="product-thumbnail product-thumbnail--sm"><span>K</span></span><span class="order-cell__body"><span class="entity-label"><a class="entity-label__name entity-label__name--link" href="#">3f9c2a1e…7b41d0</a></span><span class="orders-items-line"><span class="text-muted orders-cell-sub orders-items-preview">Kubek ceramiczny 350 ml, grafitowy</span><span class="orders-more-count">+2</span></span><span class="orders-tags-line"><span class="order-tag order-tag--sm" data-tag-color="violet"><span class="order-tag__dot"></span><span class="order-tag__label">VIP</span></span><span class="order-tag order-tag--sm" data-tag-color="pink"><span class="order-tag__dot"></span><span class="order-tag__label">Gift wrap</span></span></span></span></span></td><td><span class="orders-cell-stack"><span>Katarzyna Wiśniewska</span><span class="text-muted orders-cell-sub">Kraków</span></span></td><td><span class="orders-cell-stack"><span class="channel-pill" data-channel="allegro">Allegro</span><span class="text-muted orders-cell-sub">→ PrestaShop</span></span></td><td><span class="orders-cell-stack"><span class="status-badge status-badge--success status-badge--compact"><span class="status-badge__dot"></span><span>Synced</span></span><span class="status-badge status-badge--neutral status-badge--compact"><span class="status-badge__dot"></span><span>Ready</span></span></span></td><td><span class="orders-cell-stack"><span class="status-badge status-badge--neutral status-badge--compact"><span class="status-badge__dot"></span><span>Not shipped</span></span><span class="text-muted orders-cell-sub mono tabular">due in 23h</span></span></td><td class="data-table__cell--right"><span class="orders-cell-stack orders-cell-stack--end"><span class="mono tabular orders-money-total">347.00 PLN</span><span class="status-badge status-badge--success status-badge--compact"><span class="status-badge__dot"></span><span>Paid</span></span></span></td></tr></tbody></table></div>
+  </div>
+
+  <!-- ===== EXPANDED ===== -->
+  <div data-mk-state="expanded" data-mk-label="Filters panel open" hidden>
+    <div class="orders-filterbar">
+      <div class="orders-filterbar__search"><span class="orders-filterbar__search-glyph" aria-hidden="true">⌕</span><input type="search" class="control" aria-label="Search orders" placeholder="Search by order number, buyer, email, SKU or tracking number…"><span class="button__shortcut orders-filterbar__kbd" aria-hidden="true">/</span></div>
+      <button type="button" class="button button--secondary button--sm filter-toggle" aria-expanded="true" aria-controls="fp2">Filters <span class="filter-toggle__count"><span aria-hidden="true">3</span><span class="sr-only">3 active</span></span><span class="filter-toggle__chev" aria-hidden="true">▼</span></button>
+      <span class="text-muted mono tabular orders-filterbar__count">69 results</span>
+    </div>
+    <div class="filter-panel" id="fp2" role="region" aria-label="Filters">
+      <div class="filter-panel__grid">
+        <fieldset class="filter-group"><legend class="filter-group__legend">Source &amp; dates</legend>
+          <label class="filter-field"><span class="filter-field__label">Source</span><select class="control control--select"><option>Allegro – Sklep główny</option></select></label>
+          <div class="filter-field"><span class="filter-field__label">Created</span><div class="filter-range"><label class="filter-range__row"><span class="filter-range__label">From</span><input type="date" class="control" aria-label="Created from"></label><label class="filter-range__row"><span class="filter-range__label">To</span><input type="date" class="control" aria-label="Created to"></label></div></div>
+        </fieldset>
+        <fieldset class="filter-group"><legend class="filter-group__legend">Shipment</legend>
+          <label class="filter-field"><span class="filter-field__label">Fulfillment</span><select class="control control--select"><option>Not shipped</option></select></label>
+          <div class="filter-field"><span class="filter-field__label">Ship-by</span>
+            <div class="segmented-control" role="radiogroup" aria-label="Ship-by"><button type="button" role="radio" aria-checked="true" class="segmented-control__option segmented-control__option--active"><span class="segmented-control__label">Any</span></button><button type="button" role="radio" aria-checked="false" class="segmented-control__option"><span class="segmented-control__label">Overdue</span></button><button type="button" role="radio" aria-checked="false" class="segmented-control__option"><span class="segmented-control__label">At risk</span></button><button type="button" role="radio" aria-checked="false" class="segmented-control__option"><span class="segmented-control__label">On track</span></button></div></div>
+          <label class="filter-field"><span class="filter-field__label">Packing</span><select class="control control--select"><option>Any packing</option><option>Packed</option><option>Not packed yet</option></select></label>
+        </fieldset>
+        <fieldset class="filter-group"><legend class="filter-group__legend">Exceptions</legend>
+          <label class="filter-field"><span class="filter-field__label">Hold reason</span><select class="control control--select"><option>Any hold reason</option></select></label>
+          <div class="filter-checks">
+            <label class="filter-check filter-check--error"><input type="checkbox"><span class="filter-check__label">Sales documents blocked</span><span class="filter-check__count">30</span></label>
+            <label class="filter-check filter-check--error"><input type="checkbox"><span class="filter-check__label">OpenLinker stopped</span><span class="filter-check__count">0</span></label>
+            <label class="filter-check"><input type="checkbox"><span class="filter-check__label">Rate conflict</span><span class="filter-check__count">1</span></label>
+            <label class="filter-check"><input type="checkbox"><span class="filter-check__label">Open return</span></label>
+          </div>
+        </fieldset>
+        <fieldset class="filter-group"><legend class="filter-group__legend">Tags</legend>
+          <div class="filter-checks filter-checks--scroll" role="radiogroup" aria-label="Tag">
+            <label class="filter-check"><input type="radio" name="t"><span class="filter-check__label">Any tag</span></label>
+            <label class="filter-check"><input type="radio" name="t" checked><span class="filter-check__label"><span class="order-tag order-tag--sm" data-tag-color="violet"><span class="order-tag__dot"></span><span class="order-tag__label">VIP</span></span></span><span class="filter-check__count">42</span></label>
+            <label class="filter-check"><input type="radio" name="t"><span class="filter-check__label"><span class="order-tag order-tag--sm" data-tag-color="amber"><span class="order-tag__dot"></span><span class="order-tag__label">Fragile</span></span></span><span class="filter-check__count">63</span></label>
+            <label class="filter-check"><input type="radio" name="t"><span class="filter-check__label"><span class="order-tag order-tag--sm" data-tag-color="pink"><span class="order-tag__dot"></span><span class="order-tag__label">Gift wrap</span></span></span><span class="filter-check__count">17</span></label>
+            <label class="filter-check"><input type="radio" name="t"><span class="filter-check__label filter-check__label--muted">No tags</span></label>
+          </div>
+        </fieldset>
+      </div>
+      <div class="filter-panel__footer"><span class="filter-panel__hint">Filters apply as you change them and stay in the address bar.</span><span class="filter-panel__footer-end"><button type="button" class="button button--ghost button--sm">Clear all</button><button type="button" class="button button--ghost button--sm">Hide filters</button></span></div>
+    </div>
+    <div class="quick-filters" role="group" aria-label="Quick filters">
+      <span class="quick-filters__label">Needs a look</span>
+      <button type="button" class="chip chip--warning" aria-pressed="false">Ship-by ≤ 24h</button>
+      <button type="button" class="chip chip--error" aria-pressed="false">Sales docs blocked <span class="chip__count">30 · oldest 28 d</span></button>
+      <button type="button" class="chip chip--neutral" aria-pressed="false">Open return</button>
+      <span class="quick-filters__sep" aria-hidden="true"></span>
+      <span class="quick-filters__label">Stage</span>
+      <button type="button" class="chip chip--neutral" aria-pressed="false">Ready <span class="chip__count">183</span></button>
+      <button type="button" class="chip chip--error" aria-pressed="false">Blocked <span class="chip__count">157</span></button>
+      <button type="button" class="chip chip--info" aria-pressed="false">With carrier <span class="chip__count">37</span></button>
+      <span class="quick-filters__end"><a class="nav-link" href="#">Dispatch risk</a></span>
+    </div>
+  </div>
+
+  <!-- ===== MOBILE SHEET ===== -->
+  <div data-mk-state="sheet" data-mk-label="Phone: filter sheet" hidden>
+    <div class="mk-phone">
+      <div style="padding: var(--space-3)">
+        <div class="orders-filterbar"><div class="orders-filterbar__search"><span class="orders-filterbar__search-glyph" aria-hidden="true">⌕</span><input type="search" class="control" aria-label="Search orders" placeholder="Search orders…"></div>
+          <button type="button" class="button button--secondary button--sm filter-toggle" aria-expanded="true" aria-haspopup="dialog">Filters <span class="filter-toggle__count"><span aria-hidden="true">3</span><span class="sr-only">3 active</span></span><span class="filter-toggle__chev" aria-hidden="true">▼</span></button>
+          <span class="text-muted mono tabular orders-filterbar__count">69 results</span></div>
+      </div>
+      <div class="dialog__overlay"></div>
+      <div class="dialog__content dialog__content--sheet" role="dialog" aria-modal="true" aria-labelledby="sheet-t">
+        <div class="sheet__grabber" aria-hidden="true"></div>
+        <div class="sheet__header"><h2 class="dialog__title" id="sheet-t">Filters</h2><button type="button" class="button button--ghost button--sm" aria-label="Close filters"><span aria-hidden="true">✕</span></button></div>
+        <div class="sheet__body">
+          <details class="filter-section"><summary><span class="filter-section__title">Source &amp; dates</span><span class="filter-section__summary filter-section__summary--on">Allegro – Sklep główny</span><span class="filter-section__chev" aria-hidden="true">›</span></summary></details>
+          <details class="filter-section" open><summary><span class="filter-section__title">Shipment</span><span class="filter-section__summary filter-section__summary--on">Not shipped</span><span class="filter-section__chev" aria-hidden="true">›</span></summary>
+            <div class="filter-section__body">
+              <label class="filter-field"><span class="filter-field__label">Fulfillment</span><select class="control control--select"><option>Not shipped</option></select></label>
+              <div class="filter-field"><span class="filter-field__label">Ship-by</span><div class="segmented-control" role="radiogroup" aria-label="Ship-by"><button type="button" role="radio" aria-checked="true" class="segmented-control__option segmented-control__option--active"><span class="segmented-control__label">Any</span></button><button type="button" role="radio" aria-checked="false" class="segmented-control__option"><span class="segmented-control__label">Overdue</span></button><button type="button" role="radio" aria-checked="false" class="segmented-control__option"><span class="segmented-control__label">At risk</span></button><button type="button" role="radio" aria-checked="false" class="segmented-control__option"><span class="segmented-control__label">On track</span></button></div></div>
+              <label class="filter-field"><span class="filter-field__label">Packing</span><select class="control control--select"><option>Any packing</option></select></label>
+            </div></details>
+          <details class="filter-section"><summary><span class="filter-section__title">Exceptions</span><span class="filter-section__summary">None</span><span class="filter-section__chev" aria-hidden="true">›</span></summary></details>
+          <details class="filter-section"><summary><span class="filter-section__title">Tags</span><span class="filter-section__summary filter-section__summary--on">VIP</span><span class="filter-section__chev" aria-hidden="true">›</span></summary></details>
+          <details class="filter-section"><summary><span class="filter-section__title">Stage</span><span class="filter-section__summary">Any</span><span class="filter-section__chev" aria-hidden="true">›</span></summary></details>
+        </div>
+        <div class="sheet__footer"><button type="button" class="button button--secondary">Clear all</button><button type="button" class="button button--primary">Show 69 orders</button></div>
+      </div>
+    </div>
+  </div>
+</section>
+</div>
+</body></html>

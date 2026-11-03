@@ -75,4 +75,22 @@ describe('FulfillmentRelayGateService', () => {
     await service.releaseDispatch('ol_fulfillmentwork_1');
     expect(repository.releaseDispatchRelay).toHaveBeenCalledWith('ol_fulfillmentwork_1');
   });
+
+  describe('markRelayedExternally (#3525)', () => {
+    it('takes the SAME conditional claim claimDispatch does', async () => {
+      repository.claimDispatchRelay.mockResolvedValue(true);
+
+      await expect(service.markRelayedExternally('ol_fulfillmentwork_1')).resolves.toBe(true);
+      expect(repository.claimDispatchRelay).toHaveBeenCalledWith(
+        'ol_fulfillmentwork_1',
+        expect.any(Date)
+      );
+    });
+
+    it('reports the loss of a race rather than throwing', async () => {
+      repository.claimDispatchRelay.mockResolvedValue(false);
+
+      await expect(service.markRelayedExternally('ol_fulfillmentwork_1')).resolves.toBe(false);
+    });
+  });
 });

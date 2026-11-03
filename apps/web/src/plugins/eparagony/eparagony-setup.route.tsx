@@ -10,7 +10,7 @@ export const eparagonySetupRoute: RouteObject = {
   path: 'connections/new/eparagony',
   handle: { crumb: { group: 'Platform', title: 'Connect eparagony.pl' } } satisfies RouteCrumbHandle,
   lazy: async () => {
-    const { EparagonySetupPage } = await import('../../pages/connections/eparagony-setup-page');
+    const { EparagonySetupPage } = await import('./components/eparagony-setup-page');
     return { Component: EparagonySetupPage };
   },
 };

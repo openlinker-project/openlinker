@@ -75,6 +75,21 @@ export interface OfferCreationRecordRepositoryPort {
   ): Promise<OfferCreationRecord>;
 
   /**
+   * Move a record to `failed` with `errors` ONLY if it is still `pending`
+   * (#3505, G01-2) — a single conditional write, so a record a concurrent
+   * attempt already settled (`active`, `validating`, `failed`, …) is never
+   * overwritten.
+   *
+   * Returns the updated record when the transition happened, `null` when it
+   * did not (the record is unknown, or no longer `pending`). Never throws for
+   * an unknown id: the caller is a best-effort cleanup.
+   */
+  markFailedIfPending(
+    id: string,
+    errors: OfferCreationError[]
+  ): Promise<OfferCreationRecord | null>;
+
+  /**
    * Assign the marketplace-native offer id to an existing record.
    *
    * Throws `OfferCreationRecordNotFoundException` if the record does not exist.

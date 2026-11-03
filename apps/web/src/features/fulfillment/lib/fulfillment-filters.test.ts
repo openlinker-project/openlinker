@@ -9,6 +9,8 @@ import { describe, expect, it } from 'vitest';
 
 import {
   clearFulfillmentFilters,
+  fulfillmentWorkDetailPath,
+  fulfillmentWorklistPath,
   hasActiveFulfillmentFilters,
   readFulfillmentFilters,
   readFulfillmentOffset,
@@ -17,27 +19,37 @@ import {
 } from './fulfillment-filters';
 
 describe('fulfillment worklist filters', () => {
-  it('round-trips both filters through the search params', () => {
-    let params = new URLSearchParams();
-    params = setFulfillmentFilterParam(params, 'orderId', 'ol_order_1');
-    params = setFulfillmentFilterParam(params, 'locationId', 'loc_warsaw');
+  it('round-trips the order filter through the search params', () => {
+    const params = setFulfillmentFilterParam(new URLSearchParams(), 'orderId', 'ol_order_1');
 
-    expect(readFulfillmentFilters(params)).toEqual({
-      orderId: 'ol_order_1',
-      locationId: 'loc_warsaw',
-    });
+    expect(readFulfillmentFilters(params)).toEqual({ orderId: 'ol_order_1' });
+  });
+
+  it('should ignore a legacy locationId param when reading the filters (#3096)', () => {
+    const params = new URLSearchParams('locationId=loc_warsaw');
+
+    expect(readFulfillmentFilters(params)).toEqual({ orderId: undefined });
+    expect(hasActiveFulfillmentFilters(readFulfillmentFilters(params))).toBe(false);
+  });
+
+  it('should not carry a legacy locationId across the detail-page round trip (#3096)', () => {
+    const params = new URLSearchParams('orderId=ol_order_1&locationId=loc_warsaw&offset=25&groupBy=location');
+
+    expect(fulfillmentWorkDetailPath('ol_fwork_1', params)).toBe(
+      '/fulfillment/works/ol_fwork_1?orderId=ol_order_1&offset=25&groupBy=location'
+    );
+    expect(fulfillmentWorklistPath(params)).toBe(
+      '/fulfillment?orderId=ol_order_1&offset=25&groupBy=location'
+    );
   });
 
   it('reads a present-but-empty param as an absent filter', () => {
     // `?orderId=` would otherwise be forwarded, filtering to the orders whose
     // id is the empty string — i.e. none — while the page reported itself
     // unfiltered.
-    const params = new URLSearchParams('orderId=&locationId=');
+    const params = new URLSearchParams('orderId=');
 
-    expect(readFulfillmentFilters(params)).toEqual({
-      orderId: undefined,
-      locationId: undefined,
-    });
+    expect(readFulfillmentFilters(params)).toEqual({ orderId: undefined });
     expect(hasActiveFulfillmentFilters(readFulfillmentFilters(params))).toBe(false);
   });
 
@@ -60,7 +72,7 @@ describe('fulfillment worklist filters', () => {
   });
 
   it('clears every filter and the offset together', () => {
-    const params = new URLSearchParams('orderId=a&locationId=b&offset=25&keep=me');
+    const params = new URLSearchParams('orderId=a&offset=25&keep=me');
     const next = clearFulfillmentFilters(params);
 
     expect(hasActiveFulfillmentFilters(readFulfillmentFilters(next))).toBe(false);

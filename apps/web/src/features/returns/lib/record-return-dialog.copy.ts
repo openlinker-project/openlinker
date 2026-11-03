@@ -72,5 +72,9 @@ export const RECORD_RETURN_DIALOG_COPY = {
     'OpenLinker holds no mapping for that order on this connection — pick the connection the ' +
     'order actually came in on.',
 
+  /** 409 `line-removed-by-edit` (E-14) - a field error on the item name field. */
+  lineRemovedByEdit:
+    'That item was removed from this order by an edit in OpenLinker (quantity 0), so it cannot be returned.',
+
   genericError: 'The return could not be recorded. Try again.',
 } as const;

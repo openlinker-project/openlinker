@@ -51,6 +51,7 @@ import { ReturnRepositoryPort } from '../../domain/ports/return-repository.port'
 import type { IncomingReturn, IncomingReturnLine } from '../../domain/types/incoming-return.types';
 import type { ReturnDownstreamTrigger } from '../../domain/types/return-trigger.types';
 import type {
+  OpenReturnOrderSummary,
   ReturnBucketCounts,
   ReturnDeclineAvailability,
   ReturnIngestionAvailability,
@@ -68,6 +69,7 @@ import type {
   ReturnOrderLineResolutionSummary,
   UpsertReturnObservationResult,
 } from './returns.service.interface';
+import { findLineRemovedByEdit } from '../../domain/domain-services/return-line-removed-by-edit.domain-service';
 import { resolveReturnLineOrderLine } from '../../domain/domain-services/return-order-line-resolution.domain-service';
 import type { ResolvableOrderLine } from '../../domain/domain-services/return-order-line-resolution.domain-service';
 
@@ -295,6 +297,16 @@ export class ReturnsService implements IReturnsService {
 
   async countReturnsBySegment(filter: ReturnListFilter): Promise<ReturnSegmentCounts> {
     return this.repository.countReturnsBySegment(filter);
+  }
+
+  async listOpenReturnOrderIds(): Promise<string[]> {
+    return this.repository.findOpenReturnOrderIds();
+  }
+
+  async getOpenReturnSummariesForOrders(
+    internalOrderIds: readonly string[]
+  ): Promise<Map<string, OpenReturnOrderSummary>> {
+    return this.repository.findOpenReturnSummariesForOrders(internalOrderIds);
   }
 
   /**
@@ -553,6 +565,24 @@ export class ReturnsService implements IReturnsService {
           `${input.sourceConnectionId}: OpenLinker holds no mapping for that order there`
       );
       throw new ReturnRecordRefusedError('order-not-on-connection');
+    }
+
+    // E-14: refuse a line an OpenLinker edit removed. Only a positive match
+    // against a zeroed channel line refuses; an unknown sku passes as before.
+    if (input.orderLines !== undefined) {
+      for (const line of input.lines) {
+        const removed = findLineRemovedByEdit(
+          { sku: line.sku, name: line.name },
+          input.orderLines.removedByEdit,
+          input.orderLines.live
+        );
+        if (removed !== null) {
+          throw new ReturnRecordRefusedError(
+            'line-removed-by-edit',
+            removed.name ?? removed.sku ?? line.name ?? line.sku
+          );
+        }
+      }
     }
 
     const record = await this.repository.create({

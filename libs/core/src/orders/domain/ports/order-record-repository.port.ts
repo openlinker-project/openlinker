@@ -23,7 +23,9 @@ import type {
 import type { OrderSlaSummary } from '../types/order-sla.types';
 import type { FulfillmentRollupState } from '../types/order-fulfillment.types';
 import type { SyncAttempt } from '../types/order-sync.types';
-import type { FulfillmentBlock } from '@openlinker/core/fulfillment';
+import type { FulfillmentBlock, FulfillmentBlockReason } from '@openlinker/core/fulfillment';
+import type { DestinationRoutingBlock } from '../types/destination-routing-block.types';
+import type { FulfillmentRoutingSkipReason } from '../types/fulfillment-routing-eligibility.types';
 import type { SalesDocumentBlock } from '@openlinker/core/sales-documents';
 import type {
   AuthorityAttentionOutcome,
@@ -32,7 +34,9 @@ import type {
 import type { OrderFxIntent, OrderFxStamp } from '../types/order-fx.types';
 import type { StampedReportingCurrencyCount } from '../types/order-fx-read.types';
 import type { OrderAmendmentChange } from '../order-amendment-diff';
+import type { DeliveryCountryFact } from '../types/delivery-country-facts.types';
 import type { DailyOrderAggregateRow, SalesAnalyticsFilters } from '../types/order-sales-analytics.types';
+import type { ApplyOrderEditInput } from '../types/order-edits.types';
 import type {
   CoverageDetectionPagination,
   PaginatedCurrencyMismatchOrders,
@@ -42,6 +46,21 @@ import type {
   CoverageConnectionAggregateRow,
 } from '../types/coverage-detection.types';
 import type { FxRestatementRemainingSummary } from '../types/order-fx-restatement.types';
+import type {
+  OrderSearchTextReindexRow,
+  OrderSearchTextRewrite,
+} from '../types/order-search-text-reindex.types';
+
+/**
+ * A held order and when its CURRENT hold began (#3485 review). The age bounds
+ * how often the reroute sweep re-drives an order that stays refused.
+ * `blockedAt` is `null` for a row held before the column existed: "not asserted",
+ * never a guess.
+ */
+export interface HeldOrderRef {
+  readonly orderId: string;
+  readonly blockedAt: Date | null;
+}
 
 export interface OrderRecordRepositoryPort {
   /**
@@ -106,6 +125,18 @@ export interface OrderRecordRepositoryPort {
   countOrdersByRoutingCountrySince(since: Date): Promise<{ country: string; orderCount: number }[]>;
 
   /**
+   * Per-delivery-country facts for ONE source connection over a window (#3907,
+   * ADR-082 decision 8): order count, line VAT rates seen, most frequent
+   * currency, and the latest `ready` order as an anonymous example.
+   *
+   * Reads the same delivery-country expression routing evaluates on, scoped by
+   * `sourceConnectionId`, most orders first, capped at 20 countries. A bounded
+   * number of queries (counts, rates, examples), never one per country beyond
+   * the single example fetch. Returns no buyer data.
+   */
+  getDeliveryCountryFacts(sourceConnectionId: string, since: Date): Promise<DeliveryCountryFact[]>;
+
+  /**
    * Upsert order record (create or update)
    * Uses internalOrderId as the primary key.
    *
@@ -116,7 +147,8 @@ export interface OrderRecordRepositoryPort {
    * {@link markCancelled}), the three `salesDocument*` columns (#2100,
    * {@link updateSalesDocumentBlock}) and the six FX snapshot columns (#2124,
    * {@link claimFxIntentIfAbsent} / {@link stampFxIfAbsent}) and the two packed
-   * columns (#2287, {@link markPacked} / {@link clearPacked}) - are NOT part of
+   * columns (#2287, {@link markPacked} / {@link clearPacked}) and the
+   * operator-edit overlay `orderEdits` (#3542, {@link applyOrderEdit}) - are NOT part of
    * the write set, so a re-ingestion of the same order cannot reset them. The
    * returned record therefore reports all of them as empty (`[]` / `null`)
    * whatever the row holds; re-read via {@link findById} when their live value
@@ -496,11 +528,24 @@ export interface OrderRecordRepositoryPort {
    * throws) so it can't fail the shipment operation.
    *
    * Sole writer of the column - {@link upsert} deliberately omits it (#2101).
+   *
+   * Answers `true` only for the ONE write that moved the order from a
+   * not-shipped state into `dispatched` / `delivered` (#3554), so the
+   * `order.shipped` automation trigger fires once per transition however many
+   * shipment recomputes race. The guard is a conditional UPDATE, never a read.
    */
   updateFulfillmentState(
     internalOrderId: string,
     fulfillmentState: FulfillmentRollupState
-  ): Promise<void>;
+  ): Promise<boolean>;
+
+  /**
+   * Claim the one-time `order.shipped` announcement (#3554). A single guarded
+   * UPDATE on `shippedNotifiedAt IS NULL` AND a shipped `fulfillmentState`, so
+   * of any number of racing callers exactly one gets `true`, and an order that
+   * is not shipped (or no longer exists) gets `false`.
+   */
+  claimShippedNotification(internalOrderId: string): Promise<boolean>;
 
   /**
    * Push the honest item-resolution-failure state onto the order record
@@ -576,6 +621,75 @@ export interface OrderRecordRepositoryPort {
   updateFulfillmentBlock(
     internalOrderId: string,
     block: FulfillmentBlock | null
+  ): Promise<void>;
+
+  /**
+   * Persist how a routing decision narrowed this order's destination fan-out
+   * (#2703 / #2704), or clear it.
+   *
+   * Level-triggered like {@link updateFulfillmentBlock}: `OrderSyncService`
+   * re-decides on every run and writes the answer INCLUDING `null`, which is the
+   * only thing that clears a stale reason. Outside the ingestion write set, so a
+   * re-poll cannot reset it.
+   *
+   * Deliberately SEPARATE from {@link updateFulfillmentBlock} rather than folded
+   * into it: that column records the intercept HOLDING the order so
+   * `OrderSyncService` was never called, this one records what happened INSIDE
+   * it. They are mutually exclusive per run, and `OrderIngestionService` clears
+   * this one on the held branch to keep them so.
+   *
+   * No-op (no throw) when the order row doesn't exist.
+   */
+  updateDestinationRoutingBlock(
+    internalOrderId: string,
+    block: DestinationRoutingBlock | null
+  ): Promise<void>;
+
+  /**
+   * #3485 — one keyset page of internal order ids whose fulfilment block is one
+   * of `reasons`, ascending by `internalOrderId`, starting strictly after
+   * `afterOrderId` (`null` = from the start).
+   *
+   * Keyset, never offset: the set shrinks as orders are re-routed, and an offset
+   * over a shrinking set steps over rows. And keyset, never oldest-`updatedAt`:
+   * a re-refused order rewrites an identical block, the `IS DISTINCT FROM` guard
+   * (correctly) leaves `updatedAt` alone, so an oldest-first page would re-read
+   * the same head for ever and starve everything behind it.
+   */
+  listOrderIdsByFulfillmentBlockReasons(
+    reasons: readonly FulfillmentBlockReason[],
+    page: { readonly afterOrderId: string | null; readonly limit: number }
+  ): Promise<HeldOrderRef[]>;
+
+  /**
+   * #3558 — ids of orders held with one of `reasons` whose line items include
+   * `variantId`, ascending by `internalOrderId`, at most `limit`.
+   *
+   * Answers "which held orders is THIS stock change about" for the stock-change
+   * re-route. Served by `order_line_items.orderRecordId` (indexed) after a filter
+   * on the variant, never by a scan of the snapshot jsonb. Only `ready` records
+   * have line items (`awaiting_mapping` snapshots reference external ids), which
+   * is the right set: an order that cannot name its variants is not waiting on
+   * one.
+   */
+  listOrderIdsHeldForVariant(
+    reasons: readonly FulfillmentBlockReason[],
+    variantId: string,
+    limit: number
+  ): Promise<string[]>;
+
+  /**
+   * #3455 — record why the ingestion intercept deliberately did NOT route the
+   * order while the OMS is on, or clear it with `null`. Level-triggered: the
+   * intercept re-decides on every ingestion and writes the answer including
+   * `null`. Outside the ingestion write set, so a re-poll cannot reset it; a
+   * no-change write costs no `updatedAt` bump.
+   *
+   * No-op (no throw) when the order row doesn't exist.
+   */
+  updateFulfillmentRoutingSkipReason(
+    internalOrderId: string,
+    reason: FulfillmentRoutingSkipReason | null
   ): Promise<void>;
 
   /**
@@ -683,6 +797,29 @@ export interface OrderRecordRepositoryPort {
   ): Promise<boolean>;
 
   /**
+   * Mark this order's buyer note read (#3538) - writes `buyerNoteReadAt` +
+   * `buyerNoteReadByUserId` and nothing else, guarded on `buyerNoteReadAt IS
+   * NULL` so the FIRST mark wins and a replay is a no-op. `true` when this call
+   * wrote, `false` for an already-read order or an absent row (never throws;
+   * the caller re-reads to tell them apart, as with {@link markPacked}).
+   */
+  markBuyerNoteRead(
+    internalOrderId: string,
+    readAt: Date,
+    readByUserId: string
+  ): Promise<boolean>;
+
+  /**
+   * Count the OTHER orders `customerId` placed before `before` (#3538, D7),
+   * excluding `excludeInternalOrderId`. Backs the derived `buyerOrderCount`.
+   */
+  countEarlierOrdersForCustomer(
+    customerId: string,
+    excludeInternalOrderId: string,
+    before: Date
+  ): Promise<number>;
+
+  /**
    * Clear this order's packed fact (#2287) — nulls `packedAt` +
    * `packedByUserId` together, guarded on `packedAt IS NOT NULL` so unmarking
    * an already-unpacked order affects no row and does not bump `updatedAt`.
@@ -692,6 +829,16 @@ export interface OrderRecordRepositoryPort {
    * {@link markPacked}.
    */
   clearPacked(internalOrderId: string): Promise<boolean>;
+
+  /**
+   * Merge one operator edit into the order's overlay (#3542). The sole writer of
+   * `orderEdits`; `orderSnapshot` stays the channel original.
+   *
+   * Returns the re-read record, or `null` when nothing was written: no such
+   * order, the order is not `ready`, or `expectedRev` is stale. The caller
+   * re-reads to tell which.
+   */
+  applyOrderEdit(input: ApplyOrderEditInput): Promise<OrderRecord | null>;
 
   /**
    * Record that the source amended this order after ingestion (#2283) — writes
@@ -972,4 +1119,28 @@ export interface OrderRecordRepositoryPort {
     filters: SalesAnalyticsFilters,
     currentReportingCurrency: string
   ): Promise<FxRestatementRemainingSummary>;
+
+  /**
+   * One keyset page of `order_records` for the `searchText` reindex pass
+   * (#3507 G03-14): rows with `internalOrderId > afterInternalOrderId` (or from
+   * the start when `null`), ascending, at most `limit`. Narrowed to the three
+   * columns the pass needs — the snapshot to re-derive from and the stored text
+   * to compare against — and NOT filtered on the text: the derivation is
+   * application code, so "does this row disagree" can only be answered after
+   * reading it.
+   */
+  findSearchTextReindexPage(
+    afterInternalOrderId: string | null,
+    limit: number
+  ): Promise<OrderSearchTextReindexRow[]>;
+
+  /**
+   * Conditionally rewrite `searchText` for each entry (#3507 G03-14), guarded
+   * on the row still holding `expectedSearchText` — a concurrent ingestion that
+   * already rewrote it wins. `updatedAt` is deliberately left untouched: the
+   * text is derived data, and bumping the timestamp would reorder every
+   * "recently updated" view by an internal reindex nobody performed. Returns
+   * how many rows were actually rewritten.
+   */
+  rewriteSearchText(rewrites: readonly OrderSearchTextRewrite[]): Promise<number>;
 }

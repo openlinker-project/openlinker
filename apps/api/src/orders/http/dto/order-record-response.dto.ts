@@ -12,13 +12,19 @@ import {
   SYNC_ATTEMPTS_PER_DESTINATION_CAP,
   SlaStateValues,
   FulfillmentRollupStateValues,
+  PaymentMethodValues,
 } from '@openlinker/core/orders';
 import {
   OrderRecordStatus,
   SlaState,
   FulfillmentRollupState,
   BuyerTaxId,
+  FulfillmentRoutingSkipReasonValues,
+  type FulfillmentRoutingSkipReason,
+  type PaymentMethod,
 } from '@openlinker/core/orders';
+import { DestinationRoutingBlockReasonValues } from '@openlinker/core/orders';
+import type { DestinationRoutingBlockReason } from '@openlinker/core/orders';
 import {
   OrderLifecyclePhaseValues,
   HoldReasonValues,
@@ -26,6 +32,11 @@ import {
   type HoldReason,
 } from '@openlinker/core/order-lifecycle';
 import { OrderHoldDto } from './order-hold-response.dto';
+import { OrderEditsViewDto } from './order-edit-response.dto';
+import {
+  FulfillmentBlockReasonValues,
+  type FulfillmentBlockReason,
+} from '@openlinker/core/fulfillment';
 import {
   SalesDocumentGateBlockReasonValues,
   SalesDocumentUnresolvedReasonValues,
@@ -40,6 +51,8 @@ import { OrderSyncStatusResponseDto } from './order-sync-status-response.dto';
 import { SyncAttemptResponseDto } from './sync-attempt-response.dto';
 import type { OrderInvoiceProjectionDto } from './order-invoice-projection.dto';
 import { OrderReservationShortfallDto } from './order-reservation-shortfall.dto';
+import { OrderHandledInOpenLinkerDto } from './order-handled-in-openlinker.dto';
+import { OrderOpenReturnDto } from './order-open-return.dto';
 import { OrderDeliveryResolutionDto } from './order-delivery-resolution.dto';
 import { OrderDeliveryRiderDto } from './order-delivery-rider.dto';
 import { SalesDocumentViewResponseDto } from './sales-document-view-response.dto';
@@ -129,6 +142,32 @@ export class OrderRecordResponseDto {
   })
   buyerTaxId?: BuyerTaxId;
 
+  @ApiProperty({
+    description:
+      'True when an operator has edited this order in OpenLinker (#3542, D9): its address, line ' +
+      'quantities or delivery method differ from what the channel reported. `orderSnapshot` is then ' +
+      'the order AS EDITED; the channel keeps its original. Cheap, so it is on every list row.',
+  })
+  editedInOpenLinker!: boolean;
+
+  @ApiProperty({
+    description:
+      'True when an operator edit of a line no longer matches any line the channel reports (a ' +
+      're-ingestion renamed or dropped the line id). The edit is kept but not applied; the detail ' +
+      '`edits.unmatchedLineEdits` names it. Cheap, so it is on every list row.',
+  })
+  editsNeedAttention!: boolean;
+
+  @ApiPropertyOptional({
+    type: OrderEditsViewDto,
+    nullable: true,
+    description:
+      'The order beside the channel\'s own record of it: every edited figure given twice (channel ' +
+      'original and after the edit), plus the edit history. DETAIL READ ONLY (it reads the change ' +
+      'history, one query); null on an order nobody edited.',
+  })
+  edits?: OrderEditsViewDto | null;
+
   @ApiPropertyOptional({
     enum: SalesDocumentGateBlockReasonValues,
     nullable: true,
@@ -139,6 +178,27 @@ export class OrderRecordResponseDto {
       'recordStatus: an order can be ready and synced while still carrying a block.',
   })
   salesDocumentBlockReason!: SalesDocumentGateBlockReason | null;
+
+  @ApiPropertyOptional({
+    enum: DestinationRoutingBlockReasonValues,
+    nullable: true,
+    description:
+      'How a fulfilment routing decision narrowed this order\'s destination fan-out (#2703/#2704). ' +
+      'null when routing narrowed nothing — which is every order until a router is wired. ' +
+      '"routed-to-no-destination" is a working router making a DECISION and is rendered neutrally; ' +
+      'the other three name a destination the router asked for that OpenLinker could not reach. ' +
+      'Independent of health and of salesDocumentBlockReason.',
+  })
+  destinationRoutingBlockReason!: DestinationRoutingBlockReason | null;
+
+  @ApiPropertyOptional({
+    type: String,
+    nullable: true,
+    description:
+      'PII-free elaboration of destinationRoutingBlockReason — connection ids and counts only, ' +
+      'never buyer data. null when there is no reason or nothing further to say.',
+  })
+  destinationRoutingBlockDetail!: string | null;
 
   @ApiPropertyOptional({
     enum: SalesDocumentUnresolvedReasonValues,
@@ -203,6 +263,37 @@ export class OrderRecordResponseDto {
   })
   reservationShortfalls?: OrderReservationShortfallDto[];
 
+  @ApiPropertyOptional({
+    type: OrderOpenReturnDto,
+    description:
+      'The Status-group "open return" badge (#2998). Absent means no OPEN return was found for ' +
+      'this order, never a positive "no returns" claim — the batched projection is best-effort ' +
+      'and degrades to absent on a failed read. "Open" is the `/returns` list\'s own `all_open` ' +
+      'segment predicate, reused rather than redefined. An orphan return (unattributed to any ' +
+      'order) can never contribute to this field by construction.',
+  })
+  openReturn?: OrderOpenReturnDto;
+
+  @ApiPropertyOptional({
+    type: OrderHandledInOpenLinkerDto,
+    description:
+      'The packing position of an order OpenLinker handles itself (#3482): the OMS router sent it ' +
+      'to the pack bench instead of mirroring it to a product master, so it has no destination ' +
+      'rows and would otherwise read "No destinations". Absent means NO LIVE WORK was found, ' +
+      'never a positive "not routed" claim - the batched read is best-effort and degrades to ' +
+      'absent on failure. A separate, non-partitioning field: it is never a health bucket.',
+  })
+  handledInOpenLinker?: OrderHandledInOpenLinkerDto;
+
+  @ApiPropertyOptional({
+    type: [String],
+    description:
+      'Tag ids assigned to this order (#3532, D34). Absent means "not projected on this read" ' +
+      '(never used today — every read that returns this DTO batches it); an empty array is a ' +
+      'positive "no tags".',
+  })
+  tagIds?: string[];
+
   @ApiProperty({ description: 'Order last-update timestamp (ISO 8601)' })
   updatedAt!: string;
 
@@ -239,6 +330,102 @@ export class OrderRecordResponseDto {
       'Moves as one group with packedAt, so the FIRST actor is never overwritten.',
   })
   packedByUserId!: string | null;
+
+  @ApiProperty({
+    description:
+      'Whether the source reported a non-empty buyer note (#3538). On the SHARED projection (list and detail): ' +
+      'a denormalised boolean, so the list can badge and filter without the note text. Carries no content, so it is ' +
+      'written even under `OL_STORE_PII=false`. false covers both "no note" and "unknown"; the detail read ' +
+      '`buyerNote` tells them apart where the text is stored.',
+  })
+  hasBuyerNote!: boolean;
+
+  @ApiProperty({
+    enum: ['present', 'none', 'unknown'],
+    description:
+      'What the list can say about the buyer note without its text (#3538). `present` = `hasBuyerNote`; ' +
+      '`none` = the source asserted the buyer left no note; `unknown` = the source could not say. Under ' +
+      '`OL_STORE_PII=false` no note text is stored, so a row with no note cannot tell none from unknown and ' +
+      'reads `unknown`. On the SHARED projection (list and detail).',
+  })
+  buyerNoteState!: 'present' | 'none' | 'unknown';
+
+  @ApiProperty({
+    nullable: true,
+    type: String,
+    description:
+      'First non-empty line of the buyer note, trimmed and cut to 120 characters (#3538), with no ellipsis ' +
+      'added - the client truncates visually. null when the text is not stored or there is no note. The list ' +
+      'already shows buyer identity, so a one-line preview is not a new disclosure class. Never returned by MCP.',
+  })
+  buyerNotePreview!: string | null;
+
+  @ApiPropertyOptional({
+    nullable: true,
+    description:
+      'ISO 3166-1 alpha-2 country of the shipping address (#3538, D7). null = unknown (no address); never a default. ' +
+      'Country is not personal data and survives `OL_STORE_PII=false`.',
+  })
+  shippingCountry!: string | null;
+
+  @ApiPropertyOptional({
+    nullable: true,
+    description: 'Billing-address counterpart of `shippingCountry` (#3538, D7). null = unknown.',
+  })
+  billingCountry!: string | null;
+
+  @ApiPropertyOptional({
+    nullable: true,
+    description:
+      'How many OTHER, earlier orders the same resolved customer identity has in OpenLinker (#3538, D7). ' +
+      'Computed by OpenLinker at ingestion, never read from a channel. null = unknown (the order has no resolved customer).',
+  })
+  buyerOrderCount!: number | null;
+
+  @ApiPropertyOptional({
+    nullable: true,
+    type: String,
+    description:
+      'The buyer\'s checkout note to the seller (#3538). THREE states: a string is the note verbatim; null means the ' +
+      'source asserted the buyer left none; the key is ABSENT when the source could not say - and also when the deployment ' +
+      'runs with `OL_STORE_PII=false`, which stores no note text (see `hasBuyerNote`, which is still written). ' +
+      'DETAIL READ ONLY - GET /orders/:id sets it; the paged list never does. Free text may carry a phone number or ' +
+      'a parcel locker, so it follows the buyer-tax-id data-minimisation rule. Never returned by MCP `get_order`.',
+  })
+  buyerNote?: string | null;
+
+  @ApiPropertyOptional({
+    nullable: true,
+    description:
+      'When an operator first marked the buyer note read (ISO 8601, #3538). null = unread. DETAIL READ ONLY; ' +
+      'fill-once, so a second reader never moves it.',
+  })
+  buyerNoteReadAt?: string | null;
+
+  @ApiPropertyOptional({
+    nullable: true,
+    description: 'OL user id of whoever first marked the note read (#3538). Moves with `buyerNoteReadAt`.',
+  })
+  buyerNoteReadByUserId?: string | null;
+
+  @ApiPropertyOptional({
+    nullable: true,
+    description:
+      'When the buyer note text last changed while a different text was stored (ISO 8601, N-22). null = never ' +
+      'changed. A changed text resets the read marker but NOT bench acknowledgements, so a surface compares this ' +
+      'with `buyerNoteAcknowledgements[].acknowledgedAt` to say the note changed after it was read. DETAIL READ ONLY.',
+  })
+  buyerNoteChangedAt?: string | null;
+
+  @ApiPropertyOptional({
+    type: () => [BuyerNoteAcknowledgementDto],
+    nullable: true,
+    description:
+      'Per-parcel acknowledgements of the buyer note at the pack bench (#3538, D12), oldest first - one entry per ' +
+      'FulfillmentWork that was acknowledged. Feeds the order Activity timeline ("Buyer note read at the bench"). ' +
+      'DETAIL READ ONLY; an unacknowledged parcel is simply absent. `null` means the acknowledgements could not be loaded (distinct from `[]`, loaded and none).',
+  })
+  buyerNoteAcknowledgements?: BuyerNoteAcknowledgementDto[] | null;
 
   @ApiPropertyOptional({
     nullable: true,
@@ -340,6 +527,53 @@ export class OrderRecordResponseDto {
   activeHoldReason!: HoldReason | null;
 
   @ApiPropertyOptional({
+    enum: FulfillmentRoutingSkipReasonValues,
+    nullable: true,
+    description:
+      'Why OpenLinker deliberately did NOT route this order to the pack bench while the OMS is on ' +
+      '(#3455): `own-shop-order` (placed in the operator\'s own shop), `shipped-by-other-system` (a ' +
+      'fulfilment routing rule sends its delivery method to another system), `mirrored-before-routing` ' +
+      '(the product master already had it before routing was switched on), `source-fulfilled` (the ' +
+      'marketplace asserts it ships the order itself). null when the order was ' +
+      'routed, has not been decided yet, or no connection claims sourcing (the OMS is off). NOT a hold: ' +
+      'a skipped order follows today\'s path and is mirrored to its destinations as usual.',
+  })
+  fulfillmentRoutingSkipReason!: FulfillmentRoutingSkipReason | null;
+
+  @ApiPropertyOptional({
+    enum: FulfillmentBlockReasonValues,
+    nullable: true,
+    description:
+      'Why fulfilment routing is HOLDING this order in OpenLinker with no work object explaining it ' +
+      '(#2396, readable since #3485), or null. A held order is not mirrored to any destination. ' +
+      'With the OMS on: `routing-refused` (the plan could not be committed, typically a line out of ' +
+      'stock; re-routed automatically), `routing-no-shipping-address` (clears when the source sends ' +
+      'an address), `routing-failed` (re-routed automatically). The others are transient routing ' +
+      'states. Opposite of `fulfillmentRoutingSkipReason`, which is NOT a hold.',
+  })
+  fulfillmentBlockReason!: FulfillmentBlockReason | null;
+
+  @ApiPropertyOptional({
+    type: String,
+    nullable: true,
+    description:
+      'PII-free elaboration of `fulfillmentBlockReason` (ids and causes only), rendered verbatim; ' +
+      'null when there is no block or nothing to add.',
+  })
+  fulfillmentBlockDetail!: string | null;
+
+  @ApiProperty({
+    enum: PaymentMethodValues,
+    description:
+      'How the buyer pays (#3294): `online`, `bank_transfer`, `cash_on_delivery` or `unknown`. ' +
+      '`unknown` means the source did not report it or it could not be mapped with confidence - ' +
+      'it is never a guess, and it never pre-fills a cash-on-delivery amount or selects an invoice ' +
+      'payment form. Orders ingested before this field existed read `unknown`. Independent of the ' +
+      'payment status carried in the order snapshot.',
+  })
+  paymentMethod!: PaymentMethod;
+
+  @ApiPropertyOptional({
     type: OrderHoldDto,
     nullable: true,
     description:
@@ -368,4 +602,16 @@ export class OrderRecordResponseDto {
       'resolves, and an order with NO document at all is present with `document: null`, never absent.',
   })
   salesDocument?: SalesDocumentViewResponseDto;
+}
+
+/** One parcel's bench acknowledgement of the buyer note (#3538). */
+export class BuyerNoteAcknowledgementDto {
+  @ApiProperty({ description: 'The FulfillmentWork (parcel) that was acknowledged.' })
+  workId!: string;
+
+  @ApiProperty({ description: 'When the parcel was acknowledged (ISO 8601).' })
+  acknowledgedAt!: string;
+
+  @ApiPropertyOptional({ nullable: true, description: 'OL user id of the packer, or null.' })
+  acknowledgedByUserId!: string | null;
 }

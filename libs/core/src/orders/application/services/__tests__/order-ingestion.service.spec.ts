@@ -6,6 +6,8 @@
  * @module libs/core/src/orders/application/services/__tests__
  */
 
+import type { IOrderChangeService } from '../order-change.service.interface';
+import type { IOrderCancellationEffectsService } from '../../interfaces/order-cancellation-effects.service.interface';
 import { OrderIngestionService } from '../order-ingestion.service';
 import type { IIntegrationsService } from '@openlinker/core/integrations';
 import type { OrderSourcePort } from '@openlinker/core/orders';
@@ -81,7 +83,11 @@ describe('OrderIngestionService', () => {
   // `selectPrimaryFulfillmentRouter` returns `no-claimant` and `route` is never
   // reached. Every pre-existing spec therefore asserts the pass-through.
   let routingCommit: jest.Mocked<IRoutingCommitService>;
+  let orderChanges: jest.Mocked<
+    Pick<IOrderChangeService, 'findOpenByOrder' | 'confirm' | 'claimApplied' | 'findLatestByTarget'>
+  >;
   let connections: jest.Mocked<Pick<ConnectionPort, 'list'>>;
+  let cancellationEffects: { applyEffects: jest.Mock };
 
   const connectionId = 'connection-123';
   const cursorKey = 'allegro.orders.lastEventId';
@@ -147,6 +153,7 @@ describe('OrderIngestionService', () => {
       persistIncomingSnapshot: jest.fn().mockResolvedValue({ cancelledAt: null }),
       updateSyncStatus: jest.fn().mockResolvedValue(undefined),
       getOrderRecord: jest.fn(),
+      notifyOrderReceived: jest.fn().mockResolvedValue(undefined),
       findMany: jest.fn(),
       findByIds: jest.fn(),
       markItemResolutionFailure: jest.fn().mockResolvedValue(undefined),
@@ -154,6 +161,11 @@ describe('OrderIngestionService', () => {
       recordEarlyCancellationSignal: jest.fn().mockResolvedValue(undefined),
       markSalesDocumentBlock: jest.fn().mockResolvedValue(undefined),
       markFulfillmentBlock: jest.fn().mockResolvedValue(undefined),
+      markFulfillmentRoutingSkip: jest.fn().mockResolvedValue(undefined),
+      markOmsAttention: jest.fn().mockResolvedValue(undefined),
+      listOrderIdsByFulfillmentBlockReasons: jest.fn().mockResolvedValue([]),
+      listOrderIdsHeldForVariant: jest.fn(),
+      markDestinationRoutingBlock: jest.fn().mockResolvedValue(undefined),
       recordAmendment: jest.fn().mockResolvedValue(undefined),
     } as unknown as jest.Mocked<IOrderRecordService>;
 
@@ -183,6 +195,8 @@ describe('OrderIngestionService', () => {
         countryIso2: null,
         readAt: null,
       }),
+      // #3588: default "no variant has a cost".
+      getVariantsByIds: jest.fn().mockResolvedValue([]),
     } as unknown as jest.Mocked<IProductsService>;
     // #2250: the provenance journal. Default resolves to `null` (a repeat
     // observation), which is what `record` returns when nothing changed.
@@ -204,6 +218,7 @@ describe('OrderIngestionService', () => {
         processorConnectionId: null,
         source: 'default',
         processorAvailable: true,
+        parcelProfile: null,
       }),
     } as unknown as jest.Mocked<IFulfillmentRoutingService>;
 
@@ -212,6 +227,20 @@ describe('OrderIngestionService', () => {
     } as unknown as jest.Mocked<IRoutingCommitService>;
     connections = { list: jest.fn().mockResolvedValue([]) };
 
+    orderChanges = {
+      findOpenByOrder: jest.fn().mockResolvedValue([]),
+      findLatestByTarget: jest.fn().mockResolvedValue(null),
+      confirm: jest.fn().mockResolvedValue(true),
+      claimApplied: jest.fn().mockResolvedValue(true),
+    };
+    cancellationEffects = {
+      applyEffects: jest.fn().mockResolvedValue({
+        cancelledWorkIds: [],
+        releasedHoldIds: [],
+        correctionProposal: null,
+        correctionUnavailableReason: null,
+      }),
+    };
     service = new OrderIngestionService(
       integrationsService,
       syncCursors as unknown as ISyncCursorsService,
@@ -231,7 +260,9 @@ describe('OrderIngestionService', () => {
       fulfillmentRouting,
       routingCommit,
       connections as unknown as ConnectionPort,
-      routerResolver
+      routerResolver,
+      orderChanges as unknown as IOrderChangeService,
+      cancellationEffects as unknown as IOrderCancellationEffectsService
     );
   });
 
@@ -310,6 +341,7 @@ describe('OrderIngestionService', () => {
         processorConnectionId: 'carrier-1',
         source: 'rule',
         processorAvailable: true,
+        parcelProfile: null,
       });
 
       await service.syncOrderFromSource(connectionId, externalOrderId);
@@ -325,6 +357,7 @@ describe('OrderIngestionService', () => {
         processorConnectionId: 'carrier-1',
         source: 'rule',
         processorAvailable: false,
+        parcelProfile: null,
       });
 
       await service.syncOrderFromSource(connectionId, externalOrderId);
@@ -875,7 +908,9 @@ describe('OrderIngestionService', () => {
         connectionId,
         null,
         // sourceExternalUrl (#1713) — the test fixture's incoming order carries none.
-        null
+        null,
+        // lineCostCandidates (#3588) — no costed variant in the default fixture.
+        new Map()
       );
       expect(orderRecordService.persistIncomingSnapshot.mock.invocationCallOrder[0]).toBeLessThan(
         orderRecordService.persistOrder.mock.invocationCallOrder[0]
@@ -883,6 +918,109 @@ describe('OrderIngestionService', () => {
       expect(orderRecordService.persistOrder.mock.invocationCallOrder[0]).toBeLessThan(
         orderSyncService.syncOrder.mock.invocationCallOrder[0]
       );
+    });
+
+    describe('line cost snapshot candidates (#3588, D27)', () => {
+      const variantWithCost = (costUpdatedAt: Date | null, netUnitCost: string | null = '4.5000') =>
+        ({
+          id: 'ol_variant_1',
+          netUnitCost,
+          costCurrency: netUnitCost === null ? null : 'PLN',
+          costUpdatedAt,
+        }) as unknown as Awaited<ReturnType<IProductsService['getVariantsByIds']>>[number];
+
+      beforeEach(() => {
+        orderSyncService.syncOrder.mockResolvedValue([]);
+        orderItemRefResolver.tryResolve.mockResolvedValue({
+          resolved: true,
+          internalProductId: 'ol_product_1',
+          internalVariantId: 'ol_variant_1',
+        } as never);
+        orderSource.getOrder.mockResolvedValue({
+          ...baseIncoming,
+          // Two lines on one variant: the lookup must still be de-duplicated.
+          items: [
+            { id: 'line-1', productRef: { type: 'variant' as const, externalId: 'ext-v1' }, quantity: 1, price: 10 },
+            { id: 'line-2', productRef: { type: 'variant' as const, externalId: 'ext-v1' }, quantity: 1, price: 10 },
+          ],
+          placedAt: '2026-05-31T16:00:00.000Z',
+        });
+      });
+
+      it('should look variants up once, de-duplicated, and pass the candidate map to persistOrder', async () => {
+        productsService.getVariantsByIds.mockResolvedValue([
+          variantWithCost(new Date('2026-05-01T00:00:00.000Z')),
+        ]);
+
+        await service.syncOrderFromSource(connectionId, externalOrderId);
+
+        expect(productsService.getVariantsByIds).toHaveBeenCalledTimes(1);
+        const ids = productsService.getVariantsByIds.mock.calls[0][0];
+        expect(new Set(ids).size).toBe(ids.length);
+        const candidates = orderRecordService.persistOrder.mock.calls[0][4] as Map<string, unknown>;
+        expect(candidates.get('ol_variant_1')).toEqual({ unitCostNet: '4.5000', currency: 'PLN' });
+      });
+
+      it('should exclude a cost entered after the order was placed (G11-G)', async () => {
+        productsService.getVariantsByIds.mockResolvedValue([
+          variantWithCost(new Date('2026-06-15T00:00:00.000Z')),
+        ]);
+
+        await service.syncOrderFromSource(connectionId, externalOrderId);
+
+        const candidates = orderRecordService.persistOrder.mock.calls[0][4] as Map<string, unknown>;
+        expect(candidates.size).toBe(0);
+      });
+
+      it('should compare at second granularity: a cost saved within the order second is recorded', async () => {
+        orderSource.getOrder.mockResolvedValue({
+          ...baseIncoming,
+          items: [{ id: 'line-1', productRef: { type: 'variant' as const, externalId: 'ext-v1' }, quantity: 1, price: 10 }],
+          placedAt: '2026-05-31T10:00:00.000Z',
+        });
+        productsService.getVariantsByIds.mockResolvedValue([
+          variantWithCost(new Date('2026-05-31T10:00:00.700Z')),
+        ]);
+
+        await service.syncOrderFromSource(connectionId, externalOrderId);
+
+        const candidates = orderRecordService.persistOrder.mock.calls[0][4] as Map<string, unknown>;
+        expect(candidates.has('ol_variant_1')).toBe(true);
+      });
+
+      it('should not record a cost saved in the second after the order', async () => {
+        orderSource.getOrder.mockResolvedValue({
+          ...baseIncoming,
+          items: [{ id: 'line-1', productRef: { type: 'variant' as const, externalId: 'ext-v1' }, quantity: 1, price: 10 }],
+          placedAt: '2026-05-31T10:00:00.000Z',
+        });
+        productsService.getVariantsByIds.mockResolvedValue([
+          variantWithCost(new Date('2026-05-31T10:00:01.000Z')),
+        ]);
+
+        await service.syncOrderFromSource(connectionId, externalOrderId);
+
+        const candidates = orderRecordService.persistOrder.mock.calls[0][4] as Map<string, unknown>;
+        expect(candidates.size).toBe(0);
+      });
+
+      it('should exclude a variant without a cost', async () => {
+        productsService.getVariantsByIds.mockResolvedValue([variantWithCost(null, null)]);
+
+        await service.syncOrderFromSource(connectionId, externalOrderId);
+
+        const candidates = orderRecordService.persistOrder.mock.calls[0][4] as Map<string, unknown>;
+        expect(candidates.size).toBe(0);
+      });
+
+      it('should propagate a lookup failure instead of freezing not-recorded', async () => {
+        productsService.getVariantsByIds.mockRejectedValue(new Error('db down'));
+
+        await expect(service.syncOrderFromSource(connectionId, externalOrderId)).rejects.toThrow(
+          'db down'
+        );
+        expect(orderRecordService.persistOrder).not.toHaveBeenCalled();
+      });
     });
 
     it('should carry incoming.placedAt onto the unified Order as a Date (#926)', async () => {
@@ -1237,6 +1375,26 @@ describe('OrderIngestionService', () => {
       expect(orderRecordService.persistIncomingSnapshot).toHaveBeenCalled();
       expect(orderRecordService.persistOrder).toHaveBeenCalled();
       expect(orderSyncService.syncOrder).toHaveBeenCalled();
+    });
+
+    it('should fire order.received when the order is ingested for the first time (#3554)', async () => {
+      orderRecordService.getOrderRecord.mockResolvedValue(null);
+      orderSyncService.syncOrder.mockResolvedValue([]);
+
+      await service.syncOrderFromSource(connectionId, externalOrderId);
+
+      expect(orderRecordService.notifyOrderReceived).toHaveBeenCalledTimes(1);
+    });
+
+    it('should not fire order.received when the order is re-ingested (#3554)', async () => {
+      orderRecordService.getOrderRecord.mockResolvedValue({
+        sourceConnectionId: connectionId,
+      } as unknown as OrderRecord);
+      orderSyncService.syncOrder.mockResolvedValue([]);
+
+      await service.syncOrderFromSource(connectionId, externalOrderId);
+
+      expect(orderRecordService.notifyOrderReceived).not.toHaveBeenCalled();
     });
 
     it('should proceed with ingestion when the existing order shares the same source connection (genuine same-source reconcile)', async () => {
@@ -1796,6 +1954,193 @@ describe('OrderIngestionService', () => {
     });
   });
 
+  describe('syncOrderFromSource – inbound cancel confirms an open operator request (#3540)', () => {
+    const externalOrderId = 'checkout-cancel-3540';
+    const openRequest = { id: 'change-1', kind: 'order.cancel_request' };
+
+    beforeEach(() => {
+      identifierMapping.getInternalId.mockResolvedValue('ol_order_cancel');
+      orderRecordService.getOrderRecord.mockResolvedValue({
+        sourceConnectionId: connectionId,
+      } as unknown as OrderRecord);
+      orderLifecycleRelay.relay.mockResolvedValue({ targets: [] });
+    });
+
+    it('confirms and claims an open cancel request, attributing it to the source', async () => {
+      orderChanges.findOpenByOrder.mockResolvedValue([openRequest] as never);
+
+      await service.syncOrderFromSource(connectionId, externalOrderId, 'evt-1', 'cancelled');
+
+      expect(orderRecordService.markCancelled).toHaveBeenCalled();
+      expect(orderChanges.confirm).toHaveBeenCalledWith('change-1', `source:${connectionId}`);
+      expect(orderChanges.claimApplied).toHaveBeenCalledWith('change-1');
+    });
+
+    it('should not relay the channel echo of an operator cancel to the destinations again (C-40)', async () => {
+      orderChanges.findLatestByTarget.mockResolvedValue({
+        status: 'confirmed',
+        confirmedBy: 'user-9',
+      } as never);
+
+      await service.syncOrderFromSource(connectionId, externalOrderId, 'evt-1', 'cancelled');
+
+      expect(orderLifecycleRelay.relay).not.toHaveBeenCalled();
+    });
+
+    it('should still relay a cancel the channel started itself (C-40)', async () => {
+      orderChanges.findLatestByTarget.mockResolvedValue({
+        status: 'confirmed',
+        confirmedBy: `source:${connectionId}`,
+      } as never);
+
+      await service.syncOrderFromSource(connectionId, externalOrderId, 'evt-1', 'cancelled');
+
+      expect(orderLifecycleRelay.relay).toHaveBeenCalledTimes(1);
+    });
+
+    it('runs the same cancellation cleanup the operator path runs, as the requesting operator (B-18)', async () => {
+      orderChanges.findOpenByOrder.mockResolvedValue([
+        { ...openRequest, requestedBy: 'user-9', payload: { reason: 'fraud' } },
+      ] as never);
+
+      await service.syncOrderFromSource(connectionId, externalOrderId, 'evt-1', 'cancelled');
+
+      expect(cancellationEffects.applyEffects).toHaveBeenCalledWith({
+        internalOrderId: 'ol_order_cancel',
+        cancelledAt: expect.any(Date),
+        reason: 'fraud',
+        actorUserId: 'user-9',
+      });
+    });
+
+    it('does not run the cleanup when a peer won the confirm (B-18)', async () => {
+      orderChanges.findOpenByOrder.mockResolvedValue([openRequest] as never);
+      orderChanges.confirm.mockResolvedValue(false);
+
+      await service.syncOrderFromSource(connectionId, externalOrderId, 'evt-1', 'cancelled');
+
+      expect(cancellationEffects.applyEffects).not.toHaveBeenCalled();
+    });
+
+    it('never fails ingestion when the cleanup throws (B-18)', async () => {
+      orderChanges.findOpenByOrder.mockResolvedValue([openRequest] as never);
+      cancellationEffects.applyEffects.mockRejectedValue(new Error('boom'));
+
+      await expect(
+        service.syncOrderFromSource(connectionId, externalOrderId, 'evt-1', 'cancelled')
+      ).resolves.toEqual([]);
+      expect(orderLifecycleRelay.relay).toHaveBeenCalled();
+    });
+
+    it('should run the cancellation cleanup once for a channel cancel with no operator request (C-30)', async () => {
+      orderChanges.findOpenByOrder.mockResolvedValue([] as never);
+      orderRecordService.getOrderRecord.mockResolvedValue({
+        sourceConnectionId: connectionId,
+        cancelledAt: null,
+      } as unknown as OrderRecord);
+
+      await service.syncOrderFromSource(connectionId, externalOrderId, 'evt-1', 'cancelled');
+
+      expect(cancellationEffects.applyEffects).toHaveBeenCalledTimes(1);
+      expect(cancellationEffects.applyEffects).toHaveBeenCalledWith(
+        expect.objectContaining({ internalOrderId: 'ol_order_cancel', actorUserId: null })
+      );
+    });
+
+    it('should not repeat the cancellation cleanup when the cancel was already recorded (C-30)', async () => {
+      orderChanges.findOpenByOrder.mockResolvedValue([] as never);
+      orderRecordService.getOrderRecord.mockResolvedValue({
+        sourceConnectionId: connectionId,
+        cancelledAt: new Date('2026-08-01T10:00:00.000Z'),
+      } as unknown as OrderRecord);
+
+      await service.syncOrderFromSource(connectionId, externalOrderId, 'evt-1', 'cancelled');
+
+      expect(cancellationEffects.applyEffects).not.toHaveBeenCalled();
+    });
+
+    it('should run the cleanup only once when an open request is also confirmed in the same pass (C-30)', async () => {
+      orderChanges.findOpenByOrder.mockResolvedValue([
+        { ...openRequest, requestedBy: 'user-9', payload: {} },
+      ] as never);
+      orderRecordService.getOrderRecord.mockResolvedValue({
+        sourceConnectionId: connectionId,
+        cancelledAt: null,
+      } as unknown as OrderRecord);
+
+      await service.syncOrderFromSource(connectionId, externalOrderId, 'evt-1', 'cancelled');
+
+      expect(cancellationEffects.applyEffects).toHaveBeenCalledTimes(1);
+    });
+
+    it('should confirm an open cancel request and run the cleanup when the cancel arrives as a plain update (C-4)', async () => {
+      const incoming = {
+        externalOrderId: 'checkout-update-cancel',
+        orderNumber: 'checkout-update-cancel',
+        status: 'cancelled',
+        items: [],
+        totals: { subtotal: 0, tax: 0, shipping: 0, total: 0, currency: 'PLN' },
+        createdAt: '2024-01-01T00:00:00Z',
+        updatedAt: '2024-01-02T00:00:00Z',
+      };
+      identifierMapping.getOrCreateInternalId.mockResolvedValue('ol_order_cancel');
+      integrationsService.getCapabilityAdapter.mockResolvedValue(orderSource);
+      orderSource.getOrder.mockResolvedValue(incoming);
+      orderSyncService.syncOrder.mockResolvedValue([]);
+      orderRecordService.getOrderRecord.mockResolvedValue({
+        sourceConnectionId: connectionId,
+        cancelledAt: null,
+      } as unknown as OrderRecord);
+      orderChanges.findOpenByOrder.mockResolvedValue([
+        { ...openRequest, requestedBy: 'user-9', payload: {} },
+      ] as never);
+
+      await service.syncOrderFromSource(connectionId, 'checkout-update-cancel');
+
+      expect(orderChanges.confirm).toHaveBeenCalledWith('change-1', `source:${connectionId}`);
+      expect(cancellationEffects.applyEffects).toHaveBeenCalledTimes(1);
+    });
+
+    it('leaves every other open change alone', async () => {
+      orderChanges.findOpenByOrder.mockResolvedValue([
+        { id: 'c2', kind: 'order.cancel_correction' },
+        { id: 'c3', kind: 'return.decline' },
+      ] as never);
+
+      await service.syncOrderFromSource(connectionId, externalOrderId, 'evt-1', 'cancelled');
+
+      expect(orderChanges.confirm).not.toHaveBeenCalled();
+    });
+
+    it('does not claim application when a peer already confirmed the row', async () => {
+      orderChanges.findOpenByOrder.mockResolvedValue([openRequest] as never);
+      orderChanges.confirm.mockResolvedValue(false);
+
+      await service.syncOrderFromSource(connectionId, externalOrderId, 'evt-1', 'cancelled');
+
+      expect(orderChanges.claimApplied).not.toHaveBeenCalled();
+    });
+
+    it('never fails ingestion, and still relays, when confirming throws', async () => {
+      orderChanges.findOpenByOrder.mockRejectedValue(new Error('db down'));
+
+      await expect(
+        service.syncOrderFromSource(connectionId, externalOrderId, 'evt-1', 'cancelled')
+      ).resolves.toEqual([]);
+      expect(orderLifecycleRelay.relay).toHaveBeenCalled();
+    });
+
+    it('does not look for a request on a destination-echo cancel', async () => {
+      orderRecordService.getOrderRecord.mockResolvedValue({
+        sourceConnectionId: 'other-source',
+      } as unknown as OrderRecord);
+
+      await service.syncOrderFromSource(connectionId, externalOrderId, 'evt-1', 'cancelled');
+
+      expect(orderChanges.findOpenByOrder).not.toHaveBeenCalled();
+    });
+  });
+
   describe('syncOrderFromSource – inbound cancellation durably recorded on the record (#1984)', () => {
     const externalOrderId = 'checkout-cancel-1984';
 
@@ -1818,6 +2163,34 @@ describe('OrderIngestionService', () => {
         orderRecordService.markCancelled.mock.invocationCallOrder[0];
       const relayOrder = orderLifecycleRelay.relay.mock.invocationCallOrder[0];
       expect(markCancelledOrder).toBeLessThan(relayOrder);
+    });
+
+    it('should enqueue the stock-restore job that releases the holds when a cancel event arrives (E2E-23)', async () => {
+      identifierMapping.getInternalId.mockResolvedValue('ol_order_cancel');
+      orderRecordService.getOrderRecord.mockResolvedValue({
+        sourceConnectionId: connectionId,
+      } as unknown as OrderRecord);
+
+      await service.syncOrderFromSource(connectionId, externalOrderId, 'evt-1', 'cancelled');
+
+      expect(jobQueue.enqueue).toHaveBeenCalledWith({
+        type: 'marketplace.offer.stockRestore',
+        connectionId,
+        payload: { schemaVersion: 1, internalOrderId: 'ol_order_cancel' },
+        options: { dedupeKey: `marketplace:${connectionId}:stockRestore:ol_order_cancel` },
+      });
+    });
+
+    it('should still relay the cancel when the stock-restore enqueue fails (E2E-23)', async () => {
+      identifierMapping.getInternalId.mockResolvedValue('ol_order_cancel');
+      orderRecordService.getOrderRecord.mockResolvedValue({
+        sourceConnectionId: connectionId,
+      } as unknown as OrderRecord);
+      jobQueue.enqueue.mockRejectedValueOnce(new Error('queue down'));
+
+      await service.syncOrderFromSource(connectionId, externalOrderId, 'evt-1', 'cancelled');
+
+      expect(orderLifecycleRelay.relay).toHaveBeenCalled();
     });
 
     it('does NOT mark the record cancelled when the order was never ingested (no internal mapping) — instead records a durable early-cancellation signal (#2069)', async () => {
@@ -1927,11 +2300,14 @@ describe('OrderIngestionService', () => {
       });
     });
 
-    const priorWithQuantity = (quantity: number): OrderRecord =>
-      ({
+    const priorWithQuantity = (quantity: number): OrderRecord => {
+      const snapshot = { status: 'BOUGHT', items: [{ id: 'l1', quantity, sku: 'SKU-l1' }] };
+      return {
         sourceConnectionId: connectionId,
-        orderSnapshot: { status: 'BOUGHT', items: [{ id: 'l1', quantity, sku: 'SKU-l1' }] },
-      }) as unknown as OrderRecord;
+        orderSnapshot: snapshot,
+        channelSnapshot: snapshot,
+      } as unknown as OrderRecord;
+    };
 
     it('should record the fact once with the observed changes when the source amended the order', async () => {
       orderRecordService.getOrderRecord.mockResolvedValue(priorWithQuantity(3));
@@ -1970,6 +2346,55 @@ describe('OrderIngestionService', () => {
       await service.syncOrderFromSource(connectionId, externalOrderId);
 
       expect(orderRecordService.recordAmendment).not.toHaveBeenCalled();
+    });
+
+    it('should diff against the CHANNEL snapshot so an operator edit is never reported as a source amendment (#3542)', async () => {
+      // The effective view says 1 (the operator lowered it); the channel still says 1
+      // and the source re-reports 1. Diffing the effective view against an incoming 3
+      // would be the false positive; here the channel original is what is compared.
+      orderSource.getOrder.mockResolvedValue({
+        ...incoming,
+        items: [{ ...incoming.items[0], quantity: 3 }],
+        totals: { ...incoming.totals, total: 30 },
+      });
+      orderRecordService.getOrderRecord.mockResolvedValue({
+        sourceConnectionId: connectionId,
+        orderSnapshot: { status: 'BOUGHT', items: [{ id: 'l1', quantity: 1, sku: 'SKU-l1' }] },
+        channelSnapshot: { status: 'BOUGHT', items: [{ id: 'l1', quantity: 3, sku: 'SKU-l1' }] },
+      } as unknown as OrderRecord);
+
+      await service.syncOrderFromSource(connectionId, externalOrderId);
+
+      expect(orderRecordService.recordAmendment).not.toHaveBeenCalled();
+    });
+
+    it('should persist the channel order but hand everything after it the order as edited (#3542)', async () => {
+      orderSource.getOrder.mockResolvedValue({
+        ...incoming,
+        items: [{ ...incoming.items[0], quantity: 3 }],
+        totals: { ...incoming.totals, subtotal: 30, total: 30 },
+      });
+      orderRecordService.getOrderRecord.mockResolvedValue(null);
+      orderRecordService.persistOrder.mockResolvedValueOnce({
+        shippingAddressHash: null,
+        orderEdits: {
+          v: 1,
+          rev: 1,
+          lines: {
+            l1: { changeId: 'chg-1', editedAt: '2026-10-26T10:00:00.000Z', editedBy: null, quantity: 1 },
+          },
+        },
+      } as never);
+
+      await service.syncOrderFromSource(connectionId, externalOrderId);
+
+      const persisted = orderRecordService.persistOrder.mock.calls[0][0];
+      expect(persisted.items[0].quantity).toBe(3);
+      expect(persisted.totals.total).toBe(30);
+
+      const request = orderSyncService.syncOrder.mock.calls[0][0];
+      expect(request.order.items[0].quantity).toBe(1);
+      expect(request.order.totals.total).toBe(10);
     });
 
     it('should not record anything on a first ingestion', async () => {
@@ -2196,6 +2621,30 @@ describe('OrderIngestionService', () => {
       expect(request.destinationConnectionIds).toBeUndefined();
     });
 
+    it("hands the source's payment method to the sync as the payment-mapping key (#3474)", async () => {
+      orderSource.getOrder.mockResolvedValue({
+        ...charIncoming,
+        sourcePaymentMethod: 'CASH_ON_DELIVERY',
+      });
+
+      await service.syncOrderFromSource(connectionId, externalOrderId, 'evt-1');
+
+      const request = orderSyncService.syncOrder.mock.calls[0][0];
+      expect(request.order.sourcePaymentMethod).toBe('CASH_ON_DELIVERY');
+    });
+
+    it('hands the neutral payment method to the sync, as reported (#3294)', async () => {
+      orderSource.getOrder.mockResolvedValue({
+        ...charIncoming,
+        paymentMethod: 'bank_transfer',
+      });
+
+      await service.syncOrderFromSource(connectionId, externalOrderId, 'evt-1');
+
+      const request = orderSyncService.syncOrder.mock.calls[0][0];
+      expect(request.order.paymentMethod).toBe('bank_transfer');
+    });
+
     it('never writes a fulfilment block reason on a router-less install', async () => {
       await service.syncOrderFromSource(connectionId, externalOrderId, 'evt-1');
 
@@ -2294,6 +2743,13 @@ describe('OrderIngestionService', () => {
         expect(orderSyncService.syncOrder.mock.calls[0][0].destinationConnectionIds).toBeUndefined();
       });
 
+      // #3480: an order that will not be routed keeps the dispatch-routing stamp.
+      it('should stamp the hold from the dispatch routing, not as published', async () => {
+        await service.syncOrderFromSource(connectionId, externalOrderId);
+
+        expect(reservationService.reserveForOrder.mock.calls[0][0].atpEffect).toBe('diagnostic');
+      });
+
       it('persists NOTHING — #2352 already reports A2-A at order grain', async () => {
         // THE assertion this arm exists for. `'sourcing-ambiguous'` (spec row
         // A2-A) is derived on every read by `resolveAuthorities` with
@@ -2309,6 +2765,553 @@ describe('OrderIngestionService', () => {
         for (const [, block] of markBlock().mock.calls) {
           expect(block).toBeNull();
         }
+      });
+    });
+
+    // #3487 — an order from the operator's own shop (a product master) is not
+    // routed: it stays in the shop and is packed there. Otherwise the same
+    // parcel would be on the pack bench AND in the shop's back office.
+    describe('an order from the operator\'s own shop (#3487)', () => {
+      const router = { route: jest.fn() };
+
+      /** The connection the order was ingested through. */
+      const sourceConnection = (enabledCapabilities: string[]) => ({
+        id: connectionId,
+        status: 'active',
+        enabledCapabilities,
+        config: {},
+      });
+
+      beforeEach(() => {
+        resolveRouterMock.mockResolvedValue(router as never);
+        routingCommit.route.mockResolvedValue({
+          status: 'routed',
+          decisionId: 'dec-1',
+          works: [{ workId: 'w-1', assignedConnectionId: 'dest-1' }],
+        });
+      });
+
+      it('should not route the order and should follow today\'s path when its source has ProductMaster enabled', async () => {
+        connections.list.mockResolvedValue([
+          routerConnection('conn-oms'),
+          sourceConnection(['ProductMaster', 'InventoryMaster', 'OrderSource']),
+        ] as never);
+
+        await service.syncOrderFromSource(connectionId, externalOrderId);
+
+        expect(resolveRouterMock).not.toHaveBeenCalled();
+        expect(routingCommit.route).not.toHaveBeenCalled();
+        expect(orderSyncService.syncOrder).toHaveBeenCalledTimes(1);
+        expect(
+          jobQueue.enqueue.mock.calls.filter(
+            ([request]) => request.type === 'fulfillment.work.dispatch'
+          )
+        ).toEqual([]);
+      });
+
+      // #3480 x #3487 — the own-shop rule is part of the ONE routing answer the
+      // hold's insert-only `atpEffect` is decided from. Checked only in the
+      // intercept, the hold would be stamped `published` for an order that is
+      // never routed, while the shop has already lowered its own stock.
+      it('should not hold the own-shop order as published', async () => {
+        connections.list.mockResolvedValue([
+          routerConnection('conn-oms'),
+          sourceConnection(['ProductMaster', 'OrderSource']),
+        ] as never);
+
+        await service.syncOrderFromSource(connectionId, externalOrderId);
+
+        expect(reservationService.reserveForOrder).toHaveBeenCalledTimes(1);
+        expect(reservationService.reserveForOrder.mock.calls[0][0].atpEffect).toBe('diagnostic');
+        expect(connections.list).toHaveBeenCalledTimes(1);
+      });
+
+      it('should persist no fulfilment block when the own-shop order is not routed', async () => {
+        connections.list.mockResolvedValue([
+          routerConnection('conn-oms'),
+          sourceConnection(['ProductMaster', 'OrderSource']),
+        ] as never);
+
+        await service.syncOrderFromSource(connectionId, externalOrderId);
+
+        for (const [, block] of markBlock().mock.calls) {
+          expect(block).toBeNull();
+        }
+      });
+
+      // Checked BEFORE router selection, so an A2 ambiguity is not even
+      // consulted for an order that is never routed.
+      it('should follow today\'s path for an own-shop order even when the A2 claim is ambiguous', async () => {
+        connections.list.mockResolvedValue([
+          routerConnection('conn-a'),
+          routerConnection('conn-b'),
+          sourceConnection(['ProductMaster', 'OrderSource']),
+        ] as never);
+
+        await service.syncOrderFromSource(connectionId, externalOrderId);
+
+        expect(routingCommit.route).not.toHaveBeenCalled();
+        expect(orderSyncService.syncOrder).toHaveBeenCalledTimes(1);
+      });
+
+      it('should still route a marketplace order whose source has no ProductMaster', async () => {
+        connections.list.mockResolvedValue([
+          routerConnection('conn-oms'),
+          sourceConnection(['OrderSource', 'OfferManager']),
+        ] as never);
+
+        await service.syncOrderFromSource(connectionId, externalOrderId);
+
+        expect(routingCommit.route).toHaveBeenCalledTimes(1);
+        expect(orderSyncService.syncOrder).not.toHaveBeenCalled();
+      });
+    });
+
+    // #3488 — an order whose delivery method an ADR-012 rule routes to
+    // `omp_fulfilled` is shipped by that system, so it is not routed too.
+    describe('an order another system ships (#3488)', () => {
+      const router = { route: jest.fn() };
+
+      /** A marketplace source connection — not a product master. */
+      const marketplaceSource = {
+        id: connectionId,
+        status: 'active',
+        enabledCapabilities: ['OrderSource', 'OfferManager'],
+        config: {},
+      };
+
+      const resolveTo = (processorKind: string, source: 'rule' | 'default') =>
+        fulfillmentRouting.resolve.mockResolvedValue({
+          processorKind,
+          processorConnectionId: source === 'rule' ? 'processor-1' : null,
+          source,
+          processorAvailable: true,
+        } as never);
+
+      beforeEach(() => {
+        resolveRouterMock.mockResolvedValue(router as never);
+        routingCommit.route.mockResolvedValue({
+          status: 'routed',
+          decisionId: 'dec-1',
+          works: [{ workId: 'w-1', assignedConnectionId: 'dest-1' }],
+        });
+        connections.list.mockResolvedValue([
+          routerConnection('conn-oms'),
+          marketplaceSource,
+        ] as never);
+      });
+
+      it('should not route the order and should follow today\'s path when a rule resolves omp_fulfilled', async () => {
+        resolveTo('omp_fulfilled', 'rule');
+
+        await service.syncOrderFromSource(connectionId, externalOrderId);
+
+        expect(resolveRouterMock).not.toHaveBeenCalled();
+        expect(routingCommit.route).not.toHaveBeenCalled();
+        expect(orderSyncService.syncOrder).toHaveBeenCalledTimes(1);
+        for (const [, block] of markBlock().mock.calls) {
+          expect(block).toBeNull();
+        }
+      });
+
+      // #3480 x #3488 — the rule is part of the ONE routing answer the hold's
+      // insert-only `atpEffect` is decided from, so an order another system
+      // ships is never held `published` by OpenLinker.
+      it('should not hold the order as published when a rule resolves omp_fulfilled', async () => {
+        resolveTo('omp_fulfilled', 'rule');
+
+        await service.syncOrderFromSource(connectionId, externalOrderId);
+
+        expect(reservationService.reserveForOrder).toHaveBeenCalledTimes(1);
+        expect(reservationService.reserveForOrder.mock.calls[0][0].atpEffect).toBe('diagnostic');
+        expect(fulfillmentRouting.resolve).toHaveBeenCalledTimes(1);
+      });
+
+      it('should still route an order whose delivery method resolves to an OL-managed carrier', async () => {
+        resolveTo('ol_managed_carrier', 'rule');
+
+        await service.syncOrderFromSource(connectionId, externalOrderId);
+
+        expect(routingCommit.route).toHaveBeenCalledTimes(1);
+        expect(orderSyncService.syncOrder).not.toHaveBeenCalled();
+      });
+
+      // The default is omp_fulfilled too; only a matched rule is a positive answer.
+      it('should still route an order no fulfilment routing rule covers', async () => {
+        resolveTo('omp_fulfilled', 'default');
+
+        await service.syncOrderFromSource(connectionId, externalOrderId);
+
+        expect(routingCommit.route).toHaveBeenCalledTimes(1);
+        expect(orderSyncService.syncOrder).not.toHaveBeenCalled();
+      });
+
+      // Unknown is not an answer: routing on it could ship a parcel twice.
+      it('should NOT route an order whose fulfilment routing cannot be resolved', async () => {
+        fulfillmentRouting.resolve.mockRejectedValue(new Error('routing store unreachable'));
+
+        await service.syncOrderFromSource(connectionId, externalOrderId);
+
+        expect(routingCommit.route).not.toHaveBeenCalled();
+        expect(orderSyncService.syncOrder).toHaveBeenCalledTimes(1);
+      });
+
+      // The reservation's atpEffect and the routing skip share one resolution.
+      it('should resolve the fulfilment routing only once per ingestion', async () => {
+        resolveTo('ol_managed_carrier', 'rule');
+
+        await service.syncOrderFromSource(connectionId, externalOrderId);
+
+        expect(reservationService.reserveForOrder).toHaveBeenCalledTimes(1);
+        expect(fulfillmentRouting.resolve).toHaveBeenCalledTimes(1);
+      });
+    });
+
+    // #3455 — an order the product master already received (a `synced`
+    // destination row) before routing was switched on is not routed again on
+    // re-ingest: it would be packed twice and its stock lowered twice (#3453).
+    describe('an order the source ships itself (#3636)', () => {
+      const router = { route: jest.fn() };
+
+      const marketplaceSource = {
+        id: connectionId,
+        status: 'active',
+        enabledCapabilities: ['OrderSource', 'OfferManager'],
+        config: {},
+      };
+
+      beforeEach(() => {
+        resolveRouterMock.mockResolvedValue(router as never);
+        routingCommit.route.mockResolvedValue({
+          status: 'routed',
+          decisionId: 'dec-1',
+          works: [{ workId: 'w-1', assignedConnectionId: 'dest-1' }],
+        });
+        connections.list.mockResolvedValue([
+          routerConnection('conn-oms'),
+          marketplaceSource,
+        ] as never);
+      });
+
+      it('should not route the order and should follow today\'s path when the source asserts it ships it', async () => {
+        orderSource.getOrder.mockResolvedValue({
+          ...interceptIncoming,
+          fulfilledBySource: true,
+        } as never);
+        // No `omp_fulfilled` rule exists: the source's own statement is enough.
+        fulfillmentRouting.resolve.mockResolvedValue({
+          processorKind: 'ol_managed_carrier',
+          processorConnectionId: 'processor-1',
+          source: 'rule',
+          processorAvailable: true,
+        } as never);
+
+        await service.syncOrderFromSource(connectionId, externalOrderId);
+
+        expect(routingCommit.route).not.toHaveBeenCalled();
+        expect(orderSyncService.syncOrder).toHaveBeenCalledTimes(1);
+        expect(
+          (
+            orderRecordService.markFulfillmentRoutingSkip as jest.MockedFunction<
+              IOrderRecordService['markFulfillmentRoutingSkip']
+            >
+          ).mock.calls.at(-1)
+        ).toEqual(['ol_order_int', 'source-fulfilled']);
+      });
+
+      // First match wins: the cheaper, more specific sentences outrank this one.
+      it('should record own-shop-order when an own-shop order is also source-fulfilled', async () => {
+        connections.list.mockResolvedValue([
+          routerConnection('conn-oms'),
+          { ...marketplaceSource, enabledCapabilities: ['ProductMaster', 'OrderSource'] },
+        ] as never);
+        orderSource.getOrder.mockResolvedValue({
+          ...interceptIncoming,
+          fulfilledBySource: true,
+        } as never);
+
+        await service.syncOrderFromSource(connectionId, externalOrderId);
+
+        expect(
+          (
+            orderRecordService.markFulfillmentRoutingSkip as jest.MockedFunction<
+              IOrderRecordService['markFulfillmentRoutingSkip']
+            >
+          ).mock.calls.at(-1)
+        ).toEqual(['ol_order_int', 'own-shop-order']);
+      });
+
+      it('should record mirrored-before-routing when a mirrored order is also source-fulfilled', async () => {
+        orderSource.getOrder.mockResolvedValue({
+          ...interceptIncoming,
+          fulfilledBySource: true,
+        } as never);
+        orderRecordService.getOrderRecord.mockResolvedValue({
+          sourceConnectionId: connectionId,
+          syncStatus: [{ destinationConnectionId: 'shop-1', status: 'synced' }],
+        } as unknown as OrderRecord);
+
+        await service.syncOrderFromSource(connectionId, externalOrderId);
+
+        expect(
+          (
+            orderRecordService.markFulfillmentRoutingSkip as jest.MockedFunction<
+              IOrderRecordService['markFulfillmentRoutingSkip']
+            >
+          ).mock.calls.at(-1)
+        ).toEqual(['ol_order_int', 'mirrored-before-routing']);
+      });
+
+      // The hold must not subtract stock for a parcel OpenLinker will not pick,
+      // even when a rule says OpenLinker would ship that delivery method.
+      it('should hold a source-fulfilled order as diagnostic even when a rule names ol_managed_carrier', async () => {
+        orderSource.getOrder.mockResolvedValue({
+          ...interceptIncoming,
+          fulfilledBySource: true,
+        } as never);
+        fulfillmentRouting.resolve.mockResolvedValue({
+          processorKind: 'ol_managed_carrier',
+          processorConnectionId: 'processor-1',
+          source: 'rule',
+          processorAvailable: true,
+        } as never);
+
+        await service.syncOrderFromSource(connectionId, externalOrderId);
+
+        expect(reservationService.reserveForOrder).toHaveBeenCalledTimes(1);
+        expect(reservationService.reserveForOrder.mock.calls[0][0].atpEffect).toBe('diagnostic');
+      });
+
+      it('should still route an order whose source asserts nothing', async () => {
+        orderSource.getOrder.mockResolvedValue(interceptIncoming as never);
+        fulfillmentRouting.resolve.mockResolvedValue({
+          processorKind: 'ol_managed_carrier',
+          processorConnectionId: 'processor-1',
+          source: 'rule',
+          processorAvailable: true,
+        } as never);
+
+        await service.syncOrderFromSource(connectionId, externalOrderId);
+
+        expect(routingCommit.route).toHaveBeenCalledTimes(1);
+      });
+    });
+
+    describe('an order mirrored before routing was switched on (#3455)', () => {
+      const router = { route: jest.fn() };
+
+      const marketplaceSource = {
+        id: connectionId,
+        status: 'active',
+        enabledCapabilities: ['OrderSource', 'OfferManager'],
+        config: {},
+      };
+
+      const existingWith = (syncStatus: Array<Record<string, unknown>>) =>
+        ({ sourceConnectionId: connectionId, syncStatus }) as unknown as OrderRecord;
+
+      beforeEach(() => {
+        resolveRouterMock.mockResolvedValue(router as never);
+        routingCommit.route.mockResolvedValue({
+          status: 'routed',
+          decisionId: 'dec-1',
+          works: [{ workId: 'w-1', assignedConnectionId: 'dest-1' }],
+        });
+        connections.list.mockResolvedValue([
+          routerConnection('conn-oms'),
+          marketplaceSource,
+        ] as never);
+      });
+
+      it('should not route the order and should follow today\'s path when a destination already has it', async () => {
+        orderRecordService.getOrderRecord.mockResolvedValue(
+          existingWith([
+            { destinationConnectionId: 'shop-1', status: 'synced', externalOrderId: '42' },
+          ])
+        );
+
+        await service.syncOrderFromSource(connectionId, externalOrderId);
+
+        expect(resolveRouterMock).not.toHaveBeenCalled();
+        expect(routingCommit.route).not.toHaveBeenCalled();
+        expect(orderSyncService.syncOrder).toHaveBeenCalledTimes(1);
+        expect(
+          jobQueue.enqueue.mock.calls.filter(
+            ([request]) => request.type === 'fulfillment.work.dispatch'
+          )
+        ).toEqual([]);
+      });
+
+      // #3480 x #3455 — the rule is part of the ONE routing answer the hold's
+      // insert-only `atpEffect` is decided from: the product master already has
+      // this order and lowers its own stock, so OpenLinker must not hold it
+      // `published` as well.
+      it('should not hold the order as published when a destination already has it', async () => {
+        orderRecordService.getOrderRecord.mockResolvedValue(
+          existingWith([
+            { destinationConnectionId: 'shop-1', status: 'synced', externalOrderId: '42' },
+          ])
+        );
+
+        await service.syncOrderFromSource(connectionId, externalOrderId);
+
+        expect(reservationService.reserveForOrder).toHaveBeenCalledTimes(1);
+        expect(reservationService.reserveForOrder.mock.calls[0][0].atpEffect).toBe('diagnostic');
+      });
+
+      it('should still route a new order ingested for the first time', async () => {
+        orderRecordService.getOrderRecord.mockResolvedValue(null);
+
+        await service.syncOrderFromSource(connectionId, externalOrderId);
+
+        expect(routingCommit.route).toHaveBeenCalledTimes(1);
+        expect(orderSyncService.syncOrder).not.toHaveBeenCalled();
+      });
+
+      // A failed or withheld row means the destination does NOT have the order.
+      it('should still route an order whose destination rows are only failed or pending', async () => {
+        orderRecordService.getOrderRecord.mockResolvedValue(
+          existingWith([
+            { destinationConnectionId: 'shop-1', status: 'failed', error: 'boom' },
+            { destinationConnectionId: 'shop-2', status: 'pending' },
+          ])
+        );
+
+        await service.syncOrderFromSource(connectionId, externalOrderId);
+
+        expect(routingCommit.route).toHaveBeenCalledTimes(1);
+      });
+    });
+
+    // #3455 — why an order was deliberately not routed is persisted on the order,
+    // one field for all four rules, and only while a connection claims A2.
+    describe('the persisted routing skip reason (#3455)', () => {
+      const router = { route: jest.fn() };
+
+      const source = (enabledCapabilities: string[]) => ({
+        id: connectionId,
+        status: 'active',
+        enabledCapabilities,
+        config: {},
+      });
+
+      const markSkip = () =>
+        orderRecordService.markFulfillmentRoutingSkip as jest.MockedFunction<
+          IOrderRecordService['markFulfillmentRoutingSkip']
+        >;
+
+      beforeEach(() => {
+        resolveRouterMock.mockResolvedValue(router as never);
+        routingCommit.route.mockResolvedValue({
+          status: 'routed',
+          decisionId: 'dec-1',
+          works: [{ workId: 'w-1', assignedConnectionId: 'dest-1' }],
+        });
+      });
+
+      it('should record own-shop-order for an order from the operator\'s own shop', async () => {
+        connections.list.mockResolvedValue([
+          routerConnection('conn-oms'),
+          source(['ProductMaster', 'OrderSource']),
+        ] as never);
+
+        await service.syncOrderFromSource(connectionId, externalOrderId);
+
+        expect(markSkip()).toHaveBeenCalledWith('ol_order_int', 'own-shop-order');
+      });
+
+      it('should record mirrored-before-routing for an order a destination already has', async () => {
+        connections.list.mockResolvedValue([
+          routerConnection('conn-oms'),
+          source(['OrderSource']),
+        ] as never);
+        orderRecordService.getOrderRecord.mockResolvedValue({
+          sourceConnectionId: connectionId,
+          syncStatus: [{ destinationConnectionId: 'shop-1', status: 'synced' }],
+        } as unknown as OrderRecord);
+
+        await service.syncOrderFromSource(connectionId, externalOrderId);
+
+        expect(markSkip()).toHaveBeenCalledWith('ol_order_int', 'mirrored-before-routing');
+      });
+
+      it('should record shipped-by-other-system for an order a rule routes to omp_fulfilled', async () => {
+        connections.list.mockResolvedValue([
+          routerConnection('conn-oms'),
+          source(['OrderSource']),
+        ] as never);
+        fulfillmentRouting.resolve.mockResolvedValue({
+          processorKind: 'omp_fulfilled',
+          processorConnectionId: 'shop-1',
+          source: 'rule',
+          processorAvailable: true,
+          parcelProfile: null,
+        });
+
+        await service.syncOrderFromSource(connectionId, externalOrderId);
+
+        expect(markSkip()).toHaveBeenCalledWith('ol_order_int', 'shipped-by-other-system');
+      });
+
+      // First match wins: "it is from your shop" is the most useful sentence.
+      it('should record own-shop-order when an own-shop order was also mirrored before routing', async () => {
+        connections.list.mockResolvedValue([
+          routerConnection('conn-oms'),
+          source(['ProductMaster', 'OrderSource']),
+        ] as never);
+        orderRecordService.getOrderRecord.mockResolvedValue({
+          sourceConnectionId: connectionId,
+          syncStatus: [{ destinationConnectionId: 'shop-1', status: 'synced' }],
+        } as unknown as OrderRecord);
+
+        await service.syncOrderFromSource(connectionId, externalOrderId);
+
+        expect(markSkip()).toHaveBeenCalledWith('ol_order_int', 'own-shop-order');
+      });
+
+      it('should clear the reason when the order is routed', async () => {
+        connections.list.mockResolvedValue([
+          routerConnection('conn-oms'),
+          source(['OrderSource']),
+        ] as never);
+
+        await service.syncOrderFromSource(connectionId, externalOrderId);
+
+        expect(routingCommit.route).toHaveBeenCalledTimes(1);
+        expect(markSkip()).toHaveBeenCalledWith('ol_order_int', null);
+      });
+
+      // With the OMS off nothing is routed, so there is nothing to explain -
+      // a shop order must NOT be labelled "pack it in your shop".
+      it('should record no reason for an own-shop order when no connection claims A2', async () => {
+        connections.list.mockResolvedValue([source(['ProductMaster', 'OrderSource'])] as never);
+
+        await service.syncOrderFromSource(connectionId, externalOrderId);
+
+        expect(markSkip()).toHaveBeenCalledWith('ol_order_int', null);
+      });
+
+      // Fail-open intercept: a transient failure must not erase a true reason.
+      it('should leave the stored reason untouched when the intercept fails', async () => {
+        connections.list.mockRejectedValue(new Error('connections unreachable'));
+
+        await service.syncOrderFromSource(connectionId, externalOrderId);
+
+        expect(markSkip()).not.toHaveBeenCalled();
+        expect(orderSyncService.syncOrder).toHaveBeenCalledTimes(1);
+      });
+
+      it('should not fail ingestion when persisting the reason throws', async () => {
+        connections.list.mockResolvedValue([
+          routerConnection('conn-oms'),
+          source(['ProductMaster', 'OrderSource']),
+        ] as never);
+        markSkip().mockRejectedValue(new Error('db down'));
+
+        await expect(
+          service.syncOrderFromSource(connectionId, externalOrderId)
+        ).resolves.toBeDefined();
+        expect(orderSyncService.syncOrder).toHaveBeenCalledTimes(1);
       });
     });
 
@@ -2347,6 +3350,144 @@ describe('OrderIngestionService', () => {
         for (const [, block] of markBlock().mock.calls) {
           expect(block).toBeNull();
         }
+      });
+
+      // #3480 — the routed order's hold counts the sold units from the moment it
+      // is routed; the sale decrement then consumes it.
+      describe('stamping the routed order\'s hold (#3480)', () => {
+        beforeEach(() => {
+          routingCommit.route.mockResolvedValue({
+            status: 'routed',
+            decisionId: 'dec-1',
+            works: [{ workId: 'w-1', assignedConnectionId: 'holder-1' }],
+          });
+        });
+
+        it('should hold the units as published, whatever the dispatch routing says', async () => {
+          await service.syncOrderFromSource(connectionId, externalOrderId);
+
+          expect(reservationService.reserveForOrder).toHaveBeenCalledTimes(1);
+          expect(reservationService.reserveForOrder.mock.calls[0][0].atpEffect).toBe('published');
+          // The ADR-012 dispatch routing (default `omp_fulfilled` -> diagnostic)
+          // does not decide the stamp of an order OpenLinker routes. It IS read
+          // once — #3488's "another system ships it" rule needs it — and that one
+          // resolution is shared, never repeated.
+          expect(fulfillmentRouting.resolve).toHaveBeenCalledTimes(1);
+        });
+
+        // The intercept enqueues the sale decrement, which consumes the hold — so
+        // the hold must already exist when that job can run.
+        it('should record the hold before the order is routed', async () => {
+          await service.syncOrderFromSource(connectionId, externalOrderId);
+
+          expect(reservationService.reserveForOrder.mock.invocationCallOrder[0]).toBeLessThan(
+            routingCommit.route.mock.invocationCallOrder[0]
+          );
+        });
+
+        it('should resolve the router once for both the hold and the intercept', async () => {
+          await service.syncOrderFromSource(connectionId, externalOrderId);
+
+          expect(resolveRouterMock).toHaveBeenCalledTimes(1);
+          expect(connections.list).toHaveBeenCalledTimes(1);
+        });
+
+        // #3485: an address-less order is HELD in OpenLinker rather than mirrored
+        // to a product master, so its units are OpenLinker's to promise from the
+        // start. The stamp is insert-only, so the later route keeps it and the
+        // sale decrement consumes it — the units are still counted once.
+        it('should hold the units as published when the order carries no shipping address', async () => {
+          orderSource.getOrder.mockResolvedValue({
+            ...interceptIncoming,
+            shippingAddress: undefined,
+          });
+
+          await service.syncOrderFromSource(connectionId, externalOrderId);
+
+          expect(reservationService.reserveForOrder.mock.calls[0][0].atpEffect).toBe('published');
+          expect(routingCommit.route).not.toHaveBeenCalled();
+        });
+      });
+
+      // #3453 — a routed order is never created in the product master, so its
+      // stock is lowered there by an `inventory.saleDecrement` job per work.
+      describe('lowering product-master stock for the routed work (#3453)', () => {
+        const saleDecrementRequests = () =>
+          jobQueue.enqueue.mock.calls
+            .map(([request]) => request)
+            .filter((request) => request.type === 'inventory.saleDecrement');
+
+        it('should enqueue one sale decrement per routed work, scoped to the order source', async () => {
+          routingCommit.route.mockResolvedValue({
+            status: 'routed',
+            decisionId: 'dec-1',
+            works: [
+              { workId: 'w-1', assignedConnectionId: 'holder-1' },
+              // A work with no holder was still SOLD — it is decremented too.
+              { workId: 'w-2', assignedConnectionId: null },
+            ],
+          });
+
+          await service.syncOrderFromSource(connectionId, externalOrderId);
+
+          expect(saleDecrementRequests()).toEqual([
+            {
+              type: 'inventory.saleDecrement',
+              // The connection the order came through — never the holder, which
+              // every OMS-packed work shares (#2609).
+              connectionId,
+              payload: { schemaVersion: 1, workId: 'w-1', orderId: 'ol_order_int' },
+              options: { dedupeKey: 'inventory:sale-decrement:w-1' },
+            },
+            {
+              type: 'inventory.saleDecrement',
+              connectionId,
+              payload: { schemaVersion: 1, workId: 'w-2', orderId: 'ol_order_int' },
+              options: { dedupeKey: 'inventory:sale-decrement:w-2' },
+            },
+          ]);
+        });
+
+        // The regression AC: a routed order is NOT created in the product master.
+        it('should not create the order in any destination when it is routed', async () => {
+          routingCommit.route.mockResolvedValue({
+            status: 'routed',
+            decisionId: 'dec-1',
+            works: [{ workId: 'w-1', assignedConnectionId: 'holder-1' }],
+          });
+
+          await service.syncOrderFromSource(connectionId, externalOrderId);
+
+          expect(orderSyncService.syncOrder).not.toHaveBeenCalled();
+          expect(saleDecrementRequests()).toHaveLength(1);
+        });
+
+        it('should enqueue no sale decrement when routing did not route the order', async () => {
+          routingCommit.route.mockResolvedValue({ status: 'contended' });
+
+          await service.syncOrderFromSource(connectionId, externalOrderId);
+
+          expect(saleDecrementRequests()).toEqual([]);
+        });
+
+        // Same fail-open guard as the dispatch producer: an escaping throw would
+        // turn a routed order into "not held" and mirror it everywhere.
+        it('should still hold the order when every sale decrement enqueue fails', async () => {
+          routingCommit.route.mockResolvedValue({
+            status: 'routed',
+            decisionId: 'dec-1',
+            works: [{ workId: 'w-1', assignedConnectionId: 'holder-1' }],
+          });
+          jobQueue.enqueue.mockImplementation((request) =>
+            request.type === 'inventory.saleDecrement'
+              ? Promise.reject(new Error('redis blip'))
+              : Promise.resolve(undefined as never)
+          );
+
+          await service.syncOrderFromSource(connectionId, externalOrderId);
+
+          expect(orderSyncService.syncOrder).not.toHaveBeenCalled();
+        });
       });
 
       // #2955 — the FIRST producer of `fulfillment.work.dispatch`.
@@ -2458,6 +3599,16 @@ describe('OrderIngestionService', () => {
           { status: 'skipped', reason: 'already-live-elsewhere' },
           'routing-already-live-elsewhere',
         ],
+        // #3485 — a refused plan is held too: with the OMS as the router the
+        // order stays in OpenLinker instead of being created in every master.
+        [
+          { status: 'refused', decisionId: 'dec-1', reason: 'plan-not-conserving', unfulfillableReasons: [] },
+          'routing-refused',
+        ],
+        [
+          { status: 'refused', decisionId: 'dec-1', reason: 'plan-carries-unfulfillable', unfulfillableReasons: [] },
+          'routing-refused',
+        ],
       ];
 
       it.each(heldOutcomes)('holds and reports %j as %s', async (outcome, reason) => {
@@ -2470,10 +3621,16 @@ describe('OrderIngestionService', () => {
           'ol_order_int',
           expect.objectContaining({ reason })
         );
+        // #2703 - `syncOrder` is never called on this branch, so the routing
+        // reason an earlier run wrote is cleared HERE. Without it a stale
+        // "the router sent this nowhere" would stand beside the fresh hold.
+        expect(orderRecordService.markDestinationRoutingBlock).toHaveBeenCalledWith(
+          'ol_order_int',
+          null
+        );
       });
 
       const passThroughOutcomes: [RoutingCommitOutcome][] = [
-        [{ status: 'refused', decisionId: 'dec-1', reason: 'plan-not-conserving' }],
         [{ status: 'skipped', reason: 'order-cancelled' }],
       ];
 
@@ -2482,9 +3639,7 @@ describe('OrderIngestionService', () => {
 
         await service.syncOrderFromSource(connectionId, externalOrderId);
 
-        // `refused` is terminal and creates no work, so the order must keep its
-        // ordinary destination path rather than being stranded behind a hold
-        // nothing would ever clear.
+        // A cancelled order needs no hold; today's path already handles it.
         expect(orderSyncService.syncOrder).toHaveBeenCalledTimes(1);
         for (const [, block] of markBlock().mock.calls) {
           expect(block).toBeNull();
@@ -2522,14 +3677,120 @@ describe('OrderIngestionService', () => {
         expect(orderSyncService.syncOrder).toHaveBeenCalledTimes(1);
       });
 
-      it('degrades to today\'s path when routing throws', async () => {
-        // Fail OPEN. Holding on an unknown would withhold the mirror
-        // indefinitely for a paid order.
+      // #3485 — the router was already selected, so the claim is known to be
+      // on: following today's path would create the order in every master.
+      it('holds the order as routing-failed when routing throws after the router was selected', async () => {
         routingCommit.route.mockRejectedValue(new Error('routing store unreachable'));
 
         await service.syncOrderFromSource(connectionId, externalOrderId);
 
+        expect(orderSyncService.syncOrder).not.toHaveBeenCalled();
+        expect(markBlock()).toHaveBeenCalledWith('ol_order_int', {
+          reason: 'routing-failed',
+          detail: 'Error',
+        });
+      });
+
+      // Before a router is selected OpenLinker cannot tell whether the claim is
+      // on, so the old fail-open stands.
+      it('degrades to today\'s path when the routing target cannot be resolved', async () => {
+        connections.list.mockRejectedValue(new Error('connections unreachable'));
+
+        await service.syncOrderFromSource(connectionId, externalOrderId);
+
+        expect(routingCommit.route).not.toHaveBeenCalled();
         expect(orderSyncService.syncOrder).toHaveBeenCalledTimes(1);
+      });
+
+      // #3485 — no shipping address: nothing to route to, and mirroring would
+      // put the order in every product master.
+      it('holds an order with no shipping address instead of mirroring it', async () => {
+        orderSource.getOrder.mockResolvedValue({
+          ...interceptIncoming,
+          shippingAddress: undefined,
+        });
+
+        const results = await service.syncOrderFromSource(connectionId, externalOrderId);
+
+        expect(routingCommit.route).not.toHaveBeenCalled();
+        expect(orderSyncService.syncOrder).not.toHaveBeenCalled();
+        expect(orderRecordService.updateSyncStatus).not.toHaveBeenCalled();
+        expect(results).toEqual([]);
+        expect(markBlock()).toHaveBeenCalledWith('ol_order_int', {
+          reason: 'routing-no-shipping-address',
+          detail: null,
+        });
+      });
+
+      describe('the line-unfulfillable attention (#3485)', () => {
+        const markAttention = () =>
+          orderRecordService.markOmsAttention as unknown as jest.Mock;
+
+        it('raises line-unfulfillable when the plan carried unfulfillable lines', async () => {
+          routingCommit.route.mockResolvedValue({
+            status: 'refused',
+            decisionId: 'dec-1',
+            reason: 'plan-carries-unfulfillable',
+            unfulfillableReasons: [],
+          });
+
+          await service.syncOrderFromSource(connectionId, externalOrderId);
+
+          expect(markAttention()).toHaveBeenCalledWith('ol_order_int', 'routing', {
+            kind: 'blocked',
+            reason: 'line-unfulfillable',
+          });
+        });
+
+        it('clears the attention once the order is routed', async () => {
+          routingCommit.route.mockResolvedValue({
+            status: 'routed',
+            decisionId: 'dec-2',
+            works: [{ workId: 'w-2', assignedConnectionId: 'dest-1' }],
+          });
+
+          await service.syncOrderFromSource(connectionId, externalOrderId);
+
+          expect(markAttention()).toHaveBeenCalledWith('ol_order_int', 'routing', {
+            kind: 'none',
+          });
+        });
+
+        it('leaves the attention untouched when routing is in doubt', async () => {
+          routingCommit.route.mockResolvedValue({
+            status: 'in-doubt',
+            decisionId: 'dec-3',
+            cause: 'timeout',
+          });
+
+          await service.syncOrderFromSource(connectionId, externalOrderId);
+
+          expect(markAttention()).not.toHaveBeenCalled();
+        });
+
+        // An install that routes nothing pays no extra statement.
+        it('writes no attention when no router is wired', async () => {
+          resolveRouterMock.mockResolvedValue(null);
+
+          await service.syncOrderFromSource(connectionId, externalOrderId);
+
+          expect(markAttention()).not.toHaveBeenCalled();
+        });
+
+        it('does not fail ingestion or drop the hold when writing the attention throws', async () => {
+          routingCommit.route.mockResolvedValue({
+            status: 'refused',
+            decisionId: 'dec-1',
+            reason: 'plan-carries-unfulfillable',
+            unfulfillableReasons: [],
+          });
+          markAttention().mockRejectedValue(new Error('order_records unreachable'));
+
+          await expect(
+            service.syncOrderFromSource(connectionId, externalOrderId)
+          ).resolves.toEqual([]);
+          expect(orderSyncService.syncOrder).not.toHaveBeenCalled();
+        });
       });
 
       it('does not fail ingestion when persisting the block reason throws', async () => {
@@ -2540,7 +3801,7 @@ describe('OrderIngestionService', () => {
         // transient DB blip while recording a routing reason would fail the
         // whole order sync. The outcome is re-decided next transition, so a
         // lost write self-heals; a lost ORDER does not.
-        routingCommit.route.mockResolvedValue({ status: 'refused', decisionId: 'dec-1', reason: 'plan-not-conserving' });
+        routingCommit.route.mockResolvedValue({ status: 'skipped', reason: 'order-cancelled' });
         markBlock().mockRejectedValue(new Error('order_records unreachable'));
 
         await expect(

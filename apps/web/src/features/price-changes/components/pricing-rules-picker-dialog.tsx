@@ -29,6 +29,7 @@ import { Button } from '../../../shared/ui/button';
 import { EmptyState } from '../../../shared/ui/feedback-state';
 import { useDestinationPricingSyncSummaries } from '../hooks/use-destination-pricing-sync-summaries';
 import { ruleLabelFor, toRuleSummary } from '../lib/price-change-copy';
+import { hasOwnOverride } from '../lib/pricing-sync-overrides';
 import type { Connection } from '../../connections';
 
 export interface PricingRulesPickerDialogProps {
@@ -63,7 +64,7 @@ export function PricingRulesPickerDialog({
             {destinationConnections.map((connection, index) => {
               const summaryQuery = summaries[index];
               const overrideCount =
-                summaryQuery?.data?.sources.filter((s) => s.isCustomOverride).length ?? 0;
+                summaryQuery?.data?.sources.filter(hasOwnOverride).length ?? 0;
               return (
                 <div key={connection.id} id={`picker-conn-${connection.id}`} className="mini-row">
                   <div className="mini-row__text">
@@ -77,7 +78,7 @@ export function PricingRulesPickerDialog({
                             : 'Manual review'}{' '}
                           · {ruleLabelFor(toRuleSummary(summaryQuery.data.default.rule))}
                           {overrideCount > 0
-                            ? ` · ${overrideCount} source${overrideCount === 1 ? '' : 's'} with a different rule`
+                            ? ` · ${overrideCount} source${overrideCount === 1 ? '' : 's'} with their own mode or rule`
                             : ''}
                         </>
                       ) : summaryQuery?.status === 'error' ? (

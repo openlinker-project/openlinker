@@ -28,6 +28,9 @@ import { customersRoute } from './customers.route';
 import { devUiRoute } from './dev-ui.route';
 import { insightsRoute } from './insights.route';
 import { inventoryLocationsRoute } from './inventory-locations.route';
+import { inventoryMovementsRoute } from './inventory-movements.route';
+import { orderTagsSettingsRoute } from './order-tags-settings.route';
+import { buyerEmailsRoute, buyerEmailEditorRoute } from './buyer-emails.route';
 import { listingsRoute } from './listings.route';
 import { aiProviderSettingsRoute } from './ai-provider-settings.route';
 import { mcpTokensRoute } from './mcp-tokens.route';
@@ -46,13 +49,11 @@ import {
 } from './prompt-templates-legacy-redirects.route';
 import { automationsRoute } from './automations.route';
 import { returnsRoute } from './returns.route';
-import {
-  assignPackingWorkLegacyRedirectRoute,
-  fulfillmentRoute,
-} from './fulfillment.route';
+import { assignPackingWorkLegacyRedirectRoute, fulfillmentRoute } from './fulfillment.route';
 import { operationalSettingsRoute } from './operational-settings.route';
 import { salesDocumentsRoute } from './sales-documents.route';
 import { sourcingRulesRoute } from './sourcing-rules.route';
+import { omsOnboardingRoute } from './oms-onboarding.route';
 import { whoDecidesRoute } from './who-decides.route';
 import { settingsRoute } from './settings.route';
 import { shipmentsRoute } from './shipments.route';
@@ -74,6 +75,7 @@ export function buildCoreChildren(omsRoutingUiEnabled: boolean): RouteObject[] {
     productsRoute,
     cursorsRoute,
     duplicatePositionsRoute,
+    inventoryMovementsRoute,
     customersRoute,
     listingsRoute,
     shipmentsRoute,
@@ -85,6 +87,9 @@ export function buildCoreChildren(omsRoutingUiEnabled: boolean): RouteObject[] {
     salesDocumentsListRoute,
     connectionsRoute,
     ...(omsRoutingUiEnabled ? [inventoryLocationsRoute] : []),
+    orderTagsSettingsRoute,
+    buyerEmailsRoute,
+    buyerEmailEditorRoute,
     adaptersRoute,
     newConnectionRoute,
     advancedNewConnectionRoute,
@@ -99,6 +104,7 @@ export function buildCoreChildren(omsRoutingUiEnabled: boolean): RouteObject[] {
     operationalSettingsRoute,
     salesDocumentsRoute,
     ...(omsRoutingUiEnabled ? [sourcingRulesRoute] : []),
+    omsOnboardingRoute,
     whoDecidesRoute,
     promptTemplatesListRoute,
     promptTemplateDetailRoute,

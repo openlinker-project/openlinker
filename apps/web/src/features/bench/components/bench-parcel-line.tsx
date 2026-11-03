@@ -36,7 +36,7 @@ import type { ReactElement } from 'react';
 import { Button } from '../../../shared/ui/button';
 import { StatusBadge, type StatusBadgeTone } from '../../../shared/ui/status-badge';
 import type { BenchParcelLine } from '../api/bench-parcel.types';
-import { narrowAttributes } from '../lib/bench-parcel-attributes';
+import { narrowAttributes } from '../../../shared/lib/variant-attributes';
 import { benchLineState, type BenchLineState } from '../lib/bench-parcel-presentation';
 import { benchParcelCopy } from '../lib/bench-parcel.copy';
 import { BenchThumb } from './bench-thumb';

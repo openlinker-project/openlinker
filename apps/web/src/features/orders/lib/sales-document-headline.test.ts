@@ -43,6 +43,7 @@ function fiscalRecord(overrides: Partial<FiscalRegistrationRecord> = {}): Fiscal
     artefacts: null,
     failureMode: null,
     failureReason: null,
+    providerFailureDetails: null,
     createdAt: '2026-01-01T00:00:00.000Z',
     updatedAt: '2026-01-01T00:00:00.000Z',
     ...overrides,
@@ -104,3 +105,30 @@ describe('resolveFiscalHeadline', () => {
     expect(model.tone).toBe('warning');
   });
 });
+
+describe('resolveInvoiceHeadline - connection missing a setting (#3772)', () => {
+  it('should say Not issued rather than Rejected, since nobody rejected anything', () => {
+    const model = resolveInvoiceHeadline(
+      invoice({
+        status: 'failed',
+        failureMode: 'rejected',
+        failureCode: 'connection-setup-incomplete',
+        providerInvoiceNumber: null,
+      }),
+      'eparagony',
+      t,
+    );
+    expect(model.state).toBe('Not issued');
+    expect(model.tone).toBe('error');
+  });
+
+  it('should keep Rejected for a provider rejection', () => {
+    const model = resolveInvoiceHeadline(
+      invoice({ status: 'failed', failureMode: 'rejected', failureCode: 'provider-rejected' }),
+      'eparagony',
+      t,
+    );
+    expect(model.state).toBe('Rejected');
+  });
+});
+

@@ -191,11 +191,28 @@ validator is the only check in front of it.
   idempotencyKey)` via a namespaced SHA-256 digest shaped as a UUID
   (`document-token.policy.ts`). Same inputs, same token, forever — this is what makes
   `FiscalRegistrationLocator` implementable against this vendor at all.
-- **The `Idempotency-Key` HTTP header carries the derived `documentToken`, never core's
-  raw `idempotencyKey`.** The vendor requires that header to match `/^[0-9A-Za-z_-]+$/`;
-  core's key (`fiscal:{connectionId}:{orderId}`) contains colons and fails it outright.
-  `documentToken` is already a deterministic derivation of the same pair, in a
-  vendor-compliant character set — verified against the live sandbox.
+- **Two keys, two jobs.** The body's `documentToken` is stable per sale and is the
+  exactly-once guard: the vendor never lets one token hold a second document
+  (`errorCode: 118`, which the adapter resolves by reading that document). The
+  `Idempotency-Key` HTTP header is only a per-REQUEST replay guard, derived from the
+  token plus a digest of the exact body (`deriveRequestIdempotencyKey`) - never core's
+  raw `idempotencyKey`, whose colons fail the vendor's `/^[0-9A-Za-z_-]+$/` rule, and
+  never the token itself. The vendor remembers a key even when it REFUSED the request,
+  so a header equal to the token turned every corrected retry after a refusal into a
+  `422` "key used with different data" (observed live after fixing a refused seller tax
+  number). A transport retry sends the same body and so replays under the same key.
+- **A `422` is settled by the token, not reported blindly.** It proves an earlier
+  request under the key, not a document. The adapter reads the token's status: a
+  document there is resolved like `118`; the vendor's own "unknown document" answer
+  (`92`/`100`) means nothing was created and is reported `rejected`; anything else stays
+  `in-doubt`, declared as an inconclusive answer rather than a timeout.
+- **Refusals carry the vendor's code, and a few carry a specific sentence.** The
+  operator-facing reason is fixed text plus the numeric `errorCode`, never the vendor's
+  message (which can quote the submitted document). A short curated table matches the
+  EXACT vendor message for refusals whose meaning is known - `errorCode: 41` +
+  "Incorrect merchantTIN" becomes "The seller tax number on this connection is not the
+  one registered with your eparagony account" and is classified as a refused
+  connection setting, so the order panel links to the connection rather than the order.
 - **`registerTransaction` blocks on a bounded status poll.** `POST /documents` returns
   `202 Accepted` before the device has printed or registered anything, and `registered`
   is terminal in core, so returning at `202` would report a completed registration that

@@ -1,12 +1,18 @@
 import type { ReactElement } from 'react';
 import { env } from '../config/env';
 import { APP_VERSION } from '../config/app-version';
+import { getLocale } from '../i18n/active-locale';
+import { useMessages } from '../i18n/use-messages';
+import { interpolate } from '../i18n/interpolate';
+import { messagesIn } from '../i18n/messages';
 
 type EnvironmentTone = 'info' | 'neutral' | 'review' | 'success' | 'warning';
 
 export interface EnvironmentMeta {
   label: string;
   shortLabel: string;
+  /** Full word for screen readers when the visible label is abbreviated. */
+  accessibleLabel?: string;
   tone: EnvironmentTone;
 }
 
@@ -19,6 +25,9 @@ function toReadableLabel(value: string): string {
 }
 
 export function getEnvironmentMeta(appEnv: string): EnvironmentMeta {
+  // Names are identical in both languages (see the `ui` namespace), so the active
+  // language is read only to satisfy the copy lookup.
+  const copy = messagesIn('ui', getLocale()).environment.names;
   const normalized = appEnv.trim().toLowerCase();
 
   switch (normalized) {
@@ -27,8 +36,9 @@ export function getEnvironmentMeta(appEnv: string): EnvironmentMeta {
     case 'local':
     case 'test':
       return {
-        label: 'Development',
-        shortLabel: 'Dev',
+        label: copy.developmentShort,
+        shortLabel: copy.developmentShort,
+        accessibleLabel: copy.development,
         tone: 'info',
       };
     case 'stage':
@@ -36,25 +46,25 @@ export function getEnvironmentMeta(appEnv: string): EnvironmentMeta {
     case 'qa':
     case 'uat':
       return {
-        label: 'Staging',
-        shortLabel: 'Stg',
+        label: copy.staging,
+        shortLabel: copy.stagingShort,
         tone: 'warning',
       };
     case 'preview':
       return {
-        label: 'Preview',
-        shortLabel: 'Prev',
+        label: copy.preview,
+        shortLabel: copy.previewShort,
         tone: 'review',
       };
     case 'prod':
     case 'production':
       return {
-        label: 'Production',
-        shortLabel: 'Prod',
+        label: copy.production,
+        shortLabel: copy.productionShort,
         tone: 'success',
       };
     default: {
-      const label = toReadableLabel(appEnv) || 'Custom';
+      const label = toReadableLabel(appEnv) || copy.custom;
 
       return {
         label,
@@ -79,6 +89,7 @@ export function EnvironmentBadge({
   version = APP_VERSION,
   className = '',
 }: EnvironmentBadgeProps): ReactElement {
+  const copy = useMessages('ui').environment;
   const environment = getEnvironmentMeta(appEnv);
   const classes = [
     'context-chip',
@@ -89,16 +100,19 @@ export function EnvironmentBadge({
     .filter(Boolean)
     .join(' ');
   const label = compact ? environment.shortLabel : environment.label;
+  const spokenName = environment.accessibleLabel ?? environment.label;
   const ariaLabel = version
-    ? `Environment ${environment.label}, version ${version}`
-    : `Environment ${environment.label}`;
+    ? interpolate(copy.ariaLabelVersion, { env: spokenName, version })
+    : interpolate(copy.ariaLabel, { env: spokenName });
 
   return (
     <span className={classes} aria-label={ariaLabel}>
       <span className="environment-badge__env">{label}</span>
       {/* An empty APP_VERSION means the build-time inject never ran — omit
           the line rather than render a fake-looking "v0.0.0". */}
-      {version ? <span className="environment-badge__version">v{version}</span> : null}
+      {version ? (
+        <span className="environment-badge__version">{interpolate(copy.version, { version })}</span>
+      ) : null}
     </span>
   );
 }

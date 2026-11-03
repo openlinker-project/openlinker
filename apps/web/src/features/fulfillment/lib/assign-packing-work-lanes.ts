@@ -1,12 +1,10 @@
 /**
  * Packer swimlanes for the Assign Packing Work board (#3340)
  *
- * Pure grouping of the same #2406 worklist read the standalone worklist page
- * consumes — fetched with NO status filter, matching that page's own
- * precedent: `FulfillmentTaskFilters` deliberately carries no `status` axis
- * (see `fulfillment.types.ts`), so this board cannot ask the server for "only
- * open work" any more than the worklist can. It renders whatever the read
- * model returns.
+ * Pure grouping of the #2406 worklist read. `FulfillmentTaskFilters` carries no
+ * `status` axis (see `fulfillment.types.ts`); since #3096 the board asks for
+ * the server-resolved `active` alias instead, so closed and cancelled work
+ * never reaches these lanes. The grouping itself renders whatever it is given.
  *
  * The `unassigned` lane is always first and always present, even when empty —
  * it is the board's landing zone, not a lane that can disappear. A lane for a
@@ -45,6 +43,26 @@ export interface AssignPackingWorkLane {
 
 /** The pinned lane's id — also `AssignPackingWorkLane['id']`'s special value. */
 export const UNASSIGNED_LANE_ID = 'unassigned';
+
+/**
+ * How many of THESE tasks each roster packer holds (#3096) — the "(2)" beside
+ * a name in the assignment menu, as the mockup draws it. Every roster packer
+ * gets an entry, zero included, so a packer with nothing queued reads "(0)"
+ * rather than looking unknown. Scoped to the tasks passed in: on a paged board
+ * that is one page, the same scope the lanes themselves are drawn from.
+ */
+export function countTasksByPacker(
+  tasks: readonly FulfillmentTask[],
+  packers: readonly PackerSummary[]
+): ReadonlyMap<string, number> {
+  const counts = new Map<string, number>(packers.map((packer) => [packer.id, 0]));
+  for (const task of tasks) {
+    if (task.assignedToUserId === null) continue;
+    const current = counts.get(task.assignedToUserId);
+    if (current !== undefined) counts.set(task.assignedToUserId, current + 1);
+  }
+  return counts;
+}
 
 export function groupTasksByPacker(
   tasks: readonly FulfillmentTask[],

@@ -98,12 +98,7 @@ export const AUTOMATION_ACTION_AVAILABILITY = {
       'from a stored order, and package presets do not exist yet. Buy the label from the order page.',
   },
   'relay-status-to-source': { availability: 'available', reason: null },
-  'send-email': {
-    availability: 'partial',
-    reason:
-      'Automation emails currently require the API process. A rule on a trigger that fires from the ' +
-      'background worker — the dispatch-deadline sweep — will report a failed step instead of sending.',
-  },
+  'send-email': { availability: 'available', reason: null },
   'place-hold': {
     availability: 'unavailable',
     reason:

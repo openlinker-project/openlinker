@@ -19,6 +19,11 @@
  * because a request timed out — a false claim, on the surface whose whole job is
  * explaining why work is stopped.
  *
+ * With `hideWhenEmpty` (#3505 — routing is not switched on) the first three
+ * states render no section at all; only an order that actually has tasks shows
+ * them. The "unknown is never none" rule still holds: nothing is CLAIMED, the
+ * section is simply absent.
+ *
  * ## The version sent is the version RENDERED
  *
  * `expectedVersion` is read off the task object the button was rendered from,
@@ -41,11 +46,21 @@ import { FulfillmentTaskCard } from './fulfillment-task-card';
 
 export interface OrderFulfillmentTasksPanelProps {
   internalOrderId: string;
+  /**
+   * Render nothing unless the order HAS fulfilment tasks (#3505) — for a
+   * caller that knows routing is not switched on. Then a loading, failed or
+   * empty read is not worth a section: the panel would be explaining a feature
+   * the install does not use. An order routed while routing WAS on still shows
+   * its tasks (and their actions), because hiding those would be a false
+   * "there are none".
+   */
+  hideWhenEmpty?: boolean;
 }
 
 export function OrderFulfillmentTasksPanel({
   internalOrderId,
-}: OrderFulfillmentTasksPanelProps): ReactElement {
+  hideWhenEmpty = false,
+}: OrderFulfillmentTasksPanelProps): ReactElement | null {
   const query = useOrderFulfillmentTasksQuery(internalOrderId);
   // The 409 contract, the busy/pending state and the dialog submit all live in
   // the runner (#3257) — this panel was one of the two copies it replaced.
@@ -98,10 +113,12 @@ export function OrderFulfillmentTasksPanel({
 
     const tasks = query.data?.works ?? [];
     if (tasks.length === 0) {
+      // Only reachable with routing on (or its state unknown): with routing off
+      // the caller passes `hideWhenEmpty` and this section is not rendered.
       return (
         <p className="text-muted">
-          No fulfilment tasks &mdash; this order was not routed to one. That is normal unless
-          fulfilment routing is switched on.
+          No fulfilment tasks &mdash; this order was not routed. Routing is on, so check the
+          order&rsquo;s shipping address and the sourcing rules.
         </p>
       );
     }
@@ -144,6 +161,13 @@ export function OrderFulfillmentTasksPanel({
       </>
     );
   })();
+
+  // Decided after every hook above has run, so toggling the prop never changes
+  // the hook order.
+  const hasTasks = (query.data?.works.length ?? 0) > 0;
+  if (hideWhenEmpty && (query.isPending || query.isError || !hasTasks)) {
+    return null;
+  }
 
   return (
     <section className="detail-section" id="fulfilment-tasks" tabIndex={-1}>

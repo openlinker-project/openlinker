@@ -72,13 +72,30 @@ const FAILURE_CODE_FALLBACK: Record<FailureCode, string> = {
     'The document’s settlement currency is missing, malformed, or not accepted for this document. Fix the currency on the source order, then retry. Nothing was issued.',
   'sale-classification-required':
     'This connection needs a sale classification (goods vs. services) configured before it can issue invoices. Set it in the connection’s configuration, then retry. Nothing was issued.',
+  'connection-setup-incomplete':
+    'This connection is missing a setting it needs to issue invoices. Complete the connection’s settings, then retry. Nothing was issued.',
+  'acknowledgement-required':
+    'This document needs your decision before it is issued. Read the warning, then issue again and confirm. Nothing was issued.',
+  'connection-setting-rejected':
+    'The provider refused a setting on this connection. Correct it in the connection’s settings, then retry. Nothing was issued.',
   'provider-rejected':
     'The provider rejected the document. Check the order’s data, then retry. Nothing was issued.',
   'transport-timeout':
     'The request to the provider timed out, so a document may already exist there. Check the provider before re-issuing — a blind retry could create a duplicate.',
+  'provider-answer-inconclusive':
+    'The provider answered, but its answer does not say whether a document exists there. Check the provider before re-issuing - a blind retry could create a duplicate.',
   'provider-error':
     'The provider returned an error. Check the order’s data, then retry. Nothing was issued.',
 };
+
+/**
+ * True for the two codes whose fix is on the CONNECTION, not the order: a
+ * setting the adapter found missing before sending, or one the provider
+ * refused. Both render the stored reason and a link to the connection.
+ */
+export function isConnectionSettingFailureCode(code: FailureCode | null | undefined): boolean {
+  return code === 'connection-setup-incomplete' || code === 'connection-setting-rejected';
+}
 
 /**
  * Resolves a PII-free `failureCode` to localized operator copy. Falls back to a
@@ -87,6 +104,12 @@ const FAILURE_CODE_FALLBACK: Record<FailureCode, string> = {
  */
 export function resolveFailureCopy(invoice: InvoiceRecord, t: Translate): string {
   const code = invoice.failureCode;
+  // The codes whose stored reason is the adapter's own sentence naming the
+  // setting to fix (#3772) - it says more than any fixed copy can, and it is
+  // PII-free by the adapter's opt-in. Other codes keep their fixed copy.
+  if (isConnectionSettingFailureCode(code) && invoice.failureReason) {
+    return invoice.failureReason;
+  }
   if (code && code in FAILURE_CODE_FALLBACK) {
     return t(`invoice.failureCode.${code}`, FAILURE_CODE_FALLBACK[code]);
   }

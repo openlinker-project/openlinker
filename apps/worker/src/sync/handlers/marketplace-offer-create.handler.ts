@@ -19,6 +19,10 @@
  *      gates on the `bulk_batch_advancements` table to give at-most-once
  *      counter semantics across retries + concurrent workers.
  *
+ * `onDead` (#3505, G01-2): once the runner marks the job dead, a record still
+ * `pending` is settled as `failed` and a bulk child is counted as failed —
+ * otherwise both stayed "in progress" for ever.
+ *
  * Smart classification readback lives inside `OfferCreationExecutionService`
  * (active-on-create branch) and `OfferStatusPollService` (validating→active
  * branch) so the handler stays cross-context-clean — no repository-port
@@ -56,6 +60,7 @@ import type {
   MarketplaceOfferCreatePayloadV1,
   MarketplaceOfferCreatePayloadV2,
   SyncJob as SyncJobEntity,
+  SyncJobDeadFailure,
   SyncJobHandler,
   SyncJobHandlerResult,
 } from '@openlinker/core/sync';
@@ -139,6 +144,38 @@ export class MarketplaceOfferCreateHandler implements SyncJobHandler {
         job.connectionId,
         error instanceof Error ? error : undefined
       );
+    }
+  }
+
+  /**
+   * The job is dead (#3505, G01-2): settle the record it was creating so it
+   * stops reading as "in progress", and — for a bulk child — count it as a
+   * failed child so the batch can still reach a terminal state.
+   *
+   * The batch is advanced only when THIS call moved the record out of
+   * `pending`: a record a previous attempt already settled has been (or will
+   * be) counted by `execute`, and `bulk_batch_advancements` would dedupe a
+   * second advance anyway. A payload carrying no record id (a legacy V1 job
+   * whose record `executeCreation` creates itself) has nothing to settle.
+   */
+  async onDead(job: SyncJob, failure: SyncJobDeadFailure): Promise<void> {
+    let payload: Payload;
+    try {
+      payload = this.getPayload(job);
+    } catch {
+      // An unparseable payload is why some jobs die; there is no record to name.
+      return;
+    }
+    if (!payload.offerCreationRecordId) {
+      return;
+    }
+
+    const abandoned = await this.offerCreation.abandonCreation(
+      payload.offerCreationRecordId,
+      failure.message
+    );
+    if (abandoned && this.isV2(payload)) {
+      await this.bulkProgress.advanceBatchStatus(payload.bulkBatchId, abandoned.id, 'failed');
     }
   }
 

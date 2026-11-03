@@ -16,7 +16,8 @@ function recordingApi(): { api: ReturnType<typeof createOrdersApi>; paths: strin
     paths.push(path);
     return { items: [], total: 0 } as never;
   });
-  return { api: createOrdersApi(request), paths };
+  const requestBlob = vi.fn(async () => new Blob());
+  return { api: createOrdersApi(request, requestBlob), paths };
 }
 
 describe('orders api — buildQuery', () => {
@@ -103,7 +104,8 @@ describe('orders api — packed writes (#2288)', () => {
       calls.push({ path, init });
       return {} as never;
     });
-    return { api: createOrdersApi(request), calls };
+    const requestBlob = vi.fn(async () => new Blob());
+    return { api: createOrdersApi(request, requestBlob), calls };
   }
 
   it('POSTs to the packed sub-resource and encodes the order id', async () => {
@@ -122,6 +124,41 @@ describe('orders api — packed writes (#2288)', () => {
 
     expect(calls[0].path).toBe('/orders/ol_order_1/packed');
     expect(calls[0].init?.method).toBe('DELETE');
+  });
+});
+
+describe('orders api — buyer note (#3539)', () => {
+  function recordingApiWithInit(): {
+    api: ReturnType<typeof createOrdersApi>;
+    calls: { path: string; init?: RequestInit }[];
+  } {
+    const calls: { path: string; init?: RequestInit }[] = [];
+    const request = vi.fn(async (path: string, init?: RequestInit) => {
+      calls.push({ path, init });
+      return {} as never;
+    });
+    return { api: createOrdersApi(request, vi.fn(async () => new Blob())), calls };
+  }
+
+  it('POSTs to the buyer-note read marker and encodes the order id', async () => {
+    const { api, calls } = recordingApiWithInit();
+
+    await api.markBuyerNoteRead('ol/order 1');
+
+    expect(calls[0].path).toBe('/orders/ol%2Forder%201/buyer-note/read');
+    expect(calls[0].init?.method).toBe('POST');
+  });
+
+  it('serializes the hasBuyerNote filter, including false', async () => {
+    const { api, paths } = recordingApi();
+
+    await api.list({ hasBuyerNote: true }, { limit: 20, offset: 0 });
+    await api.list({ hasBuyerNote: false }, { limit: 20, offset: 0 });
+    await api.list({}, { limit: 20, offset: 0 });
+
+    expect(paths[0]).toContain('hasBuyerNote=true');
+    expect(paths[1]).toContain('hasBuyerNote=false');
+    expect(paths[2]).not.toContain('hasBuyerNote');
   });
 });
 
@@ -160,5 +197,57 @@ describe('orders api — lifecycle phase (#2310)', () => {
 
     expect(paths[0]).toContain('/orders/lifecycle-summary');
     expect(paths[0]).toContain('sourceConnectionId=conn-1');
+  });
+});
+
+describe('orders api — retryRouting (#3558)', () => {
+  it('POSTs to the encoded retry-routing path', async () => {
+    const request = vi.fn(async () => ({ internalOrderId: 'ol_order_1', jobId: 'j1' }) as never);
+    const api = createOrdersApi(request, vi.fn(async () => new Blob()));
+
+    const result = await api.retryRouting('ol_order_1');
+
+    expect(request).toHaveBeenCalledWith('/orders/ol_order_1/retry-routing', { method: 'POST' });
+    expect(result.jobId).toBe('j1');
+  });
+});
+
+describe('orders api - post-import edits (#3544)', () => {
+  function recordingRequests() {
+    const calls: { path: string; init?: RequestInit }[] = [];
+    const request = vi.fn(async (path: string, init?: RequestInit) => {
+      calls.push({ path, init });
+      return {} as never;
+    });
+    return { api: createOrdersApi(request, vi.fn(async () => new Blob())), calls };
+  }
+
+  it('should post each edit to its own endpoint with the body as sent', async () => {
+    const { api, calls } = recordingRequests();
+
+    await api.editOrderAddress('ol_order_1', { dryRun: true, address1: 'a', city: 'c', postalCode: 'p', country: 'PL' });
+    await api.editOrderLines('ol_order_1', { lines: [{ orderLineId: 'l', quantity: 1 }] });
+    await api.editOrderDeliveryMethod('ol_order_1', { methodId: 'dpd' });
+    await api.editOrderDiscount('ol_order_1', { amount: '15.00' });
+
+    expect(calls.map((c) => c.path)).toEqual([
+      '/orders/ol_order_1/edits/address',
+      '/orders/ol_order_1/edits/lines',
+      '/orders/ol_order_1/edits/delivery-method',
+      '/orders/ol_order_1/edits/discount',
+    ]);
+    expect(calls.every((c) => c.init?.method === 'POST')).toBe(true);
+    expect(JSON.parse(String(calls[0].init?.body))).toMatchObject({ dryRun: true, country: 'PL' });
+    expect(JSON.parse(String(calls[3].init?.body))).toEqual({ amount: '15.00' });
+  });
+
+  it('should confirm a change with no body unless one is given', async () => {
+    const { api, calls } = recordingRequests();
+
+    await api.confirmOrderChange('ol_order_1', 'change_1');
+    await api.confirmOrderChange('ol_order_1', 'change_2', { acknowledgeAboveCeiling: true });
+
+    expect(calls[0].init).toEqual({ method: 'POST' });
+    expect(JSON.parse(String(calls[1].init?.body))).toEqual({ acknowledgeAboveCeiling: true });
   });
 });

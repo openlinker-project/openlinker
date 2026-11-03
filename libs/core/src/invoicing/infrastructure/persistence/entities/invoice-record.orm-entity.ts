@@ -106,6 +106,15 @@ export class InvoiceRecordOrmEntity {
   clearanceReference!: string | null;
 
   /**
+   * Opaque operator-facing clearance diagnostic (#1582) - the authority's
+   * rejection description/details, captured by the reconciliation read so the
+   * detail page can explain a `rejected` verdict. Neutral (ADR-026); `null`
+   * until a read surfaces one.
+   */
+  @Column({ type: 'text', nullable: true })
+  clearanceDetail!: string | null;
+
+  /**
    * Neutral payment lifecycle (#1354) — refreshed from an authoritative
    * `PaymentStatusReader` read triggered by a provider payment webhook. Defaults
    * `unknown` (never asserts "unpaid" for a document OL has not polled).
@@ -220,6 +229,13 @@ export class InvoiceRecordOrmEntity {
    */
   @Column({ type: 'jsonb', nullable: true })
   sourceDocument!: StoredDocument | null;
+
+  /**
+   * Base64URL SHA-256 of the `sourceDocument` bytes (#3620), written with it at
+   * issue time. `null` for rows issued before the column existed.
+   */
+  @Column({ type: 'text', nullable: true })
+  sourceDocumentHash!: string | null;
 
   /**
    * Neutral issuance-time line snapshot (#1297) — `{ buyer, currency, lines }`

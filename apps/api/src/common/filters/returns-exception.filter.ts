@@ -181,6 +181,16 @@ export class ReturnsExceptionFilter implements ExceptionFilter {
         : HttpStatus.CONFLICT;
     }
 
+    // E-14: the payload is well formed, but the ORDER's state (an OpenLinker edit
+    // removed the line) refuses it - the one record-refusal reason that is a
+    // state conflict rather than a payload fault.
+    if (
+      exception instanceof ReturnRecordRefusedError &&
+      exception.reason === 'line-removed-by-edit'
+    ) {
+      return HttpStatus.CONFLICT;
+    }
+
     if (
       exception instanceof ReturnNotAttributedError ||
       exception instanceof ReturnCustodyTransitionError ||

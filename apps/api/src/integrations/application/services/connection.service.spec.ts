@@ -9,8 +9,12 @@
 import type { TestingModule } from '@nestjs/testing';
 import { Test } from '@nestjs/testing';
 import type { PricingRule } from '@openlinker/core/identifier-mapping';
-import { BadRequestException, NotFoundException } from '@nestjs/common';
-import { ConnectionService, STOCK_LOCATION_OVERRIDE_INVALID_ERROR_CODE } from './connection.service';
+import { BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
+import {
+  ConnectionService,
+  ROUTING_REQUIRES_ACTIVE_LOCATION_ERROR_CODE,
+  STOCK_LOCATION_OVERRIDE_INVALID_ERROR_CODE,
+} from './connection.service';
 import type {
   ConnectionPort,
   ConnectionUpdate,
@@ -20,6 +24,7 @@ import type {
 import {
   CONNECTION_PORT_TOKEN,
   Connection,
+  ConnectionInUseException,
   ConnectionNotFoundException,
 } from '@openlinker/core/identifier-mapping';
 import type {
@@ -529,6 +534,81 @@ describe('ConnectionService', () => {
       expect(credentials.create).not.toHaveBeenCalled();
     });
 
+    describe('deliveryOnDocuments config (#3905)', () => {
+      const base = {
+        name: 'Shop',
+        platformType: 'prestashop',
+        credentials: { webserviceApiKey: 'RAW' },
+      };
+
+      it('should refuse a delivery name that already carries a percentage', async () => {
+        await expect(
+          service.create({
+            ...base,
+            config: {
+              baseUrl: 'https://new.com',
+              deliveryOnDocuments: { default: { name: 'Dostawa 23%' } },
+            },
+          })
+        ).rejects.toThrow(BadRequestException);
+        expect(credentials.create).not.toHaveBeenCalled();
+      });
+
+      it('should refuse a fixed rate with no fixedRate', async () => {
+        await expect(
+          service.create({
+            ...base,
+            config: {
+              baseUrl: 'https://new.com',
+              deliveryOnDocuments: { default: { name: 'Dostawa', rate: 'fixed' } },
+            },
+          })
+        ).rejects.toThrow(/fixedRate/);
+      });
+
+      it('should measure the name against the budget a fiscalization adapter declares', async () => {
+        integrationsService.listCapabilityAdapters.mockResolvedValueOnce([
+          {
+            connectionId: 'fiscal-1',
+            connection: mockConnection,
+            adapter: Promise.resolve({
+              registerTransaction: jest.fn(),
+              getReceiptLineNameMaxLength: () => 20,
+            }),
+            metadata: { supportedCapabilities: ['Fiscalization'] },
+          },
+        ] as never);
+        await expect(
+          service.create({
+            ...base,
+            config: {
+              baseUrl: 'https://new.com',
+              // 17 characters: inside the 36 the fallback allows, past the 16
+              // a declared 20 leaves once the ` 23%` suffix is reserved.
+              deliveryOnDocuments: { default: { name: 'Koszt dostawy kur' } },
+            },
+          })
+        ).rejects.toThrow(/at most 16 characters/);
+        expect(credentials.create).not.toHaveBeenCalled();
+      });
+
+      it('should accept a well-formed value', async () => {
+        connectionPort.create.mockResolvedValue(mockConnection);
+        await expect(
+          service.create({
+            ...base,
+            config: {
+              baseUrl: 'https://new.com',
+              deliveryOnDocuments: {
+                default: { name: 'Dostawa' },
+                countries: { pl: { name: 'Koszt dostawy', rateFormat: 'labelled', rateLabel: 'VAT' } },
+              },
+            },
+          })
+        ).resolves.toEqual(mockConnection);
+      });
+    });
+
     it('should reject PrestaShop credentials missing webserviceApiKey', async () => {
       await expect(
         service.create({
@@ -590,6 +670,36 @@ describe('ConnectionService', () => {
       // Narrowed to the product job (#2084): create now also runs a taxonomy
       // bootstrap, so a bare `not.toHaveBeenCalled()` would fail here even
       // though this test's subject — the ProductMaster gate — still holds.
+      expect(jobEnqueue.enqueueJob).not.toHaveBeenCalledWith(
+        expect.objectContaining({ jobType: 'master.product.syncAll' })
+      );
+    });
+
+    // The adapter supporting ProductMaster is not the operator choosing it: a
+    // connection created as a publish destination only must not have its shop
+    // catalogue pulled in as master data. Same gate as the recurring scheduler.
+    it('should skip the catalogue bootstrap when ProductMaster is supported but not enabled', async () => {
+      const publishOnly = new Connection(
+        'connection-123',
+        'shoper',
+        'Publish destination',
+        'active',
+        {},
+        'cred_123',
+        new Date(),
+        new Date(),
+        undefined,
+        ['ProductPublisher']
+      );
+      connectionPort.create.mockResolvedValue(publishOnly);
+      integrationsService.getAdapter.mockResolvedValue({
+        connection: publishOnly,
+        adapter: {},
+        metadata: { supportedCapabilities: ['ProductMaster', 'ProductPublisher'] },
+      } as unknown as Awaited<ReturnType<IIntegrationsService['getAdapter']>>);
+
+      await service.create(payload);
+
       expect(jobEnqueue.enqueueJob).not.toHaveBeenCalledWith(
         expect.objectContaining({ jobType: 'master.product.syncAll' })
       );
@@ -908,6 +1018,72 @@ describe('ConnectionService', () => {
       });
     });
 
+    describe('config.buyerEmails validation (#3554)', () => {
+      // The channel rule reads OfferManager, which the default PrestaShop
+      // manifest mock does not advertise; a shop that also sells through
+      // OfferManager (WooCommerce's shape) needs it to be enable-able at all.
+      beforeEach(() => {
+        integrationsService.resolveAdapterMetadata.mockResolvedValue({
+          adapterKey: 'prestashop.webservice.v1',
+          platformType: 'prestashop',
+          supportedCapabilities: [
+            'ProductMaster',
+            'InventoryMaster',
+            'OrderSource',
+            'OrderProcessorManager',
+            'OfferManager',
+          ],
+        } as never);
+      });
+
+      const withEmails = (buyerEmails: unknown, enabledCapabilities?: string[]) => ({
+        ...payload,
+        ...(enabledCapabilities ? { enabledCapabilities } : {}),
+        config: { ...payload.config, buyerEmails },
+      });
+
+      it('should accept a shop enabling order-confirmed with a valid sender', async () => {
+        connectionPort.create.mockResolvedValue(mockConnection);
+        await expect(
+          service.create(
+            withEmails(
+              {
+                enabled: true,
+                templates: { 'order-confirmed': { enabled: true, replyTo: 'help@shop.pl' } },
+              },
+              ['ProductMaster', 'OfferManager']
+            ) as never
+          )
+        ).resolves.toEqual(mockConnection);
+      });
+
+      it('should reject order-confirmed on a marketplace connection', async () => {
+        await expect(
+          service.create(
+            withEmails({ enabled: true, templates: { 'order-confirmed': { enabled: true } } }, [
+              'OfferManager',
+            ]) as never
+          )
+        ).rejects.toThrow(/sent by a shop/);
+      });
+
+      it('should reject an unknown template and a sender with a line break', async () => {
+        await expect(
+          service.create(
+            withEmails({ enabled: true, templates: { marketing: { enabled: true } } }) as never
+          )
+        ).rejects.toThrow(/unknown template/);
+        await expect(
+          service.create(
+            withEmails({
+              enabled: true,
+              templates: { shipped: { enabled: true, fromAddress: 'a@b.pl\nBcc: x@y.pl' } },
+            }) as never
+          )
+        ).rejects.toThrow(/single email address/);
+      });
+    });
+
     describe('config.rateLimit validation (#1810)', () => {
       it('should accept a create with both knobs within bounds', async () => {
         connectionPort.create.mockResolvedValue(mockConnection);
@@ -987,6 +1163,46 @@ describe('ConnectionService', () => {
         await expect(
           service.update('connection-123', {
             config: { baseUrl: 'https://shop.example.com', rateLimit: { maxConcurrent: 0 } },
+          })
+        ).rejects.toThrow(BadRequestException);
+        expect(connectionPort.update).not.toHaveBeenCalled();
+      });
+    });
+
+    describe('fulfilment ownership flag validation (#2118)', () => {
+      it('should accept a boolean flag and a cleared null on create', async () => {
+        connectionPort.create.mockResolvedValue(mockConnection);
+
+        await expect(
+          service.create({
+            ...payload,
+            config: { ...payload.config, fulfilmentOwnedByDestination: true },
+          })
+        ).resolves.toEqual(mockConnection);
+        await expect(
+          service.create({
+            ...payload,
+            config: { ...payload.config, fulfilmentOwnedByDestination: null },
+          })
+        ).resolves.toEqual(mockConnection);
+      });
+
+      it('should reject a non-boolean flag on create', async () => {
+        await expect(
+          service.create({
+            ...payload,
+            config: { ...payload.config, fulfilmentOwnedByDestination: 'true' },
+          })
+        ).rejects.toThrow(BadRequestException);
+        expect(connectionPort.create).not.toHaveBeenCalled();
+      });
+
+      it('should reject a non-boolean flag on update', async () => {
+        connectionPort.get.mockResolvedValue(mockConnection);
+
+        await expect(
+          service.update('connection-123', {
+            config: { baseUrl: 'https://shop.example.com', fulfilmentOwnedByDestination: 1 },
           })
         ).rejects.toThrow(BadRequestException);
         expect(connectionPort.update).not.toHaveBeenCalled();
@@ -1465,6 +1681,109 @@ describe('ConnectionService', () => {
 
         await expect(
           service.update('connection-123', { status: 'active' } as ConnectionUpdate)
+        ).resolves.toEqual(enabled);
+      });
+    });
+
+    describe('catalogue bootstrap on enable', () => {
+      const withState = (
+        status: 'active' | 'disabled',
+        enabledCapabilities: string[]
+      ): Connection =>
+        new Connection(
+          'connection-123',
+          'shoper',
+          'Test Connection',
+          status,
+          {},
+          'cred_123',
+          new Date(),
+          new Date(),
+          undefined,
+          enabledCapabilities
+        );
+
+      const syncAll = expect.objectContaining({
+        jobType: 'master.product.syncAll',
+        idempotencyKey: 'bootstrap:connection-123:product:syncAll',
+      });
+
+      beforeEach(() => {
+        integrationsService.getAdapter.mockResolvedValue({
+          connection: mockConnection,
+          adapter: {},
+          metadata: { supportedCapabilities: ['ProductMaster', 'ProductPublisher'] },
+        } as unknown as Awaited<ReturnType<IIntegrationsService['getAdapter']>>);
+        integrationsService.resolveAdapterMetadata.mockResolvedValue({
+          adapterKey: 'shoper.restapi.v1',
+          platformType: 'shoper',
+          supportedCapabilities: ['ProductMaster', 'ProductPublisher'],
+        } as unknown as Awaited<ReturnType<IIntegrationsService['resolveAdapterMetadata']>>);
+      });
+
+      // Create skipped the bootstrap because ProductMaster was off then, so
+      // switching it on is the first moment the catalogue should be pulled.
+      it('should enqueue the bootstrap when ProductMaster is switched on', async () => {
+        connectionPort.get.mockResolvedValue(withState('active', ['ProductPublisher']));
+        connectionPort.update.mockResolvedValue(
+          withState('active', ['ProductPublisher', 'ProductMaster'])
+        );
+
+        await service.update('connection-123', {
+          enabledCapabilities: ['ProductPublisher', 'ProductMaster'],
+        } as ConnectionUpdate);
+
+        expect(jobEnqueue.enqueueJob).toHaveBeenCalledWith(syncAll);
+      });
+
+      it('should enqueue the bootstrap when a master connection transitions to active', async () => {
+        connectionPort.get.mockResolvedValue(withState('disabled', ['ProductMaster']));
+        connectionPort.update.mockResolvedValue(withState('active', ['ProductMaster']));
+
+        await service.update('connection-123', { status: 'active' } as ConnectionUpdate);
+
+        expect(jobEnqueue.enqueueJob).toHaveBeenCalledWith(syncAll);
+      });
+
+      it('should not enqueue when a publish-only connection transitions to active', async () => {
+        connectionPort.get.mockResolvedValue(withState('disabled', ['ProductPublisher']));
+        connectionPort.update.mockResolvedValue(withState('active', ['ProductPublisher']));
+
+        await service.update('connection-123', { status: 'active' } as ConnectionUpdate);
+
+        expect(jobEnqueue.enqueueJob).not.toHaveBeenCalledWith(syncAll);
+      });
+
+      it('should not enqueue when ProductMaster was already enabled and nothing transitions', async () => {
+        connectionPort.get.mockResolvedValue(withState('active', ['ProductMaster']));
+        connectionPort.update.mockResolvedValue(withState('active', ['ProductMaster']));
+
+        await service.update('connection-123', { name: 'Renamed' } as ConnectionUpdate);
+
+        expect(jobEnqueue.enqueueJob).not.toHaveBeenCalled();
+      });
+
+      it('should not enqueue when ProductMaster is switched off', async () => {
+        connectionPort.get.mockResolvedValue(withState('active', ['ProductMaster', 'ProductPublisher']));
+        connectionPort.update.mockResolvedValue(withState('active', ['ProductPublisher']));
+
+        await service.update('connection-123', {
+          enabledCapabilities: ['ProductPublisher'],
+        } as ConnectionUpdate);
+
+        expect(jobEnqueue.enqueueJob).not.toHaveBeenCalledWith(syncAll);
+      });
+
+      it('should not fail the update when the bootstrap enqueue throws', async () => {
+        connectionPort.get.mockResolvedValue(withState('active', ['ProductPublisher']));
+        const enabled = withState('active', ['ProductPublisher', 'ProductMaster']);
+        connectionPort.update.mockResolvedValue(enabled);
+        jobEnqueue.enqueueJob.mockRejectedValue(new Error('stream unavailable'));
+
+        await expect(
+          service.update('connection-123', {
+            enabledCapabilities: ['ProductPublisher', 'ProductMaster'],
+          } as ConnectionUpdate)
         ).resolves.toEqual(enabled);
       });
     });
@@ -2150,6 +2469,22 @@ describe('ConnectionService', () => {
         expect(connectionPort.create).not.toHaveBeenCalled();
       });
 
+      it('should carry a machine-readable code on the refusal (#3457)', async () => {
+        // The OMS onboarding wizard branches on this field, never on the prose,
+        // so a reworded message cannot silently turn its inline remedy into a
+        // generic error banner.
+        locations.countActiveLocations.mockResolvedValue(0);
+
+        const error = await service
+          .create(claiming({ sourcingAuthority: true }))
+          .catch((caught: unknown) => caught);
+
+        expect(error).toBeInstanceOf(BadRequestException);
+        expect((error as BadRequestException).getResponse()).toEqual(
+          expect.objectContaining({ error: ROUTING_REQUIRES_ACTIVE_LOCATION_ERROR_CODE })
+        );
+      });
+
       it('should allow the same claim once a location exists', async () => {
         // The control for the test above: proves the refusal was caused by the
         // location count and not by the payload being rejected for some other
@@ -2224,6 +2559,362 @@ describe('ConnectionService', () => {
           service.create(claiming(config as Record<string, unknown>))
         ).resolves.toEqual(mockConnection);
       });
+    });
+  });
+  describe('archive / restore (#3657)', () => {
+    const withState = (
+      status: Connection['status'],
+      credentialsRef: string
+    ): Connection =>
+      new Connection(
+        'connection-123',
+        'prestashop',
+        'Test Connection',
+        status,
+        {},
+        credentialsRef,
+        new Date(),
+        new Date(),
+        undefined,
+        ['ProductMaster']
+      );
+
+    describe('archive', () => {
+      beforeEach(() => {
+        connectionPort.list.mockResolvedValue([]);
+      });
+
+      const marketplaceNaming = (
+        id: string,
+        name: string,
+        masterCatalogConnectionId: string
+      ): Connection =>
+        new Connection(
+          id,
+          'allegro',
+          name,
+          'active',
+          { masterCatalogConnectionId },
+          'db:other-ref',
+          new Date(),
+          new Date(),
+          undefined,
+          ['OfferManager']
+        );
+
+      it('should refuse with ConnectionInUseException naming the referrers and change nothing when another connection uses it as its catalog', async () => {
+        connectionPort.get.mockResolvedValue(withState('disabled', 'db:cred-ref-1'));
+        connectionPort.list.mockResolvedValue([
+          marketplaceNaming('allegro-1', 'Allegro PL', 'connection-123'),
+          marketplaceNaming('erli-1', 'Erli', 'connection-123'),
+          marketplaceNaming('allegro-2', 'Allegro CZ', 'some-other-shop'),
+        ]);
+
+        const refusal = await service.archive('connection-123').catch((error: unknown) => error);
+
+        expect(refusal).toBeInstanceOf(ConnectionInUseException);
+        expect(refusal).toMatchObject({
+          connectionId: 'connection-123',
+          reason: 'master-catalog-referenced',
+          referrers: [
+            { id: 'allegro-1', name: 'Allegro PL' },
+            { id: 'erli-1', name: 'Erli' },
+          ],
+        });
+        expect(credentials.delete).not.toHaveBeenCalled();
+        expect(connectionPort.update).not.toHaveBeenCalled();
+      });
+
+      it('should archive when no other connection uses it as its catalog', async () => {
+        connectionPort.get.mockResolvedValue(withState('disabled', 'db:cred-ref-1'));
+        connectionPort.list.mockResolvedValue([
+          marketplaceNaming('allegro-2', 'Allegro CZ', 'some-other-shop'),
+        ]);
+        connectionPort.update.mockResolvedValue(withState('archived', ''));
+
+        await expect(service.archive('connection-123')).resolves.toMatchObject({
+          status: 'archived',
+        });
+        // Unfiltered list(): archived referrers are left out by the port, so
+        // they never block an archive.
+        expect(connectionPort.list).toHaveBeenCalledWith();
+      });
+
+      it('should delete the credential, clear the ref and set archived when the connection is disabled', async () => {
+        connectionPort.get.mockResolvedValue(withState('disabled', 'db:cred-ref-1'));
+        connectionPort.update.mockResolvedValue(withState('archived', ''));
+
+        const result = await service.archive('connection-123');
+
+        expect(credentials.delete).toHaveBeenCalledWith('cred-ref-1');
+        expect(connectionPort.update).toHaveBeenCalledWith('connection-123', {
+          status: 'archived',
+          credentialsRef: '',
+        });
+        expect(mockHttpTransportFactory.evict).toHaveBeenCalledWith('connection-123');
+        expect(result.status).toBe('archived');
+      });
+
+      it('should remove the credential before archiving the row when both are written', async () => {
+        const order: string[] = [];
+        connectionPort.get.mockResolvedValue(withState('disabled', 'db:cred-ref-1'));
+        credentials.delete.mockImplementation(() => {
+          order.push('credential');
+          return Promise.resolve(true);
+        });
+        connectionPort.update.mockImplementation(() => {
+          order.push('row');
+          return Promise.resolve(withState('archived', ''));
+        });
+
+        await service.archive('connection-123');
+
+        expect(order).toEqual(['credential', 'row']);
+      });
+
+      it('should skip the credential delete when the ref is not db-backed', async () => {
+        connectionPort.get.mockResolvedValue(withState('disabled', ''));
+        connectionPort.update.mockResolvedValue(withState('archived', ''));
+
+        await service.archive('connection-123');
+
+        expect(credentials.delete).not.toHaveBeenCalled();
+        expect(connectionPort.update).toHaveBeenCalledWith('connection-123', {
+          status: 'archived',
+          credentialsRef: '',
+        });
+      });
+
+      it('should still archive when the credential row was already gone', async () => {
+        connectionPort.get.mockResolvedValue(withState('disabled', 'db:cred-ref-1'));
+        credentials.delete.mockResolvedValue(false);
+        connectionPort.update.mockResolvedValue(withState('archived', ''));
+
+        await expect(service.archive('connection-123')).resolves.toMatchObject({
+          status: 'archived',
+        });
+      });
+
+      it.each(['active', 'error', 'needs_reauth'] as const)(
+        'should refuse with 409 and change nothing when the connection is %s',
+        async (status) => {
+          connectionPort.get.mockResolvedValue(withState(status, 'db:cred-ref-1'));
+
+          await expect(service.archive('connection-123')).rejects.toBeInstanceOf(
+            ConflictException
+          );
+          expect(credentials.delete).not.toHaveBeenCalled();
+          expect(connectionPort.update).not.toHaveBeenCalled();
+        }
+      );
+
+      it('should refuse with 409 and change nothing when the adapter declares itself non-archivable', async () => {
+        connectionPort.get.mockResolvedValue(withState('disabled', ''));
+        integrationsService.resolveAdapterMetadata.mockResolvedValue({
+          adapterKey: 'openlinker.oms.v1',
+          platformType: 'openlinker',
+          supportedCapabilities: ['FulfillmentExecutor'],
+          requiresCredentials: false,
+          archivable: false,
+        } as never);
+
+        await expect(service.archive('connection-123')).rejects.toBeInstanceOf(ConflictException);
+        expect(credentials.delete).not.toHaveBeenCalled();
+        expect(connectionPort.update).not.toHaveBeenCalled();
+      });
+
+      it('should return the row unchanged when the connection is already archived', async () => {
+        const archived = withState('archived', '');
+        connectionPort.get.mockResolvedValue(archived);
+
+        await expect(service.archive('connection-123')).resolves.toBe(archived);
+        expect(credentials.delete).not.toHaveBeenCalled();
+        expect(connectionPort.update).not.toHaveBeenCalled();
+      });
+
+      it('should answer 404 when the connection does not exist', async () => {
+        connectionPort.get.mockRejectedValue(new ConnectionNotFoundException('connection-123'));
+
+        await expect(service.archive('connection-123')).rejects.toBeInstanceOf(NotFoundException);
+      });
+    });
+
+    describe('restore', () => {
+      it('should return an archived connection to disabled', async () => {
+        connectionPort.get.mockResolvedValue(withState('archived', ''));
+        connectionPort.update.mockResolvedValue(withState('disabled', ''));
+
+        const result = await service.restore('connection-123');
+
+        expect(connectionPort.update).toHaveBeenCalledWith('connection-123', {
+          status: 'disabled',
+        });
+        expect(result.status).toBe('disabled');
+      });
+
+      it.each(['active', 'disabled', 'error', 'needs_reauth'] as const)(
+        'should refuse with 409 when the connection is %s',
+        async (status) => {
+          connectionPort.get.mockResolvedValue(withState(status, 'db:cred-ref-1'));
+
+          await expect(service.restore('connection-123')).rejects.toBeInstanceOf(
+            ConflictException
+          );
+          expect(connectionPort.update).not.toHaveBeenCalled();
+        }
+      );
+    });
+
+    describe('update guards', () => {
+      it('should refuse to set archived through a plain update', async () => {
+        connectionPort.get.mockResolvedValue(withState('disabled', 'db:cred-ref-1'));
+
+        await expect(
+          service.update('connection-123', { status: 'archived' })
+        ).rejects.toBeInstanceOf(BadRequestException);
+        expect(connectionPort.update).not.toHaveBeenCalled();
+      });
+
+      it('should refuse any status change on an archived connection', async () => {
+        connectionPort.get.mockResolvedValue(withState('archived', ''));
+
+        await expect(
+          service.update('connection-123', { status: 'active' })
+        ).rejects.toBeInstanceOf(ConflictException);
+        expect(connectionPort.update).not.toHaveBeenCalled();
+      });
+
+      it('should still allow a rename on an archived connection', async () => {
+        connectionPort.get.mockResolvedValue(withState('archived', ''));
+        connectionPort.update.mockResolvedValue(withState('archived', ''));
+
+        await expect(service.update('connection-123', { name: 'Old shop' })).resolves.toBeDefined();
+        expect(connectionPort.update).toHaveBeenCalledWith('connection-123', { name: 'Old shop' });
+      });
+    });
+
+    describe('updateCredentials after a restore', () => {
+      it('should store a fresh credential row and point the connection at it', async () => {
+        connectionPort.get.mockResolvedValue(withState('disabled', ''));
+        connectionPort.update.mockResolvedValue(withState('disabled', 'db:new'));
+
+        await service.updateCredentials('connection-123', {
+          webserviceApiKey: 'ABCDEFGHIJKLMNOPQRSTUVWXYZ012345',
+        });
+
+        expect(credentials.create).toHaveBeenCalledWith(
+          expect.objectContaining({
+            platformType: 'prestashop',
+            credentialsJson: { webserviceApiKey: 'ABCDEFGHIJKLMNOPQRSTUVWXYZ012345' },
+          })
+        );
+        const createdRef = (credentials.create.mock.calls[0][0] as { ref: string }).ref;
+        expect(connectionPort.update).toHaveBeenCalledWith('connection-123', {
+          credentialsRef: `db:${createdRef}`,
+        });
+        expect(credentials.update).not.toHaveBeenCalled();
+      });
+
+      it('should delete the new credential row when pointing the connection at it fails', async () => {
+        connectionPort.get.mockResolvedValue(withState('disabled', ''));
+        connectionPort.update.mockRejectedValue(new Error('db down'));
+
+        await expect(
+          service.updateCredentials('connection-123', {
+            webserviceApiKey: 'ABCDEFGHIJKLMNOPQRSTUVWXYZ012345',
+          })
+        ).rejects.toThrow('db down');
+
+        const createdRef = (credentials.create.mock.calls[0][0] as { ref: string }).ref;
+        expect(credentials.delete).toHaveBeenCalledWith(createdRef);
+      });
+
+      it('should refuse with 409 while the connection is still archived', async () => {
+        connectionPort.get.mockResolvedValue(withState('archived', ''));
+
+        await expect(
+          service.updateCredentials('connection-123', { webserviceApiKey: 'KEY' })
+        ).rejects.toBeInstanceOf(ConflictException);
+        expect(credentials.create).not.toHaveBeenCalled();
+      });
+
+      it('should refuse when the adapter takes no credentials', async () => {
+        connectionPort.get.mockResolvedValue(withState('disabled', ''));
+        integrationsService.resolveAdapterMetadata.mockResolvedValue({
+          adapterKey: 'openlinker.oms.v1',
+          platformType: 'openlinker',
+          supportedCapabilities: [],
+          requiresCredentials: false,
+        } as never);
+
+        await expect(
+          service.updateCredentials('connection-123', { anything: 'x' })
+        ).rejects.toBeInstanceOf(BadRequestException);
+        expect(credentials.create).not.toHaveBeenCalled();
+      });
+    });
+  });
+  describe('findSharedRateLimitBucketWarnings (#1594)', () => {
+    function ksefConnection(
+      id: string,
+      name: string,
+      nip: string | undefined,
+      adapterKey = 'ksef.publicapi.v2',
+      status: 'active' | 'disabled' = 'active'
+    ): Connection {
+      return new Connection(
+        id,
+        'ksef',
+        name,
+        status,
+        nip ? { env: 'test', seller: { nip } } : { env: 'test' },
+        'cred_x',
+        new Date(),
+        new Date(),
+        adapterKey,
+        ['Invoicing']
+      );
+    }
+
+    it('returns no warning when the connection carries no seller tax id', async () => {
+      const conn = ksefConnection('c1', 'A', undefined);
+      const warnings = await service.findSharedRateLimitBucketWarnings(conn);
+      expect(warnings).toEqual([]);
+      expect(connectionPort.list).not.toHaveBeenCalled();
+    });
+
+    it('warns when another active connection shares adapter + seller tax id', async () => {
+      const subject = ksefConnection('c1', 'Channel A', '1234567890');
+      const sibling = ksefConnection('c2', 'Channel B', '1234567890');
+      connectionPort.list.mockResolvedValue([subject, sibling]);
+
+      const warnings = await service.findSharedRateLimitBucketWarnings(subject);
+
+      expect(connectionPort.list).toHaveBeenCalledWith({ status: 'active' });
+      expect(warnings).toHaveLength(1);
+      expect(warnings[0]).toContain('Channel B');
+      expect(warnings[0]).toContain('1234567890');
+    });
+
+    it('does not warn about itself', async () => {
+      const subject = ksefConnection('c1', 'Channel A', '1234567890');
+      connectionPort.list.mockResolvedValue([subject]);
+      const warnings = await service.findSharedRateLimitBucketWarnings(subject);
+      expect(warnings).toEqual([]);
+    });
+
+    it('does not warn when the shared NIP is on a different adapter', async () => {
+      const subject = ksefConnection('c1', 'Channel A', '1234567890', 'ksef.publicapi.v2');
+      const other = ksefConnection('c2', 'Infakt B', '1234567890', 'infakt.accounting.v1');
+      connectionPort.list.mockResolvedValue([subject, other]);
+      const warnings = await service.findSharedRateLimitBucketWarnings(subject);
+      expect(warnings).toEqual([]);
+    });
+
+    it('is advisory: a list failure yields no warning rather than throwing', async () => {
+      const subject = ksefConnection('c1', 'Channel A', '1234567890');
+      connectionPort.list.mockRejectedValue(new Error('db down'));
+      await expect(service.findSharedRateLimitBucketWarnings(subject)).resolves.toEqual([]);
     });
   });
 });

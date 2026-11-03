@@ -24,6 +24,9 @@ import type {
   ProductListSort,
   PaginatedProducts,
   PaginatedProductVariants,
+  VariantPhysicalDimensionsFill,
+  VariantCost,
+  VariantCostFillResult,
 } from '../../domain/types/product.types';
 import type { StoredTaxRate } from '../../domain/types/tax-rate.types';
 import { effectiveTaxRate } from '../../domain/types/tax-rate.types';
@@ -31,8 +34,23 @@ import type {
   ConnectionTaxRateCoverage,
   TaxRateCoverage,
 } from '../../domain/types/tax-rate-coverage.types';
+import { ProductVariantNotFoundError } from '../../domain/exceptions/product-variant-not-found.error';
+import { InvalidVariantCostError } from '../../domain/exceptions/invalid-variant-cost.error';
 import { Logger } from '@openlinker/shared/logging';
 import { PRODUCT_REPOSITORY_TOKEN, PRODUCT_VARIANT_REPOSITORY_TOKEN } from '../../products.tokens';
+
+// numeric(12,4): at most 8 integer digits and 4 fractional ones.
+const NET_UNIT_COST_PATTERN = /^\d{1,8}(\.\d{1,4})?$/;
+const COST_CURRENCY_PATTERN = /^[A-Z]{3}$/;
+
+function assertValidCost(cost: VariantCost): void {
+  if (typeof cost.netUnitCost !== 'string' || !NET_UNIT_COST_PATTERN.test(cost.netUnitCost)) {
+    throw new InvalidVariantCostError('netUnitCost must be a non-negative decimal (max 8.4 digits)');
+  }
+  if (typeof cost.currency !== 'string' || !COST_CURRENCY_PATTERN.test(cost.currency)) {
+    throw new InvalidVariantCostError('currency must be an upper-case ISO 4217 code');
+  }
+}
 
 @Injectable()
 export class ProductsService implements IProductsService {
@@ -73,6 +91,37 @@ export class ProductsService implements IProductsService {
 
     await this.variantRepository.upsertMany(variantsWithProductId);
     this.logger.debug(`Variants upserted for product: ${productId}`);
+  }
+
+  async fillVariantsPhysicalDimensionsIfAbsent(
+    fills: readonly VariantPhysicalDimensionsFill[]
+  ): Promise<number> {
+    return this.variantRepository.fillPhysicalDimensionsIfAbsent(fills);
+  }
+
+  async recordVariantCost(
+    variantId: string,
+    cost: VariantCost | null,
+    actorUserId: string
+  ): Promise<void> {
+    if (cost !== null) {
+      assertValidCost(cost);
+    }
+    const found = await this.variantRepository.recordCost(variantId, cost, actorUserId);
+    if (!found) {
+      throw new ProductVariantNotFoundError(variantId);
+    }
+  }
+
+  async fillVariantCostsIfAbsent(
+    variantIds: readonly string[],
+    netUnitCost: string,
+    currency: string,
+    actorUserId: string
+  ): Promise<VariantCostFillResult> {
+    const cost: VariantCost = { netUnitCost, currency };
+    assertValidCost(cost);
+    return this.variantRepository.fillCostIfAbsent(variantIds, cost, actorUserId);
   }
 
   async recordProductTaxRate(productId: string, rate: StoredTaxRate): Promise<void> {
@@ -200,6 +249,10 @@ export class ProductsService implements IProductsService {
 
   async countVariants(filters: ProductVariantListFilters): Promise<number> {
     return this.variantRepository.countMany(filters);
+  }
+
+  async clearPriceBasisPending(variantIds: readonly string[]): Promise<void> {
+    await this.variantRepository.clearPriceBasisPending(variantIds);
   }
 
   async markVariantsStaleExcept(

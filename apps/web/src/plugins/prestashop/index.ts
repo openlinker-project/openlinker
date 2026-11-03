@@ -8,6 +8,7 @@
  *
  * @module plugins/prestashop
  */
+import { publicApiBaseUrl } from '../../shared/config/public-api-base-url';
 import type { OpenLinkerPlugin } from '../../shared/plugins';
 import { definePlugin } from '../define-plugin';
 import { PrestashopConnectionActions } from './components/prestashop-connection-actions';
@@ -31,8 +32,7 @@ export const prestashopPlugin: OpenLinkerPlugin = definePlugin({
       to: '/connections/new/prestashop',
       badge: 'Webservice API',
     },
-    getCallbackUrlDefault: () =>
-      typeof window !== 'undefined' ? window.location.origin : undefined,
+    getCallbackUrlDefault: publicApiBaseUrl,
     StructuredConfigSection: PrestashopStructuredSection,
     CredentialsPanel: PrestashopCredentialsPanel,
     ConnectionActions: PrestashopConnectionActions,

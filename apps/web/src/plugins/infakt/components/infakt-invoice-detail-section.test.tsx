@@ -141,9 +141,9 @@ describe('InfaktInvoiceDetailSection', () => {
     expect(await screen.findByRole('button', { name: 'Resend to KSeF' })).toBeInTheDocument();
   });
 
-  it('calls resendToKsef when the Resend button is clicked (rejected)', async () => {
-    const resendToKsef = vi.fn().mockResolvedValue(makeInvoice({ regulatoryStatus: 'submitted' }));
-    const apiClient = createMockApiClient({ invoicing: { resendToKsef } });
+  it('calls resendToAuthority when the Resend button is clicked (rejected)', async () => {
+    const resendToAuthority = vi.fn().mockResolvedValue(makeInvoice({ regulatoryStatus: 'submitted' }));
+    const apiClient = createMockApiClient({ invoicing: { resendToAuthority } });
 
     renderWithProviders(
       <InfaktInvoiceDetailSection
@@ -154,7 +154,7 @@ describe('InfaktInvoiceDetailSection', () => {
     );
 
     fireEvent.click(screen.getByRole('button', { name: 'Resend to KSeF' }));
-    await waitFor(() => expect(resendToKsef).toHaveBeenCalledWith('ol_invoice_test'));
+    await waitFor(() => expect(resendToAuthority).toHaveBeenCalledWith('ol_invoice_test'));
   });
 
   it('calls downloadDocument with kind=rendered when Download PDF is clicked', async () => {
@@ -179,26 +179,6 @@ describe('InfaktInvoiceDetailSection', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Download PDF' }));
     await waitFor(() =>
       expect(downloadDocument).toHaveBeenCalledWith('ol_invoice_test', 'rendered'),
-    );
-  });
-
-  it('sends the invoice by email with the selected language when "Send by email" is clicked (#1353)', async () => {
-    const sendEmail = vi.fn().mockResolvedValue({ delivered: true, recipient: null });
-    const apiClient = createMockApiClient({ invoicing: { sendEmail } });
-
-    renderWithProviders(
-      <InfaktInvoiceDetailSection
-        invoice={makeInvoice({ regulatoryStatus: 'accepted', status: 'issued' })}
-        connection={infaktConnection}
-      />,
-      { apiClient },
-    );
-
-    fireEvent.change(screen.getByRole('combobox'), { target: { value: 'en' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Send by email' }));
-
-    await waitFor(() =>
-      expect(sendEmail).toHaveBeenCalledWith('ol_invoice_test', { locale: 'en' }),
     );
   });
 });

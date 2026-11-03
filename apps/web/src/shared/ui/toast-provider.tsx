@@ -10,6 +10,8 @@ import {
   type ReactElement,
 } from 'react';
 import type { AlertTone } from './alert';
+import { useMessages } from '../i18n/use-messages';
+import { interpolate } from '../i18n/interpolate';
 
 export interface ToastAction {
   label: string;
@@ -21,6 +23,7 @@ interface Toast {
   description: string;
   durationMs: number;
   id: number;
+  testId?: string;
   title?: string;
   tone: AlertTone;
 }
@@ -30,6 +33,8 @@ interface ShowToastOptions {
   action?: ToastAction;
   description: string;
   durationMs?: number;
+  /** Test-introspection hook: lands on the toast root as `data-testid`. */
+  testId?: string;
   title?: string;
   tone?: AlertTone;
 }
@@ -51,6 +56,7 @@ const IS_TEST_ENV = import.meta.env.MODE === 'test';
 const TEST_ENV_DURATION_MS = 2_147_483_647;
 
 export function ToastProvider({ children }: PropsWithChildren): ReactElement {
+  const copy = useMessages('ui').toast;
   const [toasts, setToasts] = useState<Toast[]>([]);
   const nextIdRef = useRef(0);
 
@@ -59,12 +65,12 @@ export function ToastProvider({ children }: PropsWithChildren): ReactElement {
   }, []);
 
   const showToast = useCallback(
-    ({ action, description, durationMs = 4000, title, tone = 'info' }: ShowToastOptions) => {
+    ({ action, description, durationMs = 4000, testId, title, tone = 'info' }: ShowToastOptions) => {
       const id = nextIdRef.current++;
       const effectiveDurationMs = IS_TEST_ENV ? TEST_ENV_DURATION_MS : durationMs;
       setToasts((current) => [
         ...current,
-        { action, description, durationMs: effectiveDurationMs, id, title, tone },
+        { action, description, durationMs: effectiveDurationMs, id, testId, title, tone },
       ]);
     },
     [],
@@ -81,6 +87,7 @@ export function ToastProvider({ children }: PropsWithChildren): ReactElement {
           <RadixToast.Root
             key={toast.id}
             className={`toast toast--${toast.tone}`}
+            data-testid={toast.testId}
             duration={toast.durationMs}
             onOpenChange={(open) => {
               if (!open) removeToast(toast.id);
@@ -109,10 +116,10 @@ export function ToastProvider({ children }: PropsWithChildren): ReactElement {
               </RadixToast.Action>
             ) : null}
             <RadixToast.Close
-              aria-label={`Dismiss ${toast.title ?? 'notification'}`}
+              aria-label={interpolate(copy.dismissNamed, { title: toast.title ?? copy.notification })}
               className="toast__dismiss"
             >
-              Dismiss
+              {copy.dismiss}
             </RadixToast.Close>
           </RadixToast.Root>
         ))}

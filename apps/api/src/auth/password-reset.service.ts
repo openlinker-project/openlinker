@@ -95,7 +95,11 @@ export class PasswordResetService implements IPasswordResetService {
     }
 
     const passwordHash = await bcrypt.hash(newPassword, BCRYPT_ROUNDS);
-    await this.userRepository.updatePasswordHash(record.userId, passwordHash);
+    // A reset is the person choosing their own password, so it also resolves an
+    // admin-issued one-time password (#3456): same statement, flag cleared.
+    await this.userRepository.updatePasswordHash(record.userId, passwordHash, {
+      mustChangePassword: 'clear',
+    });
     await this.tokenRepository.markUsed(record.id, now);
   }
 

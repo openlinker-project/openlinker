@@ -21,6 +21,8 @@ import type {
 } from '../../mappers/prestashop.mapper.interface';
 import type { IPrestashopWebserviceClient } from '../../http/prestashop-webservice.client.interface';
 import type { IdentifierMappingPort } from '@openlinker/core/identifier-mapping';
+import type { PrestashopTaxRateResolver } from '../../provisioners/prestashop-tax-rate.resolver';
+import type { PrestashopSalesCountryResolver } from '../../provisioners/prestashop-sales-country.resolver';
 
 const PAGE_SIZE = 100;
 
@@ -268,5 +270,124 @@ describe('PrestashopProductMasterAdapter bulk read (#2593)', () => {
     await adapter.prefetchProducts([]);
 
     expect(httpClient.listResources).not.toHaveBeenCalled();
+  });
+
+  /**
+   * ADR-077: the gross catalogue price is a virtual field PrestaShop computes
+   * on the rows it already returns, so asking for it must not add a request.
+   */
+  describe('gross catalogue price (ADR-077)', () => {
+    let salesCountryResolver: jest.Mocked<Pick<PrestashopSalesCountryResolver, 'resolve'>>;
+    let grossAdapter: PrestashopProductMasterAdapter;
+
+    beforeEach(() => {
+      salesCountryResolver = { resolve: jest.fn() };
+      salesCountryResolver.resolve.mockResolvedValue({
+        countryId: 14,
+        iso2: 'PL',
+        source: 'setting',
+        taxesEnabled: true,
+      });
+      const taxRateResolver: jest.Mocked<Pick<PrestashopTaxRateResolver, 'resolveProductTaxRate'>> =
+        { resolveProductTaxRate: jest.fn() };
+      taxRateResolver.resolveProductTaxRate.mockResolvedValue({
+        kind: 'resolved',
+        rate: 0.23,
+        matchedBy: 'country',
+      });
+      grossAdapter = new PrestashopProductMasterAdapter(
+        httpClient,
+        identifierMapping,
+        new PrestashopProductMapper({ storefrontBaseUrl: 'https://shop.test' }),
+        connection,
+        undefined,
+        undefined,
+        undefined,
+        taxRateResolver as unknown as PrestashopTaxRateResolver,
+        undefined,
+        salesCountryResolver as unknown as PrestashopSalesCountryResolver
+      );
+
+      // 19.99 net at 23% is 24.59 for a Polish buyer. No product has
+      // combinations, so the combinations read comes back short at once.
+      httpClient.listResources = jest
+        .fn()
+        .mockImplementation((resource: string) =>
+          Promise.resolve(
+            resource === 'products'
+              ? externalIds.map((id) => ({ ...productRow(Number(id)), ol_gross: '24.590000' }))
+              : []
+          )
+        );
+      httpClient.getResource = jest.fn().mockImplementation((_resource: string, id: string) =>
+        Promise.resolve({ ...productRow(Number(id)), ol_gross: '24.590000' })
+      );
+    });
+
+    it('should hydrate 100 gross-priced products in the same 2 collection reads and no per-product fetch', async () => {
+      await grossAdapter.prefetchProducts(externalIds);
+
+      expect(httpClient.listResources).toHaveBeenCalledTimes(2);
+      expect(httpClient.getResource).not.toHaveBeenCalled();
+
+      for (const externalId of externalIds) {
+        const product = await grossAdapter.getProduct(`int-${externalId}`);
+        expect(product.price).toBe(24.59);
+        await grossAdapter.getProductVariants(`int-${externalId}`);
+      }
+
+      // Still the two collection reads, and the sales country was resolved
+      // once for the whole page rather than once per product.
+      expect(httpClient.getResource).not.toHaveBeenCalled();
+      expect(httpClient.listResources).toHaveBeenCalledTimes(2);
+      expect(salesCountryResolver.resolve).toHaveBeenCalledTimes(1);
+    });
+
+    it('should ask for the bare-product gross on the products read and a per-row gross on the combinations read', async () => {
+      await grossAdapter.prefetchProducts(['3', '9']);
+
+      const productsCall = httpClient.listResources.mock.calls.find(
+        ([resource]) => resource === 'products'
+      );
+      const combinationsCall = httpClient.listResources.mock.calls.find(
+        ([resource]) => resource === 'combinations'
+      );
+      expect(productsCall?.[1]).toEqual(
+        expect.objectContaining({
+          priceFields: [{ name: 'ol_gross', countryId: 14, useTax: true, productAttribute: 0 }],
+        })
+      );
+      expect(combinationsCall?.[1]).toEqual(
+        expect.objectContaining({
+          priceFields: [{ name: 'ol_gross', countryId: 14, useTax: true }],
+        })
+      );
+
+      // Run through the real builder: the string PrestaShop receives.
+      const productsQuery = PrestashopQueryBuilder.buildQueryWithPagination(
+        'products',
+        productsCall?.[1] as Parameters<typeof PrestashopQueryBuilder.buildQueryWithPagination>[1],
+        undefined,
+        productsCall?.[2],
+        productsCall?.[3]
+      );
+      const combinationsQuery = PrestashopQueryBuilder.buildQueryWithPagination(
+        'combinations',
+        combinationsCall?.[1] as Parameters<
+          typeof PrestashopQueryBuilder.buildQueryWithPagination
+        >[1],
+        undefined,
+        combinationsCall?.[2],
+        combinationsCall?.[3]
+      );
+      expect(productsQuery).toContain(
+        'price[ol_gross][use_tax]=1&price[ol_gross][country]=14&price[ol_gross][use_reduction]=0' +
+          '&price[ol_gross][product_attribute]=0'
+      );
+      expect(combinationsQuery).toContain(
+        'price[ol_gross][use_tax]=1&price[ol_gross][country]=14&price[ol_gross][use_reduction]=0'
+      );
+      expect(combinationsQuery).not.toContain('product_attribute');
+    });
   });
 });

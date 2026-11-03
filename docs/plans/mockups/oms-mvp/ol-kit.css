@@ -1,0 +1,13 @@
+/* OpenLinker mockup kit chrome only (state bar, notes panel). Product styles come from apps/web/src/index.css. */
+/* ---- mockup kit chrome (not part of the product) ---- */
+.mk-bar{position:sticky;top:env(safe-area-inset-top,0px);z-index:1000;display:flex;flex-wrap:wrap;gap:8px 14px;align-items:center;padding:8px 16px;background:#1d1a2e;color:#e8e6f5;font:500 12px/1.4 'IBM Plex Mono',ui-monospace,monospace}
+.mk-bar b{color:#fff;font-weight:600;margin-right:6px}
+.mk-bar__states{display:flex;flex-wrap:wrap;gap:4px}
+.mk-bar button{font:inherit;color:#e8e6f5;background:#2c2842;border:1px solid #433d62;border-radius:5px;padding:3px 9px;cursor:pointer}
+.mk-bar button[aria-pressed="true"]{background:#f2a65a;color:#1d1a2e;border-color:#f2a65a}
+.mk-bar__spacer{flex:1}
+.mk-notes{position:fixed;right:16px;bottom:16px;z-index:1001;width:min(380px,calc(100vw - 32px));max-height:60vh;overflow:auto;background:#fffbe8;color:#3a3200;border:1px solid #e9d98a;border-radius:10px;padding:12px 14px;font:13px/1.5 'IBM Plex Sans',system-ui,sans-serif;box-shadow:0 8px 24px rgba(0,0,0,.18)}
+.mk-notes h3{margin:0 0 6px;font-size:13px}
+.mk-notes ol{margin:0;padding-left:1.2em;display:grid;gap:6px}
+.mk-pin{display:inline-grid;place-items:center;min-width:18px;height:18px;padding:0 4px;border-radius:9px;background:#f2a65a;color:#1d1a2e;font:600 11px/1 'IBM Plex Mono',monospace;vertical-align:middle;margin-left:4px}
+body.mk-hide-notes .mk-notes, body.mk-hide-notes .mk-pin{display:none}

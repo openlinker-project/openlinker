@@ -1,0 +1,95 @@
+/**
+ * Shoper Product Write Types (#3712)
+ *
+ * The body of `POST /products` / `PUT /products/:id` as far as the publisher
+ * writes it. Verified live (2026-10-07) against a trial shop: a create needs
+ * `translations.<lang>.name`, `category_id` and `stock.price`; an update accepts
+ * any subset. `translations.<lang>.active` is the visibility (`0` draft, and `0`
+ * is also the default when omitted).
+ *
+ * @module libs/integrations/shoper/src/domain/types
+ */
+
+export interface ShoperProductTranslationWrite {
+  name?: string;
+  description?: string;
+  short_description?: string;
+  seo_title?: string;
+  seo_description?: string;
+  seo_url?: string;
+  /** `1` published, `0` draft. */
+  active: 0 | 1;
+}
+
+export interface ShoperProductStockWrite {
+  price?: number;
+  stock?: number;
+  code?: string;
+  ean?: string;
+  weight?: number;
+}
+
+export interface ShoperProductWriteBody {
+  translations: Record<string, ShoperProductTranslationWrite>;
+  /** Main category. REQUIRED by Shoper on create. */
+  category_id?: number;
+  /** Every category the product sits in, the main one included. */
+  categories?: number[];
+  stock?: ShoperProductStockWrite;
+  /**
+   * Attribute values, as a FLAT map of attribute id to value (live-verified
+   * 2026-10-23). This is NOT the grouped shape `GET /products/:id` reads back
+   * (`{ "<groupId>": { "<attributeId>": "..." } }`): sending that answers
+   * `400 Attribute '<groupId>' does not exist`. A select attribute takes the
+   * option TEXT, never its `option_id`.
+   */
+  attributes?: Record<string, string>;
+}
+
+/** The attribute values one publish sends, and why any parameter was left out. */
+export interface ShoperAttributeWritePlan {
+  readonly attributes: Record<string, string>;
+  readonly warnings: string[];
+}
+
+/** The value one parameter resolves to for one attribute, or why it has none. */
+export type ShoperAttributeValueResolution =
+  | { readonly ok: true; readonly value: string; readonly warning?: string }
+  | { readonly ok: false; readonly warning: string };
+
+/**
+ * The body of `POST /product-images` (#3712 follow-up). Verified live: Shoper
+ * fetches the image itself from `url` (the first image of a product becomes the
+ * main one, the next ones get the next `order`); `content` (base64) is the
+ * alternative. `name` is the alternative text.
+ */
+export interface ShoperImageWriteBody {
+  product_id: number;
+  url: string;
+  name?: string;
+}
+
+/**
+ * The body of `POST /categories` (#3713). Verified live: `parent_id` is
+ * REQUIRED (`0` = a root) and Shoper accepts a duplicate name under one parent
+ * and an unknown parent id without complaint, so both are the caller's to guard.
+ */
+export interface ShoperCategoryWriteBody {
+  parent_id: number;
+  translations: Record<string, { name: string; active: 0 | 1 }>;
+}
+
+/**
+ * The slice of `GET /products/:id` the publisher reads back after a write: the
+ * default stock's id (what an order line carries) and whether a main image is
+ * already there. Both optional because the read is a best-effort follow-up.
+ */
+export interface ShoperPublishedProduct {
+  readonly main_image?: unknown;
+  readonly stock?: { readonly stock_id?: string | number | null } | null;
+}
+
+/** That read-back, or the failure that prevented it - never a throw. */
+export type ShoperPublishedProductRead =
+  | { readonly ok: true; readonly product: ShoperPublishedProduct }
+  | { readonly ok: false; readonly error: unknown };

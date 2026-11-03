@@ -2,7 +2,7 @@ import type { ReactElement } from 'react';
 import { useLocation } from 'react-router-dom';
 import { EntityLabel } from '../../../shared/ui/entity-label';
 import { useConnectionQuery } from '../hooks/use-connection-query';
-import { SYSTEM_CONNECTION_ID } from '../api/connections.types';
+import { isSystemConnectionId, resolveConnectionLinkTarget } from '../lib/connection-link-target';
 
 interface ConnectionEntityLabelProps {
   className?: string;
@@ -30,43 +30,33 @@ export function ConnectionEntityLabel({
   showCopy = true,
 }: ConnectionEntityLabelProps): ReactElement | null {
   const location = useLocation();
-  const isSystem = connectionId === SYSTEM_CONNECTION_ID;
-  const nameSupplied = name !== undefined || isSystem;
+  // The all-zero placeholder id is never a real connection - resolving it
+  // would always 404 and render "Unknown", indistinguishable from a genuinely
+  // deleted/inaccessible connection - so it is never fetched.
+  const nameSupplied = name !== undefined || isSystemConnectionId(connectionId);
   const query = useConnectionQuery(connectionId, { enabled: !nameSupplied });
 
   if (!connectionId) return null;
 
-  // The all-zero placeholder id is never a real connection - resolving it
-  // would always 404 and render "Unknown", indistinguishable from a genuinely
-  // deleted/inaccessible connection. Render it as a system job instead.
-  if (isSystem) {
-    // Deliberately ignores the caller's showId/showCopy props: the all-zero
-    // id is a placeholder, not a real connection id - there is nothing
-    // meaningful to show or copy.
-    return (
-      <EntityLabel
-        id={connectionId}
-        name="System"
-        nameTitle="Not tied to a specific connection"
-        showId={false}
-        showCopy={false}
-        className={className}
-      />
-    );
-  }
-
-  const targetPath = `/connections/${connectionId}`;
-  const isSelfPage = location.pathname === targetPath;
-  const shouldLink = linkToDetail && !isSelfPage;
+  const target = resolveConnectionLinkTarget({
+    connectionId,
+    name: (nameSupplied ? name : query.data?.name) ?? null,
+    loading: loading ?? (!nameSupplied && query.isLoading),
+    pathname: location.pathname,
+    linkToDetail,
+  });
 
   return (
     <EntityLabel
       id={connectionId}
-      name={nameSupplied ? name : query.data?.name}
-      loading={loading ?? (!nameSupplied && query.isLoading)}
-      showId={showId}
-      showCopy={showCopy}
-      to={shouldLink ? targetPath : undefined}
+      name={target.displayName}
+      nameTitle={target.title}
+      loading={target.loading}
+      // The caller's showId/showCopy are ignored for System: the all-zero id is
+      // a placeholder, not a real connection id - nothing meaningful to show or copy.
+      showId={target.system ? false : showId}
+      showCopy={target.system ? false : showCopy}
+      to={target.linked ? target.targetPath : undefined}
       className={className}
     />
   );

@@ -12,7 +12,7 @@
  * @see {@link SyncJobsService} for the implementation
  */
 import type { SyncJob } from '../../domain/entities/sync-job.entity';
-import type { JobType } from '../../domain/types/sync-job.types';
+import type { JobType, SyncJobRetentionStatus } from '../../domain/types/sync-job.types';
 import type { SchedulerTaskConfig } from '../../domain/types/scheduler-task.types';
 import type { ScheduleJobInput } from './sync-jobs.types';
 
@@ -71,6 +71,19 @@ export interface ISyncJobsService {
    * @returns how many jobs were requeued
    */
   requeueStuckJobs(timeoutMinutes: number): Promise<number>;
+
+  /**
+   * Delete one batch of terminal `sync_jobs` rows older than `olderThan`
+   * (#2946) — the `maintenance`-role retention sweep's cross-context seam
+   * into this port, matching `requeueStuckJobs`. See
+   * `SyncJobRepositoryPort.pruneTerminalJobs` for the full contract
+   * (positive `succeeded | dead` whitelist, single-batch, caller loops).
+   */
+  pruneTerminalJobs(
+    status: SyncJobRetentionStatus,
+    olderThan: Date,
+    batchSize: number
+  ): Promise<number>;
 
   /**
    * Find the most recently succeeded job for a connection + job type,

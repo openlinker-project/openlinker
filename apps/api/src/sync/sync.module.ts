@@ -14,16 +14,19 @@ import { Module } from '@nestjs/common';
 import { SyncModule as CoreSyncModule } from '@openlinker/core/sync';
 import { IdentifierMappingModule } from '@openlinker/core/identifier-mapping';
 import { IntegrationsModule } from '@openlinker/core/integrations';
+import { EventsModule } from '@openlinker/core/events';
 import { SyncController } from './http/sync.controller';
 import { ConnectionSyncStatusController } from './http/connection-sync-status.controller';
+import { StreamDeadLettersController } from './http/stream-dead-letters.controller';
 
 @Module({
   imports: [
     CoreSyncModule, // Provides JobEnqueuePort
     IdentifierMappingModule, // Provides ConnectionPort
     IntegrationsModule, // Provides IIntegrationsService
+    EventsModule, // Provides IStreamDeadLettersService (#2301, D48)
   ],
-  controllers: [SyncController, ConnectionSyncStatusController],
+  controllers: [SyncController, ConnectionSyncStatusController, StreamDeadLettersController],
 })
 export class SyncModule {}
 

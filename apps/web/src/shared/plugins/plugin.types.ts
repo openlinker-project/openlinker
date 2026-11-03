@@ -25,7 +25,7 @@
  *
  * @module shared/plugins
  */
-import type { ComponentType } from 'react';
+import type { ComponentType, ReactNode } from 'react';
 import type { UseFormReturn } from 'react-hook-form';
 import type { RouteObject } from 'react-router-dom';
 import type { RefinementCtx, ZodType } from 'zod';
@@ -34,7 +34,11 @@ import type { ApiRequest, PluginApiNamespaces } from '../../app/api/api-client';
 import type { GroupRoleGate } from '../../app/nav-registry.types';
 import type { Connection } from '../../features/connections/api/connections.types';
 import type { EditConnectionFormValues } from '../../features/connections/components/edit-connection.schema';
-import type { CorrectionSuggestedLine, InvoiceRecord } from '../../features/invoicing';
+import type {
+  CorrectionSuggestedLine,
+  InvoiceRecord,
+  IssueInvoiceOptions,
+} from '../../features/invoicing';
 import type { StructuredError } from '../types/structured-error.types';
 
 /**
@@ -133,6 +137,13 @@ export interface PlatformSetupCard {
   description: string;
   to: string;
   badge: string;
+  /**
+   * Render the card as the platform's own product rather than a third-party
+   * integration (the OpenLinker OMS): listed first and styled apart. It also
+   * makes the card appear in the picker even when the platform is
+   * `hideFromCreateConnection` (hidden from the by-hand advanced form only).
+   */
+  featured?: boolean;
 }
 
 /**
@@ -561,6 +572,36 @@ export interface InvoiceDetailSectionProps {
 }
 
 /**
+ * Props the per-integration receipt section on the pack bench receives (#3647).
+ *
+ * Content-only, the `invoiceDetailSection` pattern: the host keeps the card's
+ * badge, top line and title, so no integration can restate a status the host
+ * owns. A plugin replaces the body and the actions of a REGISTERED receipt only.
+ * Resolved via `usePlatform(document.platformType)`; absent means the host
+ * renders its neutral default (a file prints, a link opens, nothing says so).
+ *
+ * The same rules bind a plugin as the host: say nothing about paper or the box
+ * that OpenLinker cannot see, and never that the buyer received the receipt.
+ */
+export interface BenchReceiptArtefactLike {
+  /** `document` | `link` | `markup` | `code` | `text`, or something newer. */
+  readonly medium: string;
+  /** A hint, never evidence of delivery. */
+  readonly disposition: string;
+  readonly label: string | null;
+  readonly contentType: string | null;
+}
+
+export interface BenchReceiptSectionProps {
+  readonly workId: string;
+  readonly documentReference: string | null;
+  /** Payload-free: the bench is never handed a receipt's content in its read. */
+  readonly artefacts: readonly BenchReceiptArtefactLike[];
+  /** The host's own body and actions, for a plugin that only adds to them. */
+  readonly defaultBody: ReactNode;
+}
+
+/**
  * Props the per-provider correction flow receives (#1240, Wave C). Launched
  * from "Issue correction" on an issued invoice. The form is per-provider by
  * design (KSeF emits a KOR linked to the original KSeF number; Subiekt issues a
@@ -586,6 +627,33 @@ export interface InvoiceCorrectionFlowProps {
 }
 
 /**
+ * One order line as the per-issue options slot sees it: enough to name the
+ * line, nothing that identifies the buyer.
+ */
+export interface InvoiceIssueOptionsLine {
+  id: string;
+  name: string | null;
+  quantity: number;
+}
+
+/**
+ * Props the per-provider "options for this invoice" slot receives (DEF-20).
+ * Rendered by the host inside the manual-issue disclosure, before the Issue
+ * button. The plugin only collects what the operator states about THIS sale
+ * (fiscal annotations, an extra party, per-line markers) - never a default
+ * applied on its own, and never anything that sets a rate. The host owns the
+ * value and sends it with the issue request. Absent means the provider takes
+ * no per-issue options.
+ */
+export interface InvoiceIssueOptionsProps {
+  connection: Connection;
+  lines: InvoiceIssueOptionsLine[];
+  value: IssueInvoiceOptions;
+  onChange: (next: IssueInvoiceOptions) => void;
+  disabled?: boolean;
+}
+
+/**
  * Build-time contribution bag. Folded by the host at module load.
  */
 export interface BuildContribution {
@@ -608,8 +676,25 @@ export interface BuildContribution {
 export interface PlatformContribution {
   /** Human-readable display name (dropdown labels, etc.). */
   displayName: string;
+  /**
+   * Compact label for space-constrained surfaces such as the connection chip
+   * face (#3670). Set it only when part of `displayName` is incidental detail
+   * (`Subiekt GT (Sfera GT bridge)` → `Subiekt GT`); omitted, surfaces use
+   * `displayName`. Declared here because only the plugin knows which part of
+   * its own name is detail - see `resolvePlatformShortLabel`.
+   */
+  shortLabel?: string;
   /** Setup-card metadata for `PlatformPicker`. Omit if no guided wizard. */
   setupCard?: PlatformSetupCard;
+  /**
+   * When true, the platform is NOT offered by "Add new connection" (the
+   * picker or the advanced form's platform dropdown), while its existing
+   * connections still render normally everywhere else. For a platform whose
+   * connection is created by its own setup flow rather than by hand — the
+   * OpenLinker OMS, created by `/settings/packing` (#3457), where a bare
+   * connection with none of the flow's other writes would pack nothing.
+   */
+  hideFromCreateConnection?: boolean;
   /**
    * When true, the inline create-connection form replaces its submit
    * affordances with an Alert linking to the guided setup wizard (today:
@@ -745,6 +830,18 @@ export interface PlatformContribution {
    * the correction affordance is hidden for that provider.
    */
   invoiceCorrectionFlow?: ComponentType<InvoiceCorrectionFlowProps>;
+  /**
+   * Invoicing: per-issue options the operator states about one sale when
+   * issuing by hand (DEF-20). Resolved via `usePlatform(connection.platformType)`.
+   * Absent means the issue request carries no per-issue options.
+   */
+  invoiceIssueOptions?: ComponentType<InvoiceIssueOptionsProps>;
+  /**
+   * Pack bench: the body and actions of a registered fiscal receipt's card
+   * (#3647). Resolved via `usePlatform(document.platformType)`. Absent means the
+   * host's neutral default by artefact medium.
+   */
+  benchReceiptSection?: ComponentType<BenchReceiptSectionProps>;
 }
 
 /**
@@ -767,6 +864,12 @@ export interface OpenLinkerPlugin {
   build?: BuildContribution;
   /** Platform-side contributions. Resolved at render time via context. */
   platform?: PlatformContribution;
+  /**
+   * The plugin's own translation namespace, from `definePluginMessages`
+   * (ADR-081). Referencing it here keeps the namespace registered at module
+   * load, before the host loads the operator's language.
+   */
+  messages?: { readonly namespace: string };
 }
 
 /**

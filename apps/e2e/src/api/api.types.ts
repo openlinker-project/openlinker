@@ -143,6 +143,12 @@ export interface Product {
    * to pick, say, a single-variant product out of a page.
    */
   variantCount?: number;
+  /**
+   * Available to promise summed over the product's variants, on the LIST read.
+   * `null` means OpenLinker does not know (never zero); absent means the
+   * payload predates the field.
+   */
+  availableToPromise?: number | null;
   /** Only on the DETAIL read (`GET /products/:id`), never on the list. */
   variants?: ProductVariant[];
   /**
@@ -192,6 +198,12 @@ export interface InventoryAvailability {
   productVariantId: string;
   totalAvailable: number;
   locationCount: number;
+  /**
+   * Live inventory rows for the variant, pooled ones included. `0` means stock
+   * was never synced; `locationCount` cannot say that because a pooled position
+   * counts 0.
+   */
+  positionCount: number;
   /**
    * What OpenLinker is willing to PROMISE (#2321): stock net of outstanding
    * holds, clamped at zero. `null` means OpenLinker does not know, which a
@@ -305,6 +317,8 @@ export interface OrderSyncStatus {
 
 export interface OrderRecord {
   internalOrderId: string;
+  /** The durable cancellation marker; `null` while the order stands. */
+  cancelledAt?: string | null;
   customerId: string | null;
   sourceConnectionId: string;
   sourceEventId: string | null;
@@ -342,6 +356,8 @@ export interface OrderRecord {
     documentKind: string | null;
     document: { kind: string; regulatoryStatus?: string | null } | null;
     otherRecords?: unknown[];
+    /** DEF-26: the sale changed after its document was made. */
+    afterIssueAttention?: string | null;
   };
 }
 
@@ -375,6 +391,24 @@ export interface IssueInvoiceInput {
   buyerTaxId?: BuyerTaxIdInput;
   documentType?: string;
   idempotencyKey?: string;
+  buyerIsPublicSectorEntity?: boolean;
+  buyerIsTaxGroupMember?: boolean;
+  /** Warning codes accepted after a 422 `acknowledgement-required` / 409 `warningCode`. */
+  acknowledgeWarnings?: string[];
+  /** DEF-20: per-issue fiscal annotations (KSeF Adnotacje). */
+  annotations?: {
+    cashAccounting?: boolean;
+    selfBilling?: boolean;
+    splitPayment?: boolean;
+    triangulation?: boolean;
+    marginScheme?: boolean;
+    marginKind?: 'travel-services' | 'used-goods' | 'works-of-art' | 'collectors-items';
+    exemptionBasis?: { kind: 'statute' | 'directive' | 'other'; text: string };
+  };
+  /** DEF-30: extra parties (KSeF Podmiot3). */
+  additionalParties?: Array<{ role: string; name: string; taxId?: BuyerTaxIdInput }>;
+  /** DEF-20: per-line GTU / Procedura markers, keyed by order line id. */
+  lineClassifications?: Array<{ orderLineId: string; gtuCode?: string; procedureCode?: string }>;
 }
 
 export interface InvoiceRecord {
@@ -386,16 +420,14 @@ export interface InvoiceRecord {
   status: 'pending' | 'issuing' | 'issued' | 'failed';
   providerInvoiceId: string | null;
   providerInvoiceNumber: string | null;
-  regulatoryStatus:
-    | 'not-applicable'
-    | 'submitted'
-    | 'cleared'
-    | 'accepted'
-    | 'rejected';
+  regulatoryStatus: 'not-applicable' | 'submitted' | 'cleared' | 'accepted' | 'rejected';
   clearanceReference: string | null;
   issuedAt: string | null;
   createdAt: string;
   updatedAt: string;
+  failureMode?: 'rejected' | 'in-doubt' | null;
+  failureCode?: string | null;
+  failureReason?: string | null;
 }
 
 export interface MarketplaceOfferPrice {
@@ -819,6 +851,8 @@ export interface BulkIssueInvoicesResult {
   issued: number;
   skipped: number;
   failed: number;
+  /** How many orders the request named (#1594, H-14). */
+  total?: number;
   results: BulkIssueInvoiceResult[];
 }
 
@@ -831,9 +865,30 @@ export interface IssueCorrectionLineInput {
 
 /** POST /invoices/:invoiceId/correct request body (#1241). */
 export interface IssueCorrectionInput {
+  /** Recommended, not required (DEF-32); at most 256 characters (DEF-25). */
   reason?: string;
+  /** May be empty only together with `buyerOverride` (DEF-24). */
   lines: IssueCorrectionLineInput[];
   idempotencyKey?: string;
+  buyerOverride?: IssueCorrectionBuyerOverrideInput;
+  /** Warning codes accepted after a 422 `acknowledgement-required` / 409 `warningCode`. */
+  acknowledgeWarnings?: string[];
+}
+
+/** Buyer-identity override on a correction (#1582). */
+export interface IssueCorrectionBuyerOverrideInput {
+  name: string;
+  taxId?: { scheme: string; value: string };
+  address: {
+    line1: string;
+    line2?: string | null;
+    city: string;
+    postalCode: string;
+    countryIso2: string;
+  };
+  type: 'company' | 'private';
+  isPublicSectorEntity?: boolean;
+  isTaxGroupMember?: boolean;
 }
 
 /** POST /invoices/:invoiceId/send-email request body (#1353). */
@@ -909,7 +964,7 @@ export interface DescriptionFormatView {
 // completeness of `CoverageCategory` but have no seed path in this suite —
 // see the follow-up issue referenced from `tests/analytics/mockup-parity.spec.ts`.
 
-export type CoverageCategory = 'currency' | 'tax-a' | 'tax-b' | 'tax-c' | 'product-matching';
+export type CoverageCategory = 'currency' | 'tax-a' | 'tax-b' | 'tax-c' | 'product-matching' | 'no-cost';
 export type CoverageResolutionStatus = 'open' | 'in-progress' | 'resolved' | 'failed';
 
 /** GET /analytics/settings response. */
@@ -1082,6 +1137,20 @@ export interface AcceptedFiscalRegistration {
   redrivenFromDead: boolean;
 }
 
+/** GET /orders/:orderId/fiscal-registration - the progress read behind the receipt panel. */
+export interface FiscalRegistrationProgressView {
+  progress:
+    | 'not-requested'
+    | 'queued'
+    | 'running'
+    | 'stalled'
+    | 'interrupted'
+    | 'registered'
+    | 'rejected'
+    | 'in-doubt';
+  record: FiscalRegistrationRecordSummary | null;
+}
+
 export interface FiscalRegistrationRecordSummary {
   id: string;
   connectionId: string;
@@ -1148,4 +1217,118 @@ export interface ListingCommercial {
   currency: string | null;
   availableQuantity: number | null;
   lastCommercialSyncedAt: string | null;
+}
+
+// ── Inventory correction + movement history (G08) ─────────────────────────
+
+export type StockCorrectionMode = 'set' | 'delta';
+export type StockCorrectionReason = 'count_correction' | 'found' | 'damaged' | 'other';
+
+/** `GET /inventory/:variantId/correction-target`. */
+export interface StockCorrectionTarget {
+  kind: 'ready' | 'refused';
+  reason: string | null;
+  connectionId: string | null;
+  connectionName: string | null;
+  platformType: string | null;
+  currentQuantity: number | null;
+}
+
+export interface StockCorrectionInput {
+  mode: StockCorrectionMode;
+  quantity: number;
+  operatorReason: StockCorrectionReason;
+  note?: string;
+  idempotencyKey: string;
+  confirmLargeChange?: boolean;
+}
+
+/** The 200 body of `POST /inventory/:variantId/adjust`. */
+export interface StockCorrectionResult {
+  status: 'applied' | 'refused' | 'in_doubt';
+  movementId: string;
+  requestedDelta: number;
+  quantityBefore: number | null;
+  quantityAfter: number | null;
+  deduplicated: boolean;
+}
+
+/** A 409 from the correction route: refused before the master was reached. */
+export interface StockCorrectionConflict {
+  code: string;
+  currentQuantity?: number | null;
+  [key: string]: unknown;
+}
+
+export type StockCorrectionOutcome =
+  | { kind: 'result'; result: StockCorrectionResult }
+  | { kind: 'conflict'; conflict: StockCorrectionConflict };
+
+export interface StockMovement {
+  kind: 'movement' | 'reservation';
+  id: string;
+  productVariantId: string | null;
+  sku: string | null;
+  reason: string | null;
+  status: string;
+  quantityBefore: number | null;
+  quantityAfter: number | null;
+  sourceKind: string | null;
+  operatorReason: string | null;
+  refusalReason: string | null;
+  occurredAt: string;
+}
+
+export interface ListStockMovementsQuery {
+  productVariantId?: string;
+  kind?: 'all' | 'movements' | 'promised';
+  limit?: number;
+}
+
+/** `GET /automations/:id` (#3554) - the fields the buyer-email spec reads. */
+export interface AutomationRuleView {
+  id: string;
+  name: string;
+  trigger: string;
+  triggerConfig: Record<string, unknown>;
+  conditions: unknown[];
+  actions: unknown[];
+  isActive: boolean;
+  effectiveFrom: string;
+  effectiveTo: string | null;
+}
+
+/** `PUT /automations/:id` body (#3554). */
+export interface AutomationRuleWriteInput {
+  name: string;
+  trigger: string;
+  triggerConfig: Record<string, unknown>;
+  conditions: unknown[];
+  actions: unknown[];
+  isActive?: boolean;
+  effectiveFrom: string;
+  effectiveTo?: string | null;
+}
+
+/** One row of `GET /orders/:id/buyer-emails` (#3554). */
+export interface BuyerEmailDeliveryView {
+  id: string;
+  connectionId: string;
+  templateKey: string;
+  subjectRef: string;
+  outcome: 'pending' | 'sent' | 'suppressed' | 'bounced';
+  suppressionReason: string | null;
+  suppressionMessage: string | null;
+  createdAt: string;
+}
+
+/** One row of `GET /orders/:id/document-emails` (#3550) - the fields G06 reads. */
+export interface DocumentEmailDeliveryView {
+  id: string;
+  documentKind: string;
+  documentId: string;
+  sentVia: 'provider' | 'openlinker' | null;
+  outcome: 'sent' | 'failed';
+  failureReason: string | null;
+  createdAt: string;
 }

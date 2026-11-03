@@ -54,6 +54,13 @@ export class RateLimitStatusResponseDto {
   @ApiProperty({ type: ResolveConcurrencyResponseDto, required: false })
   resolveConcurrency?: ResolveConcurrencyResponseDto;
 
+  @ApiProperty({
+    type: Boolean,
+    description:
+      'True when this connection shares its outbound limit with other connections to the same remote (ADR-038 § Amendment). The live counters then include their traffic, and config.rateLimit can only tighten the shared ceiling.',
+  })
+  sharedBucket!: boolean;
+
   static fromDomain(status: EffectiveRateLimitStatus): RateLimitStatusResponseDto {
     const dto = new RateLimitStatusResponseDto();
     dto.enabled = status.enabled;
@@ -63,6 +70,7 @@ export class RateLimitStatusResponseDto {
     dto.queued = status.queued;
     dto.lastAcquiredAt = status.lastAcquiredAt ? status.lastAcquiredAt.toISOString() : undefined;
     dto.resolveConcurrency = status.resolveConcurrency;
+    dto.sharedBucket = status.sharedBucket === true;
     return dto;
   }
 }

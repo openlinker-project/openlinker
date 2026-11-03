@@ -4,6 +4,7 @@ import { useForm } from 'react-hook-form';
 import { Link, useNavigate } from 'react-router-dom';
 import { useApiClient } from '../../../app/api/api-client-provider';
 import type { Connection } from '../api/connections.types';
+import { hasMissingCredentials } from '../api/connections.types';
 import { useUpdateConnectionMutation } from '../hooks/use-update-connection-mutation';
 import { useProductMasterConnections } from '../hooks/use-product-master-connections';
 import {
@@ -18,6 +19,8 @@ import {
 } from './edit-connection.schema';
 import { RateLimitSection } from './rate-limit-section';
 import { StockAndPricingSection } from './stock-and-pricing-section';
+import { FulfilmentOwnershipSection } from './fulfilment-ownership-section';
+import { readFulfilmentOwnedByDestination } from '../lib/fulfilment-ownership';
 import { SalesDocumentStatusSection } from './sales-document-status-section';
 import { Alert } from '../../../shared/ui/alert';
 import { Button } from '../../../shared/ui/button';
@@ -41,10 +44,19 @@ import { INVOICE_TRIGGER_MODEL_VALUES } from '../types/invoice-trigger-model.typ
 import { isPricingDestination } from '../lib/pricing-destination';
 import { ApiError } from '../../../shared/api/api-error';
 import { isStockLocationOverrideValidationError } from '../lib/stock-location-override-error';
+import { collectFormErrorMessages } from '../lib/collect-form-error-messages';
 import { isOmsRoutingUiEnabled } from '../../../shared/config/oms-routing-ui';
 
 interface EditConnectionFormProps {
   connection: Connection;
+}
+
+const NEEDS_ATTENTION_ONE = '1 field needs attention. See the list at the top of the form.';
+
+function describeInvalidFields(count: number): string {
+  if (count === 1) return NEEDS_ATTENTION_ONE;
+  if (count > 1) return `${count} fields need attention. See the list at the top of the form.`;
+  return 'Some fields need attention. See the list at the top of the form.';
 }
 
 /**
@@ -408,6 +420,9 @@ export function EditConnectionForm({ connection }: EditConnectionFormProps): Rea
   const apiClient = useApiClient();
   const updateConnection = useUpdateConnectionMutation();
   const { showToast } = useToast();
+  // DEF-21: advisory notices the save returned. They outlive the toast, so the
+  // form stays put and lets the operator read them before moving on.
+  const [saveWarnings, setSaveWarnings] = useState<string[]>([]);
   const navigate = useNavigate();
   const demoMode = useDemoMode();
   const write = useWriteAccess('connections:write', demoMode);
@@ -486,6 +501,8 @@ export function EditConnectionForm({ connection }: EditConnectionFormProps): Rea
       pricingRule: readPricingRuleForm(connection.config),
       // Per-connection stock-location override (#3206/#3207) — platform-neutral.
       stockLocationOverride: readStockLocationOverride(connection.config),
+      // "This system packs and ships orders itself" (#2118) — platform-neutral.
+      fulfilmentOwnedByDestination: readFulfilmentOwnedByDestination(connection.config),
       // Plugin-owned structured fields (#1330) — the platform's contribution
       // hydrates its own field slice (e.g. KSeF seller/payment) so an
       // unrelated save doesn't blank the persisted platform config.
@@ -494,9 +511,7 @@ export function EditConnectionForm({ connection }: EditConnectionFormProps): Rea
     resolver: zodResolver(resolverSchema),
   });
 
-  const validationMessages = Object.values(form.formState.errors).flatMap((error) =>
-    error?.message ? [String(error.message)] : [],
-  );
+  const validationMessages = collectFormErrorMessages(form.formState.errors);
 
   // Structured-config dispatch (#578/#579):
   //   - A platform plugin may contribute its own structured inputs (today: PS).
@@ -698,6 +713,19 @@ export function EditConnectionForm({ connection }: EditConnectionFormProps): Rea
     form.setValue('configText', JSON.stringify(merged, null, 2), { shouldDirty: true });
   }
 
+  // #2118 — re-serialize `config.fulfilmentOwnedByDestination` into configText.
+  // Clone of `syncStockLocationOverrideToJson`: reads CURRENT form state, takes
+  // NO argument, keeps the `!configIsParseable` early-return. The section MUST
+  // setValue('fulfilmentOwnedByDestination', …) BEFORE calling this.
+  function syncFulfilmentOwnershipToJson(): void {
+    if (!configIsParseable) return;
+    const parsed = JSON.parse(form.getValues('configText')) as Record<string, unknown>;
+    const merged = mergeStructuredIntoConfig(parsed, {
+      fulfilmentOwnedByDestination: form.getValues('fulfilmentOwnedByDestination'),
+    });
+    form.setValue('configText', JSON.stringify(merged, null, 2), { shouldDirty: true });
+  }
+
   // Auto-select the sole candidate ONCE on mount, only when the server never
   // stored a value (typeof check distinguishes "unset" from an explicit `""`
   // opt-out) and the operator hasn't already touched the picker. Never marks
@@ -721,6 +749,13 @@ export function EditConnectionForm({ connection }: EditConnectionFormProps): Rea
     needsMasterCatalog,
     hasStoredMaster,
   ]);
+
+  // #3765 - every click on Save must end in a visible signal. The inline
+  // `Alert` / `FormErrorSummary` sit at the top of a long form while the
+  // button is at the bottom, so a failure is also reported as a toast.
+  const showSaveFailedToast = (description: string): void => {
+    showToast({ tone: 'error', title: 'Changes not saved', description });
+  };
 
   const onSubmit = form.handleSubmit(async (values) => {
     try {
@@ -749,7 +784,18 @@ export function EditConnectionForm({ connection }: EditConnectionFormProps): Rea
       if (needsMasterCatalog) {
         delete mergedConfig.pricingRule;
       }
-      await updateConnection.mutateAsync({
+      // #3908 - `config.deliveryOnDocuments` is owned by the mappings page's
+      // "Delivery on documents" tab, which writes it immediately. This form's
+      // `configText` snapshot predates any such save, so letting it through
+      // would restore a stale copy over the operator's newer settings. Keep
+      // whatever the fresh connection holds, and never let the snapshot add
+      // the key where the connection has none.
+      if (fresh.config.deliveryOnDocuments === undefined) {
+        delete mergedConfig.deliveryOnDocuments;
+      } else {
+        mergedConfig.deliveryOnDocuments = fresh.config.deliveryOnDocuments;
+      }
+      const saved = await updateConnection.mutateAsync({
         connectionId: connection.id,
         input: { ...input, config: mergedConfig },
       });
@@ -758,6 +804,10 @@ export function EditConnectionForm({ connection }: EditConnectionFormProps): Rea
         title: 'Connection updated',
         description: 'Connection settings have been saved.',
       });
+      if (saved?.warnings && saved.warnings.length > 0) {
+        setSaveWarnings(saved.warnings);
+        return;
+      }
       void navigate(`/connections/${connection.id}`);
     } catch (error) {
       // #3207 — a 400 naming `config.stockLocationOverride` (unknown/retired
@@ -776,10 +826,20 @@ export function EditConnectionForm({ connection }: EditConnectionFormProps): Rea
       if (error instanceof ApiError && isStockLocationOverrideValidationError(error)) {
         form.setError('stockLocationOverride', { message: error.message });
         updateConnection.reset();
+        // The field and the summary already carry the message; the toast
+        // points at them rather than repeating it a third time.
+        showSaveFailedToast(NEEDS_ATTENTION_ONE);
         return;
       }
-      return;
+      // Covers the PATCH rejecting (also shown in the top-of-form `Alert`) and
+      // anything thrown before it - the pre-submit refetch or the input
+      // mapping - which `updateConnection.error` never sees.
+      showSaveFailedToast(
+        error instanceof Error && error.message ? error.message : 'An unexpected error occurred.',
+      );
     }
+  }, (errors) => {
+    showSaveFailedToast(describeInvalidFields(collectFormErrorMessages(errors).length));
   });
 
   return (
@@ -798,6 +858,22 @@ export function EditConnectionForm({ connection }: EditConnectionFormProps): Rea
       {updateConnection.error ? (
         <Alert tone="error" title="Unable to update connection">
           {updateConnection.error.message}
+        </Alert>
+      ) : null}
+      {saveWarnings.length > 0 ? (
+        <Alert
+          tone="warning"
+          title="Saved, with something to check"
+          data-testid="connection-save-warnings"
+          action={
+            <Button tone="secondary" onClick={() => void navigate(`/connections/${connection.id}`)}>
+              Go to connection
+            </Button>
+          }
+        >
+          {saveWarnings.map((warning) => (
+            <p key={warning}>{warning}</p>
+          ))}
         </Alert>
       ) : null}
 
@@ -819,9 +895,11 @@ export function EditConnectionForm({ connection }: EditConnectionFormProps): Rea
         <FormField label="Credentials" name="credentials">
           <Input
             value={
-              connection.credentialsBacked
-                ? 'Stored securely (managed by integration)'
-                : 'Environment variable (not editable via UI)'
+              hasMissingCredentials(connection)
+                ? 'Not set - removed when this connection was archived'
+                : connection.credentialsBacked
+                  ? 'Stored securely (managed by integration)'
+                  : 'Environment variable (not editable via UI)'
             }
             disabled
           />
@@ -929,6 +1007,17 @@ export function EditConnectionForm({ connection }: EditConnectionFormProps): Rea
           needsMasterCatalog ? { href: `/connections/${connection.id}/pricing-sync` } : undefined
         }
       />
+
+      {/* #2118 — only a connection that can be an order destination can own
+          fulfilment, so the checkbox is withheld elsewhere rather than
+          persisting a flag nothing reads. */}
+      {connection.enabledCapabilities.includes('OrderProcessorManager') ? (
+        <FulfilmentOwnershipSection
+          form={form}
+          configIsParseable={configIsParseable}
+          syncFulfilmentOwnershipToJson={syncFulfilmentOwnershipToJson}
+        />
+      ) : null}
 
       <div className="config-panel__toggle">
         <Button

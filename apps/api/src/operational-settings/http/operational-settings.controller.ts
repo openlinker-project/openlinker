@@ -97,6 +97,10 @@ export class OperationalSettingsController {
           sweepPageSize: dto.sweepPageSize,
           deletionAuditBudget: dto.deletionAuditBudget,
           deletionAuditCadence: dto.deletionAuditCadence,
+          syncJobRetentionDays: dto.syncJobRetentionDays,
+          syncJobDeadRetentionDays: dto.syncJobDeadRetentionDays,
+          inventoryMovementRetentionDays: dto.inventoryMovementRetentionDays,
+          stockStaleSyncThresholdHours: dto.stockStaleSyncThresholdHours,
           acknowledgeAboveRecommended: dto.acknowledgeAboveRecommended,
         },
         user?.id ?? null

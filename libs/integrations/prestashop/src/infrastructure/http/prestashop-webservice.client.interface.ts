@@ -7,7 +7,7 @@
  *
  * @module libs/integrations/prestashop/src/infrastructure/http
  */
-import type { PrestashopSort } from './prestashop-query.builder';
+import type { PrestashopPriceField, PrestashopSort } from './prestashop-query.builder';
 import type { FetchLike } from '@openlinker/shared/http';
 
 /**
@@ -50,6 +50,8 @@ export interface PrestashopQueryFilters {
   sort?: PrestashopSort[];
   status?: string | string[];
   custom?: Record<string, string | number | (string | number)[]>;
+  /** Virtual price fields PrestaShop computes per row (ADR-077). */
+  priceFields?: readonly PrestashopPriceField[];
   /**
    * Field selection override (defaults to `'full'`). Use e.g. `'[id]'` for
    * enumeration-only paths to skip full body payload.
@@ -73,6 +75,20 @@ export interface PrestashopQueryFilters {
  */
 export interface PrestashopWriteOptions {
   sendEmail?: boolean;
+  /**
+   * Whether a `createResource` (POST) call is safe to auto-retry on an
+   * ambiguous 5xx / network failure (#3469) — `false` by default, since a
+   * create is non-idempotent and a blind retry after a committed-but-lost
+   * response risks a duplicate row. Has no effect on `updateResource` (PUT),
+   * which is always retried — idempotent by HTTP semantics.
+   */
+  idempotent?: boolean;
+}
+
+/** Optional extras for a single-resource read. */
+export interface PrestashopResourceReadOptions {
+  /** Virtual price fields PrestaShop computes on the row (ADR-077). */
+  priceFields?: readonly PrestashopPriceField[];
 }
 
 export interface IPrestashopWebserviceClient {
@@ -86,7 +102,11 @@ export interface IPrestashopWebserviceClient {
    * @throws PrestashopAuthenticationException if authentication fails
    * @throws PrestashopApiException for other API errors
    */
-  getResource<T = unknown>(resource: string, id: string | number): Promise<T>;
+  getResource<T = unknown>(
+    resource: string,
+    id: string | number,
+    options?: PrestashopResourceReadOptions
+  ): Promise<T>;
 
   /**
    * List resources with optional filters

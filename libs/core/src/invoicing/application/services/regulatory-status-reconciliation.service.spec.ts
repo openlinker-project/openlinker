@@ -26,6 +26,7 @@ function makeRecord(
     status: 'pending' | 'issued' | 'failed';
     regulatoryStatus: RegulatoryStatus;
     clearanceReference: string | null;
+    clearanceDetail: string | null;
     updatedAt: Date;
   }> = {},
 ): InvoiceRecord {
@@ -46,6 +47,16 @@ function makeRecord(
     null,
     new Date('2026-06-01T10:00:00Z'),
     overrides.updatedAt ?? new Date('2026-06-01T10:00:00Z'),
+    null,
+    null,
+    null,
+    null,
+    false,
+    null,
+    null,
+    null,
+    'unknown',
+    overrides.clearanceDetail ?? null,
   );
 }
 
@@ -125,7 +136,14 @@ describe('RegulatoryStatusReconciliationService', () => {
 
       expect(repo.findIssuedNonTerminal).not.toHaveBeenCalled();
       expect(repo.updateOutcome).not.toHaveBeenCalled();
-      expect(result).toEqual({ scanned: 0, updated: 0, skippedTerminal: 0, readErrors: 0, total: 0 });
+      expect(result).toEqual({
+        scanned: 0,
+        updated: 0,
+        skippedTerminal: 0,
+        readErrors: 0,
+        total: 0,
+        clearedInvoiceIds: [],
+      });
     });
   });
 
@@ -144,6 +162,8 @@ describe('RegulatoryStatusReconciliationService', () => {
         clearanceReference: 'KSEF-123',
       });
       expect(result.updated).toBe(1);
+      // #3549: reported so the worker can attach the now-ready document.
+      expect(result.clearedInvoiceIds).toEqual([record.id]);
     });
 
     it('writes a non-terminal record terminal when the authoritative read returns rejected (8a)', async () => {
@@ -153,9 +173,28 @@ describe('RegulatoryStatusReconciliationService', () => {
       );
       repo.findIssuedNonTerminal.mockResolvedValue({ items: [record], total: 1 });
 
-      await service.reconcile(CONNECTION_ID, { limit: 50 });
+      const result = await service.reconcile(CONNECTION_ID, { limit: 50 });
 
       expect(repo.updateOutcome).toHaveBeenCalledWith(record.id, { regulatoryStatus: 'rejected' });
+      // A rejected document never has an attachment, so it is not reported.
+      expect(result.clearedInvoiceIds).toEqual([]);
+    });
+
+    it('persists the clearanceDetail from a rejected read (#1582)', async () => {
+      const record = makeRecord({ regulatoryStatus: 'submitted', clearanceReference: null });
+      integrations.getCapabilityAdapter.mockResolvedValue(
+        readerAdapter({
+          regulatoryStatus: 'rejected',
+          clearanceReference: null,
+          clearanceDetail: 'KSeF status 440: buyer NIP invalid',
+        }),
+      );
+      repo.findIssuedNonTerminal.mockResolvedValue({ items: [record], total: 1 });
+
+      await service.reconcile(CONNECTION_ID, { limit: 50 });
+
+      const patch = ((repo.updateOutcome as jest.Mock).mock.calls[0] as [unknown, Record<string, unknown>])[1];
+      expect(patch['clearanceDetail']).toBe('KSeF status 440: buyer NIP invalid');
     });
 
     it('defensive-skips a record whose CURRENT status is already terminal (race guard, 8a) and increments skippedTerminal', async () => {

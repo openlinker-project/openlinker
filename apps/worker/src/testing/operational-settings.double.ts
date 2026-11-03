@@ -66,6 +66,10 @@ export class FakeOperationalSettingsService implements IOperationalSettingsServi
     inventorySweepBudget: defaultNumber('inventorySweepBudget'),
     sweepPageSize: defaultNumber('sweepPageSize'),
     deletionAuditBudget: defaultNumber('deletionAuditBudget'),
+    syncJobRetentionDays: defaultNumber('syncJobRetentionDays'),
+    syncJobDeadRetentionDays: defaultNumber('syncJobDeadRetentionDays'),
+    inventoryMovementRetentionDays: defaultNumber('inventoryMovementRetentionDays'),
+    stockStaleSyncThresholdHours: defaultNumber('stockStaleSyncThresholdHours'),
     deletionAuditCadence: {
       value: DELETION_AUDIT_CADENCE_DEFAULT,
       source: 'default',

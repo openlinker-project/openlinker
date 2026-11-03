@@ -21,6 +21,11 @@
  * record their `write` calls (and the dest its legacy `updateFulfillment` calls)
  * for assertions.
  *
+ * The source stub answers `applied` unless a test queues other answers on
+ * `source.queuedWriteOutcomes` — consumed one per `write`, first in first out —
+ * which is how a spec makes the source reject a relay and then accept the
+ * retry (#3506, G02-4). Clear it per-test alongside the call arrays.
+ *
  * Lifetime: suite-scoped (`AdapterRegistryService.register` throws on a second
  * call for the same adapterKey). Call once in `beforeAll`; clear the `calls`
  * arrays per-test in `beforeEach` (`resetTestHarness` only clears the DB).
@@ -30,8 +35,8 @@
 import {
   ADAPTER_FACTORY_RESOLVER_TOKEN,
   ADAPTER_REGISTRY_TOKEN,
-  AdapterFactoryResolverService,
-  AdapterRegistryPort,
+  type AdapterFactoryResolverService,
+  type AdapterRegistryPort,
 } from '@openlinker/core/integrations';
 import type {
   OrderFeedInput,
@@ -76,6 +81,8 @@ export interface DispatchNotifyTestStubs {
     readonly platformType: string;
     /** `OrderStatusWriteback.write` events the relay sent to the source (#1168). */
     readonly writebackCalls: WritebackCall[];
+    /** Answers for the next source `write` calls, FIFO; empty ⇒ `applied`. */
+    readonly queuedWriteOutcomes: OrderWritebackResult[];
   };
   readonly dest: {
     readonly adapterKey: string;
@@ -101,6 +108,7 @@ export function installDispatchNotifyTestStubs(
     .get<AdapterFactoryResolverService>(ADAPTER_FACTORY_RESOLVER_TOKEN);
 
   const sourceWritebackCalls: WritebackCall[] = [];
+  const sourceQueuedWriteOutcomes: OrderWritebackResult[] = [];
   const destWritebackCalls: WritebackCall[] = [];
   const destCalls: DestFulfillmentCall[] = [];
 
@@ -114,7 +122,7 @@ export function installDispatchNotifyTestStubs(
     },
     write(event: OrderLifecycleEvent): Promise<OrderWritebackResult> {
       sourceWritebackCalls.push(event);
-      return Promise.resolve({ outcome: 'applied' });
+      return Promise.resolve(sourceQueuedWriteOutcomes.shift() ?? { outcome: 'applied' });
     },
   };
 
@@ -192,6 +200,7 @@ export function installDispatchNotifyTestStubs(
       adapterKey: DISPATCH_SOURCE_ADAPTER_KEY,
       platformType: DISPATCH_SOURCE_PLATFORM_TYPE,
       writebackCalls: sourceWritebackCalls,
+      queuedWriteOutcomes: sourceQueuedWriteOutcomes,
     },
     dest: {
       adapterKey: DISPATCH_DEST_ADAPTER_KEY,

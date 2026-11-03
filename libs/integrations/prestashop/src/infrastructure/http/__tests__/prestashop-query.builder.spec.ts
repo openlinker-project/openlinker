@@ -199,6 +199,111 @@ describe('PrestashopQueryBuilder', () => {
         })
       ).toThrow(PrestashopInvalidFilterException);
     });
+
+    // ADR-077: the product master reads PrestaShop's own computed gross price
+    // through a virtual price field on every listed row.
+    it('should emit the virtual price-field parameters when priceFields are given', () => {
+      const query = PrestashopQueryBuilder.buildQuery('combinations', {
+        priceFields: [{ name: 'ol_gross', countryId: 14, useTax: true }],
+      });
+
+      expect(query).toContain('price[ol_gross][use_tax]=1');
+      expect(query).toContain('price[ol_gross][country]=14');
+      expect(query).toContain('price[ol_gross][use_reduction]=0');
+      // A combination row prices itself; no attribute is pinned.
+      expect(query).not.toContain('[product_attribute]');
+    });
+
+    it('should emit no price parameters when priceFields is empty', () => {
+      const query = PrestashopQueryBuilder.buildQuery('products', { priceFields: [] });
+
+      expect(query).not.toContain('price[');
+    });
+
+    it('should throw when a price field name is not a bare identifier', () => {
+      expect(() =>
+        PrestashopQueryBuilder.buildQuery('products', {
+          priceFields: [{ name: 'ol_gross]&display=[id', countryId: 14, useTax: true }],
+        })
+      ).toThrow(PrestashopInvalidFilterException);
+    });
+  });
+
+  describe('buildPriceFieldParams (ADR-077)', () => {
+    it('should emit use_tax, country and use_reduction=0 in that order when the field is gross', () => {
+      const params = PrestashopQueryBuilder.buildPriceFieldParams([
+        { name: 'ol_gross', countryId: 14, useTax: true },
+      ]);
+
+      expect(params).toEqual([
+        'price[ol_gross][use_tax]=1',
+        'price[ol_gross][country]=14',
+        'price[ol_gross][use_reduction]=0',
+      ]);
+    });
+
+    it('should append product_attribute when one is given, including 0 for the bare product', () => {
+      const params = PrestashopQueryBuilder.buildPriceFieldParams([
+        { name: 'ol_gross', countryId: 14, useTax: true, productAttribute: 0 },
+      ]);
+
+      expect(params).toEqual([
+        'price[ol_gross][use_tax]=1',
+        'price[ol_gross][country]=14',
+        'price[ol_gross][use_reduction]=0',
+        'price[ol_gross][product_attribute]=0',
+      ]);
+    });
+
+    it('should emit use_tax=0 when the field is net', () => {
+      const params = PrestashopQueryBuilder.buildPriceFieldParams([
+        { name: 'ol_net', countryId: 14, useTax: false },
+      ]);
+
+      expect(params).toContain('price[ol_net][use_tax]=0');
+      // Promotions stay excluded whatever the tax basis.
+      expect(params).toContain('price[ol_net][use_reduction]=0');
+    });
+
+    it('should truncate the country and combination ids when they are fractional', () => {
+      const params = PrestashopQueryBuilder.buildPriceFieldParams([
+        { name: 'ol_gross', countryId: 14.9, useTax: true, productAttribute: 3.7 },
+      ]);
+
+      expect(params).toContain('price[ol_gross][country]=14');
+      expect(params).toContain('price[ol_gross][product_attribute]=3');
+    });
+
+    it('should emit every field in turn when several are given', () => {
+      const params = PrestashopQueryBuilder.buildPriceFieldParams([
+        { name: 'ol_gross', countryId: 14, useTax: true },
+        { name: 'ol_net', countryId: 14, useTax: false },
+      ]);
+
+      expect(params).toHaveLength(6);
+      expect(params[0]).toBe('price[ol_gross][use_tax]=1');
+      expect(params[3]).toBe('price[ol_net][use_tax]=0');
+    });
+
+    it.each(['OL_GROSS', '1price', 'ol-gross', 'ol gross', '', 'ol_gross]'])(
+      'should throw PrestashopInvalidFilterException when the field name is %p',
+      (name) => {
+        expect(() =>
+          PrestashopQueryBuilder.buildPriceFieldParams([{ name, countryId: 14, useTax: true }])
+        ).toThrow(PrestashopInvalidFilterException);
+      }
+    );
+
+    it('should name the offending price field on the exception when the name is invalid', () => {
+      try {
+        PrestashopQueryBuilder.buildPriceFieldParams([
+          { name: 'Bad-Name', countryId: 14, useTax: true },
+        ]);
+        fail('expected a PrestashopInvalidFilterException');
+      } catch (error) {
+        expect((error as PrestashopInvalidFilterException).filterKey).toBe('price[Bad-Name]');
+      }
+    });
   });
 
   describe('buildQueryWithPagination', () => {

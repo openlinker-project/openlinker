@@ -633,4 +633,109 @@ describe('ProductPublishExecutionService', () => {
       });
     });
   });
+
+  // A shop whose order lines carry its OWN variant id (Shoper `stock_id`): the
+  // publish must leave a record an order can resolve through.
+  describe('variant-grain mapping (externalVariantId)', () => {
+    const STOCK = '418';
+
+    function variantGrainCreates(): unknown[][] {
+      const calls = identifierMapping.createMapping.mock.calls as unknown[][];
+      return calls.filter((call) => call[0] === 'ShopProductVariant');
+    }
+
+    it('should persist a ShopProductVariant mapping when the adapter reports the variant id', async () => {
+      identifierMapping.getInternalId.mockResolvedValue(null);
+      adapter.publishProduct.mockResolvedValue({
+        externalProductId: EXT,
+        externalVariantId: STOCK,
+        status: 'published',
+      });
+
+      const result = await service.executePublish(input);
+
+      expect(identifierMapping.createMapping).toHaveBeenCalledWith('ShopProductVariant', STOCK, CONN, VARIANT);
+      expect(identifierMapping.createMapping).toHaveBeenCalledWith('ShopProduct', EXT, CONN, VARIANT);
+      expect(result.outcome).toBe('ok');
+    });
+
+    it('should write no variant-grain mapping when the adapter reports no variant id', async () => {
+      await service.executePublish(input);
+
+      expect(variantGrainCreates()).toHaveLength(0);
+    });
+
+    // Products published before the adapter reported the id only have the
+    // product mapping; the re-publish is what closes that gap.
+    it('should back-fill the variant-grain mapping on a re-publish of an already mapped product', async () => {
+      identifierMapping.getExternalIds.mockResolvedValue([
+        { externalId: EXT, connectionId: CONN, entityType: 'ShopProduct', platformType: 'shoper' },
+      ]);
+      identifierMapping.getInternalId.mockResolvedValue(null);
+      adapter.publishProduct.mockResolvedValue({
+        externalProductId: EXT,
+        externalVariantId: STOCK,
+        status: 'published',
+      });
+
+      await service.executePublish(input);
+
+      expect(adapter.publishProduct).toHaveBeenCalledWith(expect.objectContaining({ externalProductId: EXT }));
+      expect(identifierMapping.createMapping).toHaveBeenCalledTimes(1);
+      expect(identifierMapping.createMapping).toHaveBeenCalledWith('ShopProductVariant', STOCK, CONN, VARIANT);
+    });
+
+    it('should not write again when the variant-grain mapping already claims this variant', async () => {
+      identifierMapping.getExternalIds.mockResolvedValue([
+        { externalId: EXT, connectionId: CONN, entityType: 'ShopProduct', platformType: 'shoper' },
+      ]);
+      identifierMapping.getInternalId.mockResolvedValue(VARIANT);
+      adapter.publishProduct.mockResolvedValue({
+        externalProductId: EXT,
+        externalVariantId: STOCK,
+        status: 'published',
+      });
+
+      await service.executePublish(input);
+
+      expect(identifierMapping.getInternalId).toHaveBeenCalledWith('ShopProductVariant', STOCK, CONN);
+      expect(identifierMapping.createMapping).not.toHaveBeenCalled();
+    });
+
+    it('should refuse when the variant-grain id is already mapped to a different variant', async () => {
+      identifierMapping.getInternalId.mockImplementation((entityType: string) =>
+        Promise.resolve(entityType === 'ShopProductVariant' ? 'ol_variant_other' : null)
+      );
+      adapter.publishProduct.mockResolvedValue({
+        externalProductId: EXT,
+        externalVariantId: STOCK,
+        status: 'published',
+      });
+
+      await expect(service.executePublish(input)).rejects.toBeInstanceOf(
+        ShopProductMappingConflictException
+      );
+      expect(variantGrainCreates()).toHaveLength(0);
+    });
+
+    it('should swallow a concurrent duplicate insert that claims the same variant', async () => {
+      identifierMapping.getInternalId
+        .mockResolvedValueOnce(null) // pre-insert read
+        .mockResolvedValueOnce(VARIANT); // re-read after the duplicate
+      identifierMapping.createMapping.mockImplementation((entityType: string) =>
+        entityType === 'ShopProductVariant'
+          ? Promise.reject(new DuplicateIdentifierMappingError('ShopProductVariant', STOCK, 'shoper', CONN))
+          : Promise.resolve(undefined)
+      );
+      adapter.publishProduct.mockResolvedValue({
+        externalProductId: EXT,
+        externalVariantId: STOCK,
+        status: 'published',
+      });
+
+      const result = await service.executePublish(input);
+
+      expect(result.outcome).toBe('ok');
+    });
+  });
 });

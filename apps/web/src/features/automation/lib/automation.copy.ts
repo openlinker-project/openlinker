@@ -65,7 +65,7 @@ export const AUTOMATION_TRIGGER_COPY = {
   },
   'return.received': {
     label: 'A return arrives',
-    description: 'The channel told OpenLinker a return is on its way back.',
+    description: 'Returned goods are received at your warehouse, once per parcel.',
   },
   'return.disposed': {
     label: 'A returned item is dealt with',
@@ -74,6 +74,20 @@ export const AUTOMATION_TRIGGER_COPY = {
   'inventory.reservation_shortfall': {
     label: 'You have sold more than you have',
     description: 'Stock was promised to orders that cannot all be filled.',
+  },
+  'order.received': {
+    label: 'A new order comes in',
+    description: 'Fires once, the first time OpenLinker takes the order in.',
+  },
+  'order.shipped': {
+    label: 'An order is shipped',
+    description:
+      'Fires once the order\'s parcels are with the carrier and the tracking number is known, ' +
+      'or 30 minutes after the carrier takes the parcel if none arrives.',
+  },
+  'order.document_issued': {
+    label: 'An invoice or receipt is issued',
+    description: 'Fires once, when the order\'s sales document is issued.',
   },
 } as const;
 
@@ -243,7 +257,7 @@ export const AUTOMATION_COMPOSER_COPY = {
   actionLabel: 'Step',
   /** §5.3b A1 — it takes no parameters, and the copy says why. */
   a1Note:
-    'Which document gets issued, and by which provider, is decided by your Document routing rules. This automation only decides when.',
+    'Which document gets issued, and by which provider, is decided by your Sales documents routing rules. This automation only decides when.',
   /** §5.3b A3 — no selectable status vocabulary. */
   a3Note:
     'OpenLinker relays what it knows. If no label has been bought yet, the marketplace is told the order shipped without a tracking number.',

@@ -18,16 +18,21 @@
  * halving WS round-trips at scale, since most operators populate
  * `shipping_number` directly when they print the label.
  *
- * **Status mapping rules** (conservative v1):
+ * **Status mapping rules** — one reading of a state for the whole adapter
+ * (#3506): the status comes from `deriveOrderState`, the same derivation the
+ * order feed and the outbound state resolution use, so the three cannot
+ * disagree about what a state means.
  *
- * - `state.delivered === '1'` → `'delivered'` (+ `deliveredAt = order.date_upd`).
- * - `state.shipped === '1' && state.delivered !== '1'` → `'dispatched'`
- *   (PS has handed off to carrier).
- * - `state.name` reads as a cancellation → `'cancelled'`. The vocabulary and
- *   its documented gaps live in one place, `prestashop-order-state-semantics`,
- *   which both this mapper and the order-status derivation now share.
- * - Otherwise → `status: null` (PS has not yet acted on the order —
- *   projection-only skip).
+ * - `delivered` (a `shipped` state whose label reads as delivered) →
+ *   `'delivered'` (+ `deliveredAt = order.date_upd`).
+ * - `shipped` → `'dispatched'` (PS has handed off to carrier).
+ * - `cancelled` → `'cancelled'`.
+ * - Anything else → `status: null` (PS has not yet acted on the order —
+ *   projection-only skip). `refunded` lands here too, as it always has: a
+ *   refund says nothing about where the parcel is.
+ *
+ * The previous rule read a `state.delivered` flag PrestaShop does not have, so
+ * a shop's "Delivered" state was projected as `'dispatched'` (G02-7).
  *
  * @module libs/integrations/prestashop/src/infrastructure/mappers
  */
@@ -42,7 +47,7 @@ import type {
   PrestashopOrder,
   PrestashopOrderCarrier,
 } from './prestashop.mapper.interface';
-import { isCancelledOrderState, isTruthyStateFlag } from './prestashop-order-state-semantics';
+import { deriveOrderState, type OrderStateDerivation } from './prestashop-order-state-semantics';
 import type { PrestashopOrderState } from '../../domain/types/prestashop-options.types';
 
 export function mapToFulfillmentStatusSnapshot(
@@ -50,7 +55,7 @@ export function mapToFulfillmentStatusSnapshot(
   state: PrestashopOrderState | null,
   trackingNumber: string | null,
 ): FulfillmentStatusSnapshot {
-  const status = mapStatus(state);
+  const status = state === null ? null : mapStatus(deriveOrderState(state));
   const dateUpd = parseDate(order.date_upd);
   const deliveredAt = status === FULFILLMENT_STATUS.Delivered ? dateUpd : null;
 
@@ -94,20 +99,17 @@ export function extractTrackingFromCarriers(
   return null;
 }
 
-function mapStatus(state: PrestashopOrderState | null): FulfillmentStatus | null {
-  if (!state) return null;
-  if (isTruthyStateFlag(state.delivered)) {
-    return FULFILLMENT_STATUS.Delivered;
+function mapStatus(derivation: OrderStateDerivation): FulfillmentStatus | null {
+  switch (derivation.status) {
+    case 'delivered':
+      return FULFILLMENT_STATUS.Delivered;
+    case 'shipped':
+      return FULFILLMENT_STATUS.Dispatched;
+    case 'cancelled':
+      return FULFILLMENT_STATUS.Cancelled;
+    default:
+      return null;
   }
-  if (isTruthyStateFlag(state.shipped)) {
-    return FULFILLMENT_STATUS.Dispatched;
-  }
-  // One cancellation vocabulary for the whole adapter (#2607 review). This
-  // mapper carried its own copy, so a fix to one left the other wrong.
-  if (isCancelledOrderState(state)) {
-    return FULFILLMENT_STATUS.Cancelled;
-  }
-  return null;
 }
 
 function parseDate(value: string | undefined): Date | null {

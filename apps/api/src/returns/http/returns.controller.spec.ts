@@ -327,7 +327,7 @@ describe('ReturnsController', () => {
         'restockAttestations',
         'restockBlocked',
         'restockBlocks',
-        'restockTarget',
+        'restockTargets',
         'sourceConnectionId',
         'updatedAt',
       ]);

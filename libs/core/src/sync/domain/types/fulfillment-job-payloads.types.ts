@@ -175,3 +175,49 @@ export interface FulfillmentWorkRelaySweepPayloadV1 {
   readonly schemaVersion: 1;
   readonly pageLimit?: number;
 }
+
+/**
+ * `fulfillment.work.rerouteSweep` (#3485).
+ *
+ * A scheduler tick carries only `schemaVersion`; `pageLimit` exists so an
+ * operator draining a backlog can widen ONE run without moving the default.
+ *
+ * Unlike its timeout- and relay-sweep siblings this pass is NOT
+ * frontier-as-query, and the cursor lives in `connection_cursors`, never on the
+ * payload: a re-refused order rewrites an identical block, so an oldest-first
+ * frontier would re-read the same head page for ever. It pages by keyset on
+ * `internalOrderId` instead, from a cursor the handler owns.
+ */
+export interface FulfillmentWorkRerouteSweepPayloadV1 {
+  readonly schemaVersion: 1;
+  readonly pageLimit?: number;
+}
+
+/**
+ * `fulfillment.routing.reapSweep` (#2731).
+ *
+ * A scheduler tick carries only `schemaVersion`; `pageLimit` lets an operator
+ * widen ONE run. No cursor: the pass is frontier-as-query (a reaped decision
+ * leaves the `live` set). The TTL is not on the payload either — it is resolved
+ * once per run through `resolveRoutingDecisionTtlMs`, the single path that also
+ * feeds the detail the operator reads (#2229).
+ */
+export interface FulfillmentRoutingReapSweepPayloadV1 {
+  readonly schemaVersion: 1;
+  readonly pageLimit?: number;
+}
+
+/**
+ * `inventory.saleDecrement.reconcileSweep` (#3629).
+ *
+ * A scheduler tick carries only `schemaVersion`; `pageLimit` lets an operator
+ * widen ONE run. No cursor field, and there must not be one: the pass is
+ * frontier-as-query - an enqueued work leaves the set because the producers'
+ * idempotency key then exists - so an offset would step over rows. The grace
+ * window is resolved from the environment through one path and is not on the
+ * payload (#2229).
+ */
+export interface InventorySaleDecrementReconcileSweepPayloadV1 {
+  readonly schemaVersion: 1;
+  readonly pageLimit?: number;
+}

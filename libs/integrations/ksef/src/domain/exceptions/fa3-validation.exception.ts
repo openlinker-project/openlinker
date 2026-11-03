@@ -23,6 +23,13 @@ export interface Fa3ValidationIssue {
 }
 
 export class Fa3XsdValidationException extends Error {
+  /**
+   * Read STRUCTURALLY by the core `InvoiceService` (#1200, DEF-01): raised
+   * before any KSeF session opens, so no document exists and a re-attempt
+   * after fixing the input is safe.
+   */
+  readonly failureMode = 'rejected' as const;
+
   constructor(public readonly issues: Fa3ValidationIssue[]) {
     super(
       `FA(3) document failed structural validation (${issues.length} issue(s)): ` +

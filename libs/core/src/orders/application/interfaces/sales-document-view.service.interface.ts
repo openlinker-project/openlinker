@@ -20,6 +20,7 @@
  * @module libs/core/src/orders/application/interfaces
  * @see docs/architecture/adrs/065-sales-document-read-surface.md
  */
+import type { FiscalArtefact } from '@openlinker/core/fiscalization';
 import type { SalesDocumentView } from '@openlinker/core/sales-documents';
 import type {
   SalesDocumentListFilters,
@@ -93,4 +94,21 @@ export interface ISalesDocumentViewService {
    * a second path, so nothing else can drift between the row and the panel.
    */
   getForOrder(orderId: string): Promise<SalesDocumentView | null>;
+
+  /**
+   * The one artefact of the order's registered fiscal receipt that a person can
+   * be handed, WITH its payload (#3646) - or `null` when the order's document is
+   * not a registered receipt, or the receipt produced nothing that can be
+   * handed over.
+   *
+   * The only read here that carries artefact `content`, and deliberately a
+   * separate method: {@link getForOrders} decides what to OFFER and must stay
+   * payload-free, while this serves what was offered. Both read the SAME
+   * winning record, and the artefact is chosen by `selectHandoverArtefact` -
+   * the rule the offer side applies to the summaries - so the two cannot
+   * disagree about which artefact is meant.
+   *
+   * Still a read: it registers nothing and asks no provider anything.
+   */
+  getReceiptHandoverArtefact(orderId: string): Promise<FiscalArtefact | null>;
 }

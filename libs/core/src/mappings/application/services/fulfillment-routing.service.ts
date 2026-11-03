@@ -31,12 +31,14 @@ import {
   type CandidateProcessor,
   FULFILLMENT_PROCESSOR_KIND,
   FulfillmentProcessorKindValues,
+  normalizeParcelProfile,
   type FulfillmentProcessorKind,
   type FulfillmentRoutingQuery,
   type FulfillmentRoutingResolution,
   type FulfillmentRoutingRuleInput,
 } from '../../domain/types/fulfillment-routing.types';
 import { IncompatibleProcessorException } from '../../domain/exceptions/incompatible-processor.exception';
+import { InvalidParcelProfileException } from '../../domain/exceptions/invalid-parcel-profile.exception';
 import { DuplicateRoutingRuleException } from '../../domain/exceptions/duplicate-routing-rule.exception';
 
 /**
@@ -135,6 +137,7 @@ export class FulfillmentRoutingService implements IFulfillmentRoutingService {
     // here keeps the `(source, method)` unique constraint and the connection FKs
     // from surfacing as raw QueryFailedErrors.
     this.assertNoDuplicateMethods(items);
+    this.assertValidParcelProfiles(items);
     // The source must resolve to a known connection; getAdapter throws
     // ConnectionNotFoundException / ConnectionDisabledException otherwise.
     await this.integrations.getAdapter(sourceConnectionId);
@@ -227,6 +230,7 @@ export class FulfillmentRoutingService implements IFulfillmentRoutingService {
       processorConnectionId: rule.processorConnectionId,
       source: 'rule',
       processorAvailable: activeProcessorIds.has(rule.processorConnectionId),
+      parcelProfile: rule.parcelProfile,
     };
   }
 
@@ -242,6 +246,7 @@ export class FulfillmentRoutingService implements IFulfillmentRoutingService {
       source: 'default',
       // No processor to gate on the default fallback — always available.
       processorAvailable: true,
+      parcelProfile: null,
     };
   }
 
@@ -337,6 +342,14 @@ export class FulfillmentRoutingService implements IFulfillmentRoutingService {
    * Reject a replace batch that maps the same `sourceDeliveryMethodId` to more
    * than one processor — the persisted shape is one rule per `(source, method)`.
    */
+  private assertValidParcelProfiles(items: FulfillmentRoutingRuleInput[]): void {
+    for (const { sourceDeliveryMethodId, parcelProfile } of items) {
+      if (normalizeParcelProfile(parcelProfile) === 'incomplete-dimensions') {
+        throw new InvalidParcelProfileException(sourceDeliveryMethodId);
+      }
+    }
+  }
+
   private assertNoDuplicateMethods(items: FulfillmentRoutingRuleInput[]): void {
     const seen = new Set<string>();
     for (const { sourceDeliveryMethodId } of items) {

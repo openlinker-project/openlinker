@@ -16,8 +16,10 @@
  * @module apps/web/src/features/bench/components
  */
 import type { ReactElement } from 'react';
+import { Link } from 'react-router-dom';
 
 import { Alert } from '../../../shared/ui/alert';
+import { useIsAdmin } from '../../../shared/auth/use-permission';
 import { benchWorkCopy } from '../lib/bench-work.copy';
 
 export interface BenchWorkEmptyProps {
@@ -32,6 +34,8 @@ export interface BenchWorkEmptyProps {
 }
 
 export function BenchWorkEmpty({ routingReady }: BenchWorkEmptyProps): ReactElement {
+  const isAdmin = useIsAdmin();
+
   if (routingReady) {
     return (
       <div className="bench-work-empty" data-testid="bench-work-empty-idle">
@@ -44,11 +48,31 @@ export function BenchWorkEmpty({ routingReady }: BenchWorkEmptyProps): ReactElem
     );
   }
 
+  if (isAdmin) {
+    return (
+      <div className="bench-work-empty" data-testid="bench-work-empty-not-set-up">
+        <h2 className="bench-work-empty__title">{benchWorkCopy.emptyNotSetUpAdmin.title}</h2>
+        <p className="bench-work-empty__body">{benchWorkCopy.emptyNotSetUpAdmin.body}</p>
+        <Link className="button button--primary" to="/settings/packing" data-testid="link-setup-oms">
+          {benchWorkCopy.emptyNotSetUpAdmin.action}
+        </Link>
+      </div>
+    );
+  }
+
   return (
     <div className="bench-work-empty" data-testid="bench-work-empty-not-routed">
       <h2 className="bench-work-empty__title">{benchWorkCopy.emptyNotRouted.title}</h2>
       <p className="bench-work-empty__body">{benchWorkCopy.emptyNotRouted.body}</p>
-      <Alert tone="warning" title={benchWorkCopy.emptyNotRouted.remedyTitle}>
+      <Alert
+        tone="warning"
+        title={benchWorkCopy.emptyNotRouted.remedyTitle}
+        action={
+          <Link className="button button--secondary button--sm" to="/settings/packing" data-testid="link-packing-setup">
+            {benchWorkCopy.emptyNotRouted.remedyLink}
+          </Link>
+        }
+      >
         {benchWorkCopy.emptyNotRouted.remedyBody}
       </Alert>
     </div>

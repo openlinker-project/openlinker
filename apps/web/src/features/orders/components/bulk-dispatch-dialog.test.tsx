@@ -233,3 +233,75 @@ describe('BulkDispatchDialog', () => {
     expect(idEl.querySelectorAll('wbr').length).toBeGreaterThan(0);
   });
 });
+
+describe('BulkDispatchDialog - routed parcel profile (#3652)', () => {
+  const RULE = {
+    id: 'r1',
+    sourceConnectionId: 'conn_a',
+    sourceDeliveryMethodId: 'dpd-courier',
+    processorKind: 'ol_managed_carrier' as const,
+    processorConnectionId: 'p1',
+    lengthMm: 300,
+    widthMm: 200,
+    heightMm: 100,
+    defaultWeightGrams: 500,
+  };
+
+  it('should prefill each row from its routed profile and dispatch without typing', async () => {
+    const user = userEvent.setup();
+    const bulkGenerateLabels = vi.fn().mockResolvedValue({ results: [] });
+    const apiClient = createMockApiClient({
+      shipments: { bulkGenerateLabels },
+      mappings: { getRoutingRules: vi.fn().mockResolvedValue([RULE]) },
+    });
+
+    renderWithProviders(
+      <BulkDispatchDialog
+        open
+        orders={[order({ internalOrderId: 'ol_order_1' })]}
+        onOpenChange={noop}
+        channelLabelFor={() => 'Allegro'}
+        onComplete={noop}
+      />,
+      { apiClient },
+    );
+
+    const length = await screen.findByLabelText('Length for ol_order_1');
+    await waitFor(() => {
+      expect(length).toHaveValue(300);
+    });
+    expect(screen.getByLabelText('Weight for ol_order_1')).toHaveValue(500);
+
+    await user.click(screen.getByRole('button', { name: 'Dispatch 1 order' }));
+    await waitFor(() => {
+      expect(bulkGenerateLabels).toHaveBeenCalled();
+    });
+    const call = bulkGenerateLabels.mock.calls[0] as [{ items: { parcel: unknown }[] }];
+    expect(call[0].items[0].parcel).toEqual(
+      expect.objectContaining({ dimensions: { length: 300, width: 200, height: 100 }, weightGrams: 500 }),
+    );
+  });
+
+  it('should let the dialog-wide default box override the routed profile', async () => {
+    const user = userEvent.setup();
+    const apiClient = createMockApiClient({
+      mappings: { getRoutingRules: vi.fn().mockResolvedValue([RULE]) },
+    });
+    renderWithProviders(
+      <BulkDispatchDialog
+        open
+        orders={[order({ internalOrderId: 'ol_order_1' })]}
+        onOpenChange={noop}
+        channelLabelFor={() => 'Allegro'}
+        onComplete={noop}
+      />,
+      { apiClient },
+    );
+    await waitFor(() => {
+      expect(screen.getByLabelText('Length for ol_order_1')).toHaveValue(300);
+    });
+    await user.type(screen.getByLabelText('Default length in millimetres'), '111');
+    expect(screen.getByLabelText('Length for ol_order_1')).toHaveValue(111);
+    expect(screen.getByLabelText('Width for ol_order_1')).toHaveValue(200);
+  });
+});

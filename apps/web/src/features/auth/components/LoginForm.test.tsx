@@ -122,6 +122,32 @@ describe('LoginForm', () => {
         container.queryByRole('link', { name: /create a free demo account/i })
       ).not.toBeInTheDocument();
     });
+
+    it('should link back to the project site, docs and GitHub when demoMode is true', () => {
+      const view = renderWithProviders(<LoginForm demoMode />);
+      const nav = within(within(view.container).getByRole('navigation', { name: /openlinker project/i }));
+
+      expect(nav.getByRole('link', { name: 'openlinker.io' })).toHaveAttribute(
+        'href',
+        'https://openlinker.io/en/'
+      );
+      expect(nav.getByRole('link', { name: 'Docs' })).toHaveAttribute(
+        'href',
+        'https://docs.openlinker.io/'
+      );
+      expect(nav.getByRole('link', { name: 'GitHub' })).toHaveAttribute(
+        'href',
+        'https://github.com/openlinker-project/openlinker'
+      );
+    });
+
+    it('should not render the project links when demoMode is false', () => {
+      const view = renderWithProviders(<LoginForm demoMode={false} />);
+
+      expect(
+        within(view.container).queryByRole('navigation', { name: /openlinker project/i })
+      ).not.toBeInTheDocument();
+    });
   });
 
   describe('tracking footnote', () => {

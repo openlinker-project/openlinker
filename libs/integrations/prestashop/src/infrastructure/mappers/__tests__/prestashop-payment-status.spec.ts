@@ -16,7 +16,7 @@ function state(partial: Partial<PrestashopOrderState>): PrestashopOrderState {
     name: 'Payment accepted',
     paid: '0',
     shipped: '0',
-    delivered: '0',
+    delivery: '0',
     logable: '1',
     ...partial,
   } as PrestashopOrderState;
@@ -55,7 +55,7 @@ describe('derivePaymentStatusFromState', () => {
       state({ paid: '0', name: 'Zwrot do nadawcy' }),
       state({ paid: '0', name: 'Canceled' }),
       state({ paid: '0', shipped: '1', name: 'Shipped' }),
-      state({ paid: '0', delivered: '1', name: 'Delivered' }),
+      state({ paid: '0', delivery: '1', name: 'Delivered' }),
     ].map(derivePaymentStatusFromState);
 
     // Mirrors `DISPATCH_BLOCKING_PAYMENT_STATUSES`. Spelled out rather than
@@ -83,7 +83,7 @@ describe('derivePaymentStatusFromState', () => {
       derivePaymentStatusFromState(state({ paid: '0', shipped: '1', name: 'Shipped' })),
     ).toBeUndefined();
     expect(
-      derivePaymentStatusFromState(state({ paid: '0', delivered: '1', name: 'Delivered' })),
+      derivePaymentStatusFromState(state({ paid: '0', delivery: '1', name: 'Delivered' })),
     ).toBeUndefined();
   });
 

@@ -16,6 +16,14 @@ export interface FaLine {
   netUnitPrice: string | null;
   netTotal: string | null;
   vatRate: string | null;
+  /** Margin-scheme lines carry gross values instead of net + rate (DEF-31). */
+  grossUnitPrice: string | null;
+  grossTotal: string | null;
+  /** Per-line goods / procedure markers `GTU` / `Procedura` (DEF-29). */
+  gtu: string | null;
+  procedure: string | null;
+  /** Per-line exchange rate (`KursWaluty`) of a foreign-currency invoice (DEF-29). */
+  exchangeRate: string | null;
   /**
    * FA(3) KOR before/after correction model: `true` when this row carries
    * `<StanPrzed>1</StanPrzed>` (the pre-correction "before" state). A
@@ -42,6 +50,29 @@ export interface FaVatBand {
   net: string;
   /** `null` for net-only bands (0%, zw, np, oo). */
   tax: string | null;
+  /** The band's tax in PLN (`P_14_xW`) on a foreign-currency invoice (DEF-29). */
+  taxPln: string | null;
+}
+
+/** An `Adnotacje` statement that APPLIES, with any text it carries (DEF-29). */
+export interface FaAnnotation {
+  key:
+    | 'cash-accounting'
+    | 'self-billing'
+    | 'reverse-charge'
+    | 'split-payment'
+    | 'exemption'
+    | 'triangulation'
+    | 'margin';
+  /** The exemption grounds, or the margin sub-element name. */
+  detail: string | null;
+}
+
+/** A `Podmiot3` party (DEF-30). */
+export interface FaAdditionalParty {
+  name: string | null;
+  nip: string | null;
+  role: string | null;
 }
 
 export interface FaPayment {
@@ -86,4 +117,9 @@ export interface FaData {
    */
   correctedInvoiceKsefNumber: string | null;
   payment: FaPayment | null;
+  /** Only the annotations that apply; an empty list means "none apply". */
+  annotations: FaAnnotation[];
+  /** `Fa/P_13_11` - the margin-scheme sale total (DEF-31). */
+  marginTotal: string | null;
+  additionalParties: FaAdditionalParty[];
 }

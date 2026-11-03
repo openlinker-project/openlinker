@@ -40,6 +40,13 @@ describe('fulfillment api', () => {
     expect(buildFulfillmentWorksPath({ offset: 0 })).toBe('/fulfillment/works?offset=0');
   });
 
+  it('should emit the active alias only when it is true (#3096)', () => {
+    expect(buildFulfillmentWorksPath({ active: true, limit: 25 })).toBe(
+      '/fulfillment/works?active=true&limit=25'
+    );
+    expect(buildFulfillmentWorksPath({ active: false })).toBe('/fulfillment/works');
+  });
+
   it('encodes a value that needs escaping', () => {
     expect(buildFulfillmentWorksPath({ orderId: 'a b&c' })).toBe(
       '/fulfillment/works?orderId=a+b%26c'
@@ -65,5 +72,39 @@ describe('fulfillment api', () => {
     await createFulfillmentApi(request).get('ol_work_1');
 
     expect(request).toHaveBeenCalledWith('/fulfillment/works/ol_work_1');
+  });
+
+  it('lists the shipments for one task (#3292)', async () => {
+    const request = vi.fn().mockResolvedValue([]);
+
+    await createFulfillmentApi(request).listShipments('ol_work_1');
+
+    expect(request).toHaveBeenCalledWith('/fulfillment/works/ol_work_1/shipments');
+  });
+
+  it('encodes the work id in the shipments URL', async () => {
+    const request = vi.fn().mockResolvedValue([]);
+
+    await createFulfillmentApi(request).listShipments('a b&c');
+
+    expect(request).toHaveBeenCalledWith('/fulfillment/works/a%20b%26c/shipments');
+  });
+  it('reads an order\'s routing decision and normalises absent fields to null (#3557)', async () => {
+    const request = vi.fn().mockResolvedValue({
+      decisionId: 'd1',
+      state: 'live',
+      routerConnectionId: 'r1',
+      createdAt: '2026-10-28T08:00:00.000Z',
+      ageMs: 10,
+      ttlMs: 3600000,
+      strandedSince: null,
+    });
+
+    const decision = await createFulfillmentApi(request).getRoutingDecision('ol_order_1');
+
+    expect(request).toHaveBeenCalledWith('/orders/ol_order_1/routing-decision');
+    expect(decision.ttlMs).toBe(3600000);
+    expect(decision.abandonReason).toBeNull();
+    expect(decision.terminalisedAt).toBeNull();
   });
 });

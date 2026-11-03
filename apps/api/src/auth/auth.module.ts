@@ -2,8 +2,9 @@
  * Authentication & Authorization Module
  *
  * Provides JWT-based authentication and role-based authorization for the
- * OpenLinker API. Registers JwtAuthGuard, RolesGuard, and the demo-only
- * AnalyticsConsentGuard (#1938) as global APP_GUARDs
+ * OpenLinker API. Registers JwtAuthGuard, RolesGuard, the demo-only
+ * AnalyticsConsentGuard (#1938) and PasswordChangeRequiredGuard (#3456) as
+ * global APP_GUARDs
  * so all routes are protected by default. Use @Public() to opt out of auth
  * and @Roles() to restrict by role.
  *
@@ -19,8 +20,8 @@ import { APP_GUARD } from '@nestjs/core';
 import { JwtModule } from '@nestjs/jwt';
 import { PassportModule } from '@nestjs/passport';
 import { ConfigModule, ConfigService } from '@nestjs/config';
-import { MAILER_TOKEN, PASSWORD_RESET_NOTIFIER_TOKEN, UsersModule } from '@openlinker/core/users';
-import { MailerModule as CoreMailerModule } from '@openlinker/core/mailer';
+import { PASSWORD_RESET_NOTIFIER_TOKEN, UsersModule } from '@openlinker/core/users';
+import { MailerModule as CoreMailerModule, MailerTransportModule } from '@openlinker/core/mailer';
 import { SyncModule as CoreSyncModule } from '@openlinker/core/sync';
 import { JwtStrategy } from './strategies/jwt.strategy';
 import { AuthService } from './auth.service';
@@ -28,12 +29,12 @@ import { AUTH_SERVICE_TOKEN } from './auth.service.interface';
 import { AuthController } from './auth.controller';
 import { BootstrapAdminService } from './bootstrap-admin.service';
 import { AnalyticsConsentGuard } from './guards/analytics-consent.guard';
+import { PasswordChangeRequiredGuard } from './guards/password-change-required.guard';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { RolesGuard } from './guards/roles.guard';
 import { PasswordResetService } from './password-reset.service';
 import { PASSWORD_RESET_SERVICE_TOKEN } from './password-reset.service.interface';
 import { MailerPasswordResetNotifierAdapter } from './adapters/mailer-password-reset-notifier.adapter';
-import { MAILER_PROVIDER } from './adapters/mailer.provider';
 import { RefreshTokenService } from './refresh-token.service';
 import { REFRESH_TOKEN_SERVICE_TOKEN } from './refresh-token.tokens';
 import { RegistrationService } from './registration.service';
@@ -52,6 +53,8 @@ import { UsersApiModule } from '../users/users.module';
     // For MAILER_SETTINGS_SERVICE_TOKEN, consumed by DbBackedMailerAdapter
     // (#1643) to resolve the DB-backed transport at send time.
     CoreMailerModule,
+    // MAILER_TOKEN, shared with the worker (#3552).
+    MailerTransportModule,
     // For SYNC_LOCK_TOKEN — DemoAccountCleanupService's per-tick singleton
     // lock across api replicas (#2279).
     CoreSyncModule,
@@ -78,7 +81,6 @@ import { UsersApiModule } from '../users/users.module';
     JwtStrategy,
     PasswordResetService,
     { provide: PASSWORD_RESET_SERVICE_TOKEN, useExisting: PasswordResetService },
-    MAILER_PROVIDER,
     MailerPasswordResetNotifierAdapter,
     { provide: PASSWORD_RESET_NOTIFIER_TOKEN, useExisting: MailerPasswordResetNotifierAdapter },
     RefreshTokenService,
@@ -95,6 +97,8 @@ import { UsersApiModule } from '../users/users.module';
     // Demo-only consent gate (#1938) — runs last, so `req.user` is resolved
     // and role checks have already had their say.
     { provide: APP_GUARD, useClass: AnalyticsConsentGuard },
+    // Admin-issued one-time password (#3456) — every role, every deployment.
+    { provide: APP_GUARD, useClass: PasswordChangeRequiredGuard },
   ],
   // MAILER_TOKEN is exported so sibling modules (#1626 forgot-password
   // delivery) can inject MailerPort without duplicating the provider
@@ -103,6 +107,6 @@ import { UsersApiModule } from '../users/users.module';
   // modules that import AuthModule (e.g. AppModule for AppController,
   // #1619) can inject JwtService to verify a bearer token without
   // enforcing auth on a @Public() route.
-  exports: [AuthService, MAILER_TOKEN, JwtModule],
+  exports: [AuthService, MailerTransportModule, JwtModule],
 })
 export class AuthModule {}

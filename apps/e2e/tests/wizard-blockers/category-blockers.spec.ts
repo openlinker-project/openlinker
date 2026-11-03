@@ -34,6 +34,7 @@ import {
   CONNECTION_NAME,
   PICKED_CATEGORY_NAME,
   VARIANTS,
+  stubBulkOfferSubmit,
   stubResolveStream,
   stubWizardApi,
   wizardUrl,
@@ -139,6 +140,12 @@ test.describe('bulk wizard category blockers (#2240)', () => {
     await expect(page.getByText('ready').first()).toBeVisible();
 
     await captureState(page, testInfo, 'cause-no-catalog-match', true);
+  });
+
+  test('a variant whose stock was never synced reads "stock not synced"', async ({ page }) => {
+    await openReview(page, { ...READY_CONNECTION, unsyncedVariantIds: ['ol_variant_2240a'] });
+
+    await expect(chips(page, 'stock not synced')).toHaveCount(1);
   });
 
   test('a variant with no barcode reads "no barcode" and is told where to add one', async ({
@@ -481,9 +488,7 @@ test.describe('bulk wizard category blockers (#2240)', () => {
     await captureState(page, testInfo, 'batch-seller-details-missing', true);
   });
 
-  test('an incomplete safety-information type locks the submit too', async ({
-    page,
-  }, testInfo) => {
+  test('an incomplete safety-information type locks the submit too', async ({ page }, testInfo) => {
     // The mirror used to accept any object under `safetyInformation`, so a
     // connection carrying a description and no `type` read green and had every
     // offer rejected - the drift a mirror falls into (#2240 review).
@@ -513,7 +518,9 @@ test.describe('bulk wizard category blockers (#2240)', () => {
     await captureState(page, testInfo, 'batch-seller-details-complete', true);
   });
 
-  test('a partially filled ship-from location still locks the submit', async ({ page }, testInfo) => {
+  test('a partially filled ship-from location still locks the submit', async ({
+    page,
+  }, testInfo) => {
     // The adapter's gate wants all four location fields, so three of four is a
     // rejection at create time, not something to soften here.
     await openReview(page, {
@@ -596,5 +603,111 @@ test.describe('bulk wizard category blockers (#2240)', () => {
     await expect(page.getByText(/2 variants need attention/)).toBeVisible();
 
     await captureState(page, testInfo, 'confirm-gate-holds-on-blocked', true);
+  });
+
+  // ── Readiness/submit agreement, and the invalid-barcode override (#3492) ────
+
+  test('a row flagged only by an advisory chip reads ready in the banner AND actually submits', async ({
+    page,
+  }, testInfo) => {
+    // All three siblings resolve to a real card (unlike `READY_CONNECTION`'s
+    // default 2-unmatched/1-matched split), so `siblings-without-card` never
+    // enters the picture - the only thing under test is whether the advisory
+    // `params-not-checked` chip gates. Arms the advisory `params-not-checked`
+    // chip (#2243): the category schema fetch fails for the matched category,
+    // which must warn but never gate - neither the Review banner nor the real
+    // submit gate. Registered AFTER `stubWizardApi`'s own success route
+    // (Playwright matches the most-recently-registered route first), so
+    // `openReview`'s own sequence is reproduced by hand rather than reused, to
+    // control that ordering.
+    const opts: StubOptions = {
+      ...READY_CONNECTION,
+      variants: onlyVariant('matched', '5900000000152'),
+    };
+    await stubResolveStream(page, opts);
+    await stubWizardApi(page, opts);
+    await page.route('**/v1/listings/connections/*/categories/*/parameters', (route) =>
+      route.fulfill({ status: 500, body: 'boom' })
+    );
+    const submit = await stubBulkOfferSubmit(page);
+    await page.goto(wizardUrl());
+
+    const wizard = new BulkOfferWizard(page);
+    await wizard.expectOnConfigStep();
+    await wizard.completePlatformConfig({ requiresDeliveryPolicy: true });
+    await wizard.proceedButton.click();
+    await expect(page.getByText(/need attention|are ready/i).first()).toBeVisible({
+      timeout: 30_000,
+    });
+    await expandProductRow(page);
+
+    // No `params-not-checked` GATING - the green "all ready" banner renders
+    // (not the amber "N need attention" one) and all 3 variants are counted
+    // ready, proving the submit-eligible count is not merely "greater than
+    // zero" but the full batch.
+    await expect(page.getByText(/all included variants are ready/i)).toBeVisible();
+    await expect(wizard.createOffersButton).toHaveText('Create offers (3)');
+    await expect(wizard.createOffersButton).toBeEnabled();
+
+    await captureState(page, testInfo, 'readiness-submit-agree-advisory', true);
+
+    // The submit gate must agree: this must actually reach the real endpoint,
+    // not silently exclude the row a raw `blockers.length` check would have.
+    await wizard.createOffersButton.click();
+    await page.getByRole('dialog').getByRole('button', { name: 'Create offers' }).click();
+    await expect(page).toHaveURL(/\/listings\/bulk-batches\//, { timeout: 15_000 });
+    expect(submit.body).toBeTruthy();
+  });
+
+  test('invalid barcode still hard-blocks with the acknowledgement unchecked', async ({ page }) => {
+    await openReview(page, {
+      ...READY_CONNECTION,
+      variants: onlyVariant('no-match', '5900000000153'),
+    });
+
+    const wizard = new BulkOfferWizard(page);
+    await expect(wizard.createOffersButton).toBeDisabled();
+    await expect(page.getByText(/1 variant needs attention|need attention/i).first()).toBeVisible();
+  });
+
+  test('checking "submit anyway" unblocks an invalid-checksum EAN and the request carries the flag', async ({
+    page,
+  }, testInfo) => {
+    // `matched` (not `no-match`): the sibling resolves a real catalogue card
+    // even though its raw barcode fails the check digit - "an invalid barcode
+    // is invalid everywhere" collapses it to `invalid barcode` regardless of
+    // outcome. Once acknowledged, the collapse is skipped and the row falls
+    // back to computeBlockers' real, already-card-linked result: no category
+    // step needed, and no `siblings-without-card` complication either, since
+    // every sibling has a card.
+    await openReview(page, {
+      ...READY_CONNECTION,
+      variants: onlyVariant('matched', '5900000000153'),
+    });
+    const submit = await stubBulkOfferSubmit(page);
+
+    await openEditorFromChip(page, 'invalid barcode');
+    await page.getByRole('checkbox', { name: /I confirm this EAN is correct/i }).check();
+    await captureState(page, testInfo, 'invalid-barcode-override-checked');
+    await page.getByRole('dialog').getByRole('button', { name: 'Save all' }).click();
+    await expect(page.getByRole('dialog')).toHaveCount(0);
+
+    // The cause changed from "invalid barcode" to nothing left to fix - proving
+    // the acknowledgement actually reached blocker computation.
+    await expect(chips(page, 'invalid barcode')).toHaveCount(0);
+
+    const wizard = new BulkOfferWizard(page);
+    await expect(wizard.createOffersButton).toBeEnabled({ timeout: 15_000 });
+
+    await wizard.createOffersButton.click();
+    await page.getByRole('dialog').getByRole('button', { name: 'Create offers' }).click();
+    await expect(page).toHaveURL(/\/listings\/bulk-batches\//, { timeout: 15_000 });
+
+    const body = submit.body as {
+      perVariantOverrides?: Record<string, { overrides?: { eanOverrideAcknowledged?: boolean } }>;
+    };
+    expect(body.perVariantOverrides?.['ol_variant_2240a']?.overrides?.eanOverrideAcknowledged).toBe(
+      true
+    );
   });
 });

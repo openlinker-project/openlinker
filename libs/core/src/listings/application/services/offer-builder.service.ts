@@ -26,6 +26,11 @@
  * consume it; auto-grouping adapters (Allegro) ignore it. Single-variant /
  * simple products leave `variantGroup` absent and list standalone.
  *
+ * Images: an operator override (`overrides.imageUrls`) wins unchanged;
+ * otherwise a variant is listed with `resolveVariantDefaultImages` - its own
+ * pictures first, then the product gallery minus the pictures dedicated to its
+ * siblings - so the red variant's offer does not show the green cup.
+ *
  * @module libs/core/src/listings/application/services
  * @implements {IOfferBuilderService}
  */
@@ -60,10 +65,11 @@ import {
   isTaxonomyBorrower,
 } from '@openlinker/core/listings';
 import type { TaxonomyOwner } from '@openlinker/core/listings';
-import type { ProductMasterPort, ProductVariant } from '@openlinker/core/products';
+import type { Product, ProductGpsr, ProductMasterPort, ProductVariant } from '@openlinker/core/products';
 import {
   IProductsService,
   PRODUCTS_SERVICE_TOKEN,
+  resolveVariantDefaultImages,
 } from '@openlinker/core/products';
 
 import { MasterCatalogConnectionNotConfiguredException } from '../../domain/exceptions/master-catalog-connection-not-configured.exception';
@@ -84,6 +90,7 @@ import {
   resolveOfferDescriptionFormat,
 } from './description-format-resolution';
 import { flattenAttributes } from './variant-attributes.util';
+import { resolveCatalogueTaxRate } from './resolve-catalogue-tax-rate';
 
 @Injectable()
 export class OfferBuilderService implements IOfferBuilderService {
@@ -200,9 +207,17 @@ export class OfferBuilderService implements IOfferBuilderService {
     // #824 barcode filter) can be smaller and need not match. Resolved after the
     // validation throw above so a build that fails validation skips the read.
     const siblings = await this.productsService.getVariantsByProductId(variant.productId);
-    const variantGroup = this.resolveVariantGroup(variant, siblings.length);
+    // A sibling deleted at the master (#1689 `isStale`) is not listed, so it
+    // must not turn the last live variant into a group of one.
+    const variantGroup = this.resolveVariantGroup(
+      variant,
+      siblings.filter((sibling) => sibling.isStale !== true).length
+    );
 
-    const title = input.overrides?.title ?? product.name;
+    // A blank override is an emptied field, not a title: no destination lists
+    // an offer without one, so it falls back to the master name exactly like
+    // an absent override does.
+    const title = input.overrides?.title?.trim() ? input.overrides.title : product.name;
     // ADR-046: shape the description into what THIS destination accepts, using
     // the format the already-resolved adapter declares. Returns undefined when
     // nothing survives, which the cleanup below then omits - the Allegro
@@ -211,7 +226,9 @@ export class OfferBuilderService implements IOfferBuilderService {
       input.overrides?.description ?? product.description,
       resolveOfferDescriptionFormat(destination)
     );
-    const imageUrls = input.overrides?.imageUrls ?? product.images;
+    const imageUrls =
+      input.overrides?.imageUrls ??
+      resolveVariantDefaultImages(variant, siblings, product.images);
 
     const overrides = {
       title,
@@ -315,11 +332,27 @@ export class OfferBuilderService implements IOfferBuilderService {
     // Set only when the shop actually has one: an absent rate must reach the
     // adapter as absent, so it can refuse rather than publish an offer with no
     // tax settings. Publishing rate-less is exactly what produced the offers
-    // whose orders report `tax: null` today.
-    const taxRate = await this.resolveTaxRate(product.id, input.internalVariantId);
+    // whose orders report `tax: null` today. What the adapter does with an
+    // absent rate depends on `OL_TAX_RATE_STRICT_ENABLED`: off (the default) it
+    // warns and publishes with the rate omitted; on, it refuses.
+    const taxRate = await resolveCatalogueTaxRate(
+      this.productsService,
+      this.logger,
+      product.id,
+      input.internalVariantId
+    );
     if (taxRate.code) {
       command.taxRate = taxRate.code;
       if (taxRate.countryIso2) command.taxRateCountry = taxRate.countryIso2;
+    }
+
+    // GPSR travels by value so the destination can prefer a product-level
+    // declaration over its connection-level defaults. Set only when the master
+    // stated something: absent must reach the adapter as absent, so it keeps
+    // its own defaults rather than reading an empty object as "no producer".
+    const gpsr = await this.resolveProductGpsr(product, variant.productId);
+    if (gpsr) {
+      command.gpsr = gpsr;
     }
 
     // #1065 — only set when populated, keeping the command shape tidy (mirrors
@@ -333,6 +366,33 @@ export class OfferBuilderService implements IOfferBuilderService {
     );
 
     return command;
+  }
+
+  /**
+   * The product's GPSR declaration: the live master read first, because that
+   * is what every other field of the offer comes from; the stored catalogue
+   * projection only when the live read did not report GPSR at all (a master
+   * that does not model it, or whose GPSR reference read failed this time).
+   * The fallback is best-effort - an offer is still buildable from the
+   * destination's own defaults, so a failed read is logged, never raised.
+   */
+  private async resolveProductGpsr(
+    product: Product,
+    internalProductId: string
+  ): Promise<ProductGpsr | undefined> {
+    if (product.gpsr !== undefined) {
+      return product.gpsr ?? undefined;
+    }
+    try {
+      const stored = await this.productsService.getProduct(internalProductId);
+      return stored?.gpsr ?? undefined;
+    } catch (error) {
+      this.logger.warn(
+        `GPSR fallback read failed for product=${internalProductId}; the offer uses the ` +
+          `destination's own defaults: ${error instanceof Error ? error.message : String(error)}`
+      );
+      return undefined;
+    }
   }
 
   /**
@@ -583,30 +643,6 @@ export class OfferBuilderService implements IOfferBuilderService {
     return typeof value === 'string' && value.length > 0 ? value : null;
   }
 
-  /**
-   * The catalogue's rate for this variant (#2249).
-   *
-   * Best-effort: a read failure degrades to "no rate" - the same outcome as a
-   * genuinely rate-less product, so the two are handled identically downstream.
-   * What happens then depends on `OL_TAX_RATE_STRICT_ENABLED`: with it off (the
-   * default) the adapter warns and publishes with the rate omitted, exactly as
-   * before this epic; with it on the adapter refuses. The gate on the invoicing
-   * side is what makes a rate-less line visible either way.
-   */
-  private async resolveTaxRate(
-    productId: string,
-    variantId: string
-  ): Promise<{ code: string | null; countryIso2: string | null }> {
-    try {
-      const stored = await this.productsService.getEffectiveTaxRate(productId, variantId);
-      return { code: stored.code, countryIso2: stored.countryIso2 };
-    } catch (error) {
-      this.logger.warn(
-        `Could not read the catalogue tax rate for variant ${variantId}: ${(error as Error).message}`
-      );
-      return { code: null, countryIso2: null };
-    }
-  }
 }
 
 /**

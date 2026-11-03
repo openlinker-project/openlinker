@@ -286,7 +286,7 @@ describe('returns flows (#3078/#3086)', () => {
       restockAttestations: [],
       refunds: [],
       orderCurrency: null,
-      restockTarget: { status: 'resolved', connectionId: 'conn_master', connectionName: 'Warehouse', candidateCount: null },
+      restockTargets: {},
     };
 
     const apiClient = createMockApiClient();

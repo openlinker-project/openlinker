@@ -80,6 +80,10 @@ function makeCommand(overrides: Partial<IssueInvoiceCommand> = {}): IssueInvoice
     currency: 'PLN',
     lines: [{ name: 'T-shirt', quantity: 2, unitPriceGross: 49.2, taxRate: '23' }],
     idempotencyKey: 'invoice:conn-eparagony-1:ol_order_1',
+    // Core always allocates one for this adapter (#3500); defaulted here so
+    // every test not specifically exercising its absence composes a document
+    // the vendor would actually accept.
+    documentNumber: 'OL/2026/09/1',
     ...overrides,
   };
 }
@@ -133,9 +137,9 @@ describe('composeInvoiceDocument - the shape the live sandbox accepted', () => {
     expect(request.eInvoice.invoiceType).toBe('VAT');
     // `toEqual`, NOT `toMatchObject`: a parity assertion that passes over extra
     // keys cannot support a parity claim, and the next field added to `metadata`
-    // would enter the wire silently. The two keys beyond the POC body -
-    // `currency` and `orderId` - are named here rather than tolerated, which is
-    // what makes this test the wire's real shape.
+    // would enter the wire silently. The three keys beyond the POC body -
+    // `currency`, `orderId` and `invoiceNumber` (#3500) - are named here rather
+    // than tolerated, which is what makes this test the wire's real shape.
     expect(request.eInvoice.metadata).toEqual({
       vatCalculationMethod: 'SUM_OF_RATES_NET',
       calculationValidation: 'NONE',
@@ -153,6 +157,7 @@ describe('composeInvoiceDocument - the shape the live sandbox accepted', () => {
       taxValueByTaxRate: { '23': 1840 },
       currency: 'PLN',
       orderId: 'ol_order_1',
+      invoiceNumber: 'OL/2026/09/1',
     });
     expect(request.eInvoice.lines).toEqual([
       {
@@ -503,12 +508,6 @@ describe('composeInvoiceDocument - optional metadata', () => {
     expect(compose().eInvoice.metadata.currency).toBe('PLN');
   });
 
-  it('omits the invoice number when OpenLinker did not allocate one', () => {
-    // This adapter is not a document-number consumer today, so the vendor
-    // generates the legal number itself.
-    expect('invoiceNumber' in compose().eInvoice.metadata).toBe(false);
-  });
-
   it('honours an OpenLinker-allocated number when one is supplied', () => {
     const request = compose(makeCommand({ documentNumber: 'OL/2026/09/1' }));
     expect(request.eInvoice.metadata.invoiceNumber).toBe('OL/2026/09/1');
@@ -566,6 +565,15 @@ describe('composeInvoiceDocument - refusals before anything is sent', () => {
     expect(() => compose(makeCommand({ currency: ' pln ' }))).not.toThrow();
   });
 
+  it('refuses when core allocated no document number, rather than composing a document the vendor is known to reject (#3500)', () => {
+    expect(() => compose(makeCommand({ documentNumber: undefined }))).toThrow(
+      EparagonyConfigException,
+    );
+    expect(() => compose(makeCommand({ documentNumber: '   ' }))).toThrow(
+      EparagonyConfigException,
+    );
+  });
+
   it('refuses when the connection declares no seller tax number', () => {
     // Mandatory on every invoice, and validated against the vendor account, so
     // a wrong or missing value fails every invoice rather than one order.
@@ -575,6 +583,24 @@ describe('composeInvoiceDocument - refusals before anything is sent', () => {
     expect(() => compose(makeCommand(), makeConfig({ merchantTIN: '  ' }))).toThrow(
       EparagonyConfigException,
     );
+  });
+
+  it('declares the missing seller tax number a connection-setup refusal, so core sends the operator to the connection (#3772)', () => {
+    const error = captureRefusal(() =>
+      compose(makeCommand(), makeConfig({ merchantTIN: undefined })),
+    );
+    expect(error.failureCause).toBe('connection-setup');
+  });
+
+  it('leaves refusals that are not about a connection setting undeclared (#3772)', () => {
+    // A currency or an empty order is the sale's problem, not the connection's;
+    // declaring it would show a link to settings that cannot fix it.
+    expect(
+      captureRefusal(() => compose(makeCommand({ currency: 'EUR' }))).failureCause,
+    ).toBeUndefined();
+    expect(
+      captureRefusal(() => compose(makeCommand({ documentNumber: undefined }))).failureCause,
+    ).toBeUndefined();
   });
 
   it('words the seller-tax-number refusal so core does NOT read it as a buyer problem', () => {

@@ -8,12 +8,14 @@
  */
 import type { PaginatedTotal, RowsPage } from '../../../shared/api/paginated-total.types';
 import { orderMembershipFilters } from './orders.query-keys';
+import { parseOrderNoteTimeline } from './order-note-timeline.schema';
 import type {
   OrderFilters,
   OrderPagination,
   PaginatedOrders,
   OrderRecord,
   RetryOrderDestinationResult,
+  RetryOrderRoutingResult,
   OrderHealthSummary,
   OrderHealthSummaryFilters,
   OrderSlaSummary,
@@ -22,7 +24,42 @@ import type {
   PlaceOrderHoldResult,
   ReleaseOrderHoldRequest,
   ReleaseOrderHoldResult,
+  OrderLineCostsResult,
+  OrderNote,
+  CreateOrderNoteRequest,
+  UpdateOrderNoteRequest,
+  OrderNoteTimelineEntry,
+  OrderDocumentEmailEntry,
+  OrderTag,
+  OrderTagColorValue,
+  BulkAssignOrderTagResult,
+  OrderColumnPreset,
+  OrderExportRun,
+  CreateOrderExportRequest,
 } from './orders.types';
+import type {
+  CancelOrderRequest,
+  CancelOrderResult,
+  ConfirmOrderChangeResult,
+  OrderChangeView,
+} from './order-cancel.types';
+import type {
+  BulkBuyerNoteReadResult,
+  BulkCancelOrdersRequest,
+  BulkCancelOrdersResult,
+  BulkRemoveOrderTagResult,
+} from './order-bulk-actions.types';
+import type { OrderRefundRecord, RecordOrderRefundRequest } from './order-refund.types';
+import type {
+  ConfirmOrderChangeRequest,
+  EditOrderAddressRequest,
+  EditOrderDeliveryMethodRequest,
+  EditOrderDiscountRequest,
+  EditOrderLinesRequest,
+  OrderDiscountResult,
+  OrderEditResult,
+  OrderEditsView,
+} from './order-edit.types';
 
 export interface OrdersApi {
   list: (filters?: OrderFilters, pagination?: OrderPagination) => Promise<PaginatedOrders>;
@@ -49,6 +86,11 @@ export interface OrdersApi {
     destinationConnectionId: string,
   ) => Promise<RetryOrderDestinationResult>;
   /**
+   * Route a held order again (#3558). Answers 202 with the enqueued job; the
+   * outcome shows on the order itself. 409 carries a `code` naming why not.
+   */
+  retryRouting: (internalOrderId: string) => Promise<RetryOrderRoutingResult>;
+  /**
    * Mark the order packed (#2287). Returns the updated record, and returns 200
    * on an idempotent replay too — marking an already-packed order keeps the
    * FIRST actor and instant rather than restamping them.
@@ -57,6 +99,12 @@ export interface OrdersApi {
   /** Clear the packed mark (#2287). Clearing an unpacked order is a no-op 200. */
   unmarkPacked: (internalOrderId: string) => Promise<OrderRecord>;
   /**
+   * Mark the order's buyer note read (#3539). Fill-once and idempotent: a
+   * repeat returns the EXISTING marker, so the first reader is never
+   * overwritten. A display fact - it gates nothing.
+   */
+  markBuyerNoteRead: (internalOrderId: string) => Promise<OrderRecord>;
+  /**
    * Place a hold (#2341). Admin-only server-side; a second hold on an order
    * that already has one answers 409 `ORDER_ALREADY_ON_HOLD`.
    */
@@ -64,6 +112,49 @@ export interface OrdersApi {
     internalOrderId: string,
     body: PlaceOrderHoldRequest,
   ) => Promise<PlaceOrderHoldResult>;
+  /**
+   * Cancel an order at the operator's request (#3540/#3541). HTTP 200 resolves
+   * `cancelled`, HTTP 202 resolves `pending`; a refusal is an `ApiError` whose
+   * body `error` carries the machine code.
+   */
+  cancelOrder: (internalOrderId: string, body: CancelOrderRequest) => Promise<CancelOrderResult>;
+  /**
+   * Confirm a change the operator reviewed: the credit proposal a cancelled,
+   * invoiced order left, a discount's document correction, or (with the optional
+   * body) a discount's refund intent. A refund past the ceiling answers 409
+   * `refund_ceiling_exceeded` unless the body acknowledges it.
+   */
+  confirmOrderChange: (
+    internalOrderId: string,
+    changeId: string,
+    body?: ConfirmOrderChangeRequest,
+  ) => Promise<ConfirmOrderChangeResult>;
+  /**
+   * Post-import edits (#3542/#3543, D9). Admin-only, saved in OpenLinker only,
+   * and confirmed immediately. `dryRun: true` answers the would-be figures and
+   * every refusal without writing. A refusal is an `ApiError` whose body `error`
+   * carries the machine code.
+   */
+  editOrderAddress: (internalOrderId: string, body: EditOrderAddressRequest) => Promise<OrderEditResult>;
+  editOrderLines: (internalOrderId: string, body: EditOrderLinesRequest) => Promise<OrderEditResult>;
+  editOrderDeliveryMethod: (
+    internalOrderId: string,
+    body: EditOrderDeliveryMethodRequest,
+  ) => Promise<OrderEditResult>;
+  editOrderDiscount: (
+    internalOrderId: string,
+    body: EditOrderDiscountRequest,
+  ) => Promise<OrderDiscountResult>;
+  /** The order beside the channel's own record of it; `null` for an order nobody edited. */
+  getOrderEdits: (internalOrderId: string) => Promise<OrderEditsView | null>;
+  /** The order's operator changes, newest first: cancel requests and their credit proposals. */
+  listOrderChanges: (internalOrderId: string) => Promise<OrderChangeView[]>;
+  /** Record that the operator refunded the buyer. 409 `refund_ceiling_exceeded` carries the figures. */
+  recordRefund: (
+    internalOrderId: string,
+    body: RecordOrderRefundRequest,
+  ) => Promise<OrderRefundRecord>;
+  listRefunds: (internalOrderId: string) => Promise<OrderRefundRecord[]>;
   /**
    * Release a hold (#2341). Admin-only. Answers 409 `HOLD_ALREADY_RELEASED` on
    * a replay and 400 when a note is required and missing; the success body
@@ -74,10 +165,75 @@ export interface OrdersApi {
     holdId: string,
     body: ReleaseOrderHoldRequest,
   ) => Promise<ReleaseOrderHoldResult>;
+  /** Cost at order time and margin per line (#3588); admin/operator/viewer only. */
+  listLineCosts: (internalOrderId: string) => Promise<OrderLineCostsResult>;
+  /** An order's notes, oldest first (#3531). */
+  listNotes: (internalOrderId: string) => Promise<OrderNote[]>;
+  /** Every attempt to email a document of this order to the buyer (#3551). */
+  listDocumentEmails: (internalOrderId: string) => Promise<OrderDocumentEmailEntry[]>;
+  /** The notes' authored acts for the Activity timeline (#3531), parsed. */
+  listNoteTimeline: (internalOrderId: string) => Promise<OrderNoteTimelineEntry[]>;
+  createNote: (internalOrderId: string, body: CreateOrderNoteRequest) => Promise<OrderNote>;
+  /** D33: the author edits their own note only; the server answers 403 otherwise. */
+  updateNote: (
+    internalOrderId: string,
+    noteId: string,
+    body: UpdateOrderNoteRequest,
+  ) => Promise<OrderNote>;
+  /** D33: the author or an admin. */
+  deleteNote: (internalOrderId: string, noteId: string) => Promise<void>;
+  /** Pin a note (author or admin). Unpins the order's previous pin, if any. */
+  pinNote: (internalOrderId: string, noteId: string) => Promise<OrderNote>;
+  /** Unpin a note (author or admin). */
+  unpinNote: (internalOrderId: string, noteId: string) => Promise<OrderNote>;
+  /** The workspace tag vocabulary, each with its live order count (#3532). */
+  listTags: () => Promise<OrderTag[]>;
+  /** D34: admin or operator, from the picker. Refused past the workspace limit of 50. */
+  createTag: (name: string, color: OrderTagColorValue) => Promise<OrderTag>;
+  /** Admin only — the Settings tag manager. */
+  updateTag: (tagId: string, patch: { name?: string; color?: OrderTagColorValue }) => Promise<OrderTag>;
+  /** Admin only — also removes every order assignment naming the tag. */
+  deleteTag: (tagId: string) => Promise<void>;
+  assignTag: (internalOrderId: string, tagId: string) => Promise<void>;
+  unassignTag: (internalOrderId: string, tagId: string) => Promise<void>;
+  /** Tag ids assigned to one order (#3532). */
+  listOrderTags: (internalOrderId: string) => Promise<string[]>;
+  /** Assign one tag to every named order — the bulk action bar (#3532). */
+  bulkAssignTag: (tagId: string, orderIds: string[]) => Promise<BulkAssignOrderTagResult>;
+  /** Remove one tag from every named order (#3545). */
+  bulkRemoveTag: (tagId: string, orderIds: string[]) => Promise<BulkRemoveOrderTagResult>;
+  /** Cancel many orders with one reason; per-row outcomes, never all-or-nothing (#3545, admin). */
+  bulkCancelOrders: (body: BulkCancelOrdersRequest) => Promise<BulkCancelOrdersResult>;
+  /** Mark the buyer note read on many orders (#3545, admin and operator). */
+  bulkMarkBuyerNoteRead: (orderIds: string[]) => Promise<BulkBuyerNoteReadResult>;
+
+  /** The caller's own saved column presets (#3530, D32). */
+  listColumnPresets: () => Promise<OrderColumnPreset[]>;
+  /** The workspace default, or `null` if an admin never set one. */
+  getWorkspaceDefaultColumnPreset: () => Promise<OrderColumnPreset | null>;
+  createColumnPreset: (name: string, columns: string[]) => Promise<OrderColumnPreset>;
+  updateColumnPreset: (id: string, patch: { name?: string; columns?: string[] }) => Promise<OrderColumnPreset>;
+  deleteColumnPreset: (id: string) => Promise<void>;
+  /** Admin only. */
+  setWorkspaceDefaultColumnPreset: (columns: string[]) => Promise<OrderColumnPreset>;
+
+  /** Open an export run over the current filtered view or an explicit selection (#3534, D35). */
+  requestExport: (body: CreateOrderExportRequest) => Promise<OrderExportRun>;
+  getExportRun: (runId: string) => Promise<OrderExportRun>;
+  /**
+   * The generated file, as a Blob — the API requires a Bearer token, so a
+   * plain `<a href>` cannot carry it (the `invoicing`/`shipments` download
+   * precedent, `requestBlob` + `triggerBlobDownload`).
+   */
+  downloadExport: (runId: string) => Promise<Blob>;
 }
 
 interface ApiRequest {
   <T>(path: string, init?: RequestInit): Promise<T>;
+}
+
+interface ApiBlobRequest {
+  (path: string, init?: RequestInit): Promise<Blob>;
 }
 
 function buildQuery(
@@ -109,6 +265,18 @@ function buildQuery(
   if (filters?.salesDocumentBlocked !== undefined) {
     params.set('salesDocumentBlocked', String(filters.salesDocumentBlocked));
   }
+  // #2703/#2704 — boolean, same `!== undefined` guard: `false` ("exclude orders
+  // whose routing narrowed the fan-out") is a real predicate, not an absence.
+  if (filters?.destinationRoutingBlocked !== undefined) {
+    params.set('destinationRoutingBlocked', String(filters.destinationRoutingBlocked));
+  }
+  // #3482 - booleans, the same `!== undefined` guard: `false` is a real predicate.
+  if (filters?.waitingInOpenLinker !== undefined) {
+    params.set('waitingInOpenLinker', String(filters.waitingInOpenLinker));
+  }
+  if (filters?.onPackBench !== undefined) {
+    params.set('onPackBench', String(filters.onPackBench));
+  }
   // #2306 — boolean, same `!== undefined` guard as above: `false` ("exclude
   // cancelled orders") is a real predicate the dispatch-risk page depends on.
   if (filters?.cancelled !== undefined) {
@@ -121,6 +289,26 @@ function buildQuery(
   // names the full `omsAttention` axis.
   if (filters?.attention !== undefined) {
     params.set('attention', String(filters.attention));
+  }
+  // #2997 — boolean, same `!== undefined` guard: `false` ("exclude packed
+  // orders") is a real predicate.
+  if (filters?.packed !== undefined) {
+    params.set('packed', String(filters.packed));
+  }
+  // #3527/#3528 — free text, debounced client-side before landing here.
+  if (filters?.search) params.set('search', filters.search);
+  // #2998 — boolean, same `!== undefined` guard as its neighbours.
+  if (filters?.openReturn !== undefined) {
+    params.set('openReturn', String(filters.openReturn));
+  }
+  // #3539 — boolean, same `!== undefined` guard as its neighbours.
+  if (filters?.hasBuyerNote !== undefined) {
+    params.set('hasBuyerNote', String(filters.hasBuyerNote));
+  }
+  // #3532 — `tag` and `untagged` are mutually exclusive by convention.
+  if (filters?.tag) params.set('tag', filters.tag);
+  if (filters?.untagged !== undefined) {
+    params.set('untagged', String(filters.untagged));
   }
   if (pagination?.limit !== undefined) params.set('limit', String(pagination.limit));
   if (pagination?.offset !== undefined) params.set('offset', String(pagination.offset));
@@ -144,7 +332,7 @@ function buildSummaryQuery(filters?: OrderHealthSummaryFilters): string {
   return qs.length > 0 ? `?${qs}` : '';
 }
 
-export function createOrdersApi(request: ApiRequest): OrdersApi {
+export function createOrdersApi(request: ApiRequest, requestBlob: ApiBlobRequest): OrdersApi {
   return {
     list(filters, pagination): Promise<PaginatedOrders> {
       return request<PaginatedOrders>(`/orders${buildQuery(filters, pagination)}`);
@@ -186,10 +374,22 @@ export function createOrdersApi(request: ApiRequest): OrdersApi {
         { method: 'POST' },
       );
     },
+    retryRouting(internalOrderId): Promise<RetryOrderRoutingResult> {
+      return request<RetryOrderRoutingResult>(
+        `/orders/${encodeURIComponent(internalOrderId)}/retry-routing`,
+        { method: 'POST' },
+      );
+    },
     markPacked(internalOrderId): Promise<OrderRecord> {
       return request<OrderRecord>(`/orders/${encodeURIComponent(internalOrderId)}/packed`, {
         method: 'POST',
       });
+    },
+    markBuyerNoteRead(internalOrderId): Promise<OrderRecord> {
+      return request<OrderRecord>(
+        `/orders/${encodeURIComponent(internalOrderId)}/buyer-note/read`,
+        { method: 'POST' },
+      );
     },
     unmarkPacked(internalOrderId): Promise<OrderRecord> {
       return request<OrderRecord>(`/orders/${encodeURIComponent(internalOrderId)}/packed`, {
@@ -202,11 +402,209 @@ export function createOrdersApi(request: ApiRequest): OrdersApi {
         { method: 'POST', body: JSON.stringify(body) },
       );
     },
+    cancelOrder(internalOrderId, body): Promise<CancelOrderResult> {
+      return request<CancelOrderResult>(
+        `/orders/${encodeURIComponent(internalOrderId)}/cancel`,
+        { method: 'POST', body: JSON.stringify(body) },
+      );
+    },
+    confirmOrderChange(internalOrderId, changeId, body): Promise<ConfirmOrderChangeResult> {
+      return request<ConfirmOrderChangeResult>(
+        `/orders/${encodeURIComponent(internalOrderId)}/changes/${encodeURIComponent(changeId)}/confirm`,
+        { method: 'POST', ...(body ? { body: JSON.stringify(body) } : {}) },
+      );
+    },
+    editOrderAddress(internalOrderId, body): Promise<OrderEditResult> {
+      return request<OrderEditResult>(`/orders/${encodeURIComponent(internalOrderId)}/edits/address`, {
+        method: 'POST',
+        body: JSON.stringify(body),
+      });
+    },
+    editOrderLines(internalOrderId, body): Promise<OrderEditResult> {
+      return request<OrderEditResult>(`/orders/${encodeURIComponent(internalOrderId)}/edits/lines`, {
+        method: 'POST',
+        body: JSON.stringify(body),
+      });
+    },
+    editOrderDeliveryMethod(internalOrderId, body): Promise<OrderEditResult> {
+      return request<OrderEditResult>(
+        `/orders/${encodeURIComponent(internalOrderId)}/edits/delivery-method`,
+        { method: 'POST', body: JSON.stringify(body) },
+      );
+    },
+    editOrderDiscount(internalOrderId, body): Promise<OrderDiscountResult> {
+      return request<OrderDiscountResult>(`/orders/${encodeURIComponent(internalOrderId)}/edits/discount`, {
+        method: 'POST',
+        body: JSON.stringify(body),
+      });
+    },
+    getOrderEdits(internalOrderId): Promise<OrderEditsView | null> {
+      return request<OrderEditsView | null>(`/orders/${encodeURIComponent(internalOrderId)}/edits`);
+    },
+    listOrderChanges(internalOrderId): Promise<OrderChangeView[]> {
+      return request<OrderChangeView[]>(`/orders/${encodeURIComponent(internalOrderId)}/changes`);
+    },
+    recordRefund(internalOrderId, body): Promise<OrderRefundRecord> {
+      return request<OrderRefundRecord>(`/orders/${encodeURIComponent(internalOrderId)}/refunds`, {
+        method: 'POST',
+        body: JSON.stringify(body),
+      });
+    },
+    listRefunds(internalOrderId): Promise<OrderRefundRecord[]> {
+      return request<OrderRefundRecord[]>(`/orders/${encodeURIComponent(internalOrderId)}/refunds`);
+    },
     releaseHold(internalOrderId, holdId, body): Promise<ReleaseOrderHoldResult> {
       return request<ReleaseOrderHoldResult>(
         `/orders/${encodeURIComponent(internalOrderId)}/holds/${encodeURIComponent(holdId)}/release`,
         { method: 'POST', body: JSON.stringify(body) },
       );
+    },
+    listLineCosts(internalOrderId): Promise<OrderLineCostsResult> {
+      return request<OrderLineCostsResult>(
+        `/orders/${encodeURIComponent(internalOrderId)}/line-costs`,
+      );
+    },
+    listNotes(internalOrderId): Promise<OrderNote[]> {
+      return request<OrderNote[]>(`/orders/${encodeURIComponent(internalOrderId)}/notes`);
+    },
+    listDocumentEmails(internalOrderId): Promise<OrderDocumentEmailEntry[]> {
+      return request<OrderDocumentEmailEntry[]>(
+        `/orders/${encodeURIComponent(internalOrderId)}/document-emails`,
+      );
+    },
+    async listNoteTimeline(internalOrderId): Promise<OrderNoteTimelineEntry[]> {
+      const raw = await request<unknown>(
+        `/orders/${encodeURIComponent(internalOrderId)}/notes/timeline`,
+      );
+      return parseOrderNoteTimeline(raw);
+    },
+    createNote(internalOrderId, body): Promise<OrderNote> {
+      return request<OrderNote>(`/orders/${encodeURIComponent(internalOrderId)}/notes`, {
+        method: 'POST',
+        body: JSON.stringify(body),
+      });
+    },
+    updateNote(internalOrderId, noteId, body): Promise<OrderNote> {
+      return request<OrderNote>(
+        `/orders/${encodeURIComponent(internalOrderId)}/notes/${encodeURIComponent(noteId)}`,
+        { method: 'PUT', body: JSON.stringify(body) },
+      );
+    },
+    deleteNote(internalOrderId, noteId): Promise<void> {
+      return request<void>(
+        `/orders/${encodeURIComponent(internalOrderId)}/notes/${encodeURIComponent(noteId)}`,
+        { method: 'DELETE' },
+      );
+    },
+    pinNote(internalOrderId, noteId): Promise<OrderNote> {
+      return request<OrderNote>(
+        `/orders/${encodeURIComponent(internalOrderId)}/notes/${encodeURIComponent(noteId)}/pin`,
+        { method: 'POST' },
+      );
+    },
+    unpinNote(internalOrderId, noteId): Promise<OrderNote> {
+      return request<OrderNote>(
+        `/orders/${encodeURIComponent(internalOrderId)}/notes/${encodeURIComponent(noteId)}/pin`,
+        { method: 'DELETE' },
+      );
+    },
+    listTags(): Promise<OrderTag[]> {
+      return request<OrderTag[]>('/order-tags');
+    },
+    createTag(name, color): Promise<OrderTag> {
+      return request<OrderTag>('/order-tags', {
+        method: 'POST',
+        body: JSON.stringify({ name, color }),
+      });
+    },
+    updateTag(tagId, patch): Promise<OrderTag> {
+      return request<OrderTag>(`/order-tags/${encodeURIComponent(tagId)}`, {
+        method: 'PUT',
+        body: JSON.stringify(patch),
+      });
+    },
+    deleteTag(tagId): Promise<void> {
+      return request<void>(`/order-tags/${encodeURIComponent(tagId)}`, { method: 'DELETE' });
+    },
+    bulkAssignTag(tagId, orderIds): Promise<BulkAssignOrderTagResult> {
+      return request<BulkAssignOrderTagResult>(
+        `/order-tags/${encodeURIComponent(tagId)}/bulk-assign`,
+        { method: 'POST', body: JSON.stringify({ orderIds }) },
+      );
+    },
+    bulkRemoveTag(tagId, orderIds): Promise<BulkRemoveOrderTagResult> {
+      return request<BulkRemoveOrderTagResult>(
+        `/order-tags/${encodeURIComponent(tagId)}/bulk-remove`,
+        { method: 'POST', body: JSON.stringify({ orderIds }) },
+      );
+    },
+    bulkCancelOrders(body): Promise<BulkCancelOrdersResult> {
+      return request<BulkCancelOrdersResult>('/orders/bulk/cancel', {
+        method: 'POST',
+        body: JSON.stringify(body),
+      });
+    },
+    bulkMarkBuyerNoteRead(orderIds): Promise<BulkBuyerNoteReadResult> {
+      return request<BulkBuyerNoteReadResult>('/orders/bulk/buyer-note/read', {
+        method: 'POST',
+        body: JSON.stringify({ orderIds }),
+      });
+    },
+    assignTag(internalOrderId, tagId): Promise<void> {
+      return request<void>(`/orders/${encodeURIComponent(internalOrderId)}/tags`, {
+        method: 'POST',
+        body: JSON.stringify({ tagId }),
+      });
+    },
+    unassignTag(internalOrderId, tagId): Promise<void> {
+      return request<void>(
+        `/orders/${encodeURIComponent(internalOrderId)}/tags/${encodeURIComponent(tagId)}`,
+        { method: 'DELETE' },
+      );
+    },
+    listOrderTags(internalOrderId): Promise<string[]> {
+      return request<string[]>(`/orders/${encodeURIComponent(internalOrderId)}/tags`);
+    },
+    listColumnPresets(): Promise<OrderColumnPreset[]> {
+      return request<OrderColumnPreset[]>('/orders/column-presets');
+    },
+    getWorkspaceDefaultColumnPreset(): Promise<OrderColumnPreset | null> {
+      return request<OrderColumnPreset | null>('/orders/column-presets/workspace-default');
+    },
+    createColumnPreset(name, columns): Promise<OrderColumnPreset> {
+      return request<OrderColumnPreset>('/orders/column-presets', {
+        method: 'POST',
+        body: JSON.stringify({ name, columns }),
+      });
+    },
+    updateColumnPreset(id, patch): Promise<OrderColumnPreset> {
+      return request<OrderColumnPreset>(`/orders/column-presets/${encodeURIComponent(id)}`, {
+        method: 'PUT',
+        body: JSON.stringify(patch),
+      });
+    },
+    deleteColumnPreset(id): Promise<void> {
+      return request<void>(`/orders/column-presets/${encodeURIComponent(id)}`, {
+        method: 'DELETE',
+      });
+    },
+    setWorkspaceDefaultColumnPreset(columns): Promise<OrderColumnPreset> {
+      return request<OrderColumnPreset>('/orders/column-presets/workspace-default', {
+        method: 'PUT',
+        body: JSON.stringify({ columns }),
+      });
+    },
+    requestExport(body): Promise<OrderExportRun> {
+      return request<OrderExportRun>('/orders/export', {
+        method: 'POST',
+        body: JSON.stringify(body),
+      });
+    },
+    getExportRun(runId): Promise<OrderExportRun> {
+      return request<OrderExportRun>(`/orders/export/${encodeURIComponent(runId)}`);
+    },
+    downloadExport(runId): Promise<Blob> {
+      return requestBlob(`/orders/export/${encodeURIComponent(runId)}/download`);
     },
   };
 }

@@ -252,6 +252,35 @@ describe('PrestashopOrderMapper', () => {
         expect(result.totals.shippingGross).toBe(12.3);
       });
 
+      it('should carry carrier_tax_rate as a percent code without trailing zeros', () => {
+        const order = grossOrder();
+        order['carrier_tax_rate'] = '23.000';
+
+        expect(mapper.mapOrder(order, []).totals.shippingTaxRate).toBe('23');
+
+        order['carrier_tax_rate'] = '5.500';
+        expect(mapper.mapOrder(order, []).totals.shippingTaxRate).toBe('5.5');
+      });
+
+      it('should treat a 0.000 carrier rate as unknown when shipping gross exceeds net', () => {
+        const order = grossOrder();
+        order['carrier_tax_rate'] = '0.000';
+
+        expect('shippingTaxRate' in mapper.mapOrder(order, []).totals).toBe(false);
+      });
+
+      it('should keep a 0.000 carrier rate as 0 when shipping carries no tax', () => {
+        const order = grossOrder();
+        order['carrier_tax_rate'] = '0.000';
+        order.total_shipping_tax_incl = '10.00';
+
+        expect(mapper.mapOrder(order, []).totals.shippingTaxRate).toBe('0');
+      });
+
+      it('should leave shippingTaxRate ABSENT when the shop reports no carrier rate', () => {
+        expect('shippingTaxRate' in mapper.mapOrder(grossOrder(), []).totals).toBe(false);
+      });
+
       it('should leave unitPriceGross ABSENT when the shop reports no gross column', () => {
         const rows: PrestashopOrderRow[] = [
           { id: '1', product_id: '7', product_quantity: '1', product_price: '1499.000000' },

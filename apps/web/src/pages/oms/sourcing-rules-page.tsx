@@ -45,6 +45,7 @@ import { useConnectionsQuery } from '../../features/connections/hooks/use-connec
 import { useActiveLocationCountQuery, useBootstrapLocationsMutation } from '../../features/inventory';
 import {
   SourcingRulesSection,
+  SourcingRulesTestPanel,
   SOURCING_RULES_PAGE_COPY as COPY,
   useInventoryLocationsForRulesQuery,
 } from '../../features/oms';
@@ -55,9 +56,7 @@ import { Alert } from '../../shared/ui/alert';
 import { Button } from '../../shared/ui/button';
 import { EmptyState, ErrorState, LoadingState } from '../../shared/ui/feedback-state';
 import { PageLayout } from '../../shared/ui/page-layout';
-
-/** The discriminator `createOmsFulfillmentRouterResolver` uses (ADR-055). */
-const OMS_PLATFORM_TYPE = 'openlinker';
+import { findOmsConnections } from './oms-connection';
 
 export function SourcingRulesPage(): ReactElement {
   const [searchParams] = useSearchParams();
@@ -117,9 +116,7 @@ export function SourcingRulesPage(): ReactElement {
   }
 
   const connections = connectionsQuery.data ?? [];
-  const omsConnections = connections.filter(
-    (connection) => connection.platformType === OMS_PLATFORM_TYPE
-  );
+  const omsConnections = findOmsConnections(connections);
 
   // An explicit `?connectionId=` is honoured so a link from a connection page
   // lands somewhere truthful; it is validated rather than trusted, because a
@@ -207,6 +204,7 @@ export function SourcingRulesPage(): ReactElement {
         </Alert>
       ) : null}
       <SourcingRulesSection connectionId={connection.id} locations={locationsPage.options} />
+      <SourcingRulesTestPanel connectionId={connection.id} locations={locationsPage.options} />
     </>
   );
 }

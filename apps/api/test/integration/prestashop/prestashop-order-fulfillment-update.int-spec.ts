@@ -44,7 +44,7 @@ import {
 } from '@openlinker/core/orders';
 import { ProductOrmEntity, ProductVariantOrmEntity } from '@openlinker/core/products/orm-entities';
 import { describeUnsuccessfulSync, destinationOrderIdFromRef } from '../helpers/order-ref.helper';
-import { getTestHarness, IntegrationTestHarness } from '../setup';
+import { getTestHarness, IntegrationTestHarness, resetTestHarness } from '../setup';
 import {
   PrestashopTestContainer,
   startPrestashopContainer,
@@ -123,9 +123,10 @@ async function fetchPsListByOrder<T>(
 }
 
 /**
- * Seed one orderable PS product + the OL Product/ProductVariant rows + the two
- * identifier_mappings (source Offer mapping + destination Product mapping) the
- * ingest path needs. Mirrors `seedScenario` in the carrier-mapping spec.
+ * Seed one orderable PS product + the OL Product/ProductVariant rows + the
+ * three identifier_mappings (source Offer mapping + destination Product and
+ * synthetic ProductVariant mappings) the ingest path needs. Mirrors
+ * `seedScenario` in the carrier-mapping spec.
  */
 async function seedOrderableProduct(opts: {
   harness: IntegrationTestHarness;
@@ -157,6 +158,15 @@ async function seedOrderableProduct(opts: {
     'Offer',
     opts.externalOfferId,
     opts.allegroConnectionId,
+    internalVariantId
+  );
+  // Synthetic simple-product variant mapping, as the PS product sync mints it
+  // (#923) — the adapter refuses an order line whose variant has no
+  // destination mapping (#3472).
+  await identifierMapping.createMapping(
+    'ProductVariant',
+    `product:${psProduct.idProduct}`,
+    opts.prestashopConnectionId,
     internalVariantId
   );
 
@@ -289,6 +299,10 @@ describe('PrestaShop order fulfillment update (#858)', () => {
       if (prestashopConnectionId) {
         await deleteTestConnection(harness.getDataSource(), prestashopConnectionId);
       }
+      // The orders this suite ingested would otherwise stay in the shared
+      // database for whichever spec the worker runs next: order-dispatch-sla
+      // read four of them as deadline-less rows and failed on main.
+      await resetTestHarness();
     }
     // Restore the env var the suite mutated (maxWorkers:1 → leakage otherwise).
     if (INSTALL_OL_MODULE) {

@@ -23,6 +23,17 @@ export interface InpostRequestOptions {
   query?: Record<string, string | number | boolean | readonly (string | number)[] | undefined>;
   /** JSON request body (serialised by the client). */
   body?: unknown;
+  /**
+   * Whether the call is safe to auto-retry on an **ambiguous** failure — a
+   * network/timeout or an ambiguous `5xx` that might have committed
+   * server-side. `GET`/`DELETE` are always treated as idempotent regardless
+   * of this flag (mirrors the DPD/KSeF precedent, #3469); a `POST` needs an
+   * explicit `idempotent: true`, since ShipX has no idempotency key and
+   * retrying a committed-but-lost `POST /shipments` mints a second paid
+   * label. `429` is retried regardless of this flag — ShipX did not process
+   * the request, so a retry can't double-create.
+   */
+  idempotent?: boolean;
 }
 
 /** Raw-bytes response — the document bytes plus the reported content type. */

@@ -74,6 +74,8 @@ export const omsAdapterManifest: AdapterMetadata = {
   version: '1.0.0',
   isDefault: true,
   requiresCredentials: false,
+  // #3657 — disable only, never archive: see AdapterMetadata.archivable.
+  archivable: false,
 };
 
 /**

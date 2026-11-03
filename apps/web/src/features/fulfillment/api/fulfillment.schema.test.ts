@@ -10,7 +10,11 @@
  */
 import { describe, expect, it } from 'vitest';
 
-import { fulfillmentTaskPageSchema, fulfillmentTaskSchema } from './fulfillment.schema';
+import {
+  fulfillmentTaskPageSchema,
+  fulfillmentTaskSchema,
+  fulfillmentTaskShipmentsSchema,
+} from './fulfillment.schema';
 
 function task(overrides: Record<string, unknown> = {}): Record<string, unknown> {
   return {
@@ -112,6 +116,98 @@ describe('fulfillmentTaskSchema (#2411)', () => {
 
     expect(() => fulfillmentTaskSchema.parse(raw)).toThrow();
   });
+
+  it('should parse expeditedAt as a nullable ISO string (#3247)', () => {
+    expect(
+      fulfillmentTaskSchema.parse(task({ expeditedAt: '2026-09-10T11:00:00.000Z' })).expeditedAt
+    ).toBe('2026-09-10T11:00:00.000Z');
+    expect(fulfillmentTaskSchema.parse(task({ expeditedAt: null })).expeditedAt).toBeNull();
+  });
+
+  it('should normalise an omitted expeditedAt to null — an API that predates the field', () => {
+    const raw = task();
+    delete raw.expeditedAt;
+
+    expect(fulfillmentTaskSchema.parse(raw).expeditedAt).toBeNull();
+  });
+
+  it('should parse the line product facts when the API sends them (#3096)', () => {
+    const parsed = fulfillmentTaskSchema.parse(
+      task({
+        lines: [
+          {
+            id: 'l1',
+            orderLineId: 'o1',
+            productVariantId: 'v1',
+            productName: 'Mug',
+            sku: 'MUG-1',
+            ean: '5901234123457',
+            imageUrl: '/products/p1/images/0',
+            attributes: { Colour: 'white' },
+            totalQuantity: 1,
+            fulfilledQuantity: 0,
+            cancelledQuantity: 0,
+          },
+        ],
+      })
+    );
+
+    expect(parsed.lines[0]).toMatchObject({
+      productName: 'Mug',
+      sku: 'MUG-1',
+      ean: '5901234123457',
+      imageUrl: '/products/p1/images/0',
+      attributes: { Colour: 'white' },
+    });
+  });
+
+  it('should keep a line parseable when the API predates the product facts (#3096)', () => {
+    const parsed = fulfillmentTaskSchema.parse(
+      task({
+        lines: [
+          { id: 'l1', orderLineId: 'o1', productVariantId: 'v1', totalQuantity: 1, fulfilledQuantity: 0, cancelledQuantity: 0 },
+        ],
+      })
+    );
+
+    expect(parsed.lines[0]).toMatchObject({ productName: null, sku: null, imageUrl: null, attributes: null });
+  });
+
+  it('should degrade malformed attributes to null rather than failing the task (#3096)', () => {
+    const parsed = fulfillmentTaskSchema.parse(
+      task({
+        lines: [
+          {
+            id: 'l1',
+            orderLineId: 'o1',
+            productVariantId: 'v1',
+            attributes: { Size: 42 },
+            totalQuantity: 1,
+            fulfilledQuantity: 0,
+            cancelledQuantity: 0,
+          },
+        ],
+      })
+    );
+
+    expect(parsed.lines[0]?.attributes).toBeNull();
+  });
+
+  it('should keep an absent parcelClosedAt distinct from a null one (#3096, G02-3)', () => {
+    expect(fulfillmentTaskSchema.parse(task()).parcelClosedAt).toBeUndefined();
+    expect(fulfillmentTaskSchema.parse(task({ parcelClosedAt: null })).parcelClosedAt).toBeNull();
+    expect(
+      fulfillmentTaskSchema.parse(task({ parcelClosedAt: '2026-09-10T11:00:00.000Z' })).parcelClosedAt
+    ).toBe('2026-09-10T11:00:00.000Z');
+  });
+
+  it('should normalise the other bench facts to null when absent (#3096, G02-3)', () => {
+    const parsed = fulfillmentTaskSchema.parse(task());
+
+    expect(parsed.channelNotifiedAt).toBeNull();
+    expect(parsed.completedAt).toBeNull();
+    expect(parsed.packedByUserId).toBeNull();
+  });
 });
 
 describe('fulfillmentTaskPageSchema (#2411)', () => {
@@ -125,5 +221,46 @@ describe('fulfillmentTaskPageSchema (#2411)', () => {
 
     expect(parsed.works).toHaveLength(1);
     expect(parsed.total).toBe(1);
+  });
+});
+
+describe('fulfillmentTaskShipmentsSchema (#3292)', () => {
+  function shipment(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+    return {
+      id: 'ol_shipment_1',
+      status: 'dispatched',
+      carrier: 'inpost',
+      trackingNumber: '6800000001',
+      hasLabel: true,
+      createdAt: '2026-09-01T09:00:00.000Z',
+      dispatchedAt: '2026-09-01T09:05:00.000Z',
+      deliveredAt: null,
+      ...overrides,
+    };
+  }
+
+  it('should parse a list of shipments', () => {
+    const parsed = fulfillmentTaskShipmentsSchema.parse([shipment()]);
+    expect(parsed).toHaveLength(1);
+    expect(parsed[0]?.trackingNumber).toBe('6800000001');
+  });
+
+  it('should default a missing/null response to an empty array, never a throw', () => {
+    expect(fulfillmentTaskShipmentsSchema.parse(null)).toEqual([]);
+    expect(fulfillmentTaskShipmentsSchema.parse(undefined)).toEqual([]);
+  });
+
+  it('should keep a status this build does not recognise instead of rejecting the shipment', () => {
+    const parsed = fulfillmentTaskShipmentsSchema.parse([shipment({ status: 'a_new_status' })]);
+    expect(parsed[0]?.status).toBe('a_new_status');
+  });
+
+  it('should normalise null carrier/trackingNumber/deliveredAt rather than failing to parse', () => {
+    const parsed = fulfillmentTaskShipmentsSchema.parse([
+      shipment({ carrier: null, trackingNumber: null, hasLabel: false, deliveredAt: null }),
+    ]);
+    expect(parsed[0]?.carrier).toBeNull();
+    expect(parsed[0]?.trackingNumber).toBeNull();
+    expect(parsed[0]?.hasLabel).toBe(false);
   });
 });

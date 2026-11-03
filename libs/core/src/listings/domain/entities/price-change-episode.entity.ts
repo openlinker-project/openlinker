@@ -24,6 +24,7 @@
  */
 import type {
   PriceChangeBlockReason,
+  PriceChangeCause,
   PriceChangeResolution,
 } from '../types/price-change-episode.types';
 
@@ -62,7 +63,13 @@ export class PriceChangeEpisode {
      * `null` on a never-claimed episode, including every automatic-mode row
      * (the detection service enqueues directly and never claims).
      */
-    public readonly claimedAt: Date | null = null
+    public readonly claimedAt: Date | null = null,
+    /**
+     * Why this episode exists beyond "the master price moved" (ADR-077), e.g.
+     * `'tax-basis-correction'`. `null` for an ordinary price change. Never
+     * blocks a manual decision; it only withholds the automatic apply.
+     */
+    public readonly cause: PriceChangeCause | null = null
   ) {}
 
   isOpen(): boolean {

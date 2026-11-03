@@ -16,6 +16,7 @@
 
 import type { Shipment } from '../entities/shipment.entity';
 import type { ShipmentDirection } from '../types/shipment-direction.types';
+import type { FindDeliveredRelayPendingOptions } from '../types/delivered-relay.types';
 import type {
   PaginatedShipments,
   ShipmentFilters,
@@ -240,8 +241,9 @@ export interface ShipmentRepositoryPort {
    * rather than writing it beside adds NO new failure mode - the release was
    * already an un-caught `await` on both failure paths - while making the
    * accounting structurally complete. Both callers are failure paths in
-   * `ShipmentStatusSyncService.relayWaybillToParticipants`; there is no third
-   * caller that could count a non-failure.
+   * `relayWaybillUnderClaim` (`waybill-relay.ts`, shared by the carrier poll and
+   * the source-side fulfilment read-back); there is no third caller that could
+   * count a non-failure.
    *
    * `failure` is REQUIRED, not optional. An optional argument would be a silent
    * decline: a caller that omitted it would release the claim and record
@@ -250,6 +252,16 @@ export interface ShipmentRepositoryPort {
    * @see clearWaybillRelayFailures for the reset half.
    */
   releaseWaybillRelay(id: string, failure: RecordWaybillRelayFailureInput): Promise<void>;
+
+  /**
+   * Record the failure that reached the give-up bound and KEEP the claim taken
+   * by {@link claimWaybillRelay} (#3506), so the relay is not re-driven: the
+   * participants that applied it stop being re-notified because one of them
+   * never will. Counted exactly like {@link releaseWaybillRelay}, so the
+   * escalation on the read surface still shows the row; only the release is
+   * left out.
+   */
+  giveUpWaybillRelay(id: string, failure: RecordWaybillRelayFailureInput): Promise<void>;
 
   /**
    * Clear the failure history after a SUCCESSFUL relay (#2073) - the reset that
@@ -267,4 +279,38 @@ export interface ShipmentRepositoryPort {
    * the marketplace, which is the defect being fixed.
    */
   clearWaybillRelayFailures(id: string): Promise<void>;
+
+  /**
+   * One page of this connection's OUTBOUND, provider-backed (non-branch-1)
+   * `delivered` shipments whose
+   * `delivered` lifecycle relay is still owed (#3506, G02-7): no
+   * `deliveredRelayedAt`, fewer than `maxFailures` failed attempts, delivered
+   * (or, lacking a carrier instant, created) at or after `deliveredSince`, and
+   * no failure since `lastFailureBefore`. Oldest first, capped at `limit`.
+   *
+   * Frontier-as-query, like {@link listDispatchedAwaitingReservationConsume}:
+   * a stamped row leaves the set, so the predicate is the cursor and an offset
+   * would step over rows.
+   */
+  findDeliveredRelayPending(
+    connectionId: string,
+    options: FindDeliveredRelayPendingOptions,
+  ): Promise<readonly Shipment[]>;
+
+  /**
+   * Stamp `deliveredRelayedAt`, only if it is still NULL (#3506). Monotone, so
+   * two racing relays both reporting success stamp once.
+   *
+   * @returns whether THIS call stamped it.
+   */
+  markDeliveredRelayed(id: string, at: Date): Promise<boolean>;
+
+  /**
+   * Count one failed `delivered` relay attempt (#3506): increments
+   * `deliveredRelayFailureCount` and sets `deliveredRelayLastFailureAt`, in one
+   * statement, only while the relay is still owed.
+   *
+   * @returns the count after the increment, or 0 when no owed row matched.
+   */
+  recordDeliveredRelayFailure(id: string, at: Date): Promise<number>;
 }

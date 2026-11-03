@@ -3,10 +3,18 @@
  *
  * Optional sub-capability of `OfferManagerPort` — adapters whose marketplace
  * auto-decrements stock on purchase but does NOT restore it on cancellation
- * (e.g. Erli, ADR-025 §4a) declare `implements OfferStockRestorer` and issue the
- * compensating absolute-set write. Core resolves the per-offer target quantity
- * from master inventory and passes `OfferStockRestoreTarget[]`; the adapter just
- * writes (it never reads master inventory).
+ * (Erli, ADR-025 §4a; Allegro, E2E-24) declare `implements OfferStockRestorer`.
+ *
+ * Core's cancellation restore (`OfferStockRestoreService`) reads the
+ * declaration and then issues the compensating absolute set itself, through the
+ * ordered quantity write every propagation uses (`IInventorySyncService
+ * .updateOfferQuantities`, #2617 / ADR-067), rather than calling
+ * `restoreStockOnCancellation`. An adapter cannot see the per-offer freshness
+ * mark, so a restore it wrote directly could land after a newer propagation and
+ * roll the listing back. The method stays the contract an implementer
+ * satisfies - an absolute set per target, never a read-and-increment, honouring
+ * `idempotencyKey` where its write is command-keyed - and is what an
+ * adapter-internal caller (Erli's order-source cancellation writeback) uses.
  *
  * See `offer-field-updater.capability.ts` for the shared naming convention.
  *

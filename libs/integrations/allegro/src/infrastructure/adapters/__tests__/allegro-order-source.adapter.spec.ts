@@ -16,6 +16,7 @@ import type {
   AllegroOrderEventsResponse,
 } from '../../../domain/types/allegro-api.types';
 import { AllegroApiException } from '../../../domain/exceptions/allegro-api.exception';
+import { checkPaymentFactsConsistency } from '@openlinker/core/orders';
 import type { OrderLifecycleEvent } from '@openlinker/core/orders';
 
 describe('AllegroOrderSourceAdapter', () => {
@@ -362,10 +363,28 @@ describe('AllegroOrderSourceAdapter', () => {
 
     it('cancelled: sets the Allegro fulfillment status to CANCELLED and returns applied', async () => {
       const result = await adapter.write({ type: 'cancelled', externalOrderId: 'cf-1' });
-      expect(httpClient.put).toHaveBeenCalledWith('/order/checkout-forms/cf-1/fulfillment', {
-        status: 'CANCELLED',
-      });
+      expect(httpClient.put).toHaveBeenCalledWith(
+        '/order/checkout-forms/cf-1/fulfillment',
+        { status: 'CANCELLED' },
+        { maxRetries: 0 }
+      );
       expect(result).toEqual({ outcome: 'applied' });
+    });
+
+    it.each([
+      ['a 5xx', new AllegroApiException('Allegro API server error (500)', 500)],
+      ['a timeout', new AllegroApiException('Request timeout after 30000ms', undefined)],
+    ])('cancelled: flags %s as transient so the relay treats it as no answer (C-28)', async (_n, err) => {
+      httpClient.put.mockRejectedValueOnce(err);
+      const result = await adapter.write({ type: 'cancelled', externalOrderId: 'cf-1' });
+      expect(result.outcome).toBe('rejected');
+      expect(result.transient).toBe(true);
+    });
+
+    it('cancelled: a 4xx refusal is not transient (C-28)', async () => {
+      httpClient.put.mockRejectedValueOnce(new AllegroApiException('not allowed', 422));
+      const result = await adapter.write({ type: 'cancelled', externalOrderId: 'cf-1' });
+      expect(result.transient).toBeUndefined();
     });
 
     it('cancelled: returns rejected on a 4xx (e.g. forbidden transition)', async () => {
@@ -381,6 +400,17 @@ describe('AllegroOrderSourceAdapter', () => {
       expect(result.outcome).toBe('rejected');
       expect(result.detail).toContain('conflict');
     });
+
+    it.each(['delivered', 'in-progress'] as const)(
+      '%s: declines rather than writing to an unverified endpoint (#3526)',
+      async (type) => {
+        const result = await adapter.write({ type, externalOrderId: 'cf-1' });
+
+        expect(result.outcome).toBe('unsupported');
+        expect(httpClient.put).not.toHaveBeenCalled();
+        expect(httpClient.post).not.toHaveBeenCalled();
+      }
+    );
 
     // #2286 — the runtime half of the exhaustiveness guard. Before the switch
     // conversion an unrecognised member fell through to the cancel path and was
@@ -562,7 +592,11 @@ describe('AllegroOrderSourceAdapter', () => {
           },
         ],
         summary: { totalToPay: { amount: '39.98', currency: 'PLN' } },
-        payment: { type: 'ONLINE', finishedAt: '2024-01-01T01:00:00Z' },
+        payment: {
+          type: 'ONLINE',
+          finishedAt: '2024-01-01T01:00:00Z',
+          paidAmount: { amount: '39.98', currency: 'PLN' },
+        },
       };
       httpClient.get.mockResolvedValueOnce({ data: checkoutForm, status: 200, headers: {} });
 
@@ -590,10 +624,95 @@ describe('AllegroOrderSourceAdapter', () => {
         taxTreatment: 'inclusive',
       });
       expect(incoming.shippingAddress?.city).toBe('Warsaw');
-      // #928 — prepaid ONLINE order with finishedAt → paid (dispatch permitted).
+      // #928 / E2E-22 — prepaid ONLINE order with money received → paid (dispatch permitted).
       expect(incoming.paymentStatus).toBe('paid');
       // #1435 — a prepaid (non-COD) order carries no sourced COD amount.
       expect(incoming.codToCollect).toBeUndefined();
+      // #3474 — Allegro's own payment type rides along as the payment-mapping key.
+      expect(incoming.sourcePaymentMethod).toBe('ONLINE');
+      // #3294 - the neutral method beside it, consistent with the status.
+      expect(incoming.paymentMethod).toBe('online');
+    });
+
+    it.each([
+      ['a text', '  Please leave at the door  ', 'Please leave at the door'],
+      ['an absent field', undefined, null],
+      ['a blank field', '   ', null],
+    ])(
+      'should report the buyer note from messageToSeller: %s (#3538)',
+      async (_label, messageToSeller, expected) => {
+        const checkoutForm: AllegroCheckoutForm = {
+          id: 'checkout-note',
+          status: 'READY_FOR_PROCESSING',
+          updatedAt: '2024-01-02T00:00:00Z',
+          buyer: { id: 'b9', email: 'b9@example.com', login: 'b9' },
+          lineItems: [
+            {
+              id: 'l1',
+              offer: { id: 'o1', name: 'O1' },
+              quantity: 1,
+              price: { amount: '10.00', currency: 'PLN' },
+            },
+          ],
+          summary: { totalToPay: { amount: '10.00', currency: 'PLN' } },
+          payment: { type: 'ONLINE', finishedAt: '2024-01-02T00:00:00Z' },
+          ...(messageToSeller === undefined ? {} : { messageToSeller }),
+        };
+        httpClient.get.mockResolvedValueOnce({ data: checkoutForm, status: 200, headers: {} });
+
+        const incoming = await adapter.getOrder({ externalOrderId: 'checkout-note' });
+
+        expect(incoming.buyerNote).toBe(expected);
+      }
+    );
+
+    it('should report an unmapped payment type as unknown, never a guess (#3294)', async () => {
+      const checkoutForm: AllegroCheckoutForm = {
+        id: 'checkout-wallet',
+        status: 'READY_FOR_PROCESSING',
+        updatedAt: '2024-01-02T00:00:00Z',
+        buyer: { id: 'b8', email: 'b8@example.com', login: 'b8' },
+        lineItems: [
+          {
+            id: 'l1',
+            offer: { id: 'o1', name: 'O1' },
+            quantity: 1,
+            price: { amount: '10.00', currency: 'PLN' },
+          },
+        ],
+        summary: { totalToPay: { amount: '10.00', currency: 'PLN' } },
+        payment: { type: 'WALLET', finishedAt: '2024-01-02T00:00:00Z' },
+      };
+      httpClient.get.mockResolvedValueOnce({ data: checkoutForm, status: 200, headers: {} });
+
+      const incoming = await adapter.getOrder({ externalOrderId: 'checkout-wallet' });
+
+      expect(incoming.paymentMethod).toBe('unknown');
+      expect(incoming.codToCollect).toBeUndefined();
+    });
+
+    it('should omit sourcePaymentMethod when the checkout carries no payment type (#3474)', async () => {
+      const checkoutForm: AllegroCheckoutForm = {
+        id: 'checkout-no-payment-type',
+        status: 'READY_FOR_PROCESSING',
+        updatedAt: '2024-01-02T00:00:00Z',
+        buyer: { id: 'b9', email: 'b9@example.com', login: 'b9' },
+        lineItems: [
+          {
+            id: 'l1',
+            offer: { id: 'o1', name: 'O1' },
+            quantity: 1,
+            price: { amount: '10.00', currency: 'PLN' },
+          },
+        ],
+        summary: { totalToPay: { amount: '10.00', currency: 'PLN' } },
+        payment: { type: '' },
+      };
+      httpClient.get.mockResolvedValueOnce({ data: checkoutForm, status: 200, headers: {} });
+
+      const incoming = await adapter.getOrder({ externalOrderId: 'checkout-no-payment-type' });
+
+      expect('sourcePaymentMethod' in incoming).toBe(false);
     });
 
     it('should leave billingAddress undefined when the checkout carries no VAT invoice block (#2822)', async () => {
@@ -755,6 +874,12 @@ describe('AllegroOrderSourceAdapter', () => {
       // #1435 — a COD order carries the sourced collect amount (the full
       // order total the buyer pays on delivery) from summary.totalToPay.
       expect(incoming.codToCollect).toEqual({ amount: '10.00', currency: 'PLN' });
+      // #3474 — the native type, verbatim, so an operator's mapping row for
+      // CASH_ON_DELIVERY matches.
+      expect(incoming.sourcePaymentMethod).toBe('CASH_ON_DELIVERY');
+      // #3294 - cash on delivery is reported as such, with the sourced amount.
+      expect(incoming.paymentMethod).toBe('cash_on_delivery');
+      expect(checkPaymentFactsConsistency(incoming)).toEqual([]);
     });
 
     it('should report cancelled status when the checkout-form transaction was voided on Allegro (#1322 manual E2E)', async () => {
@@ -1391,6 +1516,48 @@ describe('AllegroOrderSourceAdapter', () => {
       });
     });
 
+    describe('fulfilledBySource (#3636)', () => {
+      const form = (fulfillment?: AllegroCheckoutForm['fulfillment']): AllegroCheckoutForm => ({
+        id: 'cf',
+        updatedAt: '2024-01-01T00:00:00Z',
+        buyer: { id: 'b', email: 'b@e.com', login: 'b' },
+        lineItems: [
+          {
+            id: 'l1',
+            offer: { id: 'o1', name: 'O1' },
+            quantity: 1,
+            price: { amount: '10.00', currency: 'PLN' },
+          },
+        ],
+        summary: { totalToPay: { amount: '10.00', currency: 'PLN' } },
+        payment: { type: 'ONLINE' },
+        ...(fulfillment && { fulfillment }),
+      });
+
+      const read = async (
+        fulfillment?: AllegroCheckoutForm['fulfillment']
+      ): Promise<Awaited<ReturnType<typeof adapter.getOrder>>> => {
+        httpClient.get.mockResolvedValueOnce({ data: form(fulfillment), status: 200, headers: {} });
+        return adapter.getOrder({ externalOrderId: 'cf' });
+      };
+
+      it('should assert fulfilledBySource for a One Fulfillment (ALLEGRO) order', async () => {
+        const incoming = await read({ status: 'NEW', provider: { id: 'ALLEGRO' } });
+        expect(incoming.fulfilledBySource).toBe(true);
+      });
+
+      it('should leave fulfilledBySource unset when the seller manages the order', async () => {
+        const incoming = await read({ status: 'NEW', provider: { id: 'SELLER' } });
+        expect(incoming.fulfilledBySource).toBeUndefined();
+        expect('fulfilledBySource' in incoming).toBe(false);
+      });
+
+      it('should leave fulfilledBySource unset when no provider is reported', async () => {
+        expect((await read({ status: 'NEW' })).fulfilledBySource).toBeUndefined();
+        expect((await read()).fulfilledBySource).toBeUndefined();
+      });
+    });
+
     describe('deliverySmart (#738)', () => {
       const baseForm = (): AllegroCheckoutForm => ({
         id: 'cf',
@@ -1492,10 +1659,10 @@ describe('AllegroOrderSourceAdapter', () => {
           expect.arrayContaining([
             { value: 'ONLINE', label: 'Online payment (Allegro Pay / card / instant transfer)' },
             { value: 'CASH_ON_DELIVERY', label: 'Cash on delivery' },
-            { value: 'BANK_TRANSFER', label: 'Bank transfer' },
+            { value: 'WIRE_TRANSFER', label: 'Bank transfer outside Allegro Finance' },
           ])
         );
-        expect(result.length).toBeGreaterThanOrEqual(6);
+        expect(result).toHaveLength(5);
       });
 
       it('does not call the Allegro HTTP client', async () => {

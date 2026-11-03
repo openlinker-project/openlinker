@@ -175,6 +175,19 @@ describe('ProductsListPage', () => {
     expect(screen.getByText('Another Product')).toBeInTheDocument();
   });
 
+  it('should carry the stock list test ids from the stock mockup on the table, rows and name links', async () => {
+    const mockApi = createMockApiClient({
+      products: { list: vi.fn().mockResolvedValue(sampleProducts) },
+    });
+
+    renderWithProviders(<ProductsListPage />, { apiClient: mockApi });
+
+    await screen.findByText('Test Product');
+    expect(screen.getByTestId('stock-list-table')).toBeInTheDocument();
+    const row = screen.getByTestId('stock-list-row-SKU-001');
+    expect(within(row).getByTestId('stock-list-open-SKU-001')).toHaveTextContent('Test Product');
+  });
+
   it('captures demo_products_viewed once with a result-count bucket on load (#1788)', async () => {
     const mockApi = createMockApiClient({
       products: { list: vi.fn().mockResolvedValue(sampleProducts) },
@@ -217,6 +230,36 @@ describe('ProductsListPage', () => {
     expect(within(table).getByText('In stock')).toBeInTheDocument();
     expect(within(table).getByText('Low stock')).toBeInTheDocument();
     expect(within(table).getByText('reserved 2')).toBeInTheDocument();
+  });
+
+  it('renders the stock badge from what can be sold and never shows null as out of stock', async () => {
+    const mockApi = createMockApiClient({
+      products: {
+        list: vi.fn().mockResolvedValue({
+          ...sampleProducts,
+          items: [
+            { ...sampleProducts.items[0]!, totalAvailable: 40, availableToPromise: 3, atpProvenance: 'computed' },
+            { ...sampleProducts.items[1]!, totalAvailable: 0, availableToPromise: null, atpProvenance: 'unknown' },
+          ],
+        }),
+      },
+    });
+
+    renderWithProviders(<ProductsListPage />, { apiClient: mockApi });
+
+    await screen.findByText('Test Product');
+    const table = screen.getByRole('table');
+    // Master says 40 (would read "In stock"); available to promise is 3.
+    expect(within(table).getByText('Low stock')).toBeInTheDocument();
+    expect(within(table).getByText('master 40')).toBeInTheDocument();
+    expect(within(table).getAllByText('Not known').length).toBeGreaterThan(0);
+    // "Unknown" is still the name a connection chip falls back to for an
+    // unresolved connection; what must never carry it is a stock badge.
+    const unknownLabels = within(table)
+      .queryAllByText('Unknown')
+      .filter((el) => !el.classList.contains('connection-chip__name'));
+    expect(unknownLabels).toHaveLength(0);
+    expect(within(table).queryByText('Out of stock')).toBeNull();
   });
 
   it('renders coverage pills only for connections the operator has (Allegro-only install)', async () => {
@@ -669,6 +712,53 @@ describe('ProductsListPage', () => {
     });
   });
 
+  it('should say to sell on the desktop row and never to promise', async () => {
+    const mockApi = createMockApiClient({
+      products: {
+        list: vi.fn().mockResolvedValue({
+          ...sampleProducts,
+          items: [{ ...sampleProducts.items[0]!, totalAvailable: 40, availableToPromise: 3, atpProvenance: 'computed' }],
+        }),
+      },
+    });
+
+    renderWithProviders(<ProductsListPage />, { apiClient: mockApi });
+
+    await screen.findByText('Test Product');
+    const cell = screen.getByTestId('stock-list-cell-SKU-001');
+    expect(cell).toHaveTextContent('3');
+    expect(cell).toHaveTextContent('to sell');
+    expect(cell).not.toHaveTextContent('promise');
+  });
+
+  it('should give a mobile card the same row and cell test ids as the desktop row, and say to sell', async () => {
+    const { restore } = mockMobileViewport();
+    try {
+      const mockApi = createMockApiClient({
+        products: {
+          list: vi.fn().mockResolvedValue({
+            ...sampleProducts,
+            items: [
+              { ...sampleProducts.items[0]!, totalAvailable: 40, availableToPromise: 3, atpProvenance: 'computed' },
+              { ...sampleProducts.items[1]!, totalAvailable: 0, availableToPromise: null, atpProvenance: 'unknown' },
+            ],
+          }),
+        },
+      });
+
+      renderWithProviders(<ProductsListPage />, { apiClient: mockApi });
+
+      await screen.findByText('Test Product');
+      expect(screen.getByTestId('stock-list-cards')).toBeInTheDocument();
+      const card = screen.getByTestId('stock-list-row-SKU-001');
+      expect(within(card).getByTestId('stock-list-cell-SKU-001')).toHaveTextContent('3 to sell · Low stock');
+      const unknownCard = screen.getByTestId('stock-list-row-ol_product_def456');
+      expect(within(unknownCard).getByTestId('stock-list-cell-ol_product_def456')).toHaveTextContent('Not known');
+    } finally {
+      restore();
+    }
+  });
+
   // ── Mobile card disclosure (#1720) ──────────────────────────────────
 
   it('keeps the mobile card detail collapsed until the disclosure is toggled', async () => {
@@ -1061,16 +1151,17 @@ describe('ProductsListPage', () => {
         return found!;
       });
 
-      // The pill is the Products adornment (Listings passes none, Shipments a
-      // carrier dot) and it leads line 1 rather than replacing the name.
-      const adornment = cell.querySelector('.connection-cell__adornment');
-      expect(adornment).not.toBeNull();
-      const pill = adornment!.querySelector('.channel-pill');
-      expect(pill).toHaveAttribute('data-channel', 'prestashop');
-      expect(pill).toHaveTextContent('PrestaShop');
+      // Products passes the channel (Listings passes none, Shipments a carrier
+      // dot), and since #3670 channel and name are ONE link, never a pill
+      // beside a separate name link.
+      const chip = cell.querySelector('.connection-chip');
+      expect(chip).not.toBeNull();
+      expect(chip).toHaveAttribute('data-channel', 'prestashop');
+      expect(chip!.querySelector('.connection-chip__platform')).toHaveTextContent('PrestaShop');
+      expect(within(cell).getAllByRole('link')).toHaveLength(1);
 
       // Name over a shortened, copyable id — the fact the old cell dropped.
-      expect(within(cell).getByRole('link', { name: 'PrestaShop Terra Store' })).toHaveAttribute(
+      expect(within(cell).getByRole('link', { name: 'PrestaShop Terra Store, PrestaShop' })).toHaveAttribute(
         'href',
         '/connections/conn_presta',
       );
@@ -1174,7 +1265,7 @@ describe('ProductsListPage', () => {
       expect(getById).not.toHaveBeenCalled();
       // The pill still resolves: its platformType is on the product's own
       // external-id row, not on the connection the page could not find.
-      expect(cell.querySelector('.channel-pill')).toHaveTextContent('PrestaShop');
+      expect(cell.querySelector('.connection-chip__platform')).toHaveTextContent('PrestaShop');
     });
 
     it('renders erli and woocommerce source pills through the plugin registry, not the lowercase slug', async () => {
@@ -1220,7 +1311,7 @@ describe('ProductsListPage', () => {
       await screen.findByText('Test Product');
       const pills = await waitFor(() => {
         const found = Array.from(
-          container.querySelectorAll('.connection-cell__adornment .channel-pill'),
+          container.querySelectorAll('.connection-cell .connection-chip'),
         );
         expect(found).toHaveLength(2);
         return found;
@@ -1260,10 +1351,9 @@ describe('ProductsListPage', () => {
       expect(fold).not.toBeNull();
 
       const foldEl = fold as HTMLElement;
-      // One line: adornment + name. The pill is the same adornment the desktop
-      // cell passes on this page.
-      expect(foldEl.querySelector('.conn-fold__adornment .channel-pill')).not.toBeNull();
-      expect(within(foldEl).getByRole('link', { name: 'PrestaShop Terra Store' })).toBeInTheDocument();
+      // One line: the same channel chip the desktop cell renders on this page.
+      expect(foldEl.querySelector('.connection-chip')).not.toBeNull();
+      expect(within(foldEl).getByRole('link', { name: 'PrestaShop Terra Store, PrestaShop' })).toBeInTheDocument();
 
       // Deliberately NO copyable id: copying is a hover affordance and there is
       // no hover on touch, so the tablet form answers "which connection", not

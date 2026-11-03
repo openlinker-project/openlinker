@@ -52,6 +52,16 @@ export interface BulkSharedConfig {
  */
 export interface PerProductOverride {
   stock?: number;
+  /**
+   * `stock` was resolved from master inventory by the client, not chosen by the
+   * operator (#3851). Read on a single-variant job only: the server re-checks
+   * master availability for it and leaves the offer out of the batch when
+   * OpenLinker holds no inventory position for the variant or cannot resolve
+   * its availability, instead of publishing the client's figure - which for an
+   * unsynced variant is a 0-stock draft nobody asked for. Absent means the
+   * stock is the operator's own and is published as given.
+   */
+  stockFromMaster?: boolean;
   publishImmediately?: boolean;
   price?: { amount: number; currency: string };
   overrides?: CreateOfferOverrides;
@@ -101,6 +111,14 @@ export interface BulkListingSubmitInput {
    * excluded contributes zero jobs.
    */
   excludedVariantIds?: string[];
+  /**
+   * Client idempotency key (the `x-idempotency-key` header). When set, a
+   * submit whose `(connectionId, idempotencyKey)` already names a batch
+   * returns that batch (`deduplicated: true`) and persists / enqueues nothing,
+   * including when two submits race in the same millisecond. Absent keeps the
+   * pre-key behaviour: every submit creates a new batch.
+   */
+  idempotencyKey?: string;
 }
 
 /**
@@ -133,6 +151,14 @@ export interface ExpandedVariantJob {
    * for multi-variant expansion jobs.
    */
   useMasterStock: boolean;
+  /**
+   * A single-variant job whose submitted stock the client resolved from master
+   * inventory (`PerProductOverride.stockFromMaster`, #3851). The submitted
+   * figure is still the one published; the flag only makes the job refuse an
+   * unknown master stock - no position or unresolved availability - the way
+   * `useMasterStock` jobs refuse an unresolved one.
+   */
+  stockFromMaster?: boolean;
   /**
    * Strip the FE-resolved `productCardId` so this variant self-links to its
    * own catalog product by its own barcode. Set for expanded siblings (the
@@ -175,6 +201,25 @@ export interface BulkListingSubmitResult {
    * recovers.
    */
   skippedAvailabilityUnknownCount: number;
+  /**
+   * Count of expanded jobs dropped because the effective EAN failed the GS1
+   * check digit and the operator did not set `eanOverrideAcknowledged`
+   * (#3492). Zero when nothing was skipped. Mirrors `skippedAlreadyListedCount`
+   * / `skippedAvailabilityUnknownCount` - reported, not fatal, unless the
+   * exclusion emptied the whole batch (see `enforceIdentifierRules`, which
+   * throws `InvalidEanException` in that case instead).
+   */
+  skippedInvalidEanCount: number;
+  /**
+   * True when the submit carried an idempotency key that already named a
+   * batch, so `batchId` is that earlier batch and nothing was persisted or
+   * enqueued by THIS call. In that case `jobIds` is empty and the three
+   * skipped counts are zero: they describe work this call did, and it did
+   * none (the counts of the original submit were never persisted, so they
+   * cannot be replayed). The batch page reads the real state by `batchId`.
+   * Absent or false on an ordinary submit.
+   */
+  deduplicated?: boolean;
 }
 
 /**

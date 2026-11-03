@@ -49,6 +49,13 @@ export function LoginForm({
         <div className="guest-form__demo-bar">
           <strong>🔗 OpenLinker Demo</strong>
           <span>Explore a live sandbox with read-only access</span>
+          {/* Plain <a>, not router <Link>: these leave the app. They are also the
+              crawlable path from the indexed demo back to the project (#3709). */}
+          <nav className="guest-form__demo-links" aria-label="OpenLinker project">
+            <a href="https://openlinker.io/en/">openlinker.io</a>
+            <a href="https://docs.openlinker.io/">Docs</a>
+            <a href="https://github.com/openlinker-project/openlinker">GitHub</a>
+          </nav>
         </div>
       ) : null}
 

@@ -10,19 +10,36 @@
  * @see {@link IConnectionService} for the interface
  * @see {@link ConnectionPort} for the core port
  */
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { validateDeliveryOnDocumentsShape } from '@openlinker/core/sales-documents';
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
 import type { IConnectionService } from '../interfaces/connection.service.interface';
+import { resolveReceiptLineNameLimit } from './resolve-receipt-line-name-limit';
 import type { ConnectionCreateInput } from '../interfaces/connection.service.types';
 import type {
   Connection,
   ConnectionUpdate,
   ConnectionFilters,
+  ConnectionReferrer,
 } from '@openlinker/core/identifier-mapping';
 import {
   ConnectionPort,
   CONNECTION_PORT_TOKEN,
   ConnectionNotFoundException,
+  FULFILMENT_OWNED_BY_DESTINATION_CONFIG_KEY,
+  isPresentButInvalidFulfilmentOwnedByDestination,
+  ConnectionInUseException,
+  BUYER_EMAILS_CONFIG_KEY,
+  buyerEmailChannelKindOf,
+  MarketplaceBuyerEmailTemplateValues,
+  isBuyerEmailTemplate,
+  isSingleEmailAddress,
+  readBuyerEmailsConfig,
 } from '@openlinker/core/identifier-mapping';
 import type {
   AdapterMetadata,
@@ -50,6 +67,7 @@ import {
   InvalidCredentialsShapeException,
   ConnectionCredentialsRewriteException,
   resolveRequiresCredentials,
+  resolveArchivable,
 } from '@openlinker/core/integrations';
 import type { SyncJobRequest } from '@openlinker/core/sync';
 import { JobEnqueuePort, JOB_ENQUEUE_TOKEN } from '@openlinker/core/sync';
@@ -76,6 +94,15 @@ import { HttpTransportFactoryPort } from '@openlinker/shared/http';
  * the `ORDER_ALREADY_ON_HOLD` / `HOLD_ALREADY_RELEASED` precedent (#2341).
  */
 export const STOCK_LOCATION_OVERRIDE_INVALID_ERROR_CODE = 'STOCK_LOCATION_OVERRIDE_INVALID';
+
+/**
+ * Machine-readable code for the #2407 refusal to enable routing with no active
+ * inventory location (#3457). Same shape and same reason as
+ * `STOCK_LOCATION_OVERRIDE_INVALID_ERROR_CODE`: the OMS onboarding wizard maps
+ * this 400 to an inline remedy and must not match on the message. Mirrored in
+ * `apps/web/src/features/oms-onboarding/lib/routing-requires-location-error.ts`.
+ */
+export const ROUTING_REQUIRES_ACTIVE_LOCATION_ERROR_CODE = 'ROUTING_REQUIRES_ACTIVE_LOCATION';
 
 @Injectable()
 export class ConnectionService implements IConnectionService {
@@ -160,11 +187,75 @@ export class ConnectionService implements IConnectionService {
     }
 
     if ((await this.locations.countActiveLocations()) === 0) {
-      throw new BadRequestException(
-        'Fulfilment routing cannot be enabled until at least one active inventory location exists. ' +
+      throw new BadRequestException({
+        statusCode: 400,
+        error: ROUTING_REQUIRES_ACTIVE_LOCATION_ERROR_CODE,
+        message:
+          'Fulfilment routing cannot be enabled until at least one active inventory location exists. ' +
           "Create one first — the connection's routing readiness panel offers a default, " +
-          'or POST /inventory/locations.'
-      );
+          'or POST /inventory/locations.',
+      });
+    }
+  }
+
+  /**
+   * #3554 - validate `config.buyerEmails`. Shape and sender addresses are checked
+   * on every write; the channel rule (a marketplace may not enable
+   * `order-confirmed`) only on the TRANSITION against the persisted config, so
+   * an unrelated patch is not refused for a state this guard once let through.
+   * The channel comes from `buyerEmailChannelKindOf`, the same rule the send
+   * gate applies, so the two cannot disagree about a connection.
+   */
+  private validateBuyerEmailsConfig(
+    config: Record<string, unknown>,
+    capabilities: readonly string[],
+    persistedConfig: Record<string, unknown> | undefined
+  ): void {
+    const raw = config[BUYER_EMAILS_CONFIG_KEY];
+    if (raw === undefined || raw === null) {
+      return;
+    }
+    const fail = (message: string): never => {
+      throw new BadRequestException(`config.${BUYER_EMAILS_CONFIG_KEY}: ${message}`);
+    };
+    if (typeof raw !== 'object' || Array.isArray(raw)) {
+      return fail('must be an object');
+    }
+    const body = raw as Record<string, unknown>;
+    if (typeof body.enabled !== 'boolean') {
+      return fail('enabled must be true or false');
+    }
+    const templates = body.templates ?? {};
+    if (typeof templates !== 'object' || templates === null || Array.isArray(templates)) {
+      return fail('templates must be an object');
+    }
+    const previous = readBuyerEmailsConfig(persistedConfig);
+    const isMarketplace = buyerEmailChannelKindOf(capabilities) === 'marketplace';
+    for (const [key, value] of Object.entries(templates)) {
+      if (!isBuyerEmailTemplate(key)) {
+        return fail(`unknown template "${key}"`);
+      }
+      if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+        return fail(`template "${key}" must be an object`);
+      }
+      const template = value as Record<string, unknown>;
+      for (const field of ['fromAddress', 'replyTo'] as const) {
+        const address = template[field];
+        if (address !== undefined && address !== null && !isSingleEmailAddress(address)) {
+          return fail(`${field} of "${key}" must be a single email address`);
+        }
+      }
+      const newlyEnabled = template.enabled === true && previous.templates[key]?.enabled !== true;
+      if (
+        newlyEnabled &&
+        isMarketplace &&
+        !(MarketplaceBuyerEmailTemplateValues as readonly string[]).includes(key)
+      ) {
+        return fail(
+          `"${key}" is sent by a shop; a marketplace connection can enable only ` +
+            `${MarketplaceBuyerEmailTemplateValues.join(', ')}. Enable it on the shop connection instead.`
+        );
+      }
     }
   }
 
@@ -194,6 +285,79 @@ export class ConnectionService implements IConnectionService {
   }
 
   /**
+   * Advisory shared-rate-limit-bucket detection (#1594). Some invoicing
+   * providers (e.g. KSeF) bucket their per-hour request ceilings by the seller's
+   * tax id: two OL connections configured against the SAME seller tax id on the
+   * same adapter, egressing from the same deployment IP, therefore share ONE
+   * provider-side rate-limit budget. A bulk run on one can then throttle the
+   * other in ways that look like an unrelated flake.
+   *
+   * This surfaces a NON-BLOCKING warning at connection create/edit time when a
+   * new/updated connection's `config.seller.nip` matches another ACTIVE
+   * connection on the same adapter. Platform-neutral: it reads the generic
+   * `config.seller.nip` shape (no KSeF vocabulary) and only fires for adapters
+   * that carry a seller tax id. Never throws — advisory only; a lookup failure
+   * yields no warning rather than failing the operation.
+   */
+  async findSharedRateLimitBucketWarnings(connection: Connection): Promise<string[]> {
+    const nip = this.extractSellerTaxId(connection.config);
+    if (!nip || !connection.adapterKey) {
+      return [];
+    }
+    let candidates: Connection[];
+    try {
+      candidates = await this.connectionPort.list({ status: 'active' });
+    } catch (error) {
+      this.logger.warn(
+        `Shared-rate-limit-bucket check skipped for connection ${connection.id}: ${
+          error instanceof Error ? error.message : String(error)
+        }`
+      );
+      return [];
+    }
+    const colliding = candidates.filter(
+      (c) =>
+        c.id !== connection.id &&
+        c.adapterKey === connection.adapterKey &&
+        this.extractSellerTaxId(c.config) === nip
+    );
+    if (colliding.length === 0) {
+      return [];
+    }
+    const names = colliding.map((c) => c.name).join(', ');
+    this.logger.warn(
+      `Connection ${connection.id} shares seller tax id ${nip} on adapter ` +
+        `${connection.adapterKey} with active connection(s): ${names} — shared provider rate-limit bucket.`
+    );
+    return [
+      `Another active connection (${names}) uses the same adapter and seller tax id (${nip}). ` +
+        `They share the provider's per-seller rate-limit bucket, so heavy activity on one ` +
+        `(e.g. a bulk invoice run) can throttle the other. This is a warning, not a block.`,
+    ];
+  }
+
+  /**
+   * Extract a normalized seller tax id from a connection config, or `null` when
+   * the config carries none. Reads only the generic `seller.nip` shape so no
+   * provider vocabulary leaks into this platform-agnostic service.
+   */
+  private extractSellerTaxId(config: unknown): string | null {
+    if (!config || typeof config !== 'object') {
+      return null;
+    }
+    const seller = (config as Record<string, unknown>).seller;
+    if (!seller || typeof seller !== 'object') {
+      return null;
+    }
+    const nip = (seller as Record<string, unknown>).nip;
+    // Separators stripped (DEF-12): `526-000-12-46` and `5260001246` are the
+    // same seller, and the collision check must say so. Generic - any tax id
+    // printed with spaces or dashes compares the same way.
+    const normalized = typeof nip === 'string' ? nip.replace(/[\s-]/g, '') : '';
+    return normalized.length > 0 ? normalized : null;
+  }
+
+  /**
    * Run the plugin's config / credentials shape validators if registered.
    * The registries are keyed by adapterKey; the domain exception payload
    * is re-thrown as `BadRequestException` so the HTTP layer surfaces a
@@ -202,12 +366,13 @@ export class ConnectionService implements IConnectionService {
    */
   private async validateConfigShape(
     adapterKey: string,
-    config: Record<string, unknown>
+    config: Record<string, unknown>,
+    previous?: Record<string, unknown>
   ): Promise<void> {
     const validator = this.connectionConfigShapeValidatorRegistry.get(adapterKey);
     if (!validator) return;
     try {
-      await validator.validate(config);
+      await validator.validate(config, previous !== undefined ? { previous } : undefined);
     } catch (error) {
       if (error instanceof InvalidConnectionConfigException) {
         throw new BadRequestException({
@@ -248,6 +413,24 @@ export class ConnectionService implements IConnectionService {
     ) {
       throw new BadRequestException(
         'config.rateLimit.maxConcurrent must be a number between 1 and 64'
+      );
+    }
+  }
+
+  /**
+   * Refuse a non-boolean `config.fulfilmentOwnedByDestination` (#2118).
+   *
+   * Display-only flag, so a wrong type changes nothing on the server - but the
+   * readers coerce it to `false`, and an operator who typed `"true"` would see
+   * a saved setting that never hides a packing affordance. Refused here rather
+   * than coerced silently, the same reported-not-enforced reasoning as
+   * `validateStockAndPricingConfig`. Never defaults a value in; an absent key
+   * stays absent, and `null` (a cleared knob) is accepted.
+   */
+  private validateFulfilmentOwnedByDestinationConfig(config: Record<string, unknown>): void {
+    if (isPresentButInvalidFulfilmentOwnedByDestination(config)) {
+      throw new BadRequestException(
+        `config.${FULFILMENT_OWNED_BY_DESTINATION_CONFIG_KEY} must be true or false`
       );
     }
   }
@@ -300,6 +483,33 @@ export class ConnectionService implements IConnectionService {
 
     this.validatePricingRuleConfig(config.pricingRule);
     this.validatePriceSyncModeConfig(config.priceSyncMode);
+  }
+
+  /**
+   * Core-owned shape check for `config.deliveryOnDocuments` (#3905, ADR-082).
+   * The rules live in the pure `validateDeliveryOnDocumentsShape` so the browser
+   * mirror and this write path cannot disagree. The READ side is deliberately
+   * forgiving (a stored value must never break an issuance); strictness belongs
+   * here, where there is an operator to tell. Absent or `null` stays absent.
+   *
+   * Name length is measured against the budget the active fiscalization
+   * adapters declare (#3914): core holds no regime number, so the API asks.
+   * The lookup runs only when the key is present, so an unrelated save pays
+   * nothing for it.
+   */
+  private async validateDeliveryOnDocumentsConfig(config: Record<string, unknown>): Promise<void> {
+    const value = config.deliveryOnDocuments;
+    if (value === undefined || value === null) return;
+    const limit = await resolveReceiptLineNameLimit(this.integrationsService, this.logger);
+    const errors = validateDeliveryOnDocumentsShape(value, limit.maxLength);
+    if (errors.length > 0) {
+      throw new BadRequestException({
+        message: `Invalid config.deliveryOnDocuments: ${errors
+          .map((issue) => `${issue.path} ${issue.message}`)
+          .join('; ')}`,
+        errors,
+      });
+    }
   }
 
   private validatePricingRuleConfig(pricingRule: unknown): void {
@@ -372,10 +582,7 @@ export class ConnectionService implements IConnectionService {
       );
     }
     const roundings = ['none', 'nearestWhole', 'endingIn99'];
-    if (
-      rounding !== undefined &&
-      (typeof rounding !== 'string' || !roundings.includes(rounding))
-    ) {
+    if (rounding !== undefined && (typeof rounding !== 'string' || !roundings.includes(rounding))) {
       throw new BadRequestException(`${path}.rounding must be one of ${roundings.join(', ')}`);
     }
     if (percent !== undefined && percent !== null) {
@@ -446,10 +653,8 @@ export class ConnectionService implements IConnectionService {
       throw new BadRequestException('config.autoDispatch must be an object');
     }
 
-    const { enabled, parcelTemplate, defaultWeightGrams } = autoDispatch as Record<
-      string,
-      unknown
-    >;
+    const { enabled, parcelTemplate, defaultWeightGrams, lengthMm, widthMm, heightMm } =
+      autoDispatch as Record<string, unknown>;
     if (enabled !== undefined && typeof enabled !== 'boolean') {
       throw new BadRequestException('config.autoDispatch.enabled must be a boolean');
     }
@@ -464,6 +669,23 @@ export class ConnectionService implements IConnectionService {
     ) {
       throw new BadRequestException(
         'config.autoDispatch.defaultWeightGrams must be a number greater than 0'
+      );
+    }
+    const dimensions = { lengthMm, widthMm, heightMm };
+    for (const [field, value] of Object.entries(dimensions)) {
+      if (
+        value !== undefined &&
+        (typeof value !== 'number' || !Number.isFinite(value) || value <= 0)
+      ) {
+        throw new BadRequestException(
+          `config.autoDispatch.${field} must be a number greater than 0`
+        );
+      }
+    }
+    const setCount = Object.values(dimensions).filter((value) => value !== undefined).length;
+    if (setCount !== 0 && setCount !== 3) {
+      throw new BadRequestException(
+        'config.autoDispatch.lengthMm, widthMm and heightMm must be set together'
       );
     }
   }
@@ -800,7 +1022,10 @@ export class ConnectionService implements IConnectionService {
       if (rest.config !== undefined) {
         this.validateRateLimitConfig(rest.config);
         this.validateStockAndPricingConfig(rest.config);
+        this.validateFulfilmentOwnedByDestinationConfig(rest.config);
         this.validateAutoDispatchConfig(rest.config);
+        await this.validateDeliveryOnDocumentsConfig(rest.config);
+        this.validateBuyerEmailsConfig(rest.config, enabledCapabilities, undefined);
         await this.validateStockLocationOverride(rest.config, undefined);
         await this.validateConfigShape(metadata.adapterKey, rest.config);
         // #2407 — above the credential-persistence block below, which requires
@@ -874,19 +1099,35 @@ export class ConnectionService implements IConnectionService {
   }
 
   /**
-   * Best-effort initial product catalog bootstrap for newly created connections.
+   * Best-effort initial product catalog bootstrap.
    *
-   * Enqueues a single master.product.syncAll job when the connection's adapter
-   * supports the ProductMaster capability. The idempotency key is stable per
-   * connection ID so retries / re-creates with the same ID naturally dedupe — the
+   * Enqueues a single master.product.syncAll job when the connection has the
+   * ProductMaster capability ENABLED - not merely supported by its adapter. An
+   * adapter like Shoper supports both ProductMaster and ProductPublisher, and a
+   * connection created as a publish destination only must not have the shop's
+   * catalogue pulled into OpenLinker as master data. This is the same gate the
+   * recurring scheduler applies (`requiredCapability` against
+   * `enabledCapabilities`), so the bootstrap and the cron agree on which
+   * connections are masters. The adapter-supported check stays as a guard for a
+   * stored capability an upgraded adapter no longer declares.
+   *
+   * Like `enqueueInitialTaxonomySync`, NOT gated on status: a disabled
+   * connection's adapter does not resolve, so it skips on its own.
+   *
+   * The idempotency key is stable per connection ID, so this is run-once: a
+   * second call (a retry, a re-enable, ProductMaster switched off and on again)
+   * collapses into the original job. That is the intended reading - the
    * recurring scheduler (OL_PRODUCT_SYNC_CRON) and the manual "Sync now" button
-   * own ongoing re-sync.
+   * own ongoing re-sync, and this only makes the FIRST sync start now rather
+   * than at the next cron tick.
    *
-   * Failures here MUST NOT fail connection creation: a user has successfully
-   * created the connection even if the bootstrap enqueue fails; the scheduler
-   * will pick it up at the next cron tick.
+   * Failures here MUST NOT fail the connection write: the connection exists even
+   * if the bootstrap enqueue fails; the scheduler picks it up at the next tick.
    */
   private async enqueueInitialCatalogSync(connection: Connection): Promise<void> {
+    if (!connection.enabledCapabilities.includes('ProductMaster')) {
+      return;
+    }
     try {
       const { metadata } = await this.integrationsService.getAdapter(connection.id);
       if (!metadata.supportedCapabilities.includes('ProductMaster')) {
@@ -1018,6 +1259,22 @@ export class ConnectionService implements IConnectionService {
 
       const existing = await this.connectionPort.get(connectionId);
 
+      // #3657 — `archived` is reachable only through archive(), which also
+      // removes the credential; a plain PATCH must not produce an archived row
+      // that still holds one. And an archived row leaves only through
+      // restore(), so it cannot be re-enabled around the step that makes an
+      // operator re-enter its credentials.
+      if (patch.status === 'archived') {
+        throw new BadRequestException(
+          'A connection is archived with PATCH /connections/:id/archive, not by setting its status'
+        );
+      }
+      if (existing.status === 'archived' && patch.status !== undefined) {
+        throw new ConflictException(
+          `Connection ${connectionId} is archived; restore it with PATCH /connections/:id/restore first`
+        );
+      }
+
       if (patch.adapterKey !== undefined && patch.adapterKey !== existing.adapterKey) {
         throw new BadRequestException(
           `adapterKey is immutable after connection creation (current: ${existing.adapterKey ?? 'derived from platformType'})`
@@ -1063,9 +1320,16 @@ export class ConnectionService implements IConnectionService {
       if (patch.config !== undefined && metadata) {
         this.validateRateLimitConfig(patch.config);
         this.validateStockAndPricingConfig(patch.config);
+        this.validateFulfilmentOwnedByDestinationConfig(patch.config);
         this.validateAutoDispatchConfig(patch.config);
+        await this.validateDeliveryOnDocumentsConfig(patch.config);
+        this.validateBuyerEmailsConfig(
+          patch.config,
+          patch.enabledCapabilities ?? existing.enabledCapabilities,
+          existing.config
+        );
         await this.validateStockLocationOverride(patch.config, existing.config);
-        await this.validateConfigShape(metadata.adapterKey, patch.config);
+        await this.validateConfigShape(metadata.adapterKey, patch.config, existing.config);
         // #2407 — inside this branch, which is correct ONLY because
         // `ConnectionRepository.update` REPLACES `config` wholesale rather than
         // merging it (connection.repository.ts:109-111): a patch omitting
@@ -1085,8 +1349,21 @@ export class ConnectionService implements IConnectionService {
       // (its adapter cannot resolve), so enabling it is the moment its taxonomy
       // first becomes fetchable. Tested against the PERSISTED status, not
       // `patch.status`: a patch omitting status must not read as a transition.
-      if (existing.status !== 'active' && connection.status === 'active') {
+      const becameActive = existing.status !== 'active' && connection.status === 'active';
+      if (becameActive) {
         await this.enqueueInitialTaxonomySync(connection);
+      }
+
+      // The catalogue bootstrap follows the same transition rule, plus the one
+      // it has that taxonomy does not: ProductMaster switched on for a
+      // connection created without it (create skipped the bootstrap then).
+      // Compared against the PERSISTED capabilities, so a patch that does not
+      // touch them is never a transition.
+      const productMasterEnabled =
+        !existing.enabledCapabilities.includes('ProductMaster') &&
+        connection.enabledCapabilities.includes('ProductMaster');
+      if (becameActive || productMasterEnabled) {
+        await this.enqueueInitialCatalogSync(connection);
       }
 
       return connection;
@@ -1105,6 +1382,17 @@ export class ConnectionService implements IConnectionService {
     credentials: Record<string, unknown>
   ): Promise<void> {
     const connection = await this.get(connectionId);
+    // #3657 — archiving deleted the credential on purpose; storing a new one
+    // on a row that is still archived would re-arm a connection nobody can see.
+    if (connection.status === 'archived') {
+      throw new ConflictException(
+        `Connection ${connectionId} is archived; restore it before entering credentials`
+      );
+    }
+    if (connection.credentialsRef === '') {
+      await this.storeFirstCredentials(connection, credentials);
+      return;
+    }
     if (!connection.credentialsRef.startsWith('db:')) {
       throw new BadRequestException(
         `Connection ${connectionId} does not have a db-backed credentials reference ` +
@@ -1127,6 +1415,125 @@ export class ConnectionService implements IConnectionService {
     await this.validateCredentialsShape(metadata.adapterKey, mergedCredentials);
     await this.credentials.update(ref, { credentialsJson: mergedCredentials });
     this.logger.log(`Rotated credentials for connection ${connectionId}`);
+  }
+
+  /**
+   * #3657 — a connection whose credential was removed by archive() gets one
+   * back here, once it has been restored. Nothing to merge onto, so the shape
+   * is validated against the payload alone (the same order `create()` uses).
+   * A credential-less adapter (ADR-055, e.g. the OMS) is refused: a row nothing
+   * ever reads would be encrypted and stored for no reason.
+   */
+  private async storeFirstCredentials(
+    connection: Connection,
+    credentials: Record<string, unknown>
+  ): Promise<void> {
+    const metadata = await this.integrationsService.resolveAdapterMetadata({
+      platformType: connection.platformType,
+      adapterKey: connection.adapterKey,
+    });
+    if (!resolveRequiresCredentials(metadata)) {
+      throw new BadRequestException(
+        `Connection ${connection.id} uses an adapter that takes no credentials`
+      );
+    }
+    const resolvedCredentials = await this.rewriteCredentials(metadata.adapterKey, credentials);
+    await this.validateCredentialsShape(metadata.adapterKey, resolvedCredentials);
+    const ref = randomUUID();
+    await this.credentials.create({
+      ref,
+      platformType: connection.platformType,
+      credentialsJson: resolvedCredentials,
+    });
+    try {
+      await this.connectionPort.update(connection.id, { credentialsRef: `db:${ref}` });
+    } catch (error) {
+      // Same best-effort cleanup as create(): never leave an unreferenced
+      // encrypted row behind.
+      await this.credentials.delete(ref).catch(() => undefined);
+      throw error;
+    }
+    this.logger.log(`Stored credentials for connection ${connection.id} (ref: db:${ref})`);
+  }
+
+  async archive(connectionId: string): Promise<Connection> {
+    const existing = await this.get(connectionId);
+    if (existing.status === 'archived') {
+      return existing;
+    }
+    if (existing.status !== 'disabled') {
+      throw new ConflictException(
+        `Connection ${connectionId} is ${existing.status}; disable it before archiving`
+      );
+    }
+    // Declared by the adapter, never inferred from platformType (ADR-055):
+    // the OL-OMS connection holds routing authority claims and is disabled,
+    // never archived. See AdapterMetadata.archivable.
+    const metadata = await this.integrationsService.resolveAdapterMetadata({
+      platformType: existing.platformType,
+      adapterKey: existing.adapterKey,
+    });
+    if (!resolveArchivable(metadata)) {
+      throw new ConflictException(
+        `Connection ${connectionId} cannot be archived (${metadata.adapterKey}); keep it disabled instead`
+      );
+    }
+    // The pairing is a JSONB value with no FK, so only this service can refuse
+    // (the LocationInUseError precedent, #2316). Archiving the target would
+    // drop it from list(), and the referrers' mapping pages resolve their
+    // catalog through that list - they would report a pairing that is correct
+    // as "could not be found".
+    const referrers = await this.findMasterCatalogReferrers(connectionId);
+    if (referrers.length > 0) {
+      throw new ConnectionInUseException(connectionId, 'master-catalog-referenced', referrers);
+    }
+    // Credential first, row second. A crash between the two leaves a disabled
+    // connection pointing at a missing credential - it fails loudly on enable
+    // and archiving again finishes the job. The reverse order could leave an
+    // archived row still holding a live credential.
+    if (existing.credentialsRef.startsWith('db:')) {
+      const removed = await this.credentials.delete(existing.credentialsRef.slice('db:'.length));
+      if (!removed) {
+        this.logger.warn(
+          `Credential row for connection ${connectionId} was already gone while archiving`
+        );
+      }
+    }
+    const connection = await this.connectionPort.update(connectionId, {
+      status: 'archived',
+      credentialsRef: '',
+    });
+    this.httpTransportFactory.evict(connectionId);
+    this.logger.log(`Connection archived: ${connection.id} (${connection.name})`);
+    return connection;
+  }
+
+  /**
+   * Non-archived connections whose `config.masterCatalogConnectionId` names
+   * `connectionId`. `list()` already leaves archived rows out, which is the
+   * point: an archived referrer is invisible too, so it blocks nothing.
+   */
+  private async findMasterCatalogReferrers(connectionId: string): Promise<ConnectionReferrer[]> {
+    const connections = await this.connectionPort.list();
+    return connections
+      .filter(
+        (candidate) =>
+          candidate.id !== connectionId &&
+          candidate.config?.['masterCatalogConnectionId'] === connectionId
+      )
+      .map((candidate) => ({ id: candidate.id, name: candidate.name }));
+  }
+
+  async restore(connectionId: string): Promise<Connection> {
+    const existing = await this.get(connectionId);
+    if (existing.status !== 'archived') {
+      throw new ConflictException(
+        `Connection ${connectionId} is ${existing.status}; only an archived connection can be restored`
+      );
+    }
+    const connection = await this.connectionPort.update(connectionId, { status: 'disabled' });
+    this.logger.log(`Connection restored: ${connection.id} (${connection.name})`);
+    return connection;
   }
 
   async disable(connectionId: string): Promise<Connection> {

@@ -3,16 +3,25 @@
  *
  * Covers the `/health/dev-stack` auth gating fix (#1619 review): the route
  * stays `@Public()`, but the per-connection `name` and diagnostic `message`
- * fields are redacted for a request without a valid bearer token.
+ * fields are redacted for a request without a valid bearer token. Also covers
+ * the root `/robots.txt` (#3787) over real HTTP, since its value lies in the
+ * route shape (version-neutral path, text/plain) rather than the handler body.
  *
  * @module apps/api/src
  */
-import type { JwtService } from '@nestjs/jwt';
+import type { INestApplication } from '@nestjs/common';
+import { VersioningType } from '@nestjs/common';
+import { JwtService } from '@nestjs/jwt';
+import { Test } from '@nestjs/testing';
+import request from 'supertest';
 import { AppController } from './app.controller';
-import type { AppService } from './app.service';
+import { AppService } from './app.service';
 import type { IDevStackHealthService } from './health/dev-stack-health.service.interface';
 import type { DevStackHealthResponse } from './health/dev-stack-health.types';
 import type { IAppInfoService } from './app-info/app-info.service.interface';
+import { APP_INFO_SERVICE_TOKEN } from './app-info/app-info.module';
+import { API_VERSION } from './app-info/app-info.types';
+import { DEV_STACK_HEALTH_SERVICE_TOKEN } from './health/health.module';
 
 function buildHealthResponse(): DevStackHealthResponse {
   return {
@@ -61,6 +70,42 @@ describe('AppController', () => {
   function buildRequest(authHeader?: string): { headers: Record<string, string | undefined> } {
     return { headers: { authorization: authHeader } };
   }
+
+  describe('getRobotsTxt', () => {
+    let app: INestApplication;
+
+    beforeAll(async () => {
+      const moduleRef = await Test.createTestingModule({
+        controllers: [AppController],
+        providers: [
+          { provide: AppService, useValue: {} },
+          { provide: DEV_STACK_HEALTH_SERVICE_TOKEN, useValue: {} },
+          { provide: APP_INFO_SERVICE_TOKEN, useValue: {} },
+          { provide: JwtService, useValue: {} },
+        ],
+      }).compile();
+      app = moduleRef.createNestApplication();
+      // Mirrors main.ts so the test sees the same /v1 default the API ships.
+      app.enableVersioning({ type: VersioningType.URI, defaultVersion: API_VERSION });
+      await app.init();
+    });
+
+    afterAll(async () => {
+      await app.close();
+    });
+
+    it('should disallow all crawling when robots.txt is requested', () => {
+      expect(controller.getRobotsTxt()).toBe('User-agent: *\nDisallow: /\n');
+    });
+
+    it('should serve robots.txt as plain text at the root, outside /v1', async () => {
+      const response = await request(app.getHttpServer()).get('/robots.txt');
+
+      expect(response.status).toBe(200);
+      expect(response.headers['content-type']).toMatch(/^text\/plain/);
+      expect(response.text).toBe('User-agent: *\nDisallow: /\n');
+    });
+  });
 
   describe('getDevStackHealth', () => {
     it('should return connection name and message when the bearer token is valid', async () => {

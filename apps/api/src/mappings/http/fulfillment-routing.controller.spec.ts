@@ -71,6 +71,7 @@ describe('FulfillmentRoutingController', () => {
           sourceDeliveryMethodId: 'method-x',
           processorKind: 'ol_managed_carrier',
           processorConnectionId: 'conn-inpost',
+          parcelProfile: null,
         },
       ]);
     });

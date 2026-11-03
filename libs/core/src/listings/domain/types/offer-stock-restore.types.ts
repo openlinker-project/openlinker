@@ -15,4 +15,13 @@ export interface OfferStockRestoreTarget {
   externalOfferId: string;
   /** Absolute stock quantity to set (re-runnable by construction). */
   quantity: number;
+  /**
+   * Stable per (order, offer, quantity, observation): the same restore retried
+   * unchanged carries the same key, while a retry after stock moved, or a
+   * restore of the same offer for another order, carries a different one.
+   * Optional so an adapter that needs no key (Erli) is unaffected; one whose
+   * quantity write is command-keyed (Allegro) REQUIRES it and refuses a target
+   * without one rather than inventing a key that defeats the dedupe.
+   */
+  idempotencyKey?: string;
 }

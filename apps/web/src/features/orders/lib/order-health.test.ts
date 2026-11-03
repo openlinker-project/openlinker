@@ -201,6 +201,41 @@ describe('deriveHealthLevel + healthLabel', () => {
   });
 });
 
+describe('deriveOrderHealth for an order OpenLinker handles itself (#3482)', () => {
+  const handled = { stage: 'packed' as const, workCount: 1, assignment: 'single' as const, assignedToUserId: null };
+  const base = { recordStatus: 'ready', syncStatus: [] } as unknown as Parameters<typeof deriveOrderHealth>[0];
+
+  it('should stay awaiting dispatch while the order is still on the bench', () => {
+    expect(
+      deriveOrderHealth({ ...base, handledInOpenLinker: handled, fulfillmentState: 'not-shipped' }).key
+    ).toBe('awaiting_dispatch');
+  });
+
+  it.each(['dispatched', 'delivered'] as const)(
+    'should count as synced once it has %s',
+    (fulfillmentState) => {
+      expect(deriveOrderHealth({ ...base, handledInOpenLinker: handled, fulfillmentState }).key).toBe(
+        'synced'
+      );
+    }
+  );
+
+  it('should not move a shipped order that OpenLinker does not handle', () => {
+    expect(deriveOrderHealth({ ...base, fulfillmentState: 'delivered' }).key).toBe('awaiting_dispatch');
+  });
+
+  it('should still put a failed destination first', () => {
+    expect(
+      deriveOrderHealth({
+        ...base,
+        syncStatus: [status({ status: 'failed' })],
+        handledInOpenLinker: handled,
+        fulfillmentState: 'delivered',
+      }).key
+    ).toBe('needs_attention');
+  });
+});
+
 describe('syncCellLabel', () => {
   it('leads with failures when present', () => {
     expect(syncCellLabel(rollupSyncStatus([status({ status: 'failed' })]))).toBe('1 of 1 failed');
@@ -219,6 +254,42 @@ describe('syncCellLabel', () => {
   });
   it('handles no destinations', () => {
     expect(syncCellLabel(rollupSyncStatus([]))).toBe('No destinations');
+  });
+  it('says the order is handled in OpenLinker when it has live work and no destinations (#3482)', () => {
+    expect(
+      syncCellLabel(rollupSyncStatus([]), null, { stage: 'to-pack', workCount: 1 })
+    ).toBe('In OpenLinker');
+  });
+  it('lets handled-in-OpenLinker win over a routed-nowhere reason (#3482 / #2703)', () => {
+    expect(
+      syncCellLabel(rollupSyncStatus([]), 'routed-to-no-destination', {
+        stage: 'packing',
+        workCount: 1,
+      })
+    ).toBe('In OpenLinker');
+  });
+  it('keeps the routed-nowhere label when the order has no work (#2703)', () => {
+    expect(syncCellLabel(rollupSyncStatus([]), 'routed-to-no-destination')).toBe('Routed nowhere');
+  });
+  it('leaves an order that has destinations untouched by the handled field (#3482)', () => {
+    expect(
+      syncCellLabel(rollupSyncStatus([status({ status: 'synced' })]), null, {
+        stage: 'packed',
+        workCount: 1,
+      })
+    ).toBe('1 of 1 synced');
+  });
+});
+
+describe('healthLabel for an order OpenLinker handles itself (#3482)', () => {
+  it('should not say "No destinations" when the order has live work', () => {
+    expect(healthLabel('unknown', { stage: 'packed', workCount: 1 })).toBe('In OpenLinker');
+  });
+  it('should keep "No destinations" for an order with no work', () => {
+    expect(healthLabel('unknown')).toBe('No destinations');
+  });
+  it('should not touch any other level', () => {
+    expect(healthLabel('healthy', { stage: 'packed', workCount: 1 })).toBe('Synced');
   });
 });
 
@@ -343,5 +414,148 @@ describe('unrecognised state degradation (#2678)', () => {
       tone: 'neutral',
     });
     expect(slaBadge('none')).toBeNull();
+  });
+});
+
+// The browser half of a rule implemented twice (#3482). This table is the FE
+// MIRROR of `ORDER_HEALTH_FIXTURES` (`@openlinker/core/orders/testing`): the
+// integration spec runs every row through the SQL twin
+// (`OrderRecordRepository.IS_SYNCED_HEALTH`), this runs the same rows through
+// `deriveOrderHealth`. `scripts/check-handled-in-openlinker-mirror.mjs` holds the
+// two tables to the same names and expectations, so a case added on one side only
+// fails the build. `fulfillmentState` ABSENT is the backend's NULL - the state of
+// every order that has not shipped.
+describe('deriveOrderHealth - shared health fixtures (#3482)', () => {
+  interface HealthFixtureRow {
+    name: string;
+    recordStatus: 'ready' | 'awaiting_mapping' | 'source_deleted';
+    syncStatuses: OrderSyncStatus['status'][];
+    fulfillmentState: OrderRecord['fulfillmentState'];
+    liveWork: boolean;
+    expected: ReturnType<typeof deriveOrderHealth>['key'];
+  }
+
+  const FIXTURES: HealthFixtureRow[] = [
+    {
+      name: 'a deleted source order',
+      recordStatus: 'source_deleted',
+      syncStatuses: [],
+      fulfillmentState: undefined,
+      liveWork: false,
+      expected: 'source_deleted',
+    },
+    {
+      name: 'an order waiting for a catalogue mapping',
+      recordStatus: 'awaiting_mapping',
+      syncStatuses: [],
+      fulfillmentState: undefined,
+      liveWork: false,
+      expected: 'awaiting_mapping',
+    },
+    {
+      name: 'a destination failed',
+      recordStatus: 'ready',
+      syncStatuses: ['failed'],
+      fulfillmentState: undefined,
+      liveWork: false,
+      expected: 'needs_attention',
+    },
+    {
+      name: 'a failed destination beside a synced one',
+      recordStatus: 'ready',
+      syncStatuses: ['failed', 'synced'],
+      fulfillmentState: undefined,
+      liveWork: false,
+      expected: 'needs_attention',
+    },
+    {
+      name: 'a destination synced',
+      recordStatus: 'ready',
+      syncStatuses: ['synced'],
+      fulfillmentState: undefined,
+      liveWork: false,
+      expected: 'synced',
+    },
+    {
+      name: 'destinations only pending',
+      recordStatus: 'ready',
+      syncStatuses: ['pending'],
+      fulfillmentState: undefined,
+      liveWork: false,
+      expected: 'awaiting_dispatch',
+    },
+    {
+      name: 'no destination and nothing shipped',
+      recordStatus: 'ready',
+      syncStatuses: [],
+      fulfillmentState: undefined,
+      liveWork: false,
+      expected: 'awaiting_dispatch',
+    },
+    {
+      name: 'on the pack bench with no shipment yet (fulfillmentState NULL)',
+      recordStatus: 'ready',
+      syncStatuses: [],
+      fulfillmentState: undefined,
+      liveWork: true,
+      expected: 'awaiting_dispatch',
+    },
+    {
+      name: 'on the pack bench, shipment state not-shipped',
+      recordStatus: 'ready',
+      syncStatuses: [],
+      fulfillmentState: 'not-shipped',
+      liveWork: true,
+      expected: 'awaiting_dispatch',
+    },
+    {
+      name: 'handled and dispatched',
+      recordStatus: 'ready',
+      syncStatuses: [],
+      fulfillmentState: 'dispatched',
+      liveWork: true,
+      expected: 'synced',
+    },
+    {
+      name: 'handled and delivered',
+      recordStatus: 'ready',
+      syncStatuses: [],
+      fulfillmentState: 'delivered',
+      liveWork: true,
+      expected: 'synced',
+    },
+    {
+      name: 'shipped by a marketplace with no work of ours',
+      recordStatus: 'ready',
+      syncStatuses: [],
+      fulfillmentState: 'delivered',
+      liveWork: false,
+      expected: 'awaiting_dispatch',
+    },
+    {
+      name: 'handled and dispatched, but a destination failed',
+      recordStatus: 'ready',
+      syncStatuses: ['failed'],
+      fulfillmentState: 'dispatched',
+      liveWork: true,
+      expected: 'needs_attention',
+    },
+  ];
+
+  it('should hold at least one fixture, or the loop below asserts nothing', () => {
+    expect(FIXTURES.length).toBeGreaterThan(0);
+  });
+
+  it.each(FIXTURES)('should classify $name as $expected', (fixture) => {
+    const record = order({
+      recordStatus: fixture.recordStatus,
+      fulfillmentState: fixture.fulfillmentState,
+      syncStatus: fixture.syncStatuses.map((status, i) =>
+        syncEntry({ destinationConnectionId: `conn_${i}`, status })
+      ),
+      ...(fixture.liveWork && { handledInOpenLinker: { stage: 'to-pack', workCount: 1 } }),
+    });
+
+    expect(deriveOrderHealth(record).key).toBe(fixture.expected);
   });
 });

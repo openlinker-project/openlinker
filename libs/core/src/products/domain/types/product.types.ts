@@ -100,6 +100,38 @@ export interface ProductVariantCreate {
   [key: string]: unknown;
 }
 
+/**
+ * One variant's master-reported physical data for the fill-when-NULL writer
+ * (#3650). Neutral units (grams, millimetres), already converted by the
+ * adapter. An absent or `null` field means "the master did not say", so it
+ * is skipped rather than written as NULL.
+ */
+export interface VariantPhysicalDimensionsFill {
+  readonly variantId: string;
+  readonly weightGrams?: number | null;
+  readonly lengthMm?: number | null;
+  readonly widthMm?: number | null;
+  readonly heightMm?: number | null;
+}
+
+/**
+ * An operator-entered net unit cost (#3588): the pair is indivisible - a cost
+ * without a currency (or the reverse) is never representable.
+ */
+export interface VariantCost {
+  /** Decimal string, e.g. "12.5000" or "0.00". */
+  readonly netUnitCost: string;
+  /** ISO 4217 code, upper case. */
+  readonly currency: string;
+}
+
+/** Outcome of a bulk fill-when-NULL cost write (#3588). */
+export interface VariantCostFillResult {
+  readonly filled: string[];
+  readonly skippedAlreadySet: string[];
+  readonly notFound: string[];
+}
+
 // ---------------------------------------------------------------------------
 // Read API types (used by repository ports and application services)
 // ---------------------------------------------------------------------------
@@ -107,9 +139,11 @@ export interface ProductVariantCreate {
 /**
  * Product stock-bucket filter values (#1720 - products catalog cockpit).
  *
- * Buckets are derived from the product's total available stock summed across
- * its inventory rows: `out` = 0 (including products with no inventory rows),
- * `low` = 0 < total <= LOW_STOCK_THRESHOLD, `oversold` = total < 0.
+ * `out` / `low` are derived from the product's available to promise (#3621, G-5):
+ * per variant `max(0, Σ available[live positions] - Σ published holds)`, summed,
+ * so they agree with the list badge. `out` = 0 (including variants with no
+ * positions), `low` = 0 < ATP <= LOW_STOCK_THRESHOLD; a product with no variants
+ * is in neither. `oversold` stays on the master total (< 0): ATP is clamped at 0.
  */
 export const ProductStockFilterValues = ['out', 'low', 'oversold'] as const;
 export type ProductStockFilter = (typeof ProductStockFilterValues)[number];

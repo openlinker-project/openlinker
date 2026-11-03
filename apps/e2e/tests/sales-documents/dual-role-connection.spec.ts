@@ -49,13 +49,13 @@ test.describe('sales documents: dual-role connection ("Both")', () => {
     page,
   }) => {
     await page.goto('/settings/sales-documents');
-    // 'Document routing', not 'Sales documents' - #3309 renamed this heading when
+    // 'Sales documents routing', not 'Sales documents' - #3309 (then #3656) renamed this heading when
     // it introduced the `/sales-documents` LIST page, so the SETTINGS page needed
     // a name that could not be confused with it. These specs were not updated,
     // and nobody noticed because the whole suite could not start (the `pg`
     // named-import defect) - so a deliberate product rename sat on four broken
     // tests for a week without a red run anywhere.
-    await expect(page.getByRole('heading', { name: 'Document routing' })).toBeVisible({
+    await expect(page.getByRole('heading', { name: 'Sales documents routing' })).toBeVisible({
       timeout: 30_000,
     });
     await expect(page.getByRole('heading', { name: 'Connected providers' })).toBeVisible();
@@ -93,7 +93,7 @@ test.describe('sales documents: dual-role connection ("Both")', () => {
     page,
   }) => {
     await page.goto('/settings/sales-documents');
-    await expect(page.getByRole('heading', { name: 'Document routing' })).toBeVisible({
+    await expect(page.getByRole('heading', { name: 'Sales documents routing' })).toBeVisible({
       timeout: 30_000,
     });
 

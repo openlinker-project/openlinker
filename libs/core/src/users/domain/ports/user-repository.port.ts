@@ -25,9 +25,24 @@ export interface UserRepositoryPort {
     user: Pick<User, 'username' | 'email' | 'passwordHash' | 'role' | 'status'> &
       // Optional so non-registration callers (e.g. bootstrap admin) don't have
       // to set it; the repository defaults it to false (opt-in) when omitted.
-      Partial<Pick<User, 'analyticsConsent'>>
+      // `displayName` / `mustChangePassword` (#3456) are set only by the admin
+      // create path; omitted, they default to `null` / `false`.
+      Partial<Pick<User, 'analyticsConsent' | 'displayName' | 'mustChangePassword'>>
   ): Promise<User>;
-  updatePasswordHash(userId: string, passwordHash: string): Promise<void>;
+  /**
+   * Write a new password hash. `mustChangePassword: 'clear'` clears the
+   * forced-change flag IN THE SAME STATEMENT (#3456), so a crash cannot leave a
+   * changed password still flagged, nor a cleared flag on the old password.
+   * `'force'` is the mirror for an admin re-issuing a one-time password: the flag
+   * is SET in the same statement as the new hash. One three-valued option rather
+   * than two booleans, so the contradictory call is unrepresentable (#3504
+   * review). Omitted leaves the flag alone.
+   */
+  updatePasswordHash(
+    userId: string,
+    passwordHash: string,
+    opts?: { readonly mustChangePassword?: 'clear' | 'force' }
+  ): Promise<void>;
   updateStatus(userId: string, status: UserStatus): Promise<void>;
   updateRole(userId: string, role: UserRole): Promise<void>;
   /**

@@ -9,6 +9,7 @@
  */
 
 import {
+  useQueries,
   useQuery,
   useMutation,
   useQueryClient,
@@ -62,4 +63,31 @@ export function useReplaceRoutingRules(
       });
     },
   });
+}
+
+/**
+ * Routing rules for several source connections at once (#3652) - the bulk
+ * dispatch dialog spans sources and needs each order's rule for its parcel
+ * profile. Same query keys as `useRoutingRulesQuery`, so single- and
+ * multi-source callers share one cache entry per connection.
+ */
+export function useRoutingRulesForConnections(
+  connectionIds: readonly string[],
+  options?: { enabled?: boolean },
+): Map<string, RoutingRule[]> {
+  const apiClient = useApiClient();
+  const enabled = options?.enabled ?? true;
+  const results = useQueries({
+    queries: connectionIds.map((connectionId) => ({
+      enabled: enabled && connectionId.length > 0,
+      queryKey: mappingsQueryKeys.routingRules(connectionId),
+      queryFn: () => apiClient.mappings.getRoutingRules(connectionId),
+    })),
+  });
+  const map = new Map<string, RoutingRule[]>();
+  connectionIds.forEach((id, index) => {
+    const data = results[index]?.data;
+    if (data) map.set(id, data);
+  });
+  return map;
 }

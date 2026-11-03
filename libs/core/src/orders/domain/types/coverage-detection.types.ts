@@ -33,7 +33,8 @@ import type { TaxRateState, TaxRateUnknownReason } from '@openlinker/core/produc
 /**
  * Data Coverage category values. `'currency'` was populated by #2464,
  * `'tax-a'`/`'tax-b'`/`'tax-c'` by #2465, and `'product-matching'` (an order
- * stuck `recordStatus IN ('awaiting_mapping', 'source_deleted')`) by #2466.
+ * stuck `recordStatus IN ('awaiting_mapping', 'source_deleted')`) by #2466. `'no-cost'` (#3588, G11-D) counts order LINES that are in net revenue
+but carry no usable cost snapshot; every other category counts orders.
  */
 export const CoverageCategoryValues = [
   'currency',
@@ -41,6 +42,7 @@ export const CoverageCategoryValues = [
   'tax-b',
   'tax-c',
   'product-matching',
+  'no-cost',
 ] as const;
 
 /**

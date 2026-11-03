@@ -7,12 +7,15 @@
  *
  * @module apps/worker/src/events/__tests__
  */
-/* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-assignment -- test: invoke private processMessage/initializeConsumerGroup */
+/* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-return -- test: invoke private processMessage/initializeConsumerGroup/recoverEntrySafely */
 import type { TestingModule } from '@nestjs/testing';
 import { Test } from '@nestjs/testing';
 import { ConfigService } from '@nestjs/config';
 import type { RedisClientType } from 'redis';
 import { JOB_ENQUEUE_TOKEN, type JobEnqueuePort } from '@openlinker/core/sync';
+import type { IStreamDeadLettersService } from '@openlinker/core/events';
+import { STREAM_DEAD_LETTERS_SERVICE_TOKEN } from '@openlinker/core/events';
+import { MAX_RECOVERY_ATTEMPTS } from '@openlinker/shared/redis';
 import { MasterDeletionToJobHandler } from '../master-deletion-to-job.handler';
 import { MASTER_DELETION_REDIS_CLIENT_BLOCKING_TOKEN } from '../events.tokens';
 
@@ -20,10 +23,18 @@ const STREAM = 'events.master.deletion';
 const DLQ = 'events.master.deletion.dead';
 const GROUP = 'master-deletion-offer-pause';
 
+type MockedRedis = jest.Mocked<
+  Pick<
+    RedisClientType,
+    'xGroupCreate' | 'xReadGroup' | 'xAck' | 'xAdd' | 'quit' | 'incr' | 'expire' | 'del'
+  >
+>;
+
 describe('MasterDeletionToJobHandler', () => {
   let handler: MasterDeletionToJobHandler;
-  let redis: jest.Mocked<Pick<RedisClientType, 'xGroupCreate' | 'xReadGroup' | 'xAck' | 'xAdd' | 'quit'>>;
+  let redis: MockedRedis;
   let jobEnqueue: jest.Mocked<JobEnqueuePort>;
+  let streamDeadLetters: jest.Mocked<IStreamDeadLettersService>;
 
   const fields = (overrides: Record<string, string> = {}): Record<string, string> => ({
     eventId: 'evt-1',
@@ -44,25 +55,41 @@ describe('MasterDeletionToJobHandler', () => {
     (handler as any).processMessage(id, f) as Promise<void>;
 
   beforeEach(async () => {
+    // incr/expire/del back RecoveryAttemptTracker's Redis-persisted poison
+    // counter (#2301, D48) — see the identical rationale in
+    // job-intake.consumer.spec.ts.
+    const counterStore = new Map<string, number>();
     redis = {
       xGroupCreate: jest.fn(),
       xReadGroup: jest.fn(),
       xAck: jest.fn().mockResolvedValue(1),
       xAdd: jest.fn().mockResolvedValue('1-0'),
       quit: jest.fn().mockResolvedValue(undefined),
-    } as unknown as jest.Mocked<
-      Pick<RedisClientType, 'xGroupCreate' | 'xReadGroup' | 'xAck' | 'xAdd' | 'quit'>
-    >;
+      incr: jest.fn((key: string) => {
+        const next = (counterStore.get(key) ?? 0) + 1;
+        counterStore.set(key, next);
+        return Promise.resolve(next);
+      }),
+      expire: jest.fn().mockResolvedValue(true),
+      del: jest.fn((key: string) => Promise.resolve(counterStore.delete(key) ? 1 : 0)),
+    } as unknown as MockedRedis;
 
     jobEnqueue = {
       enqueueJob: jest.fn().mockResolvedValue({ jobId: 'job-1', isExisting: false }),
     } as unknown as jest.Mocked<JobEnqueuePort>;
+
+    streamDeadLetters = {
+      record: jest.fn(),
+      list: jest.fn(),
+      count: jest.fn(),
+    } as unknown as jest.Mocked<IStreamDeadLettersService>;
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         MasterDeletionToJobHandler,
         { provide: MASTER_DELETION_REDIS_CLIENT_BLOCKING_TOKEN, useValue: redis },
         { provide: JOB_ENQUEUE_TOKEN, useValue: jobEnqueue },
+        { provide: STREAM_DEAD_LETTERS_SERVICE_TOKEN, useValue: streamDeadLetters },
         {
           provide: ConfigService,
           useValue: { get: jest.fn((_key: string, defaultValue?: string) => defaultValue) },
@@ -182,6 +209,57 @@ describe('MasterDeletionToJobHandler', () => {
 
       await expect(processMessage('1-0', fields())).rejects.toThrow('redis unavailable');
 
+      expect(redis.xAck).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('poison-entry terminal write (#2301, D48)', () => {
+    // Mirrors job-intake.consumer.spec.ts's block of the same name: this
+    // handler has its OWN deadLetterPoisonEntry, distinct from the
+    // pre-existing malformed-payload deadLetter() exercised above — a
+    // different mechanism for a different failure mode (repeated recovery
+    // failure vs. a deterministically-unparseable payload).
+    const poisonEntry = { kind: 'entry', id: '1-0', fields: fields(), deliveryCount: 1 };
+
+    const runRecovery = async (): Promise<string> =>
+      await (handler as any).recoverEntrySafely(poisonEntry, 'startup-drain');
+
+    const failUntilThreshold = async (attempts: number): Promise<void> => {
+      jest
+        .spyOn(handler as any, 'handleRecoveredEntry')
+        .mockRejectedValue(new Error('handler blew up'));
+      for (let i = 0; i < attempts; i += 1) {
+        await runRecovery();
+      }
+    };
+
+    it('should write the durable row and only then XACK the entry', async () => {
+      streamDeadLetters.record.mockResolvedValue({} as any);
+
+      await failUntilThreshold(MAX_RECOVERY_ATTEMPTS);
+
+      expect(streamDeadLetters.record).toHaveBeenCalledWith(
+        expect.objectContaining({
+          stream: STREAM,
+          consumerGroup: GROUP,
+          entryId: '1-0',
+          attempts: MAX_RECOVERY_ATTEMPTS,
+          lastError: 'handler blew up',
+        })
+      );
+      expect(redis.xAck).toHaveBeenCalledWith(STREAM, GROUP, '1-0');
+
+      const recordOrder = streamDeadLetters.record.mock.invocationCallOrder[0];
+      const ackOrder = (redis.xAck as jest.Mock).mock.invocationCallOrder[0];
+      expect(recordOrder).toBeLessThan(ackOrder);
+    });
+
+    it('should leave the entry pending — never ack — when the durable write fails', async () => {
+      streamDeadLetters.record.mockRejectedValue(new Error('db unavailable'));
+
+      await failUntilThreshold(MAX_RECOVERY_ATTEMPTS);
+
+      expect(streamDeadLetters.record).toHaveBeenCalled();
       expect(redis.xAck).not.toHaveBeenCalled();
     });
   });

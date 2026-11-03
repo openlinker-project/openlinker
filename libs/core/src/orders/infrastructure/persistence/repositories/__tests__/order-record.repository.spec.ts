@@ -24,6 +24,7 @@ describe('OrderRecordRepository', () => {
   let repository: OrderRecordRepository;
   let ormRepository: jest.Mocked<Repository<OrderRecordOrmEntity>>;
   let transactionalManager: {
+    find: jest.Mock;
     save: jest.Mock<Promise<unknown>, unknown[]>;
     delete: jest.Mock;
     query: jest.Mock<Promise<unknown>, unknown[]>;
@@ -41,6 +42,8 @@ describe('OrderRecordRepository', () => {
     transactionalManager = {
       save: jest.fn(),
       delete: jest.fn(),
+      // #3588: the prior line rows read for the cost carry-forward.
+      find: jest.fn().mockResolvedValue([]),
       // #2282: the order-record half of `upsertWithLineItems` is the shared
       // frozen-attribution raw statement, not `save()`.
       query: jest.fn(),
@@ -462,6 +465,41 @@ describe('OrderRecordRepository', () => {
       const sql = blockSql();
       expect(sql).toContain('"fulfillmentBlockReason" IS DISTINCT FROM $1');
       expect(sql).toContain('"fulfillmentBlockDetail" IS DISTINCT FROM $2');
+    });
+  });
+
+  describe('updateFulfillmentRoutingSkipReason (#3455)', () => {
+    function skipCall(): { sql: string; params: unknown[] } {
+      const calls = (ormRepository.query as jest.Mock).mock.calls as unknown[][];
+      return { sql: calls[0][0] as string, params: calls[0][1] as unknown[] };
+    }
+
+    it('should write the reason for the order', async () => {
+      (ormRepository.query as jest.Mock).mockResolvedValue([]);
+
+      await repository.updateFulfillmentRoutingSkipReason('order-123', 'mirrored-before-routing');
+
+      expect(skipCall().params).toEqual(['mirrored-before-routing', 'order-123']);
+    });
+
+    // Level-triggered: `null` is what clears a stale reason once the order is
+    // routed or the OMS is switched off.
+    it('should send an explicit null when the reason clears', async () => {
+      (ormRepository.query as jest.Mock).mockResolvedValue([]);
+
+      await repository.updateFulfillmentRoutingSkipReason('order-123', null);
+
+      expect(skipCall().params).toEqual([null, 'order-123']);
+    });
+
+    // Every ingestion on an OMS-off install writes null over null; `updatedAt`
+    // is a live filter axis, so the unchanged write must touch no row.
+    it('should guard the write so an unchanged value touches no row', async () => {
+      (ormRepository.query as jest.Mock).mockResolvedValue([]);
+
+      await repository.updateFulfillmentRoutingSkipReason('order-123', null);
+
+      expect(skipCall().sql).toContain('"fulfillmentRoutingSkipReason" IS DISTINCT FROM $1');
     });
   });
 
@@ -1715,6 +1753,8 @@ describe('OrderRecordRepository', () => {
       'sourceConnectionId',
       'sourceEventId',
       'orderSnapshot',
+      // #3507 G03-1 — derived from the snapshot, so written whenever it is.
+      'searchText',
       'recordStatus',
       'mappingFailureReason',
       'dispatchByAt',
@@ -1726,6 +1766,7 @@ describe('OrderRecordRepository', () => {
     const EMPTY_DEFAULTS: Record<string, unknown> = {
       syncStatus: [],
       syncAttempts: [],
+      hasBuyerNote: false,
     };
 
     function allColumnProperties(): string[] {
@@ -1776,6 +1817,11 @@ describe('OrderRecordRepository', () => {
         if (built.writeSet.has(column)) {
           continue;
         }
+        // `orderEdits` (#3542) is the one non-written column that is deliberately
+        // NOT reset: the overlay it carries has to reach the domain mapping.
+        if (column === 'orderEdits') {
+          continue;
+        }
         expect({ column, value: projected[column] }).toEqual({
           column,
           value: EMPTY_DEFAULTS[column] ?? null,
@@ -1803,11 +1849,228 @@ describe('OrderRecordRepository', () => {
       const sql = upsertSql();
 
       for (const column of columns) {
+        // `orderEdits` is a read-only guard: the DO UPDATE CASE branches read it
+        // to keep an operator-edited address, and the statement never writes it.
+        if (column === 'orderEdits') {
+          continue;
+        }
         const named = sql.includes(`"${column}"`);
         const inWriteSet = UPSERT_WRITE_SET.includes(column);
         // The write set the test asserts against must stay the statement's own.
         expect(named).toBe(inWriteSet);
       }
+    });
+  });
+
+  describe('buyer note and buyer order count reads (#3538)', () => {
+    it('should count only live earlier orders and tie-break equal instants by id (N-31)', async () => {
+      const where = jest.fn().mockReturnThis();
+      const andWhere = jest.fn().mockReturnThis();
+      (ormRepository.createQueryBuilder as jest.Mock).mockReturnValue({
+        where,
+        andWhere,
+        getCount: jest.fn().mockResolvedValue(2),
+      });
+
+      await repository.countEarlierOrdersForCustomer('cust', 'order-b', new Date('2026-01-01'));
+
+      const clauses = (andWhere.mock.calls as Array<[string]>).map(([sql]) => sql).join('\n');
+      expect(clauses).toContain('"cancelledAt" IS NULL');
+      expect(clauses).toContain('rec."internalOrderId" < :excludeInternalOrderId');
+    });
+
+    it('should not bump updatedAt when marking a note read (B-9)', async () => {
+      (ormRepository.update as jest.Mock).mockResolvedValue({ affected: 1 });
+
+      await repository.markBuyerNoteRead('order-1', new Date('2026-01-01'), 'user-1');
+
+      const [, patch] = (ormRepository.update as jest.Mock).mock.calls[0];
+      expect(patch).not.toHaveProperty('updatedAt');
+    });
+  });
+
+  /**
+   * #3507 G03-1 — the statement enumerates its own columns, so `toOrm`
+   * stamping `entity.searchText` wrote nothing: a new order kept the column
+   * default `''` (unsearchable) and `ON CONFLICT` never refreshed a re-ingested
+   * one. Asserted against the REAL builder for BOTH paths, since the column
+   * belongs to the shared half.
+   */
+  describe('searchText in the frozen-attribution upsert (#3507 G03-1, G03-14)', () => {
+    type Builder = {
+      buildFrozenAttributionUpsert: (
+        entity: OrderRecordOrmEntity,
+        includeReadyPathColumns: boolean
+      ) => { sql: string; params: unknown[]; writeSet: ReadonlySet<string> };
+    };
+
+    const originalStorePii = process.env.OL_STORE_PII;
+
+    afterEach(() => {
+      if (originalStorePii === undefined) {
+        delete process.env.OL_STORE_PII;
+      } else {
+        process.env.OL_STORE_PII = originalStorePii;
+      }
+    });
+
+    it.each<[string, boolean]>([
+      ['upsert', false],
+      ['upsertWithLineItems', true],
+    ])(
+      'should name "searchText" in both the INSERT and the DO UPDATE SET halves when building the %s statement',
+      (_path, includeReadyPathColumns) => {
+        const entity = createOrmEntity();
+        entity.searchText = 'ord-001 sku-1';
+
+        const { sql, params, writeSet } = (
+          repository as unknown as Builder
+        ).buildFrozenAttributionUpsert(entity, includeReadyPathColumns);
+
+        const insertHalf = sql.slice(0, sql.indexOf('VALUES'));
+        const updateHalf = sql.slice(sql.indexOf('DO UPDATE SET'));
+        expect(insertHalf).toContain('"searchText"');
+        expect(updateHalf).toMatch(
+          /"searchText" = CASE WHEN "order_records"\."orderEdits" \? 'address'\s+THEN "order_records"\."searchText" ELSE EXCLUDED\."searchText" END/
+        );
+        expect(writeSet.has('searchText')).toBe(true);
+        expect(params).toContain('ord-001 sku-1');
+      }
+    );
+
+    it('should require recordStatus ready for hasBuyerNote=true and leave false unchanged (N-20)', () => {
+      const build = (hasBuyerNote: boolean): jest.Mock => {
+        const andWhere = jest.fn().mockReturnThis();
+        (ormRepository.createQueryBuilder as jest.Mock).mockReturnValue({
+          andWhere,
+          orderBy: jest.fn().mockReturnThis(),
+          addOrderBy: jest.fn().mockReturnThis(),
+          leftJoin: jest.fn().mockReturnThis(),
+          setParameter: jest.fn().mockReturnThis(),
+        });
+        (
+          repository as unknown as { buildFilteredQuery: (f: unknown) => unknown }
+        ).buildFilteredQuery({ hasBuyerNote });
+        return andWhere;
+      };
+
+      expect(build(true)).toHaveBeenCalledWith(
+        `rec."hasBuyerNote" = true AND rec."recordStatus" = 'ready'`
+      );
+      expect(build(false)).toHaveBeenCalledWith('rec."hasBuyerNote" = false');
+    });
+
+    it('should keep a stored note when the incoming note is unknown (B-5)', () => {
+      const { sql } = (repository as unknown as Builder).buildFrozenAttributionUpsert(
+        createOrmEntity(),
+        true
+      );
+      const updateHalf = sql.slice(sql.indexOf('DO UPDATE SET'));
+
+      expect(updateHalf).toContain(
+        'CASE WHEN (EXCLUDED."buyerNote" IS NULL AND EXCLUDED."hasBuyerNote" = false)'
+      );
+      expect(updateHalf).toMatch(/THEN "order_records"\."buyerNote" ELSE EXCLUDED\."buyerNote" END/);
+      expect(updateHalf).toMatch(/THEN "order_records"\."hasBuyerNote" ELSE EXCLUDED\."hasBuyerNote" END/);
+    });
+
+    it('should reset the read marker only when a different note text arrives (N-22)', () => {
+      const { sql, writeSet } = (repository as unknown as Builder).buildFrozenAttributionUpsert(
+        createOrmEntity(),
+        true
+      );
+      const updateHalf = sql.slice(sql.indexOf('DO UPDATE SET'));
+
+      expect(updateHalf).toContain('"buyerNoteReadAt" = CASE');
+      expect(updateHalf).toContain('"buyerNoteReadByUserId" = CASE');
+      expect(updateHalf).toContain(
+        'EXCLUDED."buyerNote" IS DISTINCT FROM "order_records"."buyerNote"'
+      );
+      // Still not a written column: markBuyerNoteRead stays its sole setter.
+      expect(writeSet.has('buyerNoteReadAt')).toBe(false);
+    });
+
+    it('should record when the note text changed without resetting any acknowledgement (N-22)', () => {
+      const { sql } = (repository as unknown as Builder).buildFrozenAttributionUpsert(
+        createOrmEntity(),
+        true
+      );
+      const updateHalf = sql.slice(sql.indexOf('DO UPDATE SET'));
+
+      expect(updateHalf).toMatch(
+        /"buyerNoteChangedAt" = CASE[\s\S]*?EXCLUDED\."buyerNote" IS DISTINCT FROM "order_records"\."buyerNote"\s+THEN now\(\) ELSE "order_records"\."buyerNoteChangedAt" END/
+      );
+      // A note arriving for the first time is not a change.
+      expect(updateHalf).toContain(`"order_records"."buyerNote" IS NOT NULL AND "order_records"."buyerNote" <> ''`);
+    });
+
+    it('should clear the read marker together with the note when the source reports no note (N-23)', () => {
+      const { sql } = (repository as unknown as Builder).buildFrozenAttributionUpsert(
+        createOrmEntity(),
+        true
+      );
+      const updateHalf = sql.slice(sql.indexOf('DO UPDATE SET'));
+
+      expect(updateHalf).toMatch(
+        /"buyerNoteReadAt" = CASE\s+WHEN EXCLUDED\."buyerNote" = ''\s+THEN NULL/
+      );
+      expect(updateHalf).toMatch(
+        /"buyerNoteReadByUserId" = CASE\s+WHEN EXCLUDED\."buyerNote" = ''\s+THEN NULL/
+      );
+      // An unknown read (NULL) matches no WHEN arm, so the marker is kept (B-5).
+      expect(updateHalf).not.toMatch(/EXCLUDED\."buyerNote" IS NULL\s+THEN NULL/);
+    });
+
+    it('should write the text derived from the snapshot when upserting with PII stored', async () => {
+      process.env.OL_STORE_PII = 'true';
+      mockUpsertReturning(createOrmEntity());
+
+      await repository.upsert(
+        new OrderRecord(
+          'order-123',
+          null,
+          'source-connection-123',
+          null,
+          {
+            orderNumber: 'ORD-001',
+            customerEmail: 'anna@example.test',
+            billingAddress: { firstName: 'Anna', lastName: 'Nowąk' },
+            items: [{ sku: 'SKU-1' }],
+          },
+          [],
+          'ready',
+          new Date('2025-01-01T10:00:00Z'),
+          new Date('2025-01-01T10:00:00Z')
+        )
+      );
+
+      expect(upsertParams()[5]).toBe('ord-001 anna@example.test anna nowak sku-1');
+    });
+
+    it('should index only the order number and SKUs when upserting with OL_STORE_PII=false', async () => {
+      process.env.OL_STORE_PII = 'false';
+      mockUpsertReturning(createOrmEntity());
+
+      await repository.upsert(
+        new OrderRecord(
+          'order-123',
+          null,
+          'source-connection-123',
+          null,
+          {
+            orderNumber: 'ORD-001',
+            customerEmail: 'anna@example.test',
+            billingAddress: { firstName: 'Anna', lastName: 'Nowak' },
+            items: [{ sku: 'SKU-1' }],
+          },
+          [],
+          'ready',
+          new Date('2025-01-01T10:00:00Z'),
+          new Date('2025-01-01T10:00:00Z')
+        )
+      );
+
+      expect(upsertParams()[5]).toBe('ord-001 sku-1');
     });
   });
 
@@ -1890,8 +2153,9 @@ describe('OrderRecordRepository', () => {
 
       await repository.upsert(domainEntity);
 
-      // `recordStatus` IS in the write set - the 6th bound parameter.
-      expect(upsertParams()[5]).toBe('awaiting_mapping');
+      // `recordStatus` IS in the write set - the 7th bound parameter, after
+      // the snapshot and the `searchText` derived from it (#3507 G03-1).
+      expect(upsertParams()[6]).toBe('awaiting_mapping');
     });
 
     it('should report cancelledAt as null even though RETURNING carries it (#2282)', async () => {
@@ -2102,7 +2366,7 @@ describe('OrderRecordRepository', () => {
 
       // No interpolation: the connection id reaches Postgres as a bound param.
       expect(upsertSql()).not.toContain('source-connection-123');
-      expect(upsertParams()).toHaveLength(10);
+      expect(upsertParams()).toHaveLength(11);
       expect(upsertParams()[2]).toBe('source-connection-123');
       expect(typeof upsertParams()[4]).toBe('string');
       expect(JSON.parse(upsertParams()[4] as string)).toEqual({
@@ -2135,6 +2399,7 @@ describe('OrderRecordRepository', () => {
           taxRate: null,
           taxSource: null,
           taxRateReadAt: null,
+          cost: { costState: 'not-recorded', unitCostNet: null, unitCostCurrency: null },
         },
       ]);
 
@@ -2366,6 +2631,89 @@ describe('OrderRecordRepository', () => {
 
       ormRepository.findOne.mockResolvedValue(savedOrm);
       expect((await repository.findById('order-123'))?.shippingAddressHash).toBe('abc123hash');
+    });
+
+    it('pins paymentMethod into the ready-path statement and reads it back (#3294)', async () => {
+      // Same argument as `shippingAddressHash` above: the frozen-attribution
+      // upsert ENUMERATES its columns, so a value stamped on the entity but never
+      // added to the statement is silently not written.
+      const domainEntity = new OrderRecord(
+        'order-123',
+        'customer-456',
+        'source-connection-123',
+        'event-456',
+        { id: 'order-123', orderNumber: 'ORD-001', status: 'pending' },
+        [],
+        'ready',
+        new Date('2025-01-01T10:00:00Z'),
+        new Date('2025-01-01T10:00:00Z'),
+        [],
+        null,
+        null,
+        null,
+        new Date('2025-01-01T09:00:00Z'),
+        'PLN',
+        'inclusive',
+        199.99,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        [],
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        'cash_on_delivery'
+      );
+      const savedOrm = createOrmEntity();
+      savedOrm.paymentMethod = 'cash_on_delivery';
+      transactionalManager.query.mockResolvedValue([savedOrm]);
+      transactionalManager.delete.mockResolvedValue(undefined);
+
+      await repository.upsertWithLineItems(domainEntity, []);
+
+      const [sql, params] = transactionalManager.query.mock.calls[0] as [string, unknown[]];
+      expect(sql).toContain('"paymentMethod"');
+      expect(params).toContain('cash_on_delivery');
+
+      ormRepository.findOne.mockResolvedValue(savedOrm);
+      expect((await repository.findById('order-123'))?.paymentMethod).toBe('cash_on_delivery');
+    });
+
+    it.each([
+      ['online', 'online'],
+      ['bank_transfer', 'bank_transfer'],
+      [null, null],
+      // A value written by a newer release and then rolled back must read as
+      // "not reported", never reach a consumer as an unmapped literal.
+      ['crypto', null],
+      ['', null],
+    ])('coerces the stored paymentMethod %j to %j on read (#3294)', async (stored, expected) => {
+      const entity = createOrmEntity();
+      entity.paymentMethod = stored;
+      ormRepository.findOne.mockResolvedValue(entity);
+
+      const read = await repository.findById('order-123');
+
+      expect(read?.paymentMethod).toBe(expected);
+      expect(read?.paymentMethodOrUnknown).toBe(expected ?? 'unknown');
     });
 
     it('decodes the round-tripped column back to the three domain states', async () => {
@@ -2815,6 +3163,18 @@ describe('OrderRecordRepository', () => {
         expectColumnAbsentFromUpsert('fulfillmentBlockDetail');
       });
 
+      it('should NOT include fulfillmentRoutingSkipReason in the upsert statement (#3455)', async () => {
+        // Same reason as the fulfillmentBlock columns: `persistOrder` runs
+        // BEFORE the intercept, so a round-trip would null the reason the
+        // previous ingestion recorded. `updateFulfillmentRoutingSkipReason` is
+        // the sole writer.
+        mockUpsertReturning(createOrmEntity());
+
+        await repository.upsert(createDomainEntity());
+
+        expectColumnAbsentFromUpsert('fulfillmentRoutingSkipReason');
+      });
+
       it('should NOT include any of the six FX columns in the upsert statement', async () => {
         // upsert() is an update-or-create on the ingestion path, so naming
         // these columns would let a re-poll of an already-stamped order write
@@ -3023,6 +3383,113 @@ describe('OrderRecordRepository', () => {
         (m) => m[1]
       );
       expect(new Set(pathKeyMatches)).toEqual(new Set(['taxRate', 'taxSource', 'taxRateReadAt']));
+    });
+  });
+
+  describe('getDeliveryCountryFacts (#3907)', () => {
+    function stubBuilders(
+      counts: { country: string; currency: string | null; order_count: string }[],
+      rates: { country: string; tax_rate: string; line_count: string }[],
+      examples: { country: string; items: unknown; totals: unknown }[]
+    ): jest.Mock[] {
+      const make = (rows: unknown[]): jest.Mock => {
+        const parts: Record<string, jest.Mock> = {};
+        for (const name of [
+          'select',
+          'addSelect',
+          'where',
+          'andWhere',
+          'groupBy',
+          'addGroupBy',
+          'orderBy',
+          'addOrderBy',
+          'innerJoin',
+          'distinctOn',
+        ]) {
+          parts[name] = jest.fn().mockReturnThis();
+        }
+        parts.getRawMany = jest.fn().mockResolvedValue(rows);
+        return parts as unknown as jest.Mock;
+      };
+      const builders = [make(counts), make(rates), make(examples)];
+      const create = ormRepository.createQueryBuilder as jest.Mock;
+      builders.forEach((builder) => create.mockReturnValueOnce(builder));
+      return builders;
+    }
+
+    it('should issue exactly three queries and never one per country', async () => {
+      stubBuilders(
+        [
+          { country: 'PL', currency: 'PLN', order_count: '5' },
+          { country: 'DE', currency: 'EUR', order_count: '2' },
+        ],
+        [],
+        []
+      );
+
+      await repository.getDeliveryCountryFacts('conn-1', new Date());
+
+      expect(ormRepository.createQueryBuilder).toHaveBeenCalledTimes(3);
+    });
+
+    it('should return an empty list without further queries when no order has a country', async () => {
+      stubBuilders([], [], []);
+
+      const result = await repository.getDeliveryCountryFacts('conn-1', new Date());
+
+      expect(result).toEqual([]);
+      expect(ormRepository.createQueryBuilder).toHaveBeenCalledTimes(1);
+    });
+
+    it('should assemble orders, rates by frequency, majority currency and example when rows exist', async () => {
+      stubBuilders(
+        [
+          { country: 'PL', currency: 'PLN', order_count: '6' },
+          { country: 'PL', currency: 'EUR', order_count: '1' },
+          { country: 'DE', currency: 'EUR', order_count: '2' },
+        ],
+        [
+          { country: 'PL', tax_rate: '8', line_count: '3' },
+          { country: 'PL', tax_rate: '23', line_count: '9' },
+        ],
+        [
+          {
+            country: 'PL',
+            items: [{ name: 'Shirt', quantity: 1, price: 10, taxRate: '23' }],
+            totals: { shipping: 4 },
+          },
+        ]
+      );
+
+      const result = await repository.getDeliveryCountryFacts('conn-1', new Date());
+
+      expect(result).toEqual([
+        {
+          country: 'PL',
+          orders: 7,
+          ratesSeen: ['23', '8'],
+          currency: 'PLN',
+          example: { lines: [{ name: 'Shirt', gross: 10, rate: '23' }], delivery: 4 },
+        },
+        { country: 'DE', orders: 2, ratesSeen: [], currency: 'EUR', example: null },
+      ]);
+    });
+
+    it('should scope every query to the source connection when reading', async () => {
+      const builders = stubBuilders(
+        [{ country: 'PL', currency: 'PLN', order_count: '1' }],
+        [],
+        []
+      );
+
+      await repository.getDeliveryCountryFacts('conn-1', new Date());
+
+      for (const builder of builders) {
+        const where = (builder as unknown as { where: jest.Mock }).where;
+        expect(where).toHaveBeenCalledWith('rec.sourceConnectionId = :sourceConnectionId', {
+          sourceConnectionId: 'conn-1',
+        });
+      }
     });
   });
 

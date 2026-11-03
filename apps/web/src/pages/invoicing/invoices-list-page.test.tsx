@@ -802,8 +802,37 @@ describe('InvoicesListPage', () => {
     // the banner's own text (robust to the Alert component's internal markup /
     // CSS class names) rather than the `alert__description` implementation class.
     const banner = await screen.findByText(/Bulk issue complete\./);
-    expect(banner.textContent).toContain('1 issued.');
+    expect(banner.textContent).toContain('Issued 1 of 2.');
     expect(banner.textContent).toContain('1 skipped (already issued or in progress).');
+  });
+
+  it('reports issued against the asked total and flags orders the server did not account for (DEF-21)', async () => {
+    const user = userEvent.setup();
+    const conn = makeConnection({ id: 'conn_a', name: 'Connection A' });
+    const invoiceA = makeInvoice({ id: 'inv_a', orderId: 'order_a', connectionId: 'conn_a' });
+    const invoiceB = makeInvoice({ id: 'inv_b', orderId: 'order_b', connectionId: 'conn_a' });
+    const list = vi
+      .fn()
+      .mockResolvedValue(makeEnvelope({ items: [invoiceA, invoiceB], total: 2 }));
+    const bulkIssue = vi
+      .fn()
+      .mockResolvedValueOnce({ issued: 1, skipped: 0, failed: 0, total: 2, results: [] });
+
+    renderWithProviders(<InvoicesListPage />, {
+      apiClient: mockApi(list, [conn], bulkIssue),
+      route: '/invoices',
+    });
+
+    await screen.findByText('order_a');
+    const checkboxes = screen.getAllByRole('checkbox', { name: /select invoice/i });
+    await user.click(checkboxes[0]);
+    await user.click(checkboxes[1]);
+    await user.click(screen.getByRole('button', { name: /issue invoices/i }));
+    await user.click(screen.getByRole('button', { name: 'Issue' }));
+
+    const banner = await screen.findByText(/Bulk issue complete\./);
+    expect(banner.textContent).toContain('Issued 1 of 2.');
+    expect(banner.textContent).toContain('Some orders were not reported back');
   });
 
   it('renders the clearanceReference (KSeF number) column when present', async () => {

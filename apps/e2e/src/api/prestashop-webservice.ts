@@ -22,6 +22,8 @@
  *
  * @module api
  */
+import { request as httpRequest } from 'node:http';
+
 
 export interface PrestashopProductView {
   id: string;
@@ -290,6 +292,49 @@ export class PrestashopWebserviceClient {
 
   private readonly requestTimeoutMs: number;
 
+  /**
+   * A PrestaShop answers any other Host with a redirect to its canonical one, so a stand
+   * reached through a mapped port needs the canonical Host sent explicitly (`OL_PS_HOST_HEADER`).
+   */
+  private doFetch(url: string, init: RequestInit): Promise<Response> {
+    const host = process.env.OL_PS_HOST_HEADER?.trim();
+    if (!host) return fetch(url, init);
+    // fetch (undici) silently drops a Host override, so go through node:http for this stand.
+    const target = new URL(url);
+    const headers: Record<string, string> = { ...(init.headers as Record<string, string>), Host: host };
+    const body = init.body === undefined || init.body === null ? undefined : String(init.body);
+    if (body !== undefined) headers['Content-Length'] = String(Buffer.byteLength(body));
+    return new Promise<Response>((resolve, reject) => {
+      const request = httpRequest(
+        {
+          hostname: target.hostname,
+          port: target.port,
+          path: `${target.pathname}${target.search}`,
+          method: init.method ?? 'GET',
+          headers,
+        },
+        (res) => {
+          const chunks: Buffer[] = [];
+          res.on('data', (c: Buffer) => chunks.push(c));
+          res.on('end', () => {
+            const responseHeaders = new Headers();
+            for (const [k, v] of Object.entries(res.headers)) {
+              if (Array.isArray(v)) v.forEach((x) => responseHeaders.append(k, x));
+              else if (v !== undefined) responseHeaders.set(k, v);
+            }
+            const status = res.statusCode ?? 0;
+            const nullBody = status === 204 || status === 304;
+            resolve(new Response(nullBody ? null : Buffer.concat(chunks), { status, headers: responseHeaders }));
+          });
+        },
+      );
+      init.signal?.addEventListener('abort', () => request.destroy(new Error('aborted')));
+      request.on('error', reject);
+      if (body !== undefined) request.write(body);
+      request.end();
+    });
+  }
+
   constructor(options: PrestashopWebserviceOptions) {
     this.baseUrl = options.baseUrl.replace(/\/$/, '');
     this.authHeader = `Basic ${Buffer.from(`${options.apiKey}:`).toString('base64')}`;
@@ -355,7 +400,7 @@ export class PrestashopWebserviceClient {
     const timeout = setTimeout(() => controller.abort(), this.requestTimeoutMs);
     let response: Response;
     try {
-      response = await fetch(url, {
+      response = await this.doFetch(url, {
         method: 'DELETE',
         headers: { Authorization: this.authHeader, Accept: 'application/json' },
         signal: controller.signal,
@@ -389,7 +434,7 @@ export class PrestashopWebserviceClient {
     const timeout = setTimeout(() => controller.abort(), this.requestTimeoutMs);
     let response: Response;
     try {
-      response = await fetch(url, {
+      response = await this.doFetch(url, {
         method: 'DELETE',
         headers: { Authorization: this.authHeader, Accept: 'application/json' },
         signal: controller.signal,
@@ -789,6 +834,69 @@ export class PrestashopWebserviceClient {
    * Resolve a PrestaShop country id by its ISO 3166-1 alpha-2 code (e.g. `PL`).
    * Used so address creation never hardcodes an id that varies by install.
    */
+  /**
+   * Resolve a tax-rules group id by its exact name (e.g. `PL VAT 23%`), or
+   * `null` when the shop carries no group of that name. Groups are
+   * operator-authored, so a spec that needs a specific rate asks rather than
+   * assuming an id.
+   */
+  async getTaxRulesGroupIdByName(name: string): Promise<string | null> {
+    const body = await this.get(`/api/tax_rule_groups?filter[name]=${encodeURIComponent(`[${name}]`)}`);
+    const groups = asArray(pick(body, 'tax_rule_groups'));
+    if (groups.length === 0) return null;
+    return asStringOrNull(pick(asRecord(groups[0]), 'id'));
+  }
+
+  /**
+   * A product's price as PrestaShop ITSELF computes it, both without and with
+   * tax for a given country - the webservice's custom price fields
+   * (`price[name][use_tax]` / `price[name][country]`).
+   *
+   * `gross` is deliberately not derived here as `net * (1 + rate)`: the point of
+   * reading it is to compare what OpenLinker publishes against the number the
+   * SHOP would charge a buyer in that country, and the shop's own arithmetic is
+   * the only authority on that.
+   */
+  async getProductPrices(
+    productId: string,
+    countryId: string,
+    combinationId = '0',
+  ): Promise<{ net: number; gross: number }> {
+    // `product_attribute=0` asks for the product's own price, without the
+    // default combination's impact - the same base OpenLinker's master reads.
+    // A combination id gives that combination's full price (base + impact).
+    const attribute = encodeURIComponent(combinationId);
+    const body = await this.get(
+      `/api/products/${productId}?price[e2e_net][use_tax]=0&price[e2e_net][use_reduction]=0` +
+        `&price[e2e_net][product_attribute]=${attribute}` +
+        `&price[e2e_gross][use_tax]=1&price[e2e_gross][use_reduction]=0` +
+        `&price[e2e_gross][product_attribute]=${attribute}` +
+        `&price[e2e_gross][country]=${encodeURIComponent(countryId)}`,
+    );
+    const product = asRecord(pick(body, 'product'));
+    const net = Number(pick(product, 'e2e_net'));
+    const gross = Number(pick(product, 'e2e_gross'));
+    if (!Number.isFinite(net) || !Number.isFinite(gross)) {
+      throw new Error(
+        `PrestaShop getProductPrices(${productId}) returned no computed prices: ${JSON.stringify(product).slice(0, 200)}`,
+      );
+    }
+    return { net, gross };
+  }
+
+  /**
+   * The shop's default country (`PS_COUNTRY_DEFAULT`) - the country OpenLinker
+   * prices the catalogue for when the connection sets no `salesCountryIso2`.
+   */
+  async getDefaultCountryId(): Promise<string | null> {
+    const body = await this.get(
+      `/api/configurations?display=full&filter[name]=${encodeURIComponent('[PS_COUNTRY_DEFAULT]')}`,
+    );
+    const rows = asArray(pick(body, 'configurations'));
+    if (rows.length === 0) return null;
+    return asStringOrNull(pick(asRecord(rows[0]), 'value'));
+  }
+
   async getCountryIdByIso(iso: string): Promise<string | null> {
     const body = await this.get(`/api/countries?filter[iso_code]=${encodeURIComponent(iso)}`);
     const countries = asArray(pick(body, 'countries'));
@@ -805,6 +913,17 @@ export class PrestashopWebserviceClient {
    * means "this shop does not carry that currency", which a spec turns into a
    * precise skip instead of an order silently created in the shop default.
    */
+  /**
+   * The shop's conversion rate for a currency (units of it per one unit of the
+   * shop's default currency), which is what the cart applies to catalogue
+   * prices when an order is denominated in that currency.
+   */
+  async getCurrencyConversionRate(currencyId: string): Promise<number | null> {
+    const body = await this.get(`/api/currencies/${encodeURIComponent(currencyId)}`);
+    const rate = Number(pick(asRecord(pick(body, 'currency')), 'conversion_rate'));
+    return Number.isFinite(rate) && rate > 0 ? rate : null;
+  }
+
   async getCurrencyIdByIso(iso: string): Promise<string | null> {
     const body = await this.get(`/api/currencies?filter[iso_code]=${encodeURIComponent(iso)}`);
     const currencies = asArray(pick(body, 'currencies'));
@@ -999,6 +1118,24 @@ export class PrestashopWebserviceClient {
     return { id };
   }
 
+  /**
+   * Move an order to another state by appending an `order_histories` row, the
+   * way the back office does (H-02, DEF-26). `6` is PrestaShop's stock
+   * "Canceled" state; a shop that renumbered its states passes its own id.
+   */
+  async setOrderState(orderId: string, orderStateId = '6'): Promise<void> {
+    const xml = [
+      '<?xml version="1.0" encoding="UTF-8"?>',
+      '<prestashop>',
+      '  <order_history>',
+      `    <id_order>${escapeXml(orderId)}</id_order>`,
+      `    <id_order_state>${escapeXml(orderStateId)}</id_order_state>`,
+      '  </order_history>',
+      '</prestashop>',
+    ].join('\n');
+    await this.send('POST', '/api/order_histories', xml);
+  }
+
   async createOrder(input: CreateOrderInput): Promise<{ id: string }> {
     const currencyId = input.currencyId ?? '1';
     const languageId = input.languageId ?? '1';
@@ -1088,7 +1225,7 @@ export class PrestashopWebserviceClient {
     const timeout = setTimeout(() => controller.abort(), this.requestTimeoutMs);
     let response: Response;
     try {
-      response = await fetch(url, {
+      response = await this.doFetch(url, {
         method: 'POST',
         headers: { Authorization: this.authHeader, Accept: 'application/json' },
         body: form,
@@ -1180,7 +1317,7 @@ export class PrestashopWebserviceClient {
     const timeout = setTimeout(() => controller.abort(), this.requestTimeoutMs);
     let response: Response;
     try {
-      response = await fetch(url, {
+      response = await this.doFetch(url, {
         headers: { Authorization: this.authHeader, Accept: 'application/json' },
         signal: controller.signal,
       });
@@ -1206,7 +1343,7 @@ export class PrestashopWebserviceClient {
     const timeout = setTimeout(() => controller.abort(), this.requestTimeoutMs);
     let response: Response;
     try {
-      response = await fetch(url, {
+      response = await this.doFetch(url, {
         method,
         headers: {
           Authorization: this.authHeader,

@@ -30,6 +30,9 @@ import {
   useInvoiceContentQuery,
   useIssueCorrectionMutation,
   type CorrectionLineInput,
+  CorrectionReasonField,
+  useCorrectionReason,
+  useWarningAcknowledgement,
 } from '../../../features/invoicing';
 
 interface LineRow {
@@ -77,6 +80,7 @@ export function KsefInvoiceCorrectionFlow({
   const { t } = useTranslation();
   const { showToast } = useToast();
   const mutation = useIssueCorrectionMutation();
+  const acknowledgement = useWarningAcknowledgement(mutation.isPending);
   // Same read `CorrectionLineGrid` uses internally — resolved here too so this
   // component can decide WHICH table to render (react-query dedupes the
   // fetch by query key, so this costs no extra request).
@@ -87,7 +91,7 @@ export function KsefInvoiceCorrectionFlow({
     `ksef-corr-${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`,
   );
 
-  const [reason, setReason] = useState('');
+  const reasonState = useCorrectionReason();
   const [lines, setLines] = useState<LineRow[]>([emptyRow()]);
   const [gridLines, setGridLines] = useState<CorrectionLineInput[]>([]);
   const [linesError, setLinesError] = useState<string | null>(null);
@@ -143,37 +147,50 @@ export function KsefInvoiceCorrectionFlow({
       parsedLines = parsed;
     }
     setLinesError(null);
-    mutation.mutate(
-      {
-        invoiceId: invoice.id,
-        input: {
-          reason: reason.trim() !== '' ? reason.trim() : undefined,
-          lines: parsedLines,
-          idempotencyKey: idempotencyKeyRef.current,
+    // DEF-32: a missing reason warns once, then the operator decides.
+    if (!reasonState.confirmBeforeSubmit()) {
+      return;
+    }
+    const send = (acknowledgeWarnings: string[]): void => {
+      mutation.mutate(
+        {
+          invoiceId: invoice.id,
+          input: {
+            ...(acknowledgeWarnings.length > 0 ? { acknowledgeWarnings } : {}),
+            reason: reasonState.submittedReason,
+            lines: parsedLines,
+            idempotencyKey: idempotencyKeyRef.current,
+          },
         },
-      },
-      {
-        onSuccess: (correctionInvoice) => {
-          showToast({
-            tone: 'success',
-            title: t('ksef.correction.issued', 'KOR issued'),
-            description: t(
-              'ksef.correction.issuedBody',
-              'The correcting document was submitted to KSeF.',
-            ),
-          });
-          onCorrectionIssued(correctionInvoice.id);
-          onClose();
+        {
+          onSuccess: (correctionInvoice) => {
+            showToast({
+              tone: 'success',
+              title: t('ksef.correction.issued', 'KOR issued'),
+              description: t(
+                'ksef.correction.issuedBody',
+                'The correcting document was submitted to KSeF.',
+              ),
+            });
+            onCorrectionIssued(correctionInvoice.id);
+            onClose();
+          },
+          onError: (error) => {
+            // DEF-23/30/31: a refusal the operator may overrule asks instead of failing.
+            if (acknowledgement.offer(error, send)) {
+              return;
+            }
+            showToast({
+              tone: 'error',
+              title: t('ksef.correction.failed', 'KOR failed'),
+              description: error.message,
+            });
+          },
         },
-        onError: (error) => {
-          showToast({
-            tone: 'error',
-            title: t('ksef.correction.failed', 'KOR failed'),
-            description: error.message,
-          });
-        },
-      },
-    );
+      );
+    };
+    acknowledgement.reset();
+    send([]);
   }
 
   const isSubmitting = mutation.isPending;
@@ -213,23 +230,12 @@ export function KsefInvoiceCorrectionFlow({
       </div>
 
       {/* Reason */}
-      <div className="field ksef-correction__reason">
-        <label htmlFor="ksef-reason">
-          {t('ksef.correction.reasonLabel', 'Reason for correction')}
-        </label>
-        <textarea
-          id="ksef-reason"
-          className="textarea"
-          placeholder={t(
-            'ksef.correction.reasonPlaceholder',
-            'e.g. Partial return of the order',
-          )}
-          value={reason}
-          onChange={(e) => setReason(e.target.value)}
-          disabled={isSubmitting}
-          rows={3}
-        />
-      </div>
+      <CorrectionReasonField
+        state={reasonState}
+        name="ksef"
+        disabled={isSubmitting}
+        className="ksef-correction__reason"
+      />
 
       {/* Line items */}
       {linesError ? (
@@ -342,6 +348,7 @@ export function KsefInvoiceCorrectionFlow({
             : t('ksef.correction.submit', 'Issue KOR')}
         </Button>
       </div>
+      {acknowledgement.dialog}
     </div>
   );
 }

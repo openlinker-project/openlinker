@@ -14,7 +14,6 @@ import {
   formatPlatformParamValue,
   humanizeParamKey,
   looksLikeIdentifier,
-  readConnectionEnvironment,
 } from './bulk-config-summary';
 import type { BulkWizardConfig } from './bulk-wizard.types';
 
@@ -30,20 +29,6 @@ function makeConfig(over: Partial<BulkWizardConfig> = {}): BulkWizardConfig {
     ...over,
   };
 }
-
-describe('readConnectionEnvironment', () => {
-  it('should return the environment when the config carries a known value', () => {
-    expect(readConnectionEnvironment({ environment: 'sandbox' })).toBe('sandbox');
-    expect(readConnectionEnvironment({ environment: 'production' })).toBe('production');
-  });
-
-  it('should return null when the environment is absent, unknown or not a string', () => {
-    expect(readConnectionEnvironment({})).toBeNull();
-    expect(readConnectionEnvironment(undefined)).toBeNull();
-    expect(readConnectionEnvironment({ environment: 'staging' })).toBeNull();
-    expect(readConnectionEnvironment({ environment: 1 })).toBeNull();
-  });
-});
 
 describe('describePricingPolicy', () => {
   it('should describe every pricing mode', () => {

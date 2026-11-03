@@ -23,7 +23,7 @@ function singleLanguageState(name: string): PrestashopOrderState {
     deleted: '0',
     paid: '0',
     shipped: '0',
-    delivered: '0',
+    delivery: '0',
     logable: '0',
   };
 }
@@ -102,8 +102,8 @@ describe('deriveOrderState - basis', () => {
     expect(deriveOrderState({ ...singleLanguageState('Shipped'), shipped: '1' }).basis).toBe(
       'shipped-flag'
     );
-    expect(deriveOrderState({ ...singleLanguageState('Delivered'), delivered: '1' }).basis).toBe(
-      'delivered-flag'
+    expect(deriveOrderState({ ...singleLanguageState('Delivered'), shipped: '1' }).basis).toBe(
+      'delivered-label'
     );
     expect(deriveOrderState({ ...singleLanguageState('Paid, picking'), paid: '1' }).basis).toBe(
       'paid-flag'
@@ -121,6 +121,91 @@ describe('deriveOrderState - basis', () => {
   it('reports the label that answered ahead of the paid flag', () => {
     expect(deriveOrderState(singleLanguageState('Zwrócono')).basis).toBe('refund-label');
     expect(deriveOrderState(singleLanguageState('Anulowano')).basis).toBe('cancel-label');
+  });
+});
+
+/**
+ * The real PrestaShop 9.0.2 rows (#3506, G02-7), flags exactly as
+ * `install/data/xml/order_state.xml` ships them. `delivery` is `1` on 3, 4 AND
+ * 5, and 4 and 5 carry identical flags, so the label is the only discriminator.
+ */
+describe('deriveOrderState - PrestaShop 9 default states (#3506)', () => {
+  const ps9 = (id: string, name: string, flags: Partial<PrestashopOrderState>) =>
+    ({ id, name, deleted: '0', logable: '1', ...flags }) as PrestashopOrderState;
+
+  it('should read state 5 "Delivered" as delivered when shipped and delivery are both set', () => {
+    expect(deriveOrderState(ps9('5', 'Delivered', { paid: '1', shipped: '1', delivery: '1' }))).toEqual(
+      { status: 'delivered', basis: 'delivered-label' }
+    );
+  });
+
+  it('should read state 4 "Shipped" as shipped when its flags equal the delivered state', () => {
+    expect(deriveOrderStatusFromState(ps9('4', 'Shipped', { paid: '1', shipped: '1', delivery: '1' }))).toBe(
+      'shipped'
+    );
+  });
+
+  it('should read state 3 "Processing in progress" as processing when only delivery and paid are set', () => {
+    expect(
+      deriveOrderStatusFromState(
+        ps9('3', 'Processing in progress', { paid: '1', shipped: '0', delivery: '1' })
+      )
+    ).toBe('processing');
+  });
+});
+
+describe('deriveOrderStatusFromState - delivered labels (#3506)', () => {
+  const shippedState = (name: string): PrestashopOrderState => ({
+    ...singleLanguageState(name),
+    paid: '1',
+    shipped: '1',
+  });
+
+  it.each([
+    ['en', 'Delivered'],
+    ['pl', 'Dostarczone'],
+    ['pl', 'Doręczono'],
+    ['de', 'Zugestellt'],
+    ['de', 'Ausgeliefert'],
+    ['fr', 'Livré'],
+    ['es', 'Entregado'],
+    ['pt', 'Entregue'],
+    ['it', 'Consegnato'],
+    ['nl', 'Bezorgd'],
+    ['cs', 'Doručeno'],
+    ['sv', 'Levererad'],
+    ['hu', 'Kézbesítve'],
+  ])('should read a shipped %s state ("%s") as delivered', (_lang, label) => {
+    expect(deriveOrderStatusFromState(shippedState(label))).toBe('delivered');
+  });
+
+  it.each([
+    ['Out for delivery'],
+    ['W doręczeniu'],
+    ['Entregando'],
+    ['Doručuje se'],
+    ['In consegna'],
+  ])('should read the in-flight label "%s" as shipped, not delivered', (label) => {
+    expect(deriveOrderStatusFromState(shippedState(label))).toBe('shipped');
+  });
+
+  it.each([['Not delivered'], ['Nie dostarczono'], ['No entregado'], ['Partially delivered']])(
+    'should refuse a delivered reading when the label "%s" negates or qualifies it',
+    (label) => {
+      expect(deriveOrderStatusFromState(shippedState(label))).toBe('shipped');
+    }
+  );
+
+  it('should not read delivered from a delivered label on a state that never shipped', () => {
+    expect(deriveOrderStatusFromState({ ...singleLanguageState('Delivered'), paid: '1' })).toBe(
+      'processing'
+    );
+  });
+
+  it('should not read delivered from the delivery flag alone', () => {
+    expect(
+      deriveOrderStatusFromState({ ...singleLanguageState('Shipped'), shipped: '1', delivery: '1' })
+    ).toBe('shipped');
   });
 });
 

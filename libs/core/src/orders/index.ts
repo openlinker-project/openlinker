@@ -23,6 +23,15 @@ export { isSourceOptionsReader } from './domain/ports/capabilities/source-option
 // the source-side dispatch notify folded into OrderStatusWriteback (#1168).
 export type { OrderFulfillmentUpdater } from './domain/ports/capabilities/order-fulfillment-updater.capability';
 export { isOrderFulfillmentUpdater } from './domain/ports/capabilities/order-fulfillment-updater.capability';
+export type { OrderCreateStockEffect } from './domain/ports/capabilities/order-create-stock-effect.capability';
+export {
+  isOrderCreateStockEffect,
+  lowersStockOnOrderCreate,
+} from './domain/ports/capabilities/order-create-stock-effect.capability';
+// Contact write-back for an order the destination already holds (#3814 review):
+// asked on the create-skip path only, best-effort.
+export type { OrderContactRefresher } from './domain/ports/capabilities/order-contact-refresher.capability';
+export { isOrderContactRefresher } from './domain/ports/capabilities/order-contact-refresher.capability';
 // Read-back counterpart to OrderFulfillmentUpdater (#834): branch-1
 // shipment-status projection from the OMP's view.
 export type { FulfillmentStatusReader } from './domain/ports/capabilities/fulfillment-status-reader.capability';
@@ -38,11 +47,32 @@ export type {
   OrderLifecycleEventType,
   OrderWritebackOutcome,
   OrderWritebackResult,
+  OrderWritebackScope,
 } from './domain/types/order-lifecycle-event.types';
 export {
   OrderLifecycleEventTypeValues,
   OrderWritebackOutcomeValues,
+  OrderWritebackScopeValues,
 } from './domain/types/order-lifecycle-event.types';
+
+// Billing-document uploader (#3549): attaches an issued sales document to the
+// marketplace order it came from. Advertised-without-dispatch, like its sibling
+// above - narrow the dispatched OrderSource adapter with the guard.
+export type { OrderBillingDocumentUploader } from './domain/ports/capabilities/order-billing-document-uploader.capability';
+export { isOrderBillingDocumentUploader } from './domain/ports/capabilities/order-billing-document-uploader.capability';
+// Its link sibling: a marketplace that shows the buyer a link to the document.
+export type { OrderBillingDocumentLinker } from './domain/ports/capabilities/order-billing-document-linker.capability';
+export { isOrderBillingDocumentLinker } from './domain/ports/capabilities/order-billing-document-linker.capability';
+export type {
+  AttachBillingDocumentLinkInput,
+  BillingDocumentUploadOutcome,
+  UploadBillingDocumentInput,
+  UploadBillingDocumentResult,
+} from './domain/types/order-billing-document.types';
+export {
+  BillingDocumentUploadOutcomeValues,
+  isShareableBillingDocumentUrl,
+} from './domain/types/order-billing-document.types';
 
 // Return source reader (#2329 / ADR-060): the returns half of OrderSource.
 // Advertised-without-dispatch — narrow the dispatched OrderSource adapter with
@@ -101,6 +131,19 @@ export {
 } from './domain/types/order.types';
 export { OrderPickupPointTypeValues } from './domain/types/order.types';
 export type { BuyerTaxId } from './domain/types/buyer-tax-id.types';
+export type { BuyerNote, BuyerNoteListState } from './domain/types/buyer-note.types';
+export {
+  readSourceBuyerNote,
+  decodeHtmlNoteText,
+  hasBuyerNoteText,
+  encodeBuyerNoteColumn,
+  decodeBuyerNoteColumn,
+  normaliseCountryColumn,
+  classifyBuyerNoteForList,
+  buildBuyerNotePreview,
+  BuyerNoteListStateValues,
+  BUYER_NOTE_PREVIEW_MAX_CHARACTERS,
+} from './domain/types/buyer-note.types';
 export {
   readBuyerTaxId,
   buyerHasTaxId,
@@ -108,9 +151,43 @@ export {
   decodeBuyerTaxIdColumn,
   readSourceBuyerTaxId,
 } from './domain/types/buyer-tax-id.types';
+export type {
+  DestinationRoutingBlockReason,
+  DestinationRoutingBlock,
+} from './domain/types/destination-routing-block.types';
+export {
+  DestinationRoutingBlockReasonValues,
+  DestinationRoutingAttentionReasonValues,
+  isDestinationRoutingBlockReason,
+  buildDestinationRoutingDetail,
+} from './domain/types/destination-routing-block.types';
 export { PaymentStatusValues, PAYMENT_STATUS } from './domain/types/payment-status.types';
 export type { PaymentStatus } from './domain/types/payment-status.types';
+export {
+  PaymentMethodValues,
+  PAYMENT_METHOD,
+  isPaymentMethod,
+} from './domain/types/payment-method.types';
+export type { PaymentMethod } from './domain/types/payment-method.types';
+export {
+  decideBuyerEmail,
+  BUYER_EMAIL_SUPPRESSION_MESSAGE,
+} from './domain/domain-services/buyer-email-gate.domain-service';
+export type {
+  BuyerEmailChannelKind,
+  BuyerEmailGateInput,
+  BuyerEmailGateDecision,
+} from './domain/domain-services/buyer-email-gate.domain-service';
+export {
+  PaymentFactsViolationValues,
+  checkPaymentFactsConsistency,
+} from './domain/types/payment-facts-consistency.types';
+export type {
+  PaymentFacts,
+  PaymentFactsViolation,
+} from './domain/types/payment-facts-consistency.types';
 export type { CodToCollect } from './domain/types/cod-to-collect.types';
+export { toCodToCollect } from './domain/types/cod-to-collect.types';
 export { OrderCreate, OrderRef, OrderSourceRef } from './domain/types/order-processor.types';
 export {
   IncomingOrder,
@@ -158,6 +235,12 @@ export {
   FulfillmentRollupStateOrNull,
 } from './domain/types/order-fulfillment.types';
 export { deriveSlaState } from './domain/order-sla';
+export type {
+  DeliveryCountryFact,
+  DeliveryCountryExample,
+  DeliveryCountryExampleLine,
+} from './domain/types/delivery-country-facts.types';
+export { toLiveOrderIssuanceFacts } from './domain/live-order-issuance-facts';
 // Per-order reporting-currency snapshot (#2124, ADR-040).
 export type { OrderFxIntent, OrderFxStamp } from './domain/types/order-fx.types';
 export type { StampedReportingCurrencyCount } from './domain/types/order-fx-read.types';
@@ -235,6 +318,25 @@ export {
 } from './domain/types/refund-record.types';
 export { RefundExecutedByValues } from './domain/types/refund-record.types';
 
+// The order's refund ceiling (#3289) — one pure predicate, read by both the
+// returns pre-flight and the RefundRecord write.
+export {
+  evaluateRefundCeiling,
+  assertRefundAmountPrecision,
+  describeRefundCeilingVerdict,
+  REFUND_CEILING_EXCEEDED_CODE,
+  REFUND_CEILING_ACKNOWLEDGED_LOG_TOKEN,
+  REFUND_CEILING_UNKNOWN_LOG_TOKEN,
+  RefundCeilingUnknownReasonValues,
+} from './domain/types/refund-ceiling.types';
+export type {
+  RefundCeilingContext,
+  RefundCeilingOrderFacts,
+  RefundCeilingVerdict,
+  RefundCeilingUnknownReason,
+  EvaluateRefundCeilingInput,
+} from './domain/types/refund-ceiling.types';
+
 // Refund EXECUTION (#2371, ADR-056) — the command/result a `RefundExecutor`
 // speaks. Declared here rather than in `returns` because the vocabulary is
 // orders' own and a refund is not inherently about a return.
@@ -284,6 +386,19 @@ export { IOrderRecordService } from './application/interfaces/order-record.servi
 export { OrderRecordService } from './application/services/order-record.service';
 export { ISalesDocumentViewService } from './application/interfaces/sales-document-view.service.interface';
 export { SalesDocumentViewService } from './application/services/sales-document-view.service';
+// #3550 - manual "send this sales document to the buyer".
+export type {
+  IOrderDocumentEmailService,
+  OrderDocumentEmailResult,
+  SendInvoiceEmailInput,
+  SendReceiptEmailInput,
+} from './application/interfaces/order-document-email.service.interface';
+export {
+  ORDER_DOCUMENT_EMAIL_REFUSAL_MESSAGE,
+  OrderDocumentEmailRefusalValues,
+  type OrderDocumentEmailLocale,
+  type OrderDocumentEmailRefusal,
+} from './domain/types/order-document-email.types';
 export type {
   SalesDocumentListAmount,
   SalesDocumentListCursor,
@@ -314,7 +429,31 @@ export type {
   OrderProvisioningResumeResult,
   ProvisioningResumeSkipReason,
 } from './application/interfaces/order-provisioning-resume.service.interface';
+export type {
+  IOrderRoutingRetryService,
+  OrderRoutingRetryResult,
+  OrderRoutingRetryRefusal,
+  RerouteHeldOrdersForVariantInput,
+  RerouteHeldOrdersResult,
+} from './application/interfaces/order-routing-retry.service.interface';
+export { OrderRoutingRetryRefusalValues } from './application/interfaces/order-routing-retry.service.interface';
 export { ProvisioningResumeSkipReasonValues } from './application/interfaces/order-provisioning-resume.service.interface';
+// Issued document -> marketplace order upload (#3549).
+export type {
+  IInvoiceMarketplaceUploadService,
+  InvoiceMarketplaceUploadResult,
+} from './application/interfaces/invoice-marketplace-upload.service.interface';
+export type {
+  InvoiceMarketplaceUpload,
+  InvoiceMarketplaceUploadFailureCode,
+  InvoiceMarketplaceUploadStatus,
+  RecordInvoiceMarketplaceUploadOutcome,
+} from './domain/types/invoice-marketplace-upload.types';
+export {
+  InvoiceMarketplaceUploadFailureCodeValues,
+  InvoiceMarketplaceUploadStatusValues,
+  UPLOAD_CLAIM_LEASE_MS,
+} from './domain/types/invoice-marketplace-upload.types';
 export type {
   IOrderLifecycleRelayService,
   OrderLifecycleRelayInput,
@@ -335,10 +474,124 @@ export type {
   TaxRateBackfillPageInput,
   TaxRateBackfillPageResult,
 } from './application/services/tax-rate-backfill.service.interface';
+export type { IMarginAnalyticsService } from './application/services/margin-analytics.service.interface';
+export {
+  MarginBucketValues,
+  MarginSortByValues,
+} from './domain/types/order-margin-analytics.types';
+export type {
+  MarginAnalytics,
+  MarginBucket,
+  MarginChannel,
+  MarginFigures,
+  MarginGapSum,
+  MarginProductFilters,
+  MarginProductsResult,
+  MarginProductVariantsResult,
+  MarginProductView,
+  MarginSortBy,
+  MarginTrendPoint,
+  MarginVariantView,
+} from './domain/types/order-margin-analytics.types';
+export type { IOrderLineCostService } from './application/services/order-line-cost.service.interface';
+export type {
+  OrderLineCostView,
+  OrderLineCostsResult,
+} from './domain/types/order-line-cost.types';
+export type { ICostCoverageService } from './application/services/cost-coverage.service.interface';
+export {
+  COST_COVERAGE_DEFAULT_DAYS,
+  COST_COVERAGE_MAX_DAYS,
+  COST_COVERAGE_MIN_DAYS,
+  COST_WORKLIST_SALES_WINDOW_DAYS,
+  CostWorklistTabValues,
+} from './domain/types/cost-coverage.types';
+export type {
+  CostCoverageResult,
+  CostCoverageTopVariant,
+  CostSummary,
+  CostWorklistCountFilters,
+  CostWorklistFilters,
+  CostWorklistResult,
+  CostWorklistRow,
+  CostWorklistTab,
+} from './domain/types/cost-coverage.types';
+export { MarginGapReasonValues } from './domain/order-line-cost-snapshot';
+export type { MarginGapReason } from './domain/order-line-cost-snapshot';
 export type { ITaxCoverageDetectionService } from './application/services/tax-coverage-detection.service.interface';
 export type { IOrderTestFixtureService } from './application/interfaces/order-test-fixture.service.interface';
 export type { IDisplayCurrencyConversionService } from './application/interfaces/display-currency-conversion.service.interface';
+// Orders-list column presets (#3530).
+export type { IOrderColumnPresetService } from './application/services/order-column-preset.service.interface';
+export type {
+  OrderColumnPreset,
+  CreateOrderColumnPresetInput,
+  UpdateOrderColumnPresetInput,
+} from './domain/types/order-column-preset.types';
+export { OrderColumnPresetNotFoundError } from './domain/exceptions/order-column-preset-not-found.error';
+// Internal order notes (#3531).
+export type { IOrderNoteService } from './application/services/order-note.service.interface';
+export type {
+  OrderNote,
+  CreateOrderNoteInput,
+  UpdateOrderNoteInput,
+  OrderNoteTimelineEntry,
+  OrderNoteTimelineEventKind,
+} from './domain/types/order-note.types';
+export { OrderNoteTimelineEventKindValues } from './domain/types/order-note.types';
+export { OrderNoteNotFoundError } from './domain/exceptions/order-note-not-found.error';
+export { OrderNoteNotAuthoredError } from './domain/exceptions/order-note-not-authored.error';
+// Order tags (#3532, D34).
+export type { IOrderTagService } from './application/services/order-tag.service.interface';
+export type {
+  OrderTag,
+  OrderTagColor,
+  OrderTagWithCount,
+  BulkAssignOrderTagResult,
+  BulkUnassignOrderTagResult,
+} from './domain/types/order-tag.types';
+export { OrderTagColorValues, ORDER_TAG_WORKSPACE_LIMIT } from './domain/types/order-tag.types';
+export { OrderTagLimitReachedError } from './domain/exceptions/order-tag-limit-reached.error';
+export { OrderTagNotFoundError } from './domain/exceptions/order-tag-not-found.error';
+// Orders CSV/XLSX export (#3534, D35).
+export type { IOrderExportService } from './application/services/order-export.service.interface';
+export { OrderExportRun } from './domain/entities/order-export-run.entity';
+export type {
+  OrderExportFile,
+  OrderExportFormat,
+  OrderExportScope,
+  OrderExportStatus,
+  CreateOrderExportRunInput,
+} from './domain/types/order-export.types';
+export {
+  OrderExportFormatValues,
+  OrderExportScopeValues,
+  OrderExportStatusValues,
+  ORDER_EXPORT_BACKGROUND_THRESHOLD,
+  ORDER_EXPORT_TTL_DAYS,
+} from './domain/types/order-export.types';
+export {
+  ORDER_EXPORT_COLUMN_IDS,
+  ORDER_EXPORT_COLUMN_LABELS,
+  ORDER_EXPORT_DEFAULT_COLUMNS,
+  ORDER_EXPORT_PII_COLUMNS,
+  narrowOrderExportColumns,
+  resolveOrderExportCell,
+} from './domain/order-export-columns';
+export type { OrderExportColumnId, OrderExportCellValue } from './domain/order-export-columns';
+export { buildOrderExportCsv } from './domain/order-export-csv';
+// `searchText` re-derivation under the current PII mode (#3507 G03-14).
+export type { IOrderSearchTextReindexService } from './application/services/order-search-text-reindex.service.interface';
+export type {
+  OrderSearchTextReindexRow,
+  OrderSearchTextRewrite,
+  OrderSearchTextReindexRunResult,
+} from './domain/types/order-search-text-reindex.types';
 export * from './orders.tokens';
+export type {
+  OrderLabelVoiderPort,
+  OrderLabelVoidOutcome,
+} from './domain/ports/order-label-voider.port';
 
 // Domain entities
 export { OrderRecord } from './domain/entities/order-record.entity';
@@ -351,6 +604,7 @@ export {
 
 // Domain exceptions
 export { OrderRecordNotFoundException } from './domain/exceptions/order-record-not-found.exception';
+export { NoBuyerNoteException } from './domain/exceptions/no-buyer-note.exception';
 export { MissingOrderItemMappingError } from './domain/exceptions/missing-order-item-mapping.error';
 export { OrderDestinationNotFoundException } from './domain/exceptions/order-destination-not-found.exception';
 export { OrderDestinationNotRetryableException } from './domain/exceptions/order-destination-not-retryable.exception';
@@ -359,11 +613,19 @@ export { OrderCreateContendedException } from './domain/exceptions/order-create-
 export { OrderSnapshotUnavailableError } from './domain/exceptions/order-snapshot-unavailable.error';
 export { DuplicateRefundRecordException } from './domain/exceptions/duplicate-refund-record.exception';
 export { RefundCurrencyMismatchException } from './domain/exceptions/refund-currency-mismatch.exception';
+export { decideRefundCeiling } from './domain/domain-services/refund-ceiling.domain-service';
+export type { RefundCeilingDisposition } from './domain/domain-services/refund-ceiling.domain-service';
+export { RefundAmountPrecisionException } from './domain/exceptions/refund-amount-precision.exception';
+export { RefundRecordContendedException } from './domain/exceptions/refund-record-contended.exception';
+export { RefundLockUnavailableException } from './domain/exceptions/refund-lock-unavailable.exception';
+export { RefundCeilingExceededException } from './domain/exceptions/refund-ceiling-exceeded.exception';
 export { OrderChangeVocabularyError } from './domain/exceptions/order-change-vocabulary.error';
 export { TaxCoveragePageCeilingExceededError } from './domain/exceptions/tax-coverage-page-ceiling-exceeded.error';
 
 // Typed-Order accessor for cross-context command composition (#1119).
 export { orderFromReadySnapshot } from './domain/order-from-ready-snapshot';
+export { projectOrderForRouting } from './domain/project-order-for-routing';
+export type { OrderRoutingProjection } from './domain/project-order-for-routing';
 export type { OrderFromReadySnapshotOptions } from './domain/order-from-ready-snapshot';
 
 // Order-identity list projection for Shipments/Invoices (#1995).
@@ -381,6 +643,7 @@ export type { OrderSummary } from './domain/order-summary-projection';
 
 // Ports
 export { OrderRecordRepositoryPort } from './domain/ports/order-record-repository.port';
+export type { HeldOrderRef } from './domain/ports/order-record-repository.port';
 
 // ADR-044 change proposals (#2333) — the Wave-2 gate. `OrderChangeRepositoryPort`
 // is deliberately NOT exported: it is intra-context, and a sibling reaches the
@@ -392,8 +655,86 @@ export {
   isOrderChangeKind,
   isOrderChangeStatus,
   isOpenOrderChangeStatus,
+  OrderAmendmentRequestKindValues,
+  isOrderAmendmentRequestKind,
+  OrderCorrectionChangeKindValues,
+  isOrderCorrectionChangeKind,
+  cancelRequestTargetRef,
+  cancelCorrectionTargetRef,
+  OrderOperatorEditKindValues,
+  isOrderOperatorEditKind,
+  addressEditTargetRef,
+  lineQuantityEditTargetRef,
+  deliveryMethodEditTargetRef,
+  discountEditTargetRef,
+  discountRefundTargetRef,
+  discountCorrectionTargetRef,
 } from './domain/types/order-change.types';
+// #3542 — the operator-edit overlay and its pure merge.
+export {
+  readOrderEdits,
+  applyOrderEditsToSnapshot,
+  applyOrderEditsToOrder,
+  effectiveLineQuantity,
+  describeEditedTotals,
+  resolveTotalUnitPrice,
+  readLineEditTreatments,
+  findUnmatchedLineEdits,
+} from './domain/types/order-edits.types';
 export type {
+  OrderEdits,
+  OrderAddressEdit,
+  OrderLineEdit,
+  OrderDeliveryMethodEdit,
+  OrderEditedTotals,
+  ApplyOrderEditInput,
+  LineEditTreatments,
+  UnmatchedLineEdit,
+} from './domain/types/order-edits.types';
+// #3543 — the order-level discount money event and its pure split.
+export {
+  readOrderDiscountEdit,
+  effectiveDiscountAmount,
+  planOrderDiscount,
+  goodsGrossValue,
+  lineGrossTotal,
+  discountedUnitPriceGross,
+  isDecimalAmountText,
+  decimalPlaces,
+} from './domain/types/order-discount.types';
+export type {
+  OrderDiscountEdit,
+  OrderDiscountLine,
+  PlannedOrderDiscount,
+  DiscountableLine,
+} from './domain/types/order-discount.types';
+// #3540 — why an operator cancels an order.
+export {
+  OrderCancelReasonValues,
+  isOrderCancelReason,
+  orderCancelReasonRequiresNote,
+  OPERATOR_ORDER_ORIGIN_ID,
+  orderStockRestoreDedupeKey,
+  CANCEL_ABANDONED_LABEL_NOT_VOIDABLE,
+  ORDER_CANCELLED_HOLD_RELEASE_NOTE,
+  OrderCancelCorrectionUnavailableReasonValues,
+} from './domain/types/order-cancel.types';
+export type {
+  OrderCancelReason,
+  OrderCancelCorrectionPayload,
+  OrderCancelCorrectionProposal,
+  OrderCancelCorrectionProposalLine,
+  OrderCancelCorrectionUnavailableReason,
+} from './domain/types/order-cancel.types';
+export type {
+  IOrderCancellationEffectsService,
+  ApplyOrderCancellationEffectsInput,
+  OrderCancellationEffectsResult,
+} from './application/interfaces/order-cancellation-effects.service.interface';
+export type {
+  OrderAmendmentRequestKind,
+  OrderCorrectionChangeKind,
+  OrderOperatorEditKind,
   OrderChangeKind,
   OrderChangeStatus,
   CreateOrderChangeInput,
@@ -407,9 +748,16 @@ export { OrderChange } from './domain/entities/order-change.entity';
 export { OrderHold } from './domain/entities/order-hold.entity';
 export type {
   OrderHoldPlacedBy,
+  OrderHoldReleasedBy,
   PlaceOrderHoldInput,
   ReleaseOrderHoldInput,
 } from './domain/types/order-hold.types';
+// #3455 — why the fulfilment intercept deliberately did not route an order.
+export {
+  FulfillmentRoutingSkipReasonValues,
+  isFulfillmentRoutingSkipReason,
+  type FulfillmentRoutingSkipReason,
+} from './domain/types/fulfillment-routing-eligibility.types';
 export { OrderAlreadyOnHoldError } from './domain/exceptions/order-already-on-hold.error';
 export { TestFixturesDisabledException } from './domain/exceptions/test-fixtures-disabled.exception';
 export { OrderHoldContendedError } from './domain/exceptions/order-hold-contended.error';
@@ -429,6 +777,7 @@ export type {
 export type {
   IOrderChangeService,
   OpenOrderChangeResult,
+  OrderChangeListItem,
 } from './application/services/order-change.service.interface';
 
 // The automation facts projection (#2363). Exported because it has two callers
@@ -459,3 +808,24 @@ export type { IOrderHoldProjectionReconcileService } from './application/interfa
 export type { HoldProjectionReconcileResult } from './domain/types/order-hold-projection.types';
 export { OrderHoldsModule } from './order-holds.module';
 export * from './domain/types/order-discount-split.types';
+
+// Automatic buyer emails, opt-in per connection (#3554).
+export { BuyerEmailDelivery } from './domain/entities/buyer-email-delivery.entity';
+export {
+  BuyerEmailOutcomeValues,
+  BuyerEmailSuppressionReasonValues,
+  BuyerEmailTestRefusalReasonValues,
+  BUYER_EMAIL_TEST_SEND_LIMIT,
+  BUYER_EMAIL_TEST_SEND_WINDOW_SECONDS,
+  isBuyerEmailOutcome,
+  type BuyerEmailOutcome,
+  type BuyerEmailSuppressionReason,
+  type BuyerEmailTestRefusalReason,
+} from './domain/types/buyer-email-delivery.types';
+export type {
+  IBuyerEmailNotificationService,
+  SendBuyerEmailInput,
+  SendBuyerEmailResult,
+  SendBuyerEmailTestInput,
+  SendBuyerEmailTestResult,
+} from './application/interfaces/buyer-email-notification.service.interface';

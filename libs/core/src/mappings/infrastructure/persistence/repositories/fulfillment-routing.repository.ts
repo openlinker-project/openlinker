@@ -15,7 +15,11 @@ import { Repository, DataSource } from 'typeorm';
 import { FulfillmentRoutingRuleOrmEntity } from '../entities/fulfillment-routing-rule.orm-entity';
 import type { FulfillmentRoutingRepositoryPort } from '../../../domain/ports/fulfillment-routing-repository.port';
 import { FulfillmentRoutingRule } from '../../../domain/entities/fulfillment-routing-rule.entity';
-import type { FulfillmentRoutingRuleInput } from '../../../domain/types/fulfillment-routing.types';
+import {
+  normalizeParcelProfile,
+  type FulfillmentParcelProfile,
+  type FulfillmentRoutingRuleInput,
+} from '../../../domain/types/fulfillment-routing.types';
 
 @Injectable()
 export class FulfillmentRoutingRepository implements FulfillmentRoutingRepositoryPort {
@@ -58,6 +62,15 @@ export class FulfillmentRoutingRepository implements FulfillmentRoutingRepositor
         entity.sourceDeliveryMethodId = item.sourceDeliveryMethodId;
         entity.processorKind = item.processorKind;
         entity.processorConnectionId = item.processorConnectionId;
+        // The service already rejected a partial box; an unnormalisable value
+        // degrades to "no profile" here rather than persisting half a shape.
+        const normalized = normalizeParcelProfile(item.parcelProfile);
+        const profile = normalized === 'incomplete-dimensions' ? null : normalized;
+        entity.parcelTemplate = profile?.parcelTemplate ?? null;
+        entity.parcelLengthMm = profile?.lengthMm ?? null;
+        entity.parcelWidthMm = profile?.widthMm ?? null;
+        entity.parcelHeightMm = profile?.heightMm ?? null;
+        entity.parcelDefaultWeightGrams = profile?.defaultWeightGrams ?? null;
         return entity;
       });
 
@@ -75,6 +88,18 @@ export class FulfillmentRoutingRepository implements FulfillmentRoutingRepositor
       entity.processorConnectionId,
       entity.createdAt,
       entity.updatedAt,
+      this.toParcelProfile(entity),
     );
+  }
+
+  private toParcelProfile(entity: FulfillmentRoutingRuleOrmEntity): FulfillmentParcelProfile | null {
+    const normalized = normalizeParcelProfile({
+      parcelTemplate: entity.parcelTemplate,
+      lengthMm: entity.parcelLengthMm,
+      widthMm: entity.parcelWidthMm,
+      heightMm: entity.parcelHeightMm,
+      defaultWeightGrams: entity.parcelDefaultWeightGrams,
+    });
+    return normalized === 'incomplete-dimensions' ? null : normalized;
   }
 }

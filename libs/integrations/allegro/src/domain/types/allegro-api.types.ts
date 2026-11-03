@@ -40,7 +40,14 @@ export interface AllegroCheckoutForm {
    * order-ingestion transition-gate (`priorStatus !== 'cancelled'`) already
    * suppresses a re-fire once OL's own record is cancelled.
    */
-  fulfillment?: { status?: string };
+  fulfillment?: {
+    status?: string;
+    /**
+     * Who manages the order (`CheckoutFormFulfillmentProvider.id` in the
+     * Allegro swagger): `SELLER` or `ALLEGRO` (One Fulfillment).
+     */
+    provider?: { id?: string };
+  };
   messageToSeller?: string;
   buyer: {
     id: string;
@@ -355,6 +362,13 @@ export interface AllegroProductSetEntry {
     name?: string;
     parameters?: AllegroOfferParameter[];
     images?: string[];
+    /**
+     * Read-side only: the product card's own state. Allegro sets `REMOVED`
+     * when its asynchronous processing of an inline product rejected it
+     * (E2E-11) - the offer then stays INACTIVE with an empty
+     * `validation.errors`, so this is the only trace left on the offer.
+     */
+    publication?: { status?: string };
   };
   /**
    * How many units of the catalog product one offer item contains
@@ -774,6 +788,19 @@ export interface AllegroProductDtoParameter {
 /**
  * Response from `POST /sale/product-offers`.
  */
+/**
+ * Body of `GET /sale/product-offers/{offerId}/operations/{operationId}` while
+ * Allegro is still processing an asynchronous create (HTTP 202). A finished
+ * operation does not answer with this shape: a failed one answers 4xx with
+ * the usual `{ errors: [...] }` envelope (observed live: 422
+ * `GtinNotExistsInGtinParameter`), a successful one redirects (303) to the
+ * offer itself.
+ */
+export interface AllegroProductOfferOperationResponse {
+  offer?: { id?: string };
+  operation?: { id?: string; status?: string; startedAt?: string };
+}
+
 export interface AllegroProductOfferCreateResponse {
   id: string;
   name?: string;
@@ -803,6 +830,12 @@ export interface AllegroResponsibleProducerEntry {
   id: string;
   name?: string;
   type?: 'PRODUCER' | 'IMPORTER' | 'AUTHORIZED_REPRESENTATIVE' | 'FULFILLMENT_SERVICE_PROVIDER';
+  /**
+   * The producer's registered details. Only `tradeName` is read: it is the
+   * legal name the seller entered, which is what a product's GPSR producer
+   * name is matched against alongside the seller's own label (`name`).
+   */
+  producerData?: { tradeName?: string };
 }
 
 export interface AllegroResponsibleProducersResponse {

@@ -76,6 +76,12 @@ export interface PrestashopQueryFilters {
   sort?: PrestashopSort[];
 
   /**
+   * Virtual price fields PrestaShop should compute per row (ADR-077). See
+   * {@link PrestashopPriceField}.
+   */
+  priceFields?: readonly PrestashopPriceField[];
+
+  /**
    * Field selection override.
    *
    * Defaults to `'full'`. Set to `'[id]'` (or another PrestaShop display clause)
@@ -84,6 +90,35 @@ export interface PrestashopQueryFilters {
    */
   display?: string;
 }
+
+/**
+ * A price PrestaShop computes for us, returned as an extra field named `name`
+ * on every product or combination row (the WebService "specific price" fields,
+ * `price[<name>][...]`).
+ *
+ * This is how the product master reads a GROSS catalogue price (ADR-077):
+ * PrestaShop applies its own tax rules and rounding for the given country, so
+ * OpenLinker transcribes the shop's own figure instead of multiplying by a rate.
+ * Verified on PrestaShop 9.0.2 on single-product reads and on `display=full`
+ * product and combination list reads. A combination row's field is the full
+ * price (base + impact). Without a country PrestaShop answers `0.000000`, so
+ * the country is required here.
+ */
+export interface PrestashopPriceField {
+  /** Field name PrestaShop adds to each row; lowercase letters, digits and `_`. */
+  name: string;
+  /** PrestaShop `id_country` the tax is computed for. */
+  countryId: number;
+  /** `true` = gross (tax included). */
+  useTax: boolean;
+  /**
+   * Combination to price. `0` = the bare product without any combination. Omit
+   * on a combination read - each row then prices itself.
+   */
+  productAttribute?: number;
+}
+
+const PRICE_FIELD_NAME_PATTERN = /^[a-z][a-z0-9_]*$/;
 
 /**
  * Sortable columns, as a closed union rather than a runtime allow-list.
@@ -216,6 +251,10 @@ export class PrestashopQueryBuilder {
       params.push(`filter[current_state]=[${statusParam}]`);
     }
 
+    if (filters?.priceFields && filters.priceFields.length > 0) {
+      params.push(...this.buildPriceFieldParams(filters.priceFields));
+    }
+
     // Custom filters
     // PrestaShop filter syntax: filter[field]=[value]
     // Values must be URL-encoded to handle special characters (e.g., +, @, = in email addresses)
@@ -276,6 +315,31 @@ export class PrestashopQueryBuilder {
     }
 
     return params.join('&');
+  }
+
+  /**
+   * The `price[<name>][...]` parameters for virtual price fields.
+   *
+   * Promotions are always excluded (`use_reduction=0`): a catalogue price is the
+   * regular price (ADR-077), so a running specific price must not leak into it.
+   *
+   * @throws PrestashopInvalidFilterException when a field name is not a bare identifier
+   */
+  static buildPriceFieldParams(fields: readonly PrestashopPriceField[]): string[] {
+    const params: string[] = [];
+    for (const field of fields) {
+      if (!PRICE_FIELD_NAME_PATTERN.test(field.name)) {
+        throw new PrestashopInvalidFilterException(`price[${field.name}]`);
+      }
+      const prefix = `price[${field.name}]`;
+      params.push(`${prefix}[use_tax]=${field.useTax ? 1 : 0}`);
+      params.push(`${prefix}[country]=${Math.trunc(field.countryId)}`);
+      params.push(`${prefix}[use_reduction]=0`);
+      if (field.productAttribute !== undefined) {
+        params.push(`${prefix}[product_attribute]=${Math.trunc(field.productAttribute)}`);
+      }
+    }
+    return params;
   }
 
   /**

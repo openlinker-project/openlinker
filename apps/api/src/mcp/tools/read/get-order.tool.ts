@@ -76,6 +76,8 @@ function projectOrderRecord(record: OrderRecord): Record<string, unknown> {
     syncStatus: record.syncStatus,
     fulfillmentState: record.fulfillmentState,
     paymentStatus: record.paymentStatus ?? null,
+    // #3294 - a closed vocabulary with no buyer data, so it is safe to project.
+    paymentMethod: record.paymentMethodOrUnknown,
     dispatchByAt: record.dispatchByAt?.toISOString() ?? null,
     createdAt: record.createdAt.toISOString(),
     updatedAt: record.updatedAt.toISOString(),

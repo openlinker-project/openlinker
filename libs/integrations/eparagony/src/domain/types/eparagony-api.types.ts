@@ -273,7 +273,13 @@ export interface EparagonyInvoiceMetadata {
   taxValueByTaxRate: Partial<Record<EparagonyTaxedInvoiceRate, number>>;
   /** ISO-4217. Anything other than `PLN` additionally requires `exchangeRate`. */
   currency?: string;
-  /** Omitted when OL does not allocate the number; the vendor then generates one. */
+  /**
+   * Optional on the wire, but REQUIRED in practice (#3500): the vendor does not
+   * generate the legal number itself - `POST /documents` rejects a request
+   * with no `invoiceNumber` with an opaque `errorCode: 99`. Always populated by
+   * `EparagonyInvoicingAdapter`, which is a `DocumentNumberConsumer` and is
+   * refused pre-call by `composeInvoiceDocument` when the caller supplied none.
+   */
   invoiceNumber?: string;
   /** Issue date, `YYYY-MM-DD`. Defaults to the vendor's clock when omitted. */
   invoiceDate?: string;

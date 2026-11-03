@@ -375,6 +375,56 @@ domain exceptions live in `<plugin>/src/domain/exceptions/`. Never
 leak platform HTTP status codes or SDK error types through the port
 return.
 
+### Ambiguous writes and the job runner
+
+`SyncJobRunner` retries every job-level failure unless a registered
+[`RetryClassifierPort`](../libs/core/src/sync/domain/ports/retry-classifier.port.ts)
+says otherwise. That default is right for reads and wrong for one case
+every outbound-writing plugin has (#3469):
+
+> A non-idempotent write (POST/PATCH not opted into `idempotent: true`)
+> that fails ambiguously — a `5xx` or a network/timeout error after the
+> request may already have been applied — must raise a distinguishable
+> exception, and the plugin must register a `RetryClassifier` that marks
+> it non-retryable. Without the classifier the job runner re-sends it.
+
+Your HTTP client refusing to retry that write internally is not enough:
+the failure still leaves the job, the runner re-runs the job, and the
+same POST goes out again — a second paid label, a second order. So:
+
+1. Throw a dedicated `<Platform>AmbiguousWriteException` for that
+   failure. Where the client already throws a transport exception for
+   it, subclass that one so existing `instanceof` checks keep working.
+2. Return `true` for it from your classifier's `isNonRetryable`, checked
+   **before** any branch for its parent class, and register the
+   classifier in `register(host)` via
+   `host.retryClassifierRegistry.register(adapterKey, classifier)`.
+3. Keep the rule narrow. The registry ORs every classifier's answer, so
+   matching your generic transport exception would make every transient
+   failure of your plugin terminal.
+
+`429` is **not** ambiguous — the destination refused before processing
+the request — so it stays retryable even for a non-idempotent write and
+honours `Retry-After` (Allegro raises `AllegroRateLimitException` and
+waits inside its client; PrestaShop additionally answers
+`getRetryDeferral` so the runner requeues without spending an attempt).
+
+Plugins may not import each other (ADR-003), so the same shape exists
+once per plugin. Copy whichever is closest to yours:
+
+| Plugin | Exception | Classifier |
+|---|---|---|
+| InPost | `inpost/src/domain/exceptions/inpost-ambiguous-write.exception.ts` | `inpost/src/infrastructure/adapters/inpost-retry-classifier.adapter.ts` |
+| Allegro | `allegro/src/domain/exceptions/allegro-ambiguous-write.exception.ts` | `allegro/src/infrastructure/adapters/allegro-retry-classifier.adapter.ts` |
+| WooCommerce | `woocommerce/src/domain/exceptions/woocommerce-ambiguous-write.exception.ts` | `woocommerce/src/infrastructure/adapters/woocommerce-retry-classifier.adapter.ts` |
+| PrestaShop | `prestashop/src/domain/exceptions/prestashop-ambiguous-write.exception.ts` | `prestashop/src/infrastructure/adapters/prestashop-retry-classifier.adapter.ts` |
+
+(Paths are relative to `libs/integrations/`.) A non-retryable job is
+final, so pair the classifier with a recovery path where the platform
+allows one — InPost's `findShipmentByReference` (#1917) lets an
+operator-initiated retry adopt the label the ambiguous POST may already
+have created instead of minting a second one.
+
 ---
 
 ## Step 5 — Write the adapter factory

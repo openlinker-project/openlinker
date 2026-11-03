@@ -2,6 +2,7 @@ import type { ArgumentsHost } from '@nestjs/common';
 import { HttpStatus } from '@nestjs/common';
 import {
   ConnectionDisabledException,
+  ConnectionInUseException,
   ConnectionNotFoundException,
 } from '@openlinker/core/identifier-mapping';
 import { ConnectionExceptionFilter } from './connection-exception.filter';
@@ -41,6 +42,25 @@ describe('ConnectionExceptionFilter', () => {
       statusCode: HttpStatus.CONFLICT,
       error: 'ConnectionDisabledException',
       message: expect.stringContaining('disabled'),
+    });
+  });
+
+  it('should return 409 with the reason and the referrers when the connection is still referenced', () => {
+    const { host, status, json } = createHost();
+    const referrers = [{ id: 'conn-allegro', name: 'Allegro PL' }];
+
+    filter.catch(
+      new ConnectionInUseException('conn-3', 'master-catalog-referenced', referrers),
+      host
+    );
+
+    expect(status).toHaveBeenCalledWith(HttpStatus.CONFLICT);
+    expect(json).toHaveBeenCalledWith({
+      statusCode: HttpStatus.CONFLICT,
+      error: 'ConnectionInUseException',
+      message: expect.stringContaining('"Allegro PL"'),
+      reason: 'master-catalog-referenced',
+      referrers,
     });
   });
 });

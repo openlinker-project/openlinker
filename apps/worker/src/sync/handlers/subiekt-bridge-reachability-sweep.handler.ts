@@ -33,7 +33,7 @@ import {
   ConnectionTesterRegistryService,
   CREDENTIALS_RESOLVER_TOKEN,
 } from '@openlinker/core/integrations';
-import type { CredentialsResolverPort } from '@openlinker/core/integrations';
+import { CredentialsResolverPort } from '@openlinker/core/integrations';
 import { Logger } from '@openlinker/shared/logging';
 
 type SyncJob = SyncJobEntity;

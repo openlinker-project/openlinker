@@ -82,19 +82,21 @@ export interface FulfillmentDispatchEnqueueIntent {
  * shape that guarantee removes. This key answers a different question: *have we
  * already asked a worker to run this dispatch?*
  *
- * **Constraint recorded against #2395.** `sync_jobs.idempotencyKey` is globally
- * unique with NO TTL, so a SECOND dispatch job for the same work row is silently
- * swallowed — the enqueue reports an existing job, no row is created, and
- * nothing errors. `CLAIMABLE_FROM = ['unsubmitted', 'rejected']`, so a work its
- * holder REJECTED is re-claimable on the same row, which is exactly what a
- * router-driven re-request does. Nothing in the tree bumps `assignmentAttempt`
- * today, so this is unreachable; the day a re-request or a re-source path lands,
- * this key MUST gain a generation component (the routing `decisionId`, or the
- * attempt) or that re-dispatch is lost with no signal. A re-ROUTE that mints new
- * work rows is already safe — new ids, new keys.
+ * **A re-dispatch MUST pass a generation.** `sync_jobs.idempotencyKey` is
+ * globally unique with NO TTL, so a SECOND dispatch job for the same work row
+ * under the bare key is silently swallowed — the enqueue reports an existing
+ * job, no row is created, and nothing errors. The first producer (the routing
+ * commit) passes none, so its key is unchanged. The #3476 re-drive of a work
+ * stuck `unsubmitted` passes one; its `assignmentAttempt` never moves while the
+ * work is unclaimed, so the generation is a time bucket rather than the attempt.
+ * A future re-request or re-source of a REJECTED work (#2395) must pass its own
+ * generation (the routing `decisionId`, or the attempt) for the same reason. A
+ * re-ROUTE that mints new work rows is already safe — new ids, new keys.
  */
-export function buildFulfillmentDispatchDedupeKey(workId: string): string {
-  return `fulfillment:dispatch:${workId}`;
+export function buildFulfillmentDispatchDedupeKey(workId: string, generation?: string): string {
+  return generation === undefined
+    ? `fulfillment:dispatch:${workId}`
+    : `fulfillment:dispatch:${workId}:redrive:${generation}`;
 }
 
 /**

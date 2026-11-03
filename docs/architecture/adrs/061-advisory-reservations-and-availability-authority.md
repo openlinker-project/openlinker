@@ -61,7 +61,52 @@ deliberate underselling trade-off, stated rather than hidden.
 re-opens the scoped-subtraction rule; a master adapter that can implement a hold primitive
 un-defers `MasterReservationWriter`.
 
-## Amendment (#3483, 2026-10-01): OL never decrements its own mirror; it asks the master to
+## Amendment (#3453): OpenLinker now lowers the master's own stock for a routed sale
+
+Decision (1)'s `never a decrement` binds the **hold** — that rule is unchanged, and nothing here
+touches `reservations`. What moved is the premise underneath it
+(`architecture-overview.md`: *"OpenLinker does not own on-hand stock"*): with the OMS routing an
+order, the order is never created in the product master, so the master's own order flow never
+lowers its stock for the sale. OpenLinker now does, once per routed work line, through the
+master's own `InventoryMasterPort.adjustInventory` — under the master's own authority, exactly as
+if its own checkout had done it. The advisory hold stays exactly what it was: a promise OL makes
+on ATP, never on-hand stock. The decrement is a durable, at-most-once write (Postgres-claimed
+before the boundary), and is the thing that finally lets a routed order's hold be consumed
+(`#3480`) rather than double-subtracting ATP for the life of the order.
+
+## Amendment (#3475): a second reader of the same ledger, partitioned by location
+
+`AvailabilityScope`'s `location` arm still throws, and that is unchanged: a variant-keyed sum
+dressed up as one location's answer is the oversell this ADR exists to prevent. The fulfilment
+router, however, chooses between locations, so it needs the question answered per
+`(location, variant)`. `ReservationLedgerReaderPort.sumReservedByLocation` answers exactly that and
+nothing else - same predicate as `sumReservedByVariantIds` (`held`, bound `atpEffect`, live
+position), grouped by position instead of collapsed to the variant, located positions only. It is
+exposed to the router as `IInventoryQueryService.listPublishedReservedByLocation`, which fixes the
+stamp to `published`. Two rules follow from the routed order's own lifecycle. The router subtracts
+**published holds only, never unshipped `FulfillmentWork` lines**: the hold stands in for the
+units until the sale decrement settles (#3453), after which the master's own quantity is already
+lower, so a work line - which outlives the hold until the parcel ships - would count them twice.
+And the order being placed is **left out of its own sum** (`excludeOrderRecordId`), because its
+hold is written before routing runs (#3480) and would otherwise make the last unit look promised
+to the very order claiming it. A ledger read that fails fails the routing - it is never read as
+zero.
+
+Two limits are stated rather than hidden. **Each unit is not subtracted exactly once.**
+`InventorySaleDecrementService` consumes the hold before it rewrites the mirror, so between those
+two writes the units are in neither term and a concurrent route can allocate them; and when the
+master reports no resulting quantity the mirror is not lowered until the next stock sync, so the
+router routes on units that no longer exist until then. Consuming first is right for the publish
+path (#3480) and is the unsafe order for this reader; closing it (for example, keeping the hold
+when the master reports no quantity) is not done here. **The subtraction does nothing where it is
+most needed.** A variant resolving to more than one live position raises
+`AmbiguousReservationPositionError` and writes no hold (the #2628 known limitation), and a
+multi-location install is exactly where the router chooses between locations - so on such an
+install nothing is subtracted for that variant. A spec that shows the router steering to the
+location whose stock is not promised exercises the reader with a ledger state the write path
+cannot yet produce for that shape.
+
+## Amendment (#3483, 2026-10-01): OL never decrements its own mirror; it asks the master to decrement
 
 The decision that a reservation "never decrements `availableQuantity`" stands. What this amendment
 adds is the rule for the one thing that *does* have to lower stock: the sale itself.
@@ -74,7 +119,8 @@ marketplace would drift back up. So for an OL-executed routed order OL **request
 master**, one `adjustInventory(-q, reason = order_sale, key = sale:{ownerConnectionId}:{workId}:{lineId})`
 per work line, on the product master that owns that line (#3453). The master stays the authority for
 on-hand stock; the request is idempotent under the #2368 key contract, and cancellation reverses it
-with `order_sale_reversal` (#3479).
+with `order_sale_reversal` under its own key, `sale-reversal:{ownerConnectionId}:{workId}:{lineId}`,
+and only for the decrements that actually applied (#3479).
 
 The ledger and the decrement describe the same units, so available-to-promise must count them once
 (#3480). The `diagnostic` stamp is unaffected: it applies where OL does not execute, and there OL

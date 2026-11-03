@@ -44,6 +44,28 @@ describe('OrderRecord.paymentStatus', () => {
   });
 });
 
+describe('OrderRecord.status (#1596)', () => {
+  it.each(['pending', 'processing', 'shipped', 'delivered', 'cancelled', 'refunded'])(
+    'returns the recognised order status %s from the snapshot',
+    (status) => {
+      expect(makeRecord({ status }).status).toBe(status);
+    },
+  );
+
+  it('returns undefined when the snapshot has no status key', () => {
+    expect(makeRecord({}).status).toBeUndefined();
+  });
+
+  it('returns undefined when status is an unrecognised string', () => {
+    expect(makeRecord({ status: 'archived' }).status).toBeUndefined();
+  });
+
+  it('returns undefined when status is a non-string value', () => {
+    expect(makeRecord({ status: 42 }).status).toBeUndefined();
+    expect(makeRecord({ status: null }).status).toBeUndefined();
+  });
+});
+
 describe('OrderRecord.codToCollect (#1435)', () => {
   it('returns the sourced amount when the snapshot carries a well-formed pair', () => {
     expect(makeRecord({ codToCollect: { amount: '510.94', currency: 'PLN' } }).codToCollect).toEqual({
@@ -218,5 +240,49 @@ describe('OrderRecord.isCancelled (#1984)', () => {
 
   it('returns true when cancelledAt is set', () => {
     expect(makeRecordWithCancelledAt(new Date('2026-08-01T00:00:00Z')).isCancelled).toBe(true);
+  });
+});
+
+describe('OrderRecord.buyerName (#3553)', () => {
+  it('should read the billing name first', () => {
+    const record = makeRecord({
+      billingAddress: { firstName: 'Jan', lastName: 'Kowalski' },
+      shippingAddress: { firstName: 'Anna', lastName: 'Nowak' },
+    });
+
+    expect(record.buyerName).toBe('Jan Kowalski');
+  });
+
+  it('should fall back to the shipping name when billing has none', () => {
+    const record = makeRecord({
+      billingAddress: { city: 'Warsaw' },
+      shippingAddress: { firstName: 'Anna', lastName: 'Nowak' },
+    });
+
+    expect(record.buyerName).toBe('Anna Nowak');
+  });
+
+  it('should be undefined under hash-only mode, never the redaction marker', () => {
+    const record = makeRecord({
+      billingAddress: { address1: '[REDACTED]', city: '[REDACTED]', country: 'PL' },
+      shippingAddress: { firstName: '[REDACTED]', lastName: '[REDACTED]' },
+    });
+
+    expect(record.buyerName).toBeUndefined();
+  });
+
+  it('should be undefined when the snapshot carries no address', () => {
+    expect(makeRecord({}).buyerName).toBeUndefined();
+  });
+});
+
+describe('OrderRecord.orderNumber (#3554)', () => {
+  it("should read the channel's order number from the snapshot", () => {
+    expect(makeRecord({ orderNumber: ' XKBKNABJK ' }).orderNumber).toBe('XKBKNABJK');
+  });
+
+  it('should be undefined when the source reported no number', () => {
+    expect(makeRecord({}).orderNumber).toBeUndefined();
+    expect(makeRecord({ orderNumber: '' }).orderNumber).toBeUndefined();
   });
 });

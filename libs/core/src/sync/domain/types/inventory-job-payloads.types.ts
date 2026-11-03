@@ -28,3 +28,19 @@ export interface InventoryProvenanceBackfillPayloadV1 {
   schemaVersion: 1;
   pageLimit?: number;
 }
+
+/**
+ * Lower one routed work's sold quantities in each line's owning product master
+ * (#3453, `realtime` lane).
+ *
+ * Carries a REFERENCE and nothing else. The lines are read from the work row and
+ * the order from OpenLinker's own store at execution time, so a retry acts on
+ * what the work actually holds rather than on a snapshot in the payload.
+ * `orderId` is used only to load the order; the work row stays the authority on
+ * which order it belongs to.
+ */
+export interface InventorySaleDecrementPayloadV1 {
+  readonly schemaVersion: 1;
+  readonly workId: string;
+  readonly orderId: string;
+}

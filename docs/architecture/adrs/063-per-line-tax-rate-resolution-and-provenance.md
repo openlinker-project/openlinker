@@ -239,3 +239,9 @@ gate - and ADR-026 owns the *principle*.
   the existing `tax-rate-conflict` comment.
 - Primary doc sections: [docs/architecture-overview.md](../../architecture-overview.md) § Listings and
   § Invoicing.
+
+## Amendment (#3737, 2026-10-12): catalogue prices are gross, converted in the adapter
+
+[ADR-077](./077-catalogue-prices-are-gross.md) makes `Product.price` / `ProductVariant.price` gross for the master connection's sales country. § 5's "core computes no tax" holds: the master adapters gross up (PrestaShop by transcribing the shop's own figure, WooCommerce with the store's rate), and the shop publishers convert back. Each does so with its own platform's rate and rounding, which § 5 already assigns to the adapter.
+
+The PrestaShop rate read now passes the connection's sales country, so the projected rate and the price describe the same country. `taxRateCountry` is reported only for an exact country match.
