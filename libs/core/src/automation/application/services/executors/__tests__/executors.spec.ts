@@ -382,6 +382,23 @@ describe('SendEmailExecutorService', () => {
       );
     });
 
+    it('should render a missing tracking number as "not available" in a buyer email (#3555)', async () => {
+      const notifications = { send: jest.fn().mockResolvedValue({ status: 'sent', deliveryId: 'd-1' }) };
+      const executor = new SendEmailExecutorService(
+        stubResolver({
+          MAILER_TOKEN: { sendEmail: jest.fn() },
+          ORDER_RECORD_SERVICE_TOKEN: { getOrderRecord: jest.fn().mockResolvedValue(ORDER) },
+          BUYER_EMAIL_NOTIFICATION_SERVICE_TOKEN: notifications,
+        }),
+      );
+
+      await executor.execute(input(SHIPPED_TO_BUYER));
+
+      expect(notifications.send).toHaveBeenCalledWith(
+        expect.objectContaining({ text: 'Tracking: not available' }),
+      );
+    });
+
     it("should put the channel's order number in {order.reference}, not the internal id", async () => {
       const notifications = { send: jest.fn().mockResolvedValue({ status: 'sent', deliveryId: 'd-1' }) };
       const executor = new SendEmailExecutorService(

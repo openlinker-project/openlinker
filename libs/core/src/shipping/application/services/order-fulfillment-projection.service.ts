@@ -72,7 +72,7 @@ export class OrderFulfillmentProjectionService implements IOrderFulfillmentProje
         coverage,
       );
       // #3554: tell the orders context whether the tracking number is known,
-      // so `order.shipped` can wait for it instead of announcing "not yet".
+      // so `order.shipped` can wait for it instead of announcing it without one.
       await this.orderRecords.updateFulfillmentState(orderId, rollup, {
         trackingKnown: hasKnownTrackingNumber(shipments),
       });

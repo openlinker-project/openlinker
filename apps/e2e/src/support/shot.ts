@@ -13,14 +13,20 @@ import { mkdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import type { Locator, Page, TestInfo } from '@playwright/test';
 
-const ROOT = join(process.cwd(), 'screenshots', 'ksef-legal');
+const SCREENSHOTS = join(process.cwd(), 'screenshots');
 
+/**
+ * `folder` names the suite's directory under `screenshots/`; it defaults to
+ * `ksef-legal`, the suite this helper was written for, so its callers are
+ * unchanged.
+ */
 export async function shot(
   target: Page | Locator,
   testInfo: TestInfo,
-  name: string
+  name: string,
+  folder = 'ksef-legal'
 ): Promise<string> {
-  const path = join(ROOT, `${name}.png`);
+  const path = join(SCREENSHOTS, folder, `${name}.png`);
   mkdirSync(dirname(path), { recursive: true });
   if ('goto' in target) {
     await target.screenshot({ path, fullPage: true, animations: 'disabled' });

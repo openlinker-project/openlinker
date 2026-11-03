@@ -814,12 +814,18 @@ export { BuyerEmailDelivery } from './domain/entities/buyer-email-delivery.entit
 export {
   BuyerEmailOutcomeValues,
   BuyerEmailSuppressionReasonValues,
+  BuyerEmailTestRefusalReasonValues,
+  BUYER_EMAIL_TEST_SEND_LIMIT,
+  BUYER_EMAIL_TEST_SEND_WINDOW_SECONDS,
   isBuyerEmailOutcome,
   type BuyerEmailOutcome,
   type BuyerEmailSuppressionReason,
+  type BuyerEmailTestRefusalReason,
 } from './domain/types/buyer-email-delivery.types';
 export type {
   IBuyerEmailNotificationService,
   SendBuyerEmailInput,
   SendBuyerEmailResult,
+  SendBuyerEmailTestInput,
+  SendBuyerEmailTestResult,
 } from './application/interfaces/buyer-email-notification.service.interface';

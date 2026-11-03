@@ -1316,8 +1316,19 @@ export interface BuyerEmailDeliveryView {
   connectionId: string;
   templateKey: string;
   subjectRef: string;
-  outcome: 'sent' | 'suppressed' | 'bounced';
+  outcome: 'pending' | 'sent' | 'suppressed' | 'bounced';
   suppressionReason: string | null;
   suppressionMessage: string | null;
+  createdAt: string;
+}
+
+/** One row of `GET /orders/:id/document-emails` (#3550) - the fields G06 reads. */
+export interface DocumentEmailDeliveryView {
+  id: string;
+  documentKind: string;
+  documentId: string;
+  sentVia: 'provider' | 'openlinker' | null;
+  outcome: 'sent' | 'failed';
+  failureReason: string | null;
   createdAt: string;
 }
