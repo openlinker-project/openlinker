@@ -27,6 +27,7 @@ import {
   ErrorState,
   LoadingState,
 } from '../../shared/ui';
+import { usePlural, useMessages } from '../../shared/i18n';
 import { BulkWizard } from '../../features/listings/components/bulk/bulk-wizard';
 import { MAX_WIZARD_PRODUCTS } from '../../features/listings/lib/batch-recovery';
 import { useConnectionsQuery } from '../../features/connections';
@@ -43,6 +44,8 @@ const MAX_PRODUCTS = MAX_WIZARD_PRODUCTS;
 export function BulkCreateWizardPage(): ReactElement {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
+  const copy = useMessages('listings').bulkCreateWizardPage;
+  const plural = usePlural();
 
   const ids = useMemo<string[]>(() => {
     const raw = searchParams.get('productIds') ?? '';
@@ -81,8 +84,8 @@ export function BulkCreateWizardPage(): ReactElement {
   if (ids.length === 0 || ids.length > MAX_PRODUCTS) {
     return (
       <LoadingState
-        title="Redirecting…"
-        message="Returning you to the Products page."
+        title={copy.redirectingTitle}
+        message={copy.redirectingMessage}
       />
     );
   }
@@ -93,8 +96,8 @@ export function BulkCreateWizardPage(): ReactElement {
   if (isLoading) {
     return (
       <LoadingState
-        title="Loading products"
-        message={`Fetching details for ${ids.length.toLocaleString()} selected products…`}
+        title={copy.loadingTitle}
+        message={plural(ids.length, copy.loadingMessage)}
       />
     );
   }
@@ -102,7 +105,7 @@ export function BulkCreateWizardPage(): ReactElement {
   if (failed?.error) {
     return (
       <ErrorState
-        title="Could not load selected products"
+        title={copy.errorTitle}
         message={failed.error.message}
         action={
           <Button
@@ -112,7 +115,7 @@ export function BulkCreateWizardPage(): ReactElement {
               });
             }}
           >
-            Retry
+            {copy.retry}
           </Button>
         }
       />
@@ -126,8 +129,8 @@ export function BulkCreateWizardPage(): ReactElement {
   if (products.length === 0) {
     return (
       <ErrorState
-        title="No products found"
-        message="None of the selected product IDs resolved. Return to /products and try again."
+        title={copy.emptyTitle}
+        message={copy.emptyMessage}
       />
     );
   }

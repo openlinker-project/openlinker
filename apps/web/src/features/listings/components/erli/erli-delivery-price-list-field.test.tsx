@@ -48,7 +48,7 @@ describe('ErliDeliveryPriceListField', () => {
       { apiClient },
     );
 
-    expect(await screen.findByText(/No delivery price lists found on this Erli account/i)).toBeInTheDocument();
+    expect(await screen.findByText(/No delivery price lists found on this marketplace account/i)).toBeInTheDocument();
   });
 
   it('refetches when Refresh is clicked in the empty state', async () => {
@@ -60,7 +60,7 @@ describe('ErliDeliveryPriceListField', () => {
       { apiClient },
     );
 
-    await screen.findByText(/No delivery price lists found on this Erli account/i);
+    await screen.findByText(/No delivery price lists found on this marketplace account/i);
     expect(getDeliveryPriceLists).toHaveBeenCalledTimes(1);
 
     fireEvent.click(screen.getByRole('button', { name: 'Refresh' }));

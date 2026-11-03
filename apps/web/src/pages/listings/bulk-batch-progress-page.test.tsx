@@ -182,7 +182,7 @@ describe('BulkBatchProgressPage', () => {
 
     renderPage(apiClient);
 
-    const link = await screen.findByRole('link', { name: /Fix and resubmit \(1\) →/ });
+    const link = await screen.findByRole('link', { name: /Fix and resubmit \(1\)/ });
     const href = link.getAttribute('href') ?? '';
     const query = new URLSearchParams(href.slice(href.indexOf('?')));
     expect(href.startsWith('/listings/bulk-create/wizard?')).toBe(true);

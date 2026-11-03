@@ -1,0 +1,892 @@
+{
+  "allegroBulkConfigSection": {
+    "currencyLabel": "Currency",
+    "loadError": "Could not load shipping policies for this connection.",
+    "loadingPolicies": "Loading policies…",
+    "selectPlaceholder": "Select a delivery package…",
+    "shippingLabel": "Shipping rate package"
+  },
+  "allegroOfferValidation": {
+    "blockers": {
+      "addProductParams": "add product params",
+      "eanNotInCatalogue": "EAN not in catalogue",
+      "inStoreBarcode": "in-store barcode",
+      "noPhoto": "no photo",
+      "paramValueRejected": "parameter value rejected",
+      "siblingsShareOneCard": "siblings share one card",
+      "titleTooLong": "title too long",
+      "titleTooShort": "title too short"
+    },
+    "missingSellerDetails": {
+      "detail": "This marketplace requires them on every offer, so every offer in this batch would be rejected. Add them in the connection settings, then come back - the submit stays locked until they are set.",
+      "items": {
+        "responsibleProducer": "a responsible producer",
+        "safetyInformation": "safety information",
+        "shipFromLocation": "a ship-from location"
+      },
+      "title": "This connection is missing {items}."
+    }
+  },
+  "alreadyListedChip": {
+    "label": "already on {destination}"
+  },
+  "autoPrefillParameters": {
+    "unmatchedBrand": "Variant brand \"{brand}\" - no exact match in the marketplace's brand list; pick manually."
+  },
+  "batchRecovery": {
+    "blockers": {
+      "noProductLink": "Fix and resubmit needs the product link, which this batch did not record. Retry is unaffected.",
+      "overProductCap": "Fix and resubmit handles up to {max} products at a time. Retry is unaffected."
+    }
+  },
+  "bulkBatchProgressPage": {
+    "demoLock": "Read-only demo - recovery actions are disabled.",
+    "errorTitle": "Could not load batch",
+    "eyebrow": "Operations · Listings",
+    "inProgressAlert": "<strong>Batch in progress.</strong> Polling for updates every 5 seconds.",
+    "loadingMessage": "Fetching bulk batch status…",
+    "loadingTitle": "Loading batch",
+    "metrics": {
+      "batchClosed": "Batch closed",
+      "failed": "Failed · {percent}",
+      "inProgress": "In progress",
+      "noFailures": "No failures",
+      "polling": "Polling every 5 s",
+      "recoveryAvailable": "Recovery available below",
+      "recoveryNeedsWrite": "Recovery needs write access",
+      "submitted": "Submitted {when}",
+      "succeeded": "Succeeded · {percent}",
+      "succeededDescription": "Offers live on marketplace",
+      "total": "Total"
+    },
+    "missingIdMessage": "The route is missing a batch identifier.",
+    "missingIdTitle": "Missing batch ID",
+    "notFoundMessage": "No batch with id \"{batchId}\" was found.",
+    "notFoundTitle": "Batch not found",
+    "openListings": "Open in Listings",
+    "recovery": {
+      "allFailed": {
+        "one": "{n} variant failed. Nothing went live.",
+        "other": "{n} variants failed. Nothing went live."
+      },
+      "explanation": "Reopen the wizard with the failed variants already selected, or re-run the batch exactly as saved.",
+      "fixAndResubmit": "Fix and resubmit ({count})",
+      "retryUnchanged": "Retry unchanged ({count})",
+      "retrying": "Retrying…",
+      "someFailed": {
+        "one": "{failed} of {n} variant failed.",
+        "other": "{failed} of {n} variants failed."
+      },
+      "someLive": {
+        "one": "{n} offer is live.",
+        "other": "{n} offers are live."
+      }
+    },
+    "retry": "Retry",
+    "statusLine": {
+      "one": "Status <status></status> · {connection} · {n} variant",
+      "other": "Status <status></status> · {connection} · {n} variants"
+    },
+    "statuses": {
+      "completed": "completed",
+      "failed": "failed",
+      "partiallyFailed": "partially failed",
+      "pending": "pending",
+      "running": "running"
+    },
+    "summary": {
+      "completedIn": "Batch completed in {elapsed}",
+      "counts": "· {created} created · {failed} failed",
+      "endedIn": "Batch ended in {elapsed}"
+    },
+    "title": "Bulk batch <id>{batchId}</id>",
+    "toasts": {
+      "retryDispatchedDescription": {
+        "one": "{n} record re-enqueued.",
+        "other": "{n} records re-enqueued."
+      },
+      "retryDispatchedTitle": "Retry dispatched",
+      "retryFailedTitle": "Retry failed"
+    }
+  },
+  "bulkCreateWizardPage": {
+    "emptyMessage": "None of the selected products could be found. Return to the products list and try again.",
+    "emptyTitle": "No products found",
+    "errorTitle": "Could not load selected products",
+    "loadingMessage": {
+      "one": "Fetching details for {n} selected product…",
+      "other": "Fetching details for {n} selected products…"
+    },
+    "loadingTitle": "Loading products",
+    "redirectingMessage": "Returning you to the Products page.",
+    "redirectingTitle": "Redirecting…",
+    "retry": "Retry"
+  },
+  "categoryLookup": {
+    "idleTimeout": "No response from the category lookup for {seconds}s."
+  },
+  "categoryParametersStep": {
+    "autoFilled": "Auto-filled from variant data",
+    "filteredByParent": "Filtered by parent: {visible} of {total} options available",
+    "optional": "Optional",
+    "pickPlaceholder": "Pick {name}",
+    "rangeFrom": "{name} from",
+    "rangeTo": "{name} to",
+    "required": "Required",
+    "selectPlaceholder": "Select…",
+    "showOptional": "Show optional fields ({count})"
+  },
+  "duplicateGuardModal": {
+    "cancel": "Go back",
+    "confirmMarketplace": "Publish remaining variants",
+    "confirmShop": "Update existing",
+    "descriptionMarketplace": {
+      "one": "<strong>{n}</strong> variant you selected already has an offer on <strong>{destination}</strong>. It will be <strong>skipped, not duplicated</strong> - only variants not yet listed there will be published. Continue?",
+      "other": "<strong>{n}</strong> variants you selected already have an offer on <strong>{destination}</strong>. They will be <strong>skipped, not duplicated</strong> - only variants not yet listed there will be published. Continue?"
+    },
+    "descriptionShop": {
+      "one": "<strong>{n}</strong> variant you selected already exists on <strong>{destination}</strong>. Publishing <strong>updates the existing product</strong> (upsert) rather than creating a new one. Continue?",
+      "other": "<strong>{n}</strong> variants you selected already exist on <strong>{destination}</strong>. Publishing <strong>updates the existing product</strong> (upsert) rather than creating a new one. Continue?"
+    },
+    "title": {
+      "one": "{n} variant already on {destination}",
+      "other": "{n} variants already on {destination}"
+    }
+  },
+  "editOfferDrawer": {
+    "cancel": "Cancel",
+    "closeAriaLabel": "Close drawer",
+    "fields": {
+      "currency": "Currency",
+      "currencyReadOnly": "Currency (read-only)",
+      "description": "Description",
+      "price": "Price",
+      "pricePlaceholder": "e.g. 99.99",
+      "title": "Title",
+      "titlePlaceholder": "Offer title (max 75 characters)"
+    },
+    "overDescriptionCap": "This description is longer than the destination accepts ({maxBytes} bytes). Shorten it before saving - the platform would reject the update.",
+    "save": "Save changes",
+    "saving": "Saving…",
+    "suggestionNeedsVariant": "AI suggestions require a linked variant - link this offer to a product variant first.",
+    "suggestionScopeWarning": "Suggestions are sourced from the product's master content. Applying replaces the description on <strong>this offer only</strong> - saving does not update the product master or any other linked offers.",
+    "title": "Edit offer",
+    "toasts": {
+      "dispatchedDescription": "Changes will appear once the job completes.",
+      "dispatchedTitle": "Update dispatched"
+    },
+    "updateFailed": "Update failed",
+    "validation": {
+      "priceInvalid": "Price must be a positive number with up to 2 decimal places",
+      "titleTooLong": "Title must be {max} characters or fewer"
+    }
+  },
+  "erliBulkConfigSection": {
+    "note": {
+      "currency": "Prices are sent in PLN.",
+      "images": "Images are pulled from each product (the marketplace requires at least one), and the Resolving step flags any product missing one.",
+      "noPolicies": "This marketplace has no seller or delivery policies, so the dispatch time stands in for the policy step.",
+      "producer": "The producer applies to every product in this batch (override it per product in the Review step)."
+    }
+  },
+  "erliBulkRowSection": {
+    "customDispatchOff": "Off - this product uses the batch dispatch time.",
+    "customDispatchTitle": "Custom dispatch time for this product",
+    "customProducerOff": "Off - this product uses the batch default producer.",
+    "customProducerTitle": "Custom producer for this product",
+    "resetToBatchDefault": "Reset to batch default"
+  },
+  "erliDeliveryPriceListField": {
+    "description": "Fetched from the marketplace. Required for buyers to purchase.",
+    "emptyBody": "No delivery price lists found on this marketplace account - add one there, then refresh.",
+    "emptyTitle": "No delivery price lists found",
+    "label": "Delivery price list",
+    "loadErrorTitle": "Unable to load delivery price lists",
+    "loading": "Loading delivery price lists…",
+    "placeholder": "Choose a delivery price list…",
+    "refresh": "Refresh",
+    "retry": "Retry",
+    "tryAgain": "Please try again."
+  },
+  "erliDeliveryPriceListOverrideField": {
+    "batchDefault": "Batch default",
+    "batchDefaultNone": "none",
+    "batchDefaultQuoted": "\"{name}\"",
+    "emptyBody": "No delivery price lists found on this marketplace account - add one there, then refresh.",
+    "emptyTitle": "No delivery price lists found",
+    "inheriting": "Batch default ({batchDefault}). Change to override this product only.",
+    "label": "Delivery price list",
+    "loadErrorTitle": "Unable to load delivery price lists",
+    "loading": "Loading delivery price lists…",
+    "overridden": "Overridden",
+    "overriding": "Overriding the batch default ({batchDefault}) for this product.",
+    "placeholder": "Choose a delivery price list…",
+    "refresh": "Refresh",
+    "resetToBatchDefault": "Reset to batch default",
+    "retry": "Retry",
+    "tryAgain": "Please try again."
+  },
+  "erliDispatchTimeField": {
+    "fromDefault": "connection default",
+    "label": "Dispatch time",
+    "periodLabel": "Dispatch period",
+    "readout": "Buyers see \"ships in {dispatch}\".",
+    "readoutBatch": {
+      "one": "Applied to {n} offer - buyers see \"ships in {dispatch}\".",
+      "other": "Applied to all {n} offers - buyers see \"ships in {dispatch}\"."
+    },
+    "required": "· required by the marketplace",
+    "unitLabel": "Dispatch unit",
+    "units": {
+      "day": "working days",
+      "hour": "hours",
+      "month": "months"
+    }
+  },
+  "erliOfferFields": {
+    "dispatch": {
+      "day": {
+        "one": "{n} working day",
+        "other": "{n} working days"
+      },
+      "hour": {
+        "one": "{n} hour",
+        "other": "{n} hours"
+      },
+      "month": {
+        "one": "{n} month",
+        "other": "{n} months"
+      }
+    },
+    "validation": {
+      "periodMin": "Dispatch period must be 0 or greater",
+      "periodRequired": "Dispatch period is required",
+      "periodWholeNumber": "Dispatch period must be a whole number"
+    }
+  },
+  "erliOfferValidation": {
+    "blockers": {
+      "noImage": "no image"
+    }
+  },
+  "erliProducerField": {
+    "description": "Responsible producer shown on the marketplace's product card. Fetched from the marketplace.",
+    "emptyBody": "No producers on this marketplace account - add one there, then reload.",
+    "emptyTitle": "No producers found",
+    "label": "Producer",
+    "loadErrorTitle": "Unable to load producers",
+    "loading": "Loading producers…",
+    "placeholder": "Choose a producer…",
+    "tryAgain": "Please try again."
+  },
+  "listingDetailPage": {
+    "contextTitle": "Context",
+    "eanTag": "EAN {ean}",
+    "editOffer": "Edit offer",
+    "errorTitle": "Unable to load offer mapping",
+    "eyebrow": "Listings",
+    "fields": {
+      "connection": "Connection",
+      "created": "Created",
+      "entityType": "Entity Type",
+      "externalId": "External ID",
+      "externalOfferId": "External Offer ID",
+      "internalId": "Internal ID",
+      "mappingId": "Mapping ID",
+      "platformType": "Platform Type",
+      "recordId": "Record ID",
+      "updated": "Updated"
+    },
+    "loadingMessage": "Fetching mapping details…",
+    "loadingTitle": "Loading offer mapping",
+    "mappingTitle": "Mapping - {externalId}",
+    "notFound": "Offer mapping not found",
+    "offerCreation": "Offer creation",
+    "retry": "Retry",
+    "skuTag": "SKU {sku}",
+    "title": "Offer mapping"
+  },
+  "listingMarketplaceOfferSection": {
+    "descriptionPreview": "Description preview",
+    "errorTitle": "Unable to load listing details",
+    "fields": {
+      "availableQuantity": "Available quantity",
+      "category": "Category",
+      "endsAt": "Ends at",
+      "externalId": "External ID",
+      "marketplace": "Marketplace",
+      "price": "Price"
+    },
+    "loadingMessage": "Fetching live marketplace state…",
+    "loadingTitle": "Loading listing details",
+    "openOnMarketplace": "Open on marketplace",
+    "retry": "Retry",
+    "title": "Listing details",
+    "unavailable": "Live data unavailable for this adapter."
+  },
+  "listingRowState": {
+    "alert": {
+      "blockedByShop": "Blocked by a problem with the shop, not this listing",
+      "blockedByShopTitle": "The channel reports a problem with the seller account rather than with this listing. See the notice above the table - fixing it there unblocks every listing on this connection.",
+      "inactiveNoProblems": "Set to inactive on the channel, no problems reported",
+      "inactiveNoProblemsTitle": "The channel reports this listing as not live and lists no problems with it. Nothing is outstanding on our side.",
+      "moreProblems": {
+        "one": "{first} · +{n} more problem",
+        "other": "{first} · +{n} more problems"
+      },
+      "stillAvailableStale": {
+        "one": "Still {n} available on channel - the master product no longer exists",
+        "other": "Still {n} available on channel - the master product no longer exists"
+      },
+      "stillAvailableUnlinked": {
+        "one": "Still {n} available on channel - no OpenLinker product is linked to this listing",
+        "other": "Still {n} available on channel - no OpenLinker product is linked to this listing"
+      }
+    },
+    "badgeTitles": {
+      "draft": "On the channel but not live.",
+      "invalid": "Not live on the channel, with validator errors outstanding.",
+      "notSynced": "No channel status has ever been read for this offer."
+    },
+    "badges": {
+      "activating": "Activating",
+      "deactivating": "Deactivating",
+      "draft": "Draft",
+      "ended": "Ended",
+      "invalid": "Invalid",
+      "notSynced": "Not synced",
+      "productDeleted": "Product deleted",
+      "sellingDeleted": "Selling deleted product",
+      "unlinked": "Unlinked"
+    },
+    "staleTitle": {
+      "paused": "The master product is gone and the channel reports no stock, so the pause took effect.",
+      "selling": "The master product is gone but the channel still reports stock, so this offer can still sell.",
+      "unknown": "The master product is gone. No channel quantity has been read, so it is not known whether this offer was paused."
+    },
+    "unlinkedTitle": {
+      "paused": "No OpenLinker variant is linked to this listing. The channel reports no stock.",
+      "selling": "No OpenLinker variant is linked to this listing, and the channel still reports stock - neither inventory nor pricing can reach it.",
+      "unknown": "No OpenLinker variant is linked to this listing, and no channel quantity has been read, so it is not known whether it can still sell."
+    }
+  },
+  "listingsListPage": {
+    "card": {
+      "channel": "Channel",
+      "channelProblems": "Channel problems",
+      "channelStatus": "Channel status",
+      "connection": "Connection",
+      "ean": "EAN/GTIN",
+      "lifecycle": "Lifecycle",
+      "noEan": "No EAN on the linked variant",
+      "noProblems": "No problems reported",
+      "offerId": "Offer ID",
+      "priceOnChannel": "Price on channel",
+      "quantityOnChannel": "Quantity on channel",
+      "statusRead": "Status read",
+      "variantId": "Variant ID"
+    },
+    "cells": {
+      "noReadingYet": "No channel reading yet",
+      "outOfStock": "Out of stock",
+      "priceNotReported": "Price not reported by the channel",
+      "priceReadAt": "Price and quantity on channel, last read {readAt}",
+      "quantityNotReported": "Quantity not reported by the channel",
+      "stale": "Stale",
+      "staleTitle": "This price reading is older than the latest channel status read",
+      "statusNeverRead": "Channel status never read"
+    },
+    "columns": {
+      "channel": "Channel",
+      "connection": "Connection",
+      "listing": "Listing",
+      "onChannel": "on channel",
+      "price": "Price",
+      "quantity": "Quantity",
+      "statusRead": "status read",
+      "updated": "Updated"
+    },
+    "connectionNotice": {
+      "affectedShown": {
+        "one": "{n} of the listings shown here is affected.",
+        "other": "{n} of the listings shown here are affected."
+      },
+      "summary": "{problems} - this is reported against every listing on the connection, not against any one of them.",
+      "title": "{connection} reports a shop-level block"
+    },
+    "description": "Everything you sell on connected channels, and what state it is in right now.",
+    "empty": {
+      "clearFilters": "Clear filters",
+      "connectChannel": "Connect a channel",
+      "filteredMessage": "No offer mappings match the current filters.",
+      "filteredTitle": "No offer mappings found",
+      "noChannelsMessage": "Listings are published to connected sales channels.",
+      "noChannelsTitle": "No channels connected yet",
+      "showUnsynced": "Show unsynced ({count})",
+      "unsyncedHint": {
+        "one": "{n} mapping has never had its channel status read.",
+        "other": "{n} mappings have never had their channel status read."
+      }
+    },
+    "errorTitle": "Unable to load listings",
+    "eyebrow": "Operations",
+    "lifecycleAriaLabel": "Listing lifecycle",
+    "lifecycleTabs": {
+      "active": {
+        "emptyMessage": "Nothing here is currently live on a channel.",
+        "emptyTitle": "No active listings",
+        "label": "Active"
+      },
+      "draft": {
+        "emptyMessage": "Nothing here is currently live, and none of it has been rejected.",
+        "emptyTitle": "No draft listings",
+        "label": "Draft"
+      },
+      "ended": {
+        "emptyMessage": "Nothing here has been ended by a channel.",
+        "emptyTitle": "No ended listings",
+        "label": "Ended"
+      },
+      "invalid": {
+        "emptyMessage": "Nothing here has been rejected by a channel validator.",
+        "emptyTitle": "No invalid listings",
+        "label": "Invalid"
+      },
+      "unsynced": {
+        "emptyMessage": "Every mapping here has had its channel status read at least once.",
+        "emptyTitle": "No unsynced listings",
+        "label": "Unsynced"
+      }
+    },
+    "listingCell": {
+      "eanLabel": "EAN:",
+      "eanTitle": "EAN: {ean}",
+      "noLinkedVariant": "No linked variant",
+      "skuLabel": "SKU:",
+      "skuTitle": "SKU: {sku}",
+      "unnamedProduct": "Unnamed product"
+    },
+    "loading": "Loading listings…",
+    "publishProducts": "Publish products",
+    "retry": "Retry",
+    "status": {
+      "countsLoaded": "Listing counts loaded.",
+      "countsLoading": "Loading listing counts…",
+      "countsUnavailable": "Listing counts unavailable.",
+      "refreshing": "Refreshing listings…"
+    },
+    "title": "Listings",
+    "toolbar": {
+      "allChannels": "All channels",
+      "channelAriaLabel": "Filter by channel",
+      "clear": "Clear",
+      "searchAriaLabel": "Search listings by product name, SKU, EAN or external ID",
+      "searchPlaceholder": "Product name, SKU, EAN or external ID"
+    },
+    "views": {
+      "all": "All listings",
+      "ariaLabel": "Listings views",
+      "priceChanges": "Price changes"
+    }
+  },
+  "offerCreationStatusBadge": {
+    "labels": {
+      "active": "Active",
+      "draft": "Draft",
+      "failed": "Failed",
+      "pending": "Pending",
+      "reused": "Already existed",
+      "validating": "Validating"
+    }
+  },
+  "offerCreationTracker": {
+    "dismiss": "Dismiss",
+    "draft": {
+      "noValidationIssues": "No inline validation issues - publish manually in the marketplace seller panel.",
+      "openSellerPanel": "Open in the marketplace seller panel",
+      "validationIssues": "The marketplace reported validation issues that block publishing:",
+      "withId": "Offer created as a draft on the marketplace · external id <id>{externalId}</id>.",
+      "withoutId": "Offer created as a draft on the marketplace."
+    },
+    "failed": "Offer creation failed. Review the errors below and submit a new offer with the corrected values.",
+    "label": "Offer creation",
+    "live": {
+      "withId": "Offer is live · external id <id>{externalId}</id>.",
+      "withoutId": "Offer is live."
+    },
+    "loadFailed": "Unable to load status: {message}",
+    "loading": "Loading status…",
+    "processing": "Still processing - the status will update automatically.",
+    "reused": {
+      "withId": "Offer already existed on the marketplace - reused the existing listing · external id <id>{externalId}</id>.",
+      "withoutId": "Offer already existed on the marketplace - reused the existing listing."
+    }
+  },
+  "offerDescriptionEditor": {
+    "ariaLabel": "Offer description"
+  },
+  "offerProductPickerModal": {
+    "capReached": "Maximum {max} products per batch reached - clear a product to add another.",
+    "closeAria": "Close",
+    "description": "Pick whole products or individual variants, mix across products, then choose a marketplace or shop to publish to - it all becomes one batch.",
+    "discard": {
+      "cancel": "Keep editing",
+      "confirm": "Discard changes",
+      "description": "You have unsaved product selections. Closing now will discard them.",
+      "title": "Discard changes?"
+    },
+    "empty": {
+      "noMatch": "No products match \"{query}\".",
+      "noProducts": "No products yet."
+    },
+    "itemCount": {
+      "marketplace": {
+        "one": "{n} offer",
+        "other": "{n} offers"
+      },
+      "shop": {
+        "one": "{n} product listing",
+        "other": "{n} product listings"
+      }
+    },
+    "listAria": "Product picker",
+    "loadError": "Unable to load products",
+    "loadingProducts": "Loading products…",
+    "mobileCount": "{items} · {products}",
+    "pager": {
+      "next": "Next",
+      "nextAria": "Next page of products",
+      "page": "{current} / {count}",
+      "previous": "Previous",
+      "previousAria": "Previous page of products",
+      "range": "{start}–{end} of {total}"
+    },
+    "productCount": {
+      "one": "{n} product",
+      "other": "{n} products"
+    },
+    "retry": "Retry",
+    "review": "Review",
+    "search": {
+      "ariaLabel": "Search products",
+      "hint": "Tick a product to add every variant, or expand it to choose specific ones.",
+      "placeholder": "Search by name, SKU or EAN"
+    },
+    "selectionSummary": "{items} selected across {products}",
+    "stepAnnouncement": {
+      "products": "Step 1 of 2: choose products",
+      "review": "Step 2 of 2: review your selection"
+    },
+    "title": "Publish products"
+  },
+  "offerProductPickerRail": {
+    "ariaLabel": "Selection",
+    "backAria": "Back to products",
+    "cancel": "Cancel",
+    "chips": {
+      "needEan": {
+        "one": "{n} needs EAN",
+        "other": "{n} need EAN"
+      },
+      "noEan": "no EAN",
+      "notChecked": "not checked",
+      "partial": "{selected} of {total}",
+      "ready": "ready"
+    },
+    "clearAll": "Clear all",
+    "connectionsError": "Unable to load connections",
+    "continue": "Continue",
+    "continueHint": {
+      "noDestination": "Choose a destination to publish to first.",
+      "noDestinations": "Add an active marketplace or shop connection before publishing.",
+      "noSelection": "Select at least one product, then choose a destination."
+    },
+    "counts": {
+      "listings": "listings",
+      "needEan": "need EAN",
+      "offers": "offers",
+      "products": "products"
+    },
+    "empty": "Nothing selected yet. Tick products or variants on the left.",
+    "loadingDestinations": "Loading destinations…",
+    "noDestinations": {
+      "body": "Add an active marketplace (offer creation) or online shop (product publishing) connection before publishing.",
+      "title": "No publish destinations available"
+    },
+    "publishTo": "Publish to",
+    "removeAria": "Remove {name}",
+    "retry": "Retry",
+    "title": "In this batch",
+    "wholeProduct": {
+      "one": "Whole product · {n} variant",
+      "other": "Whole product · {n} variants"
+    }
+  },
+  "offerProductPickerRow": {
+    "capReached": "Maximum {max} products per batch reached",
+    "collapseAria": "Collapse {name}",
+    "expandAria": "Expand {name}",
+    "loadError": "Unable to load variants",
+    "loadingVariants": "Loading variants…",
+    "noVariants": "No variants on this product.",
+    "retry": "Retry",
+    "selectAria": "Select {name}",
+    "variantCount": {
+      "one": "{n} variant",
+      "other": "{n} variants"
+    },
+    "variantEan": "EAN {ean}",
+    "variantNoEan": "no EAN",
+    "variantSku": "SKU {sku}"
+  },
+  "offerPublicationStatusBadge": {
+    "labels": {
+      "activating": "Activating",
+      "active": "Active",
+      "ended": "Ended",
+      "inactivating": "Deactivating",
+      "inactive": "Inactive"
+    },
+    "notSyncedYet": "Not synced yet"
+  },
+  "offerPublicationStatusPanel": {
+    "checkStatus": "Check status",
+    "emptyMessage": "This product isn't listed on any marketplace connection yet.",
+    "emptyTitle": "No offers on marketplaces",
+    "errorTitle": "Unable to load publication status",
+    "loadingMessage": "Fetching live offer status…",
+    "loadingTitle": "Loading publication status",
+    "neverSynced": "Never synced",
+    "refresh": "Refresh",
+    "refreshing": "Refreshing…",
+    "retry": "Retry",
+    "synced": "Synced <time></time>"
+  },
+  "parameterRestrictions": {
+    "aboveMax": "{name} must be at most {max}, this value is {value}.",
+    "belowMin": "{name} must be at least {min}, this value is {value}.",
+    "notInDictionary": "\"{value}\" is not one of the values {name} allows in this category.",
+    "notNumeric": "{name} must be a number, \"{value}\" is not.",
+    "notWholeNumber": "{name} must be a whole number, \"{value}\" is not.",
+    "precisionExceeded": {
+      "one": "{name} allows {n} decimal place, this value has {decimals}.",
+      "other": "{name} allows {n} decimal places, this value has {decimals}."
+    },
+    "tooLong": {
+      "one": "{name} allows at most {n} character, this value has {length}.",
+      "other": "{name} allows at most {n} characters, this value has {length}."
+    },
+    "tooManyValues": {
+      "one": "{name} accepts at most {n} value, {supplied} supplied.",
+      "other": "{name} accepts at most {n} values, {supplied} supplied."
+    },
+    "tooShort": {
+      "one": "{name} needs at least {n} character, \"{value}\" has {length}.",
+      "other": "{name} needs at least {n} characters, \"{value}\" has {length}."
+    }
+  },
+  "parametersZodSchema": {
+    "invalidLength": "Invalid length",
+    "invalidRange": "Range must be valid (from ≤ to)",
+    "lengthAtLeast": {
+      "one": "Must be at least {n} character",
+      "other": "Must be at least {n} characters"
+    },
+    "lengthAtMost": {
+      "one": "Must be at most {n} character",
+      "other": "Must be at most {n} characters"
+    },
+    "lengthBetween": "Must be between {min} and {max} characters",
+    "number": "Must be a number",
+    "optionUnavailable": "{name}: the selected option is no longer available for the current parent value",
+    "required": "{name} is required",
+    "wholeNumber": "Must be a whole number"
+  },
+  "publishDestinationRail": {
+    "ariaLabel": "Publish destination"
+  },
+  "publishDestinations": {
+    "groupLabel": {
+      "marketplace": "Marketplaces",
+      "shop": "Online shops"
+    },
+    "kindHint": {
+      "marketplace": "Offer marketplace",
+      "shop": "Online shop"
+    }
+  },
+  "requiredToSell": {
+    "outOfStock": "Out of stock - it will publish but cannot be purchased until restocked."
+  },
+  "shopPublishLauncher": {
+    "cancel": "Cancel",
+    "close": "Close",
+    "continue": "Continue",
+    "empty": {
+      "action": "Go to Integrations",
+      "message": "Connect an online shop and turn on product publishing for it to publish products from OpenLinker.",
+      "title": "No shop connection yet"
+    },
+    "loading": "Loading…",
+    "loadingConnections": "Loading shop connections…",
+    "picker": {
+      "ariaLabel": "Shop connection",
+      "description": "Choose the shop connection to publish onto.",
+      "label": "Connection",
+      "option": "{name} ({platform})",
+      "placeholder": "Choose a connection…"
+    },
+    "title": "Publish to shop",
+    "titleFor": "Publish to {name}",
+    "unsupported": {
+      "body": "The selected connection's platform (<code>{platform}</code>) has no publish wizard yet.",
+      "title": "No publish wizard for this platform"
+    }
+  },
+  "shopPublishTracker": {
+    "batchStatus": {
+      "completed": "Completed",
+      "failed": "Failed",
+      "partially-failed": "Partially failed",
+      "pending": "Pending",
+      "running": "Running"
+    },
+    "bulk": {
+      "failed": {
+        "one": "{n} failed",
+        "other": "{n} failed"
+      },
+      "loadError": "Unable to load batch: {message}",
+      "loading": "Loading batch…",
+      "none": "No batch available.",
+      "progress": "{done} / {total}",
+      "published": {
+        "one": "{n} published",
+        "other": "{n} published"
+      },
+      "running": {
+        "one": "{n} running",
+        "other": "{n} running"
+      },
+      "title": "Bulk publish"
+    },
+    "single": {
+      "failedBody": "Publishing failed. No product was created on the shop.",
+      "failedTitle": "Publish failed",
+      "loadError": "Unable to load status: {message}",
+      "loading": "Loading status…",
+      "none": "No status available.",
+      "product": "Product",
+      "publishedTitle": "Published",
+      "publishingTitle": "Publishing…"
+    },
+    "status": {
+      "draft": "Draft",
+      "failed": "Failed",
+      "published": "Published",
+      "publishing": "Publishing"
+    },
+    "steps": {
+      "draft": "Created as draft",
+      "live": "Live on storefront",
+      "publishing": "Publishing to the shop",
+      "queued": "Queued"
+    }
+  },
+  "woocommercePublishWizard": {
+    "actions": {
+      "back": "Back",
+      "cancel": "Cancel",
+      "change": "Change",
+      "confirmPublish": "Confirm & publish",
+      "publish": "Publish",
+      "publishBulk": {
+        "one": "Publish {n} product",
+        "other": "Publish {n} products"
+      },
+      "publishing": "Publishing…",
+      "review": "Review"
+    },
+    "appliesToAll": "applies to all",
+    "bulk": {
+      "blankFallback": "Blank stock or price falls back to the master product's value at publish time.",
+      "independentNote": "Each product publishes independently - one can list at a different price or stock level than the rest of the batch. Out-of-stock variants list with their master stock (0 is honoured).",
+      "label": "Products",
+      "perProductHint": "- stock & price set per product",
+      "selected": "{n} selected",
+      "useMasterPrice": "Use master price for all",
+      "useMasterStock": "Use master stock for all"
+    },
+    "continueWith": {
+      "one": "Continue with {n} product",
+      "other": "Continue with {n} products"
+    },
+    "description": {
+      "generateBulk": "Generate descriptions with AI",
+      "generateSingle": "Generate a description with AI",
+      "helpBulk": "Each product gets an AI-written description from its master data. Products you have already given a description keep it.",
+      "helpSingle": "Writes the description from the product's master data at publish time. Leave off to use the master description.",
+      "label": "Description",
+      "tone": "Tone",
+      "toneConcise": "Concise",
+      "toneDetailed": "Detailed"
+    },
+    "fields": {
+      "fromMasterPlaceholder": "from master",
+      "masterPlaceholder": "master",
+      "optional": "optional",
+      "priceOverride": "Price override",
+      "stock": "Stock"
+    },
+    "picker": {
+      "loadingProducts": "Loading products…",
+      "loadingVariants": "Loading variants…",
+      "next": "Next",
+      "nextAria": "Next page of products",
+      "noProducts": "No products match.",
+      "noVariants": "No variants on this product.",
+      "pageRange": "{start}-{end} of {total}",
+      "previous": "Previous",
+      "previousAria": "Previous page of products",
+      "searchDescription": "Search by product name, SKU, or EAN. Check one or more variants - they all publish together.",
+      "searchLabel": "Search products",
+      "searchPlaceholder": "e.g. T-shirt, SKU-123, 5901234567890",
+      "variantCodes": "SKU {sku} · EAN {ean}"
+    },
+    "removeFromBatchAria": "Remove {name} from batch",
+    "review": {
+      "price": "Price",
+      "priceFromMaster": "from master",
+      "priceValue": "{amount} {currency}",
+      "shop": "Shop",
+      "variant": "Variant"
+    },
+    "singleCallout": "Category placement, attributes and images are resolved from the master product at publish time - nothing to pick here. Categories are created in the mirrored category tree of {shop}.",
+    "toast": {
+      "bulkStartedBody": {
+        "one": "Publishing {n} product to {shop}.",
+        "other": "Publishing {n} products to {shop}."
+      },
+      "bulkStartedTitle": "Bulk publish started",
+      "priceReset": "Price reset to each product's current master price.",
+      "startedBody": "Publishing to {shop}.",
+      "startedTitle": "Publish started",
+      "stockReset": "Stock reset to each product's current master stock."
+    },
+    "tray": {
+      "clearAll": "Clear all",
+      "empty": "Check one or more variants above to add them here.",
+      "selectedLabel": "Selected for this batch:"
+    },
+    "validation": {
+      "price": "Price must be a positive number",
+      "stock": "Stock must be a whole number ≥ 0"
+    },
+    "visibility": {
+      "description": "Draft creates the product hidden; Published lists it live on the storefront.",
+      "draft": "Draft",
+      "label": "Visibility",
+      "published": "Published"
+    }
+  }
+}

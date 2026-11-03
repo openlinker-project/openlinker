@@ -234,7 +234,7 @@ describe('OfferCreationTracker', () => {
 
       expect(await screen.findByText('Draft')).toBeInTheDocument();
       expect(screen.getByText('allegro-555')).toBeInTheDocument();
-      const link = screen.getByRole('link', { name: /open in allegro seller panel/i });
+      const link = screen.getByRole('link', { name: /open in the marketplace seller panel/i });
       expect(link).toHaveAttribute(
         'href',
         'https://allegro.pl.allegrosandbox.pl/oferta/allegro-555/edit',
@@ -266,7 +266,7 @@ describe('OfferCreationTracker', () => {
 
       expect(await screen.findByText('Draft')).toBeInTheDocument();
       expect(screen.getByText('allegro-777')).toBeInTheDocument();
-      expect(screen.getByRole('link', { name: /open in allegro seller panel/i })).toHaveAttribute(
+      expect(screen.getByRole('link', { name: /open in the marketplace seller panel/i })).toHaveAttribute(
         'href',
         'https://allegro.pl/oferta/allegro-777/edit',
       );
@@ -294,8 +294,8 @@ describe('OfferCreationTracker', () => {
       );
 
       expect(await screen.findByText('Draft')).toBeInTheDocument();
-      expect(screen.getByText(/offer created as a draft on allegro/i)).toBeInTheDocument();
-      expect(screen.queryByRole('link', { name: /open in allegro seller panel/i })).not.toBeInTheDocument();
+      expect(screen.getByText(/offer created as a draft on the marketplace/i)).toBeInTheDocument();
+      expect(screen.queryByRole('link', { name: /open in the marketplace seller panel/i })).not.toBeInTheDocument();
       expect(
         screen.getByText(/no inline validation issues/i),
       ).toBeInTheDocument();

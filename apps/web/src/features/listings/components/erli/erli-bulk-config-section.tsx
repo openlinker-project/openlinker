@@ -14,6 +14,7 @@
  */
 import { useEffect, useMemo, type ReactElement } from 'react';
 
+import { useMessages } from '../../../../shared/i18n';
 import type { BulkOfferConfigSectionProps } from '../../../../shared/plugins';
 import { ErliDeliveryPriceListField } from './erli-delivery-price-list-field';
 import { ErliDispatchTimeField } from './erli-dispatch-time-field';
@@ -28,6 +29,7 @@ export function ErliBulkConfigSection({
   connection,
   form,
 }: BulkOfferConfigSectionProps): ReactElement {
+  const note = useMessages('listings').erliBulkConfigSection.note;
   const connectionDefault = useMemo<ErliDispatchTimeParam>(
     () => parseErliConnectionDispatchDefault(connection.config),
     [connection.config],
@@ -95,10 +97,7 @@ export function ErliBulkConfigSection({
         }}
       />
       <p className="erli-config__note">
-        Erli has no seller/delivery policies — dispatch time stands in for Allegro's policy step.
-        The producer applies to every product in this batch (override it per product in the Review
-        step). Prices are sent in PLN; images are pulled from each product (Erli requires at least
-        one), and the Resolving step flags any product missing one.
+        {[note.noPolicies, note.producer, note.currency, note.images].join(' ')}
       </p>
     </div>
   );

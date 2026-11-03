@@ -17,6 +17,7 @@
  */
 import { useMemo, type ReactElement } from 'react';
 
+import { useMessages } from '../../../../shared/i18n';
 import type { BulkOfferRowSectionProps } from '../../../../shared/plugins';
 import { ErliDispatchTimeField } from './erli-dispatch-time-field';
 import { ErliProducerField } from './erli-producer-field';
@@ -31,6 +32,7 @@ export function ErliBulkRowSection({
   platformParams,
   onChange,
 }: BulkOfferRowSectionProps): ReactElement {
+  const copy = useMessages('listings').erliBulkRowSection;
   const connectionDefault = useMemo<ErliDispatchTimeParam>(
     () => parseErliConnectionDispatchDefault(connection.config),
     [connection.config],
@@ -83,9 +85,9 @@ export function ErliBulkRowSection({
           onChange={(e) => { toggle(e.target.checked); }}
         />
         <span>
-          <strong>Custom dispatch time for this product</strong>
+          <strong>{copy.customDispatchTitle}</strong>
           <small style={{ display: 'block', color: 'var(--text-muted)' }}>
-            Off — this product uses the batch dispatch time.
+            {copy.customDispatchOff}
           </small>
         </span>
       </label>
@@ -108,9 +110,9 @@ export function ErliBulkRowSection({
           onChange={(e) => { toggleProducer(e.target.checked); }}
         />
         <span>
-          <strong>Custom producer for this product</strong>
+          <strong>{copy.customProducerTitle}</strong>
           <small style={{ display: 'block', color: 'var(--text-muted)' }}>
-            Off — this product uses the batch default producer.
+            {copy.customProducerOff}
           </small>
         </span>
       </label>
@@ -127,7 +129,7 @@ export function ErliBulkRowSection({
             className="button button--ghost button--sm"
             onClick={() => { toggleProducer(false); }}
           >
-            Reset to batch default
+            {copy.resetToBatchDefault}
           </button>
         </>
       ) : null}

@@ -49,7 +49,7 @@ describe('ErliProducerField', () => {
     );
 
     expect(
-      await screen.findByText(/No producers on this Erli account/i),
+      await screen.findByText(/No producers on this marketplace account/i),
     ).toBeInTheDocument();
   });
 
