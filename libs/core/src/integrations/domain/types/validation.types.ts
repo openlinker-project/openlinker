@@ -30,4 +30,12 @@ export interface ValidationErrorLike {
 export interface FlatValidationIssue {
   path: string;
   message: string;
+  /**
+   * The failed constraint's key (`isNotEmpty`, `min` ...), when the issue came
+   * from class-validator through `flattenValidationErrors`. Optional: a
+   * validator that builds its issues by hand may omit it. The API forwards it
+   * as the field's code so the frontend can say what is wrong in the
+   * operator's language (#3861).
+   */
+  code?: string;
 }
