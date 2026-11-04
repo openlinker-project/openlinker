@@ -22,7 +22,7 @@ import {
   capabilityConflictMessage,
   getCapabilityConflict,
 } from '../lib/capability-metadata';
-import { MCP_CONNECTION_CHANGE_HINT, MCP_TOOL_CAPABILITIES } from '../../mcp-tokens';
+import { MCP_TOOL_CAPABILITIES, useMcpConnectionChangeHint } from '../../mcp-tokens';
 import { AccessGate } from '../../../shared/ui/access-gate';
 import { Alert } from '../../../shared/ui/alert';
 import { StatusBadge } from '../../../shared/ui/status-badge';
@@ -94,6 +94,7 @@ export function ConnectionCapabilitiesPanel({
 }: ConnectionCapabilitiesPanelProps): ReactElement {
   const copy = useMessages('connections').connectionCapabilitiesPanel;
   const format = useFormat();
+  const mcpConnectionChangeHint = useMcpConnectionChangeHint();
   const updateMutation = useUpdateConnectionMutation();
   const { showToast } = useToast();
   const [pending, setPending] = useState<CoreCapability | null>(null);
@@ -197,7 +198,7 @@ export function ConnectionCapabilitiesPanel({
        * it cannot operate — hence a content gate, not a `ReadOnlyLock`. */}
       {backsMcpTools ? (
         <AccessGate require="connections:write">
-          <Alert tone="info">{MCP_CONNECTION_CHANGE_HINT}</Alert>
+          <Alert tone="info">{mcpConnectionChangeHint}</Alert>
         </AccessGate>
       ) : null}
 
