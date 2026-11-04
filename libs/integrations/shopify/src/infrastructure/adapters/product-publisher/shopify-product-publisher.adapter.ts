@@ -62,7 +62,10 @@ import {
   type PublishProductResult,
   type PublishProductStatus,
   type PublishProductVariantGroup,
+  type ShopCurrencyDeclarer,
   type ShopProductManagerPort,
+  type ShopProductPriceUpdater,
+  type UpdateShopProductPriceCommand,
 } from '@openlinker/core/listings';
 import { Logger } from '@openlinker/shared/logging';
 
@@ -147,7 +150,9 @@ function isFilesError(error: ShopifyUserErrorsException): boolean {
   );
 }
 
-export class ShopifyProductPublisherAdapter implements ShopProductManagerPort, CategoryProvisioner {
+export class ShopifyProductPublisherAdapter
+  implements ShopProductManagerPort, CategoryProvisioner, ShopCurrencyDeclarer, ShopProductPriceUpdater
+{
   private readonly logger = new Logger(ShopifyProductPublisherAdapter.name);
   /** The Online Store publication id, read once per adapter instance; a failed read is retried next time. */
   private onlineStorePublication: Promise<string | null> | null = null;
@@ -160,6 +165,73 @@ export class ShopifyProductPublisherAdapter implements ShopProductManagerPort, C
 
   getDescriptionFormat(): DescriptionFormat {
     return SHOPIFY_DESCRIPTION_FORMAT;
+  }
+
+  /** The shop's own currency (`shop.currencyCode`), for the price-change review. */
+  async getDestinationCurrency(): Promise<string | null> {
+    return (await this.shopContext.get()).currencyCode ?? null;
+  }
+
+  /**
+   * Price only: `productVariantsBulkUpdate` on the one variant, nothing else
+   * rides along. A sale price writes `price` = sale and `compareAtPrice` =
+   * regular, the same mapping the publish uses.
+   */
+  async updateShopProductPrice(cmd: UpdateShopProductPriceCommand): Promise<void> {
+    const ids = cmd.externalParentProductId
+      ? [toShopifyGid('ProductVariant', cmd.externalProductId)]
+      : [toShopifyGid('Product', cmd.externalProductId), toShopifyGid('ProductVariant', cmd.externalProductId)];
+    const data = await this.client.query<{
+      nodes: Array<
+        | { __typename: 'ProductVariant'; id: string; product: { id: string } }
+        | { __typename: 'Product'; id: string; variants: { nodes: Array<{ id: string }> } }
+        | { __typename: string }
+        | null
+      >;
+    }>(
+      `query OlPriceTarget($ids: [ID!]!) { nodes(ids: $ids) { __typename
+        ... on ProductVariant { id product { id } }
+        ... on Product { id variants(first: 2) { nodes { id } } } } }`,
+      { ids },
+    );
+    let productId: string | null = null;
+    let variantId: string | null = null;
+    for (const node of data.nodes) {
+      if (node && node.__typename === 'ProductVariant' && 'product' in node) {
+        productId = node.product.id;
+        variantId = node.id;
+      } else if (node && node.__typename === 'Product' && 'variants' in node && variantId === null) {
+        if (node.variants.nodes.length !== 1) {
+          throw new ProductPublishRejectedException(this.adapterKey(), 422, [
+            { code: 'shopify_multi_variant', message: 'The Shopify product has several variants; price one variant, not the product' },
+          ]);
+        }
+        productId = node.id;
+        variantId = node.variants.nodes[0].id;
+      }
+    }
+    if (productId === null || variantId === null) {
+      throw new ProductPublishTargetNotFoundException(this.adapterKey(), cmd.externalProductId);
+    }
+    const sale =
+      cmd.salePrice && Number(cmd.salePrice.amount) < Number(cmd.price.amount) ? cmd.salePrice : undefined;
+    try {
+      await this.client.mutate(
+        `mutation OlPrice($productId: ID!, $variants: [ProductVariantsBulkInput!]!) {
+          productVariantsBulkUpdate(productId: $productId, variants: $variants) { userErrors { field message code } } }`,
+        {
+          productId,
+          variants: [
+            sale
+              ? { id: variantId, price: sale.amount, compareAtPrice: cmd.price.amount }
+              : { id: variantId, price: cmd.price.amount },
+          ],
+        },
+        'productVariantsBulkUpdate',
+      );
+    } catch (error) {
+      throw this.toPublishError(error);
+    }
   }
 
   async publishProduct(cmd: PublishProductCommand): Promise<PublishProductResult> {
