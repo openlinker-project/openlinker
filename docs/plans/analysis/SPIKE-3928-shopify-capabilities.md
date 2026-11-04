@@ -234,7 +234,7 @@ What Shopify **does** have to supply for a correct document, to verify live:
 
 | # | Configuration | Roles | Status | Run log |
 |---|---|---|---|---|
-| S1 | Shopify as master: catalogue + stock -> Allegro sandbox offers -> Allegro order into Shopify at the marketplace price -> invoice (inFakt / KSeF) or receipt (eparagony) -> InPost label -> tracking + status to Allegro -> stock sync | A, B | not started | - |
+| S1 | Shopify as master: catalogue + stock -> Allegro sandbox offers -> Allegro order into Shopify at the marketplace price -> invoice (inFakt / KSeF) or receipt (eparagony) -> InPost label -> tracking + status to Allegro -> stock sync | A, B | in progress | stack `ol-shopify`: Shopify, Allegro sandbox, InPost sandbox, inFakt sandbox, eparagony sandbox connected and tested; rules PL/`*`: tax id -> inFakt invoice, else eparagony receipt (auto on paid) |
 | S2 | PrestaShop or WooCommerce master -> publish to Shopify -> Shopify order into the master -> return | C, D | not started | - |
 | S3 | Shopify order -> OL-OMS routing + pack bench -> OL label -> fulfillment + tracking to Shopify | E | not started | - |
 | S4 | Shopify as master and order source -> document -> label -> tracking back; own-shop routing guard (#3487) | A, C | not started | - |
@@ -267,6 +267,10 @@ What Shopify **does** have to supply for a correct document, to verify live:
 | L-R2 | `orders(query: "return_status:in_progress")` finds the order (search index, so lagged); `return_status:open` / `return_requested` find nothing. Webhook topics `RETURNS_REQUEST/APPROVE/PROCESS/DECLINE/CLOSE/CANCEL/REOPEN/UPDATE` exist | Return feed = webhook trigger + `return_status` backstop sweep |
 | L-T2 | Schema scan: no tax-rate field on product, variant, shop or any query; only `taxable`, `taxesIncluded`, `taxShipping` | ProductTaxRateReader not possible; see matrix row |
 | L-T3 | `collectionCreate` + `collectionAddProductsV2` (async job, `done: false`) and the product immediately lists the collection; `product.category` and `productType` are independent of it | Collections are the provisionable "category" for D |
+| L-P1 | Prototype in a real stack (`ol-shopify`, commit `191cc6d42` + fixes): connection test answers `OK - ol-dev-norbert (PLN, prices include tax)` in ~250 ms; the bootstrap catalogue sync brought 22 products with variants, EAN and gross prices (`T-shirt S 79.98`, `Sneakers 249.00`) in one `syncBatch` | ProductMaster works end to end through OL's own sweep; no Shopify-specific core change was needed |
+| L-P2 | The image build failed with `ERR_PNPM_WORKSPACE_PKG_NOT_FOUND` until the root `Dockerfile` copied `libs/integrations/shopify/package.json` (two stages) and its `dist` | Every new integration package needs three `Dockerfile` lines; nothing in `check:invariants` catches the omission |
+| L-I1 | The first prototype refused untracked variants (Gift Wrap, Gift Card); the inventory sweep then dead-lettered one job per such product on every tick. Reporting them at an unmanaged cap (1000, WooCommerce `DEFAULT_UNMANAGED_STOCK_QUANTITY`) fixed it: Gift Wrap `1000`, no dead jobs | Follow the WooCommerce convention for `inventoryItem.tracked = false`, with a per-connection override |
+| L-O7 | With Shopify as the only order source AND the only `OrderProcessorManager`, every Shopify order fails `No OrderProcessorManager destinations available` and climbs the retry ladder (source is excluded from its own fan-out) | Core behaviour for any shop that ingests its own orders with no other destination, not Shopify-specific (turning `OrderProcessorManager` off does not help: the fan-out is still empty). The order record is persisted first, so documents and labels can still work; the retry ladder is noise. Follow-up: a non-retrying "nothing to mirror" outcome |
 
 ## Live transcripts
 
