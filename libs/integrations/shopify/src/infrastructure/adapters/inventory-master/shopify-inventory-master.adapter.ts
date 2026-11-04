@@ -21,12 +21,12 @@
  * Three behaviours are load-bearing:
  *   - **Deletion** is reported only where Shopify says so: `product: null`
  *     becomes the neutral `MasterProductNotFoundError` (#1688).
- *   - **Untracked stock is refused, never guessed.** A variant with tracking
- *     off is "always available" on Shopify; reporting 0 would zero live
- *     offers and a large number would oversell. Such variants are skipped
- *     with a warning, and a product whose every variant is untracked raises
- *     `ShopifyUntrackedInventoryException` rather than an empty list (an empty
- *     list would stale every variant through the master-sync prune).
+ *   - **Untracked stock follows the WooCommerce convention.** A variant with
+ *     tracking off is "always available" on Shopify. It is reported at the
+ *     connection's `unmanagedStockQuantity` (default 1000, the WooCommerce
+ *     `DEFAULT_UNMANAGED_STOCK_QUANTITY`), so it neither zeroes live offers
+ *     nor dead-letters a sweep job on every tick. Writing stock to it is still
+ *     refused.
  *   - **The stock write is compare-and-set and idempotent.**
  *     `inventoryAdjustQuantities` carries `changeFromQuantity` (refused when
  *     the level moved since our read) and the REQUIRED `@idempotent` directive.
@@ -56,7 +56,6 @@ import type { CachePort } from '@openlinker/shared';
 import { Logger } from '@openlinker/shared/logging';
 
 import { ShopifyNotSupportedException } from '../../../domain/exceptions/shopify-not-supported.exception';
-import { ShopifyUntrackedInventoryException } from '../../../domain/exceptions/shopify-untracked-inventory.exception';
 import { ShopifyVariantNotFoundException } from '../../../domain/exceptions/shopify-variant-not-found.exception';
 import { ShopifyVariantRequiredException } from '../../../domain/exceptions/shopify-variant-required.exception';
 import { fromShopifyGid, toShopifyGid } from '../../../domain/policies/shopify-gid.policy';
@@ -130,33 +129,29 @@ export class ShopifyInventoryMasterAdapter implements InventoryMasterPort {
 
   // ─── Read methods ──────────────────────────────────────────────────────────
 
-  /** One `Inventory` per TRACKED variant, at the connection's single location. */
+  /** One `Inventory` per variant at the connection's single location; untracked ones at the unmanaged cap. */
   async listInventory(productId: string): Promise<Inventory[]> {
     const externalId = await this.resolveExternalProductId(productId);
     const variants = await this.readVariants(externalId, productId);
-    const tracked = variants.filter((v) => v.inventoryItem.tracked);
-    const untracked = variants.length - tracked.length;
-    if (untracked > 0) {
-      this.logger.warn(
-        `Shopify product ${externalId}: ${untracked} variant(s) do not track stock and are not synced ` +
-          `(connection: ${this.connection.id})`,
-      );
-    }
-    if (tracked.length === 0) {
-      throw new ShopifyUntrackedInventoryException(productId, this.connection.id);
-    }
-
-    const [variantIds, inventoryIds] = await this.mintIds(productId, tracked.map((v) => fromShopifyGid(v.id)));
-    return tracked.map((variant) => {
+    const unmanaged = this.unmanagedQuantity();
+    const [variantIds, inventoryIds] = await this.mintIds(productId, variants.map((v) => fromShopifyGid(v.id)));
+    return variants.map((variant) => {
       const variantExternalId = fromShopifyGid(variant.id);
       return this.toInventory(
         productId,
         variantIds.get(`${variantExternalId}:${this.connection.id}`),
         inventoryIds.get(`level:${variantExternalId}:${this.connection.id}`),
         variantExternalId,
-        readLevel(variant.inventoryItem.inventoryLevel),
+        variant.inventoryItem.tracked
+          ? readLevel(variant.inventoryItem.inventoryLevel)
+          : { available: unmanaged, onHand: unmanaged, committed: 0, updatedAt: undefined },
       );
     });
+  }
+
+  private unmanagedQuantity(): number {
+    const raw = (this.connection.config as { unmanagedStockQuantity?: unknown }).unmanagedStockQuantity;
+    return typeof raw === 'number' && Number.isInteger(raw) && raw >= 0 ? raw : 1000;
   }
 
   /**
