@@ -155,7 +155,9 @@ describe('ProductsListPage', () => {
 
     renderWithProviders(<ProductsListPage />, { apiClient: mockApi });
 
-    expect(screen.getByRole('status')).toBeInTheDocument();
+    // More than one status region: the skeleton and (for a session that cannot
+    // write bundles) the view-only notice (#3624).
+    expect(screen.getAllByRole('status').length).toBeGreaterThan(0);
   });
 
   it('should show products table when data loads', async () => {
@@ -1470,6 +1472,147 @@ describe('ProductsListPage', () => {
 
       expect(await screen.findByText(/All\s+—/)).toBeInTheDocument();
       expect(screen.queryByText(/All\s+100\+/)).not.toBeInTheDocument();
+    });
+  });
+
+  describe('bundles (#3624)', () => {
+    const base = {
+      description: null,
+      images: null,
+      currency: 'PLN',
+      createdAt: '2026-01-15T10:00:00.000Z',
+      updatedAt: '2026-01-15T10:00:00.000Z',
+      totalAvailable: 0,
+      totalReserved: 0,
+      variantCount: 1,
+      listingsCoverage: [],
+    };
+    const bundlePage: PaginatedProducts = {
+      items: [
+        {
+          ...base,
+          id: 'p-set',
+          name: 'Zestaw poranny',
+          sku: 'ZES-PORANNY',
+          price: 64.99,
+          availableToPromise: 1,
+          atpProvenance: 'computed',
+          bundle: {
+            variantId: 'v-set',
+            componentCount: 2,
+            limitedBy: { variantId: 'v-spoon', name: 'Lyzeczka do kawy', sku: 'LYZ-KAW' },
+            unknownComponent: null,
+          },
+        },
+        {
+          ...base,
+          id: 'p-brew',
+          name: 'Zestaw do parzenia',
+          sku: 'ZES-PARZENIE',
+          price: 139,
+          availableToPromise: null,
+          atpProvenance: 'unknown',
+          bundle: {
+            variantId: 'v-brew',
+            componentCount: 2,
+            limitedBy: null,
+            unknownComponent: { variantId: 'v-press', name: 'Zaparzacz', sku: 'ZAP-FP-800' },
+          },
+        },
+        {
+          ...base,
+          id: 'p-coffee',
+          name: 'Kawa ziarnista',
+          sku: 'KAW-250-ETI',
+          price: 34.99,
+          availableToPromise: 128,
+          atpProvenance: 'computed',
+          bundle: null,
+        },
+      ],
+      total: 3,
+      limit: 20,
+      offset: 0,
+    };
+
+    function mountBundles(route = '/products'): ReturnType<typeof createMockApiClient> {
+      const mockApi = createMockApiClient({
+        products: {
+          list: vi.fn().mockResolvedValue(bundlePage),
+          listRows: vi.fn().mockResolvedValue({ items: bundlePage.items, limit: 20, offset: 0 }),
+          count: vi.fn().mockResolvedValue({ total: 3 }),
+        },
+      });
+      renderWithProviders(<ProductsListPage />, {
+        apiClient: mockApi,
+        route,
+        sessionAdapter: createAuthenticatedSessionAdapter(),
+      });
+      return mockApi;
+    }
+
+    it('should mark a bundle, show its availability and name the component that limits it', async () => {
+      mountBundles();
+      expect(await screen.findByTestId('bundle-list-available-ZES-PORANNY')).toHaveTextContent('1');
+      expect(screen.getByTestId('bundle-list-limiting-ZES-PORANNY')).toHaveTextContent(
+        'limited by: Lyzeczka do kawy',
+      );
+      expect(screen.getByTestId('bundle-list-show-composition-ZES-PORANNY')).toBeInTheDocument();
+      // An ordinary product offers to become a bundle instead.
+      expect(screen.getByTestId('bundle-list-make-bundle-KAW-250-ETI')).toBeInTheDocument();
+      expect(screen.queryByTestId('bundle-list-make-bundle-ZES-PORANNY')).toBeNull();
+    });
+
+    it('should give an unknown bundle one state and one sentence of reason, never a zero', async () => {
+      mountBundles();
+      expect(await screen.findByTestId('bundle-list-reason-badge-ZES-PARZENIE')).toHaveTextContent(
+        'Availability unknown',
+      );
+      expect(screen.getByTestId('bundle-list-reason-ZES-PARZENIE')).toHaveTextContent(
+        'the stock of Zaparzacz is not known',
+      );
+      expect(screen.queryByTestId('bundle-list-available-ZES-PARZENIE')).toBeNull();
+    });
+
+    it('should ask for bundles only when the Bundles filter is chosen', async () => {
+      const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+      const mockApi = mountBundles();
+      await screen.findByTestId('bundle-list-filter-bundles');
+      await user.click(screen.getByTestId('bundle-list-filter-bundles'));
+      await waitFor(() => {
+        expect(mockApi.products.listRows).toHaveBeenCalledWith(
+          expect.objectContaining({ bundles: true }),
+          expect.anything(),
+          expect.anything(),
+        );
+      });
+    });
+
+    it('should show a viewer the same list with New bundle disabled and the reason on screen', async () => {
+      const mockApi = createMockApiClient({
+        products: {
+          list: vi.fn().mockResolvedValue(bundlePage),
+          listRows: vi.fn().mockResolvedValue({ items: bundlePage.items, limit: 20, offset: 0 }),
+          count: vi.fn().mockResolvedValue({ total: 3 }),
+        },
+      });
+      renderWithProviders(<ProductsListPage />, {
+        apiClient: mockApi,
+        sessionAdapter: createAuthenticatedSessionAdapter({
+          id: 'u',
+          username: 'viewer',
+          email: null,
+          role: 'viewer',
+          permissions: ['products:read'],
+          analyticsConsent: true,
+        }),
+      });
+      expect(await screen.findByTestId('bundle-list-readonly-notice')).toHaveTextContent('admin or operator role');
+      expect(screen.getByTestId('bundle-list-new-bundle')).toHaveAttribute('aria-disabled', 'true');
+      expect(await screen.findByTestId('bundle-list-make-bundle-KAW-250-ETI')).toHaveAttribute(
+        'aria-disabled',
+        'true',
+      );
     });
   });
 });

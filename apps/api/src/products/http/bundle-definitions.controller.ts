@@ -25,7 +25,15 @@ import {
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import {
+  ORDER_PROVISIONING_RESUME_SERVICE_TOKEN,
+  ORDER_RECORD_SERVICE_TOKEN,
+  type IOrderProvisioningResumeService,
+  type IOrderRecordService,
+} from '@openlinker/core/orders';
+import {
   BUNDLE_DEFINITION_SERVICE_TOKEN,
+  PRODUCTS_SERVICE_TOKEN,
+  type IProductsService,
   BundleDefinitionAlreadyExistsError,
   BundleDefinitionInvalidError,
   BundleDefinitionNotFoundError,
@@ -40,8 +48,13 @@ import {
   type IInventoryQueryService,
 } from '@openlinker/core/inventory';
 import { Roles } from '../../auth/decorators/roles.decorator';
+import type {
+  BundleProductSummaryDto} from './dto/bundle-definition.dto';
 import {
+  BundleCreatedResponseDto,
   BundleDefinitionResponseDto,
+  BundleHistoryEntryResponseDto,
+  BundleUsedInResponseDto,
   BundleWithAvailabilityResponseDto,
   CreateBundleDefinitionRequestDto,
   UpdateBundleDefinitionRequestDto,
@@ -87,8 +100,40 @@ export class BundleDefinitionsController {
     @Inject(INVENTORY_QUERY_SERVICE_TOKEN)
     private readonly inventoryQuery: IInventoryQueryService,
     @Inject(AVAILABILITY_SERVICE_TOKEN)
-    private readonly availability: IAvailabilityService
+    private readonly availability: IAvailabilityService,
+    @Inject(PRODUCTS_SERVICE_TOKEN)
+    private readonly products: IProductsService,
+    @Inject(ORDER_RECORD_SERVICE_TOKEN)
+    private readonly orderRecords: IOrderRecordService,
+    @Inject(ORDER_PROVISIONING_RESUME_SERVICE_TOKEN)
+    private readonly provisioningResume: IOrderProvisioningResumeService
   ) {}
+
+  /** Name, SKU and gross price per variant, in one batched read (never per row). */
+  private async summarise(
+    variantIds: readonly string[]
+  ): Promise<Map<string, BundleProductSummaryDto>> {
+    const unique = [...new Set(variantIds)];
+    const result = new Map<string, BundleProductSummaryDto>();
+    if (unique.length === 0) {
+      return result;
+    }
+    const variants = await this.products.getVariantsByIds(unique);
+    const productList = await this.products.getProductsByIds([
+      ...new Set(variants.map((v) => v.productId)),
+    ]);
+    const productById = new Map(productList.map((p) => [p.id, p]));
+    for (const variant of variants) {
+      const product = productById.get(variant.productId);
+      result.set(variant.id, {
+        name: product?.name ?? null,
+        sku: variant.sku,
+        price: variant.price ?? product?.price ?? null,
+        currency: product?.currency ?? null,
+      });
+    }
+    return result;
+  }
 
   @Roles('admin', 'operator', 'viewer')
   @Get()
@@ -106,13 +151,80 @@ export class BundleDefinitionsController {
     description:
       'Refused with 409 BUNDLE_NESTING_REFUSED when a component is itself a bundle, or the variant is already a component of another bundle.',
   })
-  @ApiResponse({ status: 201, type: BundleDefinitionResponseDto })
-  async create(@Body() body: CreateBundleDefinitionRequestDto): Promise<BundleDefinitionResponseDto> {
+  @ApiResponse({ status: 201, type: BundleCreatedResponseDto })
+  async create(@Body() body: CreateBundleDefinitionRequestDto): Promise<BundleCreatedResponseDto> {
+    let created: BundleDefinition;
     try {
-      return toDto(await this.bundles.create(body.variantId, body.components));
+      created = await this.bundles.create(body.variantId, body.components);
     } catch (error) {
       return mapError(error);
     }
+    // #3624: orders held because a multipack had no bundle are sent through
+    // ingestion again now, not at their next retry backoff. Never fails the
+    // create - the definition is already saved.
+    const released = await this.provisioningResume.resumeMultipackHeldOrders();
+    return { ...toDto(created), releasedOrders: released.enqueued };
+  }
+
+  @Roles('admin', 'operator', 'viewer')
+  @Get('used-in/:variantId')
+  @ApiOperation({
+    summary: 'The bundles that hold a product as a component',
+    description: 'Reverse lookup (#3624). Nesting is refused, so a bundle never shows up here as a component.',
+  })
+  @ApiResponse({ status: 200, type: [BundleUsedInResponseDto] })
+  async usedIn(@Param('variantId') variantId: string): Promise<BundleUsedInResponseDto[]> {
+    const containing = await this.bundles.findCurrentContainingComponents([variantId]);
+    const summaries = await this.summarise(containing.map((d) => d.variantId));
+    return containing.map((definition) => {
+      const component = definition.components.find((c) => c.variantId === variantId);
+      return {
+        bundleVariantId: definition.variantId,
+        quantity: component?.quantity ?? 1,
+        ...(component?.giftSlot === true && { giftSlot: true }),
+        bundle: summaries.get(definition.variantId) ?? {
+          name: null,
+          sku: null,
+          price: null,
+          currency: null,
+        },
+      };
+    });
+  }
+
+  @Roles('admin', 'operator', 'viewer')
+  @Get(':variantId/history')
+  @ApiOperation({
+    summary: 'Every version of a bundle, newest first',
+    description:
+      'Each version carries how many open orders were frozen with it, so an operator can see which orders still ship an older composition (#3624).',
+  })
+  @ApiResponse({ status: 200, type: [BundleHistoryEntryResponseDto] })
+  async history(@Param('variantId') variantId: string): Promise<BundleHistoryEntryResponseDto[]> {
+    const versions = await this.bundles.history(variantId);
+    if (versions.length === 0) {
+      throw new NotFoundException({
+        code: 'BUNDLE_DEFINITION_NOT_FOUND',
+        message: `No bundle definition for variant ${variantId}`,
+      });
+    }
+    const [counts, summaries] = await Promise.all([
+      this.orderRecords.countOpenOrdersByBundleVersion(variantId),
+      this.summarise(versions.flatMap((v) => v.components.map((c) => c.variantId))),
+    ]);
+    const countByVersion = new Map(counts.map((c) => [c.version, c.count]));
+    const newest = Math.max(...versions.map((v) => v.version));
+    return [...versions]
+      .sort((a, b) => b.version - a.version)
+      .map((version) => ({
+        ...toDto(version),
+        current: version.version === newest,
+        createdAt: version.createdAt.toISOString(),
+        openOrders: countByVersion.get(version.version) ?? 0,
+        componentSummaries: version.components.map(
+          (c) => summaries.get(c.variantId) ?? { name: null, sku: null, price: null, currency: null }
+        ),
+      }));
   }
 
   @Roles('admin', 'operator', 'viewer')
@@ -131,12 +243,15 @@ export class BundleDefinitionsController {
         message: `No bundle definition for variant ${variantId}`,
       });
     }
-    const [rows, [bundleAvailability]] = await Promise.all([
+    const [rows, [bundleAvailability], summaries, versionCounts] = await Promise.all([
       this.inventoryQuery.getAvailabilityByVariantIds(definition.components.map((c) => c.variantId)),
       // The SAME function publishing uses, so the number shown is the number
       // published (global scope: no per-channel buffer on an operator read).
       this.availability.getPromisableQuantities({ variantIds: [variantId], scope: { kind: 'global' } }),
+      this.summarise([variantId, ...definition.components.map((c) => c.variantId)]),
+      this.orderRecords.countOpenOrdersByBundleVersion(variantId),
     ]);
+    const emptySummary: BundleProductSummaryDto = { name: null, sku: null, price: null, currency: null };
     const atpByVariant = new Map(rows.map((row) => [row.productVariantId, row.availableToPromise]));
     const componentAvailability = definition.components.map((c) => {
       const atp = atpByVariant.get(c.variantId) ?? null;
@@ -145,12 +260,17 @@ export class BundleDefinitionsController {
         productId: c.productId,
         quantity: c.quantity,
         ...(c.giftSlot === true && { giftSlot: true }),
+        summary: summaries.get(c.variantId) ?? emptySummary,
         availableToPromise: atp,
         bundlesSupported: atp === null ? null : Math.floor(atp / c.quantity),
       };
     });
     return {
       ...toDto(definition),
+      bundle: summaries.get(variantId) ?? emptySummary,
+      openOrdersOnOlderComposition: versionCounts
+        .filter((entry) => entry.version < definition.version)
+        .reduce((sum, entry) => sum + entry.count, 0),
       componentAvailability,
       // `null` when OL does not know (provenance 'unknown'), never 0.
       bundlesAvailable: bundleAvailability?.quantity ?? null,

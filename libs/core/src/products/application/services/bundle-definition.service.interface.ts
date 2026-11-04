@@ -3,7 +3,7 @@
  *
  * @module libs/core/src/products/application/services
  */
-import type { BundleDefinition } from '../../domain/types/bundle.types';
+import type { BundleDefinition, BundleDefinitionVersion } from '../../domain/types/bundle.types';
 
 export interface BundleComponentInput {
   variantId: string;
@@ -39,5 +39,5 @@ export interface IBundleDefinitionService {
   findCurrentContainingComponents(variantIds: readonly string[]): Promise<BundleDefinition[]>;
 
   /** Version history of one variant, oldest first. */
-  history(variantId: string): Promise<BundleDefinition[]>;
+  history(variantId: string): Promise<BundleDefinitionVersion[]>;
 }

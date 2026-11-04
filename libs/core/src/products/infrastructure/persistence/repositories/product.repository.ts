@@ -231,6 +231,23 @@ export class ProductRepository implements ProductRepositoryPort {
       );
     }
 
+    if (filters.bundlesOnly) {
+      qb.andWhere(
+        `EXISTS (
+          SELECT 1 FROM product_variants pvb
+          WHERE pvb."productId" = product.id
+            AND EXISTS (
+              SELECT 1 FROM (
+                SELECT DISTINCT ON ("variantId") "variantId", "retiredAt"
+                FROM bundle_definitions
+                ORDER BY "variantId", "version" DESC
+              ) bd
+              WHERE bd."variantId" = pvb.id AND bd."retiredAt" IS NULL
+            )
+        )`
+      );
+    }
+
     if (filters.sourceConnectionId) {
       // Product originates from (has a Product mapping on) this connection.
       qb.andWhere(

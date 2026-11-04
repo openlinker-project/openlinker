@@ -226,6 +226,12 @@ export interface ProductListFilters {
    * with zero variants is also kept (staleness is not what that means).
    */
   hideFullyStale?: boolean;
+
+  /**
+   * Only products that have a variant with a CURRENT bundle definition (#3624).
+   * A retired definition does not count.
+   */
+  bundlesOnly?: boolean;
 }
 
 /**

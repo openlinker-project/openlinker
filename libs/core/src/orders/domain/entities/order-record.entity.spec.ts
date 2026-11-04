@@ -328,4 +328,38 @@ describe('OrderRecord.physicalItems / componentLineIdsOf (#3607)', () => {
       { componentLineId: 'l1~c:v-b', perUnit: 1 },
     ]);
   });
+
+  it('should describe a bundle line with its frozen components and version (#3624)', () => {
+    const record = Object.assign(makeRecord({ items: snapshotItems }), { lineExpansion: expansion });
+    expect(record.bundleLines).toEqual([
+      {
+        lineId: 'l1',
+        bundleVariantId: 'v-set',
+        version: 3,
+        components: [
+          { lineId: 'l1~c:v-a', variantId: 'v-a', productId: 'p-a', quantity: 4, perUnit: 2 },
+          { lineId: 'l1~c:v-b', variantId: 'v-b', productId: 'p-b', quantity: 2, perUnit: 1 },
+        ],
+      },
+    ]);
+  });
+
+  it('should have no bundle lines without an expansion (#3624)', () => {
+    expect(makeRecord({ items: snapshotItems }).bundleLines).toEqual([]);
+  });
+});
+
+describe('OrderRecord.rawMultipackLines (#3624)', () => {
+  it('should read the unresolved lines sold as several units of one product', () => {
+    const record = makeRecord({
+      items: [
+        { id: 'a', name: 'Kawa x3', packQuantity: 3, productRef: { type: 'offer', externalId: 'O-1' } },
+        { id: 'b', packQuantity: 1, productRef: { type: 'offer', externalId: 'O-2' } },
+        { id: 'c', productRef: { type: 'offer', externalId: 'O-3' } },
+      ],
+    });
+    expect(record.rawMultipackLines).toEqual([
+      { itemId: 'a', name: 'Kawa x3', packQuantity: 3, productRef: { type: 'offer', externalId: 'O-1' } },
+    ]);
+  });
 });

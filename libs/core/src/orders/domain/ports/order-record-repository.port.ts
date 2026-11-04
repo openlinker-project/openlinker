@@ -850,6 +850,17 @@ export interface OrderRecordRepositoryPort {
   freezeLineExpansion(internalOrderId: string, expansion: LineExpansion): Promise<LineExpansion>;
 
   /**
+   * How many OPEN orders were frozen against each version of one bundle (#3624).
+   * Open = not cancelled and nothing shipped yet. Orders without a frozen
+   * expansion, or without this bundle in it, are not counted. One aggregate
+   * read; the answer is a list of `{version, count}` so the caller can tell the
+   * current version from the older ones.
+   */
+  countOpenOrdersByBundleVersion(
+    bundleVariantId: string
+  ): Promise<{ version: number; count: number }[]>;
+
+  /**
    * Record that the source amended this order after ingestion (#2283) — writes
    * `lastAmendedAt` + `lastAmendmentChanges` together and nothing else.
    *

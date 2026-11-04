@@ -474,6 +474,11 @@ export interface IOrderRecordService {
   /** Freeze the bundle expansion once at ingestion (#3607); see the repository port. */
   freezeLineExpansion(internalOrderId: string, expansion: LineExpansion): Promise<LineExpansion>;
 
+  /** Open orders per frozen version of one bundle (#3624); see the repository port. */
+  countOpenOrdersByBundleVersion(
+    bundleVariantId: string
+  ): Promise<{ version: number; count: number }[]>;
+
   /**
    * Record that the source amended this order after it was already ingested
    * (#2283) — a line removed, added or re-quantified, or the shipping address

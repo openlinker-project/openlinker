@@ -34,9 +34,24 @@ import {
   BenchParcelRefusalValues,
 } from '../../application/types/bench-parcel.types';
 
+export class BenchLineBundleResponseDto {
+  @ApiProperty({ description: 'The commercial (bundle) line id; components of one bundle share it' })
+  lineId!: string;
+
+  @ApiProperty({ nullable: true, type: String, description: 'The bundle name the buyer saw' })
+  name!: string | null;
+}
+
 export class BenchParcelLineResponseDto {
   @ApiProperty({ description: 'Id of this line within the work object' })
   workLineId!: string;
+
+  @ApiProperty({
+    nullable: true,
+    type: () => BenchLineBundleResponseDto,
+    description: 'The bundle this line is a component of (#3624); null for an ordinary line',
+  })
+  bundle!: BenchLineBundleResponseDto | null;
 
   @ApiProperty({ description: 'Internal product-variant id (ol_variant_*)' })
   productVariantId!: string;

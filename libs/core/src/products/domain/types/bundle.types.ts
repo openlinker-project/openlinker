@@ -26,6 +26,11 @@ export interface BundleDefinition {
   version: number;
 }
 
+/** One historical version, with the instant it was written (#3624). */
+export interface BundleDefinitionVersion extends BundleDefinition {
+  createdAt: Date;
+}
+
 /** Separator between the bundle line id and the component variant id. */
 export const COMPONENT_LINE_ID_SEPARATOR = '~c:';
 

@@ -12,6 +12,7 @@ import {
   readLineExpansion,
   type BundleComponent,
   type BundleDefinition,
+  type BundleDefinitionVersion,
 } from '../../../domain/types/bundle.types';
 
 @Injectable()
@@ -65,9 +66,9 @@ export class BundleDefinitionRepository implements BundleDefinitionRepositoryPor
     return this.liveDefinitions(rows);
   }
 
-  async findHistory(variantId: string): Promise<BundleDefinition[]> {
+  async findHistory(variantId: string): Promise<BundleDefinitionVersion[]> {
     const rows = await this.repository.find({ where: { variantId }, order: { version: 'ASC' } });
-    return rows.map((row) => this.toDomain(row));
+    return rows.map((row) => ({ ...this.toDomain(row), createdAt: row.createdAt }));
   }
 
   async listCurrent(): Promise<BundleDefinition[]> {

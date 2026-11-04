@@ -29,12 +29,14 @@ import {
 } from '@openlinker/core/sync';
 import type {
   IOrderProvisioningResumeService,
+  MultipackReleaseResult,
   OrderProvisioningResumeResult,
 } from '../interfaces/order-provisioning-resume.service.interface';
 import { IOrderRecordService } from '../interfaces/order-record.service.interface';
 import type { OrderRecord } from '../../domain/entities/order-record.entity';
 import { OrderRecordRepositoryPort } from '../../domain/ports/order-record-repository.port';
 import { isWithheldOnHoldError } from '../../domain/types/order-hold.types';
+import { MULTIPACK_WITHOUT_BUNDLE_REASON_CODE } from './multipack-hold';
 import {
   ORDER_RECORD_REPOSITORY_TOKEN,
   ORDER_RECORD_SERVICE_TOKEN,
@@ -59,6 +61,42 @@ export class OrderProvisioningResumeService
     @Inject(ORDER_RECORD_SERVICE_TOKEN)
     private readonly orderRecordService: IOrderRecordService
   ) {}
+
+  async resumeMultipackHeldOrders(): Promise<MultipackReleaseResult> {
+    const result: MultipackReleaseResult = { held: 0, enqueued: 0, notResumed: 0 };
+    const pageSize = 100;
+    const maxPages = 20;
+    try {
+      for (let page = 0; page < maxPages; page += 1) {
+        const { items } = await this.orderRecordRepository.findMany(
+          { recordStatus: 'awaiting_mapping' },
+          { limit: pageSize, offset: page * pageSize }
+        );
+        for (const order of items) {
+          if (!order.mappingFailureReason?.includes(`[${MULTIPACK_WITHOUT_BUNDLE_REASON_CODE}]`)) {
+            continue;
+          }
+          result.held += 1;
+          const outcome = await this.resume(order.internalOrderId);
+          if (outcome.status === 'enqueued') {
+            result.enqueued += 1;
+          } else {
+            result.notResumed += 1;
+          }
+        }
+        if (items.length < pageSize) {
+          break;
+        }
+      }
+    } catch (error) {
+      this.logger.error(
+        `Multipack release scan failed after ${String(result.held)} held orders: ${
+          error instanceof Error ? error.message : String(error)
+        }`
+      );
+    }
+    return result;
+  }
 
   async resume(
     internalOrderId: string

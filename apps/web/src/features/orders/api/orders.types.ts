@@ -452,6 +452,38 @@ export interface BuyerNoteAcknowledgement {
   acknowledgedByUserId: string | null;
 }
 
+export interface OrderBundleComponent {
+  lineId: string;
+  variantId: string;
+  productId: string;
+  name: string | null;
+  sku: string | null;
+  /** Units for the whole line. */
+  quantity: number;
+  /** Units in one bundle unit. */
+  perUnit: number;
+  giftSlot?: boolean;
+}
+
+export interface OrderBundleLine {
+  /** The commercial line id: the line the buyer paid for. */
+  lineId: string;
+  bundleVariantId: string;
+  version: number;
+  /** The bundle has been changed since this order was frozen. */
+  olderComposition: boolean;
+  components: OrderBundleComponent[];
+}
+
+export interface OrderMultipackHold {
+  lineId: string;
+  packQuantity: number;
+  lineName: string | null;
+  variantId: string | null;
+  productName: string | null;
+  sku: string | null;
+}
+
 export interface OrderRecord {
   internalOrderId: string;
   customerId: string | null;
@@ -511,6 +543,16 @@ export interface OrderRecord {
    * for a `'ready'` record. Optional for graceful degradation on older payloads.
    */
   mappingFailureReason?: string | null;
+  /**
+   * The bundle lines of this order with the components they were frozen with
+   * (#3624, detail read only). Absent when the order holds no bundle.
+   */
+  bundleLines?: OrderBundleLine[];
+  /**
+   * Set while the order is held because a channel line sells several units of
+   * one product and no bundle defines them (#3624, detail read only).
+   */
+  multipackHold?: OrderMultipackHold;
   /**
    * True when an operator edited this order in OpenLinker (#3542, D9). The
    * snapshot is then the order AS EDITED; the channel keeps its original. On

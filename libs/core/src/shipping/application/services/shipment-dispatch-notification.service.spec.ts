@@ -145,6 +145,7 @@ describe('ShipmentDispatchNotificationService', () => {
       notifyDocumentIssued: jest.fn(),
       notifyShippedIfPending: jest.fn(),
       freezeLineExpansion: jest.fn(),
+      countOpenOrdersByBundleVersion: jest.fn(),
     };
 
     integrations = {

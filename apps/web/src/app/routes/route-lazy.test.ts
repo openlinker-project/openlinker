@@ -136,8 +136,11 @@ const lazyRoutes = collectLazyRoutes([
  * #3555 adds the buyer-email settings list (`settings/buyer-emails`) and its
  * template editor (`settings/buyer-emails/:connectionId/:template`), two lazy
  * routes, from 76 to 78.
+ *
+ * #3624 adds the bundle form twice (`products/bundles/new` and
+ * `products/bundles/:variantId`, one page), from 78 to 80.
  */
-const EXPECTED_LAZY_ROUTE_COUNT = 78;
+const EXPECTED_LAZY_ROUTE_COUNT = 80;
 
 describe('route lazy contract', () => {
   it(`the registered route tree contains exactly ${EXPECTED_LAZY_ROUTE_COUNT} lazy routes`, () => {

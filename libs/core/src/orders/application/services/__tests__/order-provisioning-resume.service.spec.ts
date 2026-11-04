@@ -255,4 +255,43 @@ describe('OrderProvisioningResumeService (#2341)', () => {
       status: 'failed',
     });
   });
+
+  describe('resumeMultipackHeldOrders (#3624)', () => {
+    const held = (id: string, reason: string | null): OrderRecord =>
+      ({
+        internalOrderId: id,
+        sourceConnectionId: SOURCE_CONNECTION,
+        sourceEventId: `evt-${id}`,
+        mappingFailureReason: reason,
+        syncStatus: [],
+      }) as unknown as OrderRecord;
+
+    it('should re-drive only orders held with the multipack code', async () => {
+      const multipack = held(
+        'ol_order_m',
+        'multipack without a bundle [multipack-without-bundle]: line sells 3 units'
+      );
+      const other = held('ol_order_x', 'identifier_mappings:Offer');
+      (orderRecordRepository as unknown as { findMany: jest.Mock }).findMany = jest
+        .fn()
+        .mockResolvedValue({ items: [multipack, other], total: 2 });
+      orderRecordRepository.findById.mockResolvedValue(multipack);
+
+      const result = await service.resumeMultipackHeldOrders();
+
+      expect(result).toEqual({ held: 1, enqueued: 1, notResumed: 0 });
+      expect(jobEnqueue.enqueueJob).toHaveBeenCalledTimes(1);
+    });
+
+    it('should report a scan failure as a result and never throw', async () => {
+      (orderRecordRepository as unknown as { findMany: jest.Mock }).findMany = jest
+        .fn()
+        .mockRejectedValue(new Error('db down'));
+      await expect(service.resumeMultipackHeldOrders()).resolves.toEqual({
+        held: 0,
+        enqueued: 0,
+        notResumed: 0,
+      });
+    });
+  });
 });

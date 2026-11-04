@@ -56,6 +56,7 @@ const COMMERCIAL = {
 
 /** file (repo-relative, posix) -> why it may read the commercial lines. */
 export const ALLOWED = new Map([
+  ['apps/api/src/bench/application/services/bench-parcel.service.ts', 'reads the bundle line NAME the buyer saw to head a bundle group at the bench (#3624); the grouping itself comes from the frozen expansion'],
   ['apps/api/src/mcp/tools/read/get-order.tool.ts', COMMERCIAL.projection],
   ['apps/api/src/orders/application/services/order-edit.service.ts', COMMERCIAL.edit],
   ['apps/api/src/orders/http/dto/edit-order-request.dto.ts', COMMERCIAL.edit],

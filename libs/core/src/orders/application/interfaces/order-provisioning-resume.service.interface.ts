@@ -79,7 +79,26 @@ export type OrderProvisioningResumeResult =
   | { status: 'skipped'; reason: ProvisioningResumeSkipReason }
   | { status: 'failed'; reason: 'enqueue-failed' };
 
+/** What a multipack release did across every order waiting for a bundle (#3624). */
+export interface MultipackReleaseResult {
+  /** Orders still held for a multipack with no bundle when the pass started. */
+  held: number;
+  /** Source-side re-syncs enqueued. */
+  enqueued: number;
+  /** Orders that could not be re-driven (no source id, or the enqueue failed). */
+  notResumed: number;
+}
+
 export interface IOrderProvisioningResumeService {
+  /**
+   * Re-drive every order held with the `multipack-without-bundle` reason (#3624),
+   * now rather than at the next retry backoff. Called after a bundle definition
+   * is created. Level-triggered: ingestion re-asks the same question, so an order
+   * whose offer still resolves to a variant with no bundle simply stays held.
+   * Never throws for a modelled condition.
+   */
+  resumeMultipackHeldOrders(): Promise<MultipackReleaseResult>;
+
   /**
    * Re-enqueue the source-side `marketplace.order.sync` for one order, so a
    * provisioning run suppressed by a hold happens now that the hold is gone.

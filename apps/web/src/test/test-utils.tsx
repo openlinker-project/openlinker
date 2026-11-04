@@ -894,6 +894,14 @@ export function createMockApiClient(
       clearCredentials: vi.fn().mockResolvedValue(undefined),
       ...overrides.posthogSettings,
     } as ApiClient['posthogSettings'],
+    bundles: {
+      get: vi.fn(),
+      history: vi.fn().mockResolvedValue([]),
+      usedIn: vi.fn().mockResolvedValue([]),
+      create: vi.fn(),
+      update: vi.fn(),
+      ...overrides.bundles,
+    } as ApiClient['bundles'],
     products: withTwoStageReads({
       list: vi.fn().mockResolvedValue({
         items: [],

@@ -9,16 +9,37 @@ describe('BundleDefinitionsController (#3607)', () => {
     delete: jest.fn(),
     get: jest.fn(),
     list: jest.fn(),
+    history: jest.fn(),
+    findCurrentContainingComponents: jest.fn(),
   };
+  const products = {
+    getVariantsByIds: jest.fn(),
+    getProductsByIds: jest.fn(),
+  };
+  const orderRecords = { countOpenOrdersByBundleVersion: jest.fn() };
+  const provisioningResume = { resumeMultipackHeldOrders: jest.fn() };
   const inventoryQuery = { getAvailabilityByVariantIds: jest.fn() };
   const availability = { getPromisableQuantities: jest.fn() };
   const controller = new BundleDefinitionsController(
     bundles as never,
     inventoryQuery as never,
-    availability as never
+    availability as never,
+    products as never,
+    orderRecords as never,
+    provisioningResume as never
   );
 
-  beforeEach(() => jest.resetAllMocks());
+  beforeEach(() => {
+    jest.resetAllMocks();
+    products.getVariantsByIds.mockResolvedValue([]);
+    products.getProductsByIds.mockResolvedValue([]);
+    orderRecords.countOpenOrdersByBundleVersion.mockResolvedValue([]);
+    provisioningResume.resumeMultipackHeldOrders.mockResolvedValue({
+      held: 0,
+      enqueued: 0,
+      notResumed: 0,
+    });
+  });
 
   it('should answer nesting as 409 with a machine-readable code', async () => {
     bundles.create.mockRejectedValue(new BundleNestingError('component-is-bundle', 'v1', 'v2'));
@@ -70,5 +91,84 @@ describe('BundleDefinitionsController (#3607)', () => {
     ]);
     const result = await controller.get('v-set');
     expect(result.bundlesAvailable).toBeNull();
+  });
+
+  it('should send held multipack orders through ingestion again after a create', async () => {
+    bundles.create.mockResolvedValue({
+      variantId: 'v-set',
+      version: 1,
+      components: [{ variantId: 'v-a', productId: 'p-a', quantity: 3 }],
+    });
+    provisioningResume.resumeMultipackHeldOrders.mockResolvedValue({
+      held: 2,
+      enqueued: 2,
+      notResumed: 0,
+    });
+    const result = await controller.create({
+      variantId: 'v-set',
+      components: [{ variantId: 'v-a', quantity: 3 }],
+    });
+    expect(result.releasedOrders).toBe(2);
+  });
+
+  it('should not release orders when the create is refused', async () => {
+    bundles.create.mockRejectedValue(new BundleNestingError('component-is-self', 'v1', 'v1'));
+    await expect(
+      controller.create({ variantId: 'v1', components: [{ variantId: 'v1', quantity: 1 }] })
+    ).rejects.toBeInstanceOf(ConflictException);
+    expect(provisioningResume.resumeMultipackHeldOrders).not.toHaveBeenCalled();
+  });
+
+  it('should count open orders still holding an older composition', async () => {
+    bundles.get.mockResolvedValue({
+      variantId: 'v-set',
+      version: 3,
+      components: [{ variantId: 'v-a', productId: 'p-a', quantity: 1 }],
+    });
+    inventoryQuery.getAvailabilityByVariantIds.mockResolvedValue([
+      { productVariantId: 'v-a', availableToPromise: 5 },
+    ]);
+    availability.getPromisableQuantities.mockResolvedValue([
+      { productVariantId: 'v-set', quantity: 5, provenance: 'computed' },
+    ]);
+    orderRecords.countOpenOrdersByBundleVersion.mockResolvedValue([
+      { version: 1, count: 2 },
+      { version: 2, count: 1 },
+      { version: 3, count: 7 },
+    ]);
+    const result = await controller.get('v-set');
+    expect(result.openOrdersOnOlderComposition).toBe(3);
+  });
+
+  it('should list versions newest first with the open orders frozen on each', async () => {
+    bundles.history.mockResolvedValue([
+      { variantId: 'v-set', version: 1, createdAt: new Date('2026-10-02'), components: [{ variantId: 'v-a', productId: 'p-a', quantity: 1 }] },
+      { variantId: 'v-set', version: 2, createdAt: new Date('2026-11-02'), components: [{ variantId: 'v-a', productId: 'p-a', quantity: 2 }] },
+    ]);
+    orderRecords.countOpenOrdersByBundleVersion.mockResolvedValue([{ version: 1, count: 3 }]);
+    const result = await controller.history('v-set');
+    expect(result.map((r) => [r.version, r.current, r.openOrders])).toEqual([
+      [2, true, 0],
+      [1, false, 3],
+    ]);
+  });
+
+  it('should 404 the history of a variant that was never a bundle', async () => {
+    bundles.history.mockResolvedValue([]);
+    await expect(controller.history('nope')).rejects.toBeInstanceOf(NotFoundException);
+  });
+
+  it('should answer which bundles hold a product', async () => {
+    bundles.findCurrentContainingComponents.mockResolvedValue([
+      {
+        variantId: 'v-set',
+        version: 1,
+        components: [{ variantId: 'v-a', productId: 'p-a', quantity: 2, giftSlot: true }],
+      },
+    ]);
+    const result = await controller.usedIn('v-a');
+    expect(result).toEqual([
+      expect.objectContaining({ bundleVariantId: 'v-set', quantity: 2, giftSlot: true }),
+    ]);
   });
 });

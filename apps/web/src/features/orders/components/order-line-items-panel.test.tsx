@@ -103,4 +103,59 @@ describe('OrderLineItemsPanel', () => {
     expect(screen.queryByText(/from the shop/)).not.toBeInTheDocument();
     expect(screen.queryByText(/from the channel/)).not.toBeInTheDocument();
   });
+
+  describe('bundle lines (#3624)', () => {
+    const bundleLine: ParsedOrderItem = {
+      id: 'L1',
+      productId: 'p-set',
+      quantity: 1,
+      price: 64.99,
+      sku: 'ZES-PORANNY',
+      name: 'Zestaw poranny',
+    };
+    const bundleLines = [
+      {
+        lineId: 'L1',
+        bundleVariantId: 'v-set',
+        version: 1,
+        olderComposition: false,
+        components: [
+          { lineId: 'L1~c:mug', variantId: 'mug', productId: 'p-mug', name: 'Kubek', sku: 'KUB-350-BI', quantity: 1, perUnit: 1 },
+          { lineId: 'L1~c:coffee', variantId: 'coffee', productId: 'p-coffee', name: 'Kawa', sku: 'KAW-250-ETI', quantity: 1, perUnit: 1 },
+        ],
+      },
+    ];
+
+    it('should list the components under the bundle line, priced inside the bundle', () => {
+      renderWithProviders(
+        <OrderLineItemsPanel items={[bundleLine]} totals={totals} bundleLines={bundleLines} />,
+      );
+      expect(screen.getByTestId('order-bundle-lines')).toBeInTheDocument();
+      const rows = screen.getAllByRole('row');
+      // Header + bundle line + two components.
+      expect(rows).toHaveLength(4);
+      expect(screen.getByTestId('order-bundle-line-ZES-PORANNY')).toHaveTextContent('Bundle');
+      expect(screen.getByTestId('order-bundle-line-KUB-350-BI')).toHaveTextContent('in the bundle price');
+      expect(screen.queryByTestId('order-bundle-old-composition-note')).toBeNull();
+    });
+
+    it('should say, in one sentence, that the order keeps the older composition', () => {
+      renderWithProviders(
+        <OrderLineItemsPanel
+          items={[bundleLine]}
+          totals={totals}
+          bundleLines={[{ ...bundleLines[0], olderComposition: true }]}
+        />,
+      );
+      expect(screen.getByTestId('order-bundle-old-composition-note')).toHaveTextContent(
+        'composition from before the bundle was changed',
+      );
+    });
+
+    it('should render an order without a bundle exactly as before', () => {
+      renderWithProviders(<OrderLineItemsPanel items={items} totals={totals} bundleLines={[]} />);
+      expect(screen.queryByTestId('order-bundle-lines')).toBeNull();
+      expect(screen.getAllByRole('row')).toHaveLength(3);
+    });
+  });
 });

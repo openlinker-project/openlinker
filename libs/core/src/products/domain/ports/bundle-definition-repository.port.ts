@@ -5,7 +5,7 @@
  *
  * @module libs/core/src/products/domain/ports
  */
-import type { BundleDefinition } from '../types/bundle.types';
+import type { BundleDefinition, BundleDefinitionVersion } from '../types/bundle.types';
 
 export interface BundleDefinitionRepositoryPort {
   /** The latest version of each variant's definition, retired ones excluded. */
@@ -18,7 +18,7 @@ export interface BundleDefinitionRepositoryPort {
   findCurrentContainingAnyComponent(variantIds: readonly string[]): Promise<BundleDefinition[]>;
 
   /** Every version of a variant's definition, oldest first (retired included). */
-  findHistory(variantId: string): Promise<BundleDefinition[]>;
+  findHistory(variantId: string): Promise<BundleDefinitionVersion[]>;
 
   /** Every current definition, for the list read. */
   listCurrent(): Promise<BundleDefinition[]>;

@@ -7,6 +7,7 @@
  *
  * @module domain/entities
  */
+import type { OrderBundleComponent, OrderBundleLine, RawMultipackLine } from '../types/order-bundle-line.types';
 import {
   componentLineIdsFor,
   componentRefsFor,
@@ -877,6 +878,86 @@ export class OrderRecord {
    */
   get physicalItems(): PhysicalLine<OrderItem>[] {
     return expandBundleLines(this.orderItems, this.lineExpansion?.definitions ?? []);
+  }
+
+  /**
+   * The raw channel lines sold as several units of one product (#3624). Read
+   * from the unresolved snapshot, because a held order has no resolved items.
+   * Which of them is HELD is the caller's question (the reason code is persisted
+   * on `mappingFailureReason`); this only reports the shape.
+   */
+  get rawMultipackLines(): RawMultipackLine[] {
+    const value = this.orderSnapshot.items;
+    if (!Array.isArray(value)) {
+      return [];
+    }
+    const lines: RawMultipackLine[] = [];
+    for (const item of value as unknown[]) {
+      if (typeof item !== 'object' || item === null) {
+        continue;
+      }
+      const { id, name, packQuantity, productRef } = item as Record<string, unknown>;
+      const ref = productRef as Record<string, unknown> | null | undefined;
+      if (
+        typeof id === 'string' &&
+        typeof packQuantity === 'number' &&
+        packQuantity > 1 &&
+        ref !== null &&
+        ref !== undefined &&
+        typeof ref.type === 'string' &&
+        typeof ref.externalId === 'string'
+      ) {
+        lines.push({
+          itemId: id,
+          name: typeof name === 'string' ? name : null,
+          packQuantity,
+          productRef: { type: ref.type as RawMultipackLine['productRef']['type'], externalId: ref.externalId },
+        });
+      }
+    }
+    return lines;
+  }
+
+  /**
+   * The bundle lines of this order with their frozen components (#3624). Empty
+   * when the order carries no bundle. Pure derivation of the frozen expansion.
+   */
+  get bundleLines(): OrderBundleLine[] {
+    const definitions = this.lineExpansion?.definitions ?? [];
+    if (definitions.length === 0) {
+      return [];
+    }
+    const byVariant = new Map(definitions.map((d) => [d.variantId, d]));
+    const physical = this.physicalItems;
+    const lines: OrderBundleLine[] = [];
+    for (const item of this.orderItems) {
+      const definition = item.variantId === undefined ? undefined : byVariant.get(item.variantId);
+      if (definition === undefined) {
+        continue;
+      }
+      const components = physical
+        .filter((line) => line.parentLineId === item.id)
+        .map((line) => {
+          const component: OrderBundleComponent = {
+            lineId: line.id,
+            variantId: line.variantId ?? '',
+            productId: line.productId,
+            quantity: line.quantity,
+            perUnit: item.quantity > 0 ? line.quantity / item.quantity : line.quantity,
+          };
+          if (line.giftSlot === true) {
+            component.giftSlot = true;
+          }
+          return component;
+        });
+      lines.push({
+        lineId: item.id,
+        bundleVariantId: definition.variantId,
+        version: definition.version,
+        components,
+      });
+    }
+    return lines;
   }
 
   /**

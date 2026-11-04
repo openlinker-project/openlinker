@@ -71,6 +71,7 @@ import { WarehouseReleaseBadge } from '../../features/orders/components/warehous
 import { OrderDetailHeader, isChannelStatusStale } from '../../features/orders/components/order-detail-header';
 import { DestinationRoutingCallout } from '../../features/orders/components/destination-routing-callout';
 import { OrderHealthSummary } from '../../features/orders/components/order-health-summary';
+import { MultipackHoldBanner } from '../../features/bundles';
 import { OrderPricingPanel } from '../../features/orders/components/order-pricing-panel';
 import { OrderDeliveryPanel } from '../../features/orders/components/order-delivery-panel';
 import { deriveFulfillment } from '../../features/orders/lib/order-health';
@@ -701,6 +702,9 @@ export function OrderDetailPage(): ReactElement {
           presence of an episode is a claim. */}
       <StockAtRiskCallout shortfalls={order.reservationShortfalls} />
 
+      {/* #3624 - a multipack waiting for a bundle: the next step is on the banner. */}
+      {order.multipackHold ? <MultipackHoldBanner hold={order.multipackHold} /> : null}
+
       {/* #3539 (mockup M2) - the buyer's own message, in the same full-width slot
           as the callout above and ABOVE the panels the operator acts in. Not an
           Alert: it is the buyer's voice. Renders nothing without a note. */}
@@ -723,6 +727,7 @@ export function OrderDetailPage(): ReactElement {
             internalOrderId={internalOrderId}
             edits={order.edits}
             channelName={cancelSourceName}
+            bundleLines={order.bundleLines}
           />
         </section>
       ) : null}

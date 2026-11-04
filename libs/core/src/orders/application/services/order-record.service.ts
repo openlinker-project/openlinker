@@ -1299,6 +1299,12 @@ export class OrderRecordService implements IOrderRecordService {
     return this.repository.applyOrderEdit(input);
   }
 
+  countOpenOrdersByBundleVersion(
+    bundleVariantId: string
+  ): Promise<{ version: number; count: number }[]> {
+    return this.repository.countOpenOrdersByBundleVersion(bundleVariantId);
+  }
+
   async freezeLineExpansion(
     internalOrderId: string,
     expansion: LineExpansion

@@ -16,7 +16,11 @@ import {
   BundleDefinitionNotFoundError,
   BundleNestingError,
 } from '../../domain/exceptions/bundle-definition.errors';
-import type { BundleComponent, BundleDefinition } from '../../domain/types/bundle.types';
+import type {
+  BundleComponent,
+  BundleDefinition,
+  BundleDefinitionVersion,
+} from '../../domain/types/bundle.types';
 import {
   BUNDLE_DEFINITION_REPOSITORY_TOKEN,
   PRODUCT_VARIANT_REPOSITORY_TOKEN,
@@ -72,7 +76,7 @@ export class BundleDefinitionService implements IBundleDefinitionService {
     return this.bundles.findCurrentContainingAnyComponent(variantIds);
   }
 
-  history(variantId: string): Promise<BundleDefinition[]> {
+  history(variantId: string): Promise<BundleDefinitionVersion[]> {
     return this.bundles.findHistory(variantId);
   }
 

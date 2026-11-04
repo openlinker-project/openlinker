@@ -75,7 +75,52 @@ export class BundleDefinitionResponseDto {
   @ApiProperty({ type: [BundleComponentResponseDto] }) components!: BundleComponentResponseDto[];
 }
 
+export class BundleCreatedResponseDto extends BundleDefinitionResponseDto {
+  @ApiProperty({
+    description:
+      'Orders that were waiting for a bundle (a multipack with no definition) and were sent to be ingested again now (#3624)',
+  })
+  releasedOrders!: number;
+}
+
+export class BundleProductSummaryDto {
+  @ApiPropertyOptional({ type: String, nullable: true }) name!: string | null;
+  @ApiPropertyOptional({ type: String, nullable: true }) sku!: string | null;
+  @ApiPropertyOptional({ type: Number, nullable: true, description: 'Gross catalogue price' })
+  price!: number | null;
+  @ApiPropertyOptional({ type: String, nullable: true }) currency!: string | null;
+}
+
+export class BundleUsedInResponseDto {
+  @ApiProperty({ description: 'The bundle that holds the product as a component' })
+  bundleVariantId!: string;
+  @ApiProperty({ description: 'Units of the product in ONE bundle unit' })
+  quantity!: number;
+  @ApiPropertyOptional() giftSlot?: boolean;
+  @ApiProperty({ type: BundleProductSummaryDto })
+  bundle!: BundleProductSummaryDto;
+}
+
+export class BundleHistoryEntryResponseDto extends BundleDefinitionResponseDto {
+  @ApiProperty({ description: 'True for the version that is in force now' })
+  current!: boolean;
+
+  @ApiProperty({ description: 'When this version was written (ISO 8601)' })
+  createdAt!: string;
+
+  @ApiProperty({
+    description: 'Open orders that were frozen with exactly this composition (nothing shipped yet)',
+  })
+  openOrders!: number;
+
+  @ApiProperty({ type: [BundleProductSummaryDto], description: 'Component names, in component order' })
+  componentSummaries!: BundleProductSummaryDto[];
+}
+
 export class BundleComponentAvailabilityResponseDto extends BundleComponentResponseDto {
+  @ApiProperty({ type: BundleProductSummaryDto })
+  summary!: BundleProductSummaryDto;
+
   @ApiProperty({
     type: Number,
     nullable: true,
@@ -92,6 +137,15 @@ export class BundleComponentAvailabilityResponseDto extends BundleComponentRespo
 }
 
 export class BundleWithAvailabilityResponseDto extends BundleDefinitionResponseDto {
+  @ApiProperty({ type: BundleProductSummaryDto })
+  bundle!: BundleProductSummaryDto;
+
+  @ApiProperty({
+    description:
+      'Open orders still holding an OLDER composition of this bundle; they ship the way they were frozen (#3624)',
+  })
+  openOrdersOnOlderComposition!: number;
+
   @ApiProperty({ type: [BundleComponentAvailabilityResponseDto] })
   componentAvailability!: BundleComponentAvailabilityResponseDto[];
 

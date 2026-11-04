@@ -3082,6 +3082,28 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
   }
 
   /**
+   * Open orders per frozen version of one bundle (#3624). Reads the frozen
+   * `lineExpansion` only - never the live definition - because the question is
+   * "which composition does this order ship with".
+   */
+  async countOpenOrdersByBundleVersion(
+    bundleVariantId: string
+  ): Promise<{ version: number; count: number }[]> {
+    const rows = (await this.repository.query(
+      `SELECT (def->>'version')::int AS version, COUNT(DISTINCT rec."internalOrderId")::int AS count
+         FROM "order_records" rec,
+              jsonb_array_elements(COALESCE(rec."lineExpansion"->'definitions', '[]'::jsonb)) AS def
+        WHERE def->>'variantId' = $1
+          AND rec."cancelledAt" IS NULL
+          AND (rec."fulfillmentState" IS NULL OR rec."fulfillmentState" = 'not-shipped')
+        GROUP BY (def->>'version')::int
+        ORDER BY version`,
+      [bundleVariantId]
+    )) as { version: number; count: number }[];
+    return rows.map((row) => ({ version: Number(row.version), count: Number(row.count) }));
+  }
+
+  /**
    * Merge one operator edit into the overlay (#3542). THE sole writer of
    * `orderEdits`; see `order-edits.types.ts`.
    *

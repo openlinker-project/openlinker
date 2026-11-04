@@ -424,11 +424,18 @@ export {
   OrderDestinationRetryInput,
   OrderDestinationRetryResult,
 } from './application/interfaces/order-destination-retry.service.interface';
+export { MULTIPACK_WITHOUT_BUNDLE_REASON_CODE } from './application/services/multipack-hold';
+export type {
+  OrderBundleComponent,
+  OrderBundleLine,
+  RawMultipackLine,
+} from './domain/types/order-bundle-line.types';
 // Release -> provisioning resume (#2341). Closes the gap #2339 stated: releasing
 // a hold un-blocks the next run but nothing enqueued it, and a cursor-based
 // source journal never re-delivers the original event.
 export type {
   IOrderProvisioningResumeService,
+  MultipackReleaseResult,
   OrderProvisioningResumeResult,
   ProvisioningResumeSkipReason,
 } from './application/interfaces/order-provisioning-resume.service.interface';

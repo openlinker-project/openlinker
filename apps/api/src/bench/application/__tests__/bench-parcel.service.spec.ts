@@ -103,6 +103,8 @@ function harness(options: {
   /** #3538 - the order's note as `OrderRecord.buyerNoteState` reads it. */
   buyerNoteState?: string | null;
   hasBuyerNote?: boolean;
+  /** #3624 - the order's bundle lines as `OrderRecord.bundleLines` derives them. */
+  bundleLines?: Array<{ lineId: string; components: Array<{ lineId: string }> }>;
   acknowledgements?: Array<{
     workId: string;
     acknowledgedAt: Date;
@@ -169,6 +171,8 @@ function harness(options: {
         internalOrderId: 'ol_order_1',
         buyerNoteState: options.buyerNoteState,
         hasBuyerNote: options.hasBuyerNote ?? options.buyerNoteState !== undefined,
+        bundleLines: options.bundleLines ?? [],
+        orderItems: options.bundleLines === undefined ? [] : [{ id: 'L1', name: 'Zestaw poranny' }],
         orderSnapshot: {
           orderNumber: 'OL-4471',
           shippingAddress: {
@@ -613,6 +617,23 @@ describe('BenchParcelService (#2418)', () => {
     });
   });
 
+  describe('bundle components (#3624)', () => {
+    it('should name the bundle a component line belongs to, and leave ordinary lines unmarked', async () => {
+      const { service } = harness({
+        work: workView({
+          lines: [
+            { id: 'line-1', orderLineId: 'L1~c:ol_variant_1', productVariantId: 'ol_variant_1', totalQuantity: 1, fulfilledQuantity: 0, cancelledQuantity: 0 },
+            { id: 'line-2', orderLineId: 'L2', productVariantId: 'ol_variant_2', totalQuantity: 1, fulfilledQuantity: 0, cancelledQuantity: 0 },
+          ],
+        } as Partial<FulfillmentWorkView>),
+        bundleLines: [{ lineId: 'L1', components: [{ lineId: 'L1~c:ol_variant_1' }] }],
+      });
+      const parcel = await service.getParcel('work-1');
+      expect(parcel.lines[0].bundle).toEqual({ lineId: 'L1', name: 'Zestaw poranny' });
+      expect(parcel.lines[1].bundle).toBeNull();
+    });
+  });
+
   describe('story D4 — the projection an interruption watches', () => {
     it('carries exactly the fields it is supposed to and no others', async () => {
       // This list IS the D4 guarantee: an interruption fires when this
@@ -670,6 +691,7 @@ describe('BenchParcelService (#2418)', () => {
         [
           'attributes',
           'binCode',
+          'bundle',
           'ean',
           'gtin',
           'heightMm',

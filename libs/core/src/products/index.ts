@@ -34,6 +34,7 @@ export { InvalidVariantCostError } from './domain/exceptions/invalid-variant-cos
 export type {
   BundleComponent,
   BundleDefinition,
+  BundleDefinitionVersion,
   ExpandableLine,
   ComponentLineRef,
   PhysicalLine,

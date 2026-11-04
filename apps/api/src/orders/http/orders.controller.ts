@@ -92,6 +92,7 @@ import {
   HoldReleaseNoteRequiredError,
   HoldReleaseNotPermittedError,
   deriveSlaState,
+  MULTIPACK_WITHOUT_BUNDLE_REASON_CODE,
   IOrderHoldService,
   IOrderProvisioningResumeService,
   IOrderRoutingRetryService,
@@ -208,7 +209,22 @@ import { OrderHealthSummaryResponseDto } from './dto/order-health-summary-respon
 import { OrderSlaSummaryResponseDto } from './dto/order-sla-summary-response.dto';
 import { OrderSlaSummaryQueryDto } from './dto/order-sla-summary-query.dto';
 import { OrderLifecyclePhaseSummaryResponseDto } from './dto/order-lifecycle-phase-summary-response.dto';
-import { OrderRecordResponseDto } from './dto/order-record-response.dto';
+import {
+  OrderRecordResponseDto,
+  type OrderBundleLineDto,
+  type OrderMultipackHoldDto,
+} from './dto/order-record-response.dto';
+import {
+  CORE_ENTITY_TYPE,
+  IDENTIFIER_MAPPING_SERVICE_TOKEN,
+  type IIdentifierMappingService,
+} from '@openlinker/core/identifier-mapping';
+import {
+  BUNDLE_DEFINITION_SERVICE_TOKEN,
+  PRODUCTS_SERVICE_TOKEN,
+  type IBundleDefinitionService,
+  type IProductsService,
+} from '@openlinker/core/products';
 import type { OrderSyncStatusResponseDto } from './dto/order-sync-status-response.dto';
 import type { SyncAttemptResponseDto } from './dto/sync-attempt-response.dto';
 import { PaginatedOrdersResponseDto } from './dto/paginated-orders-response.dto';
@@ -444,6 +460,13 @@ export class OrdersController {
     // service seam, one batch per page.
     @Inject(FULFILLMENT_WORK_QUERY_SERVICE_TOKEN)
     private readonly fulfillmentWork: IFulfillmentWorkQueryService,
+    // #3624 - the bundle lines' component names and "older composition" flag.
+    @Inject(PRODUCTS_SERVICE_TOKEN)
+    private readonly productsService: IProductsService,
+    @Inject(IDENTIFIER_MAPPING_SERVICE_TOKEN)
+    private readonly identifierMapping: IIdentifierMappingService,
+    @Inject(BUNDLE_DEFINITION_SERVICE_TOKEN)
+    private readonly bundleDefinitions: IBundleDefinitionService,
     // #3532 — the tag ids rendered as the third line of the identity cell.
     @Inject(ORDER_TAG_SERVICE_TOKEN)
     private readonly tagService: IOrderTagService,
@@ -847,6 +870,8 @@ export class OrdersController {
     // hold surface. Reaching that needs direct SQL — both the request DTO and
     // the service validate against the union — so failing loudly is the right
     // trade, but it is a new consequence rather than a pre-existing one.
+    dto.bundleLines = await this.loadBundleLines(order);
+    dto.multipackHold = await this.loadMultipackHold(order);
     const holds = await this.holdService.listHolds(order.internalOrderId);
     dto.holdHistory = holds.map((hold) => this.toHoldDto(hold));
     dto.activeHold = dto.holdHistory.find((hold) => hold.releasedAt === null) ?? null;
@@ -1784,6 +1809,109 @@ export class OrdersController {
   private async hasOpenAmendment(internalOrderId: string): Promise<boolean> {
     const ids = await this.orderChanges.findOrderIdsWithOpenAmendment([internalOrderId]);
     return ids.has(internalOrderId);
+  }
+
+  /**
+   * The held multipack line and the product its offer maps to (#3624). DETAIL
+   * only; best-effort, because the banner still helps without the product.
+   */
+  private async loadMultipackHold(order: OrderRecord): Promise<OrderMultipackHoldDto | undefined> {
+    if (
+      order.recordStatus !== 'awaiting_mapping' ||
+      !order.mappingFailureReason?.includes(`[${MULTIPACK_WITHOUT_BUNDLE_REASON_CODE}]`)
+    ) {
+      return undefined;
+    }
+    const line = order.rawMultipackLines[0];
+    if (line === undefined) {
+      return undefined;
+    }
+    let variantId: string | null = null;
+    let productName: string | null = null;
+    let sku: string | null = null;
+    try {
+      if (line.productRef.type === 'offer') {
+        variantId = await this.identifierMapping.getInternalId(
+          CORE_ENTITY_TYPE.Offer,
+          line.productRef.externalId,
+          order.sourceConnectionId
+        );
+      }
+      if (variantId !== null) {
+        const [variant] = await this.productsService.getVariantsByIds([variantId]);
+        sku = variant?.sku ?? null;
+        if (variant !== undefined) {
+          const [product] = await this.productsService.getProductsByIds([variant.productId]);
+          productName = product?.name ?? null;
+        }
+      }
+    } catch (error) {
+      this.logger.warn(
+        `Could not resolve the held multipack product for order ${order.internalOrderId}: ${(error as Error).message}`
+      );
+    }
+    return {
+      lineId: line.itemId,
+      packQuantity: line.packQuantity,
+      lineName: line.name,
+      variantId,
+      productName,
+      sku,
+    };
+  }
+
+  /**
+   * The order's bundle lines with component names and whether the bundle has
+   * changed since the order was frozen (#3624). DETAIL only. Best-effort: names
+   * are display, so a failed read drops them and keeps the structure.
+   */
+  private async loadBundleLines(order: OrderRecord): Promise<OrderBundleLineDto[] | undefined> {
+    const lines = order.bundleLines;
+    if (lines.length === 0) {
+      return undefined;
+    }
+    const variantIds = [...new Set(lines.flatMap((l) => l.components.map((c) => c.variantId)))];
+    const names = new Map<string, { name: string | null; sku: string | null }>();
+    const currentVersion = new Map<string, number>();
+    try {
+      const [variants, current] = await Promise.all([
+        this.productsService.getVariantsByIds(variantIds),
+        this.bundleDefinitions.findCurrentByVariantIds(lines.map((l) => l.bundleVariantId)),
+      ]);
+      const products = await this.productsService.getProductsByIds([
+        ...new Set(variants.map((v) => v.productId)),
+      ]);
+      const productById = new Map(products.map((p) => [p.id, p]));
+      for (const variant of variants) {
+        names.set(variant.id, {
+          name: productById.get(variant.productId)?.name ?? null,
+          sku: variant.sku,
+        });
+      }
+      for (const definition of current) {
+        currentVersion.set(definition.variantId, definition.version);
+      }
+    } catch (error) {
+      this.logger.warn(
+        `Could not load bundle component names for order ${order.internalOrderId}: ${(error as Error).message}`
+      );
+    }
+    return lines.map((line) => ({
+      lineId: line.lineId,
+      bundleVariantId: line.bundleVariantId,
+      version: line.version,
+      olderComposition: (currentVersion.get(line.bundleVariantId) ?? line.version) > line.version,
+      components: line.components.map((component) => ({
+        lineId: component.lineId,
+        variantId: component.variantId,
+        productId: component.productId,
+        name: names.get(component.variantId)?.name ?? null,
+        sku: names.get(component.variantId)?.sku ?? null,
+        quantity: component.quantity,
+        perUnit: component.perUnit,
+        ...(component.giftSlot === true && { giftSlot: true }),
+      })),
+    }));
   }
 
   private toDto(order: OrderRecord, hasOpenAmendment = false): OrderRecordResponseDto {
