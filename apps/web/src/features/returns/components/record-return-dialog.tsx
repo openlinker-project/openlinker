@@ -48,9 +48,10 @@
  *
  * @module apps/web/src/features/returns/components
  */
-import type { FormEvent, ReactElement } from 'react';
+import { useMemo, type FormEvent, type ReactElement } from 'react';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useForm } from 'react-hook-form';
+import { interpolate, useMessages } from '../../../shared/i18n';
 import { Alert } from '../../../shared/ui/alert';
 import { Button } from '../../../shared/ui/button';
 import {
@@ -70,9 +71,8 @@ import { describeRefundReason, useOrdersQuery } from '../../orders';
 import { useRecordReturnMutation } from '../hooks/use-record-return-mutation';
 import { RETURN_LINE_REASON_VALUES } from '../api/returns.types';
 import { readRecordRefusalReason } from '../lib/record-error';
-import { RECORD_RETURN_DIALOG_COPY as COPY } from '../lib/record-return-dialog.copy';
 import {
-  recordReturnDialogSchema,
+  createRecordReturnDialogSchema,
   RECORD_RETURN_DIALOG_DEFAULT_VALUES,
   type RecordReturnDialogFormSubmission,
   type RecordReturnDialogFormValues,
@@ -95,6 +95,8 @@ export function RecordReturnDialog({
   onOpenChange,
   onRecorded,
 }: RecordReturnDialogProps): ReactElement {
+  const COPY = useMessages('returns').recordReturnDialog;
+  const schema = useMemo(() => createRecordReturnDialogSchema(COPY.validation), [COPY.validation]);
   const ordersQuery = useOrdersQuery(undefined, { limit: RECENT_ORDERS_LIMIT });
   const orders = ordersQuery.data?.items ?? [];
   const connectionsQuery = useConnectionsQuery();
@@ -110,7 +112,7 @@ export function RecordReturnDialog({
 
   const form = useForm<RecordReturnDialogFormValues, undefined, RecordReturnDialogFormSubmission>({
     defaultValues: RECORD_RETURN_DIALOG_DEFAULT_VALUES,
-    resolver: zodResolver(recordReturnDialogSchema),
+    resolver: zodResolver(schema),
   });
 
   const watchedOrderId = form.watch('internalOrderId');
@@ -155,7 +157,7 @@ export function RecordReturnDialog({
         onError: (error) => {
           const reason = readRecordRefusalReason(error);
           if (reason === 'unknown-order') {
-            form.setError('internalOrderId', { message: COPY.unknownOrder(values.internalOrderId) });
+            form.setError('internalOrderId', { message: interpolate(COPY.unknownOrder, { typed: values.internalOrderId }) });
             return;
           }
           if (reason === 'order-not-on-connection') {
@@ -244,7 +246,7 @@ export function RecordReturnDialog({
           {connectionsUnavailable ? <Alert tone="error">{COPY.connectionsLoadFailed}</Alert> : null}
 
           {showConnectionMismatch && orderConnection !== null ? (
-            <Alert tone="warning">{COPY.connectionMismatchWarning(orderConnection.name)}</Alert>
+            <Alert tone="warning">{interpolate(COPY.connectionMismatchWarning, { orderConnectionName: orderConnection.name })}</Alert>
           ) : null}
 
           <FormField

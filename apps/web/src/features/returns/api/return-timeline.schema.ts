@@ -16,11 +16,12 @@
  * @module apps/web/src/features/returns/api
  */
 import { z } from 'zod/v4';
+import { getMessages } from '../../../shared/i18n';
 import type { ReturnTimelineEntry } from './returns.types';
 
 export class ReturnTimelineUnreadableError extends Error {
   constructor() {
-    super('The return activity for this order could not be read.');
+    super(getMessages('returns').apiErrors.timelineUnreadable);
     this.name = 'ReturnTimelineUnreadableError';
   }
 }

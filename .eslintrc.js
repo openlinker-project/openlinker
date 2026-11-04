@@ -1010,6 +1010,8 @@ module.exports = {
         'apps/web/src/features/fiscalization/**/*.tsx',
         'apps/web/src/pages/sales-documents/**/*.tsx',
         'apps/web/src/pages/invoicing/**/*.tsx',
+        'apps/web/src/features/returns/**/*.tsx',
+        'apps/web/src/pages/returns/**/*.tsx',
         'apps/web/src/pages/listings/**/*.tsx',
         'apps/web/src/features/orders/**/*.tsx',
         'apps/web/src/pages/orders/**/*.tsx',

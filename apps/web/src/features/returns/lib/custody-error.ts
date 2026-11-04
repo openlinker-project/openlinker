@@ -17,7 +17,7 @@
  * @module apps/web/src/features/returns/lib
  */
 import { ApiError } from '../../../shared/api/api-error';
-import { RETURN_CUSTODY_ERROR_COPY } from './return-custody.copy';
+import { getMessages } from '../../../shared/i18n';
 
 /**
  * The refusal code, read from the 409 body.
@@ -36,14 +36,17 @@ export function readCustodyRefusalReason(error: unknown): string | null {
 
 /** One sentence describing why the custody write did not go through. */
 export function describeCustodyError(error: unknown): string {
+  const copy = getMessages('returns').custody.error;
+  const byReason: Record<string, string> = copy.byReason;
+
   if (!(error instanceof ApiError)) {
     return error instanceof Error && error.message.length > 0
       ? error.message
-      : RETURN_CUSTODY_ERROR_COPY.generic;
+      : copy.generic;
   }
 
   if (error.status === 404) {
-    return RETURN_CUSTODY_ERROR_COPY.notFound;
+    return copy.notFound;
   }
 
   if (error.status === 409) {
@@ -51,14 +54,14 @@ export function describeCustodyError(error: unknown): string {
     // An unrecognised reason falls through to the generic conflict sentence
     // rather than rendering the raw code: a code is not a sentence, and this
     // build genuinely does not know what a future one means.
-    return reason !== null && reason in RETURN_CUSTODY_ERROR_COPY.byReason
-      ? RETURN_CUSTODY_ERROR_COPY.byReason[reason]
-      : RETURN_CUSTODY_ERROR_COPY.conflict;
+    return reason !== null && reason in byReason
+      ? byReason[reason]
+      : copy.conflict;
   }
 
   if (error.status === 403) {
-    return RETURN_CUSTODY_ERROR_COPY.forbidden;
+    return copy.forbidden;
   }
 
-  return error.message.length > 0 ? error.message : RETURN_CUSTODY_ERROR_COPY.generic;
+  return error.message.length > 0 ? error.message : copy.generic;
 }

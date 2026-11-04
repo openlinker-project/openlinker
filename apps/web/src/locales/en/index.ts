@@ -29,6 +29,7 @@ import listings from './listings.json';
 import orders from './orders.json';
 import priceChanges from './price-changes.json';
 import products from './products.json';
+import returns from './returns.json';
 import salesDocuments from './sales-documents.json';
 import shipments from './shipments.json';
 import ui from './ui.json';
@@ -53,6 +54,7 @@ export const en = {
   orders,
   'price-changes': priceChanges,
   products,
+  returns,
   'sales-documents': salesDocuments,
   shipments,
   ui,
