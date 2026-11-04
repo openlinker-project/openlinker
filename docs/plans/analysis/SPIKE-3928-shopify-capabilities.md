@@ -81,11 +81,11 @@ webhooks, retry and auth classification).
 | `OrderProcessorManager` / `OrderProcessorManagerPort` | B | Native, **no native dedup** | `orderCreate` with per-line `priceSet` (real marketplace price) and `taxLines`; dev store capped at ~5/min. `@idempotent` is not supported on `orderCreate` and a repeated `sourceIdentifier` creates a second order; `source_identifier:` lookup works but only ~10 s after the write | **Live** L-O3, L-O4, L-X1 |
 | `OfferManager` / `OfferManagerPort` | D | Native, other port | Shopify is a shop, not a marketplace. The base method (`updateOfferQuantity`) is the WooCommerce precedent: base-port-only stock write-back to published products, reached through `ShopProduct` mappings | Desk |
 | `ProductPublisher` / `ShopProductManagerPort` | D | Native | `productSet` with options/variants/media; `getDescriptionFormat` must be OL-declared because Shopify sanitizes nothing (E-P2) | Inherited E-P2, E-P5, E-P6 |
-| `CategoryProvisioner` | D | Open | Shopify's Standard Product Taxonomy is read-only (E-T3). A shop "category" an operator recognises is a **collection** (`collectionCreate`) or `productType`. Decide which concept OL maps to | Inherited E-T3, E-T5 |
+| `CategoryProvisioner` | D | Native, via collections | The Standard Product Taxonomy stays read-only (E-T3), but `collectionCreate` + `collectionAddProductsV2` give a shop-owned grouping that is visible on the product at once (the add is an async job, membership already readable). Recommended mapping: OL category placement -> collections; `product.category` (taxonomy) is a separate, optional field for search/attributes | **Live** L-T3 |
 | `Invoicing` / `InvoicingPort` | B, C | Via OL connector | Full schema scan (483 mutations): nothing issues a fiscal document. `orderInvoiceSend` / `draftOrderInvoiceSend` email a **payment request**, not a VAT invoice. Polish invoices come from inFakt / KSeF / Subiekt / eparagony; Shopify only receives a link (see `OrderBillingDocumentLinker`) | **Live** L-D1 |
 | `Fiscalization` / `FiscalizationPort` | C | Via OL connector | Schema scan: no `fiscal*` / `receipt*` mutation (only Shop Pay payment-request receipts). eparagony covers it | **Live** L-D1 |
 | `ShippingProviderManager` / `ShippingProviderManagerPort` | B, C, E | Via OL connector (for PL) | **Correction:** `shippingLabelPurchase` + `shippingLabel` exist (async, `PENDING_PURCHASE -> PURCHASED / PURCHASE_FAILED`), but only through Shopify Shipping, which needs its terms accepted in the admin and is offered for US, CA, AU, UK, FR, IT, ES fulfilment locations - not Poland. Labels for PL come from InPost / DPD | **Live** L-S1 + Shopify Help Center |
-| `FulfillmentExecutor` / `FulfillmentExecutorPort` | E | Open | Two readings. (1) OpenLinker as Shopify's fulfillment service: Shopify sends fulfillment requests to an OL-owned fulfillment-service location, OL accepts and fulfils - Shopify is then an order source and OL-OMS is the executor. (2) A Shopify merchant location as an executor for orders from other channels. (1) is what role E means | Inherited E-F1, E-F5, E-F10 |
+| `FulfillmentExecutor` / `FulfillmentExecutorPort` | E | Native, **no callback URL needed** | OpenLinker as Shopify's fulfillment service: register the service (no `callbackUrl`), move the fulfillment order to its location, poll `assignedFulfillmentOrders(assignmentStatus: FULFILLMENT_REQUESTED)`, then `fulfillmentOrderAcceptFulfillmentRequest` and `fulfillmentCreate`. `FULFILLMENT_ORDERS_FULFILLMENT_REQUEST_SUBMITTED` webhook is the push alternative. The two axes moved as ADR-054 expects (`OPEN/UNSUBMITTED -> SUBMITTED -> IN_PROGRESS/ACCEPTED -> FULFILLED`) | **Live** L-F2; Inherited E-F1, E-F5, E-F10 |
 | `ReturnsAuthority` (no port) | C | Open | `returnApproveRequest` / `returnDeclineRequest` / `returnProcess` with dispositions exist; whether OL or Shopify decides disposition is a config choice (ADR-052 A5) | Inherited E-R1..E-R11 |
 
 ## 2. Products and inventory sub-capabilities
@@ -94,7 +94,7 @@ webhooks, retry and auth classification).
 |---|---|---|---|---|
 | `ModifiedProductLister` | A | Native, **with a union** | A stock change bumps `product.updatedAt` (and variant + level); a **variant price edit bumps only `variant.updatedAt`**, not the product. So the rung is `products(updated_at)` UNION `productVariants(updated_at)`, with a lookback longer than the ~10 s `updatedAt` lag. Better than WooCommerce and PrestaShop, which cannot see variant edits at all | **Live** L-M2 |
 | `BulkProductReader` | A | Native | `nodes(ids: [...])` batch read, or `bulkOperationRunQuery` (JSONL, ~3s for 43 objects) | Inherited E-M12 |
-| `ProductTaxRateReader` | A | Open | No per-variant rate exists (`taxable` boolean only, E-M8). Shopify computes tax from region settings + overrides. Probe whether the effective PL rate per product is readable at all (tax overrides on collections, `shop.taxesIncluded`) | Inherited E-M8 |
+| `ProductTaxRateReader` | A | Not possible | No rate exists anywhere in the Admin API: variants carry only `taxable`, the shop only `taxesIncluded` / `taxShipping`, and no query lists tax rates. Shopify computes tax per region at checkout. A Shopify master therefore cannot state a catalogue rate (ADR-063); options are a per-connection default rate, a product metafield the merchant fills, or reading the rate back from order `taxLines` (role C only) | **Live** L-T2 (schema scan) |
 | `BulkInventoryReader` | A | Native | `inventoryItems` / `inventoryLevels` with location filter, or a bulk operation | Desk |
 
 ## 3. Listings sub-capabilities
@@ -151,7 +151,7 @@ to `ProductPublisher`.
 | `OrderBillingDocumentLinker` | C | Open | Order metafield (URL type) or order note; buyer visibility as above | Inherited E-S7 (metafields work) |
 | `RefundExecutor` | C | Native | `returnProcess` for return-driven refunds, `refundCreate` (`@idempotent`) otherwise; A6 refund authority stays OpenLinker's (ADR-056) | Inherited E-D1, E-R8, E-R9 |
 | `ReturnDecliner` | C | Native | `returnDeclineRequest` | Desk |
-| `ReturnSourceReader` | C | Open | Returns hang off orders (`order.returns`); no top-level return feed - probe whether `orders(updated_at)` moves when a return changes | Inherited E-R1, E-R5 |
+| `ReturnSourceReader` | C | Native, with a different feed | A return does **not** bump `order.updatedAt` (L-R1) and there is no top-level returns query, so the order feed cannot discover returns. Discovery = `RETURNS_*` webhooks (request, approve, process, decline, close, cancel, reopen, update) as trigger + `orders(query: "return_status:in_progress")` as backstop; `getReturn` = `return(id)` | **Live** L-R1, L-R2; Inherited E-R1..E-R11 |
 
 ## 5. Shipping sub-capabilities
 
@@ -163,7 +163,7 @@ receiving the tracking number (`OrderFulfillmentUpdater`) and the pickup point t
 |---|---|---|---|
 | `LabelDocumentReader` | B, C | Via OL connector (InPost, DPD) | Desk |
 | `DispatchProtocolReader` | B, C | Via OL connector | Desk |
-| `PickupPointFinder` | B, C | Via OL connector; Shopify only stores the chosen point - probe what an order carries for `PICKUP_POINT` (point id or just an address) | Inherited E-O6 |
+| `PickupPointFinder` | B, C | Via OL connector (InPost) | Shopify has no locker id anywhere: `DeliveryMethod` carries only `methodType` (`PICKUP_POINT`), `presentedName`, `serviceCode`, `instructions`, `phone`. A checkout pickup-point app writes the point's address as the shipping address; the locker code must be parsed from the shipping-line title/code or stored by OL as an order attribute/metafield | **Live** L-O6 (schema) |
 | `ShipmentCanceller` | B, C | Via OL connector | Desk |
 | `ParcelRequirementsReader` | B, C | Via OL connector | Desk |
 | `ShipmentReferenceReconciler` | B, C | Via OL connector | Desk |
@@ -215,7 +215,7 @@ What Shopify **does** have to supply for a correct document, to verify live:
 | Connection config / credentials shape validators | Native | Store domain, API version, token or client id/secret | Desk |
 | `OAuthCompletion` | Open | Needed only if the connection is installed through OAuth rather than client credentials | Inherited E-C3 |
 | `ConnectionCredentialsRewriter` | Open | Client-credentials tokens expire after about 24 h (shopify.dev, client credentials); the adapter re-mints from the stored id/secret, so nothing is rewritten. Needed only for the authorization-code path (non-expiring offline token) | Desk (doc) |
-| `WebhookProvisioning` | Native | `webhookSubscriptionCreate` | Inherited E-C7 |
+| `WebhookProvisioning` | Native | `webhookSubscriptionCreate` accepts any HTTPS URI with no domain check (unlike the fulfillment-service callback, L-F1), supports a search `filter` and `includeFields`, and also Pub/Sub / EventBridge URIs | **Live** L-C4; Inherited E-C7 |
 | `InboundWebhookDecoder` | Open | `X-Shopify-Hmac-Sha256` = base64 HMAC-SHA256 of the raw body with the app secret; verify live | Desk |
 | `WebhookEventTranslator` | Native | Topic header `X-Shopify-Topic` -> domain | Desk |
 | `RetryClassifier` | Native | Cost throttle (`THROTTLED`) + the dev-store `"Too many attempts"` userError, which is neither a 429 nor visible in `throttleStatus` | Inherited E-C4, E-X2 |
@@ -253,6 +253,14 @@ What Shopify **does** have to supply for a correct document, to verify live:
 | L-S1 | `shippingLabelPurchase` on an open fulfillment order -> userError `TERMS_OF_SERVICE_NOT_ACCEPTED` ("Purchase a shipping label through the Shopify admin first"). Shopify Shipping is not offered for Polish fulfilment locations | Labels stay with InPost / DPD for PL. The API is real for the countries Shopify Shipping serves |
 | L-D1 | Schema scan of all 483 mutations / 278 queries: no invoice, fiscal-document or receipt issuance. `orderInvoiceSend` / `draftOrderInvoiceSend` send a payment-request email. `taxSummaryCreate` and `taxAppConfigure` belong to the tax-calculation app surface, not to documents | Every invoicing and fiscalization sub-capability is "via OL connector" |
 | L-C3 | `carrierServiceCreate` registers a **live-rates callback at checkout** | New option, not on any OL port yet: OpenLinker (InPost/DPD) could quote shipping at the Shopify checkout. Out of scope here, worth a follow-up issue |
+| L-C4 | `webhookSubscriptionCreate(topic: ORDERS_UPDATED, uri: "https://example.com/...", filter: "tag:ol-probe")` accepted and deleted cleanly | A connection can provision its webhooks without the app URL matching OL's host; only the fulfillment-service callback is domain-bound |
+| L-F2 | Role E end to end with no callback URL: `inventoryActivate` at the 3PL location, `orderCreate` (#1010), `fulfillmentOrderMove` to the 3PL location, `fulfillmentOrderSubmitFulfillmentRequest`, the FO appears in `assignedFulfillmentOrders(FULFILLMENT_REQUESTED)`, `AcceptFulfillmentRequest` (`IN_PROGRESS` / `ACCEPTED`), `fulfillmentCreate` -> order `FULFILLED` | OpenLinker can be a Shopify 3PL by polling; a public URL is only needed for push |
+| L-F3 | `fulfillmentCreate` with `trackingInfo.company: "InPost"` and no `url` stored a **FedEx** tracking link (`fedex.com/fedextrack/?trknbr=...`): Shopify guesses the carrier URL from the number | Always send `trackingInfo.url` (and the company) explicitly; never let Shopify infer it |
+| L-O6 | `DeliveryMethod` / `OrderCreateShippingLineInput` have no pickup-point id field | Locker codes travel in the shipping-line title/code or an OL-written metafield; InPost's `PickupPointFinder` stays OL's |
+| L-R1 | `returnCreate` on #1005 (status `OPEN`): `order.updatedAt` unchanged after 20 s; `order.returnStatus` became `IN_PROGRESS` | The order feed is blind to returns |
+| L-R2 | `orders(query: "return_status:in_progress")` finds the order (search index, so lagged); `return_status:open` / `return_requested` find nothing. Webhook topics `RETURNS_REQUEST/APPROVE/PROCESS/DECLINE/CLOSE/CANCEL/REOPEN/UPDATE` exist | Return feed = webhook trigger + `return_status` backstop sweep |
+| L-T2 | Schema scan: no tax-rate field on product, variant, shop or any query; only `taxable`, `taxesIncluded`, `taxShipping` | ProductTaxRateReader not possible; see matrix row |
+| L-T3 | `collectionCreate` + `collectionAddProductsV2` (async job, `done: false`) and the product immediately lists the collection; `product.category` and `productType` are independent of it | Collections are the provisionable "category" for D |
 
 ## Live transcripts
 
@@ -271,7 +279,10 @@ New, to resolve here:
    mapping are the guarantee, `source_identifier` lookup is a delayed recovery aid only.
 2. **Buyer tax id** - answered (L-O5): B2B / Plus orders only, via the purchasing entity.
 3. **Product `updatedAt` vs variant and stock edits** - answered (L-M2): declarable as a union.
-4. **Category concept.** Taxonomy (read-only, global) vs collections (shop-owned) vs `productType`
+4. **Category concept** - answered (L-T3): collections for placement, taxonomy as an optional extra.
+   Original question: taxonomy (read-only, global) vs collections (shop-owned) vs `productType`
    (free text) - decides `CategoryProvisioner` and the mapping UI.
-5. **Effective tax rate per product.** Decides whether a Shopify master can satisfy ADR-063 (the
+5. **Effective tax rate per product** - answered negatively (L-T2): not readable; needs a
+   per-connection default or a merchant metafield, a product decision for the implementation.
+   Original question: Decides whether a Shopify master can satisfy ADR-063 (the
    rate is an input, never computed) or every Shopify-master document holds.

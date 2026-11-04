@@ -288,4 +288,125 @@ export const probes = {
     );
     log('orderCreate on company location', res.data.orderCreate);
   },
+  /**
+   * Role E: can OpenLinker act as a fulfillment service WITHOUT a callback URL,
+   * by polling the fulfillment orders assigned to its own location?
+   */
+  async 'role-e-3pl-polling'({ shopify, log, sleep }) {
+    const currencyCode = await pln(shopify);
+    const svc = await shopify.request(`{ shop { fulfillmentServices { serviceName callbackUrl location { id name } } } }`);
+    const ours = svc.data.shop.fulfillmentServices.find((s) => s.serviceName === 'OL Seed 3PL');
+    log('fulfillment service', ours);
+    const { variant } = await variantId(shopify, 'ol-seed-mug', 'OL-SEED-MUG');
+    const activate = await shopify.request(
+      `mutation ($item: ID!, $loc: ID!) {
+        inventoryActivate(inventoryItemId: $item, locationId: $loc, available: 5) @idempotent(key: "${`ol-probe-act-${Date.now()}`}") {
+          inventoryLevel { id quantities(names: ["available"]) { quantity } } userErrors { field message }
+        }
+      }`,
+      { item: variant.inventoryItem.id, loc: ours.location.id },
+    );
+    log('inventoryActivate at 3PL location', activate.data.inventoryActivate);
+    const created = await shopify.request(
+      ORDER_CREATE.replace('purchasingEntity { __typename ... on PurchasingCompany { location { id taxSettings { taxRegistrationId } } } }', 'fulfillmentOrders(first: 3) { nodes { id status requestStatus assignedLocation { name } } }'),
+      {
+        order: {
+          email: 'role-e@example.com',
+          lineItems: [line(variant.id, '39.00', currencyCode)],
+          financialStatus: 'PAID',
+          transactions: [{ kind: 'SALE', status: 'SUCCESS', gateway: 'manual', amountSet: { shopMoney: { amount: '39.00', currencyCode } } }],
+          shippingAddress: { firstName: 'Ewa', lastName: 'Trzecia', address1: 'ul. Trzecia 3', city: 'Krakow', zip: '30-001', countryCode: 'PL' },
+          taxesIncluded: true,
+          tags: [PROBE_TAG],
+        },
+        options: { inventoryBehaviour: 'BYPASS', sendReceipt: false },
+      },
+      { userErrorsPath: 'orderCreate' },
+    );
+    log('orderCreate', created.data.orderCreate);
+    const fo = created.data.orderCreate.order.fulfillmentOrders.nodes[0];
+    const moved = await shopify.request(
+      `mutation ($id: ID!, $loc: ID!) { fulfillmentOrderMove(id: $id, newLocationId: $loc) { movedFulfillmentOrder { id status requestStatus assignedLocation { name } } userErrors { field message } } }`,
+      { id: fo.id, loc: ours.location.id },
+    );
+    log('fulfillmentOrderMove -> 3PL', moved.data.fulfillmentOrderMove);
+    const movedId = moved.data.fulfillmentOrderMove.movedFulfillmentOrder?.id ?? fo.id;
+    const submitted = await shopify.request(
+      `mutation ($id: ID!) { fulfillmentOrderSubmitFulfillmentRequest(id: $id, notifyCustomer: false, message: "OL probe") { submittedFulfillmentOrder { id requestStatus } userErrors { field message } } }`,
+      { id: movedId },
+    );
+    log('submitFulfillmentRequest (merchant side)', submitted.data.fulfillmentOrderSubmitFulfillmentRequest);
+    await sleep(3000);
+    const assigned = await shopify.request(
+      `{ assignedFulfillmentOrders(first: 10, assignmentStatus: FULFILLMENT_REQUESTED) { nodes { id requestStatus order { name } destination { city countryCode } lineItems(first: 5) { nodes { id sku remainingQuantity } } } } }`,
+    );
+    log('assignedFulfillmentOrders(FULFILLMENT_REQUESTED) - the 3PL poll', assigned.data.assignedFulfillmentOrders.nodes.map((n) => ({ id: n.id, order: n.order.name, requestStatus: n.requestStatus, lines: n.lineItems.nodes.length, dest: n.destination })));
+    const accepted = await shopify.request(
+      `mutation ($id: ID!) { fulfillmentOrderAcceptFulfillmentRequest(id: $id, message: "OL accepts") { fulfillmentOrder { id status requestStatus } userErrors { field message } } }`,
+      { id: movedId },
+    );
+    log('acceptFulfillmentRequest (3PL side)', accepted.data.fulfillmentOrderAcceptFulfillmentRequest);
+    const fulfilled = await shopify.request(
+      `mutation ($f: FulfillmentInput!) { fulfillmentCreate(fulfillment: $f) { fulfillment { id status trackingInfo { number company url } } userErrors { field message } } }`,
+      { f: { lineItemsByFulfillmentOrder: [{ fulfillmentOrderId: movedId }], trackingInfo: { number: '520000011395200022', company: 'InPost' }, notifyCustomer: false } },
+    );
+    log('fulfillmentCreate with InPost tracking', fulfilled.data.fulfillmentCreate);
+    const after = await shopify.request(`query ($id: ID!) { order(id: $id) { name displayFulfillmentStatus } }`, { id: created.data.orderCreate.order.id });
+    log('order after', after.data.order);
+  },
+
+  /** Can OpenLinker create the shop-owned "category" an operator sees (a collection) and place a product in it? */
+  async 'collections'({ shopify, log }) {
+    const { product } = await variantId(shopify, 'ol-seed-tshirt', 'OL-SEED-TSHIRT-S');
+    const created = await shopify.request(
+      `mutation ($input: CollectionInput!) { collectionCreate(input: $input) { collection { id handle title } userErrors { field message } } }`,
+      { input: { title: `OL Probe Koszulki ${Date.now()}` } },
+    );
+    log('collectionCreate', created.data.collectionCreate);
+    const collectionId = created.data.collectionCreate.collection.id;
+    const added = await shopify.request(
+      `mutation ($id: ID!, $ids: [ID!]!) { collectionAddProductsV2(id: $id, productIds: $ids) { job { id done } userErrors { field message } } }`,
+      { id: collectionId, ids: [product.id] },
+    );
+    log('collectionAddProductsV2 (async job)', added.data.collectionAddProductsV2);
+    const read = await shopify.request(
+      `query ($id: ID!) { product(id: $id) { category { fullName } productType collections(first: 5) { nodes { title } } } }`,
+      { id: product.id },
+    );
+    log('product after (category vs collections)', read.data.product);
+  },
+
+  /** Does a return change the order's updatedAt, so an order feed can discover it? */
+  async 'return-feed'({ shopify, log, sleep }) {
+    const res = await shopify.request(
+      `{ orders(first: 1, query: "tag:ol-seed-order-partial") { nodes { id name updatedAt fulfillments(first: 3) { fulfillmentLineItems(first: 5) { nodes { id quantity lineItem { sku } } } } } } }`,
+    );
+    const order = res.data.orders.nodes[0];
+    log('order before', { name: order.name, updatedAt: order.updatedAt });
+    const fli = order.fulfillments[0].fulfillmentLineItems.nodes[0];
+    const reasons = await shopify.request(`{ returnReasonDefinitions(first: 3) { nodes { id handle name } } }`);
+    const reason = reasons.data.returnReasonDefinitions.nodes.find((r) => r.handle !== 'unknown') ?? reasons.data.returnReasonDefinitions.nodes[0];
+    const created = await shopify.request(
+      `mutation ($input: ReturnInput!) { returnCreate(returnInput: $input) { return { id name status } userErrors { field message } } }`,
+      { input: { orderId: order.id, returnLineItems: [{ fulfillmentLineItemId: fli.id, quantity: 1, returnReasonDefinitionId: reason.id }], notifyCustomer: false } },
+    );
+    log('returnCreate (merchant-initiated)', created.data.returnCreate);
+    await sleep(20_000);
+    const after = await shopify.request(`query ($id: ID!) { order(id: $id) { updatedAt returns(first: 3) { nodes { name status } } } }`, { id: order.id });
+    log('order after +20s', { updatedAt: after.data.order.updatedAt, bumped: after.data.order.updatedAt !== order.updatedAt, returns: after.data.order.returns.nodes });
+  },
+
+  /** Is a webhook endpoint accepted without a domain check, and what is registered? */
+  async 'webhook-subscribe'({ shopify, log }) {
+    const created = await shopify.request(
+      `mutation ($sub: WebhookSubscriptionInput!) { webhookSubscriptionCreate(topic: ORDERS_UPDATED, webhookSubscription: $sub) { webhookSubscription { id topic uri format filter } userErrors { field message } } }`,
+      { sub: { uri: 'https://example.com/ol-probe/webhooks/shopify', format: 'JSON', filter: 'tag:ol-probe' } },
+    );
+    log('webhookSubscriptionCreate (HTTPS, filtered)', created.data.webhookSubscriptionCreate);
+    const id = created.data.webhookSubscriptionCreate.webhookSubscription?.id;
+    if (id) {
+      const del = await shopify.request(`mutation ($id: ID!) { webhookSubscriptionDelete(id: $id) { deletedWebhookSubscriptionId userErrors { field message } } }`, { id });
+      log('cleanup delete', del.data.webhookSubscriptionDelete);
+    }
+  },
 };
