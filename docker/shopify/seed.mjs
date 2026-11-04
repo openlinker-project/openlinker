@@ -138,14 +138,17 @@ async function main() {
   const shopify = await createClient();
   log(`endpoint ${shopify.endpoint}`);
 
-  const shopRes = await shopify.request(`{ shop { name currencyCode taxesIncluded } locations(first: 20) { nodes { id name } } }`);
-  const { shop, locations } = shopRes.data;
+  // `location` with no id is the shop's PRIMARY location: the one warehouse
+  // OpenLinker works with until a WMS exists (spike #3928 decision). The first
+  // entry of `locations` is not guaranteed to be it.
+  const shopRes = await shopify.request(`{ shop { name currencyCode taxesIncluded } location { id name } locations(first: 20) { nodes { id name } } }`);
+  const { shop, location, locations } = shopRes.data;
   log(`shop "${shop.name}", currency ${shop.currencyCode}, taxesIncluded=${shop.taxesIncluded}`);
   if (shop.currencyCode !== 'PLN') {
     log(`WARNING: store currency is ${shop.currencyCode}, not PLN. See README step 2 - change it before the first order exists.`);
   }
 
-  const primaryLocation = locations.nodes[0];
+  const primaryLocation = location;
   const secondLocation = await ensureLocation(shopify, locations.nodes);
   await ensureFulfillmentService(shopify);
 

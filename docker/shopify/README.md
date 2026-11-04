@@ -90,7 +90,7 @@ What you get:
 
 | Kind | Data |
 |---|---|
-| Locations | the default one + `OL Seed Warehouse` (Poznan) |
+| Locations | the primary one (most stock, the single warehouse OpenLinker uses) + `OL Seed Warehouse` (Poznan) |
 | Fulfillment service | `OL Seed 3PL` (its own location, hidden from `locations()`) |
 | Products | T-shirt (3 sizes), Sneakers (2 colours x 2 sizes, one with a sale price), Mug (single variant), Poster (no EAN), Gift wrap (stock not tracked) |
 | Stock | split across both locations, including zero-stock variants |
