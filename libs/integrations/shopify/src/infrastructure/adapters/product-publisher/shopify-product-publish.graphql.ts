@@ -69,7 +69,7 @@ export const INVENTORY_SET_MUTATION = `mutation OlInventorySet($input: Inventory
 }`;
 
 export const PUBLICATIONS_QUERY = `query OlPublications {
-  publications(first: 20) { nodes { id name } }
+  publications(first: 20) { nodes { id catalog { title } } }
 }`;
 
 export const PUBLISHABLE_PUBLISH_MUTATION = `mutation OlPublish($id: ID!, $input: [PublicationInput!]!) {
@@ -129,7 +129,7 @@ export interface VariantsBulkPayload {
 }
 
 export interface PublicationsQuery {
-  readonly publications: ShopifyConnection<{ readonly id: string; readonly name: string }>;
+  readonly publications: ShopifyConnection<{ readonly id: string; readonly catalog: { readonly title: string } | null }>;
 }
 
 export interface PublishablePublishPayload {

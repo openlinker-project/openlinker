@@ -112,7 +112,9 @@ import {
 /** Shopify allows three options per product (SPIKE-2879 E-P9). */
 const MAX_PRODUCT_OPTIONS = 3;
 
-const ONLINE_STORE_PUBLICATION = 'online store';
+// `Publication` has no name on 2026-10; the channel shows only in the catalog
+// title (`ChannelCatalog<id>forOnlineStore`), compared without spaces or case.
+const ONLINE_STORE_PUBLICATION = 'onlinestore';
 
 function reasonOf(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
@@ -575,7 +577,7 @@ export class ShopifyProductPublisherAdapter implements ShopProductManagerPort, C
         .query<PublicationsQuery>(PUBLICATIONS_QUERY)
         .then(({ publications }) => {
           const nodes = publications.nodes;
-          const online = nodes.find((p) => p.name.trim().toLowerCase() === ONLINE_STORE_PUBLICATION);
+          const online = nodes.find((p) => (p.catalog?.title ?? '').replace(/\s+/g, '').toLowerCase().endsWith(ONLINE_STORE_PUBLICATION));
           return online?.id ?? (nodes.length === 1 ? nodes[0].id : null);
         })
         .catch((error: unknown) => {
