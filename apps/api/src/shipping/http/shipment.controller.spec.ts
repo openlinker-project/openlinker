@@ -168,6 +168,7 @@ describe('ShipmentController', () => {
       notifyOrderReceived: jest.fn(),
       notifyDocumentIssued: jest.fn(),
       notifyShippedIfPending: jest.fn(),
+      freezeLineExpansion: jest.fn(),
     };
     controller = new ShipmentController(
       query,

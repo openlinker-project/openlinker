@@ -159,6 +159,7 @@ describe('FulfillmentStatusSyncService', () => {
       notifyOrderReceived: jest.fn(),
       notifyDocumentIssued: jest.fn(),
       notifyShippedIfPending: jest.fn(),
+      freezeLineExpansion: jest.fn(),
     };
 
     routing = {

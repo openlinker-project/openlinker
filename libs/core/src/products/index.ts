@@ -30,6 +30,38 @@ export { MasterProductNotFoundError } from './domain/exceptions/master-product-n
 export { ProductVariantNotFoundError } from './domain/exceptions/product-variant-not-found.error';
 export { InvalidVariantCostError } from './domain/exceptions/invalid-variant-cost.error';
 
+// Bundle definitions and the pure component expansion (#3607, ADR-083)
+export type {
+  BundleComponent,
+  BundleDefinition,
+  ExpandableLine,
+  ComponentLineRef,
+  PhysicalLine,
+  LineExpansion,
+} from './domain/types/bundle.types';
+export {
+  COMPONENT_LINE_ID_SEPARATOR,
+  EMPTY_LINE_EXPANSION,
+  buildComponentLineId,
+  componentLineIdsFor,
+  componentRefsFor,
+  expandBundleLines,
+  readLineExpansion,
+} from './domain/types/bundle.types';
+export type { BundleDefinitionRepositoryPort } from './domain/ports/bundle-definition-repository.port';
+export type {
+  IBundleDefinitionService,
+  BundleComponentInput,
+} from './application/services/bundle-definition.service.interface';
+export {
+  BundleNestingError,
+  BundleNestingReasonValues,
+  BundleDefinitionNotFoundError,
+  BundleDefinitionInvalidError,
+  BundleDefinitionAlreadyExistsError,
+} from './domain/exceptions/bundle-definition.errors';
+export type { BundleNestingReason } from './domain/exceptions/bundle-definition.errors';
+
 // Master-deletion event contract (#1599)
 export {
   MASTER_DELETION_EVENT_STREAM,

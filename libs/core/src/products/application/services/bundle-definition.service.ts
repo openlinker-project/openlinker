@@ -1,0 +1,127 @@
+/**
+ * Bundle Definition Service (#3607)
+ *
+ * Owns the rules a definition must satisfy before it is written: every variant
+ * exists, quantities are positive integers, and nesting is refused in both
+ * directions (a bundle cannot hold a bundle; a component cannot become one).
+ *
+ * @module libs/core/src/products/application/services
+ */
+import { Inject, Injectable } from '@nestjs/common';
+import { BundleDefinitionRepositoryPort } from '../../domain/ports/bundle-definition-repository.port';
+import { ProductVariantRepositoryPort } from '../../domain/ports/product-variant-repository.port';
+import {
+  BundleDefinitionAlreadyExistsError,
+  BundleDefinitionInvalidError,
+  BundleDefinitionNotFoundError,
+  BundleNestingError,
+} from '../../domain/exceptions/bundle-definition.errors';
+import type { BundleComponent, BundleDefinition } from '../../domain/types/bundle.types';
+import {
+  BUNDLE_DEFINITION_REPOSITORY_TOKEN,
+  PRODUCT_VARIANT_REPOSITORY_TOKEN,
+} from '../../products.tokens';
+import type { BundleComponentInput, IBundleDefinitionService } from './bundle-definition.service.interface';
+
+@Injectable()
+export class BundleDefinitionService implements IBundleDefinitionService {
+  constructor(
+    @Inject(BUNDLE_DEFINITION_REPOSITORY_TOKEN)
+    private readonly bundles: BundleDefinitionRepositoryPort,
+    @Inject(PRODUCT_VARIANT_REPOSITORY_TOKEN)
+    private readonly variants: ProductVariantRepositoryPort
+  ) {}
+
+  async create(variantId: string, components: BundleComponentInput[]): Promise<BundleDefinition> {
+    const [existing] = await this.bundles.findCurrentByVariantIds([variantId]);
+    if (existing !== undefined) {
+      throw new BundleDefinitionAlreadyExistsError(variantId);
+    }
+    return this.write(variantId, components);
+  }
+
+  async update(variantId: string, components: BundleComponentInput[]): Promise<BundleDefinition> {
+    const [existing] = await this.bundles.findCurrentByVariantIds([variantId]);
+    if (existing === undefined) {
+      throw new BundleDefinitionNotFoundError(variantId);
+    }
+    return this.write(variantId, components);
+  }
+
+  async delete(variantId: string): Promise<void> {
+    const retired = await this.bundles.retire(variantId);
+    if (!retired) {
+      throw new BundleDefinitionNotFoundError(variantId);
+    }
+  }
+
+  async get(variantId: string): Promise<BundleDefinition | null> {
+    const [definition] = await this.bundles.findCurrentByVariantIds([variantId]);
+    return definition ?? null;
+  }
+
+  list(): Promise<BundleDefinition[]> {
+    return this.bundles.listCurrent();
+  }
+
+  findCurrentByVariantIds(variantIds: readonly string[]): Promise<BundleDefinition[]> {
+    return this.bundles.findCurrentByVariantIds(variantIds);
+  }
+
+  history(variantId: string): Promise<BundleDefinition[]> {
+    return this.bundles.findHistory(variantId);
+  }
+
+  private async write(
+    variantId: string,
+    inputs: BundleComponentInput[]
+  ): Promise<BundleDefinition> {
+    if (inputs.length === 0) {
+      throw new BundleDefinitionInvalidError('A bundle needs at least one component');
+    }
+    for (const input of inputs) {
+      if (!Number.isInteger(input.quantity) || input.quantity <= 0) {
+        throw new BundleDefinitionInvalidError(
+          `Component ${input.variantId} needs a positive whole quantity`
+        );
+      }
+      if (input.variantId === variantId) {
+        throw new BundleNestingError('component-is-self', variantId, input.variantId);
+      }
+    }
+
+    const componentIds = [...new Set(inputs.map((i) => i.variantId))];
+    const found = await this.variants.findByIdIn([variantId, ...componentIds]);
+    const byId = new Map(found.map((v) => [v.id, v]));
+    for (const id of [variantId, ...componentIds]) {
+      if (!byId.has(id)) {
+        throw new BundleDefinitionInvalidError(`Variant ${id} does not exist`);
+      }
+    }
+
+    const nestedComponents = await this.bundles.findCurrentByVariantIds(componentIds);
+    if (nestedComponents.length > 0) {
+      throw new BundleNestingError('component-is-bundle', variantId, nestedComponents[0].variantId);
+    }
+    const containers = (await this.bundles.findCurrentContainingComponent(variantId)).filter(
+      (d) => d.variantId !== variantId
+    );
+    if (containers.length > 0) {
+      throw new BundleNestingError('variant-is-component', variantId, containers[0].variantId);
+    }
+
+    const components: BundleComponent[] = inputs.map((input) => {
+      const variant = byId.get(input.variantId);
+      const component: BundleComponent = {
+        variantId: input.variantId,
+        productId: (variant as { productId: string }).productId,
+        quantity: input.quantity,
+      };
+      if (input.giftSlot === true) {
+        component.giftSlot = true;
+      }
+      return component;
+    });
+    return this.bundles.insertNextVersion(variantId, components);
+  }
+}

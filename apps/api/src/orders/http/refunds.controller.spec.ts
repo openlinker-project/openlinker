@@ -75,6 +75,7 @@ describe('RefundsController', () => {
       notifyOrderReceived: jest.fn(),
       notifyDocumentIssued: jest.fn(),
       notifyShippedIfPending: jest.fn(),
+      freezeLineExpansion: jest.fn(),
     };
 
     const module: TestingModule = await Test.createTestingModule({

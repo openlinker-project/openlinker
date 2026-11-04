@@ -24,6 +24,8 @@ import { FulfillmentWorkRepositoryPort } from '../../domain/ports/fulfillment-wo
 import { isTerminalFulfillmentWorkStatus } from '../../domain/types/fulfillment-supported-actions.types';
 import type {
   IFulfillmentOrderEditService,
+  LineComponentRef,
+  LineComponentsByLine,
   LowerLineQuantityInput,
   LowerLineQuantityResult,
   OrderWorkEditAssessment,
@@ -38,7 +40,10 @@ export class FulfillmentOrderEditService implements IFulfillmentOrderEditService
     private readonly works: FulfillmentWorkRepositoryPort
   ) {}
 
-  async assessForEdit(orderId: string): Promise<OrderWorkEditAssessment> {
+  async assessForEdit(
+    orderId: string,
+    components: LineComponentsByLine = {}
+  ): Promise<OrderWorkEditAssessment> {
     const works = await this.works.findByOrderId(orderId);
     const live = works.filter((work) => work.status !== 'cancelled');
     const fulfilledByLine: Record<string, number> = {};
@@ -47,6 +52,17 @@ export class FulfillmentOrderEditService implements IFulfillmentOrderEditService
         fulfilledByLine[line.orderLineId] =
           (fulfilledByLine[line.orderLineId] ?? 0) + line.fulfilledQuantity;
       }
+    }
+    // A bundle line's units are on its component lines: fold them back so the
+    // answer is per commercial line, which is how the edit guards key.
+    for (const [bundleLineId, refs] of Object.entries(components)) {
+      if (refs.length === 0) continue;
+      fulfilledByLine[bundleLineId] = Math.min(
+        ...refs.map((ref) =>
+          Math.floor((fulfilledByLine[ref.componentLineId] ?? 0) / Math.max(ref.perUnit, 1))
+        )
+      );
+      for (const ref of refs) delete fulfilledByLine[ref.componentLineId];
     }
     return {
       unrouted: works.length === 0,
@@ -69,6 +85,9 @@ export class FulfillmentOrderEditService implements IFulfillmentOrderEditService
   async lowerLineQuantity(input: LowerLineQuantityInput): Promise<LowerLineQuantityResult> {
     if (!Number.isInteger(input.newQuantity) || input.newQuantity < 0) {
       throw new RangeError(`newQuantity must be a non-negative integer, got ${String(input.newQuantity)}`);
+    }
+    if (input.components !== undefined && input.components.length > 0) {
+      return this.lowerComponents(input, input.components);
     }
 
     const works = (await this.works.findByOrderId(input.orderId)).filter(
@@ -132,5 +151,55 @@ export class FulfillmentOrderEditService implements IFulfillmentOrderEditService
         `cancelled ${String(cancelled)} unit(s) on ${String(touched.length)} work object(s)`
     );
     return { outcome: 'applied', cancelledUnits: cancelled, workIds: touched };
+  }
+
+  /**
+   * A bundle line (#3607): its work lines carry the component line ids, so each
+   * component is lowered to `newQuantity * perUnit` and the outcomes sum back to
+   * one answer. Every component is validated BEFORE any is written, so a
+   * component that already shipped refuses the whole edit instead of leaving a
+   * half-narrowed set.
+   */
+  private async lowerComponents(
+    input: LowerLineQuantityInput,
+    components: readonly LineComponentRef[]
+  ): Promise<LowerLineQuantityResult> {
+    const works = (await this.works.findByOrderId(input.orderId)).filter(
+      (work) => !isTerminalFulfillmentWorkStatus(work.status)
+    );
+    for (const component of components) {
+      const fulfilled = works
+        .flatMap((work) => work.lines)
+        .filter((line) => line.orderLineId === component.componentLineId)
+        .reduce((sum, line) => sum + line.fulfilledQuantity, 0);
+      const target = input.newQuantity * component.perUnit;
+      if (target < fulfilled) {
+        throw new RangeError(
+          `Order line ${input.orderLineId} already has ${String(fulfilled)} unit(s) of component ` +
+            `${component.componentLineId} fulfilled; it cannot be lowered to ${String(input.newQuantity)}`
+        );
+      }
+    }
+
+    const results: LowerLineQuantityResult[] = [];
+    for (const component of components) {
+      results.push(
+        await this.lowerLineQuantity({
+          orderId: input.orderId,
+          orderLineId: component.componentLineId,
+          newQuantity: input.newQuantity * component.perUnit,
+        })
+      );
+    }
+    const applied = results.some((r) => r.outcome === 'applied');
+    return {
+      outcome: applied
+        ? 'applied'
+        : results.every((r) => r.outcome === 'unrouted')
+          ? 'unrouted'
+          : 'unchanged',
+      cancelledUnits: results.reduce((sum, r) => sum + r.cancelledUnits, 0),
+      workIds: [...new Set(results.flatMap((r) => r.workIds))],
+    };
   }
 }

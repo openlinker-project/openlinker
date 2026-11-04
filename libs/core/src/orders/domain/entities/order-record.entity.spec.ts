@@ -286,3 +286,46 @@ describe('OrderRecord.orderNumber (#3554)', () => {
     expect(makeRecord({ orderNumber: '' }).orderNumber).toBeUndefined();
   });
 });
+
+describe('OrderRecord.physicalItems / componentLineIdsOf (#3607)', () => {
+  const snapshotItems = [
+    { id: 'l1', productId: 'p-set', variantId: 'v-set', quantity: 2, price: 30 },
+    { id: 'l2', productId: 'p-x', variantId: 'v-x', quantity: 1, price: 5 },
+  ];
+  const expansion = {
+    v: 1 as const,
+    definitions: [
+      {
+        variantId: 'v-set',
+        version: 3,
+        components: [
+          { variantId: 'v-a', productId: 'p-a', quantity: 2 },
+          { variantId: 'v-b', productId: 'p-b', quantity: 1 },
+        ],
+      },
+    ],
+  };
+
+  it('should equal the commercial list when no expansion was recorded', () => {
+    const record = makeRecord({ items: snapshotItems });
+    expect(record.physicalItems.map((i) => i.id)).toEqual(['l1', 'l2']);
+    expect(record.componentLineIdsOf('l1')).toEqual(['l1']);
+    expect(record.componentsOfLine('l1')).toEqual([]);
+  });
+
+  it('should expand the frozen bundle line and keep the others', () => {
+    const record = Object.assign(makeRecord({ items: snapshotItems }), { lineExpansion: expansion });
+    expect(record.physicalItems.map((i) => [i.id, i.productId, i.quantity])).toEqual([
+      ['l1~c:v-a', 'p-a', 4],
+      ['l1~c:v-b', 'p-b', 2],
+      ['l2', 'p-x', 1],
+    ]);
+    expect(record.orderItems.map((i) => i.id)).toEqual(['l1', 'l2']);
+    expect(record.componentLineIdsOf('l1')).toEqual(['l1~c:v-a', 'l1~c:v-b']);
+    expect(record.componentLineIdsOf('l2')).toEqual(['l2']);
+    expect(record.componentsOfLine('l1')).toEqual([
+      { componentLineId: 'l1~c:v-a', perUnit: 2 },
+      { componentLineId: 'l1~c:v-b', perUnit: 1 },
+    ]);
+  });
+});

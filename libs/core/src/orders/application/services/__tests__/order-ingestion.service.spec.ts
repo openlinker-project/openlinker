@@ -6,6 +6,7 @@
  * @module libs/core/src/orders/application/services/__tests__
  */
 
+import type { IBundleDefinitionService } from '@openlinker/core/products';
 import type { IOrderChangeService } from '../order-change.service.interface';
 import type { IOrderCancellationEffectsService } from '../../interfaces/order-cancellation-effects.service.interface';
 import { OrderIngestionService } from '../order-ingestion.service';
@@ -58,6 +59,7 @@ const routerResolver: FulfillmentRouterResolverPort = {
 
 describe('OrderIngestionService', () => {
   let service: OrderIngestionService;
+  let bundleDefinitions: { findCurrentByVariantIds: jest.Mock };
 
   let integrationsService: jest.Mocked<IIntegrationsService>;
   // Only the two methods the SUT actually calls — tight Pick<> mock surface
@@ -153,6 +155,7 @@ describe('OrderIngestionService', () => {
       persistIncomingSnapshot: jest.fn().mockResolvedValue({ cancelledAt: null }),
       updateSyncStatus: jest.fn().mockResolvedValue(undefined),
       getOrderRecord: jest.fn(),
+      freezeLineExpansion: jest.fn().mockImplementation((_id: string, e: unknown) => Promise.resolve(e)),
       notifyOrderReceived: jest.fn().mockResolvedValue(undefined),
       findMany: jest.fn(),
       findByIds: jest.fn(),
@@ -241,6 +244,7 @@ describe('OrderIngestionService', () => {
         correctionUnavailableReason: null,
       }),
     };
+    bundleDefinitions = { findCurrentByVariantIds: jest.fn().mockResolvedValue([]) };
     service = new OrderIngestionService(
       integrationsService,
       syncCursors as unknown as ISyncCursorsService,
@@ -262,7 +266,8 @@ describe('OrderIngestionService', () => {
       connections as unknown as ConnectionPort,
       routerResolver,
       orderChanges as unknown as IOrderChangeService,
-      cancellationEffects as unknown as IOrderCancellationEffectsService
+      cancellationEffects as unknown as IOrderCancellationEffectsService,
+      bundleDefinitions as unknown as IBundleDefinitionService
     );
   });
 
@@ -327,6 +332,45 @@ describe('OrderIngestionService', () => {
       expect(reservationService.reserveForOrder.mock.invocationCallOrder[0]).toBeLessThan(
         orderSyncService.syncOrder.mock.invocationCallOrder[0]
       );
+    });
+
+    it('should freeze the expansion and reserve the COMPONENTS of a bundle line (#3607)', async () => {
+      const definition = {
+        variantId: 'ol_variant_1',
+        version: 1,
+        components: [
+          { variantId: 'ol_variant_a', productId: 'ol_product_a', quantity: 3 },
+          { variantId: 'ol_variant_b', productId: 'ol_product_b', quantity: 1 },
+        ],
+      };
+      bundleDefinitions.findCurrentByVariantIds.mockResolvedValue([definition]);
+
+      await service.syncOrderFromSource(connectionId, externalOrderId);
+
+      expect(orderRecordService.freezeLineExpansion).toHaveBeenCalledWith('ol_order_res', {
+        v: 1,
+        definitions: [definition],
+      });
+      expect(orderRecordService.freezeLineExpansion.mock.invocationCallOrder[0]).toBeLessThan(
+        reservationService.reserveForOrder.mock.invocationCallOrder[0]
+      );
+      expect(reservationService.reserveForOrder.mock.calls[0][0].lines).toEqual([
+        expect.objectContaining({
+          orderLineId: 'line-1~c:ol_variant_a',
+          productId: 'ol_product_a',
+          productVariantId: 'ol_variant_a',
+          quantity: 6,
+        }),
+        expect.objectContaining({
+          orderLineId: 'line-1~c:ol_variant_b',
+          productId: 'ol_product_b',
+          quantity: 2,
+        }),
+      ]);
+      // The destination mirror keeps the commercial line.
+      expect(orderSyncService.syncOrder.mock.calls[0][0].order.items).toEqual([
+        expect.objectContaining({ id: 'line-1', variantId: 'ol_variant_1' }),
+      ]);
     });
 
     it('should stamp diagnostic on the omp_fulfilled topology', async () => {

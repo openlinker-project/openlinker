@@ -244,7 +244,18 @@ export class ReservationService implements IReservationService {
         );
       }
     }
-    const targets = new Map(input.lines.map((line) => [line.orderLineId, line.quantity]));
+    // A bundle line holds nothing itself: its holds sit on the component lines,
+    // so each component is narrowed to `quantity * perUnit` (#3607).
+    const targets = new Map(
+      input.lines.flatMap((line): Array<[string, number]> =>
+        line.components !== undefined && line.components.length > 0
+          ? line.components.map((c): [string, number] => [
+              c.componentLineId,
+              line.quantity * c.perUnit,
+            ])
+          : [[line.orderLineId, line.quantity]]
+      )
+    );
     if (targets.size === 0) {
       return { narrowed: 0, released: 0, untouched: 0, failed: 0 };
     }

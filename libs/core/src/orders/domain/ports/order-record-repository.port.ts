@@ -7,6 +7,7 @@
  *
  * @module libs/core/src/orders/domain/ports
  */
+import type { LineExpansion } from '@openlinker/core/products';
 import type { OrderRecord } from '../entities/order-record.entity';
 import type { OrderLineItemDraft } from '../order-analytics-projection';
 import type {
@@ -839,6 +840,14 @@ export interface OrderRecordRepositoryPort {
    * re-reads to tell which.
    */
   applyOrderEdit(input: ApplyOrderEditInput): Promise<OrderRecord | null>;
+
+  /**
+   * Freeze the order's bundle expansion once (#3607, ADR-083 decision 2). The
+   * sole writer of `lineExpansion`: a conditional write that only lands while
+   * the column is still NULL, and returns whatever is stored (the argument when
+   * this call wrote it, the earlier value otherwise).
+   */
+  freezeLineExpansion(internalOrderId: string, expansion: LineExpansion): Promise<LineExpansion>;
 
   /**
    * Record that the source amended this order after ingestion (#2283) — writes

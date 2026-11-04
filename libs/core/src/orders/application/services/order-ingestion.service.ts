@@ -60,7 +60,11 @@ import {
   IProductsService,
   PRODUCTS_SERVICE_TOKEN,
   TAX_RATE_JOURNAL_SERVICE_TOKEN,
+  BUNDLE_DEFINITION_SERVICE_TOKEN,
+  expandBundleLines,
   taxRateState,
+  type IBundleDefinitionService,
+  type LineExpansion,
   type ITaxRateJournalService,
   type StoredTaxRate,
   type TaxRateSource,
@@ -281,7 +285,10 @@ export class OrderIngestionService implements IOrderIngestionService {
     // confirmation of an operator cancel request exactly as the operator path
     // runs it. Same module, no cycle.
     @Inject(ORDER_CANCELLATION_EFFECTS_SERVICE_TOKEN)
-    private readonly cancellationEffects: IOrderCancellationEffectsService
+    private readonly cancellationEffects: IOrderCancellationEffectsService,
+    // #3607: the bundle definitions the physical line list is expanded from.
+    @Inject(BUNDLE_DEFINITION_SERVICE_TOKEN)
+    private readonly bundleDefinitions: IBundleDefinitionService
   ) {}
 
   async ingestOrders(
@@ -575,7 +582,7 @@ export class OrderIngestionService implements IOrderIngestionService {
         // hold is level-triggered: every re-ingestion re-asks, so it releases
         // itself once a bundle definition exists.
         const defined = await hasBundleDefinition(
-          result.internalProductId,
+          this.bundleDefinitions,
           result.internalVariantId
         );
         if (!defined) {
@@ -689,6 +696,11 @@ export class OrderIngestionService implements IOrderIngestionService {
     // applied to this very write rather than a read taken a moment earlier.
     const order = applyOrderEditsToOrder(channelOrder, persisted?.orderEdits ?? null);
 
+    // #3607 (ADR-083): the physical line list, frozen ONCE before anything
+    // reserves, routes or decrements. Every stock site below reads it; the
+    // destination mirror and the documents keep `order.items`.
+    const physicalItems = await this.freezePhysicalItems(order, existing);
+
     // #3554 / D8: T9 `order.received`, once - only when the pre-persist read
     // found no record, so a re-poll, a webhook replay or a status update
     // re-ingesting the same order fires nothing. The ingestion lock (#906)
@@ -724,6 +736,7 @@ export class OrderIngestionService implements IOrderIngestionService {
     );
     await this.reserveOrderInventory(
       order,
+      physicalItems,
       connectionId,
       fulfillmentRouting,
       cancelledFromEarlySignal,
@@ -799,7 +812,8 @@ export class OrderIngestionService implements IOrderIngestionService {
       order,
       connectionId,
       persisted?.shippingAddressHash ?? null,
-      routingTarget
+      routingTarget,
+      physicalItems
     );
     await this.persistFulfillmentOutcome(order.id, routing);
 
@@ -830,6 +844,11 @@ export class OrderIngestionService implements IOrderIngestionService {
         order,
         sourceConnectionId: connectionId,
         sourceEventId,
+        // Only when a bundle expanded anything, so an order without one sends
+        // the byte-identical request it always did.
+        ...(physicalItems.some((item) => 'parentLineId' in item && item.parentLineId !== undefined)
+          ? { physicalProductIds: physicalItems.map((item) => item.productId) }
+          : {}),
       });
     }
 
@@ -1115,6 +1134,35 @@ export class OrderIngestionService implements IOrderIngestionService {
   }
 
   /**
+   * Freeze the order's bundle expansion and return its physical line list
+   * (#3607, ADR-083 decisions 1-2). Written once: a re-poll or a later edit of
+   * a definition reads back what was stored. An order that was already `ready`
+   * before bundles existed carries no expansion and keeps its commercial list,
+   * because expanding it now would reserve components beside a bundle-line hold
+   * that is already recorded.
+   *
+   * Deliberately NOT caught: continuing after a failed freeze would reserve at
+   * the commercial grain, i.e. a silent no-op for every component.
+   */
+  private async freezePhysicalItems(
+    order: Order,
+    existing: OrderRecord | null | undefined
+  ): Promise<Order['items']> {
+    if (existing?.recordStatus === 'ready' && existing.lineExpansion === null) {
+      return order.items;
+    }
+    const variantIds = [
+      ...new Set(order.items.map((i) => i.variantId).filter((id): id is string => Boolean(id))),
+    ];
+    const definitions = await this.bundleDefinitions.findCurrentByVariantIds(variantIds);
+    const frozen: LineExpansion = await this.orderRecordService.freezeLineExpansion(order.id, {
+      v: 1,
+      definitions,
+    });
+    return expandBundleLines(order.items, frozen.definitions);
+  }
+
+  /**
    * Decide whether fulfilment routing HOLDS this order (#2396, DESIGN §5.5).
    *
    * Three arms, per the issue:
@@ -1146,7 +1194,8 @@ export class OrderIngestionService implements IOrderIngestionService {
     order: Order,
     connectionId: string,
     shippingAddressHash: string | null,
-    target: RoutingTarget
+    target: RoutingTarget,
+    physicalItems: readonly Order['items'][number][]
   ): Promise<FulfillmentInterceptOutcome> {
     try {
       switch (target.kind) {
@@ -1181,7 +1230,7 @@ export class OrderIngestionService implements IOrderIngestionService {
       }
       const { holder, router } = target;
 
-      const projection = this.projectOrderForRouting(order, shippingAddressHash);
+      const projection = this.projectOrderForRouting(order, shippingAddressHash, physicalItems);
       if (projection === null) {
         // #3485 — HELD, not mirrored: the OMS is this order's router, so sending
         // it to the product masters instead would put it in every one of them.
@@ -1516,7 +1565,8 @@ export class OrderIngestionService implements IOrderIngestionService {
    */
   private projectOrderForRouting(
     order: Order,
-    shippingAddressHash: string | null
+    shippingAddressHash: string | null,
+    physicalItems: readonly Order['items'][number][]
   ): OrderRoutingProjection | null {
     // The reduction itself is the shared pure rule (#2954); only the PII flag is
     // read here. `getEnvBoolean`, NOT `getPiiConfig()`: the latter throws when
@@ -1525,7 +1575,8 @@ export class OrderIngestionService implements IOrderIngestionService {
     return projectOrderForRouting(
       order,
       shippingAddressHash,
-      getEnvBoolean('OL_STORE_PII', true)
+      getEnvBoolean('OL_STORE_PII', true),
+      physicalItems
     );
   }
 
@@ -2240,6 +2291,7 @@ export class OrderIngestionService implements IOrderIngestionService {
    */
   private async reserveOrderInventory(
     order: Order,
+    physicalItems: readonly Order['items'][number][],
     connectionId: string,
     fulfillmentRouting: () => Promise<FulfillmentRoutingResolution | null>,
     alreadyCancelled = false,
@@ -2259,7 +2311,7 @@ export class OrderIngestionService implements IOrderIngestionService {
       // Holding stock for an order that arrived already dead is pure noise.
       if (order.status === 'cancelled' || alreadyCancelled) return;
 
-      const lines: ReserveOrderLineInput[] = order.items
+      const lines: ReserveOrderLineInput[] = physicalItems
         .filter((item) => Boolean(item.productId) && item.quantity > 0)
         .map((item) => ({
           orderLineId: item.id,

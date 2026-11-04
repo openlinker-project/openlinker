@@ -8,6 +8,7 @@
  * @module libs/core/src/orders/infrastructure/persistence/repositories
  * @implements {OrderRecordRepositoryPort}
  */
+import { readLineExpansion, type LineExpansion } from '@openlinker/core/products';
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import type { DataSource, EntityManager, SelectQueryBuilder } from 'typeorm';
@@ -3054,6 +3055,33 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
   }
 
   /**
+   * Freeze the order's bundle expansion (#3607). THE sole writer of
+   * `lineExpansion`; written once, at ingestion, before reservation. The
+   * `IS NULL` guard is the single-writer-once rule: a re-poll, a retry or a
+   * later definition edit changes nothing, and the stored value is returned.
+   */
+  async freezeLineExpansion(
+    internalOrderId: string,
+    expansion: LineExpansion
+  ): Promise<LineExpansion> {
+    const rows = (await this.repository.query(
+      `UPDATE "order_records" SET "lineExpansion" = $2::jsonb
+        WHERE "internalOrderId" = $1 AND "lineExpansion" IS NULL
+        RETURNING "lineExpansion"`,
+      [internalOrderId, JSON.stringify(expansion)]
+    )) as unknown[];
+    const updated = Array.isArray(rows[0]) ? (rows[0] as Record<string, unknown>[]) : rows;
+    if (updated.length > 0) {
+      return expansion;
+    }
+    const existing = (await this.repository.query(
+      `SELECT "lineExpansion" FROM "order_records" WHERE "internalOrderId" = $1`,
+      [internalOrderId]
+    )) as { lineExpansion: unknown }[];
+    return readLineExpansion(existing[0]?.lineExpansion) ?? expansion;
+  }
+
+  /**
    * Merge one operator edit into the overlay (#3542). THE sole writer of
    * `orderEdits`; see `order-edits.types.ts`.
    *
@@ -3681,7 +3709,7 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
       // is read back from the same statement's RETURNING, so it is atomic with
       // the upsert - which is what lets `persistOrder` hand ingestion the overlay
       // that applied to THIS write rather than one read a moment earlier.
-      if (property === 'orderEdits') {
+      if (property === 'orderEdits' || property === 'lineExpansion') {
         continue;
       }
       entity[property] = EMPTY_COLUMN_DEFAULTS[property]?.() ?? null;
@@ -4007,7 +4035,8 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
       entity.buyerOrderCount ?? null,
       entity.buyerNoteChangedAt ?? null,
       orderEdits === null ? null : entity.orderSnapshot,
-      orderEdits
+      orderEdits,
+      entity.recordStatus === 'ready' ? readLineExpansion(entity.lineExpansion) : null
     );
   }
 

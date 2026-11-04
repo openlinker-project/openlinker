@@ -347,7 +347,17 @@ export class OfferStockRestoreService implements IOfferStockRestoreService {
       return this.skipped(release, 'skipped-no-targets');
     }
 
-    const variantIds = this.collectVariantIds(record.orderSnapshot);
+    // #3607: a bundle line's stock lives on its components, so a cancellation
+    // restores the components' offers too. The commercial variants stay in the
+    // list - republishing a BUNDLE offer from component stock is #3931's.
+    const variantIds = [
+      ...new Set([
+        ...this.collectVariantIds(record.orderSnapshot),
+        ...record.physicalItems
+          .map((item) => item.variantId)
+          .filter((id): id is string => typeof id === 'string' && id.length > 0),
+      ]),
+    ];
     if (variantIds.length === 0) {
       this.logger.debug(
         `Stock-restore skipped: order has no resolved variants [connectionId=${connectionId}, orderId=${internalOrderId}]`,

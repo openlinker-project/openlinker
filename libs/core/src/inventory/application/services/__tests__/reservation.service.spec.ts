@@ -639,6 +639,29 @@ describe('ReservationService', () => {
   });
 
   describe('narrowForOrder (#3542)', () => {
+    it('should narrow the holds on a bundle line\'s component lines (#3607)', async () => {
+      reservations.listHeldByOrderRecordId.mockResolvedValue([
+        reservation({ orderLineId: 'line-1~c:va', quantity: 6 }),
+      ]);
+
+      const result = await service.narrowForOrder({
+        orderRecordId: ORDER_ID,
+        lines: [
+          {
+            orderLineId: 'line-1',
+            quantity: 1,
+            components: [{ componentLineId: 'line-1~c:va', perUnit: 3 }],
+          },
+        ],
+      });
+
+      expect(reservations.listHeldByOrderRecordId).toHaveBeenCalledWith(ORDER_ID, ['line-1~c:va']);
+      expect(reservations.claimHeld).toHaveBeenCalledWith([
+        expect.objectContaining({ orderLineId: 'line-1~c:va', quantity: 3 }),
+      ]);
+      expect(result.narrowed).toBe(1);
+    });
+
     it('should lower a hold to the new quantity, carrying atpEffect and expiry over untouched', async () => {
       reservations.listHeldByOrderRecordId.mockResolvedValue([
         reservation({ quantity: 5, atpEffect: 'diagnostic' }),

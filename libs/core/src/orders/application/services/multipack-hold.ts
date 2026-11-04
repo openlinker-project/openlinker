@@ -3,13 +3,14 @@
  *
  * An order line sold as a multipack (`packQuantity > 1`, e.g. an Allegro offer
  * whose product set holds several units) has to expand to N units of its
- * variant before anything is reserved or shipped. Until the operator can define
- * that expansion (bundle definitions, #3607) the only honest answer is to hold
- * the order: mapping the offer to one variant would reserve and ship a single
+ * variant before anything is reserved or shipped. Unless the operator has defined that
+ * expansion (a bundle definition, #3607) the only honest answer is to hold the
+ * order: mapping the offer to one variant would reserve and ship a single
  * unit for the price of several.
  *
  * @module libs/core/src/orders/application/services
  */
+import type { IBundleDefinitionService } from '@openlinker/core/products';
 import type { IncomingOrderItem } from '../../domain/types/incoming-order.types';
 
 /**
@@ -24,17 +25,20 @@ export function isMultipackLine(item: Pick<IncomingOrderItem, 'packQuantity'>): 
 }
 
 /**
- * THE seam #3607 plugs into: does this variant have a bundle definition that
- * expands a multipack into component units?
- *
- * Returns `false` until bundle definitions exist, which holds every multipack.
- * Replace the body, not the call site, so the hold in ingestion stays untouched.
+ * Does this variant have a bundle definition that expands a multipack into
+ * component units (#3607)? A multipack line WITH a definition is not held: its
+ * "N x product" definition expands like any other bundle, so `packQuantity` is
+ * only a signal here and is never multiplied on top of the definition.
  */
-export function hasBundleDefinition(
-  _internalProductId: string,
-  _internalVariantId: string | undefined
+export async function hasBundleDefinition(
+  bundles: Pick<IBundleDefinitionService, 'findCurrentByVariantIds'>,
+  internalVariantId: string | undefined
 ): Promise<boolean> {
-  return Promise.resolve(false);
+  if (internalVariantId === undefined) {
+    return false;
+  }
+  const definitions = await bundles.findCurrentByVariantIds([internalVariantId]);
+  return definitions.length > 0;
 }
 
 /** The reason text persisted on the held order. */

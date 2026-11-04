@@ -8,6 +8,7 @@
  * @module libs/core/src/orders/application/services
  * @implements {IOrderRecordService}
  */
+import type { LineExpansion } from '@openlinker/core/products';
 import { Injectable, Inject } from '@nestjs/common';
 import type { Order, OrderDispatchWindow } from '../../domain/types/order.types';
 import type { DeliveryCountryFact } from '../../domain/types/delivery-country-facts.types';
@@ -1296,6 +1297,13 @@ export class OrderRecordService implements IOrderRecordService {
   /** Merge one operator edit into the overlay (#3542); the repository owns the atomicity. */
   async applyOrderEdit(input: ApplyOrderEditInput): Promise<OrderRecord | null> {
     return this.repository.applyOrderEdit(input);
+  }
+
+  async freezeLineExpansion(
+    internalOrderId: string,
+    expansion: LineExpansion
+  ): Promise<LineExpansion> {
+    return this.repository.freezeLineExpansion(internalOrderId, expansion);
   }
 
   /**

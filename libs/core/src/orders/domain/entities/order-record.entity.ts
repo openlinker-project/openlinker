@@ -7,6 +7,14 @@
  *
  * @module domain/entities
  */
+import {
+  componentLineIdsFor,
+  componentRefsFor,
+  type ComponentLineRef,
+  expandBundleLines,
+  type LineExpansion,
+  type PhysicalLine,
+} from '@openlinker/core/products';
 import type { HoldReason } from '@openlinker/core/order-lifecycle';
 import type { OrderRecordStatus } from '../types/order-record.types';
 import type { OrderSyncStatus, SyncAttempt } from '../types/order-sync.types';
@@ -532,7 +540,15 @@ export class OrderRecord {
      * {@link orderSnapshot}. Sole writer `applyOrderEdit`; excluded from every
      * ingestion statement so a re-poll cannot erase it. Appended LAST.
      */
-    public readonly orderEdits: OrderEdits | null = null
+    public readonly orderEdits: OrderEdits | null = null,
+    /**
+     * The bundle definitions that applied to this order's lines at ingestion
+     * (#3607, ADR-083 decision 2), already coerced. `null` means no expansion
+     * was recorded, so the physical list equals the commercial one. Sole
+     * writer `freezeLineExpansion`; excluded from every ingestion statement.
+     * Read through {@link physicalItems}, never bare. Appended LAST.
+     */
+    public readonly lineExpansion: LineExpansion | null = null
   ) {}
 
   /**
@@ -849,6 +865,36 @@ export class OrderRecord {
         Number.isFinite(price)
       );
     });
+  }
+
+  /**
+   * The physical line list (#3607, ADR-083): {@link orderItems} with every
+   * bundle line expanded to its frozen components. Pure derivation of already
+   * loaded fields (ADR-011). Every stock, reservation, routing and decrement
+   * site reads this; documents, the channel and the destination mirror keep the
+   * commercial {@link orderItems}. Follows a later quantity edit of the bundle
+   * line, because only the per-unit composition is frozen.
+   */
+  get physicalItems(): PhysicalLine<OrderItem>[] {
+    return expandBundleLines(this.orderItems, this.lineExpansion?.definitions ?? []);
+  }
+
+  /**
+   * The physical line ids a commercial line stands for: its component ids when
+   * it is a bundle line, otherwise just `[lineId]`. How the order-edit
+   * follow-ups reach the works, holds and decrements of a bundle line - nothing
+   * recovers a bundle line id by splitting a component id.
+   */
+  componentLineIdsOf(lineId: string): string[] {
+    return componentLineIdsFor(lineId, this.orderItems, this.lineExpansion?.definitions ?? []);
+  }
+
+  /**
+   * The components of one bundle line with their units per bundle unit; empty
+   * for a line that is not a bundle. The order-edit follow-ups scale by it.
+   */
+  componentsOfLine(lineId: string): ComponentLineRef[] {
+    return componentRefsFor(lineId, this.orderItems, this.lineExpansion?.definitions ?? []);
   }
 
   /**

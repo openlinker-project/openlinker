@@ -1,0 +1,105 @@
+/**
+ * Bundle Definition DTOs (#3607, ADR-083)
+ *
+ * @module apps/api/src/products/http/dto
+ */
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { Type } from 'class-transformer';
+import {
+  ArrayMaxSize,
+  ArrayMinSize,
+  IsArray,
+  IsBoolean,
+  IsInt,
+  IsNotEmpty,
+  IsOptional,
+  IsString,
+  Min,
+  ValidateNested,
+} from 'class-validator';
+
+export const BUNDLE_MAX_COMPONENTS = 50;
+
+export class BundleComponentRequestDto {
+  @ApiProperty({ description: 'Master variant id of the component' })
+  @IsString()
+  @IsNotEmpty()
+  variantId!: string;
+
+  @ApiProperty({ description: 'Units of this component in ONE bundle unit', minimum: 1 })
+  @IsInt()
+  @Min(1)
+  quantity!: number;
+
+  @ApiPropertyOptional({ description: 'This component is the free gift of the set' })
+  @IsOptional()
+  @IsBoolean()
+  giftSlot?: boolean;
+}
+
+export class CreateBundleDefinitionRequestDto {
+  @ApiProperty({ description: 'The bundle\'s own master variant id' })
+  @IsString()
+  @IsNotEmpty()
+  variantId!: string;
+
+  @ApiProperty({ type: [BundleComponentRequestDto], minItems: 1, maxItems: BUNDLE_MAX_COMPONENTS })
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(BUNDLE_MAX_COMPONENTS)
+  @ValidateNested({ each: true })
+  @Type(() => BundleComponentRequestDto)
+  components!: BundleComponentRequestDto[];
+}
+
+export class UpdateBundleDefinitionRequestDto {
+  @ApiProperty({ type: [BundleComponentRequestDto], minItems: 1, maxItems: BUNDLE_MAX_COMPONENTS })
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(BUNDLE_MAX_COMPONENTS)
+  @ValidateNested({ each: true })
+  @Type(() => BundleComponentRequestDto)
+  components!: BundleComponentRequestDto[];
+}
+
+export class BundleComponentResponseDto {
+  @ApiProperty() variantId!: string;
+  @ApiProperty() productId!: string;
+  @ApiProperty() quantity!: number;
+  @ApiPropertyOptional() giftSlot?: boolean;
+}
+
+export class BundleDefinitionResponseDto {
+  @ApiProperty() variantId!: string;
+  @ApiProperty() version!: number;
+  @ApiProperty({ type: [BundleComponentResponseDto] }) components!: BundleComponentResponseDto[];
+}
+
+export class BundleComponentAvailabilityResponseDto extends BundleComponentResponseDto {
+  @ApiProperty({
+    type: Number,
+    nullable: true,
+    description: 'Units OpenLinker will promise for the component; null = unknown, never zero',
+  })
+  availableToPromise!: number | null;
+
+  @ApiProperty({
+    type: Number,
+    nullable: true,
+    description: 'Whole bundles this component alone can supply: floor(available / quantity)',
+  })
+  bundlesSupported!: number | null;
+}
+
+export class BundleWithAvailabilityResponseDto extends BundleDefinitionResponseDto {
+  @ApiProperty({ type: [BundleComponentAvailabilityResponseDto] })
+  componentAvailability!: BundleComponentAvailabilityResponseDto[];
+
+  @ApiProperty({
+    type: Number,
+    nullable: true,
+    description:
+      'The fewest bundles any component supports; null when any component is unknown. Not published to channels (#3931).',
+  })
+  bundlesAvailable!: number | null;
+}

@@ -507,6 +507,23 @@ describe('InventorySaleReversalService', () => {
   });
 
   describe('reverseLineQuantity (#3542)', () => {
+    it('should give back each component of a bundle line and sum back to one answer (#3607)', async () => {
+      seedAppliedDecrement({ orderLineId: 'line-1~c:va', quantity: 6 });
+
+      const result = await service.reverseLineQuantity({
+        internalOrderId: 'ol_order_1',
+        orderLineId: 'line-1',
+        units: 1,
+        components: [{ componentLineId: 'line-1~c:va', perUnit: 3 }],
+        changeId: 'chg-1',
+      });
+
+      expect(shop().adjustInventory).toHaveBeenCalledWith(
+        expect.objectContaining({ quantity: 3, idempotencyKey: 'edit:chg-1:line-1~c:va' })
+      );
+      expect(result).toEqual({ status: 'restored', units: 3, detail: null });
+    });
+
     it('should give back only the lowered units under edit:{changeId}:{orderLineId}', async () => {
       seedAppliedDecrement({ quantity: 3 });
 
