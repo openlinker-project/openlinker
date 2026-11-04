@@ -52,6 +52,7 @@ import {
   Inject,
   Param,
   Post,
+  Query,
   ServiceUnavailableException,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
@@ -74,10 +75,13 @@ import {
   RETURN_REFUND_LOCK_TTL_MS,
   RETURN_REFUND_SERVICE_TOKEN,
   RETURNS_SERVICE_TOKEN,
+  ReturnBundleRefusedError,
   ReturnLineNotFoundError,
   ReturnNotFoundError,
   describeCorrectionNoMatchReason,
   type AttestStockResult,
+  type BundleReturnInput,
+  type ResolvableOrderLine,
   type DisposeLineResult,
   type IReturnAuthorizeService,
   type IReturnCorrectionProposalService,
@@ -90,6 +94,7 @@ import {
   type ReturnCorrectionProposalResult,
   type ReturnLine,
 } from '@openlinker/core/returns';
+import { COMPONENT_LINE_ID_SEPARATOR } from '@openlinker/core/products';
 import { Logger } from '@openlinker/shared/logging';
 import { AuthenticatedUser } from '../../auth/auth.types';
 import { CurrentUser } from '../../auth/decorators/current-user.decorator';
@@ -98,6 +103,12 @@ import type {
   RestockBlockedResponseDto,
   ReturnLineCountersDto} from '../dto/return-custody.dto';
 import {
+  BundleRefundHintResponseDto,
+  BundleReturnPreviewQueryDto,
+  BundleReturnPreviewResponseDto,
+  ConfirmReturnLineOrderLineDto,
+  ConfirmReturnLineOrderLineResponseDto,
+  ReturnLineOrderLineSuggestionResponseDto,
   AttestReturnLineStockDto,
   AttestReturnLineStockResponseDto,
   DisposeReturnLineDto,
@@ -361,18 +372,174 @@ export class ReturnWritesController {
   ): Promise<DisposeReturnLineResponseDto> {
     await this.assertLineBelongsToReturn(returnId, lineId);
 
+    // The component list reaches `returns` as DATA read from the order here, never
+    // from the request: a client-named composition would let a caller restock
+    // stock the order never contained.
+    const bundle =
+      dto.disposition === 'restock'
+        ? await this.loadBundleInput(returnId, lineId, dto.returnedVariantIds)
+        : undefined;
+    if (bundle === undefined && dto.returnedVariantIds !== undefined) {
+      throw new ReturnBundleRefusedError('bad-selection', dto.returnedVariantIds);
+    }
+
     const result: DisposeLineResult = await this.custody.disposeLine(lineId, {
       quantity: dto.quantity,
       disposition: dto.disposition,
       note: dto.note ?? null,
       actorUserId: user.id,
+      ...(bundle === undefined ? {} : { bundle }),
     });
 
     return {
       line: this.toCountersDto(result.line),
       eventId: result.event.id,
       restockBlocked: this.toRestockBlockedDto(result.restockBlocked),
+      restockBlockedComponents: (result.restockBlockedComponents ?? [])
+        .map((detail) => this.toRestockBlockedDto(detail))
+        .filter((dtoItem): dtoItem is RestockBlockedResponseDto => dtoItem !== null),
     };
+  }
+
+  @Get(':returnId/lines/:lineId/bundle')
+  @Roles('admin', 'operator', 'viewer')
+  @ApiOperation({
+    summary: 'Price a (partial) return of a bundle line',
+    description:
+      'A read - nothing is written. For a bundle line: the components, each one\'s share of the set ' +
+      'price computed NOW from standalone prices (cost as the fallback), and the Allegro-formula ' +
+      'refund HINT (paid for the set minus the full price of what the buyer keeps, minimum 0). The ' +
+      'hint is never applied by default; the refund amount remains the operator\'s field.',
+  })
+  @ApiResponse({ status: 200, type: BundleReturnPreviewResponseDto })
+  async previewBundleReturn(
+    @Param('returnId') returnId: string,
+    @Param('lineId') lineId: string,
+    @Query() query: BundleReturnPreviewQueryDto
+  ): Promise<BundleReturnPreviewResponseDto> {
+    await this.assertLineBelongsToReturn(returnId, lineId);
+    const returned = query.returnedVariantIds
+      ?.split(',')
+      .map((id) => id.trim())
+      .filter((id) => id !== '');
+    const bundle = await this.loadBundleInput(
+      returnId,
+      lineId,
+      returned !== undefined && returned.length > 0 ? returned : undefined
+    );
+    if (bundle === undefined) {
+      return {
+        isBundle: false,
+        paidPerUnitGross: null,
+        components: [],
+        splitRefusal: null,
+        splitRefusalVariantIds: [],
+        returnedShareGross: null,
+        allegroRefundHintGross: null,
+      };
+    }
+    const parsed = Number(query.quantity ?? '1');
+    const quantity = Number.isInteger(parsed) && parsed >= 1 ? parsed : 1;
+    const preview = await this.custody.previewBundleReturn(bundle, quantity);
+    return { isBundle: true, paidPerUnitGross: bundle.paidPerUnitGross, ...preview };
+  }
+
+  @Get(':returnId/bundle-refund-hint')
+  @Roles('admin', 'operator', 'viewer')
+  @ApiOperation({
+    summary: 'The Allegro-formula refund hint for partially returned bundles',
+    description:
+      'A read. Sums, over the return\'s partially returned bundle lines, what was paid for the set ' +
+      'minus the full price of what the buyer keeps (minimum 0 per line). A hint only: it is ' +
+      'never applied, and OpenLinker records a refund, it does not execute one.',
+  })
+  @ApiResponse({ status: 200, type: BundleRefundHintResponseDto })
+  async bundleRefundHint(
+    @Param('returnId') returnId: string
+  ): Promise<BundleRefundHintResponseDto> {
+    const sets = await this.custody.listReturnedBundleComponents(returnId);
+    if (sets.length === 0) {
+      return { applicable: false, hintGross: null, paidForSetGross: null, keptStandaloneGross: null };
+    }
+    let hint = 0;
+    let paid = 0;
+    let kept = 0;
+    for (const set of sets) {
+      const bundle = await this.loadBundleInput(returnId, set.returnLineId, set.returnedVariantIds);
+      if (bundle === undefined) {
+        return { applicable: true, hintGross: null, paidForSetGross: null, keptStandaloneGross: null };
+      }
+      const preview = await this.custody.previewBundleReturn(bundle, set.units);
+      if (preview.allegroRefundHintGross === null || preview.hintInputs === null) {
+        return { applicable: true, hintGross: null, paidForSetGross: null, keptStandaloneGross: null };
+      }
+      hint += preview.allegroRefundHintGross;
+      paid += preview.hintInputs.paidForSetGross;
+      kept += preview.hintInputs.keptStandaloneGross;
+    }
+    const round = (value: number): number => Math.round(value * 100) / 100;
+    return {
+      applicable: true,
+      hintGross: round(hint),
+      paidForSetGross: round(paid),
+      keptStandaloneGross: round(kept),
+    };
+  }
+
+  @Get(':returnId/lines/:lineId/order-line-suggestion')
+  @Roles('admin', 'operator', 'viewer')
+  @ApiOperation({
+    summary: 'Suggest the order line a return line belongs to',
+    description:
+      'For a line whose automatic resolution stayed ambiguous (the same offer on several order ' +
+      'lines, one of them in an offer-bundle discount): the candidates and one suggestion with its ' +
+      'basis. A read; the operator confirms through the confirm route.',
+  })
+  @ApiResponse({ status: 200, type: ReturnLineOrderLineSuggestionResponseDto })
+  async suggestOrderLine(
+    @Param('returnId') returnId: string,
+    @Param('lineId') lineId: string
+  ): Promise<ReturnLineOrderLineSuggestionResponseDto> {
+    const orderLines = await this.loadOrderLines(returnId, lineId);
+    const suggestion = await this.returns.suggestOrderLineForReturnLine(lineId, orderLines);
+    return {
+      candidates: suggestion.candidates.map((candidate) => ({
+        id: candidate.id,
+        price: candidate.price,
+        quantity: candidate.quantity,
+        sku: candidate.sku ?? null,
+      })),
+      suggestedOrderLineId: suggestion.suggestedOrderLineId,
+      basis: suggestion.basis,
+      alreadyResolvedOrderLineId: suggestion.alreadyResolvedOrderLineId,
+    };
+  }
+
+  @Post(':returnId/lines/:lineId/confirm-order-line')
+  @Roles('admin', 'operator')
+  @ApiOperation({
+    summary: 'Confirm the order line a return line belongs to',
+    description:
+      'The operator\'s confirmation of a suggestion. Goes through the same fill-in-when-empty claim ' +
+      'as automatic resolution, so it can never overwrite an answer.',
+  })
+  @ApiResponse({ status: 201, type: ConfirmReturnLineOrderLineResponseDto })
+  @ApiResponse({ status: 400, description: 'The order line is not one of the order\'s lines' })
+  async confirmOrderLine(
+    @Param('returnId') returnId: string,
+    @Param('lineId') lineId: string,
+    @Body() dto: ConfirmReturnLineOrderLineDto
+  ): Promise<ConfirmReturnLineOrderLineResponseDto> {
+    const orderLines = await this.loadOrderLines(returnId, lineId);
+    const result = await this.returns.confirmOrderLineForReturnLine(
+      lineId,
+      dto.orderLineId,
+      orderLines
+    );
+    if (!result.known) {
+      throw new BadRequestException('The order line is not one of this order\'s lines');
+    }
+    return { claimed: result.claimed };
   }
 
   @Post(':returnId/lines/:lineId/mark-stock-handled')
@@ -658,6 +825,81 @@ export class ReturnWritesController {
     }
   }
 
+  /** The order's commercial lines, for the resolution routes. */
+  private async loadOrderLines(
+    returnId: string,
+    lineId: string
+  ): Promise<ResolvableOrderLine[]> {
+    await this.assertLineBelongsToReturn(returnId, lineId);
+    const record = await this.returns.getReturn(returnId);
+    if (record === null || record.internalOrderId === null) {
+      throw new ConflictException('The return is not attributed to an order');
+    }
+    const order = await this.orderRecords.getOrderRecord(record.internalOrderId);
+    if (order === null) {
+      throw new ConflictException('The order of this return could not be read');
+    }
+    return order.orderItems;
+  }
+
+  /**
+   * The composition of a returned bundle line, read from the order's FROZEN
+   * expansion (#3933). `undefined` for an ordinary line or one whose order line
+   * is not resolved yet - nothing is guessed from the sku.
+   */
+  private async loadBundleInput(
+    returnId: string,
+    lineId: string,
+    returnedVariantIds: string[] | undefined
+  ): Promise<BundleReturnInput | undefined> {
+    const record = await this.returns.getReturn(returnId);
+    const line = record?.lines.find((candidate) => candidate.id === lineId);
+    if (
+      record === null ||
+      record.internalOrderId === null ||
+      line === undefined ||
+      typeof line.resolvedOrderLineId !== 'string'
+    ) {
+      return undefined;
+    }
+    const order = await this.orderRecords.getOrderRecord(record.internalOrderId);
+    if (order === null) {
+      return undefined;
+    }
+    const refs = order.componentsOfLine(line.resolvedOrderLineId);
+    if (refs.length === 0) {
+      return undefined;
+    }
+    const definitions = order.lineExpansion?.definitions ?? [];
+    const catalogue = new Map(
+      definitions.flatMap((definition) =>
+        definition.components.map((component) => [component.variantId, component] as const)
+      )
+    );
+    const item = order.orderItems.find((candidate) => candidate.id === line.resolvedOrderLineId);
+    const components: BundleReturnInput['components'] = [];
+    for (const ref of refs) {
+      const variantId = ref.componentLineId.slice(
+        ref.componentLineId.indexOf(COMPONENT_LINE_ID_SEPARATOR) + COMPONENT_LINE_ID_SEPARATOR.length
+      );
+      const known = catalogue.get(variantId);
+      if (known === undefined) {
+        return undefined;
+      }
+      components.push({ productId: known.productId, variantId, perUnit: ref.perUnit });
+    }
+    // A net-priced order with no reported gross has no honest gross to split.
+    const paid =
+      item === undefined
+        ? null
+        : (item.unitPriceGross ?? (order.taxTreatment === 'exclusive' ? null : item.price));
+    return {
+      paidPerUnitGross: paid,
+      components,
+      ...(returnedVariantIds === undefined ? {} : { returnedVariantIds }),
+    };
+  }
+
   private toCountersDto(line: ReturnLine): ReturnLineCountersDto {
     return {
       id: line.id,
@@ -726,6 +968,7 @@ export class ReturnWritesController {
                     ? null
                     : describeCorrectionNoMatchReason(line.noMatchReason),
                 candidatesPriceOrRateDiffer: line.candidatesPriceOrRateDiffer,
+                componentCredit: line.componentCredit ?? null,
               })),
             },
     };

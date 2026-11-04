@@ -87,6 +87,7 @@
 import { assertNever } from '@openlinker/shared/types';
 
 import type {
+  ReturnCorrectionComponentCredit,
   ReturnCorrectionCandidate,
   ReturnCorrectionNoMatchReason,
   ReturnCorrectionProposalLine,
@@ -427,4 +428,52 @@ export function describeCorrectionNoMatchReason(reason: ReturnCorrectionNoMatchR
     default:
       return assertNever(reason, 'ReturnCorrectionNoMatchReason');
   }
+}
+
+/**
+ * Fold the per-component acts of a return into one credit per return line
+ * (#3933). Only a PARTIAL group counts (its acts carry a price share), and only
+ * when every act of the group is book-confirmed: a group with a refused
+ * component never moved the line counters, so crediting it would be crediting
+ * stock OpenLinker could not confirm came back.
+ */
+export interface ComponentActInput {
+  returnLineId: string;
+  componentGroup: string | null;
+  componentVariantId: string | null;
+  componentShareGross: number | null;
+  quantity: number;
+  confirmed: boolean;
+}
+
+export function summarizeComponentCredits(
+  acts: readonly ComponentActInput[]
+): Map<string, ReturnCorrectionComponentCredit> {
+  const groups = new Map<string, ComponentActInput[]>();
+  for (const act of acts) {
+    if (act.componentGroup === null || act.componentVariantId === null) continue;
+    const key = `${act.returnLineId}|${act.componentGroup}`;
+    const existing = groups.get(key);
+    if (existing === undefined) groups.set(key, [act]);
+    else existing.push(act);
+  }
+
+  const result = new Map<string, ReturnCorrectionComponentCredit>();
+  for (const group of groups.values()) {
+    const partial = group.every((act) => act.componentShareGross !== null);
+    if (!partial || !group.every((act) => act.confirmed)) continue;
+    const lineId = group[0].returnLineId;
+    const entry = result.get(lineId) ?? { units: 0, amountGross: 0, variantIds: [] };
+    entry.units += group[0].quantity;
+    entry.amountGross =
+      Math.round((entry.amountGross + group.reduce((sum, act) => sum + (act.componentShareGross ?? 0), 0)) * 100) /
+      100;
+    for (const act of group) {
+      if (act.componentVariantId !== null && !entry.variantIds.includes(act.componentVariantId)) {
+        entry.variantIds.push(act.componentVariantId);
+      }
+    }
+    result.set(lineId, entry);
+  }
+  return result;
 }

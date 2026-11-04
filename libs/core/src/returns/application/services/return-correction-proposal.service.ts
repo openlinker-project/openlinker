@@ -53,7 +53,10 @@ import { INVOICE_SERVICE_TOKEN, type IInvoiceService } from '@openlinker/core/in
 import { ORDER_CHANGE_SERVICE_TOKEN, type IOrderChangeService } from '@openlinker/core/orders';
 import { Logger } from '@openlinker/shared/logging';
 
-import { classifyReturnCorrectionLines } from '../../domain/domain-services/return-correction-matching.domain-service';
+import {
+  classifyReturnCorrectionLines,
+  summarizeComponentCredits,
+} from '../../domain/domain-services/return-correction-matching.domain-service';
 import type { CorrectionReturnLineInput } from '../../domain/domain-services/return-correction-matching.domain-service';
 import { ReturnNotAttributedError } from '../../domain/exceptions/return-not-attributed.error';
 import type { ReturnLine } from '../../domain/entities/return-line.entity';
@@ -206,12 +209,35 @@ export class ReturnCorrectionProposalService implements IReturnCorrectionProposa
       return { outcome: 'no-line-snapshot', proposal: null, changeId: null, opened: false };
     }
 
-    const lines = classifyReturnCorrectionLines(
+    // Bundle components that came back one by one are credited as an amount on
+    // the set's single invoice line, never as fewer units (#3933).
+    const credits = summarizeComponentCredits(
+      (await this.repository.findComponentActsForReturn(record.id)).map((act) => ({
+        returnLineId: act.returnLineId,
+        componentGroup: act.componentGroup,
+        componentVariantId: act.componentVariantId,
+        componentShareGross: act.componentShareGross,
+        quantity: act.quantity,
+        confirmed: ['applied', 'deduplicated', 'handled_manually'].includes(act.restockState),
+      }))
+    );
+
+    const classified = classifyReturnCorrectionLines(
       candidateLines.map((line) =>
-        toMatcherInput(line, linesWithUnconfirmedDisposition.has(line.id))
+        toMatcherInput(
+          line,
+          linesWithUnconfirmedDisposition.has(line.id),
+          credits.get(line.id)?.units ?? 0
+        )
       ),
       snapshot.lines
     );
+    const lines = classified.map((entry) => {
+      const credit = credits.get(entry.returnLineId);
+      const creditable =
+        entry.status !== 'no-match' || entry.noMatchReason === 'ambiguous-invoice-line';
+      return credit === undefined || !creditable ? entry : { ...entry, componentCredit: credit };
+    });
 
     const proposal: ReturnCorrectionProposal = {
       returnId: record.id,
@@ -296,13 +322,17 @@ function disposedQuantityOf(line: ReturnLine): number {
   return line.quantityRestocked + line.quantityScrapped;
 }
 
-function toMatcherInput(line: ReturnLine, hasUnconfirmedDisposition: boolean): CorrectionReturnLineInput {
+function toMatcherInput(
+  line: ReturnLine,
+  hasUnconfirmedDisposition: boolean,
+  partialComponentUnits = 0
+): CorrectionReturnLineInput {
   return {
     returnLineId: line.id,
     lineIndex: line.lineIndex,
     name: line.name,
     sku: line.sku,
-    quantityDisposed: disposedQuantityOf(line),
+    quantityDisposed: Math.max(0, disposedQuantityOf(line) - partialComponentUnits),
     hasUnconfirmedDisposition,
     resolvedOrderLineId: line.resolvedOrderLineId,
   };

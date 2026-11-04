@@ -161,6 +161,20 @@ export interface ReturnCorrectionProposalLine {
    * is evidence the operator may act on; it is never grounds for OL to pick.
    */
   candidatesPriceOrRateDiffer: boolean;
+  /**
+   * Set when part of this line came back as individual bundle COMPONENTS (#3933).
+   * The set stays one invoice line, so that part is credited as an amount on the
+   * line, not as fewer units: `amountGross` is the sum of the returned
+   * components' shares of the set price, computed at return time.
+   */
+  componentCredit?: ReturnCorrectionComponentCredit | null;
+}
+
+export interface ReturnCorrectionComponentCredit {
+  /** Bundle units whose components came back partially (excluded from the quantity cut). */
+  units: number;
+  amountGross: number;
+  variantIds: string[];
 }
 
 /**

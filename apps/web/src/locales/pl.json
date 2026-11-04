@@ -4,6 +4,7 @@
       "bundleFallbackName": "Zestaw",
       "bundleHeader": "Zestaw: {name}",
       "bundleProgress": "{done} z {total} w paczce",
+      "includeGift": "Włóż gratis: {name}",
       "missingDetail": "{name}: składników {total}, w paczce {done}. Brakuje: {missing}. Paczka zamknie się sama dopiero po zeskanowaniu wszystkich pozycji. Nie wysyłaj zestawu w częściach.",
       "missingTitle": "Nie można zamknąć paczki: brakuje składnika zestawu"
     },
@@ -115,6 +116,9 @@
       "bundleLinesCaption": "Pozycje zamówienia",
       "bundleMark": "Zestaw",
       "confirmMultipack": "Ta oferta to {n} x {name}",
+      "giftCosts": "Kosztuje Cię {cost}",
+      "giftMark": "Gratis",
+      "giftPays": "Klient płaci {price}",
       "inBundlePrice": "w cenie zestawu",
       "multipackBody": "Kanał sprzedał {n} sztuk jednego produktu w jednej ofercie, a OpenLinker nie wie, co to znaczy. Bez tego ze stanu zeszłaby 1 sztuka zamiast {n}.",
       "multipackConfirmText": "Jedna sprzedaż tej oferty = {n} x {name}. Każde czekające na nią zamówienie pójdzie dalej.",
@@ -448,6 +452,48 @@
     },
     "wizard": {
       "summary": "Podsumowanie konfiguracji"
+    }
+  },
+  "bundleReturns": {
+    "correction": {
+      "componentCredit": "Do skorygowania za zwrócone składniki: {amount} (zestawów: {units}). Zestaw zostaje jedną pozycją faktury; ilość się nie zmniejsza."
+    },
+    "hint": {
+      "calcKept": "Zostaje u klienta, pełna cena: {amount}",
+      "calcPaid": "Zapłacone za zestaw: {amount}",
+      "calcResult": "Wzór daje zapłacone minus to, co zostaje u klienta, i nigdy mniej niż 0.",
+      "calcTitle": "Jak to policzono",
+      "label": "Według wzoru Allegro: {amount}.",
+      "notApplied": "To tylko podpowiedź. Nic się nie wpisze, dopóki nie klikniesz Użyj.",
+      "unavailable": "Nie da się policzyć wzoru Allegro: składnik, który zostaje u klienta, nie ma własnej ceny.",
+      "use": "Użyj"
+    },
+    "match": {
+      "alreadyResolved": "Ta pozycja była już dopasowana; nic nie zmieniono.",
+      "basisHighestPrice": "Podpowiedź, bo to pozycja z najwyższą ceną. To zgadywanie: sprawdź ją.",
+      "basisPriceMatch": "Podpowiedź, bo cena zgadza się z ceną ze zwrotu.",
+      "body": "Ta sama oferta występuje na zamówieniu {n} razy. Sprawdź, której pozycji dotyczy zwrot, i potwierdź.",
+      "confirm": "Potwierdź pozycję",
+      "confirmed": "Pozycja zamówienia potwierdzona.",
+      "failed": "Nie udało się potwierdzić pozycji.",
+      "noSuggestion": "OpenLinker nie ma podpowiedzi. Wybierz pozycję.",
+      "option": "{price} x {qty}",
+      "selectLabel": "Pozycja zamówienia",
+      "title": "Ta pozycja może być jedną z kilku na zamówieniu"
+    },
+    "picker": {
+      "backInWarehouse": "Wraca do magazynu",
+      "componentLine": "{name} x {n}",
+      "noSplitSkus": "{skus} nie ma ceny ani kosztu, więc OpenLinker nie wie, ile wart jest zwracany element. Dodaj składnikowi cenę lub koszt albo przyjmij cały zestaw.",
+      "noSplitTitle": "Nie da się podzielić ceny zestawu",
+      "noSplitTotal": "Nie wiadomo, ile zapłacono za ten zestaw, więc nie da się go podzielić. Przyjmij cały zestaw.",
+      "noneSelected": "Zaznacz co najmniej jeden składnik.",
+      "partialHint": "Na stan wracają tylko zaznaczone składniki.",
+      "share": "Wart {amount} z ceny zestawu",
+      "staysWithCustomer": "Zostaje u klienta",
+      "title": "Co wraca",
+      "whole": "Cały zestaw",
+      "wholeHint": "Każdy składnik wraca na stan."
     }
   }
 }

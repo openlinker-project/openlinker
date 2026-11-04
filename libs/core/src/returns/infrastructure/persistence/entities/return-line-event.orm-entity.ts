@@ -142,6 +142,18 @@ export class ReturnLineEventOrmEntity {
   @Column({ type: 'uuid', nullable: true })
   attestedByEventId!: string | null;
 
+  /** The bundle component this act restocks; NULL for an act on the line itself (#3933). */
+  @Column({ type: 'text', nullable: true })
+  componentVariantId!: string | null;
+
+  /** Groups the per-component acts of ONE dispose call; the line counters move once per group. */
+  @Column({ type: 'text', nullable: true })
+  componentGroup!: string | null;
+
+  /** Gross share of the set price this component carries; set only on a partial return. */
+  @Column({ type: 'numeric', precision: 14, scale: 2, nullable: true })
+  componentShareGross!: string | null;
+
   @CreateDateColumn({ type: 'timestamptz' })
   createdAt!: Date;
 }
