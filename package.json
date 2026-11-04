@@ -49,6 +49,7 @@
     "dev:stack:logs": "docker compose logs -f",
     "dev:stack:seed-prestashop": "docker compose exec -T prestashop sh -c 'for f in /tmp/post-install-scripts/*.sh; do echo \"--- $f ---\"; sh \"$f\" || exit $?; done'",
     "dev:stack:seed-woocommerce": "docker compose exec -T woocommerce bash /docker-entrypoint-initdb.d/01-seed-wc-data.sh",
+    "dev:stack:seed-shopify": "docker compose --profile shopify run --rm shopify-tools",
     "dev:stack:wc-credentials": "docker compose exec -T woocommerce cat /bitnami/wordpress/.dev-secrets/woocommerce-credentials.json | jq .",
     "dev:health": "curl -s http://localhost:3000/v1/health/dev-stack | jq . || curl -s http://localhost:3000/v1/health/dev-stack",
     "demo:up": "docker compose -f docker-compose.yml -f docker-compose.demo.yml up -d --build postgres redis mysql woocommerce-mysql woocommerce prestashop migrate api worker web backup",
