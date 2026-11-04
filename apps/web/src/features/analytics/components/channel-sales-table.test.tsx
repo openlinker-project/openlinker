@@ -250,7 +250,7 @@ describe('ChannelSalesTable', () => {
     expect(screen.queryByText(/^Total ·/)).not.toBeInTheDocument();
     expect(
       screen.getByText(
-        '5 orders not yet converted to the reporting currency — excluded from the figures above.'
+        '5 orders not yet converted to the reporting currency - excluded from the figures above.'
       )
     ).toBeInTheDocument();
   });
@@ -343,7 +343,7 @@ describe('ChannelSalesTable', () => {
     expect(screen.queryByText('€800.00')).not.toBeInTheDocument();
     expect(
       screen.getByText(
-        '8 orders not yet converted to the reporting currency — excluded from the figures above.'
+        '8 orders not yet converted to the reporting currency - excluded from the figures above.'
       )
     ).toBeInTheDocument();
   });

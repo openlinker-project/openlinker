@@ -15,6 +15,7 @@
  */
 import type { ReactElement } from 'react';
 import { Link } from 'react-router-dom';
+import { interpolate, useMessages } from '../../../shared/i18n';
 import { ReadOnlyLock } from '../../../shared/ui/read-only-lock';
 import { useWriteAccess } from '../../../shared/auth/use-permission';
 import { demoReadOnlyActionMessage } from '../../../shared/config/demo-mode';
@@ -41,12 +42,13 @@ export function ChannelPublishAction({
   // (which loses middle-click / open-in-new-tab for free). The row itself is
   // an expand toggle (#2765), not a navigation anchor, so nesting an `<a>`
   // inside it is not a concern here either.
+  const copy = useMessages('analytics').channelPublishAction;
   const write = useWriteAccess('listings:write', demoMode);
   if (!write.visible) {
     return null;
   }
 
-  const label = `Publish ${productName} on this channel — it already sells elsewhere`;
+  const label = interpolate(copy.label, { product: productName });
 
   if (write.demoReadOnly) {
     return (
@@ -57,7 +59,7 @@ export function ChannelPublishAction({
           disabled
           aria-label={label}
         >
-          Publish
+          {copy.publish}
         </button>
       </ReadOnlyLock>
     );
@@ -69,7 +71,7 @@ export function ChannelPublishAction({
       className="chip chip--warning cell-not-listed__chip"
       aria-label={label}
     >
-      Publish
+      {copy.publish}
     </Link>
   );
 }

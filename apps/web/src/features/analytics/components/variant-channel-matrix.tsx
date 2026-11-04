@@ -30,7 +30,7 @@ import type { ReactElement } from 'react';
 import { EmptyValue } from '../../../shared/ui/empty-value';
 import { ErrorState, LoadingState } from '../../../shared/ui/feedback-state';
 import { StatusBadge } from '../../../shared/ui/status-badge';
-import { formatAmount } from '../../../shared/format/format-amount';
+import { interpolate, useFormat, useMessages } from '../../../shared/i18n';
 import { useNumberFormat } from '../../../shared/i18n/use-number-format';
 import { deriveStockStatus, STOCK_STATUS_BADGE_TONE, STOCK_STATUS_LABEL } from '../../products';
 import type { Connection } from '../../connections';
@@ -71,22 +71,26 @@ interface VariantChannelMatrixProps {
  * - anything else — attributes, else its SKU.
  */
 function VariantIdentityCell({ variant }: { variant: TopProductVariantRow }): ReactElement {
+  const copy = useMessages('analytics').variantChannelMatrix;
+  const format = useFormat();
   const attributeLine = variant.attributes
-    ? Object.entries(variant.attributes)
-        .map(([key, value]) => `${key}: ${String(value)}`)
-        .join(', ')
+    ? format.list(
+        Object.entries(variant.attributes).map(([key, value]) =>
+          interpolate(copy.attribute, { name: key, value: String(value) })
+        ),
+        'unit'
+      )
     : null;
+  const isUnresolved = !attributeLine && !variant.sku && variant.variantId !== null;
   const primary =
-    attributeLine ??
-    variant.sku ??
-    (variant.variantId === null ? 'Unassigned' : 'Unresolved variant');
+    attributeLine ?? variant.sku ?? (isUnresolved ? copy.unresolved : copy.unassigned);
   // The meta line only earns its place when it says something the identity
   // line hasn't already said — a simple variant with no attributes shows its
   // SKU once, not twice. An unresolved variant shows the raw id, which is
   // the only thing an operator can use to chase it.
   const meta = attributeLine
     ? variant.sku
-    : primary === 'Unresolved variant'
+    : isUnresolved
       ? variant.variantId
       : null;
   const stockStatus = variant.totalAvailable !== null ? deriveStockStatus(variant.totalAvailable) : null;
@@ -115,10 +119,12 @@ function MoneyUnitsStack({
   units: number;
   intFormat: Intl.NumberFormat;
 }): ReactElement {
+  const copy = useMessages('analytics').variantChannelMatrix;
+  const format = useFormat();
   return (
     <div className="data-table__stack">
       <span className="tabular">
-        {currency ? formatAmount(netRevenue, currency) : <EmptyValue label="No Net sales figure in range" />}
+        {currency ? format.money(netRevenue, currency) : <EmptyValue label={copy.noNetSales} />}
       </span>
       <span className="variant-matrix__units tabular">{intFormat.format(units)}</span>
     </div>
@@ -134,6 +140,8 @@ export function VariantChannelMatrix({
   notListedConnectionIds,
   demoMode,
 }: VariantChannelMatrixProps): ReactElement {
+  const messages = useMessages('analytics');
+  const copy = messages.variantChannelMatrix;
   const intFormat = useNumberFormat();
   const query = useTopProductVariantSalesQuery(productId, filters, { enabled: true });
 
@@ -141,8 +149,8 @@ export function VariantChannelMatrix({
     return (
       <LoadingState
         liveRegion="off"
-        title="Loading variant sales"
-        message="Fetching net sales and units per variant, per channel…"
+        title={copy.loading.title}
+        message={copy.loading.message}
       />
     );
   }
@@ -150,8 +158,8 @@ export function VariantChannelMatrix({
   if (query.error || !query.data) {
     return (
       <ErrorState
-        title="Unable to load variant sales"
-        message={query.error?.message ?? 'No data returned'}
+        title={copy.error.title}
+        message={query.error?.message ?? copy.error.message}
       />
     );
   }
@@ -159,7 +167,7 @@ export function VariantChannelMatrix({
   const variants = query.data.variants;
 
   if (variants.length === 0) {
-    return <EmptyValue label="No variant sales in this range" />;
+    return <EmptyValue label={copy.empty} />;
   }
 
   const showTotalRow = variants.length > 1;
@@ -208,13 +216,13 @@ export function VariantChannelMatrix({
 
   return (
     <div className="products-detail-variants">
-      <div className="products-detail-field__label">Net sales by variant, per channel</div>
+      <div className="products-detail-field__label">{copy.label}</div>
       <div className="data-table__container">
         <table className="data-table variant-matrix">
-          <caption className="sr-only">Net sales and units per variant, per channel</caption>
+          <caption className="sr-only">{copy.caption}</caption>
           <thead>
             <tr>
-              <th>Variant</th>
+              <th>{copy.variant}</th>
               {channelHeadings.map(({ connectionId, name, platformType, isNotListed }) => (
                 <th key={connectionId} className="data-table__cell--right">
                   <span className="variant-matrix__channel-head">
@@ -233,7 +241,7 @@ export function VariantChannelMatrix({
                       sales the range holds (#2766 review, finding 2). */}
                   {isNotListed ? (
                     <span className="cell-not-listed">
-                      <span className="cell-not-listed__label">Not listed</span>
+                      <span className="cell-not-listed__label">{messages.common.notListed}</span>
                       <ChannelPublishAction
                         productId={productId}
                         productName={productName}
@@ -244,7 +252,7 @@ export function VariantChannelMatrix({
                   ) : null}
                 </th>
               ))}
-              <th className="data-table__cell--right">Total</th>
+              <th className="data-table__cell--right">{copy.total}</th>
             </tr>
           </thead>
           <tbody>
@@ -277,7 +285,7 @@ export function VariantChannelMatrix({
                         // have sold anything, which the column header
                         // already states. A `0` here would read as a real
                         // zero-unit channel.
-                        <EmptyValue label="Not listed on this channel" />
+                        <EmptyValue label={copy.notListedOnChannel} />
                       ) : (
                         <MoneyUnitsStack
                           netRevenue={0}
@@ -301,7 +309,7 @@ export function VariantChannelMatrix({
             ))}
             {showTotalRow ? (
               <tr className="variant-matrix__total-row">
-                <td>Total</td>
+                <td>{copy.total}</td>
                 {/* Same order as the body cells, for the same reason: a
                     not-listed column that still carries real sales in range
                     must report them, or the Total row stops reconciling with
@@ -318,7 +326,7 @@ export function VariantChannelMatrix({
                         intFormat={intFormat}
                       />
                     ) : notListed.has(connectionId) ? (
-                      <EmptyValue label="Not listed on this channel" />
+                      <EmptyValue label={copy.notListedOnChannel} />
                     ) : (
                       <MoneyUnitsStack
                         netRevenue={0}
@@ -344,8 +352,8 @@ export function VariantChannelMatrix({
       </div>
       <p className="data-table__footnote">
         {showTotalRow
-          ? 'Adds up to the Net sales, Units and channel figures shown above.'
-          : 'Matches the Net sales, Units and channel figures shown above — one variant, so nothing to sum.'}
+          ? copy.footnoteMany
+          : copy.footnoteOne}
       </p>
     </div>
   );

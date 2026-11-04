@@ -1,5 +1,5 @@
 /**
- * Needs Attention Copy Helpers
+ * Needs Attention Row Helpers
  *
  * Pure derivations that turn a `NeedsAttentionSummary` category into the
  * one-line headline + qualifier the mockup's `.attention-list__item` shape
@@ -9,12 +9,12 @@
  *
  * Connection-naming rule (Decision 1): when every item in a category shares
  * a single connection (and, for stock, the same buffer), name it explicitly.
- * Otherwise fall back to a connection-agnostic headline — the per-item
+ * Otherwise fall back to a connection-agnostic headline - the per-item
  * detail lives behind the row's deep link, not in this summary line.
  *
  * Sample-vs-total rule (#2120 review, BLOCKING): `items` is a preview capped
  * at `DEFAULT_AGGREGATE_LIMIT` (20) while `totalCount` is the true total, so
- * a connection-named headline is only sound when the sample IS the total —
+ * a connection-named headline is only sound when the sample IS the total -
  * `items.length === totalCount`. Otherwise the sampled items may all share
  * one connection/buffer while the un-sampled remainder don't, and naming a
  * channel for a total the sample can't speak for is exactly the false
@@ -25,16 +25,20 @@
  * Currency rule: `FailedSyncValueSummary.totalValue` is never rendered.
  * It carries no currency field in either the mixed or non-mixed case, and a
  * bare number formatted with no currency symbol ("6,120.64 of orders never
- * reached a destination") reads as a real, currency-denominated figure —
+ * reached a destination") reads as a real, currency-denominated figure -
  * exactly the false claim this repo's currency-neutral-total precedent
  * exists to avoid making, just less obviously so than the mixed-currency
  * case. `deriveFailedSyncHeadline` therefore always renders the
  * currency-agnostic count, matching what the `mixedCurrency: true` branch
- * already did. `totalValue` stays on the wire (backend keeps computing it —
+ * already did. `totalValue` stays on the wire (backend keeps computing it -
  * unrelated consumers may still want it) but this headline never reads it.
+ *
+ * The words live in the `analytics.needsAttention` namespace and are read
+ * when a function is called, never at module load (ADR-081).
  *
  * @module apps/web/src/features/analytics/lib
  */
+import { formatPlural, getLocale, getMessages, interpolate } from '../../../shared/i18n';
 import type {
   CoverageGapItem,
   FailedSyncValueSummary,
@@ -48,14 +52,12 @@ export interface AttentionRowCopy {
 
 /**
  * `deriveCoverageHeadline`'s result additionally reports the ONE connection
- * id the headline named — `null` when it named none (ambiguous items, or a
+ * id the headline named - `null` when it named none (ambiguous items, or a
  * partial sample per the rule above). A caller building a deep link MUST
  * read this field rather than re-deriving its own "single missing
  * connection" predicate: a weaker, independently-computed predicate can
  * pin a `connectionId` into a link that the headline copy right next to it
- * explicitly declined to name (#2120 re-review, IMPORTANT) — the same
- * false-claim-about-your-own-catalogue defect the sample-vs-total rule
- * above exists to prevent, one field over.
+ * explicitly declined to name (#2120 re-review, IMPORTANT).
  */
 export interface CoverageHeadlineResult extends AttentionRowCopy {
   connectionId: string | null;
@@ -72,7 +74,8 @@ export function deriveCoverageHeadline(
   totalCount: number,
   connectionName: ConnectionNameResolver
 ): CoverageHeadlineResult {
-  const variantWord = totalCount === 1 ? 'variant' : 'variants';
+  const copy = getMessages('analytics').needsAttention.coverage;
+  const locale = getLocale();
   const singleMissingConnectionIds = uniqueValues(
     items
       .filter((item) => item.missingFromConnectionIds.length === 1)
@@ -87,15 +90,17 @@ export function deriveCoverageHeadline(
 
   if (sharesOneMissingConnection) {
     return {
-      headline: `${totalCount} ${variantWord} missing from ${connectionName(singleMissingConnectionIds[0])}`,
-      sub: 'listed elsewhere, not yet published on this channel',
+      headline: formatPlural(totalCount, copy.named.headline, locale, {
+        connection: connectionName(singleMissingConnectionIds[0]),
+      }),
+      sub: copy.named.sub,
       connectionId: singleMissingConnectionIds[0],
     };
   }
 
   return {
-    headline: `${totalCount} ${variantWord} with a listing gap on at least one channel`,
-    sub: 'open the listing flow to see which channel is missing each one',
+    headline: formatPlural(totalCount, copy.generic.headline, locale),
+    sub: copy.generic.sub,
     connectionId: null,
   };
 }
@@ -105,7 +110,8 @@ export function deriveStockHeadline(
   totalCount: number,
   connectionName: ConnectionNameResolver
 ): AttentionRowCopy {
-  const variantWord = totalCount === 1 ? 'variant' : 'variants';
+  const copy = getMessages('analytics').needsAttention.stock;
+  const locale = getLocale();
   const connectionIds = uniqueValues(items.map((item) => item.connectionId));
   const buffers = uniqueValues(items.map((item) => item.stockSafetyBuffer));
   const thresholds = uniqueValues(items.map((item) => item.stockZeroThreshold));
@@ -122,27 +128,27 @@ export function deriveStockHeadline(
     // different fixes: raise the master stock, or lower the threshold.
     const sub =
       thresholds[0] > 0
-        ? `buffer ${buffers[0]}, low-stock floor ${thresholds[0]} — below the floor the channel is told 0`
-        : `buffer ${buffers[0]} — published stock is master stock minus the buffer`;
+        ? interpolate(copy.named.subWithFloor, { buffer: buffers[0], floor: thresholds[0] })
+        : interpolate(copy.named.subBufferOnly, { buffer: buffers[0] });
     return {
-      headline: `${totalCount} ${variantWord} publishing no stock on ${connectionName(connectionIds[0])}`,
+      headline: formatPlural(totalCount, copy.named.headline, locale, {
+        connection: connectionName(connectionIds[0]),
+      }),
       sub,
     };
   }
 
   return {
-    headline: `${totalCount} ${variantWord} are publishing no stock to their channel`,
-    sub: 'each channel has its own buffer and low-stock floor — open a variant to see the arithmetic',
+    headline: formatPlural(totalCount, copy.generic.headline, locale),
+    sub: copy.generic.sub,
   };
 }
 
 export function deriveFailedSyncHeadline(summary: FailedSyncValueSummary): AttentionRowCopy {
-  const orderWord = summary.count === 1 ? 'order' : 'orders';
+  const copy = getMessages('analytics').needsAttention.failedSync;
 
   return {
-    headline: `${summary.count} ${orderWord} never reached a destination`,
-    sub: summary.mixedCurrency
-      ? 'affected orders span multiple currencies'
-      : 'open the list to see which orders and destinations',
+    headline: formatPlural(summary.count, copy.headline, getLocale()),
+    sub: summary.mixedCurrency ? copy.subMixedCurrency : copy.sub,
   };
 }

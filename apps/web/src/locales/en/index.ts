@@ -13,6 +13,7 @@
  */
 import adapters from './adapters.json';
 import allegroCore from './allegro-core.json';
+import analytics from './analytics.json';
 import app from './app.json';
 import auth from './auth.json';
 import automation from './automation.json';
@@ -42,6 +43,7 @@ import users from './users.json';
 export const en = {
   adapters,
   'allegro-core': allegroCore,
+  analytics,
   app,
   auth,
   automation,
