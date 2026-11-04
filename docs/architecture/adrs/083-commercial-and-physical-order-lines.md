@@ -10,7 +10,7 @@ Sellers sell sets (an Allegro multipack, a PrestaShop pack, a Subiekt komplet) a
 
 The first plan expanded a bundle in every site that needs it. The spike (`docs/plans/spike-bundles-and-gifts.md`, `verify/component-line-id.md`) found nine such sites, and the failure mode is bad: each one treats "no row matched" as a normal outcome. An order edit on a bundle line would do nothing to works, holds and stock, report success, and could let a quantity fall below what was already picked. Nothing throws.
 
-Two other designs also fell apart on inspection. Asking adapters to send `role` and `parentLineId` would change every adapter for no gain, since core already knows a bundle from its own definition, and two sources of truth could disagree. And the only channel that sends components next to the parent (Shoper) can collapse them inside its own adapter.
+Two other designs also fell apart on inspection. Asking adapters to send `role` and `parentLineId` would change every adapter for no gain, since core already knows a bundle from its own definition, and two sources of truth could disagree. And the only channel that sends components with the parent (Shoper) nests them inside the parent's order row (verified live in #3932), so its adapter maps the parent line and ignores the children.
 
 ## Decision
 

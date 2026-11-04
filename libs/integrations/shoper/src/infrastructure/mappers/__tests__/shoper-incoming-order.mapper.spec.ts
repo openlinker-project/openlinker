@@ -14,6 +14,8 @@ import {
   buildOrderRow,
 } from '../../adapters/order-source/__tests__/shoper-order-source-test-data';
 
+import { SHOPER_BUNDLE_PARENT_LINE } from './shoper-bundle-order.fixture';
+
 const status = (type: number, ...labels: string[]): { type: number; labels: string[] } => ({ type, labels });
 
 const CTX = {
@@ -355,5 +357,31 @@ describe('mapShoperOrderToIncoming - pickup point', () => {
     const incoming = mapShoperOrderToIncoming(buildOrderRow({ pickup_point: '' }), LINES, CTX);
 
     expect(incoming).not.toHaveProperty('pickupPoint');
+  });
+});
+
+describe('mapShoperOrderToIncoming bundles (#3932)', () => {
+  const order = buildOrderRow({ order_id: '5', sum: '479.88', paid: '0.00', shipping_cost: '0.00' });
+
+  it('should map a bundle as one line: the parent, priced for the whole set', () => {
+    const incoming = mapShoperOrderToIncoming(order, [SHOPER_BUNDLE_PARENT_LINE], CTX);
+
+    expect(incoming.items).toHaveLength(1);
+    expect(incoming.items[0]).toMatchObject({
+      id: '15',
+      quantity: 1,
+      price: 479.88,
+      sku: '489B-4528A',
+    });
+  });
+
+  it('should not turn the zero-priced component rows into lines or into tax', () => {
+    const incoming = mapShoperOrderToIncoming(order, [SHOPER_BUNDLE_PARENT_LINE], CTX);
+
+    const componentSkus = (SHOPER_BUNDLE_PARENT_LINE.children ?? []).map((child) => child.code);
+    expect(componentSkus).toHaveLength(4);
+    expect(incoming.items.map((item) => item.sku)).not.toEqual(expect.arrayContaining(componentSkus));
+    // 479.88 gross at 23%: the components add nothing.
+    expect(incoming.totals.tax).toBe(89.73);
   });
 });
