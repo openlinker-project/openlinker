@@ -10,6 +10,7 @@
  * @module apps/web/src/features/products/lib
  */
 import type { Product } from '../api/products.types';
+import { formatPlural, getLocale, getMessages } from '../../../shared/i18n';
 import type { StatusBadgeTone } from '../../../shared/ui/status-badge';
 
 export interface ProductStalenessView {
@@ -30,12 +31,13 @@ export function deriveProductStaleness(product: Product): ProductStalenessView |
   const totalCount = product.variantCount ?? 0;
   if (staleCount <= 0 || totalCount <= 0) return null;
 
+  const copy = getMessages('products').productStaleness;
   const isFullyStale = staleCount >= totalCount;
   return isFullyStale
-    ? { isFullyStale, tone: 'error', label: 'Deleted at source' }
+    ? { isFullyStale, tone: 'error', label: copy.fullyStale }
     : {
         isFullyStale,
         tone: 'warning',
-        label: `${staleCount} of ${totalCount} variants deleted at source`,
+        label: formatPlural(totalCount, copy.partlyStale, getLocale(), { stale: staleCount }),
       };
 }

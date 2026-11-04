@@ -1,5 +1,5 @@
 /**
- * Price Change Copy — parsing/clamping regression tests (#3148 second
+ * Price Amount — parsing/clamping regression tests (#3148 second
  * review, still-open BLOCKING finding).
  *
  * `parseLocalizedAmount` and `clampToStorablePrecision` back the manual
@@ -11,7 +11,7 @@
  * @module apps/web/src/features/price-changes/lib
  */
 import { describe, expect, it } from 'vitest';
-import { clampToStorablePrecision, parseLocalizedAmount } from './price-change-copy';
+import { clampToStorablePrecision, parseLocalizedAmount } from './price-amount';
 
 describe('parseLocalizedAmount', () => {
   it('parses a plain integer', () => {

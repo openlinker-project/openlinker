@@ -57,9 +57,9 @@ describe('CurrencyCoverageDialog', () => {
     };
     renderWithProviders(<CurrencyCoverageDialog open view={view} onClose={vi.fn()} />);
 
-    expect(await screen.findByText('5231')).toBeInTheDocument();
-    expect(screen.getByText('— stamped in PLN')).toBeInTheDocument();
-    expect(screen.getByText('— stamped in EUR')).toBeInTheDocument();
+    expect(await screen.findByText('5,231')).toBeInTheDocument();
+    expect(screen.getByText('- stamped in PLN')).toBeInTheDocument();
+    expect(screen.getByText('- stamped in EUR')).toBeInTheDocument();
     expect(screen.getByText('More than one reporting-currency era')).toBeInTheDocument();
   });
 

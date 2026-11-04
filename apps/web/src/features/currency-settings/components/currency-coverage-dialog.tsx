@@ -17,6 +17,7 @@
  * @module apps/web/src/features/currency-settings/components
  */
 import type { ReactElement } from 'react';
+import { interpolate, useFormat, useMessages } from '../../../shared/i18n';
 import { Alert } from '../../../shared/ui/alert';
 import { Button } from '../../../shared/ui/button';
 import {
@@ -41,21 +42,23 @@ export function CurrencyCoverageDialog({
   view,
   onClose,
 }: CurrencyCoverageDialogProps): ReactElement {
+  const copy = useMessages('currency-settings').currencyCoverageDialog;
+  const { number: formatNumber } = useFormat();
   const total = view.stampedOrders.reduce((sum, entry) => sum + entry.count, 0);
   const hasMultipleEras = view.stampedOrders.length > 1;
 
   const items: KeyValueItem[] = [
     {
       id: 'total',
-      label: 'Orders with a reporting figure',
-      value: <span className="tabular">{total}</span>,
+      label: copy.totalLabel,
+      value: <span className="tabular">{formatNumber(total)}</span>,
       mono: true,
     },
     ...(hasMultipleEras
       ? view.stampedOrders.map((entry) => ({
           id: entry.reportingCurrency,
-          label: `— stamped in ${entry.reportingCurrency}`,
-          value: <span className="tabular">{entry.count}</span>,
+          label: interpolate(copy.eraLabel, { currency: entry.reportingCurrency }),
+          value: <span className="tabular">{formatNumber(entry.count)}</span>,
           mono: true,
         }))
       : []),
@@ -69,28 +72,21 @@ export function CurrencyCoverageDialog({
       }}
     >
       <DialogContent>
-        <DialogTitle>Analytics coverage</DialogTitle>
+        <DialogTitle>{copy.title}</DialogTitle>
         <DialogDescription>
-          How many orders already carry a reporting-currency figure. This is a coverage readout,
-          not a health check — invoices are unaffected either way.
+          {copy.description}
         </DialogDescription>
 
         {total === 0 ? (
           <p className="muted-text">
-            No orders have been stamped yet. This fills in automatically as new orders sync in{' '}
-            {view.reportingCurrency}, or after the next hourly reconcile sweep runs across
-            existing history.
+            {interpolate(copy.empty, { currency: view.reportingCurrency })}
           </p>
         ) : (
           <>
             <KeyValueList items={items} />
             {hasMultipleEras ? (
-              <Alert tone="info" title="More than one reporting-currency era">
-                <p>
-                  This deployment has changed its reporting currency before. Older stamps are
-                  never rewritten, so those orders keep the currency that was active when they
-                  were stamped.
-                </p>
+              <Alert tone="info" title={copy.multipleEras.title}>
+                <p>{copy.multipleEras.message}</p>
               </Alert>
             ) : null}
           </>
@@ -99,7 +95,7 @@ export function CurrencyCoverageDialog({
         <DialogFooter>
           <DialogClose asChild>
             <Button type="button" tone="ghost">
-              Close
+              {copy.close}
             </Button>
           </DialogClose>
         </DialogFooter>
