@@ -17,6 +17,7 @@
  * @module features/connections/components
  * @see {@link ConnectionActionsPanel} for the Actions-tab row
  */
+import { interpolate, useMessages } from '../../../shared/i18n';
 import type { ReactElement } from 'react';
 import type { Connection } from '../api/connections.types';
 import { useUpdateConnectionMutation } from '../hooks/use-update-connection-mutation';
@@ -35,8 +36,9 @@ interface EnableConnectionButtonProps {
 
 export function EnableConnectionButton({
   connection,
-  label = 'Enable',
+  label,
 }: EnableConnectionButtonProps): ReactElement {
+  const copy = useMessages('connections').enableConnectionButton;
   const updateConnection = useUpdateConnectionMutation();
   const { showToast } = useToast();
 
@@ -51,13 +53,13 @@ export function EnableConnectionButton({
       });
       showToast({
         tone: 'success',
-        title: 'Connection enabled',
-        description: `"${connection.name}" is active again. Syncing resumes on the next scheduled run.`,
+        title: copy.successTitle,
+        description: interpolate(copy.successDescription, { name: connection.name }),
       });
     } catch (error) {
       showToast({
         tone: 'error',
-        title: 'Unable to enable connection',
+        title: copy.errorTitle,
         description: (error as Error).message,
       });
     }
@@ -69,7 +71,7 @@ export function EnableConnectionButton({
         disabled={updateConnection.isPending || write.demoReadOnly}
         onClick={() => void handleEnable()}
       >
-        {updateConnection.isPending ? 'Enabling…' : label}
+        {updateConnection.isPending ? copy.enabling : (label ?? copy.enable)}
       </Button>
     </ReadOnlyLock>
   );

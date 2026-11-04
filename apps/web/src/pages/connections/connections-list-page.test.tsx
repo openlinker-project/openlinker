@@ -88,7 +88,7 @@ describe('ConnectionsListPage', () => {
     it('lists archived as a status filter option', () => {
       renderWithProviders(<ConnectionsListPage />);
 
-      expect(screen.getByRole('option', { name: 'archived' })).toBeInTheDocument();
+      expect(screen.getByRole('option', { name: 'Archived' })).toBeInTheDocument();
     });
 
     it('shows no row actions to a session without connections:write', async () => {

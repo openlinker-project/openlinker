@@ -11,9 +11,12 @@
  *
  * @module locales
  */
+import adapters from './adapters.json';
+import allegroCore from './allegro-core.json';
 import app from './app.json';
 import auth from './auth.json';
 import automation from './automation.json';
+import connections from './connections.json';
 import content from './content.json';
 import currencySettings from './currency-settings.json';
 import customers from './customers.json';
@@ -29,9 +32,12 @@ import ui from './ui.json';
 import users from './users.json';
 
 export const en = {
+  adapters,
+  'allegro-core': allegroCore,
   app,
   auth,
   automation,
+  connections,
   content,
   'currency-settings': currencySettings,
   customers,

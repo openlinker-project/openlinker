@@ -13,6 +13,7 @@
  * @module features/connections/components
  * @see {@link ArchiveConnectionButton}
  */
+import { interpolate, useMessages } from '../../../shared/i18n';
 import type { ReactElement } from 'react';
 import type { Connection } from '../api/connections.types';
 import { useRestoreConnectionMutation } from '../hooks/use-restore-connection-mutation';
@@ -30,8 +31,9 @@ interface RestoreConnectionButtonProps {
 
 export function RestoreConnectionButton({
   connection,
-  label = 'Restore',
+  label,
 }: RestoreConnectionButtonProps): ReactElement {
+  const copy = useMessages('connections').restoreConnectionButton;
   const restoreConnection = useRestoreConnectionMutation();
   const { showToast } = useToast();
   const demoMode = useDemoMode();
@@ -42,14 +44,14 @@ export function RestoreConnectionButton({
       await restoreConnection.mutateAsync(connection.id);
       showToast({
         tone: 'success',
-        title: 'Connection restored',
-        description: `"${connection.name}" is back as a disabled connection. Enter its credentials again before enabling it.`,
+        title: copy.successTitle,
+        description: interpolate(copy.successDescription, { name: connection.name }),
       });
     } catch (error) {
       showToast({
         tone: 'error',
-        title: 'Unable to restore connection',
-        description: error instanceof Error ? error.message : 'Please try again.',
+        title: copy.errorTitle,
+        description: error instanceof Error ? error.message : copy.tryAgain,
       });
     }
   }
@@ -62,7 +64,7 @@ export function RestoreConnectionButton({
         }}
         disabled={restoreConnection.isPending || write.demoReadOnly}
       >
-        {restoreConnection.isPending ? 'Restoring...' : label}
+        {restoreConnection.isPending ? copy.restoring : (label ?? copy.restore)}
       </Button>
     </ReadOnlyLock>
   );

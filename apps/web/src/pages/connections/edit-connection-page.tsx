@@ -4,42 +4,45 @@ import { useConnectionQuery } from '../../features/connections/hooks/use-connect
 import { EditConnectionForm } from '../../features/connections/components/EditConnectionForm';
 import { EmptyState, ErrorState, LoadingState } from '../../shared/ui/feedback-state';
 import { PageLayout } from '../../shared/ui/page-layout';
+import { useMessages } from '../../shared/i18n';
 
 export function EditConnectionPage(): ReactElement {
   const { connectionId = '' } = useParams();
   const connectionQuery = useConnectionQuery(connectionId);
+  const copy = useMessages('connections').editConnectionPage;
+  const common = useMessages('ui').common;
 
   return (
     <PageLayout
       backTo={{
         to: `/connections/${connectionId}`,
-        label: connectionQuery.data?.name ?? 'Connection',
+        label: connectionQuery.data?.name ?? copy.backLabel,
       }}
-      eyebrow="Connection settings"
-      title="Edit connection"
-      description="Update the connection name, configuration, and adapter settings."
+      eyebrow={copy.eyebrow}
+      title={copy.title}
+      description={copy.description}
     >
       {connectionQuery.isLoading ? (
         <LoadingState
-          title="Loading connection"
-          message="Fetching connection data for editing."
+          title={copy.loading.title}
+          message={copy.loading.message}
         />
       ) : null}
       {connectionQuery.error ? (
         <ErrorState
-          title="Unable to load connection"
+          title={copy.error.title}
           message={connectionQuery.error.message}
           action={
             <button type="button" className="button button--secondary" onClick={() => void connectionQuery.refetch()}>
-              Retry
+              {common.retry}
             </button>
           }
         />
       ) : null}
       {!connectionQuery.isLoading && !connectionQuery.error && !connectionQuery.data ? (
         <EmptyState
-          title="Connection not found"
-          message="No connection data was returned. Check the connection ID or return to the list."
+          title={copy.notFound.title}
+          message={copy.notFound.message}
         />
       ) : null}
       {connectionQuery.data ? (
