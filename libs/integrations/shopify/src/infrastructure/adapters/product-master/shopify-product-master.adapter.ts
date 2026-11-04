@@ -1,0 +1,293 @@
+/**
+ * Shopify Product Master Adapter
+ *
+ * Implements `ProductMasterPort` over the Admin GraphQL API - the READ side:
+ * `getProduct`, `getProducts`, `getProductVariants`, `searchProducts`,
+ * `listExternalIds` and `getProductCategories`. Every write throws
+ * `ShopifyNotSupportedException` (a silent no-op would read as "done").
+ *
+ * Ids: methods taking a product id take the INTERNAL one and resolve the
+ * Shopify id through the identifier mapping; `listExternalIds` and
+ * `filters.externalIds` speak Shopify's numeric ids (see `shopify-gid.policy`).
+ *
+ * Paging: GraphQL pages by opaque cursor and has no offset, so a caller's
+ * `{limit, offset}` window is walked from the start in pages of 250 ids
+ * (`listExternalIds`) or 50 products. That is O(offset) per call, which a
+ * prototype accepts; a production adapter would keep the cursor between ticks.
+ *
+ * Not implemented, deliberately:
+ *   - `ProductTaxRateReader`: no tax rate exists anywhere in the Admin API
+ *     (L-T2), so a Shopify master cannot state a catalogue rate.
+ *   - `getCategories`: optional on the port; the taxonomy is Shopify's global
+ *     one (thousands of nodes), not the shop's own directory.
+ *
+ * @module libs/integrations/shopify/src/infrastructure/adapters/product-master
+ * @implements {ProductMasterPort}
+ */
+import type {
+  Category,
+  Product,
+  ProductCreate,
+  ProductFilters,
+  ProductMasterPort,
+  ProductUpdate,
+  ProductVariant,
+  ProductVariantCreate,
+} from '@openlinker/core/products';
+import type { Connection, IdentifierMappingPort } from '@openlinker/core/identifier-mapping';
+import { CORE_ENTITY_TYPE } from '@openlinker/core/identifier-mapping';
+import { Logger } from '@openlinker/shared/logging';
+
+import { ShopifyNotSupportedException } from '../../../domain/exceptions/shopify-not-supported.exception';
+import { fromShopifyGid, toShopifyGid } from '../../../domain/policies/shopify-gid.policy';
+import type { ShopifyConnection, ShopifyProduct } from '../../../domain/types/shopify-api.types';
+import type { ShopifyGraphqlClient } from '../../http/shopify-graphql-client';
+import {
+  mapShopifyProduct,
+  mapShopifyVariant,
+  shopifyCategoryPath,
+} from '../../mappers/shopify-product.mapper';
+import { resolveShopifyExternalId } from '../../readers/shopify-external-id';
+import {
+  PRODUCT_IDS_PAGE_QUERY,
+  PRODUCTS_BY_IDS_QUERY,
+  PRODUCTS_PAGE_QUERY,
+} from '../../readers/shopify-product.queries';
+import type { ShopifyProductReader } from '../../readers/shopify-product.reader';
+import type { ShopifyShopContextProvider } from '../../shop-context/shopify-shop-context.provider';
+
+const ID_PAGE_SIZE = 250;
+const PRODUCT_PAGE_SIZE = 50;
+const NODES_CHUNK = 100;
+const DEFAULT_WINDOW = PRODUCT_PAGE_SIZE;
+const NUMERIC_ID = /^\d+$/;
+
+export class ShopifyProductMasterAdapter implements ProductMasterPort {
+  private readonly logger = new Logger(ShopifyProductMasterAdapter.name);
+
+  constructor(
+    private readonly client: ShopifyGraphqlClient,
+    private readonly identifierMapping: IdentifierMappingPort,
+    private readonly shopContext: ShopifyShopContextProvider,
+    private readonly productReader: ShopifyProductReader,
+    private readonly connection: Connection,
+  ) {}
+
+  // ─── Read methods ──────────────────────────────────────────────────────────
+
+  async listExternalIds(filters?: { limit?: number; offset?: number }): Promise<string[]> {
+    const offset = filters?.offset ?? 0;
+    const limit = filters?.limit ?? DEFAULT_WINDOW;
+    const ids: string[] = [];
+    let after: string | null = null;
+    while (ids.length < offset + limit) {
+      const data: { products: ShopifyConnection<{ id: string }> } = await this.client.query(
+        PRODUCT_IDS_PAGE_QUERY,
+        { first: ID_PAGE_SIZE, after },
+      );
+      ids.push(...data.products.nodes.map((p) => fromShopifyGid(p.id)));
+      if (data.products.pageInfo?.hasNextPage !== true) {
+        break;
+      }
+      after = data.products.pageInfo.endCursor;
+    }
+    return ids.slice(offset, offset + limit);
+  }
+
+  async getProduct(productId: string): Promise<Product> {
+    const externalId = await this.resolveExternalProductId(productId);
+    const raw = await this.productReader.read(externalId, productId);
+    const ctx = await this.shopContext.get();
+    this.warnOnTruncatedVariants(raw);
+    return { ...mapShopifyProduct(raw, ctx), id: productId };
+  }
+
+  async getProducts(filters?: ProductFilters): Promise<Product[]> {
+    if (filters?.categoryIds !== undefined && filters.categoryIds.length > 0) {
+      throw new ShopifyNotSupportedException('getProducts filter "categoryIds"');
+    }
+    if (filters?.status !== undefined) {
+      throw new ShopifyNotSupportedException('getProducts filter "status"');
+    }
+    if (filters?.externalIds !== undefined) {
+      return this.toProducts(await this.readByExternalIds(filters.externalIds));
+    }
+    const search = filters?.query?.trim();
+    const rows = await this.readWindow(
+      filters?.offset ?? 0,
+      filters?.limit ?? DEFAULT_WINDOW,
+      search === undefined || search.length === 0 ? null : `title:*${search.replace(/["\\]/g, '')}*`,
+    );
+    return this.toProducts(rows);
+  }
+
+  async getProductVariants(productId: string): Promise<ProductVariant[]> {
+    const externalId = await this.resolveExternalProductId(productId);
+    const raw = await this.productReader.read(externalId, productId);
+    const ctx = await this.shopContext.get();
+    this.warnOnTruncatedVariants(raw);
+    const variants = raw.variants.nodes;
+    if (variants.length === 0) {
+      return [];
+    }
+
+    const idMap = await this.identifierMapping.batchGetOrCreateInternalIds(
+      variants.map((v) => {
+        const variantExternalId = fromShopifyGid(v.id);
+        return {
+          entityType: CORE_ENTITY_TYPE.ProductVariant,
+          externalId: variantExternalId,
+          connectionId: this.connection.id,
+          context: {
+            parentEntityType: CORE_ENTITY_TYPE.Product,
+            parentInternalId: productId,
+            metadata: { variantExternalId },
+          },
+        };
+      }),
+    );
+
+    const result: ProductVariant[] = [];
+    for (const variant of variants) {
+      const internalId = idMap.get(`${fromShopifyGid(variant.id)}:${this.connection.id}`);
+      if (internalId === undefined) {
+        this.logger.warn(`No internal id for Shopify variant ${variant.id}`);
+        continue;
+      }
+      result.push({ ...mapShopifyVariant(variant, productId, ctx), id: internalId });
+    }
+    return result;
+  }
+
+  searchProducts(query: string, filters?: ProductFilters): Promise<Product[]> {
+    return this.getProducts({ ...filters, query });
+  }
+
+  /**
+   * The product's taxonomy path, root to leaf. Reads through the shared
+   * reader, so a deleted product surfaces here as the neutral not-found error
+   * too - core may reach a deleted product through this method first.
+   */
+  async getProductCategories(productId: string): Promise<Category[]> {
+    const externalId = await this.resolveExternalProductId(productId);
+    const raw = await this.productReader.read(externalId, productId);
+    return shopifyCategoryPath(raw.category);
+  }
+
+  // ─── Not supported ─────────────────────────────────────────────────────────
+
+  createProduct(_product: ProductCreate): Promise<Product> {
+    return Promise.reject(new ShopifyNotSupportedException('createProduct'));
+  }
+
+  updateProduct(_productId: string, _product: ProductUpdate): Promise<Product> {
+    return Promise.reject(new ShopifyNotSupportedException('updateProduct'));
+  }
+
+  deleteProduct(_productId: string): Promise<void> {
+    return Promise.reject(new ShopifyNotSupportedException('deleteProduct'));
+  }
+
+  upsertProductVariant(_productId: string, _variant: ProductVariantCreate): Promise<ProductVariant> {
+    return Promise.reject(new ShopifyNotSupportedException('upsertProductVariant'));
+  }
+
+  assignCategories(_productId: string, _categoryIds: string[]): Promise<void> {
+    return Promise.reject(new ShopifyNotSupportedException('assignCategories'));
+  }
+
+  // ─── Internals ─────────────────────────────────────────────────────────────
+
+  private resolveExternalProductId(productId: string): Promise<string> {
+    return resolveShopifyExternalId(
+      this.identifierMapping,
+      this.connection.id,
+      CORE_ENTITY_TYPE.Product,
+      productId,
+    );
+  }
+
+  /**
+   * `nodes(ids:)` answers null for an id that names nothing, so an absent
+   * product is simply absent from the result - deletion is reported by
+   * `getProduct`, never inferred here.
+   */
+  private async readByExternalIds(externalIds: readonly string[]): Promise<ShopifyProduct[]> {
+    const valid = [...new Set(externalIds.map(String))].filter((id) => NUMERIC_ID.test(id));
+    if (valid.length < externalIds.length) {
+      this.logger.warn(
+        `Ignoring ${externalIds.length - valid.length} non-numeric or repeated product id(s) ` +
+          `(connection: ${this.connection.id})`,
+      );
+    }
+    const products: ShopifyProduct[] = [];
+    for (let i = 0; i < valid.length; i += NODES_CHUNK) {
+      const chunk = valid.slice(i, i + NODES_CHUNK).map((id) => toShopifyGid('Product', id));
+      const data = await this.client.query<{ nodes: ReadonlyArray<ShopifyProduct | null> }>(
+        PRODUCTS_BY_IDS_QUERY,
+        { ids: chunk },
+      );
+      for (const node of data.nodes) {
+        // A non-product node answers `{}` through the inline fragment; skip it.
+        if (node !== null && typeof node.id === 'string') {
+          products.push(node);
+        }
+      }
+    }
+    return products;
+  }
+
+  private async readWindow(offset: number, limit: number, search: string | null): Promise<ShopifyProduct[]> {
+    const rows: ShopifyProduct[] = [];
+    let after: string | null = null;
+    while (rows.length < offset + limit) {
+      const data: { products: ShopifyConnection<ShopifyProduct> } = await this.client.query(
+        PRODUCTS_PAGE_QUERY,
+        { first: PRODUCT_PAGE_SIZE, after, query: search },
+      );
+      rows.push(...data.products.nodes);
+      if (data.products.pageInfo?.hasNextPage !== true) {
+        break;
+      }
+      after = data.products.pageInfo.endCursor;
+    }
+    return rows.slice(offset, offset + limit);
+  }
+
+  private async toProducts(items: readonly ShopifyProduct[]): Promise<Product[]> {
+    if (items.length === 0) {
+      return [];
+    }
+    const ctx = await this.shopContext.get();
+    const idMap = await this.identifierMapping.batchGetOrCreateInternalIds(
+      items.map((p) => ({
+        entityType: CORE_ENTITY_TYPE.Product,
+        externalId: fromShopifyGid(p.id),
+        connectionId: this.connection.id,
+      })),
+    );
+    const products: Product[] = [];
+    for (const raw of items) {
+      const externalId = fromShopifyGid(raw.id);
+      const internalId = idMap.get(`${externalId}:${this.connection.id}`);
+      if (internalId === undefined) {
+        this.logger.warn(`No internal id for Shopify product ${externalId}`);
+        continue;
+      }
+      // Later per-product reads in this resolution are served from memory.
+      this.productReader.seed(externalId, raw);
+      this.warnOnTruncatedVariants(raw);
+      products.push({ ...mapShopifyProduct(raw, ctx), id: internalId });
+    }
+    return products;
+  }
+
+  private warnOnTruncatedVariants(raw: ShopifyProduct): void {
+    if (raw.variants.pageInfo?.hasNextPage === true) {
+      this.logger.warn(
+        `Shopify product ${fromShopifyGid(raw.id)} has more variants than one page; ` +
+          `only the first ${raw.variants.nodes.length} are synced (connection: ${this.connection.id})`,
+      );
+    }
+  }
+}
