@@ -40,6 +40,12 @@ Throttle budget: `maximumAvailable: 20000`, `restoreRate: 1000` - five times wha
 dev store reported (E-C4: 4000 / 200). Budget follows the plan, so production figures must be
 read from `throttleStatus`, never assumed.
 
+## Decisions taken during the spike
+
+| Date | Decision | Consequence |
+|---|---|---|
+| 2026-11-04 | **One warehouse.** OpenLinker runs as a single warehouse until a WMS integration exists; multi-location support comes with the WMS | The connection names ONE Shopify location (`locationId`, default the primary location). Stock is read and written at that location only, never summed across locations. Because Shopify's own order routing may assign a fulfillment order elsewhere (L-O1), an order OpenLinker creates is moved to that location after `orderCreate`. Multi-location verdicts below (E-M7, `fulfillmentOrderMove` between locations) stay documented as available, not used |
+
 ## How to read the matrix
 
 **Verdict**
@@ -75,7 +81,7 @@ webhooks, retry and auth classification).
 | Capability / port | Role | Verdict | Shopify surface | Evidence |
 |---|---|---|---|---|
 | `ProductMaster` / `ProductMasterPort` | A | Native | `products`, `product(id)` (null = deleted), `productSet` (PATCH semantics), `productDelete` | Inherited E-M1, E-M2, E-P5 |
-| `InventoryMaster` / `InventoryMasterPort` | A | Native | `inventoryLevels`, `inventoryAdjustQuantities` (mandatory `@idempotent` + `changeFromQuantity` CAS), `inventorySetQuantities` | Inherited E-M3..E-M6, E-M11 |
+| `InventoryMaster` / `InventoryMasterPort` | A | Native | `inventoryLevels`, `inventoryAdjustQuantities` (mandatory `@idempotent` + `changeFromQuantity` CAS), `inventorySetQuantities`. Scoped to the ONE configured location (decision 2026-11-04) | Inherited E-M3..E-M6, E-M11 |
 | ... deprecated `reserveInventory`/`releaseInventory` | A | Open | Shopify has a `reserved` quantity state and `inventoryMoveQuantities` between states; could express a hold. ADR-061 deprecates the method, so this only matters for a future `MasterReservationWriter` | Desk |
 | `OrderSource` / `OrderSourcePort` | C | Native | `orders(query: "updated_at:>…", sortKey: UPDATED_AT)` + opaque cursor; `ORDERS_*` webhooks as trigger | Inherited E-O10, E-C7 |
 | `OrderProcessorManager` / `OrderProcessorManagerPort` | B | Native, **no native dedup** | `orderCreate` with per-line `priceSet` (real marketplace price) and `taxLines`; dev store capped at ~5/min. `@idempotent` is not supported on `orderCreate` and a repeated `sourceIdentifier` creates a second order; `source_identifier:` lookup works but only ~10 s after the write | **Live** L-O3, L-O4, L-X1 |
