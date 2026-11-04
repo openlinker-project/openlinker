@@ -21,7 +21,13 @@ Introduced by the capability spike, #3928. Earlier API research: #2879
 ## 2. Create the app
 
 1. Dev Dashboard -> **Apps -> Create app**, name `OpenLinker local`.
-2. **Versions -> Create version**, Admin API version `2026-10`, and grant these scopes:
+2. **Versions -> Create version**:
+   - App URL: `https://example.com` (placeholder; nothing calls it)
+   - Allowed redirection URLs: `http://localhost:3456/shopify/callback` (only used if you ever
+     fall back to the OAuth install flow)
+   - Webhooks API version: `2026-10`
+   - Embed in Shopify admin: off
+   - Scopes:
 
    ```text
    read_products, write_products
@@ -46,7 +52,10 @@ Introduced by the capability spike, #3928. Earlier API research: #2879
    (`customer_read_orders` etc.) under the same heading. Pick the plain ones.
    `read_all_orders` is not in the picker at all and needs a manual Shopify
    review; it is not needed here (a new store has no orders older than 60 days).
-3. **Release** the version and **install** the app on your dev store.
+3. **Release** the version.
+4. Install it from the **app's own page** in the Dev Dashboard, not from the store admin: the
+   **Installs** card has **Install app** (also in the **...** menu on the Apps list). Pick your
+   dev store and confirm. Until this is done the token request answers `app_not_installed`.
 
 ## 3. Get credentials into `.env`
 
@@ -59,7 +68,10 @@ SHOPIFY_CLIENT_ID=...
 SHOPIFY_CLIENT_SECRET=...
 ```
 
-The tooling exchanges these for an Admin API token itself (client-credentials grant).
+The tooling exchanges these for an Admin API token itself (client-credentials grant). That
+works because the dev store and the app belong to the same organization; a store in another
+organization answers `shop_not_permitted`. The token lasts about 24 hours and is fetched again
+on every run.
 If you already have a token from an OAuth install, set `SHOPIFY_ACCESS_TOKEN=` instead;
 it takes precedence. `.env` is gitignored; never commit these values.
 
@@ -69,7 +81,8 @@ it takes precedence. `.env` is gitignored; never commit these values.
 pnpm dev:stack:seed-shopify
 ```
 
-Safe to re-run: anything already seeded is skipped, never edited. The first run takes a
+Safe to re-run: anything already seeded is skipped, never edited. Wait a minute between two
+runs: order lookup goes through Shopify's search index, which lags writes by a few seconds. The first run takes a
 minute or two because development stores accept only about 5 `orderCreate` calls a minute;
 the tool waits instead of failing.
 

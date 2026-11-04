@@ -189,14 +189,17 @@ async function ensureFulfillmentService(shopify) {
     log(`fulfillment service "${FULFILLMENT_SERVICE_NAME}" exists`);
     return;
   }
+  // No callbackUrl: it is optional on 2026-10, and Shopify refuses one outside
+  // the app's own URL domain ("Callback url is not allowed"). A real 3PL
+  // connection needs a public OpenLinker URL under that domain (#3928, L-F1).
   const created = await shopify.request(
-    `mutation ($name: String!, $callbackUrl: URL!) {
-      fulfillmentServiceCreate(name: $name, callbackUrl: $callbackUrl, trackingSupport: true, inventoryManagement: true) {
+    `mutation ($name: String!) {
+      fulfillmentServiceCreate(name: $name, trackingSupport: true, inventoryManagement: true) {
         fulfillmentService { id serviceName location { id } }
         userErrors { field message }
       }
     }`,
-    { name: FULFILLMENT_SERVICE_NAME, callbackUrl: 'https://example.com/ol-seed-fulfillment' },
+    { name: FULFILLMENT_SERVICE_NAME },
     { userErrorsPath: 'fulfillmentServiceCreate' },
   );
   assertNoUserErrors(created.data.fulfillmentServiceCreate, 'fulfillmentServiceCreate');
@@ -213,11 +216,13 @@ async function findCategoryId(shopify, search) {
 }
 
 async function ensureProduct(shopify, product, locationIds) {
+  // productByIdentifier reads the product directly; the `query:` search index
+  // lags writes by seconds and returns a partial set in between (#3928, L-M1).
   const existing = await shopify.request(
-    `query ($q: String!) { products(first: 1, query: $q) { nodes { id } } }`,
-    { q: `handle:${product.handle}` },
+    `query ($handle: String!) { productByIdentifier(identifier: { handle: $handle }) { id } }`,
+    { handle: product.handle },
   );
-  if (existing.data.products.nodes.length) {
+  if (existing.data.productByIdentifier) {
     log(`product ${product.handle} exists`);
     return;
   }
@@ -280,15 +285,23 @@ async function ensureProduct(shopify, product, locationIds) {
 }
 
 async function readVariantIds(shopify) {
-  const res = await shopify.request(
-    `query ($q: String!) { productVariants(first: 50, query: $q) { nodes { id sku } } }`,
-    { q: 'sku:OL-SEED-*' },
-  );
-  return new Map(res.data.productVariants.nodes.map((v) => [v.sku, v.id]));
+  const bySku = new Map();
+  for (const product of PRODUCTS) {
+    const res = await shopify.request(
+      `query ($handle: String!) {
+        productByIdentifier(identifier: { handle: $handle }) { variants(first: 50) { nodes { id sku } } }
+      }`,
+      { handle: product.handle },
+    );
+    for (const v of res.data.productByIdentifier?.variants.nodes ?? []) bySku.set(v.sku, v.id);
+  }
+  return bySku;
 }
 
 async function ensureOrder(shopify, spec, variantIdsBySku, currencyCode) {
   const tag = `${SEED_TAG}-order-${spec.key}`;
+  // Tag search shares the index lag above, so re-running within seconds of a
+  // first run can duplicate an order. Wait a minute between runs.
   const existing = await shopify.request(
     `query ($q: String!) { orders(first: 1, query: $q) { nodes { id name } } }`,
     { q: `tag:'${tag}'` },

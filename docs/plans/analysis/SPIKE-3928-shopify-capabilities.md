@@ -14,17 +14,31 @@ OpenLinker end to end*. Evidence ids `E-*` below refer to SPIKE-2879; ids `L-*` 
 
 | Part | State |
 |---|---|
-| Dev-store tooling (`docker/shopify/`) | written, first live run pending |
-| Live probes (`L-*`) | not started - waiting for the dev store |
+| Dev-store tooling (`docker/shopify/`) | live: seeded a fresh store end to end, second run idempotent (2026-11-04) |
+| Live probes (`L-*`) | started - findings from the seed run below |
 | Prototype adapter (`local/shopify-prototype`, never merged) | not started |
 | S1-S4 scenarios | not started |
 | S5 (Subiekt GT machine) | deferred until S1-S4 pass |
 
 ## Environment
 
-To be filled on the first live run: store domain (redacted), plan, API version (`2026-10`), app
-distribution, how the token was obtained, granted scopes (read back from
-`currentAppInstallation.accessScopes`, E-C9), throttle budget.
+Dev store `{shop-domain}.myshopify.com`, country Poland, store currency **PLN**, prices include
+tax (`shop.taxesIncluded: true`). Plan reported as `"Shopify Plus App Development"`
+(`partnerDevelopment: true`). App created in the Dev Dashboard (2026-11-04), Admin API `2026-10`,
+which is the newest stable version that day (`publicApiVersions`: `2026-01`..`2026-10`
+supported, `2027-01` and `unstable` not). All 32 requested scopes granted, read back from
+`currentAppInstallation.accessScopes`.
+
+**Token: client-credentials grant, no OAuth.** `POST /admin/oauth/access_token` with
+`grant_type=client_credentials` + client id/secret returns an Admin API token, because the app
+and the dev store are in the same organization. Before the app was installed on the store the
+same call answered HTTP 400 `Oauth error app_not_installed`. SPIKE-2879 used the authorization-code
+flow instead (E-C3). The token is short-lived (about 24 h per shopify.dev), so the tooling mints
+one per run.
+
+Throttle budget: `maximumAvailable: 20000`, `restoreRate: 1000` - five times what SPIKE-2879's
+dev store reported (E-C4: 4000 / 200). Budget follows the plan, so production figures must be
+read from `throttleStatus`, never assumed.
 
 ## How to read the matrix
 
@@ -217,9 +231,22 @@ What Shopify **does** have to supply for a correct document, to verify live:
 | S4 | Shopify as master and order source -> document -> label -> tracking back; own-shop routing guard (#3487) | A, C | not started | - |
 | S5 | Subiekt GT master, Shopify as channel (GT bridge machine) | C | deferred | - |
 
+## Live findings (this spike)
+
+| Id | Finding | Consequence for the adapter |
+|---|---|---|
+| L-C1 | Client-credentials grant works for an app and dev store in the same organization; `app_not_installed` until the app is installed from the Dev Dashboard | A merchant-owned connection can be set up with just client id + secret; no redirect endpoint needed. A store in another org needs the authorization-code flow |
+| L-C2 | Throttle budget on this plan is 20000 / 1000 per s, not 4000 / 200 | Read `throttleStatus`; never hard-code a budget |
+| L-M1 | The `query:` search index (`products`, `productVariants`, `orders`) is **eventually consistent**: seconds after a write it returns a partial, shifting set (`sku:OL-SEED-*` returned 3 of 10, then a different 3) | Never resolve an id by search right after writing it. Use the id from the mutation response or `productByIdentifier` (direct read). Matters for identifier mapping and for dedup lookups |
+| L-F1 | `fulfillmentServiceCreate.callbackUrl` is **optional** on `2026-10` (required on `2026-07`, E-F2); a URL outside the app's own URL domain is refused: `"Callback url is not allowed"` | Role E needs a public OpenLinker URL under the app's domain before Shopify can send fulfillment requests |
+| L-O1 | `orderCreate(options: {inventoryBehaviour: DECREMENT_OBEYING_POLICY})` commits stock (`committed` +1) at a location chosen by **Shopify's routing**, not the caller | `OrderCreateStockEffect` can answer `true`; which location was hit must be read back, not assumed |
+| L-O2 | `orderCreate` accepts a `PENDING` transaction on gateway `"Cash on Delivery (COD)"` (shows in `paymentGatewayNames`); `orderCancel(refund: false)` leaves `displayFinancialStatus: PAID` and fulfillment `FULFILLMENT_NOT_REQUIRED` | COD is representable on an imported order. A cancelled-but-paid order is a state the cancellation flow must expect |
+| L-X1 | The ~5 `orderCreate` per minute cap applies on the "Plus App Development" plan too, reported as a `"Too many attempts"` userError (same as E-X2) | Retry classifier must treat that userError as deferrable |
+| L-T1 | `taxonomy.categories(search: "T-shirts")` ranks "Baby & Children's T-Shirts" first | Keyword search is not a safe automatic category pick; the operator chooses |
+
 ## Live transcripts
 
-None yet.
+None yet beyond the seed run (`pnpm dev:stack:seed-shopify` output and the read-backs above).
 
 ## Open risks
 
