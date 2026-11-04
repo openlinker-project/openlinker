@@ -1823,6 +1823,44 @@ describe('OrderIngestionService', () => {
       expect(reservationService.reserveForOrder).not.toHaveBeenCalled();
     });
 
+    it('does not re-hold a ready order whose expansion is frozen when the confirmation is retired (#3520)', async () => {
+      orderSource.getOrder.mockResolvedValue({
+        ...incomingWithItems,
+        items: [{ ...incomingWithItems.items[0], packQuantity: 3 }, incomingWithItems.items[1]],
+      });
+      orderItemRefResolver.tryResolve
+        .mockResolvedValueOnce({ resolved: true, internalProductId: 'p-1', internalVariantId: 'v-1' })
+        .mockResolvedValueOnce({ resolved: true, internalProductId: 'p-2', internalVariantId: 'v-2' });
+      orderRecordService.getOrderRecord.mockResolvedValue({
+        sourceConnectionId: connectionId,
+        recordStatus: 'ready',
+        lineExpansion: { v: 1, definitions: [] },
+      } as unknown as OrderRecord);
+
+      await service.syncOrderFromSource(connectionId, externalOrderId);
+
+      expect(orderRecordService.markItemResolutionFailure).not.toHaveBeenCalled();
+      expect(orderRecordService.persistOrder).toHaveBeenCalled();
+      expect(bundleDefinitions.findCurrentByVariantIds).not.toHaveBeenCalled();
+      expect(orderRecordService.freezeLineExpansion).not.toHaveBeenCalled();
+    });
+
+    it('freezes a ready order that has no expansion yet: a crash between persist and freeze is not pre-feature (#3520)', async () => {
+      orderSource.getOrder.mockResolvedValue({ ...incomingWithItems });
+      orderItemRefResolver.tryResolve
+        .mockResolvedValueOnce({ resolved: true, internalProductId: 'p-1', internalVariantId: 'v-1' })
+        .mockResolvedValueOnce({ resolved: true, internalProductId: 'p-2', internalVariantId: 'v-2' });
+      orderRecordService.getOrderRecord.mockResolvedValue({
+        sourceConnectionId: connectionId,
+        recordStatus: 'ready',
+        lineExpansion: null,
+      } as unknown as OrderRecord);
+
+      await service.syncOrderFromSource(connectionId, externalOrderId);
+
+      expect(orderRecordService.freezeLineExpansion).toHaveBeenCalledTimes(1);
+    });
+
     it('lets a confirmed multipack through and freezes it as N units of its own variant (#3624)', async () => {
       orderSource.getOrder.mockResolvedValue({
         ...incomingWithItems,

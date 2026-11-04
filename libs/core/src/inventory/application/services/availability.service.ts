@@ -178,6 +178,7 @@ export class AvailabilityService implements IAvailabilityService {
               answeredBy: 'computed',
               totalAvailable: computeBundleUnits(
                 bundle.components.map((c, i) => ({
+                  variantId: c.variantId,
                   quantity: c.quantity,
                   availableToPromise: Math.max(
                     0,

@@ -38,19 +38,11 @@ export class BundleDefinitionService implements IBundleDefinitionService {
   ) {}
 
   async create(variantId: string, components: BundleComponentInput[]): Promise<BundleDefinition> {
-    const [existing] = await this.bundles.findCurrentByVariantIds([variantId]);
-    if (existing !== undefined) {
-      throw new BundleDefinitionAlreadyExistsError(variantId);
-    }
-    return this.write(variantId, components);
+    return this.write(variantId, components, 'create');
   }
 
   async update(variantId: string, components: BundleComponentInput[]): Promise<BundleDefinition> {
-    const [existing] = await this.bundles.findCurrentByVariantIds([variantId]);
-    if (existing === undefined) {
-      throw new BundleDefinitionNotFoundError(variantId);
-    }
-    return this.write(variantId, components);
+    return this.write(variantId, components, 'update');
   }
 
   async delete(variantId: string): Promise<void> {
@@ -101,10 +93,33 @@ export class BundleDefinitionService implements IBundleDefinitionService {
     return this.bundles.findHistory(variantId);
   }
 
+  /**
+   * Validate, then write under a per-variant advisory lock covering the bundle
+   * and every component: the existence and nesting checks are reads, so without
+   * the lock two concurrent saves (A holds B, B holds A) would each pass them.
+   */
   private async write(
     variantId: string,
-    inputs: BundleComponentInput[]
+    inputs: BundleComponentInput[],
+    mode: 'create' | 'update'
   ): Promise<BundleDefinition> {
+    return this.bundles.withVariantsLocked([variantId, ...inputs.map((i) => i.variantId)], () =>
+      this.writeLocked(variantId, inputs, mode)
+    );
+  }
+
+  private async writeLocked(
+    variantId: string,
+    inputs: BundleComponentInput[],
+    mode: 'create' | 'update'
+  ): Promise<BundleDefinition> {
+    const [existing] = await this.bundles.findCurrentByVariantIds([variantId]);
+    if (mode === 'create' && existing !== undefined) {
+      throw new BundleDefinitionAlreadyExistsError(variantId);
+    }
+    if (mode === 'update' && existing === undefined) {
+      throw new BundleDefinitionNotFoundError(variantId);
+    }
     if (inputs.length === 0) {
       throw new BundleDefinitionInvalidError('A bundle needs at least one component');
     }
@@ -139,18 +154,33 @@ export class BundleDefinitionService implements IBundleDefinitionService {
       throw new BundleNestingError('variant-is-component', variantId, containers[0].variantId);
     }
 
-    const components: BundleComponent[] = inputs.map((input) => {
-      const variant = byId.get(input.variantId);
-      const component: BundleComponent = {
-        variantId: input.variantId,
-        productId: (variant as { productId: string }).productId,
-        quantity: input.quantity,
-      };
-      if (input.giftSlot === true) {
-        component.giftSlot = true;
+    // One variant, one component: stock, reservations and the expansion all
+    // treat a variant listed twice as ONE pool, so the stored form says so.
+    // Quantities add. The merged slot stays a gift only when EVERY merged slot
+    // was one (the same rule `expandBundleLines` applies), because a paid unit
+    // folded into a gift slot must not be presented as free.
+    const merged = new Map<string, BundleComponent>();
+    for (const input of inputs) {
+      const existing = merged.get(input.variantId);
+      if (existing === undefined) {
+        const variant = byId.get(input.variantId);
+        const component: BundleComponent = {
+          variantId: input.variantId,
+          productId: (variant as { productId: string }).productId,
+          quantity: input.quantity,
+        };
+        if (input.giftSlot === true) {
+          component.giftSlot = true;
+        }
+        merged.set(input.variantId, component);
+      } else {
+        existing.quantity += input.quantity;
+        if (input.giftSlot !== true) {
+          delete existing.giftSlot;
+        }
       }
-      return component;
-    });
+    }
+    const components = [...merged.values()];
     return this.bundles.insertNextVersion(variantId, components);
   }
 }

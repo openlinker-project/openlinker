@@ -57,9 +57,14 @@ export class FulfillmentOrderEditService implements IFulfillmentOrderEditService
     // answer is per commercial line, which is how the edit guards key.
     for (const [bundleLineId, refs] of Object.entries(components)) {
       if (refs.length === 0) continue;
-      fulfilledByLine[bundleLineId] = Math.min(
+      // Conservative fold, the exact complement of `lowerComponents`: the line
+      // can only be lowered to Q when EVERY component has `Q * perUnit >=
+      // fulfilled`, i.e. Q >= ceil(fulfilled / perUnit) for each. A floor/min
+      // fold under-reports a partly fulfilled component and lets an edit pass
+      // the guard that the write then refuses half-way.
+      fulfilledByLine[bundleLineId] = Math.max(
         ...refs.map((ref) =>
-          Math.floor((fulfilledByLine[ref.componentLineId] ?? 0) / Math.max(ref.perUnit, 1))
+          Math.ceil((fulfilledByLine[ref.componentLineId] ?? 0) / Math.max(ref.perUnit, 1))
         )
       );
       for (const ref of refs) delete fulfilledByLine[ref.componentLineId];

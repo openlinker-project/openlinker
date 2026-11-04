@@ -24,7 +24,17 @@ import {
 } from '@openlinker/core/inventory';
 import { InventoryItemOrmEntity } from '@openlinker/core/inventory/orm-entities';
 import type { IIntegrationsService } from '@openlinker/core/integrations';
-import { ORDER_RECORD_SERVICE_TOKEN, type IOrderRecordService } from '@openlinker/core/orders';
+import {
+  ORDER_PROVISIONING_RESUME_SERVICE_TOKEN,
+  ORDER_RECORD_SERVICE_TOKEN,
+  type IOrderProvisioningResumeService,
+  type IOrderRecordService,
+} from '@openlinker/core/orders';
+import {
+  CORE_ENTITY_TYPE,
+  IDENTIFIER_MAPPING_SERVICE_TOKEN,
+  type IIdentifierMappingService,
+} from '@openlinker/core/identifier-mapping';
 import { OrderRecordOrmEntity } from '@openlinker/core/orders/orm-entities';
 import {
   BUNDLE_DEFINITION_SERVICE_TOKEN,
@@ -40,6 +50,7 @@ import {
   type SyncLockPort,
 } from '@openlinker/core/sync';
 
+import { createTestConnection } from './helpers/test-connection.helper';
 import { getTestHarness, resetTestHarness, teardownTestHarness } from './setup';
 import type { IntegrationTestHarness } from './setup';
 
@@ -334,5 +345,53 @@ describe('Bundle expansion, from definition to decrement (#3607)', () => {
       [ORDER_ID]
     );
     expect(held).toHaveLength(0);
+  });
+
+  it('should count open orders by frozen version through the containment predicate (#3520)', async () => {
+    const ds = harness.getDataSource();
+    await seedVariant(ds, 'v_set', null);
+    await seedVariant(ds, 'v_a', 10);
+    await seedOrder();
+    await bundles.create('v_set', [{ variantId: 'v_a', quantity: 1 }]);
+    await orderRecords.freezeLineExpansion(ORDER_ID, {
+      v: 1,
+      definitions: await bundles.findCurrentByVariantIds(['v_set']),
+    });
+
+    expect(await orderRecords.countOpenOrdersByBundleVersion('v_set')).toEqual([{ version: 1, count: 1 }]);
+    expect(await orderRecords.countOpenOrdersByBundleVersion('v_other')).toEqual([]);
+  });
+
+  it('should select the multipack-held orders of ONE variant in SQL and report the scan (#3520)', async () => {
+    const app = harness.getApp();
+    const repo = harness.getDataSource().getRepository(OrderRecordOrmEntity);
+    const source = (await createTestConnection(harness.getDataSource(), { platformType: 'allegro', adapterKey: 'allegro.publicapi.v1' })).id;
+    const heldOrder = (id: string, offerId: string, reason: string): Partial<OrderRecordOrmEntity> => ({
+      internalOrderId: id,
+      customerId: null,
+      sourceConnectionId: source,
+      sourceEventId: null,
+      orderSnapshot: {
+        items: [{ id: 'l1', packQuantity: 3, productRef: { type: 'offer', externalId: offerId } }],
+      },
+      syncStatus: [],
+      recordStatus: 'awaiting_mapping',
+      mappingFailureReason: reason,
+      cancelledAt: null,
+    });
+    await repo.save([
+      repo.create(heldOrder('ol_order_h1', 'offer-1', 'sells 3 [multipack-without-bundle]')),
+      repo.create(heldOrder('ol_order_h2', 'offer-2', 'sells 3 [multipack-without-bundle]')),
+      repo.create(heldOrder('ol_order_h3', 'offer-1', 'identifier_mappings:Offer')),
+    ]);
+    const mapping = app.get<IIdentifierMappingService>(IDENTIFIER_MAPPING_SERVICE_TOKEN);
+    await mapping.createMapping(CORE_ENTITY_TYPE.Offer, 'offer-1', source, 'v_one');
+    await mapping.createMapping(CORE_ENTITY_TYPE.Offer, 'offer-2', source, 'v_two');
+
+    const resume = app.get<IOrderProvisioningResumeService>(ORDER_PROVISIONING_RESUME_SERVICE_TOKEN);
+    const result = await resume.resumeMultipackHeldOrders({ variantId: 'v_one', packQuantity: 3 });
+
+    // Only h1: h2 is another variant's offer, h3 is held for another reason.
+    expect(result).toMatchObject({ held: 1, truncated: false, scanFailed: false });
   });
 });

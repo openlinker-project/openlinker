@@ -583,7 +583,12 @@ export class OrderIngestionService implements IOrderIngestionService {
 
     for (const item of incoming.items) {
       const result = await this.orderItemRefResolver.tryResolve(connectionId, item.productRef);
-      if (result.resolved && isMultipackLine(item)) {
+      // A ready order with a frozen expansion was already decided: re-asking the
+      // LIVE definitions would flip a (possibly shipped) order back to held
+      // the day a definition or confirmation is retired.
+      const alreadyFrozen =
+        existing?.recordStatus === 'ready' && existing.lineExpansion != null;
+      if (result.resolved && !alreadyFrozen && isMultipackLine(item)) {
         // #3929: held BEFORE anything reserves. Treating the line as one unit
         // would reserve and ship a single unit for the price of several. The
         // hold is level-triggered: every re-ingestion re-asks, so it releases
@@ -1145,10 +1150,12 @@ export class OrderIngestionService implements IOrderIngestionService {
   /**
    * Freeze the order's bundle expansion and return its physical line list
    * (#3607, ADR-083 decisions 1-2). Written once: a re-poll or a later edit of
-   * a definition reads back what was stored. An order that was already `ready`
-   * before bundles existed carries no expansion and keeps its commercial list,
-   * because expanding it now would reserve components beside a bundle-line hold
-   * that is already recorded.
+   * a definition reads back what was stored: an already frozen order performs
+   * no definition read and no write. An order that was already `ready` before
+   * bundles existed was stamped with the EMPTY frozen expansion by the
+   * migration, so it keeps its commercial list through the same path. A `ready`
+   * row with NO expansion is therefore never pre-feature: it is an ingestion
+   * that persisted and crashed before freezing, and is frozen now.
    *
    * Deliberately NOT caught: continuing after a failed freeze would reserve at
    * the commercial grain, i.e. a silent no-op for every component.
@@ -1157,8 +1164,8 @@ export class OrderIngestionService implements IOrderIngestionService {
     order: Order,
     existing: OrderRecord | null | undefined
   ): Promise<Order['items']> {
-    if (existing?.recordStatus === 'ready' && existing.lineExpansion === null) {
-      return order.items;
+    if (existing?.lineExpansion != null) {
+      return expandBundleLines(order.items, existing.lineExpansion.definitions);
     }
     const variantIds = [
       ...new Set(order.items.map((i) => i.variantId).filter((id): id is string => Boolean(id))),

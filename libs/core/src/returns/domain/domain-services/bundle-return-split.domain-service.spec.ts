@@ -1,4 +1,4 @@
-import { allegroBundleRefundHint, splitBundleAmount } from './bundle-return-split.domain-service';
+import { keptAtStandaloneRefundHint, splitBundleAmount } from './bundle-return-split.domain-service';
 
 describe('splitBundleAmount', () => {
   it('should split proportionally to standalone price and sum exactly to the paid amount', () => {
@@ -56,12 +56,12 @@ describe('splitBundleAmount', () => {
   });
 });
 
-describe('allegroBundleRefundHint', () => {
+describe('keptAtStandaloneRefundHint', () => {
   it('should subtract the full price of what the buyer keeps', () => {
-    expect(allegroBundleRefundHint(100, 30)).toBe(70);
+    expect(keptAtStandaloneRefundHint(100, 30)).toBe(70);
   });
 
   it('should never go below zero', () => {
-    expect(allegroBundleRefundHint(50, 80)).toBe(0);
+    expect(keptAtStandaloneRefundHint(50, 80)).toBe(0);
   });
 });

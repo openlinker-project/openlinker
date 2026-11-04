@@ -28,8 +28,17 @@ export interface BundleDefinitionRepositoryPort {
   listCurrent(): Promise<BundleDefinition[]>;
 
   /**
+   * Run `work` while holding a transaction-scoped advisory lock per variant
+   * (taken in sorted order, so two writers cannot deadlock). Serialises the
+   * read-then-write of a definition and its nesting checks, which span the
+   * bundle AND its components, across concurrent saves.
+   */
+  withVariantsLocked<T>(variantIds: readonly string[], work: () => Promise<T>): Promise<T>;
+
+  /**
    * Insert version `max + 1` (1 for a variant with no history) and return it.
-   * The unique `(variantId, version)` index is the concurrency guard.
+   * The unique `(variantId, version)` index is the last-resort guard; a violation
+   * is raised as `BundleDefinitionConcurrentWriteError`.
    */
   insertNextVersion(
     variantId: string,

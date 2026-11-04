@@ -329,6 +329,20 @@ describe('OrderRecord.physicalItems / componentLineIdsOf (#3607)', () => {
     ]);
   });
 
+  it('should still report the components of a bundle line the operator edited to 0 (#3520)', () => {
+    const channel = { items: snapshotItems };
+    const effective = { items: snapshotItems.filter((i) => i.id !== 'l1') };
+    const record = Object.assign(makeRecord(effective), {
+      lineExpansion: expansion,
+    }) as OrderRecord;
+    Object.defineProperty(record, 'channelSnapshotRaw', { value: channel });
+    expect(record.orderItems.map((i) => i.id)).toEqual(['l2']);
+    expect(record.componentsOfLine('l1')).toEqual([
+      { componentLineId: 'l1~c:v-a', perUnit: 2 },
+      { componentLineId: 'l1~c:v-b', perUnit: 1 },
+    ]);
+  });
+
   it('should describe a bundle line with its frozen components and version (#3624)', () => {
     const record = Object.assign(makeRecord({ items: snapshotItems }), { lineExpansion: expansion });
     expect(record.bundleLines).toEqual([

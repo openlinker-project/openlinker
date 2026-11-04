@@ -183,7 +183,9 @@ export class BundleDefinitionsController {
     // #3624: orders held because a multipack had no bundle are sent through
     // ingestion again now, not at their next retry backoff. Never fails the
     // create - the definition is already saved.
-    const released = await this.provisioningResume.resumeMultipackHeldOrders();
+    const released = await this.provisioningResume.resumeMultipackHeldOrders({
+      variantId: body.variantId,
+    });
     return { ...toDto(created), releasedOrders: released.enqueued };
   }
 

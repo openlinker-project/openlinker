@@ -201,6 +201,7 @@ describe('OrdersController', () => {
       claimShippedNotification: jest.fn(),
       freezeLineExpansion: jest.fn(),
       countOpenOrdersByBundleVersion: jest.fn(),
+      findHeldByReasonCode: jest.fn(),
     };
 
     const mockOrderRecordService = {

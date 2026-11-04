@@ -441,7 +441,14 @@ export class ReturnWritesController {
     const parsed = Number(query.quantity ?? '1');
     const quantity = Number.isInteger(parsed) && parsed >= 1 ? parsed : 1;
     const preview = await this.custody.previewBundleReturn(bundle, quantity);
-    return { isBundle: true, paidPerUnitGross: bundle.paidPerUnitGross, ...preview };
+    // The core field is marketplace-neutral; the wire name stays (the web client reads it).
+    const { keptAtStandaloneRefundHintGross, ...rest } = preview;
+    return {
+      isBundle: true,
+      paidPerUnitGross: bundle.paidPerUnitGross,
+      ...rest,
+      allegroRefundHintGross: keptAtStandaloneRefundHintGross,
+    };
   }
 
   @Get(':returnId/bundle-refund-hint')
@@ -470,10 +477,10 @@ export class ReturnWritesController {
         return { applicable: true, hintGross: null, paidForSetGross: null, keptStandaloneGross: null };
       }
       const preview = await this.custody.previewBundleReturn(bundle, set.units);
-      if (preview.allegroRefundHintGross === null || preview.hintInputs === null) {
+      if (preview.keptAtStandaloneRefundHintGross === null || preview.hintInputs === null) {
         return { applicable: true, hintGross: null, paidForSetGross: null, keptStandaloneGross: null };
       }
-      hint += preview.allegroRefundHintGross;
+      hint += preview.keptAtStandaloneRefundHintGross;
       paid += preview.hintInputs.paidForSetGross;
       kept += preview.hintInputs.keptStandaloneGross;
     }

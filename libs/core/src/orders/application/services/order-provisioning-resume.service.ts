@@ -32,8 +32,8 @@ import type {
   MultipackReleaseResult,
   OrderProvisioningResumeResult,
 } from '../interfaces/order-provisioning-resume.service.interface';
-import { IOrderRecordService } from '../interfaces/order-record.service.interface';
 import type { OrderRecord } from '../../domain/entities/order-record.entity';
+import { IOrderRecordService } from '../interfaces/order-record.service.interface';
 import { OrderRecordRepositoryPort } from '../../domain/ports/order-record-repository.port';
 import { isWithheldOnHoldError } from '../../domain/types/order-hold.types';
 import { MULTIPACK_WITHOUT_BUNDLE_REASON_CODE } from './multipack-hold';
@@ -62,26 +62,39 @@ export class OrderProvisioningResumeService
     private readonly orderRecordService: IOrderRecordService
   ) {}
 
-  async resumeMultipackHeldOrders(scope?: {
+  async resumeMultipackHeldOrders(scope: {
     variantId: string;
-    packQuantity: number;
+    packQuantity?: number;
   }): Promise<MultipackReleaseResult> {
-    const result: MultipackReleaseResult = { held: 0, enqueued: 0, notResumed: 0 };
+    const result: MultipackReleaseResult = {
+      held: 0,
+      enqueued: 0,
+      notResumed: 0,
+      truncated: false,
+      scanFailed: false,
+    };
     const pageSize = 100;
-    const maxPages = 20;
+    const maxPages = 50;
     try {
+      // The offers that resolve to this variant, so the SQL read selects only
+      // the orders that can possibly be held for it (no full scan).
+      const offerRefs = (
+        await this.identifierMapping.getExternalIds(CORE_ENTITY_TYPE.Offer, scope.variantId)
+      ).map((mapping) => ({ connectionId: mapping.connectionId, externalId: mapping.externalId }));
+      let afterId: string | null = null;
       for (let page = 0; page < maxPages; page += 1) {
-        const { items } = await this.orderRecordRepository.findMany(
-          { recordStatus: 'awaiting_mapping' },
-          { limit: pageSize, offset: page * pageSize }
+        // Keyset, not offset: re-driving an order does not clear its hold until
+        // ingestion runs, but the set still moves under us, and an offset over
+        // a moving set steps over rows.
+        const items = await this.orderRecordRepository.findHeldByReasonCode(
+          {
+            reasonCode: MULTIPACK_WITHOUT_BUNDLE_REASON_CODE,
+            offerRefs,
+            ...(scope.packQuantity === undefined ? {} : { packQuantity: scope.packQuantity }),
+          },
+          { afterId, limit: pageSize }
         );
         for (const order of items) {
-          if (!order.mappingFailureReason?.includes(`[${MULTIPACK_WITHOUT_BUNDLE_REASON_CODE}]`)) {
-            continue;
-          }
-          if (scope !== undefined && !(await this.heldFor(order, scope))) {
-            continue;
-          }
           result.held += 1;
           const outcome = await this.resume(order.internalOrderId);
           if (outcome.status === 'enqueued') {
@@ -91,10 +104,17 @@ export class OrderProvisioningResumeService
           }
         }
         if (items.length < pageSize) {
-          break;
+          return result;
         }
+        afterId = items[items.length - 1].internalOrderId;
       }
+      result.truncated = true;
+      this.logger.warn(
+        `Multipack release for variant ${scope.variantId} stopped at its budget of ` +
+          `${String(maxPages * pageSize)} orders; the rest stay held`
+      );
     } catch (error) {
+      result.scanFailed = true;
       this.logger.error(
         `Multipack release scan failed after ${String(result.held)} held orders: ${
           error instanceof Error ? error.message : String(error)
@@ -102,27 +122,6 @@ export class OrderProvisioningResumeService
       );
     }
     return result;
-  }
-
-  /** Is this order held for exactly this (variant, pack quantity)? */
-  private async heldFor(
-    order: OrderRecord,
-    scope: { variantId: string; packQuantity: number }
-  ): Promise<boolean> {
-    for (const line of order.rawMultipackLines) {
-      if (line.packQuantity !== scope.packQuantity || line.productRef.type !== 'offer') {
-        continue;
-      }
-      const variantId = await this.identifierMapping.getInternalId(
-        CORE_ENTITY_TYPE.Offer,
-        line.productRef.externalId,
-        order.sourceConnectionId
-      );
-      if (variantId === scope.variantId) {
-        return true;
-      }
-    }
-    return false;
   }
 
   async resume(

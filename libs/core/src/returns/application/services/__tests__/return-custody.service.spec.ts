@@ -1360,6 +1360,15 @@ describe('ReturnCustodyService', () => {
       expect(settledOutcome).toMatchObject({ quantityRestocked: 1 });
     });
 
+    it('should persist every component act as in_doubt before the first master call (#3520)', async () => {
+      await service.disposeLine(LINE_ID, { quantity: 1, disposition: 'restock', bundle: bundle() });
+
+      const writes = repository.runLineWrite.mock.invocationCallOrder;
+      const firstCall = adjustInventory.mock.invocationCallOrder[0];
+      expect(writes).toHaveLength(2);
+      expect(Math.max(...writes)).toBeLessThan(firstCall);
+    });
+
     it('should restock only the returned component and price its share', async () => {
       await service.disposeLine(LINE_ID, {
         quantity: 1,
@@ -1414,7 +1423,7 @@ describe('ReturnCustodyService', () => {
       // Paid 100 per set; the buyer keeps v-a (2 x 30 = 60), so the hint is 40.
       const preview = await service.previewBundleReturn(bundle(['v-b']), 1);
 
-      expect(preview.allegroRefundHintGross).toBe(40);
+      expect(preview.keptAtStandaloneRefundHintGross).toBe(40);
       expect(preview.returnedShareGross).toBe(40);
       expect(adjustInventory).not.toHaveBeenCalled();
     });
@@ -1424,13 +1433,13 @@ describe('ReturnCustodyService', () => {
         { id: 'v-a', price: 90 },
         { id: 'v-b', price: 40 },
       ]);
-      expect((await service.previewBundleReturn(bundle(['v-b']), 1)).allegroRefundHintGross).toBe(0);
+      expect((await service.previewBundleReturn(bundle(['v-b']), 1)).keptAtStandaloneRefundHintGross).toBe(0);
 
       ((products as unknown) as { getVariantsByIds: jest.Mock }).getVariantsByIds.mockResolvedValue([
         { id: 'v-b', price: 40 },
       ]);
       const preview = await service.previewBundleReturn(bundle(['v-b']), 1);
-      expect(preview.allegroRefundHintGross).toBeNull();
+      expect(preview.keptAtStandaloneRefundHintGross).toBeNull();
       expect(preview.splitRefusal).toBe('no-split-basis');
     });
 

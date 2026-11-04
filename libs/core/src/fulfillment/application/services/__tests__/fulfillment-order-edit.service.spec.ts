@@ -93,6 +93,28 @@ describe('FulfillmentOrderEditService (#3542)', () => {
       expect(works.recordLineProgress).not.toHaveBeenCalled();
     });
 
+    it('should report the units the line cannot be lowered below, in agreement with the write guard (#3520)', async () => {
+      works.findByOrderId.mockResolvedValue([
+        work('w1', [
+          { orderLineId: 'l1~c:va', total: 6, fulfilled: 4 },
+          { orderLineId: 'l1~c:vb', total: 3, fulfilled: 3 },
+        ]),
+      ] as never);
+      const components = [
+        { componentLineId: 'l1~c:va', perUnit: 3 },
+        { componentLineId: 'l1~c:vb', perUnit: 1 },
+      ];
+
+      const assessment = await service.assessForEdit('o1', { l1: components });
+      const floor = assessment.fulfilledByLine.l1;
+
+      // Lowering to the assessed floor passes the write guard; one below is refused.
+      await expect(service.lowerLineQuantity({ orderId: 'o1', orderLineId: 'l1', newQuantity: floor, components })).resolves.toBeDefined();
+      await expect(
+        service.lowerLineQuantity({ orderId: 'o1', orderLineId: 'l1', newQuantity: floor - 1, components })
+      ).rejects.toThrow(RangeError);
+    });
+
     it('should report a bundle line fulfilled in whole bundles in assessForEdit (#3607)', async () => {
       works.findByOrderId.mockResolvedValue([
         work('w1', [
@@ -108,7 +130,8 @@ describe('FulfillmentOrderEditService (#3542)', () => {
         ],
       });
 
-      expect(assessment.fulfilledByLine).toEqual({ l1: 1 });
+      // Conservative: component vb has 3 units out, so no fewer than 3 bundles remain.
+      expect(assessment.fulfilledByLine).toEqual({ l1: 3 });
     });
 
     it('should cancel the difference on the work line and never touch totalQuantity', async () => {

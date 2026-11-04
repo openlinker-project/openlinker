@@ -1,3 +1,4 @@
+import { CapabilityNotSupportedException } from '@openlinker/core/integrations';
 import { BundleMasterSyncService } from './bundle-master-sync.service';
 import { BundleMasterSyncRefusedError } from '../../domain/exceptions/bundle-definition.errors';
 
@@ -49,12 +50,25 @@ describe('BundleMasterSyncService', () => {
       variants as never,
       bundles as never
     );
-    return { service, bundles };
+    return { service, bundles, integrations };
   }
 
   const composition = {
     components: [{ externalProductId: '11', externalVariantId: '31', quantity: 2 }],
   };
+
+  it('should treat a connection without ProductMaster as no master, but a failing master as unavailable (#3520)', async () => {
+    const { service, integrations } = build({ adapter: {} });
+    integrations.getCapabilityAdapter.mockRejectedValueOnce(
+      new CapabilityNotSupportedException('allegro.publicapi.v1', 'ProductMaster')
+    );
+    await expect(service.previewComposition('ol_variant_pack')).rejects.toMatchObject({ reason: 'no-master' });
+
+    integrations.getCapabilityAdapter.mockRejectedValueOnce(new Error('401 token expired'));
+    await expect(service.previewComposition('ol_variant_pack')).rejects.toMatchObject({
+      reason: 'master-unavailable',
+    });
+  });
 
   it('should refuse when the master cannot read bundles', async () => {
     const { service } = build({ adapter: {} });

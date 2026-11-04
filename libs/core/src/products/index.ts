@@ -68,6 +68,7 @@ export {
   BundleDefinitionNotFoundError,
   BundleDefinitionInvalidError,
   BundleDefinitionAlreadyExistsError,
+  BundleDefinitionConcurrentWriteError,
   BundleMasterSyncRefusedError,
   BundleMasterSyncRefusalReasonValues,
 } from './domain/exceptions/bundle-definition.errors';

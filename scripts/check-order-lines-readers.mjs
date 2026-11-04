@@ -77,7 +77,6 @@ export const ALLOWED = new Map([
   ['libs/core/src/orders/domain/order-from-ready-snapshot.ts', COMMERCIAL.entity],
   ['libs/core/src/orders/domain/order-search-text.ts', COMMERCIAL.projection],
   ['libs/core/src/orders/domain/order-summary-projection.ts', COMMERCIAL.projection],
-  ['libs/core/src/orders/domain/project-order-for-routing.ts', 'defaults to order.items only for a caller with no expansion (a basket); real callers pass physicalItems'],
   ['libs/core/src/orders/domain/types/order-edits.types.ts', COMMERCIAL.edit],
   ['libs/core/src/sales-documents/domain/types/gross-price-eligibility.types.ts', COMMERCIAL.document],
   ['libs/core/src/sales-documents/domain/types/shipping-tax-split.types.ts', COMMERCIAL.document],

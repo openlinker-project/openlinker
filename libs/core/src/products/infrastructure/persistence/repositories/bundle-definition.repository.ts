@@ -5,7 +5,8 @@
  */
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { QueryFailedError, Repository } from 'typeorm';
+import { BundleDefinitionConcurrentWriteError } from '../../../domain/exceptions/bundle-definition.errors';
 import { BundleDefinitionOrmEntity } from '../entities/bundle-definition.orm-entity';
 import type { BundleDefinitionRepositoryPort } from '../../../domain/ports/bundle-definition-repository.port';
 import {
@@ -85,14 +86,33 @@ export class BundleDefinitionRepository implements BundleDefinitionRepositoryPor
     variantId: string,
     components: BundleComponent[]
   ): Promise<BundleDefinition> {
-    const rows = (await this.repository.query(
-      `INSERT INTO "bundle_definitions" ("variantId", "version", "components")
-       SELECT $1, COALESCE(MAX("version"), 0) + 1, $2::jsonb
-         FROM "bundle_definitions" WHERE "variantId" = $1
-       RETURNING "variantId", "version", "components"`,
-      [variantId, JSON.stringify(components)]
-    )) as RawRow[];
-    return this.rowToDomain(rows[0]);
+    try {
+      const rows = (await this.repository.query(
+        `INSERT INTO "bundle_definitions" ("variantId", "version", "components")
+         SELECT $1, COALESCE(MAX("version"), 0) + 1, $2::jsonb
+           FROM "bundle_definitions" WHERE "variantId" = $1
+         RETURNING "variantId", "version", "components"`,
+        [variantId, JSON.stringify(components)]
+      )) as RawRow[];
+      return this.rowToDomain(rows[0]);
+    } catch (error) {
+      if (isVersionCollision(error)) {
+        throw new BundleDefinitionConcurrentWriteError(variantId);
+      }
+      throw error;
+    }
+  }
+
+  async withVariantsLocked<T>(variantIds: readonly string[], work: () => Promise<T>): Promise<T> {
+    const keys = [...new Set(variantIds)].sort();
+    return this.repository.manager.transaction(async (manager) => {
+      for (const key of keys) {
+        await manager.query('SELECT pg_advisory_xact_lock(hashtext($1))', [
+          `bundle_definition:${key}`,
+        ]);
+      }
+      return work();
+    });
   }
 
   async findConfirmedMultipacks(
@@ -160,4 +180,18 @@ interface RawRow {
   version: number;
   components: unknown;
   retiredAt?: Date | null;
+}
+
+/** Unique violation of the `(variantId, version)` index specifically (SQLSTATE 23505). */
+export function isVersionCollision(error: unknown): boolean {
+  if (!(error instanceof QueryFailedError)) return false;
+  const read = (source: unknown, key: 'code' | 'constraint'): string | undefined => {
+    if (typeof source !== 'object' || source === null) return undefined;
+    const value = (source as Record<string, unknown>)[key];
+    return typeof value === 'string' ? value : undefined;
+  };
+  const driver = (error as { driverError?: unknown }).driverError;
+  const code = read(error, 'code') ?? read(driver, 'code');
+  const constraint = read(error, 'constraint') ?? read(driver, 'constraint');
+  return code === '23505' && constraint === 'UQ_bundle_definitions_variant_version';
 }

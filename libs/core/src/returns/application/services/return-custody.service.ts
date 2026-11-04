@@ -81,7 +81,7 @@ import type { ReturnRecord } from '../../domain/entities/return-record.entity';
 import type { ReturnLineEvent } from '../../domain/entities/return-line-event.entity';
 import { ReturnBundleRefusedError } from '../../domain/exceptions/return-bundle-refused.error';
 import {
-  allegroBundleRefundHint,
+  keptAtStandaloneRefundHint,
   splitBundleAmount,
 } from '../../domain/domain-services/bundle-return-split.domain-service';
 import { ReturnCustodyContendedError } from '../../domain/exceptions/return-custody-contended.error';
@@ -828,15 +828,22 @@ export class ReturnCustodyService implements IReturnCustodyService {
     let allApplied = true;
     let lastEvent: ReturnLineEvent | null = null;
 
-    for (let index = 0; index < selected.length; index += 1) {
-      const component = selected[index];
-      const isLast = index === selected.length - 1;
+    // Pass 1: EVERY component's act is persisted as in_doubt before the first
+    // master call (ADR-056's attempted-predicate ordering, for the group). A
+    // crash after component 1's book took its units then leaves the others
+    // visible as in_doubt, instead of leaving no trace of them so that a
+    // re-dispose restocks component 1 a second time.
+    const prepared: {
+      component: (typeof selected)[number];
+      plan: Awaited<ReturnType<ReturnCustodyService['planRestock']>>;
+      event: ReturnLineEvent;
+    }[] = [];
+    for (const component of selected) {
       const plan = await this.planRestock(line, {
         productId: component.productId,
         variantId: component.variantId,
       });
       const share = shares?.get(component.variantId) ?? null;
-
       const { event } = await this.repository.runLineWrite(lineId, ({ line: locked }) => {
         applyReturnCustodyDisposition(locked, {
           quantity: input.quantity,
@@ -868,6 +875,13 @@ export class ReturnCustodyService implements IReturnCustodyService {
           result: null,
         };
       });
+      prepared.push({ component, plan, event });
+    }
+
+    // Pass 2: cross the boundary and settle, one component at a time.
+    for (let index = 0; index < prepared.length; index += 1) {
+      const { component, plan, event } = prepared[index];
+      const isLast = index === prepared.length - 1;
 
       const { outcome, resultingQuantity } = await this.writeMasterStock(
         plan,
@@ -993,7 +1007,7 @@ export class ReturnCustodyService implements IReturnCustodyService {
     const hint =
       hintInputs === null
         ? null
-        : allegroBundleRefundHint(hintInputs.paidForSetGross, hintInputs.keptStandaloneGross);
+        : keptAtStandaloneRefundHint(hintInputs.paidForSetGross, hintInputs.keptStandaloneGross);
 
     const returnedShare =
       splitRefusal === null
@@ -1018,7 +1032,7 @@ export class ReturnCustodyService implements IReturnCustodyService {
       splitRefusal,
       splitRefusalVariantIds,
       returnedShareGross: returnedShare,
-      allegroRefundHintGross: hint,
+      keptAtStandaloneRefundHintGross: hint,
       hintInputs,
     };
   }

@@ -17,6 +17,7 @@ describe('BundleDefinitionService', () => {
     findCurrentContainingComponent: jest.Mock;
     insertNextVersion: jest.Mock;
     retire: jest.Mock;
+    withVariantsLocked: jest.Mock;
   };
   let service: BundleDefinitionService;
 
@@ -30,6 +31,7 @@ describe('BundleDefinitionService', () => {
           Promise.resolve({ variantId, version: 1, components })
         ),
       retire: jest.fn(),
+      withVariantsLocked: jest.fn(),
     };
     const variantRepo = {
       findByIdIn: jest
@@ -38,6 +40,7 @@ describe('BundleDefinitionService', () => {
           Promise.resolve(variants.filter((v) => ids.includes(v.id)))
         ),
     };
+    bundles.withVariantsLocked = jest.fn().mockImplementation((_ids: string[], work: () => Promise<unknown>) => work());
     service = new BundleDefinitionService(bundles as never, variantRepo as never);
   });
 
@@ -46,6 +49,24 @@ describe('BundleDefinitionService', () => {
     expect(created.components).toEqual([
       { variantId: 'v-a', productId: 'p-v-a', quantity: 2, giftSlot: true },
     ]);
+  });
+
+  it('should merge a variant listed twice into ONE component and keep the gift flag only when every slot was a gift (#3520)', async () => {
+    const created = await service.create('v-set', [
+      { variantId: 'v-a', quantity: 1 },
+      { variantId: 'v-a', quantity: 2, giftSlot: true },
+      { variantId: 'v-b', quantity: 1, giftSlot: true },
+      { variantId: 'v-b', quantity: 1, giftSlot: true },
+    ]);
+    expect(created.components).toEqual([
+      { variantId: 'v-a', productId: 'p-v-a', quantity: 3 },
+      { variantId: 'v-b', productId: 'p-v-b', quantity: 2, giftSlot: true },
+    ]);
+  });
+
+  it('should run the write under a lock on the bundle and every component (#3520)', async () => {
+    await service.create('v-set', [{ variantId: 'v-a', quantity: 1 }]);
+    expect(bundles.withVariantsLocked).toHaveBeenCalledWith(['v-set', 'v-a'], expect.any(Function));
   });
 
   it('should refuse a component that is itself a bundle', async () => {

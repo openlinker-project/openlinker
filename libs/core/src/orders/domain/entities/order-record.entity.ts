@@ -847,7 +847,21 @@ export class OrderRecord {
    * those apart reads `orderSnapshot.items` itself.
    */
   get orderItems(): OrderItem[] {
-    const value = this.orderSnapshot.items;
+    return OrderRecord.readItems(this.orderSnapshot);
+  }
+
+  /**
+   * The lines exactly as the channel reported them (#3520), ignoring operator
+   * edits. A line the operator removed (edited to 0) is gone from
+   * {@link orderItems}, but its frozen components are still needed to release
+   * what it held.
+   */
+  private get channelItems(): OrderItem[] {
+    return OrderRecord.readItems(this.channelSnapshot);
+  }
+
+  private static readItems(snapshot: Record<string, unknown>): OrderItem[] {
+    const value = snapshot.items;
     if (!Array.isArray(value)) {
       return [];
     }
@@ -977,7 +991,12 @@ export class OrderRecord {
    * for a line that is not a bundle. The order-edit follow-ups scale by it.
    */
   componentsOfLine(lineId: string): ComponentLineRef[] {
-    return componentRefsFor(lineId, this.orderItems, this.lineExpansion?.definitions ?? []);
+    // Looked up in the channel lines too: an edit to 0 drops the line from
+    // orderItems, and the follow-ups must still release its components.
+    const items = this.orderItems.some((i) => i.id === lineId)
+      ? this.orderItems
+      : this.channelItems;
+    return componentRefsFor(lineId, items, this.lineExpansion?.definitions ?? []);
   }
 
   /**

@@ -118,7 +118,7 @@ export function splitBundleAmount(
  * `keptStandaloneGross` is the sum of the kept components' full standalone gross
  * prices (not their split shares): that is what the formula subtracts.
  */
-export function allegroBundleRefundHint(paidForSetGross: number, keptStandaloneGross: number): number {
+export function keptAtStandaloneRefundHint(paidForSetGross: number, keptStandaloneGross: number): number {
   if (!Number.isFinite(paidForSetGross) || !Number.isFinite(keptStandaloneGross)) {
     return 0;
   }

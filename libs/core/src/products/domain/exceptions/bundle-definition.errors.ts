@@ -64,11 +64,27 @@ export class BundleDefinitionAlreadyExistsError extends Error {
   }
 }
 
+/**
+ * Two writers raced on one variant's next version (the unique
+ * `(variantId, version)` index refused the loser). A subclass of
+ * {@link BundleDefinitionAlreadyExistsError} so the HTTP layer answers the same
+ * 409; the message tells the caller to re-read and retry.
+ */
+export class BundleDefinitionConcurrentWriteError extends BundleDefinitionAlreadyExistsError {
+  constructor(variantId: string) {
+    super(variantId);
+    this.message = `Variant ${variantId} was changed by another request at the same time; reload and try again`;
+    this.name = 'BundleDefinitionConcurrentWriteError';
+  }
+}
+
 export const BundleMasterSyncRefusalReasonValues = [
   'no-master',
   'master-cannot-read-bundles',
   'not-a-bundle-in-master',
   'component-unmapped',
+  /** The master connection exists but could not be reached (credentials, transport). */
+  'master-unavailable',
 ] as const;
 export type BundleMasterSyncRefusalReason = (typeof BundleMasterSyncRefusalReasonValues)[number];
 

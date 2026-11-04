@@ -65,7 +65,7 @@ export interface BundleReturnPreview {
    * standalone price of what the buyer keeps, minimum 0. A HINT - never applied by
    * default. Null when a kept component has no standalone price to subtract.
    */
-  allegroRefundHintGross: number | null;
+  keptAtStandaloneRefundHintGross: number | null;
   /** Inputs of the hint, for the "how this is calculated" view. Null when the hint is. */
   hintInputs: { paidForSetGross: number; keptStandaloneGross: number } | null;
 }

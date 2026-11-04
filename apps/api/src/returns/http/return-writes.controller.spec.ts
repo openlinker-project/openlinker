@@ -243,7 +243,7 @@ describe('ReturnWritesController', () => {
           .fn()
           .mockResolvedValue([{ returnLineId: LINE_ID, units: 1, returnedVariantIds: ['v-b'] }]);
         custody.previewBundleReturn = jest.fn().mockResolvedValue({
-          allegroRefundHintGross: 25,
+          keptAtStandaloneRefundHintGross: 25,
           hintInputs: { paidForSetGross: 64.99, keptStandaloneGross: 39.99 },
         });
 
@@ -273,7 +273,7 @@ describe('ReturnWritesController', () => {
           splitRefusal: null,
           splitRefusalVariantIds: [],
           returnedShareGross: 40,
-          allegroRefundHintGross: 40,
+          keptAtStandaloneRefundHintGross: 40,
         });
 
         const result = await controller.previewBundleReturn(RETURN_ID, LINE_ID, {

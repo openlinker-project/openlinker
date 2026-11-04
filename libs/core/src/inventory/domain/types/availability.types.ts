@@ -232,6 +232,13 @@ export function applyScopedLedgerSubtraction(
 
 /** One component of a bundle, already net of OL's published holds (#3931). */
 export interface BundleComponentAtp {
+  /**
+   * The component variant. Entries sharing one id are ONE stock pool and are
+   * summed before the division: a variant listed twice in a definition would
+   * otherwise be divided separately, each slot claiming the whole pool, which
+   * over-reports and oversells.
+   */
+  readonly variantId?: string;
   /** Units of the component per ONE bundle unit. */
   readonly quantity: number;
   /** `max(0, Σ available[live] − Σ olReserved[published])` of the component, BEFORE any Control. */
@@ -252,8 +259,23 @@ export interface BundleComponentAtp {
  */
 export function computeBundleUnits(components: readonly BundleComponentAtp[]): number {
   if (components.length === 0) return 0;
-  let units = Number.POSITIVE_INFINITY;
+  const pooled = new Map<string, BundleComponentAtp>();
+  const merged: BundleComponentAtp[] = [];
   for (const component of components) {
+    const id = component.variantId;
+    const seen = id === undefined ? undefined : pooled.get(id);
+    if (seen === undefined) {
+      const copy = { ...component };
+      merged.push(copy);
+      if (id !== undefined) pooled.set(id, copy);
+    } else {
+      // Same pool: quantities add, the (identical) ATP is counted once.
+      (seen as { quantity: number }).quantity = seen.quantity + component.quantity;
+      (seen as { isStale: boolean }).isStale = seen.isStale || component.isStale;
+    }
+  }
+  let units = Number.POSITIVE_INFINITY;
+  for (const component of merged) {
     if (component.isStale || component.quantity <= 0) return 0;
     units = Math.min(units, Math.floor(component.availableToPromise / component.quantity));
   }

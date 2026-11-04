@@ -87,6 +87,14 @@ export interface MultipackReleaseResult {
   enqueued: number;
   /** Orders that could not be re-driven (no source id, or the enqueue failed). */
   notResumed: number;
+  /**
+   * The scan hit its page budget with more held orders left. A short result is
+   * NOT "that was all of them"; the rest stay held and are re-driven by the next
+   * release or the order's own retry.
+   */
+  truncated: boolean;
+  /** The scan itself failed; `held` counts what was reached before it did. */
+  scanFailed: boolean;
 }
 
 export interface IOrderProvisioningResumeService {
@@ -95,11 +103,13 @@ export interface IOrderProvisioningResumeService {
    * now rather than at the next retry backoff. Called after a bundle definition
    * is created. Level-triggered: ingestion re-asks the same question, so an order
    * whose offer still resolves to a variant with no bundle simply stays held.
-   * Never throws for a modelled condition.
+   * Never throws for a modelled condition; truncation and a failed scan are
+   * reported on the result.
    */
-  resumeMultipackHeldOrders(scope?: {
+  resumeMultipackHeldOrders(scope: {
     variantId: string;
-    packQuantity: number;
+    /** Omit to release every pack size of the variant (a bundle was just defined). */
+    packQuantity?: number;
   }): Promise<MultipackReleaseResult>;
 
   /**

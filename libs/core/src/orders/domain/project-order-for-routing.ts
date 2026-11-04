@@ -37,7 +37,7 @@ export function projectOrderForRouting(
   order: Order,
   shippingAddressHash: string | null,
   storePii: boolean,
-  physicalItems: readonly OrderItem[] = order.items
+  physicalItems: readonly OrderItem[]
 ): OrderRoutingProjection | null {
   const shippingAddress = order.shippingAddress;
   if (shippingAddress === undefined) {

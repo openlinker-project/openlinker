@@ -184,7 +184,7 @@ export type {
 } from './domain/domain-services/return-order-line-resolution.domain-service';
 export {
   splitBundleAmount,
-  allegroBundleRefundHint,
+  keptAtStandaloneRefundHint,
   BundleSplitRefusalReasonValues,
 } from './domain/domain-services/bundle-return-split.domain-service';
 export type {

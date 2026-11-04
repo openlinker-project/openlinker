@@ -52,6 +52,16 @@ import type {
   OrderSearchTextRewrite,
 } from '../types/order-search-text-reindex.types';
 
+/** Filter of {@link OrderRecordRepositoryPort.findHeldByReasonCode}. */
+export interface HeldOrdersFilter {
+  /** The bracketless reason code stored as `[code]` inside `mappingFailureReason`. */
+  reasonCode: string;
+  /** Only orders with a raw line sold as exactly this many units. */
+  packQuantity?: number;
+  /** Only orders with a raw line referencing one of these offers on the order's source connection. */
+  offerRefs?: readonly { connectionId: string; externalId: string }[];
+}
+
 /**
  * A held order and when its CURRENT hold began (#3485 review). The age bounds
  * how often the reroute sweep re-drives an order that stays refused.
@@ -199,6 +209,19 @@ export interface OrderRecordRepositoryPort {
     status: OrderRecord['syncStatus'][0],
     attempt: SyncAttempt
   ): Promise<void>;
+
+  /**
+   * One keyset page of the orders held with a given reason code (#3520), filtered
+   * in SQL: `recordStatus = 'awaiting_mapping'`, the `[code]` marker in
+   * `mappingFailureReason`, and optionally a raw line with this pack quantity /
+   * one of these offer refs. Ordered by `internalOrderId` and resumed with
+   * `afterId`, so a page the caller's own re-drives are about to shrink cannot
+   * step over a row (an advancing offset would).
+   */
+  findHeldByReasonCode(
+    filter: HeldOrdersFilter,
+    page: { afterId: string | null; limit: number }
+  ): Promise<OrderRecord[]>;
 
   /**
    * Find order records with filters and pagination

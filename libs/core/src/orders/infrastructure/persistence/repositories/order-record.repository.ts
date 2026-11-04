@@ -27,6 +27,7 @@ import { OrderLineItemOrmEntity } from '../entities/order-line-item.orm-entity';
 import type {
   HeldOrderRef,
   OrderRecordRepositoryPort,
+  HeldOrdersFilter,
 } from '../../../domain/ports/order-record-repository.port';
 import { OrderRecord } from '../../../domain/entities/order-record.entity';
 import type { OrderLineItemDraft } from '../../../domain/order-analytics-projection';
@@ -254,6 +255,45 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
       .getRawMany<{ source_connection_id: string; earliest_at: Date }>();
 
     return new Map(rows.map((row) => [row.source_connection_id, row.earliest_at]));
+  }
+
+  async findHeldByReasonCode(
+    filter: HeldOrdersFilter,
+    page: { afterId: string | null; limit: number }
+  ): Promise<OrderRecord[]> {
+    if (filter.offerRefs !== undefined && filter.offerRefs.length === 0) {
+      return [];
+    }
+    const qb = this.repository
+      .createQueryBuilder('rec')
+      .where('rec.recordStatus = :held', { held: 'awaiting_mapping' })
+      // `[code]` is a literal marker, so the pattern's wildcards are only ours.
+      .andWhere('rec."mappingFailureReason" LIKE :marker', { marker: `%[${filter.reasonCode}]%` });
+    if (page.afterId !== null) {
+      qb.andWhere('rec.internalOrderId > :afterId', { afterId: page.afterId });
+    }
+    const itemConditions: string[] = [];
+    const params: Record<string, unknown> = {};
+    if (filter.packQuantity !== undefined) {
+      itemConditions.push(`(item->>'packQuantity')::numeric = :packQuantity`);
+      params.packQuantity = filter.packQuantity;
+    }
+    if (filter.offerRefs !== undefined) {
+      const refs = filter.offerRefs.map((ref, i) => {
+        params[`refConn${String(i)}`] = ref.connectionId;
+        params[`refExt${String(i)}`] = ref.externalId;
+        return `(rec."sourceConnectionId" = :refConn${String(i)} AND item->'productRef'->>'type' = 'offer' AND item->'productRef'->>'externalId' = :refExt${String(i)})`;
+      });
+      itemConditions.push(`(${refs.join(' OR ')})`);
+    }
+    if (itemConditions.length > 0) {
+      qb.andWhere(
+        `EXISTS (SELECT 1 FROM jsonb_array_elements(rec."orderSnapshot"->'items') item WHERE ${itemConditions.join(' AND ')})`,
+        params
+      );
+    }
+    const entities = await qb.orderBy('rec.internalOrderId', 'ASC').take(page.limit).getMany();
+    return entities.map((e) => this.toDomain(e));
   }
 
   async countOrdersByRoutingCountrySince(
@@ -3093,7 +3133,9 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
       `SELECT (def->>'version')::int AS version, COUNT(DISTINCT rec."internalOrderId")::int AS count
          FROM "order_records" rec,
               jsonb_array_elements(COALESCE(rec."lineExpansion"->'definitions', '[]'::jsonb)) AS def
-        WHERE def->>'variantId' = $1
+        WHERE rec."lineExpansion" @> jsonb_build_object(
+                'definitions', jsonb_build_array(jsonb_build_object('variantId', $1::text)))
+          AND def->>'variantId' = $1
           AND rec."cancelledAt" IS NULL
           AND (rec."fulfillmentState" IS NULL OR rec."fulfillmentState" = 'not-shipped')
         GROUP BY (def->>'version')::int

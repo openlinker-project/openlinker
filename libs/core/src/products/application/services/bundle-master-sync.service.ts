@@ -10,9 +10,11 @@
  */
 import { Inject, Injectable } from '@nestjs/common';
 import {
+  CapabilityNotSupportedException,
   INTEGRATIONS_SERVICE_TOKEN,
   type IIntegrationsService,
 } from '@openlinker/core/integrations';
+import { Logger } from '@openlinker/shared/logging';
 import {
   CORE_ENTITY_TYPE,
   IDENTIFIER_MAPPING_SERVICE_TOKEN,
@@ -42,6 +44,8 @@ interface MasterBinding {
 
 @Injectable()
 export class BundleMasterSyncService implements IBundleMasterSyncService {
+  private readonly logger = new Logger(BundleMasterSyncService.name);
+
   constructor(
     @Inject(INTEGRATIONS_SERVICE_TOKEN)
     private readonly integrations: IIntegrationsService,
@@ -54,7 +58,18 @@ export class BundleMasterSyncService implements IBundleMasterSyncService {
   ) {}
 
   async findBundleReadingMaster(variantId: string): Promise<BundleReadingMaster | null> {
-    const binding = await this.resolveMaster(variantId);
+    let binding: MasterBinding | null;
+    try {
+      binding = await this.resolveMaster(variantId);
+    } catch (error) {
+      // A read-only probe (it decides whether to offer the action) must not 500
+      // a page; previewComposition / syncFromMaster surface the same failure.
+      if (error instanceof BundleMasterSyncRefusedError && error.reason === 'master-unavailable') {
+        this.logger.warn(`Bundle master probe for variant ${variantId}: ${error.message}`);
+        return null;
+      }
+      throw error;
+    }
     if (binding === null || !isBundleReader(binding.adapter)) {
       return null;
     }
@@ -142,6 +157,7 @@ export class BundleMasterSyncService implements IBundleMasterSyncService {
       CORE_ENTITY_TYPE.Product,
       variant.productId
     );
+    let unavailable: Error | null = null;
     for (const mapping of variantMappings) {
       const productMapping = productMappings.find((m) => m.connectionId === mapping.connectionId);
       if (productMapping === undefined) {
@@ -157,11 +173,21 @@ export class BundleMasterSyncService implements IBundleMasterSyncService {
           externalProductId: productMapping.externalId,
           adapter,
         };
-      } catch {
+      } catch (error) {
         // A connection without ProductMaster (a marketplace that merely maps the
-        // variant) is not the master; keep looking.
-        continue;
+        // variant) is not the master; keep looking. Anything else (credentials,
+        // transport) is a master we could not reach, which is not "no master".
+        if (error instanceof CapabilityNotSupportedException) {
+          continue;
+        }
+        unavailable ??= error instanceof Error ? error : new Error(String(error));
       }
+    }
+    if (unavailable !== null) {
+      throw new BundleMasterSyncRefusedError(
+        'master-unavailable',
+        `The product master could not be reached: ${unavailable.message}`
+      );
     }
     return null;
   }

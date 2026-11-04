@@ -151,14 +151,16 @@ export function componentRefsFor(
   definitions: readonly BundleDefinition[]
 ): ComponentLineRef[] {
   const line = items.find((item) => item.id === lineId);
-  if (line === undefined || line.quantity <= 0) {
+  if (line === undefined) {
     return [];
   }
-  const expanded = expandBundleLines([line], definitions);
+  // Expanded at ONE unit so the per-unit composition does not depend on the
+  // line's current (possibly edited to 0) quantity.
+  const expanded = expandBundleLines([{ ...line, quantity: 1 }], definitions);
   if (expanded.length === 1 && expanded[0].id === lineId) {
     return [];
   }
-  return expanded.map((l) => ({ componentLineId: l.id, perUnit: l.quantity / line.quantity }));
+  return expanded.map((l) => ({ componentLineId: l.id, perUnit: l.quantity }));
 }
 
 /** The physical line ids a commercial line expands to, or `[lineId]` when it is not a bundle. */
