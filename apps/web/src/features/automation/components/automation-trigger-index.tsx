@@ -29,7 +29,7 @@ import type { ReactElement } from 'react';
 import { DataTable, type DataTableColumn } from '../../../shared/ui/data-table';
 import { StatusBadge } from '../../../shared/ui/status-badge';
 import { EmptyValue } from '../../../shared/ui/empty-value';
-import { AUTOMATION_FIRING_MODE_COPY, AUTOMATION_INDEX_COPY, AUTOMATIONS_PAGE_COPY } from '../lib/automation.copy';
+import { interpolate, useMessages, usePlural, type PluralFn } from '../../../shared/i18n';
 import { describeTrigger } from '../lib/automation-trigger-labels';
 import type {
   AutomationTrigger,
@@ -78,10 +78,12 @@ export function buildTriggerRows(
   });
 }
 
-function describeRuleCount(count: number): string {
-  if (count === 0) return AUTOMATION_INDEX_COPY.ruleCountNone;
-  if (count === 1) return AUTOMATION_INDEX_COPY.ruleCountOne;
-  return AUTOMATION_INDEX_COPY.ruleCountMany(count);
+type IndexCopy = ReturnType<typeof useMessages<'automation'>>['index'];
+
+function describeRuleCount(count: number, copy: IndexCopy, plural: PluralFn): string {
+  if (count === 0) return copy.ruleCountNone;
+  if (count === 1) return copy.ruleCountOne;
+  return plural(count, copy.ruleCountMany);
 }
 
 interface AutomationTriggerIndexProps {
@@ -89,10 +91,13 @@ interface AutomationTriggerIndexProps {
 }
 
 export function AutomationTriggerIndex({ rows }: AutomationTriggerIndexProps): ReactElement {
+  const messages = useMessages('automation');
+  const copy = messages.index;
+  const plural = usePlural();
   const columns: DataTableColumn<AutomationTriggerRow>[] = [
     {
       id: 'trigger',
-      header: AUTOMATION_INDEX_COPY.triggerHeader,
+      header: copy.triggerHeader,
       cell: (row): ReactElement => {
         const described = describeTrigger(row.trigger);
         return (
@@ -108,33 +113,33 @@ export function AutomationTriggerIndex({ rows }: AutomationTriggerIndexProps): R
     },
     {
       id: 'rules',
-      header: AUTOMATION_INDEX_COPY.rulesHeader,
-      cell: (row) => <span>{describeRuleCount(row.ruleCount)}</span>,
+      header: copy.rulesHeader,
+      cell: (row) => <span>{describeRuleCount(row.ruleCount, copy, plural)}</span>,
     },
     {
       id: 'can-do',
-      header: AUTOMATION_INDEX_COPY.canDoHeader,
+      header: copy.canDoHeader,
       hideBelow: 1024,
       cell: (row): ReactElement => {
-        if (row.legalActionCount === 0) return <EmptyValue label={AUTOMATION_INDEX_COPY.canDoHeader} />;
+        if (row.legalActionCount === 0) return <EmptyValue label={copy.canDoHeader} />;
         const tone = row.runnableActionCount === 0 ? 'error' : 'success';
         return (
           <StatusBadge tone={tone} withDot compact>
-            {AUTOMATION_INDEX_COPY.runnableSteps(
-              row.runnableActionCount,
-              row.legalActionCount,
-            )}
+            {interpolate(copy.runnableSteps, {
+              runnable: row.runnableActionCount,
+              legal: row.legalActionCount,
+            })}
           </StatusBadge>
         );
       },
     },
     {
       id: 'last-fired',
-      header: AUTOMATION_INDEX_COPY.lastFiredHeader,
+      header: copy.lastFiredHeader,
       hideBelow: 1024,
       cell: () => (
-        <span title={AUTOMATION_INDEX_COPY.lastFiredUnknownHint}>
-          <EmptyValue label={AUTOMATION_INDEX_COPY.lastFiredUnknown} />
+        <span title={copy.lastFiredUnknownHint}>
+          <EmptyValue label={copy.lastFiredUnknown} />
         </span>
       ),
     },
@@ -142,7 +147,7 @@ export function AutomationTriggerIndex({ rows }: AutomationTriggerIndexProps): R
 
   return (
     <DataTable
-      caption={AUTOMATIONS_PAGE_COPY.tableCaption}
+      caption={messages.page.tableCaption}
       columns={columns}
       rows={rows}
       rowKey={(row) => row.trigger}
@@ -153,10 +158,14 @@ export function AutomationTriggerIndex({ rows }: AutomationTriggerIndexProps): R
         subtitle: (row) => describeTrigger(row.trigger).description,
         meta: (row) => (
           <span>
-            {describeRuleCount(row.ruleCount)}
+            {describeRuleCount(row.ruleCount, copy, plural)}
             {row.firingMode === null
-              ? ''
-              : ` · ${(AUTOMATION_FIRING_MODE_COPY as Record<string, string>)[row.firingMode] ?? row.firingMode}`}
+              ? null
+              : ` ${interpolate(copy.firingModeSuffix, {
+                  mode:
+                    (messages.firingModes as Record<string, string>)[row.firingMode] ??
+                    row.firingMode,
+                })}`}
           </span>
         ),
       }}

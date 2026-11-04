@@ -17,6 +17,7 @@
  * @module apps/web/src/features/inventory/components
  */
 import { useEffect, useState, type ReactElement } from 'react';
+import { interpolate, useMessages } from '../../../shared/i18n';
 import { Alert } from '../../../shared/ui/alert';
 import { ConfirmDialog } from '../../../shared/ui/confirm-dialog';
 import { useToast } from '../../../shared/ui/toast-provider';
@@ -31,6 +32,7 @@ interface LocationDeleteDialogProps {
 }
 
 export function LocationDeleteDialog({ location, onClose }: LocationDeleteDialogProps): ReactElement {
+  const copy = useMessages('inventory').locationDeleteDialog;
   const { showToast } = useToast();
   const [phase, setPhase] = useState<'confirm' | 'in-use'>('confirm');
   const deleteMutation = useDeleteInventoryLocationMutation();
@@ -59,8 +61,8 @@ export function LocationDeleteDialog({ location, onClose }: LocationDeleteDialog
       await deleteMutation.mutateAsync(location.id);
       showToast({
         tone: 'success',
-        title: `"${location.name}" deleted`,
-        description: 'No inventory position named it, so the row is gone rather than retired.',
+        title: interpolate(copy.deletedTitle, { name: location.name }),
+        description: copy.deletedDescription,
       });
       onClose();
     } catch (error) {
@@ -78,13 +80,13 @@ export function LocationDeleteDialog({ location, onClose }: LocationDeleteDialog
       await retireMutation.mutateAsync({ id: location.id, patch: { status: 'inactive' } });
       showToast({
         tone: 'success',
-        title: `"${location.name}" retired`,
+        title: interpolate(copy.retiredTitle, { name: location.name }),
         // #3068 dropped "can be re-activated later" because nothing in the
         // product exposed it then. #3066 ships the Reactivate row action, so
         // the clause is true again - and it is the mockup's own sentence
         // (`inventory-locations-3063.html:795`), which is also the stated
         // reason retiring needs no confirm step. #3198 review.
-        description: 'Existing positions keep pointing at it, and it can be reactivated later.',
+        description: copy.retiredDescription,
       });
       onClose();
     } catch {
@@ -103,12 +105,8 @@ export function LocationDeleteDialog({ location, onClose }: LocationDeleteDialog
     <ConfirmDialog
       open={open}
       onOpenChange={(nextOpen) => { if (!nextOpen) onClose(); }}
-      title={isInUse ? `Can't delete "${location?.name ?? ''}"` : `Delete "${location?.name ?? ''}"?`}
-      description={
-        isInUse
-          ? 'Stock positions still point here, so the delete was refused.'
-          : "This can't be undone. If stock still points here, the delete will be refused instead."
-      }
+      title={interpolate(isInUse ? copy.titleInUse : copy.titleConfirm, { name: location?.name ?? '' })}
+      description={isInUse ? copy.descriptionInUse : copy.descriptionConfirm}
       body={
         <>
           {/* Distinct from `description` above on purpose — the description
@@ -117,13 +115,12 @@ export function LocationDeleteDialog({ location, onClose }: LocationDeleteDialog
               tech-review). Carries the reversibility clause for the same
               reason the success toast above does - see that note. */}
           {isInUse ? (
-            <Alert tone="warning" title="Retire instead">
-              Retiring keeps the row and its history intact — nothing is deleted, and it can be
-              reactivated later.
+            <Alert tone="warning" title={copy.retireInsteadTitle}>
+              {copy.retireInsteadBody}
             </Alert>
           ) : null}
           {genericError ? (
-            <Alert tone="error" title="Could not save the location">
+            <Alert tone="error" title={copy.saveError}>
               {genericError.message}
             </Alert>
           ) : null}
@@ -132,7 +129,7 @@ export function LocationDeleteDialog({ location, onClose }: LocationDeleteDialog
       // Retire is a corrective, non-destructive action — styling it danger-red
       // like the delete it replaces would be the wrong severity signal.
       tone={isInUse ? 'default' : 'danger'}
-      confirmLabel={isInUse ? 'Retire instead' : 'Delete'}
+      confirmLabel={isInUse ? copy.retireInstead : copy.delete}
       isConfirming={deleteMutation.isPending || retireMutation.isPending}
       onConfirm={() => {
         if (isInUse) {

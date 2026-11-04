@@ -11,8 +11,12 @@
  * operator is the one who decides whether a voided label is worth an
  * unwithdrawable notification, and they can only decide it beforehand.
  *
+ * The words live in the `shipments.cancelShipment` copy and are read when the
+ * function runs, so they follow the active language (ADR-081).
+ *
  * @module apps/web/src/features/shipments/lib
  */
+import { getMessages, interpolate } from '../../../shared/i18n';
 import type { ShipmentStatus } from '../api/shipments.types';
 
 export interface CancelShipmentCopy {
@@ -33,15 +37,9 @@ export function cancelShipmentCopy(
   status: ShipmentStatus,
   carrierName: string
 ): CancelShipmentCopy {
+  const copy = getMessages('shipments').cancelShipment;
   return {
-    effect:
-      `The label will be voided with ${carrierName}. This cannot be undone — to ship this ` +
-      `order again you'll need to generate a new label.`,
-    alsoOutstanding:
-      status === 'dispatched'
-        ? 'This shipment was already marked as dispatched, so the sales channel has been told ' +
-          'the parcel is on its way. OpenLinker cannot take that back for you — tell the ' +
-          'channel yourself after cancelling.'
-        : null,
+    effect: interpolate(copy.effect, { carrier: carrierName }),
+    alsoOutstanding: status === 'dispatched' ? copy.alsoOutstanding : null,
   };
 }

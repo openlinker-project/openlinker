@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { cancelShipmentCopy } from './cancel-shipment-copy';
+import { cancelShipmentCopy } from './cancel-shipment-dialog';
 
 describe('cancelShipmentCopy', () => {
   it('always says what voiding the label does, and names the carrier', () => {

@@ -13,30 +13,36 @@
  */
 import app from './app.json';
 import auth from './auth.json';
+import automation from './automation.json';
 import content from './content.json';
 import currencySettings from './currency-settings.json';
 import customers from './customers.json';
 import demo from './demo.json';
 import format from './format.json';
+import inventory from './inventory.json';
 import listings from './listings.json';
 import orders from './orders.json';
 import priceChanges from './price-changes.json';
 import products from './products.json';
+import shipments from './shipments.json';
 import ui from './ui.json';
 import users from './users.json';
 
 export const en = {
   app,
   auth,
+  automation,
   content,
   'currency-settings': currencySettings,
   customers,
   demo,
   format,
+  inventory,
   listings,
   orders,
   'price-changes': priceChanges,
   products,
+  shipments,
   ui,
   users,
 };
