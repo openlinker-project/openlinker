@@ -216,6 +216,69 @@ describe('AutoIssueTriggerService', () => {
 
   afterEach(() => jest.restoreAllMocks());
 
+  describe('gift form reaches the invoice mapper (#3930)', () => {
+    const giftOrder = (): Order =>
+      makeOrder({
+        paymentStatus: 'paid',
+        items: [
+          { id: 'i1', productId: 'p1', quantity: 2, price: 10, name: 'Widget', taxRate: '23' },
+          {
+            id: 'i2',
+            productId: 'p2',
+            quantity: 1,
+            price: 0,
+            name: 'Spoon',
+            taxRate: '23',
+            gift: { source: 'channel' },
+          },
+        ],
+      });
+    const scheduledLines = (): { unitPriceGross: number; quantity: number }[] =>
+      syncJobs.schedule.mock.calls[0][0].payload.lines as { unitPriceGross: number; quantity: number }[];
+
+    it('should omit the gift by default', async () => {
+      connectionPort.list.mockResolvedValue([makeConnection('auto-on-paid')]);
+      await service.onOrderTransition(giftOrder(), 'src-1', 'evt-1');
+      expect(scheduledLines()).toHaveLength(1);
+    });
+
+    it('should take 0.01 from a paid line when the source connection chose show and the adapter refuses zero', async () => {
+      connectionPort.list.mockResolvedValue([makeConnection('auto-on-paid')]);
+      connectionPort.get.mockResolvedValue(
+        makeConnection('auto-on-paid', {
+          id: 'src-1',
+          config: { giftOnDocuments: { form: 'show' } },
+        }),
+      );
+      integrations.getCapabilityAdapter.mockResolvedValue({
+        getSupportedDocumentTypes: () => ['invoice'],
+        acceptsZeroValueLine: () => false,
+      });
+      await service.onOrderTransition(giftOrder(), 'src-1', 'evt-1');
+      const lines = scheduledLines();
+      expect(lines).toHaveLength(3);
+      expect(lines.at(-1)?.unitPriceGross).toBeCloseTo(0.01);
+      const total = lines.reduce((n, l) => n + Math.round(l.quantity * l.unitPriceGross * 100), 0);
+      expect(total).toBe(2000);
+    });
+
+    it('should keep a 0.00 line when the adapter declares it accepts zero', async () => {
+      connectionPort.list.mockResolvedValue([makeConnection('auto-on-paid')]);
+      connectionPort.get.mockResolvedValue(
+        makeConnection('auto-on-paid', {
+          id: 'src-1',
+          config: { giftOnDocuments: { form: 'show' } },
+        }),
+      );
+      integrations.getCapabilityAdapter.mockResolvedValue({
+        getSupportedDocumentTypes: () => ['invoice'],
+        acceptsZeroValueLine: () => true,
+      });
+      await service.onOrderTransition(giftOrder(), 'src-1', 'evt-1');
+      expect(scheduledLines().at(-1)?.unitPriceGross).toBe(0);
+    });
+  });
+
   describe('onOrderTransition — trigger-model gating (invoice kind)', () => {
     it('auto-on-paid: paid order enqueues exactly one invoicing.issue job', async () => {
       connectionPort.list.mockResolvedValue([makeConnection('auto-on-paid')]);
@@ -618,6 +681,44 @@ describe('AutoIssueTriggerService', () => {
       expect(input.connectionId).toBe('conn-fiscal-1');
     });
 
+    it('takes 0.01 from a paid line for a gift when show is chosen and the Fiscalization adapter refuses zero (#3930)', async () => {
+      connectionPort.list.mockResolvedValue([makeFiscalConnection('auto-on-paid')]);
+      connectionPort.get.mockResolvedValue(
+        makeConnection('auto-on-paid', {
+          id: 'src-1',
+          config: { giftOnDocuments: { form: 'show' } },
+        }),
+      );
+      integrations.getCapabilityAdapter.mockResolvedValue({ acceptsZeroValueLine: () => false });
+      await service.onOrderTransition(
+        makeOrder({
+          paymentStatus: 'paid',
+          items: [
+            { id: 'i1', productId: 'p1', quantity: 2, price: 10, name: 'Widget', taxRate: '23' },
+            {
+              id: 'i2',
+              productId: 'p2',
+              quantity: 1,
+              price: 0,
+              name: 'Spoon',
+              taxRate: '23',
+              gift: { source: 'channel' },
+            },
+          ],
+        }),
+        'src-1',
+      );
+      expect(integrations.getCapabilityAdapter).toHaveBeenCalledWith('conn-fiscal-1', 'Fiscalization');
+      const lines = syncJobs.schedule.mock.calls[0][0].payload.lines as {
+        unitPriceGross: number;
+        quantity: number;
+      }[];
+      expect(lines).toHaveLength(3);
+      expect(lines.at(-1)?.unitPriceGross).toBeCloseTo(0.01);
+      const total = lines.reduce((n, l) => n + Math.round(l.quantity * l.unitPriceGross * 100), 0);
+      expect(total).toBe(2000);
+    });
+
     it('manual: enqueues ZERO jobs', async () => {
       connectionPort.list.mockResolvedValue([makeFiscalConnection('manual')]);
       await service.onOrderTransition(makeOrder({ paymentStatus: 'paid' }), 'src-1');
@@ -804,7 +905,7 @@ describe('AutoIssueTriggerService', () => {
     it('does NOT call the Invoicing capability-adapter check for a fiscal-receipt candidate', async () => {
       connectionPort.list.mockResolvedValue([makeFiscalConnection('auto-on-paid')]);
       await service.onOrderTransition(makeOrder({ paymentStatus: 'paid' }), 'src-1');
-      expect(integrations.getCapabilityAdapter).not.toHaveBeenCalled();
+      expect(integrations.getCapabilityAdapter).not.toHaveBeenCalledWith(expect.anything(), 'Invoicing');
     });
 
     it('a net-priced order surfaces UnsupportedFiscalPriceTreatmentError, caught + logged, no enqueue', async () => {

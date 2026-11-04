@@ -31,6 +31,8 @@ import {
   spreadDeliveryAcrossLines,
   reconcileDiscountRounding,
   splitShippingAcrossRates,
+  presentGiftLines,
+  type GiftLineForm,
   type ResolvedDeliveryLine,
 } from '@openlinker/core/sales-documents';
 import { Logger } from '@openlinker/shared/logging';
@@ -90,6 +92,17 @@ export interface OrderToIssueInvoiceCommandInput {
    */
   buyerIsPublicSectorEntity?: boolean;
   buyerIsTaxGroupMember?: boolean;
+  /**
+   * How a gift line is presented (#3930), from the order-source connection's
+   * `config.giftOnDocuments` via `readGiftLineForm`. Absent is `omit`.
+   */
+  giftForm?: GiftLineForm;
+  /**
+   * The invoicing provider's `ZeroValueLineSupport` declaration as a plain
+   * boolean (`readZeroValueLineSupport`), so this mapper stays pure. `undefined`
+   * = the provider declares nothing, and `show` is not offered.
+   */
+  acceptsZeroValueLine?: boolean;
 }
 
 /**
@@ -134,7 +147,22 @@ export function toIssueInvoiceCommand(
     isPublicSectorEntity: buyerIsPublicSectorEntity,
     isTaxGroupMember: buyerIsTaxGroupMember,
   });
-  const productLines = order.items.map((item) => toInvoiceLine(item, order.id));
+  // Gift lines are presented BEFORE delivery and discount reconciliation, so
+  // the lines that follow see the amounts the document will really carry and the
+  // total still equals what the buyer paid (#3930).
+  const productLines = presentGiftLines(
+    order.items.map((item) => ({
+      ...toInvoiceLine(item, order.id),
+      isGift: item.gift !== undefined,
+    })),
+    input.giftForm ?? 'omit',
+    input.acceptsZeroValueLine,
+    { currency: order.totals.currency },
+  ).lines.map((presented) => {
+    const line: InvoiceLine & { isGift?: boolean } = { ...presented };
+    delete line.isGift;
+    return line;
+  });
 
   // Buyer-paid shipping is part of the invoice total (invoice gross must equal
   // order total, #1517). Emit it as a normal gross line so the provider adapter
@@ -142,7 +170,7 @@ export function toIssueInvoiceCommand(
   // names a tax rate. Skipped when shipping is 0 (no phantom line).
   const lines = applyDelivery(productLines, order, deliveryLine);
 
-  const reconciledLines = reconcileDiscountRounding(lines, order.items.length, order.totals);
+  const reconciledLines = reconcileDiscountRounding(lines, productLines.length, order.totals);
 
   assertLinesSumToTotal(reconciledLines, order.totals, order.id);
 

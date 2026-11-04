@@ -32,6 +32,8 @@ import {
   quantityScaledReconciliationEpsilon,
   type ResolvedDeliveryLine,
   reconcileDiscountRounding,
+  presentGiftLines,
+  type GiftLineForm,
 } from '@openlinker/core/sales-documents';
 import { Logger } from '@openlinker/shared/logging';
 
@@ -91,6 +93,17 @@ export interface OrderToRegisterTransactionCommandInput {
    * command, which is correct either way: nothing to send.
    */
   buyerTaxId?: string | null;
+  /**
+   * How a gift line is presented (#3930), from the order-source connection's
+   * `config.giftOnDocuments` via `readGiftLineForm`. Absent is `omit`.
+   */
+  giftForm?: GiftLineForm;
+  /**
+   * The fiscalization provider's `ZeroValueLineSupport` declaration as a plain
+   * boolean, so this mapper stays pure. `undefined` = declares nothing, and
+   * `show` is not offered.
+   */
+  acceptsZeroValueLine?: boolean;
 }
 
 /**
@@ -126,12 +139,28 @@ export function toRegisterTransactionCommand(
     throw new UnsupportedFiscalPriceTreatmentError(refusal);
   }
 
-  const productLines = order.items.map((item) => toFiscalLine(item, order.id));
+  // Presented before delivery and discount reconciliation (#3930), so the
+  // receipt total still equals what the buyer paid. The provider refusing a
+  // zero line is the reason this runs here and not in an
+  // adapter: the amount has to move between lines of the same rate.
+  const productLines = presentGiftLines(
+    order.items.map((item) => ({
+      ...toFiscalLine(item, order.id),
+      isGift: item.gift !== undefined,
+    })),
+    input.giftForm ?? 'omit',
+    input.acceptsZeroValueLine,
+    { currency: order.totals.currency },
+  ).lines.map((presented) => {
+    const line: FiscalTransactionLine & { isGift?: boolean } = { ...presented };
+    delete line.isGift;
+    return line;
+  });
 
   const lines = applyDelivery(productLines, order, deliveryLine);
 
   // E-45: a discounted multi-unit line must not drift a minor unit from the total.
-  const reconciledLines = reconcileDiscountRounding(lines, order.items.length, order.totals);
+  const reconciledLines = reconcileDiscountRounding(lines, productLines.length, order.totals);
 
   assertLinesSumToTotal(reconciledLines, order.totals, order.id);
 

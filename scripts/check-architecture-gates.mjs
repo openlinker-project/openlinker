@@ -163,6 +163,10 @@ const KNOWN_CONFIG_KNOBS = new Map([
     'libs/core/src/sales-documents/domain/types/delivery-line.types.ts',
     { helper: 'readDeliveryOnDocuments', key: 'config.deliveryOnDocuments' },
   ],
+  [
+    'libs/core/src/sales-documents/domain/types/gift-lines.types.ts',
+    { helper: 'readGiftLineForm', key: 'config.giftOnDocuments' },
+  ],
 ]);
 
 /**
@@ -406,7 +410,15 @@ const NON_KNOBS = new Map([
 // #1032 question still stands; it is again raised by one so the next knob asks.
 //
 // Both landed together, so the threshold is 14: one more for each knob.
-const KNOB_THRESHOLD = 14;
+//
+// #3930 (ADR-083) raised it to 15 for `config.giftOnDocuments` - how a gift line
+// appears on receipts and invoices (omit, show at 0.00, priced in, internal
+// record). It sits beside `config.deliveryOnDocuments` on the order-source
+// connection for the same reason: the operator decides it per sales channel,
+// and the document provider's own declaration (`ZeroValueLineSupport`) narrows
+// which forms are offered. The #1032 question still stands; raised by one so the
+// next knob asks again.
+const KNOB_THRESHOLD = 15;
 
 /** Ladder rungs (ADR-048): sub-capabilities that declare master freshness. */
 const KNOWN_RUNGS = new Set(['modified-product-lister.capability.ts']);

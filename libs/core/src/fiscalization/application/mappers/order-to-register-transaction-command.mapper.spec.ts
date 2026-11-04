@@ -674,3 +674,46 @@ describe('toRegisterTransactionCommand', () => {
     });
   });
 });
+
+describe('toRegisterTransactionCommand - gift lines (#3930)', () => {
+  const giftOrder = (): Order =>
+    order({
+      items: [
+        { id: 'i1', productId: 'p1', quantity: 2, price: 24.6, name: 'Widget', taxRate: '23' },
+        { id: 'i2', productId: 'p2', quantity: 1, price: 0, name: 'Spoon', taxRate: '23', gift: { source: 'channel' } },
+      ],
+    } as Partial<Order>);
+  const total = (lines: { quantity: number; unitPriceGross: number }[]): number =>
+    lines.reduce((sum, line) => sum + Math.round(line.quantity * line.unitPriceGross * 100), 0);
+
+  it('should omit a gift by default and equal what was paid', () => {
+    const cmd = toRegisterTransactionCommand({ order: giftOrder(), connectionId: 'c', idempotencyKey: 'k' });
+    expect(cmd.lines.map((l) => l.name)).toEqual(['Widget']);
+    expect(total(cmd.lines)).toBe(4920);
+  });
+
+  it('should take 0.01 from a same-rate paid line when the provider refuses zero', () => {
+    const cmd = toRegisterTransactionCommand({
+      order: giftOrder(),
+      connectionId: 'c',
+      idempotencyKey: 'k',
+      giftForm: 'show',
+      acceptsZeroValueLine: false,
+    });
+    expect(cmd.lines).toHaveLength(3);
+    expect(cmd.lines.at(-1)?.unitPriceGross).toBeCloseTo(0.01);
+    expect(total(cmd.lines)).toBe(4920);
+  });
+
+  it('should keep a zero line when the provider accepts it', () => {
+    const cmd = toRegisterTransactionCommand({
+      order: giftOrder(),
+      connectionId: 'c',
+      idempotencyKey: 'k',
+      giftForm: 'show',
+      acceptsZeroValueLine: true,
+    });
+    expect(cmd.lines.at(-1)?.unitPriceGross).toBe(0);
+    expect(total(cmd.lines)).toBe(4920);
+  });
+});

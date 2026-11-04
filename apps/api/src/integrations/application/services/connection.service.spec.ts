@@ -534,6 +534,24 @@ describe('ConnectionService', () => {
       expect(credentials.create).not.toHaveBeenCalled();
     });
 
+    describe('giftOnDocuments config (#3930)', () => {
+      const base = {
+        name: 'Shop',
+        platformType: 'prestashop',
+        credentials: { webserviceApiKey: 'RAW' },
+      };
+
+      it('should refuse an unknown gift form, since plugin validators ignore unknown keys', async () => {
+        await expect(
+          service.create({
+            ...base,
+            config: { baseUrl: 'https://new.com', giftOnDocuments: { form: 'hold' } },
+          })
+        ).rejects.toThrow(/giftOnDocuments/);
+        expect(credentials.create).not.toHaveBeenCalled();
+      });
+    });
+
     describe('deliveryOnDocuments config (#3905)', () => {
       const base = {
         name: 'Shop',

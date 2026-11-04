@@ -1020,3 +1020,45 @@ describe('toIssueInvoiceCommand delivery line (#3905, ADR-082)', () => {
     expect(cmd.lines).toHaveLength(2);
   });
 });
+
+describe('toIssueInvoiceCommand - gift lines (#3930)', () => {
+  const giftOrder = (): Order =>
+    makeOrder({
+      items: [
+        makeItem({ id: 'i1', price: 100, taxRate: '23' }),
+        makeItem({ id: 'i2', productId: 'prod-2', price: 0, name: 'Spoon', taxRate: '23', gift: { source: 'channel' } }),
+      ],
+    });
+  const total = (lines: { quantity: number; unitPriceGross: number }[]): number =>
+    lines.reduce((sum, line) => sum + Math.round(line.quantity * line.unitPriceGross * 100), 0);
+
+  it('should omit a gift by default and still equal what was paid', () => {
+    const cmd = toIssueInvoiceCommand({ order: giftOrder(), connectionId: 'c' });
+    expect(cmd.lines.map((l) => l.name)).toEqual(['Widget']);
+    expect(total(cmd.lines)).toBe(10000);
+    expect(cmd.lines[0]).not.toHaveProperty('isGift');
+  });
+
+  it('should show the gift at 0.01 taken from the same-rate line when the provider refuses zero', () => {
+    const cmd = toIssueInvoiceCommand({
+      order: giftOrder(),
+      connectionId: 'c',
+      giftForm: 'show',
+      acceptsZeroValueLine: false,
+    });
+    expect(cmd.lines).toHaveLength(2);
+    expect(cmd.lines[1].unitPriceGross).toBeCloseTo(0.01);
+    expect(total(cmd.lines)).toBe(10000);
+  });
+
+  it('should keep the gift at 0.00 when the provider accepts zero', () => {
+    const cmd = toIssueInvoiceCommand({
+      order: giftOrder(),
+      connectionId: 'c',
+      giftForm: 'show',
+      acceptsZeroValueLine: true,
+    });
+    expect(cmd.lines[1].unitPriceGross).toBe(0);
+    expect(total(cmd.lines)).toBe(10000);
+  });
+});

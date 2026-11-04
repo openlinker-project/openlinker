@@ -141,8 +141,11 @@ import {
   decideLiveOrderIssuance,
   DOCUMENT_EMAIL_DELIVERY_SERVICE_TOKEN,
   readDeliveryOnDocuments,
+  readGiftLineForm,
+  readZeroValueLineSupport,
   resolveDeliveryLine,
   type DeliveryOnDocumentsConfig,
+  type GiftLineForm,
   type IDocumentEmailDeliveryService,
   type LiveOrderIssuanceDecision,
   type ResolvedDeliveryLine,
@@ -363,6 +366,56 @@ export class InvoicingController {
   }
 
   /**
+   * The gift form the order-source connection chose (#3930), `omit` when the
+   * lookup fails: a failed read must never break issuance.
+   */
+  /**
+   * The Invoicing adapter's `ZeroValueLineSupport` declaration (#3930), so a
+   * manual or re-issued document is composed exactly as the auto-issued one.
+   * `undefined` means the adapter declares nothing OR could not be resolved; the
+   * failure is logged and never fails the request. `cache` keeps a batch to one
+   * resolution per document connection.
+   */
+  private async resolveAcceptsZeroValueLine(
+    connectionId: string,
+    cache?: Map<string, boolean | undefined>,
+  ): Promise<boolean | undefined> {
+    if (cache?.has(connectionId)) return cache.get(connectionId);
+    let answer: boolean | undefined;
+    try {
+      answer = readZeroValueLineSupport(
+        await this.integrationsService.getCapabilityAdapter<InvoicingPort>(
+          connectionId,
+          'Invoicing',
+        ),
+      );
+    } catch (error) {
+      this.logger.warn(
+        `Could not resolve connection ${connectionId}'s Invoicing adapter for its zero-value line ` +
+          `declaration; a gift is composed as if undeclared: ${
+            error instanceof Error ? error.name : 'UnknownError'
+          }`,
+      );
+    }
+    cache?.set(connectionId, answer);
+    return answer;
+  }
+
+  private async resolveGiftForm(sourceConnectionId: string): Promise<GiftLineForm> {
+    try {
+      const source = await this.connectionPort.get(sourceConnectionId);
+      return readGiftLineForm(source.config);
+    } catch (error) {
+      this.logger.debug(
+        `Gift form lookup failed for connection ${sourceConnectionId}: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+      return 'omit';
+    }
+  }
+
+  /**
    * Resolve the delivery line for an order (#3905, ADR-082): the order-source
    * connection's per-country settings, then the invoicing connection's legacy
    * label (#1562), then the neutral default. Resilient like the lookups beside
@@ -543,6 +596,8 @@ export class InvoicingController {
         documentType: dto.documentType,
         idempotencyKey,
         deliveryLine,
+        giftForm: await this.resolveGiftForm(record.sourceConnectionId),
+        acceptsZeroValueLine: await this.resolveAcceptsZeroValueLine(dto.connectionId),
         source,
         // #2245 review: a pre-rollout order is exempt from the write-path
         // tax-rate guard, so the marker has to reach the command on the MANUAL
@@ -630,8 +685,9 @@ export class InvoicingController {
     const uniqueIds = [...new Set(dto.invoiceIds)];
 
     const results: RetryInvoiceResultDto[] = [];
+    const zeroLineCache = new Map<string, boolean | undefined>();
     for (const invoiceId of uniqueIds) {
-      results.push(await this.retryOne(invoiceId));
+      results.push(await this.retryOne(invoiceId, zeroLineCache));
     }
 
     const retried = results.filter((r) => r.outcome === 'retried').length;
@@ -657,7 +713,10 @@ export class InvoicingController {
    * command derives the buyer from the order snapshot alone (`buyerTaxId: null`),
    * matching a keyless re-issue through `POST /invoices`.
    */
-  private async retryOne(invoiceId: string): Promise<RetryInvoiceResultDto> {
+  private async retryOne(
+    invoiceId: string,
+    zeroLineCache: Map<string, boolean | undefined>,
+  ): Promise<RetryInvoiceResultDto> {
     const record = await this.invoiceService.getInvoiceById(invoiceId);
     if (!record) {
       return { id: invoiceId, outcome: 'skipped', reason: 'Invoice record not found.' };
@@ -701,6 +760,11 @@ export class InvoicingController {
           order,
           orderRecord.sourceConnectionId,
           record.connectionId,
+        ),
+        giftForm: await this.resolveGiftForm(orderRecord.sourceConnectionId),
+        acceptsZeroValueLine: await this.resolveAcceptsZeroValueLine(
+          record.connectionId,
+          zeroLineCache,
         ),
         // #1694: same per-source numbering axis as the single-issue path.
         source: await this.resolveSourcePlatformType(orderRecord.sourceConnectionId),
@@ -759,8 +823,9 @@ export class InvoicingController {
     const uniqueOrderIds = [...new Set(dto.orderIds)];
 
     const results: BulkIssueInvoiceResultDto[] = [];
+    const zeroLineCache = new Map<string, boolean | undefined>();
     for (const orderId of uniqueOrderIds) {
-      results.push(await this.issueOneForOrder(dto.connectionId, orderId));
+      results.push(await this.issueOneForOrder(dto.connectionId, orderId, zeroLineCache));
     }
 
     const issued = results.filter((r) => r.outcome === 'issued').length;
@@ -804,6 +869,7 @@ export class InvoicingController {
   private async issueOneForOrder(
     connectionId: string,
     orderId: string,
+    zeroLineCache: Map<string, boolean | undefined>,
   ): Promise<BulkIssueInvoiceResultDto> {
     try {
       const record = await this.orders.getOrderRecord(orderId);
@@ -862,6 +928,8 @@ export class InvoicingController {
           record.sourceConnectionId,
           connectionId,
         ),
+        giftForm: await this.resolveGiftForm(record.sourceConnectionId),
+        acceptsZeroValueLine: await this.resolveAcceptsZeroValueLine(connectionId, zeroLineCache),
         // #1694: same per-source numbering axis as the single-issue path.
         source: await this.resolveSourcePlatformType(record.sourceConnectionId),
         // #2245 review: same pre-rollout exemption as the single-issue path.
@@ -1575,6 +1643,8 @@ export class InvoicingController {
         orderRecord.sourceConnectionId,
         connectionId,
       ),
+      giftForm: await this.resolveGiftForm(orderRecord.sourceConnectionId),
+      acceptsZeroValueLine: await this.resolveAcceptsZeroValueLine(connectionId),
     });
     return {
       buyer: issueCmd.buyer,
