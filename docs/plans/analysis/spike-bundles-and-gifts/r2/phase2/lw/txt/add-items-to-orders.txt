@@ -1,0 +1,28 @@
+=== add-items-to-orders | Apps: Add Items to Orders
+ 
+ Apps: Add Items to Orders 
+ Add Items to Orders
+ This application contains a macro that runs as an action of the  Rules engine and allows adding multiple items to orders saved in the Open Orders screen. There are a couple of settings like SKUs to add and Use channel prices available for configuration for this macro. See this guide for information on how to install, configure, and use this macro in Linnworks.
+ Start using the macro
+ There are three steps you need to complete to start using the application:
+ Install the application.
+ Go to Apps > Application Store > Add Items to Orders > Install .
+ Configure the macro.
+ Configure the rule in the Rules Engine screen.
+ Configure the macro 
+ Once the app is installed: 
+ Go to Apps > Macro Configuration. 
+ Click    Add New Configuration 
+ Select the  Add Items to Orders  macro. 
+ Click   Create Configuration 
+  In the Macro Configuration  screen, specify the following details:
+ Configuration name :  A meaningful name will further give you an idea of what the macro does. 
+ SKUs to add :  A comma-separated list of SKUs to be added to the order. If more than one quantity of the same item needs to be added, this item must be listed multiple times. For example, to add 2 TshirtSKU and 1 SockSKU to the order, the parameter value must be the following: 
+ TshirtSKU,TshirtSKU,SockSKU. 
+ Use channel prices : The checkbox that, when enabled, will attempt to use the channel price of the item if one exists for the channel of that order. The retail price will be used if no channel price can be found. If this setting is disabled, the retail price will be used.
+ Make sure to enable the macro to continue configuration.
+ Configure the rule in the Rules Engine
+ Go to Orders > Rules Engine to create a new rule and set a condition for it. Using our documentation on Rules Engine , check all possible conditions and select the one (or a combination) that is relevant to you.
+ For the action, select Execute a macro  as an action type and select the macro's name in the action value field. Save the rule and enable it.
+ The configuration of the macro is now completed. Once new orders are downloaded into the system, the rule will run and execute the  Add Items to Orders macro on them.
+ 

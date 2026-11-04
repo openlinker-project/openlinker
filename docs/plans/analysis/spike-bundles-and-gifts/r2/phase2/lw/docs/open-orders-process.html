@@ -1,0 +1,135 @@
+<!DOCTYPE html><html lang="en-US" dir="ltr"><head><style type="text/css">.ArticleViewer_searchKeywords{background-color: yellow !important;}</style>
+<script type="text/javascript">//<!--
+var articlesServiceUrl='/article/';
+//--></script>
+<link rel="canonical" href="/articles/documentation/open-orders-process"/>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.3/css/all.min.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css">
+<script src="https://cdn.jsdelivr.net/npm/jquery@3.5.1/dist/jquery.min.js"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/fancyapps/fancybox@3.5.7/dist/jquery.fancybox.min.css"/>
+<script src="https://cdn.jsdelivr.net/gh/fancyapps/fancybox@3.5.7/dist/jquery.fancybox.min.js"></script><title>Process Open Orders</title><script type="text/javascript">//<!--
+var imgPopupTexts={openInNewWindowText: 'Open in new window', closeText: 'Close'};var articleTitleText='Process Open Orders';
+//--></script><link rel="stylesheet" type="text/css" href="/resources/Styles/documentation/Docs%20CSS.css"/><link rel="stylesheet" type="text/css" href="/resources/Styles/documentation/docs.linnworks-EMS.css"/><link rel="stylesheet" type="text/css" href="/style-bundles/article-published.css?v=1.0.9789.31895"/><script src="/resources/Scripts/documentation/Script.js" type="text/javascript"></script><script src="/script-bundles/article-published.js?v=1.0.9789.31895" type="text/javascript"></script><meta charset="utf-8"><meta http-equiv="Content-Type" content="text/html;charset=utf-8"></head><body><span id="__clhTop"></span><div class="doc-container">
+<h1 id="h1_361979671" data-has-heading-anchor="true"><link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.3/css/all.min.css"></link>
+
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css"></link>Open Orders: How to Process<a href="/articles/documentation/open-orders-process/a/h1_361979671" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/open-orders-process/a/h1_361979671&#39;,this);"></a></h1>
+<p style="text-align: justify;">Order management is a set of actions taken on orders starting from <a rel="noopener" href="/articles/documentation/open-orders-create-edit" target="_blank" onclick="return n(&#39;!documentation/open-orders-create-edit&#39;,this);">reviewing</a>, <a rel="noopener" href="/articles/documentation/oo-screen-create-view" target="_blank" onclick="return n(&#39;!documentation/oo-screen-create-view&#39;,this);">sorting</a>, <a rel="noopener" href="/articles/documentation/open-orders-print" target="_blank" onclick="return n(&#39;!documentation/open-orders-print&#39;,this);">printing order documentation</a>,&nbsp;<a rel="noopener" href="/articles/documentation/template-designer-pick-list" target="_blank" onclick="return n(&#39;!documentation/template-designer-pick-list&#39;,this);">picking</a>, <a rel="noopener" href="/articles/documentation/template-designer-packing-list" target="_blank" onclick="return n(&#39;!documentation/template-designer-packing-list&#39;,this);">packing</a>,&nbsp;and ending with despatching an order to a buyer. In Linnworks, the final stage of order despatching is an <a rel="noopener" href="/articles/documentation/oo-screen-actions" target="_blank" onclick="return n(&#39;!documentation/oo-screen-actions&#39;,this);">action</a> of order processing.&nbsp;</p>
+<div class="well well-lg" style="background-color: #f3f5f5; text-align: justify;">
+<p style="text-align: justify;">The order management cycle is commonly the following:</p>
+<ol>
+<li style="text-align: justify;">An order is placed.</li>
+<li style="text-align: justify;">An order is received and reviewed.</li>
+<li style="text-align: justify;">Required order documentation is printed (<a rel="noopener" href="/articles/documentation/template-designer-pick-list" target="_blank" onclick="return n(&#39;!documentation/template-designer-pick-list&#39;,this);">picklist</a>, <a rel="noopener" href="/articles/documentation/template-designer-packing-list" target="_blank" onclick="return n(&#39;!documentation/template-designer-packing-list&#39;,this);">packing list</a>, <a rel="noopener" href="/articles/documentation/template-designer-invoice" target="_blank" onclick="return n(&#39;!documentation/template-designer-invoice&#39;,this);">invoice</a>, <a rel="noopener" href="/articles/documentation/shipping-labels" target="_blank" onclick="return n(&#39;!documentation/shipping-labels&#39;,this);">shipping label</a>).</li>
+<li style="text-align: justify;">An order is picked.&nbsp;</li>
+<li style="text-align: justify;">An order is packed.</li>
+<li style="text-align: justify;">An order is <strong>processed</strong>.</li>
+</ol>
+</div>
+<p style="text-align: justify;">You can use the following parts of the system to process orders:</p>
+<ul style="text-align: justify;">
+<li style="text-align: justify;"><a href="/articles/documentation/open-orders-screen" target="_blank" onclick="return n(&#39;!documentation/open-orders-screen&#39;,this);">The Open Orders screen</a>
+<ul>
+<li><span style="font-weight: normal;"><b><span class="fa fa-gavel">&nbsp;</span> 
+Process Individually</b></span></li>
+<li><span style="font-weight: normal;"><b><span class="fa fa-rocket">&nbsp;</span> 
+Batch Process</b></span></li>
+</ul>
+</li>
+<li style="text-align: justify;"><a rel="noopener" href="/articles/documentation/dispatch-console" target="_blank" onclick="return n(&#39;!documentation/dispatch-console&#39;,this);">The Dispatch Console module</a></li>
+<li style="text-align: justify;"><a rel="noopener" href="/articles/documentation/import-process-orders" target="_blank" onclick="return n(&#39;!documentation/import-process-orders&#39;,this);">The Process Order Import</a></li>
+</ul>
+<p style="text-align: justify;">This documentation provides an explanation of how to process orders in Linnworks, specifically using the <em>Open Orders</em> screen.</p>
+<div class="alert-success" style="text-align: justify;"><strong>Important!</strong>&nbsp;To keep the data consistent across all your <a rel="noopener" href="/articles/documentation/channel-integrations" target="_blank" onclick="return n(&#39;!documentation/channel-integrations&#39;,this);">selling channels</a>, we strongly recommend processing orders <em>from Linnworks only</em>.</div>
+<p style="text-align: justify;">Note that if you process an order on the channel first and only then in Linnworks:</p>
+<ul style="text-align: justify;">
+<li style="text-align: justify;">Linnworks will update the order on your selling channel with the details from Linnworks.</li>
+<li style="text-align: justify;">Linnworks will update the despatch time of the order.</li>
+<li style="text-align: justify;">A despatch notification may be sent out to the buyer again.</li>
+</ul>
+<h2 id="OpenOrders_process" style="text-align: justify;" data-has-heading-anchor="true">Processing open orders<a href="/articles/documentation/open-orders-process/a/OpenOrders_process" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/open-orders-process/a/OpenOrders_process&#39;,this);"></a></h2>
+<p style="text-align: justify;">The&nbsp;<em>Open Orders </em>screen allows you to process orders individually or in bulk from one place and then push the tracking and despatch information to the selling channels automatically.</p>
+<p style=""><img src="/resources/Storage/documentation/Screenshots/OpenOrders/OpenOrders_Process.png" alt="" class="leftAlone" style="" loading="lazy"/></p>
+<div class="alert-danger" style="text-align: justify;"><strong>Note!</strong> Once processed, an order <strong>cannot</strong> be changed. An order also <strong>cannot</strong> be unprocessed.</div>
+<p style="text-align: justify;">Therefore, make sure the shipping label is printed and the tracking information is entered as this information cannot be entered once the order is processed. What is available is&nbsp;re-printing the documentation for the processed order. For more information, see this <a rel="noopener" href="/articles/documentation/processed-orders" target="_blank" onclick="return n(&#39;!documentation/processed-orders&#39;,this);">guide</a>.</p>
+<h3 id="OpenOrders_ProcessIndividually" style="text-align: justify;" data-has-heading-anchor="true">Processing open orders individually<a href="/articles/documentation/open-orders-process/a/OpenOrders_ProcessIndividually" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/open-orders-process/a/OpenOrders_ProcessIndividually&#39;,this);"></a></h3>
+<p style="text-align: justify;">To process an open order:</p>
+<ol style="text-align: justify;">
+<li style="text-align: justify;">Go to <em>Orders &gt; Open Orders.</em>&nbsp;</li>
+<li style="text-align: justify;">Select the order to be processed.&nbsp;</li>
+<li style="text-align: justify;">Click the <em>Actions</em> button. Alternatively, right-click the order.</li>
+<li style="text-align: justify;">Click <em>Process Order &gt; Process</em>.&nbsp;</li>
+<li style="text-align: justify;">Confirm order details and complete the scanning if required in the <em>Process Order</em> screen.<br/><img src="/resources/Storage/documentation/Screenshots/OpenOrders/ProcessOrderScreen.png" alt="" class="leftAlone" loading="lazy"/>
+<ul>
+<li style="text-align: justify;">In the<em> Process order</em> screen, perform the following actions before processing an order:
+<ul>
+<li style="text-align: justify;"><strong>Errors and warnings</strong>: Under this section, view any errors or warnings for the required actions to be performed on the order.</li>
+<li style="text-align: justify;"><strong>Shipping</strong>: Use the drop-down menu to assign or change the shipping service on the order.</li>
+<li style="text-align: justify;"><strong>Tracking number</strong>: Use this field to add a tracking number to the order if it hasn't been added when a shipping label was printed.</li>
+<li style="text-align: justify;"><strong>Packaging</strong>: Click the <em>Edit</em> button to update <a rel="noopener" href="/articles/documentation/packaging-groups" target="_blank" onclick="return n(&#39;!documentation/packaging-groups&#39;,this);">order packaging</a> and <a rel="noopener" href="/articles/documentation/product-details-postage-definition" target="_blank" onclick="return n(&#39;!documentation/product-details-postage-definition&#39;,this);">item dimensions</a>.</li>
+<li style="text-align: justify;"><strong>Notes</strong>: Under this section, you can view order notes.</li>
+<li style="text-align: justify;"><strong>Split packaging</strong>: Use this button to split order packaging. More information on this function is&nbsp;<a rel="noopener" href="/articles/documentation/open-orders-split-packaging" target="_blank" onclick="return n(&#39;!documentation/open-orders-split-packaging&#39;,this);">here</a>.</li>
+<li style="text-align: justify;"><strong>Print invoice</strong>: Use this button to print an invoice for the order if it hasn't been printed before.</li>
+<li style="text-align: justify;"><strong>Print label</strong>: Use this button to print a shipping label if it hasn't been printed before.</li>
+<li style="text-align: justify;"><strong>Scan items</strong>: Use this button to scan items when scanning is required.</li>
+</ul>
+</li>
+</ul>
+</li>
+<li style="text-align: justify;">Once all details are confirmed, click <em>Process</em>.&nbsp;</li>
+<li style="text-align: justify;">Now the order is moved to <a rel="noopener" href="/articles/documentation/processed-orders" target="_blank" onclick="return n(&#39;!documentation/processed-orders&#39;,this);"><em>Processed Orders</em></a> and it <strong>cannot</strong> be <em>amended</em> or <em>unprocessed</em>.</li>
+</ol>
+<h4 style="text-align: justify;" id="h4_2018427796" data-has-heading-anchor="true">Error prevention<a href="/articles/documentation/open-orders-process/a/h4_2018427796" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/open-orders-process/a/h4_2018427796&#39;,this);"></a></h4>
+<p style="text-align: justify;">Depending on your workflows, there are several settings that can help you avoid errors when working with open orders. Review&nbsp;<em>Scanning</em> and <em>Pre Processing</em> sections in <em>Settings &gt; General Setting &gt; <a rel="noopener" href="/articles/documentation/orders" target="_blank" onclick="return n(&#39;!documentation/orders&#39;,this);">Order Management</a></em>&nbsp;and enable any settings that are applicable to your processes.</p>
+<p style="text-align: justify;">Once the settings are enabled, the corresponding actions need to be completed in the <em>Process Order</em> screen.</p>
+<h3 id="OpenOrders_BatchProcess" style="text-align: justify;" data-has-heading-anchor="true">Processing open orders in batch<a href="/articles/documentation/open-orders-process/a/OpenOrders_BatchProcess" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/open-orders-process/a/OpenOrders_BatchProcess&#39;,this);"></a></h3>
+<p style="text-align: justify;">Use the<em> Actions</em> &gt;&nbsp;<em>Batch Process</em> option to process multiple orders at once.</p>
+<div class="alert-danger" style="text-align: justify;"><strong>Note!</strong>&nbsp;<em>Batch Process</em><strong>&nbsp;</strong>moves open orders to the<strong>&nbsp;</strong><em><a href="/articles/documentation/processed-orders" onclick="return n(&#39;!documentation/processed-orders&#39;,this);">Processed Orders</a></em> screen&nbsp;immediately.<strong>&nbsp;</strong>Any settings enabled for scanning barcodes, serial numbers, batch numbers, etc., will be ignored.</div>
+<p style="text-align: justify;">To process multiple orders at once:</p>
+<ol style="text-align: justify;">
+<li>Go to&nbsp;<em>Orders&nbsp;&gt; Open Orders.</em></li>
+<li>Select the required orders.</li>
+<li>Click <em>Actions</em> or right-click orders.</li>
+<li>Go to <em>Process Order &gt; Batch Process</em>.</li>
+</ol>
+<div class="alert-success">
+<p><strong>Important!</strong> The <em>Batch Process</em> action <strong>is not</strong> recommended when&nbsp;any scanning settings are enabled in <em>General Setting &gt; Order Management</em>.&nbsp;</p>
+<p>For example, if an order contains a batched item with the option <em>Scan the batch number when processing orders</em> enabled, once <em>Batch Process</em> is clicked the system will ignore the required scanning and process the order straight away.</p>
+</div>
+<h3 style="" id="h3_107008172" data-has-heading-anchor="true">
+  <span class="fa fa-video icon-background-purple"></span>&nbsp;Video tutorials<a href="/articles/documentation/open-orders-process/a/h3_107008172" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/open-orders-process/a/h3_107008172&#39;,this);"></a></h3>
+
+<p>
+  <span>If you like visual guides, these videos will show you how to process orders one step at a time. They can help you understand the process better and address any extra questions.</span>
+</p>
+<ul>
+  <li><a href="https://linnlearn.com/#/online-courses/27062825-db14-41a9-a5d2-3dd9b5b25337" target="_blank">Video -&nbsp;Order Processing:&nbsp;How to process orders using the various methods available</a>&nbsp;</li>
+
+  
+  <li><a href="https://linnlearn.com/#/online-courses/c8e676f8-0471-4568-a007-29afbc242563" target="_blank">One New Thing -&nbsp;Avoid Mistakes When Order Processing</a>&nbsp;</li>
+
+  </ul>
+<div class="well well-lg" style="background-color: #f3f5f5;">
+<p style="text-align: justify;"><strong>NB!</strong> For the documentation on the earlier version of the <em>Open Order</em>s screen, see here:</p>
+<ul>
+<li style="text-align: justify;"><a rel="noopener" href="/articles/documentation/legacy-oo-process-order" target="_blank" onclick="return n(&#39;!documentation/legacy-oo-process-order&#39;,this);">Processing orders</a></li>
+<li style="text-align: justify;"><a rel="noopener" href="/articles/documentation/legacy-oo-manual-process" target="_blank" onclick="return n(&#39;!documentation/legacy-oo-manual-process&#39;,this);">Manual order processing</a></li>
+</ul>
+</div>
+</div><script src="/resources/Scripts/lightense.min.js"></script>
+<script>
+  // Init Lightense
+  window.addEventListener('load', function () {
+    Lightense('img.lightense:not(.no-lightense)');
+  }, false);
+</script>
+<script>
+var toggler = document.getElementsByClassName("caret");
+var i;
+
+for (i = 0; i < toggler.length; i++) {
+  toggler[i].addEventListener("click", function() {
+    this.parentElement.querySelector(".nested").classList.toggle("active");
+    this.classList.toggle("caret-down");
+  });
+}
+</script></body></html>

@@ -1,0 +1,49 @@
+=== legacy-oo-edit-order | Legacy Open Orders screen: Editing an Open Order
+ 
+ Legacy Open Orders screen: Editing an Open Order 
+ Editing an Open Order
+ In this section, we detail how to modify an open order.
+ Info! You are currently looking at documentation for the previous version of the Open Orders screen. Keep in mind that some functions may differ from the newer, improved version. Check out the updated documentation here for details on the new Open Orders screen. 
+ Quick Guide
+ Select Orders > Open Orders.
+ Locate the order.
+ Select  Edit Order  from the  Action  Menu. 
+ Close the order when Editing is complete.
+ Detailed Guide
+ 1  Select Orders > Open Orders .
+ In the navigation menu on the left side of the screen, click on Orders
+ Select Open Orders
+ 2  Locate the Order .
+ All the Orders currently marked as Open, Locked or On Hold are in the Open Orders screen.
+ To locate a particular order, you can scroll through the available orders, or you can use the small green box to the right of the column headings to filter or re-order the orders in Open Orders.
+ To filter by Order date, first, locate the  General  Info column.
+ . .png 
+ Left-click the green box to the right of the  General Info  heading to open the  Filter/Sort  option.
+ . .png 
+ Click the + button next to  Filter by:  to add a new Filter.
+ . .png 
+ Select  Date  from the dropdown box.
+ . .png 
+ Select the method to specify the Date Filter in the next dropdown box.
+ . .png 
+ If you select  Older than: 
+ Specify the number of Days to Search before. Linnworks will only show orders with a Date prior to that number of Days.
+ . .png 
+ If you specify  Last Days :
+ Specify the number of Days to search within. Linnworks will only show orders with a Date that falls within the days specified.
+ . .png 
+ If you specify  Range: 
+ For the first date window, click on the calendar and select the earliest date in the range.
+ . .png 
+ For the second date window, click on the right-hand calendar to select the latest date the range.
+ . .png 
+ Click  Apply  to apply the filter and reduce the number of the order shown.
+ . .png 
+ 3  Select  Edit Order  from the  Action  Menu. 
+ Right-click the selected Order, and select the Action menu.
+ . .png 
+ Select the  Edit Order  option.
+ 4  Close the order when you have finished Editing .
+ Ensure that the Status by the Order number is set to Saved! 
+ Click the Back at the top right-hand corner to close the order.
+ 

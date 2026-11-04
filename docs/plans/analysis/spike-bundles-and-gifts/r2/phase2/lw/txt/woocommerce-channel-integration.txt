@@ -1,0 +1,32 @@
+=== woocommerce-channel-integration | WooCommerce channel integration
+ 
+ WooCommerce channel integration 
+WooCommerce Channel Integration
+ WooCommerce integration allows you to connect to your WooCommerce seller account via API. 
+  WooCommerce channel integration is a Linnworks Direct  integration - developed, maintained, and supported by Linnworks.
+  Note:  Your WooCommerce site will need to be a minimum of 5.8 to integrate with Linnworks successfully. 
+ Supported features
+ Inventory Updates 
+ Linnworks can automatically send changes in stock levels to the channel.
+ Order Download 
+ Channel orders can be automatically downloaded into Linnworks.
+ Channel Tax 
+ Tax information and settings displayed on orders in Linnworks are provided by the channel during order download.
+ Inventory Mapping 
+ Channel listings can be linked to Linnworks inventory items for stock level and price updates.
+ Check here for product criteria for the items that appear on the mapping screen.
+ Location Mapping 
+ Orders can be downloaded to and inventory updates sent from specific locations.
+ Order Dispatch 
+ Orders on the channel can be marked as shipped and provided with the tracking number and shipping service name via Linnworks.
+ Payment Mapping 
+ Channel payment methods can be linked to Linnworks payment methods for the orders in Linnworks to display methods based on the selection on the channel.
+ Price Change 
+ Prices on channel listings can be automatically updated via Linnworks.
+ Shipping Mapping 
+ Channel shipping methods can be linked to Linnworks postal services for the orders in Linnworks to display the services based on the selection on the channel.
+ Next steps: 
+ Rules & Guidelines 
+ Add New 
+ Configure 
+ 

@@ -1,0 +1,1677 @@
+[
+  {
+    "id": "B-01",
+    "name": "Define a bundle (components and quantities)",
+    "area": "bundle",
+    "actor": "Operator (admin)",
+    "trigger": "The operator wants to sell a set that OpenLinker reserves, routes and packs from its components.",
+    "preconditions": [
+      "The bundle exists as an OpenLinker catalogue variant, which today can only come from a master sync (C-061).",
+      "Every component is a synced, non-stale variant.",
+      "Pilot assumption: one warehouse (r5/7-scope-overengineering.md section 0)."
+    ],
+    "mainFlow": [
+      "The operator opens the bundle variant and adds components, each a variant with a whole quantity per set.",
+      "OpenLinker validates: positive whole quantities, no self-reference, no component that is itself a bundle, no stale component.",
+      "OpenLinker shows warnings, not refusals, when a component VAT rate differs from the bundle rate (B-14) or when the bundle variant is a master kit that keeps its own stock (B-03, B-20).",
+      "OpenLinker refuses a definition on a variant that is a WooCommerce bundle container (B-05 guard).",
+      "OpenLinker stores the component set with a definition version.",
+      "OpenLinker recomputes the bundle availability and enqueues a propagation for the bundle variant (B-02)."
+    ],
+    "altFlows": [
+      "Edit: a new definition version is stored; orders already ingested keep their frozen expansion (B-10).",
+      "Remove a component: new version; open orders are not changed.",
+      "A component later becomes stale: the bundle becomes unsellable (B-02), the definition stays.",
+      "The operator tries to nest a bundle: refused in v1 (B-26).",
+      "In-set price per component (spike D3a): not entered in the pilot. The sources support a split computed at sale time from each component own selling price as the default, with a typed in-set price only as an override carrying a recorded reason (verify/bundle-price-split.md section 4). A share above the standalone price raises a warning; capping is not itself an accepted method (BFH XI R 22/22, r5/8-tax-fiscal.md C-035).",
+      "The same component listed twice in one recipe: merged into one component row with the summed quantity, so the component id stays unique (verify/component-line-id.md surprise 4)."
+    ],
+    "channelData": {
+      "Allegro": "Nothing used. Composition on the order is `offer.productSet.products[]{id, quantity}` with catalogue UUIDs only (C-001); OpenLinker owns the definition.",
+      "PrestaShop": "Pack composition lives on `/products/{id}`: `type=pack`, `associations.product_bundle[{id, id_product_attribute, quantity}]`, `pack_stock_type` (r4/phase1/2-own-shops.md section 1.1). Not imported (D3, #3606).",
+      "WooCommerce": "Plugin-specific meta (WPC `_woosb_ids`, official Product Bundles `bundled_items`) (r4/phase1/2-own-shops.md sections 3-4). Not read.",
+      "Shoper": "`products.type=\"1\"`, `children[]{bundle_id, product_id, stock_id, stock}` where `stock` is the quantity per bundle, not a stock level (r4/phase1/3-pl-saas-and-erp.md section 1.2). Not read.",
+      "Erli": "Product-level `productSets{items[{metaProductId, quantity}]}` and `externalProductSets` (C-023). Not read.",
+      "Others": "Subiekt GT/nexo komplet `Skladniki` (r4/phase1/3-pl-saas-and-erp.md section 4). Not read by the bridge."
+    },
+    "olBehaviour": "Core only: a new OpenLinker-owned definition table plus admin CRUD (the filed #3607 scope, r5/7-scope-overengineering.md section 6). No adapter change, no new capability. The definition is the authority; channel or master compositions are never imported as truth in the pilot.",
+    "mechanism": "core",
+    "acceptance": [
+      {
+        "given": "a bundle variant B and components A (x2) and C (x1)",
+        "when": "an admin saves the definition",
+        "then": "the definition is stored as version 1 and the availability of B is recomputed from A and C"
+      },
+      {
+        "given": "a component that is itself a bundle",
+        "when": "the admin adds it",
+        "then": "the save is refused with a \"nested bundles are not supported\" reason"
+      },
+      {
+        "given": "component A at 8% VAT and bundle B at 23%",
+        "when": "the admin saves",
+        "then": "the definition is saved and the response carries a mixed-VAT warning naming both rates"
+      },
+      {
+        "given": "B is a PrestaShop pack whose stock mode keeps its own pack row",
+        "when": "the admin saves",
+        "then": "the definition is saved with a warning that the master also keeps kit stock"
+      }
+    ],
+    "priority": "pilot",
+    "priorityReason": "Every other Stage 1 bundle behaviour reads the definition; Stage 1 itself is conditional on the pilot client selling OL-packed kits on routed channels (r5/7-scope-overengineering.md section 8).",
+    "evidence": [
+      "r5/7-scope-overengineering.md sections 1, 5, 6",
+      "C-061",
+      "C-035",
+      "verify/bundle-price-split.md",
+      "verify/nested-and-gift-stockout.md",
+      "verify/component-line-id.md surprise 4",
+      "r5/8-tax-fiscal.md C-035",
+      "r4/phase1/3-pl-saas-and-erp.md section 4.1"
+    ],
+    "confidence": "confirmed",
+    "risks": [
+      "Without an in-set price (deferred D3a), component documents and component returns have no price basis for pilot orders; mitigation is to freeze component catalogue gross prices in the expansion row (r5/7-scope-overengineering.md section 7.4).",
+      "An OpenLinker-only bundle variant has no source (C-061), so the bundle must exist as a product in the master.",
+      "The no-nesting rule is justified on cost only: \"every competitor forbids nesting\" is false (Cin7 supports multi-level assemblies; the BaseLinker quote was misattributed) (verify/nested-and-gift-stockout.md; Subiekt GT allows a komplet inside a komplet, r4/phase1/3-pl-saas-and-erp.md section 4.1).",
+      "The spike D3a \"in-set price fixed at definition\" conflicts with the price-split evidence, which favours a split at sale time by current standalone prices; a fixed figure goes stale as catalogue prices move (verify/bundle-price-split.md sections 3-4)."
+    ]
+  },
+  {
+    "id": "B-02",
+    "name": "Bundle availability from components, published to channels; shared components",
+    "area": "bundle",
+    "actor": "System (availability and propagation); operator reads the result",
+    "trigger": "A component stock write, an OpenLinker hold claimed or closed, a component marked stale, or a definition change.",
+    "preconditions": [
+      "A bundle definition exists (B-01).",
+      "The bundle variant has at least one offer or shop-product mapping."
+    ],
+    "mainFlow": [
+      "A component position is written; `InventoryService.setInventory` enqueues a propagation for that component (inventory.service.ts:96-121, r4/code/C-stock-flows-traced.md b1).",
+      "A reverse lookup \"component -> bundles containing it\" enqueues one propagation per bundle variant.",
+      "`IAvailabilityService` answers the bundle as min over components of floor(global ATP of component / quantity per set), from unbuffered global component answers; any unknown component makes the bundle unknown; the bundle variant own positions are ignored (r4/code/C-stock-flows-traced.md b2).",
+      "The channel buffer and zero threshold are applied once, to the bundle number, by the existing write-back (inventory-sync.service.ts:99).",
+      "The freshness token for the bundle offer is the latest `updatedAt` over its components (r4/code/C-stock-flows-traced.md b4).",
+      "The bundle offer quantity is written to each channel."
+    ],
+    "altFlows": [
+      "A shared component is sold on its own: both the component offer and every bundle containing it are republished.",
+      "A component is stale: the bundle publishes 0 and the stale pause, its hourly sweep and the propagation stale guard all expand to bundles (stale-offer-pause.service.ts:90-104, offer-mapping.repository.ts:754-776).",
+      "A component has no positions: known 0 for that component, so the bundle is 0.",
+      "A component answer is unknown: the bundle publish is suppressed, never written as 0."
+    ],
+    "channelData": {
+      "Allegro": "A productSet offer has set-level `stock.available` only; \"For number of sets available in stock, use `stock.available`\" and Allegro never nets component stock across offers (r4/phase1/1-allegro.md, r5/1-allegro-pl.md C-063).",
+      "PrestaShop": "The OL adapter already derives pack quantity on the read side (`derivePackAvailability`, prestashop-pack.types.ts:211-232) and reports it as the pack position (r4/code/C-stock-flows-traced.md c1).",
+      "WooCommerce": "Quantity per product or variation only; bundle plugins compute their own (r4/phase1/2-own-shops.md).",
+      "Shoper": "Set availability follows components on the shop side; whether REST returns a derived number or a manual cap for the set is unknown (r4/phase1/3-pl-saas-and-erp.md section 1.3).",
+      "Erli": "Quantity per product offer only (r4/phase1/4-marketplaces-and-law.md section 1.1).",
+      "Others": "Competitors: BaseLinker min of components, summing across warehouses is an option since 03/2025 (r5/4-competitors-pl.md C-039); Apilo recomputes every 15 min (C-041); Shopify is location-blind (r5/5-competitors-global.md)."
+    },
+    "olBehaviour": "Core, in the publish path of `IAvailabilityService`, never written into the master `inventory_items` row (two writers, r5/7-scope-overengineering.md sections 5 and 7.3). New: reverse fan-out, stale expansion at three sites, max-of-components freshness token. No adapter change.",
+    "mechanism": "core",
+    "acceptance": [
+      {
+        "given": "A=10, C=3 and B defined as {A x2, C x1}",
+        "when": "B availability is computed",
+        "then": "B publishes 3"
+      },
+      {
+        "given": "the same stock and A sold alone 6 units",
+        "when": "the propagation runs",
+        "then": "B is republished as 2 on every mapped channel"
+      },
+      {
+        "given": "C availability is unknown",
+        "when": "B propagation runs",
+        "then": "no quantity is written for B and the suppression is logged"
+      },
+      {
+        "given": "C is marked stale",
+        "when": "the stale pause runs",
+        "then": "B offers are paused at 0"
+      },
+      {
+        "given": "a channel buffer of 1 on the connection",
+        "when": "B is published",
+        "then": "the buffer is subtracted once from the bundle figure, not per component"
+      }
+    ],
+    "priority": "pilot",
+    "priorityReason": "Without it the bundle offer keeps selling from a figure that refreshes only on the next master sweep, the top merchant pain (C-063, r5/7-scope-overengineering.md section 5).",
+    "evidence": [
+      "r4/code/C-stock-flows-traced.md b1-b5",
+      "verify/standard-stress-test.md A1",
+      "r5/7-scope-overengineering.md sections 5, 7.3",
+      "C-063",
+      "C-039",
+      "C-041",
+      "r5/5-competitors-global.md Shopify B-02"
+    ],
+    "confidence": "confirmed",
+    "risks": [
+      "Per-location availability for routing and global availability for publishing can disagree on a multi-warehouse install (Shopify shows the trap, r5/5-competitors-global.md); fine for a one-warehouse pilot.",
+      "The #2617 freshness guard refuses a bundle write if the token is taken from the triggering component instead of the max over components (r4/code/C-stock-flows-traced.md b4).",
+      "Two routes to zero (stale pause and derived ATP) must agree (r4/code/C-stock-flows-traced.md b5).",
+      "The stress test rates a missing recompute trigger as the top critical hole: without the reverse fan-out the kit offer keeps its old quantity until something touches the kit variant (verify/standard-stress-test.md A1).",
+      "BaseLinker sources disagree on summing across warehouses (help FAQ vs 03/2025 changelog, r5/4-competitors-pl.md C-039)."
+    ]
+  },
+  {
+    "id": "B-03",
+    "name": "Pre-built kit with its own stock versus a virtual bundle",
+    "area": "bundle",
+    "actor": "Operator and warehouse",
+    "trigger": "A kit is physically assembled and shelved and the master counts it as its own item.",
+    "preconditions": [
+      "The master reports a stock figure for the kit itself (Subiekt komplet, PrestaShop pack in pack-only mode)."
+    ],
+    "mainFlow": [
+      "Master sync reports the kit as an ordinary variant with its own stock.",
+      "With no OpenLinker definition, the kit is handled as an ordinary product (works today).",
+      "If an OpenLinker definition is also saved on that variant, OpenLinker warns that the master keeps kit stock (pilot guard, r5/7-scope-overengineering.md section 5).",
+      "Later: the master declares the kit stock mode as a three-state product fact and OpenLinker chooses virtual, own or both per bundle."
+    ],
+    "altFlows": [
+      "Subiekt GT komplet not yet assembled (\"Zmontuj\"): the bridge publishes SUM(st_Stan) = 0 although components are on the shelf (C-022).",
+      "PrestaShop pack with `pack_stock_type=0` is read as \"shop default\" up to 9.1.x and fixed in 9.2.0, so OL can disagree with the shop on 9.2+ (r5/2-shops-erp.md section 3).",
+      "Cin7-style kitting: pick the assembled kit if in stock, else its components (r5/5-competitors-global.md CN3); later."
+    ],
+    "channelData": {
+      "Allegro": "Not applicable (master-side concept).",
+      "PrestaShop": "`pack_stock_type` 0 pack-only, 1 components, 2 both, 3 shop default (`PS_PACK_STOCK_TYPE`) (r4/phase1/2-own-shops.md section 1.1).",
+      "WooCommerce": "No kit concept in core; plugin dependent (r3/code/C-stock-fulfilment-masters.md section 1.1).",
+      "Shoper": "Optional cap \"ile sztuk zestawów maksymalnie\" on top of component availability (r4/phase1/3-pl-saas-and-erp.md section 1.3).",
+      "Erli": "No kit stock concept found (r4/phase1/4-marketplaces-and-law.md).",
+      "Others": "Subiekt GT `tw_Rodzaj` (komplet = 8 in the GT Sfera enum, r3/phase1/3-pl-saas-and-erp.md) is read by the bridge (bridge-gt Program.cs:304) and discarded; nexo komplet has zero stock until an assembly order (r4/phase1/3-pl-saas-and-erp.md section 4.2). Sky-Shop: configurable stock source per set."
+    },
+    "olBehaviour": "Pilot: a definition-time warning only. Later: an optional three-state product field (kit stock mode, or composition) filled by the master adapter, following the `Product.gpsr` precedent; r5/6 argues for a field, not a capability (r5/6-design-and-code.md section 3.1).",
+    "mechanism": "field",
+    "acceptance": [
+      {
+        "given": "a Subiekt komplet with own stock and no OL definition",
+        "when": "an order for it is routed",
+        "then": "the komplet own stock is reserved and decremented like any product"
+      },
+      {
+        "given": "a PrestaShop pack in pack-only mode",
+        "when": "an admin saves an OL definition on it",
+        "then": "the save shows a warning that the master keeps its own kit stock"
+      },
+      {
+        "given": "later, a master that declares kit mode \"own\"",
+        "when": "availability is computed",
+        "then": "the master figure is used and components are not reserved"
+      }
+    ],
+    "priority": "later",
+    "priorityReason": "The pilot needs only the warning (in B-01); a kit with own stock already works as an ordinary product, so modelling modes adds features, not damage prevention (r5/7-scope-overengineering.md section 5).",
+    "evidence": [
+      "C-022",
+      "C-014",
+      "r5/2-shops-erp.md sections 3 and 6",
+      "r4/phase1/3-pl-saas-and-erp.md section 4",
+      "r3/phase1/3-pl-saas-and-erp.md Subiekt GT",
+      "r5/5-competitors-global.md CN1, CN3"
+    ],
+    "confidence": "probable",
+    "risks": [
+      "Whether a Subiekt GT sale of an unassembled komplet auto-assembles or blocks is unverified (C-022, r5/2-shops-erp.md section 6).",
+      "The komplet kind code differs between products: GT 8 (Sfera SDK) and nexo 4 (bridge code comment, unverified) (r3/phase1/3-pl-saas-and-erp.md).",
+      "C-014 version range is disputed: the empty() bug reaches 9.1.5, not only 8.1.7-9.0.2 (r5/2-shops-erp.md section 3).",
+      "A Subiekt invoice that also releases stock (WZ) for a komplet may double the effect of an OL decrement (unverified, verify/standard-stress-test.md A10)."
+    ]
+  },
+  {
+    "id": "B-04",
+    "name": "Order arrives as the parent only and is expanded",
+    "area": "bundle",
+    "actor": "System (order ingestion)",
+    "trigger": "An order line names a set as one item: Allegro productSet offer, PrestaShop pack row, Erli, Amazon, Kaufland, or Shoper while children are ignored.",
+    "preconditions": [
+      "The channel line resolves to an OpenLinker variant through offer or identifier mapping.",
+      "That variant has a bundle definition (B-01)."
+    ],
+    "mainFlow": [
+      "The adapter emits the line as it does today: one line, the channel line id, the bundle price.",
+      "Item resolution maps it 1:1 to the bundle variant (order-ingestion.service.ts:584-602).",
+      "Core recognises a bundle because the resolved variant has a definition; no adapter field is needed.",
+      "Core freezes the expansion for this order line (B-10).",
+      "Reservation, routing and sale decrement use the component lines from the expansion (B-23).",
+      "The order line, order snapshot, documents and channel writebacks keep the bundle line (D3)."
+    ],
+    "altFlows": [
+      "Unmapped line: the whole order stays `awaiting_mapping`, visibly (C-053).",
+      "Allegro sends `productSet` but no OL definition exists: later, an attention state \"set sold, contents unknown in OpenLinker\" (r5/1-allegro-pl.md section 3A).",
+      "Allegro `productSet` count or quantities differ from the OL definition: later, a drift attention, never an automatic re-definition (r5/1-allegro-pl.md section 3A, r5/3-marketplaces-countries.md C-027).",
+      "Allegro One Fulfillment set (`fulfilledBySource`): routing is skipped (#3636, order-ingestion.service.ts:1273); whether that short-circuit runs before the expansion and also skips component holds is unverified (r5/1-allegro-pl.md item 10, verify/standard-stress-test.md A14).",
+      "A definition created after the order was first ingested: the order must not be expanded on a later poll, because holds or work already exist on the bundle line id; the first ready ingestion records which line ids were evaluated (verify/standard-stress-test.md A2, see B-10).",
+      "PrestaShop pack sold in the PrestaShop shop itself: not routed (own-shop skip, fulfillment-routing-eligibility.types.ts:48-50); see B-20."
+    ],
+    "channelData": {
+      "Allegro": "`lineItems[].offer.productSet.products[]{id (catalogue UUID), quantity}`, null on single-product offers; one `price`, `originalPrice`, `tax.rate` per line; line `quantity` counts sets and `price` is per set (verify/allegro-line-price.md Q1-Q2); no per-component price, EAN or SKU (C-001, r4/phase1/1-allegro.md). The OL mapper reads `offer.id`, `quantity`, `price`, name, tax only and ignores `productSet` and `offer.external.id` (C-002, allegro-order-source.adapter.ts:998-1016).",
+      "PrestaShop": "One `order_rows` row with `product_id` = the pack; composition only from `/products/{id}` `associations.product_bundle`, live, not frozen (C-011, C-013).",
+      "WooCommerce": "Only when no bundle plugin child lines are emitted (otherwise B-05).",
+      "Shoper": "Today OL reads one line on the bundle own `stock_id` because `type`/`children` are not read (C-019, r4/phase1/3-pl-saas-and-erp.md section 1.5).",
+      "Erli": "Order items `id, externalId, quantity, weight, unitPrice, unitPriceBeforeRebate, name, slug, ean, sku, taxRate, dispatchTime`; no set data (C-023, r5/3-marketplaces-countries.md).",
+      "Others": "Amazon, Kaufland, Mirakl, eBay: no bundle field on the order (r4/phase1/4-marketplaces-and-law.md section 1)."
+    },
+    "olBehaviour": "Core recognition by resolved variant, no new `IncomingOrderItem` field in the pilot (r5/7-scope-overengineering.md section 6). Reading Allegro `productSet` becomes a later adapter field used only as a cross-check, three-state (absent = not reported, null = single product).",
+    "mechanism": "core",
+    "acceptance": [
+      {
+        "given": "an Allegro offer mapped to variant B defined as {A x2, C x1} and an order line of quantity 2",
+        "when": "the order is ingested",
+        "then": "the order line stays B x2 and a frozen expansion A x4, C x2 is written once"
+      },
+      {
+        "given": "an Allegro offer with no mapping",
+        "when": "the order is ingested",
+        "then": "the order is `awaiting_mapping` and no hold is written"
+      },
+      {
+        "given": "a mapped variant without a definition",
+        "when": "the order is ingested",
+        "then": "it is handled as an ordinary line"
+      },
+      {
+        "given": "the same order re-polled after the definition changed",
+        "when": "it is ingested again",
+        "then": "the first frozen expansion is kept"
+      }
+    ],
+    "priority": "pilot",
+    "priorityReason": "Recognition by resolved variant is the cheapest correct entry point for every parent-only channel and needs no adapter work (r5/7-scope-overengineering.md sections 3 and 9.1).",
+    "evidence": [
+      "C-001",
+      "C-002",
+      "C-011",
+      "C-013",
+      "C-019",
+      "C-023",
+      "C-053",
+      "verify/allegro-line-price.md Q2",
+      "r5/1-allegro-pl.md C-027 and section 3A",
+      "r5/6-design-and-code.md N-4",
+      "r4/phase1/4-marketplaces-and-law.md section 1"
+    ],
+    "confidence": "confirmed",
+    "risks": [
+      "C-027 is wrong: Allegro does send composition; but it is catalogue UUIDs that Allegro merges or deletes (about 2% in one seller measurement, #7487, r5/1-allegro-pl.md), so it can only be a check, never the authority (r5/6-design-and-code.md N-4).",
+      "The spike listed Allegro `productSet` and Shoper `children` ingestion as \"fix regardless\"; r5/7 disputes this as a must-have because recognition by variant covers parent-only shapes (r5/7-scope-overengineering.md section 3).",
+      "The current Allegro `sku` is `lineItem.offer.id`, not a SKU; recognition by SKU must use `offer.external.id` or the offer mapping (r5/1-allegro-pl.md item 7)."
+    ]
+  },
+  {
+    "id": "B-05",
+    "name": "Order arrives as parent and children; no double counting",
+    "area": "bundle",
+    "actor": "System (order ingestion)",
+    "trigger": "A shop sends a container line plus one line per component (WooCommerce bundle plugins; Shoper `children` if read).",
+    "preconditions": [
+      "The source adapter emits child lines as ordinary order lines."
+    ],
+    "mainFlow": [
+      "Pilot: OpenLinker refuses to save an OL definition on a variant that is a WooCommerce bundle container, so container and children are never both expanded (r5/7-scope-overengineering.md section 5).",
+      "Later: the adapter tags child lines with a three-state parent link, or a per-connection operator setting states \"this source sends children as lines\" (X-03).",
+      "Later: core treats tagged children as the expansion (or suppresses them when they match the definition exactly, the Linnworks Magento guard) and takes the price from whichever side carries it (B-19)."
+    ],
+    "altFlows": [
+      "WPC fixed price: parent carries the price, children are 0; WPC auto price: parent 0 with no tax, children carry discounted prices (r4/phase1/2-own-shops.md section 3).",
+      "Two identical bundles in one WPC order cannot be told apart reliably (link by product id, not order item id) (r4/phase1/2-own-shops.md section 3).",
+      "A WooCommerce grouped product arrives as independent lines with no parent: not a bundle for OL (r4/phase1/2-own-shops.md section 2.2)."
+    ],
+    "channelData": {
+      "Allegro": "Not applicable.",
+      "PrestaShop": "Not applicable (pack is one row).",
+      "WooCommerce": "Official Product Bundles: `bundled_by`, `bundled_items`, `_bundled_item_priced_individually` (C-015); WPC: children `_woosb_parent_id`, `_woosb_bundle{role, bundle_id, parent_id, qty_per_bundle, pricing_mode}`, parent `_woosb_ids`, `_woosb_price` (C-016). OL reads no `meta_data` (woocommerce-order-source.adapter.ts:363-404, r4/code/B-line-identity-traced.md section 3).",
+      "Shoper": "`type:\"1\"` with nested `children[]{bundle_child_id, id, order_id, stock_id, quantity, price, tax, tax_value, discount_perc}`, no `product_id` on a child (C-018, r4/phase1/3-pl-saas-and-erp.md section 1.1). Not read (C-019).",
+      "Erli": "Not applicable.",
+      "Others": "Magento via Linnworks: mutually exclusive \"ignore bundle child/parent items\" switches (r4/phase2/4-linnworks.md B-05)."
+    },
+    "olBehaviour": "Pilot: core refusal at definition time. Later: a per-connection operator setting or a manifest value field (the `variantGrouping` precedent with a restrictive default), never a capability name (verify/standard-stress-test.md B); r5/6 shows \"absent = no claim\" is the dangerous default for this shape (r5/6-design-and-code.md section 3.3).",
+    "mechanism": "setting",
+    "acceptance": [
+      {
+        "given": "a WooCommerce variant that is a bundle container",
+        "when": "an admin saves an OL definition on it",
+        "then": "the save is refused naming the double-count risk"
+      },
+      {
+        "given": "a WooCommerce order with a container and two child lines and no OL definition",
+        "when": "it is ingested",
+        "then": "each line is reserved as its own variant, as today"
+      },
+      {
+        "given": "later, a connection whose setting says \"children as lines\" and a definition matching the children",
+        "when": "the order is ingested",
+        "then": "components are reserved once, not twice"
+      }
+    ],
+    "priority": "pilot",
+    "priorityReason": "Only the definition guard is pilot work, because it stops a silent double reservation and double pick; reading children is deferred (r5/7-scope-overengineering.md section 5).",
+    "evidence": [
+      "C-015",
+      "C-016",
+      "C-018",
+      "C-019",
+      "verify/standard-stress-test.md A6, B",
+      "r4/phase1/2-own-shops.md sections 2-4",
+      "r5/6-design-and-code.md section 3.3",
+      "r4/phase2/4-linnworks.md B-05"
+    ],
+    "confidence": "probable",
+    "risks": [
+      "If an adapter emits children without a tag, OL would reserve and pick both the expanded bundle and the children (r5/6-design-and-code.md section 3.3).",
+      "Shoper child `quantity` (per bundle or per line) and `price` (unit or line, net or gross) are undocumented; only an auto-generated SDK exists (r5/2-shops-erp.md section 4). See B-27.",
+      "C-016 (WPC meta-only link) was not re-tested in round 5 (r5/2-shops-erp.md)."
+    ]
+  },
+  {
+    "id": "B-06",
+    "name": "Order arrives as children only, grouped",
+    "area": "bundle",
+    "actor": "System (order ingestion)",
+    "trigger": "A channel sends only component lines with a group reference (Shopify `lineItemGroup`, IdoSell `bundleId`).",
+    "preconditions": [
+      "An OpenLinker adapter for the channel exists (today none does for Shopify or IdoSell)."
+    ],
+    "mainFlow": [
+      "The adapter emits component lines as ordinary lines (stock and picking are already component grain).",
+      "The adapter carries the group reference as a three-state field so the order view and documents can show \"Part of: set\".",
+      "No expansion happens; the price is already allocated on components."
+    ],
+    "altFlows": [
+      "Amazon Virtual Product Bundles reportedly send components with no group key, which SKU recognition cannot detect (secondary sources only, unverified, r5/3-marketplaces-countries.md C-027)."
+    ],
+    "channelData": {
+      "Allegro": "Not applicable.",
+      "PrestaShop": "Not applicable.",
+      "WooCommerce": "Not applicable (grouped products carry no link).",
+      "Shoper": "Not applicable.",
+      "Erli": "Not applicable.",
+      "Others": "Shopify `LineItemGroup{id, title, quantity, productId, variantId, variantSku}` on each component line, price allocated by weight = unit price x quantity (C-017, r5/5-competitors-global.md SH4). IdoSell `productsResults[].bundleId` \"A set's ID\"; whether the set itself is a row is unknown (C-020, r4/phase1/3-pl-saas-and-erp.md section 2.1)."
+    },
+    "olBehaviour": "Adapter field only (group reference, three-state). No core expansion. Nothing to build until an adapter exists.",
+    "mechanism": "field",
+    "acceptance": [
+      {
+        "given": "a Shopify order with two component lines in one `lineItemGroup`",
+        "when": "it is ingested by a future Shopify adapter",
+        "then": "two ordinary lines are reserved and both carry the group reference"
+      },
+      {
+        "given": "the same order",
+        "when": "documents are issued",
+        "then": "component lines are shown with their allocated prices"
+      }
+    ],
+    "priority": "later",
+    "priorityReason": "OpenLinker has no Shopify or IdoSell adapter (libs/integrations list, r4/phase1/3-pl-saas-and-erp.md section 2), so nothing breaks today.",
+    "evidence": [
+      "C-017",
+      "C-020",
+      "r5/5-competitors-global.md SH4, SH5",
+      "r4/phase1/2-own-shops.md section 6.1",
+      "r4/phase1/3-pl-saas-and-erp.md section 2.1"
+    ],
+    "confidence": "probable",
+    "risks": [
+      "C-017 said the Shopify weighting method is unpublished; r5/5 shows it is published (SH4).",
+      "IdoSell layout (set row present or not) is unknown without a live order."
+    ]
+  },
+  {
+    "id": "B-07",
+    "name": "Offer bundle: several separate lines with a shared discount",
+    "area": "bundle",
+    "actor": "System (order ingestion); buyer chose a multi-offer bundle",
+    "trigger": "An Allegro flexible bundle (or an Allegro-created automatic bundle) is bought.",
+    "preconditions": [
+      "Each offer in the bundle is mapped to its own variant."
+    ],
+    "mainFlow": [
+      "Each offer arrives as its own line with the price already reduced and `discounts[{type: BUNDLE}]`.",
+      "OpenLinker handles each line as an ordinary line; stock, routing and packing are correct today.",
+      "Later: the reduction is carried as a neutral list price plus reduction on each line (X-01), without assuming a seller-funded discount."
+    ],
+    "altFlows": [
+      "A partial return of one offer: refund by `AMOUNT` per line; the lost bundle discount is not computed (C-010, r4/phase1/5-merchant-voice.md PAIN-17).",
+      "CAMPAIGN or ALLEGRO_PRICES on the same line: `originalPrice` equals `price`, so \"list minus price\" claims no reduction (r5/1-allegro-pl.md section 2)."
+    ],
+    "channelData": {
+      "Allegro": "Separate `lineItems[]`, each with `discounts[]{type}`; `BUNDLE` also used \"for bundles with no price change\" and for bundles created by Allegro; no bundle id, no amount (C-003, C-004, C-006, r4/phase1/1-allegro.md).",
+      "PrestaShop": "Not applicable as a channel shape.",
+      "WooCommerce": "Not applicable.",
+      "Shoper": "Not applicable.",
+      "Erli": "Order-level `rebate{id, name, code}` only (r5/1-allegro-pl.md C-023).",
+      "Others": "Kaufland one `discounts[]` per order unit; Mirakl line `promotions[]` with `deduced_amount` (r4/phase1/4-marketplaces-and-law.md)."
+    },
+    "olBehaviour": "No bundle behaviour; the lines are ordinary. The only gap is discount attribution, which is X-01 (line list price plus reduction, three-state, with reasons array and funder per r5/1).",
+    "mechanism": "field",
+    "acceptance": [
+      {
+        "given": "an Allegro flexible bundle of two offers mapped to A and C",
+        "when": "the order is ingested",
+        "then": "two ordinary lines are reserved, routed and packed with no expansion"
+      },
+      {
+        "given": "the same lines carrying `discounts:[BUNDLE]`",
+        "when": "they are ingested",
+        "then": "no reason is stored as \"seller discount\" until X-01 lands"
+      }
+    ],
+    "priority": "later",
+    "priorityReason": "No stock, packing or document damage exists for this shape; only discount reporting is missing, which is gift/discount work (r5/7-scope-overengineering.md section 8 Stage 3).",
+    "evidence": [
+      "C-003",
+      "C-004",
+      "C-006",
+      "C-010",
+      "r4/phase1/1-allegro.md ALG-05",
+      "r5/1-allegro-pl.md sections 1-2"
+    ],
+    "confidence": "confirmed",
+    "risks": [
+      "C-003 corollary \"amount = originalPrice - price\" is wrong for CAMPAIGN and ALLEGRO_PRICES (r5/1-allegro-pl.md C-003)."
+    ]
+  },
+  {
+    "id": "B-08",
+    "name": "Multipack: one offer equals N units of one product",
+    "area": "bundle",
+    "actor": "System (order ingestion); operator maps the offer",
+    "trigger": "An Allegro multipack offer (productSet with one product, quantity N) is bought.",
+    "preconditions": [
+      "The multipack offer is mapped to an OL bundle variant defined as {A x N} (B-01)."
+    ],
+    "mainFlow": [
+      "The order line arrives as one line, quantity q.",
+      "Core recognises the bundle variant (B-04) and freezes the expansion A x (q * N).",
+      "Reservation, routing and sale decrement act on A (B-23); the bench asks the packer for q * N units of A."
+    ],
+    "altFlows": [
+      "The multipack offer is mapped (by hand or by barcode linking on the shared product EAN) to the single-unit variant A instead of a bundle: OL would reserve and decrement q units instead of q * N (inference, unverified live; the stress test rates it HIGH, verify/standard-stress-test.md A5; the BaseLinker case in r4/phase1/5-merchant-voice.md PAIN-06 shows the pattern). Guard: park the order with an attention state when Allegro reports a productSet whose total product quantity is not 1 and the mapped variant has no definition. This guard is the one place the pilot reads `productSet`, as a three-state field used only as a check.",
+      "Old single-offer MULTIPACK promotion lines (before 2027-01-12) carry `discounts[{type: UNIT_PERCENTAGE_DISCOUNT}]` and must keep parsing (r5/1-allegro-pl.md C-005)."
+    ],
+    "channelData": {
+      "Allegro": "`offer.productSet.products` with one element `quantity` N; line `quantity` counts packs and `price` is per pack (verify/allegro-line-price.md Q2); offer `stock.available` counts packs; replaces single-offer MULTIPACK from 2027-01-12 (C-005, r4/phase1/1-allegro.md ALG-02). Whether the order line always carries `productSet` for a multipack is unverified (r5/1-allegro-pl.md C-001 caveat c).",
+      "PrestaShop": "A pack with one product and quantity N.",
+      "WooCommerce": "Plugin bundle with one child.",
+      "Shoper": "A set with one child and `stock` = N.",
+      "Erli": "`productSets` with one item (C-023), semantics unknown.",
+      "Others": "Linnworks: single-child composite (r4/phase2/4-linnworks.md B-08)."
+    },
+    "olBehaviour": "Same core mechanism as B-04 and B-23. Pilot adds one adapter field (Allegro `productSet` total quantity, three-state) and one core guard that parks a line whose reported set quantity is not 1 when the mapped variant has no definition.",
+    "mechanism": "core",
+    "acceptance": [
+      {
+        "given": "B defined as {A x6} and an Allegro line of B x2",
+        "when": "the order is ingested and routed",
+        "then": "a hold of 12 A is written and the work line asks for 12 A"
+      },
+      {
+        "given": "A at 30 units",
+        "when": "B availability is computed",
+        "then": "B publishes 5"
+      },
+      {
+        "given": "an Allegro line whose productSet is one product of quantity 3, mapped to the plain variant A with no definition",
+        "when": "the order is ingested",
+        "then": "the order is parked with a \"set quantity unknown to OpenLinker\" attention and nothing is reserved or routed"
+      }
+    ],
+    "priority": "pilot",
+    "priorityReason": "It costs little beyond B-04 and B-23, Allegro makes the multipack offer the only single-offer quantity deal from 2027-01-12 (C-005), and a multipack mapped to a single unit is a silent under-decrement (verify/standard-stress-test.md A5).",
+    "evidence": [
+      "C-005",
+      "C-001",
+      "verify/allegro-line-price.md Q2",
+      "verify/standard-stress-test.md A5",
+      "r4/phase1/1-allegro.md ALG-02, ALG-03",
+      "r5/1-allegro-pl.md C-005",
+      "r4/phase1/5-merchant-voice.md PAIN-06"
+    ],
+    "confidence": "probable",
+    "risks": [
+      "The silent under-decrement when a multipack offer is mapped to the single-unit variant is an inference for OL, not tested.",
+      "Allegro swagger still documents MULTIPACK creation without a deprecation marker (r5/1-allegro-pl.md item 11)."
+    ]
+  },
+  {
+    "id": "B-09",
+    "name": "Bundle with buyer choice of variant per slot",
+    "area": "bundle",
+    "actor": "Buyer; system (ingestion)",
+    "trigger": "The buyer picks a size or colour for a component of a set.",
+    "preconditions": [
+      "The bundle definition allows a slot with alternatives (not in the pilot model)."
+    ],
+    "mainFlow": [
+      "Later: the definition holds a slot with allowed variants instead of one component variant.",
+      "Later: the chosen variant must reach OL on the order (channel field or operator choice after purchase).",
+      "Later: the expansion freezes the chosen variant per slot."
+    ],
+    "altFlows": [
+      "The channel does not send the choice: the operator chooses after purchase (Sellasist dynamic sets update stock only after the choice, r5/4-competitors-pl.md C-042).",
+      "Allegro flexible bundles: the buyer picks a whole offer per slot, so each pick is its own line (B-07), no slot logic needed."
+    ],
+    "channelData": {
+      "Allegro": "Flexible bundle slots of up to 30 offers; the buyer picks one offer per slot (r4/phase1/1-allegro.md ALG-06). Product sets have fixed products.",
+      "PrestaShop": "Pack items are fixed combinations (`id_product_attribute`).",
+      "WooCommerce": "Plugin dependent; not researched in detail (unverified).",
+      "Shoper": "Each variant combination is a separate set; non-stock options are buyer-chosen (r4/phase1/3-pl-saas-and-erp.md PLS-04).",
+      "Erli": "No evidence (unverified).",
+      "Others": "IdoSell \"Wybór odpowiedniego wariantu i rozmiaru możesz pozostawić klientowi\" and `productBundleItems[].sizeId` on create (r4/phase1/3-pl-saas-and-erp.md section 2.4); Shopify combine repeat options since 2025-12 (r5/5-competitors-global.md section 4)."
+    },
+    "olBehaviour": "Core definition model change (slots) plus a channel field or an operator step. Nothing in the pilot.",
+    "mechanism": "core",
+    "acceptance": [
+      {
+        "given": "later, a bundle with a size slot {S, M, L} and an order naming M",
+        "when": "it is ingested",
+        "then": "the frozen expansion holds M and only M is reserved"
+      },
+      {
+        "given": "later, an order that names no size",
+        "when": "it is ingested",
+        "then": "the order is held for an operator choice and no slot component is reserved"
+      }
+    ],
+    "priority": "later",
+    "priorityReason": "Already deferred by the spike and by r5/7; no pilot channel needs it on a single line.",
+    "evidence": [
+      "r4/phase1/1-allegro.md ALG-06",
+      "r4/phase1/3-pl-saas-and-erp.md sections 1.2, 2.4",
+      "C-042",
+      "r5/5-competitors-global.md section 4"
+    ],
+    "confidence": "probable",
+    "risks": [
+      "How the choice reaches OL differs per channel; IdoSell read and write fields disagree (read `bundleId`, write `productBundleItems`) (r4/phase1/3-pl-saas-and-erp.md section 2.2)."
+    ]
+  },
+  {
+    "id": "B-10",
+    "name": "Freeze bundle contents per order",
+    "area": "bundle",
+    "actor": "System (order ingestion)",
+    "trigger": "The first ingestion of an order whose line resolves to a bundle variant.",
+    "preconditions": [
+      "B-04 recognition succeeded (order is ready, not `awaiting_mapping`)."
+    ],
+    "mainFlow": [
+      "Core computes the expansion from the current definition: component variant, quantity per set, quantity for the line.",
+      "Core writes it once, in the first ready transaction, into its own table with insert-if-absent: every evaluated line id (including lines that are not bundles, as a negative fact), bundle variant id, component productId and variantId, quantity per set, definition version, component catalogue gross prices (verify/standard-stress-test.md A2, C; verify/component-line-id.md surprises 5-6).",
+      "The recipe is merged per component variant before it is frozen, so no component id repeats (verify/component-line-id.md surprise 4).",
+      "Every later reader (reservation, routing, decrement, bench label, guards) reads the frozen expansion, never the live definition.",
+      "The `orderSnapshot` column is not touched (it stays the channel original, #3542)."
+    ],
+    "altFlows": [
+      "Re-poll after a definition edit: the insert is a no-op, the first expansion wins.",
+      "A definition created after the order was first evaluated: the negative fact keeps the line unexpanded, so holds and work stay on the bundle line id and are not duplicated (verify/standard-stress-test.md A2).",
+      "The operator remaps the line from kit X to plain Y after the freeze: the expansion check `frozen.bundleVariantId === item.variantId` fails, an attention is raised and the line is not routed (verify/standard-stress-test.md A2).",
+      "The order goes ready -> awaiting_mapping -> ready: the expansion row must survive (the ADR-080 cost snapshot does not, r5/6-design-and-code.md section 3.9).",
+      "An old order ingested late (backfill, reconcile) is frozen with the definition current at ingestion, not at sale (r5/2-shops-erp.md section 2)."
+    ],
+    "channelData": {
+      "Allegro": "Line `productSet` reflects the offer at purchase but in catalogue UUIDs (C-001).",
+      "PrestaShop": "No order-side pack composition; issue #37423 \"Major\" (C-013, r4/phase1/5-merchant-voice.md PAIN-03). Confirmed live on 9.0.2: after the pack was changed, reading the order pack through `products/{id}` gave the new contents (verify/prestashop-live.md Q4). The OL module hook `actionValidateOrderAfter` could capture it at sale (r5/2-shops-erp.md section 2, existence on 1.7.x unverified).",
+      "WooCommerce": "Child lines are themselves the frozen contents when a plugin sends them.",
+      "Shoper": "`children[]` on the order line, if read.",
+      "Erli": "None on the order.",
+      "Others": "Linnworks stores child rows on the order item (`CompositeSubItems`) (r4/phase2/4-linnworks.md B-10)."
+    },
+    "olBehaviour": "Core: a separate insert-if-absent table, not `orderSnapshot` (ingestion rewrites it and an `OrderItem` field must be named in five or more allowlists, C-055) and not `order_line_items` (delete-then-reinsert, ADR-080). The bundle line id is stored in the row and never recovered by splitting a component id on `~c:` (verify/component-line-id.md surprise 6).",
+    "mechanism": "core",
+    "acceptance": [
+      {
+        "given": "order O with bundle line L and definition v1 {A x2, C x1}",
+        "when": "O is ingested",
+        "then": "one expansion row for (O, L) is written with v1"
+      },
+      {
+        "given": "the definition edited to v2 {A x3}",
+        "when": "O is re-polled",
+        "then": "the expansion for (O, L) is still v1"
+      },
+      {
+        "given": "O moves to awaiting_mapping and back to ready",
+        "when": "it is re-ingested",
+        "then": "the v1 expansion is unchanged and holds are not re-keyed"
+      },
+      {
+        "given": "order P first ingested before B had a definition",
+        "when": "P is re-polled after the definition is saved",
+        "then": "P is not expanded and its bundle-line hold is not duplicated"
+      }
+    ],
+    "priority": "pilot",
+    "priorityReason": "Component keys derive from the expansion, so an expansion that changes between polls would orphan holds and mint new decrement keys (r5/6-design-and-code.md section 3.9).",
+    "evidence": [
+      "C-013",
+      "C-055",
+      "verify/prestashop-live.md Q4",
+      "verify/standard-stress-test.md A2",
+      "verify/component-line-id.md surprises 4-6",
+      "r5/7-scope-overengineering.md sections 5, 6, 7.4",
+      "r5/6-design-and-code.md section 3.9",
+      "r5/2-shops-erp.md section 2",
+      "r4/phase1/5-merchant-voice.md PAIN-03"
+    ],
+    "confidence": "confirmed",
+    "risks": [
+      "r5/6 proposes instead a `bundleSnapshot` column on `order_records` expanded in `toDomain` (r5/6-design-and-code.md section 5); r5/7 rejects storing it in the order record. The two designs disagree on where the frozen data lives.",
+      "Snapshot at ingestion is not the at-sale truth for PrestaShop (r5/2-shops-erp.md section 2)."
+    ]
+  },
+  {
+    "id": "B-11",
+    "name": "Pack bench shows the bundle and its components; each component is scanned",
+    "area": "bundle",
+    "actor": "Packer",
+    "trigger": "A routed work containing a bundle line is opened at the bench.",
+    "preconditions": [
+      "Work lines were created at component grain (B-23)."
+    ],
+    "mainFlow": [
+      "The bench lists one row per component work line with its own name, EAN and bin (bench-parcel.service.ts:879-901).",
+      "Each row shows \"Part of: <bundle name> x q\", read from the frozen expansion.",
+      "The packer scans each component; verification is keyed by work line id (fulfillment-verification.service.ts:108-116).",
+      "The parcel closes when every component line is verified.",
+      "The packing slip shows the bundle line and its components."
+    ],
+    "altFlows": [
+      "The packer scans the bundle own barcode: it matches no line, by design (parcel-scan-match.ts:90-100).",
+      "A component is missing: its line cannot be verified, so the parcel cannot close short (B-12)."
+    ],
+    "channelData": {
+      "Allegro": "Not applicable (bench is internal).",
+      "PrestaShop": "Not applicable.",
+      "WooCommerce": "Not applicable.",
+      "Shoper": "Shop WZ lists components (r3/phase1/3-pl-saas-and-erp.md checklist).",
+      "Erli": "Not applicable.",
+      "Others": "Linnworks: \"Scanning composite parent will scan all child items\" and pick list tables with and without composite parents (r5/5-competitors-global.md B-11); Sellasist hide-from-picking is product-level (r5/4-competitors-pl.md C-042)."
+    },
+    "olBehaviour": "Core and frontend: almost free once work lines are components; the label is a lookup in the frozen expansion. No adapter change.",
+    "mechanism": "core",
+    "acceptance": [
+      {
+        "given": "a work for B x1 = {A x2, C x1}",
+        "when": "it is opened at the bench",
+        "then": "two rows A (2) and C (1) are shown, each labelled \"Part of: B x1\""
+      },
+      {
+        "given": "A scanned twice and C not scanned",
+        "when": "the packer tries to close",
+        "then": "the parcel stays open with C outstanding"
+      },
+      {
+        "given": "the bundle barcode is scanned",
+        "when": "the scan is matched",
+        "then": "no line is incremented"
+      }
+    ],
+    "priority": "pilot",
+    "priorityReason": "Component pick lines come free with B-23 and are the only way the packer sees what to put in the box; the label is cosmetic (r5/7-scope-overengineering.md section 5).",
+    "evidence": [
+      "r4/code/C-stock-flows-traced.md a5",
+      "r3/code/C-stock-fulfilment-masters.md section 3",
+      "r5/7-scope-overengineering.md section 5",
+      "r5/5-competitors-global.md Linnworks B-11"
+    ],
+    "confidence": "confirmed",
+    "risks": [
+      "Packing slip content (bundle and components together) is a top merchant pain (spike pain 4) but the slip template change is not traced in code (unverified effort)."
+    ]
+  },
+  {
+    "id": "B-12",
+    "name": "A component is out of stock",
+    "area": "bundle",
+    "actor": "System (reservation, routing); operator",
+    "trigger": "An order needs more of a component than is available.",
+    "preconditions": [
+      "Expansion and component-grain lines exist (B-10, B-23)."
+    ],
+    "mainFlow": [
+      "The reservation call is all-or-nothing per order; an `InsufficientAvailabilityError` is swallowed and no hold is written (order-ingestion.service.ts:2299-2304).",
+      "The OL router reports the short component line as unfulfillable (evaluate-routing.ts:320-327).",
+      "The commit refuses the plan and the order is held as `routing-refused` with UF-L attention naming the component (translate the synthetic id to the component name).",
+      "When the component stock arrives, the held order is re-routed (reroute sweep and stock-change trigger, #3485, #3558)."
+    ],
+    "altFlows": [
+      "Substitute a component, split the set, or back-order: later.",
+      "A non-routed (mirror) order: no OL router; the destination shop decides."
+    ],
+    "channelData": {
+      "Allegro": "Waybill cannot express a partial quantity of a line, so a set cannot be shipped short (C-009).",
+      "PrestaShop": "Not applicable as a channel shape.",
+      "WooCommerce": "Not applicable.",
+      "Shoper": "The shop makes the set unavailable when a component sells out (r4/phase1/3-pl-saas-and-erp.md section 1.3).",
+      "Erli": "Not applicable.",
+      "Others": "Linnworks: splitting a composite across orders is not supported (r4/phase2/4-linnworks.md B-12); Shopify: item-level fulfilment holds (r5/5-competitors-global.md B-12)."
+    },
+    "olBehaviour": "Core, existing paths. The only new work is naming the component in the attention copy from the synthetic id.",
+    "mechanism": "core",
+    "acceptance": [
+      {
+        "given": "B = {A x2, C x1}, A=5, C=0 and an order for B x1",
+        "when": "it is routed",
+        "then": "the order is held as routing-refused and the attention names C"
+      },
+      {
+        "given": "the same order and C restocked to 3",
+        "when": "the stock change is propagated",
+        "then": "the order is re-routed and work lines for A and C are created"
+      }
+    ],
+    "priority": "pilot",
+    "priorityReason": "The hold-and-name behaviour comes from existing routing once components have their own line ids; only the copy is new (r5/7-scope-overengineering.md section 5).",
+    "evidence": [
+      "r4/code/C-stock-flows-traced.md a2, a3 and D3 gap 3",
+      "C-009",
+      "r5/7-scope-overengineering.md section 5",
+      "r4/phase2/4-linnworks.md B-12"
+    ],
+    "confidence": "probable",
+    "risks": [
+      "D3 says a shortfall \"holds the line and names the component\" but the reservation path has no such code; only the router can do it, and only for OMS-routed orders (r4/code/C-stock-flows-traced.md D3 gap 3).",
+      "A reservation that silently fails leaves no hold, so stock can be promised elsewhere before routing runs (verify/standard-stress-test.md A13)."
+    ]
+  },
+  {
+    "id": "B-13",
+    "name": "Components in different warehouses",
+    "area": "bundle",
+    "actor": "System (router)",
+    "trigger": "The components of one set are stocked in different locations.",
+    "preconditions": [
+      "More than one active location."
+    ],
+    "mainFlow": [
+      "Later: a cohesion check at commit refuses a plan that places the components of one bundle line in different locations; the stress test prefers this to a router port change (verify/standard-stress-test.md A7).",
+      "Later: a split is allowed only in whole sets, or by explicit operator override.",
+      "Later: per-location bundle availability is computed for routing."
+    ],
+    "altFlows": [
+      "Today `line-split` and `quantity-split` rules could place two components of one kit in two locations, i.e. two parcels for one kit (r3/code/C-stock-fulfilment-masters.md section 3)."
+    ],
+    "channelData": {
+      "Allegro": "One waybill per line id, no quantity (C-009).",
+      "PrestaShop": "Not applicable.",
+      "WooCommerce": "Not applicable.",
+      "Shoper": "Not applicable.",
+      "Erli": "Not applicable.",
+      "Others": "Shopify bundles track inventory by overall stock, not by location (r5/5-competitors-global.md B-02); BaseLinker computes per warehouse then optionally sums (C-039)."
+    },
+    "olBehaviour": "Core router cohesion rule plus per-location availability. Not needed for a one-warehouse pilot.",
+    "mechanism": "core",
+    "acceptance": [
+      {
+        "given": "later, A only in location 1 and C only in location 2",
+        "when": "an order for B is routed",
+        "then": "the plan is refused or the operator is asked, never split silently"
+      },
+      {
+        "given": "the pilot with one active location",
+        "when": "an order for B is routed",
+        "then": "all component work lines of the B line land in one work"
+      }
+    ],
+    "priority": "later",
+    "priorityReason": "The pilot runs one warehouse, where routing groups by location and one bundle lands in one work (r5/7-scope-overengineering.md section 5 D3f row).",
+    "evidence": [
+      "r3/code/C-stock-fulfilment-masters.md section 3",
+      "r4/code/C-stock-flows-traced.md a3",
+      "verify/standard-stress-test.md A7",
+      "r5/5-competitors-global.md B-02",
+      "C-039"
+    ],
+    "confidence": "probable",
+    "risks": [
+      "r3/phase1/5-merchant-voice.md PAIN-04 reports the pain; effort to add cohesion to the router is not sized."
+    ]
+  },
+  {
+    "id": "B-14",
+    "name": "Documents: one bundle line or component lines; mixed VAT",
+    "area": "bundle",
+    "actor": "System (invoice and receipt mappers); operator; tax adviser",
+    "trigger": "A sales document is issued for an order with a bundle line.",
+    "preconditions": [
+      "The order contains a recognised bundle line."
+    ],
+    "mainFlow": [
+      "Pilot: the invoice and receipt mappers keep the bundle line as the channel sold it, with its own price and rate (D3, order-to-issue-invoice-command.mapper.ts:374,384).",
+      "Pilot: if component rates differ from the bundle rate, the definition carries a warning (B-01); nothing changes on the document.",
+      "Later: an operator setting per connection (or per bundle) chooses \"one line\" or \"components\", in the ADR-082 shape. Default split: proportional to each component own standalone gross selling price at the time of sale, frozen with the order and reused for refunds and corrections; an operator in-set price is an override with a recorded reason (verify/bundle-price-split.md sections 3-4). A component share above its own selling price raises a warning; capping is not an accepted method on its own (BFH XI R 22/22, r5/8-tax-fiscal.md C-035)."
+    ],
+    "altFlows": [
+      "A component line would carry 0.00 alone in its VAT bucket on eparagony: HTTP 400 errorCode 41 before the printer (C-028, verify/eparagony-gift-forms.md).",
+      "A single composite supply: one rate applies even when component prices are identifiable (ECJ C-463/16, r5/3-marketplaces-countries.md C-035), so \"default to components when rates differ\" (D3c) is not always right.",
+      "The bundle costs more than the sum of its standalone prices: a proportional split puts every component above its own price; no source covers this, flag for the adviser (verify/bundle-price-split.md section 4).",
+      "A component has no standalone selling price: the MF notice allows cost as the basis; the operator-recorded net unit cost (#3588) is a candidate but is net and optional (verify/bundle-price-split.md section 4)."
+    ],
+    "channelData": {
+      "Allegro": "One `tax.rate` per line; product-set elements carry no tax (C-001, r4/phase1/1-allegro.md VAT split row).",
+      "PrestaShop": "The pack row carries the pack price and is taxed entirely at the pack own rule; a 23% pack with a 5% component printed one 23% row (verify/prestashop-live.md Q4).",
+      "WooCommerce": "WPC auto price sets the parent untaxed and taxes children (r4/phase1/2-own-shops.md section 3).",
+      "Shoper": "Children carry their own `tax` and `tax_value` (r4/phase1/3-pl-saas-and-erp.md section 1.1).",
+      "Erli": "One `taxRate` per item.",
+      "Others": "IdoSell toggle \"Pokazuj zestaw jako jedną pozycję na dokumentach sprzedaży\", WZ always components, proportional split (r4/phase1/3-pl-saas-and-erp.md section 2.4); Subiekt nexo `ZamienKompletyNaSkladniki` (semantics unverified); Subiekt GT komplet on its own rate (r3/phase1/3-pl-saas-and-erp.md); Sky-Shop shows no component rates on invoices (C-021)."
+    },
+    "olBehaviour": "Pilot: no document change. Later: operator setting, never a core default, because choosing between one rate and per-component rates is a tax decision ADR-063 keeps out of core (r5/6-design-and-code.md section 4).",
+    "mechanism": "setting",
+    "acceptance": [
+      {
+        "given": "an order with B at 23% made of A (23%) and C (8%)",
+        "when": "an invoice is issued in the pilot",
+        "then": "the invoice has one line for B at 23%"
+      },
+      {
+        "given": "later, the connection setting \"components\"",
+        "when": "the invoice is issued",
+        "then": "A and C lines are issued with prices split proportionally to the standalone selling prices frozen at sale, summing exactly to B, and a share above a component own price is reported as a warning"
+      },
+      {
+        "given": "later, a component line that would be 0.00 alone in its rate on eparagony",
+        "when": "the receipt is composed",
+        "then": "OL refuses before calling with an operator-facing reason"
+      }
+    ],
+    "priority": "pilot",
+    "priorityReason": "Only \"keep the bundle line plus a definition warning\" is pilot; component documents wait for the tax adviser (r5/7-scope-overengineering.md sections 3 and 5).",
+    "evidence": [
+      "C-001",
+      "C-021",
+      "C-028",
+      "C-035",
+      "verify/bundle-price-split.md",
+      "verify/prestashop-live.md Q4",
+      "r5/8-tax-fiscal.md C-035",
+      "r5/3-marketplaces-countries.md C-035",
+      "r4/phase1/4-marketplaces-and-law.md sections 2.1, 2.6",
+      "r5/6-design-and-code.md section 4",
+      "verify/eparagony-gift-forms.md"
+    ],
+    "confidence": "disputed",
+    "risks": [
+      "The spike (D3c) defaults to components when rates differ; r5/7 says this reverses the decided D3 without client evidence; r5/3 says it is only right for separate supplies (ECJ C-463/16).",
+      "C-035 is \"probable, overstated\": the BFH test disqualifies a method, it is not a free-standing rule (r5/3-marketplaces-countries.md); the companion XI R 22/22 also rejected capping, so the cap is a warning, not an allocation method (r5/8-tax-fiscal.md). German rulings are persuasive only in Poland.",
+      "KIS 703725 and BFH both argue against documenting a mixed-rate set as one line at one rate (verify/standard-stress-test.md D6), which weakens the pilot \"keep one line\" rule for mixed-rate kits; the warning at definition is the pilot mitigation.",
+      "Pilot orders documented as one line leave component returns without a document basis (B-15)."
+    ]
+  },
+  {
+    "id": "B-15",
+    "name": "Return of one component of a bundle",
+    "area": "bundle",
+    "actor": "Buyer; operator (returns desk)",
+    "trigger": "The buyer returns part of a set.",
+    "preconditions": [
+      "The order line is a recognised bundle with a frozen expansion."
+    ],
+    "mainFlow": [
+      "The return line is resolved to the bundle order line by sku or offerId (return-order-line-resolution.domain-service.ts:179,188).",
+      "Pilot guard: restock of a bundle line is blocked with a named reason (\"bundle line, choose the component\"). Today `resolveRestockTarget` restocks the resolved bundle variant, not its components (return-custody.service.ts:931-940, verify/component-line-id.md section 3 site 9).",
+      "Pilot guard: the credit-note proposal answers `no-match` for a bundle line, so the operator decides the amount.",
+      "Later: the operator picks the component from the frozen expansion; restock goes to that component in its owning master; the credit uses the per-component split frozen at sale (art. 29a ust. 10: the value attributed on the original document, verify/bundle-price-split.md section 3) and can claw back the lost bundle discount."
+    ],
+    "altFlows": [
+      "Return of the whole set: later, restock every component by the frozen quantities.",
+      "PrestaShop pack restock in components mode writes a row the shop ignores (r5/2-shops-erp.md section 5); see B-22.",
+      "Allegro set with deposits: the deposit arrives as one sum for the line, so a component deposit split is not given (r5/1-allegro-pl.md item 8)."
+    ],
+    "channelData": {
+      "Allegro": "`CustomerReturnItem{offerId, quantity, name, price, reason, serialNumbers}`, no line item id and no component; refund per line as `QUANTITY` or `AMOUNT`; One Fulfillment dispositions carry `product{gtins, name, quantity}` (C-010, r4/phase1/1-allegro.md).",
+      "PrestaShop": "Return of the pack row only (r3/phase1/2-own-shops.md section 1.4).",
+      "WooCommerce": "Refund per line item (plugin child lines if present).",
+      "Shoper": "Unknown (r3/phase1/3-pl-saas-and-erp.md checklist).",
+      "Erli": "`returns[].items[]{index, quantity}` by positional line index (r4/phase1/4-marketplaces-and-law.md section 1.1).",
+      "Others": "Kaufland returns per piece; Linnworks `IsPartialCompositeReturn` with a manual amount (r4/phase2/4-linnworks.md B-15); Brightpearl component credit at 0 value (r5/5-competitors-global.md B-15); IdoSell allows a component return only if the set was not one line on the sale document (r3/phase1/3-pl-saas-and-erp.md PLS-09)."
+    },
+    "olBehaviour": "Core guards in the pilot (restock and credit proposal refuse a bundle line). Component returns later, reading the frozen expansion.",
+    "mechanism": "core",
+    "acceptance": [
+      {
+        "given": "an Allegro return of offer X mapped to bundle B",
+        "when": "the return line is resolved",
+        "then": "it resolves to the B order line"
+      },
+      {
+        "given": "the operator disposes it as restock",
+        "when": "the restock runs",
+        "then": "it is blocked with a \"bundle line\" reason and no stock is written to B"
+      },
+      {
+        "given": "the same return",
+        "when": "the credit-note proposal is built",
+        "then": "the line is `no-match` and no amount is proposed"
+      }
+    ],
+    "priority": "pilot",
+    "priorityReason": "Without the guard a returned set restocks the bundle variant, which has no stock of its own, or credits the wrong component at the wrong price (r4/code/B-line-identity-traced.md row 31, r5/7-scope-overengineering.md section 4b).",
+    "evidence": [
+      "C-010",
+      "C-064",
+      "verify/component-line-id.md section 3",
+      "verify/bundle-price-split.md section 3",
+      "r4/code/B-line-identity-traced.md rows 31, 32",
+      "r4/code/C-stock-flows-traced.md a9",
+      "r5/7-scope-overengineering.md section 4b",
+      "r5/2-shops-erp.md section 5",
+      "r4/phase1/5-merchant-voice.md PAIN-17"
+    ],
+    "confidence": "confirmed",
+    "risks": [
+      "The Allegro \"you lose the set discount\" return text was only user-quoted, not found on an official page (r4/phase1/5-merchant-voice.md PAIN-17).",
+      "Pilot orders have no in-set price, so a later component credit needs a fallback rule forever unless catalogue prices are frozen now (r5/7-scope-overengineering.md section 7.4)."
+    ]
+  },
+  {
+    "id": "B-16",
+    "name": "Bundle cost and margin",
+    "area": "bundle",
+    "actor": "Operator (analytics)",
+    "trigger": "Margin is reported for orders containing bundles.",
+    "preconditions": [
+      "Variant cost price exists (ADR-080, #3588)."
+    ],
+    "mainFlow": [
+      "Pilot process: the operator enters the kit cost on the bundle variant through the existing cost endpoint before go-live.",
+      "The order cost snapshot uses the bundle variant cost like any variant.",
+      "Later: bundle cost = sum of frozen component costs x quantity, offered as a default."
+    ],
+    "altFlows": [
+      "A bundle order ingested without a bundle variant cost stays \"no-cost\" forever, because snapshots are never upgraded (#3588, r5/7-scope-overengineering.md section 7.6)."
+    ],
+    "channelData": {
+      "Allegro": "Not applicable.",
+      "PrestaShop": "Not applicable.",
+      "WooCommerce": "Not applicable.",
+      "Shoper": "Not applicable.",
+      "Erli": "Not applicable.",
+      "Others": "Subiekt nexo `SzacujKosztKompletuJakoSumeKosztuSkladnikow` (r3/phase1/3-pl-saas-and-erp.md); BaseLinker `[bundle_average_purchase_price]` tag, sum unverified (r5/4-competitors-pl.md B-16); Brightpearl cost on the parent row (r5/5-competitors-global.md section 4)."
+    },
+    "olBehaviour": "Process now, zero code. Later: core derivation from the frozen expansion.",
+    "mechanism": "process",
+    "acceptance": [
+      {
+        "given": "kit cost entered on B before go-live",
+        "when": "an order for B is ingested",
+        "then": "the line cost snapshot is the B cost"
+      },
+      {
+        "given": "later, no cost on B and costs on A and C",
+        "when": "margin is reported",
+        "then": "B cost is shown as the sum of A and C costs times their quantities"
+      }
+    ],
+    "priority": "later",
+    "priorityReason": "Margin is reporting, not damage; the process step covers the pilot (r5/7-scope-overengineering.md section 5).",
+    "evidence": [
+      "r5/7-scope-overengineering.md sections 5, 7.6",
+      "r5/4-competitors-pl.md B-16",
+      "r5/5-competitors-global.md section 4",
+      "r3/phase1/3-pl-saas-and-erp.md Subiekt nexo"
+    ],
+    "confidence": "confirmed",
+    "risks": [
+      "The cost carry-forward key `productId|variantId` collides when the same variant appears twice in an order (r3/code/B-order-lines-and-documents.md row 10)."
+    ]
+  },
+  {
+    "id": "B-17",
+    "name": "Publish an OpenLinker-defined bundle as a listing",
+    "area": "bundle",
+    "actor": "Operator (listing wizard)",
+    "trigger": "The operator publishes the bundle variant to a marketplace or shop.",
+    "preconditions": [
+      "The bundle variant exists in the catalogue (from a master) and has a definition."
+    ],
+    "mainFlow": [
+      "The bulk wizard publishes the bundle variant like any variant (offer-builder.service.ts:273-300).",
+      "The quantity comes from bundle availability (B-02).",
+      "Barcode blockers apply as usual; a seller-made set usually has no GTIN (#2240, #2243)."
+    ],
+    "altFlows": [
+      "Later: publish to Allegro as a productSet offer naming each catalogue product and quantity (`productSet[]`, up to 10 products per the current tutorial).",
+      "A set mixing producers: Allegro allows one GPSR responsible person per offer (r4/phase1/5-merchant-voice.md PAIN-20).",
+      "Shop publish (WooCommerce) writes a simple product with the derived quantity; WC bundle types are never written (r3/code/C-stock-fulfilment-masters.md section 4)."
+    ],
+    "channelData": {
+      "Allegro": "`SaleProductOfferRequestV1.productSet[]` with `ProductSetElementQuantity.quantity.value`; \"For number of sets available in stock, use `stock.available`\"; max 10 products (tutorial) vs 5 (2022 help) (r4/phase1/1-allegro.md).",
+      "PrestaShop": "OL publishes nothing to a master.",
+      "WooCommerce": "Published as a simple product (r3/code/C-stock-fulfilment-masters.md section 4).",
+      "Shoper": "Publish destination since #3713; set type not written (unverified effect).",
+      "Erli": "`ProductCreate.productSets` exists, semantics unknown (r5/3-marketplaces-countries.md).",
+      "Others": "Linnworks lists composite parents like any SKU, price set manually (r4/phase2/4-linnworks.md B-17)."
+    },
+    "olBehaviour": "No new code in the pilot; it falls out of B-02. A \"bundle listing support\" declaration is dropped until a write path exists (r5/6-design-and-code.md section 3.2).",
+    "mechanism": "core",
+    "acceptance": [
+      {
+        "given": "bundle B with availability 3 and an Allegro connection",
+        "when": "B is published through the wizard",
+        "then": "one offer is created with stock 3"
+      },
+      {
+        "given": "a component of B selling out",
+        "when": "propagation runs",
+        "then": "the B offer quantity drops to 0"
+      }
+    ],
+    "priority": "pilot",
+    "priorityReason": "It needs no new code once B-02 feeds the quantity; productSet offer creation is a later feature.",
+    "evidence": [
+      "r3/code/C-stock-fulfilment-masters.md section 4",
+      "r4/phase1/1-allegro.md offer product set",
+      "C-061",
+      "r5/6-design-and-code.md section 3.2",
+      "r4/phase1/5-merchant-voice.md PAIN-20"
+    ],
+    "confidence": "probable",
+    "risks": [
+      "An OpenLinker-only bundle (no master product) cannot be published because variants come only from master sync (C-061).",
+      "Whether Allegro wants a set-specific card or parameter for a seller-made set is unverified (r3/code/C-stock-fulfilment-masters.md section 4)."
+    ]
+  },
+  {
+    "id": "B-18",
+    "name": "Import bundle definitions from a master, shop or ERP",
+    "area": "bundle",
+    "actor": "Operator; system (master sync)",
+    "trigger": "The operator already defines sets in PrestaShop, Shoper, IdoSell, Erli or Subiekt.",
+    "preconditions": [
+      "The master exposes composition through its API."
+    ],
+    "mainFlow": [
+      "Later: the master adapter fills an optional three-state composition field on the product.",
+      "Later: OpenLinker proposes a definition and the operator accepts it; the OL definition stays the authority.",
+      "Pilot: no import; a definition-time warning when a master pack also exists (B-03)."
+    ],
+    "altFlows": [
+      "The master composition changes later: drift attention, never an automatic overwrite of the OL definition."
+    ],
+    "channelData": {
+      "Allegro": "Not a master.",
+      "PrestaShop": "`/products/{id}` `type`, `associations.product_bundle`, `pack_stock_type` (r4/phase1/2-own-shops.md SHOP-02, SHOP-03).",
+      "WooCommerce": "Plugin specific; WC core type union is `simple | variable | grouped | external` (woocommerce-product.types.ts:20).",
+      "Shoper": "`products.type`, `children[]{product_id, stock_id, stock}` (r4/phase1/3-pl-saas-and-erp.md PLS-02).",
+      "Erli": "`productSets`, `externalProductSets` (C-023).",
+      "Others": "IdoSell `productType = product_bundle`, `productBundleItems[]{productId, bundledId, bundleQuantity}`; Subiekt GT `Towar.Skladniki`, nexo `IAsortyment.Skladniki` (r4/phase1/3-pl-saas-and-erp.md); BaseLinker imports Shoper, WooCommerce and Subiekt GT sets (r5/4-competitors-pl.md B-18)."
+    },
+    "olBehaviour": "Later: a product field (three-state composition) per r4/code/A and r5/6, not a capability.",
+    "mechanism": "field",
+    "acceptance": [
+      {
+        "given": "later, a PrestaShop pack with two items",
+        "when": "master sync runs",
+        "then": "the product carries a composition and OL offers it as a draft definition"
+      },
+      {
+        "given": "later, the shop composition changes after acceptance",
+        "when": "sync runs",
+        "then": "a drift attention is raised and the OL definition is unchanged"
+      }
+    ],
+    "priority": "later",
+    "priorityReason": "Scoped out by #3606 and by r5/7; definitions are typed in OL for the pilot.",
+    "evidence": [
+      "r5/7-scope-overengineering.md section 1",
+      "r4/code/A-capability-traced.md section 3",
+      "r5/6-design-and-code.md section 3.1",
+      "r5/4-competitors-pl.md B-18",
+      "r4/phase2/4-linnworks.md B-18"
+    ],
+    "confidence": "confirmed",
+    "risks": [
+      "Competitors import sets (BaseLinker), so this is a parity gap after the pilot (r5/4-competitors-pl.md)."
+    ]
+  },
+  {
+    "id": "B-19",
+    "name": "Which line carries the price and the VAT varies per channel or plugin",
+    "area": "bundle",
+    "actor": "System (ingestion, documents)",
+    "trigger": "An order with a set arrives with money on the parent, on the children, or split.",
+    "preconditions": [
+      "The channel sends more than one line for a set (B-05, B-06)."
+    ],
+    "mainFlow": [
+      "Pilot: only parent-only shapes are recognised, so the price is always on the bundle line.",
+      "Later: a per-connection setting or adapter declaration states which side carries money and tax.",
+      "Later: core sums the money onto one side for the order view and keeps the channel lines for documents and writebacks."
+    ],
+    "altFlows": [
+      "WPC flips between parent-priced and child-priced per bundle setting (r4/phase1/2-own-shops.md section 10 item 3)."
+    ],
+    "channelData": {
+      "Allegro": "Always the parent line (C-001).",
+      "PrestaShop": "Always the pack row (C-011).",
+      "WooCommerce": "Official: container unless `priced_individually`; WPC fixed: parent; WPC auto: children, parent 0 untaxed (C-015, C-016, r4/phase1/2-own-shops.md).",
+      "Shoper": "Children carry `price` and `tax`; relation to the parent price is undocumented (r5/2-shops-erp.md section 4).",
+      "Erli": "Parent line only.",
+      "Others": "Shopify: components, weighted (C-017); Brightpearl: parent carries price, children 0.00 (C-045); Linnworks: parent, children 0 (r4/phase2/4-linnworks.md B-14)."
+    },
+    "olBehaviour": "Later: per-connection operator setting (X-03), since the same plugin can produce both shapes.",
+    "mechanism": "setting",
+    "acceptance": [
+      {
+        "given": "later, a WPC auto-priced bundle",
+        "when": "it is ingested",
+        "then": "the order total equals the sum of child prices and the parent 0 line is not counted twice"
+      },
+      {
+        "given": "the pilot and an Allegro set line",
+        "when": "documents are issued",
+        "then": "the price and rate come from the bundle line as the channel sent them"
+      }
+    ],
+    "priority": "later",
+    "priorityReason": "Only matters once child shapes are read (B-05 later part); the pilot keeps the bundle line priced as sent.",
+    "evidence": [
+      "C-015",
+      "C-016",
+      "C-017",
+      "C-045",
+      "r4/phase1/2-own-shops.md section 8",
+      "r5/2-shops-erp.md section 4"
+    ],
+    "confidence": "probable",
+    "risks": [
+      "Shoper child price semantics are unknown until one live order is read (B-27)."
+    ]
+  },
+  {
+    "id": "B-20",
+    "name": "The master already moves stock for a pack sale; avoid double or missing decrement",
+    "area": "bundle",
+    "actor": "System (order sync to a destination, master-absorbed holds)",
+    "trigger": "An order containing a bundle is created in, or sold by, the product master itself.",
+    "preconditions": [
+      "A bundle definition exists and the master is also the destination or the source."
+    ],
+    "mainFlow": [
+      "Own-shop order (PrestaShop or WooCommerce selling its own pack): not routed (#3487); the shop decrements per its own pack rules (PrestaShop `StockManager.php:65-95`).",
+      "Mirror path: OL creates the order in the master; PrestaShop answers \"does not lower stock\" for any order with a pack (prestashop-order-stock-effect.resolver.ts:200-208), so OL keeps its holds until dispatch (under-sell, never oversell).",
+      "For WooCommerce and Shoper the answer is per order, not per line (C-059).",
+      "After the create, the post-sale master stock refresh and `consumeAbsorbedHolds` take `productIds` from `order.items` (order-sync.service.ts:443, :515), i.e. the bundle product: component holds stay held (under-sell, safe) and component stock is not refreshed from the master until the next sweep (verify/component-line-id.md section 3 site 8).",
+      "Pilot: a pinning spec asserts that `consumeAbsorbedHolds` never consumes holds on component positions (order-sync.service.ts:515, master-absorbed-reservation.service.ts:106-107, 207-208).",
+      "Pilot: definition warning when the bundle variant is a master kit (B-03)."
+    ],
+    "altFlows": [
+      "OL bundle defined on a plain master product (own counter): the master lowers only the bundle row; components are never lowered there (r3/code/C-stock-fulfilment-masters.md F4, F7).",
+      "Later: a line-grain stock-effect answer (`OrderCreateLineStockEffect`) once a second adapter needs it."
+    ],
+    "channelData": {
+      "Allegro": "Not a master.",
+      "PrestaShop": "`validateOrder` decrements components for modes 1 and 2 and the pack row for modes 0 and 2 (r4/phase1/2-own-shops.md section 1.1); OL resolver answers false for any pack (r4/code/C-stock-flows-traced.md c3).",
+      "WooCommerce": "`lowersStockOnOrderCreate` from `_reduced_stock`, whole order (woocommerce-order-processor.adapter.ts:252-254).",
+      "Shoper": "Shop setting `shopping_update_stock_on_buy`, whole order (shoper-order-processor.adapter.ts:198-201); the shop decrements set components itself (r4/phase1/3-pl-saas-and-erp.md section 1.3).",
+      "Erli": "Not a master.",
+      "Others": "Subiekt declares nothing (r4/code/A-capability-traced.md section 1.2)."
+    },
+    "olBehaviour": "Pilot: core spec plus definition warning, no capability. Later: line-grain stock-effect capability (guard-only, probed, safe default) if needed.",
+    "mechanism": "core",
+    "acceptance": [
+      {
+        "given": "an Allegro order for bundle B mirrored to PrestaShop where B is a pack",
+        "when": "the order is created",
+        "then": "OL keeps all component holds until dispatch"
+      },
+      {
+        "given": "a destination that answers \"lowers stock\" for an order with bundle B",
+        "when": "absorbed holds are consumed",
+        "then": "holds on component positions are kept"
+      },
+      {
+        "given": "a PrestaShop shop order for its own pack",
+        "when": "it is ingested",
+        "then": "it is not routed and OL writes no sale decrement"
+      }
+    ],
+    "priority": "pilot",
+    "priorityReason": "The safety today is accidental; the expansion work is the change most likely to pass component product ids \"to be complete\" and turn it into an oversell, so it needs a pinning spec (r5/6-design-and-code.md section 1).",
+    "evidence": [
+      "C-059",
+      "C-060",
+      "verify/component-line-id.md section 3 site 8",
+      "verify/standard-stress-test.md A9",
+      "r5/6-design-and-code.md section 1 \"R2-C claim refuted\"",
+      "r3/code/C-stock-fulfilment-masters.md section 1.2 F4-F7",
+      "r4/code/C-stock-flows-traced.md c3, c4",
+      "r4/code/A-capability-traced.md section 1.2"
+    ],
+    "confidence": "disputed",
+    "risks": [
+      "r3/code C (F4) says the master-absorbed consume releases component holds and oversells; r5/6 reads the current code and finds the holds are kept as `unknown-position`. The two reports disagree; r5/6 is the later, line-cited reading.",
+      "architecture-overview.md says PrestaShop and WooCommerce declare no stock effect; code shows both do (r4/code/A-capability-traced.md section 5 item 1)."
+    ]
+  },
+  {
+    "id": "B-21",
+    "name": "Split shipment of one bundle and telling the channel it shipped",
+    "area": "bundle",
+    "actor": "System (dispatch relay); packer",
+    "trigger": "Components of one set leave in more than one parcel.",
+    "preconditions": [
+      "A bundle line split across works or parcels."
+    ],
+    "mainFlow": [
+      "Pilot: one warehouse, so all components of a line land in one work and one parcel; the parcel cannot close short (B-11, B-12).",
+      "Shipment lines stay at bundle grain (shipment-line.service.ts:113-133).",
+      "Later: a per-source policy: post each waybill as its parcel ships and gate only the order-level SENT status on the last component (r5/1-allegro-pl.md section 3D)."
+    ],
+    "altFlows": [
+      "Brightpearl marks the whole bundle shipped on the first component; it blames the channel shape (r5/5-competitors-global.md C-045)."
+    ],
+    "channelData": {
+      "Allegro": "`POST /order/checkout-forms/{id}/shipments {carrierId, waybill, lineItems[{id}]}`, no quantity; \"Wysyłam z Allegro\" has no line items (C-009).",
+      "PrestaShop": "Order status writeback, order level.",
+      "WooCommerce": "Order status, order level.",
+      "Shoper": "Order status, order level (unverified per line).",
+      "Erli": "Not traced (unverified).",
+      "Others": "Amazon 2026-01-01 `PackageItem.quantity` per package (r4/phase1/4-marketplaces-and-law.md section 1.3); Linnworks despatch per channel line (r4/phase2/4-linnworks.md B-21)."
+    },
+    "olBehaviour": "Later: per-source policy flag on the relay. Nothing in the pilot.",
+    "mechanism": "setting",
+    "acceptance": [
+      {
+        "given": "a one-warehouse pilot order for B",
+        "when": "the parcel is closed",
+        "then": "one waybill is relayed for the B line"
+      },
+      {
+        "given": "later, B split across two parcels on Allegro",
+        "when": "the first parcel ships",
+        "then": "its waybill is posted and the order is not marked SENT until the second"
+      }
+    ],
+    "priority": "later",
+    "priorityReason": "With one warehouse a set cannot split, so D3f is deferred (r5/7-scope-overengineering.md section 5).",
+    "evidence": [
+      "C-009",
+      "C-045",
+      "r5/1-allegro-pl.md section 3D",
+      "r5/5-competitors-global.md section 3 item 4",
+      "r5/6-design-and-code.md C-050"
+    ],
+    "confidence": "confirmed",
+    "risks": [
+      "Holding back the first waybill may hurt Allegro dispatch-time metrics (unverified, r5/1-allegro-pl.md section 3D).",
+      "C-050 listed shipment lines as a collision; r5/6 refutes it because shipment lines are built from `order.items` at bundle grain."
+    ]
+  },
+  {
+    "id": "B-22",
+    "name": "NEW Routed sale decrement of a master pack writes only the pack row (silent oversell)",
+    "area": "bundle",
+    "actor": "System (sale decrement, PrestaShop inventory master)",
+    "trigger": "An OMS-routed order (for example from Allegro) is for a variant that is a PrestaShop pack whose stock comes from components.",
+    "preconditions": [
+      "OMS routing on; the line resolves to a PrestaShop pack in mode components or both; no OL bundle definition needed."
+    ],
+    "mainFlow": [
+      "The sale decrement calls `adjustInventory(-n)` on the pack product (inventory-sale-decrement.service.ts).",
+      "Stage 0 fix (recommended): the PrestaShop adapter detects a pack whose stock comes from components (`readPackDefinition` + `resolvePackStockMode`, prestashop-inventory-master.adapter.ts:374-390) and refuses before writing with a typed error.",
+      "The sale decrement records the line as `blocked` and raises `stock-decrement-blocked` attention.",
+      "The operator corrects stock by hand or the client confirms the M option (decrement components like `validateOrder`)."
+    ],
+    "altFlows": [
+      "Pack-only mode (type 0): the pack row is the truth; the write is correct and allowed (verify/prestashop-live.md Q5).",
+      "Both mode (type 2): the write lowers the pack but standalone component offers keep selling; refuse as well, or decrement components (verify/prestashop-live.md Q5).",
+      "Type 3 (shop default) and the empty() read bug up to 9.1.5: the effective mode depends on the shop version, so a static rule can be wrong (verify/standard-stress-test.md A4, r5/2-shops-erp.md section 3).",
+      "Pack with no own row: already refused as absent records (visible) (r4/code/C-stock-flows-traced.md c4).",
+      "Return restock or manual correction on such a pack: same refusal, since the write is ignored by the shop (r5/2-shops-erp.md section 5).",
+      "Same question for a Shoper set or Subiekt komplet as master: unverified."
+    ],
+    "channelData": {
+      "Allegro": "The order line is an ordinary offer mapped to the pack variant.",
+      "PrestaShop": "Webservice PUT of `stock_availables` for the pack row; OL `adjustInventory` has no pack branch (prestashop-inventory-master.adapter.ts:887-960). Live on 9.0.2: for `pack_stock_type=1` the PUT answered 200, wrote only the pack row, components and `Pack::getQuantity` did not change, and with the row at 0 a cart still accepted 5 packs; for type 0 the PUT takes effect; for type 2 it lowers availability via min(own row, components) but components are untouched; in no type did the PUT reach components (verify/prestashop-live.md Q5).",
+      "WooCommerce": "Not affected (no pack concept modelled).",
+      "Shoper": "Unverified.",
+      "Erli": "Not a master.",
+      "Others": "Subiekt: unverified."
+    },
+    "olBehaviour": "Adapter-only fix (PrestaShop inventory master); core already turns a refusal into a visible blocked decrement. Independent of the bundle feature.",
+    "mechanism": "core",
+    "acceptance": [
+      {
+        "given": "a routed Allegro order for a PrestaShop pack in components mode",
+        "when": "the sale decrement runs",
+        "then": "no stock row is written, the line is `blocked` and the order shows `stock-decrement-blocked`"
+      },
+      {
+        "given": "a pack in pack-only mode",
+        "when": "the sale decrement runs",
+        "then": "the pack row is lowered as today"
+      },
+      {
+        "given": "a return restock on a pack in components mode",
+        "when": "it runs",
+        "then": "it is refused with a named reason"
+      }
+    ],
+    "priority": "stage0",
+    "priorityReason": "It is a live silent oversell on the likely pilot stack the moment the OMS routes an Allegro order for a PrestaShop pack, and no bundle feature fixes it (r5/7-scope-overengineering.md section 2 D1).",
+    "evidence": [
+      "C-060",
+      "verify/prestashop-live.md Q5",
+      "verify/standard-stress-test.md A4",
+      "r5/7-scope-overengineering.md sections 2 (D1), 5, 6",
+      "r4/code/C-stock-flows-traced.md c2, c4",
+      "r5/2-shops-erp.md section 5",
+      "r5/6-design-and-code.md C-060"
+    ],
+    "confidence": "confirmed",
+    "risks": [
+      "Earlier rounds marked the consequence unverified (r5/6-design-and-code.md C-060); the live probe now confirms no cascade on 9.0.2 (verify/prestashop-live.md Q5). Other versions were not probed.",
+      "Choosing the M variant (decrement components) needs per-component idempotency and an in-doubt rule for a partial write (r5/7-scope-overengineering.md section 5)."
+    ]
+  },
+  {
+    "id": "B-23",
+    "name": "NEW Expand a bundle line into component lines for reservation, routing and sale decrement",
+    "area": "bundle",
+    "actor": "System (ingestion, reservation, routing, decrement)",
+    "trigger": "An ingested order has a recognised bundle line with a frozen expansion.",
+    "preconditions": [
+      "B-04 and B-10 done."
+    ],
+    "mainFlow": [
+      "One pure function `expandFulfilmentLines(order, expansions)` returns one line per ordinary item with `orderLineId = item.id` (unchanged) and one per component with `orderLineId = {lineId}~c:{componentVariantId}`, quantity = per set x ordered.",
+      "Reservations use it (order-ingestion.service.ts:2236-2243).",
+      "Routing uses it through the shared projection (project-order-for-routing.ts:47-52), serving ingestion, dry run and the route handler.",
+      "The sale decrement handler builds its line map and `productId` from the same expansion, not from `orderItems`; the expansion must carry the component productId because of the `productVariantId === item.productId` rule (inventory-sale-decrement.handler.ts:90-117, verify/component-line-id.md surprise 5).",
+      "Six more sites keyed on the commercial line id must read the expansion or refuse: order-edit follow-ups `assessForEdit` and `lowerLineQuantity` (fulfillment-order-edit.service.ts:41-84), `narrowForOrder` (reservation.service.ts:247-261), `reverseLineQuantity` (inventory-sale-reversal.service.ts:155-200), the post-create stock refresh and absorbed-hold product ids (order-sync.service.ts:443, :515), and the return restock target (return-custody.service.ts:931-940). Nine sites in total, not three (verify/component-line-id.md section 4); the edit and restock sites are pilot guards (B-24, B-15).",
+      "Existing per-line keys (reservation index, closed-line gate, router conservation, work-line unique index, sale key, `closeForOrder`) become component-unique with no schema change; all columns are unbounded `text` and the longest key is about 185 of 255 characters (verify/component-line-id.md section 1).",
+      "Order items, snapshot, documents, shipment lines, return-line resolution, edit overlay and channel writebacks keep the bundle line. `shipment_lines` must stay on the bundle line: its coverage joins back to `orderSnapshot.items`, and component ids there would demote delivered orders (verify/component-line-id.md section 1 and surprise 3)."
+    ],
+    "altFlows": [
+      "Two components with the same variant cannot occur within one definition; a gift with the same variant later uses a reserved role segment `~g:` (r5/7-scope-overengineering.md section 4c).",
+      "An ambiguous component position: drop the whole bundle line, not one component (order-ingestion.service.ts:2281, r4/code/C-stock-flows-traced.md a2)."
+    ],
+    "channelData": {
+      "Allegro": "Synthetic ids never leave OL; writebacks use the channel line id.",
+      "PrestaShop": "Same.",
+      "WooCommerce": "Same.",
+      "Shoper": "Same.",
+      "Erli": "Same.",
+      "Others": "Linnworks keeps the parent line and adds child rows (r4/phase2/4-linnworks.md)."
+    },
+    "olBehaviour": "Core only, a value convention in existing `orderLineId` columns; no new column, no unique-index change, no router port change, no capability. Best shape: one read \"bundle line id -> frozen component lines\" used by every site that starts from the commercial id, aggregating results back to the bundle line where an operator response is keyed by it (verify/component-line-id.md section 4).",
+    "mechanism": "core",
+    "acceptance": [
+      {
+        "given": "line L for B x2 = {A x2, C x1}",
+        "when": "reservations run",
+        "then": "holds `L~c:A` (4) and `L~c:C` (2) are written"
+      },
+      {
+        "given": "the component A decrement settles first",
+        "when": "its hold is consumed",
+        "then": "the hold `L~c:C` stays held"
+      },
+      {
+        "given": "the order is routed and its work settles",
+        "when": "the decrement handler runs",
+        "then": "two work lines with variants A and C exist and each component is decremented on its own product and owner, none logged as \"NOT lowered\""
+      },
+      {
+        "given": "an order with no bundle line",
+        "when": "the same paths run",
+        "then": "every key is byte-identical to today"
+      },
+      {
+        "given": "the bundle line ships",
+        "when": "shipment lines are reconciled",
+        "then": "one shipment line keyed on the bundle line id is written and the order rolls up as delivered when the parcel is delivered"
+      }
+    ],
+    "priority": "pilot",
+    "priorityReason": "Storing components under the bundle line id breaks about 25 keyed sites silently (wrong variant, early hold release, lost decrement); this is the minimum that avoids it (r4/code/B-line-identity-traced.md, r5/7-scope-overengineering.md section 4b).",
+    "evidence": [
+      "C-049",
+      "C-050",
+      "C-051",
+      "C-052",
+      "verify/component-line-id.md",
+      "verify/standard-stress-test.md A3, A8",
+      "r4/code/B-line-identity-traced.md section 1 and H1-H4",
+      "r4/code/C-stock-flows-traced.md section 0",
+      "r5/7-scope-overengineering.md sections 4a-4c",
+      "r5/6-design-and-code.md sections 3.8, 5"
+    ],
+    "confidence": "disputed",
+    "risks": [
+      "The breaking-site count is about 25 (r4/code/B-line-identity-traced.md: 25 breaks, 7 safe, 4 unclear), not 6 as earlier rounds said.",
+      "Designs disagree: r5/7 derives ids only for fulfilment (`{lineId}~c:{variantId}`); r5/6 expands effective lines in `toDomain` with positional ids; r4/code/C uses `::` plus extra columns; r3/code/C threads a `componentKey` through routing. r5/7 rejects positional ids because they change when a definition is reordered.",
+      "Every missed site fails as a silent no-op, never a throw (`unrouted`, `not-applicable`, \"NOT lowered\" with outcome ok), so tests must assert the effect, not the absence of errors (verify/component-line-id.md surprise 1).",
+      "r5/7 named three call sites; verify/component-line-id.md finds nine. r4/code/C instead adds `parentOrderLineId` / `quantityPerBundle` columns; the column-free design works only if every reader goes through the expansion table (verify/standard-stress-test.md D9).",
+      "The id format is the expensive lock-in: it is persisted in terminal reservations, unique decrement keys and work lines (r5/7-scope-overengineering.md section 7.1)."
+    ]
+  },
+  {
+    "id": "B-24",
+    "name": "NEW Operator edits or cancels an order that contains a bundle line",
+    "area": "bundle",
+    "actor": "Operator",
+    "trigger": "The operator lowers the quantity of a bundle line or cancels the order.",
+    "preconditions": [
+      "Component-grain holds and work lines exist (B-23)."
+    ],
+    "mainFlow": [
+      "Quantity edit of a bundle line: refused with a new code `LINE_IS_BUNDLE` (pilot guard).",
+      "Whole-order cancel: holds of the order are released by order, which covers component holds; component stock comes back through `reverseForOrder`, which is row-based (inventory-sale-reversal.service.ts:117-150). But the cancellation stock restore republishes only the bundle own offers, not the component offers (offer-stock-restore.service.ts:350, 532-546, verify/component-line-id.md section 3).",
+      "Pilot: after a cancel, component offers are republished through the reverse fan-out of B-02 rather than a change to the restore service.",
+      "Discount edit on a bundle line: restates the bundle line price as for any line (documents keep the bundle line)."
+    ],
+    "altFlows": [
+      "Later: a bundle-line quantity edit scales component cancellations, hold narrowing and edit reversals by quantity per set."
+    ],
+    "channelData": {
+      "Allegro": "Not applicable (operator action in OL).",
+      "PrestaShop": "Not applicable.",
+      "WooCommerce": "Not applicable.",
+      "Shoper": "Not applicable.",
+      "Erli": "Not applicable.",
+      "Others": "Shopify cannot add a bundle in an order edit (r5/5-competitors-global.md SH8)."
+    },
+    "olBehaviour": "Core guard. Without it all four edit follow-ups key on the bundle id and miss silently: `assessForEdit` reads 0 fulfilled so `QUANTITY_BELOW_FULFILLED` never fires, `lowerLineQuantity` returns `unrouted` and cancels no units, `narrowForOrder` lowers no hold, `reverseLineQuantity` returns `not-applicable` and gives no stock back, while the edit reports success (verify/component-line-id.md section 3 sites 4-7).",
+    "mechanism": "core",
+    "acceptance": [
+      {
+        "given": "an order with bundle line L",
+        "when": "the operator lowers L quantity",
+        "then": "the edit is refused with `LINE_IS_BUNDLE` and nothing is written"
+      },
+      {
+        "given": "the same order",
+        "when": "the operator cancels it",
+        "then": "all component holds are released"
+      },
+      {
+        "given": "the same order with components already decremented",
+        "when": "it is cancelled",
+        "then": "each component decrement is reversed once"
+      },
+      {
+        "given": "the cancel gave stock back to component A",
+        "when": "the cancel completes",
+        "then": "the offers of A and of every bundle containing A are republished"
+      }
+    ],
+    "priority": "pilot",
+    "priorityReason": "A silent no-op edit on a bundle line leaves holds and work for units the buyer no longer wants; the guard is small (r5/7-scope-overengineering.md section 4b).",
+    "evidence": [
+      "C-057",
+      "verify/component-line-id.md section 3",
+      "r4/code/B-line-identity-traced.md rows 4, 11, 17, 24",
+      "r4/code/C-stock-flows-traced.md a9",
+      "r5/7-scope-overengineering.md section 4b"
+    ],
+    "confidence": "confirmed",
+    "risks": [
+      "Order edits are the biggest silent gap: the edit would report success while works, holds and stock are untouched (verify/component-line-id.md surprise 2).",
+      "Republishing component offers after a cancel depends on the B-02 reverse fan-out; if that is not built, component offers stay stale (verify/component-line-id.md section 3)."
+    ]
+  },
+  {
+    "id": "B-25",
+    "name": "NEW Bundle shipping weight, dimensions and parcel count",
+    "area": "bundle",
+    "actor": "Operator (dispatch)",
+    "trigger": "A label is bought for a parcel containing a set.",
+    "preconditions": [
+      "A carrier label is bought through OL."
+    ],
+    "mainFlow": [
+      "Pilot: the operator types parcel weight and dimensions as today (operator-typed per architecture-overview.md section 26, #2402 / #2729 note).",
+      "Later: suggest weight from the frozen components and their variant weights."
+    ],
+    "altFlows": [
+      "Allegro counts a set offer as one unit in its delivery price list and max units per parcel (r4/phase1/5-merchant-voice.md PAIN-07, official moderator)."
+    ],
+    "channelData": {
+      "Allegro": "Delivery price list per offer; a four-rim set counts as one unit (r4/phase1/5-merchant-voice.md PAIN-07).",
+      "PrestaShop": "Not traced (unverified).",
+      "WooCommerce": "WPC plugin users report doubled weight (r4/phase1/5-merchant-voice.md PAIN-07).",
+      "Shoper": "Not traced (unverified).",
+      "Erli": "`items[].weight` on the order (r5/3-marketplaces-countries.md).",
+      "Others": "Shopify: weight from component weights, no bundle shipping profile (r4/phase1/5-merchant-voice.md PAIN-07)."
+    },
+    "olBehaviour": "Later core suggestion; nothing in the pilot.",
+    "mechanism": "core",
+    "acceptance": [
+      {
+        "given": "later, B = {A x2, C x1} with variant weights",
+        "when": "a label is prepared",
+        "then": "the suggested weight is the sum of component weights"
+      },
+      {
+        "given": "the pilot",
+        "when": "a label is prepared for a parcel with B",
+        "then": "the operator types weight and dimensions as for any parcel"
+      }
+    ],
+    "priority": "later",
+    "priorityReason": "Weight is operator-typed today for every parcel, so a set adds no new damage.",
+    "evidence": [
+      "r4/phase1/5-merchant-voice.md PAIN-07",
+      "docs/architecture-overview.md section 26 (#2402 bullet)"
+    ],
+    "confidence": "unverified",
+    "risks": [
+      "How OL label flows use variant weight was not traced in code (unverified)."
+    ]
+  },
+  {
+    "id": "B-26",
+    "name": "NEW Nested bundle (a bundle as a component of another)",
+    "area": "bundle",
+    "actor": "Operator",
+    "trigger": "The operator wants a set that contains another set.",
+    "preconditions": [
+      "Both are OL bundle variants."
+    ],
+    "mainFlow": [
+      "v1: the definition save is refused (B-01)."
+    ],
+    "altFlows": [
+      "Later: the expansion becomes a tree and component ids get a path segment (r5/5-competitors-global.md section 3 item 2)."
+    ],
+    "channelData": {
+      "Allegro": "A product set lists catalogue products only.",
+      "PrestaShop": "Not traced whether a pack may contain a pack (unverified).",
+      "WooCommerce": "Plugin dependent (unverified).",
+      "Shoper": "Not traced (unverified).",
+      "Erli": "Unknown.",
+      "Others": "Linnworks one layer and Shopify \"Bundles can't contain other bundles\" (forbidden); Cin7 documents three-level assemblies (allowed); Brightpearl help forbids while its API models nesting; BaseLinker and Apilo unknown, because the BaseLinker \"relationships between two bundles are not allowed\" quote belongs to the `relations` cross-sell field, not to bundle composition; Sellasist blocks turning a component into a set (verify/nested-and-gift-stockout.md claim 1). Subiekt GT allows a komplet inside a komplet (r4/phase1/3-pl-saas-and-erp.md section 4.1)."
+    },
+    "olBehaviour": "Core validation rule only.",
+    "mechanism": "core",
+    "acceptance": [
+      {
+        "given": "bundle B and bundle D",
+        "when": "the admin adds D as a component of B",
+        "then": "the save is refused with a \"nested bundles are not supported\" reason"
+      },
+      {
+        "given": "component A already used in bundle B",
+        "when": "the admin defines A itself as a bundle",
+        "then": "the save is refused for the same reason"
+      }
+    ],
+    "priority": "out",
+    "priorityReason": "Out for v1 on cost (tree snapshot and path ids), not on market consensus, which is disputed.",
+    "evidence": [
+      "verify/nested-and-gift-stockout.md claim 1",
+      "r5/5-competitors-global.md CN5 and section 3 item 2",
+      "r4/phase1/5-merchant-voice.md PAIN-09",
+      "r4/phase1/3-pl-saas-and-erp.md section 4.1"
+    ],
+    "confidence": "disputed",
+    "risks": [
+      "D3e \"every competitor forbids nesting\" is false: Cin7 supports multi-level assemblies, Brightpearl docs contradict themselves, and the BaseLinker evidence (C-039 \"no nesting\") was misattributed (verify/nested-and-gift-stockout.md).",
+      "A Subiekt master with nested komplety cannot be modelled in OL."
+    ]
+  },
+  {
+    "id": "B-27",
+    "name": "NEW Shoper set order: verify the live line shape before designing",
+    "area": "bundle",
+    "actor": "Engineer (read-only check on the Shoper trial shop)",
+    "trigger": "A Shoper shop sells a native set and OL reads its order lines.",
+    "preconditions": [
+      "A Shoper trial shop with a set made in the panel."
+    ],
+    "mainFlow": [
+      "Place one test order for a set.",
+      "Read `GET /order-products?filters[order_id]=X` as OL does (shoper-order-source.adapter.ts:546-563).",
+      "Record whether children appear only nested in `children[]` or also as flat top-level rows; record parent and child `price`, `quantity`, `tax`.",
+      "If children are also flat: OL already reserves and counts the set and its components today, a live double count to fix (r5/2-shops-erp.md section 4).",
+      "If nested only: OL reserves the set own `stock_id` as one item; recognition by variant (B-04) covers it."
+    ],
+    "altFlows": [
+      "The shop uses the set own stock row as physical stock in InventoryMaster today (r4/phase1/3-pl-saas-and-erp.md section 1.5)."
+    ],
+    "channelData": {
+      "Allegro": "Not applicable.",
+      "PrestaShop": "Not applicable.",
+      "WooCommerce": "Not applicable.",
+      "Shoper": "Order line `type` 0/1, `children[]` with their own `id` (\"order product identifier\") and `order_id`, no `product_id`; `ShoperOrderLineRow` declares neither `type` nor `children` (C-018, C-019, r4/phase1/3-pl-saas-and-erp.md section 1.1).",
+      "Erli": "Not applicable.",
+      "Others": "BaseLinker imports Shoper sets as sets since 07/2025 (r5/4-competitors-pl.md)."
+    },
+    "olBehaviour": "Process step, zero code; the follow-up is an adapter fix only if children come flat.",
+    "mechanism": "process",
+    "acceptance": [
+      {
+        "given": "a test order for a Shoper set",
+        "when": "OL reads its lines",
+        "then": "the check records whether child rows appear at top level, with the raw payload saved"
+      },
+      {
+        "given": "children appear flat",
+        "when": "the result is reviewed",
+        "then": "an adapter fix is filed as a live defect, separate from the bundle feature"
+      }
+    ],
+    "priority": "stage0",
+    "priorityReason": "A zero-cost live read decides whether a live double count exists today; C-019 and the child order-product ids are confirmed, the double count itself is not (r5/2-shops-erp.md section 4).",
+    "evidence": [
+      "C-018",
+      "C-019",
+      "r5/2-shops-erp.md sections 4 and 8 item 5",
+      "r4/phase1/3-pl-saas-and-erp.md sections 1.1 and 1.5"
+    ],
+    "confidence": "unverified",
+    "risks": [
+      "Shoper developer docs are behind a login; the only schema source is an auto-generated SDK (r4/phase1/3-pl-saas-and-erp.md)."
+    ]
+  }
+]

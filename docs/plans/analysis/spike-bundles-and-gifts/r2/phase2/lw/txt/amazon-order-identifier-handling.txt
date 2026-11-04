@@ -1,0 +1,38 @@
+=== amazon-order-identifier-handling | Amazon Order Identifiers Handling
+ 
+ Amazon Order Identifiers Handling 
+ Amazon Order Identifiers
+ There are five types of order identifiers related to Amazon. These identifiers are added to orders when Linnworks downloads them from Amazon and saves them in the Open Orders screen. They can tell if the order is a premium, B2B, commercial, prime, or scheduled delivery one. When these identifiers are added to orders, it is simpler for you to spot them in Open Orders and take the necessary steps, like assigning required postal services.
+ You can view these identifiers in Settings > General Settings > Order Management > Identifiers . This section automatically includes Amazon identifiers when you integrate the Amazon channel into your Linnworks account. 
+ Types of Amazon Order Identifiers
+ Amazon B2B Order 
+ These are orders from Amazon listings with business prices. For full details on Amazon B2B selling, see this guide .
+ Amazon Premium Order 
+ This identifier is often applied to an order together with Amazon Prime Delivery. For full details on how to handle such orders, see this guide . 
+ Amazon Prime Delivery 
+ Amazon Prime is a service that Amazon sellers can offer their buyers. An Amazon Prime seller must guarantee next-day delivery on all their Prime listings. For full details on handling Amazon Prime Delivery orders (also called Amazon Next Day orders), see this guide .
+ Amazon Scheduled Delivery 
+ Amazon Scheduled Deliveries let buyers pick a specific day or date range for their delivery instead of dispatching the item immediately. For full details on how to handle such orders, see this guide .
+ Commercial Address 
+ Amazon commercial orders refer to those with a commercial delivery address. For full details on how to handle such orders, see this guide .
+ Amazon FBM Ship+ Order 
+Identifies orders that can be fulfilled through the Amazon FBM Ship+ program. For full details on the Amazon FBM Ship+ program, see this guide .
+ Amazon Easy Ship Order  
+ Identifies orders that will be fulfilled through the Amazon Easy Ship program. See this guide for more details.
+ Amazon SmartConnect (SellerFlex) 
+ Identifies FBA orders that will be fulfilled through the Amazon SellerFlex program (shipped from the seller’s warehouse). See this guide for more details.
+ Note! The  Amazon Vendor Direct Fulfillment Order and  Amazon Vendor Retail Procurement Order identifiers are related to the  Amazon Vendor  channel integration. 
+ Using Amazon Order Identifiers and Rules Engine
+ You can use the identifiers mentioned above as conditions in the Rules Engine (RE) to locate the orders you need easily in the Open Orders screen and automatically run required actions, such as assigning specific postal services to those orders. 
+ The RE rule configuration looks as follows:
+ Go to Orders > Rules Engine and create a new rule. This guide explains in full detail how to create rules.
+ Configure the RE condition . In the example below, the rule will look for Amazon commercial orders, which is why the condition is Identifier equals Commercial Address .
+ Configure the RE action . In the example below, we want the rule to assign DHL postal service to all Amazon commercial orders, which is why the rule action is Assign postal service to order > DHL .
+ Save the rule and make sure it is enabled .
+ When new orders are downloaded and saved to Open Orders , the rule will automatically run and apply the necessary actions to orders that meet the condition.
+ Open order views
+ You might find it handy to make separate open order views for certain types of Amazon orders. For instance, you could create a view just for Amazon Prime Delivery orders. This way, you can quickly track and dispatch these orders the next day, keeping things organized and efficient. 
+ For that, create a new view in Open Orders , edit it, and add the following filter to the view: 
+ The same can be done for Amazon B2B orders, prime orders, scheduled delivery, or commercial orders. 
+ Full details on how to create open order views are here and how to customize them are here .
+ 

@@ -1,0 +1,472 @@
+<!DOCTYPE html><html lang="en-US" dir="ltr"><head><style type="text/css">.ArticleViewer_searchKeywords{background-color: yellow !important;}</style>
+<script type="text/javascript">//<!--
+var articlesServiceUrl='/article/';
+//--></script>
+<link rel="canonical" href="/articles/documentation/rules-engine-actions"/>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.3/css/all.min.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css">
+<script src="https://cdn.jsdelivr.net/npm/jquery@3.5.1/dist/jquery.min.js"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/fancyapps/fancybox@3.5.7/dist/jquery.fancybox.min.css"/>
+<script src="https://cdn.jsdelivr.net/gh/fancyapps/fancybox@3.5.7/dist/jquery.fancybox.min.js"></script><title>Rules Engine Actions</title><script type="text/javascript">//<!--
+var imgPopupTexts={openInNewWindowText: 'Open in new window', closeText: 'Close'};var articleTitleText='Rules Engine Actions';
+//--></script><link rel="stylesheet" type="text/css" href="/resources/Styles/documentation/Docs%20CSS.css"/><link rel="stylesheet" type="text/css" href="/resources/Styles/documentation/docs.linnworks-EMS.css"/><link rel="stylesheet" type="text/css" href="/style-bundles/article-published.css?v=1.0.9789.31895"/><script src="/resources/Scripts/documentation/Script.js" type="text/javascript"></script><script src="/script-bundles/article-published.js?v=1.0.9789.31895" type="text/javascript"></script><meta charset="utf-8"><meta http-equiv="Content-Type" content="text/html;charset=utf-8"></head><body><span id="__clhTop"></span><h1 id="h1_1083993334" data-has-heading-anchor="true">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.3/css/all.min.css"></link>
+
+
+
+
+
+
+
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css"></link>
+
+
+
+
+
+
+
+Rules Engine: Actions
+<a href="/articles/documentation/rules-engine-actions/a/h1_1083993334" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/rules-engine-actions/a/h1_1083993334&#39;,this);"></a></h1>
+<p style="text-align: justify;">
+  There are several <i>Rules Engine</i> actions that can be performed on an order. Actions represent the “<b>THEN</b>” part of the “<b>IF this, THEN that</b>” logic used in order fulfillment — what happens to the order when specific <a href="/articles/documentation/rules-engine-conditions-comparators" onclick="return n(&#39;!documentation/rules-engine-conditions-comparators&#39;,this);">conditions</a> are met. For example:&nbsp;<b>IF</b> the destination country is Italy, <b>THEN</b> move the order to the "Italy Orders" folder.&nbsp;In this case, “<i>Move order to folder</i>” is the action.&nbsp;
+</p>
+<p style="text-align: justify;">
+  This guide offers a comprehensive overview of <b>all actions</b> currently supported in the <i>Rules Engine</i>.&nbsp;
+</p>
+<p style="">
+  <img src="/resources/Storage/documentation/Screenshots/RulesEngine/Rules%20Engine%20-%20Actions.jpg" alt="Ruled Engine - Actions" class="leftAlone" style="" loading="lazy"/>
+</p>
+<h2 style="" id="h2_1991825850" data-has-heading-anchor="true">
+  Available Rules Engine actions
+<a href="/articles/documentation/rules-engine-actions/a/h2_1991825850" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/rules-engine-actions/a/h2_1991825850&#39;,this);"></a></h2>
+<p>
+  Below is an overview of all actions currently supported in the <i>Rules Engine</i>.&nbsp;
+</p>
+<h3 style="" id="h3_727271961" data-has-heading-anchor="true">
+  Add items to an order <span class="tag-new">NEW</span>
+<a href="/articles/documentation/rules-engine-actions/a/h3_727271961" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/rules-engine-actions/a/h3_727271961&#39;,this);"></a></h3>
+<p>
+  This action allows you to <b>automatically add specific SKUs to an order</b> when certain <a href="/articles/documentation/rules-engine-conditions-comparators" onclick="return n(&#39;!documentation/rules-engine-conditions-comparators&#39;,this);">rule conditions</a> are met.&nbsp;
+</p>
+<p>
+  Many businesses include free gifts, samples or promotional items based on order value, product type, or customer segment. This action helps automate that process so the correct item is added without manual intervention.
+</p>
+<ul>
+  <li>
+    <b>💡Example use case:</b>&nbsp;As a business that includes free gifts with orders over £100, I want those gifts automatically added to the order once the qualifying condition (e.g., “<i>Order Total &gt; £100</i>”) is met.&nbsp;
+  </li>
+</ul>
+<p>
+  This action is especially powerful when combined with other actions like&nbsp;<a href="/articles/documentation/rules-engine-actions/a/h3_1189457831" onclick="return n(&#39;!documentation/rules-engine-actions/a/h3_1189457831&#39;,this);">assigning order tags</a> or <a href="/articles/documentation/rules-engine-actions/a/h3_1796479818" onclick="return n(&#39;!documentation/rules-engine-actions/a/h3_1796479818&#39;,this);">identifiers</a>&nbsp;for prioritization, and <a href="/articles/documentation/rules-engine-actions/a/h3__1285619904" onclick="return n(&#39;!documentation/rules-engine-actions/a/h3__1285619904&#39;,this);">folder assignment</a>, enabling full automation of promotional workflows.
+</p>
+<h4 style="" id="h4__382049808" data-has-heading-anchor="true">
+  How the&nbsp;Add Items to an Order action works
+<a href="/articles/documentation/rules-engine-actions/a/h4__382049808" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/rules-engine-actions/a/h4__382049808&#39;,this);"></a></h4>
+<p>
+  When configuring this action, you will need to define the following:&nbsp;
+</p>
+<p>
+  <img src="/resources/Storage/documentation/Screenshots/RulesEngine/RulesEngine%20-%20Add%20items%20to%20an%20order.png" alt="Rules Engine Actions - Add items to an order" class="leftAlone" style="" loading="lazy"/>
+</p>
+<ul>
+  <li>
+    <b>Action name:</b>&nbsp;A descriptive name for internal reference (e.g., “<i>Add a free gift</i>”).&nbsp;This is a <b><font color="#ff0000">*</font></b><font>required field</font>. You must enter a name  to save the action.
+  </li>
+  <li>
+    <b>Action type:</b>&nbsp;Set to <i>Add items to an order</i>.&nbsp;
+  </li>
+  <li>
+    <b>Action value (SKU search):</b>&nbsp;Begin typing the SKU in the search field. Linnworks will return a list of <u>up to 20 matching SKUs</u>.&nbsp;Select the appropriate SKU to add it to the order.
+    <ul>
+      <li>
+        You can add <b>up to 10 SKUs in total per action</b>.&nbsp;
+      </li>
+      <li>
+        Each added SKU will appear in a separate row with quantity and pricing details.
+        <br/>
+      </li>
+    </ul>
+  </li>
+  <li>
+    <b>Quantity:</b>&nbsp;Specify how many units of the item should be added.&nbsp;
+  </li>
+  <li>
+    <b>Retail price including tax:&nbsp;</b>This field automatically retrieves the retail price including tax from the&nbsp;<a href="/articles/documentation/product-details-general" onclick="return n(&#39;!documentation/product-details-general&#39;,this);">product details</a> in <i>My Inventory</i>.
+    <ul>
+      <li>
+        The tax rate is determined by the <a href="/articles/documentation/product-details-general" onclick="return n(&#39;!documentation/product-details-general&#39;,this);">product details</a>. There, you can either assign a fixed tax rate or configure the item to use the order's destination country tax rate. 
+      </li>
+      <li>
+        The currency displayed is based on your account’s <i><a href="/articles/documentation/general-settings-general/a/h2_1548955995" onclick="return n(&#39;!documentation/general-settings-general/a/h2_1548955995&#39;,this);">General Settings &gt; Currency</a></i>.
+      </li>
+    </ul>
+  </li>
+  <li>
+    <b>Discount:</b> Optionally apply a percentage discount to the item. For example, enter 100% for a completely free gift.
+  </li>
+</ul>
+<div class="alert-success">
+  <span class="fa fa-pen-square icon-background-blue"></span>&nbsp;<b>&nbsp;Note:&nbsp;</b>When using the <b><i>Add Items to an Order</i></b> action, it is important in some cases to check whether the order was <b>merged</b>, <b>split</b>, or is a <b>resend</b>. These cases are explained in detail in the <a href="/articles/documentation/adding-items-services-merged-split-resend-orders" onclick="return n(&#39;!documentation/adding-items-services-merged-split-resend-orders&#39;,this);">Auto-Adding Items &amp; Services: Extra Conditions</a> guide.&nbsp;Please review it before you start using this action.&nbsp;
+</div>
+<p>
+  Once the rule with this action is saved, the system will automatically add the defined item(s) to every order that meets your rule’s condition (e.g., “Order Total &gt; £100”)
+</p>
+<div class="alert-warning">
+  <span class="fa fa-info-circle icon-background-yellow"></span>&nbsp;<b>&nbsp;Important:</b>&nbsp;You cannot manually change the tax rate or define it in the <i>Rules Engine</i> action. Ensure your <a href="/articles/documentation/product-details-general" onclick="return n(&#39;!documentation/product-details-general&#39;,this);">inventory settings</a> are correctly configured if tax handling is important for this rule.&nbsp;
+</div>
+<p>
+  
+</p>
+<h3 style="" id="h3_1405906278" data-has-heading-anchor="true">
+  Add notes to an order <span class="tag-new">NEW</span>
+<a href="/articles/documentation/rules-engine-actions/a/h3_1405906278" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/rules-engine-actions/a/h3_1405906278&#39;,this);"></a></h3>
+<p>
+  This action allows you to <b>automatically add custom notes to orders</b> that meet the <a href="/articles/documentation/rules-engine-conditions-comparators" onclick="return n(&#39;!documentation/rules-engine-conditions-comparators&#39;,this);">rule conditions</a>. Notes can be used for internal communication, to provide instructions for processing, or to pass information externally to customers or sales channels.&nbsp;
+</p>
+<h4 style="" id="h4__1680439107" data-has-heading-anchor="true">
+  How&nbsp;the Add Notes to an Order action works&nbsp;
+<a href="/articles/documentation/rules-engine-actions/a/h4__1680439107" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/rules-engine-actions/a/h4__1680439107&#39;,this);"></a></h4>
+<p>
+  When configuring this action, you can define:&nbsp;
+</p>
+<p>
+  <img src="/resources/Storage/documentation/Screenshots/RulesEngine/RulesEngineActions%20-%20Add%20notes%20to%20an%20order.jpg" alt="Rules Engine Actions - Add notes to an order" class="leftAlone" loading="lazy"/>
+</p>
+<ul>
+  <li>
+    <b>Note text: </b>The content of the note to be added.
+  </li>
+  <li>
+    <b>External:</b> Enable this option if the note should be sent to external systems or channels that support notes (e.g., buyer-facing). You can also add the note as an external one if you need it to be visible on the invoice when it is printed for the order.&nbsp;
+  </li>
+  <li>
+    <b>Processing:</b> Enable this option if the note is relevant for order processing within Linnworks (not buyer-facing).&nbsp;
+  </li>
+</ul>
+<p>
+  You can add multiple notes within the same action by selecting <span class="btn-blue">Add note</span> and defining the text and settings (External and/or Processing) for each note.&nbsp;
+</p>
+<p>
+  Once&nbsp;the rule is triggered, the defined note(s) will be added to the order and displayed in the <i><a href="/articles/documentation/open-orders-create-edit/a/NewOrder_notes" onclick="return n(&#39;!documentation/open-orders-create-edit/a/NewOrder_notes&#39;,this);">Order Notes</a></i> section.
+</p>
+<p>
+  <img src="/resources/Storage/documentation/Screenshots/RulesEngine/RulesEngineActions%20-%20Add%20notes%20to%20an%20order%20-%20Example.jpg" alt="Rules Engine - Add notes to an order - Example" class="leftAlone" loading="lazy"/>
+</p>
+<h5 style="" id="h5_1482255419" data-has-heading-anchor="true">
+  💡Example use case:
+<a href="/articles/documentation/rules-engine-actions/a/h5_1482255419" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/rules-engine-actions/a/h5_1482255419&#39;,this);"></a></h5>
+<ul class="regular-list">
+  <li>
+    A rule is set to trigger when the order value is above £500.
+  </li>
+  <li>
+    The <i><b>Add notes to an order</b></i> action is configured with the text: "<i>High-value order – verify payment before dispatch</i>" and the <b><i>Processing</i></b> option enabled.
+  </li>
+  <li>
+    When such an order is downloaded, the note is automatically added and visible to the processing team.
+    <br/>
+  </li>
+</ul>
+<h3 style="" id="h3__1667453768" data-has-heading-anchor="true">
+  Add services to an order <span class="tag-new">NEW</span>
+<a href="/articles/documentation/rules-engine-actions/a/h3__1667453768" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/rules-engine-actions/a/h3__1667453768&#39;,this);"></a></h3>
+<p>
+  This action allows you to <b>automatically add service-based line items</b> to orders — ideal for businesses offering additional services such as gift wrapping, assembly, custom packaging, or similar.&nbsp;
+</p>
+<p>
+  If you offer optional or bundled services for specific types of orders (e.g., high-value orders, orders to specific regions, or customer-requested add-ons), this action helps automate that process.
+</p>
+<ul>
+  <li>
+    💡<b>Example use case:&nbsp;</b>As a business that offers services like gift wrapping for specific orders, I would like to automate adding those services to orders.&nbsp;
+  </li>
+</ul>
+<h4 style="" id="h4_1993151119" data-has-heading-anchor="true">
+  How the Add Services to an Order action works
+<a href="/articles/documentation/rules-engine-actions/a/h4_1993151119" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/rules-engine-actions/a/h4_1993151119&#39;,this);"></a></h4>
+<p>
+  When&nbsp;configuring this action, you will need to fill in the following fields in the action setup screen:&nbsp;
+</p>
+<p>
+  <img src="/resources/Storage/documentation/Screenshots/RulesEngine/RulesEngine%20-%20Add%20service%20to%20an%20order.png" alt="Rules Engine Actions - Add service to an order" class="leftAlone" loading="lazy"/>
+</p>
+<ul>
+  <li>
+    <b>Action name:</b> A descriptive name for internal reference (e.g., “<i>Add Gift Wrapping Service</i>”).&nbsp;This is a&nbsp;<b><font color="#ff0000">*</font></b>required field. You must enter a name to save the action.&nbsp;
+  </li>
+  <li>
+    <b>Action type:&nbsp;</b>Set this to <i>Add service to an order</i>.&nbsp;
+  </li>
+  <li>
+    <b>Action value</b><b>:</b>&nbsp;Click <span class="btn-blue">Add service</span> to create a new service entry. Each click generates a new row.&nbsp;You can add <u>up to 10 services per rule action</u>. In each row, configure the following:&nbsp;
+    <ul>
+      <li>
+        <b>Quantity:</b>&nbsp;Defaults to 1, but can be changed as needed.&nbsp;
+      </li>
+      <li>
+        <b>Service name:</b>&nbsp;This is a <b><font color="#ff0000">*</font></b>required field and must be entered manually. A placeholder will be visible until it is filled in.&nbsp;
+      </li>
+      <li>
+        <b>Retail price including tax:</b>&nbsp;This is the full price including tax. It must be entered manually.&nbsp;
+      </li>
+      <li>
+        <b>Discount:</b>&nbsp;Optionally enter a discount for the service item. Default is 0%.&nbsp;
+      </li>
+      <li>
+        <b>Tax rate:</b>&nbsp;Manually set the applicable tax rate for the service. With the A<i>dd service to an order</i> action, service lines are not linked to a physical inventory item, so the tax rate must be manually defined within the action itself. Currently, there is no option to automatically apply a country-specific tax rate for service items.&nbsp;
+      </li>
+    </ul>
+  </li>
+</ul>
+<div class="alert-success">
+  <span class="fa fa-pen-square icon-background-blue"></span>&nbsp;<b>&nbsp;Note:&nbsp;</b>When using the <b><i>Add Services to an Order</i></b> action, it is important in some cases to check whether the order was <b>merged</b>, <b>split</b>, or is a <b>resend</b>. These cases are explained in detail in the <a href="/articles/documentation/adding-items-services-merged-split-resend-orders" onclick="return n(&#39;!documentation/adding-items-services-merged-split-resend-orders&#39;,this);">Auto-Adding Items &amp; Services: Extra Conditions</a> guide.&nbsp;Please review it before you start using this action.&nbsp;
+</div>
+<p>
+  Once the above is configured and saved, the defined service item(s) will be added to any order that meets your rule’s conditions.&nbsp;
+</p>
+<h3 id="h3_1189457831" data-has-heading-anchor="true">
+  Assign a tag to order
+<a href="/articles/documentation/rules-engine-actions/a/h3_1189457831" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/rules-engine-actions/a/h3_1189457831&#39;,this);"></a></h3>
+<p>
+  This action applies a <a href="/articles/documentation/oo-screen-actions/a/OpenOrders_OrganizeTags" onclick="return n(&#39;!documentation/oo-screen-actions/a/OpenOrders_OrganizeTags&#39;,this);">visual tag</a> to an order, making it easier to quickly identify or prioritize the order based on your own rules.&nbsp;
+</p>
+<p>
+  <img src="/resources/Storage/documentation/Screenshots/RulesEngine-Assign%20a%20tag%20to%20order.png" alt="Rules Engine - Assign a tag to an order" class="leftAlone" loading="lazy"/>
+</p>
+<ul>
+  <li>
+    Tags are <b>predefined icons</b> in Linnworks. There are two shapes (star and circle) in three colors (red, green, blue), giving you six distinct tags to choose from.
+  </li>
+  <li>
+    You <b>cannot create custom tags</b>, but you can use those already available in Linnworks to represent internal rules or workflows.
+    <ul>
+      <li>
+        <i>Example</i>:&nbsp;A red star could indicate “<i>Urgent – Process Immediately</i>”.&nbsp;
+      </li>
+    </ul>
+  </li>
+</ul>
+<p>
+  Tags are particularly useful on the <i><a href="/articles/documentation/oo-screen-actions" onclick="return n(&#39;!documentation/oo-screen-actions&#39;,this);">Open Orders</a></i> screen, where they act as quick visual markers for staff to spot and filter specific orders.&nbsp;
+</p>
+<h3 id="h3_1796479818" data-has-heading-anchor="true">
+  Assign an identifier to order
+<a href="/articles/documentation/rules-engine-actions/a/h3_1796479818" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/rules-engine-actions/a/h3_1796479818&#39;,this);"></a></h3>
+<p>
+  This action applies an <a href="/articles/documentation/general-order-management/a/h2_791941630" onclick="return n(&#39;!documentation/general-order-management/a/h2_791941630&#39;,this);">identifier</a> to an order, which can include both a text label and an image. Identifiers help categorize and flag orders for specific handling, reporting, or automation purposes.&nbsp;
+</p>
+<p>
+  <img src="/resources/Storage/documentation/Screenshots/RulesEngine/RulesEngine-Assign%20an%20identifier%20to%20order.png" alt="Rules Engine - Assign an Identifier to Order" class="leftAlone" loading="lazy"/>
+</p>
+<ul>
+  <li>
+    Linnworks includes a set of <b>predefined identifiers</b> (e.g., "<i>Amazon Premium Order</i>," "<i>Collection Order,</i>" and "<i>In Pickwave</i>"). These are applied to orders automatically when they are downloaded from the sales channel or when specific actions occur — such as adding an order to a pickwave.&nbsp;
+  </li>
+  <li>
+    You can also <b>create custom identifiers</b>, each with a name and optional icon to visually distinguish them. Custom identifiers can be created in <i>Settings &gt; General Settings &gt; <a href="/articles/documentation/general-order-management/a/h2_791941630" onclick="return n(&#39;!documentation/general-order-management/a/h2_791941630&#39;,this);">Order Management &gt; Identifiers</a>.</i>
+    <ul>
+      <li>
+        <span class="fa fa-info-circle icon-background-yellow"></span><b>&nbsp;</b>Only custom identifiers can be applied to orders via the <i>Rules Engine</i>.
+        <br/>
+      </li>
+    </ul>
+  </li>
+</ul>
+<h3 id="h3__1842233125" data-has-heading-anchor="true">
+  Assign order extended property
+<a href="/articles/documentation/rules-engine-actions/a/h3__1842233125" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/rules-engine-actions/a/h3__1842233125&#39;,this);"></a></h3>
+<p>
+  This action allows you to add a custom <a href="/articles/documentation/open-orders-create-edit/a/CreateNewOrder_ExtendedProperties" onclick="return n(&#39;!documentation/open-orders-create-edit/a/CreateNewOrder_ExtendedProperties&#39;,this);">extended property</a> to the order, which can be used to store additional information not captured in the standard order fields (such as customer details, items, or shipping information).&nbsp;
+</p>
+<p>
+  Order extended properties are highly flexible and can store any custom data relevant to the order, such as delivery instructions, internal notes, third-party references, or workflow flags.&nbsp;
+</p>
+<h4 style="" id="h4_1267234875" data-has-heading-anchor="true">
+  How the Assign Order Extended Property action works
+<a href="/articles/documentation/rules-engine-actions/a/h4_1267234875" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/rules-engine-actions/a/h4_1267234875&#39;,this);"></a></h4>
+<p>
+  When configuring this action, you will need to define: &nbsp;
+</p>
+<p>
+  <img src="/resources/Storage/documentation/Screenshots/RulesEngine/Rules%20Engine%20-%20Assign%20Order%20Extended%20Property.png" alt="Rules Engine - Assign Order Extended Property" class="leftAlone" loading="lazy"/>
+</p>
+<ul>
+  <li>
+    <b>Type:</b>&nbsp;This is the extended property type. New accounts have only one default type available — <i><b>Attribute</b></i>.&nbsp;Once you start downloading orders from your <a href="/articles/documentation/channel-integrations" onclick="return n(&#39;!documentation/channel-integrations&#39;,this);">sales channels</a>, any extended property types included in those orders will also appear in the drop-down list here.&nbsp;You cannot create custom types manually, so when assigning a custom extended property, you must choose either the default <i>Attribute</i> type or one that was saved from your channel orders.&nbsp;
+  </li>
+  <li>
+    <b>Name:</b>&nbsp;This is the name of the extended property. Unlike the type, you can create custom extended property names.&nbsp;For example, you can have multiple properties with the <i>Attribute</i> type but different names like <i>Color</i>, <i>Material</i>, or <i>Size</i>.&nbsp;<b>How the Name field works:</b>&nbsp;The <i>Name</i> field is a <b>free-text field</b> (with backend validation): <ul><li>You can manually enter the name of the extended property.</li>
+  <li>If the extended property name does not exist in your account, an error message will be displayed ("<i><font color="#ff0000">There was a problem with adding the action: The extended property does not exist</font></i>"), and the rule cannot be saved. To fix the error message, manually assign the extended property with the new name to at least one order first. Once that is done, the name can be safely typed in here. This step only needs to be done once — after that, the property can be added automatically via automation rules.<ul><li class="alert-warning" style="border-color: #ffcc99;"><b><span class="fa fa-pen-square icon-background-yellow"></span>&nbsp;Note:</b>&nbsp;Previously, this field was a drop-down. It was updated to improve performance for accounts with a large number of extended properties, where loading the full list could cause timeouts.&nbsp;</li>
+  </ul>
+</li>
+  </ul>
+</li>
+  <li>
+    <b>Value: </b>This is the value assigned to the extended property you’re adding to orders. For example:
+    <ul>
+      <li>
+        Type: <i>Attribute</i>
+      </li>
+      <li>
+        Name: <i>Color</i>
+      </li>
+      <li>
+        <b>Value: <i>Red</i></b>
+      </li>
+    </ul>
+  </li>
+</ul>
+<p>
+  To learn how to manually add extended properties to your orders, see <a href="/articles/documentation/open-orders-create-edit/a/CreateNewOrder_ExtendedProperties" onclick="return n(&#39;!documentation/open-orders-create-edit/a/CreateNewOrder_ExtendedProperties&#39;,this);">this guide</a>.&nbsp;</p>
+<p>
+  
+</p>
+<h3 id="h3__1285619904" data-has-heading-anchor="true">
+  Assign order to folder
+<a href="/articles/documentation/rules-engine-actions/a/h3__1285619904" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/rules-engine-actions/a/h3__1285619904&#39;,this);"></a></h3>
+<p>
+  This action assigns an order to a folder. <b>Note! </b>An order can be assigned to multiple folders. However, if an <a href="/articles/documentation/general-order-management/a/h2_1212541327" onclick="return n(&#39;!documentation/general-order-management/a/h2_1212541327&#39;,this);">order can only be associated with a single folder&nbsp;is enabled</a>, and the <i>Rules Engine</i> is running on an order that is already assigned to a folder, this order will be re-assigned and removed from the former folder.
+</p>
+<p>
+  <img src="/resources/Storage/documentation/Screenshots/RulesEngine/Rules%20Engine%20-%20Assign%20Order%20to%20Folder.png" alt="Rules Engine - Assign Order to Folder" class="leftAlone" loading="lazy"/>
+</p>
+<h3 id="h3__2118720539" data-has-heading-anchor="true">
+  Assign order to location
+<a href="/articles/documentation/rules-engine-actions/a/h3__2118720539" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/rules-engine-actions/a/h3__2118720539&#39;,this);"></a></h3>
+<p>
+  This action assigns an order to a <a href="/articles/documentation/open-orders-screen/a/OpenOrders_locations" onclick="return n(&#39;!documentation/open-orders-screen/a/OpenOrders_locations&#39;,this);">location</a>.
+</p>
+<p>
+  <img src="/resources/Storage/documentation/Screenshots/RulesEngine/Rules%20Engine%20-%20Assign%20Order%20to%20Location.png" alt="Rules Engine - Assign Order to Location" class="leftAlone" loading="lazy"/>
+</p>
+<h3 id="h3__1872371982" data-has-heading-anchor="true">
+  Assign postal service to order
+<a href="/articles/documentation/rules-engine-actions/a/h3__1872371982" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/rules-engine-actions/a/h3__1872371982&#39;,this);"></a></h3>
+<p>
+  This action allows a Linnworks postal service to automatically apply to an order. For more information on postal services, see <a href="/articles/documentation/shipping-postal-services" onclick="return n(&#39;!documentation/shipping-postal-services&#39;,this);">this guide</a>.&nbsp;
+</p>
+<p>
+  <img src="/resources/Storage/documentation/Screenshots/RulesEngine/Rules%20Engine%20-%20Assign%20Postal%20Service%20to%20Order.png" alt="Rules Engine - Assign Postal Service to Order" class="leftAlone" loading="lazy"/>
+</p>
+<h3 id="h3_997868299" data-has-heading-anchor="true">
+  Block orders from merging
+<a href="/articles/documentation/rules-engine-actions/a/h3_997868299" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/rules-engine-actions/a/h3_997868299&#39;,this);"></a></h3>
+<p>
+  This action adds&nbsp;to orders a <i>Block from merge</i> identifier that blocks orders from being automatically merged when the&nbsp;<i><a href="/articles/documentation/general-order-management/a/h2__763395509" onclick="return n(&#39;!documentation/general-order-management/a/h2__763395509&#39;,this);">Auto Merge Orders</a></i> setting is enabled in <i>Settings &gt; General Settings &gt; Order Management</i>. These orders will just be ignored. More details are <a href="/articles/documentation/open-orders-merge-split/a/h3__990053045" onclick="return n(&#39;!documentation/open-orders-merge-split/a/h3__990053045&#39;,this);">here</a>.&nbsp;
+</p>
+<p>
+  <img src="/resources/Storage/documentation/Screenshots/RulesEngine/Rules%20Engine%20-%20Block%20Order%20from%20Merging.png" alt="Rules Engine - Block Order from Merging" class="leftAlone" loading="lazy"/>
+</p>
+<h3 id="h3_1854628114" data-has-heading-anchor="true">
+  Execute a macro
+<a href="/articles/documentation/rules-engine-actions/a/h3_1854628114" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/rules-engine-actions/a/h3_1854628114&#39;,this);"></a></h3>
+<p>
+  This action executes any custom macro previously set up in the <i><a href="/articles/documentation/macro-configuration" onclick="return n(&#39;!documentation/macro-configuration&#39;,this);">Macro Configuration</a></i> screen.
+</p>
+<p>
+  <img src="/resources/Storage/documentation/Screenshots/RulesEngine/Rules%20Engine%20-%20Execute%20a%20macro.png" alt="Rules Engine - Execute a Macro" class="leftAlone" loading="lazy"/></p>
+<h3 style="" id="h3_2116157237" data-has-heading-anchor="true">Lock order<a href="/articles/documentation/rules-engine-actions/a/h3_2116157237" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/rules-engine-actions/a/h3_2116157237&#39;,this);"></a></h3>This action locks orders. Locked orders cannot be edited without being unlocked. While an order is locked, the items from the order don't affect the <i>Available Stock Level</i> calculations.&nbsp;<p></p><p>
+  <img src="/resources/Storage/documentation/Screenshots/RulesEngine/Rules%20Engine%20-%20Lock%20Order.png" alt="Rules Engine - Lock Order" class="leftAlone" loading="lazy"/>
+</p>
+<h3 id="h3_1091491902" data-has-heading-anchor="true">
+  Park order
+<a href="/articles/documentation/rules-engine-actions/a/h3_1091491902" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/rules-engine-actions/a/h3_1091491902&#39;,this);"></a></h3>
+<p>
+  This action parks orders. Note that parked orders cannot be edited without being unparked. While an order is parked, the items in the order continue to affect the <i>Available Stock Level</i> calculations.
+</p>
+<p>
+  <img src="/resources/Storage/documentation/Screenshots/RulesEngine/Rules%20Engine%20-%20Park%20Order.png" alt="Rules Engine - Park Order" class="leftAlone" loading="lazy"/>
+</p>
+<h3 id="h3_946786563" data-has-heading-anchor="true">
+  Send to fulfillment network
+<a href="/articles/documentation/rules-engine-actions/a/h3_946786563" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/rules-engine-actions/a/h3_946786563&#39;,this);"></a></h3>
+<p>
+  This action allows you to send orders to the fulfillment network(s), which are explained fully in <a href="/articles/documentation/fulfillment-networks" onclick="return n(&#39;!documentation/fulfillment-networks&#39;,this);">this guide</a>.
+</p>
+<p>
+  <img src="/resources/Storage/documentation/Screenshots/RulesEngine/Rules%20Engine%20-%20Send%20to%20fulfillment%20network.png" alt="Rules Engine - Send to Fulfillment Network" class="leftAlone" loading="lazy"/>
+</p>
+<h3 id="h3_917552683" data-has-heading-anchor="true">
+  Set dispatch date - relative to received date <span class="tag-new">NEW</span>
+<a href="/articles/documentation/rules-engine-actions/a/h3_917552683" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/rules-engine-actions/a/h3_917552683&#39;,this);"></a></h3>
+<p>
+  The <i>Set Dispatch Date</i> action allows you to <b>automatically set a dispatch date and time</b> for an order, based on the date the order was received in Linnworks. It is one of the latest enhancements to the <i>Rules Engine</i>, designed to help you unlock greater efficiency by automating more stages of the order lifecycle. This action ensures your dispatch schedules align with your delivery offerings and SLA commitments, especially when tied to customer shipping choices.&nbsp;
+</p>
+<p>
+  The <i>Set Dispatch Date</i> action is one of the few new <i>Rules Engine</i> actions being released gradually, aimed at helping you to save time, prevent errors, drive more sales and delight your buyers.
+</p>
+<h4 style="" id="h4__2018201053" data-has-heading-anchor="true">
+  How the Set Dispatch Date action works
+<a href="/articles/documentation/rules-engine-actions/a/h4__2018201053" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/rules-engine-actions/a/h4__2018201053&#39;,this);"></a></h4>
+<p>
+  When&nbsp;configuring this action, you will need to define:&nbsp;
+</p>
+<p>
+  <img src="/resources/Storage/documentation/Screenshots/RulesEngine/RulesEngine-SetDispatchDate.png" alt="Rules Engine - Set Dispatch Date" class="leftAlone" loading="lazy"/>
+</p>
+<ul>
+  <li>
+    <b>Dispatch date offset:</b>&nbsp;Specify how many days after the order’s received date the dispatch should occur.&nbsp;
+    <ul>
+      <li>
+        For <i>same-day </i>dispatch, enter <b>0 days</b>.
+      </li>
+      <li>
+        For <i>next-day</i> dispatch, enter <b>1 day</b>, and so on.
+        <br/>
+      </li>
+    </ul>
+  </li>
+  <li>
+    <b>Dispatch time:</b>&nbsp;Set the exact time of day (e.g. 03:00 AM or 04:00 PM) when the order should be dispatched.
+  </li>
+</ul>
+<div class="alert-warning">
+  <b><span class="fa fa-pen-square icon-background-yellow"></span>&nbsp;Note:</b>&nbsp;If you are configuring <u>same-day dispatch</u> (with a dispatch date offset of <b>0 days</b>), you still need to specify a dispatch time. If the time you set is earlier than the time the order was received, Linnworks will not backdate the dispatch.&nbsp;Instead, the system will set the dispatch date to match the received date, ensuring&nbsp; your dispatch times are always logical and achievable.&nbsp;
+</div>
+<h3 id="h3__1480381657" data-has-heading-anchor="true">
+  Split order into packages of maximum value
+<a href="/articles/documentation/rules-engine-actions/a/h3__1480381657" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/rules-engine-actions/a/h3__1480381657&#39;,this);"></a></h3>
+<p>
+  Order will be split into packages with a maximum value set in the action. The value will be based on the  unit price of the ordered item. Composite children will use an equal share of the value of the parent.&nbsp;
+</p>
+<p>
+  <img src="/resources/Storage/documentation/Screenshots/RulesEngine/Rules%20Engine%20-%20Split%20order%20into%20packages%20of%20maximum%20value.png" alt="Rules Engine  - Split order into packages of maximum value" class="leftAlone" loading="lazy"/>
+</p>
+<h3 id="h3_1439627496" data-has-heading-anchor="true">
+  Split order into packages of maximum weight
+<a href="/articles/documentation/rules-engine-actions/a/h3_1439627496" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/rules-engine-actions/a/h3_1439627496&#39;,this);"></a></h3>
+<p>
+  Order will be split into packages with the maximum weight set in the action. With composites, only the children will be used.&nbsp;<b>Note!</b> This action will split the order into several packages, with each package containing items weighing no more than the limit set by the action in the ruleset.&nbsp;During the split, neither the <a href="/articles/documentation/packaging-groups" onclick="return n(&#39;!documentation/packaging-groups&#39;,this);">type of packaging nor the weight of the packagin</a>g will be considered; only <u>item(s) weight</u> is taken into account.&nbsp;
+</p>
+<p>
+  <img src="/resources/Storage/documentation/Screenshots/RulesEngine/Rules%20Engine%20-%20Split%20order%20into%20packages%20of%20maximum%20weight.png" alt="Rules Engine - Split order into packages of maximum weight" class="leftAlone" loading="lazy"/>
+</p>
+<h3 id="h3_1856359534" data-has-heading-anchor="true">
+  Split order into packages of single items
+<a href="/articles/documentation/rules-engine-actions/a/h3_1856359534" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/rules-engine-actions/a/h3_1856359534&#39;,this);"></a></h3>
+<p>
+  Order will be split into packages with only one item in each.
+</p>
+<p>
+  <img src="/resources/Storage/documentation/Screenshots/RulesEngine/Rules%20Engine%20-%20Split%20order%20into%20packages%20of%20single%20items.png" alt="Rules Engine - Split order into packages of single items" class="leftAlone" loading="lazy"/>
+  <br/>
+</p><script src="/resources/Scripts/lightense.min.js"></script>
+<script>
+  // Init Lightense
+  window.addEventListener('load', function () {
+    Lightense('img.lightense:not(.no-lightense)');
+  }, false);
+</script>
+<script>
+var toggler = document.getElementsByClassName("caret");
+var i;
+
+for (i = 0; i < toggler.length; i++) {
+  toggler[i].addEventListener("click", function() {
+    this.parentElement.querySelector(".nested").classList.toggle("active");
+    this.classList.toggle("caret-down");
+  });
+}
+</script></body></html>

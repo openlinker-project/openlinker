@@ -1,0 +1,100 @@
+=== ebay-settings | eBay: Configure channel settings
+ 
+ eBay: Configure channel settings 
+eBay: How to Configure
+ Linnworks integration has multiple settings that allow detailed control of how Linnworks interacts with eBay. This guide will help you to configure your eBay to make sure Linnworks is doing what is required. 
+ Once the channel is added, click on the pen    icon in the channel integration screen for the required eBay integration. 
+  Available for the configuration settings 
+ Account
+ See below for the description of the configurable option in the Account section.
+ Enabled:  Tick this option to allow communication between Linnworks and eBay. Without this ticked, no information will be sent or received from eBay.
+ eBay User ID: Your eBay Account name.
+ eBay Site: The eBay site that is integrated. For example, the UK, Germany, France, United States.
+ Test : Use this button to confirm the supplied credentials work correctly, allowing communication between eBay and Linnworks for both tokens.
+ Reauthorize :  This  button will trigger to reauthorize your tokens if required. 
+ Note: If the eBay tokens expire, clicking Test will confirm the integration is not working and relaunch the eBay Integration Wizard.
+ Inventory Sync
+ See below for the description of the configurable option in the Inventory Sync section.
+ Multi-location:  Shows if this eBay integration uses multi-location inventory. 
+ Limit quantity update to specified location:  Restricts the listing to the merchant location key (Channel Location ID) set on the eBay offer. 
+ End Listings:  This allows Linnworks to end your eBay listings if you have run out of stock.
+ Relist Listings: This allows Linnworks to relist your listings when the stock returns.
+   Note! If a subsource-specific listing price exists on the listings' linked stock item, this price will be used for the new listing and not the original price of the ended listing.
+ Note! It is a good practice to strike off the SKUs you do not wish to relist anymore. The Channel Mapping screen receives information directly from the channel about what listings to display. The information displayed here will, however, only be appended. There is no way for the system to know which SKUs to no longer display if they have been changed or removed. When later syncs with the channel are performed, records that were present earlier will still display and may relist the unwanted listing, which can cause over-selling . The Strike Off feature prevents this by removing unwanted listings from further syncs with the channel, ensuring they are not relisted. 
+ Do not end auctions: If enabled, it allows Linnworks to keep auctions live even if you have run out of stock.
+ Do not relist auctions: If enabled, it allows Linnworks not to relist auctions, even if you have stock in your system.
+ Out-of-Stock enabled:  Works with the out-of-stock feature on your eBay account to keep listings live even when they have run out of stock.
+ Limit Update to a specific site: If enabled, Linnworks will only update your stock levels to a specific eBay site. This works great if you sell internationally via a 3rd party software such as WebInterpret and do not manage your international sites via Linnworks.
+ Site to update: This is related to the option above, specify the eBay site you would like stock updates on.
+ Download full listings:    Download in the background information about your listings such as SKU, title, extended properties, images to allow you to create your items instantly via the  Extract Inventory  tool. 
+ Order
+ See below for the description of the configurable option in the Order section.
+ Despatch Notes: After processing an order in Linnworks, a dispatch notification, tracking number (if available), and the selected shipping vendor will be submitted to the channel. When the option is disabled, no dispatch information will be submitted to eBay. See below what are the requirements for this setting to work:
+ Tracking numbers must be longer than five characters otherwise, they will not be submitted.
+ If either the Linnworks Postal Service or the Linnworks Vendor Name is the  default , the tracking number will not be submitted.
+ Where an eBay-supported shipping carrier is found, based on the Linnworks Vendor Name of the selected postal service, this is submitted to eBay with the despatch note.
+ Where an eBay-supported shipping carrier is not found, the Linnworks Postal Service is submitted to eBay with the despatch note.
+ eBay-supported shipping carriers depend on the eBay site Id. Due to the nature of the list being controlled by eBay, it is impossible to provide a list of supported shipping carriers in this guide.
+ Order Sync Date: This shows the date and time when Linnworks last synchronized with the channel.
+ Cancellation notes: If enabled,   Linnworks will send order cancellation notes and refund amount to your sales channel once the order is partially or fully canceled. When canceling an eBay order from Linnworks, you would need to specify a reason. Note!  Cancellation reasons may impact a seller's rating. Check more info here . 
+ Refund notes : Details from refunds created on Linnworks will be submitted to eBay when this option is enabled. Refunds are issued on an item level and partial refunds are supported.
+ Return notes:  If enabled, Linnworks will send order return notes to your sales channel once the order is partially or fully returned.  Managed Returns works with buyer-initiated returns on eBay if the return is downloaded and booked in Linnworks. Once the Return is actioned in Linnworks, a note is sent to eBay to confirm the return receipt and trigger a refund. Once enabled, the additional options will be available under the Managed Returns button at the bottom. 
+ Allow automated cancellations:  If enabled, Linnworks will automatically cancel the orders in the system once they are canceled on eBay. Once the order is canceled the extended property with a cancellation ID will be added to the order. 
+ If the order is marked as shipped, Linnworks will return an error. Only open orders are available for cancellation. 
+ If the order was paid for using PayPal and/or you are enrolled in the  eBay Managed Payments  program, an actioned refund is created in Linnworks for reporting purposes. Otherwise, a booked RMA is automatically created and needs to be actioned manually.
+ Use Sales Record Number as order Channel Reference:  If ticked, Linnworks will download orders with a 6-digit channel reference number. Please check more details here .
+ Use Channel Tax for USA/Canada site transactions:  If enabled,  Linnworks will use tax values calculated by the eBay site during order download. This setting only applies to those who sell on eBay USA or Canada. 
+ Use Channel Tax for Australia site transactions:  If enabled, Linnworks will use tax values calculated by the eBay site during order download.  This setting only applies to those who sell on eBay Australia. 
+ Use Channel Tax for UK site transactions:  If enabled, Linnworks will use tax values calculated by the eBay site during order download.  This setting only applies to those who sell on eBay UK. 
+ Note:  The setting will be enabled to all by default and starts applying to orders starting from January 1st, 2021.
+ Use Channel Tax for EU site transactions : If enabled, Linnworks will use tax values calculated by the eBay site during order download. This setting only applies to those who sell on eBay EU sites.
+ Note: The setting will be enabled by default for any user that has Use Channel Tax for UK site Transactions enabled.
+ Handle By Time:  Default handling time. This setting indicates the latest date/time (displayed in the Open Orders screen) that the seller should ship the order to ensure that the package arrives at the buyer within the estimated delivery window. The setting will be applied in the case when order data from the channel doesn't contain information about the despatch time. 
+ Settings under the Managed Returns button (available only if Return notes option is enabled): 
+ Enabled:  Check the box to enable/disable eBay customer returns 
+ Provide RMA Reference: Tick if you would like Linnworks to return an RMA reference when Managed Return Info is downloaded from eBay and an RMA created in Linnworks.
+ RMA Reference: Select a type of reference to be returned
+ Order ID
+ Reference
+ External Reference
+ Generated - new randomly generated reference.
+ Provide alternative shipping address: If you would like to have a different return address that is specified on eBay, specify it here.
+ Book refund once item returned on eBay: Once the item is declared returned on eBay, this option will automatically book a refund.
+ Linnworks will send a confirmation of return receipt without any details to eBay if RMA Reference and alternative shipping address are not enabled .
+ eBay Fulfillment
+ See below for the description of the configurable option in the eBay Fulfillment  section.
+ Enabled: Tick to move eBay fulfillment orders to a fulfillment location.  
+ Fulfilment Location:  Choose the location for eBay fulfillment orders. Inventory at this location is managed by the Orange Connex App . 
+ Ignore eBay fulfilled orders : If enabled, orders that are fully fulfilled by eBay will not be downloaded into Linnworks. If disabled, orders that are fully fulfilled by eBay will be downloaded into Linnworks. These orders will be parked , locked , and marked with the EBAY FULFILLMENT identifier. As soon as these orders are shipped by eBay, in Linnworks they will be automatically processed. Important!  Your eBay account must be authorized with the latest APIs in order to automatically process such orders.
+ Note:  The Ignore eBay fulfilled orders setting is enabled for all users by default.
+ Inventory
+ See below for the description of the configurable option in the Inventory section.
+ Update Inventory:  Allow Linnworks to submit changes in stock levels to eBay. Linnworks supports multiple stock locations for additional warehouses/fulfillment centers/suppliers. Ensure you set which Linnworks locations are used when submitting changes in stock levels to your channel via the  Location Mapping  screen accessed from the main  Channel Integration  screen.
+ Max Listed:   This specifies the maximum level that will be sent to the channel.  
+ For more details go to the  Max Listed  guide.
+ Stock Percentage:  This will send a percentage of the currently available stock level to the sales channel. For more details go to the  Stock Percentage  guide.
+ End When:   This enables you to force the listing to end when the stock level gets to the specified amount as opposed to the default value of zero.  
+ For more details go to the  End When  guide.
+ Inventory - Price Change
+ See below for the description of the configurable option in the Inventory - Price Change section.
+ Price Change:  Price Change is designed to speed up the process of updating the sales channel once a Linnworks stock item has had its listing price updated and saved. To find out more go to the  Price Change  page.
+ Listings
+ See below for the description of the configurable option in the Listings section.
+ Auto Link by SKU:  Tick this box to let Linnworks automatically match SKUs when downloading listings and orders. 
+ Listing Download in Progress: This tick box will tick itself if a Listing Update has begun.
+ Listing Download start time : This will show the date and time of when the update has begun.
+ Last listing download completion time: This will show the date and time of when the last manual update was run.
+ Listing Download estimated completion: This will give you an estimate of when the manual scan will be complete – the time can vary depending on server speeds and the number of listings.
+ Download Listings: Click this button to force Linnworks to request an update from the channel for your active listings.
+ Linnworks is designed to update the listings on the mapping page regularly. However, if for any reason it has not, then the Download Listings button here allows you to force Linnworks to schedule an update. 
+ eBay channel integration and WebInterpret
+ If you use WebInterpret for your eBay sites (managed outside of Linnworks), there are important considerations to keep in mind when integrating your eBay marketplace with Linnworks:  
+ WebInterpret manages the pricing of international listings, so sellers should not attempt to adjust these prices through Linnworks or other methods. 
+ WebInterpret listings will end when stock runs out. To avoid this, ensure your WebInterpret listings always have sufficient stock. 
+ WebInterpret updates the stock levels of your international listings based on your UK listing. To prevent this, configure your settings to sync stock only to a specific site (the  Limit Update to a Specific Site setting ). For more details, see here .
+ Note: WebInterpret also adjusts UK listings when international listings have a sale, which can result in a double stock decrement on your UK listings. 
+ If you encounter incorrect translations or are dissatisfied with them, please contact the WebInterpret support team using the following link . 
+ Next steps:
+ Location Mapping 
+ Inventory Mapping 
+ 

@@ -1,0 +1,39 @@
+=== processed-order-rma | Returns, Exchanges &amp; Resends
+ 
+ Returns, Exchanges & Resends 
+Returns, Exchanges, and Resends (RMA) 
+ Linnworks provides a number of aftersale actions that make it easier to track returns and keep accurate inventory counts. If a buyer is in any way unhappy with their order, depending on your return policy, you can use one of the options to handle each case. 
+ In the Processed Orders screen, find the order > right-click > Action > Returns, Exchanges & Resends . 
+ Now you are redirected to the RMA screen where you can see all order details and either perform the required actions for each item individually with the    Add RMA button or do a   Full Resend . 
+ Before going into detail, let us make it clear what exactly each action stands for: 
+ Return - A customer sends the item back to your warehouse. 
+ Resend - You send a new item to the customer.
+ Exchange - A combination of return and resend.
+ If doing a   Full resend for the whole order, you can use a shortcut button, fill in the det ails and click Add : 
+ Resend Order Location:  Stock for the new resend order will be taken from a location specified here.
+ Reason Category: A custom category for the return. These categories can be managed in the RMA screen by clicking the settings icon next to the Reason Category field.
+ Reason: the reason why the item was returned.
+ Additional Cost: Any additional costs paid for by the buyer. This is the total amount that will be divided evenly between all items.
+ Note! If you require to add any refund for any of the items, it would need to be done manually. Click the +Add RMA button and type the amount you wish to refund in the respective field.
+ In the New RMA screen, you can see order item details and a separate section for:
+ Return 
+ Exchange 
+ Resend 
+ Once the details are entered, click Add Return/Add Exchange/Add Resend to proceed further.
+ Action or Book?
+ Each option can be actioned immediately or booked for later by using the   Action or   Book buttons. 
+ For example, you may want to action a refund for the exchange only after receiving the original item back at your warehouse. In this case, click   Book . This will create a new RMA booking in Returns & Refunds   to be actioned later.  For exchanges and resends, the system will also create a  parked order that will be unparked when the booking is actioned. 
+ Click   Action if you want to send a new item straight away. This will create a new open order for the new item that you need to send, and allow you to return or scrap the returned item. The record about your return, exchange or resent will be saved in Orders > Returns and Refunds > History . 
+ Info! A return/exchange/resend may include a refund in it. Linnworks does not automatically do refunds on the channel. RMA feature is created to keep accurate records in the system and the action will need to be performed on the channel separately if required.  Exceptions to this are: 
+ Amazon 
+ Back Market 
+ BigCommerce 
+ eBay* 
+ Magento 2 
+ Shopify 
+ Walmart 
+ For the refund to be sent to the channel, this should be enabled in   Settings > Channel Integrations > Edit Channel > Order > Order Refunds:  
+  Video tutorial 
+ If you like seeing things explained visually, watch this step-by-step video guide on Refunds, Returns, Resends, and Exchanges in Linnworks.  It  can help you understand how everything works and answer any extra questions.
+ Video - Refunds, Returns, Resends, and Exchanges  
+ 

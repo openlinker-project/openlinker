@@ -1,0 +1,43 @@
+=== amazon-fba-orders | Working with FBA orders
+ 
+ Working with FBA orders 
+ FBA Orders
+ In this guide, you will find answers to the most common questions about how Linnworks manages FBA orders.
+ What happens when an FBA listing is sold?
+ When an FBA listing is sold, Amazon will automatically be aware of the order. Linnworks will then contact Amazon to request details of all the currently unshipped FBA orders.
+ These orders are downloaded into Linnworks and saved to the FBA location created when FBA was enabled for that integration.
+ FBA orders sync process with Linnworks cloud?
+ FBA orders sync automatically every 15 - 20 minutes. The sync of smaller batches of orders but at a quicker rate makes the sync efficient and reduces delays. Syncs have improved monitoring; each sync log is reported in Automation Logs . There are also additional safety checks to catch any skipped orders Linnworks was initially unable to download.
+ What happens when FBA processes an order?
+ Linnworks automatically requests the status of any FBA orders that it has recorded. If Amazon changes the order's status, this change will be reflected in Linnworks. This includes both processed and canceled orders.
+ Linnworks will also record the shipping courier used by Amazon as an order note . If that courier allocates a tracking number, this will also be saved on the order.
+  Note:  Any open orders saved in an FBA location for over a year  will automatically be processed and moved to the Processed Orders screen. 
+ Submitting a non-FBA order to Amazon FBA to fulfill it (MCF) 
+ Amazon Multi-Channel Fulfillment (MCF) provides low-cost, reliable fulfillment for your e-commerce sales channels (eBay, Walmart, etc.) as fast as 1-day. Learn more about Amazon MCF  in this guide from Amazon .
+ Full information on how to use MCF via Linnworks is available in this guide .
+ Download Refunds & Download Returns
+ Enabling these settings allows you to see in Linnworks which FBA orders were returned, the reason for the return, how much was refunded, and for what item. This information can then be used for proper sales and financial reporting.
+ Download Refunds : This setting allows you to download processed FBA refunds into Linnworks for visibility:
+ If an FBA order has a refund, Linnworks will download it and display it on the refunds screen.
+ Download Returns :  This setting allows you to sync processed FBA returns into Linnworks for visibility:
+ You can see the type of return and the reason.
+ Status in Linnworks will be  open  while the return is being processed. The status will change to the  processed  one once the return is complete.
+ Linnworks automatically reflects the return sub-statuses by mirroring them from Amazon. 
+ An example of how an FBA return is displayed in Linnworks in the Returns & Refunds screen is below.
+ Ignore "Non-Amazon" Sales Channel Orders (FBA Removal Orders) 
+ This setting is related to FBA Removal Orders , which involve returning or disposing of your inventory stored in Amazon’s fulfillment centers. 
+ When there is a request initiated by Amazon or yourself as the seller to remove stock from Amazon’s fulfillment center and return it to your warehouse, Amazon generates an FBA order in your Amazon account. 
+ Due to the functionality of Amazon's API, Linnworks treats these removal orders the same as sales orders when a sale is made on one of your Amazon FBA listings. Consequently, these removal orders are downloaded into your Linnworks account as regular FBA orders. 
+ To avoid downloading such orders into your Linnworks account, ensure to enable the Ignore "Non-Amazon" Sales Channel Orders setting. This setting is disabled by default .
+ Why is Linnworks missing some FBA orders? 
+ Linnworks uses reports from Amazon to retrieve FBA orders and download them, and as such, there should never be any missing orders. The only orders that will not be downloaded (therefore missing from Linnworks) are those received on the channel before FBA was enabled within Linnworks. When FBA is enabled for the Amazon channel, Linnworks will retrieve the shipment report, download the previous 28 days' orders, and save them. Any FBA orders older than this will not be downloaded.
+ How FBA orders are affected by deleting Amazon integration 
+ If you decide to delete your Amazon channel integration, which previously had FBA functionality enabled, here is what will happen: 
+FBA orders in that particular FBA location will be deleted.
+MCF orders will be moved to the default location in a locked and parked status, with a note explaining why it was moved. 
+After the orders are deleted/moved, the FBA location will also be deleted.
+ See also:
+ FBA listings 
+ FBA inventory 
+ Blank Box 
+ 

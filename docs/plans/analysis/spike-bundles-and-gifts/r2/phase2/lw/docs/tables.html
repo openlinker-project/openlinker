@@ -1,0 +1,350 @@
+<!DOCTYPE html><html lang="en-US" dir="ltr"><head><style type="text/css">.ArticleViewer_searchKeywords{background-color: yellow !important;}</style>
+<script type="text/javascript">//<!--
+var articlesServiceUrl='/article/';
+//--></script>
+<link rel="canonical" href="/articles/documentation/tables"/>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.3/css/all.min.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css">
+<script src="https://cdn.jsdelivr.net/npm/jquery@3.5.1/dist/jquery.min.js"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/fancyapps/fancybox@3.5.7/dist/jquery.fancybox.min.css"/>
+<script src="https://cdn.jsdelivr.net/gh/fancyapps/fancybox@3.5.7/dist/jquery.fancybox.min.js"></script><title>Template Designer: Table Elements</title><script type="text/javascript">//<!--
+var imgPopupTexts={openInNewWindowText: 'Open in new window', closeText: 'Close'};var articleTitleText='Template Designer: Table Elements';
+//--></script><link rel="stylesheet" type="text/css" href="/resources/Styles/documentation/Docs%20CSS.css"/><link rel="stylesheet" type="text/css" href="/resources/Styles/documentation/docs.linnworks-EMS.css"/><link rel="stylesheet" type="text/css" href="/style-bundles/article-published.css?v=1.0.9789.31895"/><script src="/resources/Scripts/documentation/Script.js" type="text/javascript"></script><script src="/script-bundles/article-published.js?v=1.0.9789.31895" type="text/javascript"></script><meta charset="utf-8"><meta http-equiv="Content-Type" content="text/html;charset=utf-8"></head><body><span id="__clhTop"></span><h1 style="" id="h1__1461234174" data-has-heading-anchor="true">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.3/css/all.min.css"></link>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.3/css/all.min.css"></link>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css"></link>
+  Template Elements: Tables
+<a href="/articles/documentation/tables/a/h1__1461234174" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/tables/a/h1__1461234174&#39;,this);"></a></h1>
+
+<p>
+  Tables are among the most complex elements due to the amount of data they can store and the customization that can be applied to each column. Table elements are named according to predefined functions, such as <i>Order Notes</i> or <i>Inventory Manifests</i>. For example, when editing a <i>Warehouse Transfer</i> template, there are 6 available elements, 4 of which are tables. Regardless of the intended function, the <b><i>Edit Table</i></b> pop-up window remains the same when editing a table.
+</p>
+<p>
+  <img src="/resources/Storage/documentation/Screenshots/TemplateDesigner/TemplateDesigner-EditTable.png" alt="Template Designer Edit Table" class="leftAlone" loading="lazy"/></p>
+<h2 style="" id="h2_1157589157" data-has-heading-anchor="true">Adding item Extended Properties (EPs)<a href="/articles/documentation/tables/a/h2_1157589157" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/tables/a/h2_1157589157&#39;,this);"></a></h2>
+<p>The <i><b>Add Extended Property</b></i> option allows you to display additional item information stored in <a href="/articles/documentation/product-details-extended-properties" onclick="return n(&#39;!documentation/product-details-extended-properties&#39;,this);">item extended properties (EPs)</a> directly in table elements within your templates. This feature is available when editing <u><b>order item tables</b></u> in both<b> Invoice templates</b> and <b>Picklist templates</b> in the <i>Template Designer</i>.&nbsp;</p><p><img src="/resources/Storage/documentation/Screenshots/TemplateDesigner/AddExtendedProperty.png" alt="Add Extended Property to Invoices and Picklists" class="size-75" loading="lazy"/></p><p>EPs store additional information about items, such as color, size, material, compatibility, or other custom attributes. By adding these properties as table columns to your invoices or picklists, you can include this information directly on printed documents, making these documents more informative and easier to use during order processing.&nbsp;</p><p>The <span class="btn-gray"><span class="fa fa-plus"></span>&nbsp;Add Extended Property</span> button is available in the <i><b>Edit Table</b></i> window next to the <span class="btn-gray"><span class="fa fa-plus"></span>&nbsp;Add Custom Column</span> option. When selected, it allows you to add a column that automatically pulls values from an existing item EP.<br/></p><ul><li><div>For how to add item EPs to <b><i>Invoice tables</i></b>, <a href="/articles/documentation/template-designer-invoice/a/h3_2000926737" onclick="return n(&#39;!documentation/template-designer-invoice/a/h3_2000926737&#39;,this);">see this guide</a>.</div></li><li>For how to add item EPs to&nbsp;<b><i>Picklist tables</i></b>, <a href="/articles/documentation/template-designer-pick-list/a/h2__1658324588" onclick="return n(&#39;!documentation/template-designer-pick-list/a/h2__1658324588&#39;,this);">see this guide</a>.&nbsp;</li></ul><h2 id="h5__436746675" style="" data-has-heading-anchor="true">Adding custom columns
+<a href="/articles/documentation/tables/a/h5__436746675" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/tables/a/h5__436746675&#39;,this);"></a></h2>
+<p>
+  Tables in Linnworks are predefined with content relevant to the table type. However, it is possible to add custom content to tables. This can be done by clicking the<span class="btn-gray"><span style="font-weight: normal;"><span class="fa fa-plus">&nbsp;</span>Add Custom Column</span></span><span style="font-size: 17px; font-weight: 300; text-align: justify;"> button.
+  </span>
+</p>
+<p>
+  The main difference between default columns and custom columns is that the <i>Name</i> field can be customized. This can be static text, a variable, or a formula. These work in the same way as <a href="/articles/documentation/labels-and-variables" onclick="return n(&#39;!documentation/labels-and-variables&#39;,this);">labels and variables</a>. Double-clicking the <i>Name </i>column in the edit table element opens the simplified version of the <b><i>Edit Label</i></b> pop-up window.
+</p>
+<p>
+  <img src="/resources/Storage/documentation/Screenshots/TemplateDesigner/TemplateDesigner-EditColumnName.png" alt="Template Designer Edit Column Name" class="leftAlone" loading="lazy"/>
+</p>
+<p>
+  See this <a href="/articles/documentation/labels-and-variables" onclick="return n(&#39;!documentation/labels-and-variables&#39;,this);">guide</a> or the dedicated expressions <a href="/articles/documentation/expressions" onclick="return n(&#39;!documentation/expressions&#39;,this);">documentation</a>&nbsp;for more information on using formulas.</p>
+<p>
+  Custom columns can be deleted by clicking a <i>delete&nbsp;</i><span class="fa fa-trash-o">&nbsp;</span>icon in the final column.
+</p>
+<h2 id="h5_259097225" style="" data-has-heading-anchor="true">
+  How to set up columns
+<a href="/articles/documentation/tables/a/h5_259097225" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/tables/a/h5_259097225&#39;,this);"></a></h2>
+<p>
+  The <i>Columns</i> tab defines the table layout based on column headers.
+</p>
+<p>
+  <img src="/resources/Storage/documentation/Screenshots/TemplateDesigner/TemplateDesigner-EditTable-Columns.png" alt="Template Designer Edit Table Columns" class="leftAlone" loading="lazy"/>
+</p>
+<ul>
+  <li>
+    <b>First Column:</b>&nbsp;Clicking the arrow will move the selected column up the list, re-ordering the columns.</li>
+  <li>
+    <span style="color: #333333; font-family: &quot;Helvetica Neue&quot;, Arial, Helvetica, Geneva, sans-serif; font-size: 16px;"></span><strong>Second Column:</strong>&nbsp;Clicking the arrow will move the selected column down the list, re-ordering the columns.
+  </li>
+  <li>
+    <b>V</b><strong><span style="font-weight: normal;"><b>isible</b></span>:</strong>&nbsp;Enabling this checkbox setting will include the column in the table. Disabling the checkbox will hide the column.
+  </li>
+  <li>
+    <strong>Header Title:</strong>&nbsp;The column name. It does not have to reflect a Linnworks tag. You can add any title you want.
+  </li>
+  <li>
+    <strong>Name:</strong>&nbsp;This is the latest entry for the relevant Linnworks tag. For instance, Stock Level will return the latest stock level for every SKU in the list.
+  </li>
+  <li>
+    <strong>Width:</strong>&nbsp;This sets the width for the column on the table.
+  </li>
+  <li>
+    <strong>Format:</strong>&nbsp;Several format statements can be applied to table entries:
+    <ul>
+      <li>
+        <b>NX:</b> Where X is a number. Sets the value to X number of decimal places.
+      </li>
+      <li>
+        <b>CX:&nbsp;</b>Where X is a number. Sets the value as a currency with the specified number of decimal places.
+        <ul>
+          <li>
+            Where X is not specified, it will set a cultural default for the currency being used. For example, USD will format with two (2) decimal places and use a comma to delimit quantities of 1000. E.g., 10500.01 will format to $10,500.01. Whereas the delimiters are opposite (for example, in Germany), 10500.01 would be written as €10.500,01.
+          </li>
+        </ul>
+      </li>
+    </ul>
+  </li>
+  <li>
+    <strong>Alignment:</strong>&nbsp;This is text alignment for that column which can be set to one of nine options: 3 vertical alignments and 3 horizontal alignments.
+    <ul>
+      <li>
+        To change the alignment, click the square graphic for the appropriate column.
+      </li>
+      <li>
+        The dark grey square indicates the current text alignment, which will move to the next alignment when clicked.
+      </li>
+    </ul>
+  </li>
+  <li>
+    <strong>Borders:</strong>&nbsp;This column sets the border properties for the column. Simply click <i>Left</i>, <i>Righ</i>, <i>Top</i>, <i>Bottom </i>to set a border. Clicking any option a second time will remove the border.
+  </li>
+  <li>
+    <strong>Style:</strong>&nbsp;This allows conditional formatting to be placed on cells in the table. Double-clicking the relevant row will open a new window. For more information on conditional styles, please see the section <a href="/articles/documentation/tables/a/h5__1408022740" onclick="return n(&#39;!documentation/tables/a/h5__1408022740&#39;,this);">below</a>.
+  </li>
+  <li>
+    <strong>Sort:</strong>&nbsp;This column allows to sort items. For example, ordering an invoice by the quantity of each SKU bought:
+    <ul>
+      <li>
+        <span style="font-weight: normal;"><b>Red arrow</b></span>: Sort columns in ascending order.
+      </li>
+      <li>
+        <span style="font-weight: normal;"><b>Green arrow</b></span>: Sort columns in descending order.
+      </li>
+      <li>
+        <span style="font-weight: normal;"><b>Blank</b></span>: No sorting based on this column.
+      </li>
+    </ul>
+  </li>
+  <li>
+    <strong>Final Column:</strong>&nbsp;This column will show a&nbsp;<i>delete&nbsp;<span class="fa fa-trash">&nbsp;</span></i>icon when the row was created as an additional custom column. Click the icon to delete the row.
+    <ul>
+      <li class="alert-danger">
+        <span style="font-weight: normal;"><b>NB!</b></span> Pre-defined rows cannot be deleted, but can be hidden by disabling the <i>Visible</i> setting.
+      </li>
+    </ul>
+  </li>
+</ul>
+<h3 id="h5__1408022740" style="" data-has-heading-anchor="true">
+  Conditional styles in tables
+<a href="/articles/documentation/tables/a/h5__1408022740" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/tables/a/h5__1408022740&#39;,this);"></a></h3>
+<p>
+  <i>Conditional Style</i> allows formatting cells in a table to alter their format based on logical expressions applied to variables. To open the <i>Conditional Style </i>pop-up window, click on the <i>white rectangle</i> icon in the <i>Style</i> column of the <i>Edit Table</i> screen.
+</p>
+<p>
+  <img src="/resources/Storage/documentation/Screenshots/TemplateDesigner/TemplateDesigner-EditTable-ConditionalStyle.png" alt="Template Designer Edit Table Conditional Styles" class="leftAlone" loading="lazy"/>
+</p>
+<h4 style="" id="h5__106302121" data-has-heading-anchor="true">
+  Barcode
+<a href="/articles/documentation/tables/a/h5__106302121" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/tables/a/h5__106302121&#39;,this);"></a></h4>
+<p>
+  Clicking the <span class="btn-gray"><span class="fa fa-barcode">&nbsp;</span>Barcode</span> button allows selecting the barcode type to use and display in the table for the <i>Barcode Number</i> row.&nbsp;
+</p>
+<img src="/resources/Storage/documentation/Screenshots/TemplateDesigner/Barcodes_Table.png" alt="Barcodes in a table" class="leftAlone" loading="lazy"/>
+<p>
+  A quick step-by-step guide:
+</p>
+<ol>
+  <li style="width: 729px;">
+    In the template, double-click the table to open the&nbsp;<i>Edit Table</i>&nbsp;screen.
+  </li>
+  <li style="width: 729px;">
+    Find the&nbsp;<i>Barcode Number</i>&nbsp;row and click the&nbsp;<i>white rectangle</i>&nbsp;icon in the&nbsp;<i>Style&nbsp;</i>column.
+  </li>
+  <li style="width: 729px;">
+    Click the&nbsp;<i>Barcode</i>&nbsp;button and select the required barcode type:
+    <ul>
+      <li style="width: 593.097px;">Code 39
+      </li>
+      <li style="width: 593.097px;">Code 39 Extended
+      </li>
+      <li style="width: 593.097px;">Code 128
+      </li>
+      <li style="width: 593.097px;">EAN-8
+      </li>
+      <li style="width: 593.097px;">EAN-13
+      </li>
+      <li style="width: 593.097px;">EAN-128 / GSI-128
+      </li>
+      <li style="width: 593.097px;">UPC-A
+      </li>
+      <li style="width: 593.097px;">UPC-E
+      </li>
+    </ul>
+  </li>
+</ol>
+<p>
+  Selecting&nbsp;<i>No Barcode</i>&nbsp;will disable the&nbsp;<i>Barcode</i>&nbsp;button and display no barcodes in the table. Only barcode numbers will be displayed.
+</p>
+<h4 style="" id="h5_1236136328" data-has-heading-anchor="true">
+  Add conditional style
+<a href="/articles/documentation/tables/a/h5_1236136328" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/tables/a/h5_1236136328&#39;,this);"></a></h4>
+<p>
+  The <span class="btn-gray"><span class="fa fa-plus">&nbsp;</span>Add Conditional Style</span> allows adding conditional styling to cells.
+</p>
+<p>
+  <img src="/resources/Storage/documentation/Screenshots/TemplateDesigner/TemplateDesigner-EditTable-AddConditionalStyle.png" alt="template Designer Add Conditional Style to Table" class="leftAlone" loading="lazy"/>
+</p>
+<p>
+  To show how conditional styles work, see the example below. In this example, we will highlight SKUs that have a quantity of more than 1. This could be useful for picklists where an order contains several of the same items.
+</p>
+<ol>
+  <li>
+    <span style="color: #333333; font-family: &quot;Helvetica Neue&quot;, Arial, Helvetica, Geneva, sans-serif; font-size: 16px;">To add a new condition to the relevant column, click&nbsp;</span><span class="btn-gray"><span class="fa fa-plus">&nbsp;</span>Add Conditional Style</span>
+  </li>
+  <li>
+    To open the condition editor, click the <i>edit</i> <span class="fa fa-pencil">&nbsp;</span>icon for the <i>Condition</i> field:
+  </li>
+  <li>
+    Add a condition, in this example:&nbsp;<span style="color: #0077aa; font-size: 13px; font-family: Consolas, Monaco, &quot;Andale Mono&quot;, monospace;">[{nQty}]&gt;1
+    <br/>
+    <img src="/resources/Storage/documentation/Screenshots/TemplateDesigner/TemplateDesigner-Condition.png" alt="Template Designer Condition Example" class="leftAlone" loading="lazy"/></span>
+  </li>
+  <li>
+    Click <span class="btn-old-blue"><span class="fa fa-check">&nbsp;</span>Ok</span>
+  </li>
+  <li>
+    Click the <span class="btn-old-gray">A</span> button in the <i>font</i> column to access font customization.
+  </li>
+  <li>
+    Click the&nbsp;<i>Back Color</i>&nbsp;box to select an appropriate background color.
+  </li>
+  <li>
+    Click the<i> T</i><i>ext Color&nbsp;</i>box to select an appropriate text color.
+    <br/>
+    <img src="/resources/Storage/documentation/Screenshots/TemplateDesigner/TemplateDesigner-ConditionSettings.png" alt="Template Designer Condition Settings" class="leftAlone" loading="lazy"/>
+  </li>
+  <li>
+    The&nbsp;<i>OK</i>&nbsp;column indicates whether the syntax is correct for the condition.
+  </li>
+  <li>
+    The<i>&nbsp;delete</i>&nbsp;<span class="fa fa-trash">&nbsp;</span>icon will delete the condition when clicked.
+  </li>
+  <li>
+    Click <span class="btn-old-blue"><span class="fa fa-check">&nbsp;</span>Ok</span>&nbsp;to save the condition.
+  </li>
+</ol>
+<div class="alert-success">
+  <strong>Info!</strong> Conditional formatting will be applied to the sample data which may not meet the requirements of the entered conditions. Sample data varies depending on what template type is being edited.
+</div>
+<h2 id="h5_681682073" style="" data-has-heading-anchor="true">
+  Table settings
+<a href="/articles/documentation/tables/a/h5_681682073" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/tables/a/h5_681682073&#39;,this);"></a></h2>
+<p>
+  The <i>Settings</i> tab contains the general settings for the table. These settings apply to the main table except where a conditional style has been applied.
+</p>
+<p>
+  <img src="/resources/Storage/documentation/Screenshots/TemplateDesigner/TemplateDesigner-TableSettings.png" alt="Template Designer Table Settings" class="size-75" style="" loading="lazy"/>
+</p>
+<ul>
+  <li>
+    <span style="font-weight: normal;"><b>Show Headers</b></span><b>:</b> This option allows you to turn off column headers if needed.
+  </li>
+  <li>
+    <span style="font-weight: normal;"><b>Header Height</b></span><b>:</b> This is the header height in inches.
+  </li>
+  <li>
+    <span style="font-weight: normal;"><b>Header Color</b></span><b>: </b>Clicking this will open the color picker for the header row background color.
+  </li>
+  <li>
+    <span style="font-weight: normal;"><b>Row Height</b></span><b>: </b>This is the height of non-header table rows in inches.
+  </li>
+  <li>
+    <span style="font-weight: normal;"><b>Header Font</b></span><b>:</b> Clicking this button opens the font customization window for the header text.
+  </li>
+  <li>
+    <span style="font-weight: normal;"><b>Content Font</b></span><b>: </b>Clicking this button opens the font customization for the main table data rows.
+  </li>
+  <li>
+    <span style="font-weight: normal;"><b>Header Font Color</b></span><b>:</b> Clicking this will open the color picker for the header row text color.
+  </li>
+  <li>
+    <span style="font-weight: normal;"><b>Next Page Text</b></span><b>:</b> This is the text displayed when the table is more than one page.
+  </li>
+  <li>
+    <span style="font-weight: normal;"><b>Table Borders</b></span><b>:</b> This border is in addition to the border options for cells on the <i>Columns</i> tab. The border is drawn the same size as the bounding box on the template.
+  </li>
+  <li>
+    <span style="font-weight: normal;"><b>O</b><b>ne Row per page</b></span><b>:</b> This page enables one row to be displayed per page.
+    <br/>
+  </li>
+</ul>
+<h2 id="h5__387293929" style="" data-has-heading-anchor="true">
+  Sub-table
+<a href="/articles/documentation/tables/a/h5__387293929" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/tables/a/h5__387293929&#39;,this);"></a></h2>
+<p>
+  Not all tables will have a sub-table available. Sub-tables are commonly used for <a href="/articles/documentation/template-designer-packing-list" onclick="return n(&#39;!documentation/template-designer-packing-list&#39;,this);">packing lists</a>. In this case, the order details are held in the main table, and the sub-table contains the order items. The <i>Sub-table</i> tab, if available, comes with a predefined table. The settings will not be editable until the <i><span style="font-weight: normal;">Show Sub Table</span></i> checkbox is ticked.
+</p>
+<p>
+  <img src="/resources/Storage/documentation/Screenshots/TemplateDesigner/TemplateDesigner-SubTable.png" alt="Template Designer Sub-table" class="leftAlone" loading="lazy"/>
+</p>
+<ul>
+  <li>
+    <b>Show Sub Table:</b>&nbsp;This option will either add a sub-table or hide a sub-table depending on whether the setting is enabled or disabled.</li>
+  <li>
+    <span style="color: #333333; font-family: &quot;Helvetica Neue&quot;, Arial, Helvetica, Geneva, sans-serif; font-size: 16px;"></span><strong>Sub Table Name:</strong>&nbsp;This is the name of the sub-table. This field is not adjustable.
+  </li>
+  <li>
+    <strong>Show Header:</strong>&nbsp;This option hides the header normally displayed under the main header.
+  </li>
+  <li>
+    <strong>Row Height:</strong>&nbsp;This is the row height for the data in the sub-table.
+  </li>
+</ul>
+<p>
+  The sub-table configurations at the bottom of the sub-table window function the same as the main columns settings in the <i>Columns </i>tab except for the final column. There are no custom columns in a sub-table, so there is no delete option. Disable the <i>Visible</i> setting for the required rows to delete rows from the sub-table. 
+</p>
+<h2 id="h5_421811822" style="" data-has-heading-anchor="true">
+  Table summary
+<a href="/articles/documentation/tables/a/h5_421811822" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/tables/a/h5_421811822&#39;,this);"></a></h2>
+<p>
+  The <i>Summary</i> tab allows customizing details that are displayed at the bottom of the table.
+</p>
+<p>
+  <img src="/resources/Storage/documentation/Screenshots/TemplateDesigner/TemplateDesigner-TableSummary.png" alt="Template Designer Table Summary" class="leftAlone" style="height: auto;" loading="lazy"/>
+</p>
+<p>
+  The settings are the following:
+</p>
+<ul>
+  <li>
+    <b>First Column:</b>&nbsp;Clicking the up arrow moves the row further up the summary.</li>
+  <li>
+    <span style="color: #333333; font-family: &quot;Helvetica Neue&quot;, Arial, Helvetica, Geneva, sans-serif; font-size: 16px;"></span><strong>Second Column:</strong>&nbsp;Clicking the down arrow moves the down further down the summary.
+  </li>
+  <li>
+    <strong>Title:</strong>&nbsp;The title can be customized. There is no need to have names linked to Linnworks variables. Double-click the column to edit it.
+  </li>
+  <li>
+    <strong>Title Font:</strong>&nbsp;Clicking this button will open the font customization window for the title field.
+  </li>
+  <li>
+    <strong>Value:</strong>&nbsp;This content is based on variables that are used elsewhere in the template designer, and the text is right-aligned. This can be edited by double-clicking the field.
+  </li>
+  <li>
+    <strong>Value Font:</strong>&nbsp;Clicking this button will open the font customization window for the Value field.
+  </li>
+  <li>
+    <strong>Final Column:</strong>&nbsp;This column displays a <i>delete&nbsp;<span class="fa fa-trash">&nbsp;</span></i>icon that can be used to delete the row from the summary table.
+  </li>
+  <li>
+    <strong>Add Variable:</strong>&nbsp;Use this field to add variables to the summary of the table. Select the variable and click <span class="btn-old-gray"><span class="fa fa-check">&nbsp;</span>Add</span>.
+  </li>
+</ul>
+<p>
+</p>
+<script src="/resources/Scripts/lightense.min.js"></script>
+<script>
+  // Init Lightense
+  window.addEventListener('load', function () {
+    Lightense('img.lightense:not(.no-lightense)');
+  }, false);
+</script>
+<script>
+var toggler = document.getElementsByClassName("caret");
+var i;
+
+for (i = 0; i < toggler.length; i++) {
+  toggler[i].addEventListener("click", function() {
+    this.parentElement.querySelector(".nested").classList.toggle("active");
+    this.classList.toggle("caret-down");
+  });
+}
+</script></body></html>

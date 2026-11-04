@@ -1,0 +1,329 @@
+<!DOCTYPE html><html lang="en-US" dir="ltr"><head><style type="text/css">.ArticleViewer_searchKeywords{background-color: yellow !important;}</style>
+<script type="text/javascript">//<!--
+var articlesServiceUrl='/article/';
+//--></script>
+<link rel="canonical" href="/articles/documentation/channels-inventory-mapping"/>
+<meta name="description" content="Learn how Channels Inventory Mapping works in Linnworks, including how to link SKUs, sync stock across channels, and prevent overselling in your multichannel setup."/><title>Channels Inventory Mapping | Linnworks Multichannel Guide</title><script type="text/javascript">//<!--
+var imgPopupTexts={openInNewWindowText: 'Open in new window', closeText: 'Close'};var articleTitleText='Channel features: Inventory Mapping';
+//--></script><link rel="stylesheet" type="text/css" href="/resources/Styles/documentation/Docs%20CSS.css"/><link rel="stylesheet" type="text/css" href="/resources/Styles/documentation/docs.linnworks-EMS.css"/><link rel="stylesheet" type="text/css" href="/style-bundles/article-published.css?v=1.0.9789.31895"/><script src="/resources/Scripts/documentation/Script.js" type="text/javascript"></script><script src="/script-bundles/article-published.js?v=1.0.9789.31895" type="text/javascript"></script><meta charset="utf-8"><meta http-equiv="Content-Type" content="text/html;charset=utf-8"></head><body><span id="__clhTop"></span><link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.3/css/all.min.css"></link>
+
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css"></link>
+<div class="doc-container">
+  <h1 id="h1_1333344772" data-has-heading-anchor="true">
+    Inventory&nbsp;Mapping
+  <a href="/articles/documentation/channels-inventory-mapping/a/h1_1333344772" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/channels-inventory-mapping/a/h1_1333344772&#39;,this);"></a></h1>
+  <p style="text-align: justify;">
+  </p>
+  <p style="text-align: justify;">
+    Inventory mapping is the process that links Linnworks stock items to a listing on a selling channel. This link allows information about the item to flow between Linnworks and the selling channels so that everything syncs according to the logic of&nbsp;<a href="/articles/documentation/channels-inventory-updates" onclick="return n(&#39;!documentation/channels-inventory-updates&#39;,this);">inventory updates</a>.&nbsp;
+  </p>
+  <p style="text-align: justify;">
+    Once linked, changes made to a stock item will reflect on all its linked listings, and orders for those listings downloaded into Linnworks can include stock item information.
+  </p>
+  <h2 id="usingthescreen" data-has-heading-anchor="true">
+    Using the Channel Mapping screen
+  <a href="/articles/documentation/channels-inventory-mapping/a/usingthescreen" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/channels-inventory-mapping/a/usingthescreen&#39;,this);"></a></h2>
+  <p style="text-align: justify;">
+    Go to <em>Settings &gt; Channel Integration</em> and click the <i>mapping</i>&nbsp;<i class="fa fa-list"></i>&nbsp;icon for the channel you want to manage.
+  </p>
+  <img class="leftAlone" title="inventorymapping1" src="/resources/Storage/documentation/Screenshots/Channels/channel%20integration_mapping.PNG" data-id="6820" data-shortcode="image" style="" alt="Channel integration - Mapping" loading="lazy"/>
+  <p style="text-align: justify;">
+    &nbsp;Once the screen opens:
+    <br/>
+  </p>
+  
+  <p style="text-align: center;">
+    <img src="/resources/Storage/documentation/Screenshots/Channels/ChannelMappingScreen.png" alt="Channel Mapping Screen" class="leftAlone" style="" loading="lazy"/>
+  </p>
+  <ul>
+    <li style="text-align: justify;">
+      Clicking the&nbsp;<span class="fa fa-cog">&nbsp;</span>button at the top left-hand corner will allow you to customize what data the screen displays by adding and removing columns.
+    </li>
+    <li style="text-align: justify;">
+      The left-hand table contains a list of your active listings from the channel.
+    </li>
+    <li style="text-align: justify;">
+      The right-hand table lists your Linnworks stock items for <a href="/articles/documentation/channels-inventory-mapping/a/h4_108790570" onclick="return n(&#39;!documentation/channels-inventory-mapping/a/h4_108790570&#39;,this);">manual mapping</a>.
+    </li>
+    <li style="text-align: justify;">
+      A listing count and a count of linked &amp; unlinked listings are at the bottom of the screen.
+    </li>
+  </ul>
+  <div class="alert-info" style="border-color: #ffffff;">
+    <span style="font-weight: normal;"><b></b></span><b><span class="fa fa-info-circle"></span>&nbsp;</b><b>Info:</b>&nbsp;The last synchronization time (Last Full Scan) is displayed in  local time. 
+  </div>
+  <h2 id="cog" data-has-heading-anchor="true">
+    The settings menu
+  <a href="/articles/documentation/channels-inventory-mapping/a/cog" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/channels-inventory-mapping/a/cog&#39;,this);"></a></h2>
+  <p style="text-align: justify;">
+    <i class="fas fa-map-marker-edit"></i><span class="fa fa-map-marker-edit"></span><span class="fa fa-comment-edit"></span>Clicking on the cog&nbsp;<span class="fa fa-cog">&nbsp;</span>icon will open a menu with the following options:
+  </p>
+  <ul>
+    <li style="text-align: justify;"><b>Link All By:
+      </b><ul>
+        <li style="text-align: justify;"><b>SKU:</b>&nbsp;This automatically maps any listings in the grid to Linnworks stock items where the listing SKU matches the Linnworks SKU.&nbsp;
+        </li>
+      </ul>
+    </li>
+    <li style="text-align: justify;"><b>Choose channel inventory filters:
+      </b><ul>
+        <li style="text-align: justify;"><b>All:&nbsp;</b>Display all channel listings whether they link to Linnworks inventory items or not.&nbsp;
+        </li>
+        <li style="text-align: justify;"><b>Linked:&nbsp;</b>Only display channel listings that are linked to Linnworks inventory items.&nbsp;
+        </li>
+        <li style="text-align: justify;"><b>Unlinked:</b>&nbsp;Only display channel listings that are NOT linked to Linnworks inventory items.
+        </li>
+      </ul>
+    </li>
+    <li style="text-align: justify;"><b>Choose columns:</b>&nbsp;Ticking the options in the following menu will display or hide that column on the inventory mapping screen.&nbsp;
+      <ul>
+        <li style="text-align: justify;">Ignore:&nbsp;When ticked, Linnworks will ignore the listing when synchronizing inventory and will not send a revised stock level to the listing if the available quantity in Linnworks changes.&nbsp;This option is valid for all channels except for eBay. For eBay, Ignore Sync will apply to all listings with the same Channel SKU, not just a specific listing. Use the <i><a href="/articles/documentation/ebay-strike-off-cancel-pending-relist" onclick="return n(&#39;!documentation/ebay-strike-off-cancel-pending-relist&#39;,this);">Strike Off</a></i> functionality to break the connection between Linnworks inventory and a specific eBay listing. &nbsp;
+        </li>
+        <li style="text-align: justify;"><b>SKU:</b> This is the Stock Keeping Unit (SKU) identifier defined on the channel listing.&nbsp;
+        </li>
+        <li style="text-align: justify;"><b>Channel Title:</b> The channel listing title.
+        </li>
+        <li style="text-align: justify;"><b>FBA:</b>&nbsp;This indicator shows if the listing is a listing Fulfilled by Amazon. Because you cannot change the fulfillment status of a listing in Linnworks directly, this is just an indicator and not an on-screen control. By default, an FBA item is also marked as ignored. Note that this menu option is only available for Amazon channels.&nbsp;
+        </li>
+        <li style="text-align: justify;"><b>Linnworks SKU:</b> This is the SKU of the Linnworks inventory item mapped to the listing.&nbsp;
+        </li>
+        <li style="text-align: justify;"><b>Linnworks Title: </b>This is the title of the Linnworks inventory item mapped to the listing.&nbsp;
+        </li>
+        <li style="text-align: justify;"><b>Max Listed:&nbsp;</b>If this value is greater than zero, then this is the highest quantity Linnworks will ever submit to the channel. More details on this feature can be found <a href="/articles/documentation/channels-inventory-updates/a/max-listed" onclick="return n(&#39;!documentation/channels-inventory-updates/a/max-listed&#39;,this);">here</a>.&nbsp;
+        </li>
+        <li style="text-align: justify;"><b>End When:&nbsp;</b>If this value is greater than zero, then Linnworks will end the listing when the available drops to this value. More details on this feature can be found <a href="/articles/documentation/channels-inventory-updates/a/end-when" onclick="return n(&#39;!documentation/channels-inventory-updates/a/end-when&#39;,this);">here</a>.&nbsp;
+        </li>
+        <li style="text-align: justify;"><b>Stock Percentage:</b>&nbsp;If this value is greater than zero, then Linnworks will submit the percentage of available stock to the channel. More details on this feature can be found <a href="/articles/documentation/channels-inventory-updates/a/stock-percentage" onclick="return n(&#39;!documentation/channels-inventory-updates/a/stock-percentage&#39;,this);">here</a>.&nbsp;
+        </li>
+        <li style="text-align: justify;"><b>Last Update:</b>&nbsp;Available for Amazon. It shows when the last update was sent to the channel from Linnworks.&nbsp;
+        </li>
+        <li style="text-align: justify;"><b>Mapped by:</b>&nbsp;Available for eBay. Shows which method was used to map SKU and listing.&nbsp;
+        </li>
+        <li style="text-align: justify;"><b>Pending:&nbsp;</b>Available for eBay. Shows if a listing has Pending Relist status.&nbsp;
+        </li>
+      </ul>
+    </li>
+    <li style="text-align: justify;">
+      <b>View logs:</b> This option is only available for eBay channel integrations. It opens the <i>eBay logs</i> screen where you can strike off eBay listings or cancel the pending relist status of the listings. For full information, see the dedicated guide <a href="/articles/documentation/ebay-strike-off-cancel-pending-relist" onclick="return n(&#39;!documentation/ebay-strike-off-cancel-pending-relist&#39;,this);">here</a>.
+    </li>
+  </ul>
+  <h2 id="howtomap" data-has-heading-anchor="true">
+    Mapping inventory
+  <a href="/articles/documentation/channels-inventory-mapping/a/howtomap" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/channels-inventory-mapping/a/howtomap&#39;,this);"></a></h2>
+  <p class="alert-warning" style="border-color: #ffffff; margin-top: 0px; margin-bottom: 0px;">
+    <span style="font-weight: normal;"><b><span class="fa fa-pen-square icon-background-yellow"></span>&nbsp;Note:&nbsp;</b></span>Listings can only be mapped to Linnworks inventory if the listing has a&nbsp;<strong>Channel SKU</strong>. Variation Parent SKUs and virtual/digital items will not appear on the mapping screen.<strong style="font-size: 10px;">
+    <br/>
+    </strong>
+  </p>
+  <p style="text-align: justify;">
+    There are several ways for mapping inventory to channel listings depending on the setup of your listing SKUs and inventory in Linnworks.
+  </p>
+  <h3 id="h4__1504521388" style="" data-has-heading-anchor="true">
+    1. Link all by SKU
+  <a href="/articles/documentation/channels-inventory-mapping/a/h4__1504521388" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/channels-inventory-mapping/a/h4__1504521388&#39;,this);"></a></h3>
+  <p style="text-align: justify;">
+    This is the easiest and fastest way to use if the Channel SKUs match Linnworks SKUs. Click&nbsp;the&nbsp;<span class="fa fa-cog">&nbsp;</span>menu &gt; <i>Link all by &gt; SKU, </i>to link all items by SKU.&nbsp;Listings that have an existing matching Linnworks SKU display a&nbsp;yellow&nbsp;box in the rightmost column.&nbsp;&nbsp;
+  </p>
+  <p>
+    <img src="/resources/Storage/documentation/Screenshots/Channels/LinkAllBy-SKU.png" alt="Link All by SKU" class="leftAlone" loading="lazy"/>
+  </p>
+  <p>
+    Once the linking job is complete, the <i>Inventory Mapping</i> screen will display a pop-up window displaying how many items were successfully linked.&nbsp;
+  </p>
+  <p>
+    <img src="/resources/Storage/documentation/Screenshots/Channels/LinkingJobIsComplete.png" alt="Inventory Mapping - Linking Job Is Complete" class="leftAlone" loading="lazy"/></p>
+  <h4 style="" id="h4_1759825364" data-has-heading-anchor="true">Auto-link by SKU on channel level<a href="/articles/documentation/channels-inventory-mapping/a/h4_1759825364" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/channels-inventory-mapping/a/h4_1759825364&#39;,this);"></a></h4>
+  <p>You can configure each channel integration to automatically link your inventory items during <b>order downloads</b> or when the automatic <b>mapping sync</b> runs. This can be set up in two ways:&nbsp;</p><p><b>1. During initial integration&nbsp;(when first integrating a sales channel with Linnworks)</b></p><p>Every <a href="/articles/documentation/channel-integrations" onclick="return n(&#39;!documentation/channel-integrations&#39;,this);">sales channel available for integration with Linnworks</a> has a dedicated guide on completing the integration. The final step in the integration process for any channel is configuring additional settings, including the <b><i>Auto-link by SKU</i></b> setting.&nbsp;</p><p class="alert-success"><b><span class="fa fa-info-circle icon-background-blue"></span>&nbsp;Info:</b>&nbsp;For some channels, the <i>Auto-link by SKU</i> setting cannot be enabled during the initial integration. However, you can turn it on later from the channel’s configuration page, as explained below.&nbsp;</p><p><img src="/resources/Storage/documentation/Screenshots/Channels/image%20%283%29.png" alt="Channels - Auto-link by SKU" class="size-75" loading="lazy"/></p><p>If enabled, when an <b>order is downloaded</b> into Linnworks and the channel SKU is not found, the system will attempt to match it with a Linnworks SKU. If a match is found, the channel SKU is automatically added to the corresponding Linnworks SKU (under <i><a href="/articles/documentation/product-details-channel-sku" onclick="return n(&#39;!documentation/product-details-channel-sku&#39;,this);">Edit Product Details &gt; Channel SKU</a></i>). Once the items are linked, the <a href="/articles/documentation/channels-inventory-updates" onclick="return n(&#39;!documentation/channels-inventory-updates&#39;,this);">inventory sync</a> is triggered.&nbsp;</p><p>With this setting enabled, the system also checks if items are correctly linked during the <b>mapping sync</b>, which runs approximately every 12 hours. At the end of the sync, Linnworks initiates the <i>Auto-link by SKU</i> feature, which is the same <i><a href="/articles/documentation/channels-inventory-mapping/a/h4__1504521388" onclick="return n(&#39;!documentation/channels-inventory-mapping/a/h4__1504521388&#39;,this);">Link all by SKU</a></i> feature from the <i>Mapping</i> screen but is enabled at the channel configuration level. This compares Linnworks SKUs to channel SKUs, and if a match is found, the system links them and triggers the <a href="/articles/documentation/channels-inventory-updates" onclick="return n(&#39;!documentation/channels-inventory-updates&#39;,this);">inventory sync</a>.&nbsp;</p><p><b>2. During configuration (at any time after integration)</b></p><p>If you would like to start using this feature for sales channels already integrated with Linnworks, you can enable it individually for each channel in the <i>Edit Channel Details</i> screen. To do that:&nbsp;</p><ol><li>Go to <i>Settings &gt; Channel Integration</i>.</li><li>In the&nbsp;<i>Channel Integrations</i>&nbsp;screen, search for the required  channel integration and click the&nbsp;<i>Edit</i>&nbsp;icon.<br/><img src="/resources/Storage/documentation/Screenshots/SkuVault%20OMS/SkuVaultOMS-ChannelIntegration-EditChannel.png" style="" alt="Inventory Mapping - Edit Channel Details" class="leftAlone" loading="lazy"/></li><li>The <i>Edit Channel</i> screen will open. Scroll down to the <i>Listings</i> section and <u>enable</u>&nbsp;<b><i>Auto-link by SKU</i></b>.<br/><img src="/resources/Storage/documentation/Screenshots/Channels/InventoryMapping-Auto-link%20by%20SKU.png" alt="Inventory Mapping - Auto-link by SKU" class="size-75" loading="lazy"/></li><li>Save the changes.</li></ol><p>Now, the <i>Auto-link by SKU</i> feature will function during both order downloads and mapping syncs, as explained above.</p><h3 id="h4_108790570" style="" data-has-heading-anchor="true">
+    2. Manual mapping
+  <a href="/articles/documentation/channels-inventory-mapping/a/h4_108790570" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/channels-inventory-mapping/a/h4_108790570&#39;,this);"></a></h3>
+  <p style="text-align: justify;">
+    Manual mapping involves using the mapping screen to find both an individual listing and an appropriate Linnworks stock item, then manually clicking the link button to link them together.
+  </p>
+  
+  <p style="text-align: justify;">
+    <span><span>To manually map your listings.</span></span>&nbsp;
+  </p>
+  <p style="text-align: justify;">
+    <span><img src="/resources/Storage/documentation/Screenshots/Channels/ChannelMapping-manual.png" alt="Channel Mapping Manual Mapping" class="leftAlone" loading="lazy"/></span>&nbsp;
+  </p>
+  <ol>
+    <li style="text-align: justify;">
+      Search for the listing you want to map using the search box at the top left.
+    </li>
+    <li style="text-align: justify;">
+      Select the listing by clicking on the row.
+    </li>
+    <li style="text-align: justify;">
+      Search for a Linnworks stock item using the search box at the top right.
+    </li>
+    <li>
+      <p style="text-align: justify;">
+        <span>Click the&nbsp;</span><span style="font-weight: normal;" class="btn-old-gray"><span class="fa fa-link">&nbsp;</span>Link</span><span><span>&nbsp;button.</span></span>
+      </p>
+    </li>
+  </ol>
+  <h3 style="text-align: justify;" id="h4_1125247329" data-has-heading-anchor="true">
+    <span><span>3. Creating Linnworks stock items from channel listings</span></span>
+  <a href="/articles/documentation/channels-inventory-mapping/a/h4_1125247329" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/channels-inventory-mapping/a/h4_1125247329&#39;,this);"></a></h3>
+  <p style="text-align: justify;">
+    If Linnworks does not find an SKU in inventory that matches the Channel SKU, it is possible to create a new stock item with a matching SKU&nbsp;from the mapping screen. This is indicated with the button <span class="btn-old-gray"><span class="fa fa-plus">&nbsp;</span>Create</span>.
+  </p>
+  <p>
+    <img src="/resources/Storage/documentation/Screenshots/Channels/ChannelMapping-create.png" alt="Channel Mapping Create" class="leftAlone" loading="lazy"/>
+  </p>
+  <p style="text-align: justify;">
+    To create a stock item from a channel listing:
+  </p>
+  <ol>
+    <li style="text-align: justify;">
+      Click <span class="btn-old-gray"><span class="fa fa-plus">&nbsp;</span>Create</span>
+    </li>
+    <li style="text-align: justify;">
+      The <i>Create new item&nbsp;</i>pop-up window will open and is&nbsp;pre-populated with data taken from the channel listing&nbsp;and can be customized whether required.
+    </li>
+  </ol>
+  <p>
+    <img src="/resources/Storage/documentation/Screenshots/Channels/ChannelMappingCreate-save.png" alt="Channel Mapping Create Save" class="leftAlone" loading="lazy"/>
+  </p>
+  <ul>
+    <li style="text-align: justify;">
+      <strong>Item Number:</strong>&nbsp;Also known as SKU, is a unique identifier so that the item can be identified in Linnworks.&nbsp;
+    </li>
+    <li style="text-align: justify;">
+      <strong>Item Title:</strong>&nbsp;This is the title that will be given to the stock item in Linnworks.
+    </li>
+    <li style="text-align: justify;">
+      <strong>Quantity:</strong>&nbsp;This is the current stock level at the location defined in the dropdown box.
+    </li>
+    <li style="text-align: justify;">
+      <strong>Location:</strong>&nbsp;This&nbsp;drop-down&nbsp;menu will display all&nbsp;<a href="/articles/documentation/inventory-locations" onclick="return n(&#39;!documentation/inventory-locations&#39;,this);">locations</a>&nbsp;defined in Linnworks, including fulfillment centers. Select the one where you want to create your item.
+    </li>
+  </ul>
+  <p style="text-align: justify;">
+    Once you are happy with the data, click&nbsp;<span style="font-weight: normal;" class="btn-old-blue"><span class="fa fa-save">&nbsp;</span>Save</span>&nbsp;to return to the <em>Inventory Mapping</em> screen or&nbsp;<em>Save &amp; Edit</em>, this&nbsp;will generate the stock item and then open the&nbsp;<a href="/articles/documentation/product-details" onclick="return n(&#39;!documentation/product-details&#39;,this);">Product Details</a>&nbsp;window where further details can be specified.
+  </p>
+  <h3 style="text-align: justify;" id="h4__2039164342" data-has-heading-anchor="true">
+    4. Stock Item Linking Import
+  <a href="/articles/documentation/channels-inventory-mapping/a/h4__2039164342" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/channels-inventory-mapping/a/h4__2039164342&#39;,this);"></a></h3>
+  <p style="text-align: justify;">
+    Import is an alternative to <em>Link All by SKU</em> option as it allows to link many items in bulk. Additionally, the import allows linking Channel SKUs without matching Linnworks inventory items in bulk.&nbsp;
+  </p>
+  <p style="text-align: justify;">
+    To run the import, create a CSV file with four columns specifying Channel SKU, Linnworks SKU, Source, and Subsource. For details and example files, check the <a href="/articles/documentation/import-sku-linking" onclick="return n(&#39;!documentation/import-sku-linking&#39;,this);">Stock Item Linking Import</a> guide.</p>
+  <h2 id="howtounlink" data-has-heading-anchor="true">
+    Unlinking inventory
+  <a href="/articles/documentation/channels-inventory-mapping/a/howtounlink" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/channels-inventory-mapping/a/howtounlink&#39;,this);"></a></h2>
+  <h3 id="h4__1113074566" style="" data-has-heading-anchor="true">
+    1. Removing Links manually
+  <a href="/articles/documentation/channels-inventory-mapping/a/h4__1113074566" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/channels-inventory-mapping/a/h4__1113074566&#39;,this);"></a></h3>
+  <p style="text-align: justify;">
+    Once a listing has been mapped to a stock item, it is possible to unlink them manually.&nbsp;
+  </p>
+  <p>
+    <img src="/resources/Storage/documentation/Screenshots/Channels/ChannelMapping-unlink.png" alt="Channel Mapping Unlink" class="leftAlone" loading="lazy"/>
+  </p>
+  <ol>
+    <li style="text-align: justify;">
+      Search for the listing&nbsp;using the search box at the top left.
+    </li>
+    <li style="text-align: justify;">
+      Click the green&nbsp;<span class="btn-old-gray"><span class="fa fa-unlink">&nbsp;</span>Unlink</span> button.
+    </li>
+  </ol>
+  <div class="alert-warning" style="border-color: #ffffff;">
+    <span style="font-weight: normal;"><b><span class="fa fa-pen-square icon-background-yellow"></span>&nbsp;Note:&nbsp;</b></span>Unlinking a stock item from one <span style="font-weight: normal;"><b>eBay </b></span>listing will also unlink any other eBay listings that share identical channel SKUs.For example, if an item is listed on both eBay UK and DE with the same channel SKU, removing the link between the stock item and the UK listing will also remove the connection between the stock item and the DE listing.
+  </div>
+  <h3 style="text-align: justify;" id="h4_299149833" data-has-heading-anchor="true">
+    2. Delete Stock Item Linking Import
+  <a href="/articles/documentation/channels-inventory-mapping/a/h4_299149833" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/channels-inventory-mapping/a/h4_299149833&#39;,this);"></a></h3>
+  <p style="text-align: justify;">
+    To remove&nbsp;inventory linking in bulk, use the <i><a href="/articles/documentation/import-delete-sku-linking" onclick="return n(&#39;!documentation/import-delete-sku-linking&#39;,this);">Delete Stock Item Linking</a> </i>import. To run the import, create a CSV file with three columns specifying the Channel SKU to unlink, the Source, and Subsource.&nbsp;For details check&nbsp;the&nbsp;<a href="/articles/documentation/import-delete-sku-linking" onclick="return n(&#39;!documentation/import-delete-sku-linking&#39;,this);">Delete Stock Item Linking</a>&nbsp;guide.
+  </p>
+  <p style="text-align: justify;">
+    To unlink all items on the channel at once, download a list of all channel SKUs from <em>Dashboards &gt; Query Data&nbsp; &gt; Query Type: Channel SKUs</em>. This report will display all Channel SKUs and their linked Linnworks SKUs.
+  </p>
+  <p>
+    <img src="/resources/Storage/documentation/Screenshots/Channels/QD-ChannelSKUs.png" alt="Query Data Channel SKUs" class="leftAlone" loading="lazy"/>
+  </p>
+  <p style="text-align: justify;">
+  </p>
+  <h2 id="Refreshing" data-has-heading-anchor="true">
+    Refreshing the mapping screen
+  <a href="/articles/documentation/channels-inventory-mapping/a/Refreshing" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/channels-inventory-mapping/a/Refreshing&#39;,this);"></a></h2>
+  <p style="text-align: justify;">
+    When you make&nbsp;changes to your listings (e.g. updating the SKU or title) or create a new listing directly on the channel, it may take some time for the <i>Channel Mapping</i> screen to reflect these changes automatically.</p>
+  <p style="text-align: justify;">If you have made a significant amount of listing changes directly on the channel, you may want to request an update to the <i>Mapping</i> screen manually. This can be done for each channel individually in&nbsp;<em>Settings &gt; Channel Integration &gt; Edit Channel &gt; Listings.</em>
+  </p>
+  <p>
+    <img src="/resources/Storage/documentation/Screenshots/Channels/Inventory%20Mapping%20-%20Download%20Listings.png" alt="Channel Mapping Download Listings" class="size-50" style="" loading="lazy"/>
+  </p>
+  <p style="text-align: justify;">
+    <span>For eBay specifically,&nbsp;</span><span class="btn-gray">Download listings</span><span>&nbsp;also triggers an inventory check. Linnworks will compare current stock levels in the system to the last sent data, and if there are any differences, new updates are sent to the channel. For this reason, a limit is added -&nbsp;<i>Download Listings</i> for eBay can be clicked only once every 12 hours.</span>
+  </p>
+  <h4 style="text-align: justify;" id="h4__1394462741" data-has-heading-anchor="true"><span>Download listings &amp; Auto-link by SKU</span>
+  <a href="/articles/documentation/channels-inventory-mapping/a/h4__1394462741" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/channels-inventory-mapping/a/h4__1394462741&#39;,this);"></a></h4>
+  <p><span>If you download listings for your channels with the <i>Auto-link by SKU</i> setting enabled, it will update the <i>Channel Mapping</i> screen with missing listings (channel SKUs) and, in addition, automatically link matching channel SKUs to Linnworks SKUs. Once linked, the <a href="/articles/documentation/channels-inventory-updates" onclick="return n(&#39;!documentation/channels-inventory-updates&#39;,this);">inventory sync</a> will be triggered. <a href="/articles/documentation/channels-inventory-mapping/a/h4_1759825364" onclick="return n(&#39;!documentation/channels-inventory-mapping/a/h4_1759825364&#39;,this);">See here</a> for a detailed explanation of how the <i>Auto-link by SKU</i> feature works.&nbsp;</span>
+  </p><h2 id="specialcriteria" data-has-heading-anchor="true">
+    Special criteria
+  <a href="/articles/documentation/channels-inventory-mapping/a/specialcriteria" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/channels-inventory-mapping/a/specialcriteria&#39;,this);"></a></h2>
+  <p style="text-align: justify;">
+    In general, for all channels that support<i>&nbsp;Inventory Mapping</i>, the feature works similarly. However, some channels require additional steps to be taken on the channel directly or have specifics that must be kept in mind while working with&nbsp;<i>Inventory Mapping&nbsp;</i>for the channel.
+  </p>
+  <h4 id="h4_1040619576" data-has-heading-anchor="true">
+    Amazon Vendor
+  <a href="/articles/documentation/channels-inventory-mapping/a/h4_1040619576" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/channels-inventory-mapping/a/h4_1040619576&#39;,this);"></a></h4>
+  <p>
+    In Amazon Vendor integration, two features are supported - <i>Retail Procurement</i> and <i>Direct Fulfillment</i>. However, both features cannot be mapped via the <i>Channel Mapping</i> screen since Amazon does not provide APIs for those features. The following <a href="/articles/documentation/amazon-vendor-central-rules-guidlines" onclick="return n(&#39;!documentation/amazon-vendor-central-rules-guidlines&#39;,this);">guide</a> details how to link inventory for Amazon Vendor integration.
+  </p>
+  <h4 id="h4__1106926564" data-has-heading-anchor="true">
+    Kaufland
+  <a href="/articles/documentation/channels-inventory-mapping/a/h4__1106926564" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/channels-inventory-mapping/a/h4__1106926564&#39;,this);"></a></h4>
+  <p>
+    Orders downloaded from Kaufland require an SKU for Linnworks to assign the order items correctly. Instead of SKUs,&nbsp;Kaufland uses two&nbsp;product identifiers. See <a href="/articles/documentation/kaufland-rules/a/ProductId" onclick="return n(&#39;!documentation/kaufland-rules/a/ProductId&#39;,this);">here for full instructions</a> on how to work with these identifiers.</p>
+  <h4 style="text-align: justify;" id="h4__698100419" data-has-heading-anchor="true">
+    Magento 2
+  <a href="/articles/documentation/channels-inventory-mapping/a/h4__698100419" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/channels-inventory-mapping/a/h4__698100419&#39;,this);"></a></h4>
+  <div class="alert-warning" style="text-align: justify;">
+    <strong><span class="fa fa-info-circle icon-background-yellow"></span>&nbsp;Important:</strong>&nbsp;Due to some API limitations on the Magento side, we recommend<strong> not to use forward slashes</strong>&nbsp;(/) <strong>and percentage signs&nbsp;</strong>(%) in your Channel SKUs on Magento 2. Magento 2 API cannot parse SKUs with / correctly, and stock level and price updates will fail. Please see <a rel="noopener" href="https://help.linnworks.com/support/solutions/articles/7000016449" target="_blank">here</a> for further details.
+  </div>
+  <p style="text-align: justify;">
+    Magento 2 channel uses Reference IDs in addition to SKUs, allowing previously deleted SKUs to be recreated. To keep track of these cases and avoid duplicates, the <i>Inventory Mapping</i> for these channels has an additional field <i>Reference ID,&nbsp;</i>and these references are checked in addition to SKUs during listing download.
+  </p>
+  <p style="text-align: justify;">
+    Additionally, items will not appear on the mapping screen if:
+  </p>
+  <ul>
+    <li style="text-align: justify;">
+      The Product SKU of one item matches the Reference ID of another item.
+    </li>
+    <li style="text-align: justify;">
+      The item has a stock level of 0 on the Magento backend.
+    </li>
+  </ul>
+</div>
+<p>
+  For further details on the above matters, please see the Rules &amp; Guidelines sections of Magento 2.
+</p>
+<h4 id="h4_219203653" data-has-heading-anchor="true">
+  Newegg
+<a href="/articles/documentation/channels-inventory-mapping/a/h4_219203653" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/channels-inventory-mapping/a/h4_219203653&#39;,this);"></a></h4>
+<p>
+  Due to a limitation in the Newegg API, Linnworks cannot download the titles of the listings on Newegg. The SKU is downloaded and so as long as the SKU matches a Linnworks SKU, it can be mapped using <i>Link all by</i>.</p>
+<h4 id="h4__1546472769" data-has-heading-anchor="true">Wayfair&nbsp;<a href="/articles/documentation/channels-inventory-mapping/a/h4__1546472769" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/channels-inventory-mapping/a/h4__1546472769&#39;,this);"></a></h4><p>The I<i>nventory Mapping</i> screen is no longer supported for Wayfair due to  API limitations. Inventory mapping for Wayfair must now be done using a <a href="/articles/documentation/channels-inventory-mapping/a/h4__2039164342" target="_blank" onclick="return n(&#39;!documentation/channels-inventory-mapping/a/h4__2039164342&#39;,this);">data import</a>. Please refer to the <i><a href="/articles/documentation/import-sku-linking" target="_blank" onclick="return n(&#39;!documentation/import-sku-linking&#39;,this);">Stock Item Linking Import</a></i> guide for instructions.&nbsp;</p>
+<p><span style="font-size: 20px; font-weight: 600; text-align: left;">WooCommerce</span></p>
+<p>
+  WooCommerce offers a range of configurable options for products on WooCommerce directly. Not all the options are compatible with the Linnworks Inventory Mapping feature. <a href="/articles/documentation/woocommerce-rules/a/mapping" onclick="return n(&#39;!documentation/woocommerce-rules/a/mapping&#39;,this);">Check here</a> for the criteria both single items and variations must meet in order for the products to be available for linking in Linnworks.
+</p>
+<h4 id="h4_1529873738" data-has-heading-anchor="true">
+  See also:
+<a href="/articles/documentation/channels-inventory-mapping/a/h4_1529873738" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/channels-inventory-mapping/a/h4_1529873738&#39;,this);"></a></h4>
+<ul>
+  <li>
+    <a href="/articles/documentation/channels-inventory-updates" onclick="return n(&#39;!documentation/channels-inventory-updates&#39;,this);">Inventory Updates</a>
+  </li>
+  <li>
+    <a href="/articles/documentation/channels-location-mapping" onclick="return n(&#39;!documentation/channels-location-mapping&#39;,this);">Location Mapping</a><a href="/articles/documentation/channels-inventory-updates" onclick="return n(&#39;!documentation/channels-inventory-updates&#39;,this);">
+    <br/>
+    </a>
+  </li>
+</ul></body></html>

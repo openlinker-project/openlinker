@@ -1,0 +1,140 @@
+=== how-to-generate-pickwave | Step 1: Generate Pickwave in Linnworks.net
+ 
+ Step 1: Generate Pickwave in Linnworks.net 
+ How to Generate Pickwaves in Linnworks.net
+ In Linnworks, two screens allow generating pickwaves: Open Orders and Warehouse Transfers . Regarding warehouse transfers, you can generate pickwaves for stock requests or FBA transfers (FBA Inbound Shipments) . Stock transfers  do not support pickwaves at the moment. See this guide for the difference between a stock transfer and a stock request.
+ This guide covers all the instructions on generating pickwaves for orders, warehouse transfers (stock requests), or FBA transfers.
+ Open Orders Screen
+ In this part of the guide, you will learn how to generate pickwaves in the Open Orders screen.
+ Info! Only the new Open Orders screen supports pickwaves. 
+ How to generate a pickwave in Open Orders
+ In Orders >  Open Orders , you can select orders and create pickwaves for each picker so they can follow their devices' instructions and pick the correct items.
+ To generate a pickwave:
+ Go to Orders > Open Orders .
+ Select orders > Action (or right-click orders) >  Pickwaves  >  Generate pickwave.
+ In the  Generate Pickwave  screen, you will see three sections:
+ Validation 
+ Pickwave options 
+ User assignment 
+ Validation
+ Orders need to meet the following criteria to be added to a pickwave:
+Not locked
+Not parked
+Not added to a pickwave
+ The following identifiers in  Open Orders  will indicate that the order was already added to pickwave: 
+  - This order identifier shows that the order is already added to a pickwave. 
+  - This order identifier shows that the pickwave for this order is already completed.
+ If any order fails the validation, you can fix the order or enable the Generate without these orders setting to exclude such orders from a pickwave.
+ Pickwave options 
+ Pickwave grouping type
+ In the  Pickwave Options  section, select a  Pickwave grouping type  to group the items in the pickwave by:
+ Items: This groups a pickwave by items. With the  Warehouse Management  functionality enabled, the pickwave will be sorted by the routing sequence of binracks. 
+ Orders: This groups a pickwave by orders. Single-item orders will be added to the pickwave first, followed by multi-item orders.
+ Sort orders by 
+ When the Pickwave Grouping Type is set to Orders , you can also choose how to sort the orders in the pickwave: 
+ By Bin/Priority: This is the default sorting. The sequence of orders in the pickwave is determined first by Order ID and then by order item properties such as Routing Sequence, Binrack, and SKU. 
+ By Order View:  The sequence of orders in the pickwave will match the sort order of the view from which the pickwave was created. 
+ Print invoices 
+ Enable the  Print Invoices  box if you want to print invoices for orders once the pickwave has been generated. The  Invoice Template  needs to be set up in  Settings > Template Designer .
+ Max per pickwave type
+ These splitting options allow you to select more orders and split those orders down into separate pickwaves. 
+ Unlimited : This will put all orders into one pickwave.
+ Orders : When selected, the  Max per pickwave  field will become available, where you can enter  the number of orders per pickwave. 
+ SKUs : When selected, the  Max per pickwave  field will become available, where you can enter  the number of SKUs per pickwave .
+ Order item quantity : When selected, the  Max per pickwave  field will become available, where you can enter  the number of items per pickwave .
+ In the generated pickwave, orders are sorted in the sequence by: 
+ Routing sequence  (for  warehouse-managed  locations only)
+Binrack
+ SKU
+ Order id
+ To understand how the above sorting works, check the example below. If we gave a sort number to each order row, it would be:
+Order 1
+Item 1 Binrack Z, SKU A (Sort 4)
+Item 2 Binrack F, SKU B (Sort 3)
+Order 2
+Item 1 Binrack A, SKU A (Sort 1)
+Item 2 Binrack A, SKU A (Sort 2)
+ Split orders over pickwaves 
+ This box is available for  SKUs  and  Order item quantity  max per pickwave type:
+When this box is ticked, the system sorts rows by routing sequence ( Warehouse Management only), binrack, and order id, then creates pickwaves by adding up the row quantities and putting them into separate pickwaves.
+When this box is unticked, it will do the above, but where the order contains more than one item, it will add this order to the same pickwave.
+If there is not enough space to fit the next item, a new pickwave will be created even if there is space.
+If there is insufficient space to fit an item, it will still be added to a pickwave. For example, if the quantity is ten and the order item quantity is 20, this will get its pickwave of 20 items.
+ Note!  All these settings are saved at a user level. 
+ Pickwave identifiers 
+ The Pickwave identifiers drop-down menu allows you to choose a unique label for a pickwave. This label makes it easier to find and select the right pickwave on a mobile device when you are working on it. A full guide on how to use pickwave identifiers is here .
+ Note that currently, pickwave identifiers can be assigned to  order pickwaves  only.
+ User assignment
+ Note!  A pickwave can be assigned to only one user . The same user can have several pickwaves assigned to them.
+ In this section, you can select the following options:
+ Unallocated : If you select this option, a pickwave will be added to the general list of pickwaves. Any warehouse picker can allocate this pickwave to themselves via Linnworks Mobile.
+ Specific user : Assign a pickwave to a specific user.
+ Before assigning a user, you can review on the screen the additional details on how many pickwaves are already assigned to users, are unallocated, and how many orders remain to be picked by a user. This helps to make a well-informed decision. 
+ Generate a pickwave 
+ Once everything is set up, you can use the following buttons to preview and then generate pickwaves:
+ Preview pickwaves  - Use this button to preview pickwaves info. A search box covers an order id, binrack, SKU, title, and batch number search.
+ Note!  A  number against the pickwave in this screen is not the final ID of the pickwave. It is just a distinction between pickwaves to be generated.
+ Generate X pickwaves  - Use this button to generate pickwaves. The button shows the number of pickwaves that will be generated.
+ Cancel  - Use this button when you need to cancel the pickwaves creation. 
+ After the above is finished, a warehouse worker will receive a pickwave and can  complete it in Linnworks Mobile .
+ Delete from a pickwave
+ Selecting the same orders and clicking the Delete from pickwave option will remove these orders from a pickwave.
+ Warehouse Transfer Screen 
+ In this part of the guide, we will explain how to generate pickwaves for stock requests and FBA transfers. In Linnworks Mobile, these are called Stock Pickwaves .
+ Info!  The Warehouse Transfer screen allows generating pickwaves for Stock Requests  and FBA transfers . * Stock Transfers do not support pickwaves. 
+ How to generate a pickwave for Stock Requests 
+ A complete step-by-step guide for creating and completing stock requests in the Warehouse Transfer screen is here . Pickwaves for stock requests can be generated by the warehouse, which will transfer the stock once they accept the request  by clicking on the Accept request button ( step #5 in this guide ).
+ When accepting the stock request, complete the two sub-steps:
+You received a request from another warehouse to transfer the stock. Check whether there is enough stock to fulfill the transfer and click Accept request .
+Enter the quantity into the  Qty sent  field.
+ At the top of the screen, click   Generate pickwave .
+ Info!  Linnworks  does not  allow generating a pickwave with  zero  quantity to send. The following error message will appear if you try it.
+ Pickwave options 
+ Once you click the   Generate pickwave  button, the  Generate Pickwaves  screen will open, allowing you to configure pickwave options:
+ Max per pickwave type : Select one of the three options below:
+ Unlimited : This will add all items into one pickwave.
+ Items : When selected, the  Max per pickwave  field will become available, where you can enter the number of items per pickwave. 
+ SKUs : When selected, the  Max per pickwave  field will become available, where you can enter the number of SKUs per pickwave. 
+ Max per pickwave : This field becomes active and allows you to specify the number of items/SKUs per pickwave when in the  Max per pickwave type  field, you select  Items  or  SKUs .
+ User assignment 
+ On the same  Generate Pickwaves  screen, select a user you want to assign the pickwave to or leave it unallocated. The explanation of these two options is here .
+ The screen also displays information on how many pickwaves are assigned to a user, the total number of items to be picked by that user, and how many items they have already picked. This information helps to make a well-informed decision on the user assignment.
+ Generate a pickwave
+ The final step of generating a pickwave is described  here . It is the same as when generating a pickwave for orders.
+ Once pickwave is generated, it will be sent to the warehouse picker's mobile device to be completed. For instructions on how to complete pickwaves, see this guide .
+ Delete from a pickwave
+ Once you have generated a pickwave, the  Delete from pickwave button will appear at the top left-hand corner of the screen. Use this button to remove items from the pickwave when needed.
+ How to generate a pickwave for FBA Transfers
+ The first step is to find a shipping plan you are ready to pick. The plan has to have already been submitted to Amazon ( step #5 in this guide ). Amazon may have split your shipping plan into multiple smaller shipments. You will be generating pickwaves for each shipment , not the shipping plan. 
+ For the difference between a shipping plan and a shipment, see here . The full workflow of creating and completing FBA transfers is described here .
+ To generate a pickwave for an FBA transfer, follow the steps below:
+ Click     Generate pickwave  button on the respective shipment.
+The  Generate Pickwaves  pop-up window will open, where you need to configure the following:
+ Pickwave options : Refer to this part of the guide to read the description of the available options. 
+ User assignment : Refer to this part of the guide to read the description of the available options.  
+ Clicking on the  Preview Pickwaves  button will open a pickwave preview window where you can check the following info:
+ Reference ID : This is the reference ID of a shipment returned from Amazon. For the difference between a shipping plan and a shipment, see  here .
+ Binrack : A bin where an item is stored in your warehouse.
+ SKU/Title : Linnworks SKU and title of an item.
+ Batch number : A batch number of an item.
+ Quantity : A quantity of an item that needs to be picked in a warehouse.
+ Click  Generate Pickwave .
+ At this point, a pickwave will be generated and sent to the user's mobile scanner, and they can proceed with picking items to be shipped to Amazon. 
+ Delete from a pickwave 
+ Once you generate a pickwave, the  Delete from pickwave button becomes available on the screen. Use this button to delete the generated pickwave when necessary.
+ Pickwaves Screen in Linnworks.net
+ In Linnworks.net, there is an additional  Pickwaves screen accessed from  Orders > Pickwaves . Using this screen, you can overview all existing order pickwaves, check their status, and allocate them to another user.
+   Click to change the view. Pickwaves can be grouped in the columns by status or displayed as a list starting from the oldest.
+   Use one of the filters (status, user, order ID) to display only the pickwaves you need.
+Use the Location drop-down menu to select a location you need to check pickwaves.
+ Click on the pickwave to check if all the items were picked and re-assign to another user.
+ Pickwave statuses
+ Click     at the top right-hand corner of the screen to group pickwaves into columns by the status. There are five statuses that a pickwave can have:
+ Unallocated : A pickwave is unallocated when it is  not assigned to any user  (picker).
+ Allocated : A  pickwave is assigned  to a user (picker) working on this pickwave.
+ In progress : A picker is currently working on the pickwave, meaning some items have been picked for orders.
+ Complete : All the items for the pickwave have been picked.
+ Packing : Once you start processing items from the  Dispatch  screen, the pickwave will get updated with the packing status.
+ Next step: 
+ Step 2: Complete a Pickwave in Linnworks Mobile 
+ 

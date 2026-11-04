@@ -1,0 +1,105 @@
+<!DOCTYPE html><html lang="en-US" dir="ltr"><head><style type="text/css">.ArticleViewer_searchKeywords{background-color: yellow !important;}</style>
+<script type="text/javascript">//<!--
+var articlesServiceUrl='/article/';
+//--></script>
+<link rel="canonical" href="/articles/documentation/inventory-composite-items"/>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.3/css/all.min.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css">
+<script src="https://cdn.jsdelivr.net/npm/jquery@3.5.1/dist/jquery.min.js"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/fancyapps/fancybox@3.5.7/dist/jquery.fancybox.min.css"/>
+<script src="https://cdn.jsdelivr.net/gh/fancyapps/fancybox@3.5.7/dist/jquery.fancybox.min.js"></script><title>Composite items</title><script type="text/javascript">//<!--
+var imgPopupTexts={openInNewWindowText: 'Open in new window', closeText: 'Close'};var articleTitleText='Composite items';
+//--></script><link rel="stylesheet" type="text/css" href="/resources/Styles/documentation/Docs%20CSS.css"/><link rel="stylesheet" type="text/css" href="/resources/Styles/documentation/docs.linnworks-EMS.css"/><link rel="stylesheet" type="text/css" href="/style-bundles/article-published.css?v=1.0.9789.31895"/><script src="/resources/Scripts/documentation/Script.js" type="text/javascript"></script><script src="/script-bundles/article-published.js?v=1.0.9789.31895" type="text/javascript"></script><meta charset="utf-8"><meta http-equiv="Content-Type" content="text/html;charset=utf-8"></head><body><span id="__clhTop"></span><div class="doc-container">
+<h1 id="h1__286329117" data-has-heading-anchor="true">Inventory: Composite Items<a href="/articles/documentation/inventory-composite-items/a/h1__286329117" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/inventory-composite-items/a/h1__286329117&#39;,this);"></a></h1>
+<p style="text-align: justify;">A composite item in Linnworks represents a set of several individual items that are sold together in a combined package. It can be a set of different items or a pack of the same.</p>
+<p style=""><img src="/resources/Storage/documentation/Screenshots/Inventory/MyInventory/EditProductDetails/CompositeItem.png" alt="" class="leftAlone"/></p>
+<p style="text-align: justify;">The composite item consists of a parent SKU - a "virtual item" that represents a group of individual items and single child items that create the group. For example, a Table Set would be a parent SKU consisting&nbsp;of 5 child items - 1 table and 4 chairs. In Linnworks, this <i>Composite Item</i> will look like this:</p>
+<p style=""><img src="/resources/Storage/documentation/Screenshots/Inventory/MyInventory/EditProductDetails/ProductDetails_composition.png" alt="" class="leftAlone"/></p>
+<p style="text-align: justify;">The advantage of creating these items in Linnworks is that Linnworks will calculate the number of available units based on the availability of the child SKUs. Composite items can be listed to sales channels the same way as usual SKUs. When an order is received for a composite item, Linnworks will display the composite and their individual child items. Child SKUs can be listed on the channel independently or as a part of the composite item.</p>
+<div class="doc-container">
+<h4 id="Prerequisites" style="text-align: justify;" data-has-heading-anchor="true">Guidelines and prerequisites for composite item creation<a href="/articles/documentation/inventory-composite-items/a/Prerequisites" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/inventory-composite-items/a/Prerequisites&#39;,this);"></a></h4>
+<p style="text-align: justify;">The creation of Composite Items is simple, but there are several rules to keep in mind:</p>
+<ul style="text-align: justify;">
+<li>All SKUs to be added to a composite SKU must already exist in Linnworks before the creation of the composite SKU (this goes for both the parent SKU and child SKUs).</li>
+<li>Composites cannot contain another composite.</li>
+<li>A composite cannot contain itself.</li>
+<li>The parent SKU must always be set to <em>Not Tracked</em> to calculate its stock based on the available stock of the child SKUs.</li>
+</ul>
+<h4 id="Examples" style="text-align: justify;" data-has-heading-anchor="true">Examples of composites<a href="/articles/documentation/inventory-composite-items/a/Examples" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/inventory-composite-items/a/Examples&#39;,this);"></a></h4>
+<p style="text-align: justify;"><strong>Good examples:</strong></p>
+<ul style="text-align: justify;">
+<li>Front Car Mat Set
+<ul>
+<li>Front Mat Left (x1)</li>
+<li>Front Mat Right (x1)</li>
+</ul>
+</li>
+<li>Rear Car Mat Set
+<ul>
+<li>Rear Mat Left (x1)</li>
+<li>Rear Mat Right (x1)</li>
+</ul>
+</li>
+<li>Full Car Mat Set
+<ul>
+<li>Front Mat Left (x1)</li>
+<li>Front Mat Right (x1)</li>
+<li>Rear Mat Left (x1)</li>
+<li>Rear Mat Right (x1)</li>
+</ul>
+</li>
+</ul>
+<p style="text-align: justify;"><strong>Bad example (not supported):</strong></p>
+<ul style="text-align: justify;">
+<li>A Composite containing composites
+<ul>
+<li>Full Car Mat Set
+<ul>
+<li>Front Car Mat Set (x1)</li>
+<li>Rear Car Mat Set (x1)</li>
+</ul>
+</li>
+</ul>
+</li>
+<li>A Composite of itself
+<ul>
+<li>Front Car Mat (Left)
+<ul>
+<li>Front Car Mat Left (x1)</li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+<h2 style="text-align: justify;" id="h2__1405450936" data-has-heading-anchor="true">How Linnworks uses composite SKUs<a href="/articles/documentation/inventory-composite-items/a/h2__1405450936" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/inventory-composite-items/a/h2__1405450936&#39;,this);"></a></h2>
+<h4 id="Retail" style="text-align: justify;" data-has-heading-anchor="true">Item weight<a href="/articles/documentation/inventory-composite-items/a/Retail" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/inventory-composite-items/a/Retail&#39;,this);"></a></h4>
+<div>Linnworks calculates composite items' weight using the following formula:</div><div><br/></div><ol><li>Linnworks uses a Parent SKU weight if it's set (&lt;0).</li><li>If a Parent SKU weight is not set, Linnworks will use the combined weight of the child SKUs.</li><li>Linnworks never sums or doubles parent and child SKUs, because it would cause an error in the order total.</li></ol><h4 style="text-align: justify;" id="h4_1819960016" data-has-heading-anchor="true">Retail price<a href="/articles/documentation/inventory-composite-items/a/h4_1819960016" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/inventory-composite-items/a/h4_1819960016&#39;,this);"></a></h4>
+<p style="text-align: justify;">Linnworks will not calculate the retail price based on child SKUs. Please set the price for the parent manually in the <em>edit product details</em> window or use a&nbsp;<em>Channel Specific Listing Price</em>. This enables you to set retail prices that offer a discount over ordering all the items separately.</p>
+<h4 style="text-align: justify;" id="h4__1161388733" data-has-heading-anchor="true">Composites in My Inventory<a href="/articles/documentation/inventory-composite-items/a/h4__1161388733" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/inventory-composite-items/a/h4__1161388733&#39;,this);"></a></h4>
+<p style="text-align: justify;">Any composite parent that is either set to <em>Not Tracked</em> or the minimum level is set as '-1' will not display any stock in the <em>In Open Order</em> column. Items making up the composite will display the correct number of orders in the <em>In Open Order</em> column.</p>
+<h4 id="Orders" style="text-align: justify;" data-has-heading-anchor="true">Orders containing composite SKUs<a href="/articles/documentation/inventory-composite-items/a/Orders" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/inventory-composite-items/a/Orders&#39;,this);"></a></h4>
+<p style="text-align: justify;">If an order contains a composite SKU, it will list both the composite SKU and the child items of the composite. In addition to this, the child items will have a sold value of zero. As the retail price is not necessarily the sum of the retail prices for the child SKUs. With this being the case, Linnworks cannot estimate what ratio to split the composite retail price.</p>
+<p style="text-align: justify;">Hovering over an order in <em>Open Orders</em> where there is a composite, the <em>Level</em> and <em>Available level</em> will be equal and <em>In Open Orders</em>&nbsp;column will not display any orders (similar to how this appears in <em>My Inventory</em>), as the stock is only tracked for the child items making up the composite.&nbsp;</p>
+<h4 style="text-align: justify;" id="h4_181169623" data-has-heading-anchor="true">Printing composite item values on shipping labels<a href="/articles/documentation/inventory-composite-items/a/h4_181169623" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/inventory-composite-items/a/h4_181169623&#39;,this);"></a></h4>
+<p style="text-align: justify;">In the previous section, we mentioned that the sold value of composite children will always be 0, but there is one exception to this: when shipping labels are printed, the child item info is provided on them, as these are the actual physical items being shipped. In this case, the value of the composite is split <strong>equally</strong> between the child items. It is not possible to supply the default retail price for the child items, as the sum of these may not reflect the price paid by the buyer.</p>
+<h4 id="Scanning" style="text-align: justify;" data-has-heading-anchor="true">Processing orders that require scanning<a href="/articles/documentation/inventory-composite-items/a/Scanning" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/inventory-composite-items/a/Scanning&#39;,this);"></a></h4>
+<p style="text-align: justify;">In the <em>General Settings &gt; Order Settings</em> menu, there is an option to require scanning for each item before processing. With this ticked, orders containing composites will require the child items to be scanned before the order is processed. If a child item does not contain a barcode, then no scan will be required for that item and the order can be processed by scanning all other items in the order.</p>
+</div>
+</div><script src="/resources/Scripts/lightense.min.js"></script>
+<script>
+  // Init Lightense
+  window.addEventListener('load', function () {
+    Lightense('img.lightense:not(.no-lightense)');
+  }, false);
+</script>
+<script>
+var toggler = document.getElementsByClassName("caret");
+var i;
+
+for (i = 0; i < toggler.length; i++) {
+  toggler[i].addEventListener("click", function() {
+    this.parentElement.querySelector(".nested").classList.toggle("active");
+    this.classList.toggle("caret-down");
+  });
+}
+</script></body></html>

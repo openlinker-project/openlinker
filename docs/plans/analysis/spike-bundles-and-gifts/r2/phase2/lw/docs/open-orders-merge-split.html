@@ -1,0 +1,384 @@
+<!DOCTYPE html><html lang="en-US" dir="ltr"><head><style type="text/css">.ArticleViewer_searchKeywords{background-color: yellow !important;}</style>
+<script type="text/javascript">//<!--
+var articlesServiceUrl='/article/';
+//--></script>
+<link rel="canonical" href="/articles/documentation/open-orders-merge-split"/>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.3/css/all.min.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css">
+<script src="https://cdn.jsdelivr.net/npm/jquery@3.5.1/dist/jquery.min.js"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/fancyapps/fancybox@3.5.7/dist/jquery.fancybox.min.css"/>
+<script src="https://cdn.jsdelivr.net/gh/fancyapps/fancybox@3.5.7/dist/jquery.fancybox.min.js"></script><title>Merge or Split Orders</title><script type="text/javascript">//<!--
+var imgPopupTexts={openInNewWindowText: 'Open in new window', closeText: 'Close'};var articleTitleText='Merge or Split Orders';
+//--></script><link rel="stylesheet" type="text/css" href="/resources/Styles/documentation/Docs%20CSS.css"/><link rel="stylesheet" type="text/css" href="/resources/Styles/documentation/docs.linnworks-EMS.css"/><link rel="stylesheet" type="text/css" href="/style-bundles/article-published.css?v=1.0.9789.31895"/><script src="/resources/Scripts/documentation/Script.js" type="text/javascript"></script><script src="/script-bundles/article-published.js?v=1.0.9789.31895" type="text/javascript"></script><meta charset="utf-8"><meta http-equiv="Content-Type" content="text/html;charset=utf-8"></head><body><span id="__clhTop"></span><div class="doc-container">
+  <h1 id="h1__261908497" data-has-heading-anchor="true">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.3/css/all.min.css"></link>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css"></link>
+Open Orders: How to Merge or Split
+  <a href="/articles/documentation/open-orders-merge-split/a/h1__261908497" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/open-orders-merge-split/a/h1__261908497&#39;,this);"></a></h1>
+  <p style="text-align: justify;">
+    When orders are downloaded into Linnworks, it may be useful to merge multiple orders into a single order to ship items to the buyer more efficiently. In the same way, you can split one big order into multiple orders. This guide provides detailed instructions for both merging and splitting orders using <em>Open Orders</em>.
+  </p>
+  <p style="">
+    <img src="/resources/Storage/documentation/Screenshots/OpenOrders/OpenOrders_MergeSplit.png" alt="" class="leftAlone" style="" loading="lazy"/>
+  </p>
+  <ul style="text-align: justify;">
+  </ul>
+  <h2 id="OpenOrders_Merge" style="text-align: justify;" data-has-heading-anchor="true">
+    Merging orders
+  <a href="/articles/documentation/open-orders-merge-split/a/OpenOrders_Merge" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/open-orders-merge-split/a/OpenOrders_Merge&#39;,this);"></a></h2>
+  <p style="text-align: justify;">
+    In the <em>Open Orders</em> screen, you can merge orders manually or you can enable the setting to automatically merge orders that are from the same customer and selling channel.
+  </p>
+  <h3 id="OpenOrders_MergePrecondition" style="text-align: justify;" data-has-heading-anchor="true">
+    Prerequisites
+  <a href="/articles/documentation/open-orders-merge-split/a/OpenOrders_MergePrecondition" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/open-orders-merge-split/a/OpenOrders_MergePrecondition&#39;,this);"></a></h3>
+  <p style="text-align: justify;">
+    To merge orders automatically or manually, the following prerequisites must be fulfilled:
+  </p>
+  <div class="alert-warning" style="text-align: justify;">
+    <ul>
+      <li style="text-align: justify;">
+        Shipping details such as customer name and address must match (case sensitivity not applied).
+      </li>
+      <li style="text-align: justify;">
+        All orders must be from the same selling channel (source &amp; subsource).
+      </li>
+      <li style="text-align: justify;">
+        All orders must be paid.
+      </li>
+      <li style="text-align: justify;">
+        All orders must have the same currency.
+      </li>
+      <li style="text-align: justify;">
+        All orders must have the same shipping service.
+      </li>
+      <li style="text-align: justify;">A shipping label or invoice is not printed for all orders to be merged.
+        </li>
+    <li style="text-align: justify;">All orders are not locked or parked.</li>
+    <li style="text-align: justify;">All orders must have <b>Address1</b> and <b>FullName</b> filled in and not be empty.
+      </li>
+    </ul>
+  </div>
+  <div class="alert-danger" style="text-align: justify;">
+    <strong>Note!</strong>&nbsp;Orders that are sent to a <a rel="noopener" href="/articles/documentation/inventory-locations-fulfilment-centre" target="_blank" onclick="return n(&#39;!documentation/inventory-locations-fulfilment-centre&#39;,this);">fulfillment center location</a>&nbsp;<strong>can&nbsp;not</strong> be merged.
+  </div>
+  <p style="text-align: justify;">
+    If orders fail to meet the criteria, the following warning message will be displayed before the <em>Merge</em> screen opens:
+  </p>
+  <p style="">
+    <img src="/resources/Storage/documentation/Screenshots/OpenOrders/MergeOrders_warning.png" alt="" class="leftAlone" loading="lazy"/>
+  </p>
+  <p style="text-align: justify;">
+    Orders that cannot be merged will be highlighted in red and the <em>Can Merge</em> column will&nbsp;display the reason.
+  </p>
+  <p style="">
+    <img src="/resources/Storage/documentation/Screenshots/OpenOrders/MergeOrders_error.png" alt="" class="leftAlone" style="" loading="lazy"/>
+  </p>
+  <p style="text-align: justify;">
+    If the merge is not possible for multiple reasons, hover over the error to display full information in a tooltip.
+  </p>
+  <div class="alert-warning" style="text-align: justify;">
+    <strong>Important!</strong> The <em>despatch by</em> date of merged orders gets set to the earliest <em>despatch by</em> date on the original orders.
+  </div>
+  <p style="text-align: justify;">
+    Example:
+  </p>
+  <ol style="text-align: justify;">
+    <li>
+      Order 10001: 21st June 12:12
+    </li>
+    <li>
+      Order 10005: 22nd June 14:46
+    </li>
+  </ol>
+  <p style="text-align: justify;">
+    The despatch by date of the new order will be 21st June 12:12
+  </p>
+  <h2 id="OpenOrders_MergeManually" style="text-align: justify;" data-has-heading-anchor="true">
+    Merging orders manually
+  <a href="/articles/documentation/open-orders-merge-split/a/OpenOrders_MergeManually" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/open-orders-merge-split/a/OpenOrders_MergeManually&#39;,this);"></a></h2>
+  <p style="text-align: justify;">
+    To merge orders manually, follow the steps below.
+  </p>
+  <h4 style="text-align: justify;" id="h4_1112797923" data-has-heading-anchor="true">
+    Step 1
+  <a href="/articles/documentation/open-orders-merge-split/a/h4_1112797923" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/open-orders-merge-split/a/h4_1112797923&#39;,this);"></a></h4>
+  <p style="text-align: justify;">
+    Select the required orders in the <em>Open Orders</em> screen.&nbsp;Click <em>Actions</em>&nbsp;(or right-click orders) and go to <em>Other Actions &gt; Merge Order</em>.&nbsp;
+  </p>
+  <ul>
+    <li class="alert-warning">
+      <strong>Note!&nbsp;</strong>Make sure that the setting&nbsp;that allows merging orders manually is enabled in the <a rel="noopener" href="/articles/documentation/orders-permissions" target="_blank" onclick="return n(&#39;!documentation/orders-permissions&#39;,this);"><em>User Permissions</em></a> screen. Otherwise, this action will be grayed out.
+    </li>
+  </ul>
+  <h4 style="text-align: justify;" id="h4_1516082450" data-has-heading-anchor="true">
+    Step 2
+  <a href="/articles/documentation/open-orders-merge-split/a/h4_1516082450" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/open-orders-merge-split/a/h4_1516082450&#39;,this);"></a></h4>
+  <p style="text-align: justify;">
+    Double-check the details in the <em>Merge Orders</em> screen. If necessary, change the shipping service for the merged order.
+  </p>
+  <p style="">
+    <img src="/resources/Storage/documentation/Screenshots/OpenOrders/MergeOrdersScreen.png" alt="" class="size-75" style="" loading="lazy"/>
+  </p>
+  <h4 style="text-align: justify;" id="h4__50001491" data-has-heading-anchor="true">
+    Step 3
+  <a href="/articles/documentation/open-orders-merge-split/a/h4__50001491" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/open-orders-merge-split/a/h4__50001491&#39;,this);"></a></h4>
+  <p style="text-align: justify;">
+    Click the <em>Merge</em> button.
+  </p>
+  <ul style="text-align: justify;">
+    <li style="text-align: justify;">
+      Orders that are merged will be given a new order id.
+      <br/>
+    </li>
+  </ul>
+</div>
+<div class="doc-container" style="text-align: center;">
+  <img src="/resources/Storage/documentation/Screenshots/OpenOrders/MergedOrder_OrderId.png" alt="" class="leftAlone" style="" loading="lazy"/>
+</div>
+<div class="doc-container">
+  <ul style="text-align: justify;">
+    <li style="text-align: justify;">
+      The <em>reference number</em> and <em>external reference number</em> on the new order will display MERGED.
+      <br/>
+    </li>
+  </ul>
+</div>
+<div class="doc-container" style="text-align: center;">
+  <img src="/resources/Storage/documentation/Screenshots/OpenOrders/MergedOrder_Reference.png" alt="" class="leftAlone" style="" loading="lazy"/>
+</div>
+<div class="doc-container">
+  <ul style="text-align: justify;">
+    <li style="text-align: justify;">
+      Entries about the merge will be added to the<em> History</em> tab.
+      <br/>
+    </li>
+  </ul>
+</div>
+<div class="doc-container" style="text-align: center;">
+  <img src="/resources/Storage/documentation/Screenshots/OpenOrders/MergedOrder_History.png" alt="" class="leftAlone" style="" loading="lazy"/>
+</div>
+<div class="doc-container">
+  <ul style="text-align: justify;">
+    <li style="text-align: justify;">
+      When orders are merged, they will trigger the <a rel="noopener" href="/articles/documentation/rules-engine" target="_blank" onclick="return n(&#39;!documentation/rules-engine&#39;,this);"><em>Rules Engine</em></a> module to run.
+    </li>
+    <li style="text-align: justify;">
+      Similarly, scripts may also be triggered.
+    </li>
+  </ul>
+  <h2 id="OpenOrders_MergeAutomatically" style="text-align: justify;" data-has-heading-anchor="true">
+    Merging orders automatically
+  <a href="/articles/documentation/open-orders-merge-split/a/OpenOrders_MergeAutomatically" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/open-orders-merge-split/a/OpenOrders_MergeAutomatically&#39;,this);"></a></h2>
+  <p style="text-align: justify;">
+    Enabling the <em>Order Merge</em> setting instructs Linnworks to automatically merge orders that meet the <a href="/articles/documentation/open-orders-merge-split/a/OpenOrders_MergePrecondition" onclick="return n(&#39;!documentation/open-orders-merge-split/a/OpenOrders_MergePrecondition&#39;,this);">order merge criteria</a>.&nbsp;
+  </p>
+  <p style="text-align: justify;">
+    The setting can be enabled from&nbsp;<em>Settings &gt; General Settings &gt; Order Management &gt; Order merge and split.&nbsp;</em>Once enabled the system will automatically look for and merge orders every&nbsp;<em>15 minutes</em>.
+  </p>
+  <p style="">
+    <img src="/resources/Storage/documentation/Screenshots/OpenOrders/Order%20Management%20Merge%20and%20Split.png" alt="Order Management Merge and Split" class="leftAlone" style="" loading="lazy"/>
+  </p>
+  <div class="alert-danger" style="text-align: justify;">
+    <strong>Note!</strong> Amazon Prime orders <strong>will</strong> <strong>not</strong> be merged automatically. Though Amazon Prime orders can be merged manually it is not recommended because this can cause issues with&nbsp;label printing.
+  </div>
+  <h3 style="" id="h3__990053045" data-has-heading-anchor="true">
+    Blocking orders from merging
+  <a href="/articles/documentation/open-orders-merge-split/a/h3__990053045" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/open-orders-merge-split/a/h3__990053045&#39;,this);"></a></h3>
+  <p>You can be in a situation when, for example, you need to automatically merge all orders except for those with a total of more than £500.<br/></p>
+  <p>It is possible to block specific orders from being automatically merged:</p>
+  <ol><li> By assigning a <span style="font-weight: normal;"><b><i>Block From Merge</i></b></span> identifier manually.  </li>
+  <li>By using the <i>Rules Engine (RE)</i> action - <span style="font-weight: normal;"><b><i>Block orders from merging</i></b></span>. </li>
+  </ol><p>
+    Using the&nbsp;<a href="/articles/documentation/rules-engine-actions" target="_blank" onclick="return n(&#39;!documentation/rules-engine-actions&#39;,this);"><i>Block orders from merging</i> action of the </a><i><a href="/articles/documentation/rules-engine-actions" target="_blank" onclick="return n(&#39;!documentation/rules-engine-actions&#39;,this);">Rules Engine</a></i>, the system will add to orders a <span style="font-weight: normal;"><b><i>Block From Merge</i></b></span> identifier that blocks orders from being automatically merged when the <i>Auto Merge Orders</i> setting is enabled in <i>Settings &gt; General Settings &gt; Orders Settings</i>.</p>
+  <p>You can also add a&nbsp;<b><i>Block From Merge</i></b>&nbsp;identifier to orders manually by selecting the required orders &gt; <i>Actions (or right-click) &gt;&nbsp;&nbsp;Organise &gt; Identifier &gt; Assign Identifier &gt; Block From Merge</i>.</p>
+  <img src="/resources/Storage/documentation/Screenshots/RulesEngine/BlockMerge_tag.png" alt="" class="leftAlone" style="" loading="lazy"/></div>
+
+<p>
+  When automatically merging orders, the system will ignore orders with the <i>Block From Merge</i> identifier and <span style="font-weight: normal;"><b>not </b></span>merge them.&nbsp;</p>
+<p>Manually merging orders with the <i>Block From Merge</i> identifier will prompt the following message:</p>
+<p><img src="/resources/Storage/documentation/Screenshots/RulesEngine/BlobkMerge_message.png" alt="" class="leftAlone" loading="lazy"/>Click <span class="btn-old-gray">Continue</span> to remove the&nbsp;<i>Block From Merge</i> identifier&nbsp;from selected orders and proceed with the merge. </p>
+<p>Click <span class="btn-old-gray">Cancel</span> if you would like to stop the merge.</p>
+<div class="doc-container">
+  <h2 id="OpenOrders_Split" style="text-align: justify;" data-has-heading-anchor="true">
+    Splitting orders
+  <a href="/articles/documentation/open-orders-merge-split/a/OpenOrders_Split" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/open-orders-merge-split/a/OpenOrders_Split&#39;,this);"></a></h2>
+  <p style="text-align: justify;">
+    The <em>Split Order</em> action allows you to split one big order into multiple orders. Open orders&nbsp;with <strong>only</strong> <strong>one</strong> <strong>item cannot</strong> be split into multiple orders.
+  </p>
+  <div class="alert-success" style="text-align: justify;">
+    <strong>Info!</strong>&nbsp;Depending on the&nbsp;<em>Restrict Order Splitting</em> setting available in <em>Settings &gt; General Settings &gt; Order Settings,</em> it may or may not be allowed to manually split orders placed not in the current month. For more information see <a rel="noopener" href="/articles/documentation/open-orders-settings" target="_blank" onclick="return n(&#39;!documentation/open-orders-settings&#39;,this);">here</a>.
+  </div>
+  <h5 style="text-align: justify;" id="h5_1722096427" data-has-heading-anchor="true">
+    <strong>Composite Items&nbsp;</strong>
+  <a href="/articles/documentation/open-orders-merge-split/a/h5_1722096427" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/open-orders-merge-split/a/h5_1722096427&#39;,this);"></a></h5>
+  <p style="text-align: justify;">
+    Splitting an order with composite items to have child items contained in different orders is not supported. If you need multiple shipping labels printed for composite child items, use the <a rel="noopener" href="/articles/documentation/open-orders-split-packaging" target="_blank" onclick="return n(&#39;!documentation/open-orders-split-packaging&#39;,this);">split packaging</a> functionality.
+  </p>
+  <div class="alert-danger" style="text-align: justify;">
+    <strong>NB!&nbsp;</strong>If an order has <a rel="noopener" href="/articles/documentation/open-orders-split-packaging" target="_blank" onclick="return n(&#39;!documentation/open-orders-split-packaging&#39;,this);">split packaging</a> applied before the order split, the split packaging will be automatically removed.
+  </div>
+  <h2 id="OpenOrders_SplitManually" style="text-align: justify;" data-has-heading-anchor="true">
+    Splitting orders manually
+  <a href="/articles/documentation/open-orders-merge-split/a/OpenOrders_SplitManually" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/open-orders-merge-split/a/OpenOrders_SplitManually&#39;,this);"></a></h2>
+  <p style="text-align: justify;">
+    To split an order manually, follow the steps below.
+  </p>
+  <h4 style="text-align: justify;" id="h4__358058180" data-has-heading-anchor="true">
+    Step 1
+  <a href="/articles/documentation/open-orders-merge-split/a/h4__358058180" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/open-orders-merge-split/a/h4__358058180&#39;,this);"></a></h4>
+  <p style="text-align: justify;">
+    Select the required order in the <em>Open Orders</em> screen.&nbsp;Click <em>Actions</em>&nbsp;(or right-click orders) and go to <em>Other Actions &gt; Split Order</em>.
+  </p>
+  <h4 style="text-align: justify;" id="h4__1069840505" data-has-heading-anchor="true">
+    Step 2
+  <a href="/articles/documentation/open-orders-merge-split/a/h4__1069840505" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/open-orders-merge-split/a/h4__1069840505&#39;,this);"></a></h4>
+  <p style="text-align: justify;">
+    The items from the selected order will appear at the top of the <em>Split Order</em> screen.&nbsp;
+  </p>
+  <p style="">
+    <img src="/resources/Storage/documentation/Screenshots/OpenOrders/SplitOrderScreen.png" alt="" class="size-75" style="" loading="lazy"/>
+  </p>
+  <ol style="text-align: justify;">
+    <li style="text-align: justify;">
+      Click and drag the item to the bottom pane. Use the <em>Move</em> field to specify the quantity of the item to be moved to a separate order.
+      <br/>
+      <img src="/resources/Storage/documentation/Screenshots/OpenOrders/SplitOrder_DragDrop.png" alt="" class="leftAlone" loading="lazy"/>
+    </li>
+    
+    <li style="text-align: justify;">
+      It is possible to add other items to the newly created order by dragging and dropping them onto the order.
+    </li>
+    
+    <li style="text-align: justify;">
+      It is possible to create multiple new orders by dragging items to the bottom pane of the screen, avoiding the orders already there.
+    </li>
+    
+    <li style="text-align: justify;">
+      On each new order, use the drop-down menu to select the <a rel="noopener" href="/articles/documentation/shipping-postal-services" target="_blank" onclick="return n(&#39;!documentation/shipping-postal-services&#39;,this);">shipping service</a>.
+    </li>
+  </ol>
+</div>
+<div class="doc-container">
+  <h4 style="text-align: justify;" id="h4__1421009338" data-has-heading-anchor="true">
+    Step 3
+  <a href="/articles/documentation/open-orders-merge-split/a/h4__1421009338" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/open-orders-merge-split/a/h4__1421009338&#39;,this);"></a></h4>
+  <p style="text-align: justify;">
+    Click <em>Split Order</em>.<strong>&nbsp;</strong>Any items left in the upper pane will remain in the original order.
+  </p>
+  <h3 id="SplittingOrders_AutoSplit" style="text-align: justify;" data-has-heading-anchor="true">
+    Auto split
+  <a href="/articles/documentation/open-orders-merge-split/a/SplittingOrders_AutoSplit" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/open-orders-merge-split/a/SplittingOrders_AutoSplit&#39;,this);"></a></h3>
+  <p style="text-align: justify;">
+    In the <em>Split Order</em> screen, use the <em>Auto Split</em> button instead of dragging items to the bottom pane one by one. The automatic split can be done by:&nbsp;
+  </p>
+  <ul style="text-align: justify;">
+    <li style="text-align: justify;">
+      Weight
+    </li>
+    <li style="text-align: justify;">
+      Default supplier
+    </li>
+    <li style="text-align: justify;">
+      Out of stock&nbsp;
+    </li>
+    <li style="text-align: justify;">
+      Cost
+    </li>
+  </ul>
+  <p style="">
+    <img src="/resources/Storage/documentation/Screenshots/OpenOrders/SplitOrder_Autosplit.png" alt="" class="leftAlone" style="" loading="lazy"/>
+  </p>
+  <ul style="text-align: justify;">
+    <li style="text-align: justify;">
+      <strong>By weight<span style="font-weight: normal;">:</span></strong>&nbsp;Click <em>Auto Split &gt; By Weight</em> and specify a maximum weight for each individual order.
+      <ul>
+        <li class="alert-warning">
+          <span style="font-weight: normal;"><b>Note! </b></span>If the entered maximum weight is less than the weight of any ordered item, the order <span style="font-weight: normal;"><b>will not</b></span> split.
+        </li>
+      </ul>
+    </li>
+    <li style="text-align: justify;">
+      <strong>By default supplier<span style="font-weight: normal;">:</span>&nbsp;</strong>Clicking <em>Auto Split &gt; By Default Supplier </em>groups items<em>&nbsp;</em>with the same <a rel="noopener" href="/articles/documentation/product-details-suppliers" target="_blank" onclick="return n(&#39;!documentation/product-details-suppliers&#39;,this);">default supplier</a> into a new order.
+    </li>
+    <li style="text-align: justify;">
+      <strong>By out of stock<span style="font-weight: normal;">:</span>&nbsp;</strong>Clicking <em>Auto Split &gt; By Out of Stock&nbsp;</em>groups out-of-stock items into a new order.
+    </li>
+    <li style="text-align: justify;">
+      <strong>By cost<span style="font-weight: normal;">:</span>&nbsp;</strong>Click <em>Auto Split &gt; By Cost&nbsp;</em>and specify a maximum order cost:
+      <ul>
+        <li style="text-align: justify;">
+          The order is split based on the item's unit cost before tax.
+        </li>
+        <li>
+          <span style="font-weight: normal;"><b>Note!</b></span> If the entered maximum cost is less than the cost of any ordered item, the order <span style="font-weight: normal;"><b>will not</b></span> split.
+        </li>
+      </ul>
+    </li>
+  </ul>
+  <h3 id="SplittingOrders_OneinEach" style="text-align: justify;" data-has-heading-anchor="true">
+    One in each order
+  <a href="/articles/documentation/open-orders-merge-split/a/SplittingOrders_OneinEach" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/open-orders-merge-split/a/SplittingOrders_OneinEach&#39;,this);"></a></h3>
+  <p style="text-align: justify;">
+    In the <em>Split Order</em> screen, click the <em>One in Each Order</em> button to split the order and have each item placed in a new separate order.
+  </p>
+  <p style="">
+    <img src="/resources/Storage/documentation/Screenshots/OpenOrders/SplitOrder_OneinEachOrder.png" alt="" class="leftAlone" style="" loading="lazy"/>
+  </p>
+  <h3 id="SplittingOrders_ClearAll" style="text-align: justify;" data-has-heading-anchor="true">
+    Clear all
+  <a href="/articles/documentation/open-orders-merge-split/a/SplittingOrders_ClearAll" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/open-orders-merge-split/a/SplittingOrders_ClearAll&#39;,this);"></a></h3>
+  <p style="text-align: justify;">
+    Clicking <em>Clear All</em> at any point will remove the new order design and return all items to the original order.
+  </p>
+  <p style="">
+    <img src="/resources/Storage/documentation/Screenshots/OpenOrders/SplitOrder_ClearAll.png" alt="" class="leftAlone" style="" loading="lazy"/>
+  </p>
+  <div>
+    <h4 id="h4__1315264961" data-has-heading-anchor="true">
+      <strong>Info!</strong>
+    <a href="/articles/documentation/open-orders-merge-split/a/h4__1315264961" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/open-orders-merge-split/a/h4__1315264961&#39;,this);"></a></h4>
+    <ul>
+      <li style="text-align: justify;">
+        By default, an order created as a result of a split is automatically allocated to the same folder the original parent order was assigned to. Unless the setting <em>Disable copying folders to split orders&nbsp;</em>is enabled in the <a rel="noopener" href="/articles/documentation/general-order-management" target="_blank" onclick="return n(&#39;!documentation/general-order-management&#39;,this);"><em>Order Management Settings</em></a>.
+      </li>
+      <li style="text-align: justify;">
+        If an order contains order notes, these are saved for all split orders.&nbsp;
+      </li>
+      <li style="text-align: justify;">
+        When merging or splitting orders&nbsp;with&nbsp;<a rel="noopener" href="/articles/documentation/inventory-batched-items" target="_blank" onclick="return n(&#39;!documentation/inventory-batched-items&#39;,this);">batched items</a>, Linnworks assigns the same batch from the parent order to newly created orders. Therefore, FIFO rules are not altered.</li>
+    </ul>
+  <h3 style="" id="h3_107008172" data-has-heading-anchor="true">
+  <span class="fa fa-video icon-background-purple"></span>&nbsp;Video tutorial<a href="/articles/documentation/open-orders-merge-split/a/h3_107008172" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/open-orders-merge-split/a/h3_107008172&#39;,this);"></a></h3>
+
+<p>
+  <span>If you prefer a visual explanation, this video tutorial walks you through the process of merging or splitting orders step by step. It can help clarify how everything works and answer any additional questions.</span>
+</p>
+<ul>
+  <li><a href="https://linnlearn.com/#/online-courses/473a8c0a-750b-4df2-93cd-521279450991" target="_blank">Video -&nbsp;Order Management:&nbsp;using the split and merge functionality</a>&nbsp;</li>
+
+  </ul>
+</div>
+  <div class="well well-lg" style="background-color: #f3f5f5;">
+    <p style="text-align: justify;">
+      <strong>NB!</strong> For the documentation on the earlier version of the <em>Open Order</em>s screen, see <strong><a rel="noopener" href="/articles/documentation/legacy-oo-merge-split-order" target="_blank" onclick="return n(&#39;!documentation/legacy-oo-merge-split-order&#39;,this);">here</a></strong>.
+    </p>
+  </div>
+</div><script src="/resources/Scripts/lightense.min.js"></script>
+<script>
+  // Init Lightense
+  window.addEventListener('load', function () {
+    Lightense('img.lightense:not(.no-lightense)');
+  }, false);
+</script>
+<script>
+var toggler = document.getElementsByClassName("caret");
+var i;
+
+for (i = 0; i < toggler.length; i++) {
+  toggler[i].addEventListener("click", function() {
+    this.parentElement.querySelector(".nested").classList.toggle("active");
+    this.classList.toggle("caret-down");
+  });
+}
+</script></body></html>

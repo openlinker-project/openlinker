@@ -1,0 +1,56 @@
+<!DOCTYPE html><html lang="en-US" dir="ltr"><head><style type="text/css">.ArticleViewer_searchKeywords{background-color: yellow !important;}</style>
+<script type="text/javascript">//<!--
+var articlesServiceUrl='/article/';
+//--></script>
+<link rel="canonical" href="/articles/documentation/template-designer-amazon-vcs"/>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.3/css/all.min.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css">
+<script src="https://cdn.jsdelivr.net/npm/jquery@3.5.1/dist/jquery.min.js"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/fancyapps/fancybox@3.5.7/dist/jquery.fancybox.min.css"/>
+<script src="https://cdn.jsdelivr.net/gh/fancyapps/fancybox@3.5.7/dist/jquery.fancybox.min.js"></script><title>Template Designer: Amazon VCS</title><script type="text/javascript">//<!--
+var imgPopupTexts={openInNewWindowText: 'Open in new window', closeText: 'Close'};var articleTitleText='Template Designer: Amazon VCS';
+//--></script><link rel="stylesheet" type="text/css" href="/resources/Styles/documentation/Docs%20CSS.css"/><link rel="stylesheet" type="text/css" href="/resources/Styles/documentation/docs.linnworks-EMS.css"/><link rel="stylesheet" type="text/css" href="/style-bundles/article-published.css?v=1.0.9789.31895"/><script src="/resources/Scripts/documentation/Script.js" type="text/javascript"></script><script src="/script-bundles/article-published.js?v=1.0.9789.31895" type="text/javascript"></script><meta charset="utf-8"><meta http-equiv="Content-Type" content="text/html;charset=utf-8"></head><body><span id="__clhTop"></span><div class="doc-container">
+<h1 id="h1__120931365" data-has-heading-anchor="true"><link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.3/css/all.min.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css">Template Type: Amazon VCS<a href="/articles/documentation/template-designer-amazon-vcs/a/h1__120931365" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/template-designer-amazon-vcs/a/h1__120931365&#39;,this);"></a></h1>
+<p>Linnworks allows customizing&nbsp;the template(s) you wish to use for uploads with&nbsp;Amazon VCS (VAT Calculation Service). For each Amazon channel that supports VCS, a separate invoice&nbsp;can be created.</p>
+<h2 id="h2__2075751840" data-has-heading-anchor="true">Creating a template<a href="/articles/documentation/template-designer-amazon-vcs/a/h2__2075751840" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/template-designer-amazon-vcs/a/h2__2075751840&#39;,this);"></a></h2>
+<p>Like other invoice templates, Amazon VCS templates can contain <a href="/articles/documentation/template-designer-elements" onclick="return n(&#39;!documentation/template-designer-elements&#39;,this);">template elements</a> such as:</p>
+<ul>
+<li>Images&nbsp;</li>
+<li>Order items</li>
+<li>Labels and variables</li>
+</ul>
+<p>To work with template elements, first, drag and drop&nbsp;the element to the invoice and then these can be customized by double-clicking the element on the template. Further information on customizing table elements is&nbsp;<a href="/articles/documentation/template-designer-elements/a/h4__1224102243" onclick="return n(&#39;!documentation/template-designer-elements/a/h4__1224102243&#39;,this);">here</a>.&nbsp;</p>
+<p><img src="/resources/Storage/documentation/Screenshots/TemplateDesigner/TemplateAmazonVCS.png" alt="" class="leftAlone" style=""/></p>
+<p>For&nbsp;VCS templates there are specific recommendations from Amazon that is highly recommended to follow and note:</p>
+<ul><li>Amend the default template and at minimum&nbsp;replace the logo and <strong>[{AmazonShipFromAddress}]</strong><strong>(“Your Company Address”)</strong>&nbsp;with your full registered VAT address. This will default to Amazon fulfillment&nbsp;centers in some cases.&nbsp;</li>
+<li>Use the following variables to facilitate information supplied by Amazon:<ul><li><strong>[{AmazonOrderNumber}]</strong></li>
+<li><strong></strong><strong>[{AmazonOrderDate}]</strong></li>
+<li><strong></strong><strong>[{CustomerShippingAddress}]</strong></li>
+<li><strong></strong><strong>[{CustomerBillingAddress}]</strong> - <i>this includes the Buyers VAT Number</i></li>
+<li><i></i><strong>[{AmazonShipFromAddress}]</strong></li>
+<li><strong></strong><strong>[{AmazonInvoiceType}]</strong></li>
+<li><strong></strong><strong>[{SellerVATNumber}]</strong></li>
+<li><strong></strong><strong>[{AmazonLegalText}] </strong>- <i>citation text if required by EU VAT Directive for example: “This is an intra-community supply of goods”</i></li>
+</ul></li>
+</ul><p>The Order Item table has&nbsp;limited options due to the way this information&nbsp;is supplied from Amazon. Also, it will contain&nbsp;the shipping, gift wrapping, and promotional&nbsp;discounts as separate order item entities.&nbsp;(See default Amazon VCS template)&nbsp;</p>
+<p>Next, you will need to enable Amazon VCS&nbsp;Self-Invoice Upload in your Amazon Channel&nbsp;Integration Settings and set which template&nbsp;you wish to use for this channel.&nbsp;With this option enabled Linnworks&nbsp;will check Amazon every 12 hours&nbsp;for the latest&nbsp; <strong>_VAT_INVOICE_DATA_REPORT_</strong>&nbsp;and use this data to upload&nbsp;the relevant invoices.</p>
+<p><img src="/resources/Storage/documentation/Screenshots/TemplateDesigner/VCS1.png" alt="" class="leftAlone" style=""/></p>
+</div><script src="/resources/Scripts/lightense.min.js"></script>
+<script>
+  // Init Lightense
+  window.addEventListener('load', function () {
+    Lightense('img.lightense:not(.no-lightense)');
+  }, false);
+</script>
+<script>
+var toggler = document.getElementsByClassName("caret");
+var i;
+
+for (i = 0; i < toggler.length; i++) {
+  toggler[i].addEventListener("click", function() {
+    this.parentElement.querySelector(".nested").classList.toggle("active");
+    this.classList.toggle("caret-down");
+  });
+}
+</script></body></html>

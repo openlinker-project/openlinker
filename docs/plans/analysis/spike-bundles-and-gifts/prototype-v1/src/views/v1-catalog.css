@@ -1,0 +1,41 @@
+/* v1 catalogue screens: products and bundles, promotions. Prefix: v1-. Tokens from index.css only. */
+
+.v1-form-grid { display: grid; gap: var(--space-3); grid-template-columns: repeat(auto-fit, minmax(min(220px, 100%), 1fr)); min-width: 0; }
+
+.v1-reasons { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--space-2); font-size: 13px; color: var(--text-secondary); line-height: 1.5; }
+
+.v1-comp-list { list-style: none; margin: 0; padding: 0; display: grid; }
+.v1-comp {
+  display: grid; grid-template-columns: auto minmax(0, 1fr) 84px auto; align-items: center; gap: var(--space-3);
+  padding: var(--space-2) 0; border-top: 1px solid var(--border-subtle);
+}
+.v1-comp:first-child { border-top: 0; }
+.v1-comp__name { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); min-width: 0; overflow-wrap: anywhere; }
+.v1-comp__qty input { width: 100%; }
+
+.v1-add { display: grid; gap: var(--space-2); margin-top: var(--space-3); max-width: 420px; }
+.v1-suggest { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--space-1); }
+.v1-field-error { margin: 0; font-size: 13px; color: var(--status-error-fg, var(--status-error)); }
+.v1-availability { margin: var(--space-3) 0 0; font-weight: 600; color: var(--text-primary); font-variant-numeric: tabular-nums; }
+.v1-inline-field { display: block; margin-top: var(--space-2); max-width: 200px; }
+
+.v1-pos { display: inline-flex; align-items: center; gap: var(--space-1); }
+
+.v1-templates { display: grid; gap: var(--space-3); grid-template-columns: repeat(auto-fit, minmax(min(240px, 100%), 1fr)); }
+.v1-template {
+  display: grid; gap: var(--space-2); justify-items: start; text-align: left; cursor: pointer;
+  padding: var(--space-4); border: 1px solid var(--border-subtle); border-radius: var(--radius-md, 8px);
+  background: var(--bg-surface); color: var(--text-primary); font: inherit;
+}
+.v1-template:hover { border-color: var(--accent-primary); }
+.v1-template:focus-visible { outline: 2px solid var(--border-focus); outline-offset: 2px; }
+.v1-template__title { font-weight: 600; font-size: 15px; }
+
+.v1-chan { display: inline; }
+.v1-test { display: grid; gap: var(--space-2); margin: var(--space-3) 0; }
+.v1-test p { margin: 0; }
+
+@media (max-width: 600px) {
+  .v1-comp { grid-template-columns: auto minmax(0, 1fr) 64px; }
+  .v1-comp > :last-child { grid-column: 2 / -1; justify-self: start; }
+}

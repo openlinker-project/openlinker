@@ -1,0 +1,25 @@
+=== general-settings-chanels-and-listings | General Settings: Channels and listings
+ 
+ General Settings: Channels and listings 
+Channels and Listings 
+ This section controls some settings relating to using the Linnworks listing functionality. Go to Settings > General Settings and switch to the Channels and listings tab to access this part of the system.
+ eBay settings 
+ Default PayPal email:  When creating eBay configurators, the listing tool will default to using this email for the PayPal payment option.
+ Show active content warning:  eBay restricted the use of active content as of Spring 2017. Plans are to remove or block listings containing active content. This setting controls whether the eBay active content warning is shown or hidden when creating a listing. More details about it are   here .
+ Use automatic catalog product search:  If enabled, Linnworks will search for catalog matches by ePid value ( eBay Motorcycle Compatibility )  or barcode every time you open the eBay Listings module. This can help to make the migration to a product-based shopping experience easier. Note: This functionality may slow down opening eBay listing templates. 
+ Generic listing template settings 
+ Update template prices for Magento 2 using product pricing by channel:  Applicable to Magento 2 only. Enabling this setting allows you to automatically update prices in the  listing template(s)  based on the stock item's pricing in Product details > Listing descriptions > Product pricing by channel . 
+  Note: Currently, this feature is in a Closed Beta phase. Once it becomes available to all users, you will receive a notification through our release notes .  
+ This setting applies to both single items and variations . However, to prompt the price update in the listing template(s) automatically, you must open it from My Inventory > Magento (Default tab > Channels > Magento) > Edit Magento listing(s) .   
+ If you are working with a listing template for a variation item, opening the variation listing template and clicking the Variations button will automatically update the price. 
+ Magento settings
+ Get changes from the channel:  Click Reload to clear the cached categories and attributes for Magento1 listing configurators. Use this option if category/attribute values have been changed on the Magento1 site. This will trigger Linnworks to reload the Magento attributes and categories to Linnworks. The Magento2 categories and attributes are automatically reloaded each time a configurator is opened in Linnworks.
+ BigCommerce settings
+ Get changes from the channel:    Click  Reload  to clear the cached categories for BigCommerce listing configurators. Use this option if categories have been changed on the BigCommerce site. This will trigger Linnworks to reload the BigCommerce categories to Linnworks.   
+ Configurator references
+ Configurator images: Here, you can add images that will be used in eBay configurators  > Manage Images screen or template descriptions . A maximum of 40 images is allowed.   
+ External CSS links for HTML editors: Here, you can specify externally hosted CSS stylesheet files you wish to use in your listing templates. Links that are added here will be pre-loaded when the HTML Description editor is opened, and you will be able to reference them within the HTML itself. You can add multiple links. Click to remove any stylesheet files added to this section.  
+  Video tutorial
+ If you prefer a visual explanation,  this  video tutorial will walk you through Linnworks's General Settings   step by step. It  can help clarify how to configure your Linnworks account and answer any additional questions.
+ Video - General Settings: Channels and Listings 
+ 

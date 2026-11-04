@@ -1,0 +1,131 @@
+<!DOCTYPE html><html lang="en-US" dir="ltr"><head><style type="text/css">.ArticleViewer_searchKeywords{background-color: yellow !important;}</style>
+<script type="text/javascript">//<!--
+var articlesServiceUrl='/article/';
+//--></script>
+<link rel="canonical" href="/articles/documentation/adding-items-services-merged-split-resend-orders"/>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.3/css/all.min.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css">
+<script src="https://cdn.jsdelivr.net/npm/jquery@3.5.1/dist/jquery.min.js"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/fancyapps/fancybox@3.5.7/dist/jquery.fancybox.min.css"/>
+<script src="https://cdn.jsdelivr.net/gh/fancyapps/fancybox@3.5.7/dist/jquery.fancybox.min.js"></script><title>Adding Items &amp; Services: Merged, Split &amp; Resend Orders</title><script type="text/javascript">//<!--
+var imgPopupTexts={openInNewWindowText: 'Open in new window', closeText: 'Close'};var articleTitleText='Adding Items & Services: Merged, Split & Resend Orders';
+//--></script><link rel="stylesheet" type="text/css" href="/resources/Styles/documentation/Docs%20CSS.css"/><link rel="stylesheet" type="text/css" href="/resources/Styles/documentation/docs.linnworks-EMS.css"/><link rel="stylesheet" type="text/css" href="/style-bundles/article-published.css?v=1.0.9789.31895"/><script src="/resources/Scripts/documentation/Script.js" type="text/javascript"></script><script src="/script-bundles/article-published.js?v=1.0.9789.31895" type="text/javascript"></script><meta charset="utf-8"><meta http-equiv="Content-Type" content="text/html;charset=utf-8"></head><body><span id="__clhTop"></span><h1 style="" id="h1_1887355655" data-has-heading-anchor="true">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.3/css/all.min.css"></link>
+
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css"></link>
+
+Add Items &amp; Services: Split, Merged, Resend Rules
+<a href="/articles/documentation/adding-items-services-merged-split-resend-orders/a/h1_1887355655" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/adding-items-services-merged-split-resend-orders/a/h1_1887355655&#39;,this);"></a></h1>
+<p>
+  This guide explains additional conditions – <b><i>Is Merged</i></b>, <b><i>Order Has Been Split</i></b>, <b><i>Order Created By Split</i></b>, and&nbsp;<i><b>Status = Resend</b></i> – that you can use with the <i><a href="/articles/documentation/rules-engine-actions/a/h3_727271961" onclick="return n(&#39;!documentation/rules-engine-actions/a/h3_727271961&#39;,this);">Add Items to Orders</a></i> and <i><a href="/articles/documentation/rules-engine-actions/a/h3__1667453768" onclick="return n(&#39;!documentation/rules-engine-actions/a/h3__1667453768&#39;,this);">Add Services to Orders</a></i> actions in the <i>Rules Engine</i>. These conditions give you more control over when rules run, especially for <b>merged</b>, <b>split</b>, or <b>resend</b> orders.</p>
+<p>This guide explains specific use cases for<i> Add Items</i> and <i>Add Services </i>actions, and why you might use the <i>Is Merged</i>, <i>Order&nbsp;</i><i>Has Been Split</i>, <i>Order Created By Split</i>, and <i>Status = Resend</i> conditions with them. However, these conditions are not limited to these actions – you can also apply them to <a href="/articles/documentation/rules-engine-actions" onclick="return n(&#39;!documentation/rules-engine-actions&#39;,this);">other Rules Engine actions</a>.<br/></p>
+<img src="/resources/Storage/documentation/Screenshots/RulesEngine/RulesEngine-NewConditions.jpg" alt="Rules Engine - New Conditions" class="leftAlone" style="" loading="lazy"/>
+<p>
+  For basic information about these actions, see <a href="/articles/documentation/rules-engine-actions" onclick="return n(&#39;!documentation/rules-engine-actions&#39;,this);">Rules Engine Actions: Add Items &amp; Services</a>.
+</p>
+<h3 style="" id="h3__2043034244" data-has-heading-anchor="true">
+  How the Is Merged, Has Been Split &amp; Created By Split conditions work
+<a href="/articles/documentation/adding-items-services-merged-split-resend-orders/a/h3__2043034244" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/adding-items-services-merged-split-resend-orders/a/h3__2043034244&#39;,this);"></a></h3>
+<p>
+  The three new conditions – <b><i>Is Merged</i></b>, <b><i>Order Has Been Split</i></b>, and <i><b>Order </b></i><i><b>Created By Split</b></i> – function in a similar way to the existing <i>Has Composites</i> condition:&nbsp;
+</p>
+<ol>
+  <li>
+    Pick a condition.
+  </li>
+  <li>
+    Choose <i>Equals</i> or <i>Does Not Equal</i>.
+  </li>
+  <li>
+    Select <i>True </i>or <i>False</i>.
+  </li>
+</ol>
+<p>
+  <b><span class="fa fa-info-circle icon-background-yellow"></span>&nbsp;Note:</b> Having <u>Equals</u>/<u>Does Not Equal</u> may seem redundant with <u>True</u>/<u>False</u>, but this is the framework that the <i>Rules Engine</i> currently supports.
+  <br/>
+</p>
+<h4 style="" id="h4_2135193798" data-has-heading-anchor="true">
+  Is Merged
+<a href="/articles/documentation/adding-items-services-merged-split-resend-orders/a/h4_2135193798" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/adding-items-services-merged-split-resend-orders/a/h4_2135193798&#39;,this);"></a></h4>
+<ul>
+  <li>
+    <b>Definition:</b>&nbsp;True when an order is the result of merging two or more orders.
+  </li>
+  <li>
+    <b>Example:</b>
+    <ul>
+      <li>
+        ORDER A + ORDER B → merged into ORDER C
+      </li>
+      <li>
+        ORDER C: Is Merged = True
+      </li>
+      <li>
+        ORDER A &amp; ORDER B: processed already, rules do not run on them
+        <br/>
+      </li>
+    </ul>
+  </li>
+  <li>
+    <b>Use case:</b> Control rules for merged orders, e.g., decide whether to add items or services only to newly merged orders.
+  </li>
+</ul>
+<h4 style="" id="h4__1402144136" data-has-heading-anchor="true">
+  Order Has Been Split
+<a href="/articles/documentation/adding-items-services-merged-split-resend-orders/a/h4__1402144136" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/adding-items-services-merged-split-resend-orders/a/h4__1402144136&#39;,this);"></a></h4>
+<ul>
+  <li>
+    <b>Definition:</b> True for an order that has been split into one or more child orders.
+  </li>
+  <li>
+    <b>Example:&nbsp;</b>
+    <ul>
+      <li>
+        ORDER D has two items → split into ORDER D (remaining) and ORDER E (child)
+      </li>
+      <li>
+        ORDER D: Has Been Split = True
+      </li>
+      <li>
+        ORDER E: Created By Split = True
+        <br/>
+      </li>
+    </ul>
+  </li>
+  <li>
+    <b>Use case:&nbsp;</b>Prevent or control actions on parent orders after a split.&nbsp;
+  </li>
+</ul>
+<h4 style="" id="h4_1829846303" data-has-heading-anchor="true">
+  Order Created by Split
+<a href="/articles/documentation/adding-items-services-merged-split-resend-orders/a/h4_1829846303" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/adding-items-services-merged-split-resend-orders/a/h4_1829846303&#39;,this);"></a></h4>
+<ul>
+  <li>
+    <b>Definition:&nbsp;</b>True for an order that was created as a result of a split.&nbsp;</li>
+  <li>
+    <b>Example:</b>&nbsp;<ul><li>ORDER D split → ORDER E created</li>
+  <li>ORDER E: Created By Split = True
+  </li>
+  </ul>
+</li>
+  <li>
+    <b>Use case:</b>&nbsp;If a merged order is later split, the <u>Is Merged</u> condition remains true for both parent and child orders, while <u>Has Been Split</u> and <u>Created By Split</u> are set appropriately.</li>
+</ul>
+<h3 style="" id="h3_565186279" data-has-heading-anchor="true">Why&nbsp;using these conditions is important<a href="/articles/documentation/adding-items-services-merged-split-resend-orders/a/h3_565186279" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/adding-items-services-merged-split-resend-orders/a/h3_565186279&#39;,this);"></a></h3><p>The conditions above give you control over when <i><a href="/articles/documentation/rules-engine-actions/a/h3_727271961" onclick="return n(&#39;!documentation/rules-engine-actions/a/h3_727271961&#39;,this);">Add Items</a></i> or <i><a href="/articles/documentation/rules-engine-actions/a/h3__1667453768" onclick="return n(&#39;!documentation/rules-engine-actions/a/h3__1667453768&#39;,this);">Add Services</a></i> actions should run, particularly in complex order workflows. Without them, you risk adding the same item or service multiple times by mistake.&nbsp;</p><h4 style="" id="h4__260478315" data-has-heading-anchor="true">Example scenarios<a href="/articles/documentation/adding-items-services-merged-split-resend-orders/a/h4__260478315" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/adding-items-services-merged-split-resend-orders/a/h4__260478315&#39;,this);"></a></h4><ul><li><b>Resends</b><br/>Imagine ORDER A gets a free gift item added by a rule. Later, a resend is created (ORDER B). If you do not filter out resends, ORDER B will also get the same free gift — even though it is just a replacement.<br/></li><li><b>Merged orders</b><br/>Suppose ORDER C and ORDER D are merged into ORDER E. If your rule adds a service charge, ORDER E could end up with <b>two service charges</b> (one for each original order), unless you limit the rule to run only on non-merged orders.<br/></li><li><b>Split orders</b><br/>ORDER F contains two items and triggers a rule that adds a warranty service. If ORDER F is split into ORDER F and ORDER G, the rules engine runs on both. Without filtering, you may end up adding the warranty twice — once to the parent and once to the child.</li></ul><p>By applying conditions like <b>Is Merged = False</b> or <b>Status != Resend</b>, you can prevent these duplicates and keep your workflows predictable.&nbsp;</p><p><b><b>💡</b>Tip:</b> Consider combining multiple conditions in your rules (e.g., <span class="inlineCode">Is Merged = False</span> AND <span class="inlineCode">Status != Resend</span>) to handle complex order workflows safely.</p><p><img src="/resources/Storage/documentation/Screenshots/RulesEngine/RulesEngine-NewConditions-Tip.jpg" alt="Rules Engine - New Conditions - Tip Example" class="leftAlone" loading="lazy"/></p><h4 style="" id="h4__506760136" data-has-heading-anchor="true">Related guides:<a href="/articles/documentation/adding-items-services-merged-split-resend-orders/a/h4__506760136" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/adding-items-services-merged-split-resend-orders/a/h4__506760136&#39;,this);"></a></h4><ul><li><a href="/articles/documentation/rules-engine-add" onclick="return n(&#39;!documentation/rules-engine-add&#39;,this);">Adding Automation Rules in the Rules Engine</a></li><li><a href="/articles/documentation/rules-engine-conditions-comparators" onclick="return n(&#39;!documentation/rules-engine-conditions-comparators&#39;,this);">Rules Engine: Conditions and Comparators</a></li><li><a href="/articles/documentation/rules-engine-actions" onclick="return n(&#39;!documentation/rules-engine-actions&#39;,this);">Rules Engine: Actions</a></li></ul><script src="/resources/Scripts/lightense.min.js"></script>
+<script>
+  // Init Lightense
+  window.addEventListener('load', function () {
+    Lightense('img.lightense:not(.no-lightense)');
+  }, false);
+</script>
+<script>
+var toggler = document.getElementsByClassName("caret");
+var i;
+
+for (i = 0; i < toggler.length; i++) {
+  toggler[i].addEventListener("click", function() {
+    this.parentElement.querySelector(".nested").classList.toggle("active");
+    this.classList.toggle("caret-down");
+  });
+}
+</script></body></html>

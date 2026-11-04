@@ -1,0 +1,591 @@
+<!DOCTYPE html><html lang="en-US" dir="ltr"><head><style type="text/css">.ArticleViewer_searchKeywords{background-color: yellow !important;}</style>
+<script type="text/javascript">//<!--
+var articlesServiceUrl='/article/';
+//--></script>
+<link rel="canonical" href="/articles/documentation/template-designer-printing-conditions"/>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.3/css/all.min.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css">
+<script src="https://cdn.jsdelivr.net/npm/jquery@3.5.1/dist/jquery.min.js"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/fancyapps/fancybox@3.5.7/dist/jquery.fancybox.min.css"/>
+<script src="https://cdn.jsdelivr.net/gh/fancyapps/fancybox@3.5.7/dist/jquery.fancybox.min.js"></script><title>Template Designer: Printing Conditions</title><script type="text/javascript">//<!--
+var imgPopupTexts={openInNewWindowText: 'Open in new window', closeText: 'Close'};var articleTitleText='Template Designer: Printing Conditions';
+//--></script><link rel="stylesheet" type="text/css" href="/resources/Styles/documentation/Docs%20CSS.css"/><link rel="stylesheet" type="text/css" href="/resources/Styles/documentation/docs.linnworks-EMS.css"/><link rel="stylesheet" type="text/css" href="/style-bundles/article-published.css?v=1.0.9789.31895"/><script src="/resources/Scripts/documentation/Script.js" type="text/javascript"></script><script src="/script-bundles/article-published.js?v=1.0.9789.31895" type="text/javascript"></script><meta charset="utf-8"><meta http-equiv="Content-Type" content="text/html;charset=utf-8"></head><body><span id="__clhTop"></span><h1 id="h1__2139482231" data-has-heading-anchor="true">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.3/css/all.min.css"></link>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css"></link>
+  Template Designer: Printing Conditions
+<a href="/articles/documentation/template-designer-printing-conditions/a/h1__2139482231" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/template-designer-printing-conditions/a/h1__2139482231&#39;,this);"></a></h1>
+<p>
+  <i>Printing Conditions</i> allow defining requirements that Linnworks uses to automatically select which template to print. These conditions are based on the use of logical operators to check against the set of requirements. As conditional templates, invoices specifically, are designed to only be printed when the conditions are met, they do not appear in the <i><a href="/articles/documentation/open-orders-print/a/PrintOrder_Invoice" onclick="return n(&#39;!documentation/open-orders-print/a/PrintOrder_Invoice&#39;,this);">Print &gt; Invoice &gt; select a specific invoice template</a>&nbsp;</i>from the&nbsp;drop-down lists.
+</p>
+<p>
+  <img src="/resources/Storage/documentation/Screenshots/TemplateDesigner/TemplateDesigner-PrintingConditions.png" alt="Template Designer Printing Conditions" class="leftAlone" style="" loading="lazy"/> For example, you sell products on two different marketplaces and they require different invoices to be printed. You can configure a condition that will be checking the marketplace (Source) of the order. If the condition is met, an appropriate template will be selected and printed. If no conditions are met, then the default template will be used for printing.
+</p>
+<h2 id="Introd" data-has-heading-anchor="true">
+  How printing conditions work
+<a href="/articles/documentation/template-designer-printing-conditions/a/Introd" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/template-designer-printing-conditions/a/Introd&#39;,this);"></a></h2>
+<p>
+  Similar to <a href="/articles/documentation/tables/a/h5__1408022740" onclick="return n(&#39;!documentation/tables/a/h5__1408022740&#39;,this);">conditional formatting in template elements</a>, the template itself can be made conditional. Linnworks will try and match a template by working through the list of available&nbsp;templates and picking the first one that matches the conditions set. If a specific template meets multiple sets of conditions, it is not possible to guarantee the same condition set will always be used. Therefore it is advisable to use condition sets with multiple conditions to ensure the correct template is printed.
+</p>
+<h5 style="" id="h5_1689083776" data-has-heading-anchor="true">
+  Example:
+<a href="/articles/documentation/template-designer-printing-conditions/a/h5_1689083776" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/template-designer-printing-conditions/a/h5_1689083776&#39;,this);"></a></h5>
+<p class="alert-info">
+  #1. Template 1 Condition Set: <span style="font-weight: normal;"><b>[Source] &lt;&gt; 'AMAZON' AND [Source] &lt;&gt; 'EBAY'</b> ( the source is not AMAZON and the source is not EBAY)&nbsp;
+  <br/>
+  </span>#2. Template 2 Condition Set: <b>[Source] = 'SHOPIFY' </b>(the source is SHOPIFY)
+</p>
+<p>
+  In this example, the template associated with condition #2 will never be used as it is fulfilled by condition #1. To allow condition #2 to be used, condition #1 needs to changed to: 
+</p>
+<p>
+  <span style="font-weight: normal;"><b class="alert-info">[Source] &lt;&gt; 'AMAZON' AND [Source] &lt;&gt; 'EBAY' AND [Source] &lt;&gt; 'SHOPIFY'</b></span>
+</p>
+<h2 id="applicable" data-has-heading-anchor="true">
+  Applicable templates
+<a href="/articles/documentation/template-designer-printing-conditions/a/applicable" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/template-designer-printing-conditions/a/applicable&#39;,this);"></a></h2>
+<p>
+  The following template types can have printing conditions applied to them:
+</p>
+<ul>
+  <li>
+    <a href="/articles/documentation/template-designer-consignments" style="font-family: &quot;Helvetica Neue&quot;, Arial, Helvetica, Geneva, sans-serif; font-size: 16px;" onclick="return n(&#39;!documentation/template-designer-consignments&#39;,this);">Consignments</a>
+  </li>
+  <li>
+    <a href="/articles/documentation/template-designer-invoice" onclick="return n(&#39;!documentation/template-designer-invoice&#39;,this);">Invoice</a>
+  </li>
+  <li>
+    <a href="/articles/documentation/template-designer-purchase-order" onclick="return n(&#39;!documentation/template-designer-purchase-order&#39;,this);">Purchase Order</a>
+  </li>
+  <li>
+    <a href="/articles/documentation/template-designer-warehouse-transfer" onclick="return n(&#39;!documentation/template-designer-warehouse-transfer&#39;,this);">Warehouse Transfer</a>
+  </li>
+</ul>
+<h2 id="sqbrackets" data-has-heading-anchor="true">
+  Variables
+<a href="/articles/documentation/template-designer-printing-conditions/a/sqbrackets" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/template-designer-printing-conditions/a/sqbrackets&#39;,this);"></a></h2>
+<p>
+  When adding variables from the drop-down list, they will appear with square brackets around them. Whilst these brackets are not required in printing conditions, it is a good practice to use them.
+</p>
+<p>
+  <img src="/resources/Storage/documentation/Screenshots/TemplateDesigner/TemplateDesigner-PrintingConditions-Editor.png" alt="Template Designer Printing Conditions Editor" class="leftAlone" style="" loading="lazy"/>
+</p>
+<p class="alert-warning">
+  <strong>NB!&nbsp;</strong>&nbsp;<span style="font-weight: normal;"><b>[{FolderCollection}]&nbsp;</b></span><span>variable in printing conditions is an exceptional case and needs to be wrapped in LIKE syntax.&nbsp;</span><span>It cannot be used with an&nbsp;<em>equals</em>&nbsp;operator since the order can be assigned to multiple folders.</span>
+</p>
+<h5 style="" id="h5__1171229262" data-has-heading-anchor="true">
+  Example:
+<a href="/articles/documentation/template-designer-printing-conditions/a/h5__1171229262" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/template-designer-printing-conditions/a/h5__1171229262&#39;,this);"></a></h5>
+<div class="alert-info">
+  <p>
+    <span>[Source] = 'DIRECT' AND ([Categories] LIKE '%Clothing%' OR [Categories] LIKE '%Baby toys%') AND [FolderCollection] NOT LIKE '%Process ASAP%'</span>
+  </p>
+</div>
+<h2 id="Adding" data-has-heading-anchor="true">
+  Adding printing conditions
+<a href="/articles/documentation/template-designer-printing-conditions/a/Adding" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/template-designer-printing-conditions/a/Adding&#39;,this);"></a></h2>
+<p>
+  Linnworks must always have a <i><span style="font-weight: normal;">default</span></i> template available. The <i><span style="font-weight: normal;">default </span></i>template cannot have printing conditions applied to it so that there is always a non-conditional template available. If you wish to use the<i><span style="font-weight: normal;"> default </span></i>template with printing conditions, please first make a copy. To access printing conditions, please do the following:
+</p>
+<ol>
+  <li>
+    Edit a non-default template.
+  </li>
+  <li>
+    At the top of the screen, click the <i>Printing Conditions</i> button.
+    <br/>
+    <img src="/resources/Storage/documentation/Screenshots/TemplateDesigner/TemplateDesigner-PrintingConditionsButton.png" alt="Template Designer Printing Conditions Button" class="leftAlone" style="" loading="lazy"/>
+  </li>
+  <li>
+    The&nbsp;<i>Condition Editor</i> pop-up window will open allowing you to add your printing conditions.&nbsp;
+    <br/>
+    <img src="/resources/Storage/documentation/Screenshots/TemplateDesigner/TemplateDesigner-PrintingConditions-example.png" alt="Printing Conditions Example" class="leftAlone" style="" loading="lazy"/>
+    <ul>
+      <li>
+        The example on the screenshot will print using this template for orders raised directly in Linnworks when their total value is over 20 of the order currency (Euros or USD).&nbsp;See the section below for more examples of printing conditions.
+        <br/>
+      </li>
+    </ul>
+  </li>
+  <li>
+    Click <i>Check Syntax</i> to ensure that the conditions are formatted correctly.
+  </li>
+  <li>
+    Click <span class="btn-old-blue"><span class="fa fa-check">&nbsp;</span>Ok</span>
+  </li>
+  <li>
+    Click <span class="btn-old-blue"><span class="fa fa-save">&nbsp;</span>Save</span>
+  </li>
+</ol>
+<h2 id="Operators" data-has-heading-anchor="true">
+  Logical operators
+<a href="/articles/documentation/template-designer-printing-conditions/a/Operators" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/template-designer-printing-conditions/a/Operators&#39;,this);"></a></h2>
+<p>
+  The following table is a brief summary of the logical operators used in the evaluation of printing conditions. If the printing condition in a template is true for any particular order (or another appropriate document) it will be used. A brief explanation is given in each case. For further information and examples of <span style="color: #07a; font-size: 13px; font-family: Consolas, Monaco, &#39;Andale Mono&#39;, monospace;">AND</span>, <span style="color: #07a; font-size: 13px; font-family: Consolas, Monaco, &#39;Andale Mono&#39;, monospace;">OR</span>, <span style="color: #07a; font-size: 13px; font-family: Consolas, Monaco, &#39;Andale Mono&#39;, monospace;">LIKE</span>, <span style="color: #07a; font-size: 13px; font-family: Consolas, Monaco, &#39;Andale Mono&#39;, monospace;">IN</span> and wildcards, please see below.
+</p>
+<table class="table table-bordered">
+  <thead>
+    <tr>
+      <th>
+        <font color="#808080">Operator</font>
+      </th>
+      <th>
+        <font color="#808080">Example</font>
+      </th>
+      <th>
+        <font color="#808080">Explanation</font>
+      </th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>
+        <span style="color: #07a; font-size: 13px; font-family: Consolas, Monaco, &#39;Andale Mono&#39;, monospace;">AND</span>
+      </td>
+      <td>
+        <span style="color: #07a; font-size: 13px; font-family: Consolas, Monaco, &#39;Andale Mono&#39;, monospace;">[Source]='EBAY' AND [cCountry]='UNITED KINGDOM'</span>
+      </td>
+      <td>
+        The <span style="color: #07a; font-size: 13px; font-family: Consolas, Monaco, &#39;Andale Mono&#39;, monospace;">AND</span> operator is used to join variables such that the document must meet all conditions to use a particular template. The example would be true if the order came from eBay and is being delivered to somewhere in the UK.
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <span style="color: #07a; font-size: 13px; font-family: Consolas, Monaco, &#39;Andale Mono&#39;, monospace;">OR</span>
+      </td>
+      <td>
+        <span style="color: #07a; font-size: 13px; font-family: Consolas, Monaco, &#39;Andale Mono&#39;, monospace;">[SubSource]='EBAY0' OR [SubSource]='EBAY1'</span>
+      </td>
+      <td>
+        The <span style="color: #07a; font-size: 13px; font-family: Consolas, Monaco, &#39;Andale Mono&#39;, monospace;">OR</span> operator is used to give alternative conditions for which a template will be used. The example would be true if the order came from EBAY1 or EBAY0.
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <span style="color: #07a; font-size: 13px; font-family: Consolas, Monaco, &#39;Andale Mono&#39;, monospace;">LIKE</span>
+      </td>
+      <td>
+        <span style="color: #07a; font-size: 13px; font-family: Consolas, Monaco, &#39;Andale Mono&#39;, monospace;">[cPostCode] LIKE 'PO19%' </span>
+      </td>
+      <td>
+        The <span style="color: #07a; font-size: 13px; font-family: Consolas, Monaco, &#39;Andale Mono&#39;, monospace;">LIKE</span> operator is generally used for text-based comparisons where statements may be similar, but not identical This is often used with the wildcard operator (%) to refer to multiple possibilities. The example would be true if the order postcode began with PO19. The use of the wildcard means that Linnworks only evaluates against the first 4 characters, in this case.
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <span style="color: #07a; font-size: 13px; font-family: Consolas, Monaco, &#39;Andale Mono&#39;, monospace;">NOT</span>
+      </td>
+      <td>
+        <span style="color: #07a; font-size: 13px; font-family: Consolas, Monaco, &#39;Andale Mono&#39;, monospace;">[cPostCode] NOT LIKE 'PO19%'</span>
+      </td>
+      <td>
+        The <span style="color: #07a; font-size: 13px; font-family: Consolas, Monaco, &#39;Andale Mono&#39;, monospace;">NOT</span> operator is used to invert the meaning of <span style="color: #07a; font-size: 13px; font-family: Consolas, Monaco, &#39;Andale Mono&#39;, monospace;">LIKE</span> or <span style="color: #07a; font-size: 13px; font-family: Consolas, Monaco, &#39;Andale Mono&#39;, monospace;">IN</span> operators. The example would be true if the postcode did not begin with PO19.
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <span style="color: #07a; font-size: 13px; font-family: Consolas, Monaco, &#39;Andale Mono&#39;, monospace;">IN</span>
+      </td>
+      <td>
+        <span style="color: #07a; font-size: 13px; font-family: Consolas, Monaco, &#39;Andale Mono&#39;, monospace;">[ShippingService] IN ('My Expedited', 'expressAM', 'express24')</span>
+      </td>
+      <td>
+        The <span style="color: #07a; font-size: 13px; font-family: Consolas, Monaco, &#39;Andale Mono&#39;, monospace;">IN</span> operator is used to find a value in a list of given values. The example would be true if the order's shipping service matched any one of 'My Expedited', 'expressAM', or 'express24'.
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <span style="color: #07a; font-size: 13px; font-family: Consolas, Monaco, &#39;Andale Mono&#39;, monospace;">=</span>
+      </td>
+      <td>
+        <span style="color: #07a; font-size: 13px; font-family: Consolas, Monaco, &#39;Andale Mono&#39;, monospace;">[Source]='EBAY'</span>
+      </td>
+      <td>
+        The <span style="color: #07a; font-size: 13px; font-family: Consolas, Monaco, &#39;Andale Mono&#39;, monospace;">=</span> operator is used to do the exact comparison between values. The example would be true if the order came from eBay.
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <span style="color: #07a; font-size: 13px; font-family: Consolas, Monaco, &#39;Andale Mono&#39;, monospace;">&lt;&gt;</span>
+      </td>
+      <td>
+        <span style="color: #07a; font-size: 13px; font-family: Consolas, Monaco, &#39;Andale Mono&#39;, monospace;">[Source]&lt;&gt;'Amazon'</span>
+      </td>
+      <td>
+        The <span style="color: #07a; font-size: 13px; font-family: Consolas, Monaco, &#39;Andale Mono&#39;, monospace;">&lt;&gt;</span> operator is used to specify non-equivalence between two values. The example would be true if the order did not come from Amazon.
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <span style="color: #07a; font-size: 13px; font-family: Consolas, Monaco, &#39;Andale Mono&#39;, monospace;">&gt;</span>
+      </td>
+      <td>
+        <span style="color: #07a; font-size: 13px; font-family: Consolas, Monaco, &#39;Andale Mono&#39;, monospace;">[fTotalCharge]&gt;100</span>
+      </td>
+      <td>
+        The <span style="color: #07a; font-size: 13px; font-family: Consolas, Monaco, &#39;Andale Mono&#39;, monospace;">&gt;</span> operator states that the first value is greater than the second. The example would be true if the order total was over 100 of the order currency.
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <span style="color: #07a; font-size: 13px; font-family: Consolas, Monaco, &#39;Andale Mono&#39;, monospace;">&lt;</span>
+      </td>
+      <td>
+        <span style="color: #07a; font-size: 13px; font-family: Consolas, Monaco, &#39;Andale Mono&#39;, monospace;">[fTax]&lt;20</span>
+      </td>
+      <td>
+        The <span style="color: #07a; font-size: 13px; font-family: Consolas, Monaco, &#39;Andale Mono&#39;, monospace;">&lt;</span> operator states that the first value is less than the second. The example would be true if the order tax was less than 20 of the order currency.
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <span style="color: #07a; font-size: 13px; font-family: Consolas, Monaco, &#39;Andale Mono&#39;, monospace;">&gt;=</span>
+      </td>
+      <td>
+        <span style="color: #07a; font-size: 13px; font-family: Consolas, Monaco, &#39;Andale Mono&#39;, monospace;">[fTotalCharge]&gt;=100 </span>
+      </td>
+      <td>
+        The <span style="color: #07a; font-size: 13px; font-family: Consolas, Monaco, &#39;Andale Mono&#39;, monospace;">&gt;=</span> operator states that the first value is greater than or equal to the second. The example would be true if the order was 100 or more of the order currency.
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <span style="color: #07a; font-size: 13px; font-family: Consolas, Monaco, &#39;Andale Mono&#39;, monospace;">&lt;=</span>
+      </td>
+      <td>
+        <span style="color: #07a; font-size: 13px; font-family: Consolas, Monaco, &#39;Andale Mono&#39;, monospace;">[TotalWeight]&lt;=1500</span>
+      </td>
+      <td>
+        The <span style="color: #07a; font-size: 13px; font-family: Consolas, Monaco, &#39;Andale Mono&#39;, monospace;">&lt;=</span> operator states that the first value is less than or equal to the second. The example would be true if the weight of the order is 1500 or less than the default order weight.
+      </td>
+    </tr>
+  </tbody>
+</table>
+<h2 id="Using" data-has-heading-anchor="true">
+  Using printing conditions
+<a href="/articles/documentation/template-designer-printing-conditions/a/Using" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/template-designer-printing-conditions/a/Using&#39;,this);"></a></h2>
+<p>
+  Printing conditions are constructed in a similar manner to other expression-based functionality in <i>Template Designer</i>. The following section will give some examples of common printing conditions for templates focussing on invoices.
+</p>
+<h4 id="Simple" style="" data-has-heading-anchor="true">
+  Simple conditions
+<a href="/articles/documentation/template-designer-printing-conditions/a/Simple" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/template-designer-printing-conditions/a/Simple&#39;,this);"></a></h4>
+<p>
+  If you have multiple channels integrated, then you may want a specific invoice to be printed for a specific channel.&nbsp;To use the template only for orders from a particular eBay channel:</p>
+<ul><li><span style="color: #0077aa; font-family: Consolas, Monaco, &quot;Andale Mono&quot;, monospace; font-weight: normal;">[SubSource]='EBAY0'</span></li>
+</ul><h4 id="like" style="" data-has-heading-anchor="true">
+  Using LIKE conditions and wildcards
+<a href="/articles/documentation/template-designer-printing-conditions/a/like" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/template-designer-printing-conditions/a/like&#39;,this);"></a></h4>
+<p>
+  Whilst numerical values can be compared relatively easily, text entries are more difficult to compare. For unbound text strings, the LIKE operator offers options for easy comparison. LIKE statements are often used in conjunction with wildcards. A wildcard is used to represent any number of other characters before, after, or in the middle of the desired text string. Linnworks uses the percentage sign (%) as a wildcard.
+</p>
+<ul>
+  <li>If there is a particular invoice to print for a large volume customer and orders come from one of several of their staff members, it would be possible to use their email address (@BigSpenders.fictional) to identify appropriate orders:
+    <ul>
+      <li><span style="font-weight: normal;">
+        <span style="color: #0077aa; font-family: Consolas, Monaco, &quot;Andale Mono&quot;, monospace;">[cEmailAddress] LIKE '%@BigSpenders.fictional'</span>
+      </span></li>
+    </ul>
+  </li>
+  <li>This will catch all orders that have a customer email address ending in @BigSpenders.fictional.
+  </li>
+</ul>
+<p>
+  Alternatively, if you want particular product categories to print using a specific invoice they could be listed individually or using wildcards.
+</p>
+<ul>
+  <li>If product categories are: Nail Varnish, Nail File, Nail Art, Nail Polish, Gel Nail Accessories:
+    <ul>
+      <li><span style="font-weight: normal;">
+        <span style="color: #0077aa; font-family: Consolas, Monaco, &quot;Andale Mono&quot;, monospace;">[Categories] LIKE '%Nail%'</span>
+      </span></li>
+    </ul>
+  </li>
+  <li>This would capture all of the above categories. It should be noted that this would also capture the category 'Screws and Nails' too.
+  </li>
+  <li>This is an extreme example, as you would need to be selling SKUs in both categories for this to happen.
+  </li>
+</ul>
+<h4 id="Multiple" style="" data-has-heading-anchor="true">
+  Multiple conditions
+<a href="/articles/documentation/template-designer-printing-conditions/a/Multiple" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/template-designer-printing-conditions/a/Multiple&#39;,this);"></a></h4>
+<p>
+  If you have multiple channels that you want to use the same template for, it is possible to use the <span style="color: #07a; font-size: 13px; font-family: Consolas, Monaco, &#39;Andale Mono&#39;, monospace;">OR</span> operator to add more options to a printing condition or the <span style="color: #07a; font-size: 13px; font-family: Consolas, Monaco, &#39;Andale Mono&#39;, monospace;">AND</span> operator to add further requirements to a printing condition.
+</p>
+<ul>
+  <li>
+    Printing from Amazon or eBay:
+    <ul>
+      <li><span style="font-weight: normal;">
+        <span style="color: #0077aa; font-family: Consolas, Monaco, &quot;Andale Mono&quot;, monospace;">[Source]='AMAZON' OR [Source]='EBAY'</span>
+      </span></li>
+    </ul>
+  </li>
+</ul>
+<p>
+  This would print the template for all orders that are from <strong>any</strong> integrated Amazon or eBay channels. The Subsource variable can be used to specify certain channel integrations
+</p>
+<ul>
+  <li>Printing based on Subsource:
+    <ul>
+      <li><span style="font-weight: normal;">
+        <span style="color: #0077aa; font-family: Consolas, Monaco, &quot;Andale Mono&quot;, monospace;">[SubSource]='EBAY0' OR [SubSource]='Amazon UK'</span>
+      </span></li>
+    </ul>
+  </li>
+</ul>
+<p>
+  The <span style="color: #07a; font-size: 13px; font-family: Consolas, Monaco, &#39;Andale Mono&#39;, monospace;">AND</span> operator can be used to restrict the printing conditions further. If your channel has strict requirements on despatch time, for instance, if orders with express shipping must be despatched in 48 hours, but the standard could be up to 72 hours, you may want to separate the express orders from the standard delivery orders.
+</p>
+<ul>
+  <li>If you have your channel's express delivery mapped to the Linnworks Postal Method called "My Expedited":
+    <ul>
+      <li><span style="font-weight: normal;">
+        <span style="color: #0077aa; font-family: Consolas, Monaco, &quot;Andale Mono&quot;, monospace;">[Source]='AMAZON' AND [ShippingService]='My Expedited'</span>
+      </span></li>
+    </ul>
+  </li>
+  <li>This would print the template for all orders with a shipping method mapped to 'My Expedited'. Orders with other shipping methods would not be printed using this template.
+  </li>
+</ul>
+<p>
+  Printing conditions allow granular control over what documents will be printed using a certain template. The example below will only print if the order was created directly in Linnworks and the order items come from either the clothing or baby toys categories. Furthermore, it must not be in the folder of orders called 'Process ASAP'.
+</p>
+<ul>
+  <li><span style="font-weight: normal;">
+    <span style="color: #0077aa; font-family: Consolas, Monaco, &quot;Andale Mono&quot;, monospace;">[Source] = 'DIRECT' AND ([Categories] LIKE '%Clothing%' OR [Categories] LIKE '%Baby toys%') AND [FolderCollection] NOT LIKE '%Process ASAP%'</span>
+  </span></li>
+</ul>
+<h4 id="brackets" style="" data-has-heading-anchor="true">
+  Using parentheses
+<a href="/articles/documentation/template-designer-printing-conditions/a/brackets" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/template-designer-printing-conditions/a/brackets&#39;,this);"></a></h4>
+<p>
+  Using parentheses can group conditions together and evaluate them as one condition. One of the common uses for this could be identifying orders to be shipped to the non-mainland UK, such as Northern Ireland or the Scottish Isles. In the following example, the invoice should be printed for all non-mainland UK expedited orders. It is assumed that channel expedited shipping has been mapped to the Linnworks Postal Method; 'My Expedited'.
+</p>
+<ul>
+  <li>
+    <span style="color: #0077aa; font-family: Consolas, Monaco, &quot;Andale Mono&quot;, monospace;">[ShippingService]='My Expedited' AND ([cCountry] &lt;&gt; 'United Kingdom' OR [cPostCode] LIKE 'BT%' OR [cPostCode] LIKE 'HS%' OR [cPostCode] LIKE 'ZE%')</span>
+    <ul>
+      <li>
+        The list can be expanded using more OR statements to include other postcodes, such as Jersey, Guernsey, etc.
+      </li>
+    </ul>
+  </li>
+</ul>
+<h4 id="ImpParenth" data-has-heading-anchor="true">
+  Implicit parentheses
+<a href="/articles/documentation/template-designer-printing-conditions/a/ImpParenth" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/template-designer-printing-conditions/a/ImpParenth&#39;,this);"></a></h4>
+<p>
+  When using the <span style="color: #07a; font-size: 13px; font-family: Consolas, Monaco, &#39;Andale Mono&#39;, monospace;">AND</span> operator, implicit parentheses are placed around the variables on either side of the <span style="color: #07a; font-size: 13px; font-family: Consolas, Monaco, &#39;Andale Mono&#39;, monospace;">AND</span> clause
+</p>
+<ul>
+  <li>
+    <span style="color: #0077aa; font-family: Consolas, Monaco, &quot;Andale Mono&quot;, monospace;">[Source]='EBAY' AND [ShippingService]='express24' OR [Source]='AMAZON' AND [fTotalCharge]&gt;100</span>
+    <ul>
+      <li>
+        This template will print with either eBay orders with the shipping service 'express24' or Amazon orders over 100 of the order currency. It is being evaluated like:
+        <ul style="margin-left: 0px;">
+          <li>
+            <span style="color: #0077aa; font-family: Consolas, Monaco, &quot;Andale Mono&quot;, monospace;">([Source]='EBAY' AND [ShippingService]='express24') OR ([Source]='AMAZON' AND [fTotalCharge]&gt;100)</span>
+          </li>
+        </ul>
+      </li>
+    </ul>
+  </li>
+</ul>
+<h4 id="INCondition" style="" data-has-heading-anchor="true">
+  Using the IN condition
+<a href="/articles/documentation/template-designer-printing-conditions/a/INCondition" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/template-designer-printing-conditions/a/INCondition&#39;,this);"></a></h4>
+<p>
+  The <span style="color: #07a; font-size: 13px; font-family: Consolas, Monaco, &#39;Andale Mono&#39;, monospace;">IN</span> condition can be used to look for a value in a list of values. It can be combined with the <span style="color: #07a; font-size: 13px; font-family: Consolas, Monaco, &#39;Andale Mono&#39;, monospace;">NOT</span> condition to check whether a value is not in a list. For instance, print a particular invoice if the shipping destination is in Europe:
+</p>
+<p>
+  <span style="color: #0077aa; font-family: Consolas, Monaco, &quot;Andale Mono&quot;, monospace; font-size: 12pt;">[cCountry] IN ('United Kingdom', 'France', 'Germany', 'Portugal')</span>
+</p>
+<ul>
+  <li>
+    This will look for the shipping country in the list of countries specified.
+  </li>
+  <li>
+    The list can be expanded to cater to more countries.
+  </li>
+</ul>
+<p>
+  <span style="color: #0077aa; font-family: Consolas, Monaco, &quot;Andale Mono&quot;, monospace; font-size: 12pt;">[cCountry] NOT IN ('United Kingdom', 'France', 'Germany', 'Portugal')</span>
+</p>
+<ul>
+  <li>
+    This template will be used if the shipping country is not on the specified list.
+  </li>
+  <li>
+    The list can be expanded to cater to more countries.
+  </li>
+</ul>
+<p class="alert-warning">
+  <strong>Note!</strong> It is not possible to use Wildcards with the <strong>IN</strong> operator.
+</p>
+<h3 id="BadEx" data-has-heading-anchor="true">
+  Bad examples
+<a href="/articles/documentation/template-designer-printing-conditions/a/BadEx" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/template-designer-printing-conditions/a/BadEx&#39;,this);"></a></h3>
+<p>
+  Syntax checking in printing conditions will not assess whether the rule will work as expected. Below are some examples of printing conditions where they will either not work or another method would be more robust.
+</p>
+<p>
+  <span style="color: #0077aa; font-family: Consolas, Monaco, &quot;Andale Mono&quot;, monospace; font-size: 12pt;">[ShippingVendor]='Royal Mail' And [ShippingVendor]='DPD'</span>
+</p>
+<ul>
+  <li>
+    An order can only have one shipping vendor, the AND clause will require both of these statements to be true.
+  </li>
+  <li>
+    If either of these vendors is valid then use:
+    <ul>
+      <li>
+        <span style="color: #0077aa; font-family: Consolas, Monaco, &quot;Andale Mono&quot;, monospace;">ShippingVendor= 'Royal Mail' OR [ShippingVendor]='DPD'</span>
+      </li>
+    </ul>
+  </li>
+  <li>
+    An alternative, more efficient, way which allows for easy expansion would be to use an IN statement:
+    <ul>
+      <li>
+        <span style="color: #0077aa; font-family: Consolas, Monaco, &quot;Andale Mono&quot;, monospace;">[ShippingVendor] IN ('Royal Mail', 'DPD')</span>
+      </li>
+    </ul>
+  </li>
+</ul>
+<p>
+  <span style="font-size: 12pt; color: #0077aa; font-family: Consolas, Monaco, &quot;Andale Mono&quot;, monospace;">[nOrderID]=100056</span>
+</p>
+<ul>
+  <li>
+    This will only print on a specific order, but it sill may print using a different template if the order satisfies multiple templates' printing conditions.
+  </li>
+  <li>
+    To print an invoice for an order using a specific template, please see our guide on <a href="/articles/documentation/open-orders-print" onclick="return n(&#39;!documentation/open-orders-print&#39;,this);">printing invoices</a>.
+  </li>
+  <li>
+    Please note that invoices with printing conditions cannot be chosen as specific invoices.
+  </li>
+</ul>
+<h3 id="Notes" data-has-heading-anchor="true">
+  General notes on using printing conditions and wildcards
+<a href="/articles/documentation/template-designer-printing-conditions/a/Notes" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/template-designer-printing-conditions/a/Notes&#39;,this);"></a></h3>
+<p>
+  In the example above, wildcards are used to capture large numbers of potential postcodes to determine orders that are not considered 'Mainland UK'. In the case of the Orkney Islands, they share a postcode with some of mainland Scotland. Using wildcards to exclude some postcodes should be done with care. If the condition KW1% is considered a 'Mainland' postcode, this would also capture KW15, KW16, and KW17, which are not.
+</p>
+<p>
+  When using categories as a printing condition, only one order item has to match the condition for that template to be used.
+</p>
+<p>
+  Conditional invoices do not appear in the "Print Specific Invoice" option from the drop-down in open orders. The reason for this is Specific Invoices are designed to be independent, whereas conditional invoices are designed to be printed based on a condition.
+</p>
+<h4 id="Selection" data-has-heading-anchor="true">
+  Template selection
+<a href="/articles/documentation/template-designer-printing-conditions/a/Selection" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/template-designer-printing-conditions/a/Selection&#39;,this);"></a></h4>
+<p>
+  Once a set of conditions has been fulfilled, no further conditions will be checked to see if it better suits your needs. Therefore be specific as possible when defining conditions making using multiple conditions and using inclusive operators such as '<span style="color: #07a; font-size: 13px; font-family: Consolas, Monaco, &#39;Andale Mono&#39;, monospace;">=</span>' is always preferable to '<span style="color: #07a; font-size: 13px; font-family: Consolas, Monaco, &#39;Andale Mono&#39;, monospace;">&lt;&gt;</span>'. There is only a single instance where there is an exact match, but there can be many possibilities where something does not match resulting in an incorrect template selection.
+</p>
+<p>
+  Printing conditions are evaluated based on the order of creation of the templates, starting with the oldest.
+</p>
+<p>
+  Example:
+</p>
+<table class=" table table-bordered">
+  <thead>
+    <tr>
+      <th>
+        Index
+      </th>
+      <th>
+        Template Name
+      </th>
+      <th>
+        Printing Condition
+      </th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>
+        1
+      </td>
+      <td>
+        Direct Orders
+      </td>
+      <td>
+        <span style="color: #07a; font-size: 13px; font-family: Consolas, Monaco, &#39;Andale Mono&#39;, monospace;">[Source]='Direct'</span>&nbsp;
+      </td>
+    </tr>
+    <tr>
+      <td>
+        2
+      </td>
+      <td>
+        Direct Orders UK
+      </td>
+      <td>
+        <span style="color: #07a; font-size: 13px; font-family: Consolas, Monaco, &#39;Andale Mono&#39;, monospace;">[Source]='Direct' AND [cCountry] = 'United Kingdom'&nbsp;</span>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        3
+      </td>
+      <td>
+        Direct Orders UK &gt;= £10
+      </td>
+      <td>
+        <span style="color: #07a; font-size: 13px; font-family: Consolas, Monaco, &#39;Andale Mono&#39;, monospace;">[Source]='Direct' AND [cCountry] = 'United Kingdom' AND [fTotalCharge] &gt;= 10</span>&nbsp;
+      </td>
+    </tr>
+    <tr>
+      <td>
+        4
+      </td>
+      <td>
+        Direct Orders UK &lt; £10
+      </td>
+      <td>
+        <span style="color: #07a; font-size: 13px; font-family: Consolas, Monaco, &#39;Andale Mono&#39;, monospace;">[Source]='Direct' AND [cCountry] = 'United Kingdom' AND [fTotalCharge] &lt; 10&nbsp;</span>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        5
+      </td>
+      <td>
+        Direct Orders ROW
+      </td>
+      <td>
+        <span style="color: #07a; font-size: 13px; font-family: Consolas, Monaco, &#39;Andale Mono&#39;, monospace;">[Source]='Direct' AND [cCountry] &lt;&gt; 'United Kingdom'</span>&nbsp;
+      </td>
+    </tr>
+  </tbody>
+</table>
+<p>
+  In the above table, the index is the order in which the templates were created. In this case, Templates 2,3,4, and 5 will never be used as the condition in Invoice 1 has already been met. Invoice templates 1 and 2 are not required as they are too broad. Only invoice templates 3,4 and 5 should be added as they define clearly when they should be used.
+</p>
+<p>
+  It is possible to see the creation order of enabled invoice templates by going to <span style="font-weight: normal;"><i>Dashboards &gt; Query Data &gt; Custom Script</i></span> and entering the following query:</p>
+<table class="CHCodeSample_container notranslate" cellspacing="0" cellpadding="0"><tr class="CHCodeSample_tr1"><td class="CHCodeSample_header"><div class="CHCodeSample_copyCode nonPrintable"><a onclick="copyCodeSample(this)" href="javascript:void(0)">Copy Code</a></div><div class="CHCodeSample_langName notranslate">XQuery</div></td></tr><tr class="CHCodeSample_tr2"><td class="CHCodeSample_code notranslate cm-s-default"><pre><span class="cm-word">SELECT</span> <br/>[<span class="cm-word">TemplateName</span>], [<span class="cm-word">VisibilityCondition</span>], [<span class="cm-word">IsDefault</span>] <br/><span class="cm-word">FROM</span> <br/>[<span class="cm-word">system</span>]<span class="cm-keyword">.</span>[<span class="cm-word">template_header</span>] <br/><span class="cm-word">WHERE</span> <br/><span class="cm-word">TemplateType</span> <span class="cm-keyword">=</span> <span class="cm-string">'Invoice Template'</span> <span class="cm-word">AND</span> <span class="cm-word">bLogicalDelete</span> <span class="cm-keyword">=</span> <span class="cm-atom">0</span> <span class="cm-word">AND</span> <span class="cm-word">Enabled</span> <span class="cm-keyword">=</span> <span class="cm-atom">1</span> <br/><span class="cm-word">ORDER</span> <span class="cm-word">BY</span> <br/><span class="cm-word">pkTemplateRowId</span></pre></td></tr></table><p>
+  The templates will be listed in order of their creation, with the oldest first.
+</p>
+<script src="/resources/Scripts/lightense.min.js"></script>
+<script>
+  // Init Lightense
+  window.addEventListener('load', function () {
+    Lightense('img.lightense:not(.no-lightense)');
+  }, false);
+</script>
+<script>
+var toggler = document.getElementsByClassName("caret");
+var i;
+
+for (i = 0; i < toggler.length; i++) {
+  toggler[i].addEventListener("click", function() {
+    this.parentElement.querySelector(".nested").classList.toggle("active");
+    this.classList.toggle("caret-down");
+  });
+}
+</script></body></html>

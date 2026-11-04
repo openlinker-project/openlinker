@@ -1,0 +1,19 @@
+=== rma-resends | Resends
+ 
+ Resends 
+Processed Orders: Resends 
+ The Resends functionality allows you to resend one or more items to the buyer from the order that was already processed . See below for more details on how to create resends in Linnworks.
+ Step 1: Find your order 
+ Open the Processed Orders screen and search for the order you need to resend.  Right-click the order and select Action > Returns, Exchanges & Resends. 
+ Select the item you want to resend and click   Add RMA . 
+ Step 2: Add a resend to the order 
+ The top of the New RMA screen shows details about the item you are resending. The bottom half of the screen is split into three tabs:  Return , Exchange , and Resend . 
+Select the Resend tab to create a new resend. 
+ Configure the resend using the following fields.
+ Resend quantity : The number of items to resend.
+ Resend order location : The location that the new order will be fulfilled from.
+ Additional Cost : Any additional costs paid by the buyer.
+ Reason : The reason the item was resent.
+ Reason category : Custom category for the resend. Manage categories by clicking the wrench   icon next to the Reason category field. These  categories are shared between returns, exchanges, and resends. 
+ Once the fields are filled in, click  Add Resend > Action or Book your resend. For more information on what is the difference between   Book and   Action buttons see here .
+ 

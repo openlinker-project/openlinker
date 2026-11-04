@@ -1,0 +1,1530 @@
+[
+  {
+    "id": "X-01",
+    "name": "One neutral picture of what the buyer was charged: list price, adjustments and per-line allocations",
+    "area": "cross",
+    "actor": "Source adapter (system); read by documents, analytics, returns and the operator",
+    "trigger": "An order is ingested or re-ingested from any channel that reports a reduction in any form",
+    "preconditions": [
+      "The channel reports at least one of: a pre-reduction price, a reduction type, a reduction amount, a promotion id",
+      "Today none of these reach OrderItem: no list price, no line discount, no reason (r4/code/B-line-identity-traced.md section 3)"
+    ],
+    "mainFlow": [
+      "The adapter emits order-level adjustments {id, label, source, trigger, funder, form, qualifyingLineIds, allocationMethod}.",
+      "Per line it emits listUnitPriceGross (nullable = unknown), taxRate and allocations [{adjustmentId, amount | null}].",
+      "Core stores the facts unchanged as three-state fields (absent = not read, null/[] = source checked and has none).",
+      "Effective price paid stays the existing price / unitPriceGross; list minus allocations must reconcile to it or the line is flagged.",
+      "\"Gift\" and \"bundle discount\" are derived views over the facts, never stored tax classes."
+    ],
+    "altFlows": [
+      "Allegro CAMPAIGN: originalPrice == price although a discount happened; listUnitPriceGross must be null (unknown), not equal to price.",
+      "Allegro ALLEGRO_PRICES: list = price + reconciliation.value, with an adjustment funder=channel (see X-07).",
+      "Several Allegro discount types on one line (array, no amounts): one adjustment per type, allocation amount null, total gap known only for the line.",
+      "Erli: one adjustment from order.rebate {id,name,code}; unitPriceBeforeRebate maps to list price ONLY when the rebate is the only reduction, else null.",
+      "Amazon v0: PromotionIds and PromotionDiscount live in different places; per-promotion amount is not recoverable with 2+ promotions on an item.",
+      "PrestaShop cart-rule gift merged into a paid row: no line-level fact exists; see D-03 and the gifts writer (G-03)."
+    ],
+    "channelData": {
+      "allegro": "lineItems[].originalPrice, price, discounts[].type (LineItemDiscount = {type} only), reconciliation.value/quantity",
+      "erli": "items[].unitPrice, unitPriceBeforeRebate (integer, grosze likely), order.rebate {id, name, code}",
+      "prestashop": "order_detail original_product_price, reduction_percent, reduction_amount (unread); order_cart_rules / total_discounts_tax_incl",
+      "woocommerce": "line_items[].subtotal (pre-discount), total, total_tax; coupon_lines",
+      "shoper": "order-products discount_perc on children (SDK only); parent discount field unknown",
+      "mirakl": "order_lines.origin_unit_price, price_unit, promotions[] {id, deduced_amount, apportioned, configuration.type}",
+      "ebay": "lineItemCost, discountedLineItemCost, appliedPromotions[] {promotionId, description, discountAmount}",
+      "amazon": "v0 PromotionDiscount, PromotionIds; 2026 proceeds.breakdowns[type=DISCOUNT].subtotal, promotion.breakdowns[].promotionId",
+      "kaufland": "order_unit.price (post-discount), discounts[] {usage_type voucher|volume, discount_value}, at most one per unit; Kaufland-funded promotions hidden"
+    },
+    "olBehaviour": "New optional fields on IncomingOrderItem/OrderItem plus an order-level adjustments list; must be added in every allowlist in one change (ingestion builder, snapshot writer and reader, destination projection, invoice mapper, order_line_items writer, adapter pass-throughs). No capability: data only. Rendering on documents is a separate decision (D-04, G-10).",
+    "mechanism": "field",
+    "acceptance": [
+      {
+        "given": "an Allegro line with originalPrice 89.99, price 85.49 and discounts [{type: CAMPAIGN}]",
+        "when": "it is ingested",
+        "then": "listUnitPriceGross is null and one adjustment with label CAMPAIGN and amount null is stored; nothing reports \"no reduction\""
+      },
+      {
+        "given": "an Erli order with rebate {name: \"Jesien\"} and a line with unitPrice 9000, unitPriceBeforeRebate 10000",
+        "when": "it is ingested",
+        "then": "one adjustment (source channel, funder unknown) and an allocation of 10.00 on that line are stored"
+      },
+      {
+        "given": "a channel that reports no reduction field at all",
+        "when": "the line is stored",
+        "then": "the adjustments field is absent (not read), distinct from an empty list (checked, none)"
+      },
+      {
+        "given": "an operator discount applied through order edits (#3543)",
+        "when": "list and paid prices are compared",
+        "then": "the channel adjustment is read from the channel snapshot only, never derived as list minus the edited unitPriceGross"
+      }
+    ],
+    "priority": "later",
+    "priorityReason": "Differentiation, not pilot damage: r5/7 puts the neutral list price + reduction work in Stage 3 (G20), and no pilot document path needs it while documents keep the paid price.",
+    "evidence": [
+      "C-003",
+      "C-023",
+      "verify/allegro-line-price.md Q1-Q4 (price and originalPrice are UNIT prices; LineItemDiscount type only; order-level discounts[] deprecated and absent from the current swagger)",
+      "r5/1-allegro-pl.md C-003 row (staff #13348, #12768, #9790)",
+      "r5/3-marketplaces-countries.md section 3 A3-A4 and section 4",
+      "r4/code/B-line-identity-traced.md section 3 money table",
+      "r4/phase1/4-marketplaces-and-law.md section 1",
+      "r5/6-design-and-code.md section 3 item 4 and N-3",
+      "C-055"
+    ],
+    "confidence": "probable",
+    "risks": [
+      "Evidence contradicts a naive model in three places: Allegro CAMPAIGN/ALLEGRO_PRICES (originalPrice is not a list price), Erli unitPriceBeforeRebate (not a list price, r5/3 C-023 point 3), and allocation amounts that are unknown per discount type. The proposed model survives only if listUnitPriceGross and allocation.amount are nullable.",
+      "Allowlist drift (C-055): three documented losses of an OrderItem field already.",
+      "Operator discount rewrites unitPriceGross (order-discount.types.ts:216-221, r5/6 N-3), so list minus paid mixes channel and OL reductions.",
+      "Allegro discount enum in practice differs from the spec (staff #9790 lists CROSSMULTIPACK, ALLEGRO_PRICES); unknown strings must parse as unknown, not error."
+    ]
+  },
+  {
+    "id": "X-02",
+    "name": "Per-piece channels: one order unit per piece is merged into lines with a quantity",
+    "area": "cross",
+    "actor": "Source adapter (system)",
+    "trigger": "A per-piece channel (Kaufland; also TikTok Shop and InPost Von Halsky per Apilo) sends an order with the same unit bought N times",
+    "preconditions": [
+      "A source adapter for such a channel exists. OpenLinker has none today (libs/integrations list: no kaufland, amazon, mirakl, ebay)"
+    ],
+    "mainFlow": [
+      "The adapter groups order units by offer/unit id and price into one line with quantity N.",
+      "The adapter keeps the list of channel unit ids on the line (needed for per-unit returns and refunds).",
+      "A discount that differs between units of the same offer keeps those units on separate lines."
+    ],
+    "altFlows": [
+      "Units of the same offer with different discount_value: separate lines, because merging would average the price.",
+      "A return or refund arrives per order unit: resolved to the merged line plus the unit id (see R-04)."
+    ],
+    "channelData": {
+      "kaufland": "OrderUnit has no quantity field; \"If the same unit gets ordered several times, several order units are created\"; discounts[] at most one per unit; refund PATCH /order-units/{id}/refund {amount, reason}",
+      "apilo_reference": "Per-integration setting \"Strategia importu przedmiotow zamowienia\": import singly / group by offer (TikTok Shop, InPost Von Halsky)"
+    },
+    "olBehaviour": "Adapter-internal merge with the unit ids kept as data on the line; no core change. If ever needed, an operator setting per connection (import singly vs group), Apilo shape.",
+    "mechanism": "field",
+    "acceptance": [
+      {
+        "given": "a Kaufland order with 3 order units of the same unit at 19.99 and no discount",
+        "when": "it is ingested",
+        "then": "one line with quantity 3 and the three unit ids is stored"
+      },
+      {
+        "given": "the same order where one unit carries a voucher discount",
+        "when": "it is ingested",
+        "then": "two lines are stored (quantity 2 at full price, quantity 1 at the discounted price)"
+      },
+      {
+        "given": "a refund request for one of three merged units",
+        "when": "OpenLinker sends it to the channel",
+        "then": "it addresses that unit id, not the merged line"
+      }
+    ],
+    "priority": "out",
+    "priorityReason": "No Kaufland (or other per-piece) adapter exists in the repository, so there is nothing to merge for the pilot or any current user.",
+    "evidence": [
+      "C-025",
+      "r4/phase1/4-marketplaces-and-law.md section 1.4",
+      "r5/3-marketplaces-countries.md C-025",
+      "r4/phase2/2-apilo.md X-02 row",
+      "r4/phase1/3-pl-saas-and-erp.md line 96 (integration list)"
+    ],
+    "confidence": "confirmed",
+    "risks": [
+      "Kaufland hides Kaufland-funded promotions, so the merged line price can understate the list price with no signal (see X-07).",
+      "Merging loses unit ids unless they are kept; per-piece returns would then be unmatched."
+    ]
+  },
+  {
+    "id": "X-03",
+    "name": "Per-connection settings and adapter declarations for how a channel encodes bundles, gifts and discounts",
+    "area": "cross",
+    "actor": "Operator (settings); adapter author (declarations)",
+    "trigger": "A connection is set up, or a channel shape is found that the adapter cannot tell apart on its own (for example parent + children lines)",
+    "preconditions": [
+      "The behaviour differs per plugin or shop setup, not per platform (WooCommerce bundle plugins, Shoper sets, PrestaShop pack stock modes)"
+    ],
+    "mainFlow": [
+      "The adapter declares only facts about its own platform or device limits (for example per-line rebate support, zero-line acceptance), as a required method on the document ports where all adapters are ours (ADR-046 shape).",
+      "Choices that change document content or stock behaviour are operator settings on the connection (ADR-082 shape: default plus overrides).",
+      "Examples of settings: \"this source emits bundle children as lines\" (suppress or keep), \"show free items on documents: omit | show\", \"bundle on documents: one line | components\".",
+      "The settings page shows the effective value and where it came from (declared, default, operator)."
+    ],
+    "altFlows": [
+      "Declaration absent (older or out-of-tree adapter): conservative default, shown as \"not declared\" in the UI, never silently treated as supported.",
+      "A setting would contradict a declaration (operator picks \"show free items\" on a printer that refuses zero lines): refused at save with the reason."
+    ],
+    "channelData": {
+      "woocommerce": "Product Bundles: _bundled_by, _bundled_items, _bundled_item_priced_individually in line meta_data (unread today)",
+      "shoper": "order-products type 1 + children[] (SDK only; unread today, C-019)",
+      "prestashop": "pack_stock_type per product, read path differs by version (C-014)",
+      "competitors": "Linnworks connector flags (CanCancelOrderLines, IsRefundsVisible); Apilo per-integration import strategy; Sellasist per-integration \"Sposob naliczania rabatow\"; BaseLinker per-connector advanced settings"
+    },
+    "olBehaviour": "Settings live in Connection.config (no migration), read through pure readers like readStockSafetyBuffer; declarations are required methods on InvoicingPort/FiscalizationPort only for device limits. ADR-082 is the precedent: adapter declares ReceiptLineNameBudget, operator chooses delivery rendering.",
+    "mechanism": "setting",
+    "acceptance": [
+      {
+        "given": "a WooCommerce connection with \"children emitted as lines\" set to suppress",
+        "when": "an order with a bundle container and two children arrives",
+        "then": "only the container is reserved and picked; children are kept for display"
+      },
+      {
+        "given": "a document adapter with no declaration method (out-of-tree plugin)",
+        "when": "the operator opens the document settings",
+        "then": "the page says \"not declared\" and the conservative rule (no zero lines, no line rebates) applies"
+      },
+      {
+        "given": "an eparagony connection that declares zero lines refused",
+        "when": "the operator sets free items to \"show\"",
+        "then": "the save is refused with the device reason"
+      }
+    ],
+    "priority": "later",
+    "priorityReason": "r5/7 defers all declarers and channel-shape ingestion; the pilot needs only a guard refusing a bundle definition on a WooCommerce container, which belongs to the bundles writer.",
+    "evidence": [
+      "r5/6-design-and-code.md section 3 items 3, 6, 7 and section 4 (ADR-046, ADR-082)",
+      "r5/7-scope-overengineering.md section 5 (declarers deferred) and section 9 item 5",
+      "C-043",
+      "C-058",
+      "r4/phase2/2-apilo.md X-03",
+      "r4/phase2/3-sellasist.md X-03",
+      "r4/phase2/1-baselinker.md X-03"
+    ],
+    "confidence": "probable",
+    "risks": [
+      "Each guard-only declaration needs a server read and a frontend mirror (ADR-046 amendment), so the \"2-4 declarations\" cost is understated (r5/6).",
+      "ADR-048 decision 1 forbids an interface with no implementer; ship a declaration only with its first adapter."
+    ]
+  },
+  {
+    "id": "X-04",
+    "name": "A line added after the order exists (shop back-office edit, operator edit in OpenLinker)",
+    "area": "cross",
+    "actor": "Shop staff (source edit); operator (OpenLinker edit); gift rule (automation)",
+    "trigger": "A re-ingested order carries a line it did not have, or an operator or rule wants to add a gift or bundle line",
+    "preconditions": [
+      "The order was already ingested and may already be reserved, routed or invoiced"
+    ],
+    "mainFlow": [
+      "Source edit: the amendment diff reports line-added (order-amendment-diff.ts:52, :163); the new line goes through item resolution, reservation and, if routed, re-routing like a new line.",
+      "If a document was already issued, the added line needs its own correction or a second document; never a silent rewrite of the issued document.",
+      "OpenLinker edit: an add-line edit writes into the orderEdits overlay (never into the channel snapshot, #3542), with the same refusal rules and lock as other edits.",
+      "An added line carries its origin (channel, operator, rule) so writebacks know whether the channel knows it (see X-09)."
+    ],
+    "altFlows": [
+      "PrestaShop back office adds a product and a cart rule adds a gift as a side effect (AddProductToOrderHandler.php:261-262); gift detection must run on updates, not only first ingestion.",
+      "Order already shipped: the added line cannot be packed with the original parcel; it is held for operator decision.",
+      "Order was once awaiting_mapping: order.received never fires again, so a rule-added gift never runs (r5/6 N-1)."
+    ],
+    "channelData": {
+      "prestashop": "Back-office AddProductToOrderHandler: updates an existing row (quantity += delta) or creates a new one via createList",
+      "allegro": "No seller-side line add after purchase (no evidence of one)",
+      "shoper": "Back-office edits sync per Apilo (S12); not verified for OpenLinker"
+    },
+    "olBehaviour": "Core change: today edits can only lower quantities (order-edits.types.ts:76, :288) and the edit write path lives in apps/api (order-edit.service.ts:181, :532), so a worker-side rule cannot call it. An add-line edit needs a core writer with lock and refusal rules.",
+    "mechanism": "core",
+    "acceptance": [
+      {
+        "given": "a routed order re-ingested with a new line",
+        "when": "ingestion runs",
+        "then": "an amendment line-added is recorded and the new line is reserved; existing lines keep their holds"
+      },
+      {
+        "given": "an invoiced order that gains a line at source",
+        "when": "it is re-ingested",
+        "then": "the issued invoice is unchanged and the order shows \"added after invoicing\" for operator action"
+      },
+      {
+        "given": "an order that went through awaiting_mapping before becoming ready",
+        "when": "it becomes ready",
+        "then": "the order.received trigger fires once (fixing N-1) or the gap is shown"
+      }
+    ],
+    "priority": "later",
+    "priorityReason": "On the pilot stack Allegro orders cannot gain lines and own-shop orders are not routed (#3487 skip), and r5/7 sizes operator add-line alone as an L in Stage 3.",
+    "evidence": [
+      "C-057",
+      "r5/2-shops-erp.md section 1 \"Extra cases\" (AddProductToOrderHandler.php:175, :250-256, :261-262, :287-295)",
+      "r5/6-design-and-code.md N-1, N-2",
+      "libs/core/src/orders/domain/order-amendment-diff.ts:50-55, :163",
+      "r4/phase2/1-baselinker.md X-04",
+      "r4/phase2/3-sellasist.md X-04"
+    ],
+    "confidence": "probable",
+    "risks": [
+      "What reservation and routing do today with a line added on re-ingestion of a routed order was not traced (unverified).",
+      "Sellasist explicitly does not re-sync shop edits; doing it here creates amendments the operator must understand."
+    ]
+  },
+  {
+    "id": "X-05",
+    "name": "Lines that are neither goods nor a discount: deposit, store credit, wallet, points, packaging, paid services",
+    "area": "cross",
+    "actor": "Source adapter (system); documents; pack bench",
+    "trigger": "An order carries a deposit, a points or store-credit payment, a packaging line or a paid additional service",
+    "preconditions": [
+      "The channel reports the item in a field OpenLinker does not map today, or as an ordinary line"
+    ],
+    "mainFlow": [
+      "The adapter classifies the item: goods line, service line (gift wrap, see D-05), deposit, or payment instrument.",
+      "A voucher, gift card, points or wallet payment is a payment, not an adjustment: the goods line keeps its full price (EU Art. 30a).",
+      "A deposit is carried per line as its own amount and VAT treatment, never folded into the goods price.",
+      "Service and deposit lines are excluded from picking and stock but kept on documents per the document policy."
+    ],
+    "altFlows": [
+      "Allegro deposit on a product set: one summed deposit per line; a component return then needs a split the order does not give (hold for operator).",
+      "IdoSell orderSalesMode points or money: the line is paid with points (redemption), not discounted.",
+      "Packaging line at 0.00 (BaseLinker shows packaging like gifts): classified as non-stock, never as a gift."
+    ],
+    "channelData": {
+      "allegro": "lineItems[].deposit (LineItemDeposit: sum of component deposits), vouchers, selectedAdditionalServices[] {definitionId, name, price, quantity}; RefundDetails.deposits[], additionalServices (one amount per order)",
+      "idosell": "orderSalesMode: money | gift | points",
+      "amazon": "AssociatedItems / associationType VALUE_ADD_SERVICE, WARRANTY; GiftWrapPrice",
+      "ebay": "giftDetails = digital gift card line items only"
+    },
+    "olBehaviour": "Field: a neutral line kind or separate order-level lists for deposits, services and payment instruments; each kind reaches documents through the same allowlists as X-01.",
+    "mechanism": "field",
+    "acceptance": [
+      {
+        "given": "an Allegro product-set line with a deposit of 1.50",
+        "when": "it is ingested",
+        "then": "the deposit is stored apart from the line price and appears on the document per the document policy"
+      },
+      {
+        "given": "an order paid partly with a gift card",
+        "when": "a receipt is composed",
+        "then": "the goods lines keep full price and the gift card is a payment form, not a rebate"
+      },
+      {
+        "given": "a 0.00 packaging line",
+        "when": "the order reaches the pack bench",
+        "then": "it is not shown as a gift and is not counted as stock"
+      }
+    ],
+    "priority": "later",
+    "priorityReason": "No evidence ties deposits or points to the pilot client, and the one money loss in this family (paid gift wrap) is split out as D-05.",
+    "evidence": [
+      "r5/1-allegro-pl.md section 2 item 8 (deposit)",
+      "r4/phase1/1-allegro.md lines 76-77, 130",
+      "C-020",
+      "r5/3-marketplaces-countries.md section 3 A1 (Art. 30a)",
+      "r4/phase2/1-baselinker.md X-05",
+      "r4/phase2/4-linnworks.md X-05",
+      "r3/phase2/7-brightpearl.md X-05"
+    ],
+    "confidence": "probable",
+    "risks": [
+      "Whether Allegro vouchers reduce price or pay part of it was not checked (unverified).",
+      "Deposit VAT treatment per country not researched."
+    ]
+  },
+  {
+    "id": "X-06",
+    "name": "Adjustment audit trail per line: who or what applied it, before and after values",
+    "area": "cross",
+    "actor": "Operator, auditor, support",
+    "trigger": "Someone asks why a line has the price it has (buyer complaint, refund dispute, tax check)",
+    "preconditions": [
+      "Adjustments come from three sources: channel (X-01), operator edits (#3543 order.discount_change), rules (gift automation)"
+    ],
+    "mainFlow": [
+      "Every adjustment stores source, actor (user id, rule id or channel), time and the line values before and after.",
+      "Channel adjustments are facts as received and are re-recorded only when a re-ingestion changes them (amendment).",
+      "Operator discounts already land in order_changes with history; rule-applied adjustments use the automation run record.",
+      "The order detail shows one timeline per line combining the three."
+    ],
+    "altFlows": [
+      "A re-ingestion changes a channel adjustment after a document was issued: the timeline shows both values and the document keeps the old one."
+    ],
+    "channelData": {
+      "competitors": "BaseLinker discount log value_before, value_after, details, profile_id (-1 = API), date_add; Sellasist action logs without per-line values; Apilo change history without values"
+    },
+    "olBehaviour": "Mostly existing records (order_changes for operator edits, automation_runs for rules); new only for channel adjustments, which can live on the X-01 adjustment rows with received-at.",
+    "mechanism": "core",
+    "acceptance": [
+      {
+        "given": "an operator discount of 10.00 on an order",
+        "when": "the operator opens the line history",
+        "then": "it shows the user, time, 0.00 before and 10.00 after"
+      },
+      {
+        "given": "a channel adjustment that changes on re-ingestion",
+        "when": "the order is viewed",
+        "then": "both values and their times are shown"
+      }
+    ],
+    "priority": "later",
+    "priorityReason": "Depends on X-01 data that is itself deferred; operator discounts already have an audit record today.",
+    "evidence": [
+      "r4/phase2/1-baselinker.md X-06",
+      "r4/phase2/3-sellasist.md X-06",
+      "r4/phase2/2-apilo.md X-06",
+      "docs/architecture-overview.md section 4 Orders (#3543 order.discount_change, order_changes)"
+    ],
+    "confidence": "probable",
+    "risks": [
+      "No merchant-voice evidence that operators ask for this; demand is inferred from competitors (BaseLinker has it \"Full\")."
+    ]
+  },
+  {
+    "id": "X-07",
+    "name": "Who funded a reduction: seller, channel or unknown",
+    "area": "cross",
+    "actor": "Source adapter; margin and gift-cost reports; document policy",
+    "trigger": "A line is cheaper than the seller's price because the platform paid part of it (Allegro Prices, Kaufland-funded promotion, Erli rebate)",
+    "preconditions": [
+      "The channel exposes the platform-funded part somewhere other than the line price, or hides it"
+    ],
+    "mainFlow": [
+      "The adapter sets adjustment.funder: seller, channel, other or unknown.",
+      "Allegro: reconciliation.value x quantity is a channel-funded amount; the line list price is price + reconciliation.value.",
+      "Erli: funder unknown on the order since donorType was removed (2026-08-19); resolvable only from billing rebateOrigin.",
+      "Kaufland: funder seller for discounts[]; channel-funded promotions are not on the order at all.",
+      "Reports and any document rule read funder; a document policy holds rather than guesses when funder is unknown and the answer would change the tax base."
+    ],
+    "altFlows": [
+      "Funder unknown and the tax question unresolved: documents use the price the buyer paid (today's behaviour) and the order is flagged for the adviser question, not blocked."
+    ],
+    "channelData": {
+      "allegro": "reconciliation {value, type BILLING|WALLET, quantity}; discounts[].type ALLEGRO_PRICES (staff #9790)",
+      "erli": "billing POST /billing/company/rebates entries rebateOrigin[{amount, rebateReason}]",
+      "kaufland": "\"Only seller-created discounts appear here. Kaufland-funded promotions are not reflected in this field.\""
+    },
+    "olBehaviour": "Field on the X-01 adjustment; no capability. Margin (ADR-080) and gift-cost reports read it.",
+    "mechanism": "field",
+    "acceptance": [
+      {
+        "given": "an Allegro line at 59.99 with reconciliation.value 7.97",
+        "when": "it is ingested",
+        "then": "listUnitPriceGross is 67.96 and an adjustment of 7.97 with funder channel is stored"
+      },
+      {
+        "given": "an Erli order with a rebate",
+        "when": "it is ingested",
+        "then": "the adjustment has funder unknown"
+      }
+    ],
+    "priority": "later",
+    "priorityReason": "The only consequence that could rank it higher, a different VAT base under EU Art. 73, is unverified for these platforms and waits for the tax adviser.",
+    "evidence": [
+      "verify/allegro-line-price.md Q4 (Allegro Ceny: originalPrice == price == reduced price; seller price = price + reconciliation.value, per item x reconciliation.quantity; CAMPAIGN/COUPON folded into price, funder not documented)",
+      "r5/1-allegro-pl.md C-003 row and section 2 item 5",
+      "r5/3-marketplaces-countries.md C-023 point 4 and section 3 A1",
+      "r4/phase1/4-marketplaces-and-law.md section 1.4"
+    ],
+    "confidence": "probable",
+    "risks": [
+      "Whether a platform subsidy enters the seller's VAT base is a tax-adviser question (Art. 73 reading by r5/3, not a ruling).",
+      "The proposed adjustment model needs funder on the adjustment, not on the line; Allegro reconciliation is per line, which fits as one channel adjustment per line."
+    ]
+  },
+  {
+    "id": "X-08",
+    "name": "Erli EUR orders booked as PLN, and German VAT rates labelled Polish",
+    "area": "cross",
+    "actor": "Erli source adapter (system); documents and analytics downstream",
+    "trigger": "Erli sends an order with market \"de\" and currency \"EUR\"",
+    "preconditions": [
+      "Erli Order.currency enum is PLN | EUR and Order.market is pl | de; market sent since 2026-05-20"
+    ],
+    "mainFlow": [
+      "The adapter reads order.currency and passes it to totals.currency (today hardcoded \"PLN\", erli-order.mapper.ts:238).",
+      "The adapter stamps taxRateCountry from order.market (DE for TAX_19 / TAX_7), not a fixed \"PL\" (erli-order.mapper.ts:210).",
+      "Downstream FX stamping (ADR-040), documents and analytics then see the real currency."
+    ],
+    "altFlows": [
+      "A document provider that cannot issue in EUR or for a DE buyer: routing refuses with a named reason instead of issuing a PLN document.",
+      "Orders already stored as PLN: listed for operator review; no automatic restatement of issued documents."
+    ],
+    "channelData": {
+      "erli": "Order.currency {\"enum\":[\"PLN\",\"EUR\"],\"description\":\"Waluta zamowienia\"}, Order.market {\"enum\":[\"pl\",\"de\"]}, items[].taxRate enum incl. TAX_7, TAX_19, CHANGELOG taxRatesByMarket"
+    },
+    "olBehaviour": "Adapter fix only (two mapper lines plus the stale \"PLN-only\" comment in erli-order.types.ts:9); no core change.",
+    "mechanism": "field",
+    "acceptance": [
+      {
+        "given": "an Erli order with market de, currency EUR and total 5000 (minor units)",
+        "when": "it is ingested",
+        "then": "totals.currency is EUR and totals.total is 50.00"
+      },
+      {
+        "given": "a line with taxRate TAX_19 on a de order",
+        "when": "it is ingested",
+        "then": "taxRateCountry is DE"
+      },
+      {
+        "given": "an existing PLN-stamped Erli order whose raw payload says EUR",
+        "when": "the fix is deployed",
+        "then": "it appears in an operator review list and no issued document is changed"
+      }
+    ],
+    "priority": "stage0",
+    "priorityReason": "A live wrong-money defect confirmed in code and in the Erli spec, independent of bundle scope and a few lines to fix.",
+    "evidence": [
+      "C-023",
+      "r5/3-marketplaces-countries.md C-023 and section 5 items 1-2",
+      "r5/1-allegro-pl.md C-023 row",
+      "libs/integrations/erli/src/infrastructure/adapters/erli-order.mapper.ts:238 (currency: 'PLN', read for this report)",
+      "libs/integrations/erli/src/infrastructure/adapters/erli-order.types.ts:9 (\"PLN-only - no currency field\")"
+    ],
+    "confidence": "confirmed",
+    "risks": [
+      "Whether any OpenLinker user already receives Erli de/EUR orders is unknown; the defect is real regardless.",
+      "Outside the bundles and gifts scope; it is listed because it corrupts every money figure the bundle and gift documents would build on."
+    ]
+  },
+  {
+    "id": "X-09",
+    "name": "OpenLinker-only lines are invisible to channel writebacks (waybill, refund, return)",
+    "area": "cross",
+    "actor": "Channel writeback services (system)",
+    "trigger": "An order holds a line the channel does not know (operator or rule gift, component line) and OpenLinker relays a waybill, refund or return to the channel",
+    "preconditions": [
+      "Some line has origin operator or rule, or is a derived component id like {lineId}~c:{variantId}"
+    ],
+    "mainFlow": [
+      "Every writeback that names channel line ids filters to lines whose origin is the channel.",
+      "A derived component id is mapped back to its channel line id before any writeback.",
+      "A refund for an OpenLinker-only line is recorded in OpenLinker only (no channel line to refund)."
+    ],
+    "altFlows": [
+      "All lines of a parcel are OpenLinker-only: the waybill is relayed for the order without line ids (Allegro allows an empty list meaning every item)."
+    ],
+    "channelData": {
+      "allegro": "CheckoutFormAddWaybillRequest lineItems[]{id} only; empty list = every item; RefundLineItem by lineItem.id"
+    },
+    "olBehaviour": "Core filter in the relay, refund and return services keyed on line origin; no adapter change.",
+    "mechanism": "core",
+    "acceptance": [
+      {
+        "given": "an Allegro order with one channel line and one operator-added gift",
+        "when": "the parcel waybill is relayed",
+        "then": "only the channel line id is sent"
+      },
+      {
+        "given": "a component line {L}~c:{v}",
+        "when": "its parcel ships",
+        "then": "the waybill names L"
+      }
+    ],
+    "priority": "later",
+    "priorityReason": "Only reachable once OpenLinker can add lines (deferred, C-057) or derive component ids (Stage 1 keeps writebacks on order.items, r5/7 section 4b).",
+    "evidence": [
+      "r5/1-allegro-pl.md section 3 F",
+      "r5/7-scope-overengineering.md section 4b",
+      "verify/component-line-id.md sections 1-3 (no adapter sends an order-line id to a channel; executor port sends workLineId; shipment_lines must stay on the bundle line)",
+      "C-009",
+      "C-057"
+    ],
+    "confidence": "probable",
+    "risks": [
+      "Shipment lines must stay at commercial grain (verify/component-line-id.md surprise 3): writing component ids there demotes delivered orders through the coverage join, so this case stays safe only while that rule holds."
+    ]
+  },
+  {
+    "id": "X-10",
+    "name": "Operator quantity edit or cancel of a bundle line is refused until edits understand components",
+    "area": "cross",
+    "actor": "Operator; system (order edit follow-ups)",
+    "trigger": "An operator lowers the quantity of, or cancels part of, an order line that has a bundle expansion",
+    "preconditions": [
+      "Stage 1 bundles: reservations, work lines and decrements carry component ids {lineId}~c:{variantId} while edits address the bundle line id"
+    ],
+    "mainFlow": [
+      "The edit service checks the frozen expansion; a bundle line edit is refused with a named code (for example LINE_IS_BUNDLE) and nothing is written.",
+      "Later, one \"bundle line id -> frozen component lines\" read feeds the four follow-ups and aggregates results back to the bundle line for the response."
+    ],
+    "altFlows": [
+      "Whole-order cancel: unaffected, because reverseForOrder and hold release are row-based."
+    ],
+    "channelData": {
+      "any": "Not channel data; all channels whose lines are bundles in OpenLinker"
+    },
+    "olBehaviour": "Core guard in the apps/api order-edit service (order-edit.service.ts:374, :917, :937-943, :954). Without it four follow-ups silently miss: assessForEdit (QUANTITY_BELOW_FULFILLED never fires), lowerLineQuantity (returns unrouted, cancels no units), narrowForOrder (holds not lowered), reverseLineQuantity (no stock given back).",
+    "mechanism": "core",
+    "acceptance": [
+      {
+        "given": "an order with a bundle line and component work lines",
+        "when": "the operator lowers the bundle line quantity",
+        "then": "the edit is refused with LINE_IS_BUNDLE and holds, works and stock are unchanged"
+      },
+      {
+        "given": "the same order",
+        "when": "the operator cancels the whole order",
+        "then": "component holds are released and decremented stock is given back"
+      }
+    ],
+    "priority": "pilot",
+    "priorityReason": "r5/7 lists it as a must-have guard if Stage 1 ships; without it an edit reports success while holds, works and stock stay unchanged.",
+    "evidence": [
+      "verify/component-line-id.md section 3 items 4-7 and surprises 1-2",
+      "r5/7-scope-overengineering.md section 4b (guards)",
+      "r4/code/B-line-identity-traced.md rows 4, 11, 17",
+      "C-057"
+    ],
+    "confidence": "confirmed",
+    "risks": [
+      "Pilot status is conditional on Stage 1.",
+      "The bundles writer may also list this guard; it is here because order edits are a cross-cutting path.",
+      "Every miss is a silent no-op, so tests must assert effects, not just \"no error\"."
+    ]
+  },
+  {
+    "id": "B-14",
+    "name": "Bundle on the receipt or invoice: one line or components, and mixed-VAT price split",
+    "area": "documents",
+    "actor": "Document composer (system); operator choosing the policy; tax adviser",
+    "trigger": "An order with a recognised bundle line is invoiced or fiscalised",
+    "preconditions": [
+      "The bundle line resolves to an OpenLinker bundle definition (bundles writer, B-01/B-04)",
+      "Decision D3 (2026-09-28): the order line and documents keep the bundle"
+    ],
+    "mainFlow": [
+      "Default (pilot): the document carries the bundle as one line at the price paid and the bundle's own rate (D3). PrestaShop packs already arrive like this: one row at the pack's own rate whatever the components' rates (verify/prestashop-live.md).",
+      "At definition time a warning is shown when component rates differ from the bundle's rate (pilot guard, Stage 1).",
+      "Later, an operator setting per connection chooses one line vs component lines.",
+      "Component prices are computed at sale time, proportional to each component's standalone gross selling price x quantity (design B), split exactly to the minor unit with the remainder on the largest part, and frozen on the order for documents and refunds.",
+      "An operator override with per-component in-set prices (design A) is allowed only with a recorded reason, shares that sum to the bundle price, and no component above its standalone price."
+    ],
+    "altFlows": [
+      "Component with no standalone price: fall back to cost (MF 2017 notice allows purchase or production cost); if no cost either, hold the document with a named reason, never an equal split.",
+      "Bundle priced ABOVE the sum of standalone prices: proportional split breaches the BFH test for every component; hold for operator and adviser (no source covers it).",
+      "Single composite supply (phone with charger): one rate is correct even with separate prices shown (C-41/04 Levob, C-463/16, KIS 2026 S.IG); \"components when rates differ\" must not be a core default.",
+      "Fiscal printer: a bundle name whose rate changes with composition can lock the name (ADR-082 context); component names or a stable rate per name are required."
+    ],
+    "channelData": {
+      "allegro": "one lineItems[].tax.rate per line even for a product set",
+      "shopify_reference": "discount allocated to components by weighted price; tax per component",
+      "competitors": "Apilo proportional to \"Cena brutto w zestawie\", no cap; Brightpearl and Linnworks parent carries price, children 0 (Linnworks equal split on customs labels); Sellasist chooses by split timing"
+    },
+    "olBehaviour": "Pilot: nothing new on documents (D3). Later: operator setting (one line | components), a pure split function in sales-documents, and the in-set price data from the bundles work. Choosing a tax treatment in core would breach ADR-063.",
+    "mechanism": "setting",
+    "acceptance": [
+      {
+        "given": "a bundle defined with components at 5% and 23% and a bundle rate of 23%",
+        "when": "the operator saves the definition",
+        "then": "a warning says documents will show one line at 23%"
+      },
+      {
+        "given": "the component-lines setting, a bundle paid 100.00 and standalone prices 70.00 and 50.00 at sale time",
+        "when": "the invoice is composed",
+        "then": "component lines are 58.33 and 41.67, each at its own rate, and the split is stored on the order"
+      },
+      {
+        "given": "an operator override giving the 5% component 90.00 of a 100.00 bundle whose standalone price is 50.00",
+        "when": "the override is saved",
+        "then": "it is refused: share above standalone price"
+      },
+      {
+        "given": "the component-lines setting and a component with no standalone price and no cost",
+        "when": "the document is composed",
+        "then": "it is held with reason \"bundle split key missing\""
+      }
+    ],
+    "priority": "later",
+    "priorityReason": "D3 decided documents keep the bundle line; splitting reverses it and needs the tax adviser (r5/7 sections 1 and 5, D3a/D3c deferred).",
+    "evidence": [
+      "C-001",
+      "C-035",
+      "verify/bundle-price-split.md sections 1-4 (MF notice 29.09.2017 primary; CJEU C-349/96 CPP, Madgett and Baldwin; BFH XI R 19/23 Leitsatz and Rn 7, 13; design B default, A as override)",
+      "r5/8-tax-fiscal.md C-035 (XI R 22/22 rejected capping as a method)",
+      "verify/prestashop-live.md surprise 3",
+      "r5/3-marketplaces-countries.md C-035 corrections",
+      "r5/6-design-and-code.md section 4 (ADR-063, ADR-082)",
+      "r5/7-scope-overengineering.md section 5",
+      "r3/code/B-order-lines-and-documents.md section 4",
+      "r4/phase2/2-apilo.md B-14",
+      "r4/phase2/4-linnworks.md B-14",
+      "r4/phase2/5-shopify.md B-14"
+    ],
+    "confidence": "probable",
+    "risks": [
+      "Mixed-VAT kits documented as one line may be over- or under-taxed during the pilot (seller money, legal question).",
+      "MF 2017 warns a disproportionate split can be treated as abuse of law; KIS accepted non-proportional splits only with an economic reason on record (secondary summaries, not full text).",
+      "The BFH cap is an exclusion test and capping is not itself an accepted method (XI R 22/22): show it as a warning or refusal, never as an allocation algorithm.",
+      "Claim that Apilo and Sellasist use typed in-set prices was not re-verified against primary docs (verify/bundle-price-split.md section 4)."
+    ]
+  },
+  {
+    "id": "G-10",
+    "name": "Free item on the receipt or invoice: allocated price, 1 grosz, internal record, or zero line",
+    "area": "documents",
+    "actor": "Document composer (system); operator choosing the policy; tax adviser",
+    "trigger": "An order with a line whose value is fully covered by adjustments (derived gift view, X-01) is invoiced or fiscalised",
+    "preconditions": [
+      "The free line is known as such (channel flag, 0.00 line, or OpenLinker-added); gift recognition is the gifts writer's scope (G-01..G-05)"
+    ],
+    "mainFlow": [
+      "Per connection the operator records the gift treatment (neutral names): priced-in | symbolic | gratuitous | zero-line, and who chose it (ADR-082 shape).",
+      "priced-in (default candidate): the paid total is allocated proportionally by list price over paid lines and the gift, never above the gift's own list price; every line is an ordinary positive line at its own rate.",
+      "symbolic: the gift is a 1 grosz line at its own rate; the paid total is carried by the other lines.",
+      "gratuitous: the gift is omitted from the buyer document and an internal record is made (D-07); art. 7 ust. 2 supplies are exempt from the cash register and not invoiced.",
+      "zero-line (0.00 or list price + 100% line rebate): offered only after an adviser sign-off, because KIS 2026 classes exactly this shape as a gratuitous supply.",
+      "The adapter declares device limits only (D-04): positive bucket required, per-line rebate supported."
+    ],
+    "altFlows": [
+      "Gift at a different VAT rate than the paid lines and treatment is omit or move-value: refused with a named reason (both shift tax between rates; the higher-rate-gift direction under-declares).",
+      "Gift at the same rate as the paid lines: omitting it from the document is tax-neutral and allowed (KIS 2015 ILPP1/4512-1-199/15).",
+      "Treatment unset or adapter undeclared: the gift is recorded on the order and the document is held when rates differ, omitted when they match; never a silent fold.",
+      "Allocation rounding would leave the gift's rate bucket at 0.00: move the remainder so the bucket stays positive or hold (D-02)."
+    ],
+    "channelData": {
+      "eparagony": "lines[].rebatesMarkups; REBATE line with or without taxRate (without: proportional spread, live c8); errorCode 41 when a rate's total would be 0.00; 0.01 line accepted (d1, b8p)",
+      "ksef": "FaWiersz P_9A (0 allowed), P_10, P_11 (TKwotowy, 0.00 valid); builder never emits P_10",
+      "infakt": "request row {name, tax_symbol, quantity, unit, unit_net_price}; rebate field unknown",
+      "subiekt": "ZK pair WartoscBruttoPrzedRabatem/PoRabacie; FS bridge has no rebate field",
+      "law": "Dz.U. 2025 poz. 845 par. 26 ust. 1 pkt 9-10 (kasy with copy); Dz.U. 2024 poz. 1654 par. 22 pkt 9-12 (on-line kasy) and par. 35 pkt 3 (bans a negative, not a zero, per-rate value); Dz.U. 2024 poz. 1902 zal. poz. 46 (art. 7 ust. 2 supplies exempt from kasa)"
+    },
+    "olBehaviour": "Operator setting for the treatment plus a pure allocation function in sales-documents beside reconcileDiscountRounding; device limits as a required method on the document ports; no tax treatment decided in core (ADR-063). The 0.00 line and 100% rebate are not the default.",
+    "mechanism": "setting",
+    "acceptance": [
+      {
+        "given": "treatment priced-in, paid item list 100.00 at 23%, gift list 20.00 at 8%, buyer paid 100.00",
+        "when": "the receipt is composed",
+        "then": "lines are 83.33 at 23% and 16.67 at 8%, total 100.00, and the allocation is stored"
+      },
+      {
+        "given": "treatment symbolic and the same order",
+        "when": "the receipt is composed",
+        "then": "the gift is a 0.01 line at 8% and the paid line is 99.99 at 23%"
+      },
+      {
+        "given": "treatment gratuitous and the same order",
+        "when": "documents are produced",
+        "then": "the receipt shows only the paid line at 100.00 and an internal record lists the gift at its cost and 8%"
+      },
+      {
+        "given": "no treatment set and gift and paid line at different rates",
+        "when": "a receipt is composed",
+        "then": "it is held with \"gift VAT rate differs: choose a gift treatment\""
+      }
+    ],
+    "priority": "later",
+    "priorityReason": "r5/7 puts gift rendering in Stage 3 (G20) and r5/8 shows the treatment needs a tax adviser; only the error 41 cause (D-02) and the remainder fix (D-01) are pilot damage.",
+    "evidence": [
+      "C-028",
+      "C-029",
+      "C-031",
+      "C-032",
+      "C-033",
+      "C-034",
+      "C-037",
+      "C-038",
+      "r5/8-tax-fiscal.md (headline, C-029 disputed, C-033, sections 2-5 and A1-A6; KIS 676872, 322896, 281255, 696566, 663546)",
+      "verify/eparagony-gift-forms.md",
+      "r4/phase1/4-marketplaces-and-law.md sections 2.2-2.4",
+      "r5/3-marketplaces-countries.md section 3 A1-A2, A6",
+      "r5/6-design-and-code.md section 4 (ADR-082 decision 7, ADR-014)",
+      "r3/code/B-order-lines-and-documents.md section 3.3",
+      "r4/phase2/3-sellasist.md G-10"
+    ],
+    "confidence": "disputed",
+    "risks": [
+      "KIS 2026 (0114-KDIP1-1.4012.876.2025.2.IZ) classes a 0 zl / 100% rebate gift as a gratuitous supply taxed on purchase price and not invoiced; KIS 2015/2016 hold a priced-in gift is a paid separate supply at its own rate. Individual rulings bind only the applicant.",
+      "Whether a proportionally allocated gift price survives audit (art. 29a \"real\" price vs artificial split) is unresolved (r5/8).",
+      "The 1 grosz form distorts the paid total by 0.01 on some lines and the operator must accept it.",
+      "C-031 cites the repealed 2019 regulation; current sources are par. 26 of Dz.U. 2025 poz. 845 (kasy with copy) and par. 22 of Dz.U. 2024 poz. 1654 (on-line kasy).",
+      "The proposed neutral model has no field for the treatment; it must be an operator setting plus an order-level record of what was applied, not a property of the adjustment."
+    ]
+  },
+  {
+    "id": "D-01",
+    "name": "A rounding or delivery remainder lands on a free line and turns a gift into a paid 0.01",
+    "area": "documents",
+    "actor": "Document composer (system)",
+    "trigger": "An order with a 0.00 line and a whole-order discount or delivery spread is invoiced or fiscalised",
+    "preconditions": [
+      "reconcileDiscountRounding runs (discountTotal > 0 and a positive gap) or spreadDeliveryAcrossLines runs in spread mode"
+    ],
+    "mainFlow": [
+      "The allocators skip lines whose paid gross is 0 when choosing where a remainder goes.",
+      "If every quantity-1 line is free, the remainder goes to the largest paid line, splitting it if needed (existing rule).",
+      "The fix keeps the zero-bucket guard in mind: a free line left at 0.00 may then trigger D-02 on eparagony and must be handled there, not by keeping the cent."
+    ],
+    "altFlows": [
+      "No paid line can take the remainder (all lines free): the document is held with a named reason."
+    ],
+    "channelData": {
+      "any": "Any source that sends a 0.00 line: WooCommerce gift line, Shoper 0.01/0.00 gift line, operator-added gift later"
+    },
+    "olBehaviour": "Core fix in two pure functions (discount-rounding.types.ts:65-67, delivery-line.types.ts:579-587) plus tests; about 10 lines.",
+    "mechanism": "core",
+    "acceptance": [
+      {
+        "given": "a free gift listed first with quantity 1 and a paid line with quantity 2, discountTotal leaving a +0.01 gap",
+        "when": "the invoice is composed",
+        "then": "the gift stays 0.00 and the cent lands on the paid line"
+      },
+      {
+        "given": "delivery spread mode where the gift is the only quantity-1 line",
+        "when": "the receipt is composed",
+        "then": "the remainder goes to a paid line, not the gift"
+      }
+    ],
+    "priority": "stage0",
+    "priorityReason": "r5/7 lists it as a live wrong-document defect fixable in about 10 lines (Stage 0 item 2).",
+    "evidence": [
+      "C-056",
+      "r4/code/B-line-identity-traced.md section 2 H5",
+      "r5/6-design-and-code.md C-056 row",
+      "r5/7-scope-overengineering.md section 2 D5 and section 6"
+    ],
+    "confidence": "confirmed",
+    "risks": [
+      "r5/6 rates impact low (a few minor units, narrow conditions) while r5/7 calls it must-have; both agree it is real.",
+      "The cent on the gift accidentally avoids the eparagony zero-bucket refusal; fixing D-01 without D-02 can turn a wrong receipt into a blocked one."
+    ]
+  },
+  {
+    "id": "D-02",
+    "name": "Refuse a zero-value VAT bucket before calling eparagony, with an operator-facing cause",
+    "area": "documents",
+    "actor": "Fiscalization composer and eparagony adapter (system); operator",
+    "trigger": "A receipt would contain a VAT letter whose net value after line rebates and REBATE lines is 0.00 or below",
+    "preconditions": [
+      "eparagony refuses such a receipt with HTTP 400 errorCode 41 \"Incorrectly calculated value of eReceipt.lines[n]\" before the printer"
+    ],
+    "mainFlow": [
+      "Before the call, the adapter sums each VAT letter after line rebates and REBATE lines.",
+      "If any letter would be 0.00 or below, the receipt is not sent; the registration is held with a cause naming the line and rate (\"free item alone in its VAT rate\").",
+      "The operator can change the gift treatment (G-10), remove the line, fix the rate in the master, or issue manually.",
+      "A whole-receipt REBATE without a rate is sent only when the operator chose proportional allocation; otherwise discounts go as REBATE lines with the taxRate of the line they reduce."
+    ],
+    "altFlows": [
+      "eparagony still returns error 41 for another reason: the raw message is mapped to the same operator cause with the vendor text attached.",
+      "A rate left at 0.01 is accepted but overstates the receipt total by 0.01; not used as a workaround."
+    ],
+    "channelData": {
+      "eparagony": "lines[].rebatesMarkups; LineRebate.taxRate A-G; errorCode 41 \"Incorrectly calculated value of eReceipt.lines[n]\"; printer 7833 is a sandbox stub that confirms anything",
+      "law": "Dz.U. 2024 poz. 1654 par. 35 pkt 3 bans a NEGATIVE per-rate value; the zero refusal is eparagony/printer behaviour, not law"
+    },
+    "olBehaviour": "Adapter-side validation with a named error (no core change); the conservative device limit later becomes part of the declared limits (G-10).",
+    "mechanism": "capability",
+    "acceptance": [
+      {
+        "given": "paid 10.00 at A and a 0.00 gift at B",
+        "when": "registration is attempted",
+        "then": "no call reaches eparagony and the order shows \"free item alone in VAT rate B\""
+      },
+      {
+        "given": "paid 10.00 at A and paid 6.00 at B with a 2.00 discount on A",
+        "when": "the receipt is sent",
+        "then": "it carries a REBATE of -2.00 with taxRate A and is confirmed with A 8.00 / B 6.00"
+      },
+      {
+        "given": "a gift at 0.00 sharing rate A with a paid line",
+        "when": "the receipt is sent",
+        "then": "it is accepted and VAT for A equals the paid value's VAT"
+      }
+    ],
+    "priority": "stage0",
+    "priorityReason": "A pilot receipt stuck behind an opaque vendor error is a support incident; r5/7 lists the operator cause as Stage 0 item 3.",
+    "evidence": [
+      "C-028",
+      "C-029",
+      "verify/eparagony-gift-forms.md (tests 1, 3, 3b, 4 on printer 7783)",
+      "r5/8-tax-fiscal.md C-028 and C-029 (probes a1, a8, b1, b8, b8p, c8, d1)",
+      "r5/7-scope-overengineering.md section 2 D6 and section 6"
+    ],
+    "confidence": "confirmed",
+    "risks": [
+      "Sandbox only, one printer model (n=1); production behaviour may differ.",
+      "C-029 is disputed: verify/eparagony-gift-forms.md and the round-1 claim call a rate-less REBATE \"wrong VAT\", r5/8 shows the spread is proportional and legal when the gift is a priced-in component. The adapter must not forbid it outright."
+    ]
+  },
+  {
+    "id": "D-03",
+    "name": "Whole-order discount blocks the invoice and receipt until it is allocated to lines",
+    "area": "documents",
+    "actor": "Document composer (system); operator",
+    "trigger": "An order whose lines sum to more than its total (PrestaShop cart rule, coupon, merged cart-rule gift row) is invoiced or fiscalised",
+    "preconditions": [
+      "assertLinesSumToTotal refuses a gap above a quantity-scaled epsilon (invoice mapper :304-340, fiscal mapper :214-255); the refusal names the discount cause (#3365)"
+    ],
+    "mainFlow": [
+      "Today: the document is held with a cause naming the discount.",
+      "Later: an operator setting per connection allows proportional allocation of an order-level discount across goods lines (MF communique as quoted in KIS 703725), exact to the minor unit.",
+      "With allocation on, each line carries list price and rebate (X-01) so KSeF P_10 or eparagony REBATE with taxRate can render it.",
+      "Allocation never touches a 0.00 line and never zeroes a VAT letter on a receipt (D-01, D-02)."
+    ],
+    "altFlows": [
+      "PrestaShop merged gift row (gift product also bought: quantity +1 at full price, value only in order_cart_rule): allocation produces a reduced unit price, not a separate gift line, unless the PrestaShop module snapshot (r5/2) supplies the gift quantity.",
+      "Discount equal to or above the goods total: refused (distributeOrderDiscount returns null), document held."
+    ],
+    "channelData": {
+      "prestashop": "total_discounts_tax_incl, order_cart_rule.value; rows at unit_price_tax_incl (OrderDetail.php:678-679); cart_rules/{id}.gift_product",
+      "allegro": "discountTotal derived as subtotal + shipping - total when positive (allegro-order-source.adapter.ts:970-971)",
+      "woocommerce": "line total already post-coupon, so no gap"
+    },
+    "olBehaviour": "Operator setting plus a pure allocation function in sales-documents; reuses distributeOrderDiscount; per-line rendering depends on D-04.",
+    "mechanism": "setting",
+    "acceptance": [
+      {
+        "given": "a PrestaShop order with lines 60.00 and 40.00 and a 10.00 cart rule, allocation off",
+        "when": "an invoice is composed",
+        "then": "it is held with the discount named as the cause"
+      },
+      {
+        "given": "the same order with proportional allocation on",
+        "when": "the invoice is composed",
+        "then": "lines carry rebates of 6.00 and 4.00 and the total is 90.00"
+      },
+      {
+        "given": "allocation on and a gift row at full price that the cart rule fully covers",
+        "when": "the receipt is composed",
+        "then": "the rebate stays in the gift's VAT rate and the receipt is held if that rate would reach 0.00 (D-02)"
+      }
+    ],
+    "priority": "later",
+    "priorityReason": "Today the refusal already names its cause, so it is not silent damage; promote to pilot only if the client confirms PrestaShop cart rules on documented orders (frequency unverified).",
+    "evidence": [
+      "C-030",
+      "C-012",
+      "r5/2-shops-erp.md section 1",
+      "verify/prestashop-live.md surprises 1-2 (gift merged at full price, discount only at order level; rows minus discount 14.64 vs paid 14.63)",
+      "verify/bundle-price-split.md section 1.2 (MF notice 29.09.2017: proportional reduction \"nie ma watpliwosci, ze jest to prawidlowe postepowanie\")",
+      "r4/phase1/4-marketplaces-and-law.md section 2.4 (d) KIS 703725",
+      "r5/8-tax-fiscal.md C-030 (eparagony balancing REBATE reachable only for rounding dust)",
+      "libs/core/src/invoicing/application/mappers/order-to-issue-invoice-command.mapper.ts:290-341 (read for this report)",
+      "r3/code/B-order-lines-and-documents.md section 3.2"
+    ],
+    "confidence": "confirmed",
+    "risks": [
+      "The code comment calls allocation \"inventing an attribution\"; the MF notice endorses proportional reduction for sets, but a basket coupon is not a set (tax adviser).",
+      "PrestaShop rows minus the discount can differ from total_paid by a grosz (live probe), so the allocation must reconcile to the paid total, not to rows minus discount.",
+      "Fiscal lines carry no orderLineId, so allocation must happen before the fiscal mapper (r4/code/B section 3)."
+    ]
+  },
+  {
+    "id": "D-04",
+    "name": "Per-line rebate rendering differs by document provider (KSeF P_10, inFakt, Subiekt, eparagony)",
+    "area": "documents",
+    "actor": "Document adapter author; operator",
+    "trigger": "A document with list price and rebate per line (X-01, G-10, D-03) is sent to a provider",
+    "preconditions": [
+      "Each provider can or cannot express a per-line rebate; OpenLinker emits none today"
+    ],
+    "mainFlow": [
+      "Each document adapter answers one required method: per-line rebate native | folded, zero line accepted | refused | unknown, zero VAT bucket refused yes | no.",
+      "Folded (default and today's behaviour): the line carries only the net-of-rebate unit price.",
+      "Native: list price and rebate are sent; KSeF declares native only after P_10 is emitted and sandbox-verified.",
+      "The document settings page shows each connection's answer."
+    ],
+    "altFlows": [
+      "Provider undeclared (out-of-tree plugin): folded and zero lines refused."
+    ],
+    "channelData": {
+      "ksef": "P_10 \"Kwoty wszelkich opustow lub obnizek cen ... o ile nie zostaly one uwzglednione w cenie jednostkowej netto\"; absent from FA3_FA_WIERSZ_CHILD_ORDER (fa3-xml.types.ts:291-305)",
+      "infakt": "row {name, tax_symbol, quantity, unit, unit_net_price}; rebate support unknown",
+      "subiekt_gt": "ZK pair WartoscBruttoPrzedRabatem/PoRabacie set equal on receipt and invoice paths (C-038); FS line cenaBrutto only",
+      "subiekt_nexo": "ilosc, cenaBrutto, stawkaVAT only",
+      "eparagony": "rebatesMarkups per line, REBATE line with taxRate"
+    },
+    "olBehaviour": "Required method on InvoicingPort and FiscalizationPort (all in-tree adapters are ours), probed only for out-of-tree plugins (ADR-046); not a guard-only optional capability.",
+    "mechanism": "capability",
+    "acceptance": [
+      {
+        "given": "a KSeF connection before P_10 work",
+        "when": "a line with a rebate is invoiced",
+        "then": "the line is folded to its paid net price and the settings page shows \"folded\""
+      },
+      {
+        "given": "an eparagony connection",
+        "when": "its limits are read",
+        "then": "it answers per-line rebate native, zero line refused unless shared rate, zero bucket refused"
+      }
+    ],
+    "priority": "later",
+    "priorityReason": "Only needed once lines carry rebates (X-01, G-10), which r5/7 defers to Stage 3.",
+    "evidence": [
+      "C-037",
+      "C-038",
+      "r3/code/B-order-lines-and-documents.md section 3.3-3.4",
+      "r5/6-design-and-code.md section 3 item 6 and section 4 (ADR-046)",
+      "verify/eparagony-gift-forms.md"
+    ],
+    "confidence": "probable",
+    "risks": [
+      "inFakt and Subiekt nexo rebate support is unknown; declaring folded is safe but loses information.",
+      "KSeF P_10 emission needs a sandbox run; P_9A = 0 is valid by schema pattern but no official FA(3) guidance on gifts or sets exists."
+    ]
+  },
+  {
+    "id": "D-05",
+    "name": "Paid gift wrap (Allegro \"Zapakuj na prezent\", PrestaShop gift wrapping) is missing from order lines, blocks or mislabels documents and is invisible to the packer",
+    "area": "documents",
+    "actor": "Allegro source adapter (system); packer; operator",
+    "trigger": "An Allegro buyer selects the paid GIFT_WRAP additional service, or a PrestaShop buyer ticks gift wrapping",
+    "preconditions": [
+      "OpenLinker's Allegro wire type and mapper do not read selectedAdditionalServices (C-002; allegro-api.types.ts:75-85)",
+      "PrestaShop puts gift wrapping at order level (total_wrapping), not on a row"
+    ],
+    "mainFlow": [
+      "The adapter reads selectedAdditionalServices and emits each priced service as a service line (X-05) with its own rate and no stock.",
+      "Documents include the service line, so lines plus delivery reconcile to totalToPay.",
+      "The pack bench shows \"gift wrap requested\" on the parcel.",
+      "Refunds of the service use RefundDetails.additionalServices (one order-level amount)."
+    ],
+    "altFlows": [
+      "Allegro order with no delivery.cost: today the service price is absorbed into the shipping fallback (total - subtotal) and the document shows it as delivery; the fix reads it as a service.",
+      "Service tax rate not reported: the rate comes from the operator's service mapping; never guessed (ADR-063).",
+      "PrestaShop: total_wrapping_tax_incl / tax_excl at order level and orders.gift + gift_message; OpenLinker's mapper does not read them (unverified that the document is then blocked, same arithmetic as Allegro).",
+      "Amazon (no adapter) has GiftWrapPrice; Erli has no field. Amazon IsGift and PrestaShop orders.gift mean gift wrap or message, not a free item."
+    ],
+    "channelData": {
+      "allegro": "selectedAdditionalServices[] {definitionId GIFT_WRAP, name, price (unit), quantity}; tutorial: 76.00 x 2 + 10.00 x 2 + 15.87 = 187.87 totalToPay; RefundDetails.additionalServices",
+      "prestashop": "orders.gift, gift_message, total_wrapping, total_wrapping_tax_incl, total_wrapping_tax_excl (live order 14: 2.46 gross)",
+      "amazon_reference": "v0 IsGift, BuyerInfo.GiftWrapPrice, GiftWrapTax, GiftMessageText; 2026 packing.giftOption"
+    },
+    "olBehaviour": "Adapter field plus a neutral service line kind (shared with X-05); pack-bench display is the gifts writer's G-14.",
+    "mechanism": "field",
+    "acceptance": [
+      {
+        "given": "an Allegro order with 2 x 76.00, 2 x 10.00 GIFT_WRAP and delivery 15.87, totalToPay 187.87",
+        "when": "it is invoiced",
+        "then": "the invoice has a gift-wrap service line of 2 x 10.00 and lines plus delivery equal 187.87"
+      },
+      {
+        "given": "the same order",
+        "when": "it reaches the pack bench",
+        "then": "the parcel shows that gift wrap was paid for (2 units)"
+      },
+      {
+        "given": "a PrestaShop order with total_wrapping_tax_incl 2.46",
+        "when": "it is invoiced",
+        "then": "the invoice has a 2.46 gift-wrap line and reconciles to total_paid"
+      }
+    ],
+    "priority": "stage0",
+    "priorityReason": "Confirmed on the pilot's routed channel: Allegro's own documented example puts the service in totalToPay, and the mapper refuses any gap above epsilon, so every such order blocks or mislabels its document.",
+    "evidence": [
+      "C-002",
+      "C-026",
+      "verify/allegro-line-price.md Q1 and Q5 (tutorial arithmetic; gift wrap only in the shipping fallback or as a dropped negative gap)",
+      "verify/prestashop-live.md Q6 (order 14 total_wrapping)",
+      "r5/1-allegro-pl.md C-002 row and section 2 item 6",
+      "libs/integrations/allegro/src/infrastructure/adapters/allegro-order-source.adapter.ts:948-971 (read for this report)",
+      "libs/core/src/invoicing/application/mappers/order-to-issue-invoice-command.mapper.ts:332 (Math.abs(gap) > epsilon refuses both directions)",
+      "r4/phase2/3-sellasist.md G-14 and r4/phase2/2-apilo.md G-14 (competitors map the service)"
+    ],
+    "confidence": "probable",
+    "risks": [
+      "r5/1 says the gift wrap \"vanishes from documents\"; the mapper refuses on the absolute gap, so with delivery.cost present the document is BLOCKED (line-total-mismatch with no discount cause), and without it the charge is mislabelled as delivery. Not yet seen on a live OpenLinker order.",
+      "Not in r5/7's Stage 0 list; promoted here because verify/allegro-line-price.md confirmed the money path after r5/7 was written.",
+      "Overlaps the gifts writer's G-14 (gift wrap as an order fact); this case covers only money and documents."
+    ]
+  },
+  {
+    "id": "D-06",
+    "name": "The marketplace is the deemed supplier or issues the document itself",
+    "area": "documents",
+    "actor": "Document routing (system)",
+    "trigger": "An order arrives where the channel collects and remits VAT or is the deemed supplier",
+    "preconditions": [
+      "A channel adapter that reports the flag exists; none of the in-tree adapters does"
+    ],
+    "mainFlow": [
+      "The adapter reports who issues the buyer document; sales-document routing skips OpenLinker issuance for such orders before any gift or bundle rendering."
+    ],
+    "altFlows": [
+      "Flag unknown: routing behaves as today."
+    ],
+    "channelData": {
+      "kaufland": "is_marketplace_deemed_supplier",
+      "ebay": "ebayCollectAndRemitTaxes",
+      "amazon": "VCS (secondary)"
+    },
+    "olBehaviour": "Field on the order consumed by ADR-041 routing (an unresolved reason already exists for \"no document needed\").",
+    "mechanism": "field",
+    "acceptance": [
+      {
+        "given": "a Kaufland order with is_marketplace_deemed_supplier true",
+        "when": "auto-issue runs",
+        "then": "no OpenLinker document is issued and the order says why"
+      }
+    ],
+    "priority": "out",
+    "priorityReason": "No Kaufland, eBay or Amazon adapter exists in the repository.",
+    "evidence": [
+      "r5/3-marketplaces-countries.md section 3 A6"
+    ],
+    "confidence": "probable",
+    "risks": [
+      "Field names come from r5/3 citing the specs; not re-read here."
+    ]
+  },
+  {
+    "id": "D-07",
+    "name": "A free supply goes to an internal document instead of the buyer's receipt",
+    "area": "documents",
+    "actor": "Operator; tax adviser; document composer",
+    "trigger": "The operator's policy treats a gift as a free supply outside the sale (PL art. 7 ust. 2, IT omaggi)",
+    "preconditions": [
+      "The gift line has a unit cost snapshot (ADR-080 unitCostNet) and a stable recipient key"
+    ],
+    "mainFlow": [
+      "The buyer document omits the gift (G-10 treatment gratuitous); art. 7 ust. 2 supplies are exempt from the cash register until 31.12.2027 (Dz.U. 2024 poz. 1902 zal. poz. 46) and are not invoiced (KIS 2026).",
+      "An internal record lists the gift with its tax base = purchase price or production cost at transfer (art. 29a ust. 2), its own rate and the recipient.",
+      "The small-gift tests run on COST, never list price: 20 zl net per unit without records, 100 zl per person per year with records (art. 7 ust. 4, 20 zl since SLIM VAT 2021).",
+      "Thresholds and currency stay in a country policy, never in core."
+    ],
+    "altFlows": [
+      "No cost snapshot (ADR-080 netUnitCost missing): the record is created with cost \"unknown\", never \"under 20 zl\".",
+      "Allegro buyer email is a per-transaction alias; the recipient key is buyer.id, not email.",
+      "OL_STORE_PII=false: a per-person yearly register conflicts with hash-only storage; needs a design decision."
+    ],
+    "channelData": {
+      "allegro": "buyer.id (stable), buyer.email alias per transaction"
+    },
+    "olBehaviour": "New internal document type in sales-documents plus a country policy; out of pilot.",
+    "mechanism": "core",
+    "acceptance": [
+      {
+        "given": "policy \"internal document\" and a gift with unit cost 12.00 net",
+        "when": "the order is documented",
+        "then": "the receipt omits the gift and the internal record shows 12.00, its rate and the buyer id"
+      },
+      {
+        "given": "a buyer who received gifts worth 95.00 net this year",
+        "when": "a 10.00 gift is added",
+        "then": "the record shows the 100 zl yearly test exceeded"
+      }
+    ],
+    "priority": "later",
+    "priorityReason": "Requires a tax-adviser decision (KIS 2026 vs IS Katowice 2016 conflict) and the gift reporting work (G-12); nothing breaks without it.",
+    "evidence": [
+      "C-033",
+      "C-034",
+      "r5/8-tax-fiscal.md C-033, C-034, section 5 and A4 (S2 SLIM VAT, S5 Dz.U. 2024 poz. 1902)",
+      "r4/phase1/4-marketplaces-and-law.md sections 2.1, 2.4, 2.7, 3",
+      "r5/3-marketplaces-countries.md section 3 A5-A6",
+      "r5/1-allegro-pl.md C-067 row (buyer.id)"
+    ],
+    "confidence": "probable",
+    "risks": [
+      "KIS 2026 vs KIS 2015/2016 conflict decides whether this path or G-10 priced-in applies; adviser.",
+      "IT 50 EUR exclusion does not cover own-trade goods; PL and IT differ, so the rule must be per country.",
+      "The per-recipient register conflicts with OL_STORE_PII=false."
+    ]
+  },
+  {
+    "id": "B-15",
+    "name": "Return of one bundle component: refund including the lost bundle discount, restock that component",
+    "area": "returns",
+    "actor": "Buyer (returns); operator (receives, decides refund); system (restock, credit note)",
+    "trigger": "A buyer returns part of a bundle bought as one line",
+    "preconditions": [
+      "The order line is a bundle with a frozen expansion (bundles writer, B-10)",
+      "The channel reports the return at bundle grain (Allegro offerId + quantity)"
+    ],
+    "mainFlow": [
+      "The return line resolves to the bundle order line (by offerId / SKU, #3171).",
+      "At receipt the operator says which components came back and in what quantity.",
+      "Restock targets those component variants in the master that owns them, using the frozen expansion; today return-custody.service.ts:931-940 restocks the bundle variant instead.",
+      "The default refund and credit value of a returned component is the value attributed to it on the original document, frozen at sale (art. 29a ust. 10 pkt 2 \"wartosc zwroconych towarow\"), never recomputed from current catalogue prices.",
+      "Clawing back the lost bundle discount is an operator option (commercial term of the offer): the refund is lowered and the reason recorded; whether the kept component's document line is also corrected is an adviser question."
+    ],
+    "altFlows": [
+      "No frozen component split (pilot-period order, documents kept the bundle line): manual refund, restock and credit (R-01, R-05).",
+      "All components returned: an ordinary full return of the bundle line.",
+      "Allegro refund for one component: only RefundLineItem type AMOUNT on the bundle lineItem is possible.",
+      "One Fulfillment (Allegro warehouse) return: FulfillmentRefundDisposition.product carries gtins and quantity per product."
+    ],
+    "channelData": {
+      "allegro": "CustomerReturnItem {offerId, quantity, name, price, url, reason, serialNumbers}; RefundLineItem QUANTITY | AMOUNT; FulfillmentRefundDispositionProduct {gtins, name, quantity}",
+      "competitors": "BaseLinker return items carry bundle_id; Linnworks IsPartialCompositeReturn with manual refund value; Shopify returns per component line, no lost-discount logic"
+    },
+    "olBehaviour": "Core: component choice at receipt, refund proposal from frozen prices, credit proposal by amount. Today restock resolves by SKU to the bundle variant (return-custody.service.ts:908) and credit matching treats parts sharing an orderLineId as one line (return-correction-matching.domain-service.ts:263-270).",
+    "mechanism": "core",
+    "acceptance": [
+      {
+        "given": "a bundle paid 100.00 split at sale into A 58.33 and B 41.67 (frozen), and component B returned",
+        "when": "the refund is proposed",
+        "then": "it is 41.67 and the credit note lowers B by 41.67"
+      },
+      {
+        "given": "the same return with the operator choosing to claw back the lost discount (A standalone 70.00)",
+        "when": "the refund is proposed",
+        "then": "it is 30.00 with \"bundle discount lost: 11.67\" recorded on the return"
+      },
+      {
+        "given": "the same return",
+        "when": "the item is restocked",
+        "then": "component B's stock rises by 1 in its owning master and the bundle variant is untouched"
+      },
+      {
+        "given": "an Allegro return of the bundle offer with quantity 1",
+        "when": "it is ingested",
+        "then": "the return line resolves to the bundle order line and asks the operator which components came back"
+      }
+    ],
+    "priority": "later",
+    "priorityReason": "Needs in-set or frozen component prices (D3a) and component documents, both deferred; the pilot only needs the manual-handling guard (R-01).",
+    "evidence": [
+      "C-010",
+      "C-064",
+      "verify/bundle-price-split.md section 3 (refund = value attributed on the original document; split frozen at sale; lost discount is a commercial question)",
+      "verify/component-line-id.md section 3 item 9 (return-custody.service.ts:931-940 restocks the bundle variant)",
+      "r5/1-allegro-pl.md C-010 row",
+      "r4/phase1/1-allegro.md lines 104-133, 198, 219-221",
+      "r4/code/B-line-identity-traced.md row 31",
+      "r4/phase1/5-merchant-voice.md PAIN-17",
+      "r4/phase2/1-baselinker.md B-15",
+      "r4/phase2/4-linnworks.md B-15",
+      "r4/phase2/5-shopify.md B-15"
+    ],
+    "confidence": "probable",
+    "risks": [
+      "The \"lost bundle discount\" rule is a commercial term (Allegro offer return text, user-quoted), not a law; the seller's offer terms decide.",
+      "Whether Allegro computes any part of the refund itself for flexible bundles is unverified.",
+      "Deposits on a set arrive summed, so a component deposit refund needs a split the order does not give."
+    ]
+  },
+  {
+    "id": "G-11",
+    "name": "Gift and returns: threshold lost on partial return, gift must come back on withdrawal",
+    "area": "returns",
+    "actor": "Buyer; operator",
+    "trigger": "A buyer returns goods from an order that earned a gift, keeps the gift, or returns only the paid part",
+    "preconditions": [
+      "The gift is on the order with a link to the qualifying lines and a declared value (X-01 qualifyingLineIds, gifts writer G-05/G-06)"
+    ],
+    "mainFlow": [
+      "On return receipt OpenLinker shows whether the gift came back and whether the remaining lines still meet the gift condition.",
+      "OpenLinker records the gift's declared value and the offer terms as facts; it does not decide a deduction.",
+      "The operator chooses: refund in full, deduct the declared gift value, or ask for the gift back; the choice is recorded on the return.",
+      "A returned gift is restocked like any item (or written off)."
+    ],
+    "altFlows": [
+      "Gift existed only in the listing description (Allegro): no order trace, so OpenLinker shows nothing unless the operator added it (gifts writer G-04/G-05).",
+      "Non-conformity complaint (reklamacja): the operator is warned that full refund may be due regardless (buyer-side claim, unverified)."
+    ],
+    "channelData": {
+      "allegro": "No gift concept in returns; moderators: depends on whether the offer stated the gift must be returned"
+    },
+    "olBehaviour": "Display and record on the existing return aggregate; no automatic deduction. Refund ceiling (#3289) still bounds the total.",
+    "mechanism": "process",
+    "acceptance": [
+      {
+        "given": "an order of 3 units with a gift for 3+ and 2 units returned",
+        "when": "the return is received",
+        "then": "the operator sees \"gift condition no longer met; gift not returned\" and the declared gift value"
+      },
+      {
+        "given": "the operator chooses to deduct the gift value",
+        "when": "the refund is confirmed",
+        "then": "the refund is reduced and the reason is stored on the return"
+      }
+    ],
+    "priority": "later",
+    "priorityReason": "Needs gifts on the order (G20, deferred) and the legal answer is unknown, so the pilot keeps gifts as packer notes with no trace to act on.",
+    "evidence": [
+      "C-065",
+      "r4/phase1/5-merchant-voice.md PAIN-16, PAIN-17 and line 155",
+      "r4/phase1/1-allegro.md line 199",
+      "r4/phase2/1-baselinker.md G-11",
+      "r4/phase2/4-linnworks.md G-11",
+      "r3/phase2/7-brightpearl.md G-11",
+      "r5/7-scope-overengineering.md section 7 item 8"
+    ],
+    "confidence": "unverified",
+    "risks": [
+      "No regulator or court source on deducting a kept gift; moderator answers are platform guidance only.",
+      "No competitor implements it (all Unknown or None), so the shape is untested."
+    ]
+  },
+  {
+    "id": "R-01",
+    "name": "Return of a bundle line goes to manual handling, never automatic restock or credit",
+    "area": "returns",
+    "actor": "System (guard); operator",
+    "trigger": "A return line resolves to an order line that has a bundle expansion",
+    "preconditions": [
+      "Stage 1 bundles shipped (OpenLinker bundle definitions with frozen expansions)"
+    ],
+    "mainFlow": [
+      "Automatic restock of the line is blocked with a named reason (\"bundle line: choose components\").",
+      "The credit-note proposal for the line reports no-match with the same reason.",
+      "The operator restocks components with a manual correction and issues the credit by hand."
+    ],
+    "altFlows": [
+      "Return of an ordinary line on the same order: unaffected."
+    ],
+    "channelData": {
+      "allegro": "CustomerReturnItem offerId + quantity, no component"
+    },
+    "olBehaviour": "Core guard in return custody and correction proposal (S each per r5/7).",
+    "mechanism": "core",
+    "acceptance": [
+      {
+        "given": "a returned bundle line",
+        "when": "the operator disposes it as restock",
+        "then": "the restock is blocked with \"bundle line: choose components\" and no stock moves"
+      },
+      {
+        "given": "an issued invoice with the bundle line",
+        "when": "the credit proposal is built",
+        "then": "the line is no-match with the bundle reason, never a quantity credit of the whole bundle"
+      }
+    ],
+    "priority": "pilot",
+    "priorityReason": "r5/7 lists it as a must-have guard if Stage 1 ships, because without it a returned bundle restocks a variant with no stock of its own.",
+    "evidence": [
+      "r5/7-scope-overengineering.md section 4b (guards) and section 5",
+      "verify/component-line-id.md section 3 item 9 (return-custody.service.ts:931-940 restocks the bundle variant, not the components)",
+      "r4/code/C-stock-flows-traced.md section a9",
+      "r4/code/B-line-identity-traced.md rows 31-32"
+    ],
+    "confidence": "confirmed",
+    "risks": [
+      "Pilot status is conditional on Stage 1; if the client has no OpenLinker-packed kits it is not needed."
+    ]
+  },
+  {
+    "id": "R-02",
+    "name": "Partial return from a discounted flexible bundle or multibuy: claw back the lost discount",
+    "area": "returns",
+    "actor": "Buyer; operator",
+    "trigger": "A buyer returns some lines of an Allegro flexible bundle (N lines with BUNDLE) or some units of a multibuy",
+    "preconditions": [
+      "Each bundle member is its own lineItem with a proportionally reduced price (flexible bundle) or the units share one discounted line (multibuy)"
+    ],
+    "mainFlow": [
+      "OpenLinker groups the lines carrying the same channel bundle evidence (X-01 adjustment with the same id or BUNDLE type).",
+      "On a partial return it proposes refund = paid price of returned items minus the lost discount on kept items, when the operator chooses the claw-back rule.",
+      "The proposal states both figures; the operator confirms; the ceiling (#3289) still applies."
+    ],
+    "altFlows": [
+      "No bundle id on Allegro lines (LineItemDiscount has none): grouping is by order and BUNDLE type, which can merge two bundles in one order; then the proposal is withheld.",
+      "Multibuy free unit averaged into a qty>1 line: claw-back = list minus paid on the kept units."
+    ],
+    "channelData": {
+      "allegro": "discounts[{type: BUNDLE}] per line, no bundle id, no amount; RefundLineItem AMOUNT; offer return text \"jezeli zwrocisz czesc zestawu, stracisz prawo do znizki\" (user-quoted)"
+    },
+    "olBehaviour": "Proposal logic on the return aggregate; needs X-01 list prices.",
+    "mechanism": "core",
+    "acceptance": [
+      {
+        "given": "a 2-item flexible bundle with list prices 50.00 and 30.00 paid 45.00 and 27.00, item 2 returned, claw-back rule on",
+        "when": "the refund is proposed",
+        "then": "it is 27.00 - 5.00 = 22.00 with the lost discount shown"
+      },
+      {
+        "given": "two separate flexible bundles in one order and no bundle id",
+        "when": "a partial return happens",
+        "then": "no claw-back is proposed and the operator is told why"
+      }
+    ],
+    "priority": "later",
+    "priorityReason": "Depends on list prices (X-01) and on a commercial rule only user-quoted from Allegro offer text.",
+    "evidence": [
+      "C-004",
+      "C-064",
+      "r4/phase1/5-merchant-voice.md PAIN-17",
+      "r3/phase1/1-allegro.md line 96",
+      "r5/1-allegro-pl.md C-003 and C-010 rows"
+    ],
+    "confidence": "unverified",
+    "risks": [
+      "The Allegro return text is quoted by a user in a forum, not taken from Allegro's own pages.",
+      "Without list prices the lost discount cannot be computed at all."
+    ]
+  },
+  {
+    "id": "R-03",
+    "name": "Allegro duplicate identical lines: same offer twice, one in a bundle, return cannot pick the line",
+    "area": "returns",
+    "actor": "Return line resolver (system); operator",
+    "trigger": "An Allegro order has two lineItems with the same offer and price, one with discounts [BUNDLE] and one with discounts null, and the buyer returns one unit",
+    "preconditions": [
+      "Allegro returns carry offerId and quantity only; Allegro staff declined to add a line id"
+    ],
+    "mainFlow": [
+      "Resolution narrows by offerId then unit price; two survivors remain, so the result is ambiguous and resolvedOrderLineId stays null.",
+      "Because both lines have the same price, OpenLinker picks the line by a stated rule (the line not carrying BUNDLE first) only when the money is identical, and records that it chose.",
+      "When prices differ, price breaks the tie (flexible bundle with a real discount)."
+    ],
+    "altFlows": [
+      "Prices identical and BUNDLE present on both: stays ambiguous; restock is unaffected (same product) and the credit uses the shared price."
+    ],
+    "channelData": {
+      "allegro": "lineItems[] with same offer.id and price 2.62, one \"discounts\":[{\"type\":\"BUNDLE\"}], one \"discounts\": null; CustomerReturnItem {offerId, quantity, price}"
+    },
+    "olBehaviour": "Rule in return-order-line resolution (#3171) for the identical-money case; otherwise today's ambiguous outcome.",
+    "mechanism": "core",
+    "acceptance": [
+      {
+        "given": "two lines, same offer, same price 2.62, one with BUNDLE",
+        "when": "a return of 1 unit arrives",
+        "then": "it resolves to the non-BUNDLE line and the resolution says \"chosen by rule: identical price\""
+      },
+      {
+        "given": "two lines of the same offer at 2.62 and 2.40",
+        "when": "a return with price 2.40 arrives",
+        "then": "it resolves to the 2.40 line"
+      }
+    ],
+    "priority": "later",
+    "priorityReason": "Low money impact because identical lines have the same price and product; one production example only.",
+    "evidence": [
+      "C-004",
+      "C-010",
+      "r3/phase1/1-allegro.md lines 96, 108, 138, 185",
+      "docs/architecture-overview.md section 22 Returns (#3171 narrowing on sku/offerId then price, ambiguous refused)"
+    ],
+    "confidence": "probable",
+    "risks": [
+      "Single production example (S7 in r3/phase1/1-allegro.md); frequency unknown.",
+      "Choosing a line by rule touches the returns \"refuse rather than guess\" principle; acceptable only because money and product are identical."
+    ]
+  },
+  {
+    "id": "R-04",
+    "name": "Channel return line references differ: array index (Erli), per piece (Kaufland), amount only (eBay)",
+    "area": "returns",
+    "actor": "Return source adapters (system)",
+    "trigger": "A return is ingested from a channel whose return does not carry the order line id",
+    "preconditions": [
+      "Only Allegro implements ReturnSourceReader today (grep of libs/integrations)"
+    ],
+    "mainFlow": [
+      "Erli: returns[].items[].index refers to the position in order.items; the adapter maps index to the stored channel line id, using the channel snapshot order, never the effective order.",
+      "Kaufland: a return per order unit maps to the merged line plus unit id (X-02).",
+      "eBay: refunds are an amount per line with no quantity; quantity stays unknown."
+    ],
+    "altFlows": [
+      "Erli order re-ingested with a different item order: the index mapping uses the snapshot taken at order time; a mismatch is flagged, not guessed."
+    ],
+    "channelData": {
+      "erli": "Order.returns[].items[] {index \"Numer zwracanej pozycji, odnosi sie do pola items zamowienia\", quantity}",
+      "kaufland": "ReturnUnit.id_order_unit, reason, status",
+      "ebay": "RefundItem {refundAmount, lineItemId}"
+    },
+    "olBehaviour": "Adapter mapping when each return reader is built; core unchanged.",
+    "mechanism": "field",
+    "acceptance": [
+      {
+        "given": "an Erli order with items [A, B] and a return of index 1",
+        "when": "it is ingested",
+        "then": "the return line resolves to B's line id"
+      },
+      {
+        "given": "an Erli order whose items reorder on re-ingestion",
+        "when": "a return by index arrives",
+        "then": "it resolves against the stored channel snapshot and flags the mismatch"
+      }
+    ],
+    "priority": "later",
+    "priorityReason": "No Erli, Kaufland or eBay return reader exists yet; this shapes them when they are built.",
+    "evidence": [
+      "r4/phase1/4-marketplaces-and-law.md sections 1.1, 1.4, 1.6 and surprise 9",
+      "libs/integrations grep: ReturnSourceReader only in allegro (read for this report)"
+    ],
+    "confidence": "confirmed",
+    "risks": [
+      "Erli index base (0 or 1) is not stated in the spec (unverified)."
+    ]
+  },
+  {
+    "id": "R-05",
+    "name": "Freeze each bundle component's allocated price at sale so later credits use the documented value",
+    "area": "returns",
+    "actor": "System (expansion snapshot); operator later issuing the credit",
+    "trigger": "A bundle order is ingested during the pilot (documents keep the bundle line, no in-set prices)",
+    "preconditions": [
+      "Stage 1 bundle expansion is written once per order (insert-if-absent)"
+    ],
+    "mainFlow": [
+      "When the expansion row is written, it also stores each component's standalone gross price at that moment and the resulting proportional share of the paid bundle price (or null when unknown).",
+      "Later component returns and credits (B-15) use the frozen share: the value attributed at sale is what a correction must lower (art. 29a ust. 10 pkt 2).",
+      "Orders without frozen values fall back to manual valuation."
+    ],
+    "altFlows": [
+      "Component has no catalogue price at ingestion: stored as null; that order's component credit is manual."
+    ],
+    "channelData": {
+      "allegro": "productSet carries no per-component price, EAN or SKU"
+    },
+    "olBehaviour": "Two columns on the Stage 1 expansion table; cheap now, impossible to backfill later.",
+    "mechanism": "field",
+    "acceptance": [
+      {
+        "given": "a bundle order paid 100.00 with standalone prices 70.00 and 50.00 at ingestion",
+        "when": "the catalogue prices later change",
+        "then": "the expansion row still holds 70.00/50.00 and shares 58.33/41.67"
+      },
+      {
+        "given": "a component price unknown at ingestion",
+        "when": "a component credit is proposed later",
+        "then": "it is marked manual"
+      }
+    ],
+    "priority": "pilot",
+    "priorityReason": "r5/7 names it the one cheap mitigation that prevents a permanent fallback rule for every pilot-period bundle order; only if Stage 1 ships.",
+    "evidence": [
+      "r5/7-scope-overengineering.md section 7 item 4",
+      "verify/bundle-price-split.md section 3 (\"the per-component split must be frozen at the moment of sale\")",
+      "r5/3-marketplaces-countries.md C-035",
+      "C-001"
+    ],
+    "confidence": "probable",
+    "risks": [
+      "Catalogue price at ingestion is not the price at purchase if ingestion lags (r5/2 section 2).",
+      "While documents keep the bundle line, the frozen share is not on any document, so a credit based on it is still a reconstruction (adviser).",
+      "Overlaps the bundles writer's B-10 snapshot; this case only adds the price columns."
+    ]
+  },
+  {
+    "id": "R-06",
+    "name": "Restock of a returned PrestaShop pack writes a stock row PrestaShop ignores",
+    "area": "returns",
+    "actor": "Return custody restock (system); operator",
+    "trigger": "A returned item whose product is a PrestaShop pack with stock from components (pack_stock_type 1, or 0 read as shop default) is restocked",
+    "preconditions": [
+      "The pack product is mastered by PrestaShop with pack_stock_type 1 (decrement products only), or 3 resolving to 1, and the operator disposes the return as restock"
+    ],
+    "mainFlow": [
+      "PrestaShop adjustInventory detects a components-mode pack (readPackDefinition + resolvePackStockMode, already used in listInventory).",
+      "It refuses before writing with a typed NotSupported-style error; the restock is recorded as blocked with \"pack stock comes from components: restock components\".",
+      "The operator restocks components by manual correction (#3566)."
+    ],
+    "altFlows": [
+      "Pack in pack-only mode (0 on 9.2.0+, explicit): the write is correct and proceeds.",
+      "Later: the adapter restocks components itself like PrestaShop's own flow (M, needs per-component idempotency)."
+    ],
+    "channelData": {
+      "prestashop": "Live probe pack 22 (type 1): webservice PUT of the pack's stock_availables row answered 200, components unchanged, Pack::getQuantity unchanged (147), and a cart still accepted 5 packs with the row at 0; types 0 and 2 apply the PUT"
+    },
+    "olBehaviour": "Adapter guard shared with the sale-decrement fix (bundles writer B-20 / r5/7 Stage 0 item 1); no core change since return restock already has a blocked state.",
+    "mechanism": "capability",
+    "acceptance": [
+      {
+        "given": "a returned PrestaShop pack in components mode",
+        "when": "the operator restocks it",
+        "then": "no write reaches PrestaShop and the return shows the blocked reason"
+      },
+      {
+        "given": "a pack in pack-only mode",
+        "when": "it is restocked",
+        "then": "its own stock row increases as today"
+      }
+    ],
+    "priority": "stage0",
+    "priorityReason": "The same adapter guard as the Stage 0 pack-decrement fix closes it, and today the operator sees \"applied\" while buyers see no change.",
+    "evidence": [
+      "C-060",
+      "C-014",
+      "verify/prestashop-live.md Q5 and surprise 4",
+      "r5/2-shops-erp.md sections 3 and 5",
+      "r5/7-scope-overengineering.md section 2 D1 and section 6 item 1",
+      "prestashop-inventory-master.adapter.ts:887-946 (per r5/2 and r5/6)"
+    ],
+    "confidence": "confirmed",
+    "risks": [
+      "r5/6 asked for a live probe; verify/prestashop-live.md ran it and confirmed r5/2: no cascade in any pack type.",
+      "pack_stock_type 0 semantics differ before and after 9.2.0, so mode detection must be version-aware.",
+      "The PUT writes quantity but not physical_quantity, so the row is left internally inconsistent (live probe)."
+    ]
+  }
+]

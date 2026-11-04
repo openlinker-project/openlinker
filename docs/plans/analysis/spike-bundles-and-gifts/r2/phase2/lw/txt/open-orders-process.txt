@@ -1,0 +1,68 @@
+=== open-orders-process | Process Open Orders
+ 
+ Process Open Orders 
+Open Orders: How to Process 
+ Order management is a set of actions taken on orders starting from reviewing , sorting , printing order documentation ,  picking , packing , and ending with despatching an order to a buyer. In Linnworks, the final stage of order despatching is an action of order processing. 
+ The order management cycle is commonly the following:
+An order is placed.
+An order is received and reviewed.
+Required order documentation is printed ( picklist , packing list , invoice , shipping label ).
+An order is picked. 
+An order is packed.
+An order is processed .
+ You can use the following parts of the system to process orders:
+ The Open Orders screen 
+Process Individually 
+Batch Process 
+ The Dispatch Console module 
+ The Process Order Import 
+ This documentation provides an explanation of how to process orders in Linnworks, specifically using the Open Orders screen.
+ Important!  To keep the data consistent across all your selling channels , we strongly recommend processing orders from Linnworks only . 
+ Note that if you process an order on the channel first and only then in Linnworks:
+Linnworks will update the order on your selling channel with the details from Linnworks.
+Linnworks will update the despatch time of the order.
+A despatch notification may be sent out to the buyer again.
+ Processing open orders 
+ The  Open Orders screen allows you to process orders individually or in bulk from one place and then push the tracking and despatch information to the selling channels automatically.
+ Note! Once processed, an order cannot be changed. An order also cannot be unprocessed. 
+ Therefore, make sure the shipping label is printed and the tracking information is entered as this information cannot be entered once the order is processed. What is available is re-printing the documentation for the processed order. For more information, see this guide .
+ Processing open orders individually 
+ To process an open order:
+Go to Orders > Open Orders.  
+Select the order to be processed. 
+Click the Actions button. Alternatively, right-click the order.
+Click Process Order > Process . 
+Confirm order details and complete the scanning if required in the Process Order screen.
+In the Process order screen, perform the following actions before processing an order:
+ Errors and warnings : Under this section, view any errors or warnings for the required actions to be performed on the order.
+ Shipping : Use the drop-down menu to assign or change the shipping service on the order.
+ Tracking number : Use this field to add a tracking number to the order if it hasn't been added when a shipping label was printed.
+ Packaging : Click the Edit button to update order packaging and item dimensions .
+ Notes : Under this section, you can view order notes.
+ Split packaging : Use this button to split order packaging. More information on this function is  here .
+ Print invoice : Use this button to print an invoice for the order if it hasn't been printed before.
+ Print label : Use this button to print a shipping label if it hasn't been printed before.
+ Scan items : Use this button to scan items when scanning is required.
+Once all details are confirmed, click Process . 
+Now the order is moved to Processed Orders and it cannot be amended or unprocessed .
+ Error prevention 
+ Depending on your workflows, there are several settings that can help you avoid errors when working with open orders. Review  Scanning and Pre Processing sections in Settings > General Setting > Order Management  and enable any settings that are applicable to your processes.
+ Once the settings are enabled, the corresponding actions need to be completed in the Process Order screen.
+ Processing open orders in batch 
+ Use the Actions >  Batch Process option to process multiple orders at once.
+ Note!   Batch Process   moves open orders to the   Processed Orders screen immediately.   Any settings enabled for scanning barcodes, serial numbers, batch numbers, etc., will be ignored. 
+ To process multiple orders at once:
+Go to  Orders > Open Orders. 
+Select the required orders.
+Click Actions or right-click orders.
+Go to Process Order > Batch Process .
+ Important! The Batch Process action is not recommended when any scanning settings are enabled in General Setting > Order Management . 
+ For example, if an order contains a batched item with the option Scan the batch number when processing orders enabled, once Batch Process is clicked the system will ignore the required scanning and process the order straight away.
+  Video tutorials 
+ If you like visual guides, these videos will show you how to process orders one step at a time. They can help you understand the process better and address any extra questions. 
+ Video - Order Processing: How to process orders using the various methods available  
+ One New Thing - Avoid Mistakes When Order Processing  
+ NB! For the documentation on the earlier version of the Open Order s screen, see here:
+ Processing orders 
+ Manual order processing 
+ 

@@ -1,0 +1,87 @@
+=== amazon-multi-channel-fulfillment | Amazon Multi-Channel Fulfillment (MCF)
+ 
+ Amazon Multi-Channel Fulfillment (MCF) 
+Amazon Multi-Channel Fulfillment (MCF)
+ In this guide, you will learn what Amazon Multi-Channel Fulfillment (MCF) is and how to configure it in your Linnworks account. You will also find answers to frequently asked questions about how Linnworks manages MCF orders. 
+ What is MCF?
+ Amazon Multi-Channel Fulfillment (MCF) provides low-cost, reliable fulfillment for your e-commerce sales channels (eBay, Walmart, etc.) as fast as 1-day. Learn more about Amazon MCF  in this guide from Amazon .
+ You can use Linnworks to send order information to FBA for a sale of a non -FBA listing. This may mean, for example, selling an item on eBay, downloading this order into Linnworks, and then sending the order information to Amazon to fulfill this order. This is called Amazon MCF.
+ How to set up MCF in Linnworks?
+ MCF is a part of FBA functionality . Once you have enabled and configured FBA for your Amazon channel integration , which is fully explained in this guide , you can proceed to configure MCF. You cannot use MCF functionality without enabling FBA.
+ MCF settings
+ You can configure additional settings for the MCF functionality to meet your requirements. These settings are optional for communication between Linnworks and FBA when fulfilling non-FBA orders. If you do not require these settings, it is suggested that they be disabled. 
+ Send Declared Value :  This setting will instruct Linnworks to send the total value of the order to Amazon when an order for a non-FBA listing is exported. This value will be sent using the currency from the order that was placed.
+ Convert Currency :   This setting will change the currency of the declared value from its original currency to the currency that FBA expects. Linnworks swaps the currency code and does not change the value following exchange rates.
+ Send composite parent items to Amazon: When enabled , Linnworks will send the composite parent item to Amazon . If the setting is disabled , composite child items will be sent to Amazon. By default, this setting is disabled.  
+ Send notification email: When enabled, Amazon will email the buyer about the shipment of their order. 
+ Blank box, Blank box location, Block Amazon logistics: These settings are related to the  MCF Blank Box feature, which is fully explained in the separate guide . 
+  Note: Blank Box enablement via API is currently only available in the United States . EU sellers should contact Amazon to enable the Blank Box feature. 
+ How to send orders to MCF manually
+ To start using MCF, which involves sending a non-FBA order to Amazon FBA for fulfillment, follow the steps below:
+ Select the order(s) in the Open Orders screen.
+ Click  Actions or right-click the order(s) and go to Organize > Location and here you have two options:
+ Move to fulfillment center: Choose the FBA location from which you want to fulfill the selected order(s).
+ Run fulfillment network: You can run a fulfillment network on the selected order(s) to determine the most appropriate FBA location for fulfilling them based on available stock levels. The fulfillment network must have been set up previously.
+ The order will then be moved to the FBA location and  locked and parked . From this moment, Amazon will take care of this order and ship it to your buyer.
+ How to automate sending orders to MCF 
+ Instead of manually sending orders to MCF, you can automate this process using Linnworks functionality. You can use  Rules Engine or Fulfillment Networks  to automatically send MCF orders to Amazon based on your criteria. 
+ Rules Engine
+ The  Rules Engine screen allows you to build a flowchart with the defined conditions based on input parameters. Each rule has an action that is applied on orders if the parameters meet the criteria defined by the rule. A full guide on how to set up rules in Linnworks is here .
+ For example, you can set up a rule to ensure that only orders containing certain SKUs and of a specific order total values are sent to MCF. In this case, the rule's condition group and the action will be the following:
+ Condition group: Channel SKU starts with MCF, and the order's total charge is less than or equal to 100.
+ Action: Assign order to location. 
+ Fulfillment Networks
+ Fulfillment Networks in Linnworks allow you to send orders to a group of locations instead of just one. Linnworks will then determine which location to use to fulfill the order based on the stock availability in that location. A full guide on how to use Fulfillment Networks is available here .
+ You can manually send MCF orders to fulfillment networks, as explained here , or use the Fulfillment Networks feature alongside the Rules Engine . This means that instead of automatically sending orders to a specific location, as shown in this example ,  the rule will send them to a fulfillment network, which will determine the most suitable location based on available stock levels. 
+ The Rules Engine action in this case will look as follows:
+ See here for full details on how to send orders to fulfillment networks with the Rules Engine .
+ Tracking the status of the MCF orders
+ Once an order is sent and accepted by Amazon FBA, the  label printed  status will be set on the outbound shipment, and the  label printed  will be shown on the Linnworks order. 
+ If there were an error attempting to submit an order to FBA, for such an order, Linnworks would display a label printing error. The error message can be seen by hovering over the icon or looking in the  Audit Trail  via  Actions (or right-clicking ) > View Order . Linnworks will retry to submit the order the next time it synchronizes.
+ Linnworks keeps track of FBA state changes in the  order audit trail . Once FBA ships the order, FULFIL_STATUS will change to COMPLETE, and the order will be assigned a tracking number (if specified) and moved to  Processed Orders .
+ Additional functionality to consider 
+ Using Fulfillment SKUs 
+ When sending an order from a non-FBA listing to FBA, the SKU you use to represent the stock item may not be the same SKU that FBA uses. This means that FBA will not know what items to ship and will be unable to fulfill the order.
+ You can save the FBA SKU on the stock item as an extended property to work around this discrepancy. This is called a Fulfilment SKU, using the format below:
+ Property  Name:  The name of the FBA location in Linnworks.
+ Property  Value:  The Fulfilment SKU that Amazon will recognize.
+ Property  Type:  Fulfilment SKU.
+ Partially fulfilled MCF orders from FBA
+ Linnworks can effectively manage MCF orders partially fulfilled by Amazon FBA. If an order with multiple items or quantities was only partially fulfilled by Amazon, Linnworks will  split that order  into two separate orders. It will automatically mark the fulfilled order as processed and the unfilled order - as unfulfillable.
+ The unfulfillable order will have a clear message in its  audit trail : " Order unfulfillable by FBA ." The shipping label will also display an error message indicating the same. This order will be stored in the Linnworks FBA location, allowing you to explore other ways to fulfill it. You can use a different fulfillment service or handle it from your warehouses. If you prefer to fulfill the order from your warehouse, you can move it from the FBA location into your  regular location  ( the same way as you moved the order into the FBA location ) and process it from there.
+ Additionally, if you have no intention of fulfilling the order, you can  cancel  it from Linnworks.
+ Reverse shipping mapping for MCF orders
+ Reverse shipping mapping was introduced for MCF orders shipped by FBA for the following cases. If FBA dispatches an MCF order using a  postal service  unknown to Linnworks, a new record for that postal service will be added under the Amazon channel's  Shipping Mapping . The site ID for this postal service will display FBA in the  Shipping Allocation  pop-up window. You can access  Shipping Allocation  by clicking the following icon in  Settings > Channel Integrations > Amazon .
+ You can create a new postal service in Linnworks or use an existing one to map the new FBA shipping service to it.  This guide  fully explains how to complete shipping mapping for channel integrations in Linnworks.
+ The above is crucial for MCF orders because, in certain cases (depending on the  sales channel ), the orders will not be marked as dispatched on the channel unless a  postal service is mapped  in Linnworks.
+  Video tutorial 
+ If you prefer a visual explanation, this video tutorial walks you through the Amazon Multi-Channel Fulfillment (MCF)  feature   step by step. It can help clarify how the feature  works and answer any additional questions.
+ Video - How to set up and use Amazon Multi-Channel Fulfillment (MCF) 
+ FAQs
+ Below, you can find answers to frequently asked questions about the MCF functionality. 
+ Why can Amazon (FBA) not fulfill my MCF order? 
+ This may be because the order address is invalid or the ordered item(s) do not have a proper fulfillment SKU.
+ What happens next when Amazon cannot fulfill my MCF order? 
+ When you move an MCF order to an FBA location, Linnworks will send it to Amazon. If Amazon cannot fulfill the order for any reason, Linnworks will show a shipping label error explaining why the order was rejected, like insufficient stock or an incorrect address. To resubmit the order to Amazon FBA, you need to clear the shipping label error so Linnworks can try sending it again.
+ Another option is to move the order to a different location and fulfill it manually. 
+ When submitting an order to MCF, how does Amazon know what Shipping Method to use?
+ This depends on the postal service method assigned to the order in Linnworks.
+ If the Linnworks Postal Service Method's name contains the word  EXPEDITED , Amazon will send it as  Expedited (US, EU, and UK). 
+ If the Linnworks Postal Service Method's name contains the word  PRIORITY , Amazon will send it with  Priority (US only). 
+ If the Linnworks Postal Service Method's name  does not  contain Expedited or Priority, Amazon will send it as  Standard (US, EU, and UK).  
+ How do I only enroll specific ASINs/exclude MCF for specific orders (based on product value/specific order sizes, etc)? 
+ There is no specific functionality to do this. You can use Rules Engine to send only specific orders to MCF based on SKU. See here for more details.
+ How easy is MCF, and how do I sync other marketplaces for MCF using Linnworks? 
+ MCF is a rather easy functionality. You can use the Rules Engine to send orders to MCF . 
+ You can also configure your Linnworks account to download stock levels from FBA and share them with other marketplaces/channel integrations. This can be configured in the  Location Mapping screen , specifically in the Sync inventory from locations section for the relevant channel integration. 
+ How do I integrate stock across different countries? How do I set up MCF for other countries?
+ You will need to add different countries as separate channel integrations (sites) and then use the  Rules Engine or Fulfillment Networks  functionalities to assign the orders to the right location. 
+ How does Linnworks download/automate order tracking and sending of tracking numbers? 
+ Linnworks uses API for that. After orders are sent to MFC for fulfillment by Amazon, Linnworks automatically verifies if Amazon has shipped the order. Upon shipment confirmation, Linnworks saves the tracking number and courier information to the order, processes the order, and sends a dispatch notification to the original channel (e.g., eBay).  
+ How does Linnworks manage returns processes for MCF? 
+ Linnworks does not support returns for MCF at the moment. 
+ How do I seek support within Linnworks? What are the emails for support and ETAs? 
+ You can contact our support lines at +44 2033227375 (UK & Europe) and +1 347.391.2804 (North America). 
+ You can also raise a support ticket via our Support Portal or email the Support Team at support@linnworks.com . 
+ The Support lines are available from 6 AM to 9 PM BST. 
+ 

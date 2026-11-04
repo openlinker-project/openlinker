@@ -1,0 +1,62 @@
+/* Documents lab and returns screens. Prefixes: doc-lab-, doc-ret-. Tokens from index.css only. */
+
+.doc-lab, .doc-lab-stack, .doc-ret, .doc-ret-stack { display: grid; gap: var(--space-4); min-width: 0; }
+.doc-lab-stack, .doc-ret-stack { gap: var(--space-3); }
+
+.doc-lab-controls {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: var(--space-4);
+  align-items: start;
+}
+.doc-lab-field { display: grid; gap: var(--space-2); min-width: 0; }
+.doc-lab-field .segmented-control { max-width: 100%; }
+
+.doc-lab-previews { display: grid; grid-template-columns: 1fr; gap: var(--space-5); align-items: start; min-width: 0; }
+@media (min-width: 1600px) {
+  .doc-lab-previews { grid-template-columns: minmax(0, 340px) minmax(0, 1fr); }
+}
+.doc-lab-cell { display: grid; gap: var(--space-2); min-width: 0; align-content: start; }
+
+.doc-lab-check { margin: 0; display: inline-flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); font-size: 12px; color: var(--text-secondary); text-transform: none; letter-spacing: 0; font-weight: 400; }
+.doc-lab-cell .proto-inline-note .doc-lab-check { display: flex; margin-top: var(--space-1); }
+
+.doc-lab-why { margin: 0 0 var(--space-3); padding-left: 1.1rem; display: grid; gap: var(--space-2); font-size: 13px; line-height: 1.55; color: var(--text-primary); max-width: 80ch; }
+.doc-lab-why + .who-pays { margin-bottom: var(--space-3); }
+
+.doc-lab-rates { list-style: none; margin: var(--space-3) 0 0; padding: 0; display: grid; gap: 2px; font-size: 12px; color: var(--text-secondary); }
+.doc-lab-name { display: inline-flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
+.doc-lab-text { margin: 0; font-size: 13px; line-height: 1.55; color: var(--text-secondary); max-width: 80ch; }
+
+/* Returns */
+.doc-ret-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 440px), 1fr)); gap: var(--space-4); align-items: start; min-width: 0; }
+.doc-ret-item { display: grid; gap: 2px; min-width: 0; }
+.data-table td .doc-ret-item--wide { min-width: 220px; }
+.doc-ret-item__marks { display: inline-flex; flex-wrap: wrap; gap: var(--space-1); align-items: center; }
+.doc-ret-actions { display: flex; flex-wrap: wrap; gap: var(--space-2); align-items: center; }
+.doc-ret-amount { max-width: 160px; }
+.doc-ret-qty { width: 72px; }
+.doc-ret-components { display: grid; gap: var(--space-2); }
+.doc-ret-component { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: var(--space-3); align-items: center; font-size: 13px; }
+.doc-ret-detail { display: grid; gap: var(--space-2); padding: var(--space-2) 0; font-size: 13px; }
+.doc-ret-money { display: grid; gap: var(--space-3); }
+.doc-ret-total { display: flex; justify-content: space-between; gap: var(--space-3); font-weight: 600; font-size: 15px; padding-top: var(--space-2); border-top: 1px solid var(--border-default); }
+.doc-ret-link { color: var(--accent-primary); text-decoration: underline; text-underline-offset: 2px; }
+.doc-ret-link:focus-visible { outline: 2px solid var(--border-focus); outline-offset: 2px; border-radius: var(--radius-xs); }
+
+/* The app's own .doc-preview (a small centred placeholder tile) shares the class name
+   with the prototype's full previews; inside these screens the previews lay out normally. */
+.doc-lab .proto-doc, .doc-ret .proto-doc {
+  margin-top: 0; min-height: 0; border: 0; background: none; color: var(--text-primary);
+  font-size: 13px; place-items: initial; align-items: stretch; overflow: visible;
+}
+.doc-lab .proto-doc__head, .doc-ret .proto-doc__head { color: var(--text-primary); }
+/* Polish copy is sentence case; the kit capitalises every word of an option. */
+.doc-lab .segmented-control__option, .doc-ret .segmented-control__option { text-transform: none; }
+.doc-ret .segmented-control { flex-wrap: wrap; max-width: 100%; }
+
+.doc-lab-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}

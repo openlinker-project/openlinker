@@ -1,0 +1,187 @@
+<!DOCTYPE html><html lang="en-US" dir="ltr"><head><style type="text/css">.ArticleViewer_searchKeywords{background-color: yellow !important;}</style>
+<script type="text/javascript">//<!--
+var articlesServiceUrl='/article/';
+//--></script>
+<link rel="canonical" href="/articles/documentation/amazon-order-identifier-handling"/>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.3/css/all.min.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css">
+<script src="https://cdn.jsdelivr.net/npm/jquery@3.5.1/dist/jquery.min.js"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/fancyapps/fancybox@3.5.7/dist/jquery.fancybox.min.css"/>
+<script src="https://cdn.jsdelivr.net/gh/fancyapps/fancybox@3.5.7/dist/jquery.fancybox.min.js"></script><title>Amazon Order Identifiers Handling </title><script type="text/javascript">//<!--
+var imgPopupTexts={openInNewWindowText: 'Open in new window', closeText: 'Close'};var articleTitleText='Amazon Order Identifiers Handling ';
+//--></script><link rel="stylesheet" type="text/css" href="/resources/Styles/documentation/Docs%20CSS.css"/><link rel="stylesheet" type="text/css" href="/resources/Styles/documentation/docs.linnworks-EMS.css"/><link rel="stylesheet" type="text/css" href="/style-bundles/article-published.css?v=1.0.9789.31895"/><script src="/resources/Scripts/documentation/Script.js" type="text/javascript"></script><script src="/script-bundles/article-published.js?v=1.0.9789.31895" type="text/javascript"></script><meta charset="utf-8"><meta http-equiv="Content-Type" content="text/html;charset=utf-8"></head><body><span id="__clhTop"></span><h1 style="" id="h1_1498263178" data-has-heading-anchor="true">
+  Amazon Order Identifiers
+<a href="/articles/documentation/amazon-order-identifier-handling/a/h1_1498263178" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/amazon-order-identifier-handling/a/h1_1498263178&#39;,this);"></a></h1>
+<p>
+  There are five types of order identifiers related to Amazon. These identifiers are added to orders when Linnworks downloads them from Amazon and saves them in the <i><a href="/articles/documentation/open-orders" onclick="return n(&#39;!documentation/open-orders&#39;,this);">Open Orders</a></i> screen. They can tell if the order is a premium, B2B, commercial, prime, or scheduled delivery one. When these identifiers are added to orders, it is simpler for you to spot them in  <i>Open Orders</i> and take the necessary steps, like assigning required postal services.
+  <br/>
+</p>
+<p>
+  You can view these identifiers in <i>Settings &gt; General Settings &gt; <a href="/articles/documentation/general-order-management/a/h2_791941630" onclick="return n(&#39;!documentation/general-order-management/a/h2_791941630&#39;,this);">Order Management &gt; Identifiers</a></i>. This section automatically includes Amazon identifiers when you integrate the <a href="/articles/documentation/amazon-channel-integration" onclick="return n(&#39;!documentation/amazon-channel-integration&#39;,this);">Amazon channel</a> into your Linnworks account.&nbsp;
+</p>
+<h2 style="" id="h2__767352368" data-has-heading-anchor="true">
+  Types of Amazon Order Identifiers
+<a href="/articles/documentation/amazon-order-identifier-handling/a/h2__767352368" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/amazon-order-identifier-handling/a/h2__767352368&#39;,this);"></a></h2>
+<table class="CHTable" cellspacing="0" cellpadding="0" style="width: 100%; border-collapse: collapse;">
+  <thead>
+  </thead>
+  <tbody>
+    <tr style="height: 34px;">
+      <td style="width: 147px;">
+        <div style="text-align: center;">
+          <img src="/resources/Storage/documentation/Screenshots/Channels/Amazon/AMAZON_BUSINESS.svg" alt="" style="height: auto; width: 100%; max-width: 55px;" data-ch-thumbnail-mode="none" loading="lazy"/>
+        </div>
+      </td>
+      <td style="width: 688px;">
+        <b>Amazon B2B Order</b>
+        <br/>
+        These are orders from Amazon listings with business prices. For full details on Amazon B2B selling, see this <a href="/articles/documentation/amazon-b2b-orders" onclick="return n(&#39;!documentation/amazon-b2b-orders&#39;,this);">guide</a>.
+        <br/>
+      </td>
+    </tr>
+    <tr style="height: 34px;">
+      <td style="width: 147px;">
+        <div style="text-align: center;">
+          <img src="/resources/Storage/documentation/Screenshots/Channels/Amazon/AMAZON_PREMIUM.svg" alt="Amazon Premium Order" style="height: auto; width: 100%; max-width: 55px;" data-ch-thumbnail-mode="none" loading="lazy"/>
+        </div>
+      </td>
+      <td style="width: 688px;">
+        <b>Amazon Premium Order</b>
+        <br/>
+        This identifier is often applied to an order together with Amazon Prime Delivery. For full details on how to handle such orders, see this <a href="https://help.linnworks.com/support/solutions/articles/7000074009-shipping-new-amazon-shipping-how-to-set-up" target="_blank">guide</a>.&nbsp;
+        <br/>
+      </td>
+    </tr>
+    <tr>
+      <td style="width: 147px;">
+        <div style="text-align: center;">
+          <img src="/resources/Storage/documentation/Screenshots/Channels/Amazon/AMAZON_PRIME.svg" alt="Amazon Prime Delivery Order" style="height: auto; width: 100%; max-width: 55px;" data-ch-thumbnail-mode="none" loading="lazy"/>
+        </div>
+      </td>
+      <td style="width: 688px;">
+        <b>Amazon Prime Delivery</b>
+        <br/>
+        Amazon Prime is a service that Amazon sellers can offer their buyers.&nbsp;An Amazon Prime seller must guarantee next-day delivery on all their Prime listings. For full details on handling Amazon Prime Delivery orders (also called Amazon Next Day orders), see this <a href="/articles/documentation/amazon-prime-orders" onclick="return n(&#39;!documentation/amazon-prime-orders&#39;,this);">guide</a>.
+        <br/>
+      </td>
+    </tr>
+    <tr>
+      <td style="width: 147px;">
+        <div style="text-align: center;">
+          <img src="/resources/Storage/documentation/Screenshots/Channels/Amazon/AMAZON_SCHEDULED.svg" alt="Amazon Scheduled Delivery Order" style="height: auto; width: 100%; max-width: 55px;" data-ch-thumbnail-mode="none" loading="lazy"/>
+        </div>
+      </td>
+      <td style="width: 688px;">
+        <b>Amazon Scheduled Delivery</b>
+        <br/>
+        Amazon Scheduled Deliveries let buyers pick a specific day or date range for their delivery instead of dispatching the item immediately. For full details on how to handle such orders, see this <a href="https://help.linnworks.com/support/solutions/articles/7000031457-amazon-scheduled-delivery-dates" target="_blank">guide</a>.
+        <br/>
+      </td>
+    </tr>
+    <tr>
+      <td style="width: 147px;">
+        <div style="text-align: center;">
+          <img src="/resources/Storage/documentation/Screenshots/Channels/Amazon/37eee6f7-6792-4dab-bfe6-616bc72a46c4.png" alt="Amazon Commercial Address Order" style="height: auto; width: 100%; max-width: 55px;" data-ch-thumbnail-mode="none" loading="lazy"/>
+        </div>
+      </td>
+      <td style="width: 688px;">
+        <b>Commercial Address</b>
+        <br/>
+        Amazon commercial orders refer to those with a commercial delivery address. For full details on how to handle such orders, see this <a href="https://help.linnworks.com/support/solutions/articles/7000085246-amazon-commercial-address-order-identifier" target="_blank">guide</a>.
+        <br/>
+      </td>
+    </tr>
+        <tr><td style="width: 147px;"><div style="text-align: center;"><img src="/resources/Storage/documentation/Screenshots/Shipping/%7BA320763A-B831-4037-8E11-4AFAF5F2570A%7D.png" alt="Amazon FBM Ship +" data-ch-thumbnail-mode="none" style="height: auto; width: 100%; max-width: 55px;" loading="lazy"/></div></td><td style="width: 688px;"><b>Amazon FBM Ship+ Order</b><br/>Identifies orders that can be fulfilled through the Amazon FBM Ship+ program. For full details on the Amazon&nbsp;FBM Ship+ program, see <a href="/articles/documentation/amazon-shipping-rules/a/h2__1981929918" target="_blank" onclick="return n(&#39;!documentation/amazon-shipping-rules/a/h2__1981929918&#39;,this);">this guide</a>.<br/></td></tr>
+        <tr>
+      <td style="width: 147px;">
+        <div style="text-align: center;">
+          <img src="/resources/Storage/documentation/Screenshots/Channels/Amazon/easy%20ship%20identifier.png" alt="" data-ch-thumbnail-mode="none" style="height: auto; width: 56px; max-width: 100%;" loading="lazy"/>
+        </div>
+      </td>
+      <td style="width: 688px;">
+        <b>Amazon Easy Ship Order&nbsp;</b><br/>
+         Identifies orders that will be fulfilled through the Amazon Easy Ship program. See <a href="https://help.linnworks.com/support/solutions/articles/7000095475" target="_blank">this guide</a> for more details.<br/>
+      </td>
+    </tr>
+        <tr>
+      <td style="width: 147px;">
+        <div style="text-align: center;">
+          <img src="/resources/Storage/documentation/Screenshots/Channels/Amazon/seller%20flex%20identifier.png" alt="" data-ch-thumbnail-mode="none" style="height: auto; width: 100%; max-width: 55.6642px;" loading="lazy"/>
+        </div>
+      </td>
+      <td style="width: 688px;"><b>Amazon SmartConnect (SellerFlex)</b><br/>
+        Identifies FBA orders that will be fulfilled through the Amazon SellerFlex program (shipped from the seller’s warehouse). See <a href="https://help.linnworks.com/support/solutions/articles/7000095498" target="_blank">this guide</a> for more details.<br/>
+      </td>
+    </tr>
+    </tbody>
+</table>
+
+
+<p style="" id="h2__455388090">
+  <b>Note!</b> The&nbsp;<i>Amazon Vendor Direct Fulfillment Order</i> and&nbsp;<i>Amazon Vendor Retail Procurement Order</i> identifiers are related to the&nbsp;<a href="/articles/documentation/amazon-vendor-central-channel-integration" onclick="return n(&#39;!documentation/amazon-vendor-central-channel-integration&#39;,this);">Amazon Vendor</a>&nbsp;channel integration.&nbsp;
+</p>
+<p style="" id="h2__455388090">
+  <img src="/resources/Storage/documentation/Screenshots/Channels/Amazon/AmazonVendorIdentifiers.png" alt="Amazon Vendor Identifiers" class="size-50" style="" loading="lazy"/>
+</p>
+<h2 style="" id="h2__455388090" data-has-heading-anchor="true">
+  Using Amazon Order Identifiers and Rules Engine
+<a href="/articles/documentation/amazon-order-identifier-handling/a/h2__455388090" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/amazon-order-identifier-handling/a/h2__455388090&#39;,this);"></a></h2>
+<p>
+  You can use the identifiers mentioned above as conditions in the <i><a href="/articles/documentation/rules-engine" onclick="return n(&#39;!documentation/rules-engine&#39;,this);">Rules Engine (RE)</a></i> to locate the orders you need easily in the <i><a href="/articles/documentation/open-orders" onclick="return n(&#39;!documentation/open-orders&#39;,this);">Open Orders</a></i> screen and automatically run required actions, such as assigning specific postal services to those orders.&nbsp;
+</p>
+<p>
+  The RE rule configuration looks as follows:
+</p>
+<ol>
+  <li>
+    Go to <i>Orders &gt; Rules Engine</i> and create a new rule. <a href="/articles/documentation/rules-engine-add" onclick="return n(&#39;!documentation/rules-engine-add&#39;,this);">This guide</a> explains in full detail how to create rules.
+  </li>
+  <li>
+    Configure the <a href="/articles/documentation/rules-engine-conditions-comparators" onclick="return n(&#39;!documentation/rules-engine-conditions-comparators&#39;,this);">RE condition</a>. In the example below, the rule will look for Amazon commercial orders, which is why the condition is <b>Identifier equals Commercial Address</b>.
+    <br/>
+    <img src="/resources/Storage/documentation/Screenshots/Channels/Amazon/Amazon%20Commercial%20Orders%20-%20Rule%20Condition.png" alt="Amazon Identifiers - Rule Condition Sample" class="size-75" loading="lazy"/>
+  </li>
+  <li>
+    Configure the <a href="/articles/documentation/rules-engine-actions" onclick="return n(&#39;!documentation/rules-engine-actions&#39;,this);">RE action</a>. In the example below, we want the rule to assign DHL postal service to all Amazon commercial orders, which is why the rule action is <b>Assign postal service to order &gt; DHL</b>.
+    <br/>
+    <img src="/resources/Storage/documentation/Screenshots/Channels/Amazon/Amazon%20Commercial%20Orders%20-%20Rule%20Action.png" alt="Amazon Commercial Orders - Rules Action Sample" class="size-75" loading="lazy"/>
+  </li>
+  <li>
+    Save the rule and make sure it is <b>enabled</b>.
+  </li>
+  <li>
+    When new orders are downloaded and saved to <i>Open Orders</i>, the rule will automatically run and apply the necessary actions to orders that meet the condition.
+  </li>
+</ol>
+<h3 style="" id="h3__1849738992" data-has-heading-anchor="true">
+  Open order views
+<a href="/articles/documentation/amazon-order-identifier-handling/a/h3__1849738992" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/amazon-order-identifier-handling/a/h3__1849738992&#39;,this);"></a></h3>
+<p>
+  You might find it handy to make separate open order views for certain types of Amazon orders. For instance, you could create a view just for <u>Amazon Prime Delivery</u> orders. This way, you can quickly track and dispatch these orders the next day, keeping things organized and efficient.&nbsp;
+</p>
+<p>
+  For that, create a new  view in <i>Open Orders</i>, edit it, and add the following filter to the view:&nbsp;
+</p>
+<p>
+  <img src="/resources/Storage/documentation/Screenshots/Channels/Amazon/AmazonPrimeDeliveryOrdersView.png" alt="Amazon Order Identifiers - Order View Sample" class="leftAlone" loading="lazy"/>The same can be done for Amazon B2B orders, prime orders, scheduled delivery, or commercial orders.&nbsp;
+</p>
+<p>
+  Full details on how to create open order views are <a href="/articles/documentation/oo-screen-create-view" onclick="return n(&#39;!documentation/oo-screen-create-view&#39;,this);">here</a> and how to customize them are <a href="/articles/documentation/oo-screen-custom-view" onclick="return n(&#39;!documentation/oo-screen-custom-view&#39;,this);">here</a>.
+</p><script src="/resources/Scripts/lightense.min.js"></script>
+<script>
+  // Init Lightense
+  window.addEventListener('load', function () {
+    Lightense('img.lightense:not(.no-lightense)');
+  }, false);
+</script>
+<script>
+var toggler = document.getElementsByClassName("caret");
+var i;
+
+for (i = 0; i < toggler.length; i++) {
+  toggler[i].addEventListener("click", function() {
+    this.parentElement.querySelector(".nested").classList.toggle("active");
+    this.classList.toggle("caret-down");
+  });
+}
+</script></body></html>

@@ -1,0 +1,128 @@
+/* Catalogue and settings screens (bundles, bundle editor, promotions, settings). Prefix: cfg-. */
+
+.cfg-stack { display: grid; gap: var(--space-4); min-width: 0; }
+.cfg-stack--tight { gap: var(--space-2); }
+.cfg-row { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); min-width: 0; }
+.cfg-row--between { justify-content: space-between; }
+.cfg-muted { color: var(--text-muted); font-size: 12px; }
+.cfg-secondary { color: var(--text-secondary); font-size: 13px; line-height: 1.5; }
+.cfg-strong { font-weight: 600; color: var(--text-primary); }
+.cfg-num { font-variant-numeric: tabular-nums; }
+
+/* Two-column page body: main + aside, stacked on narrow screens. */
+.cfg-split { display: grid; gap: var(--space-4); grid-template-columns: minmax(0, 1fr); align-items: start; }
+@media (min-width: 1100px) {
+  .cfg-split--aside { grid-template-columns: minmax(0, 1fr) 320px; }
+}
+
+/* Identity cell in tables. */
+.cfg-ident { display: flex; align-items: flex-start; gap: var(--space-3); min-width: 0; }
+.cfg-ident__text { display: grid; gap: 2px; min-width: 0; }
+.cfg-ident__name { font-weight: 500; color: var(--text-primary); overflow-wrap: anywhere; }
+.cfg-ident__meta { display: flex; flex-wrap: wrap; gap: var(--space-1) var(--space-2); align-items: center; font-size: 12px; color: var(--text-muted); }
+
+/* Component list inside a cell. */
+.cfg-comps { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; font-size: 13px; }
+.cfg-comps li { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-1); min-width: 0; }
+.cfg-comps__qty { color: var(--text-muted); min-width: 2.2em; }
+.cfg-link {
+  background: none; border: 0; padding: 0; font: inherit; color: var(--text-primary); text-align: left; cursor: pointer;
+  text-decoration: underline; text-decoration-color: var(--border-strong); text-underline-offset: 2px; overflow-wrap: anywhere;
+}
+.cfg-link:hover { text-decoration-color: var(--accent-primary); }
+.cfg-link:focus-visible { outline: 2px solid var(--border-focus); outline-offset: 2px; border-radius: var(--radius-xs); }
+.cfg-comps__flag { color: var(--status-warning-fg, var(--text-secondary)); font-size: 12px; }
+.cfg-comps__flag--error { color: var(--status-error-fg, var(--status-error)); }
+
+.cfg-cell-stack { display: grid; gap: 2px; justify-items: end; text-align: right; }
+.cfg-cell-stack--start { justify-items: start; text-align: left; }
+.cfg-channels { display: flex; flex-wrap: wrap; gap: 4px; }
+.cfg-channel {
+  display: inline-flex; align-items: center; gap: 5px; font-size: 12px; padding: 1px 6px; border-radius: var(--radius-pill);
+  border: 1px solid var(--border-subtle); color: var(--text-secondary); white-space: nowrap;
+}
+.cfg-channel__dot { width: 6px; height: 6px; border-radius: 50%; background: var(--text-muted); }
+.cfg-channel--off { color: var(--text-muted); text-decoration: line-through; }
+
+/* Plain list of facts (used in panels). */
+.cfg-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 0; }
+.cfg-list > li { padding: var(--space-2) 0; border-top: 1px solid var(--border-subtle); display: grid; gap: 2px; min-width: 0; }
+.cfg-list > li:first-child { border-top: 0; padding-top: 0; }
+
+/* Plain table we own (small matrices). */
+.cfg-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.cfg-table th, .cfg-table td { text-align: left; padding: var(--space-2) var(--space-3) var(--space-2) 0; border-top: 1px solid var(--border-subtle); vertical-align: top; }
+.cfg-table thead th { font-weight: 500; color: var(--text-muted); font-size: 12px; border-top: 0; white-space: nowrap; }
+.cfg-table .cfg-right { text-align: right; }
+.cfg-table tr.cfg-row--limit td, .cfg-table tr.cfg-row--limit th { background: var(--bg-surface-hover); }
+.cfg-table tr.cfg-row--error td, .cfg-table tr.cfg-row--error th { background: color-mix(in oklch, var(--status-error) 7%, transparent); }
+.cfg-table tfoot td, .cfg-table tfoot th { font-weight: 600; color: var(--text-primary); }
+.cfg-scroll { overflow-x: auto; max-width: 100%; }
+
+/* Budget bar. */
+.cfg-bar { display: grid; gap: 3px; min-width: 120px; }
+.cfg-bar__track { height: 6px; border-radius: var(--radius-pill); background: var(--bg-surface-hover); overflow: hidden; border: 1px solid var(--border-subtle); }
+.cfg-bar__fill { height: 100%; background: var(--text-secondary); }
+.cfg-bar__fill--full { background: var(--status-warning); }
+.cfg-bar__label { font-size: 12px; color: var(--text-muted); }
+
+/* Editor: component rows. */
+.cfg-comp-row { display: grid; grid-template-columns: minmax(0, 1fr) 84px auto auto; gap: var(--space-2) var(--space-3); align-items: center; padding: var(--space-2) 0; border-top: 1px solid var(--border-subtle); }
+.cfg-comp-row:first-child { border-top: 0; }
+@media (max-width: 560px) {
+  .cfg-comp-row { grid-template-columns: minmax(0, 1fr) 72px; }
+  .cfg-comp-row > :nth-child(3), .cfg-comp-row > :nth-child(4) { grid-column: span 1; }
+}
+.cfg-add { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: var(--space-2); align-items: end; }
+@media (max-width: 480px) { .cfg-add { grid-template-columns: minmax(0, 1fr); } }
+
+/* Treatment picker (settings). */
+.cfg-options { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--space-2); }
+.cfg-option {
+  display: grid; gap: 4px; padding: var(--space-3); border: 1px solid var(--border-default); border-radius: var(--radius-md); background: var(--bg-surface);
+}
+.cfg-option--active { border-color: var(--accent-primary); box-shadow: inset 2px 0 0 var(--accent-primary); }
+.cfg-option--disabled { background: var(--bg-surface-hover); }
+.cfg-option__head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-2); }
+.cfg-option__desc { margin: 0; font-size: 12px; color: var(--text-secondary); line-height: 1.5; padding-left: 26px; }
+
+/* Settings: field grid. */
+.cfg-fields { display: grid; gap: var(--space-3); grid-template-columns: minmax(0, 1fr); }
+@media (min-width: 720px) { .cfg-fields--2 { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+
+.cfg-preview { display: grid; gap: var(--space-3); min-width: 0; }
+.cfg-preview .receipt { max-width: 100%; }
+
+.cfg-check-yes { color: var(--status-success-fg, var(--text-primary)); font-weight: 500; }
+.cfg-check-no { color: var(--text-muted); }
+
+.cfg-actions { display: flex; flex-wrap: wrap; gap: var(--space-2); justify-content: flex-end; }
+.cfg-actions--start { justify-content: flex-start; }
+
+.cfg-kpis { display: grid; gap: var(--space-3); grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); }
+
+.cfg-version { display: grid; gap: 2px; padding: var(--space-2) 0; border-top: 1px solid var(--border-subtle); font-size: 13px; }
+.cfg-version:first-child { border-top: 0; }
+
+.cfg-dry { display: grid; gap: var(--space-2); }
+
+/* Auto table layout shrinks to min-content; give rich cells a floor. */
+.cfg-comps { min-width: 13rem; }
+.cfg-ident { min-width: 12rem; }
+.cfg-cell-stack { min-width: 7rem; }
+.cfg-channels { min-width: 9rem; }
+.cfg-link { overflow-wrap: normal; }
+.cfg-comps li { flex-wrap: nowrap; align-items: baseline; }
+.cfg-comps li > .cfg-link { flex: 0 1 auto; }
+.cfg-comps__flag { white-space: nowrap; }
+.cfg-stack > *, .cfg-split > *, .cfg-preview > * { min-width: 0; }
+/* The kit capitalises segment labels; Polish copy is sentence case. */
+.cfg-seg .segmented-control__option { text-transform: none; white-space: normal; text-align: left; }
+.cfg-seg { max-width: 100%; }
+/* Long Polish option labels wrap instead of being cut with an ellipsis. */
+[data-screen="promotions"] .filter-check__label,
+[data-screen="settings"] .filter-check__label { white-space: normal; overflow: visible; }
+.cfg-option { min-width: 0; }
+.cfg-option__head .filter-check { flex: 1 1 14rem; min-width: 0; align-items: flex-start; }
+.cfg-option__head .filter-check input { margin-top: 3px; }
+@media (max-width: 480px) { .cfg-option__desc { padding-left: 0; } }

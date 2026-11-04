@@ -1,0 +1,28 @@
+=== legacy-oo-order-settings | Legacy Open Orders screen: Open Orders settings
+ 
+ Legacy Open Orders screen: Open Orders settings 
+ Order Book Settings - Open Orders 
+ Overview 
+This screen shows the settings that apply to the Open Orders screen in Linnworks.net
+ Info! You are currently looking at documentation for the previous version of the Open Orders screen. Keep in mind that some functions may differ from the newer, improved version. Check out the updated documentation here for details on the new Open Orders screen. 
+ Open Orders 
+ Auto-Scroll Selected Order to Top 
+ Disabled by default. With this setting enabled, selecting an order in the open orders screen will scroll the open orders screen so that the selected order is at the top of the open orders screen. With the setting not enabled, selecting an order will not alter the open orders screen.
+ Show "Complete and Process" button on New Order 
+ Disabled by default. With this setting enabled, clicking on the New Order button will reveal a window with an additional option. New orders can either be completed, completed and processed or left as a draft. Leaving an order in the draft will lock and park the order. This means it is not possible to do anything with the order, such as process or print documentation until it is edited and either completed or discarded. Marking an order as complete means that documentation can be produced for the order and the order is available to process. Processing an order equates to the order being despatched. Therefore, when clicking complete and process, the process order window opens for that order. This contains options for printing invoices, shipping labels and processing the order.
+Without "Complete and Process" enabled.
+ . .png 
+With "Complete and Process" disabled.
+ . .png 
+ Show Stock Level Tooltip on Mouse Rollover 
+ With this option enabled, an information box will appear when hovering over the stock information on an order, showing more detailed information on the amount of stock available   
+ Thumbnails Size 
+ Set to  Large by default. Controls the size of the preview images for linked order items in the Items column. Can be set to Small , Medium or Large. Controls the amount of vertical space each Order takes up. Smaller previews allow more orders to be seen in a given screen without scrolling. You can still hover the mouse over the thumbnail to get a full-size image.
+ Max number of items displayed 
+ Set to 2 by Default. Controls how many entries per order will be shown in the  Items  column. If more than the specified number of items are in the order, a small grey label will be displayed specifying how many additional items are in the order   . This can be set to between 1 and 8.
+ Printing Batch Size 
+ It is possible to select a number of orders at once and print invoices and shipping labels in bulk. In certain circumstances, for instance, if you are experiencing a slow network connection, timeout errors may occur when printing large numbers of invoices or shipping labels at the same time. This option will split large requests into batches of the specified size, with a default value of 20.
+ When printing large quantities of orders, there will be a progress bar to show the overall progress. The text will show the number of items printed in this batch, the batch size and the total number of items to be printed   
+ The batch size maximum limit for printing invoices or shipping labels is 250. The recommended batch size is 30.
+ Please Note! This is a user-specific setting and should be configured for each user individually.
+ 
