@@ -11,7 +11,12 @@ describe('BundleDefinitionsController (#3607)', () => {
     list: jest.fn(),
   };
   const inventoryQuery = { getAvailabilityByVariantIds: jest.fn() };
-  const controller = new BundleDefinitionsController(bundles as never, inventoryQuery as never);
+  const availability = { getPromisableQuantities: jest.fn() };
+  const controller = new BundleDefinitionsController(
+    bundles as never,
+    inventoryQuery as never,
+    availability as never
+  );
 
   beforeEach(() => jest.resetAllMocks());
 
@@ -43,6 +48,9 @@ describe('BundleDefinitionsController (#3607)', () => {
       { productVariantId: 'v-a', availableToPromise: 10 },
       { productVariantId: 'v-b', availableToPromise: 2 },
     ]);
+    availability.getPromisableQuantities.mockResolvedValue([
+      { productVariantId: 'v-set', quantity: 2, provenance: 'computed' },
+    ]);
     const result = await controller.get('v-set');
     expect(result.componentAvailability.map((c) => c.bundlesSupported)).toEqual([3, 2]);
     expect(result.bundlesAvailable).toBe(2);
@@ -56,6 +64,9 @@ describe('BundleDefinitionsController (#3607)', () => {
     });
     inventoryQuery.getAvailabilityByVariantIds.mockResolvedValue([
       { productVariantId: 'v-a', availableToPromise: null },
+    ]);
+    availability.getPromisableQuantities.mockResolvedValue([
+      { productVariantId: 'v-set', quantity: null, provenance: 'unknown' },
     ]);
     const result = await controller.get('v-set');
     expect(result.bundlesAvailable).toBeNull();

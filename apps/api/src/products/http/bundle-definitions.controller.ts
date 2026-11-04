@@ -33,7 +33,12 @@ import {
   type BundleDefinition,
   type IBundleDefinitionService,
 } from '@openlinker/core/products';
-import { INVENTORY_QUERY_SERVICE_TOKEN, type IInventoryQueryService } from '@openlinker/core/inventory';
+import {
+  AVAILABILITY_SERVICE_TOKEN,
+  INVENTORY_QUERY_SERVICE_TOKEN,
+  type IAvailabilityService,
+  type IInventoryQueryService,
+} from '@openlinker/core/inventory';
 import { Roles } from '../../auth/decorators/roles.decorator';
 import {
   BundleDefinitionResponseDto,
@@ -80,7 +85,9 @@ export class BundleDefinitionsController {
     @Inject(BUNDLE_DEFINITION_SERVICE_TOKEN)
     private readonly bundles: IBundleDefinitionService,
     @Inject(INVENTORY_QUERY_SERVICE_TOKEN)
-    private readonly inventoryQuery: IInventoryQueryService
+    private readonly inventoryQuery: IInventoryQueryService,
+    @Inject(AVAILABILITY_SERVICE_TOKEN)
+    private readonly availability: IAvailabilityService
   ) {}
 
   @Roles('admin', 'operator', 'viewer')
@@ -124,9 +131,12 @@ export class BundleDefinitionsController {
         message: `No bundle definition for variant ${variantId}`,
       });
     }
-    const rows = await this.inventoryQuery.getAvailabilityByVariantIds(
-      definition.components.map((c) => c.variantId)
-    );
+    const [rows, [bundleAvailability]] = await Promise.all([
+      this.inventoryQuery.getAvailabilityByVariantIds(definition.components.map((c) => c.variantId)),
+      // The SAME function publishing uses, so the number shown is the number
+      // published (global scope: no per-channel buffer on an operator read).
+      this.availability.getPromisableQuantities({ variantIds: [variantId], scope: { kind: 'global' } }),
+    ]);
     const atpByVariant = new Map(rows.map((row) => [row.productVariantId, row.availableToPromise]));
     const componentAvailability = definition.components.map((c) => {
       const atp = atpByVariant.get(c.variantId) ?? null;
@@ -139,11 +149,11 @@ export class BundleDefinitionsController {
         bundlesSupported: atp === null ? null : Math.floor(atp / c.quantity),
       };
     });
-    const supported = componentAvailability.map((c) => c.bundlesSupported);
     return {
       ...toDto(definition),
       componentAvailability,
-      bundlesAvailable: supported.includes(null) ? null : Math.min(...(supported as number[])),
+      // `null` when OL does not know (provenance 'unknown'), never 0.
+      bundlesAvailable: bundleAvailability?.quantity ?? null,
     };
   }
 

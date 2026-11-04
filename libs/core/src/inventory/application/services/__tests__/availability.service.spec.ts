@@ -7,6 +7,10 @@ import type { TestingModule } from '@nestjs/testing';
 import { Test } from '@nestjs/testing';
 import { CONNECTION_PORT_TOKEN } from '@openlinker/core/identifier-mapping';
 import type { ConnectionPort } from '@openlinker/core/identifier-mapping';
+import {
+  BUNDLE_DEFINITION_SERVICE_TOKEN,
+  PRODUCTS_SERVICE_TOKEN,
+} from '@openlinker/core/products';
 import { Logger } from '@openlinker/shared/logging';
 import { AvailabilityService } from '../availability.service';
 import {
@@ -76,6 +80,8 @@ class ThrowingReservationLedger implements ReservationLedgerReaderPort {
 describe('AvailabilityService', () => {
   let repository: jest.Mocked<Pick<InventoryRepositoryPort, 'findAvailabilityByVariantIds'>>;
   let connectionPort: jest.Mocked<Pick<ConnectionPort, 'get'>>;
+  let bundleDefinitions: { findCurrentByVariantIds: jest.Mock };
+  let productsService: { getVariantsByIds: jest.Mock };
 
   const build = async (ledger: ReservationLedgerReaderPort): Promise<AvailabilityService> => {
     const module: TestingModule = await Test.createTestingModule({
@@ -84,6 +90,8 @@ describe('AvailabilityService', () => {
         { provide: INVENTORY_REPOSITORY_TOKEN, useValue: repository },
         { provide: CONNECTION_PORT_TOKEN, useValue: connectionPort },
         { provide: RESERVATION_LEDGER_READER_TOKEN, useValue: ledger },
+        { provide: BUNDLE_DEFINITION_SERVICE_TOKEN, useValue: bundleDefinitions },
+        { provide: PRODUCTS_SERVICE_TOKEN, useValue: productsService },
       ],
     }).compile();
     return module.get(AvailabilityService);
@@ -103,7 +111,104 @@ describe('AvailabilityService', () => {
   beforeEach(() => {
     repository = { findAvailabilityByVariantIds: jest.fn().mockResolvedValue([]) };
     connectionPort = { get: jest.fn() };
+    bundleDefinitions = { findCurrentByVariantIds: jest.fn().mockResolvedValue([]) };
+    productsService = { getVariantsByIds: jest.fn().mockResolvedValue([]) };
     withConfig({});
+  });
+
+  describe('bundle availability (#3931)', () => {
+    const row = (id: string, total: number, at: Date = OBSERVED_AT): VariantStockRow => ({
+      productVariantId: id,
+      totalAvailable: total,
+      locationCount: 0,
+      positionCount: 1,
+      stockUpdatedAt: at,
+    });
+    const defineBundle = (): void => {
+      bundleDefinitions.findCurrentByVariantIds.mockResolvedValue([
+        {
+          variantId: 'set',
+          version: 1,
+          components: [
+            { variantId: 'a', productId: 'pa', quantity: 3 },
+            { variantId: 'b', productId: 'pb', quantity: 1 },
+          ],
+        },
+      ]);
+    };
+    const ask = async (
+      ledger: ReservationLedgerReaderPort,
+      scope: AvailabilityScope = { kind: 'global' }
+    ) => {
+      const service = await build(ledger);
+      const [result] = await service.getPromisableQuantities({ variantIds: ['set'], scope, now: NOW });
+      return result;
+    };
+
+    it('should answer min(floor(component ATP / quantity)) net of component holds', async () => {
+      defineBundle();
+      withRows([row('a', 10), row('b', 5)]);
+      const result = await ask(
+        new FakeReservationLedger([{ variantId: 'b', quantity: 3, atpEffect: 'published' }])
+      );
+      // a: floor(10/3)=3, b: floor((5-3)/1)=2
+      expect(result.quantity).toBe(2);
+      expect(result.provenance).toBe('computed');
+    });
+
+    it('should apply the channel buffer once to the bundle number, not per component', async () => {
+      defineBundle();
+      withConfig({ stockSafetyBuffer: 1 });
+      withRows([row('a', 10), row('b', 5)]);
+      const result = await ask(new EmptyReservationLedgerReader(), CHANNEL_SCOPE);
+      // min = min(3, 5) = 3, then one buffer: 2. Buffering components first would give min(floor(9/3), 4)=3 -> 2 too,
+      // so also pin a case where the two orders differ below.
+      expect(result.quantity).toBe(2);
+      withRows([row('a', 9), row('b', 100)]);
+      const second = await ask(new EmptyReservationLedgerReader(), CHANNEL_SCOPE);
+      // min = 3, buffer once = 2; per-component buffering would give floor(8/3)=2 -> 1.
+      expect(second.quantity).toBe(2);
+    });
+
+    it('should be a known zero when a component is stale, so the offers pause', async () => {
+      defineBundle();
+      withRows([row('a', 10), row('b', 5)]);
+      productsService.getVariantsByIds.mockResolvedValue([{ id: 'b', isStale: true }]);
+      const result = await ask(new EmptyReservationLedgerReader());
+      expect(result.quantity).toBe(0);
+      expect(result.provenance).toBe('computed');
+    });
+
+    it('should be a known zero when a component has no live positions', async () => {
+      defineBundle();
+      withRows([row('a', 10)]);
+      const result = await ask(new EmptyReservationLedgerReader());
+      expect(result.quantity).toBe(0);
+      expect(result.provenance).toBe('computed');
+    });
+
+    it('should report unknown, never zero, when a component hold cannot be read', async () => {
+      defineBundle();
+      withRows([row('a', 10), row('b', 5)]);
+      const result = await ask(new ThrowingReservationLedger());
+      expect(result.quantity).toBeNull();
+      expect(result.provenance).toBe('unknown');
+    });
+
+    it('should report unknown when the definitions cannot be read', async () => {
+      bundleDefinitions.findCurrentByVariantIds.mockRejectedValue(new Error('db down'));
+      const result = await ask(new EmptyReservationLedgerReader());
+      expect(result.quantity).toBeNull();
+      expect(result.provenance).toBe('unknown');
+    });
+
+    it('should carry the newest component observation', async () => {
+      defineBundle();
+      const later = new Date('2026-08-20T10:02:00.000Z');
+      withRows([row('a', 10), row('b', 5, later)]);
+      const result = await ask(new EmptyReservationLedgerReader());
+      expect(result.observedAt).toEqual(later);
+    });
   });
 
   describe('parity with the shipped publish arithmetic', () => {

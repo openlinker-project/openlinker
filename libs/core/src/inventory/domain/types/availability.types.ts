@@ -230,6 +230,36 @@ export function applyScopedLedgerSubtraction(
   };
 }
 
+/** One component of a bundle, already net of OL's published holds (#3931). */
+export interface BundleComponentAtp {
+  /** Units of the component per ONE bundle unit. */
+  readonly quantity: number;
+  /** `max(0, Σ available[live] − Σ olReserved[published])` of the component, BEFORE any Control. */
+  readonly availableToPromise: number;
+  /** The component variant is stale (#1689): deleted at its master. */
+  readonly isStale: boolean;
+}
+
+/**
+ * How many whole bundles the components can supply (#3931, ADR-083 decision 7).
+ *
+ * `min(floor(component ATP / quantity))`. The Controls are NOT applied here:
+ * the caller applies the connection's buffer ONCE to this number, never to the
+ * components and then again to the bundle. A stale component is a KNOWN zero
+ * (that is what pauses the bundle's offers), and a bundle with no components
+ * is 0 as well rather than an infinite minimum. An unknown component never
+ * reaches this function - the caller reports `'unknown'` instead.
+ */
+export function computeBundleUnits(components: readonly BundleComponentAtp[]): number {
+  if (components.length === 0) return 0;
+  let units = Number.POSITIVE_INFINITY;
+  for (const component of components) {
+    if (component.isStale || component.quantity <= 0) return 0;
+    units = Math.min(units, Math.floor(component.availableToPromise / component.quantity));
+  }
+  return Math.max(0, units);
+}
+
 /**
  * Assemble one `PromisableQuantity` from computed inputs.
  *

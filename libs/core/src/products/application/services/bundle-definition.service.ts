@@ -68,6 +68,10 @@ export class BundleDefinitionService implements IBundleDefinitionService {
     return this.bundles.findCurrentByVariantIds(variantIds);
   }
 
+  findCurrentContainingComponents(variantIds: readonly string[]): Promise<BundleDefinition[]> {
+    return this.bundles.findCurrentContainingAnyComponent(variantIds);
+  }
+
   history(variantId: string): Promise<BundleDefinition[]> {
     return this.bundles.findHistory(variantId);
   }

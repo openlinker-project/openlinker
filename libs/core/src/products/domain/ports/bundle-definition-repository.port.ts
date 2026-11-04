@@ -14,6 +14,9 @@ export interface BundleDefinitionRepositoryPort {
   /** The current definitions that list `variantId` as a component. */
   findCurrentContainingComponent(variantId: string): Promise<BundleDefinition[]>;
 
+  /** The current definitions that list ANY of `variantIds` as a component (one query). */
+  findCurrentContainingAnyComponent(variantIds: readonly string[]): Promise<BundleDefinition[]>;
+
   /** Every version of a variant's definition, oldest first (retired included). */
   findHistory(variantId: string): Promise<BundleDefinition[]>;
 

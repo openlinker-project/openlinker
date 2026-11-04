@@ -36,6 +36,19 @@ export class BundleDefinitionRepository implements BundleDefinitionRepositoryPor
   }
 
   async findCurrentContainingComponent(variantId: string): Promise<BundleDefinition[]> {
+    return this.findCurrentContainingAnyComponent([variantId]);
+  }
+
+  /**
+   * One query for a whole set of component variants. The table holds one row per
+   * bundle VERSION - hundreds at the scale a seller authors bundles by hand - so
+   * resolving the latest version per bundle and testing its components is a
+   * small scan; a GIN index would not even be used through the DISTINCT ON.
+   */
+  async findCurrentContainingAnyComponent(variantIds: readonly string[]): Promise<BundleDefinition[]> {
+    if (variantIds.length === 0) {
+      return [];
+    }
     const rows = (await this.repository.query(
       `SELECT "variantId", "version", "components", "retiredAt" FROM (
          SELECT DISTINCT ON ("variantId") "variantId", "version", "components", "retiredAt"
@@ -43,8 +56,11 @@ export class BundleDefinitionRepository implements BundleDefinitionRepositoryPor
           ORDER BY "variantId", "version" DESC
        ) latest
         WHERE "retiredAt" IS NULL
-          AND "components" @> $1::jsonb`,
-      [JSON.stringify([{ variantId }])]
+          AND EXISTS (
+            SELECT 1 FROM jsonb_array_elements(latest."components") component
+             WHERE component->>'variantId' = ANY($1::text[])
+          )`,
+      [variantIds]
     )) as RawRow[];
     return this.liveDefinitions(rows);
   }

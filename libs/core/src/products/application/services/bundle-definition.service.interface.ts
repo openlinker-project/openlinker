@@ -30,6 +30,14 @@ export interface IBundleDefinitionService {
   /** Current definitions for several variants; variants that are not bundles are absent. */
   findCurrentByVariantIds(variantIds: readonly string[]): Promise<BundleDefinition[]>;
 
+  /**
+   * The current definitions whose components include ANY of `variantIds` - the
+   * reverse lookup a component change or cancellation uses to republish the
+   * bundles it feeds (#3931). Nesting is refused, so a bundle never appears
+   * as a component and the lookup cannot recurse.
+   */
+  findCurrentContainingComponents(variantIds: readonly string[]): Promise<BundleDefinition[]>;
+
   /** Version history of one variant, oldest first. */
   history(variantId: string): Promise<BundleDefinition[]>;
 }
