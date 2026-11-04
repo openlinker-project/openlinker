@@ -22,7 +22,7 @@ import { Link } from 'react-router-dom';
 import { usePermission } from '../../../shared/auth/use-permission';
 import { BENCH_PATH } from '../../../shared/auth/session-surface';
 import { AccessDeniedState } from '../../../shared/ui/feedback-state';
-import { FULFILLMENT_WORK_DETAIL_COPY } from '../lib/fulfillment-work-detail.copy';
+import { useMessages } from '../../../shared/i18n';
 
 export interface FulfillmentAccessDeniedProps {
   /** The screen's own refusal; the bench variant is shared by both screens. */
@@ -35,7 +35,7 @@ export function FulfillmentAccessDenied({ copy }: FulfillmentAccessDeniedProps):
   // role change), so `bench:write` alone must not pick the bench variant.
   const worksTheBench = usePermission('bench:write');
   const canReadBoard = usePermission('fulfillment:read');
-  const bench = FULFILLMENT_WORK_DETAIL_COPY.states.deniedBench;
+  const bench = useMessages('fulfillment').workDetail.states.deniedBench;
 
   if (worksTheBench && !canReadBoard) {
     return (

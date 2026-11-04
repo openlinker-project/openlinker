@@ -60,7 +60,7 @@ import {
   PRESET_CARD_COPY,
   QUESTION_ORDER,
   WHO_DECIDES_PAGE_COPY,
-} from '../lib/who-decides.copy';
+} from '../lib/who-decides-text';
 import { AttentionSection } from './attention-section';
 import {
   WhoDecidesPresetConfirm,

@@ -7,16 +7,18 @@
  */
 import { describe, expect, it } from 'vitest';
 
+import { getMessages } from '../../../shared/i18n';
 import {
-  FULFILLMENT_ACTION_COPY,
-  FULFILLMENT_EXPEDITED_BADGE,
   fulfillmentActionAppliedToast,
   fulfillmentActionFailedFallback,
   fulfillmentActionHint,
   fulfillmentActionLabel,
   fulfillmentActionTone,
   fulfillmentStatusLabel,
-} from './fulfillment-task.copy';
+} from './fulfillment-task-labels';
+
+const FULFILLMENT_ACTION_COPY = getMessages('fulfillment').action;
+const FULFILLMENT_EXPEDITED_BADGE = getMessages('fulfillment').expeditedBadge;
 
 describe('fulfillment task copy (#2411)', () => {
   it('should label the eight operator-invocable actions', () => {

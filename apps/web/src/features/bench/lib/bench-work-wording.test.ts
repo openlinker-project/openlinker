@@ -1,5 +1,5 @@
 /**
- * Bench copy (#2416, `W3b-3`, story B2)
+ * Bench work-list wording (#2416, `W3b-3`, story B2)
  *
  * The readiness ban is a CORRECTNESS rule, not a wording preference: OpenLinker
  * cannot see a shelf, so copy implying the goods are waiting sends a packer to
@@ -9,23 +9,15 @@
  */
 import { describe, expect, it } from 'vitest';
 
-import { benchWorkCopy } from './bench-work.copy';
+import { getMessages } from '../../../shared/i18n';
+
+const benchWorkCopy = getMessages('bench').work;
 
 /** Every string in the copy tree, with the path that leads to it. */
 function collect(node: unknown, path: string[] = []): { path: string; value: string }[] {
   if (typeof node === 'string') return [{ path: path.join('.'), value: node }];
-  // A copy BUILDER is copy too — `row.summary` is the most-read line on the
-  // surface, and skipping functions here would leave it outside the readiness
-  // check that is this file's whole purpose.
-  if (typeof node === 'function') {
-    const built: unknown = (node as (parts: Record<string, number>) => unknown)({
-      parcelIndex: 1,
-      parcelTotal: 2,
-      lineCount: 3,
-      unitsToVerify: 4,
-    });
-    return typeof built === 'string' ? [{ path: path.join('.'), value: built }] : [];
-  }
+  // A plural entry's forms are strings too, so `row.summary` - the most-read
+  // line on the surface - stays inside the readiness check.
   if (typeof node !== 'object' || node === null) return [];
   return Object.entries(node).flatMap(([key, value]) => collect(value, [...path, key]));
 }

@@ -1,5 +1,5 @@
 /**
- * Sourcing-rule copy (#3062)
+ * Sourcing-rule labels (#3062)
  *
  * Every accessor here is LOOSE by design: the API stores `kind` / `name` /
  * `afterAction` verbatim and reports `recognised: false` for a row this build
@@ -15,7 +15,7 @@ import {
   sourcingRuleKindHint,
   sourcingRuleNameHint,
   sourcingRuleNameLabel,
-} from './sourcing-rule.copy';
+} from './sourcing-rule-labels';
 import {
   SOURCING_AFTER_ACTION_VALUES,
   SOURCING_FILTER_NAME_VALUES,
@@ -23,7 +23,7 @@ import {
   SOURCING_SORT_NAME_VALUES,
 } from './sourcing-rule-vocabulary';
 
-describe('sourcing-rule copy', () => {
+describe('sourcing-rule labels', () => {
   it('labels every name this build knows', () => {
     for (const name of [...SOURCING_FILTER_NAME_VALUES, ...SOURCING_SORT_NAME_VALUES]) {
       // A missing entry would render the kebab-case wire value where a label

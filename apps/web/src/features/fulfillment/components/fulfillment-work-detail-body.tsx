@@ -85,25 +85,18 @@ import {
 } from '../../orders';
 import type { FulfillmentTask } from '../api/fulfillment.types';
 import { useHasMultipleLocations } from '../hooks/use-has-multiple-locations';
-import {
-  FULFILLMENT_EXPEDITED_BADGE,
-  fulfillmentStatusLabel,
-  OWN_PACK_BENCH_NAME,
-  TASK_ACCEPTANCE_COPY,
-} from '../lib/fulfillment-task.copy';
+import { interpolate, useMessages } from '../../../shared/i18n';
+import { fulfillmentStatusLabel } from '../lib/fulfillment-task-labels';
 import {
   describeTaskAcceptance,
   needsAttention,
   taskStatusText,
   type TaskAcceptance,
 } from '../lib/fulfillment-task-acceptance';
-import { FULFILLMENT_WORK_DETAIL_COPY } from '../lib/fulfillment-work-detail.copy';
 import { summariseFulfillmentWork } from '../lib/fulfillment-work-summary';
 import { FulfillmentLineIdentity } from './fulfillment-line-identity';
 import { FulfillmentTaskAcceptanceNotice } from './fulfillment-task-acceptance-notice';
 import { FulfillmentWorkPackerSection } from './fulfillment-work-packer-section';
-
-const COPY = FULFILLMENT_WORK_DETAIL_COPY;
 
 /**
  * The OMS's own `platformType` (#2405, ADR-055). A local `const` rather than a
@@ -132,6 +125,8 @@ interface ExecutorFacts {
 }
 
 function useExecutorFacts(task: FulfillmentTask): ExecutorFacts {
+  const messages = useMessages('fulfillment');
+  const copy = messages.workDetail;
   const connectionId = task.assignedConnectionId;
   // Called unconditionally (hooks run in one order every render); `enabled`
   // does the skipping when there is no id to look up.
@@ -140,7 +135,7 @@ function useExecutorFacts(task: FulfillmentTask): ExecutorFacts {
   });
   const platforms = usePlatforms();
 
-  if (connectionId === null) return { name: null, label: COPY.executor.unassigned };
+  if (connectionId === null) return { name: null, label: copy.executor.unassigned };
   if (connectionQuery.data) {
     const connection = connectionQuery.data;
     if (connection.platformType === OMS_PLATFORM_TYPE) {
@@ -148,14 +143,18 @@ function useExecutorFacts(task: FulfillmentTask): ExecutorFacts {
     }
     return {
       name: connection.name,
-      label: `${connection.name} · ${COPY.executor.externalPartner} — ${resolvePlatformLabel(platforms, connection)}`,
+      label: interpolate(copy.executor.externalLabel, {
+        name: connection.name,
+        externalPartner: copy.executor.externalPartner,
+        platform: resolvePlatformLabel(platforms, connection),
+      }),
     };
   }
   if (connectionQuery.isPending) return { name: null, label: null };
   // A deleted or unreadable connection must not make the sub-line go blank:
   // a blank reads as "nobody is handling this", which this build cannot say.
   const isNotFound = connectionQuery.error instanceof ApiError && connectionQuery.error.isNotFound();
-  return { name: null, label: isNotFound ? shortenId(connectionId) : COPY.executor.unavailable };
+  return { name: null, label: isNotFound ? shortenId(connectionId) : copy.executor.unavailable };
 }
 
 /** One reading of acceptance for the hero and "Why it's stuck" alike. */
@@ -191,6 +190,10 @@ function WorkDetailHero({
   executor: ExecutorFacts;
   showLocation: boolean;
 }): ReactElement {
+  const messages = useMessages('fulfillment');
+  const copy = messages.workDetail;
+  const acceptanceCopy = messages.taskAcceptance;
+  const where = messages.ownPackBenchName;
   const summary = summariseFulfillmentWork({
     status: task.status,
     requestStatus: task.requestStatus,
@@ -203,11 +206,13 @@ function WorkDetailHero({
   const acceptance = taskAcceptanceOf(task);
   const sentence =
     acceptance.kind === 'pending'
-      ? TASK_ACCEPTANCE_COPY.heroPending(executor.name, OWN_PACK_BENCH_NAME)
+      ? executor.name
+        ? interpolate(acceptanceCopy.heroPending.withExecutor, { executor: executor.name, where })
+        : interpolate(acceptanceCopy.heroPending.withoutExecutor, { where })
       : needsAttention(acceptance)
-        ? TASK_ACCEPTANCE_COPY.heroAttention(OWN_PACK_BENCH_NAME)
+        ? interpolate(acceptanceCopy.heroAttention, { where })
         : summary;
-  const location = showLocation ? (task.locationName ?? task.locationId ?? COPY.facts.noLocation) : null;
+  const location = showLocation ? (task.locationName ?? task.locationId ?? copy.facts.noLocation) : null;
   const subParts = [executor.label, location].filter((part): part is string => part !== null);
   const expeditedAt = task.expeditedAt ?? null;
 
@@ -227,7 +232,7 @@ function WorkDetailHero({
             fulfillmentStatusLabel(task.status),
             task.status,
             acceptance,
-            OWN_PACK_BENCH_NAME,
+            where,
             false
           )}
         </p>
@@ -237,7 +242,7 @@ function WorkDetailHero({
         {expeditedAt !== null ? (
           <span className="fulfilment-work-detail__expedited" data-testid="expedited-badge">
             <span aria-hidden="true">⚡ </span>
-            {FULFILLMENT_EXPEDITED_BADGE} · <TimeDisplay iso={expeditedAt} format="datetime" />
+            {messages.expeditedBadge} · <TimeDisplay iso={expeditedAt} format="datetime" />
           </span>
         ) : null}
       </div>
@@ -253,13 +258,15 @@ function WorkDetailHero({
  * accepted" reason when packers cannot see the task (#3763), or no card at all.
  */
 function WorkHoldsSection({ task }: { task: FulfillmentTask }): ReactElement | null {
+  const messages = useMessages('fulfillment');
+  const copy = messages.workDetail;
   const acceptance = taskAcceptanceOf(task);
   if (task.activeHolds.length === 0 && !needsAttention(acceptance)) return null;
 
   return (
     <DetailSection
-      title={COPY.sections.holds}
-      aria-label={COPY.sections.holds}
+      title={copy.sections.holds}
+      aria-label={copy.sections.holds}
       className="fulfilment-work-detail__slot--holds"
     >
       <div className="fulfilment-work-detail__holds">
@@ -269,12 +276,12 @@ function WorkHoldsSection({ task }: { task: FulfillmentTask }): ReactElement | n
               {/* Operator-authored text, rendered verbatim. Absent is absent. */}
               {hold.note ? <span>{hold.note}</span> : null}
               <span>
-                {COPY.holds.since} <TimeDisplay iso={hold.placedAt} format="datetime" />
+                {copy.holds.since} <TimeDisplay iso={hold.placedAt} format="datetime" />
               </span>
             </div>
           </Alert>
         ))}
-        <FulfillmentTaskAcceptanceNotice acceptance={acceptance} where={OWN_PACK_BENCH_NAME} />
+        <FulfillmentTaskAcceptanceNotice acceptance={acceptance} where={messages.ownPackBenchName} />
       </div>
     </DetailSection>
   );
@@ -282,6 +289,8 @@ function WorkHoldsSection({ task }: { task: FulfillmentTask }): ReactElement | n
 
 /** "What's in this task" — a product card per line, its counts, and the stale-count caveat. */
 function WorkLinesSection({ task }: { task: FulfillmentTask }): ReactElement {
+  const messages = useMessages('fulfillment');
+  const copy = messages.workDetail;
   // Narrowed across THIS task's lines: an attribute every line shares tells
   // the operator nothing about which box is which (`variant-attributes.ts`).
   const distinguishing = distinguishingAttributeKeys(
@@ -290,8 +299,8 @@ function WorkLinesSection({ task }: { task: FulfillmentTask }): ReactElement {
 
   return (
     <DetailSection
-      title={COPY.sections.lines}
-      aria-label={COPY.sections.lines}
+      title={copy.sections.lines}
+      aria-label={copy.sections.lines}
       className="fulfilment-work-detail__slot--lines"
     >
       {task.lines.length > 0 ? (
@@ -311,7 +320,7 @@ function WorkLinesSection({ task }: { task: FulfillmentTask }): ReactElement {
                   <span className="fulfilment-work-detail__line-count">
                     {line.fulfilledQuantity} / {line.totalQuantity}
                     {line.cancelledQuantity > 0
-                      ? ` ${COPY.lines.cancelledSuffix(line.cancelledQuantity)}`
+                      ? ` ${interpolate(copy.lines.cancelledSuffix, { cancelled: line.cancelledQuantity })}`
                       : ''}
                     {done ? (
                       <span aria-hidden="true" className="fulfilment-work-detail__line-done">
@@ -324,10 +333,10 @@ function WorkLinesSection({ task }: { task: FulfillmentTask }): ReactElement {
               );
             })}
           </ul>
-          <p className="fulfilment-work-detail__note text-muted">{COPY.lines.caveat}</p>
+          <p className="fulfilment-work-detail__note text-muted">{copy.lines.caveat}</p>
         </>
       ) : (
-        <p className="text-muted">{COPY.lines.empty}</p>
+        <p className="text-muted">{copy.lines.empty}</p>
       )}
     </DetailSection>
   );
@@ -360,49 +369,51 @@ function WorkFactsSection({
   order: OrderRecord | undefined;
   showLocation: boolean;
 }): ReactElement {
+  const messages = useMessages('fulfillment');
+  const copy = messages.workDetail;
   const delivery = task.carrierName ?? order?.sourceDeliveryMethodName ?? null;
   const parcelClosedAt = task.parcelClosedAt;
   const completedAt = task.completedAt ?? null;
 
   return (
     <DetailSection
-      title={COPY.sections.facts}
-      aria-label={COPY.sections.facts}
+      title={copy.sections.facts}
+      aria-label={copy.sections.facts}
       className="fulfilment-work-detail__slot--facts"
     >
       <dl className="fulfilment-work-detail__facts">
         {showLocation ? (
-          <Fact label={COPY.facts.location}>
-            {task.locationName ?? task.locationId ?? COPY.facts.noLocation}
+          <Fact label={copy.facts.location}>
+            {task.locationName ?? task.locationId ?? copy.facts.noLocation}
           </Fact>
         ) : null}
-        {delivery !== null ? <Fact label={COPY.facts.delivery}>{delivery}</Fact> : null}
+        {delivery !== null ? <Fact label={copy.facts.delivery}>{delivery}</Fact> : null}
         {task.externalWorkId ? (
-          <Fact label={COPY.facts.externalReference}>
+          <Fact label={copy.facts.externalReference}>
             <span className="mono-text">{task.externalWorkId}</span>
           </Fact>
         ) : null}
-        <Fact label={COPY.facts.started}>
+        <Fact label={copy.facts.started}>
           <TimeDisplay iso={task.createdAt} format="datetime" />
         </Fact>
         {parcelClosedAt === undefined ? null : parcelClosedAt === null ? (
-          <Fact label={COPY.facts.parcel}>{COPY.facts.parcelOpen}</Fact>
+          <Fact label={copy.facts.parcel}>{copy.facts.parcelOpen}</Fact>
         ) : (
           <>
-            <Fact label={COPY.facts.parcelClosed}>
+            <Fact label={copy.facts.parcelClosed}>
               <TimeDisplay iso={parcelClosedAt} format="datetime" />
             </Fact>
-            <Fact label={COPY.facts.channelNotified}>
+            <Fact label={copy.facts.channelNotified}>
               {task.channelNotifiedAt ? (
                 <TimeDisplay iso={task.channelNotifiedAt} format="datetime" />
               ) : (
-                <span className="fulfilment-work-detail__fact-warning">{COPY.facts.channelNotYet}</span>
+                <span className="fulfilment-work-detail__fact-warning">{copy.facts.channelNotYet}</span>
               )}
             </Fact>
           </>
         )}
         {completedAt !== null ? (
-          <Fact label={COPY.facts.completed}>
+          <Fact label={copy.facts.completed}>
             <TimeDisplay iso={completedAt} format="datetime" />
           </Fact>
         ) : null}
@@ -432,6 +443,8 @@ function RailSkeleton({ slot }: { slot: string }): ReactElement {
  * a second shipment panel.
  */
 function WorkOrderModules({ task }: { task: FulfillmentTask }): ReactElement {
+  const messages = useMessages('fulfillment');
+  const copy = messages.workDetail;
   const orderQuery = useOrderQuery(task.orderId);
 
   if (orderQuery.isPending) {
@@ -449,14 +462,14 @@ function WorkOrderModules({ task }: { task: FulfillmentTask }): ReactElement {
   if (orderQuery.isError || !orderQuery.data) {
     return (
       <DetailSection className="fulfilment-work-detail__slot--shipment">
-        <p className="text-muted fulfilment-work-detail__order-unavailable">{COPY.order.unavailable}</p>
+        <p className="text-muted fulfilment-work-detail__order-unavailable">{copy.order.unavailable}</p>
         <Button
           tone="secondary"
           onClick={() => {
             void orderQuery.refetch();
           }}
         >
-          {COPY.order.retry}
+          {copy.order.retry}
         </Button>
       </DetailSection>
     );
@@ -478,22 +491,22 @@ function WorkOrderModules({ task }: { task: FulfillmentTask }): ReactElement {
         <SalesDocumentPanel order={order} />
       </div>
       <DetailSection
-        title={COPY.sections.payment}
-        aria-label={COPY.sections.payment}
+        title={copy.sections.payment}
+        aria-label={copy.sections.payment}
         className="fulfilment-work-detail__slot--payment"
       >
         {totals === undefined ? (
-          <p className="text-muted">{COPY.payment.unavailable}</p>
+          <p className="text-muted">{copy.payment.unavailable}</p>
         ) : (
           <OrderTotalsPanel totals={totals} />
         )}
         {methodLabel ? (
           <p className="fulfilment-work-detail__payment-method">
-            <span className="text-muted">{COPY.payment.method}</span> {methodLabel}
+            <span className="text-muted">{copy.payment.method}</span> {methodLabel}
           </p>
         ) : null}
         <p className="fulfilment-work-detail__payment-source">
-          <span className="text-muted">{COPY.payment.placedOn}</span>{' '}
+          <span className="text-muted">{copy.payment.placedOn}</span>{' '}
           <ConnectionEntityLabel connectionId={order.sourceConnectionId} showId={false} />
         </p>
       </DetailSection>

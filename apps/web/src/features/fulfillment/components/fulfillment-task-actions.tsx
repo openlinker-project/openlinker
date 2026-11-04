@@ -34,7 +34,7 @@ import {
   fulfillmentActionHint,
   fulfillmentActionLabel,
   fulfillmentActionTone,
-} from '../lib/fulfillment-task.copy';
+} from '../lib/fulfillment-task-labels';
 
 export interface FulfillmentTaskActionsProps {
   task: FulfillmentTask;
