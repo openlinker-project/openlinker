@@ -33,10 +33,13 @@ import type {
   OrderFeedItem,
   OrderFeedOutput,
   OrderSourcePort,
+  ReturnDecliner,
   ReturnSourceReader,
 } from '@openlinker/core/orders';
 import type {
   IncomingReturn,
+  ReturnDeclineCommand,
+  ReturnDeclineResult,
   ReturnFeedInput,
   ReturnFeedItem,
   ReturnFeedOutput,
@@ -97,7 +100,12 @@ const RETURN_FEED_ORDERS_PER_PAGE = 50;
  * through its `OrderSource` adapter, so a dispatch on an order that came from
  * Shopify is written back by the same code the destination role uses.
  */
-export class ShopifyOrderSourceAdapter implements OrderSourcePort, ReturnSourceReader, OrderStatusWriteback {
+export class ShopifyOrderSourceAdapter
+  implements OrderSourcePort, ReturnSourceReader, ReturnDecliner, OrderStatusWriteback
+{
+  /** Shopify's own `ReturnDeclineReason` values; core treats them as opaque. */
+  readonly declineReasonCodes: readonly string[] = ['RETURN_PERIOD_ENDED', 'FINAL_SALE', 'OTHER'];
+
   private readonly logger = new Logger(ShopifyOrderSourceAdapter.name);
 
   constructor(
@@ -277,6 +285,47 @@ export class ShopifyOrderSourceAdapter implements OrderSourcePort, ReturnSourceR
    * One return by its numeric id, with its lines. Both the hydration of a newly
    * discovered return and the ONLY way a known one is seen to move.
    */
+  /**
+   * `returnDeclineRequest` only declines a return still in `REQUESTED`. Shopify
+   * reports no decline instant, so `declinedAt` is `null` (never OL's clock).
+   * A return that is already `DECLINED` is a success: the intent is satisfied.
+   */
+  async declineReturn(command: ReturnDeclineCommand): Promise<ReturnDeclineResult> {
+    const id = toShopifyGid('Return', command.externalReturnId);
+    const reason = this.declineReasonCodes.includes(command.reasonCode) ? command.reasonCode : 'OTHER';
+    const data = await this.client.query<{
+      returnDeclineRequest: {
+        return: { status: string } | null;
+        userErrors: ReadonlyArray<{ code: string | null; message: string }>;
+      } | null;
+    }>(
+      `mutation OlDeclineReturn($input: ReturnDeclineRequestInput!) {
+        returnDeclineRequest(input: $input) { return { status } userErrors { code message } }
+      }`,
+      {
+        input: {
+          id,
+          declineReason: reason,
+          notifyCustomer: false,
+          ...(command.comment ? { declineNote: command.comment.slice(0, 500) } : {}),
+        },
+      },
+    );
+    const payload = data.returnDeclineRequest;
+    const errors = payload?.userErrors ?? [];
+    if (errors.length > 0) {
+      const current = await this.client.query<{ return: { status: string } | null }>(
+        'query OlReturnStatus($id: ID!) { return(id: $id) { status } }',
+        { id },
+      );
+      if (current.return?.status === 'DECLINED') {
+        return { declinedAt: null, rawStatus: 'DECLINED', raw: errors };
+      }
+      throw new Error(`Shopify refused to decline return ${command.externalReturnId}: ${errors.map((e) => e.message).join('; ')}`);
+    }
+    return { declinedAt: null, rawStatus: payload?.return?.status ?? null, raw: payload };
+  }
+
   async getReturn(input: { externalReturnId: string }): Promise<IncomingReturn> {
     const data = await this.client.query<{ node: ShopifyReturnNode | { __typename: string } | null }>(
       RETURN_BY_ID_QUERY,

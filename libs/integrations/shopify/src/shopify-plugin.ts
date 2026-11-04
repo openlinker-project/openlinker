@@ -65,6 +65,7 @@ export const shopifyAdapterManifest: AdapterMetadata = {
     // discovery only, resolved by narrowing the dispatched `OrderSource`
     // adapter with `isReturnSourceReader`. Not in the dispatch table.
     'ReturnSourceReader',
+    'ReturnDecliner',
   ],
   // Catalogue and stock only by default, the Shoper reasoning: ingesting
   // orders is polling load, and `OrderProcessorManager` would make OpenLinker
