@@ -61,6 +61,13 @@
     },
     "title": "Required by Allegro for offer creation"
   },
+  "allegroSetupPage": {
+    "chip": "OAuth 2.0",
+    "chipSecondary": "{platform} API",
+    "description": "Authorize OpenLinker to manage your {platform} offers, orders, and inventory via the {platform} API.",
+    "fallbackPlatform": "the marketplace",
+    "title": "Connect {platform}"
+  },
   "archiveConnectionButton": {
     "archive": "Archive",
     "cancel": "Keep it",
@@ -700,6 +707,97 @@
     "nameRequired": "Connection name is required",
     "platformTypeRequired": "Platform type is required"
   },
+  "dpdSetupForm": {
+    "beforeYouStart": {
+      "body": "You need your DPDServices REST <strong>login</strong> and <strong>password</strong> plus your <strong>payer FID</strong> (account id). Use the sandbox environment to verify before switching to production.",
+      "title": "Before you start"
+    },
+    "create": "Create connection",
+    "createError": "Unable to create connection",
+    "createdDescription": "{platform} connection \"{name}\" was created.",
+    "createdTitle": "Connection created",
+    "creating": "Creating...",
+    "environments": {
+      "production": "Production",
+      "sandbox": "Sandbox"
+    },
+    "fields": {
+      "environment": {
+        "label": "Environment"
+      },
+      "login": {
+        "label": "Login"
+      },
+      "masterFid": {
+        "description": "Only needed for multi-account {platform} setups.",
+        "label": "Master FID (optional)"
+      },
+      "name": {
+        "label": "Connection name",
+        "placeholder": "{platform} - main warehouse"
+      },
+      "password": {
+        "description": "Stored securely on the server - never shown again after save.",
+        "label": "Password"
+      },
+      "payerFid": {
+        "description": "Numeric account id (payerFID) sent on every shipment.",
+        "label": "Payer FID"
+      },
+      "senderAddress": {
+        "label": "Address",
+        "placeholder": "ul. Magazynowa 1"
+      },
+      "senderCity": {
+        "label": "City",
+        "placeholder": "Warszawa"
+      },
+      "senderCompany": {
+        "label": "Company (optional)",
+        "placeholder": "Sklep ACME"
+      },
+      "senderCountryCode": {
+        "description": "ISO 3166-1 alpha-2 (e.g. PL).",
+        "label": "Country"
+      },
+      "senderEmail": {
+        "label": "Email (optional)",
+        "placeholder": "magazyn@acme.pl"
+      },
+      "senderName": {
+        "label": "Contact name (optional)",
+        "placeholder": "Magazyn główny"
+      },
+      "senderPhone": {
+        "label": "Phone (optional)"
+      },
+      "senderPostalCode": {
+        "description": "PL format NN-NNN (e.g. 00-001).",
+        "label": "Postal code"
+      }
+    },
+    "platformFallback": "the carrier",
+    "review": {
+      "masterFid": "Master FID",
+      "name": "Name",
+      "sender": "Sender"
+    },
+    "senderAddress": {
+      "body": "Printed on every {platform} label as the return / sender address. Polish postal format <mono>NN-NNN</mono>.",
+      "title": "Sender address"
+    },
+    "steps": {
+      "account": "Account & credentials",
+      "review": "Review & connect",
+      "sender": "Sender address"
+    }
+  },
+  "dpdSetupPage": {
+    "chip": "DPDServices REST",
+    "description": "Provide your DPDServices credentials, payer account, and sender address. OpenLinker uses them to generate courier labels and handover protocols.",
+    "fallbackPlatform": "the carrier",
+    "title": "Connect {platform}"
+  },
   "dpdSetupSchema": {
     "addressRequired": "Sender address is required",
     "cityRequired": "Sender city is required",
@@ -789,12 +887,94 @@
     },
     "title": "Edit connection"
   },
+  "editConnectionSchema": {
+    "atMost100000": "Must be at most 100000",
+    "atMost6000": "Must be at most 6000",
+    "atMost64": "Must be at most 64",
+    "attachmentRequired": "Add at least one attachment when \"Provide safety information (file)\" is selected.",
+    "bridgeUrlInvalid": "Bridge URL must be a valid URL",
+    "bridgeUrlProtocol": "Bridge URL must use http:// or https://",
+    "callbackUrlInvalid": "Callback URL must be a valid URL",
+    "callbackUrlProtocol": "Callback URL must use http:// or https://",
+    "configInvalid": "Configuration must be valid JSON",
+    "configRequired": "Configuration JSON is required",
+    "countryCode": "Country must be an ISO 3166-1 alpha-2 code (e.g. PL)",
+    "defaultCarrierInvalid": "Default carrier ID must be a positive integer.",
+    "emailInvalid": "Enter a valid email",
+    "marginTooHigh": "A margin must be below 100%. To add more than the catalogue price, use a markup instead.",
+    "nameRequired": "Connection name is required",
+    "numberOrZero": "Must be a number, 0 or more",
+    "percentRequired": "Enter a percentage",
+    "positiveWholeNumber": "Must be a positive whole number",
+    "postcodeFormat": "Postcode must use the PL format NN-NNN",
+    "productCatalogInvalid": "Product catalog must be a valid connection ID",
+    "siteUrlHttps": "Site URL must use HTTPS",
+    "siteUrlInvalid": "Site URL must be a valid URL (e.g. https://shop.example.com)",
+    "storefrontUrlInvalid": "Storefront URL must be a valid URL",
+    "storefrontUrlProtocol": "Storefront URL must use http:// or https://",
+    "unmanagedStockInvalid": "Unmanaged stock quantity must be a positive integer.",
+    "wholeNumberOrZero": "Must be a whole number, 0 or more"
+  },
   "enableConnectionButton": {
     "enable": "Enable",
     "enabling": "Enabling…",
     "errorTitle": "Unable to enable connection",
     "successDescription": "\"{name}\" is active again. Syncing resumes on the next scheduled run.",
     "successTitle": "Connection enabled"
+  },
+  "erliSetupForm": {
+    "beforeYouStart": {
+      "body": "In your {platform} seller panel, generate a <strong>Shop API key</strong>. OpenLinker sends it as a bearer token on every request to the {platform} Shop API. The key is stored securely on the server and only shown once.",
+      "title": "Before you start"
+    },
+    "connect": "Connect {platform}",
+    "connecting": "Connecting…",
+    "createError": "Unable to create connection",
+    "createdDescription": "{platform} connection \"{name}\" was created.",
+    "createdTitle": "Connection created",
+    "done": "Done",
+    "environments": {
+      "production": "Production",
+      "sandbox": "Sandbox"
+    },
+    "fields": {
+      "apiKey": {
+        "description": "Your {platform} Shop API key - generated in the {platform} seller panel.",
+        "label": "API key"
+      },
+      "environment": {
+        "description": "Choose Sandbox to test against {platform}'s sandbox before switching to production.",
+        "label": "Environment",
+        "option": "{name} - {url}"
+      },
+      "name": {
+        "description": "A label to identify this {platform} account in OpenLinker.",
+        "label": "Connection name",
+        "placeholder": "My {platform} Store"
+      }
+    },
+    "latency": "({ms}ms)",
+    "platformFallback": "the marketplace",
+    "review": {
+      "deliveryOnDocuments": "Delivery on documents",
+      "name": "Name"
+    },
+    "steps": {
+      "credentials": "Credentials",
+      "review": "Review & connect",
+      "salesDocuments": "Sales documents"
+    },
+    "test": "Test connection",
+    "testError": "Unable to test connection",
+    "testFailed": "Connection test failed",
+    "testPassed": "Connection test passed",
+    "testing": "Testing…"
+  },
+  "erliSetupPage": {
+    "chip": "API key",
+    "description": "Provide your {platform} Shop API key. OpenLinker uses it to sync offers and orders with your {platform} seller account.",
+    "fallbackPlatform": "the marketplace",
+    "title": "Connect {platform}"
   },
   "erliSetupSchema": {
     "apiKeyRequired": "API key is required",
@@ -813,6 +993,88 @@
     "heading": "Who packs the orders",
     "help": "Turn this on when the system packs the box and ships it (for example an external warehouse system). OpenLinker then hides its own \"Mark packed\" button and packed tick for orders that go here. It only changes what you see: nothing is blocked, and that system can still report an order as packed.",
     "toggle": "This system packs and ships orders itself"
+  },
+  "inpostSetupForm": {
+    "beforeYouStart": {
+      "body": "Generate a ShipX <strong>API token</strong> and note your <strong>organization id</strong> in the {platform} ShipX panel. Use the sandbox environment to verify before switching to production.",
+      "title": "Before you start"
+    },
+    "create": "Create connection",
+    "createError": "Unable to create connection",
+    "createdDescription": "{platform} connection \"{name}\" was created.",
+    "createdTitle": "Connection created",
+    "creating": "Creating...",
+    "environments": {
+      "production": "Production",
+      "sandbox": "Sandbox"
+    },
+    "fields": {
+      "apiToken": {
+        "description": "ShipX Bearer token - stored securely on the server, never shown again after save.",
+        "label": "API token"
+      },
+      "environment": {
+        "label": "Environment"
+      },
+      "name": {
+        "label": "Connection name",
+        "placeholder": "{platform} - main warehouse"
+      },
+      "organizationId": {
+        "description": "ShipX organization id - a URL path parameter on every shipment endpoint.",
+        "label": "Organization ID"
+      },
+      "senderBuildingNumber": {
+        "label": "Building number"
+      },
+      "senderCity": {
+        "label": "City",
+        "placeholder": "Warszawa"
+      },
+      "senderCountryCode": {
+        "description": "ISO 3166-1 alpha-2 (e.g. PL).",
+        "label": "Country"
+      },
+      "senderEmail": {
+        "label": "Sender email",
+        "placeholder": "magazyn@acme.pl"
+      },
+      "senderName": {
+        "label": "Sender name (optional)",
+        "placeholder": "Sklep ACME"
+      },
+      "senderPhone": {
+        "label": "Sender phone"
+      },
+      "senderPostCode": {
+        "description": "PL format NN-NNN (e.g. 00-001).",
+        "label": "Postcode"
+      },
+      "senderStreet": {
+        "label": "Street",
+        "placeholder": "ul. Magazynowa"
+      }
+    },
+    "platformFallback": "the carrier",
+    "review": {
+      "name": "Name",
+      "sender": "Sender"
+    },
+    "senderAddress": {
+      "body": "Used as the ShipX shipment sender. Polish postal format <mono>NN-NNN</mono>.",
+      "title": "Sender address"
+    },
+    "steps": {
+      "account": "Account & credentials",
+      "review": "Review & connect",
+      "sender": "Sender address"
+    }
+  },
+  "inpostSetupPage": {
+    "chip": "ShipX API",
+    "description": "Provide your ShipX API token, organization id, and sender address. OpenLinker uses them to create {platform} shipments and labels.",
+    "fallbackPlatform": "the carrier",
+    "title": "Connect {platform}"
   },
   "inpostSetupSchema": {
     "apiTokenRequired": "API token is required",
@@ -861,6 +1123,87 @@
     "refresh": "Refresh",
     "refreshing": "Refreshing…",
     "retry": "Retry"
+  },
+  "prestashopSetupForm": {
+    "beforeYouStart": {
+      "body": "In your {platform} admin, enable Webservice under <strong>Advanced Parameters → Webservice</strong> and generate a key with the required resources enabled.",
+      "title": "Before you start"
+    },
+    "capabilities": {
+      "help": "Pick which roles this connection should fulfil. You can change this later on the connection's detail page.",
+      "legend": "Capabilities"
+    },
+    "create": "Create connection",
+    "createError": "Unable to create connection",
+    "createdDescription": "{platform} connection \"{name}\" was created.",
+    "createdTitle": "Connection created",
+    "creating": "Creating...",
+    "currencies": {
+      "CHF": "Swiss Franc",
+      "CZK": "Czech Koruna",
+      "DKK": "Danish Krone",
+      "EUR": "Euro",
+      "GBP": "British Pound",
+      "HUF": "Hungarian Forint",
+      "NOK": "Norwegian Krone",
+      "PLN": "Polish Złoty",
+      "RON": "Romanian Leu",
+      "SEK": "Swedish Krona",
+      "USD": "US Dollar"
+    },
+    "fields": {
+      "baseUrl": {
+        "description": "The public URL of the {platform} storefront (no trailing path).",
+        "label": "Shop URL"
+      },
+      "currency": {
+        "description": "ISO 4217 code applied to every product synced from this connection. Leave blank and OpenLinker asks the shop for its default currency instead; products stay without a currency if the shop has none set.",
+        "label": "Default currency (optional)",
+        "notSet": "- not set -",
+        "option": "{code} - {name}"
+      },
+      "name": {
+        "label": "Connection name",
+        "placeholder": "Main {platform} Store"
+      },
+      "shopId": {
+        "description": "Only needed for multi-shop {platform} installations.",
+        "label": "Shop ID (optional)"
+      },
+      "storefrontBaseUrl": {
+        "description": "Override only if your public storefront URL is different from the webservice URL. Leave blank if they're the same - defaults to Shop URL.",
+        "label": "Storefront URL (optional)"
+      },
+      "webserviceKey": {
+        "description": "Generated in {platform} admin under Advanced Parameters → Webservice.",
+        "label": "Webservice key",
+        "placeholder": "e.g. ABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890"
+      }
+    },
+    "platformFallback": "the shop",
+    "review": {
+      "currency": "Default currency",
+      "name": "Name",
+      "noneSelected": "None selected",
+      "shopId": "Shop ID",
+      "storefrontUrl": "Storefront URL"
+    },
+    "steps": {
+      "capabilities": "Capabilities",
+      "credentials": "Credentials",
+      "review": "Review & connect",
+      "verify": "Verify credentials"
+    },
+    "verify": {
+      "body": "OpenLinker will use the values below to reach your {platform} admin. Make sure the shop URL resolves and the webservice key is active before you continue. After the connection is saved you can run a live test from the connection detail page.",
+      "title": "Verify the credentials"
+    }
+  },
+  "prestashopSetupPage": {
+    "chip": "Webservice API",
+    "description": "Provide your shop URL and webservice key. OpenLinker uses them to sync products, orders, and inventory.",
+    "fallbackPlatform": "the shop",
+    "title": "Connect {platform}"
   },
   "prestashopSetupSchema": {
     "baseUrlInvalid": "Shop URL must be a valid URL (e.g. https://shop.example.com)",
@@ -1185,6 +1528,61 @@
     },
     "title": "Stock and price on this destination"
   },
+  "subiektSetupForm": {
+    "beforeYouStart": {
+      "body": "Run the OpenLinker bridge on the Windows machine where <strong>{product}</strong> is installed, give it a token in its <code>appsettings.json</code>, then paste that machine's address and the same token below. OpenLinker talks to {product} only through the bridge - it never connects to it directly.",
+      "title": "Before you start"
+    },
+    "connect": "Connect {platform}",
+    "connecting": "Connecting…",
+    "createError": "Unable to create connection",
+    "createdDescription": "{platform} connection \"{name}\" was created.",
+    "createdTitle": "Connection created",
+    "done": "Done",
+    "fields": {
+      "bridgeBaseUrl": {
+        "description": "The bridge address, without a path. Usually a LAN address - http is allowed (e.g. {example}).",
+        "label": "Bridge URL"
+      },
+      "bridgeToken": {
+        "description": "You choose this value yourself - it is not issued by anyone. {hint} Paste the same value here. Stored securely on the server and never shown again.",
+        "label": "Bridge token",
+        "labelOptional": "Bridge token (optional)"
+      },
+      "name": {
+        "description": "A label to identify this {platform} account in OpenLinker.",
+        "label": "Connection name",
+        "placeholder": "My {platform}"
+      },
+      "timeoutMs": {
+        "description": "Advanced - how long OpenLinker waits for the bridge before giving up. Between {min} and {max} ms. Leave blank for the bridge default.",
+        "label": "Request timeout (ms, optional)"
+      },
+      "triggerModel": {
+        "autoOnPaid": "Automatically, once the order is paid",
+        "description": "Every order OpenLinker sends to {product} becomes a ZK. This decides whether the invoice follows automatically, or waits for you. Change it later in Settings → Sales documents routing.",
+        "label": "Issue the invoice",
+        "manual": "By hand - I issue each one myself"
+      }
+    },
+    "invoiceSetting": {
+      "auto": "This connection will issue invoices automatically once an order is paid.",
+      "change": "Change that, or switch it off entirely, in <link>Settings → Sales documents routing</link>.",
+      "manual": "This connection will issue invoices only when you issue them by hand.",
+      "title": "Where the invoice setting lives"
+    },
+    "latency": "({ms}ms)",
+    "test": "Test connection",
+    "testError": "Unable to test connection",
+    "testFailed": "Connection test failed",
+    "testPassed": "Connection test passed",
+    "testing": "Testing…"
+  },
+  "subiektSetupPage": {
+    "chip": "Sfera bridge",
+    "description": "Point OpenLinker at your {product} bridge. OpenLinker uses it to work with {product} for your orders.",
+    "title": "Connect {product}"
+  },
   "subiektSetupSchema": {
     "bridgeUrlInvalid": "Bridge URL must be a valid URL (e.g. {example})",
     "bridgeUrlProtocol": "Bridge URL must start with http:// or https://",
@@ -1194,6 +1592,57 @@
     "timeoutMin": "Request timeout must be at least 1000 ms",
     "timeoutWhole": "Request timeout must be a whole number of milliseconds",
     "tokenRequired": "Bridge token is required - {product}'s bridge rejects every request without it."
+  },
+  "woocommerceSetupForm": {
+    "beforeYouStart": {
+      "body": "In your {platform} admin, go to <strong>{platform} → Settings → Advanced → REST API</strong> and generate a key with <strong>Read/Write</strong> permissions. Copy the consumer key and consumer secret below - they are only shown once.",
+      "title": "Before you start"
+    },
+    "capabilities": {
+      "help": "Pick which roles this connection should fulfil. You can change this later on the connection's detail page.",
+      "legend": "Capabilities"
+    },
+    "create": "Create connection",
+    "createError": "Unable to create connection",
+    "createdDescription": "{platform} connection \"{name}\" was created.",
+    "createdTitle": "Connection created",
+    "creating": "Creating...",
+    "fields": {
+      "consumerKey": {
+        "description": "Starts with ck_ - generated in {platform} REST API settings.",
+        "label": "Consumer key"
+      },
+      "consumerSecret": {
+        "description": "Starts with cs_ - generated alongside the consumer key.",
+        "label": "Consumer secret"
+      },
+      "name": {
+        "description": "A label to identify this store in OpenLinker.",
+        "label": "Connection name",
+        "placeholder": "My {platform} Store"
+      },
+      "siteUrl": {
+        "description": "The root URL of your {platform} store. Must use HTTPS.",
+        "label": "Site URL"
+      }
+    },
+    "platformFallback": "the shop",
+    "review": {
+      "name": "Name",
+      "noneSelected": "None selected"
+    },
+    "steps": {
+      "capabilities": "Capabilities",
+      "credentials": "API credentials",
+      "review": "Review & create",
+      "store": "Store details"
+    }
+  },
+  "woocommerceSetupPage": {
+    "chip": "REST API",
+    "description": "Provide your store URL and REST API credentials. OpenLinker uses them to sync orders and inventory.",
+    "fallbackPlatform": "the shop",
+    "title": "Connect {platform}"
   },
   "woocommerceSetupSchema": {
     "capabilityConflict": "The inventory source of truth and stock write-back to this shop cannot both be enabled on the same connection.",
