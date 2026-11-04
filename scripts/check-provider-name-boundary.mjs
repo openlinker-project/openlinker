@@ -11,7 +11,7 @@
  * Bans `eparagony`, `ksef`, `paragon` and `kasa` (case-insensitive, whole
  * word) from operator-facing copy in `apps/web/src/**` outside
  * `apps/web/src/plugins/`. In a Polish translation file
- * (`apps/web/src/locales/pl.json`) only `paragon` and `kasa` are allowed
+ * (`apps/web/src/locales/pl/*.json`) only `paragon` and `kasa` are allowed
  * (ADR-081): there they are the ordinary Polish words for receipt and cash
  * register. `eparagony` and `ksef` stay
  * banned in Polish too, since Polish copy is just as operator-facing.
@@ -21,7 +21,7 @@
  * already defines and for its stated reason: JSX text, user-facing JSX
  * attribute values in `.tsx`, every string literal in a `*-copy.ts` /
  * `*.copy.ts` module, and every string value of a translation file
- * (`locales/<lang>.json`). Identifiers, comments, imports and non-user-facing props
+ * (`locales/<lang>/<namespace>.json`, a plugin's `locales/<lang>.json`). Identifiers, comments, imports and non-user-facing props
  * are deliberately unscanned: several shared components mention KSeF in
  * docblocks explaining why the component is neutral
  * (`features/orders/lib/sales-document-cell-state.ts` documents "Authority
@@ -220,8 +220,11 @@ export function isInsidePlugins(relPath) {
   return relPath === PLUGINS_DIR || relPath.startsWith(PLUGINS_DIR + sep);
 }
 
-/** A translation file: `.../locales/<lang>.json`. Group 1 is the language. */
-const TRANSLATION_FILE = /(?:^|[\\/])locales[\\/]([a-z]{2})\.json$/;
+/**
+ * A translation file: a plugin's `.../locales/<lang>.json` or a core
+ * `.../locales/<lang>/<namespace>.json`. Group 1 is the language.
+ */
+const TRANSLATION_FILE = /(?:^|[\\/])locales[\\/]([a-z]{2})(?:\.json|[\\/][a-z][a-z0-9-]*\.json)$/;
 
 /** Every string VALUE of a JSON translation file, with its 1-based line. */
 export function extractJsonStrings(source) {
@@ -413,6 +416,8 @@ function selfCheck() {
     [[4, 'eparagony']]
   );
   eq('a translation file is scanned', isScannable('apps/web/src/locales/en.json'), true);
+  eq('a core namespace file is scanned', isScannable('apps/web/src/locales/en/orders.json'), true);
+  eq('core polish namespace copy ignored', findViolations('src/locales/pl/ui.json', '{ "kind": "Paragon fiskalny" }'), []);
   eq('another JSON file is not', isScannable('apps/web/src/config/x.json'), false);
 
   if (failures.length > 0) {

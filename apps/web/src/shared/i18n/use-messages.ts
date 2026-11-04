@@ -1,7 +1,7 @@
 /**
  * useMessages Hook
  *
- * One core namespace for the active language, typed from en.json:
+ * One core namespace for the active language, typed from its English file (`locales/en/<namespace>.json`):
  * `useMessages('ui').common.retry`. Missing translations fall back to English
  * key by key. Plugins read their own namespace through the hook
  * `definePluginMessages` returns instead. Under the development-only
