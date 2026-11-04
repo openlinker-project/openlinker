@@ -78,13 +78,13 @@ webhooks, retry and auth classification).
 | `InventoryMaster` / `InventoryMasterPort` | A | Native | `inventoryLevels`, `inventoryAdjustQuantities` (mandatory `@idempotent` + `changeFromQuantity` CAS), `inventorySetQuantities` | Inherited E-M3..E-M6, E-M11 |
 | ... deprecated `reserveInventory`/`releaseInventory` | A | Open | Shopify has a `reserved` quantity state and `inventoryMoveQuantities` between states; could express a hold. ADR-061 deprecates the method, so this only matters for a future `MasterReservationWriter` | Desk |
 | `OrderSource` / `OrderSourcePort` | C | Native | `orders(query: "updated_at:>…", sortKey: UPDATED_AT)` + opaque cursor; `ORDERS_*` webhooks as trigger | Inherited E-O10, E-C7 |
-| `OrderProcessorManager` / `OrderProcessorManagerPort` | B | Native | `orderCreate` with per-line `priceSet` (real marketplace price) and `taxLines`; dev store capped at ~5/min (E-X2). Native dedup key unknown - probe `sourceIdentifier` / `@idempotent` on `orderCreate` | Inherited E-O1, E-O2; dedup Open |
+| `OrderProcessorManager` / `OrderProcessorManagerPort` | B | Native, **no native dedup** | `orderCreate` with per-line `priceSet` (real marketplace price) and `taxLines`; dev store capped at ~5/min. `@idempotent` is not supported on `orderCreate` and a repeated `sourceIdentifier` creates a second order; `source_identifier:` lookup works but only ~10 s after the write | **Live** L-O3, L-O4, L-X1 |
 | `OfferManager` / `OfferManagerPort` | D | Native, other port | Shopify is a shop, not a marketplace. The base method (`updateOfferQuantity`) is the WooCommerce precedent: base-port-only stock write-back to published products, reached through `ShopProduct` mappings | Desk |
 | `ProductPublisher` / `ShopProductManagerPort` | D | Native | `productSet` with options/variants/media; `getDescriptionFormat` must be OL-declared because Shopify sanitizes nothing (E-P2) | Inherited E-P2, E-P5, E-P6 |
 | `CategoryProvisioner` | D | Open | Shopify's Standard Product Taxonomy is read-only (E-T3). A shop "category" an operator recognises is a **collection** (`collectionCreate`) or `productType`. Decide which concept OL maps to | Inherited E-T3, E-T5 |
-| `Invoicing` / `InvoicingPort` | B, C | Via OL connector | No VAT invoice issuance in the Admin API (`draftOrderInvoiceSend` is a payment request, not a fiscal document). Polish invoices come from inFakt / KSeF / Subiekt / eparagony; Shopify only receives a link (see `OrderBillingDocumentLinker`) | Desk - L-probe: schema scan for invoice/document mutations |
-| `Fiscalization` / `FiscalizationPort` | C | Via OL connector | No fiscal registration API for Poland. eparagony covers it | Desk - same schema scan |
-| `ShippingProviderManager` / `ShippingProviderManagerPort` | B, C, E | Via OL connector | Shopify Shipping labels are bought in the admin, not through the public API. Labels come from InPost / DPD | Desk - L-probe: schema scan for label/shipping-label mutations |
+| `Invoicing` / `InvoicingPort` | B, C | Via OL connector | Full schema scan (483 mutations): nothing issues a fiscal document. `orderInvoiceSend` / `draftOrderInvoiceSend` email a **payment request**, not a VAT invoice. Polish invoices come from inFakt / KSeF / Subiekt / eparagony; Shopify only receives a link (see `OrderBillingDocumentLinker`) | **Live** L-D1 |
+| `Fiscalization` / `FiscalizationPort` | C | Via OL connector | Schema scan: no `fiscal*` / `receipt*` mutation (only Shop Pay payment-request receipts). eparagony covers it | **Live** L-D1 |
+| `ShippingProviderManager` / `ShippingProviderManagerPort` | B, C, E | Via OL connector (for PL) | **Correction:** `shippingLabelPurchase` + `shippingLabel` exist (async, `PENDING_PURCHASE -> PURCHASED / PURCHASE_FAILED`), but only through Shopify Shipping, which needs its terms accepted in the admin and is offered for US, CA, AU, UK, FR, IT, ES fulfilment locations - not Poland. Labels for PL come from InPost / DPD | **Live** L-S1 + Shopify Help Center |
 | `FulfillmentExecutor` / `FulfillmentExecutorPort` | E | Open | Two readings. (1) OpenLinker as Shopify's fulfillment service: Shopify sends fulfillment requests to an OL-owned fulfillment-service location, OL accepts and fulfils - Shopify is then an order source and OL-OMS is the executor. (2) A Shopify merchant location as an executor for orders from other channels. (1) is what role E means | Inherited E-F1, E-F5, E-F10 |
 | `ReturnsAuthority` (no port) | C | Open | `returnApproveRequest` / `returnDeclineRequest` / `returnProcess` with dispositions exist; whether OL or Shopify decides disposition is a config choice (ADR-052 A5) | Inherited E-R1..E-R11 |
 
@@ -92,7 +92,7 @@ webhooks, retry and auth classification).
 
 | Sub-capability | Role | Verdict | Shopify surface | Evidence |
 |---|---|---|---|---|
-| `ModifiedProductLister` | A | Open | `products(query: "updated_at:>…")` works (E-M10). Must check whether a **variant** edit and a **stock** change bump the product's `updatedAt` - WooCommerce's does not (WC #19562), PrestaShop's does not either | Inherited E-M10; variant/stock bump Open |
+| `ModifiedProductLister` | A | Native, **with a union** | A stock change bumps `product.updatedAt` (and variant + level); a **variant price edit bumps only `variant.updatedAt`**, not the product. So the rung is `products(updated_at)` UNION `productVariants(updated_at)`, with a lookback longer than the ~10 s `updatedAt` lag. Better than WooCommerce and PrestaShop, which cannot see variant edits at all | **Live** L-M2 |
 | `BulkProductReader` | A | Native | `nodes(ids: [...])` batch read, or `bulkOperationRunQuery` (JSONL, ~3s for 43 objects) | Inherited E-M12 |
 | `ProductTaxRateReader` | A | Open | No per-variant rate exists (`taxable` boolean only, E-M8). Shopify computes tax from region settings + overrides. Probe whether the effective PL rate per product is readable at all (tax overrides on collections, `shop.taxesIncluded`) | Inherited E-M8 |
 | `BulkInventoryReader` | A | Native | `inventoryItems` / `inventoryLevels` with location filter, or a bulk operation | Desk |
@@ -190,9 +190,12 @@ is complete.
 
 What Shopify **does** have to supply for a correct document, to verify live:
 
-- the buyer tax id: **no native field** (E-O8). Candidates: B2B company location tax settings, order
-  metafield, checkout note attribute. Decides whether `buyerTaxId` can ever be asserted for a
-  Shopify order;
+- the buyer tax id: **only on B2B orders** (L-O5). A company location carries
+  `taxSettings.taxRegistrationId`, and an order placed on that location exposes it as
+  `order.purchasingEntity.location.taxSettings.taxRegistrationId`. B2B is a Shopify Plus feature,
+  so on a standard plan the order has no tax-id home at all (E-O8) and the source must report
+  "not asserted", never "asserted none". It is the location's **current** value, not one frozen
+  on the order, so it must be frozen at ingestion (ADR-073 shape);
 - per-line tax rate on the order: native (`LineItem.taxLines`, E-O1, E-D4);
 - shipping tax separately (E-D2);
 - payment method: gateway names, no closed vocabulary - map to `PaymentMethod` (#3294) only where
@@ -243,6 +246,13 @@ What Shopify **does** have to supply for a correct document, to verify live:
 | L-O2 | `orderCreate` accepts a `PENDING` transaction on gateway `"Cash on Delivery (COD)"` (shows in `paymentGatewayNames`); `orderCancel(refund: false)` leaves `displayFinancialStatus: PAID` and fulfillment `FULFILLMENT_NOT_REQUIRED` | COD is representable on an imported order. A cancelled-but-paid order is a state the cancellation flow must expect |
 | L-X1 | The ~5 `orderCreate` per minute cap applies on the "Plus App Development" plan too, reported as a `"Too many attempts"` userError (same as E-X2) | Retry classifier must treat that userError as deferrable |
 | L-T1 | `taxonomy.categories(search: "T-shirts")` ranks "Baby & Children's T-Shirts" first | Keyword search is not a safe automatic category pick; the operator chooses |
+| L-O3 | `orderCreate` is **not** among the 18 mutations that document `@idempotent` support (inventory*, `refundCreate`, location activation, mandate payment, ...) | Order dedup is OpenLinker's job: per-order lock + mapping write, as for Shoper |
+| L-O4 | Two `orderCreate` calls with the same `sourceIdentifier` created two orders (#1007, #1008). `orders(query: "source_identifier:…")` returned `[]` at 0 s and both orders at 10 s. `sourceName` is set to the app id automatically | A crash between create and mapping write can be recovered by a `source_identifier` lookup, but only after the index catches up; an immediate lookup proves nothing |
+| L-O5 | `companyCreate` with `companyLocation.taxRegistrationId: "PL5252556107"` + a `companyContact`, then `orderCreate(companyLocationId, customer.toAssociate)` -> `purchasingEntity: PurchasingCompany`, `location.taxSettings.taxRegistrationId: "PL5252556107"`. Without a customer the create is refused: `"no customer_id was provided"` | Buyer tax id exists for B2B (Plus) orders only; read from the purchasing entity and freeze it |
+| L-M2 | With a 30 s settle: a stock change (`inventorySetQuantities`) bumped product, variant and level `updatedAt`; a variant price edit (`productVariantsBulkUpdate`) bumped **only** the variant. Read straight after a write, every `updatedAt` still shows the old value; it moves 5-10 s later | `ModifiedProductLister` = union of product and variant `updated_at` queries, lookback well over 10 s |
+| L-S1 | `shippingLabelPurchase` on an open fulfillment order -> userError `TERMS_OF_SERVICE_NOT_ACCEPTED` ("Purchase a shipping label through the Shopify admin first"). Shopify Shipping is not offered for Polish fulfilment locations | Labels stay with InPost / DPD for PL. The API is real for the countries Shopify Shipping serves |
+| L-D1 | Schema scan of all 483 mutations / 278 queries: no invoice, fiscal-document or receipt issuance. `orderInvoiceSend` / `draftOrderInvoiceSend` send a payment-request email. `taxSummaryCreate` and `taxAppConfigure` belong to the tax-calculation app surface, not to documents | Every invoicing and fiscalization sub-capability is "via OL connector" |
+| L-C3 | `carrierServiceCreate` registers a **live-rates callback at checkout** | New option, not on any OL port yet: OpenLinker (InPost/DPD) could quote shipping at the Shopify checkout. Out of scope here, worth a follow-up issue |
 
 ## Live transcripts
 
@@ -257,11 +267,10 @@ stock (E-R10); `read_all_orders` needs manual review (E-C6).
 
 New, to resolve here:
 
-1. **Order dedup on `orderCreate`.** Without a native idempotency key a retried create makes a second
-   order (the Shoper finding). Probe `@idempotent` on `orderCreate` and lookup by `sourceIdentifier`.
-2. **Buyer tax id has no home** (E-O8). Decides B2B invoicing for Shopify-sourced orders.
-3. **Product `updatedAt` vs variant and stock edits.** Decides whether `ModifiedProductLister` can be
-   declared at all.
+1. **Order dedup on `orderCreate`** - answered (L-O3, L-O4): no native dedup; OpenLinker's lock and
+   mapping are the guarantee, `source_identifier` lookup is a delayed recovery aid only.
+2. **Buyer tax id** - answered (L-O5): B2B / Plus orders only, via the purchasing entity.
+3. **Product `updatedAt` vs variant and stock edits** - answered (L-M2): declarable as a union.
 4. **Category concept.** Taxonomy (read-only, global) vs collections (shop-owned) vs `productType`
    (free text) - decides `CategoryProvisioner` and the mapping UI.
 5. **Effective tax rate per product.** Decides whether a Shopify master can satisfy ADR-063 (the
