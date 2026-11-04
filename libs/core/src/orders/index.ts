@@ -195,6 +195,9 @@ export {
   IncomingOrderItemRef,
   IncomingOrderTotals,
   IncomingOrderAddress,
+  LineGift,
+  GiftSource,
+  GiftSourceValues,
 } from './domain/types/incoming-order.types';
 export {
   OrderFeedEventTypeValues,

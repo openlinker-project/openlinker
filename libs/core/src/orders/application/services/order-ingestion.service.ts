@@ -117,6 +117,11 @@ import type { SalesDocumentBlockOutcome } from '@openlinker/core/sales-documents
 import type { OrderRecordStatus } from '../../domain/types/order-record.types';
 import type { ItemResolutionFailureKind } from './order-item-ref-resolver.types';
 import {
+  describeMultipackHold,
+  hasBundleDefinition,
+  isMultipackLine,
+} from './multipack-hold';
+import {
   projectOrderForRouting,
   type OrderRoutingProjection,
 } from '../../domain/project-order-for-routing';
@@ -564,6 +569,24 @@ export class OrderIngestionService implements IOrderIngestionService {
 
     for (const item of incoming.items) {
       const result = await this.orderItemRefResolver.tryResolve(connectionId, item.productRef);
+      if (result.resolved && isMultipackLine(item)) {
+        // #3929: held BEFORE anything reserves. Treating the line as one unit
+        // would reserve and ship a single unit for the price of several. The
+        // hold is level-triggered: every re-ingestion re-asks, so it releases
+        // itself once a bundle definition exists.
+        const defined = await hasBundleDefinition(
+          result.internalProductId,
+          result.internalVariantId
+        );
+        if (!defined) {
+          unresolvedRefs.push({
+            itemId: item.id,
+            reason: describeMultipackHold(item),
+            kind: 'multipack_without_bundle',
+          });
+          continue;
+        }
+      }
       if (result.resolved) {
         const tax = await this.resolveLineTaxRate(
           result.internalProductId,
@@ -600,6 +623,9 @@ export class OrderIngestionService implements IOrderIngestionService {
             ? { unitPriceGross: item.unitPriceGross }
             : {}),
           ...tax,
+          // #3929: absent stays absent, so an ordinary line is unchanged.
+          ...(item.gift !== undefined ? { gift: item.gift } : {}),
+          ...(item.packQuantity !== undefined ? { packQuantity: item.packQuantity } : {}),
         });
       } else {
         unresolvedRefs.push({ itemId: item.id, reason: result.reason, kind: result.kind });

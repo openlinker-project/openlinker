@@ -317,6 +317,10 @@ export class OrderSyncService implements IOrderSyncService {
         // the order is refused for not reporting a figure the source DID
         // report. Spread conditionally so absence stays absence.
         ...(item.unitPriceGross !== undefined ? { unitPriceGross: item.unitPriceGross } : {}),
+        // #3929 - a destination may read `gift` to set a native flag; the mirror
+        // sends the line as it is. Absence stays absence.
+        ...(item.gift !== undefined ? { gift: item.gift } : {}),
+        ...(item.packQuantity !== undefined ? { packQuantity: item.packQuantity } : {}),
       })),
       totals: {
         subtotal: order.totals.subtotal,

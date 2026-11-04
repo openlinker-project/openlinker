@@ -221,6 +221,12 @@ export class OrderRecordService implements IOrderRecordService {
         // passed while a PrestaShop order reached the destination adapter with
         // no gross price and was refused for not having one it HAD reported.
         ...(item.unitPriceGross !== undefined && { unitPriceGross: item.unitPriceGross }),
+        // #3929 - the third allowlist this projection has had to grow for: a
+        // gift flag or multipack size dropped here is lost at persistence time
+        // and every later read (hold re-check, destination mirror) sees an
+        // ordinary single-unit line. Absent stays absent.
+        ...(item.gift !== undefined && { gift: item.gift }),
+        ...(item.packQuantity !== undefined && { packQuantity: item.packQuantity }),
       })),
       totals: order.totals,
       shippingAddress: piiConfig.storePii

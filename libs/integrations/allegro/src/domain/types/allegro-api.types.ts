@@ -77,6 +77,15 @@ export interface AllegroCheckoutForm {
     offer: {
       id: string;
       name: string;
+      /**
+       * Present only when the offer is a product set (swagger
+       * `OfferProductSetReference`). `products[].quantity` counts that product
+       * inside ONE set, while `quantity` below counts sets sold, so the units of
+       * a product per sold unit is the per-set count (#3929).
+       */
+      productSet?: {
+        products?: Array<{ id?: string; quantity?: number }>;
+      } | null;
     };
     quantity: number;
     price: {

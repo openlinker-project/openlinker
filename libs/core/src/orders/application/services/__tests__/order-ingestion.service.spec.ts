@@ -1751,6 +1751,50 @@ describe('OrderIngestionService', () => {
       expect(persistedOrder.items[1].imageUrl).toBeUndefined();
     });
 
+    it('holds a multipack line without a bundle as awaiting_mapping, before any reservation (#3929)', async () => {
+      orderSource.getOrder.mockResolvedValue({
+        ...incomingWithItems,
+        items: [{ ...incomingWithItems.items[0], packQuantity: 3 }, incomingWithItems.items[1]],
+      });
+      orderItemRefResolver.tryResolve
+        .mockResolvedValueOnce({ resolved: true, internalProductId: 'p-1', internalVariantId: 'v-1' })
+        .mockResolvedValueOnce({ resolved: true, internalProductId: 'p-2', internalVariantId: 'v-2' });
+
+      await expect(
+        service.syncOrderFromSource(connectionId, externalOrderId)
+      ).rejects.toBeInstanceOf(MissingOrderItemMappingError);
+
+      expect(orderRecordService.markItemResolutionFailure).toHaveBeenCalledWith(
+        'ol_order_item_test',
+        {
+          status: 'awaiting_mapping',
+          reason: expect.stringContaining('[multipack-without-bundle]'),
+        }
+      );
+      expect(orderRecordService.persistOrder).not.toHaveBeenCalled();
+      expect(reservationService.reserveForOrder).not.toHaveBeenCalled();
+    });
+
+    it('carries gift and packQuantity onto the resolved line when not held (#3929)', async () => {
+      orderSource.getOrder.mockResolvedValue({
+        ...incomingWithItems,
+        items: [
+          { ...incomingWithItems.items[0], gift: { source: 'cart-rule' as const } },
+          incomingWithItems.items[1],
+        ],
+      });
+      orderItemRefResolver.tryResolve
+        .mockResolvedValueOnce({ resolved: true, internalProductId: 'p-1', internalVariantId: 'v-1' })
+        .mockResolvedValueOnce({ resolved: true, internalProductId: 'p-2', internalVariantId: 'v-2' });
+
+      await service.syncOrderFromSource(connectionId, externalOrderId);
+
+      const items = orderRecordService.persistOrder.mock.calls[0][0].items;
+      expect(items[0].gift).toEqual({ source: 'cart-rule' });
+      expect('packQuantity' in items[0]).toBe(false);
+      expect('gift' in items[1]).toBe(false);
+    });
+
     it('partial unresolved: persistIncomingSnapshot called, MissingOrderItemMappingError thrown, persistOrder NOT called', async () => {
       orderItemRefResolver.tryResolve
         .mockResolvedValueOnce({
