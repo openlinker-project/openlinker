@@ -21,12 +21,15 @@ import content from './content.json';
 import currencySettings from './currency-settings.json';
 import customers from './customers.json';
 import demo from './demo.json';
+import fiscalization from './fiscalization.json';
 import format from './format.json';
 import inventory from './inventory.json';
+import invoicing from './invoicing.json';
 import listings from './listings.json';
 import orders from './orders.json';
 import priceChanges from './price-changes.json';
 import products from './products.json';
+import salesDocuments from './sales-documents.json';
 import shipments from './shipments.json';
 import ui from './ui.json';
 import users from './users.json';
@@ -42,12 +45,15 @@ export const en = {
   'currency-settings': currencySettings,
   customers,
   demo,
+  fiscalization,
   format,
   inventory,
+  invoicing,
   listings,
   orders,
   'price-changes': priceChanges,
   products,
+  'sales-documents': salesDocuments,
   shipments,
   ui,
   users,

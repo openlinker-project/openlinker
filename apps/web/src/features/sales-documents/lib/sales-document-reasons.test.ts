@@ -7,9 +7,9 @@ import {
   SALES_DOCUMENT_GATE_REASON_COPY,
   SALES_DOCUMENT_UNRESOLVED_REASON_COPY,
   resolveSalesDocumentReasonCopy,
-} from './sales-document-reason-copy';
+} from './sales-document-reasons';
 
-describe('sales-document reason copy', () => {
+describe('sales-document reasons', () => {
   it('should carry copy for every gate reason when the union is enumerated', () => {
     for (const reason of SalesDocumentGateBlockReasonValues) {
       const copy = SALES_DOCUMENT_GATE_REASON_COPY[reason];

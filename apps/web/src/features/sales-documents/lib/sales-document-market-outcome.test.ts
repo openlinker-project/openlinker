@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { describeSalesDocumentMarketOutcome } from './sales-document-market-outcome-copy';
+import { describeSalesDocumentMarketOutcome } from './sales-document-market-outcome';
 import type { SalesDocumentMarketOutcome } from '../api/sales-document-markets.types';
 
 describe('describeSalesDocumentMarketOutcome', () => {

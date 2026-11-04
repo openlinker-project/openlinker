@@ -8,7 +8,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
-  SALES_DOCUMENT_OVERLAP_CONSEQUENCE,
+  describeSalesDocumentOverlapConsequence,
   describeSalesDocumentOverlapClear,
   describeSalesDocumentOverlapConflictRival,
   describeSalesDocumentOverlapUndecided,
@@ -42,7 +42,7 @@ describe('describeSalesDocumentOverlapConflictRival', () => {
   // never per rival - which is why it is its own exported constant rather than
   // folded into the per-rival sentence above.
   it('the consequence names what an operator cannot infer', () => {
-    expect(SALES_DOCUMENT_OVERLAP_CONSEQUENCE).toContain('hold the order instead of one winning');
+    expect(describeSalesDocumentOverlapConsequence()).toContain('hold the order instead of one winning');
   });
 });
 
