@@ -47,6 +47,7 @@ COPY libs/integrations/subiekt/package.json ./libs/integrations/subiekt/
 # ERR_PNPM_WORKSPACE_PKG_NOT_FOUND at build time, not at run time.
 COPY libs/integrations/subiekt-nexo/package.json ./libs/integrations/subiekt-nexo/
 COPY libs/integrations/woocommerce/package.json ./libs/integrations/woocommerce/
+COPY libs/integrations/shopify/package.json ./libs/integrations/shopify/
 COPY apps/worker/package.json ./apps/worker/
 COPY apps/web/package.json ./apps/web/
 
@@ -103,6 +104,7 @@ COPY libs/integrations/subiekt/package.json ./libs/integrations/subiekt/
 # ERR_PNPM_WORKSPACE_PKG_NOT_FOUND at build time, not at run time.
 COPY libs/integrations/subiekt-nexo/package.json ./libs/integrations/subiekt-nexo/
 COPY libs/integrations/woocommerce/package.json ./libs/integrations/woocommerce/
+COPY libs/integrations/shopify/package.json ./libs/integrations/shopify/
 COPY apps/worker/package.json ./apps/worker/
 COPY apps/web/package.json ./apps/web/
 
@@ -141,6 +143,7 @@ COPY --from=base --chown=node:node /app/libs/integrations/shoper/dist ./libs/int
 COPY --from=base --chown=node:node /app/libs/integrations/subiekt/dist ./libs/integrations/subiekt/dist
 COPY --from=base --chown=node:node /app/libs/integrations/subiekt-nexo/dist ./libs/integrations/subiekt-nexo/dist
 COPY --from=base --chown=node:node /app/libs/integrations/woocommerce/dist ./libs/integrations/woocommerce/dist
+COPY --from=base --chown=node:node /app/libs/integrations/shopify/dist ./libs/integrations/shopify/dist
 COPY --from=base --chown=node:node /app/node_modules ./node_modules
 COPY --from=base --chown=node:node /app/apps/api/node_modules ./apps/api/node_modules
 COPY --from=base --chown=node:node /app/libs/core/node_modules ./libs/core/node_modules
