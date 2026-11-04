@@ -2,6 +2,8 @@
   "app:pages.adapters": 26,
   "app:pages.analytics": 26,
   "app:pages.automations": 26,
+  "app:pages.buyerEmail": 26,
+  "app:pages.buyerEmails": 26,
   "app:pages.connections": 26,
   "app:pages.cursors": 26,
   "app:pages.customers": 26,
