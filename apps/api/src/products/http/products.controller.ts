@@ -391,8 +391,9 @@ export class ProductsController {
     const marks = new Map<string, ProductBundleSummaryDto>();
     try {
       const variants = await pageVariants;
-      const definitions = await this.bundleDefinitions.findCurrentByVariantIds(
-        variants.map((v) => v.id)
+      const definitions = await chunkedRead(
+        variants.map((v) => v.id),
+        (ids) => this.bundleDefinitions.findCurrentByVariantIds(ids)
       );
       if (definitions.length === 0) {
         return marks;
@@ -401,16 +402,21 @@ export class ProductsController {
       const componentIds = [
         ...new Set(definitions.flatMap((d) => d.components.map((c) => c.variantId))),
       ];
+      // A page can carry far more component variants than one IN-list should:
+      // chunk at the same cap resolveProductAtp uses.
       const [availability, componentVariants] = await Promise.all([
-        this.inventoryQuery.getAvailabilityByVariantIds(componentIds),
-        this.productsService.getVariantsByIds(componentIds),
+        chunkedRead(componentIds, (ids) => this.inventoryQuery.getAvailabilityByVariantIds(ids)),
+        chunkedRead(componentIds, (ids) => this.productsService.getVariantsByIds(ids)),
       ]);
-      const products = await this.productsService.getProductsByIds([
-        ...new Set(componentVariants.map((v) => v.productId)),
-      ]);
+      const products = await chunkedRead(
+        [...new Set(componentVariants.map((v) => v.productId))],
+        (ids) => this.productsService.getProductsByIds(ids)
+      );
       const nameByProduct = new Map(products.map((p) => [p.id, p.name]));
       const variantById = new Map(componentVariants.map((v) => [v.id, v]));
-      const atpByVariant = new Map(availability.map((a) => [a.productVariantId, a.availableToPromise]));
+      const atpByVariant = new Map<string, number | null>(
+        availability.map((a) => [a.productVariantId, a.availableToPromise])
+      );
       const ref = (variantId: string): BundleComponentRefDto => {
         const variant = variantById.get(variantId);
         return {
@@ -1052,4 +1058,16 @@ export class VariantsController {
   ): ProductVariantResponseDto {
     return variantToDto(variant, productImages);
   }
+}
+
+/** Runs `read` over `ids` in `MAX_STOCK_VIEW_VARIANT_IDS`-sized chunks, sequentially. */
+export async function chunkedRead<T>(
+  ids: readonly string[],
+  read: (chunk: string[]) => Promise<readonly T[]>
+): Promise<T[]> {
+  const out: T[] = [];
+  for (let i = 0; i < ids.length; i += MAX_STOCK_VIEW_VARIANT_IDS) {
+    out.push(...(await read(ids.slice(i, i + MAX_STOCK_VIEW_VARIANT_IDS))));
+  }
+  return out;
 }

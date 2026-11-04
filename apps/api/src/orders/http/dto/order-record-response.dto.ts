@@ -645,6 +645,13 @@ export class OrderRecordResponseDto {
   multipackHold?: OrderMultipackHoldDto;
 
   @ApiPropertyOptional({
+    type: () => [OrderMultipackHoldDto],
+    description:
+      'Every held multipack line (#3520). An order can hold several; each needs its own confirmation. DETAIL READ ONLY.',
+  })
+  multipackHolds?: OrderMultipackHoldDto[];
+
+  @ApiPropertyOptional({
     type: SalesDocumentViewResponseDto,
     description:
       'The per-order sales-document projection (#2517, ADR-065) - the routed document kind, the state ' +

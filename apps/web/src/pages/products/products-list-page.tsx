@@ -236,7 +236,7 @@ export function ProductsListPage(): ReactElement {
   // #3624 - the "Bundles" view of the same list, URL-synced like every filter here.
   const bundlesOnly = searchParams.get('bundles') === 'true';
   const bundleCopy = useMessages('bundles');
-  const bundleWrite = useWriteAccess('products:write', useDemoMode());
+  const bundleWrite = useWriteAccess('bundles:write', useDemoMode());
   const [openCompositions, setOpenCompositions] = useState<ReadonlySet<string>>(new Set());
   const rawSort = searchParams.get('sort');
   const sortField = isSortField(rawSort) ? rawSort : DEFAULT_SORT;

@@ -61,15 +61,26 @@ export function BundleReturnPicker({
   const isWhole = allIds.length > 0 && effective.length === allIds.length;
   const noneSelected = allIds.length > 0 && effective.length === 0;
   const refusal = !isWhole && !noneSelected ? (preview.data?.splitRefusal ?? null) : null;
-  const blocked = noneSelected || refusal !== null;
   const isBundle = preview.data?.isBundle === true;
+  // Until the preview answers we cannot tell a bundle from a plain product, and
+  // a missing preview must never turn into a whole-set restock: block while it
+  // is pending (or showing the previous selection's answer) and when it failed.
+  const unanswered = preview.isPending || preview.isPlaceholderData || preview.isError;
+  const blocked = unanswered || noneSelected || refusal !== null;
 
   useEffect(() => {
     onSelectionChange(isBundle && !isWhole ? effective : undefined);
-    onBlockedChange(isBundle && blocked);
+    onBlockedChange(unanswered || (isBundle && blocked));
     // `effective` is derived from `selected` and `allIds`; both are listed through it.
-  }, [isBundle, isWhole, blocked, effective, onSelectionChange, onBlockedChange]);
+  }, [isBundle, isWhole, blocked, unanswered, effective, onSelectionChange, onBlockedChange]);
 
+  if (preview.isError) {
+    return (
+      <Alert tone="error" data-testid="return-component-preview-error">
+        {copy.previewFailed}
+      </Alert>
+    );
+  }
   if (!isBundle || preview.data === undefined) {
     return null;
   }

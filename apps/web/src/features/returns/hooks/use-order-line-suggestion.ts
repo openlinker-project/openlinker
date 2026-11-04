@@ -42,6 +42,8 @@ export function useConfirmOrderLineMutation(
   return useMutation<{ claimed: boolean }, Error, string>({
     mutationFn: (orderLineId) => apiClient.returns.confirmOrderLine(returnId, lineId, orderLineId),
     onSettled: async () => {
+      // The list's stage counters and the correction proposal read this line.
+      await queryClient.invalidateQueries({ queryKey: returnsQueryKeys.all });
       await queryClient.invalidateQueries({ queryKey: returnsQueryKeys.detail(returnId) });
       await queryClient.invalidateQueries({
         queryKey: returnsQueryKeys.orderLineSuggestion(returnId, lineId),

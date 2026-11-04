@@ -13,7 +13,7 @@
  * @module apps/web/src/features/bundles/components
  */
 import { useMemo, useState, type ReactElement } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useFieldArray, useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -81,6 +81,22 @@ const formSchema = z.object({
 });
 type FormValues = z.infer<typeof formSchema>;
 
+interface HandedOverSave {
+  available: number | null;
+  released: number;
+}
+
+function readHandedOverSave(state: unknown): HandedOverSave | null {
+  if (typeof state !== 'object' || state === null) return null;
+  const saved = (state as Record<string, unknown>).bundleSaved;
+  if (typeof saved !== 'object' || saved === null) return null;
+  const record = saved as Record<string, unknown>;
+  return {
+    available: typeof record.available === 'number' ? record.available : null,
+    released: typeof record.released === 'number' ? record.released : 0,
+  };
+}
+
 function readErrorCode(error: ApiError | null): { code: string | null; reason: string | null } {
   const details = error?.details;
   if (typeof details === 'object' && details !== null) {
@@ -100,8 +116,13 @@ export function BundleForm({ bundleVariantId, seedComponent }: BundleFormProps):
   const apiClient = useApiClient();
   const { showToast } = useToast();
   const demoMode = useDemoMode();
-  const write = useWriteAccess('products:write', demoMode);
+  const write = useWriteAccess('bundles:write', demoMode);
   const editing = bundleVariantId !== undefined;
+  const navigate = useNavigate();
+  const location = useLocation();
+  // A create navigates to the edit route (so a second Save is an update) and
+  // hands the result over, since the route change remounts this form.
+  const handedOver = readHandedOverSave(location.state);
 
   const detail = useBundleQuery(bundleVariantId);
   const [tab, setTab] = useState<'composition' | 'history'>('composition');
@@ -117,7 +138,12 @@ export function BundleForm({ bundleVariantId, seedComponent }: BundleFormProps):
     released: number;
     productId: string;
     variantId: string;
-  } | null>(null);
+  } | null>(
+    handedOver !== null && bundleVariantId !== undefined
+      ? { ...handedOver, productId: '', variantId: bundleVariantId }
+      : null,
+  );
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   const seed = useQuery({
     queryKey: ['bundles', 'seed-component', seedComponent?.variantId ?? seedComponent?.productId ?? ''],
@@ -161,7 +187,7 @@ export function BundleForm({ bundleVariantId, seedComponent }: BundleFormProps):
     if (editing && detail.data) {
       setBundleProduct({
         variantId: detail.data.variantId,
-        productId: '',
+        productId: detail.data.productId ?? '',
         name: detail.data.bundle.name ?? '',
         sku: detail.data.bundle.sku,
         price: detail.data.bundle.price,
@@ -272,7 +298,9 @@ export function BundleForm({ bundleVariantId, seedComponent }: BundleFormProps):
               ? interpolate(copy.form.syncUnmapped, { ids: unmapped.join(', ') })
               : details.reason === 'not-a-bundle-in-master'
                 ? interpolate(copy.form.syncNotPack, { name: master.connectionName })
-                : copy.form.syncFailed,
+                : details.reason === 'master-unavailable'
+                  ? interpolate(copy.form.syncMasterUnavailable, { name: master.connectionName })
+                  : copy.form.syncFailed,
         });
       },
     });
@@ -293,13 +321,23 @@ export function BundleForm({ bundleVariantId, seedComponent }: BundleFormProps):
       {
         onSuccess: (result) => {
           setNestedError(null);
+          setSaveError(null);
+          const available = availability.kind === 'known' ? availability.bundles : null;
+          showToast({ tone: 'success', description: copy.form.saved });
           setSavedAs({
-            available: availability.kind === 'known' ? availability.bundles : null,
+            available,
             released: result.releasedOrders,
             productId: bundleProduct.productId,
             variantId: bundleProduct.variantId,
           });
-          showToast({ tone: 'success', description: copy.form.saved });
+          if (!editing) {
+            // Now an existing bundle: the next Save must be an update, not a
+            // second create that answers 409.
+            void navigate(`/products/bundles/${encodeURIComponent(bundleProduct.variantId)}`, {
+              replace: true,
+              state: { bundleSaved: { available, released: result.releasedOrders } },
+            });
+          }
         },
         onError: (error) => {
           const { code, reason } = readErrorCode(error);
@@ -311,14 +349,24 @@ export function BundleForm({ bundleVariantId, seedComponent }: BundleFormProps):
                   ? interpolate(copy.form.nestedVariantIsComponent, { name: bundleProduct.name })
                   : copy.form.nestedGeneric,
             );
+            return;
           }
+          setSaveError(
+            error.status === 409
+              ? copy.form.saveConflict
+              : error.status === 400
+                ? copy.form.saveInvalid
+                : error.status === 404
+                  ? copy.form.saveNotFound
+                  : copy.form.saveFailed,
+          );
         },
       },
     );
   });
 
   if (editing && detail.isLoading) {
-    return <p className="text-muted">{copy.form.saving}</p>;
+    return <p className="text-muted">{copy.form.loading}</p>;
   }
   if (editing && detail.isError) {
     return <Alert tone="error" title={copy.form.loadFailed}>{copy.form.loadFailed}</Alert>;
@@ -376,6 +424,12 @@ export function BundleForm({ bundleVariantId, seedComponent }: BundleFormProps):
         </Alert>
       ) : null}
 
+      {saveError !== null ? (
+        <Alert tone="error" title={copy.form.saveFailed} data-testid="bundle-form-save-error">
+          {saveError}
+        </Alert>
+      ) : null}
+
       {savedAs !== null ? (
         <Alert tone="success" title={copy.form.saved} data-testid="bundle-form-saved-alert">
           <p>
@@ -388,16 +442,18 @@ export function BundleForm({ bundleVariantId, seedComponent }: BundleFormProps):
               {formatPlural(savedAs.released, copy.form.releasedOrders, locale)}
             </p>
           ) : null}
+          {(savedAs.productId || detail.data?.productId) ? (
           <Link
             className="button button--secondary"
             data-testid="bundle-form-list-offer"
             to={`/listings/bulk-create/wizard?${new URLSearchParams({
-              productIds: savedAs.productId,
+              productIds: savedAs.productId || (detail.data?.productId ?? ''),
               variantIds: savedAs.variantId,
             }).toString()}`}
           >
             {copy.form.listOffer}
           </Link>
+          ) : null}
         </Alert>
       ) : null}
 
@@ -433,7 +489,7 @@ export function BundleForm({ bundleVariantId, seedComponent }: BundleFormProps):
                 testIdPrefix="bundle-form-product-search"
               />
             ) : null}
-            <div className="mk-form-grid" style={{ display: 'grid', gap: 'var(--space-3)', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))' }}>
+            <div className="mk-form-grid bundle-form__product-grid">
               <div className="form-field">
                 <label className="form-field__label" htmlFor="bf-name">{copy.form.bundleName}</label>
                 <Input id="bf-name" data-testid="bundle-form-name" readOnly value={bundleProduct?.name ?? ''} />

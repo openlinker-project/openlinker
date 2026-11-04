@@ -7,7 +7,7 @@
  * @module apps/web/src/features/bundles/components
  */
 import type { ReactElement } from 'react';
-import { useQueries } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { useApiClient } from '../../../app/api/api-client-provider';
 import { interpolate, useMessages } from '../../../shared/i18n';
@@ -20,15 +20,14 @@ export function ProductUsedInBundles({
 }): ReactElement | null {
   const copy = useMessages('bundles');
   const apiClient = useApiClient();
-  const results = useQueries({
-    queries: variantIds.map((variantId) => ({
-      queryKey: bundlesQueryKeys.usedIn(variantId),
-      queryFn: () => apiClient.bundles.usedIn(variantId),
-      retry: false,
-      staleTime: 30_000,
-    })),
+  const result = useQuery({
+    queryKey: bundlesQueryKeys.usedInMany(variantIds),
+    queryFn: () => apiClient.bundles.usedInMany(variantIds),
+    enabled: variantIds.length > 0,
+    retry: false,
+    staleTime: 30_000,
   });
-  const entries = results.flatMap((result) => result.data ?? []);
+  const entries = result.data ?? [];
   if (entries.length === 0) {
     return null;
   }
@@ -38,7 +37,7 @@ export function ProductUsedInBundles({
       <p className="text-muted">{copy.list.usedInIntro}</p>
       <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>
         {entries.map((entry) => (
-          <li key={entry.bundleVariantId} data-testid={`bundle-list-used-in-${entry.bundle.sku ?? entry.bundleVariantId}`}>
+          <li key={`${entry.bundleVariantId}:${entry.componentVariantId ?? ''}`} data-testid={`bundle-list-used-in-${entry.bundle.sku ?? entry.bundleVariantId}`}>
             <Link to={`/products/bundles/${entry.bundleVariantId}`}>
               {interpolate(copy.list.usedInBundle, {
                 n: entry.quantity,

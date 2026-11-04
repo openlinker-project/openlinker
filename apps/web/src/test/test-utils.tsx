@@ -898,8 +898,10 @@ export function createMockApiClient(
       get: vi.fn(),
       history: vi.fn().mockResolvedValue([]),
       usedIn: vi.fn().mockResolvedValue([]),
+      usedInMany: vi.fn().mockResolvedValue([]),
       create: vi.fn(),
       update: vi.fn(),
+      syncFromMaster: vi.fn(),
       confirmMultipack: vi.fn(),
       ...overrides.bundles,
     } as ApiClient['bundles'],
@@ -1194,6 +1196,16 @@ export function createMockApiClient(
     // in gets the neutral "no returns yet" branch rather than the
     // configuration claim, which no test should assert by accident.
     returns: {
+      // A plain (non-bundle) line: the preview answers, and nothing blocks the restock.
+      getBundleReturnPreview: vi.fn().mockResolvedValue({
+        isBundle: false,
+        paidPerUnitGross: null,
+        components: [],
+        splitRefusal: null,
+        splitRefusalVariantIds: [],
+        returnedShareGross: null,
+        allegroRefundHintGross: null,
+      }),
       list: vi.fn().mockResolvedValue({
         items: [],
         total: 0,

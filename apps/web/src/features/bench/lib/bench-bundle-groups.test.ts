@@ -6,7 +6,7 @@ function line(over: Partial<BenchParcelLine> & { workLineId: string }): BenchPar
   return {
     productVariantId: `v-${over.workLineId}`,
     name: over.workLineId,
-    sku: null,
+    sku: `SKU-${over.workLineId}`,
     ean: null,
     gtin: null,
     requiredQuantity: 1,
@@ -42,23 +42,25 @@ describe('bench bundle groups', () => {
     expect(group).toMatchObject({ done: 2, total: 3, complete: false, missingNames: ['b'] });
   });
 
-  it('should refuse only when a started bundle is all that keeps the parcel open', () => {
-    const started = [
+  it('should not refuse while the packer is simply still scanning a bundle that has codes', () => {
+    const scanning = [
       line({ workLineId: 'a', bundle, verifiedQuantity: 1 }),
       line({ workLineId: 'b', bundle }),
       line({ workLineId: 'solo', verifiedQuantity: 1 }),
     ];
-    expect(bundleBlockingClose(started)?.missingNames).toEqual(['b']);
-    // Other items still to scan: the packer is simply still packing.
+    expect(bundleBlockingClose(scanning)).toBeNull();
+  });
+
+  it('should refuse when a missing component has no code to scan and everything else is done', () => {
+    const stuck = [
+      line({ workLineId: 'a', bundle, verifiedQuantity: 1 }),
+      line({ workLineId: 'b', bundle, sku: null, ean: null, gtin: null }),
+      line({ workLineId: 'solo', verifiedQuantity: 1 }),
+    ];
+    expect(bundleBlockingClose(stuck)?.missingNames).toEqual(['b']);
+    // Other items still to scan: not yet the bundle that blocks.
     expect(
-      bundleBlockingClose([...started.slice(0, 2), line({ workLineId: 'solo' })]),
-    ).toBeNull();
-    // Nothing of the bundle in the box yet.
-    expect(
-      bundleBlockingClose([
-        line({ workLineId: 'a', bundle }),
-        line({ workLineId: 'solo', verifiedQuantity: 1 }),
-      ]),
+      bundleBlockingClose([...stuck.slice(0, 2), line({ workLineId: 'solo' })]),
     ).toBeNull();
   });
 });

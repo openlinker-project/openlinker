@@ -7,6 +7,7 @@
 import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
+import { useLocation } from 'react-router-dom';
 import {
   createAuthenticatedSessionAdapter,
   createMockApiClient,
@@ -89,6 +90,10 @@ const VIEWER = {
   analyticsConsent: true,
 } as const;
 
+function LocationProbe() {
+  return <span data-testid="location-probe">{useLocation().pathname}</span>;
+}
+
 async function ready(): Promise<void> {
   // The session resolves after the first paint; until then the form is read-only.
   await waitFor(() => {
@@ -169,6 +174,71 @@ describe('BundleForm (#3624)', () => {
     expect(screen.queryByTestId('bundle-form-component-row-ZES-PARZENIE')).not.toBeInTheDocument();
   });
 
+  it('should move to the edit route after creating, so a second Save is an update', async () => {
+    const apiClient = api();
+    const user = userEvent.setup();
+    renderWithProviders(
+      <>
+        <BundleForm />
+        <LocationProbe />
+      </>,
+      { apiClient, sessionAdapter: createAuthenticatedSessionAdapter() },
+    );
+    await ready();
+    await pick(user, 'bundle-form-product-search', 'Zestaw poranny', 'ZES-PORANNY');
+    await pick(user, 'bundle-form-component-search', 'Kubek', 'KUB-350-BI');
+    await user.click(screen.getByTestId('bundle-form-save'));
+    await waitFor(() => {
+      expect(screen.getByTestId('location-probe')).toHaveTextContent('/products/bundles/set');
+    });
+  });
+
+  it.each([
+    [409, 'already exists or was changed'],
+    [400, 'not valid'],
+    [404, 'no longer exists'],
+    [500, 'could not be saved'],
+    [0, 'could not be saved'],
+  ])('should say so when the save fails with status %s', async (status, text) => {
+    const apiClient = api({
+      bundles: { create: vi.fn().mockRejectedValue(new ApiError('nope', status, { code: 'OTHER' })) },
+    });
+    const user = userEvent.setup();
+    renderWithProviders(<BundleForm />, { apiClient, sessionAdapter: createAuthenticatedSessionAdapter() });
+    await ready();
+    await pick(user, 'bundle-form-product-search', 'Zestaw poranny', 'ZES-PORANNY');
+    await pick(user, 'bundle-form-component-search', 'Kubek', 'KUB-350-BI');
+    await user.click(screen.getByTestId('bundle-form-save'));
+    expect(await screen.findByTestId('bundle-form-save-error')).toHaveTextContent(text);
+  });
+
+  it('should let an operator (bundles:write, no products:write) save', async () => {
+    const apiClient = api();
+    renderWithProviders(<BundleForm />, {
+      apiClient,
+      sessionAdapter: createAuthenticatedSessionAdapter({
+        id: 'u3',
+        username: 'op',
+        email: null,
+        role: 'operator',
+        permissions: ['products:read', 'bundles:write'],
+        analyticsConsent: true,
+      }),
+    });
+    await ready();
+    expect(screen.queryByTestId('bundle-form-readonly-notice')).toBeNull();
+  });
+
+  it('should not say Saving... while the bundle is loading', () => {
+    const apiClient = api({ bundles: { get: vi.fn().mockReturnValue(new Promise(() => undefined)) } });
+    renderWithProviders(<BundleForm bundleVariantId="set" />, {
+      apiClient,
+      sessionAdapter: createAuthenticatedSessionAdapter(),
+    });
+    expect(screen.getByText('Loading the bundle...')).toBeInTheDocument();
+    expect(screen.queryByText('Saving...')).toBeNull();
+  });
+
   it('should show the refusal the server sends when nesting is caught on save', async () => {
     const apiClient = api({
       bundles: {
@@ -226,6 +296,7 @@ describe('BundleForm (#3624)', () => {
       openOrdersOnOlderComposition: 3,
       bundlesAvailable: 1,
       composedByMaster: null,
+      productId: 'p-set',
       components: [],
       componentAvailability: [
         {
@@ -252,6 +323,11 @@ describe('BundleForm (#3624)', () => {
       expect(apiClient.bundles.update).toHaveBeenCalledWith('set', [{ variantId: 'mug', quantity: 1 }]);
     });
     expect(apiClient.bundles.create).not.toHaveBeenCalled();
+    // The list-offer link has the product id of the bundle, read from the detail.
+    expect(await screen.findByTestId('bundle-form-list-offer')).toHaveAttribute(
+      'href',
+      expect.stringContaining('productIds=p-set'),
+    );
   });
 
   describe('sync composition from the master (#3932)', () => {
@@ -262,6 +338,7 @@ describe('BundleForm (#3624)', () => {
       openOrdersOnOlderComposition: 0,
       bundlesAvailable: 1,
       composedByMaster: null,
+      productId: 'p-set',
       components: [],
       componentAvailability: [],
     };
@@ -308,6 +385,7 @@ describe('BundleForm (#3624)', () => {
       openOrdersOnOlderComposition: 0,
       bundlesAvailable: 1,
       composedByMaster: null,
+      productId: 'p-set',
       components: [],
       componentAvailability: [],
     };

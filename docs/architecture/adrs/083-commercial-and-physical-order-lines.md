@@ -47,7 +47,7 @@ Two other designs also fell apart on inspection. Asking adapters to send `role` 
 **Pros:**
 - One frozen table gives every site the same answer; reservations, packing, decrements and edits cannot disagree.
 - Adapters carry no bundle knowledge; a non-implementing adapter stays correct.
-- Documents stay at the commercial grain, so totals still equal what was paid.
+- Documents stay at the commercial grain, so totals still equal what was paid, with one tax-driven exception (see Amendment: documents and VAT rates).
 
 **Cons / trade-offs:**
 - Fifteen call sites change (five swaps, four edit follow-ups, three availability sites, two mappers, plus ingestion).
@@ -56,6 +56,14 @@ Two other designs also fell apart on inspection. Asking adapters to send `role` 
 
 **Migration path:**
 - Additive. `lineExpansion` is NULL on existing orders, and a NULL expansion means the physical list equals the commercial list.
+
+## Amendment: documents and VAT rates (#3934)
+
+Decision 8 keeps documents at the commercial grain; two product decisions refine what that means for tax.
+
+**A. A bundle on a document follows its VAT rates, automatically.** The operator setting `bundleForm` is removed. When every component's catalogue rate equals the set line's rate, the set is one document line (unchanged). When they differ, the set is presented as its components, each at its own catalogue rate, the paid price split in proportion to standalone prices (cost when a component is not sold alone), the remainder on the largest, the discount built into unit prices, never a negative or 0,00 line. A component whose rate is unknown, or with neither price nor cost, is not guessed: the document is held with the persisted block reason `bundle-split-unknown` (the existing `salesDocumentBlockReason` mechanism). Component rates are catalogue facts read from the products context (ADR-063: rates are an input, never computed), and a transient failure reading them throws instead of falling back to another document shape. Return correction matches a returned component to its component line and credits every component line for a whole-set return. Research basis, not legal advice: a set of goods with different rates is separate supplies at their own rates; one set line is acceptable only when every component has the same rate; a proportional split is the accepted method; a receipt binds one name to one rate on the register.
+
+**B. A gift whose rate matches no paid line** is carried according to `config.giftOnDocuments.differentRateGift`: `priced-in` (default, the gift at its own rate with a share of the payment proportional to its standalone price) or `technical-cent` (the gift at 0,01, the cent taken from the largest paid line). Research basis, not legal advice: a gift tied to a purchase is part of the paid sale, and moving value away from a higher-rate item is the direction the authority warns about; industry tools use a 0,01 technical price, fiscal software refuses a 0,00 line, and a receipt cannot carry a negative line. Where a provider does not accept a zero line (a receipt always counts as such) no presented line is left at 0,00.
 
 ## References
 

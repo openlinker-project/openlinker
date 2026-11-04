@@ -1,45 +1,62 @@
 /**
  * A bundle on a sales document (#3934)
  *
- * By default a bundle is ONE document line at the price the buyer paid for the
- * set (`one-line`, unchanged). With `components` the set line is replaced by
- * its components and the paid price is split between them by standalone price,
- * so the document total still equals what was paid. A gift slot component is
- * priced 0 and goes through `presentGiftLines` afterwards, like any gift.
+ * The form is decided by the data, never by an operator setting (product
+ * decision A, ADR-083). Research basis, not legal advice: a set of goods with
+ * different tax rates is separate supplies, each taxed at its OWN rate, and the
+ * set price has to be split reasonably - proportionally to standalone prices is
+ * the accepted method, an equal-percentage cut of every component. One line
+ * "set" is acceptable only when every component carries the same rate. On a
+ * fiscal receipt a name is bound to one rate on the register, so a component must
+ * appear under its own name at its own rate.
+ *
+ * - every component's catalogue rate equals the set line's rate: the set stays
+ *   ONE line at the price the buyer paid (unchanged);
+ * - the rates differ: the set is presented as its components, each at its own
+ *   catalogue rate, the paid price split by standalone price (cost when a
+ *   component is not sold alone), the remainder on the largest, the discount
+ *   built into unit prices (never a negative line, never a 0.00 paid line);
+ * - a component's rate, or both its price and cost, is unknown: nothing is
+ *   guessed. {@link BundleSplitUnknownError} is thrown and the caller holds the
+ *   document with the named reason `bundle-split-unknown`.
+ *
+ * A gift slot component is priced 0 and goes through `presentGiftLines`
+ * afterwards, like any gift, at its own rate.
  *
  * Pure and import-free beyond the minor-unit helper. It moves amounts between
- * figures the source reported and computes no tax (ADR-063): every component
- * line keeps the rate of the set line it came from, which is what keeps the
- * per-rate sums equal to what was paid. The component data (names, standalone
- * prices, cost) is an ARGUMENT, resolved by the caller from the frozen
+ * figures the source reported and computes no tax (ADR-063): the component
+ * rates are catalogue facts supplied by the caller. The component data (names,
+ * standalone prices, cost, rate) is an ARGUMENT, resolved from the frozen
  * expansion, so this stays free of any sibling context.
- *
- * Setting: `config.giftOnDocuments.bundleForm` on the ORDER-SOURCE connection,
- * next to the gift form. It lives inside the existing object on purpose: one
- * knob family, no new connection config key.
  *
  * @module libs/core/src/sales-documents/domain/types
  */
-import { GIFT_ON_DOCUMENTS_CONFIG_KEY, type GiftPresentationLine } from './gift-lines.types';
+import type { GiftPresentationLine } from './gift-lines.types';
 import { minorUnitExponentFor } from './shipping-tax-split.types';
 
-export const BundleDocumentFormValues = ['one-line', 'components'] as const;
-export type BundleDocumentForm = (typeof BundleDocumentFormValues)[number];
-
-export const DEFAULT_BUNDLE_DOCUMENT_FORM: BundleDocumentForm = 'one-line';
+/** Why a bundle could not be presented without guessing. */
+export const BundleSplitUnknownReasonValues = [
+  'component-rate-unknown',
+  'component-value-unknown',
+] as const;
+export type BundleSplitUnknownReason = (typeof BundleSplitUnknownReasonValues)[number];
 
 /**
- * Read `config.giftOnDocuments.bundleForm`. Never throws; anything unrecognised
- * is `one-line`, because a typo must not change what a fiscal document says.
+ * A set that cannot be presented honestly. Carries ids and a closed reason
+ * only (PII-free), because it reaches an operator badge as the block detail.
  */
-export function readBundleDocumentForm(config: unknown): BundleDocumentForm {
-  if (typeof config !== 'object' || config === null) return DEFAULT_BUNDLE_DOCUMENT_FORM;
-  const raw = (config as Record<string, unknown>)[GIFT_ON_DOCUMENTS_CONFIG_KEY];
-  if (typeof raw !== 'object' || raw === null) return DEFAULT_BUNDLE_DOCUMENT_FORM;
-  const form = (raw as Record<string, unknown>).bundleForm;
-  return typeof form === 'string' && (BundleDocumentFormValues as readonly string[]).includes(form)
-    ? (form as BundleDocumentForm)
-    : DEFAULT_BUNDLE_DOCUMENT_FORM;
+export class BundleSplitUnknownError extends Error {
+  constructor(
+    readonly lineId: string,
+    readonly reason: BundleSplitUnknownReason,
+  ) {
+    super(
+      reason === 'component-rate-unknown'
+        ? `Bundle line ${lineId} has a component with no known tax rate; it cannot be presented on a document without guessing one`
+        : `Bundle line ${lineId} has a component with neither a price nor a cost to split the paid price by`,
+    );
+    this.name = 'BundleSplitUnknownError';
+  }
 }
 
 /** One component of a bundle line, as a document needs it. */
@@ -57,32 +74,37 @@ export interface DocumentBundleComponent {
   unitPriceGross?: number | null;
   /** Net unit cost: the fallback weight, and the reference price of a gift. */
   unitCostNet?: number | null;
+  /**
+   * The component's catalogue tax rate (percent-as-string code, ADR-063).
+   * Absent or blank means unknown, which holds the document.
+   */
+  taxRate?: string | null;
 }
 
-/** What a caller hands a mapper: the form and the components per bundle line id. */
+/** What a caller hands a mapper: the components per bundle line id. */
 export interface BundleDocumentPresentation {
-  form: BundleDocumentForm;
   byLineId: Record<string, DocumentBundleComponent[]>;
-}
-
-export interface BundleDocumentNote {
-  /** `bundle-split-missing`: no usable price or cost, so the set stays one line. */
-  code: 'bundle-split-missing';
-  lineId: string;
 }
 
 export interface BundleComponentLineInput {
   component: DocumentBundleComponent;
   quantity: number;
   unitPriceGross: number;
+  /** The component's own catalogue rate. */
+  taxRate: string;
   isGift: boolean;
   referenceUnitPriceGross?: number;
 }
 
+function rateKey(rate: string): string {
+  const trimmed = rate.trim();
+  return /^\d+(\.\d+)?$/.test(trimmed) ? String(Number(trimmed)) : trimmed.toLowerCase();
+}
+
 /**
- * Replace each bundle line by its components when the form is `components`.
- * `makeLine` builds the document line type of the caller from the set line.
- * A set that cannot be split falls back to its one line and is reported.
+ * Present each bundle line as one line or as its components, by the automatic
+ * rule above. `makeLine` builds the document line type of the caller from the
+ * set line. Throws {@link BundleSplitUnknownError} rather than guess.
  */
 export function presentBundleComponents<T extends GiftPresentationLine>(
   lines: readonly T[],
@@ -90,14 +112,13 @@ export function presentBundleComponents<T extends GiftPresentationLine>(
   presentation: BundleDocumentPresentation | undefined,
   makeLine: (parent: T, input: BundleComponentLineInput) => T,
   options: { currency?: string | null } = {},
-): { lines: T[]; notes: BundleDocumentNote[] } {
-  if (presentation === undefined || presentation.form !== 'components') {
-    return { lines: [...lines], notes: [] };
+): { lines: T[] } {
+  if (presentation === undefined) {
+    return { lines: [...lines] };
   }
   const factor = 10 ** minorUnitExponentFor(options.currency);
   const toMinor = (value: number): number => Math.round(value * factor);
   const fromMinor = (minor: number): number => minor / factor;
-  const notes: BundleDocumentNote[] = [];
   const out: T[] = [];
 
   for (const line of lines) {
@@ -107,12 +128,19 @@ export function presentBundleComponents<T extends GiftPresentationLine>(
       out.push(line);
       continue;
     }
+    const rates = components.map((c) => c.taxRate?.trim() ?? '');
+    if (rates.some((rate) => rate === '')) {
+      throw new BundleSplitUnknownError(lineId, 'component-rate-unknown');
+    }
+    if (rates.every((rate) => rateKey(rate) === rateKey(line.taxRate))) {
+      out.push(line);
+      continue;
+    }
+
     const paid = components.filter((c) => c.giftSlot !== true);
     const weights = weightsFor(paid, toMinor);
     if (paid.length === 0 || weights === null || !(line.quantity > 0)) {
-      notes.push({ code: 'bundle-split-missing', lineId });
-      out.push(line);
-      continue;
+      throw new BundleSplitUnknownError(lineId, 'component-value-unknown');
     }
     const total = Math.round(line.quantity * toMinor(line.unitPriceGross));
     const weightSum = weights.reduce((a, b) => a + b, 0);
@@ -120,7 +148,8 @@ export function presentBundleComponents<T extends GiftPresentationLine>(
     const largest = weights.indexOf(Math.max(...weights));
     shares[largest] += total - shares.reduce((a, b) => a + b, 0);
 
-    for (const component of components) {
+    components.forEach((component, index) => {
+      const taxRate = rates[index];
       if (component.giftSlot === true) {
         const reference = component.unitPriceGross ?? component.unitCostNet ?? undefined;
         out.push(
@@ -128,11 +157,12 @@ export function presentBundleComponents<T extends GiftPresentationLine>(
             component,
             quantity: component.quantity,
             unitPriceGross: 0,
+            taxRate,
             isGift: true,
             ...(reference !== undefined && reference !== null && { referenceUnitPriceGross: reference }),
           }),
         );
-        continue;
+        return;
       }
       const share = shares[paid.indexOf(component)];
       const quantity = component.quantity;
@@ -142,10 +172,11 @@ export function presentBundleComponents<T extends GiftPresentationLine>(
             component,
             quantity,
             unitPriceGross: fromMinor(Math.round(share / quantity)),
+            taxRate,
             isGift: false,
           }),
         );
-        continue;
+        return;
       }
       const unit = Math.floor(share / quantity);
       const remainder = share - unit * quantity;
@@ -157,18 +188,19 @@ export function presentBundleComponents<T extends GiftPresentationLine>(
             component,
             quantity,
             unitPriceGross: fromMinor(quantity === 1 ? share : unit),
+            taxRate,
             isGift: false,
           }),
         );
       } else {
         out.push(
-          makeLine(line, { component, quantity: quantity - 1, unitPriceGross: fromMinor(unit), isGift: false }),
-          makeLine(line, { component, quantity: 1, unitPriceGross: fromMinor(unit + remainder), isGift: false }),
+          makeLine(line, { component, quantity: quantity - 1, unitPriceGross: fromMinor(unit), taxRate, isGift: false }),
+          makeLine(line, { component, quantity: 1, unitPriceGross: fromMinor(unit + remainder), taxRate, isGift: false }),
         );
       }
-    }
+    });
   }
-  return { lines: out, notes };
+  return { lines: out };
 }
 
 /**

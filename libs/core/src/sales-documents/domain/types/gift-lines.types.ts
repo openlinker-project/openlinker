@@ -8,20 +8,33 @@
  *
  * Forms (rules D1-D4, C3 of the bundles-and-gifts spike):
  * - `omit` (default): the gift is not on the document.
- * - `show`: the gift is a 0,00 line. A provider that refuses zero (a fiscal register:
- *   error 41) gets one minor unit taken from a paid line of the SAME rate; with
- *   no such line the gift falls back to `priced-in`.
+ * - `show`: the gift is a 0,00 line. A provider that refuses zero (a fiscal
+ *   register rejects a zero-value line) gets one minor unit taken from a paid
+ *   line of the SAME rate; with no such line the gift is handled like a gift of
+ *   a different rate (see below).
  * - `priced-in`: part of the payment moves to the gift, in proportion to
  *   reference prices, each line keeping its own rate.
  * - `internal-record`: off the customer document, returned separately so the
  *   caller can record a free transfer.
  *
- * A gift whose rate matches no paid line is priced in automatically when it
- * would otherwise be omitted: omitting it would move value between rates. There
- * is deliberately NO "hold every document with a gift" option (rule C3).
+ * A gift whose rate matches no paid line is never silently dropped (product
+ * decision B, ADR-083). Research basis, not legal advice: a gift tied to a
+ * purchase is part of the paid sale, so leaving it off lets the whole payment
+ * be taxed at the paid lines' rates, and shifting value away from a
+ * higher-rate item is the direction the tax authority warns about. The
+ * operator chooses how it is carried (`config.giftOnDocuments.differentRateGift`):
+ * - `priced-in` (default): the gift at its own rate with a share of the
+ *   payment proportional to its standalone price (cost when not sold alone);
+ * - `technical-cent`: the gift at 0.01 per unit, the cent taken from the
+ *   largest paid line (common marketplace-tool practice).
+ * There is deliberately NO "hold every document with a gift" option (rule C3).
+ *
+ * Whenever the provider does not accept a zero-value line, no presented line is
+ * left at 0.00: one minor unit per unit is taken from the largest paid line of
+ * the same rate, or the line is reported as `zero-line-unfloorable`.
  *
  * Settings live on the ORDER-SOURCE connection (`config.giftOnDocuments`), the
- * ADR-082 shape; the default is `omit`.
+ * ADR-082 shape; the default form is `omit`.
  *
  * @module libs/core/src/sales-documents/domain/types
  */
@@ -49,32 +62,65 @@ export function readGiftLineForm(config: unknown): GiftLineForm {
     : DEFAULT_GIFT_LINE_FORM;
 }
 
+export const DifferentRateGiftValues = ['priced-in', 'technical-cent'] as const;
+export type DifferentRateGift = (typeof DifferentRateGiftValues)[number];
+
+export const DEFAULT_DIFFERENT_RATE_GIFT: DifferentRateGift = 'priced-in';
+
+/** Read `config.giftOnDocuments.differentRateGift`; anything unrecognised is the default. */
+export function readDifferentRateGift(config: unknown): DifferentRateGift {
+  if (typeof config !== 'object' || config === null) return DEFAULT_DIFFERENT_RATE_GIFT;
+  const raw = (config as Record<string, unknown>)[GIFT_ON_DOCUMENTS_CONFIG_KEY];
+  if (typeof raw !== 'object' || raw === null) return DEFAULT_DIFFERENT_RATE_GIFT;
+  const value = (raw as Record<string, unknown>).differentRateGift;
+  return typeof value === 'string' && (DifferentRateGiftValues as readonly string[]).includes(value)
+    ? (value as DifferentRateGift)
+    : DEFAULT_DIFFERENT_RATE_GIFT;
+}
+
+/** Both gift settings of a connection, named like the mapper inputs they feed. */
+export interface GiftDocumentSettings {
+  giftForm: GiftLineForm;
+  differentRateGift: DifferentRateGift;
+}
+
+export function readGiftDocumentSettings(config: unknown): GiftDocumentSettings {
+  return {
+    giftForm: readGiftLineForm(config),
+    differentRateGift: readDifferentRateGift(config),
+  };
+}
+
 /**
  * Strict write-side check for `config.giftOnDocuments`. The READ side forgives
  * anything (a stored value must never break an issuance); strictness belongs
- * here, where there is an operator to tell. Returns one message per problem.
+ * here, where there is an operator to tell. Returns one message per problem,
+ * all of them at once.
  */
 export function validateGiftOnDocumentsShape(value: unknown): { path: string; message: string }[] {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) {
     return [{ path: GIFT_ON_DOCUMENTS_CONFIG_KEY, message: 'must be an object' }];
   }
-  const form = (value as Record<string, unknown>).form;
+  const errors: { path: string; message: string }[] = [];
+  const record = value as Record<string, unknown>;
+  const form = record.form;
   if (typeof form !== 'string' || !(GiftLineFormValues as readonly string[]).includes(form)) {
-    return [
-      {
-        path: `${GIFT_ON_DOCUMENTS_CONFIG_KEY}.form`,
-        message: `must be one of ${GiftLineFormValues.join(', ')}`,
-      },
-    ];
+    errors.push({
+      path: `${GIFT_ON_DOCUMENTS_CONFIG_KEY}.form`,
+      message: `must be one of ${GiftLineFormValues.join(', ')}`,
+    });
   }
-  const bundleForm = (value as Record<string, unknown>).bundleForm;
-  if (bundleForm !== undefined && bundleForm !== 'one-line' && bundleForm !== 'components') {
-    // Spelled out here rather than imported: the bundle types import this file.
-    return [
-      { path: `${GIFT_ON_DOCUMENTS_CONFIG_KEY}.bundleForm`, message: 'must be one of one-line, components' },
-    ];
+  const different = record.differentRateGift;
+  if (
+    different !== undefined &&
+    (typeof different !== 'string' || !(DifferentRateGiftValues as readonly string[]).includes(different))
+  ) {
+    errors.push({
+      path: `${GIFT_ON_DOCUMENTS_CONFIG_KEY}.differentRateGift`,
+      message: `must be one of ${DifferentRateGiftValues.join(', ')}`,
+    });
   }
-  return [];
+  return errors;
 }
 
 /** The forms an operator may pick for a provider; `show` needs a declaration. */
@@ -105,7 +151,9 @@ export type GiftPresentationNote =
   | 'show-not-offered'
   | 'rate-not-on-document'
   | 'no-same-rate-paid-line'
-  | 'no-reference-price';
+  | 'no-reference-price'
+  | 'technical-cent-no-donor'
+  | 'zero-line-unfloorable';
 
 export interface GiftPresentationResult<T extends GiftPresentationLine> {
   /** The lines the document carries, in the original order. */
@@ -142,8 +190,9 @@ export function presentGiftLines<T extends GiftPresentationLine>(
   lines: readonly T[],
   form: GiftLineForm,
   acceptsZeroValueLine: boolean | undefined,
-  options: { currency?: string | null } = {},
+  options: { currency?: string | null; differentRateGift?: DifferentRateGift } = {},
 ): GiftPresentationResult<T> {
+  const differentRateGift = options.differentRateGift ?? DEFAULT_DIFFERENT_RATE_GIFT;
   const factor = 10 ** minorUnitExponentFor(options.currency);
   const toMinor = (value: number): number => Math.round(value * factor);
   const fromMinor = (minor: number): number => minor / factor;
@@ -157,7 +206,12 @@ export function presentGiftLines<T extends GiftPresentationLine>(
   const notes: GiftPresentationNote[] = [];
   const internalRecordLines: T[] = [];
   if (!entries.some((entry) => entry.gift)) {
-    return { lines: [...lines], internalRecordLines, appliedForm: form, notes };
+    return {
+      lines: floorZeroValueLines([...lines], acceptsZeroValueLine, toMinor, fromMinor, notes),
+      internalRecordLines,
+      appliedForm: form,
+      notes,
+    };
   }
 
   let effective: GiftLineForm = form;
@@ -171,28 +225,8 @@ export function presentGiftLines<T extends GiftPresentationLine>(
     entry.lines.reduce((sum, line) => sum + line.quantity * toMinor(line.unitPriceGross), 0);
   const paidRates = new Set(paid.map((entry) => rateKey(entry.source.taxRate)));
 
-  // Re-express a paid entry as exactly `totalMinor`. A per-unit price cannot
-  // always carry it (D2): n-1 units at the rounded price plus one unit carrying
-  // the difference, only when needed.
   const setEntryTotal = (entry: Entry<T>, totalMinor: number): void => {
-    const base = entry.source;
-    const quantity = base.quantity;
-    if (!Number.isInteger(quantity) || quantity < 1) {
-      entry.lines = [{ ...base, unitPriceGross: fromMinor(Math.round(totalMinor / quantity)) }];
-      return;
-    }
-    const unit = Math.floor(totalMinor / quantity);
-    const remainder = totalMinor - unit * quantity;
-    if (remainder === 0) {
-      entry.lines = [{ ...base, unitPriceGross: fromMinor(unit) }];
-    } else if (quantity === 1) {
-      entry.lines = [{ ...base, unitPriceGross: fromMinor(totalMinor) }];
-    } else {
-      entry.lines = [
-        { ...base, quantity: quantity - 1, unitPriceGross: fromMinor(unit) },
-        { ...base, quantity: 1, unitPriceGross: fromMinor(unit + remainder) },
-      ];
-    }
+    entry.lines = reexpressTotal(entry.source, totalMinor, fromMinor);
   };
 
   const largest = (candidates: readonly Entry<T>[]): Entry<T> | undefined =>
@@ -242,21 +276,38 @@ export function presentGiftLines<T extends GiftPresentationLine>(
   const toPriceIn: Entry<T>[] = [];
   const toDrop: Entry<T>[] = [];
 
+  // A gift whose rate no paid line carries (decision B): the operator's choice,
+  // never a silent drop. `technical-cent` falls back to `priced-in` when no
+  // paid line can spare the cent.
+  const handleDifferentRate = (entry: Entry<T>): void => {
+    if (differentRateGift === 'technical-cent') {
+      const need = Number.isInteger(entry.source.quantity) && entry.source.quantity >= 1 ? entry.source.quantity : 0;
+      const donor = need > 0 ? largest(paid.filter((p) => entryTotal(p) > need)) : undefined;
+      if (donor !== undefined) {
+        setEntryTotal(donor, entryTotal(donor) - need);
+        entry.lines = [{ ...entry.source, unitPriceGross: fromMinor(1) }];
+        return;
+      }
+      notes.push('technical-cent-no-donor');
+    }
+    toPriceIn.push(entry);
+  };
+
   for (const entry of giftEntries) {
     const sameRate = paid.filter((p) => rateKey(p.source.taxRate) === rateKey(entry.source.taxRate));
-    if (effective === 'priced-in') {
-      toPriceIn.push(entry);
-    } else if (effective === 'internal-record') {
+    const rateMismatch = paid.length > 0 && !paidRates.has(rateKey(entry.source.taxRate));
+    const zeroKept = effective === 'show' && acceptsZeroValueLine === true;
+    if (effective === 'internal-record') {
       internalRecordLines.push(entry.source);
       toDrop.push(entry);
+    } else if (rateMismatch && !zeroKept) {
+      notes.push('rate-not-on-document');
+      handleDifferentRate(entry);
+    } else if (effective === 'priced-in') {
+      toPriceIn.push(entry);
     } else if (effective === 'omit') {
-      if (!paidRates.has(rateKey(entry.source.taxRate)) && paid.length > 0) {
-        notes.push('rate-not-on-document');
-        toPriceIn.push(entry);
-      } else {
-        toDrop.push(entry);
-      }
-    } else if (acceptsZeroValueLine === true) {
+      toDrop.push(entry);
+    } else if (zeroKept) {
       // show, provider accepts zero: the line stays at 0,00 untouched.
     } else {
       // show, provider refuses zero: one minor unit per gift unit from the
@@ -278,9 +329,82 @@ export function presentGiftLines<T extends GiftPresentationLine>(
   }
 
   const dropped = new Set(toDrop);
-  const resultLines = entries.filter((entry) => !dropped.has(entry)).flatMap((entry) => entry.lines);
+  const resultLines = floorZeroValueLines(
+    entries.filter((entry) => !dropped.has(entry)).flatMap((entry) => entry.lines),
+    acceptsZeroValueLine,
+    toMinor,
+    fromMinor,
+    notes,
+  );
   const priced = toPriceIn.length > 0 && !toPriceIn.every((entry) => dropped.has(entry));
   const appliedForm: GiftLineForm =
     effective === 'omit' && priced ? 'priced-in' : effective;
   return { lines: resultLines, internalRecordLines, appliedForm, notes };
+}
+
+/**
+ * Re-express a line as exactly `totalMinor`. A per-unit price cannot always
+ * carry it (D2): n-1 units at the rounded price plus one unit carrying the
+ * difference, only when needed.
+ */
+function reexpressTotal<T extends GiftPresentationLine>(
+  base: T,
+  totalMinor: number,
+  fromMinor: (minor: number) => number,
+): T[] {
+  const quantity = base.quantity;
+  if (!Number.isInteger(quantity) || quantity < 1) {
+    return [{ ...base, unitPriceGross: fromMinor(Math.round(totalMinor / quantity)) }];
+  }
+  const unit = Math.floor(totalMinor / quantity);
+  const remainder = totalMinor - unit * quantity;
+  if (remainder === 0) return [{ ...base, unitPriceGross: fromMinor(unit) }];
+  if (quantity === 1) return [{ ...base, unitPriceGross: fromMinor(totalMinor) }];
+  return [
+    { ...base, quantity: quantity - 1, unitPriceGross: fromMinor(unit) },
+    { ...base, quantity: 1, unitPriceGross: fromMinor(unit + remainder) },
+  ];
+}
+
+/**
+ * A provider that does not accept a zero-value line must never receive one.
+ * Each zero line gets one minor unit per unit, taken from the largest paid line
+ * of the SAME rate that can spare it; with none, the line stays and the note
+ * `zero-line-unfloorable` names it, so the caller can refuse or log it.
+ */
+function floorZeroValueLines<T extends GiftPresentationLine>(
+  lines: T[],
+  acceptsZeroValueLine: boolean | undefined,
+  toMinor: (value: number) => number,
+  fromMinor: (minor: number) => number,
+  notes: GiftPresentationNote[],
+): T[] {
+  if (acceptsZeroValueLine === true) return lines;
+  const result = [...lines];
+  for (let index = 0; index < result.length; index += 1) {
+    const line = result[index];
+    if (toMinor(line.unitPriceGross) !== 0 || !(line.quantity > 0)) continue;
+    const need = Number.isInteger(line.quantity) ? line.quantity : 1;
+    let donorIndex = -1;
+    let donorTotal = 0;
+    result.forEach((candidate, candidateIndex) => {
+      if (candidate.isGift === true || rateKey(candidate.taxRate) !== rateKey(line.taxRate)) return;
+      const total = candidate.quantity * toMinor(candidate.unitPriceGross);
+      if (total > need && total > donorTotal) {
+        donorTotal = total;
+        donorIndex = candidateIndex;
+      }
+    });
+    if (donorIndex < 0) {
+      notes.push('zero-line-unfloorable');
+      continue;
+    }
+    const donor = result[donorIndex];
+    const donorLines = reexpressTotal(donor, donorTotal - need, fromMinor);
+    result[index] = { ...line, unitPriceGross: fromMinor(1) };
+    result.splice(donorIndex, 1, ...donorLines);
+    // The donor may have split into two lines; indexes after it shifted.
+    if (donorIndex < index) index += donorLines.length - 1;
+  }
+  return result;
 }

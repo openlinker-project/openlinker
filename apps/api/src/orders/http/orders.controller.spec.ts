@@ -1063,6 +1063,28 @@ describe('OrdersController', () => {
       });
     });
 
+    it('should surface every held multipack line, not only the first (#3520)', async () => {
+      const held = Object.create(mockOrder, {
+        recordStatus: { value: 'awaiting_mapping' },
+        mappingFailureReason: {
+          value: 'multipack without a bundle [multipack-without-bundle]: lines sell several units',
+        },
+        rawMultipackLines: {
+          value: [
+            { itemId: 'L1', name: 'A', packQuantity: 2, productRef: { type: 'offer', externalId: 'O1' } },
+            { itemId: 'L2', name: 'B', packQuantity: 3, productRef: { type: 'offer', externalId: 'O2' } },
+          ],
+        },
+      }) as OrderRecord;
+      repository.findById.mockResolvedValue(held);
+      mockBundleMapping.getInternalId.mockResolvedValue(null);
+
+      const result = await controller.getOrder('ol_order_001');
+
+      expect(result.multipackHolds?.map((h) => h.lineId)).toEqual(['L1', 'L2']);
+      expect(result.multipackHold?.lineId).toBe('L1');
+    });
+
     it('should leave bundleLines off an order without bundles (#3624)', async () => {
       repository.findById.mockResolvedValue(mockOrder);
       const result = await controller.getOrder('ol_order_001');

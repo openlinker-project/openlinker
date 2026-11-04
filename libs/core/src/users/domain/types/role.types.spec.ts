@@ -192,4 +192,14 @@ describe('ROLE_PERMISSIONS', () => {
       expect(ROLE_PERMISSIONS.viewer).not.toContain('orders:export');
     });
   });
+
+  describe('bundles:write (#3520)', () => {
+    it('should be held by admin and operator, but not viewer or packer', () => {
+      expect(ROLE_PERMISSIONS.admin).toContain('bundles:write');
+      expect(ROLE_PERMISSIONS.operator).toContain('bundles:write');
+      expect(ROLE_PERMISSIONS.operator).not.toContain('products:write');
+      expect(ROLE_PERMISSIONS.viewer).not.toContain('bundles:write');
+      expect(ROLE_PERMISSIONS.packer).not.toContain('bundles:write');
+    });
+  });
 });

@@ -181,6 +181,21 @@ export const SALES_DOCUMENT_GATE_REASON_COPY = {
     keepsAction: false,
   },
   /**
+   * A set sold at one price whose components carry different tax rates must be
+   * shown as its components, each at its own rate (ADR-083). It is held when a
+   * component's rate, or any price or cost to split the paid price by, is
+   * unknown - nothing is guessed on a fiscal document. The remedy is upstream
+   * (read the rate or a price in the shop), and the badge clears on the next
+   * transition. The `detail` carried on the block names the set line.
+   */
+  'bundle-split-unknown': {
+    short: 'Set cannot be split',
+    detail:
+      'A set in this order contains items with different tax rates, but a rate or a price needed to split it is unknown, so nothing was issued. Fix the rate or price in the shop; the order is retried on its next update.',
+    tone: 'error',
+    keepsAction: false,
+  },
+  /**
    * The one reason where the absent action is a server-side refusal rather than
    * a presentation choice (#2248, ADR-063): issuing by hand would make a
    * provider guess a rate onto a real fiscal document, so the backend closes the

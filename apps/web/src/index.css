@@ -32857,3 +32857,16 @@ legend.analytics-settings-dialog__label {
   min-height: 44px;
   font-weight: 600;
 }
+
+/* Bundle form (#3520): name / SKU / price reflow to one column on a phone. */
+.bundle-form__product-grid {
+  display: grid;
+  gap: var(--space-3);
+  grid-template-columns: 1fr;
+}
+
+@media (min-width: 768px) {
+  .bundle-form__product-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}

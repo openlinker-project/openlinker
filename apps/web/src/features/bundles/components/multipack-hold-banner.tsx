@@ -27,11 +27,18 @@ export interface MultipackHold {
   sku: string | null;
 }
 
-export function MultipackHoldBanner({ hold }: { hold: MultipackHold }): ReactElement {
+export function MultipackHoldBanner({
+  hold,
+  otherLinesHeld = false,
+}: {
+  hold: MultipackHold;
+  /** The order holds more than one multipack line; confirming this one does not free the order. */
+  otherLinesHeld?: boolean;
+}): ReactElement {
   const copy = useMessages('bundles');
   const { locale } = useLocale();
   const demoMode = useDemoMode();
-  const write = useWriteAccess('products:write', demoMode);
+  const write = useWriteAccess('bundles:write', demoMode);
   const confirm = useConfirmMultipackMutation();
   const [released, setReleased] = useState<number | null>(null);
   const name = hold.productName ?? hold.lineName ?? hold.sku ?? '';
@@ -45,7 +52,9 @@ export function MultipackHoldBanner({ hold }: { hold: MultipackHold }): ReactEle
         title={copy.order.multipackConfirmedTitle}
         data-testid="order-multipack-created"
       >
-        {formatPlural(released, copy.order.multipackContinue, locale)}
+        {otherLinesHeld
+          ? copy.order.multipackConfirmedOthers
+          : formatPlural(released, copy.order.multipackContinue, locale)}
       </Alert>
     );
   }
@@ -95,7 +104,10 @@ export function MultipackHoldBanner({ hold }: { hold: MultipackHold }): ReactEle
     >
       <p>{interpolate(copy.order.multipackBody, { n: hold.packQuantity })}</p>
       <p data-testid="order-multipack-confirm-text">
-        {interpolate(copy.order.multipackConfirmText, { n: hold.packQuantity, name })}
+        {interpolate(
+          otherLinesHeld ? copy.order.multipackConfirmTextLine : copy.order.multipackConfirmText,
+          { n: hold.packQuantity, name },
+        )}
       </p>
       {confirm.isError ? <p role="alert">{copy.order.multipackFailed}</p> : null}
     </Alert>

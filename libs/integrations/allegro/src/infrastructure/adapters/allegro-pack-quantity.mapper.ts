@@ -31,6 +31,11 @@ export function toPackQuantity(productSet: AllegroLineProductSet): number | unde
     if (typeof quantity !== 'number' || !Number.isFinite(quantity) || quantity <= 0) {
       return undefined;
     }
+    // An entry with no usable id cannot be shown to be the same product as the
+    // others, so the set is not read as a multipack.
+    if (typeof product.id !== 'string' || product.id.length === 0) {
+      return undefined;
+    }
     if (index === 0) {
       firstId = product.id;
     } else if (product.id !== firstId) {

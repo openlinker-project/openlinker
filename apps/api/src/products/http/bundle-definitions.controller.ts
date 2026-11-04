@@ -22,6 +22,7 @@ import {
   Param,
   Post,
   Put,
+  Query,
   UnprocessableEntityException,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
@@ -223,6 +224,48 @@ export class BundleDefinitionsController {
   }
 
   @Roles('admin', 'operator', 'viewer')
+  @Get('used-in')
+  @ApiOperation({
+    summary: 'The bundles that hold any of the given products as a component',
+    description: 'One batched reverse lookup for a product with several variants (#3624).',
+  })
+  @ApiResponse({ status: 200, type: [BundleUsedInResponseDto] })
+  async usedInMany(@Query('variantIds') variantIds?: string): Promise<BundleUsedInResponseDto[]> {
+    const ids = [
+      ...new Set(
+        (variantIds ?? '')
+          .split(',')
+          .map((id) => id.trim())
+          .filter((id) => id.length > 0)
+      ),
+    ].slice(0, 200);
+    if (ids.length === 0) {
+      return [];
+    }
+    const containing = await this.bundles.findCurrentContainingComponents(ids);
+    const summaries = await this.summarise(containing.map((d) => d.variantId));
+    const idSet = new Set(ids);
+    return containing.flatMap((definition) => {
+      // One row per (bundle, component variant): two variants of one product in
+      // the same bundle are two rows, told apart by `componentVariantId`.
+      return definition.components
+        .filter((c) => idSet.has(c.variantId))
+        .map((component) => ({
+          bundleVariantId: definition.variantId,
+          componentVariantId: component.variantId,
+          quantity: component.quantity,
+          ...(component.giftSlot === true && { giftSlot: true }),
+          bundle: summaries.get(definition.variantId) ?? {
+            name: null,
+            sku: null,
+            price: null,
+            currency: null,
+          },
+        }));
+    });
+  }
+
+  @Roles('admin', 'operator', 'viewer')
   @Get('used-in/:variantId')
   @ApiOperation({
     summary: 'The bundles that hold a product as a component',
@@ -274,7 +317,8 @@ export class BundleDefinitionsController {
       .sort((a, b) => b.version - a.version)
       .map((version) => ({
         ...toDto(version),
-        current: version.version === newest,
+        // A deleted bundle retires every version, so none is in force.
+        current: version.version === newest && version.retired !== true,
         createdAt: version.createdAt.toISOString(),
         openOrders: countByVersion.get(version.version) ?? 0,
         componentSummaries: version.components.map(
@@ -299,6 +343,7 @@ export class BundleDefinitionsController {
         message: `No bundle definition for variant ${variantId}`,
       });
     }
+    const [bundleVariant] = await this.products.getVariantsByIds([variantId]);
     const [rows, [bundleAvailability], summaries, versionCounts, master] = await Promise.all([
       this.inventoryQuery.getAvailabilityByVariantIds(definition.components.map((c) => c.variantId)),
       // The SAME function publishing uses, so the number shown is the number
@@ -326,6 +371,7 @@ export class BundleDefinitionsController {
     });
     return {
       ...toDto(definition),
+      productId: bundleVariant?.productId ?? null,
       composedByMaster: master,
       bundle: summaries.get(variantId) ?? emptySummary,
       openOrdersOnOlderComposition: versionCounts

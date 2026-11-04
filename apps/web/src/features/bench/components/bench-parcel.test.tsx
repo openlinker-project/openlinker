@@ -1153,7 +1153,7 @@ describe('BenchParcelView (#2418)', () => {
       expect(ids).toEqual(['a', 'b', 'solo']);
     });
 
-    it('should say a bundle component is missing only when the bundle is all that keeps the box open', async () => {
+    it('should not raise the refusal while the packer is simply scanning the last component of a bundle', async () => {
       mount(
         parcel({
           lines: [
@@ -1162,9 +1162,22 @@ describe('BenchParcelView (#2418)', () => {
           ],
         })
       );
+      await screen.findByTestId('bench-bundle-header');
+      expect(screen.queryByTestId('bench-component-missing-alert')).toBeNull();
+    });
+
+    it('should say a bundle component cannot be verified only when nothing is left to scan for it', async () => {
+      mount(
+        parcel({
+          lines: [
+            line({ workLineId: 'a', name: 'Kubek', requiredQuantity: 1, verifiedQuantity: 1, bundle }),
+            line({ workLineId: 'b', name: 'Kawa', sku: null, ean: null, requiredQuantity: 1, verifiedQuantity: 0, bundle }),
+          ],
+        })
+      );
       const alert = await screen.findByTestId('bench-component-missing-alert');
       expect(alert).toHaveTextContent('a bundle component is missing');
-      expect(screen.getByTestId('bench-missing-detail')).toHaveTextContent('Missing: Kawa');
+      expect(screen.getByTestId('bench-missing-detail')).toHaveTextContent('Cannot be verified (nothing to scan): Kawa');
     });
 
     it('should not raise the refusal while ordinary items are still to scan', async () => {

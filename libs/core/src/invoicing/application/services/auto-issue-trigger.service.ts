@@ -174,13 +174,14 @@ import {
   SalesDocumentUncountedUnresolvedReasonValues,
   isTaxRateEnforced,
   readDeliveryOnDocuments,
-  readGiftLineForm,
+  readGiftDocumentSettings,
+  BundleSplitUnknownError,
   type BundleDocumentPresentation,
   readZeroValueLineSupport,
   resolveDeliveryLine,
   shippingSplitInputs,
 } from '@openlinker/core/sales-documents';
-import type { GiftLineForm, ResolvedDeliveryLine } from '@openlinker/core/sales-documents';
+import type { GiftDocumentSettings, ResolvedDeliveryLine } from '@openlinker/core/sales-documents';
 import { Logger } from '@openlinker/shared/logging';
 import {
   describeMissingTaxRate,
@@ -289,6 +290,7 @@ const PII_SAFE_ERROR_NAMES: ReadonlySet<string> = new Set([
   'InvalidFiscalLineError',
   'UnsupportedFiscalPriceTreatmentError',
   'BatchedTriggerNotImplementedError',
+  'BundleSplitUnknownError',
 ]);
 
 @Injectable()
@@ -1082,7 +1084,7 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
         taxRateEra,
         buyerTaxId,
         deliveryLine,
-        readGiftLineForm(sourceConnection?.config),
+        readGiftDocumentSettings(sourceConnection?.config),
         acceptsZeroValueLine,
         bundleDocument,
       );
@@ -1110,6 +1112,13 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
         // change that until the feature ships or the operator picks another model.
         return await this.reportBlock(
           { reason: BLOCK_REASON_BY_TRIGGER_MODEL.batched },
+          order.id,
+          matchedRuleId,
+        );
+      }
+      if (error instanceof BundleSplitUnknownError) {
+        return await this.reportBlock(
+          { reason: 'bundle-split-unknown', detail: describeLineTotalMismatch(error) },
           order.id,
           matchedRuleId,
         );
@@ -1236,7 +1245,7 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
         taxRateEra,
         buyerTaxId,
         deliveryLine,
-        readGiftLineForm(sourceConnection?.config),
+        readGiftDocumentSettings(sourceConnection?.config),
         await this.readFiscalZeroValueLineSupport(connection.id),
         bundleDocument,
       );
@@ -1256,6 +1265,13 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
       if (error instanceof BatchedTriggerNotImplementedError) {
         return await this.reportBlock(
           { reason: BLOCK_REASON_BY_TRIGGER_MODEL.batched },
+          order.id,
+          matchedRuleId,
+        );
+      }
+      if (error instanceof BundleSplitUnknownError) {
+        return await this.reportBlock(
+          { reason: 'bundle-split-unknown', detail: describeLineTotalMismatch(error) },
           order.id,
           matchedRuleId,
         );
@@ -1494,7 +1510,7 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
     taxRateEra?: string | null,
     buyerTaxId?: string | null,
     deliveryLine?: ResolvedDeliveryLine,
-    giftForm?: GiftLineForm,
+    giftSettings?: GiftDocumentSettings,
     acceptsZeroValueLine?: boolean,
     bundleDocument?: BundleDocumentPresentation,
   ): InvoicingIssuePayloadV1 {
@@ -1533,7 +1549,7 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
       idempotencyKey,
       shippingLineName,
       deliveryLine,
-      giftForm,
+      ...giftSettings,
       acceptsZeroValueLine,
       bundleDocument,
       taxRateEra,
@@ -1628,7 +1644,7 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
     taxRateEra?: string | null,
     buyerTaxId?: string | null,
     deliveryLine?: ResolvedDeliveryLine,
-    giftForm?: GiftLineForm,
+    giftSettings?: GiftDocumentSettings,
     acceptsZeroValueLine?: boolean,
     bundleDocument?: BundleDocumentPresentation,
   ): FiscalizationRegisterPayloadV1 {
@@ -1644,7 +1660,7 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
       idempotencyKey,
       shippingLineName: this.readShippingLineName(connection),
       deliveryLine,
-      giftForm,
+      ...giftSettings,
       acceptsZeroValueLine,
       bundleDocument,
       taxRateEra,

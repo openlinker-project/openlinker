@@ -45,6 +45,44 @@ describe('MultipackHoldBanner (#3624)', () => {
     expect(await screen.findByTestId('order-multipack-created')).toHaveTextContent('2 orders continue.');
   });
 
+  it('should enable the action for an operator, who holds bundles:write but not products:write', async () => {
+    renderWithProviders(<MultipackHoldBanner hold={hold} />, {
+      sessionAdapter: createAuthenticatedSessionAdapter({
+        id: 'u',
+        username: 'op',
+        email: null,
+        role: 'operator',
+        permissions: ['orders:read', 'bundles:write'],
+        analyticsConsent: true,
+      }),
+    });
+    await waitFor(() => {
+      expect(screen.getByTestId('order-multipack-create-bundle')).toBeEnabled();
+    });
+  });
+
+  it('should not promise the order continues while another multipack line is still held', async () => {
+    const apiClient = createMockApiClient({
+      bundles: {
+        confirmMultipack: vi
+          .fn()
+          .mockResolvedValue({ variantId: 'v-coffee', packQuantity: 3, releasedOrders: 0 }),
+      },
+    });
+    const user = userEvent.setup();
+    renderWithProviders(<MultipackHoldBanner hold={hold} otherLinesHeld />, {
+      apiClient,
+      sessionAdapter: createAuthenticatedSessionAdapter(),
+    });
+    await waitFor(() => {
+      expect(screen.getByTestId('order-multipack-create-bundle')).toBeEnabled();
+    });
+    await user.click(screen.getByTestId('order-multipack-create-bundle'));
+    expect(await screen.findByTestId('order-multipack-created')).toHaveTextContent(
+      'stays held until the other held lines',
+    );
+  });
+
   it('should show the action disabled with the reason for a role that cannot write', () => {
     renderWithProviders(<MultipackHoldBanner hold={hold} />, {
       sessionAdapter: createAuthenticatedSessionAdapter({

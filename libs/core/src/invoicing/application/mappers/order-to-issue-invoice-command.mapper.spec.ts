@@ -1069,10 +1069,10 @@ describe('toIssueInvoiceCommand - bundle components (#3934)', () => {
       items: [makeItem({ id: 'set', variantId: 'vs', price: 100, taxRate: '23', name: 'Gift set' })],
     });
   const bundleDocument = {
-    form: 'components' as const,
     byLineId: {
       set: [
         {
+          taxRate: '8',
           lineId: 'set~c:a',
           variantId: 'a',
           productId: 'pa',
@@ -1081,6 +1081,7 @@ describe('toIssueInvoiceCommand - bundle components (#3934)', () => {
           unitPriceGross: 80,
         },
         {
+          taxRate: '8',
           lineId: 'set~c:g',
           variantId: 'g',
           productId: 'pg',
@@ -1095,9 +1096,61 @@ describe('toIssueInvoiceCommand - bundle components (#3934)', () => {
   const total = (lines: { quantity: number; unitPriceGross: number }[]): number =>
     lines.reduce((sum, line) => sum + Math.round(line.quantity * line.unitPriceGross * 100), 0);
 
-  it('should keep the set as one line by default', () => {
+  it('should keep the set as one line when every component has the set rate', () => {
+    const sameRate = {
+      byLineId: {
+        set: bundleDocument.byLineId.set.map((c) => ({ ...c, taxRate: '23' })),
+      },
+    };
+    const cmd = toIssueInvoiceCommand({
+      order: bundleOrder(),
+      connectionId: 'c',
+      bundleDocument: sameRate,
+    });
+    expect(cmd.lines.map((l) => l.name)).toEqual(['Gift set']);
+  });
+
+  it('should keep the set as one line when the order carries no bundle data', () => {
     const cmd = toIssueInvoiceCommand({ order: bundleOrder(), connectionId: 'c' });
     expect(cmd.lines.map((l) => l.name)).toEqual(['Gift set']);
+  });
+
+  it('should present a mixed-rate set as components at their own rates summing to what was paid', () => {
+    const mixed = {
+      byLineId: {
+        set: [
+          { ...bundleDocument.byLineId.set[0], taxRate: '23', unitPriceGross: 60 },
+          {
+            lineId: 'set~c:b',
+            variantId: 'b',
+            productId: 'pb',
+            name: 'Book',
+            quantity: 1,
+            unitPriceGross: 40,
+            taxRate: '5',
+          },
+        ],
+      },
+    };
+    const cmd = toIssueInvoiceCommand({
+      order: bundleOrder(),
+      connectionId: 'c',
+      bundleDocument: mixed,
+    });
+    expect(cmd.lines.map((l) => [l.name, l.taxRate, l.unitPriceGross])).toEqual([
+      ['Soap', '23', 60],
+      ['Book', '5', 40],
+    ]);
+    expect(total(cmd.lines)).toBe(10000);
+  });
+
+  it('should refuse a set whose component rate is unknown', () => {
+    const unknown = {
+      byLineId: { set: bundleDocument.byLineId.set.map((c) => ({ ...c, taxRate: null })) },
+    };
+    expect(() =>
+      toIssueInvoiceCommand({ order: bundleOrder(), connectionId: 'c', bundleDocument: unknown }),
+    ).toThrow('Bundle line set has a component with no known tax rate');
   });
 
   it('should present the components and omit the gift slot, total equal to what was paid', () => {

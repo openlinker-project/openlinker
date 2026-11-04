@@ -871,7 +871,12 @@ export class OrdersController {
     // the service validate against the union — so failing loudly is the right
     // trade, but it is a new consequence rather than a pre-existing one.
     dto.bundleLines = await this.loadBundleLines(order);
-    dto.multipackHold = await this.loadMultipackHold(order);
+    const multipackHolds = await this.loadMultipackHolds(order);
+    if (multipackHolds.length > 0) {
+      dto.multipackHolds = multipackHolds;
+      // First line, kept for readers of the single-line shape.
+      dto.multipackHold = multipackHolds[0];
+    }
     const holds = await this.holdService.listHolds(order.internalOrderId);
     dto.holdHistory = holds.map((hold) => this.toHoldDto(hold));
     dto.activeHold = dto.holdHistory.find((hold) => hold.releasedAt === null) ?? null;
@@ -1812,52 +1817,54 @@ export class OrdersController {
   }
 
   /**
-   * The held multipack line and the product its offer maps to (#3624). DETAIL
-   * only; best-effort, because the banner still helps without the product.
+   * Every held multipack line and the product its offer maps to (#3624). DETAIL
+   * only; best-effort, because the banner still helps without the product. One
+   * entry per line: an order can hold several, and confirming one leaves the
+   * others held.
    */
-  private async loadMultipackHold(order: OrderRecord): Promise<OrderMultipackHoldDto | undefined> {
+  private async loadMultipackHolds(order: OrderRecord): Promise<OrderMultipackHoldDto[]> {
     if (
       order.recordStatus !== 'awaiting_mapping' ||
       !order.mappingFailureReason?.includes(`[${MULTIPACK_WITHOUT_BUNDLE_REASON_CODE}]`)
     ) {
-      return undefined;
+      return [];
     }
-    const line = order.rawMultipackLines[0];
-    if (line === undefined) {
-      return undefined;
-    }
-    let variantId: string | null = null;
-    let productName: string | null = null;
-    let sku: string | null = null;
-    try {
-      if (line.productRef.type === 'offer') {
-        variantId = await this.identifierMapping.getInternalId(
-          CORE_ENTITY_TYPE.Offer,
-          line.productRef.externalId,
-          order.sourceConnectionId
+    const holds: OrderMultipackHoldDto[] = [];
+    for (const line of order.rawMultipackLines) {
+      let variantId: string | null = null;
+      let productName: string | null = null;
+      let sku: string | null = null;
+      try {
+        if (line.productRef.type === 'offer') {
+          variantId = await this.identifierMapping.getInternalId(
+            CORE_ENTITY_TYPE.Offer,
+            line.productRef.externalId,
+            order.sourceConnectionId
+          );
+        }
+        if (variantId !== null) {
+          const [variant] = await this.productsService.getVariantsByIds([variantId]);
+          sku = variant?.sku ?? null;
+          if (variant !== undefined) {
+            const [product] = await this.productsService.getProductsByIds([variant.productId]);
+            productName = product?.name ?? null;
+          }
+        }
+      } catch (error) {
+        this.logger.warn(
+          `Could not resolve the held multipack product for order ${order.internalOrderId}: ${(error as Error).message}`
         );
       }
-      if (variantId !== null) {
-        const [variant] = await this.productsService.getVariantsByIds([variantId]);
-        sku = variant?.sku ?? null;
-        if (variant !== undefined) {
-          const [product] = await this.productsService.getProductsByIds([variant.productId]);
-          productName = product?.name ?? null;
-        }
-      }
-    } catch (error) {
-      this.logger.warn(
-        `Could not resolve the held multipack product for order ${order.internalOrderId}: ${(error as Error).message}`
-      );
+      holds.push({
+        lineId: line.itemId,
+        packQuantity: line.packQuantity,
+        lineName: line.name,
+        variantId,
+        productName,
+        sku,
+      });
     }
-    return {
-      lineId: line.itemId,
-      packQuantity: line.packQuantity,
-      lineName: line.name,
-      variantId,
-      productName,
-      sku,
-    };
+    return holds;
   }
 
   /**

@@ -40,6 +40,7 @@ describe('sales-document reason vocabularies (ADR-041 decision 11)', () => {
       'missing-tax-rate',
       'tax-rate-conflict',
       'line-total-mismatch',
+      'bundle-split-unknown',
       'trigger-model-manual',
       'trigger-model-batched',
     ]);
@@ -67,6 +68,7 @@ describe('sales-document reason vocabularies (ADR-041 decision 11)', () => {
       'missing-tax-rate',
       'tax-rate-conflict',
       'line-total-mismatch',
+      'bundle-split-unknown',
       'trigger-model-batched',
     ]);
     expect(SalesDocumentAttentionReasonValues).not.toContain('trigger-model-manual');

@@ -5,7 +5,7 @@
       "bundleHeader": "Bundle: {name}",
       "bundleProgress": "{done} of {total} in the box",
       "includeGift": "Include the gift: {name}",
-      "missingDetail": "{name} has {total} components, {done} are in the parcel. Missing: {missing}. The parcel closes by itself only after all items are scanned. Do not send a bundle in parts.",
+      "missingDetail": "{name} has {total} components, {done} are in the parcel. Cannot be verified (nothing to scan): {missing}. The parcel closes by itself only after all items are verified. Do not send a bundle in parts.",
       "missingTitle": "The parcel cannot be closed: a bundle component is missing"
     },
     "form": {
@@ -42,6 +42,7 @@
       "intro": "A bundle is a product with components. Pick the components and quantities, OpenLinker works out the rest.",
       "listOffer": "List an offer",
       "loadFailed": "The bundle could not be loaded.",
+      "loading": "Loading the bundle...",
       "markGift": "Mark as gift",
       "nestedBundle": "{name} is a bundle, and a bundle cannot be a component of another bundle.",
       "nestedGeneric": "This combination is not allowed: a bundle cannot contain a bundle.",
@@ -71,7 +72,10 @@
       "remove": "Remove",
       "removeLabel": "Remove {name}",
       "save": "Save bundle",
+      "saveConflict": "The bundle already exists or was changed by someone else. Reload the page and try again.",
       "saveFailed": "The bundle could not be saved.",
+      "saveInvalid": "The bundle is not valid. Check the components and quantities.",
+      "saveNotFound": "This bundle or one of its products no longer exists.",
       "saved": "Bundle saved",
       "savedBody": "You sell the bundle like any product. Channels get quantity {n} pcs on the next sync.",
       "savedBodyUnknown": "You sell the bundle like any product. Channels get its quantity once the stock of every component is known.",
@@ -82,10 +86,12 @@
       "syncDone": "New version saved from {name}. Open orders keep their composition.",
       "syncFailed": "The composition could not be synced.",
       "syncFromMaster": "Sync composition from {name}",
+      "syncMasterUnavailable": "{name} could not be reached, so the composition was not read. Nothing was changed. Try again later.",
       "syncNotPack": "This product is not a bundle in {name}. Nothing was changed.",
       "syncUnmapped": "These components are not in OpenLinker yet: {ids}. Sync them first.",
       "syncing": "Syncing...",
       "unmarkGift": "Remove gift mark",
+      "variantsFailed": "The variants of this product could not be loaded. Try again.",
       "viewOnlyReason": "Creating and changing bundles needs the admin or operator role."
     },
     "list": {
@@ -122,6 +128,8 @@
       "inBundlePrice": "in the bundle price",
       "multipackBody": "The channel sold {n} units of one product in one offer, and OpenLinker has not been told what that means. Without it, 1 unit would come off stock instead of {n}.",
       "multipackConfirmText": "One sale of this offer = {n} x {name}. Every order waiting for it will continue.",
+      "multipackConfirmTextLine": "One sale of this offer = {n} x {name}. The order continues once every held line is confirmed.",
+      "multipackConfirmedOthers": "Confirmed for this line. The order stays held until the other held lines are confirmed too.",
       "multipackConfirmedTitle": "Confirmed: the orders continue",
       "multipackContinue": {
         "one": "{n} order continues.",
@@ -463,6 +471,7 @@
       "noSplitTotal": "The price paid for this set is not known, so it cannot be split. Return the whole bundle instead.",
       "noneSelected": "Pick at least one component.",
       "partialHint": "Only the components you tick go back to stock.",
+      "previewFailed": "The components of this bundle could not be loaded, so it cannot be restocked yet. Try again.",
       "share": "Worth {amount} of the set price",
       "staysWithCustomer": "Stays with the customer",
       "title": "What is coming back",

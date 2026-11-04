@@ -16,7 +16,15 @@ describe('summarizeComponentCredits', () => {
       act(),
       act({ componentVariantId: 'v-b', componentShareGross: 10.5 }),
     ]);
-    expect(credits.get('l1')).toEqual({ units: 1, amountGross: 50.5, variantIds: ['v-a', 'v-b'] });
+    expect(credits.get('l1')).toEqual({
+      units: 1,
+      amountGross: 50.5,
+      variantIds: ['v-a', 'v-b'],
+      components: [
+        { variantId: 'v-a', bundleUnits: 1 },
+        { variantId: 'v-b', bundleUnits: 1 },
+      ],
+    });
   });
 
   it('should ignore a group with a refused component', () => {

@@ -157,6 +157,40 @@ describe('BundleDefinitionsController (#3607)', () => {
     ]);
   });
 
+  it('should report no version as current once the bundle was retired', async () => {
+    bundles.history.mockResolvedValue([
+      { variantId: 'v-set', version: 1, createdAt: new Date('2026-10-02'), retired: true, components: [{ variantId: 'v-a', productId: 'p-a', quantity: 1 }] },
+    ]);
+    const result = await controller.history('v-set');
+    expect(result.map((r) => r.current)).toEqual([false]);
+  });
+
+  it('should answer the bundle used-in lookup for several variants in one call, one row per component variant', async () => {
+    bundles.findCurrentContainingComponents.mockResolvedValue([
+      {
+        variantId: 'v-set',
+        version: 1,
+        components: [
+          { variantId: 'v-a', productId: 'p-a', quantity: 1 },
+          { variantId: 'v-b', productId: 'p-a', quantity: 2 },
+          { variantId: 'v-other', productId: 'p-o', quantity: 1 },
+        ],
+      },
+    ]);
+    const result = await controller.usedInMany('v-a, v-b');
+    expect(bundles.findCurrentContainingComponents).toHaveBeenCalledTimes(1);
+    expect(result.map((r) => r.componentVariantId)).toEqual(['v-a', 'v-b']);
+  });
+
+  it('should return the bundle productId on the read', async () => {
+    bundles.get.mockResolvedValue({ variantId: 'v-set', version: 1, components: [] });
+    products.getVariantsByIds.mockResolvedValue([{ id: 'v-set', productId: 'p-set', sku: 's', price: 1 }]);
+    availability.getPromisableQuantities.mockResolvedValue([]);
+    inventoryQuery.getAvailabilityByVariantIds.mockResolvedValue([]);
+    const result = await controller.get('v-set');
+    expect(result.productId).toBe('p-set');
+  });
+
   it('should 404 the history of a variant that was never a bundle', async () => {
     bundles.history.mockResolvedValue([]);
     await expect(controller.history('nope')).rejects.toBeInstanceOf(NotFoundException);

@@ -34,7 +34,7 @@ describe('presentGiftLines', () => {
 
   it('should leave lines untouched when no line is a gift', () => {
     const lines = [line({ unitPriceGross: 0 }), line({ unitPriceGross: 5 })];
-    const result = presentGiftLines(lines, 'omit', undefined);
+    const result = presentGiftLines(lines, 'omit', true);
     expect(result.lines).toEqual(lines);
   });
 
@@ -80,7 +80,7 @@ describe('presentGiftLines', () => {
         gift({ taxRate: '8', referenceUnitPriceGross: 10 }),
       ];
       const result = presentGiftLines(lines, 'show', false);
-      expect(result.notes).toContain('no-same-rate-paid-line');
+      expect(result.notes).toContain('rate-not-on-document');
       const total = result.lines.reduce((n, l) => n + l.quantity * Math.round(l.unitPriceGross * 100), 0);
       expect(total).toBe(5000);
     });
@@ -176,5 +176,61 @@ describe('validateGiftOnDocumentsShape', () => {
     expect(validateGiftOnDocumentsShape('show')).toHaveLength(1);
     expect(validateGiftOnDocumentsShape({ form: 'hold' })).toHaveLength(1);
     expect(validateGiftOnDocumentsShape({})).toHaveLength(1);
+  });
+});
+
+describe('presentGiftLines differentRateGift and zero floor', () => {
+  const paid = line({ name: 'Paid', unitPriceGross: 100, taxRate: '23' });
+  const otherPaid = line({ name: 'Other', unitPriceGross: 50, taxRate: '23' });
+  const sum = (lines: readonly { quantity: number; unitPriceGross: number }[]) =>
+    lines.reduce((n, l) => n + Math.round(l.quantity * Math.round(l.unitPriceGross * 100)), 0);
+
+  it('should price a different-rate gift in by default, each line at its own rate', () => {
+    const result = presentGiftLines(
+      [paid, gift({ taxRate: '8', referenceUnitPriceGross: 20 })],
+      'omit',
+      false,
+    );
+    expect(result.notes).toContain('rate-not-on-document');
+    const giftLine = result.lines.find((l) => l.taxRate === '8');
+    expect(giftLine?.unitPriceGross).toBeGreaterThan(0);
+    expect(sum(result.lines)).toBe(10000);
+  });
+
+  it('should take the technical cent from the largest paid line when asked', () => {
+    const result = presentGiftLines(
+      [paid, otherPaid, gift({ taxRate: '8', referenceUnitPriceGross: 20 })],
+      'omit',
+      false,
+      { differentRateGift: 'technical-cent' },
+    );
+    expect(result.lines.find((l) => l.taxRate === '8')?.unitPriceGross).toBeCloseTo(0.01);
+    expect(result.lines.find((l) => l.name === 'Paid')?.unitPriceGross).toBeCloseTo(99.99);
+    expect(sum(result.lines)).toBe(15000);
+  });
+
+  it('should fall back to priced-in when no paid line can spare the cent', () => {
+    const result = presentGiftLines(
+      [line({ unitPriceGross: 0.01 }), gift({ taxRate: '8', referenceUnitPriceGross: 20 })],
+      'omit',
+      false,
+      { differentRateGift: 'technical-cent' },
+    );
+    expect(result.notes).toContain('technical-cent-no-donor');
+  });
+
+  it('should never leave a 0.00 line when the provider refuses zero', () => {
+    const result = presentGiftLines([paid, line({ name: 'Free', unitPriceGross: 0 })], 'omit', false);
+    expect(result.lines.every((l) => Math.round(l.unitPriceGross * 100) > 0)).toBe(true);
+    expect(sum(result.lines)).toBe(10000);
+  });
+
+  it('should name a zero line it cannot floor', () => {
+    const result = presentGiftLines(
+      [line({ name: 'Free', unitPriceGross: 0, taxRate: '8' }), paid],
+      'omit',
+      false,
+    );
+    expect(result.notes).toContain('zero-line-unfloorable');
   });
 });

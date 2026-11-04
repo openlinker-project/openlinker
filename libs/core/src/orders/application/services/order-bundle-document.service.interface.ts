@@ -27,10 +27,11 @@ export interface GiftSlotCostLine {
 
 export interface IOrderBundleDocumentService {
   /**
-   * The component data a document mapper needs, or `undefined` when the
-   * source connection keeps sets as one line or the order carries no bundle.
-   * Never throws: a failed read leaves the set as one line, which is the
-   * default and what the buyer paid.
+   * The component data a document mapper needs (names, standalone price, cost
+   * and catalogue tax rate), or `undefined` when the order carries no bundle.
+   * Throws when the products read fails: the mapper decides one line versus
+   * components from this data, so a transient error must surface (issuance
+   * retries) rather than silently yield a differently shaped document.
    */
   resolveForDocuments(
     record: OrderRecord,

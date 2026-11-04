@@ -14,6 +14,7 @@
  * @module apps/api/src/returns/dto
  */
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { Type } from 'class-transformer';
 import {
   ArrayMaxSize,
   ArrayMinSize,
@@ -227,7 +228,10 @@ export class BundleReturnPreviewQueryDto {
 
   @ApiPropertyOptional({ description: 'Bundle units returned. Defaults to 1.', minimum: 1 })
   @IsOptional()
-  quantity?: string;
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  quantity?: number;
 }
 
 export class BundleReturnComponentDto {

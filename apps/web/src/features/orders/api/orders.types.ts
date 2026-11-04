@@ -136,6 +136,7 @@ export const SalesDocumentGateBlockReasonValues = [
   'missing-tax-rate',
   'tax-rate-conflict',
   'line-total-mismatch',
+  'bundle-split-unknown',
   'trigger-model-manual',
   'trigger-model-batched',
 ] as const;
@@ -553,6 +554,8 @@ export interface OrderRecord {
    * one product and no bundle defines them (#3624, detail read only).
    */
   multipackHold?: OrderMultipackHold;
+  /** Every held multipack line; one confirmation per line (#3520). */
+  multipackHolds?: OrderMultipackHold[];
   /**
    * True when an operator edited this order in OpenLinker (#3542, D9). The
    * snapshot is then the order AS EDITED; the channel keeps its original. On

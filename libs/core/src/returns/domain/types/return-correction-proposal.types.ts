@@ -168,6 +168,12 @@ export interface ReturnCorrectionProposalLine {
    * components' shares of the set price, computed at return time.
    */
   componentCredit?: ReturnCorrectionComponentCredit | null;
+  /**
+   * Set when this entry credits ONE component line of a set the invoice
+   * presented as its components (each at its own rate). Such an entry is
+   * credited as units of that line, so `componentCredit` is never attached.
+   */
+  componentVariantId?: string | null;
 }
 
 export interface ReturnCorrectionComponentCredit {
@@ -175,6 +181,8 @@ export interface ReturnCorrectionComponentCredit {
   units: number;
   amountGross: number;
   variantIds: string[];
+  /** Per returned component: the set units it came back for. */
+  components?: { variantId: string; bundleUnits: number }[];
 }
 
 /**

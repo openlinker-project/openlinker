@@ -21,6 +21,8 @@ export interface BundlesApi {
   get: (variantId: string) => Promise<BundleDetail>;
   history: (variantId: string) => Promise<BundleHistoryEntry[]>;
   usedIn: (variantId: string) => Promise<BundleUsedIn[]>;
+  /** One request for every variant of a product. */
+  usedInMany: (variantIds: readonly string[]) => Promise<BundleUsedIn[]>;
   create: (variantId: string, components: BundleComponentInput[]) => Promise<BundleCreated>;
   update: (variantId: string, components: BundleComponentInput[]) => Promise<BundleDefinition>;
   /** Writes the master's composition as the next version (#3932). Only on the operator's click. */
@@ -36,6 +38,10 @@ export function createBundlesApi(request: ApiRequest): BundlesApi {
       request<BundleHistoryEntry[]>(`/bundle-definitions/${encodeURIComponent(variantId)}/history`),
     usedIn: (variantId) =>
       request<BundleUsedIn[]>(`/bundle-definitions/used-in/${encodeURIComponent(variantId)}`),
+    usedInMany: (variantIds) =>
+      request<BundleUsedIn[]>(
+        `/bundle-definitions/used-in?variantIds=${encodeURIComponent(variantIds.join(','))}`,
+      ),
     create: (variantId, components) =>
       request<BundleCreated>('/bundle-definitions', {
         method: 'POST',

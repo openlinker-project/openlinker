@@ -227,7 +227,8 @@ export class ReturnCorrectionProposalService implements IReturnCorrectionProposa
         toMatcherInput(
           line,
           linesWithUnconfirmedDisposition.has(line.id),
-          credits.get(line.id)?.units ?? 0
+          credits.get(line.id)?.units ?? 0,
+          credits.get(line.id)?.components ?? []
         )
       ),
       snapshot.lines
@@ -236,7 +237,12 @@ export class ReturnCorrectionProposalService implements IReturnCorrectionProposa
       const credit = credits.get(entry.returnLineId);
       const creditable =
         entry.status !== 'no-match' || entry.noMatchReason === 'ambiguous-invoice-line';
-      return credit === undefined || !creditable ? entry : { ...entry, componentCredit: credit };
+      // An entry crediting a component LINE already carries its units; the
+      // amount credit is for sets the invoice kept as one line.
+      const onComponentLine = entry.componentVariantId !== undefined && entry.componentVariantId !== null;
+      return credit === undefined || !creditable || onComponentLine
+        ? entry
+        : { ...entry, componentCredit: credit };
     });
 
     const proposal: ReturnCorrectionProposal = {
@@ -325,7 +331,8 @@ function disposedQuantityOf(line: ReturnLine): number {
 function toMatcherInput(
   line: ReturnLine,
   hasUnconfirmedDisposition: boolean,
-  partialComponentUnits = 0
+  partialComponentUnits = 0,
+  partialComponents: readonly { variantId: string; bundleUnits: number }[] = []
 ): CorrectionReturnLineInput {
   return {
     returnLineId: line.id,
@@ -335,6 +342,7 @@ function toMatcherInput(
     quantityDisposed: Math.max(0, disposedQuantityOf(line) - partialComponentUnits),
     hasUnconfirmedDisposition,
     resolvedOrderLineId: line.resolvedOrderLineId,
+    ...(partialComponents.length > 0 && { partialComponents }),
   };
 }
 

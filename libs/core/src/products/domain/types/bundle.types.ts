@@ -42,6 +42,8 @@ export interface MultipackConfirmation {
 /** One historical version, with the instant it was written (#3624). */
 export interface BundleDefinitionVersion extends BundleDefinition {
   createdAt: Date;
+  /** The version was retired (the bundle was deleted); it is no longer in force. */
+  retired?: boolean;
 }
 
 /** Separator between the bundle line id and the component variant id. */

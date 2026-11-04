@@ -4,7 +4,7 @@
  * A bundle reaches the bench as its components, each a line of the parcel. The
  * packer needs them kept together under the bundle's name, with how many of its
  * items are already in the box, and a plain refusal when everything else is
- * done and a bundle is not: a bundle must never leave in parts.
+ * done and a bundle component cannot be verified: a bundle must never leave in parts.
  *
  * Pure and display-only. The parcel still closes on the system's own count of
  * every line (D18), so this can only explain a state, never change one.
@@ -75,17 +75,28 @@ export function bundleGroups(lines: readonly BenchParcelLine[]): BenchBundleGrou
   return [...byBundle.values()];
 }
 
+/** A line the packer has nothing to scan for: no EAN, GTIN or SKU on the wire. */
+function isUnscannable(line: BenchParcelLine): boolean {
+  return line.ean === null && line.gtin === null && line.sku === null;
+}
+
 /**
- * The bundle that is the ONLY thing keeping the parcel open: everything outside
- * it is complete and it is started but not finished. `null` while the packer is
- * simply still packing, so the refusal appears when it is true and not before.
+ * The bundle that is the ONLY thing keeping the parcel open AND cannot be
+ * finished by scanning: everything outside it is complete and at least one of
+ * its missing components has no code to scan. `null` while the packer is simply
+ * still scanning, so the refusal appears when it is true and not as a banner the
+ * packer sees during ordinary packing (the box closes on the system's own count,
+ * D18; scanning the last component finishes a bundle that has codes).
  */
 export function bundleBlockingClose(lines: readonly BenchParcelLine[]): BenchBundleGroup | null {
   const groups = bundleGroups(lines);
   const open = groups.filter((group) => !group.complete);
   if (open.length !== 1) return null;
   const [blocked] = open;
-  if (blocked.done === 0) return null;
+  const cannotBeVerified = blocked.lines.some(
+    (line) => line.verifiedQuantity < line.requiredQuantity && isUnscannable(line),
+  );
+  if (!cannotBeVerified) return null;
   const othersDone = lines
     .filter((line) => line.bundle?.lineId !== blocked.lineId)
     .every((line) => line.verifiedQuantity >= line.requiredQuantity);

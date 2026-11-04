@@ -11,14 +11,11 @@
  * @implements {IOrderBundleDocumentService}
  */
 import { Inject, Injectable } from '@nestjs/common';
-import { CONNECTION_PORT_TOKEN, type ConnectionPort } from '@openlinker/core/identifier-mapping';
 import { PRODUCTS_SERVICE_TOKEN, type IProductsService } from '@openlinker/core/products';
-import {
-  readBundleDocumentForm,
-  type BundleDocumentPresentation,
-  type DocumentBundleComponent,
+import type {
+  BundleDocumentPresentation,
+  DocumentBundleComponent,
 } from '@openlinker/core/sales-documents';
-import { Logger } from '@openlinker/shared/logging';
 import type { OrderRecord } from '../../domain/entities/order-record.entity';
 import type {
   GiftSlotCostLine,
@@ -27,57 +24,44 @@ import type {
 
 @Injectable()
 export class OrderBundleDocumentService implements IOrderBundleDocumentService {
-  private readonly logger = new Logger(OrderBundleDocumentService.name);
-
   constructor(
-    @Inject(CONNECTION_PORT_TOKEN)
-    private readonly connections: ConnectionPort,
     @Inject(PRODUCTS_SERVICE_TOKEN)
     private readonly products: IProductsService
   ) {}
 
   async resolveForDocuments(
     record: OrderRecord,
-    sourceConnectionId: string
+    _sourceConnectionId: string
   ): Promise<BundleDocumentPresentation | undefined> {
     const bundles = record.bundleLines;
     if (bundles.length === 0) {
       return undefined;
     }
-    try {
-      const source = await this.connections.get(sourceConnectionId);
-      const form = readBundleDocumentForm(source.config);
-      if (form !== 'components') {
-        return undefined;
-      }
-      const details = await this.loadDetails(bundles.flatMap((b) => b.components));
-      const byLineId: Record<string, DocumentBundleComponent[]> = {};
-      for (const bundle of bundles) {
-        byLineId[bundle.lineId] = bundle.components.map((component) => {
-          const detail = details.get(component.variantId);
-          const cost = costInCurrency(detail?.cost, detail?.costCurrency, record.currency);
-          return {
-            lineId: component.lineId,
-            variantId: component.variantId,
-            productId: component.productId,
-            name: detail?.name ?? null,
-            sku: detail?.sku ?? null,
-            quantity: component.quantity,
-            ...(component.giftSlot === true && { giftSlot: true }),
-            ...(detail?.price !== undefined && { unitPriceGross: detail.price }),
-            ...(cost !== null && { unitCostNet: cost }),
-          };
-        });
-      }
-      return { form, byLineId };
-    } catch (error) {
-      this.logger.warn(
-        `Could not resolve bundle components for order ${record.internalOrderId}; keeping sets as one line: ${
-          error instanceof Error ? error.message : String(error)
-        }`
-      );
-      return undefined;
+    // A failed read is NOT answered with a different document shape: whether a
+    // set is one line or its components is a fiscal fact, and falling back to
+    // one line after a transient error would issue a document the data does not
+    // support. The error propagates, so issuance retries or reports it.
+    const details = await this.loadDetails(bundles.flatMap((b) => b.components));
+    const byLineId: Record<string, DocumentBundleComponent[]> = {};
+    for (const bundle of bundles) {
+      byLineId[bundle.lineId] = bundle.components.map((component) => {
+        const detail = details.get(component.variantId);
+        const cost = costInCurrency(detail?.cost, detail?.costCurrency, record.currency);
+        return {
+          lineId: component.lineId,
+          variantId: component.variantId,
+          productId: component.productId,
+          name: detail?.name ?? null,
+          sku: detail?.sku ?? null,
+          quantity: component.quantity,
+          ...(component.giftSlot === true && { giftSlot: true }),
+          ...(detail?.price !== undefined && { unitPriceGross: detail.price }),
+          ...(cost !== null && { unitCostNet: cost }),
+          ...(detail?.taxRate != null && { taxRate: detail.taxRate }),
+        };
+      });
     }
+    return { byLineId };
   }
 
   async getGiftSlotCosts(record: OrderRecord): Promise<GiftSlotCostLine[]> {
@@ -114,6 +98,7 @@ export class OrderBundleDocumentService implements IOrderBundleDocumentService {
         name: string | null;
         sku: string | null;
         price?: number;
+        taxRate?: string | null;
         cost: string | null;
         costCurrency: string | null;
       }
@@ -135,6 +120,8 @@ export class OrderBundleDocumentService implements IOrderBundleDocumentService {
             name: product?.name ?? null,
             sku: variant.sku,
             ...(typeof price === 'number' && { price }),
+            // Catalogue rate (ADR-063): the variant's own, else its product's.
+            taxRate: variant.taxRate ?? product?.taxRate ?? null,
             cost: variant.netUnitCost ?? null,
             costCurrency: variant.costCurrency ?? null,
           },

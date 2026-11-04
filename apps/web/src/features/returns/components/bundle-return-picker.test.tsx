@@ -51,6 +51,22 @@ function renderPicker(getBundleReturnPreview: Mock) {
 }
 
 describe('BundleReturnPicker', () => {
+  it('should report blocked while the preview is pending, so a missing preview never restocks the whole set', async () => {
+    const get = vi.fn().mockReturnValue(new Promise(() => undefined));
+    const { onBlockedChange } = renderPicker(get);
+
+    await waitFor(() => expect(onBlockedChange).toHaveBeenCalledWith(true));
+    expect(onBlockedChange).not.toHaveBeenCalledWith(false);
+  });
+
+  it('should show an error and keep the submit blocked when the preview fails', async () => {
+    const get = vi.fn().mockRejectedValue(new Error('boom'));
+    const { onBlockedChange } = renderPicker(get);
+
+    expect(await screen.findByTestId('return-component-preview-error')).toBeInTheDocument();
+    expect(onBlockedChange).toHaveBeenLastCalledWith(true);
+  });
+
   it('should render nothing for a line that is not a bundle', async () => {
     const get = vi.fn().mockResolvedValue(preview({ isBundle: false, components: [] }));
     renderPicker(get);

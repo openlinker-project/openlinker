@@ -55,8 +55,16 @@ export function BundleProductPicker({
     enabled: expanded !== null,
   });
 
+  const [chooseFailed, setChooseFailed] = useState(false);
   const choose = async (product: Product): Promise<void> => {
-    const detail = await apiClient.products.getById(product.id);
+    setChooseFailed(false);
+    let detail: Awaited<ReturnType<typeof apiClient.products.getById>>;
+    try {
+      detail = await apiClient.products.getById(product.id);
+    } catch {
+      setChooseFailed(true);
+      return;
+    }
     const list = detail.variants ?? [];
     if (list.length === 1) {
       onPick(toBundleChoice(product, list[0], 1));
@@ -106,6 +114,11 @@ export function BundleProductPicker({
             </li>
           ))}
         </ul>
+      ) : null}
+      {chooseFailed || (expanded !== null && variants.isError) ? (
+        <p className="form-field__error" role="alert" data-testid={`${testIdPrefix}-error`}>
+          {copy.form.variantsFailed}
+        </p>
       ) : null}
       {expanded !== null && variants.data?.variants ? (
         <div className="bundle-picker__variants" role="group" aria-label={interpolate(copy.form.chooseVariant, { name: expanded.name })}>

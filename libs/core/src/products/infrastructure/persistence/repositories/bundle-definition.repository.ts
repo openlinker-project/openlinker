@@ -70,7 +70,11 @@ export class BundleDefinitionRepository implements BundleDefinitionRepositoryPor
 
   async findHistory(variantId: string): Promise<BundleDefinitionVersion[]> {
     const rows = await this.repository.find({ where: { variantId }, order: { version: 'ASC' } });
-    return rows.map((row) => ({ ...this.toDomain(row), createdAt: row.createdAt }));
+    return rows.map((row) => ({
+      ...this.toDomain(row),
+      createdAt: row.createdAt,
+      retired: row.retiredAt !== null && row.retiredAt !== undefined,
+    }));
   }
 
   async listCurrent(): Promise<BundleDefinition[]> {

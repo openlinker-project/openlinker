@@ -703,7 +703,11 @@ export function OrderDetailPage(): ReactElement {
       <StockAtRiskCallout shortfalls={order.reservationShortfalls} />
 
       {/* #3624 - a multipack waiting for a bundle: the next step is on the banner. */}
-      {order.multipackHold ? <MultipackHoldBanner hold={order.multipackHold} /> : null}
+      {(order.multipackHolds ?? (order.multipackHold ? [order.multipackHold] : [])).map(
+        (hold, _index, all) => (
+          <MultipackHoldBanner key={hold.lineId} hold={hold} otherLinesHeld={all.length > 1} />
+        ),
+      )}
 
       {/* #3539 (mockup M2) - the buyer's own message, in the same full-width slot
           as the callout above and ABOVE the panels the operator acts in. Not an

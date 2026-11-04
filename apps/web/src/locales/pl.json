@@ -5,7 +5,7 @@
       "bundleHeader": "Zestaw: {name}",
       "bundleProgress": "{done} z {total} w paczce",
       "includeGift": "Włóż gratis: {name}",
-      "missingDetail": "{name}: składników {total}, w paczce {done}. Brakuje: {missing}. Paczka zamknie się sama dopiero po zeskanowaniu wszystkich pozycji. Nie wysyłaj zestawu w częściach.",
+      "missingDetail": "{name} ma {total} składników, {done} jest w paczce. Nie da się zweryfikować (brak kodu do zeskanowania): {missing}. Paczka zamknie się sama dopiero po zweryfikowaniu wszystkich pozycji. Nie wysyłaj zestawu w częściach.",
       "missingTitle": "Nie można zamknąć paczki: brakuje składnika zestawu"
     },
     "form": {
@@ -44,6 +44,7 @@
       "intro": "Zestaw to produkt ze składnikami. Wybierz składniki i ilości, resztę policzy OpenLinker.",
       "listOffer": "Wystaw ofertę",
       "loadFailed": "Nie udało się wczytać zestawu.",
+      "loading": "Wczytuję zestaw...",
       "markGift": "Oznacz jako gratis",
       "nestedBundle": "{name} jest zestawem, a zestaw nie może być składnikiem innego zestawu.",
       "nestedGeneric": "Ta kombinacja nie jest dozwolona: zestaw nie może zawierać zestawu.",
@@ -77,7 +78,10 @@
       "remove": "Usuń",
       "removeLabel": "Usuń {name}",
       "save": "Zapisz zestaw",
+      "saveConflict": "Zestaw już istnieje albo ktoś inny go zmienił. Odśwież stronę i spróbuj ponownie.",
       "saveFailed": "Nie udało się zapisać zestawu.",
+      "saveInvalid": "Zestaw jest nieprawidłowy. Sprawdź składniki i ilości.",
+      "saveNotFound": "Ten zestaw lub jeden z jego produktów już nie istnieje.",
       "saved": "Zapisano zestaw",
       "savedBody": "Zestaw sprzedajesz jak każdy produkt. Kanały dostaną ilość {n} szt. przy następnej synchronizacji.",
       "savedBodyUnknown": "Zestaw sprzedajesz jak każdy produkt. Kanały dostaną jego ilość, gdy znamy stan każdego składnika.",
@@ -88,10 +92,12 @@
       "syncDone": "Zapisano nową wersję składu z {name}. Otwarte zamówienia zostają przy swoim.",
       "syncFailed": "Nie udało się zsynchronizować składu.",
       "syncFromMaster": "Synchronizuj skład z {name}",
+      "syncMasterUnavailable": "Nie udało się połączyć z {name}, więc skład nie został odczytany. Nic nie zmieniono. Spróbuj później.",
       "syncNotPack": "Ten produkt nie jest zestawem w {name}. Nic nie zmieniono.",
       "syncUnmapped": "Tych składników nie ma jeszcze w OpenLinker: {ids}. Zsynchronizuj je najpierw.",
       "syncing": "Synchronizuję...",
       "unmarkGift": "Usuń oznaczenie gratisu",
+      "variantsFailed": "Nie udało się wczytać wariantów tego produktu. Spróbuj ponownie.",
       "viewOnlyReason": "Tworzenie i zmiana zestawów wymaga roli administratora lub operatora."
     },
     "list": {
@@ -128,6 +134,8 @@
       "inBundlePrice": "w cenie zestawu",
       "multipackBody": "Kanał sprzedał {n} sztuk jednego produktu w jednej ofercie, a OpenLinker nie wie, co to znaczy. Bez tego ze stanu zeszłaby 1 sztuka zamiast {n}.",
       "multipackConfirmText": "Jedna sprzedaż tej oferty = {n} x {name}. Każde czekające na nią zamówienie pójdzie dalej.",
+      "multipackConfirmTextLine": "Jedna sprzedaż tej oferty = {n} x {name}. Zamówienie ruszy po potwierdzeniu każdej wstrzymanej pozycji.",
+      "multipackConfirmedOthers": "Potwierdzono dla tej pozycji. Zamówienie pozostaje wstrzymane, dopóki nie potwierdzisz pozostałych wstrzymanych pozycji.",
       "multipackConfirmedTitle": "Potwierdzone: zamówienia idą dalej",
       "multipackContinue": {
         "few": "{n} zamówienia idą dalej.",
@@ -495,6 +503,7 @@
       "noSplitTotal": "Nie wiadomo, ile zapłacono za ten zestaw, więc nie da się go podzielić. Przyjmij cały zestaw.",
       "noneSelected": "Zaznacz co najmniej jeden składnik.",
       "partialHint": "Na stan wracają tylko zaznaczone składniki.",
+      "previewFailed": "Nie udało się wczytać składników zestawu, więc nie można go jeszcze przyjąć na stan. Spróbuj ponownie.",
       "share": "Wart {amount} z ceny zestawu",
       "staysWithCustomer": "Zostaje u klienta",
       "title": "Co wraca",

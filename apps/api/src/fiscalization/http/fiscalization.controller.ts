@@ -65,10 +65,11 @@ import { normalizeShippingLineName } from '@openlinker/core/invoicing';
 import { CONNECTION_PORT_TOKEN, ConnectionPort } from '@openlinker/core/identifier-mapping';
 import {
   readDeliveryOnDocuments,
-  readGiftLineForm,
+  readGiftDocumentSettings,
+  BundleSplitUnknownError,
   readZeroValueLineSupport,
   resolveDeliveryLine,
-  type GiftLineForm,
+  type GiftDocumentSettings,
 } from '@openlinker/core/sales-documents';
 import type { DeliveryOnDocumentsConfig, ResolvedDeliveryLine } from '@openlinker/core/sales-documents';
 import type {
@@ -167,20 +168,20 @@ export class FiscalizationController {
   }
 
   /**
-   * The gift form the order-source connection chose (#3930), `omit` when the
-   * lookup fails: a failed read must never break registration.
+   * The gift settings the order-source connection chose (#3930), defaults when
+   * the lookup fails: a failed read must never break registration.
    */
-  private async resolveGiftForm(sourceConnectionId: string): Promise<GiftLineForm> {
+  private async resolveGiftSettings(sourceConnectionId: string): Promise<GiftDocumentSettings> {
     try {
       const source = await this.connectionPort.get(sourceConnectionId);
-      return readGiftLineForm(source.config);
+      return readGiftDocumentSettings(source.config);
     } catch (error) {
       this.logger.debug(
-        `Gift form lookup failed for connection ${sourceConnectionId}: ${
+        `Gift settings lookup failed for connection ${sourceConnectionId}: ${
           error instanceof Error ? error.message : String(error)
         }`,
       );
-      return 'omit';
+      return readGiftDocumentSettings(undefined);
     }
   }
 
@@ -280,7 +281,7 @@ export class FiscalizationController {
           record.sourceConnectionId,
           dto.connectionId,
         ),
-        giftForm: await this.resolveGiftForm(record.sourceConnectionId),
+        ...(await this.resolveGiftSettings(record.sourceConnectionId)),
         bundleDocument: await this.orderBundleDocuments.resolveForDocuments(
           record,
           record.sourceConnectionId,
@@ -525,6 +526,15 @@ export class FiscalizationController {
   private toHttpException(error: unknown): Error {
     if (error instanceof MissingIdempotencyKeyException) {
       return new BadRequestException(error.message);
+    }
+    if (error instanceof BundleSplitUnknownError) {
+      return new UnprocessableEntityException({
+        message: error.message,
+        error: 'BundleSplitUnknownError',
+        reason: 'bundle-split-unknown',
+        retryable: false,
+        lineId: error.lineId,
+      });
     }
     if (
       error instanceof InvalidFiscalLineError ||

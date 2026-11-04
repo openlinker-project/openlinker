@@ -1463,6 +1463,43 @@ describe('AutoIssueTriggerService', () => {
       expect(syncJobs.schedule).not.toHaveBeenCalled();
     });
 
+    // ADR-083: a set whose components carry different rates is presented as
+    // its components, and when a component's rate is unknown nothing is
+    // guessed - the document is HELD with a named reason.
+    it('should BLOCK with bundle-split-unknown when a set component has no known tax rate', async () => {
+      connectionPort.list.mockResolvedValue([makeConnection('auto-on-paid')]);
+
+      const outcome = await service.onOrderTransition(
+        makeOrder({
+          paymentStatus: 'paid',
+          items: [{ id: 'i1', productId: 'p1', quantity: 1, price: 100, name: 'Set', taxRate: '23' }],
+          totals: {
+            subtotal: 100,
+            tax: 0,
+            shipping: 0,
+            total: 100,
+            currency: 'PLN',
+            taxTreatment: 'inclusive',
+          },
+        }),
+        'src-1',
+        undefined,
+        undefined,
+        undefined,
+        {
+          byLineId: {
+            i1: [
+              { lineId: 'i1~c:a', variantId: 'a', productId: 'pa', name: 'A', quantity: 1, unitPriceGross: 60, taxRate: '23' },
+              { lineId: 'i1~c:b', variantId: 'b', productId: 'pb', name: 'B', quantity: 1, unitPriceGross: 40 },
+            ],
+          },
+        },
+      );
+
+      expect(outcome).toMatchObject({ kind: 'blocked', block: { reason: 'bundle-split-unknown' } });
+      expect(syncJobs.schedule).not.toHaveBeenCalled();
+    });
+
     // The whole point of populating `discountTotal` upstream: the block an
     // operator reads must say WHY, not merely that two numbers differ.
     it('should name the discount in the block detail when it accounts for the gap', async () => {

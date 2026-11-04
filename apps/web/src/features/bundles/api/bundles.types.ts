@@ -37,6 +37,8 @@ export interface BundleComponentAvailability extends BundleComponent {
 }
 
 export interface BundleDetail extends BundleDefinition {
+  /** The product the bundle variant belongs to; `null` when it cannot be resolved. */
+  productId: string | null;
   /** The product master that can read this bundle's composition; `null` hides the sync action (#3932). */
   composedByMaster: { connectionId: string; connectionName: string } | null;
   bundle: BundleProductSummary;
@@ -68,6 +70,8 @@ export interface MultipackConfirmed {
 
 export interface BundleUsedIn {
   bundleVariantId: string;
+  /** The component variant this row is about; set by the batched read. */
+  componentVariantId?: string;
   quantity: number;
   giftSlot?: boolean;
   bundle: BundleProductSummary;

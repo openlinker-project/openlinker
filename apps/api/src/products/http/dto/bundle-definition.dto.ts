@@ -113,6 +113,8 @@ export class BundleProductSummaryDto {
 export class BundleUsedInResponseDto {
   @ApiProperty({ description: 'The bundle that holds the product as a component' })
   bundleVariantId!: string;
+  @ApiPropertyOptional({ description: 'The component variant this row is about (batched read)' })
+  componentVariantId?: string;
   @ApiProperty({ description: 'Units of the product in ONE bundle unit' })
   quantity!: number;
   @ApiPropertyOptional() giftSlot?: boolean;
@@ -173,6 +175,9 @@ export class MasterBundleCompositionResponseDto {
 }
 
 export class BundleWithAvailabilityResponseDto extends BundleDefinitionResponseDto {
+  @ApiProperty({ type: String, nullable: true, description: 'The product the bundle variant belongs to' })
+  productId!: string | null;
+
   @ApiProperty({
     type: BundleMasterDto,
     nullable: true,

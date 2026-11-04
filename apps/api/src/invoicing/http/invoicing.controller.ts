@@ -143,11 +143,12 @@ import {
   decideLiveOrderIssuance,
   DOCUMENT_EMAIL_DELIVERY_SERVICE_TOKEN,
   readDeliveryOnDocuments,
-  readGiftLineForm,
+  readGiftDocumentSettings,
+  BundleSplitUnknownError,
   readZeroValueLineSupport,
   resolveDeliveryLine,
   type DeliveryOnDocumentsConfig,
-  type GiftLineForm,
+  type GiftDocumentSettings,
   type IDocumentEmailDeliveryService,
   type LiveOrderIssuanceDecision,
   type ResolvedDeliveryLine,
@@ -370,10 +371,6 @@ export class InvoicingController {
   }
 
   /**
-   * The gift form the order-source connection chose (#3930), `omit` when the
-   * lookup fails: a failed read must never break issuance.
-   */
-  /**
    * The Invoicing adapter's `ZeroValueLineSupport` declaration (#3930), so a
    * manual or re-issued document is composed exactly as the auto-issued one.
    * `undefined` means the adapter declares nothing OR could not be resolved; the
@@ -405,17 +402,21 @@ export class InvoicingController {
     return answer;
   }
 
-  private async resolveGiftForm(sourceConnectionId: string): Promise<GiftLineForm> {
+  /**
+   * The gift settings the order-source connection chose (#3930), defaults when
+   * the lookup fails: a failed read must never break issuance.
+   */
+  private async resolveGiftSettings(sourceConnectionId: string): Promise<GiftDocumentSettings> {
     try {
       const source = await this.connectionPort.get(sourceConnectionId);
-      return readGiftLineForm(source.config);
+      return readGiftDocumentSettings(source.config);
     } catch (error) {
       this.logger.debug(
-        `Gift form lookup failed for connection ${sourceConnectionId}: ${
+        `Gift settings lookup failed for connection ${sourceConnectionId}: ${
           error instanceof Error ? error.message : String(error)
         }`,
       );
-      return 'omit';
+      return readGiftDocumentSettings(undefined);
     }
   }
 
@@ -600,7 +601,7 @@ export class InvoicingController {
         documentType: dto.documentType,
         idempotencyKey,
         deliveryLine,
-        giftForm: await this.resolveGiftForm(record.sourceConnectionId),
+        ...(await this.resolveGiftSettings(record.sourceConnectionId)),
         bundleDocument: await this.orderBundleDocuments.resolveForDocuments(
           record,
           record.sourceConnectionId,
@@ -769,7 +770,7 @@ export class InvoicingController {
           orderRecord.sourceConnectionId,
           record.connectionId,
         ),
-        giftForm: await this.resolveGiftForm(orderRecord.sourceConnectionId),
+        ...(await this.resolveGiftSettings(orderRecord.sourceConnectionId)),
         bundleDocument: await this.orderBundleDocuments.resolveForDocuments(
           orderRecord,
           orderRecord.sourceConnectionId,
@@ -940,7 +941,7 @@ export class InvoicingController {
           record.sourceConnectionId,
           connectionId,
         ),
-        giftForm: await this.resolveGiftForm(record.sourceConnectionId),
+        ...(await this.resolveGiftSettings(record.sourceConnectionId)),
         bundleDocument: await this.orderBundleDocuments.resolveForDocuments(
           record,
           record.sourceConnectionId,
@@ -1659,7 +1660,7 @@ export class InvoicingController {
         orderRecord.sourceConnectionId,
         connectionId,
       ),
-      giftForm: await this.resolveGiftForm(orderRecord.sourceConnectionId),
+      ...(await this.resolveGiftSettings(orderRecord.sourceConnectionId)),
       bundleDocument: await this.orderBundleDocuments.resolveForDocuments(
         orderRecord,
         orderRecord.sourceConnectionId,
@@ -1807,6 +1808,18 @@ export class InvoicingController {
         lineCount: error.finding.lineCount,
         totalLines: error.finding.totalLines,
         firstLineRef: error.finding.firstLineRef,
+      });
+    }
+    // ADR-083: a set that cannot be presented without guessing a rate or a
+    // price. 422 like the missing-rate refusal: the request is well formed, the
+    // catalogue DATA is not yet usable.
+    if (error instanceof BundleSplitUnknownError) {
+      return new UnprocessableEntityException({
+        message: error.message,
+        error: 'BundleSplitUnknownError',
+        reason: 'bundle-split-unknown',
+        retryable: false,
+        lineId: error.lineId,
       });
     }
     if (

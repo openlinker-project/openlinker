@@ -258,6 +258,34 @@ describe('ReturnWritesController', () => {
         expect(refunds.triggerRefund).not.toHaveBeenCalled();
       });
 
+      it('should load the return and the order once however many bundle lines it has', async () => {
+        returns.getReturn.mockResolvedValue({
+          id: RETURN_ID,
+          internalOrderId: 'ol_order_1',
+          lines: [
+            { id: LINE_ID, resolvedOrderLineId: 'l1' },
+            { id: 'line-2', resolvedOrderLineId: 'l1' },
+          ],
+        });
+        orderRecords.getOrderRecord.mockResolvedValue(order);
+        custody.listReturnedBundleComponents = jest.fn().mockResolvedValue([
+          { returnLineId: LINE_ID, units: 1, returnedVariantIds: ['v-b'] },
+          { returnLineId: 'line-2', units: 1, returnedVariantIds: ['v-b'] },
+        ]);
+        custody.previewBundleReturn = jest.fn().mockResolvedValue({
+          keptAtStandaloneRefundHintGross: 25,
+          hintInputs: { paidForSetGross: 64.99, keptStandaloneGross: 39.99 },
+        });
+        returns.getReturn.mockClear();
+        orderRecords.getOrderRecord.mockClear();
+
+        await controller.bundleRefundHint(RETURN_ID);
+
+        expect(returns.getReturn).toHaveBeenCalledTimes(1);
+        expect(orderRecords.getOrderRecord).toHaveBeenCalledTimes(1);
+        expect(custody.previewBundleReturn).toHaveBeenCalledTimes(2);
+      });
+
       it('should report the hint as not applicable when no set came back partially', async () => {
         custody.listReturnedBundleComponents = jest.fn().mockResolvedValue([]);
 
@@ -278,7 +306,7 @@ describe('ReturnWritesController', () => {
 
         const result = await controller.previewBundleReturn(RETURN_ID, LINE_ID, {
           returnedVariantIds: 'v-b',
-          quantity: '1',
+          quantity: 1,
         });
 
         expect(result).toMatchObject({ isBundle: true, allegroRefundHintGross: 40 });

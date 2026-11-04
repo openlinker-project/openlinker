@@ -7,7 +7,7 @@ describe('ProductUsedInBundles (#3624)', () => {
   it('should list the bundles a product is in, with the quantity and the gift mark', async () => {
     const apiClient = createMockApiClient({
       bundles: {
-        usedIn: vi.fn().mockResolvedValue([
+        usedInMany: vi.fn().mockResolvedValue([
           {
             bundleVariantId: 'v-set',
             quantity: 2,
@@ -23,11 +23,26 @@ describe('ProductUsedInBundles (#3624)', () => {
     expect(row).toHaveTextContent('as a gift');
   });
 
+  it('should ask once for every variant and not clash on two variants in one bundle', async () => {
+    const entry = { bundleVariantId: 'v-set', quantity: 1, bundle: { name: 'Set', sku: 'SET', price: 1, currency: 'PLN' } };
+    const usedInMany = vi.fn().mockResolvedValue([
+      { ...entry, componentVariantId: 'v-a' },
+      { ...entry, componentVariantId: 'v-b' },
+    ]);
+    const apiClient = createMockApiClient({ bundles: { usedInMany } });
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    renderWithProviders(<ProductUsedInBundles variantIds={['v-a', 'v-b']} />, { apiClient });
+    await screen.findAllByTestId('bundle-list-used-in-SET');
+    expect(usedInMany).toHaveBeenCalledTimes(1);
+    expect(errorSpy.mock.calls.flat().join(' ')).not.toContain('same key');
+    errorSpy.mockRestore();
+  });
+
   it('should render nothing for a product that is in no bundle', async () => {
-    const apiClient = createMockApiClient({ bundles: { usedIn: vi.fn().mockResolvedValue([]) } });
+    const apiClient = createMockApiClient({ bundles: { usedInMany: vi.fn().mockResolvedValue([]) } });
     const { container } = renderWithProviders(<ProductUsedInBundles variantIds={['mug']} />, { apiClient });
     await vi.waitFor(() => {
-      expect(apiClient.bundles.usedIn).toHaveBeenCalled();
+      expect(apiClient.bundles.usedInMany).toHaveBeenCalled();
     });
     expect(container.querySelector('[data-testid="bundle-list-used-in"]')).toBeNull();
   });

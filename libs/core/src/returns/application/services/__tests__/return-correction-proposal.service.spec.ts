@@ -488,7 +488,12 @@ describe('ReturnCorrectionProposalService', () => {
 
       expect(result.outcome).toBe('proposed');
       const [line] = result.proposal?.lines ?? [];
-      expect(line.componentCredit).toEqual({ units: 1, amountGross: 40, variantIds: ['v-b'] });
+      expect(line.componentCredit).toEqual({
+        units: 1,
+        amountGross: 40,
+        variantIds: ['v-b'],
+        components: [{ variantId: 'v-b', bundleUnits: 1 }],
+      });
       // The set is ONE invoice line: nothing is cut from its quantity.
       expect(line.newQuantity).toBe(3);
       expect(line.quantityDisposed).toBe(0);

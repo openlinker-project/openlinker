@@ -21,6 +21,7 @@ export function useSyncBundleFromMasterMutation(): UseMutationResult<
     onSuccess: (_result, variantId) => {
       void queryClient.invalidateQueries({ queryKey: bundlesQueryKeys.all });
       void queryClient.invalidateQueries({ queryKey: ['products'] });
+      void queryClient.invalidateQueries({ queryKey: ['orders'] });
       void queryClient.invalidateQueries({ queryKey: bundlesQueryKeys.detail(variantId) });
     },
   });

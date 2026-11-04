@@ -27,6 +27,9 @@ describe('toPackQuantity (#3929)', () => {
     ['a set of exactly one', { products: [{ quantity: 1 }] }],
     ['a malformed quantity', { products: [{ quantity: 'x' as unknown as number }] }],
     ['a zero quantity', { products: [{ quantity: 0 }] }],
+    ['a missing id', { products: [{ quantity: 2 }] }],
+    ['an empty id', { products: [{ id: '', quantity: 2 }] }],
+    ['a non-string id', { products: [{ id: 5 as unknown as string, quantity: 2 }, { id: 5 as unknown as string, quantity: 2 }] }],
   ])('reads %s as an ordinary line', (_label, productSet) => {
     expect(toPackQuantity(productSet)).toBeUndefined();
   });

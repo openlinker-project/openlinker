@@ -129,6 +129,11 @@ import {
 } from '../dto/return-write.dto';
 import { ReturnCorrectionProposalResponseDto } from '../dto/return-correction-proposal.dto';
 
+interface BundleReadContext {
+  record: NonNullable<Awaited<ReturnType<IReturnsService['getReturn']>>>;
+  order: NonNullable<Awaited<ReturnType<IOrderRecordService['getOrderRecord']>>>;
+}
+
 @ApiBearerAuth()
 @ApiTags('returns')
 @Controller('returns')
@@ -438,8 +443,7 @@ export class ReturnWritesController {
         allegroRefundHintGross: null,
       };
     }
-    const parsed = Number(query.quantity ?? '1');
-    const quantity = Number.isInteger(parsed) && parsed >= 1 ? parsed : 1;
+    const quantity = query.quantity ?? 1;
     const preview = await this.custody.previewBundleReturn(bundle, quantity);
     // The core field is marketplace-neutral; the wire name stays (the web client reads it).
     const { keptAtStandaloneRefundHintGross, ...rest } = preview;
@@ -471,8 +475,14 @@ export class ReturnWritesController {
     let hint = 0;
     let paid = 0;
     let kept = 0;
+    const context = await this.loadBundleContext(returnId);
     for (const set of sets) {
-      const bundle = await this.loadBundleInput(returnId, set.returnLineId, set.returnedVariantIds);
+      const bundle = await this.loadBundleInput(
+        returnId,
+        set.returnLineId,
+        set.returnedVariantIds,
+        context
+      );
       if (bundle === undefined) {
         return { applicable: true, hintGross: null, paidForSetGross: null, keptStandaloneGross: null };
       }
@@ -854,23 +864,29 @@ export class ReturnWritesController {
    * expansion (#3933). `undefined` for an ordinary line or one whose order line
    * is not resolved yet - nothing is guessed from the sku.
    */
+  private async loadBundleContext(returnId: string): Promise<BundleReadContext | null> {
+    const record = await this.returns.getReturn(returnId);
+    if (record === null || record.internalOrderId === null) {
+      return null;
+    }
+    const order = await this.orderRecords.getOrderRecord(record.internalOrderId);
+    return order === null ? null : { record, order };
+  }
+
   private async loadBundleInput(
     returnId: string,
     lineId: string,
-    returnedVariantIds: string[] | undefined
+    returnedVariantIds: string[] | undefined,
+    // A caller looping over several lines of one return loads these once.
+    context?: BundleReadContext | null
   ): Promise<BundleReturnInput | undefined> {
-    const record = await this.returns.getReturn(returnId);
-    const line = record?.lines.find((candidate) => candidate.id === lineId);
-    if (
-      record === null ||
-      record.internalOrderId === null ||
-      line === undefined ||
-      typeof line.resolvedOrderLineId !== 'string'
-    ) {
+    const loaded = context === undefined ? await this.loadBundleContext(returnId) : context;
+    if (loaded === null) {
       return undefined;
     }
-    const order = await this.orderRecords.getOrderRecord(record.internalOrderId);
-    if (order === null) {
+    const { record, order } = loaded;
+    const line = record.lines.find((candidate) => candidate.id === lineId);
+    if (line === undefined || typeof line.resolvedOrderLineId !== 'string') {
       return undefined;
     }
     const refs = order.componentsOfLine(line.resolvedOrderLineId);
