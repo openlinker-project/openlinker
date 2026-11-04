@@ -986,6 +986,7 @@ module.exports = {
         'apps/web/src/features/listings/components/*.tsx',
         'apps/web/src/features/listings/components/allegro/**/*.tsx',
         'apps/web/src/features/listings/components/erli/**/*.tsx',
+        'apps/web/src/features/listings/components/bulk/**/*.tsx',
         'apps/web/src/pages/listings/**/*.tsx',
         'apps/web/src/features/orders/**/*.tsx',
         'apps/web/src/pages/orders/**/*.tsx',

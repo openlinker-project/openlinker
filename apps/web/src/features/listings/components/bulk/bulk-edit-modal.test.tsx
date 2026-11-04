@@ -538,7 +538,7 @@ describe('BulkEditModal', () => {
       />,
     );
 
-    expect(screen.getByLabelText('Allegro category ID')).toBeInTheDocument();
+    expect(screen.getByLabelText('Marketplace category ID')).toBeInTheDocument();
   });
 
   it('omits a blank category from the saved base override so the backend resolves it at submit (#1096)', async () => {
@@ -930,7 +930,7 @@ describe('BulkEditModal', () => {
     );
 
     expect(screen.queryByText('Category parameters')).not.toBeInTheDocument();
-    expect(screen.getByLabelText('Allegro category ID')).toBeInTheDocument();
+    expect(screen.getByLabelText('Marketplace category ID')).toBeInTheDocument();
   });
 
   describe('multi-variant editor (#1741)', () => {
@@ -980,17 +980,17 @@ describe('BulkEditModal', () => {
           onSave={() => undefined}
         />,
       );
-      expect(screen.getByText('category not set')).toBeInTheDocument();
+      expect(screen.getByText('Category not set')).toBeInTheDocument();
 
       fireEvent.click(screen.getByRole('radio', { name: /Shared base/ }));
-      fireEvent.change(screen.getByLabelText('Allegro category ID'), {
+      fireEvent.change(screen.getByLabelText('Marketplace category ID'), {
         target: { value: '12345' },
       });
       fireEvent.click(screen.getByRole('radio', { name: /Rozmiar: M/ }));
 
-      expect(screen.queryByText('category not set')).not.toBeInTheDocument();
+      expect(screen.queryByText('Category not set')).not.toBeInTheDocument();
       // The cause is still true - only its consequence went away.
-      expect(screen.getByText('no catalog match')).toBeInTheDocument();
+      expect(screen.getByText('No catalog match')).toBeInTheDocument();
     });
 
     it('shows the variant category without expanding the disclosure (#2240)', () => {

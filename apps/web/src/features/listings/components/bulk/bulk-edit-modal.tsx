@@ -80,7 +80,13 @@ import {
 } from '../../../../shared/ui';
 import type { DescriptionFormat, StatusBadgeTone } from '../../../../shared/ui';
 import { useDescriptionFormatQuery } from '../../hooks/use-description-format-query';
-import { useFormat } from '../../../../shared/i18n';
+import {
+  interpolate,
+  renderRich,
+  useFormat,
+  useMessages,
+  usePlural,
+} from '../../../../shared/i18n';
 import { Tooltip, TooltipContent, TooltipTrigger } from '../../../../shared/ui/tooltip';
 import { useToast } from '../../../../shared/ui/toast-provider';
 import { ReadOnlyLock } from '../../../../shared/ui/read-only-lock';
@@ -109,11 +115,11 @@ import {
   categoryNotSetApplies,
   isCategoryBlocker,
   isVariantScopeFixable,
+  describeBlocker,
   CATEGORY_EFFECT_CHIP,
   NEUTRAL_BLOCKER_CHIPS,
   FALLBACK_CHIP,
 } from './bulk-blockers';
-import { describeBlocker } from './bulk-blocker-copy';
 import { ErliDeliveryPriceListOverrideField } from '../erli/erli-delivery-price-list-override-field';
 import { useCategoryParametersQuery } from '../../hooks/use-category-parameters-query';
 import { useCategoryParameterSchemas } from '../../hooks/use-category-parameter-schemas';
@@ -336,6 +342,7 @@ export function BulkEditModal({
   canPickShopAttributes = false,
   demoReadOnly = false,
 }: BulkEditModalProps): ReactElement | null {
+  const copy = useMessages('listings').bulkEditModal;
   const [dirty, setDirty] = useState(false);
   const [discardOpen, setDiscardOpen] = useState(false);
   // ADR-046: one read for the whole modal - both the marketplace and the shop
@@ -435,10 +442,10 @@ export function BulkEditModal({
         onOpenChange={setDiscardOpen}
         className="dialog__content--elevated"
         overlayClassName="dialog__overlay--elevated"
-        title="Discard changes?"
-        description="You have unsaved edits in this editor. Closing without saving will discard them."
-        cancelLabel="Keep editing"
-        confirmLabel="Discard changes"
+        title={copy.discard.title}
+        description={copy.discard.description}
+        cancelLabel={copy.discard.cancel}
+        confirmLabel={copy.discard.confirm}
         tone="danger"
         onConfirm={() => {
           setDiscardOpen(false);
@@ -595,6 +602,8 @@ function BulkEditModalForm({
   onSave,
   onClose,
 }: BulkEditModalFormProps): ReactElement {
+  const copy = useMessages('listings').bulkEditModal;
+  const plural = usePlural();
   const { number: formatNumber } = useFormat();
   const connectionId = connection.id;
   // ADR-046: one read for the whole modal. Every description field below derives
@@ -930,10 +939,10 @@ function BulkEditModalForm({
       const categoryMissing = canBrowseCategories && !baseForm.getValues('categoryId');
       showToast({
         tone: 'error',
-        title: categoryMissing ? "Can't save yet - choose a category" : "Can't save yet - fix the highlighted fields",
+        title: categoryMissing ? copy.saveToast.categoryMissingTitle : copy.saveToast.invalidTitle,
         description: categoryMissing
-          ? `${platformName} needs a category for every offer. Use "set category" at the top of this panel.`
-          : 'Each field that needs a change shows what to fix below it.',
+          ? interpolate(copy.saveToast.categoryMissingDescription, { platform: platformName })
+          : copy.saveToast.invalidDescription,
       });
       const target = categoryMissing ? 'category' : baseForm.getFieldState('priceAmount').invalid ? 'price' : null;
       if (target !== null) {
@@ -974,11 +983,11 @@ function BulkEditModalForm({
         showToast({
           tone: failed ? 'error' : 'info',
           title: failed
-            ? "Can't save yet - a variant's category parameters failed to load"
-            : "Can't save yet - a variant's category parameters are still loading",
+            ? copy.saveToast.variantSchemaFailedTitle
+            : copy.saveToast.variantSchemaLoadingTitle,
           description: failed
-            ? 'Retry from the variant panel below, or clear its category override, then save again.'
-            : 'Save again in a moment.',
+            ? copy.saveToast.variantSchemaFailedDescription
+            : copy.saveToast.variantSchemaLoadingDescription,
         });
         return;
       }
@@ -1002,8 +1011,11 @@ function BulkEditModalForm({
       setScope(overCapScope);
       showToast({
         tone: 'error',
-        title: 'Description too long for this destination',
-        description: `Shorten it to ${formatNumber(descriptionFormat.maxBytes)} bytes or fewer - ${platformName} rejects a longer one.`,
+        title: copy.saveToast.descriptionTooLongTitle,
+        description: interpolate(copy.saveToast.descriptionTooLongDescription, {
+          max: formatNumber(descriptionFormat.maxBytes),
+          platform: platformName,
+        }),
       });
       return;
     }
@@ -1019,7 +1031,7 @@ function BulkEditModalForm({
         if (error instanceof MissingCategoryParameterSectionError) {
           baseForm.setError('categoryId', {
             type: 'manual',
-            message: 'Category parameter schema is stale. Close the wizard, reopen it, and try again.',
+            message: copy.saveToast.staleSchema,
           });
           setScope(isMultiVariant ? 'base' : 'simple');
           return;
@@ -1143,12 +1155,12 @@ function BulkEditModalForm({
 
   // ── Scope list + status ──
   const scopeList = useMemo(() => {
-    if (!isMultiVariant) return [{ id: 'simple', label: 'Offer fields' }];
+    if (!isMultiVariant) return [{ id: 'simple', label: copy.scope.offerFields }];
     return [
-      { id: 'base', label: 'Shared base' },
+      { id: 'base', label: copy.scope.sharedBase },
       ...row.variants.map((v, i) => ({ id: v.variantId, label: distinguishingLabel(v, i) })),
     ];
-  }, [isMultiVariant, row.variants]);
+  }, [isMultiVariant, row.variants, copy]);
 
   const variantStatus = useCallback(
     (variant: BulkVariantRow): ScopeStatusKind => {
@@ -1214,12 +1226,12 @@ function BulkEditModalForm({
     ) : effectiveCategoryId ? (
       <span className="mono-text">{effectiveCategoryId}</span>
     ) : (
-      <span className="bulk-editor__cat-missing">Not set</span>
+      <span className="bulk-editor__cat-missing">{copy.category.notSet}</span>
     );
   const categoryMissing = !effectiveCategoryId && !(displayPathNames && displayPathNames.length > 0);
   const productTypeLabel = isMultiVariant
-    ? `${row.variants.length} variants`
-    : 'Simple product · no variants';
+    ? plural(row.variants.length, copy.header.variantCount)
+    : copy.header.simpleProduct;
 
   const applyCategory = (categoryId: string, pathNames: string[] | null): void => {
     baseFormRef.current?.setValue('categoryId', categoryId, { shouldDirty: true });
@@ -1231,20 +1243,24 @@ function BulkEditModalForm({
     <>
       <div className="bulk-editor__head">
         <DialogTitle className="bulk-editor__title">
-          Edit offer <span>- {row.product?.name ?? row.productId}</span>
+          {renderRich(
+            copy.header.titleOffer,
+            { name: (text) => <span>{text}</span> },
+            { name: row.product?.name ?? row.productId },
+          )}
         </DialogTitle>
         <Button
           tone="ghost"
           type="button"
           className="button--icon"
-          aria-label="Close editor"
+          aria-label={copy.header.close}
           onClick={onRequestClose}
         >
           ×
         </Button>
       </div>
       <DialogDescription className="sr-only">
-        Edit the shared base offer and per-variant overrides for this product.
+        {copy.header.descriptionOffer}
       </DialogDescription>
 
       <div className="bulk-editor__cat-chip" data-focus-field="category">
@@ -1257,16 +1273,16 @@ function BulkEditModalForm({
           >
             {/* Name the action, not the widget (#2240): with nothing set, this
                 bar is the product-tier fix every category blocker points at. */}
-            {categoryMissing ? 'set category ↱' : 'change ↱'}
+            {categoryMissing ? copy.category.setAction : copy.category.changeAction}
           </Button>
         ) : null}
-        <span className="eyebrow">Category</span>
+        <span className="eyebrow">{copy.category.eyebrow}</span>
         {canBrowseCategories ? (
           <button
             type="button"
             className="bulk-editor__cat-crumb crumb"
             onClick={() => setCatModalOpen(true)}
-            aria-label="Change category"
+            aria-label={copy.category.changeAria}
           >
             {crumbContent}
           </button>
@@ -1276,12 +1292,12 @@ function BulkEditModalForm({
         {categoryMissing && canBrowseCategories ? (
           <Tooltip>
             <TooltipTrigger asChild>
-              <span className="bulk-editor__warn-tri" role="img" aria-label="Category is required">
-                &#9650;
+              <span className="bulk-editor__warn-tri" role="img" aria-label={copy.category.requiredAria}>
+                {'\u25B2'}
               </span>
             </TooltipTrigger>
             <TooltipContent>
-              Category is required. Choose one with the change button.
+              {copy.category.requiredTooltip}
             </TooltipContent>
           </Tooltip>
         ) : null}
@@ -1294,20 +1310,20 @@ function BulkEditModalForm({
           <nav
             className="bulk-editor__rail"
             role="radiogroup"
-            aria-label="Variant scope selector"
+            aria-label={copy.rail.aria}
             onKeyDown={onRailKeyDown}
           >
-            <div className="eyebrow bulk-editor__rail-eyebrow">Scope</div>
+            <div className="eyebrow bulk-editor__rail-eyebrow">{copy.rail.scope}</div>
             <RailItem
               id="base"
-              label="Shared base"
+              label={copy.scope.sharedBase}
               status="base"
               active={scope === 'base'}
               excluded={false}
               onSelect={setScope}
             />
             <div className="bulk-editor__rail-sep" />
-            <div className="eyebrow bulk-editor__rail-eyebrow">Variants</div>
+            <div className="eyebrow bulk-editor__rail-eyebrow">{copy.rail.variants}</div>
             {row.variants.map((v, i) => (
               <RailItem
                 key={v.variantId}
@@ -1341,7 +1357,7 @@ function BulkEditModalForm({
           {isMultiVariant ? (
             <AccordionHead
               id="base"
-              label="Shared base"
+              label={copy.scope.sharedBase}
               status="base"
               active={scope === 'base'}
               onSelect={setScope}
@@ -1456,12 +1472,12 @@ function BulkEditModalForm({
         <span className="grow">
           {isMultiVariant
             ? scope === 'base'
-              ? 'Editing shared base - changes cascade to every variant that has not overridden the field.'
-              : 'Editing one variant - only overridden fields diverge from the base.'
-            : 'Simple product - no variants. These fields apply to the single offer.'}
+              ? copy.footer.editingBase
+              : copy.footer.editingVariant
+            : copy.footer.editingSimple}
         </span>
         <Button tone="ghost" type="button" onClick={onRequestClose}>
-          Cancel
+          {copy.footer.cancel}
         </Button>
         <ReadOnlyLock active={demoReadOnly} message={demoReadOnlyActionMessage()}>
           <Button
@@ -1472,7 +1488,7 @@ function BulkEditModalForm({
               void handleSaveAll();
             }}
           >
-            Save all
+            {copy.footer.saveAll}
           </Button>
         </ReadOnlyLock>
       </div>
@@ -1491,7 +1507,7 @@ function BulkEditModalForm({
       {zoomSrc ? (
         <BulkImageLightbox
           src={zoomSrc}
-          name={row.product?.name ?? 'Offer image'}
+          name={row.product?.name ?? copy.images.offerImageFallback}
           onClose={() => setZoomSrc(null)}
         />
       ) : null}
@@ -1573,17 +1589,9 @@ function AccordionHead({
 // ── Provenance badge ─────────────────────────────────────────────────────────
 
 type Provenance = 'inherit' | 'master' | 'override' | 'distinct' | 'policy' | 'defaults';
-const PROV_LABEL: Record<Provenance, string> = {
-  inherit: 'inherited',
-  master: 'from master',
-  override: 'overridden',
-  distinct: 'distinguishing',
-  policy: 'policy',
-  defaults: 'defaults for all variants',
-};
-
 function ProvBadge({ kind }: { kind: Provenance }): ReactElement {
-  return <span className={`bulk-editor__prov bulk-editor__prov--${kind}`}>{PROV_LABEL[kind]}</span>;
+  const labels = useMessages('listings').bulkEditModal.provenance;
+  return <span className={`bulk-editor__prov bulk-editor__prov--${kind}`}>{labels[kind]}</span>;
 }
 
 // ── Base / simple scope form (the only RHF form) ─────────────────────────────
@@ -1688,9 +1696,13 @@ function BaseScopeForm({
   onReady,
   onValuesChange,
 }: BaseScopeFormProps): ReactElement {
+  const copy = useMessages('listings').bulkEditModal;
   const effectiveImages = baseImageUrls ?? masterImages;
   const imagesOverridden = baseImageUrls !== undefined;
-  const schema = useMemo(() => makeBulkEditModalSchema(canBrowseCategories), [canBrowseCategories]);
+  const schema = useMemo(
+    () => makeBulkEditModalSchema(canBrowseCategories, copy.validation),
+    [canBrowseCategories, copy.validation],
+  );
   const form = useForm<BulkEditModalValues, undefined, BulkEditModalSubmission>({
     defaultValues: initialValues,
     resolver: zodResolver(schema),
@@ -1713,7 +1725,7 @@ function BaseScopeForm({
     <FormProvider {...form}>
       <div className={classes} hidden={!active} data-form={mode}>
         <div className="bulk-editor__scope-head">
-          <h4>{mode === 'simple' ? 'Offer fields' : 'Shared base'}</h4>
+          <h4>{mode === 'simple' ? copy.scope.offerFields : copy.scope.sharedBase}</h4>
           <div className="grow" />
           {mode === 'simple' ? (
             <label className="checkbox-row" style={{ display: 'inline-flex', alignItems: 'center', gap: 'var(--space-2)' }}>
@@ -1722,7 +1734,7 @@ function BaseScopeForm({
                 checked={simpleIncluded}
                 onChange={(e) => onSimpleIncludedChange(e.target.checked)}
               />
-              <span>Include in this batch</span>
+              <span>{copy.include.label}</span>
             </label>
           ) : (
             <div className="bulk-editor__scope-toggles">
@@ -1730,17 +1742,15 @@ function BaseScopeForm({
               <label className="checkbox-row" style={{ display: 'inline-flex', alignItems: 'center', gap: 'var(--space-2)' }}>
                 <input type="checkbox" {...form.register('publishImmediately')} />
                 <span>
-                  Publish immediately{' '}
+                  {copy.publish.label}{' '}
                   <Tooltip>
                     <TooltipTrigger asChild>
-                      <span className="bulk-editor__infotip" role="img" aria-label="About publish immediately">
+                      <span className="bulk-editor__infotip" role="img" aria-label={copy.publish.aboutAria}>
                         &#9432;
                       </span>
                     </TooltipTrigger>
                     <TooltipContent>
-                      Requests publication. The marketplace still decides: if required parameters are
-                      missing or invalid on its side it keeps the offer as a draft to finish in its own
-                      panel (common on Erli).
+                      {copy.publish.tooltip}
                     </TooltipContent>
                   </Tooltip>
                 </span>
@@ -1752,8 +1762,8 @@ function BaseScopeForm({
         <div data-focus-field="title">
         <FormField
           name="bulk-edit-title"
-          label="Title"
-          description={`Max 75 characters (${platformName} limit).`}
+          label={copy.fields.title}
+          description={interpolate(copy.fields.titleLimit, { platform: platformName })}
           error={form.formState.errors.title?.message}
         >
           <Input
@@ -1767,20 +1777,20 @@ function BaseScopeForm({
 
         {mode === 'simple' ? (
           <div className="bulk-editor__field" data-focus-field="ean">
-            <label>EAN (GTIN)</label>
+            <label>{copy.ean.label}</label>
             <Input
               {...form.register('ean')}
               className={['bulk-editor__input', eanInvalid ? 'bulk-editor__input--error' : '']
                 .filter(Boolean)
                 .join(' ')}
               inputMode="numeric"
-              placeholder="e.g. 5901234567897"
-              aria-label="EAN (GTIN)"
+              placeholder={copy.ean.placeholder}
+              aria-label={copy.ean.label}
               aria-invalid={eanInvalid}
             />
             {eanInvalid ? (
               <div className="bulk-editor__ean-err">
-                Invalid GTIN checksum - Allegro will reject this EAN.
+                {interpolate(copy.ean.invalidChecksum, { platform: platformName })}
               </div>
             ) : null}
             {eanInvalid ? (
@@ -1794,21 +1804,20 @@ function BaseScopeForm({
                         onEanAcknowledgedForChange(e.target.checked ? watchedEan.trim() : undefined)
                       }
                     />
-                    <span>I confirm this EAN is correct - submit anyway.</span>
+                    <span>{copy.ean.acknowledge}</span>
                   </label>
                 </Alert>
               </div>
             ) : null}
             <div className="hint" style={{ color: 'var(--text-muted)', fontSize: 12 }}>
-              Offer barcode for this product. Pre-filled from the master barcode; clearing it lists
-              the offer without a catalog card.
+              {copy.ean.simpleHint}
             </div>
           </div>
         ) : null}
 
         {row.categoryCandidates.length > 0 ? (
           <div className="bulk-editor__field">
-            <label>Suggested categories (EAN matched several)</label>
+            <label>{copy.category.suggested}</label>
             <div style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap' }}>
               {row.categoryCandidates.map((candidate) => (
                 <Button
@@ -1845,14 +1854,14 @@ function BaseScopeForm({
         ) : (
           <FormField
             name="bulk-edit-category"
-            label="Allegro category ID"
-            description="Reuses the resolved Allegro category id. Leave blank to resolve from your configured category mappings at submit."
+            label={copy.category.manualLabel}
+            description={copy.category.manualDescription}
             error={form.formState.errors.categoryId?.message}
           >
             <Input
               {...form.register('categoryId')}
               className="bulk-editor__input"
-              placeholder="e.g. 12345"
+              placeholder={copy.category.manualPlaceholder}
               inputMode="numeric"
               aria-invalid={Boolean(form.formState.errors.categoryId)}
             />
@@ -1870,11 +1879,11 @@ function BaseScopeForm({
           <div className="bulk-editor__row2" data-focus-field="price">
             <FormField
               name="bulk-edit-price"
-              label="Price"
+              label={copy.price.label}
               description={
                 inheritedSimplePrice !== ''
-                  ? `Leave blank to list at ${inheritedSimplePrice} ${currency} from the pricing policy.`
-                  : 'No master price - enter the price for this offer.'
+                  ? interpolate(copy.price.inheritedHint, { price: inheritedSimplePrice, currency })
+                  : copy.price.noMasterPrice
               }
               error={form.formState.errors.priceAmount?.message}
             >
@@ -1888,14 +1897,14 @@ function BaseScopeForm({
             </FormField>
             <FormField
               name="bulk-edit-stock"
-              label="Stock"
+              label={copy.stock.label}
               description={
                 // A simple product's master stock reaches the row only once the
                 // stock sync has a position for it (#3851); until then the
                 // pre-filled 0 is not a stock, and saying so is the only way an
                 // operator can tell the two apart.
                 row.override.stock === undefined && row.masterStock === null
-                  ? 'No stock synced from the master catalog yet. Enter the stock to list this offer now.'
+                  ? copy.stock.notSynced
                   : undefined
               }
               error={form.formState.errors.stock?.message}
@@ -1914,23 +1923,23 @@ function BaseScopeForm({
             <div className="bulk-editor__row2">
               <FormField
                 name="bulk-edit-pricing-policy"
-                label="Price policy"
-                description="Per-product override of the batch pricing policy."
+                label={copy.price.policyLabel}
+                description={copy.price.policyDescription}
               >
                 <select
                   className="bulk-editor__input"
-                  aria-label="Price policy"
+                  aria-label={copy.price.policyLabel}
                   value={pricingPolicy.mode}
                   onChange={(e) => onPricingPolicyChange(nextPricingPolicy(e.target.value as PricingPolicyMode, pricingPolicy))}
                 >
-                  <option value="use-master">Use master price</option>
-                  <option value="markup">Markup on master price</option>
-                  <option value="flat">Flat price for all rows</option>
+                  <option value="use-master">{copy.price.modes.useMaster}</option>
+                  <option value="markup">{copy.price.modes.markup}</option>
+                  <option value="flat">{copy.price.modes.flat}</option>
                 </select>
               </FormField>
               <FormField
                 name="bulk-edit-stock-policy"
-                label="Stock policy"
+                label={copy.stock.policyLabel}
                 description={
                   // #1934/F9 - for a multi-variant product the backend takes
                   // each sibling's own master availability and DISCARDS any
@@ -1939,20 +1948,20 @@ function BaseScopeForm({
                   // at 0, quietly downgraded the offer to a draft). Say so
                   // rather than let the operator set a value that never lands.
                   row.variants.length > 1
-                    ? 'Each variant lists its own master stock. A fixed or capped quantity cannot be applied per variant.'
-                    : 'Per-product override of the batch stock policy.'
+                    ? copy.stock.policyMultiVariant
+                    : copy.stock.policyDescription
                 }
               >
                 <select
                   className="bulk-editor__input"
-                  aria-label="Stock policy"
+                  aria-label={copy.stock.policyLabel}
                   value={stockPolicy.mode}
                   disabled={row.variants.length > 1}
                   onChange={(e) => onStockPolicyChange(nextStockPolicy(e.target.value as StockPolicyMode, stockPolicy))}
                 >
-                  <option value="use-master">Use master stock</option>
-                  <option value="cap">Cap master stock</option>
-                  <option value="flat">Flat stock for all rows</option>
+                  <option value="use-master">{copy.stock.modes.useMaster}</option>
+                  <option value="cap">{copy.stock.modes.cap}</option>
+                  <option value="flat">{copy.stock.modes.flat}</option>
                 </select>
               </FormField>
             </div>
@@ -1960,13 +1969,17 @@ function BaseScopeForm({
             {pricingPolicy.mode !== 'use-master' ? (
               <FormField
                 name="bulk-edit-pricing-param"
-                label={pricingPolicy.mode === 'markup' ? 'Markup %' : `Flat price (${currency})`}
+                label={
+                  pricingPolicy.mode === 'markup'
+                    ? copy.price.markupLabel
+                    : interpolate(copy.price.flatLabel, { currency })
+                }
               >
                 <Input
                   className="bulk-editor__input"
                   inputMode="decimal"
                   value={pricingParamValue(pricingPolicy)}
-                  aria-label={pricingPolicy.mode === 'markup' ? 'Markup percent' : 'Flat price'}
+                  aria-label={pricingPolicy.mode === 'markup' ? copy.price.markupAria : copy.price.flatAria}
                   onChange={(e) => onPricingPolicyChange(withPricingParam(pricingPolicy, e.target.value))}
                 />
               </FormField>
@@ -1975,14 +1988,14 @@ function BaseScopeForm({
             {stockPolicy.mode !== 'use-master' ? (
               <FormField
                 name="bulk-edit-stock-param"
-                label={stockPolicy.mode === 'cap' ? 'Cap at' : 'Stock'}
+                label={stockPolicy.mode === 'cap' ? copy.stock.capLabel : copy.stock.label}
               >
                 <Input
                   type="number"
                   min={1}
                   className="bulk-editor__input"
                   value={stockParamValue(stockPolicy)}
-                  aria-label={stockPolicy.mode === 'cap' ? 'Cap at' : 'Flat stock'}
+                  aria-label={stockPolicy.mode === 'cap' ? copy.stock.capLabel : copy.stock.flatAria}
                   onChange={(e) => onStockPolicyChange(withStockParam(stockPolicy, e.target.value))}
                 />
               </FormField>
@@ -1990,8 +2003,8 @@ function BaseScopeForm({
 
             <FormField
               name="bulk-edit-currency"
-              label="Currency"
-              description="Batch-wide - set in the Config step, applies to every offer."
+              label={copy.currency.label}
+              description={copy.currency.description}
             >
               <Input className="bulk-editor__input" value={currency} readOnly aria-readonly="true" />
             </FormField>
@@ -2000,14 +2013,14 @@ function BaseScopeForm({
 
         <div className="bulk-editor__field">
           <label>
-            Images {imagesOverridden ? <ProvBadge kind="override" /> : <ProvBadge kind="master" />}
+            {copy.images.label} {imagesOverridden ? <ProvBadge kind="override" /> : <ProvBadge kind="master" />}
             {imagesOverridden ? (
               <button
                 type="button"
                 className="bulk-editor__reset"
                 onClick={() => onBaseImageUrlsChange(undefined)}
               >
-                ↺ reset to master
+                {copy.reset.toMaster}
               </button>
             ) : null}
           </label>
@@ -2018,10 +2031,10 @@ function BaseScopeForm({
             focusTarget
           />
           <div className="hint" style={{ color: 'var(--text-muted)', margin: '5px 0 0' }}>
-            {effectiveImages.length === 0 ? 'No images yet - add an image URL to include one. ' : ''}
+            {effectiveImages.length === 0 ? `${copy.images.empty} ` : ''}
             {mode === 'simple'
-              ? 'Master image set for this offer. Add or remove to override it.'
-              : 'Default image set for every variant. Add or remove to override the master set.'}
+              ? copy.images.simpleHint
+              : copy.images.baseHint}
           </div>
         </div>
 
@@ -2040,16 +2053,16 @@ function BaseScopeForm({
             value={typeof platformParams.deliveryPriceList === 'string' ? platformParams.deliveryPriceList : undefined}
             batchDefault={batchDeliveryPriceList}
             onChange={(next) => {
-              const copy = { ...platformParams };
-              if (next === undefined) delete copy.deliveryPriceList;
-              else copy.deliveryPriceList = next;
-              onPlatformParamsChange(copy);
+              const nextParams = { ...platformParams };
+              if (next === undefined) delete nextParams.deliveryPriceList;
+              else nextParams.deliveryPriceList = next;
+              onPlatformParamsChange(nextParams);
             }}
           />
         ) : null}
 
         {platformSection ? (
-          <Suspense fallback={<p className="muted-text">Loading…</p>}>
+          <Suspense fallback={<p className="muted-text">{copy.loading}</p>}>
             <PlatformRowSection
               section={platformSection}
               connection={connection}
@@ -2063,21 +2076,19 @@ function BaseScopeForm({
           <label className="checkbox-row" style={{ display: 'flex', alignItems: 'flex-start', gap: 'var(--space-2)' }}>
             <input type="checkbox" {...form.register('publishImmediately')} />
             <span>
-              <strong>Publish immediately</strong>{' '}
+              <strong>{copy.publish.label}</strong>{' '}
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <span className="bulk-editor__infotip" role="img" aria-label="About publish immediately">
+                  <span className="bulk-editor__infotip" role="img" aria-label={copy.publish.aboutAria}>
                     &#9432;
                   </span>
                 </TooltipTrigger>
                 <TooltipContent>
-                  Requests publication. The marketplace still decides: if required parameters are
-                  missing or invalid on its side it keeps the offer as a draft to finish in its own
-                  panel (common on Erli).
+                  {copy.publish.tooltip}
                 </TooltipContent>
               </Tooltip>
               <small style={{ display: 'block', color: 'var(--text-muted)' }}>
-                Uncheck to create as a draft.
+                {copy.publish.draftHint}
               </small>
             </span>
           </label>
@@ -2099,12 +2110,13 @@ function BaseDescriptionField({
   descriptionFormat: DescriptionFormat | null;
   readOnly: boolean;
 }): ReactElement {
+  const copy = useMessages('listings').bulkEditModal;
   const form = useFormContext<BulkEditModalValues>();
   const error = form.formState.errors.description?.message;
   return (
     <div className="bulk-editor__field">
       <label>
-        Description
+        {copy.description.label}
         {productId !== '' ? (
           <span style={{ marginLeft: 'auto' }}>
             <SuggestionDialog
@@ -2128,11 +2140,11 @@ function BaseDescriptionField({
         onChange={(html) => {
           form.setValue('description', html, { shouldDirty: true, shouldValidate: true });
         }}
-        aria-label="Description"
+        aria-label={copy.description.label}
       />
       {error ? <div className="bulk-editor__ean-err">{error}</div> : null}
       <div className="hint" style={{ color: 'var(--text-muted)', fontSize: 12 }}>
-        AI writes one description shared by every variant unless a variant overrides it.
+        {copy.description.baseHint}
       </div>
     </div>
   );
@@ -2149,26 +2161,27 @@ function BaseParameterSection({
   parametersQuery,
   categoryParameters,
 }: BaseParameterSectionProps): ReactElement | null {
+  const copy = useMessages('listings').bulkEditModal.parameters;
   if (!watchedCategoryId) return null;
   if (parametersQuery.isLoading) {
-    return <div style={{ color: 'var(--text-muted)', fontSize: 12 }}>Loading category parameters…</div>;
+    return <div style={{ color: 'var(--text-muted)', fontSize: 12 }}>{copy.loading}</div>;
   }
   if (parametersQuery.error) {
     return (
       <Alert tone="warning">
-        Could not load category parameters. You can still save - the worker may reject if required params are missing.
+        {copy.loadFailed}
       </Alert>
     );
   }
   if (categoryParameters.length === 0) {
     return (
-      <div style={{ color: 'var(--text-muted)', fontSize: 12 }}>No category parameters required for this category.</div>
+      <div style={{ color: 'var(--text-muted)', fontSize: 12 }}>{copy.noneRequired}</div>
     );
   }
   return (
     <div className="bulk-editor__platform-slot" data-focus-field="parameters">
       <div className="bulk-editor__slot-tag">
-        <span className="eyebrow">Category parameters</span>
+        <span className="eyebrow">{copy.eyebrow}</span>
       </div>
       <CategoryParametersStep parameters={categoryParameters} formNamespace="parameters" />
     </div>
@@ -2287,14 +2300,17 @@ function VariantScopeForm({
   destinationName,
   batchCurrency,
 }: VariantScopeFormProps): ReactElement {
+  const copy = useMessages('listings').bulkEditModal;
+  const plural = usePlural();
+  const platformName = resolvePlatformLabel(usePlatforms(), connection);
   const label = distinguishingLabel(variant, index);
   const master = masterBarcodeOf(variant);
   const ean = edit.ean;
   const eanInvalid = ean.trim() !== '' && !isValidGtin(ean.trim());
   const eanError = eanInvalid
-    ? 'Invalid GTIN checksum - Allegro will reject this EAN.'
+    ? interpolate(copy.ean.invalidChecksum, { platform: platformName })
     : duplicateEan
-      ? 'Duplicate of another included variant - they would collapse to one Allegro card.'
+      ? interpolate(copy.ean.duplicate, { platform: platformName })
       : '';
 
   const effectiveImages = edit.imageUrls ?? inheritedImages;
@@ -2359,7 +2375,7 @@ function VariantScopeForm({
   const baseCategoryDisplay =
     baseCategoryPathNames && baseCategoryPathNames.length > 0
       ? baseCategoryPathNames.join(' › ')
-      : baseValues.categoryId || 'Not set on base';
+      : baseValues.categoryId || copy.variant.notSetOnBase;
 
   // The own-category schema is read from BOTH here and the parent (#1946): the
   // parent needs it at save time for every sibling, including one whose panel is
@@ -2419,7 +2435,7 @@ function VariantScopeForm({
       <Fragment key={param.id}>
         {control}
         <div className="hint" style={{ color: 'var(--text-muted)', fontSize: 12 }}>
-          Filled from the variant&apos;s attributes - save to keep it.
+          {copy.parameters.prefilled}
         </div>
       </Fragment>
     );
@@ -2431,10 +2447,10 @@ function VariantScopeForm({
   ): ReactElement => {
     const override = edit.params[param.id];
     const overridden = override !== undefined;
-    const ariaLabel = `${param.name} for ${label}`;
+    const ariaLabel = interpolate(copy.variant.fieldFor, { field: param.name, variant: label });
     const baseDisplay = baseParamDisplay(param, baseValues);
     const provNode = opts?.splitBadge ? (
-      <span className="bulk-editor__prov bulk-editor__prov--split">splits listing</span>
+      <span className="bulk-editor__prov bulk-editor__prov--split">{copy.variant.splitsListing}</span>
     ) : undefined;
     const onReset = opts?.onReset;
 
@@ -2542,8 +2558,7 @@ function VariantScopeForm({
           </label>
           <div className="bulk-editor__split-warn" role="alert">
             <p>
-              Overriding {param.name} for one variant splits it into its own Allegro listing - it stops grouping
-              with the other variants.
+              {interpolate(copy.variant.paramSplitWarning, { name: param.name, platform: platformName })}
             </p>
             <div className="bulk-editor__split-warn-actions">
               <Button
@@ -2556,7 +2571,7 @@ function VariantScopeForm({
                   if (baseRaw !== undefined) onParamChange(param.id, baseRaw);
                 }}
               >
-                Override anyway
+                {copy.variant.overrideAnyway}
               </Button>
               <Button
                 tone="ghost"
@@ -2564,7 +2579,7 @@ function VariantScopeForm({
                 className="button--sm"
                 onClick={() => setWarnParamIds((prev) => removeFrom(prev, param.id))}
               >
-                Keep shared
+                {copy.variant.keepShared}
               </Button>
             </div>
           </div>
@@ -2580,19 +2595,19 @@ function VariantScopeForm({
         </label>
         <Input
           className="bulk-editor__input bulk-editor__input--inherited"
-          value={baseLabel || 'Not set on base'}
+          value={baseLabel || copy.variant.notSetOnBase}
           readOnly
           aria-readonly="true"
         />
         <div className="hint" style={{ color: 'var(--text-muted)', fontSize: 12 }}>
-          Shared across all variants - grouping-determining, edit on base.
+          {copy.variant.groupingParamHint}
         </div>
         <button
           type="button"
           className="bulk-editor__override-link"
           onClick={() => setWarnParamIds((prev) => addTo(prev, param.id))}
         >
-          Override for this variant
+          {copy.variant.overrideForVariant}
         </button>
       </div>
     );
@@ -2601,12 +2616,12 @@ function VariantScopeForm({
   return (
     <div className={formClasses} data-form={variant.variantId}>
       <div className="bulk-editor__scope-head">
-        <h4>Variant · {label}</h4>
+        <h4>{interpolate(copy.variant.heading, { variant: label })}</h4>
         <div className="grow" />
         <div className="bulk-editor__scope-toggles">
           <label className="checkbox-row" style={{ display: 'inline-flex', alignItems: 'center', gap: 'var(--space-2)' }}>
             <input type="checkbox" checked={included} onChange={(e) => onIncludedChange(e.target.checked)} />
-            <span>Include in this batch</span>
+            <span>{copy.include.label}</span>
           </label>
           <label className="checkbox-row" style={{ display: 'inline-flex', alignItems: 'center', gap: 'var(--space-2)' }}>
             <input
@@ -2615,7 +2630,7 @@ function VariantScopeForm({
               onChange={(e) => onPatch({ publishImmediately: e.target.checked })}
             />
             <span>
-              Publish immediately{' '}
+              {copy.publish.label}{' '}
               {edit.publishImmediately !== undefined ? <ProvBadge kind="override" /> : <ProvBadge kind="inherit" />}
             </span>
           </label>
@@ -2624,8 +2639,7 @@ function VariantScopeForm({
 
       {!included ? (
         <div className="bulk-editor__excl-note">
-          This variant is excluded - it will not be submitted. The product&apos;s other variants still list and group, but
-          buyers will see one fewer option. Switch it back on to include it.
+          {copy.variant.excludedNote}
         </div>
       ) : null}
 
@@ -2655,7 +2669,7 @@ function VariantScopeForm({
         // change state. A category blocker's primary action is the PRODUCT-tier
         // category - the submit pins it for every sibling and readiness now reads
         // it, which is exactly what the old "Fix on base" button did not do.
-        const copy = describeBlocker(blocker, {
+        const blockerCopy = describeBlocker(blocker, {
           ean: edit.ean.trim() === '' ? null : edit.ean.trim(),
           destinationName,
           variantCount,
@@ -2670,7 +2684,7 @@ function VariantScopeForm({
         const needsCategory = categoryBlocker && !productCategorySet && !hasOwnCategory;
         return (
           <div key={blocker} className="bulk-editor__banner bulk-editor__banner--error">
-            <b>{copy.title}</b> {copy.detail}
+            <b>{blockerCopy.title}</b> {blockerCopy.detail}
             {/* The per-variant override is deliberately NOT offered here as an
                 alternative: the editor's own save requires a category on the
                 product (the base schema's `requireCategory` for a browsable
@@ -2689,7 +2703,7 @@ function VariantScopeForm({
                   className="button--sm"
                   onClick={onSetProductCategory}
                 >
-                  Set category for all {variantCount} variants
+                  {plural(variantCount, copy.variant.setCategoryForAll)}
                 </Button>
               </div>
             ) : needsCategory ? (
@@ -2705,7 +2719,7 @@ function VariantScopeForm({
                   className="button--sm"
                   onClick={onSetProductCategory}
                 >
-                  Set the product category
+                  {copy.variant.setProductCategory}
                 </Button>
               </div>
             ) : variantScope ? null : (
@@ -2714,7 +2728,7 @@ function VariantScopeForm({
                 style={{ marginTop: 'var(--space-2)', gap: 'var(--space-2)' }}
               >
                 <Button tone="ghost" type="button" className="button--sm" onClick={onFixOnBase}>
-                  Open shared base
+                  {copy.variant.openSharedBase}
                 </Button>
               </div>
             )}
@@ -2723,7 +2737,7 @@ function VariantScopeForm({
       })}
 
       <div className="eyebrow" style={{ marginBottom: 'var(--space-3)' }}>
-        Per-variant
+        {copy.variant.perVariant}
       </div>
 
       {/* Per-variant category (#2240). Hoisted OUT of the title/description
@@ -2738,7 +2752,7 @@ function VariantScopeForm({
           same locked shape. */}
         <div className="bulk-editor__field">
           <label>
-            Category {hasOwnCategory ? <ProvBadge kind="override" /> : <ProvBadge kind="inherit" />}
+            {copy.category.eyebrow} {hasOwnCategory ? <ProvBadge kind="override" /> : <ProvBadge kind="inherit" />}
           </label>
           {!canOverrideCategory ? (
             <>
@@ -2750,8 +2764,8 @@ function VariantScopeForm({
               />
               <div className="hint" style={{ color: 'var(--text-muted)', fontSize: 12 }}>
                 {variantGroupingModel === 'parent-child'
-                  ? 'Category is set on the parent product - it cannot be overridden per variant here.'
-                  : 'Shared across all variants.'}
+                  ? copy.variant.categoryOnParent
+                  : copy.variant.sharedAcrossVariants}
               </div>
             </>
           ) : hasOwnCategory ? (
@@ -2762,7 +2776,7 @@ function VariantScopeForm({
                     ? ownCategoryPathNames.join(' › ')
                     : edit.categoryId}
                 </span>
-                <span className="bulk-editor__prov bulk-editor__prov--split">splits listing</span>
+                <span className="bulk-editor__prov bulk-editor__prov--split">{copy.variant.splitsListing}</span>
               </div>
               <div
                 className="bulk-editor__scope-toggles"
@@ -2774,7 +2788,7 @@ function VariantScopeForm({
                   className="button--sm"
                   onClick={() => setVariantCategoryModalOpen(true)}
                 >
-                  Change category
+                  {copy.category.changeAria}
                 </Button>
                 <button
                   type="button"
@@ -2785,18 +2799,17 @@ function VariantScopeForm({
                     setCategoryWarn(false);
                   }}
                 >
-                  ↺ reset to shared
+                  {copy.reset.toShared}
                 </button>
               </div>
               <div className="hint" style={{ color: 'var(--text-muted)', fontSize: 12 }}>
-                Publishes as its own listing, outside the grouped card.
+                {copy.variant.ownListingHint}
               </div>
             </>
           ) : categoryWarn ? (
             <div className="bulk-editor__split-warn" role="alert">
               <p>
-                Giving this variant its own category splits it into its own Allegro listing - it stops
-                grouping with the other variants.
+                {interpolate(copy.variant.categorySplitWarning, { platform: platformName })}
               </p>
               <div className="bulk-editor__split-warn-actions">
                 <Button
@@ -2808,10 +2821,10 @@ function VariantScopeForm({
                     setVariantCategoryModalOpen(true);
                   }}
                 >
-                  Override anyway
+                  {copy.variant.overrideAnyway}
                 </Button>
                 <Button tone="ghost" type="button" className="button--sm" onClick={() => setCategoryWarn(false)}>
-                  Keep shared
+                  {copy.variant.keepShared}
                 </Button>
               </div>
             </div>
@@ -2824,14 +2837,14 @@ function VariantScopeForm({
                 aria-readonly="true"
               />
               <div className="hint" style={{ color: 'var(--text-muted)', fontSize: 12 }}>
-                Shared across all variants - overriding splits this variant into its own listing.
+                {copy.variant.categoryInheritHint}
               </div>
               <button
                 type="button"
                 className="bulk-editor__override-link"
                 onClick={() => setCategoryWarn(true)}
               >
-                Override for this variant
+                {copy.variant.overrideForVariant}
               </button>
             </>
           )}
@@ -2842,24 +2855,24 @@ function VariantScopeForm({
           moved above the disclosure in #2240. */}
       <details className="bulk-editor__field">
         <summary style={{ cursor: 'pointer', color: 'var(--accent-primary)' }}>
-          Override base title / description
+          {copy.variant.overrideTitleDescription}
         </summary>
         <div style={{ marginTop: 'var(--space-3)' }}>
           <InheritableTextField
-            label="Title"
+            label={copy.fields.title}
             overridden={edit.title !== undefined}
             blankInheritsBase
             value={edit.title ?? ''}
             baseValue={baseValues.title}
-            ariaLabel={`Title for ${label}`}
+            ariaLabel={interpolate(copy.variant.fieldFor, { field: copy.fields.title, variant: label })}
             onChange={(next) => onPatch({ title: next })}
           />
           <div className="bulk-editor__field">
             <label>
-              Description {edit.description !== undefined ? <ProvBadge kind="override" /> : <ProvBadge kind="inherit" />}
+              {copy.description.label} {edit.description !== undefined ? <ProvBadge kind="override" /> : <ProvBadge kind="inherit" />}
               {edit.description !== undefined ? (
                 <button type="button" className="bulk-editor__reset" onClick={() => onPatch({ description: undefined })}>
-                  ↺ reset to base
+                  {copy.reset.toBase}
                 </button>
               ) : null}
             </label>
@@ -2872,7 +2885,7 @@ function VariantScopeForm({
               }
               format={descriptionFormat}
               value={edit.description !== undefined ? edit.description : baseValues.description}
-              aria-label={`Description for ${label}`}
+              aria-label={interpolate(copy.variant.fieldFor, { field: copy.description.label, variant: label })}
               onChange={(html) =>
                 onPatch({ description: html === baseValues.description ? undefined : html })
               }
@@ -2886,7 +2899,7 @@ function VariantScopeForm({
           open={variantCategoryModalOpen}
           onOpenChange={setVariantCategoryModalOpen}
           connectionId={connectionId}
-          productName={`${label} (variant)`}
+          productName={interpolate(copy.variant.categoryModalName, { variant: label })}
           selectedId={edit.categoryId ?? null}
           scope="variant"
           onSelect={(categoryId, pathNames) => {
@@ -2899,13 +2912,13 @@ function VariantScopeForm({
       {/* EAN - from master, editable, GS1 + intra-group duplicate validated. */}
       <div className="bulk-editor__field" data-focus-field="ean">
         <label>
-          EAN (GTIN) {ean.trim() !== master ? <ProvBadge kind="override" /> : <ProvBadge kind="master" />}
+          {copy.ean.label} {ean.trim() !== master ? <ProvBadge kind="override" /> : <ProvBadge kind="master" />}
         </label>
         <Input
           className={['bulk-editor__input', eanError ? 'bulk-editor__input--error' : ''].filter(Boolean).join(' ')}
           value={ean}
           inputMode="numeric"
-          aria-label={`EAN for ${label}`}
+          aria-label={interpolate(copy.variant.fieldFor, { field: copy.ean.short, variant: label })}
           aria-invalid={Boolean(eanError)}
           onChange={(e) => onPatch({ ean: e.target.value })}
         />
@@ -2921,14 +2934,13 @@ function VariantScopeForm({
                     onPatch({ eanAcknowledgedFor: e.target.checked ? ean.trim() : undefined })
                   }
                 />
-                <span>I confirm this EAN is correct - submit anyway.</span>
+                <span>{copy.ean.acknowledge}</span>
               </label>
             </Alert>
           </div>
         ) : null}
         <div className="hint" style={{ color: 'var(--text-muted)', fontSize: 12 }}>
-          Pre-filled from this variant&apos;s master EAN. Edits are checksum + duplicate validated; clearing lists it
-          without a catalog card.
+          {copy.ean.variantHint}
         </div>
       </div>
 
@@ -2939,7 +2951,7 @@ function VariantScopeForm({
       <div className="bulk-editor__row2">
         <div className="bulk-editor__field">
           <label>
-            Stock <ProvBadge kind="master" />
+            {copy.stock.label} <ProvBadge kind="master" />
           </label>
           <Input
             className="bulk-editor__input bulk-editor__input--inherited"
@@ -2948,17 +2960,17 @@ function VariantScopeForm({
             aria-readonly="true"
           />
           <div className="hint" style={{ color: 'var(--text-muted)', fontSize: 12 }}>
-            Authoritative from master inventory. Out-of-stock lists as 0, never backfilled.
+            {copy.stock.variantHint}
           </div>
         </div>
 
         <InheritableTextField
-          label="Price"
+          label={copy.price.label}
           overridden={edit.price !== undefined}
           blankInheritsBase
           value={edit.price ?? ''}
           baseValue={basePriceValue}
-          ariaLabel={`Price for ${label}`}
+          ariaLabel={interpolate(copy.variant.fieldFor, { field: copy.price.label, variant: label })}
           onChange={(next) => onPatch({ price: next })}
         />
       </div>
@@ -2968,14 +2980,14 @@ function VariantScopeForm({
           sibling or the shared base. */}
       <div className="bulk-editor__field">
         <label>
-          Images {imagesOverridden ? <ProvBadge kind="override" /> : <ProvBadge kind="inherit" />}
+          {copy.images.label} {imagesOverridden ? <ProvBadge kind="override" /> : <ProvBadge kind="inherit" />}
           {imagesOverridden ? (
             <button
               type="button"
               className="bulk-editor__reset"
               onClick={() => onPatch({ imageUrls: undefined })}
             >
-              {inheritsVariantDefault ? '↺ reset to default' : '↺ reset to base'}
+              {inheritsVariantDefault ? copy.reset.toDefault : copy.reset.toBase}
             </button>
           ) : null}
         </label>
@@ -2988,10 +3000,10 @@ function VariantScopeForm({
         />
         <div className="hint" style={{ color: 'var(--text-muted)', fontSize: 12 }}>
           {imagesOverridden
-            ? 'Custom image set for this variant.'
+            ? copy.images.variantCustom
             : inheritsVariantDefault
-              ? "This variant's default: its own images first, other variants' images left out - add or remove to override for this variant."
-              : 'Inherits the base images - add or remove to override for this variant.'}
+              ? copy.images.variantDefault
+              : copy.images.variantInherits}
         </div>
       </div>
 
@@ -3004,7 +3016,7 @@ function VariantScopeForm({
         <div className="bulk-editor__platform-slot">
           <Alert
             tone="error"
-            title="Couldn't load this variant's category parameters"
+            title={copy.parameters.variantLoadFailedTitle}
             action={
               <Button
                 tone="secondary"
@@ -3012,12 +3024,11 @@ function VariantScopeForm({
                 className="button--sm"
                 onClick={onRetryOwnCategoryParameters}
               >
-                Retry
+                {copy.parameters.retry}
               </Button>
             }
           >
-            Its parameters can't be filled in or saved until this loads. Retry, or clear the
-            category override to fall back to the shared base category.
+            {copy.parameters.variantLoadFailedDescription}
           </Alert>
         </div>
       ) : null}
@@ -3029,12 +3040,12 @@ function VariantScopeForm({
       {effectiveCategoryParameters.length > 0 ? (
         <div className="bulk-editor__platform-slot" data-focus-field="parameters">
           <div className="bulk-editor__slot-tag">
-            <span className="eyebrow">Category parameters</span>
+            <span className="eyebrow">{copy.parameters.eyebrow}</span>
           </div>
           <div className="hint" style={{ color: 'var(--text-muted)', fontSize: 12, marginBottom: 'var(--space-3)' }}>
             {hasOwnCategory
-              ? "Resolved from this variant's own category."
-              : 'Everything inherits from base. Override only the parameters that differ for this variant.'}
+              ? copy.parameters.ownCategoryHint
+              : copy.parameters.inheritHint}
           </div>
           {requiredParams.length > 0 ? (
             <div className="bulk-editor__vparams-grid">{requiredParams.map(renderVariantParam)}</div>
@@ -3042,7 +3053,7 @@ function VariantScopeForm({
           {optionalParams.length > 0 ? (
             <details className="category-parameters-step__expander">
               <summary className="category-parameters-step__expander-summary">
-                Show optional fields ({optionalParams.length})
+                {interpolate(copy.parameters.showOptional, { count: optionalParams.length })}
               </summary>
               <div className="bulk-editor__vparams-grid">{optionalParams.map(renderVariantParam)}</div>
             </details>
@@ -3097,6 +3108,7 @@ function InheritableTextField({
   blankInheritsBase?: boolean;
   onChange: (next: string | undefined) => void;
 }): ReactElement {
+  const copy = useMessages('listings').bulkEditModal;
   const displayValue = overridden ? value : baseValue;
   const blankFallsBack =
     blankInheritsBase === true && overridden && value.trim() === '' && baseValue !== '';
@@ -3107,7 +3119,7 @@ function InheritableTextField({
         {label} {provNode ?? (overridden ? <ProvBadge kind="override" /> : <ProvBadge kind="inherit" />)}
         {showReset ? (
           <button type="button" className="bulk-editor__reset" onClick={() => (onReset ? onReset() : onChange(undefined))}>
-            ↺ reset to base
+            {copy.reset.toBase}
           </button>
         ) : null}
       </label>
@@ -3127,7 +3139,7 @@ function InheritableTextField({
       />
       {blankFallsBack ? (
         <div className="hint" style={{ color: 'var(--text-muted)', fontSize: 12 }}>
-          Left empty, this variant uses the base value: {baseValue}
+          {interpolate(copy.variant.blankUsesBase, { value: baseValue })}
         </div>
       ) : null}
     </div>
@@ -3173,6 +3185,7 @@ function InheritableSelectField({
   onReset?: () => void;
   onChange: (next: string | undefined) => void;
 }): ReactElement {
+  const copy = useMessages('listings').bulkEditModal;
   const showReset = overridden || Boolean(onReset);
   return (
     <div className="bulk-editor__field">
@@ -3180,7 +3193,7 @@ function InheritableSelectField({
         {label} {provNode ?? (overridden ? <ProvBadge kind="override" /> : <ProvBadge kind="inherit" />)}
         {showReset ? (
           <button type="button" className="bulk-editor__reset" onClick={() => (onReset ? onReset() : onChange(undefined))}>
-            ↺ reset to base
+            {copy.reset.toBase}
           </button>
         ) : null}
       </label>
@@ -3193,7 +3206,9 @@ function InheritableSelectField({
         aria-label={ariaLabel}
         onChange={(e) => onChange(e.target.value === '' ? undefined : e.target.value)}
       >
-        <option value="">{baseDisplay ? `Inherit from base (${baseDisplay})` : 'Inherit from base'}</option>
+        <option value="">
+          {baseDisplay ? interpolate(copy.variant.inheritWithValue, { value: baseDisplay }) : copy.variant.inherit}
+        </option>
         {options.map((o) => (
           <option key={o.id} value={o.id}>
             {o.label}
@@ -3231,6 +3246,7 @@ function InheritableComboboxField({
   onReset?: () => void;
   onChange: (next: FormParameterValue) => void;
 }): ReactElement {
+  const copy = useMessages('listings').bulkEditModal;
   const showReset = overridden || Boolean(onReset);
   return (
     <div className="bulk-editor__field">
@@ -3238,7 +3254,7 @@ function InheritableComboboxField({
         {label} {provNode ?? (overridden ? <ProvBadge kind="override" /> : <ProvBadge kind="inherit" />)}
         {showReset ? (
           <button type="button" className="bulk-editor__reset" onClick={() => (onReset ? onReset() : onChange(undefined))}>
-            ↺ reset to base
+            {copy.reset.toBase}
           </button>
         ) : null}
       </label>
@@ -3249,7 +3265,11 @@ function InheritableComboboxField({
         allowCustomValues={parameter.restrictions.customValuesEnabled}
         value={toComboboxValue(parameter, value)}
         onChange={(next: ComboboxValue | null) => onChange(fromComboboxValue(parameter, next))}
-        placeholder={baseDisplay ? `Inherit from base (${baseDisplay})` : 'Pick a value or inherit from base'}
+        placeholder={
+          baseDisplay
+            ? interpolate(copy.variant.inheritWithValue, { value: baseDisplay })
+            : copy.variant.pickOrInherit
+        }
         invalid={false}
       />
     </div>
@@ -3432,6 +3452,8 @@ function BulkShopEditModalForm({
   onSave,
   onClose,
 }: BulkShopEditModalFormProps): ReactElement {
+  const copy = useMessages('listings').bulkEditModal;
+  const plural = usePlural();
   const { number: formatNumber } = useFormat();
   const connectionId = connection.id;
   const { showToast } = useToast();
@@ -3543,12 +3565,12 @@ function BulkShopEditModalForm({
   );
 
   const scopeList = useMemo(() => {
-    if (!isMultiVariant) return [{ id: 'simple', label: 'Product fields' }];
+    if (!isMultiVariant) return [{ id: 'simple', label: copy.scope.productFields }];
     return [
-      { id: 'base', label: 'Shared base' },
+      { id: 'base', label: copy.scope.sharedBase },
       ...row.variants.map((v, i) => ({ id: v.variantId, label: distinguishingLabel(v, i) })),
     ];
-  }, [isMultiVariant, row.variants]);
+  }, [isMultiVariant, row.variants, copy]);
 
   const scopeStatus = useCallback(
     (id: string): ScopeStatusKind => {
@@ -3580,7 +3602,7 @@ function BulkShopEditModalForm({
     ) : categoryId ? (
       <span className="mono-text">{categoryId}</span>
     ) : (
-      <span className="bulk-editor__cat-missing">Not set</span>
+      <span className="bulk-editor__cat-missing">{copy.category.notSet}</span>
     );
 
   const applyCategory = (nextId: string, pathNames: string[]): void => {
@@ -3609,8 +3631,10 @@ function BulkShopEditModalForm({
       setScope(overCapScope);
       showToast({
         tone: 'error',
-        title: 'Description too long for this destination',
-        description: `Shorten it to ${formatNumber(descriptionFormat.maxBytes)} bytes or fewer - the shop rejects a longer one.`,
+        title: copy.saveToast.descriptionTooLongTitle,
+        description: interpolate(copy.saveToast.descriptionTooLongShop, {
+          max: formatNumber(descriptionFormat.maxBytes),
+        }),
       });
       return;
     }
@@ -3663,28 +3687,34 @@ function BulkShopEditModalForm({
   };
 
   const productTypeLabel = isMultiVariant
-    ? `${row.variants.length} variants`
-    : 'Simple product · no variants';
-  const visibilityLabel = defaults.publishImmediately ? 'Published' : 'Draft';
+    ? plural(row.variants.length, copy.header.variantCount)
+    : copy.header.simpleProduct;
+  const visibilityLabel = defaults.publishImmediately
+    ? copy.shop.visibility.published
+    : copy.shop.visibility.draft;
 
   return (
     <>
       <div className="bulk-editor__head">
         <DialogTitle className="bulk-editor__title">
-          Edit product <span>- {row.product?.name ?? row.productId}</span>
+          {renderRich(
+            copy.header.titleProduct,
+            { name: (text) => <span>{text}</span> },
+            { name: row.product?.name ?? row.productId },
+          )}
         </DialogTitle>
         <Button
           tone="ghost"
           type="button"
           className="button--icon"
-          aria-label="Close editor"
+          aria-label={copy.header.close}
           onClick={onRequestClose}
         >
           ×
         </Button>
       </div>
       <DialogDescription className="sr-only">
-        Edit the shared base product and per-variant overrides for this shop listing.
+        {copy.header.descriptionProduct}
       </DialogDescription>
 
       {canBrowseShopCategories ? (
@@ -3695,14 +3725,14 @@ function BulkShopEditModalForm({
             className="bulk-editor__cat-change"
             onClick={() => setCatModalOpen(true)}
           >
-            change ↱
+            {copy.category.changeAction}
           </Button>
-          <span className="eyebrow">Category</span>
+          <span className="eyebrow">{copy.category.eyebrow}</span>
           <button
             type="button"
             className="bulk-editor__cat-crumb crumb"
             onClick={() => setCatModalOpen(true)}
-            aria-label="Change category"
+            aria-label={copy.category.changeAria}
           >
             {crumbContent}
           </button>
@@ -3716,20 +3746,20 @@ function BulkShopEditModalForm({
           <nav
             className="bulk-editor__rail"
             role="radiogroup"
-            aria-label="Variant scope selector"
+            aria-label={copy.rail.aria}
             onKeyDown={onRailKeyDown}
           >
-            <div className="eyebrow bulk-editor__rail-eyebrow">Scope</div>
+            <div className="eyebrow bulk-editor__rail-eyebrow">{copy.rail.scope}</div>
             <RailItem
               id="base"
-              label="Shared base"
+              label={copy.scope.sharedBase}
               status="base"
               active={scope === 'base'}
               excluded={false}
               onSelect={setScope}
             />
             <div className="bulk-editor__rail-sep" />
-            <div className="eyebrow bulk-editor__rail-eyebrow">Variants</div>
+            <div className="eyebrow bulk-editor__rail-eyebrow">{copy.rail.variants}</div>
             {row.variants.map((v, i) => (
               <RailItem
                 key={v.variantId}
@@ -3752,7 +3782,7 @@ function BulkShopEditModalForm({
             {isMultiVariant ? (
               <AccordionHead
                 id="base"
-                label="Shared base"
+                label={copy.scope.sharedBase}
                 status="base"
                 active={scope === 'base'}
                 onSelect={setScope}
@@ -3840,16 +3870,16 @@ function BulkShopEditModalForm({
         <span className="grow">
           {isMultiVariant
             ? scope === 'base'
-              ? 'Editing shared base - changes cascade to every variant that has not overridden the field.'
-              : 'Editing one variant - only overridden fields diverge from the base.'
-            : 'Simple product - no variants. These fields apply to the single listing.'}
+              ? copy.footer.editingBase
+              : copy.footer.editingVariant
+            : copy.footer.editingSimpleListing}
         </span>
         <Button tone="ghost" type="button" onClick={onRequestClose}>
-          Cancel
+          {copy.footer.cancel}
         </Button>
         <ReadOnlyLock active={demoReadOnly} message={demoReadOnlyActionMessage()}>
           <Button tone="primary" type="button" disabled={demoReadOnly} onClick={handleSaveAll}>
-            Save all
+            {copy.footer.saveAll}
           </Button>
         </ReadOnlyLock>
       </div>
@@ -3868,7 +3898,7 @@ function BulkShopEditModalForm({
       {zoomSrc ? (
         <BulkImageLightbox
           src={zoomSrc}
-          name={row.product?.name ?? 'Product image'}
+          name={row.product?.name ?? copy.images.productImageFallback}
           onClose={() => setZoomSrc(null)}
         />
       ) : null}
@@ -3959,6 +3989,7 @@ function ShopBaseScopeForm({
   simpleIncluded,
   onSimpleIncludedChange,
 }: ShopBaseScopeFormProps): ReactElement {
+  const copy = useMessages('listings').bulkEditModal;
   const effectiveImages = baseImageUrls ?? masterImages;
   const imagesOverridden = baseImageUrls !== undefined;
   const classes = ['bulk-editor__form', active ? 'bulk-editor__form--acc-open' : ''].filter(Boolean).join(' ');
@@ -3966,7 +3997,7 @@ function ShopBaseScopeForm({
   return (
     <div className={classes} hidden={!active} data-form={mode}>
       <div className="bulk-editor__scope-head">
-        <h4>{mode === 'simple' ? 'Product fields' : 'Shared base'}</h4>
+        <h4>{mode === 'simple' ? copy.scope.productFields : copy.scope.sharedBase}</h4>
         <div className="grow" />
         {mode === 'simple' ? (
           <label className="checkbox-row" style={{ display: 'inline-flex', alignItems: 'center', gap: 'var(--space-2)' }}>
@@ -3975,7 +4006,7 @@ function ShopBaseScopeForm({
               checked={simpleIncluded}
               onChange={(e) => onSimpleIncludedChange(e.target.checked)}
             />
-            <span>Include in this batch</span>
+            <span>{copy.include.label}</span>
           </label>
         ) : (
           <ProvBadge kind="defaults" />
@@ -3984,22 +4015,22 @@ function ShopBaseScopeForm({
 
       <FormField
         name="shop-edit-title"
-        label="Title"
-        description="The product name shown in the shop."
-        error={titleError ? 'Title is required' : undefined}
+        label={copy.fields.title}
+        description={copy.shop.titleDescription}
+        error={titleError ? copy.validation.titleRequired : undefined}
       >
         <Input
           value={title}
           onChange={(e) => onTitleChange(e.target.value)}
           className="bulk-editor__input"
           aria-invalid={titleError}
-          aria-label="Title"
+          aria-label={copy.fields.title}
         />
       </FormField>
 
       <div className="bulk-editor__field">
         <label>
-          Description
+          {copy.description.label}
           {productId !== '' ? (
             <span style={{ marginLeft: 'auto' }}>
               <SuggestionDialog
@@ -4015,38 +4046,38 @@ function ShopBaseScopeForm({
           disabled={readOnly}
           value={description}
           onChange={onDescriptionChange}
-          aria-label="Description"
+          aria-label={copy.description.label}
         />
         <div className="hint" style={{ color: 'var(--text-muted)', fontSize: 12 }}>
-          Shared by every variant unless a variant overrides it.
+          {copy.description.shopHint}
         </div>
       </div>
 
       {mode === 'simple' ? (
         <div className="bulk-editor__row2">
           <div className="bulk-editor__field">
-            <label>Price ({currency})</label>
+            <label>{interpolate(copy.price.labelWithCurrency, { currency })}</label>
             <Input
               value={priceAmount}
               onChange={(e) => onPriceAmountChange(e.target.value)}
               className="bulk-editor__input"
               inputMode="decimal"
-              placeholder="79.00"
-              aria-label="Price"
+              placeholder={copy.price.placeholder}
+              aria-label={copy.price.label}
             />
             <div className="hint" style={{ color: 'var(--text-muted)', fontSize: 12 }}>
-              Leave blank to publish at the master price.
+              {copy.price.shopBlankHint}
             </div>
           </div>
           <div className="bulk-editor__field">
-            <label>Stock</label>
+            <label>{copy.stock.label}</label>
             <Input
               type="number"
               min={0}
               value={stock}
               onChange={(e) => onStockChange(Number(e.target.value))}
               className="bulk-editor__input"
-              aria-label="Stock"
+              aria-label={copy.stock.label}
             />
           </div>
         </div>
@@ -4055,38 +4086,38 @@ function ShopBaseScopeForm({
           <div className="bulk-editor__row2">
             <FormField
               name="shop-edit-pricing-policy"
-              label="Price policy"
-              description="Per-product override of the batch pricing policy."
+              label={copy.price.policyLabel}
+              description={copy.price.policyDescription}
             >
               <select
                 className="bulk-editor__input"
-                aria-label="Price policy"
+                aria-label={copy.price.policyLabel}
                 value={pricingPolicy.mode}
                 onChange={(e) =>
                   onPricingPolicyChange(nextPricingPolicy(e.target.value as PricingPolicyMode, pricingPolicy))
                 }
               >
-                <option value="use-master">Use master price</option>
-                <option value="markup">Markup on master price</option>
-                <option value="flat">Flat price for all variants</option>
+                <option value="use-master">{copy.price.modes.useMaster}</option>
+                <option value="markup">{copy.price.modes.markup}</option>
+                <option value="flat">{copy.price.modes.flatVariants}</option>
               </select>
             </FormField>
             <FormField
               name="shop-edit-stock-policy"
-              label="Stock policy"
-              description="Per-product override of the batch stock policy."
+              label={copy.stock.policyLabel}
+              description={copy.stock.policyDescription}
             >
               <select
                 className="bulk-editor__input"
-                aria-label="Stock policy"
+                aria-label={copy.stock.policyLabel}
                 value={stockPolicy.mode}
                 onChange={(e) =>
                   onStockPolicyChange(nextStockPolicy(e.target.value as StockPolicyMode, stockPolicy))
                 }
               >
-                <option value="use-master">Use master stock</option>
-                <option value="cap">Cap master stock</option>
-                <option value="flat">Flat stock for all variants</option>
+                <option value="use-master">{copy.stock.modes.useMaster}</option>
+                <option value="cap">{copy.stock.modes.cap}</option>
+                <option value="flat">{copy.stock.modes.flatVariants}</option>
               </select>
             </FormField>
           </div>
@@ -4094,26 +4125,33 @@ function ShopBaseScopeForm({
           {pricingPolicy.mode !== 'use-master' ? (
             <FormField
               name="shop-edit-pricing-param"
-              label={pricingPolicy.mode === 'markup' ? 'Markup %' : `Flat price (${currency})`}
+              label={
+                pricingPolicy.mode === 'markup'
+                  ? copy.price.markupLabel
+                  : interpolate(copy.price.flatLabel, { currency })
+              }
             >
               <Input
                 className="bulk-editor__input"
                 inputMode="decimal"
                 value={pricingParamValue(pricingPolicy)}
-                aria-label={pricingPolicy.mode === 'markup' ? 'Markup percent' : 'Flat price'}
+                aria-label={pricingPolicy.mode === 'markup' ? copy.price.markupAria : copy.price.flatAria}
                 onChange={(e) => onPricingPolicyChange(withPricingParam(pricingPolicy, e.target.value))}
               />
             </FormField>
           ) : null}
 
           {stockPolicy.mode !== 'use-master' ? (
-            <FormField name="shop-edit-stock-param" label={stockPolicy.mode === 'cap' ? 'Cap at' : 'Stock'}>
+            <FormField
+              name="shop-edit-stock-param"
+              label={stockPolicy.mode === 'cap' ? copy.stock.capLabel : copy.stock.label}
+            >
               <Input
                 type="number"
                 min={1}
                 className="bulk-editor__input"
                 value={stockParamValue(stockPolicy)}
-                aria-label={stockPolicy.mode === 'cap' ? 'Cap at' : 'Flat stock'}
+                aria-label={stockPolicy.mode === 'cap' ? copy.stock.capLabel : copy.stock.flatAria}
                 onChange={(e) => onStockPolicyChange(withStockParam(stockPolicy, e.target.value))}
               />
             </FormField>
@@ -4123,14 +4161,14 @@ function ShopBaseScopeForm({
 
       <div className="bulk-editor__field">
         <label>
-          Images {imagesOverridden ? <ProvBadge kind="override" /> : <ProvBadge kind="master" />}
+          {copy.images.label} {imagesOverridden ? <ProvBadge kind="override" /> : <ProvBadge kind="master" />}
           {imagesOverridden ? (
             <button
               type="button"
               className="bulk-editor__reset"
               onClick={() => onBaseImageUrlsChange(undefined)}
             >
-              ↺ reset to master
+              {copy.reset.toMaster}
             </button>
           ) : null}
         </label>
@@ -4140,15 +4178,15 @@ function ShopBaseScopeForm({
           onZoom={onZoom}
         />
         <div className="hint" style={{ color: 'var(--text-muted)', margin: '5px 0 0' }}>
-          {effectiveImages.length === 0 ? 'No images yet - add an image URL to include one. ' : ''}
-          Shared image set for every variant. Add or remove to override the master set.
+          {effectiveImages.length === 0 ? `${copy.images.empty} ` : ''}
+          {copy.images.shopHint}
         </div>
       </div>
 
       {canPickShopAttributes ? (
         <div className="bulk-editor__platform-slot">
           <div className="bulk-editor__slot-tag">
-            <span className="eyebrow">Attributes</span>
+            <span className="eyebrow">{copy.attributes.label}</span>
           </div>
           {parameters.length > 0 ? (
             <ul className="shop-attr-picker__added" role="list">
@@ -4158,7 +4196,7 @@ function ShopBaseScopeForm({
                   <button
                     type="button"
                     className="bulk-editor__img-x"
-                    aria-label={`Remove attribute ${p.id}`}
+                    aria-label={interpolate(copy.attributes.remove, { id: p.id })}
                     onClick={() => onRemoveAttribute(p.id)}
                   >
                     ×
@@ -4172,10 +4210,10 @@ function ShopBaseScopeForm({
       ) : null}
 
       <div className="bulk-editor__field">
-        <label>Visibility</label>
+        <label>{copy.shop.visibility.label}</label>
         <Input className="bulk-editor__input" value={visibilityLabel} readOnly aria-readonly="true" />
         <div className="hint" style={{ color: 'var(--text-muted)', fontSize: 12 }}>
-          Draft or published is chosen for the whole batch on the Review step.
+          {copy.shop.visibility.hint}
         </div>
       </div>
     </div>
@@ -4233,6 +4271,7 @@ function ShopVariantScopeForm({
   onPatch,
   onIncludedChange,
 }: ShopVariantScopeFormProps): ReactElement {
+  const copy = useMessages('listings').bulkEditModal;
   const label = distinguishingLabel(variant, index);
   const effectiveParameters = edit.parameters ?? baseParameters;
   const parametersOverridden = edit.parameters !== undefined;
@@ -4247,30 +4286,30 @@ function ShopVariantScopeForm({
   return (
     <div className={formClasses} data-form={variant.variantId}>
       <div className="bulk-editor__scope-head">
-        <h4>Variant · {label}</h4>
+        <h4>{interpolate(copy.variant.heading, { variant: label })}</h4>
         <div className="grow" />
         <label className="checkbox-row" style={{ display: 'inline-flex', alignItems: 'center', gap: 'var(--space-2)' }}>
           <input type="checkbox" checked={included} onChange={(e) => onIncludedChange(e.target.checked)} />
-          <span>Include in this batch</span>
+          <span>{copy.include.label}</span>
         </label>
       </div>
 
       {!included ? (
         <div className="bulk-editor__excl-note">
-          This variant is excluded - it will not be published. Switch it back on to include it.
+          {copy.shop.excludedNote}
         </div>
       ) : null}
 
       <div className="eyebrow" style={{ marginBottom: 'var(--space-3)' }}>
-        Per-variant
+        {copy.variant.perVariant}
       </div>
 
       <div className="bulk-editor__field">
         <label>
-          Description {edit.description !== undefined ? <ProvBadge kind="override" /> : <ProvBadge kind="inherit" />}
+          {copy.description.label} {edit.description !== undefined ? <ProvBadge kind="override" /> : <ProvBadge kind="inherit" />}
           {edit.description !== undefined ? (
             <button type="button" className="bulk-editor__reset" onClick={() => onPatch({ description: undefined })}>
-              ↺ reset to base
+              {copy.reset.toBase}
             </button>
           ) : null}
         </label>
@@ -4283,7 +4322,7 @@ function ShopVariantScopeForm({
           }
           format={descriptionFormat}
           value={edit.description !== undefined ? edit.description : baseDescription}
-          aria-label={`Description for ${label}`}
+          aria-label={interpolate(copy.variant.fieldFor, { field: copy.description.label, variant: label })}
           onChange={(html) => onPatch({ description: html === baseDescription ? undefined : html })}
         />
       </div>
@@ -4291,10 +4330,10 @@ function ShopVariantScopeForm({
       {canPickShopAttributes ? (
         <div className="bulk-editor__field">
           <label>
-            Attributes {parametersOverridden ? <ProvBadge kind="override" /> : <ProvBadge kind="inherit" />}
+            {copy.attributes.label} {parametersOverridden ? <ProvBadge kind="override" /> : <ProvBadge kind="inherit" />}
             {parametersOverridden ? (
               <button type="button" className="bulk-editor__reset" onClick={() => onPatch({ parameters: undefined })}>
-                ↺ reset to base
+                {copy.reset.toBase}
               </button>
             ) : null}
           </label>
@@ -4306,7 +4345,7 @@ function ShopVariantScopeForm({
                   <button
                     type="button"
                     className="bulk-editor__img-x"
-                    aria-label={`Remove attribute ${p.id} for ${label}`}
+                    aria-label={interpolate(copy.attributes.removeFor, { id: p.id, variant: label })}
                     onClick={() => onRemoveAttribute(p.id)}
                   >
                     ×
@@ -4318,8 +4357,8 @@ function ShopVariantScopeForm({
           <ShopAttributePicker connectionId={connectionId} onAdd={onAddAttribute} />
           <div className="hint" style={{ color: 'var(--text-muted)', fontSize: 12 }}>
             {parametersOverridden
-              ? 'Custom attribute set for this variant.'
-              : 'Inherits the base attributes - add or remove to override for this variant.'}
+              ? copy.attributes.variantCustom
+              : copy.attributes.variantInherits}
           </div>
         </div>
       ) : null}
@@ -4327,7 +4366,7 @@ function ShopVariantScopeForm({
       <div className="bulk-editor__row2">
         <div className="bulk-editor__field">
           <label>
-            Stock <ProvBadge kind="master" />
+            {copy.stock.label} <ProvBadge kind="master" />
           </label>
           <Input
             className="bulk-editor__input bulk-editor__input--inherited"
@@ -4336,17 +4375,17 @@ function ShopVariantScopeForm({
             aria-readonly="true"
           />
           <div className="hint" style={{ color: 'var(--text-muted)', fontSize: 12 }}>
-            Authoritative from master inventory.
+            {copy.stock.shopVariantHint}
           </div>
         </div>
 
         <InheritableTextField
-          label="Price"
+          label={copy.price.label}
           overridden={edit.price !== undefined}
           blankInheritsBase
           value={edit.price ?? ''}
           baseValue={basePriceValue}
-          ariaLabel={`Price for ${label}`}
+          ariaLabel={interpolate(copy.variant.fieldFor, { field: copy.price.label, variant: label })}
           onChange={(next) => onPatch({ price: next })}
         />
       </div>
