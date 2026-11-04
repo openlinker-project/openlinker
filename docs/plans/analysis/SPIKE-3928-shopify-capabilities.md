@@ -17,7 +17,7 @@ OpenLinker end to end*. Evidence ids `E-*` below refer to SPIKE-2879; ids `L-*` 
 | Dev-store tooling (`docker/shopify/`) | live: seeded a fresh store end to end, second run idempotent (2026-11-04) |
 | Live probes (`L-*`) | done for every open risk; findings below |
 | Prototype adapter (`local/shopify-prototype`, never merged) | ProductMaster, InventoryMaster, OrderSource, OrderProcessorManager; running in stack `ol-shopify` |
-| S1-S4 scenarios | S1 done; S2-S4 next |
+| S1-S4 scenarios | S1, S2, S3 done; S4 blocked by core (L-O7) |
 | S5 (Subiekt GT machine) | deferred until S1-S4 pass |
 
 ## Environment
@@ -236,7 +236,7 @@ What Shopify **does** have to supply for a correct document, to verify live:
 |---|---|---|---|---|
 | S1 | Shopify as master: catalogue + stock -> Allegro sandbox offers -> Allegro order into Shopify at the marketplace price -> invoice (inFakt / KSeF) or receipt (eparagony) -> InPost label -> tracking + status to Allegro -> stock sync | A, B | done (receipt for the Kubek line blocked by the sandbox printer, L-S1e) | L-S1a to L-S1h |
 | S2 | PrestaShop or WooCommerce master -> publish to Shopify -> Shopify order into the master -> return | C, D | done (parent race L-S2b open) | L-S2a to L-S2o |
-| S3 | Shopify order -> OL-OMS routing + pack bench -> OL label -> fulfillment + tracking to Shopify | E | routing, pack bench, stock decrement and fulfilment back to Shopify done; tracking pending | L-S3a to L-S3c |
+| S3 | Shopify order -> OL-OMS routing + pack bench -> OL label -> fulfillment + tracking to Shopify | E | done | L-S3a to L-S3f |
 | S4 | Shopify as master and order source -> document -> label -> tracking back; own-shop routing guard (#3487) | A, C | blocked by core (L-O7 / L-S4b) | L-S4a to L-S4c |
 | S5 | Subiekt GT master, Shopify as channel (GT bridge machine) | C | deferred | - |
 
@@ -300,6 +300,9 @@ What Shopify **does** have to supply for a correct document, to verify live:
 | L-S3a | S3 with PrestaShop as master and the OMS on (wizard `/settings/packing`: OMS connection with `sourcingAuthority` + `fulfillmentExecutor`, location MAIN, `stockLocationOverride` on PrestaShop). After the next stock sync every PrestaShop position was located at MAIN and the pooled rows went stale | The stock override (#3206) is what makes a Shopify channel order routable when the master cannot name a location |
 | L-S3b | Shopify order #1019 (Mug + Soap Lavender, 110.94 gross) was ingested 30 s after creation (the prototype's settle window), routed to the OL executor (`FulfillmentWork` `open` / `accepted`), held from PrestaShop (no `syncStatus` row), and `inventory.saleDecrement` lowered PrestaShop stock (Mug 28 -> 27, Lavender 100 -> 99) | Shopify needs no special handling to be an OMS channel: it is an ordinary `OrderSource`, and the own-shop guard (#3487) lets it through because the Shopify connection is not a `ProductMaster` here |
 | L-S3c | Closing the parcel on the pack bench relayed `dispatched` to Shopify as the SOURCE (`OrderSource` participant) after the prototype gained `OrderStatusWriteback` on its order-source adapter (commit `7eb9d6aad`, delegating to the destination writer). Shopify #1019 became `FULFILLED`, fulfillment order `CLOSED`, one fulfillment with **no tracking**: no shipment existed, so the work-grain relay carried none | The Shopify adapter must implement `OrderStatusWriteback` on the `OrderSource` adapter, not only on `OrderProcessorManager`. Tracking reaches Shopify only when a label exists before the parcel closes (shipment-grain relay) |
+| L-S3d | The pack bench never buys a label (spec F3/D14: fetched upstream). Labels come from the order page, bulk generation, or `config.autoDispatch` on the OMS connection (#3340), which is off by default and has no UI; the setup wizard does not mention it. Filed as #3958. A Shopify delivery method also needs its own `ol_managed_carrier` routing rule (the prototype exposes no `SourceOptionsReader`, so it was added with `PUT /connections/:id/routing-rules`, `sourceDeliveryMethodId: "courier"`) | Order sources with no delivery-method list cannot be routed to a carrier from the UI; the Shopify adapter should implement `SourceOptionsReader.listDeliveryMethods` (shipping profile method names / codes) |
+| L-S3e | Auto-dispatch bought nothing for #1021: InPost courier preflight needs a box (`preflight.missing-dimensions-or-weight`), then the sandbox org refused courier (`trucker_ID_is_not_set_for_organization`, InPost-side provisioning). The job retried 4 times before it was switched off. A Paczkomat label forced through `POST /shipments/generate-label` (`deliveryIntent: pickup_point`, `paczkomatId`) worked, linked to the work | Shopify orders carry no locker id (L-O6), so a Paczkomat order from Shopify needs the operator to pick the point or a checkout app that stores it |
+| L-S3f | With the label bought before the parcel closed, closing it on the bench made Shopify #1021 `FULFILLED` with `company: InPost`, the number `602222296611036019971426` and the inpost.pl tracking URL | S3 end to end: Shopify order -> OMS routing -> pack bench -> OL label -> fulfillment and tracking back to Shopify |
 
 ## Live transcripts
 
