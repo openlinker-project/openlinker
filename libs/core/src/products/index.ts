@@ -53,6 +53,12 @@ export {
 } from './domain/types/bundle.types';
 export type { BundleDefinitionRepositoryPort } from './domain/ports/bundle-definition-repository.port';
 export type {
+  IBundleMasterSyncService,
+  BundleReadingMaster,
+  MasterBundleComposition,
+  MasterBundleComponentPreview,
+} from './application/services/bundle-master-sync.service.interface';
+export type {
   IBundleDefinitionService,
   BundleComponentInput,
 } from './application/services/bundle-definition.service.interface';
@@ -62,6 +68,8 @@ export {
   BundleDefinitionNotFoundError,
   BundleDefinitionInvalidError,
   BundleDefinitionAlreadyExistsError,
+  BundleMasterSyncRefusedError,
+  BundleMasterSyncRefusalReasonValues,
 } from './domain/exceptions/bundle-definition.errors';
 export type { BundleNestingReason } from './domain/exceptions/bundle-definition.errors';
 
@@ -132,6 +140,12 @@ export type {
 } from './domain/ports/capabilities/modified-product-lister.capability';
 export { isModifiedProductLister } from './domain/ports/capabilities/modified-product-lister.capability';
 export type { BulkProductReader } from './domain/ports/capabilities/bulk-product-reader.capability';
+export type {
+  BundleReader,
+  ExternalBundleComposition,
+  ExternalBundleComponent,
+} from './domain/ports/capabilities/bundle-reader.capability';
+export { isBundleReader } from './domain/ports/capabilities/bundle-reader.capability';
 export { isBulkProductReader } from './domain/ports/capabilities/bulk-product-reader.capability';
 
 // Neutral per-line tax rate (#2054, ADR-063). The vocabulary a ProductMaster

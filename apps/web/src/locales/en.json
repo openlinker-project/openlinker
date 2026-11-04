@@ -79,6 +79,12 @@
       "searchComponent": "Search for a product to add",
       "searchProduct": "Search for the product to sell as the bundle",
       "sku": "SKU",
+      "syncDone": "New version saved from {name}. Open orders keep their composition.",
+      "syncFailed": "The composition could not be synced.",
+      "syncFromMaster": "Sync composition from {name}",
+      "syncNotPack": "This product is not a bundle in {name}. Nothing was changed.",
+      "syncUnmapped": "These components are not in OpenLinker yet: {ids}. Sync them first.",
+      "syncing": "Syncing...",
       "unmarkGift": "Remove gift mark",
       "viewOnlyReason": "Creating and changing bundles needs the admin or operator role."
     },

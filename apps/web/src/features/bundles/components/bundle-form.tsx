@@ -37,6 +37,7 @@ import { useDemoMode } from '../../system';
 import type { ApiError } from '../../../shared/api/api-error';
 import { isBundleNestingReason } from '../api/bundles.types';
 import { useBundleHistoryQuery, useBundleQuery } from '../hooks/use-bundle-queries';
+import { useSyncBundleFromMasterMutation } from '../hooks/use-sync-bundle-from-master-mutation';
 import { useSaveBundleMutation } from '../hooks/use-save-bundle-mutation';
 import { computeBundleAvailability } from '../lib/bundle-availability';
 import { toBundleChoice, type BundleProductChoice } from '../lib/bundle-choice';
@@ -106,6 +107,7 @@ export function BundleForm({ bundleVariantId, seedComponent }: BundleFormProps):
   const [tab, setTab] = useState<'composition' | 'history'>('composition');
   const history = useBundleHistoryQuery(bundleVariantId, tab === 'history');
   const save = useSaveBundleMutation();
+  const syncFromMaster = useSyncBundleFromMasterMutation();
 
   const [bundleProduct, setBundleProduct] = useState<BundleProductChoice | null>(null);
   const [nestedError, setNestedError] = useState<string | null>(null);
@@ -245,6 +247,37 @@ export function BundleForm({ bundleVariantId, seedComponent }: BundleFormProps):
     setBundleProduct(choice);
   };
 
+  const master = detail.data?.composedByMaster ?? null;
+  const runMasterSync = (): void => {
+    if (master === null || bundleVariantId === undefined) return;
+    syncFromMaster.mutate(bundleVariantId, {
+      onSuccess: () => {
+        showToast({
+          tone: 'success',
+          description: interpolate(copy.form.syncDone, { name: master.connectionName }),
+        });
+      },
+      onError: (error) => {
+        const details =
+          typeof error.details === 'object' && error.details !== null
+            ? (error.details as Record<string, unknown>)
+            : {};
+        const unmapped = Array.isArray(details.unmappedComponents)
+          ? details.unmappedComponents.filter((id): id is string => typeof id === 'string')
+          : [];
+        showToast({
+          tone: 'error',
+          description:
+            details.reason === 'component-unmapped'
+              ? interpolate(copy.form.syncUnmapped, { ids: unmapped.join(', ') })
+              : details.reason === 'not-a-bundle-in-master'
+                ? interpolate(copy.form.syncNotPack, { name: master.connectionName })
+                : copy.form.syncFailed,
+        });
+      },
+    });
+  };
+
   const submit = form.handleSubmit((values) => {
     if (!bundleProduct) return;
     save.mutate(
@@ -310,6 +343,19 @@ export function BundleForm({ bundleVariantId, seedComponent }: BundleFormProps):
           <p className="page-description">{copy.form.intro}</p>
         </div>
         <div className="page-header__actions">
+          {editing && master !== null ? (
+            <Button
+              tone="secondary"
+              data-testid="bundle-form-sync-from-master"
+              disabled={readOnly || syncFromMaster.isPending}
+              title={readOnly ? copy.form.viewOnlyReason : undefined}
+              onClick={runMasterSync}
+            >
+              {syncFromMaster.isPending
+                ? copy.form.syncing
+                : interpolate(copy.form.syncFromMaster, { name: master.connectionName })}
+            </Button>
+          ) : null}
           <Button
             tone="primary"
             data-testid="bundle-form-save"

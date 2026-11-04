@@ -225,6 +225,7 @@ describe('BundleForm (#3624)', () => {
       bundle: { name: 'Zestaw poranny', sku: 'ZES-PORANNY', price: 65, currency: 'PLN' },
       openOrdersOnOlderComposition: 3,
       bundlesAvailable: 1,
+      composedByMaster: null,
       components: [],
       componentAvailability: [
         {
@@ -253,6 +254,52 @@ describe('BundleForm (#3624)', () => {
     expect(apiClient.bundles.create).not.toHaveBeenCalled();
   });
 
+  describe('sync composition from the master (#3932)', () => {
+    const baseDetail: BundleDetail = {
+      variantId: 'set',
+      version: 2,
+      bundle: { name: 'Zestaw poranny', sku: 'ZES-PORANNY', price: 65, currency: 'PLN' },
+      openOrdersOnOlderComposition: 0,
+      bundlesAvailable: 1,
+      composedByMaster: null,
+      components: [],
+      componentAvailability: [],
+    };
+
+    it('should not offer the action when no master can read bundles', async () => {
+      const apiClient = api({ bundles: { get: vi.fn().mockResolvedValue(baseDetail) } });
+      renderWithProviders(<BundleForm bundleVariantId="set" />, {
+        apiClient,
+        sessionAdapter: createAuthenticatedSessionAdapter(),
+      });
+      expect(await screen.findByTestId('bundle-form')).toBeInTheDocument();
+      expect(screen.queryByTestId('bundle-form-sync-from-master')).not.toBeInTheDocument();
+    });
+
+    it('should call the sync endpoint only when the operator clicks', async () => {
+      const detail: BundleDetail = {
+        ...baseDetail,
+        composedByMaster: { connectionId: 'c1', connectionName: 'PrestaShop' },
+      };
+      const syncFromMaster = vi.fn().mockResolvedValue({ variantId: 'set', version: 3, components: [] });
+      const apiClient = api({
+        bundles: { get: vi.fn().mockResolvedValue(detail), syncFromMaster },
+      });
+      const user = userEvent.setup();
+      renderWithProviders(<BundleForm bundleVariantId="set" />, {
+        apiClient,
+        sessionAdapter: createAuthenticatedSessionAdapter(),
+      });
+      const button = await screen.findByTestId('bundle-form-sync-from-master');
+      expect(button).toHaveTextContent('Sync composition from PrestaShop');
+      expect(syncFromMaster).not.toHaveBeenCalled();
+      await user.click(button);
+      await waitFor(() => {
+        expect(syncFromMaster).toHaveBeenCalledWith('set');
+      });
+    });
+  });
+
   it('should list the history newest first, with the open orders on each version', async () => {
     const detail: BundleDetail = {
       variantId: 'set',
@@ -260,6 +307,7 @@ describe('BundleForm (#3624)', () => {
       bundle: { name: 'Zestaw poranny', sku: 'ZES-PORANNY', price: 65, currency: 'PLN' },
       openOrdersOnOlderComposition: 0,
       bundlesAvailable: 1,
+      composedByMaster: null,
       components: [],
       componentAvailability: [],
     };

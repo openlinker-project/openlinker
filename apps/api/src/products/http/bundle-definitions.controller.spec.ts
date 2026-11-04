@@ -21,17 +21,20 @@ describe('BundleDefinitionsController (#3607)', () => {
   const provisioningResume = { resumeMultipackHeldOrders: jest.fn() };
   const inventoryQuery = { getAvailabilityByVariantIds: jest.fn() };
   const availability = { getPromisableQuantities: jest.fn() };
+  const masterSync = { findBundleReadingMaster: jest.fn() };
   const controller = new BundleDefinitionsController(
     bundles as never,
     inventoryQuery as never,
     availability as never,
     products as never,
     orderRecords as never,
-    provisioningResume as never
+    provisioningResume as never,
+    masterSync as never
   );
 
   beforeEach(() => {
     jest.resetAllMocks();
+    masterSync.findBundleReadingMaster.mockResolvedValue(null);
     products.getVariantsByIds.mockResolvedValue([]);
     products.getProductsByIds.mockResolvedValue([]);
     orderRecords.countOpenOrdersByBundleVersion.mockResolvedValue([]);

@@ -23,6 +23,8 @@ export interface BundlesApi {
   usedIn: (variantId: string) => Promise<BundleUsedIn[]>;
   create: (variantId: string, components: BundleComponentInput[]) => Promise<BundleCreated>;
   update: (variantId: string, components: BundleComponentInput[]) => Promise<BundleDefinition>;
+  /** Writes the master's composition as the next version (#3932). Only on the operator's click. */
+  syncFromMaster: (variantId: string) => Promise<BundleDefinition>;
   /** "This offer sells N x product": lets every held multipack order continue. */
   confirmMultipack: (variantId: string, packQuantity: number) => Promise<MultipackConfirmed>;
 }
@@ -43,6 +45,10 @@ export function createBundlesApi(request: ApiRequest): BundlesApi {
       request<BundleDefinition>(`/bundle-definitions/${encodeURIComponent(variantId)}`, {
         method: 'PUT',
         body: JSON.stringify({ components }),
+      }),
+    syncFromMaster: (variantId) =>
+      request<BundleDefinition>(`/bundle-definitions/${encodeURIComponent(variantId)}/sync-from-master`, {
+        method: 'POST',
       }),
     confirmMultipack: (variantId, packQuantity) =>
       request<MultipackConfirmed>('/bundle-definitions/multipack-confirmations', {

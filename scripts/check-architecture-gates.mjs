@@ -440,6 +440,8 @@ const KNOWN_RUNGS = new Set(['modified-product-lister.capability.ts']);
 const NON_RUNGS = new Set([
   'product-tax-rate-reader.capability.ts',
   'bulk-product-reader.capability.ts',
+  // Reads a bundle's composition; says nothing about master freshness (#3932).
+  'bundle-reader.capability.ts',
 ]);
 
 /** ADR-048: "a third rung appearing is the signal to revisit the ladder." */

@@ -37,6 +37,8 @@ export interface BundleComponentAvailability extends BundleComponent {
 }
 
 export interface BundleDetail extends BundleDefinition {
+  /** The product master that can read this bundle's composition; `null` hides the sync action (#3932). */
+  composedByMaster: { connectionId: string; connectionName: string } | null;
   bundle: BundleProductSummary;
   openOrdersOnOlderComposition: number;
   componentAvailability: BundleComponentAvailability[];

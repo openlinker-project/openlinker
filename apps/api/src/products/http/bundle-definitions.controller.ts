@@ -22,6 +22,7 @@ import {
   Param,
   Post,
   Put,
+  UnprocessableEntityException,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import {
@@ -37,7 +38,10 @@ import {
   BundleDefinitionAlreadyExistsError,
   BundleDefinitionInvalidError,
   BundleDefinitionNotFoundError,
+  BundleMasterSyncRefusedError,
   BundleNestingError,
+  BUNDLE_MASTER_SYNC_SERVICE_TOKEN,
+  type IBundleMasterSyncService,
   type BundleDefinition,
   type IBundleDefinitionService,
 } from '@openlinker/core/products';
@@ -60,6 +64,7 @@ import {
   ConfirmMultipackRequestDto,
   MultipackConfirmedResponseDto,
   BundleWithAvailabilityResponseDto,
+  MasterBundleCompositionResponseDto,
   CreateBundleDefinitionRequestDto,
   UpdateBundleDefinitionRequestDto,
 } from './dto/bundle-definition.dto';
@@ -88,6 +93,16 @@ function mapError(error: unknown): never {
   if (error instanceof BundleDefinitionNotFoundError) {
     throw new NotFoundException({ code: error.code, message: error.message });
   }
+  if (error instanceof BundleMasterSyncRefusedError) {
+    // The product or the master says no (not a pack, a component not synced yet,
+    // no master): a state the operator fixes, not a malformed request.
+    throw new UnprocessableEntityException({
+      code: error.code,
+      reason: error.reason,
+      unmappedComponents: error.unmappedComponents,
+      message: error.message,
+    });
+  }
   if (error instanceof BundleDefinitionInvalidError) {
     throw new BadRequestException({ code: error.code, message: error.message });
   }
@@ -110,7 +125,9 @@ export class BundleDefinitionsController {
     @Inject(ORDER_RECORD_SERVICE_TOKEN)
     private readonly orderRecords: IOrderRecordService,
     @Inject(ORDER_PROVISIONING_RESUME_SERVICE_TOKEN)
-    private readonly provisioningResume: IOrderProvisioningResumeService
+    private readonly provisioningResume: IOrderProvisioningResumeService,
+    @Inject(BUNDLE_MASTER_SYNC_SERVICE_TOKEN)
+    private readonly masterSync: IBundleMasterSyncService
   ) {}
 
   /** Name, SKU and gross price per variant, in one batched read (never per row). */
@@ -280,13 +297,16 @@ export class BundleDefinitionsController {
         message: `No bundle definition for variant ${variantId}`,
       });
     }
-    const [rows, [bundleAvailability], summaries, versionCounts] = await Promise.all([
+    const [rows, [bundleAvailability], summaries, versionCounts, master] = await Promise.all([
       this.inventoryQuery.getAvailabilityByVariantIds(definition.components.map((c) => c.variantId)),
       // The SAME function publishing uses, so the number shown is the number
       // published (global scope: no per-channel buffer on an operator read).
       this.availability.getPromisableQuantities({ variantIds: [variantId], scope: { kind: 'global' } }),
       this.summarise([variantId, ...definition.components.map((c) => c.variantId)]),
       this.orderRecords.countOpenOrdersByBundleVersion(variantId),
+      // One variant, one probe: never run per list row. A master that cannot be
+      // resolved reads as "cannot sync", not as a failed detail read.
+      this.masterSync.findBundleReadingMaster(variantId).catch(() => null),
     ]);
     const emptySummary: BundleProductSummaryDto = { name: null, sku: null, price: null, currency: null };
     const atpByVariant = new Map(rows.map((row) => [row.productVariantId, row.availableToPromise]));
@@ -304,6 +324,7 @@ export class BundleDefinitionsController {
     });
     return {
       ...toDto(definition),
+      composedByMaster: master,
       bundle: summaries.get(variantId) ?? emptySummary,
       openOrdersOnOlderComposition: versionCounts
         .filter((entry) => entry.version < definition.version)
@@ -312,6 +333,41 @@ export class BundleDefinitionsController {
       // `null` when OL does not know (provenance 'unknown'), never 0.
       bundlesAvailable: bundleAvailability?.quantity ?? null,
     };
+  }
+
+  @Roles('admin', 'operator', 'viewer')
+  @Get(':variantId/master-composition')
+  @ApiOperation({
+    summary: 'What the product master currently says this bundle contains (read-only)',
+    description: 'Writes nothing. 422 BUNDLE_MASTER_SYNC_REFUSED names why the master cannot answer (#3932).',
+  })
+  @ApiResponse({ status: 200, type: MasterBundleCompositionResponseDto })
+  async masterComposition(
+    @Param('variantId') variantId: string
+  ): Promise<MasterBundleCompositionResponseDto> {
+    try {
+      return await this.masterSync.previewComposition(variantId);
+    } catch (error) {
+      return mapError(error);
+    }
+  }
+
+  @Roles('admin', 'operator')
+  @Post(':variantId/sync-from-master')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Write the master\'s composition as the next version of this bundle',
+    description:
+      'Runs only on this explicit call. Never edits an existing version, so open orders keep the composition they were frozen with. ' +
+      '422 BUNDLE_MASTER_SYNC_REFUSED when the master cannot read bundles, the product is not a pack there, or a component is not synced into OpenLinker (#3932).',
+  })
+  @ApiResponse({ status: 200, type: BundleDefinitionResponseDto })
+  async syncFromMaster(@Param('variantId') variantId: string): Promise<BundleDefinitionResponseDto> {
+    try {
+      return toDto(await this.masterSync.syncFromMaster(variantId));
+    } catch (error) {
+      return mapError(error);
+    }
   }
 
   @Roles('admin', 'operator')

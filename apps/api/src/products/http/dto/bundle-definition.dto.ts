@@ -155,7 +155,32 @@ export class BundleComponentAvailabilityResponseDto extends BundleComponentRespo
   bundlesSupported!: number | null;
 }
 
+export class BundleMasterDto {
+  @ApiProperty() connectionId!: string;
+  @ApiProperty() connectionName!: string;
+}
+
+export class MasterBundleComponentPreviewDto {
+  @ApiProperty() variantId!: string;
+  @ApiProperty() productId!: string;
+  @ApiProperty() quantity!: number;
+}
+
+export class MasterBundleCompositionResponseDto {
+  @ApiProperty() connectionId!: string;
+  @ApiProperty({ type: [MasterBundleComponentPreviewDto] })
+  components!: MasterBundleComponentPreviewDto[];
+}
+
 export class BundleWithAvailabilityResponseDto extends BundleDefinitionResponseDto {
+  @ApiProperty({
+    type: BundleMasterDto,
+    nullable: true,
+    description:
+      'The product master that can read this bundle\'s composition, or null when none can (#3932). Gates the sync action.',
+  })
+  composedByMaster!: BundleMasterDto | null;
+
   @ApiProperty({ type: BundleProductSummaryDto })
   bundle!: BundleProductSummaryDto;
 

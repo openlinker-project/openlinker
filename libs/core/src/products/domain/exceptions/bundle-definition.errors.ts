@@ -63,3 +63,30 @@ export class BundleDefinitionAlreadyExistsError extends Error {
     Error.captureStackTrace(this, this.constructor);
   }
 }
+
+export const BundleMasterSyncRefusalReasonValues = [
+  'no-master',
+  'master-cannot-read-bundles',
+  'not-a-bundle-in-master',
+  'component-unmapped',
+] as const;
+export type BundleMasterSyncRefusalReason = (typeof BundleMasterSyncRefusalReasonValues)[number];
+
+/**
+ * "Sync composition from the master" was refused (#3932). Named per reason so
+ * the operator surface says which one, and `unmappedComponents` names every
+ * component OpenLinker has no variant for.
+ */
+export class BundleMasterSyncRefusedError extends Error {
+  readonly code = 'BUNDLE_MASTER_SYNC_REFUSED';
+
+  constructor(
+    readonly reason: BundleMasterSyncRefusalReason,
+    message: string,
+    readonly unmappedComponents: string[] = []
+  ) {
+    super(message);
+    this.name = 'BundleMasterSyncRefusedError';
+    Error.captureStackTrace(this, this.constructor);
+  }
+}

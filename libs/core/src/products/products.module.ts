@@ -23,6 +23,7 @@ import { MultipackConfirmationOrmEntity } from './infrastructure/persistence/ent
 import { BundleDefinitionOrmEntity } from './infrastructure/persistence/entities/bundle-definition.orm-entity';
 import { BundleDefinitionRepository } from './infrastructure/persistence/repositories/bundle-definition.repository';
 import { BundleDefinitionService } from './application/services/bundle-definition.service';
+import { BundleMasterSyncService } from './application/services/bundle-master-sync.service';
 import {
   PRODUCT_REPOSITORY_TOKEN,
   PRODUCT_VARIANT_REPOSITORY_TOKEN,
@@ -33,6 +34,7 @@ import {
   TAX_RATE_JOURNAL_SERVICE_TOKEN,
   BUNDLE_DEFINITION_REPOSITORY_TOKEN,
   BUNDLE_DEFINITION_SERVICE_TOKEN,
+  BUNDLE_MASTER_SYNC_SERVICE_TOKEN,
 } from './products.tokens';
 import { IntegrationsModule } from '@openlinker/core/integrations';
 import { IdentifierMappingModule } from '@openlinker/core/identifier-mapping';
@@ -64,6 +66,7 @@ export {
     TaxRateJournalService,
     BundleDefinitionRepository,
     BundleDefinitionService,
+    BundleMasterSyncService,
     // Then provide token bindings using useExisting
     {
       provide: PRODUCT_REPOSITORY_TOKEN,
@@ -101,6 +104,10 @@ export {
       provide: BUNDLE_DEFINITION_SERVICE_TOKEN,
       useExisting: BundleDefinitionService,
     },
+    {
+      provide: BUNDLE_MASTER_SYNC_SERVICE_TOKEN,
+      useExisting: BundleMasterSyncService,
+    },
   ],
   exports: [
     PRODUCT_REPOSITORY_TOKEN,
@@ -112,6 +119,7 @@ export {
     TAX_RATE_JOURNAL_REPOSITORY_TOKEN,
     BUNDLE_DEFINITION_SERVICE_TOKEN,
     BUNDLE_DEFINITION_REPOSITORY_TOKEN,
+    BUNDLE_MASTER_SYNC_SERVICE_TOKEN,
   ],
 })
 export class ProductsModule {}

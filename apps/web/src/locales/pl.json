@@ -85,6 +85,12 @@
       "searchComponent": "Wyszukaj produkt do dodania",
       "searchProduct": "Wyszukaj produkt, który sprzedajesz jako zestaw",
       "sku": "SKU",
+      "syncDone": "Zapisano nową wersję składu z {name}. Otwarte zamówienia zostają przy swoim.",
+      "syncFailed": "Nie udało się zsynchronizować składu.",
+      "syncFromMaster": "Synchronizuj skład z {name}",
+      "syncNotPack": "Ten produkt nie jest zestawem w {name}. Nic nie zmieniono.",
+      "syncUnmapped": "Tych składników nie ma jeszcze w OpenLinker: {ids}. Zsynchronizuj je najpierw.",
+      "syncing": "Synchronizuję...",
       "unmarkGift": "Usuń oznaczenie gratisu",
       "viewOnlyReason": "Tworzenie i zmiana zestawów wymaga roli administratora lub operatora."
     },

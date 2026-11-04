@@ -48,8 +48,12 @@ import {
   readAllPrestashopResourcePages,
 } from '../http/prestashop-paged-read';
 import { PrestashopOrFilterIgnoredException } from '../../domain/exceptions/prestashop-or-filter-ignored.exception';
+import { PrestashopPackUnreadableException } from '../../domain/exceptions/prestashop-pack-unreadable.exception';
+import { readPackDefinition } from '../../domain/types/prestashop-pack.types';
 import type {
   BulkProductReader,
+  BundleReader,
+  ExternalBundleComposition,
   ProductTaxRateReader,
   ReadProductTaxRateInput,
   TaxRateResolution,
@@ -81,7 +85,7 @@ const GROSS_PRICE_TOLERANCE = 0.01;
  * would read as gross.
  */
 export class PrestashopProductMasterAdapter
-  implements ProductMasterPort, ProductTaxRateReader, BulkProductReader
+  implements ProductMasterPort, ProductTaxRateReader, BulkProductReader, BundleReader
 {
   private readonly logger = new Logger(PrestashopProductMasterAdapter.name);
 
@@ -156,6 +160,33 @@ export class PrestashopProductMasterAdapter
     // reports none - never the tax-excluded field in its place.
     private readonly salesCountryResolver?: PrestashopSalesCountryResolver
   ) {}
+
+  /**
+   * Read a PrestaShop pack's components (#3932). `null` for an ordinary product.
+   *
+   * Variant ids are expressed the way `getProductVariants` writes its mappings:
+   * the combination id, or `product:{id}` for the synthetic variant of a product
+   * with no combinations, so core resolves them through identifier mapping
+   * without knowing either convention.
+   */
+  async readBundleComposition(
+    externalProductId: string
+  ): Promise<ExternalBundleComposition | null> {
+    const pack = readPackDefinition(await this.fetchProductResource(externalProductId));
+    if (pack === null) {
+      return null;
+    }
+    if (pack.unreadableComponentCount > 0) {
+      throw new PrestashopPackUnreadableException(externalProductId, pack.unreadableComponentCount);
+    }
+    return {
+      components: pack.components.map((component) => ({
+        externalProductId: component.productId,
+        externalVariantId: component.combinationId ?? `product:${component.productId}`,
+        quantity: component.quantity,
+      })),
+    };
+  }
 
   /**
    * `GET /api/products/{id}`, served from {@link productResourceCache} when
