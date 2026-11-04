@@ -1,0 +1,66 @@
+# ADR-083: An order has a commercial line list and a physical line list; the expansion is frozen at ingestion
+
+- **Status**: Accepted
+- **Date**: 2026-11-04
+- **Authors**: @norbert-kulus-blockydevs
+
+## Context
+
+Sellers sell sets (an Allegro multipack, a PrestaShop pack, a Subiekt komplet) and give gifts. A set is one line for the buyer, the document and the channel, but several units of stock for the warehouse. Decision D3 (2026-09-28) already says stock, reservations and `FulfillmentWork` run at component grain, while the order line, documents and channel keep the bundle.
+
+The first plan expanded a bundle in every site that needs it. The spike (`docs/plans/spike-bundles-and-gifts.md`, `verify/component-line-id.md`) found nine such sites, and the failure mode is bad: each one treats "no row matched" as a normal outcome. An order edit on a bundle line would do nothing to works, holds and stock, report success, and could let a quantity fall below what was already picked. Nothing throws.
+
+Two other designs also fell apart on inspection. Asking adapters to send `role` and `parentLineId` would change every adapter for no gain, since core already knows a bundle from its own definition, and two sources of truth could disagree. And the only channel that sends components next to the parent (Shoper) can collapse them inside its own adapter.
+
+## Decision
+
+1. **Two lists.** `order.items` stays the commercial list, unchanged: what the buyer paid for, what documents and the channel show. Core derives one **physical list**, with bundle lines expanded to their components, and every stock, packing and decrement site reads that one.
+2. **The expansion is frozen once.** `order_records.lineExpansion` (jsonb, one writer) is written at ingestion, after the order overlay is applied and before reservation. A later change to a bundle definition does not change an open order. The UI says so ("this order has the composition from before the change").
+3. **Two read-only derivations on `OrderRecord`** (ADR-011: pure, synchronous, field-only): `physicalItems` and `componentLineIdsOf(lineId)`. The second is how the order-edit follow-ups find the component lines of a bundle line. Nothing recovers a bundle line id by splitting a component id.
+4. **Component line id** is `{lineId}~c:{variantId}`. Quantities are aggregated per component variant before expansion, so a bundle that lists a component twice cannot produce a duplicate `(work, orderLineId)` or `(order, line, position)` key. Each physical line carries the component's `productId`, not only its variant id.
+5. **Sites that read the physical list** (function names; line numbers drift):
+   - `OrderIngestionService.reserveOrderInventory`
+   - `projectOrderForRouting` (covers the ingestion intercept, the route handler and the dry run)
+   - `InventorySaleDecrementHandler`
+   - `OrderSyncService` (`productIds` for the post-sale refresh and for absorbed holds)
+   - the restock-target resolution of `ReturnCustodyService` (a bundle return restocks components)
+6. **Order-edit follow-ups** go through `componentLineIdsOf` and sum back to the bundle line for the edit response, because the frontend keys stock by bundle line id: `FulfillmentOrderEditService.assessForEdit` and `lowerLineQuantity`, `ReservationService.narrowForOrder` (target is bundle quantity times component quantity), `InventorySaleReversalService.reverseLineQuantity`.
+7. **Availability and publishing.** `IAvailabilityService.getPromisableQuantities` answers a bundle variant as the minimum over components of floor(component ATP / quantity); `unknown` provenance if any component is unknown. `InventoryPropagateToMarketplacesHandler` also enqueues the bundles of a changed component. `OfferStockRestoreService` republishes component and bundle offers on cancellation.
+8. **Sites that keep `order.items` on purpose** (commercial grain): `shipment_lines` (its coverage is joined back to the snapshot items, so component ids there would demote delivered orders), return line resolution, invoice correction matching, discount allocation and discount correction, the amendment diff, `order_line_items` and margin, the destination mirror (`OrderSyncService` sends gift lines and the bundle line as they are), offer creation (a bundle is an ordinary master variant), and the cost snapshot at ingestion.
+9. **An invariant script fails the build** when a new stock, reservation, routing or decrement reader takes lines from `order.items`. It lists the allowed readers, in the `check:invariants` style (decision 8 is that list).
+10. **Optional fields on lines.** `gift?: { source: 'channel' | 'cart-rule' | 'ol-rule' | 'operator'; ruleRef?: string }` and `packQuantity?: number` (units of the mapped variant per sold unit, default 1) on `IncomingOrderItem` and `OrderItem`. Absent means today's behaviour. There is no `role` and no `parentLineId`. `OrderEdits` gains `addedLines` (key `ol-gift:{ruleId}:{lineId}` or `op-gift:{changeId}`) so OL-added gifts follow the overlay rule: `channelSnapshot` stays the channel original.
+11. **Optional guard-only capabilities** (ADR-046 probe, absent from `CoreCapabilityValues` and from manifests): `ZeroValueLineSupport` (`acceptsZeroValueLine()`, on document adapters) and `BundleReader` (`readBundleComposition(externalProductId)`, on `ProductMaster` adapters). No mandatory port method is added; no existing adapter stops compiling.
+12. **What stays core**: expansion, OL-only gifts, totals equal to what was paid (one `presentGiftLines` helper in `sales-documents`, called by both document mappers), and bundle availability. None can be done per adapter: a Shoper order and an Allegro order for one bundle could reserve different stock, Allegro and Erli have no gifts of their own, and an adapter sees only one master.
+13. **A multipack with no bundle definition is held** as `awaiting_mapping` with the reason "multipack without a bundle", instead of shipping one unit for the price of three. The hold offers a one-click "create bundle N x".
+14. **Bundle definitions** are OpenLinker data (`bundle_definitions`, history by version in `libs/core/src/products`). Nesting is refused both ways. A `BundleReader` can import a composition on demand.
+
+## Alternatives considered
+
+- **Expand in every site.** Rejected: nine sites, silent no-ops, and the sites disagree the first time one is missed.
+- **Recompute the expansion at each read.** Rejected for the same reason plus drift: a definition edited between two reads gives two answers for one order.
+- **Adapter-set `role` / `parentLineId`.** Rejected: every adapter changes for nothing, and core's definition is the second source of truth that could disagree.
+- **Explode the bundle into the commercial list.** Rejected: documents, margin and returns would show lines the buyer never bought.
+- **A new promotion engine for gifts.** Rejected: the automation engine already has storage, AND-only conditions, dry run, run history and at-most-once firing.
+
+## Consequences
+
+**Pros:**
+- One frozen table gives every site the same answer; reservations, packing, decrements and edits cannot disagree.
+- Adapters carry no bundle knowledge; a non-implementing adapter stays correct.
+- Documents stay at the commercial grain, so totals still equal what was paid.
+
+**Cons / trade-offs:**
+- Fifteen call sites change (five swaps, four edit follow-ups, three availability sites, two mappers, plus ingestion).
+- A definition fixed later does not change open orders.
+- A new site that forgets the physical list fails silently; the invariant script is the guard, not the compiler.
+
+**Migration path:**
+- Additive. `lineExpansion` is NULL on existing orders, and a NULL expansion means the physical list equals the commercial list.
+
+## References
+
+- Related ADRs: [ADR-011](./011-domain-entity-behavior.md), [ADR-046](./046-adapter-declared-description-format.md), [ADR-054](./054-fulfillment-work-unit-of-assignment.md), [ADR-061](./061-advisory-reservations-and-availability-authority.md), [ADR-082](./082-delivery-line-on-sales-documents.md)
+- Issue: #3606 (epic #3520)
+- Spec: [product-spec-oms-bundles-and-kits](../../specs/product-spec-oms-bundles-and-kits.md)
+- Design: [ports-v1](../../plans/analysis/spike-bundles-and-gifts/ports-v1.md)
+- Mockup: [m22-bundles-and-kits](../../plans/mockups/oms-mvp/m22-bundles-and-kits.html)

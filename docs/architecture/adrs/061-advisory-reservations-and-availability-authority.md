@@ -106,6 +106,14 @@ install nothing is subtracted for that variant. A spec that shows the router ste
 location whose stock is not promised exercises the reader with a ledger state the write path
 cannot yet produce for that shape.
 
+## Amendment (#3606, 2026-11-04): reservations are per component, all or nothing per bundle line
+
+A reservation is one row per `(orderRecordId, orderLineId, inventoryItemId)`. With bundles ([ADR-083](./083-commercial-and-physical-order-lines.md)), `reserveOrderInventory` reads the frozen physical list, so a bundle line holds one reservation per component, with quantity equal to bundle quantity times component quantity and `orderLineId` `{lineId}~c:{variantId}`. Quantities are aggregated per component first, so the partial unique index never sees a duplicate key.
+
+The claim stays one call, so the all-or-nothing rollback already covers a bundle: if one component cannot be held, no component of that bundle line is held, and the shortfall names the limiting component. `narrowForOrder` takes the component line ids of an edited bundle line and a target of bundle quantity times component quantity. `inventory-sale-reversal` gives stock back per component line.
+
+Availability of a bundle variant is not a stored position. `getPromisableQuantities` answers it as the minimum over components of floor(component ATP / quantity), with provenance `unknown` if any component is unknown (never `0`), and a stale component pauses the bundle through the existing #1689 primitive. A change to a component's ATP also enqueues propagation for the bundles that contain it. A gift slot inside a bundle reserves like any other component.
+
 ## References
 
 - Related ADRs: [ADR-058](./058-multi-location-positions-reservations-availability-authority.md), [ADR-028](./028-order-cancellation-stock-restore.md), [ADR-052](./052-independently-assignable-fulfillment-authorities.md), [ADR-062](./062-trust-posture-authority-holding-capabilities.md)
