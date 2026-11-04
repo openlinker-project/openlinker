@@ -39,7 +39,7 @@ export interface ShopifyReturnLineNode {
   readonly __typename: string;
   readonly id?: string;
   readonly quantity?: number;
-  readonly returnReason?: string | null;
+  readonly returnReasonDefinition?: { readonly handle: string; readonly name: string } | null;
   readonly returnReasonNote?: string | null;
   readonly customerNote?: string | null;
   readonly fulfillmentLineItem?: {

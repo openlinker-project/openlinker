@@ -54,7 +54,7 @@ export const RETURN_BY_ID_QUERY = `query OlReturn($id: ID!) {
           __typename
           id quantity
           ... on ReturnLineItem {
-            returnReason returnReasonNote customerNote
+            returnReasonDefinition { handle name } returnReasonNote customerNote
             fulfillmentLineItem {
               lineItem {
                 id sku name

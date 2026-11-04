@@ -3,7 +3,7 @@
  *
  * Maps a Shopify `Return` onto the neutral `IncomingReturn`. Everything is
  * carried as the source reports it: the raw `ReturnStatus`, the raw
- * `returnReason` enum value (core maps reasons where the aggregate is
+ * `returnReasonDefinition.handle` value (core maps reasons where the aggregate is
  * written), quantities, sku and name. The only derivation is the
  * `isTerminalAtSource` hint, from the same constant the adapter publishes as
  * `terminalRawStatuses`.
@@ -39,7 +39,7 @@ function mapLine(line: ShopifyReturnLineNode): IncomingReturnLine {
   const orderLine = line.fulfillmentLineItem?.lineItem ?? null;
   const sku = nonEmpty(orderLine?.sku);
   const name = nonEmpty(orderLine?.name);
-  const reason = nonEmpty(line.returnReason);
+  const reason = nonEmpty(line.returnReasonDefinition?.handle);
   const price = orderLine === null ? NaN : Number(orderLine.discountedUnitPriceSet.shopMoney.amount);
   return {
     ...(line.id === undefined ? {} : { externalLineId: fromShopifyGid(line.id) }),
