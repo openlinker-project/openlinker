@@ -131,3 +131,12 @@
 
 ## F (new) in-doubt receipt reconcile - part
 - Receipt for the late-paid Allegro order (GIT01D): eparagony did not confirm within the poll budget -> record `failed / in-doubt`. `POST /fiscal-registrations/:id/reconcile` -> `still-unknown` (the vendor still holds it; honest answer, nothing written). Re-check later.
+
+## Double check of the three core findings (code read by independent agents, 2026-11-04)
+
+- **C09 confirmed, wording corrected.** Re-ingestion does detect the change: `diffOrderAmendment` writes `lastAmendmentChanges` (`line-quantity-changed 2 -> 1`), a warn log and a warning entry "Order changed at the source" on the order timeline. Nothing acts on it: `RoutingCommitService` answers `skipped / already-routed` for a routed order, work line `totalQuantity` is insert-only and only the operator edit path narrows it. Two more effects: the master stock decrement is computed from the work line (2), and the operator cannot repair it with the order-edit API (asking for 1 answers `NOTHING_CHANGED` because the channel quantity is already 1). The reservation narrows to 1 only while still `held`.
+- **D16 confirmed.** `StaleOfferPauseService` and `findStaleMappedVariants` read `Offer` mappings only; the `ShopProduct` branch of the propagation has no stale guard and nothing enqueues a propagation on master deletion. Applies to every shop destination.
+- **B15 confirmed and wider.** On re-ingestion `createOrderIdempotently` skips an order that already has a destination mapping; there is no update path and no `paid` lifecycle event. Applies to PrestaShop and WooCommerce destinations too (both decide paid/unpaid only at create).
+
+## F12 follow-up
+- Second reconcile of the in-doubt receipt -> `not-found` (the vendor reports the document failed, again the sandbox printer). The record stays `failed` and cannot be retried (#3960).
