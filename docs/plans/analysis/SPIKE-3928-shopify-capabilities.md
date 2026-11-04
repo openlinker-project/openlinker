@@ -15,9 +15,9 @@ OpenLinker end to end*. Evidence ids `E-*` below refer to SPIKE-2879; ids `L-*` 
 | Part | State |
 |---|---|
 | Dev-store tooling (`docker/shopify/`) | live: seeded a fresh store end to end, second run idempotent (2026-11-04) |
-| Live probes (`L-*`) | started - findings from the seed run below |
-| Prototype adapter (`local/shopify-prototype`, never merged) | not started |
-| S1-S4 scenarios | not started |
+| Live probes (`L-*`) | done for every open risk; findings below |
+| Prototype adapter (`local/shopify-prototype`, never merged) | ProductMaster, InventoryMaster, OrderSource, OrderProcessorManager; running in stack `ol-shopify` |
+| S1-S4 scenarios | S1 done; S2-S4 next |
 | S5 (Subiekt GT machine) | deferred until S1-S4 pass |
 
 ## Environment
