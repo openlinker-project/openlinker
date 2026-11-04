@@ -717,3 +717,44 @@ describe('toRegisterTransactionCommand - gift lines (#3930)', () => {
     expect(total(cmd.lines)).toBe(4920);
   });
 });
+
+describe('toRegisterTransactionCommand - bundle components (#3934)', () => {
+  const bundleOrder = (): Order =>
+    order({
+      items: [{ id: 'set', productId: 'ps', quantity: 1, price: 49.2, name: 'Set', taxRate: '23' }],
+    } as Partial<Order>);
+  const bundleDocument = {
+    form: 'components' as const,
+    byLineId: {
+      set: [
+        { lineId: 'set~c:a', variantId: 'a', productId: 'pa', name: 'Soap', sku: 'S-1', quantity: 1, unitPriceGross: 30 },
+        { lineId: 'set~c:b', variantId: 'b', productId: 'pb', name: 'Towel', quantity: 1, unitPriceGross: 20 },
+        { lineId: 'set~c:g', variantId: 'g', productId: 'pg', name: 'Candle', quantity: 1, giftSlot: true, unitPriceGross: 9 },
+      ],
+    },
+  };
+  const total = (lines: { quantity: number; unitPriceGross: number }[]): number =>
+    lines.reduce((sum, line) => sum + Math.round(line.quantity * line.unitPriceGross * 100), 0);
+
+  it('should register the components with the total equal to what was paid', () => {
+    const cmd = toRegisterTransactionCommand({
+      order: bundleOrder(),
+      connectionId: 'c',
+      idempotencyKey: 'k',
+      bundleDocument,
+    });
+    expect(cmd.lines.map((l) => l.name)).toEqual(['Soap', 'Towel']);
+    expect(cmd.lines[0].sku).toBe('S-1');
+    expect(total(cmd.lines)).toBe(4920);
+  });
+
+  it('should keep one line for the one-line form', () => {
+    const cmd = toRegisterTransactionCommand({
+      order: bundleOrder(),
+      connectionId: 'c',
+      idempotencyKey: 'k',
+      bundleDocument: { ...bundleDocument, form: 'one-line' },
+    });
+    expect(cmd.lines.map((l) => l.name)).toEqual(['Set']);
+  });
+});

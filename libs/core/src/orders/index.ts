@@ -503,9 +503,14 @@ export type {
   MarginTrendPoint,
   MarginVariantView,
 } from './domain/types/order-margin-analytics.types';
+export type {
+  IOrderBundleDocumentService,
+  GiftSlotCostLine,
+} from './application/services/order-bundle-document.service.interface';
 export type { IOrderLineCostService } from './application/services/order-line-cost.service.interface';
 export type {
   OrderLineCostView,
+  OrderGiftSlotCostView,
   OrderLineCostsResult,
 } from './domain/types/order-line-cost.types';
 export type { ICostCoverageService } from './application/services/cost-coverage.service.interface';

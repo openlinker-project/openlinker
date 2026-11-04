@@ -1062,3 +1062,78 @@ describe('toIssueInvoiceCommand - gift lines (#3930)', () => {
     expect(total(cmd.lines)).toBe(10000);
   });
 });
+
+describe('toIssueInvoiceCommand - bundle components (#3934)', () => {
+  const bundleOrder = (): Order =>
+    makeOrder({
+      items: [makeItem({ id: 'set', variantId: 'vs', price: 100, taxRate: '23', name: 'Gift set' })],
+    });
+  const bundleDocument = {
+    form: 'components' as const,
+    byLineId: {
+      set: [
+        {
+          lineId: 'set~c:a',
+          variantId: 'a',
+          productId: 'pa',
+          name: 'Soap',
+          quantity: 1,
+          unitPriceGross: 80,
+        },
+        {
+          lineId: 'set~c:g',
+          variantId: 'g',
+          productId: 'pg',
+          name: 'Candle',
+          quantity: 1,
+          giftSlot: true,
+          unitPriceGross: 20,
+        },
+      ],
+    },
+  };
+  const total = (lines: { quantity: number; unitPriceGross: number }[]): number =>
+    lines.reduce((sum, line) => sum + Math.round(line.quantity * line.unitPriceGross * 100), 0);
+
+  it('should keep the set as one line by default', () => {
+    const cmd = toIssueInvoiceCommand({ order: bundleOrder(), connectionId: 'c' });
+    expect(cmd.lines.map((l) => l.name)).toEqual(['Gift set']);
+  });
+
+  it('should present the components and omit the gift slot, total equal to what was paid', () => {
+    const cmd = toIssueInvoiceCommand({
+      order: bundleOrder(),
+      connectionId: 'c',
+      bundleDocument,
+    });
+    expect(cmd.lines.map((l) => l.name)).toEqual(['Soap']);
+    expect(cmd.lines[0].orderLineId).toBe('set~c:a');
+    expect(total(cmd.lines)).toBe(10000);
+  });
+
+  it('should show the gift slot at zero through the gift form', () => {
+    const cmd = toIssueInvoiceCommand({
+      order: bundleOrder(),
+      connectionId: 'c',
+      bundleDocument,
+      giftForm: 'show',
+      acceptsZeroValueLine: true,
+    });
+    expect(cmd.lines.map((l) => [l.name, l.unitPriceGross])).toEqual([
+      ['Soap', 100],
+      ['Candle', 0],
+    ]);
+  });
+
+  it('should price the gift slot in by its standalone price and keep the total', () => {
+    const cmd = toIssueInvoiceCommand({
+      order: bundleOrder(),
+      connectionId: 'c',
+      bundleDocument,
+      giftForm: 'priced-in',
+    });
+    expect(cmd.lines).toHaveLength(2);
+    expect(cmd.lines[1].unitPriceGross).toBeGreaterThan(0);
+    expect(total(cmd.lines)).toBe(10000);
+  });
+});

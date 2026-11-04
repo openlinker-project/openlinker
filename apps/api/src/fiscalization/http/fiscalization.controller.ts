@@ -77,8 +77,10 @@ import type {
   RegisterTransactionCommand,
 } from '@openlinker/core/fiscalization';
 import {
+  IOrderBundleDocumentService,
   IOrderDocumentEmailService,
   IOrderRecordService,
+  ORDER_BUNDLE_DOCUMENT_SERVICE_TOKEN,
   ORDER_DOCUMENT_EMAIL_SERVICE_TOKEN,
   ORDER_RECORD_SERVICE_TOKEN,
   OrderSnapshotUnavailableError,
@@ -135,6 +137,8 @@ export class FiscalizationController {
     private readonly documentEmails: IOrderDocumentEmailService,
     @Inject(INTEGRATIONS_SERVICE_TOKEN)
     private readonly integrationsService: IIntegrationsService,
+    @Inject(ORDER_BUNDLE_DOCUMENT_SERVICE_TOKEN)
+    private readonly orderBundleDocuments: IOrderBundleDocumentService,
   ) {}
 
   /**
@@ -277,6 +281,10 @@ export class FiscalizationController {
           dto.connectionId,
         ),
         giftForm: await this.resolveGiftForm(record.sourceConnectionId),
+        bundleDocument: await this.orderBundleDocuments.resolveForDocuments(
+          record,
+          record.sourceConnectionId,
+        ),
         acceptsZeroValueLine: await this.resolveAcceptsZeroValueLine(dto.connectionId),
         // #2260 review: a manual registration of a pre-rollout order must reach
         // the same verdict the manual invoice path does, so the marker travels

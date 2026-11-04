@@ -104,7 +104,7 @@ function harness(options: {
   buyerNoteState?: string | null;
   hasBuyerNote?: boolean;
   /** #3624 - the order's bundle lines as `OrderRecord.bundleLines` derives them. */
-  bundleLines?: Array<{ lineId: string; components: Array<{ lineId: string }> }>;
+  bundleLines?: Array<{ lineId: string; components: Array<{ lineId: string; giftSlot?: boolean }> }>;
   acknowledgements?: Array<{
     workId: string;
     acknowledgedAt: Date;
@@ -629,8 +629,23 @@ describe('BenchParcelService (#2418)', () => {
         bundleLines: [{ lineId: 'L1', components: [{ lineId: 'L1~c:ol_variant_1' }] }],
       });
       const parcel = await service.getParcel('work-1');
-      expect(parcel.lines[0].bundle).toEqual({ lineId: 'L1', name: 'Zestaw poranny' });
+      expect(parcel.lines[0].bundle).toEqual({ lineId: 'L1', name: 'Zestaw poranny', giftSlot: false });
       expect(parcel.lines[1].bundle).toBeNull();
+    });
+
+    it('should mark the gift slot component from the frozen expansion (#3934)', async () => {
+      const { service } = harness({
+        work: workView({
+          lines: [
+            { id: 'line-1', orderLineId: 'L1~c:ol_variant_1', productVariantId: 'ol_variant_1', totalQuantity: 1, fulfilledQuantity: 0, cancelledQuantity: 0 },
+          ],
+        } as Partial<FulfillmentWorkView>),
+        bundleLines: [
+          { lineId: 'L1', components: [{ lineId: 'L1~c:ol_variant_1', giftSlot: true }] },
+        ],
+      });
+      const parcel = await service.getParcel('work-1');
+      expect(parcel.lines[0].bundle?.giftSlot).toBe(true);
     });
   });
 

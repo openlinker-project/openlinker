@@ -126,6 +126,8 @@ import {
   ORDER_RECORD_SERVICE_TOKEN,
   ORDER_DOCUMENT_EMAIL_SERVICE_TOKEN,
   ORDER_REFUND_SERVICE_TOKEN,
+  ORDER_BUNDLE_DOCUMENT_SERVICE_TOKEN,
+  type IOrderBundleDocumentService,
   INVOICE_MARKETPLACE_UPLOAD_SERVICE_TOKEN,
   type IInvoiceMarketplaceUploadService,
   IOrderDocumentEmailService,
@@ -246,6 +248,8 @@ export class InvoicingController {
     private readonly documentEmails: IOrderDocumentEmailService,
     @Inject(DOCUMENT_EMAIL_DELIVERY_SERVICE_TOKEN)
     private readonly documentEmailDeliveries: IDocumentEmailDeliveryService,
+    @Inject(ORDER_BUNDLE_DOCUMENT_SERVICE_TOKEN)
+    private readonly orderBundleDocuments: IOrderBundleDocumentService,
   ) {}
 
   @Roles('admin', 'operator', 'viewer')
@@ -597,6 +601,10 @@ export class InvoicingController {
         idempotencyKey,
         deliveryLine,
         giftForm: await this.resolveGiftForm(record.sourceConnectionId),
+        bundleDocument: await this.orderBundleDocuments.resolveForDocuments(
+          record,
+          record.sourceConnectionId,
+        ),
         acceptsZeroValueLine: await this.resolveAcceptsZeroValueLine(dto.connectionId),
         source,
         // #2245 review: a pre-rollout order is exempt from the write-path
@@ -762,6 +770,10 @@ export class InvoicingController {
           record.connectionId,
         ),
         giftForm: await this.resolveGiftForm(orderRecord.sourceConnectionId),
+        bundleDocument: await this.orderBundleDocuments.resolveForDocuments(
+          orderRecord,
+          orderRecord.sourceConnectionId,
+        ),
         acceptsZeroValueLine: await this.resolveAcceptsZeroValueLine(
           record.connectionId,
           zeroLineCache,
@@ -929,6 +941,10 @@ export class InvoicingController {
           connectionId,
         ),
         giftForm: await this.resolveGiftForm(record.sourceConnectionId),
+        bundleDocument: await this.orderBundleDocuments.resolveForDocuments(
+          record,
+          record.sourceConnectionId,
+        ),
         acceptsZeroValueLine: await this.resolveAcceptsZeroValueLine(connectionId, zeroLineCache),
         // #1694: same per-source numbering axis as the single-issue path.
         source: await this.resolveSourcePlatformType(record.sourceConnectionId),
@@ -1644,6 +1660,10 @@ export class InvoicingController {
         connectionId,
       ),
       giftForm: await this.resolveGiftForm(orderRecord.sourceConnectionId),
+      bundleDocument: await this.orderBundleDocuments.resolveForDocuments(
+        orderRecord,
+        orderRecord.sourceConnectionId,
+      ),
       acceptsZeroValueLine: await this.resolveAcceptsZeroValueLine(connectionId),
     });
     return {

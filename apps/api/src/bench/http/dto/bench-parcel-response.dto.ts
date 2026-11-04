@@ -40,6 +40,12 @@ export class BenchLineBundleResponseDto {
 
   @ApiProperty({ nullable: true, type: String, description: 'The bundle name the buyer saw' })
   name!: string | null;
+
+  @ApiProperty({
+    description:
+      'This component is the free gift of the set (#3934): the packer is told to include it, and no price or cost is attached',
+  })
+  giftSlot!: boolean;
 }
 
 export class BenchParcelLineResponseDto {

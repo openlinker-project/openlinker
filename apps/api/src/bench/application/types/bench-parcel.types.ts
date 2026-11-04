@@ -85,7 +85,12 @@ export interface BenchParcelLineView {
    * "Bundle X of Y" header and refuses to treat the bundle as done while one is
    * missing - the parcel's close rule already counts every component line.
    */
-  readonly bundle: { readonly lineId: string; readonly name: string | null } | null;
+  readonly bundle: {
+    readonly lineId: string;
+    readonly name: string | null;
+    /** This component is the free gift of the set (#3934). Read from the frozen expansion. */
+    readonly giftSlot: boolean;
+  } | null;
   readonly productVariantId: string;
   /**
    * What a packer reads on the shelf label — the PRODUCT's name.

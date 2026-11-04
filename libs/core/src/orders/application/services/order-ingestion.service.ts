@@ -44,11 +44,13 @@ import type {
 import {
   ORDER_SYNC_SERVICE_TOKEN,
   ORDER_RECORD_SERVICE_TOKEN,
+  ORDER_BUNDLE_DOCUMENT_SERVICE_TOKEN,
   ORDER_ITEM_REF_RESOLVER_SERVICE_TOKEN,
   ORDER_LIFECYCLE_RELAY_SERVICE_TOKEN,
   ORDER_CHANGE_SERVICE_TOKEN,
   ORDER_CANCELLATION_EFFECTS_SERVICE_TOKEN,
 } from '../../orders.tokens';
+import { IOrderBundleDocumentService } from './order-bundle-document.service.interface';
 import { IOrderCancellationEffectsService } from '../interfaces/order-cancellation-effects.service.interface';
 import { IOrderChangeService } from './order-change.service.interface';
 import type { OrderChange } from '../../domain/entities/order-change.entity';
@@ -289,7 +291,11 @@ export class OrderIngestionService implements IOrderIngestionService {
     private readonly cancellationEffects: IOrderCancellationEffectsService,
     // #3607: the bundle definitions the physical line list is expanded from.
     @Inject(BUNDLE_DEFINITION_SERVICE_TOKEN)
-    private readonly bundleDefinitions: IBundleDefinitionService
+    private readonly bundleDefinitions: IBundleDefinitionService,
+    // #3934: the components a document shows for a bundle line when the source
+    // connection asks for the `components` form. Same module, no cycle.
+    @Inject(ORDER_BUNDLE_DOCUMENT_SERVICE_TOKEN)
+    private readonly bundleDocuments: IOrderBundleDocumentService
   ) {}
 
   async ingestOrders(
@@ -1005,7 +1011,8 @@ export class OrderIngestionService implements IOrderIngestionService {
         // (`existing === null`) still carries its correct three-state value on
         // `persisted`; reading `existing` here would silently answer
         // "not asserted" for every order's first ingestion.
-        persisted.buyerTaxId
+        persisted.buyerTaxId,
+        await this.bundleDocuments.resolveForDocuments(persisted, connectionId)
       );
       // #2100 (ADR-041 §54/§105): a block is never log-only. The trigger REPORTS
       // the outcome and this service — which owns the order record — writes it,

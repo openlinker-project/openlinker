@@ -129,15 +129,19 @@ export class BenchParcelNotAtThisBenchError extends Error {
  */
 function bundleOf(
   order: OrderRecord | undefined
-): Map<string, { lineId: string; name: string | null }> {
-  const result = new Map<string, { lineId: string; name: string | null }>();
+): Map<string, { lineId: string; name: string | null; giftSlot: boolean }> {
+  const result = new Map<string, { lineId: string; name: string | null; giftSlot: boolean }>();
   if (order === undefined) {
     return result;
   }
   for (const bundle of order.bundleLines) {
     const name = order.orderItems.find((item) => item.id === bundle.lineId)?.name ?? null;
     for (const component of bundle.components) {
-      result.set(component.lineId, { lineId: bundle.lineId, name });
+      result.set(component.lineId, {
+        lineId: bundle.lineId,
+        name,
+        giftSlot: component.giftSlot === true,
+      });
     }
   }
   return result;

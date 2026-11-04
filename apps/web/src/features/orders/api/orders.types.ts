@@ -1246,9 +1246,20 @@ export interface OrderLineCost {
   netEligible: boolean;
 }
 
+export interface OrderGiftSlotCost {
+  lineId: string;
+  componentLineId: string;
+  variantId: string;
+  quantity: number;
+  /** Net cost of the gift units in the order currency; `null` when unknown. */
+  totalCostNet: number | null;
+}
+
 export interface OrderLineCostsResult {
   currency: string | null;
   lines: OrderLineCost[];
+  /** Absent from an API that predates gift slots (#3934). */
+  giftSlots?: OrderGiftSlotCost[];
 }
 
 /**

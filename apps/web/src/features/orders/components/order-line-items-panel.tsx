@@ -30,8 +30,13 @@ import { AbsentValue } from '../../../shared/ui/absent-value';
 import { Button } from '../../../shared/ui/button';
 import { StatusBadge } from '../../../shared/ui/status-badge';
 import type { ParsedOrderItem, ParsedOrderTotals } from '../api/order-snapshot.schema';
-import type { OrderBundleComponent, OrderBundleLine, OrderLineCost } from '../api/orders.types';
-import { useMessages } from '../../../shared/i18n';
+import type {
+  OrderBundleComponent,
+  OrderBundleLine,
+  OrderGiftSlotCost,
+  OrderLineCost,
+} from '../api/orders.types';
+import { interpolate, useMessages } from '../../../shared/i18n';
 import { useOrderLineCosts, type OrderLineCostsState } from '../hooks/use-order-line-costs';
 
 interface OrderLineItemsPanelProps {
@@ -192,12 +197,30 @@ export function OrderLineItemsPanel({
               codeIsFallback={!row.component.sku}
               placeholderName={row.component.name ?? row.component.sku ?? row.component.variantId}
             />
+            {row.component.giftSlot === true ? (
+              <GiftSlotNote
+                component={row.component}
+                currency={currency}
+                cost={
+                  costs.enabled && costs.status === 'loaded'
+                    ? (costs.giftSlots.find(
+                        (gift) => gift.componentLineId === row.component.lineId,
+                      ) ?? null)
+                    : null
+                }
+              />
+            ) : null}
           </div>
         );
       }
       if (column.id === 'qty') return row.component.quantity;
       if (column.id === 'unitPrice') {
-        return <span className="text-muted">{bundleCopy.order.inBundlePrice}</span>;
+        // The gift slot is shown at what the buyer pays for it, not as part of the set price.
+        return row.component.giftSlot === true ? (
+          <span className="mono-text">{formatAmount(0, currency)}</span>
+        ) : (
+          <span className="text-muted">{bundleCopy.order.inBundlePrice}</span>
+        );
       }
       return null;
     },
@@ -250,6 +273,36 @@ export function OrderLineItemsPanel({
         />
       </div>
       {costs.enabled && costs.status === 'loaded' ? <CostFootnote lines={costs.lines} /> : null}
+    </div>
+  );
+}
+
+/**
+ * The gift slot of a set, shown once in its own line (#3934): marked as a gift,
+ * what the customer pays for it, and, only where the session may read costs and
+ * the cost is known, what it costs the seller. An unknown cost is left out
+ * rather than shown as zero.
+ */
+function GiftSlotNote({
+  component,
+  currency,
+  cost,
+}: {
+  component: OrderBundleComponent;
+  currency: string | undefined;
+  cost: OrderGiftSlotCost | null;
+}): ReactElement {
+  const copy = useMessages('bundles');
+  const key = component.sku ?? component.variantId;
+  return (
+    <div className="text-muted">
+      <span data-testid={`order-bundle-gift-mark-${key}`}>{copy.order.giftMark}</span>{' '}
+      <span role="note" data-testid={`order-bundle-gift-cost-${key}`}>
+        {interpolate(copy.order.giftPays, { price: formatAmount(0, currency) })}
+        {cost !== null && cost.totalCostNet !== null
+          ? ` · ${interpolate(copy.order.giftCosts, { cost: formatAmount(cost.totalCostNet, currency) })}`
+          : ''}
+      </span>
     </div>
   );
 }

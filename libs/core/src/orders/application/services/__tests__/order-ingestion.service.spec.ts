@@ -270,7 +270,8 @@ describe('OrderIngestionService', () => {
       routerResolver,
       orderChanges as unknown as IOrderChangeService,
       cancellationEffects as unknown as IOrderCancellationEffectsService,
-      bundleDefinitions as unknown as IBundleDefinitionService
+      bundleDefinitions as unknown as IBundleDefinitionService,
+      { resolveForDocuments: jest.fn().mockResolvedValue(undefined) } as never
     );
   });
 

@@ -49,7 +49,7 @@ import {
 } from '@openlinker/core/inventory';
 import { Roles } from '../../auth/decorators/roles.decorator';
 import { CurrentUser } from '../../auth/decorators/current-user.decorator';
-import type { AuthenticatedUser } from '../../auth/auth.types';
+import { AuthenticatedUser } from '../../auth/auth.types';
 import type {
   BundleProductSummaryDto} from './dto/bundle-definition.dto';
 import {

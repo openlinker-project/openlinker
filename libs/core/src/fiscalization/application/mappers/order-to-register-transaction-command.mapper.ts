@@ -33,6 +33,8 @@ import {
   type ResolvedDeliveryLine,
   reconcileDiscountRounding,
   presentGiftLines,
+  presentBundleComponents,
+  type BundleDocumentPresentation,
   type GiftLineForm,
 } from '@openlinker/core/sales-documents';
 import { Logger } from '@openlinker/shared/logging';
@@ -104,6 +106,8 @@ export interface OrderToRegisterTransactionCommandInput {
    * `show` is not offered.
    */
   acceptsZeroValueLine?: boolean;
+  /** Components of bundle lines for the `components` form (#3934). */
+  bundleDocument?: BundleDocumentPresentation;
 }
 
 /**
@@ -143,17 +147,44 @@ export function toRegisterTransactionCommand(
   // receipt total still equals what the buyer paid. The provider refusing a
   // zero line is the reason this runs here and not in an
   // adapter: the amount has to move between lines of the same rate.
-  const productLines = presentGiftLines(
+  const itemLines = presentBundleComponents(
     order.items.map((item) => ({
       ...toFiscalLine(item, order.id),
       isGift: item.gift !== undefined,
+      // The receipt line carries no order line id; the item id is what the
+      // bundle presentation keys on.
+      itemId: item.id,
     })),
+    (line) => line.itemId,
+    input.bundleDocument,
+    (parent, part) => ({
+      ...parent,
+      name: part.component.name?.trim() || parent.name,
+      quantity: part.quantity,
+      unitPriceGross: part.unitPriceGross,
+      productId: part.component.productId,
+      sku: part.component.sku ?? null,
+      isGift: part.isGift,
+      ...(part.referenceUnitPriceGross !== undefined && {
+        referenceUnitPriceGross: part.referenceUnitPriceGross,
+      }),
+    }),
+    { currency: order.totals.currency },
+  );
+  const productLines = presentGiftLines(
+    itemLines.lines,
     input.giftForm ?? 'omit',
     input.acceptsZeroValueLine,
     { currency: order.totals.currency },
   ).lines.map((presented) => {
-    const line: FiscalTransactionLine & { isGift?: boolean } = { ...presented };
+    const line: FiscalTransactionLine & {
+      isGift?: boolean;
+      itemId?: string;
+      referenceUnitPriceGross?: number;
+    } = { ...presented };
     delete line.isGift;
+    delete line.itemId;
+    delete line.referenceUnitPriceGross;
     return line;
   });
 

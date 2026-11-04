@@ -18,7 +18,10 @@ import {
   ServiceUnavailableException,
 } from '@nestjs/common';
 import type { Response } from 'express';
-import { ORDER_DOCUMENT_EMAIL_SERVICE_TOKEN } from '@openlinker/core/orders';
+import {
+  ORDER_BUNDLE_DOCUMENT_SERVICE_TOKEN,
+  ORDER_DOCUMENT_EMAIL_SERVICE_TOKEN,
+} from '@openlinker/core/orders';
 import { DOCUMENT_EMAIL_DELIVERY_SERVICE_TOKEN } from '@openlinker/core/sales-documents';
 import {
   INVOICE_SERVICE_TOKEN,
@@ -360,6 +363,10 @@ describe('InvoicingController', () => {
           useValue: { enqueueUpload: jest.fn().mockResolvedValue('enqueued'), getStatus: jest.fn().mockResolvedValue([]) },
         },
         { provide: ORDER_DOCUMENT_EMAIL_SERVICE_TOKEN, useValue: documentEmails },
+        {
+          provide: ORDER_BUNDLE_DOCUMENT_SERVICE_TOKEN,
+          useValue: { resolveForDocuments: jest.fn().mockResolvedValue(undefined) },
+        },
         { provide: DOCUMENT_EMAIL_DELIVERY_SERVICE_TOKEN, useValue: documentEmailDeliveries },
       ],
     }).compile();

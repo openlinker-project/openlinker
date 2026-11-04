@@ -32,6 +32,8 @@ import {
   reconcileDiscountRounding,
   splitShippingAcrossRates,
   presentGiftLines,
+  presentBundleComponents,
+  type BundleDocumentPresentation,
   type GiftLineForm,
   type ResolvedDeliveryLine,
 } from '@openlinker/core/sales-documents';
@@ -103,6 +105,12 @@ export interface OrderToIssueInvoiceCommandInput {
    * = the provider declares nothing, and `show` is not offered.
    */
   acceptsZeroValueLine?: boolean;
+  /**
+   * The bundle lines' components (#3934), resolved by the caller from the
+   * order's frozen expansion. Absent, or form `one-line`, keeps every set as
+   * one line at its paid price.
+   */
+  bundleDocument?: BundleDocumentPresentation;
 }
 
 /**
@@ -150,17 +158,44 @@ export function toIssueInvoiceCommand(
   // Gift lines are presented BEFORE delivery and discount reconciliation, so
   // the lines that follow see the amounts the document will really carry and the
   // total still equals what the buyer paid (#3930).
-  const productLines = presentGiftLines(
+  const itemLines = presentBundleComponents(
     order.items.map((item) => ({
       ...toInvoiceLine(item, order.id),
       isGift: item.gift !== undefined,
     })),
+    (line) => line.orderLineId,
+    input.bundleDocument,
+    (parent, part) => ({
+      ...parent,
+      name: part.component.name?.trim() || parent.name,
+      quantity: part.quantity,
+      unitPriceGross: part.unitPriceGross,
+      productId: part.component.productId,
+      variantId: part.component.variantId,
+      orderLineId: part.component.lineId,
+      isGift: part.isGift,
+      ...(part.referenceUnitPriceGross !== undefined && {
+        referenceUnitPriceGross: part.referenceUnitPriceGross,
+      }),
+    }),
+    { currency: order.totals.currency },
+  );
+  for (const note of itemLines.notes) {
+    logger.warn(
+      `Bundle line ${note.lineId} of order ${order.id} has no price or cost to split by; kept as one line (${note.code})`,
+    );
+  }
+  const productLines = presentGiftLines(
+    itemLines.lines,
     input.giftForm ?? 'omit',
     input.acceptsZeroValueLine,
     { currency: order.totals.currency },
   ).lines.map((presented) => {
-    const line: InvoiceLine & { isGift?: boolean } = { ...presented };
+    const line: InvoiceLine & { isGift?: boolean; referenceUnitPriceGross?: number } = {
+      ...presented,
+    };
     delete line.isGift;
+    delete line.referenceUnitPriceGross;
     return line;
   });
 

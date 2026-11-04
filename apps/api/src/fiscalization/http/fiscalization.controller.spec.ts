@@ -33,6 +33,7 @@ import {
 } from '@openlinker/core/fiscalization';
 import type { IFiscalRegistrationService } from '@openlinker/core/fiscalization';
 import {
+  ORDER_BUNDLE_DOCUMENT_SERVICE_TOKEN,
   ORDER_DOCUMENT_EMAIL_SERVICE_TOKEN,
   ORDER_RECORD_SERVICE_TOKEN,
   OrderRecord,
@@ -165,6 +166,10 @@ describe('FiscalizationController', () => {
           useValue: { get: jest.fn().mockResolvedValue({ config: {} }) },
         },
         { provide: ORDER_DOCUMENT_EMAIL_SERVICE_TOKEN, useValue: documentEmails },
+        {
+          provide: ORDER_BUNDLE_DOCUMENT_SERVICE_TOKEN,
+          useValue: { resolveForDocuments: jest.fn().mockResolvedValue(undefined) },
+        },
         { provide: INTEGRATIONS_SERVICE_TOKEN, useValue: integrations },
       ],
     }).compile();

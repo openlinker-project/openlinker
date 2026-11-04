@@ -175,6 +175,7 @@ import {
   isTaxRateEnforced,
   readDeliveryOnDocuments,
   readGiftLineForm,
+  type BundleDocumentPresentation,
   readZeroValueLineSupport,
   resolveDeliveryLine,
   shippingSplitInputs,
@@ -481,6 +482,7 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
     sourceEventId?: string,
     taxRateEra?: string | null,
     buyerTaxId?: string | null,
+    bundleDocument?: BundleDocumentPresentation,
   ): Promise<SalesDocumentBlockOutcome> {
     // D8: only ACTIVE connections receive issuance jobs. The scheduler's
     // `status: 'active'` filter already excludes disabled/error/needs_reauth
@@ -591,6 +593,7 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
           sourceEventId,
           taxRateEra,
           buyerTaxId,
+          bundleDocument,
         );
     }
   }
@@ -879,6 +882,7 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
     sourceEventId?: string,
     taxRateEra?: string | null,
     buyerTaxId?: string | null,
+    bundleDocument?: BundleDocumentPresentation,
   ): Promise<SalesDocumentBlockOutcome> {
     const connection = connections.find((candidate) => candidate.id === decision.connectionId);
     if (
@@ -913,6 +917,7 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
         taxRateEra,
         decision.ruleId,
         buyerTaxId,
+        bundleDocument,
       );
     }
     if (decision.documentKind === 'fiscal-receipt') {
@@ -925,6 +930,7 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
         taxRateEra,
         decision.ruleId,
         buyerTaxId,
+        bundleDocument,
       );
     }
 
@@ -965,6 +971,7 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
     taxRateEra?: string | null,
     matchedRuleId?: string,
     buyerTaxId?: string | null,
+    bundleDocument?: BundleDocumentPresentation,
   ): Promise<SalesDocumentBlockOutcome> {
     const { supported, acceptsZeroValueLine } = await this.connectionSupportsInvoiceDocumentType(
       connection.id,
@@ -1077,6 +1084,7 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
         deliveryLine,
         readGiftLineForm(sourceConnection?.config),
         acceptsZeroValueLine,
+        bundleDocument,
       );
 
       await this.syncJobs.schedule({
@@ -1154,6 +1162,7 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
     taxRateEra?: string | null,
     matchedRuleId?: string,
     buyerTaxId?: string | null,
+    bundleDocument?: BundleDocumentPresentation,
   ): Promise<SalesDocumentBlockOutcome> {
     try {
       // Reused verbatim from `config.invoicing.triggerModel` — see the
@@ -1229,6 +1238,7 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
         deliveryLine,
         readGiftLineForm(sourceConnection?.config),
         await this.readFiscalZeroValueLineSupport(connection.id),
+        bundleDocument,
       );
 
       await this.syncJobs.schedule({
@@ -1486,6 +1496,7 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
     deliveryLine?: ResolvedDeliveryLine,
     giftForm?: GiftLineForm,
     acceptsZeroValueLine?: boolean,
+    bundleDocument?: BundleDocumentPresentation,
   ): InvoicingIssuePayloadV1 {
     // The mapper owns the neutral Order->command rules and may surface
     // InvalidBuyerProfileError / UnsupportedPriceTreatmentError (both PII-clean).
@@ -1524,6 +1535,7 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
       deliveryLine,
       giftForm,
       acceptsZeroValueLine,
+      bundleDocument,
       taxRateEra,
       buyerTaxId: buyerTaxNumber.length > 0 ? { value: buyerTaxNumber } : null,
     });
@@ -1618,6 +1630,7 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
     deliveryLine?: ResolvedDeliveryLine,
     giftForm?: GiftLineForm,
     acceptsZeroValueLine?: boolean,
+    bundleDocument?: BundleDocumentPresentation,
   ): FiscalizationRegisterPayloadV1 {
     // eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/no-var-requires -- lazy require needed to break a CommonJS barrel-load cycle with `@openlinker/core/fiscalization` (see the doc comment above)
     const fiscalization = require('@openlinker/core/fiscalization') as {
@@ -1633,6 +1646,7 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
       deliveryLine,
       giftForm,
       acceptsZeroValueLine,
+      bundleDocument,
       taxRateEra,
       // #3187, ADR-073 decision 1 — the persisted three-state column; the
       // mapper decodes it and stamps the command only when there is a real

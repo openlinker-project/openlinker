@@ -67,6 +67,13 @@ export function validateGiftOnDocumentsShape(value: unknown): { path: string; me
       },
     ];
   }
+  const bundleForm = (value as Record<string, unknown>).bundleForm;
+  if (bundleForm !== undefined && bundleForm !== 'one-line' && bundleForm !== 'components') {
+    // Spelled out here rather than imported: the bundle types import this file.
+    return [
+      { path: `${GIFT_ON_DOCUMENTS_CONFIG_KEY}.bundleForm`, message: 'must be one of one-line, components' },
+    ];
+  }
   return [];
 }
 

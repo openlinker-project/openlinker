@@ -104,6 +104,7 @@ export * from './domain/types/gross-price-eligibility.types';
 // same reason the shipping split is.
 export * from './domain/types/delivery-line.types';
 export * from './domain/types/gift-lines.types';
+export * from './domain/types/bundle-document-lines.types';
 export * from './domain/ports/capabilities/zero-value-line.capability';
 
 // #3550 - manual "send this document to the buyer": the shared vocabulary, the
