@@ -356,15 +356,16 @@ describe('OrderEditService (#3542)', () => {
       const result = await service.editLines(lowerL1);
 
       expect(calls).toEqual(['open', 'overlay', 'work', 'reservation', 'stock', 'confirm']);
-      expect(fulfillment.lowerLineQuantity).toHaveBeenCalledWith({ orderId: ORDER_ID, orderLineId: 'l1', newQuantity: 1 });
+      expect(fulfillment.lowerLineQuantity).toHaveBeenCalledWith({ orderId: ORDER_ID, orderLineId: 'l1', newQuantity: 1, components: [] });
       expect(reservations.narrowForOrder).toHaveBeenCalledWith({
         orderRecordId: ORDER_ID,
-        lines: [{ orderLineId: 'l1', quantity: 1 }],
+        lines: [{ orderLineId: 'l1', quantity: 1, components: [] }],
       });
       expect(reversal.reverseLineQuantity).toHaveBeenCalledWith({
         internalOrderId: ORDER_ID,
         orderLineId: 'l1',
         units: 2,
+        components: [],
         changeId: 'chg-1',
       });
       expect(result.stock).toEqual([{ orderLineId: 'l1', stockRestored: true, detail: null }]);
