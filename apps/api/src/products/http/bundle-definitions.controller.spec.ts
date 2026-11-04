@@ -1,5 +1,5 @@
-import { ConflictException, NotFoundException } from '@nestjs/common';
-import { BundleNestingError } from '@openlinker/core/products';
+import { BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
+import { BundleDefinitionInvalidError, BundleNestingError } from '@openlinker/core/products';
 import { BundleDefinitionsController } from './bundle-definitions.controller';
 
 describe('BundleDefinitionsController (#3607)', () => {
@@ -11,6 +11,7 @@ describe('BundleDefinitionsController (#3607)', () => {
     list: jest.fn(),
     history: jest.fn(),
     findCurrentContainingComponents: jest.fn(),
+    confirmMultipack: jest.fn(),
   };
   const products = {
     getVariantsByIds: jest.fn(),
@@ -170,5 +171,35 @@ describe('BundleDefinitionsController (#3607)', () => {
     expect(result).toEqual([
       expect.objectContaining({ bundleVariantId: 'v-set', quantity: 2, giftSlot: true }),
     ]);
+  });
+
+  it('should confirm a multipack, then re-drive only the orders held for it', async () => {
+    bundles.confirmMultipack.mockResolvedValue(undefined);
+    provisioningResume.resumeMultipackHeldOrders.mockResolvedValue({ held: 2, enqueued: 2, notResumed: 0 });
+    const result = await controller.confirmMultipack(
+      { variantId: 'v-a', packQuantity: 3 },
+      { id: 'u1' } as never
+    );
+    expect(bundles.confirmMultipack).toHaveBeenCalledWith({ variantId: 'v-a', packQuantity: 3 }, 'u1');
+    expect(provisioningResume.resumeMultipackHeldOrders).toHaveBeenCalledWith({
+      variantId: 'v-a',
+      packQuantity: 3,
+    });
+    expect(result).toEqual({ variantId: 'v-a', packQuantity: 3, releasedOrders: 2 });
+  });
+
+  it('should still resume on a second confirmation of the same pair', async () => {
+    bundles.confirmMultipack.mockResolvedValue(undefined);
+    await controller.confirmMultipack({ variantId: 'v-a', packQuantity: 3 }, { id: 'u1' } as never);
+    await controller.confirmMultipack({ variantId: 'v-a', packQuantity: 3 }, { id: 'u1' } as never);
+    expect(provisioningResume.resumeMultipackHeldOrders).toHaveBeenCalledTimes(2);
+  });
+
+  it('should answer 400 and release nothing for an unknown variant', async () => {
+    bundles.confirmMultipack.mockRejectedValue(new BundleDefinitionInvalidError('no such variant'));
+    await expect(
+      controller.confirmMultipack({ variantId: 'x', packQuantity: 3 }, { id: 'u1' } as never)
+    ).rejects.toBeInstanceOf(BadRequestException);
+    expect(provisioningResume.resumeMultipackHeldOrders).not.toHaveBeenCalled();
   });
 });

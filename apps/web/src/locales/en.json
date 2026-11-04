@@ -108,10 +108,17 @@
     "order": {
       "bundleLinesCaption": "Order items",
       "bundleMark": "Bundle",
-      "createBundle": "Create bundle {n} x {name}",
-      "createBundleNoProduct": "Create a bundle",
+      "confirmMultipack": "This offer sells {n} x {name}",
       "inBundlePrice": "in the bundle price",
-      "multipackBody": "The channel sold {n} units of one product in one offer, and OpenLinker does not know such a bundle. Without it, 1 unit would come off stock instead of {n}. Create the bundle and every order waiting for it is released.",
+      "multipackBody": "The channel sold {n} units of one product in one offer, and OpenLinker has not been told what that means. Without it, 1 unit would come off stock instead of {n}.",
+      "multipackConfirmText": "One sale of this offer = {n} x {name}. Every order waiting for it will continue.",
+      "multipackConfirmedTitle": "Confirmed: the orders continue",
+      "multipackContinue": {
+        "one": "{n} order continues.",
+        "other": "{n} orders continue."
+      },
+      "multipackFailed": "The confirmation could not be saved. Try again.",
+      "multipackNoProduct": "This offer is not linked to a product yet, so it cannot be confirmed. Link the offer first.",
       "multipackTitle": "Held: the offer is {n} units of one product",
       "oldComposition": "This order has the composition from before the bundle was changed. The packer gets the composition from the order date.",
       "openProducts": "Open in products",

@@ -10,6 +10,7 @@ import type {
   BundleDetail,
   BundleHistoryEntry,
   BundleUsedIn,
+  MultipackConfirmed,
 } from './bundles.types';
 
 interface ApiRequest {
@@ -22,6 +23,8 @@ export interface BundlesApi {
   usedIn: (variantId: string) => Promise<BundleUsedIn[]>;
   create: (variantId: string, components: BundleComponentInput[]) => Promise<BundleCreated>;
   update: (variantId: string, components: BundleComponentInput[]) => Promise<BundleDefinition>;
+  /** "This offer sells N x product": lets every held multipack order continue. */
+  confirmMultipack: (variantId: string, packQuantity: number) => Promise<MultipackConfirmed>;
 }
 
 export function createBundlesApi(request: ApiRequest): BundlesApi {
@@ -40,6 +43,11 @@ export function createBundlesApi(request: ApiRequest): BundlesApi {
       request<BundleDefinition>(`/bundle-definitions/${encodeURIComponent(variantId)}`, {
         method: 'PUT',
         body: JSON.stringify({ components }),
+      }),
+    confirmMultipack: (variantId, packQuantity) =>
+      request<MultipackConfirmed>('/bundle-definitions/multipack-confirmations', {
+        method: 'POST',
+        body: JSON.stringify({ variantId, packQuantity }),
       }),
   };
 }

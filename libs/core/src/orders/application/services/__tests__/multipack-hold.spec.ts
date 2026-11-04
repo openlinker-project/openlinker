@@ -1,20 +1,35 @@
 import { hasBundleDefinition } from '../multipack-hold';
 
-describe('hasBundleDefinition (#3607)', () => {
-  it('should be true only when the variant has a current definition', async () => {
-    const bundles = {
-      findCurrentByVariantIds: jest
-        .fn()
-        .mockResolvedValueOnce([{ variantId: 'v1', version: 1, components: [] }])
-        .mockResolvedValueOnce([]),
-    };
-    await expect(hasBundleDefinition(bundles, 'v1')).resolves.toBe(true);
-    await expect(hasBundleDefinition(bundles, 'v2')).resolves.toBe(false);
+function bundles(over: { current?: unknown[]; confirmed?: unknown[] } = {}) {
+  return {
+    findCurrentByVariantIds: jest.fn().mockResolvedValue(over.current ?? []),
+    findConfirmedMultipacks: jest.fn().mockResolvedValue(over.confirmed ?? []),
+  };
+}
+
+describe('hasBundleDefinition (#3607, #3624)', () => {
+  it('should be true when the variant has a current definition, without asking about confirmations', async () => {
+    const b = bundles({ current: [{ variantId: 'v1', version: 1, components: [] }] });
+    await expect(hasBundleDefinition(b, 'v1', 3)).resolves.toBe(true);
+    expect(b.findConfirmedMultipacks).not.toHaveBeenCalled();
+  });
+
+  it('should be true when the operator confirmed this variant at this pack quantity', async () => {
+    const b = bundles({ confirmed: [{ variantId: 'v1', packQuantity: 3 }] });
+    await expect(hasBundleDefinition(b, 'v1', 3)).resolves.toBe(true);
+    expect(b.findConfirmedMultipacks).toHaveBeenCalledWith([{ variantId: 'v1', packQuantity: 3 }]);
+  });
+
+  it('should be false for an unconfirmed pack quantity and for a line with no pack quantity', async () => {
+    await expect(hasBundleDefinition(bundles(), 'v1', 3)).resolves.toBe(false);
+    const b = bundles();
+    await expect(hasBundleDefinition(b, 'v1')).resolves.toBe(false);
+    expect(b.findConfirmedMultipacks).not.toHaveBeenCalled();
   });
 
   it('should be false, without a lookup, for a line with no variant', async () => {
-    const bundles = { findCurrentByVariantIds: jest.fn() };
-    await expect(hasBundleDefinition(bundles, undefined)).resolves.toBe(false);
-    expect(bundles.findCurrentByVariantIds).not.toHaveBeenCalled();
+    const b = bundles();
+    await expect(hasBundleDefinition(b, undefined, 3)).resolves.toBe(false);
+    expect(b.findCurrentByVariantIds).not.toHaveBeenCalled();
   });
 });

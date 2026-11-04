@@ -927,7 +927,9 @@ export class OrderRecord {
     if (definitions.length === 0) {
       return [];
     }
-    const byVariant = new Map(definitions.map((d) => [d.variantId, d]));
+    const byVariant = new Map(
+      definitions.filter((d) => d.lineId === undefined).map((d) => [d.variantId, d])
+    );
     const physical = this.physicalItems;
     const lines: OrderBundleLine[] = [];
     for (const item of this.orderItems) {

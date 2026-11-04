@@ -29,6 +29,7 @@ import { OrderRecordOrmEntity } from '@openlinker/core/orders/orm-entities';
 import {
   BUNDLE_DEFINITION_SERVICE_TOKEN,
   BundleNestingError,
+  buildPackLineDefinitions,
   type IBundleDefinitionService,
 } from '@openlinker/core/products';
 import { ProductOrmEntity, ProductVariantOrmEntity } from '@openlinker/core/products/orm-entities';
@@ -234,6 +235,69 @@ describe('Bundle expansion, from definition to decrement (#3607)', () => {
     expect(adjustInventory).toHaveBeenCalledWith(
       expect.objectContaining({ variantId: 'v_b', quantity: -2 })
     );
+  });
+
+  it('should let a confirmed multipack through and reserve N units of its own variant (#3624)', async () => {
+    const ds = harness.getDataSource();
+    await seedVariant(ds, 'v_coffee', 10);
+    const repo = ds.getRepository(OrderRecordOrmEntity);
+    await repo.save(
+      repo.create({
+        internalOrderId: ORDER_ID,
+        customerId: null,
+        sourceConnectionId: ALLEGRO,
+        sourceEventId: null,
+        orderSnapshot: {
+          items: [
+            {
+              id: 'line-1',
+              productId: 'p_v_coffee',
+              variantId: 'v_coffee',
+              quantity: 1,
+              price: 95,
+              packQuantity: 3,
+            },
+          ],
+        },
+        syncStatus: [],
+        recordStatus: 'ready',
+        cancelledAt: null,
+      })
+    );
+
+    // Held until confirmed, then not held; confirming twice is harmless.
+    expect(await bundles.findConfirmedMultipacks([{ variantId: 'v_coffee', packQuantity: 3 }])).toEqual([]);
+    await bundles.confirmMultipack({ variantId: 'v_coffee', packQuantity: 3 }, null);
+    await bundles.confirmMultipack({ variantId: 'v_coffee', packQuantity: 3 }, null);
+    const confirmed = await bundles.findConfirmedMultipacks([
+      { variantId: 'v_coffee', packQuantity: 3 },
+      { variantId: 'v_coffee', packQuantity: 6 },
+    ]);
+    expect(confirmed).toEqual([{ variantId: 'v_coffee', packQuantity: 3 }]);
+
+    const record = await orderRecords.getOrderRecord(ORDER_ID);
+    const lineDefinitions = buildPackLineDefinitions(record!.orderItems, [], confirmed);
+    await orderRecords.freezeLineExpansion(ORDER_ID, { v: 1, definitions: lineDefinitions });
+
+    const physical = (await orderRecords.getOrderRecord(ORDER_ID))!.physicalItems;
+    expect(physical.map((i) => [i.id, i.productId, i.quantity])).toEqual([
+      ['line-1~c:v_coffee', 'p_v_coffee', 3],
+    ]);
+    await reservations.reserveForOrder({
+      orderRecordId: ORDER_ID,
+      atpEffect: 'published',
+      lines: physical.map((i) => ({
+        orderLineId: i.id,
+        productId: i.productId,
+        productVariantId: i.variantId ?? null,
+        quantity: i.quantity,
+      })),
+    });
+    const held = await ds.query<{ orderLineId: string; quantity: number }[]>(
+      'SELECT "orderLineId", "quantity" FROM "reservations" WHERE "orderRecordId" = $1',
+      [ORDER_ID]
+    );
+    expect(held).toEqual([{ orderLineId: 'line-1~c:v_coffee', quantity: 3 }]);
   });
 
   it('should reserve all-or-nothing and name the short component', async () => {

@@ -62,6 +62,7 @@ import {
   TAX_RATE_JOURNAL_SERVICE_TOKEN,
   BUNDLE_DEFINITION_SERVICE_TOKEN,
   expandBundleLines,
+  buildPackLineDefinitions,
   taxRateState,
   type IBundleDefinitionService,
   type LineExpansion,
@@ -583,7 +584,8 @@ export class OrderIngestionService implements IOrderIngestionService {
         // itself once a bundle definition exists.
         const defined = await hasBundleDefinition(
           this.bundleDefinitions,
-          result.internalVariantId
+          result.internalVariantId,
+          item.packQuantity
         );
         if (!defined) {
           unresolvedRefs.push({
@@ -1155,9 +1157,20 @@ export class OrderIngestionService implements IOrderIngestionService {
       ...new Set(order.items.map((i) => i.variantId).filter((id): id is string => Boolean(id))),
     ];
     const definitions = await this.bundleDefinitions.findCurrentByVariantIds(variantIds);
+    // #3624: a multipack line (pack quantity N) expands to N units of its
+    // variant when confirmed, or to N x the bundle's components. Frozen with the
+    // rest, so confirming or changing something later never moves an open order.
+    const packPairs = order.items
+      .filter((i) => i.variantId !== undefined && (i.packQuantity ?? 1) > 1)
+      .map((i) => ({ variantId: i.variantId as string, packQuantity: i.packQuantity as number }));
+    const confirmed =
+      packPairs.length === 0
+        ? []
+        : await this.bundleDefinitions.findConfirmedMultipacks(packPairs);
+    const lineDefinitions = buildPackLineDefinitions(order.items, definitions, confirmed);
     const frozen: LineExpansion = await this.orderRecordService.freezeLineExpansion(order.id, {
       v: 1,
-      definitions,
+      definitions: [...definitions, ...lineDefinitions],
     });
     return expandBundleLines(order.items, frozen.definitions);
   }

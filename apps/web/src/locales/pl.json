@@ -114,10 +114,19 @@
     "order": {
       "bundleLinesCaption": "Pozycje zamówienia",
       "bundleMark": "Zestaw",
-      "createBundle": "Utwórz zestaw {n} x {name}",
-      "createBundleNoProduct": "Utwórz zestaw",
+      "confirmMultipack": "Ta oferta to {n} x {name}",
       "inBundlePrice": "w cenie zestawu",
-      "multipackBody": "Kanał sprzedał {n} sztuk jednego produktu w jednej ofercie, a OpenLinker nie zna takiego zestawu. Bez niego ze stanu zeszłaby 1 sztuka zamiast {n}. Utwórz zestaw, a każde czekające na niego zamówienie zostanie zwolnione.",
+      "multipackBody": "Kanał sprzedał {n} sztuk jednego produktu w jednej ofercie, a OpenLinker nie wie, co to znaczy. Bez tego ze stanu zeszłaby 1 sztuka zamiast {n}.",
+      "multipackConfirmText": "Jedna sprzedaż tej oferty = {n} x {name}. Każde czekające na nią zamówienie pójdzie dalej.",
+      "multipackConfirmedTitle": "Potwierdzone: zamówienia idą dalej",
+      "multipackContinue": {
+        "few": "{n} zamówienia idą dalej.",
+        "many": "{n} zamówień idzie dalej.",
+        "one": "{n} zamówienie idzie dalej.",
+        "other": "{n} zamówienia idzie dalej."
+      },
+      "multipackFailed": "Nie udało się zapisać potwierdzenia. Spróbuj ponownie.",
+      "multipackNoProduct": "Ta oferta nie jest jeszcze powiązana z produktem, więc nie można jej potwierdzić. Najpierw powiąż ofertę.",
       "multipackTitle": "Wstrzymane: oferta to {n} sztuk jednego produktu",
       "oldComposition": "To zamówienie ma skład sprzed zmiany zestawu. Pakowacz dostanie skład z dnia zamówienia.",
       "openProducts": "Otwórz w produktach",

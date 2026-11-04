@@ -62,7 +62,10 @@ export class OrderProvisioningResumeService
     private readonly orderRecordService: IOrderRecordService
   ) {}
 
-  async resumeMultipackHeldOrders(): Promise<MultipackReleaseResult> {
+  async resumeMultipackHeldOrders(scope?: {
+    variantId: string;
+    packQuantity: number;
+  }): Promise<MultipackReleaseResult> {
     const result: MultipackReleaseResult = { held: 0, enqueued: 0, notResumed: 0 };
     const pageSize = 100;
     const maxPages = 20;
@@ -74,6 +77,9 @@ export class OrderProvisioningResumeService
         );
         for (const order of items) {
           if (!order.mappingFailureReason?.includes(`[${MULTIPACK_WITHOUT_BUNDLE_REASON_CODE}]`)) {
+            continue;
+          }
+          if (scope !== undefined && !(await this.heldFor(order, scope))) {
             continue;
           }
           result.held += 1;
@@ -96,6 +102,27 @@ export class OrderProvisioningResumeService
       );
     }
     return result;
+  }
+
+  /** Is this order held for exactly this (variant, pack quantity)? */
+  private async heldFor(
+    order: OrderRecord,
+    scope: { variantId: string; packQuantity: number }
+  ): Promise<boolean> {
+    for (const line of order.rawMultipackLines) {
+      if (line.packQuantity !== scope.packQuantity || line.productRef.type !== 'offer') {
+        continue;
+      }
+      const variantId = await this.identifierMapping.getInternalId(
+        CORE_ENTITY_TYPE.Offer,
+        line.productRef.externalId,
+        order.sourceConnectionId
+      );
+      if (variantId === scope.variantId) {
+        return true;
+      }
+    }
+    return false;
   }
 
   async resume(

@@ -31,14 +31,26 @@ export function isMultipackLine(item: Pick<IncomingOrderItem, 'packQuantity'>): 
  * only a signal here and is never multiplied on top of the definition.
  */
 export async function hasBundleDefinition(
-  bundles: Pick<IBundleDefinitionService, 'findCurrentByVariantIds'>,
-  internalVariantId: string | undefined
+  bundles: Pick<IBundleDefinitionService, 'findCurrentByVariantIds' | 'findConfirmedMultipacks'>,
+  internalVariantId: string | undefined,
+  packQuantity?: number
 ): Promise<boolean> {
   if (internalVariantId === undefined) {
     return false;
   }
   const definitions = await bundles.findCurrentByVariantIds([internalVariantId]);
-  return definitions.length > 0;
+  if (definitions.length > 0) {
+    return true;
+  }
+  // #3624: the operator may instead have confirmed "N x this product", which
+  // needs no bundle and no new product.
+  if (packQuantity === undefined || packQuantity <= 1) {
+    return false;
+  }
+  const confirmed = await bundles.findConfirmedMultipacks([
+    { variantId: internalVariantId, packQuantity },
+  ]);
+  return confirmed.length > 0;
 }
 
 /** The reason text persisted on the held order. */

@@ -89,3 +89,25 @@ describe('BundleDefinitionService', () => {
     );
   });
 });
+
+describe('BundleDefinitionService multipack confirmation (#3624)', () => {
+  const make = (variants: unknown[]): { service: BundleDefinitionService; bundles: Record<string, jest.Mock> } => {
+    const bundles = {
+      confirmMultipack: jest.fn().mockResolvedValue(undefined),
+      findConfirmedMultipacks: jest.fn().mockResolvedValue([]),
+    };
+    const variantRepo = { findByIdIn: jest.fn().mockResolvedValue(variants) };
+    return { service: new BundleDefinitionService(bundles as never, variantRepo as never), bundles };
+  };
+
+  it('should record a confirmation for an existing variant', async () => {
+    const { service, bundles } = make([{ id: 'v1' }]);
+    await service.confirmMultipack({ variantId: 'v1', packQuantity: 3 }, 'u1');
+    expect(bundles.confirmMultipack).toHaveBeenCalledWith({ variantId: 'v1', packQuantity: 3 }, 'u1');
+  });
+
+  it('should refuse a pack quantity below 2 and an unknown variant', async () => {
+    await expect(make([{ id: 'v1' }]).service.confirmMultipack({ variantId: 'v1', packQuantity: 1 }, null)).rejects.toThrow();
+    await expect(make([]).service.confirmMultipack({ variantId: 'v1', packQuantity: 3 }, null)).rejects.toThrow();
+  });
+});

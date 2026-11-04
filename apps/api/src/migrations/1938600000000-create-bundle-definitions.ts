@@ -33,9 +33,25 @@ export class CreateBundleDefinitions1938600000000 implements MigrationInterface 
       `CREATE UNIQUE INDEX "UQ_bundle_definitions_variant_version" ON "bundle_definitions" ("variantId", "version")`
     );
     await queryRunner.query(`ALTER TABLE "order_records" ADD COLUMN "lineExpansion" jsonb`);
+    // #3624: an operator's "N x this product" confirmation for a held multipack.
+    await queryRunner.query(
+      `CREATE TABLE "multipack_confirmations" (
+        "id" uuid NOT NULL DEFAULT uuid_generate_v4(),
+        "variantId" text NOT NULL,
+        "packQuantity" integer NOT NULL,
+        "confirmedByUserId" text,
+        "confirmedAt" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
+        CONSTRAINT "PK_multipack_confirmations" PRIMARY KEY ("id")
+      )`
+    );
+    await queryRunner.query(
+      `CREATE UNIQUE INDEX "UQ_multipack_confirmations_variant_pack" ON "multipack_confirmations" ("variantId", "packQuantity")`
+    );
   }
 
   public async down(queryRunner: QueryRunner): Promise<void> {
+    await queryRunner.query(`DROP INDEX IF EXISTS "UQ_multipack_confirmations_variant_pack"`);
+    await queryRunner.query(`DROP TABLE IF EXISTS "multipack_confirmations"`);
     await queryRunner.query(`ALTER TABLE "order_records" DROP COLUMN "lineExpansion"`);
     await queryRunner.query(`DROP INDEX IF EXISTS "UQ_bundle_definitions_variant_version"`);
     await queryRunner.query(`DROP TABLE IF EXISTS "bundle_definitions"`);

@@ -19,6 +19,7 @@ import { AutoMatchVariantOffersService } from './application/services/auto-match
 import { TaxRateJournalOrmEntity } from './infrastructure/persistence/entities/tax-rate-journal.orm-entity';
 import { TaxRateJournalRepository } from './infrastructure/persistence/repositories/tax-rate-journal.repository';
 import { TaxRateJournalService } from './application/services/tax-rate-journal.service';
+import { MultipackConfirmationOrmEntity } from './infrastructure/persistence/entities/multipack-confirmation.orm-entity';
 import { BundleDefinitionOrmEntity } from './infrastructure/persistence/entities/bundle-definition.orm-entity';
 import { BundleDefinitionRepository } from './infrastructure/persistence/repositories/bundle-definition.repository';
 import { BundleDefinitionService } from './application/services/bundle-definition.service';
@@ -47,7 +48,7 @@ export {
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([ProductOrmEntity, ProductVariantOrmEntity, TaxRateJournalOrmEntity, BundleDefinitionOrmEntity]),
+    TypeOrmModule.forFeature([ProductOrmEntity, ProductVariantOrmEntity, TaxRateJournalOrmEntity, BundleDefinitionOrmEntity, MultipackConfirmationOrmEntity]),
     IntegrationsModule,
     IdentifierMappingModule,
     EventsModule,

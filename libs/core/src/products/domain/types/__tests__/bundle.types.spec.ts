@@ -1,9 +1,11 @@
 import {
   buildComponentLineId,
+  buildPackLineDefinitions,
   componentLineIdsFor,
   expandBundleLines,
   readLineExpansion,
   type BundleDefinition,
+  type ExpandableLine,
 } from '../bundle.types';
 
 const definition: BundleDefinition = {
@@ -66,5 +68,60 @@ describe('readLineExpansion', () => {
       v: 1,
       definitions: [],
     });
+  });
+});
+
+describe('line-scoped pack definitions (#3624)', () => {
+  const item = (id: string, variantId: string, packQuantity?: number): ExpandableLine & { packQuantity?: number } => ({
+    id,
+    productId: `p-${variantId}`,
+    variantId,
+    quantity: 2,
+    ...(packQuantity === undefined ? {} : { packQuantity }),
+  });
+
+  it('should expand a confirmed multipack to N units of its own variant per sold unit', () => {
+    const items = [item('L1', 'v-coffee', 3), item('L2', 'v-coffee')];
+    const lineDefs = buildPackLineDefinitions(items, [], [{ variantId: 'v-coffee', packQuantity: 3 }]);
+    const physical = expandBundleLines(items, lineDefs);
+    expect(physical.map((l) => [l.id, l.variantId, l.quantity])).toEqual([
+      ['L1~c:v-coffee', 'v-coffee', 6],
+      ['L2', 'v-coffee', 2],
+    ]);
+  });
+
+  it('should not expand an unconfirmed multipack', () => {
+    expect(buildPackLineDefinitions([item('L1', 'v-coffee', 3)], [], [])).toEqual([]);
+  });
+
+  it('should multiply a bundle by the pack quantity on that line only', () => {
+    const bundle = {
+      variantId: 'v-set',
+      version: 2,
+      components: [{ variantId: 'v-a', productId: 'p-a', quantity: 2 }],
+    };
+    const items = [item('L1', 'v-set', 3), item('L2', 'v-set')];
+    const defs = [bundle, ...buildPackLineDefinitions(items, [bundle], [])];
+    const physical = expandBundleLines(items, defs);
+    expect(physical.map((l) => [l.id, l.quantity])).toEqual([
+      ['L1~c:v-a', 12],
+      ['L2~c:v-a', 4],
+    ]);
+  });
+
+  it('should keep the line scope through a persisted round trip', () => {
+    const lineDefs = buildPackLineDefinitions([item('L1', 'v-coffee', 3)], [], [
+      { variantId: 'v-coffee', packQuantity: 3 },
+    ]);
+    const read = readLineExpansion(JSON.parse(JSON.stringify({ v: 1, definitions: lineDefs })));
+    expect(read?.definitions[0].lineId).toBe('L1');
+  });
+
+  it('should read the old shape (no line scope) unchanged', () => {
+    const read = readLineExpansion({
+      v: 1,
+      definitions: [{ variantId: 'v-set', version: 1, components: [{ variantId: 'v-a', productId: 'p-a', quantity: 1 }] }],
+    });
+    expect(read?.definitions[0].lineId).toBeUndefined();
   });
 });

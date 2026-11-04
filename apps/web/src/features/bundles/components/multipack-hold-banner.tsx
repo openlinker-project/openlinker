@@ -2,19 +2,21 @@
  * Multipack hold banner (#3624)
  *
  * An order is held when a channel sold N units of one product in one offer and
- * OpenLinker has no bundle for it: shipping it as one unit would take 1 off
- * stock for the price of N. The banner names the problem and offers the next
- * step: define the bundle (the form starts with "N x product"), after which
- * every order waiting for a bundle is sent to be processed again.
+ * OpenLinker has not been told what that means: shipping it as one unit would
+ * take 1 off stock for the price of N. One click confirms "one sale of this
+ * offer = N x this product" (no new product, no remapping) and every order
+ * waiting for it continues.
  *
  * @module apps/web/src/features/bundles/components
  */
-import type { ReactElement } from 'react';
+import { useState, type ReactElement } from 'react';
 import { Link } from 'react-router-dom';
 import { useWriteAccess } from '../../../shared/auth/use-permission';
-import { interpolate, useMessages } from '../../../shared/i18n';
+import { formatPlural, interpolate, useLocale, useMessages } from '../../../shared/i18n';
 import { Alert } from '../../../shared/ui/alert';
+import { Button } from '../../../shared/ui/button';
 import { useDemoMode } from '../../system';
+import { useConfirmMultipackMutation } from '../hooks/use-confirm-multipack-mutation';
 
 export interface MultipackHold {
   lineId: string;
@@ -27,17 +29,32 @@ export interface MultipackHold {
 
 export function MultipackHoldBanner({ hold }: { hold: MultipackHold }): ReactElement {
   const copy = useMessages('bundles');
+  const { locale } = useLocale();
   const demoMode = useDemoMode();
   const write = useWriteAccess('products:write', demoMode);
+  const confirm = useConfirmMultipackMutation();
+  const [released, setReleased] = useState<number | null>(null);
   const name = hold.productName ?? hold.lineName ?? hold.sku ?? '';
-  const createHref =
-    hold.variantId === null
-      ? '/products/bundles/new'
-      : `/products/bundles/new?${new URLSearchParams({
-          component: hold.variantId,
-          quantity: String(hold.packQuantity),
-        }).toString()}`;
   const productsHref = `/products?${new URLSearchParams({ search: hold.sku ?? name }).toString()}`;
+  const variantId = hold.variantId;
+
+  if (released !== null) {
+    return (
+      <Alert
+        tone="success"
+        title={copy.order.multipackConfirmedTitle}
+        data-testid="order-multipack-created"
+      >
+        {formatPlural(released, copy.order.multipackContinue, locale)}
+      </Alert>
+    );
+  }
+
+  const unavailableReason = !write.canWrite
+    ? copy.order.viewOnlyReason
+    : variantId === null
+      ? copy.order.multipackNoProduct
+      : undefined;
 
   return (
     <Alert
@@ -46,35 +63,41 @@ export function MultipackHoldBanner({ hold }: { hold: MultipackHold }): ReactEle
       data-testid="order-multipack-banner"
       action={
         <span className="button-group">
-          {write.canWrite ? (
-            <Link
-              className="button button--primary button--sm"
-              data-testid="order-multipack-create-bundle"
-              to={createHref}
-            >
-              {hold.variantId === null
-                ? copy.order.createBundleNoProduct
-                : interpolate(copy.order.createBundle, { n: hold.packQuantity, name })}
-            </Link>
-          ) : (
-            <span
-              className="button button--primary button--sm"
-              role="button"
-              aria-disabled="true"
-              tabIndex={0}
-              title={copy.order.viewOnlyReason}
-              data-testid="order-multipack-create-bundle"
-            >
-              {interpolate(copy.order.createBundle, { n: hold.packQuantity, name })}
-            </span>
-          )}
-          <Link className="button button--ghost button--sm" data-testid="order-multipack-open-products" to={productsHref}>
+          <Button
+            tone="primary"
+            className="button--sm"
+            data-testid="order-multipack-create-bundle"
+            disabled={unavailableReason !== undefined || confirm.isPending}
+            title={unavailableReason}
+            onClick={() => {
+              if (variantId === null) return;
+              confirm.mutate(
+                { variantId, packQuantity: hold.packQuantity },
+                {
+                  onSuccess: (result) => {
+                    setReleased(result.releasedOrders);
+                  },
+                },
+              );
+            }}
+          >
+            {interpolate(copy.order.confirmMultipack, { n: hold.packQuantity, name })}
+          </Button>
+          <Link
+            className="button button--ghost button--sm"
+            data-testid="order-multipack-open-products"
+            to={productsHref}
+          >
             {copy.order.openProducts}
           </Link>
         </span>
       }
     >
-      {interpolate(copy.order.multipackBody, { n: hold.packQuantity })}
+      <p>{interpolate(copy.order.multipackBody, { n: hold.packQuantity })}</p>
+      <p data-testid="order-multipack-confirm-text">
+        {interpolate(copy.order.multipackConfirmText, { n: hold.packQuantity, name })}
+      </p>
+      {confirm.isError ? <p role="alert">{copy.order.multipackFailed}</p> : null}
     </Alert>
   );
 }

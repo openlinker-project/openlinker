@@ -5,7 +5,11 @@
  *
  * @module libs/core/src/products/domain/ports
  */
-import type { BundleDefinition, BundleDefinitionVersion } from '../types/bundle.types';
+import type {
+  BundleDefinition,
+  BundleDefinitionVersion,
+  MultipackConfirmation,
+} from '../types/bundle.types';
 
 export interface BundleDefinitionRepositoryPort {
   /** The latest version of each variant's definition, retired ones excluded. */
@@ -31,6 +35,17 @@ export interface BundleDefinitionRepositoryPort {
     variantId: string,
     components: BundleDefinition['components']
   ): Promise<BundleDefinition>;
+
+  /** Which of the given (variant, pack quantity) pairs an operator has confirmed. */
+  findConfirmedMultipacks(
+    pairs: readonly MultipackConfirmation[]
+  ): Promise<MultipackConfirmation[]>;
+
+  /** Record a confirmation. Idempotent: an existing one is left as it is. */
+  confirmMultipack(
+    confirmation: MultipackConfirmation,
+    confirmedByUserId: string | null
+  ): Promise<void>;
 
   /** Mark every version of the variant retired. Returns whether any row was live. */
   retire(variantId: string): Promise<boolean>;

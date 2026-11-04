@@ -3,7 +3,11 @@
  *
  * @module libs/core/src/products/application/services
  */
-import type { BundleDefinition, BundleDefinitionVersion } from '../../domain/types/bundle.types';
+import type {
+  BundleDefinition,
+  BundleDefinitionVersion,
+  MultipackConfirmation,
+} from '../../domain/types/bundle.types';
 
 export interface BundleComponentInput {
   variantId: string;
@@ -37,6 +41,17 @@ export interface IBundleDefinitionService {
    * as a component and the lookup cannot recurse.
    */
   findCurrentContainingComponents(variantIds: readonly string[]): Promise<BundleDefinition[]>;
+
+  /** Which of the given (variant, pack quantity) pairs an operator has confirmed (#3624). */
+  findConfirmedMultipacks(
+    pairs: readonly MultipackConfirmation[]
+  ): Promise<MultipackConfirmation[]>;
+
+  /**
+   * Confirm that one sale of `variantId` at pack quantity N means N units of it
+   * (#3624). Creates no product. Idempotent.
+   */
+  confirmMultipack(confirmation: MultipackConfirmation, confirmedByUserId: string | null): Promise<void>;
 
   /** Version history of one variant, oldest first. */
   history(variantId: string): Promise<BundleDefinitionVersion[]>;

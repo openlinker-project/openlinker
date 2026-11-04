@@ -83,6 +83,25 @@ export class BundleCreatedResponseDto extends BundleDefinitionResponseDto {
   releasedOrders!: number;
 }
 
+export class ConfirmMultipackRequestDto {
+  @ApiProperty({ description: 'The master variant the offer maps to' })
+  @IsString()
+  @IsNotEmpty()
+  variantId!: string;
+
+  @ApiProperty({ description: 'Units of the variant in ONE sold unit', minimum: 2 })
+  @IsInt()
+  @Min(2)
+  packQuantity!: number;
+}
+
+export class MultipackConfirmedResponseDto {
+  @ApiProperty() variantId!: string;
+  @ApiProperty() packQuantity!: number;
+  @ApiProperty({ description: 'Held orders sent to be processed again now' })
+  releasedOrders!: number;
+}
+
 export class BundleProductSummaryDto {
   @ApiPropertyOptional({ type: String, nullable: true }) name!: string | null;
   @ApiPropertyOptional({ type: String, nullable: true }) sku!: string | null;

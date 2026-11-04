@@ -57,6 +57,13 @@ export interface BundleHistoryEntry extends BundleDefinition {
   componentSummaries: BundleProductSummary[];
 }
 
+export interface MultipackConfirmed {
+  variantId: string;
+  packQuantity: number;
+  /** Held orders sent to be processed again now. */
+  releasedOrders: number;
+}
+
 export interface BundleUsedIn {
   bundleVariantId: string;
   quantity: number;

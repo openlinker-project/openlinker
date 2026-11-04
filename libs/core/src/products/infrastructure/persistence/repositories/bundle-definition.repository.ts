@@ -13,6 +13,7 @@ import {
   type BundleComponent,
   type BundleDefinition,
   type BundleDefinitionVersion,
+  type MultipackConfirmation,
 } from '../../../domain/types/bundle.types';
 
 @Injectable()
@@ -92,6 +93,34 @@ export class BundleDefinitionRepository implements BundleDefinitionRepositoryPor
       [variantId, JSON.stringify(components)]
     )) as RawRow[];
     return this.rowToDomain(rows[0]);
+  }
+
+  async findConfirmedMultipacks(
+    pairs: readonly MultipackConfirmation[]
+  ): Promise<MultipackConfirmation[]> {
+    if (pairs.length === 0) {
+      return [];
+    }
+    const variantIds = pairs.map((pair) => pair.variantId);
+    const rows = (await this.repository.query(
+      'SELECT "variantId", "packQuantity" FROM "multipack_confirmations" WHERE "variantId" = ANY($1::text[])',
+      [variantIds]
+    )) as { variantId: string; packQuantity: number }[];
+    return rows
+      .map((row) => ({ variantId: row.variantId, packQuantity: Number(row.packQuantity) }))
+      .filter((row) =>
+        pairs.some((pair) => pair.variantId === row.variantId && pair.packQuantity === row.packQuantity)
+      );
+  }
+
+  async confirmMultipack(
+    confirmation: MultipackConfirmation,
+    confirmedByUserId: string | null
+  ): Promise<void> {
+    await this.repository.query(
+      'INSERT INTO "multipack_confirmations" ("variantId", "packQuantity", "confirmedByUserId") VALUES ($1, $2, $3) ON CONFLICT ("variantId", "packQuantity") DO NOTHING',
+      [confirmation.variantId, confirmation.packQuantity, confirmedByUserId]
+    );
   }
 
   async retire(variantId: string): Promise<boolean> {

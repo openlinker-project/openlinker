@@ -59,7 +59,7 @@ const routerResolver: FulfillmentRouterResolverPort = {
 
 describe('OrderIngestionService', () => {
   let service: OrderIngestionService;
-  let bundleDefinitions: { findCurrentByVariantIds: jest.Mock };
+  let bundleDefinitions: { findCurrentByVariantIds: jest.Mock; findConfirmedMultipacks: jest.Mock };
 
   let integrationsService: jest.Mocked<IIntegrationsService>;
   // Only the two methods the SUT actually calls — tight Pick<> mock surface
@@ -244,7 +244,10 @@ describe('OrderIngestionService', () => {
         correctionUnavailableReason: null,
       }),
     };
-    bundleDefinitions = { findCurrentByVariantIds: jest.fn().mockResolvedValue([]) };
+    bundleDefinitions = {
+      findCurrentByVariantIds: jest.fn().mockResolvedValue([]),
+      findConfirmedMultipacks: jest.fn().mockResolvedValue([]),
+    };
     service = new OrderIngestionService(
       integrationsService,
       syncCursors as unknown as ISyncCursorsService,
@@ -1817,6 +1820,31 @@ describe('OrderIngestionService', () => {
       );
       expect(orderRecordService.persistOrder).not.toHaveBeenCalled();
       expect(reservationService.reserveForOrder).not.toHaveBeenCalled();
+    });
+
+    it('lets a confirmed multipack through and freezes it as N units of its own variant (#3624)', async () => {
+      orderSource.getOrder.mockResolvedValue({
+        ...incomingWithItems,
+        items: [{ ...incomingWithItems.items[0], packQuantity: 3 }, incomingWithItems.items[1]],
+      });
+      orderItemRefResolver.tryResolve
+        .mockResolvedValueOnce({ resolved: true, internalProductId: 'p-1', internalVariantId: 'v-1' })
+        .mockResolvedValueOnce({ resolved: true, internalProductId: 'p-2', internalVariantId: 'v-2' });
+      bundleDefinitions.findConfirmedMultipacks.mockResolvedValue([
+        { variantId: 'v-1', packQuantity: 3 },
+      ]);
+
+      await service.syncOrderFromSource(connectionId, externalOrderId);
+
+      expect(orderRecordService.markItemResolutionFailure).not.toHaveBeenCalled();
+      const frozen = orderRecordService.freezeLineExpansion.mock.calls[0][1];
+      expect(frozen.definitions).toEqual([
+        expect.objectContaining({
+          lineId: 'item-1',
+          variantId: 'v-1',
+          components: [{ variantId: 'v-1', productId: 'p-1', quantity: 3 }],
+        }),
+      ]);
     });
 
     it('carries gift and packQuantity onto the resolved line when not held (#3929)', async () => {

@@ -97,7 +97,10 @@ export interface IOrderProvisioningResumeService {
    * whose offer still resolves to a variant with no bundle simply stays held.
    * Never throws for a modelled condition.
    */
-  resumeMultipackHeldOrders(): Promise<MultipackReleaseResult>;
+  resumeMultipackHeldOrders(scope?: {
+    variantId: string;
+    packQuantity: number;
+  }): Promise<MultipackReleaseResult>;
 
   /**
    * Re-enqueue the source-side `marketplace.order.sync` for one order, so a

@@ -900,6 +900,7 @@ export function createMockApiClient(
       usedIn: vi.fn().mockResolvedValue([]),
       create: vi.fn(),
       update: vi.fn(),
+      confirmMultipack: vi.fn(),
       ...overrides.bundles,
     } as ApiClient['bundles'],
     products: withTwoStageReads({

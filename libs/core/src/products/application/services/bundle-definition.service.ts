@@ -20,6 +20,7 @@ import type {
   BundleComponent,
   BundleDefinition,
   BundleDefinitionVersion,
+  MultipackConfirmation,
 } from '../../domain/types/bundle.types';
 import {
   BUNDLE_DEFINITION_REPOSITORY_TOKEN,
@@ -74,6 +75,26 @@ export class BundleDefinitionService implements IBundleDefinitionService {
 
   findCurrentContainingComponents(variantIds: readonly string[]): Promise<BundleDefinition[]> {
     return this.bundles.findCurrentContainingAnyComponent(variantIds);
+  }
+
+  findConfirmedMultipacks(
+    pairs: readonly MultipackConfirmation[]
+  ): Promise<MultipackConfirmation[]> {
+    return this.bundles.findConfirmedMultipacks(pairs);
+  }
+
+  async confirmMultipack(
+    confirmation: MultipackConfirmation,
+    confirmedByUserId: string | null
+  ): Promise<void> {
+    if (!Number.isInteger(confirmation.packQuantity) || confirmation.packQuantity < 2) {
+      throw new BundleDefinitionInvalidError('A multipack needs a pack quantity of 2 or more');
+    }
+    const [variant] = await this.variants.findByIdIn([confirmation.variantId]);
+    if (variant === undefined) {
+      throw new BundleDefinitionInvalidError(`Variant ${confirmation.variantId} does not exist`);
+    }
+    await this.bundles.confirmMultipack(confirmation, confirmedByUserId);
   }
 
   history(variantId: string): Promise<BundleDefinitionVersion[]> {

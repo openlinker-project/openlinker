@@ -24,6 +24,19 @@ export interface BundleDefinition {
   variantId: string;
   components: BundleComponent[];
   version: number;
+  /**
+   * Set only on a LINE-scoped definition frozen into an order (#3624): a
+   * confirmed multipack, or a bundle sold with a pack quantity. It applies to
+   * that one line and never to another line of the same variant. Never present
+   * on a stored `bundle_definitions` row.
+   */
+  lineId?: string;
+}
+
+/** A confirmed multipack: variant X sold at pack quantity N means N units of X. */
+export interface MultipackConfirmation {
+  variantId: string;
+  packQuantity: number;
 }
 
 /** One historical version, with the instant it was written (#3624). */
@@ -74,10 +87,17 @@ export function expandBundleLines<T extends ExpandableLine>(
   if (definitions.length === 0) {
     return [...items];
   }
-  const byVariant = new Map(definitions.map((d) => [d.variantId, d]));
+  const byVariant = new Map(
+    definitions.filter((d) => d.lineId === undefined).map((d) => [d.variantId, d])
+  );
+  const byLine = new Map(
+    definitions.filter((d) => d.lineId !== undefined).map((d) => [d.lineId as string, d])
+  );
   const physical: PhysicalLine<T>[] = [];
   for (const item of items) {
-    const definition = item.variantId === undefined ? undefined : byVariant.get(item.variantId);
+    const definition =
+      byLine.get(item.id) ??
+      (item.variantId === undefined ? undefined : byVariant.get(item.variantId));
     if (definition === undefined) {
       physical.push(item);
       continue;
@@ -166,6 +186,44 @@ export interface LineExpansion {
   definitions: BundleDefinition[];
 }
 
+/**
+ * The line-scoped definitions an order's lines need at freeze time (#3624).
+ * `confirmed` lists the multipacks the operator has confirmed. A line with a
+ * pack quantity N > 1 gets its own definition: the variant's bundle components
+ * times N when the variant is a bundle, else N units of the variant itself
+ * when confirmed. A line neither confirmed nor a bundle gets none.
+ */
+export function buildPackLineDefinitions(
+  items: readonly (ExpandableLine & { packQuantity?: number })[],
+  definitions: readonly BundleDefinition[],
+  confirmed: readonly MultipackConfirmation[]
+): BundleDefinition[] {
+  const result: BundleDefinition[] = [];
+  for (const item of items) {
+    const n = item.packQuantity;
+    if (item.variantId === undefined || n === undefined || n <= 1) {
+      continue;
+    }
+    const bundle = definitions.find((d) => d.lineId === undefined && d.variantId === item.variantId);
+    if (bundle !== undefined) {
+      result.push({
+        variantId: bundle.variantId,
+        version: bundle.version,
+        lineId: item.id,
+        components: bundle.components.map((c) => ({ ...c, quantity: c.quantity * n })),
+      });
+    } else if (confirmed.some((c) => c.variantId === item.variantId && c.packQuantity === n)) {
+      result.push({
+        variantId: item.variantId,
+        version: 0,
+        lineId: item.id,
+        components: [{ variantId: item.variantId, productId: item.productId, quantity: n }],
+      });
+    }
+  }
+  return result;
+}
+
 export const EMPTY_LINE_EXPANSION: LineExpansion = { v: 1, definitions: [] };
 
 function isBundleComponent(value: unknown): value is BundleComponent {
@@ -212,6 +270,7 @@ export function readLineExpansion(value: unknown): LineExpansion | null {
         variantId: d.variantId,
         version: d.version,
         components: d.components.map((c) => ({ ...c })),
+        ...(typeof d.lineId === 'string' ? { lineId: d.lineId } : {}),
       });
     }
   }

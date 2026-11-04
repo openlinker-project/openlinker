@@ -48,6 +48,8 @@ import {
   type IInventoryQueryService,
 } from '@openlinker/core/inventory';
 import { Roles } from '../../auth/decorators/roles.decorator';
+import { CurrentUser } from '../../auth/decorators/current-user.decorator';
+import type { AuthenticatedUser } from '../../auth/auth.types';
 import type {
   BundleProductSummaryDto} from './dto/bundle-definition.dto';
 import {
@@ -55,6 +57,8 @@ import {
   BundleDefinitionResponseDto,
   BundleHistoryEntryResponseDto,
   BundleUsedInResponseDto,
+  ConfirmMultipackRequestDto,
+  MultipackConfirmedResponseDto,
   BundleWithAvailabilityResponseDto,
   CreateBundleDefinitionRequestDto,
   UpdateBundleDefinitionRequestDto,
@@ -164,6 +168,39 @@ export class BundleDefinitionsController {
     // create - the definition is already saved.
     const released = await this.provisioningResume.resumeMultipackHeldOrders();
     return { ...toDto(created), releasedOrders: released.enqueued };
+  }
+
+  @Roles('admin', 'operator')
+  @Post('multipack-confirmations')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Confirm that an offer sold as N units of a product means N units of it',
+    description:
+      'Creates no product. Idempotent: confirming again still re-drives the held orders. ' +
+      'Every order held for this variant at this pack quantity is sent to be processed again now (#3624).',
+  })
+  @ApiResponse({ status: 200, type: MultipackConfirmedResponseDto })
+  async confirmMultipack(
+    @Body() body: ConfirmMultipackRequestDto,
+    @CurrentUser() user: AuthenticatedUser
+  ): Promise<MultipackConfirmedResponseDto> {
+    try {
+      await this.bundles.confirmMultipack(
+        { variantId: body.variantId, packQuantity: body.packQuantity },
+        user.id
+      );
+    } catch (error) {
+      return mapError(error);
+    }
+    const released = await this.provisioningResume.resumeMultipackHeldOrders({
+      variantId: body.variantId,
+      packQuantity: body.packQuantity,
+    });
+    return {
+      variantId: body.variantId,
+      packQuantity: body.packQuantity,
+      releasedOrders: released.enqueued,
+    };
   }
 
   @Roles('admin', 'operator', 'viewer')

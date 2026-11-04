@@ -60,7 +60,7 @@ A gift line has `gift: { source, ruleRef? }`, source one of `channel`, `cart-rul
 
 ## 7. Multipack hold
 
-An Allegro offer sold as a set (`packQuantity > 1`) whose variant has no bundle definition is held as `awaiting_mapping` with the reason "multipack without a bundle". The hold offers one click: "create bundle N x". Nothing is reserved or shipped until the order is mapped.
+An Allegro offer sold as a set (`packQuantity > 1`) whose variant has no bundle definition and no confirmation is held as `awaiting_mapping` with the reason "multipack without a bundle". The hold offers one click: "This offer sells N x {product}", with the sentence "One sale of this offer = N x {product}. Every order waiting for it will continue." The click stores the confirmation (no new product, no remapping), re-drives every order held for that product and pack quantity now, and shows "N orders continue". Nothing is reserved or shipped until then. A confirmed line expands to N units of its own variant, frozen with the order.
 
 ## 8. Documents
 
@@ -95,7 +95,7 @@ Defaults keep a non-implementing adapter correct: no `gift` is an ordinary line,
 
 - Product list: bundles marked, availability with the limiting component, one "availability unknown" state with a one-sentence reason (`products/list`).
 - Order detail: the bundle once as one line, a gift once in its line with its cost, no separate gift section (`order/bundle`).
-- Held multipack with the "create bundle N x" action (`order/multipack-held`).
+- Held multipack with the "This offer sells N x product" action (`order/multipack-held`) and its result (`order/multipack-created`).
 - Bench: the bundle's components as picks, a header "Set X of Y" (`bench/in-progress`).
 
 ## 12. Out of scope
