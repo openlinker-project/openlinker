@@ -168,7 +168,8 @@ function mapLine(line: ShopifyLineItem, taxesIncluded: boolean): IncomingOrderIt
   return {
     id: fromShopifyGid(line.id),
     productRef: lineRef(line),
-    quantity: line.quantity,
+    // `currentQuantity` follows order edits; `quantity` stays the original count.
+    quantity: line.currentQuantity,
     price: unit,
     ...(taxesIncluded ? { unitPriceGross: unit } : {}),
     ...(sku === undefined ? {} : { sku }),
@@ -221,7 +222,9 @@ export function mapShopifyOrderToIncoming(
     ...(gateway === undefined ? {} : { sourcePaymentMethod: gateway }),
     ...(order.customer === null ? {} : { customerExternalId: fromShopifyGid(order.customer.id) }),
     ...(email === undefined ? {} : { customerEmail: email }),
-    items: order.lineItems.nodes.map((line) => mapLine(line, order.taxesIncluded)),
+    items: order.lineItems.nodes
+      .filter((line) => line.currentQuantity > 0)
+      .map((line) => mapLine(line, order.taxesIncluded)),
     totals: {
       subtotal: amount(order.currentSubtotalPriceSet.shopMoney.amount),
       tax: amount(order.currentTotalTaxSet.shopMoney.amount),

@@ -28,7 +28,7 @@ export const ORDER_FIELDS = `
   shippingLines(first: 5) { nodes { title code originalPriceSet { ${MONEY} } taxLines { ${TAX_LINE} } } }
   lineItems(first: 250) {
     nodes {
-      id name sku quantity
+      id name sku quantity currentQuantity
       variant { id }
       product { id }
       originalUnitPriceSet { ${MONEY} }

@@ -133,6 +133,8 @@ export interface ShopifyLineItem {
   readonly name: string;
   readonly sku: string | null;
   readonly quantity: number;
+  /** Quantity after order edits and removals; `quantity` is the original. */
+  readonly currentQuantity: number;
   readonly variant: { readonly id: string } | null;
   readonly product: { readonly id: string } | null;
   readonly originalUnitPriceSet: ShopifyMoneyBag;
