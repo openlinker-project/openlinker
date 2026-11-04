@@ -22,6 +22,7 @@ import { ShopifyInventoryMasterAdapter } from '../infrastructure/adapters/invent
 import { ShopifyOrderProcessorAdapter } from '../infrastructure/adapters/order-processor/shopify-order-processor.adapter';
 import { ShopifyOrderSourceAdapter } from '../infrastructure/adapters/order-source/shopify-order-source.adapter';
 import { ShopifyProductMasterAdapter } from '../infrastructure/adapters/product-master/shopify-product-master.adapter';
+import { ShopifyProductPublisherAdapter } from '../infrastructure/adapters/product-publisher/shopify-product-publisher.adapter';
 import { buildShopifyClient, type ShopifyTokenMemo } from '../infrastructure/http/shopify-client.builder';
 import { ShopifyProductReader } from '../infrastructure/readers/shopify-product.reader';
 import { ShopifyShopContextProvider } from '../infrastructure/shop-context/shopify-shop-context.provider';
@@ -65,6 +66,7 @@ export class ShopifyAdapterFactory implements IShopifyAdapterFactory {
       ),
       orderSource: new ShopifyOrderSourceAdapter(client, config.storeDomain, connection),
       orderProcessor: new ShopifyOrderProcessorAdapter(client, identifierMapping, shopContext, connection),
+      productPublisher: new ShopifyProductPublisherAdapter(client, shopContext, connection),
     };
   }
 }

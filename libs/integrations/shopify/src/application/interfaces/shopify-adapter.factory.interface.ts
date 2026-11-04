@@ -15,12 +15,14 @@ import type { ShopifyInventoryMasterAdapter } from '../../infrastructure/adapter
 import type { ShopifyOrderProcessorAdapter } from '../../infrastructure/adapters/order-processor/shopify-order-processor.adapter';
 import type { ShopifyOrderSourceAdapter } from '../../infrastructure/adapters/order-source/shopify-order-source.adapter';
 import type { ShopifyProductMasterAdapter } from '../../infrastructure/adapters/product-master/shopify-product-master.adapter';
+import type { ShopifyProductPublisherAdapter } from '../../infrastructure/adapters/product-publisher/shopify-product-publisher.adapter';
 
 export interface ShopifyAdapters {
   readonly productMaster: ShopifyProductMasterAdapter;
   readonly inventoryMaster: ShopifyInventoryMasterAdapter;
   readonly orderSource: ShopifyOrderSourceAdapter;
   readonly orderProcessor: ShopifyOrderProcessorAdapter;
+  readonly productPublisher: ShopifyProductPublisherAdapter;
 }
 
 export interface IShopifyAdapterFactory {

@@ -7,15 +7,16 @@
  *
  * Registers the connection tester, the config + credentials shape validators,
  * the retry and auth-failure classifiers and the orders-poll task, and
- * dispatches four capabilities: `ProductMaster`, `InventoryMaster`,
- * `OrderSource` and `OrderProcessorManager` (with its `OrderFulfillmentUpdater`
- * / `OrderStatusWriteback` / `OrderCreateStockEffect` sub-capabilities,
- * narrowed at the call site and never dispatched by name).
+ * dispatches `ProductMaster`, `InventoryMaster`, `OrderSource`,
+ * `OrderProcessorManager` (with its `OrderFulfillmentUpdater` /
+ * `OrderStatusWriteback` / `OrderCreateStockEffect` sub-capabilities, narrowed
+ * at the call site and never dispatched by name) and `ProductPublisher` +
+ * `CategoryProvisioner` (one publisher instance; collections are the category).
  *
  * Every outbound call - the token mint included - goes through
  * `host.http.forConnection` with `SHOPIFY_DEFAULT_RATE_LIMIT`.
  *
- * Out of scope: webhooks, ProductPublisher, returns.
+ * Out of scope: webhooks, returns.
  *
  * @module libs/integrations/shopify/src
  */
@@ -46,10 +47,19 @@ import { buildShopifySchedulerTasks } from './infrastructure/scheduler/shopify-s
 export const shopifyAdapterManifest: AdapterMetadata = {
   adapterKey: SHOPIFY_ADAPTER_KEY,
   platformType: SHOPIFY_PLATFORM_TYPE,
-  supportedCapabilities: ['ProductMaster', 'InventoryMaster', 'OrderSource', 'OrderProcessorManager'],
+  supportedCapabilities: [
+    'ProductMaster',
+    'InventoryMaster',
+    'OrderSource',
+    'OrderProcessorManager',
+    'ProductPublisher',
+    'CategoryProvisioner',
+  ],
   // Catalogue and stock only by default, the Shoper reasoning: ingesting
   // orders is polling load, and `OrderProcessorManager` would make OpenLinker
-  // fan every ingested order out into this shop. Both are opt-in.
+  // fan every ingested order out into this shop. Both are opt-in, and so are
+  // `ProductPublisher` / `CategoryProvisioner`: they WRITE products and
+  // collections to the shop.
   defaultEnabledCapabilities: ['ProductMaster', 'InventoryMaster'],
   defaultRateLimit: SHOPIFY_DEFAULT_RATE_LIMIT,
   displayName: 'Shopify Admin API',
@@ -111,6 +121,9 @@ export function createShopifyPlugin(_deps: CreateShopifyPluginDeps = {}): Adapte
             InventoryMaster: async () => (await build()).inventoryMaster,
             OrderSource: async () => (await build()).orderSource,
             OrderProcessorManager: async () => (await build()).orderProcessor,
+            ProductPublisher: async () => (await build()).productPublisher,
+            // The same instance: narrowed at the call site via `isCategoryProvisioner`.
+            CategoryProvisioner: async () => (await build()).productPublisher,
           },
           SHOPIFY_BRAND,
         );
