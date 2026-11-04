@@ -14,6 +14,7 @@ import { Combobox, type ComboboxOption, type ComboboxValue } from '../../../shar
 import { ErrorState, LoadingState } from '../../../shared/ui/feedback-state';
 import type { MappingOption } from '../api/mappings.types';
 import { captureDemoEvent } from '../../demo';
+import { getMessages, interpolate, renderRich, useMessages } from '../../../shared/i18n';
 
 export interface MappingRow {
   sourceValue: string;
@@ -74,10 +75,6 @@ interface MappingPanelProps {
   dynamicOptionSuffix?: string;
 }
 
-const DEFAULT_DYNAMIC_OPTION_SUFFIX = ' - dynamic';
-const DEFAULT_EMPTY_STATE_MESSAGE =
-  'No mappings configured yet. Orders may sync with default values. Add one below.';
-
 /**
  * Truncates a long stable id (Allegro UUIDs are 36 chars) to 8 + "…" so it
  * fits inline next to the human label without dominating the row. Short
@@ -90,7 +87,7 @@ const DEFAULT_EMPTY_STATE_MESSAGE =
  * an order lands in it rather than after.
  */
 function derivedCue(derivedValue: string): string {
-  return ` - reads as ${derivedValue}`;
+  return interpolate(getMessages('mappings').mappingPanel.derivedCue, { value: derivedValue });
 }
 
 function shortValue(value: string): string {
@@ -180,9 +177,11 @@ export function MappingPanel({
   dataError = null,
   onRetryData,
   onDirtyChange,
-  emptyStateMessage = DEFAULT_EMPTY_STATE_MESSAGE,
-  dynamicOptionSuffix = DEFAULT_DYNAMIC_OPTION_SUFFIX,
+  emptyStateMessage,
+  dynamicOptionSuffix: dynamicOptionSuffixProp,
 }: MappingPanelProps): ReactElement {
+  const copy = useMessages('mappings').mappingPanel;
+  const dynamicOptionSuffix = dynamicOptionSuffixProp ?? copy.defaultDynamicSuffix;
   const [localRows, setLocalRows] = useState<MappingRow[]>(savedRows);
   const [pendingSource, setPendingSource] = useState('');
   const [pendingTarget, setPendingTarget] = useState('');
@@ -241,7 +240,7 @@ export function MappingPanel({
   function handleAddRow(): void {
     if (!pendingSource || !pendingTarget) return;
     if (localRows.some((r) => r.sourceValue === pendingSource)) {
-      setAddError('A mapping for this source value already exists.');
+      setAddError(copy.duplicateSource);
       return;
     }
     setAddError(null);
@@ -295,12 +294,12 @@ export function MappingPanel({
   if (dataError) {
     return (
       <ErrorState
-        title="Unable to load mappings"
+        title={copy.dataErrorTitle}
         message={dataError.message}
         action={
           onRetryData ? (
             <Button tone="secondary" onClick={onRetryData}>
-              Retry
+              {copy.retry}
             </Button>
           ) : undefined
         }
@@ -309,11 +308,17 @@ export function MappingPanel({
   }
 
   if (optionsLoading) {
-    return <LoadingState liveRegion="off" title={`Loading ${title.toLowerCase()} options`} message="Fetching available values…" />;
+    return (
+      <LoadingState
+        liveRegion="off"
+        title={interpolate(copy.loading.title, { title: title.toLowerCase() })}
+        message={copy.loading.message}
+      />
+    );
   }
 
   if (optionsError) {
-    return <ErrorState title="Unable to load options" message={optionsError.message} />;
+    return <ErrorState title={copy.optionsErrorTitle} message={optionsError.message} />;
   }
 
   const noSourcesLeft = availableSourceOptions.length === 0;
@@ -331,12 +336,12 @@ export function MappingPanel({
     <div className="panel panel--dense">
       <div className="panel__header">
         <div>
-          <p className="eyebrow">Configuration</p>
+          <p className="eyebrow">{copy.eyebrow}</p>
           <h3 className="section-title">{title}</h3>
         </div>
         {isDirty && (
           <span className="status-badge status-badge--warning" aria-live="polite">
-            Unsaved changes
+            {copy.unsaved}
           </span>
         )}
       </div>
@@ -348,15 +353,15 @@ export function MappingPanel({
           for a connection with zero carrier mappings and an unmapped method. */}
       {localRows.length === 0 && !focusActionable ? (
         <p className="muted-text" role="status" aria-live="polite">
-          {emptyStateMessage}
+          {emptyStateMessage ?? copy.defaultEmpty}
         </p>
       ) : localRows.length === 0 ? null : (
-        <table className="data-table data-table--stackable" aria-label={`${title} mappings`}>
+        <table className="data-table data-table--stackable" aria-label={interpolate(copy.tableLabel, { title })}>
           <thead>
             <tr>
               <th>{sourceLabel}</th>
               <th>{targetLabel}</th>
-              <th aria-label="Actions" />
+              <th aria-label={copy.actions} />
             </tr>
           </thead>
           <tbody>
@@ -382,10 +387,10 @@ export function MappingPanel({
                   <td className="data-table__cell--actions">
                     <Button
                       tone="ghost"
-                      aria-label={`Remove mapping for ${sourceOption?.label ?? 'orphaned source'}`}
+                      aria-label={interpolate(copy.removeLabel, { source: sourceOption?.label ?? copy.orphanedSource })}
                       onClick={() => { handleDeleteRow(row.sourceValue); }}
                     >
-                      Remove
+                      {copy.remove}
                     </Button>
                   </td>
                 </tr>
@@ -398,7 +403,11 @@ export function MappingPanel({
       {/* Deep-link pre-focus hint (#1794) */}
       {focusActionable && (
         <p className="mapping-panel__focus-hint" role="status" aria-live="polite">
-          Map <strong>{focusLabel}</strong> to a {targetLabel.toLowerCase()} below.
+          {renderRich(
+            copy.focusHint,
+            { strong: (chunk) => <strong>{chunk}</strong> },
+            { source: focusLabel, target: targetLabel.toLowerCase() },
+          )}
         </p>
       )}
 
@@ -408,27 +417,27 @@ export function MappingPanel({
         <div className="mapping-panel__add-field">
           <Combobox
             ref={sourceSelectRef}
-            ariaLabel={`Select ${sourceLabel}`}
+            ariaLabel={interpolate(copy.select, { label: sourceLabel })}
             className={focusActionable ? 'mapping-panel__source-select--focus' : undefined}
             options={sourceComboOptions}
             value={pendingSource ? { kind: 'dictionary', ids: [pendingSource] } : null}
             onChange={(next) => { setPendingSource(comboSelectedId(next)); }}
-            placeholder={`Select ${sourceLabel}`}
+            placeholder={interpolate(copy.select, { label: sourceLabel })}
             disabled={noSourcesLeft}
           />
           {noSourcesLeft && (
             <p className="muted-text mapping-panel__add-hint" role="status">
-              All source values mapped.
+              {copy.allMapped}
             </p>
           )}
         </div>
 
         <Combobox
-          ariaLabel={`Select ${targetLabel}`}
+          ariaLabel={interpolate(copy.select, { label: targetLabel })}
           options={targetComboOptions}
           value={pendingTarget ? { kind: 'dictionary', ids: [pendingTarget] } : null}
           onChange={(next) => { setPendingTarget(comboSelectedId(next)); }}
-          placeholder={`Select ${targetLabel}`}
+          placeholder={interpolate(copy.select, { label: targetLabel })}
         />
 
         <Button
@@ -436,7 +445,7 @@ export function MappingPanel({
           disabled={!pendingSource || !pendingTarget}
           onClick={handleAddRow}
         >
-          Add
+          {copy.add}
         </Button>
       </div>
 
@@ -458,11 +467,11 @@ export function MappingPanel({
           disabled={!isDirty || isSaving}
           onClick={handleSave}
         >
-          {isSaving ? 'Saving…' : 'Save mappings'}
+          {isSaving ? copy.saving : copy.save}
         </Button>
         {saveError && (
           <Button tone="secondary" disabled={isSaving} onClick={handleSave}>
-            Try again
+            {copy.tryAgain}
           </Button>
         )}
       </div>

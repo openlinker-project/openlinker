@@ -1,7 +1,7 @@
 /**
  * Sync Job Retention Section (#2946, D16)
  *
- * How long a finished sync job's row is kept — a hygiene setting, not a
+ * How long a finished sync job's row is kept - a hygiene setting, not a
  * pacing one, so it is deliberately a SEPARATE panel rather than woven into
  * `SyncPacingValues` / `diffSyncPacing` / `projectSyncPacing`: those exist to
  * project a value against the CATALOGUE (how long does a full pass take), and
@@ -14,6 +14,7 @@
  * @module apps/web/src/features/settings/components
  */
 import type { ReactElement } from 'react';
+import { useMessages } from '../../../shared/i18n';
 import type { OperationalSettingsView } from '../api/operational-settings.types';
 import type { RetentionValues } from '../hooks/use-sync-job-retention-draft';
 import type { OperationalSettingsErrors } from '../lib/map-operational-settings-errors';
@@ -22,7 +23,7 @@ import { PacingValueField } from './pacing-value-field';
 
 /**
  * Days are dragged in fives; any whole day can still be typed. Anchored at
- * zero, so 30 / 90 / 365 — the bounds and both defaults — sit on the grid.
+ * zero, so 30 / 90 / 365 - the bounds and both defaults — sit on the grid.
  */
 const RETENTION_STEP_DAYS = 5;
 
@@ -39,6 +40,7 @@ export function SyncJobRetentionSection({
   errors,
   onChange,
 }: SyncJobRetentionSectionProps): ReactElement {
+  const copy = useMessages('settings').syncJobRetentionSection;
   return (
     <section
       className="panel pacing-card"
@@ -47,30 +49,30 @@ export function SyncJobRetentionSection({
     >
       <header className="pacing-card__header">
         <div>
-          <p className="eyebrow">Housekeeping</p>
+          <p className="eyebrow">{copy.eyebrow}</p>
           <h3 className="section-title" id="pacing-retention-title">
-            Job retention
+            {copy.title}
           </h3>
         </div>
-        <span className="panel__meta">saved on its own</span>
+        <span className="panel__meta">{copy.savedOnItsOwn}</span>
       </header>
 
       <div className="pacing-card__fields">
         <PacingValueField
-          label="Completed jobs kept for"
-          ariaLabel="Days a completed sync job is kept"
-          description="How long a finished (succeeded) sync job's record is kept for troubleshooting, and to keep it from being re-run twice by accident. Bounded 30-365 days."
+          label={copy.completed.label}
+          ariaLabel={copy.completed.ariaLabel}
+          description={copy.completed.description}
           value={draft.syncJobRetentionDays}
           limits={limitsFor(view, 'syncJobRetentionDays')}
           step={RETENTION_STEP_DAYS}
-          unit="days"
+          unit={copy.unitDays}
           savedValue={view.syncJobRetentionDays.value}
           savedSource={view.syncJobRetentionDays.source}
           savedAboveRecommended={false}
           acknowledged={true}
           onAcknowledgedChange={() => {
             // No advisory ceiling on this knob (min === recommendedMax ===
-            // absoluteMax by design, D16) — the checkbox never renders, so
+            // absoluteMax by design, D16) - the checkbox never renders, so
             // this callback is unreachable, but the prop is required.
           }}
           error={errors.fieldErrors.syncJobRetentionDays}
@@ -80,13 +82,13 @@ export function SyncJobRetentionSection({
         />
 
         <PacingValueField
-          label="Failed jobs kept for"
-          ariaLabel="Days a permanently-failed sync job is kept"
-          description="How long a job that ran out of retries is kept. It is the only record that the work was lost, so the default is longer than a completed job's. Bounded 30-365 days."
+          label={copy.failed.label}
+          ariaLabel={copy.failed.ariaLabel}
+          description={copy.failed.description}
           value={draft.syncJobDeadRetentionDays}
           limits={limitsFor(view, 'syncJobDeadRetentionDays')}
           step={RETENTION_STEP_DAYS}
-          unit="days"
+          unit={copy.unitDays}
           savedValue={view.syncJobDeadRetentionDays.value}
           savedSource={view.syncJobDeadRetentionDays.source}
           savedAboveRecommended={false}

@@ -25,11 +25,11 @@
  * Past the recommendation the field shows the API's OWN reason and requires an
  * explicit acknowledgement. Two rules there are load-bearing: the sentence is
  * never copy written here (the page and the API would drift), and the
- * acknowledgement is never inferred from the value being high — inferring it
+ * acknowledgement is never inferred from the value being high - inferring it
  * would turn the gate into a formality and there would be no point having it.
  *
  * Granularity is the primitive's zero-anchored `step`, never an HTML `step` on
- * a `min`-anchored grid — see `RangeNumberInput` for why (#2660 review).
+ * a `min`-anchored grid - see `RangeNumberInput` for why (#2660 review).
  *
  * The description is visible text rather than a tooltip on purpose: an
  * operator who needs the tooltip does not know to hover.
@@ -37,6 +37,7 @@
  * @module apps/web/src/features/settings/components
  */
 import { useId, type ReactElement } from 'react';
+import { interpolate, useMessages } from '../../../shared/i18n';
 import { Alert } from '../../../shared/ui/alert';
 import { RangeNumberInput } from '../../../shared/ui/range-number-input';
 import type { OperationalSettingSource } from '../api/operational-settings.types';
@@ -46,7 +47,7 @@ interface PacingValueFieldProps {
   label: string;
   /**
    * Accessible name for both controls. Two panels legitimately carry the same
-   * visible label ("Products per run"), so the name a screen reader — and a
+   * visible label ("Products per run"), so the name a screen reader - and a
    * test — reaches for has to say which one.
    */
   ariaLabel: string;
@@ -70,14 +71,9 @@ interface PacingValueFieldProps {
   onChange: (value: number) => void;
 }
 
-const SOURCE_SUFFIX: Record<OperationalSettingSource, string> = {
-  setting: 'you set this',
-  // Named precisely: this is an environment variable on the API process, and
-  // the sweeps run in the worker, which reads its own (#2660 review). The page
-  // carries the caveat once, above the panels.
-  env: "from this server's environment",
-  default: 'default',
-};
+// `env` is named precisely: it is an environment variable on the API process,
+// and the background jobs read their own (#2660 review). The page carries the
+// caveat once, above the panels.
 
 export function PacingValueField({
   label,
@@ -102,13 +98,19 @@ export function PacingValueField({
   const ackId = `${id}-ack`;
   const changed = value !== savedValue;
   const overRecommended = isAboveRecommended(value, limits);
+  const copy = useMessages('settings').pacingValueField;
+  const sourceSuffix: Record<OperationalSettingSource, string> = {
+    setting: copy.source.setting,
+    env: copy.source.env,
+    default: copy.source.default,
+  };
 
-  // The saved value's own provenance, and — when the server said so — that it
+  // The saved value's own provenance, and - when the server said so — that it
   // already sits past our advice, so reopening the page never presents a
   // deliberate override as an ordinary setting.
   const savedSuffix = savedAboveRecommended
-    ? `${SOURCE_SUFFIX[savedSource]}, above our recommendation`
-    : SOURCE_SUFFIX[savedSource];
+    ? interpolate(copy.aboveOurRecommendation, { source: sourceSuffix[savedSource] })
+    : sourceSuffix[savedSource];
 
   return (
     <div className="pacing-field">
@@ -122,8 +124,8 @@ export function PacingValueField({
           data-above-recommended={String(changed ? overRecommended : savedAboveRecommended)}
         >
           {changed
-            ? `${String(value)} (not saved yet)`
-            : `${String(savedValue)} (${savedSuffix})`}
+            ? interpolate(copy.notSavedYet, { value: String(value) })
+            : interpolate(copy.valueWithSource, { value: String(savedValue), source: savedSuffix })}
         </span>
       </div>
 
@@ -137,7 +139,7 @@ export function PacingValueField({
         marker={
           limits.recommendedMax === null
             ? null
-            : { value: limits.recommendedMax, label: `suggested ≤ ${String(limits.recommendedMax)}` }
+            : { value: limits.recommendedMax, label: interpolate(copy.suggestedMax, { max: String(limits.recommendedMax) }) }
         }
         ariaLabel={ariaLabel}
         describedBy={error ? `${descriptionId} ${errorId}` : descriptionId}
@@ -149,12 +151,14 @@ export function PacingValueField({
         {description}
       </p>
 
-      {changed ? <span className="field-changed">changed from {savedValue}</span> : null}
+      {changed ? <span className="field-changed">
+          {interpolate(copy.changedFrom, { value: String(savedValue) })}
+        </span> : null}
 
       {overRecommended ? (
-        <Alert tone="warning" title="Past what we suggest">
+        <Alert tone="warning" title={copy.pastSuggestedTitle}>
           {/* The API's own sentence. Copy written here would drift from it. */}
-          {limits.recommendedReason ?? 'This is above the maximum OpenLinker suggests.'}
+          {limits.recommendedReason ?? copy.pastSuggestedFallback}
           <label className="ack-row ack-row--inline" htmlFor={ackId}>
             <input
               id={ackId}
@@ -165,7 +169,7 @@ export function PacingValueField({
               }}
             />
             <span>
-              I understand, and I want {value} anyway. My server can take it.
+              {interpolate(copy.acknowledge, { value: String(value) })}
             </span>
           </label>
         </Alert>

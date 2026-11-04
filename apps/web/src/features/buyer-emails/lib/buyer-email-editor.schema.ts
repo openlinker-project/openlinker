@@ -15,15 +15,15 @@
  */
 import { z } from 'zod';
 import { isSingleEmailAddress } from './buyer-emails-config';
-import { BUYER_EMAILS_COPY } from './buyer-emails.copy';
-
-const COPY = BUYER_EMAILS_COPY.editor;
+import { getMessages } from '../../../shared/i18n';
 
 /** Empty means "use the mail settings' sender"; anything else must be one bare address. */
-const optionalAddress = z
-  .string()
-  .trim()
-  .refine((value) => value === '' || isSingleEmailAddress(value), COPY.invalidAddress);
+function optionalAddress(invalidAddress: string): z.ZodType<string, string> {
+  return z
+    .string()
+    .trim()
+    .refine((value) => value === '' || isSingleEmailAddress(value), invalidAddress);
+}
 
 export interface BuyerEmailEditorFormValues {
   /** Absent when the switch is disabled (no rule): a disabled input submits nothing. */
@@ -37,6 +37,7 @@ export interface BuyerEmailEditorFormValues {
 export function buildBuyerEmailEditorSchema(options: {
   wordingEditable: boolean;
 }): z.ZodType<BuyerEmailEditorFormValues, BuyerEmailEditorFormValues> {
+  const COPY = getMessages('buyer-emails').editor;
   const wording = options.wordingEditable
     ? {
         subject: z.string().trim().min(1, COPY.subjectRequired).max(998),
@@ -45,19 +46,25 @@ export function buildBuyerEmailEditorSchema(options: {
     : { subject: z.string().optional(), body: z.string().optional() };
   return z.object({
     enabled: z.boolean().optional(),
-    fromAddress: optionalAddress,
-    replyTo: optionalAddress,
+    fromAddress: optionalAddress(COPY.invalidAddress),
+    replyTo: optionalAddress(COPY.invalidAddress),
     ...wording,
   });
 }
 
-/** The test-send address: required, one bare address. */
-export const buyerEmailTestFormSchema = z.object({
-  to: z
-    .string()
-    .trim()
-    .min(1, COPY.invalidAddress)
-    .refine((value) => isSingleEmailAddress(value), COPY.invalidAddress),
-});
+/** The test-send address: required, one bare address. Built when called, in the active language. */
+export interface BuyerEmailTestFormValues {
+  to: string;
+}
 
-export type BuyerEmailTestFormValues = z.input<typeof buyerEmailTestFormSchema>;
+export function buildBuyerEmailTestFormSchema(): z.ZodType<BuyerEmailTestFormValues, BuyerEmailTestFormValues> {
+  const COPY = getMessages('buyer-emails').editor;
+  return z.object({
+    to: z
+      .string()
+      .trim()
+      .min(1, COPY.invalidAddress)
+      .refine((value) => isSingleEmailAddress(value), COPY.invalidAddress),
+  });
+}
+

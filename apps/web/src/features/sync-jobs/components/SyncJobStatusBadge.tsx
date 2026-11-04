@@ -19,6 +19,7 @@
  */
 import type { ReactElement } from 'react';
 import { StatusBadge, type StatusBadgeTone } from '../../../shared/ui/status-badge';
+import { getMessages } from '../../../shared/i18n';
 import type { JobOutcome, JobOutcomeReason, JobStatus } from '../api/sync-jobs.types';
 
 const BASE_TONE: Record<JobStatus, StatusBadgeTone> = {
@@ -26,29 +27,6 @@ const BASE_TONE: Record<JobStatus, StatusBadgeTone> = {
   running: 'review',
   succeeded: 'success',
   dead: 'error',
-};
-
-/**
- * Human label per `outcomeReason` code (#1689) — resolved only on the
- * succeeded + business_failure path. An unknown/absent code falls back to
- * the generic "business failure" label rather than a raw status word, so a
- * deletion-caused failure reads distinctly from any other business
- * rejection (e.g. an offer-creation validation error).
- */
-const OUTCOME_REASON_LABEL: Record<JobOutcomeReason, string> = {
-  master_deleted: 'source deleted',
-  // Auto-dispatch (#3415). Each names the thing an operator would have to
-  // change — a label that only restated "refused" would leave them opening
-  // the log to learn which of six refusals it was. Typed as an exhaustive
-  // Record on purpose: a seventh code cannot ship without a label.
-  auto_dispatch_payload_invalid: 'malformed job',
-  auto_dispatch_not_enabled: 'auto-label off',
-  auto_dispatch_no_weight: 'no weight',
-  auto_dispatch_no_dimensions: 'no dimensions',
-  auto_dispatch_no_address: 'no address',
-  auto_dispatch_no_delivery_method: 'no delivery method',
-  auto_dispatch_work_not_eligible: 'order not ready',
-  auto_dispatch_shipment_claimed_by_sibling_work: 'other parcel has label',
 };
 
 interface SyncJobStatusBadgeProps {
@@ -64,15 +42,26 @@ function deriveTone(status: string, outcome: JobOutcome | null | undefined): Sta
   return BASE_TONE[status as JobStatus] ?? 'neutral';
 }
 
+/**
+ * Human label per `outcomeReason` code (#1689) - resolved only on the
+ * succeeded + business_failure path. An unknown/absent code falls back to
+ * the generic "business failure" label rather than a raw status word, so a
+ * deletion-caused failure reads distinctly from any other business
+ * rejection. Typed as an exhaustive Record on purpose: a new code cannot ship
+ * without a label in the `sync-jobs` namespace.
+ */
 function deriveLabel(
   status: string,
   outcome: JobOutcome | null | undefined,
   outcomeReason: JobOutcomeReason | null | undefined,
 ): string {
+  const copy = getMessages('sync-jobs').syncJobStatusBadge;
   if (status === 'succeeded' && outcome === 'business_failure') {
-    return (outcomeReason && OUTCOME_REASON_LABEL[outcomeReason]) ?? 'business failure';
+    const reasonLabels: Record<JobOutcomeReason, string> = copy.outcomeReasons;
+    return (outcomeReason && reasonLabels[outcomeReason]) ?? copy.businessFailure;
   }
-  return status;
+  const statusLabels: Record<string, string | undefined> = copy.statuses;
+  return statusLabels[status] ?? status;
 }
 
 export function SyncJobStatusBadge({
