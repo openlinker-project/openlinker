@@ -9,17 +9,21 @@
  * @module features/connections/components
  */
 import { z } from 'zod';
+import type { getInfaktMessages } from '../messages';
 
-export const infaktWebhookSecretSchema = z.object({
-  secret: z
-    .string()
-    .trim()
-    .min(8, 'Secret must be at least 8 characters')
-    .max(512, 'Secret must be at most 512 characters'),
-});
+type InfaktWebhookSecretSchemaCopy = ReturnType<
+  typeof getInfaktMessages
+>['infaktWebhookSecretSchema'];
 
-export type InfaktWebhookSecretFormValues = z.input<typeof infaktWebhookSecretSchema>;
-export type InfaktWebhookSecretFormSubmission = z.output<typeof infaktWebhookSecretSchema>;
+export function createInfaktWebhookSecretSchema(copy: InfaktWebhookSecretSchemaCopy) {
+  return z.object({
+    secret: z.string().trim().min(8, copy.tooShort).max(512, copy.tooLong),
+  });
+}
+
+type InfaktWebhookSecretSchema = ReturnType<typeof createInfaktWebhookSecretSchema>;
+export type InfaktWebhookSecretFormValues = z.input<InfaktWebhookSecretSchema>;
+export type InfaktWebhookSecretFormSubmission = z.output<InfaktWebhookSecretSchema>;
 
 export const INFAKT_WEBHOOK_SECRET_DEFAULT_VALUES: InfaktWebhookSecretFormValues = {
   secret: '',

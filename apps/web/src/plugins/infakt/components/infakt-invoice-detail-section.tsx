@@ -18,7 +18,6 @@
  * @module plugins/infakt/components
  */
 import type { ReactElement } from 'react';
-import { useTranslation } from '../../../shared/i18n';
 import { CopyableId } from '../../../shared/ui/copyable-id';
 import { Button } from '../../../shared/ui/button';
 import { useToast } from '../../../shared/ui/toast-provider';
@@ -29,11 +28,12 @@ import {
   useInvoiceRenderedDocumentDownload,
   useResendToAuthorityMutation,
 } from '../../../features/invoicing';
+import { useInfaktMessages } from '../messages';
 
 export function InfaktInvoiceDetailSection({
   invoice,
 }: InvoiceDetailSectionProps): ReactElement | null {
-  const { t } = useTranslation();
+  const copy = useInfaktMessages().infaktInvoiceDetailSection;
   const pdfDownload = useInvoiceRenderedDocumentDownload();
   const resendToAuthority = useResendToAuthorityMutation();
   const { showToast } = useToast();
@@ -49,10 +49,10 @@ export function InfaktInvoiceDetailSection({
     if (!ok) {
       showToast({
         tone: 'error',
-        title: t('infakt.invoice.detail.pdfDownloadFailed', 'PDF download failed'),
+        title: copy.pdfDownloadFailed,
         description:
           pdfDownload.error?.message ??
-          t('infakt.invoice.detail.pdfDownloadFailedDesc', 'Could not fetch the invoice PDF.'),
+          copy.pdfDownloadFailedDesc,
       });
     }
   }
@@ -62,19 +62,16 @@ export function InfaktInvoiceDetailSection({
       await resendToAuthority.mutateAsync(invoice.id);
       showToast({
         tone: 'success',
-        title: t('infakt.invoice.detail.resendSuccess', 'Re-sent to KSeF'),
-        description: t(
-          'infakt.invoice.detail.resendSuccessDesc',
-          'inFakt is submitting this invoice to KSeF again. Its clearance status will refresh shortly.',
-        ),
+        title: copy.resendSuccess,
+        description: copy.resendSuccessDesc,
       });
     } catch (error) {
       showToast({
         tone: 'error',
-        title: t('infakt.invoice.detail.resendFailed', 'Re-send failed'),
+        title: copy.resendFailed,
         description:
           (error instanceof Error ? error.message : undefined) ??
-          t('infakt.invoice.detail.resendFailedDesc', 'Could not re-send the invoice to KSeF.'),
+          copy.resendFailedDesc,
       });
     }
   }
@@ -83,7 +80,7 @@ export function InfaktInvoiceDetailSection({
     <section className={`invoice-detail-section reg-card ${regCardToneFor(invoice.regulatoryStatus)}`.trim()}>
       <div className="reg-card__header">
         <h4 className="invoice-detail-section__title">
-          {t('infakt.invoice.detail.title', 'KSeF clearance (via inFakt)')}
+          {copy.title}
         </h4>
         <RegulatoryStatusBadge status={invoice.regulatoryStatus} />
       </div>
@@ -91,10 +88,7 @@ export function InfaktInvoiceDetailSection({
       {invoice.regulatoryStatus === 'submitted' ? (
         <>
           <p className="text-muted reg-card__note">
-            {t(
-              'infakt.invoice.detail.pending',
-              'inFakt is submitting this invoice to KSeF. Clearance usually completes within a minute or two.',
-            )}
+            {copy.pending}
           </p>
           <div className="reg-card__progress" aria-hidden="true" />
         </>
@@ -106,7 +100,7 @@ export function InfaktInvoiceDetailSection({
             <CopyableId id={ksefNumber} label={ksefNumber} />
           ) : (
             <span className="text-muted">
-              {t('infakt.invoice.detail.numberPending', 'KSeF number pending')}
+              {copy.numberPending}
             </span>
           )}
           <Button
@@ -116,8 +110,8 @@ export function InfaktInvoiceDetailSection({
             disabled={pdfDownload.isDownloading}
           >
             {pdfDownload.isDownloading
-              ? t('infakt.invoice.detail.pdfDownloading', 'Downloading…')
-              : t('infakt.invoice.detail.pdfDownload', 'Download PDF')}
+              ? copy.pdfDownloading
+              : copy.pdfDownload}
           </Button>
         </div>
       ) : null}
@@ -126,7 +120,7 @@ export function InfaktInvoiceDetailSection({
         <div className="reg-card__summary">
           <p className="text-muted reg-card__note">
             {invoice.failureReason ??
-              t('infakt.invoice.detail.rejectedFallback', 'KSeF rejected this invoice.')}
+              copy.rejectedFallback}
           </p>
           <Button
             tone="primary"
@@ -135,8 +129,8 @@ export function InfaktInvoiceDetailSection({
             disabled={resendToAuthority.isPending}
           >
             {resendToAuthority.isPending
-              ? t('infakt.invoice.detail.resending', 'Re-sending…')
-              : t('infakt.invoice.detail.resend', 'Resend to KSeF')}
+              ? copy.resending
+              : copy.resend}
           </Button>
         </div>
       ) : null}

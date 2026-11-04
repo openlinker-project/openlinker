@@ -106,6 +106,8 @@ const EXPECTED_SCOPE = [
   'apps/web/src/pages/prompt-templates/**/*.tsx',
   'apps/web/src/pages/mcp-tokens/**/*.tsx',
   'apps/web/src/pages/ai-provider-settings/**/*.tsx',
+  'apps/web/src/plugins/ksef/**/*.tsx',
+  'apps/web/src/plugins/infakt/**/*.tsx',
   'apps/web/src/pages/listings/**/*.tsx',
   'apps/web/src/features/orders/**/*.tsx',
   'apps/web/src/pages/orders/**/*.tsx',
