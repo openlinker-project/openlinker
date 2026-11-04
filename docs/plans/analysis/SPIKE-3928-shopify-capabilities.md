@@ -61,7 +61,7 @@ sandbox org has no courier agreement, L-S3e).
 | Dev-store tooling (`docker/shopify/`) | live: seeded a fresh store end to end, second run idempotent (2026-11-04) |
 | Live probes (`L-*`) | done for every open risk; findings below |
 | Prototype adapter (`local/shopify-prototype`, never merged) | ProductMaster, InventoryMaster, OrderSource, OrderProcessorManager; running in stack `ol-shopify` |
-| S1-S4 scenarios | S1, S2, S3 done; S4 blocked by core (L-O7) |
+| S1-S4 scenarios | S1, S2, S3 done; S4 blocked by core (L-O7). Run 2 of the open cases: [SPIKE-3928-run2-evidence.md](./SPIKE-3928-run2-evidence.md) |
 | S5 (Subiekt GT machine) | deferred until S1-S4 pass |
 
 ## Environment
