@@ -1,14 +1,58 @@
 # Spike #3928 - Shopify: verdict for every OpenLinker port
 
-> **Work in progress.** Every row below starts as a hypothesis. A row is only a finding once its
-> Evidence column says `Live` (verified in this spike) or `Re-confirmed` (a SPIKE-2879 finding
-> re-run here). `Inherited` means SPIKE-2879 verified it on API `2026-07` and this spike has not
-> re-run it yet; `Desk` means nobody has verified it.
+> Evidence column: `Live` = verified in this spike (probe or the prototype adapter running inside
+> OpenLinker), `Re-confirmed` = a SPIKE-2879 finding re-run here, `Inherited` = SPIKE-2879 verified
+> it on API `2026-07` and this spike did not re-run it, `Desk` = nobody has verified it.
 
 Builds on #2879 / [`SPIKE-2879-shopify-admin-api.md`](./SPIKE-2879-shopify-admin-api.md) (74 of 88
 API stories verified live). That spike answered *what the Admin API can do*. This one answers *which
 OpenLinker port each of those abilities lands on, and whether it survives the trip through
 OpenLinker end to end*. Evidence ids `E-*` below refer to SPIKE-2879; ids `L-*` are this spike's.
+
+## Summary
+
+**Verdict: Shopify can be an OpenLinker integration in every role it was tested in.** A throwaway
+adapter (`local/shopify-prototype`, never merged) ran inside a real OpenLinker stack against a live
+dev store, an Allegro sandbox seller, InPost, inFakt and eparagony sandboxes, and a local PrestaShop.
+
+| Role | What was proven end to end | Result |
+|---|---|---|
+| A master | catalogue, variants, EAN, gross prices and stock from Shopify into OL, stock out to Allegro | Works (S1) |
+| B order destination | Allegro order created in Shopify at the marketplace price, stock committed, dispatch + InPost tracking written back | Works (S1) |
+| C order source + returns | Shopify order into PrestaShop to the grosz, return ingested, received and restocked in the master | Works (S2) |
+| D publish target | PrestaShop products published to Shopify (simple + variants), stock pushed back on every change | Works, with a parent race on concurrent sibling publishes (L-S2b) (S2) |
+| E OpenLinker as warehouse | Shopify order routed to the OL pack bench, master stock lowered, fulfillment + InPost tracking back to Shopify | Works (S3) |
+| Shopify alone | Shopify-own orders get no automatic documents | Blocked by core, not by Shopify (#3959) (S4) |
+
+**Shopify cannot**, and OpenLinker covers it: invoices and receipts (inFakt, KSeF, eparagony), Polish
+labels (InPost, DPD), a tax rate on products (orders do carry one, L-S4a), a locker id on orders
+(L-O6).
+
+**What the production adapter needs** (sized from the prototype):
+
+1. Base ports: ProductMaster, InventoryMaster (one location, decision 2026-11-04), OrderSource,
+   OrderProcessorManager, ProductPublisher + CategoryProvisioner (collections), OfferManager
+   (stock write-back), each as built in the prototype.
+2. Sub-capabilities that mattered live: `OrderStatusWriteback` on BOTH the source and the
+   destination adapter (L-S3c), `OrderFulfillmentUpdater` with an explicit tracking URL (L-F3),
+   `ReturnSourceReader` with the lap feed (L-S2m), `OrderCreateStockEffect`, and
+   `SourceOptionsReader.listDeliveryMethods` so carrier routing rules can be set from the UI (L-S3d).
+3. Order dedup on create is OpenLinker's job (`orderCreate` has no idempotency, L-O3/L-O4).
+4. A per-group lock around "resolve or create the parent" for multi-variant publish (L-S2b).
+5. Webhooks need a public URL; without one everything runs on polling with a 30 s settle window
+   for the search index lag (L-M1, L-S2j).
+
+**Issues filed from this spike**
+
+| Issue | What |
+|---|---|
+| #3958 | OMS setup wizard should offer automatic label purchase (`autoDispatch`, #3340) |
+| #3959 | A shop that is its own only destination never gets automatic sales documents (L-O7) |
+| #3960 | A rejected fiscal receipt cannot be registered again (L-S1e) |
+
+**Not done here:** S5 (Subiekt GT as master, needs the bridge machine), live check of the webhook
+HMAC (needs a public URL), Shopify Payments / refunds through Shopify, courier labels (the InPost
+sandbox org has no courier agreement, L-S3e).
 
 ## Status
 
@@ -80,17 +124,17 @@ webhooks, retry and auth classification).
 
 | Capability / port | Role | Verdict | Shopify surface | Evidence |
 |---|---|---|---|---|
-| `ProductMaster` / `ProductMasterPort` | A | Native | `products`, `product(id)` (null = deleted), `productSet` (PATCH semantics), `productDelete` | Inherited E-M1, E-M2, E-P5 |
-| `InventoryMaster` / `InventoryMasterPort` | A | Native | `inventoryLevels`, `inventoryAdjustQuantities` (mandatory `@idempotent` + `changeFromQuantity` CAS), `inventorySetQuantities`. Scoped to the ONE configured location (decision 2026-11-04) | Inherited E-M3..E-M6, E-M11 |
+| `ProductMaster` / `ProductMasterPort` | A | Native | `products`, `product(id)` (null = deleted), `productSet` (PATCH semantics), `productDelete` | **Live** L-P1 (prototype, S1); Inherited E-M1, E-M2, E-P5 |
+| `InventoryMaster` / `InventoryMasterPort` | A | Native | `inventoryLevels`, `inventoryAdjustQuantities` (mandatory `@idempotent` + `changeFromQuantity` CAS), `inventorySetQuantities`. Scoped to the ONE configured location (decision 2026-11-04) | **Live** L-I1, L-S1c (prototype, S1) |
 | ... deprecated `reserveInventory`/`releaseInventory` | A | Open | Shopify has a `reserved` quantity state and `inventoryMoveQuantities` between states; could express a hold. ADR-061 deprecates the method, so this only matters for a future `MasterReservationWriter` | Desk |
-| `OrderSource` / `OrderSourcePort` | C | Native | `orders(query: "updated_at:>…", sortKey: UPDATED_AT)` + opaque cursor; `ORDERS_*` webhooks as trigger | Inherited E-O10, E-C7 |
-| `OrderProcessorManager` / `OrderProcessorManagerPort` | B | Native, **no native dedup** | `orderCreate` with per-line `priceSet` (real marketplace price) and `taxLines`; dev store capped at ~5/min. `@idempotent` is not supported on `orderCreate` and a repeated `sourceIdentifier` creates a second order; `source_identifier:` lookup works but only ~10 s after the write | **Live** L-O3, L-O4, L-X1 |
-| `OfferManager` / `OfferManagerPort` | D | Native, other port | Shopify is a shop, not a marketplace. The base method (`updateOfferQuantity`) is the WooCommerce precedent: base-port-only stock write-back to published products, reached through `ShopProduct` mappings | Desk |
-| `ProductPublisher` / `ShopProductManagerPort` | D | Native | `productSet` with options/variants/media; `getDescriptionFormat` must be OL-declared because Shopify sanitizes nothing (E-P2) | Inherited E-P2, E-P5, E-P6 |
+| `OrderSource` / `OrderSourcePort` | C | Native | `orders(query: "updated_at:>…", sortKey: UPDATED_AT)` + opaque cursor; `ORDERS_*` webhooks as trigger | **Live** L-S2g, L-S2j, L-S3b (prototype, S2/S3) |
+| `OrderProcessorManager` / `OrderProcessorManagerPort` | B | Native, **no native dedup** | `orderCreate` with per-line `priceSet` (real marketplace price) and `taxLines`; dev store capped at ~5/min. `@idempotent` is not supported on `orderCreate` and a repeated `sourceIdentifier` creates a second order; `source_identifier:` lookup works but only ~10 s after the write | **Live** L-S1a, L-S1h (prototype, S1); L-O3, L-O4 |
+| `OfferManager` / `OfferManagerPort` | D | Native, other port | Shopify is a shop, not a marketplace. The base method (`updateOfferQuantity`) is the WooCommerce precedent: base-port-only stock write-back to published products, reached through `ShopProduct` mappings | **Live** L-S2l (prototype, S2) |
+| `ProductPublisher` / `ShopProductManagerPort` | D | Native | `productSet` with options/variants/media; `getDescriptionFormat` must be OL-declared because Shopify sanitizes nothing (E-P2) | **Live** L-S2a, L-S2b, L-S2e (prototype, S2) |
 | `CategoryProvisioner` | D | Native, via collections | The Standard Product Taxonomy stays read-only (E-T3), but `collectionCreate` + `collectionAddProductsV2` give a shop-owned grouping that is visible on the product at once (the add is an async job, membership already readable). Recommended mapping: OL category placement -> collections; `product.category` (taxonomy) is a separate, optional field for search/attributes | **Live** L-T3 |
-| `Invoicing` / `InvoicingPort` | B, C | Via OL connector | Full schema scan (483 mutations): nothing issues a fiscal document. `orderInvoiceSend` / `draftOrderInvoiceSend` email a **payment request**, not a VAT invoice. Polish invoices come from inFakt / KSeF / Subiekt / eparagony; Shopify only receives a link (see `OrderBillingDocumentLinker`) | **Live** L-D1 |
-| `Fiscalization` / `FiscalizationPort` | C | Via OL connector | Schema scan: no `fiscal*` / `receipt*` mutation (only Shop Pay payment-request receipts). eparagony covers it | **Live** L-D1 |
-| `ShippingProviderManager` / `ShippingProviderManagerPort` | B, C, E | Via OL connector (for PL) | **Correction:** `shippingLabelPurchase` + `shippingLabel` exist (async, `PENDING_PURCHASE -> PURCHASED / PURCHASE_FAILED`), but only through Shopify Shipping, which needs its terms accepted in the admin and is offered for US, CA, AU, UK, FR, IT, ES fulfilment locations - not Poland. Labels for PL come from InPost / DPD | **Live** L-S1 + Shopify Help Center |
+| `Invoicing` / `InvoicingPort` | B, C | Via OL connector | Full schema scan (483 mutations): nothing issues a fiscal document. `orderInvoiceSend` / `draftOrderInvoiceSend` email a **payment request**, not a VAT invoice. Polish invoices come from inFakt / KSeF / Subiekt / eparagony; Shopify only receives a link (see `OrderBillingDocumentLinker`) | **Live** L-D1, L-S1h (inFakt invoice for a Shopify-master order) |
+| `Fiscalization` / `FiscalizationPort` | C | Via OL connector | Schema scan: no `fiscal*` / `receipt*` mutation (only Shop Pay payment-request receipts). eparagony covers it | **Live** L-D1, L-S1f (eparagony receipts 16370, 16377) |
+| `ShippingProviderManager` / `ShippingProviderManagerPort` | B, C, E | Via OL connector (for PL) | **Correction:** `shippingLabelPurchase` + `shippingLabel` exist (async, `PENDING_PURCHASE -> PURCHASED / PURCHASE_FAILED`), but only through Shopify Shipping, which needs its terms accepted in the admin and is offered for US, CA, AU, UK, FR, IT, ES fulfilment locations - not Poland. Labels for PL come from InPost / DPD | **Live** L-S1, L-S1g, L-S3f (InPost labels, tracking to Shopify) |
 | `FulfillmentExecutor` / `FulfillmentExecutorPort` | E | Native, **no callback URL needed** | OpenLinker as Shopify's fulfillment service: register the service (no `callbackUrl`), move the fulfillment order to its location, poll `assignedFulfillmentOrders(assignmentStatus: FULFILLMENT_REQUESTED)`, then `fulfillmentOrderAcceptFulfillmentRequest` and `fulfillmentCreate`. `FULFILLMENT_ORDERS_FULFILLMENT_REQUEST_SUBMITTED` webhook is the push alternative. The two axes moved as ADR-054 expects (`OPEN/UNSUBMITTED -> SUBMITTED -> IN_PROGRESS/ACCEPTED -> FULFILLED`) | **Live** L-F2; Inherited E-F1, E-F5, E-F10 |
 | `ReturnsAuthority` (no port) | C | Open | `returnApproveRequest` / `returnDeclineRequest` / `returnProcess` with dispositions exist; whether OL or Shopify decides disposition is a config choice (ADR-052 A5) | Inherited E-R1..E-R11 |
 
@@ -145,19 +189,19 @@ to `ProductPublisher`.
 
 | Sub-capability | Role | Verdict | Shopify surface | Evidence |
 |---|---|---|---|---|
-| `OrderFulfillmentUpdater` | B | Native | `fulfillmentCreate` with `trackingInfo` (needs `write_merchant_managed_fulfillment_orders`) | Inherited E-F4, E-F6 |
-| `OrderStatusWriteback` | C | Native | `fulfillmentCreate` (dispatched), `orderCancel` (async job, E-O3), `orderClose`; `delivered` via fulfillment events (`fulfillmentEventCreate`) - probe | Inherited E-O3; delivered Open |
+| `OrderFulfillmentUpdater` | B | Native | `fulfillmentCreate` with `trackingInfo` (needs `write_merchant_managed_fulfillment_orders`) | **Live** L-S1g (prototype, S1) |
+| `OrderStatusWriteback` | C | Native | `fulfillmentCreate` (dispatched), `orderCancel` (async job, E-O3), `orderClose`; `delivered` via fulfillment events (`fulfillmentEventCreate`) - probe | **Live** L-S1g (destination), L-S3c, L-S3f (source); delivered Open |
 | `FulfillmentStatusReader` | B | Native | `order.displayFulfillmentStatus` (10 values) + `fulfillmentOrders` | Inherited E-O9 |
 | `DestinationOptionsReader` | B | Open | Order statuses are closed enums (not shop-defined); carriers are free text with a documented known-company list; payment methods are gateway names. Partial at best | Inherited E-O5, E-O9 |
 | `SourceOptionsReader` | C | Open | Delivery methods: shipping-line titles/codes + `deliveryProfiles`; payment: `paymentGatewayNames` | Inherited E-O6 |
-| `OrderCreateStockEffect` | B | Native | The caller chooses: `orderCreate(options: {inventoryBehaviour: BYPASS / DECREMENT_IGNORING_POLICY / DECREMENT_OBEYING_POLICY})`. The adapter can answer truthfully from what it sent | Desk - verify with the seed |
+| `OrderCreateStockEffect` | B | Native | The caller chooses: `orderCreate(options: {inventoryBehaviour: BYPASS / DECREMENT_IGNORING_POLICY / DECREMENT_OBEYING_POLICY})`. The adapter can answer truthfully from what it sent | **Live** L-O1, L-S1a |
 | `OrderContactRefresher` | B | Native | `orderUpdate` (email, phone, shipping address) | Desk |
 | `OrderFulfillmentReadback` | B, C | Native | `order.fulfillments { trackingInfo }` | Inherited E-F6 |
 | `OrderBillingDocumentUploader` | C | Open | No order-attachment API. Candidates: Files API (`stagedUploadsCreate` + `fileCreate`) + an order metafield of type `file_reference`; shown to the buyer only through a customer-account extension | Desk |
 | `OrderBillingDocumentLinker` | C | Open | Order metafield (URL type) or order note; buyer visibility as above | Inherited E-S7 (metafields work) |
 | `RefundExecutor` | C | Native | `returnProcess` for return-driven refunds, `refundCreate` (`@idempotent`) otherwise; A6 refund authority stays OpenLinker's (ADR-056) | Inherited E-D1, E-R8, E-R9 |
 | `ReturnDecliner` | C | Native | `returnDeclineRequest` | Desk |
-| `ReturnSourceReader` | C | Native, with a different feed | A return does **not** bump `order.updatedAt` (L-R1) and there is no top-level returns query, so the order feed cannot discover returns. Discovery = `RETURNS_*` webhooks (request, approve, process, decline, close, cancel, reopen, update) as trigger + `orders(query: "return_status:in_progress")` as backstop; `getReturn` = `return(id)` | **Live** L-R1, L-R2; Inherited E-R1..E-R11 |
+| `ReturnSourceReader` | C | Native, with a different feed | A return does **not** bump `order.updatedAt` (L-R1) and there is no top-level returns query, so the order feed cannot discover returns. Discovery = `RETURNS_*` webhooks (request, approve, process, decline, close, cancel, reopen, update) as trigger + `orders(query: "return_status:in_progress")` as backstop; `getReturn` = `return(id)` | **Live** L-S2m, L-S2o (prototype, S2) |
 
 ## 5. Shipping sub-capabilities
 
@@ -217,8 +261,8 @@ What Shopify **does** have to supply for a correct document, to verify live:
 
 | Registration | Verdict | Shopify surface | Evidence |
 |---|---|---|---|
-| `ConnectionTester` | Native | `shop { name currencyCode }` + `currentAppInstallation.accessScopes` (reports missing scopes) | Inherited E-C9 |
-| Connection config / credentials shape validators | Native | Store domain, API version, token or client id/secret | Desk |
+| `ConnectionTester` | Native | `shop { name currencyCode }` + `currentAppInstallation.accessScopes` (reports missing scopes) | **Live** L-P1 |
+| Connection config / credentials shape validators | Native | Store domain, API version, token or client id/secret | **Live** (prototype connection created and patched) |
 | `OAuthCompletion` | Open | Needed only if the connection is installed through OAuth rather than client credentials | Inherited E-C3 |
 | `ConnectionCredentialsRewriter` | Open | Client-credentials tokens expire after about 24 h (shopify.dev, client credentials); the adapter re-mints from the stored id/secret, so nothing is rewritten. Needed only for the authorization-code path (non-expiring offline token) | Desk (doc) |
 | `WebhookProvisioning` | Native | `webhookSubscriptionCreate` accepts any HTTPS URI with no domain check (unlike the fulfillment-service callback, L-F1), supports a search `filter` and `includeFields`, and also Pub/Sub / EventBridge URIs | **Live** L-C4; Inherited E-C7 |
