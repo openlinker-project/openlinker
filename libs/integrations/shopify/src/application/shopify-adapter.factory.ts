@@ -49,6 +49,7 @@ export class ShopifyAdapterFactory implements IShopifyAdapterFactory {
       this.tokenMemo,
     );
     const shopContext = new ShopifyShopContextProvider(client, connection.id, config.locationGid, cache);
+    const orderProcessor = new ShopifyOrderProcessorAdapter(client, identifierMapping, shopContext, connection);
 
     return {
       productMaster: new ShopifyProductMasterAdapter(
@@ -65,8 +66,8 @@ export class ShopifyAdapterFactory implements IShopifyAdapterFactory {
         connection,
         cache,
       ),
-      orderSource: new ShopifyOrderSourceAdapter(client, config.storeDomain, connection),
-      orderProcessor: new ShopifyOrderProcessorAdapter(client, identifierMapping, shopContext, connection),
+      orderSource: new ShopifyOrderSourceAdapter(client, config.storeDomain, connection, orderProcessor),
+      orderProcessor,
       productPublisher: new ShopifyProductPublisherAdapter(client, shopContext, connection),
       offerManager: new ShopifyOfferManagerAdapter(client, identifierMapping, shopContext, connection),
     };

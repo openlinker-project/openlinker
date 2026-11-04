@@ -42,6 +42,11 @@ import type {
   ReturnFeedOutput,
 } from '@openlinker/core/returns';
 import type { Connection } from '@openlinker/core/identifier-mapping';
+import type {
+  OrderLifecycleEvent,
+  OrderStatusWriteback,
+  OrderWritebackResult,
+} from '@openlinker/core/orders';
 import { Logger } from '@openlinker/shared/logging';
 
 import { ShopifyOrderNotFoundException } from '../../../domain/exceptions/shopify-order-not-found.exception';
@@ -87,14 +92,24 @@ const EPOCH = '1970-01-01T00:00:00Z';
 /** Orders read per return-feed page; each carries its returns' ids, never their lines. */
 const RETURN_FEED_ORDERS_PER_PAGE = 50;
 
-export class ShopifyOrderSourceAdapter implements OrderSourcePort, ReturnSourceReader {
+/**
+ * Also an `OrderStatusWriteback`: the lifecycle relay asks the SOURCE participant
+ * through its `OrderSource` adapter, so a dispatch on an order that came from
+ * Shopify is written back by the same code the destination role uses.
+ */
+export class ShopifyOrderSourceAdapter implements OrderSourcePort, ReturnSourceReader, OrderStatusWriteback {
   private readonly logger = new Logger(ShopifyOrderSourceAdapter.name);
 
   constructor(
     private readonly client: ShopifyGraphqlClient,
     private readonly storeDomain: string,
     private readonly connection: Connection,
+    private readonly writeback: OrderStatusWriteback,
   ) {}
+
+  write(event: OrderLifecycleEvent): Promise<OrderWritebackResult> {
+    return this.writeback.write(event);
+  }
 
   async listOrderFeed(input: OrderFeedInput): Promise<OrderFeedOutput> {
     const cursor = parseShopifyFeedCursor(input.fromCursor, this.connection.id);
