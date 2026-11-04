@@ -21,7 +21,8 @@ export type ShopifyGidType =
   | 'LineItem'
   | 'Customer'
   | 'FulfillmentOrder'
-  | 'Collection';
+  | 'Collection'
+  | 'Return';
 
 /** `123` or an already-built GID -> `gid://shopify/{type}/123`. */
 export function toShopifyGid(type: ShopifyGidType, id: string): string {

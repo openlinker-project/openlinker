@@ -18,6 +18,7 @@ import type { CredentialsResolverPort } from '@openlinker/core/integrations';
 import type { CachePort } from '@openlinker/shared';
 import type { FetchLike } from '@openlinker/shared/http';
 
+import { ShopifyOfferManagerAdapter } from '../infrastructure/adapters/offer-manager/shopify-offer-manager.adapter';
 import { ShopifyInventoryMasterAdapter } from '../infrastructure/adapters/inventory-master/shopify-inventory-master.adapter';
 import { ShopifyOrderProcessorAdapter } from '../infrastructure/adapters/order-processor/shopify-order-processor.adapter';
 import { ShopifyOrderSourceAdapter } from '../infrastructure/adapters/order-source/shopify-order-source.adapter';
@@ -67,6 +68,7 @@ export class ShopifyAdapterFactory implements IShopifyAdapterFactory {
       orderSource: new ShopifyOrderSourceAdapter(client, config.storeDomain, connection),
       orderProcessor: new ShopifyOrderProcessorAdapter(client, identifierMapping, shopContext, connection),
       productPublisher: new ShopifyProductPublisherAdapter(client, shopContext, connection),
+      offerManager: new ShopifyOfferManagerAdapter(client, identifierMapping, shopContext, connection),
     };
   }
 }

@@ -45,6 +45,8 @@ export const SHOPIFY_REQUIRED_SCOPES = [
   'read_locations',
   'read_orders',
   'write_orders',
+  // The return feed and the return read (ReturnSourceReader).
+  'read_returns',
   'read_merchant_managed_fulfillment_orders',
   'write_merchant_managed_fulfillment_orders',
 ] as const;

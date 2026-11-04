@@ -29,6 +29,8 @@ import { ShopifyGraphqlError } from '../../domain/exceptions/shopify-graphql.err
 import { ShopifyNotMappedException } from '../../domain/exceptions/shopify-not-mapped.exception';
 import { ShopifyNotSupportedException } from '../../domain/exceptions/shopify-not-supported.exception';
 import { ShopifyOrderNotFoundException } from '../../domain/exceptions/shopify-order-not-found.exception';
+import { ShopifyReturnNotFoundException } from '../../domain/exceptions/shopify-return-not-found.exception';
+import { ShopifyStockWriteRefusedException } from '../../domain/exceptions/shopify-stock-write-refused.exception';
 import { ShopifyUntrackedInventoryException } from '../../domain/exceptions/shopify-untracked-inventory.exception';
 import { ShopifyUserErrorsException } from '../../domain/exceptions/shopify-user-errors.exception';
 import { ShopifyVariantNotFoundException } from '../../domain/exceptions/shopify-variant-not-found.exception';
@@ -48,6 +50,8 @@ export class ShopifyRetryClassifierAdapter implements RetryClassifierPort {
       cause instanceof ShopifyNotSupportedException ||
       cause instanceof ShopifyNotMappedException ||
       cause instanceof ShopifyOrderNotFoundException ||
+      cause instanceof ShopifyStockWriteRefusedException ||
+      cause instanceof ShopifyReturnNotFoundException ||
       cause instanceof ShopifyUntrackedInventoryException ||
       cause instanceof ShopifyVariantNotFoundException ||
       cause instanceof ShopifyVariantRequiredException ||

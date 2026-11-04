@@ -19,10 +19,12 @@
  * the order through `getOrder` either way, so the type is a hint.
  *
  * Returns are invisible to this feed: a return does not bump the order's
- * `updatedAt` (L-R1). Not implemented here (ReturnSourceReader is out of scope).
+ * `updatedAt` (L-R1). They have a feed of their own - see `ReturnSourceReader`
+ * below.
  *
  * @module libs/integrations/shopify/src/infrastructure/adapters/order-source
  * @implements {OrderSourcePort}
+ * @implements {ReturnSourceReader}
  */
 import type {
   IncomingOrder,
@@ -31,11 +33,19 @@ import type {
   OrderFeedItem,
   OrderFeedOutput,
   OrderSourcePort,
+  ReturnSourceReader,
 } from '@openlinker/core/orders';
+import type {
+  IncomingReturn,
+  ReturnFeedInput,
+  ReturnFeedItem,
+  ReturnFeedOutput,
+} from '@openlinker/core/returns';
 import type { Connection } from '@openlinker/core/identifier-mapping';
 import { Logger } from '@openlinker/shared/logging';
 
 import { ShopifyOrderNotFoundException } from '../../../domain/exceptions/shopify-order-not-found.exception';
+import { ShopifyReturnNotFoundException } from '../../../domain/exceptions/shopify-return-not-found.exception';
 import { shopifyStoreHandle } from '../../../domain/policies/shopify-config.policy';
 import { fromShopifyGid, toShopifyGid } from '../../../domain/policies/shopify-gid.policy';
 import type {
@@ -44,6 +54,11 @@ import type {
   ShopifyOrderFeedRow,
 } from '../../../domain/types/shopify-api.types';
 import type { ShopifyOrderFeedCursor } from '../../../domain/types/shopify-order-feed.types';
+import {
+  SHOPIFY_RETURN_TERMINAL_STATUSES,
+  type ShopifyReturnFeedOrderRow,
+  type ShopifyReturnNode,
+} from '../../../domain/types/shopify-return.types';
 import type { ShopifyGraphqlClient } from '../../http/shopify-graphql-client';
 import {
   formatShopifyFeedCursor,
@@ -51,7 +66,17 @@ import {
   parseShopifyFeedCursor,
 } from '../../mappers/shopify-order-feed-cursor.mapper';
 import { mapShopifyOrderToIncoming } from '../../mappers/shopify-incoming-order.mapper';
+import { mapShopifyReturnToIncoming } from '../../mappers/shopify-incoming-return.mapper';
+import {
+  formatShopifyReturnFeedCursor,
+  parseShopifyReturnFeedCursor,
+} from '../../mappers/shopify-return-feed-cursor.mapper';
 import { ORDER_BY_ID_QUERY, ORDER_FEED_QUERY } from '../../readers/shopify-order.queries';
+import {
+  RETURN_BY_ID_QUERY,
+  RETURN_FEED_QUERY,
+  SHOPIFY_RETURN_FEED_FILTER,
+} from '../../readers/shopify-return.queries';
 
 /** Longer than the measured 5-10 s index lag (L-M2), with margin. */
 const SETTLE_WINDOW_MS = 30_000;
@@ -59,8 +84,10 @@ const FEED_PAGE_SIZE = 100;
 /** Bounds one poll; the next tick resumes from the cursor. */
 const MAX_FEED_PAGES = 20;
 const EPOCH = '1970-01-01T00:00:00Z';
+/** Orders read per return-feed page; each carries its returns' ids, never their lines. */
+const RETURN_FEED_ORDERS_PER_PAGE = 50;
 
-export class ShopifyOrderSourceAdapter implements OrderSourcePort {
+export class ShopifyOrderSourceAdapter implements OrderSourcePort, ReturnSourceReader {
   private readonly logger = new Logger(ShopifyOrderSourceAdapter.name);
 
   constructor(
@@ -145,6 +172,113 @@ export class ShopifyOrderSourceAdapter implements OrderSourcePort {
         `https://admin.shopify.com/store/${shopifyStoreHandle(this.storeDomain)}` +
         `/orders/${input.externalOrderId}`,
     });
+  }
+
+  // ─── ReturnSourceReader ────────────────────────────────────────────────────
+
+  /**
+   * Shopify's own words for a finished return, published so core's re-read
+   * sweep excludes them in its query. The same constant backs the per-read
+   * `isTerminalAtSource` hint.
+   */
+  readonly terminalRawStatuses: readonly string[] = SHOPIFY_RETURN_TERMINAL_STATUSES;
+
+  /**
+   * One page of the return feed: the orders that carry a return, walked by
+   * order id in laps (see the cursor mapper), one item per return on them.
+   *
+   * The feed only reports that a return EXISTS; `getReturn` is the re-read
+   * that observes it moving, because nothing on the order moves when a return
+   * changes. A whole order's returns go out together, so a page may exceed
+   * `limit` by the returns of its last order - splitting one would need a
+   * second cursor dimension for no gain.
+   *
+   * Blind spots, each closed by a later lap or by nothing:
+   *   - the order search index lags a write by seconds, so a brand-new return
+   *     is found on the next lap rather than this one;
+   *   - a return opened and declined/canceled between two laps, on an order
+   *     that drops back to `no_return`, is never seen - acceptable, it carried
+   *     no goods;
+   *   - more than `SHOPIFY_RETURNS_PER_ORDER` returns on one order: the rest
+   *     are missed (warned).
+   */
+  async listReturnFeed(input: ReturnFeedInput): Promise<ReturnFeedOutput> {
+    const cursor = parseShopifyReturnFeedCursor(input.fromCursor, this.connection.id, new Date());
+    const limit = Math.max(1, input.limit);
+    const query =
+      cursor.afterOrderId === null
+        ? SHOPIFY_RETURN_FEED_FILTER
+        : `${SHOPIFY_RETURN_FEED_FILTER} AND id:>${cursor.afterOrderId}`;
+
+    const data: { orders: ShopifyConnection<ShopifyReturnFeedOrderRow> } = await this.client.query(
+      RETURN_FEED_QUERY,
+      { first: Math.min(limit, RETURN_FEED_ORDERS_PER_PAGE), query },
+    );
+
+    if (data.orders.nodes.length === 0) {
+      // End of the lap. A fresh lap start changes the cursor, so core commits
+      // it and the next poll walks every returning order again from the first.
+      return {
+        items: [],
+        nextCursor: formatShopifyReturnFeedCursor({ lapStartedAt: new Date().toISOString(), afterOrderId: null }),
+      };
+    }
+
+    const items: ReturnFeedItem[] = [];
+    let afterOrderId = cursor.afterOrderId;
+    for (const order of data.orders.nodes) {
+      const orderId = fromShopifyGid(order.id);
+      if (order.returns.pageInfo?.hasNextPage === true) {
+        this.logger.warn(
+          `Shopify order ${orderId} has more returns than ${order.returns.nodes.length}; ` +
+            `the rest are not discovered (connection: ${this.connection.id})`,
+        );
+      }
+      for (const ret of order.returns.nodes) {
+        const returnId = fromShopifyGid(ret.id);
+        items.push({
+          externalReturnId: returnId,
+          externalOrderId: orderId,
+          occurredAt: ret.createdAt ?? cursor.lapStartedAt,
+          // The return id itself: core dedupes it permanently, so a later lap
+          // re-reporting the same return enqueues nothing.
+          eventKey: returnId,
+          raw: ret,
+        });
+      }
+      afterOrderId = orderId;
+      if (items.length >= limit) {
+        break;
+      }
+    }
+
+    return {
+      items,
+      nextCursor: formatShopifyReturnFeedCursor({ lapStartedAt: cursor.lapStartedAt, afterOrderId }),
+    };
+  }
+
+  /**
+   * One return by its numeric id, with its lines. Both the hydration of a newly
+   * discovered return and the ONLY way a known one is seen to move.
+   */
+  async getReturn(input: { externalReturnId: string }): Promise<IncomingReturn> {
+    const data = await this.client.query<{ node: ShopifyReturnNode | { __typename: string } | null }>(
+      RETURN_BY_ID_QUERY,
+      { id: toShopifyGid('Return', input.externalReturnId) },
+    );
+    const node = data.node;
+    if (node === null || node.__typename !== 'Return') {
+      throw new ShopifyReturnNotFoundException(input.externalReturnId, this.connection.id);
+    }
+    const ret = node as ShopifyReturnNode;
+    if (ret.returnLineItems.pageInfo?.hasNextPage === true) {
+      this.logger.warn(
+        `Shopify return ${input.externalReturnId} has more than ${ret.returnLineItems.nodes.length} lines; ` +
+          `the rest are not ingested (connection: ${this.connection.id})`,
+      );
+    }
+    return mapShopifyReturnToIncoming(ret);
   }
 
   private eventTypeOf(row: ShopifyOrderFeedRow): OrderFeedEventType {

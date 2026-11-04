@@ -11,12 +11,15 @@
  * `OrderProcessorManager` (with its `OrderFulfillmentUpdater` /
  * `OrderStatusWriteback` / `OrderCreateStockEffect` sub-capabilities, narrowed
  * at the call site and never dispatched by name) and `ProductPublisher` +
- * `CategoryProvisioner` (one publisher instance; collections are the category).
+ * `CategoryProvisioner` (one publisher instance; collections are the category)
+ * and `OfferManager` (stock write-back to published products only, #1498 shape).
+ * `ReturnSourceReader` is advertised-without-dispatch: it is a sub-capability
+ * of the `OrderSource` adapter, narrowed with `isReturnSourceReader`.
  *
  * Every outbound call - the token mint included - goes through
  * `host.http.forConnection` with `SHOPIFY_DEFAULT_RATE_LIMIT`.
  *
- * Out of scope: webhooks, returns.
+ * Out of scope: webhooks, return writes (decline, refund).
  *
  * @module libs/integrations/shopify/src
  */
@@ -54,6 +57,14 @@ export const shopifyAdapterManifest: AdapterMetadata = {
     'OrderProcessorManager',
     'ProductPublisher',
     'CategoryProvisioner',
+    // Stock write-back to products OpenLinker published here (the WooCommerce
+    // #1498 shape). Opt-in like the publisher, and useless on a connection that
+    // is also the InventoryMaster: the fan-out never writes back to the master.
+    'OfferManager',
+    // Advertised-without-dispatch, like Allegro's: listed for host-side
+    // discovery only, resolved by narrowing the dispatched `OrderSource`
+    // adapter with `isReturnSourceReader`. Not in the dispatch table.
+    'ReturnSourceReader',
   ],
   // Catalogue and stock only by default, the Shoper reasoning: ingesting
   // orders is polling load, and `OrderProcessorManager` would make OpenLinker
@@ -124,6 +135,7 @@ export function createShopifyPlugin(_deps: CreateShopifyPluginDeps = {}): Adapte
             ProductPublisher: async () => (await build()).productPublisher,
             // The same instance: narrowed at the call site via `isCategoryProvisioner`.
             CategoryProvisioner: async () => (await build()).productPublisher,
+            OfferManager: async () => (await build()).offerManager,
           },
           SHOPIFY_BRAND,
         );
