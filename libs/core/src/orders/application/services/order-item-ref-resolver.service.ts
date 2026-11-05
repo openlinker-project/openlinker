@@ -131,7 +131,7 @@ export class OrderItemRefResolverService implements IOrderItemRefResolverService
           connectionId
         );
         if (internalProductId) {
-          return { internalProductId };
+          return this.withLoneVariant(connectionId, productRef, internalProductId);
         }
         const published = await this.resolveViaShopProduct(connectionId, productRef);
         if (published) {
@@ -201,9 +201,35 @@ export class OrderItemRefResolverService implements IOrderItemRefResolverService
           }
           return { internalProductId: variant.productId, internalVariantId: variant.id };
         }
-        return { internalProductId: internalId };
+        return this.withLoneVariant(connectionId, productRef, internalId);
       }
     }
+  }
+
+  /**
+   * Settle a ref that resolved to a PRODUCT only (a shop line for a simple
+   * product carries no variant id). Same precedence as master inventory sync
+   * (#822): the product's lone variant when it has exactly one, else
+   * product-level. A simple product always has its deterministic synthetic
+   * variant, and everything keyed on the line's variant (bundle expansion,
+   * gift rules, reservations, destination mirroring) needs it. Zero or several
+   * variants stay product-level: a multi-variant product needs an explicit
+   * variant and is never guessed.
+   */
+  private async withLoneVariant(
+    connectionId: string,
+    productRef: IncomingOrderItemRef,
+    internalProductId: string
+  ): Promise<ResolvedOrderItemProduct> {
+    const variants = await this.productsService.getVariantsByProductId(internalProductId);
+    if (variants.length !== 1) {
+      return { internalProductId };
+    }
+    const [variant] = variants;
+    if (variant.isStale) {
+      throw new StaleOrderItemError(connectionId, productRef, variant.id);
+    }
+    return { internalProductId, internalVariantId: variant.id };
   }
 
   /**
@@ -243,7 +269,7 @@ export class OrderItemRefResolverService implements IOrderItemRefResolverService
 
     const product = await this.productsService.getProduct(internalId);
     if (product) {
-      return { internalProductId: product.id };
+      return this.withLoneVariant(connectionId, productRef, product.id);
     }
 
     throw new MissingOrderItemMappingError(
