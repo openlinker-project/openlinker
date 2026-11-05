@@ -125,7 +125,10 @@ export function BulkBatchProgressTable({
             const shown = accountLevel && accountLevelRowLabel ? accountLevelRowLabel : (firstMessage ?? 'Failed');
             return (
               <span className="bulk-batch__err-cell">
-                <span className="bulk-batch__err" title={firstMessage ?? 'Failed'}>
+                <span
+                  className={`bulk-batch__err${accountLevel ? ' bulk-batch__err--account' : ''}`}
+                  title={firstMessage ?? 'Failed'}
+                >
                   {shown}
                 </span>
                 <Button

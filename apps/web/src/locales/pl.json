@@ -53,6 +53,17 @@
       },
       "recovery": {
         "accountOnly": "Ponów batch dokładnie tak, jak został zapisany, gdy konto znów będzie mogło sprzedawać."
+      },
+      "triage": {
+        "offerCause": {
+          "few": "{n} warianty odrzucono z powodu danych oferty",
+          "many": "{n} wariantów odrzucono z powodu danych oferty",
+          "one": "{n} wariant odrzucono z powodu danych oferty",
+          "other": "{n} wariantu odrzucono z powodu danych oferty"
+        },
+        "offerDetail": "Otwórz je w kreatorze z zaznaczonymi wariantami, popraw dane i wyślij ponownie.",
+        "retryCause": "Ponów bez zmian",
+        "retryDetail": "Uruchamia ponownie każdy nieudany wariant dokładnie tak, jak go zapisano. Dla błędów, które mogą przejść za drugim razem."
       }
     },
     "bulkBlockers": {
