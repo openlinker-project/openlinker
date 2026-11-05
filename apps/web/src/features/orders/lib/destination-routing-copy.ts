@@ -62,6 +62,18 @@ export const DESTINATION_ROUTING_REASON_COPY = {
     hint: 'Fulfilment routing named only the channel this order came from, so there was no destination to send it to. Check the routing rules for this connection.',
     tone: 'attention',
   },
+  // #3959 - true of every order on a single-shop install, so it must stay
+  // neutral; a warning here would sit on every row of a healthy install.
+  'no-destination-configured': {
+    label: 'Kept in source shop',
+    hint: 'No other connection creates orders, so there is nothing to copy this order to. Its sales document is still issued. Add an order destination in Connections if orders should be copied elsewhere.',
+    tone: 'decision',
+  },
+  'no-active-destination': {
+    label: 'No active destination',
+    hint: 'Every connection that can receive this order is disabled or needs attention. The order is copied automatically once one of them is active again. Its sales document is decided anyway.',
+    tone: 'attention',
+  },
 } as const satisfies Record<DestinationRoutingBlockReasonValue, DestinationRoutingCopy>;
 
 /**
