@@ -15,6 +15,10 @@
     "minutesSeconds": "{m} min {s} s",
     "seconds": "{n} s"
   },
+  "oldestAge": {
+    "days": "najstarsze {n} d",
+    "hours": "najstarsze {n} godz."
+  },
   "relative": {
     "daysAgo": {
       "few": "{n} dni temu",

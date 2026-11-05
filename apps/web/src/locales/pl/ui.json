@@ -4,6 +4,12 @@
     "message": "Twoja rola nie obejmuje tego ekranu. Jeśli go potrzebujesz, poproś administratora.",
     "title": "Nie masz dostępu do tego ekranu"
   },
+  "apiError": {
+    "networkFailed": "Żądanie sieciowe nie powiodło się",
+    "noReadableBody": "Serwer zwrócił pustą odpowiedź.",
+    "requestFailed": "Żądanie nie powiodło się",
+    "timedOut": "Upłynął limit czasu żądania."
+  },
   "bulkActionBar": {
     "selected": {
       "few": "zaznaczone",
@@ -122,6 +128,10 @@
     "scrollableNamed": "{caption} (przewijana)",
     "viewDetails": "Pokaż wszystkie szczegóły"
   },
+  "demo": {
+    "navRestricted": "Wymaga roli administratora.",
+    "readOnlyAction": "Tylko do odczytu w trybie demo."
+  },
   "demoBanner": {
     "body": "Możesz przeglądać wszystkie dane; zapisywanie jest wyłączone.",
     "label": "Informacja o trybie demo",
@@ -199,7 +209,7 @@
     "next": "Następna",
     "noResults": "Brak wyników",
     "previous": "Poprzednia",
-    "showing": "Wyświetlono {start}–{end} z <total></total>",
+    "showing": "Wyświetlono {start}-{end} z <total></total>",
     "totalFailed": "Nie udało się wczytać pełnej liczby. Pasuje co najmniej tyle."
   },
   "rangeNumber": {
