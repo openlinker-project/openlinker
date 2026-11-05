@@ -39,7 +39,7 @@ export function PaymentWritebackBulkBar({ internalOrderIds }: PaymentWritebackBu
           disabled={markHandled.isPending}
           onClick={() =>
             markHandled.mutate(ids, {
-              onSuccess: (r) => showToast({ tone: 'success', title: COPY.handledDone(r.updated) }),
+              onSuccess: (r) => showToast({ tone: 'success', title: COPY.handledDone(r.updated), description: COPY.handledDoneDetail }),
               onError: (e) => showToast({ tone: 'error', title: 'Could not mark as handled', description: e.message }),
             })
           }
@@ -52,7 +52,7 @@ export function PaymentWritebackBulkBar({ internalOrderIds }: PaymentWritebackBu
           disabled={retry.isPending}
           onClick={() =>
             retry.mutate(ids, {
-              onSuccess: (r) => showToast({ tone: 'success', title: COPY.retryDone(r.enqueued) }),
+              onSuccess: (r) => showToast({ tone: 'success', title: COPY.retryDone(r.enqueued), description: COPY.retryDoneDetail }),
               onError: (e) => showToast({ tone: 'error', title: 'Retry failed', description: e.message }),
             })
           }

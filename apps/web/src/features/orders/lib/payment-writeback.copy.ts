@@ -43,6 +43,8 @@ export const PAYMENT_WRITEBACK_COPY = {
     count === 1 ? '1 order. Its shop still shows it as unpaid.' : `${count} orders. Their shops still show them as unpaid.`,
   retryDone: (count: number): string => (count === 1 ? 'Queued 1 shop update' : `Queued ${count} shop updates`),
   handledDone: (count: number): string => (count === 1 ? 'Marked 1 order as handled' : `Marked ${count} orders as handled`),
+  retryDoneDetail: 'OpenLinker will mark the order paid in the shop in a moment.',
+  handledDoneDetail: 'These orders no longer show under "Payment not sent to shop".',
 } as const;
 
 /** Copy for one shop row, keyed by the entry's state and reason. */

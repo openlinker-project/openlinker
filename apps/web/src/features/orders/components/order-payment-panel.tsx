@@ -80,13 +80,13 @@ export function OrderPaymentPanel({
 
   const onRetry = (): void => {
     retry.mutate([internalOrderId], {
-      onSuccess: (result) => showToast({ tone: 'success', title: COPY.retryDone(result.enqueued) }),
+      onSuccess: (result) => showToast({ tone: 'success', title: COPY.retryDone(result.enqueued), description: COPY.retryDoneDetail }),
       onError: (error) => showToast({ tone: 'error', title: 'Retry failed', description: error.message }),
     });
   };
   const onHandled = (): void => {
     markHandled.mutate([internalOrderId], {
-      onSuccess: (result) => showToast({ tone: 'success', title: COPY.handledDone(result.updated) }),
+      onSuccess: (result) => showToast({ tone: 'success', title: COPY.handledDone(result.updated), description: COPY.handledDoneDetail }),
       onError: (error) => showToast({ tone: 'error', title: 'Could not mark as handled', description: error.message }),
     });
   };
