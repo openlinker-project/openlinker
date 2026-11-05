@@ -53,6 +53,27 @@ export function requiredUnitsForLine(line: {
 }
 
 /**
+ * Whether every outstanding line of a box already holds what it requires -
+ * the one rule both a scan and a lowered quantity (#3961) close a box on.
+ *
+ * A work whose every line requires zero units is NEVER complete: there is
+ * nothing to have verified, and `every` over an empty array is vacuously true.
+ * That shape is reachable only when every line is fully cancelled while the
+ * work itself is not - a routing fault, not a packing one.
+ */
+export function isParcelComplete(
+  lines: readonly { readonly id: string; readonly totalQuantity: number; readonly cancelledQuantity: number }[],
+  counts: readonly { readonly workLineId: string; readonly verifiedQuantity: number }[]
+): boolean {
+  const outstanding = lines.filter((line) => requiredUnitsForLine(line) > 0);
+  if (outstanding.length === 0) return false;
+  return outstanding.every((line) => {
+    const verified = counts.find((count) => count.workLineId === line.id)?.verifiedQuantity ?? 0;
+    return verified >= requiredUnitsForLine(line);
+  });
+}
+
+/**
  * Why a unit was not recorded.
  *
  * Closed, because every member is rendered to a packer in their own words and

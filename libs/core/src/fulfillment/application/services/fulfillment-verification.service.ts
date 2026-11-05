@@ -55,6 +55,7 @@ import type {
   FulfillmentWorkTransaction,
 } from '../../domain/ports/fulfillment-work-repository.port';
 import {
+  isParcelComplete,
   requiredUnitsForLine,
   type CompleteInput,
   type CompleteResult,
@@ -398,22 +399,12 @@ export class FulfillmentVerificationService implements IFulfillmentVerificationS
     work: FulfillmentWork,
     counts: readonly { readonly workLineId: string; readonly verifiedQuantity: number }[]
   ): boolean {
-    // A work with no lines, or one whose every line requires zero units, must
-    // never close on a verification — there is nothing to have verified, and
-    // `every` over an empty array is vacuously true, so without this such a
-    // parcel would shut on a scan that recorded nothing.
-    //
-    // It is reachable only when every line is fully cancelled while the work
-    // itself is not, which is a routing fault rather than a packing one. The
-    // bench renders it as "0 of 0" and it can never close; NOTHING reports it
-    // as a fault today, and that gap is stated here rather than implied away.
-    const outstanding = work.lines.filter((line) => requiredUnitsForLine(line) > 0);
-    if (outstanding.length === 0) return false;
-
-    return outstanding.every((line) => {
-      const verified = counts.find((c) => c.workLineId === line.id)?.verifiedQuantity ?? 0;
-      return verified >= requiredUnitsForLine(line);
-    });
+    // The rule lives in `isParcelComplete` so a lowered quantity (#3961) closes
+    // a box on exactly the condition a scan does. An empty work never closes:
+    // reachable only when every line is fully cancelled while the work itself
+    // is not, a routing fault the bench renders as "0 of 0". NOTHING reports
+    // it as a fault today, and that gap is stated here rather than implied away.
+    return isParcelComplete(work.lines, counts);
   }
 
   private toState(

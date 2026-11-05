@@ -22,7 +22,10 @@ import { Logger } from '@openlinker/shared/logging';
 import { FULFILLMENT_WORK_REPOSITORY_TOKEN } from '../../fulfillment.tokens';
 import { FulfillmentWorkRepositoryPort } from '../../domain/ports/fulfillment-work-repository.port';
 import { isTerminalFulfillmentWorkStatus } from '../../domain/types/fulfillment-supported-actions.types';
-import { requiredUnitsForLine } from '../../domain/types/fulfillment-verification.types';
+import {
+  isParcelComplete,
+  requiredUnitsForLine,
+} from '../../domain/types/fulfillment-verification.types';
 import { SOURCE_CHANGE_HOLD_ACTOR } from '../../domain/types/fulfillment-hold.types';
 import type {
   HoldForSourceChangeInput,
@@ -204,10 +207,53 @@ export class FulfillmentOrderEditService implements IFulfillmentOrderEditService
       }
     }
 
+    for (const workId of touched) {
+      await this.closeIfNowComplete(workId);
+    }
+
     this.logger.log(
       `Lowered order line ${input.orderLineId} of order ${input.orderId} to ${String(input.newQuantity)}: ` +
         `cancelled ${String(cancelled)} unit(s) on ${String(touched.length)} work object(s)`
     );
     return { outcome: 'applied', cancelledUnits: cancelled, workIds: touched };
+  }
+
+  /**
+   * Close a box the lowered quantity left exactly full (#3961).
+   *
+   * A box normally shuts inside the scan that fills it (D18). When the order
+   * shrinks instead - the packer had already scanned the new quantity, or took
+   * the surplus out - no further scan will ever come, and without this the
+   * parcel sits at "1 of 1" with nothing the packer can press to finish it.
+   * The rule is the scan's own (`isParcelComplete`) and the owner is the last
+   * verifier (D13), so the box ends in the state a final scan would have left.
+   *
+   * Best-effort: the quantity change is already durable, and a box left open
+   * still closes on the next scan, so a failure here is logged, never thrown.
+   */
+  private async closeIfNowComplete(workId: string): Promise<void> {
+    try {
+      await this.works.runInTransaction(async (transaction) => {
+        const work = await this.works.lockWorkForVerification(workId, transaction);
+        if (work === null || work.parcelClosedAt !== null) return;
+        const counts = await this.works.countParcelVerifications(workId, transaction);
+        if (!isParcelComplete(work.lines, counts)) return;
+        const last = await this.works.findLatestActiveVerification(workId, transaction);
+        // A close naming nobody is refused by the schema; a box with no
+        // attributable scan stays open for the packer to finish.
+        if (last?.verifiedByUserId == null) return;
+        const closed = await this.works.claimParcelClose(
+          { workId, closedAt: new Date(), packedByUserId: last.verifiedByUserId },
+          transaction
+        );
+        if (closed) {
+          this.logger.log(`Closed parcel ${workId}: the lowered quantity left it full`);
+        }
+      });
+    } catch (error) {
+      this.logger.warn(
+        `Could not close parcel ${workId} after lowering its quantity: ${(error as Error).message}`
+      );
+    }
   }
 }

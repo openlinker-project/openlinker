@@ -127,7 +127,7 @@ export const ORDERS_LIST_FILTERS_COPY = {
   chipOms: 'OpenLinker',
   chipStopped: 'Stopped',
   chipShopChanged: 'Shop',
-  chipShopChangedValue: 'Changed after packing started',
+  chipShopChangedValue: 'Changed',
   chipPacking: 'Packing',
   chipSearch: 'Search',
   chipSearchValue: (q: string): string => `“${q}”`,

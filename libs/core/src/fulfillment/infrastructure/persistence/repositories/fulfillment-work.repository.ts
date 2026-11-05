@@ -1857,7 +1857,7 @@ export class FulfillmentWorkRepository implements FulfillmentWorkRepositoryPort 
         .orderBy('verification.verifiedAt', 'DESC')
         .getOne();
       if (row === null) return null;
-      return { id: row.id, workLineId: row.workLineId };
+      return { id: row.id, workLineId: row.workLineId, verifiedByUserId: row.verifiedByUserId };
     } catch (error) {
       throw new FulfillmentPersistenceError('findLatestActiveVerification', error);
     }
@@ -1882,7 +1882,7 @@ export class FulfillmentWorkRepository implements FulfillmentWorkRepositoryPort 
         .orderBy('verification.verifiedAt', 'DESC')
         .getOne();
       if (row === null) return null;
-      return { id: row.id, workLineId: row.workLineId };
+      return { id: row.id, workLineId: row.workLineId, verifiedByUserId: row.verifiedByUserId };
     } catch (error) {
       throw new FulfillmentPersistenceError('findLatestActiveVerificationForLine', error);
     }

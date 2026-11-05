@@ -43,6 +43,10 @@ describe('FulfillmentOrderEditService (#3542)', () => {
       | 'listActiveHoldsForWorks'
       | 'placeHold'
       | 'releaseHold'
+      | 'runInTransaction'
+      | 'lockWorkForVerification'
+      | 'findLatestActiveVerification'
+      | 'claimParcelClose'
     >
   >;
   let service: FulfillmentOrderEditService;
@@ -55,6 +59,10 @@ describe('FulfillmentOrderEditService (#3542)', () => {
       listActiveHoldsForWorks: jest.fn().mockResolvedValue(new Map()),
       placeHold: jest.fn().mockResolvedValue({}),
       releaseHold: jest.fn().mockResolvedValue({}),
+      runInTransaction: jest.fn((fn: (tx: unknown) => Promise<unknown>) => fn('tx')) as never,
+      lockWorkForVerification: jest.fn().mockResolvedValue(null),
+      findLatestActiveVerification: jest.fn().mockResolvedValue(null),
+      claimParcelClose: jest.fn().mockResolvedValue(true),
     };
     service = new FulfillmentOrderEditService(works as unknown as FulfillmentWorkRepositoryPort);
   });
@@ -141,6 +149,57 @@ describe('FulfillmentOrderEditService (#3542)', () => {
       expect((await service.lowerLineQuantity({ orderId: 'o1', orderLineId: 'l1', newQuantity: 1 })).outcome).toBe(
         'unrouted'
       );
+    });
+  });
+
+  describe('lowerLineQuantity - closing a box the change left full (#3961)', () => {
+    const narrowed = (): unknown =>
+      work('w1', [{ orderLineId: 'l1', total: 3, cancelled: 2 }]);
+
+    beforeEach(() => {
+      works.findByOrderId.mockResolvedValue([work('w1', [{ orderLineId: 'l1', total: 3 }])] as never);
+      works.lockWorkForVerification.mockResolvedValue(narrowed() as never);
+      works.findLatestActiveVerification.mockResolvedValue({
+        id: 'v1',
+        workLineId: 'w1-l1',
+        verifiedByUserId: 'packer-1',
+      });
+    });
+
+    it('should close the box as its last scanner when it already holds the new quantity', async () => {
+      works.countParcelVerifications.mockResolvedValue([{ workLineId: 'w1-l1', verifiedQuantity: 1 }]);
+
+      await service.lowerLineQuantity({ orderId: 'o1', orderLineId: 'l1', newQuantity: 1 });
+
+      expect(works.claimParcelClose).toHaveBeenCalledWith(
+        expect.objectContaining({ workId: 'w1', packedByUserId: 'packer-1' }),
+        'tx'
+      );
+    });
+
+    it('should leave the box open when it still holds fewer units than the new quantity', async () => {
+      works.countParcelVerifications.mockResolvedValue([]);
+
+      await service.lowerLineQuantity({ orderId: 'o1', orderLineId: 'l1', newQuantity: 1 });
+
+      expect(works.claimParcelClose).not.toHaveBeenCalled();
+    });
+
+    it('should not close a box nobody scanned anything into', async () => {
+      works.countParcelVerifications.mockResolvedValue([{ workLineId: 'w1-l1', verifiedQuantity: 1 }]);
+      works.findLatestActiveVerification.mockResolvedValue(null);
+
+      await service.lowerLineQuantity({ orderId: 'o1', orderLineId: 'l1', newQuantity: 1 });
+
+      expect(works.claimParcelClose).not.toHaveBeenCalled();
+    });
+
+    it('should still report the lowered quantity when closing the box fails', async () => {
+      works.lockWorkForVerification.mockRejectedValue(new Error('db down'));
+
+      const result = await service.lowerLineQuantity({ orderId: 'o1', orderLineId: 'l1', newQuantity: 1 });
+
+      expect(result).toEqual({ outcome: 'applied', cancelledUnits: 2, workIds: ['w1'] });
     });
   });
 
