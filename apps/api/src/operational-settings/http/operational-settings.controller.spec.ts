@@ -237,6 +237,24 @@ describe('OperationalSettingsController', () => {
       ).rejects.toBeInstanceOf(BadRequestException);
     });
 
+    it('should send the refused field as a coded param (#3865)', async () => {
+      settings.updateSettings.mockRejectedValue(
+        new InvalidOperationalSettingError(
+          'catalogueSweepBudget',
+          'catalogueSweepBudget must be an integer between 1 and 2000'
+        )
+      );
+
+      await expect(
+        controller.update({ catalogueSweepBudget: 5000 }, {} as AuthenticatedUser, res)
+      ).rejects.toMatchObject({
+        response: {
+          code: 'OPERATIONAL_SETTING_INVALID',
+          params: { field: 'catalogueSweepBudget' },
+        },
+      });
+    });
+
     it('should let an unrelated error through rather than mislabelling it a bad request', async () => {
       settings.updateSettings.mockRejectedValue(new Error('database unavailable'));
 

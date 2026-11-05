@@ -14,7 +14,7 @@
  *
  * @module apps/api/src/fulfillment/http
  */
-import { Controller, Get, Inject, NotFoundException, Param } from '@nestjs/common';
+import { Controller, Get, Inject, Param, HttpStatus } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import {
@@ -25,6 +25,7 @@ import {
 
 import { Roles } from '../../auth/decorators/roles.decorator';
 import { RoutingDecisionStatusResponseDto } from './dto/routing-decision-status-response.dto';
+import { codedHttpError } from '../../common/errors/coded-http.exception';
 
 @ApiBearerAuth()
 @ApiTags('fulfillment')
@@ -65,7 +66,12 @@ export class RoutingDecisionController {
     });
 
     if (view === null) {
-      throw new NotFoundException(`No routing decision for order ${internalOrderId}`);
+      throw codedHttpError(
+        HttpStatus.NOT_FOUND,
+        'ROUTING_DECISION_NOT_FOUND',
+        `No routing decision for order ${internalOrderId}`,
+        { orderId: internalOrderId }
+      );
     }
     return RoutingDecisionStatusResponseDto.fromView(view, ttl.source);
   }

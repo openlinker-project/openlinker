@@ -23,12 +23,10 @@ import {
   ConflictException,
   Controller,
   Delete,
-  ForbiddenException,
   Get,
   HttpCode,
   HttpStatus,
   Inject,
-  NotFoundException,
   Param,
   Patch,
   Post,
@@ -45,9 +43,11 @@ import {
   UserNotDeactivatedException,
   UserNotPendingException,
 } from '@openlinker/core/users';
+import { codedHttpError } from '../../common/errors/coded-http.exception';
 import { AuthenticatedUser } from '../../auth/auth.types';
 import { CurrentUser } from '../../auth/decorators/current-user.decorator';
 import { Roles } from '../../auth/decorators/roles.decorator';
+import { userChangeForbidden, userNotFound } from './users-errors';
 import { ApproveUserDto } from '../dto/approve-user.dto';
 import { CreateUserDto } from '../dto/create-user.dto';
 import { CreateUserResponseDto } from '../dto/create-user-response.dto';
@@ -110,10 +110,13 @@ export class UsersController {
         // every account) and is what the form needs to point at the right input.
         // The public registration route keeps its generic message.
         const field = error.field ?? 'username';
-        throw new ConflictException({
-          field,
-          message: `That ${field} is already in use.`,
-        });
+        throw codedHttpError(
+          HttpStatus.CONFLICT,
+          'USER_IDENTIFIER_TAKEN',
+          `That ${field} is already in use.`,
+          { field },
+          { field }
+        );
       }
       throw error;
     }
@@ -168,7 +171,7 @@ export class UsersController {
       return response;
     } catch (error) {
       if (error instanceof UserNotFoundException) {
-        throw new NotFoundException(error.message);
+        throw userNotFound(id, error.message);
       }
       if (error instanceof UserNotAwaitingFirstSignInException) {
         // Machine-readable, like the create route's { field, message }: the
@@ -194,10 +197,10 @@ export class UsersController {
       await this.userManagement.approveUser(id, dto.role);
     } catch (error) {
       if (error instanceof UserNotFoundException) {
-        throw new NotFoundException(error.message);
+        throw userNotFound(id, error.message);
       }
       if (error instanceof UserNotPendingException) {
-        throw new ConflictException(error.message);
+        throw codedHttpError(HttpStatus.CONFLICT, 'USER_NOT_PENDING', error.message, { userId: id });
       }
       throw error;
     }
@@ -215,10 +218,10 @@ export class UsersController {
       await this.userManagement.rejectUser(id);
     } catch (error) {
       if (error instanceof UserNotFoundException) {
-        throw new NotFoundException(error.message);
+        throw userNotFound(id, error.message);
       }
       if (error instanceof UserNotPendingException) {
-        throw new ConflictException(error.message);
+        throw codedHttpError(HttpStatus.CONFLICT, 'USER_NOT_PENDING', error.message, { userId: id });
       }
       throw error;
     }
@@ -240,10 +243,10 @@ export class UsersController {
       await this.userManagement.updateRole(id, dto.role, actor.id);
     } catch (error) {
       if (error instanceof UserNotFoundException) {
-        throw new NotFoundException(error.message);
+        throw userNotFound(id, error.message);
       }
       if (error instanceof CannotSelfModifyException || error instanceof LastAdminException) {
-        throw new ForbiddenException(error.message);
+        throw userChangeForbidden(error);
       }
       throw error;
     }
@@ -275,7 +278,7 @@ export class UsersController {
       await this.userManagement.setPackStationLabel(id, dto.packStationLabel);
     } catch (error) {
       if (error instanceof UserNotFoundException) {
-        throw new NotFoundException(error.message);
+        throw userNotFound(id, error.message);
       }
       throw error;
     }
@@ -297,13 +300,13 @@ export class UsersController {
       await this.userManagement.deactivateUser(id, actor.id);
     } catch (error) {
       if (error instanceof UserNotFoundException) {
-        throw new NotFoundException(error.message);
+        throw userNotFound(id, error.message);
       }
       if (error instanceof CannotSelfModifyException || error instanceof LastAdminException) {
-        throw new ForbiddenException(error.message);
+        throw userChangeForbidden(error);
       }
       if (error instanceof UserNotActiveException) {
-        throw new ConflictException(error.message);
+        throw codedHttpError(HttpStatus.CONFLICT, 'USER_NOT_ACTIVE', error.message, { userId: id });
       }
       throw error;
     }
@@ -321,10 +324,12 @@ export class UsersController {
       await this.userManagement.reactivateUser(id);
     } catch (error) {
       if (error instanceof UserNotFoundException) {
-        throw new NotFoundException(error.message);
+        throw userNotFound(id, error.message);
       }
       if (error instanceof UserNotDeactivatedException) {
-        throw new ConflictException(error.message);
+        throw codedHttpError(HttpStatus.CONFLICT, 'USER_NOT_DEACTIVATED', error.message, {
+          userId: id,
+        });
       }
       throw error;
     }
@@ -345,10 +350,10 @@ export class UsersController {
       await this.userManagement.deleteUser(id, actor.id);
     } catch (error) {
       if (error instanceof UserNotFoundException) {
-        throw new NotFoundException(error.message);
+        throw userNotFound(id, error.message);
       }
       if (error instanceof CannotSelfModifyException || error instanceof LastAdminException) {
-        throw new ForbiddenException(error.message);
+        throw userChangeForbidden(error);
       }
       throw error;
     }

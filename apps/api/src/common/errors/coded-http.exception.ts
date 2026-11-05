@@ -19,9 +19,12 @@ import {
   ConflictException,
   ForbiddenException,
   HttpException,
+  InternalServerErrorException,
   NotFoundException,
   NotImplementedException,
+  PayloadTooLargeException,
   ServiceUnavailableException,
+  UnauthorizedException,
   UnprocessableEntityException,
 } from '@nestjs/common';
 import type { ApiErrorCode, ApiErrorEnvelope, ApiErrorParams } from '@openlinker/shared/errors';
@@ -74,10 +77,13 @@ const NEST_EXCEPTION_BY_STATUS: Readonly<
   Record<number, new (body: Record<string, unknown>) => HttpException>
 > = {
   400: BadRequestException,
+  401: UnauthorizedException,
   403: ForbiddenException,
   404: NotFoundException,
   409: ConflictException,
+  413: PayloadTooLargeException,
   422: UnprocessableEntityException,
+  500: InternalServerErrorException,
   501: NotImplementedException,
   502: BadGatewayException,
   503: ServiceUnavailableException,

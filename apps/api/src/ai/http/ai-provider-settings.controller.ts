@@ -26,7 +26,6 @@
  * @module apps/api/src/ai/http
  */
 import {
-  BadRequestException,
   Body,
   Controller,
   Delete,
@@ -34,11 +33,9 @@ import {
   HttpCode,
   HttpStatus,
   Inject,
-  NotFoundException,
   Param,
   Put,
   Res,
-  UnprocessableEntityException,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiParam, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { Response } from 'express';
@@ -55,6 +52,7 @@ import { IAiProviderActiveSettingsService } from '@openlinker/core/ai';
 import { AuthenticatedUser } from '../../auth/auth.types';
 import { CurrentUser } from '../../auth/decorators/current-user.decorator';
 import { Roles } from '../../auth/decorators/roles.decorator';
+import { codedHttpError } from '../../common/errors/coded-http.exception';
 import { AiProviderSettingsResponseDto } from './dto/ai-provider-settings-response.dto';
 import { SetActiveAiProviderDto } from './dto/set-active-ai-provider.dto';
 import { UpdateAiProviderKeyDto } from './dto/update-ai-provider-key.dto';
@@ -155,8 +153,11 @@ export class AiProviderSettingsController {
 
   private parseProvider(value: string): AiProvider {
     if (!isAiProvider(value)) {
-      throw new NotFoundException(
-        `Unknown AI provider '${value}'. Allowed values: ${AiProviderValues.join(', ')}.`
+      throw codedHttpError(
+        HttpStatus.NOT_FOUND,
+        'AI_PROVIDER_UNKNOWN',
+        `Unknown AI provider '${value}'. Allowed values: ${AiProviderValues.join(', ')}.`,
+        { provider: value, allowedProviders: AiProviderValues.join(', ') }
       );
     }
     return value;
@@ -167,11 +168,25 @@ export class AiProviderSettingsController {
       return await fn();
     } catch (error) {
       if (error instanceof AiProviderSettingsNotApplicableError) {
-        throw new BadRequestException(error.message);
+        throw codedHttpError(
+          HttpStatus.BAD_REQUEST,
+          'AI_PROVIDER_KEY_NOT_APPLICABLE',
+          error.message,
+          { provider: error.provider }
+        );
       }
       if (error instanceof AiProviderActivationError) {
-        throw new UnprocessableEntityException(error.message);
+        throw codedHttpError(
+          HttpStatus.UNPROCESSABLE_ENTITY,
+          'AI_PROVIDER_KEY_MISSING',
+          error.message,
+          {
+            provider: error.provider,
+            ...(error.envVarName !== null ? { envVarName: error.envVarName } : {}),
+          }
+        );
       }
+
       throw error;
     }
   }

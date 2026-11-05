@@ -17,7 +17,6 @@ import {
   HttpCode,
   HttpStatus,
   Inject,
-  NotFoundException,
   Param,
   ParseUUIDPipe,
   Query,
@@ -33,6 +32,7 @@ import { WebhookDeliveryDetailResponseDto } from './dto/webhook-delivery-detail-
 import type { WebhookDeliverySummaryResponseDto } from './dto/webhook-delivery-summary-response.dto';
 import type { WebhookDelivery } from '@openlinker/core/webhooks';
 import { Roles } from '../../auth/decorators/roles.decorator';
+import { codedHttpError } from '../../common/errors/coded-http.exception';
 
 @ApiBearerAuth()
 @ApiTags('webhooks')
@@ -95,7 +95,12 @@ export class WebhookDeliveryController {
   async getById(@Param('id', ParseUUIDPipe) id: string): Promise<WebhookDeliveryDetailResponseDto> {
     const delivery = await this.queryService.getById(id);
     if (!delivery) {
-      throw new NotFoundException(`Webhook delivery not found: ${id}`);
+      throw codedHttpError(
+        HttpStatus.NOT_FOUND,
+        'WEBHOOK_DELIVERY_NOT_FOUND',
+        `Webhook delivery not found: ${id}`,
+        { deliveryId: id }
+      );
     }
     return this.toDetail(delivery);
   }

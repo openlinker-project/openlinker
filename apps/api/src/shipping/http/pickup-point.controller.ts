@@ -9,16 +9,7 @@
  *
  * @module apps/api/src/shipping/http
  */
-import {
-  BadGatewayException,
-  Controller,
-  Get,
-  Inject,
-  NotFoundException,
-  Param,
-  Query,
-  UnprocessableEntityException,
-} from '@nestjs/common';
+import { Controller, Get, Inject, Param, Query, HttpStatus } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import {
   type FindPickupPointsQuery,
@@ -34,6 +25,7 @@ import { Logger } from '@openlinker/shared/logging';
 import { ListPickupPointsQueryDto } from './dto/list-pickup-points-query.dto';
 import { PickupPointResponseDto } from './dto/pickup-point-response.dto';
 import { AnyRole } from '../../auth/decorators/any-role.decorator';
+import { codedHttpError } from '../../common/errors/coded-http.exception';
 
 @ApiBearerAuth()
 @ApiTags('pickup-points')
@@ -63,7 +55,7 @@ export class PickupPointController {
       const points = await this.lookup.search(query.connectionId, find);
       return points.map((point) => PickupPointResponseDto.fromDomain(point));
     } catch (error) {
-      throw this.toHttpException(error);
+      throw this.toHttpException(error, query.connectionId);
     }
   }
 
@@ -78,7 +70,12 @@ export class PickupPointController {
   async getCached(@Param('providerId') providerId: string): Promise<PickupPointResponseDto> {
     const point = await this.lookup.getCachedPoint(providerId);
     if (!point) {
-      throw new NotFoundException(`Pickup point not cached: ${providerId}`);
+      throw codedHttpError(
+        HttpStatus.NOT_FOUND,
+        'PICKUP_POINT_NOT_CACHED',
+        `Pickup point not cached: ${providerId}`,
+        { providerId }
+      );
     }
     return PickupPointResponseDto.fromDomain(point);
   }
@@ -91,16 +88,28 @@ export class PickupPointController {
    * provider). Anything else is an upstream provider/transport failure → 502,
    * so the picker never falls through to a bare 500.
    */
-  private toHttpException(error: unknown): Error {
+  private toHttpException(error: unknown, connectionId: string): Error {
     if (
       error instanceof PickupPointFinderNotSupportedException ||
       error instanceof CapabilityNotSupportedException ||
       error instanceof CapabilityNotEnabledException
     ) {
-      return new UnprocessableEntityException(error.message);
+      return codedHttpError(
+        HttpStatus.UNPROCESSABLE_ENTITY,
+        'PICKUP_POINT_LOOKUP_UNSUPPORTED',
+        error.message,
+        { connectionId }
+      );
     }
     const message = error instanceof Error ? error.message : String(error);
     this.logger.warn(`Pickup-point search failed: ${message}`);
-    return new BadGatewayException(message);
+    // The provider's words can echo the operator's search (a buyer's street or
+    // postcode), so they stay in the log and the body carries a fixed sentence.
+    return codedHttpError(
+      HttpStatus.BAD_GATEWAY,
+      'PICKUP_POINT_SEARCH_FAILED',
+      'Shipping provider rejected the points lookup',
+      { connectionId }
+    );
   }
 }

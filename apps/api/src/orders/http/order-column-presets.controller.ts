@@ -24,7 +24,6 @@ import {
   HttpCode,
   HttpStatus,
   Inject,
-  NotFoundException,
   Param,
   Post,
   Put,
@@ -43,6 +42,7 @@ import { CreateOrderColumnPresetDto } from './dto/create-order-column-preset.dto
 import { UpdateOrderColumnPresetDto } from './dto/update-order-column-preset.dto';
 import { SetWorkspaceDefaultColumnsDto } from './dto/set-workspace-default-columns.dto';
 import { OrderColumnPresetResponseDto } from './dto/order-column-preset-response.dto';
+import { codedHttpError } from '../../common/errors/coded-http.exception';
 
 @ApiBearerAuth()
 @ApiTags('orders')
@@ -123,7 +123,9 @@ export class OrderColumnPresetsController {
       return this.toDto(preset);
     } catch (error) {
       if (error instanceof OrderColumnPresetNotFoundError) {
-        throw new NotFoundException(error.message);
+        throw codedHttpError(HttpStatus.NOT_FOUND, 'ORDER_COLUMN_PRESET_NOT_FOUND', error.message, {
+          presetId: error.presetId,
+        });
       }
       throw error;
     }
@@ -140,7 +142,9 @@ export class OrderColumnPresetsController {
       await this.service.delete(user.id, id);
     } catch (error) {
       if (error instanceof OrderColumnPresetNotFoundError) {
-        throw new NotFoundException(error.message);
+        throw codedHttpError(HttpStatus.NOT_FOUND, 'ORDER_COLUMN_PRESET_NOT_FOUND', error.message, {
+          presetId: error.presetId,
+        });
       }
       throw error;
     }

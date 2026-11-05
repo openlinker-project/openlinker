@@ -16,11 +16,12 @@
  *
  * @module apps/api/src/catalog-trust/http
  */
-import { Controller, Get, Inject, NotFoundException, Param } from '@nestjs/common';
+import { Controller, Get, HttpStatus, Inject, Param } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
 import type { ConnectionCatalogTrust } from '@openlinker/core/catalog-trust';
 import { CATALOG_TRUST_SERVICE_TOKEN, ICatalogTrustService } from '@openlinker/core/catalog-trust';
 import { Roles } from '../../auth/decorators/roles.decorator';
+import { codedHttpError } from '../../common/errors/coded-http.exception';
 import { CatalogTrustResponseDto } from '../dto/catalog-trust-response.dto';
 
 @ApiBearerAuth()
@@ -49,8 +50,11 @@ export class CatalogTrustController {
   ): Promise<CatalogTrustResponseDto> {
     const trust = await this.catalogTrustService.getConnectionCatalogTrust(connectionId);
     if (trust === null) {
-      throw new NotFoundException(
-        `Connection ${connectionId} not found or has no ProductMaster capability`
+      throw codedHttpError(
+        HttpStatus.NOT_FOUND,
+        'CATALOG_TRUST_CONNECTION_NOT_FOUND',
+        `Connection ${connectionId} not found or has no ProductMaster capability`,
+        { connectionId }
       );
     }
     return this.toResponseDto(trust);

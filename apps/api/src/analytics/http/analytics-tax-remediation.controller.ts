@@ -42,7 +42,7 @@
  *
  * @module apps/api/src/analytics/http
  */
-import { BadRequestException, Body, Controller, Get, Inject, Post, Query } from '@nestjs/common';
+import { Body, Controller, Get, Inject, Post, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import {
   ANALYTICS_DISPLAY_SETTINGS_SERVICE_TOKEN,
@@ -68,6 +68,7 @@ import {
   TaxRerunBackfillRequestDto,
   TaxRerunBackfillResponseDto,
 } from './dto/tax-rerun-backfill.dto';
+import { analyticsRangeInvalid, analyticsRangeTooWide } from './analytics-errors';
 
 /** Mirrors `AnalyticsCoverageController`'s bound — see that controller. */
 const MAX_COVERAGE_RANGE_DAYS = 400;
@@ -152,13 +153,11 @@ export class AnalyticsTaxRemediationController {
     const from = new Date(fromRaw);
     const to = new Date(toRaw);
     if (to.getTime() <= from.getTime()) {
-      throw new BadRequestException('to must be after from');
+      throw analyticsRangeInvalid();
     }
     const rangeDays = (to.getTime() - from.getTime()) / (24 * 60 * 60 * 1000);
     if (rangeDays > MAX_COVERAGE_RANGE_DAYS) {
-      throw new BadRequestException(
-        `Range too wide: ${Math.ceil(rangeDays)} days exceeds the ${MAX_COVERAGE_RANGE_DAYS}-day limit`
-      );
+      throw analyticsRangeTooWide(rangeDays, MAX_COVERAGE_RANGE_DAYS);
     }
     return { from, to };
   }
