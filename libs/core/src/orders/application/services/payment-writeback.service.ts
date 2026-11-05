@@ -25,8 +25,8 @@ import { IIntegrationsService, INTEGRATIONS_SERVICE_TOKEN } from '@openlinker/co
 import { SYNC_JOB_QUEUE_TOKEN, type SyncJobQueuePort } from '@openlinker/core/sync';
 import { Logger } from '@openlinker/shared/logging';
 
-import type { OrderRecordRepositoryPort } from '../../domain/ports/order-record-repository.port';
-import type { RefundRecordRepositoryPort } from '../../domain/ports/refund-record-repository.port';
+import { OrderRecordRepositoryPort } from '../../domain/ports/order-record-repository.port';
+import { RefundRecordRepositoryPort } from '../../domain/ports/refund-record-repository.port';
 import {
   decidePaymentWriteback,
   isCashOnDeliveryOrder,
@@ -41,7 +41,7 @@ import {
   ORDER_RECORD_REPOSITORY_TOKEN,
   ORDER_REFUND_RECORD_REPOSITORY_TOKEN,
 } from '../../orders.tokens';
-import type { IOrderLifecycleRelayService } from '../interfaces/order-lifecycle-relay.service.interface';
+import { IOrderLifecycleRelayService } from '../interfaces/order-lifecycle-relay.service.interface';
 import type {
   IPaymentWritebackService,
   PlanPaymentWritebackInput,

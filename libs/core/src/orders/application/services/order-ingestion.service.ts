@@ -50,7 +50,7 @@ import {
   ORDER_CANCELLATION_EFFECTS_SERVICE_TOKEN,
   PAYMENT_WRITEBACK_SERVICE_TOKEN,
 } from '../../orders.tokens';
-import type { IPaymentWritebackService } from '../interfaces/payment-writeback.service.interface';
+import { IPaymentWritebackService } from '../interfaces/payment-writeback.service.interface';
 import { IOrderCancellationEffectsService } from '../interfaces/order-cancellation-effects.service.interface';
 import { IOrderChangeService } from './order-change.service.interface';
 import type { OrderChange } from '../../domain/entities/order-change.entity';
