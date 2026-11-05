@@ -137,6 +137,7 @@ fullFlowSegment(() => {
         // for a product provisioned outside this flow).
         const sourceCategoryId = freshCategoryPsId ?? env.freshCategoryPsId;
         await api.mappings.upsertCategoryMapping(allegroConn.id, sourceCategoryId, {
+          sourceConnectionId: prestashop!.id,
           allegroCategoryId: env.freshAllegroCategoryId,
           allegroCategoryName: 'E2E golden-path category',
         });

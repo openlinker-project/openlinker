@@ -33,6 +33,7 @@ import type {
   UpsertPaymentMappingsPayload,
   UpsertOrderStateMappingsPayload,
   UpsertCategoryMappingPayload,
+  CategoryMappingReassignResult,
   ParcelProfileFields,
   RoutingRule,
   RoutingRuleInput,
@@ -80,9 +81,17 @@ export interface MappingsApi {
     kind: MappingOptionListKind,
   ) => Promise<MappingOption[]>;
 
-  getCategoryMappings: (connectionId: string) => Promise<CategoryMapping[]>;
+  /**
+   * Category mappings are keyed by the MARKETPLACE connection (the id offer
+   * creation resolves by), scoped to the master that owns the source category
+   * (#3993). Omitting `sourceConnectionId` lists every row under the
+   * connection - the page uses that to find mappings once saved under the
+   * master's own id.
+   */
+  getCategoryMappings: (connectionId: string, sourceConnectionId?: string) => Promise<CategoryMapping[]>;
   upsertCategoryMapping: (connectionId: string, prestashopCategoryId: string, payload: UpsertCategoryMappingPayload) => Promise<CategoryMapping>;
-  deleteCategoryMapping: (connectionId: string, prestashopCategoryId: string) => Promise<void>;
+  deleteCategoryMapping: (connectionId: string, prestashopCategoryId: string, sourceConnectionId: string) => Promise<void>;
+  reassignCategoryMappings: (connectionId: string, fromConnectionId: string) => Promise<CategoryMappingReassignResult>;
   getAllegroCategories: (connectionId: string, parentId?: string) => Promise<AllegroCategory[]>;
   getCategoryPath: (connectionId: string, categoryId: string) => Promise<CategoryPathNode[]>;
   /**
@@ -227,8 +236,12 @@ export function createMappingsApi(request: ApiRequest): MappingsApi {
         `/connections/${connectionId}/mappings/options/${side}/${kind}`,
       ),
 
-    getCategoryMappings: (connectionId) =>
-      request<CategoryMapping[]>(`/connections/${connectionId}/mappings/categories`),
+    getCategoryMappings: (connectionId, sourceConnectionId) => {
+      const query = sourceConnectionId
+        ? `?${new URLSearchParams({ sourceConnectionId }).toString()}`
+        : '';
+      return request<CategoryMapping[]>(`/connections/${connectionId}/mappings/categories${query}`);
+    },
 
     upsertCategoryMapping: (connectionId, prestashopCategoryId, payload) =>
       request<CategoryMapping>(`/connections/${connectionId}/mappings/categories/${prestashopCategoryId}`, {
@@ -236,9 +249,16 @@ export function createMappingsApi(request: ApiRequest): MappingsApi {
         body: JSON.stringify(payload),
       }),
 
-    deleteCategoryMapping: (connectionId, prestashopCategoryId) =>
-      request<void>(`/connections/${connectionId}/mappings/categories/${prestashopCategoryId}`, {
-        method: 'DELETE',
+    deleteCategoryMapping: (connectionId, prestashopCategoryId, sourceConnectionId) =>
+      request<void>(
+        `/connections/${connectionId}/mappings/categories/${prestashopCategoryId}?${new URLSearchParams({ sourceConnectionId }).toString()}`,
+        { method: 'DELETE' },
+      ),
+
+    reassignCategoryMappings: (connectionId, fromConnectionId) =>
+      request<CategoryMappingReassignResult>(`/connections/${connectionId}/mappings/categories/reassign`, {
+        method: 'POST',
+        body: JSON.stringify({ fromConnectionId }),
       }),
 
     getAllegroCategories: (connectionId, parentId?) => {

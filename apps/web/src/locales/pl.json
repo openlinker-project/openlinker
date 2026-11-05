@@ -33,6 +33,48 @@
       "overdue": "Po terminie {duration}"
     }
   },
+  "mappings": {
+    "categoryMappings": {
+      "addConnection": "Dodaj połączenie",
+      "backLabel": "Połączenie",
+      "desktopBody": "Edytor mapowań pokazuje obok siebie Twoje kategorie i kategorie marketplace, więc potrzebuje szerszego ekranu. Otwórz tę stronę na komputerze albo na tablecie w poziomie, żeby przypisać kategorie.",
+      "desktopTitle": "Otwórz na komputerze, żeby edytować kategorie",
+      "errorTitle": "Nie udało się wczytać",
+      "legacyAction": "Użyj ich dla {marketplace}",
+      "legacyAlreadyMapped": "Już zmapowana tutaj",
+      "legacyBody": "Zapisano je, zanim mapowanie należało do jednego marketplace, a pasować może do więcej niż jednego z Twoich marketplace.",
+      "legacyConfirmAction": "Użyj dla {marketplace}",
+      "legacyConfirmBody": "Każde mapowanie z listy trafi do {marketplace}. Kategoria, która ma tam już mapowanie, zachowa je.",
+      "legacyConfirmTitle": "Użyć tych mapowań dla {marketplace}?",
+      "legacyFailedTitle": "Nie przeniesiono mapowań",
+      "legacyKept": "Te kategorie zachowały dotychczasowe mapowanie: {categories}.",
+      "legacyMovedBody": "Zostaną użyte przy następnym wystawianiu ofert.",
+      "legacyMovedTitle": "Mapowania przeniesione do {marketplace}: {count}",
+      "legacyTitle": "Mapowania nieużywane przy wystawianiu ofert: {count}",
+      "loadingMessage": "Pobieranie kategorii i mapowań...",
+      "loadingTitle": "Wczytywanie",
+      "mapForLabel": "Mapuj dla",
+      "mapForPlaceholder": "Wybierz marketplace...",
+      "mapFrom": "Mapuj z {connection}",
+      "noCategoriesMessage": "{connection} nie zwrócił żadnych kategorii. Dodaj kategorie w {platform} i wróć tutaj.",
+      "noCategoriesTitle": "Brak kategorii",
+      "noMarketplaceMessage": "Mapowanie kategorii mówi marketplace, gdzie umieścić Twoje produkty. Dodaj połączenie z marketplace, na przykład Allegro, i wróć tutaj.",
+      "noMarketplaceTitle": "Brak marketplace do mapowania",
+      "notCatalogueMessage": "{connection} przyjmuje Twoje produkty, więc nie ma własnych kategorii do mapowania. Otwórz połączenie z Twoim katalogiem i wybierz tam {connection}.",
+      "notCatalogueTitle": "Mapuj kategorie z katalogu",
+      "scopeHint": "Używane przy wystawianiu ofert na {marketplace}.",
+      "selectCategoryMessage": "Kliknij kategorię {platform} po lewej, żeby wybrać, gdzie trafi na {marketplace}.",
+      "selectCategoryTitle": "Wybierz kategorię",
+      "selectMarketplaceMessage": "Wybierz marketplace powyżej, żeby przeglądać jego kategorie.",
+      "selectMarketplaceTitle": "Wybierz marketplace",
+      "sourceColumn": "Kategorie {platform}",
+      "summary": "Zmapowano {mapped} z {total} kategorii dla {marketplace}",
+      "targetColumn": "Kategoria {marketplace}",
+      "targetColumnFallback": "Kategoria marketplace",
+      "thisConnection": "To połączenie",
+      "title": "Mapowania kategorii"
+    }
+  },
   "ui": {
     "accessDenied": {
       "eyebrow": "Brak dostępu",

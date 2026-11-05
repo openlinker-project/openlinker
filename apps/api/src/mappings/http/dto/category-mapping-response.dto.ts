@@ -16,6 +16,12 @@ export class CategoryMappingResponseDto {
   @ApiProperty()
   connectionId!: string;
 
+  @ApiPropertyOptional({
+    description: 'Source (master) connection; null on a source-agnostic historical row.',
+    nullable: true,
+  })
+  sourceConnectionId!: string | null;
+
   @ApiProperty()
   prestashopCategoryId!: string;
 
@@ -35,6 +41,7 @@ export class CategoryMappingResponseDto {
     const dto = new CategoryMappingResponseDto();
     dto.id = m.id;
     dto.connectionId = m.destinationConnectionId;
+    dto.sourceConnectionId = m.sourceConnectionId;
     dto.prestashopCategoryId = m.sourceCategoryId;
     dto.allegroCategoryId = m.destinationCategoryId;
     dto.allegroCategoryName = m.destinationCategoryName;
