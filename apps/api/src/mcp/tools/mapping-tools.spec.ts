@@ -284,7 +284,7 @@ describe('mapping-assistant MCP tools', () => {
         project: jest.fn().mockResolvedValue({
           parameters: [{ id: '1', values: ['Czerwony'], section: 'offer' }],
           unmappedSourceKeys: ['Fit'],
-          unresolvedRequired: [{ id: '9', name: 'Brand', section: 'product' }], restrictionIssues: [],
+          unresolvedRequired: [{ id: '9', name: 'Brand', section: 'product' }], restrictionIssues: [], origins: [],
         }),
       } as unknown as IAttributeProjectionService;
       const tool = createProjectAttributesTool(service, noDestination());

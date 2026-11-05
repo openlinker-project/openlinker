@@ -33,6 +33,8 @@ import {
   IdentifierMapping,
 } from '@openlinker/core/identifier-mapping';
 import {
+  ATTRIBUTE_PROJECTION_PREVIEW_SERVICE_TOKEN,
+  MasterCatalogConnectionNotConfiguredException,
   CATEGORY_RESOLUTION_SERVICE_TOKEN,
   OFFER_CREATION_ENQUEUE_SERVICE_TOKEN,
   OFFER_CREATION_RECORD_REPOSITORY_TOKEN,
@@ -52,6 +54,7 @@ import type {
   IOfferStatusReadService,
   IOfferStatusSyncService,
   IPublishedVariantsService,
+  IAttributeProjectionPreviewService,
   ISellerPoliciesService,
   IResponsibleProducerService,
   IDeliveryPriceListService,
@@ -83,6 +86,7 @@ describe('ListingsController', () => {
   let productVariantRepository: jest.Mocked<ProductVariantRepositoryPort>;
   let categoryResolution: jest.Mocked<ICategoryResolutionService>;
   let offerStatusRead: jest.Mocked<IOfferStatusReadService>;
+  let attributeProjectionPreview: jest.Mocked<IAttributeProjectionPreviewService>;
   let offerStatusSync: jest.Mocked<Pick<IOfferStatusSyncService, 'refreshOne'>>;
   let publishedVariants: jest.Mocked<IPublishedVariantsService>;
 
@@ -230,6 +234,7 @@ describe('ListingsController', () => {
     publishedVariants = {
       getPublishedVariantIds: jest.fn(),
     };
+    attributeProjectionPreview = { preview: jest.fn() };
 
     const module: TestingModule = await Test.createTestingModule({
       controllers: [ListingsController],
@@ -247,6 +252,10 @@ describe('ListingsController', () => {
         { provide: OFFER_STATUS_READ_SERVICE_TOKEN, useValue: offerStatusRead },
         { provide: OFFER_STATUS_SYNC_SERVICE_TOKEN, useValue: offerStatusSync },
         { provide: PUBLISHED_VARIANTS_SERVICE_TOKEN, useValue: publishedVariants },
+        {
+          provide: ATTRIBUTE_PROJECTION_PREVIEW_SERVICE_TOKEN,
+          useValue: attributeProjectionPreview,
+        },
       ],
     }).compile();
 
@@ -1217,6 +1226,57 @@ describe('ListingsController', () => {
       ).rejects.toBeInstanceOf(ConnectionNotFoundException);
 
       expect(categoryResolution.resolveCategory).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('previewAttributeProjection (#3995)', () => {
+    it('should pass items through and return entries keyed by variantId in input order', async () => {
+      attributeProjectionPreview.preview.mockResolvedValue({
+        entries: [
+          {
+            internalVariantId: 'v1',
+            categoryId: 'cat-1',
+            status: 'ok',
+            parameters: [{ id: 'p1', valuesIds: ['d1'], section: 'product' }],
+            unresolvedRequired: [],
+            restrictionIssues: [],
+            origins: [],
+          },
+          { internalVariantId: 'v2', categoryId: 'cat-1', status: 'failed', reason: 'variant-not-found' },
+        ],
+      });
+
+      const result = await controller.previewAttributeProjection('conn-1', {
+        items: [
+          { variantId: 'v1', categoryId: 'cat-1', ean: '5901234123457' },
+          { variantId: 'v2', categoryId: 'cat-1' },
+        ],
+      });
+
+      expect(attributeProjectionPreview.preview).toHaveBeenCalledWith({
+        connectionId: 'conn-1',
+        items: [
+          { internalVariantId: 'v1', categoryId: 'cat-1', ean: '5901234123457' },
+          { internalVariantId: 'v2', categoryId: 'cat-1' },
+        ],
+      });
+      expect(result.entries.map((e) => [e.variantId, e.status])).toEqual([
+        ['v1', 'ok'],
+        ['v2', 'failed'],
+      ]);
+      expect(result.entries[0]).not.toHaveProperty('internalVariantId');
+    });
+
+    it('should answer 422 when the connection has no master catalogue', async () => {
+      attributeProjectionPreview.preview.mockRejectedValue(
+        new MasterCatalogConnectionNotConfiguredException('conn-1')
+      );
+
+      await expect(
+        controller.previewAttributeProjection('conn-1', {
+          items: [{ variantId: 'v1', categoryId: 'cat-1' }],
+        })
+      ).rejects.toBeInstanceOf(UnprocessableEntityException);
     });
   });
 

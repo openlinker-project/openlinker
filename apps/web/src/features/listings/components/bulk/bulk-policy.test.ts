@@ -887,3 +887,113 @@ describe('siblingStockBlockers (#3851)', () => {
     expect(siblingStockBlockers([], 4)).toEqual([]);
   });
 });
+
+// ── Attribute rule preview (#3995) ───────────────────────────────────────────
+import { projectedFor, variantSubmitCategoryId } from './bulk-policy';
+
+describe('attribute rule preview and the required-parameter check (#3995)', () => {
+  const cardless = (id: string, over: Partial<BulkVariantRow> = {}): BulkVariantRow =>
+    makeVariant(id, { resolvedProductCardId: null, ...over });
+  const required = new Map<string, readonly string[]>([['cat-1', ['rozmiar', 'kolor']]]);
+
+  it('should clear needs-product-parameters when the rules fill every required product parameter', () => {
+    const variant = cardless('v1');
+    const row = makeWizardRow([variant]);
+    const blockers = recomputeVariantBlockers(row, variant, CONFIG, required, allegroValidate, false, false, {
+      projectedByVariant: new Map([
+        [
+          'v1',
+          {
+            categoryId: 'cat-1',
+            parameters: [
+              { id: 'rozmiar', valuesIds: ['m'], section: 'product' },
+              { id: 'kolor', valuesIds: ['black'], section: 'product' },
+            ],
+          },
+        ],
+      ]),
+    });
+    expect(blockers).not.toContain(NEEDS_PARAMS);
+  });
+
+  it('should keep the flag when a rule covers only some required parameters', () => {
+    const variant = cardless('v1');
+    const row = makeWizardRow([variant]);
+    const blockers = recomputeVariantBlockers(row, variant, CONFIG, required, allegroValidate, false, false, {
+      projectedByVariant: new Map([
+        ['v1', { categoryId: 'cat-1', parameters: [{ id: 'rozmiar', valuesIds: ['m'], section: 'product' }] }],
+      ]),
+    });
+    expect(blockers).toContain(NEEDS_PARAMS);
+  });
+
+  it('should count a rule value and an operator value together', () => {
+    const variant = cardless('v1', {
+      override: { overrides: { parameters: [{ id: 'kolor', valuesIds: ['white'], section: 'product' }] } },
+    });
+    const row = makeWizardRow([variant]);
+    const blockers = recomputeVariantBlockers(row, variant, CONFIG, required, allegroValidate, false, false, {
+      projectedByVariant: new Map([
+        ['v1', { categoryId: 'cat-1', parameters: [{ id: 'rozmiar', valuesIds: ['m'], section: 'product' }] }],
+      ]),
+    });
+    expect(blockers).not.toContain(NEEDS_PARAMS);
+  });
+
+  it('should not credit a preview computed for a different category', () => {
+    const variant = cardless('v1', { override: { overrides: { categoryId: 'cat-1' } } });
+    const row = makeWizardRow([variant]);
+    const blockers = recomputeVariantBlockers(row, variant, CONFIG, required, allegroValidate, false, false, {
+      projectedByVariant: new Map([
+        [
+          'v1',
+          {
+            categoryId: 'cat-old',
+            parameters: [
+              { id: 'rozmiar', valuesIds: ['m'], section: 'product' },
+              { id: 'kolor', valuesIds: ['black'], section: 'product' },
+            ],
+          },
+        ],
+      ]),
+    });
+    expect(blockers).toContain(NEEDS_PARAMS);
+  });
+
+  it('should not let an offer-section rule value satisfy a product-section requirement', () => {
+    const variant = cardless('v1');
+    const row = makeWizardRow([variant]);
+    const blockers = recomputeVariantBlockers(row, variant, CONFIG, required, allegroValidate, false, false, {
+      projectedByVariant: new Map([
+        [
+          'v1',
+          {
+            categoryId: 'cat-1',
+            parameters: [
+              { id: 'rozmiar', valuesIds: ['m'], section: 'offer' },
+              { id: 'kolor', valuesIds: ['black'], section: 'offer' },
+            ],
+          },
+        ],
+      ]),
+    });
+    expect(blockers).toContain(NEEDS_PARAMS);
+  });
+
+  it('projectedFor should answer only for the category the variant submits under', () => {
+    const context = {
+      projectedByVariant: new Map([['v1', { categoryId: 'cat-1', parameters: [] }]]),
+    };
+    expect(projectedFor(context, 'v1', 'cat-1')).toEqual([]);
+    expect(projectedFor(context, 'v1', 'cat-2')).toBeUndefined();
+    expect(projectedFor(context, 'v1', null)).toBeUndefined();
+    expect(projectedFor(context, 'v2', 'cat-1')).toBeUndefined();
+  });
+
+  it('variantSubmitCategoryId should prefer the variant override, then the product tier, then its own match', () => {
+    const own = cardless('v1', { resolvedCategoryId: 'cat-match' });
+    expect(variantSubmitCategoryId(makeWizardRow([own]), own)).toBe('cat-match');
+    const pinned = cardless('v1', { override: { overrides: { categoryId: 'cat-variant' } } });
+    expect(variantSubmitCategoryId(makeWizardRow([pinned]), pinned)).toBe('cat-variant');
+  });
+});

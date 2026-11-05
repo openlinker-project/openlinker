@@ -15282,6 +15282,8 @@ input.bulk-dispatch__num--wide {
 .bulk-chip--warning .bulk-chip__dot { background: var(--status-warning); }
 .bulk-chip--neutral { background: var(--bg-muted); border-color: var(--border-default); color: var(--text-muted); }
 .bulk-chip--neutral .bulk-chip__dot { background: var(--text-disabled); }
+.bulk-chip--info { background: var(--status-info-soft); border-color: var(--status-info-border); color: var(--status-info-fg); }
+.bulk-chip--info .bulk-chip__dot { background: var(--status-info); }
 button.bulk-chip { cursor: pointer; }
 button.bulk-chip:hover { filter: brightness(0.97); }
 button.bulk-chip:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--accent-ring); }
@@ -15483,6 +15485,11 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
 .bulk-editor__prov--distinct { color: var(--text-secondary); background: var(--bg-muted); }
 .bulk-editor__prov--policy { color: var(--status-info-fg); background: var(--status-info-soft); }
 .bulk-editor__prov--defaults { color: var(--text-muted); background: var(--bg-muted); }
+.bulk-editor__prov--rule { color: var(--status-info-fg); background: var(--status-info-soft); }
+.bulk-editor__prov--rejected { color: var(--status-warning-fg); background: var(--status-warning-soft); }
+/* What the connection's attribute rules do with a parameter (#3995). */
+.bulk-editor__rule-hint { margin-top: 4px; font-size: 12px; line-height: 1.45; color: var(--text-muted); }
+.bulk-editor__rule-hint--warn { color: var(--status-warning-fg); }
 /* Grouping-param per-variant override consequence chip (#1741). */
 .bulk-editor__prov--split { color: var(--status-warning-fg); background: var(--status-warning-soft); }
 
@@ -32857,3 +32864,8 @@ legend.analytics-settings-dialog__label {
   min-height: 44px;
   font-weight: 600;
 }
+
+/* Attribute rules notice on the bulk wizard Review step (#3995). */
+.attribute-rules-notice { display: grid; gap: var(--space-2); }
+.attribute-rules-notice__list { margin: var(--space-1) 0 var(--space-2); padding-left: var(--space-4); }
+.attribute-rules-notice__list li + li { margin-top: 2px; }

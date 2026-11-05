@@ -27,6 +27,7 @@ export { OfferMappingSyncService } from '../application/services/offer-mapping-s
 export { OfferMappingsService } from '../application/services/offer-mappings.service';
 export { CategoryResolutionService } from '../application/services/category-resolution.service';
 export { AttributeProjectionService } from '../application/services/attribute-projection.service';
+export { AttributeProjectionPreviewService } from '../application/services/attribute-projection-preview.service';
 export { OfferBuilderService } from '../application/services/offer-builder.service';
 export { OfferCreationExecutionService } from '../application/services/offer-creation-execution.service';
 export { SellerPoliciesService } from '../application/services/seller-policies.service';
