@@ -1,3 +1,4 @@
+import { addedLineToOrderItem } from '../../../orders/domain/types/order-edits.types';
 /**
  * Order -> RegisterTransactionCommand mapper - unit tests
  *
@@ -808,5 +809,33 @@ describe('toRegisterTransactionCommand - bundle components (#3934)', () => {
         },
       }),
     ).toThrow('no known tax rate');
+  });
+});
+
+describe('toRegisterTransactionCommand - net-priced order with an OpenLinker rule gift', () => {
+  it('should compose without refusal and sum to what was paid', () => {
+    const cmd = toRegisterTransactionCommand({
+      order: order({
+        items: [
+          { id: 'i1', productId: 'p1', quantity: 1, price: 100, unitPriceGross: 123, name: 'Widget', taxRate: '23' },
+          addedLineToOrderItem('ol-gift:rule-1:1', {
+            changeId: 'rule-1',
+            editedAt: '2026-11-02T10:00:00.000Z',
+            editedBy: null,
+            productId: 'p2',
+            quantity: 1,
+            name: 'Spoon',
+            taxRate: '23',
+            gift: { source: 'ol-rule', ruleRef: 'rule-1' },
+          }),
+        ],
+        totals: { subtotal: 100, tax: 23, shipping: 0, total: 123, currency: 'PLN', taxTreatment: 'exclusive' },
+      } as Partial<Order>),
+      connectionId: 'c',
+      idempotencyKey: 'k',
+      giftConnectionForm: 'omit',
+    });
+    const sum = cmd.lines.reduce((acc, l) => acc + Math.round(l.quantity * l.unitPriceGross * 100), 0);
+    expect(sum).toBe(12300);
   });
 });

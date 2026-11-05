@@ -69,3 +69,13 @@ describe('overlay addedLines', () => {
     expect(snapshot.items).toHaveLength(1);
   });
 });
+
+describe('overlay gift line gross price', () => {
+  it('should carry unitPriceGross 0 beside price 0 so a net-priced order stays documentable', () => {
+    const edits = readOrderEdits(RAW);
+    const order = applyOrderEditsToOrder(ORDER, edits);
+    const gift = order.items.find((item) => item.gift !== undefined);
+    expect(gift).toMatchObject({ price: 0, unitPriceGross: 0 });
+  });
+});
+

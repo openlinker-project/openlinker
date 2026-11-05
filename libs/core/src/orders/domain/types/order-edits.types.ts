@@ -301,6 +301,9 @@ export function addedLineToOrderItem(key: string, edit: OrderAddedLineEdit): Ord
     ...(edit.variantId !== undefined && { variantId: edit.variantId }),
     quantity: edit.quantity,
     price: 0,
+    // 0 net is 0 gross: stating it is a fact, and a net-priced order refuses
+    // documents unless every line carries a gross.
+    unitPriceGross: 0,
     ...(edit.sku !== undefined && { sku: edit.sku }),
     ...(edit.name !== undefined && { name: edit.name }),
     gift: edit.gift,
