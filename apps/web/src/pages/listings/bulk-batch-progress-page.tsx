@@ -34,6 +34,9 @@ import {
 import { useBulkBatchQuery } from '../../features/listings/hooks/use-bulk-batch-query';
 import { useBulkRetryFailedMutation } from '../../features/listings/hooks/use-bulk-retry-failed-mutation';
 import { useConnectionsQuery } from '../../features/connections';
+import { splitAccountLevelFailures } from '../../features/listings/lib/account-level-failures';
+import { interpolate, useMessages } from '../../shared/i18n';
+import { usePlatform } from '../../shared/plugins';
 import {
   TERMINAL_BULK_BATCH_STATUSES,
   type BulkBatchRecordSummary,
@@ -58,7 +61,22 @@ export function BulkBatchProgressPage(): ReactElement {
     () => selectFailedRecords(query.data?.records ?? []),
     [query.data],
   );
-  const fixTarget = useMemo(() => resolveBatchFixTarget(failedRecords), [failedRecords]);
+  const copy = useMessages('listings').bulkBatch;
+  const batchConnection = connectionsQuery.data?.find((c) => c.id === query.data?.connectionId);
+  const accountRefusal = usePlatform(batchConnection?.platformType)?.offerValidation
+    ?.accountLevelRefusal;
+  // Account-level refusals (#4004) are reported once, above the table; only the
+  // offer-level failures are something the wizard can fix.
+  const split = useMemo(
+    () => splitAccountLevelFailures(failedRecords, accountRefusal?.errorCodes ?? []),
+    [failedRecords, accountRefusal],
+  );
+  const accountLevelRecordIds = useMemo(
+    () => new Set(split.account.map((r) => r.id)),
+    [split],
+  );
+  const fixTarget = useMemo(() => resolveBatchFixTarget(split.offer), [split]);
+  const offerFailedCount = split.offer.length;
 
   const batchId_ = query.data?.id;
   const batchConnectionId = query.data?.connectionId;
@@ -233,6 +251,44 @@ export function BulkBatchProgressPage(): ReactElement {
           equivalent: a payload the platform rejected cannot be healed by
           re-sending it, so the data fix leads and retry stays one click away
           for the transient case. */}
+      {accountRefusal && split.account.length > 0
+        ? (() => {
+            const notice = accountRefusal.describe({
+              affected: split.account.length,
+              total: batch.totalCount,
+              connectionConfig: batchConnection?.config ?? {},
+            });
+            return (
+              <Alert
+                tone="error"
+                title={notice.title}
+                action={
+                  notice.action ? (
+                    <a
+                      className="button button--secondary"
+                      href={notice.action.href}
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      {notice.action.label} ↗
+                    </a>
+                  ) : undefined
+                }
+                data-testid="bulk-batch-account-refusal"
+              >
+                {notice.detail}
+                {split.firstAccountError ? (
+                  <div className="bulk-batch__recovery-reason">
+                    {interpolate(copy.accountRefused.providerSaid, { name: connectionName })} "
+                    {split.firstAccountError.message}"{' '}
+                    <span className="mono-text">{split.firstAccountError.code}</span>
+                  </div>
+                ) : null}
+              </Alert>
+            );
+          })()
+        : null}
+
       {isTerminal && batch.failedCount > 0 && write.visible ? (
         <Alert tone="warning">
           <div className="bulk-batch__recovery">
@@ -242,9 +298,10 @@ export function BulkBatchProgressPage(): ReactElement {
                   ? `${batch.failedCount.toLocaleString()} ${batch.failedCount === 1 ? 'variant' : 'variants'} failed. Nothing went live.`
                   : `${batch.failedCount.toLocaleString()} of ${batch.totalCount.toLocaleString()} variants failed. ${batch.succeededCount.toLocaleString()} ${batch.succeededCount === 1 ? 'offer is' : 'offers are'} live.`}
               </strong>{' '}
-              Reopen the wizard with the failed variants already selected, or re-run the
-              batch exactly as saved.
-              {fixTarget.blocker !== null ? (
+              {offerFailedCount === 0
+                ? copy.recovery.accountOnly
+                : 'Reopen the wizard with the failed variants already selected, or re-run the batch exactly as saved.'}
+              {offerFailedCount > 0 && fixTarget.blocker !== null ? (
                 <div className="bulk-batch__recovery-reason">
                   {describeBatchFixBlocker(fixTarget.blocker)}
                 </div>
@@ -262,7 +319,7 @@ export function BulkBatchProgressPage(): ReactElement {
                     : `Retry unchanged (${batch.failedCount.toLocaleString()})`}
                 </Button>
               </ReadOnlyLock>
-              {fixTarget.blocker === null && write.canWrite ? (
+              {offerFailedCount === 0 ? null : fixTarget.blocker === null && write.canWrite ? (
                 <Link
                   className="button button--primary"
                   to={buildBatchFixUrl({
@@ -272,7 +329,7 @@ export function BulkBatchProgressPage(): ReactElement {
                     batchId: batch.id,
                   })}
                 >
-                  Fix and resubmit ({failedRecords.length.toLocaleString()}) →
+                  Fix and resubmit ({offerFailedCount.toLocaleString()}) →
                 </Link>
               ) : (
                 <ReadOnlyLock
@@ -280,7 +337,7 @@ export function BulkBatchProgressPage(): ReactElement {
                   message={DEMO_LOCK_MESSAGE}
                 >
                   <Button tone="primary" disabled>
-                    Fix and resubmit ({failedRecords.length.toLocaleString()}) →
+                    Fix and resubmit ({offerFailedCount.toLocaleString()}) →
                   </Button>
                 </ReadOnlyLock>
               )}
@@ -292,6 +349,8 @@ export function BulkBatchProgressPage(): ReactElement {
       <BulkBatchProgressTable
         records={batch.records}
         buildFixUrl={write.canWrite ? buildRowFixUrl : undefined}
+        accountLevelRecordIds={accountLevelRecordIds}
+        accountLevelRowLabel={copy.accountRefused.rowPointer}
       />
 
       {isTerminal ? (
