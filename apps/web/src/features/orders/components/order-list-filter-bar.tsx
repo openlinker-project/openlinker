@@ -389,6 +389,15 @@ export function OrderListFilterBar({
         }}
       />
       <FilterCheck
+        label={COPY.checkPaymentNotSent}
+        tone="warning"
+        checked={state.paymentNotSent}
+        count={summary?.paymentNotSent}
+        onChange={() => {
+          filtersApi.toggle('paymentNotSent');
+        }}
+      />
+      <FilterCheck
         label={COPY.checkWaiting}
         tone="warning"
         checked={state.waitingInOpenLinker}
@@ -793,6 +802,20 @@ export function OrderListFilterBar({
             {COPY.quickOmsStopped}
             {summary?.omsAttention === undefined ? null : (
               <span className="chip__count">{summary.omsAttention}</span>
+            )}
+          </Chip>
+        ) : null}
+        {state.paymentNotSent || summary?.paymentNotSent ? (
+          <Chip
+            tone="warning"
+            active={state.paymentNotSent}
+            onClick={() => {
+              filtersApi.toggle('paymentNotSent');
+            }}
+          >
+            {COPY.quickPaymentNotSent}
+            {summary?.paymentNotSent === undefined ? null : (
+              <span className="chip__count">{summary.paymentNotSent}</span>
             )}
           </Chip>
         ) : null}

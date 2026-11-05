@@ -16,6 +16,8 @@ import type {
   OrderRecord,
   RetryOrderDestinationResult,
   RetryOrderRoutingResult,
+  PaymentWritebackRetryResult,
+  PaymentWritebackHandledResult,
   OrderHealthSummary,
   OrderHealthSummaryFilters,
   OrderSlaSummary,
@@ -90,6 +92,10 @@ export interface OrdersApi {
    * outcome shows on the order itself. 409 carries a `code` naming why not.
    */
   retryRouting: (internalOrderId: string) => Promise<RetryOrderRoutingResult>;
+  /** Queue the payment writes again for these orders (#3963). */
+  retryPaymentWriteback: (internalOrderIds: string[]) => Promise<PaymentWritebackRetryResult>;
+  /** The operator updated the payment in the shop by hand (#3963). */
+  markPaymentWritebackHandled: (internalOrderIds: string[]) => Promise<PaymentWritebackHandledResult>;
   /**
    * Mark the order packed (#2287). Returns the updated record, and returns 200
    * on an idempotent replay too — marking an already-packed order keeps the
@@ -290,6 +296,10 @@ function buildQuery(
   if (filters?.attention !== undefined) {
     params.set('attention', String(filters.attention));
   }
+  // #3963 - same `!== undefined` guard: `false` is a real predicate.
+  if (filters?.paymentNotSent !== undefined) {
+    params.set('paymentNotSent', String(filters.paymentNotSent));
+  }
   // #2997 — boolean, same `!== undefined` guard: `false` ("exclude packed
   // orders") is a real predicate.
   if (filters?.packed !== undefined) {
@@ -373,6 +383,18 @@ export function createOrdersApi(request: ApiRequest, requestBlob: ApiBlobRequest
         `/orders/${encodeURIComponent(internalOrderId)}/destinations/${encodeURIComponent(destinationConnectionId)}/retry`,
         { method: 'POST' },
       );
+    },
+    retryPaymentWriteback(internalOrderIds): Promise<PaymentWritebackRetryResult> {
+      return request<PaymentWritebackRetryResult>('/orders/payment-writeback/retry', {
+        method: 'POST',
+        body: JSON.stringify({ internalOrderIds }),
+      });
+    },
+    markPaymentWritebackHandled(internalOrderIds): Promise<PaymentWritebackHandledResult> {
+      return request<PaymentWritebackHandledResult>('/orders/payment-writeback/handled', {
+        method: 'POST',
+        body: JSON.stringify({ internalOrderIds }),
+      });
     },
     retryRouting(internalOrderId): Promise<RetryOrderRoutingResult> {
       return request<RetryOrderRoutingResult>(
