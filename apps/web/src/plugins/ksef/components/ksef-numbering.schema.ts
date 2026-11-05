@@ -50,7 +50,7 @@ export interface NumberingFormValues {
 }
 
 /** The editor schema, built with the active language's messages. */
-export function createNumberingFormSchema(copy: NumberingSchemaCopy): z.ZodType<NumberingFormValues> {
+export function createNumberingFormSchema(copy: NumberingSchemaCopy) {
   return z
     .object({
       name: z.string(),

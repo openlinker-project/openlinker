@@ -105,6 +105,7 @@
       "split-payment": "Split payment (mechanizm podzielonej płatności)",
       "triangulation": "Triangular transaction (procedura uproszczona)"
     },
+    "annotationsTitle": "Annotations",
     "buyer": "Buyer",
     "correctedInvoice": "Corrects invoice",
     "correctedKsefNumber": "KSeF number of corrected invoice",

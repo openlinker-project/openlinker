@@ -685,7 +685,7 @@ export function KsefFa3View({
       {data.annotations.length > 0 ? (
         <section className="ksef-fa3-view__annotations">
           <div className="ksef-fa3-view__section-title">
-            {copy.annotations}
+            {copy.annotationsTitle}
           </div>
           <ul>
             {data.annotations.map((annotation) => (

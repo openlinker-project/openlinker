@@ -93,7 +93,6 @@ const VARIABLE_COPY_KEYS = {
 
 export const VARIABLE_LEGEND: Record<NumberingPatternVariable, string> = labelMap(
   NumberingPatternVariableValues,
-  NumberingSeqStatusValues,
   (copy, key) => copy.variables[VARIABLE_COPY_KEYS[key]],
 );
 
