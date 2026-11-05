@@ -457,7 +457,7 @@ export class OrderSyncService implements IOrderSyncService {
       const destinationConnectionId = destinations[index].connectionId;
 
       if (outcome.status === 'fulfilled') {
-        const { orderRef } = outcome.value;
+        const { orderRef, created } = outcome.value;
         this.logger.log(
           `Order ${order.id} synced to destination ${destinationConnectionId} (destination order: ${orderRef.orderId}${orderRef.orderNumber ? `, orderNumber: ${orderRef.orderNumber}` : ''})`
         );
@@ -465,6 +465,7 @@ export class OrderSyncService implements IOrderSyncService {
           destinationConnectionId,
           status: 'success',
           orderRef,
+          created,
         };
       }
 

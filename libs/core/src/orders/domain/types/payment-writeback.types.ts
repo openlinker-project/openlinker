@@ -179,6 +179,26 @@ export interface DecidePaymentWritebackInput {
   existing: PaymentWriteback;
 }
 
+/**
+ * The send-time half of the rule: given that a destination is waiting for a
+ * payment, is anything now stopping the send? Shared by the ingestion-time
+ * decision and the writeback job, which re-checks right before it writes
+ * because an order can be cancelled or refunded between the two.
+ * `null` means send.
+ */
+export function paymentWritebackBlock(input: {
+  cod: boolean;
+  isCancelled: boolean;
+  hasRefund: boolean;
+  mode: PaymentWritebackMode;
+}): { state: PaymentWritebackState; reason?: PaymentWritebackReason } | null {
+  if (input.cod) return { state: 'cod' };
+  if (input.isCancelled) return { state: 'not-sent', reason: 'cancelled' };
+  if (input.hasRefund) return { state: 'not-sent', reason: 'refunded' };
+  if (input.mode === 'leave') return { state: 'skipped-by-setting' };
+  return null;
+}
+
 export type PaymentWritebackDecision =
   | { connectionId: string; action: 'send' }
   | {
@@ -237,19 +257,12 @@ export function decidePaymentWriteback(input: DecidePaymentWritebackInput): Paym
       if (!wasUnpaidBefore) continue;
     }
 
-    if (input.isCancelled) {
-      decisions.push({ connectionId: dest.connectionId, action: 'record', state: 'not-sent', reason: 'cancelled' });
-      continue;
-    }
-    if (input.hasRefund) {
-      decisions.push({ connectionId: dest.connectionId, action: 'record', state: 'not-sent', reason: 'refunded' });
-      continue;
-    }
-    if (dest.mode === 'leave') {
-      decisions.push({ connectionId: dest.connectionId, action: 'record', state: 'skipped-by-setting' });
-      continue;
-    }
-    decisions.push({ connectionId: dest.connectionId, action: 'send' });
+    const block = paymentWritebackBlock({ ...input, cod: false, mode: dest.mode });
+    decisions.push(
+      block === null
+        ? { connectionId: dest.connectionId, action: 'send' }
+        : { connectionId: dest.connectionId, action: 'record', ...block }
+    );
   }
 
   return decisions;
