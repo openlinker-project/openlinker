@@ -257,6 +257,8 @@ export interface ComputeBlockersInput {
   barcode?: string | null;
   /** Whether a catalogue lookup actually ran for this batch (#2211/#2243). */
   catalogueConsulted?: boolean;
+  /** The barcode matched a catalogue product that was set aside for the mapping (#3994). */
+  barcodeMatchedCatalogue?: boolean;
   /** Included siblings of this row's product that would create their own card (#2243). */
   siblingsWithoutCatalogueCard?: number;
   /** Included sibling count for the row's product; 1 ⇒ nothing to group (#2243). */
@@ -341,6 +343,7 @@ export function computeBlockers(input: ComputeBlockersInput): BulkRowBlocker[] {
         suppliedParameters: input.suppliedParameters,
         barcode: input.barcode,
         catalogueConsulted: input.catalogueConsulted,
+        barcodeMatchedCatalogue: input.barcodeMatchedCatalogue,
         siblingsWithoutCatalogueCard: input.siblingsWithoutCatalogueCard,
         includedSiblingCount: input.includedSiblingCount,
       }),
@@ -759,6 +762,7 @@ export function recomputeVariantBlockers(
     suppliedParameters: variant.override.overrides?.parameters,
     barcode: effectiveVariantEan(variant),
     catalogueConsulted: context.catalogueConsulted,
+    barcodeMatchedCatalogue: variant.overriddenCard !== null,
     siblingsWithoutCatalogueCard: coverage.withoutCard,
     includedSiblingCount: coverage.included,
     categorySchemaUnavailable:

@@ -15253,7 +15253,37 @@ input.bulk-dispatch__num--wide {
    Scoped to the marketplace table: the shop review step shares the grid
    classes and has no category to show. */
 .bulk-review__table--with-category .bulk-review__grid {
-  grid-template-columns: 30px minmax(0, 2fr) minmax(0, 1.25fr) minmax(0, 1.6fr) 0.6fr 0.9fr 72px;
+  /* Every row is its own grid, so the tracks must not depend on row content
+     (min-content would size Status per row and Category would stop lining up).
+     The fixed floor fits the usual widest chip, "already on {destination}". */
+  grid-template-columns: 30px minmax(0, 1.8fr) minmax(232px, 1.3fr) minmax(0, 1.5fr) minmax(0, 0.55fr) minmax(0, 0.85fr) 64px;
+}
+/* A destination name longer than the floor wraps inside its chip instead of
+   spilling into the Category column. */
+.bulk-review__table--with-category .bulk-chip {
+  max-width: 100%;
+  white-space: normal;
+  text-align: left;
+}
+/* Tablet: seven columns do not fit, so the category moves under the product
+   name - the row still reads "what, which category" left to right. */
+@media (min-width: 721px) and (max-width: 1023px) {
+  .bulk-review__table--with-category .bulk-review__grid {
+    grid-template-columns: 30px minmax(0, 1.6fr) minmax(0, 1.3fr) minmax(0, 0.55fr) minmax(0, 0.85fr) 56px;
+    grid-template-areas:
+      "lead name status stock price action"
+      "lead cat  status stock price action";
+    row-gap: var(--space-2);
+  }
+  .bulk-review__table--with-category .bulk-review__c-lead { grid-area: lead; }
+  .bulk-review__table--with-category .bulk-review__name { grid-area: name; }
+  .bulk-review__table--with-category .bulk-review__c-status { grid-area: status; }
+  .bulk-review__table--with-category .bulk-review__c-cat { grid-area: cat; }
+  .bulk-review__table--with-category .bulk-review__c-stock { grid-area: stock; }
+  .bulk-review__table--with-category .bulk-review__c-price { grid-area: price; }
+  .bulk-review__table--with-category .bulk-review__c-action { grid-area: action; }
+  .bulk-review__table--with-category .bulk-review__head .bulk-review__c-cat { display: none; }
+  .bulk-review__table--with-category .bulk-review__vrow .bulk-review__c-cat { padding-left: 28px; }
 }
 .review-cat {
   display: grid;
