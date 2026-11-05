@@ -19,6 +19,8 @@
  *
  * @module libs/integrations/shopify/src/infrastructure/adapters/product-publisher
  */
+import { createHash } from 'node:crypto';
+
 import type { PublishProductCommand } from '@openlinker/core/listings';
 
 export const DEFAULT_OPTION_NAME = 'Title';
@@ -237,4 +239,23 @@ export function toShopifyHandle(text: string): string {
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '');
+}
+
+/** Shopify caps a handle at 255 characters; the readable part is kept short so the suffix always fits. */
+const GROUP_HANDLE_BASE_MAX = 60;
+
+/**
+ * The handle of a variant group's Shopify product, the same for every sibling:
+ * the readable name plus 8 hex characters of a hash of the group id, so no
+ * product the operator made by hand can hold it. Shopify does not serialise
+ * concurrent creates by handle (it suffixes `-1`, `-2`, measured live), so this
+ * is not a lock; it makes the products a race produced findable by direct
+ * reads (`<handle>`, `<handle>-1`, ...).
+ */
+export function groupHandle(cmd: PublishProductCommand, groupId: string): string {
+  const readable = toShopifyHandle(cmd.content?.seo?.slug?.trim() || cmd.content?.title?.trim() || 'product')
+    .slice(0, GROUP_HANDLE_BASE_MAX)
+    .replace(/-+$/g, '');
+  const tag = createHash('sha1').update(groupId).digest('hex').slice(0, 8);
+  return `${readable.length > 0 ? readable : 'product'}-ol${tag}`;
 }

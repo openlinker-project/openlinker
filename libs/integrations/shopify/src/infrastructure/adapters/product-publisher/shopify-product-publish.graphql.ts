@@ -112,6 +112,41 @@ export const PRODUCT_METAFIELD_DEFINITIONS_QUERY = `query OlProductMetafieldDefi
   }
 }`;
 
+/** Namespace and key of the marker every variant-group product carries (its OpenLinker group id). */
+export const GROUP_MARKER_NAMESPACE = 'openlinker';
+export const GROUP_MARKER_KEY = 'variant_group';
+
+/**
+ * Direct reads of the products that hold the given handles, one alias per
+ * handle, with their group marker. `productByIdentifier` answers null for a
+ * handle nobody holds; it is not the search index, so a product created a
+ * moment ago is found.
+ */
+export function groupCandidatesQuery(count: number): string {
+  const vars = Array.from({ length: count }, (_, i) => `$h${i}: String!`).join(', ');
+  const fields = Array.from(
+    { length: count },
+    (_, i) =>
+      `c${i}: productByIdentifier(identifier: { handle: $h${i} }) { id handle createdAt ` +
+      `marker: metafield(namespace: "${GROUP_MARKER_NAMESPACE}", key: "${GROUP_MARKER_KEY}") { value } }`,
+  ).join('\n  ');
+  return `query OlGroupCandidates(${vars}) {\n  ${fields}\n}`;
+}
+
+export interface GroupCandidateNode {
+  readonly id: string;
+  readonly handle: string;
+  readonly createdAt: string;
+  readonly marker: { readonly value: string } | null;
+}
+
+export const PRODUCT_DELETE_MUTATION = `mutation OlProductDelete($input: ProductDeleteInput!) {
+  productDelete(input: $input, synchronous: true) {
+    deletedProductId
+    userErrors { field message }
+  }
+}`;
+
 export interface MetafieldDefinitionsQuery {
   readonly metafieldDefinitions: ShopifyConnection<ShopifyMetafieldDefinitionNode>;
 }

@@ -25,6 +25,17 @@
  * with no mapping first looks for a variant carrying its option values and
  * adopts it, so a publish whose mapping write was lost does not duplicate it.
  *
+ * Sibling race (L-S2b): siblings publish concurrently, and two that both find
+ * no parent mapping each create a product. Shopify does not serialise
+ * `productSet` by handle (it suffixes `-1`, `-2`, measured live) and the host
+ * offers no lock, so the race is settled AFTER the create instead: every
+ * group product gets the same handle (`groupHandle`) and an `openlinker.
+ * variant_group` metafield, and the creator reads the products holding
+ * `<handle>`, `<handle>-1` ... directly. The winner is the one holding the bare
+ * handle (exactly one can), else the lowest id among marked candidates. A
+ * loser moves its variant onto the winner, deletes its own product and reports
+ * the winner as the parent, so every sibling's mapping names one product.
+ *
  * Stock: the configured location only (`ShopifyShopContextProvider`). A create
  * sets it in the same call; an update sets it with `inventorySetQuantities`
  * (compare-and-set against the level read with the product).
@@ -94,8 +105,12 @@ import {
   COLLECTION_ADD_PRODUCTS_MUTATION,
   COLLECTION_BY_HANDLE_QUERY,
   COLLECTION_CREATE_MUTATION,
+  GROUP_MARKER_KEY,
+  GROUP_MARKER_NAMESPACE,
+  groupCandidatesQuery,
   INVENTORY_SET_MUTATION,
   METAFIELDS_SET_MUTATION,
+  PRODUCT_DELETE_MUTATION,
   PRODUCT_METAFIELD_DEFINITIONS_QUERY,
   PRODUCT_SET_MUTATION,
   PUBLICATIONS_QUERY,
@@ -105,6 +120,7 @@ import {
   VARIANTS_BULK_UPDATE_MUTATION,
   type CollectionByHandleQuery,
   type CollectionCreatePayload,
+  type GroupCandidateNode,
   type MetafieldDefinitionsQuery,
   type ProductSetPayload,
   type PublicationsQuery,
@@ -129,6 +145,7 @@ import {
   buildVariantCoreFields,
   DEFAULT_OPTION_NAME,
   DEFAULT_OPTION_VALUE,
+  groupHandle,
   planImages,
   toShopifyHandle,
   unsupportedFieldWarnings,
@@ -147,6 +164,8 @@ const METAFIELDS_PER_CALL = 25;
 const DEFINITIONS_PAGE_SIZE = 250;
 /** `namespace.key`: what a linked parameter id looks like. */
 const DEFINITION_REF = /^[^.\s]+\.[^.\s]+$/;
+/** `<handle>` plus `-1` .. `-5`: the concurrent sibling creates a race can produce and still be settled. */
+const GROUP_HANDLE_PROBES = 6;
 
 function reasonOf(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
@@ -356,7 +375,7 @@ export class ShopifyProductPublisherAdapter
     const variantCore = buildVariantCoreFields(cmd, price.fields);
 
     if (!hasValue(group.externalParentProductId)) {
-      return this.createGroupParent(cmd, optionValues, variantCore, locationGid, warnings);
+      return this.createGroupParent(cmd, group, optionValues, variantCore, locationGid, warnings);
     }
 
     const parentId = String(group.externalParentProductId);
@@ -391,9 +410,12 @@ export class ShopifyProductPublisherAdapter
       }
     }
 
-    // The parent's shared fields, without `variants`, so every sibling survives.
+    // The parent's shared fields, without `variants`, so every sibling survives,
+    // and without `handle`: the group handle is what a later race is settled by.
     const files = this.planFiles(cmd, target, warnings);
-    const parent = await this.productSet(buildProductFields(cmd), target.id, locationGid, files, warnings);
+    const sharedFields = buildProductFields(cmd);
+    delete sharedFields.handle;
+    const parent = await this.productSet(sharedFields, target.id, locationGid, files, warnings);
 
     let variantGid: string;
     if (existing !== undefined) {
@@ -442,15 +464,26 @@ export class ShopifyProductPublisherAdapter
   /** The first sibling to publish: the product, its options and this variant, in one `productSet`. */
   private async createGroupParent(
     cmd: PublishProductCommand,
+    group: PublishProductVariantGroup,
     optionValues: OptionValueRef[],
     variantCore: Record<string, unknown>,
     locationGid: string,
     warnings: string[],
   ): Promise<PublishProductResult> {
     this.assertTitle(cmd);
+    const handle = groupHandle(cmd, group.groupId);
     const files = this.planFiles(cmd, null, warnings);
     const input = {
       ...buildProductFields(cmd),
+      handle,
+      metafields: [
+        {
+          namespace: GROUP_MARKER_NAMESPACE,
+          key: GROUP_MARKER_KEY,
+          type: 'single_line_text_field',
+          value: group.groupId,
+        },
+      ],
       // Only this variant's values are declared; later siblings add their own values.
       productOptions: optionValues.map((ov) => ({ name: ov.optionName, values: [{ name: ov.name }] })),
       variants: [
@@ -472,11 +505,140 @@ export class ShopifyProductPublisherAdapter
         `Shopify created product ${product.id} but reported no variant. Check the shop before publishing again.`,
       );
     }
+
+    const winnerGid = await this.raceWinner(product.id, handle, group.groupId, warnings);
+    if (winnerGid !== null && winnerGid !== product.id) {
+      const merged = await this.mergeIntoWinner(
+        winnerGid,
+        product.id,
+        cmd,
+        optionValues,
+        variantCore,
+        locationGid,
+        warnings,
+      );
+      if (merged !== null) {
+        return merged;
+      }
+    }
+
     await this.finishProduct(product, cmd, warnings);
     return {
       externalProductId: fromShopifyGid(variant.id),
       externalParentProductId: fromShopifyGid(product.id),
       status: statusOf(product.status),
+      ...(warnings.length > 0 ? { warnings } : {}),
+    };
+  }
+
+  /**
+   * The product every sibling of the group should use, or null when it cannot
+   * be told (the product just created is then kept). Never throws.
+   */
+  private async raceWinner(
+    ownGid: string,
+    handle: string,
+    groupId: string,
+    warnings: string[],
+  ): Promise<string | null> {
+    const handles = [handle, ...Array.from({ length: GROUP_HANDLE_PROBES - 1 }, (_, i) => `${handle}-${i + 1}`)];
+    let candidates: GroupCandidateNode[];
+    try {
+      const data = await this.client.query<Record<string, GroupCandidateNode | null>>(
+        groupCandidatesQuery(handles.length),
+        Object.fromEntries(handles.map((h, i) => [`h${i}`, h])),
+      );
+      candidates = Object.values(data).filter(
+        (c): c is GroupCandidateNode => c !== null && c.marker?.value === groupId,
+      );
+    } catch (error) {
+      warnings.push(
+        `Could not check for a concurrent publish of the same product (${reasonOf(error)}); ` +
+          'if a sibling variant was published at the same moment, Shopify may now hold two products.',
+      );
+      return null;
+    }
+    if (!candidates.some((c) => c.id === ownGid)) {
+      // More concurrent creates than probed handles, or our own write is not readable yet.
+      this.logger.warn(`Variant group ${groupId}: own product ${ownGid} not among the handle probes`);
+    }
+    const bare = candidates.find((c) => c.handle === handle);
+    if (bare !== undefined) {
+      return bare.id;
+    }
+    const byId = [...candidates].sort((a, b) => Number(fromShopifyGid(a.id)) - Number(fromShopifyGid(b.id)));
+    return byId[0]?.id ?? null;
+  }
+
+  /**
+   * A losing sibling: this variant onto the winner, then the own duplicate
+   * deleted. Null (keep the own product) when the variant could not be moved,
+   * so nothing is lost; never throws.
+   */
+  private async mergeIntoWinner(
+    winnerGid: string,
+    ownGid: string,
+    cmd: PublishProductCommand,
+    optionValues: OptionValueRef[],
+    variantCore: Record<string, unknown>,
+    locationGid: string,
+    warnings: string[],
+  ): Promise<PublishProductResult | null> {
+    let winner: PublishedProductNode;
+    let variantGid: string;
+    try {
+      winner = await this.readTarget(fromShopifyGid(winnerGid), locationGid);
+      const existing = findVariantByOptions(winner.variants.nodes, optionValues);
+      if (existing !== undefined) {
+        variantGid = existing.id;
+        await this.setStock(existing, locationGid, cmd.stock, warnings);
+      } else {
+        const created = await this.client.mutate<VariantsBulkPayload>(
+          VARIANTS_BULK_CREATE_MUTATION,
+          {
+            productId: winnerGid,
+            variants: [
+              {
+                optionValues,
+                ...variantCore,
+                inventoryQuantities: [{ locationId: locationGid, availableQuantity: cmd.stock }],
+              },
+            ],
+          },
+          'productVariantsBulkCreate',
+        );
+        const createdId = created.productVariants?.[0]?.id;
+        if (createdId === undefined) {
+          throw new Error('the variant create answered without an id');
+        }
+        variantGid = createdId;
+      }
+    } catch (error) {
+      warnings.push(
+        `A sibling variant created Shopify product ${fromShopifyGid(winnerGid)} at the same moment, and this ` +
+          `variant could not be moved onto it (${reasonOf(error)}); it stays on its own product ` +
+          `${fromShopifyGid(ownGid)}. Merge the two in Shopify.`,
+      );
+      return null;
+    }
+
+    this.logger.warn(
+      `Variant group race on connection ${this.connection.id}: moved variant ${cmd.internalVariantId} ` +
+        `from ${ownGid} onto ${winnerGid}`,
+    );
+    try {
+      await this.client.mutate<object>(PRODUCT_DELETE_MUTATION, { input: { id: ownGid } }, 'productDelete');
+    } catch (error) {
+      warnings.push(
+        `The duplicate Shopify product ${fromShopifyGid(ownGid)} left by a concurrent publish could not be ` +
+          `deleted (${reasonOf(error)}); delete it in Shopify.`,
+      );
+    }
+    await this.finishProduct(winner, cmd, warnings);
+    return {
+      externalProductId: fromShopifyGid(variantGid),
+      externalParentProductId: fromShopifyGid(winnerGid),
+      status: statusOf(winner.status),
       ...(warnings.length > 0 ? { warnings } : {}),
     };
   }
