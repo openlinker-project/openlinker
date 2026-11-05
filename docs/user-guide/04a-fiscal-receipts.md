@@ -47,7 +47,7 @@ One of three outcomes follows:
 | Outcome | What you see | What to do |
 |---|---|---|
 | **Registered** | Receipt number, signing identity, and (once available) a link to the hosted receipt. An outcome with no link yet is still a full success — some providers report identifiers only. | Nothing — done. |
-| **Rejected** | A reason (e.g. an unresolved tax rate) and an enabled **Register receipt** button. | Fix the cause and register again — safe, because nothing was created. |
+| **Rejected** | A reason (e.g. an unresolved tax rate) and an enabled **Register again** button. | Fix the cause and press **Register again** - safe, because nothing was created. It sends a new receipt as the next attempt; the refused one stays listed under **Earlier attempts** with its codes. |
 | **Unconfirmed** | A warning that the sale *may* already be registered, and a **Look it up** button — no retry button anywhere on this surface. | Click **Look it up**. If the device is simply slower than the check, wait and look it up again later — this is normal, not a fault. |
 
 <!-- screenshot: Fiscal receipt panel, registered state, showing receipt number + signing identity + artefact link -->

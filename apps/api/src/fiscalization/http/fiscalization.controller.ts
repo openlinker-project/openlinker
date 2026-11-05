@@ -58,6 +58,7 @@ import {
   fiscalRegistrationIdempotencyKey,
   OrderAlreadyHasInvoiceException,
   OrderAlreadyRegisteredException,
+  FiscalRegistrationNotRestartableException,
   UnsupportedFiscalPriceTreatmentError,
   toRegisterTransactionCommand,
 } from '@openlinker/core/fiscalization';
@@ -486,7 +487,10 @@ export class FiscalizationController {
       error instanceof OrderAlreadyHasInvoiceException ||
       // #2157: a concurrent registration/issuance holds the per-order lock and
       // has persisted nothing yet — retryable, same 409 treatment.
-      error instanceof FiscalRegistrationContendedException
+      error instanceof FiscalRegistrationContendedException ||
+      // #3960: the request would change nothing, so it is refused rather than
+      // answered with a 202 an operator reads as success.
+      error instanceof FiscalRegistrationNotRestartableException
     ) {
       return new ConflictException(error.message);
     }
@@ -523,6 +527,8 @@ export class FiscalizationController {
       orderId: record.orderId,
       providerType: record.providerType,
       idempotencyKey: record.idempotencyKey,
+      attempt: record.attempt,
+      previousAttemptId: record.previousAttemptId,
       status: record.status,
       providerReference: record.providerReference,
       documentReference: record.documentReference,

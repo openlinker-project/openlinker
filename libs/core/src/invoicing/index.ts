@@ -97,7 +97,7 @@ export {
   toIssueInvoiceCommand,
   OrderToIssueInvoiceCommandInput,
 } from './application/mappers/order-to-issue-invoice-command.mapper';
-export { IInvoiceService } from './application/services/invoice.service.interface';
+export { IInvoiceService, IssueInvoiceOptions } from './application/services/invoice.service.interface';
 export { InvoiceService } from './application/services/invoice.service';
 // Per-order issuance lock key + TTL (#2047), reused verbatim by
 // FiscalRegistrationService (#2157) so both write paths serialize under the
