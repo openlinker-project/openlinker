@@ -688,6 +688,14 @@ export interface PlatformContribution {
    * its own name is detail - see `resolvePlatformShortLabel`.
    */
   shortLabel?: string;
+  /**
+   * The platform whose category IDs this destination accepts, when it takes
+   * another platform's category tree instead of its own (a borrowed
+   * taxonomy, #1045 - Erli uses Allegro category IDs). Surfaces that ask the
+   * operator to type a category ID name this platform, so the operator knows
+   * which ID to look up. Omitted, the destination's own name is used.
+   */
+  categoryIdSource?: string;
   /** Setup-card metadata for `PlatformPicker`. Omit if no guided wizard. */
   setupCard?: PlatformSetupCard;
   /**

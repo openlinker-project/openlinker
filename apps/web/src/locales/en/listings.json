@@ -210,7 +210,7 @@
       },
       "noMatch": {
         "detail": {
-          "one": "No category was detected, so this variant can't be listed yet. Set one for all {n} variant.",
+          "one": "No category was detected, so this variant can't be listed yet. Set one for this variant.",
           "other": "No category was detected, so this variant can't be listed yet. Set one for all {n} variants."
         },
         "title": "Barcode {ean} isn't in the {destination} catalog, and no category mapping covers this product."
@@ -448,7 +448,7 @@
       "changeAria": "Change category",
       "eyebrow": "Category",
       "manualDescription": "Reuses the resolved marketplace category id. Leave blank to resolve from your configured category mappings at submit.",
-      "manualLabel": "Marketplace category ID",
+      "manualLabel": "{platform} category ID",
       "manualPlaceholder": "e.g. 12345",
       "notSet": "Not set",
       "requiredAria": "Category is required",

@@ -185,7 +185,15 @@ export function resolveStreamReducer(
  */
 function incompleteStreamMessage(completion: 'failed' | 'truncated' | 'aborted'): string {
   const copy = getMessages('listings').useResolveStream;
-  return completion === 'failed' ? copy.failed : copy.truncated;
+  switch (completion) {
+    case 'failed':
+      return copy.failed;
+    // An aborted stream also stopped before its last chunk, so the operator is
+    // told the same thing as for a body cut short.
+    case 'truncated':
+    case 'aborted':
+      return copy.truncated;
+  }
 }
 
 export interface UseResolveStreamInput {

@@ -16,14 +16,13 @@
  */
 import { z } from 'zod';
 
-import { getMessages, type Messages, type ResolvedCopy } from '../../../../shared/i18n';
+import type { Messages, ResolvedCopy } from '../../../../shared/i18n';
 
 /** The `listings.bulkEditModal.validation` copy. */
 export type BulkEditModalValidationCopy =
   ResolvedCopy<Messages['listings']>['bulkEditModal']['validation'];
 
-// Offer title cap (Allegro's is 75). The copy is parametrized by platform in
-// the component; the numeric cap is shared across supported marketplaces.
+// Offer title cap (Allegro's is 75), shared across supported marketplaces.
 const TITLE_MAX = 75;
 const DESCRIPTION_MAX = 50_000;
 
@@ -36,7 +35,7 @@ const DESCRIPTION_MAX = 50_000;
  */
 export function makeBulkEditModalSchema(
   requireCategory: boolean,
-  copy: BulkEditModalValidationCopy = getMessages('listings').bulkEditModal.validation,
+  copy: BulkEditModalValidationCopy,
 ) {
   return z.object({
     title: z.string().trim().min(1, copy.titleRequired).max(TITLE_MAX),

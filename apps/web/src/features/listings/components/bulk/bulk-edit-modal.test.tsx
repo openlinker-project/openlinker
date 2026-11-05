@@ -524,7 +524,7 @@ describe('BulkEditModal', () => {
     expect(baseOverride.overrides?.productCardId).toBe('card-B');
   });
 
-  it('renders a manual category-id input instead of the tree picker when the destination cannot browse', () => {
+  it('renders a manual category-id input named after the destination when it cannot browse', () => {
     renderWithProviders(
       <BulkEditModal
         open
@@ -538,7 +538,29 @@ describe('BulkEditModal', () => {
       />,
     );
 
-    expect(screen.getByLabelText('Marketplace category ID')).toBeInTheDocument();
+    // The label names the platform whose category IDs the field takes - here
+    // the destination's own, since the Allegro fixture declares no other source.
+    expect(screen.getByLabelText('Allegro category ID')).toBeInTheDocument();
+  });
+
+  it('names the borrowed taxonomy in the manual category label, not the destination (#1045)', () => {
+    // Erli takes Allegro category IDs (its plugin declares categoryIdSource), so
+    // the operator must be told to look up an Allegro ID, not an Erli one.
+    renderWithProviders(
+      <BulkEditModal
+        open
+        onOpenChange={() => undefined}
+        row={makeRow()}
+        connection={erliConnection}
+        canBrowseCategories={false}
+        currency="PLN"
+        defaults={DEFAULTS}
+        onSave={() => undefined}
+      />,
+    );
+
+    expect(screen.getByLabelText('Allegro category ID')).toBeInTheDocument();
+    expect(screen.queryByLabelText('Erli category ID')).not.toBeInTheDocument();
   });
 
   it('omits a blank category from the saved base override so the backend resolves it at submit (#1096)', async () => {
@@ -930,7 +952,7 @@ describe('BulkEditModal', () => {
     );
 
     expect(screen.queryByText('Category parameters')).not.toBeInTheDocument();
-    expect(screen.getByLabelText('Marketplace category ID')).toBeInTheDocument();
+    expect(screen.getByLabelText('Allegro category ID')).toBeInTheDocument();
   });
 
   describe('multi-variant editor (#1741)', () => {
@@ -983,7 +1005,7 @@ describe('BulkEditModal', () => {
       expect(screen.getByText('Category not set')).toBeInTheDocument();
 
       fireEvent.click(screen.getByRole('radio', { name: /Shared base/ }));
-      fireEvent.change(screen.getByLabelText('Marketplace category ID'), {
+      fireEvent.change(screen.getByLabelText('Allegro category ID'), {
         target: { value: '12345' },
       });
       fireEvent.click(screen.getByRole('radio', { name: /Rozmiar: M/ }));

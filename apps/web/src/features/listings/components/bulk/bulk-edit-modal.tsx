@@ -1374,6 +1374,7 @@ function BulkEditModalForm({
             canBrowseCategories={canBrowseCategories}
             currency={currency}
             platformName={platformName}
+            categoryIdSource={platform?.categoryIdSource ?? platformName}
             platformSection={platformSection}
             platformParams={platformParams}
             onPlatformParamsChange={setPlatformParams}
@@ -1626,6 +1627,8 @@ interface BaseScopeFormProps {
   canBrowseCategories: boolean;
   currency: string;
   platformName: string;
+  /** The platform whose category IDs the manual category field takes. */
+  categoryIdSource: string;
   platformSection?: ComponentType<BulkOfferRowSectionProps>;
   platformParams: Record<string, unknown>;
   onPlatformParamsChange: (next: Record<string, unknown>) => void;
@@ -1672,6 +1675,7 @@ function BaseScopeForm({
   canBrowseCategories,
   currency,
   platformName,
+  categoryIdSource,
   platformSection,
   platformParams,
   onPlatformParamsChange,
@@ -1854,7 +1858,9 @@ function BaseScopeForm({
         ) : (
           <FormField
             name="bulk-edit-category"
-            label={copy.category.manualLabel}
+            label={interpolate(copy.category.manualLabel, {
+              platform: categoryIdSource,
+            })}
             description={copy.category.manualDescription}
             error={form.formState.errors.categoryId?.message}
           >
