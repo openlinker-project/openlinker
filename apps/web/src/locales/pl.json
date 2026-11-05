@@ -47,7 +47,7 @@
         "needsProductParameters": {
           "allFilledDetail": "Zapisz, żeby zdjąć tę blokadę.",
           "allFilledTitle": "Każdy wymagany parametr produktu ma już wartość.",
-          "listDetail": "Uzupełnij je we wspólnej bazie albo we własnych polach tego wariantu.",
+          "listDetail": "Wybierz parametr, żeby przejść do jego pola.",
           "listTitle": {
             "few": "Allegro potrzebuje {n} parametrów produktu, żeby utworzyć kartę produktu dla tego wariantu:",
             "many": "Allegro potrzebuje {n} parametrów produktu, żeby utworzyć kartę produktu dla tego wariantu:",
@@ -89,6 +89,12 @@
       "generic": {
         "detail": "Usuń tę blokadę dla wariantu albo wyłącz wariant, żeby go pominąć.",
         "title": "{label}."
+      },
+      "panel": {
+        "advisoryNote": "Można opublikować",
+        "ariaLabel": "Co blokuje ten wariant",
+        "consequence": "Wynika z przyczyny powyżej",
+        "jumpTo": "Przejdź do pola {name}"
       }
     }
   },

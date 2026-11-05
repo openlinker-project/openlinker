@@ -43,7 +43,7 @@
         "needsProductParameters": {
           "allFilledDetail": "Save to clear this blocker.",
           "allFilledTitle": "Every required product parameter now has a value.",
-          "listDetail": "Fill them in on the shared base, or in this variant's own fields.",
+          "listDetail": "Select one to go to its field.",
           "listTitle": {
             "one": "Allegro needs {n} product parameter to create a product card for this variant:",
             "other": "Allegro needs {n} product parameters to create a product card for this variant:"
@@ -83,6 +83,12 @@
       "generic": {
         "detail": "Resolve this blocker for the variant, or switch the variant off to skip it.",
         "title": "{label}."
+      },
+      "panel": {
+        "advisoryNote": "Can still publish",
+        "ariaLabel": "What blocks this variant",
+        "consequence": "Follows from the cause above",
+        "jumpTo": "Go to {name}"
       }
     }
   },
