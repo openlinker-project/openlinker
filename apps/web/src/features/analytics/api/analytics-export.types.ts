@@ -20,7 +20,9 @@ export type AnalyticsCsvExportRequest =
       sortBy: TopProductsSortBy;
     }
   | { report: 'margin-channel'; filters: MarginFilters }
-  | { report: 'margin-product'; filters: MarginFilters; sortBy: MarginSortBy };
+  | { report: 'margin-product'; filters: MarginFilters; sortBy: MarginSortBy }
+  // #3943: the accountant's per-customer gift file.
+  | { report: 'gifts-customer'; filters: MarginFilters; giftSource?: 'rule' | 'manual' };
 
 export interface AnalyticsCsvFile {
   blob: Blob;

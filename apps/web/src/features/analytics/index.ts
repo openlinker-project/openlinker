@@ -85,3 +85,7 @@ export type {
   MarginProductRow,
   MarginProductsResult,
 } from './api/margin-analytics.types';
+
+// #3943: the gift report reuses the range-param builder and the CSV download.
+export { buildMarginRangeParams } from './api/margin-analytics.api';
+export { useAnalyticsCsvExport } from './hooks/use-analytics-csv-export';

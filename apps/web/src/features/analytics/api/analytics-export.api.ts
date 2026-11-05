@@ -34,6 +34,13 @@ function buildExportPath(request: AnalyticsCsvExportRequest): string {
     case 'margin-product':
       params.set('sortBy', request.sortBy);
       return `/analytics/margin/products?${params.toString()}`;
+    case 'gifts-customer':
+      // The route is CSV-only and refuses a `format` it does not declare.
+      params.delete('format');
+      if (request.giftSource) {
+        params.set('giftSource', request.giftSource);
+      }
+      return `/analytics/gifts/export?${params.toString()}`;
     default: {
       const exhaustive: never = request;
       throw new Error(`Unhandled export report: ${String((exhaustive as { report: string }).report)}`);

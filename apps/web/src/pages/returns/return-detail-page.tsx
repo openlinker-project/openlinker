@@ -56,6 +56,7 @@ import {
   RETURN_SOURCE_PANEL_COPY,
   ReturnCustodyPanel,
   ReturnMoneyPanel,
+  ReturnGiftsPanel,
   CorrectionProposalPanel,
   useReturnProposalQuery,
   ReturnDeclineAction,
@@ -348,6 +349,8 @@ export function ReturnDetailPage(): ReactElement {
           <p className="text-muted">{describeUnreadableLines(detail.droppedLineCount)}</p>
         ) : null}
       </section>
+
+      <ReturnGiftsPanel returnId={detail.id} writeAccess={writeAccess} />
 
       <ReturnMoneyPanel detail={detail} writeAccess={writeAccess} />
 
