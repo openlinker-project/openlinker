@@ -16,7 +16,14 @@
  */
 import { useEffect, useMemo, useState, type ReactElement } from 'react';
 import { Link } from 'react-router-dom';
-import { Alert, Button, CheckboxCell, Input, ProductThumbnail } from '../../../../shared/ui';
+import {
+  Alert,
+  Button,
+  CheckboxCell,
+  Input,
+  ProductThumbnail,
+} from '../../../../shared/ui';
+import { Tooltip, TooltipContent, TooltipTrigger } from '../../../../shared/ui/tooltip';
 import type { StatusBadgeTone } from '../../../../shared/ui';
 import type { OfferBatchIssue, OfferBlockerDescriptor } from '../../../../shared/plugins';
 import type { Connection } from '../../../connections';
@@ -46,7 +53,11 @@ import {
   type ChipDescriptor,
 } from './bulk-blockers';
 import { describeBlocker, type BlockerCopyContext } from './bulk-blocker-copy';
-import { AttributeRulesNotice, type RejectedRuleValue } from './attribute-rules-notice';
+import {
+  AttributeRulesPanel,
+  type ParameterCoverage,
+  type RejectedRuleValue,
+} from './attribute-rules-panel';
 import type { AttributeProjectionPreview } from '../../hooks/use-attribute-projection-preview';
 import {
   listParameterNames,
@@ -214,30 +225,48 @@ export function BulkReviewStep({
     return map;
   }, [projection, rows]);
 
-  const rulesNotice = useMemo(() => {
-    let filledCount = 0;
-    let filledVariantCount = 0;
+  // The rules panel's reading of the batch (#3995): per parameter, one segment
+  // per checked variant, plus every value the destination will not accept.
+  const rulesPanel = useMemo(() => {
+    const checked: { productId: string; variantId: string; label: string; summary: ProjectionSummary }[] = [];
     let failedVariantCount = 0;
-    const rejected: RejectedRuleValue[] = [];
     for (const row of rows) {
+      const productName = row.product?.name ?? 'Product';
       row.variants.forEach((variant, index) => {
         if (!variant.included) return;
         if (projection?.failedVariantIds.has(variant.variantId)) failedVariantCount += 1;
         const summary = projectionSummaries.get(variant.variantId);
         if (!summary) return;
-        if (summary.ruleFilled.length > 0) {
-          filledCount += summary.ruleFilled.length;
-          filledVariantCount += 1;
-        }
-        const productName = row.product?.name ?? 'Product';
-        const variantLabel =
-          row.variants.length > 1
-            ? `${productName}, ${distinguishingLabel(variant, index)}`
-            : productName;
-        for (const origin of summary.rejected) rejected.push({ variantLabel, origin });
+        const label =
+          row.variants.length > 1 ? `${productName}, ${distinguishingLabel(variant, index)}` : productName;
+        checked.push({ productId: row.productId, variantId: variant.variantId, label, summary });
       });
     }
-    return { filledCount, filledVariantCount, failedVariantCount, rejected };
+    const names = new Map<string, string>();
+    for (const c of checked) {
+      for (const o of c.summary.byParameterId.values()) {
+        if (o.source === 'rule' && !names.has(o.parameterId)) names.set(o.parameterId, o.parameterName);
+      }
+    }
+    const coverage: ParameterCoverage[] = Array.from(names, ([parameterId, name]) => ({
+      parameterId,
+      name,
+      segments: checked.map(({ summary }) => {
+        const o = summary.byParameterId.get(parameterId);
+        if (!o || o.source !== 'rule') return 'none';
+        return o.outcome === 'accepted' ? 'filled' : 'rejected';
+      }),
+    }));
+    const rejected: RejectedRuleValue[] = checked.flatMap(({ productId, variantId, label, summary }) =>
+      summary.rejected.map((o) => ({
+        productId,
+        variantId,
+        variantLabel: label,
+        parameterName: o.parameterName,
+        rawValue: o.rawValue,
+      })),
+    );
+    return { coverage, rejected, failedVariantCount, checkedVariantCount: checked.length };
   }, [rows, projection, projectionSummaries]);
 
   // Batch-wide effective-EAN collision (#1934/F7). `enforceIdentifierRules`
@@ -446,14 +475,17 @@ export function BulkReviewStep({
       ))}
 
       {projection ? (
-        <AttributeRulesNotice
+        <AttributeRulesPanel
           connectionId={config.connectionId}
           destinationName={destinationName}
-          filledCount={rulesNotice.filledCount}
-          filledVariantCount={rulesNotice.filledVariantCount}
-          rejected={rulesNotice.rejected}
-          failedVariantCount={rulesNotice.failedVariantCount}
+          coverage={rulesPanel.coverage}
+          checkedVariantCount={rulesPanel.checkedVariantCount}
+          rejected={rulesPanel.rejected}
+          failedVariantCount={rulesPanel.failedVariantCount}
           onRetry={projection.retry}
+          onFix={(productId, variantId) => {
+            setEditing({ productId, focusVariantId: variantId, focusField: 'parameters' });
+          }}
         />
       ) : null}
 
@@ -1017,10 +1049,10 @@ function VariantChips({
 }
 
 /**
- * What the attribute rules do for one variant (#3995). Informational, never
- * gating: a rule-filled value already counts toward the required-parameter
- * check, and a rejected one leaves that check's own chip standing - this only
- * names the cause.
+ * What the attribute rules do for one variant (#3995): one chip, never gating.
+ * A rule-filled value already counts toward the required-parameter check, and
+ * a rejected one leaves that check's own chip standing - this names the cause
+ * and, on hover, lists the values the variant will be created with.
  */
 function ProjectionChips({
   projection,
@@ -1034,23 +1066,58 @@ function ProjectionChips({
   if (!projection) return null;
   const { ruleFilled, rejected } = projection;
   if (ruleFilled.length === 0 && rejected.length === 0) return null;
+  const label =
+    rejected.length === 1
+      ? `${rejected[0].parameterName} rejected`
+      : rejected.length > 1
+        ? `${rejected.length} rule values rejected`
+        : `${ruleFilled.length} from rules`;
+  const tone = rejected.length > 0 ? 'bulk-chip--warning' : 'bulk-chip--info';
+  const values = (
+    <dl className="rules-chip-tip">
+      {ruleFilled.map((o) => (
+        <div key={o.parameterId} style={{ display: 'contents' }}>
+          <dt>{o.parameterName}</dt>
+          <dd>{o.rawValue}</dd>
+        </div>
+      ))}
+      {rejected.map((o) => (
+        <div key={o.parameterId} style={{ display: 'contents' }}>
+          <dt>{o.parameterName}</dt>
+          <dd className="rules-chip-tip__rejected">
+            &ldquo;{o.rawValue}&rdquo; not on {destinationName}&rsquo;s list
+          </dd>
+        </div>
+      ))}
+    </dl>
+  );
   return (
-    <>
-      {rejected.length > 0 ? (
-        <Chip
-          descriptor={{ tone: 'warning', label: rejected.length === 1 ? 'rule value not accepted' : `${rejected.length} rule values not accepted`, fixable: true }}
-          onFix={(): void => onFix()}
-          fixLabel={`Fix: ${listParameterNames(rejected)} not accepted by ${destinationName}`}
-          title={rejected.map((o) => `${o.parameterName}: "${o.rawValue}" is not on ${destinationName}'s list`).join('\n')}
-        />
-      ) : null}
-      {ruleFilled.length > 0 ? (
-        <Chip
-          descriptor={{ tone: 'info', label: `${ruleFilled.length} from rules`, fixable: false }}
-          title={`Filled by your attribute rules: ${listParameterNames(ruleFilled)}`}
-        />
-      ) : null}
-    </>
+    <Tooltip>
+      <TooltipTrigger asChild>
+        {rejected.length > 0 ? (
+          <button
+            type="button"
+            className={`bulk-chip ${tone}`}
+            aria-label={`Fix: ${listParameterNames(rejected)} not accepted by ${destinationName}`}
+            onClick={(e) => {
+              e.stopPropagation();
+              onFix('parameters');
+            }}
+          >
+            <span className="bulk-chip__dot" aria-hidden="true" />
+            {label}
+          </button>
+        ) : (
+          <span className={`bulk-chip ${tone} rules-chip`} tabIndex={0}>
+            <span className="bulk-chip__dot" aria-hidden="true" />
+            {label}
+          </span>
+        )}
+      </TooltipTrigger>
+      <TooltipContent side="top" align="start">
+        {values}
+      </TooltipContent>
+    </Tooltip>
   );
 }
 
