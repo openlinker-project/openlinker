@@ -32936,7 +32936,14 @@ legend.analytics-settings-dialog__label {
 .routing-dialog { width: min(52rem, 94vw); max-width: none; max-height: 90vh; overflow-y: auto; }
 .routing-route-cell { display: grid; gap: 4px; min-width: 0; }
 /* Wide enough for the longest carrier name, so a choice is never cut mid-word. */
-.routing-route-cell select { min-width: min(100%, 19rem); }
+.routing-route-cell select { width: 100%; }
+/* The route column is sized here, not by its content: a long shop name in the
+   default option otherwise squeezes the select and truncates the only word
+   that says which system ships the order. */
+@media (min-width: 768px) {
+  .routing-panel .data-table th:last-child,
+  .routing-panel .data-table td:last-child { width: 44%; }
+}
 .routing-route-cell__parcel { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--space-2); font-size: 12.5px; color: var(--text-secondary); }
 .routing-route-cell__parcel-action {
   border: 0; background: none; padding: 0; font: inherit; font-weight: 500; color: var(--text-link);
