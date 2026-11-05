@@ -104,8 +104,19 @@
     },
     "summary": {
       "completedIn": "Partia zakończona w {elapsed}",
-      "counts": "· utworzono: {created} · błędy: {failed}",
-      "endedIn": "Partia zakończyła się po {elapsed}"
+      "created": {
+        "few": "utworzono: {n}",
+        "many": "utworzono: {n}",
+        "one": "utworzono: {n}",
+        "other": "utworzono: {n}"
+      },
+      "endedIn": "Partia zakończyła się po {elapsed}",
+      "failed": {
+        "few": "błędy: {n}",
+        "many": "błędy: {n}",
+        "one": "błędy: {n}",
+        "other": "błędy: {n}"
+      }
     },
     "title": "Partia zbiorcza <id>{batchId}</id>",
     "toasts": {
@@ -215,7 +226,7 @@
         "detail": {
           "few": "Nie wykryto kategorii, więc tego wariantu nie można jeszcze wystawić. Ustaw ją dla wszystkich {n} wariantów.",
           "many": "Nie wykryto kategorii, więc tego wariantu nie można jeszcze wystawić. Ustaw ją dla wszystkich {n} wariantów.",
-          "one": "Nie wykryto kategorii, więc tego wariantu nie można jeszcze wystawić. Ustaw ją dla {n} wariantu.",
+          "one": "Nie wykryto kategorii, więc tego wariantu nie można jeszcze wystawić. Ustaw ją dla tego wariantu.",
           "other": "Nie wykryto kategorii, więc tego wariantu nie można jeszcze wystawić. Ustaw ją dla wszystkich {n} wariantu."
         },
         "title": "Kodu kreskowego {ean} nie ma w katalogu {destination} i żadne mapowanie kategorii nie obejmuje tego produktu."
@@ -467,7 +478,7 @@
       "changeAria": "Zmień kategorię",
       "eyebrow": "Kategoria",
       "manualDescription": "Używa ustalonego ID kategorii marketplace. Zostaw puste, aby przy wysyłce ustalić kategorię ze skonfigurowanych mapowań kategorii.",
-      "manualLabel": "ID kategorii marketplace",
+      "manualLabel": "ID kategorii w serwisie {platform}",
       "manualPlaceholder": "np. 12345",
       "notSet": "Nieustawiona",
       "requiredAria": "Kategoria jest wymagana",
@@ -1155,6 +1166,10 @@
     "selectPlaceholder": "Wybierz…",
     "showOptional": "Pokaż pola opcjonalne ({count})"
   },
+  "common": {
+    "serverSaid": "Serwer odpowiedział: {message}",
+    "unknownError": "Coś poszło nie tak. Spróbuj ponownie."
+  },
   "duplicateGuardModal": {
     "cancel": "Wróć",
     "confirmMarketplace": "Opublikuj pozostałe warianty",
@@ -1209,8 +1224,8 @@
   "erliBulkConfigSection": {
     "note": {
       "currency": "Ceny są wysyłane w PLN.",
-      "images": "Zdjęcia są pobierane z każdego produktu (marketplace wymaga co najmniej jednego), a krok Ustalanie oznacza każdy produkt, któremu go brakuje.",
-      "noPolicies": "Ten marketplace nie ma zasad sprzedawcy ani dostaw, więc czas wysyłki zastępuje krok zasad.",
+      "images": "Zdjęcia są pobierane z każdego produktu (serwis {platform} wymaga co najmniej jednego), a krok Ustalanie oznacza każdy produkt, któremu go brakuje.",
+      "noPolicies": "Serwis {platform} nie ma zasad sprzedawcy ani dostaw, więc czas wysyłki zastępuje krok zasad.",
       "producer": "Producent dotyczy każdego produktu w tej partii (możesz go nadpisać dla produktu w kroku Przegląd)."
     }
   },
@@ -1222,8 +1237,8 @@
     "resetToBatchDefault": "Przywróć ustawienie partii"
   },
   "erliDeliveryPriceListField": {
-    "description": "Pobrany z marketplace. Wymagany, aby kupujący mogli kupić.",
-    "emptyBody": "Na tym koncie marketplace nie ma cenników dostaw - dodaj cennik tam, a następnie odśwież.",
+    "description": "Pobrany z serwisu {platform}. Wymagany, aby kupujący mogli kupić.",
+    "emptyBody": "Na Twoim koncie w serwisie {platform} nie ma cenników dostaw - dodaj cennik tam, a następnie odśwież.",
     "emptyTitle": "Nie znaleziono cenników dostaw",
     "label": "Cennik dostaw",
     "loadErrorTitle": "Nie udało się wczytać cenników dostaw",
@@ -1237,7 +1252,7 @@
     "batchDefault": "Ustawienie partii",
     "batchDefaultNone": "brak",
     "batchDefaultQuoted": "\"{name}\"",
-    "emptyBody": "Na tym koncie marketplace nie ma cenników dostaw - dodaj cennik tam, a następnie odśwież.",
+    "emptyBody": "Na Twoim koncie w serwisie {platform} nie ma cenników dostaw - dodaj cennik tam, a następnie odśwież.",
     "emptyTitle": "Nie znaleziono cenników dostaw",
     "inheriting": "Ustawienie partii ({batchDefault}). Zmień, aby nadpisać tylko dla tego produktu.",
     "label": "Cennik dostaw",
@@ -1262,7 +1277,7 @@
       "one": "Zastosowano do {n} oferty - kupujący widzą \"wysyłka w {dispatch}\".",
       "other": "Zastosowano do wszystkich {n} oferty - kupujący widzą \"wysyłka w {dispatch}\"."
     },
-    "required": "· wymagane przez marketplace",
+    "required": "· wymagane przez serwis {platform}",
     "unitLabel": "Jednostka czasu wysyłki",
     "units": {
       "day": "dni robocze",
@@ -1303,8 +1318,8 @@
     }
   },
   "erliProducerField": {
-    "description": "Producent odpowiedzialny widoczny na karcie produktu w marketplace. Pobrany z marketplace.",
-    "emptyBody": "Na tym koncie marketplace nie ma producentów - dodaj producenta tam, a następnie wczytaj ponownie.",
+    "description": "Producent odpowiedzialny widoczny na karcie produktu w serwisie {platform}. Pobrany z serwisu {platform}.",
+    "emptyBody": "Na Twoim koncie w serwisie {platform} nie ma producentów - dodaj producenta tam, a następnie wczytaj ponownie.",
     "emptyTitle": "Nie znaleziono producentów",
     "label": "Producent",
     "loadErrorTitle": "Nie udało się wczytać producentów",
@@ -1545,11 +1560,18 @@
   "offerCreationTracker": {
     "dismiss": "Zamknij",
     "draft": {
-      "noValidationIssues": "Brak błędów walidacji - opublikuj ręcznie w panelu sprzedawcy marketplace.",
-      "openSellerPanel": "Otwórz w panelu sprzedawcy marketplace",
-      "validationIssues": "Marketplace zgłosił błędy walidacji blokujące publikację:",
-      "withId": "Oferta utworzona jako szkic w marketplace · ID zewnętrzne <id>{externalId}</id>.",
-      "withoutId": "Oferta utworzona jako szkic w marketplace."
+      "anyPlatform": {
+        "noValidationIssues": "Brak błędów walidacji - opublikuj ręcznie w panelu sprzedawcy marketplace.",
+        "withId": "Oferta utworzona jako szkic w marketplace · ID zewnętrzne <id>{externalId}</id>.",
+        "withoutId": "Oferta utworzona jako szkic w marketplace."
+      },
+      "onPlatform": {
+        "noValidationIssues": "Brak błędów walidacji - opublikuj ręcznie w panelu sprzedawcy serwisu {platform}.",
+        "withId": "Oferta utworzona jako szkic w serwisie {platform} · ID zewnętrzne <id>{externalId}</id>.",
+        "withoutId": "Oferta utworzona jako szkic w serwisie {platform}."
+      },
+      "openSellerPanel": "Otwórz w panelu sprzedawcy serwisu {platform}",
+      "validationIssues": "Marketplace zgłosił błędy walidacji blokujące publikację:"
     },
     "failed": "Tworzenie oferty nie powiodło się. Sprawdź błędy poniżej i wyślij nową ofertę z poprawionymi wartościami.",
     "label": "Tworzenie oferty",
@@ -1561,8 +1583,14 @@
     "loading": "Wczytywanie statusu…",
     "processing": "Wciąż w trakcie - status zaktualizuje się automatycznie.",
     "reused": {
-      "withId": "Oferta już istniała w marketplace - użyto istniejącej oferty · ID zewnętrzne <id>{externalId}</id>.",
-      "withoutId": "Oferta już istniała w marketplace - użyto istniejącej oferty."
+      "anyPlatform": {
+        "withId": "Oferta już istniała w marketplace - użyto istniejącej oferty · ID zewnętrzne <id>{externalId}</id>.",
+        "withoutId": "Oferta już istniała w marketplace - użyto istniejącej oferty."
+      },
+      "onPlatform": {
+        "withId": "Oferta już istniała w serwisie {platform} - użyto istniejącej oferty · ID zewnętrzne <id>{externalId}</id>.",
+        "withoutId": "Oferta już istniała w serwisie {platform} - użyto istniejącej oferty."
+      }
     }
   },
   "offerDescriptionEditor": {
@@ -1702,7 +1730,7 @@
       "inactivating": "Dezaktywowanie",
       "inactive": "Nieaktywna"
     },
-    "notSyncedYet": "Jeszcze niezsynchronizowana"
+    "notSyncedYet": "Niezsynchronizowana"
   },
   "offerPublicationStatusPanel": {
     "checkStatus": "Sprawdź status",
@@ -1961,7 +1989,12 @@
       "independentNote": "Każdy produkt jest publikowany niezależnie - może mieć inną cenę lub stan niż reszta partii. Warianty bez stanu są wystawiane ze stanem głównym (0 jest respektowane).",
       "label": "Produkty",
       "perProductHint": "- stan i cena ustawiane dla każdego produktu",
-      "selected": "Zaznaczono: {n}",
+      "selected": {
+        "few": "Zaznaczono: {n}",
+        "many": "Zaznaczono: {n}",
+        "one": "Zaznaczono: {n}",
+        "other": "Zaznaczono: {n}"
+      },
       "useMasterPrice": "Użyj ceny głównej dla wszystkich",
       "useMasterStock": "Użyj stanu głównego dla wszystkich"
     },

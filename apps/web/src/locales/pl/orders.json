@@ -498,6 +498,9 @@
     "ownOnly": "Rabat: {amount} w OpenLinker",
     "ownPart": "{amount} w OpenLinker"
   },
+  "common": {
+    "serverSaid": "Serwer odpowiedział: {message}"
+  },
   "confirmOrderRefund": {
     "action": "Potwierdź zwrot pieniędzy",
     "ceiling": {
@@ -665,7 +668,7 @@
     "caption": "Zamówienia czekające na mapowanie oferta→wariant",
     "columns": {
       "connection": "Połączenie",
-      "firstSeen": "Pierwsze wystąpienie",
+      "firstSeen": "Pierwszy raz",
       "items": "Pozycje",
       "orderId": "ID zamówienia"
     },
@@ -846,7 +849,7 @@
     "noDestinationsConfigured": "Nie skonfigurowano kanałów docelowych",
     "noLineItems": "Brak pozycji",
     "noShippingDestination": "Brak celu wysyłki",
-    "sync": "Synchronizacja",
+    "sync": "Synchro.",
     "total": "Razem"
   },
   "holds": {
@@ -1024,7 +1027,7 @@
     },
     "chips": {
       "blocked": "Zablokowane",
-      "buyerNote": "Notatka kupującego",
+      "buyerNote": "Notatka klienta",
       "buyerNoteValue": "Jest",
       "conflict": "Konflikt",
       "created": "Utworzono",
@@ -1035,10 +1038,10 @@
       "dueValue": "≤ 24 godz. lub po terminie",
       "fulfilment": "Realizacja",
       "health": "Status",
-      "hold": "Wstrzymanie",
+      "hold": "Wstrzym.",
       "oms": "OpenLinker",
       "open": "Otwarty",
-      "packBench": "Stanowisko pakowania",
+      "packBench": "Pakowanie",
       "packBenchValue": "Do spakowania lub pakowane",
       "packing": "Pakowanie",
       "phase": "Etap",
@@ -1047,7 +1050,7 @@
       "salesDocs": "Dokumenty sprzedaży",
       "search": "Szukaj",
       "searchValue": "„{query}”",
-      "shipBy": "Termin wysyłki",
+      "shipBy": "Wyślij do",
       "source": "Źródło",
       "stopped": "Zatrzymane",
       "tag": "Tag",
@@ -1089,7 +1092,7 @@
       "awaiting_mapping": "Czeka na mapowanie",
       "needs_attention": "Wymaga uwagi",
       "source_deleted": "Usunięte w źródle",
-      "synced": "Zsynchronizowane"
+      "synced": "Zsynchr."
     },
     "hideFilters": "Ukryj filtry",
     "noFilterResults": {
@@ -1220,7 +1223,7 @@
       "customer": "Klient",
       "order": "Zamówienie",
       "payment": "Płatność",
-      "shipBy": "Termin wysyłki",
+      "shipBy": "Wyślij do",
       "shipment": "Przesyłka",
       "status": "Status",
       "total": "Razem"
@@ -1817,7 +1820,7 @@
   },
   "orderEditAction": {
     "amendingTitle": "Zmiana tego zamówienia już czeka na kanał.",
-    "button": "Edytuj zamówienie"
+    "button": "Edytuj zamów."
   },
   "orderEditDialog": {
     "ack": {
@@ -2455,7 +2458,12 @@
       },
       "manageTags": "Zarządzaj tagami",
       "menuLabel": "Tagi zaznaczonych zamówień",
-      "resultAlreadyHad": "Miało go już: {n}.",
+      "resultAlreadyHad": {
+        "few": "Miały go już: {n}.",
+        "many": "Miało go już: {n}.",
+        "one": "Miało go już: {n}.",
+        "other": "Miało go już: {n}."
+      },
       "resultDescription": {
         "few": "Dodano {name} do {n} zamówień.",
         "many": "Dodano {name} do {n} zamówień.",
