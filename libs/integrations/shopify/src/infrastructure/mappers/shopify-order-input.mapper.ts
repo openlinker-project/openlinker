@@ -13,13 +13,20 @@
  * amount and rounding belongs to the adapter (ADR-063 § 5). A line without a
  * stated rate gets no tax line rather than a guessed one.
  *
+ * Pickup point (case B16): Shopify has no pickup-point field on an order, so a
+ * locker the buyer chose rides in three places a packer or an app can read:
+ * `customAttributes` (`Pickup point` = the locker id, plus its name and
+ * description when stated), one line of the order `note`, and the shipping
+ * line title (`<method> (GIT01D)`). The locker's geography is already the
+ * shipping address. Nothing parses these back; they are for people and apps.
+ *
  * Payment: a paid order gets a successful `manual` sale transaction, a COD
  * order a PENDING transaction on Shopify's `Cash on Delivery (COD)` gateway
  * (accepted live, L-O2), anything else none and `PENDING`.
  *
  * @module libs/integrations/shopify/src/infrastructure/mappers
  */
-import type { Address, OrderCreate, OrderItem } from '@openlinker/core/orders';
+import type { Address, OrderCreate, OrderItem, OrderPickupPoint } from '@openlinker/core/orders';
 import { PAYMENT_METHOD, PAYMENT_STATUS } from '@openlinker/core/orders';
 
 import { SHOPIFY_COD_GATEWAY } from '../../shopify.constants';
@@ -82,6 +89,31 @@ function mailingAddress(address: Address | undefined): Record<string, string> | 
   );
 }
 
+/** The order's pickup-point attributes, or [] when it has none. */
+export function pickupPointAttributes(point: OrderPickupPoint | undefined): Array<{ key: string; value: string }> {
+  const id = point?.id.trim();
+  if (point === undefined || id === undefined || id.length === 0) {
+    return [];
+  }
+  const name = point.name?.trim();
+  const description = point.description?.trim();
+  return [
+    { key: 'Pickup point', value: id },
+    ...(name ? [{ key: 'Pickup point name', value: name }] : []),
+    ...(description ? [{ key: 'Pickup point address', value: description }] : []),
+  ];
+}
+
+/** One readable line for the order note: `Pickup point: GIT01D - <name>, <description>`. */
+function pickupPointNote(point: OrderPickupPoint | undefined): string | null {
+  const attributes = pickupPointAttributes(point);
+  if (attributes.length === 0) {
+    return null;
+  }
+  const details = attributes.slice(1).map((a) => a.value);
+  return `Pickup point: ${attributes[0].value}${details.length > 0 ? ` - ${details.join(', ')}` : ''}`;
+}
+
 export function buildShopifyOrderCreateVariables(
   order: OrderCreate,
   lines: readonly ShopifyResolvedLine[],
@@ -114,7 +146,7 @@ export function buildShopifyOrderCreateVariables(
       ? []
       : [
           {
-            title: order.shipping?.methodName ?? order.shipping?.methodId ?? 'Shipping',
+            title: shippingTitle(order),
             ...(order.shipping?.methodId ? { code: order.shipping.methodId } : {}),
             priceSet: money(shippingAmount, currencyCode),
             ...(shippingTax.length === 0 ? {} : { taxLines: shippingTax }),
@@ -129,6 +161,12 @@ export function buildShopifyOrderCreateVariables(
     : isCod
       ? [{ kind: 'SALE', status: 'PENDING', gateway: SHOPIFY_COD_GATEWAY, amountSet: money(order.totals.total, currencyCode) }]
       : [];
+
+  const customAttributes = pickupPointAttributes(order.pickupPoint);
+  const noteLines = [
+    ...(order.orderNumber ? [`OpenLinker order ${order.orderNumber}`] : []),
+    ...[pickupPointNote(order.pickupPoint)].filter((line): line is string => line !== null),
+  ];
 
   const buyerEmail = order.metadata?.buyerEmail;
   const shippingAddress = mailingAddress(order.shippingAddress);
@@ -151,7 +189,8 @@ export function buildShopifyOrderCreateVariables(
       // between create and mapping write is recovered by.
       ...(sourceIdentifier === undefined ? {} : { sourceIdentifier }),
       tags: ['openlinker'],
-      ...(order.orderNumber ? { note: `OpenLinker order ${order.orderNumber}` } : {}),
+      ...(noteLines.length === 0 ? {} : { note: noteLines.join('\n') }),
+      ...(customAttributes.length === 0 ? {} : { customAttributes }),
     },
     options: {
       // Commits stock at a location Shopify's routing picks (L-O1); the
@@ -161,4 +200,10 @@ export function buildShopifyOrderCreateVariables(
       sendFulfillmentReceipt: false,
     },
   };
+}
+
+function shippingTitle(order: OrderCreate): string {
+  const base = order.shipping?.methodName ?? order.shipping?.methodId ?? 'Shipping';
+  const pointId = order.pickupPoint?.id.trim();
+  return pointId && !base.includes(pointId) ? `${base} (${pointId})` : base;
 }
