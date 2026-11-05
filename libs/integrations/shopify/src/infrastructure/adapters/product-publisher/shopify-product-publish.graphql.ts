@@ -15,6 +15,7 @@
  * @module libs/integrations/shopify/src/infrastructure/adapters/product-publisher
  */
 import type { ShopifyConnection } from '../../../domain/types/shopify-api.types';
+import type { ShopifyMetafieldDefinitionNode } from './shopify-product-metafields.mapper';
 
 const PUBLISHED_PRODUCT_FRAGMENT = `fragment OlPublishedProduct on Product {
   id
@@ -95,6 +96,25 @@ export const COLLECTION_ADD_PRODUCTS_MUTATION = `mutation OlCollectionAdd($id: I
     userErrors { field message code }
   }
 }`;
+
+/** Upsert of the listed metafields only; others on the product are left alone. At most 25 per call. */
+export const METAFIELDS_SET_MUTATION = `mutation OlMetafieldsSet($metafields: [MetafieldsSetInput!]!) {
+  metafieldsSet(metafields: $metafields) {
+    metafields { id namespace key }
+    userErrors { field message code }
+  }
+}`;
+
+export const PRODUCT_METAFIELD_DEFINITIONS_QUERY = `query OlProductMetafieldDefinitions($first: Int!, $after: String) {
+  metafieldDefinitions(ownerType: PRODUCT, first: $first, after: $after) {
+    nodes { id name namespace key type { name } validations { name value } }
+    pageInfo { hasNextPage endCursor }
+  }
+}`;
+
+export interface MetafieldDefinitionsQuery {
+  readonly metafieldDefinitions: ShopifyConnection<ShopifyMetafieldDefinitionNode>;
+}
 
 export interface PublishedVariantNode {
   readonly id: string;

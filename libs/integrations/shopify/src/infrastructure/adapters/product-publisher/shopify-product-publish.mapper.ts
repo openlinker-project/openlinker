@@ -215,10 +215,6 @@ export function unsupportedFieldWarnings(cmd: PublishProductCommand): string[] {
   if (cmd.commerce?.taxStatus === 'shipping') {
     warnings.push('The "shipping only" tax status was not sent: Shopify variants are taxable or not.');
   }
-  if ((cmd.parameters?.length ?? 0) > 0) {
-    const names = (cmd.parameters ?? []).map((p) => p.id).join(', ');
-    warnings.push(`Product parameters were not sent (${names}): Shopify metafields are not mapped yet.`);
-  }
   if (cmd.platformParams !== undefined && Object.keys(cmd.platformParams).length > 0) {
     warnings.push(`Platform parameters were ignored: ${Object.keys(cmd.platformParams).join(', ')}.`);
   }

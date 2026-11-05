@@ -66,6 +66,10 @@ export const shopifyAdapterManifest: AdapterMetadata = {
     // adapter with `isReturnSourceReader`. Not in the dispatch table.
     'ReturnSourceReader',
     'ReturnDecliner',
+    // Advertised-without-dispatch: the product metafield definitions, resolved by
+    // narrowing the dispatched `ProductPublisher` with `isShopAttributeReader`.
+    // Gates the publish edit flow's attribute picker.
+    'ShopAttributeReader',
   ],
   // Catalogue and stock only by default, the Shoper reasoning: ingesting
   // orders is polling load, and `OrderProcessorManager` would make OpenLinker

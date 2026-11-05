@@ -38,6 +38,15 @@
  * collection created a moment ago is found), creating it when absent; a publish
  * then adds the product to every destination collection it is not yet in.
  *
+ * Parameters: product metafields, written with `metafieldsSet` after the
+ * product exists (see `shopify-product-metafields.mapper`): a parameter linked
+ * to one of the shop's product metafield definitions keeps that definition's
+ * namespace, key and type; any other goes to the `openlinker` namespace as
+ * text. `ShopAttributeReader` offers those definitions (with their `choices`
+ * as terms) to the publish edit flow. Taxonomy category attributes
+ * (`shopify.*`, metaobject references) are not written. A re-publish upserts
+ * the parameters it carries and never deletes one it no longer carries.
+ *
  * Nothing after the product exists may throw: the caller persists the mapping
  * only once this method returns, so a throw would make the job retry and
  * create a second product. Everything after the write that fails becomes a
@@ -62,6 +71,9 @@ import {
   type PublishProductResult,
   type PublishProductStatus,
   type PublishProductVariantGroup,
+  type ShopAttribute,
+  type ShopAttributeReader,
+  type ShopAttributeTerm,
   type ShopCurrencyDeclarer,
   type ShopProductManagerPort,
   type ShopProductPriceUpdater,
@@ -83,6 +95,8 @@ import {
   COLLECTION_BY_HANDLE_QUERY,
   COLLECTION_CREATE_MUTATION,
   INVENTORY_SET_MUTATION,
+  METAFIELDS_SET_MUTATION,
+  PRODUCT_METAFIELD_DEFINITIONS_QUERY,
   PRODUCT_SET_MUTATION,
   PUBLICATIONS_QUERY,
   PUBLISH_TARGET_QUERY,
@@ -91,6 +105,7 @@ import {
   VARIANTS_BULK_UPDATE_MUTATION,
   type CollectionByHandleQuery,
   type CollectionCreatePayload,
+  type MetafieldDefinitionsQuery,
   type ProductSetPayload,
   type PublicationsQuery,
   type PublishablePublishPayload,
@@ -99,6 +114,14 @@ import {
   type PublishTargetQuery,
   type VariantsBulkPayload,
 } from './shopify-product-publish.graphql';
+import {
+  definitionChoices,
+  definitionRef,
+  isWritableMetafieldType,
+  planMetafields,
+  type MetafieldWrite,
+  type ShopifyMetafieldDefinitionNode,
+} from './shopify-product-metafields.mapper';
 import {
   buildFilesInput,
   buildPriceFields,
@@ -118,6 +141,12 @@ const MAX_PRODUCT_OPTIONS = 3;
 // `Publication` has no name on 2026-10; the channel shows only in the catalog
 // title (`ChannelCatalog<id>forOnlineStore`), compared without spaces or case.
 const ONLINE_STORE_PUBLICATION = 'onlinestore';
+
+/** `metafieldsSet` takes at most 25 metafields per call. */
+const METAFIELDS_PER_CALL = 25;
+const DEFINITIONS_PAGE_SIZE = 250;
+/** `namespace.key`: what a linked parameter id looks like. */
+const DEFINITION_REF = /^[^.\s]+\.[^.\s]+$/;
 
 function reasonOf(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
@@ -151,11 +180,18 @@ function isFilesError(error: ShopifyUserErrorsException): boolean {
 }
 
 export class ShopifyProductPublisherAdapter
-  implements ShopProductManagerPort, CategoryProvisioner, ShopCurrencyDeclarer, ShopProductPriceUpdater
+  implements
+    ShopProductManagerPort,
+    CategoryProvisioner,
+    ShopCurrencyDeclarer,
+    ShopProductPriceUpdater,
+    ShopAttributeReader
 {
   private readonly logger = new Logger(ShopifyProductPublisherAdapter.name);
   /** The Online Store publication id, read once per adapter instance; a failed read is retried next time. */
   private onlineStorePublication: Promise<string | null> | null = null;
+  /** The shop's product metafield definitions by `namespace.key`, read once per adapter instance. */
+  private metafieldDefinitions: Promise<Map<string, ShopifyMetafieldDefinitionNode>> | null = null;
 
   constructor(
     private readonly client: ShopifyGraphqlClient,
@@ -575,6 +611,107 @@ export class ShopifyProductPublisherAdapter
       await this.publishToOnlineStore(product.id, warnings);
     }
     await this.placeInCollections(product, cmd.destinationCategoryIds, warnings);
+    await this.writeParameters(product.id, cmd, warnings);
+  }
+
+  /** The command's parameters as product metafields. Never throws. */
+  private async writeParameters(productGid: string, cmd: PublishProductCommand, warnings: string[]): Promise<void> {
+    const parameters = cmd.parameters ?? [];
+    if (parameters.length === 0) {
+      return;
+    }
+    let definitions: ReadonlyMap<string, ShopifyMetafieldDefinitionNode> | null = null;
+    if (parameters.some((p) => DEFINITION_REF.test(p.id))) {
+      try {
+        definitions = await this.productMetafieldDefinitions();
+      } catch (error) {
+        warnings.push(
+          `The shop's metafield definitions could not be read (${reasonOf(error)}), ` +
+            'so linked parameters were written as OpenLinker text fields.',
+        );
+      }
+    }
+    const plan = planMetafields(parameters, definitions);
+    warnings.push(...plan.warnings);
+    for (let i = 0; i < plan.writes.length; i += METAFIELDS_PER_CALL) {
+      const chunk = plan.writes.slice(i, i + METAFIELDS_PER_CALL);
+      try {
+        await this.setMetafields(productGid, chunk);
+      } catch {
+        // A refused value fails its whole call; write one by one so the others still land.
+        for (const write of chunk) {
+          try {
+            await this.setMetafields(productGid, [write]);
+          } catch (error) {
+            warnings.push(`The parameter ${definitionRef(write)} was not written: ${reasonOf(error)}`);
+          }
+        }
+      }
+    }
+  }
+
+  private setMetafields(productGid: string, writes: readonly MetafieldWrite[]): Promise<object> {
+    return this.client.mutate<object>(
+      METAFIELDS_SET_MUTATION,
+      { metafields: writes.map((w) => ({ ownerId: productGid, ...w })) },
+      'metafieldsSet',
+    );
+  }
+
+  // ─── Attributes (metafield definitions) ──────────────────────────────────────
+
+  /**
+   * The shop's product metafield definitions that take text, as global
+   * attributes: `id` and `slug` are `namespace.key` (what a publish links by),
+   * `name` the definition's name. Reference-typed ones (the taxonomy
+   * attributes among them) are left out: a publish could not write them.
+   */
+  async listAttributes(): Promise<ShopAttribute[]> {
+    const definitions = await this.productMetafieldDefinitions();
+    return [...definitions.values()]
+      .filter((d) => isWritableMetafieldType(d.type.name))
+      .map((d) => ({ id: definitionRef(d), name: d.name, slug: definitionRef(d) }));
+  }
+
+  /** A definition's predefined values (`choices`); [] for a definition that takes any value. */
+  async listAttributeTerms(attributeId: string): Promise<ShopAttributeTerm[]> {
+    const definition = (await this.productMetafieldDefinitions()).get(attributeId);
+    if (definition === undefined) {
+      return [];
+    }
+    return definitionChoices(definition).map((choice) => ({
+      id: choice,
+      name: choice,
+      slug: toShopifyHandle(choice),
+    }));
+  }
+
+  private productMetafieldDefinitions(): Promise<Map<string, ShopifyMetafieldDefinitionNode>> {
+    if (this.metafieldDefinitions === null) {
+      this.metafieldDefinitions = this.readMetafieldDefinitions().catch((error: unknown) => {
+        this.metafieldDefinitions = null;
+        throw error;
+      });
+    }
+    return this.metafieldDefinitions;
+  }
+
+  private async readMetafieldDefinitions(): Promise<Map<string, ShopifyMetafieldDefinitionNode>> {
+    const byRef = new Map<string, ShopifyMetafieldDefinitionNode>();
+    let after: string | null = null;
+    for (;;) {
+      const data: MetafieldDefinitionsQuery = await this.client.query(PRODUCT_METAFIELD_DEFINITIONS_QUERY, {
+        first: DEFINITIONS_PAGE_SIZE,
+        after,
+      });
+      for (const node of data.metafieldDefinitions.nodes) {
+        byRef.set(definitionRef(node), node);
+      }
+      if (data.metafieldDefinitions.pageInfo?.hasNextPage !== true) {
+        return byRef;
+      }
+      after = data.metafieldDefinitions.pageInfo.endCursor;
+    }
   }
 
   /** Sets `available` at the location to `quantity`, compare-and-set against the level read with the product. */
