@@ -14,22 +14,36 @@
 import type { ArgumentsHost, ExceptionFilter } from '@nestjs/common';
 import { Catch, HttpStatus } from '@nestjs/common';
 import type { Response } from 'express';
-import { withApiErrorCode } from '@openlinker/shared/errors';
-import { CapabilityNotSupportedException } from '@openlinker/core/integrations';
+import { codedErrorBody } from '../errors/coded-http.exception';
+import {
+  CapabilityNotEnabledException,
+  CapabilityNotSupportedException,
+} from '@openlinker/core/integrations';
 
 @Catch(CapabilityNotSupportedException)
 export class CapabilityNotSupportedFilter implements ExceptionFilter {
   catch(exception: CapabilityNotSupportedException, host: ArgumentsHost): void {
     const response = host.switchToHttp().getResponse<Response>();
     response.status(HttpStatus.BAD_REQUEST).json(
-      withApiErrorCode(
-        {
-          statusCode: HttpStatus.BAD_REQUEST,
-          error: exception.name,
-          message: exception.message,
-        },
-        HttpStatus.BAD_REQUEST
-      )
+      exception instanceof CapabilityNotEnabledException
+        ? codedErrorBody(
+            HttpStatus.BAD_REQUEST,
+            'CAPABILITY_NOT_ENABLED',
+            exception.message,
+            {
+              connectionId: exception.connectionId,
+              adapterKey: exception.adapterKey,
+              capability: exception.capability,
+            },
+            { error: exception.name }
+          )
+        : codedErrorBody(
+            HttpStatus.BAD_REQUEST,
+            'CAPABILITY_NOT_SUPPORTED',
+            exception.message,
+            { adapterKey: exception.adapterKey, capability: exception.capability },
+            { error: exception.name }
+          )
     );
   }
 }
