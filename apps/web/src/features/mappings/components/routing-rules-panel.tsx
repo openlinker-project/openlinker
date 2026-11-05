@@ -73,8 +73,10 @@ interface RoutingRulesPanelProps {
 const DEFAULT_KEY = '__default__';
 
 /** Virtualized-row height estimate; also caps the container to content (#1784 S17). */
-const ROUTING_ROW_HEIGHT = 52;
+const ROUTING_ROW_HEIGHT = 58;
 const ROUTING_MAX_CONTAINER_HEIGHT = 520;
+/** Extra height of a row that shows the default-parcel line under its select. */
+const ROUTING_PARCEL_LINE_HEIGHT = 30;
 
 
 const SHORT_VALUE_HEAD = 6;
@@ -480,9 +482,12 @@ export function RoutingRulesPanel({
     return <ErrorState title="Unable to load routing configuration" message={dataError.message} />;
   }
 
+  // A row whose route buys a label carries the default-parcel line under its
+  // select, so it is taller; sizing every row the same clipped the last ones.
+  const labelledRows = rowMethods.filter((m) => (selections[m.value] ?? DEFAULT_KEY) !== DEFAULT_KEY).length;
   const containerHeight = Math.min(
     ROUTING_MAX_CONTAINER_HEIGHT,
-    rowMethods.length * ROUTING_ROW_HEIGHT + 8,
+    rowMethods.length * ROUTING_ROW_HEIGHT + labelledRows * ROUTING_PARCEL_LINE_HEIGHT + 8,
   );
 
   const dirtyBadge = isDirty ? (
