@@ -2637,7 +2637,7 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
       `jsonb_set(COALESCE("paymentWriteback", '{}'::jsonb), ARRAY[$2]::text[], ` +
       `jsonb_build_object('state', 'sending', 'at', $3::text, 'attempts', ` +
       `COALESCE(("paymentWriteback"->$2->>'attempts')::int, 0)))`;
-    const rows: unknown[] = await this.repository.query(
+    const rows = (await this.repository.query(
       `UPDATE "order_records" SET "paymentWriteback" = ${next}, ` +
         `"paymentWritebackProblem" = ${OrderRecordRepository.paymentWritebackProblemSql(next)} ` +
         `WHERE "internalOrderId" = $1 AND (` +
@@ -2647,7 +2647,7 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
         `AND ("paymentWriteback"->$2->>'at')::timestamptz < $4)) ` +
         `RETURNING "internalOrderId"`,
       [internalOrderId, destinationConnectionId, new Date().toISOString(), staleBefore.toISOString()]
-    );
+    )) as unknown[];
     return OrderRecordRepository.affectedRows(rows) > 0;
   }
 
@@ -2667,7 +2667,7 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
 
   async markPaymentWritebackHandled(internalOrderIds: readonly string[]): Promise<number> {
     if (internalOrderIds.length === 0) return 0;
-    const rows: unknown[] = await this.repository.query(
+    const rows = (await this.repository.query(
       `UPDATE "order_records" AS r SET "paymentWriteback" = (` +
         `SELECT jsonb_object_agg(e.key, CASE WHEN e.value->>'state' = 'not-sent' ` +
         `AND e.value->>'reason' IN ('retries-exhausted', 'rejected') ` +
@@ -2677,7 +2677,7 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
         `WHERE r."internalOrderId" = ANY($1::text[]) AND r."paymentWritebackProblem" = true ` +
         `RETURNING r."internalOrderId"`,
       [internalOrderIds, new Date().toISOString()]
-    );
+    )) as unknown[];
     return OrderRecordRepository.affectedRows(rows);
   }
 
