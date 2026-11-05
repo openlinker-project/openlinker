@@ -45,6 +45,12 @@ import {
   type ChipDescriptor,
 } from './bulk-blockers';
 import { describeBlocker, type BlockerCopyContext } from './bulk-blocker-copy';
+import {
+  ReviewCategoryCell,
+  describeProductCategory,
+  describeVariantCategory,
+} from './bulk-review-category-cell';
+import { BulkCardCategoryDialog } from './bulk-card-category-dialog';
 
 interface BulkReviewStepProps {
   rows: BulkWizardRow[];
@@ -74,6 +80,20 @@ interface BulkReviewStepProps {
   ) => void;
   onApproveAll: () => void;
   onBack: () => void;
+  /**
+   * Adopt the catalogue card the resolver set aside in favour of the mapping
+   * (#3994). Single-variant products only; absent ⇒ the dialog offers no adopt.
+   */
+  onUseCardCategory?: (productId: string) => void;
+  /** The destination resolves the category itself at submit (borrowed taxonomy). */
+  destinationResolvesCategoryAtSubmit?: boolean;
+}
+
+/** What every row needs to render its Category cell and open the card dialog (#3994). */
+interface CategoryColumn {
+  connectionId: string;
+  resolvesAtSubmit: boolean;
+  onCompareCard: (productId: string, variantId: string) => void;
 }
 
 /**
@@ -149,6 +169,8 @@ export function BulkReviewStep({
   onSaveEditor,
   onApproveAll,
   onBack,
+  onUseCardCategory,
+  destinationResolvesCategoryAtSubmit = false,
 }: BulkReviewStepProps): ReactElement {
   const blockerChips = useMemo<Record<string, ChipDescriptor>>(() => {
     const merged: Record<string, ChipDescriptor> = { ...NEUTRAL_BLOCKER_CHIPS };
@@ -172,6 +194,23 @@ export function BulkReviewStep({
     focusField?: OfferBlockerField;
   } | null>(null);
   const [zoom, setZoom] = useState<{ src: string; name: string } | null>(null);
+  // The card-vs-mapping comparison (#3994), keyed by the row it was opened from.
+  const [comparing, setComparing] = useState<{ productId: string; variantId: string } | null>(null);
+  const categoryColumn = useMemo<CategoryColumn>(
+    () => ({
+      connectionId: config.connectionId,
+      resolvesAtSubmit: destinationResolvesCategoryAtSubmit,
+      onCompareCard: (productId, variantId): void => {
+        setComparing({ productId, variantId });
+      },
+    }),
+    [config.connectionId, destinationResolvesCategoryAtSubmit],
+  );
+  const comparingRow = comparing ? rows.find((r) => r.productId === comparing.productId) ?? null : null;
+  const comparingVariant =
+    comparing && comparingRow
+      ? comparingRow.variants.find((v) => v.variantId === comparing.variantId) ?? null
+      : null;
   // "Jump to next flagged" cursor + deferred scroll target so the jump can cross
   // pagination boundaries: it advances a cursor through the flagged set, flips to
   // the target's page, then scrolls once that page has rendered (#1741 review #10).
@@ -444,13 +483,14 @@ export function BulkReviewStep({
         )}
       </div>
 
-      <div className="bulk-review__table">
+      <div className="bulk-review__table bulk-review__table--with-category">
         {/* Header is announced (not aria-hidden) so screen-reader users get the
             column labels for the rows below (#1741 review #9). */}
         <div className="bulk-review__grid bulk-review__head">
           <span className="bulk-review__c-lead" />
           <span>Product</span>
           <span className="bulk-review__c-status">Status</span>
+          <span className="bulk-review__c-cat">Category</span>
           <span className="bulk-review__c-stock">Stock</span>
           <span className="bulk-review__c-price">Price (gross)</span>
           <span className="bulk-review__c-action" />
@@ -476,6 +516,7 @@ export function BulkReviewStep({
             onZoom={(src, name) => {
               setZoom({ src, name });
             }}
+            category={categoryColumn}
           />
         ))}
       </div>
@@ -550,6 +591,36 @@ export function BulkReviewStep({
         />
       ) : null}
 
+      {comparingRow && comparingVariant?.overriddenCard ? (
+        <BulkCardCategoryDialog
+          open
+          onOpenChange={(open) => {
+            if (!open) setComparing(null);
+          }}
+          connectionId={config.connectionId}
+          destinationName={destinationName}
+          subject={
+            comparingRow.variants.length > 1
+              ? `${comparingRow.product?.name ?? 'Product'} - ${distinguishingLabel(
+                  comparingVariant,
+                  comparingRow.variants.indexOf(comparingVariant),
+                )}`
+              : (comparingRow.product?.name ?? 'Product')
+          }
+          ean={comparingVariant.ean}
+          mappedCategoryId={comparingVariant.resolvedCategoryId ?? ''}
+          card={comparingVariant.overriddenCard}
+          canAdoptCard={comparingRow.variants.length === 1 && onUseCardCategory !== undefined}
+          demoReadOnly={demoReadOnly}
+          onUseCard={() => {
+            onUseCardCategory?.(comparingRow.productId);
+          }}
+          onEditProduct={() => {
+            setEditing({ productId: comparingRow.productId, focusField: 'category' });
+          }}
+        />
+      ) : null}
+
       {zoom ? (
         <BulkImageLightbox
           src={zoom.src}
@@ -575,6 +646,7 @@ interface ProductRowProps {
   onSetProductIncluded: (productId: string, included: boolean) => void;
   onEdit: (focusVariantId?: string, focusField?: OfferBlockerField) => void;
   onZoom: (src: string, name: string) => void;
+  category: CategoryColumn;
 }
 
 function ProductRow({
@@ -589,6 +661,7 @@ function ProductRow({
   onSetProductIncluded,
   onEdit,
   onZoom,
+  category,
 }: ProductRowProps): ReactElement {
   const isMulti = row.variants.length > 1;
   const isSimple = row.variants.length === 1;
@@ -708,6 +781,9 @@ function ProductRow({
               onFix={(focusField) => {
                 onEdit(row.variants[0].variantId, focusField);
               }}
+              onCompareCard={() => {
+                category.onCompareCard(row.productId, row.variants[0].variantId);
+              }}
             />
           ) : (
             <>
@@ -718,6 +794,15 @@ function ProductRow({
             </>
           )}
         </div>
+        {noVariants ? (
+          <div className="bulk-review__c-cat" />
+        ) : (
+          <ReviewCategoryCell
+            connectionId={category.connectionId}
+            resolvesAtSubmit={category.resolvesAtSubmit}
+            {...(isSimple ? describeVariantCategory(row, row.variants[0]) : describeProductCategory(row))}
+          />
+        )}
         <div
           className={[
             'bulk-review__c-stock tabular',
@@ -765,6 +850,7 @@ function ProductRow({
               onEdit={(focusField) => {
                 onEdit(variant.variantId, focusField);
               }}
+              category={category}
             />
           ))}
         </div>
@@ -783,6 +869,7 @@ interface VariantRowProps {
   destinationName: string;
   onSetVariantIncluded: (productId: string, variantId: string, included: boolean) => void;
   onEdit: (focusField?: OfferBlockerField) => void;
+  category: CategoryColumn;
 }
 
 function VariantRow({
@@ -795,6 +882,7 @@ function VariantRow({
   destinationName,
   onSetVariantIncluded,
   onEdit,
+  category,
 }: VariantRowProps): ReactElement {
   const label = distinguishingLabel(variant, index);
   const catBlocked = variant.blockers.some(
@@ -844,8 +932,16 @@ function VariantRow({
           alreadyListed={alreadyListed}
           destinationName={destinationName}
           copyContext={blockerCopyContext(row, variant, destinationName, config)}
+          onCompareCard={() => {
+            category.onCompareCard(row.productId, variant.variantId);
+          }}
         />
       </div>
+      <ReviewCategoryCell
+        connectionId={category.connectionId}
+        resolvesAtSubmit={category.resolvesAtSubmit}
+        {...describeVariantCategory(row, variant)}
+      />
       <div className="bulk-review__c-stock tabular">{stock.value ?? '-'}</div>
       <div className="bulk-review__c-price tabular">
         {price.value !== null ? `${price.value.toFixed(2)} ${config.currency}` : '-'}
@@ -875,10 +971,13 @@ function VariantChips({
   alreadyListed,
   destinationName,
   copyContext,
+  onCompareCard,
 }: {
   variant: BulkVariantRow;
   chips: Record<string, ChipDescriptor>;
   onFix: (focusField?: OfferBlockerField) => void;
+  /** Opens the card-vs-mapping comparison instead of the editor (#3994). */
+  onCompareCard?: () => void;
   /** Human variant label ("Colour: Red" / "Variant 2") — never the raw ol_variant id. */
   label: string;
   /** Already published on the destination (#1837) - soft warning, not a blocker. */
@@ -918,7 +1017,13 @@ function VariantChips({
           <Chip
             key={b}
             descriptor={descriptor}
-            onFix={descriptor.fixable ? () => onFix(descriptor.field) : undefined}
+            onFix={
+              b === 'card-category-differs' && onCompareCard
+                ? onCompareCard
+                : descriptor.fixable
+                  ? () => onFix(descriptor.field)
+                  : undefined
+            }
             fixLabel={`Fix: ${descriptor.label} - ${label}. ${cause.title}`}
             title={cause.title}
           />

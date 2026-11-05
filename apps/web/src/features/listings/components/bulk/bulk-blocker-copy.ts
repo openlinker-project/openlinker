@@ -82,6 +82,11 @@ export function describeBlocker(blocker: string, ctx: BlockerCopyContext): Block
         detail:
           'Pick a category to continue. The lookup was not empty - its answer was not understood, so nothing was ruled out.',
       };
+    case 'card-category-differs':
+      return {
+        title: `Barcode ${quoted(ctx.ean)} matched a ${ctx.destinationName} catalog product in a different category than your category mapping.`,
+        detail: 'Your mapping is used and the catalog product is not linked. Open it to compare the two.',
+      };
     case 'no-master-price':
       return {
         title: 'This variant has no price in the master catalog.',

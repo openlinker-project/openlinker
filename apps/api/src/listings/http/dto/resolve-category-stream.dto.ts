@@ -88,6 +88,24 @@ export const resolveCategoryStreamLineSchema: SchemaObject = {
                 // card, the offer self-links by barcode at build time.
                 productCardId: { type: 'string' },
                 method: { type: 'string', enum: [...EanMatchMethodValues] },
+                mappingAgrees: {
+                  type: 'boolean',
+                  enum: [true],
+                  description:
+                    'Present on a catalogue match whose card sits in the category the ' +
+                    "operator's mapping names (#3994). Absent means not compared.",
+                },
+                overriddenCard: {
+                  type: 'object',
+                  description:
+                    "A catalogue card matched the EAN in a different category than the operator's " +
+                    'mapping, so the mapping was used and the card is not linked (#3994).',
+                  properties: {
+                    allegroCategoryId: { type: 'string' },
+                    productCardId: { type: 'string' },
+                  },
+                  required: ['allegroCategoryId', 'productCardId'],
+                },
               },
               required: ['kind', 'allegroCategoryId', 'productCardId'],
             },

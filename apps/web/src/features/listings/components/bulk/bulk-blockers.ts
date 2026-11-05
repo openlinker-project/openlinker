@@ -57,6 +57,17 @@ export const NEUTRAL_BLOCKER_CHIPS: Record<string, ChipDescriptor> = {
     fixable: true,
     field: 'category',
   },
+  // #3994 - a catalogue card matched the barcode in a different category than
+  // the operator's mapping. The mapping was used, so nothing is wrong with the
+  // row; the chip only says a card was set aside. Advisory: the operator's own
+  // mapping is the answer, so it must never gate the batch.
+  'card-category-differs': {
+    tone: 'warning',
+    label: 'card ≠ mapping',
+    fixable: true,
+    advisory: true,
+    field: 'category',
+  },
   'no-master-price': { tone: 'error', label: 'no master price', fixable: true, field: 'price' },
   'no-master-stock': { tone: 'error', label: 'no master stock', fixable: true },
   'stock-unknown': { tone: 'error', label: 'stock not synced', fixable: true },
