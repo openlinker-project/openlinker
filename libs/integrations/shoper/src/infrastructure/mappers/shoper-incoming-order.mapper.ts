@@ -293,6 +293,25 @@ function lineRef(line: ShoperOrderLineRow): IncomingOrderItemRef {
  * neutral item type has no slot for "skipped" display lines, so they are dropped
  * here rather than invented a field for.
  */
+/**
+ * The checkbox option the "Produkt gratisowy w koszyku" app (Maxsote) puts on
+ * every gift line. It is the app's own option name, not a price or a guess: a
+ * line is a gift only when this option is chosen on it, so a cheap ordinary
+ * line is never marked. Folded so a differently cased or accented spelling still
+ * matches.
+ */
+const GIFT_OPTION_NAME = 'produkt gratisowy';
+
+function isGiftAppLine(line: ShoperOrderLineRow): boolean {
+  if (typeof line.option !== 'string') {
+    return false;
+  }
+  return line.option.split(',').some((pair) => {
+    const separator = pair.indexOf(':');
+    return separator !== -1 && foldLabel(pair.slice(0, separator).trim()) === GIFT_OPTION_NAME;
+  });
+}
+
 function mapLine(line: ShoperOrderLineRow): IncomingOrderItem {
   const gross = num(line.price) ?? 0;
   const taxRate = mapShoperTaxName(line.tax);
@@ -307,6 +326,7 @@ function mapLine(line: ShoperOrderLineRow): IncomingOrderItem {
     ...(sku === undefined ? {} : { sku }),
     ...(name === undefined ? {} : { name }),
     ...(taxRate === null ? {} : { taxRate }),
+    ...(isGiftAppLine(line) ? { gift: { source: 'channel' as const } } : {}),
   };
 }
 
