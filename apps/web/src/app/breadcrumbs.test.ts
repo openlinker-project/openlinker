@@ -88,6 +88,20 @@ describe('resolveCrumbFromMatches', () => {
     expect(resolveCrumbFromMatches(matches)).toEqual({ group: 'Platform', title: 'Connect Allegro' });
   });
 
+  it('should show the group and page as written when they are not keys of the app namespace', () => {
+    const matches: Match[] = [
+      match('legacy', { crumb: { group: 'Platform', page: 'Connect Shopify' } }),
+    ];
+
+    expect(resolveCrumbFromMatches(matches)).toEqual({ group: 'Platform', title: 'Connect Shopify' });
+  });
+
+  it('should not resolve an inherited object property as a crumb label', () => {
+    const matches: Match[] = [match('proto', { crumb: { group: 'toString', title: 'X' } })];
+
+    expect(resolveCrumbFromMatches(matches)).toEqual({ group: 'toString', title: 'X' });
+  });
+
   it('should read the section and page from the copy it is given', () => {
     const app = getMessages('app');
     const copy = {
