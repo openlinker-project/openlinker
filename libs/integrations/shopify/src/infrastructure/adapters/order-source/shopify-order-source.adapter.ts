@@ -18,6 +18,11 @@
  * it has not changed since it was created, `updated` otherwise. Core re-reads
  * the order through `getOrder` either way, so the type is a hint.
  *
+ * Mapping options (`SourceOptionsReader`, case C13): delivery methods,
+ * payment gateways and the neutral statuses an ingested order carries, so a
+ * routing rule or carrier mapping can be keyed on a Shopify delivery method.
+ * See `ShopifyMappingOptionsReader` for why a method is listed by NAME.
+ *
  * Returns are invisible to this feed: a return does not bump the order's
  * `updatedAt` (L-R1). They have a feed of their own - see `ReturnSourceReader`
  * below.
@@ -25,9 +30,11 @@
  * @module libs/integrations/shopify/src/infrastructure/adapters/order-source
  * @implements {OrderSourcePort}
  * @implements {ReturnSourceReader}
+ * @implements {SourceOptionsReader}
  */
 import type {
   IncomingOrder,
+  MappingOption,
   OrderFeedEventType,
   OrderFeedInput,
   OrderFeedItem,
@@ -35,6 +42,7 @@ import type {
   OrderSourcePort,
   ReturnDecliner,
   ReturnSourceReader,
+  SourceOptionsReader,
 } from '@openlinker/core/orders';
 import type {
   IncomingReturn,
@@ -79,6 +87,7 @@ import {
   formatShopifyReturnFeedCursor,
   parseShopifyReturnFeedCursor,
 } from '../../mappers/shopify-return-feed-cursor.mapper';
+import { ShopifyMappingOptionsReader } from '../../readers/shopify-mapping-options.reader';
 import { ORDER_BY_ID_QUERY, ORDER_FEED_QUERY } from '../../readers/shopify-order.queries';
 import {
   RETURN_BY_ID_QUERY,
@@ -101,19 +110,34 @@ const RETURN_FEED_ORDERS_PER_PAGE = 50;
  * Shopify is written back by the same code the destination role uses.
  */
 export class ShopifyOrderSourceAdapter
-  implements OrderSourcePort, ReturnSourceReader, ReturnDecliner, OrderStatusWriteback
+  implements OrderSourcePort, ReturnSourceReader, ReturnDecliner, OrderStatusWriteback, SourceOptionsReader
 {
   /** Shopify's own `ReturnDeclineReason` values; core treats them as opaque. */
   readonly declineReasonCodes: readonly string[] = ['RETURN_PERIOD_ENDED', 'FINAL_SALE', 'OTHER'];
 
   private readonly logger = new Logger(ShopifyOrderSourceAdapter.name);
+  private readonly options: ShopifyMappingOptionsReader;
 
   constructor(
     private readonly client: ShopifyGraphqlClient,
     private readonly storeDomain: string,
     private readonly connection: Connection,
     private readonly writeback: OrderStatusWriteback,
-  ) {}
+  ) {
+    this.options = new ShopifyMappingOptionsReader(client, connection.id);
+  }
+
+  listOrderStatuses(): Promise<MappingOption[]> {
+    return this.options.listOrderStatuses();
+  }
+
+  listDeliveryMethods(): Promise<MappingOption[]> {
+    return this.options.listDeliveryMethods();
+  }
+
+  listPaymentMethods(): Promise<MappingOption[]> {
+    return this.options.listPaymentMethods();
+  }
 
   write(event: OrderLifecycleEvent): Promise<OrderWritebackResult> {
     return this.writeback.write(event);
