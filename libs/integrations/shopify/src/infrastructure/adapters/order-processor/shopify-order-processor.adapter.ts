@@ -355,8 +355,23 @@ export class ShopifyOrderProcessorAdapter
     trackingNumber: string | undefined,
     carrierPlatformType: string | undefined,
   ): Promise<OrderWritebackResult> {
-    const order = await this.readFulfillmentOrders(externalOrderId);
+    let order = await this.readFulfillmentOrders(externalOrderId);
     const { locationGid } = await this.shopContext.get();
+    // An order the shop itself took (Shopify as the order source) was routed by
+    // Shopify, often to the location that had stock, never moved by us (that
+    // only happens on our own creates). OpenLinker is the single warehouse and
+    // the parcel left it, so the open work is moved here first; a failed move is
+    // logged and the order then reports the rejection below, as before.
+    const elsewhere = order.fulfillmentOrders.nodes.filter(
+      (fo) =>
+        FULFILLABLE_STATUSES.has(fo.status) &&
+        fo.assignedLocation?.location?.id !== locationGid &&
+        (fo.lineItems?.nodes ?? []).some((l) => l.remainingQuantity > 0),
+    );
+    if (elsewhere.length > 0) {
+      await this.moveToConfiguredLocation(externalOrderId, elsewhere);
+      order = await this.readFulfillmentOrders(externalOrderId);
+    }
     const open = order.fulfillmentOrders.nodes.filter(
       (fo) =>
         FULFILLABLE_STATUSES.has(fo.status) &&
