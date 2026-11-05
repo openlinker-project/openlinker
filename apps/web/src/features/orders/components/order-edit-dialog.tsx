@@ -41,11 +41,12 @@ import { Select } from '../../../shared/ui/select';
 import { interpolate, useFormat, useMessages } from '../../../shared/i18n';
 import type { ParsedOrderSnapshot } from '../api/order-snapshot.schema';
 import type { OrderEditsView } from '../api/order-edit.types';
+import { useEditOrderMutation, type EditOrderOutput } from '../hooks/use-edit-order-mutation';
 import {
-  useEditOrderMutation,
-  type EditOrderOutput,
-} from '../hooks/use-edit-order-mutation';
-import { readRefundCeilingFigures, readServerReason, remainingRefundable } from '../lib/order-cancel';
+  readRefundCeilingFigures,
+  readServerReason,
+  remainingRefundable,
+} from '../lib/order-cancel';
 import {
   classifyOrderEditRefusal,
   formatDecimalAmount,
@@ -63,9 +64,8 @@ import {
   buildOrderEditSchema,
   detectChangedSections,
   planOrderEdits,
-  type OrderEditFormValues,
-  type PlannedOrderEdit,
 } from './order-edit-dialog.schema';
+import type { OrderEditFormValues, PlannedOrderEdit } from './order-form.types';
 import { OrderEditRefusal } from './order-edit-refusal';
 import { OrderEditReview, type OrderEditDryRun } from './order-edit-review';
 
@@ -124,9 +124,9 @@ export function OrderEditDialog({
       buildOrderEditSchema(
         initial,
         Object.fromEntries(lineMeta.map((meta) => [meta.orderLineId, meta.maxQuantity])),
-        copy.validation,
+        copy.validation
       ),
-    [initial, lineMeta, copy.validation],
+    [initial, lineMeta, copy.validation]
   );
   const form = useForm<OrderEditFormValues>({
     defaultValues: initial,
@@ -190,7 +190,7 @@ export function OrderEditDialog({
    */
   const planForNow = (
     submitted: OrderEditFormValues,
-    dryRun: boolean,
+    dryRun: boolean
   ): { plan: PlannedOrderEdit[]; deferred: boolean } => {
     const full = planOrderEdits(submitted, initial, { dryRun });
     const deferred =
@@ -334,14 +334,14 @@ export function OrderEditDialog({
         data-testid="order-edit-dialog"
       >
         <DialogTitle>{interpolate(copy.title, { order: title })}</DialogTitle>
-        <DialogDescription>
-          {interpolate(copy.description, { channel })}
-        </DialogDescription>
+        <DialogDescription>{interpolate(copy.description, { channel })}</DialogDescription>
 
         {refusalCode !== null ? (
           <OrderEditRefusal
             code={refusalCode}
-            reason={failure && failureView === 'blocked' ? readServerReason(failure.error, '') : null}
+            reason={
+              failure && failureView === 'blocked' ? readServerReason(failure.error, '') : null
+            }
             savedSectionLabels={(failure?.saved ?? []).map(orderEditSectionLabel)}
             onGoTo={
               onGoTo
@@ -355,7 +355,11 @@ export function OrderEditDialog({
         ) : null}
         {failure && failureView !== 'blocked' ? <FailureAlert failure={failure} /> : null}
         {quantitiesSaved ? (
-          <Alert tone="success" title={copy.quantitiesSaved.title} data-testid="order-edit-quantities-saved">
+          <Alert
+            tone="success"
+            title={copy.quantitiesSaved.title}
+            data-testid="order-edit-quantities-saved"
+          >
             {copy.quantitiesSaved.body}
           </Alert>
         ) : null}
@@ -372,9 +376,7 @@ export function OrderEditDialog({
             disabled={locked.has('address')}
             data-testid={locked.has('address') ? 'order-edit-locked-address' : 'order-edit-address'}
           >
-            <legend className="dialog-section__head">
-              {sectionHead('address')}
-            </legend>
+            <legend className="dialog-section__head">{sectionHead('address')}</legend>
             <div className="form-field-row">
               <FormField name="firstName" label={copy.address.firstName}>
                 <Input {...form.register('firstName')} data-testid="order-edit-first-name" />
@@ -391,7 +393,10 @@ export function OrderEditDialog({
                 description={
                   values.address1.trim() !== initial.address1.trim() &&
                   edits?.address?.original?.address1 !== undefined
-                    ? interpolate(copy.address.address1Changed, { channel, original: edits.address.original.address1 })
+                    ? interpolate(copy.address.address1Changed, {
+                        channel,
+                        original: edits.address.original.address1,
+                      })
                     : undefined
                 }
               >
@@ -402,13 +407,21 @@ export function OrderEditDialog({
               </FormField>
             </div>
             <div className="form-field-row form-field-row--cols-3">
-              <FormField name="postalCode" label={copy.address.postalCode} error={errors.postalCode?.message}>
+              <FormField
+                name="postalCode"
+                label={copy.address.postalCode}
+                error={errors.postalCode?.message}
+              >
                 <Input {...form.register('postalCode')} data-testid="order-edit-postcode" />
               </FormField>
               <FormField name="city" label={copy.address.city} error={errors.city?.message}>
                 <Input {...form.register('city')} data-testid="order-edit-city" />
               </FormField>
-              <FormField name="country" label={copy.address.country} error={errors.country?.message}>
+              <FormField
+                name="country"
+                label={copy.address.country}
+                error={errors.country?.message}
+              >
                 <Input
                   {...form.register('country')}
                   maxLength={2}
@@ -421,11 +434,11 @@ export function OrderEditDialog({
           <fieldset
             className={`dialog-section order-edit-section${locked.has('delivery') ? ' order-edit-locked' : ''}`}
             disabled={locked.has('delivery')}
-            data-testid={locked.has('delivery') ? 'order-edit-locked-delivery' : 'order-edit-delivery'}
+            data-testid={
+              locked.has('delivery') ? 'order-edit-locked-delivery' : 'order-edit-delivery'
+            }
           >
-            <legend className="dialog-section__head">
-              {sectionHead('delivery')}
-            </legend>
+            <legend className="dialog-section__head">{sectionHead('delivery')}</legend>
             <div className="form-field-row">
               <FormField
                 name="methodId"
@@ -459,9 +472,7 @@ export function OrderEditDialog({
             disabled={locked.has('lines')}
             data-testid={locked.has('lines') ? 'order-edit-locked-lines' : 'order-edit-lines'}
           >
-            <legend className="dialog-section__head">
-              {sectionHead('lines')}
-            </legend>
+            <legend className="dialog-section__head">{sectionHead('lines')}</legend>
             <div className="data-table__container">
               <table className="data-table">
                 <thead>
@@ -524,21 +535,23 @@ export function OrderEditDialog({
                 {linesRootError}
               </p>
             ) : null}
-            <p className="form-field__description">
-              {copy.lines.hint}
-            </p>
+            <p className="form-field__description">{copy.lines.hint}</p>
           </fieldset>
 
           <fieldset
             className={`dialog-section order-edit-section${locked.has('discount') ? ' order-edit-locked' : ''}`}
             disabled={locked.has('discount')}
-            data-testid={locked.has('discount') ? 'order-edit-locked-discount' : 'order-edit-discount'}
+            data-testid={
+              locked.has('discount') ? 'order-edit-locked-discount' : 'order-edit-discount'
+            }
           >
-            <legend className="dialog-section__head">
-              {sectionHead('discount')}
-            </legend>
+            <legend className="dialog-section__head">{sectionHead('discount')}</legend>
             <div className="form-field-row">
-              <FormField name="discountValue" label={copy.discount.label} error={errors.discountValue?.message}>
+              <FormField
+                name="discountValue"
+                label={copy.discount.label}
+                error={errors.discountValue?.message}
+              >
                 <Input
                   inputMode="decimal"
                   placeholder="0.00"
@@ -563,11 +576,7 @@ export function OrderEditDialog({
           </fieldset>
 
           {needsAck ? (
-            <Alert
-              tone="warning"
-              title={copy.ack.title}
-              data-testid="order-edit-ack-alert"
-            >
+            <Alert tone="warning" title={copy.ack.title} data-testid="order-edit-ack-alert">
               {copy.ack.body}
               <label className="order-cancel-check">
                 <input
@@ -590,7 +599,7 @@ export function OrderEditDialog({
                 requested: formatDecimalAmount(ceiling.requested, ceiling.currency),
                 remaining: formatDecimalAmount(
                   remainingRefundable(ceiling.ceiling, ceiling.alreadyRefunded),
-                  ceiling.currency,
+                  ceiling.currency
                 ),
                 refunded: formatDecimalAmount(ceiling.alreadyRefunded, ceiling.currency),
               })}

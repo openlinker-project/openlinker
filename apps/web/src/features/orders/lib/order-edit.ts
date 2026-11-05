@@ -160,7 +160,8 @@ export function orderEditRefusalCopy(code: OrderEditErrorCode): OrderEditRefusal
       .sort((a, b) => Number(a) - Number(b))
       .map((key) => (words.steps ?? {})[key]),
     locks: rule.locks,
-    remedy: rule.remedy === null ? null : { target: rule.remedy, label: copy.remedies[rule.remedy] },
+    remedy:
+      rule.remedy === null ? null : { target: rule.remedy, label: copy.remedies[rule.remedy] },
   };
 }
 
@@ -178,7 +179,7 @@ export function orderEditErrorNeedsRefresh(code: OrderEditErrorCode | null): boo
 /** The sections locked by a refusal, as a set. An unknown or absent code locks nothing. */
 export function lockedSectionsFor(
   code: OrderEditErrorCode | null,
-  refusedSection: OrderEditSection | null = null,
+  refusedSection: OrderEditSection | null = null
 ): ReadonlySet<OrderEditSection> {
   if (code === null) return new Set();
   const locks = ORDER_EDIT_REFUSAL_RULES[code].locks;
@@ -216,7 +217,7 @@ export function discountBranchLabel(branch: DiscountPaymentBranch): string {
 
 /** Why a discount's document correction could not be drafted, in operator words. */
 export function discountCorrectionUnavailableText(
-  reason: DiscountCorrectionUnavailableReason,
+  reason: DiscountCorrectionUnavailableReason
 ): string {
   return getMessages('orders').orderEdit.correctionUnavailable[reason];
 }
@@ -225,8 +226,14 @@ export function discountCorrectionUnavailableText(
  * What an edit's stock restore did, in operator words (E-52). A failed restore is
  * a `warning` and names the server's reason; `not-applicable` is stated rather
  * than hidden so silence never reads as "stock was put back".
+ *
+ * `list` joins the reasons in the active language (`useFormat().list`), so a
+ * Polish sentence reads "a i b" rather than an English-style comma join.
  */
-export function describeStockOutcome(stock: readonly OrderEditLineStock[]): {
+export function describeStockOutcome(
+  stock: readonly OrderEditLineStock[],
+  list: (items: readonly string[]) => string
+): {
   tone: 'info' | 'warning';
   text: string;
 } | null {
@@ -236,13 +243,15 @@ export function describeStockOutcome(stock: readonly OrderEditLineStock[]): {
   const failed = stock.filter((line) => line.stockRestored === false);
   if (failed.length > 0) {
     const reasons = Array.from(
-      new Set(failed.map((line) => line.detail).filter((d): d is string => Boolean(d))),
+      new Set(failed.map((line) => line.detail).filter((d): d is string => Boolean(d)))
     );
     return {
       tone: 'warning',
       text:
         reasons.length > 0
-          ? formatPlural(failed.length, copy.notRestoredWithReasons, locale, { reasons: reasons.join(', ') })
+          ? formatPlural(failed.length, copy.notRestoredWithReasons, locale, {
+              reasons: list(reasons),
+            })
           : formatPlural(failed.length, copy.notRestored, locale),
     };
   }
@@ -265,7 +274,7 @@ export function describeCeilingVerdict(ceiling: DiscountRefundCeiling): {
       text: interpolate(copy.within, {
         remaining: formatDecimalAmount(
           remainingRefundable(ceiling.ceiling, ceiling.alreadyRefunded),
-          ceiling.currency,
+          ceiling.currency
         ),
       }),
     };
@@ -277,7 +286,7 @@ export function describeCeilingVerdict(ceiling: DiscountRefundCeiling): {
         requested: formatDecimalAmount(ceiling.requested, ceiling.currency),
         remaining: formatDecimalAmount(
           remainingRefundable(ceiling.ceiling, ceiling.alreadyRefunded),
-          ceiling.currency,
+          ceiling.currency
         ),
         refunded: formatDecimalAmount(ceiling.alreadyRefunded, ceiling.currency),
       }),

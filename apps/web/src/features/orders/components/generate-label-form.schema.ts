@@ -9,9 +9,8 @@
  */
 import { z } from 'zod';
 
-import type { Messages, ResolvedCopy } from '../../../shared/i18n';
-
 import { COD_CURRENCY_VALUES, type CodCurrency } from '../../../shared/shipping/cod-currencies';
+import type { GenerateLabelValidationCopy } from './order-form.types';
 
 /**
  * COD currency vocabulary — the source of truth now lives in
@@ -40,11 +39,6 @@ export type InsuredCurrency = (typeof INSURED_CURRENCY_VALUES)[number];
  */
 export const LOCKER_TEMPLATE_VALUES = ['small', 'medium', 'large'] as const;
 export type LockerTemplate = (typeof LOCKER_TEMPLATE_VALUES)[number];
-
-/** The `orders.generateLabelForm.validation` copy, in the language the form renders in. */
-export type GenerateLabelValidationCopy = ResolvedCopy<
-  Messages['orders']
->['generateLabelForm']['validation'];
 
 /**
  * A factory rather than a module-level schema: the messages are read when the

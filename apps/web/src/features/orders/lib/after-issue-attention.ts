@@ -11,19 +11,15 @@
  *
  * @module apps/web/src/features/orders/lib
  */
-import type { Messages, ResolvedCopy } from '../../../shared/i18n';
 import type { SalesDocumentAfterIssueAttention } from '../api/orders.types';
-
-export type AfterIssueAttentionCopyTree = ResolvedCopy<Messages['orders']>['afterIssueAttention'];
-
-export interface AfterIssueAttentionCopy {
-  readonly short: string;
-  readonly detail: string;
-}
+import type {
+  AfterIssueAttentionCopy,
+  AfterIssueAttentionCopyTree,
+} from './after-issue-attention.types';
 
 export function resolveAfterIssueAttentionCopy(
   attention: SalesDocumentAfterIssueAttention | string | null | undefined,
-  copy: AfterIssueAttentionCopyTree,
+  copy: AfterIssueAttentionCopyTree
 ): AfterIssueAttentionCopy | null {
   switch (attention) {
     case 'order-cancelled-after-issue':

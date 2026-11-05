@@ -27,7 +27,11 @@ import { interpolate, useFormat, useMessages, usePlural } from '../../../shared/
 import { useIsAdmin, useWriteAccess } from '../../../shared/auth/use-permission';
 import { useDemoMode } from '../../system';
 import type { ConfirmOrderChangeResult } from '../api/order-cancel.types';
-import type { OrderDiscountResult, OrderEditLineStock, OrderEditsView } from '../api/order-edit.types';
+import type {
+  OrderDiscountResult,
+  OrderEditLineStock,
+  OrderEditsView,
+} from '../api/order-edit.types';
 import {
   describeStockOutcome,
   discountCorrectionUnavailableText,
@@ -96,14 +100,19 @@ export function OrderEditedNotice({
   const refund = edits.discountProposals.find((p) => p.kind === 'order.discount_refund') ?? null;
   const correction =
     edits.discountProposals.find((p) => p.kind === 'order.discount_correction') ?? null;
-  const unavailable = correction === null ? (sessionDiscount?.correctionUnavailableReason ?? null) : null;
+  const unavailable =
+    correction === null ? sessionDiscount?.correctionUnavailableReason ?? null : null;
   const totals = edits.totals;
   const lowered = edits.lines.length;
   const unmatched = edits.unmatchedLineEdits ?? [];
-  const stockOutcome = describeStockOutcome(sessionStock ?? []);
+  const stockOutcome = describeStockOutcome(sessionStock ?? [], format.list);
   const sessionAmount = sessionDiscount?.discount?.amount ?? null;
   const combinedDiscountText = totals
-    ? describeCombinedDiscount(totals, edits.discount ? Number(edits.discount.amount) : null, sourceName)
+    ? describeCombinedDiscount(
+        totals,
+        edits.discount ? Number(edits.discount.amount) : null,
+        sourceName
+      )
     : null;
   const channelTotal = totals ? format.money(totals.channelTotal, totals.currency) : null;
   const stillShows =
@@ -124,7 +133,9 @@ export function OrderEditedNotice({
             ? ` ${interpolate(copy.orderHere, { amount: format.money(totals.total, totals.currency) })}`
             : ''}
         </p>
-        {combinedDiscountText ? <p data-testid="order-edit-combined-discount">{combinedDiscountText}</p> : null}
+        {combinedDiscountText ? (
+          <p data-testid="order-edit-combined-discount">{combinedDiscountText}</p>
+        ) : null}
         {edits.cod && edits.cod.amount !== null && edits.cod.amount !== edits.cod.channelAmount ? (
           <p data-testid="order-edit-cod">
             {interpolate(copy.cod, {
@@ -207,7 +218,7 @@ export function OrderEditedNotice({
                         internalOrderId,
                         edit: { kind: 'discount', body: { amount: sessionAmount } },
                       },
-                      { onSuccess: (output) => onDiscountResent?.([output]) },
+                      { onSuccess: (output) => onDiscountResent?.([output]) }
                     );
                   }}
                 >
@@ -235,17 +246,14 @@ export function OrderEditedNotice({
         </Alert>
       ) : null}
       {unmatched.length > 0 ? (
-        <Alert
-          tone="warning"
-          title={copy.unmatched.title}
-          data-testid="order-edit-unmatched"
-        >
-          <p>
-            {plural(unmatched.length, copy.unmatched.body, { channel })}
-          </p>
+        <Alert tone="warning" title={copy.unmatched.title} data-testid="order-edit-unmatched">
+          <p>{plural(unmatched.length, copy.unmatched.body, { channel })}</p>
           <ul>
             {unmatched.map((entry) => (
-              <li key={`${entry.orderLineId}:${entry.editedAt}`} data-testid="order-edit-unmatched-line">
+              <li
+                key={`${entry.orderLineId}:${entry.editedAt}`}
+                data-testid="order-edit-unmatched-line"
+              >
                 {interpolate(copy.unmatched.line, {
                   line: entry.orderLineId,
                   quantity: entry.editedQuantity,

@@ -13,13 +13,11 @@
  */
 import { z } from 'zod';
 
-import { interpolate, type Messages, type ResolvedCopy } from '../../../shared/i18n';
+import { interpolate } from '../../../shared/i18n';
 import { HoldReasonValues } from '../lib/order-hold.types';
+import type { HoldValidationCopy } from './order-form.types';
 
 export const HOLD_NOTE_MAX_LENGTH = 2000;
-
-/** The `orders.holds.validation` copy, in the language the form renders in. */
-export type HoldValidationCopy = ResolvedCopy<Messages['orders']>['holds']['validation'];
 
 /** The note-length message, shared by the place and release schemas. */
 export function holdNoteTooLongMessage(copy: HoldValidationCopy): string {

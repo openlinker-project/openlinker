@@ -33,11 +33,8 @@ import { Select } from '../../../shared/ui/select';
 import { Textarea } from '../../../shared/ui/textarea';
 import type { BulkCancelOrdersResult } from '../api/order-bulk-actions.types';
 import { useBulkCancelOrdersMutation } from '../hooks/use-bulk-order-actions';
-import {
-  bulkCancelRow,
-  describeCancelWarning,
-  type BulkActionsCopy,
-} from '../lib/bulk-order-actions';
+import { bulkCancelRow, describeCancelWarning } from '../lib/bulk-order-actions';
+import type { BulkActionsCopy } from '../lib/bulk-order-actions.types';
 import {
   ORDER_CANCEL_NOTE_MAX_LENGTH,
   OrderCancelReasonValues,
@@ -51,7 +48,11 @@ import {
   type BulkCancelSubmission,
 } from './bulk-cancel-dialog.schema';
 
-const DEFAULTS: BulkCancelFormValues = { reason: 'buyer-request', note: '', acknowledgeAcceptedWork: false };
+const DEFAULTS: BulkCancelFormValues = {
+  reason: 'buyer-request',
+  note: '',
+  acknowledgeAcceptedWork: false,
+};
 
 export interface BulkCancelDialogProps {
   open: boolean;
@@ -77,13 +78,14 @@ export function isDefiniteNoOp(error: unknown): boolean {
 export function toCancelRows(
   result: BulkCancelOrdersResult,
   copy: BulkActionsCopy,
-  connectionNames?: ReadonlyMap<string, string>,
+  connectionNames?: ReadonlyMap<string, string>
 ): BulkResultRow[] {
   return result.results.map((row) => {
     const view = bulkCancelRow(row.outcome, copy);
-    const detail = [row.reason, row.code ? `(${row.code})` : null].filter(Boolean).join(' ') || null;
+    const detail =
+      [row.reason, row.code ? `(${row.code})` : null].filter(Boolean).join(' ') || null;
     const notes = (row.warnings ?? []).map((w) =>
-      describeCancelWarning(w, (id) => connectionNames?.get(id), copy),
+      describeCancelWarning(w, (id) => connectionNames?.get(id), copy)
     );
     return {
       orderId: row.orderId,
@@ -154,7 +156,7 @@ export function BulkCancelDialog({
             void queryClient.invalidateQueries({ queryKey: ordersQueryKeys.all });
           }
         },
-      },
+      }
     );
   });
 
@@ -199,7 +201,11 @@ export function BulkCancelDialog({
         <DialogDescription>{COPY.description}</DialogDescription>
 
         {mutation.isError && !isDefiniteNoOp(mutation.error) ? (
-          <Alert tone="warning" title={COPY.unconfirmedError} data-testid="orders-bulk-cancel-unconfirmed">
+          <Alert
+            tone="warning"
+            title={COPY.unconfirmedError}
+            data-testid="orders-bulk-cancel-unconfirmed"
+          >
             {COPY.unconfirmedBody}
           </Alert>
         ) : mutation.isError ? (

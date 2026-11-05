@@ -40,7 +40,7 @@ import {
   type OrderEditSection,
 } from '../lib/order-edit';
 import type { EditOrderOutput } from '../hooks/use-edit-order-mutation';
-import type { OrderEditLineMeta } from './order-edit-dialog.schema';
+import type { OrderEditLineMeta } from './order-form.types';
 
 export interface OrderEditDryRun {
   section: OrderEditSection;
@@ -210,11 +210,7 @@ export function OrderEditReview({
       </div>
 
       {discountDeferred ? (
-        <Alert
-          tone="info"
-          title={copy.deferred.title}
-          data-testid="order-edit-discount-deferred"
-        >
+        <Alert tone="info" title={copy.deferred.title} data-testid="order-edit-discount-deferred">
           {copy.deferred.body}
         </Alert>
       ) : null}
@@ -229,13 +225,13 @@ export function OrderEditReview({
                 {copy.impact.documentsStatus}
               </StatusBadge>
             </span>
-            <span className="order-cancel-impact__how">
-              {copy.impact.documentsBody}
-            </span>
+            <span className="order-cancel-impact__how">{copy.impact.documentsBody}</span>
           </li>
           <li className="order-cancel-impact__row">
             <span className="order-cancel-impact__head">
-              <span className="order-cancel-impact__what">{channelName ?? copy.impact.channelFallback}</span>
+              <span className="order-cancel-impact__what">
+                {channelName ?? copy.impact.channelFallback}
+              </span>
               <StatusBadge tone="neutral" compact>
                 {copy.impact.channelStatus}
               </StatusBadge>
@@ -295,9 +291,7 @@ function DiscountMoney({
             {verdict.text}
           </p>
         ) : null}
-        <p data-testid="order-edit-correction">
-          {correctionText(true, copy.paidNoDocument)}
-        </p>
+        <p data-testid="order-edit-correction">{correctionText(true, copy.paidNoDocument)}</p>
       </Alert>
     );
   }
@@ -309,13 +303,14 @@ function DiscountMoney({
           {result.amountToCollect
             ? interpolate(copy.codBody, {
                 branch,
-                amount: formatDecimalAmount(result.amountToCollect.amount, result.amountToCollect.currency),
+                amount: formatDecimalAmount(
+                  result.amountToCollect.amount,
+                  result.amountToCollect.currency
+                ),
               })
             : interpolate(copy.codBodyNoAmount, { branch })}
         </p>
-        <p data-testid="order-edit-correction">
-          {correctionText(false, copy.codNoDocument)}
-        </p>
+        <p data-testid="order-edit-correction">{correctionText(false, copy.codNoDocument)}</p>
       </Alert>
     );
   }

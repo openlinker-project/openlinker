@@ -20,6 +20,7 @@ import { useOrderTagIdsQuery } from '../hooks/use-order-tag-ids-query';
 import { useOrderTagsQuery } from '../hooks/use-order-tags-query';
 import { useUnassignOrderTagMutation } from '../hooks/use-order-tag-mutations';
 import { useMessages } from '../../../shared/i18n';
+import { serverErrorText } from '../lib/server-error-text';
 
 export interface OrderTagsHeaderRowProps {
   internalOrderId: string;
@@ -27,6 +28,7 @@ export interface OrderTagsHeaderRowProps {
 
 export function OrderTagsHeaderRow({ internalOrderId }: OrderTagsHeaderRowProps): ReactElement | null {
   const copy = useMessages('orders').orderTags;
+  const serverSaid = useMessages('orders').common.serverSaid;
   const demoMode = useDemoMode();
   const write = useWriteAccess('orders:write', demoMode);
   const canWrite = write.canWrite;
@@ -64,7 +66,7 @@ export function OrderTagsHeaderRow({ internalOrderId }: OrderTagsHeaderRowProps)
                       showToast({
                         tone: 'error',
                         title: copy.picker.saveErrorTitle,
-                        description: error.message || copy.picker.saveErrorFallback,
+                        description: serverErrorText(serverSaid, error.message, copy.picker.saveErrorFallback),
                       });
                     },
                   });

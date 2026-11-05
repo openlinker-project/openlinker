@@ -11,17 +11,14 @@
  */
 import { z } from 'zod';
 
-import { interpolate, type Messages, type ResolvedCopy } from '../../../shared/i18n';
+import { interpolate } from '../../../shared/i18n';
 
 import {
   ORDER_CANCEL_NOTE_MAX_LENGTH,
   OrderCancelReasonValues,
   orderCancelReasonRequiresNote,
 } from '../lib/order-cancel';
-
-/** The `orders.cancelOrderDialog.validation` copy, in the language the form renders in. */
-export type CancelOrderValidationCopy =
-  ResolvedCopy<Messages['orders']>['cancelOrderDialog']['validation'];
+import type { CancelOrderValidationCopy } from './order-form.types';
 
 /**
  * A factory rather than a module-level schema: the messages are read when the
@@ -35,7 +32,7 @@ export function createCancelOrderSchema(copy: CancelOrderValidationCopy) {
         .string()
         .max(
           ORDER_CANCEL_NOTE_MAX_LENGTH,
-          interpolate(copy.noteTooLong, { max: ORDER_CANCEL_NOTE_MAX_LENGTH }),
+          interpolate(copy.noteTooLong, { max: ORDER_CANCEL_NOTE_MAX_LENGTH })
         )
         .optional(),
       acknowledgeAcceptedWork: z.boolean().optional(),

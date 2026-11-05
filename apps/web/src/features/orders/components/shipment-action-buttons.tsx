@@ -30,11 +30,16 @@ import {
   cancelShipmentCopy,
   type Shipment,
 } from '../../shipments';
-import { useMessages, type Messages, type ResolvedCopy } from '../../../shared/i18n';
+import { useMessages } from '../../../shared/i18n';
 import { Button } from '../../../shared/ui/button';
 import { ConfirmDialog } from '../../../shared/ui/confirm-dialog';
 import { useToast } from '../../../shared/ui/toast-provider';
 import type { PaymentStatus } from '../api/order-snapshot.schema';
+import type {
+  GenerateLabelBlock,
+  GenerateLabelBlockInput,
+  ShipmentActionButtonsCopy,
+} from './shipment-action-buttons.types';
 
 interface ShipmentActionButtonsProps {
   /** Current active shipment row; `null` when the order has no shipment yet. */
@@ -75,13 +80,10 @@ interface ShipmentActionButtonsProps {
  * auto-open guard, which must apply the same payment gate this button does
  * rather than opening the form unconditionally.
  */
-export const PAYMENT_BLOCKS_DISPATCH: ReadonlySet<PaymentStatus> = new Set(['awaiting', 'refunded']);
-
-/** Why "Generate label" is unavailable right now. */
-export type GenerateLabelBlock = 'permission' | 'state' | 'post-waybill' | 'route' | 'payment';
-
-/** The `orders.shipmentActionButtons` copy, in the active language. */
-export type ShipmentActionButtonsCopy = ResolvedCopy<Messages['orders']>['shipmentActionButtons'];
+export const PAYMENT_BLOCKS_DISPATCH: ReadonlySet<PaymentStatus> = new Set([
+  'awaiting',
+  'refunded',
+]);
 
 const BLOCK_REASON_KEY = {
   permission: 'permission',
@@ -101,17 +103,9 @@ const BLOCK_REASON_KEY = {
  */
 export function generateLabelBlockReason(
   block: GenerateLabelBlock,
-  copy: ShipmentActionButtonsCopy,
+  copy: ShipmentActionButtonsCopy
 ): string {
   return copy.blockReason[BLOCK_REASON_KEY[block]];
-}
-
-export interface GenerateLabelBlockInput {
-  /** `null` ⇒ no shipment row yet (the first-label case). */
-  shipment: Shipment | null;
-  canWrite: boolean;
-  paymentBlocksDispatch: boolean;
-  routeUnavailable: boolean;
 }
 
 /**
@@ -187,9 +181,7 @@ export function ShipmentActionButtons({
   // Label download needs both a retrievable lifecycle state AND a persisted
   // label ref (the "a label was generated" marker).
   const canDownloadLabel =
-    shipment !== null &&
-    shipment.labelPdfRef !== null &&
-    CAN_DOWNLOAD_LABEL.has(shipment.status);
+    shipment !== null && shipment.labelPdfRef !== null && CAN_DOWNLOAD_LABEL.has(shipment.status);
 
   const handleDownloadLabel = (): void => {
     if (!shipment) return;
@@ -202,7 +194,8 @@ export function ShipmentActionButtons({
   };
 
   const carrierName = getCarrierDisplayName(shipment?.carrier ?? null) ?? copy.carrierFallback;
-  const blockReason = generateBlock === null ? undefined : generateLabelBlockReason(generateBlock, copy);
+  const blockReason =
+    generateBlock === null ? undefined : generateLabelBlockReason(generateBlock, copy);
   const cancelCopy = cancelShipmentCopy(shipment?.status ?? 'draft', carrierName);
 
   return (

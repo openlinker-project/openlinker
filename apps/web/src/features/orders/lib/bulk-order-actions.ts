@@ -8,7 +8,7 @@
  *
  * @module apps/web/src/features/orders/lib
  */
-import { interpolate, type Messages, type ResolvedCopy } from '../../../shared/i18n';
+import { interpolate } from '../../../shared/i18n';
 import {
   BULK_ORDER_ACTION_MAX,
   type BulkBuyerNoteOutcome,
@@ -17,11 +17,9 @@ import {
 } from '../api/order-bulk-actions.types';
 import type { OrderRecord } from '../api/orders.types';
 import type { StatusBadgeTone } from '../../../shared/ui/status-badge';
+import type { BulkActionsCopy, BulkRowView } from './bulk-order-actions.types';
 
 export { BULK_ORDER_ACTION_MAX };
-
-/** The `orders.bulkActions` copy, in the language the list renders in. */
-export type BulkActionsCopy = ResolvedCopy<Messages['orders']>['bulkActions'];
 
 /** Why a bulk action is unavailable for this selection, or null when it is available. */
 export function bulkSelectionBlockReason(count: number, copy: BulkActionsCopy): string | null {
@@ -46,11 +44,6 @@ export function splitBuyerNoteCandidates(orders: readonly OrderRecord[]): {
     else candidates.push(order);
   }
   return { candidates, noNote, alreadyRead };
-}
-
-export interface BulkRowView {
-  tone: StatusBadgeTone;
-  label: string;
 }
 
 const BULK_CANCEL_TONE: Record<BulkCancelOutcome, StatusBadgeTone> = {
@@ -93,7 +86,7 @@ export function bulkTagRow(outcome: BulkOrderTagOutcome, copy: BulkActionsCopy):
 export function describeCancelWarning(
   code: string,
   connectionName: (id: string) => string | undefined,
-  copy: BulkActionsCopy,
+  copy: BulkActionsCopy
 ): string {
   const words = copy.warnings;
   if (code.startsWith('stock-restored-only:')) {

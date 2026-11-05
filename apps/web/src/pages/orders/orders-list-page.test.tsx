@@ -264,7 +264,7 @@ describe('OrdersListPage', () => {
     renderWithProviders(<OrdersListPage />, { apiClient: mockApi });
 
     expect(await screen.findByText('Unable to load orders')).toBeInTheDocument();
-    expect(screen.getByText('Network error')).toBeInTheDocument();
+    expect(screen.getByText('The server said: Network error')).toBeInTheDocument();
   });
 
   it('should show empty state with a Manage connections CTA when no orders exist and no filter is active', async () => {

@@ -7,11 +7,8 @@
  *
  * @module apps/web/src/features/orders/lib
  */
-import type { Messages, ResolvedCopy } from '../../../shared/i18n';
 import type { OrderTagColorValue } from '../api/orders.types';
-
-/** The `orders.orderTags` copy, in the active language. */
-export type OrderTagsCopy = ResolvedCopy<Messages['orders']>['orderTags'];
+import type { OrderTagsCopy } from './order-tags.types';
 
 /** Mockup M3 `tags`: "Up to 32 characters. Must be unique." */
 export const ORDER_TAG_NAME_MAX_LENGTH = 32;

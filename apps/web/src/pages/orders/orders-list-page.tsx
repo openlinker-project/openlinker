@@ -42,7 +42,6 @@ import { MetricCard, type MetricCardTone } from '../../shared/ui/metric-card';
 import { useToast } from '../../shared/ui/toast-provider';
 import { formatShipBy, type ShipByLevel } from '../../shared/format/format-ship-by';
 import {
-  getBcp47Locale,
   interpolate,
   useActiveLocale,
   useFormat,
@@ -131,6 +130,7 @@ import {
 } from '../../features/connections';
 import { resolvePlatformLabel, resolvePlatformShortLabel } from '../../features/mappings';
 import { usePlatforms } from '../../shared/plugins';
+import { serverErrorText } from '../../features/orders/lib/server-error-text';
 
 const PAGE_SIZE = 20;
 
@@ -214,6 +214,7 @@ export function OrdersListPage(): ReactElement {
   const format = useFormat();
   const plural = usePlural();
   const orders = useMessages('orders');
+  const serverSaid = orders.common.serverSaid;
   const copy = orders.listPage;
   const filterCopy = orders.listFilters;
   const bulkCopy = orders.bulkActions;
@@ -312,13 +313,9 @@ export function OrdersListPage(): ReactElement {
     (ymd: string): string => {
       const [y, m, d] = ymd.split('-').map(Number);
       if (!y || !m || !d) return ymd;
-      return new Intl.DateTimeFormat(getBcp47Locale(locale), {
-        day: 'numeric',
-        month: 'short',
-        year: 'numeric',
-      }).format(new Date(y, m - 1, d));
+      return format.date(new Date(y, m - 1, d).toISOString());
     },
-    [locale],
+    [format],
   );
   const chipContext: OrderFilterChipContext = useMemo(
     () => ({
@@ -1108,7 +1105,7 @@ export function OrdersListPage(): ReactElement {
           });
         },
         onError: (error) => {
-          showToast({ tone: 'error', title: copy.retry.failedTitle, description: error.message });
+          showToast({ tone: 'error', title: copy.retry.failedTitle, description: serverErrorText(serverSaid, error.message, '') });
         },
       },
     );
@@ -1266,7 +1263,7 @@ export function OrdersListPage(): ReactElement {
       ) : query.error ? (
         <ErrorState
           title={copy.loadError}
-          message={query.error.message}
+          message={serverErrorText(serverSaid, query.error.message, '')}
           action={<Button onClick={() => { void query.refetch(); }}>{copy.retry.action}</Button>}
         />
       ) : (query.data?.items.length ?? 0) === 0 ? (

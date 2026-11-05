@@ -70,8 +70,8 @@ export {
   stockAtRiskBadge,
   stockAtRiskCallout,
   shortfallItemLabel,
-  type StockAtRiskText,
 } from './lib/stock-at-risk';
+export type { StockAtRiskText } from './lib/stock-at-risk.types';
 export { useStockAtRiskText } from './hooks/use-stock-at-risk-text';
 export { StockAtRiskBadge } from './components/stock-at-risk-badge';
 export { StockAtRiskCallout } from './components/stock-at-risk-callout';
@@ -120,10 +120,7 @@ export type { RefundReason } from './lib/refund-reason';
 // shape. Exported as a TYPE only: the timeline component itself stays a deep
 // import for the one page that mounts it, and no sibling gains the ability to
 // render an orders timeline of its own.
-export type {
-  TimelineEvent,
-  DatedTimelineEvent,
-} from './components/order-activity-timeline';
+export type { TimelineEvent, DatedTimelineEvent } from './components/order-activity-timeline';
 
 // #2646 — the presentational timeline list, extracted when the return detail
 // became a second consumer. A VALUE export, unlike the row type above: the
@@ -140,9 +137,5 @@ export { HoldReasonValues, holdReasonLabel } from './lib/order-hold.types';
 // The Settings tag manager (`pages/settings`) reads the tag copy and limits
 // through these rather than the `orders` namespace itself.
 export { useOrderTagsCopy } from './hooks/use-order-tags-copy';
-export {
-  ORDER_TAG_LIMIT,
-  ORDER_TAG_NAME_MAX_LENGTH,
-  orderTagColorLabel,
-  type OrderTagsCopy,
-} from './lib/order-tags';
+export { ORDER_TAG_LIMIT, ORDER_TAG_NAME_MAX_LENGTH, orderTagColorLabel } from './lib/order-tags';
+export type { OrderTagsCopy } from './lib/order-tags.types';

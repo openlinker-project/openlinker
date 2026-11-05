@@ -80,6 +80,7 @@ import {
   missingFieldMessage,
   resolveShippingMethod,
 } from '../lib/dispatch-input';
+import { serverErrorText } from '../lib/server-error-text';
 
 type GenerateLabelCopy = ResolvedCopy<Messages['orders']>['generateLabelForm'];
 
@@ -138,6 +139,7 @@ export function GenerateLabelForm({
   onCancel,
 }: GenerateLabelFormProps): ReactElement {
   const ordersCopy = useMessages('orders');
+  const serverSaid = ordersCopy.common.serverSaid;
   const copy = ordersCopy.generateLabelForm;
   const schema = useMemo(() => createGenerateLabelSchema(copy.validation), [copy]);
   const snapshot = parseOrderSnapshot(order.orderSnapshot);
@@ -566,7 +568,7 @@ export function GenerateLabelForm({
           can quote it to carrier support without a log dive. */}
       {mutation.error ? (
         <Alert tone="error" className="generate-label-form__error">
-          <p className="generate-label-form__error-message">{mutation.error.message}</p>
+          <p className="generate-label-form__error-message">{serverErrorText(serverSaid, mutation.error.message, '')}</p>
           <StructuredErrorList errors={extractShippingFieldErrors(mutation.error)} />
           <ShippingTraceReference traceId={extractShippingTraceId(mutation.error)} />
         </Alert>

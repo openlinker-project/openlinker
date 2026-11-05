@@ -44,6 +44,7 @@ import { interpolate, useMessages, usePlural } from '../../../shared/i18n';
 import { bulkTagRow } from '../lib/bulk-order-actions';
 import { BulkResultRows } from './bulk-result-rows';
 import { OrderTagChip } from './order-tag-chip';
+import { serverErrorText } from '../lib/server-error-text';
 
 export interface BulkTagPopoverProps {
   selectedOrders: readonly OrderRecord[];
@@ -68,6 +69,7 @@ export function BulkTagPopover({
   const bulkCopy = useMessages('orders').bulkActions;
   const REMOVE_COPY = bulkCopy.tags;
   const COPY = useMessages('orders').orderTags.bulk;
+  const serverSaid = useMessages('orders').common.serverSaid;
   const plural = usePlural();
   const [mode, setMode] = useState<'add' | 'remove'>('add');
   const [details, setDetails] = useState<TagDetails | null>(null);
@@ -107,7 +109,7 @@ export function BulkTagPopover({
             title: COPY.resultTitle,
             description:
               result.alreadyTagged > 0
-                ? `${plural(result.added, COPY.resultDescription, { name: tag.name })} ${interpolate(COPY.resultAlreadyHad, { n: result.alreadyTagged })}`
+                ? `${plural(result.added, COPY.resultDescription, { name: tag.name })} ${plural(result.alreadyTagged, COPY.resultAlreadyHad)}`
                 : plural(result.added, COPY.resultDescription, { name: tag.name }),
           });
         },
@@ -115,7 +117,7 @@ export function BulkTagPopover({
           showToast({
             tone: 'error',
             title: COPY.errorTitle,
-            description: error.message || COPY.errorFallback,
+            description: serverErrorText(serverSaid, error.message, COPY.errorFallback),
           });
         },
       },
@@ -139,7 +141,7 @@ export function BulkTagPopover({
           showToast({
             tone: 'error',
             title: REMOVE_COPY.removeErrorTitle,
-            description: error.message || REMOVE_COPY.removeErrorFallback,
+            description: serverErrorText(serverSaid, error.message, REMOVE_COPY.removeErrorFallback),
           });
         },
       },

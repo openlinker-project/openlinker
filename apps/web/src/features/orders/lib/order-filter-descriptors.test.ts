@@ -164,7 +164,7 @@ describe('buildOrderFilterChips', () => {
     expect(chips).toHaveLength(1);
     expect(chips[0]).toMatchObject({
       label: 'Created',
-      valueText: '2026-09-01 – 2026-09-25',
+      valueText: '2026-09-01 - 2026-09-25',
       clears: ['createdFrom', 'createdTo'],
     });
   });

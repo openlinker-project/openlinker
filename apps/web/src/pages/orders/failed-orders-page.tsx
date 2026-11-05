@@ -29,6 +29,7 @@ import { useConnectionsQuery } from '../../features/connections/hooks/use-connec
 import { ConnectionEntityLabel } from '../../features/connections/components/ConnectionEntityLabel';
 import { TimeDisplay } from '../../shared/ui/time-display';
 import type { OrderRecord } from '../../features/orders/api/orders.types';
+import { serverErrorText } from '../../features/orders/lib/server-error-text';
 
 const PAGE_SIZE = 25;
 
@@ -82,6 +83,7 @@ function buildColumns(copy: FailedOrdersCopy): DataTableColumn<OrderRecord>[] {
 
 export function FailedOrdersPage(): ReactElement {
   const copy = useMessages('orders').failedOrdersPage;
+  const serverSaid = useMessages('orders').common.serverSaid;
   const plural = usePlural();
   const format = useFormat();
   const columns = useMemo(() => buildColumns(copy), [copy]);
@@ -162,7 +164,7 @@ export function FailedOrdersPage(): ReactElement {
       ) : query.error ? (
         <ErrorState
           title={copy.error.title}
-          message={query.error.message}
+          message={serverErrorText(serverSaid, query.error.message, '')}
           action={
             <Button onClick={() => { void query.refetch(); }}>{copy.error.retry}</Button>
           }

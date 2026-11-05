@@ -144,7 +144,7 @@ describe('describeCeilingVerdict', () => {
         alreadyRefunded: '0',
         requested: '15.00',
         currency: 'PLN',
-      }).tone,
+      }).tone
     ).toBe('info');
     const exceeded = describeCeilingVerdict({
       status: 'exceeded',
@@ -156,7 +156,9 @@ describe('describeCeilingVerdict', () => {
     expect(exceeded.tone).toBe('warning');
     expect(exceeded.text).toContain('15.00 PLN requested');
     expect(exceeded.text).toContain('10.00 PLN left after 90.00 PLN already refunded');
-    expect(describeCeilingVerdict({ status: 'unknown', reason: 'x' }).text).toMatch(/could not check/);
+    expect(describeCeilingVerdict({ status: 'unknown', reason: 'x' }).text).toMatch(
+      /could not check/
+    );
   });
 
   it('should report the order ceiling minus what was already refunded as the remainder (E-42)', () => {
@@ -172,26 +174,50 @@ describe('describeCeilingVerdict', () => {
 });
 
 describe('describeStockOutcome', () => {
+  const englishList = (items: readonly string[]): string =>
+    new Intl.ListFormat('en', { type: 'conjunction' }).format(items);
+
   it('should count the lines and name the reasons a restore failed', () => {
     const line = { orderLineId: 'l', stockRestored: false as const, detail: 'no master' };
-    expect(describeStockOutcome([line])?.text).toBe(
-      'Stock was not put back for one line (no master). OpenLinker will try again.',
+    expect(describeStockOutcome([line], englishList)?.text).toBe(
+      'Stock was not put back for one line (no master). OpenLinker will try again.'
     );
     expect(
-      describeStockOutcome([
-        { orderLineId: 'a', stockRestored: true, detail: null },
-        { orderLineId: 'b', stockRestored: true, detail: null },
-      ])?.text,
+      describeStockOutcome(
+        [
+          { orderLineId: 'a', stockRestored: true, detail: null },
+          { orderLineId: 'b', stockRestored: true, detail: null },
+        ],
+        englishList
+      )?.text
     ).toBe('Stock was put back for 2 lines.');
-    expect(describeStockOutcome([])).toBeNull();
+    expect(describeStockOutcome([], englishList)).toBeNull();
+  });
+
+  it('should join several reasons as a list in the active language', () => {
+    expect(
+      describeStockOutcome(
+        [
+          { orderLineId: 'a', stockRestored: false, detail: 'no master' },
+          { orderLineId: 'b', stockRestored: false, detail: 'master offline' },
+        ],
+        englishList
+      )?.text
+    ).toContain('(no master and master offline)');
   });
 });
 
 describe('orderEditHistoryTitle', () => {
   it('should title each edit kind and fall back for an unknown one', () => {
-    const entry = { changeId: 'c', at: 'x', byUserId: null, channelKeeps: true, channelConnectionId: 'k' };
+    const entry = {
+      changeId: 'c',
+      at: 'x',
+      byUserId: null,
+      channelKeeps: true,
+      channelConnectionId: 'k',
+    };
     expect(orderEditHistoryTitle({ ...entry, kind: 'order.address_change' })).toBe(
-      'Shipping address changed',
+      'Shipping address changed'
     );
     expect(orderEditHistoryTitle({ ...entry, kind: 'order.future' })).toBe('Order edited');
   });

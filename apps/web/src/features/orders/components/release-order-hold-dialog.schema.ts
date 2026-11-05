@@ -18,15 +18,8 @@
  */
 import { z } from 'zod';
 
-import {
-  HOLD_NOTE_MAX_LENGTH,
-  holdNoteTooLongMessage,
-  type HoldValidationCopy,
-} from './place-order-hold-dialog.schema';
-
-export interface ReleaseOrderHoldFormValues {
-  note?: string;
-}
+import type { HoldValidationCopy } from './order-form.types';
+import { HOLD_NOTE_MAX_LENGTH, holdNoteTooLongMessage } from './place-order-hold-dialog.schema';
 
 /**
  * @param noteRequired `true` when the hold was placed by a service, so a user

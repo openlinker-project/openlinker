@@ -11,8 +11,8 @@ import {
   stockAtRiskBadge,
   stockAtRiskCallout,
   stockAtRiskTitle,
-  type StockAtRiskText,
 } from './stock-at-risk';
+import type { StockAtRiskText } from './stock-at-risk.types';
 import type { OrderReservationShortfall } from '../api/orders.types';
 
 const text: StockAtRiskText = {

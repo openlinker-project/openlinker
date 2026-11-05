@@ -590,7 +590,7 @@ describe('OrderDetailPage — lifecycle phase (#2310)', () => {
     expect(await screen.findByText('Blocked')).toBeInTheDocument();
     // The detail page has room for the sentence the row does not.
     expect(
-      screen.getByText('Waiting on OpenLinker — the order cannot be matched yet.'),
+      screen.getByText('Waiting on OpenLinker - the order cannot be matched yet.'),
     ).toBeInTheDocument();
   });
 

@@ -10,13 +10,7 @@
  */
 import { z } from 'zod';
 
-import type { GenerateLabelValidationCopy } from './generate-label-form.schema';
-
-/** The parcel rules read the single-order form's messages, so the two never drift. */
-export type ParcelValidationCopy = Pick<
-  GenerateLabelValidationCopy,
-  'length' | 'width' | 'height' | 'weight'
->;
+import type { ParcelValidationCopy } from './order-form.types';
 
 /**
  * Parcel dimensions + weight, shared by the batch profile and per-order rows.

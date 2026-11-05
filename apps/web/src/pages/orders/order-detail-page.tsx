@@ -109,6 +109,7 @@ import type { OrderEditRemedyTarget } from '../../features/orders/lib/order-edit
 import { hasAcceptedFulfilmentWork, isOrderCancelTerminal } from '../../features/orders/lib/order-cancel';
 import { useOmsRoutingState } from '../../features/fulfillment-authority';
 import { useSession } from '../../shared/auth/use-session';
+import { serverErrorText } from '../../features/orders/lib/server-error-text';
 
 const RAW_SNAPSHOT_ANCHOR_ID = 'order-raw-snapshot';
 const SHIPPING_CAPABILITY = 'ShippingProviderManager';
@@ -132,6 +133,7 @@ const SHIP_BY_TONE: Record<ShipByLevel, StatusBadgeTone> = {
 export function OrderDetailPage(): ReactElement {
   const { internalOrderId = '' } = useParams<{ internalOrderId: string }>();
   const ordersCopy = useMessages('orders');
+  const serverSaid = ordersCopy.common.serverSaid;
   const copy = ordersCopy.orderDetailPage;
   const format = useFormat();
   const plural = usePlural();
@@ -260,12 +262,12 @@ export function OrderDetailPage(): ReactElement {
             });
           },
           onError: (error) => {
-            showToast({ tone: 'error', title: copy.retryFailedTitle, description: error.message });
+            showToast({ tone: 'error', title: copy.retryFailedTitle, description: serverErrorText(serverSaid, error.message, '') });
           },
         },
       );
     },
-    [retry, internalOrderId, showToast, copy],
+    [retry, internalOrderId, showToast, copy, serverSaid],
   );
 
   if (query.isLoading) {
@@ -281,7 +283,7 @@ export function OrderDetailPage(): ReactElement {
       <PageLayout eyebrow={copy.eyebrow} title={copy.title}>
         <ErrorState
           title={copy.loadErrorTitle}
-          message={query.error?.message ?? copy.notFound}
+          message={serverErrorText(serverSaid, query.error?.message, copy.notFound)}
           action={
             <Button
               onClick={() => {

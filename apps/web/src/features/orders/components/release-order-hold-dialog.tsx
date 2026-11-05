@@ -36,10 +36,8 @@ import { describeHoldWriteError } from '../lib/order-hold-errors';
 import { describeProvisioningResume, holdReasonLabel } from '../lib/order-hold.types';
 import { useReleaseOrderHoldMutation } from '../hooks/use-release-order-hold-mutation';
 import { HOLD_NOTE_MAX_LENGTH } from './place-order-hold-dialog.schema';
-import {
-  buildReleaseOrderHoldSchema,
-  type ReleaseOrderHoldFormValues,
-} from './release-order-hold-dialog.schema';
+import type { ReleaseOrderHoldFormValues } from './order-form.types';
+import { buildReleaseOrderHoldSchema } from './release-order-hold-dialog.schema';
 
 export interface ReleaseOrderHoldDialogProps {
   open: boolean;
@@ -63,7 +61,7 @@ function renderPlacedAt(hold: OrderHold, copy: ReleaseDialogCopy): ReactNode {
   return renderRich(
     copy.placedAtBy,
     { time, actor: (text) => <span className="mono-text">{text}</span> },
-    { actor },
+    { actor }
   );
 }
 
@@ -89,7 +87,7 @@ export function ReleaseOrderHoldDialog({
   const noteRequired = hold.placedByService != null || placerUnknown;
   const schema = useMemo(
     () => buildReleaseOrderHoldSchema(noteRequired, holds.validation),
-    [noteRequired, holds],
+    [noteRequired, holds]
   );
 
   const form = useForm<ReleaseOrderHoldFormValues>({
@@ -122,7 +120,7 @@ export function ReleaseOrderHoldDialog({
           // DID happen, so re-submitting would only answer 409.
           onOpenChange(false);
         },
-      },
+      }
     );
   });
 
@@ -135,18 +133,14 @@ export function ReleaseOrderHoldDialog({
         <DialogDescription>{copy.description}</DialogDescription>
 
         {mutation.isError ? (
-          <Alert tone="error">
-            {describeHoldWriteError(mutation.error, copy.errorFallback)}
-          </Alert>
+          <Alert tone="error">{describeHoldWriteError(mutation.error, copy.errorFallback)}</Alert>
         ) : null}
 
         <dl className="order-hold-dialog__summary">
           <dt>{copy.reasonLabel}</dt>
           <dd>{reasonLabel}</dd>
           <dt>{copy.placedLabel}</dt>
-          <dd>
-            {renderPlacedAt(hold, copy)}
-          </dd>
+          <dd>{renderPlacedAt(hold, copy)}</dd>
           {hold.note ? (
             <>
               <dt>{copy.noteLabel}</dt>

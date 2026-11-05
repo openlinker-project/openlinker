@@ -19,7 +19,7 @@
  */
 import { z } from 'zod';
 
-import { getMessages, interpolate, type Messages, type ResolvedCopy } from '../../../shared/i18n';
+import { getMessages, interpolate } from '../../../shared/i18n';
 
 import type { ParsedOrderSnapshot } from '../api/order-snapshot.schema';
 import type {
@@ -27,7 +27,6 @@ import type {
   EditOrderDeliveryMethodRequest,
   EditOrderDiscountRequest,
   EditOrderLinesRequest,
-  OrderEditRequest,
   OrderEditsView,
 } from '../api/order-edit.types';
 import {
@@ -36,51 +35,17 @@ import {
   ORDER_EDIT_DISCOUNT_MODES,
   type OrderEditSection,
 } from '../lib/order-edit';
-
-export interface OrderEditLineValue {
-  orderLineId: string;
-  quantity: string;
-}
-
-export interface OrderEditFormValues {
-  firstName: string;
-  lastName: string;
-  company: string;
-  address1: string;
-  address2: string;
-  city: string;
-  state: string;
-  postalCode: string;
-  country: string;
-  phone: string;
-  methodId: string;
-  methodName: string;
-  pickupId: string;
-  pickupName: string;
-  lines: OrderEditLineValue[];
-  discountMode: (typeof ORDER_EDIT_DISCOUNT_MODES)[number];
-  discountValue: string;
-  acknowledgeAcceptedWork: boolean;
-  acknowledgeAboveCeiling: boolean;
-}
-
-/** What the form was opened with, so a section's "changed" is a comparison and not a flag. */
-export type OrderEditInitialValues = OrderEditFormValues;
-
-/** Display data for the quantity table; not part of the submitted values. */
-export interface OrderEditLineMeta {
-  orderLineId: string;
-  name: string | null;
-  sku: string | null;
-  /** The quantity the order has now: the ceiling the input may not pass. */
-  maxQuantity: number;
-  /** The channel's own quantity when it differs, for the "of N" caption. */
-  channelQuantity: number;
-}
+import type {
+  OrderEditFormValues,
+  OrderEditInitialValues,
+  OrderEditLineMeta,
+  OrderEditValidationCopy,
+  PlannedOrderEdit,
+} from './order-form.types';
 
 export function buildOrderEditInitialValues(
   snapshot: ParsedOrderSnapshot,
-  edits: OrderEditsView | null | undefined,
+  edits: OrderEditsView | null | undefined
 ): OrderEditInitialValues {
   const address = snapshot.shippingAddress;
   return {
@@ -111,10 +76,10 @@ export function buildOrderEditInitialValues(
 
 export function buildOrderEditLineMeta(
   snapshot: ParsedOrderSnapshot,
-  edits: OrderEditsView | null | undefined,
+  edits: OrderEditsView | null | undefined
 ): OrderEditLineMeta[] {
   const channelById = new Map(
-    (edits?.lines ?? []).map((line) => [line.orderLineId, line.channelQuantity] as const),
+    (edits?.lines ?? []).map((line) => [line.orderLineId, line.channelQuantity] as const)
   );
   return snapshot.items.map((item) => ({
     orderLineId: item.id,
@@ -137,12 +102,9 @@ function sameDiscountAmount(a: string, b: string): boolean {
 }
 
 /** Which sections differ from what the form opened with. A blank discount is "untouched". */
-/** The `orders.orderEditDialog.validation` copy, in the language the form renders in. */
-export type OrderEditValidationCopy = ResolvedCopy<Messages['orders']>['orderEditDialog']['validation'];
-
 export function detectChangedSections(
   values: OrderEditFormValues,
-  initial: OrderEditInitialValues,
+  initial: OrderEditInitialValues
 ): ReadonlySet<OrderEditSection> {
   const changed = new Set<OrderEditSection>();
   const addressKeys = [
@@ -161,7 +123,9 @@ export function detectChangedSections(
   const deliveryKeys = ['methodId', 'methodName', 'pickupId', 'pickupName'] as const;
   if (deliveryKeys.some((key) => !sameText(values[key], initial[key]))) changed.add('delivery');
   const initialById = new Map(initial.lines.map((line) => [line.orderLineId, line.quantity]));
-  if (values.lines.some((line) => !sameText(line.quantity, initialById.get(line.orderLineId) ?? ''))) {
+  if (
+    values.lines.some((line) => !sameText(line.quantity, initialById.get(line.orderLineId) ?? ''))
+  ) {
     changed.add('lines');
   }
   const discount = trim(values.discountValue);
@@ -183,7 +147,7 @@ export function detectChangedSections(
 export function buildOrderEditSchema(
   initial: OrderEditInitialValues,
   lineMax: Readonly<Record<string, number>>,
-  copy: OrderEditValidationCopy = getMessages('orders').orderEditDialog.validation,
+  copy: OrderEditValidationCopy = getMessages('orders').orderEditDialog.validation
 ) {
   return z
     .object({
@@ -216,7 +180,8 @@ export function buildOrderEditSchema(
           ['city', copy.city],
           ['postalCode', copy.postalCode],
         ] as const) {
-          if (trim(values[key]) === '') ctx.addIssue({ code: 'custom', path: [key], message: label });
+          if (trim(values[key]) === '')
+            ctx.addIssue({ code: 'custom', path: [key], message: label });
         }
         if (!/^[A-Za-z]{2}$/.test(trim(values.country))) {
           ctx.addIssue({
@@ -298,18 +263,13 @@ export function buildOrderEditSchema(
 
 export type OrderEditSubmission = z.output<ReturnType<typeof buildOrderEditSchema>>;
 
-/** One request per changed section, in the order they are sent: lines before the discount. */
-export interface PlannedOrderEdit {
-  section: OrderEditSection;
-  edit: OrderEditRequest;
-}
-
-const optional = (value: string): string | undefined => (trim(value) === '' ? undefined : trim(value));
+const optional = (value: string): string | undefined =>
+  trim(value) === '' ? undefined : trim(value);
 
 export function planOrderEdits(
   values: OrderEditFormValues,
   initial: OrderEditInitialValues,
-  options: { dryRun: boolean },
+  options: { dryRun: boolean }
 ): PlannedOrderEdit[] {
   const changed = detectChangedSections(values, initial);
   const dryRun = options.dryRun ? { dryRun: true } : {};

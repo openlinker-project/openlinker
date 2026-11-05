@@ -8,7 +8,7 @@
  * @module apps/web/src/features/orders/hooks
  */
 import { useMessages } from '../../../shared/i18n';
-import type { OrderTagsCopy } from '../lib/order-tags';
+import type { OrderTagsCopy } from '../lib/order-tags.types';
 
 export function useOrderTagsCopy(): OrderTagsCopy {
   return useMessages('orders').orderTags;

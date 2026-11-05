@@ -47,6 +47,7 @@ import {
   type Messages,
   type ResolvedCopy,
 } from '../../../shared/i18n';
+import { serverErrorText } from '../lib/server-error-text';
 
 /** Server-enforced too (`CreateOrderNoteDto`); the counter only mirrors it. */
 export const ORDER_NOTE_MAX_LENGTH = 2000;
@@ -92,6 +93,7 @@ function NoteRow({
   onRequestDelete: (note: OrderNote) => void;
 }): ReactElement {
   const COPY = useMessages('orders').orderNotes;
+  const serverSaid = useMessages('orders').common.serverSaid;
   const format = useFormat();
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(note.body);
@@ -128,7 +130,7 @@ function NoteRow({
       showToast({
         tone: 'error',
         title: COPY.row.actionErrorTitle,
-        description: error.message || COPY.row.actionErrorFallback,
+        description: serverErrorText(serverSaid, error.message, COPY.row.actionErrorFallback),
       });
     };
     if (isPinned) unpinNote.mutate(note.id, { onError });
@@ -227,7 +229,7 @@ function NoteRow({
           ) : null}
           {updateNote.isError ? (
             <Alert tone="error" title={COPY.row.editErrorTitle}>
-              {updateNote.error.message || COPY.row.editErrorFallback}
+              {serverErrorText(serverSaid, updateNote.error.message, COPY.row.editErrorFallback)}
             </Alert>
           ) : null}
         </div>
@@ -240,6 +242,7 @@ function NoteRow({
 
 export function OrderNotesPanel({ internalOrderId, channelNames = [] }: OrderNotesPanelProps): ReactElement {
   const COPY = useMessages('orders').orderNotes;
+  const serverSaid = useMessages('orders').common.serverSaid;
   const format = useFormat();
   const demoMode = useDemoMode();
   const write = useWriteAccess('orders:write', demoMode);
@@ -276,7 +279,7 @@ export function OrderNotesPanel({ internalOrderId, channelNames = [] }: OrderNot
                 showToast({
                   tone: 'error',
                   title: COPY.composer.pinErrorTitle,
-                  description: error.message || COPY.composer.pinErrorFallback,
+                  description: serverErrorText(serverSaid, error.message, COPY.composer.pinErrorFallback),
                 });
               },
             });
@@ -300,7 +303,7 @@ export function OrderNotesPanel({ internalOrderId, channelNames = [] }: OrderNot
         showToast({
           tone: 'error',
           title: COPY.deleteDialog.errorTitle,
-          description: error.message || COPY.deleteDialog.errorFallback,
+          description: serverErrorText(serverSaid, error.message, COPY.deleteDialog.errorFallback),
         });
       },
     });
@@ -369,7 +372,7 @@ export function OrderNotesPanel({ internalOrderId, channelNames = [] }: OrderNot
         </Button>
       }
     >
-      {createNote.error.message || COPY.composer.saveErrorFallback} {COPY.composer.saveErrorTail}
+      {serverErrorText(serverSaid, createNote.error.message, COPY.composer.saveErrorFallback)} {COPY.composer.saveErrorTail}
     </Alert>
   ) : null;
 

@@ -11,15 +11,12 @@
 import { z } from 'zod';
 
 import { interpolate } from '../../../shared/i18n';
-import type { BulkActionsCopy } from '../lib/bulk-order-actions';
 import {
   ORDER_CANCEL_NOTE_MAX_LENGTH,
   OrderCancelReasonValues,
   orderCancelReasonRequiresNote,
 } from '../lib/order-cancel';
-
-/** The `orders.bulkActions.cancel.validation` copy. */
-export type BulkCancelValidationCopy = BulkActionsCopy['cancel']['validation'];
+import type { BulkCancelValidationCopy } from './order-form.types';
 
 export function createBulkCancelSchema(copy: BulkCancelValidationCopy) {
   return z
@@ -29,7 +26,7 @@ export function createBulkCancelSchema(copy: BulkCancelValidationCopy) {
         .string()
         .max(
           ORDER_CANCEL_NOTE_MAX_LENGTH,
-          interpolate(copy.noteTooLong, { max: ORDER_CANCEL_NOTE_MAX_LENGTH }),
+          interpolate(copy.noteTooLong, { max: ORDER_CANCEL_NOTE_MAX_LENGTH })
         )
         .optional(),
       acknowledgeAcceptedWork: z.boolean().optional(),

@@ -1186,7 +1186,7 @@ describe('GenerateLabelForm — #1806 carrier field-error breakdown', () => {
     );
     fillParcelAndSubmit();
 
-    expect(await screen.findByText('Carrier is unreachable')).toBeInTheDocument();
+    expect(await screen.findByText('The server said: Carrier is unreachable')).toBeInTheDocument();
     // No structured list renders — no empty/broken Alert artefact.
     expect(document.querySelector('.structured-error-list')).toBeNull();
   });
@@ -1245,7 +1245,7 @@ describe('GenerateLabelForm — #1800 carrier support reference', () => {
     );
     fillParcelAndSubmit();
 
-    expect(await screen.findByText('Carrier is unreachable')).toBeInTheDocument();
+    expect(await screen.findByText('The server said: Carrier is unreachable')).toBeInTheDocument();
     expect(screen.queryByText(/Reference for carrier support/i)).toBeNull();
   });
 });

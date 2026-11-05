@@ -23,17 +23,10 @@
  *
  * @module apps/web/src/features/orders/lib
  */
-import type { Messages, PluralFn, ResolvedCopy } from '../../../shared/i18n';
 import { interpolate } from '../../../shared/i18n';
 import type { OrderReservationShortfall } from '../api/orders.types';
 import type { StatusBadgeTone } from '../../../shared/ui/status-badge';
-
-/** The copy and formatters the builders read, in one language. */
-export interface StockAtRiskText {
-  copy: ResolvedCopy<Messages['orders']>['stockAtRisk'];
-  plural: PluralFn;
-  number: (value: number) => string;
-}
+import type { StockAtRiskText } from './stock-at-risk.types';
 
 /** What to call the short item: its sku, else its variant id, never a blank. */
 export function shortfallItemLabel(shortfall: OrderReservationShortfall): string {

@@ -10,7 +10,7 @@
  */
 import { useMemo } from 'react';
 import { useFormat, useMessages, usePlural } from '../../../shared/i18n';
-import type { StockAtRiskText } from '../lib/stock-at-risk';
+import type { StockAtRiskText } from '../lib/stock-at-risk.types';
 
 export function useStockAtRiskText(): StockAtRiskText {
   const copy = useMessages('orders').stockAtRisk;

@@ -60,6 +60,7 @@ import {
 } from './shipment-action-buttons';
 import { ShipmentLifecycleRail } from './shipment-lifecycle-rail';
 import { ShipmentTrackingLink } from './shipment-tracking-link';
+import { serverErrorText } from '../lib/server-error-text';
 
 const SHIPPING_CAPABILITY = 'ShippingProviderManager';
 
@@ -130,6 +131,7 @@ export function OrderShipmentPanel({
   autoOpenForShipmentId,
 }: OrderShipmentPanelProps): ReactElement | null {
   const ordersCopy = useMessages('orders');
+  const serverSaid = ordersCopy.common.serverSaid;
   const copy = ordersCopy.orderShipmentPanel;
   const connectionsQuery = useConnectionsQuery();
   const shipmentsQuery = useOrderShipmentsQuery(order.internalOrderId);
@@ -313,7 +315,7 @@ export function OrderShipmentPanel({
       ) : shipmentsQuery.isError ? (
         <ErrorState
           title={copy.loadError.title}
-          message={shipmentsQuery.error.message}
+          message={serverErrorText(serverSaid, shipmentsQuery.error.message, '')}
           action={
             <Button onClick={() => void shipmentsQuery.refetch()} tone="secondary">
               {copy.loadError.retry}

@@ -16,7 +16,8 @@ import { render, screen } from '@testing-library/react';
 import { StockAtRiskBadge } from './stock-at-risk-badge';
 import { StockAtRiskCallout } from './stock-at-risk-callout';
 import { formatPlural, getMessages } from '../../../shared/i18n';
-import { stockAtRiskTitle, type StockAtRiskText } from '../lib/stock-at-risk';
+import { stockAtRiskTitle } from '../lib/stock-at-risk';
+import type { StockAtRiskText } from '../lib/stock-at-risk.types';
 import type { OrderReservationShortfall } from '../api/orders.types';
 
 function shortfall(over: Partial<OrderReservationShortfall> = {}): OrderReservationShortfall {
@@ -112,7 +113,7 @@ describe('StockAtRiskCallout', () => {
 
     expect(
       screen.getByText(
-        /The stock master dropped below what this order was promised\. Nothing was silently reduced — this order is the one at risk\./
+        /The stock master dropped below what this order was promised\. Nothing was silently reduced - this order is the one at risk\./
       )
     ).toBeInTheDocument();
   });
@@ -124,8 +125,8 @@ describe('StockAtRiskCallout', () => {
       />
     );
 
-    expect(screen.getByText('SKU-1 — short 2 of 3 across all orders')).toBeInTheDocument();
-    expect(screen.getByText('SKU-2 — short 1 of 3 across all orders')).toBeInTheDocument();
+    expect(screen.getByText('SKU-1 - short 2 of 3 across all orders')).toBeInTheDocument();
+    expect(screen.getByText('SKU-2 - short 1 of 3 across all orders')).toBeInTheDocument();
   });
 
   it('should render nothing for an empty list, and no reassurance', () => {

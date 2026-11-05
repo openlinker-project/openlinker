@@ -448,6 +448,9 @@
     "ownOnly": "Discount: {amount} in OpenLinker",
     "ownPart": "{amount} in OpenLinker"
   },
+  "common": {
+    "serverSaid": "The server said: {message}"
+  },
   "confirmOrderRefund": {
     "action": "Confirm refund",
     "ceiling": {
@@ -596,7 +599,7 @@
     "pagination": {
       "next": "Next",
       "previous": "Previous",
-      "showing": "Showing {from}–{to} of {total}"
+      "showing": "Showing {from}-{to} of {total}"
     },
     "title": "Dispatch risk"
   },
@@ -642,7 +645,7 @@
     "pagination": {
       "next": "Next",
       "previous": "Previous",
-      "showing": "Showing {from}–{to} of {total}"
+      "showing": "Showing {from}-{to} of {total}"
     },
     "title": "Awaiting mapping"
   },
@@ -969,7 +972,7 @@
       "conflict": "Conflict",
       "created": "Created",
       "createdFrom": "from {date}",
-      "createdRange": "{from} – {to}",
+      "createdRange": "{from} - {to}",
       "createdTo": "until {date}",
       "due": "Due",
       "dueValue": "≤ 24h or overdue",
@@ -2325,7 +2328,10 @@
       },
       "manageTags": "Manage tags",
       "menuLabel": "Tags for selected orders",
-      "resultAlreadyHad": "{n} already had it.",
+      "resultAlreadyHad": {
+        "one": "{n} already had it.",
+        "other": "{n} already had it."
+      },
       "resultDescription": {
         "one": "{name} added to {n} order.",
         "other": "{name} added to {n} orders."
