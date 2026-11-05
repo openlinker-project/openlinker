@@ -28,6 +28,7 @@ import type { IShipmentQueryService } from '@openlinker/core/shipping';
 import type { IUserManagementService } from '../../../users/user-management.service.interface';
 import type { IFulfillmentParcelClosureNotifier } from '../../../fulfillment/application/interfaces/fulfillment-parcel-closure-notifier.service.interface';
 import { BenchExecutorResolver } from '../services/bench-executor.resolver';
+import type { BenchRouteResolver } from '../services/bench-route.resolver';
 import {
   BenchParcelNotAtThisBenchError,
   BenchParcelService,
@@ -230,6 +231,11 @@ function harness(options: {
       .mockResolvedValue(options.acknowledgements ?? []),
   } as unknown as IFulfillmentWorkQueryService;
 
+  // #3958 - resolved from the order's source connection and delivery method.
+  const routes = {
+    resolve: jest.fn().mockResolvedValue(null),
+  } as unknown as BenchRouteResolver;
+
   const parcelClosureNotifier = {
     notifyParcelClosed: options.notifyParcelClosed ?? jest.fn().mockResolvedValue(undefined),
   } as unknown as IFulfillmentParcelClosureNotifier;
@@ -246,13 +252,15 @@ function harness(options: {
       users,
       notes,
       parcelClosureNotifier,
-      workQuery
+      workQuery,
+      routes
     ),
     verification,
     orders,
     worklist,
     parcelClosureNotifier,
     workQuery,
+    routes,
   };
 }
 
@@ -661,6 +669,9 @@ describe('BenchParcelService (#2418)', () => {
           'parcelIndex',
           'parcelTotal',
           'refusal',
+          // #3958 - who ships the box: a processor kind, an operator-given
+          // connection name and the delivery method's label. No buyer data.
+          'route',
           'totalAmount',
           'version',
           'workId',
@@ -1348,5 +1359,43 @@ describe('BenchParcelService (#2418)', () => {
       expect(result.outcome).not.toBe('refused');
       expect(verification.voidLastVerification).toHaveBeenCalled();
     });
+  });
+});
+
+describe('BenchParcelService route (#3958)', () => {
+  it('should carry the resolver answer when the parcel is opened', async () => {
+    const { service, routes } = harness({});
+    const route = {
+      processorKind: 'ol_managed_carrier' as const,
+      processorName: 'InPost',
+      fromRule: true,
+      processorAvailable: true,
+      methodLabel: 'InPost Paczkomat',
+    };
+    (routes.resolve as jest.Mock).mockResolvedValueOnce(route);
+
+    const parcel = await service.getParcel('work-1');
+
+    expect(parcel.route).toEqual(route);
+  });
+
+  it('should ask for the route from the order record when one exists', async () => {
+    const { service, routes } = harness({});
+
+    await service.getParcel('work-1');
+
+    // The harness order is a plain object, so both getters read `undefined`
+    // and must arrive as a plain "no delivery method", never `undefined`.
+    expect(routes.resolve).toHaveBeenCalledWith(
+      expect.objectContaining({ sourceDeliveryMethodId: null, methodLabel: null })
+    );
+  });
+
+  it('should report no route when the resolver cannot answer', async () => {
+    const { service } = harness({});
+
+    const parcel = await service.getParcel('work-1');
+
+    expect(parcel.route).toBeNull();
   });
 });

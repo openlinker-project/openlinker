@@ -12,6 +12,21 @@ import { ConnectionDiagnosticsPanel } from '../../features/connections/component
 import { CatalogTrustPanel } from '../../features/connections/components/catalog-trust-panel';
 import { ConnectionSyncStatusPanel } from '../../features/connections/components/connection-sync-status-panel';
 import { RouterReadinessPanel } from '../../features/connections/components/router-readiness-panel';
+import {
+  CarrierCreatedNotice,
+  CarrierShipsForCard,
+} from '../../features/connections/components/carrier-ships-for-card';
+import { OrderSourceShippingCard } from '../../features/connections/components/order-source-shipping-card';
+import {
+  CARRIER_CAPABILITY,
+  ORDER_SOURCE_CAPABILITY,
+} from '../../features/connections/components/connection-shipping-routes';
+import { CONNECTION_SHIPPING_COPY } from '../../features/connections/lib/connection-shipping.copy';
+import {
+  CONNECTION_CREATED_PARAM,
+  OMS_SETUP_RETURN_PATH,
+  isFromOmsSetup,
+} from '../../features/connections/lib/oms-setup-return';
 import type { Connection, ConnectionStatus } from '../../features/connections/api/connections.types';
 import { hasMissingCredentials } from '../../features/connections/api/connections.types';
 import { EmptyState, ErrorState, LoadingState } from '../../shared/ui/feedback-state';
@@ -313,6 +328,16 @@ export function ConnectionDetailPage(): ReactElement {
   // The OMS connection is a by-product of the packing setup: no credentials, no
   // adapter choice, no config to edit. It is managed from /settings/packing.
   const isOms = connection?.platformType === OMS_PLATFORM_TYPE;
+  const isCarrier = connection?.enabledCapabilities.includes(CARRIER_CAPABILITY) ?? false;
+  const isOrderSource = connection?.enabledCapabilities.includes(ORDER_SOURCE_CAPABILITY) ?? false;
+  // Set by a carrier wizard on the page it lands on (#3958). Compared with a
+  // literal only, like `from` below.
+  const justCreated = searchParams.get(CONNECTION_CREATED_PARAM) === '1';
+  // An operator who left the OMS setup to connect a carrier gets the way back
+  // to that step. The param is never used as a URL; the target is fixed.
+  const backTo = isFromOmsSetup(searchParams)
+    ? { to: OMS_SETUP_RETURN_PATH, label: CONNECTION_SHIPPING_COPY.backToOmsSetup }
+    : { to: '/connections', label: 'Connections' };
 
   return (
     <PageLayout
@@ -329,7 +354,7 @@ export function ConnectionDetailPage(): ReactElement {
           ? 'Managed from Packing settings.'
           : 'Connection overview, configuration, health, and operator actions.'
       }
-      backTo={{ to: '/connections', label: 'Connections' }}
+      backTo={backTo}
       actions={
         connection ? (
           connection.platformType === OMS_PLATFORM_TYPE ? (
@@ -411,6 +436,9 @@ export function ConnectionDetailPage(): ReactElement {
       {connection ? <SyncPausedBanner connection={connection} /> : null}
       {connection ? <CredentialsMissingBanner connection={connection} /> : null}
       {connection ? <ArchivedBanner connection={connection} /> : null}
+      {connection && isCarrier && !isOms && justCreated ? (
+        <CarrierCreatedNotice connection={connection} />
+      ) : null}
       {connection ? (
         <ProductCatalogLinkBanner
           connection={connection}
@@ -481,6 +509,9 @@ export function ConnectionDetailPage(): ReactElement {
                 ]}
               />
             </div>
+
+            {isCarrier && !isOms ? <CarrierShipsForCard connection={connection} /> : null}
+            {isOrderSource && !isOms ? <OrderSourceShippingCard connection={connection} /> : null}
 
             <ConnectionCapabilitiesPanel connection={connection} readOnly={isOms} />
           </TabsContent>

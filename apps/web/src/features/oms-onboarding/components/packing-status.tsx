@@ -13,6 +13,12 @@
  * `dialog-stop-confirm`. A read-only role sees the banner and the setup list
  * with no stop / start control.
  *
+ * The Shipping row (#3958) is not one of the "steps left": routing and
+ * automatic labels are optional, so a setup without them is not partial. It
+ * can stop buying labels from here, because that is the one change an
+ * operator may need in a hurry; turning it on goes through the step, which
+ * asks for the parcel defaults first.
+ *
  * @module features/oms-onboarding/components
  */
 import { useState, type ReactElement } from 'react';
@@ -21,6 +27,7 @@ import { Link } from 'react-router-dom';
 import { DEMO_READ_ONLY_ACTION_MESSAGE } from '../../../shared/config/demo-mode';
 import { Alert } from '../../../shared/ui/alert';
 import { Button } from '../../../shared/ui/button';
+import { ConfirmDialog } from '../../../shared/ui/confirm-dialog';
 import type { PackerSummary } from '../../users';
 import type { SetupStepsView } from '../hooks/use-setup-steps';
 import {
@@ -31,8 +38,30 @@ import {
   type SetupStepKey,
 } from '../lib/setup-steps';
 import { omsOnboardingCopy as COPY } from '../lib/oms-onboarding.copy';
+import type { ShippingCoverageTotals } from '../lib/shipping-coverage';
 import { AddPackerDialog } from './add-packer-dialog';
 import { SetupChecklist, type SetupChecklistRow } from './setup-checklist';
+
+export interface PackingStatusShipping {
+  readonly totals: ShippingCoverageTotals;
+  /** `config.autoDispatch.enabled` as saved on the OMS connection. */
+  readonly autoDispatchOn: boolean;
+  readonly busy: boolean;
+  readonly error: Error | null;
+  /** Open the Shipping step. */
+  readonly onChange: () => void;
+  /** Switch buying labels off; resolves once the write landed. */
+  readonly onStop: () => Promise<unknown>;
+}
+
+function shippingDetail(shipping: PackingStatusShipping): string {
+  const { totals, autoDispatchOn } = shipping;
+  if (!totals.settled) return COPY.shippingStep.checking;
+  if (totals.unknown && totals.total === 0) return COPY.status.shipping.unknown;
+  if (autoDispatchOn && totals.withCarrier > 0) return COPY.status.shipping.on(totals.withCarrier, totals.total);
+  if (totals.withCarrier > 0) return COPY.status.shipping.off(totals.withCarrier, totals.total);
+  return COPY.status.shipping.none;
+}
 
 export interface PackingStatusProps {
   readonly live: boolean;
@@ -59,10 +88,13 @@ export interface PackingStatusProps {
   readonly toggleError: Error | null;
   readonly onAskStop: () => void;
   readonly onStartAgain: () => void;
+  /** The Shipping row; `null` for a role that cannot read the routing. */
+  readonly shipping: PackingStatusShipping | null;
 }
 
 export function PackingStatus(props: PackingStatusProps): ReactElement {
   const [addPackerOpen, setAddPackerOpen] = useState(false);
+  const [stopLabelsOpen, setStopLabelsOpen] = useState(false);
   const rows: SetupChecklistRow[] = [
     {
       key: 'masters',
@@ -117,6 +149,54 @@ export function PackingStatus(props: PackingStatusProps): ReactElement {
       ),
     },
   ];
+
+  const shipping = props.shipping ?? null;
+  if (shipping !== null) {
+    rows.push({
+      key: 'labels',
+      ok: shipping.autoDispatchOn || shipping.totals.withCarrier > 0,
+      title: COPY.status.shipping.title,
+      detail: shippingDetail(shipping),
+      action: (
+        <span className="oms-onboarding__actions">
+          {shipping.autoDispatchOn ? (
+            <>
+              <Button
+                type="button"
+                tone="ghost"
+                className="button--sm"
+                data-testid="btn-shipping-change"
+                onClick={shipping.onChange}
+              >
+                {COPY.status.shipping.change}
+              </Button>
+              <Button
+                type="button"
+                tone="ghost"
+                className="button--sm"
+                data-testid="btn-shipping-stop"
+                disabled={!props.canWrite || shipping.busy}
+                title={props.demoReadOnly ? DEMO_READ_ONLY_ACTION_MESSAGE : undefined}
+                onClick={() => setStopLabelsOpen(true)}
+              >
+                {COPY.status.shipping.stop}
+              </Button>
+            </>
+          ) : (
+            <Button
+              type="button"
+              tone="ghost"
+              className="button--sm"
+              data-testid="btn-shipping-start"
+              onClick={shipping.onChange}
+            >
+              {COPY.status.shipping.start}
+            </Button>
+          )}
+        </span>
+      ),
+    });
+  }
 
   if (props.setup !== null) {
     const setup = props.setup;
@@ -228,6 +308,34 @@ export function PackingStatus(props: PackingStatusProps): ReactElement {
         <h2 className="oms-onboarding__panel-title">{COPY.status.setupTitle}</h2>
         <SetupChecklist rows={rows} testId="setup-status-list" />
       </section>
+
+      {shipping !== null ? (
+        <ConfirmDialog
+          open={stopLabelsOpen}
+          onOpenChange={setStopLabelsOpen}
+          title={COPY.status.shipping.stopTitle}
+          description={COPY.status.shipping.stopBody}
+          body={
+            shipping.error === null ? undefined : (
+              <Alert tone="error" title={COPY.status.shipping.stopFailedTitle}>
+                {shipping.error.message}
+              </Alert>
+            )
+          }
+          cancelLabel={COPY.status.shipping.stopCancel}
+          confirmLabel={shipping.busy ? COPY.status.shipping.stopping : COPY.status.shipping.stop}
+          isConfirming={shipping.busy}
+          initialFocus="cancel"
+          onConfirm={() => {
+            // A failed write keeps the dialog open, with the error in it, so the
+            // operator sees the labels are still being bought.
+            void shipping.onStop().then(
+              () => setStopLabelsOpen(false),
+              () => undefined
+            );
+          }}
+        />
+      ) : null}
 
       {props.canAddPackers ? (
         <AddPackerDialog
