@@ -24,7 +24,7 @@ import { TimeDisplay } from '../../../shared/ui/time-display';
 import { AbsentValue } from '../../../shared/ui/absent-value';
 import { formatAmount } from '../../../shared/format/format-amount';
 import type { PriceChangeAutoAppliedItem } from '../api/price-changes.types';
-import { initialsFor } from '../lib/price-amount';
+import { initialsFor } from '../lib/initials';
 import { useMessages } from '../../../shared/i18n';
 
 export interface AutoAppliedRow {

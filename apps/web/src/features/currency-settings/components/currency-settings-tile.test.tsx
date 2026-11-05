@@ -126,7 +126,7 @@ describe('CurrencySettingsTile', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Coverage' }));
 
     expect(await screen.findByText('Analytics coverage')).toBeInTheDocument();
-    expect(screen.getByText(/No orders have been stamped yet/)).toBeInTheDocument();
+    expect(screen.getByText(/No orders have a reporting figure yet/)).toBeInTheDocument();
     expect(screen.queryByText('Orders with a reporting figure')).not.toBeInTheDocument();
   });
 
@@ -140,8 +140,8 @@ describe('CurrencySettingsTile', () => {
 
     expect(await screen.findByText('Orders with a reporting figure')).toBeInTheDocument();
     expect(screen.getByText('5,231')).toBeInTheDocument(); // 3947 + 1284
-    expect(screen.getByText('- stamped in PLN')).toBeInTheDocument();
-    expect(screen.getByText('- stamped in EUR')).toBeInTheDocument();
+    expect(screen.getByText('Recorded in PLN')).toBeInTheDocument();
+    expect(screen.getByText('Recorded in EUR')).toBeInTheDocument();
     expect(screen.getByText('More than one reporting-currency era')).toBeInTheDocument();
   });
 

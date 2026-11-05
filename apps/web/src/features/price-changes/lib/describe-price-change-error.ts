@@ -11,7 +11,7 @@
  * @module apps/web/src/features/price-changes/lib
  */
 import { ApiError } from '../../../shared/api/api-error';
-import { getMessages } from '../../../shared/i18n';
+import { getMessages, interpolate } from '../../../shared/i18n';
 
 export function describePriceChangeActionError(error: unknown): string {
   const copy = getMessages('price-changes').describePriceChangeError;
@@ -26,5 +26,8 @@ export function describePriceChangeActionError(error: unknown): string {
       return copy.blocked;
     }
   }
-  return error instanceof Error ? error.message : copy.fallback;
+  // Any other server text is shown behind a translated prefix, never bare.
+  return error instanceof Error && error.message
+    ? interpolate(copy.withServerMessage, { message: error.message })
+    : copy.fallback;
 }

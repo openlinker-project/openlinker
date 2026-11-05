@@ -18,7 +18,7 @@ import { Button } from '../../../shared/ui/button';
 import { formatAmount } from '../../../shared/format/format-amount';
 import { useIsAdmin } from '../../../shared/auth/use-permission';
 import type { PriceChangeItem } from '../api/price-changes.types';
-import { initialsFor } from '../lib/price-amount';
+import { initialsFor } from '../lib/initials';
 import { interpolate, usePlural, useMessages } from '../../../shared/i18n';
 
 interface BulkAcceptPriceChangesDialogProps {

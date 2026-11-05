@@ -38,6 +38,9 @@ export function deriveProductStaleness(product: Product): ProductStalenessView |
     : {
         isFullyStale,
         tone: 'warning',
+        // The plural form follows the TOTAL ("of 5 variants"); the deleted count
+        // is a parameter. Polish phrases it so nothing agrees with the deleted
+        // count ("{stale} z {n} wariantów usunięto"), so one form choice fits.
         label: formatPlural(totalCount, copy.partlyStale, getLocale(), { stale: staleCount }),
       };
 }

@@ -43,6 +43,7 @@ import { VariantThumbnail } from '../../features/products';
 import {
   getMessages,
   interpolate,
+  labelFor,
   useFormat,
   useMessages,
   usePlural,
@@ -172,8 +173,7 @@ function formatPrice(
 
 /** Marketplace-native offer status in words; an unrecognised value is shown as sent. */
 function offerStatusLabel(status: string, copy: VariantStockTableCopy): string {
-  const labels: Readonly<Record<string, string>> = copy.offerStatus;
-  return labels[status.trim().toLowerCase()] ?? status;
+  return labelFor(copy.offerStatus, status.trim().toLowerCase(), status);
 }
 
 /**

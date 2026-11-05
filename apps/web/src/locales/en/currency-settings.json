@@ -2,10 +2,10 @@
   "currencyCoverageDialog": {
     "close": "Close",
     "description": "How many orders already carry a reporting-currency figure. This is a coverage readout, not a health check - invoices are unaffected either way.",
-    "empty": "No orders have been stamped yet. This fills in automatically as new orders sync in {currency}, or after the next hourly reconcile sweep runs across existing history.",
-    "eraLabel": "- stamped in {currency}",
+    "empty": "No orders have a reporting figure yet. New orders get one as they sync in {currency}, and existing orders are filled in within the hour.",
+    "eraLabel": "Recorded in {currency}",
     "multipleEras": {
-      "message": "This deployment has changed its reporting currency before. Older stamps are never rewritten, so those orders keep the currency that was active when they were stamped.",
+      "message": "This deployment has changed its reporting currency before. Figures already recorded are never rewritten, so those orders keep the currency that was active when they were recorded.",
       "title": "More than one reporting-currency era"
     },
     "title": "Analytics coverage",
@@ -19,7 +19,7 @@
     },
     "announcement": {
       "coverageGap": "Warning: coverage gap. {currencies} cannot be converted to {selected}. Acknowledge before saving.",
-      "splitHistory": "Warning: switching to {selected} splits reporting history. Orders already stamped in {currencies} keep that stamp."
+      "splitHistory": "Warning: switching to {selected} splits reporting history. Orders already recorded in {currencies} keep those figures."
     },
     "coverageGap": {
       "acknowledge": "I understand.",
@@ -34,8 +34,8 @@
     "saveError": "Could not save the reporting currency",
     "splitHistory": {
       "message": {
-        "one": "<count>{n}</count> order already carries a {currency} stamp. It keeps it - stamps are immutable - so this deployment will hold more than one reporting-currency era and no single figure will span them.",
-        "other": "<count>{n}</count> orders already carry a {currency} stamp. Those keep it - stamps are immutable - so this deployment will hold more than one reporting-currency era and no single figure will span them."
+        "one": "<count>{n}</count> order already has a figure recorded in {currency}. It keeps it - recorded figures are never rewritten - so this deployment will hold more than one reporting currency and no single figure will span them.",
+        "other": "<count>{n}</count> orders already have a figure recorded in {currency}. Those keep it - recorded figures are never rewritten - so this deployment will hold more than one reporting currency and no single figure will span them."
       },
       "title": "Report in {selected} from now on?"
     },

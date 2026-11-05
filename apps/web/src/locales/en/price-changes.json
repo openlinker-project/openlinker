@@ -52,7 +52,8 @@
     "blocked": "This price change is blocked and can't be published right now.",
     "conflict": "This price changed again while you were reviewing - refresh and take another look.",
     "currencyMismatch": "This price can't be published - the source and destination currencies don't match. Check the connection's currency settings.",
-    "fallback": "Something went wrong."
+    "fallback": "Something went wrong.",
+    "withServerMessage": "The server said: {message}"
   },
   "editPriceChangeDialog": {
     "ambiguous": "This number is ambiguous - use a decimal point or comma with 2 decimal places (e.g. 399.50).",

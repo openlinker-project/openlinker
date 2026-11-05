@@ -17,7 +17,7 @@ import type {
   OrderSyncStatusValue,
 } from '../../features/orders/api/orders.types';
 import { ConnectionEntityLabel } from '../../features/connections/components/ConnectionEntityLabel';
-import { interpolate, useFormat, useMessages } from '../../shared/i18n';
+import { interpolate, labelFor, useFormat, useMessages } from '../../shared/i18n';
 
 type CustomerDetailCopy = ReturnType<typeof useMessages<'customers'>>['customerDetailPage'];
 
@@ -93,7 +93,7 @@ function buildOrderColumns(copy: CustomerDetailCopy['orders']): DataTableColumn<
       if (!first) return <EmptyValue />;
       return (
         <StatusBadge tone={SYNC_STATUS_TONES[first.status]} compact>
-          {(copy.syncStatus as Partial<Record<string, string>>)[first.status] ?? first.status}
+          {labelFor(copy.syncStatus, first.status)}
         </StatusBadge>
       );
     },
