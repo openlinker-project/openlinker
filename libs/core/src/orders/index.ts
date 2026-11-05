@@ -170,6 +170,25 @@ export {
 } from './domain/types/payment-method.types';
 export type { PaymentMethod } from './domain/types/payment-method.types';
 export {
+  PaymentWritebackStateValues,
+  PaymentWritebackReasonValues,
+  readPaymentWriteback,
+  isPaymentWritebackProblem,
+  hasPaymentWritebackProblem,
+  isCashOnDeliveryOrder,
+  decidePaymentWriteback,
+} from './domain/types/payment-writeback.types';
+export type {
+  PaymentWriteback,
+  PaymentWritebackEntry,
+  PaymentWritebackState,
+  PaymentWritebackReason,
+  PaymentWritebackDecision,
+  PaymentWritebackMode,
+  PaymentWritebackDestinationInput,
+  DecidePaymentWritebackInput,
+} from './domain/types/payment-writeback.types';
+export {
   decideBuyerEmail,
   BUYER_EMAIL_SUPPRESSION_MESSAGE,
 } from './domain/domain-services/buyer-email-gate.domain-service';
