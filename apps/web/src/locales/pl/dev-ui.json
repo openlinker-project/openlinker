@@ -1,0 +1,14 @@
+{
+  "brandbookSection": {
+    "identitySubtitle": "OpenLinker to centrum dowodzenia operatora handlu wielokanałowego. Identyfikacja wizualna stawia na gęstość informacji i czytelność sygnałów - poważne narzędzie, a nie zwykły panel administracyjny."
+  },
+  "devUiPage": {
+    "description": "Brandbook, galeria elementów podstawowych i przykłady złożonych wzorców. Strona nie jest dostępna w nawigacji - można do niej wejść tylko przez adres URL."
+  },
+  "patternsSection": {
+    "installWebhooksBody": "Zarejestrujemy w sklepie adresy URL webhooków przychodzących, aby zdarzenia zamówień docierały w kilka sekund, a nie minut. Możesz to pominąć i polegać na odpytywaniu - katalog i tak synchronizuje się co godzinę."
+  },
+  "primitivesSection": {
+    "adminRequiredMessage": "Ta strona zarządza danymi uwierzytelniającymi agentów - wymaga sesji administratora."
+  }
+}

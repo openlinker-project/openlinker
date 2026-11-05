@@ -1,0 +1,1141 @@
+{
+  "analyticsConvertNote": {
+    "convertedCurrentRate": "<strong>Bieżący kurs:</strong> przeliczono na {currency} - dzisiejszy kurs zastosowany do waluty każdego zamówienia, a następnie zsumowany. Tylko podgląd, nic nie jest zapisywane.",
+    "convertedOrderDate": "<strong>Kurs z dnia zamówienia:</strong> przeliczono na {currency} - dzisiejszy kurs zastosowany jednorazowo do już zsumowanej kwoty w walucie raportowania. Tylko podgląd, nic nie jest zapisywane.",
+    "converting": "Przeliczanie na {currency}…",
+    "recalculating": "Dla tego zakresu trwa ponowne przeliczanie walut - przeliczenie na {currency} uwzględni zaktualizowane wartości po jego zakończeniu.",
+    "switchBack": "Przełącz z powrotem",
+    "tryAgain": "Spróbuj ponownie",
+    "unavailable": "Nie udało się pobrać dzisiejszego kursu {currency}. Wyświetlana jest waluta raportowania.",
+    "unresolved": "Nie udało się przeliczyć zamówień w {currencies} - pominięto je w tej sumie."
+  },
+  "analyticsCoverageAlert": {
+    "dismiss": "Zamknij",
+    "sub": "Rzeczywisty kurs z dnia każdego zamówienia, zapisany na stałe. Odnotowane w sekcji Zadania w tle i logi wraz z informacją, kto i kiedy to uruchomił.",
+    "title": {
+      "few": "Zakończono przeliczanie {n} wybranych zamówień",
+      "many": "Zakończono przeliczanie {n} wybranych zamówień",
+      "one": "Zakończono przeliczanie {n} wybranego zamówienia",
+      "other": "Zakończono przeliczanie {n} wybranego zamówienia"
+    }
+  },
+  "analyticsCoverageAlertBadge": {
+    "badge": "Wymaga uwagi",
+    "body": "Niektóre kontrole kompletności danych wymagają działania - wartości na tej stronie mogą być niepełne.",
+    "goTo": "Przejdź do kompletności danych"
+  },
+  "analyticsCurrencyPicker": {
+    "convertTo": "Przelicz na {currency}",
+    "label": "Waluta wyświetlania",
+    "noConversion": "Bez przeliczania · {currency}",
+    "reportingCurrency": "Waluta raportowania"
+  },
+  "analyticsDataCoveragePanel": {
+    "catalogueSynced": {
+      "description": {
+        "few": "Uzupełniono {updated} z {n} pozycji bez stawki.",
+        "many": "Uzupełniono {updated} z {n} pozycji bez stawki.",
+        "one": "Uzupełniono {updated} z {n} pozycji bez stawki.",
+        "other": "Uzupełniono {updated} z {n} pozycji bez stawki."
+      },
+      "title": "Synchronizacja katalogu zakończona"
+    },
+    "clear": {
+      "badge": "Brak uwag",
+      "headline": "Nic do zrobienia",
+      "sub": "Kontrole: {n} · waluta, stawki VAT, dopasowanie produktów, koszt"
+    },
+    "currencyRow": {
+      "notConverted": "jeszcze nie przeliczono",
+      "oldCurrency": "{currency} · stara"
+    },
+    "error": {
+      "retry": "Ponów",
+      "title": "Nie udało się sprawdzić kompletności danych"
+    },
+    "lineRate": {
+      "noRate": "brak stawki",
+      "notChecked": "jeszcze nie sprawdzono",
+      "percent": "{rate}%",
+      "unknown": "nieznana"
+    },
+    "lineRateReason": {
+      "ambiguous": "Katalog podaje kilka możliwych stawek - ustal w sklepie, która jest właściwa.",
+      "notConfigured": "Sklep nie ma konfiguracji podatkowej dla tego produktu.",
+      "unreadable": "Odczyt katalogu nie podał statusu podatkowego."
+    },
+    "loading": {
+      "message": "Sprawdzanie walut, stawek VAT i dopasowania produktów…",
+      "title": "Sprawdzanie kompletności danych"
+    },
+    "phases": {
+      "failed": {
+        "action": "Spróbuj ponownie",
+        "badge": "Niepowodzenie",
+        "sub": "Nie udało się dokończyć przeliczania - szczegóły w sekcji Zadania w tle i logi."
+      },
+      "inProgress": {
+        "action": "Przeliczanie…",
+        "badge": "W toku",
+        "sub": "Przeliczanie w tle - może potrwać minutę. Możesz bezpiecznie opuścić stronę."
+      },
+      "resolved": {
+        "action": "Naprawiono",
+        "badge": "Naprawiono",
+        "sub": "Przeliczono i zapisano - zamykanie…"
+      },
+      "unknown": {
+        "action": "Spróbuj ponownie",
+        "badge": "Stan nieznany",
+        "sub": "Nie udało się sprawdzić stanu przeliczania - zajrzyj do sekcji Zadania w tle i logi albo spróbuj ponownie."
+      }
+    },
+    "recalculateAll": "Przelicz teraz wszystkie ({n})",
+    "starting": "Uruchamianie…",
+    "stuckRun": {
+      "body": "Ponowne przeliczanie walut dla tego zakresu jest oznaczone jako trwające, ale nic go nie popycha naprzód - najpewniej poprzednia próba nigdy się nie zakończyła. Anuluj je poniżej, a potem spróbuj ponownie.",
+      "cancel": "Anuluj zablokowane przeliczanie",
+      "cancelled": "Zablokowane przeliczanie anulowano - możesz spróbować ponownie.",
+      "cancelling": "Anulowanie…",
+      "title": "Przeliczanie się nie rozpoczęło"
+    },
+    "syncCatalogue": {
+      "few": "Synchronizuj teraz katalog dla tych {n} pozycji",
+      "many": "Synchronizuj teraz katalog dla tych {n} pozycji",
+      "one": "Synchronizuj teraz katalog dla tej {n} pozycji",
+      "other": "Synchronizuj teraz katalog dla tych {n} pozycji"
+    },
+    "syncing": "Synchronizacja…",
+    "title": "Kompletność danych",
+    "turnOnSetting": "Włącz to ustawienie ›"
+  },
+  "analyticsDateRangeToolbar": {
+    "apply": "Zastosuj",
+    "dateRange": "Zakres dat",
+    "from": "Od",
+    "fromAria": "Data zamówienia od",
+    "orderDate": "Data zamówienia",
+    "orderDateCaveat": "Ten zakres nie filtruje jeszcze wyników - wkrótce",
+    "orderDateCaveatAria": "Data zamówienia. Ten zakres nie filtruje jeszcze wyników - wkrótce",
+    "presets": {
+      "custom": "Własny",
+      "last30Days": "30 dni",
+      "last7Days": "7 dni",
+      "last90Days": "90 dni"
+    },
+    "to": "Do",
+    "toAria": "Data zamówienia do"
+  },
+  "analyticsDegradationBanner": {
+    "body": "To luka w zaimportowanych zamówieniach, a nie spadek sprzedaży.",
+    "neverPolled": "{connection} nie zostało jeszcze nigdy odpytane",
+    "notPolledSince": "{connection} nie było odpytywane od {date}",
+    "viewSync": "Zobacz synchronizację"
+  },
+  "analyticsKpiCard": {
+    "defaultDeltaGap": "Porównanie okres do okresu wymaga, aby historia zamówień obejmowała cały poprzedni okres.",
+    "planned": "Planowane",
+    "vsPreviousPeriod": "wobec poprzedniego okresu"
+  },
+  "analyticsKpiStrip": {
+    "aboutConversion": "O tym przeliczeniu",
+    "ariaLabel": "Kluczowe wskaźniki sprzedaży",
+    "cards": {
+      "cancellations": {
+        "cancelledOrders": "Anulowane zamówienia",
+        "cancelledTerm": "Anulowane zamówienia",
+        "cancelledText": "Zamówienia złożone w wybranym okresie i później anulowane - pominięte we wszystkich wartościach przychodu na tej stronie.",
+        "cancelledValue": "Wartość anulowanych",
+        "infotip": "O wskaźnikach anulowań",
+        "label": "Anulowania",
+        "metric": "Odsetek anulowań",
+        "rateTerm": "Odsetek anulowań",
+        "rateText": "Anulowane zamówienia podzielone przez wszystkie zamówienia złożone w okresie, łącznie z anulowanymi."
+      },
+      "orderValue": {
+        "averageTerm": "Średnia wartość zamówienia (AOV)",
+        "averageTextGross": "Wartość brutto wszystkich przeliczonych zamówień złożonych w okresie podzielona przez ich liczbę - te same zamówienia co w liczbie zamówień, bez jeszcze nieprzeliczonych.",
+        "averageTextNet": "Wartość bez VAT wszystkich zamówień kwalifikujących się do sprzedaży netto złożonych w okresie, podzielona przez ich liczbę - mniej zamówień niż w liczbie zamówień (patrz zastrzeżenie poniżej).",
+        "infotip": "O wskaźnikach wartości zamówień",
+        "label": "Wartość zamówień",
+        "median": "Mediana",
+        "medianTerm": "Mediana wartości zamówienia",
+        "medianTextGross": "Środkowa wartość brutto wszystkich przeliczonych zamówień w zakresie - mniej zniekształcona przez kilka bardzo dużych lub bardzo małych zamówień niż średnia.",
+        "medianTextNet": "Środkowa wartość bez VAT wszystkich zamówień kwalifikujących się do sprzedaży netto w zakresie - mniej zniekształcona przez kilka bardzo dużych lub bardzo małych zamówień niż średnia.",
+        "metric": "Średnia"
+      },
+      "orders": {
+        "avgDaily": "Śr. dziennie",
+        "avgDailyTerm": "Średnio zamówień dziennie",
+        "avgDailyText": "Liczba zamówień podzielona przez liczbę dni w wybranym zakresie.",
+        "infotip": "O wskaźnikach zamówień",
+        "label": "Zamówienia",
+        "metric": "Złożone zamówienia",
+        "ordersTerm": "Zamówienia",
+        "ordersText": "Wszystkie nieanulowane zamówienia złożone w wybranym okresie we wszystkich połączonych kanałach."
+      },
+      "returns": {
+        "empty": "Zwroty nie są jeszcze śledzone",
+        "infotip": "O zwrotach i zwrotach pieniędzy",
+        "label": "Zwroty i zwroty pieniędzy",
+        "metric": "Odsetek zwrotów",
+        "term": "Zwroty i zwroty pieniędzy",
+        "text": "Zwroty i zwroty pieniędzy nie są jeszcze śledzone w analityce - ta karta nie ma nic do pokazania."
+      },
+      "revenue": {
+        "gmv": {
+          "caveat": "Anulowane zamówienia i anulowane pozycje są pominięte. Zwrócone pozycje i pozycje ze zwrotem pieniędzy pozostają uwzględnione.",
+          "caveatUnconverted": "Anulowane zamówienia i anulowane pozycje są pominięte. {unconverted} z {total} złożonych zamówień nie przeliczono jeszcze na walutę raportowania i nie są ujęte w tej wartości.",
+          "term": "GMV (wartość sprzedanych towarów)",
+          "text": "Wartość nieanulowanych pozycji produktowych w zamówieniach złożonych w wybranym okresie, przeliczona na walutę raportowania."
+        },
+        "infotip": "O wskaźnikach przychodu",
+        "label": "Przychód",
+        "netSales": {
+          "formula": "Wartość zamówień netto (po rabatach, bez VAT) − wartość zwrotów pieniędzy",
+          "text": "Wartość sprzedaży produktów po rabatach i po zwrotach pieniędzy klientom, bez VAT. Pokazana tu jako wartość zamówień netto, przed odjęciem zwrotów - stanie się pełną sprzedażą netto, gdy zwroty zaczną być liczone."
+        }
+      },
+      "units": {
+        "infotip": "O wskaźnikach sztuk",
+        "label": "Sztuki",
+        "metric": "Sprzedane sztuki",
+        "perOrder": "Na zamówienie",
+        "perOrderTerm": "Sztuki na zamówienie",
+        "perOrderText": "Sprzedane sztuki podzielone przez złożone zamówienia.",
+        "unitsSoldTerm": "Sprzedane sztuki",
+        "unitsSoldText": "Łączna liczba sztuk we wszystkich nieanulowanych pozycjach zamówień w wybranym okresie."
+      }
+    },
+    "delta": {
+      "basis": {
+        "few": "wobec poprzednich {n} dni",
+        "many": "wobec poprzednich {n} dni",
+        "one": "wobec poprzedniego dnia",
+        "other": "wobec poprzednich {n} dnia"
+      },
+      "currencyMismatch": "Oba okresy nie są w tej samej walucie raportowania - procent między nimi nie byłby prawdziwą liczbą.",
+      "noHistory": "Brak historii zamówień - nie ma z czym porównać.",
+      "notEnoughHistory": "Za mało historii zamówień, by porównać cały poprzedni okres - dane zaczynają się {date}.",
+      "percent": "{value}%",
+      "points": "{value} pp",
+      "previousFailed": "Nie udało się wczytać poprzedniego okresu do porównania.",
+      "spoken": {
+        "downPercent": "spadek o {value} procent wobec poprzedniego okresu",
+        "downPoints": "spadek o {value} punktów procentowych wobec poprzedniego okresu",
+        "flat": "bez zmian wobec poprzedniego okresu",
+        "upPercent": "wzrost o {value} procent wobec poprzedniego okresu",
+        "upPoints": "wzrost o {value} punktów procentowych wobec poprzedniego okresu"
+      }
+    },
+    "error": {
+      "noData": "Serwer nie zwrócił danych dla tego zakresu.",
+      "retry": "Ponów",
+      "title": "Nie udało się wczytać wskaźników sprzedaży"
+    },
+    "gaps": {
+      "cancelledNetExcluded": {
+        "few": "{n} anulowane zamówienia zawierają pozycję z nieustaloną stawką VAT i są pominięte w tej wartości bez VAT.",
+        "many": "{n} anulowanych zamówień zawiera pozycję z nieustaloną stawką VAT i jest pominiętych w tej wartości bez VAT.",
+        "one": "{n} anulowane zamówienie zawiera pozycję z nieustaloną stawką VAT i jest pominięte w tej wartości bez VAT.",
+        "other": "{n} anulowanego zamówienia zawiera pozycję z nieustaloną stawką VAT i jest pominięte w tej wartości bez VAT."
+      },
+      "cancelledUnconverted": {
+        "few": "{n} anulowane zamówienia nie są przeliczone na bieżącą walutę raportowania i nie są ujęte w tej wartości.",
+        "many": "{n} anulowanych zamówień nie jest przeliczonych na bieżącą walutę raportowania i nie jest ujętych w tej wartości.",
+        "one": "{n} anulowane zamówienie nie jest przeliczone na bieżącą walutę raportowania i nie jest ujęte w tej wartości.",
+        "other": "{n} anulowanego zamówienia nie przeliczono na bieżącą walutę raportowania i nie jest ujęte w tej wartości."
+      },
+      "netExcluded": {
+        "few": "{n} zamówienia pochodzą sprzed stawek VAT dla pozycji albo zawierają pozycję z nieustaloną stawką i są pominięte w wartości zamówień netto.",
+        "many": "{n} zamówień pochodzi sprzed stawek VAT dla pozycji albo zawiera pozycję z nieustaloną stawką i jest pominiętych w wartości zamówień netto.",
+        "one": "{n} zamówienie pochodzi sprzed stawek VAT dla pozycji albo zawiera pozycję z nieustaloną stawką i jest pominięte w wartości zamówień netto.",
+        "other": "{n} zamówienia pochodzi sprzed stawek VAT dla pozycji albo zawiera pozycję z nieustaloną stawką i jest pominięte w wartości zamówień netto."
+      },
+      "netSalesReturns": "Sprzedaż netto powinna też odejmować wartość zwrotów, ale zwroty i zwroty pieniędzy nie są tu jeszcze liczone - ta wartość to wartość zamówień netto, przed zwrotami.",
+      "returnRate": "Zwroty i zwroty pieniędzy nie są jeszcze rejestrowane w analityce, więc nie ma odsetka zwrotów do pokazania.",
+      "unconverted": "Wartość zamówień obejmuje tylko zamówienia już przeliczone na walutę raportowania - niedawno zaimportowane zamówienia są pomijane, dopóki nie zostaną przeliczone."
+    },
+    "loading": {
+      "eyebrow": "Wczytywanie",
+      "message": "Pobieranie przychodu, zamówień i sztuk dla wybranego zakresu…",
+      "title": "Wczytywanie wskaźników sprzedaży"
+    },
+    "todaysRates": "dzisiejszy kurs (kursy)",
+    "trend": {
+      "gmv": {
+        "few": "Trend GMV, ostatnie {n} dni",
+        "many": "Trend GMV, ostatnie {n} dni",
+        "one": "Trend GMV, wybrany dzień",
+        "other": "Trend GMV, ostatnie {n} dnia"
+      },
+      "orders": {
+        "few": "Trend liczby zamówień, ostatnie {n} dni",
+        "many": "Trend liczby zamówień, ostatnie {n} dni",
+        "one": "Trend liczby zamówień, wybrany dzień",
+        "other": "Trend liczby zamówień, ostatnie {n} dnia"
+      }
+    }
+  },
+  "analyticsNeedsAttention": {
+    "badges": {
+      "action": "Działanie",
+      "stuck": "Utknęło"
+    },
+    "checked": "sprawdzono <time>{time}</time>",
+    "clear": {
+      "badge": "Brak uwag",
+      "headline": "Nic nie wymaga uwagi",
+      "sub": "Kontrole: {n} · kompletność, stany, synchronizacje kanałów docelowych"
+    },
+    "error": {
+      "retry": "Ponów",
+      "title": "Nie udało się sprawdzić otwartych spraw"
+    },
+    "links": {
+      "publishNow": "Opublikuj teraz",
+      "reviewOrders": "Przejrzyj zamówienia",
+      "reviewStock": "Przejrzyj stany"
+    },
+    "loading": {
+      "message": "Sprawdzanie kompletności, stanów i nieudanych synchronizacji…",
+      "title": "Sprawdzanie otwartych spraw"
+    },
+    "partialSample": "{sub} - wyświetlono pierwsze {shown} z {total}",
+    "title": "Wymaga uwagi"
+  },
+  "analyticsNetGrossToggle": {
+    "gross": "Brutto",
+    "label": "Podstawa VAT",
+    "net": "Netto"
+  },
+  "analyticsPage": {
+    "basisLoading": {
+      "message": "Ustalanie zapisanej podstawy VAT…",
+      "title": "Wczytywanie wskaźników sprzedaży"
+    },
+    "description": "Sprzedaż we wszystkich połączonych kanałach z jasną informacją o kompletności danych.",
+    "eyebrow": "Operacje",
+    "firstOrders": {
+      "action": "Zobacz postęp synchronizacji",
+      "message": "Niczego nie brakuje; dane jeszcze nie dotarły. Wartości pojawią się wraz z napływem zamówień.",
+      "title": "Pierwsze zamówienia wciąż napływają"
+    },
+    "noConnections": {
+      "action": "Dodaj połączenie",
+      "message": "Ta strona pokazuje zamówienia pobrane przez OpenLinker. Gdy podłączysz marketplace lub sklep i dotrą pierwsze zamówienia, wartości pojawią się tu bez dodatkowej konfiguracji.",
+      "title": "Podłącz kanał sprzedaży, aby zobaczyć tu dane"
+    },
+    "settings": "Ustawienia analityki",
+    "title": "Analityka",
+    "trustDenied": {
+      "message": "Jeśli potrzebujesz wglądu w kompletność pobierania danych, poproś administratora.",
+      "title": "Kompletność danych nie jest dostępna dla tej roli"
+    },
+    "trustError": {
+      "retry": "Ponów",
+      "title": "Nie udało się wczytać kompletności danych"
+    },
+    "trustLoading": {
+      "message": "Sprawdzanie stanu pobierania danych…",
+      "title": "Wczytywanie kompletności danych"
+    }
+  },
+  "analyticsSettingsDialog": {
+    "apply": "Zastosuj",
+    "cancel": "Anuluj",
+    "currency": {
+      "autoToggle": "Automatycznie przeliczaj zaległe zamówienia po zmianie waluty raportowania",
+      "checking": "Sprawdzanie zaległych zamówień…",
+      "notAvailable": "Jeszcze niedostępne.",
+      "pending": {
+        "few": "{n} zamówienia czekają na przeliczenie",
+        "many": "{n} zamówień czeka na przeliczenie",
+        "one": "{n} zamówienie czeka na przeliczenie",
+        "other": "{n} zamówienia czeka na przeliczenie"
+      },
+      "recalculateNow": "Przelicz teraz",
+      "recalculating": "Przeliczanie…",
+      "starting": "Uruchamianie…",
+      "title": "Waluta - przeliczanie",
+      "upToDate": "Wszystko jest aktualne",
+      "warning": "Ta sekcja trwale zapisuje dane: „Przelicz teraz” zapisuje w bazie danych rzeczywisty kurs z dnia każdego zamówienia - to nie jest podgląd."
+    },
+    "description": "Waluta wyświetlania i podstawa kursu (poniżej) zmieniają tylko to, co widzisz na tym ekranie - nic nie jest zapisywane. Akcje niżej mogą trwale zapisywać dane - każda z nich wyraźnie to zaznacza.",
+    "margin": {
+      "description": "Wyłączone: panel marży, przypomnienia o kosztach w Produktach, Analityce i przeglądzie Operacji oraz oznaczenie „Brak ceny zakupu” są ukryte. Wprowadzone już ceny zakupu pozostają zapisane i nadal są kopiowane do nowych zamówień, więc po ponownym włączeniu marża od razu się pojawi.",
+      "offAdminOnly": "Marża jest wyłączona dla wszystkich na tym koncie. Tylko administrator może to zmienić.",
+      "onAdminOnly": "Marża jest włączona dla wszystkich na tym koncie. Tylko administrator może to zmienić.",
+      "title": "Marża",
+      "toggle": "Śledź marżę i przypominaj o brakujących cenach zakupu"
+    },
+    "rateBasis": {
+      "current": {
+        "description": "Ile to jest warte dziś - sumuje rzeczywistą kwotę każdego zamówienia i przelicza po dzisiejszym kursie.",
+        "title": "Bieżący kurs"
+      },
+      "legend": "Podstawa kursu",
+      "orderDate": {
+        "description": "Każde zamówienie pozostaje po kursie z dnia zamówienia. Wyświetlenie innej waluty przelicza tę sumę po dzisiejszym kursie - tylko do analityki, nie do rozliczeń podatkowych.",
+        "title": "Kurs z dnia zamówienia"
+      }
+    },
+    "recalculateConfirm": {
+      "confirm": "Przelicz",
+      "description": "To trwale zapisuje w bazie danych rzeczywisty kurs z dnia każdego zamówienia - to nie jest podgląd i nie można tego tutaj cofnąć.",
+      "title": "Przeliczyć teraz?"
+    },
+    "reportingCurrency": "Waluta raportowania",
+    "reportingCurrencyNamed": "{currency} · waluta raportowania",
+    "showAmountsIn": "Pokaż kwoty w",
+    "tax": {
+      "checking": "Sprawdzanie pokrycia stawkami VAT…",
+      "consequence": "Ufaj stawce VAT znalezionej później w katalogu i automatycznie uwzględniaj takie zamówienia w sprzedaży netto. Dotyczy to wszystkich użytkowników i każdego zakresu dat, nie tylko oglądanego - wyłączenie usunie te zamówienia ze sprzedaży netto przy najbliższym odczycie danych.",
+      "foundIncluded": {
+        "few": "{n} zamówienia - stawkę znaleziono, uwzględnione automatycznie",
+        "many": "{n} zamówień - stawkę znaleziono, uwzględnione automatycznie",
+        "one": "{n} zamówienie - stawkę znaleziono, uwzględnione automatycznie",
+        "other": "{n} zamówienia - stawkę znaleziono, uwzględnione automatycznie"
+      },
+      "foundWaiting": {
+        "few": "{n} zamówienia - stawkę znaleziono, czekają na potwierdzenie",
+        "many": "{n} zamówień - stawkę znaleziono, czekają na potwierdzenie",
+        "one": "{n} zamówienie - stawkę znaleziono, czeka na potwierdzenie",
+        "other": "{n} zamówienia - stawkę znaleziono, czeka na potwierdzenie"
+      },
+      "loadError": "Nie udało się wczytać pokrycia stawkami VAT - liczby i stan ustawienia poniżej mogą być błędne.",
+      "noRate": {
+        "few": "{n} zamówienia - brak stawki u źródła (wymaga poprawy u źródła)",
+        "many": "{n} zamówień - brak stawki u źródła (wymaga poprawy u źródła)",
+        "one": "{n} zamówienie - brak stawki u źródła (wymaga poprawy u źródła)",
+        "other": "{n} zamówienia - brak stawki u źródła (wymaga poprawy u źródła)"
+      },
+      "title": "Stawki VAT",
+      "toggle": "Użyj stawki znalezionej w katalogu produktów",
+      "unresolved": {
+        "few": "{n} zamówienia - produkt dodany po uruchomieniu, stawka wciąż nieustalona",
+        "many": "{n} zamówień - produkt dodany po uruchomieniu, stawka wciąż nieustalona",
+        "one": "{n} zamówienie - produkt dodany po uruchomieniu, stawka wciąż nieustalona",
+        "other": "{n} zamówienia - produkt dodany po uruchomieniu, stawka wciąż nieustalona"
+      }
+    },
+    "taxConfirm": {
+      "affects": {
+        "few": "Dotyczy {n} zamówień.",
+        "many": "Dotyczy {n} zamówień.",
+        "one": "Dotyczy {n} zamówienia.",
+        "other": "Dotyczy {n} zamówienia."
+      },
+      "checking": "Sprawdzanie, ilu zamówień to dotyczy…",
+      "confirm": "Włącz",
+      "countUnknown": "Dotyczy nieznanej liczby zamówień - nie udało się wczytać liczby.",
+      "title": "Włączyć uwzględnianie zamówień ze stawką VAT ustaloną szacunkowo?",
+      "warning": "Te stawki VAT pochodzą z dzisiejszego katalogu, a nie z dnia zamówienia. Jeśli któraś z nich się od tego czasu zmieniła, sprzedaż netto dla tych zamówień będzie mniej dokładna."
+    },
+    "title": "Ustawienia analityki",
+    "toast": {
+      "recalculationStarted": {
+        "description": "Wartości zamówień, których to dotyczy, są przeliczane w tle.",
+        "title": "Rozpoczęto przeliczanie"
+      }
+    },
+    "vatBasis": {
+      "gross": {
+        "description": "Domyślnie wartości z VAT.",
+        "title": "Brutto"
+      },
+      "net": {
+        "description": "Domyślnie wartości bez VAT.",
+        "title": "Netto"
+      },
+      "status": "Zapisywane od razu i obowiązuje przy każdej kolejnej wizycie, w której podstawa nie zostanie wybrana przełącznikiem na pasku narzędzi.",
+      "title": "Domyślna podstawa VAT"
+    }
+  },
+  "analyticsTrustHeader": {
+    "aboutDates": "O tych datach",
+    "aboutDatesBody": "Daty to najwcześniejsze zamówienie zapisane dla każdego kanału, a nie gwarancja kompletności. Części późniejszych zamówień również może brakować.",
+    "dataFrom": "dane od <date>{date}</date>",
+    "neverPolled": "nigdy nie odpytano",
+    "noOrders": "brak zamówień",
+    "status": {
+      "disconnected": "Rozłączone",
+      "fresh": "Aktualne",
+      "neverIngested": "Nigdy nie pobrano",
+      "stalled": "Wstrzymane",
+      "unknown": "Nieznany"
+    },
+    "synced": "zsynchronizowano <time>{time}</time>",
+    "title": "Synchronizacja"
+  },
+  "channelPublishAction": {
+    "label": "Opublikuj {product} w tym kanale - już sprzedaje się gdzie indziej",
+    "publish": "Opublikuj"
+  },
+  "channelSalesTable": {
+    "awaitingFx": {
+      "label": "Oczekuje na przeliczenie",
+      "title": {
+        "few": "{n} zamówienia w tym kanale nie mają jeszcze przeliczenia na walutę raportowania i są tu pominięte w sprzedaży netto, zamówieniach i AOV.",
+        "many": "{n} zamówień w tym kanale nie ma jeszcze przeliczenia na walutę raportowania i jest tu pominiętych w sprzedaży netto, zamówieniach i AOV.",
+        "one": "{n} zamówienie w tym kanale nie ma jeszcze przeliczenia na walutę raportowania i jest tu pominięte w sprzedaży netto, zamówieniach i AOV.",
+        "other": "{n} zamówienia w tym kanale nie ma jeszcze przeliczenia na walutę raportowania i jest tu pominięte w sprzedaży netto, zamówieniach i AOV."
+      }
+    },
+    "caption": "Sprzedaż według kanałów",
+    "columns": {
+      "aov": "AOV",
+      "channel": "Kanał",
+      "orders": "Zamówienia",
+      "share": "Udział",
+      "trend": "Trend",
+      "units": "Sztuki"
+    },
+    "empty": "Żaden kanał nie ma zamówień w tym zakresie",
+    "error": {
+      "retry": "Ponów",
+      "title": "Nie udało się wczytać wartości według kanałów"
+    },
+    "loading": {
+      "eyebrow": "Wczytywanie",
+      "message": "Pobieranie przychodu, zamówień i sztuk dla każdego połączonego kanału…",
+      "title": "Wczytywanie wartości według kanałów"
+    },
+    "noAov": "Dla tego kanału w tym zakresie nie można podać AOV",
+    "noRevenue": "Dla tego kanału w tym zakresie nie można podać wartości {revenue}",
+    "noTrend": "Za mało danych dla trendu",
+    "partialHistory": {
+      "label": "Niepełna historia",
+      "title": "Najwcześniejsze pobrane zamówienie tego kanału jest późniejsze niż początek wybranego zakresu - jego wartości obejmują mniej niż cały okres."
+    },
+    "total": "Razem · {currency}",
+    "trendAria": "Trend przychodu kanału",
+    "unconverted": {
+      "few": "{n} zamówienia nie są jeszcze przeliczone na walutę raportowania - pominięte w wartościach powyżej.",
+      "many": "{n} zamówień nie jest jeszcze przeliczonych na walutę raportowania - pominięte w wartościach powyżej.",
+      "one": "{n} zamówienie nie jest jeszcze przeliczone na walutę raportowania - pominięte w wartościach powyżej.",
+      "other": "{n} zamówienia nie jest jeszcze przeliczone na walutę raportowania - pominięte w wartościach powyżej."
+    }
+  },
+  "common": {
+    "gmv": "GMV",
+    "netSales": "Sprzedaż netto",
+    "notListed": "Niewystawiony"
+  },
+  "coverageDetailDialog": {
+    "close": "Zamknij",
+    "empty": "Nic tu już nie ma.",
+    "error": {
+      "retry": "Ponów",
+      "title": "Nie udało się wczytać zamówień"
+    },
+    "loading": {
+      "message": "Pobieranie zamówień, których to dotyczy…",
+      "title": "Wczytywanie"
+    },
+    "next": "Dalej",
+    "previous": "Wstecz",
+    "range": "Wyświetlono {from}-{to} z {total}"
+  },
+  "dataCoverage": {
+    "badge": {
+      "action": "Działanie",
+      "info": "Info"
+    },
+    "categories": {
+      "currency": {
+        "actionLabel": "Przelicz teraz",
+        "headline": {
+          "lines": {
+            "few": "{n} pozycje liczone w nieaktualnej walucie",
+            "many": "{n} pozycji liczonych w nieaktualnej walucie",
+            "one": "{n} pozycja liczona w nieaktualnej walucie",
+            "other": "{n} pozycji liczonej w nieaktualnej walucie"
+          },
+          "orders": {
+            "few": "{n} zamówienia liczone w nieaktualnej walucie",
+            "many": "{n} zamówień liczonych w nieaktualnej walucie",
+            "one": "{n} zamówienie liczone w nieaktualnej walucie",
+            "other": "{n} zamówienia liczonego w nieaktualnej walucie"
+          }
+        },
+        "modalDescription": "Te zamówienia wciąż mają przypisaną walutę, która nie jest już walutą raportowania.",
+        "sub": "Waluta raportowania się zmieniła - te zamówienia wciąż mają przypisaną poprzednią."
+      },
+      "noCost": {
+        "actionLabel": "Zobacz w marży",
+        "headline": {
+          "lines": {
+            "few": "{n} pozycje nie są ujęte w marży",
+            "many": "{n} pozycji nie jest ujętych w marży",
+            "one": "{n} pozycja nie jest ujęta w marży",
+            "other": "{n} pozycji nie jest ujętej w marży"
+          },
+          "orders": {
+            "few": "{n} zamówienia nie są ujęte w marży",
+            "many": "{n} zamówień nie jest ujętych w marży",
+            "one": "{n} zamówienie nie jest ujęte w marży",
+            "other": "{n} zamówienia nie jest ujętego w marży"
+          }
+        },
+        "modalDescription": "Marża pomija te pozycje, ponieważ brakuje kosztu, koszt wprowadzono po sprzedaży, produkt nie jest dopasowany albo waluta kosztu różni się od waluty zamówienia.",
+        "sub": "Marża uwzględnia tylko pozycje z użytecznym kosztem: brak kosztu, koszt wprowadzony po sprzedaży, niedopasowany produkt albo inna waluta wykluczają pozycję."
+      },
+      "productMatching": {
+        "actionLabel": "Zobacz zamówienia",
+        "headline": {
+          "lines": {
+            "few": "{n} pozycje z błędem dopasowania produktu",
+            "many": "{n} pozycji z błędem dopasowania produktu",
+            "one": "{n} pozycja z błędem dopasowania produktu",
+            "other": "{n} pozycji z błędem dopasowania produktu"
+          },
+          "orders": {
+            "few": "{n} zamówienia z błędem dopasowania produktu",
+            "many": "{n} zamówień z błędem dopasowania produktu",
+            "one": "{n} zamówienie z błędem dopasowania produktu",
+            "other": "{n} zamówienia z błędem dopasowania produktu"
+          }
+        },
+        "modalDescription": "Produkt został usunięty u źródła albo dopasowanie się nie powiodło - otwórz zamówienie, aby dopasować go ręcznie.",
+        "sub": "Produkt został usunięty u źródła albo dopasowanie się nie powiodło."
+      },
+      "taxA": {
+        "actionLabel": "Uwzględnij mimo to",
+        "headline": {
+          "lines": {
+            "few": "{n} pozycje mają niepotwierdzoną stawkę VAT",
+            "many": "{n} pozycji ma niepotwierdzoną stawkę VAT",
+            "one": "{n} pozycja ma niepotwierdzoną stawkę VAT",
+            "other": "{n} pozycji ma niepotwierdzoną stawkę VAT"
+          },
+          "orders": {
+            "few": "{n} zamówienia mają niepotwierdzoną stawkę VAT",
+            "many": "{n} zamówień ma niepotwierdzoną stawkę VAT",
+            "one": "{n} zamówienie ma niepotwierdzoną stawkę VAT",
+            "other": "{n} zamówienia ma niepotwierdzoną stawkę VAT"
+          }
+        },
+        "modalDescription": "Stawka pochodzi z dzisiejszego katalogu produktów - nie została potwierdzona dla dnia zamówienia.",
+        "sub": "Stawka pochodzi z dzisiejszego katalogu produktów, a nie z dnia zamówienia - dlatego zamówienia są pominięte w sprzedaży netto."
+      },
+      "taxB": {
+        "actionLabel": "Zobacz produkty",
+        "headline": {
+          "lines": {
+            "few": "{n} pozycje w ogóle nie mają stawki VAT",
+            "many": "{n} pozycji w ogóle nie ma stawki VAT",
+            "one": "{n} pozycja w ogóle nie ma stawki VAT",
+            "other": "{n} pozycji w ogóle nie ma stawki VAT"
+          },
+          "orders": {
+            "few": "{n} zamówienia w ogóle nie mają stawki VAT",
+            "many": "{n} zamówień w ogóle nie ma stawki VAT",
+            "one": "{n} zamówienie w ogóle nie ma stawki VAT",
+            "other": "{n} zamówienia w ogóle nie ma stawki VAT"
+          }
+        },
+        "modalDescription": "Produkt nie ma ustawionej stawki VAT u źródła. Trzeba to poprawić tam - nie da się jej tu odgadnąć.",
+        "sub": "Produkt nie ma ustawionej stawki VAT u źródła - popraw to tam, nie tutaj."
+      },
+      "taxC": {
+        "actionLabel": "Zobacz zamówienia",
+        "headline": {
+          "lines": {
+            "few": "{n} pozycje - stawka jeszcze nieustalona",
+            "many": "{n} pozycji - stawka jeszcze nieustalona",
+            "one": "{n} pozycja - stawka jeszcze nieustalona",
+            "other": "{n} pozycji - stawka jeszcze nieustalona"
+          },
+          "orders": {
+            "few": "{n} zamówienia - stawka jeszcze nieustalona",
+            "many": "{n} zamówień - stawka jeszcze nieustalona",
+            "one": "{n} zamówienie - stawka jeszcze nieustalona",
+            "other": "{n} zamówienia - stawka jeszcze nieustalona"
+          }
+        },
+        "modalDescription": "Te produkty dodano po wprowadzeniu stawek VAT dla pozycji - katalog jeszcze ich nie podał, więc to bieżąca luka, a nie stary problem.",
+        "modalTitle": {
+          "lines": {
+            "few": "{n} pozycje - stawka wciąż nieustalona",
+            "many": "{n} pozycji - stawka wciąż nieustalona",
+            "one": "{n} pozycja - stawka wciąż nieustalona",
+            "other": "{n} pozycji - stawka wciąż nieustalona"
+          },
+          "orders": {
+            "few": "{n} zamówienia - stawka wciąż nieustalona",
+            "many": "{n} zamówień - stawka wciąż nieustalona",
+            "one": "{n} zamówienie - stawka wciąż nieustalona",
+            "other": "{n} zamówienia - stawka wciąż nieustalona"
+          }
+        },
+        "sub": "Produkt dodano po wprowadzeniu stawek VAT dla pozycji - katalog jeszcze jej nie podał."
+      }
+    },
+    "matchingRecordStatus": {
+      "awaitingMapping": "Trwa dopasowywanie",
+      "sourceDeleted": "Usunięty u źródła"
+    }
+  },
+  "displayCurrency": {
+    "currentRate": {
+      "term": "Bieżący kurs",
+      "text": "Dzisiejszy kurs zastosowany do waluty każdego zamówienia, a następnie zsumowany."
+    },
+    "derivation": {
+      "inverted": "odwrócony",
+      "pivot": "przez inną walutę"
+    },
+    "derived": "Wyliczony ({derivation})",
+    "derivedWithReference": "Wyliczony ({derivation}) - {reference}",
+    "notInvoiceRate": {
+      "term": "To nie jest kurs do faktury",
+      "text": "To przeliczenie służy tylko do przeglądania analityki - nigdy nie jest to ustawowy kurs stosowany na fakturze."
+    },
+    "pair": "{from} → {to}",
+    "periodRate": {
+      "term": "Kurs okresu (tryb daty zamówienia)",
+      "text": "Jeden bieżący kurs zastosowany do sumy z całego okresu - a nie historyczny kurs każdego zamówienia."
+    },
+    "rateLine": "1 {from} = {rate} {to} ({source}, {date})"
+  },
+  "exportCsvButton": {
+    "changeRange": "Zmień zakres",
+    "currencyNote": "Plik jest w {reporting}, walucie raportowania.",
+    "currencyTitle": "Plik jest w {reporting}, walucie raportowania, a nie w {display}.",
+    "export": "Eksportuj CSV",
+    "preparing": "Przygotowywanie CSV…",
+    "refused": "Eksport odrzucony",
+    "status": "Przygotowywanie raportu „{report}”. Pobieranie rozpocznie się, gdy będzie gotowy; możesz dalej pracować.",
+    "tryAgain": "Ponów próbę"
+  },
+  "insightsPage": {
+    "activity": {
+      "caption": "Ostatnie zadania synchronizacji",
+      "empty": "Nie zarejestrowano jeszcze żadnych zadań synchronizacji.",
+      "errorTitle": "Nie udało się wczytać zadań synchronizacji",
+      "eyebrow": "Aktywność",
+      "loadingMessage": "Pobieranie ostatniej aktywności…",
+      "loadingTitle": "Wczytywanie zadań synchronizacji",
+      "title": "Ostatnie zadania synchronizacji",
+      "total": "Razem: {n}"
+    },
+    "allChannelsActive": "Wszystkie kanały aktywne",
+    "attempts": "{attempts}/{max}",
+    "checkingDependencies": "Sprawdzanie zależności…",
+    "columns": {
+      "actions": "Akcje",
+      "attempts": "Próby",
+      "connection": "Połączenie",
+      "failures": "Błędy",
+      "jobType": "Typ zadania",
+      "lastError": "Ostatni błąd",
+      "latest": "Ostatnie",
+      "status": "Status",
+      "updated": "Zmieniono"
+    },
+    "connections": {
+      "configured": "Skonfigurowane: {n}",
+      "errorTitle": "Nie udało się wczytać połączeń",
+      "eyebrow": "Integracje",
+      "loadingMessage": "Pobieranie stanu połączeń…",
+      "loadingTitle": "Wczytywanie połączeń",
+      "title": "Kondycja połączeń"
+    },
+    "connectionsFailing": {
+      "few": "{n} połączenia z nieudanymi zadaniami w tle",
+      "many": "{n} połączeń z nieudanymi zadaniami w tle",
+      "one": "{n} połączenie z nieudanymi zadaniami w tle",
+      "other": "{n} połączenia z nieudanymi zadaniami w tle"
+    },
+    "connectionsInError": {
+      "few": "{n} połączenia z błędem",
+      "many": "{n} połączeń z błędem",
+      "one": "{n} połączenie z błędem",
+      "other": "{n} połączenia z błędem"
+    },
+    "description": "Monitoruj kondycję integracji, stan zależności i aktywność połączeń w jednym miejscu.",
+    "eyebrow": "Przegląd",
+    "failingJobs": {
+      "few": "{n} nieudane zadania w tle",
+      "many": "{n} nieudanych zadań w tle",
+      "one": "{n} nieudane zadanie w tle",
+      "other": "{n} nieudanego zadania w tle"
+    },
+    "health": {
+      "degraded": "Obniżona sprawność",
+      "error": "Błąd",
+      "ok": "OK",
+      "unknown": "Nieznany",
+      "unreachable": "Niedostępny"
+    },
+    "incidents": {
+      "caption": "Nieudane zadania synchronizacji pogrupowane według połączenia i typu zadania",
+      "cardSubtitle": {
+        "few": "{connection} · {n} błędy",
+        "many": "{connection} · {n} błędów",
+        "one": "{connection} · {n} błąd",
+        "other": "{connection} · {n} błędu"
+      },
+      "empty": "Brak nieudanych zadań w tle. Wszystko w porządku.",
+      "errorTitle": "Nie udało się wczytać błędów",
+      "eyebrow": "Incydenty",
+      "loadingMessage": "Zbieranie nieudanych zadań w tle…",
+      "loadingTitle": "Wczytywanie błędów",
+      "signatures": {
+        "few": "{n} unikalne sygnatury",
+        "many": "{n} unikalnych sygnatur",
+        "one": "{n} unikalna sygnatura",
+        "other": "{n} unikalnej sygnatury"
+      },
+      "title": "Co jest teraz zepsute",
+      "totalFailures": {
+        "few": "Łącznie {n} błędy",
+        "many": "Łącznie {n} błędów",
+        "one": "Łącznie {n} błąd",
+        "other": "Łącznie {n} błędu"
+      }
+    },
+    "infraNodeWithName": "{platform} ({name})",
+    "infrastructure": {
+      "errorTitle": "Kontrola kondycji nie powiodła się",
+      "eyebrow": "Infrastruktura",
+      "loadingMessage": "Sprawdzanie zależności…",
+      "loadingTitle": "Sprawdzanie kondycji systemu",
+      "title": "Kondycja systemu"
+    },
+    "kpis": {
+      "activeOfTotal": "{active} / {total}",
+      "failedJobs": "Nieudane zadania w tle",
+      "integrationHealth": "Kondycja integracji",
+      "needAttention": {
+        "few": "{n} zadania w tle wymagają uwagi",
+        "many": "{n} zadań w tle wymaga uwagi",
+        "one": "{n} zadanie w tle wymaga uwagi",
+        "other": "{n} zadania w tle wymaga uwagi"
+      },
+      "noFailures": "Brak błędów",
+      "queueEmpty": "Kolejka pusta",
+      "queuedJobs": "Zadania w kolejce",
+      "systemHealth": "Kondycja systemu",
+      "waiting": {
+        "few": "{n} zadania w tle czekają",
+        "many": "{n} zadań w tle czeka",
+        "one": "{n} zadanie w tle czeka",
+        "other": "{n} zadania w tle czeka"
+      }
+    },
+    "noConnections": "Brak skonfigurowanych połączeń. <link>Dodaj pierwsze połączenie.</link>",
+    "noInfraNodes": "Nie wykryto elementów infrastruktury",
+    "refresh": "Odśwież",
+    "refreshing": "Odświeżanie…",
+    "retry": "Ponów",
+    "retryAria": "Ponów - {signature}",
+    "retrying": "Ponawianie…",
+    "serviceWithName": "{platform} - {name}",
+    "setup": {
+      "addCostPrices": "Dodaj ceny zakupu",
+      "eyebrow": "Konfiguracja",
+      "leftOut": "{amount} sprzedaży netto pominięte w marży.",
+      "margin": "Marża",
+      "meta": "To nie są błędy. Nic nie jest zablokowane.",
+      "title": "Dane do uzupełnienia",
+      "topThree": "Trzy z nich odpowiadają za {pct} tej kwoty.",
+      "variantsWithoutCost": {
+        "few": "{n} warianty sprzedane w ciągu ostatnich {days} dni nie mają ceny zakupu",
+        "many": "{n} wariantów sprzedanych w ciągu ostatnich {days} dni nie ma ceny zakupu",
+        "one": "{n} wariant sprzedany w ciągu ostatnich {days} dni nie ma ceny zakupu",
+        "other": "{n} wariantu sprzedanego w ciągu ostatnich {days} dni nie ma ceny zakupu"
+      }
+    },
+    "signature": "{jobType} w {connection}",
+    "status": {
+      "active": "aktywne",
+      "archived": "zarchiwizowane",
+      "dead": "nieudane",
+      "degraded": "obniżona sprawność",
+      "disabled": "wyłączone",
+      "error": "błąd",
+      "needsReauth": "wymaga ponownej autoryzacji",
+      "ok": "ok",
+      "queued": "w kolejce",
+      "running": "w toku",
+      "succeeded": "zakończone",
+      "warning": "ostrzeżenie"
+    },
+    "title": "Przegląd operacji",
+    "toast": {
+      "noDeadJobs": "{jobType} - nie pozostały żadne nieudane zadania w tle ({skipped} już w toku).",
+      "nothingRequeued": "Nic nie dodano ponownie do kolejki",
+      "requeued": {
+        "few": "Ponownie dodano do kolejki {n} zadania w tle",
+        "many": "Ponownie dodano do kolejki {n} zadań w tle",
+        "one": "Ponownie dodano do kolejki {n} zadanie w tle",
+        "other": "Ponownie dodano do kolejki {n} zadania w tle"
+      },
+      "requeuedSkipped": "{jobType} - ponownie dodano do kolejki: {count}, pominięto już trwające: {skipped}.",
+      "retryFailed": "Ponowienie nie powiodło się",
+      "unknownError": "Nieznany błąd",
+      "willRerun": "{jobType} zostanie uruchomione ponownie."
+    },
+    "truncated": "{text}…",
+    "viewJobs": "Zobacz zadania",
+    "viewJobsAria": "Zobacz zadania w tle - {signature}"
+  },
+  "marginCopy": {
+    "gaps": {
+      "costEnteredAfterSale": {
+        "action": "Nic; nowe zamówienia są już objęte.",
+        "reason": "Zamówione przed wprowadzeniem kosztu"
+      },
+      "currencyMismatch": {
+        "action": "Wprowadź koszt w walucie, w której złożono zamówienie.",
+        "reason": "Waluta kosztu różni się od waluty zamówienia"
+      },
+      "noCost": {
+        "action": "Wprowadź koszt na stronie produktu.",
+        "reason": "Brak zapisanego kosztu wariantu"
+      },
+      "noVariant": {
+        "action": "Dopasuj pozycję zamówienia do produktu.",
+        "reason": "Pozycja zamówienia niedopasowana do wariantu produktu"
+      }
+    }
+  },
+  "marginCoverageBanner": {
+    "addCostPrices": "Dodaj ceny zakupu",
+    "goToMargin": "Przejdź do marży",
+    "leftOut": "Pominięto {amount}. Marża i marża % są liczone tylko z części objętej kosztami.",
+    "leftOutWithReasons": "Pominięto {amount}: {reasons}. Marża i marża % są liczone tylko z części objętej kosztami.",
+    "reasons": {
+      "afterSale": "część zamówień wpłynęła przed wprowadzeniem kosztu ({amount})",
+      "noCost": "część wariantów nie ma ceny zakupu ({amount})",
+      "other": "pozostałe pozycje nie mogą mieć kosztu ({amount})"
+    },
+    "title": "Marża obejmuje {ratio} sprzedaży netto w tym zakresie"
+  },
+  "marginCoverageNote": {
+    "caption": "Dlaczego pozycje są pomijane w marży",
+    "columns": {
+      "lines": "Pozycje",
+      "netRevenue": "Przychód netto",
+      "reason": "Powód",
+      "whatToDo": "Co zrobić"
+    },
+    "toggle": {
+      "few": "{n} pozycje nie są ujęte w marży · pominięto {amount} przychodu netto",
+      "many": "{n} pozycji nie jest ujętych w marży · pominięto {amount} przychodu netto",
+      "one": "{n} pozycja nie jest ujęta w marży · pominięto {amount} przychodu netto",
+      "other": "{n} pozycji nie jest ujętej w marży · pominięto {amount} przychodu netto"
+    }
+  },
+  "marginPanel": {
+    "basis": "Marża zawsze korzysta z przychodu netto, bo koszty wprowadza się netto. Anulowane zamówienia są pominięte.",
+    "basisChip": "Przychód netto · bez VAT",
+    "basisGross": "Marża zawsze korzysta z przychodu netto, bo koszty wprowadza się netto, mimo że ta strona jest ustawiona na brutto. Anulowane zamówienia są pominięte.",
+    "byChannel": "Marża według kanałów",
+    "byChannelFootnote": "Marża brutto i marża % dotyczą tylko pozycji z kosztem. Pokrycie kosztami to udział tych pozycji w przychodzie netto.",
+    "byProduct": "Marża według produktów",
+    "byProductError": "Nie udało się wczytać marży według produktów",
+    "byProductFootnote": "Pierwsze {n} według przychodu netto.",
+    "currency": "Kwoty w {currency}, walucie raportowania.",
+    "error": {
+      "message": "Wartości marży są niedostępne.",
+      "retry": "Ponów",
+      "title": "Nie udało się wczytać marży"
+    },
+    "exportDisabled": "Nie ma czego eksportować: żadna pozycja w tym zakresie nie ma kosztu",
+    "eyebrow": "Rentowność",
+    "figuresAria": "Wartości marży",
+    "kpis": {
+      "cost": {
+        "absent": "Brak przychodu netto w tym zakresie",
+        "label": "Koszt towarów",
+        "metric": "Pozycje z kosztem",
+        "qualifier": "Przychód objęty kosztami"
+      },
+      "margin": {
+        "label": "Marża brutto",
+        "metric": "Przychód objęty kosztami − koszt"
+      },
+      "marginPct": {
+        "absent": "Marża % wymaga co najmniej jednej pozycji z kosztem",
+        "label": "Marża %",
+        "metric": "Przychodu objętego kosztami"
+      },
+      "netRevenue": {
+        "label": "Przychód netto",
+        "metric": "Wszystkie nieanulowane pozycje, bez VAT"
+      }
+    },
+    "loading": {
+      "eyebrow": "Wczytywanie",
+      "message": "Wyliczanie marży dla pozycji z zapisanym kosztem…",
+      "title": "Wczytywanie marży"
+    },
+    "missingCost": {
+      "addCost": "Dodaj koszt",
+      "bestSellers": "<strong>Najlepiej sprzedające się bez kosztu</strong> · według przychodu netto",
+      "body": "Marża wymaga kosztu netto zapłaconego za każdy wariant. OpenLinker nigdy go nie zgaduje i nigdy nie traktuje brakującego kosztu jako zera. Wprowadź koszty na stronie produktu; zamówienia złożone później będą liczone do marży.",
+      "footnote": {
+        "few": "{n} produkty sprzedane w tym zakresie, żaden nie ma zapisanego kosztu.",
+        "many": "{n} produktów sprzedanych w tym zakresie, żaden nie ma zapisanego kosztu.",
+        "one": "{n} produkt sprzedany w tym zakresie, żaden nie ma zapisanego kosztu.",
+        "other": "{n} produktu sprzedanego w tym zakresie, żaden nie ma zapisanego kosztu."
+      },
+      "skuAndAmount": "{sku} · {amount}",
+      "title": "Brak marży: żaden wariant nie ma ceny zakupu",
+      "unknownProduct": "Nieznany produkt"
+    },
+    "noFigure": "Brak wartości dla tego zakresu",
+    "title": "Marża",
+    "trendTitle": "<strong>Marża brutto według tygodni</strong> · etykieta to marża %"
+  },
+  "marginTables": {
+    "addCost": "Dodaj koszt",
+    "byChannelCaption": "Marża według kanałów",
+    "byChannelRegion": "Marża według kanałów (przewijane)",
+    "byProductCaption": "Najlepsze produkty według przychodu netto wraz z marżą",
+    "byProductRegion": "Marża według produktów (przewijane)",
+    "columns": {
+      "channel": "Kanał",
+      "costCoverage": "Pokrycie kosztami",
+      "costOfGoods": "Koszt towarów",
+      "grossMargin": "Marża brutto",
+      "marginPct": "Marża %",
+      "netRevenue": "Przychód netto",
+      "product": "Produkt"
+    },
+    "marginPctNeedsCost": "Marża % wymaga pozycji z kosztem",
+    "noCostRecorded": "Brak zapisanego kosztu",
+    "noNetRevenue": "Brak przychodu netto w tym zakresie",
+    "total": "Razem",
+    "unknownProduct": "Nieznany produkt"
+  },
+  "marginTrendChart": {
+    "ariaLabel": "Marża brutto w przedziałach. {summary}",
+    "bucket": "{date}: {amount} {currency}",
+    "noMargin": "-"
+  },
+  "needsAttention": {
+    "coverage": {
+      "generic": {
+        "headline": {
+          "few": "{n} warianty z brakiem oferty w co najmniej jednym kanale",
+          "many": "{n} wariantów z brakiem oferty w co najmniej jednym kanale",
+          "one": "{n} wariant z brakiem oferty w co najmniej jednym kanale",
+          "other": "{n} wariantu z brakiem oferty w co najmniej jednym kanale"
+        },
+        "sub": "otwórz wystawianie ofert, aby zobaczyć, w którym kanale brakuje każdego z nich"
+      },
+      "named": {
+        "headline": {
+          "few": "{n} warianty nie są wystawione w {connection}",
+          "many": "{n} wariantów nie jest wystawionych w {connection}",
+          "one": "{n} wariant nie jest wystawiony w {connection}",
+          "other": "{n} wariantu nie jest wystawione w {connection}"
+        },
+        "sub": "wystawione gdzie indziej, jeszcze nie opublikowane w tym kanale"
+      }
+    },
+    "failedSync": {
+      "headline": {
+        "few": "{n} zamówienia nigdy nie dotarły do kanału docelowego",
+        "many": "{n} zamówień nigdy nie dotarło do kanału docelowego",
+        "one": "{n} zamówienie nigdy nie dotarło do kanału docelowego",
+        "other": "{n} zamówienia nigdy nie dotarło do kanału docelowego"
+      },
+      "sub": "otwórz listę, aby zobaczyć, których zamówień i kanałów to dotyczy",
+      "subMixedCurrency": "zamówienia, których to dotyczy, są w różnych walutach"
+    },
+    "stock": {
+      "generic": {
+        "headline": {
+          "few": "{n} warianty nie publikują żadnego stanu do swojego kanału",
+          "many": "{n} wariantów nie publikuje żadnego stanu do swojego kanału",
+          "one": "{n} wariant nie publikuje żadnego stanu do swojego kanału",
+          "other": "{n} wariantu nie publikuje żadnego stanu do swojego kanału"
+        },
+        "sub": "każdy kanał ma własny zapas bezpieczeństwa i próg niskiego stanu - otwórz wariant, aby zobaczyć wyliczenie"
+      },
+      "named": {
+        "headline": {
+          "few": "{n} warianty nie publikują stanu w {connection}",
+          "many": "{n} wariantów nie publikuje stanu w {connection}",
+          "one": "{n} wariant nie publikuje stanu w {connection}",
+          "other": "{n} wariantu nie publikuje stanu w {connection}"
+        },
+        "subBufferOnly": "zapas {buffer} - publikowany stan to stan z systemu głównego minus zapas",
+        "subWithFloor": "zapas {buffer}, próg niskiego stanu {floor} - poniżej progu kanał otrzymuje 0"
+      }
+    }
+  },
+  "productSalesTable": {
+    "caption": "Najlepsze produkty z podziałem na kanały",
+    "cardUnits": {
+      "few": "{n} sztuki",
+      "many": "{n} sztuk",
+      "one": "{n} sztuka",
+      "other": "{n} sztuki"
+    },
+    "collapse": "Zwiń szczegóły produktu {product}",
+    "columns": {
+      "product": "Produkt",
+      "sku": "SKU",
+      "sorted": "{column} ↓",
+      "units": "Sztuki"
+    },
+    "coverageUnavailable": "Sprawdzenie pokrycia ofertami jest niedostępne - kolumny kanałów pokazują tylko sprzedaż, nigdy „Niewystawiony”.",
+    "empty": "Brak zamówień w tym zakresie",
+    "error": {
+      "retry": "Ponów",
+      "title": "Nie udało się wczytać najlepszych produktów"
+    },
+    "expand": "Rozwiń szczegóły produktu {product}",
+    "loading": {
+      "eyebrow": "Wczytywanie",
+      "message": "Pobieranie sprzedaży netto i sztuk dla każdego produktu z podziałem na kanały…",
+      "title": "Wczytywanie najlepszych produktów"
+    },
+    "noRevenue": "Brak wartości {revenue} dla tego produktu w tym zakresie",
+    "noSku": "Brak SKU",
+    "sort": {
+      "aria": "Sortuj produkty według",
+      "revenue": "Wg sprzedaży netto",
+      "units": "Wg sztuk"
+    },
+    "title": "Najlepsze produkty",
+    "unresolved": {
+      "few": "{n} produktów na tej stronie nie udało się powiązać z pozycją katalogu.",
+      "many": "{n} produktów na tej stronie nie udało się powiązać z pozycją katalogu.",
+      "one": "{n} produktu na tej stronie nie udało się powiązać z pozycją katalogu.",
+      "other": "{n} produktu na tej stronie nie udało się powiązać z pozycją katalogu."
+    }
+  },
+  "recalculatingValue": {
+    "label": "Przeliczanie…",
+    "title": "Dla tego zakresu trwa w tle ponowne przeliczanie walut - wartości zaktualizują się po jego zakończeniu. Możesz bezpiecznie opuścić stronę."
+  },
+  "variantChannelMatrix": {
+    "attribute": "{name}: {value}",
+    "caption": "Sprzedaż netto i sztuki dla każdego wariantu w każdym kanale",
+    "empty": "Brak sprzedaży wariantów w tym zakresie",
+    "error": {
+      "message": "Nie zwrócono danych",
+      "title": "Nie udało się wczytać sprzedaży wariantów"
+    },
+    "footnoteMany": "Sumuje się do wartości sprzedaży netto, sztuk i kanałów pokazanych powyżej.",
+    "footnoteOne": "Zgadza się z wartościami sprzedaży netto, sztuk i kanałów pokazanymi powyżej - jeden wariant, więc nie ma czego sumować.",
+    "label": "Sprzedaż netto według wariantów w każdym kanale",
+    "loading": {
+      "message": "Pobieranie sprzedaży netto i sztuk dla każdego wariantu w każdym kanale…",
+      "title": "Wczytywanie sprzedaży wariantów"
+    },
+    "noNetSales": "Brak wartości sprzedaży netto w tym zakresie",
+    "notListedOnChannel": "Niewystawiony w tym kanale",
+    "total": "Razem",
+    "unassigned": "Nieprzypisane",
+    "unresolved": "Nieustalony wariant",
+    "variant": "Wariant"
+  }
+}
