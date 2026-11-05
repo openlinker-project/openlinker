@@ -19,6 +19,15 @@
  *   - `ProductTaxRateReader`: no tax rate exists anywhere in the Admin API
  *     (L-T2), so a Shopify master cannot state a catalogue rate.
  *
+ * Modified-since rung (case A12, `ModifiedProductLister`, guard-only): the
+ * UNION of products whose `updated_at` and variants whose `updated_at` moved
+ * since the watermark, as product ids. Both are needed: a stock change bumps the
+ * product and the variant, but a variant price edit bumps ONLY the variant
+ * (L-M2). Both reads go through the search index, which lags a write by 5-10 s,
+ * so the window is pulled back a further 15 s on top of the caller's lookback.
+ * Ordered by numeric product id, so a product re-edited mid-cycle does not move;
+ * the full pass stays the backstop for a deletion shifting the offsets.
+ *
  * Category (case A15): the Standard Product Taxonomy category, one per product,
  * keyed by the tail of its GID (`hg-11-10-5-5`). `getCategories` returns the
  * shop's DIRECTORY - the nodes its products sit in plus their ancestors - so
@@ -33,6 +42,8 @@
  */
 import type {
   Category,
+  ListExternalIdsModifiedSinceInput,
+  ModifiedProductLister,
   Product,
   ProductCreate,
   ProductFilters,
@@ -61,6 +72,8 @@ import {
 } from '../../mappers/shopify-product.mapper';
 import { resolveShopifyExternalId } from '../../readers/shopify-external-id';
 import {
+  MODIFIED_PRODUCT_IDS_QUERY,
+  MODIFIED_VARIANT_PRODUCT_IDS_QUERY,
   PRODUCT_CATEGORIES_PAGE_QUERY,
   PRODUCT_IDS_PAGE_QUERY,
   PRODUCTS_BY_IDS_QUERY,
@@ -76,8 +89,12 @@ const DEFAULT_WINDOW = PRODUCT_PAGE_SIZE;
 const NUMERIC_ID = /^\d+$/;
 /** 40 x 250 = 10 000 products read for the category directory; past that it is partial and warned. */
 const CATEGORY_SCAN_MAX_PAGES = 40;
+/** Extra pull-back of a modified-since window: the search index lags a write by 5-10 s (L-M2). */
+const SEARCH_INDEX_LAG_MS = 15_000;
+/** 80 x 250 = 20 000 changed rows per read; past that the window is partial and warned about. */
+const MODIFIED_SCAN_MAX_PAGES = 80;
 
-export class ShopifyProductMasterAdapter implements ProductMasterPort {
+export class ShopifyProductMasterAdapter implements ProductMasterPort, ModifiedProductLister {
   private readonly logger = new Logger(ShopifyProductMasterAdapter.name);
 
   constructor(
@@ -107,6 +124,60 @@ export class ShopifyProductMasterAdapter implements ProductMasterPort {
       after = data.products.pageInfo.endCursor;
     }
     return ids.slice(offset, offset + limit);
+  }
+
+  /**
+   * Product ids changed at or after `since` (see the header). The whole union
+   * is read on every call and then sliced, because two searches have no common
+   * cursor; a prototype accepts that cost.
+   */
+  async listExternalIdsModifiedSince(input: ListExternalIdsModifiedSinceInput): Promise<string[]> {
+    const from = new Date(input.since.getTime() - SEARCH_INDEX_LAG_MS).toISOString().replace(/\.\d{3}Z$/, 'Z');
+    const query = `updated_at:>='${from}'`;
+    const [productIds, variantProductIds] = await Promise.all([
+      this.readModifiedIds<{ id: string }>(MODIFIED_PRODUCT_IDS_QUERY, query, (n) => n.id),
+      this.readModifiedIds<{ product: { id: string } | null }>(
+        MODIFIED_VARIANT_PRODUCT_IDS_QUERY,
+        query,
+        (n) => n.product?.id ?? null,
+      ),
+    ]);
+    const ids = [...new Set([...productIds, ...variantProductIds].map(fromShopifyGid))].sort(
+      (a, b) => Number(a) - Number(b),
+    );
+    return ids.slice(input.offset, input.offset + input.limit);
+  }
+
+  private async readModifiedIds<N>(
+    document: string,
+    query: string,
+    productGidOf: (node: N) => string | null,
+  ): Promise<string[]> {
+    const gids: string[] = [];
+    let after: string | null = null;
+    for (let page = 0; page < MODIFIED_SCAN_MAX_PAGES; page += 1) {
+      const data: Record<string, ShopifyConnection<N>> = await this.client.query(document, {
+        first: ID_PAGE_SIZE,
+        after,
+        query,
+      });
+      const connection = Object.values(data)[0];
+      for (const node of connection.nodes) {
+        const gid = productGidOf(node);
+        if (gid !== null) {
+          gids.push(gid);
+        }
+      }
+      if (connection.pageInfo?.hasNextPage !== true) {
+        return gids;
+      }
+      after = connection.pageInfo.endCursor;
+    }
+    this.logger.warn(
+      `Shopify modified-since read stopped after ${MODIFIED_SCAN_MAX_PAGES * ID_PAGE_SIZE} rows; ` +
+        `the full catalogue pass picks up the rest (connection: ${this.connection.id})`,
+    );
+    return gids;
   }
 
   async getProduct(productId: string): Promise<Product> {

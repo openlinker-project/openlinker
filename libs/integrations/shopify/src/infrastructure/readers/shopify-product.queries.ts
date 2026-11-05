@@ -51,6 +51,28 @@ export const PRODUCT_IDS_PAGE_QUERY = `query OlProductIdsPage($first: Int!, $aft
 }`;
 
 /**
+ * Ids of products whose own record changed in a window. Search index read
+ * (`query:`), so it lags writes by seconds (L-M1); the caller's lookback covers it.
+ */
+export const MODIFIED_PRODUCT_IDS_QUERY = `query OlModifiedProductIds($first: Int!, $after: String, $query: String!) {
+  products(first: $first, after: $after, query: $query, sortKey: ID) {
+    nodes { id }
+    pageInfo { hasNextPage endCursor }
+  }
+}`;
+
+/**
+ * Parent ids of variants whose record changed in a window: a variant price
+ * edit bumps only `variant.updatedAt`, never the product's (L-M2).
+ */
+export const MODIFIED_VARIANT_PRODUCT_IDS_QUERY = `query OlModifiedVariantProductIds($first: Int!, $after: String, $query: String!) {
+  productVariants(first: $first, after: $after, query: $query, sortKey: ID) {
+    nodes { product { id } }
+    pageInfo { hasNextPage endCursor }
+  }
+}`;
+
+/**
  * Only the taxonomy category of every product, for the category directory
  * (`getCategories`). A plain connection read, not a `query:` search.
  */
