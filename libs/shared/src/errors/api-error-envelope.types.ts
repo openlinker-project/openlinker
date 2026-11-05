@@ -37,6 +37,11 @@ export interface ApiErrorEnvelope {
   /** English, for developers and logs only. The frontend shows copy chosen by `code`. */
   message: string | string[];
   fields?: ApiErrorField[];
+  /**
+   * An external system's own words (code `PROVIDER_REJECTED`). Shown behind a
+   * translated prefix and never translated; never carries buyer data (#3864).
+   */
+  providerMessage?: string;
   /** Kept for existing clients: an exception name, a Nest status title or a legacy code. */
   error?: string;
 }
