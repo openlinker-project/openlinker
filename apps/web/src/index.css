@@ -15547,6 +15547,10 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
 }
 .bulk-editor__banner--error { border-color: var(--status-error-border); background: var(--status-error-soft); color: var(--status-error-fg); }
 .bulk-editor__banner b { color: var(--text-primary); }
+/* Values a blocker names - the missing parameters (#4003). Bold, because
+   the operator scans for the same words in the form labels below. */
+.bulk-editor__banner-list { margin: var(--space-1) 0; padding-left: 18px; }
+.bulk-editor__banner-list li { font-weight: 600; color: var(--text-primary); }
 
 /* Variant blocker chips (#2240) - cause + consequence above the banner, so
    the panel states what is wrong before it states what to do about it. */

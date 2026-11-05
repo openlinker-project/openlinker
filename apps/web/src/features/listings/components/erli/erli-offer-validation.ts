@@ -9,11 +9,23 @@
  *
  * @module features/listings/components/erli
  */
-import type { OfferValidationContribution } from '../../../../shared/plugins';
+import { getMessages } from '../../../../shared/i18n';
+import type { OfferBlockerCopy, OfferValidationContribution } from '../../../../shared/plugins';
 
 export const ERLI_MISSING_IMAGE_BLOCKER = 'erli:missing-image';
 
 export const erliOfferValidation: OfferValidationContribution = {
-  blockers: [{ id: ERLI_MISSING_IMAGE_BLOCKER, tone: 'error', label: 'no image' }],
+  blockers: [
+    {
+      id: ERLI_MISSING_IMAGE_BLOCKER,
+      tone: 'error',
+      label: 'no image',
+      field: 'images',
+      describe: (): OfferBlockerCopy => {
+        const copy = getMessages('listings').bulkBlockers.erli.missingImage;
+        return { title: copy.title, detail: copy.detail };
+      },
+    },
+  ],
   validateRow: (input) => (input.imageCount === 0 ? [ERLI_MISSING_IMAGE_BLOCKER] : []),
 };

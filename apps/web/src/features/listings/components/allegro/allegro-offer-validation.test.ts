@@ -13,6 +13,7 @@ import { describe, expect, it } from 'vitest';
 
 import type { CategoryParameterLike } from '../../../../shared/plugins';
 import {
+  describeNeedsProductParameters,
   ALLEGRO_EAN_UNVERIFIED_BLOCKER,
   ALLEGRO_IN_STORE_BARCODE_BLOCKER,
   ALLEGRO_NEEDS_PRODUCT_PARAMETERS_BLOCKER,
@@ -476,5 +477,38 @@ describe('allegroOfferValidation', () => {
         })
       ).toEqual([]);
     });
+  });
+});
+
+describe('describeNeedsProductParameters (#4003)', () => {
+  const ctx = { destinationName: 'Allegro sandbox' };
+
+  it('should list the missing names with a count when the list was computed', () => {
+    const copy = describeNeedsProductParameters({ ...ctx, missingParameterNames: ['Model', 'Kod producenta'] });
+    expect(copy.title).toBe('Allegro needs 2 product parameters to create a product card for this variant:');
+    expect(copy.items).toEqual(['Model', 'Kod producenta']);
+  });
+
+  it('should say the list could not be loaded when the schema failed', () => {
+    const copy = describeNeedsProductParameters({ ...ctx, missingParameterNames: null });
+    expect(copy.title).toMatch(/could not be loaded/);
+    expect(copy.items).toBeUndefined();
+  });
+
+  it('should not claim nothing is missing when the list was not computed', () => {
+    const copy = describeNeedsProductParameters(ctx);
+    expect(copy.title).toBe('Allegro needs product parameters to create a product card for this variant.');
+  });
+
+  it('should tell the operator to save when every parameter now has a value', () => {
+    expect(describeNeedsProductParameters({ ...ctx, missingParameterNames: [] }).detail).toBe(
+      'Save to clear this blocker.',
+    );
+  });
+
+  it('should give every Allegro blocker a sentence of its own', () => {
+    for (const d of allegroOfferValidation.blockers) {
+      expect(d.describe, d.id).toBeDefined();
+    }
   });
 });

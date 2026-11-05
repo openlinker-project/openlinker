@@ -78,7 +78,7 @@ import {
   RichTextEditor,
   StatusBadge,
 } from '../../../../shared/ui';
-import type { DescriptionFormat, StatusBadgeTone } from '../../../../shared/ui';
+import type { DescriptionFormat } from '../../../../shared/ui';
 import { useDescriptionFormatQuery } from '../../hooks/use-description-format-query';
 import { useFormat } from '../../../../shared/i18n';
 import { Tooltip, TooltipContent, TooltipTrigger } from '../../../../shared/ui/tooltip';
@@ -106,14 +106,16 @@ import { BulkImageLightbox } from './bulk-image-lightbox';
 import { BulkImageStrip } from './bulk-image-strip';
 import {
   blockerLabel,
+  chipFor,
+  resolveBlockerChips,
+  type ChipDescriptor,
   categoryNotSetApplies,
   isCategoryBlocker,
   isVariantScopeFixable,
   CATEGORY_EFFECT_CHIP,
-  NEUTRAL_BLOCKER_CHIPS,
-  FALLBACK_CHIP,
 } from './bulk-blockers';
 import { describeBlocker } from './bulk-blocker-copy';
+import { missingRequiredProductParameterNames } from '../../lib/missing-product-parameters';
 import { ErliDeliveryPriceListOverrideField } from '../erli/erli-delivery-price-list-override-field';
 import { useCategoryParametersQuery } from '../../hooks/use-category-parameters-query';
 import { useCategoryParameterSchemas } from '../../hooks/use-category-parameter-schemas';
@@ -154,10 +156,6 @@ import {
 } from './bulk-policy';
 import type { BulkOfferOverrides, BulkPerProductOverride } from '../../api/bulk-listings.types';
 
-/** Chip tone for a blocker id (#2240) - neutral map first, generic fallback after. */
-function chipToneOf(blocker: string): StatusBadgeTone {
-  return (NEUTRAL_BLOCKER_CHIPS[blocker] ?? FALLBACK_CHIP).tone;
-}
 
 // Grouping-determining category parameters - shared across siblings, edited on
 // the base scope only (a per-variant Brand/Condition would split the Allegro
@@ -609,6 +607,13 @@ function BulkEditModalForm({
   const platforms = usePlatforms();
   const platformName = resolvePlatformLabel(platforms, connection);
   const platformSection = platform?.bulkOfferRowSection;
+  // The same neutral + platform merge the Review step reads (#4003), so a
+  // blocker the row chip names is never nameless in here.
+  const platformBlockers = platform?.offerValidation?.blockers;
+  const blockerChips = useMemo(
+    () => resolveBlockerChips(platformBlockers ?? []),
+    [platformBlockers],
+  );
   const isMultiVariant = row.variants.length > 1;
   const masterImages = useMemo(
     () => (row.product?.images ?? []).filter((u): u is string => typeof u === 'string' && u.trim() !== ''),
@@ -1443,6 +1448,14 @@ function BulkEditModalForm({
                       // catalogue was consulted. Falls back to the platform label.
                       destinationName={connection.name || platformName}
                       batchCurrency={currency}
+                      blockerChips={blockerChips}
+                      categorySchemaState={
+                        categoryParametersQuery.isError
+                          ? 'failed'
+                          : categoryParametersQuery.isSuccess
+                            ? 'loaded'
+                            : 'pending'
+                      }
                     />
                   ) : null}
                 </Fragment>
@@ -2255,6 +2268,14 @@ interface VariantScopeFormProps {
   destinationName: string;
   /** Batch currency, for the currency-mismatch sentence (#2240). */
   batchCurrency: string;
+  /** Neutral + destination blocker chips (#4003) - see `resolveBlockerChips`. */
+  blockerChips: Record<string, ChipDescriptor>;
+  /**
+   * Where the shared base category's parameter schema stands (#4003). Decides
+   * whether the missing-parameter list can be stated at all: `pending` is not
+   * an empty list, and `failed` is said out loud rather than left blank.
+   */
+  categorySchemaState: 'pending' | 'loaded' | 'failed';
 }
 
 function VariantScopeForm({
@@ -2285,6 +2306,8 @@ function VariantScopeForm({
   variantCount,
   destinationName,
   batchCurrency,
+  blockerChips,
+  categorySchemaState,
 }: VariantScopeFormProps): ReactElement {
   const label = distinguishingLabel(variant, index);
   const master = masterBarcodeOf(variant);
@@ -2397,6 +2420,23 @@ function VariantScopeForm({
     [effectiveCategoryParameters, effectiveParamValues],
   );
   const requiredParams = visibleParams.filter((p) => p.required);
+
+  // Which required product parameters still have no value (#4003), in three
+  // states the blocker sentence keeps apart: not known yet, could not be
+  // loaded, or the actual (possibly empty) list. Read from the live form values,
+  // so the list shrinks as the operator types.
+  const ownSchema = ownCategoryParameters ?? ownCategoryParametersQuery.data;
+  const missingParameterNames: readonly string[] | null | undefined = hasOwnCategory
+    ? ownCategoryParametersFailed
+      ? null
+      : ownSchema
+        ? missingRequiredProductParameterNames(ownSchema, effectiveParamValues)
+        : undefined
+    : categorySchemaState === 'failed'
+      ? null
+      : categorySchemaState === 'loaded'
+        ? missingRequiredProductParameterNames(categoryParameters, effectiveParamValues)
+        : undefined;
   const optionalParams = visibleParams.filter((p) => !p.required);
 
   // The type-appropriate editable control for a param (dictionary select /
@@ -2637,8 +2677,8 @@ function VariantScopeForm({
       {variant.blockers.length > 0 ? (
         <div className="bulk-editor__blocker-chips">
           {variant.blockers.map((blocker) => (
-            <StatusBadge key={blocker} tone={chipToneOf(blocker)} withDot>
-              {blockerLabel(blocker)}
+            <StatusBadge key={blocker} tone={chipFor(blocker, blockerChips).tone} withDot>
+              {blockerLabel(blocker, blockerChips)}
             </StatusBadge>
           ))}
           {categoryNotSetApplies(variant.blockers, liveCategoryId) ? (
@@ -2659,7 +2699,12 @@ function VariantScopeForm({
           destinationName,
           variantCount,
           batchCurrency,
+          chips: blockerChips,
+          missingParameterNames,
         });
+        // An advisory chip (#2243) does not gate the batch, so it must not
+        // read as one: it keeps the neutral banner instead of the red one.
+        const advisory = chipFor(blocker, blockerChips).advisory === true;
         const categoryBlocker = isCategoryBlocker(blocker);
         const variantScope = isVariantScopeFixable(blocker);
         // The category action belongs on a row that actually lacks a category.
@@ -2668,8 +2713,20 @@ function VariantScopeForm({
         // "set the category" would point at a control that is already filled in.
         const needsCategory = categoryBlocker && !productCategorySet && !hasOwnCategory;
         return (
-          <div key={blocker} className="bulk-editor__banner bulk-editor__banner--error">
-            <b>{copy.title}</b> {copy.detail}
+          <div
+            key={blocker}
+            className={`bulk-editor__banner${advisory ? '' : ' bulk-editor__banner--error'}`}
+            data-blocker={blocker}
+          >
+            <b>{copy.title}</b>
+            {copy.items !== undefined && copy.items.length > 0 ? (
+              <ul className="bulk-editor__banner-list">
+                {copy.items.map((item) => (
+                  <li key={item}>{item}</li>
+                ))}
+              </ul>
+            ) : null}{' '}
+            {copy.detail}
             {/* The per-variant override is deliberately NOT offered here as an
                 alternative: the editor's own save requires a category on the
                 product (the base schema's `requireCategory` for a browsable
@@ -2707,7 +2764,7 @@ function VariantScopeForm({
                   Set the product category
                 </Button>
               </div>
-            ) : variantScope ? null : (
+            ) : variantScope || advisory ? null : (
               <div
                 className="bulk-editor__scope-toggles"
                 style={{ marginTop: 'var(--space-2)', gap: 'var(--space-2)' }}
