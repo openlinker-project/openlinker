@@ -3190,14 +3190,17 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
              || jsonb_build_object('rev', COALESCE(("orderEdits"->>'rev')::int, 0) + 1)
              || CASE WHEN $2::jsonb IS NULL THEN '{}'::jsonb
                      ELSE jsonb_build_object(
-                       'lines', COALESCE("orderEdits"->'lines', '{}'::jsonb) || $2::jsonb) END,
+                       'lines', COALESCE("orderEdits"->'lines', '{}'::jsonb) || $2::jsonb) END
+             || CASE WHEN $9::jsonb IS NULL THEN '{}'::jsonb
+                     ELSE jsonb_build_object(
+                       'addedLines', $9::jsonb || COALESCE("orderEdits"->'addedLines', '{}'::jsonb)) END,
            "shippingAddressHash" = COALESCE($3::text, "shippingAddressHash"),
            "searchText" = COALESCE($4::text, "searchText"),
            "shippingCountry" = CASE WHEN $7::boolean THEN $8::text ELSE "shippingCountry" END,
            "updatedAt" = now()
        WHERE "internalOrderId" = $5
          AND "recordStatus" = 'ready'
-         AND COALESCE(("orderEdits"->>'rev')::int, 0) = $6
+         AND ($6::int IS NULL OR COALESCE(("orderEdits"->>'rev')::int, 0) = $6)
        RETURNING "internalOrderId"`,
       [
         JSON.stringify(sections),
@@ -3211,6 +3214,7 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
         // country is a real answer: the new address names none).
         input.address !== undefined,
         input.address === undefined ? null : normaliseCountryColumn(input.address.shipping.country),
+        input.addedLines === undefined ? null : JSON.stringify(input.addedLines),
       ]
     )) as unknown;
 

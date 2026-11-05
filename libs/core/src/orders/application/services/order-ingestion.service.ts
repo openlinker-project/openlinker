@@ -45,12 +45,14 @@ import {
   ORDER_SYNC_SERVICE_TOKEN,
   ORDER_RECORD_SERVICE_TOKEN,
   ORDER_BUNDLE_DOCUMENT_SERVICE_TOKEN,
+  ORDER_GIFT_SERVICE_TOKEN,
   ORDER_ITEM_REF_RESOLVER_SERVICE_TOKEN,
   ORDER_LIFECYCLE_RELAY_SERVICE_TOKEN,
   ORDER_CHANGE_SERVICE_TOKEN,
   ORDER_CANCELLATION_EFFECTS_SERVICE_TOKEN,
 } from '../../orders.tokens';
 import { IOrderBundleDocumentService } from './order-bundle-document.service.interface';
+import { IOrderGiftService } from './order-gift.service.interface';
 import { IOrderCancellationEffectsService } from '../interfaces/order-cancellation-effects.service.interface';
 import { IOrderChangeService } from './order-change.service.interface';
 import type { OrderChange } from '../../domain/entities/order-change.entity';
@@ -295,7 +297,10 @@ export class OrderIngestionService implements IOrderIngestionService {
     // #3934: the components a document shows for a bundle line when the source
     // connection asks for the `components` form. Same module, no cycle.
     @Inject(ORDER_BUNDLE_DOCUMENT_SERVICE_TOKEN)
-    private readonly bundleDocuments: IOrderBundleDocumentService
+    private readonly bundleDocuments: IOrderBundleDocumentService,
+    // #3938: the gift rules applied at ingestion. Same module, no cycle.
+    @Inject(ORDER_GIFT_SERVICE_TOKEN)
+    private readonly orderGifts: IOrderGiftService
   ) {}
 
   async ingestOrders(
@@ -707,7 +712,22 @@ export class OrderIngestionService implements IOrderIngestionService {
     // original quantity and re-route by the original delivery method. The
     // overlay comes from the upsert's own RETURNING, so it is the one that
     // applied to this very write rather than a read taken a moment earlier.
-    const order = applyOrderEditsToOrder(channelOrder, persisted?.orderEdits ?? null);
+    const overlaidOrder = applyOrderEditsToOrder(channelOrder, persisted?.orderEdits ?? null);
+
+    // #3938: OpenLinker gift rules, evaluated INLINE here - after the overlay and
+    // before the line expansion, the reservation and routing - because the gift
+    // must be a line of the order when stock is reserved. Fail-open and idempotent
+    // inside the service; a cancelled order is never given a gift.
+    const gifted = await this.orderGifts.applyGiftRules({
+      order: overlaidOrder,
+      channelOrder,
+      edits: persisted?.orderEdits ?? null,
+      customerId: internalCustomerId ?? null,
+      sourceConnectionId: connectionId,
+      occurredAt: overlaidOrder.placedAt ?? existing?.createdAt ?? new Date(),
+      isFirstIngestion: !existing,
+    });
+    const order = gifted.order;
 
     // #3607 (ADR-083): the physical line list, frozen ONCE before anything
     // reserves, routes or decrements. Every stock site below reads it; the

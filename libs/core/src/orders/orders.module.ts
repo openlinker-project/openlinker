@@ -60,6 +60,7 @@ import { MarginAnalyticsService } from './application/services/margin-analytics.
 import { CostCoverageService } from './application/services/cost-coverage.service';
 import { OrderLineCostService } from './application/services/order-line-cost.service';
 import { OrderBundleDocumentService } from './application/services/order-bundle-document.service';
+import { OrderGiftService } from './application/services/order-gift.service';
 import { TaxCoverageDetectionService } from './application/services/tax-coverage-detection.service';
 import { DisplayCurrencyConversionService } from './application/services/display-currency-conversion.service';
 import {
@@ -89,6 +90,7 @@ import {
   COST_COVERAGE_SERVICE_TOKEN,
   ORDER_LINE_COST_SERVICE_TOKEN,
   ORDER_BUNDLE_DOCUMENT_SERVICE_TOKEN,
+  ORDER_GIFT_SERVICE_TOKEN,
   ORDER_DOCUMENT_EMAIL_SERVICE_TOKEN,
   BUYER_EMAIL_DELIVERY_REPOSITORY_TOKEN,
   BUYER_EMAIL_NOTIFICATION_SERVICE_TOKEN,
@@ -224,6 +226,8 @@ export { ORDER_SYNC_SERVICE_TOKEN } from './orders.tokens';
     CostCoverageService,
     OrderLineCostService,
     OrderBundleDocumentService,
+    OrderGiftService,
+    { provide: ORDER_GIFT_SERVICE_TOKEN, useExisting: OrderGiftService },
     DisplayCurrencyConversionService,
     OrderCancellationSignalRepository,
     OrderColumnPresetRepository,
@@ -472,6 +476,8 @@ export { ORDER_SYNC_SERVICE_TOKEN } from './orders.tokens';
     COST_COVERAGE_SERVICE_TOKEN,
     ORDER_LINE_COST_SERVICE_TOKEN,
     ORDER_BUNDLE_DOCUMENT_SERVICE_TOKEN,
+    // Exported so the gift-rule dry run (apps/api) can preview a rule (#3938).
+    ORDER_GIFT_SERVICE_TOKEN,
     // Exported so the `/analytics` display-currency read surface (a later
     // phase of #2452) can inject this seam (#2458, ADR-064).
     DISPLAY_CURRENCY_CONVERSION_SERVICE_TOKEN,

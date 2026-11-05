@@ -238,6 +238,8 @@ const harness = createIntegrationTestHarness({
     // wrong behaviour between test cases.
     'automation_runs',
     'automation_trigger_firings',
+    'automation_gift_rule_state',
+    'automation_gift_grants',
     'automation_rules',
     // destination_categories (#1979) — the taxonomy projection. Marketplace
     // rows are owner-keyed with NO connectionId, so nothing cascades from

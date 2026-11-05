@@ -70,6 +70,7 @@ describe('OrderIngestionService', () => {
   let identifierMapping: jest.Mocked<IIdentifierMappingService>;
   let orderSyncService: jest.Mocked<IOrderSyncService>;
   let orderRecordService: jest.Mocked<IOrderRecordService>;
+  let orderGifts: { applyGiftRules: jest.Mock };
   let orderSource: jest.Mocked<OrderSourcePort>;
   let orderItemRefResolver: jest.Mocked<IOrderItemRefResolverService>;
   let customerIdentityResolver: jest.Mocked<ICustomerIdentityResolverService>;
@@ -248,6 +249,13 @@ describe('OrderIngestionService', () => {
       findCurrentByVariantIds: jest.fn().mockResolvedValue([]),
       findConfirmedMultipacks: jest.fn().mockResolvedValue([]),
     };
+    orderGifts = {
+      applyGiftRules: jest
+        .fn()
+        .mockImplementation(({ order }: { order: unknown }) =>
+          Promise.resolve({ order, outcomes: [] })
+        ),
+    };
     service = new OrderIngestionService(
       integrationsService,
       syncCursors as unknown as ISyncCursorsService,
@@ -271,7 +279,9 @@ describe('OrderIngestionService', () => {
       orderChanges as unknown as IOrderChangeService,
       cancellationEffects as unknown as IOrderCancellationEffectsService,
       bundleDefinitions as unknown as IBundleDefinitionService,
-      { resolveForDocuments: jest.fn().mockResolvedValue(undefined) } as never
+      { resolveForDocuments: jest.fn().mockResolvedValue(undefined) } as never,
+      // #3938: no gift rules in these tests unless one overrides the mock.
+      orderGifts as never
     );
   });
 
@@ -314,6 +324,42 @@ describe('OrderIngestionService', () => {
         internalProductId: 'ol_product_1',
         internalVariantId: 'ol_variant_1',
       });
+    });
+
+    it('should add the gift lines BEFORE the reservation and reserve them like any line (#3938)', async () => {
+      orderGifts.applyGiftRules.mockImplementation(({ order }: { order: { items: unknown[] } }) =>
+        Promise.resolve({
+          order: {
+            ...order,
+            items: [
+              ...order.items,
+              {
+                id: 'ol-gift:r1:1',
+                productId: 'ol_product_gift',
+                variantId: 'ol_variant_gift',
+                quantity: 1,
+                price: 0,
+                gift: { source: 'ol-rule', ruleRef: 'r1' },
+              },
+            ],
+          },
+          outcomes: [],
+        })
+      );
+
+      await service.syncOrderFromSource(connectionId, externalOrderId);
+
+      expect(orderGifts.applyGiftRules.mock.invocationCallOrder[0]).toBeLessThan(
+        reservationService.reserveForOrder.mock.invocationCallOrder[0]
+      );
+      expect(orderGifts.applyGiftRules).toHaveBeenCalledWith(
+        expect.objectContaining({ isFirstIngestion: true, sourceConnectionId: connectionId })
+      );
+      const input = reservationService.reserveForOrder.mock.calls[0][0];
+      expect(input.lines.map((l: { orderLineId: string }) => l.orderLineId)).toEqual([
+        'line-1',
+        'ol-gift:r1:1',
+      ]);
     });
 
     it('should reserve the order lines after persistOrder and before destination dispatch', async () => {

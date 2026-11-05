@@ -41,6 +41,7 @@ import {
   AutomationInvalidActionError,
   AutomationInvalidConditionError,
   AutomationInvalidTriggerConfigError,
+  AutomationReorderMismatchError,
   AutomationRuleConflictError,
   AutomationRuleNotFoundError,
   AutomationStepCountError,
@@ -52,6 +53,7 @@ type AutomationRefusal =
   | AutomationInvalidActionError
   | AutomationInvalidConditionError
   | AutomationInvalidTriggerConfigError
+  | AutomationReorderMismatchError
   | AutomationRuleConflictError
   | AutomationRuleNotFoundError
   | AutomationStepCountError;
@@ -62,6 +64,7 @@ type AutomationRefusal =
   AutomationInvalidActionError,
   AutomationInvalidConditionError,
   AutomationInvalidTriggerConfigError,
+  AutomationReorderMismatchError,
   AutomationRuleConflictError,
   AutomationRuleNotFoundError,
   AutomationStepCountError
@@ -119,6 +122,12 @@ export class AutomationExceptionFilter implements ExceptionFilter {
       exception instanceof AutomationInvalidActionError
     ) {
       return { index: exception.index };
+    }
+    if (exception instanceof AutomationReorderMismatchError) {
+      return {
+        missingRuleIds: exception.missingRuleIds,
+        unknownRuleIds: exception.unknownRuleIds,
+      };
     }
     if (exception instanceof AutomationRuleConflictError) {
       return {

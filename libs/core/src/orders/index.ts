@@ -198,6 +198,9 @@ export {
   LineGift,
   GiftSource,
   GiftSourceValues,
+  GiftDocumentForm,
+  GiftDocumentFormValues,
+  isGiftDocumentForm,
 } from './domain/types/incoming-order.types';
 export {
   OrderFeedEventTypeValues,
@@ -507,6 +510,13 @@ export type {
   IOrderBundleDocumentService,
   GiftSlotCostLine,
 } from './application/services/order-bundle-document.service.interface';
+export type {
+  IOrderGiftService,
+  ApplyGiftRulesInput,
+  ApplyGiftRulesResult,
+  GiftPreviewInput,
+  GiftPreviewResult,
+} from './application/services/order-gift.service.interface';
 export type { IOrderLineCostService } from './application/services/order-line-cost.service.interface';
 export type {
   OrderLineCostView,
@@ -695,11 +705,16 @@ export {
   resolveTotalUnitPrice,
   readLineEditTreatments,
   findUnmatchedLineEdits,
+  olGiftLineKey,
+  addedLineToOrderItem,
+  OL_GIFT_LINE_KEY_PREFIX,
+  OPERATOR_GIFT_LINE_KEY_PREFIX,
 } from './domain/types/order-edits.types';
 export type {
   OrderEdits,
   OrderAddressEdit,
   OrderLineEdit,
+  OrderAddedLineEdit,
   OrderDeliveryMethodEdit,
   OrderEditedTotals,
   ApplyOrderEditInput,

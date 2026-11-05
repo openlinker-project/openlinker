@@ -115,6 +115,9 @@ export class AutomationRuleOrmEntity {
    * BEHAVIOURAL, not an audit stamp: the deadline sweep compares against it to
    * honour S3-9 ("a rule acts only on facts that occur after it was saved").
    */
+  @Column({ type: 'int', nullable: true })
+  position!: number | null;
+
   @CreateDateColumn({ type: 'timestamptz' })
   createdAt!: Date;
 

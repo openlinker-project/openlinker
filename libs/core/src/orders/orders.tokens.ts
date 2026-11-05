@@ -132,3 +132,6 @@ export const ORDER_DOCUMENT_EMAIL_SERVICE_TOKEN = Symbol('IOrderDocumentEmailSer
 /** Automatic buyer emails, opt-in per connection (#3554). */
 export const BUYER_EMAIL_DELIVERY_REPOSITORY_TOKEN = Symbol('BuyerEmailDeliveryRepositoryPort');
 export const BUYER_EMAIL_NOTIFICATION_SERVICE_TOKEN = Symbol('IBuyerEmailNotificationService');
+
+// OpenLinker gift rules applied at ingestion (#3938).
+export const ORDER_GIFT_SERVICE_TOKEN = Symbol('IOrderGiftService');
