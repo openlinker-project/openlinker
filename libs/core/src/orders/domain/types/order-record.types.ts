@@ -10,6 +10,7 @@ import type { OrderRecord } from '../entities/order-record.entity';
 import type { SlaState } from './order-sla.types';
 import type { FulfillmentRollupState } from './order-fulfillment.types';
 import type { HoldReason, OrderLifecyclePhase } from '@openlinker/core/order-lifecycle';
+import type { AuthorityAttentionReason } from '@openlinker/core/fulfillment-authority';
 
 /**
  * Per-destination sync status values (#2284).
@@ -414,6 +415,12 @@ export interface OrderRecordFilters {
    * rather than "the column is not empty" (spec §4.4 S2-5).
    */
   omsAttention?: boolean;
+  /**
+   * Restrict to orders carrying an attention entry with exactly this reason
+   * (#3961 - the "Changed by the shop" filter). Composes with `omsAttention`;
+   * `undefined` means "don't filter".
+   */
+  omsAttentionReason?: AuthorityAttentionReason;
   /**
    * Restrict to orders whose OPEN hold carries this reason (#2342).
    * `undefined` means "don't filter".

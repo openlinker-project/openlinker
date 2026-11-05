@@ -122,6 +122,8 @@ import { BenchDocumentsPanel } from './bench-documents';
 import { BenchBuyerNote } from './bench-buyer-note';
 import { BenchOfficeNotes } from './bench-office-notes';
 import { BenchParcelHero } from './bench-parcel-hero';
+import { BenchSourceChange } from './bench-source-change';
+import { useBenchSourceChangeTakenOutMutation } from '../hooks/use-bench-source-change-taken-out-mutation';
 import { BenchParcelLineRow } from './bench-parcel-line';
 import { BenchScanDock } from './bench-scan-dock';
 
@@ -186,6 +188,9 @@ export function BenchParcelView({
   // to advertise capabilities, not to dress a preview as a working station. Do
   // not "fix" it in either direction without revisiting that.
   const canWrite = usePermission('bench:write');
+  // #3961 - "Done, I took it out" on a box the shop lowered.
+  const takeOut = useBenchSourceChangeTakenOutMutation();
+  const [takeOutFailed, setTakeOutFailed] = useState(false);
   const presence = useBenchPresenceQuery(workId, { enabled: useBenchInteractive() && canWrite });
   // A3. False while the idle lock covers the bench.
   const interactive = useBenchInteractive();
@@ -900,7 +905,40 @@ export function BenchParcelView({
       )}
 
       {/* D2 — the same eligibility rule the list uses, so the two never disagree. */}
-      {refusalCopy === null ? null : (
+      {/* #3961 - a box held because the shop lowered a line: name what comes
+          out instead of the generic "put the tote back". */}
+      {parcel.sourceChange !== null && parcel.sourceChange.takeOut.length > 0 ? (
+        <BenchSourceChange
+          sourceChange={parcel.sourceChange}
+          lines={parcel.lines}
+          pending={takeOut.isPending}
+          onTakenOut={
+            canWrite
+              ? (workLineId) => {
+                  setTakeOutFailed(false);
+                  takeOut.mutate(
+                    { workId, workLineId },
+                    {
+                      onError: () => {
+                        setTakeOutFailed(true);
+                      },
+                    },
+                  );
+                }
+              : undefined
+          }
+        />
+      ) : null}
+      {takeOutFailed ? (
+        <Alert tone="error">{benchParcelCopy.sourceChange.takenOutFailed}</Alert>
+      ) : null}
+
+      {refusalCopy === null ||
+      (parcel.sourceChange !== null && parcel.sourceChange.takeOut.length > 0) ? null : parcel.sourceChange !== null ? (
+        <Alert tone="error" title={refusalCopy.title}>
+          {benchParcelCopy.sourceChange.heldBody}
+        </Alert>
+      ) : (
         <Alert tone="error" title={refusalCopy.title}>
           {refusalCopy.body}
           {parcel.holdReason === null ? null : (

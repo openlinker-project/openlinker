@@ -27,6 +27,33 @@ export interface OrderWorkEditAssessment {
   readonly fulfilledByLine: Readonly<Record<string, number>>;
   /** The order has no work at all (not routed). */
   readonly unrouted: boolean;
+  /**
+   * Units each order line still requires across its non-terminal works
+   * (`totalQuantity - cancelledQuantity`, the bench's own definition). A line no
+   * live work carries is ABSENT, never present with a zero (#3961).
+   */
+  readonly requiredByLine: Readonly<Record<string, number>>;
+  /**
+   * Units the packer has already verified into a box, per order line, across
+   * non-terminal works. Absent means none (#3961). A source change that would
+   * leave fewer units than this cannot be applied silently: the box holds more.
+   */
+  readonly verifiedByLine: Readonly<Record<string, number>>;
+}
+
+export interface HoldForSourceChangeInput {
+  readonly orderId: string;
+  /** Operator-facing note stored on the hold; the bench may show it. */
+  readonly note: string;
+}
+
+export interface HoldForSourceChangeResult {
+  /** Works this call newly held; a work already carrying the hold is skipped. */
+  readonly heldWorkIds: readonly string[];
+}
+
+export interface ReleaseSourceChangeHoldsResult {
+  readonly releasedHoldIds: readonly string[];
 }
 
 export type LowerLineOutcome = 'applied' | 'unrouted' | 'unchanged';
@@ -63,4 +90,21 @@ export interface IFulfillmentOrderEditService {
    * @throws {RangeError} `newQuantity` would fall below what is already fulfilled.
    */
   lowerLineQuantity(input: LowerLineQuantityInput): Promise<LowerLineQuantityResult>;
+
+  /**
+   * Hold every non-terminal work of the order because the order source changed
+   * a line and the change cannot be applied without a decision (#3961). A held
+   * box is refused at the bench, which is the point.
+   *
+   * Idempotent: a work already carrying an active hold placed by
+   * `SOURCE_CHANGE_HOLD_ACTOR` is skipped, so a repeated ingestion of the
+   * same state places nothing.
+   */
+  holdForSourceChange(input: HoldForSourceChangeInput): Promise<HoldForSourceChangeResult>;
+
+  /**
+   * Release the holds {@link holdForSourceChange} placed, and only those: an
+   * operator's own hold on the same work stays. Idempotent.
+   */
+  releaseSourceChangeHolds(orderId: string): Promise<ReleaseSourceChangeHoldsResult>;
 }

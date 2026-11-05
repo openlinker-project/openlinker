@@ -95,6 +95,14 @@ export const benchParcelSchema = z.object({
   // See the types module: never `z.enum` on a server-owned vocabulary.
   refusal: nullableString,
   holdReason: nullableString,
+  // #3961 - defaulted to null so an API that predates the field reads as
+  // "not held for a source change" rather than failing the parse.
+  sourceChange: z
+    .object({
+      takeOut: z.array(z.object({ workLineId: z.string(), units: z.number() })),
+    })
+    .nullish()
+    .transform((value) => value ?? null),
   closedAt: nullableString,
   packedByUserId: nullableString,
   assignedToUserId: nullableString,

@@ -470,6 +470,12 @@ export interface ClaimParcelCloseInput {
 export interface LatestActiveParcelVerification {
   readonly id: string;
   readonly workLineId: string;
+  /**
+   * Who recorded it (#3961). A box closed by a lowered quantity rather than a
+   * scan is still owned by its last verifier (D13), and this is where that
+   * name comes from. `null` only for a row no shipped route can write.
+   */
+  readonly verifiedByUserId: string | null;
 }
 
 /** Voiding the single most recent scan (#3405). */
@@ -1043,6 +1049,18 @@ export interface FulfillmentWorkRepositoryPort {
    */
   findLatestActiveVerification(
     workId: string,
+    transaction?: FulfillmentWorkTransaction
+  ): Promise<LatestActiveParcelVerification | null>;
+
+  /**
+   * The most recent ACTIVE verification on ONE line of a work (#3961), or
+   * `null`. The line-scoped sibling of {@link findLatestActiveVerification}:
+   * a box the shop lowered must lose a unit of THAT item, whichever line the
+   * packer happened to scan last.
+   */
+  findLatestActiveVerificationForLine(
+    workId: string,
+    workLineId: string,
     transaction?: FulfillmentWorkTransaction
   ): Promise<LatestActiveParcelVerification | null>;
 

@@ -50,6 +50,7 @@ function parcel(lines: readonly BenchParcelLine[]): BenchParcel {
     parcelTotal: 2,
     refusal: null,
     holdReason: null,
+    sourceChange: null,
     closedAt: null,
     packedByUserId: null,
     assignedToUserId: null,

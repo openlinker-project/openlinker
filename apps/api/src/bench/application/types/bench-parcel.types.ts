@@ -166,6 +166,14 @@ export interface BenchParcelView {
   readonly refusal: BenchParcelRefusal | null;
   /** Why it is held, when it is held. `null` otherwise. */
   readonly holdReason: HoldReason | null;
+  /**
+   * Set only while the box is held because the order source lowered a line
+   * after packing started (#3961). `takeOut` names, per line, how many units are
+   * in the box beyond what the order now asks for - what the packer must take
+   * back out. Empty when the hold is for another reason in that change (an added
+   * unit, a closed box). `null` for every other parcel.
+   */
+  readonly sourceChange: BenchParcelSourceChangeView | null;
   /** When the last verification shut the box (D18), or `null` while it is open. */
   readonly closedAt: string | null;
   /** The last verifier (D13). `null` while the box is open. */
@@ -725,4 +733,9 @@ export interface BenchUnlabelledParcelListView {
    * is a box nobody looks for.
    */
   readonly truncated: boolean;
+}
+
+/** See `BenchParcelView.sourceChange` (#3961). */
+export interface BenchParcelSourceChangeView {
+  readonly takeOut: ReadonlyArray<{ readonly workLineId: string; readonly units: number }>;
 }

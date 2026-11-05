@@ -40,15 +40,17 @@ describe('AuthorityAttentionReasonValues', () => {
       'return-unmatched',
       'stock-decrement-blocked',
       'routing-stuck',
+      'source-change-unapplied',
     ]);
   });
 
   // §4.2 tables NINE rows; AF-X is owned by the automation body and models a
   // per-firing lifecycle no entry here carries. Asserted against an explicit
   // count (eight §4.2 states plus #3453's `stock-decrement-blocked` and #2731's
-  // `routing-stuck`) so a spec row count can never silently move this union.
+  // `routing-stuck`, and #3961's `source-change-unapplied`) so a spec row count
+  // can never silently move this union.
   it('should not carry the automation-failure state when read', () => {
-    expect(AuthorityAttentionReasonValues).toHaveLength(10);
+    expect(AuthorityAttentionReasonValues).toHaveLength(11);
     expect(AuthorityAttentionReasonValues as readonly string[]).not.toContain('automation-failed');
   });
 

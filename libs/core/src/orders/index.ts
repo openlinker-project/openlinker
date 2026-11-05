@@ -676,6 +676,7 @@ export {
   applyOrderEditsToSnapshot,
   applyOrderEditsToOrder,
   effectiveLineQuantity,
+  orderEditLockKey,
   describeEditedTotals,
   resolveTotalUnitPrice,
   readLineEditTreatments,
@@ -731,6 +732,26 @@ export type {
   ApplyOrderCancellationEffectsInput,
   OrderCancellationEffectsResult,
 } from './application/interfaces/order-cancellation-effects.service.interface';
+// #3961 — a line change the order source reports after routing.
+export type {
+  IOrderSourceAmendmentEffectsService,
+  ReconcileSourceAmendmentInput,
+  AcceptSourceChangeInput,
+  SourceAmendmentReconcileOutcome,
+  SourceAmendmentReconcileResult,
+} from './application/interfaces/order-source-amendment-effects.service.interface';
+export {
+  SourceChangeHoldCauseValues,
+  isSourceChangeHoldCause,
+  planSourceAmendment,
+  sourceChangeAcceptTargetRef,
+} from './domain/types/source-amendment-plan.types';
+export type {
+  SourceChangeHoldCause,
+  SourceAmendmentLine,
+  SourceAmendmentPlan,
+  SourceAmendmentPlanInput,
+} from './domain/types/source-amendment-plan.types';
 export type {
   OrderAmendmentRequestKind,
   OrderCorrectionChangeKind,

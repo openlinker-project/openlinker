@@ -202,7 +202,8 @@ function harness() {
       parcelClosureNotifier,
       {
         listBuyerNoteAcknowledgements: jest.fn().mockResolvedValue([]),
-      } as unknown as IFulfillmentWorkQueryService
+      } as unknown as IFulfillmentWorkQueryService,
+      { reconcile: jest.fn().mockResolvedValue({ outcome: 'nothing-to-do', lines: [], cause: null }), accept: jest.fn() } as never,
     ),
     verification,
     // `claimParcel`'s write target lives here rather than on the verification

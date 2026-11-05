@@ -34,6 +34,22 @@ import {
   BenchParcelRefusalValues,
 } from '../../application/types/bench-parcel.types';
 
+export class BenchSourceChangeTakeOutResponseDto {
+  @ApiProperty({ description: 'The work line the units belong to' })
+  workLineId!: string;
+
+  @ApiProperty({ description: 'Units in the box beyond what the order now asks for' })
+  units!: number;
+}
+
+export class BenchSourceChangeResponseDto {
+  @ApiProperty({
+    type: [BenchSourceChangeTakeOutResponseDto],
+    description: 'What the packer must take back out of the box. Empty when nothing has to come out.',
+  })
+  takeOut!: BenchSourceChangeTakeOutResponseDto[];
+}
+
 export class BenchParcelLineResponseDto {
   @ApiProperty({ description: 'Id of this line within the work object' })
   workLineId!: string;
@@ -156,6 +172,14 @@ export class BenchParcelResponseDto {
 
   @ApiProperty({ nullable: true, description: 'Why it is held, when it is held' })
   holdReason!: string | null;
+
+  @ApiProperty({
+    nullable: true,
+    type: BenchSourceChangeResponseDto,
+    description:
+      'Set only while the box is held because the order source lowered a line after packing started (#3961). Null for every other parcel.',
+  })
+  sourceChange!: BenchSourceChangeResponseDto | null;
 
   @ApiProperty({
     nullable: true,

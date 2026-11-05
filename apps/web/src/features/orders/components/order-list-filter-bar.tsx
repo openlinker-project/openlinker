@@ -389,6 +389,14 @@ export function OrderListFilterBar({
         }}
       />
       <FilterCheck
+        label={COPY.checkShopChanged}
+        tone="warning"
+        checked={state.shopChanged}
+        onChange={() => {
+          filtersApi.toggle('attentionReason');
+        }}
+      />
+      <FilterCheck
         label={COPY.checkWaiting}
         tone="warning"
         checked={state.waitingInOpenLinker}
@@ -796,6 +804,17 @@ export function OrderListFilterBar({
             )}
           </Chip>
         ) : null}
+        {/* #3961 - orders the shop changed after packing started that wait for a
+            decision. No count: the summary aggregate does not split reasons. */}
+        <Chip
+          tone="warning"
+          active={state.shopChanged}
+          onClick={() => {
+            filtersApi.toggle('attentionReason');
+          }}
+        >
+          {COPY.quickShopChanged}
+        </Chip>
         <Chip
           active={state.openReturn}
           onClick={() => {

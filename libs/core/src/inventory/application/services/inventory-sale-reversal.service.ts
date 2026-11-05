@@ -75,6 +75,7 @@ import type {
   IInventorySaleReversalService,
   ReverseLineQuantityInput,
   ReverseLineQuantityResult,
+  ReverseLineToTargetInput,
   ReverseSaleForOrderResult,
   SaleReversalLineOutcome,
 } from './inventory-sale-reversal.service.interface';
@@ -98,6 +99,12 @@ const APPLIED_STATUSES = new Set(['applied', 'deduplicated']);
  * reversal's key.
  */
 const EDIT_REVERSAL_KEY_PREFIX = 'edit:';
+/**
+ * The change-id stand-in for a reversal toward a target quantity (#3961). It
+ * rides inside the edit key so every existing reader of `edit:` rows (the
+ * whole-order reversal's already-given-back sum, `lineLedger`) counts it.
+ */
+const SOURCE_TARGET_CHANGE_PREFIX = 'source-target-';
 
 @Injectable()
 export class InventorySaleReversalService implements IInventorySaleReversalService {
@@ -156,23 +163,72 @@ export class InventorySaleReversalService implements IInventorySaleReversalServi
     if (!Number.isInteger(input.units) || input.units <= 0) {
       throw new RangeError(`units must be a positive integer, got ${String(input.units)}`);
     }
-    const rows = await this.decrements.findByOrderId(input.internalOrderId);
-    const forLine = rows.filter((row) => row.orderLineId === input.orderLineId);
-
-    // A replay finds its own rows and reports them; it never claims again.
+    const forLine = await this.lineRows(input.internalOrderId, input.orderLineId);
     const ownKey = buildEditReversalIdempotencyKey(input.changeId, input.orderLineId);
+    const replay = this.replayOf(forLine, ownKey);
+    if (replay !== null) return replay;
+
+    const ledger = this.lineLedger(forLine);
+    // Never give back more than was taken: what the line's decrements lowered the
+    // master by, less what a whole-order reversal or an earlier edit already
+    // returned. A line never decremented (OMS off, not routed, storefront order,
+    // still in doubt) has nothing to give back.
+    const units = Math.min(input.units, ledger.outstanding);
+    return this.giveBack(ledger.decremented, units, ownKey);
+  }
+
+  async reverseLineToTarget(input: ReverseLineToTargetInput): Promise<ReverseLineQuantityResult> {
+    if (!Number.isInteger(input.targetUnits) || input.targetUnits < 0) {
+      throw new RangeError(`targetUnits must be a non-negative integer, got ${String(input.targetUnits)}`);
+    }
+    const forLine = await this.lineRows(input.internalOrderId, input.orderLineId);
+    // One key per (line, target): a repeated reconcile toward the same target
+    // replays instead of giving back again, while a later, lower target is a
+    // new act with its own key.
+    const ownKey = buildEditReversalIdempotencyKey(
+      `${SOURCE_TARGET_CHANGE_PREFIX}${String(input.targetUnits)}`,
+      input.orderLineId
+    );
+    const replay = this.replayOf(forLine, ownKey);
+    if (replay !== null) return replay;
+
+    // The amount is derived from the ledger, never from a diff: whatever an
+    // operator edit or an earlier reconcile already gave back is subtracted, so
+    // the master can only ever end at the target.
+    const ledger = this.lineLedger(forLine);
+    return this.giveBack(ledger.decremented, ledger.outstanding - input.targetUnits, ownKey);
+  }
+
+  private async lineRows(
+    internalOrderId: string,
+    orderLineId: string
+  ): Promise<InventorySaleDecrement[]> {
+    const rows = await this.decrements.findByOrderId(internalOrderId);
+    return rows.filter((row) => row.orderLineId === orderLineId);
+  }
+
+  /** A replay finds its own rows and reports them; it never claims again. */
+  private replayOf(
+    forLine: readonly InventorySaleDecrement[],
+    ownKey: string
+  ): ReverseLineQuantityResult | null {
     const own = forLine.filter(
       (row) => row.idempotencyKey === ownKey || row.idempotencyKey.startsWith(`${ownKey}:`)
     );
-    if (own.length > 0) {
-      const settled = own.every((row) => APPLIED_STATUSES.has(row.status));
-      return {
-        status: settled ? 'restored' : 'failed',
-        units: own.reduce((sum, row) => sum + row.quantity, 0),
-        detail: settled ? null : 'a previous attempt did not settle; check the product master',
-      };
-    }
+    if (own.length === 0) return null;
+    const settled = own.every((row) => APPLIED_STATUSES.has(row.status));
+    return {
+      status: settled ? 'restored' : 'failed',
+      units: own.reduce((sum, row) => sum + row.quantity, 0),
+      detail: settled ? null : 'a previous attempt did not settle; check the product master',
+    };
+  }
 
+  /** The line's applied decrements, and how many of their units are still out of the master. */
+  private lineLedger(forLine: readonly InventorySaleDecrement[]): {
+    decremented: InventorySaleDecrement[];
+    outstanding: number;
+  } {
     const decremented = forLine
       .filter(
         (row) =>
@@ -181,11 +237,6 @@ export class InventorySaleReversalService implements IInventorySaleReversalServi
           APPLIED_STATUSES.has(row.status)
       )
       .sort((a, b) => a.workId.localeCompare(b.workId));
-
-    // Never give back more than was taken: what the line's decrements lowered the
-    // master by, less what a whole-order reversal or an earlier edit already
-    // returned. A line never decremented (OMS off, not routed, storefront order,
-    // still in doubt) has nothing to give back.
     const alreadyReturned = forLine
       .filter(
         (row) =>
@@ -195,7 +246,15 @@ export class InventorySaleReversalService implements IInventorySaleReversalServi
       )
       .reduce((sum, row) => sum + row.quantity, 0);
     const decrementedTotal = decremented.reduce((sum, row) => sum + row.quantity, 0);
-    let remaining = Math.min(input.units, decrementedTotal - alreadyReturned);
+    return { decremented, outstanding: decrementedTotal - alreadyReturned };
+  }
+
+  private async giveBack(
+    decremented: readonly InventorySaleDecrement[],
+    units: number,
+    ownKey: string
+  ): Promise<ReverseLineQuantityResult> {
+    let remaining = units;
     if (decremented.length === 0 || remaining <= 0) {
       return { status: 'not-applicable', units: 0, detail: null };
     }
@@ -208,10 +267,10 @@ export class InventorySaleReversalService implements IInventorySaleReversalServi
     let first = true;
     for (const source of decremented) {
       if (remaining <= 0) break;
-      const units = Math.min(remaining, source.quantity);
+      const take = Math.min(remaining, source.quantity);
       const key = first ? ownKey : `${ownKey}:${source.workId}`;
       first = false;
-      const outcome = await this.reverseLine(this.withQuantity(source, units), positions, adapters, key);
+      const outcome = await this.reverseLine(this.withQuantity(source, take), positions, adapters, key);
       if (outcome.status !== 'applied' && outcome.status !== 'deduplicated') {
         return {
           status: 'failed',
@@ -219,8 +278,8 @@ export class InventorySaleReversalService implements IInventorySaleReversalServi
           detail: outcome.reason ?? 'the product master did not accept the stock change',
         };
       }
-      restored += units;
-      remaining -= units;
+      restored += take;
+      remaining -= take;
     }
     return { status: 'restored', units: restored, detail: null };
   }
