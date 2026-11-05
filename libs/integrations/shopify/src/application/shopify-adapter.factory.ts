@@ -15,6 +15,7 @@
  */
 import type { Connection, IdentifierMappingPort } from '@openlinker/core/identifier-mapping';
 import type { CredentialsResolverPort } from '@openlinker/core/integrations';
+import type { IMappingConfigService } from '@openlinker/core/mappings';
 import type { CachePort } from '@openlinker/shared';
 import type { FetchLike } from '@openlinker/shared/http';
 
@@ -36,7 +37,10 @@ import type { IShopifyAdapterFactory, ShopifyAdapters } from './interfaces/shopi
 export type { ShopifyAdapters } from './interfaces/shopify-adapter.factory.interface';
 
 export class ShopifyAdapterFactory implements IShopifyAdapterFactory {
-  constructor(private readonly tokenMemo: ShopifyTokenMemo) {}
+  constructor(
+    private readonly tokenMemo: ShopifyTokenMemo,
+    private readonly mappingConfig?: () => IMappingConfigService | undefined,
+  ) {}
 
   async createAdapters(
     connection: Connection,
@@ -53,7 +57,13 @@ export class ShopifyAdapterFactory implements IShopifyAdapterFactory {
       this.tokenMemo,
     );
     const shopContext = new ShopifyShopContextProvider(client, connection.id, config.locationGid, cache);
-    const orderProcessor = new ShopifyOrderProcessorAdapter(client, identifierMapping, shopContext, connection);
+    const orderProcessor = new ShopifyOrderProcessorAdapter(
+      client,
+      identifierMapping,
+      shopContext,
+      connection,
+      this.mappingConfig,
+    );
 
     return {
       productMaster: new ShopifyProductMasterAdapter(

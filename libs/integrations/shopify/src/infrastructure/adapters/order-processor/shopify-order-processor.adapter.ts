@@ -6,6 +6,11 @@
  *   - `OrderFulfillmentUpdater` and `OrderStatusWriteback`: a dispatch becomes
  *     `fulfillmentCreate` on the order's open fulfillment orders, a
  *     cancellation `orderCancel`. Every other lifecycle event is `unsupported`.
+ *   - `DestinationOptionsReader`: the shop's delivery methods (profile method
+ *     names plus codes seen on orders), its payment gateways and the neutral
+ *     statuses, so a source connection (Allegro) can map onto Shopify. A
+ *     mapped delivery method becomes the shipping line title and code, a
+ *     mapped payment method the transaction gateway (`resolveMappedOptions`).
  *   - `OrderCreateStockEffect`: `true`, because every create is sent with
  *     `inventoryBehaviour: DECREMENT_OBEYING_POLICY`, so Shopify lowers its own
  *     stock for a variant-backed line at order creation.
@@ -34,7 +39,10 @@
  * @module libs/integrations/shopify/src/infrastructure/adapters/order-processor
  * @implements {OrderProcessorManagerPort}
  */
+import type { IMappingConfigService } from '@openlinker/core/mappings';
 import type {
+  DestinationOptionsReader,
+  MappingOption,
   OrderCreate,
   OrderCreateStockEffect,
   OrderFulfillmentUpdater,
@@ -56,8 +64,10 @@ import type { ShopifyConnection, ShopifyFulfillmentOrder } from '../../../domain
 import type { ShopifyGraphqlClient } from '../../http/shopify-graphql-client';
 import {
   buildShopifyOrderCreateVariables,
+  type ShopifyOrderMappedOptions,
   type ShopifyResolvedLine,
 } from '../../mappers/shopify-order-input.mapper';
+import { ShopifyMappingOptionsReader } from '../../readers/shopify-mapping-options.reader';
 import { buildShopifyTrackingInfo } from '../../mappers/shopify-tracking.mapper';
 import { findShopifyExternalId } from '../../readers/shopify-external-id';
 import {
@@ -91,16 +101,39 @@ interface FulfillmentOrdersQuery {
 }
 
 export class ShopifyOrderProcessorAdapter
-  implements OrderProcessorManagerPort, OrderFulfillmentUpdater, OrderStatusWriteback, OrderCreateStockEffect
+  implements
+    OrderProcessorManagerPort,
+    OrderFulfillmentUpdater,
+    OrderStatusWriteback,
+    OrderCreateStockEffect,
+    DestinationOptionsReader
 {
   private readonly logger = new Logger(ShopifyOrderProcessorAdapter.name);
+  private readonly options: ShopifyMappingOptionsReader;
 
   constructor(
     private readonly client: ShopifyGraphqlClient,
     private readonly identifierMapping: IdentifierMappingPort,
     private readonly shopContext: ShopifyShopContextProvider,
     private readonly connection: Connection,
-  ) {}
+    private readonly mappingConfig?: () => IMappingConfigService | undefined,
+  ) {
+    this.options = new ShopifyMappingOptionsReader(client, connection.id);
+  }
+
+  // ─── DestinationOptionsReader ──────────────────────────────────────────────
+
+  listCarriers(): Promise<MappingOption[]> {
+    return this.options.listDeliveryMethods();
+  }
+
+  listOrderStatuses(): Promise<MappingOption[]> {
+    return this.options.listOrderStatuses();
+  }
+
+  listPaymentMethods(): Promise<MappingOption[]> {
+    return this.options.listPaymentMethods();
+  }
 
   // ─── OrderProcessorManagerPort ─────────────────────────────────────────────
 
@@ -121,7 +154,8 @@ export class ShopifyOrderProcessorAdapter
     }
 
     const lines = await this.resolveLines(order);
-    const variables = buildShopifyOrderCreateVariables(order, lines, sourceIdentifier);
+    const mapped = await this.resolveMappedOptions(order);
+    const variables = buildShopifyOrderCreateVariables(order, lines, sourceIdentifier, mapped);
     const payload = await this.client.mutate<CreatedOrderPayload>(
       ORDER_CREATE_MUTATION,
       variables,
@@ -181,6 +215,43 @@ export class ShopifyOrderProcessorAdapter
   }
 
   // ─── Internals ─────────────────────────────────────────────────────────────
+
+  /**
+   * The source connection's carrier and payment mappings for this order. A
+   * failed lookup is warned about and falls back to the source's own words:
+   * the order is still worth creating with the marketplace's method name.
+   */
+  private async resolveMappedOptions(order: OrderCreate): Promise<ShopifyOrderMappedOptions> {
+    const service = this.mappingConfig?.();
+    const sourceConnectionId = order.source?.connectionId;
+    if (service === undefined || !sourceConnectionId) {
+      return {};
+    }
+    const methodId = order.shipping?.methodId;
+    const sourcePayment = order.sourcePaymentMethod;
+    const lookup = async (what: string, run: () => Promise<string | null>): Promise<string | undefined> => {
+      try {
+        const value = (await run())?.trim();
+        return value ? value : undefined;
+      } catch (error) {
+        this.logger.warn(
+          `Shopify ${what} mapping lookup failed (source ${sourceConnectionId}, destination ${this.connection.id}); ` +
+            `using the source's own value: ${error instanceof Error ? error.message : String(error)}`,
+        );
+        return undefined;
+      }
+    };
+    const deliveryMethod = methodId
+      ? await lookup('carrier', () => service.resolveCarrierMapping(sourceConnectionId, methodId))
+      : undefined;
+    const paymentGateway = sourcePayment
+      ? await lookup('payment', () => service.resolvePaymentMapping(sourceConnectionId, sourcePayment))
+      : undefined;
+    return {
+      ...(deliveryMethod === undefined ? {} : { deliveryMethod }),
+      ...(paymentGateway === undefined ? {} : { paymentGateway }),
+    };
+  }
 
   private async findBySourceIdentifier(sourceIdentifier: string): Promise<OrderRef | null> {
     const data = await this.client.query<{ orders: ShopifyConnection<{ id: string; name: string }> }>(

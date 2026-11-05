@@ -114,10 +114,22 @@ function pickupPointNote(point: OrderPickupPoint | undefined): string | null {
   return `Pickup point: ${attributes[0].value}${details.length > 0 ? ` - ${details.join(', ')}` : ''}`;
 }
 
+/**
+ * What the operator mapped for this order's source (Mappings tab of the source
+ * connection): the Shopify delivery method name its delivery method becomes,
+ * and the Shopify gateway its payment method becomes. Absent = unmapped, the
+ * source's own words are used.
+ */
+export interface ShopifyOrderMappedOptions {
+  readonly deliveryMethod?: string;
+  readonly paymentGateway?: string;
+}
+
 export function buildShopifyOrderCreateVariables(
   order: OrderCreate,
   lines: readonly ShopifyResolvedLine[],
   sourceIdentifier: string | undefined,
+  mapped: ShopifyOrderMappedOptions = {},
 ): ShopifyOrderCreateVariables {
   const currencyCode = order.totals.currency;
   const taxesIncluded = order.totals.taxTreatment !== 'exclusive';
@@ -146,8 +158,12 @@ export function buildShopifyOrderCreateVariables(
       ? []
       : [
           {
-            title: shippingTitle(order),
-            ...(order.shipping?.methodId ? { code: order.shipping.methodId } : {}),
+            title: shippingTitle(order, mapped.deliveryMethod),
+            ...(mapped.deliveryMethod
+              ? { code: mapped.deliveryMethod }
+              : order.shipping?.methodId
+                ? { code: order.shipping.methodId }
+                : {}),
             priceSet: money(shippingAmount, currencyCode),
             ...(shippingTax.length === 0 ? {} : { taxLines: shippingTax }),
           },
@@ -156,11 +172,14 @@ export function buildShopifyOrderCreateVariables(
   const isCod =
     order.paymentStatus === PAYMENT_STATUS.Cod || order.paymentMethod === PAYMENT_METHOD.CashOnDelivery;
   const isPaid = order.paymentStatus === PAYMENT_STATUS.Paid;
+  const total = money(order.totals.total, currencyCode);
   const transactions = isPaid
-    ? [{ kind: 'SALE', status: 'SUCCESS', gateway: 'manual', amountSet: money(order.totals.total, currencyCode) }]
+    ? [{ kind: 'SALE', status: 'SUCCESS', gateway: mapped.paymentGateway ?? 'manual', amountSet: total }]
     : isCod
-      ? [{ kind: 'SALE', status: 'PENDING', gateway: SHOPIFY_COD_GATEWAY, amountSet: money(order.totals.total, currencyCode) }]
-      : [];
+      ? [{ kind: 'SALE', status: 'PENDING', gateway: mapped.paymentGateway ?? SHOPIFY_COD_GATEWAY, amountSet: total }]
+      : mapped.paymentGateway
+        ? [{ kind: 'SALE', status: 'PENDING', gateway: mapped.paymentGateway, amountSet: total }]
+        : [];
 
   const customAttributes = pickupPointAttributes(order.pickupPoint);
   const noteLines = [
@@ -202,8 +221,8 @@ export function buildShopifyOrderCreateVariables(
   };
 }
 
-function shippingTitle(order: OrderCreate): string {
-  const base = order.shipping?.methodName ?? order.shipping?.methodId ?? 'Shipping';
+function shippingTitle(order: OrderCreate, mappedMethod: string | undefined): string {
+  const base = mappedMethod ?? order.shipping?.methodName ?? order.shipping?.methodId ?? 'Shipping';
   const pointId = order.pickupPoint?.id.trim();
   return pointId && !base.includes(pointId) ? `${base} (${pointId})` : base;
 }

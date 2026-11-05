@@ -28,6 +28,7 @@
  */
 import { dispatchCapability, type AdapterPlugin, type HostServices } from '@openlinker/plugin-sdk';
 import type { AdapterMetadata } from '@openlinker/core/integrations';
+import type { IMappingConfigService } from '@openlinker/core/mappings';
 import type { Connection } from '@openlinker/core/identifier-mapping';
 
 import {
@@ -86,14 +87,20 @@ export const shopifyAdapterManifest: AdapterMetadata = {
   isDefault: true,
 };
 
-/** Kept for source compatibility with the scaffold; the plugin needs no Nest-provided deps. */
-export type CreateShopifyPluginDeps = Record<string, never>;
+/**
+ * Nest-provided services the plugin reads lazily. `mappingConfig` is a getter
+ * because the descriptor is built when the module is DEFINED, before Nest has
+ * instantiated the mappings service; the module's provider fills it in at boot.
+ */
+export interface CreateShopifyPluginDeps {
+  readonly mappingConfig?: () => IMappingConfigService | undefined;
+}
 
-export function createShopifyPlugin(_deps: CreateShopifyPluginDeps = {}): AdapterPlugin {
+export function createShopifyPlugin(deps: CreateShopifyPluginDeps = {}): AdapterPlugin {
   // One token memo and one factory for the plugin's lifetime: minted tokens
   // outlive the per-call adapter bags.
   const tokenMemo: ShopifyTokenMemo = new Map();
-  const factory = new ShopifyAdapterFactory(tokenMemo);
+  const factory = new ShopifyAdapterFactory(tokenMemo, deps.mappingConfig);
 
   return {
     manifest: shopifyAdapterManifest,
