@@ -227,7 +227,7 @@ describe('ReturnCustodyPanel — backend guard reaches the operator as a sentenc
 
     expect(
       await screen.findByText(
-        'This line already has a stock write waiting on you — mark it handled before restocking more.',
+        'This line already has a stock write waiting on you - mark it handled before restocking more.',
       ),
     ).toBeInTheDocument();
   });

@@ -67,7 +67,7 @@ describe('ReturnStageCell restock-blocked badge (#2381)', () => {
     // They answer different questions — "how far along is this" vs "does it
     // need me" — and a blocked restock does not move the stage.
     expect(screen.getByText(restockBlockedCopy.badge)).toBeInTheDocument();
-    expect(screen.getByText('Received — awaiting disposition')).toBeInTheDocument();
+    expect(screen.getByText('Received - awaiting disposition')).toBeInTheDocument();
   });
 
   it('should share its title text with the per-line notice, from one module', () => {
