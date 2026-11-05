@@ -232,6 +232,7 @@ const stepSchema = z.object({
   detail: z.string().nullish(),
   syncJobId: z.string().nullish(),
   unavailableReason: z.string().nullish(),
+  reasonCode: z.string().nullish(),
   report: z
     .object({ attributedTo: z.string(), message: z.string() })
     .nullish(),
@@ -255,6 +256,7 @@ function parseSteps(raw: unknown): { steps: AutomationStepResult[]; unreadable: 
       report: parsed.data.report ?? null,
       syncJobId: parsed.data.syncJobId ?? null,
       unavailableReason: parsed.data.unavailableReason ?? null,
+      reasonCode: parsed.data.reasonCode ?? null,
     });
   }
   return { steps, unreadable };

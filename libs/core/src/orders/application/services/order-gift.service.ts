@@ -54,7 +54,14 @@ import {
   type IGiftRuleService,
 } from '@openlinker/core/automation';
 import { AVAILABILITY_SERVICE_TOKEN, type IAvailabilityService } from '@openlinker/core/inventory';
-import { PRODUCTS_SERVICE_TOKEN, taxRateState, type IProductsService } from '@openlinker/core/products';
+import {
+  BUNDLE_DEFINITION_SERVICE_TOKEN,
+  PRODUCTS_SERVICE_TOKEN,
+  taxRateState,
+  type BundleDefinition,
+  type IBundleDefinitionService,
+  type IProductsService,
+} from '@openlinker/core/products';
 import { Logger } from '@openlinker/shared/logging';
 
 import { ORDER_RECORD_SERVICE_TOKEN } from '../../orders.tokens';
@@ -67,6 +74,7 @@ import {
 import type { Order } from '../../domain/types/order.types';
 import { buildOrderAutomationFacts } from '../../domain/order-automation-facts-projection';
 import { IOrderRecordService } from '../interfaces/order-record.service.interface';
+import { previewPhysicalLines } from './order-line-expansion';
 import type {
   ApplyGiftRulesInput,
   ApplyGiftRulesResult,
@@ -98,6 +106,8 @@ export class OrderGiftService implements IOrderGiftService {
     private readonly recorder: IAutomationRunRecorderService,
     @Inject(PRODUCTS_SERVICE_TOKEN)
     private readonly products: IProductsService,
+    @Inject(BUNDLE_DEFINITION_SERVICE_TOKEN)
+    private readonly bundles: IBundleDefinitionService,
   ) {}
 
   async applyGiftRules(input: ApplyGiftRulesInput): Promise<ApplyGiftRulesResult> {
@@ -148,11 +158,16 @@ export class OrderGiftService implements IOrderGiftService {
         candidates.map((rule) => rule.id),
         async () => {
           const contexts = await this.buildContexts(candidates, input.customerId);
+          const componentProductIds = await this.componentProductIds(
+            order.items,
+            input.frozenDefinitions ?? null,
+          );
           const planOutcomes = planGiftApplication({
             rules,
             evaluations: evaluation.evaluations,
             alreadyAppliedRuleIds,
             lines: this.planLines(order),
+            componentProductIds,
             contexts,
           });
           const lines: Record<string, OrderAddedLineEdit> = {};
@@ -293,9 +308,14 @@ export class OrderGiftService implements IOrderGiftService {
         contexts.set(draftRule.id, await this.draftContext(draftRule, record.customerId));
       }
     }
+    const componentProductIds = await this.componentProductIds(
+      items,
+      record.lineExpansion?.definitions ?? null,
+    );
     const outcomes = planGiftApplication({
       rules,
       evaluations: evaluation.evaluations,
+      componentProductIds,
       // A preview asks "would this rule give a gift", so a gift the order already
       // carries from a real run does not answer it.
       alreadyAppliedRuleIds: new Set(),
@@ -329,6 +349,25 @@ export class OrderGiftService implements IOrderGiftService {
         i.gift === undefined && i.variantId !== undefined ? [i.variantId] : [],
       ),
     };
+  }
+
+  /**
+   * Product ids of the physical components of the order's bundle lines (#3945),
+   * from the same expansion the line freeze uses: the frozen definitions when the
+   * record has them, the live ones otherwise. Gift lines are left out (a gift is
+   * not the buyer's own product), but a gift SLOT inside a set is a component and
+   * counts, so a buyer of a set that already contains the gift gets no second one.
+   * Used by ingestion and the dry run alike, so they cannot disagree.
+   */
+  private async componentProductIds(
+    items: Order['items'],
+    frozenDefinitions: readonly BundleDefinition[] | null,
+  ): Promise<ReadonlySet<string>> {
+    const own = items.filter((item) => item.gift === undefined);
+    const physical = await previewPhysicalLines(own, frozenDefinitions, this.bundles);
+    return new Set(
+      physical.filter((line) => line.parentLineId !== undefined).map((line) => line.productId),
+    );
   }
 
   private planLines(order: Order): GiftPlanLine[] {
@@ -521,6 +560,7 @@ export class OrderGiftService implements IOrderGiftService {
               status: outcome.applied ? 'done' : 'nothing-to-do',
               detail: message,
               report: { attributedTo: ATTRIBUTION_OPENLINKER, message },
+              ...(!outcome.applied && outcome.reason !== null && { reasonCode: outcome.reason }),
             },
           ],
           firedAt: now,

@@ -12,6 +12,8 @@ import type {
   GiftRuleOutcome,
 } from '@openlinker/core/automation';
 
+import type { BundleDefinition } from '@openlinker/core/products';
+
 import type { OrderRecord } from '../../domain/entities/order-record.entity';
 import type { Order } from '../../domain/types/order.types';
 import type { OrderEdits } from '../../domain/types/order-edits.types';
@@ -32,6 +34,12 @@ export interface ApplyGiftRulesInput {
    * reports no placement time - never to a value that predates the order.
    */
   readonly occurredAt: Date;
+  /**
+   * The bundle definitions already frozen on the order's record, when it has one
+   * (a re-ingestion). Absent on a first ingestion, where the components are
+   * resolved from the live definitions exactly as the freeze will.
+   */
+  readonly frozenDefinitions?: readonly BundleDefinition[];
   /** Only the first ingestion records non-applications; a re-poll would repeat them. */
   readonly isFirstIngestion: boolean;
 }

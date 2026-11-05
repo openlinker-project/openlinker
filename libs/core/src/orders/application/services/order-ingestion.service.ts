@@ -58,6 +58,7 @@ import { IOrderChangeService } from './order-change.service.interface';
 import type { OrderChange } from '../../domain/entities/order-change.entity';
 import { IOrderRecordService } from '../interfaces/order-record.service.interface';
 import { IOrderItemRefResolverService } from '../interfaces/order-item-ref-resolver.service.interface';
+import { resolveLineExpansionDefinitions } from './order-line-expansion';
 import { IOrderLifecycleRelayService } from '../interfaces/order-lifecycle-relay.service.interface';
 import type { IncomingOrder, IncomingOrderItem } from '../../domain/types/incoming-order.types';
 import {
@@ -66,7 +67,6 @@ import {
   TAX_RATE_JOURNAL_SERVICE_TOKEN,
   BUNDLE_DEFINITION_SERVICE_TOKEN,
   expandBundleLines,
-  buildPackLineDefinitions,
   taxRateState,
   type IBundleDefinitionService,
   type LineExpansion,
@@ -726,6 +726,9 @@ export class OrderIngestionService implements IOrderIngestionService {
       sourceConnectionId: connectionId,
       occurredAt: overlaidOrder.placedAt ?? existing?.createdAt ?? new Date(),
       isFirstIngestion: !existing,
+      ...(existing?.lineExpansion != null && {
+        frozenDefinitions: existing.lineExpansion.definitions,
+      }),
     });
     // #3939: a gift line is added after the channel's lines were tax-resolved, so it
     // would reach a destination that needs a rate (WooCommerce, Shoper) with none
@@ -1190,24 +1193,12 @@ export class OrderIngestionService implements IOrderIngestionService {
     if (existing?.lineExpansion != null) {
       return expandBundleLines(order.items, existing.lineExpansion.definitions);
     }
-    const variantIds = [
-      ...new Set(order.items.map((i) => i.variantId).filter((id): id is string => Boolean(id))),
-    ];
-    const definitions = await this.bundleDefinitions.findCurrentByVariantIds(variantIds);
-    // #3624: a multipack line (pack quantity N) expands to N units of its
-    // variant when confirmed, or to N x the bundle's components. Frozen with the
-    // rest, so confirming or changing something later never moves an open order.
-    const packPairs = order.items
-      .filter((i) => i.variantId !== undefined && (i.packQuantity ?? 1) > 1)
-      .map((i) => ({ variantId: i.variantId as string, packQuantity: i.packQuantity as number }));
-    const confirmed =
-      packPairs.length === 0
-        ? []
-        : await this.bundleDefinitions.findConfirmedMultipacks(packPairs);
-    const lineDefinitions = buildPackLineDefinitions(order.items, definitions, confirmed);
+    // #3624: multipacks are frozen with the rest, so confirming or changing
+    // something later never moves an open order.
+    const definitions = await resolveLineExpansionDefinitions(order.items, this.bundleDefinitions);
     const frozen: LineExpansion = await this.orderRecordService.freezeLineExpansion(order.id, {
       v: 1,
-      definitions: [...definitions, ...lineDefinitions],
+      definitions,
     });
     return expandBundleLines(order.items, frozen.definitions);
   }

@@ -60,7 +60,7 @@ const OK_CONTEXT: GiftRuleContext = {
 function plan(
   rules: AutomationRule[],
   contexts: Record<string, Partial<GiftRuleContext>> = {},
-  extra: { lines?: GiftPlanLine[]; already?: string[] } = {}
+  extra: { lines?: GiftPlanLine[]; already?: string[]; components?: string[] } = {}
 ) {
   const ordered = sortGiftRules(rules);
   const evaluation = evaluateAutomationRules({
@@ -83,6 +83,7 @@ function plan(
     evaluations: evaluation.evaluations,
     alreadyAppliedRuleIds: new Set(extra.already ?? []),
     lines: extra.lines ?? LINES,
+    ...(extra.components !== undefined && { componentProductIds: new Set(extra.components) }),
     contexts: new Map(
       ordered.map((r) => [r.id, { ...OK_CONTEXT, ...(contexts[r.id] ?? {}) }] as const)
     ),
@@ -167,6 +168,16 @@ describe('planGiftApplication', () => {
       lines: [...LINES, { productId: 'p-gift', variantId: 'v-gift', quantity: 1, isGift: false }],
     });
     expect(outcome).toMatchObject({ applied: false, reason: 'gift-already-in-order' });
+  });
+
+  it('should skip the gift when a set in the order already contains its product (#3945)', () => {
+    const [outcome] = plan([rule('r1', giftAction())], {}, { components: ['p-gift', 'p-other'] });
+    expect(outcome).toMatchObject({ applied: false, reason: 'gift-already-in-order' });
+  });
+
+  it('should add the gift when the order sets do not contain its product (#3945)', () => {
+    const [outcome] = plan([rule('r1', giftAction())], {}, { components: ['p-other'] });
+    expect(outcome.applied).toBe(true);
   });
 
   it('should ignore an existing gift line when checking skip-if-present', () => {

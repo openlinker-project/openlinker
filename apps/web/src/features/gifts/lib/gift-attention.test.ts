@@ -85,4 +85,16 @@ describe('readGiftAttention', () => {
     expect(items).toHaveLength(1);
     expect(items[0].kind).toBe('limit-reached');
   });
+
+  it('reads the structured reason code and prefers it over the sentence', () => {
+    const base = run({ detail: 'No gift added: something-reworded.' });
+    base.steps[0] = { ...base.steps[0], reasonCode: 'gift-out-of-stock' };
+    expect(readGiftAttention([base]).map((i) => i.kind)).toEqual(['out-of-stock']);
+  });
+
+  it('does not list a rule skipped because the gift is already in the order', () => {
+    const base = run({ detail: 'No gift added: gift-already-in-order.' });
+    base.steps[0] = { ...base.steps[0], reasonCode: 'gift-already-in-order' };
+    expect(readGiftAttention([base])).toEqual([]);
+  });
 });

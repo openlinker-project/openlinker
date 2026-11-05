@@ -53,9 +53,17 @@ export const GIFT_ATTENTION_ACTIONABLE: readonly GiftAttentionKind[] = [
   'other',
 ];
 
-function stepText(run: AutomationRun): string | null {
-  const step = run.steps.find((s) => s.action === 'add-gift');
-  return step?.detail ?? step?.report?.message ?? null;
+function giftStep(run: AutomationRun): AutomationRun['steps'][number] | undefined {
+  return run.steps.find((s) => s.action === 'add-gift');
+}
+
+/** The structured code when the run has one; the sentence is the fallback for older runs. */
+function reasonOf(run: AutomationRun): string | null {
+  const step = giftStep(run);
+  if (step === undefined) return null;
+  if (step.reasonCode != null) return step.reasonCode;
+  const text = step.detail ?? step.report?.message ?? null;
+  return text === null ? null : (NOT_ADDED.exec(text)?.[1] ?? null);
 }
 
 /**
@@ -72,12 +80,11 @@ export function readGiftAttention(runs: readonly AutomationRun[]): GiftAttention
     if (seen.has(run.ruleId)) continue;
     seen.add(run.ruleId);
     if (run.outcome === 'done' || run.dismissedAt !== null) continue;
-    const text = stepText(run);
     if (run.outcome === 'failed') {
       items.push({ kind: 'failed', ruleId: run.ruleId, ruleName: run.ruleName, firedAt: run.firedAt });
       continue;
     }
-    const reason = text === null ? null : NOT_ADDED.exec(text)?.[1] ?? null;
+    const reason = reasonOf(run);
     if (reason === 'gift-already-in-order') continue;
     items.push({
       kind: reason === null ? 'other' : (REASON_KIND[reason] ?? 'other'),

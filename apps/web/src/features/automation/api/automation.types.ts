@@ -218,6 +218,8 @@ export interface AutomationStepResult {
   /** Where the step dispatched a job — the job detail is where technical failure detail lives. */
   syncJobId: string | null;
   unavailableReason: string | null;
+  /** Why an add-gift step added nothing, as a code (#3945); null on runs that predate it. */
+  reasonCode?: string | null;
 }
 
 /**

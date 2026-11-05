@@ -28,6 +28,7 @@ import {
   type Order,
   OrderRecord,
 } from '@openlinker/core/orders';
+import { BUNDLE_DEFINITION_SERVICE_TOKEN, type IBundleDefinitionService } from '@openlinker/core/products';
 import { ProductOrmEntity, ProductVariantOrmEntity } from '@openlinker/core/products/orm-entities';
 
 import { getTestHarness, resetTestHarness, teardownTestHarness } from './setup';
@@ -183,6 +184,29 @@ describe('Gift rules at ingestion (integration, #3938)', () => {
     expect(record.orderItems).toHaveLength(2);
     expect((record.channelSnapshot.items as unknown[]).length).toBe(1);
     expect(record.isEditedInOpenLinker).toBe(false);
+  });
+
+  it('should give no second gift to a buyer of a set that already contains it (#3945)', async () => {
+    await createRule();
+    await seedVariant(harness.getDataSource(), 'v_set', 0);
+    await harness
+      .getApp()
+      .get<IBundleDefinitionService>(BUNDLE_DEFINITION_SERVICE_TOKEN)
+      .create('v_set', [{ variantId: 'v_mug', quantity: 1 }]);
+    const placed = new Date(Date.now() + 60_000);
+    const base = channelOrder(placed);
+    const order = {
+      ...base,
+      items: [
+        ...base.items,
+        { id: 'l2', productId: 'p_v_set', variantId: 'v_set', quantity: 1, price: 50 },
+      ],
+    } as unknown as Order;
+
+    const result = await ingest(order, placed);
+
+    expect(result.order.items).toHaveLength(2);
+    expect(result.outcomes[0]).toMatchObject({ applied: false, reason: 'gift-already-in-order' });
   });
 
   it('should add nothing twice on re-ingestion, and keep counting the gift once', async () => {

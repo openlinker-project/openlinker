@@ -60,6 +60,7 @@ describe('OrderGiftService', () => {
   let orderRecords: { applyOrderEdit: jest.Mock };
   let recorder: { record: jest.Mock };
   let products: { getEffectiveTaxRate: jest.Mock; getVariantsByIds: jest.Mock };
+  let bundles: { findCurrentByVariantIds: jest.Mock; findConfirmedMultipacks: jest.Mock };
   let service: OrderGiftService;
 
   const written = (key: string) =>
@@ -109,12 +110,17 @@ describe('OrderGiftService', () => {
         .fn()
         .mockResolvedValue({ code: '23', countryIso2: 'PL', readAt: new Date('2026-01-01T00:00:00Z') }),
     };
+    bundles = {
+      findCurrentByVariantIds: jest.fn().mockResolvedValue([]),
+      findConfirmedMultipacks: jest.fn().mockResolvedValue([]),
+    };
     service = new OrderGiftService(
       giftRules as never,
       availability as never,
       orderRecords as never,
       recorder as never,
-      products as never
+      products as never,
+      bundles as never
     );
   });
 
@@ -148,6 +154,51 @@ describe('OrderGiftService', () => {
     });
     expect(result.order.items).toHaveLength(2);
     expect(result.order.items[1]).toMatchObject({ price: 0, gift: { source: 'ol-rule' } });
+  });
+
+  const setDefinition = (componentProductId: string, giftSlot = false) => ({
+    variantId: 'v-book',
+    components: [
+      { productId: componentProductId, variantId: `v-${componentProductId}`, quantity: 1, ...(giftSlot && { giftSlot: true }) },
+    ],
+  });
+
+  it('should skip the gift when a set in the order contains the gift product (#3945)', async () => {
+    bundles.findCurrentByVariantIds.mockResolvedValue([setDefinition('p-gift')]);
+
+    const result = await apply(makeOrder());
+
+    expect(orderRecords.applyOrderEdit).not.toHaveBeenCalled();
+    expect(result.outcomes[0]).toMatchObject({ applied: false, reason: 'gift-already-in-order' });
+    expect(recorder.record.mock.calls[0][0].steps[0]).toMatchObject({
+      status: 'nothing-to-do',
+      reasonCode: 'gift-already-in-order',
+    });
+  });
+
+  it('should skip the gift when the set gift slot is the gift product (#3945)', async () => {
+    bundles.findCurrentByVariantIds.mockResolvedValue([setDefinition('p-gift', true)]);
+
+    const result = await apply(makeOrder());
+
+    expect(result.outcomes[0]).toMatchObject({ applied: false, reason: 'gift-already-in-order' });
+  });
+
+  it('should add the gift when the set does not contain it (#3945)', async () => {
+    bundles.findCurrentByVariantIds.mockResolvedValue([setDefinition('p-mug-other')]);
+
+    const result = await apply(makeOrder());
+
+    expect(result.outcomes[0]).toMatchObject({ applied: true });
+  });
+
+  it('should read the frozen definitions and not the live ones on a re-ingestion (#3945)', async () => {
+    const frozen = [setDefinition('p-gift')] as never;
+
+    const result = await apply(makeOrder(), null as never, { frozenDefinitions: frozen });
+
+    expect(bundles.findCurrentByVariantIds).not.toHaveBeenCalled();
+    expect(result.outcomes[0]).toMatchObject({ applied: false, reason: 'gift-already-in-order' });
   });
 
   it('should stamp the catalogue tax rate on the overlay entry, and read back onto the order item (#3939)', async () => {
