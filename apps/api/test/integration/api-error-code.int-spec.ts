@@ -58,7 +58,7 @@ describe('API error code (integration)', () => {
     });
   });
 
-  it('should add a code to a domain-filter answer and keep its exception name', async () => {
+  it('should send the domain filter\'s own code and keep its exception name (#3863)', async () => {
     // `getCapabilityAdapter` throws ConnectionNotFoundException for an unknown
     // connection; ConnectionExceptionFilter answers it (#1087), not the catch-all.
     const http = harness.getHttp();
@@ -77,7 +77,7 @@ describe('API error code (integration)', () => {
     expect(res.body).toMatchObject({
       statusCode: 404,
       error: 'ConnectionNotFoundException',
-      code: 'HTTP_404',
+      code: 'CONNECTION_NOT_FOUND',
     });
   });
 

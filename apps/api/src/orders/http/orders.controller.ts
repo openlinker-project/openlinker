@@ -121,6 +121,7 @@ import {
   IInvoiceService,
 } from '@openlinker/core/invoicing';
 import { Logger } from '@openlinker/shared/logging';
+import type { KnownApiErrorCode } from '@openlinker/shared/errors';
 import type { InvoiceRecord } from '@openlinker/core/invoicing';
 import {
   RESERVATION_SHORTFALL_SERVICE_TOKEN,
@@ -384,7 +385,7 @@ export async function enrichCrossContextFilters(
  * shape `ORDER_ALREADY_ON_HOLD` and `NO_BUYER_NOTE` already use on this
  * controller, so a client reads one error shape across `/orders`.
  */
-const ROUTING_RETRY_REFUSAL_ERROR_CODES: Record<OrderRoutingRetryRefusal, string> = {
+const ROUTING_RETRY_REFUSAL_ERROR_CODES: Record<OrderRoutingRetryRefusal, KnownApiErrorCode> = {
   'not-held': 'ROUTING_RETRY_NOT_HELD',
   'not-retryable': 'ROUTING_RETRY_NOT_RETRYABLE',
   'no-router': 'ROUTING_RETRY_NO_ROUTER',

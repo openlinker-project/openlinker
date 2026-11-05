@@ -25,7 +25,7 @@
 import type { ArgumentsHost, ExceptionFilter } from '@nestjs/common';
 import { Catch, HttpStatus } from '@nestjs/common';
 import type { Response } from 'express';
-import { withApiErrorCode } from '@openlinker/shared/errors';
+import { codedErrorBody } from '../errors/coded-http.exception';
 import { TaxonomySourceUnavailableException } from '@openlinker/core/listings';
 
 @Catch(TaxonomySourceUnavailableException)
@@ -33,16 +33,15 @@ export class TaxonomySourceUnavailableFilter implements ExceptionFilter {
   catch(exception: TaxonomySourceUnavailableException, host: ArgumentsHost): void {
     const response = host.switchToHttp().getResponse<Response>();
     response.status(HttpStatus.UNPROCESSABLE_ENTITY).json(
-      withApiErrorCode(
-        {
-          statusCode: HttpStatus.UNPROCESSABLE_ENTITY,
-          error: exception.name,
-          // The domain message names the missing capability and the fix (#2063), so
-          // it is deliberately surfaced verbatim — it is operator-actionable and
-          // carries no credential or platform-internal detail.
-          message: exception.message,
-        },
-        HttpStatus.UNPROCESSABLE_ENTITY
+      codedErrorBody(
+        HttpStatus.UNPROCESSABLE_ENTITY,
+        'TAXONOMY_SOURCE_UNAVAILABLE',
+        // The domain message names the missing capability and the fix (#2063), so
+        // it is deliberately surfaced verbatim — it is operator-actionable and
+        // carries no credential or platform-internal detail.
+        exception.message,
+        { connectionId: exception.connectionId },
+        { error: exception.name }
       )
     );
   }

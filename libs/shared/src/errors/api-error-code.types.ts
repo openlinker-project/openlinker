@@ -662,6 +662,226 @@ export const ApiErrorCodeValues = [
   'AUTHORITY_PRESET_AMBIGUOUS',
   /** The preset is not available on this installation. params: `presetId`, `unavailableReason` (when known). */
   'AUTHORITY_PRESET_UNAVAILABLE',
+
+  // ── Global filters (#3863) ──
+  /** The adapter does not support this capability. params: `adapterKey`, `capability`. */
+  'CAPABILITY_NOT_SUPPORTED',
+  /** The capability is switched off on this connection. params: `connectionId`, `adapterKey`, `capability`. */
+  'CAPABILITY_NOT_ENABLED',
+  /** The connection is disabled or archived. params: `connectionId`, `status`. */
+  'CONNECTION_DISABLED',
+  /** Another connection still points at this one. params: `connectionId`, `reason`; `referrers` lists them. */
+  'CONNECTION_IN_USE',
+  /** The connection has no category tree to read. params: `connectionId`. */
+  'TAXONOMY_SOURCE_UNAVAILABLE',
+  /** Available stock could not be read, so nothing was published. params: `connectionId`, `internalVariantId`. */
+  'AVAILABILITY_UNKNOWN',
+  /** The platform connection is busy; nothing was sent. params: `retryAfterSeconds`. */
+  'PLATFORM_CONNECTION_BUSY',
+  /** Another location already has this code. params: `code`. */
+  'INVENTORY_LOCATION_CODE_DUPLICATE',
+  /** Stock positions still name the location. params: `locationId`, `positionCount`. */
+  'INVENTORY_LOCATION_IN_USE',
+  /** The owning connection does not exist. params: `ownerConnectionId`. */
+  'INVENTORY_LOCATION_OWNER_NOT_FOUND',
+  /** No variant has this id. params: `productVariantId`. */
+  'INVENTORY_VARIANT_NOT_FOUND',
+  /** No return has this id. params: `returnId`. */
+  'RETURN_NOT_FOUND',
+  /** The return is not matched to an order yet. params: `trigger`. */
+  'RETURN_NOT_ATTRIBUTED',
+  /** The return's source cannot decline returns. params: `returnId`, `sourceConnectionId`. */
+  'RETURN_DECLINE_UNSUPPORTED',
+  /** The decline request is missing what the source needs. params: `field`. */
+  'RETURN_DECLINE_INVALID',
+  /** No such line on the return. params: `lineId`. */
+  'RETURN_LINE_NOT_FOUND',
+  /** The line's custody state refuses this act. params: `reason`. */
+  'RETURN_CUSTODY_TRANSITION_REFUSED',
+  /** Someone else is changing this line; retry. params: `lineId`. */
+  'RETURN_CUSTODY_CONTENDED',
+  /** A restock of this line is already blocked. params: `reason`. */
+  'RETURN_RESTOCK_ALREADY_BLOCKED',
+  /** The line has no blocked restock to attest. params: `lineId`. */
+  'RETURN_RESTOCK_ATTESTATION_INVALID',
+  /** The return cannot be authorized. params: `reason`. */
+  'RETURN_AUTHORIZE_REFUSED',
+  /** The return cannot be matched to this order. params: `reason`. */
+  'RETURN_MATCH_REFUSED',
+  /** The return cannot be recorded. params: `reason`. */
+  'RETURN_RECORD_REFUSED',
+  /** The refund cannot be triggered. params: `reason`. */
+  'RETURN_REFUND_BLOCKED',
+  /** Someone else is refunding this return; retry. params: `returnId`. */
+  'RETURN_REFUND_CONTENDED',
+  /** The refund observation is refused. params: `returnId`. */
+  'RETURN_REFUND_OBSERVATION_INVALID',
+  /** The action cannot follow this trigger. params: `trigger`, `action`, `index`. */
+  'AUTOMATION_TRIGGER_ACTION_ILLEGAL',
+  /** The condition field is not offered for this trigger. params: `trigger`, `field`, `index`. */
+  'AUTOMATION_CONDITION_FIELD_ILLEGAL',
+  /** The trigger settings are refused. params: `trigger`. */
+  'AUTOMATION_TRIGGER_CONFIG_INVALID',
+  /** A condition is refused. params: `index`. */
+  'AUTOMATION_CONDITION_INVALID',
+  /** An action step is refused. params: `index`. */
+  'AUTOMATION_ACTION_INVALID',
+  /** The rule has too few or too many steps. params: `count`, `min`, `max`. */
+  'AUTOMATION_STEP_COUNT_INVALID',
+  /** An identical rule exists. params: `trigger`, `conflictingRuleId`. */
+  'AUTOMATION_RULE_CONFLICT',
+
+  // ── Codes sent before the registry, kept verbatim (#3863) ──
+  /** Order cancellation or correction refusal (sent in `error`). */
+  'ORDER_ALREADY_CANCELLED',
+  /** Order cancellation or correction refusal (sent in `error`). */
+  'ORDER_ALREADY_SHIPPED',
+  /** Order cancellation or correction refusal (sent in `error`). */
+  'ORDER_HAS_FISCAL_RECEIPT',
+  /** Order cancellation or correction refusal (sent in `error`). */
+  'INVOICE_NOT_SETTLED',
+  /** Order cancellation or correction refusal (sent in `error`). */
+  'ORDER_CANCEL_IN_FLIGHT',
+  /** Order cancellation or correction refusal (sent in `error`). */
+  'ORDER_WORK_ACCEPTED_NEEDS_ACK',
+  /** Order cancellation or correction refusal (sent in `error`). */
+  'ORDER_CANCEL_CONTENDED',
+  /** Order cancellation or correction refusal (sent in `error`). */
+  'LABEL_NOT_VOIDABLE',
+  /** Order cancellation or correction refusal (sent in `error`). */
+  'CHANNEL_REFUSED_CANCEL',
+  /** Order cancellation or correction refusal (sent in `error`). */
+  'CHANGE_ALREADY_CONFIRMED',
+  /** Order cancellation or correction refusal (sent in `error`). */
+  'CHANGE_EXPIRED',
+  /** Order cancellation or correction refusal (sent in `error`). */
+  'CHANGE_NOT_OPEN',
+  /** Order cancellation or correction refusal (sent in `error`). */
+  'CHANGE_KIND_NOT_CONFIRMABLE',
+  /** Order cancellation or correction refusal (sent in `error`). */
+  'CORRECTION_SUPERSEDED',
+  /** Order edit refusal (sent in `error` and `code`). */
+  'ORDER_AMENDMENT_IN_FLIGHT',
+  /** Order edit refusal (sent in `error` and `code`). */
+  'ORDER_NOT_READY',
+  /** Order edit refusal (sent in `error` and `code`). */
+  'ORDER_PACKED',
+  /** Order edit refusal (sent in `error` and `code`). */
+  'LABEL_ALREADY_BOUGHT',
+  /** Order edit refusal (sent in `error` and `code`). */
+  'SALES_DOCUMENT_ISSUED',
+  /** Order edit refusal (sent in `error` and `code`). */
+  'QUANTITY_ONLY_DECREASES',
+  /** Order edit refusal (sent in `error` and `code`). */
+  'QUANTITY_BELOW_FULFILLED',
+  /** Order edit refusal (sent in `error` and `code`). */
+  'ORDER_WOULD_BE_EMPTY',
+  /** Order edit refusal (sent in `error` and `code`). */
+  'EDIT_AFTER_HANDOFF',
+  /** Order edit refusal (sent in `error` and `code`). */
+  'ADDRESS_EDIT_NEEDS_PII_STORAGE',
+  /** Order edit refusal (sent in `error` and `code`). */
+  'ORDER_EDIT_CONTENDED',
+  /** Order edit refusal (sent in `error` and `code`). */
+  'NOTHING_CHANGED',
+  /** Order edit refusal (sent in `error` and `code`). */
+  'LINE_PRICE_NOT_RESOLVABLE',
+  /** Order edit refusal (sent in `error` and `code`). */
+  'DISCOUNT_EXCEEDS_TOTAL',
+  /** Order edit refusal (sent in `error` and `code`). */
+  'DISCOUNT_BELOW_REFUNDED',
+  /** The order already has an open hold. */
+  'ORDER_ALREADY_ON_HOLD',
+  /** The hold was released already. */
+  'HOLD_ALREADY_RELEASED',
+  /** Someone else is changing the order's hold; retry. */
+  'ORDER_HOLD_CONTENDED',
+  /** The order has no buyer note to mark read. */
+  'NO_BUYER_NOTE',
+  /** The order is not held by routing. */
+  'ROUTING_RETRY_NOT_HELD',
+  /** The routing hold cannot be retried; it clears by itself. */
+  'ROUTING_RETRY_NOT_RETRYABLE',
+  /** No router is available to retry with. */
+  'ROUTING_RETRY_NO_ROUTER',
+  /** Test fixtures are switched off on this install. */
+  'TEST_FIXTURES_DISABLED',
+  /** Issuing the correction failed. */
+  'CORRECTION_FAILED',
+  /** The channel refused the content; `errors` lists why. */
+  'CHANNEL_PUBLISH_FAILED',
+  /** The export range is wider than one file allows. */
+  'EXPORT_RANGE_TOO_WIDE',
+  /** The current password is wrong. */
+  'CURRENT_PASSWORD_INCORRECT',
+  /** The new password equals the current one. */
+  'PASSWORD_UNCHANGED',
+  /** The user has set their own password already. */
+  'ALREADY_SET_OWN_PASSWORD',
+  /** The one-time password must be changed first. */
+  'PASSWORD_CHANGE_REQUIRED',
+  /** The authorized account is not the connection's account. */
+  'OAUTH_ACCOUNT_MISMATCH',
+  /** The authorization state is invalid or expired. */
+  'OAUTH_STATE_INVALID',
+  /** The refund is above what the order can still refund. */
+  'refund_ceiling_exceeded',
+  /** The refund ceiling could not be read; nothing was refunded. */
+  'refund_ceiling_unavailable',
+  /** Someone else is recording a refund of this order; retry. */
+  'refund_record_contended',
+  /** The refund lock could not be taken; nothing was recorded. */
+  'refund_lock_unavailable',
+  /** The fulfilment task changed since it was read; re-read and retry. */
+  'version_conflict',
+  /** The action is not allowed in the task's current state. */
+  'action_not_legal',
+  /** The stock change is large and needs confirming. */
+  'confirmation-required',
+  /** Someone else is correcting this stock; retry. */
+  'contended',
+  /** Document email refusal. */
+  'document-not-found',
+  /** Document email refusal. */
+  'not-issued',
+  /** Document email refusal. */
+  'document-not-ready',
+  /** Document email refusal. */
+  'no-document',
+  /** Document email refusal. */
+  'no-recipient',
+  /** Document email refusal. */
+  'invalid-recipient',
+  /** Document email refusal. */
+  'mailer-unavailable',
+  /** Document email refusal. */
+  'send-failed',
+  /** Stock correction refusal. */
+  'no-inventory-master',
+  /** Stock correction refusal. */
+  'ambiguous-inventory-master',
+  /** Stock correction refusal. */
+  'no-position',
+  /** Stock correction refusal. */
+  'unattributed-owner',
+  /** Stock correction refusal. */
+  'adapter-unresolved',
+  /** Stock correction refusal. */
+  'master-refused',
+  /** Stock correction refusal. */
+  'master-product-not-found',
+  /** Stock correction refusal. */
+  'master-unreadable',
+  /** Stock correction refusal. */
+  'no-change',
+  /** Stock correction refusal. */
+  'insufficient-stock',
+  /** Stock correction refusal. */
+  'note-required',
+  /** Stock correction refusal. */
+  'invalid-quantity',
+  /** Stock correction refusal. */
+  'idempotency-key-reused',
 ] as const;
 
 export type KnownApiErrorCode = (typeof ApiErrorCodeValues)[number];
