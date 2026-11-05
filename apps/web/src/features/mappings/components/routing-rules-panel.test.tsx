@@ -116,12 +116,12 @@ describe('RoutingRulesPanel', () => {
       .getAllByRole('option')
       .map((o) => o.textContent ?? '');
     // Default option is data-driven from the omp_fulfilled candidate's connection.
-    expect(optionLabels.some((l) => /My Shop.*default/.test(l))).toBe(true);
-    // omp_fulfilled is the default — never offered as an explicit divert option.
-    expect(optionLabels.some((l) => l.includes('Order-management platform'))).toBe(false);
-    // The two non-OMP candidates ARE offered.
-    expect(optionLabels.some((l) => l.includes('Marketplace-brokered'))).toBe(true);
-    expect(optionLabels.some((l) => l.includes('OpenLinker-managed carrier'))).toBe(true);
+    expect(optionLabels.some((l) => /My Shop ships it \(default\)/.test(l))).toBe(true);
+    // omp_fulfilled is the default - never offered as an explicit divert option.
+    expect(optionLabels.filter((l) => l.includes('ships it'))).toHaveLength(1);
+    // The two non-OMP candidates ARE offered, in operator words (#3958).
+    expect(optionLabels.some((l) => /OpenLinker buys the label through .+ shipping/.test(l))).toBe(true);
+    expect(optionLabels.some((l) => /OpenLinker buys the label from /.test(l))).toBe(true);
   });
 
   it('persists only diverted methods via the replace-all mutation', async () => {
@@ -182,6 +182,7 @@ describe('RoutingRulesPanel', () => {
     ];
     renderPanel(buildApiClient(), { deliveryMethods: methods });
 
+    // Two methods with the same name keep their id hint inline; a unique name carries it as a tooltip only (#3958).
     expect(await screen.findByText('erliDP…r5kg')).toBeInTheDocument();
     expect(screen.getByText('erliDP…20kg')).toBeInTheDocument();
     // The old front-truncated hint that made the two rows identical is gone.
@@ -441,5 +442,16 @@ describe('RoutingRulesPanel', () => {
         });
       });
     });
+  });
+});
+
+describe('RoutingRulesPanel layout (#3958)', () => {
+  it('shows one "Who ships it" column and no "Routed to" column', async () => {
+    renderPanel(buildApiClient());
+    await screen.findByRole('combobox', { name: /Fulfillment processor for InPost Paczkomat/i });
+    expect(screen.getByRole('heading', { name: 'Who ships each delivery method' })).toBeInTheDocument();
+    expect(screen.getAllByText('Who ships it').length).toBeGreaterThan(0);
+    expect(screen.queryByText('Routed to')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /copy/i })).not.toBeInTheDocument();
   });
 });

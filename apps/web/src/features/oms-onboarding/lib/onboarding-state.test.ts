@@ -12,7 +12,12 @@ import {
   isStep1Done,
   readSourcingStanding,
   resolveDataSource,
+  TOTAL_STEPS,
   TURN_ON_STEP,
+  WIZARD_STEP_KEYS,
+  WIZARD_STEPS,
+  wizardStepFromKey,
+  wizardStepKey,
   type DataStateInput,
   type OnboardingDataState,
 } from './onboarding-state';
@@ -83,10 +88,11 @@ describe('deriveDataState', () => {
     [{ step: 2 }, 'step-2-sales-documents'],
     [{ step: 3 }, 'step-3-packers-empty'],
     [{ step: 3, packerCount: 1 }, 'step-3-packer-added'],
-    [{ step: 4 }, 'step-4-what-changes'],
-    [{ step: 5 }, 'step-5-automations'],
-    [{ step: 6 }, 'step-6-who-decides'],
-    [{ step: 7 }, 'step-7-turn-on'],
+    [{ step: 4 }, 'step-4-shipping'],
+    [{ step: 5 }, 'step-5-what-changes'],
+    [{ step: 6 }, 'step-6-automations'],
+    [{ step: 7 }, 'step-7-who-decides'],
+    [{ step: 8 }, 'step-8-turn-on'],
     [{ view: 'waiting' }, 'waiting-first-order'],
     [{ view: 'first' }, 'first-order-arrived'],
     [{ view: 'status', live: true }, 'status-on'],
@@ -179,5 +185,56 @@ describe('initialPosition', () => {
     expect(initialPosition(false, true, true)).toEqual({ view: 'status', step: TURN_ON_STEP });
     expect(initialPosition(false, false, true)).toEqual({ view: 'wizard', step: 2 });
     expect(initialPosition(false, false, false)).toEqual({ view: 'wizard', step: 1 });
+  });
+});
+
+describe('wizard step numbers', () => {
+  it('should put Shipping at step 4 of 8, after the packers and before what changes', () => {
+    expect(TOTAL_STEPS).toBe(8);
+    expect(WIZARD_STEPS.packers).toBe(3);
+    expect(WIZARD_STEPS.shipping).toBe(4);
+    expect(WIZARD_STEPS.whatChanges).toBe(5);
+    expect(TURN_ON_STEP).toBe(8);
+  });
+
+  it('should number the steps 1 to 8 with no gap or repeat', () => {
+    expect(WIZARD_STEP_KEYS.map((key) => WIZARD_STEPS[key])).toEqual([1, 2, 3, 4, 5, 6, 7, 8]);
+  });
+});
+
+describe('wizardStepFromKey / wizardStepKey', () => {
+  it('should round-trip every step through its URL value', () => {
+    for (const key of WIZARD_STEP_KEYS) {
+      expect(wizardStepKey(wizardStepFromKey(key) ?? 0)).toBe(key);
+    }
+  });
+
+  it('should read an absent or unknown value as no step', () => {
+    expect(wizardStepFromKey(null)).toBeNull();
+    expect(wizardStepFromKey('')).toBeNull();
+    expect(wizardStepFromKey('/connections')).toBeNull();
+    expect(wizardStepFromKey('constructor')).toBeNull();
+  });
+});
+
+describe('initialPosition with a step in the URL', () => {
+  it('should reopen the requested step once step 1 is done', () => {
+    expect(initialPosition(false, false, true, WIZARD_STEPS.shipping)).toEqual({
+      view: 'wizard',
+      step: WIZARD_STEPS.shipping,
+    });
+    expect(initialPosition(true, false, true, WIZARD_STEPS.shipping)).toEqual({
+      view: 'wizard',
+      step: WIZARD_STEPS.shipping,
+    });
+  });
+
+  it('should not skip past step 1 while it is not done', () => {
+    expect(initialPosition(false, false, false, WIZARD_STEPS.shipping)).toEqual({ view: 'wizard', step: 1 });
+  });
+
+  it('should not reopen Turn it on for packing that is on or paused', () => {
+    expect(initialPosition(true, false, true, TURN_ON_STEP)).toEqual({ view: 'status', step: TURN_ON_STEP });
+    expect(initialPosition(false, true, true, TURN_ON_STEP)).toEqual({ view: 'status', step: TURN_ON_STEP });
   });
 });

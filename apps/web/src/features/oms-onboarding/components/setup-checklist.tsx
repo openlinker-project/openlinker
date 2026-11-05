@@ -24,7 +24,7 @@ export interface SetupChecklistRow {
  * through this one place, so the summary and the status page cannot order the
  * same setup differently from the steps that made it.
  */
-const CHECKLIST_ORDER = ['masters', 'stock', 'salesDocuments', 'packers', 'automations', 'whoDecides'];
+const CHECKLIST_ORDER = ['masters', 'stock', 'salesDocuments', 'packers', 'labels', 'automations', 'whoDecides'];
 
 export function orderChecklistRows(rows: readonly SetupChecklistRow[]): SetupChecklistRow[] {
   const position = (key: string): number => {

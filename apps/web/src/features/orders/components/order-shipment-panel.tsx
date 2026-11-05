@@ -42,7 +42,7 @@ import { TimeDisplay } from '../../../shared/ui/time-display';
 import type { OrderDeliveryRider, OrderRecord } from '../api/orders.types';
 import { parseOrderSnapshot, type PaymentStatus } from '../api/order-snapshot.schema';
 import { hasLiveOlCarrierRoute } from '../lib/delivery-outcome';
-import { SHOP_FULFILLED_NO_DUP_LABEL } from '../lib/delivery-copy';
+import { SHIPPING_ROUTE_ORIGIN_COPY, SHOP_FULFILLED_NO_DUP_LABEL } from '../lib/delivery-copy';
 import { DeliveryRiderAction } from './delivery-rider-action';
 import { GenerateLabelForm } from './generate-label-form';
 import {
@@ -53,6 +53,7 @@ import {
 } from './shipment-action-buttons';
 import { ShipmentLifecycleRail } from './shipment-lifecycle-rail';
 import { ShipmentTrackingLink } from './shipment-tracking-link';
+import { ShippingRouteAction } from './shipping-route-action';
 
 const SHIPPING_CAPABILITY = 'ShippingProviderManager';
 
@@ -349,10 +350,21 @@ export function OrderShipmentPanel({
           />
         ) : (
           // Affirmative shop-fulfilled empty state (#1776 E2) — the shop owns
-          // fulfilment; no CTA, no dead-end label action.
+          // fulfilment, so there is no label action. The one action is to pick
+          // a carrier for the delivery method (#3958): the panel used to end
+          // here with nothing to do when the method name matched no carrier.
           <EmptyState
             title="Shipped by the shop"
             message={shopFulfilledMessage(shopConnectionName)}
+            action={
+              order.sourceConnectionId ? (
+                <ShippingRouteAction
+                  sourceConnectionId={order.sourceConnectionId}
+                  methodLabel={order.sourceDeliveryMethodName ?? order.sourceDeliveryMethodId}
+                  label={SHIPPING_ROUTE_ORIGIN_COPY.chooseAction}
+                />
+              ) : undefined
+            }
           />
         )
       ) : (

@@ -45,6 +45,7 @@ function parcel(lines: readonly BenchParcelLine[]): BenchParcel {
     totalAmount: null,
     currency: null,
     carrierName: null,
+    route: null,
     dispatchByAt: null,
     parcelIndex: 1,
     parcelTotal: 2,

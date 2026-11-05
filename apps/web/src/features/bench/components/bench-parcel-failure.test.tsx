@@ -66,6 +66,7 @@ function parcel(over: Partial<BenchParcel> = {}): BenchParcel {
     totalAmount: null,
     currency: null,
     carrierName: null,
+    route: null,
     dispatchByAt: null,
     parcelIndex: 1,
     parcelTotal: 2,

@@ -5,7 +5,9 @@
  * sender-address step renders after a valid account step, and a full walk
  * submits the mapped nested-config + credentials payload via connections.create.
  */
+import type { ReactElement } from 'react';
 import { cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react';
+import { Route, Routes, useLocation } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { InpostSetupForm } from './inpost-setup-form';
 import { createMockApiClient, renderWithProviders, sampleConnection } from '../../../test/test-utils';
@@ -130,5 +132,31 @@ describe('InpostSetupForm', () => {
       }),
     );
     expect((create.mock.calls[0][0] as { enabledCapabilities?: unknown }).enabledCapabilities).toBeUndefined();
+  });
+
+  it('lands on the new connection with the next step, keeping the OMS setup return marker (#3958)', async () => {
+    const create = vi.fn().mockResolvedValue({ ...sampleConnection, id: 'conn_inpost' });
+    const apiClient = createMockApiClient({ connections: { create } });
+    function LocationProbe(): ReactElement {
+      const location = useLocation();
+      return <p data-testid="landed">{`${location.pathname}${location.search}`}</p>;
+    }
+    const { container } = renderWithProviders(
+      <Routes>
+        <Route path="/connections/new/inpost" element={<InpostSetupForm />} />
+        <Route path="/connections/:connectionId" element={<LocationProbe />} />
+      </Routes>,
+      { apiClient, route: '/connections/new/inpost?from=oms-setup' },
+    );
+
+    fillAccountStep(container, { name: 'InPost main', apiToken: 'shipx-token', organizationId: '123456' });
+    await advanceOneStep(container);
+    fillSenderStep(container);
+    await advanceOneStep(container);
+    fireEvent.click(within(container).getByRole('button', { name: 'Create connection' }));
+
+    expect(await screen.findByTestId('landed')).toHaveTextContent(
+      '/connections/conn_inpost?created=1&from=oms-setup',
+    );
   });
 });

@@ -59,6 +59,7 @@ import type { IShipmentQueryService } from '@openlinker/core/shipping';
 import type { IUserManagementService } from '../../../users/user-management.service.interface';
 import type { IFulfillmentParcelClosureNotifier } from '../../../fulfillment/application/interfaces/fulfillment-parcel-closure-notifier.service.interface';
 import { BenchExecutorResolver } from '../services/bench-executor.resolver';
+import type { BenchRouteResolver } from '../services/bench-route.resolver';
 import { BenchParcelService } from '../services/bench-parcel.service';
 
 const EXECUTOR_ID = '11111111-1111-1111-1111-111111111111';
@@ -202,7 +203,9 @@ function harness() {
       parcelClosureNotifier,
       {
         listBuyerNoteAcknowledgements: jest.fn().mockResolvedValue([]),
-      } as unknown as IFulfillmentWorkQueryService
+      } as unknown as IFulfillmentWorkQueryService,
+      // #3958 - the route is a presentation fact this guard never reads.
+      { resolve: jest.fn().mockResolvedValue(null) } as unknown as BenchRouteResolver
     ),
     verification,
     // `claimParcel`'s write target lives here rather than on the verification

@@ -16,8 +16,9 @@
 import { useEffect, useState, type FormEvent, type ReactElement } from 'react';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useForm, type Path } from 'react-hook-form';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useCreateConnectionMutation } from '../hooks/use-create-connection-mutation';
+import { createdConnectionLandingPath, isFromOmsSetup } from '../lib/oms-setup-return';
 import {
   DPD_SETUP_DEFAULT_VALUES,
   dpdSetupSchema,
@@ -59,6 +60,7 @@ export function DpdSetupForm(): ReactElement {
   const createConnection = useCreateConnectionMutation();
   const { showToast } = useToast();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const form = useForm<DpdSetupFormValues, undefined, DpdSetupFormSubmission>({
     defaultValues: DPD_SETUP_DEFAULT_VALUES,
     resolver: zodResolver(dpdSetupSchema),
@@ -121,7 +123,9 @@ export function DpdSetupForm(): ReactElement {
         title: 'Connection created',
         description: `DPD Polska connection "${created.name}" was created.`,
       });
-      void navigate('/connections');
+      // A new carrier ships nothing until a delivery method is routed to it,
+      // so the operator lands where that next step is offered (#3958).
+      void navigate(createdConnectionLandingPath(created.id, isFromOmsSetup(searchParams)));
     } catch {
       return;
     }
