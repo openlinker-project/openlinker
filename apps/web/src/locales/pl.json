@@ -34,6 +34,27 @@
     }
   },
   "listings": {
+    "bulkBatch": {
+      "accountRefused": {
+        "providerSaid": "Odpowiedź {name}:",
+        "rowPointer": "Konto nie może sprzedawać - zobacz wyżej"
+      },
+      "allegro": {
+        "accountRefused": {
+          "action": "Otwórz Sales Center Allegro",
+          "detail": {
+            "few": "Z tego powodu nie przeszło {n} z {total} wariantów. Nic w ofertach tego nie naprawi. Odblokuj konto w Allegro, potem ponów batch bez zmian.",
+            "many": "Z tego powodu nie przeszło {n} z {total} wariantów. Nic w ofertach tego nie naprawi. Odblokuj konto w Allegro, potem ponów batch bez zmian.",
+            "one": "Z tego powodu nie przeszło {n} z {total} wariantów. Nic w ofertach tego nie naprawi. Odblokuj konto w Allegro, potem ponów batch bez zmian.",
+            "other": "Z tego powodu nie przeszło {n} z {total} wariantów. Nic w ofertach tego nie naprawi. Odblokuj konto w Allegro, potem ponów batch bez zmian."
+          },
+          "title": "Allegro odrzuciło te oferty, bo konto sprzedawcy nie może sprzedawać."
+        }
+      },
+      "recovery": {
+        "accountOnly": "Ponów batch dokładnie tak, jak został zapisany, gdy konto znów będzie mogło sprzedawać."
+      }
+    },
     "bulkBlockers": {
       "allegro": {
         "eanUnverified": {

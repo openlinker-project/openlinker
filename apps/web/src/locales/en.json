@@ -30,6 +30,25 @@
     }
   },
   "listings": {
+    "bulkBatch": {
+      "accountRefused": {
+        "providerSaid": "{name} said:",
+        "rowPointer": "Account cannot sell - see above"
+      },
+      "allegro": {
+        "accountRefused": {
+          "action": "Open Allegro Sales Center",
+          "detail": {
+            "one": "{n} of {total} variants failed for this reason. Nothing in the offers can fix it. Unblock the account in Allegro, then retry the batch unchanged.",
+            "other": "{n} of {total} variants failed for this reason. Nothing in the offers can fix it. Unblock the account in Allegro, then retry the batch unchanged."
+          },
+          "title": "Allegro refused these offers because the seller account cannot sell."
+        }
+      },
+      "recovery": {
+        "accountOnly": "Re-run the batch exactly as saved once the account can sell again."
+      }
+    },
     "bulkBlockers": {
       "allegro": {
         "eanUnverified": {
